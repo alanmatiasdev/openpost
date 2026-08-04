@@ -5,9 +5,9 @@
 </p>
 
 <p align="center">
-  <strong>A lightweight, self-hosted social media scheduler.</strong>
+  <strong>Turn what you are building into content. Publish it everywhere.</strong>
   <br>
-  Write once, tailor each account, and publish from one clear calendar.
+  The all-in-one content team for solo founders.
 </p>
 
 <p align="center">
@@ -26,13 +26,11 @@
 </p>
 
 <p align="center">
-  <a href="https://app.openpost.social"><strong>Try OpenPost</strong></a>
+  <a href="https://app.openpost.social/register?plan=creator"><strong>Start a 14-day trial</strong></a>
   ·
   <a href="https://youtu.be/_mZf3HzQaN8"><strong>Watch the demo</strong></a>
   ·
   <a href="https://docs.openpost.social/guide/quickstart"><strong>Quickstart</strong></a>
-  ·
-  <a href="https://docs.openpost.social/self-hosting/"><strong>Self-hosting docs</strong></a>
   ·
   <a href="https://discord.gg/u2QwukmY4W"><strong>Discord community</strong></a>
 </p>
@@ -41,9 +39,9 @@
   <img alt="OpenPost composer with account versions and scheduling controls" src="./assets/screenshots/main-dark.png" width="100%">
 </p>
 
-## A focused social scheduler
+## One content team for companies of one
 
-OpenPost helps you write, tailor, schedule, and publish social posts.
+OpenPost helps solo founders turn launches, product updates, lessons, and ideas into content, then adapt, schedule, and track it from one workspace.
 
 - **Write one shared post.** Change the text, media, format, and settings for each account.
 - **See the full schedule.** Plan posts in a calendar, reuse posting times, and check scheduled, published, and failed posts.
@@ -53,7 +51,7 @@ OpenPost helps you write, tailor, schedule, and publish social posts.
 - **Keep brands separate.** Workspaces isolate accounts, media, schedules, members, and automation access.
 - **Manage replies and messages.** Read and reply to comments, get personal alerts, and turn on inbox collection for supported accounts.
 - **Choose how users sign in.** Require email confirmation, enable Google login, link methods explicitly, or configure organization SSO.
-- **Configure optional services in the app.** Instance admins can add encrypted email, identity, stock media, feedback, and social provider credentials while deployment environment values remain authoritative.
+- **Configure optional services in the app.** Instance admins can add encrypted billing, email, identity, stock media, feedback, and social provider credentials while deployment environment values remain authoritative.
 - **Automate without sharing social account keys.** Use the API, CLI, or MCP with OpenPost tokens that you can limit to one workspace and remove.
 - **Run a small server.** Use one container or binary, SQLite, local media, and saved background jobs. Redis is not required.
 

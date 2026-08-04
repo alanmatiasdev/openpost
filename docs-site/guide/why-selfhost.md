@@ -30,7 +30,7 @@ The default setup stays small: one Go binary or container, SQLite, local media, 
 
 Use the managed app if you want OpenPost without maintaining its server, backups, TLS, and upgrades. It is also simpler when you do not need a custom server setup or code changes.
 
-Managed plans start at €6 per month. You can create an account and one workspace before checkout, but you need an active plan to connect accounts, upload media, schedule, or publish. There is no hosted free plan or automatic trial.
+Managed plans start at $15 per month and include a card-required 14-day trial. OpenPost shows the renewal price and date before you start. An active or trialing plan is required to connect accounts, upload media, schedule, or publish.
 
 ## Choose Self-Hosting When
 

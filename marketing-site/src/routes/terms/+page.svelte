@@ -1,7 +1,7 @@
 <script lang="ts">
   import { siteUrl } from "../_marketing";
 
-  const effectiveDate = "29 July 2026";
+  const effectiveDate = "4 August 2026";
 </script>
 
 <svelte:head>
@@ -159,8 +159,13 @@
     <p>
       Paid plans renew for the billing period shown at checkout until cancelled.
       Prices, included usage, seats, storage, and taxes are shown before
-      purchase. Polar processes checkout and billing. You authorize recurring
+      purchase. Whop processes checkout and billing. You authorize recurring
       charges to the payment method managed there.
+    </p>
+    <p>
+      If checkout includes a free trial, the first charge occurs on the date
+      shown before you start unless you cancel first. A payment method may be
+      required to begin the trial.
     </p>
     <p>
       You can manage or cancel a subscription from the billing portal.

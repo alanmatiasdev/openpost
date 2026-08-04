@@ -1,7 +1,7 @@
 <!--
-THESIS: OpenPost gives a small team one complete content workflow, then makes the publishing cadence visible.
+THESIS: OpenPost gives solo founders an all-in-one content team for turning company work into content and publishing it everywhere.
 OWN-WORLD: Centered product-led narrative, warm orange proof cells, dark framed product surfaces, and spacious editorial pacing.
-STORY: Understand the promise, see the real product, follow the workflow, see public proof, choose a deployment, and start.
+STORY: Understand the promise, use the real product demo, see the workflow, choose a plan, and start.
 FIRST VIEWPORT: A centered outcome statement and two clear routes into a real, working destination composer.
 FORM: Product-led publishing workspace with activity squares as the recurring proof and motion language.
 -->
@@ -10,43 +10,38 @@ FORM: Product-led publishing workspace with activity squares as the recurring pr
     ArrowRight,
     CalendarRange,
     Check,
-    Github,
     Layers3,
     LockKeyhole,
-    Server,
   } from "lucide-svelte";
   import { Button } from "$lib/components/ui/button";
   import PlatformIcon from "$lib/components/platform-icon.svelte";
   import DestinationComposerDemo from "./_components/DestinationComposerDemo.svelte";
-  import PublishingActivityField from "./_components/PublishingActivityField.svelte";
   import ScrollReveal from "./_components/ScrollReveal.svelte";
   import {
     faqs,
-    githubUrl,
     managedAccessSummary,
     managedSignupUrl,
     platforms,
     plans,
-    selfHostingDocsUrl,
     siteUrl,
   } from "./_marketing";
 
   const workflow = [
     {
       number: "01",
-      title: "Create the source",
+      title: "Capture what matters",
       description:
-        "Write a post or edit a video without leaving the workspace.",
+        "Turn a launch, product update, or lesson into one shared source.",
     },
     {
       number: "02",
-      title: "Adapt each version",
+      title: "Shape every channel",
       description:
         "Change copy, media, format, and settings for every destination.",
     },
     {
       number: "03",
-      title: "Schedule and follow up",
+      title: "Keep the campaign moving",
       description:
         "Publish on time, see each result, and retry only what needs attention.",
     },
@@ -102,29 +97,29 @@ FORM: Product-led publishing workspace with activity squares as the recurring pr
 </script>
 
 <svelte:head>
-  <title>OpenPost - Build the company. Keep it visible.</title>
+  <title>OpenPost - The all-in-one content team for solo founders</title>
   <meta
     name="description"
-    content="Create, adapt, schedule, and track social posts for every account from one open-source workspace. Use OpenPost managed or self-hosted."
+    content="Turn what you are building into content, adapt it for every channel, and publish it everywhere from one place. Start free for 14 days."
   />
   <link rel="canonical" href={siteUrl} />
   <meta name="robots" content="index, follow" />
   <meta property="og:url" content={siteUrl} />
   <meta
     property="og:title"
-    content="OpenPost - Build the company. Keep it visible."
+    content="OpenPost - The all-in-one content team for solo founders"
   />
   <meta
     property="og:description"
-    content="One open-source workspace for the complete social publishing workflow."
+    content="Turn what you are building into content and publish it everywhere from one place."
   />
   <meta
     name="twitter:title"
-    content="OpenPost - Build the company. Keep it visible."
+    content="OpenPost - The all-in-one content team for solo founders"
   />
   <meta
     name="twitter:description"
-    content="Create, adapt, schedule, and track social posts from one workspace."
+    content="Create, adapt, schedule, and track the content behind your company from one place."
   />
 </svelte:head>
 
@@ -133,25 +128,26 @@ FORM: Product-led publishing workspace with activity squares as the recurring pr
     class="marketing-shell pb-16 pt-16 text-center sm:pb-20 sm:pt-24 lg:pt-28"
   >
     <p class="section-label hero-enter hero-enter-1">
-      Open-source social publishing
+      The content team for companies of one
     </p>
     <h1 class="marketing-title hero-enter hero-enter-2 mx-auto mt-5">
-      Build the company.<br /><span class="text-primary">Keep it visible.</span>
+      Turn what you’re building into content.<br /><span class="text-primary"
+        >Publish it everywhere.</span
+      >
     </h1>
     <p class="marketing-copy hero-enter hero-enter-3 mx-auto mt-7 max-w-2xl">
-      Create, adapt, schedule, and track content for every social account you
-      run from one workspace.
+      OpenPost helps solo founders shape ideas into posts, adapt them for every
+      channel, schedule the work, and track what went live from one place.
     </p>
     <div
       class="hero-enter hero-enter-4 mt-8 flex flex-wrap justify-center gap-3"
     >
       <Button href={managedSignupUrl} size="lg">
-        Try OpenPost
+        Start your 14-day trial
         <ArrowRight data-icon="inline-end" />
       </Button>
-      <Button href={selfHostingDocsUrl} variant="outline" size="lg">
-        <Server data-icon="inline-start" />
-        Self-host
+      <Button href="#product" variant="outline" size="lg">
+        See how it works
       </Button>
     </div>
     <p
@@ -160,7 +156,10 @@ FORM: Product-led publishing workspace with activity squares as the recurring pr
       {managedAccessSummary}
     </p>
 
-    <div class="hero-product hero-enter hero-enter-5 mt-12 sm:mt-16">
+    <div
+      id="composer-demo"
+      class="hero-product hero-enter hero-enter-5 mt-12 scroll-mt-24 sm:mt-16"
+    >
       <div class="window-bar" aria-hidden="true">
         <span></span><span></span><span></span>
         <p>openpost.social</p>
@@ -201,11 +200,11 @@ FORM: Product-led publishing workspace with activity squares as the recurring pr
     <ScrollReveal class="mx-auto max-w-3xl text-center">
       <p class="section-label">From draft to result</p>
       <h2 id="workflow-title" class="marketing-heading mx-auto mt-4">
-        Not another scheduler. The complete content workflow.
+        From company update to content on every channel.
       </h2>
       <p class="marketing-copy mx-auto mt-6">
-        OpenPost keeps the source, every destination version, and the
-        publication result connected.
+        OpenPost keeps the source, every destination version, and each
+        publishing result together.
       </p>
     </ScrollReveal>
 
@@ -238,7 +237,7 @@ FORM: Product-led publishing workspace with activity squares as the recurring pr
     <ScrollReveal class="max-w-3xl">
       <p class="section-label">Inside OpenPost</p>
       <h2 id="product-title" class="marketing-heading mt-4">
-        One system from idea to published post.
+        Your ideas, assets, calendar, and results in one system.
       </h2>
     </ScrollReveal>
 
@@ -289,107 +288,28 @@ FORM: Product-led publishing workspace with activity squares as the recurring pr
   </div>
 </section>
 
-<section class="section-pad overflow-hidden" aria-labelledby="activity-title">
-  <div class="marketing-shell">
-    <div class="grid gap-10 lg:grid-cols-[0.72fr_1.28fr] lg:items-end">
-      <ScrollReveal>
-        <p class="section-label">Public profiles</p>
-        <h2 id="activity-title" class="marketing-heading mt-4">
-          Make consistent work visible.
-        </h2>
-      </ScrollReveal>
-      <ScrollReveal delay={100}>
-        <p class="marketing-copy lg:ml-auto">
-          Choose a username and opt in to a public profile. It shows your post
-          activity, current and longest streaks, peak day, and the platforms and
-          workspaces you use most.
-        </p>
-      </ScrollReveal>
-    </div>
-
-    <ScrollReveal class="mt-12" delay={90}>
-      <PublishingActivityField />
-    </ScrollReveal>
-
-    <div class="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-      {#each ["Lifetime posts", "Peak posting day", "Current and longest streak", "Top platforms and workspaces"] as item, index (item)}
-        <ScrollReveal delay={index * 70}>
-          <div class="profile-proof">
-            <i aria-hidden="true"></i>
-            <span>{item}</span>
-          </div>
-        </ScrollReveal>
-      {/each}
-    </div>
-  </div>
-</section>
-
 <section
   class="section-pad marketing-rule border-y bg-muted/18"
-  aria-labelledby="deployment-title"
+  aria-labelledby="product-proof-title"
 >
   <div class="marketing-shell">
     <ScrollReveal class="mx-auto max-w-3xl text-center">
-      <p class="section-label">Choose how to run it</p>
-      <h2 id="deployment-title" class="marketing-heading mx-auto mt-4">
-        Managed for you. Or fully self-hosted.
+      <p class="section-label">Your company is the source</p>
+      <h2 id="product-proof-title" class="marketing-heading mx-auto mt-4">
+        Everything you build deserves an audience.
       </h2>
     </ScrollReveal>
-
-    <div class="mt-12 grid gap-4 lg:grid-cols-2">
-      <ScrollReveal>
-        <article class="deployment-card bg-card">
-          <div>
-            <p
-              class="font-mono text-xs font-semibold uppercase tracking-wider text-primary"
-            >
-              Managed
-            </p>
-            <h3 class="mt-5 text-3xl font-semibold tracking-tight">
-              OpenPost Cloud
-            </h3>
-            <p class="mt-4 max-w-lg leading-7 text-muted-foreground">
-              We run the app, storage, updates, and scheduled publishing. Plans
-              start at {plans[0].price}/month.
-            </p>
-          </div>
-          <Button href={managedSignupUrl} class="mt-9 w-fit">
-            Create an account
-            <ArrowRight data-icon="inline-end" />
-          </Button>
-        </article>
-      </ScrollReveal>
-      <ScrollReveal delay={90}>
-        <article class="deployment-card bg-foreground text-background">
-          <div>
-            <p
-              class="font-mono text-xs font-semibold uppercase tracking-wider text-background/60"
-            >
-              Open source
-            </p>
-            <h3 class="mt-5 text-3xl font-semibold tracking-tight">
-              Run it yourself
-            </h3>
-            <p class="mt-4 max-w-lg leading-7 text-background/68">
-              Deploy the AGPL server as one binary or container. SQLite and
-              local media work by default, and Redis is not required.
-            </p>
-          </div>
-          <div class="mt-9 flex flex-wrap gap-2">
-            <Button href={selfHostingDocsUrl} variant="secondary"
-              >Self-hosting guide</Button
-            >
-            <Button
-              href={githubUrl}
-              variant="ghost"
-              class="text-background hover:bg-background/10 hover:text-background"
-            >
-              <Github data-icon="inline-start" />
-              Source
-            </Button>
-          </div>
-        </article>
-      </ScrollReveal>
+    <div
+      class="mt-12 grid gap-px overflow-hidden rounded-2xl border bg-border md:grid-cols-3"
+    >
+      {#each [{ title: "Start with the work", body: "Bring a launch, lesson, or product update into one shared draft instead of starting from an empty calendar." }, { title: "Shape it for every channel", body: "Keep the core idea, then change only the copy, media, and format each audience needs." }, { title: "Keep the engine moving", body: "Schedule the next wave, see what published, and retry only the posts that need attention." }] as proof, index (proof.title)}
+        <ScrollReveal delay={index * 80}>
+          <article class="min-h-full bg-card p-6 sm:p-8">
+            <h3 class="text-xl font-semibold tracking-tight">{proof.title}</h3>
+            <p class="mt-3 text-sm/6 text-muted-foreground">{proof.body}</p>
+          </article>
+        </ScrollReveal>
+      {/each}
     </div>
   </div>
 </section>
@@ -399,7 +319,7 @@ FORM: Product-led publishing workspace with activity squares as the recurring pr
     <ScrollReveal class="mx-auto max-w-3xl text-center">
       <p class="section-label">Managed plans</p>
       <h2 id="pricing-title" class="marketing-heading mx-auto mt-4">
-        Start small. Keep the same workflow as you grow.
+        Start as a company of one. Keep the same content system as you grow.
       </h2>
     </ScrollReveal>
 
@@ -493,20 +413,18 @@ FORM: Product-led publishing workspace with activity squares as the recurring pr
       id="closing-title"
       class="mx-auto mt-5 max-w-4xl text-4xl font-semibold leading-[0.98] tracking-[-0.045em] text-balance sm:text-6xl"
     >
-      Everything you build deserves an audience.
+      Give your company a content team.
     </h2>
     <p class="mx-auto mt-6 max-w-xl leading-7 text-white/62">
-      Create the source once. Adapt it for each account. Keep publishing without
-      adding another disconnected tool.
+      Create the source once, adapt it for each account, and keep every result
+      in one place.
     </p>
     <div class="mt-8 flex flex-wrap justify-center gap-3">
       <Button href={managedSignupUrl} size="lg">
-        Try OpenPost
+        Start your 14-day trial
         <ArrowRight data-icon="inline-end" />
       </Button>
-      <Button href={selfHostingDocsUrl} variant="secondary" size="lg"
-        >Self-host</Button
-      >
+      <Button href="/pricing" variant="secondary" size="lg">See pricing</Button>
     </div>
   </ScrollReveal>
 </section>
@@ -614,40 +532,9 @@ FORM: Product-led publishing workspace with activity squares as the recurring pr
     object-position: top;
   }
 
-  .profile-proof,
-  .plan-card,
-  .deployment-card {
+  .plan-card {
     border: 1px solid var(--border);
     border-radius: 1rem;
-  }
-
-  .profile-proof {
-    display: flex;
-    min-height: 4.5rem;
-    align-items: center;
-    gap: 0.8rem;
-    padding: 1rem;
-    background: var(--card);
-    font-size: 0.82rem;
-    font-weight: 600;
-  }
-
-  .profile-proof i {
-    width: 0.78rem;
-    height: 0.78rem;
-    flex: none;
-    border-radius: 0.22rem;
-    background: var(--primary);
-    box-shadow: 1rem 0 color-mix(in oklch, var(--primary) 58%, var(--muted));
-    margin-right: 1rem;
-  }
-
-  .deployment-card {
-    display: flex;
-    min-height: 24rem;
-    flex-direction: column;
-    justify-content: space-between;
-    padding: clamp(1.5rem, 4vw, 3rem);
   }
 
   .plan-card {

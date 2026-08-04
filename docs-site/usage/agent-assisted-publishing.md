@@ -96,4 +96,4 @@ Use the [OpenPost Launch Kit](https://github.com/rodrgds/openpost/tree/main/laun
 
 ## Managed app access
 
-Managed plans start at €6 per month. You can create an account and one workspace before checkout, but you need an active plan to connect accounts, upload media, schedule, or publish. There is no hosted free plan or automatic trial. Self-hosted OpenPost has no software fee.
+Managed plans start at $15 per month and include a card-required 14-day trial. OpenPost shows the renewal price and date before you start. An active or trialing plan is required to connect accounts, upload media, schedule, or publish.

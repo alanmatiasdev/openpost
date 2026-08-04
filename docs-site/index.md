@@ -3,8 +3,8 @@ layout: home
 
 hero:
   name: OpenPost
-  text: Plan and publish social posts from one place.
-  tagline: Write one post, tailor it for each account, preview it, and choose when it goes live.
+  text: Turn what you are building into content. Publish it everywhere.
+  tagline: The all-in-one content team for solo founders, from first draft to every destination.
   image:
     src: /assets/brand/logo-docs.svg
     alt: OpenPost logo
@@ -13,15 +13,12 @@ hero:
       text: Use the managed app
       link: https://app.openpost.social
     - theme: alt
-      text: Self-host OpenPost
-      link: /guide/quickstart
-    - theme: alt
       text: Read the user guide
       link: /usage/
 
 features:
-  - title: One post for each platform
-    details: Keep one shared draft, then change the text, media, format, and settings for each account.
+  - title: Start with what you are building
+    details: Turn a launch, product update, lesson, or idea into one shared draft.
   - title: Calendar and clear status
     details: See scheduled, published, failed, and retryable posts in the app.
   - title: Analytics and replies
@@ -30,12 +27,12 @@ features:
     details: Reuse saved media or make still images and carousel pages in OpenPost Studio.
   - title: API, CLI, and MCP
     details: Use OpenPost from scripts and AI tools without sharing your social account keys.
-  - title: Managed or self-hosted
-    details: Use the managed app or run the same AGPL server as one binary or container.
+  - title: One product workflow
+    details: Plan, create, adapt, schedule, and track every destination in one place.
 ---
 
-::: info Managed or self-hosted
-Managed plans start at €6 per month. You can create an account and one workspace before checkout, but you need an active plan to connect social accounts, upload media, schedule, or publish. There is no hosted free plan or automatic trial. Self-hosted OpenPost has no software fee.
+::: info Managed plans
+Managed plans start at $15 per month. Every plan includes a card-required 14-day trial. OpenPost shows the renewal price and date before you start, and you can cancel from billing settings before the first charge.
 :::
 
 <p>

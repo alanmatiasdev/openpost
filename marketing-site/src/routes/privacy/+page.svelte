@@ -2,7 +2,7 @@
   import { resolve } from "$app/paths";
   import { siteUrl } from "../_marketing";
 
-  const effectiveDate = "30 July 2026";
+  const effectiveDate = "4 August 2026";
 </script>
 
 <svelte:head>
@@ -94,9 +94,9 @@
         never stores a readable account password.
       </li>
       <li>
-        <strong>Billing data:</strong> plan access, subscription, checkout,
-        customer, and billing-status identifiers received from Polar. OpenPost does
-        not receive or store full payment-card details.
+        <strong>Billing data:</strong> plan access, subscription, checkout, customer,
+        and billing-status identifiers received from Whop. OpenPost does not receive
+        or store full payment-card details.
       </li>
       <li>
         <strong>Support and service data:</strong> messages you send, service logs,
@@ -109,7 +109,7 @@
       We receive data from you when you register, set up a workspace, upload
       content, connect a social network, buy a plan, or contact support. We also
       receive account and post data from the networks you connect, billing
-      status from Polar, and limited technical data when your browser or client
+      status from Whop, and limited technical data when your browser or client
       uses the service.
     </p>
     <p>
@@ -162,8 +162,7 @@
         network, analytics, and backups under their service terms.
       </li>
       <li>
-        <strong>Polar</strong> for checkout, subscriptions, billing, and customer
-        portals.
+        <strong>Whop</strong> for checkout, subscriptions, billing, and customer portals.
       </li>
       <li>
         <strong>Authorities or other parties</strong> when reasonably necessary to
@@ -222,10 +221,10 @@
     <p>
       The application uses essential session and security cookies. It may use
       local browser storage for the selected workspace, server address,
-      language, sound preference, composer return state, unsynced Studio recovery
-      copies, and local Video Studio projects, sources, recordings, transcripts,
-      analysis results, models, and exports. Clearing site data can remove local
-      Video Studio content.
+      language, sound preference, composer return state, unsynced Studio
+      recovery copies, and local Video Studio projects, sources, recordings,
+      transcripts, analysis results, models, and exports. Clearing site data can
+      remove local Video Studio content.
     </p>
     <p>
       Studio background removal runs in your browser with model and runtime

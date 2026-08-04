@@ -1,18 +1,17 @@
 # What Is OpenPost?
 
-OpenPost helps people and teams create, tailor, preview, schedule, and publish social posts. Start with one shared draft, then change the text, media, format, and settings for each connected account.
+OpenPost helps solo founders turn launches, product updates, lessons, and ideas into content, then publish it everywhere from one place. Start with one shared draft, then change the text, media, format, and settings for each connected account.
 
-Use the managed app or run the same AGPL product on your own server. The default self-hosted setup uses one Go binary or container, SQLite, and local media storage. You do not need Redis.
+The managed app includes the complete publishing workflow, a 14-day trial, and clear limits for workspaces, accounts, posts, storage, and seats.
 
 ## Who is this for?
 
-OpenPost is for people who want social publishing without a large marketing suite.
+OpenPost is for people who are building a company and also have to create its audience.
 
+- **Solo founders** that need a repeatable content system without hiring a content team
 - **Creators and small brands** that publish to several accounts
 - **Teams and agencies** that need separate workspaces for brands or clients
-- **Open-source teams** that share updates with different communities
 - **Developers** that use the API, CLI, or MCP
-- **Self-hosters** that want control over the server and stored data
 
 ## How it works
 
@@ -27,11 +26,11 @@ OpenPost also has a media library, a still-image editor called Studio, posting s
 
 If an AI tool helps, give it an OpenPost token instead of your social account keys. `mcp:read` is read-only. `mcp:full` can create, change, schedule, publish, reply, or moderate. Review the result before you allow a change. See [Agent-Assisted Publishing](/usage/agent-assisted-publishing).
 
-## Managed or self-hosted
+## Plans and deployment
 
-Managed plans start at €6 per month. You can create an account and one workspace before checkout, but you need an active plan to connect social accounts, upload media, schedule, or publish. There is no hosted free plan or automatic trial.
+Managed plans start at $15 per month and include a card-required 14-day trial. OpenPost shows the renewal price and date before you start. An active or trialing plan is required to connect social accounts, upload media, schedule, or publish.
 
-Self-hosted OpenPost has no software fee. You manage the server, TLS, backups, updates, social apps, and secrets.
+Teams that need to operate their own infrastructure can also run the AGPL product on their server. The default setup uses one Go binary or container, SQLite, and local media storage. The operator manages TLS, backups, updates, social apps, and secrets.
 
 ## What OpenPost supports
 

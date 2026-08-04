@@ -15,7 +15,7 @@ OpenPost uses one product core for the managed app and self-hosted servers. This
 
 - `OPENPOST_EDITION=selfhost|cloud` selects the server mode.
 - Self-hosted mode uses SQLite and local media by default.
-- Cloud mode requires Postgres, S3-compatible media storage, and Polar billing settings.
+- Cloud mode requires Postgres, S3-compatible media storage, and Whop billing settings.
 - The API keeps normal database work portable across SQLite and Postgres.
 - Durable database jobs handle publishing, media work, token refresh, analytics, comments, and inbox updates that must survive a restart.
 - The built SvelteKit app is embedded in the Go server.
@@ -24,11 +24,11 @@ Keep production secrets, social app keys, monitoring, backups, and private opera
 
 ## Billing and limits
 
-- The managed app uses Polar for checkout, subscriptions, the billing portal, and signed webhooks.
-- OpenPost saves the current subscription and plan limits in its own database. Normal API requests do not call Polar.
+- The managed app embeds Whop checkout inside OpenPost and uses Whop for memberships, billing management, tax collection, and signed webhooks.
+- OpenPost saves the current membership and plan limits in its own database. Normal API requests do not call Whop.
 - Limits cover workspaces, members, social accounts, posts, media, schedules, and provider writes.
 - Self-hosted mode has permissive defaults unless the operator changes them.
-- The managed app allows one account and one workspace before checkout. An active plan is required to connect social accounts, upload media, schedule, or publish.
+- The managed app creates one workspace before checkout. Every plan begins with a card-required 14-day trial; an active or trialing membership is required to connect social accounts, upload media, schedule, or publish.
 - The public prices and limits live in `marketing-site/src/routes/_marketing.ts`.
 
 ## Social networks

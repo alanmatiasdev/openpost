@@ -40,7 +40,7 @@ The five sample rendition files are not a recommendation to include five provide
 
 ## Managed and self-hosted access
 
-Managed publishing starts at €6/month. Registration can create one bootstrap workspace before checkout, but connecting accounts, uploading media, scheduling, publishing, and other provider writes require an active or Polar-trialing subscription. There is no automatic hosted free tier or trial.
+Managed publishing starts at $15/month. Every plan includes a card-required 14-day trial. Registration creates one workspace before checkout; connecting accounts, uploading media, scheduling, publishing, and other provider writes require an active or trialing Whop membership.
 
 Self-hosted OpenPost has no software subscription. The operator remains responsible for infrastructure, provider applications, secrets, backups, and upgrades.
 

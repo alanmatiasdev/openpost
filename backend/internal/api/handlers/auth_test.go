@@ -90,6 +90,17 @@ func TestRegisterUserRequiresUniqueUsername(t *testing.T) {
 	require.ErrorIs(t, err, errUsernameAlreadyRegistered)
 }
 
+func TestRegisterUserCreatesUsernameWhenOmitted(t *testing.T) {
+	t.Parallel()
+
+	db := createHandlerTestDB(t, (*models.User)(nil))
+	handler := NewAuthHandler(db, auth.NewService("test-secret"), nil, nil, nil, false)
+
+	user, err := handler.registerUserWithPolicy(context.Background(), "Ada.Lovelace@example.com", "", "password123", false)
+	require.NoError(t, err)
+	require.Regexp(t, `^ada-lovelace-[a-f0-9]{6}$`, user.Username)
+}
+
 func TestRegistrationInsertErrorClassifiesUniqueConstraintRaces(t *testing.T) {
 	t.Parallel()
 

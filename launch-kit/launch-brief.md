@@ -6,12 +6,14 @@
 
 - **Working name:** OpenPost launched OpenPost
 - **Primary action:** `[WATCH THE NEW DEMO / USE THE MANAGED APP / SELF-HOST]`
-- **Audience:** technical founders, open-source maintainers, developer advocates, MCP users, and self-hosters who publish across several accounts
+- **Audience:** solo founders who need to turn what they are building into consistent content without hiring a content team
 - **Core problem:** AI can prepare content quickly, but provider credentials, account-specific formatting, mutation approval, and publishing outcomes need an inspectable boundary
 
 ## Position
 
-OpenPost is the publishing layer between AI agents and social accounts.
+OpenPost is the all-in-one content team for solo founders.
+
+The founder brings a launch, product update, lesson, or idea. OpenPost keeps the source, destination-specific versions, reusable media, calendar, and publishing outcomes together so that work becomes a repeatable content system instead of another isolated post.
 
 An authorized agent can inspect workspace context and prepare destination-specific work through MCP without receiving provider credentials. A person reviews the campaign in OpenPost before allowing a state-changing operation. The durable queue keeps scheduled work, published outcomes, failures, and retries visible.
 
@@ -38,8 +40,8 @@ If any destination remains unverified, use a claim that does not imply publicati
 - Publishing uses a durable database-backed queue with visible lifecycle and failure state.
 - Managed and self-hosted editions are the same AGPL product.
 - Self-hosting uses one Go binary or container, SQLite and local media by default, and no required Redis service.
-- Managed publishing starts at €6/month. There is no automatic hosted free tier or trial.
-- A hosted registration may create one bootstrap workspace before checkout, but connecting accounts, uploading media, scheduling, publishing, and other provider writes need an active or Polar-trialing subscription.
+- Managed publishing starts at $15/month and includes a card-required 14-day trial.
+- A hosted registration creates one workspace before checkout, but connecting accounts, uploading media, scheduling, publishing, and other provider writes need an active or trialing Whop membership.
 
 ## Claims the campaign must not use without evidence
 

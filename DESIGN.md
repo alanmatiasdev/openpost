@@ -159,6 +159,16 @@ Desktop uses a compact menu bar, tool rail, asset pane, one active canvas, Layer
 
 The DOM-based Layers tree and Properties controls are the accessible equivalents of direct canvas editing. Every persistent change runs through the command system, exposes undo and redo, and announces saves, conflicts, exports, uploads, camera state, and background-removal state. Studio uses a scoped `.studio-theme`; it does not copy another editor's CSS, generated utilities, or trade dress.
 
+### Video Studio
+
+Video Studio uses a four-zone editing model: compact project controls at the top, grouped creation tools and assets on the left, one dominant preview in the center, and selection-specific inspector tabs on the right. The timeline spans the full workspace and owns playback position; its ruler is the seek control, so a second progress slider must not compete with it. Orange marks the active family, property tab, playhead, and primary Export action against warm-black editing surfaces.
+
+Keep inspector settings contextual. Clip selection exposes Video, Audio, Speed, Animation, and Adjustments; overlays, captions, and audio items expose only their relevant tabs. Phones replace both side panels with one bottom tool dock and one contextual sheet while preserving the same timeline and project document. Quick Cut remains the explicit stream-copy path and Full Studio remains the composed edit path.
+
+Keep editor copy quiet. Use short labels, values, and direct actions in the default workspace; do not repeat the active tool as a panel heading or add routine reassurance below self-explanatory controls. Reserve inline prose for errors, permissions, destructive consequences, required attribution, and limitations that change what the creator can do. Put optional technical detail in a tooltip or disclosure.
+
+The timeline uses a hybrid track model. The ordered primary sequence and project-wide markers remain semantic rails. Visual, audio, and caption rows render from the document's actual track arrays, so multiple tracks stay distinct and empty categories do not consume permanent lanes.
+
 ## Elevation & Depth
 
 OpenPost is flat by default. Surfaces separate through warm tonal changes, hairline borders, and restrained rings. Shadows are reserved for short-lived or focal layers such as menus, dialogs, the mobile compose action, and the documentation brand CTA; they should never become ambient decoration across every card.

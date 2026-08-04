@@ -1,20 +1,14 @@
 <script lang="ts">
-  import { Check, ExternalLink, Server } from "lucide-svelte";
+  import { Check } from "lucide-svelte";
   import { Button } from "$lib/components/ui/button";
-  import {
-    appUrl,
-    managedAccessSummary,
-    plans,
-    selfHostingDocsUrl,
-    siteUrl,
-  } from "../_marketing";
+  import { appUrl, managedAccessSummary, plans, siteUrl } from "../_marketing";
 
   const buyerStages = [
     {
       id: "solo",
-      label: "Solo",
+      label: "Solo founder",
       description:
-        "One person publishing for a project, brand, or growing account.",
+        "One person turning company work into content and publishing it consistently.",
       planIds: ["starter", "creator", "pro"],
     },
     {
@@ -69,19 +63,24 @@
   ] as const;
 
   let activeStage = $state<(typeof buyerStages)[number]["id"]>("solo");
+  let billingPeriod = $state<"monthly" | "annual">("monthly");
   const selectedStage = $derived(
     buyerStages.find((stage) => stage.id === activeStage) ?? buyerStages[0],
   );
   const stagePlans = $derived(
     plans.filter((plan) => new Set<string>(selectedStage.planIds).has(plan.id)),
   );
+
+  function displayPrice(plan: (typeof plans)[number]) {
+    return billingPeriod === "annual" ? plan.annualPrice : plan.price;
+  }
 </script>
 
 <svelte:head>
   <title>OpenPost pricing</title>
   <meta
     name="description"
-    content="OpenPost managed publishing starts at €6 per month. Choose a solo, team, or agency plan, or self-host without a software subscription."
+    content="Build your solo-founder content system from $15 per month with a 14-day card-required free trial."
   />
   <link rel="canonical" href={`${siteUrl}/pricing`} />
 </svelte:head>
@@ -95,14 +94,14 @@
       <h1
         class="mt-4 max-w-4xl text-4xl leading-[1.02] font-semibold tracking-[-0.035em] text-balance sm:text-6xl"
       >
-        Choose the limits that fit your work.
+        Give your company a content team.
       </h1>
     </div>
     <div>
       <p class="marketing-copy">
-        Every managed plan includes the same posting tools, account versions,
-        API, CLI, and MCP access. Higher plans add more workspaces, accounts,
-        posts, storage, or seats.
+        Every plan helps you create, adapt, schedule, and track content from one
+        place. Higher plans add more workspaces, accounts, posts, storage, or
+        seats as the company grows.
       </p>
       <p class="mt-4 text-xs leading-5 text-muted-foreground">
         {managedAccessSummary}
@@ -113,6 +112,33 @@
 
 <section id="plans" class="section-pad scroll-mt-20">
   <div class="marketing-shell">
+    <div
+      class="mb-8 flex flex-col justify-between gap-4 border-b pb-6 sm:flex-row sm:items-center"
+    >
+      <div>
+        <p class="text-sm font-semibold">14 days free on every plan</p>
+        <p class="mt-1 text-sm text-muted-foreground">
+          Card required. Cancel before the first charge.
+        </p>
+      </div>
+      <div
+        class="inline-flex w-fit rounded-lg border bg-background p-1"
+        aria-label="Billing period"
+      >
+        <Button
+          variant={billingPeriod === "monthly" ? "default" : "ghost"}
+          size="sm"
+          onclick={() => (billingPeriod = "monthly")}>Monthly</Button
+        >
+        <Button
+          variant={billingPeriod === "annual" ? "default" : "ghost"}
+          size="sm"
+          onclick={() => (billingPeriod = "annual")}
+          >Annual <span class="ml-1 text-xs opacity-80">2 months free</span
+          ></Button
+        >
+      </div>
+    </div>
     <div class="grid gap-8 lg:grid-cols-[18rem_minmax(0,1fr)]">
       <div>
         <h2 id="buyer-stage-title" class="text-xl font-semibold">
@@ -155,7 +181,7 @@
             </h2>
           </div>
           <span class="hidden text-sm text-muted-foreground sm:block"
-            >Billed monthly</span
+            >Billed {billingPeriod}</span
           >
         </div>
 
@@ -171,9 +197,9 @@
                 <div>
                   <h3 class="text-lg font-semibold">{plan.name}</h3>
                   <p class="mt-2 text-3xl font-semibold tracking-[-0.03em]">
-                    {plan.price}<span
+                    {displayPrice(plan)}<span
                       class="text-sm font-normal tracking-normal text-muted-foreground"
-                      >/month</span
+                      >/{billingPeriod === "annual" ? "year" : "month"}</span
                     >
                   </p>
                 </div>
@@ -202,7 +228,7 @@
                 {/each}
               </ul>
               <Button
-                href={`${appUrl}/register?plan=${plan.id}`}
+                href={`${appUrl}/register?plan=${plan.id}&billing_period=${billingPeriod}`}
                 class="mt-6 w-full"
                 variant={plan.featured ? "default" : "outline"}
               >
@@ -256,7 +282,9 @@
             <span>
               <strong>{plan.name}</strong>
               <span class="ml-2 text-sm text-muted-foreground"
-                >{plan.price}/month</span
+                >{displayPrice(plan)}/{billingPeriod === "annual"
+                  ? "year"
+                  : "month"}</span
               >
             </span>
             <span class="text-xl text-muted-foreground" aria-hidden="true"
@@ -304,34 +332,6 @@
           {/each}
         </tbody>
       </table>
-    </div>
-  </div>
-</section>
-
-<section class="section-pad">
-  <div class="marketing-shell grid gap-10 lg:grid-cols-[0.8fr_1.2fr]">
-    <div>
-      <Server class="size-6 text-primary" aria-hidden="true" />
-      <h2 class="mt-5 text-3xl font-semibold tracking-[-0.025em]">
-        Want to run it yourself?
-      </h2>
-    </div>
-    <div>
-      <p class="marketing-copy">
-        The complete OpenPost server is available under AGPL-3.0-only without a
-        software subscription. You provide the server, storage, backups, social
-        apps, and social network API costs.
-      </p>
-      <Button
-        href={selfHostingDocsUrl}
-        target="_blank"
-        rel="noreferrer"
-        class="mt-6"
-        variant="outline"
-      >
-        Self-hosting guide
-        <ExternalLink data-icon="inline-end" />
-      </Button>
     </div>
   </div>
 </section>

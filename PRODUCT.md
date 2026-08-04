@@ -8,15 +8,15 @@ adaptive
 
 ## Users
 
-OpenPost serves solo creators, social media managers, indie teams, agencies, and operators who need to publish across several social platforms without losing control of account-specific content or delivery state. Most publishing work happens at a desk; the responsive app and Capacitor Android wrapper also support quick checks and focused edits on mobile. Developers and self-hosters use the same product through the web app, HTTP API, CLI, and MCP interfaces.
+OpenPost serves solo founders first: people building a company without a dedicated content team who still need to explain their work, earn attention, and publish consistently. Creators, small teams, agencies, and operators use the same workflow when they manage more accounts or workspaces. Most content work happens at a desk; the responsive app and Capacitor Android wrapper also support quick checks and focused edits on mobile.
 
 ## Product Purpose
 
-OpenPost keeps shared drafts, account-specific renditions, media, schedules, and publishing outcomes in one workspace. It should make composing and scheduling routine work fast while keeping provider limits, queue state, failures, and retries visible. Success means users can prepare the right content for each destination, know what will happen next, and verify what actually published.
+OpenPost helps solo founders turn launches, product updates, lessons, and ideas into content, adapt that content for every channel, and keep it publishing from one workspace. Shared drafts, account-specific renditions, media, schedules, and outcomes stay together. Success means the founder can keep building the company while OpenPost carries the repeatable work of shaping, scheduling, and tracking its content.
 
 ## Positioning
 
-The managed app and the self-hosted edition are the same inspectable AGPL product. OpenPost combines a focused publishing workflow with explicit provider-aware behavior and a compact deployment model: one Go binary or container, SQLite and local media by default, and no required Redis service. It does not hide platform differences behind promises the providers cannot support.
+OpenPost is the all-in-one content team for solo founders. It sits above a basic scheduler: the product keeps the source idea, destination-specific copy and media, reusable assets, calendar, publishing status, analytics, and replies in one system. The managed product is the primary experience. Source access and self-hosting remain deployment options, not the lead customer promise.
 
 ## Operating Context
 
@@ -53,7 +53,7 @@ The established identity uses warm orange as its product signal, warm-tinted neu
 
 ## Product Principles
 
-1. **Keep the task primary.** Publishing work should stay faster and more prominent than product chrome.
+1. **Start with the founder's work.** Help users turn what they are building and learning into useful content before asking them to manage a calendar.
 2. **Preserve provider truth.** Show destination capabilities, validation, and caveats instead of flattening them into one false promise.
 3. **Make outcomes inspectable.** Draft, schedule, queue, publish, failure, and retry state must remain understandable.
 4. **Use one coherent product.** Managed, self-hosted, browser, Android, API, CLI, and MCP surfaces should share terms and behavior.

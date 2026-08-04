@@ -1,16 +1,16 @@
 <script lang="ts">
   import { page } from "$app/state";
-  import { ArrowRight, Menu, Moon, Server, Sun, X } from "lucide-svelte";
+  import { ArrowRight, Menu, Moon, Sun, X } from "lucide-svelte";
   import { mode, toggleMode } from "mode-watcher";
   import Logo from "$lib/components/Logo.svelte";
   import { Button } from "$lib/components/ui/button";
   import * as NavigationMenu from "$lib/components/ui/navigation-menu";
   import {
+    appUrl,
     docsUrl,
     managedSignupUrl,
     navItems,
     resourceItems,
-    selfHostingDocsUrl,
   } from "../_marketing";
 
   let mobileOpen = $state(false);
@@ -102,12 +102,10 @@
       >
         {#if mode.current === "dark"}<Sun />{:else}<Moon />{/if}
       </Button>
-      <Button href={selfHostingDocsUrl} variant="ghost" size="sm">
-        <Server data-icon="inline-start" />
-        Self-host
-      </Button>
+      <Button href={`${appUrl}/login`} variant="ghost" size="sm">Sign in</Button
+      >
       <Button href={managedSignupUrl} size="sm">
-        Try OpenPost
+        Start free trial
         <ArrowRight data-icon="inline-end" />
       </Button>
     </div>
@@ -159,7 +157,7 @@
             {item.label}
           </a>
         {/each}
-        <div class="mt-4 grid grid-cols-[auto_1fr_1fr] gap-2 border-t pt-4">
+        <div class="mt-4 grid grid-cols-[auto_1fr] gap-2 border-t pt-4">
           <Button
             type="button"
             variant="outline"
@@ -172,10 +170,7 @@
           >
             {#if mode.current === "dark"}<Sun />{:else}<Moon />{/if}
           </Button>
-          <Button href={selfHostingDocsUrl} variant="outline" size="sm"
-            >Self-host</Button
-          >
-          <Button href={managedSignupUrl} size="sm">Try OpenPost</Button>
+          <Button href={managedSignupUrl} size="sm">Start free trial</Button>
         </div>
       </div>
     </nav>

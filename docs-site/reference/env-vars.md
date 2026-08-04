@@ -86,16 +86,22 @@ Most variables loaded through the main backend config loader can also be loaded 
 | `OPENPOST_S3_SECRET_ACCESS_KEY`                 | S3 secret access key                                                                              |
 | `OPENPOST_S3_PUBLIC_BASE_URL`                   | Public media base URL for S3-backed media                                                         |
 | `OPENPOST_S3_FORCE_PATH_STYLE`                  | Force path-style S3 addressing                                                                    |
-| `OPENPOST_POLAR_ACCESS_TOKEN`                   | Polar API access token                                                                            |
-| `OPENPOST_POLAR_API_BASE_URL`                   | Polar API base URL                                                                                |
-| `OPENPOST_POLAR_WEBHOOK_SECRET`                 | Polar webhook verification secret                                                                 |
-| `OPENPOST_POLAR_CHECKOUT_SUCCESS_URL`           | Polar checkout success URL                                                                        |
-| `OPENPOST_POLAR_RETURN_URL`                     | Polar customer portal return URL                                                                  |
-| `OPENPOST_POLAR_STARTER_PRODUCT_ID`             | Polar Starter product ID                                                                          |
-| `OPENPOST_POLAR_CREATOR_PRODUCT_ID`             | Polar Creator product ID                                                                          |
-| `OPENPOST_POLAR_PRO_PRODUCT_ID`                 | Polar Pro product ID                                                                              |
-| `OPENPOST_POLAR_TEAM_PRODUCT_ID`                | Polar Team product ID                                                                             |
-| `OPENPOST_POLAR_AGENCY_PRODUCT_ID`              | Polar Agency product ID                                                                           |
+| `OPENPOST_WHOP_API_KEY`                         | Server-only Whop API key                                                                          |
+| `OPENPOST_WHOP_API_BASE_URL`                    | Whop API base URL                                                                                  |
+| `OPENPOST_WHOP_WEBHOOK_SECRET`                  | Whop webhook verification secret                                                                  |
+| `OPENPOST_WHOP_ACCOUNT_ID`                      | Whop business account ID                                                                           |
+| `OPENPOST_WHOP_PRODUCT_ID`                      | Whop OpenPost product ID                                                                            |
+| `OPENPOST_WHOP_CHECKOUT_RETURN_URL`             | OpenPost return URL after checkout                                                                  |
+| `OPENPOST_WHOP_STARTER_MONTHLY_PLAN_ID`         | Whop Starter monthly plan ID                                                                        |
+| `OPENPOST_WHOP_STARTER_ANNUAL_PLAN_ID`          | Whop Starter annual plan ID                                                                         |
+| `OPENPOST_WHOP_CREATOR_MONTHLY_PLAN_ID`         | Whop Creator monthly plan ID                                                                        |
+| `OPENPOST_WHOP_CREATOR_ANNUAL_PLAN_ID`          | Whop Creator annual plan ID                                                                         |
+| `OPENPOST_WHOP_PRO_MONTHLY_PLAN_ID`             | Whop Pro monthly plan ID                                                                            |
+| `OPENPOST_WHOP_PRO_ANNUAL_PLAN_ID`              | Whop Pro annual plan ID                                                                             |
+| `OPENPOST_WHOP_TEAM_MONTHLY_PLAN_ID`            | Whop Team monthly plan ID                                                                           |
+| `OPENPOST_WHOP_TEAM_ANNUAL_PLAN_ID`             | Whop Team annual plan ID                                                                             |
+| `OPENPOST_WHOP_AGENCY_MONTHLY_PLAN_ID`          | Whop Agency monthly plan ID                                                                          |
+| `OPENPOST_WHOP_AGENCY_ANNUAL_PLAN_ID`           | Whop Agency annual plan ID                                                                            |
 | `OPENPOST_X_MONTHLY_BUDGET_MICROUSD`            | Cloud-only per-workspace X provider-cost safety limit                                             |
 | `OPENPOST_X_POST_CREATE_COST_MICROUSD`          | Estimated X post-create price without a URL                                                       |
 | `OPENPOST_X_POST_CREATE_WITH_URL_COST_MICROUSD` | Estimated X post-create price with a URL                                                          |
@@ -119,4 +125,4 @@ Most variables loaded through the main backend config loader can also be loaded 
 
 Facebook, Instagram, TikTok, and YouTube are configured through the provider app registry with providers `facebook`, `instagram`, `tiktok`, and `youtube`; no legacy env vars are required.
 
-Legacy aliases still work for upgrades: `DATABASE_URL`, `OPENPOST_DB_PATH`, `OPENPOST_FRONTEND_URL`, `OPENPOST_CORS_EXTRA_ORIGINS`, `OPENPOST_POLAR_CUSTOMER_PORTAL_URL`, `JWT_SECRET`, `ENCRYPTION_KEY`, `TWITTER_CLIENT_ID`, `TWITTER_CLIENT_SECRET`, `TWITTER_REDIRECT_URI`, and `LINKEDIN_DISABLE_THREAD_REPLIES`.
+Legacy aliases still work for upgrades: `DATABASE_URL`, `OPENPOST_DB_PATH`, `OPENPOST_FRONTEND_URL`, `OPENPOST_CORS_EXTRA_ORIGINS`, `JWT_SECRET`, `ENCRYPTION_KEY`, `TWITTER_CLIENT_ID`, `TWITTER_CLIENT_SECRET`, `TWITTER_REDIRECT_URI`, and `LINKEDIN_DISABLE_THREAD_REPLIES`.

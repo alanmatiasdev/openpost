@@ -6,39 +6,38 @@ test("marketing index links to the app and documentation", async ({ page }) => {
   await page.goto("/");
 
   await expect(page).toHaveTitle(
-    "OpenPost - Build the company. Keep it visible.",
+    "OpenPost - The all-in-one content team for solo founders",
   );
   await expect(
     page.getByRole("heading", {
-      name: "Build the company. Keep it visible.",
+      name: "Turn what you’re building into content. Publish it everywhere.",
     }),
   ).toBeVisible();
   await expect(page.getByText("Testimonials", { exact: true })).toHaveCount(0);
   await expect(
-    page.getByRole("link", { name: "Try OpenPost", exact: true }).first(),
+    page
+      .getByRole("link", { name: "Start your 14-day trial", exact: true })
+      .first(),
   ).toHaveAttribute(
     "href",
-    "https://app.openpost.social/register?plan=starter",
+    "https://app.openpost.social/register?plan=creator",
   );
-  await expect(
-    page.getByRole("link", { name: "Self-host", exact: true }).first(),
-  ).toHaveAttribute("href", "https://docs.openpost.social/self-hosting/");
   await expect(
     page
       .getByText(
-        "Create an account and one workspace before checkout. Connecting social accounts and publishing on the managed app require an active plan, starting at €6/month. There is no hosted free plan.",
+        "Start with a 14-day free trial. A card is required, and you can cancel before the first charge.",
         { exact: true },
       )
       .first(),
   ).toBeVisible();
   await expect(
     page.getByRole("heading", {
-      name: "Not another scheduler. The complete content workflow.",
+      name: "From company update to content on every channel.",
     }),
   ).toBeVisible();
   await expect(
     page.getByRole("heading", {
-      name: "One system from idea to published post.",
+      name: "Your ideas, assets, calendar, and results in one system.",
     }),
   ).toBeVisible();
   await expect(
@@ -54,19 +53,13 @@ test("marketing index links to the app and documentation", async ({ page }) => {
   ).toHaveAttribute("src", "/assets/screenshots/accounts-dark.png");
   await expect(
     page.getByRole("heading", {
-      name: "Make consistent work visible.",
+      name: "Everything you build deserves an audience.",
     }),
   ).toBeVisible();
+  await expect(page.getByText("Start with the work")).toBeVisible();
   await expect(
-    page.getByRole("img", {
-      name: "Illustrative year of publishing activity across six social platforms",
-    }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("heading", {
-      name: "Managed for you. Or fully self-hosted.",
-    }),
-  ).toBeVisible();
+    page.getByRole("link", { name: "Self-host", exact: true }),
+  ).toHaveCount(0);
   await expect(
     page.getByRole("link", { name: "User docs" }).first(),
   ).toHaveAttribute("href", "https://docs.openpost.social/usage/");

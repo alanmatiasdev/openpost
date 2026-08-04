@@ -20,7 +20,7 @@ import {
 import { PLATFORM_LIMITS, publicPlatformLimits } from "$lib/platform-limits";
 
 export const appUrl = "https://app.openpost.social";
-export const managedSignupUrl = `${appUrl}/register?plan=starter`;
+export const managedSignupUrl = `${appUrl}/register?plan=creator`;
 export const userDocsUrl = "https://docs.openpost.social/usage/";
 export const selfHostingDocsUrl = "https://docs.openpost.social/self-hosting/";
 export const developerDocsUrl = "https://docs.openpost.social/development/";
@@ -43,20 +43,21 @@ export const resourceItems = [
   { label: "Platforms", href: "/platforms" },
   { label: "Compare", href: "/compare" },
   { label: "Security", href: "/security" },
-  { label: "Open source", href: "/open-source" },
   { label: "Changelog", href: "/changelog" },
+  { label: "Developers", href: developerDocsUrl },
 ] as const;
 export const planIDs = ["starter", "creator", "pro", "team", "agency"] as const;
 
 export const managedAccessSummary =
-  "Create an account and one workspace before checkout. Connecting social accounts and publishing on the managed app require an active plan, starting at €6/month. There is no hosted free plan.";
+  "Start with a 14-day free trial. A card is required, and you can cancel before the first charge.";
 
 export const plans = [
   {
     id: "starter",
     name: "Starter",
-    price: "€6",
-    description: "A managed publishing workspace for one small project.",
+    price: "$15",
+    annualPrice: "$150",
+    description: "Start a repeatable content habit for one company.",
     workspaces: "1",
     accounts: "3",
     posts: "100",
@@ -74,8 +75,9 @@ export const plans = [
   {
     id: "creator",
     name: "Creator",
-    price: "€12",
-    description: "For creators and small brands that publish every week.",
+    price: "$29",
+    annualPrice: "$290",
+    description: "Run your company’s content across more channels.",
     workspaces: "3",
     accounts: "6",
     posts: "500",
@@ -93,8 +95,9 @@ export const plans = [
   {
     id: "pro",
     name: "Pro",
-    price: "€24",
-    description: "More accounts, media, and monthly posts for one person.",
+    price: "$49",
+    annualPrice: "$490",
+    description: "A complete content operation for one founder.",
     workspaces: "10",
     accounts: "15",
     posts: "2,500",
@@ -112,8 +115,9 @@ export const plans = [
   {
     id: "team",
     name: "Team",
-    price: "€49",
-    description: "Shared access for a small publishing team.",
+    price: "$99",
+    annualPrice: "$990",
+    description: "Shared planning and publishing for a small team.",
     workspaces: "10",
     accounts: "25",
     posts: "5,000",
@@ -131,8 +135,9 @@ export const plans = [
   {
     id: "agency",
     name: "Agency",
-    price: "€99",
-    description: "Higher workspace and account limits for client work.",
+    price: "$199",
+    annualPrice: "$1,990",
+    description: "Many clients, workspaces, and campaigns.",
     workspaces: "50",
     accounts: "150",
     posts: "25,000",
@@ -1344,14 +1349,14 @@ export const faqs = [
       "No. The AI tool uses its own OpenPost token. Your social account keys stay encrypted inside OpenPost. Use mcp:read for read-only access. Use mcp:full only when the tool must create, change, schedule, or publish.",
   },
   {
-    question: "Is there a hosted free plan or automatic trial?",
+    question: "How does the free trial work?",
     answer:
-      "No. You can create an account and one workspace before checkout, but you need an active plan to connect social accounts or publish. Plans start at €6 per month. You only get a trial when the checkout offer states one.",
+      "Every managed plan starts with 14 days free. A card is required. OpenPost shows the exact renewal price and date before you start, and you can cancel from billing settings before the first charge.",
   },
   {
-    question: "Is using OpenPost different from self-hosting?",
+    question: "Can I change plans later?",
     answer:
-      "The app at app.openpost.social is the managed version. You can also run the same open-source product on your own server.",
+      "Yes. Choose the limits you need now, then manage your subscription from OpenPost billing settings as your account count or team grows.",
   },
   {
     question: "Does OpenPost include analytics?",

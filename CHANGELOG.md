@@ -4,6 +4,25 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Added an OpenPost-owned embedded Whop checkout with monthly and annual plan selection, exact card-required 14-day trial terms, signed webhook reconciliation, local checkout-attempt mapping, and Whop membership management links.
+- Added all Whop billing credentials and plan IDs to the encrypted instance-admin Configuration screen, with write-only secrets, environment precedence, and restart status.
+- Added a guided first-account connection flow with OAuth trust details, a three-step activation cue, and a one-time reduced-motion-aware confetti and success-sound celebration.
+
+### Changed
+
+- Rebuilt Full Studio around a CapCut-style four-zone workspace with a dominant canvas, grouped creation tools, selection-specific inspector tabs, concise action-first copy, consistent panel gutters, a draggable multi-track timeline, and direct seeking on the timeline ruler instead of a separate progress slider.
+- Replaced Polar billing with Whop across the backend, frontend, CLI, generated contracts, configuration, legal copy, and operator documentation. Cloud operators must configure the Whop API key, account, product, webhook secret, checkout return URL, and all ten monthly and annual plan IDs before upgrading.
+- Changed managed pricing to USD-first plans: Starter $15/month or $150/year, Creator $29/$290, Pro $49/$490, Team $99/$990, and Agency $199/$1,990, each with a card-required 14-day trial.
+- Simplified registration and workspace onboarding, moved plan payment into the OpenPost checkout screen, and removed the username and workspace-name decisions from the critical path.
+- Reworked the marketing homepage, pricing page, navigation, product metadata, and signup proof around the managed product and interactive demo; self-hosting remains available through documentation and footer links instead of the primary conversion path.
+- Repositioned OpenPost as the all-in-one content team for solo founders, centered on turning company work into content and publishing it everywhere rather than competing as another scheduler.
+
+### Removed
+
+- Removed the Polar configuration and compatibility path. Migration 060 replaces the unused hosted billing tables with the Whop membership and checkout schema.
+
 ## [1.51.2] - 2026-08-03
 
 ### Fixed

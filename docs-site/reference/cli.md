@@ -10,7 +10,7 @@ cd cli && go run ./cmd/openpost-docs ../docs-site/reference/cli.md
 
 ## `openpost`
 
-OpenPost CLI — control a self-hosted OpenPost instance from the terminal
+OpenPost CLI — control an OpenPost workspace from the terminal
 
 openpost is a command-line client for the OpenPost social media scheduler.  It talks to a running OpenPost instance over HTTPS, authenticates with a revocable API token, and exposes the most common posting, scheduling, account, and media workflows for use from scripts, CI, and power-user shells.
 
@@ -387,21 +387,27 @@ openpost billing
 
 | Command | Description |
 | --- | --- |
-| `openpost billing checkout` | Create a Polar checkout URL for the active workspace |
-| `openpost billing portal` | Create a Polar customer portal URL for the active workspace |
+| `openpost billing checkout` | Create an OpenPost checkout URL for the active workspace |
+| `openpost billing portal` | Open Whop billing management for the active workspace |
 | `openpost billing status` | Show billing plan and usage for the active workspace |
 
 ### `openpost billing checkout`
 
-Create a Polar checkout URL for the active workspace
+Create an OpenPost checkout URL for the active workspace
 
-Create a hosted checkout URL for the active workspace. Plan IDs are validated by the server: starter, creator, pro, team, or agency.
+Create an OpenPost checkout URL with an embedded Whop payment form. Plan IDs are starter, creator, pro, team, or agency.
 
 **Usage**
 
 ```text
-openpost billing checkout &lt;plan&gt;
+openpost billing checkout &lt;plan&gt; [flags]
 ```
+
+**Flags**
+
+| Flag | Default | Description |
+| --- | --- | --- |
+| `--billing-period` | `monthly` | Billing period: monthly or annual |
 
 **Inherited Flags**
 
@@ -418,7 +424,7 @@ openpost billing checkout &lt;plan&gt;
 
 ### `openpost billing portal`
 
-Create a Polar customer portal URL for the active workspace
+Open Whop billing management for the active workspace
 
 **Usage**
 
