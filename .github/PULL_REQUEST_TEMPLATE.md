@@ -9,7 +9,7 @@ What problem does this solve? What use case does it address?
 ## Testing
 
 - [ ] Backend tests pass (`go test ./...`)
-- [ ] Frontend tests pass (`pnpm --filter @openpost/web test`)
+- [ ] Frontend tests pass (`bun run --filter @openpost/web test`)
 - [ ] Linting passes
 - [ ] Manually tested (describe what you tested)
 

@@ -28,7 +28,7 @@ export default defineConfig({
   webServer: {
     command: [
       `rm -f ${dbPath}`,
-      "pnpm --filter @openpost/web build",
+      "bun run --filter @openpost/web build",
       [
         "cd backend &&",
         `OPENPOST_PORT=${port}`,
@@ -38,7 +38,7 @@ export default defineConfig({
         "OPENPOST_DISABLE_REGISTRATIONS=false",
         "OPENPOST_VIDEO_EDITOR_ENABLED=true",
         `OPENPOST_APP_URL="${baseURL}"`,
-        "go run ./cmd/openpost",
+        "go run -tags dev ./cmd/openpost",
       ].join(" "),
     ].join(" && "),
     url: baseURL,

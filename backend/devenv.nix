@@ -30,7 +30,7 @@ let
       mkdir -p "${config.git.root}/backend/cmd/openpost/public"
       touch "${config.git.root}/backend/cmd/openpost/public/.gitkeep"
       cd "${config.git.root}/backend"
-      golangci-lint run ./...
+      golangci-lint run --build-tags dev ./...
     '';
   };
 
@@ -39,11 +39,8 @@ let
     runtimeInputs = [ goToolchain pkgs.gnumake ];
     text = ''
       export GOROOT="${goToolchain}/share/go"
-      mkdir -p "${config.git.root}/backend/cmd/openpost/public"
-      touch "${config.git.root}/backend/cmd/openpost/public/.gitkeep"
       cd "${config.git.root}/backend"
-      go clean -testcache
-      go test ./...
+      go test -tags dev ./...
     '';
   };
 
@@ -77,7 +74,6 @@ let
     text = ''
       export GOROOT="${goToolchain}/share/go"
       cd "${config.git.root}/cli"
-      go clean -testcache
       go test ./...
     '';
   };
@@ -100,17 +96,21 @@ in
   # Scripts for backend development
   scripts = {
     backend-run.exec = ''
-      cd "${config.git.root}/backend" && go run ./cmd/openpost
+      cd "${config.git.root}/backend" && go run -tags dev ./cmd/openpost
     '';
 
     backend-build.exec = ''
+      release_state="$(mktemp -d "${config.git.root}/.devenv/state/release-go.XXXXXX")"
+      trap 'rm -rf "$release_state"' EXIT
+      mkdir -p "$release_state/cache" "$release_state/tmp"
       build_commit="$(git -C "${config.git.root}" rev-parse HEAD)"
       if ! git -C "${config.git.root}" diff --quiet ||
          ! git -C "${config.git.root}" diff --cached --quiet; then
         build_commit="$build_commit-dirty"
       fi
       cd "${config.git.root}/backend" &&
-        go build -buildvcs=false -ldflags="-X main.commit=$build_commit" -o openpost ./cmd/openpost
+        GOCACHE="$release_state/cache" GOTMPDIR="$release_state/tmp" \
+          go build -buildvcs=false -ldflags="-X main.commit=$build_commit" -o openpost ./cmd/openpost
     '';
 
     backend-test.exec = ''

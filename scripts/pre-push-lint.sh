@@ -59,8 +59,8 @@ denv_lint() {
         exit 1
       fi
 
-      (cd backend && golangci-lint run ./...)
-      pnpm --filter @openpost/web lint
+      (cd backend && golangci-lint run --build-tags dev ./...)
+      bun run --filter @openpost/web lint
     )
   fi
 }

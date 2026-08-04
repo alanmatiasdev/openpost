@@ -44,7 +44,7 @@ export async function generateSocialCatalog({ check = false } = {}) {
     const current = await readFile(output, "utf8").catch(() => "");
     if (current !== contents) {
       throw new Error(
-        "The social image docs catalog is stale. Run pnpm generate:social-catalog.",
+        "The social image docs catalog is stale. Run bun run generate:social-catalog.",
       );
     }
     return;

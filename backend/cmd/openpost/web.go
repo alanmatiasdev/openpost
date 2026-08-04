@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"database/sql"
-	"embed"
 	"errors"
 	"html"
 	"io/fs"
@@ -21,20 +20,13 @@ import (
 	"github.com/uptrace/bun"
 )
 
-//go:embed all:public
-var embeddedWeb embed.FS
-
-func RegisterSpaRoutes(e *echo.Echo, db *bun.DB, publicURL string) {
-	webFS, err := fs.Sub(embeddedWeb, "public")
-	if err != nil {
-		panic(err)
-	}
+func registerSpaRoutesFromFS(e *echo.Echo, webFS fs.FS, db *bun.DB, publicURL string) {
 	// Keep package tests independent of generated frontend output while still
-	// failing immediately when the application starts with an empty embed.
+	// failing immediately when the application starts without frontend assets.
 	data, err := fs.ReadFile(webFS, "index.html")
 	if err != nil || len(data) == 0 {
-		panic("openpost: embedded frontend is missing or empty (backend/cmd/openpost/public/index.html). " +
-			"Run the frontend build first: `cd frontend && pnpm build` (or use `devenv shell -- build`).")
+		panic("openpost: frontend is missing or empty (backend/cmd/openpost/public/index.html). " +
+			"Run the frontend build first: `bun run frontend:build` (or use `devenv shell -- build`).")
 	}
 	registerSpaRoutesWithProfileMetadata(e, webFS, db, publicURL)
 }

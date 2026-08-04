@@ -17,8 +17,10 @@ Targeted commands are available for faster iteration:
 devenv shell -- backend-test
 devenv shell -- frontend-test
 devenv shell -- cli-test
-pnpm test:e2e:app -- --workers=1
-pnpm test:e2e:docs -- --workers=1
+bun run test:e2e:app -- --workers=1
+bun run test:e2e:docs -- --workers=1
 ```
 
 Use the pinned Playwright Chromium installed by `setup`, and run one browser suite at a time. For visible changes, verify representative desktop and phone widths, keyboard and touch access, overflow, action visibility, and browser console health.
+
+Browser suites start their own preview servers by default so an old process on the configured port cannot satisfy the test preflight. Set `OPENPOST_APP_E2E_REUSE_SERVER=1`, `OPENPOST_MARKETING_E2E_REUSE_SERVER=1`, or `OPENPOST_DOCS_E2E_REUSE_SERVER=1` only when deliberately testing an already-running matching server.

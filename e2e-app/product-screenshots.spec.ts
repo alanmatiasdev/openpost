@@ -224,7 +224,7 @@ const artwork = {
 test.describe("product screenshot capture", () => {
   test.skip(
     !captureEnabled,
-    "Run pnpm capture:product-screenshots to update canonical product images.",
+    "Run bun run capture:product-screenshots to update canonical product images.",
   );
 
   test.use({

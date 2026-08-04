@@ -5,7 +5,7 @@ import { releaseNotesForTag } from "../packages/changelog/src/index.js";
 
 const tag = process.argv[2];
 if (!tag) {
-  process.stderr.write("usage: node scripts/release-notes.mjs <tag>\n");
+  process.stderr.write("usage: bun scripts/release-notes.mjs <tag>\n");
   process.exit(1);
 }
 

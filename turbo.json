@@ -2,8 +2,8 @@
   "$schema": "https://turbo.build/schema.json",
   "globalDependencies": [
     "package.json",
-    "pnpm-lock.yaml",
-    "pnpm-workspace.yaml"
+    "bun.lock",
+    "bunfig.toml"
   ],
   "globalPassThroughEnv": ["PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH"],
   "tasks": {

@@ -14,9 +14,9 @@ The frontend is a SvelteKit app using Svelte 5 runes, TailwindCSS, Paraglide for
 ## Useful commands
 
 ```bash
-pnpm --filter @openpost/web dev
-pnpm --filter @openpost/web check
-pnpm --filter @openpost/web lint
-pnpm --filter @openpost/web test
-pnpm check:ui-consistency
+bun run --filter @openpost/web dev
+bun run --filter @openpost/web check
+bun run --filter @openpost/web lint
+bun run --filter @openpost/web test
+bun run check:ui-consistency
 ```

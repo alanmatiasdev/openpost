@@ -42,8 +42,8 @@ The native Android project lives under `frontend/android` and is synchronized fr
 From `frontend/`:
 
 ```sh
-pnpm install
-pnpm run build:capacitor
+bun install --frozen-lockfile
+bun run --filter @openpost/web build:capacitor
 cd android
 ./gradlew assembleDebug
 ```
@@ -79,4 +79,4 @@ The Capacitor config is in `frontend/capacitor.config.ts`:
 - Android scheme: `https`
 - Plugins: `@capacitor/app`, `@capacitor/splash-screen`, `@capacitor/status-bar`, and Capacitor HTTP support
 
-Launcher and splash assets are generated from the shared OpenPost brand icon during `pnpm run build:capacitor`, keeping the Android app visually aligned with the web app.
+Launcher and splash assets are generated from the shared OpenPost brand icon during `bun run --filter @openpost/web build:capacitor`, keeping the Android app visually aligned with the web app.

@@ -79,6 +79,9 @@ type RouteDeps struct {
 	RepostService                *repostservice.Service
 	NotificationService          *notifications.Service
 	UpdateStatusService          *updatestatus.Service
+	AppVersion                   string
+	AppRevision                  string
+	Edition                      string
 
 	MediaHandler    *handlers.MediaHandler
 	BillingHandler  *handlers.BillingHandler
@@ -301,6 +304,46 @@ func RegisterHumaRoutes(api huma.API, deps RouteDeps) {
 	oauthHandler.DisconnectAccount(api)
 
 	RegisterHealth(api, deps.DB)
+	RegisterVersion(api, BuildInfo{
+		Version:  deps.AppVersion,
+		Revision: deps.AppRevision,
+		Edition:  deps.Edition,
+	})
+}
+
+type BuildInfo struct {
+	Version  string
+	Revision string
+	Edition  string
+}
+
+func RegisterVersion(api huma.API, info BuildInfo) {
+	huma.Register(api, huma.Operation{
+		OperationID: "get-running-version",
+		Method:      http.MethodGet,
+		Path:        "/version",
+		Summary:     "Running version",
+		Description: "Returns the public release and source revision currently serving requests.",
+		Tags:        []string{"System"},
+	}, func(_ context.Context, _ *struct{}) (*struct {
+		Body struct {
+			Version  string `json:"version" doc:"Release version embedded in the server"`
+			Revision string `json:"revision" doc:"Full source revision embedded in the server"`
+			Edition  string `json:"edition" doc:"Configured OpenPost edition"`
+		}
+	}, error) {
+		resp := &struct {
+			Body struct {
+				Version  string `json:"version" doc:"Release version embedded in the server"`
+				Revision string `json:"revision" doc:"Full source revision embedded in the server"`
+				Edition  string `json:"edition" doc:"Configured OpenPost edition"`
+			}
+		}{}
+		resp.Body.Version = info.Version
+		resp.Body.Revision = info.Revision
+		resp.Body.Edition = info.Edition
+		return resp, nil
+	})
 }
 
 func RegisterHealth(api huma.API, db *bun.DB) {

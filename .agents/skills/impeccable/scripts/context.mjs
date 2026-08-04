@@ -44,7 +44,7 @@ const PRODUCT_NAMES = ['PRODUCT.md', 'Product.md', 'product.md'];
 const DESIGN_NAMES = ['DESIGN.md', 'Design.md', 'design.md'];
 const SKILL_REFERENCE_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'reference');
 const FALLBACK_DIRS = ['.agents/context', 'docs'];
-const MONOREPO_MARKER_FILES = ['pnpm-workspace.yaml', 'turbo.json', 'nx.json', 'lerna.json'];
+const MONOREPO_MARKER_FILES = ['bun.lock', 'pnpm-workspace.yaml', 'turbo.json', 'nx.json', 'lerna.json'];
 const MONOREPO_FALLBACK_PROJECT_DIRS = ['apps', 'packages'];
 const WORKSPACE_DISCOVERY_IGNORED_DIRS = new Set([
   'node_modules',

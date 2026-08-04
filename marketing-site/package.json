@@ -4,10 +4,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev --host 0.0.0.0 --port 4322",
-    "build": "vite build && pnpm build:functions && node scripts/check-routing-output.mjs && node scripts/check-social-metadata-output.mjs",
-    "build:functions": "pnpm check:functions && wrangler pages functions build functions --outdir .wrangler/functions --project-directory .",
+    "build": "vite build && bun run build:functions && bun scripts/check-routing-output.mjs && bun scripts/check-social-metadata-output.mjs",
+    "build:functions": "bun run check:functions && wrangler pages functions build functions --outdir .wrangler/functions --project-directory .",
     "check:functions": "tsc --noEmit -p tsconfig.functions.json",
-    "check:routing": "node scripts/check-routing-output.mjs",
+    "check:routing": "bun scripts/check-routing-output.mjs",
     "preview": "vite preview --host 0.0.0.0 --port 4322",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json"
   },

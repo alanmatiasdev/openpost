@@ -63,7 +63,7 @@ Initial metrics match the production-readiness plan:
 
 ## Whop configuration
 
-Hosted/cloud deployments need the complete set below. Set it in the deployment environment or through **Settings → Instance → Configuration → Billing**; environment values stay authoritative and appear read-only in the app. Database-backed secrets are encrypted and write-only, and every saved change requires a server restart.
+Hosted/cloud deployments need the complete set below. Set it in the deployment environment or through **Settings → Instance → Configuration → Billing**. An instance administrator can intentionally override an existing environment value; the screen names the environment source and labels the override before and after saving. Database-backed secrets are encrypted and write-only, and every saved change requires a server restart.
 
 - `OPENPOST_WHOP_API_KEY`
 - `OPENPOST_WHOP_API_BASE_URL`

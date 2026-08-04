@@ -20,7 +20,7 @@ if (openapi.status !== 0) {
 }
 await mkdir(path.dirname(source), { recursive: true });
 await writeFile(source, formatJSON(JSON.parse(openapi.stdout)) + '\n');
-const prettier = spawnSync('pnpm', ['--filter', '@openpost/web', 'exec', 'prettier', '--write', 'openapi.json'], {
+const prettier = spawnSync('bunx', ['prettier', '--config', 'frontend/.prettierrc', '--write', 'frontend/openapi.json'], {
 	cwd: root,
 	stdio: 'inherit',
 });

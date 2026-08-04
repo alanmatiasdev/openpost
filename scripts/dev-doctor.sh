@@ -66,7 +66,7 @@ shared_state="${shared_root}/.devenv/state"
 pass "Linked worktree dependency caches resolve to ${shared_state}."
 
 if browser_path="$(
-  node --input-type=module -e \
+  bun --eval \
     'import { chromium } from "@playwright/test"; process.stdout.write(chromium.executablePath())' \
     2>/dev/null
 )"; then
@@ -79,7 +79,7 @@ else
   warn "Playwright is unavailable; run devenv shell -- install."
 fi
 
-for command in devenv go pnpm git; do
+for command in devenv go bun git; do
   if command -v "$command" >/dev/null 2>&1; then
     pass "$command is available."
   else

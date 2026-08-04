@@ -8,6 +8,7 @@ flake.lock
 devenv.nix
 devenv.yaml
 .envrc
+.devenv/
 
 # IDE
 .vscode
@@ -22,11 +23,19 @@ docs/
 LICENSE
 
 # Frontend build artifacts (rebuilt in container)
-frontend/node_modules/
+node_modules/
+**/node_modules/
 frontend/.svelte-kit/
+frontend/build/
+frontend/android/.gradle/
+frontend/android/app/build/
+frontend/android/app/src/main/assets/public/
 
-# Backend binary (rebuilt in container)
+# Backend runtime and build artifacts (rebuilt or unused in container)
 backend/openpost
+backend/cmd/openpost/public/
+backend/coverage.out
+backend/media/
 
 # Database files
 *.db

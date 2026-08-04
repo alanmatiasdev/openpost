@@ -67,6 +67,21 @@ func main() {
 	}
 
 	cfg := config.Load()
+	if len(os.Args) == 2 && os.Args[1] == "check-config" {
+		if err := cfg.ValidateRuntime(); err != nil {
+			log.Fatal(err)
+		}
+		config.Init()
+		if err := json.NewEncoder(os.Stdout).Encode(map[string]string{
+			"status":          "ok",
+			"edition":         cfg.Edition,
+			"database_driver": cfg.DatabaseDriver,
+			"storage_driver":  cfg.StorageDriver,
+		}); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
 	config.Init()
 
 	db, err := database.InitDBWithDriver(cfg.DatabaseDriver, cfg.DatabaseDSN())
@@ -478,6 +493,9 @@ func main() {
 		RepostService:                repostService,
 		NotificationService:          notificationService,
 		UpdateStatusService:          updateStatusService,
+		AppVersion:                   version,
+		AppRevision:                  runningBuildRevision(),
+		Edition:                      cfg.Edition,
 		MediaHandler:                 mediaHandler,
 		PublicMediaVerifier:          publicMediaVerifier,
 		ProfileHandler:               profileHandler,

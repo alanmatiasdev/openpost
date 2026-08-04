@@ -129,7 +129,7 @@ function main() {
   const currentVersion = process.argv[2];
   if (!currentVersion) {
     throw new Error(
-      "usage: node scripts/next-release-version.mjs <latest-tag> [git-range]",
+      "usage: bun scripts/next-release-version.mjs <latest-tag> [git-range]",
     );
   }
 

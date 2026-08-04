@@ -25,6 +25,7 @@ func newSystemTestServer(t *testing.T) (*echo.Echo, *bun.DB) {
 	e := echo.New()
 	api := humaecho.NewWithGroup(e, e.Group("/api/v1"), huma.DefaultConfig("Test", "1.0.0"))
 	RegisterHealth(api, db)
+	RegisterVersion(api, BuildInfo{Version: "v1.2.3", Revision: "abcdef", Edition: "cloud"})
 	t.Cleanup(func() {
 		_ = db.Close()
 	})
@@ -77,4 +78,18 @@ func TestReadinessCheckFailsWhenDatabaseIsClosed(t *testing.T) {
 
 	require.Equal(t, http.StatusServiceUnavailable, resp.Code, resp.Body.String())
 	require.Contains(t, resp.Body.String(), "database is not ready")
+}
+
+func TestVersionReportsExactRunningRevision(t *testing.T) {
+	t.Parallel()
+
+	e, _ := newSystemTestServer(t)
+	resp := systemGET(t, e, "/api/v1/version")
+
+	require.Equal(t, http.StatusOK, resp.Code, resp.Body.String())
+	var out map[string]any
+	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &out))
+	require.Equal(t, "v1.2.3", out["version"])
+	require.Equal(t, "abcdef", out["revision"])
+	require.Equal(t, "cloud", out["edition"])
 }

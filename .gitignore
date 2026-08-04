@@ -44,7 +44,7 @@ frontend/.vite/
 frontend/static/assets/
 frontend/package-lock.json
 frontend/yarn.lock
-frontend/pnpm-lock.yaml
+frontend/bun.lock
 docs-site/public/assets/*
 !docs-site/public/assets/screenshots/
 docs-site/public/assets/screenshots/*
@@ -89,9 +89,8 @@ cli/openpost
 marketing-site/dist/
 marketing-site/node_modules/
 marketing-site/package-lock.json
-marketing-site/pnpm-lock.yaml
-marketing-site/yarn.lock
 marketing-site/bun.lock
+marketing-site/yarn.lock
 marketing-site/.svelte-kit/
 marketing-site/.vite/
 marketing-site/public/assets/
@@ -104,5 +103,7 @@ marketing-site/static/assets/
 # Wrangler
 .wrangler/
 
-# Local pnpm content-addressable store (stray copy created inside the repo)
+# Local Bun package cache (stray copy created inside the repo)
+.bun-cache/
+# Previous local pnpm cache; keep ignored so old checkouts do not surface it.
 .pnpm-store/

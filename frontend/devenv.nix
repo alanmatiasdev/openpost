@@ -15,7 +15,7 @@ let
     name = "eslint-wrapper";
     runtimeInputs = [
       pkgs.nodejs_22
-      pkgs.pnpm
+      pkgs.bun
     ];
     text = ''
       # The editor and composer program now exceeds a 1GB heap during the
@@ -23,14 +23,14 @@ let
       # leaving enough room for the complete frontend lint graph.
       export NODE_OPTIONS="--max-old-space-size=2048"
       cd "${config.git.root}"
-      pnpm --filter @openpost/web lint
+      bun run --filter @openpost/web lint
     '';
   };
   svelte-check-wrapper = pkgs.writeShellApplication {
     name = "svelte-check-wrapper";
     runtimeInputs = [
       pkgs.nodejs_22
-      pkgs.pnpm
+      pkgs.bun
     ];
     text = ''
       # The full Svelte program now needs more than 1GB while loading its
@@ -38,14 +38,14 @@ let
       # for the release validation gate.
       export NODE_OPTIONS="--max-old-space-size=2048"
       cd "${config.git.root}"
-      pnpm --filter @openpost/web check
+      bun run --filter @openpost/web check
     '';
   };
   vitest-wrapper = pkgs.writeShellApplication {
     name = "vitest-wrapper";
     runtimeInputs = [
       pkgs.nodejs_22
-      pkgs.pnpm
+      pkgs.bun
     ]
     ++ chromiumRuntimeInputs;
     text = ''
@@ -57,7 +57,7 @@ let
       cd "${config.git.root}"
       # Run tests only if test files exist, otherwise skip silently
       if find frontend/src \( -name "*.test.ts" -o -name "*.spec.ts" \) 2>/dev/null | grep -q .; then
-        pnpm --filter @openpost/web test
+        bun run --filter @openpost/web test
       else
         echo "No test files found, skipping tests..."
         exit 0
@@ -68,7 +68,7 @@ let
     name = "frontend-build-wrapper";
     runtimeInputs = [
       pkgs.nodejs_22
-      pkgs.pnpm
+      pkgs.bun
     ];
     text = ''
       # OpenPost Video Editor adds the Transformers.js and ONNX worker graphs to the
@@ -76,7 +76,7 @@ let
       # for Vite to transform those lazy chunks and adapter-static to finish.
       export NODE_OPTIONS="--max-old-space-size=4096"
       cd "${config.git.root}"
-      pnpm --filter @openpost/web build
+      bun run --filter @openpost/web build
       mkdir -p "${config.git.root}/backend/cmd/openpost/public"
       touch "${config.git.root}/backend/cmd/openpost/public/.gitkeep"
     '';
@@ -86,14 +86,14 @@ in
   # JavaScript workspace support
   languages.javascript = {
     enable = true;
-    pnpm.enable = true;
+    bun.enable = true;
   };
 
   # Scripts for frontend development
   scripts = {
     frontend-dev.exec = ''
       cd "${config.git.root}"
-      pnpm --filter @openpost/web dev
+      bun run --filter @openpost/web dev
     '';
 
     frontend-build.exec = ''
@@ -114,7 +114,7 @@ in
 
     frontend-format.exec = ''
       cd "${config.git.root}"
-      pnpm --filter @openpost/web format
+      bun run --filter @openpost/web format
     '';
   };
 }

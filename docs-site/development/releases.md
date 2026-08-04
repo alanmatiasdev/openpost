@@ -2,27 +2,35 @@
 
 OpenPost follows [Semantic Versioning 2.0.0](https://semver.org/) and derives the normal release bump from [Conventional Commits](https://www.conventionalcommits.org/).
 
-| Commit impact | Version change | Example |
-| --- | --- | --- |
-| Backward-compatible fix or maintenance | Patch | `v1.27.9` → `v1.27.10` |
-| Backward-compatible feature | Minor | `v1.27.9` → `v1.28.0` |
-| Breaking API or product change | Major | `v1.27.9` → `v2.0.0` |
+| Commit impact                          | Version change | Example                |
+| -------------------------------------- | -------------- | ---------------------- |
+| Backward-compatible fix or maintenance | Patch          | `v1.27.9` → `v1.27.10` |
+| Backward-compatible feature            | Minor          | `v1.27.9` → `v1.28.0`  |
+| Breaking API or product change         | Major          | `v1.27.9` → `v2.0.0`   |
 
 `feat:` selects a minor release. A `!` after the commit type or a `BREAKING CHANGE:` footer selects a major release. When neither appears, a release advances the patch version.
 
 ## Production release
 
-Run the release from a clean, up-to-date `main` worktree:
+Run the release from an audited, up-to-date `main` worktree. Uncommitted work is allowed when the command includes its Conventional Commit message:
 
 ```bash
-devenv shell -- doctor
-devenv shell -- verify
-pnpm release:prod "fix: describe the shipped change"
+bun run release:plan
+bun run release:preflight
+bun run release:prod "fix: describe the shipped change"
 ```
 
-The release script stages the complete worktree, derives the next version from every commit since the latest tag plus the pending release commit, and promotes `CHANGELOG.md` from `Unreleased` into that dated version. The tagged workflow uses the same section for GitHub release notes. The script then pushes `main` and the tag, waits for the `Build and Release` workflow, confirms the GitHub release, and checks public readiness.
+`release:plan` inventories the changed application, marketing, documentation, and delivery surfaces before anything is written. `release:preflight` is the fast check for disk space, Docker responsiveness and memory, GitHub access, required workflows and deployment configuration, and current production readiness. When host space is below the release threshold and Docker still responds, preflight removes only unused BuildKit cache before failing. `release:prod` repeats those checks, then promotes `CHANGELOG.md`, runs the canonical Devenv gate, race and security checks, isolated browser suites, and a production-image restart smoke test locally before committing and pushing `main`. A failed local check restores the original changelog. A successful exact-worktree check can be reused for 24 hours; set `OPENPOST_FORCE_RELEASE_CHECK=1` to force a rerun. The command waits for the parallel hosted CI matrix on the exact pushed revision before creating a tag.
 
-`CHANGELOG.md` is the release-history source of truth. Add notable work to `Unreleased` while implementing it. Do not edit the public marketing changelog or GitHub release notes separately; both are generated from the canonical file. `pnpm check:changelog` validates the structure before release.
+The production-image check enforces a 20 GB budget for unused local BuildKit cache and targets at least 20 GB of host free space. Inspect or enforce those limits directly with `devenv shell -- docker-cache-status` and `devenv shell -- docker-cache-prune`. Set `OPENPOST_DOCKER_CACHE_MAX_STORAGE` or `OPENPOST_DOCKER_MIN_FREE_SPACE` to change them. The prune command does not delete images, containers, or volumes.
+
+On a 16 GiB Mac, configure Docker Desktop with 10 GB memory and 4 GB swap. The production frontend build has been verified with that allocation and can be killed by the VM with Docker's 8 GB memory and 1 GB swap allocation. Preflight rejects a macOS Docker VM below 9.5 GiB; `OPENPOST_DOCKER_MIN_MEMORY_GIB` is available only for a host-specific, proven override.
+
+CI publishes one immutable `sha-<revision>` image only after building it and restarting it against a clean database. The tag workflow promotes that same image to the release tag and `latest` without rebuilding. The signed deployment hook receives its digest, validates the candidate against production configuration and mounted secrets, checks the image revision, and automatically restores the previous image if readiness fails.
+
+Use `bun run release:prepare "<commit>"` when you want to stop after the exact SHA has passed local and hosted checks. Finish later with `bun run release:promote <tag>`. `bun run release:status` compares the local SHA, candidate CI run, and public production revision.
+
+`CHANGELOG.md` is the release-history source of truth. Add notable work to `Unreleased` while implementing it. Do not edit the public marketing changelog or GitHub release notes separately; both are generated from the canonical file. `bun run check:changelog` validates the structure before release.
 
 Use `RELEASE_BUMP=minor|major` only to raise the inferred impact for an intentional release boundary. `RELEASE_VERSION=vX.Y.Z` is reserved for an explicit version-line correction or migration. Overrides cannot lower the version required by the commit history.
 
@@ -34,4 +42,4 @@ The code shipped as `v1.1.22` therefore maps to `v1.27.7`. The versioning and do
 
 ## Failure policy
 
-Never move or reuse a published tag. If a tag workflow fails, fix the cause and release a new SemVer version. A release is complete only after the workflow succeeds, the GitHub release exists, the production deployment reports the new revision, and `/api/v1/ready` succeeds.
+Never move or reuse a published tag. If a tag workflow fails, fix the cause and release a new SemVer version. A release is complete only after the workflow succeeds, the GitHub release exists, `/api/v1/ready` succeeds, and `/api/v1/version` reports the exact tagged source revision.

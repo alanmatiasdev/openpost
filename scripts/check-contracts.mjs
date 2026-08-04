@@ -20,8 +20,8 @@ const generatedPaths = [
 ];
 const before = await generatedHashes();
 
-run("node", ["scripts/sync-docs-openapi.mjs"]);
-run("pnpm", ["--filter", "@openpost/web", "generate:types"]);
+run("bun", ["scripts/sync-docs-openapi.mjs"]);
+run("bun", ["run", "--filter", "@openpost/web", "generate:types"]);
 const after = await generatedHashes();
 const changed = generatedPaths.filter(
   (file) => before.get(file) !== after.get(file),

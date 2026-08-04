@@ -3,6 +3,8 @@ import { defineConfig, devices } from "@playwright/test";
 const port = Number(process.env.OPENPOST_MARKETING_E2E_PORT ?? 4322);
 const host = "127.0.0.1";
 const baseURL = `http://${host}:${port}`;
+const reuseExistingServer =
+  process.env.OPENPOST_MARKETING_E2E_REUSE_SERVER === "1";
 const chromiumExecutablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
 const chromiumUse = chromiumExecutablePath
   ? { launchOptions: { executablePath: chromiumExecutablePath } }
@@ -19,9 +21,9 @@ export default defineConfig({
     trace: "on-first-retry",
   },
   webServer: {
-    command: `pnpm run marketing:build && pnpm --filter @openpost/site preview --host ${host} --port ${port}`,
+    command: `bun run marketing:build && bun run --filter @openpost/site preview --host ${host} --port ${port}`,
     url: baseURL,
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer,
     timeout: 120_000,
   },
   projects: [

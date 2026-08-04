@@ -15,6 +15,7 @@
     pkgs.ffmpeg
     pkgs.wget
     pkgs.docker
+    pkgs.actionlint
   ];
 
   # Keep dependency/build caches with the checkout so a durable NAS clone can
@@ -26,7 +27,7 @@
   # The module files pin the security-patched Go point release. Let the go
   # command fetch that toolchain when nixpkgs trails the upstream patch.
   env.GOTOOLCHAIN = lib.mkForce "auto";
-  env.npm_config_store_dir = "${config.git.root}/.devenv/state/pnpm-store";
+  env.BUN_INSTALL_CACHE_DIR = "${config.git.root}/.devenv/state/bun-cache";
 
   scripts = {
     doctor.exec = ''
@@ -54,28 +55,34 @@
 
     docs.exec = ''
       cd "${config.git.root}"
-      pnpm --filter @openpost/docs docs:dev
+      bun run --filter @openpost/docs docs:dev
     '';
 
     build.exec = ''
       cd "${config.git.root}"
-      frontend-build && backend-build && (cd cli && go build -buildvcs=false ./...)
+      frontend-build &&
+      bun run marketing:build &&
+      bun run docs:build &&
+      backend-build &&
+      (cd cli && go build -buildvcs=false ./...)
     '';
 
     docs-build.exec = ''
       cd "${config.git.root}"
-      pnpm --filter @openpost/docs docs:build
+      bun run --filter @openpost/docs docs:build
     '';
 
     check.exec = ''
       cd "${config.git.root}"
-      pnpm run check:docs &&
-      pnpm run check:release-version &&
-      pnpm run check:changelog &&
-      pnpm run check:ui-consistency &&
+      bun run check:docs &&
+      bun run check:release-version &&
+      bun run check:changelog &&
+      bun run check:social-images &&
+      bun run check:ui-consistency &&
+      workflow-check &&
       frontend-check &&
-      pnpm --filter @openpost/site check &&
-      pnpm run check:contracts
+      bun run --filter @openpost/site check &&
+      bun run check:contracts
     '';
 
     lint.exec = ''
@@ -101,6 +108,11 @@
       scripts/security-check.sh
     '';
 
+    workflow-check.exec = ''
+      cd "${config.git.root}"
+      actionlint -color
+    '';
+
     backend-check.exec = ''
       backend-format-check && backend-lint
     '';
@@ -111,7 +123,7 @@
 
     backend-security.exec = ''
       cd "${config.git.root}/backend"
-      go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...
+      go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 -tags dev ./...
     '';
 
     cli-security.exec = ''
@@ -121,7 +133,7 @@
 
     frontend-security.exec = ''
       cd "${config.git.root}"
-      pnpm audit --prod --audit-level low
+      scripts/bun-audit.sh
     '';
 
     frontend-verify.exec = ''
@@ -141,10 +153,64 @@
 
     install.exec = ''
       cd "${config.git.root}"
-      pnpm install --frozen-lockfile
-      pnpm run browser:install
+      bun install --frozen-lockfile
+      bun run browser:install
       (cd backend && go mod download)
       (cd cli && go mod download)
+    '';
+
+    cache-status.exec = ''
+      echo "Go build cache: $GOCACHE"
+      du -sh "$GOCACHE" 2>/dev/null || true
+
+      echo "Go module cache: $GOMODCACHE"
+      du -sh "$GOMODCACHE" 2>/dev/null || true
+
+      echo "Bun package cache: $BUN_INSTALL_CACHE_DIR"
+      du -sh "$BUN_INSTALL_CACHE_DIR" 2>/dev/null || true
+
+      echo "Embedded frontend: ${config.git.root}/backend/cmd/openpost/public"
+      du -sh "${config.git.root}/backend/cmd/openpost/public" 2>/dev/null || true
+    '';
+
+    cache-prune.exec = ''
+      max_mib="''${OPENPOST_GO_CACHE_MAX_MIB:-4096}"
+      if ! [[ "$max_mib" =~ ^[1-9][0-9]*$ ]]; then
+        echo "OPENPOST_GO_CACHE_MAX_MIB must be a positive integer; received: $max_mib" >&2
+        exit 1
+      fi
+
+      state_dir="$(dirname "$GOCACHE")"
+      stamp="$state_dir/go-cache-size-check.timestamp"
+      now="$(date +%s)"
+      last="$(cat "$stamp" 2>/dev/null || echo 0)"
+
+      # Scanning a very large cache is itself expensive, so check at most once
+      # per day unless OPENPOST_GO_CACHE_FORCE_CHECK=1 is set.
+      if [ "''${OPENPOST_GO_CACHE_FORCE_CHECK:-0}" != 1 ] && (( now - last < 86400 )); then
+        exit 0
+      fi
+
+      mkdir -p "$state_dir"
+      size_mib="$(du -sm "$GOCACHE" 2>/dev/null | cut -f1 || echo 0)"
+      if (( size_mib > max_mib )); then
+        echo "Go build cache is ''${size_mib} MiB; maximum is ''${max_mib} MiB."
+        echo "Pruning Go build cache..."
+        go clean -cache
+      fi
+      printf '%s\n' "$now" > "$stamp"
+    '';
+
+    docker-cache-status.exec = ''
+      docker system df
+    '';
+
+    docker-cache-prune.exec = ''
+      maximum="''${OPENPOST_DOCKER_CACHE_MAX_STORAGE:-20gb}"
+      minimum_free="''${OPENPOST_DOCKER_MIN_FREE_SPACE:-20gb}"
+      docker buildx prune --all --force \
+        --max-used-space "$maximum" \
+        --min-free-space "$minimum_free"
     '';
 
     setup.exec = ''
@@ -176,18 +242,18 @@
       export GOCACHE="$openpost_shared_root/.devenv/state/go-build"
       export GOMODCACHE="$openpost_shared_root/.devenv/state/go-mod"
       export GOPATH="$openpost_shared_root/.devenv/state/go"
-      export npm_config_store_dir="$openpost_shared_root/.devenv/state/pnpm-store"
+      export BUN_INSTALL_CACHE_DIR="$openpost_shared_root/.devenv/state/bun-cache"
     fi
 
     echo ""
     echo "  OpenPost Development Environment"
     echo "  --------------------------------"
     echo "  Go:     $(go version 2>/dev/null || echo 'not installed')"
-    echo "  pnpm:   $(pnpm --version 2>/dev/null || echo 'not installed')"
+    echo "  Bun:    $(bun --version 2>/dev/null || echo 'not installed')"
     echo ""
     echo "  Commands:"
     echo "    doctor       - Check disk, worktrees, Git, browser, and tool readiness"
-    echo "    install      - Install locked pnpm and Go dependencies"
+    echo "    install      - Install locked Bun and Go dependencies"
     echo "    setup        - Frozen install and create backend/.env if missing"
     echo "    dev          - Start frontend and backend dev servers"
     echo "    docs         - Start the VitePress docs site"
@@ -197,6 +263,10 @@
     echo "    build        - Build the frontend and backend binary"
     echo "    verify       - Run check, lint, test, and build"
     echo "    security     - Scan Go call paths and production JS dependencies"
+    echo "    cache-status - Report project cache and embedded frontend sizes"
+    echo "    cache-prune  - Enforce the bounded persistent Go build cache"
+    echo "    docker-cache-status - Report Docker image, volume, and build-cache sizes"
+    echo "    docker-cache-prune  - Bound unused Docker build cache without deleting volumes"
     echo "    backend-*    - Targeted backend commands"
     echo "    frontend-*   - Targeted frontend commands"
     echo ""
@@ -215,11 +285,13 @@
           echo "  Warning: $dest exists but is not executable"
       fi
     fi
+
+    cache-prune
   '';
 
   enterTest = ''
     go version
-    pnpm --version
+    bun --version
     git --version
   '';
 }
