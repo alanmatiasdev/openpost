@@ -290,6 +290,63 @@ test("guest imports, edits, autosaves, restores, and exports a local video", asy
   await expect(page).toHaveURL(/\/video-studio\/local_video_/);
   await expect(page.getByRole("heading", { name: "Timeline" })).toBeVisible();
   await expect(page.getByText("openpost-e2e.webm").first()).toBeVisible();
+  await expect(
+    page.getByRole("slider", { name: "Timeline", exact: true }),
+  ).toHaveCount(1);
+  const familyTabsBounds = await page
+    .locator("[data-video-studio-family-tabs]")
+    .boundingBox();
+  const subtabsBounds = await page
+    .locator("[data-video-studio-subtabs]")
+    .boundingBox();
+  const toolContentBounds = await page
+    .locator("[data-video-studio-tool-content]")
+    .boundingBox();
+  if (!familyTabsBounds || !subtabsBounds || !toolContentBounds) {
+    throw new Error(
+      "Full Studio tool panel did not render its aligned desktop regions",
+    );
+  }
+  expect(Math.abs(familyTabsBounds.x - subtabsBounds.x)).toBeLessThanOrEqual(1);
+  expect(Math.abs(subtabsBounds.x - toolContentBounds.x)).toBeLessThanOrEqual(
+    1,
+  );
+  expect(subtabsBounds.y - (familyTabsBounds.y + familyTabsBounds.height)).toBe(
+    12,
+  );
+  expect(toolContentBounds.y - (subtabsBounds.y + subtabsBounds.height)).toBe(
+    12,
+  );
+  const clipInspector = page.getByRole("complementary", {
+    name: "Properties",
+  });
+  await expect(
+    clipInspector.getByRole("button", { name: "Video", exact: true }),
+  ).toBeVisible();
+  await expect(
+    clipInspector.getByRole("button", { name: "Audio", exact: true }),
+  ).toBeVisible();
+  await expect(
+    clipInspector.getByRole("button", { name: "Speed", exact: true }),
+  ).toBeVisible();
+  await expect(
+    clipInspector.getByRole("button", { name: "Adjustments", exact: true }),
+  ).toBeVisible();
+  await clipInspector
+    .getByRole("button", { name: "Audio", exact: true })
+    .click();
+  await expect(
+    clipInspector.getByRole("slider", { name: "Volume", exact: true }),
+  ).toBeVisible();
+  await expect(
+    clipInspector.getByRole("slider", {
+      name: "Horizontal position",
+      exact: true,
+    }),
+  ).toBeHidden();
+  await clipInspector
+    .getByRole("button", { name: "Video", exact: true })
+    .click();
   const previewEngine = page.locator("[data-preview-engine-ready]").first();
   await expect(previewEngine).toHaveAttribute(
     "data-preview-engine-ready",
@@ -386,10 +443,14 @@ test("guest imports, edits, autosaves, restores, and exports a local video", asy
 
   await page.getByRole("button", { name: "Text" }).click();
   await page.getByRole("button", { name: "Add title" }).click();
+  await expect(
+    page.locator('[data-video-studio-track-kind="visual"]'),
+  ).toHaveCount(1);
   await page
     .getByRole("textbox", { name: "Text", exact: true })
     .fill("Launch day");
   await expect(page.getByText("Launch day").first()).toBeVisible();
+  await page.getByRole("button", { name: "Position and size" }).click();
   const overlayDuration = page.getByRole("spinbutton", {
     name: "Duration (seconds)",
   });
@@ -405,6 +466,7 @@ test("guest imports, edits, autosaves, restores, and exports a local video", asy
   await page.getByRole("button", { name: "Elements" }).click();
   await page.getByRole("button", { name: "Highlight box" }).click();
   await expect(page.getByText("annotation overlay")).toBeVisible();
+  await page.getByRole("button", { name: "Position and size" }).click();
   await page.getByRole("slider", { name: "Rotation" }).press("ArrowRight");
   await page.getByRole("checkbox", { name: "Shared across formats" }).uncheck();
   const overlayPosition = page.getByRole("slider", {
@@ -432,7 +494,8 @@ test("guest imports, edits, autosaves, restores, and exports a local video", asy
   await expect(overlayVisibility).not.toBeChecked();
   await overlayVisibility.check();
 
-  await page.getByRole("button", { name: "Stock" }).click();
+  await page.getByRole("button", { name: "Media", exact: true }).click();
+  await page.getByRole("button", { name: "Stock", exact: true }).click();
   await page
     .getByRole("textbox", { name: "Search stock photos and videos" })
     .fill("desk");
@@ -441,6 +504,9 @@ test("guest imports, edits, autosaves, restores, and exports a local video", asy
   await page.getByRole("button", { name: "Use this item" }).click();
   await expect(page.getByText("pexels-photo-1.jpg")).toBeVisible();
   await expect(page.getByText("OpenPost Test on Pexels")).toBeVisible();
+  await expect(
+    page.locator('[data-video-studio-track-kind="visual"]'),
+  ).toHaveCount(2);
 
   await page.getByRole("button", { name: "Captions" }).click();
   await page.getByRole("button", { name: "Add caption" }).click();
@@ -787,6 +853,75 @@ test("mobile keeps touch timeline editing, contextual tools, and export", async 
   await inspectorSheet.getByRole("button", { name: "Close" }).click();
   await page.getByRole("button", { name: "Play", exact: true }).click();
   await expect(page.getByRole("button", { name: "Pause" })).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+  await context.close();
+});
+
+test("the complete editor stays usable at 320px", async ({ browser }) => {
+  const context = await browser.newContext({
+    viewport: { width: 320, height: 700 },
+    isMobile: true,
+    hasTouch: true,
+  });
+  const page = await context.newPage();
+  await page.goto("/video-studio");
+  const video = await syntheticVideo(page);
+  await page.locator("#video-studio-import").setInputFiles({
+    name: "narrow-phone.webm",
+    mimeType: "video/webm",
+    buffer: video,
+  });
+
+  await expect(page).toHaveURL(/\/video-studio\/local_video_/);
+  await expect(page.getByRole("button", { name: "Export" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Format" })).toBeVisible();
+  await page.getByRole("button", { name: "Quick cut", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Source timeline" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Full Studio", exact: true }).click();
+  await expect(
+    page
+      .getByRole("region", { name: "Timeline" })
+      .getByRole("slider", { name: "Timeline", exact: true }),
+  ).toHaveCount(1);
+  await page.getByRole("button", { name: "Text", exact: true }).click();
+  await expect(page.getByRole("complementary", { name: "Text" })).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+  await context.close();
+});
+
+test("a tablet-width editor keeps creation tools reachable", async ({
+  browser,
+}) => {
+  const context = await browser.newContext({
+    viewport: { width: 768, height: 900 },
+    hasTouch: false,
+  });
+  const page = await context.newPage();
+  await page.goto("/video-studio");
+  const video = await syntheticVideo(page);
+  await page.locator("#video-studio-import").setInputFiles({
+    name: "tablet-editor.webm",
+    mimeType: "video/webm",
+    buffer: video,
+  });
+
+  await expect(page).toHaveURL(/\/video-studio\/local_video_/);
+  await page.getByRole("button", { name: "Text", exact: true }).click();
+  const toolDrawer = page.getByRole("complementary", { name: "Text" });
+  await expect(toolDrawer).toBeVisible();
+  await toolDrawer.getByRole("button", { name: "Close" }).click();
+  await expect(toolDrawer).toBeHidden();
+  await expect(page.getByRole("button", { name: "Export" })).toBeEnabled();
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= window.innerWidth,

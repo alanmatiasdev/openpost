@@ -1,9 +1,9 @@
 <!--
-THESIS: A focused social-video workbench keeps the story, canvas, and next edit visible at once.
-OWN-WORLD: OpenPost compact controls, warm surfaces, dark pasteboard, structural dividers, and restrained orange action.
-STORY: Shape one shared sequence, review each social format, then explicitly export or sync the result.
-FIRST VIEWPORT: Project state, active format, preview, focused tool, selected properties, and the primary timeline.
-FORM: Operate surface; no floating-card dashboard, unlimited NLE chrome, hidden cloud upload, or decorative hero treatment.
+THESIS: The timeline owns time and the selection owns the inspector, so every control appears where creators expect it.
+OWN-WORLD: OpenPost warm-black panels, fine dividers, compact Geist controls, a neutral pasteboard, and scarce orange signal.
+STORY: Find an asset, shape it on the canvas, tune only its relevant properties, then finish in the timeline and export.
+FIRST VIEWPORT: A compact project bar, seven creation families, asset browser, dominant preview, tabbed inspector, and direct-seek timeline.
+FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandable precision timeline; seed 20260804.
 -->
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
@@ -179,6 +179,19 @@ FORM: Operate surface; no floating-card dashboard, unlimited NLE chrome, hidden 
 		| 'transitions'
 		| 'brand'
 		| 'smart';
+	type ToolFamilyID =
+		'media' | 'audio' | 'text' | 'captions' | 'elements' | 'smart' | 'transitions';
+	type InspectorTab =
+		| 'project'
+		| 'video'
+		| 'audio'
+		| 'speed'
+		| 'animation'
+		| 'adjust'
+		| 'text'
+		| 'style'
+		| 'crop'
+		| 'timing';
 	type EffectPresetID =
 		| 'clean'
 		| 'vivid'
@@ -209,6 +222,28 @@ FORM: Operate surface; no floating-card dashboard, unlimited NLE chrome, hidden 
 		{ id: 'brand', label: () => m.video_studio_tool_brand(), icon: PaletteIcon },
 		{ id: 'smart', label: () => m.video_studio_tool_smart(), icon: WandIcon }
 	] satisfies Array<{ id: ToolID; label: () => string; icon: typeof FilmIcon }>;
+	const toolFamilies = [
+		{ id: 'media', label: () => m.video_studio_tool_media(), icon: FilmIcon },
+		{ id: 'audio', label: () => m.video_studio_tool_audio(), icon: MicIcon },
+		{ id: 'text', label: () => m.video_studio_tool_text(), icon: TextIcon },
+		{ id: 'captions', label: () => m.video_studio_tool_captions(), icon: CaptionsIcon },
+		{ id: 'elements', label: () => m.video_studio_tool_elements(), icon: ShapesIcon },
+		{ id: 'smart', label: () => m.video_studio_tool_smart(), icon: WandIcon },
+		{ id: 'transitions', label: () => m.video_studio_tool_transitions(), icon: LayersIcon }
+	] satisfies Array<{
+		id: ToolFamilyID;
+		label: () => string;
+		icon: typeof FilmIcon;
+	}>;
+	const toolFamilyAliases: Record<ToolFamilyID, ToolID[]> = {
+		media: ['media', 'stock', 'record'],
+		audio: ['audio'],
+		text: ['text'],
+		captions: ['captions'],
+		elements: ['elements', 'brand'],
+		smart: ['smart'],
+		transitions: ['transitions']
+	};
 	const effectLooks = [
 		{
 			id: 'clean',
@@ -305,6 +340,7 @@ FORM: Operate surface; no floating-card dashboard, unlimited NLE chrome, hidden 
 	let selectedCaptionCueID = $state('');
 	let compactToolOpen = $state(false);
 	let compactInspectorOpen = $state(false);
+	let inspectorTab = $state<InspectorTab>('project');
 	let sourceArtifacts = $state<Record<string, SourceArtifactIndex>>({});
 	let sourceArtifactBusy = $state<Record<string, boolean>>({});
 	let sourceArtifactMessage = $state<Record<string, string>>({});
@@ -320,6 +356,8 @@ FORM: Operate surface; no floating-card dashboard, unlimited NLE chrome, hidden 
 	let historyVersion = $state(0);
 	let mutationVersion = $state(0);
 	let importBusy = $state(false);
+	let mediaImportInput = $state<HTMLInputElement | null>(null);
+	let audioImportInput = $state<HTMLInputElement | null>(null);
 	let exportOpen = $state(false);
 	let cloudOpen = $state(false);
 	let cloudBusy = $state(false);
@@ -479,6 +517,52 @@ FORM: Operate surface; no floating-card dashboard, unlimited NLE chrome, hidden 
 			.flatMap((track) => track.cues)
 			.find((cue) => cue.id === selectedCaptionCueID)
 	);
+	const showInspectorTabs = $derived(
+		Boolean(selectedClip || selectedVisualItem || selectedAudioItem || selectedCaptionCue)
+	);
+	const inspectorTabs = $derived.by((): Array<{ id: InspectorTab; label: string }> => {
+		if (selectedClip) {
+			return [
+				{ id: 'video', label: m.video_studio_source_video() },
+				{ id: 'audio', label: m.video_studio_source_audio() },
+				{ id: 'speed', label: m.video_studio_clip_speed() },
+				{ id: 'animation', label: m.video_studio_inspector_animation() },
+				{ id: 'adjust', label: m.video_studio_adjustments() }
+			];
+		}
+		if (selectedVisualItem?.type === 'text') {
+			return [
+				{ id: 'text', label: m.video_studio_overlay_text() },
+				{ id: 'video', label: m.video_studio_inspector_position() },
+				{ id: 'animation', label: m.video_studio_inspector_animation() }
+			];
+		}
+		if (selectedVisualItem?.type === 'media' || selectedVisualItem?.type === 'camera') {
+			return [
+				{ id: 'video', label: m.video_studio_source_video() },
+				{ id: 'crop', label: m.video_studio_crop() }
+			];
+		}
+		if (selectedVisualItem) {
+			return [
+				{ id: 'style', label: m.video_studio_shape_kind() },
+				{ id: 'video', label: m.video_studio_inspector_position() }
+			];
+		}
+		if (selectedAudioItem) {
+			return [
+				{ id: 'audio', label: m.video_studio_source_audio() },
+				{ id: 'timing', label: m.video_studio_timeline() }
+			];
+		}
+		if (selectedCaptionCue) {
+			return [
+				{ id: 'text', label: m.video_studio_overlay_text() },
+				{ id: 'timing', label: m.video_studio_timeline() }
+			];
+		}
+		return [{ id: 'project', label: m.video_studio_project_name() }];
+	});
 	const stockSources = $derived(
 		project ? Object.values(project.sources).filter((source) => Boolean(source.provenance)) : []
 	);
@@ -785,6 +869,7 @@ FORM: Operate surface; no floating-card dashboard, unlimited NLE chrome, hidden 
 			await refreshPersistedExports(loaded.id);
 			selectedExportVariants = [variantID];
 			selectedClipID = loaded.document.primary_sequence[0]?.id ?? '';
+			inspectorTab = selectedClipID ? 'video' : 'project';
 			const recordings = await listRecoverableRecordings();
 			recoverableRecording =
 				recordings.find((manifest) => manifest.project_id === loaded.id) ?? null;
@@ -932,6 +1017,7 @@ FORM: Operate surface; no floating-card dashboard, unlimited NLE chrome, hidden 
 		selectedCaptionCueID = '';
 		compactToolOpen = false;
 		compactInspectorOpen = true;
+		inspectorTab = 'video';
 	}
 
 	function selectVisualItem(itemID: string): void {
@@ -941,6 +1027,15 @@ FORM: Operate surface; no floating-card dashboard, unlimited NLE chrome, hidden 
 		selectedCaptionCueID = '';
 		compactToolOpen = false;
 		compactInspectorOpen = true;
+		const item = project?.visual_tracks
+			.flatMap((track) => track.items)
+			.find((entry) => entry.id === itemID);
+		inspectorTab =
+			item?.type === 'text'
+				? 'text'
+				: item?.type === 'shape' || item?.type === 'annotation'
+					? 'style'
+					: 'video';
 	}
 
 	function selectAudioItem(itemID: string): void {
@@ -950,6 +1045,7 @@ FORM: Operate surface; no floating-card dashboard, unlimited NLE chrome, hidden 
 		selectedCaptionCueID = '';
 		compactToolOpen = false;
 		compactInspectorOpen = true;
+		inspectorTab = 'audio';
 	}
 
 	function selectCaptionCue(cueID: string): void {
@@ -959,6 +1055,17 @@ FORM: Operate surface; no floating-card dashboard, unlimited NLE chrome, hidden 
 		selectedCaptionCueID = cueID;
 		compactToolOpen = false;
 		compactInspectorOpen = true;
+		inspectorTab = 'text';
+	}
+
+	function activeToolFamily(familyID: ToolFamilyID): boolean {
+		return toolFamilyAliases[familyID].includes(activeTool);
+	}
+
+	function selectToolFamily(familyID: ToolFamilyID): void {
+		if (!activeToolFamily(familyID)) activeTool = familyID;
+		compactInspectorOpen = false;
+		compactToolOpen = true;
 	}
 
 	function beginTimelineResize(event: PointerEvent): void {
@@ -3183,130 +3290,150 @@ FORM: Operate surface; no floating-card dashboard, unlimited NLE chrome, hidden 
 	</main>
 {:else if localProject && project}
 	<div class="dark flex h-dvh min-h-0 flex-col overflow-hidden bg-background text-foreground">
-		<header class="flex min-h-14 shrink-0 items-center gap-2 border-b px-2 sm:px-3">
-			<Button
-				href={resolve('/video-studio')}
-				variant="ghost"
-				size="icon-sm"
-				aria-label={m.video_studio_back_projects()}
-			>
-				<ArrowLeftIcon class="size-4" />
-			</Button>
-			<Input
-				value={project.title}
-				oninput={(event) => setTitle(event.currentTarget.value)}
-				class="h-8 w-40 border-transparent bg-transparent px-2 font-medium hover:border-input focus:border-input sm:w-56"
-				aria-label={m.video_studio_project_name()}
-			/>
-			<div
-				class="hidden items-center gap-1.5 text-xs text-muted-foreground sm:flex"
-				aria-live="polite"
-			>
-				{#if saveState === 'saving'}
-					<LoaderIcon class="size-3.5 animate-spin" />
-					{m.video_studio_saving()}
-				{:else if saveState === 'failed'}
-					<CircleDotIcon class="size-3.5 text-destructive" />
-					{m.video_studio_save_failed()}
-				{:else}
-					<CheckIcon class="size-3.5" />
-					{m.video_studio_autosaved()}
-				{/if}
-				<span class="border-l pl-2">
-					{localProject.state === 'cloud'
-						? m.video_studio_cloud_saved()
-						: m.video_studio_local_only()}
-				</span>
-			</div>
-			<div
-				class="ml-auto hidden rounded-md border bg-muted/30 p-0.5 md:flex"
-				aria-label={m.video_studio_workflow_heading()}
-			>
-				<button
-					type="button"
-					class={[
-						'min-h-8 rounded px-2.5 text-xs font-medium transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
-						quickCutMode ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground'
-					]}
-					disabled={Boolean(returnToken) ||
-						(!quickCutMode && !quickCutCompatibility(project).compatible)}
-					onclick={() => switchEditingMode('quick-cut')}
-				>
-					{m.video_studio_workflow_quick()}
-				</button>
-				<button
-					type="button"
-					class={[
-						'min-h-8 rounded px-2.5 text-xs font-medium transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
-						!quickCutMode ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground'
-					]}
-					onclick={() => switchEditingMode('studio')}
-				>
-					{m.video_studio_workflow_full()}
-				</button>
-			</div>
-			<div class="hidden items-center gap-1 md:flex">
+		<header
+			class="grid min-h-14 shrink-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 border-b border-white/10 bg-[#111113] px-2 sm:px-3"
+		>
+			<div class="flex min-w-0 items-center gap-2">
 				<Button
+					href={resolve('/video-studio')}
 					variant="ghost"
 					size="icon-sm"
-					disabled={historyVersion < 0 || !history.canUndo}
-					onclick={undo}
-					aria-label={m.video_studio_undo()}
-					title={history.undoLabel || m.video_studio_undo()}
+					aria-label={m.video_studio_back_projects()}
 				>
-					<UndoIcon class="size-4" />
+					<ArrowLeftIcon class="size-4" />
 				</Button>
 				<Button
 					variant="ghost"
-					size="icon-sm"
-					disabled={historyVersion < 0 || !history.canRedo}
-					onclick={redo}
-					aria-label={m.video_studio_redo()}
-					title={history.redoLabel || m.video_studio_redo()}
+					size="xs"
+					class="px-2 text-[11px] sm:hidden"
+					disabled={quickCutMode
+						? false
+						: Boolean(returnToken) || !quickCutCompatibility(project).compatible}
+					onclick={() => switchEditingMode(quickCutMode ? 'studio' : 'quick-cut')}
+					aria-label={quickCutMode
+						? m.video_studio_workflow_full()
+						: m.video_studio_workflow_quick()}
+					title={quickCutMode ? m.video_studio_workflow_full() : m.video_studio_workflow_quick()}
 				>
-					<RedoIcon class="size-4" />
+					{quickCutMode ? m.video_studio_workflow_full() : m.video_studio_workflow_quick()}
 				</Button>
-				<Button
-					variant="ghost"
-					size="icon-sm"
-					onclick={() => void openRevisionHistory()}
-					aria-label={m.video_studio_history()}
-					title={m.video_studio_history()}
+				<div
+					class="hidden rounded-md border border-white/10 bg-white/5 p-0.5 sm:flex"
+					aria-label={m.video_studio_workflow_heading()}
 				>
-					<HistoryIcon class="size-4" />
-				</Button>
+					<button
+						type="button"
+						class={[
+							'min-h-8 rounded px-2.5 text-xs font-medium transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
+							quickCutMode ? 'bg-white/10 text-white' : 'text-zinc-400 hover:text-zinc-100'
+						]}
+						disabled={Boolean(returnToken) ||
+							(!quickCutMode && !quickCutCompatibility(project).compatible)}
+						onclick={() => switchEditingMode('quick-cut')}
+					>
+						{m.video_studio_workflow_quick()}
+					</button>
+					<button
+						type="button"
+						class={[
+							'min-h-8 rounded px-2.5 text-xs font-medium transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
+							!quickCutMode ? 'bg-white/10 text-white' : 'text-zinc-400 hover:text-zinc-100'
+						]}
+						onclick={() => switchEditingMode('studio')}
+					>
+						{m.video_studio_workflow_full()}
+					</button>
+				</div>
+				<div class="hidden items-center gap-1 xl:flex">
+					<Button
+						variant="ghost"
+						size="icon-sm"
+						disabled={historyVersion < 0 || !history.canUndo}
+						onclick={undo}
+						aria-label={m.video_studio_undo()}
+						title={history.undoLabel || m.video_studio_undo()}
+					>
+						<UndoIcon class="size-4" />
+					</Button>
+					<Button
+						variant="ghost"
+						size="icon-sm"
+						disabled={historyVersion < 0 || !history.canRedo}
+						onclick={redo}
+						aria-label={m.video_studio_redo()}
+						title={history.redoLabel || m.video_studio_redo()}
+					>
+						<RedoIcon class="size-4" />
+					</Button>
+					<Button
+						variant="ghost"
+						size="icon-sm"
+						onclick={() => void openRevisionHistory()}
+						aria-label={m.video_studio_history()}
+						title={m.video_studio_history()}
+					>
+						<HistoryIcon class="size-4" />
+					</Button>
+				</div>
 			</div>
-			{#if !quickCutMode}
-				<AppSelect
-					value={variantID}
-					onValueChange={(value) => (variantID = value as VariantID)}
-					options={variantOptions}
-					ariaLabel={m.video_studio_variant()}
-					class="hidden h-9 w-44 sm:flex"
+
+			<div class="flex min-w-0 flex-col items-center justify-center">
+				<Input
+					value={project.title}
+					oninput={(event) => setTitle(event.currentTarget.value)}
+					class="h-8 w-full max-w-64 border-transparent bg-transparent px-2 text-center font-medium hover:border-white/10 focus:border-input sm:max-w-80"
+					aria-label={m.video_studio_project_name()}
 				/>
-			{/if}
-			<Button
-				variant="outline"
-				size="sm"
-				onclick={cloudAction}
-				aria-label={m.video_studio_save_cloud()}
-				title={m.video_studio_save_cloud()}
-			>
-				<CloudIcon class="size-4" />
-				<span class="hidden lg:inline">{m.video_studio_save_cloud()}</span>
-			</Button>
-			<Button
-				size="sm"
-				disabled={fastExportBusy}
-				aria-label={quickCutMode ? m.video_studio_quick_fast_export() : m.video_studio_export()}
-				title={quickCutMode ? m.video_studio_quick_fast_export() : m.video_studio_export()}
-				onclick={quickCutMode ? () => startFastExport() : openExportDialog}
-			>
-				{#if fastExportBusy}<LoaderIcon class="size-4 animate-spin" />{:else}<DownloadIcon
-						class="size-4"
-					/>{/if}
-				{quickCutMode ? m.video_studio_quick_fast_export() : m.video_studio_export()}
-			</Button>
+				<div
+					class="hidden items-center gap-1.5 text-[11px] leading-none text-zinc-500 sm:flex"
+					aria-live="polite"
+				>
+					{#if saveState === 'saving'}
+						<LoaderIcon class="size-3 animate-spin" />
+						{m.video_studio_saving()}
+					{:else if saveState === 'failed'}
+						<CircleDotIcon class="size-3 text-destructive" />
+						{m.video_studio_save_failed()}
+					{:else}
+						<CheckIcon class="size-3" />
+						{m.video_studio_autosaved()}
+					{/if}
+					<span aria-hidden="true">·</span>
+					<span
+						>{localProject.state === 'cloud'
+							? m.video_studio_cloud_saved()
+							: m.video_studio_local_only()}</span
+					>
+				</div>
+			</div>
+
+			<div class="flex min-w-0 items-center justify-end gap-1.5">
+				<Button
+					variant="ghost"
+					size="icon-sm"
+					class="hidden sm:inline-flex"
+					onclick={cloudAction}
+					aria-label={m.video_studio_save_cloud()}
+					title={m.video_studio_save_cloud()}
+				>
+					<CloudIcon class="size-4" />
+				</Button>
+				<Button
+					size="sm"
+					class="bg-orange-600 text-white hover:bg-orange-500"
+					disabled={fastExportBusy}
+					aria-label={quickCutMode ? m.video_studio_quick_fast_export() : m.video_studio_export()}
+					title={quickCutMode ? m.video_studio_quick_fast_export() : m.video_studio_export()}
+					onclick={quickCutMode ? () => startFastExport() : openExportDialog}
+				>
+					{#if fastExportBusy}<LoaderIcon class="size-4 animate-spin" />{:else}<DownloadIcon
+							class="size-4"
+						/>{/if}
+					<span class="hidden sm:inline"
+						>{quickCutMode ? m.video_studio_quick_fast_export() : m.video_studio_export()}</span
+					>
+				</Button>
+			</div>
 		</header>
 
 		{#if error}
@@ -3358,42 +3485,16 @@ FORM: Operate surface; no floating-card dashboard, unlimited NLE chrome, hidden 
 			/>
 		{:else}
 			<div
-				class="relative grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)_4rem] sm:grid-cols-[3.75rem_minmax(0,1fr)] sm:grid-rows-1 min-[56rem]:grid-cols-[3.75rem_13rem_minmax(18rem,1fr)_15rem] xl:grid-cols-[4.5rem_17rem_minmax(20rem,1fr)_18rem]"
+				class="relative grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)_4rem] min-[56rem]:grid-cols-[18rem_minmax(18rem,1fr)_17rem] min-[56rem]:grid-rows-1 xl:grid-cols-[21rem_minmax(20rem,1fr)_22rem]"
 			>
-				<nav
-					class="hidden min-h-0 flex-col items-center gap-1 overflow-y-auto border-r py-2 sm:flex"
-					aria-label={m.video_studio_title()}
-				>
-					{#each tools as tool (tool.id)}
-						<button
-							type="button"
-							class={[
-								'flex min-h-14 w-16 flex-col items-center justify-center gap-1 rounded-md px-1 text-[11px] leading-tight focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none',
-								activeTool === tool.id
-									? 'bg-primary/12 text-primary'
-									: 'text-muted-foreground hover:bg-muted hover:text-foreground'
-							]}
-							aria-current={activeTool === tool.id ? 'page' : undefined}
-							onclick={() => {
-								const sameTool = activeTool === tool.id;
-								activeTool = tool.id;
-								compactToolOpen = sameTool ? !compactToolOpen : true;
-							}}
-						>
-							<tool.icon class="size-4.5" />
-							<span>{tool.label()}</span>
-						</button>
-					{/each}
-				</nav>
-
 				<aside
 					class={[
-						'fixed inset-x-0 bottom-16 z-30 max-h-[min(72dvh,40rem)] w-full overflow-y-auto border-t bg-background p-3 shadow-xl sm:inset-y-0 sm:right-auto sm:bottom-auto sm:left-[3.75rem] sm:max-h-none sm:w-[min(18rem,calc(100%-3.75rem))] sm:border-t-0 sm:border-r min-[56rem]:static min-[56rem]:z-auto min-[56rem]:w-auto min-[56rem]:bg-muted/15 min-[56rem]:shadow-none',
+						'fixed inset-x-0 bottom-0 z-50 max-h-[min(72dvh,40rem)] w-full overflow-y-auto border-t bg-[#171719] p-3 shadow-xl sm:inset-y-0 sm:right-auto sm:bottom-auto sm:left-0 sm:max-h-none sm:w-[min(21rem,100%)] sm:border-t-0 sm:border-r min-[56rem]:static min-[56rem]:z-auto min-[56rem]:w-auto min-[56rem]:shadow-none',
 						!compactToolOpen && 'max-[55.999rem]:hidden'
 					]}
 					aria-label={tools.find((tool) => tool.id === activeTool)?.label()}
 				>
-					<div class="mb-2 flex justify-end min-[56rem]:hidden">
+					<div class="mb-2 flex items-center justify-end min-[56rem]:hidden">
 						<Button
 							variant="ghost"
 							size="icon-sm"
@@ -3403,25 +3504,96 @@ FORM: Operate surface; no floating-card dashboard, unlimited NLE chrome, hidden 
 							<XIcon class="size-4" />
 						</Button>
 					</div>
+					<nav
+						class="sticky top-0 z-20 mb-3 hidden overflow-x-auto border-b border-white/10 bg-[#171719] min-[56rem]:flex"
+						aria-label={m.video_studio_title()}
+						data-video-studio-family-tabs
+					>
+						{#each toolFamilies as family (family.id)}
+							<button
+								type="button"
+								class={[
+									'relative flex min-h-14 min-w-10 flex-1 flex-col items-center justify-center gap-1 px-0.5 text-[9px] leading-tight transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none',
+									activeToolFamily(family.id)
+										? 'text-orange-400 after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:bg-orange-500'
+										: 'text-zinc-500 hover:bg-white/5 hover:text-zinc-200'
+								]}
+								aria-current={activeToolFamily(family.id) ? 'page' : undefined}
+								onclick={() => selectToolFamily(family.id)}
+							>
+								<family.icon class="size-4" />
+								<span>{family.label()}</span>
+							</button>
+						{/each}
+					</nav>
+					{#if activeToolFamily('media')}
+						<div
+							class="mb-3 grid grid-cols-3 gap-1 rounded-md bg-white/5 p-1"
+							aria-label={m.video_studio_tool_media()}
+							data-video-studio-subtabs
+						>
+							{#each [{ id: 'media', label: m.video_studio_media_panel() }, { id: 'stock', label: m.video_studio_tool_stock() }, { id: 'record', label: m.video_studio_tool_record() }] as subtool (subtool.id)}
+								<button
+									type="button"
+									class={[
+										'min-h-8 rounded px-2 text-xs font-medium focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none',
+										activeTool === subtool.id
+											? 'bg-zinc-700 text-white'
+											: 'text-zinc-400 hover:text-zinc-100'
+									]}
+									onclick={() => (activeTool = subtool.id as ToolID)}
+								>
+									{subtool.label}
+								</button>
+							{/each}
+						</div>
+					{:else if activeToolFamily('elements')}
+						<div
+							class="mb-3 grid grid-cols-2 gap-1 rounded-md bg-white/5 p-1"
+							aria-label={m.video_studio_tool_elements()}
+							data-video-studio-subtabs
+						>
+							{#each [{ id: 'elements', label: m.video_studio_tool_elements() }, { id: 'brand', label: m.video_studio_tool_brand() }] as subtool (subtool.id)}
+								<button
+									type="button"
+									class={[
+										'min-h-8 rounded px-2 text-xs font-medium focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none',
+										activeTool === subtool.id
+											? 'bg-zinc-700 text-white'
+											: 'text-zinc-400 hover:text-zinc-100'
+									]}
+									onclick={() => (activeTool = subtool.id as ToolID)}
+								>
+									{subtool.label}
+								</button>
+							{/each}
+						</div>
+					{/if}
 					{#if activeTool === 'media'}
-						<div class="space-y-4">
-							<div>
-								<h2 class="text-sm font-semibold">{m.video_studio_media_panel()}</h2>
-								<p class="mt-1 text-xs leading-5 text-muted-foreground">
-									{m.video_studio_media_panel_description()}
-								</p>
-							</div>
+						<div class="space-y-3" data-video-studio-tool-content>
 							<Input
+								bind:ref={mediaImportInput}
+								class="sr-only"
 								type="file"
+								hidden
+								tabindex={-1}
 								multiple
 								accept="video/*,audio/*,image/*"
 								onchange={importFiles}
 								disabled={importBusy}
-								aria-label={m.video_studio_add_media()}
+								aria-hidden="true"
 							/>
-							<p class="text-xs text-muted-foreground">
-								{m.video_studio_sources_count({ count: Object.keys(project.sources).length })}
-							</p>
+							<div class="flex items-center gap-2">
+								<Button size="sm" disabled={importBusy} onclick={() => mediaImportInput?.click()}>
+									<PlusIcon class="size-3.5" />
+									{m.video_studio_add_media()}
+								</Button>
+								{#if Object.keys(project.sources).length > 0}
+									<span class="ml-auto text-[11px] text-muted-foreground">
+										{m.video_studio_sources_count({ count: Object.keys(project.sources).length })}
+									</span>
+								{/if}
+							</div>
 							<div class="grid gap-2">
 								{#each Object.values(project.sources) as source (source.id)}
 									{@const sourceArtifact = sourceArtifacts[source.id]}
@@ -3510,30 +3682,24 @@ FORM: Operate surface; no floating-card dashboard, unlimited NLE chrome, hidden 
 											</div>
 										{/if}
 									</div>
-								{:else}
-									<p
-										class="rounded-md border border-dashed p-4 text-center text-xs text-muted-foreground"
-									>
-										{m.video_studio_no_media()}
-									</p>
 								{/each}
 							</div>
 						</div>
 					{:else if activeTool === 'stock'}
 						<div class="space-y-4">
 							<StockMediaBrowser onSelect={addStock} />
-							<section class="space-y-2 border-t pt-4">
-								<div class="flex items-center justify-between gap-2">
-									<h2 class="text-sm font-semibold">{m.video_studio_stock_credits()}</h2>
-									{#if creditsText}
-										<Button variant="ghost" size="sm" onclick={() => void copyCredits()}>
-											{creditsCopied
-												? m.video_studio_credits_copied()
-												: m.video_studio_credits_copy()}
-										</Button>
-									{/if}
-								</div>
-								{#if stockSources.length > 0}
+							{#if stockSources.length > 0}
+								<section class="space-y-2 border-t pt-4">
+									<div class="flex items-center justify-between gap-2">
+										<h2 class="text-sm font-semibold">{m.video_studio_stock_credits()}</h2>
+										{#if creditsText}
+											<Button variant="ghost" size="sm" onclick={() => void copyCredits()}>
+												{creditsCopied
+													? m.video_studio_credits_copied()
+													: m.video_studio_credits_copy()}
+											</Button>
+										{/if}
+									</div>
 									<div class="space-y-2">
 										{#each stockSources as source (source.id)}
 											<div class="rounded-md border bg-background p-2 text-xs">
@@ -3555,28 +3721,19 @@ FORM: Operate surface; no floating-card dashboard, unlimited NLE chrome, hidden 
 											</div>
 										{/each}
 									</div>
-								{:else}
-									<p class="text-xs leading-5 text-muted-foreground">
-										{m.video_studio_credits_empty()}
-									</p>
-								{/if}
-							</section>
+								</section>
+							{/if}
 						</div>
 					{:else if activeTool === 'text'}
-						<div class="space-y-3">
-							<h2 class="text-sm font-semibold">{m.video_studio_tool_text()}</h2>
+						<div>
 							<Button class="w-full" onclick={() => addText()}>
 								<TextIcon class="size-4" />
 								{m.video_studio_add_title()}
 							</Button>
-							<p class="text-xs leading-5 text-muted-foreground">
-								{m.video_studio_text_guidance()}
-							</p>
 						</div>
 					{:else if activeTool === 'captions'}
 						<div class="space-y-3">
-							<div class="flex items-center justify-between gap-2">
-								<h2 class="text-sm font-semibold">{m.video_studio_tool_captions()}</h2>
+							<div class="flex justify-end">
 								<Button href="/video-studio/models" variant="ghost" size="sm">
 									{m.video_studio_models_manage()}
 								</Button>
@@ -3816,13 +3973,9 @@ FORM: Operate surface; no floating-card dashboard, unlimited NLE chrome, hidden 
 									{/each}
 								</div>
 							{/if}
-							<p class="text-xs leading-5 text-muted-foreground">
-								{m.video_studio_suggestions_only()}
-							</p>
 						</div>
 					{:else if activeTool === 'elements'}
 						<div class="space-y-3">
-							<h2 class="text-sm font-semibold">{m.video_studio_tool_elements()}</h2>
 							<Button
 								class="w-full justify-start"
 								variant="outline"
@@ -3861,14 +4014,6 @@ FORM: Operate surface; no floating-card dashboard, unlimited NLE chrome, hidden 
 						</div>
 					{:else if activeTool === 'brand'}
 						<div class="space-y-4">
-							<div>
-								<h2 class="text-sm font-semibold">{m.video_studio_tool_brand()}</h2>
-								<p class="mt-1 text-xs leading-5 text-muted-foreground">
-									{brandKit
-										? m.video_studio_brand_description()
-										: m.video_studio_brand_guest_description()}
-								</p>
-							</div>
 							{#if brandKit?.colors.length}
 								<section class="space-y-2">
 									<h3 class="text-xs font-semibold">{m.studio_brand_colors()}</h3>
@@ -3945,9 +4090,6 @@ FORM: Operate surface; no floating-card dashboard, unlimited NLE chrome, hidden 
 							{#if brandKit?.assets.length}
 								<section class="space-y-2">
 									<h3 class="text-xs font-semibold">{m.studio_brand_assets()}</h3>
-									<p class="text-xs leading-5 text-muted-foreground">
-										{m.video_studio_brand_assets_media()}
-									</p>
 									<Button href="/media" class="w-full" variant="outline" size="sm">
 										{m.video_studio_openpost_media()}
 									</Button>
@@ -3968,7 +4110,6 @@ FORM: Operate surface; no floating-card dashboard, unlimited NLE chrome, hidden 
 						</div>
 					{:else if activeTool === 'transitions'}
 						<div class="space-y-3">
-							<h2 class="text-sm font-semibold">{m.video_studio_tool_transitions()}</h2>
 							{#if selectedClip}
 								<label class="grid gap-1.5 text-xs font-medium">
 									<span>{m.video_studio_transition()}</span>
@@ -3978,21 +4119,15 @@ FORM: Operate surface; no floating-card dashboard, unlimited NLE chrome, hidden 
 										onValueChange={setTransition}
 									/>
 								</label>
-								<p class="text-xs leading-5 text-muted-foreground">
-									{m.video_studio_transition_bounded()}
-								</p>
 							{:else}
 								<p class="text-xs text-muted-foreground">{m.video_studio_select_clip()}</p>
 							{/if}
 						</div>
 					{:else if activeTool === 'smart'}
 						<div class="space-y-3">
-							<h2 class="text-sm font-semibold">{m.video_studio_tool_smart()}</h2>
-							<p class="text-xs leading-5 text-muted-foreground">
-								{m.video_studio_smart_description()}
-							</p>
 							<Button
 								class="w-full"
+								title={m.video_studio_smart_description()}
 								disabled={smartBusy || project.primary_sequence.length === 0}
 								onclick={() => void runSmartFraming()}
 							>
@@ -4081,13 +4216,9 @@ FORM: Operate surface; no floating-card dashboard, unlimited NLE chrome, hidden 
 									</Button>
 								</div>
 							{/if}
-							<p class="text-xs leading-5 text-muted-foreground">
-								{m.video_studio_cursor_limit()}
-							</p>
 						</div>
 					{:else if activeTool === 'record'}
 						<div class="space-y-3">
-							<h2 class="text-sm font-semibold">{m.video_studio_tool_record()}</h2>
 							{#if recordingSession}
 								<div class="space-y-3 rounded-md border border-destructive/30 bg-destructive/5 p-3">
 									<div class="flex items-center justify-between gap-2">
@@ -4254,17 +4385,30 @@ FORM: Operate surface; no floating-card dashboard, unlimited NLE chrome, hidden 
 						</div>
 					{:else if activeTool === 'audio'}
 						<div class="space-y-3">
-							<h2 class="text-sm font-semibold">{m.video_studio_tool_audio()}</h2>
 							<Input
+								bind:ref={audioImportInput}
+								class="sr-only"
 								type="file"
+								hidden
+								tabindex={-1}
 								multiple
 								accept="audio/*"
 								onchange={importFiles}
-								aria-label={m.video_studio_add_media()}
+								aria-hidden="true"
 							/>
 							<Button
 								class="w-full"
 								variant="outline"
+								size="sm"
+								onclick={() => audioImportInput?.click()}
+							>
+								<PlusIcon class="size-3.5" />
+								{m.video_studio_add_media()}
+							</Button>
+							<Button
+								class="w-full"
+								variant="outline"
+								title={m.video_studio_normalize_description()}
 								disabled={audioNormalizeBusy || project.primary_sequence.length === 0}
 								onclick={() => void normalizeProjectAudio()}
 							>
@@ -4278,9 +4422,6 @@ FORM: Operate surface; no floating-card dashboard, unlimited NLE chrome, hidden 
 									})}
 								</p>
 							{/if}
-							<p class="text-xs leading-5 text-muted-foreground">
-								{m.video_studio_normalize_description()}
-							</p>
 							<details class="border-t pt-3" open>
 								<summary class="min-h-9 cursor-pointer py-2 text-xs font-medium">
 									{m.video_studio_audio_music_beds()}
@@ -4322,10 +4463,7 @@ FORM: Operate surface; no floating-card dashboard, unlimited NLE chrome, hidden 
 							</p>
 						</div>
 					{:else}
-						<div class="space-y-3">
-							<h2 class="text-sm font-semibold">
-								{tools.find((tool) => tool.id === activeTool)?.label()}
-							</h2>
+						<div>
 							<p class="text-xs leading-5 text-muted-foreground">
 								{m.video_studio_smart_unavailable()}
 							</p>
@@ -4334,7 +4472,7 @@ FORM: Operate surface; no floating-card dashboard, unlimited NLE chrome, hidden 
 				</aside>
 
 				<main
-					class="col-start-1 row-start-1 grid min-h-0 grid-rows-[minmax(0,1fr)_3.25rem] bg-[#121214] sm:col-start-2 sm:row-auto min-[56rem]:col-auto"
+					class="col-start-1 row-start-1 grid min-h-0 grid-rows-[minmax(0,1fr)_3.25rem] bg-[#121214] min-[56rem]:col-auto min-[56rem]:row-auto"
 				>
 					<VideoPreview
 						{project}
@@ -4350,8 +4488,14 @@ FORM: Operate surface; no floating-card dashboard, unlimited NLE chrome, hidden 
 						onTransformVisual={updateVisualPosition}
 					/>
 					<div
-						class="flex items-center justify-center gap-3 border-t border-white/10 bg-[#18181b] px-3 text-zinc-200"
+						class="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 border-t border-white/10 bg-[#18181b] px-3 text-zinc-200"
 					>
+						<span class="truncate font-mono text-[11px] text-zinc-400 tabular-nums">
+							{m.video_studio_playback_time({
+								current: formatTime(playheadUS),
+								total: formatTime(durationUS)
+							})}
+						</span>
 						<Button
 							variant="ghost"
 							size="icon"
@@ -4361,27 +4505,29 @@ FORM: Operate surface; no floating-card dashboard, unlimited NLE chrome, hidden 
 						>
 							{#if playing}<PauseIcon class="size-5" />{:else}<PlayIcon class="size-5" />{/if}
 						</Button>
-						<span class="font-mono text-xs">
-							{m.video_studio_playback_time({
-								current: formatTime(playheadUS),
-								total: formatTime(durationUS)
-							})}
-						</span>
-						<span class="hidden text-xs text-zinc-500 xl:inline"
-							>{m.video_studio_keyboard_help()}</span
-						>
+						<div class="ml-auto flex min-w-0 items-center gap-2">
+							<AppSelect
+								value={variantID}
+								onValueChange={(value) => (variantID = value as VariantID)}
+								options={variantOptions}
+								ariaLabel={m.video_studio_variant()}
+								class="h-8 w-24 sm:w-36"
+							/>
+						</div>
 					</div>
 				</main>
 
 				<aside
 					class={[
-						'fixed inset-x-0 bottom-16 z-30 max-h-[min(72dvh,40rem)] w-full overflow-y-auto border-t bg-background p-3 shadow-xl sm:inset-y-0 sm:bottom-auto sm:left-auto sm:max-h-none sm:w-[min(18rem,calc(100%-3.75rem))] sm:border-t-0 sm:border-l min-[56rem]:static min-[56rem]:z-auto min-[56rem]:w-auto min-[56rem]:shadow-none',
+						'fixed inset-x-0 bottom-0 z-50 max-h-[min(72dvh,40rem)] w-full overflow-y-auto border-t bg-[#171719] p-3 shadow-xl sm:inset-y-0 sm:bottom-auto sm:left-auto sm:max-h-none sm:w-[min(19rem,100%)] sm:border-t-0 sm:border-l min-[56rem]:static min-[56rem]:z-auto min-[56rem]:w-auto min-[56rem]:shadow-none',
 						!compactInspectorOpen && 'max-[55.999rem]:hidden'
 					]}
 					aria-label={m.video_studio_inspector()}
 				>
 					<div class="flex items-center justify-between gap-2">
-						<h2 class="text-sm font-semibold">{m.video_studio_inspector()}</h2>
+						<h2 class={showInspectorTabs ? 'sr-only' : 'text-sm font-semibold'}>
+							{showInspectorTabs ? m.video_studio_inspector() : m.video_studio_details()}
+						</h2>
 						<Button
 							variant="ghost"
 							size="icon-sm"
@@ -4392,20 +4538,44 @@ FORM: Operate surface; no floating-card dashboard, unlimited NLE chrome, hidden 
 							<XIcon class="size-4" />
 						</Button>
 					</div>
+					{#if showInspectorTabs}
+						<nav
+							class="-mx-3 mt-2 flex overflow-x-auto border-y border-white/10 px-2"
+							aria-label={m.video_studio_inspector()}
+						>
+							{#each inspectorTabs as tab (tab.id)}
+								<button
+									type="button"
+									class={[
+										'relative min-h-10 shrink-0 px-1.5 text-[10px] font-medium transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none',
+										inspectorTab === tab.id
+											? 'text-orange-400 after:absolute after:inset-x-3 after:bottom-0 after:h-0.5 after:bg-orange-500'
+											: 'text-zinc-500 hover:text-zinc-200'
+									]}
+									aria-current={inspectorTab === tab.id ? 'page' : undefined}
+									onclick={() => (inspectorTab = tab.id)}
+								>
+									{tab.label}
+								</button>
+							{/each}
+						</nav>
+					{/if}
 					{#if selectedVisualItem}
 						<div class="mt-4 space-y-5">
-							<div class="rounded-md border bg-muted/20 p-3">
-								<p class="truncate text-sm font-medium">
+							<div class="flex min-w-0 items-center gap-2 border-b border-white/10 pb-2">
+								<p class="min-w-0 flex-1 truncate text-xs font-medium">
 									{selectedVisualItem.type === 'text'
 										? selectedVisualItem.text
 										: m.video_studio_overlay_item()}
 								</p>
-								<p class="mt-1 text-xs text-muted-foreground">
+								<span class="shrink-0 text-[10px] text-muted-foreground">
 									{m.video_studio_overlay_type({ type: selectedVisualItem.type })}
-								</p>
+								</span>
 							</div>
 							{#if selectedVisualItem.type === 'text'}
-								<label class="grid gap-1.5 text-xs font-medium">
+								<label
+									class={['grid gap-1.5 text-xs font-medium', inspectorTab !== 'text' && 'hidden']}
+								>
 									<span>{m.video_studio_overlay_text()}</span>
 									<Textarea
 										value={selectedVisualItem.text}
@@ -4413,8 +4583,13 @@ FORM: Operate surface; no floating-card dashboard, unlimited NLE chrome, hidden 
 										oninput={(event) => updateVisualText(event.currentTarget.value)}
 									/>
 								</label>
-								<div class="grid grid-cols-2 gap-2">
-									<label class="grid gap-1.5 text-xs font-medium">
+								<div class="grid grid-cols-1 gap-2">
+									<label
+										class={[
+											'grid gap-1.5 text-xs font-medium',
+											inspectorTab !== 'text' && 'hidden'
+										]}
+									>
 										<span>{m.video_studio_text_alignment()}</span>
 										<AppSelect
 											value={selectedVisualItem.style.align}
@@ -4426,7 +4601,12 @@ FORM: Operate surface; no floating-card dashboard, unlimited NLE chrome, hidden 
 											onValueChange={(value) => updateVisualTextStyle('align', value)}
 										/>
 									</label>
-									<label class="grid gap-1.5 text-xs font-medium">
+									<label
+										class={[
+											'grid gap-1.5 text-xs font-medium',
+											inspectorTab !== 'animation' && 'hidden'
+										]}
+									>
 										<span>{m.video_studio_text_animation()}</span>
 										<AppSelect
 											value={selectedVisualItem.style.animation}
@@ -4441,7 +4621,7 @@ FORM: Operate surface; no floating-card dashboard, unlimited NLE chrome, hidden 
 										/>
 									</label>
 								</div>
-								<label class="grid gap-2 text-xs">
+								<label class={['grid gap-2 text-xs', inspectorTab !== 'text' && 'hidden']}>
 									<span class="flex justify-between">
 										{m.video_studio_text_size()}
 										<span>{selectedVisualItem.style.font_size}px</span>
@@ -4455,7 +4635,7 @@ FORM: Operate surface; no floating-card dashboard, unlimited NLE chrome, hidden 
 										ariaLabel={m.video_studio_text_size()}
 									/>
 								</label>
-								<div class="grid grid-cols-2 gap-2">
+								<div class={['grid grid-cols-2 gap-2', inspectorTab !== 'text' && 'hidden']}>
 									<label class="grid gap-1.5 text-xs font-medium">
 										<span>{m.video_studio_text_color()}</span>
 										<Input
@@ -4475,7 +4655,9 @@ FORM: Operate surface; no floating-card dashboard, unlimited NLE chrome, hidden 
 									</label>
 								</div>
 							{:else if selectedVisualItem.type === 'shape' || selectedVisualItem.type === 'annotation'}
-								<label class="grid gap-1.5 text-xs font-medium">
+								<label
+									class={['grid gap-1.5 text-xs font-medium', inspectorTab !== 'style' && 'hidden']}
+								>
 									<span>{m.video_studio_shape_kind()}</span>
 									<AppSelect
 										value={selectedVisualItem.shape.kind}
@@ -4498,7 +4680,7 @@ FORM: Operate surface; no floating-card dashboard, unlimited NLE chrome, hidden 
 										onValueChange={(value) => updateVisualShapeStyle('kind', value)}
 									/>
 								</label>
-								<div class="grid grid-cols-2 gap-2">
+								<div class={['grid grid-cols-2 gap-2', inspectorTab !== 'style' && 'hidden']}>
 									<label class="grid gap-1.5 text-xs font-medium">
 										<span>{m.video_studio_shape_fill()}</span>
 										<Input
@@ -4517,7 +4699,7 @@ FORM: Operate surface; no floating-card dashboard, unlimited NLE chrome, hidden 
 										/>
 									</label>
 								</div>
-								<label class="grid gap-2 text-xs">
+								<label class={['grid gap-2 text-xs', inspectorTab !== 'style' && 'hidden']}>
 									<span class="flex justify-between">
 										{m.video_studio_shape_stroke_width()}
 										<span>{selectedVisualItem.shape.stroke_width}px</span>
@@ -4532,72 +4714,72 @@ FORM: Operate surface; no floating-card dashboard, unlimited NLE chrome, hidden 
 									/>
 								</label>
 							{/if}
-							<label class="flex items-start gap-2 text-xs">
-								<Checkbox
-									bind:checked={editShared}
-									aria-label={m.video_studio_selection_shared()}
-								/>
-								<span>
-									<span class="block font-medium">{m.video_studio_selection_shared()}</span>
-									<span class="mt-1 block leading-4 text-muted-foreground">
-										{m.video_studio_selection_shared_description()}
-									</span>
-								</span>
-							</label>
-							<div class="grid grid-cols-2 gap-2">
-								<label class="grid gap-1.5 text-xs font-medium">
-									<span>{m.video_studio_overlay_start()}</span>
-									<Input
-										type="number"
-										min="0"
-										step="0.1"
-										value={(selectedVisualItem.timeline_start_us / 1_000_000).toFixed(1)}
-										onchange={(event) =>
-											updateVisualTiming('timeline_start_us', event.currentTarget.valueAsNumber)}
+							{#if inspectorTab === 'video'}
+								<label
+									class="flex min-h-9 items-center gap-2 rounded-md bg-white/5 px-2 text-xs font-medium"
+									title={m.video_studio_selection_shared_description()}
+								>
+									<Checkbox
+										bind:checked={editShared}
+										aria-label={m.video_studio_selection_shared()}
 									/>
+									<span class="truncate">{m.video_studio_selection_shared()}</span>
 								</label>
-								<label class="grid gap-1.5 text-xs font-medium">
-									<span>{m.video_studio_overlay_duration()}</span>
-									<Input
-										type="number"
-										min="0.1"
-										step="0.1"
-										value={(selectedVisualItem.duration_us / 1_000_000).toFixed(1)}
-										onchange={(event) =>
-											updateVisualTiming('duration_us', event.currentTarget.valueAsNumber)}
-									/>
-								</label>
-							</div>
-							<div class="space-y-3">
-								<h3 class="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-									{m.video_studio_inspector_position()}
-								</h3>
-								{#each [{ property: 'position_x', label: m.video_studio_position_x(), value: selectedVisualPresentation?.position_x ?? 0.5, min: 0, max: 1, step: 0.01 }, { property: 'position_y', label: m.video_studio_position_y(), value: selectedVisualPresentation?.position_y ?? 0.5, min: 0, max: 1, step: 0.01 }, { property: 'scale', label: m.video_studio_clip_scale(), value: selectedVisualPresentation?.scale ?? 1, min: 0.1, max: 4, step: 0.01 }, { property: 'rotation', label: m.video_studio_rotation(), value: selectedVisualPresentation?.rotation ?? 0, min: -180, max: 180, step: 1 }, { property: 'opacity', label: m.video_studio_clip_opacity(), value: selectedVisualPresentation?.opacity ?? 1, min: 0, max: 1, step: 0.01 }] as control (control.property)}
-									<label class="grid gap-2 text-xs">
-										<span class="flex justify-between">
-											{control.label}
-											<span
-												>{control.property === 'rotation'
-													? `${Math.round(control.value)}°`
-													: `${Math.round(control.value * 100)}%`}</span
-											>
-										</span>
-										<Slider
-											value={control.value}
-											min={control.min}
-											max={control.max}
-											step={control.step}
-											onValueChange={(value) =>
-												updateVisualPresentation(selectedVisualItem.id, {
-													[control.property]: value
-												})}
-											ariaLabel={control.label}
+								<div class="grid grid-cols-2 gap-2">
+									<label class="grid gap-1.5 text-xs font-medium">
+										<span>{m.video_studio_overlay_start()}</span>
+										<Input
+											type="number"
+											min="0"
+											step="0.1"
+											value={(selectedVisualItem.timeline_start_us / 1_000_000).toFixed(1)}
+											onchange={(event) =>
+												updateVisualTiming('timeline_start_us', event.currentTarget.valueAsNumber)}
 										/>
 									</label>
-								{/each}
-							</div>
+									<label class="grid gap-1.5 text-xs font-medium">
+										<span>{m.video_studio_overlay_duration()}</span>
+										<Input
+											type="number"
+											min="0.1"
+											step="0.1"
+											value={(selectedVisualItem.duration_us / 1_000_000).toFixed(1)}
+											onchange={(event) =>
+												updateVisualTiming('duration_us', event.currentTarget.valueAsNumber)}
+										/>
+									</label>
+								</div>
+								<div class="space-y-3">
+									<h3 class="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+										{m.video_studio_inspector_position()}
+									</h3>
+									{#each [{ property: 'position_x', label: m.video_studio_position_x(), value: selectedVisualPresentation?.position_x ?? 0.5, min: 0, max: 1, step: 0.01 }, { property: 'position_y', label: m.video_studio_position_y(), value: selectedVisualPresentation?.position_y ?? 0.5, min: 0, max: 1, step: 0.01 }, { property: 'scale', label: m.video_studio_clip_scale(), value: selectedVisualPresentation?.scale ?? 1, min: 0.1, max: 4, step: 0.01 }, { property: 'rotation', label: m.video_studio_rotation(), value: selectedVisualPresentation?.rotation ?? 0, min: -180, max: 180, step: 1 }, { property: 'opacity', label: m.video_studio_clip_opacity(), value: selectedVisualPresentation?.opacity ?? 1, min: 0, max: 1, step: 0.01 }] as control (control.property)}
+										<label class="grid gap-2 text-xs">
+											<span class="flex justify-between">
+												{control.label}
+												<span
+													>{control.property === 'rotation'
+														? `${Math.round(control.value)}°`
+														: `${Math.round(control.value * 100)}%`}</span
+												>
+											</span>
+											<Slider
+												value={control.value}
+												min={control.min}
+												max={control.max}
+												step={control.step}
+												onValueChange={(value) =>
+													updateVisualPresentation(selectedVisualItem.id, {
+														[control.property]: value
+													})}
+												ariaLabel={control.label}
+											/>
+										</label>
+									{/each}
+								</div>
+							{/if}
 							{#if selectedVisualItem.type === 'camera' || selectedVisualItem.type === 'media'}
-								<details class="border-t pt-3 text-xs" open={selectedVisualItem.type === 'camera'}>
+								<details class={['text-xs', inspectorTab !== 'crop' && 'hidden']} open>
 									<summary class="min-h-11 cursor-pointer py-3 font-medium">
 										{m.video_studio_crop_and_shape()}
 									</summary>
@@ -4662,97 +4844,105 @@ FORM: Operate surface; no floating-card dashboard, unlimited NLE chrome, hidden 
 						</div>
 					{:else if selectedAudioItem}
 						<div class="mt-4 space-y-4">
-							<div class="rounded-md border bg-muted/20 p-3">
-								<p class="text-sm font-medium">{m.video_studio_audio_item()}</p>
-								<p class="mt-1 truncate text-xs text-muted-foreground">
+							<div class="flex min-w-0 items-center gap-2 border-b border-white/10 pb-2">
+								<p class="min-w-0 flex-1 truncate text-xs font-medium">
 									{project.sources[selectedAudioItem.source_id]?.original_name}
 								</p>
-							</div>
-							<div class="grid grid-cols-2 gap-2">
-								<label class="grid gap-1.5 text-xs font-medium">
-									<span>{m.video_studio_overlay_start()}</span>
-									<Input
-										type="number"
-										min="0"
-										step="0.1"
-										value={(selectedAudioItem.timeline_start_us / 1_000_000).toFixed(1)}
-										onchange={(event) =>
-											updateSelectedAudio('timeline_start_us', event.currentTarget.valueAsNumber)}
-									/>
-								</label>
-								<label class="grid gap-1.5 text-xs font-medium">
-									<span>{m.video_studio_overlay_duration()}</span>
-									<Input
-										type="number"
-										min="0.1"
-										step="0.1"
-										value={(selectedAudioItem.duration_us / 1_000_000).toFixed(1)}
-										onchange={(event) =>
-											updateSelectedAudio('duration_us', event.currentTarget.valueAsNumber)}
-									/>
-								</label>
-							</div>
-							<label class="grid gap-2 text-xs">
-								<span class="flex justify-between">
-									{m.video_studio_clip_volume()}
-									<span>{selectedAudioItem.gain_db.toFixed(1)} dB</span>
+								<span class="shrink-0 text-[10px] text-muted-foreground">
+									{m.video_studio_audio_item()}
 								</span>
-								<Slider
-									value={selectedAudioItem.gain_db}
-									min={-60}
-									max={12}
-									step={0.5}
-									onValueChange={(value) => updateSelectedAudio('gain_db', value)}
-									ariaLabel={m.video_studio_clip_volume()}
-								/>
-							</label>
-							<label class="flex min-h-10 items-center gap-2 text-xs font-medium">
-								<Checkbox
-									checked={selectedAudioItem.muted}
-									onCheckedChange={(checked) => updateSelectedAudio('muted', checked)}
-									aria-label={m.video_studio_clip_mute()}
-								/>
-								{m.video_studio_clip_mute()}
-							</label>
+							</div>
+							{#if inspectorTab === 'timing'}
+								<div class="grid grid-cols-2 gap-2">
+									<label class="grid gap-1.5 text-xs font-medium">
+										<span>{m.video_studio_overlay_start()}</span>
+										<Input
+											type="number"
+											min="0"
+											step="0.1"
+											value={(selectedAudioItem.timeline_start_us / 1_000_000).toFixed(1)}
+											onchange={(event) =>
+												updateSelectedAudio('timeline_start_us', event.currentTarget.valueAsNumber)}
+										/>
+									</label>
+									<label class="grid gap-1.5 text-xs font-medium">
+										<span>{m.video_studio_overlay_duration()}</span>
+										<Input
+											type="number"
+											min="0.1"
+											step="0.1"
+											value={(selectedAudioItem.duration_us / 1_000_000).toFixed(1)}
+											onchange={(event) =>
+												updateSelectedAudio('duration_us', event.currentTarget.valueAsNumber)}
+										/>
+									</label>
+								</div>
+							{:else}
+								<label class="grid gap-2 text-xs">
+									<span class="flex justify-between">
+										{m.video_studio_clip_volume()}
+										<span>{selectedAudioItem.gain_db.toFixed(1)} dB</span>
+									</span>
+									<Slider
+										value={selectedAudioItem.gain_db}
+										min={-60}
+										max={12}
+										step={0.5}
+										onValueChange={(value) => updateSelectedAudio('gain_db', value)}
+										ariaLabel={m.video_studio_clip_volume()}
+									/>
+								</label>
+								<label class="flex min-h-10 items-center gap-2 text-xs font-medium">
+									<Checkbox
+										checked={selectedAudioItem.muted}
+										onCheckedChange={(checked) => updateSelectedAudio('muted', checked)}
+										aria-label={m.video_studio_clip_mute()}
+									/>
+									{m.video_studio_clip_mute()}
+								</label>
+							{/if}
 							<Button class="w-full" variant="destructive" size="sm" onclick={deleteSelectedAudio}>
 								{m.video_studio_delete_audio_item()}
 							</Button>
 						</div>
 					{:else if selectedCaptionCue}
 						<div class="mt-4 space-y-4">
-							<label class="grid gap-1.5 text-xs font-medium">
-								<span>{m.video_studio_overlay_text()}</span>
-								<Textarea
-									value={selectedCaptionCue.text}
-									rows={3}
-									oninput={(event) =>
-										updateCaptionCue(selectedCaptionCue.id, event.currentTarget.value)}
-								/>
-							</label>
-							<div class="grid grid-cols-2 gap-2">
+							{#if inspectorTab === 'text'}
 								<label class="grid gap-1.5 text-xs font-medium">
-									<span>{m.video_studio_overlay_start()}</span>
-									<Input
-										type="number"
-										min="0"
-										step="0.1"
-										value={(selectedCaptionCue.start_us / 1_000_000).toFixed(1)}
-										onchange={(event) =>
-											updateSelectedCaptionTiming('start_us', event.currentTarget.valueAsNumber)}
+									<span>{m.video_studio_overlay_text()}</span>
+									<Textarea
+										value={selectedCaptionCue.text}
+										rows={3}
+										oninput={(event) =>
+											updateCaptionCue(selectedCaptionCue.id, event.currentTarget.value)}
 									/>
 								</label>
-								<label class="grid gap-1.5 text-xs font-medium">
-									<span>{m.video_studio_overlay_end()}</span>
-									<Input
-										type="number"
-										min="0.1"
-										step="0.1"
-										value={(selectedCaptionCue.end_us / 1_000_000).toFixed(1)}
-										onchange={(event) =>
-											updateSelectedCaptionTiming('end_us', event.currentTarget.valueAsNumber)}
-									/>
-								</label>
-							</div>
+							{:else}
+								<div class="grid grid-cols-2 gap-2">
+									<label class="grid gap-1.5 text-xs font-medium">
+										<span>{m.video_studio_overlay_start()}</span>
+										<Input
+											type="number"
+											min="0"
+											step="0.1"
+											value={(selectedCaptionCue.start_us / 1_000_000).toFixed(1)}
+											onchange={(event) =>
+												updateSelectedCaptionTiming('start_us', event.currentTarget.valueAsNumber)}
+										/>
+									</label>
+									<label class="grid gap-1.5 text-xs font-medium">
+										<span>{m.video_studio_overlay_end()}</span>
+										<Input
+											type="number"
+											min="0.1"
+											step="0.1"
+											value={(selectedCaptionCue.end_us / 1_000_000).toFixed(1)}
+											onchange={(event) =>
+												updateSelectedCaptionTiming('end_us', event.currentTarget.valueAsNumber)}
+										/>
+									</label>
+								</div>
+							{/if}
 							<Button
 								class="w-full"
 								variant="outline"
@@ -4771,280 +4961,298 @@ FORM: Operate surface; no floating-card dashboard, unlimited NLE chrome, hidden 
 							</Button>
 						</div>
 					{:else if selectedClip}
-						<div class="mt-4 space-y-5">
-							<div class="rounded-md border bg-muted/20 p-3">
-								<p class="truncate text-sm font-medium">
+						<div class="mt-3 space-y-4">
+							<div class="flex min-w-0 items-center gap-2 border-b border-white/10 pb-2">
+								<p class="min-w-0 flex-1 truncate text-xs font-medium">
 									{project.sources[selectedClip.source_id]?.original_name}
 								</p>
-								<p class="mt-1 text-xs text-muted-foreground">{m.video_studio_clip()}</p>
+								<span class="shrink-0 text-[10px] text-muted-foreground"
+									>{m.video_studio_clip()}</span
+								>
 							</div>
-							<div class="grid grid-cols-2 gap-2">
-								<Button variant="outline" size="sm" onclick={duplicateSelected}>
+							<div class="grid grid-cols-3 gap-1">
+								<Button
+									class="min-w-0 px-1 text-[11px]"
+									variant="outline"
+									size="xs"
+									onclick={duplicateSelected}
+								>
 									{m.video_studio_duplicate_clip()}
 								</Button>
 								<Button
+									class="min-w-0 px-1 text-[11px]"
 									variant="outline"
-									size="sm"
+									size="xs"
 									disabled={selectedClip.mode === 'freeze'}
 									onclick={freezeSelected}
 								>
 									{m.video_studio_freeze_frame()}
 								</Button>
 								<Button
-									class="col-span-2"
+									class="min-w-0 px-1 text-[11px]"
 									variant="outline"
-									size="sm"
+									size="xs"
 									disabled={selectedClip.mode === 'freeze' || selectedClip.audio.muted}
 									onclick={detachSelectedAudio}
 								>
 									{m.video_studio_detach_audio()}
 								</Button>
 							</div>
-							<label class="flex items-start gap-2 text-xs">
-								<Checkbox
-									bind:checked={editShared}
-									aria-label={m.video_studio_selection_shared()}
-								/>
-								<span>
-									<span class="block font-medium">{m.video_studio_selection_shared()}</span>
-									<span class="mt-1 block leading-4 text-muted-foreground">
-										{m.video_studio_selection_shared_description()}
-									</span>
-								</span>
-							</label>
-							<div class="space-y-3">
-								<h3 class="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-									{m.video_studio_inspector_position()}
-								</h3>
-								<label class="grid gap-2 text-xs">
-									<span class="flex justify-between">
-										{m.video_studio_position_x()}
-										<span>{Math.round((selectedPresentation?.position_x ?? 0.5) * 100)}%</span>
-									</span>
-									<Slider
-										value={selectedPresentation?.position_x ?? 0.5}
-										min={0}
-										max={1}
-										step={0.01}
-										onValueChange={(value) =>
-											updateClipPosition(value, selectedPresentation?.position_y ?? 0.5)}
-										ariaLabel={m.video_studio_position_x()}
-									/>
-								</label>
-								<label class="grid gap-2 text-xs">
-									<span class="flex justify-between">
-										{m.video_studio_position_y()}
-										<span>{Math.round((selectedPresentation?.position_y ?? 0.5) * 100)}%</span>
-									</span>
-									<Slider
-										value={selectedPresentation?.position_y ?? 0.5}
-										min={0}
-										max={1}
-										step={0.01}
-										onValueChange={(value) =>
-											updateClipPosition(selectedPresentation?.position_x ?? 0.5, value)}
-										ariaLabel={m.video_studio_position_y()}
-									/>
-								</label>
-								<label class="grid gap-2 text-xs">
-									<span class="flex justify-between">
-										{m.video_studio_clip_scale()}
-										<span>{Math.round((selectedPresentation?.scale ?? 1) * 100)}%</span>
-									</span>
-									<Slider
-										value={selectedPresentation?.scale ?? 1}
-										min={0.1}
-										max={4}
-										step={0.01}
-										onValueChange={(value) => updateClipNumber('scale', value)}
-										ariaLabel={m.video_studio_clip_scale()}
-									/>
-								</label>
-								<label class="grid gap-2 text-xs">
-									<span class="flex justify-between">
-										{m.video_studio_clip_opacity()}
-										<span>{Math.round((selectedPresentation?.opacity ?? 1) * 100)}%</span>
-									</span>
-									<Slider
-										value={selectedPresentation?.opacity ?? 1}
-										min={0}
-										max={1}
-										step={0.01}
-										onValueChange={(value) => updateClipNumber('opacity', value)}
-										ariaLabel={m.video_studio_clip_opacity()}
-									/>
-								</label>
-							</div>
-							<div class="space-y-3 border-t pt-4">
-								<h3 class="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-									{m.video_studio_inspector_audio()}
-								</h3>
-								<label class="grid gap-2 text-xs">
-									<span class="flex justify-between">
-										{m.video_studio_clip_speed()} <span>{selectedClip.speed.toFixed(2)}×</span>
-									</span>
-									<Slider
-										value={selectedClip.speed}
-										min={0.25}
-										max={4}
-										step={0.05}
-										disabled={selectedClip.mode === 'freeze'}
-										onValueChange={updateSpeed}
-										ariaLabel={m.video_studio_clip_speed()}
-									/>
-								</label>
-								<label class="grid gap-2 text-xs">
-									<span class="flex justify-between">
-										{m.video_studio_clip_volume()}
-										<span>{selectedClip.audio.gain_db.toFixed(1)} dB</span>
-									</span>
-									<Slider
-										value={selectedClip.audio.gain_db}
-										min={-60}
-										max={12}
-										step={0.5}
-										onValueChange={(value) => updateClipNumber('gain_db', value)}
-										ariaLabel={m.video_studio_clip_volume()}
-									/>
-								</label>
-								<label class="flex min-h-10 items-center gap-2 text-xs font-medium">
-									<Checkbox
-										checked={selectedClip.audio.muted}
-										onCheckedChange={updateMute}
-										aria-label={m.video_studio_clip_mute()}
-									/>
-									{m.video_studio_clip_mute()}
-								</label>
-								<label class="grid gap-2 text-xs">
-									<span class="flex justify-between">
-										{m.video_studio_fade_in()}
-										<span>{(selectedClip.audio.fade_in_us / 1_000_000).toFixed(1)}s</span>
-									</span>
-									<Slider
-										value={selectedClip.audio.fade_in_us / 1_000_000}
-										min={0}
-										max={3}
-										step={0.1}
-										onValueChange={(value) => updateClipAudioTiming('fade_in_us', value)}
-										ariaLabel={m.video_studio_fade_in()}
-									/>
-								</label>
-								<label class="grid gap-2 text-xs">
-									<span class="flex justify-between">
-										{m.video_studio_fade_out()}
-										<span>{(selectedClip.audio.fade_out_us / 1_000_000).toFixed(1)}s</span>
-									</span>
-									<Slider
-										value={selectedClip.audio.fade_out_us / 1_000_000}
-										min={0}
-										max={3}
-										step={0.1}
-										onValueChange={(value) => updateClipAudioTiming('fade_out_us', value)}
-										ariaLabel={m.video_studio_fade_out()}
-									/>
-								</label>
-							</div>
-							<details class="border-t pt-3 text-xs">
-								<summary class="min-h-9 cursor-pointer py-2 font-medium">
-									{m.video_studio_adjustments()}
-								</summary>
-								<div class="space-y-3 pb-3">
-									<div class="grid grid-cols-2 gap-2">
-										{#each effectLooks as look (look.id)}
-											<button
-												type="button"
-												class="min-h-14 overflow-hidden rounded-md border bg-background text-left transition hover:border-primary/50 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
-												onclick={() => applyEffectPreset(look.id)}
-											>
-												<span class={`block h-7 bg-gradient-to-r ${look.preview}`}></span>
-												<span class="block px-2 py-1.5 font-medium">{look.label()}</span>
-											</button>
-										{/each}
-									</div>
-									<Button
-										class="w-full"
-										variant="ghost"
-										size="xs"
-										onclick={() => applyEffectPreset('reset')}
+							{#if inspectorTab === 'video'}
+								<div class="space-y-3">
+									<label
+										class="flex min-h-9 items-center gap-2 rounded-md bg-white/5 px-2 text-xs font-medium"
+										title={m.video_studio_selection_shared_description()}
 									>
-										{m.video_studio_effect_reset()}
-									</Button>
-									{#each adjustmentOptions as adjustment (adjustment.type)}
-										<label class="grid gap-2">
-											<span class="flex justify-between">
-												{adjustment.label}
-												<span>{clipEffectValue(adjustment.type).toFixed(1)}</span>
-											</span>
-											<Slider
-												value={clipEffectValue(adjustment.type)}
-												min={adjustment.min}
-												max={adjustment.max}
-												step={adjustment.step}
-												onValueChange={(value) => updateClipEffect(adjustment.type, value)}
-												ariaLabel={adjustment.label}
-											/>
-										</label>
-									{/each}
-								</div>
-							</details>
-							<details class="border-t pt-3 text-xs">
-								<summary class="min-h-9 cursor-pointer py-2 font-medium">
-									{m.video_studio_advanced()}
-								</summary>
-								<div class="space-y-2 pb-2">
-									<p class="leading-5 text-muted-foreground">
-										{m.video_studio_keyframe_description()}
-									</p>
-									<label class="grid gap-1.5">
-										<span class="flex items-center justify-between gap-2">
-											<span>{m.video_studio_zoom_amount()}</span>
-											<span class="font-mono tabular-nums">{zoomScaleMultiplier.toFixed(2)}×</span>
-										</span>
-										<Slider bind:value={zoomScaleMultiplier} min={1.05} max={3} step={0.05} />
+										<Checkbox
+											bind:checked={editShared}
+											aria-label={m.video_studio_selection_shared()}
+										/>
+										<span class="truncate">{m.video_studio_selection_shared()}</span>
 									</label>
-									<label class="grid gap-1.5">
-										<span class="flex items-center justify-between gap-2">
-											<span>{m.video_studio_zoom_duration()}</span>
-											<span class="font-mono tabular-nums">{zoomDurationSeconds.toFixed(1)}s</span>
+									<h3 class="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+										{m.video_studio_inspector_position()}
+									</h3>
+									<label class="grid gap-2 text-xs">
+										<span class="flex justify-between">
+											{m.video_studio_position_x()}
+											<span>{Math.round((selectedPresentation?.position_x ?? 0.5) * 100)}%</span>
 										</span>
-										<Slider bind:value={zoomDurationSeconds} min={0.2} max={5} step={0.1} />
-									</label>
-									<div class="grid grid-cols-2 gap-3">
-										<label class="grid gap-1.5">
-											<span>{m.video_studio_zoom_focus_x()}</span>
-											<Slider bind:value={zoomFocusX} min={0} max={1} step={0.01} />
-										</label>
-										<label class="grid gap-1.5">
-											<span>{m.video_studio_zoom_focus_y()}</span>
-											<Slider bind:value={zoomFocusY} min={0} max={1} step={0.01} />
-										</label>
-									</div>
-									<label class="grid gap-1.5">
-										<span>{m.video_studio_zoom_curve()}</span>
-										<AppSelect
-											value={zoomEasing}
-											options={[
-												{ value: 'focus-spring', label: m.video_studio_zoom_curve_spring() },
-												{ value: 'ease-in-out', label: m.video_studio_zoom_curve_smooth() },
-												{ value: 'ease-out', label: m.video_studio_zoom_curve_soft() },
-												{ value: 'linear', label: m.video_studio_zoom_curve_linear() }
-											]}
-											onValueChange={(value) => (zoomEasing = value as EasingName)}
+										<Slider
+											value={selectedPresentation?.position_x ?? 0.5}
+											min={0}
+											max={1}
+											step={0.01}
+											onValueChange={(value) =>
+												updateClipPosition(value, selectedPresentation?.position_y ?? 0.5)}
+											ariaLabel={m.video_studio_position_x()}
 										/>
 									</label>
-									<div class="grid grid-cols-3 gap-1.5">
-										<Button variant="outline" size="sm" onclick={() => applySmoothZoom('in')}>
-											{m.video_studio_smooth_zoom_in()}
-										</Button>
-										<Button variant="outline" size="sm" onclick={() => applySmoothZoom('out')}>
-											{m.video_studio_smooth_zoom_out()}
-										</Button>
-										<Button variant="outline" size="sm" onclick={applyGuidedFocusKeyframes}>
-											{m.video_studio_smooth_zoom_punch()}
-										</Button>
-									</div>
+									<label class="grid gap-2 text-xs">
+										<span class="flex justify-between">
+											{m.video_studio_position_y()}
+											<span>{Math.round((selectedPresentation?.position_y ?? 0.5) * 100)}%</span>
+										</span>
+										<Slider
+											value={selectedPresentation?.position_y ?? 0.5}
+											min={0}
+											max={1}
+											step={0.01}
+											onValueChange={(value) =>
+												updateClipPosition(selectedPresentation?.position_x ?? 0.5, value)}
+											ariaLabel={m.video_studio_position_y()}
+										/>
+									</label>
+									<label class="grid gap-2 text-xs">
+										<span class="flex justify-between">
+											{m.video_studio_clip_scale()}
+											<span>{Math.round((selectedPresentation?.scale ?? 1) * 100)}%</span>
+										</span>
+										<Slider
+											value={selectedPresentation?.scale ?? 1}
+											min={0.1}
+											max={4}
+											step={0.01}
+											onValueChange={(value) => updateClipNumber('scale', value)}
+											ariaLabel={m.video_studio_clip_scale()}
+										/>
+									</label>
+									<label class="grid gap-2 text-xs">
+										<span class="flex justify-between">
+											{m.video_studio_clip_opacity()}
+											<span>{Math.round((selectedPresentation?.opacity ?? 1) * 100)}%</span>
+										</span>
+										<Slider
+											value={selectedPresentation?.opacity ?? 1}
+											min={0}
+											max={1}
+											step={0.01}
+											onValueChange={(value) => updateClipNumber('opacity', value)}
+											ariaLabel={m.video_studio_clip_opacity()}
+										/>
+									</label>
 								</div>
-							</details>
+							{/if}
+							{#if inspectorTab === 'audio' || inspectorTab === 'speed'}
+								<div class="space-y-3">
+									<h3 class="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+										{inspectorTab === 'speed'
+											? m.video_studio_clip_speed()
+											: m.video_studio_inspector_audio()}
+									</h3>
+									{#if inspectorTab === 'speed'}
+										<label class="grid gap-2 text-xs">
+											<span class="flex justify-between">
+												{m.video_studio_clip_speed()} <span>{selectedClip.speed.toFixed(2)}×</span>
+											</span>
+											<Slider
+												value={selectedClip.speed}
+												min={0.25}
+												max={4}
+												step={0.05}
+												disabled={selectedClip.mode === 'freeze'}
+												onValueChange={updateSpeed}
+												ariaLabel={m.video_studio_clip_speed()}
+											/>
+										</label>
+									{:else}
+										<label class="grid gap-2 text-xs">
+											<span class="flex justify-between">
+												{m.video_studio_clip_volume()}
+												<span>{selectedClip.audio.gain_db.toFixed(1)} dB</span>
+											</span>
+											<Slider
+												value={selectedClip.audio.gain_db}
+												min={-60}
+												max={12}
+												step={0.5}
+												onValueChange={(value) => updateClipNumber('gain_db', value)}
+												ariaLabel={m.video_studio_clip_volume()}
+											/>
+										</label>
+										<label class="flex min-h-10 items-center gap-2 text-xs font-medium">
+											<Checkbox
+												checked={selectedClip.audio.muted}
+												onCheckedChange={updateMute}
+												aria-label={m.video_studio_clip_mute()}
+											/>
+											{m.video_studio_clip_mute()}
+										</label>
+										<label class="grid gap-2 text-xs">
+											<span class="flex justify-between">
+												{m.video_studio_fade_in()}
+												<span>{(selectedClip.audio.fade_in_us / 1_000_000).toFixed(1)}s</span>
+											</span>
+											<Slider
+												value={selectedClip.audio.fade_in_us / 1_000_000}
+												min={0}
+												max={3}
+												step={0.1}
+												onValueChange={(value) => updateClipAudioTiming('fade_in_us', value)}
+												ariaLabel={m.video_studio_fade_in()}
+											/>
+										</label>
+										<label class="grid gap-2 text-xs">
+											<span class="flex justify-between">
+												{m.video_studio_fade_out()}
+												<span>{(selectedClip.audio.fade_out_us / 1_000_000).toFixed(1)}s</span>
+											</span>
+											<Slider
+												value={selectedClip.audio.fade_out_us / 1_000_000}
+												min={0}
+												max={3}
+												step={0.1}
+												onValueChange={(value) => updateClipAudioTiming('fade_out_us', value)}
+												ariaLabel={m.video_studio_fade_out()}
+											/>
+										</label>
+									{/if}
+								</div>
+							{/if}
+							{#if inspectorTab === 'adjust'}
+								<details open class="text-xs">
+									<summary class="min-h-9 cursor-pointer py-2 font-medium">
+										{m.video_studio_adjustments()}
+									</summary>
+									<div class="space-y-3 pb-3">
+										<div class="grid grid-cols-2 gap-2">
+											{#each effectLooks as look (look.id)}
+												<button
+													type="button"
+													class="min-h-14 overflow-hidden rounded-md border bg-background text-left transition hover:border-primary/50 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none"
+													onclick={() => applyEffectPreset(look.id)}
+												>
+													<span class={`block h-7 bg-gradient-to-r ${look.preview}`}></span>
+													<span class="block px-2 py-1.5 font-medium">{look.label()}</span>
+												</button>
+											{/each}
+										</div>
+										<Button
+											class="w-full"
+											variant="ghost"
+											size="xs"
+											onclick={() => applyEffectPreset('reset')}
+										>
+											{m.video_studio_effect_reset()}
+										</Button>
+										{#each adjustmentOptions as adjustment (adjustment.type)}
+											<label class="grid gap-2">
+												<span class="flex justify-between">
+													{adjustment.label}
+													<span>{clipEffectValue(adjustment.type).toFixed(1)}</span>
+												</span>
+												<Slider
+													value={clipEffectValue(adjustment.type)}
+													min={adjustment.min}
+													max={adjustment.max}
+													step={adjustment.step}
+													onValueChange={(value) => updateClipEffect(adjustment.type, value)}
+													ariaLabel={adjustment.label}
+												/>
+											</label>
+										{/each}
+									</div>
+								</details>
+							{/if}
+							{#if inspectorTab === 'animation'}
+								<details open class="text-xs" title={m.video_studio_keyframe_description()}>
+									<summary class="min-h-9 cursor-pointer py-2 font-medium">
+										{m.video_studio_advanced()}
+									</summary>
+									<div class="space-y-2 pb-2">
+										<label class="grid gap-1.5">
+											<span class="flex items-center justify-between gap-2">
+												<span>{m.video_studio_zoom_amount()}</span>
+												<span class="font-mono tabular-nums">{zoomScaleMultiplier.toFixed(2)}×</span
+												>
+											</span>
+											<Slider bind:value={zoomScaleMultiplier} min={1.05} max={3} step={0.05} />
+										</label>
+										<label class="grid gap-1.5">
+											<span class="flex items-center justify-between gap-2">
+												<span>{m.video_studio_zoom_duration()}</span>
+												<span class="font-mono tabular-nums">{zoomDurationSeconds.toFixed(1)}s</span
+												>
+											</span>
+											<Slider bind:value={zoomDurationSeconds} min={0.2} max={5} step={0.1} />
+										</label>
+										<div class="grid grid-cols-2 gap-3">
+											<label class="grid gap-1.5">
+												<span>{m.video_studio_zoom_focus_x()}</span>
+												<Slider bind:value={zoomFocusX} min={0} max={1} step={0.01} />
+											</label>
+											<label class="grid gap-1.5">
+												<span>{m.video_studio_zoom_focus_y()}</span>
+												<Slider bind:value={zoomFocusY} min={0} max={1} step={0.01} />
+											</label>
+										</div>
+										<label class="grid gap-1.5">
+											<span>{m.video_studio_zoom_curve()}</span>
+											<AppSelect
+												value={zoomEasing}
+												options={[
+													{ value: 'focus-spring', label: m.video_studio_zoom_curve_spring() },
+													{ value: 'ease-in-out', label: m.video_studio_zoom_curve_smooth() },
+													{ value: 'ease-out', label: m.video_studio_zoom_curve_soft() },
+													{ value: 'linear', label: m.video_studio_zoom_curve_linear() }
+												]}
+												onValueChange={(value) => (zoomEasing = value as EasingName)}
+											/>
+										</label>
+										<div class="grid grid-cols-3 gap-1.5">
+											<Button variant="outline" size="sm" onclick={() => applySmoothZoom('in')}>
+												{m.video_studio_smooth_zoom_in()}
+											</Button>
+											<Button variant="outline" size="sm" onclick={() => applySmoothZoom('out')}>
+												{m.video_studio_smooth_zoom_out()}
+											</Button>
+											<Button variant="outline" size="sm" onclick={applyGuidedFocusKeyframes}>
+												{m.video_studio_smooth_zoom_punch()}
+											</Button>
+										</div>
+									</div>
+								</details>
+							{/if}
 							<div class="grid grid-cols-2 gap-2 border-t pt-4">
 								<Button variant="outline" size="sm" onclick={leaveGapSelected}>
 									{m.video_studio_leave_gap()}
@@ -5056,12 +5264,12 @@ FORM: Operate surface; no floating-card dashboard, unlimited NLE chrome, hidden 
 						</div>
 					{:else if selectedGap}
 						<div class="mt-4 space-y-4">
-							<div class="rounded-md border border-dashed bg-muted/20 p-3">
-								<p class="text-sm font-medium">{m.video_studio_gap()}</p>
-								<p class="mt-1 text-xs leading-5 text-muted-foreground">
-									{m.video_studio_gap_description()}
-								</p>
-							</div>
+							<p
+								class="border-b border-white/10 pb-2 text-xs font-medium"
+								title={m.video_studio_gap_description()}
+							>
+								{m.video_studio_gap()}
+							</p>
 							<label class="grid gap-1.5 text-xs font-medium">
 								<span>{m.video_studio_gap_duration()}</span>
 								<Input
@@ -5077,35 +5285,61 @@ FORM: Operate surface; no floating-card dashboard, unlimited NLE chrome, hidden 
 							</Button>
 						</div>
 					{:else}
-						<p class="mt-4 text-xs leading-5 text-muted-foreground">
-							{m.video_studio_no_selection()}
-						</p>
+						<div class="mt-5">
+							<dl class="grid gap-4 text-xs">
+								<div class="grid grid-cols-[5rem_minmax(0,1fr)] items-center gap-3">
+									<dt class="text-muted-foreground">{m.video_studio_project_name()}</dt>
+									<dd class="truncate text-right font-medium">{project.title}</dd>
+								</div>
+								<div class="grid grid-cols-[5rem_minmax(0,1fr)] items-center gap-3">
+									<dt class="text-muted-foreground">{m.video_studio_variant()}</dt>
+									<dd>
+										<AppSelect
+											value={variantID}
+											onValueChange={(value) => (variantID = value as VariantID)}
+											options={variantOptions}
+											ariaLabel={m.video_studio_variant()}
+										/>
+									</dd>
+								</div>
+								<div class="grid grid-cols-[5rem_minmax(0,1fr)] items-center gap-3">
+									<dt class="text-muted-foreground">{m.video_studio_media_panel()}</dt>
+									<dd class="text-right font-medium tabular-nums">
+										{Object.keys(project.sources).length}
+									</dd>
+								</div>
+								<div class="grid grid-cols-[5rem_minmax(0,1fr)] items-center gap-3">
+									<dt class="text-muted-foreground">{m.media_duration()}</dt>
+									<dd class="text-right font-mono tabular-nums">{formatTime(durationUS)}</dd>
+								</div>
+							</dl>
+						</div>
 					{/if}
 				</aside>
 
 				<nav
-					class="col-start-1 row-start-2 flex min-w-0 items-stretch overflow-x-auto border-t bg-background/98 px-1 pb-[max(0.25rem,env(safe-area-inset-bottom))] sm:hidden"
+					class="col-start-1 row-start-2 flex min-w-0 items-stretch overflow-x-auto border-t bg-background/98 px-1 pb-[max(0.25rem,env(safe-area-inset-bottom))] min-[56rem]:hidden"
 					aria-label={m.video_studio_mobile_tools()}
 				>
-					{#each tools as tool (tool.id)}
+					{#each toolFamilies as family (family.id)}
 						<button
 							type="button"
 							class={[
 								'flex min-h-14 min-w-[4.25rem] flex-1 flex-col items-center justify-center gap-1 rounded-md px-1 text-[11px] leading-tight focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none',
-								activeTool === tool.id && compactToolOpen
+								activeToolFamily(family.id) && compactToolOpen
 									? 'bg-primary/12 text-primary'
 									: 'text-muted-foreground active:bg-muted active:text-foreground'
 							]}
-							aria-current={activeTool === tool.id && compactToolOpen ? 'page' : undefined}
+							aria-current={activeToolFamily(family.id) && compactToolOpen ? 'page' : undefined}
 							onclick={() => {
-								const sameTool = activeTool === tool.id;
-								activeTool = tool.id;
+								const sameTool = activeToolFamily(family.id);
+								if (!sameTool) activeTool = family.id;
 								compactInspectorOpen = false;
 								compactToolOpen = sameTool ? !compactToolOpen : true;
 							}}
 						>
-							<tool.icon class="size-4.5" />
-							<span>{tool.label()}</span>
+							<family.icon class="size-4.5" />
+							<span>{family.label()}</span>
 						</button>
 					{/each}
 				</nav>
@@ -5114,7 +5348,7 @@ FORM: Operate surface; no floating-card dashboard, unlimited NLE chrome, hidden 
 			<div class="relative min-h-52 shrink-0" style:height={`${timelineHeight}px`}>
 				<button
 					type="button"
-					class="absolute inset-x-0 top-0 z-40 h-2 cursor-row-resize touch-none bg-transparent focus-visible:bg-primary/30 focus-visible:outline-none"
+					class="absolute inset-x-0 top-0 z-40 h-2 cursor-row-resize touch-none bg-white/5 after:absolute after:top-1/2 after:left-1/2 after:h-0.5 after:w-12 after:-translate-x-1/2 after:-translate-y-1/2 after:rounded-full after:bg-white/25 hover:after:bg-orange-500 focus-visible:bg-primary/30 focus-visible:outline-none"
 					aria-label={m.video_studio_resize_timeline()}
 					onpointerdown={beginTimelineResize}
 					onpointermove={continueTimelineResize}

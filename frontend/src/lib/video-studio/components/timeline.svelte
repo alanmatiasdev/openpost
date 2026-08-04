@@ -12,8 +12,8 @@
 	import { listProjectAssets, readProjectFile } from '../storage';
 	import { subscribeToSourceArtifacts } from '../artifacts';
 	import { onMount } from 'svelte';
+	import FoldHorizontalIcon from 'lucide-svelte/icons/fold-horizontal';
 	import MapPinIcon from 'lucide-svelte/icons/map-pin';
-	import PlusIcon from 'lucide-svelte/icons/plus';
 	import ScissorsIcon from 'lucide-svelte/icons/scissors';
 	import TrashIcon from 'lucide-svelte/icons/trash-2';
 	import ZoomInIcon from 'lucide-svelte/icons/zoom-in';
@@ -76,7 +76,35 @@
 	const durationUS = $derived(Math.max(1, projectDurationUS(project)));
 	const derivedClips = $derived(derivePrimarySequence(project));
 	const widthPX = $derived(Math.max(720, (durationUS / 1_000_000) * 36 * zoom));
+	const rulerTicks = $derived.by(() => {
+		const targetCount = Math.max(2, Math.min(80, Math.floor(widthPX / 96)));
+		const rawIntervalUS = durationUS / targetCount;
+		const niceIntervalsUS = [
+			100_000, 250_000, 500_000, 1_000_000, 2_000_000, 5_000_000, 10_000_000, 15_000_000,
+			30_000_000, 60_000_000, 120_000_000, 300_000_000, 600_000_000, 1_800_000_000, 3_600_000_000
+		];
+		const intervalUS =
+			niceIntervalsUS.find((candidate) => candidate >= rawIntervalUS) ??
+			Math.ceil(rawIntervalUS / 3_600_000_000) * 3_600_000_000;
+		const ticks: Array<{ timeUS: number; left: number; label: string }> = [];
+		for (let timeUS = 0; timeUS < durationUS; timeUS += intervalUS) {
+			ticks.push({
+				timeUS,
+				left: (timeUS / durationUS) * widthPX,
+				label: rulerTimeLabel(timeUS, intervalUS)
+			});
+		}
+		if (ticks.at(-1)?.timeUS !== durationUS) {
+			ticks.push({
+				timeUS: durationUS,
+				left: widthPX,
+				label: rulerTimeLabel(durationUS, intervalUS)
+			});
+		}
+		return ticks;
+	});
 	let draggingClipID = $state('');
+	let seeking = $state(false);
 	let trimming = $state<{
 		clipID: string;
 		edge: 'start' | 'end';
@@ -167,6 +195,14 @@
 	function timeLabel(timestampUS: number): string {
 		const seconds = Math.floor(timestampUS / 1_000_000);
 		return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+	}
+
+	function rulerTimeLabel(timestampUS: number, intervalUS: number): string {
+		if (intervalUS < 1_000_000) {
+			const precision = intervalUS < 250_000 ? 2 : 1;
+			return `${(timestampUS / 1_000_000).toFixed(precision)}s`;
+		}
+		return timeLabel(timestampUS);
 	}
 
 	function frameUS(multiplier = 1): number {
@@ -417,6 +453,42 @@
 	function addMarker(): void {
 		selectedMarkerID = onAddMarker(playheadUS);
 	}
+
+	function seekFromPointer(event: PointerEvent): void {
+		const ruler = event.currentTarget as HTMLElement;
+		const bounds = ruler.getBoundingClientRect();
+		const progress = Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width));
+		playheadUS = Math.round(progress * durationUS);
+	}
+
+	function beginSeek(event: PointerEvent): void {
+		event.preventDefault();
+		seeking = true;
+		seekFromPointer(event);
+		(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+	}
+
+	function continueSeek(event: PointerEvent): void {
+		if (seeking) seekFromPointer(event);
+	}
+
+	function endSeek(event: PointerEvent): void {
+		if (!seeking) return;
+		seekFromPointer(event);
+		seeking = false;
+		const target = event.currentTarget as HTMLElement;
+		if (target.hasPointerCapture(event.pointerId)) target.releasePointerCapture(event.pointerId);
+	}
+
+	function seekWithKeyboard(event: KeyboardEvent): void {
+		const frame = frameUS(event.shiftKey ? 10 : 1);
+		if (event.key === 'Home') playheadUS = 0;
+		else if (event.key === 'End') playheadUS = durationUS;
+		else if (event.key === 'ArrowLeft') playheadUS = Math.max(0, playheadUS - frame);
+		else if (event.key === 'ArrowRight') playheadUS = Math.min(durationUS, playheadUS + frame);
+		else return;
+		event.preventDefault();
+	}
 </script>
 
 <section
@@ -424,18 +496,18 @@
 	aria-labelledby="timeline-title"
 >
 	<div class="flex min-h-12 flex-nowrap items-center gap-1 overflow-x-auto border-b px-2 sm:px-3">
-		<h2 id="timeline-title" class="mr-2 shrink-0 text-sm font-medium">
+		<h2 id="timeline-title" class="mr-1 shrink-0 text-xs font-medium text-muted-foreground">
 			{m.video_studio_timeline()}
 		</h2>
 		<Button
 			variant="ghost"
-			size="sm"
+			size="icon-sm"
 			disabled={!selectedClipID}
 			onclick={onSplit}
+			aria-label={m.video_studio_split()}
 			title={`${m.video_studio_split()} (S)`}
 		>
 			<ScissorsIcon class="size-4" />
-			<span class="hidden sm:inline">{m.video_studio_split()}</span>
 		</Button>
 		<Button
 			variant="ghost"
@@ -459,29 +531,33 @@
 		</Button>
 		<Button
 			variant="ghost"
-			size="sm"
+			size="icon-sm"
 			disabled={!selectedClipID ||
 				project.primary_sequence.find((item) => item.id === selectedClipID)?.kind === 'gap'}
 			onclick={onLeaveGap}
+			aria-label={m.video_studio_leave_gap()}
 			title={`${m.video_studio_leave_gap()} (Delete)`}
 		>
 			<TrashIcon class="size-4" />
-			<span class="hidden xl:inline">{m.video_studio_leave_gap()}</span>
 		</Button>
 		<Button
 			variant="ghost"
-			size="sm"
+			size="icon-sm"
 			disabled={!selectedClipID}
 			onclick={onRippleDelete}
+			aria-label={m.video_studio_ripple_delete()}
 			title={`${m.video_studio_ripple_delete()} (Shift+Delete)`}
 		>
-			<TrashIcon class="size-4" />
-			<span class="hidden sm:inline">{m.video_studio_ripple_delete()}</span>
+			<FoldHorizontalIcon class="size-4" />
 		</Button>
-		<Button variant="ghost" size="sm" onclick={addMarker} title={m.video_studio_add_marker()}>
-			<PlusIcon class="size-4" />
+		<Button
+			variant="ghost"
+			size="icon-sm"
+			onclick={addMarker}
+			aria-label={m.video_studio_add_marker()}
+			title={m.video_studio_add_marker()}
+		>
 			<MapPinIcon class="size-4" />
-			<span class="hidden xl:inline">{m.video_studio_add_marker()}</span>
 		</Button>
 		{#if selectedMarker}
 			<div class="flex min-w-44 flex-1 items-center gap-1 sm:max-w-64">
@@ -516,28 +592,44 @@
 		</div>
 	</div>
 
-	<div class="border-b px-3 py-2">
-		<Slider
-			value={playheadUS}
-			min={0}
-			max={durationUS}
-			step={Math.max(1, Math.round(1_000_000 / project.timebase.fps_numerator))}
-			ariaLabel={m.video_studio_timeline()}
-			onValueChange={(value) => (playheadUS = value)}
-			onValueCommit={(value) => (playheadUS = value)}
-		/>
-		<div class="mt-1 flex justify-between font-mono text-[11px] text-muted-foreground">
-			<span>{timeLabel(playheadUS)}</span>
-			<span>{timeLabel(durationUS)}</span>
-		</div>
-	</div>
-
 	<div class="min-h-36 overflow-auto bg-muted/20">
 		<p class="sr-only" aria-live="polite">{snapStatus}</p>
 		<div
 			class="relative grid min-h-full grid-cols-[7rem_minmax(0,1fr)]"
 			style:min-width={`${widthPX + 112}px`}
 		>
+			<div
+				class="sticky left-0 z-40 flex h-8 items-center border-r border-b bg-[#171719] px-2 font-mono text-[10px] text-zinc-400 tabular-nums"
+			>
+				<span class="text-orange-400">{timeLabel(playheadUS)}</span>
+				<span class="mx-1 text-zinc-600">/</span>
+				<span>{timeLabel(durationUS)}</span>
+			</div>
+			<button
+				type="button"
+				role="slider"
+				class="relative h-8 cursor-ew-resize touch-none border-b bg-[#171719] text-left focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none focus-visible:ring-inset"
+				style:width={`${widthPX}px`}
+				aria-label={m.video_studio_timeline()}
+				aria-valuemin={0}
+				aria-valuemax={durationUS}
+				aria-valuenow={playheadUS}
+				aria-valuetext={timeLabel(playheadUS)}
+				onpointerdown={beginSeek}
+				onpointermove={continueSeek}
+				onpointerup={endSeek}
+				onpointercancel={endSeek}
+				onkeydown={seekWithKeyboard}
+			>
+				{#each rulerTicks as tick (tick.timeUS)}
+					<span
+						class="pointer-events-none absolute inset-y-0 border-l border-white/10 font-mono text-[9px] text-zinc-500"
+						style:left={`${tick.left}px`}
+					>
+						<span class="absolute top-1 left-1 whitespace-nowrap">{tick.label}</span>
+					</span>
+				{/each}
+			</button>
 			<div
 				class="sticky left-0 z-20 border-r bg-background/95 p-2 text-xs font-medium backdrop-blur"
 			>
@@ -622,11 +714,6 @@
 						{/if}
 					</div>
 				{/each}
-				<div
-					class="pointer-events-none absolute inset-y-0 z-10 w-px bg-primary"
-					style:left={`${clipOffset(playheadUS)}px`}
-					aria-hidden="true"
-				></div>
 			</div>
 
 			<div
@@ -676,320 +763,344 @@
 				{/each}
 			</div>
 
-			<div
-				class="sticky left-0 z-20 border-r bg-background/95 p-2 text-xs text-muted-foreground backdrop-blur"
-			>
-				{m.video_studio_overlays_lane()}
-			</div>
-			<div class="relative h-12 border-b" style:width={`${widthPX}px`}>
-				{#each project.visual_tracks.flatMap((track) => track.items) as item (item.id)}
-					<div
-						role="group"
-						aria-label={item.type === 'text' ? item.text : item.type}
-						class={[
-							'absolute top-2 h-7 min-w-9 overflow-hidden rounded border text-[11px] text-violet-800 dark:text-violet-200',
-							selectedVisualItemID === item.id
-								? 'border-violet-600 bg-violet-500/25'
-								: 'border-violet-500/30 bg-violet-500/10'
-						]}
-						style:left={`${clipOffset(item.timeline_start_us)}px`}
-						style:width={`${Math.max(48, clipOffset(item.duration_us))}px`}
-					>
-						<button
-							type="button"
-							class="size-full cursor-grab touch-none truncate px-3 py-1 text-left focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none active:cursor-grabbing"
-							aria-pressed={selectedVisualItemID === item.id}
-							title={m.video_studio_timing_keyboard()}
-							onclick={() => onSelectVisualItem(item.id)}
-							onpointerdown={(event) =>
-								beginTimingDrag(event, {
-									kind: 'visual',
-									id: item.id,
-									edge: 'move',
-									originalStartUS: item.timeline_start_us,
-									originalEndUS: item.timeline_start_us + item.duration_us
-								})}
-							onpointermove={continueTimingDrag}
-							onpointerup={endTimingDrag}
-							onpointercancel={endTimingDrag}
-							onkeydown={(event) =>
-								keyboardTiming(event, {
-									kind: 'visual',
-									id: item.id,
-									edge: 'move',
-									originalStartUS: item.timeline_start_us,
-									originalEndUS: item.timeline_start_us + item.duration_us
-								})}
+			{#each project.visual_tracks as track (track.id)}
+				<div
+					class="sticky left-0 z-20 truncate border-r bg-background/95 p-2 text-xs text-muted-foreground backdrop-blur"
+					title={track.name || m.video_studio_overlays_lane()}
+					data-video-studio-track-kind="visual"
+					data-video-studio-track-id={track.id}
+				>
+					{track.name || m.video_studio_overlays_lane()}
+				</div>
+				<div class="relative h-12 border-b" style:width={`${widthPX}px`}>
+					{#each track.items as item (item.id)}
+						<div
+							role="group"
+							aria-label={item.type === 'text' ? item.text : item.type}
+							class={[
+								'absolute top-2 h-7 min-w-9 overflow-hidden rounded border text-[11px] text-violet-800 dark:text-violet-200',
+								selectedVisualItemID === item.id
+									? 'border-violet-600 bg-violet-500/25'
+									: 'border-violet-500/30 bg-violet-500/10'
+							]}
+							style:left={`${clipOffset(item.timeline_start_us)}px`}
+							style:width={`${Math.max(48, clipOffset(item.duration_us))}px`}
 						>
-							{item.type === 'text' ? item.text : item.type}
-						</button>
-						<button
-							type="button"
-							class="absolute inset-y-0 left-0 z-10 w-2 cursor-ew-resize touch-none border-r border-violet-600/60 bg-violet-500/20 after:absolute after:-inset-x-[18px] after:inset-y-0 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none sm:after:hidden"
-							aria-label={m.video_studio_adjust_item_start()}
-							title={m.video_studio_timing_keyboard()}
-							onpointerdown={(event) =>
-								beginTimingDrag(event, {
-									kind: 'visual',
-									id: item.id,
-									edge: 'start',
-									originalStartUS: item.timeline_start_us,
-									originalEndUS: item.timeline_start_us + item.duration_us
-								})}
-							onpointermove={continueTimingDrag}
-							onpointerup={endTimingDrag}
-							onpointercancel={endTimingDrag}
-							onkeydown={(event) =>
-								keyboardTiming(event, {
-									kind: 'visual',
-									id: item.id,
-									edge: 'start',
-									originalStartUS: item.timeline_start_us,
-									originalEndUS: item.timeline_start_us + item.duration_us
-								})}
-						></button>
-						<button
-							type="button"
-							class="absolute inset-y-0 right-0 z-10 w-2 cursor-ew-resize touch-none border-l border-violet-600/60 bg-violet-500/20 after:absolute after:-inset-x-[18px] after:inset-y-0 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none sm:after:hidden"
-							aria-label={m.video_studio_adjust_item_end()}
-							title={m.video_studio_timing_keyboard()}
-							onpointerdown={(event) =>
-								beginTimingDrag(event, {
-									kind: 'visual',
-									id: item.id,
-									edge: 'end',
-									originalStartUS: item.timeline_start_us,
-									originalEndUS: item.timeline_start_us + item.duration_us
-								})}
-							onpointermove={continueTimingDrag}
-							onpointerup={endTimingDrag}
-							onpointercancel={endTimingDrag}
-							onkeydown={(event) =>
-								keyboardTiming(event, {
-									kind: 'visual',
-									id: item.id,
-									edge: 'end',
-									originalStartUS: item.timeline_start_us,
-									originalEndUS: item.timeline_start_us + item.duration_us
-								})}
-						></button>
-					</div>
-				{/each}
-			</div>
-
-			<div
-				class="sticky left-0 z-20 border-r bg-background/95 p-2 text-xs text-muted-foreground backdrop-blur"
-			>
-				{m.video_studio_audio_lane()}
-			</div>
-			<div class="relative h-12 border-b" style:width={`${widthPX}px`}>
-				{#each project.audio_tracks.flatMap( (track) => track.items.map( (item) => ({ ...item, trackName: track.name }) ) ) as item (item.id)}
-					<div
-						role="group"
-						aria-label={item.trackName}
-						class={[
-							'absolute top-2 h-7 min-w-12 overflow-hidden rounded border text-[11px] text-emerald-800 dark:text-emerald-200',
-							selectedAudioItemID === item.id
-								? 'border-emerald-600 bg-emerald-500/25'
-								: 'border-emerald-500/30 bg-emerald-500/10'
-						]}
-						style:left={`${clipOffset(item.timeline_start_us)}px`}
-						style:width={`${Math.max(48, clipOffset(item.duration_us))}px`}
-					>
-						{#if waveformPeaks[item.source_id]?.length}
-							<div
-								class="pointer-events-none absolute inset-0 flex items-center gap-px px-1 opacity-45"
-								aria-hidden="true"
+							<button
+								type="button"
+								class="size-full cursor-grab touch-none truncate px-3 py-1 text-left focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none active:cursor-grabbing"
+								aria-pressed={selectedVisualItemID === item.id}
+								title={m.video_studio_timing_keyboard()}
+								onclick={() => onSelectVisualItem(item.id)}
+								onpointerdown={(event) =>
+									beginTimingDrag(event, {
+										kind: 'visual',
+										id: item.id,
+										edge: 'move',
+										originalStartUS: item.timeline_start_us,
+										originalEndUS: item.timeline_start_us + item.duration_us
+									})}
+								onpointermove={continueTimingDrag}
+								onpointerup={endTimingDrag}
+								onpointercancel={endTimingDrag}
+								onkeydown={(event) =>
+									keyboardTiming(event, {
+										kind: 'visual',
+										id: item.id,
+										edge: 'move',
+										originalStartUS: item.timeline_start_us,
+										originalEndUS: item.timeline_start_us + item.duration_us
+									})}
 							>
-								{#each waveformPeaks[item.source_id]!.filter((_, index) => index % 18 === 0) as peak, index (`${item.id}:${index}`)}
-									<span
-										class="min-w-px flex-1 rounded-full bg-emerald-600"
-										style:height={`${Math.max(8, peak * 90)}%`}
-									></span>
-								{/each}
-							</div>
-						{/if}
-						<button
-							type="button"
-							class="relative z-[1] flex size-full cursor-grab touch-none items-center px-3 text-left focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none active:cursor-grabbing"
-							aria-pressed={selectedAudioItemID === item.id}
-							title={m.video_studio_timing_keyboard()}
-							onclick={() => onSelectAudioItem(item.id)}
-							onpointerdown={(event) =>
-								beginTimingDrag(event, {
-									kind: 'audio',
-									id: item.id,
-									edge: 'move',
-									originalStartUS: item.timeline_start_us,
-									originalEndUS: item.timeline_start_us + item.duration_us
-								})}
-							onpointermove={continueTimingDrag}
-							onpointerup={endTimingDrag}
-							onpointercancel={endTimingDrag}
-							onkeydown={(event) =>
-								keyboardTiming(event, {
-									kind: 'audio',
-									id: item.id,
-									edge: 'move',
-									originalStartUS: item.timeline_start_us,
-									originalEndUS: item.timeline_start_us + item.duration_us
-								})}
-						>
-							<span class="truncate">{item.trackName}</span>
-						</button>
-						<button
-							type="button"
-							class="absolute inset-y-0 left-0 z-10 w-2 cursor-ew-resize touch-none border-r border-emerald-600/60 bg-emerald-500/20 after:absolute after:-inset-x-[18px] after:inset-y-0 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none sm:after:hidden"
-							aria-label={m.video_studio_adjust_item_start()}
-							title={m.video_studio_timing_keyboard()}
-							onpointerdown={(event) =>
-								beginTimingDrag(event, {
-									kind: 'audio',
-									id: item.id,
-									edge: 'start',
-									originalStartUS: item.timeline_start_us,
-									originalEndUS: item.timeline_start_us + item.duration_us
-								})}
-							onpointermove={continueTimingDrag}
-							onpointerup={endTimingDrag}
-							onpointercancel={endTimingDrag}
-							onkeydown={(event) =>
-								keyboardTiming(event, {
-									kind: 'audio',
-									id: item.id,
-									edge: 'start',
-									originalStartUS: item.timeline_start_us,
-									originalEndUS: item.timeline_start_us + item.duration_us
-								})}
-						></button>
-						<button
-							type="button"
-							class="absolute inset-y-0 right-0 z-10 w-2 cursor-ew-resize touch-none border-l border-emerald-600/60 bg-emerald-500/20 after:absolute after:-inset-x-[18px] after:inset-y-0 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none sm:after:hidden"
-							aria-label={m.video_studio_adjust_item_end()}
-							title={m.video_studio_timing_keyboard()}
-							onpointerdown={(event) =>
-								beginTimingDrag(event, {
-									kind: 'audio',
-									id: item.id,
-									edge: 'end',
-									originalStartUS: item.timeline_start_us,
-									originalEndUS: item.timeline_start_us + item.duration_us
-								})}
-							onpointermove={continueTimingDrag}
-							onpointerup={endTimingDrag}
-							onpointercancel={endTimingDrag}
-							onkeydown={(event) =>
-								keyboardTiming(event, {
-									kind: 'audio',
-									id: item.id,
-									edge: 'end',
-									originalStartUS: item.timeline_start_us,
-									originalEndUS: item.timeline_start_us + item.duration_us
-								})}
-						></button>
-					</div>
-				{/each}
-			</div>
+								{item.type === 'text' ? item.text : item.type}
+							</button>
+							<button
+								type="button"
+								class="absolute inset-y-0 left-0 z-10 w-2 cursor-ew-resize touch-none border-r border-violet-600/60 bg-violet-500/20 after:absolute after:-inset-x-[18px] after:inset-y-0 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none sm:after:hidden"
+								aria-label={m.video_studio_adjust_item_start()}
+								title={m.video_studio_timing_keyboard()}
+								onpointerdown={(event) =>
+									beginTimingDrag(event, {
+										kind: 'visual',
+										id: item.id,
+										edge: 'start',
+										originalStartUS: item.timeline_start_us,
+										originalEndUS: item.timeline_start_us + item.duration_us
+									})}
+								onpointermove={continueTimingDrag}
+								onpointerup={endTimingDrag}
+								onpointercancel={endTimingDrag}
+								onkeydown={(event) =>
+									keyboardTiming(event, {
+										kind: 'visual',
+										id: item.id,
+										edge: 'start',
+										originalStartUS: item.timeline_start_us,
+										originalEndUS: item.timeline_start_us + item.duration_us
+									})}
+							></button>
+							<button
+								type="button"
+								class="absolute inset-y-0 right-0 z-10 w-2 cursor-ew-resize touch-none border-l border-violet-600/60 bg-violet-500/20 after:absolute after:-inset-x-[18px] after:inset-y-0 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none sm:after:hidden"
+								aria-label={m.video_studio_adjust_item_end()}
+								title={m.video_studio_timing_keyboard()}
+								onpointerdown={(event) =>
+									beginTimingDrag(event, {
+										kind: 'visual',
+										id: item.id,
+										edge: 'end',
+										originalStartUS: item.timeline_start_us,
+										originalEndUS: item.timeline_start_us + item.duration_us
+									})}
+								onpointermove={continueTimingDrag}
+								onpointerup={endTimingDrag}
+								onpointercancel={endTimingDrag}
+								onkeydown={(event) =>
+									keyboardTiming(event, {
+										kind: 'visual',
+										id: item.id,
+										edge: 'end',
+										originalStartUS: item.timeline_start_us,
+										originalEndUS: item.timeline_start_us + item.duration_us
+									})}
+							></button>
+						</div>
+					{/each}
+				</div>
+			{/each}
 
-			<div
-				class="sticky left-0 z-20 border-r bg-background/95 p-2 text-xs text-muted-foreground backdrop-blur"
-			>
-				{m.video_studio_captions_lane()}
-			</div>
-			<div class="relative h-14" style:width={`${widthPX}px`}>
-				{#each project.caption_tracks.flatMap((track) => track.cues) as cue (cue.id)}
-					<div
-						role="group"
-						aria-label={cue.text}
-						class={[
-							'absolute top-2 h-9 min-w-12 overflow-hidden rounded border text-xs text-sky-800 dark:text-sky-200',
-							selectedCaptionCueID === cue.id
-								? 'border-sky-600 bg-sky-500/25'
-								: 'border-sky-500/30 bg-sky-500/10'
-						]}
-						style:left={`${clipOffset(cue.start_us)}px`}
-						style:width={`${Math.max(48, clipOffset(cue.end_us - cue.start_us))}px`}
-					>
-						<button
-							type="button"
-							class="size-full cursor-grab touch-none truncate px-3 py-1 text-left focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none active:cursor-grabbing"
-							aria-pressed={selectedCaptionCueID === cue.id}
-							title={m.video_studio_timing_keyboard()}
-							onclick={() => onSelectCaptionCue(cue.id)}
-							onpointerdown={(event) =>
-								beginTimingDrag(event, {
-									kind: 'caption',
-									id: cue.id,
-									edge: 'move',
-									originalStartUS: cue.start_us,
-									originalEndUS: cue.end_us
-								})}
-							onpointermove={continueTimingDrag}
-							onpointerup={endTimingDrag}
-							onpointercancel={endTimingDrag}
-							onkeydown={(event) =>
-								keyboardTiming(event, {
-									kind: 'caption',
-									id: cue.id,
-									edge: 'move',
-									originalStartUS: cue.start_us,
-									originalEndUS: cue.end_us
-								})}
+			{#each project.audio_tracks as track (track.id)}
+				<div
+					class="sticky left-0 z-20 truncate border-r bg-background/95 p-2 text-xs text-muted-foreground backdrop-blur"
+					title={track.name || m.video_studio_audio_lane()}
+					data-video-studio-track-kind="audio"
+					data-video-studio-track-id={track.id}
+				>
+					{track.name || m.video_studio_audio_lane()}
+				</div>
+				<div class="relative h-12 border-b" style:width={`${widthPX}px`}>
+					{#each track.items as item (item.id)}
+						<div
+							role="group"
+							aria-label={track.name || m.video_studio_audio_lane()}
+							class={[
+								'absolute top-2 h-7 min-w-12 overflow-hidden rounded border text-[11px] text-emerald-800 dark:text-emerald-200',
+								selectedAudioItemID === item.id
+									? 'border-emerald-600 bg-emerald-500/25'
+									: 'border-emerald-500/30 bg-emerald-500/10'
+							]}
+							style:left={`${clipOffset(item.timeline_start_us)}px`}
+							style:width={`${Math.max(48, clipOffset(item.duration_us))}px`}
 						>
-							{cue.text}
-						</button>
-						<button
-							type="button"
-							class="absolute inset-y-0 left-0 z-10 w-2 cursor-ew-resize touch-none border-r border-sky-600/60 bg-sky-500/20 after:absolute after:-inset-x-[18px] after:inset-y-0 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none sm:after:hidden"
-							aria-label={m.video_studio_adjust_caption_start()}
-							title={m.video_studio_timing_keyboard()}
-							onpointerdown={(event) =>
-								beginTimingDrag(event, {
-									kind: 'caption',
-									id: cue.id,
-									edge: 'start',
-									originalStartUS: cue.start_us,
-									originalEndUS: cue.end_us
-								})}
-							onpointermove={continueTimingDrag}
-							onpointerup={endTimingDrag}
-							onpointercancel={endTimingDrag}
-							onkeydown={(event) =>
-								keyboardTiming(event, {
-									kind: 'caption',
-									id: cue.id,
-									edge: 'start',
-									originalStartUS: cue.start_us,
-									originalEndUS: cue.end_us
-								})}
-						></button>
-						<button
-							type="button"
-							class="absolute inset-y-0 right-0 z-10 w-2 cursor-ew-resize touch-none border-l border-sky-600/60 bg-sky-500/20 after:absolute after:-inset-x-[18px] after:inset-y-0 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none sm:after:hidden"
-							aria-label={m.video_studio_adjust_caption_end()}
-							title={m.video_studio_timing_keyboard()}
-							onpointerdown={(event) =>
-								beginTimingDrag(event, {
-									kind: 'caption',
-									id: cue.id,
-									edge: 'end',
-									originalStartUS: cue.start_us,
-									originalEndUS: cue.end_us
-								})}
-							onpointermove={continueTimingDrag}
-							onpointerup={endTimingDrag}
-							onpointercancel={endTimingDrag}
-							onkeydown={(event) =>
-								keyboardTiming(event, {
-									kind: 'caption',
-									id: cue.id,
-									edge: 'end',
-									originalStartUS: cue.start_us,
-									originalEndUS: cue.end_us
-								})}
-						></button>
-					</div>
-				{/each}
+							{#if waveformPeaks[item.source_id]?.length}
+								<div
+									class="pointer-events-none absolute inset-0 flex items-center gap-px px-1 opacity-45"
+									aria-hidden="true"
+								>
+									{#each waveformPeaks[item.source_id]!.filter((_, index) => index % 18 === 0) as peak, index (`${item.id}:${index}`)}
+										<span
+											class="min-w-px flex-1 rounded-full bg-emerald-600"
+											style:height={`${Math.max(8, peak * 90)}%`}
+										></span>
+									{/each}
+								</div>
+							{/if}
+							<button
+								type="button"
+								class="relative z-[1] flex size-full cursor-grab touch-none items-center px-3 text-left focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none active:cursor-grabbing"
+								aria-pressed={selectedAudioItemID === item.id}
+								title={m.video_studio_timing_keyboard()}
+								onclick={() => onSelectAudioItem(item.id)}
+								onpointerdown={(event) =>
+									beginTimingDrag(event, {
+										kind: 'audio',
+										id: item.id,
+										edge: 'move',
+										originalStartUS: item.timeline_start_us,
+										originalEndUS: item.timeline_start_us + item.duration_us
+									})}
+								onpointermove={continueTimingDrag}
+								onpointerup={endTimingDrag}
+								onpointercancel={endTimingDrag}
+								onkeydown={(event) =>
+									keyboardTiming(event, {
+										kind: 'audio',
+										id: item.id,
+										edge: 'move',
+										originalStartUS: item.timeline_start_us,
+										originalEndUS: item.timeline_start_us + item.duration_us
+									})}
+							>
+								<span class="truncate">{track.name || m.video_studio_audio_lane()}</span>
+							</button>
+							<button
+								type="button"
+								class="absolute inset-y-0 left-0 z-10 w-2 cursor-ew-resize touch-none border-r border-emerald-600/60 bg-emerald-500/20 after:absolute after:-inset-x-[18px] after:inset-y-0 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none sm:after:hidden"
+								aria-label={m.video_studio_adjust_item_start()}
+								title={m.video_studio_timing_keyboard()}
+								onpointerdown={(event) =>
+									beginTimingDrag(event, {
+										kind: 'audio',
+										id: item.id,
+										edge: 'start',
+										originalStartUS: item.timeline_start_us,
+										originalEndUS: item.timeline_start_us + item.duration_us
+									})}
+								onpointermove={continueTimingDrag}
+								onpointerup={endTimingDrag}
+								onpointercancel={endTimingDrag}
+								onkeydown={(event) =>
+									keyboardTiming(event, {
+										kind: 'audio',
+										id: item.id,
+										edge: 'start',
+										originalStartUS: item.timeline_start_us,
+										originalEndUS: item.timeline_start_us + item.duration_us
+									})}
+							></button>
+							<button
+								type="button"
+								class="absolute inset-y-0 right-0 z-10 w-2 cursor-ew-resize touch-none border-l border-emerald-600/60 bg-emerald-500/20 after:absolute after:-inset-x-[18px] after:inset-y-0 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none sm:after:hidden"
+								aria-label={m.video_studio_adjust_item_end()}
+								title={m.video_studio_timing_keyboard()}
+								onpointerdown={(event) =>
+									beginTimingDrag(event, {
+										kind: 'audio',
+										id: item.id,
+										edge: 'end',
+										originalStartUS: item.timeline_start_us,
+										originalEndUS: item.timeline_start_us + item.duration_us
+									})}
+								onpointermove={continueTimingDrag}
+								onpointerup={endTimingDrag}
+								onpointercancel={endTimingDrag}
+								onkeydown={(event) =>
+									keyboardTiming(event, {
+										kind: 'audio',
+										id: item.id,
+										edge: 'end',
+										originalStartUS: item.timeline_start_us,
+										originalEndUS: item.timeline_start_us + item.duration_us
+									})}
+							></button>
+						</div>
+					{/each}
+				</div>
+			{/each}
+
+			{#each project.caption_tracks as track (track.id)}
+				<div
+					class="sticky left-0 z-20 truncate border-r bg-background/95 p-2 text-xs text-muted-foreground backdrop-blur"
+					title={track.name || m.video_studio_captions_lane()}
+					data-video-studio-track-kind="caption"
+					data-video-studio-track-id={track.id}
+				>
+					{track.name || m.video_studio_captions_lane()}
+				</div>
+				<div class="relative h-14 border-b" style:width={`${widthPX}px`}>
+					{#each track.cues as cue (cue.id)}
+						<div
+							role="group"
+							aria-label={cue.text}
+							class={[
+								'absolute top-2 h-9 min-w-12 overflow-hidden rounded border text-xs text-sky-800 dark:text-sky-200',
+								selectedCaptionCueID === cue.id
+									? 'border-sky-600 bg-sky-500/25'
+									: 'border-sky-500/30 bg-sky-500/10'
+							]}
+							style:left={`${clipOffset(cue.start_us)}px`}
+							style:width={`${Math.max(48, clipOffset(cue.end_us - cue.start_us))}px`}
+						>
+							<button
+								type="button"
+								class="size-full cursor-grab touch-none truncate px-3 py-1 text-left focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none active:cursor-grabbing"
+								aria-pressed={selectedCaptionCueID === cue.id}
+								title={m.video_studio_timing_keyboard()}
+								onclick={() => onSelectCaptionCue(cue.id)}
+								onpointerdown={(event) =>
+									beginTimingDrag(event, {
+										kind: 'caption',
+										id: cue.id,
+										edge: 'move',
+										originalStartUS: cue.start_us,
+										originalEndUS: cue.end_us
+									})}
+								onpointermove={continueTimingDrag}
+								onpointerup={endTimingDrag}
+								onpointercancel={endTimingDrag}
+								onkeydown={(event) =>
+									keyboardTiming(event, {
+										kind: 'caption',
+										id: cue.id,
+										edge: 'move',
+										originalStartUS: cue.start_us,
+										originalEndUS: cue.end_us
+									})}
+							>
+								{cue.text}
+							</button>
+							<button
+								type="button"
+								class="absolute inset-y-0 left-0 z-10 w-2 cursor-ew-resize touch-none border-r border-sky-600/60 bg-sky-500/20 after:absolute after:-inset-x-[18px] after:inset-y-0 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none sm:after:hidden"
+								aria-label={m.video_studio_adjust_caption_start()}
+								title={m.video_studio_timing_keyboard()}
+								onpointerdown={(event) =>
+									beginTimingDrag(event, {
+										kind: 'caption',
+										id: cue.id,
+										edge: 'start',
+										originalStartUS: cue.start_us,
+										originalEndUS: cue.end_us
+									})}
+								onpointermove={continueTimingDrag}
+								onpointerup={endTimingDrag}
+								onpointercancel={endTimingDrag}
+								onkeydown={(event) =>
+									keyboardTiming(event, {
+										kind: 'caption',
+										id: cue.id,
+										edge: 'start',
+										originalStartUS: cue.start_us,
+										originalEndUS: cue.end_us
+									})}
+							></button>
+							<button
+								type="button"
+								class="absolute inset-y-0 right-0 z-10 w-2 cursor-ew-resize touch-none border-l border-sky-600/60 bg-sky-500/20 after:absolute after:-inset-x-[18px] after:inset-y-0 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none sm:after:hidden"
+								aria-label={m.video_studio_adjust_caption_end()}
+								title={m.video_studio_timing_keyboard()}
+								onpointerdown={(event) =>
+									beginTimingDrag(event, {
+										kind: 'caption',
+										id: cue.id,
+										edge: 'end',
+										originalStartUS: cue.start_us,
+										originalEndUS: cue.end_us
+									})}
+								onpointermove={continueTimingDrag}
+								onpointerup={endTimingDrag}
+								onpointercancel={endTimingDrag}
+								onkeydown={(event) =>
+									keyboardTiming(event, {
+										kind: 'caption',
+										id: cue.id,
+										edge: 'end',
+										originalStartUS: cue.start_us,
+										originalEndUS: cue.end_us
+									})}
+							></button>
+						</div>
+					{/each}
+				</div>
+			{/each}
+			<div
+				class="pointer-events-none absolute top-8 bottom-0 z-40 w-px bg-orange-500"
+				style:left={`${112 + clipOffset(playheadUS)}px`}
+				aria-hidden="true"
+			>
+				<span
+					class="absolute top-0 left-1/2 size-2.5 -translate-x-1/2 -translate-y-1/2 rotate-45 bg-orange-500"
+				></span>
 			</div>
 			{#if snapGuideUS !== null}
 				<div
