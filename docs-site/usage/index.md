@@ -15,6 +15,7 @@ The web app is the main place to work.
 - [Composing Posts](/usage/composing-posts) covers account selection, media, account versions, and the editor.
 - [Threads](/usage/threads) covers multi-post sequences.
 - [Scheduling](/usage/scheduling) covers posting times, status, and errors.
+- [Auto Reposts](/usage/auto-reposts) covers native repost rules, engagement gates, delays, per-post overrides, and cross-workspace account access.
 - [Analytics](/usage/analytics) covers account growth, post results, platform access, and update times.
 - [Engagement, Inbox, and Notifications](/usage/communications) covers comments, replies, messages, and alerts.
 - [Media](/usage/media-library) covers reusable files, designs, templates, brand items, collections, file sources, use checks, and safe cleanup.

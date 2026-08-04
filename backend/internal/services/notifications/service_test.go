@@ -105,9 +105,9 @@ func TestLegacyNotificationPreferencesAdoptNewEmailDefaults(t *testing.T) {
 	db := notificationsTestDB(t)
 	ctx := context.Background()
 	_, err := db.NewInsert().Model(&models.UserNotificationPreference{
-		UserID: "user-1",
+		UserID:          "user-1",
 		PreferencesJSON: `{"publish_failed":{"in_app":true},"post_published":{"in_app":false}}`,
-		UpdatedAt: time.Now().UTC(),
+		UpdatedAt:       time.Now().UTC(),
 	}).Exec(ctx)
 	require.NoError(t, err)
 

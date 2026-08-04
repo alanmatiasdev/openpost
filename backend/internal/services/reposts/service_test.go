@@ -123,6 +123,7 @@ func repostTestDB(t *testing.T) *bun.DB {
 		(*models.Workspace)(nil), (*models.User)(nil), (*models.WorkspaceMember)(nil), (*models.SocialAccount)(nil),
 		(*models.Publication)(nil), (*models.Rendition)(nil), (*models.RepostPolicy)(nil), (*models.RepostPolicyAccount)(nil),
 		(*models.RepostAccountGrant)(nil), (*models.RepostExecution)(nil), (*models.AnalyticsSyncState)(nil),
+		(*models.UsageCounter)(nil),
 		(*models.PublicationLifecycleEvent)(nil), (*models.Job)(nil),
 	} {
 		_, err := db.NewCreateTable().Model(model).IfNotExists().Exec(ctx)

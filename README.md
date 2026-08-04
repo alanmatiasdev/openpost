@@ -46,6 +46,7 @@ OpenPost helps solo founders turn launches, product updates, lessons, and ideas 
 - **Write one shared post.** Change the text, media, format, and settings for each account.
 - **See the full schedule.** Plan posts in a calendar, reuse posting times, and check scheduled, published, and failed posts.
 - **Track real platform numbers.** Keep account growth and post results while treating views, impressions, and reach as different metrics.
+- **Repost posts that earn attention.** Set native repost rules for selected accounts, wait for minimum engagement or stable growth, and override the rules on any post.
 - **Make still images.** Use OpenPost Studio without an account for local exports with no watermark, or save designs with workspace media and brand items.
 - **Make social videos locally.** Video Studio can stream-copy combined or per-section cuts without transcoding, or open the complete desktop or touch editor for four social formats, local transcript editing, effects, recording, proxies, and watermark-free export.
 - **Keep brands separate.** Workspaces isolate accounts, media, schedules, members, and automation access.

@@ -97,16 +97,6 @@
   <title>{seo.title}</title>
   <meta name="description" content={seo.description} />
   <link rel="canonical" href={canonical} />
-  <meta property="og:type" content="website" />
-  <meta property="og:site_name" content="OpenPost" />
-  <meta property="og:title" content={seo.title} />
-  <meta property="og:description" content={seo.description} />
-  <meta property="og:url" content={canonical} />
-  <meta property="og:image" content={`${siteUrl}/assets/brand/og-image.png`} />
-  <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content={seo.title} />
-  <meta name="twitter:description" content={seo.description} />
-  <meta name="twitter:image" content={`${siteUrl}/assets/brand/og-image.png`} />
 </svelte:head>
 
 <ToolPageShell

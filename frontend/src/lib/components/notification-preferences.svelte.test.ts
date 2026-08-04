@@ -22,7 +22,7 @@ function preferences() {
 	return {
 		post_published: { in_app: true, email: false },
 		publish_failed: { in_app: true, email: true },
-		account_needs_attention: { in_app: true, email: true },
+		account_needs_attention: { in_app: true, email: false },
 		new_engagement: { in_app: true, email: false },
 		new_message: { in_app: true, email: false },
 		reply_failed: { in_app: true, email: true },
@@ -89,9 +89,7 @@ describe('NotificationPreferences', () => {
 			)
 			.toBeVisible();
 		await expect
-			.element(
-					screen.getByRole('checkbox', { name: 'Publish failed · Email' }).nth(1)
-				)
+			.element(screen.getByRole('checkbox', { name: 'Publish failed · Email' }).nth(1))
 			.toBeDisabled();
 	});
 });

@@ -22,12 +22,7 @@
 		'reply_failed',
 		'workspace_invite'
 	]);
-	const defaultEmailTypes = new Set([
-		'publish_failed',
-		'account_needs_attention',
-		'reply_failed',
-		'workspace_invite'
-	]);
+	const defaultEmailTypes = new Set(['publish_failed', 'reply_failed', 'workspace_invite']);
 	const eventGroups = $derived([
 		{
 			id: 'publishing',

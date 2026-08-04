@@ -24,6 +24,9 @@ importers:
 
   docs-site:
     devDependencies:
+      '@openpost/social-images':
+        specifier: workspace:*
+        version: link:../packages/social-images
       typescript:
         specifier: latest
         version: 7.0.2
@@ -283,6 +286,9 @@ importers:
       '@openpost/changelog':
         specifier: workspace:*
         version: link:../packages/changelog
+      '@openpost/social-images':
+        specifier: workspace:*
+        version: link:../packages/social-images
       '@openpost/social-preview':
         specifier: workspace:*
         version: link:../packages/social-preview
@@ -343,6 +349,8 @@ importers:
         version: 7.3.6(@types/node@24.13.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.49.0)
 
   packages/changelog: {}
+
+  packages/social-images: {}
 
   packages/social-preview:
     dependencies:

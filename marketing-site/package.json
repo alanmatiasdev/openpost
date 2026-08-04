@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev --host 0.0.0.0 --port 4322",
-    "build": "vite build && node scripts/check-routing-output.mjs",
+    "build": "vite build && node scripts/check-routing-output.mjs && node scripts/check-social-metadata-output.mjs",
     "check:routing": "node scripts/check-routing-output.mjs",
     "preview": "vite preview --host 0.0.0.0 --port 4322",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json"
@@ -27,6 +27,7 @@
   "dependencies": {
     "@fontsource-variable/geist": "^5.2.8",
     "@openpost/changelog": "workspace:*",
+    "@openpost/social-images": "workspace:*",
     "@openpost/social-preview": "workspace:*",
     "clsx": "^2.1.1",
     "lucide-svelte": "^0.577.0",

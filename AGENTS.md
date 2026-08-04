@@ -56,6 +56,10 @@ Analytics is an optional provider capability defined by `platform.AnalyticsAdapt
 
 Engagement and inbox reads use the optional `CommentAdapter`/`EngagementAdapter` and `MessagingAdapter` capabilities. Keep them separate from publishing. The communications worker persists normalized records and separate safe sync state; page requests never call provider APIs. Inbox collection is opt-in per account. Provider writes use one-attempt durable jobs because an ambiguous timeout cannot be retried safely without a portable provider idempotency key.
 
+### Local scheduler references
+
+Keep shallow, Git-ignored checkouts of Postiz and Shoutrrr in `references/postiz/` and `references/shoutrrr/`. Before designing or implementing a social publishing, scheduling, automation, or provider feature—and whenever the requested behavior or UX is uncertain—check whether either project has an equivalent feature and inspect its current implementation. Postiz is especially useful for multi-account repost selection, delays, and plug-style thresholds. Shoutrrr is especially useful for durable repost jobs, engagement gates, plateau checks, and per-post overrides. Use them as references, not dependencies: OpenPost's architecture, security rules, provider capabilities, and product language remain authoritative. Never commit or vendor either checkout. If a checkout is missing, recreate it with `git clone --depth 1`; refresh an existing checkout with `git -C references/<name> pull --ff-only`.
+
 ## 3. Agent Guidelines & Coding Mandates
 
 When an AI agent is invoked to assist with this repository, it MUST adhere to the following rules:
