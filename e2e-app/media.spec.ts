@@ -10,6 +10,15 @@ const tinyPNG = Buffer.from(
   "base64",
 );
 
+const ffmpegAvailable = (() => {
+  try {
+    execFileSync("ffmpeg", ["-version"]);
+    return true;
+  } catch {
+    return false;
+  }
+})();
+
 function createVideoFixture(): Buffer {
   const directory = mkdtempSync(join(tmpdir(), "openpost-video-e2e-"));
   const filename = join(directory, "clip.mp4");
@@ -153,6 +162,8 @@ test("video upload edits in the browser and becomes a verified media asset", asy
   page,
   request,
 }) => {
+  test.skip(!ffmpegAvailable, "ffmpeg is required to generate video fixture");
+
   test.setTimeout(120_000);
   const unique = Date.now().toString(36);
   const auth = await registerUser(request, `media-video-${unique}@example.com`);
