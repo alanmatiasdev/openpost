@@ -29,6 +29,7 @@ import (
 	"github.com/openpost/backend/internal/services/passwordmail"
 	"github.com/openpost/backend/internal/services/providerapps"
 	"github.com/openpost/backend/internal/services/publicurl"
+	repostservice "github.com/openpost/backend/internal/services/reposts"
 	"github.com/openpost/backend/internal/services/sessions"
 	"github.com/openpost/backend/internal/services/updatestatus"
 	"github.com/uptrace/bun"
@@ -75,6 +76,7 @@ type RouteDeps struct {
 	InstanceSettingsService      *instancesettings.Service
 	AnalyticsService             *analyticsservice.Service
 	CommunicationsService        *communicationsservice.Service
+	RepostService                *repostservice.Service
 	NotificationService          *notifications.Service
 	UpdateStatusService          *updatestatus.Service
 
@@ -201,7 +203,9 @@ func RegisterHumaRoutes(api huma.API, deps RouteDeps) {
 	publicationHandler := handlers.NewPublicationHandler(deps.DB, deps.Authenticator, deps.Entitlement)
 	publicationHandler.SetCapabilityDependencies(deps.Providers, deps.TokenSource)
 	publicationHandler.SetPublicMediaVerifier(deps.PublicMediaVerifier)
+	publicationHandler.SetRepostService(deps.RepostService)
 	publicationHandler.RegisterRoutes(api)
+	handlers.NewRepostHandler(deps.RepostService, deps.Authenticator).RegisterRoutes(api)
 	handlers.NewCommentHandler(deps.DB, deps.Authenticator, deps.Providers, deps.TokenEncryptor).RegisterRoutes(api)
 	handlers.NewAnalyticsHandler(deps.DB, deps.Authenticator, deps.AnalyticsService).RegisterRoutes(api)
 	handlers.NewCommunicationsHandler(deps.DB, deps.Authenticator, deps.CommunicationsService).RegisterRoutes(api)

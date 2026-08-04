@@ -15,6 +15,7 @@ const (
 	tagPublications      = "Publications"
 	tagPrompts           = "Prompts"
 	tagProfiles          = "Profiles"
+	tagReposts           = "Repost Automation"
 	tagStudio            = "Studio"
 	tagVideoStudio       = "Video Studio"
 	tagWorkspaces        = "Workspaces"

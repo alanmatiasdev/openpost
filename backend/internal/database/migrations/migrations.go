@@ -133,7 +133,9 @@ func prepareMigration(ctx context.Context, db *bun.DB, migration migration) erro
 		err = addPublishingFailureColumnsToPostDestinations(ctx, db)
 	case 41:
 		description = "publication editor backfill"
-		err = backfillPublicationTextEditors(ctx, db)
+		if err = ensurePublicationRepostOverride(ctx, db); err == nil {
+			err = backfillPublicationTextEditors(ctx, db)
+		}
 	case 51:
 		description = "optional password"
 		err = makeUserPasswordOptional(ctx, db)
@@ -149,11 +151,27 @@ func prepareMigration(ctx context.Context, db *bun.DB, migration migration) erro
 	case 58:
 		description = "email verification"
 		err = ensureEmailVerificationUserField(ctx, db)
+	case 61:
+		description = "repost override"
+		err = ensurePublicationRepostOverride(ctx, db)
 	}
 	if err != nil {
 		return fmt.Errorf("migration %s %s preparation failed: %w", migration.name, description, err)
 	}
 	return nil
+}
+
+func ensurePublicationRepostOverride(ctx context.Context, db *bun.DB) error {
+	exists, err := migrationTableExists(ctx, db, "publications")
+	if err != nil || !exists {
+		return err
+	}
+	present, err := migrationColumnExists(ctx, db, "publications", "repost_override_json")
+	if err != nil || present {
+		return err
+	}
+	_, err = db.ExecContext(ctx, `ALTER TABLE publications ADD COLUMN repost_override_json TEXT NOT NULL DEFAULT '{"mode":"inherit"}'`)
+	return err
 }
 
 func ensureEmailVerificationUserField(ctx context.Context, db *bun.DB) error {
