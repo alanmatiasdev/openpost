@@ -10,7 +10,6 @@ import { chromium } from "@playwright/test";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { brandMark } from "../../../scripts/social-images/render.mjs";
 
 const sourceDir = path.dirname(fileURLToPath(import.meta.url));
 const kitRoot = path.resolve(sourceDir, "..");
@@ -71,6 +70,23 @@ function escapeXml(value = "") {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&apos;");
+}
+
+function brandMark({ x, y, scale = 0.19, color }) {
+  return `<g transform="translate(${x} ${y}) scale(${scale})">
+    <defs>
+      <mask id="nib-cutout-${x}-${y}">
+        <rect x="-50" y="-20" width="100" height="150" fill="white" />
+        <circle cx="0" cy="35" r="5" fill="black" />
+        <rect x="-1.5" y="35" width="3" height="70" fill="black" />
+      </mask>
+    </defs>
+    <g transform="translate(160 180) rotate(-40)">
+      <path d="M -30 -170 A 30 30 0 0 1 30 -170 L 22 -10 L -22 -10 Z" fill="${color}" />
+      <path d="M -20 0 L 20 0 L 28 35 L 0 100 L -28 35 Z" fill="${color}" mask="url(#nib-cutout-${x}-${y})" />
+    </g>
+    <path d="M 235 280 C 250 290, 265 230, 275 230 C 285 230, 290 275, 300 275 C 310 275, 325 160, 340 160 C 355 160, 365 290, 380 290 C 395 290, 400 170, 415 170" fill="none" stroke="${color}" stroke-width="18" stroke-linecap="round" stroke-linejoin="round" />
+  </g>`;
 }
 
 function wrapWords(value, maxCharacters, maxLines = 4) {
@@ -161,11 +177,12 @@ function paperBanner(spec, colors) {
   const lineHeight = Math.round(titleSize * 1.02);
   const labelY = height * 0.35;
   const titleY = height * 0.49;
-  const logoY = height * 0.18;
+  const logoY = height * 0.22;
   return svgShell(
     width,
     height,
     `<image href="${escapeXml(paperFieldHref)}" x="0" y="0" width="${width}" height="${height}" preserveAspectRatio="xMidYMid slice" />
+      <rect x="0" y="0" width="${width * 0.62}" height="${height}" fill="${colors.canvas}" opacity="0.9" />
       ${logoLockup(colors, contentX, logoY, Math.max(25, height * 0.066))}
       ${label(colors, "The content team for companies of one", contentX, labelY, Math.max(12, height * 0.034))}
       ${textBlock({ text: "Turn what you’re building into content.", x: contentX, y: titleY, size: titleSize, lineHeight, widthChars: spec.pageBanner ? 42 : 28, fill: colors.ink, maxLines: 2 })}
