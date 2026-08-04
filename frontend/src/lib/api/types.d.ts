@@ -2648,6 +2648,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/repost-account-grants/{grant_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke a cross-workspace repost account grant */
+        delete: operations["revoke-repost-account-grant"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/repost-automation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get workspace repost rules and available accounts */
+        get: operations["get-repost-automation"];
+        /** Replace workspace repost rules */
+        put: operations["save-repost-automation"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/stock-media/providers": {
         parameters: {
             query?: never;
@@ -3479,6 +3514,20 @@ export interface components {
             role: string;
             timezone: string;
         };
+        AccountOption: {
+            avatar_url?: string;
+            cross_workspace: boolean;
+            grant_active: boolean;
+            grant_required: boolean;
+            id: string;
+            instance_url?: string;
+            platform: string;
+            supports_repost: boolean;
+            unavailable_reason?: string;
+            username: string;
+            workspace_id: string;
+            workspace_name: string;
+        };
         AccountOverview: {
             account_supported: boolean;
             avatar_url?: string;
@@ -4008,6 +4057,7 @@ export interface components {
             revoked_sessions: number;
         };
         ChannelPreference: {
+            email: boolean;
             in_app: boolean;
         };
         ClientError: {
@@ -4569,6 +4619,8 @@ export interface components {
             };
             /** @description Explicit platform/account renditions */
             renditions?: components["schemas"]["RenditionInput"][] | null;
+            /** @description Optional per-publication repost override */
+            repost_override?: components["schemas"]["Override"];
             /**
              * Format: date-time
              * @description Optional schedule time
@@ -5426,6 +5478,19 @@ export interface components {
             timezone: string;
             /** Format: int64 */
             week_start: number;
+        };
+        GrantResponse: {
+            created_at: string;
+            /** @enum {string} */
+            direction: "outbound" | "inbound";
+            id: string;
+            platform: string;
+            source_workspace_id: string;
+            source_workspace_name: string;
+            target_account_id: string;
+            target_username: string;
+            target_workspace_id: string;
+            target_workspace_name: string;
         };
         "Health-checkResponse": {
             /**
@@ -6430,6 +6495,17 @@ export interface components {
             current_seats: number;
             members: components["schemas"]["OrganizationMemberResponse"][] | null;
         };
+        Override: {
+            /**
+             * @description Use workspace rules, disable reposts, or use this post's custom rule
+             * @enum {string}
+             */
+            mode: "inherit" | "off" | "custom";
+            /** @description Custom timing and engagement gates */
+            rule?: components["schemas"]["Rule"];
+            /** @description Target accounts for a custom override */
+            target_account_ids?: string[] | null;
+        };
         Overview: {
             /**
              * Format: uri
@@ -6527,6 +6603,26 @@ export interface components {
             password_login_allowed: boolean;
             provider_ids: string[] | null;
             require_token_reauth: boolean;
+        };
+        PolicyInput: {
+            enabled: boolean;
+            id?: string;
+            name: string;
+            rule: components["schemas"]["Rule"];
+            /** @description Empty means every compatible source account in this workspace */
+            source_account_ids?: string[] | null;
+            target_account_ids: string[] | null;
+        };
+        PolicyResponse: {
+            created_at?: string;
+            enabled: boolean;
+            id?: string;
+            name: string;
+            rule: components["schemas"]["Rule"];
+            /** @description Empty means every compatible source account in this workspace */
+            source_account_ids?: string[] | null;
+            target_account_ids: string[] | null;
+            updated_at?: string;
         };
         PollCLIAuthInputBody: {
             /**
@@ -6735,6 +6831,19 @@ export interface components {
             utc_minute: number;
             /** @description Workspace ID */
             workspace_id: string;
+        };
+        PreferenceSettings: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/PreferenceSettings.json
+             */
+            readonly $schema?: string;
+            email_address: string;
+            email_available: boolean;
+            preferences: {
+                [key: string]: components["schemas"]["ChannelPreference"];
+            };
         };
         PrimarySequenceClip: {
             audio: components["schemas"]["ClipAudioSettings"];
@@ -7113,6 +7222,7 @@ export interface components {
                 [key: string]: unknown;
             };
             renditions: components["schemas"]["RenditionResponse"][] | null;
+            repost_override: components["schemas"]["Override"];
             /** Format: int64 */
             revision: number;
             scheduled_at?: string;
@@ -7188,6 +7298,8 @@ export interface components {
             };
             /** @description Replacement destination renditions saved in the same transaction */
             renditions?: components["schemas"]["RenditionInput"][] | null;
+            /** @description Replace the per-publication repost override */
+            repost_override?: components["schemas"]["Override"];
             /**
              * Format: date-time
              * @description Optional schedule time
@@ -7493,6 +7605,15 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        RepostGrantOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/RepostGrantOutputBody.json
+             */
+            readonly $schema?: string;
+            message: string;
+        };
         RequestPasswordResetInputBody: {
             /**
              * Format: uri
@@ -7724,6 +7845,50 @@ export interface components {
             readonly $schema?: string;
             revoked: boolean;
         };
+        Rule: {
+            /**
+             * Format: int64
+             * @description Wait after publishing before the first eligibility check
+             */
+            delay_seconds: number;
+            /**
+             * Format: int64
+             * @description How long OpenPost may wait for engagement gates
+             */
+            evaluation_window_seconds: number;
+            /**
+             * Format: int64
+             * @description Minimum comments; zero disables this gate
+             */
+            min_comments: number;
+            /**
+             * Format: int64
+             * @description Minimum likes; zero disables this gate
+             */
+            min_likes: number;
+            /**
+             * Format: int64
+             * @description Minimum reposts or shares; zero disables this gate
+             */
+            min_reposts: number;
+            /**
+             * Format: int64
+             * @description Minimum views; zero disables this gate
+             */
+            min_views: number;
+            /**
+             * Format: int64
+             * @description Consecutive unchanged analytics checks required
+             */
+            plateau_checks: number;
+            /** @description Wait until stored engagement has stopped changing */
+            require_plateau: boolean;
+            /**
+             * @description Require all configured thresholds or any one
+             * @enum {string}
+             */
+            threshold_mode: "all" | "any";
+        };
         SaveInstanceSettingsInputBody: {
             /**
              * Format: uri
@@ -7768,6 +7933,18 @@ export interface components {
             existed: boolean;
             /** @description Whether the server must restart before adapter changes apply */
             requires_restart: boolean;
+        };
+        SaveRepostSettingsInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/SaveRepostSettingsInputBody.json
+             */
+            readonly $schema?: string;
+            /** @description Complete replacement set of workspace repost rules */
+            policies: components["schemas"]["PolicyInput"][] | null;
+            /** @description Workspace ID */
+            workspace_id: string;
         };
         SaveTextPostDraftInputBody: {
             /**
@@ -8007,6 +8184,20 @@ export interface components {
             scope: "destination" | "segment" | "media_item";
             type: string;
             unavailable_reason?: string;
+        };
+        SettingsResponse: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/SettingsResponse.json
+             */
+            readonly $schema?: string;
+            accounts: components["schemas"]["AccountOption"][] | null;
+            can_manage: boolean;
+            grants: components["schemas"]["GrantResponse"][] | null;
+            policies: components["schemas"]["PolicyResponse"][] | null;
+            supported_platforms: string[] | null;
+            workspace_id: string;
         };
         SetupTOTPInputBody: {
             /**
@@ -15728,9 +15919,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: components["schemas"]["ChannelPreference"];
-                    };
+                    "application/json": components["schemas"]["PreferenceSettings"];
                 };
             };
             /** @description Error */
@@ -15765,9 +15954,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: components["schemas"]["ChannelPreference"];
-                    };
+                    "application/json": components["schemas"]["PreferenceSettings"];
                 };
             };
             /** @description Error */
@@ -18815,6 +19002,178 @@ export interface operations {
             };
             /** @description Error */
             default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "revoke-repost-account-grant": {
+        parameters: {
+            query: {
+                /** @description Workspace requesting revocation */
+                workspace_id: string;
+            };
+            header?: never;
+            path: {
+                /** @description Grant ID */
+                grant_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RepostGrantOutputBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-repost-automation": {
+        parameters: {
+            query: {
+                /** @description Workspace ID */
+                workspace_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "save-repost-automation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveRepostSettingsInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SettingsResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };

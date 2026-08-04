@@ -339,11 +339,22 @@ func (s *Service) execute(ctx context.Context, executionID string) error {
 	if adapter == nil {
 		return s.finishExecution(ctx, execution, "provider_unsupported", "The target provider no longer supports native reposts.")
 	}
+	allowed, reason, err := s.checkProviderWriteQuota(ctx, execution.WorkspaceID)
+	if err != nil {
+		return err
+	}
+	if !allowed {
+		if strings.TrimSpace(reason) == "" {
+			reason = "The workspace provider-write quota was reached."
+		}
+		return s.finishExecution(ctx, execution, "quota_exceeded", reason)
+	}
 	token, err := s.tokenSource.GetValidAccessToken(ctx, target.ID)
 	if err != nil {
 		s.markExecutionFailed(ctx, execution, "authentication_failed", "The target account needs to be reconnected.")
 		return fmt.Errorf("repost target authentication: %w", err)
 	}
+	s.recordProviderWrite(ctx, execution.WorkspaceID)
 	result, err := adapter.Repost(ctx, token, target.AccountID, platform.RepostRequest{
 		SourceAccountID:   source.AccountID,
 		SourceInstanceURL: source.InstanceURL,

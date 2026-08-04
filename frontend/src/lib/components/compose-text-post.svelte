@@ -24,6 +24,7 @@
 	import ComposerPublishActions from './composer-publish-actions.svelte';
 	import SaveIndicator from './save-indicator.svelte';
 	import ComposerScheduleDialog from './composer-schedule-dialog.svelte';
+	import ComposerRepostControl from './composer-repost-control.svelte';
 	import ComposerValidationMenu from './composer-validation-menu.svelte';
 	import DestinationSettingsDialog from './destination-settings-dialog.svelte';
 	import PlatformIcon from './platform-icon.svelte';
@@ -116,6 +117,7 @@
 		workspace_id: string;
 		content: string;
 		thread_draft?: string | null;
+		repost_override?: components['schemas']['Override'];
 		status: string;
 		revision: number;
 		scheduled_at: string;
@@ -156,6 +158,7 @@
 		selected_date?: string;
 		selected_time: string | null;
 		random_delay_override: string;
+		repost_override: components['schemas']['Override'];
 	}
 
 	interface Props {
@@ -228,6 +231,7 @@
 	let showScheduleDialog = $state(false);
 	let scheduleInputError = $state('');
 	let randomDelayOverride = $state<string>('default');
+	let repostOverride = $state<components['schemas']['Override']>({ mode: 'inherit' });
 
 	let showPromptCard = $state(false);
 	let currentPrompt = $state<{ text: string; example: string; category: string } | null>(null);
@@ -662,6 +666,7 @@
 			scheduledDate: selectedDate?.toString() ?? null,
 			selectedTime,
 			randomDelayOverride,
+			repostOverride,
 			selectedWorkspaceId
 		});
 	}
@@ -1015,6 +1020,7 @@
 	function hydrateCanonicalSettings(publication: Publication) {
 		publicationId = publication.id;
 		revision = publication.revision;
+		repostOverride = publication.repost_override ?? { mode: 'inherit' };
 		linkUrl = publication.source_url ?? '';
 		showLinkInput = Boolean(linkUrl);
 		settingsByAccount = Object.fromEntries(
@@ -1423,7 +1429,8 @@
 				media_sizes: Array.from(mediaSizes.entries()),
 				selected_date: selectedDate?.toString(),
 				selected_time: selectedTime,
-				random_delay_override: randomDelayOverride
+				random_delay_override: randomDelayOverride,
+				repost_override: $state.snapshot(repostOverride)
 			} satisfies StudioComposerSnapshotPayload
 		};
 		storeComposerRecovery(token.token, snapshot);
@@ -1471,6 +1478,7 @@
 				}
 				selectedTime = payload.selected_time;
 				randomDelayOverride = payload.random_delay_override;
+				repostOverride = structuredClone(payload.repost_override ?? { mode: 'inherit' });
 				await loadAccounts(selectedWorkspaceId, selectedAccountIds);
 				await resolveCapabilities();
 			}
@@ -1544,6 +1552,7 @@
 			selectedDate = undefined;
 			selectedTime = null;
 			randomDelayOverride = 'default';
+			repostOverride = { mode: 'inherit' };
 			if (workspaces.length > 0) {
 				selectedWorkspaceId = workspaceCtx.currentWorkspace?.id ?? workspaces[0].id;
 				await ensureComposerWorkspace(selectedWorkspaceId);
@@ -1561,6 +1570,7 @@
 		selectedWorkspaceId = post.workspace_id;
 		selectedAccountIds = post.destinations?.map((d) => d.social_account_id) ?? [];
 		randomDelayOverride = normalizeRandomDelayValue(post.random_delay_minutes);
+		repostOverride = post.repost_override ?? { mode: 'inherit' };
 
 		// Load alt texts from media
 		const newAlts = new SvelteMap<string, string>();
@@ -2037,7 +2047,8 @@
 					: { clear_schedule: true }),
 				metadata: canonical.metadata,
 				segments: canonical.segments,
-				renditions: canonical.renditions
+				renditions: canonical.renditions,
+				repost_override: $state.snapshot(repostOverride)
 			};
 			const body = {
 				content: draftContent,
@@ -2950,6 +2961,12 @@
 				{#if accounts.length > 0}
 					<ComposerValidationMenu issues={visibleGlobalIssues} />
 				{/if}
+				<ComposerRepostControl
+					workspaceID={selectedWorkspaceId}
+					bind:value={repostOverride}
+					disabled={!selectedWorkspaceId || isSaving || isSubmitting}
+					onChange={scheduleAutoSave}
+				/>
 				<DropdownMenu.Root>
 					<DropdownMenu.Trigger>
 						{#snippet child({ props })}
@@ -3079,6 +3096,12 @@
 				{#if accounts.length > 0}
 					<ComposerValidationMenu issues={visibleGlobalIssues} class="size-8" />
 				{/if}
+				<ComposerRepostControl
+					workspaceID={selectedWorkspaceId}
+					bind:value={repostOverride}
+					disabled={!selectedWorkspaceId || isSaving || isSubmitting}
+					onChange={scheduleAutoSave}
+				/>
 			</div>
 
 			<div class="flex flex-wrap items-center gap-1.5 md:gap-2">

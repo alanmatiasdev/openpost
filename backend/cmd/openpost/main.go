@@ -298,6 +298,8 @@ func main() {
 
 	analyticsService := analyticsservice.NewService(db, tokenManager)
 	repostService := repostservice.NewService(db, tokenManager)
+	repostService.SetUsage(usageService)
+	repostService.SetEntitlement(entitlementService)
 	notificationService := notifications.NewService(db, notifications.Options{
 		Sender: authMailSender, PublicURL: cfg.PublicURL,
 	})

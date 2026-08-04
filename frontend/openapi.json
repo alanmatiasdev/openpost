@@ -550,6 +550,59 @@
 				"required": ["id", "name", "role", "timezone", "created_at"],
 				"type": "object"
 			},
+			"AccountOption": {
+				"additionalProperties": false,
+				"properties": {
+					"avatar_url": {
+						"type": "string"
+					},
+					"cross_workspace": {
+						"type": "boolean"
+					},
+					"grant_active": {
+						"type": "boolean"
+					},
+					"grant_required": {
+						"type": "boolean"
+					},
+					"id": {
+						"type": "string"
+					},
+					"instance_url": {
+						"type": "string"
+					},
+					"platform": {
+						"type": "string"
+					},
+					"supports_repost": {
+						"type": "boolean"
+					},
+					"unavailable_reason": {
+						"type": "string"
+					},
+					"username": {
+						"type": "string"
+					},
+					"workspace_id": {
+						"type": "string"
+					},
+					"workspace_name": {
+						"type": "string"
+					}
+				},
+				"required": [
+					"id",
+					"workspace_id",
+					"workspace_name",
+					"platform",
+					"username",
+					"supports_repost",
+					"cross_workspace",
+					"grant_required",
+					"grant_active"
+				],
+				"type": "object"
+			},
 			"AccountOverview": {
 				"additionalProperties": false,
 				"properties": {
@@ -1823,11 +1876,14 @@
 			"ChannelPreference": {
 				"additionalProperties": false,
 				"properties": {
+					"email": {
+						"type": "boolean"
+					},
 					"in_app": {
 						"type": "boolean"
 					}
 				},
-				"required": ["in_app"],
+				"required": ["in_app", "email"],
 				"type": "object"
 			},
 			"ClientError": {
@@ -2990,6 +3046,10 @@
 							"$ref": "#/components/schemas/RenditionInput"
 						},
 						"type": ["array", "null"]
+					},
+					"repost_override": {
+						"$ref": "#/components/schemas/Override",
+						"description": "Optional per-publication repost override"
 					},
 					"scheduled_at": {
 						"description": "Optional schedule time",
@@ -4885,6 +4945,55 @@
 					"slot_start_hour",
 					"slot_end_hour",
 					"slot_interval_minutes"
+				],
+				"type": "object"
+			},
+			"GrantResponse": {
+				"additionalProperties": false,
+				"properties": {
+					"created_at": {
+						"type": "string"
+					},
+					"direction": {
+						"enum": ["outbound", "inbound"],
+						"type": "string"
+					},
+					"id": {
+						"type": "string"
+					},
+					"platform": {
+						"type": "string"
+					},
+					"source_workspace_id": {
+						"type": "string"
+					},
+					"source_workspace_name": {
+						"type": "string"
+					},
+					"target_account_id": {
+						"type": "string"
+					},
+					"target_username": {
+						"type": "string"
+					},
+					"target_workspace_id": {
+						"type": "string"
+					},
+					"target_workspace_name": {
+						"type": "string"
+					}
+				},
+				"required": [
+					"id",
+					"source_workspace_id",
+					"source_workspace_name",
+					"target_workspace_id",
+					"target_workspace_name",
+					"target_account_id",
+					"target_username",
+					"platform",
+					"direction",
+					"created_at"
 				],
 				"type": "object"
 			},
@@ -7086,6 +7195,29 @@
 				"required": ["members", "current_seats"],
 				"type": "object"
 			},
+			"Override": {
+				"additionalProperties": false,
+				"properties": {
+					"mode": {
+						"description": "Use workspace rules, disable reposts, or use this post's custom rule",
+						"enum": ["inherit", "off", "custom"],
+						"type": "string"
+					},
+					"rule": {
+						"$ref": "#/components/schemas/Rule",
+						"description": "Custom timing and engagement gates"
+					},
+					"target_account_ids": {
+						"description": "Target accounts for a custom override",
+						"items": {
+							"type": "string"
+						},
+						"type": ["array", "null"]
+					}
+				},
+				"required": ["mode"],
+				"type": "object"
+			},
 			"Overview": {
 				"additionalProperties": false,
 				"properties": {
@@ -7333,6 +7465,76 @@
 					"max_token_lifetime_seconds",
 					"require_token_reauth"
 				],
+				"type": "object"
+			},
+			"PolicyInput": {
+				"additionalProperties": false,
+				"properties": {
+					"enabled": {
+						"type": "boolean"
+					},
+					"id": {
+						"type": "string"
+					},
+					"name": {
+						"type": "string"
+					},
+					"rule": {
+						"$ref": "#/components/schemas/Rule"
+					},
+					"source_account_ids": {
+						"description": "Empty means every compatible source account in this workspace",
+						"items": {
+							"type": "string"
+						},
+						"type": ["array", "null"]
+					},
+					"target_account_ids": {
+						"items": {
+							"type": "string"
+						},
+						"type": ["array", "null"]
+					}
+				},
+				"required": ["name", "enabled", "target_account_ids", "rule"],
+				"type": "object"
+			},
+			"PolicyResponse": {
+				"additionalProperties": false,
+				"properties": {
+					"created_at": {
+						"type": "string"
+					},
+					"enabled": {
+						"type": "boolean"
+					},
+					"id": {
+						"type": "string"
+					},
+					"name": {
+						"type": "string"
+					},
+					"rule": {
+						"$ref": "#/components/schemas/Rule"
+					},
+					"source_account_ids": {
+						"description": "Empty means every compatible source account in this workspace",
+						"items": {
+							"type": "string"
+						},
+						"type": ["array", "null"]
+					},
+					"target_account_ids": {
+						"items": {
+							"type": "string"
+						},
+						"type": ["array", "null"]
+					},
+					"updated_at": {
+						"type": "string"
+					}
+				},
+				"required": ["name", "enabled", "target_account_ids", "rule"],
 				"type": "object"
 			},
 			"PollCLIAuthInputBody": {
@@ -7728,6 +7930,32 @@
 					"is_active",
 					"created_at"
 				],
+				"type": "object"
+			},
+			"PreferenceSettings": {
+				"additionalProperties": false,
+				"properties": {
+					"$schema": {
+						"description": "A URL to the JSON Schema for this object.",
+						"examples": ["https://example.com/schemas/PreferenceSettings.json"],
+						"format": "uri",
+						"readOnly": true,
+						"type": "string"
+					},
+					"email_address": {
+						"type": "string"
+					},
+					"email_available": {
+						"type": "boolean"
+					},
+					"preferences": {
+						"additionalProperties": {
+							"$ref": "#/components/schemas/ChannelPreference"
+						},
+						"type": "object"
+					}
+				},
+				"required": ["preferences", "email_available", "email_address"],
 				"type": "object"
 			},
 			"PrimarySequenceClip": {
@@ -8618,6 +8846,9 @@
 						},
 						"type": ["array", "null"]
 					},
+					"repost_override": {
+						"$ref": "#/components/schemas/Override"
+					},
 					"revision": {
 						"format": "int64",
 						"type": "integer"
@@ -8669,7 +8900,8 @@
 					"updated_at",
 					"renditions",
 					"segments",
-					"media"
+					"media",
+					"repost_override"
 				],
 				"type": "object"
 			},
@@ -8795,6 +9027,10 @@
 							"$ref": "#/components/schemas/RenditionInput"
 						},
 						"type": ["array", "null"]
+					},
+					"repost_override": {
+						"$ref": "#/components/schemas/Override",
+						"description": "Replace the per-publication repost override"
 					},
 					"scheduled_at": {
 						"description": "Optional schedule time",
@@ -9463,6 +9699,23 @@
 				"required": ["body"],
 				"type": "object"
 			},
+			"RepostGrantOutputBody": {
+				"additionalProperties": false,
+				"properties": {
+					"$schema": {
+						"description": "A URL to the JSON Schema for this object.",
+						"examples": ["https://example.com/schemas/RepostGrantOutputBody.json"],
+						"format": "uri",
+						"readOnly": true,
+						"type": "string"
+					},
+					"message": {
+						"type": "string"
+					}
+				},
+				"required": ["message"],
+				"type": "object"
+			},
 			"RequestPasswordResetInputBody": {
 				"additionalProperties": false,
 				"properties": {
@@ -10024,6 +10277,77 @@
 				"required": ["revoked"],
 				"type": "object"
 			},
+			"Rule": {
+				"additionalProperties": false,
+				"properties": {
+					"delay_seconds": {
+						"description": "Wait after publishing before the first eligibility check",
+						"format": "int64",
+						"maximum": 2592000,
+						"minimum": 0,
+						"type": "integer"
+					},
+					"evaluation_window_seconds": {
+						"description": "How long OpenPost may wait for engagement gates",
+						"format": "int64",
+						"maximum": 2592000,
+						"minimum": 900,
+						"type": "integer"
+					},
+					"min_comments": {
+						"description": "Minimum comments; zero disables this gate",
+						"format": "int64",
+						"minimum": 0,
+						"type": "integer"
+					},
+					"min_likes": {
+						"description": "Minimum likes; zero disables this gate",
+						"format": "int64",
+						"minimum": 0,
+						"type": "integer"
+					},
+					"min_reposts": {
+						"description": "Minimum reposts or shares; zero disables this gate",
+						"format": "int64",
+						"minimum": 0,
+						"type": "integer"
+					},
+					"min_views": {
+						"description": "Minimum views; zero disables this gate",
+						"format": "int64",
+						"minimum": 0,
+						"type": "integer"
+					},
+					"plateau_checks": {
+						"description": "Consecutive unchanged analytics checks required",
+						"format": "int64",
+						"maximum": 12,
+						"minimum": 2,
+						"type": "integer"
+					},
+					"require_plateau": {
+						"description": "Wait until stored engagement has stopped changing",
+						"type": "boolean"
+					},
+					"threshold_mode": {
+						"description": "Require all configured thresholds or any one",
+						"enum": ["all", "any"],
+						"type": "string"
+					}
+				},
+				"required": [
+					"delay_seconds",
+					"evaluation_window_seconds",
+					"threshold_mode",
+					"min_likes",
+					"min_comments",
+					"min_reposts",
+					"min_views",
+					"require_plateau",
+					"plateau_checks"
+				],
+				"type": "object"
+			},
 			"SaveInstanceSettingsInputBody": {
 				"additionalProperties": false,
 				"properties": {
@@ -10111,6 +10435,31 @@
 					}
 				},
 				"required": ["app", "existed", "requires_restart"],
+				"type": "object"
+			},
+			"SaveRepostSettingsInputBody": {
+				"additionalProperties": false,
+				"properties": {
+					"$schema": {
+						"description": "A URL to the JSON Schema for this object.",
+						"examples": ["https://example.com/schemas/SaveRepostSettingsInputBody.json"],
+						"format": "uri",
+						"readOnly": true,
+						"type": "string"
+					},
+					"policies": {
+						"description": "Complete replacement set of workspace repost rules",
+						"items": {
+							"$ref": "#/components/schemas/PolicyInput"
+						},
+						"type": ["array", "null"]
+					},
+					"workspace_id": {
+						"description": "Workspace ID",
+						"type": "string"
+					}
+				},
+				"required": ["workspace_id", "policies"],
 				"type": "object"
 			},
 			"SaveTextPostDraftInputBody": {
@@ -10695,6 +11044,57 @@
 					"type",
 					"scope",
 					"required"
+				],
+				"type": "object"
+			},
+			"SettingsResponse": {
+				"additionalProperties": false,
+				"properties": {
+					"$schema": {
+						"description": "A URL to the JSON Schema for this object.",
+						"examples": ["https://example.com/schemas/SettingsResponse.json"],
+						"format": "uri",
+						"readOnly": true,
+						"type": "string"
+					},
+					"accounts": {
+						"items": {
+							"$ref": "#/components/schemas/AccountOption"
+						},
+						"type": ["array", "null"]
+					},
+					"can_manage": {
+						"type": "boolean"
+					},
+					"grants": {
+						"items": {
+							"$ref": "#/components/schemas/GrantResponse"
+						},
+						"type": ["array", "null"]
+					},
+					"policies": {
+						"items": {
+							"$ref": "#/components/schemas/PolicyResponse"
+						},
+						"type": ["array", "null"]
+					},
+					"supported_platforms": {
+						"items": {
+							"type": "string"
+						},
+						"type": ["array", "null"]
+					},
+					"workspace_id": {
+						"type": "string"
+					}
+				},
+				"required": [
+					"workspace_id",
+					"can_manage",
+					"supported_platforms",
+					"policies",
+					"accounts",
+					"grants"
 				],
 				"type": "object"
 			},
@@ -22374,10 +22774,7 @@
 						"content": {
 							"application/json": {
 								"schema": {
-									"additionalProperties": {
-										"$ref": "#/components/schemas/ChannelPreference"
-									},
-									"type": "object"
+									"$ref": "#/components/schemas/PreferenceSettings"
 								}
 							}
 						},
@@ -22417,10 +22814,7 @@
 						"content": {
 							"application/json": {
 								"schema": {
-									"additionalProperties": {
-										"$ref": "#/components/schemas/ChannelPreference"
-									},
-									"type": "object"
+									"$ref": "#/components/schemas/PreferenceSettings"
 								}
 							}
 						},
@@ -26376,6 +26770,217 @@
 				},
 				"summary": "Queue an explicit provider reply",
 				"tags": ["Publications"]
+			}
+		},
+		"/repost-account-grants/{grant_id}": {
+			"delete": {
+				"operationId": "revoke-repost-account-grant",
+				"parameters": [
+					{
+						"description": "Grant ID",
+						"in": "path",
+						"name": "grant_id",
+						"required": true,
+						"schema": {
+							"description": "Grant ID",
+							"type": "string"
+						}
+					},
+					{
+						"description": "Workspace requesting revocation",
+						"explode": false,
+						"in": "query",
+						"name": "workspace_id",
+						"required": true,
+						"schema": {
+							"description": "Workspace requesting revocation",
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/RepostGrantOutputBody"
+								}
+							}
+						},
+						"description": "OK"
+					},
+					"403": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Forbidden"
+					},
+					"404": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Not Found"
+					},
+					"422": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Unprocessable Entity"
+					},
+					"500": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Internal Server Error"
+					}
+				},
+				"summary": "Revoke a cross-workspace repost account grant",
+				"tags": ["Repost Automation"]
+			}
+		},
+		"/repost-automation": {
+			"get": {
+				"operationId": "get-repost-automation",
+				"parameters": [
+					{
+						"description": "Workspace ID",
+						"explode": false,
+						"in": "query",
+						"name": "workspace_id",
+						"required": true,
+						"schema": {
+							"description": "Workspace ID",
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/SettingsResponse"
+								}
+							}
+						},
+						"description": "OK"
+					},
+					"403": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Forbidden"
+					},
+					"422": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Unprocessable Entity"
+					},
+					"500": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Internal Server Error"
+					}
+				},
+				"summary": "Get workspace repost rules and available accounts",
+				"tags": ["Repost Automation"]
+			},
+			"put": {
+				"operationId": "save-repost-automation",
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/SaveRepostSettingsInputBody"
+							}
+						}
+					},
+					"required": true
+				},
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/SettingsResponse"
+								}
+							}
+						},
+						"description": "OK"
+					},
+					"400": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Bad Request"
+					},
+					"403": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Forbidden"
+					},
+					"422": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Unprocessable Entity"
+					},
+					"500": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Internal Server Error"
+					}
+				},
+				"summary": "Replace workspace repost rules",
+				"tags": ["Repost Automation"]
 			}
 		},
 		"/stock-media/providers": {

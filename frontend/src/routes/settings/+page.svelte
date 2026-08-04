@@ -17,6 +17,7 @@
 	import DestructiveConfirmDialog from '$lib/components/destructive-confirm-dialog.svelte';
 	import ProfileAvatarUploader from '$lib/components/profile-avatar-uploader.svelte';
 	import AccountDataCard from '$lib/components/account-data-card.svelte';
+	import NotificationPreferences from '$lib/components/notification-preferences.svelte';
 	import OrganizationSSOSettings from '$lib/components/organization-sso-settings.svelte';
 	import SettingsFormFooter from '$lib/components/settings-form-footer.svelte';
 	import MediaPreviewImage from '$lib/components/media-preview-image.svelte';
@@ -24,6 +25,7 @@
 	import BrandKitEditor from '$lib/studio/components/brand-kit-editor.svelte';
 	import StudioColorPicker from '$lib/studio/components/studio-color-picker.svelte';
 	import AccountsPage from '../accounts/+page.svelte';
+	import RepostAutomationSettings from '$lib/components/repost-automation-settings.svelte';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { auth } from '$lib/stores/auth';
@@ -520,11 +522,13 @@
 	);
 	const settingsTabs = $derived([
 		{ id: 'profile', label: m.settings_profile() },
+		{ id: 'notifications', label: m.notifications_settings() },
 		{ id: 'security', label: m.settings_security() },
 		{ id: 'developer', label: m.settings_developer() },
 		{ id: 'general', label: m.settings_general() },
 		{ id: 'brand', label: m.media_brand() },
 		{ id: 'accounts', label: m.accounts_heading() },
+		{ id: 'reposts', label: m.settings_reposts() },
 		{ id: 'schedule', label: m.settings_schedule() },
 		{ id: 'members', label: m.settings_members() },
 		{ id: 'sso', label: m.settings_sso() },
@@ -548,11 +552,18 @@
 	});
 	const settingsLoadingVariant = $derived.by(() => {
 		if (activeSettingsTab === 'profile') return 'profile' as const;
-		if (['members', 'sso', 'plan', 'security'].includes(activeSettingsTab)) return 'cards' as const;
+		if (['members', 'sso', 'plan', 'security', 'notifications'].includes(activeSettingsTab))
+			return 'cards' as const;
 		if (
-			['developer', 'schedule', 'accounts', 'instance', 'configuration', 'users'].includes(
-				activeSettingsTab
-			)
+			[
+				'developer',
+				'schedule',
+				'accounts',
+				'reposts',
+				'instance',
+				'configuration',
+				'users'
+			].includes(activeSettingsTab)
 		)
 			return 'list' as const;
 		return 'form' as const;
@@ -588,6 +599,7 @@
 	);
 	const activeSettingsTitle = $derived.by(() => {
 		if (activeSettingsTab === 'profile') return m.settings_profile();
+		if (activeSettingsTab === 'notifications') return m.notifications_settings();
 		if (activeSettingsTab === 'security') return m.settings_security();
 		if (activeSettingsTab === 'developer') return m.settings_developer();
 		if (activeSettingsTab === 'instance') return m.settings_instance();
@@ -599,10 +611,12 @@
 		if (activeSettingsTab === 'schedule') return m.settings_schedule();
 		if (activeSettingsTab === 'brand') return m.media_brand();
 		if (activeSettingsTab === 'accounts') return m.accounts_heading();
+		if (activeSettingsTab === 'reposts') return m.settings_reposts();
 		return m.settings_general();
 	});
 	const activeSettingsDescription = $derived.by(() => {
 		if (activeSettingsTab === 'profile') return m.settings_profile_description();
+		if (activeSettingsTab === 'notifications') return m.notifications_settings_description();
 		if (activeSettingsTab === 'security') return m.settings_account_security_body();
 		if (activeSettingsTab === 'developer') return m.settings_developer_description();
 		if (activeSettingsTab === 'instance') return m.settings_instance_description();
@@ -614,6 +628,7 @@
 		if (activeSettingsTab === 'schedule') return m.settings_schedule_description();
 		if (activeSettingsTab === 'brand') return m.media_brand_description();
 		if (activeSettingsTab === 'accounts') return m.accounts_description();
+		if (activeSettingsTab === 'reposts') return m.settings_reposts_description();
 		return m.settings_general_description({
 			workspace: workspaceCtx.currentWorkspace?.name || m.settings_workspace()
 		});
@@ -1906,7 +1921,7 @@
 								</p>
 								{#if authState.user?.public_profile_enabled && authState.user.username}
 									<a
-										href={`/u/${authState.user.username}`}
+										href={resolve(`/u/${authState.user.username}` as '/')}
 										target="_blank"
 										rel="noreferrer"
 										class="mt-2 inline-flex min-h-11 items-center gap-2 text-sm font-medium text-primary hover:underline"
@@ -1931,9 +1946,25 @@
 					</form>
 				</section>
 
+				<section
+					id="notifications"
+					class:hidden={activeSettingsTab !== 'notifications'}
+					class="scroll-mt-24"
+				>
+					{#if activeSettingsTab === 'notifications'}
+						<NotificationPreferences />
+					{/if}
+				</section>
+
 				<section id="accounts" class:hidden={activeSettingsTab !== 'accounts'} class="scroll-mt-24">
 					{#if activeSettingsTab === 'accounts'}
 						<AccountsPage />
+					{/if}
+				</section>
+
+				<section id="reposts" class:hidden={activeSettingsTab !== 'reposts'} class="scroll-mt-24">
+					{#if activeSettingsTab === 'reposts'}
+						<RepostAutomationSettings workspaceID={workspaceCtx.currentWorkspace?.id ?? ''} />
 					{/if}
 				</section>
 

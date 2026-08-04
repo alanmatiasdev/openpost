@@ -19,6 +19,7 @@
 	import ComposerPublishActions from './composer-publish-actions.svelte';
 	import SaveIndicator from './save-indicator.svelte';
 	import ComposerScheduleDialog from './composer-schedule-dialog.svelte';
+	import ComposerRepostControl from './composer-repost-control.svelte';
 	import ComposerValidationMenu from './composer-validation-menu.svelte';
 	import DestinationSettingsDialog from './destination-settings-dialog.svelte';
 	import DestructiveConfirmDialog from './destructive-confirm-dialog.svelte';
@@ -126,6 +127,7 @@
 		selected_date?: string;
 		selected_time: string | null;
 		picker_purpose: 'media' | 'thumbnail';
+		repost_override: components['schemas']['Override'];
 	}
 
 	interface Props {
@@ -154,6 +156,7 @@
 
 	let publicationId = $state('');
 	let revision = $state(1);
+	let repostOverride = $state<components['schemas']['Override']>({ mode: 'inherit' });
 	let hydratedPublicationId = $state('');
 	let selectedWorkspaceId = $state('');
 	let accounts = $state<SocialAccount[]>([]);
@@ -580,6 +583,7 @@
 		hydratedPublicationId = publication.id;
 		publicationId = publication.id;
 		revision = publication.revision;
+		repostOverride = publication.repost_override ?? { mode: 'inherit' };
 		selectedWorkspaceId = publication.workspace_id;
 		fields = fieldsFromPublication(publication);
 		media = (publication.media ?? []).map(mediaSummaryToFocusedMedia);
@@ -735,6 +739,7 @@
 		destinationOptionsRequestSequence += 1;
 		nextSlotRequestSequence += 1;
 		publicationId = '';
+		repostOverride = { mode: 'inherit' };
 		accounts = [];
 		selectedAccountIds = [];
 		providerReadiness = [];
@@ -1246,7 +1251,8 @@
 				segment_settings_by_account: $state.snapshot(segmentSettingsByAccount),
 				selected_date: selectedDate?.toString(),
 				selected_time: selectedTime,
-				picker_purpose: mediaPickerPurpose
+				picker_purpose: mediaPickerPurpose,
+				repost_override: $state.snapshot(repostOverride)
 			} satisfies FocusedStudioSnapshotPayload
 		};
 		storeComposerRecovery(token.token, snapshot);
@@ -1287,6 +1293,7 @@
 					selectedDate = new CalendarDate(year, month, day);
 				}
 				selectedTime = payload.selected_time;
+				repostOverride = structuredClone(payload.repost_override ?? { mode: 'inherit' });
 			}
 
 			if (purpose === 'thumbnail') {
@@ -1404,7 +1411,8 @@
 				segment_settings_by_account: $state.snapshot(segmentSettingsByAccount),
 				selected_date: selectedDate?.toString(),
 				selected_time: selectedTime,
-				picker_purpose: 'media'
+				picker_purpose: 'media',
+				repost_override: $state.snapshot(repostOverride)
 			} satisfies FocusedStudioSnapshotPayload
 		};
 		storeComposerRecovery(token.token, snapshot);
@@ -1447,6 +1455,7 @@
 					selectedDate = new CalendarDate(year, month, day);
 				}
 				selectedTime = payload.selected_time;
+				repostOverride = structuredClone(payload.repost_override ?? { mode: 'inherit' });
 			}
 
 			const renditionAccounts = new SvelteMap<string, string>();
@@ -2139,7 +2148,10 @@
 	}
 
 	function saveSnapshot(): string {
-		return JSON.stringify(publicationPayload());
+		return JSON.stringify({
+			publication: publicationPayload(),
+			repost_override: repostOverride
+		});
 	}
 
 	function markAutoSaveBaseline() {
@@ -2266,7 +2278,8 @@
 						: { clear_schedule: true }),
 					metadata: payload.metadata,
 					segments: payload.segments,
-					renditions: payload.renditions
+					renditions: payload.renditions,
+					repost_override: $state.snapshot(repostOverride)
 				}
 			});
 			if (updateError) {
@@ -2283,7 +2296,7 @@
 		}
 
 		const { data, error: createError } = await client.POST('/publications', {
-			body: payload
+			body: { ...payload, repost_override: $state.snapshot(repostOverride) }
 		});
 		if (createError) throw new Error(createError.detail || m.compose_create_publication_failed());
 		if (
@@ -2558,6 +2571,11 @@
 					{#if accounts.length > 0}
 						<ComposerValidationMenu issues={globalIssues} class="md:size-8" />
 					{/if}
+					<ComposerRepostControl
+						workspaceID={selectedWorkspaceId}
+						bind:value={repostOverride}
+						disabled={!selectedWorkspaceId || saving || autoSaving}
+					/>
 				</div>
 
 				<ComposerPublishActions

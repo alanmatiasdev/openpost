@@ -45,7 +45,7 @@ func DefaultPreferences() Preferences {
 	return Preferences{
 		TypePostPublished:         {InApp: true, Email: false},
 		TypePublishFailed:         {InApp: true, Email: true},
-		TypeAccountNeedsAttention: {InApp: true, Email: true},
+		TypeAccountNeedsAttention: {InApp: true, Email: false},
 		TypeNewEngagement:         {InApp: true, Email: false},
 		TypeNewMessage:            {InApp: true, Email: false},
 		TypeReplyFailed:           {InApp: true, Email: true},

@@ -1,5 +1,6 @@
 export const settingsTabIDs = [
 	'profile',
+	'notifications',
 	'security',
 	'developer',
 	'instance',
@@ -8,6 +9,7 @@ export const settingsTabIDs = [
 	'general',
 	'brand',
 	'accounts',
+	'reposts',
 	'schedule',
 	'members',
 	'sso',
