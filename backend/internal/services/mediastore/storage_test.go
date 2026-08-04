@@ -22,6 +22,8 @@ type fakeS3Client struct {
 	putKey        string
 	putBody       string
 	putType       string
+	putLength     int64
+	putSeekable   bool
 	deleteBucket  string
 	deleteKey     string
 	getBucket     string
@@ -44,6 +46,8 @@ func (f *fakeS3Client) PutObject(_ context.Context, input *s3.PutObjectInput, _ 
 	f.putKey = aws.ToString(input.Key)
 	f.putBody = string(body)
 	f.putType = aws.ToString(input.ContentType)
+	f.putLength = aws.ToInt64(input.ContentLength)
+	_, f.putSeekable = input.Body.(io.Seeker)
 	return &s3.PutObjectOutput{}, nil
 }
 
@@ -168,6 +172,8 @@ func TestS3StorageUsesBlobStorageContract(t *testing.T) {
 	require.Equal(t, "openpost-media", client.putBucket)
 	require.Equal(t, "media/example.png", client.putKey)
 	require.Equal(t, "uploaded-content", client.putBody)
+	require.Equal(t, int64(len("uploaded-content")), client.putLength)
+	require.True(t, client.putSeekable)
 	require.Equal(t, "s3", storage.Driver())
 	require.Equal(t, "https://media.openpost.social/media/example.png", storage.GetURL("media/example.png"))
 

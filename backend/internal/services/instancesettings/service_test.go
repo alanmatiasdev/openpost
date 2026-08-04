@@ -3,7 +3,6 @@ package instancesettings
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 	"testing"
 
@@ -109,14 +108,19 @@ func TestWhopBillingCredentialsCanBeStoredWithoutBeingReturned(t *testing.T) {
 	require.Equal(t, "plan_founder_monthly", applied.WhopFounderMonthlyPlanID)
 }
 
-func TestSaveRejectsEnvironmentManagedAndInvalidCombinedConfiguration(t *testing.T) {
+func TestSaveAllowsEnvironmentOverrideAndRejectsInvalidCombinedConfiguration(t *testing.T) {
 	t.Setenv("OPENPOST_FEEDBACK_ENABLED", "true")
 	db := createTestDB(t)
 	service := NewService(db, servicecrypto.NewTokenEncryptor("0123456789abcdef0123456789abcdef"), config.Load())
 
-	_, err := service.Save(t.Context(), "user-1", []Update{{Key: "OPENPOST_FEEDBACK_ENABLED", Value: strptr("false")}})
-	require.Error(t, err)
-	require.True(t, errors.Is(err, ErrEnvironmentManaged))
+	restart, err := service.Save(t.Context(), "user-1", []Update{{Key: "OPENPOST_FEEDBACK_ENABLED", Value: strptr("false")}})
+	require.NoError(t, err)
+	require.True(t, restart)
+
+	applied := config.Load()
+	require.True(t, applied.FeedbackEnabled)
+	require.NoError(t, service.ApplyStored(t.Context(), applied))
+	require.False(t, applied.FeedbackEnabled)
 
 	_, err = service.Save(t.Context(), "user-1", []Update{{Key: "OPENPOST_AUTH_GOOGLE_CLIENT_ID", Value: strptr("google-client")}})
 	var validationErr ValidationError
@@ -125,7 +129,7 @@ func TestSaveRejectsEnvironmentManagedAndInvalidCombinedConfiguration(t *testing
 
 	var count int
 	require.NoError(t, db.NewSelect().Model((*models.InstanceSetting)(nil)).ColumnExpr("COUNT(*)").Scan(t.Context(), &count))
-	require.Zero(t, count)
+	require.Equal(t, 1, count)
 }
 
 func TestSaveCanClearDefaultWithEncryptedEmptyOverrideAndThenUnsetIt(t *testing.T) {
@@ -151,7 +155,7 @@ func TestSaveCanClearDefaultWithEncryptedEmptyOverrideAndThenUnsetIt(t *testing.
 	require.Zero(t, count)
 }
 
-func TestEnvironmentValueExposesAndCanRemoveDormantDatabaseOverride(t *testing.T) {
+func TestEnvironmentOverrideIsExplicitAndCanRestoreEnvironmentValue(t *testing.T) {
 	t.Setenv("OPENPOST_FEEDBACK_ENABLED", "true")
 	db := createTestDB(t)
 	service := NewService(db, servicecrypto.NewTokenEncryptor("0123456789abcdef0123456789abcdef"), config.Load())
@@ -168,13 +172,31 @@ func TestEnvironmentValueExposesAndCanRemoveDormantDatabaseOverride(t *testing.T
 		if state.Definition.Key != "OPENPOST_FEEDBACK_ENABLED" {
 			continue
 		}
-		require.Equal(t, "environment", state.Source)
+		require.Equal(t, "database", state.Source)
+		require.Equal(t, "OPENPOST_FEEDBACK_ENABLED", state.EnvironmentSource)
 		require.True(t, state.DatabaseOverride)
-		require.Equal(t, "true", state.Value)
+		require.Equal(t, "false", state.Value)
+		require.True(t, state.RestartPending)
 	}
+
+	applied := config.Load()
+	require.NoError(t, service.ApplyStored(t.Context(), applied))
+	require.False(t, applied.FeedbackEnabled)
+	service.CaptureRuntime(applied)
 
 	_, err = service.Save(t.Context(), "user-1", []Update{{Key: "OPENPOST_FEEDBACK_ENABLED", Unset: true}})
 	require.NoError(t, err)
+	states, err = service.List(t.Context())
+	require.NoError(t, err)
+	for _, state := range states {
+		if state.Definition.Key != "OPENPOST_FEEDBACK_ENABLED" {
+			continue
+		}
+		require.Equal(t, "environment", state.Source)
+		require.Equal(t, "true", state.Value)
+		require.False(t, state.DatabaseOverride)
+		require.True(t, state.RestartPending)
+	}
 	var count int
 	require.NoError(t, db.NewSelect().Model((*models.InstanceSetting)(nil)).ColumnExpr("COUNT(*)").Scan(t.Context(), &count))
 	require.Zero(t, count)

@@ -218,7 +218,7 @@ export interface paths {
         };
         /**
          * List administrator-managed instance settings
-         * @description Returns the typed optional configuration registry. Secrets are redacted; environment values are read-only, while dormant database fallbacks remain removable.
+         * @description Returns the typed optional configuration registry. Secrets are redacted. Administrator overrides take precedence over environment values after restart, while the configured environment source remains visible as the fallback.
          */
         get: operations["list-instance-settings"];
         /**
@@ -2943,6 +2943,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/version": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Running version
+         * @description Returns the public release and source revision currently serving requests.
+         */
+        get: operations["get-running-version"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/video-editor/config": {
         parameters: {
             query?: never;
@@ -5295,6 +5315,20 @@ export interface components {
             /** @description Optional passkey label */
             name: string;
         };
+        "Get-running-versionResponse": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/Get-running-versionResponse.json
+             */
+            readonly $schema?: string;
+            /** @description Configured OpenPost edition */
+            edition: string;
+            /** @description Full source revision embedded in the server */
+            revision: string;
+            /** @description Release version embedded in the server */
+            version: string;
+        };
         GetAuthURLOutputBody: {
             /**
              * Format: uri
@@ -5937,11 +5971,11 @@ export interface components {
         InstanceSettingResponse: {
             /** @description Whether the desired value is non-empty */
             configured: boolean;
-            /** @description Whether an encrypted database fallback exists, including beneath an environment value */
+            /** @description Whether an encrypted administrator override exists */
             database_override_configured: boolean;
             /** @description Setting purpose and effect */
             description: string;
-            /** @description Whether the administrator can save a database override */
+            /** @description Whether the administrator can save an encrypted database override */
             editable: boolean;
             /** @description Supported direct environment variable names */
             environment_variables: string[] | null;
@@ -5951,7 +5985,7 @@ export interface components {
             key: string;
             /** @description Human-readable setting name */
             label: string;
-            /** @description Direct or file-backed environment variable that locks this setting */
+            /** @description Direct or file-backed environment variable that supplies a configured value or fallback */
             managed_by?: string;
             /** @description Whether an empty value is valid */
             optional: boolean;
@@ -5964,7 +5998,7 @@ export interface components {
             /** @description Whether a redacted secret value is configured */
             secret_configured: boolean;
             /**
-             * @description Layer that owns the desired value
+             * @description Layer that supplies the desired value after administrator overrides are applied
              * @enum {string}
              */
             source: "environment" | "database" | "default";
@@ -20449,6 +20483,35 @@ export interface operations {
             };
             /** @description Service Unavailable */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-running-version": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Get-running-versionResponse"];
+                };
+            };
+            /** @description Error */
+            default: {
                 headers: {
                     [name: string]: unknown;
                 };

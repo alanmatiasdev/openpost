@@ -56,11 +56,33 @@
 			fieldName: 'file',
 			formData: true,
 			limit: 1,
+			shouldRetry: () => false,
+			onAfterResponse: (xhr) => {
+				if (xhr.status >= 200 && xhr.status < 300) return;
+				throw avatarUploadResponseError(xhr);
+			},
 			headers: (): Record<string, string> => {
 				const token = getToken();
 				return token ? { Authorization: `Bearer ${token}` } : {};
 			}
 		});
+
+	function avatarUploadResponseError(xhr: XMLHttpRequest): Error {
+		const fallback = `Failed to upload profile picture (${xhr.status || 'network error'}).`;
+		try {
+			const body = JSON.parse(xhr.responseText) as {
+				detail?: unknown;
+				error?: unknown;
+				title?: unknown;
+			};
+			for (const value of [body.detail, body.error, body.title]) {
+				if (typeof value === 'string' && value.trim()) return new Error(value.trim());
+			}
+		} catch {
+			// The fallback includes the HTTP status without exposing an HTML proxy response.
+		}
+		return new Error(fallback);
+	}
 
 	uppy.on('upload-success', (_file, response) => {
 		const avatarURL =

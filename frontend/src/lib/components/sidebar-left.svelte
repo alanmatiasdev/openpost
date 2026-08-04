@@ -54,11 +54,20 @@
 		}))
 	);
 	const sidebarNavigationItems = $derived(navigationItems.filter((item) => item.id !== 'new'));
-	const workspaceNavigationItems = $derived(
-		navigationItems.filter((item) =>
-			['posts', 'communications', 'analytics', 'media', 'accounts', 'settings'].includes(item.id)
-		)
-	);
+	const workspaceNavigationItems = $derived([
+		...navigationItems.filter((item) =>
+			['posts', 'communications', 'analytics', 'media'].includes(item.id)
+		),
+		{
+			id: 'accounts' as const,
+			label: navigationLabel('accounts'),
+			href: '/settings?tab=accounts',
+			match: ['/settings'],
+			mobile: false,
+			icon: AccountsIcon
+		},
+		...navigationItems.filter((item) => item.id === 'settings')
+	]);
 	const showDesktopPlanner = $derived(!sidebar.isMobile && sidebar.state === 'expanded');
 	const showHomeBrand = $derived(currentPath === '/' && !ui.activeComposerDraftId);
 
@@ -133,6 +142,14 @@
 		sidebar.setOpenMobile(false);
 		if (href === '/') ui.startNewPost();
 		goto(resolve(href as '/'));
+	}
+
+	function isSidebarNavigationItemActive(item: PrimaryNavigationItem) {
+		const settingsTab = page.url.searchParams.get('tab');
+		if (item.id === 'accounts')
+			return currentPath.startsWith('/settings') && settingsTab === 'accounts';
+		if (item.id === 'settings' && settingsTab === 'accounts') return false;
+		return isNavigationItemActive(item, currentPath);
 	}
 </script>
 
@@ -230,7 +247,7 @@
 						{#each sidebarNavigationItems as item (item.id)}
 							<Sidebar.MenuItem>
 								<Sidebar.MenuButton
-									isActive={isNavigationItemActive(item, currentPath)}
+									isActive={isSidebarNavigationItemActive(item)}
 									class="h-10 text-sm"
 									tooltipContent={item.label}
 									onclick={() => navigate(item.href)}
@@ -254,11 +271,11 @@
 				>
 					{m.sidebar_workspace()}
 				</p>
-				<Sidebar.Menu class="grid grid-cols-2 gap-1">
+				<Sidebar.Menu class="grid grid-cols-2 gap-1" data-testid="sidebar-workspace-navigation">
 					{#each workspaceNavigationItems as item (item.id)}
 						<Sidebar.MenuItem>
 							<Sidebar.MenuButton
-								isActive={isNavigationItemActive(item, currentPath)}
+								isActive={isSidebarNavigationItemActive(item)}
 								class="h-9 gap-1.5 px-2 text-xs"
 								tooltipContent={item.label}
 								onclick={() => navigate(item.href)}
@@ -271,19 +288,24 @@
 				</Sidebar.Menu>
 			</div>
 		{/if}
-		<Sidebar.Menu class={showDesktopPlanner ? 'border-t border-sidebar-border pt-1' : ''}>
-			<Sidebar.MenuItem>
-				<Sidebar.MenuButton
-					class="h-10 text-sm"
-					tooltipContent={m.sidebar_accounts()}
-					isActive={currentPath.startsWith('/settings') &&
-						page.url.searchParams.get('tab') === 'accounts'}
-					onclick={() => navigate('/settings?tab=accounts')}
-				>
-					<AccountsIcon class="size-4" />
-					<span>{m.sidebar_accounts()}</span>
-				</Sidebar.MenuButton>
-			</Sidebar.MenuItem>
+		<Sidebar.Menu
+			class={showDesktopPlanner ? 'border-t border-sidebar-border pt-1' : ''}
+			data-testid="sidebar-secondary-navigation"
+		>
+			{#if !showDesktopPlanner}
+				<Sidebar.MenuItem>
+					<Sidebar.MenuButton
+						class="h-10 text-sm"
+						tooltipContent={m.sidebar_accounts()}
+						isActive={currentPath.startsWith('/settings') &&
+							page.url.searchParams.get('tab') === 'accounts'}
+						onclick={() => navigate('/settings?tab=accounts')}
+					>
+						<AccountsIcon class="size-4" />
+						<span>{m.sidebar_accounts()}</span>
+					</Sidebar.MenuButton>
+				</Sidebar.MenuItem>
+			{/if}
 			<NotificationBell />
 			<Sidebar.MenuItem>
 				<DropdownMenu.Root>

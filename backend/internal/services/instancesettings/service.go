@@ -3,7 +3,6 @@ package instancesettings
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -15,8 +14,6 @@ import (
 )
 
 const encryptedValuePrefix = "openpost-instance-setting:"
-
-var ErrEnvironmentManaged = errors.New("setting is managed by the environment")
 
 type ValidationError struct {
 	Key     string
@@ -68,8 +65,9 @@ func (s *Service) CaptureRuntime(cfg *config.Config) {
 	s.runtime = managedSnapshot(cfg)
 }
 
-// ApplyStored applies database values only when no direct or file-backed
-// environment value owns the same setting.
+// ApplyStored applies encrypted administrator overrides after environment and
+// default configuration has loaded. Removing an override restores that
+// original environment or default fallback on the next restart.
 func (s *Service) ApplyStored(ctx context.Context, cfg *config.Config) error {
 	rows, err := s.listRows(ctx)
 	if err != nil {
@@ -77,9 +75,6 @@ func (s *Service) ApplyStored(ctx context.Context, cfg *config.Config) error {
 	}
 	for _, row := range rows {
 		if _, ok := config.ManagedSettingDefinitionFor(row.Key); !ok {
-			continue
-		}
-		if _, managed := config.ManagedEnvironmentSource(row.Key); managed {
 			continue
 		}
 		value, err := s.decrypt(row)
@@ -117,16 +112,14 @@ func (s *Service) List(ctx context.Context) ([]State, error) {
 	for _, definition := range definitions {
 		state := State{Definition: definition, Source: "default"}
 		desired := s.fallback[definition.Key]
+		if environmentSource, configured := config.ManagedEnvironmentSource(definition.Key); configured {
+			state.Source = "environment"
+			state.EnvironmentSource = environmentSource
+		}
 		row, hasStoredValue := stored[definition.Key]
 		if hasStoredValue {
 			state.DatabaseOverride = true
 			state.UpdatedAt = row.UpdatedAt
-		}
-		if environmentSource, managed := config.ManagedEnvironmentSource(definition.Key); managed {
-			state.Source = "environment"
-			state.EnvironmentSource = environmentSource
-			desired = s.runtime[definition.Key]
-		} else if hasStoredValue {
 			state.Source = "database"
 			desired = storedValues[definition.Key]
 		}
@@ -169,9 +162,6 @@ func (s *Service) validateUpdates(updates []Update) error {
 			return ValidationError{Key: updates[i].Key, Message: "was included more than once"}
 		}
 		seen[updates[i].Key] = struct{}{}
-		if source, managed := config.ManagedEnvironmentSource(updates[i].Key); managed && !updates[i].Unset {
-			return fmt.Errorf("%w: %s is set by %s", ErrEnvironmentManaged, updates[i].Key, source)
-		}
 		if updates[i].Unset == (updates[i].Value != nil) {
 			return ValidationError{Key: updates[i].Key, Message: "must provide exactly one of value or unset"}
 		}
@@ -239,9 +229,6 @@ func (s *Service) validateCandidate(ctx context.Context, updates []Update) error
 		return err
 	}
 	for _, row := range rows {
-		if _, managed := config.ManagedEnvironmentSource(row.Key); managed {
-			continue
-		}
 		value, err := s.decrypt(row)
 		if err != nil {
 			return err

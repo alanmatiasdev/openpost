@@ -4688,6 +4688,32 @@
 				"required": ["challenge_id", "name", "credential"],
 				"type": "object"
 			},
+			"Get-running-versionResponse": {
+				"additionalProperties": false,
+				"properties": {
+					"$schema": {
+						"description": "A URL to the JSON Schema for this object.",
+						"examples": ["https://example.com/schemas/Get-running-versionResponse.json"],
+						"format": "uri",
+						"readOnly": true,
+						"type": "string"
+					},
+					"edition": {
+						"description": "Configured OpenPost edition",
+						"type": "string"
+					},
+					"revision": {
+						"description": "Full source revision embedded in the server",
+						"type": "string"
+					},
+					"version": {
+						"description": "Release version embedded in the server",
+						"type": "string"
+					}
+				},
+				"required": ["version", "revision", "edition"],
+				"type": "object"
+			},
 			"GetAuthURLOutputBody": {
 				"additionalProperties": false,
 				"properties": {
@@ -6370,7 +6396,7 @@
 						"type": "boolean"
 					},
 					"database_override_configured": {
-						"description": "Whether an encrypted database fallback exists, including beneath an environment value",
+						"description": "Whether an encrypted administrator override exists",
 						"type": "boolean"
 					},
 					"description": {
@@ -6378,7 +6404,7 @@
 						"type": "string"
 					},
 					"editable": {
-						"description": "Whether the administrator can save a database override",
+						"description": "Whether the administrator can save an encrypted database override",
 						"type": "boolean"
 					},
 					"environment_variables": {
@@ -6401,7 +6427,7 @@
 						"type": "string"
 					},
 					"managed_by": {
-						"description": "Direct or file-backed environment variable that locks this setting",
+						"description": "Direct or file-backed environment variable that supplies a configured value or fallback",
 						"type": "string"
 					},
 					"optional": {
@@ -6428,7 +6454,7 @@
 						"type": "boolean"
 					},
 					"source": {
-						"description": "Layer that owns the desired value",
+						"description": "Layer that supplies the desired value after administrator overrides are applied",
 						"enum": ["environment", "database", "default"],
 						"type": "string"
 					},
@@ -15688,7 +15714,7 @@
 		},
 		"/admin/instance-settings": {
 			"get": {
-				"description": "Returns the typed optional configuration registry. Secrets are redacted; environment values are read-only, while dormant database fallbacks remain removable.",
+				"description": "Returns the typed optional configuration registry. Secrets are redacted. Administrator overrides take precedence over environment values after restart, while the configured environment source remains visible as the fallback.",
 				"operationId": "list-instance-settings",
 				"responses": {
 					"200": {
@@ -28548,6 +28574,36 @@
 				},
 				"summary": "Resolve a selected stock asset and record provider attribution events",
 				"tags": ["OpenPost Video Editor"]
+			}
+		},
+		"/version": {
+			"get": {
+				"description": "Returns the public release and source revision currently serving requests.",
+				"operationId": "get-running-version",
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/Get-running-versionResponse"
+								}
+							}
+						},
+						"description": "OK"
+					},
+					"default": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Error"
+					}
+				},
+				"summary": "Running version",
+				"tags": ["System"]
 			}
 		},
 		"/video-editor/config": {

@@ -90,12 +90,40 @@ func TestInstanceSettingsAdminRejectsNonAdmin(t *testing.T) {
 	require.Equal(t, http.StatusForbidden, response.Code, response.Body.String())
 }
 
-func TestInstanceSettingsAdminRejectsEnvironmentManagedValue(t *testing.T) {
+func TestInstanceSettingsAdminOverridesEnvironmentManagedValue(t *testing.T) {
 	t.Setenv("OPENPOST_FEEDBACK_ENABLED", "true")
 	e := newInstanceSettingsTestServer(t, true)
+	initial := requestInstanceSettings(t, e, http.MethodGet, nil)
+	require.Equal(t, http.StatusOK, initial.Code, initial.Body.String())
+	var listed InstanceSettingsResponse
+	require.NoError(t, json.Unmarshal(initial.Body.Bytes(), &listed))
+	var feedback InstanceSettingResponse
+	for _, setting := range listed.Settings {
+		if setting.Key == "OPENPOST_FEEDBACK_ENABLED" {
+			feedback = setting
+			break
+		}
+	}
+	require.Equal(t, "environment", feedback.Source)
+	require.Equal(t, "OPENPOST_FEEDBACK_ENABLED", feedback.ManagedBy)
+	require.True(t, feedback.Editable)
+	require.False(t, feedback.DatabaseOverride)
+
 	response := requestInstanceSettings(t, e, http.MethodPut, map[string]any{"settings": []map[string]any{
 		{"key": "OPENPOST_FEEDBACK_ENABLED", "value": "false"},
 	}})
-	require.Equal(t, http.StatusConflict, response.Code, response.Body.String())
-	require.Contains(t, response.Body.String(), "managed by the environment")
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	var saved InstanceSettingsResponse
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &saved))
+	for _, setting := range saved.Settings {
+		if setting.Key == "OPENPOST_FEEDBACK_ENABLED" {
+			feedback = setting
+			break
+		}
+	}
+	require.Equal(t, "database", feedback.Source)
+	require.Equal(t, "OPENPOST_FEEDBACK_ENABLED", feedback.ManagedBy)
+	require.Equal(t, "false", feedback.Value)
+	require.True(t, feedback.DatabaseOverride)
+	require.True(t, feedback.RequiresRestart)
 }

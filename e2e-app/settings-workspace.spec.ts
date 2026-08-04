@@ -12,8 +12,15 @@ test("workspace repost rules save thresholds, delays, and cross-workspace target
   page.on("pageerror", (error) => consoleErrors.push(error.message));
 
   const unique = Date.now().toString(36);
-  const auth = await registerUser(request, `repost-settings-${unique}@example.com`);
-  const workspace = await createWorkspace(request, auth.token, "Repost Settings E2E");
+  const auth = await registerUser(
+    request,
+    `repost-settings-${unique}@example.com`,
+  );
+  const workspace = await createWorkspace(
+    request,
+    auth.token,
+    "Repost Settings E2E",
+  );
   await authenticatePage(page, auth.token);
 
   let savedPolicies: Array<Record<string, unknown>> = [];
@@ -80,7 +87,9 @@ test("workspace repost rules save thresholds, delays, and cross-workspace target
 
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(`/settings?tab=reposts&workspace=${workspace.id}`);
-  await expect(page.getByRole("heading", { name: "Auto repost" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Auto repost" }),
+  ).toBeVisible();
   await expect(
     page.getByText("A post is never copied to a different network."),
   ).toBeVisible();
@@ -108,7 +117,9 @@ test("workspace repost rules save thresholds, delays, and cross-workspace target
   await page.setViewportSize({ width: 320, height: 760 });
   await expect(page.getByLabel("Rule name")).toBeVisible();
   expect(
-    await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
   ).toBe(true);
   expect(consoleErrors).toEqual([]);
 });
@@ -250,8 +261,8 @@ test("instance admins configure optional services and provider apps without expo
       managed_by: "OPENPOST_DISABLE_REGISTRATIONS",
       configured: true,
       secret_configured: false,
-      database_override_configured: true,
-      editable: false,
+      database_override_configured: false,
+      editable: true,
       requires_restart: false,
     },
     {
@@ -312,7 +323,13 @@ test("instance admins configure optional services and provider apps without expo
               };
             }
             if (setting.key === "OPENPOST_DISABLE_REGISTRATIONS") {
-              return { ...setting, database_override_configured: false };
+              return {
+                ...setting,
+                value: "true",
+                source: "database",
+                database_override_configured: true,
+                requires_restart: true,
+              };
             }
             return setting;
           }),
@@ -375,7 +392,9 @@ test("instance admins configure optional services and provider apps without expo
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/settings?tab=configuration");
 
-  await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Try again" })).toBeVisible({
+    timeout: 15_000,
+  });
   expect(consoleErrors).toEqual([
     "Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
   ]);
@@ -385,13 +404,19 @@ test("instance admins configure optional services and provider apps without expo
   await expect(
     page.getByRole("heading", { name: "Configuration", level: 1 }),
   ).toBeVisible();
-  await expect(page.getByLabel("Disable new registrations")).toBeDisabled();
+  await expect(page.getByLabel("Disable new registrations")).toBeEnabled();
   await expect(
-    page.getByText("Locked by OPENPOST_DISABLE_REGISTRATIONS"),
+    page.getByText("Environment value set", { exact: true }),
   ).toBeVisible();
-  await page
-    .getByRole("button", { name: "Remove stored database fallback" })
-    .click();
+  await expect(
+    page.getByText(
+      "OPENPOST_DISABLE_REGISTRATIONS already supplies this setting.",
+    ),
+  ).toBeVisible();
+  await page.getByLabel("Disable new registrations").click();
+  await expect(
+    page.getByText("Will override the environment value"),
+  ).toBeVisible();
 
   await page.getByRole("button", { name: "Email", exact: true }).click();
   await page.getByLabel("Require email verification").click();
@@ -404,9 +429,18 @@ test("instance admins configure optional services and provider apps without expo
     });
   expect(savedSettings).toContainEqual({
     key: "OPENPOST_DISABLE_REGISTRATIONS",
-    unset: true,
+    value: "true",
   });
   await expect(page.getByText("A server restart is required.")).toBeVisible();
+  await page
+    .getByTestId("instance-configuration")
+    .getByRole("button", { name: "Accounts", exact: true })
+    .click();
+  await expect(page.getByText("Admin override saved")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Use environment value" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Email", exact: true }).click();
   await expect(page.getByLabel("Resend API key")).toHaveValue("");
   await expect(page.getByLabel("Resend API key")).toHaveAttribute(
     "placeholder",

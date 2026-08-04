@@ -124,11 +124,17 @@ func (s *S3Storage) save(id string, reader io.Reader, contentType string) (strin
 		return "", readErr
 	}
 	if read < s3MultipartPartSize || s.multipartClient == nil {
-		body := io.MultiReader(bytes.NewReader(prefix[:read]), reader)
 		input := &s3.PutObjectInput{
 			Bucket: aws.String(s.bucket),
 			Key:    aws.String(key),
-			Body:   body,
+			Body:   io.MultiReader(bytes.NewReader(prefix[:read]), reader),
+		}
+		if read < s3MultipartPartSize {
+			// io.ReadFull only returns a short read after reaching EOF. Use a
+			// seekable body with an explicit size so S3-compatible services do
+			// not reject small uploads with MissingContentLength.
+			input.Body = bytes.NewReader(prefix[:read])
+			input.ContentLength = aws.Int64(int64(read))
 		}
 		if contentType != "" {
 			input.ContentType = aws.String(contentType)

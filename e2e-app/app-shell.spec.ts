@@ -363,6 +363,28 @@ test("desktop planning sidebar resumes drafts and stays out of mobile navigation
   await expect(
     page.getByRole("button", { name: "Settings", exact: true }),
   ).toBeVisible();
+  const workspaceNavigation = page.getByTestId("sidebar-workspace-navigation");
+  const accountsNavigation = workspaceNavigation.getByRole("button", {
+    name: "Accounts",
+    exact: true,
+  });
+  const settingsNavigation = workspaceNavigation.getByRole("button", {
+    name: "Settings",
+    exact: true,
+  });
+  const [accountsNavigationBox, settingsNavigationBox] = await Promise.all([
+    accountsNavigation.boundingBox(),
+    settingsNavigation.boundingBox(),
+  ]);
+  expect(accountsNavigationBox).not.toBeNull();
+  expect(settingsNavigationBox).not.toBeNull();
+  expect(accountsNavigationBox!.y).toBeCloseTo(settingsNavigationBox!.y, 0);
+  await expect(
+    page.getByTestId("sidebar-secondary-navigation").getByRole("button", {
+      name: "Accounts",
+      exact: true,
+    }),
+  ).toHaveCount(0);
   const draftList = page.getByTestId("sidebar-draft-list");
   await expect(draftList.locator("li")).toHaveCount(8);
   const draftListMetrics = await draftList.evaluate((element) => ({

@@ -334,6 +334,12 @@
 		return m.settings_configuration_source_default();
 	}
 
+	function hasDraftOverride(setting: Setting) {
+		if (unsets[setting.key]) return false;
+		if (setting.secret) return Boolean(drafts[setting.key]?.trim());
+		return (drafts[setting.key] ?? '') !== (originals[setting.key] ?? '');
+	}
+
 	function sectionDescription(section: SectionID) {
 		if (section === 'accounts') return m.settings_configuration_accounts_body();
 		if (section === 'billing') return m.settings_configuration_billing_body();
@@ -412,6 +418,13 @@
 									>
 										{sourceLabel(setting)}
 									</Badge>
+									{#if setting.managed_by && !unsets[setting.key] && (setting.database_override_configured || hasDraftOverride(setting))}
+										<Badge class="bg-amber-500/15 text-amber-900 dark:text-amber-100">
+											{setting.database_override_configured && !setting.requires_restart
+												? m.settings_configuration_overrides_environment()
+												: m.settings_configuration_will_override_environment()}
+										</Badge>
+									{/if}
 									{#if setting.requires_restart}
 										<Badge class="bg-amber-500/15 text-amber-900 dark:text-amber-100">
 											{m.settings_configuration_pending()}
@@ -425,9 +438,60 @@
 									{(setting.environment_variables ?? []).join(' · ')}
 								</code>
 								{#if setting.managed_by}
-									<p class="mt-2 text-xs text-muted-foreground">
-										{m.settings_configuration_managed_by({ source: setting.managed_by })}
-									</p>
+									<InlineNotice
+										tone={!unsets[setting.key] &&
+										(setting.database_override_configured || hasDraftOverride(setting))
+											? 'warning'
+											: 'info'}
+										class="mt-3"
+									>
+										{#if unsets[setting.key]}
+											<p class="font-medium">
+												{m.settings_configuration_environment_will_resume()}
+											</p>
+											<p class="mt-0.5 text-current/80">
+												{m.settings_configuration_environment_will_resume_body({
+													source: setting.managed_by
+												})}
+											</p>
+										{:else if setting.database_override_configured && setting.requires_restart}
+											<p class="font-medium">
+												{m.settings_configuration_override_pending_restart()}
+											</p>
+											<p class="mt-0.5 text-current/80">
+												{m.settings_configuration_override_pending_restart_body({
+													source: setting.managed_by
+												})}
+											</p>
+										{:else if setting.database_override_configured}
+											<p class="font-medium">
+												{m.settings_configuration_overriding_environment()}
+											</p>
+											<p class="mt-0.5 text-current/80">
+												{m.settings_configuration_overriding_environment_body({
+													source: setting.managed_by
+												})}
+											</p>
+										{:else if hasDraftOverride(setting)}
+											<p class="font-medium">
+												{m.settings_configuration_will_override_environment_value()}
+											</p>
+											<p class="mt-0.5 text-current/80">
+												{m.settings_configuration_will_override_environment_body({
+													source: setting.managed_by
+												})}
+											</p>
+										{:else}
+											<p class="font-medium">
+												{m.settings_configuration_environment_value_set()}
+											</p>
+											<p class="mt-0.5 text-current/80">
+												{m.settings_configuration_environment_value_set_body({
+													source: setting.managed_by
+												})}
+											</p>
+										{/if}
+									</InlineNotice>
 								{/if}
 							</div>
 
@@ -477,14 +541,16 @@
 										oninput={(event) => updateDraft(setting.key, event.currentTarget.value)}
 									/>
 								{/if}
-								{#if setting.source === 'database' || setting.database_override_configured}
+								{#if setting.database_override_configured}
 									{#if unsets[setting.key]}
 										<div
 											class="flex items-center justify-between gap-2 text-xs text-muted-foreground"
 										>
 											<span>
-												{setting.source === 'environment'
-													? m.settings_configuration_will_remove_database_fallback()
+												{setting.managed_by
+													? m.settings_configuration_will_use_environment({
+															source: setting.managed_by
+														})
 													: m.settings_configuration_will_use_fallback()}
 											</span>
 											<Button variant="ghost" size="sm" onclick={() => undoUnset(setting.key)}>
@@ -495,8 +561,8 @@
 									{:else}
 										<Button variant="ghost" size="sm" onclick={() => markUnset(setting.key)}>
 											<RotateCcwIcon class="size-3.5" />
-											{setting.source === 'environment'
-												? m.settings_configuration_remove_database_fallback()
+											{setting.managed_by
+												? m.settings_configuration_use_environment()
 												: m.settings_configuration_use_fallback()}
 										</Button>
 									{/if}

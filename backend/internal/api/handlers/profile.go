@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"log"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -98,7 +99,8 @@ func (h *ProfileHandler) uploadAvatar(c echo.Context) error {
 	}
 
 	objectKey := "avatar_" + userID + "_" + uuid.New().String() + ext
-	if _, err := h.storage.Save(objectKey, bytes.NewReader(content)); err != nil {
+	if _, err := mediastore.SaveWithContentType(h.storage, objectKey, bytes.NewReader(content), contentType); err != nil {
+		log.Printf("failed to save profile avatar for user %s: %v", userID, err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{fieldError: "failed to save avatar"})
 	}
 	avatarURL := "/avatars/" + objectKey
