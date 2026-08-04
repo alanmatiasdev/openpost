@@ -4,6 +4,10 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- Included the documentation catalog and social-image package in the Docker frontend build context, and raised the builder heap to match the production frontend gate, so release images can generate synchronized assets and complete the bundle.
+
 ## [2.0.0] - 2026-08-04
 
 ### Added
