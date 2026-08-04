@@ -20,7 +20,7 @@ func TestBillingStatusCommand(t *testing.T) {
 			billingQuery = r.URL.RawQuery
 			_, _ = w.Write([]byte(`{
 				"workspace_id":"ws-1",
-				"provider":"polar",
+				"provider":"whop",
 				"status":"active",
 				"plan_id":"creator",
 				"limits":{"scheduled_posts_monthly":500},
@@ -73,7 +73,7 @@ func TestBillingCheckoutCommand(t *testing.T) {
 			if err := json.NewDecoder(r.Body).Decode(&checkoutBody); err != nil {
 				t.Fatalf("decode checkout body: %v", err)
 			}
-			_, _ = w.Write([]byte(`{"id":"checkout_1","url":"https://polar.sh/checkout/checkout_1"}`))
+			_, _ = w.Write([]byte(`{"id":"checkout_1","url":"https://app.openpost.social/checkout?session_id=checkout_1","plan_id":"creator","billing_period":"annual","price_usd":290}`))
 		default:
 			http.NotFound(w, r)
 		}
@@ -86,20 +86,20 @@ func TestBillingCheckoutCommand(t *testing.T) {
 		"--token", "op_cli_test",
 		"--workspace", "Production",
 		"--json",
-		"billing", "checkout", "creator",
+		"billing", "checkout", "creator", "--billing-period", "annual",
 	)
 	if err != nil {
 		t.Fatalf("billing checkout returned error: %v", err)
 	}
 
-	if checkoutBody["workspace_id"] != "ws-1" || checkoutBody["plan_id"] != "creator" {
+	if checkoutBody["workspace_id"] != "ws-1" || checkoutBody["plan_id"] != "creator" || checkoutBody["billing_period"] != "annual" {
 		t.Fatalf("checkout body = %#v", checkoutBody)
 	}
 	var got map[string]any
 	if err := json.Unmarshal([]byte(out), &got); err != nil {
 		t.Fatalf("decode json output: %v\noutput:\n%s", err, out)
 	}
-	if got["id"] != "checkout_1" || got["url"] != "https://polar.sh/checkout/checkout_1" {
+	if got["id"] != "checkout_1" || got["url"] != "https://app.openpost.social/checkout?session_id=checkout_1" || got["billing_period"] != "annual" {
 		t.Fatalf("checkout output = %#v", got)
 	}
 }
@@ -120,7 +120,7 @@ func TestBillingPortalCommand(t *testing.T) {
 			if err := json.NewDecoder(r.Body).Decode(&portalBody); err != nil {
 				t.Fatalf("decode portal body: %v", err)
 			}
-			_, _ = w.Write([]byte(`{"id":"portal_1","url":"https://polar.sh/portal/portal_1"}`))
+			_, _ = w.Write([]byte(`{"id":"membership_1","url":"https://whop.com/hub/membership_1"}`))
 		default:
 			http.NotFound(w, r)
 		}
@@ -146,7 +146,7 @@ func TestBillingPortalCommand(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &got); err != nil {
 		t.Fatalf("decode json output: %v\noutput:\n%s", err, out)
 	}
-	if got["id"] != "portal_1" || got["url"] != "https://polar.sh/portal/portal_1" {
+	if got["id"] != "membership_1" || got["url"] != "https://whop.com/hub/membership_1" {
 		t.Fatalf("portal output = %#v", got)
 	}
 }

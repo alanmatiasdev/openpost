@@ -65,7 +65,7 @@ func seedBillingSubscription(t *testing.T, db *bun.DB, status, snapshot string) 
 	_, err := db.NewInsert().Model(&models.BillingSubscription{
 		OrganizationID:         "org-1",
 		WorkspaceID:            "ws-1",
-		Provider:               "polar",
+		Provider:               "whop",
 		ProviderCustomerID:     "customer-1",
 		ProviderSubscriptionID: uuid.NewString(),
 		Status:                 status,

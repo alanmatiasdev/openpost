@@ -24,6 +24,7 @@ func TestRunMigrationsCreatesBillingSubscriptionSchema(t *testing.T) {
 	require.Contains(t, schema, "workspace_id TEXT")
 	require.Contains(t, schema, "provider_subscription_id TEXT NOT NULL UNIQUE")
 	require.Contains(t, schema, "entitlement_snapshot TEXT NOT NULL DEFAULT '{}'")
+	require.Contains(t, schema, "provider_manage_url TEXT NOT NULL DEFAULT ''")
 	require.Contains(t, schema, "FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE CASCADE")
 	require.Contains(t, schema, "FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE SET NULL")
 
@@ -34,6 +35,12 @@ func TestRunMigrationsCreatesBillingSubscriptionSchema(t *testing.T) {
 		Where("type = 'index' AND name IN ('billing_subscriptions_provider_customer_idx', 'billing_subscriptions_status_idx', 'billing_webhook_events_provider_type_idx')").
 		Scan(ctx, &indexCount))
 	require.Equal(t, 3, indexCount)
+
+	var checkoutSchema string
+	require.NoError(t, db.QueryRowContext(ctx, "SELECT sql FROM sqlite_master WHERE name = 'billing_checkout_attempts'").Scan(&checkoutSchema))
+	require.Contains(t, checkoutSchema, "checkout_configuration_id TEXT PRIMARY KEY")
+	require.Contains(t, checkoutSchema, "provider_plan_id TEXT NOT NULL")
+	require.Contains(t, checkoutSchema, "billing_period TEXT NOT NULL")
 }
 
 func TestRunMigrationsBillingSubscriptionsIdempotent(t *testing.T) {
@@ -53,7 +60,7 @@ func TestRunMigrationsBillingSubscriptionsIdempotent(t *testing.T) {
 	_, err = db.NewInsert().Model(&models.BillingSubscription{
 		OrganizationID:         "org-billing",
 		WorkspaceID:            "ws-billing",
-		Provider:               "polar",
+		Provider:               "whop",
 		ProviderCustomerID:     "customer-1",
 		ProviderSubscriptionID: "sub-1",
 		Status:                 "active",
@@ -77,7 +84,7 @@ func TestRunMigrationsBillingSubscriptionsCascadeWithOrganization(t *testing.T) 
 	_, err = db.NewInsert().Model(&models.BillingSubscription{
 		OrganizationID:         "org-billing",
 		WorkspaceID:            "ws-billing",
-		Provider:               "polar",
+		Provider:               "whop",
 		ProviderCustomerID:     "customer-1",
 		ProviderSubscriptionID: "sub-1",
 		Status:                 "active",
@@ -101,14 +108,14 @@ func TestRunMigrationsBillingWebhookEventsDeduplicate(t *testing.T) {
 
 	_, err := db.NewInsert().Model(&models.BillingWebhookEvent{
 		EventID:   "evt-1",
-		Provider:  "polar",
-		EventType: "subscription.active",
+		Provider:  "whop",
+		EventType: "membership.activated",
 	}).Exec(ctx)
 	require.NoError(t, err)
 	_, err = db.NewInsert().Model(&models.BillingWebhookEvent{
 		EventID:   "evt-1",
-		Provider:  "polar",
-		EventType: "subscription.active",
+		Provider:  "whop",
+		EventType: "membership.activated",
 	}).Exec(ctx)
 	require.Error(t, err)
 }

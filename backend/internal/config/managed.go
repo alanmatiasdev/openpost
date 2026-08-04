@@ -27,9 +27,10 @@ type ManagedSettingOption struct {
 }
 
 // ManagedSettingDefinition is the allowlist used by the admin configuration
-// API. Bootstrap, database, encryption, network, storage, and billing settings
-// are intentionally absent because OpenPost needs them before it can read this
-// database-backed layer.
+// API. Bootstrap, database, encryption, network, and storage settings remain
+// deployment-owned because OpenPost needs them before it can read this
+// database-backed layer. Billing is safe here because runtime validation and
+// billing service construction happen after stored instance settings load.
 type ManagedSettingDefinition struct {
 	Key         string
 	Group       string
@@ -51,6 +52,23 @@ var managedSettingDefinitions = []ManagedSettingDefinition{
 	{Key: "OPENPOST_PRIVACY_VERSION", Group: "accounts", Label: "Privacy version", Description: "Version recorded when a user accepts the privacy policy.", Kind: ManagedSettingString, Optional: true, EnvVars: []string{"OPENPOST_PRIVACY_VERSION"}},
 	{Key: "OPENPOST_SUPPORT_EMAIL", Group: "accounts", Label: "Support email", Description: "Contact address shown in account and policy flows.", Kind: ManagedSettingEmail, Optional: true, EnvVars: []string{"OPENPOST_SUPPORT_EMAIL"}},
 	{Key: "OPENPOST_UPDATE_CHECK_ENABLED", Group: "accounts", Label: "Release checks", Description: "Check for new stable OpenPost releases in Instance settings.", Kind: ManagedSettingBoolean, EnvVars: []string{"OPENPOST_UPDATE_CHECK_ENABLED"}},
+
+	{Key: "OPENPOST_WHOP_API_KEY", Group: "billing", Label: "Whop API key", Description: "Write-only API key used to create checkout sessions and reconcile memberships.", Kind: ManagedSettingSecret, Secret: true, Optional: true, EnvVars: []string{"OPENPOST_WHOP_API_KEY"}},
+	{Key: "OPENPOST_WHOP_API_BASE_URL", Group: "billing", Label: "Whop API URL", Description: "Whop API endpoint. Keep the default unless Whop provides another environment.", Kind: ManagedSettingURL, EnvVars: []string{"OPENPOST_WHOP_API_BASE_URL"}},
+	{Key: "OPENPOST_WHOP_WEBHOOK_SECRET", Group: "billing", Label: "Whop webhook secret", Description: "Write-only signing secret used to verify billing webhook requests.", Kind: ManagedSettingSecret, Secret: true, Optional: true, EnvVars: []string{"OPENPOST_WHOP_WEBHOOK_SECRET"}},
+	{Key: "OPENPOST_WHOP_ACCOUNT_ID", Group: "billing", Label: "Whop account ID", Description: "Business account that owns the OpenPost product and receives payments.", Kind: ManagedSettingString, Optional: true, EnvVars: []string{"OPENPOST_WHOP_ACCOUNT_ID"}},
+	{Key: "OPENPOST_WHOP_PRODUCT_ID", Group: "billing", Label: "Whop product ID", Description: "Product that contains the OpenPost subscription plans.", Kind: ManagedSettingString, Optional: true, EnvVars: []string{"OPENPOST_WHOP_PRODUCT_ID"}},
+	{Key: "OPENPOST_WHOP_CHECKOUT_RETURN_URL", Group: "billing", Label: "Checkout return URL", Description: "OpenPost checkout URL Whop returns customers to after payment.", Kind: ManagedSettingURL, Optional: true, EnvVars: []string{"OPENPOST_WHOP_CHECKOUT_RETURN_URL"}},
+	{Key: "OPENPOST_WHOP_STARTER_MONTHLY_PLAN_ID", Group: "billing", Label: "Starter monthly plan ID", Description: "Whop plan used for monthly Starter subscriptions.", Kind: ManagedSettingString, Optional: true, EnvVars: []string{"OPENPOST_WHOP_STARTER_MONTHLY_PLAN_ID"}},
+	{Key: "OPENPOST_WHOP_STARTER_ANNUAL_PLAN_ID", Group: "billing", Label: "Starter annual plan ID", Description: "Whop plan used for annual Starter subscriptions.", Kind: ManagedSettingString, Optional: true, EnvVars: []string{"OPENPOST_WHOP_STARTER_ANNUAL_PLAN_ID"}},
+	{Key: "OPENPOST_WHOP_CREATOR_MONTHLY_PLAN_ID", Group: "billing", Label: "Creator monthly plan ID", Description: "Whop plan used for monthly Creator subscriptions.", Kind: ManagedSettingString, Optional: true, EnvVars: []string{"OPENPOST_WHOP_CREATOR_MONTHLY_PLAN_ID"}},
+	{Key: "OPENPOST_WHOP_CREATOR_ANNUAL_PLAN_ID", Group: "billing", Label: "Creator annual plan ID", Description: "Whop plan used for annual Creator subscriptions.", Kind: ManagedSettingString, Optional: true, EnvVars: []string{"OPENPOST_WHOP_CREATOR_ANNUAL_PLAN_ID"}},
+	{Key: "OPENPOST_WHOP_PRO_MONTHLY_PLAN_ID", Group: "billing", Label: "Pro monthly plan ID", Description: "Whop plan used for monthly Pro subscriptions.", Kind: ManagedSettingString, Optional: true, EnvVars: []string{"OPENPOST_WHOP_PRO_MONTHLY_PLAN_ID"}},
+	{Key: "OPENPOST_WHOP_PRO_ANNUAL_PLAN_ID", Group: "billing", Label: "Pro annual plan ID", Description: "Whop plan used for annual Pro subscriptions.", Kind: ManagedSettingString, Optional: true, EnvVars: []string{"OPENPOST_WHOP_PRO_ANNUAL_PLAN_ID"}},
+	{Key: "OPENPOST_WHOP_TEAM_MONTHLY_PLAN_ID", Group: "billing", Label: "Team monthly plan ID", Description: "Whop plan used for monthly Team subscriptions.", Kind: ManagedSettingString, Optional: true, EnvVars: []string{"OPENPOST_WHOP_TEAM_MONTHLY_PLAN_ID"}},
+	{Key: "OPENPOST_WHOP_TEAM_ANNUAL_PLAN_ID", Group: "billing", Label: "Team annual plan ID", Description: "Whop plan used for annual Team subscriptions.", Kind: ManagedSettingString, Optional: true, EnvVars: []string{"OPENPOST_WHOP_TEAM_ANNUAL_PLAN_ID"}},
+	{Key: "OPENPOST_WHOP_AGENCY_MONTHLY_PLAN_ID", Group: "billing", Label: "Agency monthly plan ID", Description: "Whop plan used for monthly Agency subscriptions.", Kind: ManagedSettingString, Optional: true, EnvVars: []string{"OPENPOST_WHOP_AGENCY_MONTHLY_PLAN_ID"}},
+	{Key: "OPENPOST_WHOP_AGENCY_ANNUAL_PLAN_ID", Group: "billing", Label: "Agency annual plan ID", Description: "Whop plan used for annual Agency subscriptions.", Kind: ManagedSettingString, Optional: true, EnvVars: []string{"OPENPOST_WHOP_AGENCY_ANNUAL_PLAN_ID"}},
 
 	{Key: "OPENPOST_EMAIL_VERIFICATION_REQUIRED", Group: "email", Label: "Require email verification", Description: "Require a six-digit email code before a password account can sign in.", Kind: ManagedSettingBoolean, EnvVars: []string{"OPENPOST_EMAIL_VERIFICATION_REQUIRED"}},
 	{Key: "OPENPOST_EMAIL_PROVIDER", Group: "email", Label: "Email provider", Description: "Delivery service for verification and password recovery messages.", Kind: ManagedSettingEnum, Optional: true, EnvVars: []string{"OPENPOST_EMAIL_PROVIDER"}, Options: []ManagedSettingOption{{Value: "", Label: "Not configured"}, {Value: "smtp", Label: "SMTP"}, {Value: "resend", Label: "Resend"}, {Value: "cloudflare", Label: "Cloudflare Email"}}},
@@ -181,6 +199,22 @@ var managedSettingBindings = map[string]managedSettingBinding{
 	"OPENPOST_PRIVACY_VERSION":                      stringBinding(func(c *Config) *string { return &c.PrivacyVersion }),
 	"OPENPOST_SUPPORT_EMAIL":                        stringBinding(func(c *Config) *string { return &c.SupportEmail }),
 	"OPENPOST_UPDATE_CHECK_ENABLED":                 boolBinding(func(c *Config) *bool { return &c.UpdateCheckEnabled }),
+	"OPENPOST_WHOP_API_KEY":                         stringBinding(func(c *Config) *string { return &c.WhopAPIKey }),
+	"OPENPOST_WHOP_API_BASE_URL":                    trimmedStringBinding(func(c *Config) *string { return &c.WhopAPIBaseURL }),
+	"OPENPOST_WHOP_WEBHOOK_SECRET":                  stringBinding(func(c *Config) *string { return &c.WhopWebhookSecret }),
+	"OPENPOST_WHOP_ACCOUNT_ID":                      stringBinding(func(c *Config) *string { return &c.WhopAccountID }),
+	"OPENPOST_WHOP_PRODUCT_ID":                      stringBinding(func(c *Config) *string { return &c.WhopProductID }),
+	"OPENPOST_WHOP_CHECKOUT_RETURN_URL":             stringBinding(func(c *Config) *string { return &c.WhopCheckoutReturnURL }),
+	"OPENPOST_WHOP_STARTER_MONTHLY_PLAN_ID":         stringBinding(func(c *Config) *string { return &c.WhopStarterMonthlyPlanID }),
+	"OPENPOST_WHOP_STARTER_ANNUAL_PLAN_ID":          stringBinding(func(c *Config) *string { return &c.WhopStarterAnnualPlanID }),
+	"OPENPOST_WHOP_CREATOR_MONTHLY_PLAN_ID":         stringBinding(func(c *Config) *string { return &c.WhopCreatorMonthlyPlanID }),
+	"OPENPOST_WHOP_CREATOR_ANNUAL_PLAN_ID":          stringBinding(func(c *Config) *string { return &c.WhopCreatorAnnualPlanID }),
+	"OPENPOST_WHOP_PRO_MONTHLY_PLAN_ID":             stringBinding(func(c *Config) *string { return &c.WhopProMonthlyPlanID }),
+	"OPENPOST_WHOP_PRO_ANNUAL_PLAN_ID":              stringBinding(func(c *Config) *string { return &c.WhopProAnnualPlanID }),
+	"OPENPOST_WHOP_TEAM_MONTHLY_PLAN_ID":            stringBinding(func(c *Config) *string { return &c.WhopTeamMonthlyPlanID }),
+	"OPENPOST_WHOP_TEAM_ANNUAL_PLAN_ID":             stringBinding(func(c *Config) *string { return &c.WhopTeamAnnualPlanID }),
+	"OPENPOST_WHOP_AGENCY_MONTHLY_PLAN_ID":          stringBinding(func(c *Config) *string { return &c.WhopAgencyMonthlyPlanID }),
+	"OPENPOST_WHOP_AGENCY_ANNUAL_PLAN_ID":           stringBinding(func(c *Config) *string { return &c.WhopAgencyAnnualPlanID }),
 	"OPENPOST_EMAIL_VERIFICATION_REQUIRED":          boolBinding(func(c *Config) *bool { return &c.EmailVerificationRequired }),
 	"OPENPOST_EMAIL_PROVIDER":                       stringBinding(func(c *Config) *string { return &c.EmailProvider }),
 	"OPENPOST_EMAIL_FROM":                           stringBinding(func(c *Config) *string { return &c.EmailFrom }),

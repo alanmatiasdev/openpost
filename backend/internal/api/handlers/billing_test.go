@@ -49,7 +49,9 @@ func (c *billingHTTPClient) Do(req *http.Request) (*http.Response, error) {
 	c.t.Helper()
 
 	var body map[string]any
-	require.NoError(c.t, json.NewDecoder(req.Body).Decode(&body))
+	if req.Body != nil {
+		require.NoError(c.t, json.NewDecoder(req.Body).Decode(&body))
+	}
 	c.requests = append(c.requests, billingHTTPRequest{Path: req.URL.Path, Body: body})
 	status := c.status
 	if status == 0 {
@@ -72,6 +74,7 @@ func newBillingHandlerTestServer(t *testing.T, secret string, now time.Time) *bi
 		(*models.Workspace)(nil),
 		(*models.BillingSubscription)(nil),
 		(*models.BillingWebhookEvent)(nil),
+		(*models.Job)(nil),
 	)
 	ctx := context.Background()
 	_, err := db.NewInsert().Model(&models.Organization{ID: "org_ws-1", Name: "Launch", CreatedByID: "user-1"}).Exec(ctx)
@@ -90,14 +93,18 @@ func newBillingAPITestServer(t *testing.T) *billingTestServer {
 	t.Helper()
 
 	client := &billingHTTPClient{t: t}
-	return newBillingAPITestServerWithPolarConfig(t, client, billing.PolarConfig{
-		AccessToken: "polar-token",
-		APIBaseURL:  "https://api.polar.test",
-		SuccessURL:  "https://app.openpost.test/settings/billing?checkout_id={CHECKOUT_ID}",
-		ReturnURL:   "https://app.openpost.test/settings/billing",
+	return newBillingAPITestServerWithWhopConfig(t, client, billing.WhopConfig{
+		APIKey:     "whop-token",
+		APIBaseURL: "https://api.whop.test/api/v1",
+		AccountID:  "biz_1",
+		ProductID:  "prod_1",
+		AppURL:     "https://app.openpost.test",
+		ReturnURL:  "https://app.openpost.test/checkout?status=success",
 		Plans: map[string]billing.PlanConfig{
 			"creator": {
-				ProductID: "product-creator",
+				ProviderPlanIDs: billing.ProviderPlanIDs{Monthly: "plan_creator_month", Annual: "plan_creator_year"},
+				MonthlyPriceUSD: 29,
+				AnnualPriceUSD:  290,
 				Limits: map[entitlements.LimitKey]int64{
 					entitlements.LimitScheduledPostsMonthly: 500,
 					entitlements.LimitSocialAccounts:        6,
@@ -107,7 +114,7 @@ func newBillingAPITestServer(t *testing.T) *billingTestServer {
 	})
 }
 
-func newBillingAPITestServerWithPolarConfig(t *testing.T, client *billingHTTPClient, cfg billing.PolarConfig) *billingTestServer {
+func newBillingAPITestServerWithWhopConfig(t *testing.T, client *billingHTTPClient, cfg billing.WhopConfig) *billingTestServer {
 	t.Helper()
 
 	db := createHandlerTestDB(
@@ -118,6 +125,7 @@ func newBillingAPITestServerWithPolarConfig(t *testing.T, client *billingHTTPCli
 		(*models.Workspace)(nil),
 		(*models.WorkspaceMember)(nil),
 		(*models.BillingSubscription)(nil),
+		(*models.BillingCheckoutAttempt)(nil),
 		(*models.UsageCounter)(nil),
 		(*models.ProviderUsageEvent)(nil),
 		(*models.ProviderUsageReservation)(nil),
@@ -162,7 +170,7 @@ func newBillingAPITestServerWithPolarConfig(t *testing.T, client *billingHTTPCli
 func (s *billingTestServer) postWebhook(t *testing.T, body []byte, headers billing.WebhookHeaders) *httptest.ResponseRecorder {
 	t.Helper()
 
-	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/billing/polar/webhook", bytes.NewReader(body))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/billing/whop/webhook", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("webhook-id", headers.ID)
 	req.Header.Set("webhook-timestamp", headers.Timestamp)
@@ -195,7 +203,7 @@ func (s *billingTestServer) getJSON(t *testing.T, path string) *httptest.Respons
 	return rec
 }
 
-func signedPolarWebhookHeaders(t *testing.T, secret string, now time.Time, eventID string, body []byte) billing.WebhookHeaders {
+func signedWhopWebhookHeaders(t *testing.T, secret string, now time.Time, eventID string, body []byte) billing.WebhookHeaders {
 	t.Helper()
 
 	timestamp := fmt.Sprintf("%d", now.Unix())
@@ -208,15 +216,15 @@ func signedPolarWebhookHeaders(t *testing.T, secret string, now time.Time, event
 	}
 }
 
-func TestPolarWebhookRouteStoresSubscription(t *testing.T) {
+func TestWhopWebhookRouteQueuesReconciliation(t *testing.T) {
 	t.Parallel()
 
 	secret := "route-secret"
 	now := time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC)
 	srv := newBillingHandlerTestServer(t, secret, now)
-	body := []byte(`{"id":"evt-route","type":"subscription.active","data":{"id":"sub-route","customer_id":"cus-route","status":"active","metadata":{"workspace_id":"ws-1","plan_id":"creator"}}}`)
+	body := []byte(`{"id":"evt-route","type":"membership.activated","data":{"id":"mem-route"}}`)
 
-	resp := srv.postWebhook(t, body, signedPolarWebhookHeaders(t, secret, now, "evt-route", body))
+	resp := srv.postWebhook(t, body, signedWhopWebhookHeaders(t, secret, now, "evt-route", body))
 
 	require.Equal(t, http.StatusOK, resp.Code, resp.Body.String())
 	var out map[string]any
@@ -224,29 +232,28 @@ func TestPolarWebhookRouteStoresSubscription(t *testing.T) {
 	require.True(t, out["ok"].(bool))
 	require.Equal(t, "evt-route", out["event_id"])
 
-	var sub models.BillingSubscription
-	require.NoError(t, srv.db.NewSelect().Model(&sub).Where("workspace_id = ?", "ws-1").Scan(context.Background()))
-	require.Equal(t, "sub-route", sub.ProviderSubscriptionID)
-	require.Equal(t, "creator", sub.PlanID)
+	var job models.Job
+	require.NoError(t, srv.db.NewSelect().Model(&job).Where("type = ?", billing.JobTypeWebhook).Scan(context.Background()))
+	require.Contains(t, job.Payload, "mem-route")
 }
 
-func TestPolarWebhookRouteRejectsInvalidSignature(t *testing.T) {
+func TestWhopWebhookRouteRejectsInvalidSignature(t *testing.T) {
 	t.Parallel()
 
 	secret := "route-secret"
 	now := time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC)
 	srv := newBillingHandlerTestServer(t, secret, now)
-	body := []byte(`{"id":"evt-route","type":"subscription.active","data":{}}`)
+	body := []byte(`{"id":"evt-route","type":"membership.activated","data":{}}`)
 
 	resp := srv.postWebhook(t, body, billing.WebhookHeaders{
 		ID:        "evt-route",
-		Timestamp: signedPolarWebhookHeaders(t, secret, now, "evt-route", body).Timestamp,
+		Timestamp: signedWhopWebhookHeaders(t, secret, now, "evt-route", body).Timestamp,
 		Signature: "v1,invalid",
 	})
 
 	require.Equal(t, http.StatusUnauthorized, resp.Code, resp.Body.String())
 	var count int
-	require.NoError(t, srv.db.NewSelect().ColumnExpr("COUNT(*)").TableExpr("billing_subscriptions").Scan(context.Background(), &count))
+	require.NoError(t, srv.db.NewSelect().ColumnExpr("COUNT(*)").TableExpr("jobs").Scan(context.Background(), &count))
 	require.Equal(t, 0, count)
 }
 
@@ -254,23 +261,26 @@ func TestCreateBillingCheckoutRoute(t *testing.T) {
 	t.Parallel()
 
 	srv := newBillingAPITestServer(t)
-	srv.client.response = `{"id":"checkout-1","url":"https://checkout.polar.test/session"}`
+	srv.client.response = `{"id":"ch_1","purchase_url":"https://whop.test/checkout/ch_1","plan":{"id":"plan_creator_year"}}`
 
 	resp := srv.postJSON(t, "/api/v1/billing/checkout", map[string]any{
-		"workspace_id": "ws-1",
-		"plan_id":      "creator",
+		"workspace_id":   "ws-1",
+		"plan_id":        "creator",
+		"billing_period": "annual",
 	})
 
 	require.Equal(t, http.StatusOK, resp.Code, resp.Body.String())
 	var out map[string]any
 	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &out))
-	require.Equal(t, "checkout-1", out["id"])
-	require.Equal(t, "https://checkout.polar.test/session", out["url"])
+	require.Equal(t, "ch_1", out["id"])
+	require.Equal(t, "https://app.openpost.test/checkout?billing_period=annual&plan=creator&session_id=ch_1", out["url"])
+	require.Equal(t, "plan_creator_year", out["provider_plan_id"])
+	require.Equal(t, float64(290), out["price_usd"])
 	require.Len(t, srv.client.requests, 1)
 	req := srv.client.requests[0]
-	require.Equal(t, "/v1/checkouts/", req.Path)
-	require.Equal(t, "user@example.com", req.Body["customer_email"])
-	require.Equal(t, "org_ws-1", req.Body["external_customer_id"])
+	require.Equal(t, "/api/v1/checkout_configurations", req.Path)
+	require.Equal(t, "biz_1", req.Body["company_id"])
+	require.Equal(t, "plan_creator_year", req.Body["plan_id"])
 	metadata := req.Body["metadata"].(map[string]any)
 	require.Equal(t, "creator", metadata["plan_id"])
 	require.Equal(t, "org_ws-1", metadata["organization_id"])
@@ -299,13 +309,14 @@ func TestBillingMutationsRequireWorkspaceAdmin(t *testing.T) {
 	require.Empty(t, srv.client.requests)
 }
 
-func TestCreateBillingCheckoutRouteReturns503WhenPolarIsNotConfigured(t *testing.T) {
+func TestCreateBillingCheckoutRouteReturns503WhenWhopIsNotConfigured(t *testing.T) {
 	t.Parallel()
 
-	srv := newBillingAPITestServerWithPolarConfig(t, &billingHTTPClient{t: t}, billing.PolarConfig{
-		APIBaseURL: "https://api.polar.test",
+	srv := newBillingAPITestServerWithWhopConfig(t, &billingHTTPClient{t: t}, billing.WhopConfig{
+		APIBaseURL: "https://api.whop.test/api/v1",
+		AccountID:  "biz_1",
 		Plans: map[string]billing.PlanConfig{
-			"creator": {ProductID: "product-creator"},
+			"creator": {ProviderPlanIDs: billing.ProviderPlanIDs{Monthly: "plan_creator_month"}},
 		},
 	})
 
@@ -315,7 +326,7 @@ func TestCreateBillingCheckoutRouteReturns503WhenPolarIsNotConfigured(t *testing
 	})
 
 	require.Equal(t, http.StatusServiceUnavailable, resp.Code, resp.Body.String())
-	require.Contains(t, resp.Body.String(), "OPENPOST_POLAR_ACCESS_TOKEN")
+	require.Contains(t, resp.Body.String(), "OPENPOST_WHOP_API_KEY")
 	require.Empty(t, srv.client.requests)
 }
 
@@ -344,7 +355,7 @@ func TestGetBillingStatusRouteWithSubscriptionAndUsage(t *testing.T) {
 	_, err := srv.db.NewInsert().Model(&models.BillingSubscription{
 		OrganizationID:         "org_ws-1",
 		WorkspaceID:            "ws-1",
-		Provider:               "polar",
+		Provider:               "whop",
 		ProviderCustomerID:     "cus-1",
 		ProviderSubscriptionID: "sub-1",
 		Status:                 "active",
@@ -366,7 +377,7 @@ func TestGetBillingStatusRouteWithSubscriptionAndUsage(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.Code, resp.Body.String())
 	var out map[string]any
 	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &out))
-	require.Equal(t, "polar", out["provider"])
+	require.Equal(t, "whop", out["provider"])
 	require.Equal(t, "active", out["status"])
 	require.Equal(t, "creator", out["plan_id"])
 	require.Equal(t, "2026-07-30T12:00:00Z", out["current_period_end"])
@@ -401,7 +412,7 @@ func TestGetBillingStatusUsesOwnersActiveSubscriptionForLegacyWorkspace(t *testi
 	_, err = srv.db.NewInsert().Model(&models.BillingSubscription{
 		OrganizationID:         "org_ws-1",
 		WorkspaceID:            "ws-1",
-		Provider:               "polar",
+		Provider:               "whop",
 		ProviderCustomerID:     "cus-agency",
 		ProviderSubscriptionID: "sub-agency",
 		Status:                 "active",
@@ -510,7 +521,17 @@ func TestCreateBillingPortalRoute(t *testing.T) {
 	t.Parallel()
 
 	srv := newBillingAPITestServer(t)
-	srv.client.response = `{"id":"session-1","customer_portal_url":"https://polar.test/portal"}`
+	_, err := srv.db.NewInsert().Model(&models.BillingSubscription{
+		OrganizationID:         "org_ws-1",
+		WorkspaceID:            "ws-1",
+		Provider:               billing.ProviderWhop,
+		ProviderCustomerID:     "user_whop_1",
+		ProviderSubscriptionID: "mem_1",
+		ProviderManageURL:      "https://whop.test/manage/mem_1",
+		Status:                 "active",
+		PlanID:                 "creator",
+	}).Exec(t.Context())
+	require.NoError(t, err)
 
 	resp := srv.postJSON(t, "/api/v1/billing/portal", map[string]any{
 		"workspace_id": "ws-1",
@@ -519,10 +540,7 @@ func TestCreateBillingPortalRoute(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.Code, resp.Body.String())
 	var out map[string]any
 	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &out))
-	require.Equal(t, "session-1", out["id"])
-	require.Equal(t, "https://polar.test/portal", out["url"])
-	require.Len(t, srv.client.requests, 1)
-	req := srv.client.requests[0]
-	require.Equal(t, "/v1/customer-sessions/", req.Path)
-	require.Equal(t, "org_ws-1", req.Body["external_customer_id"])
+	require.Equal(t, "mem_1", out["id"])
+	require.Equal(t, "https://whop.test/manage/mem_1", out["url"])
+	require.Empty(t, srv.client.requests)
 }

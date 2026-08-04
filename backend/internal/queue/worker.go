@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/openpost/backend/internal/models"
 	analyticsservice "github.com/openpost/backend/internal/services/analytics"
+	billingservice "github.com/openpost/backend/internal/services/billing"
 	communicationsservice "github.com/openpost/backend/internal/services/communications"
 	"github.com/openpost/backend/internal/services/feedback"
 	"github.com/openpost/backend/internal/services/mediastore"
@@ -48,6 +49,7 @@ type BackgroundWorker struct {
 	storage        mediastore.BlobStorage
 	feedback       *feedback.Service
 	analytics      *analyticsservice.Service
+	billing        *billingservice.Service
 	communications *communicationsservice.Service
 	video          *videoprocessing.Service
 	done           chan struct{}
@@ -59,6 +61,10 @@ func (w *BackgroundWorker) SetFeedbackService(service *feedback.Service) {
 
 func (w *BackgroundWorker) SetAnalyticsService(service *analyticsservice.Service) {
 	w.analytics = service
+}
+
+func (w *BackgroundWorker) SetBillingService(service *billingservice.Service) {
+	w.billing = service
 }
 
 func (w *BackgroundWorker) SetCommunicationsService(service *communicationsservice.Service) {
@@ -364,6 +370,8 @@ func (w *BackgroundWorker) executeJob(ctx context.Context, job *models.Job) erro
 			return fmt.Errorf("analytics collection is not configured")
 		}
 		return w.analytics.HandleJob(ctx, job.Type, job.Payload)
+	case billingservice.JobTypeWebhook:
+		return w.handleBillingJob(ctx, job)
 	case communicationsservice.JobTypeSweep,
 		communicationsservice.JobTypeEngagementSync,
 		communicationsservice.JobTypeMessagesSync,
@@ -381,6 +389,13 @@ func (w *BackgroundWorker) executeJob(ctx context.Context, job *models.Job) erro
 	default:
 		return fmt.Errorf("unsupported job type %q", job.Type)
 	}
+}
+
+func (w *BackgroundWorker) handleBillingJob(ctx context.Context, job *models.Job) error {
+	if w.billing == nil {
+		return fmt.Errorf("billing reconciliation is not configured")
+	}
+	return w.billing.HandleJob(ctx, job.Type, job.Payload)
 }
 
 func (w *BackgroundWorker) handleStorageDelete(payload string) error {

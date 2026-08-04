@@ -239,7 +239,7 @@ func TestInstanceDiagnosticsIncludesBillingSnapshot(t *testing.T) {
 			billingQuery = r.URL.RawQuery
 			_, _ = w.Write([]byte(`{
 				"workspace_id":"ws-1",
-				"provider":"polar",
+				"provider":"whop",
 				"status":"active",
 				"plan_id":"creator",
 				"cancel_at_period_end":false,

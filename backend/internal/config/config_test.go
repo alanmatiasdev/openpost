@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -107,17 +108,22 @@ var configTestEnvKeys = []string{
 	"OPENPOST_S3_SECRET_ACCESS_KEY",
 	"OPENPOST_S3_PUBLIC_BASE_URL",
 	"OPENPOST_S3_FORCE_PATH_STYLE",
-	"OPENPOST_POLAR_ACCESS_TOKEN",
-	"OPENPOST_POLAR_API_BASE_URL",
-	"OPENPOST_POLAR_WEBHOOK_SECRET",
-	"OPENPOST_POLAR_CHECKOUT_SUCCESS_URL",
-	"OPENPOST_POLAR_RETURN_URL",
-	"OPENPOST_POLAR_CUSTOMER_PORTAL_URL",
-	"OPENPOST_POLAR_STARTER_PRODUCT_ID",
-	"OPENPOST_POLAR_CREATOR_PRODUCT_ID",
-	"OPENPOST_POLAR_PRO_PRODUCT_ID",
-	"OPENPOST_POLAR_TEAM_PRODUCT_ID",
-	"OPENPOST_POLAR_AGENCY_PRODUCT_ID",
+	"OPENPOST_WHOP_API_KEY",
+	"OPENPOST_WHOP_API_BASE_URL",
+	"OPENPOST_WHOP_WEBHOOK_SECRET",
+	"OPENPOST_WHOP_ACCOUNT_ID",
+	"OPENPOST_WHOP_PRODUCT_ID",
+	"OPENPOST_WHOP_CHECKOUT_RETURN_URL",
+	"OPENPOST_WHOP_STARTER_MONTHLY_PLAN_ID",
+	"OPENPOST_WHOP_STARTER_ANNUAL_PLAN_ID",
+	"OPENPOST_WHOP_CREATOR_MONTHLY_PLAN_ID",
+	"OPENPOST_WHOP_CREATOR_ANNUAL_PLAN_ID",
+	"OPENPOST_WHOP_PRO_MONTHLY_PLAN_ID",
+	"OPENPOST_WHOP_PRO_ANNUAL_PLAN_ID",
+	"OPENPOST_WHOP_TEAM_MONTHLY_PLAN_ID",
+	"OPENPOST_WHOP_TEAM_ANNUAL_PLAN_ID",
+	"OPENPOST_WHOP_AGENCY_MONTHLY_PLAN_ID",
+	"OPENPOST_WHOP_AGENCY_ANNUAL_PLAN_ID",
 }
 
 func TestLoadProductionPrimitiveDefaults(t *testing.T) {
@@ -131,9 +137,9 @@ func TestLoadProductionPrimitiveDefaults(t *testing.T) {
 	require.Equal(t, StorageDriverLocal, cfg.StorageDriver)
 	require.Empty(t, cfg.DatabaseURL)
 	require.Empty(t, cfg.S3Bucket)
-	require.Empty(t, cfg.PolarAccessToken)
-	require.Equal(t, "https://api.polar.sh/v1", cfg.PolarAPIBaseURL)
-	require.Empty(t, cfg.PolarWebhookSecret)
+	require.Empty(t, cfg.WhopAPIKey)
+	require.Equal(t, "https://api.whop.com/api/v1", cfg.WhopAPIBaseURL)
+	require.Empty(t, cfg.WhopWebhookSecret)
 	require.True(t, cfg.StudioEnabled)
 	require.Equal(t, "/studio-models", cfg.StudioModelBaseURL)
 	require.False(t, cfg.VideoStudioEnabled)
@@ -352,15 +358,15 @@ func TestLoadSupportsFileBackedEnvValues(t *testing.T) {
 	t.Setenv("OPENPOST_S3_SECRET_ACCESS_KEY_FILE", writeEnvFile(t, "s3-secret-access-key", "secret-key\n"))
 	t.Setenv("OPENPOST_S3_PUBLIC_BASE_URL_FILE", writeEnvFile(t, "s3-public-base-url", "https://media.openpost.social/\n"))
 	t.Setenv("OPENPOST_S3_FORCE_PATH_STYLE_FILE", writeEnvFile(t, "s3-force-path-style", "true\n"))
-	t.Setenv("OPENPOST_POLAR_ACCESS_TOKEN_FILE", writeEnvFile(t, "polar-access-token", "polar-token\n"))
-	t.Setenv("OPENPOST_POLAR_WEBHOOK_SECRET_FILE", writeEnvFile(t, "polar-webhook-secret", "whsec_secret\n"))
-	t.Setenv("OPENPOST_POLAR_CHECKOUT_SUCCESS_URL_FILE", writeEnvFile(t, "polar-checkout-url", "https://app.openpost.social/settings/billing?checkout_id={CHECKOUT_ID}\n"))
-	t.Setenv("OPENPOST_POLAR_RETURN_URL_FILE", writeEnvFile(t, "polar-return-url", "https://app.openpost.social/settings/billing/\n"))
-	t.Setenv("OPENPOST_POLAR_STARTER_PRODUCT_ID_FILE", writeEnvFile(t, "polar-starter-product", "starter-product\n"))
-	t.Setenv("OPENPOST_POLAR_CREATOR_PRODUCT_ID_FILE", writeEnvFile(t, "polar-creator-product", "creator-product\n"))
-	t.Setenv("OPENPOST_POLAR_PRO_PRODUCT_ID_FILE", writeEnvFile(t, "polar-pro-product", "pro-product\n"))
-	t.Setenv("OPENPOST_POLAR_TEAM_PRODUCT_ID_FILE", writeEnvFile(t, "polar-team-product", "team-product\n"))
-	t.Setenv("OPENPOST_POLAR_AGENCY_PRODUCT_ID_FILE", writeEnvFile(t, "polar-agency-product", "agency-product\n"))
+	t.Setenv("OPENPOST_WHOP_API_KEY_FILE", writeEnvFile(t, "whop-api-key", "whop-token\n"))
+	t.Setenv("OPENPOST_WHOP_WEBHOOK_SECRET_FILE", writeEnvFile(t, "whop-webhook-secret", "whsec_secret\n"))
+	t.Setenv("OPENPOST_WHOP_ACCOUNT_ID_FILE", writeEnvFile(t, "whop-account", "biz_1\n"))
+	t.Setenv("OPENPOST_WHOP_PRODUCT_ID_FILE", writeEnvFile(t, "whop-product", "prod_1\n"))
+	t.Setenv("OPENPOST_WHOP_CHECKOUT_RETURN_URL_FILE", writeEnvFile(t, "whop-return-url", "https://app.openpost.social/checkout?status=success\n"))
+	for _, plan := range []string{"STARTER", "CREATOR", "PRO", "TEAM", "AGENCY"} {
+		t.Setenv("OPENPOST_WHOP_"+plan+"_MONTHLY_PLAN_ID_FILE", writeEnvFile(t, strings.ToLower(plan)+"-monthly", "plan_"+strings.ToLower(plan)+"_monthly\n"))
+		t.Setenv("OPENPOST_WHOP_"+plan+"_ANNUAL_PLAN_ID_FILE", writeEnvFile(t, strings.ToLower(plan)+"-annual", "plan_"+strings.ToLower(plan)+"_annual\n"))
+	}
 	t.Setenv("OPENPOST_SMTP_HOST_FILE", writeEnvFile(t, "smtp-host", "smtp.example.com\n"))
 	t.Setenv("OPENPOST_SMTP_FROM_FILE", writeEnvFile(t, "smtp-from", "OpenPost <openpost@example.com>\n"))
 
@@ -378,15 +384,13 @@ func TestLoadSupportsFileBackedEnvValues(t *testing.T) {
 	require.Equal(t, "secret-key", cfg.S3SecretAccessKey)
 	require.Equal(t, "https://media.openpost.social", cfg.S3PublicBaseURL)
 	require.True(t, cfg.S3ForcePathStyle)
-	require.Equal(t, "polar-token", cfg.PolarAccessToken)
-	require.Equal(t, "whsec_secret", cfg.PolarWebhookSecret)
-	require.Equal(t, "https://app.openpost.social/settings/billing?checkout_id={CHECKOUT_ID}", cfg.PolarCheckoutURL)
-	require.Equal(t, "https://app.openpost.social/settings/billing", cfg.PolarReturnURL)
-	require.Equal(t, "starter-product", cfg.PolarStarterProductID)
-	require.Equal(t, "creator-product", cfg.PolarCreatorProductID)
-	require.Equal(t, "pro-product", cfg.PolarProProductID)
-	require.Equal(t, "team-product", cfg.PolarTeamProductID)
-	require.Equal(t, "agency-product", cfg.PolarAgencyProductID)
+	require.Equal(t, "whop-token", cfg.WhopAPIKey)
+	require.Equal(t, "whsec_secret", cfg.WhopWebhookSecret)
+	require.Equal(t, "biz_1", cfg.WhopAccountID)
+	require.Equal(t, "prod_1", cfg.WhopProductID)
+	require.Equal(t, "https://app.openpost.social/checkout?status=success", cfg.WhopCheckoutReturnURL)
+	require.Equal(t, "plan_starter_monthly", cfg.WhopStarterMonthlyPlanID)
+	require.Equal(t, "plan_agency_annual", cfg.WhopAgencyAnnualPlanID)
 	require.NoError(t, cfg.ValidateRuntime())
 }
 
@@ -530,30 +534,32 @@ func TestValidateRuntimeRejectsCloudMissingS3Primitives(t *testing.T) {
 	require.ErrorContains(t, err, "OPENPOST_S3_PUBLIC_BASE_URL")
 }
 
-func TestValidateRuntimeRejectsCloudMissingPolarPrimitives(t *testing.T) {
+func TestValidateRuntimeRejectsCloudMissingWhopPrimitives(t *testing.T) {
 	cfg := validCloudRuntimeConfig()
-	cfg.PolarAccessToken = ""
-	cfg.PolarWebhookSecret = ""
-	cfg.PolarCheckoutURL = ""
-	cfg.PolarReturnURL = ""
-	cfg.PolarStarterProductID = ""
-	cfg.PolarCreatorProductID = ""
-	cfg.PolarProProductID = ""
-	cfg.PolarTeamProductID = ""
-	cfg.PolarAgencyProductID = ""
+	cfg.WhopAPIKey = ""
+	cfg.WhopWebhookSecret = ""
+	cfg.WhopAccountID = ""
+	cfg.WhopProductID = ""
+	cfg.WhopStarterMonthlyPlanID = ""
+	cfg.WhopStarterAnnualPlanID = ""
+	cfg.WhopCreatorMonthlyPlanID = ""
+	cfg.WhopCreatorAnnualPlanID = ""
+	cfg.WhopProMonthlyPlanID = ""
+	cfg.WhopProAnnualPlanID = ""
+	cfg.WhopTeamMonthlyPlanID = ""
+	cfg.WhopTeamAnnualPlanID = ""
+	cfg.WhopAgencyMonthlyPlanID = ""
+	cfg.WhopAgencyAnnualPlanID = ""
 
 	err := cfg.ValidateRuntime()
 
 	require.Error(t, err)
-	require.ErrorContains(t, err, "OPENPOST_POLAR_ACCESS_TOKEN")
-	require.ErrorContains(t, err, "OPENPOST_POLAR_WEBHOOK_SECRET")
-	require.ErrorContains(t, err, "OPENPOST_POLAR_CHECKOUT_SUCCESS_URL")
-	require.ErrorContains(t, err, "OPENPOST_POLAR_RETURN_URL")
-	require.ErrorContains(t, err, "OPENPOST_POLAR_STARTER_PRODUCT_ID")
-	require.ErrorContains(t, err, "OPENPOST_POLAR_CREATOR_PRODUCT_ID")
-	require.ErrorContains(t, err, "OPENPOST_POLAR_PRO_PRODUCT_ID")
-	require.ErrorContains(t, err, "OPENPOST_POLAR_TEAM_PRODUCT_ID")
-	require.ErrorContains(t, err, "OPENPOST_POLAR_AGENCY_PRODUCT_ID")
+	require.ErrorContains(t, err, "OPENPOST_WHOP_API_KEY")
+	require.ErrorContains(t, err, "OPENPOST_WHOP_WEBHOOK_SECRET")
+	require.ErrorContains(t, err, "OPENPOST_WHOP_ACCOUNT_ID")
+	require.ErrorContains(t, err, "OPENPOST_WHOP_PRODUCT_ID")
+	require.ErrorContains(t, err, "OPENPOST_WHOP_STARTER_MONTHLY_PLAN_ID")
+	require.ErrorContains(t, err, "OPENPOST_WHOP_AGENCY_ANNUAL_PLAN_ID")
 }
 
 func TestValidateRuntimeRejectsCloudWildcardCORSOrigins(t *testing.T) {
@@ -599,15 +605,20 @@ func validCloudRuntimeConfig() *Config {
 		S3SecretAccessKey:         "secret-key",
 		S3PublicBaseURL:           "https://media.openpost.social",
 		S3ForcePathStyle:          true,
-		PolarAccessToken:          "polar-token",
-		PolarWebhookSecret:        "whsec_secret",
-		PolarCheckoutURL:          "https://app.openpost.social/settings/billing?checkout_id={CHECKOUT_ID}",
-		PolarReturnURL:            "https://app.openpost.social/settings/billing",
-		PolarStarterProductID:     "starter-product",
-		PolarCreatorProductID:     "creator-product",
-		PolarProProductID:         "pro-product",
-		PolarTeamProductID:        "team-product",
-		PolarAgencyProductID:      "agency-product",
+		WhopAPIKey:                "whop-token",
+		WhopWebhookSecret:         "whsec_secret",
+		WhopAccountID:             "biz_1",
+		WhopProductID:             "prod_1",
+		WhopStarterMonthlyPlanID:  "plan_starter_monthly",
+		WhopStarterAnnualPlanID:   "plan_starter_annual",
+		WhopCreatorMonthlyPlanID:  "plan_creator_monthly",
+		WhopCreatorAnnualPlanID:   "plan_creator_annual",
+		WhopProMonthlyPlanID:      "plan_pro_monthly",
+		WhopProAnnualPlanID:       "plan_pro_annual",
+		WhopTeamMonthlyPlanID:     "plan_team_monthly",
+		WhopTeamAnnualPlanID:      "plan_team_annual",
+		WhopAgencyMonthlyPlanID:   "plan_agency_monthly",
+		WhopAgencyAnnualPlanID:    "plan_agency_annual",
 		LegalAcceptanceRequired:   true,
 		TermsURL:                  "https://openpost.social/terms",
 		PrivacyURL:                "https://openpost.social/privacy",
@@ -623,40 +634,29 @@ func validCloudRuntimeConfig() *Config {
 	}
 }
 
-func TestLoadPolarPrimitives(t *testing.T) {
+func TestLoadWhopPrimitives(t *testing.T) {
 	t.Setenv("OPENPOST_APP_URL", "https://app.openpost.social")
-	t.Setenv("OPENPOST_POLAR_ACCESS_TOKEN", "polar-token")
-	t.Setenv("OPENPOST_POLAR_API_BASE_URL", "https://sandbox-api.polar.sh/v1/")
-	t.Setenv("OPENPOST_POLAR_WEBHOOK_SECRET", "whsec_secret")
-	t.Setenv("OPENPOST_POLAR_CHECKOUT_SUCCESS_URL", "https://app.openpost.social/settings/billing/")
-	t.Setenv("OPENPOST_POLAR_RETURN_URL", "https://app.openpost.social/settings/billing/")
-	t.Setenv("OPENPOST_POLAR_STARTER_PRODUCT_ID", "starter-product")
-	t.Setenv("OPENPOST_POLAR_CREATOR_PRODUCT_ID", "creator-product")
-	t.Setenv("OPENPOST_POLAR_PRO_PRODUCT_ID", "pro-product")
-	t.Setenv("OPENPOST_POLAR_TEAM_PRODUCT_ID", "team-product")
-	t.Setenv("OPENPOST_POLAR_AGENCY_PRODUCT_ID", "agency-product")
+	t.Setenv("OPENPOST_WHOP_API_KEY", "whop-token")
+	t.Setenv("OPENPOST_WHOP_API_BASE_URL", "https://sandbox-api.whop.com/api/v1/")
+	t.Setenv("OPENPOST_WHOP_WEBHOOK_SECRET", "whsec_secret")
+	t.Setenv("OPENPOST_WHOP_ACCOUNT_ID", "biz_1")
+	t.Setenv("OPENPOST_WHOP_PRODUCT_ID", "prod_1")
+	t.Setenv("OPENPOST_WHOP_CHECKOUT_RETURN_URL", "https://app.openpost.social/checkout?status=success")
+	for _, plan := range []string{"STARTER", "CREATOR", "PRO", "TEAM", "AGENCY"} {
+		t.Setenv("OPENPOST_WHOP_"+plan+"_MONTHLY_PLAN_ID", "plan_"+strings.ToLower(plan)+"_monthly")
+		t.Setenv("OPENPOST_WHOP_"+plan+"_ANNUAL_PLAN_ID", "plan_"+strings.ToLower(plan)+"_annual")
+	}
 
 	cfg := Load()
 
-	require.Equal(t, "polar-token", cfg.PolarAccessToken)
-	require.Equal(t, "https://sandbox-api.polar.sh/v1", cfg.PolarAPIBaseURL)
-	require.Equal(t, "whsec_secret", cfg.PolarWebhookSecret)
-	require.Equal(t, "https://app.openpost.social/settings/billing", cfg.PolarCheckoutURL)
-	require.Equal(t, "https://app.openpost.social/settings/billing", cfg.PolarReturnURL)
-	require.Equal(t, "starter-product", cfg.PolarStarterProductID)
-	require.Equal(t, "creator-product", cfg.PolarCreatorProductID)
-	require.Equal(t, "pro-product", cfg.PolarProProductID)
-	require.Equal(t, "team-product", cfg.PolarTeamProductID)
-	require.Equal(t, "agency-product", cfg.PolarAgencyProductID)
-}
-
-func TestLoadPolarReturnURLLegacyAlias(t *testing.T) {
-	t.Setenv("OPENPOST_APP_URL", "https://app.openpost.social")
-	t.Setenv("OPENPOST_POLAR_CUSTOMER_PORTAL_URL", "https://app.openpost.social/settings/billing/")
-
-	cfg := Load()
-
-	require.Equal(t, "https://app.openpost.social/settings/billing", cfg.PolarReturnURL)
+	require.Equal(t, "whop-token", cfg.WhopAPIKey)
+	require.Equal(t, "https://sandbox-api.whop.com/api/v1", cfg.WhopAPIBaseURL)
+	require.Equal(t, "whsec_secret", cfg.WhopWebhookSecret)
+	require.Equal(t, "biz_1", cfg.WhopAccountID)
+	require.Equal(t, "prod_1", cfg.WhopProductID)
+	require.Equal(t, "https://app.openpost.social/checkout?status=success", cfg.WhopCheckoutReturnURL)
+	require.Equal(t, "plan_starter_monthly", cfg.WhopStarterMonthlyPlanID)
+	require.Equal(t, "plan_agency_annual", cfg.WhopAgencyAnnualPlanID)
 }
 
 func TestLoadBuildsProviderAppRegistryFromLegacyEnv(t *testing.T) {

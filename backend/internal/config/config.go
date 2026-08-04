@@ -114,16 +114,22 @@ type Config struct {
 	S3PublicBaseURL   string
 	S3ForcePathStyle  bool
 
-	PolarAccessToken      string
-	PolarAPIBaseURL       string
-	PolarWebhookSecret    string
-	PolarCheckoutURL      string
-	PolarReturnURL        string
-	PolarStarterProductID string
-	PolarCreatorProductID string
-	PolarProProductID     string
-	PolarTeamProductID    string
-	PolarAgencyProductID  string
+	WhopAPIKey               string
+	WhopAPIBaseURL           string
+	WhopWebhookSecret        string
+	WhopAccountID            string
+	WhopProductID            string
+	WhopCheckoutReturnURL    string
+	WhopStarterMonthlyPlanID string
+	WhopStarterAnnualPlanID  string
+	WhopCreatorMonthlyPlanID string
+	WhopCreatorAnnualPlanID  string
+	WhopProMonthlyPlanID     string
+	WhopProAnnualPlanID      string
+	WhopTeamMonthlyPlanID    string
+	WhopTeamAnnualPlanID     string
+	WhopAgencyMonthlyPlanID  string
+	WhopAgencyAnnualPlanID   string
 }
 
 const minSecretLength = 32
@@ -252,16 +258,22 @@ func Load() *Config {
 		S3PublicBaseURL:   strings.TrimRight(getEnvDefault("OPENPOST_S3_PUBLIC_BASE_URL", ""), "/"),
 		S3ForcePathStyle:  getEnvBoolWithAliases(false, "OPENPOST_S3_FORCE_PATH_STYLE"),
 
-		PolarAccessToken:      getEnvDefault("OPENPOST_POLAR_ACCESS_TOKEN", ""),
-		PolarAPIBaseURL:       strings.TrimRight(getEnvDefault("OPENPOST_POLAR_API_BASE_URL", "https://api.polar.sh/v1"), "/"),
-		PolarWebhookSecret:    getEnvDefault("OPENPOST_POLAR_WEBHOOK_SECRET", ""),
-		PolarCheckoutURL:      strings.TrimRight(getEnvDefault("OPENPOST_POLAR_CHECKOUT_SUCCESS_URL", ""), "/"),
-		PolarReturnURL:        strings.TrimRight(getEnvWithFallbacks("OPENPOST_POLAR_RETURN_URL", "", "OPENPOST_POLAR_CUSTOMER_PORTAL_URL"), "/"),
-		PolarStarterProductID: getEnvDefault("OPENPOST_POLAR_STARTER_PRODUCT_ID", ""),
-		PolarCreatorProductID: getEnvDefault("OPENPOST_POLAR_CREATOR_PRODUCT_ID", ""),
-		PolarProProductID:     getEnvDefault("OPENPOST_POLAR_PRO_PRODUCT_ID", ""),
-		PolarTeamProductID:    getEnvDefault("OPENPOST_POLAR_TEAM_PRODUCT_ID", ""),
-		PolarAgencyProductID:  getEnvDefault("OPENPOST_POLAR_AGENCY_PRODUCT_ID", ""),
+		WhopAPIKey:               getEnvDefault("OPENPOST_WHOP_API_KEY", ""),
+		WhopAPIBaseURL:           strings.TrimRight(getEnvDefault("OPENPOST_WHOP_API_BASE_URL", "https://api.whop.com/api/v1"), "/"),
+		WhopWebhookSecret:        getEnvDefault("OPENPOST_WHOP_WEBHOOK_SECRET", ""),
+		WhopAccountID:            getEnvDefault("OPENPOST_WHOP_ACCOUNT_ID", ""),
+		WhopProductID:            getEnvDefault("OPENPOST_WHOP_PRODUCT_ID", ""),
+		WhopCheckoutReturnURL:    strings.TrimRight(getEnvDefault("OPENPOST_WHOP_CHECKOUT_RETURN_URL", ""), "/"),
+		WhopStarterMonthlyPlanID: getEnvDefault("OPENPOST_WHOP_STARTER_MONTHLY_PLAN_ID", ""),
+		WhopStarterAnnualPlanID:  getEnvDefault("OPENPOST_WHOP_STARTER_ANNUAL_PLAN_ID", ""),
+		WhopCreatorMonthlyPlanID: getEnvDefault("OPENPOST_WHOP_CREATOR_MONTHLY_PLAN_ID", ""),
+		WhopCreatorAnnualPlanID:  getEnvDefault("OPENPOST_WHOP_CREATOR_ANNUAL_PLAN_ID", ""),
+		WhopProMonthlyPlanID:     getEnvDefault("OPENPOST_WHOP_PRO_MONTHLY_PLAN_ID", ""),
+		WhopProAnnualPlanID:      getEnvDefault("OPENPOST_WHOP_PRO_ANNUAL_PLAN_ID", ""),
+		WhopTeamMonthlyPlanID:    getEnvDefault("OPENPOST_WHOP_TEAM_MONTHLY_PLAN_ID", ""),
+		WhopTeamAnnualPlanID:     getEnvDefault("OPENPOST_WHOP_TEAM_ANNUAL_PLAN_ID", ""),
+		WhopAgencyMonthlyPlanID:  getEnvDefault("OPENPOST_WHOP_AGENCY_MONTHLY_PLAN_ID", ""),
+		WhopAgencyAnnualPlanID:   getEnvDefault("OPENPOST_WHOP_AGENCY_ANNUAL_PLAN_ID", ""),
 	}
 
 	if cfg.PublicURL == "" {
@@ -573,33 +585,29 @@ func (c *Config) missingCloudDataPlaneConfig() []string {
 }
 
 func (c *Config) missingCloudBillingConfig() []string {
-	missing := make([]string, 0, 7)
-	if strings.TrimSpace(c.PolarAccessToken) == "" {
-		missing = append(missing, "OPENPOST_POLAR_ACCESS_TOKEN")
-	}
-	if strings.TrimSpace(c.PolarWebhookSecret) == "" {
-		missing = append(missing, "OPENPOST_POLAR_WEBHOOK_SECRET")
-	}
-	if strings.TrimSpace(c.PolarCheckoutURL) == "" {
-		missing = append(missing, "OPENPOST_POLAR_CHECKOUT_SUCCESS_URL")
-	}
-	if strings.TrimSpace(c.PolarReturnURL) == "" {
-		missing = append(missing, "OPENPOST_POLAR_RETURN_URL")
-	}
-	if strings.TrimSpace(c.PolarStarterProductID) == "" {
-		missing = append(missing, "OPENPOST_POLAR_STARTER_PRODUCT_ID")
-	}
-	if strings.TrimSpace(c.PolarCreatorProductID) == "" {
-		missing = append(missing, "OPENPOST_POLAR_CREATOR_PRODUCT_ID")
-	}
-	if strings.TrimSpace(c.PolarProProductID) == "" {
-		missing = append(missing, "OPENPOST_POLAR_PRO_PRODUCT_ID")
-	}
-	if strings.TrimSpace(c.PolarTeamProductID) == "" {
-		missing = append(missing, "OPENPOST_POLAR_TEAM_PRODUCT_ID")
-	}
-	if strings.TrimSpace(c.PolarAgencyProductID) == "" {
-		missing = append(missing, "OPENPOST_POLAR_AGENCY_PRODUCT_ID")
+	missing := make([]string, 0, 14)
+	for _, required := range []struct {
+		value string
+		name  string
+	}{
+		{c.WhopAPIKey, "OPENPOST_WHOP_API_KEY"},
+		{c.WhopWebhookSecret, "OPENPOST_WHOP_WEBHOOK_SECRET"},
+		{c.WhopAccountID, "OPENPOST_WHOP_ACCOUNT_ID"},
+		{c.WhopProductID, "OPENPOST_WHOP_PRODUCT_ID"},
+		{c.WhopStarterMonthlyPlanID, "OPENPOST_WHOP_STARTER_MONTHLY_PLAN_ID"},
+		{c.WhopStarterAnnualPlanID, "OPENPOST_WHOP_STARTER_ANNUAL_PLAN_ID"},
+		{c.WhopCreatorMonthlyPlanID, "OPENPOST_WHOP_CREATOR_MONTHLY_PLAN_ID"},
+		{c.WhopCreatorAnnualPlanID, "OPENPOST_WHOP_CREATOR_ANNUAL_PLAN_ID"},
+		{c.WhopProMonthlyPlanID, "OPENPOST_WHOP_PRO_MONTHLY_PLAN_ID"},
+		{c.WhopProAnnualPlanID, "OPENPOST_WHOP_PRO_ANNUAL_PLAN_ID"},
+		{c.WhopTeamMonthlyPlanID, "OPENPOST_WHOP_TEAM_MONTHLY_PLAN_ID"},
+		{c.WhopTeamAnnualPlanID, "OPENPOST_WHOP_TEAM_ANNUAL_PLAN_ID"},
+		{c.WhopAgencyMonthlyPlanID, "OPENPOST_WHOP_AGENCY_MONTHLY_PLAN_ID"},
+		{c.WhopAgencyAnnualPlanID, "OPENPOST_WHOP_AGENCY_ANNUAL_PLAN_ID"},
+	} {
+		if strings.TrimSpace(required.value) == "" {
+			missing = append(missing, required.name)
+		}
 	}
 	return missing
 }

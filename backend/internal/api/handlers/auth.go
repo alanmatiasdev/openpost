@@ -121,7 +121,7 @@ var (
 type RegisterInput struct {
 	Body struct {
 		Email         string `json:"email" format:"email" doc:"User email address"`
-		Username      string `json:"username" minLength:"3" maxLength:"30" pattern:"^[A-Za-z0-9](?:[A-Za-z0-9_-]*[A-Za-z0-9])?$" doc:"Unique public username"`
+		Username      string `json:"username,omitempty" minLength:"3" maxLength:"30" pattern:"^[A-Za-z0-9](?:[A-Za-z0-9_-]*[A-Za-z0-9])?$" doc:"Optional unique public username; OpenPost creates one from the email when omitted"`
 		Password      string `json:"password" minLength:"12" maxLength:"1024" doc:"User password (min 12 characters)"`
 		AcceptedLegal *bool  `json:"accepted_legal,omitempty" doc:"Whether the user accepted the current terms and privacy policy"`
 	}
@@ -388,8 +388,10 @@ func (h *AuthHandler) validateRegistrationRequest(ctx context.Context, input *Re
 	if err := validateNewPassword(input.Body.Password); err != nil {
 		return false, huma.Error400BadRequest(err.Error())
 	}
-	if err := usernames.Validate(usernames.Normalize(input.Body.Username)); err != nil {
-		return false, huma.Error400BadRequest(err.Error())
+	if username := usernames.Normalize(input.Body.Username); username != "" {
+		if err := usernames.Validate(username); err != nil {
+			return false, huma.Error400BadRequest(err.Error())
+		}
 	}
 	acceptedLegal := input.Body.AcceptedLegal != nil && *input.Body.AcceptedLegal
 	if h.accountPolicy.Required && !acceptedLegal {
@@ -421,6 +423,10 @@ func registrationHTTPError(err error) error {
 func (h *AuthHandler) registerUserWithPolicy(ctx context.Context, email, username, password string, acceptedLegal bool) (*models.User, error) {
 	normalizedEmail := strings.TrimSpace(strings.ToLower(email))
 	normalizedUsername := usernames.Normalize(username)
+	userID := uuid.New().String()
+	if normalizedUsername == "" {
+		normalizedUsername = usernames.Candidate(usernames.Suggest("", normalizedEmail), userID, 1)
+	}
 	if err := usernames.Validate(normalizedUsername); err != nil {
 		return nil, err
 	}
@@ -431,7 +437,7 @@ func (h *AuthHandler) registerUserWithPolicy(ctx context.Context, email, usernam
 
 	createdAt := time.Now().UTC()
 	user := &models.User{
-		ID:           uuid.New().String(),
+		ID:           userID,
 		Email:        normalizedEmail,
 		Username:     normalizedUsername,
 		PasswordHash: passwordHash,

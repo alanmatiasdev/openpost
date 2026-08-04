@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -41,29 +42,36 @@ func newBillingStatusCmd() *cobra.Command {
 }
 
 func newBillingCheckoutCmd() *cobra.Command {
-	return &cobra.Command{
+	var billingPeriod string
+	cmd := &cobra.Command{
 		Use:   "checkout <plan>",
-		Short: "Create a Polar checkout URL for the active workspace",
-		Long:  "Create a hosted checkout URL for the active workspace. Plan IDs are validated by the server: starter, creator, pro, team, or agency.",
+		Short: "Create an OpenPost checkout URL for the active workspace",
+		Long:  "Create an OpenPost checkout URL with an embedded Whop payment form. Plan IDs are starter, creator, pro, team, or agency.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, client, workspaceID, err := billingRuntime(cmd)
 			if err != nil {
 				return err
 			}
-			session, err := client.CreateBillingCheckout(cmd.Context(), workspaceID, args[0])
+			period := strings.ToLower(strings.TrimSpace(billingPeriod))
+			if period != "monthly" && period != "annual" {
+				return fmt.Errorf("--billing-period must be monthly or annual")
+			}
+			session, err := client.CreateBillingCheckout(cmd.Context(), workspaceID, args[0], period)
 			if err != nil {
 				return err
 			}
 			return printBillingURL(cfg, session)
 		},
 	}
+	cmd.Flags().StringVar(&billingPeriod, "billing-period", "monthly", "Billing period: monthly or annual")
+	return cmd
 }
 
 func newBillingPortalCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "portal",
-		Short: "Create a Polar customer portal URL for the active workspace",
+		Short: "Open Whop billing management for the active workspace",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cfg, client, workspaceID, err := billingRuntime(cmd)
@@ -107,6 +115,7 @@ func printBillingStatus(cfg *config.Runtime, status *api.BillingStatus) error {
 		{"Plan", emptyDash(status.PlanID)},
 		{"Period start", emptyDash(status.PeriodStart)},
 		{"Current period end", emptyDash(status.CurrentPeriodEnd)},
+		{"Manage URL", emptyDash(status.ManageURL)},
 		{"Canceling", yesNo(status.CancelAtPeriodEnd)},
 		{"Usage", emptyDash(strings.Join(billingUsageRatios(status.Limits, status.Usage), ", "))},
 	})
@@ -121,6 +130,10 @@ func printBillingURL(cfg *config.Runtime, session *api.BillingURL) error {
 	p.Table([]string{"FIELD", "VALUE"}, [][]string{
 		{"ID", emptyDash(session.ID)},
 		{"URL", session.URL},
+		{"Plan", emptyDash(session.PlanID)},
+		{"Billing period", emptyDash(session.BillingPeriod)},
+		{"Price (USD)", emptyDash(formatOptionalInt(session.PriceUSD))},
+		{"Trial ends", emptyDash(session.TrialEndsAt)},
 	})
 	return nil
 }

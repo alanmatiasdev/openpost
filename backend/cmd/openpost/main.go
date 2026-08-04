@@ -159,17 +159,19 @@ func main() {
 	}
 	apiTokenService := apitokens.NewService(db)
 	sessionService := sessions.NewService(db)
-	billingService := billing.NewService(db, cfg.PolarWebhookSecret, billing.PolarConfig{
-		AccessToken: cfg.PolarAccessToken,
-		APIBaseURL:  cfg.PolarAPIBaseURL,
-		SuccessURL:  cfg.PolarCheckoutURL,
-		ReturnURL:   cfg.PolarReturnURL,
+	billingService := billing.NewService(db, cfg.WhopWebhookSecret, billing.WhopConfig{
+		APIKey:     cfg.WhopAPIKey,
+		APIBaseURL: cfg.WhopAPIBaseURL,
+		AccountID:  cfg.WhopAccountID,
+		ProductID:  cfg.WhopProductID,
+		AppURL:     cfg.FrontendURL,
+		ReturnURL:  cfg.WhopCheckoutReturnURL,
 		Plans: billing.DefaultPlanCatalog(
-			cfg.PolarStarterProductID,
-			cfg.PolarCreatorProductID,
-			cfg.PolarProProductID,
-			cfg.PolarTeamProductID,
-			cfg.PolarAgencyProductID,
+			billing.ProviderPlanIDs{Monthly: cfg.WhopStarterMonthlyPlanID, Annual: cfg.WhopStarterAnnualPlanID},
+			billing.ProviderPlanIDs{Monthly: cfg.WhopCreatorMonthlyPlanID, Annual: cfg.WhopCreatorAnnualPlanID},
+			billing.ProviderPlanIDs{Monthly: cfg.WhopProMonthlyPlanID, Annual: cfg.WhopProAnnualPlanID},
+			billing.ProviderPlanIDs{Monthly: cfg.WhopTeamMonthlyPlanID, Annual: cfg.WhopTeamAnnualPlanID},
+			billing.ProviderPlanIDs{Monthly: cfg.WhopAgencyMonthlyPlanID, Annual: cfg.WhopAgencyAnnualPlanID},
 		),
 	})
 	entitlementService := entitlements.Service(entitlements.NewSelfHostedService())
@@ -350,6 +352,7 @@ func main() {
 	worker := queue.NewWorker(db, "worker-1", 1*time.Second, publishSvc, tokenManager, storage)
 	worker.SetFeedbackService(feedbackService)
 	worker.SetAnalyticsService(analyticsService)
+	worker.SetBillingService(billingService)
 	worker.SetCommunicationsService(communicationsService)
 	worker.SetVideoProcessingService(videoProcessingService)
 	if err := videoProcessingService.EnqueuePendingAnalysis(context.Background()); err != nil {

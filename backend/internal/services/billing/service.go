@@ -12,16 +12,22 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/services/entitlements"
 	"github.com/uptrace/bun"
 )
 
-const ProviderPolar = "polar"
+const (
+	ProviderWhop   = "whop"
+	JobTypeWebhook = "billing_whop_webhook"
+	TrialDays      = 14
+)
 
 var errConfiguration = errors.New("billing provider is not configured")
 
@@ -38,38 +44,41 @@ type Service struct {
 	webhookSecret string
 	now           func() time.Time
 	httpClient    httpDoer
-	polar         PolarConfig
+	whop          WhopConfig
 }
 
 type httpDoer interface {
 	Do(*http.Request) (*http.Response, error)
 }
 
-type PolarConfig struct {
-	AccessToken string
-	APIBaseURL  string
-	SuccessURL  string
-	ReturnURL   string
-	Plans       map[string]PlanConfig
+type WhopConfig struct {
+	APIKey     string
+	APIBaseURL string
+	AccountID  string
+	ProductID  string
+	AppURL     string
+	ReturnURL  string
+	Plans      map[string]PlanConfig
+}
+
+type ProviderPlanIDs struct {
+	Monthly string
+	Annual  string
 }
 
 type PlanConfig struct {
-	ProductID string
-	Limits    map[entitlements.LimitKey]int64
+	ProviderPlanIDs ProviderPlanIDs
+	MonthlyPriceUSD int
+	AnnualPriceUSD  int
+	Limits          map[entitlements.LimitKey]int64
 }
 
-func DefaultPlanCatalog(starterProductID, creatorProductID, proProductID string, extraProductIDs ...string) map[string]PlanConfig {
-	teamProductID := ""
-	agencyProductID := ""
-	if len(extraProductIDs) > 0 {
-		teamProductID = extraProductIDs[0]
-	}
-	if len(extraProductIDs) > 1 {
-		agencyProductID = extraProductIDs[1]
-	}
+func DefaultPlanCatalog(starter, creator, pro, team, agency ProviderPlanIDs) map[string]PlanConfig {
 	return map[string]PlanConfig{
 		"starter": {
-			ProductID: starterProductID,
+			ProviderPlanIDs: starter,
+			MonthlyPriceUSD: 15,
+			AnnualPriceUSD:  150,
 			Limits: map[entitlements.LimitKey]int64{
 				entitlements.LimitWorkspaces:                1,
 				entitlements.LimitSocialAccounts:            3,
@@ -80,7 +89,9 @@ func DefaultPlanCatalog(starterProductID, creatorProductID, proProductID string,
 			},
 		},
 		"creator": {
-			ProductID: creatorProductID,
+			ProviderPlanIDs: creator,
+			MonthlyPriceUSD: 29,
+			AnnualPriceUSD:  290,
 			Limits: map[entitlements.LimitKey]int64{
 				entitlements.LimitWorkspaces:                3,
 				entitlements.LimitSocialAccounts:            6,
@@ -91,7 +102,9 @@ func DefaultPlanCatalog(starterProductID, creatorProductID, proProductID string,
 			},
 		},
 		"pro": {
-			ProductID: proProductID,
+			ProviderPlanIDs: pro,
+			MonthlyPriceUSD: 49,
+			AnnualPriceUSD:  490,
 			Limits: map[entitlements.LimitKey]int64{
 				entitlements.LimitWorkspaces:                10,
 				entitlements.LimitSocialAccounts:            15,
@@ -102,7 +115,9 @@ func DefaultPlanCatalog(starterProductID, creatorProductID, proProductID string,
 			},
 		},
 		"team": {
-			ProductID: teamProductID,
+			ProviderPlanIDs: team,
+			MonthlyPriceUSD: 99,
+			AnnualPriceUSD:  990,
 			Limits: map[entitlements.LimitKey]int64{
 				entitlements.LimitWorkspaces:                10,
 				entitlements.LimitSocialAccounts:            25,
@@ -113,7 +128,9 @@ func DefaultPlanCatalog(starterProductID, creatorProductID, proProductID string,
 			},
 		},
 		"agency": {
-			ProductID: agencyProductID,
+			ProviderPlanIDs: agency,
+			MonthlyPriceUSD: 199,
+			AnnualPriceUSD:  1_990,
 			Limits: map[entitlements.LimitKey]int64{
 				entitlements.LimitWorkspaces:                50,
 				entitlements.LimitSocialAccounts:            150,
@@ -126,12 +143,12 @@ func DefaultPlanCatalog(starterProductID, creatorProductID, proProductID string,
 	}
 }
 
-func NewService(db *bun.DB, webhookSecret string, polarConfig ...PolarConfig) *Service {
-	cfg := PolarConfig{APIBaseURL: "https://api.polar.sh/v1"}
-	if len(polarConfig) > 0 {
-		cfg = polarConfig[0]
+func NewService(db *bun.DB, webhookSecret string, whopConfig ...WhopConfig) *Service {
+	cfg := WhopConfig{APIBaseURL: "https://api.whop.com/api/v1"}
+	if len(whopConfig) > 0 {
+		cfg = whopConfig[0]
 		if cfg.APIBaseURL == "" {
-			cfg.APIBaseURL = "https://api.polar.sh/v1"
+			cfg.APIBaseURL = "https://api.whop.com/api/v1"
 		}
 	}
 	return &Service{
@@ -139,7 +156,7 @@ func NewService(db *bun.DB, webhookSecret string, polarConfig ...PolarConfig) *S
 		webhookSecret: strings.TrimSpace(webhookSecret),
 		now:           func() time.Time { return time.Now().UTC() },
 		httpClient:    http.DefaultClient,
-		polar:         cfg,
+		whop:          cfg,
 	}
 }
 
@@ -161,15 +178,25 @@ type CreateCheckoutInput struct {
 	UserID         string
 	CustomerEmail  string
 	PlanID         string
+	BillingPeriod  string
+	AffiliateCode  string
 }
 
 type CheckoutResult struct {
-	ID  string
-	URL string
+	ID             string
+	URL            string
+	PurchaseURL    string
+	ProviderPlanID string
+	PlanID         string
+	BillingPeriod  string
+	PriceUSD       int
+	TrialEndsAt    time.Time
+	ReturnURL      string
 }
 
 func (s *Service) CreateCheckout(ctx context.Context, input CreateCheckoutInput) (CheckoutResult, error) {
-	plan, err := s.planFor(input.PlanID)
+	period := normalizeBillingPeriod(input.BillingPeriod)
+	_, providerPlanID, priceUSD, err := s.planFor(input.PlanID, period)
 	if err != nil {
 		return CheckoutResult{}, err
 	}
@@ -183,29 +210,70 @@ func (s *Service) CreateCheckout(ctx context.Context, input CreateCheckoutInput)
 	if strings.TrimSpace(input.CustomerEmail) == "" {
 		return CheckoutResult{}, fmt.Errorf("customer email is required")
 	}
+	if strings.TrimSpace(s.whop.AccountID) == "" {
+		return CheckoutResult{}, configurationError("OPENPOST_WHOP_ACCOUNT_ID is required")
+	}
 
+	metadata := checkoutMetadata(organizationID, input.WorkspaceID, input.UserID, input.PlanID, period)
 	payload := map[string]any{
-		"products":             []string{plan.ProductID},
-		"external_customer_id": organizationID,
-		"customer_email":       input.CustomerEmail,
-		"success_url":          s.polar.SuccessURL,
-		"return_url":           s.polar.ReturnURL,
-		"metadata":             checkoutMetadata(organizationID, input.WorkspaceID, input.UserID, input.PlanID, plan.Limits),
-		"customer_metadata": map[string]any{
-			"organization_id": organizationID,
-		},
+		"company_id":   s.whop.AccountID,
+		"plan_id":      providerPlanID,
+		"mode":         "payment",
+		"redirect_url": s.returnURL(),
+		"metadata":     metadata,
 	}
+	if affiliateCode := strings.TrimSpace(input.AffiliateCode); affiliateCode != "" {
+		payload["affiliate_code"] = affiliateCode
+	}
+
 	var out struct {
-		ID  string `json:"id"`
-		URL string `json:"url"`
+		ID          string `json:"id"`
+		PurchaseURL string `json:"purchase_url"`
+		Plan        struct {
+			ID string `json:"id"`
+		} `json:"plan"`
 	}
-	if err := s.postPolar(ctx, "/v1/checkouts/", payload, &out); err != nil {
+	if err := s.doWhopJSON(ctx, http.MethodPost, "/checkout_configurations", payload, &out, "checkout:"+organizationID+":"+strings.ToLower(input.PlanID)+":"+period); err != nil {
 		return CheckoutResult{}, err
 	}
-	if out.URL == "" {
-		return CheckoutResult{}, fmt.Errorf("polar checkout response missing url")
+	if strings.TrimSpace(out.ID) == "" {
+		return CheckoutResult{}, fmt.Errorf("whop checkout response missing id")
 	}
-	return CheckoutResult{ID: out.ID, URL: out.URL}, nil
+	if out.Plan.ID != "" {
+		providerPlanID = out.Plan.ID
+	}
+
+	now := s.now().UTC()
+	if s.db != nil {
+		attempt := &models.BillingCheckoutAttempt{
+			CheckoutConfigurationID: out.ID,
+			OrganizationID:          organizationID,
+			WorkspaceID:             strings.TrimSpace(input.WorkspaceID),
+			UserID:                  strings.TrimSpace(input.UserID),
+			Provider:                ProviderWhop,
+			ProviderPlanID:          providerPlanID,
+			PlanID:                  strings.ToLower(strings.TrimSpace(input.PlanID)),
+			BillingPeriod:           period,
+			Status:                  "created",
+			CreatedAt:               now,
+			UpdatedAt:               now,
+		}
+		if _, err := s.db.NewInsert().Model(attempt).Exec(ctx); err != nil {
+			return CheckoutResult{}, fmt.Errorf("recording checkout configuration: %w", err)
+		}
+	}
+
+	return CheckoutResult{
+		ID:             out.ID,
+		URL:            s.checkoutURL(out.ID, input.PlanID, period),
+		PurchaseURL:    out.PurchaseURL,
+		ProviderPlanID: providerPlanID,
+		PlanID:         strings.ToLower(strings.TrimSpace(input.PlanID)),
+		BillingPeriod:  period,
+		PriceUSD:       priceUSD,
+		TrialEndsAt:    now.AddDate(0, 0, TrialDays),
+		ReturnURL:      s.returnURL(),
+	}, nil
 }
 
 type CustomerPortalResult struct {
@@ -214,62 +282,65 @@ type CustomerPortalResult struct {
 }
 
 func (s *Service) CreateCustomerPortalSession(ctx context.Context, organizationID string) (CustomerPortalResult, error) {
-	if strings.TrimSpace(organizationID) == "" {
+	organizationID = strings.TrimSpace(organizationID)
+	if organizationID == "" {
 		return CustomerPortalResult{}, fmt.Errorf("organization id is required")
 	}
-	payload := map[string]any{
-		"external_customer_id": organizationID,
-		"return_url":           s.polar.ReturnURL,
+	if s.db == nil {
+		return CustomerPortalResult{}, fmt.Errorf("billing database is not configured")
 	}
-	var out struct {
-		ID                string `json:"id"`
-		CustomerPortalURL string `json:"customer_portal_url"`
+	var subscription models.BillingSubscription
+	if err := s.db.NewSelect().Model(&subscription).Where("organization_id = ?", organizationID).Scan(ctx); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return CustomerPortalResult{}, fmt.Errorf("no subscription found for this organization")
+		}
+		return CustomerPortalResult{}, fmt.Errorf("loading billing subscription: %w", err)
 	}
-	if err := s.postPolar(ctx, "/v1/customer-sessions/", payload, &out); err != nil {
-		return CustomerPortalResult{}, err
+	if strings.TrimSpace(subscription.ProviderManageURL) == "" {
+		return CustomerPortalResult{}, fmt.Errorf("whop billing portal is not ready for this membership")
 	}
-	if out.CustomerPortalURL == "" {
-		return CustomerPortalResult{}, fmt.Errorf("polar customer session response missing customer_portal_url")
-	}
-	return CustomerPortalResult{ID: out.ID, URL: out.CustomerPortalURL}, nil
+	return CustomerPortalResult{ID: subscription.ProviderSubscriptionID, URL: subscription.ProviderManageURL}, nil
 }
 
-func (s *Service) planFor(planID string) (PlanConfig, error) {
+func (s *Service) planFor(planID, billingPeriod string) (PlanConfig, string, int, error) {
 	planID = strings.ToLower(strings.TrimSpace(planID))
 	if planID == "" {
-		return PlanConfig{}, fmt.Errorf("plan id is required")
+		return PlanConfig{}, "", 0, fmt.Errorf("plan id is required")
 	}
-	plan, ok := s.polar.Plans[planID]
+	plan, ok := s.whop.Plans[planID]
 	if !ok {
-		return PlanConfig{}, fmt.Errorf("unknown billing plan %q", planID)
+		return PlanConfig{}, "", 0, fmt.Errorf("unknown billing plan %q", planID)
 	}
-	if strings.TrimSpace(plan.ProductID) == "" {
-		return PlanConfig{}, configurationError("%s is required for billing plan %q", polarProductEnvVar(planID), planID)
+	period := normalizeBillingPeriod(billingPeriod)
+	providerPlanID := plan.ProviderPlanIDs.Monthly
+	priceUSD := plan.MonthlyPriceUSD
+	if period == "annual" {
+		providerPlanID = plan.ProviderPlanIDs.Annual
+		priceUSD = plan.AnnualPriceUSD
 	}
-	return plan, nil
+	if strings.TrimSpace(providerPlanID) == "" {
+		return PlanConfig{}, "", 0, configurationError("%s is required for billing plan %q", whopPlanEnvVar(planID, period), planID)
+	}
+	return plan, providerPlanID, priceUSD, nil
 }
 
-func polarProductEnvVar(planID string) string {
-	switch planID {
-	case "starter":
-		return "OPENPOST_POLAR_STARTER_PRODUCT_ID"
-	case "creator":
-		return "OPENPOST_POLAR_CREATOR_PRODUCT_ID"
-	case "pro":
-		return "OPENPOST_POLAR_PRO_PRODUCT_ID"
-	case "team":
-		return "OPENPOST_POLAR_TEAM_PRODUCT_ID"
-	case "agency":
-		return "OPENPOST_POLAR_AGENCY_PRODUCT_ID"
-	default:
-		return "OPENPOST_POLAR_" + strings.ToUpper(strings.ReplaceAll(planID, "-", "_")) + "_PRODUCT_ID"
+func normalizeBillingPeriod(value string) string {
+	if strings.EqualFold(strings.TrimSpace(value), "annual") || strings.EqualFold(strings.TrimSpace(value), "yearly") {
+		return "annual"
 	}
+	return "monthly"
 }
 
-func checkoutMetadata(organizationID, workspaceID, userID, planID string, limits map[entitlements.LimitKey]int64) map[string]any {
+func whopPlanEnvVar(planID, period string) string {
+	return "OPENPOST_WHOP_" + strings.ToUpper(strings.ReplaceAll(planID, "-", "_")) + "_" + strings.ToUpper(normalizeBillingPeriod(period)) + "_PLAN_ID"
+}
+
+func checkoutMetadata(organizationID, workspaceID, userID, planID, period string) map[string]any {
 	metadata := map[string]any{
 		"organization_id": organizationID,
-		"plan_id":         planID,
+		"plan_id":         strings.ToLower(strings.TrimSpace(planID)),
+		"billing_period":  normalizeBillingPeriod(period),
+		"source":          "openpost",
 	}
 	if workspaceID != "" {
 		metadata["workspace_id"] = workspaceID
@@ -277,58 +348,97 @@ func checkoutMetadata(organizationID, workspaceID, userID, planID string, limits
 	if userID != "" {
 		metadata["user_id"] = userID
 	}
-	for key, value := range limits {
-		metadata["limit_"+string(key)] = value
-	}
 	return metadata
 }
 
-func (s *Service) postPolar(ctx context.Context, path string, payload any, out any) error {
-	if strings.TrimSpace(s.polar.AccessToken) == "" {
-		return configurationError("OPENPOST_POLAR_ACCESS_TOKEN is required")
+func (s *Service) checkoutURL(sessionID, planID, period string) string {
+	base := strings.TrimRight(strings.TrimSpace(s.whop.AppURL), "/")
+	if base == "" {
+		return ""
 	}
-	body, err := json.Marshal(payload)
+	values := url.Values{}
+	values.Set("session_id", sessionID)
+	values.Set("plan", strings.ToLower(strings.TrimSpace(planID)))
+	values.Set("billing_period", normalizeBillingPeriod(period))
+	return base + "/checkout?" + values.Encode()
+}
+
+func (s *Service) returnURL() string {
+	if value := strings.TrimSpace(s.whop.ReturnURL); value != "" {
+		return value
+	}
+	base := strings.TrimRight(strings.TrimSpace(s.whop.AppURL), "/")
+	if base == "" {
+		return ""
+	}
+	return base + "/checkout?status=success"
+}
+
+func (s *Service) doWhopJSON(ctx context.Context, method, path string, payload, out any, idempotencyKey string) error {
+	if strings.TrimSpace(s.whop.APIKey) == "" {
+		return configurationError("OPENPOST_WHOP_API_KEY is required")
+	}
+	var body io.Reader
+	if payload != nil {
+		encoded, err := json.Marshal(payload)
+		if err != nil {
+			return err
+		}
+		body = bytes.NewReader(encoded)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, whopAPIURL(s.whop.APIBaseURL, path), body)
 	if err != nil {
 		return err
 	}
-	url := polarAPIURL(s.polar.APIBaseURL, path)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Authorization", "Bearer "+s.polar.AccessToken)
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+s.whop.APIKey)
 	req.Header.Set("Accept", "application/json")
+	if payload != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	if idempotencyKey != "" {
+		req.Header.Set("Idempotency-Key", idempotencyKey)
+	}
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("polar request failed: %w", err)
+		return fmt.Errorf("whop request failed: %w", err)
 	}
 	defer resp.Body.Close()
 	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("polar request failed with status %d: %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
+		return &providerAPIError{StatusCode: resp.StatusCode, Message: strings.TrimSpace(string(respBody))}
+	}
+	if out == nil || len(respBody) == 0 {
+		return nil
 	}
 	if err := json.Unmarshal(respBody, out); err != nil {
-		return fmt.Errorf("invalid polar response: %w", err)
+		return fmt.Errorf("invalid whop response: %w", err)
 	}
 	return nil
 }
 
-func polarAPIURL(baseURL, path string) string {
-	base := strings.TrimRight(baseURL, "/")
-	if base == "" {
-		base = "https://api.polar.sh/v1"
-	}
+type providerAPIError struct {
+	StatusCode int
+	Message    string
+}
 
+func (e *providerAPIError) Error() string {
+	return fmt.Sprintf("whop request failed with status %d: %s", e.StatusCode, e.Message)
+}
+
+func whopAPIURL(baseURL, path string) string {
+	base := strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	if base == "" {
+		base = "https://api.whop.com/api/v1"
+	}
 	apiPath := "/" + strings.TrimLeft(path, "/")
-	baseHasVersion := strings.HasSuffix(base, "/v1")
-	pathHasVersion := strings.HasPrefix(apiPath, "/v1/")
-	switch {
-	case baseHasVersion && pathHasVersion:
+	baseHasVersion := strings.HasSuffix(base, "/api/v1") || strings.HasSuffix(base, "/v1")
+	pathHasVersion := strings.HasPrefix(apiPath, "/api/v1/") || strings.HasPrefix(apiPath, "/v1/")
+	if baseHasVersion && pathHasVersion {
+		apiPath = strings.TrimPrefix(apiPath, "/api/v1")
 		apiPath = strings.TrimPrefix(apiPath, "/v1")
-	case !baseHasVersion && !pathHasVersion:
-		apiPath = "/v1" + apiPath
+	} else if !baseHasVersion && !pathHasVersion {
+		apiPath = "/api/v1" + apiPath
 	}
 	return base + apiPath
 }
@@ -340,19 +450,26 @@ type WebhookHeaders struct {
 }
 
 type WebhookResult struct {
-	EventID        string
-	EventType      string
-	OrganizationID string
-	WorkspaceID    string
-	Duplicate      bool
+	EventID   string
+	EventType string
+	Duplicate bool
 }
 
-func (s *Service) ProcessPolarWebhook(ctx context.Context, body []byte, headers WebhookHeaders) (WebhookResult, error) {
+type whopEvent struct {
+	ID        string          `json:"id"`
+	Type      string          `json:"type"`
+	Timestamp json.RawMessage `json:"timestamp"`
+	Data      json.RawMessage `json:"data"`
+}
+
+func (s *Service) AcceptWhopWebhook(ctx context.Context, body []byte, headers WebhookHeaders) (WebhookResult, error) {
 	if err := s.verifyStandardWebhook(body, headers); err != nil {
 		return WebhookResult{}, err
 	}
-
-	var event polarEvent
+	if s.db == nil {
+		return WebhookResult{}, fmt.Errorf("billing database is not configured")
+	}
+	var event whopEvent
 	if err := json.Unmarshal(body, &event); err != nil {
 		return WebhookResult{}, fmt.Errorf("invalid webhook payload: %w", err)
 	}
@@ -365,7 +482,7 @@ func (s *Service) ProcessPolarWebhook(ctx context.Context, body []byte, headers 
 
 	result := WebhookResult{EventID: event.ID, EventType: event.Type}
 	err := s.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
-		inserted, err := insertWebhookEvent(txCtx, tx, event.ID, event.Type)
+		inserted, err := insertWebhookEvent(txCtx, tx, event.ID, event.Type, s.now())
 		if err != nil {
 			return err
 		}
@@ -373,33 +490,42 @@ func (s *Service) ProcessPolarWebhook(ctx context.Context, body []byte, headers 
 			result.Duplicate = true
 			return nil
 		}
-
-		if !strings.HasPrefix(event.Type, "subscription.") {
+		if !eventMayAffectMembership(event.Type) {
 			return nil
 		}
-
-		subscription, err := subscriptionFromPolarEvent(event)
-		if err != nil {
-			return err
+		job := &models.Job{
+			ID:          uuid.NewString(),
+			Type:        JobTypeWebhook,
+			Payload:     string(body),
+			Status:      "pending",
+			RunAt:       s.now().UTC(),
+			MaxAttempts: 8,
 		}
-		result.OrganizationID = subscription.OrganizationID
-		result.WorkspaceID = subscription.WorkspaceID
-		return upsertSubscription(txCtx, tx, subscription)
+		if _, err := tx.NewInsert().Model(job).Exec(txCtx); err != nil {
+			return fmt.Errorf("queueing whop webhook: %w", err)
+		}
+		return nil
 	})
 	return result, err
 }
 
-func insertWebhookEvent(ctx context.Context, tx bun.Tx, eventID, eventType string) (bool, error) {
+func eventMayAffectMembership(eventType string) bool {
+	for _, prefix := range []string{"membership.", "payment.", "refund.", "dispute."} {
+		if strings.HasPrefix(eventType, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+func insertWebhookEvent(ctx context.Context, tx bun.Tx, eventID, eventType string, now time.Time) (bool, error) {
 	event := &models.BillingWebhookEvent{
 		EventID:     eventID,
-		Provider:    ProviderPolar,
+		Provider:    ProviderWhop,
 		EventType:   eventType,
-		ProcessedAt: time.Now().UTC(),
+		ProcessedAt: now.UTC(),
 	}
-	res, err := tx.NewInsert().
-		Model(event).
-		On("CONFLICT (event_id) DO NOTHING").
-		Exec(ctx)
+	res, err := tx.NewInsert().Model(event).On("CONFLICT (event_id) DO NOTHING").Exec(ctx)
 	if err != nil {
 		return false, fmt.Errorf("recording webhook event: %w", err)
 	}
@@ -407,9 +533,194 @@ func insertWebhookEvent(ctx context.Context, tx bun.Tx, eventID, eventType strin
 	return rows > 0, nil
 }
 
+func (s *Service) HandleJob(ctx context.Context, jobType, payload string) error {
+	if jobType != JobTypeWebhook {
+		return fmt.Errorf("unsupported billing job type %q", jobType)
+	}
+	var event whopEvent
+	if err := json.Unmarshal([]byte(payload), &event); err != nil {
+		return fmt.Errorf("invalid queued whop webhook: %w", err)
+	}
+	membershipID := membershipIDFromEvent(event)
+	if membershipID == "" {
+		return nil
+	}
+
+	var membership whopMembership
+	err := s.doWhopJSON(ctx, http.MethodGet, "/memberships/"+url.PathEscape(membershipID), nil, &membership, "")
+	if err != nil {
+		var apiErr *providerAPIError
+		if !errors.As(err, &apiErr) || apiErr.StatusCode != http.StatusNotFound {
+			return err
+		}
+		if decodeErr := json.Unmarshal(event.Data, &membership); decodeErr != nil || membership.ID == "" {
+			return err
+		}
+	}
+	return s.reconcileMembership(ctx, membership, event.Data)
+}
+
+func membershipIDFromEvent(event whopEvent) string {
+	var data struct {
+		ID           string `json:"id"`
+		MembershipID string `json:"membership_id"`
+		Membership   struct {
+			ID string `json:"id"`
+		} `json:"membership"`
+	}
+	if json.Unmarshal(event.Data, &data) != nil {
+		return ""
+	}
+	if data.Membership.ID != "" {
+		return data.Membership.ID
+	}
+	if data.MembershipID != "" {
+		return data.MembershipID
+	}
+	if strings.HasPrefix(event.Type, "membership.") {
+		return data.ID
+	}
+	return ""
+}
+
+type whopMembership struct {
+	ID                      string          `json:"id"`
+	Status                  string          `json:"status"`
+	ManageURL               string          `json:"manage_url"`
+	CheckoutConfigurationID string          `json:"checkout_configuration_id"`
+	RenewalPeriodEnd        json.RawMessage `json:"renewal_period_end"`
+	CancelAtPeriodEnd       bool            `json:"cancel_at_period_end"`
+	Metadata                map[string]any  `json:"metadata"`
+	User                    struct {
+		ID    string `json:"id"`
+		Email string `json:"email"`
+	} `json:"user"`
+	Company struct {
+		ID string `json:"id"`
+	} `json:"company"`
+	Plan struct {
+		ID       string         `json:"id"`
+		Metadata map[string]any `json:"metadata"`
+	} `json:"plan"`
+	Product struct {
+		ID       string         `json:"id"`
+		Metadata map[string]any `json:"metadata"`
+	} `json:"product"`
+}
+
+func (s *Service) reconcileMembership(ctx context.Context, membership whopMembership, rawPayload json.RawMessage) error {
+	if strings.TrimSpace(membership.ID) == "" {
+		return fmt.Errorf("whop membership payload missing id")
+	}
+	attempt, err := s.checkoutAttempt(ctx, membership.CheckoutConfigurationID)
+	if err != nil {
+		return err
+	}
+
+	organizationID := attempt.OrganizationID
+	workspaceID := attempt.WorkspaceID
+	planID := attempt.PlanID
+	if organizationID == "" {
+		organizationID = firstMetadataString(membership.Metadata, "organization_id")
+	}
+	if workspaceID == "" {
+		workspaceID = firstMetadataString(membership.Metadata, "workspace_id")
+	}
+	if planID == "" {
+		planID = firstMetadataString(membership.Metadata, "plan_id")
+	}
+	if planID == "" {
+		planID = s.planIDForProviderPlan(membership.Plan.ID)
+	}
+	if organizationID == "" && workspaceID != "" {
+		organizationID = workspaceID
+	}
+	if organizationID == "" {
+		return fmt.Errorf("whop membership missing OpenPost organization metadata")
+	}
+	plan, ok := s.whop.Plans[planID]
+	if !ok {
+		return fmt.Errorf("whop membership references unknown OpenPost plan %q", planID)
+	}
+
+	now := s.now().UTC()
+	snapshot, _ := json.Marshal(map[string]any{
+		"provider":   ProviderWhop,
+		"plan_id":    planID,
+		"status":     membership.Status,
+		"product_id": membership.Product.ID,
+		"price_id":   membership.Plan.ID,
+		"limits":     plan.Limits,
+	})
+	encodedRaw, _ := json.Marshal(membership)
+	if len(rawPayload) > 0 {
+		encodedRaw = rawPayload
+	}
+	subscription := &models.BillingSubscription{
+		OrganizationID:         organizationID,
+		WorkspaceID:            workspaceID,
+		Provider:               ProviderWhop,
+		ProviderCustomerID:     membership.User.ID,
+		ProviderSubscriptionID: membership.ID,
+		ProviderProductID:      membership.Product.ID,
+		ProviderPriceID:        membership.Plan.ID,
+		ProviderManageURL:      membership.ManageURL,
+		Status:                 strings.ToLower(membership.Status),
+		PlanID:                 planID,
+		EntitlementSnapshot:    string(snapshot),
+		CurrentPeriodEnd:       parseWhopTime(membership.RenewalPeriodEnd),
+		CancelAtPeriodEnd:      membership.CancelAtPeriodEnd,
+		RawPayload:             string(encodedRaw),
+		CreatedAt:              now,
+		UpdatedAt:              now,
+	}
+
+	return s.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
+		if err := upsertSubscription(txCtx, tx, subscription); err != nil {
+			return err
+		}
+		if membership.CheckoutConfigurationID != "" {
+			if _, err := tx.NewUpdate().Model((*models.BillingCheckoutAttempt)(nil)).
+				Set("status = ?", membership.Status).
+				Set("provider_membership_id = ?", membership.ID).
+				Set("updated_at = ?", now).
+				Where("checkout_configuration_id = ?", membership.CheckoutConfigurationID).
+				Exec(txCtx); err != nil {
+				return fmt.Errorf("updating checkout configuration: %w", err)
+			}
+		}
+		return nil
+	})
+}
+
+func (s *Service) checkoutAttempt(ctx context.Context, checkoutConfigurationID string) (models.BillingCheckoutAttempt, error) {
+	var attempt models.BillingCheckoutAttempt
+	if strings.TrimSpace(checkoutConfigurationID) == "" {
+		return attempt, nil
+	}
+	err := s.db.NewSelect().Model(&attempt).
+		Where("checkout_configuration_id = ?", checkoutConfigurationID).
+		Scan(ctx)
+	if errors.Is(err, sql.ErrNoRows) {
+		return models.BillingCheckoutAttempt{}, nil
+	}
+	if err != nil {
+		return models.BillingCheckoutAttempt{}, fmt.Errorf("loading checkout configuration: %w", err)
+	}
+	return attempt, nil
+}
+
+func (s *Service) planIDForProviderPlan(providerPlanID string) string {
+	for planID, plan := range s.whop.Plans {
+		if providerPlanID == plan.ProviderPlanIDs.Monthly || providerPlanID == plan.ProviderPlanIDs.Annual {
+			return planID
+		}
+	}
+	return ""
+}
+
 func upsertSubscription(ctx context.Context, tx bun.Tx, subscription *models.BillingSubscription) error {
-	_, err := tx.NewInsert().
-		Model(subscription).
+	_, err := tx.NewInsert().Model(subscription).
 		On("CONFLICT (organization_id) DO UPDATE").
 		Set("workspace_id = EXCLUDED.workspace_id").
 		Set("provider = EXCLUDED.provider").
@@ -417,6 +728,7 @@ func upsertSubscription(ctx context.Context, tx bun.Tx, subscription *models.Bil
 		Set("provider_subscription_id = EXCLUDED.provider_subscription_id").
 		Set("provider_product_id = EXCLUDED.provider_product_id").
 		Set("provider_price_id = EXCLUDED.provider_price_id").
+		Set("provider_manage_url = EXCLUDED.provider_manage_url").
 		Set("status = EXCLUDED.status").
 		Set("plan_id = EXCLUDED.plan_id").
 		Set("entitlement_snapshot = EXCLUDED.entitlement_snapshot").
@@ -433,12 +745,11 @@ func upsertSubscription(ctx context.Context, tx bun.Tx, subscription *models.Bil
 
 func (s *Service) verifyStandardWebhook(body []byte, headers WebhookHeaders) error {
 	if s.webhookSecret == "" {
-		return fmt.Errorf("polar webhook secret is not configured")
+		return fmt.Errorf("whop webhook secret is not configured")
 	}
 	if headers.ID == "" || headers.Timestamp == "" || headers.Signature == "" {
 		return fmt.Errorf("missing webhook signature headers")
 	}
-
 	timestamp, err := strconv.ParseInt(headers.Timestamp, 10, 64)
 	if err != nil {
 		return fmt.Errorf("invalid webhook timestamp")
@@ -447,20 +758,15 @@ func (s *Service) verifyStandardWebhook(body []byte, headers WebhookHeaders) err
 	if delta := s.now().Sub(signedAt); delta > 5*time.Minute || delta < -5*time.Minute {
 		return fmt.Errorf("webhook timestamp outside tolerance")
 	}
-
 	secret := decodeWebhookSecret(s.webhookSecret)
 	signed := headers.ID + "." + headers.Timestamp + "." + string(body)
 	mac := hmac.New(sha256.New, secret)
 	_, _ = mac.Write([]byte(signed))
 	expected := mac.Sum(nil)
-
 	for _, candidate := range strings.Fields(headers.Signature) {
 		candidate = strings.TrimPrefix(candidate, "v1,")
 		got, err := base64.StdEncoding.DecodeString(candidate)
-		if err != nil {
-			continue
-		}
-		if hmac.Equal(got, expected) {
+		if err == nil && hmac.Equal(got, expected) {
 			return nil
 		}
 	}
@@ -475,150 +781,6 @@ func decodeWebhookSecret(secret string) []byte {
 	return []byte(secret)
 }
 
-type polarEvent struct {
-	ID   string          `json:"id"`
-	Type string          `json:"type"`
-	Data json.RawMessage `json:"data"`
-}
-
-type polarSubscriptionData struct {
-	ID                string         `json:"id"`
-	Status            string         `json:"status"`
-	CustomerID        string         `json:"customer_id"`
-	ProductID         string         `json:"product_id"`
-	PriceID           string         `json:"price_id"`
-	CurrentPeriodEnd  string         `json:"current_period_end"`
-	CancelAtPeriodEnd bool           `json:"cancel_at_period_end"`
-	Metadata          map[string]any `json:"metadata"`
-	Customer          struct {
-		ID         string         `json:"id"`
-		ExternalID string         `json:"external_id"`
-		Metadata   map[string]any `json:"metadata"`
-	} `json:"customer"`
-	Product struct {
-		ID string `json:"id"`
-	} `json:"product"`
-	Price struct {
-		ID string `json:"id"`
-	} `json:"price"`
-}
-
-func subscriptionFromPolarEvent(event polarEvent) (*models.BillingSubscription, error) {
-	var data polarSubscriptionData
-	if err := json.Unmarshal(event.Data, &data); err != nil {
-		return nil, fmt.Errorf("invalid subscription payload: %w", err)
-	}
-
-	organizationID := firstMetadataString(data.Metadata, "organization_id")
-	if organizationID == "" {
-		organizationID = firstMetadataString(data.Customer.Metadata, "organization_id")
-	}
-	if organizationID == "" {
-		organizationID = data.Customer.ExternalID
-	}
-	workspaceID := firstMetadataString(data.Metadata, "workspace_id")
-	if workspaceID == "" {
-		workspaceID = firstMetadataString(data.Customer.Metadata, "workspace_id")
-	}
-	if organizationID == "" && workspaceID != "" {
-		organizationID = "org_" + workspaceID
-	}
-	if organizationID == "" {
-		return nil, fmt.Errorf("subscription webhook missing organization_id metadata")
-	}
-
-	customerID := data.CustomerID
-	if customerID == "" {
-		customerID = data.Customer.ID
-	}
-	productID := data.ProductID
-	if productID == "" {
-		productID = data.Product.ID
-	}
-	priceID := data.PriceID
-	if priceID == "" {
-		priceID = data.Price.ID
-	}
-	planID := firstMetadataString(data.Metadata, "plan_id")
-	if planID == "" {
-		planID = firstMetadataString(data.Metadata, "plan")
-	}
-
-	entitlementSnapshot := entitlementSnapshotJSON(data, planID)
-	currentPeriodEnd := parseOptionalTime(data.CurrentPeriodEnd)
-	rawPayload, _ := json.Marshal(event.Data)
-	now := time.Now().UTC()
-	return &models.BillingSubscription{
-		OrganizationID:         organizationID,
-		WorkspaceID:            workspaceID,
-		Provider:               ProviderPolar,
-		ProviderCustomerID:     customerID,
-		ProviderSubscriptionID: data.ID,
-		ProviderProductID:      productID,
-		ProviderPriceID:        priceID,
-		Status:                 data.Status,
-		PlanID:                 planID,
-		EntitlementSnapshot:    entitlementSnapshot,
-		CurrentPeriodEnd:       currentPeriodEnd,
-		CancelAtPeriodEnd:      data.CancelAtPeriodEnd,
-		RawPayload:             string(rawPayload),
-		CreatedAt:              now,
-		UpdatedAt:              now,
-	}, nil
-}
-
-func entitlementSnapshotJSON(data polarSubscriptionData, planID string) string {
-	productID := data.ProductID
-	if productID == "" {
-		productID = data.Product.ID
-	}
-	priceID := data.PriceID
-	if priceID == "" {
-		priceID = data.Price.ID
-	}
-	snapshot := map[string]any{
-		"provider":   ProviderPolar,
-		"plan_id":    planID,
-		"status":     data.Status,
-		"product_id": productID,
-		"price_id":   priceID,
-	}
-	limits := make(map[string]int64)
-	for key, value := range data.Metadata {
-		metric, ok := strings.CutPrefix(key, "limit_")
-		if !ok {
-			continue
-		}
-		if parsed, ok := metadataLimitAsInt64(value); ok {
-			limits[metric] = parsed
-		}
-	}
-	if len(limits) > 0 {
-		snapshot["limits"] = limits
-	}
-	encoded, err := json.Marshal(snapshot)
-	if err != nil {
-		return "{}"
-	}
-	return string(encoded)
-}
-
-func metadataLimitAsInt64(value any) (int64, bool) {
-	switch typed := value.(type) {
-	case float64:
-		return int64(typed), typed >= 0 && typed == float64(int64(typed))
-	case int64:
-		return typed, typed >= 0
-	case int:
-		return int64(typed), typed >= 0
-	case string:
-		parsed, err := strconv.ParseInt(typed, 10, 64)
-		return parsed, err == nil && parsed >= 0
-	default:
-		return 0, false
-	}
-}
-
 func firstMetadataString(metadata map[string]any, key string) string {
 	if metadata == nil {
 		return ""
@@ -627,22 +789,27 @@ func firstMetadataString(metadata map[string]any, key string) string {
 	if !ok || value == nil {
 		return ""
 	}
-	switch typed := value.(type) {
-	case string:
+	if typed, ok := value.(string); ok {
 		return strings.TrimSpace(typed)
-	default:
-		return strings.TrimSpace(fmt.Sprint(typed))
 	}
+	return strings.TrimSpace(fmt.Sprint(value))
 }
 
-func parseOptionalTime(value string) time.Time {
-	if strings.TrimSpace(value) == "" {
+func parseWhopTime(raw json.RawMessage) time.Time {
+	if len(raw) == 0 || string(raw) == "null" {
 		return time.Time{}
 	}
-	for _, layout := range []string{time.RFC3339Nano, time.RFC3339, "2006-01-02 15:04:05-07:00"} {
-		if parsed, err := time.Parse(layout, value); err == nil {
-			return parsed.UTC()
+	var value string
+	if json.Unmarshal(raw, &value) == nil {
+		for _, layout := range []string{time.RFC3339Nano, time.RFC3339, "2006-01-02 15:04:05-07:00"} {
+			if parsed, err := time.Parse(layout, value); err == nil {
+				return parsed.UTC()
+			}
 		}
+	}
+	var unix int64
+	if json.Unmarshal(raw, &unix) == nil && unix > 0 {
+		return time.Unix(unix, 0).UTC()
 	}
 	return time.Time{}
 }

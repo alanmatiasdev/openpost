@@ -48,7 +48,7 @@ func NewRoot(version string) *cobra.Command {
 
 	root := &cobra.Command{
 		Use:           "openpost",
-		Short:         "OpenPost CLI — control a self-hosted OpenPost instance from the terminal",
+		Short:         "OpenPost CLI — control an OpenPost workspace from the terminal",
 		Long:          "openpost is a command-line client for the OpenPost social media scheduler.\n\nIt talks to a running OpenPost instance over HTTPS, authenticates with a revocable API token, and exposes the most common posting, scheduling, account, and media workflows for use from scripts, CI, and power-user shells.",
 		SilenceUsage:  true,
 		SilenceErrors: true,

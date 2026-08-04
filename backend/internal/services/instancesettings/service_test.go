@@ -81,6 +81,34 @@ func TestSaveEncryptsValuesRedactsSecretsAndTracksRestart(t *testing.T) {
 	}
 }
 
+func TestWhopBillingCredentialsCanBeStoredWithoutBeingReturned(t *testing.T) {
+	db := createTestDB(t)
+	encryptor := servicecrypto.NewTokenEncryptor("0123456789abcdef0123456789abcdef")
+	service := NewService(db, encryptor, config.Load())
+
+	_, err := service.Save(t.Context(), "user-1", []Update{
+		{Key: "OPENPOST_WHOP_API_KEY", Value: strptr("whop_runtime_secret")},
+		{Key: "OPENPOST_WHOP_ACCOUNT_ID", Value: strptr("biz_openpost")},
+		{Key: "OPENPOST_WHOP_CREATOR_MONTHLY_PLAN_ID", Value: strptr("plan_creator_monthly")},
+	})
+	require.NoError(t, err)
+
+	states, err := service.List(t.Context())
+	require.NoError(t, err)
+	byKey := make(map[string]State, len(states))
+	for _, state := range states {
+		byKey[state.Definition.Key] = state
+	}
+	require.Empty(t, byKey["OPENPOST_WHOP_API_KEY"].Value)
+	require.True(t, byKey["OPENPOST_WHOP_API_KEY"].SecretConfigured)
+	require.Equal(t, "biz_openpost", byKey["OPENPOST_WHOP_ACCOUNT_ID"].Value)
+
+	applied := config.Load()
+	require.NoError(t, service.ApplyStored(t.Context(), applied))
+	require.Equal(t, "whop_runtime_secret", applied.WhopAPIKey)
+	require.Equal(t, "plan_creator_monthly", applied.WhopCreatorMonthlyPlanID)
+}
+
 func TestSaveRejectsEnvironmentManagedAndInvalidCombinedConfiguration(t *testing.T) {
 	t.Setenv("OPENPOST_FEEDBACK_ENABLED", "true")
 	db := createTestDB(t)

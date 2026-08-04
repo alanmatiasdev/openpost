@@ -566,11 +566,12 @@ type BillingSubscription struct {
 
 	OrganizationID         string    `bun:",pk" json:"organization_id"`
 	WorkspaceID            string    `json:"workspace_id,omitempty"`
-	Provider               string    `bun:",notnull,default:'polar'" json:"provider"`
+	Provider               string    `bun:",notnull,default:'whop'" json:"provider"`
 	ProviderCustomerID     string    `bun:",notnull" json:"provider_customer_id"`
 	ProviderSubscriptionID string    `bun:",notnull,unique" json:"provider_subscription_id"`
 	ProviderProductID      string    `json:"provider_product_id"`
 	ProviderPriceID        string    `json:"provider_price_id"`
+	ProviderManageURL      string    `bun:"provider_manage_url,notnull,default:''" json:"provider_manage_url"`
 	Status                 string    `bun:",notnull" json:"status"`
 	PlanID                 string    `bun:",notnull,default:''" json:"plan_id"`
 	EntitlementSnapshot    string    `bun:",notnull,default:'{}'" json:"entitlement_snapshot"`
@@ -585,9 +586,26 @@ type BillingWebhookEvent struct {
 	bun.BaseModel `bun:"table:billing_webhook_events"`
 
 	EventID     string    `bun:",pk" json:"event_id"`
-	Provider    string    `bun:",notnull,default:'polar'" json:"provider"`
+	Provider    string    `bun:",notnull,default:'whop'" json:"provider"`
 	EventType   string    `bun:",notnull" json:"event_type"`
 	ProcessedAt time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"processed_at"`
+}
+
+type BillingCheckoutAttempt struct {
+	bun.BaseModel `bun:"table:billing_checkout_attempts"`
+
+	CheckoutConfigurationID string    `bun:",pk" json:"checkout_configuration_id"`
+	OrganizationID          string    `bun:",notnull" json:"organization_id"`
+	WorkspaceID             string    `json:"workspace_id,omitempty"`
+	UserID                  string    `json:"user_id,omitempty"`
+	Provider                string    `bun:",notnull,default:'whop'" json:"provider"`
+	ProviderPlanID          string    `bun:",notnull" json:"provider_plan_id"`
+	ProviderMembershipID    string    `json:"provider_membership_id,omitempty"`
+	PlanID                  string    `bun:",notnull" json:"plan_id"`
+	BillingPeriod           string    `bun:",notnull" json:"billing_period"`
+	Status                  string    `bun:",notnull,default:'created'" json:"status"`
+	CreatedAt               time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
+	UpdatedAt               time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"updated_at"`
 }
 
 type MCPToolCall struct {

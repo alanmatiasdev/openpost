@@ -23,69 +23,67 @@ import (
 	"github.com/uptrace/bun/dialect/sqlitedialect"
 )
 
-type fakePolarHTTPClient struct {
+type recordedRequest struct {
+	Method         string
+	Path           string
+	Auth           string
+	IdempotencyKey string
+	Body           map[string]any
+}
+
+type fakeWhopHTTPClient struct {
 	t        *testing.T
-	requests []polarHTTPRequest
-	response string
-	status   int
+	requests []recordedRequest
+	respond  func(*http.Request) (int, string)
 }
 
-type polarHTTPRequest struct {
-	Method string
-	Path   string
-	Auth   string
-	Body   map[string]any
-}
-
-func (f *fakePolarHTTPClient) Do(req *http.Request) (*http.Response, error) {
+func (f *fakeWhopHTTPClient) Do(req *http.Request) (*http.Response, error) {
 	f.t.Helper()
-
 	var body map[string]any
-	require.NoError(f.t, json.NewDecoder(req.Body).Decode(&body))
-	f.requests = append(f.requests, polarHTTPRequest{
-		Method: req.Method,
-		Path:   req.URL.Path,
-		Auth:   req.Header.Get("Authorization"),
-		Body:   body,
+	if req.Body != nil {
+		require.NoError(f.t, json.NewDecoder(req.Body).Decode(&body))
+	}
+	f.requests = append(f.requests, recordedRequest{
+		Method:         req.Method,
+		Path:           req.URL.Path,
+		Auth:           req.Header.Get("Authorization"),
+		IdempotencyKey: req.Header.Get("Idempotency-Key"),
+		Body:           body,
 	})
-	status := f.status
-	if status == 0 {
-		status = http.StatusCreated
+	status, response := http.StatusOK, `{}`
+	if f.respond != nil {
+		status, response = f.respond(req)
 	}
 	return &http.Response{
 		StatusCode: status,
-		Body:       io.NopCloser(strings.NewReader(f.response)),
+		Body:       io.NopCloser(strings.NewReader(response)),
 		Header:     make(http.Header),
 	}, nil
 }
 
 func newBillingTestDB(t *testing.T) *bun.DB {
 	t.Helper()
-
 	sqldb, err := sql.Open("sqlite3", fmt.Sprintf("file:%s?mode=memory&cache=shared", uuid.NewString()))
 	require.NoError(t, err)
 	sqldb.SetMaxOpenConns(1)
-
 	db := bun.NewDB(sqldb, sqlitedialect.New())
 	for _, model := range []interface{}{
 		(*models.Workspace)(nil),
 		(*models.BillingSubscription)(nil),
 		(*models.BillingWebhookEvent)(nil),
+		(*models.BillingCheckoutAttempt)(nil),
+		(*models.Job)(nil),
 	} {
 		_, err := db.NewCreateTable().Model(model).IfNotExists().Exec(context.Background())
 		require.NoError(t, err)
 	}
 	_, err = db.NewInsert().Model(&models.Workspace{ID: "ws-1", Name: "Launch"}).Exec(context.Background())
 	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, db.Close())
-	})
+	t.Cleanup(func() { require.NoError(t, db.Close()) })
 	return db
 }
 
-func signedWebhookHeaders(t *testing.T, secret string, now time.Time, eventID string, body []byte) WebhookHeaders {
-	t.Helper()
-
+func signedWebhookHeaders(secret string, now time.Time, eventID string, body []byte) WebhookHeaders {
 	timestamp := fmt.Sprintf("%d", now.Unix())
 	mac := hmac.New(sha256.New, decodeWebhookSecret(secret))
 	_, _ = mac.Write([]byte(eventID + "." + timestamp + "." + string(body)))
@@ -96,295 +94,212 @@ func signedWebhookHeaders(t *testing.T, secret string, now time.Time, eventID st
 	}
 }
 
-func TestDefaultPlanCatalogKeepsSeatLimitsMonotonic(t *testing.T) {
-	t.Parallel()
+func testCatalog() map[string]PlanConfig {
+	return DefaultPlanCatalog(
+		ProviderPlanIDs{Monthly: "plan_starter_month", Annual: "plan_starter_year"},
+		ProviderPlanIDs{Monthly: "plan_creator_month", Annual: "plan_creator_year"},
+		ProviderPlanIDs{Monthly: "plan_pro_month", Annual: "plan_pro_year"},
+		ProviderPlanIDs{Monthly: "plan_team_month", Annual: "plan_team_year"},
+		ProviderPlanIDs{Monthly: "plan_agency_month", Annual: "plan_agency_year"},
+	)
+}
 
-	catalog := DefaultPlanCatalog("starter", "creator", "pro", "team", "agency")
-	require.Equal(t, int64(1), catalog["starter"].Limits[entitlements.LimitTeamMembers])
-	require.Equal(t, int64(1), catalog["creator"].Limits[entitlements.LimitTeamMembers])
+func TestDefaultPlanCatalogUsesUSDPricesAndMonotonicSeatLimits(t *testing.T) {
+	t.Parallel()
+	catalog := testCatalog()
+	require.Equal(t, 15, catalog["starter"].MonthlyPriceUSD)
+	require.Equal(t, 290, catalog["creator"].AnnualPriceUSD)
+	require.Equal(t, 199, catalog["agency"].MonthlyPriceUSD)
 	require.Equal(t, int64(1), catalog["pro"].Limits[entitlements.LimitTeamMembers])
 	require.Equal(t, int64(3), catalog["team"].Limits[entitlements.LimitTeamMembers])
 	require.Equal(t, int64(5), catalog["agency"].Limits[entitlements.LimitTeamMembers])
 }
 
-func TestProcessPolarWebhookUpsertsSubscription(t *testing.T) {
+func TestCreateCheckoutCreatesWhopConfigurationAndRecordsAttempt(t *testing.T) {
 	t.Parallel()
-
-	secret := "whsec_" + base64.StdEncoding.EncodeToString([]byte("secret"))
-	now := time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC)
 	db := newBillingTestDB(t)
-	service := NewService(db, secret)
-	service.now = func() time.Time { return now }
-	body := []byte(`{
-		"id": "evt-1",
-		"type": "subscription.active",
-		"data": {
-			"id": "sub-1",
-			"customer_id": "cus-1",
-			"product_id": "prod-creator",
-			"price_id": "price-monthly",
-			"status": "active",
-			"current_period_end": "2026-07-30T12:00:00Z",
-			"metadata": {
-				"workspace_id": "ws-1",
-				"plan_id": "creator",
-				"limit_scheduled_posts_monthly": 500
-			}
-		}
-	}`)
-
-	result, err := service.ProcessPolarWebhook(context.Background(), body, signedWebhookHeaders(t, secret, now, "evt-1", body))
-
-	require.NoError(t, err)
-	require.False(t, result.Duplicate)
-	require.Equal(t, "ws-1", result.WorkspaceID)
-
-	var sub models.BillingSubscription
-	require.NoError(t, db.NewSelect().Model(&sub).Where("workspace_id = ?", "ws-1").Scan(context.Background()))
-	require.Equal(t, "polar", sub.Provider)
-	require.Equal(t, "cus-1", sub.ProviderCustomerID)
-	require.Equal(t, "sub-1", sub.ProviderSubscriptionID)
-	require.Equal(t, "prod-creator", sub.ProviderProductID)
-	require.Equal(t, "price-monthly", sub.ProviderPriceID)
-	require.Equal(t, "active", sub.Status)
-	require.Equal(t, "creator", sub.PlanID)
-	require.Contains(t, sub.EntitlementSnapshot, "scheduled_posts_monthly")
-	require.Equal(t, time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC), sub.CurrentPeriodEnd)
-}
-
-func TestCreateCheckoutPostsPolarCheckoutSession(t *testing.T) {
-	t.Parallel()
-
-	client := &fakePolarHTTPClient{
-		t:        t,
-		response: `{"id":"checkout-1","url":"https://checkout.polar.sh/session"}`,
-	}
-	service := NewService(nil, "", PolarConfig{
-		AccessToken: "polar-token",
-		APIBaseURL:  "https://api.polar.test",
-		SuccessURL:  "https://app.openpost.test/settings/billing?checkout_id={CHECKOUT_ID}",
-		ReturnURL:   "https://app.openpost.test/settings/billing",
-		Plans: map[string]PlanConfig{
-			"creator": {
-				ProductID: "product-creator",
-				Limits: map[entitlements.LimitKey]int64{
-					entitlements.LimitScheduledPostsMonthly: 500,
-					entitlements.LimitSocialAccounts:        6,
-				},
-			},
-		},
+	client := &fakeWhopHTTPClient{t: t, respond: func(*http.Request) (int, string) {
+		return http.StatusCreated, `{"id":"ch_1","purchase_url":"https://whop.com/checkout/ch_1","plan":{"id":"plan_creator_year"}}`
+	}}
+	now := time.Date(2026, 8, 4, 12, 0, 0, 0, time.UTC)
+	service := NewService(db, "", WhopConfig{
+		APIKey:     "whop-token",
+		APIBaseURL: "https://api.whop.test/api/v1",
+		AccountID:  "biz_1",
+		ProductID:  "prod_1",
+		AppURL:     "https://app.openpost.test",
+		ReturnURL:  "https://app.openpost.test/checkout?status=success",
+		Plans:      testCatalog(),
 	})
+	service.SetNowForTest(func() time.Time { return now })
 	service.SetHTTPClientForTest(client)
 
 	result, err := service.CreateCheckout(context.Background(), CreateCheckoutInput{
-		WorkspaceID:   "ws-1",
-		UserID:        "user-1",
-		CustomerEmail: "user@example.com",
-		PlanID:        "creator",
+		OrganizationID: "org-1",
+		WorkspaceID:    "ws-1",
+		UserID:         "user-1",
+		CustomerEmail:  "user@example.com",
+		PlanID:         "creator",
+		BillingPeriod:  "annual",
+		AffiliateCode:  "creator-friend",
 	})
 
 	require.NoError(t, err)
-	require.Equal(t, "checkout-1", result.ID)
-	require.Equal(t, "https://checkout.polar.sh/session", result.URL)
+	require.Equal(t, "ch_1", result.ID)
+	require.Equal(t, "plan_creator_year", result.ProviderPlanID)
+	require.Equal(t, 290, result.PriceUSD)
+	require.Equal(t, now.AddDate(0, 0, TrialDays), result.TrialEndsAt)
+	require.Contains(t, result.URL, "https://app.openpost.test/checkout?")
 	require.Len(t, client.requests, 1)
 	req := client.requests[0]
 	require.Equal(t, http.MethodPost, req.Method)
-	require.Equal(t, "/v1/checkouts/", req.Path)
-	require.Equal(t, "Bearer polar-token", req.Auth)
-	require.Equal(t, []any{"product-creator"}, req.Body["products"])
-	require.Equal(t, "ws-1", req.Body["external_customer_id"])
-	require.Equal(t, "user@example.com", req.Body["customer_email"])
+	require.Equal(t, "/api/v1/checkout_configurations", req.Path)
+	require.Equal(t, "Bearer whop-token", req.Auth)
+	require.Contains(t, req.IdempotencyKey, "checkout:org-1:creator:annual")
+	require.Equal(t, "biz_1", req.Body["company_id"])
+	require.Equal(t, "plan_creator_year", req.Body["plan_id"])
+	require.Equal(t, "payment", req.Body["mode"])
+	require.Equal(t, "creator-friend", req.Body["affiliate_code"])
 	metadata := req.Body["metadata"].(map[string]any)
-	require.Equal(t, "ws-1", metadata["workspace_id"])
-	require.Equal(t, "creator", metadata["plan_id"])
-	require.Equal(t, float64(500), metadata["limit_scheduled_posts_monthly"])
-	require.Equal(t, float64(6), metadata["limit_social_accounts"])
+	require.Equal(t, "org-1", metadata["organization_id"])
+	require.Equal(t, "annual", metadata["billing_period"])
+
+	var attempt models.BillingCheckoutAttempt
+	require.NoError(t, db.NewSelect().Model(&attempt).Where("checkout_configuration_id = ?", "ch_1").Scan(context.Background()))
+	require.Equal(t, "org-1", attempt.OrganizationID)
+	require.Equal(t, "creator", attempt.PlanID)
+	require.Equal(t, "annual", attempt.BillingPeriod)
 }
 
-func TestPolarAPIURLAcceptsRootOrVersionedBaseURL(t *testing.T) {
+func TestCreateCheckoutRejectsUnconfiguredWhopPlan(t *testing.T) {
 	t.Parallel()
-
-	cases := []struct {
-		name string
-		base string
-		path string
-		want string
-	}{
-		{
-			name: "root base plus versioned path",
-			base: "https://api.polar.sh",
-			path: "/v1/checkouts/",
-			want: "https://api.polar.sh/v1/checkouts/",
-		},
-		{
-			name: "versioned base plus versioned path",
-			base: "https://sandbox-api.polar.sh/v1",
-			path: "/v1/checkouts/",
-			want: "https://sandbox-api.polar.sh/v1/checkouts/",
-		},
-		{
-			name: "versioned base plus unversioned path",
-			base: "https://api.polar.sh/v1/",
-			path: "/customer-sessions/",
-			want: "https://api.polar.sh/v1/customer-sessions/",
-		},
-		{
-			name: "root base plus unversioned path",
-			base: "https://api.polar.sh",
-			path: "customer-sessions/",
-			want: "https://api.polar.sh/v1/customer-sessions/",
-		},
-	}
-
-	for _, tt := range cases {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			require.Equal(t, tt.want, polarAPIURL(tt.base, tt.path))
-		})
-	}
-}
-
-func TestCreateCheckoutRejectsUnconfiguredPlan(t *testing.T) {
-	t.Parallel()
-
-	service := NewService(nil, "", PolarConfig{AccessToken: "polar-token", Plans: map[string]PlanConfig{}})
-
-	_, err := service.CreateCheckout(context.Background(), CreateCheckoutInput{
-		WorkspaceID:   "ws-1",
-		CustomerEmail: "user@example.com",
-		PlanID:        "creator",
-	})
-
+	service := NewService(nil, "", WhopConfig{APIKey: "key", AccountID: "biz_1", Plans: map[string]PlanConfig{}})
+	_, err := service.CreateCheckout(context.Background(), CreateCheckoutInput{OrganizationID: "org", CustomerEmail: "a@b.com", PlanID: "creator"})
 	require.ErrorContains(t, err, "unknown billing plan")
 }
 
-func TestCreateCheckoutMissingPolarAccessTokenIsConfigurationError(t *testing.T) {
+func TestCreateCheckoutMissingPlanIDIsConfigurationError(t *testing.T) {
 	t.Parallel()
-
-	service := NewService(nil, "", PolarConfig{
-		Plans: map[string]PlanConfig{
-			"creator": {ProductID: "product-creator"},
-		},
-	})
-
-	_, err := service.CreateCheckout(context.Background(), CreateCheckoutInput{
-		WorkspaceID:   "ws-1",
-		CustomerEmail: "user@example.com",
-		PlanID:        "creator",
-	})
-
-	require.Error(t, err)
+	catalog := testCatalog()
+	catalog["creator"] = PlanConfig{MonthlyPriceUSD: 29, AnnualPriceUSD: 290}
+	service := NewService(nil, "", WhopConfig{APIKey: "key", AccountID: "biz_1", Plans: catalog})
+	_, err := service.CreateCheckout(context.Background(), CreateCheckoutInput{OrganizationID: "org", CustomerEmail: "a@b.com", PlanID: "creator"})
 	require.True(t, IsConfigurationError(err))
-	require.ErrorContains(t, err, "OPENPOST_POLAR_ACCESS_TOKEN")
+	require.ErrorContains(t, err, "OPENPOST_WHOP_CREATOR_MONTHLY_PLAN_ID")
 }
 
-func TestCreateCheckoutMissingPlanProductIsConfigurationError(t *testing.T) {
+func TestWhopAPIURLAcceptsRootOrVersionedBaseURL(t *testing.T) {
 	t.Parallel()
-
-	service := NewService(nil, "", PolarConfig{
-		AccessToken: "polar-token",
-		Plans: map[string]PlanConfig{
-			"creator": {},
-		},
-	})
-
-	_, err := service.CreateCheckout(context.Background(), CreateCheckoutInput{
-		WorkspaceID:   "ws-1",
-		CustomerEmail: "user@example.com",
-		PlanID:        "creator",
-	})
-
-	require.Error(t, err)
-	require.True(t, IsConfigurationError(err))
-	require.ErrorContains(t, err, "OPENPOST_POLAR_CREATOR_PRODUCT_ID")
+	require.Equal(t, "https://api.whop.com/api/v1/memberships/mem_1", whopAPIURL("https://api.whop.com", "/memberships/mem_1"))
+	require.Equal(t, "https://api.whop.com/api/v1/memberships/mem_1", whopAPIURL("https://api.whop.com/api/v1", "/memberships/mem_1"))
+	require.Equal(t, "https://test.whop.dev/v1/memberships/mem_1", whopAPIURL("https://test.whop.dev/v1/", "/v1/memberships/mem_1"))
 }
 
-func TestCreateCustomerPortalSessionPostsPolarCustomerSession(t *testing.T) {
+func TestAcceptWhopWebhookQueuesOnce(t *testing.T) {
 	t.Parallel()
-
-	client := &fakePolarHTTPClient{
-		t:        t,
-		response: `{"id":"session-1","customer_portal_url":"https://polar.sh/customer/session"}`,
-	}
-	service := NewService(nil, "", PolarConfig{
-		AccessToken: "polar-token",
-		APIBaseURL:  "https://api.polar.test",
-		ReturnURL:   "https://app.openpost.test/settings/billing",
-	})
-	service.SetHTTPClientForTest(client)
-
-	result, err := service.CreateCustomerPortalSession(context.Background(), "ws-1")
-
-	require.NoError(t, err)
-	require.Equal(t, "session-1", result.ID)
-	require.Equal(t, "https://polar.sh/customer/session", result.URL)
-	require.Len(t, client.requests, 1)
-	req := client.requests[0]
-	require.Equal(t, http.MethodPost, req.Method)
-	require.Equal(t, "/v1/customer-sessions/", req.Path)
-	require.Equal(t, "ws-1", req.Body["external_customer_id"])
-	require.Equal(t, "https://app.openpost.test/settings/billing", req.Body["return_url"])
-}
-
-func TestProcessPolarWebhookDeduplicatesEvents(t *testing.T) {
-	t.Parallel()
-
-	secret := "plain-secret"
-	now := time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC)
+	secret := "whsec_" + base64.StdEncoding.EncodeToString([]byte("secret"))
+	now := time.Date(2026, 8, 4, 12, 0, 0, 0, time.UTC)
 	db := newBillingTestDB(t)
 	service := NewService(db, secret)
-	service.now = func() time.Time { return now }
-	body := []byte(`{
-		"id": "evt-1",
-		"type": "subscription.active",
-		"data": {
-			"id": "sub-1",
-			"customer_id": "cus-1",
-			"status": "active",
-			"metadata": {"workspace_id": "ws-1", "plan_id": "starter"}
-		}
-	}`)
-	headers := signedWebhookHeaders(t, secret, now, "evt-1", body)
+	service.SetNowForTest(func() time.Time { return now })
+	body := []byte(`{"id":"evt_1","type":"membership.activated","data":{"id":"mem_1"}}`)
+	headers := signedWebhookHeaders(secret, now, "evt_1", body)
 
-	first, err := service.ProcessPolarWebhook(context.Background(), body, headers)
+	first, err := service.AcceptWhopWebhook(context.Background(), body, headers)
 	require.NoError(t, err)
-	second, err := service.ProcessPolarWebhook(context.Background(), body, headers)
-	require.NoError(t, err)
-
 	require.False(t, first.Duplicate)
+	second, err := service.AcceptWhopWebhook(context.Background(), body, headers)
+	require.NoError(t, err)
 	require.True(t, second.Duplicate)
-	var eventCount int
-	require.NoError(t, db.NewSelect().ColumnExpr("COUNT(*)").TableExpr("billing_webhook_events").Scan(context.Background(), &eventCount))
-	require.Equal(t, 1, eventCount)
+
+	var count int
+	require.NoError(t, db.NewSelect().ColumnExpr("COUNT(*)").TableExpr("jobs").Where("type = ?", JobTypeWebhook).Scan(context.Background(), &count))
+	require.Equal(t, 1, count)
 }
 
-func TestProcessPolarWebhookRejectsInvalidSignature(t *testing.T) {
+func TestHandleJobFetchesCurrentWhopMembershipAndUpsertsSubscription(t *testing.T) {
 	t.Parallel()
+	db := newBillingTestDB(t)
+	now := time.Date(2026, 8, 4, 12, 0, 0, 0, time.UTC)
+	require.NoError(t, func() error {
+		_, err := db.NewInsert().Model(&models.BillingCheckoutAttempt{
+			CheckoutConfigurationID: "ch_1",
+			OrganizationID:          "org-1",
+			WorkspaceID:             "ws-1",
+			Provider:                ProviderWhop,
+			ProviderPlanID:          "plan_creator_month",
+			PlanID:                  "creator",
+			BillingPeriod:           "monthly",
+			Status:                  "created",
+			CreatedAt:               now,
+			UpdatedAt:               now,
+		}).Exec(context.Background())
+		return err
+	}())
+	client := &fakeWhopHTTPClient{t: t, respond: func(req *http.Request) (int, string) {
+		require.Equal(t, http.MethodGet, req.Method)
+		return http.StatusOK, `{
+			"id":"mem_1","status":"trialing","manage_url":"https://whop.com/manage/mem_1",
+			"checkout_configuration_id":"ch_1","renewal_period_end":"2026-08-18T12:00:00Z",
+			"cancel_at_period_end":false,"user":{"id":"user_whop_1","email":"user@example.com"},
+			"company":{"id":"biz_1"},"plan":{"id":"plan_creator_month"},"product":{"id":"prod_1"}
+		}`
+	}}
+	service := NewService(db, "", WhopConfig{APIKey: "key", APIBaseURL: "https://api.whop.test/api/v1", Plans: testCatalog()})
+	service.SetNowForTest(func() time.Time { return now })
+	service.SetHTTPClientForTest(client)
+	payload := `{"id":"evt_1","type":"membership.activated","data":{"id":"mem_1"}}`
 
-	now := time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC)
-	service := NewService(newBillingTestDB(t), "secret")
-	service.now = func() time.Time { return now }
-	body := []byte(`{"id":"evt-1","type":"subscription.active","data":{}}`)
+	require.NoError(t, service.HandleJob(context.Background(), JobTypeWebhook, payload))
+	var sub models.BillingSubscription
+	require.NoError(t, db.NewSelect().Model(&sub).Where("organization_id = ?", "org-1").Scan(context.Background()))
+	require.Equal(t, ProviderWhop, sub.Provider)
+	require.Equal(t, "mem_1", sub.ProviderSubscriptionID)
+	require.Equal(t, "trialing", sub.Status)
+	require.Equal(t, "creator", sub.PlanID)
+	require.Equal(t, "https://whop.com/manage/mem_1", sub.ProviderManageURL)
+	require.Equal(t, time.Date(2026, 8, 18, 12, 0, 0, 0, time.UTC), sub.CurrentPeriodEnd)
+	require.Contains(t, sub.EntitlementSnapshot, "scheduled_posts_monthly")
 
-	_, err := service.ProcessPolarWebhook(context.Background(), body, WebhookHeaders{
-		ID:        "evt-1",
-		Timestamp: fmt.Sprintf("%d", now.Unix()),
-		Signature: "v1," + base64.StdEncoding.EncodeToString([]byte("wrong")),
-	})
-
-	require.ErrorContains(t, err, "invalid webhook signature")
+	var attempt models.BillingCheckoutAttempt
+	require.NoError(t, db.NewSelect().Model(&attempt).Where("checkout_configuration_id = ?", "ch_1").Scan(context.Background()))
+	require.Equal(t, "mem_1", attempt.ProviderMembershipID)
+	require.Equal(t, "trialing", attempt.Status)
 }
 
-func TestProcessPolarWebhookRejectsStaleTimestamp(t *testing.T) {
+func TestCreateCustomerPortalSessionUsesWhopManageURL(t *testing.T) {
 	t.Parallel()
+	db := newBillingTestDB(t)
+	_, err := db.NewInsert().Model(&models.BillingSubscription{
+		OrganizationID:         "org-1",
+		WorkspaceID:            "ws-1",
+		Provider:               ProviderWhop,
+		ProviderCustomerID:     "user_1",
+		ProviderSubscriptionID: "mem_1",
+		ProviderManageURL:      "https://whop.com/manage/mem_1",
+		Status:                 "active",
+		PlanID:                 "creator",
+	}).Exec(context.Background())
+	require.NoError(t, err)
+	service := NewService(db, "")
+	result, err := service.CreateCustomerPortalSession(context.Background(), "org-1")
+	require.NoError(t, err)
+	require.Equal(t, "mem_1", result.ID)
+	require.Equal(t, "https://whop.com/manage/mem_1", result.URL)
+}
 
-	secret := "secret"
-	now := time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC)
+func TestAcceptWhopWebhookRejectsInvalidOrStaleSignatures(t *testing.T) {
+	t.Parallel()
+	secret := "whsec_" + base64.StdEncoding.EncodeToString([]byte("secret"))
+	now := time.Date(2026, 8, 4, 12, 0, 0, 0, time.UTC)
 	service := NewService(newBillingTestDB(t), secret)
-	service.now = func() time.Time { return now }
-	body := []byte(`{"id":"evt-1","type":"subscription.active","data":{}}`)
-
-	_, err := service.ProcessPolarWebhook(context.Background(), body, signedWebhookHeaders(t, secret, now.Add(-10*time.Minute), "evt-1", body))
-
+	service.SetNowForTest(func() time.Time { return now })
+	body := []byte(`{"id":"evt_1","type":"membership.activated","data":{"id":"mem_1"}}`)
+	bad := signedWebhookHeaders(secret, now, "evt_1", body)
+	bad.Signature = "v1,not-valid"
+	_, err := service.AcceptWhopWebhook(context.Background(), body, bad)
+	require.ErrorContains(t, err, "invalid webhook signature")
+	stale := signedWebhookHeaders(secret, now.Add(-6*time.Minute), "evt_1", body)
+	_, err = service.AcceptWhopWebhook(context.Background(), body, stale)
 	require.ErrorContains(t, err, "outside tolerance")
 }
