@@ -4,6 +4,8 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [1.52.0] - 2026-08-04
+
 ### Added
 
 - Added an OpenPost-owned embedded Whop checkout with monthly and annual plan selection, exact card-required 14-day trial terms, signed webhook reconciliation, local checkout-attempt mapping, and Whop membership management links.
