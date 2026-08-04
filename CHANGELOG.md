@@ -4,6 +4,10 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- Improved app E2E coverage reliability by aligning onboarding/register assertions to the active checkout flow, hardening the custom Mastodon connection path, and stabilizing media/communications test fixtures for deterministic execution.
+
 ## [1.52.0] - 2026-08-04
 
 ### Added
