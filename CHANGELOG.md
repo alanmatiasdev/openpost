@@ -4,6 +4,8 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-08-04
+
 ### Added
 
 - Added tag-based Media organization with many tags per file, multi-tag and Untagged filters, image, video, and audio type filters, sorting, drag-and-drop upload, bulk tag assignment, and the same controls in media pickers and both editors. New uploads remain untagged unless the user explicitly uploads into an active tag.
