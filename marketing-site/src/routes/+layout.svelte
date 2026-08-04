@@ -1,14 +1,14 @@
 <script lang="ts">
 	import './layout.css';
 	import { page } from '$app/state';
-	import { marketingSiteUrl, resolveMarketingSocial } from '@openpost/social-images';
+	import { resolveMarketingSocial } from '@openpost/social-images';
 	import { ModeWatcher } from 'mode-watcher';
 	import MarketingFooter from './_components/MarketingFooter.svelte';
 	import MarketingNav from './_components/MarketingNav.svelte';
 
 	let { children } = $props();
 	const social = $derived(resolveMarketingSocial(page.url.pathname));
-	const socialImage = $derived(`${marketingSiteUrl}${social.imagePath}`);
+	const socialImage = $derived(social.imageUrl);
 </script>
 
 <svelte:head>

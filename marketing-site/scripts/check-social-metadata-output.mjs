@@ -1,16 +1,14 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { marketingSiteUrl, marketingSocialEntries } from "@openpost/social-images";
+import { marketingSocialEntries } from "@openpost/social-images";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const dist = path.resolve(scriptDir, "../dist");
 const problems = [];
 
 function outputFile(routePath) {
-  return routePath === "/"
-    ? path.join(dist, "index.html")
-    : path.join(dist, `${routePath.slice(1)}.html`);
+  return routePath === "/" ? path.join(dist, "index.html") : path.join(dist, `${routePath.slice(1)}.html`);
 }
 
 function count(html, value) {
@@ -27,15 +25,16 @@ for (const entry of marketingSocialEntries) {
     continue;
   }
 
-  const image = `${marketingSiteUrl}${entry.imagePath}`;
+  const image = entry.imageUrl;
+  const serializedImage = image.replaceAll("&", "&amp;");
   const expected = [
     ['property="og:title"', entry.socialTitle],
     ['property="og:description"', entry.description],
     ['property="og:url"', entry.canonical],
-    ['property="og:image"', image],
+    ['property="og:image"', serializedImage],
     ['property="og:image:alt"', entry.imageAlt],
     ['name="twitter:card"', "summary_large_image"],
-    ['name="twitter:image"', image],
+    ['name="twitter:image"', serializedImage],
   ];
 
   for (const [attribute, value] of expected) {
@@ -47,8 +46,8 @@ for (const entry of marketingSocialEntries) {
   if (count(html, 'property="og:image"') !== 1) {
     problems.push(`${entry.path}: expected exactly one og:image tag`);
   }
-  if (html.includes("/assets/brand/og-image.png")) {
-    problems.push(`${entry.path}: still references the retired shared OG image`);
+  if (!image.startsWith("https://openpost.social/og?")) {
+    problems.push(`${entry.path}: does not use the on-demand OG endpoint`);
   }
 }
 

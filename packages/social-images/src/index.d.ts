@@ -13,6 +13,7 @@ export type SocialImageKind =
   | "docs";
 
 export interface SocialEntry {
+  id: string;
   path: string;
   key: string;
   title: string;
@@ -21,7 +22,7 @@ export interface SocialEntry {
   label: string;
   kind: SocialImageKind;
   canonical: string;
-  imagePath: string;
+  imageUrl: string;
   imageAlt: string;
   subject?: string;
   platform?: string;
@@ -29,8 +30,12 @@ export interface SocialEntry {
 
 export const marketingSiteUrl: "https://openpost.social";
 export const docsSiteUrl: "https://docs.openpost.social";
+export const socialRendererVersion: string;
 export const marketingSocialEntries: readonly SocialEntry[];
+export const docsSocialEntries: readonly SocialEntry[];
 
+export function socialImageUrl(entry: Pick<SocialEntry, "id">): string;
+export function resolveSocialImageEntry(id: string): SocialEntry;
 export function normalizeMarketingPath(pathname: string): string;
 export function canonicalMarketingUrl(pathname: string): string;
 export function resolveMarketingSocial(pathname: string): SocialEntry;

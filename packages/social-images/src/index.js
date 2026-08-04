@@ -1,5 +1,16 @@
+import { docsPageCatalog } from "./docs-catalog.js";
+
 export const marketingSiteUrl = "https://openpost.social";
 export const docsSiteUrl = "https://docs.openpost.social";
+export const socialRendererVersion = "1";
+
+export function socialImageUrl(entry) {
+  const query = new URLSearchParams({
+    v: socialRendererVersion,
+    id: entry.id,
+  });
+  return `${marketingSiteUrl}/og?${query}`;
+}
 
 const platformNames = [
   ["x", "X"],
@@ -27,14 +38,14 @@ const toolPages = [
   {
     slug: "social-media-video-editor",
     name: "Social media video editor",
-    title: "Free social media video editor - OpenPost Video Studio",
+    title: "Free social media video editor - OpenPost Video Editor",
     description:
       "Record or import footage, edit for four social formats, and export without a watermark.",
   },
   {
     slug: "social-media-image-editor",
     name: "Social media image editor",
-    title: "Free social media image editor - OpenPost Studio",
+    title: "Free social media image editor - OpenPost Image Editor",
     description:
       "Create posts, carousel pages, Story slides, and thumbnails in your browser.",
   },
@@ -159,7 +170,7 @@ const staticMarketingEntries = [
     title: "OpenPost changelog",
     socialTitle: "What changed in OpenPost, in plain language.",
     description:
-      "Read recent product, publishing, security, Studio, CLI, and MCP changes.",
+      "Read recent product, publishing, security, OpenPost Image Editor, CLI, and MCP changes.",
     label: "Changelog",
     kind: "document",
   },
@@ -222,12 +233,15 @@ const toolEntries = toolPages.map((tool) => ({
 
 export const marketingSocialEntries = Object.freeze(
   [...staticMarketingEntries, ...platformEntries, ...comparisonEntries, ...toolEntries].map(
-    (entry) => ({
-      ...entry,
-      canonical: canonicalMarketingUrl(entry.path),
-      imagePath: `/assets/social/og/marketing/${entry.key}.png`,
-      imageAlt: `${entry.socialTitle} OpenPost social preview.`,
-    }),
+    (entry) => {
+      const resolved = {
+        ...entry,
+        id: `marketing:${entry.key}`,
+        canonical: canonicalMarketingUrl(entry.path),
+        imageAlt: `${entry.socialTitle} OpenPost social preview.`,
+      };
+      return { ...resolved, imageUrl: socialImageUrl(resolved) };
+    },
   ),
 );
 
@@ -251,11 +265,12 @@ export function resolveMarketingSocial(pathname) {
   if (exact) return exact;
 
   const fallback = marketingByPath.get("/");
-  return {
+  const resolved = {
     ...fallback,
     path,
     canonical: canonicalMarketingUrl(path),
   };
+  return { ...resolved, imageUrl: socialImageUrl(resolved) };
 }
 
 export function docsRouteFromPage(page) {
@@ -325,7 +340,8 @@ export function resolveDocsSocial({ page, title, description }) {
   const cleanDescription = description?.trim() || docsDescriptionForPage(page);
   const key = docsImageKey(page);
 
-  return {
+  const resolved = {
+    id: `docs:${key}`,
     path: route,
     key,
     title: `${cleanTitle} | OpenPost Docs`,
@@ -334,7 +350,19 @@ export function resolveDocsSocial({ page, title, description }) {
     label: docsSectionForPage(page),
     kind: "docs",
     canonical: route === "/" ? docsSiteUrl : `${docsSiteUrl}${route}`,
-    imagePath: `/assets/social/og/docs/${key}.png`,
     imageAlt: `${cleanTitle}. OpenPost documentation preview.`,
   };
+  return { ...resolved, imageUrl: socialImageUrl(resolved) };
+}
+
+export const docsSocialEntries = Object.freeze(
+  docsPageCatalog.map(({ page, title }) => resolveDocsSocial({ page, title })),
+);
+
+const socialById = new Map(
+  [...marketingSocialEntries, ...docsSocialEntries].map((entry) => [entry.id, entry]),
+);
+
+export function resolveSocialImageEntry(id) {
+  return socialById.get(id) || socialById.get("marketing:home");
 }

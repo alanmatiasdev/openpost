@@ -1,4 +1,4 @@
-import { docsSiteUrl, resolveDocsSocial } from '@openpost/social-images';
+import { resolveDocsSocial } from '@openpost/social-images';
 import { defineConfig } from 'vitepress';
 
 // Default to root-path hosting so custom-domain deployments work without extra config.
@@ -193,7 +193,7 @@ export default defineConfig({
 			description:
 				typeof frontmatterDescription === 'string' ? frontmatterDescription : undefined,
 		});
-		const image = `${docsSiteUrl}${social.imagePath}`;
+		const image = social.imageUrl;
 		return [
 			['link', { rel: 'canonical', href: social.canonical }],
 			['meta', { property: 'og:site_name', content: 'OpenPost Docs' }],
