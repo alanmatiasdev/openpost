@@ -55,7 +55,7 @@ func (s *Service) ReplacePolicies(ctx context.Context, workspaceID, userID strin
 		return SettingsResponse{}, err
 	}
 	if len(inputs) > 50 {
-		return SettingsResponse{}, fmt.Errorf("a workspace supports at most 50 repost rules")
+		return SettingsResponse{}, invalidInputf("a workspace supports at most 50 repost rules")
 	}
 
 	normalized := make([]PolicyInput, 0, len(inputs))
@@ -63,25 +63,25 @@ func (s *Service) ReplacePolicies(ctx context.Context, workspaceID, userID strin
 	for index, input := range inputs {
 		input.Name = strings.TrimSpace(input.Name)
 		if input.Name == "" {
-			return SettingsResponse{}, fmt.Errorf("repost rule %d requires a name", index+1)
+			return SettingsResponse{}, invalidInputf("repost rule %d requires a name", index+1)
 		}
 		if len([]rune(input.Name)) > 80 {
-			return SettingsResponse{}, fmt.Errorf("repost rule names support at most 80 characters")
+			return SettingsResponse{}, invalidInputf("repost rule names support at most 80 characters")
 		}
 		if input.ID == "" {
 			input.ID = uuid.NewString()
 		}
 		if _, duplicate := seenIDs[input.ID]; duplicate {
-			return SettingsResponse{}, fmt.Errorf("repost rule ids must be unique")
+			return SettingsResponse{}, invalidInputf("repost rule ids must be unique")
 		}
 		seenIDs[input.ID] = struct{}{}
 		input.SourceAccountIDs = uniqueIDs(input.SourceAccountIDs)
 		input.TargetAccountIDs = uniqueIDs(input.TargetAccountIDs)
 		if len(input.SourceAccountIDs) > maxAccountsPerRule || len(input.TargetAccountIDs) > maxAccountsPerRule {
-			return SettingsResponse{}, fmt.Errorf("each repost rule supports at most %d source and target accounts", maxAccountsPerRule)
+			return SettingsResponse{}, invalidInputf("each repost rule supports at most %d source and target accounts", maxAccountsPerRule)
 		}
 		if len(input.TargetAccountIDs) == 0 {
-			return SettingsResponse{}, fmt.Errorf("repost rule %q requires at least one target account", input.Name)
+			return SettingsResponse{}, invalidInputf("repost rule %q requires at least one target account", input.Name)
 		}
 		rule, err := NormalizeRule(input.Rule)
 		if err != nil {
@@ -164,7 +164,7 @@ func (s *Service) ValidateOverride(ctx context.Context, workspaceID, userID stri
 	for _, accountID := range normalized.TargetAccountIDs {
 		account, ok := accounts[accountID]
 		if !ok || !SupportsPlatform(account.Platform) || s.repostAdapter(account) == nil {
-			return Override{}, fmt.Errorf("repost target account %q is unavailable", accountID)
+			return Override{}, invalidInputf("repost target account %q is unavailable", accountID)
 		}
 		if account.WorkspaceID != workspaceID {
 			granted, grantErr := s.hasActiveGrant(ctx, workspaceID, accountID)
@@ -172,7 +172,7 @@ func (s *Service) ValidateOverride(ctx context.Context, workspaceID, userID stri
 				return Override{}, grantErr
 			}
 			if !granted {
-				return Override{}, fmt.Errorf("repost target account %q requires a workspace grant", accountID)
+				return Override{}, invalidInputf("repost target account %q requires a workspace grant", accountID)
 			}
 		}
 	}
@@ -451,7 +451,7 @@ func (s *Service) validatePolicyAccounts(ctx context.Context, workspaceID, userI
 		for _, accountID := range input.SourceAccountIDs {
 			account, ok := accounts[accountID]
 			if !ok || account.WorkspaceID != workspaceID || !SupportsPlatform(account.Platform) || s.repostAdapter(account) == nil {
-				return fmt.Errorf("repost rule %q has an unavailable source account", input.Name)
+				return invalidInputf("repost rule %q has an unavailable source account", input.Name)
 			}
 			sourcePlatforms[account.Platform] = true
 		}
@@ -459,10 +459,10 @@ func (s *Service) validatePolicyAccounts(ctx context.Context, workspaceID, userI
 	for _, accountID := range input.TargetAccountIDs {
 		account, ok := accounts[accountID]
 		if !ok || !SupportsPlatform(account.Platform) || s.repostAdapter(account) == nil {
-			return fmt.Errorf("repost rule %q has an unavailable target account", input.Name)
+			return invalidInputf("repost rule %q has an unavailable target account", input.Name)
 		}
 		if !sourcePlatforms[account.Platform] {
-			return fmt.Errorf("repost rule %q needs a %s source account for target @%s", input.Name, account.Platform, firstNonEmpty(account.AccountUsername, account.Slug))
+			return invalidInputf("repost rule %q needs a %s source account for target @%s", input.Name, account.Platform, firstNonEmpty(account.AccountUsername, account.Slug))
 		}
 		if account.WorkspaceID != workspaceID {
 			granted, err := s.hasActiveGrant(ctx, workspaceID, accountID)
@@ -471,7 +471,7 @@ func (s *Service) validatePolicyAccounts(ctx context.Context, workspaceID, userI
 			}
 			if !granted {
 				if err := s.requireWorkspaceAdmin(ctx, account.WorkspaceID, userID); err != nil {
-					return fmt.Errorf("target @%s requires admin access to its workspace", firstNonEmpty(account.AccountUsername, account.Slug))
+					return invalidInputf("target @%s requires admin access to its workspace", firstNonEmpty(account.AccountUsername, account.Slug))
 				}
 			}
 		}

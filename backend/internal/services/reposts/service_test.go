@@ -92,6 +92,11 @@ func TestCustomOverrideSchedulesEvaluatesAndExecutes(t *testing.T) {
 	require.Equal(t, "repost-1", execution.ExternalID)
 	require.Len(t, adapter.requests, 1)
 	require.Equal(t, "post-1", adapter.requests[0].ExternalID)
+	var usage models.UsageCounter
+	require.NoError(t, db.NewSelect().Model(&usage).
+		Where("workspace_id = ? AND metric = ?", workspace.ID, "provider_write_calls_monthly").
+		Scan(ctx))
+	require.Equal(t, int64(1), usage.Value)
 }
 
 func TestCrossWorkspaceOverrideRequiresGrant(t *testing.T) {

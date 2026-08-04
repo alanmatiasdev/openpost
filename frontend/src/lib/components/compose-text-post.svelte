@@ -96,13 +96,16 @@
 	import DraftConflictDialog from './draft-conflict-dialog.svelte';
 	import PromptApplyDialog from './prompt-apply-dialog.svelte';
 	import MediaPicker from './media-picker.svelte';
-	import { consumeStudioReturnToken, createStudioReturnToken } from '$lib/studio/api';
+	import {
+		consumeImageEditorReturnToken,
+		createImageEditorReturnToken
+	} from '$lib/image-editor/api';
 	import {
 		clearComposerRecovery,
 		loadComposerRecovery,
 		storeComposerRecovery
-	} from '$lib/studio/recovery';
-	import type { ComposerRecoverySnapshot } from '$lib/studio/types';
+	} from '$lib/image-editor/recovery';
+	import type { ComposerRecoverySnapshot } from '$lib/image-editor/types';
 	import { parseDraftConflict, type DraftConflictProblem } from '$lib/draft-conflict';
 	import { SerializedSaveQueue } from '$lib/serialized-save-queue';
 	import { buildComposerPreview } from '$lib/compose-preview';
@@ -139,7 +142,7 @@
 		is_unsynced: boolean;
 	};
 
-	interface StudioComposerSnapshotPayload {
+	interface ImageEditorComposerSnapshotPayload {
 		posts: PostItem[];
 		variants: Array<[string, Record<string, VariantPost>]>;
 		active_post_index: number;
@@ -1384,7 +1387,7 @@
 		mediaPickerOpen = true;
 	}
 
-	async function openStudioFromComposer() {
+	async function openImageEditorFromComposer() {
 		if (!selectedWorkspaceId) return;
 		mediaPickerOpen = false;
 		if (hasContent) await saveDraft();
@@ -1392,8 +1395,8 @@
 			draftId ? resolve(`/posts/${encodeURIComponent(draftId)}` as '/') : $page.url,
 			$page.url
 		);
-		returnURL.searchParams.delete('studio_return');
-		const token = await createStudioReturnToken({
+		returnURL.searchParams.delete('image_editor_return');
+		const token = await createImageEditorReturnToken({
 			workspace_id: selectedWorkspaceId,
 			return_url: `${returnURL.pathname}${returnURL.search}`,
 			purpose: isThread ? 'thread_segment' : 'post_media',
@@ -1431,28 +1434,28 @@
 				selected_time: selectedTime,
 				random_delay_override: randomDelayOverride,
 				repost_override: $state.snapshot(repostOverride)
-			} satisfies StudioComposerSnapshotPayload
+			} satisfies ImageEditorComposerSnapshotPayload
 		};
 		storeComposerRecovery(token.token, snapshot);
 		await goto(
 			resolve(
-				`/studio/new?workspace=${encodeURIComponent(selectedWorkspaceId)}&return_token=${encodeURIComponent(token.token)}` as '/'
+				`/image-editor/new?workspace=${encodeURIComponent(selectedWorkspaceId)}&return_token=${encodeURIComponent(token.token)}` as '/'
 			)
 		);
 	}
 
-	async function restoreStudioReturn() {
+	async function restoreImageEditorReturn() {
 		if (!$page?.url) return;
-		const token = $page.url.searchParams.get('studio_return');
+		const token = $page.url.searchParams.get('image_editor_return');
 		if (!token) return;
 		const clean = new URL($page.url);
-		clean.searchParams.delete('studio_return');
+		clean.searchParams.delete('image_editor_return');
 		replaceState(resolve(`${clean.pathname}${clean.search}` as '/'), {});
 		try {
 			const snapshot = loadComposerRecovery(token);
-			const result = await consumeStudioReturnToken(token);
+			const result = await consumeImageEditorReturnToken(token);
 			if (snapshot?.workspace_id === result.workspace_id) {
-				const payload = snapshot.payload as StudioComposerSnapshotPayload;
+				const payload = snapshot.payload as ImageEditorComposerSnapshotPayload;
 				posts = structuredClone(payload.posts);
 				variants = new SvelteMap(payload.variants);
 				activePostIndex = Math.max(
@@ -1496,16 +1499,16 @@
 			await hydrateMediaMetadata(result.workspace_id, result.media_ids);
 			scheduleAutoSave();
 			clearComposerRecovery(token);
-			notifyStudioReturn(result.media_ids.length);
+			notifyImageEditorReturn(result.media_ids.length);
 		} catch (cause) {
 			error =
 				cause instanceof Error
-					? `${cause.message} Your Studio exports are still available in Media.`
-					: 'Studio exports are still available in Media.';
+					? `${cause.message} Your OpenPost Image Editor exports are still available in Media.`
+					: 'OpenPost Image Editor exports are still available in Media.';
 		}
 	}
 
-	function notifyStudioReturn(count: number) {
+	function notifyImageEditorReturn(count: number) {
 		error = '';
 		if (count > 0) soundPreferences.play('success');
 	}
@@ -1672,7 +1675,7 @@
 		document.addEventListener('visibilitychange', handleVisibilityChange);
 		void (async () => {
 			await initializeComposer();
-			await restoreStudioReturn();
+			await restoreImageEditorReturn();
 		})();
 		return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
 	});
@@ -2963,6 +2966,9 @@
 				{/if}
 				<ComposerRepostControl
 					workspaceID={selectedWorkspaceId}
+					sourcePlatforms={[
+						...new Set(selectedAccounts.map((account) => getPlatformKey(account.platform)))
+					]}
 					bind:value={repostOverride}
 					disabled={!selectedWorkspaceId || isSaving || isSubmitting}
 					onChange={scheduleAutoSave}
@@ -3098,6 +3104,9 @@
 				{/if}
 				<ComposerRepostControl
 					workspaceID={selectedWorkspaceId}
+					sourcePlatforms={[
+						...new Set(selectedAccounts.map((account) => getPlatformKey(account.platform)))
+					]}
 					bind:value={repostOverride}
 					disabled={!selectedWorkspaceId || isSaving || isSubmitting}
 					onChange={scheduleAutoSave}
@@ -3727,7 +3736,7 @@
 		setEditorMediaIds(mediaPickerPostIndex, ids);
 		await hydrateMediaMetadata(selectedWorkspaceId, ids);
 	}}
-	onCreate={openStudioFromComposer}
+	onCreate={openImageEditorFromComposer}
 />
 
 <DestinationSettingsDialog

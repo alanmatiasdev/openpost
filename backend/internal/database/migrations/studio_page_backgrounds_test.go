@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestStudioPageBackgroundMigration(t *testing.T) {
+func TestImageEditorPageBackgroundMigration(t *testing.T) {
 	t.Parallel()
 
 	db := newPostVariantsTestDB(t)

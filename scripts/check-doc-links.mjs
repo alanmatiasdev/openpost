@@ -8,7 +8,7 @@ const excludedPrefixes = [
   ".agents/",
   ".hermes/",
   "docs/research/",
-  "frontend/static/studio-models/",
+  "frontend/static/image-editor-models/",
 ];
 
 const files = execFileSync(

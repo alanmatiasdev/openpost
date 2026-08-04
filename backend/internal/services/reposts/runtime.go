@@ -354,12 +354,13 @@ func (s *Service) execute(ctx context.Context, executionID string) error {
 		s.markExecutionFailed(ctx, execution, "authentication_failed", "The target account needs to be reconnected.")
 		return fmt.Errorf("repost target authentication: %w", err)
 	}
+	sourceURL := repostSourceURL(source, rendition)
 	s.recordProviderWrite(ctx, execution.WorkspaceID)
 	result, err := adapter.Repost(ctx, token, target.AccountID, platform.RepostRequest{
 		SourceAccountID:   source.AccountID,
 		SourceInstanceURL: source.InstanceURL,
 		ExternalID:        rendition.ExternalID,
-		ExternalURL:       rendition.ExternalURL,
+		ExternalURL:       sourceURL,
 	})
 	if err != nil {
 		s.markExecutionFailed(ctx, execution, "provider_write_failed", "The provider write failed. OpenPost did not retry because the result may be ambiguous.")
@@ -385,6 +386,19 @@ func (s *Service) execute(ctx context.Context, executionID string) error {
 		"external_url":      result.ExternalURL,
 	})
 	return nil
+}
+
+func repostSourceURL(source models.SocialAccount, rendition models.Rendition) string {
+	if platform.IsSafeContentURL(rendition.ExternalURL) {
+		return rendition.ExternalURL
+	}
+	return platform.DeterministicContentURL(
+		source.Platform,
+		source.AccountID,
+		source.AccountUsername,
+		source.InstanceURL,
+		rendition.ExternalID,
+	)
 }
 
 func (s *Service) loadExecutionRule(ctx context.Context, executionID, status string) (*models.RepostExecution, Rule, error) {

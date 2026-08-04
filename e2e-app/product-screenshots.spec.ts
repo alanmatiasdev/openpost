@@ -245,7 +245,7 @@ test.describe("product screenshot capture", () => {
     const workspace = await createWorkspace(
       request,
       auth.token,
-      "Northstar Studio",
+      "Northstar Image Editor",
     );
     const profile = await request.patch("/api/v1/auth/profile", {
       headers: { Authorization: `Bearer ${auth.token}` },

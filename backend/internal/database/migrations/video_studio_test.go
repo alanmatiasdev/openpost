@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestRunMigrationsCreatesVideoStudioSchema(t *testing.T) {
+func TestRunMigrationsCreatesVideoEditorSchema(t *testing.T) {
 	t.Parallel()
 
 	db := newMigrationsTestDB(t)
@@ -36,7 +36,7 @@ func TestRunMigrationsCreatesVideoStudioSchema(t *testing.T) {
 	}
 }
 
-func TestVideoStudioProjectAssetsCascadeAndRestrictMedia(t *testing.T) {
+func TestVideoEditorProjectAssetsCascadeAndRestrictMedia(t *testing.T) {
 	t.Parallel()
 
 	db := newMigrationsTestDB(t)

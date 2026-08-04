@@ -19,20 +19,20 @@ const hostedAuthConfiguration = {
   support_email: "openpost@rgo.pt",
 };
 
-  test("hosted registration requires current legal acceptance", async ({
-    page,
-  }) => {
-    const unique = Date.now().toString(36);
-    const email = `legal-registration-${unique}@example.com`;
-    await routeBrowserRegistration(page, email);
-    await page.route("**/api/v1/auth/config", (route) =>
-      route.fulfill({ json: hostedAuthConfiguration }),
-    );
+test("hosted registration requires current legal acceptance", async ({
+  page,
+}) => {
+  const unique = Date.now().toString(36);
+  const email = `legal-registration-${unique}@example.com`;
+  await routeBrowserRegistration(page, email);
+  await page.route("**/api/v1/auth/config", (route) =>
+    route.fulfill({ json: hostedAuthConfiguration }),
+  );
 
-    await page.goto("/register");
-    await page.getByLabel("Email").fill(email);
-    await page.getByLabel("Password", { exact: true }).fill(password);
-    await page.getByLabel("Confirm Password").fill(password);
+  await page.goto("/register");
+  await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Password", { exact: true }).fill(password);
+  await page.getByLabel("Confirm Password").fill(password);
   const submit = page.getByRole("button", { name: "Create Account" });
   await expect(submit).toBeDisabled();
   await expect(
@@ -43,18 +43,20 @@ const hostedAuthConfiguration = {
   ).toHaveAttribute("href", hostedAuthConfiguration.privacy_url);
 
   await page.getByRole("checkbox").check();
-    const registrationRequest = page.waitForRequest(
-      (request) =>
-        request.url().endsWith("/api/v1/auth/register") &&
-        request.method() === "POST",
+  const registrationRequest = page.waitForRequest(
+    (request) =>
+      request.url().endsWith("/api/v1/auth/register") &&
+      request.method() === "POST",
   );
   await submit.click();
-    expect((await registrationRequest).postDataJSON()).toMatchObject({
-      email,
-      accepted_legal: true,
-    });
-    await expect(page).toHaveURL(/\/checkout\?plan=creator&billing_period=monthly$/);
+  expect((await registrationRequest).postDataJSON()).toMatchObject({
+    email,
+    accepted_legal: true,
   });
+  await expect(page).toHaveURL(
+    /\/checkout\?plan=founder&billing_period=monthly$/,
+  );
+});
 
 test("password recovery keeps the token out of browser history and uses generic confirmation", async ({
   page,

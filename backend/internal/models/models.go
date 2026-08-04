@@ -1263,7 +1263,7 @@ type MediaAttachment struct {
 	CreatedAt          time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
 }
 
-// DesignDocument is the persisted Studio document head. Its pages are stored
+// DesignDocument is the persisted Image Editor document head. Its pages are stored
 // separately so saving or loading a large multi-page design remains bounded.
 type DesignDocument struct {
 	bun.BaseModel `bun:"table:design_documents"`
@@ -1348,7 +1348,7 @@ type DesignReturnToken struct {
 	ConsumedAt      time.Time `bun:"consumed_at,nullzero" json:"consumed_at,omitempty"`
 }
 
-// VideoProject is the small cloud-synced head for a local-first Video Studio
+// VideoProject is the small cloud-synced head for a local-first OpenPost Video Editor
 // project. Source bytes remain normal Media library assets and are linked
 // through VideoProjectAsset.
 type VideoProject struct {

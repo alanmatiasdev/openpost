@@ -60,7 +60,7 @@ MFA-protected local instance administrator in
 Instance settings are available only to instance administrators.
 
 - **Overview** shows account growth, publishing activity, and the running release.
-- **Configuration** manages optional account policy, authentication, email delivery, Studio, feedback, provider behavior, and OAuth provider applications.
+- **Configuration** manages optional account policy, authentication, email delivery, OpenPost Image Editor, feedback, provider behavior, and OAuth provider applications.
 - **Users** shows instance-wide account, plan, access, and activity details.
 
 The Configuration screen identifies whether each value comes from the environment, an encrypted admin setting, or the application default. Environment values are read-only and win over database overrides. Dormant database fallbacks remain visible and removable so they cannot reactivate unnoticed after an environment value is removed. Saved admin values take effect after a server restart. Database, encryption, network, storage, and hosted billing settings remain deployment-only because OpenPost needs them before this screen can load.

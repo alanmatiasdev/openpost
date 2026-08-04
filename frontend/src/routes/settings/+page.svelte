@@ -22,8 +22,8 @@
 	import SettingsFormFooter from '$lib/components/settings-form-footer.svelte';
 	import MediaPreviewImage from '$lib/components/media-preview-image.svelte';
 	import MediaPicker from '$lib/components/media-picker.svelte';
-	import BrandKitEditor from '$lib/studio/components/brand-kit-editor.svelte';
-	import StudioColorPicker from '$lib/studio/components/studio-color-picker.svelte';
+	import BrandKitEditor from '$lib/image-editor/components/brand-kit-editor.svelte';
+	import ImageEditorColorPicker from '$lib/image-editor/components/image-editor-color-picker.svelte';
 	import AccountsPage from '../accounts/+page.svelte';
 	import RepostAutomationSettings from '$lib/components/repost-automation-settings.svelte';
 	import { goto } from '$app/navigation';
@@ -31,9 +31,9 @@
 	import { auth } from '$lib/stores/auth';
 	import { getApiBase } from '$lib/stores/instance.svelte';
 	import type { SettingsTabID } from '$lib/settings-navigation';
-	import { loadStudioBrandKit } from '$lib/studio/api';
+	import { loadImageEditorBrandKit } from '$lib/image-editor/api';
 	import { getAuthenticatedMediaURL } from '$lib/media-url';
-	import type { StudioBrandKit } from '$lib/studio/types';
+	import type { ImageEditorBrandKit } from '$lib/image-editor/types';
 	import { createPasskeyCredential } from '$lib/auth/webauthn';
 	import { acquireReauthGrant, startOIDCIdentityLink } from '$lib/auth/reauth';
 	import LoaderIcon from 'lucide-svelte/icons/loader-2';
@@ -161,7 +161,7 @@
 	let teamError = $state('');
 	let teamLoadError = $state('');
 	let workspaceTeam = $state<WorkspaceTeam | null>(null);
-	let brandKit = $state.raw<StudioBrandKit | null>(null);
+	let brandKit = $state.raw<ImageEditorBrandKit | null>(null);
 	let brandLoading = $state(false);
 	let brandError = $state('');
 	let inviteEmail = $state('');
@@ -315,7 +315,7 @@
 
 	function billingPlanName(planID: string) {
 		if (planID === 'starter') return m.settings_plan_starter();
-		if (planID === 'creator') return m.settings_plan_creator();
+		if (planID === 'founder') return m.settings_plan_founder();
 		if (planID === 'pro') return m.settings_plan_pro();
 		if (planID === 'team') return m.settings_plan_team();
 		if (planID === 'agency') return m.settings_plan_agency();
@@ -324,7 +324,7 @@
 
 	function billingPlanDescription(planID: string) {
 		if (planID === 'starter') return m.settings_plan_starter_description();
-		if (planID === 'creator') return m.settings_plan_creator_description();
+		if (planID === 'founder') return m.settings_plan_founder_description();
 		if (planID === 'pro') return m.settings_plan_pro_description();
 		if (planID === 'team') return m.settings_plan_team_description();
 		if (planID === 'agency') return m.settings_plan_agency_description();
@@ -1445,7 +1445,7 @@
 		brandError = '';
 		brandKit = null;
 		try {
-			const kit = await loadStudioBrandKit(workspaceID);
+			const kit = await loadImageEditorBrandKit(workspaceID);
 			if (requestSequence !== brandRequestSequence || !isCurrentWorkspace(workspaceID)) return;
 			brandKit = kit;
 		} catch (cause) {
@@ -2169,7 +2169,7 @@
 					<div class="mt-4 max-w-sm space-y-2">
 						<Label for="workspace-color">{m.settings_workspace_color()}</Label>
 						<div class="[&>button]:min-h-11">
-							<StudioColorPicker
+							<ImageEditorColorPicker
 								id="workspace-color"
 								label={m.settings_workspace_color()}
 								value={workspaceCtx.settings.color}
@@ -3448,7 +3448,7 @@
 										</div>
 										{#if brandKit.assets.length === 0 && brandKit.fonts.length === 0}
 											<p class="rounded-xl border border-dashed p-6 text-sm text-muted-foreground">
-												{m.studio_brand_empty()}
+												{m.image_editor_brand_empty()}
 											</p>
 										{/if}
 									</section>

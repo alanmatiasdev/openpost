@@ -165,9 +165,13 @@ test("communications and notifications stay usable across desktop and phone layo
       await route.fulfill({
         contentType: "application/json",
         json: {
-          post_published: { in_app: true },
-          new_engagement: { in_app: true },
-          new_message: { in_app: true },
+          preferences: {
+            post_published: { in_app: true, email: false },
+            new_engagement: { in_app: true, email: false },
+            new_message: { in_app: true, email: false },
+          },
+          email_available: true,
+          email_address: "communications@example.com",
         },
       });
       return;
@@ -326,8 +330,12 @@ test("communications and notifications stay usable across desktop and phone layo
     page.getByRole("heading", { name: "Notifications" }),
   ).toBeVisible();
   await expect(page.getByText("New message from Ada")).toBeVisible();
+  await page.getByRole("button", { name: "Notification settings" }).click();
   await expect(
-    page.getByRole("heading", { name: "Notification preferences" }),
+    page.getByRole("heading", { name: "Notifications" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Delivery by event" }),
   ).toBeVisible();
 
   await page.setViewportSize({ width: 390, height: 844 });

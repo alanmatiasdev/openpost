@@ -1,6 +1,8 @@
 package reposts
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -38,6 +40,12 @@ const (
 
 var supportedPlatforms = []string{"bluesky", "linkedin", "mastodon", "x"}
 
+var ErrInvalidInput = errors.New("invalid repost input")
+
+func invalidInputf(format string, args ...any) error {
+	return fmt.Errorf("%w: %s", ErrInvalidInput, fmt.Sprintf(format, args...))
+}
+
 type Rule struct {
 	DelaySeconds            int    `json:"delay_seconds" minimum:"0" maximum:"2592000" doc:"Wait after publishing before the first eligibility check"`
 	EvaluationWindowSeconds int    `json:"evaluation_window_seconds" minimum:"900" maximum:"2592000" doc:"How long OpenPost may wait for engagement gates"`
@@ -54,6 +62,20 @@ type Override struct {
 	Mode             string   `json:"mode" enum:"inherit,off,custom" doc:"Use workspace rules, disable reposts, or use this post's custom rule"`
 	TargetAccountIDs []string `json:"target_account_ids,omitempty" doc:"Target accounts for a custom override"`
 	Rule             Rule     `json:"rule,omitempty" doc:"Custom timing and engagement gates"`
+}
+
+func (o Override) MarshalJSON() ([]byte, error) {
+	if o.Mode == ModeInherit || o.Mode == ModeOff || o.Mode == "" {
+		mode := o.Mode
+		if mode == "" {
+			mode = ModeInherit
+		}
+		return json.Marshal(struct {
+			Mode string `json:"mode"`
+		}{Mode: mode})
+	}
+	type overrideAlias Override
+	return json.Marshal(overrideAlias(o))
 }
 
 type PolicyInput struct {
@@ -134,27 +156,27 @@ func NormalizeRule(rule Rule) (Rule, error) {
 		rule.PlateauChecks = 2
 	}
 	if rule.DelaySeconds < 0 || time.Duration(rule.DelaySeconds)*time.Second > maxDelay {
-		return Rule{}, fmt.Errorf("repost delay must be between 0 and 30 days")
+		return Rule{}, invalidInputf("repost delay must be between 0 and 30 days")
 	}
 	window := time.Duration(rule.EvaluationWindowSeconds) * time.Second
 	if window < 15*time.Minute || window > maxEvaluationWindow {
-		return Rule{}, fmt.Errorf("repost evaluation window must be between 15 minutes and 30 days")
+		return Rule{}, invalidInputf("repost evaluation window must be between 15 minutes and 30 days")
 	}
 	if rule.EvaluationWindowSeconds < rule.DelaySeconds {
-		return Rule{}, fmt.Errorf("repost evaluation window cannot end before its delay")
+		return Rule{}, invalidInputf("repost evaluation window cannot end before its delay")
 	}
 	if rule.ThresholdMode != ThresholdAll && rule.ThresholdMode != ThresholdAny {
-		return Rule{}, fmt.Errorf("repost threshold mode must be all or any")
+		return Rule{}, invalidInputf("repost threshold mode must be all or any")
 	}
 	for name, value := range map[string]int64{
 		"likes": rule.MinLikes, "comments": rule.MinComments, "reposts": rule.MinReposts, "views": rule.MinViews,
 	} {
 		if value < 0 || value > maxThreshold {
-			return Rule{}, fmt.Errorf("minimum %s must be between 0 and %d", name, maxThreshold)
+			return Rule{}, invalidInputf("minimum %s must be between 0 and %d", name, maxThreshold)
 		}
 	}
 	if rule.PlateauChecks < 2 || rule.PlateauChecks > 12 {
-		return Rule{}, fmt.Errorf("plateau checks must be between 2 and 12")
+		return Rule{}, invalidInputf("plateau checks must be between 2 and 12")
 	}
 	return rule, nil
 }
@@ -170,10 +192,10 @@ func NormalizeOverride(input Override) (Override, error) {
 	case ModeCustom:
 		input.TargetAccountIDs = uniqueIDs(input.TargetAccountIDs)
 		if len(input.TargetAccountIDs) == 0 {
-			return Override{}, fmt.Errorf("custom repost settings require at least one target account")
+			return Override{}, invalidInputf("custom repost settings require at least one target account")
 		}
 		if len(input.TargetAccountIDs) > maxAccountsPerRule {
-			return Override{}, fmt.Errorf("custom repost settings support at most %d target accounts", maxAccountsPerRule)
+			return Override{}, invalidInputf("custom repost settings support at most %d target accounts", maxAccountsPerRule)
 		}
 		rule, err := NormalizeRule(input.Rule)
 		if err != nil {
@@ -182,7 +204,7 @@ func NormalizeOverride(input Override) (Override, error) {
 		input.Rule = rule
 		return input, nil
 	default:
-		return Override{}, fmt.Errorf("repost mode must be inherit, off, or custom")
+		return Override{}, invalidInputf("repost mode must be inherit, off, or custom")
 	}
 }
 

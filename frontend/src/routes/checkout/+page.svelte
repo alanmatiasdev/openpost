@@ -33,7 +33,7 @@
 	type BillingStatus = components['schemas']['BillingStatusResponse'];
 	type CheckoutState = 'loading' | 'ready' | 'confirming' | 'success' | 'error';
 
-	let selectedPlanID = $state<HostedPlanID>('creator');
+	let selectedPlanID = $state<HostedPlanID>('founder');
 	let billingPeriod = $state<BillingPeriod>('monthly');
 	let checkout = $state.raw<BillingURL | null>(null);
 	let checkoutState = $state<CheckoutState>('loading');
@@ -180,7 +180,7 @@
 	}
 
 	onMount(() => {
-		selectedPlanID = hostedPlanFromSearchParams(page.url.searchParams) || 'creator';
+		selectedPlanID = hostedPlanFromSearchParams(page.url.searchParams) || 'founder';
 		billingPeriod = billingPeriodFromSearchParams(page.url.searchParams);
 		void workspaceCtx.initialize().then(() => {
 			if (page.url.searchParams.get('status') === 'success') {

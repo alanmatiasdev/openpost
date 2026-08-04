@@ -148,6 +148,12 @@
 		policy.source_account_ids = selected.includes(accountID)
 			? selected.filter((id) => id !== accountID)
 			: [...selected, accountID];
+		if (policy.source_account_ids.length > 0) {
+			policy.target_account_ids = (policy.target_account_ids ?? []).filter((targetID) => {
+				const target = accounts.find((account) => account.id === targetID);
+				return Boolean(target && targetCompatible(policy, target));
+			});
+		}
 	}
 
 	function toggleTarget(policy: RepostPolicy, accountID: string) {
@@ -251,6 +257,15 @@
 		if (platform === 'bluesky') return 'Bluesky';
 		if (platform === 'mastodon') return 'Mastodon';
 		return platform;
+	}
+
+	function targetCompatible(policy: RepostPolicy, target: RepostAccount): boolean {
+		const selected = policy.source_account_ids ?? [];
+		const candidates =
+			selected.length === 0
+				? sourceAccounts
+				: sourceAccounts.filter((account) => selected.includes(account.id));
+		return candidates.some((account) => account.platform === target.platform);
 	}
 
 	function delayLabel(value: number, options: Array<{ value: number; label: string }>): string {
@@ -380,7 +395,7 @@
 											<Checkbox
 												checked={(policy.target_account_ids ?? []).includes(account.id)}
 												onCheckedChange={() => toggleTarget(policy, account.id)}
-												disabled={!settings.can_manage}
+												disabled={!settings.can_manage || !targetCompatible(policy, account)}
 											/>
 											<span class="min-w-0">
 												<span class="block truncate font-medium">{accountLabel(account)}</span>
@@ -390,6 +405,11 @@
 														· {account.grant_required
 															? m.repost_access_on_save()
 															: m.repost_access_granted()}
+													{/if}
+													{#if !targetCompatible(policy, account)}
+														· {m.repost_target_needs_source({
+															platform: platformLabel(account.platform)
+														})}
 													{/if}
 												</span>
 											</span>
@@ -408,7 +428,11 @@
 									onValueChange={(value) => setDelay(policy, value)}
 									disabled={!settings.can_manage}
 								>
-									<Select.Trigger id={`repost-delay-${policy.id}`} class="w-full">
+									<Select.Trigger
+										id={`repost-delay-${policy.id}`}
+										class="w-full"
+										aria-label={m.repost_delay()}
+									>
 										{delayLabel(policy.rule.delay_seconds, delayOptions)}
 									</Select.Trigger>
 									<Select.Content>
@@ -426,7 +450,11 @@
 									onValueChange={(value) => (policy.rule.evaluation_window_seconds = Number(value))}
 									disabled={!settings.can_manage}
 								>
-									<Select.Trigger id={`repost-window-${policy.id}`} class="w-full">
+									<Select.Trigger
+										id={`repost-window-${policy.id}`}
+										class="w-full"
+										aria-label={m.repost_evaluation_window()}
+									>
 										{delayLabel(policy.rule.evaluation_window_seconds, windowOptions)}
 									</Select.Trigger>
 									<Select.Content>

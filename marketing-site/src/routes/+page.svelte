@@ -77,7 +77,7 @@ FORM: Product-led publishing workspace with activity squares as the recurring pr
       ],
     },
     {
-      eyebrow: "Media studio",
+      eyebrow: "Media workspace",
       title: "Prepare the asset where you publish it.",
       description:
         "Keep source files, alt text, favorites, and use history in the media library, then open focused editors for video work.",

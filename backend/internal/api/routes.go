@@ -63,9 +63,9 @@ type RouteDeps struct {
 	PublicURL                    string
 	DisableRegistrations         bool
 	DisableLinkedInThreadReplies bool
-	StudioEnabled                bool
-	StudioModelBaseURL           string
-	VideoStudioEnabled           bool
+	ImageEditorEnabled           bool
+	ImageEditorModelBaseURL      string
+	VideoEditorEnabled           bool
 	VideoModelBaseURL            string
 	StockMediaEnabled            bool
 	PexelsAPIKey                 string
@@ -100,11 +100,11 @@ func RegisterHumaRoutes(api huma.API, deps RouteDeps) {
 	}
 	mediaHandler.SetPublicMediaVerifier(deps.PublicMediaVerifier)
 	mediaHandler.RegisterRoutes(api)
-	handlers.NewStudioHandler(
+	handlers.NewImageEditorHandler(
 		deps.DB,
 		deps.Authenticator,
-		deps.StudioEnabled,
-		deps.StudioModelBaseURL,
+		deps.ImageEditorEnabled,
+		deps.ImageEditorModelBaseURL,
 	).RegisterRoutes(api)
 	stockMediaHandler := handlers.NewStockMediaHandler(
 		deps.DB,
@@ -114,15 +114,15 @@ func RegisterHumaRoutes(api huma.API, deps RouteDeps) {
 		deps.PixabayAPIKey,
 	)
 	stockMediaHandler.RegisterRoutes(api)
-	videoStudioHandler := handlers.NewVideoStudioHandler(
+	videoEditorHandler := handlers.NewVideoEditorHandler(
 		deps.DB,
 		deps.Authenticator,
-		deps.VideoStudioEnabled,
+		deps.VideoEditorEnabled,
 		deps.VideoModelBaseURL,
 	)
-	videoStudioHandler.SetEntitlement(deps.Entitlement)
-	videoStudioHandler.SetStockProviders(stockMediaHandler.ProviderKeys())
-	videoStudioHandler.RegisterRoutes(api)
+	videoEditorHandler.SetEntitlement(deps.Entitlement)
+	videoEditorHandler.SetStockProviders(stockMediaHandler.ProviderKeys())
+	videoEditorHandler.RegisterRoutes(api)
 
 	billingHandler := deps.BillingHandler
 	if billingHandler == nil {
@@ -243,6 +243,7 @@ func RegisterHumaRoutes(api huma.API, deps RouteDeps) {
 	workspaceHandler.UpdateWorkspaceSettings(api)
 
 	postHandler := handlers.NewPostHandler(deps.DB, deps.Authenticator, deps.Entitlement)
+	postHandler.SetRepostService(deps.RepostService)
 	postHandler.SetCapabilityDependencies(deps.Providers, deps.TokenSource)
 	postHandler.CreatePost(api)
 	postHandler.CreateTextPostDraft(api)

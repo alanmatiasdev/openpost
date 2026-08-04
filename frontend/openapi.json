@@ -2067,30 +2067,14 @@
 				},
 				"type": "object"
 			},
-			"CompleteMediaUploadSessionInputBody": {
+			"CompleteImageEditorReturnTokenInputBody": {
 				"additionalProperties": false,
 				"properties": {
 					"$schema": {
 						"description": "A URL to the JSON Schema for this object.",
-						"examples": ["https://example.com/schemas/CompleteMediaUploadSessionInputBody.json"],
-						"format": "uri",
-						"readOnly": true,
-						"type": "string"
-					},
-					"workspace_id": {
-						"description": "Workspace ID",
-						"type": "string"
-					}
-				},
-				"required": ["workspace_id"],
-				"type": "object"
-			},
-			"CompleteStudioReturnTokenInputBody": {
-				"additionalProperties": false,
-				"properties": {
-					"$schema": {
-						"description": "A URL to the JSON Schema for this object.",
-						"examples": ["https://example.com/schemas/CompleteStudioReturnTokenInputBody.json"],
+						"examples": [
+							"https://example.com/schemas/CompleteImageEditorReturnTokenInputBody.json"
+						],
 						"format": "uri",
 						"readOnly": true,
 						"type": "string"
@@ -2109,12 +2093,14 @@
 				"required": ["design_id", "media_ids"],
 				"type": "object"
 			},
-			"CompleteStudioReturnTokenOutputBody": {
+			"CompleteImageEditorReturnTokenOutputBody": {
 				"additionalProperties": false,
 				"properties": {
 					"$schema": {
 						"description": "A URL to the JSON Schema for this object.",
-						"examples": ["https://example.com/schemas/CompleteStudioReturnTokenOutputBody.json"],
+						"examples": [
+							"https://example.com/schemas/CompleteImageEditorReturnTokenOutputBody.json"
+						],
 						"format": "uri",
 						"readOnly": true,
 						"type": "string"
@@ -2124,6 +2110,24 @@
 					}
 				},
 				"required": ["return_url"],
+				"type": "object"
+			},
+			"CompleteMediaUploadSessionInputBody": {
+				"additionalProperties": false,
+				"properties": {
+					"$schema": {
+						"description": "A URL to the JSON Schema for this object.",
+						"examples": ["https://example.com/schemas/CompleteMediaUploadSessionInputBody.json"],
+						"format": "uri",
+						"readOnly": true,
+						"type": "string"
+					},
+					"workspace_id": {
+						"description": "Workspace ID",
+						"type": "string"
+					}
+				},
+				"required": ["workspace_id"],
 				"type": "object"
 			},
 			"CompleteVideoReturnTokenOutputBody": {
@@ -2193,12 +2197,14 @@
 				"required": ["challenge_id", "code"],
 				"type": "object"
 			},
-			"ConsumeStudioReturnTokenOutputBody": {
+			"ConsumeImageEditorReturnTokenOutputBody": {
 				"additionalProperties": false,
 				"properties": {
 					"$schema": {
 						"description": "A URL to the JSON Schema for this object.",
-						"examples": ["https://example.com/schemas/ConsumeStudioReturnTokenOutputBody.json"],
+						"examples": [
+							"https://example.com/schemas/ConsumeImageEditorReturnTokenOutputBody.json"
+						],
 						"format": "uri",
 						"readOnly": true,
 						"type": "string"
@@ -2573,7 +2579,7 @@
 						"type": "string"
 					},
 					"plan_id": {
-						"description": "Plan ID: starter, creator, pro, team, or agency",
+						"description": "Plan ID: starter, founder, pro, team, or agency",
 						"type": "string"
 					},
 					"workspace_id": {
@@ -2603,6 +2609,151 @@
 						"type": "string"
 					}
 				},
+				"type": "object"
+			},
+			"CreateImageEditorCheckpointInputBody": {
+				"additionalProperties": false,
+				"properties": {
+					"$schema": {
+						"description": "A URL to the JSON Schema for this object.",
+						"examples": ["https://example.com/schemas/CreateImageEditorCheckpointInputBody.json"],
+						"format": "uri",
+						"readOnly": true,
+						"type": "string"
+					},
+					"name": {
+						"maxLength": 100,
+						"minLength": 1,
+						"type": "string"
+					}
+				},
+				"required": ["name"],
+				"type": "object"
+			},
+			"CreateImageEditorDesignInputBody": {
+				"additionalProperties": false,
+				"properties": {
+					"$schema": {
+						"description": "A URL to the JSON Schema for this object.",
+						"examples": ["https://example.com/schemas/CreateImageEditorDesignInputBody.json"],
+						"format": "uri",
+						"readOnly": true,
+						"type": "string"
+					},
+					"client_request_id": {
+						"description": "Stable client request ID used to make design creation idempotent",
+						"maxLength": 200,
+						"type": "string"
+					},
+					"height_px": {
+						"format": "int64",
+						"type": "integer"
+					},
+					"preset_key": {
+						"type": "string"
+					},
+					"source_media_id": {
+						"type": "string"
+					},
+					"title": {
+						"maxLength": 160,
+						"type": "string"
+					},
+					"width_px": {
+						"format": "int64",
+						"type": "integer"
+					},
+					"workspace_id": {
+						"type": "string"
+					}
+				},
+				"required": ["workspace_id", "title", "preset_key", "width_px", "height_px"],
+				"type": "object"
+			},
+			"CreateImageEditorReturnTokenInputBody": {
+				"additionalProperties": false,
+				"properties": {
+					"$schema": {
+						"description": "A URL to the JSON Schema for this object.",
+						"examples": ["https://example.com/schemas/CreateImageEditorReturnTokenInputBody.json"],
+						"format": "uri",
+						"readOnly": true,
+						"type": "string"
+					},
+					"constraints": {
+						"additionalProperties": {},
+						"type": "object"
+					},
+					"max_selection": {
+						"format": "int64",
+						"maximum": 35,
+						"minimum": 1,
+						"type": "integer"
+					},
+					"purpose": {
+						"maxLength": 64,
+						"type": "string"
+					},
+					"return_url": {
+						"type": "string"
+					},
+					"workspace_id": {
+						"type": "string"
+					}
+				},
+				"required": ["workspace_id", "return_url", "purpose", "max_selection", "constraints"],
+				"type": "object"
+			},
+			"CreateImageEditorReturnTokenOutputBody": {
+				"additionalProperties": false,
+				"properties": {
+					"$schema": {
+						"description": "A URL to the JSON Schema for this object.",
+						"examples": ["https://example.com/schemas/CreateImageEditorReturnTokenOutputBody.json"],
+						"format": "uri",
+						"readOnly": true,
+						"type": "string"
+					},
+					"expires_at": {
+						"type": "string"
+					},
+					"token": {
+						"type": "string"
+					}
+				},
+				"required": ["token", "expires_at"],
+				"type": "object"
+			},
+			"CreateImageEditorTemplateInputBody": {
+				"additionalProperties": false,
+				"properties": {
+					"$schema": {
+						"description": "A URL to the JSON Schema for this object.",
+						"examples": ["https://example.com/schemas/CreateImageEditorTemplateInputBody.json"],
+						"format": "uri",
+						"readOnly": true,
+						"type": "string"
+					},
+					"category": {
+						"maxLength": 80,
+						"type": "string"
+					},
+					"document": {
+						"$ref": "#/components/schemas/ImageEditorDocumentPayload"
+					},
+					"name": {
+						"maxLength": 120,
+						"minLength": 1,
+						"type": "string"
+					},
+					"preview_media_id": {
+						"type": "string"
+					},
+					"workspace_id": {
+						"type": "string"
+					}
+				},
+				"required": ["workspace_id", "name", "category", "document"],
 				"type": "object"
 			},
 			"CreateMCPOAuthAuthorizationInputBody": {
@@ -2677,32 +2828,6 @@
 				"required": ["redirect_url"],
 				"type": "object"
 			},
-			"CreateMediaCollectionInputBody": {
-				"additionalProperties": false,
-				"properties": {
-					"$schema": {
-						"description": "A URL to the JSON Schema for this object.",
-						"examples": ["https://example.com/schemas/CreateMediaCollectionInputBody.json"],
-						"format": "uri",
-						"readOnly": true,
-						"type": "string"
-					},
-					"color": {
-						"maxLength": 32,
-						"type": "string"
-					},
-					"name": {
-						"maxLength": 100,
-						"minLength": 1,
-						"type": "string"
-					},
-					"workspace_id": {
-						"type": "string"
-					}
-				},
-				"required": ["workspace_id", "name", "color"],
-				"type": "object"
-			},
 			"CreateMediaTagInputBody": {
 				"additionalProperties": false,
 				"properties": {
@@ -2750,11 +2875,11 @@
 						"type": "string"
 					},
 					"design_document_id": {
-						"description": "Producing Studio design ID",
+						"description": "Producing OpenPost Image Editor design ID",
 						"type": "string"
 					},
 					"design_page_id": {
-						"description": "Producing Studio page ID",
+						"description": "Producing OpenPost Image Editor page ID",
 						"type": "string"
 					},
 					"filename": {
@@ -2779,11 +2904,11 @@
 						"enum": [
 							"upload",
 							"camera",
-							"studio_export",
-							"studio_edit",
+							"image_editor_export",
+							"image_editor_edit",
 							"background_removal",
-							"video_studio_source",
-							"video_studio_export",
+							"video_editor_source",
+							"video_editor_export",
 							"stock_import"
 						],
 						"type": "string"
@@ -2792,8 +2917,12 @@
 						"$ref": "#/components/schemas/StockMediaProvenance",
 						"description": "License and creator provenance for a selected stock asset"
 					},
+					"tag_id": {
+						"description": "Optional tag to assign to this upload",
+						"type": "string"
+					},
 					"video_project_id": {
-						"description": "Producing Video Studio project ID",
+						"description": "Producing OpenPost Video Editor project ID",
 						"type": "string"
 					},
 					"workspace_id": {
@@ -2857,7 +2986,7 @@
 						"type": "string"
 					},
 					"plan_id": {
-						"description": "Plan ID: starter, creator, pro, team, or agency",
+						"description": "Plan ID: starter, founder, pro, team, or agency",
 						"type": "string"
 					}
 				},
@@ -3088,151 +3217,6 @@
 					}
 				},
 				"required": ["workspace_id", "title", "content_profile", "source_text"],
-				"type": "object"
-			},
-			"CreateStudioCheckpointInputBody": {
-				"additionalProperties": false,
-				"properties": {
-					"$schema": {
-						"description": "A URL to the JSON Schema for this object.",
-						"examples": ["https://example.com/schemas/CreateStudioCheckpointInputBody.json"],
-						"format": "uri",
-						"readOnly": true,
-						"type": "string"
-					},
-					"name": {
-						"maxLength": 100,
-						"minLength": 1,
-						"type": "string"
-					}
-				},
-				"required": ["name"],
-				"type": "object"
-			},
-			"CreateStudioDesignInputBody": {
-				"additionalProperties": false,
-				"properties": {
-					"$schema": {
-						"description": "A URL to the JSON Schema for this object.",
-						"examples": ["https://example.com/schemas/CreateStudioDesignInputBody.json"],
-						"format": "uri",
-						"readOnly": true,
-						"type": "string"
-					},
-					"client_request_id": {
-						"description": "Stable client request ID used to make design creation idempotent",
-						"maxLength": 200,
-						"type": "string"
-					},
-					"height_px": {
-						"format": "int64",
-						"type": "integer"
-					},
-					"preset_key": {
-						"type": "string"
-					},
-					"source_media_id": {
-						"type": "string"
-					},
-					"title": {
-						"maxLength": 160,
-						"type": "string"
-					},
-					"width_px": {
-						"format": "int64",
-						"type": "integer"
-					},
-					"workspace_id": {
-						"type": "string"
-					}
-				},
-				"required": ["workspace_id", "title", "preset_key", "width_px", "height_px"],
-				"type": "object"
-			},
-			"CreateStudioReturnTokenInputBody": {
-				"additionalProperties": false,
-				"properties": {
-					"$schema": {
-						"description": "A URL to the JSON Schema for this object.",
-						"examples": ["https://example.com/schemas/CreateStudioReturnTokenInputBody.json"],
-						"format": "uri",
-						"readOnly": true,
-						"type": "string"
-					},
-					"constraints": {
-						"additionalProperties": {},
-						"type": "object"
-					},
-					"max_selection": {
-						"format": "int64",
-						"maximum": 35,
-						"minimum": 1,
-						"type": "integer"
-					},
-					"purpose": {
-						"maxLength": 64,
-						"type": "string"
-					},
-					"return_url": {
-						"type": "string"
-					},
-					"workspace_id": {
-						"type": "string"
-					}
-				},
-				"required": ["workspace_id", "return_url", "purpose", "max_selection", "constraints"],
-				"type": "object"
-			},
-			"CreateStudioReturnTokenOutputBody": {
-				"additionalProperties": false,
-				"properties": {
-					"$schema": {
-						"description": "A URL to the JSON Schema for this object.",
-						"examples": ["https://example.com/schemas/CreateStudioReturnTokenOutputBody.json"],
-						"format": "uri",
-						"readOnly": true,
-						"type": "string"
-					},
-					"expires_at": {
-						"type": "string"
-					},
-					"token": {
-						"type": "string"
-					}
-				},
-				"required": ["token", "expires_at"],
-				"type": "object"
-			},
-			"CreateStudioTemplateInputBody": {
-				"additionalProperties": false,
-				"properties": {
-					"$schema": {
-						"description": "A URL to the JSON Schema for this object.",
-						"examples": ["https://example.com/schemas/CreateStudioTemplateInputBody.json"],
-						"format": "uri",
-						"readOnly": true,
-						"type": "string"
-					},
-					"category": {
-						"maxLength": 80,
-						"type": "string"
-					},
-					"document": {
-						"$ref": "#/components/schemas/StudioDocumentPayload"
-					},
-					"name": {
-						"maxLength": 120,
-						"minLength": 1,
-						"type": "string"
-					},
-					"preview_media_id": {
-						"type": "string"
-					},
-					"workspace_id": {
-						"type": "string"
-					}
-				},
-				"required": ["workspace_id", "name", "category", "document"],
 				"type": "object"
 			},
 			"CreateTextPostDraftInputBody": {
@@ -3623,12 +3607,29 @@
 				"required": ["deleted"],
 				"type": "object"
 			},
-			"DeleteMediaCollectionOutputBody": {
+			"DeleteImageEditorDesignOutputBody": {
 				"additionalProperties": false,
 				"properties": {
 					"$schema": {
 						"description": "A URL to the JSON Schema for this object.",
-						"examples": ["https://example.com/schemas/DeleteMediaCollectionOutputBody.json"],
+						"examples": ["https://example.com/schemas/DeleteImageEditorDesignOutputBody.json"],
+						"format": "uri",
+						"readOnly": true,
+						"type": "string"
+					},
+					"deleted": {
+						"type": "boolean"
+					}
+				},
+				"required": ["deleted"],
+				"type": "object"
+			},
+			"DeleteImageEditorTemplateOutputBody": {
+				"additionalProperties": false,
+				"properties": {
+					"$schema": {
+						"description": "A URL to the JSON Schema for this object.",
+						"examples": ["https://example.com/schemas/DeleteImageEditorTemplateOutputBody.json"],
 						"format": "uri",
 						"readOnly": true,
 						"type": "string"
@@ -3745,40 +3746,6 @@
 					}
 				},
 				"required": ["requires_restart"],
-				"type": "object"
-			},
-			"DeleteStudioDesignOutputBody": {
-				"additionalProperties": false,
-				"properties": {
-					"$schema": {
-						"description": "A URL to the JSON Schema for this object.",
-						"examples": ["https://example.com/schemas/DeleteStudioDesignOutputBody.json"],
-						"format": "uri",
-						"readOnly": true,
-						"type": "string"
-					},
-					"deleted": {
-						"type": "boolean"
-					}
-				},
-				"required": ["deleted"],
-				"type": "object"
-			},
-			"DeleteStudioTemplateOutputBody": {
-				"additionalProperties": false,
-				"properties": {
-					"$schema": {
-						"description": "A URL to the JSON Schema for this object.",
-						"examples": ["https://example.com/schemas/DeleteStudioTemplateOutputBody.json"],
-						"format": "uri",
-						"readOnly": true,
-						"type": "string"
-					},
-					"deleted": {
-						"type": "boolean"
-					}
-				},
-				"required": ["deleted"],
 				"type": "object"
 			},
 			"DeleteVariantsOutputBody": {
@@ -4137,7 +4104,7 @@
 						"type": ["array", "null"]
 					},
 					"editing_mode": {
-						"enum": ["quick-cut", "studio"],
+						"enum": ["quick-cut", "editor"],
 						"type": "string"
 					},
 					"export_defaults": {
@@ -5084,6 +5051,1230 @@
 				],
 				"type": "object"
 			},
+			"ImageEditorBrandAsset": {
+				"additionalProperties": false,
+				"properties": {
+					"id": {
+						"type": "string"
+					},
+					"media_id": {
+						"type": "string"
+					},
+					"name": {
+						"type": "string"
+					},
+					"role": {
+						"enum": ["primary_logo", "secondary_logo", "mark", "watermark"],
+						"type": "string"
+					}
+				},
+				"required": ["media_id", "role", "name"],
+				"type": "object"
+			},
+			"ImageEditorBrandColor": {
+				"additionalProperties": false,
+				"properties": {
+					"id": {
+						"type": "string"
+					},
+					"name": {
+						"type": "string"
+					},
+					"value": {
+						"type": "string"
+					}
+				},
+				"required": ["id", "name", "value"],
+				"type": "object"
+			},
+			"ImageEditorBrandFont": {
+				"additionalProperties": false,
+				"properties": {
+					"css_family": {
+						"type": "string"
+					},
+					"family": {
+						"type": "string"
+					},
+					"id": {
+						"type": "string"
+					},
+					"license_acknowledged": {
+						"type": "boolean"
+					},
+					"license_acknowledged_at": {
+						"type": "string"
+					},
+					"license_acknowledged_by": {
+						"type": "string"
+					},
+					"media_id": {
+						"type": "string"
+					},
+					"style": {
+						"enum": ["normal", "italic"],
+						"type": "string"
+					},
+					"weight": {
+						"format": "int64",
+						"maximum": 900,
+						"minimum": 100,
+						"type": "integer"
+					}
+				},
+				"required": ["media_id", "family", "weight", "style"],
+				"type": "object"
+			},
+			"ImageEditorBrandKitResponse": {
+				"additionalProperties": false,
+				"properties": {
+					"$schema": {
+						"description": "A URL to the JSON Schema for this object.",
+						"examples": ["https://example.com/schemas/ImageEditorBrandKitResponse.json"],
+						"format": "uri",
+						"readOnly": true,
+						"type": "string"
+					},
+					"assets": {
+						"items": {
+							"$ref": "#/components/schemas/ImageEditorBrandAsset"
+						},
+						"type": ["array", "null"]
+					},
+					"backgrounds": {
+						"items": {
+							"type": "string"
+						},
+						"type": ["array", "null"]
+					},
+					"can_edit": {
+						"type": "boolean"
+					},
+					"colors": {
+						"items": {
+							"$ref": "#/components/schemas/ImageEditorBrandColor"
+						},
+						"type": ["array", "null"]
+					},
+					"exists": {
+						"type": "boolean"
+					},
+					"fonts": {
+						"items": {
+							"$ref": "#/components/schemas/ImageEditorBrandFont"
+						},
+						"type": ["array", "null"]
+					},
+					"id": {
+						"type": "string"
+					},
+					"name": {
+						"type": "string"
+					},
+					"revision": {
+						"format": "int64",
+						"type": "integer"
+					},
+					"text_styles": {
+						"items": {
+							"$ref": "#/components/schemas/ImageEditorBrandTextStyle"
+						},
+						"type": ["array", "null"]
+					},
+					"updated_at": {
+						"type": "string"
+					},
+					"workspace_id": {
+						"type": "string"
+					}
+				},
+				"required": [
+					"workspace_id",
+					"name",
+					"revision",
+					"exists",
+					"can_edit",
+					"colors",
+					"text_styles",
+					"backgrounds",
+					"assets",
+					"fonts"
+				],
+				"type": "object"
+			},
+			"ImageEditorBrandTextStyle": {
+				"additionalProperties": false,
+				"properties": {
+					"color": {
+						"type": "string"
+					},
+					"font_asset_id": {
+						"type": "string"
+					},
+					"font_family": {
+						"type": "string"
+					},
+					"font_size": {
+						"format": "double",
+						"type": "number"
+					},
+					"font_style": {
+						"type": "string"
+					},
+					"font_weight": {
+						"format": "int64",
+						"type": "integer"
+					},
+					"id": {
+						"type": "string"
+					},
+					"letter_spacing": {
+						"format": "double",
+						"type": "number"
+					},
+					"line_height": {
+						"format": "double",
+						"type": "number"
+					},
+					"name": {
+						"type": "string"
+					}
+				},
+				"required": [
+					"id",
+					"name",
+					"font_family",
+					"font_weight",
+					"font_style",
+					"font_size",
+					"color",
+					"line_height",
+					"letter_spacing"
+				],
+				"type": "object"
+			},
+			"ImageEditorCrop": {
+				"additionalProperties": false,
+				"properties": {
+					"height": {
+						"format": "double",
+						"type": "number"
+					},
+					"width": {
+						"format": "double",
+						"type": "number"
+					},
+					"x": {
+						"format": "double",
+						"type": "number"
+					},
+					"y": {
+						"format": "double",
+						"type": "number"
+					}
+				},
+				"required": ["x", "y", "width", "height"],
+				"type": "object"
+			},
+			"ImageEditorDesignSummary": {
+				"additionalProperties": false,
+				"properties": {
+					"cover_preview_media_id": {
+						"type": "string"
+					},
+					"created_at": {
+						"type": "string"
+					},
+					"height_px": {
+						"format": "int64",
+						"type": "integer"
+					},
+					"id": {
+						"type": "string"
+					},
+					"is_favorite": {
+						"type": "boolean"
+					},
+					"page_count": {
+						"format": "int64",
+						"type": "integer"
+					},
+					"preset_key": {
+						"type": "string"
+					},
+					"revision": {
+						"format": "int64",
+						"type": "integer"
+					},
+					"title": {
+						"type": "string"
+					},
+					"updated_at": {
+						"type": "string"
+					},
+					"width_px": {
+						"format": "int64",
+						"type": "integer"
+					}
+				},
+				"required": [
+					"id",
+					"title",
+					"preset_key",
+					"width_px",
+					"height_px",
+					"page_count",
+					"revision",
+					"is_favorite",
+					"created_at",
+					"updated_at"
+				],
+				"type": "object"
+			},
+			"ImageEditorDocumentPayload": {
+				"additionalProperties": false,
+				"properties": {
+					"brand_kit_id": {
+						"type": "string"
+					},
+					"brand_kit_revision": {
+						"format": "int64",
+						"type": "integer"
+					},
+					"export_defaults": {
+						"$ref": "#/components/schemas/ImageEditorExportDefaults"
+					},
+					"height_px": {
+						"format": "int64",
+						"type": "integer"
+					},
+					"pages": {
+						"items": {
+							"$ref": "#/components/schemas/ImageEditorPagePayload"
+						},
+						"type": ["array", "null"]
+					},
+					"preset_key": {
+						"type": "string"
+					},
+					"schema_version": {
+						"format": "int64",
+						"type": "integer"
+					},
+					"title": {
+						"type": "string"
+					},
+					"width_px": {
+						"format": "int64",
+						"type": "integer"
+					}
+				},
+				"required": [
+					"schema_version",
+					"title",
+					"preset_key",
+					"width_px",
+					"height_px",
+					"brand_kit_revision",
+					"export_defaults",
+					"pages"
+				],
+				"type": "object"
+			},
+			"ImageEditorDocumentResponse": {
+				"additionalProperties": false,
+				"properties": {
+					"$schema": {
+						"description": "A URL to the JSON Schema for this object.",
+						"examples": ["https://example.com/schemas/ImageEditorDocumentResponse.json"],
+						"format": "uri",
+						"readOnly": true,
+						"type": "string"
+					},
+					"can_edit": {
+						"type": "boolean"
+					},
+					"cover_preview_media_id": {
+						"type": "string"
+					},
+					"created_at": {
+						"type": "string"
+					},
+					"created_by_id": {
+						"type": "string"
+					},
+					"document": {
+						"$ref": "#/components/schemas/ImageEditorDocumentPayload"
+					},
+					"id": {
+						"type": "string"
+					},
+					"revision": {
+						"format": "int64",
+						"type": "integer"
+					},
+					"updated_at": {
+						"type": "string"
+					},
+					"workspace_id": {
+						"type": "string"
+					}
+				},
+				"required": [
+					"id",
+					"workspace_id",
+					"created_by_id",
+					"revision",
+					"can_edit",
+					"created_at",
+					"updated_at",
+					"document"
+				],
+				"type": "object"
+			},
+			"ImageEditorEraseMask": {
+				"additionalProperties": false,
+				"properties": {
+					"source_height": {
+						"format": "double",
+						"minimum": 1,
+						"type": "number"
+					},
+					"source_width": {
+						"format": "double",
+						"minimum": 1,
+						"type": "number"
+					},
+					"spans": {
+						"items": {
+							"$ref": "#/components/schemas/ImageEditorPaintSpan"
+						},
+						"type": ["array", "null"]
+					},
+					"strokes": {
+						"items": {
+							"$ref": "#/components/schemas/ImageEditorEraseStroke"
+						},
+						"type": ["array", "null"]
+					}
+				},
+				"required": ["source_width", "source_height", "strokes", "spans"],
+				"type": "object"
+			},
+			"ImageEditorEraseStroke": {
+				"additionalProperties": false,
+				"properties": {
+					"points": {
+						"items": {
+							"$ref": "#/components/schemas/ImageEditorPaintPoint"
+						},
+						"type": ["array", "null"]
+					},
+					"size": {
+						"format": "double",
+						"maximum": 512,
+						"minimum": 1,
+						"type": "number"
+					}
+				},
+				"required": ["size", "points"],
+				"type": "object"
+			},
+			"ImageEditorExportDefaults": {
+				"additionalProperties": false,
+				"properties": {
+					"format": {
+						"enum": ["png", "jpeg", "webp"],
+						"type": "string"
+					},
+					"matte_color": {
+						"type": "string"
+					},
+					"quality": {
+						"format": "double",
+						"maximum": 1,
+						"minimum": 0.1,
+						"type": "number"
+					}
+				},
+				"required": ["format", "quality", "matte_color"],
+				"type": "object"
+			},
+			"ImageEditorGradientStop": {
+				"additionalProperties": false,
+				"properties": {
+					"color": {
+						"type": "string"
+					},
+					"offset": {
+						"format": "double",
+						"maximum": 1,
+						"minimum": 0,
+						"type": "number"
+					}
+				},
+				"required": ["offset", "color"],
+				"type": "object"
+			},
+			"ImageEditorGradientValue": {
+				"additionalProperties": false,
+				"properties": {
+					"end": {
+						"$ref": "#/components/schemas/ImageEditorPaintPoint"
+					},
+					"reverse": {
+						"type": "boolean"
+					},
+					"start": {
+						"$ref": "#/components/schemas/ImageEditorPaintPoint"
+					},
+					"stops": {
+						"items": {
+							"$ref": "#/components/schemas/ImageEditorGradientStop"
+						},
+						"type": ["array", "null"]
+					},
+					"type": {
+						"enum": ["linear", "radial", "angle", "reflected", "diamond"],
+						"type": "string"
+					}
+				},
+				"required": ["type", "start", "end", "stops", "reverse"],
+				"type": "object"
+			},
+			"ImageEditorImageAdjustments": {
+				"additionalProperties": false,
+				"properties": {
+					"blur": {
+						"format": "double",
+						"type": "number"
+					},
+					"brightness": {
+						"format": "double",
+						"type": "number"
+					},
+					"contrast": {
+						"format": "double",
+						"type": "number"
+					},
+					"exposure": {
+						"format": "double",
+						"type": "number"
+					},
+					"highlights": {
+						"format": "double",
+						"type": "number"
+					},
+					"hue": {
+						"format": "double",
+						"type": "number"
+					},
+					"saturation": {
+						"format": "double",
+						"type": "number"
+					},
+					"shadows": {
+						"format": "double",
+						"type": "number"
+					},
+					"temperature": {
+						"format": "double",
+						"type": "number"
+					},
+					"tint": {
+						"format": "double",
+						"type": "number"
+					},
+					"vibrance": {
+						"format": "double",
+						"type": "number"
+					}
+				},
+				"required": [
+					"brightness",
+					"contrast",
+					"saturation",
+					"temperature",
+					"tint",
+					"vibrance",
+					"hue",
+					"exposure",
+					"highlights",
+					"shadows",
+					"blur"
+				],
+				"type": "object"
+			},
+			"ImageEditorImageValue": {
+				"additionalProperties": false,
+				"properties": {
+					"adjustments": {
+						"$ref": "#/components/schemas/ImageEditorImageAdjustments"
+					},
+					"crop": {
+						"$ref": "#/components/schemas/ImageEditorCrop"
+					},
+					"fit": {
+						"enum": ["cover", "contain", "stretch"],
+						"type": "string"
+					},
+					"intrinsic_pending": {
+						"type": "boolean"
+					},
+					"media_id": {
+						"type": "string"
+					},
+					"source_height": {
+						"format": "int64",
+						"type": "integer"
+					},
+					"source_width": {
+						"format": "int64",
+						"type": "integer"
+					}
+				},
+				"required": ["media_id", "source_width", "source_height", "fit", "crop", "adjustments"],
+				"type": "object"
+			},
+			"ImageEditorLayer": {
+				"additionalProperties": false,
+				"properties": {
+					"effects": {
+						"$ref": "#/components/schemas/ImageEditorLayerEffects"
+					},
+					"erase_mask": {
+						"$ref": "#/components/schemas/ImageEditorEraseMask"
+					},
+					"id": {
+						"type": "string"
+					},
+					"image": {
+						"$ref": "#/components/schemas/ImageEditorImageValue"
+					},
+					"locked": {
+						"type": "boolean"
+					},
+					"mask": {
+						"$ref": "#/components/schemas/ImageEditorLayerMask"
+					},
+					"name": {
+						"type": "string"
+					},
+					"opacity": {
+						"format": "double",
+						"type": "number"
+					},
+					"paint": {
+						"$ref": "#/components/schemas/ImageEditorPaintValue"
+					},
+					"parent_id": {
+						"type": "string"
+					},
+					"shape": {
+						"$ref": "#/components/schemas/ImageEditorShapeValue"
+					},
+					"text": {
+						"$ref": "#/components/schemas/ImageEditorTextValue"
+					},
+					"transform": {
+						"$ref": "#/components/schemas/ImageEditorTransform"
+					},
+					"type": {
+						"enum": ["text", "image", "shape", "paint", "group"],
+						"type": "string"
+					},
+					"visible": {
+						"type": "boolean"
+					}
+				},
+				"required": ["id", "type", "name", "visible", "locked", "opacity", "transform"],
+				"type": "object"
+			},
+			"ImageEditorLayerEffects": {
+				"additionalProperties": false,
+				"properties": {
+					"blend_mode": {
+						"enum": ["normal", "multiply", "screen", "overlay", "darken", "lighten", "soft_light"],
+						"type": "string"
+					},
+					"drop_shadow": {
+						"$ref": "#/components/schemas/ImageEditorShadowEffect"
+					},
+					"inner_shadow": {
+						"$ref": "#/components/schemas/ImageEditorShadowEffect"
+					},
+					"stroke": {
+						"$ref": "#/components/schemas/ImageEditorStrokeEffect"
+					}
+				},
+				"required": ["blend_mode"],
+				"type": "object"
+			},
+			"ImageEditorLayerMask": {
+				"additionalProperties": false,
+				"properties": {
+					"inset": {
+						"format": "double",
+						"minimum": 0,
+						"type": "number"
+					},
+					"radius": {
+						"format": "double",
+						"minimum": 0,
+						"type": "number"
+					},
+					"shape": {
+						"enum": ["rectangle", "rounded_rectangle", "circle", "ellipse", "diamond"],
+						"type": "string"
+					}
+				},
+				"required": ["shape", "inset", "radius"],
+				"type": "object"
+			},
+			"ImageEditorPageBackground": {
+				"additionalProperties": false,
+				"properties": {
+					"color": {
+						"type": "string"
+					},
+					"gradient": {
+						"$ref": "#/components/schemas/ImageEditorGradientValue"
+					},
+					"image": {
+						"$ref": "#/components/schemas/ImageEditorPageBackgroundImage"
+					},
+					"opacity": {
+						"format": "double",
+						"maximum": 1,
+						"minimum": 0,
+						"type": "number"
+					},
+					"type": {
+						"enum": ["transparent", "solid", "gradient", "image"],
+						"type": "string"
+					}
+				},
+				"required": ["type", "opacity"],
+				"type": "object"
+			},
+			"ImageEditorPageBackgroundImage": {
+				"additionalProperties": false,
+				"properties": {
+					"fit": {
+						"enum": ["cover", "contain", "stretch"],
+						"type": "string"
+					},
+					"media_id": {
+						"type": "string"
+					}
+				},
+				"required": ["media_id", "fit"],
+				"type": "object"
+			},
+			"ImageEditorPagePayload": {
+				"additionalProperties": false,
+				"properties": {
+					"background": {
+						"$ref": "#/components/schemas/ImageEditorPageBackground"
+					},
+					"background_color": {
+						"type": "string"
+					},
+					"id": {
+						"type": "string"
+					},
+					"latest_export_media_id": {
+						"type": "string"
+					},
+					"layers": {
+						"items": {
+							"$ref": "#/components/schemas/ImageEditorLayer"
+						},
+						"type": ["array", "null"]
+					},
+					"name": {
+						"type": "string"
+					},
+					"preview_media_id": {
+						"type": "string"
+					}
+				},
+				"required": ["id", "name", "background_color", "layers"],
+				"type": "object"
+			},
+			"ImageEditorPaintPoint": {
+				"additionalProperties": false,
+				"properties": {
+					"x": {
+						"format": "double",
+						"type": "number"
+					},
+					"y": {
+						"format": "double",
+						"type": "number"
+					}
+				},
+				"required": ["x", "y"],
+				"type": "object"
+			},
+			"ImageEditorPaintSpan": {
+				"additionalProperties": false,
+				"properties": {
+					"width": {
+						"format": "double",
+						"type": "number"
+					},
+					"x": {
+						"format": "double",
+						"type": "number"
+					},
+					"y": {
+						"format": "double",
+						"type": "number"
+					}
+				},
+				"required": ["y", "x", "width"],
+				"type": "object"
+			},
+			"ImageEditorPaintValue": {
+				"additionalProperties": false,
+				"properties": {
+					"color": {
+						"type": "string"
+					},
+					"gradient": {
+						"$ref": "#/components/schemas/ImageEditorGradientValue"
+					},
+					"kind": {
+						"enum": ["stroke", "fill", "gradient"],
+						"type": "string"
+					},
+					"opacity": {
+						"format": "double",
+						"maximum": 1,
+						"minimum": 0,
+						"type": "number"
+					},
+					"points": {
+						"items": {
+							"$ref": "#/components/schemas/ImageEditorPaintPoint"
+						},
+						"type": ["array", "null"]
+					},
+					"size": {
+						"format": "double",
+						"maximum": 512,
+						"minimum": 0,
+						"type": "number"
+					},
+					"source_height": {
+						"format": "double",
+						"minimum": 0,
+						"type": "number"
+					},
+					"source_width": {
+						"format": "double",
+						"minimum": 0,
+						"type": "number"
+					},
+					"spans": {
+						"items": {
+							"$ref": "#/components/schemas/ImageEditorPaintSpan"
+						},
+						"type": ["array", "null"]
+					}
+				},
+				"required": [
+					"kind",
+					"color",
+					"size",
+					"opacity",
+					"source_width",
+					"source_height",
+					"points",
+					"spans"
+				],
+				"type": "object"
+			},
+			"ImageEditorPreset": {
+				"additionalProperties": false,
+				"properties": {
+					"default_format": {
+						"description": "Default export format",
+						"enum": ["png", "jpeg", "webp"],
+						"type": "string"
+					},
+					"height_px": {
+						"description": "Canvas height in pixels",
+						"format": "int64",
+						"type": "integer"
+					},
+					"key": {
+						"description": "Stable preset key",
+						"type": "string"
+					},
+					"name": {
+						"description": "User-visible preset name",
+						"type": "string"
+					},
+					"profiles": {
+						"description": "Compatible provider content profiles",
+						"items": {
+							"type": "string"
+						},
+						"type": ["array", "null"]
+					},
+					"width_px": {
+						"description": "Canvas width in pixels",
+						"format": "int64",
+						"type": "integer"
+					}
+				},
+				"required": ["key", "name", "width_px", "height_px", "default_format", "profiles"],
+				"type": "object"
+			},
+			"ImageEditorPresetOutputBody": {
+				"additionalProperties": false,
+				"properties": {
+					"$schema": {
+						"description": "A URL to the JSON Schema for this object.",
+						"examples": ["https://example.com/schemas/ImageEditorPresetOutputBody.json"],
+						"format": "uri",
+						"readOnly": true,
+						"type": "string"
+					},
+					"background_model_base_url": {
+						"type": "string"
+					},
+					"enabled": {
+						"type": "boolean"
+					},
+					"presets": {
+						"items": {
+							"$ref": "#/components/schemas/ImageEditorPreset"
+						},
+						"type": ["array", "null"]
+					},
+					"schema_version": {
+						"format": "int64",
+						"type": "integer"
+					}
+				},
+				"required": ["enabled", "schema_version", "background_model_base_url", "presets"],
+				"type": "object"
+			},
+			"ImageEditorRevisionSummary": {
+				"additionalProperties": false,
+				"properties": {
+					"$schema": {
+						"description": "A URL to the JSON Schema for this object.",
+						"examples": ["https://example.com/schemas/ImageEditorRevisionSummary.json"],
+						"format": "uri",
+						"readOnly": true,
+						"type": "string"
+					},
+					"created_at": {
+						"type": "string"
+					},
+					"expires_at": {
+						"type": "string"
+					},
+					"id": {
+						"type": "string"
+					},
+					"kind": {
+						"type": "string"
+					},
+					"name": {
+						"type": "string"
+					},
+					"revision": {
+						"format": "int64",
+						"type": "integer"
+					}
+				},
+				"required": ["id", "revision", "kind", "created_at"],
+				"type": "object"
+			},
+			"ImageEditorShadowEffect": {
+				"additionalProperties": false,
+				"properties": {
+					"angle": {
+						"format": "double",
+						"maximum": 360,
+						"minimum": -360,
+						"type": "number"
+					},
+					"blur": {
+						"format": "double",
+						"maximum": 100,
+						"minimum": 0,
+						"type": "number"
+					},
+					"color": {
+						"type": "string"
+					},
+					"distance": {
+						"format": "double",
+						"maximum": 500,
+						"minimum": 0,
+						"type": "number"
+					},
+					"opacity": {
+						"format": "double",
+						"maximum": 1,
+						"minimum": 0,
+						"type": "number"
+					}
+				},
+				"required": ["color", "opacity", "blur", "angle", "distance"],
+				"type": "object"
+			},
+			"ImageEditorShapeValue": {
+				"additionalProperties": false,
+				"properties": {
+					"fill": {
+						"type": "string"
+					},
+					"kind": {
+						"enum": ["rectangle", "rounded_rectangle", "ellipse", "line"],
+						"type": "string"
+					},
+					"radius": {
+						"format": "double",
+						"type": "number"
+					},
+					"stroke": {
+						"type": "string"
+					},
+					"stroke_width": {
+						"format": "double",
+						"type": "number"
+					}
+				},
+				"required": ["kind", "fill", "stroke", "stroke_width", "radius"],
+				"type": "object"
+			},
+			"ImageEditorStrokeEffect": {
+				"additionalProperties": false,
+				"properties": {
+					"color": {
+						"type": "string"
+					},
+					"opacity": {
+						"format": "double",
+						"maximum": 1,
+						"minimum": 0,
+						"type": "number"
+					},
+					"position": {
+						"enum": ["inside", "center", "outside"],
+						"type": "string"
+					},
+					"width": {
+						"format": "double",
+						"maximum": 500,
+						"minimum": 0,
+						"type": "number"
+					}
+				},
+				"required": ["color", "opacity", "width", "position"],
+				"type": "object"
+			},
+			"ImageEditorTemplateResponse": {
+				"additionalProperties": false,
+				"properties": {
+					"$schema": {
+						"description": "A URL to the JSON Schema for this object.",
+						"examples": ["https://example.com/schemas/ImageEditorTemplateResponse.json"],
+						"format": "uri",
+						"readOnly": true,
+						"type": "string"
+					},
+					"built_in": {
+						"type": "boolean"
+					},
+					"category": {
+						"type": "string"
+					},
+					"created_at": {
+						"type": "string"
+					},
+					"document": {
+						"$ref": "#/components/schemas/ImageEditorDocumentPayload"
+					},
+					"id": {
+						"type": "string"
+					},
+					"name": {
+						"type": "string"
+					},
+					"preset_key": {
+						"type": "string"
+					},
+					"preview_media_id": {
+						"type": "string"
+					},
+					"updated_at": {
+						"type": "string"
+					},
+					"workspace_id": {
+						"type": "string"
+					}
+				},
+				"required": ["id", "name", "category", "preset_key", "built_in", "document"],
+				"type": "object"
+			},
+			"ImageEditorTextCurve": {
+				"additionalProperties": false,
+				"properties": {
+					"offset": {
+						"format": "double",
+						"maximum": 1,
+						"minimum": -1,
+						"type": "number"
+					},
+					"reverse": {
+						"type": "boolean"
+					},
+					"strength": {
+						"format": "double",
+						"maximum": 1,
+						"minimum": 0.05,
+						"type": "number"
+					},
+					"type": {
+						"enum": ["none", "arc_up", "arc_down", "wave", "circle", "ellipse"],
+						"type": "string"
+					}
+				},
+				"required": ["type", "strength", "offset", "reverse"],
+				"type": "object"
+			},
+			"ImageEditorTextShadow": {
+				"additionalProperties": false,
+				"properties": {
+					"blur": {
+						"format": "double",
+						"type": "number"
+					},
+					"color": {
+						"type": "string"
+					},
+					"offset_x": {
+						"format": "double",
+						"type": "number"
+					},
+					"offset_y": {
+						"format": "double",
+						"type": "number"
+					}
+				},
+				"required": ["color", "blur", "offset_x", "offset_y"],
+				"type": "object"
+			},
+			"ImageEditorTextValue": {
+				"additionalProperties": false,
+				"properties": {
+					"align": {
+						"type": "string"
+					},
+					"color": {
+						"type": "string"
+					},
+					"curve": {
+						"$ref": "#/components/schemas/ImageEditorTextCurve"
+					},
+					"font_asset_id": {
+						"type": "string"
+					},
+					"font_family": {
+						"type": "string"
+					},
+					"font_size": {
+						"format": "double",
+						"type": "number"
+					},
+					"font_style": {
+						"type": "string"
+					},
+					"font_weight": {
+						"format": "int64",
+						"type": "integer"
+					},
+					"highlight_color": {
+						"type": "string"
+					},
+					"letter_spacing": {
+						"format": "double",
+						"type": "number"
+					},
+					"line_height": {
+						"format": "double",
+						"type": "number"
+					},
+					"shadow": {
+						"$ref": "#/components/schemas/ImageEditorTextShadow"
+					},
+					"stroke_color": {
+						"type": "string"
+					},
+					"stroke_width": {
+						"format": "double",
+						"type": "number"
+					},
+					"text": {
+						"type": "string"
+					}
+				},
+				"required": [
+					"text",
+					"font_family",
+					"font_weight",
+					"font_style",
+					"font_size",
+					"color",
+					"align",
+					"line_height",
+					"letter_spacing",
+					"stroke_width",
+					"shadow"
+				],
+				"type": "object"
+			},
+			"ImageEditorTransform": {
+				"additionalProperties": false,
+				"properties": {
+					"flip_x": {
+						"type": "boolean"
+					},
+					"flip_y": {
+						"type": "boolean"
+					},
+					"height": {
+						"format": "double",
+						"type": "number"
+					},
+					"rotation": {
+						"format": "double",
+						"type": "number"
+					},
+					"width": {
+						"format": "double",
+						"type": "number"
+					},
+					"x": {
+						"format": "double",
+						"type": "number"
+					},
+					"y": {
+						"format": "double",
+						"type": "number"
+					}
+				},
+				"required": ["x", "y", "width", "height", "rotation", "flip_x", "flip_y"],
+				"type": "object"
+			},
 			"InstanceDailyMetric": {
 				"additionalProperties": false,
 				"properties": {
@@ -5431,12 +6622,14 @@
 				],
 				"type": "object"
 			},
-			"InstantiateStudioTemplateInputBody": {
+			"InstantiateImageEditorTemplateInputBody": {
 				"additionalProperties": false,
 				"properties": {
 					"$schema": {
 						"description": "A URL to the JSON Schema for this object.",
-						"examples": ["https://example.com/schemas/InstantiateStudioTemplateInputBody.json"],
+						"examples": [
+							"https://example.com/schemas/InstantiateImageEditorTemplateInputBody.json"
+						],
 						"format": "uri",
 						"readOnly": true,
 						"type": "string"
@@ -5501,12 +6694,12 @@
 				"required": ["id", "type", "status", "run_at", "attempts", "max_attempts", "created_at"],
 				"type": "object"
 			},
-			"ListMediaCollectionsOutputBody": {
+			"ListImageEditorDesignsOutputBody": {
 				"additionalProperties": false,
 				"properties": {
 					"$schema": {
 						"description": "A URL to the JSON Schema for this object.",
-						"examples": ["https://example.com/schemas/ListMediaCollectionsOutputBody.json"],
+						"examples": ["https://example.com/schemas/ListImageEditorDesignsOutputBody.json"],
 						"format": "uri",
 						"readOnly": true,
 						"type": "string"
@@ -5514,14 +6707,61 @@
 					"can_edit": {
 						"type": "boolean"
 					},
-					"collections": {
+					"designs": {
 						"items": {
-							"$ref": "#/components/schemas/MediaCollectionResponse"
+							"$ref": "#/components/schemas/ImageEditorDesignSummary"
+						},
+						"type": ["array", "null"]
+					},
+					"total": {
+						"format": "int64",
+						"type": "integer"
+					}
+				},
+				"required": ["designs", "total", "can_edit"],
+				"type": "object"
+			},
+			"ListImageEditorRevisionsOutputBody": {
+				"additionalProperties": false,
+				"properties": {
+					"$schema": {
+						"description": "A URL to the JSON Schema for this object.",
+						"examples": ["https://example.com/schemas/ListImageEditorRevisionsOutputBody.json"],
+						"format": "uri",
+						"readOnly": true,
+						"type": "string"
+					},
+					"revisions": {
+						"items": {
+							"$ref": "#/components/schemas/ImageEditorRevisionSummary"
 						},
 						"type": ["array", "null"]
 					}
 				},
-				"required": ["collections", "can_edit"],
+				"required": ["revisions"],
+				"type": "object"
+			},
+			"ListImageEditorTemplatesOutputBody": {
+				"additionalProperties": false,
+				"properties": {
+					"$schema": {
+						"description": "A URL to the JSON Schema for this object.",
+						"examples": ["https://example.com/schemas/ListImageEditorTemplatesOutputBody.json"],
+						"format": "uri",
+						"readOnly": true,
+						"type": "string"
+					},
+					"can_edit": {
+						"type": "boolean"
+					},
+					"templates": {
+						"items": {
+							"$ref": "#/components/schemas/ImageEditorTemplateResponse"
+						},
+						"type": ["array", "null"]
+					}
+				},
+				"required": ["templates", "can_edit"],
 				"type": "object"
 			},
 			"ListMediaOutputBody": {
@@ -5573,19 +6813,21 @@
 				"required": ["tags", "can_edit"],
 				"type": "object"
 			},
-			"ListPublicStudioTemplatesOutputBody": {
+			"ListPublicImageEditorTemplatesOutputBody": {
 				"additionalProperties": false,
 				"properties": {
 					"$schema": {
 						"description": "A URL to the JSON Schema for this object.",
-						"examples": ["https://example.com/schemas/ListPublicStudioTemplatesOutputBody.json"],
+						"examples": [
+							"https://example.com/schemas/ListPublicImageEditorTemplatesOutputBody.json"
+						],
 						"format": "uri",
 						"readOnly": true,
 						"type": "string"
 					},
 					"templates": {
 						"items": {
-							"$ref": "#/components/schemas/StudioTemplateResponse"
+							"$ref": "#/components/schemas/ImageEditorTemplateResponse"
 						},
 						"type": ["array", "null"]
 					}
@@ -5614,76 +6856,6 @@
 					}
 				},
 				"required": ["enabled", "providers"],
-				"type": "object"
-			},
-			"ListStudioDesignsOutputBody": {
-				"additionalProperties": false,
-				"properties": {
-					"$schema": {
-						"description": "A URL to the JSON Schema for this object.",
-						"examples": ["https://example.com/schemas/ListStudioDesignsOutputBody.json"],
-						"format": "uri",
-						"readOnly": true,
-						"type": "string"
-					},
-					"can_edit": {
-						"type": "boolean"
-					},
-					"designs": {
-						"items": {
-							"$ref": "#/components/schemas/StudioDesignSummary"
-						},
-						"type": ["array", "null"]
-					},
-					"total": {
-						"format": "int64",
-						"type": "integer"
-					}
-				},
-				"required": ["designs", "total", "can_edit"],
-				"type": "object"
-			},
-			"ListStudioRevisionsOutputBody": {
-				"additionalProperties": false,
-				"properties": {
-					"$schema": {
-						"description": "A URL to the JSON Schema for this object.",
-						"examples": ["https://example.com/schemas/ListStudioRevisionsOutputBody.json"],
-						"format": "uri",
-						"readOnly": true,
-						"type": "string"
-					},
-					"revisions": {
-						"items": {
-							"$ref": "#/components/schemas/StudioRevisionSummary"
-						},
-						"type": ["array", "null"]
-					}
-				},
-				"required": ["revisions"],
-				"type": "object"
-			},
-			"ListStudioTemplatesOutputBody": {
-				"additionalProperties": false,
-				"properties": {
-					"$schema": {
-						"description": "A URL to the JSON Schema for this object.",
-						"examples": ["https://example.com/schemas/ListStudioTemplatesOutputBody.json"],
-						"format": "uri",
-						"readOnly": true,
-						"type": "string"
-					},
-					"can_edit": {
-						"type": "boolean"
-					},
-					"templates": {
-						"items": {
-							"$ref": "#/components/schemas/StudioTemplateResponse"
-						},
-						"type": ["array", "null"]
-					}
-				},
-				"required": ["templates", "can_edit"],
 				"type": "object"
 			},
 			"ListVideoProjectRevisionsOutputBody": {
@@ -5840,50 +7012,6 @@
 				"required": ["name", "instance_url"],
 				"type": "object"
 			},
-			"MediaCollectionResponse": {
-				"additionalProperties": false,
-				"properties": {
-					"$schema": {
-						"description": "A URL to the JSON Schema for this object.",
-						"examples": ["https://example.com/schemas/MediaCollectionResponse.json"],
-						"format": "uri",
-						"readOnly": true,
-						"type": "string"
-					},
-					"color": {
-						"type": "string"
-					},
-					"created_at": {
-						"type": "string"
-					},
-					"id": {
-						"type": "string"
-					},
-					"item_count": {
-						"format": "int64",
-						"type": "integer"
-					},
-					"name": {
-						"type": "string"
-					},
-					"updated_at": {
-						"type": "string"
-					},
-					"workspace_id": {
-						"type": "string"
-					}
-				},
-				"required": [
-					"id",
-					"workspace_id",
-					"name",
-					"color",
-					"item_count",
-					"created_at",
-					"updated_at"
-				],
-				"type": "object"
-			},
 			"MediaConstraint": {
 				"additionalProperties": false,
 				"properties": {
@@ -5968,13 +7096,6 @@
 						"description": "Whether media can be deleted",
 						"type": "boolean"
 					},
-					"collections": {
-						"description": "Collection IDs containing this media",
-						"items": {
-							"type": "string"
-						},
-						"type": ["array", "null"]
-					},
 					"color_space": {
 						"description": "Detected video color space",
 						"type": "string"
@@ -5988,11 +7109,11 @@
 						"type": "string"
 					},
 					"design_document_id": {
-						"description": "Producing Studio design",
+						"description": "Producing OpenPost Image Editor design",
 						"type": "string"
 					},
 					"design_page_id": {
-						"description": "Producing Studio page",
+						"description": "Producing OpenPost Image Editor page",
 						"type": "string"
 					},
 					"duration_ms": {
@@ -6103,7 +7224,7 @@
 						"type": "string"
 					},
 					"video_project_id": {
-						"description": "Producing Video Studio project",
+						"description": "Producing OpenPost Video Editor project",
 						"type": "string"
 					},
 					"width": {
@@ -6142,7 +7263,6 @@
 					"public_url_status",
 					"source",
 					"asset_kind",
-					"collections",
 					"tags"
 				],
 				"type": "object"
@@ -6308,11 +7428,11 @@
 						"type": "boolean"
 					},
 					"design_document_id": {
-						"description": "Producing Studio design ID",
+						"description": "Producing OpenPost Image Editor design ID",
 						"type": "string"
 					},
 					"design_page_id": {
-						"description": "Producing Studio page ID",
+						"description": "Producing OpenPost Image Editor page ID",
 						"type": "string"
 					},
 					"id": {
@@ -6358,7 +7478,7 @@
 						"type": "string"
 					},
 					"video_project_id": {
-						"description": "Producing Video Studio project ID",
+						"description": "Producing OpenPost Video Editor project ID",
 						"type": "string"
 					}
 				},
@@ -7344,12 +8464,12 @@
 				"required": ["action", "password"],
 				"type": "object"
 			},
-			"PlanVideoStudioSyncInputBody": {
+			"PlanVideoEditorSyncInputBody": {
 				"additionalProperties": false,
 				"properties": {
 					"$schema": {
 						"description": "A URL to the JSON Schema for this object.",
-						"examples": ["https://example.com/schemas/PlanVideoStudioSyncInputBody.json"],
+						"examples": ["https://example.com/schemas/PlanVideoEditorSyncInputBody.json"],
 						"format": "uri",
 						"readOnly": true,
 						"type": "string"
@@ -7360,7 +8480,7 @@
 					},
 					"sources": {
 						"items": {
-							"$ref": "#/components/schemas/VideoStudioSyncSource"
+							"$ref": "#/components/schemas/VideoEditorSyncSource"
 						},
 						"maxItems": 250,
 						"type": ["array", "null"]
@@ -7369,12 +8489,12 @@
 				"required": ["sources"],
 				"type": "object"
 			},
-			"PlanVideoStudioSyncOutputBody": {
+			"PlanVideoEditorSyncOutputBody": {
 				"additionalProperties": false,
 				"properties": {
 					"$schema": {
 						"description": "A URL to the JSON Schema for this object.",
-						"examples": ["https://example.com/schemas/PlanVideoStudioSyncOutputBody.json"],
+						"examples": ["https://example.com/schemas/PlanVideoEditorSyncOutputBody.json"],
 						"format": "uri",
 						"readOnly": true,
 						"type": "string"
@@ -7397,12 +8517,12 @@
 					},
 					"reused": {
 						"items": {
-							"$ref": "#/components/schemas/VideoStudioSyncReuse"
+							"$ref": "#/components/schemas/VideoEditorSyncReuse"
 						},
 						"type": ["array", "null"]
 					},
 					"storage": {
-						"$ref": "#/components/schemas/VideoStudioSyncStorage"
+						"$ref": "#/components/schemas/VideoEditorSyncStorage"
 					}
 				},
 				"required": [
@@ -9572,50 +10692,6 @@
 				],
 				"type": "object"
 			},
-			"ReplaceMediaCollectionItemsInputBody": {
-				"additionalProperties": false,
-				"properties": {
-					"$schema": {
-						"description": "A URL to the JSON Schema for this object.",
-						"examples": ["https://example.com/schemas/ReplaceMediaCollectionItemsInputBody.json"],
-						"format": "uri",
-						"readOnly": true,
-						"type": "string"
-					},
-					"media_ids": {
-						"items": {
-							"type": "string"
-						},
-						"maxItems": 500,
-						"type": ["array", "null"]
-					},
-					"mode": {
-						"default": "replace",
-						"enum": ["replace", "add", "remove"],
-						"type": "string"
-					}
-				},
-				"required": ["media_ids"],
-				"type": "object"
-			},
-			"ReplaceMediaCollectionItemsOutputBody": {
-				"additionalProperties": false,
-				"properties": {
-					"$schema": {
-						"description": "A URL to the JSON Schema for this object.",
-						"examples": ["https://example.com/schemas/ReplaceMediaCollectionItemsOutputBody.json"],
-						"format": "uri",
-						"readOnly": true,
-						"type": "string"
-					},
-					"count": {
-						"format": "int64",
-						"type": "integer"
-					}
-				},
-				"required": ["count"],
-				"type": "object"
-			},
 			"ReplaceMediaTagItemsInputBody": {
 				"additionalProperties": false,
 				"properties": {
@@ -10159,12 +11235,12 @@
 				"required": ["key", "settings"],
 				"type": "object"
 			},
-			"RestoreStudioRevisionInputBody": {
+			"RestoreImageEditorRevisionInputBody": {
 				"additionalProperties": false,
 				"properties": {
 					"$schema": {
 						"description": "A URL to the JSON Schema for this object.",
-						"examples": ["https://example.com/schemas/RestoreStudioRevisionInputBody.json"],
+						"examples": ["https://example.com/schemas/RestoreImageEditorRevisionInputBody.json"],
 						"format": "uri",
 						"readOnly": true,
 						"type": "string"
@@ -11399,1230 +12475,6 @@
 				"required": ["key", "name", "provider_url", "photos", "videos", "audio", "attribution"],
 				"type": "object"
 			},
-			"StudioBrandAsset": {
-				"additionalProperties": false,
-				"properties": {
-					"id": {
-						"type": "string"
-					},
-					"media_id": {
-						"type": "string"
-					},
-					"name": {
-						"type": "string"
-					},
-					"role": {
-						"enum": ["primary_logo", "secondary_logo", "mark", "watermark"],
-						"type": "string"
-					}
-				},
-				"required": ["media_id", "role", "name"],
-				"type": "object"
-			},
-			"StudioBrandColor": {
-				"additionalProperties": false,
-				"properties": {
-					"id": {
-						"type": "string"
-					},
-					"name": {
-						"type": "string"
-					},
-					"value": {
-						"type": "string"
-					}
-				},
-				"required": ["id", "name", "value"],
-				"type": "object"
-			},
-			"StudioBrandFont": {
-				"additionalProperties": false,
-				"properties": {
-					"css_family": {
-						"type": "string"
-					},
-					"family": {
-						"type": "string"
-					},
-					"id": {
-						"type": "string"
-					},
-					"license_acknowledged": {
-						"type": "boolean"
-					},
-					"license_acknowledged_at": {
-						"type": "string"
-					},
-					"license_acknowledged_by": {
-						"type": "string"
-					},
-					"media_id": {
-						"type": "string"
-					},
-					"style": {
-						"enum": ["normal", "italic"],
-						"type": "string"
-					},
-					"weight": {
-						"format": "int64",
-						"maximum": 900,
-						"minimum": 100,
-						"type": "integer"
-					}
-				},
-				"required": ["media_id", "family", "weight", "style"],
-				"type": "object"
-			},
-			"StudioBrandKitResponse": {
-				"additionalProperties": false,
-				"properties": {
-					"$schema": {
-						"description": "A URL to the JSON Schema for this object.",
-						"examples": ["https://example.com/schemas/StudioBrandKitResponse.json"],
-						"format": "uri",
-						"readOnly": true,
-						"type": "string"
-					},
-					"assets": {
-						"items": {
-							"$ref": "#/components/schemas/StudioBrandAsset"
-						},
-						"type": ["array", "null"]
-					},
-					"backgrounds": {
-						"items": {
-							"type": "string"
-						},
-						"type": ["array", "null"]
-					},
-					"can_edit": {
-						"type": "boolean"
-					},
-					"colors": {
-						"items": {
-							"$ref": "#/components/schemas/StudioBrandColor"
-						},
-						"type": ["array", "null"]
-					},
-					"exists": {
-						"type": "boolean"
-					},
-					"fonts": {
-						"items": {
-							"$ref": "#/components/schemas/StudioBrandFont"
-						},
-						"type": ["array", "null"]
-					},
-					"id": {
-						"type": "string"
-					},
-					"name": {
-						"type": "string"
-					},
-					"revision": {
-						"format": "int64",
-						"type": "integer"
-					},
-					"text_styles": {
-						"items": {
-							"$ref": "#/components/schemas/StudioBrandTextStyle"
-						},
-						"type": ["array", "null"]
-					},
-					"updated_at": {
-						"type": "string"
-					},
-					"workspace_id": {
-						"type": "string"
-					}
-				},
-				"required": [
-					"workspace_id",
-					"name",
-					"revision",
-					"exists",
-					"can_edit",
-					"colors",
-					"text_styles",
-					"backgrounds",
-					"assets",
-					"fonts"
-				],
-				"type": "object"
-			},
-			"StudioBrandTextStyle": {
-				"additionalProperties": false,
-				"properties": {
-					"color": {
-						"type": "string"
-					},
-					"font_asset_id": {
-						"type": "string"
-					},
-					"font_family": {
-						"type": "string"
-					},
-					"font_size": {
-						"format": "double",
-						"type": "number"
-					},
-					"font_style": {
-						"type": "string"
-					},
-					"font_weight": {
-						"format": "int64",
-						"type": "integer"
-					},
-					"id": {
-						"type": "string"
-					},
-					"letter_spacing": {
-						"format": "double",
-						"type": "number"
-					},
-					"line_height": {
-						"format": "double",
-						"type": "number"
-					},
-					"name": {
-						"type": "string"
-					}
-				},
-				"required": [
-					"id",
-					"name",
-					"font_family",
-					"font_weight",
-					"font_style",
-					"font_size",
-					"color",
-					"line_height",
-					"letter_spacing"
-				],
-				"type": "object"
-			},
-			"StudioCrop": {
-				"additionalProperties": false,
-				"properties": {
-					"height": {
-						"format": "double",
-						"type": "number"
-					},
-					"width": {
-						"format": "double",
-						"type": "number"
-					},
-					"x": {
-						"format": "double",
-						"type": "number"
-					},
-					"y": {
-						"format": "double",
-						"type": "number"
-					}
-				},
-				"required": ["x", "y", "width", "height"],
-				"type": "object"
-			},
-			"StudioDesignSummary": {
-				"additionalProperties": false,
-				"properties": {
-					"cover_preview_media_id": {
-						"type": "string"
-					},
-					"created_at": {
-						"type": "string"
-					},
-					"height_px": {
-						"format": "int64",
-						"type": "integer"
-					},
-					"id": {
-						"type": "string"
-					},
-					"is_favorite": {
-						"type": "boolean"
-					},
-					"page_count": {
-						"format": "int64",
-						"type": "integer"
-					},
-					"preset_key": {
-						"type": "string"
-					},
-					"revision": {
-						"format": "int64",
-						"type": "integer"
-					},
-					"title": {
-						"type": "string"
-					},
-					"updated_at": {
-						"type": "string"
-					},
-					"width_px": {
-						"format": "int64",
-						"type": "integer"
-					}
-				},
-				"required": [
-					"id",
-					"title",
-					"preset_key",
-					"width_px",
-					"height_px",
-					"page_count",
-					"revision",
-					"is_favorite",
-					"created_at",
-					"updated_at"
-				],
-				"type": "object"
-			},
-			"StudioDocumentPayload": {
-				"additionalProperties": false,
-				"properties": {
-					"brand_kit_id": {
-						"type": "string"
-					},
-					"brand_kit_revision": {
-						"format": "int64",
-						"type": "integer"
-					},
-					"export_defaults": {
-						"$ref": "#/components/schemas/StudioExportDefaults"
-					},
-					"height_px": {
-						"format": "int64",
-						"type": "integer"
-					},
-					"pages": {
-						"items": {
-							"$ref": "#/components/schemas/StudioPagePayload"
-						},
-						"type": ["array", "null"]
-					},
-					"preset_key": {
-						"type": "string"
-					},
-					"schema_version": {
-						"format": "int64",
-						"type": "integer"
-					},
-					"title": {
-						"type": "string"
-					},
-					"width_px": {
-						"format": "int64",
-						"type": "integer"
-					}
-				},
-				"required": [
-					"schema_version",
-					"title",
-					"preset_key",
-					"width_px",
-					"height_px",
-					"brand_kit_revision",
-					"export_defaults",
-					"pages"
-				],
-				"type": "object"
-			},
-			"StudioDocumentResponse": {
-				"additionalProperties": false,
-				"properties": {
-					"$schema": {
-						"description": "A URL to the JSON Schema for this object.",
-						"examples": ["https://example.com/schemas/StudioDocumentResponse.json"],
-						"format": "uri",
-						"readOnly": true,
-						"type": "string"
-					},
-					"can_edit": {
-						"type": "boolean"
-					},
-					"cover_preview_media_id": {
-						"type": "string"
-					},
-					"created_at": {
-						"type": "string"
-					},
-					"created_by_id": {
-						"type": "string"
-					},
-					"document": {
-						"$ref": "#/components/schemas/StudioDocumentPayload"
-					},
-					"id": {
-						"type": "string"
-					},
-					"revision": {
-						"format": "int64",
-						"type": "integer"
-					},
-					"updated_at": {
-						"type": "string"
-					},
-					"workspace_id": {
-						"type": "string"
-					}
-				},
-				"required": [
-					"id",
-					"workspace_id",
-					"created_by_id",
-					"revision",
-					"can_edit",
-					"created_at",
-					"updated_at",
-					"document"
-				],
-				"type": "object"
-			},
-			"StudioEraseMask": {
-				"additionalProperties": false,
-				"properties": {
-					"source_height": {
-						"format": "double",
-						"minimum": 1,
-						"type": "number"
-					},
-					"source_width": {
-						"format": "double",
-						"minimum": 1,
-						"type": "number"
-					},
-					"spans": {
-						"items": {
-							"$ref": "#/components/schemas/StudioPaintSpan"
-						},
-						"type": ["array", "null"]
-					},
-					"strokes": {
-						"items": {
-							"$ref": "#/components/schemas/StudioEraseStroke"
-						},
-						"type": ["array", "null"]
-					}
-				},
-				"required": ["source_width", "source_height", "strokes", "spans"],
-				"type": "object"
-			},
-			"StudioEraseStroke": {
-				"additionalProperties": false,
-				"properties": {
-					"points": {
-						"items": {
-							"$ref": "#/components/schemas/StudioPaintPoint"
-						},
-						"type": ["array", "null"]
-					},
-					"size": {
-						"format": "double",
-						"maximum": 512,
-						"minimum": 1,
-						"type": "number"
-					}
-				},
-				"required": ["size", "points"],
-				"type": "object"
-			},
-			"StudioExportDefaults": {
-				"additionalProperties": false,
-				"properties": {
-					"format": {
-						"enum": ["png", "jpeg", "webp"],
-						"type": "string"
-					},
-					"matte_color": {
-						"type": "string"
-					},
-					"quality": {
-						"format": "double",
-						"maximum": 1,
-						"minimum": 0.1,
-						"type": "number"
-					}
-				},
-				"required": ["format", "quality", "matte_color"],
-				"type": "object"
-			},
-			"StudioGradientStop": {
-				"additionalProperties": false,
-				"properties": {
-					"color": {
-						"type": "string"
-					},
-					"offset": {
-						"format": "double",
-						"maximum": 1,
-						"minimum": 0,
-						"type": "number"
-					}
-				},
-				"required": ["offset", "color"],
-				"type": "object"
-			},
-			"StudioGradientValue": {
-				"additionalProperties": false,
-				"properties": {
-					"end": {
-						"$ref": "#/components/schemas/StudioPaintPoint"
-					},
-					"reverse": {
-						"type": "boolean"
-					},
-					"start": {
-						"$ref": "#/components/schemas/StudioPaintPoint"
-					},
-					"stops": {
-						"items": {
-							"$ref": "#/components/schemas/StudioGradientStop"
-						},
-						"type": ["array", "null"]
-					},
-					"type": {
-						"enum": ["linear", "radial", "angle", "reflected", "diamond"],
-						"type": "string"
-					}
-				},
-				"required": ["type", "start", "end", "stops", "reverse"],
-				"type": "object"
-			},
-			"StudioImageAdjustments": {
-				"additionalProperties": false,
-				"properties": {
-					"blur": {
-						"format": "double",
-						"type": "number"
-					},
-					"brightness": {
-						"format": "double",
-						"type": "number"
-					},
-					"contrast": {
-						"format": "double",
-						"type": "number"
-					},
-					"exposure": {
-						"format": "double",
-						"type": "number"
-					},
-					"highlights": {
-						"format": "double",
-						"type": "number"
-					},
-					"hue": {
-						"format": "double",
-						"type": "number"
-					},
-					"saturation": {
-						"format": "double",
-						"type": "number"
-					},
-					"shadows": {
-						"format": "double",
-						"type": "number"
-					},
-					"temperature": {
-						"format": "double",
-						"type": "number"
-					},
-					"tint": {
-						"format": "double",
-						"type": "number"
-					},
-					"vibrance": {
-						"format": "double",
-						"type": "number"
-					}
-				},
-				"required": [
-					"brightness",
-					"contrast",
-					"saturation",
-					"temperature",
-					"tint",
-					"vibrance",
-					"hue",
-					"exposure",
-					"highlights",
-					"shadows",
-					"blur"
-				],
-				"type": "object"
-			},
-			"StudioImageValue": {
-				"additionalProperties": false,
-				"properties": {
-					"adjustments": {
-						"$ref": "#/components/schemas/StudioImageAdjustments"
-					},
-					"crop": {
-						"$ref": "#/components/schemas/StudioCrop"
-					},
-					"fit": {
-						"enum": ["cover", "contain", "stretch"],
-						"type": "string"
-					},
-					"intrinsic_pending": {
-						"type": "boolean"
-					},
-					"media_id": {
-						"type": "string"
-					},
-					"source_height": {
-						"format": "int64",
-						"type": "integer"
-					},
-					"source_width": {
-						"format": "int64",
-						"type": "integer"
-					}
-				},
-				"required": ["media_id", "source_width", "source_height", "fit", "crop", "adjustments"],
-				"type": "object"
-			},
-			"StudioLayer": {
-				"additionalProperties": false,
-				"properties": {
-					"effects": {
-						"$ref": "#/components/schemas/StudioLayerEffects"
-					},
-					"erase_mask": {
-						"$ref": "#/components/schemas/StudioEraseMask"
-					},
-					"id": {
-						"type": "string"
-					},
-					"image": {
-						"$ref": "#/components/schemas/StudioImageValue"
-					},
-					"locked": {
-						"type": "boolean"
-					},
-					"mask": {
-						"$ref": "#/components/schemas/StudioLayerMask"
-					},
-					"name": {
-						"type": "string"
-					},
-					"opacity": {
-						"format": "double",
-						"type": "number"
-					},
-					"paint": {
-						"$ref": "#/components/schemas/StudioPaintValue"
-					},
-					"parent_id": {
-						"type": "string"
-					},
-					"shape": {
-						"$ref": "#/components/schemas/StudioShapeValue"
-					},
-					"text": {
-						"$ref": "#/components/schemas/StudioTextValue"
-					},
-					"transform": {
-						"$ref": "#/components/schemas/StudioTransform"
-					},
-					"type": {
-						"enum": ["text", "image", "shape", "paint", "group"],
-						"type": "string"
-					},
-					"visible": {
-						"type": "boolean"
-					}
-				},
-				"required": ["id", "type", "name", "visible", "locked", "opacity", "transform"],
-				"type": "object"
-			},
-			"StudioLayerEffects": {
-				"additionalProperties": false,
-				"properties": {
-					"blend_mode": {
-						"enum": ["normal", "multiply", "screen", "overlay", "darken", "lighten", "soft_light"],
-						"type": "string"
-					},
-					"drop_shadow": {
-						"$ref": "#/components/schemas/StudioShadowEffect"
-					},
-					"inner_shadow": {
-						"$ref": "#/components/schemas/StudioShadowEffect"
-					},
-					"stroke": {
-						"$ref": "#/components/schemas/StudioStrokeEffect"
-					}
-				},
-				"required": ["blend_mode"],
-				"type": "object"
-			},
-			"StudioLayerMask": {
-				"additionalProperties": false,
-				"properties": {
-					"inset": {
-						"format": "double",
-						"minimum": 0,
-						"type": "number"
-					},
-					"radius": {
-						"format": "double",
-						"minimum": 0,
-						"type": "number"
-					},
-					"shape": {
-						"enum": ["rectangle", "rounded_rectangle", "circle", "ellipse", "diamond"],
-						"type": "string"
-					}
-				},
-				"required": ["shape", "inset", "radius"],
-				"type": "object"
-			},
-			"StudioPageBackground": {
-				"additionalProperties": false,
-				"properties": {
-					"color": {
-						"type": "string"
-					},
-					"gradient": {
-						"$ref": "#/components/schemas/StudioGradientValue"
-					},
-					"image": {
-						"$ref": "#/components/schemas/StudioPageBackgroundImage"
-					},
-					"opacity": {
-						"format": "double",
-						"maximum": 1,
-						"minimum": 0,
-						"type": "number"
-					},
-					"type": {
-						"enum": ["transparent", "solid", "gradient", "image"],
-						"type": "string"
-					}
-				},
-				"required": ["type", "opacity"],
-				"type": "object"
-			},
-			"StudioPageBackgroundImage": {
-				"additionalProperties": false,
-				"properties": {
-					"fit": {
-						"enum": ["cover", "contain", "stretch"],
-						"type": "string"
-					},
-					"media_id": {
-						"type": "string"
-					}
-				},
-				"required": ["media_id", "fit"],
-				"type": "object"
-			},
-			"StudioPagePayload": {
-				"additionalProperties": false,
-				"properties": {
-					"background": {
-						"$ref": "#/components/schemas/StudioPageBackground"
-					},
-					"background_color": {
-						"type": "string"
-					},
-					"id": {
-						"type": "string"
-					},
-					"latest_export_media_id": {
-						"type": "string"
-					},
-					"layers": {
-						"items": {
-							"$ref": "#/components/schemas/StudioLayer"
-						},
-						"type": ["array", "null"]
-					},
-					"name": {
-						"type": "string"
-					},
-					"preview_media_id": {
-						"type": "string"
-					}
-				},
-				"required": ["id", "name", "background_color", "layers"],
-				"type": "object"
-			},
-			"StudioPaintPoint": {
-				"additionalProperties": false,
-				"properties": {
-					"x": {
-						"format": "double",
-						"type": "number"
-					},
-					"y": {
-						"format": "double",
-						"type": "number"
-					}
-				},
-				"required": ["x", "y"],
-				"type": "object"
-			},
-			"StudioPaintSpan": {
-				"additionalProperties": false,
-				"properties": {
-					"width": {
-						"format": "double",
-						"type": "number"
-					},
-					"x": {
-						"format": "double",
-						"type": "number"
-					},
-					"y": {
-						"format": "double",
-						"type": "number"
-					}
-				},
-				"required": ["y", "x", "width"],
-				"type": "object"
-			},
-			"StudioPaintValue": {
-				"additionalProperties": false,
-				"properties": {
-					"color": {
-						"type": "string"
-					},
-					"gradient": {
-						"$ref": "#/components/schemas/StudioGradientValue"
-					},
-					"kind": {
-						"enum": ["stroke", "fill", "gradient"],
-						"type": "string"
-					},
-					"opacity": {
-						"format": "double",
-						"maximum": 1,
-						"minimum": 0,
-						"type": "number"
-					},
-					"points": {
-						"items": {
-							"$ref": "#/components/schemas/StudioPaintPoint"
-						},
-						"type": ["array", "null"]
-					},
-					"size": {
-						"format": "double",
-						"maximum": 512,
-						"minimum": 0,
-						"type": "number"
-					},
-					"source_height": {
-						"format": "double",
-						"minimum": 0,
-						"type": "number"
-					},
-					"source_width": {
-						"format": "double",
-						"minimum": 0,
-						"type": "number"
-					},
-					"spans": {
-						"items": {
-							"$ref": "#/components/schemas/StudioPaintSpan"
-						},
-						"type": ["array", "null"]
-					}
-				},
-				"required": [
-					"kind",
-					"color",
-					"size",
-					"opacity",
-					"source_width",
-					"source_height",
-					"points",
-					"spans"
-				],
-				"type": "object"
-			},
-			"StudioPreset": {
-				"additionalProperties": false,
-				"properties": {
-					"default_format": {
-						"description": "Default export format",
-						"enum": ["png", "jpeg", "webp"],
-						"type": "string"
-					},
-					"height_px": {
-						"description": "Canvas height in pixels",
-						"format": "int64",
-						"type": "integer"
-					},
-					"key": {
-						"description": "Stable preset key",
-						"type": "string"
-					},
-					"name": {
-						"description": "User-visible preset name",
-						"type": "string"
-					},
-					"profiles": {
-						"description": "Compatible provider content profiles",
-						"items": {
-							"type": "string"
-						},
-						"type": ["array", "null"]
-					},
-					"width_px": {
-						"description": "Canvas width in pixels",
-						"format": "int64",
-						"type": "integer"
-					}
-				},
-				"required": ["key", "name", "width_px", "height_px", "default_format", "profiles"],
-				"type": "object"
-			},
-			"StudioPresetOutputBody": {
-				"additionalProperties": false,
-				"properties": {
-					"$schema": {
-						"description": "A URL to the JSON Schema for this object.",
-						"examples": ["https://example.com/schemas/StudioPresetOutputBody.json"],
-						"format": "uri",
-						"readOnly": true,
-						"type": "string"
-					},
-					"background_model_base_url": {
-						"type": "string"
-					},
-					"enabled": {
-						"type": "boolean"
-					},
-					"presets": {
-						"items": {
-							"$ref": "#/components/schemas/StudioPreset"
-						},
-						"type": ["array", "null"]
-					},
-					"schema_version": {
-						"format": "int64",
-						"type": "integer"
-					}
-				},
-				"required": ["enabled", "schema_version", "background_model_base_url", "presets"],
-				"type": "object"
-			},
-			"StudioRevisionSummary": {
-				"additionalProperties": false,
-				"properties": {
-					"$schema": {
-						"description": "A URL to the JSON Schema for this object.",
-						"examples": ["https://example.com/schemas/StudioRevisionSummary.json"],
-						"format": "uri",
-						"readOnly": true,
-						"type": "string"
-					},
-					"created_at": {
-						"type": "string"
-					},
-					"expires_at": {
-						"type": "string"
-					},
-					"id": {
-						"type": "string"
-					},
-					"kind": {
-						"type": "string"
-					},
-					"name": {
-						"type": "string"
-					},
-					"revision": {
-						"format": "int64",
-						"type": "integer"
-					}
-				},
-				"required": ["id", "revision", "kind", "created_at"],
-				"type": "object"
-			},
-			"StudioShadowEffect": {
-				"additionalProperties": false,
-				"properties": {
-					"angle": {
-						"format": "double",
-						"maximum": 360,
-						"minimum": -360,
-						"type": "number"
-					},
-					"blur": {
-						"format": "double",
-						"maximum": 100,
-						"minimum": 0,
-						"type": "number"
-					},
-					"color": {
-						"type": "string"
-					},
-					"distance": {
-						"format": "double",
-						"maximum": 500,
-						"minimum": 0,
-						"type": "number"
-					},
-					"opacity": {
-						"format": "double",
-						"maximum": 1,
-						"minimum": 0,
-						"type": "number"
-					}
-				},
-				"required": ["color", "opacity", "blur", "angle", "distance"],
-				"type": "object"
-			},
-			"StudioShapeValue": {
-				"additionalProperties": false,
-				"properties": {
-					"fill": {
-						"type": "string"
-					},
-					"kind": {
-						"enum": ["rectangle", "rounded_rectangle", "ellipse", "line"],
-						"type": "string"
-					},
-					"radius": {
-						"format": "double",
-						"type": "number"
-					},
-					"stroke": {
-						"type": "string"
-					},
-					"stroke_width": {
-						"format": "double",
-						"type": "number"
-					}
-				},
-				"required": ["kind", "fill", "stroke", "stroke_width", "radius"],
-				"type": "object"
-			},
-			"StudioStrokeEffect": {
-				"additionalProperties": false,
-				"properties": {
-					"color": {
-						"type": "string"
-					},
-					"opacity": {
-						"format": "double",
-						"maximum": 1,
-						"minimum": 0,
-						"type": "number"
-					},
-					"position": {
-						"enum": ["inside", "center", "outside"],
-						"type": "string"
-					},
-					"width": {
-						"format": "double",
-						"maximum": 500,
-						"minimum": 0,
-						"type": "number"
-					}
-				},
-				"required": ["color", "opacity", "width", "position"],
-				"type": "object"
-			},
-			"StudioTemplateResponse": {
-				"additionalProperties": false,
-				"properties": {
-					"$schema": {
-						"description": "A URL to the JSON Schema for this object.",
-						"examples": ["https://example.com/schemas/StudioTemplateResponse.json"],
-						"format": "uri",
-						"readOnly": true,
-						"type": "string"
-					},
-					"built_in": {
-						"type": "boolean"
-					},
-					"category": {
-						"type": "string"
-					},
-					"created_at": {
-						"type": "string"
-					},
-					"document": {
-						"$ref": "#/components/schemas/StudioDocumentPayload"
-					},
-					"id": {
-						"type": "string"
-					},
-					"name": {
-						"type": "string"
-					},
-					"preset_key": {
-						"type": "string"
-					},
-					"preview_media_id": {
-						"type": "string"
-					},
-					"updated_at": {
-						"type": "string"
-					},
-					"workspace_id": {
-						"type": "string"
-					}
-				},
-				"required": ["id", "name", "category", "preset_key", "built_in", "document"],
-				"type": "object"
-			},
-			"StudioTextCurve": {
-				"additionalProperties": false,
-				"properties": {
-					"offset": {
-						"format": "double",
-						"maximum": 1,
-						"minimum": -1,
-						"type": "number"
-					},
-					"reverse": {
-						"type": "boolean"
-					},
-					"strength": {
-						"format": "double",
-						"maximum": 1,
-						"minimum": 0.05,
-						"type": "number"
-					},
-					"type": {
-						"enum": ["none", "arc_up", "arc_down", "wave", "circle", "ellipse"],
-						"type": "string"
-					}
-				},
-				"required": ["type", "strength", "offset", "reverse"],
-				"type": "object"
-			},
-			"StudioTextShadow": {
-				"additionalProperties": false,
-				"properties": {
-					"blur": {
-						"format": "double",
-						"type": "number"
-					},
-					"color": {
-						"type": "string"
-					},
-					"offset_x": {
-						"format": "double",
-						"type": "number"
-					},
-					"offset_y": {
-						"format": "double",
-						"type": "number"
-					}
-				},
-				"required": ["color", "blur", "offset_x", "offset_y"],
-				"type": "object"
-			},
-			"StudioTextValue": {
-				"additionalProperties": false,
-				"properties": {
-					"align": {
-						"type": "string"
-					},
-					"color": {
-						"type": "string"
-					},
-					"curve": {
-						"$ref": "#/components/schemas/StudioTextCurve"
-					},
-					"font_asset_id": {
-						"type": "string"
-					},
-					"font_family": {
-						"type": "string"
-					},
-					"font_size": {
-						"format": "double",
-						"type": "number"
-					},
-					"font_style": {
-						"type": "string"
-					},
-					"font_weight": {
-						"format": "int64",
-						"type": "integer"
-					},
-					"highlight_color": {
-						"type": "string"
-					},
-					"letter_spacing": {
-						"format": "double",
-						"type": "number"
-					},
-					"line_height": {
-						"format": "double",
-						"type": "number"
-					},
-					"shadow": {
-						"$ref": "#/components/schemas/StudioTextShadow"
-					},
-					"stroke_color": {
-						"type": "string"
-					},
-					"stroke_width": {
-						"format": "double",
-						"type": "number"
-					},
-					"text": {
-						"type": "string"
-					}
-				},
-				"required": [
-					"text",
-					"font_family",
-					"font_weight",
-					"font_style",
-					"font_size",
-					"color",
-					"align",
-					"line_height",
-					"letter_spacing",
-					"stroke_width",
-					"shadow"
-				],
-				"type": "object"
-			},
-			"StudioTransform": {
-				"additionalProperties": false,
-				"properties": {
-					"flip_x": {
-						"type": "boolean"
-					},
-					"flip_y": {
-						"type": "boolean"
-					},
-					"height": {
-						"format": "double",
-						"type": "number"
-					},
-					"rotation": {
-						"format": "double",
-						"type": "number"
-					},
-					"width": {
-						"format": "double",
-						"type": "number"
-					},
-					"x": {
-						"format": "double",
-						"type": "number"
-					},
-					"y": {
-						"format": "double",
-						"type": "number"
-					}
-				},
-				"required": ["x", "y", "width", "height", "rotation", "flip_x", "flip_y"],
-				"type": "object"
-			},
 			"SubmitFeedbackInputBody": {
 				"additionalProperties": false,
 				"properties": {
@@ -12788,6 +12640,10 @@
 						},
 						"type": ["array", "null"]
 					},
+					"repost_override": {
+						"$ref": "#/components/schemas/Override",
+						"description": "Per-publication repost override"
+					},
 					"scheduled_at": {
 						"description": "Optional schedule time",
 						"format": "date-time",
@@ -12929,12 +12785,14 @@
 				"required": ["id", "time_us", "label", "color"],
 				"type": "object"
 			},
-			"ToggleStudioDesignFavoriteOutputBody": {
+			"ToggleImageEditorDesignFavoriteOutputBody": {
 				"additionalProperties": false,
 				"properties": {
 					"$schema": {
 						"description": "A URL to the JSON Schema for this object.",
-						"examples": ["https://example.com/schemas/ToggleStudioDesignFavoriteOutputBody.json"],
+						"examples": [
+							"https://example.com/schemas/ToggleImageEditorDesignFavoriteOutputBody.json"
+						],
 						"format": "uri",
 						"readOnly": true,
 						"type": "string"
@@ -12995,27 +12853,121 @@
 				"required": ["slug"],
 				"type": "object"
 			},
-			"UpdateMediaCollectionInputBody": {
+			"UpdateImageEditorBrandKitInputBody": {
 				"additionalProperties": false,
 				"properties": {
 					"$schema": {
 						"description": "A URL to the JSON Schema for this object.",
-						"examples": ["https://example.com/schemas/UpdateMediaCollectionInputBody.json"],
+						"examples": ["https://example.com/schemas/UpdateImageEditorBrandKitInputBody.json"],
 						"format": "uri",
 						"readOnly": true,
 						"type": "string"
 					},
-					"color": {
-						"maxLength": 32,
-						"type": "string"
+					"assets": {
+						"items": {
+							"$ref": "#/components/schemas/ImageEditorBrandAsset"
+						},
+						"type": ["array", "null"]
+					},
+					"backgrounds": {
+						"items": {
+							"type": "string"
+						},
+						"type": ["array", "null"]
+					},
+					"colors": {
+						"items": {
+							"$ref": "#/components/schemas/ImageEditorBrandColor"
+						},
+						"type": ["array", "null"]
+					},
+					"fonts": {
+						"items": {
+							"$ref": "#/components/schemas/ImageEditorBrandFont"
+						},
+						"type": ["array", "null"]
 					},
 					"name": {
-						"maxLength": 100,
-						"minLength": 1,
+						"maxLength": 120,
+						"type": "string"
+					},
+					"text_styles": {
+						"items": {
+							"$ref": "#/components/schemas/ImageEditorBrandTextStyle"
+						},
+						"type": ["array", "null"]
+					},
+					"workspace_id": {
 						"type": "string"
 					}
 				},
-				"required": ["name", "color"],
+				"required": [
+					"workspace_id",
+					"name",
+					"colors",
+					"text_styles",
+					"backgrounds",
+					"assets",
+					"fonts"
+				],
+				"type": "object"
+			},
+			"UpdateImageEditorDesignInputBody": {
+				"additionalProperties": false,
+				"properties": {
+					"$schema": {
+						"description": "A URL to the JSON Schema for this object.",
+						"examples": ["https://example.com/schemas/UpdateImageEditorDesignInputBody.json"],
+						"format": "uri",
+						"readOnly": true,
+						"type": "string"
+					},
+					"cover_preview_media_id": {
+						"type": "string"
+					},
+					"document": {
+						"$ref": "#/components/schemas/ImageEditorDocumentPayload"
+					},
+					"expected_revision": {
+						"format": "int64",
+						"minimum": 1,
+						"type": "integer"
+					},
+					"recovery_reason": {
+						"enum": ["idle", "export", "close"],
+						"type": "string"
+					}
+				},
+				"required": ["expected_revision", "document"],
+				"type": "object"
+			},
+			"UpdateImageEditorTemplateInputBody": {
+				"additionalProperties": false,
+				"properties": {
+					"$schema": {
+						"description": "A URL to the JSON Schema for this object.",
+						"examples": ["https://example.com/schemas/UpdateImageEditorTemplateInputBody.json"],
+						"format": "uri",
+						"readOnly": true,
+						"type": "string"
+					},
+					"category": {
+						"maxLength": 80,
+						"type": "string"
+					},
+					"document": {
+						"$ref": "#/components/schemas/ImageEditorDocumentPayload"
+					},
+					"name": {
+						"maxLength": 120,
+						"minLength": 1,
+						"type": "string"
+					},
+					"preview_media_id": {
+						"type": "string"
+					}
+				},
+				"required": ["name", "category", "document"],
 				"type": "object"
 			},
 			"UpdateMediaFavoriteOutputBody": {
@@ -13252,123 +13204,6 @@
 					}
 				},
 				"required": ["state", "running_version", "running_build"],
-				"type": "object"
-			},
-			"UpdateStudioBrandKitInputBody": {
-				"additionalProperties": false,
-				"properties": {
-					"$schema": {
-						"description": "A URL to the JSON Schema for this object.",
-						"examples": ["https://example.com/schemas/UpdateStudioBrandKitInputBody.json"],
-						"format": "uri",
-						"readOnly": true,
-						"type": "string"
-					},
-					"assets": {
-						"items": {
-							"$ref": "#/components/schemas/StudioBrandAsset"
-						},
-						"type": ["array", "null"]
-					},
-					"backgrounds": {
-						"items": {
-							"type": "string"
-						},
-						"type": ["array", "null"]
-					},
-					"colors": {
-						"items": {
-							"$ref": "#/components/schemas/StudioBrandColor"
-						},
-						"type": ["array", "null"]
-					},
-					"fonts": {
-						"items": {
-							"$ref": "#/components/schemas/StudioBrandFont"
-						},
-						"type": ["array", "null"]
-					},
-					"name": {
-						"maxLength": 120,
-						"type": "string"
-					},
-					"text_styles": {
-						"items": {
-							"$ref": "#/components/schemas/StudioBrandTextStyle"
-						},
-						"type": ["array", "null"]
-					},
-					"workspace_id": {
-						"type": "string"
-					}
-				},
-				"required": [
-					"workspace_id",
-					"name",
-					"colors",
-					"text_styles",
-					"backgrounds",
-					"assets",
-					"fonts"
-				],
-				"type": "object"
-			},
-			"UpdateStudioDesignInputBody": {
-				"additionalProperties": false,
-				"properties": {
-					"$schema": {
-						"description": "A URL to the JSON Schema for this object.",
-						"examples": ["https://example.com/schemas/UpdateStudioDesignInputBody.json"],
-						"format": "uri",
-						"readOnly": true,
-						"type": "string"
-					},
-					"cover_preview_media_id": {
-						"type": "string"
-					},
-					"document": {
-						"$ref": "#/components/schemas/StudioDocumentPayload"
-					},
-					"expected_revision": {
-						"format": "int64",
-						"minimum": 1,
-						"type": "integer"
-					},
-					"recovery_reason": {
-						"enum": ["idle", "export", "close"],
-						"type": "string"
-					}
-				},
-				"required": ["expected_revision", "document"],
-				"type": "object"
-			},
-			"UpdateStudioTemplateInputBody": {
-				"additionalProperties": false,
-				"properties": {
-					"$schema": {
-						"description": "A URL to the JSON Schema for this object.",
-						"examples": ["https://example.com/schemas/UpdateStudioTemplateInputBody.json"],
-						"format": "uri",
-						"readOnly": true,
-						"type": "string"
-					},
-					"category": {
-						"maxLength": 80,
-						"type": "string"
-					},
-					"document": {
-						"$ref": "#/components/schemas/StudioDocumentPayload"
-					},
-					"name": {
-						"maxLength": 120,
-						"minLength": 1,
-						"type": "string"
-					},
-					"preview_media_id": {
-						"type": "string"
-					}
-				},
-				"required": ["name", "category", "document"],
 				"type": "object"
 			},
 			"UpdateVideoProjectInputBody": {
@@ -13921,6 +13756,215 @@
 				"required": ["mfa_token", "code"],
 				"type": "object"
 			},
+			"VideoEditorConfigOutputBody": {
+				"additionalProperties": false,
+				"properties": {
+					"$schema": {
+						"description": "A URL to the JSON Schema for this object.",
+						"examples": ["https://example.com/schemas/VideoEditorConfigOutputBody.json"],
+						"format": "uri",
+						"readOnly": true,
+						"type": "string"
+					},
+					"enabled": {
+						"type": "boolean"
+					},
+					"limits": {
+						"$ref": "#/components/schemas/VideoEditorLimits"
+					},
+					"model_manifest": {
+						"items": {
+							"$ref": "#/components/schemas/VideoEditorModelManifestItem"
+						},
+						"type": ["array", "null"]
+					},
+					"schema_version": {
+						"format": "int64",
+						"type": "integer"
+					},
+					"stock_providers": {
+						"items": {
+							"type": "string"
+						},
+						"type": ["array", "null"]
+					}
+				},
+				"required": ["enabled", "schema_version", "limits", "model_manifest", "stock_providers"],
+				"type": "object"
+			},
+			"VideoEditorLimits": {
+				"additionalProperties": false,
+				"properties": {
+					"max_document_bytes": {
+						"format": "int64",
+						"type": "integer"
+					},
+					"max_duration_seconds": {
+						"format": "int64",
+						"type": "integer"
+					},
+					"max_export_fps": {
+						"format": "int64",
+						"type": "integer"
+					},
+					"max_export_height": {
+						"format": "int64",
+						"type": "integer"
+					},
+					"max_export_width": {
+						"format": "int64",
+						"type": "integer"
+					},
+					"max_sources": {
+						"format": "int64",
+						"type": "integer"
+					}
+				},
+				"required": [
+					"max_duration_seconds",
+					"max_sources",
+					"max_document_bytes",
+					"max_export_width",
+					"max_export_height",
+					"max_export_fps"
+				],
+				"type": "object"
+			},
+			"VideoEditorModelManifestItem": {
+				"additionalProperties": false,
+				"properties": {
+					"fingerprint": {
+						"type": "string"
+					},
+					"id": {
+						"type": "string"
+					},
+					"kind": {
+						"enum": ["transcription", "vad", "reframing"],
+						"type": "string"
+					},
+					"license_name": {
+						"type": "string"
+					},
+					"license_reference": {
+						"type": "string"
+					},
+					"license_url": {
+						"type": "string"
+					},
+					"required_backends": {
+						"items": {
+							"type": "string"
+						},
+						"type": ["array", "null"]
+					},
+					"resumable": {
+						"type": "boolean"
+					},
+					"runtime_bytes_wasm": {
+						"format": "int64",
+						"type": "integer"
+					},
+					"runtime_bytes_webgpu": {
+						"format": "int64",
+						"type": "integer"
+					},
+					"sha256": {
+						"type": "string"
+					},
+					"size_bytes": {
+						"format": "int64",
+						"type": "integer"
+					},
+					"url": {
+						"type": "string"
+					},
+					"version": {
+						"type": "string"
+					}
+				},
+				"required": [
+					"id",
+					"kind",
+					"version",
+					"size_bytes",
+					"runtime_bytes_wasm",
+					"runtime_bytes_webgpu",
+					"url",
+					"sha256",
+					"required_backends",
+					"fingerprint",
+					"resumable",
+					"license_name",
+					"license_url",
+					"license_reference"
+				],
+				"type": "object"
+			},
+			"VideoEditorSyncReuse": {
+				"additionalProperties": false,
+				"properties": {
+					"media_id": {
+						"type": "string"
+					},
+					"source_id": {
+						"type": "string"
+					}
+				},
+				"required": ["source_id", "media_id"],
+				"type": "object"
+			},
+			"VideoEditorSyncSource": {
+				"additionalProperties": false,
+				"properties": {
+					"mime_type": {
+						"maxLength": 200,
+						"minLength": 1,
+						"type": "string"
+					},
+					"original_name": {
+						"maxLength": 500,
+						"minLength": 1,
+						"type": "string"
+					},
+					"sha256": {
+						"maxLength": 64,
+						"minLength": 64,
+						"type": "string"
+					},
+					"size_bytes": {
+						"format": "int64",
+						"minimum": 0,
+						"type": "integer"
+					},
+					"source_id": {
+						"maxLength": 200,
+						"minLength": 1,
+						"type": "string"
+					}
+				},
+				"required": ["source_id", "sha256", "size_bytes", "mime_type", "original_name"],
+				"type": "object"
+			},
+			"VideoEditorSyncStorage": {
+				"additionalProperties": false,
+				"properties": {
+					"limit_bytes": {
+						"format": "int64",
+						"type": ["integer", "null"]
+					},
+					"remaining_bytes": {
+						"format": "int64",
+						"type": ["integer", "null"]
+					},
+					"used_bytes": {
+						"format": "int64",
+						"type": "integer"
+					}
+				},
+				"required": ["used_bytes", "limit_bytes", "remaining_bytes"],
+				"type": "object"
+			},
 			"VideoEffect": {
 				"additionalProperties": false,
 				"properties": {
@@ -14285,215 +14329,6 @@
 					}
 				},
 				"required": ["project_id", "exports"],
-				"type": "object"
-			},
-			"VideoStudioConfigOutputBody": {
-				"additionalProperties": false,
-				"properties": {
-					"$schema": {
-						"description": "A URL to the JSON Schema for this object.",
-						"examples": ["https://example.com/schemas/VideoStudioConfigOutputBody.json"],
-						"format": "uri",
-						"readOnly": true,
-						"type": "string"
-					},
-					"enabled": {
-						"type": "boolean"
-					},
-					"limits": {
-						"$ref": "#/components/schemas/VideoStudioLimits"
-					},
-					"model_manifest": {
-						"items": {
-							"$ref": "#/components/schemas/VideoStudioModelManifestItem"
-						},
-						"type": ["array", "null"]
-					},
-					"schema_version": {
-						"format": "int64",
-						"type": "integer"
-					},
-					"stock_providers": {
-						"items": {
-							"type": "string"
-						},
-						"type": ["array", "null"]
-					}
-				},
-				"required": ["enabled", "schema_version", "limits", "model_manifest", "stock_providers"],
-				"type": "object"
-			},
-			"VideoStudioLimits": {
-				"additionalProperties": false,
-				"properties": {
-					"max_document_bytes": {
-						"format": "int64",
-						"type": "integer"
-					},
-					"max_duration_seconds": {
-						"format": "int64",
-						"type": "integer"
-					},
-					"max_export_fps": {
-						"format": "int64",
-						"type": "integer"
-					},
-					"max_export_height": {
-						"format": "int64",
-						"type": "integer"
-					},
-					"max_export_width": {
-						"format": "int64",
-						"type": "integer"
-					},
-					"max_sources": {
-						"format": "int64",
-						"type": "integer"
-					}
-				},
-				"required": [
-					"max_duration_seconds",
-					"max_sources",
-					"max_document_bytes",
-					"max_export_width",
-					"max_export_height",
-					"max_export_fps"
-				],
-				"type": "object"
-			},
-			"VideoStudioModelManifestItem": {
-				"additionalProperties": false,
-				"properties": {
-					"fingerprint": {
-						"type": "string"
-					},
-					"id": {
-						"type": "string"
-					},
-					"kind": {
-						"enum": ["transcription", "vad", "reframing"],
-						"type": "string"
-					},
-					"license_name": {
-						"type": "string"
-					},
-					"license_reference": {
-						"type": "string"
-					},
-					"license_url": {
-						"type": "string"
-					},
-					"required_backends": {
-						"items": {
-							"type": "string"
-						},
-						"type": ["array", "null"]
-					},
-					"resumable": {
-						"type": "boolean"
-					},
-					"runtime_bytes_wasm": {
-						"format": "int64",
-						"type": "integer"
-					},
-					"runtime_bytes_webgpu": {
-						"format": "int64",
-						"type": "integer"
-					},
-					"sha256": {
-						"type": "string"
-					},
-					"size_bytes": {
-						"format": "int64",
-						"type": "integer"
-					},
-					"url": {
-						"type": "string"
-					},
-					"version": {
-						"type": "string"
-					}
-				},
-				"required": [
-					"id",
-					"kind",
-					"version",
-					"size_bytes",
-					"runtime_bytes_wasm",
-					"runtime_bytes_webgpu",
-					"url",
-					"sha256",
-					"required_backends",
-					"fingerprint",
-					"resumable",
-					"license_name",
-					"license_url",
-					"license_reference"
-				],
-				"type": "object"
-			},
-			"VideoStudioSyncReuse": {
-				"additionalProperties": false,
-				"properties": {
-					"media_id": {
-						"type": "string"
-					},
-					"source_id": {
-						"type": "string"
-					}
-				},
-				"required": ["source_id", "media_id"],
-				"type": "object"
-			},
-			"VideoStudioSyncSource": {
-				"additionalProperties": false,
-				"properties": {
-					"mime_type": {
-						"maxLength": 200,
-						"minLength": 1,
-						"type": "string"
-					},
-					"original_name": {
-						"maxLength": 500,
-						"minLength": 1,
-						"type": "string"
-					},
-					"sha256": {
-						"maxLength": 64,
-						"minLength": 64,
-						"type": "string"
-					},
-					"size_bytes": {
-						"format": "int64",
-						"minimum": 0,
-						"type": "integer"
-					},
-					"source_id": {
-						"maxLength": 200,
-						"minLength": 1,
-						"type": "string"
-					}
-				},
-				"required": ["source_id", "sha256", "size_bytes", "mime_type", "original_name"],
-				"type": "object"
-			},
-			"VideoStudioSyncStorage": {
-				"additionalProperties": false,
-				"properties": {
-					"limit_bytes": {
-						"format": "int64",
-						"type": ["integer", "null"]
-					},
-					"remaining_bytes": {
-						"format": "int64",
-						"type": ["integer", "null"]
-					},
-					"used_bytes": {
-						"format": "int64",
-						"type": "integer"
-					}
-				},
-				"required": ["used_bytes", "limit_bytes", "remaining_bytes"],
 				"type": "object"
 			},
 			"VideoVariant": {
@@ -20781,6 +20616,1650 @@
 				"tags": ["System"]
 			}
 		},
+		"/image-editor/brand-kit": {
+			"get": {
+				"operationId": "get-image-editor-brand-kit",
+				"parameters": [
+					{
+						"explode": false,
+						"in": "query",
+						"name": "workspace_id",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ImageEditorBrandKitResponse"
+								}
+							}
+						},
+						"description": "OK"
+					},
+					"400": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Bad Request"
+					},
+					"403": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Forbidden"
+					},
+					"422": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Unprocessable Entity"
+					},
+					"500": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Internal Server Error"
+					}
+				},
+				"summary": "Get the workspace OpenPost Image Editor brand kit",
+				"tags": ["OpenPost Image Editor"]
+			},
+			"put": {
+				"operationId": "update-image-editor-brand-kit",
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/UpdateImageEditorBrandKitInputBody"
+							}
+						}
+					},
+					"required": true
+				},
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ImageEditorBrandKitResponse"
+								}
+							}
+						},
+						"description": "OK"
+					},
+					"400": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Bad Request"
+					},
+					"403": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Forbidden"
+					},
+					"422": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Unprocessable Entity"
+					},
+					"500": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Internal Server Error"
+					}
+				},
+				"summary": "Create or update the workspace OpenPost Image Editor brand kit",
+				"tags": ["OpenPost Image Editor"]
+			}
+		},
+		"/image-editor/designs": {
+			"get": {
+				"operationId": "list-image-editor-designs",
+				"parameters": [
+					{
+						"explode": false,
+						"in": "query",
+						"name": "workspace_id",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"explode": false,
+						"in": "query",
+						"name": "search",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"explode": false,
+						"in": "query",
+						"name": "limit",
+						"schema": {
+							"format": "int64",
+							"maximum": 100,
+							"minimum": 1,
+							"type": "integer"
+						}
+					},
+					{
+						"explode": false,
+						"in": "query",
+						"name": "offset",
+						"schema": {
+							"format": "int64",
+							"minimum": 0,
+							"type": "integer"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ListImageEditorDesignsOutputBody"
+								}
+							}
+						},
+						"description": "OK"
+					},
+					"400": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Bad Request"
+					},
+					"403": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Forbidden"
+					},
+					"422": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Unprocessable Entity"
+					},
+					"500": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Internal Server Error"
+					}
+				},
+				"summary": "List OpenPost Image Editor designs",
+				"tags": ["OpenPost Image Editor"]
+			},
+			"post": {
+				"operationId": "create-image-editor-design",
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/CreateImageEditorDesignInputBody"
+							}
+						}
+					},
+					"required": true
+				},
+				"responses": {
+					"201": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ImageEditorDocumentResponse"
+								}
+							}
+						},
+						"description": "Created"
+					},
+					"400": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Bad Request"
+					},
+					"403": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Forbidden"
+					},
+					"404": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Not Found"
+					},
+					"422": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Unprocessable Entity"
+					},
+					"500": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Internal Server Error"
+					}
+				},
+				"summary": "Create an OpenPost Image Editor design",
+				"tags": ["OpenPost Image Editor"]
+			}
+		},
+		"/image-editor/designs/{id}": {
+			"delete": {
+				"operationId": "delete-image-editor-design",
+				"parameters": [
+					{
+						"in": "path",
+						"name": "id",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/DeleteImageEditorDesignOutputBody"
+								}
+							}
+						},
+						"description": "OK"
+					},
+					"403": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Forbidden"
+					},
+					"404": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Not Found"
+					},
+					"422": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Unprocessable Entity"
+					},
+					"500": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Internal Server Error"
+					}
+				},
+				"summary": "Move an OpenPost Image Editor design to trash",
+				"tags": ["OpenPost Image Editor"]
+			},
+			"get": {
+				"operationId": "get-image-editor-design",
+				"parameters": [
+					{
+						"in": "path",
+						"name": "id",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ImageEditorDocumentResponse"
+								}
+							}
+						},
+						"description": "OK"
+					},
+					"403": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Forbidden"
+					},
+					"404": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Not Found"
+					},
+					"422": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Unprocessable Entity"
+					},
+					"500": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Internal Server Error"
+					}
+				},
+				"summary": "Get an OpenPost Image Editor design",
+				"tags": ["OpenPost Image Editor"]
+			},
+			"patch": {
+				"operationId": "update-image-editor-design",
+				"parameters": [
+					{
+						"in": "path",
+						"name": "id",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/UpdateImageEditorDesignInputBody"
+							}
+						}
+					},
+					"required": true
+				},
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ImageEditorDocumentResponse"
+								}
+							}
+						},
+						"description": "OK"
+					},
+					"400": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Bad Request"
+					},
+					"403": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Forbidden"
+					},
+					"404": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Not Found"
+					},
+					"409": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Conflict"
+					},
+					"422": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Unprocessable Entity"
+					},
+					"500": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Internal Server Error"
+					}
+				},
+				"summary": "Save an OpenPost Image Editor design with optimistic concurrency",
+				"tags": ["OpenPost Image Editor"]
+			}
+		},
+		"/image-editor/designs/{id}/duplicate": {
+			"post": {
+				"operationId": "duplicate-image-editor-design",
+				"parameters": [
+					{
+						"in": "path",
+						"name": "id",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ImageEditorDocumentResponse"
+								}
+							}
+						},
+						"description": "OK"
+					},
+					"403": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Forbidden"
+					},
+					"404": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Not Found"
+					},
+					"422": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Unprocessable Entity"
+					},
+					"500": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Internal Server Error"
+					}
+				},
+				"summary": "Duplicate an OpenPost Image Editor design",
+				"tags": ["OpenPost Image Editor"]
+			}
+		},
+		"/image-editor/designs/{id}/favorite": {
+			"patch": {
+				"operationId": "toggle-image-editor-design-favorite",
+				"parameters": [
+					{
+						"in": "path",
+						"name": "id",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ToggleImageEditorDesignFavoriteOutputBody"
+								}
+							}
+						},
+						"description": "OK"
+					},
+					"403": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Forbidden"
+					},
+					"404": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Not Found"
+					},
+					"422": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Unprocessable Entity"
+					},
+					"500": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Internal Server Error"
+					}
+				},
+				"summary": "Toggle an OpenPost Image Editor design favorite",
+				"tags": ["OpenPost Image Editor"]
+			}
+		},
+		"/image-editor/designs/{id}/revisions": {
+			"get": {
+				"operationId": "list-image-editor-design-revisions",
+				"parameters": [
+					{
+						"in": "path",
+						"name": "id",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ListImageEditorRevisionsOutputBody"
+								}
+							}
+						},
+						"description": "OK"
+					},
+					"403": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Forbidden"
+					},
+					"404": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Not Found"
+					},
+					"422": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Unprocessable Entity"
+					},
+					"500": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Internal Server Error"
+					}
+				},
+				"summary": "List OpenPost Image Editor design recovery revisions and checkpoints",
+				"tags": ["OpenPost Image Editor"]
+			},
+			"post": {
+				"operationId": "create-image-editor-design-checkpoint",
+				"parameters": [
+					{
+						"in": "path",
+						"name": "id",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/CreateImageEditorCheckpointInputBody"
+							}
+						}
+					},
+					"required": true
+				},
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ImageEditorRevisionSummary"
+								}
+							}
+						},
+						"description": "OK"
+					},
+					"400": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Bad Request"
+					},
+					"403": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Forbidden"
+					},
+					"404": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Not Found"
+					},
+					"422": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Unprocessable Entity"
+					},
+					"500": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Internal Server Error"
+					}
+				},
+				"summary": "Create a named OpenPost Image Editor design checkpoint",
+				"tags": ["OpenPost Image Editor"]
+			}
+		},
+		"/image-editor/designs/{id}/revisions/{revision_id}/restore": {
+			"post": {
+				"operationId": "restore-image-editor-design-revision",
+				"parameters": [
+					{
+						"in": "path",
+						"name": "id",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"in": "path",
+						"name": "revision_id",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/RestoreImageEditorRevisionInputBody"
+							}
+						}
+					},
+					"required": true
+				},
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ImageEditorDocumentResponse"
+								}
+							}
+						},
+						"description": "OK"
+					},
+					"400": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Bad Request"
+					},
+					"403": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Forbidden"
+					},
+					"404": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Not Found"
+					},
+					"409": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Conflict"
+					},
+					"422": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Unprocessable Entity"
+					},
+					"500": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Internal Server Error"
+					}
+				},
+				"summary": "Restore an OpenPost Image Editor design revision as a new head",
+				"tags": ["OpenPost Image Editor"]
+			}
+		},
+		"/image-editor/presets": {
+			"get": {
+				"operationId": "list-image-editor-presets",
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ImageEditorPresetOutputBody"
+								}
+							}
+						},
+						"description": "OK"
+					},
+					"default": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Error"
+					}
+				},
+				"summary": "List OpenPost Image Editor presets and runtime configuration",
+				"tags": ["OpenPost Image Editor"]
+			}
+		},
+		"/image-editor/public-templates": {
+			"get": {
+				"operationId": "list-public-image-editor-templates",
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ListPublicImageEditorTemplatesOutputBody"
+								}
+							}
+						},
+						"description": "OK"
+					},
+					"default": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Error"
+					}
+				},
+				"summary": "List built-in OpenPost Image Editor templates available without a workspace",
+				"tags": ["OpenPost Image Editor"]
+			}
+		},
+		"/image-editor/return-tokens": {
+			"post": {
+				"operationId": "create-image-editor-return-token",
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/CreateImageEditorReturnTokenInputBody"
+							}
+						}
+					},
+					"required": true
+				},
+				"responses": {
+					"201": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/CreateImageEditorReturnTokenOutputBody"
+								}
+							}
+						},
+						"description": "Created"
+					},
+					"400": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Bad Request"
+					},
+					"403": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Forbidden"
+					},
+					"422": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Unprocessable Entity"
+					},
+					"500": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Internal Server Error"
+					}
+				},
+				"summary": "Create a one-time OpenPost Image Editor composer return token",
+				"tags": ["OpenPost Image Editor"]
+			}
+		},
+		"/image-editor/return-tokens/{token}/complete": {
+			"post": {
+				"operationId": "complete-image-editor-return-token",
+				"parameters": [
+					{
+						"in": "path",
+						"name": "token",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/CompleteImageEditorReturnTokenInputBody"
+							}
+						}
+					},
+					"required": true
+				},
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/CompleteImageEditorReturnTokenOutputBody"
+								}
+							}
+						},
+						"description": "OK"
+					},
+					"400": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Bad Request"
+					},
+					"403": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Forbidden"
+					},
+					"404": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Not Found"
+					},
+					"409": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Conflict"
+					},
+					"422": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Unprocessable Entity"
+					},
+					"500": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Internal Server Error"
+					}
+				},
+				"summary": "Store ordered OpenPost Image Editor exports for a composer return",
+				"tags": ["OpenPost Image Editor"]
+			}
+		},
+		"/image-editor/return-tokens/{token}/consume": {
+			"post": {
+				"operationId": "consume-image-editor-return-token",
+				"parameters": [
+					{
+						"in": "path",
+						"name": "token",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ConsumeImageEditorReturnTokenOutputBody"
+								}
+							}
+						},
+						"description": "OK"
+					},
+					"400": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Bad Request"
+					},
+					"403": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Forbidden"
+					},
+					"404": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Not Found"
+					},
+					"409": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Conflict"
+					},
+					"422": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Unprocessable Entity"
+					},
+					"500": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Internal Server Error"
+					}
+				},
+				"summary": "Consume a completed OpenPost Image Editor composer return token",
+				"tags": ["OpenPost Image Editor"]
+			}
+		},
+		"/image-editor/templates": {
+			"get": {
+				"operationId": "list-image-editor-templates",
+				"parameters": [
+					{
+						"explode": false,
+						"in": "query",
+						"name": "workspace_id",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ListImageEditorTemplatesOutputBody"
+								}
+							}
+						},
+						"description": "OK"
+					},
+					"400": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Bad Request"
+					},
+					"403": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Forbidden"
+					},
+					"422": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Unprocessable Entity"
+					},
+					"500": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Internal Server Error"
+					}
+				},
+				"summary": "List built-in and workspace OpenPost Image Editor templates",
+				"tags": ["OpenPost Image Editor"]
+			},
+			"post": {
+				"operationId": "create-image-editor-template",
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/CreateImageEditorTemplateInputBody"
+							}
+						}
+					},
+					"required": true
+				},
+				"responses": {
+					"201": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ImageEditorTemplateResponse"
+								}
+							}
+						},
+						"description": "Created"
+					},
+					"400": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Bad Request"
+					},
+					"403": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Forbidden"
+					},
+					"422": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Unprocessable Entity"
+					},
+					"500": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Internal Server Error"
+					}
+				},
+				"summary": "Save an OpenPost Image Editor design as a workspace template",
+				"tags": ["OpenPost Image Editor"]
+			}
+		},
+		"/image-editor/templates/{id}": {
+			"delete": {
+				"operationId": "delete-image-editor-template",
+				"parameters": [
+					{
+						"in": "path",
+						"name": "id",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/DeleteImageEditorTemplateOutputBody"
+								}
+							}
+						},
+						"description": "OK"
+					},
+					"403": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Forbidden"
+					},
+					"404": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Not Found"
+					},
+					"422": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Unprocessable Entity"
+					},
+					"500": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Internal Server Error"
+					}
+				},
+				"summary": "Delete a workspace OpenPost Image Editor template",
+				"tags": ["OpenPost Image Editor"]
+			},
+			"patch": {
+				"operationId": "update-image-editor-template",
+				"parameters": [
+					{
+						"in": "path",
+						"name": "id",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/UpdateImageEditorTemplateInputBody"
+							}
+						}
+					},
+					"required": true
+				},
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ImageEditorTemplateResponse"
+								}
+							}
+						},
+						"description": "OK"
+					},
+					"400": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Bad Request"
+					},
+					"403": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Forbidden"
+					},
+					"404": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Not Found"
+					},
+					"422": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Unprocessable Entity"
+					},
+					"500": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Internal Server Error"
+					}
+				},
+				"summary": "Replace a workspace OpenPost Image Editor template snapshot",
+				"tags": ["OpenPost Image Editor"]
+			}
+		},
+		"/image-editor/templates/{id}/instantiate": {
+			"post": {
+				"operationId": "instantiate-image-editor-template",
+				"parameters": [
+					{
+						"in": "path",
+						"name": "id",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/InstantiateImageEditorTemplateInputBody"
+							}
+						}
+					},
+					"required": true
+				},
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ImageEditorDocumentResponse"
+								}
+							}
+						},
+						"description": "OK"
+					},
+					"400": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Bad Request"
+					},
+					"403": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Forbidden"
+					},
+					"404": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Not Found"
+					},
+					"422": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Unprocessable Entity"
+					},
+					"500": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Internal Server Error"
+					}
+				},
+				"summary": "Create an OpenPost Image Editor design from a template",
+				"tags": ["OpenPost Image Editor"]
+			}
+		},
 		"/jobs": {
 			"get": {
 				"operationId": "list-jobs",
@@ -21093,12 +22572,12 @@
 						}
 					},
 					{
-						"description": "Search filename, alt text, tag, and collection",
+						"description": "Search filename, alt text, and tag",
 						"explode": false,
 						"in": "query",
 						"name": "search",
 						"schema": {
-							"description": "Search filename, alt text, tag, and collection",
+							"description": "Search filename, alt text, and tag",
 							"type": "string"
 						}
 					},
@@ -21143,23 +22622,33 @@
 						}
 					},
 					{
-						"description": "Filter by collection ID",
-						"explode": false,
-						"in": "query",
-						"name": "collection_id",
-						"schema": {
-							"description": "Filter by collection ID",
-							"type": "string"
-						}
-					},
-					{
-						"description": "Filter by tag ID",
+						"description": "Filter by one tag ID",
 						"explode": false,
 						"in": "query",
 						"name": "tag_id",
 						"schema": {
-							"description": "Filter by tag ID",
+							"description": "Filter by one tag ID",
 							"type": "string"
+						}
+					},
+					{
+						"description": "Comma-separated tag IDs; media must have every selected tag",
+						"explode": false,
+						"in": "query",
+						"name": "tag_ids",
+						"schema": {
+							"description": "Comma-separated tag IDs; media must have every selected tag",
+							"type": "string"
+						}
+					},
+					{
+						"description": "Only media that has no tags",
+						"explode": false,
+						"in": "query",
+						"name": "untagged",
+						"schema": {
+							"description": "Only media that has no tags",
+							"type": "boolean"
 						}
 					},
 					{
@@ -21367,218 +22856,6 @@
 					}
 				},
 				"summary": "Delete multiple media attachments at once",
-				"tags": ["Media"]
-			}
-		},
-		"/media/collections": {
-			"get": {
-				"operationId": "list-media-collections",
-				"parameters": [
-					{
-						"explode": false,
-						"in": "query",
-						"name": "workspace_id",
-						"required": true,
-						"schema": {
-							"type": "string"
-						}
-					}
-				],
-				"responses": {
-					"200": {
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ListMediaCollectionsOutputBody"
-								}
-							}
-						},
-						"description": "OK"
-					},
-					"default": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Error"
-					}
-				},
-				"summary": "List media collections",
-				"tags": ["Media"]
-			},
-			"post": {
-				"operationId": "create-media-collection",
-				"requestBody": {
-					"content": {
-						"application/json": {
-							"schema": {
-								"$ref": "#/components/schemas/CreateMediaCollectionInputBody"
-							}
-						}
-					},
-					"required": true
-				},
-				"responses": {
-					"200": {
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/MediaCollectionResponse"
-								}
-							}
-						},
-						"description": "OK"
-					},
-					"default": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Error"
-					}
-				},
-				"summary": "Create a media collection",
-				"tags": ["Media"]
-			}
-		},
-		"/media/collections/{id}": {
-			"delete": {
-				"operationId": "delete-media-collection",
-				"parameters": [
-					{
-						"in": "path",
-						"name": "id",
-						"required": true,
-						"schema": {
-							"type": "string"
-						}
-					}
-				],
-				"responses": {
-					"200": {
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/DeleteMediaCollectionOutputBody"
-								}
-							}
-						},
-						"description": "OK"
-					},
-					"default": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Error"
-					}
-				},
-				"summary": "Delete a media collection without deleting media",
-				"tags": ["Media"]
-			},
-			"patch": {
-				"operationId": "update-media-collection",
-				"parameters": [
-					{
-						"in": "path",
-						"name": "id",
-						"required": true,
-						"schema": {
-							"type": "string"
-						}
-					}
-				],
-				"requestBody": {
-					"content": {
-						"application/json": {
-							"schema": {
-								"$ref": "#/components/schemas/UpdateMediaCollectionInputBody"
-							}
-						}
-					},
-					"required": true
-				},
-				"responses": {
-					"200": {
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/MediaCollectionResponse"
-								}
-							}
-						},
-						"description": "OK"
-					},
-					"default": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Error"
-					}
-				},
-				"summary": "Rename or recolor a media collection",
-				"tags": ["Media"]
-			}
-		},
-		"/media/collections/{id}/items": {
-			"put": {
-				"operationId": "replace-media-collection-items",
-				"parameters": [
-					{
-						"in": "path",
-						"name": "id",
-						"required": true,
-						"schema": {
-							"type": "string"
-						}
-					}
-				],
-				"requestBody": {
-					"content": {
-						"application/json": {
-							"schema": {
-								"$ref": "#/components/schemas/ReplaceMediaCollectionItemsInputBody"
-							}
-						}
-					},
-					"required": true
-				},
-				"responses": {
-					"200": {
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ReplaceMediaCollectionItemsOutputBody"
-								}
-							}
-						},
-						"description": "OK"
-					},
-					"default": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Error"
-					}
-				},
-				"summary": "Replace a media collection's items",
 				"tags": ["Media"]
 			}
 		},
@@ -27009,7 +28286,7 @@
 					}
 				},
 				"summary": "List configured stock media providers",
-				"tags": ["Video Studio"]
+				"tags": ["OpenPost Video Editor"]
 			}
 		},
 		"/stock-media/search": {
@@ -27171,7 +28448,7 @@
 					}
 				},
 				"summary": "Search configured stock photo and video providers",
-				"tags": ["Video Studio"]
+				"tags": ["OpenPost Video Editor"]
 			}
 		},
 		"/stock-media/selections": {
@@ -27270,965 +28547,18 @@
 					}
 				},
 				"summary": "Resolve a selected stock asset and record provider attribution events",
-				"tags": ["Video Studio"]
+				"tags": ["OpenPost Video Editor"]
 			}
 		},
-		"/studio/brand-kit": {
+		"/video-editor/config": {
 			"get": {
-				"operationId": "get-studio-brand-kit",
-				"parameters": [
-					{
-						"explode": false,
-						"in": "query",
-						"name": "workspace_id",
-						"required": true,
-						"schema": {
-							"type": "string"
-						}
-					}
-				],
+				"operationId": "get-video-editor-config",
 				"responses": {
 					"200": {
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/StudioBrandKitResponse"
-								}
-							}
-						},
-						"description": "OK"
-					},
-					"400": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Bad Request"
-					},
-					"403": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Forbidden"
-					},
-					"422": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Unprocessable Entity"
-					},
-					"500": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Internal Server Error"
-					}
-				},
-				"summary": "Get the workspace Studio brand kit",
-				"tags": ["Studio"]
-			},
-			"put": {
-				"operationId": "update-studio-brand-kit",
-				"requestBody": {
-					"content": {
-						"application/json": {
-							"schema": {
-								"$ref": "#/components/schemas/UpdateStudioBrandKitInputBody"
-							}
-						}
-					},
-					"required": true
-				},
-				"responses": {
-					"200": {
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/StudioBrandKitResponse"
-								}
-							}
-						},
-						"description": "OK"
-					},
-					"400": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Bad Request"
-					},
-					"403": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Forbidden"
-					},
-					"422": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Unprocessable Entity"
-					},
-					"500": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Internal Server Error"
-					}
-				},
-				"summary": "Create or update the workspace Studio brand kit",
-				"tags": ["Studio"]
-			}
-		},
-		"/studio/designs": {
-			"get": {
-				"operationId": "list-studio-designs",
-				"parameters": [
-					{
-						"explode": false,
-						"in": "query",
-						"name": "workspace_id",
-						"required": true,
-						"schema": {
-							"type": "string"
-						}
-					},
-					{
-						"explode": false,
-						"in": "query",
-						"name": "search",
-						"schema": {
-							"type": "string"
-						}
-					},
-					{
-						"explode": false,
-						"in": "query",
-						"name": "limit",
-						"schema": {
-							"format": "int64",
-							"maximum": 100,
-							"minimum": 1,
-							"type": "integer"
-						}
-					},
-					{
-						"explode": false,
-						"in": "query",
-						"name": "offset",
-						"schema": {
-							"format": "int64",
-							"minimum": 0,
-							"type": "integer"
-						}
-					}
-				],
-				"responses": {
-					"200": {
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ListStudioDesignsOutputBody"
-								}
-							}
-						},
-						"description": "OK"
-					},
-					"400": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Bad Request"
-					},
-					"403": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Forbidden"
-					},
-					"422": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Unprocessable Entity"
-					},
-					"500": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Internal Server Error"
-					}
-				},
-				"summary": "List Studio designs",
-				"tags": ["Studio"]
-			},
-			"post": {
-				"operationId": "create-studio-design",
-				"requestBody": {
-					"content": {
-						"application/json": {
-							"schema": {
-								"$ref": "#/components/schemas/CreateStudioDesignInputBody"
-							}
-						}
-					},
-					"required": true
-				},
-				"responses": {
-					"201": {
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/StudioDocumentResponse"
-								}
-							}
-						},
-						"description": "Created"
-					},
-					"400": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Bad Request"
-					},
-					"403": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Forbidden"
-					},
-					"404": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Not Found"
-					},
-					"422": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Unprocessable Entity"
-					},
-					"500": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Internal Server Error"
-					}
-				},
-				"summary": "Create a Studio design",
-				"tags": ["Studio"]
-			}
-		},
-		"/studio/designs/{id}": {
-			"delete": {
-				"operationId": "delete-studio-design",
-				"parameters": [
-					{
-						"in": "path",
-						"name": "id",
-						"required": true,
-						"schema": {
-							"type": "string"
-						}
-					}
-				],
-				"responses": {
-					"200": {
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/DeleteStudioDesignOutputBody"
-								}
-							}
-						},
-						"description": "OK"
-					},
-					"403": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Forbidden"
-					},
-					"404": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Not Found"
-					},
-					"422": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Unprocessable Entity"
-					},
-					"500": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Internal Server Error"
-					}
-				},
-				"summary": "Move a Studio design to trash",
-				"tags": ["Studio"]
-			},
-			"get": {
-				"operationId": "get-studio-design",
-				"parameters": [
-					{
-						"in": "path",
-						"name": "id",
-						"required": true,
-						"schema": {
-							"type": "string"
-						}
-					}
-				],
-				"responses": {
-					"200": {
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/StudioDocumentResponse"
-								}
-							}
-						},
-						"description": "OK"
-					},
-					"403": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Forbidden"
-					},
-					"404": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Not Found"
-					},
-					"422": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Unprocessable Entity"
-					},
-					"500": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Internal Server Error"
-					}
-				},
-				"summary": "Get a Studio design",
-				"tags": ["Studio"]
-			},
-			"patch": {
-				"operationId": "update-studio-design",
-				"parameters": [
-					{
-						"in": "path",
-						"name": "id",
-						"required": true,
-						"schema": {
-							"type": "string"
-						}
-					}
-				],
-				"requestBody": {
-					"content": {
-						"application/json": {
-							"schema": {
-								"$ref": "#/components/schemas/UpdateStudioDesignInputBody"
-							}
-						}
-					},
-					"required": true
-				},
-				"responses": {
-					"200": {
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/StudioDocumentResponse"
-								}
-							}
-						},
-						"description": "OK"
-					},
-					"400": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Bad Request"
-					},
-					"403": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Forbidden"
-					},
-					"404": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Not Found"
-					},
-					"409": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Conflict"
-					},
-					"422": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Unprocessable Entity"
-					},
-					"500": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Internal Server Error"
-					}
-				},
-				"summary": "Save a Studio design with optimistic concurrency",
-				"tags": ["Studio"]
-			}
-		},
-		"/studio/designs/{id}/duplicate": {
-			"post": {
-				"operationId": "duplicate-studio-design",
-				"parameters": [
-					{
-						"in": "path",
-						"name": "id",
-						"required": true,
-						"schema": {
-							"type": "string"
-						}
-					}
-				],
-				"responses": {
-					"200": {
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/StudioDocumentResponse"
-								}
-							}
-						},
-						"description": "OK"
-					},
-					"403": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Forbidden"
-					},
-					"404": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Not Found"
-					},
-					"422": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Unprocessable Entity"
-					},
-					"500": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Internal Server Error"
-					}
-				},
-				"summary": "Duplicate a Studio design",
-				"tags": ["Studio"]
-			}
-		},
-		"/studio/designs/{id}/favorite": {
-			"patch": {
-				"operationId": "toggle-studio-design-favorite",
-				"parameters": [
-					{
-						"in": "path",
-						"name": "id",
-						"required": true,
-						"schema": {
-							"type": "string"
-						}
-					}
-				],
-				"responses": {
-					"200": {
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ToggleStudioDesignFavoriteOutputBody"
-								}
-							}
-						},
-						"description": "OK"
-					},
-					"403": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Forbidden"
-					},
-					"404": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Not Found"
-					},
-					"422": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Unprocessable Entity"
-					},
-					"500": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Internal Server Error"
-					}
-				},
-				"summary": "Toggle a Studio design favorite",
-				"tags": ["Studio"]
-			}
-		},
-		"/studio/designs/{id}/revisions": {
-			"get": {
-				"operationId": "list-studio-design-revisions",
-				"parameters": [
-					{
-						"in": "path",
-						"name": "id",
-						"required": true,
-						"schema": {
-							"type": "string"
-						}
-					}
-				],
-				"responses": {
-					"200": {
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ListStudioRevisionsOutputBody"
-								}
-							}
-						},
-						"description": "OK"
-					},
-					"403": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Forbidden"
-					},
-					"404": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Not Found"
-					},
-					"422": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Unprocessable Entity"
-					},
-					"500": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Internal Server Error"
-					}
-				},
-				"summary": "List Studio design recovery revisions and checkpoints",
-				"tags": ["Studio"]
-			},
-			"post": {
-				"operationId": "create-studio-design-checkpoint",
-				"parameters": [
-					{
-						"in": "path",
-						"name": "id",
-						"required": true,
-						"schema": {
-							"type": "string"
-						}
-					}
-				],
-				"requestBody": {
-					"content": {
-						"application/json": {
-							"schema": {
-								"$ref": "#/components/schemas/CreateStudioCheckpointInputBody"
-							}
-						}
-					},
-					"required": true
-				},
-				"responses": {
-					"200": {
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/StudioRevisionSummary"
-								}
-							}
-						},
-						"description": "OK"
-					},
-					"400": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Bad Request"
-					},
-					"403": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Forbidden"
-					},
-					"404": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Not Found"
-					},
-					"422": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Unprocessable Entity"
-					},
-					"500": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Internal Server Error"
-					}
-				},
-				"summary": "Create a named Studio design checkpoint",
-				"tags": ["Studio"]
-			}
-		},
-		"/studio/designs/{id}/revisions/{revision_id}/restore": {
-			"post": {
-				"operationId": "restore-studio-design-revision",
-				"parameters": [
-					{
-						"in": "path",
-						"name": "id",
-						"required": true,
-						"schema": {
-							"type": "string"
-						}
-					},
-					{
-						"in": "path",
-						"name": "revision_id",
-						"required": true,
-						"schema": {
-							"type": "string"
-						}
-					}
-				],
-				"requestBody": {
-					"content": {
-						"application/json": {
-							"schema": {
-								"$ref": "#/components/schemas/RestoreStudioRevisionInputBody"
-							}
-						}
-					},
-					"required": true
-				},
-				"responses": {
-					"200": {
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/StudioDocumentResponse"
-								}
-							}
-						},
-						"description": "OK"
-					},
-					"400": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Bad Request"
-					},
-					"403": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Forbidden"
-					},
-					"404": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Not Found"
-					},
-					"409": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Conflict"
-					},
-					"422": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Unprocessable Entity"
-					},
-					"500": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Internal Server Error"
-					}
-				},
-				"summary": "Restore a Studio design revision as a new head",
-				"tags": ["Studio"]
-			}
-		},
-		"/studio/presets": {
-			"get": {
-				"operationId": "list-studio-presets",
-				"responses": {
-					"200": {
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/StudioPresetOutputBody"
+									"$ref": "#/components/schemas/VideoEditorConfigOutputBody"
 								}
 							}
 						},
@@ -28245,710 +28575,13 @@
 						"description": "Error"
 					}
 				},
-				"summary": "List OpenPost Studio presets and runtime configuration",
-				"tags": ["Studio"]
+				"summary": "Get OpenPost Video Editor browser limits and optional local model manifest",
+				"tags": ["OpenPost Video Editor"]
 			}
 		},
-		"/studio/public-templates": {
+		"/video-editor/projects": {
 			"get": {
-				"operationId": "list-public-studio-templates",
-				"responses": {
-					"200": {
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ListPublicStudioTemplatesOutputBody"
-								}
-							}
-						},
-						"description": "OK"
-					},
-					"default": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Error"
-					}
-				},
-				"summary": "List built-in Studio templates available without a workspace",
-				"tags": ["Studio"]
-			}
-		},
-		"/studio/return-tokens": {
-			"post": {
-				"operationId": "create-studio-return-token",
-				"requestBody": {
-					"content": {
-						"application/json": {
-							"schema": {
-								"$ref": "#/components/schemas/CreateStudioReturnTokenInputBody"
-							}
-						}
-					},
-					"required": true
-				},
-				"responses": {
-					"201": {
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/CreateStudioReturnTokenOutputBody"
-								}
-							}
-						},
-						"description": "Created"
-					},
-					"400": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Bad Request"
-					},
-					"403": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Forbidden"
-					},
-					"422": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Unprocessable Entity"
-					},
-					"500": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Internal Server Error"
-					}
-				},
-				"summary": "Create a one-time Studio composer return token",
-				"tags": ["Studio"]
-			}
-		},
-		"/studio/return-tokens/{token}/complete": {
-			"post": {
-				"operationId": "complete-studio-return-token",
-				"parameters": [
-					{
-						"in": "path",
-						"name": "token",
-						"required": true,
-						"schema": {
-							"type": "string"
-						}
-					}
-				],
-				"requestBody": {
-					"content": {
-						"application/json": {
-							"schema": {
-								"$ref": "#/components/schemas/CompleteStudioReturnTokenInputBody"
-							}
-						}
-					},
-					"required": true
-				},
-				"responses": {
-					"200": {
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/CompleteStudioReturnTokenOutputBody"
-								}
-							}
-						},
-						"description": "OK"
-					},
-					"400": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Bad Request"
-					},
-					"403": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Forbidden"
-					},
-					"404": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Not Found"
-					},
-					"409": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Conflict"
-					},
-					"422": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Unprocessable Entity"
-					},
-					"500": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Internal Server Error"
-					}
-				},
-				"summary": "Store ordered Studio exports for a composer return",
-				"tags": ["Studio"]
-			}
-		},
-		"/studio/return-tokens/{token}/consume": {
-			"post": {
-				"operationId": "consume-studio-return-token",
-				"parameters": [
-					{
-						"in": "path",
-						"name": "token",
-						"required": true,
-						"schema": {
-							"type": "string"
-						}
-					}
-				],
-				"responses": {
-					"200": {
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ConsumeStudioReturnTokenOutputBody"
-								}
-							}
-						},
-						"description": "OK"
-					},
-					"400": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Bad Request"
-					},
-					"403": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Forbidden"
-					},
-					"404": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Not Found"
-					},
-					"409": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Conflict"
-					},
-					"422": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Unprocessable Entity"
-					},
-					"500": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Internal Server Error"
-					}
-				},
-				"summary": "Consume a completed Studio composer return token",
-				"tags": ["Studio"]
-			}
-		},
-		"/studio/templates": {
-			"get": {
-				"operationId": "list-studio-templates",
-				"parameters": [
-					{
-						"explode": false,
-						"in": "query",
-						"name": "workspace_id",
-						"required": true,
-						"schema": {
-							"type": "string"
-						}
-					}
-				],
-				"responses": {
-					"200": {
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/ListStudioTemplatesOutputBody"
-								}
-							}
-						},
-						"description": "OK"
-					},
-					"400": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Bad Request"
-					},
-					"403": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Forbidden"
-					},
-					"422": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Unprocessable Entity"
-					},
-					"500": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Internal Server Error"
-					}
-				},
-				"summary": "List built-in and workspace Studio templates",
-				"tags": ["Studio"]
-			},
-			"post": {
-				"operationId": "create-studio-template",
-				"requestBody": {
-					"content": {
-						"application/json": {
-							"schema": {
-								"$ref": "#/components/schemas/CreateStudioTemplateInputBody"
-							}
-						}
-					},
-					"required": true
-				},
-				"responses": {
-					"201": {
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/StudioTemplateResponse"
-								}
-							}
-						},
-						"description": "Created"
-					},
-					"400": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Bad Request"
-					},
-					"403": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Forbidden"
-					},
-					"422": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Unprocessable Entity"
-					},
-					"500": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Internal Server Error"
-					}
-				},
-				"summary": "Save a Studio design as a workspace template",
-				"tags": ["Studio"]
-			}
-		},
-		"/studio/templates/{id}": {
-			"delete": {
-				"operationId": "delete-studio-template",
-				"parameters": [
-					{
-						"in": "path",
-						"name": "id",
-						"required": true,
-						"schema": {
-							"type": "string"
-						}
-					}
-				],
-				"responses": {
-					"200": {
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/DeleteStudioTemplateOutputBody"
-								}
-							}
-						},
-						"description": "OK"
-					},
-					"403": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Forbidden"
-					},
-					"404": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Not Found"
-					},
-					"422": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Unprocessable Entity"
-					},
-					"500": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Internal Server Error"
-					}
-				},
-				"summary": "Delete a workspace Studio template",
-				"tags": ["Studio"]
-			},
-			"patch": {
-				"operationId": "update-studio-template",
-				"parameters": [
-					{
-						"in": "path",
-						"name": "id",
-						"required": true,
-						"schema": {
-							"type": "string"
-						}
-					}
-				],
-				"requestBody": {
-					"content": {
-						"application/json": {
-							"schema": {
-								"$ref": "#/components/schemas/UpdateStudioTemplateInputBody"
-							}
-						}
-					},
-					"required": true
-				},
-				"responses": {
-					"200": {
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/StudioTemplateResponse"
-								}
-							}
-						},
-						"description": "OK"
-					},
-					"400": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Bad Request"
-					},
-					"403": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Forbidden"
-					},
-					"404": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Not Found"
-					},
-					"422": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Unprocessable Entity"
-					},
-					"500": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Internal Server Error"
-					}
-				},
-				"summary": "Replace a workspace Studio template snapshot",
-				"tags": ["Studio"]
-			}
-		},
-		"/studio/templates/{id}/instantiate": {
-			"post": {
-				"operationId": "instantiate-studio-template",
-				"parameters": [
-					{
-						"in": "path",
-						"name": "id",
-						"required": true,
-						"schema": {
-							"type": "string"
-						}
-					}
-				],
-				"requestBody": {
-					"content": {
-						"application/json": {
-							"schema": {
-								"$ref": "#/components/schemas/InstantiateStudioTemplateInputBody"
-							}
-						}
-					},
-					"required": true
-				},
-				"responses": {
-					"200": {
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/StudioDocumentResponse"
-								}
-							}
-						},
-						"description": "OK"
-					},
-					"400": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Bad Request"
-					},
-					"403": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Forbidden"
-					},
-					"404": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Not Found"
-					},
-					"422": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Unprocessable Entity"
-					},
-					"500": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Internal Server Error"
-					}
-				},
-				"summary": "Create a Studio design from a template",
-				"tags": ["Studio"]
-			}
-		},
-		"/video-studio/config": {
-			"get": {
-				"operationId": "get-video-studio-config",
-				"responses": {
-					"200": {
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/VideoStudioConfigOutputBody"
-								}
-							}
-						},
-						"description": "OK"
-					},
-					"default": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Error"
-					}
-				},
-				"summary": "Get Video Studio browser limits and optional local model manifest",
-				"tags": ["Video Studio"]
-			}
-		},
-		"/video-studio/projects": {
-			"get": {
-				"operationId": "list-video-studio-projects",
+				"operationId": "list-video-editor-projects",
 				"parameters": [
 					{
 						"explode": false,
@@ -29041,11 +28674,11 @@
 						"description": "Internal Server Error"
 					}
 				},
-				"summary": "List cloud-saved Video Studio projects",
-				"tags": ["Video Studio"]
+				"summary": "List cloud-saved OpenPost Video Editor projects",
+				"tags": ["OpenPost Video Editor"]
 			},
 			"post": {
-				"operationId": "create-video-studio-project",
+				"operationId": "create-video-editor-project",
 				"requestBody": {
 					"content": {
 						"application/json": {
@@ -29108,13 +28741,13 @@
 						"description": "Internal Server Error"
 					}
 				},
-				"summary": "Save a local Video Studio project to OpenPost",
-				"tags": ["Video Studio"]
+				"summary": "Save a local OpenPost Video Editor project to OpenPost",
+				"tags": ["OpenPost Video Editor"]
 			}
 		},
-		"/video-studio/projects/{id}": {
+		"/video-editor/projects/{id}": {
 			"delete": {
-				"operationId": "delete-video-studio-project",
+				"operationId": "delete-video-editor-project",
 				"parameters": [
 					{
 						"in": "path",
@@ -29177,11 +28810,11 @@
 						"description": "Internal Server Error"
 					}
 				},
-				"summary": "Move a Video Studio project to trash",
-				"tags": ["Video Studio"]
+				"summary": "Move an OpenPost Video Editor project to trash",
+				"tags": ["OpenPost Video Editor"]
 			},
 			"get": {
-				"operationId": "get-video-studio-project",
+				"operationId": "get-video-editor-project",
 				"parameters": [
 					{
 						"in": "path",
@@ -29244,11 +28877,11 @@
 						"description": "Internal Server Error"
 					}
 				},
-				"summary": "Get a cloud-saved Video Studio project",
-				"tags": ["Video Studio"]
+				"summary": "Get a cloud-saved OpenPost Video Editor project",
+				"tags": ["OpenPost Video Editor"]
 			},
 			"patch": {
-				"operationId": "update-video-studio-project",
+				"operationId": "update-video-editor-project",
 				"parameters": [
 					{
 						"in": "path",
@@ -29341,13 +28974,13 @@
 						"description": "Internal Server Error"
 					}
 				},
-				"summary": "Save a Video Studio project with optimistic concurrency",
-				"tags": ["Video Studio"]
+				"summary": "Save an OpenPost Video Editor project with optimistic concurrency",
+				"tags": ["OpenPost Video Editor"]
 			}
 		},
-		"/video-studio/projects/{id}/checkpoints": {
+		"/video-editor/projects/{id}/checkpoints": {
 			"post": {
-				"operationId": "create-video-studio-project-checkpoint",
+				"operationId": "create-video-editor-project-checkpoint",
 				"parameters": [
 					{
 						"in": "path",
@@ -29430,13 +29063,13 @@
 						"description": "Internal Server Error"
 					}
 				},
-				"summary": "Create a named Video Studio checkpoint",
-				"tags": ["Video Studio"]
+				"summary": "Create a named OpenPost Video Editor checkpoint",
+				"tags": ["OpenPost Video Editor"]
 			}
 		},
-		"/video-studio/projects/{id}/revisions": {
+		"/video-editor/projects/{id}/revisions": {
 			"get": {
-				"operationId": "list-video-studio-project-revisions",
+				"operationId": "list-video-editor-project-revisions",
 				"parameters": [
 					{
 						"in": "path",
@@ -29499,13 +29132,13 @@
 						"description": "Internal Server Error"
 					}
 				},
-				"summary": "List Video Studio recovery revisions and checkpoints",
-				"tags": ["Video Studio"]
+				"summary": "List OpenPost Video Editor recovery revisions and checkpoints",
+				"tags": ["OpenPost Video Editor"]
 			}
 		},
-		"/video-studio/projects/{id}/revisions/{revision_id}/restore": {
+		"/video-editor/projects/{id}/revisions/{revision_id}/restore": {
 			"post": {
-				"operationId": "restore-video-studio-project-revision",
+				"operationId": "restore-video-editor-project-revision",
 				"parameters": [
 					{
 						"in": "path",
@@ -29606,13 +29239,13 @@
 						"description": "Internal Server Error"
 					}
 				},
-				"summary": "Restore a Video Studio revision as a new head",
-				"tags": ["Video Studio"]
+				"summary": "Restore an OpenPost Video Editor revision as a new head",
+				"tags": ["OpenPost Video Editor"]
 			}
 		},
-		"/video-studio/return-tokens": {
+		"/video-editor/return-tokens": {
 			"post": {
-				"operationId": "create-video-studio-return-token",
+				"operationId": "create-video-editor-return-token",
 				"requestBody": {
 					"content": {
 						"application/json": {
@@ -29675,13 +29308,13 @@
 						"description": "Internal Server Error"
 					}
 				},
-				"summary": "Create a one-time Video Studio composer return token",
-				"tags": ["Video Studio"]
+				"summary": "Create a one-time OpenPost Video Editor composer return token",
+				"tags": ["OpenPost Video Editor"]
 			}
 		},
-		"/video-studio/return-tokens/{token}/complete": {
+		"/video-editor/return-tokens/{token}/complete": {
 			"post": {
-				"operationId": "complete-video-studio-return-token",
+				"operationId": "complete-video-editor-return-token",
 				"parameters": [
 					{
 						"in": "path",
@@ -29774,13 +29407,13 @@
 						"description": "Internal Server Error"
 					}
 				},
-				"summary": "Store Video Studio variant-to-rendition export assignments",
-				"tags": ["Video Studio"]
+				"summary": "Store OpenPost Video Editor variant-to-rendition export assignments",
+				"tags": ["OpenPost Video Editor"]
 			}
 		},
-		"/video-studio/return-tokens/{token}/consume": {
+		"/video-editor/return-tokens/{token}/consume": {
 			"post": {
-				"operationId": "consume-video-studio-return-token",
+				"operationId": "consume-video-editor-return-token",
 				"parameters": [
 					{
 						"in": "path",
@@ -29863,13 +29496,13 @@
 						"description": "Internal Server Error"
 					}
 				},
-				"summary": "Consume completed Video Studio export assignments once",
-				"tags": ["Video Studio"]
+				"summary": "Consume completed OpenPost Video Editor export assignments once",
+				"tags": ["OpenPost Video Editor"]
 			}
 		},
-		"/video-studio/sync-plan": {
+		"/video-editor/sync-plan": {
 			"post": {
-				"operationId": "plan-video-studio-sync",
+				"operationId": "plan-video-editor-sync",
 				"parameters": [
 					{
 						"description": "Active workspace ID",
@@ -29886,7 +29519,7 @@
 					"content": {
 						"application/json": {
 							"schema": {
-								"$ref": "#/components/schemas/PlanVideoStudioSyncInputBody"
+								"$ref": "#/components/schemas/PlanVideoEditorSyncInputBody"
 							}
 						}
 					},
@@ -29897,7 +29530,7 @@
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/PlanVideoStudioSyncOutputBody"
+									"$ref": "#/components/schemas/PlanVideoEditorSyncOutputBody"
 								}
 							}
 						},
@@ -29944,8 +29577,8 @@
 						"description": "Internal Server Error"
 					}
 				},
-				"summary": "Estimate and deduplicate an explicit Video Studio cloud sync",
-				"tags": ["Video Studio"]
+				"summary": "Estimate and deduplicate an explicit OpenPost Video Editor cloud sync",
+				"tags": ["OpenPost Video Editor"]
 			}
 		},
 		"/workspace-invitations/accept": {

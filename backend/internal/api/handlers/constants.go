@@ -16,8 +16,8 @@ const (
 	tagPrompts           = "Prompts"
 	tagProfiles          = "Profiles"
 	tagReposts           = "Repost Automation"
-	tagStudio            = "Studio"
-	tagVideoStudio       = "Video Studio"
+	tagImageEditor       = "OpenPost Image Editor"
+	tagVideoEditor       = "OpenPost Video Editor"
 	tagWorkspaces        = "Workspaces"
 
 	fieldError = "error"

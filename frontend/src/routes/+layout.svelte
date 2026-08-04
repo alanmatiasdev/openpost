@@ -86,21 +86,21 @@
 	let isStandaloneRoute = $derived(
 		standaloneRoutes.includes(currentPath) ||
 			isPublicProfileRoute ||
-			currentPath === '/studio' ||
-			currentPath.startsWith('/studio/') ||
-			currentPath === '/video-studio' ||
-			currentPath.startsWith('/video-studio/')
+			currentPath === '/image-editor' ||
+			currentPath.startsWith('/image-editor/') ||
+			currentPath === '/video-editor' ||
+			currentPath.startsWith('/video-editor/')
 	);
-	let isPublicStudioRoute = $derived(
-		currentPath === '/studio' || currentPath.startsWith('/studio/local_design_')
+	let isPublicImageEditorRoute = $derived(
+		currentPath === '/image-editor' || currentPath.startsWith('/image-editor/local_design_')
 	);
-	let isPublicVideoStudioRoute = $derived(
-		currentPath === '/video-studio' || currentPath.startsWith('/video-studio/')
+	let isPublicVideoEditorRoute = $derived(
+		currentPath === '/video-editor' || currentPath.startsWith('/video-editor/')
 	);
 	let isPublicRoute = $derived(
 		isPublicProfileRoute ||
-			isPublicStudioRoute ||
-			isPublicVideoStudioRoute ||
+			isPublicImageEditorRoute ||
+			isPublicVideoEditorRoute ||
 			publicRoutes.some((route) => currentPath.startsWith(route))
 	);
 
@@ -122,7 +122,7 @@
 	function onboardingTarget() {
 		const target = onboardingPathForPlan($page.url.searchParams.get('plan'));
 		if (
-			!currentPath.startsWith('/studio/local_design_') ||
+			!currentPath.startsWith('/image-editor/local_design_') ||
 			$page.url.searchParams.get('import') !== '1'
 		) {
 			return target;
@@ -155,9 +155,9 @@
 
 		if (needsOnboarding) {
 			if (
-				(isPublicStudioRoute || isPublicVideoStudioRoute) &&
+				(isPublicImageEditorRoute || isPublicVideoEditorRoute) &&
 				!(
-					currentPath.startsWith('/studio/local_design_') &&
+					currentPath.startsWith('/image-editor/local_design_') &&
 					$page.url.searchParams.get('import') === '1'
 				)
 			) {
@@ -340,7 +340,7 @@
 {:else if instance.isLoading || authState.isLoading || pendingRedirect || ssoChallengeInFlight || (!isPublicProfileRoute && authState.isAuthenticated && !authState.user?.legal_acceptance_required && !onboardingChecked)}
 	<AppLoading label={m.common_loading()} />
 {:else if !authState.isAuthenticated}
-	{#if !isPublicProfileRoute && currentPath !== '/studio' && !currentPath.startsWith('/studio/') && !currentPath.startsWith('/video-studio')}
+	{#if !isPublicProfileRoute && currentPath !== '/image-editor' && !currentPath.startsWith('/image-editor/') && !currentPath.startsWith('/video-editor')}
 		<div class="fixed top-4 right-4 z-20">
 			<LanguageSwitcher compact />
 		</div>
@@ -370,7 +370,7 @@
 		{@render children()}
 	{/if}
 {:else if isStandaloneRoute}
-	{#if !isPublicProfileRoute && !currentPath.startsWith('/studio/') && !currentPath.startsWith('/video-studio')}
+	{#if !isPublicProfileRoute && !currentPath.startsWith('/image-editor/') && !currentPath.startsWith('/video-editor')}
 		<div class="fixed top-4 right-4 z-20">
 			<LanguageSwitcher compact />
 		</div>

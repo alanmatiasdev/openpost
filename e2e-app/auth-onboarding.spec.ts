@@ -136,7 +136,9 @@ test("registration routes first-time users through onboarding", async ({
   await page.getByLabel("Confirm Password").fill(password);
   await page.getByRole("button", { name: "Create Account" }).click();
 
-  await expect(page).toHaveURL(/\/checkout\?plan=creator&billing_period=monthly$/);
+  await expect(page).toHaveURL(
+    /\/checkout\?plan=founder&billing_period=monthly$/,
+  );
 
   expect(
     await page.evaluate(() => window.localStorage.getItem("token")),

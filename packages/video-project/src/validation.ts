@@ -1755,13 +1755,13 @@ export function validateVideoProject(value: unknown): VideoProjectValidation {
   if (
     value.editing_mode !== undefined &&
     value.editing_mode !== "quick-cut" &&
-    value.editing_mode !== "studio"
+    value.editing_mode !== "editor"
   ) {
     issues.push(
       issue(
         "$.editing_mode",
         "editing-mode",
-        "Editing mode must be quick-cut or studio.",
+        "Editing mode must be quick-cut or editor.",
       ),
     );
   }
@@ -1880,7 +1880,7 @@ export function assertValidVideoProject(
       .slice(0, 5)
       .map((entry) => `${entry.path}: ${entry.message}`)
       .join("; ");
-    throw new Error(`Invalid Video Studio project: ${summary}`);
+    throw new Error(`Invalid OpenPost Video Editor project: ${summary}`);
   }
   return result.document;
 }

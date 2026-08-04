@@ -9,7 +9,7 @@
       label: "Solo founder",
       description:
         "One person turning company work into content and publishing it consistently.",
-      planIds: ["starter", "creator", "pro"],
+      planIds: ["starter", "founder", "pro"],
     },
     {
       id: "team",

@@ -6,10 +6,10 @@
   import LinkedInFormatter from "../../_components/tools/LinkedInFormatter.svelte";
   import PostingPlanner from "../../_components/tools/PostingPlanner.svelte";
   import PreviewGenerator from "../../_components/tools/PreviewGenerator.svelte";
-  import StudioLauncher from "../../_components/tools/StudioLauncher.svelte";
+  import ImageEditorLauncher from "../../_components/tools/ImageEditorLauncher.svelte";
   import ThreadSplitter from "../../_components/tools/ThreadSplitter.svelte";
   import ToolPageShell from "../../_components/tools/ToolPageShell.svelte";
-  import VideoStudioLauncher from "../../_components/tools/VideoStudioLauncher.svelte";
+  import VideoEditorLauncher from "../../_components/tools/VideoEditorLauncher.svelte";
   import { getTool, siteUrl } from "../../_marketing";
 
   const seoBySlug: Record<
@@ -22,7 +22,7 @@
     }
   > = {
     "social-media-video-editor": {
-      title: "Free social media video editor - OpenPost Video Studio",
+      title: "Free social media video editor - OpenPost Video Editor",
       heading: "Edit social videos without an account",
       description:
         "Record or import footage, edit one shared timeline for portrait, feed, square, and landscape video, then export without a watermark.",
@@ -30,7 +30,7 @@
         "Your projects, recordings, transcripts, and analysis stay in this browser unless you choose Save to OpenPost or Use in a post.",
     },
     "social-media-image-editor": {
-      title: "Free social media image editor - OpenPost Studio",
+      title: "Free social media image editor - OpenPost Image Editor",
       heading: "Create social media images without an account",
       description:
         "Design posts, carousel pages, Story slides, and thumbnails in your browser. Export PNG, JPEG, or WebP files without a watermark.",
@@ -105,9 +105,9 @@
   privacyNote={seo.privacyNote}
 >
   {#if slug === "social-media-video-editor"}
-    <VideoStudioLauncher />
+    <VideoEditorLauncher />
   {:else if slug === "social-media-image-editor"}
-    <StudioLauncher />
+    <ImageEditorLauncher />
   {:else if slug === "multi-platform-character-counter"}
     <CharacterCounter />
   {:else if slug === "post-preview-generator"}

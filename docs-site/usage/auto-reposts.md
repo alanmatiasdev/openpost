@@ -24,6 +24,8 @@ A minimum of `0` disables that metric. A provider-reported zero is a real value.
 
 After the delay, OpenPost checks again on a durable job. If the gates have not passed, it keeps checking until the evaluation window ends. Restarting the server does not lose the candidate. A native repost write runs once; an ambiguous network timeout is recorded as failed instead of being retried and risking a duplicate action.
 
+Each attempt counts toward the workspace's monthly provider-write limit. If that limit is reached, OpenPost skips the repost and records the reason without calling the network.
+
 ## Override one post
 
 Open **Repost settings** in the text-and-thread composer or any focused Story, short-video, or video composer.
@@ -32,7 +34,7 @@ Open **Repost settings** in the text-and-thread composer or any focused Story, s
 - **Do not repost** disables automation for that post.
 - **Custom** replaces workspace rules with the target accounts, timing, and engagement gates selected in the composer.
 
-The override is part of the saved publication, so it survives draft edits, scheduling, Studio round trips, and restarts.
+The override is part of the saved publication, so it survives draft edits, scheduling, OpenPost Image Editor round trips, and restarts.
 
 ## Use an account from another workspace
 

@@ -102,7 +102,9 @@ func repostHTTPError(err error) error {
 		return huma.Error403Forbidden(err.Error())
 	case errors.Is(err, repostservice.ErrGrantNotFound):
 		return huma.Error404NotFound(err.Error())
-	default:
+	case errors.Is(err, repostservice.ErrInvalidInput):
 		return huma.Error400BadRequest(err.Error())
+	default:
+		return huma.Error500InternalServerError("Repost automation could not complete the request")
 	}
 }

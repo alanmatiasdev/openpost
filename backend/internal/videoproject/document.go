@@ -324,7 +324,7 @@ type ExportDefaults struct {
 
 type Document struct {
 	SchemaVersion   int                   `json:"schema_version"`
-	EditingMode     string                `json:"editing_mode,omitempty" enum:"quick-cut,studio"`
+	EditingMode     string                `json:"editing_mode,omitempty" enum:"quick-cut,editor"`
 	Title           string                `json:"title"`
 	Timebase        Timebase              `json:"timebase"`
 	Sources         map[string]Source     `json:"sources"`
@@ -364,8 +364,11 @@ func ensureJSONEOF(decoder *json.Decoder) error {
 }
 
 func (d *Document) Normalize() {
+	if d.EditingMode == "studio" {
+		d.EditingMode = "editor"
+	}
 	if d.EditingMode == "" {
-		d.EditingMode = "studio"
+		d.EditingMode = "editor"
 	}
 	d.Title = strings.TrimSpace(d.Title)
 	if d.Title == "" {
@@ -427,9 +430,9 @@ func Validate(document Document, cloud bool) error {
 //nolint:gocyclo // This is a direct, auditable mirror of the persisted schema constraints.
 func validateProjectMetadata(document Document) error {
 	if document.SchemaVersion != SchemaVersion {
-		return fmt.Errorf("unsupported Video Studio schema version")
+		return fmt.Errorf("unsupported OpenPost Video Editor schema version")
 	}
-	if !oneOfString(document.EditingMode, "quick-cut", "studio") {
+	if !oneOfString(document.EditingMode, "quick-cut", "editor") {
 		return fmt.Errorf("project editing mode is invalid")
 	}
 	if len(document.Title) > 200 {
