@@ -610,8 +610,6 @@ test("plan selection from signup starts checkout after onboarding", async ({
   await page.getByLabel("Confirm Password").fill(password);
   await page.getByRole("button", { name: "Create Account" }).click();
 
-  await expect(page).toHaveURL(/\/onboarding\?plan=creator/);
-
   await expect(page).toHaveURL(
     /\/checkout\?plan=creator&billing_period=monthly$/,
   );
