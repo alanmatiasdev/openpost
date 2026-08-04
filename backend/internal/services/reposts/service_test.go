@@ -45,6 +45,25 @@ func TestThresholdsTreatMissingMetricsAsUnknown(t *testing.T) {
 	require.False(t, thresholdsSatisfied(rule, platform.AnalyticsValues{platform.MetricViews: 100}))
 }
 
+func TestScheduleSweepIgnoresAnExistingPendingSweep(t *testing.T) {
+	db := repostTestDB(t)
+	ctx := context.Background()
+	_, err := db.ExecContext(ctx, `CREATE UNIQUE INDEX repost_sweep_pending_unique_idx
+		ON jobs (type) WHERE type = 'repost_sweep' AND status IN ('pending', 'processing')`)
+	require.NoError(t, err)
+
+	service := NewService(db, testTokenSource{})
+	firstRun := time.Now().UTC().Truncate(time.Minute)
+	require.NoError(t, service.ScheduleSweep(ctx, firstRun))
+	require.NoError(t, service.ScheduleSweep(ctx, firstRun.Add(time.Minute)))
+
+	count, err := db.NewSelect().Model((*models.Job)(nil)).
+		Where("type = ? AND status = ?", JobTypeSweep, "pending").
+		Count(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, count)
+}
+
 func TestCustomOverrideSchedulesEvaluatesAndExecutes(t *testing.T) {
 	db := repostTestDB(t)
 	ctx := context.Background()

@@ -4,6 +4,10 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- Made repost sweep scheduling idempotent when a pending sweep already exists, so restarts do not fail on the queue's uniqueness guard.
+
 ## [2.0.1] - 2026-08-04
 
 ### Fixed

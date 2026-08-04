@@ -525,7 +525,7 @@ func (s *Service) enqueue(ctx context.Context, jobType, payload string, runAt ti
 	job := &models.Job{
 		ID: uuid.NewString(), Type: jobType, Payload: payload, Status: "pending", RunAt: runAt.UTC(), MaxAttempts: maxAttempts,
 	}
-	if _, err := s.db.NewInsert().Model(job).Exec(ctx); err != nil {
+	if _, err := s.db.NewInsert().Model(job).On("CONFLICT DO NOTHING").Exec(ctx); err != nil {
 		return fmt.Errorf("enqueue %s: %w", jobType, err)
 	}
 	return nil
