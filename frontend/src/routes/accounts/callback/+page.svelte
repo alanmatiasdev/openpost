@@ -9,18 +9,20 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Checkbox } from '$lib/components/ui/checkbox';
 	import * as RadioGroup from '$lib/components/ui/radio-group';
+	import { workspaceCtx } from '$lib/stores/workspace.svelte';
+	import { soundPreferences } from '$lib/stores/sound-preferences.svelte';
 	import { getPlatformName } from '$lib/utils';
 	import { getLocaleTag } from '$lib/i18n';
 	import { m } from '$lib/paraglide/messages';
 	import CheckCircleIcon from 'lucide-svelte/icons/circle-check';
 	import AlertTriangleIcon from 'lucide-svelte/icons/triangle-alert';
+	import PenLineIcon from 'lucide-svelte/icons/square-pen';
 
 	type Selection = components['schemas']['AccountSelectionResponse'];
 	type SelectionOption = components['schemas']['AccountSelectionOption'];
 	type ErrorModel = components['schemas']['ErrorModel'];
 	type CallbackState = 'loading' | 'direct_success' | 'selection' | 'selection_success' | 'error';
 
-	let countdown = $state(5);
 	let platform = $state('');
 	let connectionId = $state('');
 	let viewState = $state<CallbackState>('loading');
@@ -30,8 +32,7 @@
 	let loadingSelection = $state(false);
 	let submitting = $state(false);
 	let error = $state('');
-	let timeoutId: number | undefined;
-	let intervalId: number | undefined;
+	let celebrating = false;
 
 	let platformName = $derived(
 		platform ? getPlatformName(platform) : m.accounts_callback_social_account()
@@ -55,7 +56,9 @@
 			? m.accounts_callback_choose_description()
 			: viewState === 'error'
 				? m.accounts_callback_attention_description()
-				: m.accounts_callback_finalizing_description({ platform: platformName })
+				: viewState === 'direct_success' || viewState === 'selection_success'
+					? m.accounts_callback_success_description({ platform: platformName })
+					: m.accounts_callback_finalizing_description({ platform: platformName })
 	);
 	let expiresAtLabel = $derived.by(() => {
 		if (!selection?.expires_at) return '';
@@ -87,45 +90,20 @@
 			showError(m.accounts_callback_failed_restart());
 		}
 
-		return () => {
-			clearRedirectTimers();
-		};
+		return undefined;
 	});
-
-	function clearRedirectTimers() {
-		if (intervalId) window.clearInterval(intervalId);
-		if (timeoutId) window.clearTimeout(timeoutId);
-		intervalId = undefined;
-		timeoutId = undefined;
-	}
-
-	function startRedirectCountdown() {
-		clearRedirectTimers();
-		countdown = 5;
-		intervalId = window.setInterval(() => {
-			if (countdown > 1) {
-				countdown -= 1;
-			}
-		}, 1000);
-
-		timeoutId = window.setTimeout(() => {
-			goto(resolve('/settings?tab=accounts'));
-		}, 5000);
-	}
 
 	function showDirectSuccess() {
 		viewState = 'direct_success';
-		startRedirectCountdown();
+		void celebrateFirstAccount(1);
 	}
 
 	function showError(message: string) {
-		clearRedirectTimers();
 		error = message;
 		viewState = 'error';
 	}
 
 	async function loadSelection(id: string) {
-		clearRedirectTimers();
 		loadingSelection = true;
 		error = '';
 		viewState = 'loading';
@@ -181,7 +159,7 @@
 			}
 
 			viewState = 'selection_success';
-			startRedirectCountdown();
+			void celebrateFirstAccount(Math.max(selectedCount, 1));
 		} catch (requestError) {
 			error = transportErrorMessage(requestError, m.accounts_callback_selection_save_failed());
 		} finally {
@@ -201,8 +179,43 @@
 	}
 
 	function goToAccounts() {
-		clearRedirectTimers();
 		goto(resolve('/settings?tab=accounts'));
+	}
+
+	function createFirstPost() {
+		goto(resolve('/'));
+	}
+
+	async function celebrateFirstAccount(addedCount: number) {
+		if (celebrating) return;
+		celebrating = true;
+		try {
+			await workspaceCtx.initialize();
+			const workspaceID = workspaceCtx.currentWorkspace?.id ?? '';
+			if (!workspaceID) return;
+			const storageKey = `openpost:first-account-celebrated:${workspaceID}`;
+			if (localStorage.getItem(storageKey) === '1') return;
+			const { data, error: accountsError } = await client.GET('/accounts', {
+				params: { query: { workspace_id: workspaceID } }
+			});
+			if (accountsError || !data || data.length > addedCount) return;
+			localStorage.setItem(storageKey, '1');
+			soundPreferences.play('success');
+			if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+			const { default: confetti } = await import('canvas-confetti');
+			confetti({
+				particleCount: 90,
+				spread: 70,
+				startVelocity: 28,
+				origin: { y: 0.68 },
+				colors: ['#f97316', '#fb923c', '#22c55e', '#38bdf8'],
+				disableForReducedMotion: true
+			});
+		} catch {
+			// Celebration must never block a successful connection.
+		} finally {
+			celebrating = false;
+		}
 	}
 
 	function optionTitle(option: SelectionOption) {
@@ -351,19 +364,22 @@
 			</div>
 		</form>
 	{:else if viewState === 'direct_success' || viewState === 'selection_success'}
-		<div class="flex flex-col items-center gap-3 text-center" role="status" aria-live="polite">
+		<div class="flex flex-col items-center gap-4 text-center" role="status" aria-live="polite">
 			<CheckCircleIcon class="size-10 text-emerald-600" />
-			<p class="text-sm text-muted-foreground">
-				{countdown === 1
-					? m.accounts_callback_redirect_one()
-					: m.accounts_callback_redirect_many({ count: countdown })}
-			</p>
 			<p class="max-w-md text-sm text-muted-foreground">
 				{selectedCount > 1
 					? m.accounts_callback_completed_many({ count: selectedCount })
 					: m.accounts_callback_completed()}
 			</p>
-			<Button onclick={goToAccounts}>{m.accounts_callback_go_now()}</Button>
+			<div class="flex w-full flex-col gap-2 sm:flex-row sm:justify-center">
+				<Button onclick={createFirstPost}>
+					<PenLineIcon data-icon="inline-start" />
+					{m.accounts_callback_create_first_post()}
+				</Button>
+				<Button variant="outline" onclick={goToAccounts}
+					>{m.accounts_callback_connect_another()}</Button
+				>
+			</div>
 		</div>
 	{:else}
 		<div class="flex flex-col items-center gap-4 text-center">

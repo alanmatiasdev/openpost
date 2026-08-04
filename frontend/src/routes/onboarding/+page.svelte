@@ -7,8 +7,6 @@
 	import { client } from '$lib/api/client';
 	import { workspaceCtx } from '$lib/stores/workspace.svelte';
 	import { Button } from '$lib/components/ui/button';
-	import { Input } from '$lib/components/ui/input';
-	import { Label } from '$lib/components/ui/label';
 	import StandaloneShell from '$lib/components/standalone-shell.svelte';
 	import InlineNotice from '$lib/components/inline-notice.svelte';
 	import RocketIcon from 'lucide-svelte/icons/rocket';
@@ -16,12 +14,11 @@
 	import { m } from '$lib/paraglide/messages';
 	import { safeSameOriginRedirect } from '$lib/redirects';
 	import {
-		hostedPlanFromSearchParams,
-		onboardingPathForPlan,
-		settingsPathForPlan
+		billingPeriodFromSearchParams,
+		checkoutPathForPlan,
+		hostedPlanFromSearchParams
 	} from '$lib/billing';
 
-	let workspaceName = $state('Personal');
 	let isLoading = $state(false);
 	let loadError = $state('');
 	let createError = $state('');
@@ -37,10 +34,16 @@
 	}
 
 	function afterOnboardingTarget() {
+		const target = checkoutPathForPlan(
+			selectedPlanID(),
+			billingPeriodFromSearchParams(page.url.searchParams)
+		);
+		const params = new URLSearchParams(target.split('?')[1] ?? '');
 		const redirect = safeSameOriginRedirect(page.url, '');
-		if (redirect) return redirect;
-		const planID = selectedPlanID();
-		return settingsPathForPlan(planID);
+		if (redirect) params.set('redirect', redirect);
+		const affiliateCode = page.url.searchParams.get('affiliate_code');
+		if (affiliateCode) params.set('affiliate_code', affiliateCode);
+		return `/checkout?${params}`;
 	}
 
 	function loginTarget() {
@@ -75,6 +78,7 @@
 				return;
 			}
 			createdWorkspaceID = '';
+			if (!managedAccount) await createWorkspace();
 		} catch (e) {
 			if (requestSequence !== onboardingLoadSequence) return;
 			console.error('Failed to load onboarding workspace state:', e);
@@ -86,16 +90,14 @@
 		}
 	}
 
-	async function handleCreate(e: Event) {
-		e.preventDefault();
-		if (!workspaceName.trim()) return;
-
+	async function createWorkspace() {
+		if (isLoading) return;
 		isLoading = true;
 		createError = '';
 
 		try {
 			const { data, error: err } = await client.POST('/workspaces', {
-				body: { name: workspaceName.trim() }
+				body: { name: 'My workspace' }
 			});
 			if (err || !data?.id) {
 				throw new Error(
@@ -147,36 +149,22 @@
 			<p class="text-sm leading-6 text-muted-foreground">
 				{m.onboarding_managed_help()}
 			</p>
+		{:else if createError}
+			<InlineNotice tone="error" message={createError}>
+				{#snippet actions()}
+					<Button variant="outline" size="sm" onclick={() => void createWorkspace()}>
+						{m.common_retry()}
+					</Button>
+				{/snippet}
+			</InlineNotice>
 		{:else}
-			{#if createError}
-				<InlineNotice tone="error" message={createError} />
-			{/if}
-
-			<form onsubmit={handleCreate} class="space-y-4">
-				<div class="space-y-2">
-					<Label for="workspace-name">{m.onboarding_workspace_name()}</Label>
-					<Input
-						type="text"
-						id="workspace-name"
-						bind:value={workspaceName}
-						placeholder={m.onboarding_workspace_placeholder()}
-						required
-						autofocus
-					/>
-					<p class="text-sm text-muted-foreground">
-						{m.onboarding_workspace_hint()}
-					</p>
-				</div>
-
-				<Button type="submit" disabled={isLoading || !workspaceName.trim()} class="w-full">
-					{#if isLoading}
-						<LoaderIcon class="mr-2 size-4 animate-spin" />
-						{m.onboarding_loading()}
-					{:else}
-						{m.onboarding_submit()}
-					{/if}
-				</Button>
-			</form>
+			<div
+				class="flex items-center justify-center gap-3 py-6 text-sm text-muted-foreground"
+				role="status"
+			>
+				<LoaderIcon class="size-5 animate-spin text-primary" />
+				{m.onboarding_loading()}
+			</div>
 		{/if}
 	</div>
 </StandaloneShell>

@@ -581,27 +581,52 @@ test("plan selection from signup starts checkout after onboarding", async ({
   let checkoutURL = "";
 
   await routeBrowserRegistration(page, email);
-  await page.route("**/api/v1/**/billing/checkout", async (route) => {
+  await page.route("https://js.whop.com/**", async (route) => {
+    await route.fulfill({ contentType: "application/javascript", body: "" });
+  });
+  await page.route("**/api/v1/billing/checkout", async (route) => {
     checkoutURL = route.request().url();
     checkoutBody = JSON.parse(route.request().postData() ?? "{}");
     await route.fulfill({
       contentType: "application/json",
-      json: { id: "checkout-e2e", url: "/settings?checkout=creator" },
+      json: {
+        id: "checkout-e2e",
+        url: "/checkout?plan=creator&billing_period=monthly&session_id=checkout-e2e",
+        purchase_url: "https://whop.com/checkout/plan_creator_month",
+        provider_plan_id: "plan_creator_month",
+        plan_id: "creator",
+        billing_period: "monthly",
+        price_usd: 29,
+        trial_ends_at: "2026-08-18T12:00:00Z",
+        return_url:
+          "http://127.0.0.1/checkout?plan=creator&billing_period=monthly&status=success",
+      },
     });
   });
 
   await page.goto("/register?plan=creator");
-  await page.getByLabel("Username").fill(`plan-${unique}`);
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password", { exact: true }).fill(password);
   await page.getByLabel("Confirm Password").fill(password);
   await page.getByRole("button", { name: "Create Account" }).click();
 
   await expect(page).toHaveURL(/\/onboarding\?plan=creator/);
-  await page.getByLabel("Workspace name").fill("Plan Handoff E2E");
-  await page.getByRole("button", { name: "Create workspace" }).click();
 
-  await expect(page).toHaveURL(/\/settings\?checkout=creator/);
-  expect(checkoutURL).toContain("/organizations/");
+  await expect(page).toHaveURL(
+    /\/checkout\?plan=creator&billing_period=monthly$/,
+  );
+  await expect(
+    page.getByRole("heading", { name: "Put your content team to work" }),
+  ).toBeVisible();
+  await expect(page.getByText("$0 due today")).toBeVisible();
+  await expect(page.locator("#openpost-whop-checkout")).toHaveAttribute(
+    "data-whop-checkout-session",
+    "checkout-e2e",
+  );
+  await expect(page.locator("#openpost-whop-checkout")).toHaveAttribute(
+    "data-whop-checkout-plan-id",
+    "plan_creator_month",
+  );
+  expect(checkoutURL).toContain("/api/v1/billing/checkout");
   expect(checkoutBody?.plan_id).toBe("creator");
 });

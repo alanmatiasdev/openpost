@@ -27,7 +27,7 @@ interface AuthActionResult {
 
 interface RegisterInput {
 	email: string;
-	username: string;
+	username?: string;
 	password: string;
 	acceptedLegal: boolean;
 }
@@ -95,7 +95,7 @@ function createAuthStore() {
 		async register({ email, username, password, acceptedLegal }: RegisterInput) {
 			try {
 				const { data, error } = await client.POST('/auth/register', {
-					body: { email, username, password, accepted_legal: acceptedLegal }
+					body: { email, username: username || undefined, password, accepted_legal: acceptedLegal }
 				});
 				if (error || !data) throw new Error(error?.detail || 'Registration failed');
 				if (data.requires_email_verification) {

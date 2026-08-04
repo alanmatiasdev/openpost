@@ -1284,6 +1284,10 @@
 						"description": "Entitlement limits from the local subscription snapshot",
 						"type": "object"
 					},
+					"manage_url": {
+						"description": "Whop billing management URL for the active membership",
+						"type": "string"
+					},
 					"organization_id": {
 						"description": "Organization ID",
 						"type": "string"
@@ -1346,12 +1350,41 @@
 						"readOnly": true,
 						"type": "string"
 					},
+					"billing_period": {
+						"description": "Selected billing period",
+						"type": "string"
+					},
 					"id": {
-						"description": "Provider object ID",
+						"description": "Whop checkout configuration or membership ID",
+						"type": "string"
+					},
+					"plan_id": {
+						"description": "OpenPost plan ID",
+						"type": "string"
+					},
+					"price_usd": {
+						"description": "Selected plan price in whole US dollars",
+						"format": "int64",
+						"type": "integer"
+					},
+					"provider_plan_id": {
+						"description": "Whop plan ID used by the embedded checkout",
+						"type": "string"
+					},
+					"purchase_url": {
+						"description": "Whop-hosted checkout fallback URL",
+						"type": "string"
+					},
+					"return_url": {
+						"description": "OpenPost URL used after Whop checkout completes",
+						"type": "string"
+					},
+					"trial_ends_at": {
+						"description": "Expected end of the 14-day trial",
 						"type": "string"
 					},
 					"url": {
-						"description": "Redirect URL",
+						"description": "OpenPost checkout or billing management URL",
 						"type": "string"
 					}
 				},
@@ -2469,6 +2502,16 @@
 						"readOnly": true,
 						"type": "string"
 					},
+					"affiliate_code": {
+						"description": "Optional Whop affiliate code carried into checkout",
+						"type": "string"
+					},
+					"billing_period": {
+						"default": "monthly",
+						"description": "Billing period: monthly or annual",
+						"enum": ["monthly", "annual"],
+						"type": "string"
+					},
 					"organization_id": {
 						"description": "Organization ID",
 						"type": "string"
@@ -2745,6 +2788,16 @@
 						],
 						"format": "uri",
 						"readOnly": true,
+						"type": "string"
+					},
+					"affiliate_code": {
+						"description": "Optional Whop affiliate code carried into checkout",
+						"type": "string"
+					},
+					"billing_period": {
+						"default": "monthly",
+						"description": "Billing period: monthly or annual",
+						"enum": ["monthly", "annual"],
 						"type": "string"
 					},
 					"plan_id": {
@@ -8960,14 +9013,14 @@
 						"type": "string"
 					},
 					"username": {
-						"description": "Unique public username",
+						"description": "Optional unique public username; OpenPost creates one from the email when omitted",
 						"maxLength": 30,
 						"minLength": 3,
 						"pattern": "^[A-Za-z0-9](?:[A-Za-z0-9_-]*[A-Za-z0-9])?$",
 						"type": "string"
 					}
 				},
-				"required": ["email", "username", "password"],
+				"required": ["email", "password"],
 				"type": "object"
 			},
 			"RemoveAvatarOutputBody": {

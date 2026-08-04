@@ -3795,6 +3795,8 @@ export interface components {
             limits: {
                 [key: string]: number;
             };
+            /** @description Whop billing management URL for the active membership */
+            manage_url?: string;
             /** @description Organization ID */
             organization_id: string;
             /** @description UTC month start for the usage counters */
@@ -3821,9 +3823,26 @@ export interface components {
              * @example https://example.com/schemas/BillingURLResponse.json
              */
             readonly $schema?: string;
-            /** @description Provider object ID */
+            /** @description Selected billing period */
+            billing_period?: string;
+            /** @description Whop checkout configuration or membership ID */
             id?: string;
-            /** @description Redirect URL */
+            /** @description OpenPost plan ID */
+            plan_id?: string;
+            /**
+             * Format: int64
+             * @description Selected plan price in whole US dollars
+             */
+            price_usd?: number;
+            /** @description Whop plan ID used by the embedded checkout */
+            provider_plan_id?: string;
+            /** @description Whop-hosted checkout fallback URL */
+            purchase_url?: string;
+            /** @description OpenPost URL used after Whop checkout completes */
+            return_url?: string;
+            /** @description Expected end of the 14-day trial */
+            trial_ends_at?: string;
+            /** @description OpenPost checkout or billing management URL */
             url: string;
         };
         BlueskyLoginInputBody: {
@@ -4275,6 +4294,14 @@ export interface components {
              * @example https://example.com/schemas/CreateBillingCheckoutInputBody.json
              */
             readonly $schema?: string;
+            /** @description Optional Whop affiliate code carried into checkout */
+            affiliate_code?: string;
+            /**
+             * @description Billing period: monthly or annual
+             * @default monthly
+             * @enum {string}
+             */
+            billing_period: "monthly" | "annual";
             /** @description Organization ID */
             organization_id?: string;
             /** @description Plan ID: starter, creator, pro, team, or agency */
@@ -4419,6 +4446,14 @@ export interface components {
              * @example https://example.com/schemas/CreateOrganizationBillingCheckoutInputBody.json
              */
             readonly $schema?: string;
+            /** @description Optional Whop affiliate code carried into checkout */
+            affiliate_code?: string;
+            /**
+             * @description Billing period: monthly or annual
+             * @default monthly
+             * @enum {string}
+             */
+            billing_period: "monthly" | "annual";
             /** @description Plan ID: starter, creator, pro, team, or agency */
             plan_id: string;
         };
@@ -7266,8 +7301,8 @@ export interface components {
             email: string;
             /** @description User password (min 12 characters) */
             password: string;
-            /** @description Unique public username */
-            username: string;
+            /** @description Optional unique public username; OpenPost creates one from the email when omitted */
+            username?: string;
         };
         RemoveAvatarOutputBody: {
             /**

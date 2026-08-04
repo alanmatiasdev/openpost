@@ -60,7 +60,7 @@
 	import { client } from '$lib/api/client';
 	import { showToast } from '$lib/toast';
 	import { getLocaleTag } from '$lib/i18n';
-	import { hostedPlanFromSearchParams } from '$lib/billing';
+	import { checkoutPathForPlan, hostedPlanFromSearchParams } from '$lib/billing';
 	import { m } from '$lib/paraglide/messages';
 	import { getOptionalUnsavedChanges } from '$lib/unsaved-changes.svelte';
 	import {
@@ -1048,31 +1048,9 @@
 	}
 
 	async function startCheckout(planID: string) {
-		const workspaceID = workspaceCtx.currentWorkspace?.id;
-		const organizationID =
-			billingStatus?.organization_id ?? workspaceCtx.currentWorkspace?.organization_id ?? '';
-		if (!workspaceID) return;
 		billingBusyPlan = planID;
-		billingError = '';
-		try {
-			const { data, error: err } = organizationID
-				? await client.POST('/organizations/{id}/billing/checkout', {
-						params: { path: { id: organizationID } },
-						body: { plan_id: planID }
-					})
-				: await client.POST('/billing/checkout', {
-						body: { workspace_id: workspaceID, plan_id: planID }
-					});
-			if (err || !data?.url) throw new Error(err?.detail || m.settings_action_failed());
-			if (!isCurrentBillingTarget(workspaceID, organizationID)) return;
-			window.location.assign(data.url);
-		} catch (e) {
-			if (isCurrentBillingTarget(workspaceID, organizationID)) {
-				billingError = (e as Error).message;
-			}
-		} finally {
-			billingBusyPlan = '';
-		}
+		await goto(resolve(checkoutPathForPlan(planID) as '/'));
+		billingBusyPlan = '';
 	}
 
 	async function openBillingPortal() {
@@ -1635,7 +1613,7 @@
 	function formatPlanPrice(amount: number): string {
 		return new Intl.NumberFormat(getLocaleTag(), {
 			style: 'currency',
-			currency: 'EUR',
+			currency: 'USD',
 			maximumFractionDigits: 0
 		}).format(amount);
 	}
@@ -2632,7 +2610,7 @@
 										</div>
 										<div class="text-right">
 											<div class="text-xl font-semibold">
-												{formatPlanPrice(plan.monthlyPriceEur)}
+												{formatPlanPrice(plan.monthlyPriceUSD)}
 											</div>
 											<div class="text-xs text-muted-foreground">
 												{m.settings_price_per_month()}

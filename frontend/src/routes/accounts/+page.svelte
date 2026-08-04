@@ -76,6 +76,8 @@
 	let discordWebhookUrl = $state('');
 	let discordLoading = $state(false);
 	let discordError = $state('');
+	let oauthConfirmOpen = $state(false);
+	let oauthConfirmProvider = $state.raw<ProviderInfo | null>(null);
 
 	let editAccountDialogOpen = $state(false);
 	let editingAccount = $state<SocialAccount | null>(null);
@@ -641,8 +643,37 @@
 		goto(resolve('/accounts/mastodon/callback'));
 	}
 
+	function providerUsesOAuth(provider: ProviderInfo): boolean {
+		return [
+			'x',
+			'mastodon',
+			'threads',
+			'linkedin',
+			'instagram',
+			'facebook',
+			'youtube',
+			'tiktok'
+		].includes(provider.platform);
+	}
+
 	function connectProvider(provider: ProviderInfo) {
 		if (!providerCanConnect(provider)) return;
+		if (providerUsesOAuth(provider)) {
+			oauthConfirmProvider = provider;
+			oauthConfirmOpen = true;
+			return;
+		}
+		beginProviderConnection(provider);
+	}
+
+	function confirmOAuthConnection() {
+		const provider = oauthConfirmProvider;
+		if (!provider) return;
+		oauthConfirmOpen = false;
+		beginProviderConnection(provider);
+	}
+
+	function beginProviderConnection(provider: ProviderInfo) {
 		switch (provider.platform) {
 			case 'x':
 				connectTwitter();
@@ -713,6 +744,38 @@
 					variant="muted"
 				/>
 			{:else}
+				{#if page.url.searchParams.get('onboarding') === '1' && accounts.length === 0}
+					<div class="mb-6 rounded-lg border border-primary/20 bg-primary/5 p-5">
+						<p class="text-sm font-medium text-primary">{m.accounts_onboarding_progress()}</p>
+						<h2 class="mt-1 text-lg font-semibold">{m.accounts_onboarding_heading()}</h2>
+						<p class="mt-1 text-sm/6 text-muted-foreground">
+							{m.accounts_onboarding_description()}
+						</p>
+						<ol class="mt-4 grid gap-2 text-sm sm:grid-cols-3">
+							<li class="flex items-center gap-2 text-muted-foreground">
+								<span
+									class="flex size-6 items-center justify-center rounded-full bg-emerald-500/15 text-xs font-semibold text-emerald-700"
+									>✓</span
+								>
+								{m.accounts_onboarding_plan_done()}
+							</li>
+							<li class="flex items-center gap-2 font-medium">
+								<span
+									class="flex size-6 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground"
+									>2</span
+								>
+								{m.accounts_onboarding_connect()}
+							</li>
+							<li class="flex items-center gap-2 text-muted-foreground">
+								<span
+									class="flex size-6 items-center justify-center rounded-full bg-muted text-xs font-semibold"
+									>3</span
+								>
+								{m.accounts_onboarding_post()}
+							</li>
+						</ol>
+					</div>
+				{/if}
 				{#if error}
 					<InlineNotice
 						tone="error"
@@ -938,6 +1001,64 @@
 	confirmLabel={m.common_disconnect()}
 	onConfirm={disconnectAccount}
 />
+
+<Dialog.Root bind:open={oauthConfirmOpen}>
+	<Dialog.Content class="sm:max-w-md">
+		<Dialog.Header>
+			<Dialog.Title>
+				{m.accounts_oauth_confirm_title({
+					platform: oauthConfirmProvider
+						? providerTitle(oauthConfirmProvider)
+						: m.accounts_callback_social_account()
+				})}
+			</Dialog.Title>
+			<Dialog.Description>{m.accounts_oauth_confirm_description()}</Dialog.Description>
+		</Dialog.Header>
+		<ol class="space-y-3 text-sm">
+			<li class="flex gap-3">
+				<span
+					class="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary"
+					>1</span
+				>
+				<span>{m.accounts_oauth_step_redirect()}</span>
+			</li>
+			<li class="flex gap-3">
+				<span
+					class="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary"
+					>2</span
+				>
+				<span>{m.accounts_oauth_step_approve()}</span>
+			</li>
+			<li class="flex gap-3">
+				<span
+					class="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary"
+					>3</span
+				>
+				<span>{m.accounts_oauth_step_return()}</span>
+			</li>
+		</ol>
+		<div
+			class="rounded-md border border-emerald-500/20 bg-emerald-500/8 p-3 text-sm text-emerald-800 dark:text-emerald-200"
+		>
+			<p class="font-medium">{m.accounts_oauth_password_title()}</p>
+			<p class="mt-1 text-xs/5">{m.accounts_oauth_password_description()}</p>
+		</div>
+		<Dialog.Footer>
+			<Dialog.Close>
+				{#snippet child({ props })}
+					<Button {...props} variant="outline">{m.common_cancel()}</Button>
+				{/snippet}
+			</Dialog.Close>
+			<Button onclick={confirmOAuthConnection}>
+				{m.accounts_oauth_continue({
+					platform: oauthConfirmProvider
+						? providerTitle(oauthConfirmProvider)
+						: m.accounts_callback_social_account()
+				})}
+			</Button>
+		</Dialog.Footer>
+	</Dialog.Content>
+</Dialog.Root>
 
 <Dialog.Root bind:open={mastodonModalOpen}>
 	<Dialog.Content class="sm:max-w-md">

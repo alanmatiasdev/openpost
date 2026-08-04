@@ -70,6 +70,7 @@
 
 	const standaloneRoutes = [
 		'/onboarding',
+		'/checkout',
 		'/verify-email',
 		'/legal-acceptance',
 		'/preview',

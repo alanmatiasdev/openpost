@@ -75,7 +75,7 @@ export const apiTokenScopeOptions = ['mcp:read', 'mcp:full', 'cli:full'] as cons
 export const billingPlans = [
 	{
 		id: 'starter',
-		monthlyPriceEur: 6,
+		monthlyPriceUSD: 15,
 		featured: false,
 		limits: [
 			{ kind: 'workspaces', count: 1 },
@@ -86,7 +86,7 @@ export const billingPlans = [
 	},
 	{
 		id: 'creator',
-		monthlyPriceEur: 12,
+		monthlyPriceUSD: 29,
 		limits: [
 			{ kind: 'workspaces', count: 3 },
 			{ kind: 'social_accounts', count: 6 },
@@ -97,7 +97,7 @@ export const billingPlans = [
 	},
 	{
 		id: 'pro',
-		monthlyPriceEur: 24,
+		monthlyPriceUSD: 49,
 		featured: false,
 		limits: [
 			{ kind: 'workspaces', count: 10 },
@@ -108,7 +108,7 @@ export const billingPlans = [
 	},
 	{
 		id: 'team',
-		monthlyPriceEur: 49,
+		monthlyPriceUSD: 99,
 		featured: false,
 		limits: [
 			{ kind: 'workspaces', count: 10 },
@@ -119,7 +119,7 @@ export const billingPlans = [
 	},
 	{
 		id: 'agency',
-		monthlyPriceEur: 99,
+		monthlyPriceUSD: 199,
 		featured: false,
 		limits: [
 			{ kind: 'workspaces', count: 50 },

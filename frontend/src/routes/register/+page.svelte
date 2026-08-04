@@ -20,7 +20,6 @@
 	import AuthProviderButtons from '$lib/components/auth-provider-buttons.svelte';
 
 	let email = $state('');
-	let username = $state('');
 	let password = $state('');
 	let confirmPassword = $state('');
 	let error = $state('');
@@ -54,7 +53,15 @@
 	});
 
 	function registrationTarget() {
-		const onboarding = onboardingPathForPlan(page.url.searchParams.get('plan'));
+		const onboardingURL = new URL(
+			onboardingPathForPlan(page.url.searchParams.get('plan')),
+			page.url
+		);
+		const billingPeriod = page.url.searchParams.get('billing_period');
+		if (billingPeriod) onboardingURL.searchParams.set('billing_period', billingPeriod);
+		const affiliateCode = page.url.searchParams.get('affiliate_code');
+		if (affiliateCode) onboardingURL.searchParams.set('affiliate_code', affiliateCode);
+		const onboarding = `${onboardingURL.pathname}${onboardingURL.search}`;
 		const redirect = safeSameOriginRedirect(page.url, '');
 		if (!redirect) return onboarding;
 		const separator = onboarding.includes('?') ? '&' : '?';
@@ -87,7 +94,7 @@
 
 		isLoading = true;
 
-		const result = await auth.register({ email, username, password, acceptedLegal });
+		const result = await auth.register({ email, password, acceptedLegal });
 
 		if (result.success) {
 			if (safeSameOriginRedirect(page.url, '').startsWith('/studio/local_design_')) {
@@ -118,6 +125,13 @@
 	description={m.auth_register_description()}
 	logoHref="/"
 >
+	<div
+		class="mb-5 grid grid-cols-3 gap-2 border-y py-3 text-center text-[11px] leading-4 text-muted-foreground"
+	>
+		<span>{m.auth_register_proof_trial()}</span>
+		<span>{m.auth_register_proof_channels()}</span>
+		<span>{m.auth_register_proof_cancel()}</span>
+	</div>
 	{#if error}
 		<InlineNotice tone="error" message={error} class="mb-4" />
 	{/if}
@@ -137,22 +151,6 @@
 	{/if}
 
 	<form onsubmit={handleSubmit} class="space-y-4">
-		<div class="space-y-2">
-			<Label for="username">{m.auth_username()}</Label>
-			<Input
-				type="text"
-				id="username"
-				bind:value={username}
-				required
-				minlength={3}
-				maxlength={30}
-				pattern="[A-Za-z0-9](?:[A-Za-z0-9_-]*[A-Za-z0-9])?"
-				autocomplete="username"
-				placeholder={m.auth_username_placeholder()}
-			/>
-			<p class="text-xs leading-5 text-muted-foreground">{m.auth_username_help()}</p>
-		</div>
-
 		<div class="space-y-2">
 			<Label for="email">{m.common_email()}</Label>
 			<Input

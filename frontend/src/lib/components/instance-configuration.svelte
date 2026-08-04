@@ -28,7 +28,13 @@
 	type SettingsResponse = components['schemas']['InstanceSettingsResponse'];
 	type ProviderApp = components['schemas']['ProviderAppResponse'];
 	type SectionID =
-		'accounts' | 'email' | 'authentication' | 'features' | 'providers' | 'provider-apps';
+		| 'accounts'
+		| 'billing'
+		| 'email'
+		| 'authentication'
+		| 'features'
+		| 'providers'
+		| 'provider-apps';
 
 	interface Props {
 		active: boolean;
@@ -76,6 +82,7 @@
 
 	const sections = $derived([
 		{ id: 'accounts' as const, label: m.settings_configuration_accounts() },
+		{ id: 'billing' as const, label: m.settings_configuration_billing() },
 		{ id: 'email' as const, label: m.settings_configuration_email() },
 		{ id: 'authentication' as const, label: m.settings_configuration_authentication() },
 		{ id: 'features' as const, label: m.settings_configuration_features() },
@@ -329,6 +336,7 @@
 
 	function sectionDescription(section: SectionID) {
 		if (section === 'accounts') return m.settings_configuration_accounts_body();
+		if (section === 'billing') return m.settings_configuration_billing_body();
 		if (section === 'email') return m.settings_configuration_email_body();
 		if (section === 'authentication') return m.settings_configuration_authentication_body();
 		if (section === 'features') return m.settings_configuration_features_body();

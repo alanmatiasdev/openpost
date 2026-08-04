@@ -49,6 +49,70 @@ const portugueseCopy: Record<string, SettingCopy> = {
 		label: 'Verificação de versões',
 		description: 'Procura novas versões estáveis do OpenPost nas definições da instância.'
 	},
+	OPENPOST_WHOP_API_KEY: {
+		label: 'Chave API da Whop',
+		description: 'Chave de escrita única usada para criar checkouts e reconciliar subscrições.'
+	},
+	OPENPOST_WHOP_API_BASE_URL: {
+		label: 'URL da API da Whop',
+		description: 'Endpoint da API da Whop. Mantém o valor predefinido salvo indicação da Whop.'
+	},
+	OPENPOST_WHOP_WEBHOOK_SECRET: {
+		label: 'Segredo do webhook da Whop',
+		description: 'Segredo de assinatura usado para verificar pedidos de faturação da Whop.'
+	},
+	OPENPOST_WHOP_ACCOUNT_ID: {
+		label: 'ID da conta Whop',
+		description: 'Conta empresarial que detém o produto OpenPost e recebe os pagamentos.'
+	},
+	OPENPOST_WHOP_PRODUCT_ID: {
+		label: 'ID do produto Whop',
+		description: 'Produto que contém os planos de subscrição do OpenPost.'
+	},
+	OPENPOST_WHOP_CHECKOUT_RETURN_URL: {
+		label: 'URL de retorno do checkout',
+		description: 'URL do OpenPost para onde a Whop devolve o cliente após o pagamento.'
+	},
+	OPENPOST_WHOP_STARTER_MONTHLY_PLAN_ID: {
+		label: 'ID mensal Starter',
+		description: 'Plano Whop usado nas subscrições mensais Starter.'
+	},
+	OPENPOST_WHOP_STARTER_ANNUAL_PLAN_ID: {
+		label: 'ID anual Starter',
+		description: 'Plano Whop usado nas subscrições anuais Starter.'
+	},
+	OPENPOST_WHOP_CREATOR_MONTHLY_PLAN_ID: {
+		label: 'ID mensal Creator',
+		description: 'Plano Whop usado nas subscrições mensais Creator.'
+	},
+	OPENPOST_WHOP_CREATOR_ANNUAL_PLAN_ID: {
+		label: 'ID anual Creator',
+		description: 'Plano Whop usado nas subscrições anuais Creator.'
+	},
+	OPENPOST_WHOP_PRO_MONTHLY_PLAN_ID: {
+		label: 'ID mensal Pro',
+		description: 'Plano Whop usado nas subscrições mensais Pro.'
+	},
+	OPENPOST_WHOP_PRO_ANNUAL_PLAN_ID: {
+		label: 'ID anual Pro',
+		description: 'Plano Whop usado nas subscrições anuais Pro.'
+	},
+	OPENPOST_WHOP_TEAM_MONTHLY_PLAN_ID: {
+		label: 'ID mensal Team',
+		description: 'Plano Whop usado nas subscrições mensais Team.'
+	},
+	OPENPOST_WHOP_TEAM_ANNUAL_PLAN_ID: {
+		label: 'ID anual Team',
+		description: 'Plano Whop usado nas subscrições anuais Team.'
+	},
+	OPENPOST_WHOP_AGENCY_MONTHLY_PLAN_ID: {
+		label: 'ID mensal Agency',
+		description: 'Plano Whop usado nas subscrições mensais Agency.'
+	},
+	OPENPOST_WHOP_AGENCY_ANNUAL_PLAN_ID: {
+		label: 'ID anual Agency',
+		description: 'Plano Whop usado nas subscrições anuais Agency.'
+	},
 	OPENPOST_EMAIL_VERIFICATION_REQUIRED: {
 		label: 'Exigir verificação de email',
 		description:
