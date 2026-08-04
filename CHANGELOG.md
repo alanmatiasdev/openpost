@@ -4,6 +4,27 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Added image-generated dark X and LinkedIn profile headers built around the real OpenPost workspace and a restrained OpenPost pen mark.
+- Added release planning, exact local release checks, candidate and production status reporting, a public running-version endpoint, immutable SHA image smoke tests, and configuration-only startup validation.
+
+### Changed
+
+- Keep Accounts beside Settings in the expanded workspace sidebar navigation instead of using a separate footer row.
+- Allowed instance administrators to override allowlisted environment-backed configuration values with encrypted database settings, with clear pending and active override labels and a one-click return to the environment value.
+- Migrated the JavaScript workspace, Devenv commands, Docker build, CI, release packaging, Android build, and contributor documentation from pnpm to Bun with a committed text lockfile and age-gated dependency installs.
+- Changed releases to run the full matrix in parallel on `main`, publish one immutable tested image, and promote that same image on tags instead of repeating tag-time checks and builds.
+- Changed production deployment to accept a signed revision, tag, and digest, validate the candidate against production configuration, verify the running revision, and restore the previous image automatically when startup or readiness fails.
+- Development backend runs, tests, vulnerability scans, and lint now use a filesystem-backed frontend build tag; only production builds embed frontend assets and use a disposable Go build cache.
+
+### Fixed
+
+- Fixed profile-picture uploads to S3-compatible storage by sending small objects with an explicit size and a seekable body. The uploader now shows the server's real error instead of Uppy's generic network warning.
+- Added a daily, configurable 4 GiB safety cap for the repository-local Go build cache and removed forced Go test-cache invalidation that made repeated checks slower without addressing embedded-asset growth.
+- Updated vulnerable Bun resolutions and made the security gate reject every new runtime advisory while documenting the remaining upstream-only development-tool exceptions.
+- Made release checks fail before long-running work when disk, Docker responsiveness and memory, GitHub access, deployment secrets, or production readiness are unavailable; reclaim and bound unused local BuildKit cache when disk is tight; excluded dependencies, Devenv state, prior embeds, generated Android assets, and local media from Docker build contexts; isolated browser-suite servers from stale local processes; and restored the original changelog when local release verification fails.
+
 ## [2.0.2] - 2026-08-04
 
 ### Fixed
