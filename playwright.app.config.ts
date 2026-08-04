@@ -18,6 +18,7 @@ const chromiumUse = {
 export default defineConfig({
   testDir: "./e2e-app",
   fullyParallel: true,
+  workers: 2,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   reporter: process.env.CI ? [["github"], ["html", { open: "never" }]] : "list",
