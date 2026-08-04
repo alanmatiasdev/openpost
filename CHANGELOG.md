@@ -21,6 +21,7 @@ All notable changes to this project are documented in this file.
 ### Fixed
 
 - Fixed profile-picture uploads to S3-compatible storage by sending small objects with an explicit size and a seekable body. The uploader now shows the server's real error instead of Uppy's generic network warning.
+- Stabilized Video Editor release checks with deterministic, fully encoded WebM fixtures for analysis imports and switched recording segments.
 - Added a daily, configurable 4 GiB safety cap for the repository-local Go build cache and removed forced Go test-cache invalidation that made repeated checks slower without addressing embedded-asset growth.
 - Updated vulnerable Bun resolutions and made the security gate reject every new runtime advisory while documenting the remaining upstream-only development-tool exceptions.
 - Made release checks fail before long-running work when disk, Docker responsiveness and memory, GitHub access, deployment secrets, or production readiness are unavailable; reclaim and bound unused local BuildKit cache when disk is tight; excluded dependencies, Devenv state, prior embeds, generated Android assets, and local media from Docker build contexts; isolated browser-suite servers from stale local processes; and restored the original changelog when local release verification fails.

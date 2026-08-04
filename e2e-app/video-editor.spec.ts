@@ -1,4 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 test("legacy Video Studio URLs redirect to the OpenPost Video Editor", async ({
   page,
@@ -61,58 +65,63 @@ async function syntheticVideo(page: Page): Promise<Buffer> {
   return Buffer.from(bytes);
 }
 
-async function syntheticVideoWithAudio(page: Page): Promise<Buffer> {
-  const bytes = await page.evaluate(async () => {
-    const canvas = document.createElement("canvas");
-    canvas.width = 320;
-    canvas.height = 180;
-    const context = canvas.getContext("2d");
-    if (!context) throw new Error("Canvas is unavailable");
-    context.fillStyle = "#18181b";
-    context.fillRect(0, 0, canvas.width, canvas.height);
-    context.fillStyle = "#ffffff";
-    context.font = "700 24px sans-serif";
-    context.fillText("VAD completion fixture", 32, 96);
-    const videoStream = canvas.captureStream(24);
-    const audioContext = new AudioContext({ sampleRate: 48_000 });
-    const destination = audioContext.createMediaStreamDestination();
-    const oscillator = audioContext.createOscillator();
-    const gain = audioContext.createGain();
-    oscillator.frequency.value = 180;
-    gain.gain.setValueAtTime(0, audioContext.currentTime);
-    gain.gain.setValueAtTime(0.18, audioContext.currentTime + 0.2);
-    gain.gain.setValueAtTime(0, audioContext.currentTime + 0.9);
-    oscillator.connect(gain).connect(destination);
-    oscillator.start();
-    const stream = new MediaStream([
-      ...videoStream.getVideoTracks(),
-      ...destination.stream.getAudioTracks(),
+function syntheticVideoWithAudio(): Buffer {
+  const directory = mkdtempSync(join(tmpdir(), "openpost-video-editor-e2e-"));
+  const filename = join(directory, "analysis.webm");
+  try {
+    execFileSync("ffmpeg", [
+      "-y",
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=c=0x18181b:s=320x180:r=24:d=1.5",
+      "-f",
+      "lavfi",
+      "-i",
+      "aevalsrc=0.18*sin(2*PI*180*t)*between(t\\,0.2\\,0.9):s=48000:d=1.5",
+      "-shortest",
+      "-c:v",
+      "libvpx",
+      "-b:v",
+      "200k",
+      "-c:a",
+      "libopus",
+      "-b:a",
+      "32k",
+      filename,
     ]);
-    const mimeType = [
-      "video/webm;codecs=vp9,opus",
-      "video/webm;codecs=vp8,opus",
-      "video/webm",
-    ].find((candidate) => MediaRecorder.isTypeSupported(candidate));
-    if (!mimeType) throw new Error("No audio/video WebM recorder is available");
-    const chunks: Blob[] = [];
-    const recorder = new MediaRecorder(stream, { mimeType });
-    recorder.ondataavailable = (event) => {
-      if (event.data.size > 0) chunks.push(event.data);
-    };
-    recorder.start(100);
-    await new Promise((resolve) => setTimeout(resolve, 1_500));
-    await new Promise<void>((resolve) => {
-      recorder.onstop = () => resolve();
-      recorder.stop();
-    });
-    oscillator.stop();
-    stream.getTracks().forEach((track) => track.stop());
-    await audioContext.close();
-    return Array.from(
-      new Uint8Array(await new Blob(chunks, { type: mimeType }).arrayBuffer()),
-    );
-  });
-  return Buffer.from(bytes);
+    return readFileSync(filename);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+}
+
+function syntheticAudio(): Buffer {
+  const directory = mkdtempSync(join(tmpdir(), "openpost-audio-e2e-"));
+  const filename = join(directory, "microphone.webm");
+  try {
+    execFileSync("ffmpeg", [
+      "-y",
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "sine=frequency=180:sample_rate=48000:duration=1",
+      "-c:a",
+      "libopus",
+      "-b:a",
+      "32k",
+      filename,
+    ]);
+    return readFileSync(filename);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 }
 
 test("guest chooses Quick Cut and can move into the Full editor", async ({
@@ -669,9 +678,76 @@ test("active recordings preserve camera and microphone device switches as segmen
   page,
 }) => {
   test.setTimeout(90_000);
-  await page.addInitScript(() => {
+  const microphoneFixture = Array.from(syntheticAudio());
+  await page.addInitScript((microphoneBytes) => {
     const state = window as unknown as { __mediaCalls: number };
     state.__mediaCalls = 0;
+    const NativeMediaRecorder = window.MediaRecorder;
+    class FixtureMediaRecorder extends EventTarget {
+      static isTypeSupported(mimeType: string): boolean {
+        return NativeMediaRecorder.isTypeSupported(mimeType);
+      }
+
+      readonly mimeType: string;
+      readonly stream: MediaStream;
+      state: RecordingState = "inactive";
+      ondataavailable: ((event: BlobEvent) => void) | null = null;
+      onerror: ((event: MediaRecorderErrorEvent) => void) | null = null;
+      private startedAt = 0;
+
+      constructor(stream: MediaStream, options?: MediaRecorderOptions) {
+        super();
+        if (stream.getVideoTracks().length > 0) {
+          return new NativeMediaRecorder(
+            stream,
+            options,
+          ) as unknown as FixtureMediaRecorder;
+        }
+        this.stream = stream;
+        this.mimeType = options?.mimeType ?? "audio/webm";
+      }
+
+      start(timeslice = 1_000): void {
+        this.state = "recording";
+        this.startedAt = performance.now();
+        void timeslice;
+      }
+
+      stop(): void {
+        if (this.state === "inactive") return;
+        this.emitChunk();
+        this.state = "inactive";
+        queueMicrotask(() => this.dispatchEvent(new Event("stop")));
+      }
+
+      pause(): void {
+        if (this.state === "recording") this.state = "paused";
+      }
+
+      resume(): void {
+        if (this.state === "paused") this.state = "recording";
+      }
+
+      requestData(): void {
+        if (this.state !== "inactive") this.emitChunk();
+      }
+
+      private emitChunk(): void {
+        const data = new Blob([new Uint8Array(microphoneBytes)], {
+          type: this.mimeType,
+        });
+        this.ondataavailable?.(
+          new BlobEvent("dataavailable", {
+            data,
+            timecode: performance.now() - this.startedAt,
+          }),
+        );
+      }
+    }
+    Object.defineProperty(window, "MediaRecorder", {
+      configurable: true,
+      value: FixtureMediaRecorder,
+    });
     const videoStream = () => {
       const canvas = document.createElement("canvas");
       canvas.width = 640;
@@ -740,7 +816,7 @@ test("active recordings preserve camera and microphone device switches as segmen
         ]);
       },
     });
-  });
+  }, microphoneFixture);
 
   await page.goto("/video-editor/new?mode=record");
   await page.getByRole("checkbox", { name: /Tab or system audio/ }).uncheck();
@@ -748,6 +824,7 @@ test("active recordings preserve camera and microphone device switches as segmen
   await expect(
     page.getByRole("button", { name: "Stop recording" }),
   ).toBeVisible({ timeout: 10_000 });
+  await page.waitForTimeout(1_100);
 
   await page.getByRole("button", { name: "Switch camera" }).click();
   await page.getByRole("option", { name: "Camera 2" }).click();
@@ -758,6 +835,7 @@ test("active recordings preserve camera and microphone device switches as segmen
       ),
     )
     .toBe(2);
+  await page.waitForTimeout(1_100);
 
   await page.getByRole("button", { name: "Switch microphone" }).click();
   await page.getByRole("option", { name: "Microphone 2" }).click();
@@ -1028,7 +1106,7 @@ test("real Silero VAD completes after reaching 100 percent", async ({
     if (message.type() === "error") browserErrors.push(message.text());
   });
   await page.goto("/video-editor");
-  const video = await syntheticVideoWithAudio(page);
+  const video = syntheticVideoWithAudio();
   await page.locator("#video-editor-import").setInputFiles({
     name: "vad-regression.webm",
     mimeType: "video/webm",
@@ -1060,7 +1138,7 @@ test("real Whisper transcription completes without leaving analysis busy", async
     if (message.type() === "error") browserErrors.push(message.text());
   });
   await page.goto("/video-editor");
-  const video = await syntheticVideoWithAudio(page);
+  const video = syntheticVideoWithAudio();
   await page.locator("#video-editor-import").setInputFiles({
     name: "whisper-regression.webm",
     mimeType: "video/webm",
