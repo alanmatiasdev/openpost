@@ -4,6 +4,8 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-08-05
+
 ### Added
 
 - Added a durable personal Composer setting that switches between the default spacious text-and-thread plus focused-media experience and one unified rendition-first composer for every starter preset; both edit the same publications and account versions.
