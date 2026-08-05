@@ -12,12 +12,16 @@
 	import { workspaceCtx } from '$lib/stores/workspace.svelte';
 	import { ui } from '$lib/stores/ui.svelte';
 	import { Button } from '$lib/components/ui/button';
+	import { Checkbox } from '$lib/components/ui/checkbox';
 	import { Input } from '$lib/components/ui/input';
 	import { Textarea } from '$lib/components/ui/textarea';
+	import * as Dialog from '$lib/components/ui/dialog';
+	import AppSelect from './app-select.svelte';
 	import ComposerAccountMenu from './composer-account-menu.svelte';
 	import ComposerMediaDropzone from './composer-media-dropzone.svelte';
 	import ComposerPublishActions from './composer-publish-actions.svelte';
 	import SaveIndicator from './save-indicator.svelte';
+	import SocialSetControl from './social-set-control.svelte';
 	import ComposerScheduleDialog from './composer-schedule-dialog.svelte';
 	import ComposerRepostControl from './composer-repost-control.svelte';
 	import ComposerValidationMenu from './composer-validation-menu.svelte';
@@ -41,11 +45,13 @@
 		composerMode,
 		isAccountCompatibleWithMode,
 		roleFieldsForMode,
+		intentForLegacyProfile,
 		type ComposerModeKey,
 		type FocusedComposerFields,
 		type FocusedFieldKey,
 		type FocusedMediaInput,
 		type FocusedSegmentInput,
+		type DestinationSegmentOverride,
 		type ResolvedComposerTarget
 	} from './compose/modes';
 	import {
@@ -69,6 +75,8 @@
 	import ImagePlusIcon from 'lucide-svelte/icons/image-plus';
 	import LoaderIcon from 'lucide-svelte/icons/loader-2';
 	import PlusIcon from 'lucide-svelte/icons/plus';
+	import RotateCcwIcon from 'lucide-svelte/icons/rotate-ccw';
+	import Settings2Icon from 'lucide-svelte/icons/settings-2';
 	import Trash2Icon from 'lucide-svelte/icons/trash-2';
 	import XIcon from 'lucide-svelte/icons/x';
 	import { m } from '$lib/paraglide/messages';
@@ -99,6 +107,7 @@
 	type SettingDefinition = components['schemas']['SettingDefinition'];
 	type ResolvedAccountCapability = components['schemas']['ResolvedAccountCapability'];
 	type DestinationOption = components['schemas']['DestinationOption'];
+	type SocialSet = components['schemas']['SocialSetResponse'];
 
 	interface FocusedMedia {
 		id: string;
@@ -164,6 +173,14 @@
 	let selectedWorkspaceId = $state('');
 	let accounts = $state<SocialAccount[]>([]);
 	let selectedAccountIds = $state<string[]>([]);
+	let selectedSocialSetId = $state('');
+	let activeDestinationId = $state('all');
+	let requestedOutputProfiles = $state<Record<string, string>>({});
+	let formatLockedByAccount = $state<Record<string, boolean>>({});
+	let scheduleOverridesByAccount = $state<Record<string, string>>({});
+	let segmentOverridesByAccount = $state<
+		Record<string, Record<string, DestinationSegmentOverride>>
+	>({});
 	let capabilities = $state<Capability[]>([]);
 	let providerReadiness = $state<ProviderReadinessItem[]>([]);
 	let providerReadinessWorkspaceId = $state('');
@@ -181,6 +198,9 @@
 	let settingsAccountId = $state('');
 	let deleteDestinationDialogOpen = $state(false);
 	let deleteDestinationAccount = $state<SocialAccount | null>(null);
+	let destinationCopyDialogOpen = $state(false);
+	let mediaApplyDialogOpen = $state(false);
+	let destinationActionTargetIds = $state<string[]>([]);
 	let destinationOptionsByAccount = $state<Record<string, Record<string, DestinationOption[]>>>({});
 	let destinationOptionsErrors = $state<Record<string, string>>({});
 	let destinationOptionsLoadingAccountId = $state('');
@@ -236,7 +256,19 @@
 	const selectedAccounts = $derived(
 		accounts.filter((account) => selectedAccountIds.includes(account.id))
 	);
-	const roleFields = $derived(roleFieldsForMode(mode, selectedAccounts));
+	const activeDestinationAccount = $derived(
+		activeDestinationId === 'all'
+			? null
+			: (selectedAccounts.find((account) => account.id === activeDestinationId) ?? null)
+	);
+	const editorMode = $derived(destinationEditorMode());
+	const roleFields = $derived(
+		roleFieldsForMode(
+			editorMode,
+			activeDestinationAccount ? [activeDestinationAccount] : selectedAccounts
+		)
+	);
+	const visibleMedia = $derived(mediaForActiveDestination());
 	const selectedCapabilities = $derived(
 		selectedAccounts
 			.map((account) => capabilityForAccount(account))
@@ -280,6 +312,10 @@
 	const accountBlockingMessages = $derived(
 		selectedAccounts.flatMap((account) => accountBlockers(account))
 	);
+	const readyDestinationCount = $derived(
+		selectedAccounts.filter((account) => accountBlockers(account).length === 0).length
+	);
+	const attentionDestinationCount = $derived(selectedAccounts.length - readyDestinationCount);
 	const canSaveDraft = $derived(Boolean(selectedWorkspaceId) && !saving && !autoSaving);
 	const selectedReadinessProviders = $derived(
 		selectedAccounts.map((account) => getPlatformKey(account.platform))
@@ -588,6 +624,8 @@
 		revision = publication.revision;
 		repostOverride = publication.repost_override ?? { mode: 'inherit' };
 		selectedWorkspaceId = publication.workspace_id;
+		selectedSocialSetId = publication.social_set_id ?? '';
+		activeDestinationId = 'all';
 		fields = fieldsFromPublication(publication);
 		media = (publication.media ?? []).map(mediaSummaryToFocusedMedia);
 		segments = (publication.segments ?? []).map((segment) => ({
@@ -613,6 +651,40 @@
 		selectedAccountIds = (publication.renditions ?? []).map(
 			(rendition) => rendition.social_account_id
 		);
+		requestedOutputProfiles = Object.fromEntries(
+			(publication.renditions ?? [])
+				.filter((rendition) => rendition.format_locked)
+				.map((rendition) => [rendition.social_account_id, rendition.output_profile])
+		);
+		formatLockedByAccount = Object.fromEntries(
+			(publication.renditions ?? []).map((rendition) => [
+				rendition.social_account_id,
+				rendition.format_locked ?? false
+			])
+		);
+		scheduleOverridesByAccount = Object.fromEntries(
+			(publication.renditions ?? [])
+				.filter((rendition) => Boolean(rendition.schedule_override))
+				.map((rendition) => [rendition.social_account_id, rendition.schedule_override!])
+		);
+		segmentOverridesByAccount = Object.fromEntries(
+			(publication.renditions ?? []).map((rendition) => [
+				rendition.social_account_id,
+				Object.fromEntries(
+					(rendition.segments ?? []).map((segment) => {
+						const overrides: DestinationSegmentOverride = {};
+						if (segment.body_override !== undefined) overrides.body = segment.body_override;
+						if (segment.title_override !== undefined) overrides.title = segment.title_override;
+						if (segment.description_override !== undefined) {
+							overrides.description = segment.description_override;
+						}
+						if (segment.url_override !== undefined) overrides.url = segment.url_override;
+						return [segment.publication_segment_id, overrides];
+					})
+				)
+			])
+		);
+		hydrateDestinationMedia(publication);
 		settingsByAccount = Object.fromEntries(
 			(publication.renditions ?? []).map((rendition) => [
 				rendition.social_account_id,
@@ -745,6 +817,12 @@
 		repostOverride = { mode: 'inherit' };
 		accounts = [];
 		selectedAccountIds = [];
+		selectedSocialSetId = '';
+		activeDestinationId = 'all';
+		requestedOutputProfiles = {};
+		formatLockedByAccount = {};
+		scheduleOverridesByAccount = {};
+		segmentOverridesByAccount = {};
 		providerReadiness = [];
 		providerReadinessWorkspaceId = '';
 		providerReadinessLoading = false;
@@ -788,6 +866,7 @@
 
 	function selectAllAccounts() {
 		selectedAccountIds = compatibleAccounts.map((account) => account.id);
+		selectedSocialSetId = '';
 		settingsByAccount = normalizeAllAccountSettings(settingsByAccount);
 		validationIssues = [];
 		void resolveSelectedCapabilities();
@@ -799,6 +878,7 @@
 		settingsAccountId = '';
 		validationIssues = [];
 		resolvedCapabilities = {};
+		activeDestinationId = 'all';
 	}
 
 	function normalizeSelectedAccounts() {
@@ -827,8 +907,42 @@
 			settingsAccountId = '';
 		}
 		settingsByAccount = normalizeAllAccountSettings(settingsByAccount);
+		selectedSocialSetId = '';
+		if (!selectedAccountIds.includes(activeDestinationId)) activeDestinationId = 'all';
 		validationIssues = [];
 		void resolveSelectedCapabilities();
+	}
+
+	function applySocialSet(set: SocialSet | null) {
+		if (!set) {
+			selectedSocialSetId = '';
+			return;
+		}
+		selectedSocialSetId = set.id;
+		selectedAccountIds = (set.accounts ?? [])
+			.map((membership) => membership.social_account_id)
+			.filter((id) => accounts.some((account) => account.id === id));
+		requestedOutputProfiles = {
+			...requestedOutputProfiles,
+			...Object.fromEntries(
+				(set.accounts ?? [])
+					.filter((membership) => Boolean(membership.default_output_profile))
+					.map((membership) => [membership.social_account_id, membership.default_output_profile!])
+			)
+		};
+		formatLockedByAccount = {
+			...formatLockedByAccount,
+			...Object.fromEntries(
+				(set.accounts ?? [])
+					.filter((membership) => Boolean(membership.default_output_profile))
+					.map((membership) => [membership.social_account_id, true])
+			)
+		};
+		activeDestinationId = 'all';
+		settingsByAccount = normalizeAllAccountSettings(settingsByAccount);
+		validationIssues = [];
+		void resolveSelectedCapabilities();
+		queueAutoSave();
 	}
 
 	function isAccountCompatible(account: SocialAccount): boolean {
@@ -878,7 +992,12 @@
 			const { data, error: resolveError } = await client.POST('/capabilities/resolve', {
 				body: {
 					account_ids: accountIds,
-					intent: mode,
+					creation_preset: mode,
+					requested_output_profiles: Object.fromEntries(
+						accountIds
+							.filter((accountId) => Boolean(requestedOutputProfiles[accountId]))
+							.map((accountId) => [accountId, requestedOutputProfiles[accountId]])
+					),
 					source_url: fields.linkUrl ?? '',
 					locale: getLocaleTag(),
 					region: localeRegion,
@@ -1019,16 +1138,85 @@
 		return values.find((value) => value?.trim())?.trim() ?? '';
 	}
 
+	function destinationEditorMode(): ComposerModeKey {
+		if (!activeDestinationAccount) return mode;
+		const profile =
+			resolvedCapabilities[activeDestinationAccount.id]?.profile ??
+			requestedOutputProfiles[activeDestinationAccount.id]?.split('.').at(-1) ??
+			'';
+		if (profile === 'reel' || profile === 'short') return 'short_video';
+		if (profile === 'video') return 'video';
+		return intentForLegacyProfile(profile);
+	}
+
+	function activeSegmentOverride(segmentId: string): DestinationSegmentOverride | undefined {
+		if (!activeDestinationAccount) return undefined;
+		return segmentOverridesByAccount[activeDestinationAccount.id]?.[segmentId];
+	}
+
+	function updateActiveSegmentOverride(
+		segmentId: string,
+		key: keyof DestinationSegmentOverride,
+		value: string
+	) {
+		if (!activeDestinationAccount) return;
+		segmentOverridesByAccount = {
+			...segmentOverridesByAccount,
+			[activeDestinationAccount.id]: {
+				...(segmentOverridesByAccount[activeDestinationAccount.id] ?? {}),
+				[segmentId]: {
+					...(segmentOverridesByAccount[activeDestinationAccount.id]?.[segmentId] ?? {}),
+					[key]: value
+				}
+			}
+		};
+	}
+
+	function destinationOverrideKey(key: FocusedFieldKey): keyof DestinationSegmentOverride {
+		switch (key) {
+			case 'videoTitle':
+				return 'title';
+			case 'videoDescription':
+				return 'description';
+			case 'linkUrl':
+				return 'url';
+			default:
+				return 'body';
+		}
+	}
+
+	function sharedFieldValue(key: FocusedFieldKey): string {
+		if (key === 'postText' && mode === 'thread') {
+			return segments
+				.map((segment) => segment.content.trim())
+				.filter(Boolean)
+				.join('\n\n');
+		}
+		return fields[key] ?? '';
+	}
+
 	function updateField(key: FocusedFieldKey, value: string) {
-		fields = { ...fields, [key]: value };
+		if (activeDestinationAccount) {
+			updateActiveSegmentOverride(
+				segments[0]?.id ?? 'segment-1',
+				destinationOverrideKey(key),
+				value
+			);
+		} else {
+			fields = { ...fields, [key]: value };
+		}
 		validationIssues = [];
 		queueAutoSave();
 	}
 
 	function updateThreadSegment(segmentId: string, content: string) {
-		segments = segments.map((segment) =>
-			segment.id === segmentId ? { ...segment, content } : segment
-		);
+		if (activeDestinationAccount) {
+			updateActiveSegmentOverride(segmentId, 'body', content);
+		} else {
+			segments = segments.map((segment) =>
+				segment.id === segmentId ? { ...segment, content } : segment
+			);
+		}
 		validationIssues = [];
 		queueAutoSave();
 	}
@@ -1053,13 +1241,207 @@
 	}
 
 	function updateMediaAltText(mediaId: string, altText: string) {
-		media = media.map((item) => (item.id === mediaId ? { ...item, altText } : item));
+		if (activeDestinationAccount) {
+			updateMediaAccountSetting(activeDestinationAccount, mediaId, 'alt_text', altText);
+		} else {
+			media = media.map((item) => (item.id === mediaId ? { ...item, altText } : item));
+		}
 		validationIssues = [];
 		queueAutoSave();
 	}
 
+	function mediaAltTextValue(item: FocusedMedia): string {
+		if (!activeDestinationAccount) return item.altText ?? '';
+		const override = item.settingsByAccount?.[activeDestinationAccount.id]?.alt_text;
+		return typeof override === 'string' ? override : (item.altText ?? '');
+	}
+
 	function fieldValue(key: FocusedFieldKey): string {
-		return fields[key] ?? '';
+		if (!activeDestinationAccount) return sharedFieldValue(key);
+		const override = activeSegmentOverride(segments[0]?.id ?? 'segment-1');
+		const overrideKey = destinationOverrideKey(key);
+		if (override && Object.hasOwn(override, overrideKey)) return override[overrideKey] ?? '';
+		return sharedFieldValue(key);
+	}
+
+	function fieldIsOverridden(key: FocusedFieldKey): boolean {
+		const override = activeSegmentOverride(segments[0]?.id ?? 'segment-1');
+		return Boolean(override && Object.hasOwn(override, destinationOverrideKey(key)));
+	}
+
+	function resetFieldOverride(key: FocusedFieldKey) {
+		if (!activeDestinationAccount) return;
+		const segmentId = segments[0]?.id ?? 'segment-1';
+		const accountOverrides = { ...(segmentOverridesByAccount[activeDestinationAccount.id] ?? {}) };
+		const segmentOverride = { ...(accountOverrides[segmentId] ?? {}) };
+		delete segmentOverride[destinationOverrideKey(key)];
+		accountOverrides[segmentId] = segmentOverride;
+		segmentOverridesByAccount = {
+			...segmentOverridesByAccount,
+			[activeDestinationAccount.id]: accountOverrides
+		};
+		validationIssues = [];
+		void resolveSelectedCapabilities();
+		queueAutoSave();
+	}
+
+	function threadSegmentValue(segment: FocusedSegmentInput): string {
+		const override = activeSegmentOverride(segment.id);
+		return override && Object.hasOwn(override, 'body') ? (override.body ?? '') : segment.content;
+	}
+
+	function threadSegmentIsOverridden(segmentId: string): boolean {
+		const override = activeSegmentOverride(segmentId);
+		return Boolean(override && Object.hasOwn(override, 'body'));
+	}
+
+	function resetThreadSegmentOverride(segmentId: string) {
+		if (!activeDestinationAccount) return;
+		const accountOverrides = { ...(segmentOverridesByAccount[activeDestinationAccount.id] ?? {}) };
+		const segmentOverride = { ...(accountOverrides[segmentId] ?? {}) };
+		delete segmentOverride.body;
+		accountOverrides[segmentId] = segmentOverride;
+		segmentOverridesByAccount = {
+			...segmentOverridesByAccount,
+			[activeDestinationAccount.id]: accountOverrides
+		};
+		validationIssues = [];
+		void resolveSelectedCapabilities();
+		queueAutoSave();
+	}
+
+	function resetDestinationInheritance() {
+		if (!activeDestinationAccount) return;
+		const accountId = activeDestinationAccount.id;
+		segmentOverridesByAccount = { ...segmentOverridesByAccount, [accountId]: {} };
+		scheduleOverridesByAccount = { ...scheduleOverridesByAccount };
+		delete scheduleOverridesByAccount[accountId];
+		media = mediaWithDestinationReset(accountId);
+		validationIssues = [];
+		void resolveSelectedCapabilities();
+		queueAutoSave();
+	}
+
+	function destinationMediaIsOverridden(accountId: string): boolean {
+		const sharedIDs = media
+			.filter((item) => item.includeInCanonical !== false)
+			.map((item) => item.id)
+			.sort();
+		const destinationIDs = media
+			.filter((item) => !item.accountIds || item.accountIds.includes(accountId))
+			.map((item) => item.id)
+			.sort();
+		return (
+			sharedIDs.join('\n') !== destinationIDs.join('\n') ||
+			media.some((item) => item.settingsByAccount?.[accountId] !== undefined)
+		);
+	}
+
+	function mediaWithDestinationReset(accountId: string): FocusedMedia[] {
+		const allSelectedIds = selectedAccounts.map((account) => account.id);
+		return media
+			.map((item) => {
+				const settingsByAccount = { ...(item.settingsByAccount ?? {}) };
+				delete settingsByAccount[accountId];
+				const accountIds = new SvelteSet(item.accountIds ?? allSelectedIds);
+				if (item.includeInCanonical === false) accountIds.delete(accountId);
+				else accountIds.add(accountId);
+				const nextAccountIds = allSelectedIds.every((id) => accountIds.has(id))
+					? undefined
+					: Array.from(accountIds);
+				return {
+					...item,
+					settingsByAccount,
+					accountIds: nextAccountIds
+				};
+			})
+			.filter(
+				(item) =>
+					item.includeInCanonical !== false || !item.accountIds || item.accountIds.length > 0
+			);
+	}
+
+	function resetDestinationMedia() {
+		if (!activeDestinationAccount) return;
+		media = mediaWithDestinationReset(activeDestinationAccount.id);
+		validationIssues = [];
+		void resolveSelectedCapabilities();
+		queueAutoSave();
+	}
+
+	function openDestinationAction(kind: 'copy' | 'media') {
+		if (!activeDestinationAccount) return;
+		destinationActionTargetIds = selectedAccounts
+			.filter((account) => account.id !== activeDestinationAccount.id)
+			.map((account) => account.id);
+		if (kind === 'copy') destinationCopyDialogOpen = true;
+		else mediaApplyDialogOpen = true;
+	}
+
+	function toggleDestinationActionTarget(accountId: string) {
+		destinationActionTargetIds = destinationActionTargetIds.includes(accountId)
+			? destinationActionTargetIds.filter((id) => id !== accountId)
+			: [...destinationActionTargetIds, accountId];
+	}
+
+	function copyActiveMediaToTargets(targetIds: string[]) {
+		if (!activeDestinationAccount || targetIds.length === 0) return;
+		const sourceAccountId = activeDestinationAccount.id;
+		const allSelectedIds = selectedAccounts.map((account) => account.id);
+		const sourceMediaIds = new SvelteSet(
+			media
+				.filter((item) => !item.accountIds || item.accountIds.includes(sourceAccountId))
+				.map((item) => item.id)
+		);
+		media = media.map((item) => {
+			const accountIds = new SvelteSet(item.accountIds ?? allSelectedIds);
+			const settingsByAccount = { ...(item.settingsByAccount ?? {}) };
+			for (const targetId of targetIds) {
+				if (sourceMediaIds.has(item.id)) accountIds.add(targetId);
+				else accountIds.delete(targetId);
+				const sourceSettings = item.settingsByAccount?.[sourceAccountId];
+				if (sourceSettings) settingsByAccount[targetId] = structuredClone(sourceSettings);
+				else delete settingsByAccount[targetId];
+			}
+			return {
+				...item,
+				accountIds: allSelectedIds.every((id) => accountIds.has(id))
+					? undefined
+					: Array.from(accountIds),
+				settingsByAccount
+			};
+		});
+	}
+
+	function applyActiveMediaToTargets() {
+		copyActiveMediaToTargets(destinationActionTargetIds);
+		mediaApplyDialogOpen = false;
+		validationIssues = [];
+		void resolveSelectedCapabilities();
+		queueAutoSave();
+	}
+
+	function copyActiveRenditionToTargets() {
+		if (!activeDestinationAccount || destinationActionTargetIds.length === 0) return;
+		const sourceAccountId = activeDestinationAccount.id;
+		const sourceOverrides = segmentOverridesByAccount[sourceAccountId] ?? {};
+		const nextOverrides = { ...segmentOverridesByAccount };
+		const nextSchedules = { ...scheduleOverridesByAccount };
+		for (const targetId of destinationActionTargetIds) {
+			nextOverrides[targetId] = structuredClone(sourceOverrides);
+			if (scheduleOverridesByAccount[sourceAccountId]) {
+				nextSchedules[targetId] = scheduleOverridesByAccount[sourceAccountId];
+			} else {
+				delete nextSchedules[targetId];
+			}
+		}
+		segmentOverridesByAccount = nextOverrides;
+		scheduleOverridesByAccount = nextSchedules;
+		copyActiveMediaToTargets(destinationActionTargetIds);
+		destinationCopyDialogOpen = false;
+		validationIssues = [];
+		void resolveSelectedCapabilities();
+		queueAutoSave();
 	}
 
 	function focusedMediaFromLibrary(item: ImageEditorMediaItem): FocusedMedia {
@@ -1076,20 +1458,47 @@
 	function setFocusedMediaSelection(ids: string[], items: ImageEditorMediaItem[]) {
 		const libraryByID = new Map(items.map((item) => [item.id, item]));
 		const existingByID = new Map(media.map((item) => [item.id, item]));
-		media = ids.slice(0, composerMediaLimit).map((id) => {
-			const libraryItem = libraryByID.get(id);
-			return (
-				existingByID.get(id) ??
-				(libraryItem
-					? focusedMediaFromLibrary(libraryItem)
-					: {
-							id,
-							mime_type: 'image/png',
-							url: getAuthenticatedMediaByID(id),
-							filename: id
-						})
-			);
-		});
+		if (!activeDestinationAccount) {
+			media = ids.slice(0, composerMediaLimit).map((id) => {
+				const libraryItem = libraryByID.get(id);
+				return (
+					existingByID.get(id) ??
+					(libraryItem
+						? focusedMediaFromLibrary(libraryItem)
+						: {
+								id,
+								mime_type: 'image/png',
+								url: getAuthenticatedMediaByID(id),
+								filename: id
+							})
+				);
+			});
+		} else {
+			const accountId = activeDestinationAccount.id;
+			const allAccountIds = selectedAccounts.map((account) => account.id);
+			const unionIDs = Array.from(new SvelteSet([...media.map((item) => item.id), ...ids]));
+			media = unionIDs.map((id) => {
+				const libraryItem = libraryByID.get(id);
+				const existing =
+					existingByID.get(id) ??
+					(libraryItem
+						? { ...focusedMediaFromLibrary(libraryItem), includeInCanonical: false }
+						: {
+								id,
+								mime_type: 'image/png',
+								url: getAuthenticatedMediaByID(id),
+								filename: id,
+								includeInCanonical: false
+							});
+				const current = new SvelteSet(existing.accountIds ?? allAccountIds);
+				if (ids.includes(id)) current.add(accountId);
+				else current.delete(accountId);
+				const accountIds = allAccountIds.every((candidate) => current.has(candidate))
+					? undefined
+					: Array.from(current);
+				return { ...existing, accountIds };
+			});
+		}
 		validationIssues = [];
 		void resolveSelectedCapabilities();
 		queueAutoSave();
@@ -1115,7 +1524,7 @@
 
 	async function uploadFocusedFiles(files: File[]) {
 		if (!selectedWorkspaceId || uploading) return;
-		const available = Math.max(0, composerMediaLimit - media.length);
+		const available = Math.max(0, composerMediaLimit - visibleMedia.length);
 		const selected = files
 			.filter(
 				(file) =>
@@ -1159,7 +1568,10 @@
 					url: item.url,
 					size: item.size,
 					filename: item.original_filename || file.name,
-					altText: item.alt_text
+					altText: item.alt_text,
+					...(activeDestinationAccount
+						? { accountIds: [activeDestinationAccount.id], includeInCanonical: false }
+						: {})
 				});
 			}
 			media = [...media, ...uploaded].slice(0, composerMediaLimit);
@@ -1583,9 +1995,53 @@
 	}
 
 	function removeMedia(mediaId: string) {
-		media = media.filter((item) => item.id !== mediaId);
+		if (!activeDestinationAccount) {
+			media = media.filter((item) => item.id !== mediaId);
+		} else {
+			const accountId = activeDestinationAccount.id;
+			const allAccountIds = selectedAccounts.map((account) => account.id);
+			media = media.map((item) => {
+				if (item.id !== mediaId) return item;
+				const accountIds = new SvelteSet(item.accountIds ?? allAccountIds);
+				accountIds.delete(accountId);
+				return { ...item, accountIds: Array.from(accountIds) };
+			});
+		}
 		validationIssues = [];
 		void resolveSelectedCapabilities();
+	}
+
+	function mediaForActiveDestination(): FocusedMedia[] {
+		if (!activeDestinationAccount) return media.filter((item) => item.includeInCanonical !== false);
+		return media.filter(
+			(item) => !item.accountIds || item.accountIds.includes(activeDestinationAccount.id)
+		);
+	}
+
+	function hydrateDestinationMedia(publication: Publication) {
+		const renditions = publication.renditions ?? [];
+		if (renditions.length === 0) return;
+		const accountMedia = new SvelteMap<string, SvelteSet<string>>();
+		for (const rendition of renditions) {
+			accountMedia.set(
+				rendition.social_account_id,
+				new SvelteSet(
+					(rendition.segments ?? []).flatMap((segment) =>
+						(segment.media ?? []).map((item) => item.id)
+					)
+				)
+			);
+		}
+		const allAccountIds = renditions.map((rendition) => rendition.social_account_id);
+		media = media.map((item) => {
+			const included = allAccountIds.filter((accountId) =>
+				accountMedia.get(accountId)?.has(item.id)
+			);
+			return {
+				...item,
+				accountIds: included.length === allAccountIds.length ? undefined : included
+			};
+		});
 	}
 
 	function clearThumbnail() {
@@ -1613,6 +2069,60 @@
 		selectedDate = undefined;
 		selectedTime = null;
 		scheduleError = '';
+	}
+
+	function destinationScheduleValue(accountId: string): string {
+		const value = scheduleOverridesByAccount[accountId];
+		if (!value) return '';
+		const date = new Date(value);
+		if (Number.isNaN(date.getTime())) return '';
+		const offset = date.getTimezoneOffset() * 60_000;
+		return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+	}
+
+	function updateDestinationSchedule(accountId: string, value: string) {
+		const next = { ...scheduleOverridesByAccount };
+		if (value) next[accountId] = new Date(value).toISOString();
+		else delete next[accountId];
+		scheduleOverridesByAccount = next;
+		validationIssues = [];
+		queueAutoSave();
+	}
+
+	function destinationFormatOptions(account: SocialAccount) {
+		const resolved = resolvedCapabilities[account.id];
+		const formats = resolved?.available_formats ?? [];
+		const current = requestedOutputProfiles[account.id] || resolved?.output_profile || '';
+		const options = formats.map((format) => ({
+			value: format.output_profile,
+			label: format.compatible
+				? format.label
+				: m.compose_format_needs_changes({ format: format.label })
+		}));
+		if (current && !options.some((option) => option.value === current)) {
+			options.unshift({ value: current, label: current });
+		}
+		return options;
+	}
+
+	function destinationFormatLabel(account: SocialAccount): string {
+		const current =
+			requestedOutputProfiles[account.id] || resolvedCapabilities[account.id]?.output_profile || '';
+		return (
+			destinationFormatOptions(account).find((option) => option.value === current)?.label || current
+		);
+	}
+
+	function selectDestinationFormat(account: SocialAccount, outputProfile: string) {
+		requestedOutputProfiles = { ...requestedOutputProfiles, [account.id]: outputProfile };
+		formatLockedByAccount = { ...formatLockedByAccount, [account.id]: true };
+		validationIssues = [];
+		void resolveSelectedCapabilities();
+		queueAutoSave();
+	}
+
+	function destinationIssueCount(account: SocialAccount): number {
+		return accountBlockers(account).length;
 	}
 
 	function applyInitialScheduleDate() {
@@ -1749,7 +2259,10 @@
 			}
 		}
 		const mediaMin = resolved?.media.min_count ?? 0;
-		if (includeShared && mediaMin > 0 && media.length < mediaMin) {
+		const accountMediaCount = media.filter(
+			(item) => !item.accountIds || item.accountIds.includes(account.id)
+		).length;
+		if (includeShared && mediaMin > 0 && accountMediaCount < mediaMin) {
 			blockers.push(
 				mediaMin === 1
 					? m.compose_add_media_singular()
@@ -2120,12 +2633,18 @@
 			scheduledAt: getScheduledAt(),
 			thumbnailMediaId,
 			settingsByAccount: selectedSettingsInput(),
+			socialSetId: selectedSocialSetId,
+			requestedOutputProfiles,
+			formatLockedByAccount,
+			scheduleOverridesByAccount,
+			segmentOverridesByAccount,
 			resolvedByAccount: Object.fromEntries(
 				Object.entries(resolvedCapabilities).map(([accountId, capability]) => [
 					accountId,
 					{
 						profile: capability.profile,
 						outputProfile: capability.output_profile,
+						segmentStrategy: capability.segment_strategy as 'preserve' | 'join',
 						revision: capability.capability_revision,
 						compatible: capability.compatible
 					} satisfies ResolvedComposerTarget
@@ -2272,7 +2791,8 @@
 				body: {
 					expected_revision: revision,
 					title: payload.title,
-					intent: payload.intent,
+					creation_preset: payload.creation_preset,
+					social_set_id: payload.social_set_id ?? '',
 					content_profile: payload.content_profile,
 					source_text: payload.source_text,
 					source_url: payload.source_url ?? '',
@@ -2543,6 +3063,17 @@
 							{m.common_cancel()}
 						</Button>
 					{/if}
+					{#if selectedWorkspaceId && accounts.length > 0}
+						<SocialSetControl
+							workspaceId={selectedWorkspaceId}
+							{accounts}
+							{capabilities}
+							bind:selectedSetId={selectedSocialSetId}
+							disabled={saving || autoSaving}
+							autoApplyDefault={!initialPublication && !publicationId}
+							onApply={applySocialSet}
+						/>
+					{/if}
 					{#if accounts.length > 0}
 						<ComposerAccountMenu
 							{accounts}
@@ -2614,7 +3145,7 @@
 		</div>
 	{:else}
 		<div class="min-h-0 flex-1 overflow-y-auto">
-			<div class="mx-auto w-full max-w-3xl space-y-6 px-4 py-5 md:px-6">
+			<div class="mx-auto w-full max-w-5xl space-y-6 px-4 py-5 md:px-6">
 				{#if accountsError}
 					<div data-testid="composer-accounts-load-error">
 						<InlineNotice tone="error" message={accountsError}>
@@ -2663,15 +3194,198 @@
 					</div>
 				{/if}
 
+				{#if selectedAccounts.length > 0}
+					<section class="space-y-3" aria-label={m.compose_destination_tabs()}>
+						<div
+							class="flex gap-1 overflow-x-auto border-b pb-px"
+							role="tablist"
+							aria-label={m.compose_destination_tabs()}
+						>
+							<button
+								type="button"
+								role="tab"
+								aria-selected={activeDestinationId === 'all'}
+								class="min-h-11 shrink-0 border-b-2 px-3 text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none md:min-h-9"
+								class:border-foreground={activeDestinationId === 'all'}
+								class:border-transparent={activeDestinationId !== 'all'}
+								class:text-muted-foreground={activeDestinationId !== 'all'}
+								onclick={() => (activeDestinationId = 'all')}
+							>
+								{m.compose_all_channels()}
+							</button>
+							{#each selectedAccounts as account (account.id)}
+								<button
+									type="button"
+									role="tab"
+									aria-selected={activeDestinationId === account.id}
+									class="flex min-h-11 shrink-0 items-center gap-2 border-b-2 px-3 text-sm transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none md:min-h-9"
+									class:border-foreground={activeDestinationId === account.id}
+									class:border-transparent={activeDestinationId !== account.id}
+									class:text-muted-foreground={activeDestinationId !== account.id}
+									onclick={() => (activeDestinationId = account.id)}
+								>
+									<span class="max-w-32 truncate">{accountLabel(account)}</span>
+									<span class="text-xs text-muted-foreground"
+										>· {destinationFormatLabel(account)}</span
+									>
+									{#if destinationIssueCount(account) > 0}
+										<span
+											class="rounded-full bg-destructive/10 px-1.5 py-0.5 text-xs text-destructive"
+										>
+											{destinationIssueCount(account)}
+										</span>
+									{/if}
+								</button>
+							{/each}
+						</div>
+
+						{#if activeDestinationAccount}
+							<div class="rounded-lg border bg-muted/15 p-3">
+								<div class="grid gap-3 md:grid-cols-[minmax(12rem,1fr)_auto] md:items-end">
+									<div class="space-y-1.5">
+										<label
+											class="text-xs font-medium"
+											for="destination-format-{activeDestinationAccount.id}"
+										>
+											{m.compose_destination_format()}
+										</label>
+										{#if destinationFormatOptions(activeDestinationAccount).length > 1}
+											<AppSelect
+												id="destination-format-{activeDestinationAccount.id}"
+												value={requestedOutputProfiles[activeDestinationAccount.id] ||
+													resolvedCapabilities[activeDestinationAccount.id]?.output_profile ||
+													''}
+												options={destinationFormatOptions(activeDestinationAccount)}
+												placeholder={m.compose_destination_format()}
+												onValueChange={(value) =>
+													selectDestinationFormat(activeDestinationAccount!, value)}
+											/>
+										{:else}
+											<div
+												class="flex h-10 items-center rounded-md border bg-background px-3 text-sm"
+											>
+												{destinationFormatLabel(activeDestinationAccount)}
+											</div>
+										{/if}
+										{#if resolvedCapabilities[activeDestinationAccount.id]?.segment_strategy === 'join' && segments.length > 1}
+											<p class="text-xs text-muted-foreground">
+												{m.compose_segments_joined({ count: segments.length })}
+											</p>
+										{/if}
+									</div>
+									<div class="flex flex-wrap gap-2 md:justify-end">
+										{#if selectedAccounts.length > 1}
+											<Button
+												type="button"
+												variant="outline"
+												class="h-11 md:h-9"
+												onclick={() => openDestinationAction('copy')}
+											>
+												{m.compose_copy_rendition()}
+											</Button>
+										{/if}
+										<Button
+											type="button"
+											variant="outline"
+											class="h-11 gap-2 md:h-9"
+											onclick={() => openDestinationSettings(activeDestinationAccount!)}
+										>
+											<Settings2Icon class="size-4" />
+											{m.compose_platform_settings()}
+										</Button>
+										<Button
+											type="button"
+											variant="outline"
+											class="h-11 gap-2 md:h-9"
+											onclick={resetDestinationInheritance}
+										>
+											<RotateCcwIcon class="size-4" />
+											{m.compose_reset_destination()}
+										</Button>
+									</div>
+								</div>
+								<details class="mt-3 border-t pt-3">
+									<summary class="min-h-11 cursor-pointer text-sm font-medium md:min-h-0">
+										{m.compose_advanced_delivery()}
+									</summary>
+									<div class="mt-2 max-w-md space-y-1.5">
+										<label
+											class="text-xs font-medium"
+											for="destination-schedule-{activeDestinationAccount.id}"
+										>
+											{m.compose_destination_schedule()}
+										</label>
+										<Input
+											id="destination-schedule-{activeDestinationAccount.id}"
+											type="datetime-local"
+											value={destinationScheduleValue(activeDestinationAccount.id)}
+											oninput={(event) =>
+												updateDestinationSchedule(
+													activeDestinationAccount!.id,
+													event.currentTarget.value
+												)}
+										/>
+										<p class="text-xs text-muted-foreground">
+											{scheduleOverridesByAccount[activeDestinationAccount.id]
+												? m.compose_custom_state()
+												: m.compose_schedule_inherited()}
+										</p>
+									</div>
+								</details>
+							</div>
+						{/if}
+						<p class="text-xs text-muted-foreground" aria-live="polite">
+							{m.compose_destination_summary({
+								ready: readyDestinationCount,
+								attention: attentionDestinationCount
+							})}
+						</p>
+					</section>
+				{/if}
+
 				<section class="flex flex-col gap-5">
 					<div class="{modeMeta.mediaFirst ? 'order-1' : 'order-2'} space-y-3">
 						<div class="space-y-3">
+							{#if activeDestinationAccount}
+								<div class="flex min-h-9 items-center justify-between gap-3 text-xs">
+									<span class="text-muted-foreground">
+										{destinationMediaIsOverridden(activeDestinationAccount.id)
+											? m.compose_custom_state()
+											: m.compose_media_inherited()}
+									</span>
+									<div class="flex flex-wrap justify-end gap-1">
+										{#if selectedAccounts.length > 1 && visibleMedia.length > 0}
+											<Button
+												type="button"
+												variant="ghost"
+												size="sm"
+												class="h-9 text-xs"
+												onclick={() => openDestinationAction('media')}
+											>
+												{m.compose_apply_media()}
+											</Button>
+										{/if}
+										{#if destinationMediaIsOverridden(activeDestinationAccount.id)}
+											<Button
+												type="button"
+												variant="ghost"
+												size="sm"
+												class="h-9 gap-1.5 text-xs"
+												onclick={resetDestinationMedia}
+											>
+												<RotateCcwIcon class="size-3.5" />
+												{m.compose_reset_media()}
+											</Button>
+										{/if}
+									</div>
+								</div>
+							{/if}
 							<ComposerMediaDropzone
 								bind:dragging={draggingMedia}
-								disabled={!selectedWorkspaceId || media.length >= composerMediaLimit}
+								disabled={!selectedWorkspaceId || visibleMedia.length >= composerMediaLimit}
 								{uploading}
 								description={mode === 'video' ? m.compose_add_long_video() : m.compose_add_media()}
-								class={media.length > 0 ? 'min-h-28 py-4' : ''}
+								class={visibleMedia.length > 0 ? 'min-h-28 py-4' : ''}
 								onChoose={() => openFocusedMediaPicker('media')}
 								onDropFiles={uploadFocusedFiles}
 							/>
@@ -2696,9 +3410,9 @@
 									</div>
 								</div>
 							{/if}
-							{#if media.length > 0}
+							{#if visibleMedia.length > 0}
 								<div class="grid gap-2 sm:grid-cols-2">
-									{#each media as item (item.id)}
+									{#each visibleMedia as item (item.id)}
 										<div class="group relative overflow-hidden rounded-md border bg-background">
 											{#if isImage(item)}
 												<img
@@ -2743,7 +3457,7 @@
 													<Input
 														id="media-alt-{item.id}"
 														class="mt-1 h-11 md:h-9"
-														value={item.altText ?? ''}
+														value={mediaAltTextValue(item)}
 														placeholder={m.compose_alt_text_placeholder()}
 														oninput={(event) =>
 															updateMediaAltText(item.id, event.currentTarget.value)}
@@ -2792,7 +3506,7 @@
 					</div>
 
 					<div class="{modeMeta.mediaFirst ? 'order-2' : 'order-1'} space-y-4">
-						{#if mode === 'thread'}
+						{#if editorMode === 'thread'}
 							<div class="space-y-3">
 								{#each segments as segment, index (segment.id)}
 									<article
@@ -2803,7 +3517,7 @@
 											<label class="text-sm font-semibold" for="thread-segment-{segment.id}">
 												{m.compose_thread_post({ number: index + 1 })}
 											</label>
-											{#if segments.length > 2}
+											{#if !activeDestinationAccount && segments.length > 2}
 												<Button
 													type="button"
 													variant="ghost"
@@ -2814,6 +3528,17 @@
 												>
 													<Trash2Icon class="size-4" />
 												</Button>
+											{:else if activeDestinationAccount && threadSegmentIsOverridden(segment.id)}
+												<Button
+													type="button"
+													variant="ghost"
+													size="sm"
+													class="h-9 gap-1.5 text-xs"
+													onclick={() => resetThreadSegmentOverride(segment.id)}
+												>
+													<RotateCcwIcon class="size-3.5" />
+													{m.compose_reset_field()}
+												</Button>
 											{/if}
 										</div>
 										<Textarea
@@ -2821,7 +3546,7 @@
 											data-testid="composer-thread-segment-{index + 1}"
 											class="min-h-28 resize-y text-base"
 											rows={5}
-											value={segment.content}
+											value={threadSegmentValue(segment)}
 											placeholder={m.compose_add_to_thread()}
 											onfocus={() => (activeSettingsSegmentId = segment.id)}
 											oninput={(event) =>
@@ -2829,22 +3554,47 @@
 										/>
 									</article>
 								{/each}
-								<Button
-									type="button"
-									variant="outline"
-									class="h-11 w-full gap-2 border-dashed"
-									onclick={addThreadSegment}
-								>
-									<PlusIcon class="size-4" />
-									{m.compose_add_post()}
-								</Button>
+								{#if !activeDestinationAccount}
+									<Button
+										type="button"
+										variant="outline"
+										class="h-11 w-full gap-2 border-dashed"
+										onclick={addThreadSegment}
+									>
+										<PlusIcon class="size-4" />
+										{m.compose_add_post()}
+									</Button>
+								{/if}
 							</div>
 						{/if}
 						{#each roleFields as field (field.key)}
 							<div>
-								<label class="text-sm font-medium" for="focused-field-{field.key}">
-									{field.label}
-								</label>
+								<div class="flex items-center justify-between gap-3">
+									<div>
+										<label class="text-sm font-medium" for="focused-field-{field.key}">
+											{field.label}
+										</label>
+										{#if activeDestinationAccount}
+											<p class="text-xs text-muted-foreground">
+												{fieldIsOverridden(field.key)
+													? m.compose_custom_state()
+													: m.compose_field_inherited()}
+											</p>
+										{/if}
+									</div>
+									{#if activeDestinationAccount && fieldIsOverridden(field.key)}
+										<Button
+											type="button"
+											variant="ghost"
+											size="sm"
+											class="h-9 gap-1.5 text-xs"
+											onclick={() => resetFieldOverride(field.key)}
+										>
+											<RotateCcwIcon class="size-3.5" />
+											{m.compose_reset_field()}
+										</Button>
+									{/if}
+								</div>
 								{#if field.type === 'textarea'}
 									<Textarea
 										id="focused-field-{field.key}"
@@ -2867,7 +3617,7 @@
 								<p class="mt-1 text-xs text-muted-foreground">{field.hint}</p>
 							</div>
 						{/each}
-						{#if roleFields.length === 0 && mode !== 'thread'}
+						{#if roleFields.length === 0 && editorMode !== 'thread'}
 							<div class="rounded-md border bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
 								{m.compose_media_first_notice()}
 							</div>
@@ -2878,6 +3628,70 @@
 		</div>
 	{/if}
 </div>
+
+<Dialog.Root bind:open={destinationCopyDialogOpen}>
+	<Dialog.Content class="sm:max-w-md">
+		<Dialog.Header>
+			<Dialog.Title>{m.compose_copy_rendition()}</Dialog.Title>
+			<Dialog.Description>{m.compose_copy_rendition_description()}</Dialog.Description>
+		</Dialog.Header>
+		<div class="space-y-2">
+			{#each selectedAccounts.filter((account) => account.id !== activeDestinationAccount?.id) as account (account.id)}
+				<label class="flex min-h-11 items-center gap-3 rounded-md border px-3 py-2 text-sm">
+					<Checkbox
+						checked={destinationActionTargetIds.includes(account.id)}
+						onCheckedChange={() => toggleDestinationActionTarget(account.id)}
+					/>
+					<span class="min-w-0 truncate">{accountLabel(account)}</span>
+					<span class="ml-auto text-xs text-muted-foreground">
+						{getPlatformName(account.platform)}
+					</span>
+				</label>
+			{/each}
+		</div>
+		<Dialog.Footer>
+			<Button
+				type="button"
+				disabled={destinationActionTargetIds.length === 0}
+				onclick={copyActiveRenditionToTargets}
+			>
+				{m.compose_apply_changes()}
+			</Button>
+		</Dialog.Footer>
+	</Dialog.Content>
+</Dialog.Root>
+
+<Dialog.Root bind:open={mediaApplyDialogOpen}>
+	<Dialog.Content class="sm:max-w-md">
+		<Dialog.Header>
+			<Dialog.Title>{m.compose_apply_media()}</Dialog.Title>
+			<Dialog.Description>{m.compose_apply_media_description()}</Dialog.Description>
+		</Dialog.Header>
+		<div class="space-y-2">
+			{#each selectedAccounts.filter((account) => account.id !== activeDestinationAccount?.id) as account (account.id)}
+				<label class="flex min-h-11 items-center gap-3 rounded-md border px-3 py-2 text-sm">
+					<Checkbox
+						checked={destinationActionTargetIds.includes(account.id)}
+						onCheckedChange={() => toggleDestinationActionTarget(account.id)}
+					/>
+					<span class="min-w-0 truncate">{accountLabel(account)}</span>
+					<span class="ml-auto text-xs text-muted-foreground">
+						{getPlatformName(account.platform)}
+					</span>
+				</label>
+			{/each}
+		</div>
+		<Dialog.Footer>
+			<Button
+				type="button"
+				disabled={destinationActionTargetIds.length === 0}
+				onclick={applyActiveMediaToTargets}
+			>
+				{m.compose_apply_changes()}
+			</Button>
+		</Dialog.Footer>
+	</Dialog.Content>
+</Dialog.Root>
 
 <ComposerScheduleDialog
 	bind:open={showScheduleDialog}
@@ -2903,7 +3717,7 @@
 		? thumbnailMediaId
 			? [thumbnailMediaId]
 			: []
-		: media.map((item) => item.id)}
+		: visibleMedia.map((item) => item.id)}
 	accept={mediaPickerPurpose === 'thumbnail'
 		? ['image/*']
 		: mode === 'post'

@@ -59,8 +59,6 @@
 		);
 		const billingPeriod = page.url.searchParams.get('billing_period');
 		if (billingPeriod) onboardingURL.searchParams.set('billing_period', billingPeriod);
-		const affiliateCode = page.url.searchParams.get('affiliate_code');
-		if (affiliateCode) onboardingURL.searchParams.set('affiliate_code', affiliateCode);
 		const onboarding = `${onboardingURL.pathname}${onboardingURL.search}`;
 		const redirect = safeSameOriginRedirect(page.url, '');
 		if (!redirect) return onboarding;

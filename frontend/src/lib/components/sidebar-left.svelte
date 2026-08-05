@@ -169,7 +169,7 @@
 				inert={!showHomeBrand}
 				data-testid={showHomeBrand ? 'sidebar-home-brand' : undefined}
 			>
-				<Logo width={26} height={26} showText={sidebar.state !== 'collapsed'} />
+				<Logo width={26} height={26} showText={sidebar.state !== 'collapsed'} decorative />
 			</a>
 
 			<a

@@ -19,6 +19,7 @@
 
 	const personalDestinations = $derived<SettingsDestination[]>([
 		{ id: 'profile', label: m.settings_profile() },
+		{ id: 'composer', label: m.settings_composer() },
 		{ id: 'notifications', label: m.notifications_settings() },
 		{ id: 'security', label: m.settings_security() },
 		{ id: 'developer', label: m.settings_developer() }

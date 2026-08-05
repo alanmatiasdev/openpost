@@ -1337,10 +1337,6 @@
 						"description": "Entitlement limits from the local subscription snapshot",
 						"type": "object"
 					},
-					"manage_url": {
-						"description": "Whop billing management URL for the active membership",
-						"type": "string"
-					},
 					"organization_id": {
 						"description": "Organization ID",
 						"type": "string"
@@ -1407,29 +1403,39 @@
 						"description": "Selected billing period",
 						"type": "string"
 					},
+					"client_token": {
+						"description": "Browser-safe Paddle.js client token",
+						"type": "string"
+					},
+					"customer_email": {
+						"description": "Authenticated customer's checkout email",
+						"type": "string"
+					},
+					"environment": {
+						"description": "Explicit Paddle.js environment: sandbox or production",
+						"type": "string"
+					},
 					"id": {
-						"description": "Whop checkout configuration or membership ID",
+						"description": "OpenPost checkout attempt or Paddle portal session ID",
 						"type": "string"
 					},
 					"plan_id": {
 						"description": "OpenPost plan ID",
 						"type": "string"
 					},
-					"price_usd": {
-						"description": "Selected plan price in whole US dollars",
-						"format": "int64",
-						"type": "integer"
+					"price_ids": {
+						"additionalProperties": {
+							"type": "string"
+						},
+						"description": "Paddle price IDs for localized previews in the selected billing period",
+						"type": "object"
 					},
-					"provider_plan_id": {
-						"description": "Whop plan ID used by the embedded checkout",
-						"type": "string"
-					},
-					"purchase_url": {
-						"description": "Whop-hosted checkout fallback URL",
+					"provider_price_id": {
+						"description": "Paddle price ID for the selected plan and period",
 						"type": "string"
 					},
 					"return_url": {
-						"description": "OpenPost URL used after Whop checkout completes",
+						"description": "OpenPost URL used after Paddle checkout completes",
 						"type": "string"
 					},
 					"trial_ends_at": {
@@ -1437,11 +1443,10 @@
 						"type": "string"
 					},
 					"url": {
-						"description": "OpenPost checkout or billing management URL",
+						"description": "OpenPost checkout URL or short-lived Paddle customer portal URL",
 						"type": "string"
 					}
 				},
-				"required": ["url"],
 				"type": "object"
 			},
 			"BlueskyLoginInputBody": {
@@ -2564,10 +2569,6 @@
 						"readOnly": true,
 						"type": "string"
 					},
-					"affiliate_code": {
-						"description": "Optional Whop affiliate code carried into checkout",
-						"type": "string"
-					},
 					"billing_period": {
 						"default": "monthly",
 						"description": "Billing period: monthly or annual",
@@ -2975,10 +2976,6 @@
 						"readOnly": true,
 						"type": "string"
 					},
-					"affiliate_code": {
-						"description": "Optional Whop affiliate code carried into checkout",
-						"type": "string"
-					},
 					"billing_period": {
 						"default": "monthly",
 						"description": "Billing period: monthly or annual",
@@ -3148,12 +3145,17 @@
 						"description": "Content profile",
 						"type": "string"
 					},
+					"creation_preset": {
+						"description": "Starter preset; destination renditions own their formats",
+						"enum": ["post", "thread", "story", "short_video", "video"],
+						"type": "string"
+					},
 					"goal": {
 						"description": "Publication goal",
 						"type": "string"
 					},
 					"intent": {
-						"description": "Publishing intent",
+						"description": "Deprecated compatibility alias for creation_preset",
 						"enum": ["post", "thread", "story", "short_video", "video"],
 						"type": "string"
 					},
@@ -3199,6 +3201,10 @@
 						},
 						"type": ["array", "null"]
 					},
+					"social_set_id": {
+						"description": "Social Set used to initialize the snapshotted destinations",
+						"type": "string"
+					},
 					"source_text": {
 						"description": "Canonical source text",
 						"type": "string"
@@ -3217,6 +3223,41 @@
 					}
 				},
 				"required": ["workspace_id", "title", "content_profile", "source_text"],
+				"type": "object"
+			},
+			"CreateSocialSetInputBody": {
+				"additionalProperties": false,
+				"properties": {
+					"$schema": {
+						"description": "A URL to the JSON Schema for this object.",
+						"examples": ["https://example.com/schemas/CreateSocialSetInputBody.json"],
+						"format": "uri",
+						"readOnly": true,
+						"type": "string"
+					},
+					"accounts": {
+						"description": "Ordered connected accounts and optional format defaults",
+						"items": {
+							"$ref": "#/components/schemas/SocialSetAccountInput"
+						},
+						"type": ["array", "null"]
+					},
+					"is_default": {
+						"description": "Use this set when the composer opens",
+						"type": "boolean"
+					},
+					"name": {
+						"description": "Social Set name",
+						"maxLength": 80,
+						"minLength": 1,
+						"type": "string"
+					},
+					"workspace_id": {
+						"description": "Target workspace ID",
+						"type": "string"
+					}
+				},
+				"required": ["workspace_id", "name", "accounts"],
 				"type": "object"
 			},
 			"CreateTextPostDraftInputBody": {
@@ -3862,6 +3903,25 @@
 						"type": "string"
 					}
 				},
+				"type": "object"
+			},
+			"DestinationFormat": {
+				"additionalProperties": false,
+				"properties": {
+					"compatible": {
+						"type": "boolean"
+					},
+					"label": {
+						"type": "string"
+					},
+					"output_profile": {
+						"type": "string"
+					},
+					"profile": {
+						"type": "string"
+					}
+				},
+				"required": ["output_profile", "profile", "label", "compatible"],
 				"type": "object"
 			},
 			"DestinationOption": {
@@ -9967,6 +10027,9 @@
 					"created_by": {
 						"type": "string"
 					},
+					"creation_preset": {
+						"type": "string"
+					},
 					"goal": {
 						"type": "string"
 					},
@@ -10008,6 +10071,9 @@
 						},
 						"type": ["array", "null"]
 					},
+					"social_set_id": {
+						"type": "string"
+					},
 					"source_text": {
 						"type": "string"
 					},
@@ -10037,6 +10103,7 @@
 					"created_by",
 					"title",
 					"intent",
+					"creation_preset",
 					"content_profile",
 					"source_text",
 					"status",
@@ -10147,6 +10214,11 @@
 						"description": "Content profile",
 						"type": "string"
 					},
+					"creation_preset": {
+						"description": "Starter preset; destination renditions own their formats",
+						"enum": ["post", "thread", "story", "short_video", "video"],
+						"type": "string"
+					},
 					"expected_revision": {
 						"description": "Revision loaded by the editor",
 						"format": "int64",
@@ -10158,7 +10230,7 @@
 						"type": "string"
 					},
 					"intent": {
-						"description": "Publishing intent",
+						"description": "Deprecated compatibility alias for creation_preset",
 						"enum": ["post", "thread", "story", "short_video", "video"],
 						"type": "string"
 					},
@@ -10189,6 +10261,10 @@
 							"$ref": "#/components/schemas/PublicationSegmentInput"
 						},
 						"type": ["array", "null"]
+					},
+					"social_set_id": {
+						"description": "Social Set provenance; does not replace snapshotted destinations",
+						"type": "string"
 					},
 					"source_text": {
 						"description": "Canonical source text",
@@ -10456,6 +10532,10 @@
 						"description": "Platform-specific description",
 						"type": "string"
 					},
+					"format_locked": {
+						"description": "Preserve an explicitly selected format when source content changes",
+						"type": "boolean"
+					},
 					"id": {
 						"description": "Legacy client reference; replacement IDs are server-generated",
 						"type": "string"
@@ -10473,6 +10553,11 @@
 					},
 					"profile": {
 						"description": "Content profile override",
+						"type": "string"
+					},
+					"schedule_override": {
+						"description": "Optional destination-specific schedule",
+						"format": "date-time",
 						"type": "string"
 					},
 					"segments": {
@@ -10536,6 +10621,9 @@
 					"external_url": {
 						"type": "string"
 					},
+					"format_locked": {
+						"type": "boolean"
+					},
 					"id": {
 						"type": "string"
 					},
@@ -10555,6 +10643,9 @@
 						"type": "string"
 					},
 					"publication_id": {
+						"type": "string"
+					},
+					"schedule_override": {
 						"type": "string"
 					},
 					"segments": {
@@ -10584,6 +10675,7 @@
 					"platform",
 					"profile",
 					"output_profile",
+					"format_locked",
 					"body",
 					"title",
 					"description",
@@ -10602,8 +10694,16 @@
 						"description": "Destination segment body override",
 						"type": "string"
 					},
+					"body_override": {
+						"description": "Explicit destination body; omit or null to inherit",
+						"type": "string"
+					},
 					"description": {
 						"description": "Destination segment description override",
+						"type": "string"
+					},
+					"description_override": {
+						"description": "Explicit destination description; omit or null to inherit",
 						"type": "string"
 					},
 					"id": {
@@ -10616,6 +10716,10 @@
 							"$ref": "#/components/schemas/PublicationMediaInput"
 						},
 						"type": ["array", "null"]
+					},
+					"media_inherited": {
+						"description": "Whether destination media follows the canonical segment",
+						"type": "boolean"
 					},
 					"publication_segment_id": {
 						"description": "Server canonical segment ID, or its matching client segment reference in the same request",
@@ -10630,8 +10734,16 @@
 						"description": "Destination segment title override",
 						"type": "string"
 					},
+					"title_override": {
+						"description": "Explicit destination title; omit or null to inherit",
+						"type": "string"
+					},
 					"url": {
 						"description": "Destination segment URL override",
+						"type": "string"
+					},
+					"url_override": {
+						"description": "Explicit destination URL; omit or null to inherit",
 						"type": "string"
 					}
 				},
@@ -10643,7 +10755,13 @@
 					"body": {
 						"type": "string"
 					},
+					"body_override": {
+						"type": "string"
+					},
 					"description": {
+						"type": "string"
+					},
+					"description_override": {
 						"type": "string"
 					},
 					"error_action": {
@@ -10683,6 +10801,9 @@
 						},
 						"type": ["array", "null"]
 					},
+					"media_inherited": {
+						"type": "boolean"
+					},
 					"position": {
 						"format": "int64",
 						"type": "integer"
@@ -10700,7 +10821,13 @@
 					"title": {
 						"type": "string"
 					},
+					"title_override": {
+						"type": "string"
+					},
 					"url": {
+						"type": "string"
+					},
+					"url_override": {
 						"type": "string"
 					}
 				},
@@ -10711,6 +10838,7 @@
 					"body",
 					"title",
 					"description",
+					"media_inherited",
 					"settings",
 					"status",
 					"error_retryable",
@@ -10925,8 +11053,13 @@
 						"description": "Destination settings keyed by connected account ID",
 						"type": "object"
 					},
+					"creation_preset": {
+						"description": "Starter preset used only to choose initial destination formats",
+						"enum": ["post", "thread", "story", "short_video", "video"],
+						"type": "string"
+					},
 					"intent": {
-						"description": "Publishing intent",
+						"description": "Deprecated compatibility alias for creation_preset",
 						"enum": ["post", "thread", "story", "short_video", "video"],
 						"type": "string"
 					},
@@ -10937,6 +11070,13 @@
 					"region": {
 						"description": "ISO 3166-1 alpha-2 region",
 						"type": "string"
+					},
+					"requested_output_profiles": {
+						"additionalProperties": {
+							"type": "string"
+						},
+						"description": "Explicit or saved output profiles keyed by connected account ID",
+						"type": "object"
 					},
 					"segments": {
 						"description": "Ordered canonical segments",
@@ -10951,7 +11091,7 @@
 						"type": "string"
 					}
 				},
-				"required": ["account_ids", "intent", "segments"],
+				"required": ["account_ids", "segments"],
 				"type": "object"
 			},
 			"ResolveCapabilitiesOutputBody": {
@@ -11028,6 +11168,12 @@
 					"active_constraints": {
 						"additionalProperties": {},
 						"type": "object"
+					},
+					"available_formats": {
+						"items": {
+							"$ref": "#/components/schemas/DestinationFormat"
+						},
+						"type": ["array", "null"]
 					},
 					"capability_revision": {
 						"type": "string"
@@ -11107,6 +11253,10 @@
 					"requires_public_media": {
 						"type": "boolean"
 					},
+					"segment_strategy": {
+						"enum": ["preserve", "join"],
+						"type": "string"
+					},
 					"setting_groups": {
 						"items": {
 							"$ref": "#/components/schemas/ResolvedSettingGroup"
@@ -11139,6 +11289,8 @@
 				"required": [
 					"account_id",
 					"compatible",
+					"segment_strategy",
+					"available_formats",
 					"active_constraints",
 					"setting_groups",
 					"issues",
@@ -12281,6 +12433,93 @@
 				"required": ["kind", "fill", "stroke", "stroke_width", "blur"],
 				"type": "object"
 			},
+			"SocialSetAccountInput": {
+				"additionalProperties": false,
+				"properties": {
+					"default_output_profile": {
+						"description": "Optional provider-qualified default format",
+						"type": "string"
+					},
+					"social_account_id": {
+						"description": "Connected social account ID",
+						"type": "string"
+					}
+				},
+				"required": ["social_account_id"],
+				"type": "object"
+			},
+			"SocialSetAccountResponse": {
+				"additionalProperties": false,
+				"properties": {
+					"account_avatar_url": {
+						"type": "string"
+					},
+					"account_username": {
+						"type": "string"
+					},
+					"default_output_profile": {
+						"type": "string"
+					},
+					"display_order": {
+						"format": "int64",
+						"type": "integer"
+					},
+					"platform": {
+						"type": "string"
+					},
+					"social_account_id": {
+						"type": "string"
+					}
+				},
+				"required": ["social_account_id", "platform", "display_order"],
+				"type": "object"
+			},
+			"SocialSetResponse": {
+				"additionalProperties": false,
+				"properties": {
+					"$schema": {
+						"description": "A URL to the JSON Schema for this object.",
+						"examples": ["https://example.com/schemas/SocialSetResponse.json"],
+						"format": "uri",
+						"readOnly": true,
+						"type": "string"
+					},
+					"accounts": {
+						"items": {
+							"$ref": "#/components/schemas/SocialSetAccountResponse"
+						},
+						"type": ["array", "null"]
+					},
+					"created_at": {
+						"type": "string"
+					},
+					"id": {
+						"type": "string"
+					},
+					"is_default": {
+						"type": "boolean"
+					},
+					"name": {
+						"type": "string"
+					},
+					"updated_at": {
+						"type": "string"
+					},
+					"workspace_id": {
+						"type": "string"
+					}
+				},
+				"required": [
+					"id",
+					"workspace_id",
+					"name",
+					"is_default",
+					"accounts",
+					"created_at",
+					"updated_at"
+				],
+				"type": "object"
+			},
 			"Source": {
 				"additionalProperties": false,
 				"properties": {
@@ -12646,6 +12885,10 @@
 						"description": "Content profile",
 						"type": "string"
 					},
+					"creation_preset": {
+						"description": "Starter preset; destination renditions own their formats",
+						"type": "string"
+					},
 					"goal": {
 						"description": "Publishing goal",
 						"type": "string"
@@ -12681,6 +12924,10 @@
 							"$ref": "#/components/schemas/PublicationSegmentInput"
 						},
 						"type": ["array", "null"]
+					},
+					"social_set_id": {
+						"description": "Social Set provenance for the snapshotted destinations",
+						"type": "string"
 					},
 					"source_text": {
 						"description": "Canonical source text",
@@ -13164,6 +13411,11 @@
 						"maxLength": 1000,
 						"type": "string"
 					},
+					"composer_experience": {
+						"description": "Preferred composer experience",
+						"enum": ["specialized", "unified"],
+						"type": "string"
+					},
 					"display_name": {
 						"description": "User display name",
 						"maxLength": 120,
@@ -13180,6 +13432,37 @@
 						"type": "string"
 					}
 				},
+				"type": "object"
+			},
+			"UpdateSocialSetInputBody": {
+				"additionalProperties": false,
+				"properties": {
+					"$schema": {
+						"description": "A URL to the JSON Schema for this object.",
+						"examples": ["https://example.com/schemas/UpdateSocialSetInputBody.json"],
+						"format": "uri",
+						"readOnly": true,
+						"type": "string"
+					},
+					"accounts": {
+						"description": "Replacement ordered membership",
+						"items": {
+							"$ref": "#/components/schemas/SocialSetAccountInput"
+						},
+						"type": ["array", "null"]
+					},
+					"is_default": {
+						"description": "Use this set when the composer opens",
+						"type": "boolean"
+					},
+					"name": {
+						"description": "Social Set name",
+						"maxLength": 80,
+						"minLength": 1,
+						"type": "string"
+					}
+				},
+				"required": ["name", "is_default", "accounts"],
 				"type": "object"
 			},
 			"UpdateStatusResponse": {
@@ -13510,6 +13793,11 @@
 						"description": "Profile avatar URL",
 						"type": "string"
 					},
+					"composer_experience": {
+						"description": "Preferred composer experience",
+						"enum": ["specialized", "unified"],
+						"type": "string"
+					},
 					"created_at": {
 						"description": "Account creation time",
 						"format": "date-time",
@@ -13580,6 +13868,7 @@
 					"display_name",
 					"avatar_url",
 					"public_profile_enabled",
+					"composer_experience",
 					"is_admin",
 					"legal_acceptance_required",
 					"created_at",
@@ -28284,6 +28573,388 @@
 				},
 				"summary": "Replace workspace repost rules",
 				"tags": ["Repost Automation"]
+			}
+		},
+		"/social-sets": {
+			"get": {
+				"operationId": "list-social-sets",
+				"parameters": [
+					{
+						"description": "Workspace ID",
+						"explode": false,
+						"in": "query",
+						"name": "workspace_id",
+						"required": true,
+						"schema": {
+							"description": "Workspace ID",
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"items": {
+										"$ref": "#/components/schemas/SocialSetResponse"
+									},
+									"type": ["array", "null"]
+								}
+							}
+						},
+						"description": "OK"
+					},
+					"default": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Error"
+					}
+				},
+				"summary": "List Social Sets",
+				"tags": ["Social Sets"]
+			},
+			"post": {
+				"operationId": "create-social-set",
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/CreateSocialSetInputBody"
+							}
+						}
+					},
+					"required": true
+				},
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/SocialSetResponse"
+								}
+							}
+						},
+						"description": "OK"
+					},
+					"400": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Bad Request"
+					},
+					"403": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Forbidden"
+					},
+					"409": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Conflict"
+					},
+					"422": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Unprocessable Entity"
+					},
+					"500": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Internal Server Error"
+					}
+				},
+				"summary": "Create a Social Set",
+				"tags": ["Social Sets"]
+			}
+		},
+		"/social-sets/{id}": {
+			"delete": {
+				"description": "Existing publications keep their snapshotted destinations.",
+				"operationId": "delete-social-set",
+				"parameters": [
+					{
+						"description": "Social Set ID",
+						"in": "path",
+						"name": "id",
+						"required": true,
+						"schema": {
+							"description": "Social Set ID",
+							"type": "string"
+						}
+					},
+					{
+						"description": "Explicit deletion confirmation",
+						"explode": false,
+						"in": "query",
+						"name": "confirm",
+						"schema": {
+							"description": "Explicit deletion confirmation",
+							"type": "boolean"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ActionOutputBody"
+								}
+							}
+						},
+						"description": "OK"
+					},
+					"400": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Bad Request"
+					},
+					"403": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Forbidden"
+					},
+					"404": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Not Found"
+					},
+					"422": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Unprocessable Entity"
+					},
+					"500": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Internal Server Error"
+					}
+				},
+				"summary": "Delete a Social Set",
+				"tags": ["Social Sets"]
+			},
+			"get": {
+				"operationId": "get-social-set",
+				"parameters": [
+					{
+						"description": "Social Set ID",
+						"in": "path",
+						"name": "id",
+						"required": true,
+						"schema": {
+							"description": "Social Set ID",
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/SocialSetResponse"
+								}
+							}
+						},
+						"description": "OK"
+					},
+					"403": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Forbidden"
+					},
+					"404": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Not Found"
+					},
+					"422": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Unprocessable Entity"
+					},
+					"500": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Internal Server Error"
+					}
+				},
+				"summary": "Get a Social Set",
+				"tags": ["Social Sets"]
+			},
+			"put": {
+				"operationId": "update-social-set",
+				"parameters": [
+					{
+						"description": "Social Set ID",
+						"in": "path",
+						"name": "id",
+						"required": true,
+						"schema": {
+							"description": "Social Set ID",
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/UpdateSocialSetInputBody"
+							}
+						}
+					},
+					"required": true
+				},
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/SocialSetResponse"
+								}
+							}
+						},
+						"description": "OK"
+					},
+					"400": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Bad Request"
+					},
+					"403": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Forbidden"
+					},
+					"404": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Not Found"
+					},
+					"409": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Conflict"
+					},
+					"422": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Unprocessable Entity"
+					},
+					"500": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Internal Server Error"
+					}
+				},
+				"summary": "Replace a Social Set",
+				"tags": ["Social Sets"]
 			}
 		},
 		"/stock-media/providers": {

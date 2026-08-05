@@ -42,8 +42,16 @@ export interface ComposerCapabilityTarget {
 export interface ResolvedComposerTarget {
 	profile: string;
 	outputProfile: string;
+	segmentStrategy?: 'preserve' | 'join';
 	revision?: string;
 	compatible?: boolean;
+}
+
+export interface DestinationSegmentOverride {
+	body?: string;
+	title?: string;
+	description?: string;
+	url?: string;
 }
 
 export interface FocusedRoleField {
@@ -95,12 +103,19 @@ export interface FocusedPublicationInput {
 	thumbnailMediaId?: string;
 	settingsByAccount?: Record<string, Record<string, unknown>>;
 	resolvedByAccount?: Record<string, ResolvedComposerTarget>;
+	requestedOutputProfiles?: Record<string, string>;
+	formatLockedByAccount?: Record<string, boolean>;
+	scheduleOverridesByAccount?: Record<string, string>;
+	segmentOverridesByAccount?: Record<string, Record<string, DestinationSegmentOverride>>;
+	socialSetId?: string;
 }
 
 export interface FocusedPublicationPayload {
 	workspace_id: string;
 	title: string;
 	intent: ComposerModeKey;
+	creation_preset: ComposerModeKey;
+	social_set_id: string;
 	content_profile: string;
 	source_text: string;
 	source_url?: string;
@@ -124,6 +139,8 @@ export interface FocusedPublicationPayload {
 		social_account_id: string;
 		profile: string;
 		output_profile: string;
+		format_locked: boolean;
+		schedule_override?: string;
 		body: string;
 		title: string;
 		description: string;
@@ -135,6 +152,11 @@ export interface FocusedPublicationPayload {
 			title: string;
 			description: string;
 			url?: string;
+			body_override?: string;
+			title_override?: string;
+			description_override?: string;
+			url_override?: string;
+			media_inherited: boolean;
 			settings: Record<string, unknown>;
 			media: Array<{
 				media_id: string;
@@ -218,18 +240,11 @@ export function composerMode(key: ComposerModeKey): ComposerMode {
 }
 
 export function isAccountCompatibleWithMode(
-	mode: ComposerModeKey,
-	account: ComposerAccountTarget,
-	capabilities: readonly ComposerCapabilityTarget[] = []
+	_mode: ComposerModeKey,
+	_account: ComposerAccountTarget,
+	_capabilities: readonly ComposerCapabilityTarget[] = []
 ): boolean {
-	const provider = getPlatformKey(account.platform);
-	if (provider === 'youtube' && mode !== 'short_video' && mode !== 'video') return false;
-	if (capabilities.length === 0) return true;
-	return capabilities.some(
-		(capability) =>
-			capability.provider === provider &&
-			(capability.intents?.includes(mode) || intentForLegacyProfile(capability.profile) === mode)
-	);
+	return true;
 }
 
 export function roleFieldsForMode(
@@ -314,6 +329,8 @@ export function buildFocusedPublicationPayload(
 		workspace_id: input.workspaceId,
 		title,
 		intent: input.mode,
+		creation_preset: input.mode,
+		social_set_id: input.socialSetId ?? '',
 		content_profile: contentProfile,
 		source_text: sourceText,
 		...(input.fields.linkUrl?.trim() ? { source_url: input.fields.linkUrl.trim() } : {}),
@@ -346,19 +363,28 @@ export function buildFocusedPublicationPayload(
 				if (input.thumbnailMediaId) settings.thumbnail_media_id ??= input.thumbnailMediaId;
 			}
 			const outputProfile =
-				resolved?.outputProfile ?? fallbackOutputProfile(platform, input.mode, canonicalSegments);
+				input.requestedOutputProfiles?.[account.id] ??
+				resolved?.outputProfile ??
+				fallbackOutputProfile(platform, input.mode, canonicalSegments);
 			const profile = resolved?.profile ?? contentProfile;
 			const followUpSegments: FocusedPublicationPayload['renditions'][number]['segments'] = [];
-			const renditionSegments = canonicalSegments.map((segment) => {
+			const destinationSegments =
+				resolved?.segmentStrategy === 'join' && canonicalSegments.length > 1
+					? [joinCanonicalSegments(canonicalSegments)]
+					: canonicalSegments;
+			const renditionSegments = destinationSegments.map((segment) => {
+				const overrides = input.segmentOverridesByAccount?.[account.id]?.[segment.id];
 				const body =
-					platform === 'youtube'
-						? firstNonEmpty(input.fields.videoDescription, segment.content, input.fields.caption)
-						: firstNonEmpty(
-								segment.content,
-								input.fields.caption,
-								input.fields.postText,
-								sourceText
-							);
+					overrides && Object.hasOwn(overrides, 'body')
+						? (overrides.body ?? '')
+						: platform === 'youtube'
+							? firstNonEmpty(input.fields.videoDescription, segment.content, input.fields.caption)
+							: firstNonEmpty(
+									segment.content,
+									input.fields.caption,
+									input.fields.postText,
+									sourceText
+								);
 				const segmentSettings = { ...(segment.settingsByAccount?.[account.id] ?? {}) };
 				const firstComment =
 					typeof segmentSettings.first_comment === 'string'
@@ -371,28 +397,54 @@ export function buildFocusedPublicationPayload(
 						body: firstComment,
 						title: '',
 						description: '',
+						media_inherited: false,
 						settings: {},
 						media: []
 					});
 				}
-				return {
-					publication_segment_id: segment.id,
-					body,
-					title:
-						platform === 'youtube'
+				const segmentTitle =
+					overrides && Object.hasOwn(overrides, 'title')
+						? (overrides.title ?? '')
+						: platform === 'youtube'
 							? firstNonEmpty(input.fields.videoTitle, segment.title, title)
-							: firstNonEmpty(segment.title, title),
-					description:
-						platform === 'youtube'
+							: firstNonEmpty(segment.title, title);
+				const segmentDescription =
+					overrides && Object.hasOwn(overrides, 'description')
+						? (overrides.description ?? '')
+						: platform === 'youtube'
 							? firstNonEmpty(input.fields.videoDescription, segment.description)
 							: firstNonEmpty(
 									segment.description,
 									input.fields.videoDescription,
 									input.fields.caption
-								),
-					...(segment.url?.trim() ? { url: segment.url.trim() } : {}),
+								);
+				const segmentURL =
+					overrides && Object.hasOwn(overrides, 'url')
+						? (overrides.url ?? '')
+						: (segment.url ?? '');
+				const destinationMedia = mediaPayload(segment.media, account.id);
+				const inheritedMedia = sameMediaIDs(destinationMedia, mediaPayload(segment.media));
+				return {
+					publication_segment_id: segment.id,
+					body,
+					title: segmentTitle,
+					description: segmentDescription,
+					...(segmentURL.trim() ? { url: segmentURL.trim() } : {}),
+					...(overrides && Object.hasOwn(overrides, 'body')
+						? { body_override: overrides.body ?? '' }
+						: {}),
+					...(overrides && Object.hasOwn(overrides, 'title')
+						? { title_override: overrides.title ?? '' }
+						: {}),
+					...(overrides && Object.hasOwn(overrides, 'description')
+						? { description_override: overrides.description ?? '' }
+						: {}),
+					...(overrides && Object.hasOwn(overrides, 'url')
+						? { url_override: overrides.url ?? '' }
+						: {}),
+					media_inherited: inheritedMedia,
 					settings: segmentSettings,
-					media: mediaPayload(segment.media, account.id)
+					media: destinationMedia
 				};
 			});
 			renditionSegments.push(...followUpSegments);
@@ -401,6 +453,10 @@ export function buildFocusedPublicationPayload(
 				social_account_id: account.id,
 				profile,
 				output_profile: outputProfile,
+				format_locked: input.formatLockedByAccount?.[account.id] ?? false,
+				...(input.scheduleOverridesByAccount?.[account.id]
+					? { schedule_override: input.scheduleOverridesByAccount[account.id] }
+					: {}),
 				body: first?.body ?? sourceText,
 				title: first?.title ?? title,
 				description: first?.description ?? '',
@@ -410,6 +466,27 @@ export function buildFocusedPublicationPayload(
 			};
 		})
 	};
+}
+
+function joinCanonicalSegments(segments: FocusedSegmentInput[]): FocusedSegmentInput {
+	return {
+		...segments[0],
+		content: segments
+			.map((segment) => segment.content.trim())
+			.filter(Boolean)
+			.join('\n\n'),
+		media: segments.flatMap((segment) => segment.media)
+	};
+}
+
+function sameMediaIDs(
+	left: Array<{ media_id: string }>,
+	right: Array<{ media_id: string }>
+): boolean {
+	return (
+		left.length === right.length &&
+		left.every((item, index) => item.media_id === right[index]?.media_id)
+	);
 }
 
 export function intentForLegacyProfile(profile: string): ComposerModeKey {

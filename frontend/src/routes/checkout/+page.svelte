@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, tick } from 'svelte';
+	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
@@ -18,49 +18,47 @@
 		hostedPlanByID,
 		hostedPlanFromSearchParams,
 		hostedPlans,
-		planPriceUSD,
 		type BillingPeriod,
 		type HostedPlanID
 	} from '$lib/billing';
 	import { safeSameOriginRedirect } from '$lib/redirects';
+	import { getLocaleTag } from '$lib/i18n';
 	import { m } from '$lib/paraglide/messages';
+	import {
+		initializePaddle,
+		type Environments,
+		type Paddle,
+		type PaddleEventData
+	} from '@paddle/paddle-js';
 	import CheckIcon from 'lucide-svelte/icons/check';
+	import CreditCardIcon from 'lucide-svelte/icons/credit-card';
 	import LockIcon from 'lucide-svelte/icons/lock-keyhole';
 	import ShieldCheckIcon from 'lucide-svelte/icons/shield-check';
 	import SparklesIcon from 'lucide-svelte/icons/sparkles';
 
 	type BillingURL = components['schemas']['BillingURLResponse'];
 	type BillingStatus = components['schemas']['BillingStatusResponse'];
-	type CheckoutState = 'loading' | 'ready' | 'confirming' | 'success' | 'error';
+	type CheckoutState = 'loading' | 'ready' | 'opening' | 'confirming' | 'success' | 'error';
 
 	let selectedPlanID = $state<HostedPlanID>('founder');
 	let billingPeriod = $state<BillingPeriod>('monthly');
 	let checkout = $state.raw<BillingURL | null>(null);
+	let paddle = $state.raw<Paddle | null>(null);
+	let localizedPrices = $state<Record<string, string>>({});
 	let checkoutState = $state<CheckoutState>('loading');
 	let error = $state('');
 	let requestSequence = 0;
 	let stopped = false;
+	let paddlePromise: Promise<Paddle | undefined> | null = null;
+	let paddleConfiguration = '';
 
 	let selectedPlan = $derived(hostedPlanByID(selectedPlanID));
-	let selectedPrice = $derived(planPriceUSD(selectedPlan, billingPeriod));
-	let monthlyEquivalent = $derived(
-		billingPeriod === 'annual'
-			? Math.round((selectedPlan.annualPriceUSD / 12) * 100) / 100
-			: selectedPrice
-	);
+	let selectedPrice = $derived(localizedPrices[selectedPlanID] ?? '');
 	let userEmail = $derived($auth.user?.email ?? '');
-
-	function currency(value: number) {
-		return new Intl.NumberFormat('en-US', {
-			style: 'currency',
-			currency: 'USD',
-			maximumFractionDigits: Number.isInteger(value) ? 0 : 2
-		}).format(value);
-	}
 
 	function trialEndLabel(value?: string) {
 		const trialEnd = value ? new Date(value) : new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
-		return new Intl.DateTimeFormat(undefined, {
+		return new Intl.DateTimeFormat(getLocaleTag(), {
 			month: 'long',
 			day: 'numeric',
 			year: 'numeric'
@@ -72,6 +70,7 @@
 		params.set('plan', selectedPlanID);
 		params.set('billing_period', billingPeriod);
 		params.delete('status');
+		params.delete('affiliate_code');
 		window.history.replaceState({}, '', `${page.url.pathname}?${params}`);
 	}
 
@@ -89,6 +88,77 @@
 		await createCheckout();
 	}
 
+	function handlePaddleEvent(event: PaddleEventData) {
+		if (event.name === 'checkout.completed' && checkoutState !== 'confirming') {
+			void confirmSubscription();
+			return;
+		}
+		if (event.name === 'checkout.error' || event.name === 'checkout.payment.error') {
+			checkoutState = 'error';
+			error = m.checkout_embed_failed();
+		}
+	}
+
+	function paddleLocale(): 'en' | 'pt' {
+		return getLocaleTag().toLowerCase().startsWith('pt') ? 'pt' : 'en';
+	}
+
+	async function initializePaddleForCheckout(data: BillingURL): Promise<Paddle> {
+		if (!data.client_token || !data.environment) {
+			throw new Error(m.checkout_load_failed());
+		}
+		if (data.environment !== 'sandbox' && data.environment !== 'production') {
+			throw new Error(m.checkout_load_failed());
+		}
+		const configuration = `${data.environment}:${data.client_token}`;
+		if (paddle && paddleConfiguration === configuration) return paddle;
+		if (paddleConfiguration && paddleConfiguration !== configuration) {
+			throw new Error(m.checkout_load_failed());
+		}
+		if (!paddlePromise) {
+			paddleConfiguration = configuration;
+			paddlePromise = initializePaddle({
+				environment: data.environment as Environments,
+				token: data.client_token,
+				eventCallback: handlePaddleEvent
+			});
+		}
+		try {
+			const instance = await paddlePromise;
+			if (!instance) throw new Error(m.checkout_embed_failed());
+			paddle = instance;
+			return instance;
+		} catch (caught) {
+			paddlePromise = null;
+			paddleConfiguration = '';
+			throw caught;
+		}
+	}
+
+	async function loadLocalizedPrices(
+		instance: Paddle,
+		data: BillingURL
+	): Promise<Record<string, string>> {
+		const priceIDs = data.price_ids ?? {};
+		const entries = Object.entries(priceIDs).filter((entry): entry is [string, string] =>
+			Boolean(entry[1])
+		);
+		if (entries.length !== hostedPlans.length) throw new Error(m.checkout_load_failed());
+		const preview = await instance.PricePreview({
+			items: entries.map(([, priceId]) => ({ priceId, quantity: 1 }))
+		});
+		const formattedByPrice = new Map(
+			preview.data.details.lineItems.map((item) => [item.price.id, item.formattedTotals.total])
+		);
+		const nextPrices: Record<string, string> = {};
+		for (const [planID, priceID] of entries) {
+			const formatted = formattedByPrice.get(priceID);
+			if (!formatted) throw new Error(m.checkout_load_failed());
+			nextPrices[planID] = formatted;
+		}
+		return nextPrices;
+	}
+
 	async function createCheckout() {
 		const workspaceID = workspaceCtx.currentWorkspace?.id ?? '';
 		if (!workspaceID) {
@@ -99,25 +169,32 @@
 		const sequence = ++requestSequence;
 		checkoutState = 'loading';
 		checkout = null;
+		localizedPrices = {};
 		error = '';
 		try {
-			const affiliateCode = page.url.searchParams.get('affiliate_code')?.trim() || undefined;
 			const { data, error: apiError } = await client.POST('/billing/checkout', {
 				body: {
 					workspace_id: workspaceID,
 					plan_id: selectedPlanID,
-					billing_period: billingPeriod,
-					affiliate_code: affiliateCode
+					billing_period: billingPeriod
 				}
 			});
 			if (sequence !== requestSequence || stopped) return;
-			if (apiError || !data?.id || !data.provider_plan_id) {
+			if (
+				apiError ||
+				!data?.id ||
+				!data.provider_price_id ||
+				!data.return_url ||
+				!data.customer_email
+			) {
 				throw new Error(apiError?.detail || m.checkout_load_failed());
 			}
+			const instance = await initializePaddleForCheckout(data);
+			const nextPrices = await loadLocalizedPrices(instance, data);
+			if (sequence !== requestSequence || stopped) return;
+			localizedPrices = nextPrices;
 			checkout = data;
 			checkoutState = 'ready';
-			await tick();
-			mountWhopCheckout();
 		} catch (caught) {
 			if (sequence !== requestSequence || stopped) return;
 			checkoutState = 'error';
@@ -125,22 +202,37 @@
 		}
 	}
 
-	function mountWhopCheckout() {
-		const existing = document.querySelector<HTMLScriptElement>(
-			'script[data-openpost-whop-checkout]'
-		);
-		existing?.remove();
-		const script = document.createElement('script');
-		script.src = 'https://js.whop.com/static/checkout/loader.js';
-		script.async = true;
-		script.defer = true;
-		script.dataset.openpostWhopCheckout = 'true';
-		script.onerror = () => {
-			if (checkoutState !== 'ready') return;
+	function openPaddleCheckout() {
+		if (
+			!paddle ||
+			!checkout?.id ||
+			!checkout.provider_price_id ||
+			!checkout.customer_email ||
+			!checkout.return_url
+		) {
+			error = m.checkout_load_failed();
 			checkoutState = 'error';
-			error = m.checkout_embed_failed();
-		};
-		document.head.appendChild(script);
+			return;
+		}
+		checkoutState = 'opening';
+		paddle.Checkout.open({
+			items: [{ priceId: checkout.provider_price_id, quantity: 1 }],
+			customData: { checkout_id: checkout.id },
+			customer: { email: checkout.customer_email },
+			settings: {
+				displayMode: 'overlay',
+				variant: 'one-page',
+				theme: window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light',
+				locale: paddleLocale(),
+				allowLogout: false,
+				showAddDiscounts: true,
+				showAddTaxId: true,
+				successUrl: checkout.return_url
+			}
+		});
+		window.setTimeout(() => {
+			if (!stopped && checkoutState === 'opening') checkoutState = 'ready';
+		}, 500);
 	}
 
 	async function loadBillingStatus(): Promise<BillingStatus | null> {
@@ -246,7 +338,7 @@
 				</CardContent>
 			</Card>
 		{:else}
-			<div class="grid items-start gap-6 lg:grid-cols-[minmax(0,0.9fr)_minmax(440px,1.1fr)]">
+			<div class="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(360px,0.72fr)]">
 				<section class="space-y-6">
 					<div class="space-y-2">
 						<p class="text-sm font-medium text-primary">{m.checkout_eyebrow()}</p>
@@ -258,11 +350,13 @@
 
 					<div
 						class="inline-flex rounded-lg border bg-background p-1"
+						role="group"
 						aria-label={m.checkout_billing_period()}
 					>
 						<Button
 							variant={billingPeriod === 'monthly' ? 'default' : 'ghost'}
 							size="sm"
+							aria-pressed={billingPeriod === 'monthly'}
 							onclick={() => void choosePeriod('monthly')}
 						>
 							{m.checkout_monthly()}
@@ -270,6 +364,7 @@
 						<Button
 							variant={billingPeriod === 'annual' ? 'default' : 'ghost'}
 							size="sm"
+							aria-pressed={billingPeriod === 'annual'}
 							onclick={() => void choosePeriod('annual')}
 						>
 							{m.checkout_annual()} <span class="ml-1 text-xs opacity-80">{m.checkout_save()}</span>
@@ -300,9 +395,13 @@
 											>{/if}
 									</span>
 									<span class="mt-1 block text-sm text-muted-foreground">
-										{currency(planPriceUSD(plan, billingPeriod))}/{billingPeriod === 'annual'
-											? m.checkout_year()
-											: m.checkout_month()}
+										{#if localizedPrices[plan.id]}
+											{localizedPrices[plan.id]}/{billingPeriod === 'annual'
+												? m.checkout_year()
+												: m.checkout_month()}
+										{:else}
+											<Skeleton class="mt-1 h-4 w-20" />
+										{/if}
 									</span>
 								</span>
 							</label>
@@ -310,43 +409,22 @@
 					</RadioGroup.Root>
 
 					<Card>
-						<CardContent class="space-y-5 p-5">
-							<div class="flex items-start justify-between gap-4">
-								<div>
-									<p class="font-semibold">{selectedPlan.name}</p>
-									<p class="text-sm text-muted-foreground">{selectedPlan.bestFor}</p>
-								</div>
-								<div class="text-right">
-									<p class="text-2xl font-semibold">{currency(selectedPrice)}</p>
-									<p class="text-xs text-muted-foreground">
-										{billingPeriod === 'annual'
-											? `${currency(monthlyEquivalent)}/${m.checkout_month()} · ${m.checkout_billed_annually()}`
-											: m.checkout_billed_monthly()}
-									</p>
-								</div>
+						<CardContent class="space-y-4 p-5">
+							<div>
+								<p class="font-semibold">{selectedPlan.name}</p>
+								<p class="text-sm text-muted-foreground">{selectedPlan.bestFor}</p>
 							</div>
-							<ul class="grid gap-2 text-sm">
+							<ul class="grid gap-2 text-sm sm:grid-cols-2">
 								{#each selectedPlan.limits as limit (limit)}
 									<li class="flex items-center gap-2">
 										<CheckIcon class="size-4 text-emerald-600" />{limit}
 									</li>
 								{/each}
 							</ul>
-							<div class="rounded-lg bg-primary/7 p-4">
-								<p class="font-semibold">{m.checkout_zero_today()}</p>
-								<p class="mt-1 text-sm/6 text-muted-foreground">
-									{m.checkout_charge_date({
-										price: currency(selectedPrice),
-										date: trialEndLabel(checkout?.trial_ends_at)
-									})}
-								</p>
-							</div>
 						</CardContent>
 					</Card>
 
-					<div
-						class="grid gap-3 text-sm text-muted-foreground sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3"
-					>
+					<div class="grid gap-3 text-sm text-muted-foreground sm:grid-cols-3">
 						<span class="flex items-center gap-2"
 							><ShieldCheckIcon class="size-4 text-emerald-600" />{m.checkout_trial()}</span
 						>
@@ -359,43 +437,81 @@
 					</div>
 				</section>
 
-				<Card class="overflow-hidden">
-					<CardContent class="p-0">
-						{#if checkoutState === 'loading'}
-							<div class="space-y-4 p-6" role="status" aria-label={m.checkout_loading()}>
-								<Skeleton class="h-8 w-44" />
-								<Skeleton class="h-14 w-full" />
-								<Skeleton class="h-14 w-full" />
-								<Skeleton class="h-44 w-full" />
-								<span class="sr-only">{m.checkout_loading()}</span>
+				<Card class="overflow-hidden lg:sticky lg:top-6">
+					<CardContent class="space-y-5 p-6">
+						<div class="flex items-center gap-3">
+							<div
+								class="flex size-10 items-center justify-center rounded-full bg-primary/10 text-primary"
+							>
+								<CreditCardIcon class="size-5" />
 							</div>
-						{:else if checkoutState === 'error'}
-							<div class="space-y-4 p-6">
-								<InlineNotice tone="error" message={error} />
-								<div class="flex flex-col gap-2 sm:flex-row">
-									<Button onclick={() => void createCheckout()}>{m.common_retry()}</Button>
-									{#if checkout?.purchase_url}
-										<Button href={checkout.purchase_url} variant="outline"
-											>{m.checkout_open_secure()}</Button
-										>
+							<div>
+								<p class="font-semibold">{m.checkout_order_summary()}</p>
+								<p class="text-sm text-muted-foreground">{userEmail}</p>
+							</div>
+						</div>
+
+						{#if checkoutState === 'error'}
+							<InlineNotice tone="error" message={error} />
+							<Button class="w-full" onclick={() => void createCheckout()}
+								>{m.common_retry()}</Button
+							>
+						{:else}
+							<div class="space-y-3 border-y py-4">
+								<div class="flex items-start justify-between gap-4">
+									<div>
+										<p class="font-medium">OpenPost {selectedPlan.name}</p>
+										<p class="text-sm text-muted-foreground">
+											{billingPeriod === 'annual'
+												? m.checkout_billed_annually()
+												: m.checkout_billed_monthly()}
+										</p>
+									</div>
+									{#if selectedPrice}<p class="text-lg font-semibold">
+											{selectedPrice}
+										</p>{:else}<Skeleton class="h-7 w-20" />{/if}
+								</div>
+								<div class="rounded-lg bg-primary/7 p-4">
+									<p class="font-semibold">{m.checkout_zero_today()}</p>
+									{#if selectedPrice}
+										<p class="mt-1 text-sm/6 text-muted-foreground">
+											{m.checkout_charge_date({
+												price: selectedPrice,
+												date: trialEndLabel(checkout?.trial_ends_at)
+											})}
+										</p>
 									{/if}
 								</div>
 							</div>
-						{:else if checkout?.id && checkout.provider_plan_id}
-							<div
-								id="openpost-whop-checkout"
-								class="min-h-[640px]"
-								data-whop-checkout-plan-id={checkout.provider_plan_id}
-								data-whop-checkout-session={checkout.id}
-								data-whop-checkout-return-url={checkout.return_url}
-								data-whop-checkout-theme="system"
-								data-whop-checkout-theme-accent-color="orange"
-								data-whop-checkout-hide-price="true"
-								data-whop-checkout-collect-phone-numbers="false"
-								data-whop-checkout-prefill-email={userEmail}
-								data-whop-checkout-style-padding-x="16"
-							></div>
+
+							<Button
+								class="w-full"
+								size="lg"
+								disabled={checkoutState !== 'ready' || !selectedPrice}
+								onclick={openPaddleCheckout}
+							>
+								<LockIcon class="mr-2 size-4" />{checkoutState === 'opening'
+									? m.checkout_opening_secure()
+									: m.checkout_open_secure()}
+							</Button>
 						{/if}
+
+						<p class="text-center text-xs/5 text-muted-foreground">
+							{m.checkout_paddle_mor()}
+							<a
+								class="underline underline-offset-2 hover:text-foreground"
+								href="https://openpost.social/terms">{m.checkout_terms()}</a
+							>,
+							<a
+								class="underline underline-offset-2 hover:text-foreground"
+								href="https://openpost.social/privacy">{m.checkout_privacy()}</a
+							>,
+							{m.checkout_and()}
+							<a
+								class="underline underline-offset-2 hover:text-foreground"
+								href="https://openpost.social/refunds">{m.checkout_refunds()}</a
+							>.
+						</p>
 					</CardContent>
 				</Card>
 			</div>

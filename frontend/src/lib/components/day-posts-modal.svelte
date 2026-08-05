@@ -145,9 +145,12 @@
 		goto(resolve(target as '/'));
 	}
 
-	function handleEdit(postId: string) {
+	function handleEdit(post: Post) {
 		ui.closeDayPosts();
-		goto(resolve(`/posts/${postId}` as '/'));
+		const href = post.publication_id
+			? `/publications/${encodeURIComponent(post.publication_id)}`
+			: `/posts/${encodeURIComponent(post.id)}`;
+		goto(resolve(href as '/'));
 	}
 
 	function requestDelete(post: Post) {
@@ -226,7 +229,7 @@
 							<button
 								type="button"
 								class="min-w-0 flex-1 text-left focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-								onclick={() => handleEdit(post.id)}
+								onclick={() => handleEdit(post)}
 							>
 								<p class="line-clamp-2 text-sm leading-6">{postExcerpt(post)}</p>
 								<div class="mt-2 flex flex-wrap items-center gap-2">
@@ -274,7 +277,7 @@
 									{/snippet}
 								</DropdownMenu.Trigger>
 								<DropdownMenu.Content align="end">
-									<DropdownMenu.Item onclick={() => handleEdit(post.id)}
+									<DropdownMenu.Item onclick={() => handleEdit(post)}
 										><PencilIcon
 											class="mr-2 size-4"
 										/>{m.day_posts_edit_in_composer()}</DropdownMenu.Item

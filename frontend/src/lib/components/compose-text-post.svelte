@@ -16,11 +16,15 @@
 	} from '$lib/media-capabilities';
 	import { workspaceCtx } from '$lib/stores/workspace.svelte';
 	import { Button } from '$lib/components/ui/button';
+	import { Checkbox } from '$lib/components/ui/checkbox';
 	import { Input } from '$lib/components/ui/input';
 	import { Textarea } from '$lib/components/ui/textarea';
+	import * as Dialog from '$lib/components/ui/dialog';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import * as Tooltip from '$lib/components/ui/tooltip';
 	import ComposerAccountMenu from './composer-account-menu.svelte';
+	import SocialSetControl from './social-set-control.svelte';
+	import AppSelect from './app-select.svelte';
 	import ComposerPublishActions from './composer-publish-actions.svelte';
 	import SaveIndicator from './save-indicator.svelte';
 	import ComposerScheduleDialog from './composer-schedule-dialog.svelte';
@@ -84,7 +88,6 @@
 	import {
 		buildFocusedPublicationPayload,
 		composerMode,
-		isAccountCompatibleWithMode,
 		type ComposerModeKey,
 		type FocusedMediaInput,
 		type FocusedPublicationPayload,
@@ -130,6 +133,8 @@
 	}
 
 	type Publication = components['schemas']['PublicationResponse'];
+	type SocialSet = components['schemas']['SocialSetResponse'];
+	type Capability = components['schemas']['Capability'];
 	type SettingDefinition = components['schemas']['SettingDefinition'];
 	type ResolvedAccountCapability = components['schemas']['ResolvedAccountCapability'];
 	type DestinationOption = components['schemas']['DestinationOption'];
@@ -147,6 +152,10 @@
 		variants: Array<[string, Record<string, VariantPost>]>;
 		active_post_index: number;
 		selected_account_ids: string[];
+		selected_social_set_id: string;
+		requested_output_profiles: Record<string, string>;
+		format_locked_by_account: Record<string, boolean>;
+		schedule_overrides_by_account: Record<string, string>;
 		active_variant_account_id: string | null;
 		draft_id: string | null;
 		publication_id: string;
@@ -213,6 +222,11 @@
 	let selectedWorkspaceId = $state<string>('');
 	let accounts = $state<SocialAccount[]>([]);
 	let selectedAccountIds = $state<string[]>([]);
+	let selectedSocialSetId = $state('');
+	let capabilities = $state<Capability[]>([]);
+	let requestedOutputProfiles = $state<Record<string, string>>({});
+	let formatLockedByAccount = $state<Record<string, boolean>>({});
+	let scheduleOverridesByAccount = $state<Record<string, string>>({});
 	let loadingWorkspaces = $state(true);
 	let loadingAccounts = $state(false);
 	let workspaceLoadError = $state('');
@@ -244,6 +258,9 @@
 
 	let variants = $state<Map<string, Record<string, VariantPost>>>(new Map());
 	let activeVariantAccountId = $state<string | null>(null);
+	let destinationActionOpen = $state(false);
+	let destinationAction = $state<'copy' | 'media'>('copy');
+	let destinationActionTargetIds = $state<string[]>([]);
 
 	let isDraggingFile = $state(false);
 	let isUploading = $state(false);
@@ -326,15 +343,13 @@
 	const isThread = $derived(posts.length > 1);
 	const textComposerMode = $derived<ComposerModeKey>(isThread ? 'thread' : 'post');
 	const textComposerModeMeta = $derived(composerMode(textComposerMode));
-	const compatibleAccounts = $derived(
-		accounts.filter(
-			(account) =>
-				isAccountCompatibleWithMode(textComposerMode, account) &&
-				resolvedCapabilities[account.id]?.compatible !== false
-		)
-	);
+	const compatibleAccounts = $derived(accounts);
 	const autoSavesDraft = $derived(!isEditMode || initialPost?.status === 'draft');
-	const selectedAccounts = $derived(accounts.filter((a) => selectedAccountIds.includes(a.id)));
+	const selectedAccounts = $derived(
+		selectedAccountIds
+			.map((id) => accounts.find((account) => account.id === id))
+			.filter((account): account is SocialAccount => Boolean(account))
+	);
 	// Keep drafts permissive so one attachment can transition into a provider's
 	// multi-image profile. Destination-specific limits are resolved and block
 	// validation/publishing without discarding the user's media selection.
@@ -394,6 +409,7 @@
 			workspace: selectedWorkspaceId,
 			accounts: selectedAccountIds,
 			mode: textComposerMode,
+			requestedOutputProfiles,
 			linkUrl,
 			posts: posts.map((post) => ({
 				key: post.key,
@@ -661,6 +677,10 @@
 		return JSON.stringify({
 			draft: getDraftSnapshot(posts),
 			selectedAccounts: selectedAccountsSnapshot,
+			selectedSocialSetId,
+			requestedOutputProfiles,
+			formatLockedByAccount,
+			scheduleOverridesByAccount,
 			variants: variantEntries,
 			linkUrl,
 			settingsByAccount,
@@ -964,12 +984,17 @@
 			settingsByAccount: Object.fromEntries(
 				selectedAccounts.map((account) => [account.id, settingsForAccount(account)])
 			),
+			socialSetId: selectedSocialSetId,
+			requestedOutputProfiles,
+			formatLockedByAccount,
+			scheduleOverridesByAccount,
 			resolvedByAccount: Object.fromEntries(
 				Object.entries(resolvedCapabilities).map(([accountID, capability]) => [
 					accountID,
 					{
 						profile: capability.profile,
 						outputProfile: capability.output_profile,
+						segmentStrategy: capability.segment_strategy,
 						revision: capability.capability_revision,
 						compatible: capability.compatible
 					} satisfies ResolvedComposerTarget
@@ -981,11 +1006,25 @@
 			const source = variants.get(rendition.social_account_id);
 			if (!source) continue;
 			rendition.segments = rendition.segments.map((segment, index) => {
-				const post = posts[index];
-				if (!post) return segment;
-				const variant = source[post.key];
-				if (!variant) return segment;
-				const media = focusedMedia(variant.mediaIds).map((item) => {
+				const joinsSegments =
+					rendition.segments.length === 1 &&
+					posts.length > 1 &&
+					resolvedCapabilities[rendition.social_account_id]?.segment_strategy === 'join';
+				const sourcePosts = joinsSegments ? posts : posts[index] ? [posts[index]] : [];
+				if (sourcePosts.length === 0) return segment;
+				const sourceVariants = sourcePosts.map((post) => source[post.key]).filter(Boolean);
+				if (sourceVariants.length === 0) return segment;
+				const contentInherited = sourceVariants.every((variant) => variant.contentInherited);
+				const mediaInherited = sourceVariants.every((variant) => variant.mediaInherited);
+				const body = sourcePosts
+					.map((post) => getVariantContent(rendition.social_account_id, post.key) ?? post.content)
+					.map((value) => value.trim())
+					.filter(Boolean)
+					.join(joinsSegments ? '\n\n' : '');
+				const mediaIds = sourcePosts.flatMap(
+					(post) => getVariantMediaIds(rendition.social_account_id, post.key) ?? post.mediaIds
+				);
+				const media = focusedMedia(mediaIds).map((item) => {
 					const accountSettings = item.settingsByAccount?.[rendition.social_account_id] ?? {};
 					const altText =
 						typeof accountSettings.alt_text === 'string'
@@ -1000,7 +1039,13 @@
 						...(Object.keys(settings).length > 0 ? { settings } : {})
 					};
 				});
-				return { ...segment, body: variant.content, media };
+				return {
+					...segment,
+					body,
+					...(contentInherited ? {} : { body_override: body }),
+					media_inherited: mediaInherited,
+					media: mediaInherited ? segment.media : media
+				};
 			});
 			const first = rendition.segments[0];
 			if (first) {
@@ -1024,6 +1069,23 @@
 		publicationId = publication.id;
 		revision = publication.revision;
 		repostOverride = publication.repost_override ?? { mode: 'inherit' };
+		selectedSocialSetId = publication.social_set_id ?? '';
+		requestedOutputProfiles = Object.fromEntries(
+			(publication.renditions ?? [])
+				.filter((rendition) => rendition.format_locked)
+				.map((rendition) => [rendition.social_account_id, rendition.output_profile])
+		);
+		formatLockedByAccount = Object.fromEntries(
+			(publication.renditions ?? []).map((rendition) => [
+				rendition.social_account_id,
+				rendition.format_locked ?? false
+			])
+		);
+		scheduleOverridesByAccount = Object.fromEntries(
+			(publication.renditions ?? [])
+				.filter((rendition) => Boolean(rendition.schedule_override))
+				.map((rendition) => [rendition.social_account_id, rendition.schedule_override!])
+		);
 		linkUrl = publication.source_url ?? '';
 		showLinkInput = Boolean(linkUrl);
 		settingsByAccount = Object.fromEntries(
@@ -1035,6 +1097,35 @@
 		const canonicalSegments = [...(publication.segments ?? [])].sort(
 			(left, right) => left.position - right.position
 		);
+		const hydratedVariants = new SvelteMap(variants);
+		for (const rendition of publication.renditions ?? []) {
+			const record: Record<string, VariantPost> = {};
+			let hasOverride = false;
+			for (const [index, post] of posts.entries()) {
+				const canonical = canonicalSegments[index];
+				const renditionSegment = canonical
+					? (rendition.segments ?? []).find(
+							(segment) => segment.publication_segment_id === canonical.id
+						)
+					: undefined;
+				const contentInherited = renditionSegment?.body_override === undefined;
+				const mediaInherited = renditionSegment?.media_inherited ?? true;
+				if (!contentInherited || !mediaInherited) hasOverride = true;
+				record[post.key] = {
+					content: contentInherited
+						? post.content
+						: (renditionSegment?.body_override ?? renditionSegment?.body ?? ''),
+					mediaIds: mediaInherited
+						? [...post.mediaIds]
+						: (renditionSegment?.media ?? []).map((item) => item.id),
+					contentInherited,
+					mediaInherited
+				};
+			}
+			if (hasOverride) hydratedVariants.set(rendition.social_account_id, record);
+			else hydratedVariants.delete(rendition.social_account_id);
+		}
+		variants = normalizeVariantsMap(hydratedVariants, posts);
 		const nextSegmentSettings: Record<string, Record<string, Record<string, unknown>>> = {};
 		const nextMediaSettings: Record<string, Record<string, Record<string, unknown>>> = {};
 		for (const rendition of publication.renditions ?? []) {
@@ -1105,7 +1196,12 @@
 			const { data, error: resolveError } = await client.POST('/capabilities/resolve', {
 				body: {
 					account_ids: selectedAccountIds,
-					intent: textComposerMode,
+					creation_preset: textComposerMode,
+					requested_output_profiles: Object.fromEntries(
+						selectedAccountIds
+							.filter((accountId) => Boolean(requestedOutputProfiles[accountId]))
+							.map((accountId) => [accountId, requestedOutputProfiles[accountId]])
+					),
 					source_url: linkUrl,
 					locale: getLocaleTag(),
 					region,
@@ -1240,13 +1336,13 @@
 
 	function getVariantContent(accountId: string, postKey: string): string | null {
 		const variant = getVariantPost(accountId, postKey);
-		if (!variant) return null;
+		if (!variant || variant.contentInherited) return null;
 		return variant.content;
 	}
 
 	function getVariantMediaIds(accountId: string, postKey: string): string[] | null {
 		const variant = getVariantPost(accountId, postKey);
-		if (!variant) return null;
+		if (!variant || variant.mediaInherited) return null;
 		return variant.mediaIds;
 	}
 
@@ -1264,8 +1360,14 @@
 		if (!firstPost) return [];
 		return Array.from(sourceVariants.entries()).map(([accountId, values]) => ({
 			social_account_id: accountId,
-			content: values[firstPost.key]?.content ?? firstPost.content,
-			media_ids: JSON.stringify(values[firstPost.key]?.mediaIds ?? firstPost.mediaIds),
+			content: values[firstPost.key]?.contentInherited
+				? firstPost.content
+				: (values[firstPost.key]?.content ?? firstPost.content),
+			media_ids: JSON.stringify(
+				values[firstPost.key]?.mediaInherited
+					? firstPost.mediaIds
+					: (values[firstPost.key]?.mediaIds ?? firstPost.mediaIds)
+			),
 			is_unsynced: true
 		}));
 	}
@@ -1276,7 +1378,9 @@
 				post.key,
 				{
 					content: post.content,
-					mediaIds: [...post.mediaIds]
+					mediaIds: [...post.mediaIds],
+					contentInherited: true,
+					mediaInherited: true
 				}
 			])
 		);
@@ -1293,7 +1397,9 @@
 					post.key,
 					{
 						content: value?.content ?? post.content,
-						mediaIds: value?.mediaIds ? [...value.mediaIds] : [...post.mediaIds]
+						mediaIds: value?.mediaIds ? [...value.mediaIds] : [...post.mediaIds],
+						contentInherited: value?.contentInherited ?? false,
+						mediaInherited: value?.mediaInherited ?? false
 					}
 				];
 			})
@@ -1311,7 +1417,9 @@
 			const rightValue = right[post.key];
 			return (
 				(leftValue?.content ?? post.content) === rightValue.content &&
-				arraysEqual(leftValue?.mediaIds ?? post.mediaIds, rightValue.mediaIds)
+				arraysEqual(leftValue?.mediaIds ?? post.mediaIds, rightValue.mediaIds) &&
+				(leftValue?.contentInherited ?? false) === (rightValue.contentInherited ?? false) &&
+				(leftValue?.mediaInherited ?? false) === (rightValue.mediaInherited ?? false)
 			);
 		});
 	}
@@ -1392,7 +1500,11 @@
 		mediaPickerOpen = false;
 		if (hasContent) await saveDraft();
 		const returnURL = new URL(
-			draftId ? resolve(`/posts/${encodeURIComponent(draftId)}` as '/') : $page.url,
+			publicationId
+				? resolve(`/publications/${encodeURIComponent(publicationId)}` as '/')
+				: draftId
+					? resolve(`/posts/${encodeURIComponent(draftId)}` as '/')
+					: $page.url,
 			$page.url
 		);
 		returnURL.searchParams.delete('image_editor_return');
@@ -1419,6 +1531,10 @@
 				variants: Array.from(variants.entries()),
 				active_post_index: mediaPickerPostIndex,
 				selected_account_ids: [...selectedAccountIds],
+				selected_social_set_id: selectedSocialSetId,
+				requested_output_profiles: $state.snapshot(requestedOutputProfiles),
+				format_locked_by_account: $state.snapshot(formatLockedByAccount),
+				schedule_overrides_by_account: $state.snapshot(scheduleOverridesByAccount),
 				active_variant_account_id: activeVariantAccountId,
 				draft_id: draftId,
 				publication_id: publicationId,
@@ -1464,6 +1580,10 @@
 				);
 				mediaPickerPostIndex = activePostIndex;
 				selectedAccountIds = [...payload.selected_account_ids];
+				selectedSocialSetId = payload.selected_social_set_id ?? '';
+				requestedOutputProfiles = structuredClone(payload.requested_output_profiles ?? {});
+				formatLockedByAccount = structuredClone(payload.format_locked_by_account ?? {});
+				scheduleOverridesByAccount = structuredClone(payload.schedule_overrides_by_account ?? {});
 				activeVariantAccountId = payload.active_variant_account_id;
 				draftId = payload.draft_id;
 				publicationId = payload.publication_id;
@@ -1535,6 +1655,10 @@
 		if (!post) {
 			draftId = null;
 			publicationId = '';
+			selectedSocialSetId = '';
+			requestedOutputProfiles = {};
+			formatLockedByAccount = {};
+			scheduleOverridesByAccount = {};
 			lastInitializedPostId = null;
 			posts = [makeEmptyPost()];
 			activePostIndex = 0;
@@ -1655,6 +1779,14 @@
 			}
 			if (requestSequence !== workspaceRequestSequence) return;
 			workspaces = [...workspaceCtx.workspaces];
+			const { data: capabilityData, error: capabilityError } = await client.GET(
+				'/capabilities',
+				{}
+			);
+			if (capabilityError) {
+				throw new Error(capabilityError.detail || m.compose_load_capabilities_failed());
+			}
+			capabilities = capabilityData?.capabilities ?? [];
 			await initializeFromPost(initialPost);
 		} catch (e) {
 			console.error('Failed to load workspaces:', e);
@@ -1884,9 +2016,7 @@
 			}
 
 			const nextAccounts = data ?? [];
-			const nextCompatibleAccounts = nextAccounts.filter((account) =>
-				isAccountCompatibleWithMode(textComposerMode, account)
-			);
+			const nextCompatibleAccounts = nextAccounts;
 			accounts = nextAccounts;
 			if (selectionToPreserve && selectionToPreserve.length > 0) {
 				const validIds = nextCompatibleAccounts.map((account) => account.id);
@@ -1923,6 +2053,10 @@
 		suggestingSlot = false;
 		draftId = null;
 		publicationId = '';
+		selectedSocialSetId = '';
+		requestedOutputProfiles = {};
+		formatLockedByAccount = {};
+		scheduleOverridesByAccount = {};
 		lastSavedSnapshot = '';
 		isSaving = false;
 		showDeleteConfirm = false;
@@ -1958,7 +2092,8 @@
 
 	function toggleAccount(id: string) {
 		const account = accounts.find((candidate) => candidate.id === id);
-		if (!account || !isAccountCompatibleWithMode(textComposerMode, account)) return;
+		if (!account) return;
+		selectedSocialSetId = '';
 		if (selectedAccountIds.includes(id)) {
 			selectedAccountIds = selectedAccountIds.filter((a) => a !== id);
 			if (variants.has(id)) {
@@ -1978,14 +2113,92 @@
 
 	function selectAllAccounts() {
 		selectedAccountIds = compatibleAccounts.map((account) => account.id);
+		selectedSocialSetId = '';
 		scheduleAutoSave();
 		scheduleCapabilityResolve();
 	}
 
 	function clearAllAccounts() {
 		selectedAccountIds = [];
+		selectedSocialSetId = '';
 		scheduleAutoSave();
 		scheduleCapabilityResolve();
+	}
+
+	function applySocialSet(set: SocialSet | null) {
+		if (!set) {
+			selectedSocialSetId = '';
+			scheduleAutoSave();
+			return;
+		}
+		selectedSocialSetId = set.id;
+		selectedAccountIds = (set.accounts ?? [])
+			.map((membership) => membership.social_account_id)
+			.filter((id) => accounts.some((account) => account.id === id));
+		requestedOutputProfiles = Object.fromEntries(
+			(set.accounts ?? [])
+				.filter((membership) => Boolean(membership.default_output_profile))
+				.map((membership) => [membership.social_account_id, membership.default_output_profile!])
+		);
+		formatLockedByAccount = Object.fromEntries(
+			Object.keys(requestedOutputProfiles).map((accountId) => [accountId, true])
+		);
+		activeVariantAccountId = null;
+		scheduleAutoSave();
+		scheduleCapabilityResolve();
+	}
+
+	function accountLabel(account: SocialAccount): string {
+		return account.account_username || account.slug || getPlatformName(account.platform);
+	}
+
+	function destinationFormatOptions(account: SocialAccount) {
+		const resolved = resolvedCapabilities[account.id];
+		const current = requestedOutputProfiles[account.id] || resolved?.output_profile || '';
+		const options = (resolved?.available_formats ?? []).map((format) => ({
+			value: format.output_profile,
+			label: format.compatible
+				? format.label
+				: m.compose_format_needs_changes({ format: format.label })
+		}));
+		if (current && !options.some((option) => option.value === current)) {
+			options.unshift({ value: current, label: current });
+		}
+		return options;
+	}
+
+	function destinationFormatLabel(account: SocialAccount): string {
+		const current =
+			requestedOutputProfiles[account.id] || resolvedCapabilities[account.id]?.output_profile || '';
+		return (
+			destinationFormatOptions(account).find((option) => option.value === current)?.label || current
+		);
+	}
+
+	function selectDestinationFormat(account: SocialAccount, outputProfile: string) {
+		requestedOutputProfiles = { ...requestedOutputProfiles, [account.id]: outputProfile };
+		formatLockedByAccount = { ...formatLockedByAccount, [account.id]: true };
+		validationIssues = [];
+		scheduleAutoSave();
+		scheduleCapabilityResolve();
+	}
+
+	function destinationScheduleValue(accountId: string): string {
+		const value = scheduleOverridesByAccount[accountId];
+		if (!value) return '';
+		const date = new Date(value);
+		if (Number.isNaN(date.getTime())) return '';
+		const offset = date.getTimezoneOffset() * 60_000;
+		return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+	}
+
+	function updateDestinationSchedule(accountId: string, value: string) {
+		const next = { ...scheduleOverridesByAccount };
+		if (value) next[accountId] = new Date(value).toISOString();
+		else delete next[accountId];
+		scheduleOverridesByAccount = next;
+		validationIssues = [];
+		scheduleAutoSave();
 	}
 
 	// --------------------------------------------------------------------------
@@ -2042,6 +2255,8 @@
 			const publication = {
 				title: canonical.title,
 				intent: canonical.intent,
+				creation_preset: canonical.creation_preset,
+				social_set_id: canonical.social_set_id,
 				content_profile: canonical.content_profile,
 				source_text: canonical.source_text,
 				source_url: canonical.source_url ?? '',
@@ -2112,9 +2327,9 @@
 			draftConflict = null;
 			lastSavedSnapshot = snapshot;
 			showSavedIndicator();
-			ui.setActiveComposerDraft(savedDraftId);
+			ui.setActiveComposerDraft(savedPublicationId || savedDraftId);
 			ui.triggerRefresh();
-			if (createdDraftId) onDraftCreated?.(createdDraftId);
+			if (createdDraftId && savedPublicationId) onDraftCreated?.(savedPublicationId);
 			return savedPublicationId || null;
 		} catch (cause) {
 			console.error('Failed to save text post draft:', cause);
@@ -2572,8 +2787,12 @@
 		const current = {
 			...normalizeVariantRecord(newVariants.get(accountId), posts),
 			[postKey]: {
-				content: getVariantContent(accountId, postKey) ?? posts[index].content,
-				mediaIds
+				...(normalizeVariantRecord(newVariants.get(accountId), posts)[postKey] ?? {
+					content: posts[index].content,
+					mediaIds: [...posts[index].mediaIds]
+				}),
+				mediaIds,
+				mediaInherited: false
 			}
 		};
 		newVariants.set(accountId, current);
@@ -2675,8 +2894,12 @@
 		const current = {
 			...normalizeVariantRecord(newVariants.get(accountId), posts),
 			[postKey]: {
+				...(normalizeVariantRecord(newVariants.get(accountId), posts)[postKey] ?? {
+					content: posts[index].content,
+					mediaIds: [...posts[index].mediaIds]
+				}),
 				content: value,
-				mediaIds: getVariantMediaIds(accountId, postKey) ?? [...posts[index].mediaIds]
+				contentInherited: false
 			}
 		};
 		newVariants.set(accountId, current);
@@ -2711,7 +2934,9 @@
 					nextVariants.set(variant.social_account_id, {
 						[posts[0]?.key ?? makeEmptyPost().key]: {
 							content: variant.content,
-							mediaIds
+							mediaIds,
+							contentInherited: false,
+							mediaInherited: false
 						}
 					});
 				}
@@ -2762,6 +2987,124 @@
 		nextVariants.delete(accountId);
 		variants = nextVariants;
 		activeVariantAccountId = null;
+		scheduleAutoSave();
+	}
+
+	function variantHasContentOverride(accountId: string): boolean {
+		return Object.values(variants.get(accountId) ?? {}).some(
+			(variant) => !variant.contentInherited
+		);
+	}
+
+	function variantHasMediaOverride(accountId: string): boolean {
+		return Object.values(variants.get(accountId) ?? {}).some((variant) => !variant.mediaInherited);
+	}
+
+	function resetVariantField(accountId: string, field: 'content' | 'media') {
+		const existing = variants.get(accountId);
+		if (!existing) return;
+		const nextRecord = normalizeVariantRecord(existing, posts);
+		for (const post of posts) {
+			const variant = nextRecord[post.key];
+			if (!variant) continue;
+			if (field === 'content') {
+				variant.content = post.content;
+				variant.contentInherited = true;
+			} else {
+				variant.mediaIds = [...post.mediaIds];
+				variant.mediaInherited = true;
+			}
+		}
+		if (
+			Object.values(nextRecord).every(
+				(variant) => variant.contentInherited && variant.mediaInherited
+			)
+		) {
+			resyncAccount(accountId);
+			return;
+		}
+		variants = new SvelteMap(variants).set(accountId, nextRecord);
+		scheduleAutoSave();
+	}
+
+	function openDestinationAction(action: 'copy' | 'media') {
+		if (!activeVariantAccountId) return;
+		destinationAction = action;
+		destinationActionTargetIds = selectedAccountIds.filter(
+			(accountId) => accountId !== activeVariantAccountId
+		);
+		destinationActionOpen = true;
+	}
+
+	function toggleDestinationActionTarget(accountId: string) {
+		destinationActionTargetIds = destinationActionTargetIds.includes(accountId)
+			? destinationActionTargetIds.filter((id) => id !== accountId)
+			: [...destinationActionTargetIds, accountId];
+	}
+
+	function inheritedVariantRecord(): Record<string, VariantPost> {
+		return Object.fromEntries(
+			posts.map((post) => [
+				post.key,
+				{
+					content: post.content,
+					mediaIds: [...post.mediaIds],
+					contentInherited: true,
+					mediaInherited: true
+				}
+			])
+		);
+	}
+
+	function applyDestinationAction() {
+		const sourceAccountId = activeVariantAccountId;
+		if (!sourceAccountId || destinationActionTargetIds.length === 0) return;
+		const source = normalizeVariantRecord(
+			variants.get(sourceAccountId) ?? inheritedVariantRecord(),
+			posts
+		);
+		const nextVariants = new SvelteMap(variants);
+		const nextSchedules = { ...scheduleOverridesByAccount };
+
+		for (const targetId of destinationActionTargetIds) {
+			const target = normalizeVariantRecord(
+				nextVariants.get(targetId) ?? inheritedVariantRecord(),
+				posts
+			);
+			for (const post of posts) {
+				const sourceVariant = source[post.key];
+				const targetVariant = target[post.key];
+				if (!sourceVariant || !targetVariant) continue;
+				if (destinationAction === 'copy') {
+					targetVariant.content = sourceVariant.contentInherited
+						? post.content
+						: sourceVariant.content;
+					targetVariant.contentInherited = sourceVariant.contentInherited;
+				}
+				targetVariant.mediaIds = sourceVariant.mediaInherited
+					? [...post.mediaIds]
+					: [...sourceVariant.mediaIds];
+				targetVariant.mediaInherited = sourceVariant.mediaInherited;
+			}
+			if (
+				Object.values(target).every((variant) => variant.contentInherited && variant.mediaInherited)
+			) {
+				nextVariants.delete(targetId);
+			} else {
+				nextVariants.set(targetId, target);
+			}
+			if (destinationAction === 'copy') {
+				if (scheduleOverridesByAccount[sourceAccountId]) {
+					nextSchedules[targetId] = scheduleOverridesByAccount[sourceAccountId];
+				} else {
+					delete nextSchedules[targetId];
+				}
+			}
+		}
+
+		variants = nextVariants;
+		scheduleOverridesByAccount = nextSchedules;
+		destinationActionOpen = false;
 		scheduleAutoSave();
 	}
 
@@ -2915,6 +3258,17 @@
 						{@render modeControl()}
 					</div>
 				{/if}
+				{#if selectedWorkspaceId && accounts.length > 0}
+					<SocialSetControl
+						workspaceId={selectedWorkspaceId}
+						{accounts}
+						{capabilities}
+						bind:selectedSetId={selectedSocialSetId}
+						disabled={isSaving || isSubmitting}
+						autoApplyDefault={!initialPost && !publicationId}
+						onApply={applySocialSet}
+					/>
+				{/if}
 				{#if accountControlLoading}
 					<Button
 						type="button"
@@ -3052,6 +3406,17 @@
 			<div class="flex flex-wrap items-center gap-2">
 				{#if modeControl}
 					{@render modeControl()}
+				{/if}
+				{#if selectedWorkspaceId && accounts.length > 0}
+					<SocialSetControl
+						workspaceId={selectedWorkspaceId}
+						{accounts}
+						{capabilities}
+						bind:selectedSetId={selectedSocialSetId}
+						disabled={isSaving || isSubmitting}
+						autoApplyDefault={!initialPost && !publicationId}
+						onApply={applySocialSet}
+					/>
 				{/if}
 
 				<!-- Account selector -->
@@ -3277,6 +3642,160 @@
 		<!-- Compose Column -->
 		<div class="flex flex-1 flex-col overflow-y-auto">
 			<div class="mx-auto w-full max-w-2xl px-3 py-4 md:px-6 md:py-6">
+				{#if selectedAccounts.length > 0}
+					<section class="mb-5" aria-label={m.compose_destination_tabs()}>
+						<div
+							class="flex gap-1 overflow-x-auto border-b pb-px"
+							role="tablist"
+							aria-label={m.compose_destination_tabs()}
+						>
+							<button
+								type="button"
+								role="tab"
+								aria-selected={!activeVariantAccountId}
+								class="min-h-11 shrink-0 border-b-2 px-3 text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none md:min-h-9"
+								class:border-foreground={!activeVariantAccountId}
+								class:border-transparent={Boolean(activeVariantAccountId)}
+								class:text-muted-foreground={Boolean(activeVariantAccountId)}
+								onclick={() => activateVariantTab(null)}
+							>
+								{m.compose_all_channels()}
+							</button>
+							{#each selectedAccounts as account (account.id)}
+								{@const issueCount = accountIssueMessages(account).length}
+								<button
+									type="button"
+									role="tab"
+									aria-selected={activeVariantAccountId === account.id}
+									class="flex min-h-11 shrink-0 items-center gap-1.5 border-b-2 px-3 text-sm transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none md:min-h-9"
+									class:border-foreground={activeVariantAccountId === account.id}
+									class:border-transparent={activeVariantAccountId !== account.id}
+									class:text-muted-foreground={activeVariantAccountId !== account.id}
+									onclick={() => activateVariantTab(account.id)}
+								>
+									<span class="max-w-32 truncate">{accountLabel(account)}</span>
+									{#if destinationFormatLabel(account)}
+										<span class="text-xs text-muted-foreground"
+											>· {destinationFormatLabel(account)}</span
+										>
+									{/if}
+									{#if issueCount > 0}
+										<span
+											class="rounded-full bg-destructive/10 px-1.5 py-0.5 text-xs text-destructive"
+											>{issueCount}</span
+										>
+									{/if}
+								</button>
+							{/each}
+						</div>
+
+						{#if activeVariantAccount}
+							<div class="flex flex-wrap items-center gap-2 border-b py-3">
+								{#if destinationFormatOptions(activeVariantAccount).length > 1}
+									<AppSelect
+										value={requestedOutputProfiles[activeVariantAccount.id] ||
+											resolvedCapabilities[activeVariantAccount.id]?.output_profile ||
+											''}
+										options={destinationFormatOptions(activeVariantAccount)}
+										placeholder={m.compose_destination_format()}
+										ariaLabel={m.compose_destination_format()}
+										class="h-11 min-w-40 md:h-9"
+										onValueChange={(value) => selectDestinationFormat(activeVariantAccount!, value)}
+									/>
+								{/if}
+								<Button
+									type="button"
+									variant="ghost"
+									size="sm"
+									class="h-11 md:h-9"
+									onclick={() => openDestinationSettings(activeVariantAccount!)}
+								>
+									{m.compose_platform_settings()}
+								</Button>
+								<DropdownMenu.Root>
+									<DropdownMenu.Trigger>
+										{#snippet child({ props })}
+											<Button
+												{...props}
+												type="button"
+												variant="ghost"
+												size="icon"
+												class="size-11 md:size-9"
+												aria-label={m.sidebar_more()}
+											>
+												<MoreHorizontalIcon class="size-4" />
+											</Button>
+										{/snippet}
+									</DropdownMenu.Trigger>
+									<DropdownMenu.Content class="w-56" align="start">
+										{#if variantHasContentOverride(activeVariantAccount.id)}
+											<DropdownMenu.Item
+												onclick={() => resetVariantField(activeVariantAccount!.id, 'content')}
+											>
+												{m.compose_reset_field()}
+											</DropdownMenu.Item>
+										{/if}
+										{#if variantHasMediaOverride(activeVariantAccount.id)}
+											<DropdownMenu.Item
+												onclick={() => resetVariantField(activeVariantAccount!.id, 'media')}
+											>
+												{m.compose_reset_media()}
+											</DropdownMenu.Item>
+										{/if}
+										{#if activeVariantIsUnsynced}
+											<DropdownMenu.Item onclick={() => resyncAccount(activeVariantAccount!.id)}>
+												{m.compose_reset_destination()}
+											</DropdownMenu.Item>
+										{/if}
+										{#if selectedAccounts.length > 1}
+											<DropdownMenu.Separator />
+											<DropdownMenu.Item onclick={() => openDestinationAction('media')}>
+												{m.compose_apply_media()}
+											</DropdownMenu.Item>
+											<DropdownMenu.Item onclick={() => openDestinationAction('copy')}>
+												{m.compose_copy_rendition()}
+											</DropdownMenu.Item>
+										{/if}
+									</DropdownMenu.Content>
+								</DropdownMenu.Root>
+								<details class="ml-auto text-sm">
+									<summary class="flex min-h-11 cursor-pointer items-center md:min-h-9">
+										{m.compose_advanced_delivery()}
+									</summary>
+									<div class="mt-2 w-[min(20rem,calc(100vw-2rem))] space-y-1.5 pb-1">
+										<label
+											class="text-xs font-medium"
+											for="destination-schedule-{activeVariantAccount.id}"
+										>
+											{m.compose_destination_schedule()}
+										</label>
+										<Input
+											id="destination-schedule-{activeVariantAccount.id}"
+											type="datetime-local"
+											value={destinationScheduleValue(activeVariantAccount.id)}
+											oninput={(event) =>
+												updateDestinationSchedule(
+													activeVariantAccount!.id,
+													event.currentTarget.value
+												)}
+										/>
+										<p class="text-xs text-muted-foreground">
+											{scheduleOverridesByAccount[activeVariantAccount.id]
+												? m.compose_custom_state()
+												: m.compose_schedule_inherited()}
+										</p>
+									</div>
+								</details>
+							</div>
+							{#if resolvedCapabilities[activeVariantAccount.id]?.segment_strategy === 'join' && posts.length > 1}
+								<p class="pt-2 text-xs text-muted-foreground">
+									{m.compose_segments_joined({ count: posts.length })}
+								</p>
+							{/if}
+						{/if}
+					</section>
+				{/if}
+
 				<!-- Prompt Card -->
 				{#if showPromptCard}
 					<div class="relative mb-5 rounded border bg-muted/30 p-4 pr-20">
@@ -3722,6 +4241,47 @@
 		</div>
 	</div>
 </div>
+
+<Dialog.Root bind:open={destinationActionOpen}>
+	<Dialog.Content class="sm:max-w-md">
+		<Dialog.Header>
+			<Dialog.Title>
+				{destinationAction === 'copy' ? m.compose_copy_rendition() : m.compose_apply_media()}
+			</Dialog.Title>
+			<Dialog.Description>
+				{destinationAction === 'copy'
+					? m.compose_copy_rendition_description()
+					: m.compose_apply_media_description()}
+			</Dialog.Description>
+		</Dialog.Header>
+		<div class="space-y-2 py-2">
+			{#each selectedAccounts.filter((account) => account.id !== activeVariantAccountId) as account (account.id)}
+				<label class="flex min-h-11 items-center gap-3 rounded-md border px-3 py-2 text-sm">
+					<Checkbox
+						checked={destinationActionTargetIds.includes(account.id)}
+						onCheckedChange={() => toggleDestinationActionTarget(account.id)}
+					/>
+					<span class="min-w-0 truncate">{accountLabel(account)}</span>
+					<span class="ml-auto text-xs text-muted-foreground">
+						{getPlatformName(account.platform)}
+					</span>
+				</label>
+			{/each}
+		</div>
+		<Dialog.Footer>
+			<Button type="button" variant="outline" onclick={() => (destinationActionOpen = false)}>
+				{m.common_cancel()}
+			</Button>
+			<Button
+				type="button"
+				disabled={destinationActionTargetIds.length === 0}
+				onclick={applyDestinationAction}
+			>
+				{m.compose_apply_changes()}
+			</Button>
+		</Dialog.Footer>
+	</Dialog.Content>
+</Dialog.Root>
 
 <MediaPicker
 	bind:open={mediaPickerOpen}

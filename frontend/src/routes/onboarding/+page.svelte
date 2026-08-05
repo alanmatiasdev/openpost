@@ -41,8 +41,6 @@
 		const params = new URLSearchParams(target.split('?')[1] ?? '');
 		const redirect = safeSameOriginRedirect(page.url, '');
 		if (redirect) params.set('redirect', redirect);
-		const affiliateCode = page.url.searchParams.get('affiliate_code');
-		if (affiliateCode) params.set('affiliate_code', affiliateCode);
 		return `/checkout?${params}`;
 	}
 

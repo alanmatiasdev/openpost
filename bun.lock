@@ -33,6 +33,7 @@
         "@noble/hashes": "1.8.0",
         "@openpost/social-preview": "workspace:*",
         "@openpost/video-project": "workspace:*",
+        "@paddle/paddle-js": "^1.6.4",
         "@tanstack/table-core": "^8.21.3",
         "@uppy/core": "^5.2.0",
         "@uppy/dashboard": "^5.1.1",
@@ -692,6 +693,8 @@
     "@openpost/video-project": ["@openpost/video-project@workspace:packages/video-project"],
 
     "@openpost/web": ["@openpost/web@workspace:frontend"],
+
+    "@paddle/paddle-js": ["@paddle/paddle-js@1.6.4", "", {}, "sha512-ncfnS6I8mCX6krZ3Sgz2iAYivGmhdI81yt9mT6prtPj4Ipd9J3M12LCJRUFL4FB7BYeeuV04c33RSEnbZUBCaA=="],
 
     "@playwright/test": ["@playwright/test@1.61.1", "", { "dependencies": { "playwright": "1.61.1" }, "bin": { "playwright": "cli.js" } }, "sha512-8nKv6+0RJSL9FE4jYOEGXnPeM/Hg12qZpmqzZjRh3qM0Y7c3z1mrOTfFLids72RDQYVh9WpLEfR5WdpNX4fkig=="],
 

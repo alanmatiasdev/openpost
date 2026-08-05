@@ -319,11 +319,7 @@
 		return {
 			id: publication.id,
 			key: `publication:${publication.id}`,
-			href:
-				(publication.intent === 'post' || publication.intent === 'thread') &&
-				publication.text_post_id
-					? `/posts/${encodeURIComponent(publication.text_post_id)}`
-					: `/publications/${encodeURIComponent(publication.id)}`,
+			href: `/publications/${encodeURIComponent(publication.id)}`,
 			title,
 			status: publication.status,
 			occursAt,

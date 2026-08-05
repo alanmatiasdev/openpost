@@ -8,6 +8,8 @@ export interface PostItem {
 export interface VariantPost {
 	content: string;
 	mediaIds: string[];
+	contentInherited?: boolean;
+	mediaInherited?: boolean;
 }
 
 export type ThreadVariantMap = Record<string, Record<string, VariantPost>>;
@@ -132,7 +134,9 @@ function normalizeVariantPost(value: unknown): VariantPost {
 				? record.mediaIds.map(String)
 				: Array.isArray(record.m)
 					? record.m.map(String)
-					: []
+					: [],
+			...(record.contentInherited ? { contentInherited: true } : {}),
+			...(record.mediaInherited ? { mediaInherited: true } : {})
 		};
 	}
 	return {

@@ -166,11 +166,7 @@
 		return {
 			id: publication.id,
 			revision: publication.revision,
-			href:
-				(publication.intent === 'post' || publication.intent === 'thread') &&
-				publication.text_post_id
-					? `/posts/${encodeURIComponent(publication.text_post_id)}`
-					: `/publications/${encodeURIComponent(publication.id)}`,
+			href: `/publications/${encodeURIComponent(publication.id)}`,
 			title:
 				publication.source_text.trim() ||
 				publication.title.trim() ||

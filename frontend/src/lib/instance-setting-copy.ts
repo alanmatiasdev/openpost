@@ -49,69 +49,66 @@ const portugueseCopy: Record<string, SettingCopy> = {
 		label: 'Verificação de versões',
 		description: 'Procura novas versões estáveis do OpenPost nas definições da instância.'
 	},
-	OPENPOST_WHOP_API_KEY: {
-		label: 'Chave API da Whop',
-		description: 'Chave de escrita única usada para criar checkouts e reconciliar subscrições.'
+	OPENPOST_PADDLE_API_KEY: {
+		label: 'Chave API da Paddle',
+		description:
+			'Chave secreta usada para reconciliar clientes e subscrições e criar sessões do portal.'
 	},
-	OPENPOST_WHOP_API_BASE_URL: {
-		label: 'URL da API da Whop',
-		description: 'Endpoint da API da Whop. Mantém o valor predefinido salvo indicação da Whop.'
+	OPENPOST_PADDLE_ENVIRONMENT: {
+		label: 'Ambiente da Paddle',
+		description: 'Define explicitamente sandbox para testes ou production para faturação real.'
 	},
-	OPENPOST_WHOP_WEBHOOK_SECRET: {
-		label: 'Segredo do webhook da Whop',
-		description: 'Segredo de assinatura usado para verificar pedidos de faturação da Whop.'
+	OPENPOST_PADDLE_CLIENT_TOKEN: {
+		label: 'Token de cliente da Paddle',
+		description: 'Token público usado pelo Paddle.js no checkout e nas pré-visualizações de preços.'
 	},
-	OPENPOST_WHOP_ACCOUNT_ID: {
-		label: 'ID da conta Whop',
-		description: 'Conta empresarial que detém o produto OpenPost e recebe os pagamentos.'
+	OPENPOST_PADDLE_WEBHOOK_SECRET: {
+		label: 'Segredo do webhook da Paddle',
+		description: 'Segredo usado para verificar o corpo original dos eventos enviados pela Paddle.'
 	},
-	OPENPOST_WHOP_PRODUCT_ID: {
-		label: 'ID do produto Whop',
-		description: 'Produto que contém os planos de subscrição do OpenPost.'
-	},
-	OPENPOST_WHOP_CHECKOUT_RETURN_URL: {
+	OPENPOST_PADDLE_CHECKOUT_RETURN_URL: {
 		label: 'URL de retorno do checkout',
-		description: 'URL do OpenPost para onde a Whop devolve o cliente após o pagamento.'
+		description: 'URL do OpenPost mostrada quando o checkout da Paddle termina.'
 	},
-	OPENPOST_WHOP_STARTER_MONTHLY_PLAN_ID: {
-		label: 'ID mensal Starter',
-		description: 'Plano Whop usado nas subscrições mensais Starter.'
+	OPENPOST_PADDLE_STARTER_MONTHLY_PRICE_ID: {
+		label: 'ID do preço mensal Starter',
+		description: 'Preço Paddle usado nas subscrições mensais Starter.'
 	},
-	OPENPOST_WHOP_STARTER_ANNUAL_PLAN_ID: {
-		label: 'ID anual Starter',
-		description: 'Plano Whop usado nas subscrições anuais Starter.'
+	OPENPOST_PADDLE_STARTER_ANNUAL_PRICE_ID: {
+		label: 'ID do preço anual Starter',
+		description: 'Preço Paddle usado nas subscrições anuais Starter.'
 	},
-	OPENPOST_WHOP_FOUNDER_MONTHLY_PLAN_ID: {
-		label: 'ID mensal Founder',
-		description: 'Plano Whop usado nas subscrições mensais Founder.'
+	OPENPOST_PADDLE_FOUNDER_MONTHLY_PRICE_ID: {
+		label: 'ID do preço mensal Founder',
+		description: 'Preço Paddle usado nas subscrições mensais Founder.'
 	},
-	OPENPOST_WHOP_FOUNDER_ANNUAL_PLAN_ID: {
-		label: 'ID anual Founder',
-		description: 'Plano Whop usado nas subscrições anuais Founder.'
+	OPENPOST_PADDLE_FOUNDER_ANNUAL_PRICE_ID: {
+		label: 'ID do preço anual Founder',
+		description: 'Preço Paddle usado nas subscrições anuais Founder.'
 	},
-	OPENPOST_WHOP_PRO_MONTHLY_PLAN_ID: {
-		label: 'ID mensal Pro',
-		description: 'Plano Whop usado nas subscrições mensais Pro.'
+	OPENPOST_PADDLE_PRO_MONTHLY_PRICE_ID: {
+		label: 'ID do preço mensal Pro',
+		description: 'Preço Paddle usado nas subscrições mensais Pro.'
 	},
-	OPENPOST_WHOP_PRO_ANNUAL_PLAN_ID: {
-		label: 'ID anual Pro',
-		description: 'Plano Whop usado nas subscrições anuais Pro.'
+	OPENPOST_PADDLE_PRO_ANNUAL_PRICE_ID: {
+		label: 'ID do preço anual Pro',
+		description: 'Preço Paddle usado nas subscrições anuais Pro.'
 	},
-	OPENPOST_WHOP_TEAM_MONTHLY_PLAN_ID: {
-		label: 'ID mensal Team',
-		description: 'Plano Whop usado nas subscrições mensais Team.'
+	OPENPOST_PADDLE_TEAM_MONTHLY_PRICE_ID: {
+		label: 'ID do preço mensal Team',
+		description: 'Preço Paddle usado nas subscrições mensais Team.'
 	},
-	OPENPOST_WHOP_TEAM_ANNUAL_PLAN_ID: {
-		label: 'ID anual Team',
-		description: 'Plano Whop usado nas subscrições anuais Team.'
+	OPENPOST_PADDLE_TEAM_ANNUAL_PRICE_ID: {
+		label: 'ID do preço anual Team',
+		description: 'Preço Paddle usado nas subscrições anuais Team.'
 	},
-	OPENPOST_WHOP_AGENCY_MONTHLY_PLAN_ID: {
-		label: 'ID mensal Agency',
-		description: 'Plano Whop usado nas subscrições mensais Agency.'
+	OPENPOST_PADDLE_AGENCY_MONTHLY_PRICE_ID: {
+		label: 'ID do preço mensal Agency',
+		description: 'Preço Paddle usado nas subscrições mensais Agency.'
 	},
-	OPENPOST_WHOP_AGENCY_ANNUAL_PLAN_ID: {
-		label: 'ID anual Agency',
-		description: 'Plano Whop usado nas subscrições anuais Agency.'
+	OPENPOST_PADDLE_AGENCY_ANNUAL_PRICE_ID: {
+		label: 'ID do preço anual Agency',
+		description: 'Preço Paddle usado nas subscrições anuais Agency.'
 	},
 	OPENPOST_EMAIL_VERIFICATION_REQUIRED: {
 		label: 'Exigir verificação de email',

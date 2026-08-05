@@ -4,7 +4,7 @@
 	"type": "module",
 	"scripts": {
 		"sync:assets": "bun ../scripts/sync-assets.mjs",
-		"generate:app-assets:android": "bun run sync:assets && capacitor-assets generate --assetPath assets --android --iconBackgroundColor '#f97316' --splashBackgroundColor '#0f0f10'",
+		"generate:app-assets:android": "bun run sync:assets && capacitor-assets generate --assetPath assets --android --iconBackgroundColor '#b74c05' --splashBackgroundColor '#0f0f10'",
 		"configure:camera": "bun ../scripts/configure-capacitor-camera.mjs",
 		"dev": "bun run sync:assets && vite dev",
 		"build": "bun run sync:assets && vite build && bun ../scripts/precompress-static.mjs",
@@ -77,6 +77,7 @@
 		"@noble/hashes": "1.8.0",
 		"@openpost/social-preview": "workspace:*",
 		"@openpost/video-project": "workspace:*",
+		"@paddle/paddle-js": "^1.6.4",
 		"@tanstack/table-core": "^8.21.3",
 		"@uppy/core": "^5.2.0",
 		"@uppy/dashboard": "^5.1.1",

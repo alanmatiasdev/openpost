@@ -3,6 +3,7 @@
 	import { WorkspaceContextError, workspaceCtx } from '$lib/stores/workspace.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import * as Select from '$lib/components/ui/select';
+	import * as RadioGroup from '$lib/components/ui/radio-group';
 	import { Checkbox } from '$lib/components/ui/checkbox';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
@@ -65,6 +66,7 @@
 	import { checkoutPathForPlan, hostedPlanFromSearchParams } from '$lib/billing';
 	import { m } from '$lib/paraglide/messages';
 	import { getOptionalUnsavedChanges } from '$lib/unsaved-changes.svelte';
+	import { normalizeComposerExperience, type ComposerExperience } from '$lib/composer-experience';
 	import {
 		apiTokenScopeOptions as apiTokenScopes,
 		billingPlans as billingPlanDefinitions,
@@ -110,6 +112,9 @@
 	let profilePublic = $state(false);
 	let profileBusy = $state(false);
 	let profileError = $state('');
+	let composerExperience = $state<ComposerExperience>('specialized');
+	let composerExperienceBusy = $state(false);
+	let composerExperienceError = $state('');
 	let avatarUploaderOpen = $state(false);
 	let loadingSecurity = $state(true);
 	let securityBusy = $state(false);
@@ -522,6 +527,7 @@
 	);
 	const settingsTabs = $derived([
 		{ id: 'profile', label: m.settings_profile() },
+		{ id: 'composer', label: m.settings_composer() },
 		{ id: 'notifications', label: m.notifications_settings() },
 		{ id: 'security', label: m.settings_security() },
 		{ id: 'developer', label: m.settings_developer() },
@@ -575,6 +581,9 @@
 			profileUsername !== (authState.user?.username ?? '') ||
 			profilePublic !== Boolean(authState.user?.public_profile_enabled)
 	);
+	const composerExperienceDirty = $derived(
+		composerExperience !== normalizeComposerExperience(authState.user?.composer_experience)
+	);
 	const securityDraftDirty = $derived(Boolean(identityPassword || otherSecurityDraftDirty()));
 	const developerDraftDirty = $derived(apiTokenDraftSnapshot() !== savedAPITokenDraft);
 	const memberDraftDirty = $derived(Boolean(inviteEmail.trim()) || inviteRole !== 'editor');
@@ -599,6 +608,7 @@
 	);
 	const activeSettingsTitle = $derived.by(() => {
 		if (activeSettingsTab === 'profile') return m.settings_profile();
+		if (activeSettingsTab === 'composer') return m.settings_composer();
 		if (activeSettingsTab === 'notifications') return m.notifications_settings();
 		if (activeSettingsTab === 'security') return m.settings_security();
 		if (activeSettingsTab === 'developer') return m.settings_developer();
@@ -616,6 +626,7 @@
 	});
 	const activeSettingsDescription = $derived.by(() => {
 		if (activeSettingsTab === 'profile') return m.settings_profile_description();
+		if (activeSettingsTab === 'composer') return m.settings_composer_description();
 		if (activeSettingsTab === 'notifications') return m.notifications_settings_description();
 		if (activeSettingsTab === 'security') return m.settings_account_security_body();
 		if (activeSettingsTab === 'developer') return m.settings_developer_description();
@@ -689,6 +700,25 @@
 			profileError = (e as Error).message;
 		} finally {
 			profileBusy = false;
+		}
+	}
+
+	async function saveComposerExperience(event: SubmitEvent) {
+		event.preventDefault();
+		composerExperienceBusy = true;
+		composerExperienceError = '';
+		try {
+			const { data, error: err } = await client.PATCH('/auth/profile', {
+				body: { composer_experience: composerExperience }
+			});
+			if (err || !data) throw new Error(err?.detail || m.settings_action_failed());
+			auth.setUser(data);
+			composerExperience = normalizeComposerExperience(data.composer_experience);
+			notify(m.settings_composer_updated());
+		} catch (e) {
+			composerExperienceError = (e as Error).message;
+		} finally {
+			composerExperienceBusy = false;
 		}
 	}
 
@@ -1296,6 +1326,11 @@
 	});
 
 	$effect(() => {
+		unsavedChanges?.set('composer-settings', composerExperienceDirty, m.settings_unsaved_changes());
+		return () => unsavedChanges?.clear('composer-settings');
+	});
+
+	$effect(() => {
 		unsavedChanges?.set('security-settings', securityDraftDirty, m.settings_unsaved_changes());
 		return () => unsavedChanges?.clear('security-settings');
 	});
@@ -1697,6 +1732,7 @@
 			profileDisplayName = user.display_name || '';
 			profileUsername = user.username || '';
 			profilePublic = Boolean(user.public_profile_enabled);
+			composerExperience = normalizeComposerExperience(user.composer_experience);
 		}
 	});
 
@@ -1941,6 +1977,86 @@
 							label={m.settings_save_profile()}
 							savingLabel={m.settings_save_profile()}
 							saving={profileBusy}
+							type="submit"
+						/>
+					</form>
+				</section>
+
+				<section id="composer" class:hidden={activeSettingsTab !== 'composer'} class="scroll-mt-24">
+					<form onsubmit={saveComposerExperience} class="space-y-6">
+						<fieldset class="space-y-3">
+							<legend class="text-sm font-medium">{m.settings_composer_experience()}</legend>
+							<p id="composer-experience-description" class="text-sm text-muted-foreground">
+								{m.settings_composer_experience_description()}
+							</p>
+
+							<RadioGroup.Root
+								value={composerExperience}
+								name="composer_experience"
+								class="grid gap-3 sm:grid-cols-2"
+								aria-describedby="composer-experience-description composer-interchangeable-note"
+								onValueChange={(value) => (composerExperience = normalizeComposerExperience(value))}
+							>
+								<label
+									class={[
+										'flex min-h-28 cursor-pointer items-start gap-3 rounded-xl border bg-background p-4 transition-colors',
+										composerExperience === 'specialized'
+											? 'border-primary ring-2 ring-primary/15'
+											: 'hover:border-foreground/30'
+									]}
+								>
+									<RadioGroup.Item
+										class="mt-1"
+										value="specialized"
+										aria-label={m.settings_composer_specialized()}
+									/>
+									<span class="min-w-0">
+										<span class="block font-medium">{m.settings_composer_specialized()}</span>
+										<span class="mt-1 block text-sm leading-6 text-muted-foreground">
+											{m.settings_composer_specialized_description()}
+										</span>
+									</span>
+								</label>
+
+								<label
+									class={[
+										'flex min-h-28 cursor-pointer items-start gap-3 rounded-xl border bg-background p-4 transition-colors',
+										composerExperience === 'unified'
+											? 'border-primary ring-2 ring-primary/15'
+											: 'hover:border-foreground/30'
+									]}
+								>
+									<RadioGroup.Item
+										class="mt-1"
+										value="unified"
+										aria-label={m.settings_composer_unified()}
+									/>
+									<span class="min-w-0">
+										<span class="block font-medium">{m.settings_composer_unified()}</span>
+										<span class="mt-1 block text-sm leading-6 text-muted-foreground">
+											{m.settings_composer_unified_description()}
+										</span>
+									</span>
+								</label>
+							</RadioGroup.Root>
+						</fieldset>
+
+						<p
+							id="composer-interchangeable-note"
+							class="rounded-xl border bg-muted/25 px-4 py-3 text-sm leading-6 text-muted-foreground"
+						>
+							{m.settings_composer_interchangeable()}
+						</p>
+
+						{#if composerExperienceError}
+							<InlineNotice tone="error" message={composerExperienceError} />
+						{/if}
+
+						<SettingsFormFooter
+							label={m.settings_save_composer()}
+							savingLabel={m.settings_save_composer()}
+							saving={composerExperienceBusy}
+							disabled={!composerExperienceDirty}
 							type="submit"
 						/>
 					</form>

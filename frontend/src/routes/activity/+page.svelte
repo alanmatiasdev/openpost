@@ -200,11 +200,7 @@
 		return {
 			id: publication.id,
 			publication_id: publication.id,
-			href:
-				(publication.intent === 'post' || publication.intent === 'thread') &&
-				publication.text_post_id
-					? `/posts/${encodeURIComponent(publication.text_post_id)}`
-					: `/publications/${encodeURIComponent(publication.id)}`,
+			href: `/publications/${encodeURIComponent(publication.id)}`,
 			content,
 			status: publication.status,
 			scheduled_at: publication.scheduled_at,
@@ -406,7 +402,7 @@
 			return;
 		}
 		if (destination.error_action === 'billing') {
-			await goto(resolve('/settings') + '?tab=billing#billing');
+			await goto(resolve('/settings?tab=billing#billing'));
 			return;
 		}
 		await goto(resolve(post.href as '/'));

@@ -5,7 +5,9 @@
 	import ComposeTextPost from './compose-text-post.svelte';
 	import ComposeFocusedPublication from './compose-focused-publication.svelte';
 	import ComposeModeSelect from './compose-mode-select.svelte';
+	import { auth } from '$lib/stores/auth';
 	import { ui } from '$lib/stores/ui.svelte';
+	import { usesSpecializedTextComposer } from '$lib/composer-experience';
 	import { type ComposerModeKey } from './compose/modes';
 	import { m } from '$lib/paraglide/messages';
 
@@ -15,6 +17,10 @@
 	const initialScheduleTime = $derived(page.url.searchParams.get('time'));
 	const initialWorkspaceId = $derived(page.url.searchParams.get('workspace_id'));
 	const composerResetCounter = $derived(ui.composerResetCounter);
+	const authState = $derived($auth);
+	const specializedTextComposer = $derived(
+		usesSpecializedTextComposer(authState.user?.composer_experience, selectedMode)
+	);
 
 	function handleComposerReset() {
 		ui.clearActiveComposerDraft();
@@ -24,11 +30,6 @@
 	function handlePublicationDraftCreated(id: string) {
 		ui.setActiveComposerDraft(id);
 		replaceState(resolve(`/publications/${encodeURIComponent(id)}` as '/'), {});
-	}
-
-	function handlePostDraftCreated(id: string) {
-		ui.setActiveComposerDraft(id);
-		replaceState(resolve(`/posts/${id}` as '/'), {});
 	}
 
 	function handleThreadStateChange(isThread: boolean) {
@@ -43,7 +44,7 @@
 
 <div class="flex min-h-0 flex-1 flex-col bg-background" data-testid="compose-shell">
 	{#key composerResetCounter}
-		{#if selectedMode === 'post' || selectedMode === 'thread'}
+		{#if specializedTextComposer}
 			<div data-testid="text-thread-composer-shell" class="flex min-h-0 flex-1 flex-col">
 				<ComposeTextPost
 					{initialScheduleDate}
@@ -51,7 +52,7 @@
 					{initialWorkspaceId}
 					onSuccess={handleComposerReset}
 					onDeleted={handleComposerReset}
-					onDraftCreated={handlePostDraftCreated}
+					onDraftCreated={handlePublicationDraftCreated}
 					onThreadStateChange={handleThreadStateChange}
 				>
 					{#snippet modeControl()}

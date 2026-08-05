@@ -17,6 +17,8 @@ function issue(code: string, severity: 'error' | 'warning' = 'warning'): Validat
 function capability(issues: ValidationIssue[], compatible = true): ResolvedAccountCapability {
 	return {
 		account_id: 'x-account',
+		available_formats: [],
+		segment_strategy: 'preserve',
 		active_constraints: {},
 		capability_revision: 'test',
 		compatible,

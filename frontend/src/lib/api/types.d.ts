@@ -2892,6 +2892,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/social-sets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Social Sets */
+        get: operations["list-social-sets"];
+        put?: never;
+        /** Create a Social Set */
+        post: operations["create-social-set"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/social-sets/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a Social Set */
+        get: operations["get-social-set"];
+        /** Replace a Social Set */
+        put: operations["update-social-set"];
+        post?: never;
+        /**
+         * Delete a Social Set
+         * @description Existing publications keep their snapshotted destinations.
+         */
+        delete: operations["delete-social-set"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/stock-media/providers": {
         parameters: {
             query?: never;
@@ -3811,8 +3851,6 @@ export interface components {
             limits: {
                 [key: string]: number;
             };
-            /** @description Whop billing management URL for the active membership */
-            manage_url?: string;
             /** @description Organization ID */
             organization_id: string;
             /** @description UTC month start for the usage counters */
@@ -3841,25 +3879,28 @@ export interface components {
             readonly $schema?: string;
             /** @description Selected billing period */
             billing_period?: string;
-            /** @description Whop checkout configuration or membership ID */
+            /** @description Browser-safe Paddle.js client token */
+            client_token?: string;
+            /** @description Authenticated customer's checkout email */
+            customer_email?: string;
+            /** @description Explicit Paddle.js environment: sandbox or production */
+            environment?: string;
+            /** @description OpenPost checkout attempt or Paddle portal session ID */
             id?: string;
             /** @description OpenPost plan ID */
             plan_id?: string;
-            /**
-             * Format: int64
-             * @description Selected plan price in whole US dollars
-             */
-            price_usd?: number;
-            /** @description Whop plan ID used by the embedded checkout */
-            provider_plan_id?: string;
-            /** @description Whop-hosted checkout fallback URL */
-            purchase_url?: string;
-            /** @description OpenPost URL used after Whop checkout completes */
+            /** @description Paddle price IDs for localized previews in the selected billing period */
+            price_ids?: {
+                [key: string]: string;
+            };
+            /** @description Paddle price ID for the selected plan and period */
+            provider_price_id?: string;
+            /** @description OpenPost URL used after Paddle checkout completes */
             return_url?: string;
             /** @description Expected end of the 14-day trial */
             trial_ends_at?: string;
-            /** @description OpenPost checkout or billing management URL */
-            url: string;
+            /** @description OpenPost checkout URL or short-lived Paddle customer portal URL */
+            url?: string;
         };
         BlueskyLoginInputBody: {
             /**
@@ -4311,8 +4352,6 @@ export interface components {
              * @example https://example.com/schemas/CreateBillingCheckoutInputBody.json
              */
             readonly $schema?: string;
-            /** @description Optional Whop affiliate code carried into checkout */
-            affiliate_code?: string;
             /**
              * @description Billing period: monthly or annual
              * @default monthly
@@ -4520,8 +4559,6 @@ export interface components {
              * @example https://example.com/schemas/CreateOrganizationBillingCheckoutInputBody.json
              */
             readonly $schema?: string;
-            /** @description Optional Whop affiliate code carried into checkout */
-            affiliate_code?: string;
             /**
              * @description Billing period: monthly or annual
              * @default monthly
@@ -4628,10 +4665,15 @@ export interface components {
             audience?: string;
             /** @description Content profile */
             content_profile: string;
+            /**
+             * @description Starter preset; destination renditions own their formats
+             * @enum {string}
+             */
+            creation_preset?: "post" | "thread" | "story" | "short_video" | "video";
             /** @description Publication goal */
             goal?: string;
             /**
-             * @description Publishing intent
+             * @description Deprecated compatibility alias for creation_preset
              * @enum {string}
              */
             intent?: "post" | "thread" | "story" | "short_video" | "video";
@@ -4654,6 +4696,8 @@ export interface components {
             segments?: components["schemas"]["PublicationSegmentInput"][] | null;
             /** @description Accounts to create default renditions for */
             social_account_ids?: string[] | null;
+            /** @description Social Set used to initialize the snapshotted destinations */
+            social_set_id?: string;
             /** @description Canonical source text */
             source_text: string;
             /** @description Source URL for link shares */
@@ -4661,6 +4705,22 @@ export interface components {
             /** @description Internal publication title */
             title: string;
             /** @description Workspace ID */
+            workspace_id: string;
+        };
+        CreateSocialSetInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/CreateSocialSetInputBody.json
+             */
+            readonly $schema?: string;
+            /** @description Ordered connected accounts and optional format defaults */
+            accounts: components["schemas"]["SocialSetAccountInput"][] | null;
+            /** @description Use this set when the composer opens */
+            is_default?: boolean;
+            /** @description Social Set name */
+            name: string;
+            /** @description Target workspace ID */
             workspace_id: string;
         };
         CreateTextPostDraftInputBody: {
@@ -4989,6 +5049,12 @@ export interface components {
             readonly $schema?: string;
             device_code?: string;
             user_code?: string;
+        };
+        DestinationFormat: {
+            compatible: boolean;
+            label: string;
+            output_profile: string;
+            profile: string;
         };
         DestinationOption: {
             label: string;
@@ -7580,6 +7646,7 @@ export interface components {
             content_profile: string;
             created_at: string;
             created_by: string;
+            creation_preset: string;
             goal?: string;
             id: string;
             intent: string;
@@ -7593,6 +7660,7 @@ export interface components {
             revision: number;
             scheduled_at?: string;
             segments: components["schemas"]["PublicationSegmentResponse"][] | null;
+            social_set_id?: string;
             source_text: string;
             source_url?: string;
             status: string;
@@ -7647,6 +7715,11 @@ export interface components {
             /** @description Content profile */
             content_profile?: string;
             /**
+             * @description Starter preset; destination renditions own their formats
+             * @enum {string}
+             */
+            creation_preset?: "post" | "thread" | "story" | "short_video" | "video";
+            /**
              * Format: int64
              * @description Revision loaded by the editor
              */
@@ -7654,7 +7727,7 @@ export interface components {
             /** @description Publication goal */
             goal?: string;
             /**
-             * @description Publishing intent
+             * @description Deprecated compatibility alias for creation_preset
              * @enum {string}
              */
             intent?: "post" | "thread" | "story" | "short_video" | "video";
@@ -7673,6 +7746,8 @@ export interface components {
             scheduled_at?: string;
             /** @description Replacement ordered canonical segments */
             segments?: components["schemas"]["PublicationSegmentInput"][] | null;
+            /** @description Social Set provenance; does not replace snapshotted destinations */
+            social_set_id?: string;
             /** @description Canonical source text */
             source_text?: string;
             /** @description Source URL */
@@ -7809,6 +7884,8 @@ export interface components {
             body?: string;
             /** @description Platform-specific description */
             description?: string;
+            /** @description Preserve an explicitly selected format when source content changes */
+            format_locked?: boolean;
             /** @description Legacy client reference; replacement IDs are server-generated */
             id?: string;
             /** @description Rendition-specific ordered media */
@@ -7817,6 +7894,11 @@ export interface components {
             output_profile?: string;
             /** @description Content profile override */
             profile?: string;
+            /**
+             * Format: date-time
+             * @description Optional destination-specific schedule
+             */
+            schedule_override?: string;
             /** @description Ordered destination segments */
             segments?: components["schemas"]["RenditionSegmentInput"][] | null;
             /** @description Provider-specific settings */
@@ -7841,12 +7923,14 @@ export interface components {
             error_retryable: boolean;
             external_id?: string;
             external_url?: string;
+            format_locked: boolean;
             id: string;
             media: components["schemas"]["MediaSummary"][] | null;
             output_profile: string;
             platform: string;
             profile: string;
             publication_id: string;
+            schedule_override?: string;
             segments: components["schemas"]["RenditionSegmentResponse"][] | null;
             settings: {
                 [key: string]: unknown;
@@ -7858,12 +7942,18 @@ export interface components {
         RenditionSegmentInput: {
             /** @description Destination segment body override */
             body?: string;
+            /** @description Explicit destination body; omit or null to inherit */
+            body_override?: string;
             /** @description Destination segment description override */
             description?: string;
+            /** @description Explicit destination description; omit or null to inherit */
+            description_override?: string;
             /** @description Legacy client reference; replacement IDs are server-generated */
             id?: string;
             /** @description Destination segment ordered media */
             media?: components["schemas"]["PublicationMediaInput"][] | null;
+            /** @description Whether destination media follows the canonical segment */
+            media_inherited?: boolean;
             /** @description Server canonical segment ID, or its matching client segment reference in the same request */
             publication_segment_id?: string;
             /** @description Segment-scoped destination settings */
@@ -7872,12 +7962,18 @@ export interface components {
             };
             /** @description Destination segment title override */
             title?: string;
+            /** @description Explicit destination title; omit or null to inherit */
+            title_override?: string;
             /** @description Destination segment URL override */
             url?: string;
+            /** @description Explicit destination URL; omit or null to inherit */
+            url_override?: string;
         };
         RenditionSegmentResponse: {
             body: string;
+            body_override?: string;
             description: string;
+            description_override?: string;
             error_action?: string;
             error_code?: string;
             /** Format: int64 */
@@ -7890,6 +7986,7 @@ export interface components {
             external_url?: string;
             id: string;
             media: components["schemas"]["MediaSummary"][] | null;
+            media_inherited: boolean;
             /** Format: int64 */
             position: number;
             publication_segment_id: string;
@@ -7898,7 +7995,9 @@ export interface components {
             };
             status: string;
             title: string;
+            title_override?: string;
             url?: string;
+            url_override?: string;
         };
         ReplaceMediaTagItemsInputBody: {
             /**
@@ -8016,14 +8115,23 @@ export interface components {
                 };
             };
             /**
-             * @description Publishing intent
+             * @description Starter preset used only to choose initial destination formats
              * @enum {string}
              */
-            intent: "post" | "thread" | "story" | "short_video" | "video";
+            creation_preset?: "post" | "thread" | "story" | "short_video" | "video";
+            /**
+             * @description Deprecated compatibility alias for creation_preset
+             * @enum {string}
+             */
+            intent?: "post" | "thread" | "story" | "short_video" | "video";
             /** @description BCP 47 locale for option labels */
             locale?: string;
             /** @description ISO 3166-1 alpha-2 region */
             region?: string;
+            /** @description Explicit or saved output profiles keyed by connected account ID */
+            requested_output_profiles?: {
+                [key: string]: string;
+            };
             /** @description Ordered canonical segments */
             segments: components["schemas"]["ResolveCapabilitySegmentInput"][] | null;
             /** @description Canonical source URL */
@@ -8061,6 +8169,7 @@ export interface components {
             active_constraints: {
                 [key: string]: unknown;
             };
+            available_formats: components["schemas"]["DestinationFormat"][] | null;
             capability_revision: string;
             caveats?: string[] | null;
             compatible: boolean;
@@ -8084,6 +8193,8 @@ export interface components {
             provider: string;
             requires_app_review: boolean;
             requires_public_media: boolean;
+            /** @enum {string} */
+            segment_strategy: "preserve" | "join";
             setting_groups: components["schemas"]["ResolvedSettingGroup"][] | null;
             settings?: components["schemas"]["SettingDefinition"][] | null;
             /** Format: int64 */
@@ -8575,6 +8686,36 @@ export interface components {
             /** Format: double */
             stroke_width: number;
         };
+        SocialSetAccountInput: {
+            /** @description Optional provider-qualified default format */
+            default_output_profile?: string;
+            /** @description Connected social account ID */
+            social_account_id: string;
+        };
+        SocialSetAccountResponse: {
+            account_avatar_url?: string;
+            account_username?: string;
+            default_output_profile?: string;
+            /** Format: int64 */
+            display_order: number;
+            platform: string;
+            social_account_id: string;
+        };
+        SocialSetResponse: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/SocialSetResponse.json
+             */
+            readonly $schema?: string;
+            accounts: components["schemas"]["SocialSetAccountResponse"][] | null;
+            created_at: string;
+            id: string;
+            is_default: boolean;
+            name: string;
+            updated_at: string;
+            workspace_id: string;
+        };
         Source: {
             audio_codec?: string;
             content_hash?: string;
@@ -8726,6 +8867,8 @@ export interface components {
             clear_schedule?: boolean;
             /** @description Content profile */
             content_profile?: string;
+            /** @description Starter preset; destination renditions own their formats */
+            creation_preset?: string;
             /** @description Publishing goal */
             goal?: string;
             /** @description Publishing intent */
@@ -8745,6 +8888,8 @@ export interface components {
             scheduled_at?: string;
             /** @description Replacement canonical segments */
             segments?: components["schemas"]["PublicationSegmentInput"][] | null;
+            /** @description Social Set provenance for the snapshotted destinations */
+            social_set_id?: string;
             /** @description Canonical source text */
             source_text?: string;
             /** @description Canonical source URL */
@@ -8968,12 +9113,31 @@ export interface components {
             readonly $schema?: string;
             /** @description Profile avatar URL */
             avatar_url?: string;
+            /**
+             * @description Preferred composer experience
+             * @enum {string}
+             */
+            composer_experience?: "specialized" | "unified";
             /** @description User display name */
             display_name?: string;
             /** @description Whether the public activity profile is visible */
             public_profile_enabled?: boolean;
             /** @description Unique public username */
             username?: string;
+        };
+        UpdateSocialSetInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/UpdateSocialSetInputBody.json
+             */
+            readonly $schema?: string;
+            /** @description Replacement ordered membership */
+            accounts: components["schemas"]["SocialSetAccountInput"][] | null;
+            /** @description Use this set when the composer opens */
+            is_default: boolean;
+            /** @description Social Set name */
+            name: string;
         };
         UpdateStatusResponse: {
             /**
@@ -9122,6 +9286,11 @@ export interface components {
             readonly $schema?: string;
             /** @description Profile avatar URL */
             avatar_url: string;
+            /**
+             * @description Preferred composer experience
+             * @enum {string}
+             */
+            composer_experience: "specialized" | "unified";
             /**
              * Format: date-time
              * @description Account creation time
@@ -20258,6 +20427,318 @@ export interface operations {
             };
             /** @description Forbidden */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "list-social-sets": {
+        parameters: {
+            query: {
+                /** @description Workspace ID */
+                workspace_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SocialSetResponse"][] | null;
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "create-social-set": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateSocialSetInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SocialSetResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-social-set": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Social Set ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SocialSetResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "update-social-set": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Social Set ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateSocialSetInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SocialSetResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "delete-social-set": {
+        parameters: {
+            query?: {
+                /** @description Explicit deletion confirmation */
+                confirm?: boolean;
+            };
+            header?: never;
+            path: {
+                /** @description Social Set ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionOutputBody"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

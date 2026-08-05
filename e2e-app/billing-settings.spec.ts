@@ -577,29 +577,83 @@ test("plan selection from signup starts checkout after onboarding", async ({
 }) => {
   const unique = Date.now().toString(36);
   const email = `plan-signup-${unique}@example.com`;
-  let checkoutBody: { workspace_id?: string; plan_id?: string } | undefined;
+  let checkoutBody:
+    | { workspace_id?: string; plan_id?: string; billing_period?: string }
+    | undefined;
   let checkoutURL = "";
 
   await routeBrowserRegistration(page, email);
-  await page.route("https://js.whop.com/**", async (route) => {
-    await route.fulfill({ contentType: "application/javascript", body: "" });
-  });
+  await page.route(
+    "https://cdn.paddle.com/paddle/v2/paddle.js",
+    async (route) => {
+      await route.fulfill({
+        contentType: "application/javascript",
+        body: `(() => {
+        const prices = {
+          pri_starter_month: "$15.00",
+          pri_founder_month: "$25.00",
+          pri_pro_month: "$49.00",
+          pri_team_month: "$99.00",
+          pri_agency_month: "$199.00",
+          pri_starter_annual: "$150.00",
+          pri_founder_annual: "$250.00",
+          pri_pro_annual: "$490.00",
+          pri_team_annual: "$990.00",
+          pri_agency_annual: "$1,990.00"
+        };
+        const state = { environment: "", initialize: null, checkout: null };
+        window.__openpostPaddleTest = state;
+        window.PaddleBillingV1 = {
+          Initialized: false,
+          Environment: { set(value) { state.environment = value; } },
+          Initialize(options) { state.initialize = options; this.Initialized = true; },
+          Update(options) { state.initialize = options; },
+          PricePreview: async ({ items }) => {
+            if (items.some(({ priceId }) => priceId.endsWith("_annual"))) {
+              await new Promise((resolve) => setTimeout(resolve, 200));
+            }
+            return {
+              data: {
+                details: {
+                  lineItems: items.map(({ priceId }) => ({
+                    price: { id: priceId },
+                    formattedTotals: { total: prices[priceId] }
+                  }))
+                }
+              }
+            };
+          },
+          Checkout: { open(options) { state.checkout = options; } }
+        };
+      })();`,
+      });
+    },
+  );
   await page.route("**/api/v1/billing/checkout", async (route) => {
     checkoutURL = route.request().url();
     checkoutBody = JSON.parse(route.request().postData() ?? "{}");
+    const annual = checkoutBody?.billing_period === "annual";
+    const suffix = annual ? "annual" : "month";
     await route.fulfill({
       contentType: "application/json",
       json: {
-        id: "checkout-e2e",
-        url: "/checkout?plan=founder&billing_period=monthly&session_id=checkout-e2e",
-        purchase_url: "https://whop.com/checkout/plan_founder_month",
-        provider_plan_id: "plan_founder_month",
+        id: "chkat_e2e",
+        url: `/checkout?plan=founder&billing_period=${annual ? "annual" : "monthly"}`,
+        provider_price_id: `pri_founder_${suffix}`,
+        price_ids: {
+          starter: `pri_starter_${suffix}`,
+          founder: `pri_founder_${suffix}`,
+          pro: `pri_pro_${suffix}`,
+          team: `pri_team_${suffix}`,
+          agency: `pri_agency_${suffix}`,
+        },
         plan_id: "founder",
-        billing_period: "monthly",
-        price_usd: 25,
+        billing_period: annual ? "annual" : "monthly",
         trial_ends_at: "2026-08-18T12:00:00Z",
-        return_url:
-          "http://127.0.0.1/checkout?plan=founder&billing_period=monthly&status=success",
+        client_token: "test_client_token",
+        environment: "sandbox",
+        customer_email: email,
+        return_url: `http://127.0.0.1/checkout?plan=founder&billing_period=${annual ? "annual" : "monthly"}&status=success`,
       },
     });
   });
@@ -617,14 +671,61 @@ test("plan selection from signup starts checkout after onboarding", async ({
     page.getByRole("heading", { name: "Put your content team to work" }),
   ).toBeVisible();
   await expect(page.getByText("$0 due today")).toBeVisible();
-  await expect(page.locator("#openpost-whop-checkout")).toHaveAttribute(
-    "data-whop-checkout-session",
-    "checkout-e2e",
+  await expect(page.getByText("$25.00/month")).toBeVisible();
+  await page
+    .getByRole("button", { name: "Continue to secure payment" })
+    .click();
+  const paddleState = await page.evaluate(
+    () =>
+      (
+        window as typeof window & {
+          __openpostPaddleTest?: {
+            environment: string;
+            initialize: { token?: string } | null;
+            checkout: {
+              items?: Array<{ priceId?: string }>;
+              customData?: { checkout_id?: string };
+              customer?: { email?: string };
+              settings?: {
+                displayMode?: string;
+                variant?: string;
+                locale?: string;
+                successUrl?: string;
+              };
+            } | null;
+          };
+        }
+      ).__openpostPaddleTest,
   );
-  await expect(page.locator("#openpost-whop-checkout")).toHaveAttribute(
-    "data-whop-checkout-plan-id",
-    "plan_founder_month",
-  );
+  expect(paddleState?.environment).toBe("sandbox");
+  expect(paddleState?.initialize?.token).toBe("test_client_token");
+  expect(paddleState?.checkout?.items?.[0]?.priceId).toBe("pri_founder_month");
+  expect(paddleState?.checkout?.customData?.checkout_id).toBe("chkat_e2e");
+  expect(paddleState?.checkout?.customer?.email).toBe(email);
+  expect(paddleState?.checkout?.settings).toMatchObject({
+    displayMode: "overlay",
+    variant: "one-page",
+    locale: "en",
+    successUrl:
+      "http://127.0.0.1/checkout?plan=founder&billing_period=monthly&status=success",
+  });
   expect(checkoutURL).toContain("/api/v1/billing/checkout");
   expect(checkoutBody?.plan_id).toBe("founder");
+
+  await page.getByRole("button", { name: /^Annual/ }).click();
+  await page.getByRole("button", { name: "Monthly", exact: true }).click();
+  await expect(page.getByText("$25.00/month")).toBeVisible();
+  await page.waitForTimeout(250);
+  await expect(page.getByText("$250.00/year")).toHaveCount(0);
+
+  await page.setViewportSize({ width: 320, height: 720 });
+  await expect(
+    page.getByRole("heading", { name: "Put your content team to work" }),
+  ).toBeVisible();
+  const mobileOverflow = await page.evaluate(
+    () =>
+      document.documentElement.scrollWidth -
+      document.documentElement.clientWidth,
+  );
+  expect(mobileOverflow).toBeLessThanOrEqual(1);
 });
