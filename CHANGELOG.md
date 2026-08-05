@@ -4,6 +4,10 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- Made the media lifecycle migration preserve historical brand assets when their upload hash already belongs to a library item, so PostgreSQL upgrades do not violate workspace deduplication.
+
 ## [3.1.0] - 2026-08-05
 
 ### Added
