@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import sharp from "sharp";
 
 test("legacy Video Studio URLs redirect to the OpenPost Video Editor", async ({
   page,
@@ -99,6 +100,49 @@ function syntheticVideoWithAudio(): Buffer {
   }
 }
 
+function syntheticBlackVideo(): Buffer {
+  const directory = mkdtempSync(join(tmpdir(), "openpost-text-parity-e2e-"));
+  const filename = join(directory, "black.webm");
+  try {
+    execFileSync("ffmpeg", [
+      "-y",
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=c=black:s=320x180:r=24:d=1.2",
+      "-c:v",
+      "libvpx",
+      "-b:v",
+      "120k",
+      filename,
+    ]);
+    return readFileSync(filename);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+}
+
+async function brightPixelCount(image: Buffer): Promise<number> {
+  const { data, info } = await sharp(image)
+    .removeAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  let count = 0;
+  for (let index = 0; index < data.length; index += info.channels) {
+    if (
+      data[index]! >= 220 &&
+      data[index + 1]! >= 220 &&
+      data[index + 2]! >= 220
+    ) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
 function syntheticAudio(): Buffer {
   const directory = mkdtempSync(join(tmpdir(), "openpost-audio-e2e-"));
   const filename = join(directory, "microphone.webm");
@@ -181,6 +225,29 @@ test("guest chooses Quick Cut and can move into the Full editor", async ({
   const quickCutBytes = Buffer.concat(quickCutChunks);
   expect(quickCutBytes.byteLength).toBeGreaterThan(1_000);
   expect([...quickCutBytes.subarray(0, 4)]).toEqual([0x1a, 0x45, 0xdf, 0xa3]);
+
+  const sourceTimeline = page.getByRole("slider", {
+    name: "Timeline",
+    exact: true,
+  });
+  for (let step = 0; step < 4; step += 1)
+    await sourceTimeline.press("ArrowRight");
+  const sourceClock = page.getByText(/^Source \d{2}:\d{2}:\d{2}:\d{2}$/);
+  const chosenSourceFrame = await sourceClock.textContent();
+  if (!chosenSourceFrame)
+    throw new Error("Quick Cut source clock is unavailable");
+  await page.getByRole("button", { name: "Set in" }).click();
+  await expect(sourceClock).toHaveText(chosenSourceFrame);
+  await expect(
+    page.getByText(/^00:00:00:00 \/ \d{2}:\d{2}:\d{2}:\d{2}$/),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByRole("complementary", { name: "Kept sections" })
+      .getByText(`${chosenSourceFrame.replace("Source ", "")} →`, {
+        exact: false,
+      }),
+  ).toBeVisible();
 
   await page.getByRole("button", { name: "Open Full editor" }).click();
   await expect(
@@ -482,6 +549,28 @@ test("guest imports, edits, autosaves, restores, and exports a local video", asy
   await page.getByRole("button", { name: "Elements" }).click();
   await page.getByRole("button", { name: "Highlight box" }).click();
   await expect(page.getByText("annotation overlay")).toBeVisible();
+  await page.getByRole("button", { name: "Ellipse", exact: true }).click();
+  await page.getByRole("button", { name: "Arrow", exact: true }).click();
+  const visualTimeline = page.getByRole("region", { name: "Timeline" });
+  const layeredItems = ["Launch day", "Highlight box", "Ellipse", "Arrow"].map(
+    (name) => visualTimeline.getByRole("button", { name, exact: true }),
+  );
+  for (const item of layeredItems) await expect(item).toBeVisible();
+  const layeredBounds = await Promise.all(
+    layeredItems.map(async (item) => {
+      const bounds = await item.boundingBox();
+      if (!bounds) throw new Error("Layered timeline item has no bounds");
+      return bounds;
+    }),
+  );
+  expect(
+    new Set(layeredBounds.map((bounds) => Math.round(bounds.y))).size,
+  ).toBe(layeredItems.length);
+  await layeredItems[0]!.click();
+  await expect(
+    page.getByRole("textbox", { name: "Text", exact: true }),
+  ).toHaveValue("Launch day");
+  await layeredItems[1]!.click();
   await page.getByRole("button", { name: "Position and size" }).click();
   await page.getByRole("slider", { name: "Rotation" }).press("ArrowRight");
   await page.getByRole("checkbox", { name: "Shared across formats" }).uncheck();
@@ -518,7 +607,9 @@ test("guest imports, edits, autosaves, restores, and exports a local video", asy
   await page.getByRole("button", { name: "Search" }).click();
   await expect(page.getByText("By OpenPost Test")).toBeVisible();
   await page.getByRole("button", { name: "Use this item" }).click();
-  await expect(page.getByText("pexels-photo-1.jpg")).toBeVisible();
+  await expect(
+    page.getByLabel("Stock", { exact: true }).getByText("pexels-photo-1.jpg"),
+  ).toBeVisible();
   await expect(page.getByText("OpenPost Test on Pexels")).toBeVisible();
   await expect(
     page.locator('[data-video-editor-track-kind="visual"]'),
@@ -570,7 +661,7 @@ test("guest imports, edits, autosaves, restores, and exports a local video", asy
   expect(srtDownload.suggestedFilename()).toBe("openpost-e2e.srt");
   expect(vttDownload.suggestedFilename()).toBe("openpost-e2e.vtt");
 
-  await page.getByRole("button", { name: "Export" }).click();
+  await page.getByRole("button", { name: "Export", exact: true }).click();
   await page.getByText("MP4 · H.264/AAC").click();
   await page.getByRole("option", { name: /WebM · VP9 or VP8\/Opus/ }).click();
   await page.getByRole("button", { name: "Start export" }).click();
@@ -578,6 +669,76 @@ test("guest imports, edits, autosaves, restores, and exports a local video", asy
 
   expect(unexpectedWrites).toEqual([]);
   expect(browserErrors).toEqual([]);
+});
+
+test("text is visible in both the preview and the exported frame", async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+  await page.addInitScript(() => {
+    Object.defineProperty(window, "showSaveFilePicker", {
+      configurable: true,
+      value: undefined,
+    });
+  });
+  await page.goto("/video-editor");
+  await page.locator("#video-editor-import").setInputFiles({
+    name: "text-parity.webm",
+    mimeType: "video/webm",
+    buffer: syntheticBlackVideo(),
+  });
+  await expect(page).toHaveURL(/\/video-editor\/local_video_/);
+  const preview = page.locator("[data-preview-engine-ready]").first();
+  await expect(preview).toHaveAttribute("data-preview-engine-ready", "true", {
+    timeout: 15_000,
+  });
+  const beforeText = await brightPixelCount(await preview.screenshot());
+
+  await page.getByRole("button", { name: "Text", exact: true }).click();
+  await page.getByRole("button", { name: "Add title" }).click();
+  await page
+    .getByRole("textbox", { name: "Text", exact: true })
+    .fill("PREVIEW EXPORT PARITY");
+  await page
+    .getByRole("region", { name: "Timeline" })
+    .getByRole("button", { name: "text-parity.webm" })
+    .click();
+  await expect
+    .poll(async () => brightPixelCount(await preview.screenshot()))
+    .toBeGreaterThan(beforeText + 200);
+
+  await page.getByRole("button", { name: "Export", exact: true }).click();
+  await page.getByText("MP4 · H.264/AAC").click();
+  await page.getByRole("option", { name: /WebM · VP9 or VP8\/Opus/ }).click();
+  await page.getByRole("button", { name: "Start export" }).click();
+  await expect(page.getByText(/Export ready/)).toBeVisible({ timeout: 60_000 });
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("button", { name: "Download" }).click(),
+  ]);
+  const exportedPath = await download.path();
+  if (!exportedPath)
+    throw new Error("Exported video has no local download path");
+  const directory = mkdtempSync(join(tmpdir(), "openpost-export-frame-e2e-"));
+  const frame = join(directory, "frame.png");
+  try {
+    execFileSync("ffmpeg", [
+      "-y",
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-ss",
+      "0.4",
+      "-i",
+      exportedPath,
+      "-frames:v",
+      "1",
+      frame,
+    ]);
+    expect(await brightPixelCount(readFileSync(frame))).toBeGreaterThan(200);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test("exact H.264 preflight blocks MP4 and offers WebM before render", async ({
@@ -655,7 +816,9 @@ test("recorded screen tracks remain durable after manifest cleanup and reload", 
   await page.goto("/video-editor/new?mode=record");
   await page.getByRole("checkbox", { name: "Camera" }).uncheck();
   await page.getByRole("checkbox", { name: "Microphone" }).uncheck();
-  await page.getByRole("checkbox", { name: /Tab or system audio/ }).uncheck();
+  await page
+    .getByRole("checkbox", { name: "System audio", exact: true })
+    .uncheck();
   await page.getByRole("button", { name: "Start recording" }).click();
   await expect(
     page.getByRole("button", { name: "Stop recording" }),
@@ -672,6 +835,48 @@ test("recorded screen tracks remain durable after manifest cleanup and reload", 
     page.getByText(/missing from local project storage/i),
   ).toHaveCount(0);
   expect(browserErrors).toEqual([]);
+});
+
+test("cancelled screen capture shows a waiting state without creating a project", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator.mediaDevices, "getDisplayMedia", {
+      configurable: true,
+      value: () =>
+        new Promise<MediaStream>((_resolve, reject) => {
+          (
+            window as typeof window & { __cancelOpenPostCapture?: () => void }
+          ).__cancelOpenPostCapture = () =>
+            reject(new DOMException("Capture cancelled", "NotAllowedError"));
+        }),
+    });
+  });
+  await page.goto("/video-editor/new?mode=record");
+  await expect(
+    page.getByText(
+      "Tab or system audio appears only when your browser and operating system provide it.",
+    ),
+  ).toHaveCount(1);
+  await page.getByRole("checkbox", { name: "Camera" }).uncheck();
+  await page.getByRole("checkbox", { name: "Microphone" }).uncheck();
+  await page
+    .getByRole("checkbox", { name: "System audio", exact: true })
+    .uncheck();
+  await page.getByRole("button", { name: "Start recording" }).click();
+  await expect(
+    page.getByText("Choose a screen, window, or tab in the browser picker."),
+  ).toBeVisible();
+  await page.evaluate(() => {
+    (
+      window as typeof window & { __cancelOpenPostCapture?: () => void }
+    ).__cancelOpenPostCapture?.();
+  });
+  await expect(page.getByText("Screen capture was cancelled.")).toBeVisible();
+  await page.goto("/video-editor");
+  await expect(page.getByText("Screen recording", { exact: true })).toHaveCount(
+    0,
+  );
 });
 
 test("active recordings preserve camera and microphone device switches as segments", async ({
@@ -819,7 +1024,9 @@ test("active recordings preserve camera and microphone device switches as segmen
   }, microphoneFixture);
 
   await page.goto("/video-editor/new?mode=record");
-  await page.getByRole("checkbox", { name: /Tab or system audio/ }).uncheck();
+  await page
+    .getByRole("checkbox", { name: "System audio", exact: true })
+    .uncheck();
   await page.getByRole("button", { name: "Start recording" }).click();
   await expect(
     page.getByRole("button", { name: "Stop recording" }),
@@ -852,8 +1059,16 @@ test("active recordings preserve camera and microphone device switches as segmen
   await expect(page).toHaveURL(/\/video-editor\/local_video_/, {
     timeout: 20_000,
   });
-  await expect(page.getByText("camera.webm")).toHaveCount(2);
-  await expect(page.getByText("microphone.webm")).toHaveCount(2);
+  const recordingTimeline = page.getByRole("region", { name: "Timeline" });
+  await expect(
+    recordingTimeline.getByRole("button", { name: "camera.webm", exact: true }),
+  ).toHaveCount(2);
+  await expect(
+    recordingTimeline.getByRole("button", {
+      name: "microphone.webm",
+      exact: true,
+    }),
+  ).toHaveCount(2);
 });
 
 test("rollout flag blocks every entry route", async ({ page }) => {
@@ -925,6 +1140,25 @@ test("mobile keeps touch timeline editing, contextual tools, and export", async 
     page.getByRole("heading", { name: "Timeline", exact: true }),
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "Export" })).toBeEnabled();
+  const exportBounds = await page
+    .getByRole("button", { name: "Export" })
+    .boundingBox();
+  if (!exportBounds) throw new Error("Mobile export control has no bounds");
+  expect(exportBounds.width).toBeGreaterThanOrEqual(44);
+  expect(exportBounds.height).toBeGreaterThanOrEqual(44);
+  for (const tool of [
+    "Media",
+    "Text",
+    "Elements",
+    "Audio",
+    "Captions",
+    "Transitions",
+    "Smart",
+  ]) {
+    await expect(
+      page.getByRole("button", { name: tool, exact: true }),
+    ).toBeInViewport();
+  }
   await page.getByRole("button", { name: "Text", exact: true }).click();
   const toolSheet = page.getByRole("complementary", { name: "Text" });
   await expect(toolSheet).toBeVisible();

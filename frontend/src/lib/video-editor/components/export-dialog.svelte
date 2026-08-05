@@ -17,6 +17,7 @@
 		requiredVariantIDs,
 		returnToken,
 		exportBusy,
+		exportPickerOpen,
 		returningToComposer,
 		exportError,
 		exportFormat,
@@ -39,6 +40,7 @@
 		requiredVariantIDs: VariantID[];
 		returnToken: string;
 		exportBusy: boolean;
+		exportPickerOpen: boolean;
 		returningToComposer: boolean;
 		exportError: string;
 		exportFormat: 'mp4' | 'webm';
@@ -86,7 +88,7 @@
 					>
 						<Checkbox
 							checked={exportVariantIDs.includes(option.value)}
-							disabled={Boolean(returnToken) || exportBusy}
+							disabled={Boolean(returnToken) || exportBusy || exportPickerOpen}
 							onCheckedChange={(checked) => onSetVariant(option.value, checked)}
 						/>
 						<span class="min-w-0 flex-1">
@@ -106,7 +108,7 @@
 				<AppSelect
 					value={returnToken ? 'mp4' : exportFormat}
 					onValueChange={onSetFormat}
-					disabled={exportBusy || Boolean(returnToken)}
+					disabled={exportBusy || exportPickerOpen || Boolean(returnToken)}
 					options={[
 						{ value: 'mp4', label: m.video_editor_export_mp4() },
 						{ value: 'webm', label: m.video_editor_export_webm() }
@@ -120,7 +122,9 @@
 			{:else if exportCapabilityState === 'unsupported'}
 				<InlineNotice tone="error" message={exportCapabilityError} />
 			{/if}
-			{#if exportBusy || returningToComposer}
+			{#if exportPickerOpen}
+				<InlineNotice tone="info" message={m.video_editor_export_picker()} />
+			{:else if exportBusy || returningToComposer}
 				<div class="space-y-2" aria-live="polite">
 					<div class="h-2 overflow-hidden rounded-full bg-muted">
 						<div
@@ -185,7 +189,8 @@
 					</Button>
 				{:else}
 					<Button
-						disabled={project.primary_sequence.length === 0 ||
+						disabled={exportPickerOpen ||
+							project.primary_sequence.length === 0 ||
 							exportVariantIDs.length === 0 ||
 							exportCapabilityState !== 'ready'}
 						onclick={() => void onStart()}

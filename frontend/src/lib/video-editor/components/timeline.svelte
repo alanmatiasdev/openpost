@@ -11,6 +11,7 @@
 	import { m } from '$lib/paraglide/messages';
 	import { listProjectAssets, readProjectFile } from '../storage';
 	import { subscribeToSourceArtifacts } from '../artifacts';
+	import { layoutTimelineIntervals } from '../timeline-layout';
 	import { onMount } from 'svelte';
 	import FoldHorizontalIcon from 'lucide-svelte/icons/fold-horizontal';
 	import MapPinIcon from 'lucide-svelte/icons/map-pin';
@@ -19,6 +20,11 @@
 	import ZoomInIcon from 'lucide-svelte/icons/zoom-in';
 	import ChevronLeftIcon from 'lucide-svelte/icons/chevron-left';
 	import ChevronRightIcon from 'lucide-svelte/icons/chevron-right';
+	import CaptionsIcon from 'lucide-svelte/icons/captions';
+	import ImageIcon from 'lucide-svelte/icons/image';
+	import MusicIcon from 'lucide-svelte/icons/music-2';
+	import ShapesIcon from 'lucide-svelte/icons/shapes';
+	import TypeIcon from 'lucide-svelte/icons/type';
 
 	interface Props {
 		project: VideoProjectDocumentV1;
@@ -190,6 +196,38 @@
 
 	function clipOffset(start: number): number {
 		return (start / durationUS) * widthPX;
+	}
+
+	function intervalLayout(
+		items: Array<{ id: string; start_us: number; duration_us: number }>,
+		minimumWidthPX = 48
+	) {
+		return layoutTimelineIntervals(items, durationUS, widthPX, minimumWidthPX);
+	}
+
+	function visualLabel(item: VideoProjectDocumentV1['visual_tracks'][number]['items'][number]) {
+		if (item.type === 'text') return item.text || m.video_editor_overlay_text();
+		if (item.type === 'media' || item.type === 'camera') {
+			return (
+				project.sources[item.source_id]?.original_name ||
+				(item.type === 'camera' ? m.video_editor_source_camera() : m.video_editor_source_image())
+			);
+		}
+		if (!('shape' in item)) return m.video_editor_overlay_item();
+		const labels = {
+			rectangle: m.video_editor_shape_rectangle(),
+			ellipse: m.video_editor_shape_ellipse(),
+			arrow: m.video_editor_shape_arrow(),
+			highlight: m.video_editor_shape_highlight(),
+			'click-pulse': m.video_editor_shape_click_pulse(),
+			redaction: m.video_editor_shape_redaction(),
+			progress: m.video_editor_shape_progress()
+		};
+		return labels[item.shape.kind];
+	}
+
+	function audioLabel(item: VideoProjectDocumentV1['audio_tracks'][number]['items'][number]) {
+		return project.sources[item.source_id]?.original_name || m.video_editor_audio_item();
 	}
 
 	function timeLabel(timestampUS: number): string {
@@ -764,6 +802,13 @@
 			</div>
 
 			{#each project.visual_tracks as track (track.id)}
+				{@const visualLayout = intervalLayout(
+					track.items.map((item) => ({
+						id: item.id,
+						start_us: item.timeline_start_us,
+						duration_us: item.duration_us
+					}))
+				)}
 				<div
 					class="sticky left-0 z-20 truncate border-r bg-background/95 p-2 text-xs text-muted-foreground backdrop-blur"
 					title={track.name || m.video_editor_overlays_lane()}
@@ -772,25 +817,41 @@
 				>
 					{track.name || m.video_editor_overlays_lane()}
 				</div>
-				<div class="relative h-12 border-b" style:width={`${widthPX}px`}>
+				<div
+					class="relative border-b"
+					style:width={`${widthPX}px`}
+					style:height={`${visualLayout.lane_count * 36 + 8}px`}
+				>
 					{#each track.items as item (item.id)}
+						{@const placement = visualLayout.placements.get(item.id)!}
+						{@const label = visualLabel(item)}
 						<div
 							role="group"
-							aria-label={item.type === 'text' ? item.text : item.type}
+							aria-label={label}
 							class={[
-								'absolute top-2 h-7 min-w-9 overflow-hidden rounded border text-[11px] text-violet-800 dark:text-violet-200',
-								selectedVisualItemID === item.id
-									? 'border-violet-600 bg-violet-500/25'
-									: 'border-violet-500/30 bg-violet-500/10'
+								'absolute h-7 min-w-12 overflow-hidden rounded border text-[11px]',
+								item.type === 'text'
+									? selectedVisualItemID === item.id
+										? 'border-amber-500 bg-amber-500/25 text-amber-900 dark:text-amber-100'
+										: 'border-amber-500/35 bg-amber-500/10 text-amber-900 dark:text-amber-200'
+									: item.type === 'media' || item.type === 'camera'
+										? selectedVisualItemID === item.id
+											? 'border-indigo-500 bg-indigo-500/25 text-indigo-900 dark:text-indigo-100'
+											: 'border-indigo-500/35 bg-indigo-500/10 text-indigo-900 dark:text-indigo-200'
+										: selectedVisualItemID === item.id
+											? 'border-violet-500 bg-violet-500/25 text-violet-900 dark:text-violet-100'
+											: 'border-violet-500/35 bg-violet-500/10 text-violet-900 dark:text-violet-200'
 							]}
-							style:left={`${clipOffset(item.timeline_start_us)}px`}
-							style:width={`${Math.max(48, clipOffset(item.duration_us))}px`}
+							style:left={`${placement.left_px}px`}
+							style:top={`${placement.lane * 36 + 4}px`}
+							style:width={`${placement.width_px}px`}
 						>
 							<button
 								type="button"
-								class="size-full cursor-grab touch-none truncate px-3 py-1 text-left focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none active:cursor-grabbing"
+								class="flex size-full cursor-grab touch-none items-center gap-1.5 px-3 py-1 text-left focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none active:cursor-grabbing"
 								aria-pressed={selectedVisualItemID === item.id}
-								title={m.video_editor_timing_keyboard()}
+								aria-label={label}
+								title={`${label} · ${m.video_editor_timing_keyboard()}`}
 								onclick={() => onSelectVisualItem(item.id)}
 								onpointerdown={(event) =>
 									beginTimingDrag(event, {
@@ -812,7 +873,14 @@
 										originalEndUS: item.timeline_start_us + item.duration_us
 									})}
 							>
-								{item.type === 'text' ? item.text : item.type}
+								{#if item.type === 'text'}
+									<TypeIcon class="size-3.5 shrink-0" />
+								{:else if item.type === 'media' || item.type === 'camera'}
+									<ImageIcon class="size-3.5 shrink-0" />
+								{:else}
+									<ShapesIcon class="size-3.5 shrink-0" />
+								{/if}
+								<span class="truncate">{label}</span>
 							</button>
 							<button
 								type="button"
@@ -870,6 +938,13 @@
 			{/each}
 
 			{#each project.audio_tracks as track (track.id)}
+				{@const audioLayout = intervalLayout(
+					track.items.map((item) => ({
+						id: item.id,
+						start_us: item.timeline_start_us,
+						duration_us: item.duration_us
+					}))
+				)}
 				<div
 					class="sticky left-0 z-20 truncate border-r bg-background/95 p-2 text-xs text-muted-foreground backdrop-blur"
 					title={track.name || m.video_editor_audio_lane()}
@@ -878,19 +953,26 @@
 				>
 					{track.name || m.video_editor_audio_lane()}
 				</div>
-				<div class="relative h-12 border-b" style:width={`${widthPX}px`}>
+				<div
+					class="relative border-b"
+					style:width={`${widthPX}px`}
+					style:height={`${audioLayout.lane_count * 36 + 8}px`}
+				>
 					{#each track.items as item (item.id)}
+						{@const placement = audioLayout.placements.get(item.id)!}
+						{@const label = audioLabel(item)}
 						<div
 							role="group"
-							aria-label={track.name || m.video_editor_audio_lane()}
+							aria-label={label}
 							class={[
 								'absolute top-2 h-7 min-w-12 overflow-hidden rounded border text-[11px] text-emerald-800 dark:text-emerald-200',
 								selectedAudioItemID === item.id
 									? 'border-emerald-600 bg-emerald-500/25'
 									: 'border-emerald-500/30 bg-emerald-500/10'
 							]}
-							style:left={`${clipOffset(item.timeline_start_us)}px`}
-							style:width={`${Math.max(48, clipOffset(item.duration_us))}px`}
+							style:left={`${placement.left_px}px`}
+							style:top={`${placement.lane * 36 + 4}px`}
+							style:width={`${placement.width_px}px`}
 						>
 							{#if waveformPeaks[item.source_id]?.length}
 								<div
@@ -907,9 +989,10 @@
 							{/if}
 							<button
 								type="button"
-								class="relative z-[1] flex size-full cursor-grab touch-none items-center px-3 text-left focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none active:cursor-grabbing"
+								class="relative z-[1] flex size-full cursor-grab touch-none items-center gap-1.5 px-3 text-left focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none active:cursor-grabbing"
 								aria-pressed={selectedAudioItemID === item.id}
-								title={m.video_editor_timing_keyboard()}
+								aria-label={label}
+								title={`${label} · ${m.video_editor_timing_keyboard()}`}
 								onclick={() => onSelectAudioItem(item.id)}
 								onpointerdown={(event) =>
 									beginTimingDrag(event, {
@@ -931,7 +1014,8 @@
 										originalEndUS: item.timeline_start_us + item.duration_us
 									})}
 							>
-								<span class="truncate">{track.name || m.video_editor_audio_lane()}</span>
+								<MusicIcon class="size-3.5 shrink-0" />
+								<span class="truncate">{label}</span>
 							</button>
 							<button
 								type="button"
@@ -989,6 +1073,13 @@
 			{/each}
 
 			{#each project.caption_tracks as track (track.id)}
+				{@const captionLayout = intervalLayout(
+					track.cues.map((cue) => ({
+						id: cue.id,
+						start_us: cue.start_us,
+						duration_us: cue.end_us - cue.start_us
+					}))
+				)}
 				<div
 					class="sticky left-0 z-20 truncate border-r bg-background/95 p-2 text-xs text-muted-foreground backdrop-blur"
 					title={track.name || m.video_editor_captions_lane()}
@@ -997,8 +1088,13 @@
 				>
 					{track.name || m.video_editor_captions_lane()}
 				</div>
-				<div class="relative h-14 border-b" style:width={`${widthPX}px`}>
+				<div
+					class="relative border-b"
+					style:width={`${widthPX}px`}
+					style:height={`${captionLayout.lane_count * 44 + 8}px`}
+				>
 					{#each track.cues as cue (cue.id)}
+						{@const placement = captionLayout.placements.get(cue.id)!}
 						<div
 							role="group"
 							aria-label={cue.text}
@@ -1008,12 +1104,13 @@
 									? 'border-sky-600 bg-sky-500/25'
 									: 'border-sky-500/30 bg-sky-500/10'
 							]}
-							style:left={`${clipOffset(cue.start_us)}px`}
-							style:width={`${Math.max(48, clipOffset(cue.end_us - cue.start_us))}px`}
+							style:left={`${placement.left_px}px`}
+							style:top={`${placement.lane * 44 + 4}px`}
+							style:width={`${placement.width_px}px`}
 						>
 							<button
 								type="button"
-								class="size-full cursor-grab touch-none truncate px-3 py-1 text-left focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none active:cursor-grabbing"
+								class="flex size-full cursor-grab touch-none items-center gap-1.5 px-3 py-1 text-left focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none active:cursor-grabbing"
 								aria-pressed={selectedCaptionCueID === cue.id}
 								title={m.video_editor_timing_keyboard()}
 								onclick={() => onSelectCaptionCue(cue.id)}
@@ -1037,7 +1134,8 @@
 										originalEndUS: cue.end_us
 									})}
 							>
-								{cue.text}
+								<CaptionsIcon class="size-3.5 shrink-0" />
+								<span class="truncate">{cue.text}</span>
 							</button>
 							<button
 								type="button"

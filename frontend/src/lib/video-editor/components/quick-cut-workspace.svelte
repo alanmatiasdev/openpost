@@ -194,7 +194,11 @@ FORM: LosslessCut-style focused operate surface; no asset library, effects brows
 
 	function setInPoint(): void {
 		if (!activeClip || !activeTiming) return;
-		onTrim(activeClip.id, 'start', playheadUS - activeTiming.timeline_start_us);
+		const sourceTimestampUS = sourcePlayheadUS;
+		onSetSourceBoundary(activeClip.id, 'start', sourceTimestampUS);
+		// The chosen source frame becomes the new start of this kept section.
+		// Keep every clock on that same frame after the document duration changes.
+		onSeek(activeTiming.timeline_start_us);
 	}
 
 	function setOutPoint(): void {

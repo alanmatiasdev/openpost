@@ -6,7 +6,7 @@ FIRST VIEWPORT: A compact project bar, seven creation families, asset browser, d
 FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandable precision timeline; seed 20260804.
 -->
 <script lang="ts">
-	import { onDestroy, onMount } from 'svelte';
+	import { onDestroy, onMount, tick } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
@@ -53,6 +53,7 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 	import { workspaceCtx } from '$lib/stores/workspace.svelte';
 	import { loadImageEditorBrandKit } from '$lib/image-editor/api';
 	import { loadImageEditorBrandFonts } from '$lib/image-editor/fonts';
+	import ImageEditorFontPicker from '$lib/image-editor/components/image-editor-font-picker.svelte';
 	import type { ImageEditorBrandKit, ImageEditorBrandTextStyle } from '$lib/image-editor/types';
 	import { uploadMediaFile } from '$lib/media-upload-client';
 	import { Button } from '$lib/components/ui/button';
@@ -144,6 +145,7 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 	import QuickCutWorkspace from '$lib/video-editor/components/quick-cut-workspace.svelte';
 	import ExportDialog from '$lib/video-editor/components/export-dialog.svelte';
 	import { quickCutCompatibility, quickCutOutputPreference } from '$lib/video-editor/lossless';
+	import { fitTimelineItemDuration } from '$lib/video-editor/timeline-layout';
 	import ArrowLeftIcon from 'lucide-svelte/icons/arrow-left';
 	import CameraIcon from 'lucide-svelte/icons/camera';
 	import CaptionsIcon from 'lucide-svelte/icons/captions';
@@ -335,6 +337,8 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 	let loading = $state(true);
 	let error = $state('');
 	let saveState = $state<'saved' | 'saving' | 'failed'>('saved');
+	let actionStatus = $state('');
+	let pendingAutosaveName = '';
 	let activeTool = $state<ToolID>('media');
 	let variantID = $state<VariantID>('portrait');
 	let selectedClipID = $state('');
@@ -373,6 +377,7 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 	let localRevisions = $state<LocalProjectRevision[]>([]);
 	let cloudRevisions = $state<CloudVideoProjectRevision[]>([]);
 	let exportBusy = $state(false);
+	let exportPickerOpen = $state(false);
 	let fastExportBusy = $state(false);
 	let fastExportProgress = $state(0);
 	let exportProgress = $state(0);
@@ -426,6 +431,7 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 	let recordingKind = $state<'screen' | 'voiceover' | null>(null);
 	let recordingState = $state<RecordingSessionState | null>(null);
 	let recordBusy = $state(false);
+	let recordPickerWaiting = $state(false);
 	let recordCountdown = $state(0);
 	let recordingDevices = $state<MediaDeviceInfo[]>([]);
 	let recordingCameraDeviceID = $state('');
@@ -543,7 +549,7 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 		}
 		if (selectedVisualItem?.type === 'media' || selectedVisualItem?.type === 'camera') {
 			return [
-				{ id: 'video', label: m.video_editor_source_video() },
+				{ id: 'video', label: m.video_editor_inspector_visual() },
 				{ id: 'crop', label: m.video_editor_crop() }
 			];
 		}
@@ -949,6 +955,7 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 			coalesce_key: coalesceKey
 		});
 		localProject = { ...localProject, document: next };
+		pendingAutosaveName = label;
 		historyVersion += 1;
 		mutationVersion += 1;
 		scheduleAutosave();
@@ -973,7 +980,8 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 		const startVersion = mutationVersion;
 		const snapshot = { ...localProject, document: cloneVideoProject(localProject.document) };
 		try {
-			const saved = await saveLocalVideoProject(snapshot);
+			const autosaveName = pendingAutosaveName;
+			const saved = await saveLocalVideoProject(snapshot, { autosaveName });
 			if (localProject?.id === saved.id) {
 				localProject =
 					startVersion === mutationVersion
@@ -985,6 +993,7 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 								last_opened_at: saved.last_opened_at
 							};
 			}
+			if (startVersion === mutationVersion) pendingAutosaveName = '';
 			saveState = startVersion === mutationVersion ? 'saved' : 'saving';
 		} catch (cause) {
 			saveState = 'failed';
@@ -1003,6 +1012,9 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 		localProject = { ...localProject, document: history.undo(localProject.document) };
 		historyVersion += 1;
 		mutationVersion += 1;
+		pendingAutosaveName = history.redoLabel
+			? `${m.video_editor_undo()}: ${history.redoLabel}`
+			: m.video_editor_undo();
 		scheduleAutosave();
 	}
 
@@ -1011,6 +1023,9 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 		localProject = { ...localProject, document: history.redo(localProject.document) };
 		historyVersion += 1;
 		mutationVersion += 1;
+		pendingAutosaveName = history.undoLabel
+			? `${m.video_editor_redo()}: ${history.undoLabel}`
+			: m.video_editor_redo();
 		scheduleAutosave();
 	}
 
@@ -1129,6 +1144,7 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 
 	function rippleDeleteSelected(): void {
 		if (!selectedDerived) return;
+		const beforeUS = durationUS;
 		const deletedID = selectedClipID;
 		mutate(m.video_editor_ripple_delete(), (document) =>
 			rippleDeleteTimelineRanges(document, [
@@ -1138,6 +1154,7 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 		const clips = localProject?.document.primary_sequence ?? [];
 		selectedClipID = clips.find((clip) => clip.id !== deletedID)?.id ?? '';
 		playheadUS = Math.min(playheadUS, durationUS);
+		announceRippleDelete(beforeUS);
 	}
 
 	function leaveGapSelected(): void {
@@ -1397,7 +1414,14 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 	}
 
 	function updateVisualTextStyle(
-		property: 'font_size' | 'color' | 'background_color' | 'align' | 'animation',
+		property:
+			| 'font_family'
+			| 'font_size'
+			| 'font_weight'
+			| 'color'
+			| 'background_color'
+			| 'align'
+			| 'animation',
 		value: number | string
 	): void {
 		if (!selectedVisualItemID) return;
@@ -1409,6 +1433,8 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 					.find((candidate) => candidate.id === selectedVisualItemID);
 				if (item?.type !== 'text') return document;
 				if (property === 'font_size') item.style.font_size = Number(value);
+				else if (property === 'font_weight') item.style.font_weight = Number(value);
+				else if (property === 'font_family') item.style.font_family = String(value);
 				else if (property === 'align') item.style.align = value as 'left' | 'center' | 'right';
 				else if (property === 'animation') {
 					item.style.animation = value as 'none' | 'fade' | 'rise' | 'pop' | 'typewriter';
@@ -1832,6 +1858,7 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 			localProject = draft;
 			if (draft.document.editing_mode === 'editor') void prepareEditorArtifacts(draft.document);
 			selectedClipID ||= draft.document.primary_sequence[0]?.id ?? '';
+			pendingAutosaveName = files.length === 1 ? files[0]!.name : m.video_editor_add_media();
 			mutationVersion += 1;
 			await flushAutosave();
 		} catch (cause) {
@@ -1890,11 +1917,15 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 			insertSourceIntoTimeline(draft.document, source);
 		}
 		localProject = draft;
+		pendingAutosaveName = asset.title || file.name;
 		mutationVersion += 1;
 		await flushAutosave();
 	}
 
-	function insertSourceIntoTimeline(document: VideoProjectDocumentV1, source: VideoSource): void {
+	function insertSourceIntoTimeline(
+		document: VideoProjectDocumentV1,
+		source: VideoSource
+	): boolean {
 		if (
 			source.kind === 'audio' ||
 			source.kind === 'recording-microphone' ||
@@ -1912,12 +1943,17 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 				};
 				document.audio_tracks.push(track);
 			}
+			const fittedDuration = fitTimelineItemDuration(
+				source.duration_us,
+				projectDurationUS(document),
+				playheadUS
+			);
 			track.items.push({
 				id: `audio_${crypto.randomUUID()}`,
 				source_id: source.id,
 				timeline_start_us: playheadUS,
 				source_in_us: 0,
-				duration_us: source.duration_us,
+				duration_us: fittedDuration.duration_us,
 				speed: 1,
 				gain_db: 0,
 				fade_in_us: 0,
@@ -1925,7 +1961,7 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 				muted: false,
 				duck_others: false
 			});
-			return;
+			return fittedDuration.trimmed;
 		}
 		if (source.kind === 'image' || source.kind === 'recording-camera') {
 			let track = document.visual_tracks.find((item) => item.id === 'imported-overlays');
@@ -1958,7 +1994,7 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 					corner_radius: source.kind === 'recording-camera' ? 0.08 : 0
 				}
 			});
-			return;
+			return false;
 		}
 		if (source.kind === 'video' || source.kind === 'recording-screen') {
 			document.primary_sequence.push({
@@ -1973,6 +2009,7 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 				effects: []
 			});
 		}
+		return false;
 	}
 
 	function addSourceToTimeline(sourceID: string): void {
@@ -2055,10 +2092,12 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 			const file = await loadBundledAudio(item);
 			const draft = { ...localProject, document: cloneVideoProject(localProject.document) };
 			const source = await addFileToProject(draft, file, undefined, { addToPrimary: false });
-			insertSourceIntoTimeline(draft.document, source);
+			const trimmed = insertSourceIntoTimeline(draft.document, source);
 			localProject = draft;
 			mutationVersion += 1;
+			pendingAutosaveName = item.name;
 			await flushAutosave();
+			if (trimmed) actionStatus = m.video_editor_audio_trimmed({ name: item.name });
 		} catch (cause) {
 			error = cause instanceof Error ? cause.message : m.video_editor_audio_pack_failed();
 		} finally {
@@ -2096,7 +2135,7 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 					outline_color: localStyle?.outline_color ?? '#000000',
 					outline_width: localStyle?.outline_width ?? 0,
 					shadow_blur: localStyle?.shadow_blur ?? 12,
-					animation: localStyle?.animation ?? 'rise'
+					animation: localStyle?.animation ?? 'none'
 				},
 				presentation: defaultOverlayPresentation()
 			});
@@ -2352,6 +2391,7 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 	}
 
 	function rippleDeleteCue(cue: CaptionCue): void {
+		const beforeUS = durationUS;
 		mutate(m.video_editor_ripple_caption(), (document) =>
 			rippleDeleteTimelineRanges(document, [
 				{
@@ -2360,6 +2400,7 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 				}
 			])
 		);
+		announceRippleDelete(beforeUS);
 	}
 
 	function transcriptWordKey(cueID: string, wordIndex: number): string {
@@ -2385,6 +2426,7 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 				)
 			);
 		if (selections.length === 0) return;
+		const beforeUS = durationUS;
 		mutate(m.video_editor_delete_transcript_words({ count: selections.length }), (document) =>
 			rippleDeleteCaptionWords(
 				document,
@@ -2395,6 +2437,15 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 		playheadUS = Math.min(...selections.map((selection) => selection.start_us), durationUS);
 		selectedTranscriptWords = [];
 		transcriptAnalysis = null;
+		announceRippleDelete(beforeUS);
+	}
+
+	function announceRippleDelete(beforeUS: number): void {
+		if (!localProject) return;
+		actionStatus = m.video_editor_ripple_complete({
+			before: formatTime(beforeUS),
+			after: formatTime(projectDurationUS(localProject.document))
+		});
 	}
 
 	function applySelectedSilences(): void {
@@ -2536,6 +2587,8 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 		try {
 			await prepareRecordingStorage();
 			recordingKind = 'screen';
+			recordPickerWaiting = true;
+			await tick();
 			recordingSession = await VideoRecordingSession.start({
 				projectID: localProject.id,
 				timelineOffsetUS: durationUS,
@@ -2543,7 +2596,10 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 				microphone: recordMicrophone,
 				systemAudio: recordSystemAudio,
 				countdownSeconds: 3,
-				onCountdown: (remaining) => (recordCountdown = remaining),
+				onCountdown: (remaining) => {
+					recordPickerWaiting = false;
+					recordCountdown = remaining;
+				},
 				onState: (state) => (recordingState = state)
 			});
 			await refreshRecordingDevices();
@@ -2557,6 +2613,7 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 						? cause.message
 						: m.video_editor_recording_failed();
 		} finally {
+			recordPickerWaiting = false;
 			recordCountdown = 0;
 			recordBusy = false;
 		}
@@ -2626,6 +2683,7 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 			await addRecordingToProject(draft, manifest, { cameraLayout: recordCameraLayout });
 			localProject = draft;
 			selectedClipID ||= draft.document.primary_sequence.at(-1)?.id ?? '';
+			pendingAutosaveName = m.video_editor_recording_stop();
 			mutationVersion += 1;
 			await flushAutosave();
 			await deleteRecordingManifest(manifest.id);
@@ -2765,6 +2823,7 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 		const draft = { ...localProject, document: cloneVideoProject(localProject.document) };
 		await addRecordingToProject(draft, recovery.manifest);
 		localProject = draft;
+		pendingAutosaveName = m.video_editor_recover_recording();
 		mutationVersion += 1;
 		await flushAutosave();
 		await deleteRecording(original);
@@ -3078,11 +3137,15 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 		if (!project || exportBusy || project.primary_sequence.length === 0) return {};
 		let directHandle: FileSystemFileHandle | undefined;
 		if (directDownload) {
+			exportPickerOpen = true;
+			await tick();
 			try {
 				directHandle = await requestDirectExportHandle();
 			} catch (cause) {
 				if (cause instanceof DOMException && cause.name === 'AbortError') return {};
 				throw cause;
+			} finally {
+				exportPickerOpen = false;
 			}
 		}
 		exportBusy = true;
@@ -3450,8 +3513,8 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 				</Button>
 				<Button
 					size="sm"
-					class="bg-orange-600 text-white hover:bg-orange-500"
-					disabled={fastExportBusy}
+					class="min-h-11 min-w-11 bg-orange-600 px-2 text-white hover:bg-orange-500 sm:min-h-8 sm:min-w-0 sm:px-3"
+					disabled={fastExportBusy || project.primary_sequence.length === 0}
 					aria-label={quickCutMode ? m.video_editor_quick_fast_export() : m.video_editor_export()}
 					title={quickCutMode ? m.video_editor_quick_fast_export() : m.video_editor_export()}
 					onclick={quickCutMode ? () => startFastExport() : openExportDialog}
@@ -3472,6 +3535,15 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 				message={error}
 				class="m-2 shrink-0"
 				onDismiss={() => (error = '')}
+				dismissLabel={m.common_dismiss()}
+			/>
+		{/if}
+		{#if actionStatus}
+			<InlineNotice
+				tone="info"
+				message={actionStatus}
+				class="m-2 shrink-0"
+				onDismiss={() => (actionStatus = '')}
 				dismissLabel={m.common_dismiss()}
 			/>
 		{/if}
@@ -3519,7 +3591,7 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 			>
 				<aside
 					class={[
-						'fixed inset-x-0 bottom-0 z-50 max-h-[min(72dvh,40rem)] w-full overflow-y-auto border-t bg-[#171719] p-3 shadow-xl sm:inset-y-0 sm:right-auto sm:bottom-auto sm:left-0 sm:max-h-none sm:w-[min(21rem,100%)] sm:border-t-0 sm:border-r min-[56rem]:static min-[56rem]:z-auto min-[56rem]:w-auto min-[56rem]:shadow-none',
+						'fixed inset-x-0 bottom-0 z-50 max-h-[min(62dvh,36rem)] w-full overflow-y-auto border-t bg-[#171719] p-3 shadow-xl sm:inset-y-0 sm:right-auto sm:bottom-auto sm:left-0 sm:max-h-none sm:w-[min(21rem,100%)] sm:border-t-0 sm:border-r min-[56rem]:static min-[56rem]:z-auto min-[56rem]:w-auto min-[56rem]:shadow-none',
 						!compactToolOpen && 'max-[55.999rem]:hidden'
 					]}
 					aria-label={tools.find((tool) => tool.id === activeTool)?.label()}
@@ -4396,6 +4468,16 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 										? m.video_editor_record_countdown_active({ seconds: recordCountdown })
 										: m.video_editor_record_screen()}
 								</Button>
+								{#if recordPickerWaiting}
+									<p
+										class="flex items-center gap-2 text-xs leading-5 text-muted-foreground"
+										role="status"
+										aria-live="assertive"
+									>
+										<MonitorIcon class="size-4" />
+										{m.video_editor_recording_waiting()}
+									</p>
+								{/if}
 								<Button
 									class="w-full"
 									variant="outline"
@@ -4570,7 +4652,7 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 
 				<aside
 					class={[
-						'fixed inset-x-0 bottom-0 z-50 max-h-[min(72dvh,40rem)] w-full overflow-y-auto border-t bg-[#171719] p-3 shadow-xl sm:inset-y-0 sm:bottom-auto sm:left-auto sm:max-h-none sm:w-[min(19rem,100%)] sm:border-t-0 sm:border-l min-[56rem]:static min-[56rem]:z-auto min-[56rem]:w-auto min-[56rem]:shadow-none',
+						'fixed inset-x-0 bottom-0 z-50 max-h-[min(62dvh,36rem)] w-full overflow-y-auto border-t bg-[#171719] p-3 shadow-xl sm:inset-y-0 sm:bottom-auto sm:left-auto sm:max-h-none sm:w-[min(19rem,100%)] sm:border-t-0 sm:border-l min-[56rem]:static min-[56rem]:z-auto min-[56rem]:w-auto min-[56rem]:shadow-none',
 						!compactInspectorOpen && 'max-[55.999rem]:hidden'
 					]}
 					aria-label={m.video_editor_inspector()}
@@ -4598,7 +4680,7 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 								<button
 									type="button"
 									class={[
-										'relative min-h-10 shrink-0 px-1.5 text-[10px] font-medium transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none',
+										'relative min-h-11 shrink-0 px-2 text-[10px] font-medium transition-colors focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none min-[56rem]:min-h-10',
 										inspectorTab === tab.id
 											? 'text-orange-400 after:absolute after:inset-x-3 after:bottom-0 after:h-0.5 after:bg-orange-500'
 											: 'text-zinc-500 hover:text-zinc-200'
@@ -4635,6 +4717,43 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 									/>
 								</label>
 								<div class="grid grid-cols-1 gap-2">
+									<label
+										class={[
+											'grid gap-1.5 text-xs font-medium',
+											inspectorTab !== 'text' && 'hidden'
+										]}
+									>
+										<span>{m.image_editor_font_family()}</span>
+										<ImageEditorFontPicker
+											value={selectedVisualItem.style.font_family}
+											brandFonts={brandKit?.fonts ?? []}
+											onChange={(font) => {
+												updateVisualTextStyle('font_family', font.family);
+												if (font.weight) updateVisualTextStyle('font_weight', font.weight);
+											}}
+										/>
+									</label>
+									<label
+										class={[
+											'grid gap-1.5 text-xs font-medium',
+											inspectorTab !== 'text' && 'hidden'
+										]}
+									>
+										<span>{m.brand_font_weight()}</span>
+										<AppSelect
+											value={String(selectedVisualItem.style.font_weight)}
+											options={[
+												{ value: '300', label: 'Light' },
+												{ value: '400', label: 'Regular' },
+												{ value: '500', label: 'Medium' },
+												{ value: '600', label: 'Semibold' },
+												{ value: '700', label: 'Bold' },
+												{ value: '800', label: 'Extra bold' },
+												{ value: '900', label: 'Black' }
+											]}
+											onValueChange={(value) => updateVisualTextStyle('font_weight', Number(value))}
+										/>
+									</label>
 									<label
 										class={[
 											'grid gap-1.5 text-xs font-medium',
@@ -5369,14 +5488,14 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 				</aside>
 
 				<nav
-					class="col-start-1 row-start-2 flex min-w-0 items-stretch overflow-x-auto border-t bg-background/98 px-1 pb-[max(0.25rem,env(safe-area-inset-bottom))] min-[56rem]:hidden"
+					class="col-start-1 row-start-2 flex min-w-0 snap-x items-stretch overflow-x-auto scroll-smooth border-t bg-background/98 pb-[max(0.25rem,env(safe-area-inset-bottom))] min-[56rem]:hidden"
 					aria-label={m.video_editor_mobile_tools()}
 				>
 					{#each toolFamilies as family (family.id)}
 						<button
 							type="button"
 							class={[
-								'flex min-h-14 min-w-[4.25rem] flex-1 flex-col items-center justify-center gap-1 rounded-md px-1 text-[11px] leading-tight focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none',
+								'flex min-h-14 min-w-[3.2rem] flex-1 snap-start flex-col items-center justify-center gap-1 rounded-md px-0.5 text-[10px] leading-tight focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none',
 								activeToolFamily(family.id) && compactToolOpen
 									? 'bg-primary/12 text-primary'
 									: 'text-muted-foreground active:bg-muted active:text-foreground'
@@ -5622,6 +5741,7 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 		{requiredVariantIDs}
 		{returnToken}
 		{exportBusy}
+		{exportPickerOpen}
 		{returningToComposer}
 		{exportError}
 		{exportFormat}

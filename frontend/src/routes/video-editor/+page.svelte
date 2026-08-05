@@ -8,6 +8,7 @@ FORM: Operate surface extending the OpenPost Video Editor start screen; no water
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
 	import { auth } from '$lib/stores/auth';
 	import { workspaceCtx } from '$lib/stores/workspace.svelte';
@@ -65,6 +66,9 @@ FORM: Operate surface extending the OpenPost Video Editor start screen; no water
 	let capabilities = $state<VideoEditorCapabilities | null>(null);
 	let persistentStorage = $state<boolean | undefined>(undefined);
 	let storageLabel = $state('');
+	let storageRequesting = $state(false);
+	let storageMessage = $state('');
+	let storageMessageTone = $state<'success' | 'warning'>('success');
 	let pendingDelete = $state<LocalVideoProject | null>(null);
 	let deleteDialogOpen = $state(false);
 	let cloudProjects = $state.raw<CloudVideoProjectSummary[]>([]);
@@ -131,6 +135,8 @@ FORM: Operate surface extending the OpenPost Video Editor start screen; no water
 					const cloud = await listCloudVideoProjects(workspaceID);
 					const mirrored = new Set(localProjects.map((project) => project.cloud_project_id));
 					cloudProjects = cloud.projects.filter((project) => !mirrored.has(project.id));
+					const requestedCloudProject = page.url.searchParams.get('cloud');
+					if (requestedCloudProject) await openCloudProject(requestedCloudProject);
 				}
 			}
 		} catch (cause) {
@@ -157,7 +163,18 @@ FORM: Operate surface extending the OpenPost Video Editor start screen; no water
 	}
 
 	async function protectStorage(): Promise<void> {
-		persistentStorage = await requestPersistentVideoStorage();
+		if (storageRequesting) return;
+		storageRequesting = true;
+		storageMessage = '';
+		try {
+			persistentStorage = await requestPersistentVideoStorage();
+			storageMessageTone = persistentStorage ? 'success' : 'warning';
+			storageMessage = persistentStorage
+				? m.video_editor_storage_granted()
+				: m.video_editor_storage_denied();
+		} finally {
+			storageRequesting = false;
+		}
 	}
 
 	function requestDelete(project: LocalVideoProject): void {
@@ -400,6 +417,8 @@ FORM: Operate surface extending the OpenPost Video Editor start screen; no water
 					multiple
 					accept="video/*,audio/*,image/jpeg,image/png,image/webp,image/gif"
 					class="sr-only !size-px !p-0"
+					aria-hidden="true"
+					tabindex={-1}
 					onchange={openFiles}
 				/>
 			</section>
@@ -444,12 +463,23 @@ FORM: Operate surface extending the OpenPost Video Editor start screen; no water
 								: m.video_editor_storage_not_persistent()}
 						</span>
 						{#if persistentStorage === false || persistentStorage === undefined}
-							<Button variant="outline" size="sm" onclick={protectStorage}>
-								{m.video_editor_storage_request()}
+							<Button
+								variant="outline"
+								size="sm"
+								disabled={storageRequesting}
+								onclick={protectStorage}
+							>
+								{#if storageRequesting}<LoaderIcon class="size-4 animate-spin" />{/if}
+								{storageRequesting
+									? m.video_editor_storage_requesting()
+									: m.video_editor_storage_request()}
 							</Button>
 						{/if}
 					</div>
 				</div>
+				{#if storageMessage}
+					<InlineNotice class="mt-4" tone={storageMessageTone} message={storageMessage} />
+				{/if}
 			</section>
 
 			<section class="mt-10" aria-labelledby="recent-heading">

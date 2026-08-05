@@ -374,6 +374,27 @@
 		].join(';');
 	}
 
+	function visualItemLabel(item: VisualTrackItem): string {
+		if (item.type === 'text') return item.text || m.video_editor_overlay_text();
+		if (item.type === 'media' || item.type === 'camera') {
+			return (
+				project.sources[item.source_id]?.original_name ||
+				(item.type === 'camera' ? m.video_editor_source_camera() : m.video_editor_source_image())
+			);
+		}
+		if (!('shape' in item)) return m.video_editor_overlay_item();
+		const labels = {
+			rectangle: m.video_editor_shape_rectangle(),
+			ellipse: m.video_editor_shape_ellipse(),
+			arrow: m.video_editor_shape_arrow(),
+			highlight: m.video_editor_shape_highlight(),
+			'click-pulse': m.video_editor_shape_click_pulse(),
+			redaction: m.video_editor_shape_redaction(),
+			progress: m.video_editor_shape_progress()
+		};
+		return labels[item.shape.kind];
+	}
+
 	function clipForPrimary(): PrimarySequenceClip | undefined {
 		const clip = project.primary_sequence.find((candidate) => candidate.id === primary?.clip_id);
 		return clip && isPrimarySequenceClip(clip) ? clip : undefined;
@@ -586,7 +607,29 @@
 			{/each}
 		{/if}
 
+		{#if previewWorkerReady && !nativePlayback}
+			{#each frame.visual_layers as layer (layer.item.id)}
+				{#if layer.item.type === 'text' && selectedVisualItemID === layer.item.id && textAnimationValues(layer.item, layer.local_time_us, layer.opacity).opacity < 0.08}
+					<div
+						class="pointer-events-none absolute z-20 max-w-[80%] -translate-x-1/2 -translate-y-1/2 whitespace-pre-wrap"
+						style:left={`${layer.presentation.position_x * 100}%`}
+						style:top={`${layer.presentation.position_y * 100}%`}
+						style:transform={`translate(-50%,-50%) scale(${layer.presentation.scale}) rotate(${layer.presentation.rotation}deg)`}
+						style:color={layer.item.style.color}
+						style:font-size={`${layer.item.style.font_size}px`}
+						style:font-weight={layer.item.style.font_weight}
+						style:text-align={layer.item.style.align}
+						style:background={layer.item.style.background_color}
+						data-video-editor-animation-edit-preview
+					>
+						{layer.item.text}
+					</div>
+				{/if}
+			{/each}
+		{/if}
+
 		{#each frame.visual_layers as layer (layer.item.id)}
+			{@const label = visualItemLabel(layer.item)}
 			<button
 				type="button"
 				class={[
@@ -596,18 +639,14 @@
 						: ''
 				]}
 				style={visualHitStyle(layer.presentation)}
-				aria-label={layer.item.type === 'text'
-					? m.video_editor_overlay_text()
-					: m.video_editor_overlay_item()}
+				aria-label={label}
 				aria-pressed={selectedVisualItemID === layer.item.id}
 				onpointerdown={(event) => beginVisualDrag(event, layer.item.id, layer.presentation)}
 				onpointermove={continueDrag}
 				onpointerup={endDrag}
 				onpointercancel={endDrag}
 			>
-				<span class="sr-only">
-					{layer.item.type === 'text' ? layer.item.text : layer.item.type}
-				</span>
+				<span class="sr-only">{label}</span>
 			</button>
 		{/each}
 

@@ -112,6 +112,7 @@ export async function syncVideoProjectToOpenPost(
 			source: source.provenance ? 'stock_import' : 'video_editor_source',
 			stockProvenance: source.provenance,
 			videoProjectId: local.cloud_project_id,
+			retentionClass: 'temporary',
 			clientSHA256: contentHash,
 			prepareVideo: false,
 			signal,

@@ -141,7 +141,11 @@ export async function loadLocalVideoProject(id: string): Promise<LocalVideoProje
 
 export async function saveLocalVideoProject(
 	project: LocalVideoProject,
-	options: { checkpointName?: string; operation?: VideoProjectOperation } = {}
+	options: {
+		checkpointName?: string;
+		autosaveName?: string;
+		operation?: VideoProjectOperation;
+	} = {}
 ): Promise<LocalVideoProject> {
 	const validation = validateVideoProject(project.document);
 	if (!validation.valid) {
@@ -171,7 +175,7 @@ export async function saveLocalVideoProject(
 		project_id: saved.id,
 		revision: saved.revision,
 		kind: options.checkpointName ? 'checkpoint' : 'autosave',
-		name: options.checkpointName,
+		name: options.checkpointName ?? options.autosaveName,
 		created_at: now,
 		document: cloneVideoProject(saved.document)
 	};

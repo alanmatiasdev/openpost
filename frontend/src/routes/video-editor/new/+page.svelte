@@ -6,7 +6,7 @@ FIRST VIEWPORT: Back navigation, plain-language setup choices, exact system-audi
 FORM: Operate surface; no template carousel, hidden permissions, automatic upload, or dense capture dashboard.
 -->
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
 	import { resolve } from '$app/paths';
@@ -35,12 +35,14 @@ FORM: Operate surface; no template carousel, hidden permissions, automatic uploa
 		deleteRecordingManifest,
 		deleteLocalVideoProject,
 		estimateStorageBudget,
+		createLocalVideoProject,
 		readProjectFile,
 		removeProjectFile,
 		requestPersistentVideoStorage,
 		saveLocalVideoProject,
 		writeProjectStream
 	} from '$lib/video-editor/storage';
+	import { createBlankVideoProject } from '@openpost/video-project';
 	import type { LocalVideoProject } from '$lib/video-editor/types';
 	import ArrowLeftIcon from 'lucide-svelte/icons/arrow-left';
 	import CameraIcon from 'lucide-svelte/icons/camera';
@@ -58,6 +60,7 @@ FORM: Operate surface; no template carousel, hidden permissions, automatic uploa
 	let editingMode = $state<'quick-cut' | 'editor'>('editor');
 	let error = $state('');
 	let creating = $state(false);
+	let captureWaiting = $state(false);
 	let dragging = $state(false);
 	let camera = $state(true);
 	let microphone = $state(true);
@@ -211,6 +214,7 @@ FORM: Operate surface; no template carousel, hidden permissions, automatic uploa
 		creating = true;
 		error = '';
 		let project: LocalVideoProject | null = null;
+		let session: VideoRecordingSession | null = null;
 		try {
 			await requestPersistentVideoStorage();
 			const budget = await estimateStorageBudget(estimatedRecordingBytes);
@@ -219,21 +223,35 @@ FORM: Operate surface; no template carousel, hidden permissions, automatic uploa
 					m.video_editor_recording_space({ available: formatBytes(budget.available_bytes) })
 				);
 			}
-			project = await createBlankLocalVideoProject('Screen recording');
-			recordingProject = project;
-			recording = await VideoRecordingSession.start({
-				projectID: project.id,
+			const projectID = `local_video_${crypto.randomUUID()}`;
+			captureWaiting = true;
+			await tick();
+			session = await VideoRecordingSession.start({
+				projectID,
 				camera,
 				microphone,
 				systemAudio,
 				cameraDeviceID: cameraDeviceID || undefined,
 				microphoneDeviceID: microphoneDeviceID || undefined,
 				countdownSeconds,
-				onCountdown: (remaining) => (countdownRemaining = remaining),
+				onCountdown: (remaining) => {
+					captureWaiting = false;
+					countdownRemaining = remaining;
+				},
 				onState: (state) => (recordingState = state)
 			});
+			project = await createLocalVideoProject(
+				projectID,
+				createBlankVideoProject('Screen recording')
+			);
+			recordingProject = project;
+			recording = session;
 			await refreshDevices();
 		} catch (cause) {
+			if (session) {
+				await session.cancel().catch(() => undefined);
+				await deleteRecording(session.manifest).catch(() => undefined);
+			}
 			if (project) await deleteLocalVideoProject(project.id);
 			recordingProject = null;
 			error =
@@ -243,6 +261,7 @@ FORM: Operate surface; no template carousel, hidden permissions, automatic uploa
 						? cause.message
 						: m.video_editor_create_failed();
 		} finally {
+			captureWaiting = false;
 			countdownRemaining = 0;
 			creating = false;
 		}
@@ -527,7 +546,7 @@ FORM: Operate surface; no template carousel, hidden permissions, automatic uploa
 						<label class="flex min-h-11 items-center gap-3 text-sm">
 							<Checkbox bind:checked={systemAudio} />
 							<VolumeIcon class="size-4 text-muted-foreground" />
-							{m.video_editor_system_audio_note()}
+							{m.video_editor_system_audio()}
 						</label>
 						{#if camera}
 							<label class="grid gap-1.5 text-sm">
@@ -616,6 +635,16 @@ FORM: Operate surface; no template carousel, hidden permissions, automatic uploa
 								? m.video_editor_record_countdown_active({ seconds: countdownRemaining })
 								: m.video_editor_recording_start()}
 						</Button>
+						{#if captureWaiting}
+							<p
+								class="flex items-center gap-2 text-sm text-muted-foreground"
+								role="status"
+								aria-live="assertive"
+							>
+								<MonitorIcon class="size-4" />
+								{m.video_editor_recording_waiting()}
+							</p>
+						{/if}
 					</div>
 				</div>
 			</section>
@@ -672,6 +701,8 @@ FORM: Operate surface; no template carousel, hidden permissions, automatic uploa
 							? 'video/*'
 							: 'video/*,audio/*,image/jpeg,image/png,image/webp,image/gif'}
 						class="sr-only !size-px !p-0"
+						aria-hidden="true"
+						tabindex={-1}
 						onchange={chooseFiles}
 					/>
 				</div>
