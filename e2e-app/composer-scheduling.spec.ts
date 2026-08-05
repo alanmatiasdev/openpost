@@ -346,7 +346,7 @@ test("composer quick-schedules a publication from the selected time", async ({
       }),
     },
   });
-  expect(publicationPayload?.source_url).toBe("");
+  expect(publicationPayload?.source_url ?? "").toBe("");
   expect(publicationPayload?.scheduled_at).toBeTruthy();
   expect(new Date(publicationPayload?.scheduled_at ?? "").toString()).not.toBe(
     "Invalid Date",

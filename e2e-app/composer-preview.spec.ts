@@ -295,7 +295,7 @@ test("composer renders account-specific renditions", async ({
   await expect.poll(() => deleteRequested).toBe(true);
 });
 
-test("the unified composer tolerates repeated destination validation identities", async ({
+test("the composer tolerates repeated destination validation identities", async ({
   page,
   request,
 }) => {

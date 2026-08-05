@@ -1,77 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import {
-	buildFocusedPublicationPayload,
-	COMPOSER_MODE_GROUPS,
-	isAccountCompatibleWithMode,
-	roleFieldsForMode,
-	SELECTABLE_COMPOSER_MODES
-} from './modes';
+import { buildPublicationPayload } from './modes';
 
 const youtube = { id: 'yt-1', platform: 'youtube', account_username: 'OpenPost' };
 const tiktok = { id: 'tt-1', platform: 'tiktok', account_username: 'openpost' };
 const instagram = { id: 'ig-1', platform: 'instagram', account_username: 'openpost' };
 
-describe('composer intent mapping', () => {
-	it('offers only user publishing intents', () => {
-		expect(SELECTABLE_COMPOSER_MODES.map((mode) => mode.key)).toEqual([
-			'post',
-			'thread',
-			'story',
-			'short_video',
-			'video'
-		]);
-	});
-
-	it('groups every intent once', () => {
-		expect(
-			COMPOSER_MODE_GROUPS.map((group) => ({
-				label: group.label,
-				modes: group.modes.map((mode) => mode.key)
-			}))
-		).toEqual([
-			{ label: 'Write', modes: ['post', 'thread'] },
-			{ label: 'Media', modes: ['story', 'short_video', 'video'] }
-		]);
-		expect(COMPOSER_MODE_GROUPS.flatMap((group) => group.modes)).toEqual(SELECTABLE_COMPOSER_MODES);
-	});
-
-	it('uses shared text and link fields for Post', () => {
-		expect(roleFieldsForMode('post', [])).toEqual([
-			expect.objectContaining({ key: 'postText', label: 'Post text' }),
-			expect.objectContaining({ key: 'linkUrl', label: 'Link URL' })
-		]);
-	});
-
-	it('keeps thread bodies in the ordered segment editor', () => {
-		expect(roleFieldsForMode('thread', [])).toEqual([]);
-	});
-
-	it('keeps every connected account selectable for every starter preset', () => {
-		expect(isAccountCompatibleWithMode('post', youtube)).toBe(true);
-		expect(isAccountCompatibleWithMode('thread', youtube)).toBe(true);
-		expect(isAccountCompatibleWithMode('story', youtube)).toBe(true);
-		expect(isAccountCompatibleWithMode('short_video', youtube)).toBe(true);
-		expect(isAccountCompatibleWithMode('video', youtube)).toBe(true);
-	});
-
-	it('does not hide accounts when the starter preset and current format differ', () => {
-		const capabilities = [{ provider: 'instagram', profile: 'image_post', intents: ['post'] }];
-		expect(isAccountCompatibleWithMode('post', instagram, capabilities)).toBe(true);
-		expect(isAccountCompatibleWithMode('video', instagram, capabilities)).toBe(true);
-	});
-
-	it('separates YouTube video metadata from social captions', () => {
-		expect(roleFieldsForMode('short_video', [youtube, tiktok])).toEqual([
-			expect.objectContaining({ key: 'videoTitle', label: 'Video title' }),
-			expect.objectContaining({ key: 'videoDescription', label: 'Video description' }),
-			expect.objectContaining({ key: 'caption', label: 'Caption', hint: 'Caption · TikTok' })
-		]);
-	});
-});
-
-describe('focused publication payloads', () => {
+describe('publication composer payloads', () => {
 	it('uses the shared writing surface as YouTube description and required settings as metadata', () => {
-		const payload = buildFocusedPublicationPayload({
+		const payload = buildPublicationPayload({
 			mode: 'post',
 			workspaceId: 'ws-1',
 			accounts: [youtube],
@@ -93,18 +29,21 @@ describe('focused publication payloads', () => {
 		});
 	});
 
-	it('maps Video metadata and explicit destination choices', () => {
-		const payload = buildFocusedPublicationPayload({
-			mode: 'video',
+	it('maps required video metadata and explicit destination choices from the shared composer', () => {
+		const payload = buildPublicationPayload({
+			mode: 'post',
 			workspaceId: 'ws-1',
 			accounts: [youtube],
-			fields: {
-				videoTitle: 'Launch walkthrough',
-				videoDescription: 'A complete tour of the release.'
-			},
+			fields: { postText: 'A complete tour of the release.' },
 			media: [{ id: 'video-1', mimeType: 'video/mp4' }],
 			thumbnailMediaId: 'thumb-1',
-			settingsByAccount: { 'yt-1': { privacy: 'private' } },
+			settingsByAccount: {
+				'yt-1': {
+					privacy: 'private',
+					title: 'Launch walkthrough',
+					description: 'A complete tour of the release.'
+				}
+			},
 			resolvedByAccount: {
 				'yt-1': {
 					profile: 'long_video',
@@ -114,7 +53,7 @@ describe('focused publication payloads', () => {
 			}
 		});
 
-		expect(payload.intent).toBe('video');
+		expect(payload.intent).toBe('post');
 		expect(payload.source_text).toBe('A complete tour of the release.');
 		expect(payload.renditions[0]).toMatchObject({
 			social_account_id: 'yt-1',
@@ -133,7 +72,7 @@ describe('focused publication payloads', () => {
 	});
 
 	it('preserves ordered thread segments and segment-scoped settings', () => {
-		const payload = buildFocusedPublicationPayload({
+		const payload = buildPublicationPayload({
 			mode: 'thread',
 			workspaceId: 'ws-1',
 			accounts: [tiktok],
@@ -170,7 +109,7 @@ describe('focused publication payloads', () => {
 
 	it('stores first comments as follow-up segments and media options on the destination item', () => {
 		const linkedin = { id: 'li-1', platform: 'linkedin', account_username: 'OpenPost' };
-		const payload = buildFocusedPublicationPayload({
+		const payload = buildPublicationPayload({
 			mode: 'post',
 			workspaceId: 'ws-1',
 			accounts: [linkedin],
@@ -228,7 +167,7 @@ describe('focused publication payloads', () => {
 	});
 
 	it('stores Social Set provenance and explicit destination inheritance choices', () => {
-		const payload = buildFocusedPublicationPayload({
+		const payload = buildPublicationPayload({
 			mode: 'post',
 			workspaceId: 'ws-1',
 			socialSetId: 'set-1',
@@ -274,7 +213,7 @@ describe('focused publication payloads', () => {
 
 	it('joins a shared thread for a single-post destination', () => {
 		const linkedin = { id: 'li-1', platform: 'linkedin', account_username: 'OpenPost' };
-		const payload = buildFocusedPublicationPayload({
+		const payload = buildPublicationPayload({
 			mode: 'thread',
 			workspaceId: 'ws-1',
 			accounts: [linkedin],

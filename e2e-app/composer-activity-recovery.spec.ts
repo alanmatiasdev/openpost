@@ -115,6 +115,15 @@ test("composer ignores stale accounts and recovers the current workspace", async
       json: [socialAccount("current-account", second.id, "current_workspace")],
     });
   });
+  await page.route("**/api/v1/capabilities/resolve", async (route) => {
+    const payload = route.request().postDataJSON() as { account_ids: string[] };
+    await route.fulfill({
+      contentType: "application/json",
+      json: {
+        accounts: payload.account_ids.map(resolvedBlueskyCapability),
+      },
+    });
+  });
 
   await page.goto("/");
   await firstStarted;
@@ -136,13 +145,17 @@ test("composer ignores stale accounts and recovers the current workspace", async
   await firstFinished;
   await expect(loadError).toBeVisible();
   await expect(page.getByTestId("composer-account-control")).toHaveCount(0);
-  await expect(page.getByText("@stale_previous")).toHaveCount(0);
+  await expect(page.getByText("stale_previous", { exact: true })).toHaveCount(0);
 
   await page.getByRole("button", { name: "Try again" }).click();
   await expect(page.locator("[data-sonner-toast]")).toHaveCount(0);
   await page.getByTestId("composer-account-control").click();
-  await expect(page.getByText("@current_workspace")).toBeVisible();
-  await expect(page.getByText("@stale_previous")).toHaveCount(0);
+  await expect(
+    page
+      .getByTestId("composer-account-row")
+      .getByText("current_workspace", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText("stale_previous", { exact: true })).toHaveCount(0);
   expect(secondRequests).toBe(2);
 });
 
@@ -316,7 +329,7 @@ test("activity clears cross-workspace data and preserves a valid view on refresh
   ).toBeVisible();
 });
 
-test("unified composer sends workspace-local wall time as the exact scheduled instant", async ({
+test("composer sends workspace-local wall time as the exact scheduled instant", async ({
   page,
   request,
 }) => {

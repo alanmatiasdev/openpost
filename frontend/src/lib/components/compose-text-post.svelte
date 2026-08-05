@@ -82,10 +82,10 @@
 		workspaceScheduleToISO
 	} from './compose/schedule-timezone';
 	import {
-		buildFocusedPublicationPayload,
+		buildPublicationPayload,
 		type ComposerModeKey,
-		type FocusedMediaInput,
-		type FocusedPublicationPayload,
+		type ComposerPublicationPayload,
+		type PublicationMediaInput,
 		type ResolvedComposerTarget
 	} from './compose/modes';
 	import { soundPreferences } from '$lib/stores/sound-preferences.svelte';
@@ -775,6 +775,8 @@
 		return buildComposerPreview({
 			account,
 			mode: textComposerMode,
+			outputProfile:
+				requestedOutputProfiles[account.id] ?? resolvedCapabilities[account.id]?.output_profile,
 			segments: posts.map((post) => {
 				const mediaIds = getVariantMediaIds(account.id, post.key) ?? post.mediaIds;
 				return {
@@ -951,7 +953,7 @@
 		]);
 	}
 
-	function focusedMedia(mediaIDs: string[]): FocusedMediaInput[] {
+	function publicationMedia(mediaIDs: string[]): PublicationMediaInput[] {
 		return mediaIDs.map((id) => ({
 			id,
 			mimeType: mediaMimeTypes.get(id) ?? 'application/octet-stream',
@@ -965,8 +967,8 @@
 		}));
 	}
 
-	function publicationPayload(targetPublicationID: string): FocusedPublicationPayload {
-		const payload = buildFocusedPublicationPayload({
+	function publicationPayload(targetPublicationID: string): ComposerPublicationPayload {
+		const payload = buildPublicationPayload({
 			mode: textComposerMode,
 			workspaceId: selectedWorkspaceId,
 			accounts: selectedAccounts.map((account) => ({
@@ -978,12 +980,12 @@
 				postText: posts[0]?.content ?? '',
 				linkUrl
 			},
-			media: focusedMedia(posts[0]?.mediaIds ?? []),
+			media: publicationMedia(posts[0]?.mediaIds ?? []),
 			segments: posts.map((post, index) => ({
 				id: segmentID(targetPublicationID, index),
 				content: post.content,
 				url: index === 0 ? linkUrl : '',
-				media: focusedMedia(post.mediaIds),
+				media: publicationMedia(post.mediaIds),
 				settingsByAccount: segmentSettingsByPost[post.key] ?? {}
 			})),
 			scheduledAt: getScheduledAt(),
@@ -1030,7 +1032,7 @@
 				const mediaIds = sourcePosts.flatMap(
 					(post) => getVariantMediaIds(rendition.social_account_id, post.key) ?? post.mediaIds
 				);
-				const media = focusedMedia(mediaIds).map((item) => {
+				const media = publicationMedia(mediaIds).map((item) => {
 					const accountSettings = item.settingsByAccount?.[rendition.social_account_id] ?? {};
 					const altText =
 						typeof accountSettings.alt_text === 'string'
@@ -2828,7 +2830,11 @@
 				if (!targetPost) break;
 				if (getEditorMediaIdsForPost(targetPost).length >= composerMediaLimit) break;
 
-				const data = await uploadMediaFile({ workspaceId: selectedWorkspaceId, file });
+				const data = await uploadMediaFile({
+					workspaceId: selectedWorkspaceId,
+					file,
+					retentionClass: 'temporary'
+				});
 				if (data.mime_type) {
 					const nextMimeTypes = new SvelteMap(mediaMimeTypes);
 					nextMimeTypes.set(data.id, data.mime_type);

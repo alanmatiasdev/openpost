@@ -58,17 +58,21 @@ describe('social preview model', () => {
 });
 
 describe('composer preview mapping', () => {
-	it('maps composer modes to native-looking preview formats', () => {
-		expect(previewFormat('x', 'thread')).toBe('thread');
-		expect(previewFormat('instagram', 'short_video')).toBe('reel');
-		expect(previewFormat('facebook', 'short_video')).toBe('reel');
-		expect(previewFormat('youtube', 'short_video')).toBe('short');
-		expect(previewFormat('tiktok', 'short_video')).toBe('video');
-		expect(previewFormat('threads', 'short_video')).toBe('video');
+	it('maps resolved destination profiles to native-looking preview formats', () => {
+		expect(previewFormat('x', 'thread', [], 'x.thread')).toBe('thread');
+		expect(previewFormat('instagram', 'post', [], 'instagram.reel')).toBe('reel');
+		expect(previewFormat('facebook', 'post', [], 'facebook.story')).toBe('story');
+		expect(previewFormat('youtube', 'post', [], 'youtube.short')).toBe('short');
+		expect(previewFormat('youtube', 'post', [], 'youtube.video')).toBe('video');
+		expect(previewFormat('tiktok', 'post', [], 'tiktok.video')).toBe('video');
+		expect(previewFormat('tiktok', 'post', [], 'tiktok.photo')).toBe('photo');
 		expect(
-			previewFormat('linkedin', 'post', [
-				{ id: 'document', kind: 'document', src: '/media/document' }
-			])
+			previewFormat(
+				'linkedin',
+				'post',
+				[{ id: 'document', kind: 'document', src: '/media/document' }],
+				'linkedin.document'
+			)
 		).toBe('document');
 		expect(
 			previewFormat('tiktok', 'post', [{ id: 'photo', kind: 'image', src: '/media/photo' }])

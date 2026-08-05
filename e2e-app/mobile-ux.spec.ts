@@ -229,6 +229,32 @@ test("mobile shell and composer expose touch-first controls without overflow", a
   expect(settingsBox?.height).toBeGreaterThanOrEqual(800);
   await settingsDialog.getByRole("button", { name: "Done" }).click();
 
+  await page.setViewportSize({ width: 320, height: 568 });
+  await expect(controls).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    )
+    .toBe(true);
+  const compactOverflow = await controls.evaluate((element) => ({
+    clientWidth: element.clientWidth,
+    scrollWidth: element.scrollWidth,
+    childRightEdges: Array.from(element.querySelectorAll("button")).map(
+      (child) => child.getBoundingClientRect().right,
+    ),
+  }));
+  expect(compactOverflow.scrollWidth).toBeLessThanOrEqual(
+    compactOverflow.clientWidth,
+  );
+  expect(Math.max(...compactOverflow.childRightEdges)).toBeLessThanOrEqual(320);
+  await expectMinimumTouchTarget(accountControl, "compact account control");
+  await expectMinimumTouchTarget(
+    actions.getByRole("button", { name: "Schedule", exact: true }),
+    "compact schedule button",
+  );
+
   await page.setViewportSize({ width: 1280, height: 800 });
   const desktopControls = page.getByTestId("desktop-composer-controls");
   await expect(desktopControls).toBeVisible();

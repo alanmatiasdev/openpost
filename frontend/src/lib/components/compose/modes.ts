@@ -1,42 +1,14 @@
-import { getPlatformKey, getPlatformName } from '$lib/utils';
+import { getPlatformKey } from '$lib/utils';
 import { m } from '$lib/paraglide/messages';
 
-export const COMPOSER_MODE_KEYS = ['post', 'thread', 'story', 'short_video', 'video'] as const;
+export const COMPOSER_MODE_KEYS = ['post', 'thread'] as const;
 
 export type ComposerModeKey = (typeof COMPOSER_MODE_KEYS)[number];
-
-export type FocusedFieldKey =
-	'postText' | 'caption' | 'linkUrl' | 'videoTitle' | 'videoDescription';
-
-export type FocusedFieldType = 'text' | 'textarea' | 'url';
-
-export interface ComposerMode {
-	key: ComposerModeKey;
-	label: string;
-	description: string;
-	group: ComposerModeGroupKey;
-	mediaFirst: boolean;
-}
-
-export type ComposerModeGroupKey = 'write' | 'media';
-
-export interface ComposerModeGroup {
-	key: ComposerModeGroupKey;
-	label: string;
-	modes: ComposerMode[];
-}
 
 export interface ComposerAccountTarget {
 	id: string;
 	platform: string;
 	account_username?: string;
-}
-
-export interface ComposerCapabilityTarget {
-	provider: string;
-	profile: string;
-	output_profile?: string;
-	intents?: string[] | null;
 }
 
 export interface ResolvedComposerTarget {
@@ -54,24 +26,12 @@ export interface DestinationSegmentOverride {
 	url?: string;
 }
 
-export interface FocusedRoleField {
-	key: FocusedFieldKey;
-	label: string;
-	hint: string;
-	type: FocusedFieldType;
-	required?: boolean;
-	rows?: number;
-}
-
-export interface FocusedComposerFields {
+export interface PublicationComposerFields {
 	postText?: string;
-	caption?: string;
 	linkUrl?: string;
-	videoTitle?: string;
-	videoDescription?: string;
 }
 
-export interface FocusedMediaInput {
+export interface PublicationMediaInput {
 	id: string;
 	mimeType: string;
 	role?: string;
@@ -82,23 +42,23 @@ export interface FocusedMediaInput {
 	includeInCanonical?: boolean;
 }
 
-export interface FocusedSegmentInput {
+export interface PublicationSegmentInput {
 	id: string;
 	content: string;
 	title?: string;
 	description?: string;
 	url?: string;
-	media: FocusedMediaInput[];
+	media: PublicationMediaInput[];
 	settingsByAccount?: Record<string, Record<string, unknown>>;
 }
 
-export interface FocusedPublicationInput {
+export interface PublicationComposerInput {
 	mode: ComposerModeKey;
 	workspaceId: string;
 	accounts: ComposerAccountTarget[];
-	fields: FocusedComposerFields;
-	media: FocusedMediaInput[];
-	segments?: FocusedSegmentInput[];
+	fields: PublicationComposerFields;
+	media: PublicationMediaInput[];
+	segments?: PublicationSegmentInput[];
 	scheduledAt?: string;
 	thumbnailMediaId?: string;
 	settingsByAccount?: Record<string, Record<string, unknown>>;
@@ -110,7 +70,7 @@ export interface FocusedPublicationInput {
 	socialSetId?: string;
 }
 
-export interface FocusedPublicationPayload {
+export interface ComposerPublicationPayload {
 	workspace_id: string;
 	title: string;
 	intent: ComposerModeKey;
@@ -168,152 +128,21 @@ export interface FocusedPublicationPayload {
 	}>;
 }
 
-export const COMPOSER_MODES: ComposerMode[] = [
-	{
-		key: 'post',
-		label: 'Post',
-		description: 'Text, a link, images, mixed media, or a document.',
-		group: 'write',
-		mediaFirst: false
-	},
-	{
-		key: 'thread',
-		label: 'Thread',
-		description: 'Posts sent in order as a reply chain.',
-		group: 'write',
-		mediaFirst: false
-	},
-	{
-		key: 'story',
-		label: 'Story',
-		description: 'A vertical image or video for supported Stories.',
-		group: 'media',
-		mediaFirst: true
-	},
-	{
-		key: 'short_video',
-		label: 'Short video',
-		description: 'A Reel, Short, TikTok, or other short video.',
-		group: 'media',
-		mediaFirst: true
-	},
-	{
-		key: 'video',
-		label: 'Video',
-		description: 'A full video with a title and account details.',
-		group: 'media',
-		mediaFirst: false
-	}
-];
-
-export const SELECTABLE_COMPOSER_MODES = COMPOSER_MODES;
-
-export const COMPOSER_MODE_GROUPS: ComposerModeGroup[] = [
-	{
-		key: 'write',
-		label: 'Write',
-		modes: SELECTABLE_COMPOSER_MODES.filter((mode) => mode.group === 'write')
-	},
-	{
-		key: 'media',
-		label: 'Media',
-		modes: SELECTABLE_COMPOSER_MODES.filter((mode) => mode.group === 'media')
-	}
-];
-
-export function composerMode(key: ComposerModeKey): ComposerMode {
-	const mode = COMPOSER_MODES.find((candidate) => candidate.key === key) ?? COMPOSER_MODES[0];
-	const copy: Record<ComposerModeKey, { label: string; description: string }> = {
-		post: {
-			label: m.compose_mode_post(),
-			description: m.compose_mode_post_description()
-		},
-		thread: { label: m.compose_mode_thread(), description: m.compose_mode_thread_description() },
-		story: { label: m.compose_mode_story(), description: m.compose_mode_story_description() },
-		short_video: {
-			label: m.compose_mode_short_video(),
-			description: m.compose_mode_short_video_description()
-		},
-		video: { label: m.compose_mode_video(), description: m.compose_mode_video_description() }
-	};
-	return { ...mode, ...copy[mode.key] };
-}
-
-export function isAccountCompatibleWithMode(
-	_mode: ComposerModeKey,
-	_account: ComposerAccountTarget,
-	_capabilities: readonly ComposerCapabilityTarget[] = []
-): boolean {
-	return true;
-}
-
-export function roleFieldsForMode(
-	mode: ComposerModeKey,
-	accounts: ComposerAccountTarget[]
-): FocusedRoleField[] {
-	const platforms = unique(accounts.map((account) => getPlatformKey(account.platform)));
-	const hasYouTube = platforms.includes('youtube');
-	const nonYouTubePlatforms = platforms.filter((platform) => platform !== 'youtube');
-	const nonYouTubeHint = platformHint(nonYouTubePlatforms);
-
-	switch (mode) {
-		case 'post':
-			return [
-				{
-					key: 'postText',
-					label: m.compose_post_text(),
-					hint: m.compose_post_text(),
-					type: 'textarea',
-					rows: 8
-				},
-				{
-					key: 'linkUrl',
-					label: m.compose_link_url(),
-					hint: m.compose_shared_link(),
-					type: 'url'
-				}
-			];
-		case 'thread':
-			return [];
-		case 'story':
-			return [captionField(platformHint(platforms))];
-		case 'short_video': {
-			const fields: FocusedRoleField[] = [];
-			if (hasYouTube) fields.push(videoTitleField(), videoDescriptionField());
-			if (!hasYouTube || nonYouTubePlatforms.length > 0) {
-				fields.push(captionField(nonYouTubeHint || 'TikTok, Instagram, Facebook, Threads'));
-			}
-			return fields;
-		}
-		case 'video': {
-			const fields = [videoTitleField(), videoDescriptionField()];
-			if (nonYouTubePlatforms.length > 0) fields.push(captionField(nonYouTubeHint));
-			return fields;
-		}
-	}
-}
-
-export function buildFocusedPublicationPayload(
-	input: FocusedPublicationInput
-): FocusedPublicationPayload {
+export function buildPublicationPayload(
+	input: PublicationComposerInput
+): ComposerPublicationPayload {
 	const canonicalSegments = publicationSegments(input);
 	const firstSegment = canonicalSegments[0];
 	const sourceText = firstNonEmpty(
-		input.fields.videoDescription,
-		input.fields.caption,
 		firstSegment?.content,
 		input.fields.postText,
-		input.fields.videoTitle,
 		input.fields.linkUrl
 	);
 	const title = firstNonEmpty(
-		input.fields.videoTitle,
 		firstSegment?.title,
 		firstLine(firstSegment?.content),
-		firstLine(input.fields.caption),
 		firstLine(input.fields.postText),
-		firstLine(input.fields.videoDescription),
-		composerMode(input.mode).label
+		m.compose_mode_post()
 	);
 	const contentProfile = compatibilityProfile(input.mode, canonicalSegments, input.fields.linkUrl);
 	const segments = canonicalSegments.map((segment) => ({
@@ -358,19 +187,15 @@ export function buildFocusedPublicationPayload(
 					settings.url ??= input.fields.linkUrl.trim();
 				}
 			}
-			if (platform === 'youtube') {
-				if (input.fields.videoTitle?.trim()) settings.title ??= input.fields.videoTitle.trim();
-				if (input.fields.videoDescription?.trim()) {
-					settings.description ??= input.fields.videoDescription.trim();
-				}
-				if (input.thumbnailMediaId) settings.thumbnail_media_id ??= input.thumbnailMediaId;
+			if (platform === 'youtube' && input.thumbnailMediaId) {
+				settings.thumbnail_media_id ??= input.thumbnailMediaId;
 			}
 			const outputProfile =
 				input.requestedOutputProfiles?.[account.id] ??
 				resolved?.outputProfile ??
 				fallbackOutputProfile(platform, input.mode, canonicalSegments);
 			const profile = resolved?.profile ?? contentProfile;
-			const followUpSegments: FocusedPublicationPayload['renditions'][number]['segments'] = [];
+			const followUpSegments: ComposerPublicationPayload['renditions'][number]['segments'] = [];
 			const destinationSegments =
 				resolved?.segmentStrategy === 'join' && canonicalSegments.length > 1
 					? [joinCanonicalSegments(canonicalSegments)]
@@ -380,14 +205,7 @@ export function buildFocusedPublicationPayload(
 				const body =
 					overrides && Object.hasOwn(overrides, 'body')
 						? (overrides.body ?? '')
-						: platform === 'youtube'
-							? firstNonEmpty(input.fields.videoDescription, segment.content, input.fields.caption)
-							: firstNonEmpty(
-									segment.content,
-									input.fields.caption,
-									input.fields.postText,
-									sourceText
-								);
+						: firstNonEmpty(segment.content, input.fields.postText, sourceText);
 				const segmentSettings = { ...(segment.settingsByAccount?.[account.id] ?? {}) };
 				const firstComment =
 					typeof segmentSettings.first_comment === 'string'
@@ -409,7 +227,7 @@ export function buildFocusedPublicationPayload(
 					overrides && Object.hasOwn(overrides, 'title')
 						? (overrides.title ?? '')
 						: platform === 'youtube'
-							? firstNonEmpty(destinationTitle, input.fields.videoTitle, segment.title, title)
+							? firstNonEmpty(destinationTitle, segment.title, title)
 							: firstNonEmpty(segment.title, title);
 				const segmentDescription =
 					overrides && Object.hasOwn(overrides, 'description')
@@ -417,16 +235,11 @@ export function buildFocusedPublicationPayload(
 						: platform === 'youtube'
 							? firstNonEmpty(
 									destinationDescription,
-									input.fields.videoDescription,
 									segment.description,
 									segment.content,
 									input.fields.postText
 								)
-							: firstNonEmpty(
-									segment.description,
-									input.fields.videoDescription,
-									input.fields.caption
-								);
+							: firstNonEmpty(segment.description);
 				const segmentURL =
 					overrides && Object.hasOwn(overrides, 'url')
 						? (overrides.url ?? '')
@@ -477,7 +290,7 @@ export function buildFocusedPublicationPayload(
 	};
 }
 
-function joinCanonicalSegments(segments: FocusedSegmentInput[]): FocusedSegmentInput {
+function joinCanonicalSegments(segments: PublicationSegmentInput[]): PublicationSegmentInput {
 	return {
 		...segments[0],
 		content: segments
@@ -498,35 +311,15 @@ function sameMediaIDs(
 	);
 }
 
-export function intentForLegacyProfile(profile: string): ComposerModeKey {
-	switch (profile) {
-		case 'thread':
-			return 'thread';
-		case 'story':
-			return 'story';
-		case 'short_video':
-			return 'short_video';
-		case 'long_video':
-			return 'video';
-		default:
-			return 'post';
-	}
-}
-
-function publicationSegments(input: FocusedPublicationInput): FocusedSegmentInput[] {
+function publicationSegments(input: PublicationComposerInput): PublicationSegmentInput[] {
 	if (input.mode === 'thread' && input.segments?.length) return input.segments;
 	const source = input.segments?.[0];
 	return [
 		{
 			id: source?.id || 'segment-1',
-			content: firstNonEmpty(
-				input.fields.postText,
-				input.fields.caption,
-				input.fields.videoDescription,
-				source?.content
-			),
-			title: firstNonEmpty(input.fields.videoTitle, source?.title),
-			description: firstNonEmpty(input.fields.videoDescription, source?.description),
+			content: firstNonEmpty(input.fields.postText, source?.content),
+			title: firstNonEmpty(source?.title),
+			description: firstNonEmpty(source?.description),
 			url: firstNonEmpty(input.fields.linkUrl, source?.url),
 			media: input.media.length > 0 ? input.media : (source?.media ?? []),
 			settingsByAccount: source?.settingsByAccount
@@ -536,13 +329,10 @@ function publicationSegments(input: FocusedPublicationInput): FocusedSegmentInpu
 
 function compatibilityProfile(
 	mode: ComposerModeKey,
-	segments: FocusedSegmentInput[],
+	segments: PublicationSegmentInput[],
 	linkUrl?: string
 ): string {
 	if (mode === 'thread') return 'thread';
-	if (mode === 'story') return 'story';
-	if (mode === 'short_video') return 'short_video';
-	if (mode === 'video') return 'long_video';
 	const media = segments.flatMap((segment) => segment.media);
 	if (media.length > 1 || media.some((item) => item.mimeType.startsWith('application/'))) {
 		return 'carousel';
@@ -555,16 +345,9 @@ function compatibilityProfile(
 function fallbackOutputProfile(
 	platform: string,
 	mode: ComposerModeKey,
-	segments: FocusedSegmentInput[]
+	segments: PublicationSegmentInput[]
 ): string {
 	if (mode === 'thread') return `${platform}.thread`;
-	if (mode === 'story') return `${platform}.story`;
-	if (mode === 'video') return `${platform}.video`;
-	if (mode === 'short_video') {
-		if (platform === 'youtube') return 'youtube.short';
-		if (platform === 'instagram' || platform === 'facebook') return `${platform}.reel`;
-		return `${platform}.video`;
-	}
 	const media = segments.flatMap((segment) => segment.media);
 	if (platform === 'linkedin' && media.some((item) => item.mimeType.startsWith('application/'))) {
 		return 'linkedin.document';
@@ -578,7 +361,7 @@ function fallbackOutputProfile(
 	return `${platform}.post`;
 }
 
-function mediaPayload(media: FocusedMediaInput[], accountId?: string) {
+function mediaPayload(media: PublicationMediaInput[], accountId?: string) {
 	return media
 		.filter((item) =>
 			accountId
@@ -601,45 +384,6 @@ function mediaPayload(media: FocusedMediaInput[], accountId?: string) {
 				...(Object.keys(settings).length > 0 ? { settings } : {})
 			};
 		});
-}
-
-function captionField(hint: string, required = false): FocusedRoleField {
-	return {
-		key: 'caption',
-		label: m.compose_caption(),
-		hint: hint ? m.compose_caption_platforms({ platforms: hint }) : m.compose_caption(),
-		type: 'textarea',
-		required,
-		rows: 8
-	};
-}
-
-function videoTitleField(): FocusedRoleField {
-	return {
-		key: 'videoTitle',
-		label: m.compose_video_title(),
-		hint: m.compose_video_title_hint(),
-		type: 'text',
-		required: true
-	};
-}
-
-function videoDescriptionField(): FocusedRoleField {
-	return {
-		key: 'videoDescription',
-		label: m.compose_video_description(),
-		hint: m.compose_video_description_hint(),
-		type: 'textarea',
-		rows: 7
-	};
-}
-
-function platformHint(platforms: string[]): string {
-	return unique(platforms.map((platform) => getPlatformName(platform))).join(', ');
-}
-
-function unique<T>(values: T[]): T[] {
-	return [...new Set(values)];
 }
 
 function firstLine(value?: string): string {

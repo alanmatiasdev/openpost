@@ -33,6 +33,7 @@ export interface ComposerPreviewInput {
 	mode: ComposerModeKey;
 	segments: ComposerPreviewSegment[];
 	media?: ComposerPreviewMedia[];
+	outputProfile?: string;
 	destinationSettings?: Record<string, unknown>;
 	title?: string;
 	subtitle?: string;
@@ -70,7 +71,7 @@ export function buildComposerPreview(input: ComposerPreviewInput): PreviewModel 
 
 	return createPreviewModel({
 		platform,
-		format: previewFormat(platform, input.mode, media),
+		format: previewFormat(platform, input.mode, media, input.outputProfile),
 		identity: {
 			displayName: input.account.account_username || getPlatformName(input.account.platform),
 			handle: input.account.account_username || input.account.slug || platform,
@@ -96,33 +97,29 @@ export function buildComposerPreview(input: ComposerPreviewInput): PreviewModel 
 export function previewFormat(
 	platform: PreviewModel['platform'],
 	mode: ComposerModeKey,
-	media: PreviewMedia[] = []
+	media: PreviewMedia[] = [],
+	outputProfile = ''
 ): PreviewFormat {
-	switch (mode) {
-		case 'thread':
-			return 'thread';
-		case 'story':
-			return 'story';
-		case 'short_video':
-			if (platform === 'youtube') return 'short';
-			if (platform === 'instagram' || platform === 'facebook') return 'reel';
-			return 'video';
-		case 'video':
-			return 'video';
-		default: {
-			if (platform === 'linkedin' && media.some((item) => item.kind === 'document')) {
-				return 'document';
-			}
-			if (
-				platform === 'tiktok' &&
-				media.length > 0 &&
-				media.every((item) => item.kind === 'image')
-			) {
-				return 'photo';
-			}
-			return 'post';
-		}
+	const profileSuffix = outputProfile.trim().toLowerCase().split('.').at(-1);
+	if (
+		profileSuffix === 'thread' ||
+		profileSuffix === 'story' ||
+		profileSuffix === 'reel' ||
+		profileSuffix === 'short' ||
+		profileSuffix === 'video' ||
+		profileSuffix === 'document'
+	) {
+		return profileSuffix;
 	}
+	if (platform === 'tiktok' && profileSuffix === 'photo') return 'photo';
+	if (mode === 'thread' && !outputProfile) return 'thread';
+	if (platform === 'youtube') return 'video';
+	if (platform === 'linkedin' && media.some((item) => item.kind === 'document')) return 'document';
+	if (platform === 'tiktok' && media.length > 0 && media.every((item) => item.kind === 'image')) {
+		return 'photo';
+	}
+	if (media.some((item) => item.kind === 'video')) return 'video';
+	return 'post';
 }
 
 function previewMedia(item: ComposerPreviewMedia): PreviewMedia {
