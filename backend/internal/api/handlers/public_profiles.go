@@ -45,6 +45,7 @@ type PublicProfileOutput struct {
 		Username      string                     `json:"username"`
 		DisplayName   string                     `json:"display_name"`
 		AvatarURL     string                     `json:"avatar_url"`
+		PlanID        string                     `json:"plan_id,omitempty" doc:"Highest active OpenPost plan available to the profile owner"`
 		JoinedAt      time.Time                  `json:"joined_at"`
 		LifetimePosts int                        `json:"lifetime_posts"`
 		PeakPosts     int                        `json:"peak_posts"`
@@ -106,6 +107,10 @@ func (h *PublicProfileHandler) RegisterRoutes(api huma.API) {
 		if err != nil {
 			return nil, huma.Error500InternalServerError("failed to load public profile workspaces")
 		}
+		planID, err := h.loadPublicProfilePlan(ctx, user.ID)
+		if err != nil {
+			return nil, huma.Error500InternalServerError("failed to load public profile plan")
+		}
 
 		activity, peak, currentStreak, longestStreak, activeDays := publicProfileActivity(publications, time.Now().UTC())
 		out := &PublicProfileOutput{}
@@ -115,6 +120,7 @@ func (h *PublicProfileHandler) RegisterRoutes(api huma.API) {
 			out.Body.DisplayName = "@" + user.Username
 		}
 		out.Body.AvatarURL = user.AvatarURL
+		out.Body.PlanID = planID
 		out.Body.JoinedAt = user.CreatedAt
 		out.Body.LifetimePosts = len(publications)
 		out.Body.PeakPosts = peak
@@ -126,6 +132,42 @@ func (h *PublicProfileHandler) RegisterRoutes(api huma.API) {
 		out.Body.TopWorkspaces = profileRankings(topWorkspaces)
 		return out, nil
 	})
+}
+
+func (h *PublicProfileHandler) loadPublicProfilePlan(ctx context.Context, userID string) (string, error) {
+	var rows []struct {
+		PlanID string `bun:"plan_id"`
+	}
+	err := h.db.NewSelect().
+		TableExpr("organization_members AS member").
+		ColumnExpr("DISTINCT subscription.plan_id AS plan_id").
+		Join("JOIN billing_subscriptions AS subscription ON subscription.organization_id = member.organization_id").
+		Where("member.user_id = ?", userID).
+		Where("subscription.provider = ?", models.BillingProviderPaddle).
+		Where("LOWER(subscription.status) IN ('active', 'trialing')").
+		Where("subscription.plan_id != ''").
+		Scan(ctx, &rows)
+	if err != nil {
+		return "", err
+	}
+
+	planRank := map[string]int{
+		"starter": 1,
+		"founder": 2,
+		"pro":     3,
+		"team":    4,
+		"agency":  5,
+	}
+	selected := ""
+	selectedRank := 0
+	for _, row := range rows {
+		planID := strings.ToLower(strings.TrimSpace(row.PlanID))
+		if rank := planRank[planID]; rank > selectedRank {
+			selected = planID
+			selectedRank = rank
+		}
+	}
+	return selected, nil
 }
 
 func (h *PublicProfileHandler) loadPublishedProfilePublications(ctx context.Context, userID string) ([]publicProfilePublication, error) {

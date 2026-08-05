@@ -13,10 +13,10 @@ import (
 //go:embed all:public
 var embeddedWeb embed.FS
 
-func RegisterSpaRoutes(e *echo.Echo, db *bun.DB, publicURL string) {
+func RegisterSpaRoutes(e *echo.Echo, db *bun.DB, publicURL string, managedEdition bool) {
 	webFS, err := fs.Sub(embeddedWeb, "public")
 	if err != nil {
 		panic(err)
 	}
-	registerSpaRoutesFromFS(e, webFS, db, publicURL)
+	registerSpaRoutesFromFS(e, webFS, db, publicURL, managedEdition)
 }

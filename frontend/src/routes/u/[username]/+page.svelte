@@ -9,7 +9,7 @@ FORM: Public activity ledger, adapted from contribution charts without gamified 
 	import { page } from '$app/state';
 	import { onMount } from 'svelte';
 	import type { Attachment } from 'svelte/attachments';
-	import { ArrowRight, Building2, CalendarDays } from 'lucide-svelte';
+	import { ArrowRight } from 'lucide-svelte';
 	import Logo from '$lib/components/Logo.svelte';
 	import PlatformIcon from '$lib/components/platform-icon.svelte';
 	import { Button } from '$lib/components/ui/button';
@@ -48,8 +48,6 @@ FORM: Public activity ledger, adapted from contribution charts without gamified 
 		}
 		return labels;
 	});
-	const topPlatformCount = $derived(profile?.top_platforms?.[0]?.count ?? 1);
-	const topWorkspaceCount = $derived(profile?.top_workspaces?.[0]?.count ?? 1);
 	const topPlatforms = $derived(profile?.top_platforms ?? []);
 	const topWorkspaces = $derived(profile?.top_workspaces ?? []);
 	const initials = $derived.by(() => {
@@ -90,6 +88,14 @@ FORM: Public activity ledger, adapted from contribution charts without gamified 
 	function plural(value: number, singular: string): string {
 		return `${value} ${value === 1 ? singular : `${singular}s`}`;
 	}
+
+	function formatPlan(planID: string): string {
+		return planID
+			.split('-')
+			.filter(Boolean)
+			.map((part) => part[0]?.toUpperCase() + part.slice(1))
+			.join(' ');
+	}
 </script>
 
 <svelte:head>
@@ -105,13 +111,15 @@ FORM: Public activity ledger, adapted from contribution charts without gamified 
 
 <div class="profile-canvas min-h-screen bg-background text-foreground">
 	<header class="border-b border-border/70">
-		<div class="profile-shell flex min-h-16 items-center justify-between gap-4">
+		<div class="profile-shell flex min-h-14 items-center justify-between gap-4">
 			<a
 				href="https://openpost.social"
 				class="focus-ring inline-flex min-h-11 items-center gap-2 rounded-md"
 			>
 				<Logo width={34} height={27} decorative />
-				<span class="text-sm font-semibold">OpenPost</span>
+				<span class="font-brand text-sm leading-none font-semibold tracking-[-0.02em]"
+					>OpenPost</span
+				>
 			</a>
 			<Button href="/register" variant="outline" size="sm">
 				Create your profile
@@ -120,7 +128,7 @@ FORM: Public activity ledger, adapted from contribution charts without gamified 
 		</div>
 	</header>
 
-	<main class="profile-shell py-12 sm:py-16 lg:py-20">
+	<main class="profile-shell py-6 sm:py-8">
 		{#if loading}
 			<div class="grid min-h-[55vh] place-items-center" aria-live="polite">
 				<div class="activity-loader" aria-label="Loading public profile">
@@ -144,7 +152,7 @@ FORM: Public activity ledger, adapted from contribution charts without gamified 
 			</div>
 		{:else}
 			<section class="profile-intro text-center" aria-labelledby="profile-name">
-				<div class="mx-auto size-24 overflow-hidden rounded-2xl border bg-muted sm:size-28">
+				<div class="mx-auto size-20 overflow-hidden rounded-2xl border bg-muted">
 					{#if profile.avatar_url}
 						<img src={profile.avatar_url} alt="" class="size-full object-cover" />
 					{:else}
@@ -155,13 +163,19 @@ FORM: Public activity ledger, adapted from contribution charts without gamified 
 						</div>
 					{/if}
 				</div>
-				<h1 id="profile-name" class="mt-7 text-4xl font-medium tracking-[-0.035em] sm:text-5xl">
+				<h1 id="profile-name" class="mt-4 text-3xl font-medium tracking-[-0.03em]">
 					{profile.display_name}
 				</h1>
-				<p class="mt-3 text-lg text-muted-foreground">@{profile.username}</p>
+				<div class="mt-2 flex items-center justify-center gap-2 text-sm text-muted-foreground">
+					<span>@{profile.username}</span>
+					{#if profile.plan_id}
+						<span aria-hidden="true">·</span>
+						<span class="profile-plan">{formatPlan(profile.plan_id)}</span>
+					{/if}
+				</div>
 			</section>
 
-			<section class="mt-12 overflow-hidden rounded-2xl border" aria-label="Publishing statistics">
+			<section class="mt-6 overflow-hidden rounded-xl border" aria-label="Publishing statistics">
 				<dl class="profile-stats grid grid-cols-2 sm:grid-cols-5">
 					<div>
 						<dt>Lifetime posts</dt>
@@ -186,24 +200,20 @@ FORM: Public activity ledger, adapted from contribution charts without gamified 
 				</dl>
 			</section>
 
-			<section class="mt-14" aria-labelledby="activity-title">
-				<div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-					<div>
-						<h2 id="activity-title" class="text-xl font-semibold tracking-[-0.02em]">
-							Publishing activity
-						</h2>
-						<p class="mt-1 text-sm text-muted-foreground">
-							One square per day. Darker orange means more publications.
-						</p>
-					</div>
-					<p class="text-sm text-muted-foreground">
+			<section class="mt-8" aria-labelledby="activity-title">
+				<div class="flex items-center justify-between gap-4">
+					<h2 id="activity-title" class="text-lg font-semibold tracking-[-0.02em]">
+						Publishing activity
+					</h2>
+					<p class="text-xs text-muted-foreground">
 						Joined {new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric' }).format(
 							new Date(profile.joined_at)
 						)}
 					</p>
 				</div>
-				<div class="activity-scroll mt-7 overflow-x-auto pb-3" {@attach showRecentActivity}>
-					<div class="activity-field min-w-[48rem]">
+				<p class="sr-only">One square per day. Darker orange means more publications.</p>
+				<div class="activity-scroll mt-4 overflow-x-auto pb-2" {@attach showRecentActivity}>
+					<div class="activity-field">
 						<div class="activity-months" aria-hidden="true">
 							{#each monthLabels as month (`${month.label}-${month.column}`)}
 								<span style:grid-column={month.column}>{month.label}</span>
@@ -232,15 +242,13 @@ FORM: Public activity ledger, adapted from contribution charts without gamified 
 			</section>
 
 			<section
-				class="mt-14 grid gap-10 border-t pt-10 lg:grid-cols-2"
+				class="mt-8 grid gap-8 border-t pt-6 md:grid-cols-2"
 				aria-label="Publishing insights"
 			>
 				<div>
-					<h2 class="flex items-center gap-2 text-lg font-semibold">
-						<CalendarDays class="size-5 text-primary" /> Most used platforms
-					</h2>
+					<h2 class="text-base font-semibold">Most used platforms</h2>
 					{#if topPlatforms.length}
-						<ul class="mt-5 grid gap-4">
+						<ul class="mt-2">
 							{#each topPlatforms as platform (platform.key)}
 								<li class="rank-row">
 									<span class="flex min-w-0 items-center gap-3 font-medium">
@@ -249,7 +257,6 @@ FORM: Public activity ledger, adapted from contribution charts without gamified 
 									</span>
 									<span class="text-sm text-muted-foreground">{plural(platform.count, 'post')}</span
 									>
-									<i style:--rank={`${(platform.count / topPlatformCount) * 100}%`}></i>
 								</li>
 							{/each}
 						</ul>
@@ -258,18 +265,15 @@ FORM: Public activity ledger, adapted from contribution charts without gamified 
 					{/if}
 				</div>
 				<div>
-					<h2 class="flex items-center gap-2 text-lg font-semibold">
-						<Building2 class="size-5 text-primary" /> Most active workspaces
-					</h2>
+					<h2 class="text-base font-semibold">Most active workspaces</h2>
 					{#if topWorkspaces.length}
-						<ul class="mt-5 grid gap-4">
+						<ul class="mt-2">
 							{#each topWorkspaces as workspace (workspace.key)}
 								<li class="rank-row">
 									<span class="min-w-0 truncate font-medium">{workspace.name}</span>
 									<span class="text-sm text-muted-foreground"
 										>{plural(workspace.count, 'post')}</span
 									>
-									<i style:--rank={`${(workspace.count / topWorkspaceCount) * 100}%`}></i>
 								</li>
 							{/each}
 						</ul>
@@ -284,7 +288,7 @@ FORM: Public activity ledger, adapted from contribution charts without gamified 
 
 <style>
 	.profile-shell {
-		width: min(100% - 2rem, 80rem);
+		width: min(100% - 2rem, 60rem);
 		margin-inline: auto;
 	}
 
@@ -298,11 +302,11 @@ FORM: Public activity ledger, adapted from contribution charts without gamified 
 
 	.profile-stats > div {
 		display: flex;
-		min-height: 7rem;
+		min-height: 4.5rem;
 		flex-direction: column-reverse;
 		justify-content: center;
 		gap: 0.35rem;
-		padding: 1.25rem 1rem;
+		padding: 1rem;
 		text-align: center;
 	}
 
@@ -316,20 +320,21 @@ FORM: Public activity ledger, adapted from contribution charts without gamified 
 	}
 
 	.profile-stats dd {
-		font-size: clamp(1.1rem, 2vw, 1.35rem);
+		font-size: clamp(1rem, 2vw, 1.2rem);
 		font-variant-numeric: tabular-nums;
 		font-weight: 550;
 		letter-spacing: -0.02em;
 	}
 
 	.activity-field {
-		width: max-content;
+		width: 100%;
+		min-width: 48rem;
 	}
 
 	.activity-months,
 	.activity-grid {
 		display: grid;
-		grid-auto-columns: 0.72rem;
+		grid-auto-columns: minmax(0.72rem, 1fr);
 		column-gap: 0.25rem;
 	}
 
@@ -345,13 +350,13 @@ FORM: Public activity ledger, adapted from contribution charts without gamified 
 
 	.activity-grid {
 		grid-auto-flow: column;
-		grid-template-rows: repeat(7, 0.72rem);
+		grid-template-rows: repeat(7, auto);
 		row-gap: 0.25rem;
 	}
 
 	.activity-grid i {
-		width: 0.72rem;
-		height: 0.72rem;
+		width: 100%;
+		aspect-ratio: 1;
 		border-radius: 0.2rem;
 		background: var(--activity-0);
 		animation: cell-resolve 520ms cubic-bezier(0.16, 1, 0.3, 1) both;
@@ -376,18 +381,25 @@ FORM: Public activity ledger, adapted from contribution charts without gamified 
 	}
 
 	.rank-row {
-		position: relative;
-		display: grid;
-		grid-template-columns: minmax(0, 1fr) auto;
-		gap: 0.55rem 1rem;
-		padding-bottom: 0.6rem;
+		display: flex;
+		min-height: 2.25rem;
+		align-items: center;
+		justify-content: space-between;
+		gap: 1rem;
+		border-bottom: 1px solid color-mix(in oklch, var(--border) 70%, transparent);
 	}
 
-	.rank-row > i {
-		grid-column: 1 / -1;
-		height: 0.18rem;
+	.rank-row:last-child {
+		border-bottom: 0;
+	}
+
+	.profile-plan {
+		border: 1px solid var(--border);
 		border-radius: 999px;
-		background: linear-gradient(to right, var(--primary) var(--rank), var(--muted) var(--rank));
+		padding: 0.05rem 0.45rem;
+		font-size: 0.75rem;
+		line-height: 1.35rem;
+		color: var(--foreground);
 	}
 
 	.activity-loader {

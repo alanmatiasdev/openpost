@@ -502,7 +502,7 @@ func main() {
 		MCPOAuthHandler:              mcpOAuthHandler,
 	})
 
-	RegisterSpaRoutes(e, db, cfg.PublicURL)
+	RegisterSpaRoutes(e, db, cfg.PublicURL, cfg.Edition == config.EditionCloud)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

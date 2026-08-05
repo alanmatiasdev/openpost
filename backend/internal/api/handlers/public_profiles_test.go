@@ -21,9 +21,12 @@ func TestPublicProfileReturnsOptInPublishingActivity(t *testing.T) {
 
 	db := createHandlerTestDB(t,
 		(*models.User)(nil),
+		(*models.Organization)(nil),
+		(*models.OrganizationMember)(nil),
 		(*models.Workspace)(nil),
 		(*models.WorkspaceMember)(nil),
 		(*models.Publication)(nil),
+		(*models.BillingSubscription)(nil),
 	)
 	ctx := context.Background()
 	now := time.Now().UTC()
@@ -31,9 +34,16 @@ func TestPublicProfileReturnsOptInPublishingActivity(t *testing.T) {
 		ID: "user-1", Email: "rodrigo@example.com", Username: "rodrgds",
 		DisplayName: "Rodrigo Dias", PublicProfile: true, CreatedAt: now.AddDate(-1, 0, 0),
 	}
-	workspace := &models.Workspace{ID: "workspace-1", Name: "OpenPost", CreatedAt: now}
+	organization := &models.Organization{ID: "organization-1", Name: "OpenPost", CreatedByID: user.ID, CreatedAt: now}
+	organizationMember := &models.OrganizationMember{OrganizationID: organization.ID, UserID: user.ID, Role: models.OrganizationRoleOwner}
+	workspace := &models.Workspace{ID: "workspace-1", OrganizationID: organization.ID, Name: "OpenPost", CreatedAt: now}
 	member := &models.WorkspaceMember{WorkspaceID: workspace.ID, UserID: user.ID, Role: models.WorkspaceRoleAdmin}
-	require.NoError(t, insertProfileRows(ctx, db, user, workspace, member))
+	subscription := &models.BillingSubscription{
+		OrganizationID: organization.ID, Provider: models.BillingProviderPaddle,
+		ProviderCustomerID: "customer-1", ProviderSubscriptionID: "subscription-1",
+		Status: "active", PlanID: "pro",
+	}
+	require.NoError(t, insertProfileRows(ctx, db, user, organization, organizationMember, workspace, member, subscription))
 
 	publications := []models.Publication{
 		{ID: "publication-1", WorkspaceID: workspace.ID, CreatedByID: user.ID, Title: "One", SourceContent: "One", Status: models.PublicationStatusPublished, ActualRunAt: now, UpdatedAt: now},
@@ -59,6 +69,7 @@ func TestPublicProfileReturnsOptInPublishingActivity(t *testing.T) {
 	var profile PublicProfileOutput
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &profile.Body))
 	require.Equal(t, "rodrgds", profile.Body.Username)
+	require.Equal(t, "pro", profile.Body.PlanID)
 	require.Equal(t, 3, profile.Body.LifetimePosts)
 	require.Equal(t, 2, profile.Body.CurrentStreak)
 	require.Equal(t, 2, profile.Body.LongestStreak)

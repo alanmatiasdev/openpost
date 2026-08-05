@@ -4,6 +4,9 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"regexp"
+	"strings"
 	"testing"
 	"testing/fstest"
 	"time"
@@ -120,6 +123,81 @@ func TestSpaHTMLRemainsUncached(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Equal(t, "no-cache, no-store, must-revalidate", rec.Header().Get("Cache-Control"))
 	require.Equal(t, "<html>login</html>", rec.Body.String())
+}
+
+func TestManagedSpaRootExposesProductPricingAndPoliciesWithoutJavaScript(t *testing.T) {
+	webFS := fstest.MapFS{
+		"index.html": {Data: []byte(`<html><head></head><body><div id="app">app</div></body></html>`)},
+		"login.html": {Data: []byte(`<html><head></head><body>login</body></html>`)},
+	}
+	e := echo.New()
+	registerSpaRoutesWithProfileMetadata(
+		e,
+		webFS,
+		nil,
+		"https://app.openpost.social",
+		true,
+	)
+
+	rootReq := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
+	rootRec := httptest.NewRecorder()
+	e.ServeHTTP(rootRec, rootReq)
+
+	require.Equal(t, http.StatusOK, rootRec.Code)
+	rootHTML := rootRec.Body.String()
+	require.Contains(t, rootHTML, `name="openpost-edition" content="cloud"`)
+	require.Contains(t, rootHTML, `id="openpost-managed-public-home"`)
+	require.Contains(t, rootHTML, "Your content operation, together in one workspace.")
+	require.Contains(t, rootHTML, "Starter")
+	require.Contains(t, rootHTML, "$15")
+	require.Contains(t, rootHTML, "Agency")
+	require.Contains(t, rootHTML, "$199")
+	require.Contains(t, rootHTML, `href="https://openpost.social/terms"`)
+	require.Contains(t, rootHTML, `href="https://openpost.social/privacy"`)
+	require.Contains(t, rootHTML, `href="https://openpost.social/refunds"`)
+	require.Contains(t, rootHTML, `rel="canonical" href="https://app.openpost.social/"`)
+
+	loginReq := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/login", nil)
+	loginRec := httptest.NewRecorder()
+	e.ServeHTTP(loginRec, loginReq)
+	require.Equal(t, http.StatusOK, loginRec.Code)
+	require.Contains(t, loginRec.Body.String(), `name="openpost-edition" content="cloud"`)
+	require.NotContains(t, loginRec.Body.String(), `id="openpost-managed-public-home"`)
+}
+
+func TestSelfHostedSpaRootDoesNotAdvertiseManagedPlans(t *testing.T) {
+	webFS := fstest.MapFS{
+		"index.html": {Data: []byte(`<html><head></head><body><div id="app">app</div></body></html>`)},
+	}
+	e := echo.New()
+	registerSpaRoutes(e, webFS)
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.NotContains(t, rec.Body.String(), `name="openpost-edition"`)
+	require.NotContains(t, rec.Body.String(), `id="openpost-managed-public-home"`)
+}
+
+func TestManagedSpaRootPricingMatchesFrontendCatalog(t *testing.T) {
+	catalogSource, err := os.ReadFile("../../../frontend/src/lib/billing.ts")
+	require.NoError(t, err)
+
+	planPattern := regexp.MustCompile(`(?s)\{\s*id:\s*'[^']+',\s*name:\s*'([^']+)',[^}]*monthlyPriceUSD:\s*(\d+),`)
+	plans := planPattern.FindAllStringSubmatch(string(catalogSource), -1)
+	require.NotEmpty(t, plans)
+
+	rendered := string(renderManagedPublicHomeHTML(
+		[]byte(`<html><head></head><body><div id="app">app</div></body></html>`),
+		"https://app.openpost.social",
+	))
+	require.Equal(t, len(plans), strings.Count(rendered, `class="oph-plan"`))
+	for _, plan := range plans {
+		name, monthlyPrice := plan[1], plan[2]
+		require.Contains(t, rendered, "<h3>"+name+"</h3><p>$"+monthlyPrice+"<span>/month")
+	}
 }
 
 func TestRenderPublicProfileHTMLAddsEscapedShareMetadata(t *testing.T) {

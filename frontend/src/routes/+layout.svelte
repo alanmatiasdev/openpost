@@ -26,6 +26,7 @@
 	import { client } from '$lib/api/client';
 	import { Toaster } from '$lib/components/ui/sonner';
 	import { setUnsavedChanges, UnsavedChangesContext } from '$lib/unsaved-changes.svelte';
+	import PublicHome from './_components/PublicHome.svelte';
 
 	let { children } = $props();
 	const unsavedChanges = setUnsavedChanges(new UnsavedChangesContext());
@@ -49,6 +50,7 @@
 	let currentPath = $derived($page.url.pathname);
 	let isPreviewRoute = $derived(currentPath === '/preview');
 	let isPublicProfileRoute = $derived(currentPath.startsWith('/u/'));
+	let isManagedEdition = $state(false);
 	const publicRoutes = [
 		'/login',
 		'/register',
@@ -98,7 +100,8 @@
 		currentPath === '/video-editor' || currentPath.startsWith('/video-editor/')
 	);
 	let isPublicRoute = $derived(
-		isPublicProfileRoute ||
+		currentPath === '/' ||
+			isPublicProfileRoute ||
 			isPublicImageEditorRoute ||
 			isPublicVideoEditorRoute ||
 			publicRoutes.some((route) => currentPath.startsWith(route))
@@ -178,6 +181,8 @@
 
 	onMount(() => {
 		if (isPreviewRoute) return;
+		isManagedEdition =
+			document.querySelector<HTMLMetaElement>('meta[name="openpost-edition"]')?.content === 'cloud';
 		captureWebReauthGrant();
 		feedbackDiagnostics.initialize();
 		soundPreferences.initialize();
@@ -198,6 +203,14 @@
 
 	$effect(() => {
 		feedbackDiagnostics.recordNavigation(currentPath);
+	});
+
+	$effect(() => {
+		if (currentPath !== '/' || instance.isLoading || authState.isLoading) return;
+		document.getElementById('openpost-managed-public-home')?.remove();
+		document
+			.querySelectorAll<HTMLElement>('[data-openpost-managed-home]')
+			.forEach((element) => element.remove());
 	});
 
 	$effect(() => {
@@ -340,32 +353,36 @@
 {:else if instance.isLoading || authState.isLoading || pendingRedirect || ssoChallengeInFlight || (!isPublicProfileRoute && authState.isAuthenticated && !authState.user?.legal_acceptance_required && !onboardingChecked)}
 	<AppLoading label={m.common_loading()} />
 {:else if !authState.isAuthenticated}
-	{#if !isPublicProfileRoute && currentPath !== '/image-editor' && !currentPath.startsWith('/image-editor/') && !currentPath.startsWith('/video-editor')}
+	{#if !isPublicProfileRoute && !(currentPath === '/' && isManagedEdition) && currentPath !== '/image-editor' && !currentPath.startsWith('/image-editor/') && !currentPath.startsWith('/video-editor')}
 		<div class="fixed top-4 right-4 z-20">
 			<LanguageSwitcher compact />
 		</div>
 	{/if}
 	{#if currentPath === '/'}
-		<div class="flex min-h-[80vh] items-center justify-center">
-			<div class="mx-auto max-w-md px-4 py-12 text-center">
-				<div class="mb-6 flex justify-center">
-					<Logo width={100} height={29} />
-				</div>
-				<p class="mb-6 text-muted-foreground">{m.landing_tagline()}</p>
-				<div class="flex justify-center gap-4">
-					<a
-						href={resolve('/login')}
-						class="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-						>{m.landing_sign_in()}</a
-					>
-					<a
-						href={resolve('/register')}
-						class="inline-flex items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground"
-						>{m.landing_create_account()}</a
-					>
+		{#if isManagedEdition}
+			<PublicHome />
+		{:else}
+			<div class="flex min-h-[80vh] items-center justify-center">
+				<div class="mx-auto max-w-md px-4 py-12 text-center">
+					<div class="mb-6 flex justify-center">
+						<Logo width={100} height={29} />
+					</div>
+					<p class="mb-6 text-muted-foreground">{m.landing_tagline()}</p>
+					<div class="flex justify-center gap-4">
+						<a
+							href={resolve('/login')}
+							class="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+							>{m.landing_sign_in()}</a
+						>
+						<a
+							href={resolve('/register')}
+							class="inline-flex items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground"
+							>{m.landing_create_account()}</a
+						>
+					</div>
 				</div>
 			</div>
-		</div>
+		{/if}
 	{:else}
 		{@render children()}
 	{/if}
