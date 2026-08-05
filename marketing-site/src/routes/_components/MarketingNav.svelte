@@ -61,7 +61,7 @@
                 {item.label}
               </NavigationMenu.Trigger>
               <NavigationMenu.Content
-                class="platform-menu left-1/2 w-[min(46rem,calc(100vw-2rem))] -translate-x-1/2 p-0"
+                class="platform-menu left-1/2 -translate-x-1/2 p-0"
               >
                 <div
                   class="flex items-center justify-between gap-5 border-b px-4 py-3.5"
@@ -293,5 +293,10 @@
     border-bottom: 1px solid color-mix(in oklch, var(--border) 70%, transparent);
     background: color-mix(in oklch, var(--background) 88%, transparent);
     backdrop-filter: blur(18px) saturate(140%);
+  }
+
+  /* The shadcn Content ships md:w-auto; the destinations panel needs a real width. */
+  :global(.platform-menu.platform-menu) {
+    width: min(46rem, calc(100vw - 2rem));
   }
 </style>

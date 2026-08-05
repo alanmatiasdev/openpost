@@ -23,6 +23,7 @@ All notable changes to this project are documented in this file.
 
 ### Fixed
 
+- Kept the desktop platform menu at its intended wide layout by overriding the shared navigation content width with component-scoped CSS.
 - Updated marketing browser coverage to verify the publishing-activity proof that replaced the previous proof-card copy.
 - Fixed profile-picture uploads to S3-compatible storage by sending small objects with an explicit size and a seekable body. The uploader now shows the server's real error instead of Uppy's generic network warning.
 - Stabilized Video Editor release checks with deterministic, fully encoded WebM fixtures for analysis imports and switched recording segments.
