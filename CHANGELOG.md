@@ -6,6 +6,12 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+- Added bold Signal Field X and LinkedIn headers that turn the OpenPost pen mark and publishing activity tiles into an immersive brand scene.
+
+## [2.1.0] - 2026-08-05
+
+### Added
+
 - Added image-generated dark X and LinkedIn profile headers built around the real OpenPost workspace and a restrained OpenPost pen mark.
 - Added release planning, exact local release checks, candidate and production status reporting, a public running-version endpoint, immutable SHA image smoke tests, and configuration-only startup validation.
 

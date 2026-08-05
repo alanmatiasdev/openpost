@@ -16,6 +16,7 @@ FORM: Product-led publishing workspace with activity squares as the recurring pr
   import { Button } from "$lib/components/ui/button";
   import PlatformIcon from "$lib/components/platform-icon.svelte";
   import DestinationComposerDemo from "./_components/DestinationComposerDemo.svelte";
+  import PublishingActivityField from "./_components/PublishingActivityField.svelte";
   import ScrollReveal from "./_components/ScrollReveal.svelte";
   import {
     faqs,
@@ -94,6 +95,26 @@ FORM: Product-led publishing workspace with activity squares as the recurring pr
 
   const featuredPlans = plans.slice(0, 3);
   const shortFaqs = faqs.slice(0, 4);
+
+  const platformBrands: Record<string, string> = {
+    x: "var(--foreground)",
+    linkedin: "oklch(0.48 0.15 255)",
+    bluesky: "oklch(0.6 0.17 250)",
+    mastodon: "oklch(0.52 0.18 285)",
+    threads: "var(--foreground)",
+    facebook: "oklch(0.5 0.17 262)",
+    instagram: "oklch(0.56 0.2 10)",
+    tiktok: "var(--foreground)",
+    youtube: "oklch(0.55 0.22 27)",
+    discord: "oklch(0.52 0.16 275)",
+  };
+
+  const proofStats = [
+    { value: "10+", label: "destinations from one composer" },
+    { value: "4", label: "creation tools in one workspace" },
+    { value: "0", label: "watermarks, re-uploads, or tab-switching" },
+    { value: "100%", label: "open source under AGPL-3.0" },
+  ] as const;
 </script>
 
 <svelte:head>
@@ -156,21 +177,27 @@ FORM: Product-led publishing workspace with activity squares as the recurring pr
   aria-label="Supported platforms"
   class="marketing-rule border-y bg-muted/24"
 >
-  <div class="marketing-shell py-7">
+  <div class="marketing-shell py-9">
     <p
       class="text-center text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground"
     >
       Publish to the accounts you already run
     </p>
     <div
-      class="mt-5 flex items-center gap-x-7 gap-y-3 overflow-x-auto pb-1 sm:flex-wrap sm:justify-center"
+      class="mt-6 flex flex-wrap items-center justify-center gap-2.5"
     >
       {#each platforms as platform (platform.slug)}
         <a
           href={`/platforms/${platform.slug}`}
-          class="focus-ring inline-flex min-h-11 shrink-0 items-center gap-2 rounded-md text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+          class="platform-chip focus-ring"
         >
-          <PlatformIcon platform={platform.short} class="size-4" />
+          <span
+            class="platform-chip-icon"
+            style:--brand={platformBrands[platform.slug] ??
+              "var(--foreground)"}
+          >
+            <PlatformIcon platform={platform.short} class="size-3.5" />
+          </span>
           {platform.name}
         </a>
       {/each}
@@ -195,7 +222,8 @@ FORM: Product-led publishing workspace with activity squares as the recurring pr
       {#each workflow as step, index (step.title)}
         <li class="workflow-step py-8 md:px-8 md:first:pl-0 md:last:pr-0">
           <ScrollReveal delay={index * 90}>
-            <span class="font-mono text-xs font-semibold text-primary"
+            <span
+              class="grid size-9 place-items-center rounded-lg border bg-primary/10 font-mono text-xs font-semibold text-primary"
               >{step.number}</span
             >
             <h3 class="mt-5 text-xl font-semibold tracking-tight">
@@ -281,19 +309,31 @@ FORM: Product-led publishing workspace with activity squares as the recurring pr
       <h2 id="product-proof-title" class="marketing-heading mx-auto mt-4">
         Everything you build deserves an audience.
       </h2>
+      <p class="marketing-copy mx-auto mt-6">
+        Consistency is the whole game — this is what a year of founder-led
+        publishing looks like when the calendar keeps itself.
+      </p>
     </ScrollReveal>
-    <div
-      class="mt-12 grid gap-px overflow-hidden rounded-2xl border bg-border md:grid-cols-3"
+    <ScrollReveal class="mx-auto mt-12 max-w-4xl" delay={120}>
+      <PublishingActivityField />
+    </ScrollReveal>
+    <dl
+      class="mx-auto mt-12 grid max-w-4xl grid-cols-2 gap-x-6 gap-y-8 text-center sm:grid-cols-4"
     >
-      {#each [{ title: "Start with the work", body: "Bring a launch, lesson, or product update into one shared draft instead of starting from an empty calendar." }, { title: "Shape it for every channel", body: "Keep the core idea, then change only the copy, media, and format each audience needs." }, { title: "Keep the engine moving", body: "Schedule the next wave, see what published, and retry only the posts that need attention." }] as proof, index (proof.title)}
-        <ScrollReveal delay={index * 80}>
-          <article class="min-h-full bg-card p-6 sm:p-8">
-            <h3 class="text-xl font-semibold tracking-tight">{proof.title}</h3>
-            <p class="mt-3 text-sm/6 text-muted-foreground">{proof.body}</p>
-          </article>
+      {#each proofStats as stat, index (stat.label)}
+        <ScrollReveal delay={index * 70}>
+          <div>
+            <dt class="sr-only">{stat.label}</dt>
+            <dd
+              class="text-3xl font-semibold tracking-[-0.03em] text-balance sm:text-4xl"
+            >
+              {stat.value}
+            </dd>
+            <dd class="mt-1.5 text-xs/5 text-muted-foreground">{stat.label}</dd>
+          </div>
         </ScrollReveal>
       {/each}
-    </div>
+    </dl>
   </div>
 </section>
 
@@ -317,7 +357,7 @@ FORM: Product-led publishing workspace with activity squares as the recurring pr
                   {plan.description}
                 </p>
               </div>
-              {#if plan.featured}<span class="plan-tag">Popular</span>{/if}
+              {#if plan.featured}<span class="plan-tag">Most popular</span>{/if}
             </div>
             <p class="mt-8 text-4xl font-semibold tracking-[-0.04em]">
               {plan.price}<span
@@ -413,6 +453,42 @@ FORM: Product-led publishing workspace with activity squares as the recurring pr
 </section>
 
 <style>
+  .platform-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+    min-height: 2.75rem;
+    padding: 0.4rem 0.95rem 0.4rem 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: 0.8rem;
+    background: var(--card);
+    font-size: 0.85rem;
+    font-weight: 550;
+    color: var(--foreground);
+    box-shadow: 0 1px 2px color-mix(in oklch, var(--foreground) 5%, transparent);
+    transition:
+      transform 0.18s cubic-bezier(0.16, 1, 0.3, 1),
+      box-shadow 0.18s cubic-bezier(0.16, 1, 0.3, 1),
+      border-color 0.18s;
+  }
+
+  .platform-chip:hover {
+    transform: translateY(-2px);
+    border-color: color-mix(in oklch, var(--foreground) 22%, transparent);
+    box-shadow: 0 0.6rem 1.6rem -0.8rem
+      color-mix(in oklch, var(--foreground) 22%, transparent);
+  }
+
+  .platform-chip-icon {
+    display: grid;
+    width: 1.8rem;
+    height: 1.8rem;
+    place-items: center;
+    border-radius: 0.55rem;
+    background: color-mix(in oklch, var(--brand) 12%, transparent);
+    color: var(--brand);
+  }
+
   .hero {
     background:
       radial-gradient(
@@ -516,31 +592,44 @@ FORM: Product-led publishing workspace with activity squares as the recurring pr
   }
 
   .plan-card {
+    position: relative;
+    min-height: 100%;
+    padding: 1.75rem;
     border: 1px solid var(--border);
-    border-radius: 1rem;
+    border-radius: 1.15rem;
+    background: var(--card);
+    transition:
+      transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+      box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
-  .plan-card {
-    min-height: 100%;
-    padding: 1.5rem;
-    background: var(--card);
+  .plan-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 1.2rem 3rem -1.2rem
+      color-mix(in oklch, var(--foreground) 20%, transparent);
   }
 
   .featured-plan {
-    border-color: color-mix(in oklch, var(--primary) 60%, var(--border));
-    box-shadow: 0 1rem 3.5rem
-      color-mix(in oklch, var(--primary) 10%, transparent);
+    border: 1.5px solid color-mix(in oklch, var(--primary) 65%, var(--border));
+    box-shadow: 0 1.6rem 4rem -1.4rem
+      color-mix(in oklch, var(--primary) 35%, transparent);
   }
 
   .plan-tag {
+    position: absolute;
+    top: -0.75rem;
+    left: 50%;
+    transform: translateX(-50%);
     border-radius: 999px;
-    background: color-mix(in oklch, var(--primary) 14%, transparent);
-    padding: 0.3rem 0.55rem;
-    color: var(--primary);
+    background: var(--primary);
+    padding: 0.32rem 0.8rem;
+    color: var(--primary-foreground);
     font-size: 0.68rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
+    font-weight: 650;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+    box-shadow: 0 0.4rem 1.2rem -0.4rem
+      color-mix(in oklch, var(--primary) 55%, transparent);
   }
 
   .closing-section {

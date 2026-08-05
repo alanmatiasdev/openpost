@@ -22,9 +22,6 @@
     ...resourceItems.filter((item) => item.href !== "/platforms"),
     { label: "Discord community", href: "https://discord.gg/u2QwukmY4W" },
   ] as const;
-  const platformMenuCells = Array.from({ length: 14 }, (_, index) =>
-    [2, 5, 9, 12].includes(index),
-  );
 
   function isActive(href: string): boolean {
     if (href.startsWith("http")) return false;
@@ -78,14 +75,6 @@
                     </p>
                   </div>
                   <div class="flex shrink-0 items-center gap-4">
-                    <span
-                      class="platform-menu-cells hidden items-center gap-1 sm:flex"
-                      aria-hidden="true"
-                    >
-                      {#each platformMenuCells as active, index (index)}
-                        <i class={active ? "active" : undefined}></i>
-                      {/each}
-                    </span>
                     <NavigationMenu.Link
                       href="/platforms"
                       active={isActive("/platforms")}
@@ -304,16 +293,5 @@
     border-bottom: 1px solid color-mix(in oklch, var(--border) 70%, transparent);
     background: color-mix(in oklch, var(--background) 88%, transparent);
     backdrop-filter: blur(18px) saturate(140%);
-  }
-
-  .platform-menu-cells i {
-    width: 0.42rem;
-    height: 0.42rem;
-    border-radius: 0.12rem;
-    background: color-mix(in oklch, var(--muted) 36%, var(--background));
-  }
-
-  .platform-menu-cells i.active {
-    background: var(--primary);
   }
 </style>

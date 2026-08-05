@@ -2,6 +2,7 @@
   import Github from "lucide-svelte/icons/github";
   import MessageCircle from "lucide-svelte/icons/message-circle";
   import Logo from "$lib/components/Logo.svelte";
+  import PlatformIcon from "$lib/components/platform-icon.svelte";
   import {
     developerDocsUrl,
     githubUrl,
@@ -42,27 +43,11 @@
       ],
     },
   ];
-
-  const footerCells = Array.from({ length: 90 }, (_, index) => ({
-    level: index % 11 === 0 ? 4 : index % 7 === 0 ? 3 : index % 4 === 0 ? 2 : 1,
-    delay: ((index * 17) % 41) * -0.1,
-    duration: 3.6 + (index % 6) * 0.12,
-  }));
 </script>
 
-<footer class="site-footer">
-  <div class="footer-cells" aria-hidden="true">
-    {#each footerCells as cell, index (index)}
-      <i
-        class={`level-${cell.level}`}
-        style:--bounce-delay={`${cell.delay}s`}
-        style:--bounce-duration={`${cell.duration}s`}
-      ></i>
-    {/each}
-  </div>
-
+<footer class="border-t bg-muted/30">
   <div
-    class="marketing-shell grid gap-12 py-16 lg:grid-cols-[1.05fr_1.95fr] lg:py-20"
+    class="marketing-shell grid gap-12 py-14 lg:grid-cols-[1.15fr_1.85fr] lg:py-16"
   >
     <div>
       <a
@@ -73,15 +58,16 @@
         <Logo width={36} height={28} />
         <span class="text-sm font-semibold">OpenPost</span>
       </a>
-      <p class="mt-4 max-w-xs text-sm leading-6 text-white/58">
-        Create, adapt, schedule, and track social posts from one workspace.
+      <p class="mt-4 max-w-xs text-sm leading-6 text-muted-foreground">
+        The content workspace for solo founders. Create once, adapt for every
+        platform, stay visible everywhere.
       </p>
       <div class="mt-5 flex flex-wrap gap-x-5">
         <a
           href={githubUrl}
           target="_blank"
           rel="noreferrer"
-          class="focus-ring inline-flex min-h-11 items-center gap-2 rounded-md text-sm font-medium text-white/62 hover:text-white"
+          class="focus-ring inline-flex min-h-11 items-center gap-2 rounded-md text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
         >
           <Github class="size-4" />
           GitHub source
@@ -90,24 +76,38 @@
           href={discordCommunityUrl}
           target="_blank"
           rel="noreferrer"
-          class="focus-ring inline-flex min-h-11 items-center gap-2 rounded-md text-sm font-medium text-white/62 hover:text-white"
+          class="focus-ring inline-flex min-h-11 items-center gap-2 rounded-md text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
         >
           <MessageCircle class="size-4" />
           Discord
         </a>
+      </div>
+      <div
+        class="mt-6 flex flex-wrap items-center gap-x-3 gap-y-2 text-muted-foreground"
+        aria-label="Supported platforms"
+      >
+        {#each platforms as platform (platform.slug)}
+          <a
+            href={`/platforms/${platform.slug}`}
+            class="focus-ring inline-flex min-h-8 items-center rounded-md text-muted-foreground/75 transition-colors hover:text-primary"
+            aria-label={`${platform.name} guide`}
+          >
+            <PlatformIcon platform={platform.short} class="size-4" />
+          </a>
+        {/each}
       </div>
     </div>
 
     <div class="grid gap-8 sm:grid-cols-3">
       {#each groups as group (group.title)}
         <div>
-          <h2 class="text-sm font-semibold text-white">{group.title}</h2>
+          <h2 class="text-sm font-semibold">{group.title}</h2>
           <ul class="mt-3 grid gap-1">
             {#each group.links as link (link.href)}
               <li>
                 <a
                   href={link.href}
-                  class="focus-ring inline-flex min-h-11 items-center rounded-md text-sm text-white/58 transition-colors hover:text-white"
+                  class="focus-ring inline-flex min-h-11 items-center rounded-md text-sm text-muted-foreground transition-colors hover:text-foreground"
                 >
                   {link.label}
                 </a>
@@ -119,86 +119,22 @@
     </div>
   </div>
 
-  <div class="border-t border-white/10">
+  <div class="border-t">
     <div
-      class="marketing-shell flex flex-col gap-3 py-5 text-xs text-white/48 sm:flex-row sm:items-center sm:justify-between"
+      class="marketing-shell flex flex-col gap-3 py-5 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between"
     >
-      <span>Copyright 2026 OpenPost Contributors. AGPL-3.0-only.</span>
-      <span class="flex gap-5">
+      <span>© 2026 OpenPost Contributors · AGPL-3.0-only</span>
+      <span class="flex items-center gap-5">
+        <span class="hidden sm:inline">Made for companies of one</span>
         <a
-          class="focus-ring inline-flex min-h-11 items-center rounded-md hover:text-white"
+          class="focus-ring inline-flex min-h-11 items-center rounded-md transition-colors hover:text-foreground"
           href="/privacy">Privacy</a
         >
         <a
-          class="focus-ring inline-flex min-h-11 items-center rounded-md hover:text-white"
+          class="focus-ring inline-flex min-h-11 items-center rounded-md transition-colors hover:text-foreground"
           href="/terms">Terms</a
         >
       </span>
     </div>
   </div>
 </footer>
-
-<style>
-  .site-footer {
-    overflow: hidden;
-    border-top: 1px solid color-mix(in oklch, var(--primary) 22%, transparent);
-    background: oklch(0.13 0.012 50);
-    color: white;
-  }
-
-  .footer-cells {
-    display: flex;
-    height: 3.6rem;
-    align-items: flex-end;
-    justify-content: center;
-    gap: 0.25rem;
-    padding: 0 1rem 1rem;
-    border-bottom: 1px solid rgb(255 255 255 / 0.08);
-    opacity: 0.68;
-    overflow: hidden;
-    mask-image: linear-gradient(
-      to right,
-      transparent,
-      black 5%,
-      black 95%,
-      transparent
-    );
-  }
-
-  .footer-cells i {
-    width: 0.625rem;
-    height: 0.625rem;
-    flex: 0 0 0.625rem;
-    border-radius: 0.16rem;
-    background: rgb(255 255 255 / 0.08);
-    animation: footer-bounce var(--bounce-duration)
-      cubic-bezier(0.16, 1, 0.3, 1) var(--bounce-delay) infinite;
-  }
-
-  .footer-cells .level-2 {
-    background: oklch(0.58 0.09 48 / 0.52);
-  }
-  .footer-cells .level-3 {
-    background: oklch(0.65 0.14 45 / 0.75);
-  }
-  .footer-cells .level-4 {
-    background: oklch(0.7 0.18 43);
-  }
-
-  @keyframes footer-bounce {
-    0%,
-    65%,
-    100% {
-      transform: translateY(0);
-    }
-    50% {
-      transform: translateY(-0.375rem);
-    }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .footer-cells i {
-      animation: none;
-    }
-  }
-</style>

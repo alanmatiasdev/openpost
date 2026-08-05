@@ -4,27 +4,27 @@ This folder contains ready-to-use OpenPost assets built from the canonical logo,
 
 ## Start here
 
-- X: `banners/x-product-dark-imagegen.png` at 1500 x 500
-- LinkedIn profile: `banners/linkedin-profile-product-dark-imagegen.png` at 1584 x 396
+- X: `banners/x-signal-field-dark-imagegen.png` at 1500 x 500
+- LinkedIn profile: `banners/linkedin-profile-signal-field-dark-imagegen.png` at 1584 x 396
 - LinkedIn Page: `banners/linkedin-page-paper.png` at 4200 x 700
 - Profile image: `profile/avatar-800.png`
 - Full overview: `preview/contact-sheet.png` or `preview/index.html`
 - Ready-to-post copy: `captions.md`
 
-The recommended `product-dark-imagegen` headers use the real dark OpenPost workspace, a restrained pen mark, and the same short campaign line across separate X and LinkedIn compositions. The `paper` banners combine an AI-generated tactile background with deterministic OpenPost typography and the real vector logo. The `workshop` alternatives are fully deterministic and available in light and dark versions.
+The recommended `signal-field-dark-imagegen` headers turn the OpenPost pen mark and publishing activity tiles into an immersive brand world, with separate X and LinkedIn compositions. The `product-dark-imagegen` alternatives feature the real dark OpenPost workspace. The `paper` banners combine an AI-generated tactile background with deterministic OpenPost typography and the real vector logo. The `workshop` alternatives are fully deterministic and available in light and dark versions.
 
 ## Included formats
 
 | Folder       | Use                                 | Formats                              |
 | ------------ | ----------------------------------- | ------------------------------------ |
-| `banners/`   | X and LinkedIn headers              | Product dark, paper, workshop light, workshop dark |
+| `banners/`   | X and LinkedIn headers              | Signal field, product dark, paper, workshop light, workshop dark |
 | `profile/`   | Account avatar                      | 400 x 400 and 800 x 800              |
 | `posts/`     | X, LinkedIn, and general feed posts | Square, portrait, and landscape      |
 | `carousel/`  | LinkedIn document carousel          | Five 1080 x 1350 slides              |
 | `stories/`   | Stories and vertical posts          | Light and dark 1080 x 1920           |
 | `templates/` | Reusable blank layouts              | Square and portrait, light and dark  |
 
-Each deterministic PNG has a matching SVG source. `manifest.json` records those generated assets, their dimensions, and alt text. The two image-generated product headers are final PNG artwork and stay outside the deterministic generator.
+Each deterministic PNG has a matching SVG source. `manifest.json` records those generated assets, their dimensions, and alt text. The image-generated headers are final PNG artwork and stay outside the deterministic generator.
 
 ## Safe placement
 
