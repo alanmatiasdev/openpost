@@ -111,24 +111,21 @@ var configTestEnvKeys = []string{
 	"OPENPOST_S3_SECRET_ACCESS_KEY",
 	"OPENPOST_S3_PUBLIC_BASE_URL",
 	"OPENPOST_S3_FORCE_PATH_STYLE",
-	"OPENPOST_WHOP_API_KEY",
-	"OPENPOST_WHOP_API_BASE_URL",
-	"OPENPOST_WHOP_WEBHOOK_SECRET",
-	"OPENPOST_WHOP_ACCOUNT_ID",
-	"OPENPOST_WHOP_PRODUCT_ID",
-	"OPENPOST_WHOP_CHECKOUT_RETURN_URL",
-	"OPENPOST_WHOP_STARTER_MONTHLY_PLAN_ID",
-	"OPENPOST_WHOP_STARTER_ANNUAL_PLAN_ID",
-	"OPENPOST_WHOP_FOUNDER_MONTHLY_PLAN_ID",
-	"OPENPOST_WHOP_FOUNDER_ANNUAL_PLAN_ID",
-	"OPENPOST_WHOP_CREATOR_MONTHLY_PLAN_ID",
-	"OPENPOST_WHOP_CREATOR_ANNUAL_PLAN_ID",
-	"OPENPOST_WHOP_PRO_MONTHLY_PLAN_ID",
-	"OPENPOST_WHOP_PRO_ANNUAL_PLAN_ID",
-	"OPENPOST_WHOP_TEAM_MONTHLY_PLAN_ID",
-	"OPENPOST_WHOP_TEAM_ANNUAL_PLAN_ID",
-	"OPENPOST_WHOP_AGENCY_MONTHLY_PLAN_ID",
-	"OPENPOST_WHOP_AGENCY_ANNUAL_PLAN_ID",
+	"OPENPOST_PADDLE_API_KEY",
+	"OPENPOST_PADDLE_ENVIRONMENT",
+	"OPENPOST_PADDLE_CLIENT_TOKEN",
+	"OPENPOST_PADDLE_WEBHOOK_SECRET",
+	"OPENPOST_PADDLE_CHECKOUT_RETURN_URL",
+	"OPENPOST_PADDLE_STARTER_MONTHLY_PRICE_ID",
+	"OPENPOST_PADDLE_STARTER_ANNUAL_PRICE_ID",
+	"OPENPOST_PADDLE_FOUNDER_MONTHLY_PRICE_ID",
+	"OPENPOST_PADDLE_FOUNDER_ANNUAL_PRICE_ID",
+	"OPENPOST_PADDLE_PRO_MONTHLY_PRICE_ID",
+	"OPENPOST_PADDLE_PRO_ANNUAL_PRICE_ID",
+	"OPENPOST_PADDLE_TEAM_MONTHLY_PRICE_ID",
+	"OPENPOST_PADDLE_TEAM_ANNUAL_PRICE_ID",
+	"OPENPOST_PADDLE_AGENCY_MONTHLY_PRICE_ID",
+	"OPENPOST_PADDLE_AGENCY_ANNUAL_PRICE_ID",
 }
 
 func TestLoadProductionPrimitiveDefaults(t *testing.T) {
@@ -142,9 +139,10 @@ func TestLoadProductionPrimitiveDefaults(t *testing.T) {
 	require.Equal(t, StorageDriverLocal, cfg.StorageDriver)
 	require.Empty(t, cfg.DatabaseURL)
 	require.Empty(t, cfg.S3Bucket)
-	require.Empty(t, cfg.WhopAPIKey)
-	require.Equal(t, "https://api.whop.com/api/v1", cfg.WhopAPIBaseURL)
-	require.Empty(t, cfg.WhopWebhookSecret)
+	require.Empty(t, cfg.PaddleAPIKey)
+	require.Empty(t, cfg.PaddleEnvironment)
+	require.Empty(t, cfg.PaddleClientToken)
+	require.Empty(t, cfg.PaddleWebhookSecret)
 	require.True(t, cfg.ImageEditorEnabled)
 	require.Equal(t, "/image-editor-models", cfg.ImageEditorModelBaseURL)
 	require.False(t, cfg.VideoEditorEnabled)
@@ -196,16 +194,6 @@ func TestLoadEditorConfigurationSupportsLegacyEnvironmentAliases(t *testing.T) {
 	require.False(t, cfg.ImageEditorEnabled)
 	require.Equal(t, "https://assets.example.com/legacy-image-editor", cfg.ImageEditorModelBaseURL)
 	require.True(t, cfg.VideoEditorEnabled)
-}
-
-func TestLoadFounderPlanConfigurationSupportsLegacyCreatorEnvironmentAliases(t *testing.T) {
-	t.Setenv("OPENPOST_WHOP_CREATOR_MONTHLY_PLAN_ID", "plan_creator_monthly")
-	t.Setenv("OPENPOST_WHOP_CREATOR_ANNUAL_PLAN_ID", "plan_creator_annual")
-
-	cfg := Load()
-
-	require.Equal(t, "plan_creator_monthly", cfg.WhopFounderMonthlyPlanID)
-	require.Equal(t, "plan_creator_annual", cfg.WhopFounderAnnualPlanID)
 }
 
 func TestLoadVideoEditorAndStockConfiguration(t *testing.T) {
@@ -385,14 +373,14 @@ func TestLoadSupportsFileBackedEnvValues(t *testing.T) {
 	t.Setenv("OPENPOST_S3_SECRET_ACCESS_KEY_FILE", writeEnvFile(t, "s3-secret-access-key", "secret-key\n"))
 	t.Setenv("OPENPOST_S3_PUBLIC_BASE_URL_FILE", writeEnvFile(t, "s3-public-base-url", "https://media.openpost.social/\n"))
 	t.Setenv("OPENPOST_S3_FORCE_PATH_STYLE_FILE", writeEnvFile(t, "s3-force-path-style", "true\n"))
-	t.Setenv("OPENPOST_WHOP_API_KEY_FILE", writeEnvFile(t, "whop-api-key", "whop-token\n"))
-	t.Setenv("OPENPOST_WHOP_WEBHOOK_SECRET_FILE", writeEnvFile(t, "whop-webhook-secret", "whsec_secret\n"))
-	t.Setenv("OPENPOST_WHOP_ACCOUNT_ID_FILE", writeEnvFile(t, "whop-account", "biz_1\n"))
-	t.Setenv("OPENPOST_WHOP_PRODUCT_ID_FILE", writeEnvFile(t, "whop-product", "prod_1\n"))
-	t.Setenv("OPENPOST_WHOP_CHECKOUT_RETURN_URL_FILE", writeEnvFile(t, "whop-return-url", "https://app.openpost.social/checkout?status=success\n"))
+	t.Setenv("OPENPOST_PADDLE_API_KEY_FILE", writeEnvFile(t, "paddle-api-key", "pdl_sdbx_token\n"))
+	t.Setenv("OPENPOST_PADDLE_ENVIRONMENT_FILE", writeEnvFile(t, "paddle-environment", "sandbox\n"))
+	t.Setenv("OPENPOST_PADDLE_CLIENT_TOKEN_FILE", writeEnvFile(t, "paddle-client-token", "test_client_token\n"))
+	t.Setenv("OPENPOST_PADDLE_WEBHOOK_SECRET_FILE", writeEnvFile(t, "paddle-webhook-secret", "pdl_webhook_secret\n"))
+	t.Setenv("OPENPOST_PADDLE_CHECKOUT_RETURN_URL_FILE", writeEnvFile(t, "paddle-return-url", "https://app.openpost.social/checkout?status=success\n"))
 	for _, plan := range []string{"STARTER", "FOUNDER", "PRO", "TEAM", "AGENCY"} {
-		t.Setenv("OPENPOST_WHOP_"+plan+"_MONTHLY_PLAN_ID_FILE", writeEnvFile(t, strings.ToLower(plan)+"-monthly", "plan_"+strings.ToLower(plan)+"_monthly\n"))
-		t.Setenv("OPENPOST_WHOP_"+plan+"_ANNUAL_PLAN_ID_FILE", writeEnvFile(t, strings.ToLower(plan)+"-annual", "plan_"+strings.ToLower(plan)+"_annual\n"))
+		t.Setenv("OPENPOST_PADDLE_"+plan+"_MONTHLY_PRICE_ID_FILE", writeEnvFile(t, strings.ToLower(plan)+"-monthly", "pri_"+strings.ToLower(plan)+"_monthly\n"))
+		t.Setenv("OPENPOST_PADDLE_"+plan+"_ANNUAL_PRICE_ID_FILE", writeEnvFile(t, strings.ToLower(plan)+"-annual", "pri_"+strings.ToLower(plan)+"_annual\n"))
 	}
 	t.Setenv("OPENPOST_SMTP_HOST_FILE", writeEnvFile(t, "smtp-host", "smtp.example.com\n"))
 	t.Setenv("OPENPOST_SMTP_FROM_FILE", writeEnvFile(t, "smtp-from", "OpenPost <openpost@example.com>\n"))
@@ -411,13 +399,13 @@ func TestLoadSupportsFileBackedEnvValues(t *testing.T) {
 	require.Equal(t, "secret-key", cfg.S3SecretAccessKey)
 	require.Equal(t, "https://media.openpost.social", cfg.S3PublicBaseURL)
 	require.True(t, cfg.S3ForcePathStyle)
-	require.Equal(t, "whop-token", cfg.WhopAPIKey)
-	require.Equal(t, "whsec_secret", cfg.WhopWebhookSecret)
-	require.Equal(t, "biz_1", cfg.WhopAccountID)
-	require.Equal(t, "prod_1", cfg.WhopProductID)
-	require.Equal(t, "https://app.openpost.social/checkout?status=success", cfg.WhopCheckoutReturnURL)
-	require.Equal(t, "plan_starter_monthly", cfg.WhopStarterMonthlyPlanID)
-	require.Equal(t, "plan_agency_annual", cfg.WhopAgencyAnnualPlanID)
+	require.Equal(t, "pdl_sdbx_token", cfg.PaddleAPIKey)
+	require.Equal(t, "sandbox", cfg.PaddleEnvironment)
+	require.Equal(t, "test_client_token", cfg.PaddleClientToken)
+	require.Equal(t, "pdl_webhook_secret", cfg.PaddleWebhookSecret)
+	require.Equal(t, "https://app.openpost.social/checkout?status=success", cfg.PaddleCheckoutReturnURL)
+	require.Equal(t, "pri_starter_monthly", cfg.PaddleStarterMonthlyPriceID)
+	require.Equal(t, "pri_agency_annual", cfg.PaddleAgencyAnnualPriceID)
 	require.NoError(t, cfg.ValidateRuntime())
 }
 
@@ -561,32 +549,32 @@ func TestValidateRuntimeRejectsCloudMissingS3Primitives(t *testing.T) {
 	require.ErrorContains(t, err, "OPENPOST_S3_PUBLIC_BASE_URL")
 }
 
-func TestValidateRuntimeRejectsCloudMissingWhopPrimitives(t *testing.T) {
+func TestValidateRuntimeRejectsCloudMissingPaddlePrimitives(t *testing.T) {
 	cfg := validCloudRuntimeConfig()
-	cfg.WhopAPIKey = ""
-	cfg.WhopWebhookSecret = ""
-	cfg.WhopAccountID = ""
-	cfg.WhopProductID = ""
-	cfg.WhopStarterMonthlyPlanID = ""
-	cfg.WhopStarterAnnualPlanID = ""
-	cfg.WhopFounderMonthlyPlanID = ""
-	cfg.WhopFounderAnnualPlanID = ""
-	cfg.WhopProMonthlyPlanID = ""
-	cfg.WhopProAnnualPlanID = ""
-	cfg.WhopTeamMonthlyPlanID = ""
-	cfg.WhopTeamAnnualPlanID = ""
-	cfg.WhopAgencyMonthlyPlanID = ""
-	cfg.WhopAgencyAnnualPlanID = ""
+	cfg.PaddleAPIKey = ""
+	cfg.PaddleEnvironment = ""
+	cfg.PaddleClientToken = ""
+	cfg.PaddleWebhookSecret = ""
+	cfg.PaddleStarterMonthlyPriceID = ""
+	cfg.PaddleStarterAnnualPriceID = ""
+	cfg.PaddleFounderMonthlyPriceID = ""
+	cfg.PaddleFounderAnnualPriceID = ""
+	cfg.PaddleProMonthlyPriceID = ""
+	cfg.PaddleProAnnualPriceID = ""
+	cfg.PaddleTeamMonthlyPriceID = ""
+	cfg.PaddleTeamAnnualPriceID = ""
+	cfg.PaddleAgencyMonthlyPriceID = ""
+	cfg.PaddleAgencyAnnualPriceID = ""
 
 	err := cfg.ValidateRuntime()
 
 	require.Error(t, err)
-	require.ErrorContains(t, err, "OPENPOST_WHOP_API_KEY")
-	require.ErrorContains(t, err, "OPENPOST_WHOP_WEBHOOK_SECRET")
-	require.ErrorContains(t, err, "OPENPOST_WHOP_ACCOUNT_ID")
-	require.ErrorContains(t, err, "OPENPOST_WHOP_PRODUCT_ID")
-	require.ErrorContains(t, err, "OPENPOST_WHOP_STARTER_MONTHLY_PLAN_ID")
-	require.ErrorContains(t, err, "OPENPOST_WHOP_AGENCY_ANNUAL_PLAN_ID")
+	require.ErrorContains(t, err, "OPENPOST_PADDLE_API_KEY")
+	require.ErrorContains(t, err, "OPENPOST_PADDLE_ENVIRONMENT")
+	require.ErrorContains(t, err, "OPENPOST_PADDLE_CLIENT_TOKEN")
+	require.ErrorContains(t, err, "OPENPOST_PADDLE_WEBHOOK_SECRET")
+	require.ErrorContains(t, err, "OPENPOST_PADDLE_STARTER_MONTHLY_PRICE_ID")
+	require.ErrorContains(t, err, "OPENPOST_PADDLE_AGENCY_ANNUAL_PRICE_ID")
 }
 
 func TestValidateRuntimeRejectsCloudWildcardCORSOrigins(t *testing.T) {
@@ -622,68 +610,66 @@ func TestValidateRuntimeRejectsCloudWithoutAccountRecoveryAndLegalConfig(t *test
 
 func validCloudRuntimeConfig() *Config {
 	return &Config{
-		Edition:                   EditionCloud,
-		DatabaseDriver:            DatabaseDriverPostgres,
-		DatabaseURL:               "postgres://openpost:secret@db.internal:5432/openpost?sslmode=require",
-		StorageDriver:             StorageDriverS3,
-		S3Region:                  "auto",
-		S3Bucket:                  "openpost-media",
-		S3AccessKeyID:             "access-key",
-		S3SecretAccessKey:         "secret-key",
-		S3PublicBaseURL:           "https://media.openpost.social",
-		S3ForcePathStyle:          true,
-		WhopAPIKey:                "whop-token",
-		WhopWebhookSecret:         "whsec_secret",
-		WhopAccountID:             "biz_1",
-		WhopProductID:             "prod_1",
-		WhopStarterMonthlyPlanID:  "plan_starter_monthly",
-		WhopStarterAnnualPlanID:   "plan_starter_annual",
-		WhopFounderMonthlyPlanID:  "plan_founder_monthly",
-		WhopFounderAnnualPlanID:   "plan_founder_annual",
-		WhopProMonthlyPlanID:      "plan_pro_monthly",
-		WhopProAnnualPlanID:       "plan_pro_annual",
-		WhopTeamMonthlyPlanID:     "plan_team_monthly",
-		WhopTeamAnnualPlanID:      "plan_team_annual",
-		WhopAgencyMonthlyPlanID:   "plan_agency_monthly",
-		WhopAgencyAnnualPlanID:    "plan_agency_annual",
-		LegalAcceptanceRequired:   true,
-		TermsURL:                  "https://openpost.social/terms",
-		PrivacyURL:                "https://openpost.social/privacy",
-		TermsVersion:              "2026-07-22",
-		PrivacyVersion:            "2026-07-22",
-		SupportEmail:              "openpost@rgo.pt",
-		EmailVerificationRequired: true,
-		EmailProvider:             "smtp",
-		EmailFrom:                 "OpenPost <openpost@example.com>",
-		SMTPHost:                  "smtp.example.com",
-		SMTPPort:                  587,
-		SMTPFrom:                  "OpenPost <openpost@example.com>",
+		Edition:                     EditionCloud,
+		DatabaseDriver:              DatabaseDriverPostgres,
+		DatabaseURL:                 "postgres://openpost:secret@db.internal:5432/openpost?sslmode=require",
+		StorageDriver:               StorageDriverS3,
+		S3Region:                    "auto",
+		S3Bucket:                    "openpost-media",
+		S3AccessKeyID:               "access-key",
+		S3SecretAccessKey:           "secret-key",
+		S3PublicBaseURL:             "https://media.openpost.social",
+		S3ForcePathStyle:            true,
+		PaddleAPIKey:                "pdl_sdbx_token",
+		PaddleEnvironment:           "sandbox",
+		PaddleClientToken:           "test_client_token",
+		PaddleWebhookSecret:         "pdl_webhook_secret",
+		PaddleStarterMonthlyPriceID: "pri_starter_monthly",
+		PaddleStarterAnnualPriceID:  "pri_starter_annual",
+		PaddleFounderMonthlyPriceID: "pri_founder_monthly",
+		PaddleFounderAnnualPriceID:  "pri_founder_annual",
+		PaddleProMonthlyPriceID:     "pri_pro_monthly",
+		PaddleProAnnualPriceID:      "pri_pro_annual",
+		PaddleTeamMonthlyPriceID:    "pri_team_monthly",
+		PaddleTeamAnnualPriceID:     "pri_team_annual",
+		PaddleAgencyMonthlyPriceID:  "pri_agency_monthly",
+		PaddleAgencyAnnualPriceID:   "pri_agency_annual",
+		LegalAcceptanceRequired:     true,
+		TermsURL:                    "https://openpost.social/terms",
+		PrivacyURL:                  "https://openpost.social/privacy",
+		TermsVersion:                "2026-07-22",
+		PrivacyVersion:              "2026-07-22",
+		SupportEmail:                "openpost@rgo.pt",
+		EmailVerificationRequired:   true,
+		EmailProvider:               "smtp",
+		EmailFrom:                   "OpenPost <openpost@example.com>",
+		SMTPHost:                    "smtp.example.com",
+		SMTPPort:                    587,
+		SMTPFrom:                    "OpenPost <openpost@example.com>",
 	}
 }
 
-func TestLoadWhopPrimitives(t *testing.T) {
+func TestLoadPaddlePrimitives(t *testing.T) {
 	t.Setenv("OPENPOST_APP_URL", "https://app.openpost.social")
-	t.Setenv("OPENPOST_WHOP_API_KEY", "whop-token")
-	t.Setenv("OPENPOST_WHOP_API_BASE_URL", "https://sandbox-api.whop.com/api/v1/")
-	t.Setenv("OPENPOST_WHOP_WEBHOOK_SECRET", "whsec_secret")
-	t.Setenv("OPENPOST_WHOP_ACCOUNT_ID", "biz_1")
-	t.Setenv("OPENPOST_WHOP_PRODUCT_ID", "prod_1")
-	t.Setenv("OPENPOST_WHOP_CHECKOUT_RETURN_URL", "https://app.openpost.social/checkout?status=success")
+	t.Setenv("OPENPOST_PADDLE_API_KEY", "pdl_sdbx_token")
+	t.Setenv("OPENPOST_PADDLE_ENVIRONMENT", "sandbox")
+	t.Setenv("OPENPOST_PADDLE_CLIENT_TOKEN", "test_client_token")
+	t.Setenv("OPENPOST_PADDLE_WEBHOOK_SECRET", "pdl_webhook_secret")
+	t.Setenv("OPENPOST_PADDLE_CHECKOUT_RETURN_URL", "https://app.openpost.social/checkout?status=success")
 	for _, plan := range []string{"STARTER", "FOUNDER", "PRO", "TEAM", "AGENCY"} {
-		t.Setenv("OPENPOST_WHOP_"+plan+"_MONTHLY_PLAN_ID", "plan_"+strings.ToLower(plan)+"_monthly")
-		t.Setenv("OPENPOST_WHOP_"+plan+"_ANNUAL_PLAN_ID", "plan_"+strings.ToLower(plan)+"_annual")
+		t.Setenv("OPENPOST_PADDLE_"+plan+"_MONTHLY_PRICE_ID", "pri_"+strings.ToLower(plan)+"_monthly")
+		t.Setenv("OPENPOST_PADDLE_"+plan+"_ANNUAL_PRICE_ID", "pri_"+strings.ToLower(plan)+"_annual")
 	}
 
 	cfg := Load()
 
-	require.Equal(t, "whop-token", cfg.WhopAPIKey)
-	require.Equal(t, "https://sandbox-api.whop.com/api/v1", cfg.WhopAPIBaseURL)
-	require.Equal(t, "whsec_secret", cfg.WhopWebhookSecret)
-	require.Equal(t, "biz_1", cfg.WhopAccountID)
-	require.Equal(t, "prod_1", cfg.WhopProductID)
-	require.Equal(t, "https://app.openpost.social/checkout?status=success", cfg.WhopCheckoutReturnURL)
-	require.Equal(t, "plan_starter_monthly", cfg.WhopStarterMonthlyPlanID)
-	require.Equal(t, "plan_agency_annual", cfg.WhopAgencyAnnualPlanID)
+	require.Equal(t, "pdl_sdbx_token", cfg.PaddleAPIKey)
+	require.Equal(t, "sandbox", cfg.PaddleEnvironment)
+	require.Equal(t, "test_client_token", cfg.PaddleClientToken)
+	require.Equal(t, "pdl_webhook_secret", cfg.PaddleWebhookSecret)
+	require.Equal(t, "https://app.openpost.social/checkout?status=success", cfg.PaddleCheckoutReturnURL)
+	require.Equal(t, "pri_starter_monthly", cfg.PaddleStarterMonthlyPriceID)
+	require.Equal(t, "pri_agency_annual", cfg.PaddleAgencyAnnualPriceID)
 }
 
 func TestLoadBuildsProviderAppRegistryFromLegacyEnv(t *testing.T) {

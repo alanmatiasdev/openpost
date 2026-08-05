@@ -27,6 +27,8 @@ func TestSaveTextPostDraftCompareAndSetIsAtomicAndPermissionScoped(t *testing.T)
 		(*models.ThreadDraft)(nil),
 		(*models.MediaAttachment)(nil),
 		(*models.SocialAccount)(nil),
+		(*models.SocialSet)(nil),
+		(*models.SocialSetAccount)(nil),
 		(*models.Publication)(nil),
 		(*models.PublicationSegment)(nil),
 		(*models.PublicationSegmentMedia)(nil),
@@ -42,6 +44,10 @@ func TestSaveTextPostDraftCompareAndSetIsAtomicAndPermissionScoped(t *testing.T)
 		WorkspaceID: "workspace-1",
 		UserID:      "user-1",
 		Role:        models.WorkspaceRoleEditor,
+	}).Exec(ctx)
+	require.NoError(t, err)
+	_, err = db.NewInsert().Model(&models.SocialSet{
+		ID: "social-set-1", WorkspaceID: "workspace-1", Name: "Launch",
 	}).Exec(ctx)
 	require.NoError(t, err)
 	_, err = db.NewInsert().Model(&models.Publication{
@@ -84,7 +90,9 @@ func TestSaveTextPostDraftCompareAndSetIsAtomicAndPermissionScoped(t *testing.T)
 
 	e := echo.New()
 	api := humaecho.NewWithGroup(e, e.Group("/api/v1"), huma.DefaultConfig("Test", "1.0.0"))
-	NewPostHandler(db, testAuthenticator{}).SaveTextPostDraft(api)
+	postHandler := NewPostHandler(db, testAuthenticator{})
+	postHandler.CreateTextPostDraft(api)
+	postHandler.SaveTextPostDraft(api)
 
 	save := func(body string) *httptest.ResponseRecorder {
 		req := httptest.NewRequestWithContext(
@@ -108,6 +116,8 @@ func TestSaveTextPostDraftCompareAndSetIsAtomicAndPermissionScoped(t *testing.T)
 		"variants": [],
 		"publication": {
 			"title": "Updated title",
+			"creation_preset": "thread",
+			"social_set_id": "social-set-1",
 			"source_text": "Updated",
 			"repost_override": {"mode": "off"},
 			"segments": [{"body": "Updated"}],
@@ -126,8 +136,44 @@ func TestSaveTextPostDraftCompareAndSetIsAtomicAndPermissionScoped(t *testing.T)
 	var publication models.Publication
 	require.NoError(t, db.NewSelect().Model(&publication).Where("id = ?", "publication-1").Scan(ctx))
 	require.Equal(t, "Updated title", publication.Title)
+	require.Equal(t, models.PublishingIntentThread, publication.CreationPreset)
+	require.Equal(t, "social-set-1", publication.SocialSetID)
 	require.JSONEq(t, `{"mode":"off"}`, publication.RepostOverride)
 	require.Equal(t, 2, publication.Revision)
+
+	createRequest := httptest.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
+		"/api/v1/posts/draft",
+		strings.NewReader(`{
+			"workspace_id": "workspace-1",
+			"content": "Created through the clean composer",
+			"social_account_ids": [],
+			"media_ids": [],
+			"variants": [],
+			"publication": {
+				"title": "Created through the clean composer",
+				"creation_preset": "thread",
+				"social_set_id": "social-set-1",
+				"source_text": "Created through the clean composer",
+				"segments": [{"body": "Created through the clean composer"}],
+				"renditions": []
+			}
+		}`),
+	)
+	createRequest.Header.Set("Authorization", "Bearer web-token")
+	createRequest.Header.Set("Content-Type", "application/json")
+	createResponse := httptest.NewRecorder()
+	e.ServeHTTP(createResponse, createRequest)
+	require.Equal(t, http.StatusOK, createResponse.Code, createResponse.Body.String())
+	var createdOutput CreateTextPostDraftOutput
+	require.NoError(t, json.Unmarshal(createResponse.Body.Bytes(), &createdOutput.Body))
+	var createdPublication models.Publication
+	require.NoError(t, db.NewSelect().Model(&createdPublication).
+		Where("id = ?", createdOutput.Body.PublicationID).
+		Scan(ctx))
+	require.Equal(t, models.PublishingIntentThread, createdPublication.CreationPreset)
+	require.Equal(t, "social-set-1", createdPublication.SocialSetID)
 
 	stale := save(`{
 		"expected_revision": 1,

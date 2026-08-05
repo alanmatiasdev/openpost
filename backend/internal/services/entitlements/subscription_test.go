@@ -65,7 +65,7 @@ func seedBillingSubscription(t *testing.T, db *bun.DB, status, snapshot string) 
 	_, err := db.NewInsert().Model(&models.BillingSubscription{
 		OrganizationID:         "org-1",
 		WorkspaceID:            "ws-1",
-		Provider:               "whop",
+		Provider:               "paddle",
 		ProviderCustomerID:     "customer-1",
 		ProviderSubscriptionID: uuid.NewString(),
 		Status:                 status,
@@ -100,6 +100,34 @@ func TestSubscriptionServiceUsesUsersActiveSubscriptionForLegacyPersonalWorkspac
 	require.NoError(t, err)
 	require.True(t, decision.Allowed)
 	require.Equal(t, int64(10), decision.Limit)
+}
+
+func TestSubscriptionServiceIgnoresNonPaddleSubscription(t *testing.T) {
+	t.Parallel()
+
+	db := newSubscriptionEntitlementTestDB(t)
+	_, err := db.NewInsert().Model(&models.BillingSubscription{
+		OrganizationID:         "org-1",
+		WorkspaceID:            "ws-1",
+		Provider:               "legacy-provider",
+		ProviderCustomerID:     "customer-1",
+		ProviderSubscriptionID: "subscription-1",
+		Status:                 "active",
+		PlanID:                 "agency",
+		EntitlementSnapshot:    `{"limits":{"social_accounts":150}}`,
+	}).Exec(t.Context())
+	require.NoError(t, err)
+
+	decision, err := NewSubscriptionService(db, nil).Check(t.Context(), Request{
+		OrganizationID: "org-1",
+		WorkspaceID:    "ws-1",
+		Limit:          LimitSocialAccounts,
+		Amount:         1,
+	})
+
+	require.NoError(t, err)
+	require.False(t, decision.Allowed)
+	require.Equal(t, "active subscription required", decision.Reason)
 }
 
 func TestSubscriptionServiceDoesNotApplyUsersPlanToAnotherOwnersWorkspace(t *testing.T) {

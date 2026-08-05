@@ -114,22 +114,21 @@ type Config struct {
 	S3PublicBaseURL   string
 	S3ForcePathStyle  bool
 
-	WhopAPIKey               string
-	WhopAPIBaseURL           string
-	WhopWebhookSecret        string
-	WhopAccountID            string
-	WhopProductID            string
-	WhopCheckoutReturnURL    string
-	WhopStarterMonthlyPlanID string
-	WhopStarterAnnualPlanID  string
-	WhopFounderMonthlyPlanID string
-	WhopFounderAnnualPlanID  string
-	WhopProMonthlyPlanID     string
-	WhopProAnnualPlanID      string
-	WhopTeamMonthlyPlanID    string
-	WhopTeamAnnualPlanID     string
-	WhopAgencyMonthlyPlanID  string
-	WhopAgencyAnnualPlanID   string
+	PaddleAPIKey                string
+	PaddleEnvironment           string
+	PaddleClientToken           string
+	PaddleWebhookSecret         string
+	PaddleCheckoutReturnURL     string
+	PaddleStarterMonthlyPriceID string
+	PaddleStarterAnnualPriceID  string
+	PaddleFounderMonthlyPriceID string
+	PaddleFounderAnnualPriceID  string
+	PaddleProMonthlyPriceID     string
+	PaddleProAnnualPriceID      string
+	PaddleTeamMonthlyPriceID    string
+	PaddleTeamAnnualPriceID     string
+	PaddleAgencyMonthlyPriceID  string
+	PaddleAgencyAnnualPriceID   string
 }
 
 const minSecretLength = 32
@@ -273,22 +272,21 @@ func Load() *Config {
 		S3PublicBaseURL:   strings.TrimRight(getEnvDefault("OPENPOST_S3_PUBLIC_BASE_URL", ""), "/"),
 		S3ForcePathStyle:  getEnvBoolWithAliases(false, "OPENPOST_S3_FORCE_PATH_STYLE"),
 
-		WhopAPIKey:               getEnvDefault("OPENPOST_WHOP_API_KEY", ""),
-		WhopAPIBaseURL:           strings.TrimRight(getEnvDefault("OPENPOST_WHOP_API_BASE_URL", "https://api.whop.com/api/v1"), "/"),
-		WhopWebhookSecret:        getEnvDefault("OPENPOST_WHOP_WEBHOOK_SECRET", ""),
-		WhopAccountID:            getEnvDefault("OPENPOST_WHOP_ACCOUNT_ID", ""),
-		WhopProductID:            getEnvDefault("OPENPOST_WHOP_PRODUCT_ID", ""),
-		WhopCheckoutReturnURL:    strings.TrimRight(getEnvDefault("OPENPOST_WHOP_CHECKOUT_RETURN_URL", ""), "/"),
-		WhopStarterMonthlyPlanID: getEnvDefault("OPENPOST_WHOP_STARTER_MONTHLY_PLAN_ID", ""),
-		WhopStarterAnnualPlanID:  getEnvDefault("OPENPOST_WHOP_STARTER_ANNUAL_PLAN_ID", ""),
-		WhopFounderMonthlyPlanID: getEnvWithFallbacks("OPENPOST_WHOP_FOUNDER_MONTHLY_PLAN_ID", "", "OPENPOST_WHOP_CREATOR_MONTHLY_PLAN_ID"),
-		WhopFounderAnnualPlanID:  getEnvWithFallbacks("OPENPOST_WHOP_FOUNDER_ANNUAL_PLAN_ID", "", "OPENPOST_WHOP_CREATOR_ANNUAL_PLAN_ID"),
-		WhopProMonthlyPlanID:     getEnvDefault("OPENPOST_WHOP_PRO_MONTHLY_PLAN_ID", ""),
-		WhopProAnnualPlanID:      getEnvDefault("OPENPOST_WHOP_PRO_ANNUAL_PLAN_ID", ""),
-		WhopTeamMonthlyPlanID:    getEnvDefault("OPENPOST_WHOP_TEAM_MONTHLY_PLAN_ID", ""),
-		WhopTeamAnnualPlanID:     getEnvDefault("OPENPOST_WHOP_TEAM_ANNUAL_PLAN_ID", ""),
-		WhopAgencyMonthlyPlanID:  getEnvDefault("OPENPOST_WHOP_AGENCY_MONTHLY_PLAN_ID", ""),
-		WhopAgencyAnnualPlanID:   getEnvDefault("OPENPOST_WHOP_AGENCY_ANNUAL_PLAN_ID", ""),
+		PaddleAPIKey:                getEnvDefault("OPENPOST_PADDLE_API_KEY", ""),
+		PaddleEnvironment:           strings.ToLower(strings.TrimSpace(getEnvDefault("OPENPOST_PADDLE_ENVIRONMENT", ""))),
+		PaddleClientToken:           getEnvDefault("OPENPOST_PADDLE_CLIENT_TOKEN", ""),
+		PaddleWebhookSecret:         getEnvDefault("OPENPOST_PADDLE_WEBHOOK_SECRET", ""),
+		PaddleCheckoutReturnURL:     strings.TrimSpace(getEnvDefault("OPENPOST_PADDLE_CHECKOUT_RETURN_URL", "")),
+		PaddleStarterMonthlyPriceID: getEnvDefault("OPENPOST_PADDLE_STARTER_MONTHLY_PRICE_ID", ""),
+		PaddleStarterAnnualPriceID:  getEnvDefault("OPENPOST_PADDLE_STARTER_ANNUAL_PRICE_ID", ""),
+		PaddleFounderMonthlyPriceID: getEnvDefault("OPENPOST_PADDLE_FOUNDER_MONTHLY_PRICE_ID", ""),
+		PaddleFounderAnnualPriceID:  getEnvDefault("OPENPOST_PADDLE_FOUNDER_ANNUAL_PRICE_ID", ""),
+		PaddleProMonthlyPriceID:     getEnvDefault("OPENPOST_PADDLE_PRO_MONTHLY_PRICE_ID", ""),
+		PaddleProAnnualPriceID:      getEnvDefault("OPENPOST_PADDLE_PRO_ANNUAL_PRICE_ID", ""),
+		PaddleTeamMonthlyPriceID:    getEnvDefault("OPENPOST_PADDLE_TEAM_MONTHLY_PRICE_ID", ""),
+		PaddleTeamAnnualPriceID:     getEnvDefault("OPENPOST_PADDLE_TEAM_ANNUAL_PRICE_ID", ""),
+		PaddleAgencyMonthlyPriceID:  getEnvDefault("OPENPOST_PADDLE_AGENCY_MONTHLY_PRICE_ID", ""),
+		PaddleAgencyAnnualPriceID:   getEnvDefault("OPENPOST_PADDLE_AGENCY_ANNUAL_PRICE_ID", ""),
 	}
 
 	if cfg.PublicURL == "" {
@@ -600,31 +598,56 @@ func (c *Config) missingCloudDataPlaneConfig() []string {
 }
 
 func (c *Config) missingCloudBillingConfig() []string {
-	missing := make([]string, 0, 14)
+	missing := make([]string, 0, 16)
 	for _, required := range []struct {
 		value string
 		name  string
 	}{
-		{c.WhopAPIKey, "OPENPOST_WHOP_API_KEY"},
-		{c.WhopWebhookSecret, "OPENPOST_WHOP_WEBHOOK_SECRET"},
-		{c.WhopAccountID, "OPENPOST_WHOP_ACCOUNT_ID"},
-		{c.WhopProductID, "OPENPOST_WHOP_PRODUCT_ID"},
-		{c.WhopStarterMonthlyPlanID, "OPENPOST_WHOP_STARTER_MONTHLY_PLAN_ID"},
-		{c.WhopStarterAnnualPlanID, "OPENPOST_WHOP_STARTER_ANNUAL_PLAN_ID"},
-		{c.WhopFounderMonthlyPlanID, "OPENPOST_WHOP_FOUNDER_MONTHLY_PLAN_ID"},
-		{c.WhopFounderAnnualPlanID, "OPENPOST_WHOP_FOUNDER_ANNUAL_PLAN_ID"},
-		{c.WhopProMonthlyPlanID, "OPENPOST_WHOP_PRO_MONTHLY_PLAN_ID"},
-		{c.WhopProAnnualPlanID, "OPENPOST_WHOP_PRO_ANNUAL_PLAN_ID"},
-		{c.WhopTeamMonthlyPlanID, "OPENPOST_WHOP_TEAM_MONTHLY_PLAN_ID"},
-		{c.WhopTeamAnnualPlanID, "OPENPOST_WHOP_TEAM_ANNUAL_PLAN_ID"},
-		{c.WhopAgencyMonthlyPlanID, "OPENPOST_WHOP_AGENCY_MONTHLY_PLAN_ID"},
-		{c.WhopAgencyAnnualPlanID, "OPENPOST_WHOP_AGENCY_ANNUAL_PLAN_ID"},
+		{c.PaddleAPIKey, "OPENPOST_PADDLE_API_KEY"},
+		{c.PaddleEnvironment, "OPENPOST_PADDLE_ENVIRONMENT"},
+		{c.PaddleClientToken, "OPENPOST_PADDLE_CLIENT_TOKEN"},
+		{c.PaddleWebhookSecret, "OPENPOST_PADDLE_WEBHOOK_SECRET"},
+		{c.PaddleStarterMonthlyPriceID, "OPENPOST_PADDLE_STARTER_MONTHLY_PRICE_ID"},
+		{c.PaddleStarterAnnualPriceID, "OPENPOST_PADDLE_STARTER_ANNUAL_PRICE_ID"},
+		{c.PaddleFounderMonthlyPriceID, "OPENPOST_PADDLE_FOUNDER_MONTHLY_PRICE_ID"},
+		{c.PaddleFounderAnnualPriceID, "OPENPOST_PADDLE_FOUNDER_ANNUAL_PRICE_ID"},
+		{c.PaddleProMonthlyPriceID, "OPENPOST_PADDLE_PRO_MONTHLY_PRICE_ID"},
+		{c.PaddleProAnnualPriceID, "OPENPOST_PADDLE_PRO_ANNUAL_PRICE_ID"},
+		{c.PaddleTeamMonthlyPriceID, "OPENPOST_PADDLE_TEAM_MONTHLY_PRICE_ID"},
+		{c.PaddleTeamAnnualPriceID, "OPENPOST_PADDLE_TEAM_ANNUAL_PRICE_ID"},
+		{c.PaddleAgencyMonthlyPriceID, "OPENPOST_PADDLE_AGENCY_MONTHLY_PRICE_ID"},
+		{c.PaddleAgencyAnnualPriceID, "OPENPOST_PADDLE_AGENCY_ANNUAL_PRICE_ID"},
 	} {
 		if strings.TrimSpace(required.value) == "" {
 			missing = append(missing, required.name)
 		}
 	}
-	return missing
+	return append(missing, paddleCredentialIssues(c.PaddleEnvironment, c.PaddleAPIKey, c.PaddleClientToken)...)
+}
+
+func paddleCredentialIssues(environment, apiKey, clientToken string) []string {
+	var issues []string
+	switch environment {
+	case "":
+		return issues
+	case "sandbox":
+		if apiKey != "" && !strings.HasPrefix(apiKey, "pdl_sdbx_") {
+			issues = append(issues, "OPENPOST_PADDLE_API_KEY with pdl_sdbx_ prefix")
+		}
+		if clientToken != "" && !strings.HasPrefix(clientToken, "test_") {
+			issues = append(issues, "OPENPOST_PADDLE_CLIENT_TOKEN with test_ prefix")
+		}
+	case "production":
+		if apiKey != "" && !strings.HasPrefix(apiKey, "pdl_live_") {
+			issues = append(issues, "OPENPOST_PADDLE_API_KEY with pdl_live_ prefix")
+		}
+		if clientToken != "" && !strings.HasPrefix(clientToken, "live_") {
+			issues = append(issues, "OPENPOST_PADDLE_CLIENT_TOKEN with live_ prefix")
+		}
+	default:
+		issues = append(issues, "OPENPOST_PADDLE_ENVIRONMENT=sandbox|production")
+	}
+	return issues
 }
 
 func (c *Config) invalidCloudCORSConfig() []string {

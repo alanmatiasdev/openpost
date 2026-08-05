@@ -239,6 +239,12 @@ func publicationEditorRenditions(
 	var renditions []models.Rendition
 	if err := tx.NewSelect().
 		Model(&renditions).
+		Column(
+			"id", "publication_id", "social_account_id", "platform", "profile", "output_profile",
+			"body", "title", "description", "settings_json", "status", "external_id", "external_url",
+			"error_message", "error_kind", "error_code", "error_http_status", "error_retryable",
+			"error_retry_at", "error_action", "created_at", "updated_at",
+		).
 		Where("publication_id = ?", publicationID).
 		Order("created_at ASC", "id ASC").
 		Scan(ctx); err != nil {
@@ -256,6 +262,12 @@ func publicationEditorRenditions(
 	var segments []models.RenditionSegment
 	if err := tx.NewSelect().
 		Model(&segments).
+		Column(
+			"id", "rendition_id", "publication_segment_id", "position", "body", "title",
+			"description", "url", "settings_json", "status", "external_id", "external_url",
+			"error_message", "error_kind", "error_code", "error_http_status", "error_retryable",
+			"error_retry_at", "error_action", "created_at", "updated_at",
+		).
 		Where("rendition_id IN (?)", bun.List(renditionIDs)).
 		Order("position ASC", "id ASC").
 		Scan(ctx); err != nil {

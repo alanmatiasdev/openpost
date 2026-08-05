@@ -5,16 +5,15 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
-	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
 
+	"github.com/PaddleHQ/paddle-go-sdk/v5"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humaecho"
 	"github.com/labstack/echo/v4"
@@ -29,39 +28,30 @@ import (
 type billingTestServer struct {
 	echo   *echo.Echo
 	db     *bun.DB
-	client *billingHTTPClient
+	client *billingPaddleClient
 	usage  *usageservice.Service
 }
 
-type billingHTTPClient struct {
-	t        *testing.T
-	requests []billingHTTPRequest
-	response string
-	status   int
+type billingPaddleClient struct {
+	portalRequests int
+	portal         *paddle.CustomerPortalSession
 }
 
-type billingHTTPRequest struct {
-	Path string
-	Body map[string]any
+func (c *billingPaddleClient) GetSubscription(context.Context, *paddle.GetSubscriptionRequest) (*paddle.Subscription, error) {
+	return nil, fmt.Errorf("unexpected subscription request")
 }
 
-func (c *billingHTTPClient) Do(req *http.Request) (*http.Response, error) {
-	c.t.Helper()
+func (c *billingPaddleClient) GetTransaction(context.Context, *paddle.GetTransactionRequest) (*paddle.Transaction, error) {
+	return nil, fmt.Errorf("unexpected transaction request")
+}
 
-	var body map[string]any
-	if req.Body != nil {
-		require.NoError(c.t, json.NewDecoder(req.Body).Decode(&body))
-	}
-	c.requests = append(c.requests, billingHTTPRequest{Path: req.URL.Path, Body: body})
-	status := c.status
-	if status == 0 {
-		status = http.StatusCreated
-	}
-	return &http.Response{
-		StatusCode: status,
-		Body:       io.NopCloser(strings.NewReader(c.response)),
-		Header:     make(http.Header),
-	}, nil
+func (c *billingPaddleClient) GetCustomer(context.Context, *paddle.GetCustomerRequest) (*paddle.Customer, error) {
+	return nil, fmt.Errorf("unexpected customer request")
+}
+
+func (c *billingPaddleClient) CreateCustomerPortalSession(context.Context, *paddle.CreateCustomerPortalSessionRequest) (*paddle.CustomerPortalSession, error) {
+	c.portalRequests++
+	return c.portal, nil
 }
 
 func newBillingHandlerTestServer(t *testing.T, secret string, now time.Time) *billingTestServer {
@@ -92,17 +82,15 @@ func newBillingHandlerTestServer(t *testing.T, secret string, now time.Time) *bi
 func newBillingAPITestServer(t *testing.T) *billingTestServer {
 	t.Helper()
 
-	client := &billingHTTPClient{t: t}
-	return newBillingAPITestServerWithWhopConfig(t, client, billing.WhopConfig{
-		APIKey:     "whop-token",
-		APIBaseURL: "https://api.whop.test/api/v1",
-		AccountID:  "biz_1",
-		ProductID:  "prod_1",
-		AppURL:     "https://app.openpost.test",
-		ReturnURL:  "https://app.openpost.test/checkout?status=success",
+	client := &billingPaddleClient{}
+	return newBillingAPITestServerWithPaddleConfig(t, client, billing.PaddleConfig{
+		Environment: "sandbox",
+		ClientToken: "test_client_token",
+		AppURL:      "https://app.openpost.test",
+		ReturnURL:   "https://app.openpost.test/checkout?status=success",
 		Plans: map[string]billing.PlanConfig{
 			"founder": {
-				ProviderPlanIDs: billing.ProviderPlanIDs{Monthly: "plan_founder_month", Annual: "plan_founder_year"},
+				PaddlePriceIDs:  billing.PaddlePriceIDs{Monthly: "pri_founder_month", Annual: "pri_founder_year"},
 				MonthlyPriceUSD: 25,
 				AnnualPriceUSD:  250,
 				Limits: map[entitlements.LimitKey]int64{
@@ -114,7 +102,7 @@ func newBillingAPITestServer(t *testing.T) *billingTestServer {
 	})
 }
 
-func newBillingAPITestServerWithWhopConfig(t *testing.T, client *billingHTTPClient, cfg billing.WhopConfig) *billingTestServer {
+func newBillingAPITestServerWithPaddleConfig(t *testing.T, client *billingPaddleClient, cfg billing.PaddleConfig) *billingTestServer {
 	t.Helper()
 
 	db := createHandlerTestDB(
@@ -156,7 +144,7 @@ func newBillingAPITestServerWithWhopConfig(t *testing.T, client *billingHTTPClie
 	require.NoError(t, err)
 
 	service := billing.NewService(db, "", cfg)
-	service.SetHTTPClientForTest(client)
+	service.SetPaddleClientForTest(client)
 
 	e := echo.New()
 	api := humaecho.NewWithGroup(e, e.Group("/api/v1"), huma.DefaultConfig("Test", "1.0.0"))
@@ -167,14 +155,12 @@ func newBillingAPITestServerWithWhopConfig(t *testing.T, client *billingHTTPClie
 	return &billingTestServer{echo: e, db: db, client: client, usage: usageService}
 }
 
-func (s *billingTestServer) postWebhook(t *testing.T, body []byte, headers billing.WebhookHeaders) *httptest.ResponseRecorder {
+func (s *billingTestServer) postWebhook(t *testing.T, body []byte, signature string) *httptest.ResponseRecorder {
 	t.Helper()
 
-	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/billing/whop/webhook", bytes.NewReader(body))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/billing/paddle/webhook", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("webhook-id", headers.ID)
-	req.Header.Set("webhook-timestamp", headers.Timestamp)
-	req.Header.Set("webhook-signature", headers.Signature)
+	req.Header.Set("Paddle-Signature", signature)
 	rec := httptest.NewRecorder()
 	s.echo.ServeHTTP(rec, req)
 	return rec
@@ -203,28 +189,24 @@ func (s *billingTestServer) getJSON(t *testing.T, path string) *httptest.Respons
 	return rec
 }
 
-func signedWhopWebhookHeaders(t *testing.T, secret string, now time.Time, eventID string, body []byte) billing.WebhookHeaders {
+func signedPaddleWebhook(t *testing.T, secret string, now time.Time, body []byte) string {
 	t.Helper()
 
 	timestamp := fmt.Sprintf("%d", now.Unix())
 	mac := hmac.New(sha256.New, []byte(secret))
-	_, _ = mac.Write([]byte(eventID + "." + timestamp + "." + string(body)))
-	return billing.WebhookHeaders{
-		ID:        eventID,
-		Timestamp: timestamp,
-		Signature: "v1," + base64.StdEncoding.EncodeToString(mac.Sum(nil)),
-	}
+	_, _ = mac.Write([]byte(timestamp + ":" + string(body)))
+	return "ts=" + timestamp + ";h1=" + hex.EncodeToString(mac.Sum(nil))
 }
 
-func TestWhopWebhookRouteQueuesReconciliation(t *testing.T) {
+func TestPaddleWebhookRouteQueuesReconciliation(t *testing.T) {
 	t.Parallel()
 
 	secret := "route-secret"
-	now := time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC)
+	now := time.Now().UTC()
 	srv := newBillingHandlerTestServer(t, secret, now)
-	body := []byte(`{"id":"evt-route","type":"membership.activated","data":{"id":"mem-route"}}`)
+	body := []byte(`{"event_id":"evt-route","event_type":"subscription.updated","data":{"id":"sub-route"}}`)
 
-	resp := srv.postWebhook(t, body, signedWhopWebhookHeaders(t, secret, now, "evt-route", body))
+	resp := srv.postWebhook(t, body, signedPaddleWebhook(t, secret, now, body))
 
 	require.Equal(t, http.StatusOK, resp.Code, resp.Body.String())
 	var out map[string]any
@@ -234,22 +216,18 @@ func TestWhopWebhookRouteQueuesReconciliation(t *testing.T) {
 
 	var job models.Job
 	require.NoError(t, srv.db.NewSelect().Model(&job).Where("type = ?", billing.JobTypeWebhook).Scan(context.Background()))
-	require.Contains(t, job.Payload, "mem-route")
+	require.Contains(t, job.Payload, "sub-route")
 }
 
-func TestWhopWebhookRouteRejectsInvalidSignature(t *testing.T) {
+func TestPaddleWebhookRouteRejectsInvalidSignature(t *testing.T) {
 	t.Parallel()
 
 	secret := "route-secret"
-	now := time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC)
+	now := time.Now().UTC()
 	srv := newBillingHandlerTestServer(t, secret, now)
-	body := []byte(`{"id":"evt-route","type":"membership.activated","data":{}}`)
+	body := []byte(`{"event_id":"evt-route","event_type":"subscription.updated","data":{}}`)
 
-	resp := srv.postWebhook(t, body, billing.WebhookHeaders{
-		ID:        "evt-route",
-		Timestamp: signedWhopWebhookHeaders(t, secret, now, "evt-route", body).Timestamp,
-		Signature: "v1,invalid",
-	})
+	resp := srv.postWebhook(t, body, "ts=1;h1=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
 
 	require.Equal(t, http.StatusUnauthorized, resp.Code, resp.Body.String())
 	var count int
@@ -261,7 +239,6 @@ func TestCreateBillingCheckoutRoute(t *testing.T) {
 	t.Parallel()
 
 	srv := newBillingAPITestServer(t)
-	srv.client.response = `{"id":"ch_1","purchase_url":"https://whop.test/checkout/ch_1","plan":{"id":"plan_founder_year"}}`
 
 	resp := srv.postJSON(t, "/api/v1/billing/checkout", map[string]any{
 		"workspace_id":   "ws-1",
@@ -272,19 +249,20 @@ func TestCreateBillingCheckoutRoute(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.Code, resp.Body.String())
 	var out map[string]any
 	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &out))
-	require.Equal(t, "ch_1", out["id"])
-	require.Equal(t, "https://app.openpost.test/checkout?billing_period=annual&plan=founder&session_id=ch_1", out["url"])
-	require.Equal(t, "plan_founder_year", out["provider_plan_id"])
-	require.Equal(t, float64(250), out["price_usd"])
-	require.Len(t, srv.client.requests, 1)
-	req := srv.client.requests[0]
-	require.Equal(t, "/api/v1/checkout_configurations", req.Path)
-	require.Equal(t, "biz_1", req.Body["company_id"])
-	require.Equal(t, "plan_founder_year", req.Body["plan_id"])
-	metadata := req.Body["metadata"].(map[string]any)
-	require.Equal(t, "founder", metadata["plan_id"])
-	require.Equal(t, "org_ws-1", metadata["organization_id"])
-	require.Equal(t, "ws-1", metadata["workspace_id"])
+	require.Regexp(t, `^chkat_[a-f0-9]{32}$`, out["id"])
+	require.Equal(t, "https://app.openpost.test/checkout?billing_period=annual&plan=founder", out["url"])
+	require.Equal(t, "pri_founder_year", out["provider_price_id"])
+	require.Equal(t, "pri_founder_year", out["price_ids"].(map[string]any)["founder"])
+	require.Equal(t, "test_client_token", out["client_token"])
+	require.Equal(t, "sandbox", out["environment"])
+	require.Equal(t, "user@example.com", out["customer_email"])
+	require.Equal(t, "https://app.openpost.test/checkout?status=success", out["return_url"])
+
+	var attempt models.BillingCheckoutAttempt
+	require.NoError(t, srv.db.NewSelect().Model(&attempt).Where("checkout_attempt_id = ?", out["id"]).Scan(t.Context()))
+	require.Equal(t, "org_ws-1", attempt.OrganizationID)
+	require.Equal(t, "ws-1", attempt.WorkspaceID)
+	require.Equal(t, "founder", attempt.PlanID)
 }
 
 func TestBillingMutationsRequireWorkspaceAdmin(t *testing.T) {
@@ -306,17 +284,16 @@ func TestBillingMutationsRequireWorkspaceAdmin(t *testing.T) {
 
 	require.Equal(t, http.StatusForbidden, checkout.Code, checkout.Body.String())
 	require.Equal(t, http.StatusForbidden, portal.Code, portal.Body.String())
-	require.Empty(t, srv.client.requests)
+	require.Zero(t, srv.client.portalRequests)
 }
 
-func TestCreateBillingCheckoutRouteReturns503WhenWhopIsNotConfigured(t *testing.T) {
+func TestCreateBillingCheckoutRouteReturns503WhenPaddleIsNotConfigured(t *testing.T) {
 	t.Parallel()
 
-	srv := newBillingAPITestServerWithWhopConfig(t, &billingHTTPClient{t: t}, billing.WhopConfig{
-		APIBaseURL: "https://api.whop.test/api/v1",
-		AccountID:  "biz_1",
+	srv := newBillingAPITestServerWithPaddleConfig(t, &billingPaddleClient{}, billing.PaddleConfig{
+		Environment: "sandbox",
 		Plans: map[string]billing.PlanConfig{
-			"founder": {ProviderPlanIDs: billing.ProviderPlanIDs{Monthly: "plan_founder_month"}},
+			"founder": {PaddlePriceIDs: billing.PaddlePriceIDs{Monthly: "pri_founder_month"}},
 		},
 	})
 
@@ -326,8 +303,8 @@ func TestCreateBillingCheckoutRouteReturns503WhenWhopIsNotConfigured(t *testing.
 	})
 
 	require.Equal(t, http.StatusServiceUnavailable, resp.Code, resp.Body.String())
-	require.Contains(t, resp.Body.String(), "OPENPOST_WHOP_API_KEY")
-	require.Empty(t, srv.client.requests)
+	require.Contains(t, resp.Body.String(), "OPENPOST_PADDLE_CLIENT_TOKEN")
+	require.Zero(t, srv.client.portalRequests)
 }
 
 func TestGetBillingStatusRouteWithoutSubscription(t *testing.T) {
@@ -355,7 +332,7 @@ func TestGetBillingStatusRouteWithSubscriptionAndUsage(t *testing.T) {
 	_, err := srv.db.NewInsert().Model(&models.BillingSubscription{
 		OrganizationID:         "org_ws-1",
 		WorkspaceID:            "ws-1",
-		Provider:               "whop",
+		Provider:               "paddle",
 		ProviderCustomerID:     "cus-1",
 		ProviderSubscriptionID: "sub-1",
 		Status:                 "active",
@@ -377,7 +354,7 @@ func TestGetBillingStatusRouteWithSubscriptionAndUsage(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.Code, resp.Body.String())
 	var out map[string]any
 	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &out))
-	require.Equal(t, "whop", out["provider"])
+	require.Equal(t, "paddle", out["provider"])
 	require.Equal(t, "active", out["status"])
 	require.Equal(t, "founder", out["plan_id"])
 	require.Equal(t, "2026-07-30T12:00:00Z", out["current_period_end"])
@@ -412,7 +389,7 @@ func TestGetBillingStatusUsesOwnersActiveSubscriptionForLegacyWorkspace(t *testi
 	_, err = srv.db.NewInsert().Model(&models.BillingSubscription{
 		OrganizationID:         "org_ws-1",
 		WorkspaceID:            "ws-1",
-		Provider:               "whop",
+		Provider:               "paddle",
 		ProviderCustomerID:     "cus-agency",
 		ProviderSubscriptionID: "sub-agency",
 		Status:                 "active",
@@ -521,13 +498,18 @@ func TestCreateBillingPortalRoute(t *testing.T) {
 	t.Parallel()
 
 	srv := newBillingAPITestServer(t)
+	srv.client.portal = &paddle.CustomerPortalSession{
+		ID: "cpls_1",
+		URLs: paddle.CustomerPortalSessionURLs{
+			General: paddle.CustomerPortalSessionGeneralURLs{Overview: "https://customer-portal.paddle.com/overview?token=fresh"},
+		},
+	}
 	_, err := srv.db.NewInsert().Model(&models.BillingSubscription{
 		OrganizationID:         "org_ws-1",
 		WorkspaceID:            "ws-1",
-		Provider:               billing.ProviderWhop,
-		ProviderCustomerID:     "user_whop_1",
-		ProviderSubscriptionID: "mem_1",
-		ProviderManageURL:      "https://whop.test/manage/mem_1",
+		Provider:               billing.ProviderPaddle,
+		ProviderCustomerID:     "ctm_1",
+		ProviderSubscriptionID: "sub_1",
 		Status:                 "active",
 		PlanID:                 "founder",
 	}).Exec(t.Context())
@@ -540,7 +522,7 @@ func TestCreateBillingPortalRoute(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.Code, resp.Body.String())
 	var out map[string]any
 	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &out))
-	require.Equal(t, "mem_1", out["id"])
-	require.Equal(t, "https://whop.test/manage/mem_1", out["url"])
-	require.Empty(t, srv.client.requests)
+	require.Equal(t, "cpls_1", out["id"])
+	require.Equal(t, "https://customer-portal.paddle.com/overview?token=fresh", out["url"])
+	require.Equal(t, 1, srv.client.portalRequests)
 }

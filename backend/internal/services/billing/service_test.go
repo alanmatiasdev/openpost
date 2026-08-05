@@ -5,15 +5,12 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"database/sql"
-	"encoding/base64"
-	"encoding/json"
+	"encoding/hex"
 	"fmt"
-	"io"
-	"net/http"
-	"strings"
 	"testing"
 	"time"
 
+	"github.com/PaddleHQ/paddle-go-sdk/v5"
 	"github.com/google/uuid"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/openpost/backend/internal/models"
@@ -23,42 +20,31 @@ import (
 	"github.com/uptrace/bun/dialect/sqlitedialect"
 )
 
-type recordedRequest struct {
-	Method         string
-	Path           string
-	Auth           string
-	IdempotencyKey string
-	Body           map[string]any
+type fakePaddleAPI struct {
+	subscription *paddle.Subscription
+	transaction  *paddle.Transaction
+	customer     *paddle.Customer
+	portal       *paddle.CustomerPortalSession
+	subGets      int
+	customerGets int
 }
 
-type fakeWhopHTTPClient struct {
-	t        *testing.T
-	requests []recordedRequest
-	respond  func(*http.Request) (int, string)
+func (f *fakePaddleAPI) GetSubscription(context.Context, *paddle.GetSubscriptionRequest) (*paddle.Subscription, error) {
+	f.subGets++
+	return f.subscription, nil
 }
 
-func (f *fakeWhopHTTPClient) Do(req *http.Request) (*http.Response, error) {
-	f.t.Helper()
-	var body map[string]any
-	if req.Body != nil {
-		require.NoError(f.t, json.NewDecoder(req.Body).Decode(&body))
-	}
-	f.requests = append(f.requests, recordedRequest{
-		Method:         req.Method,
-		Path:           req.URL.Path,
-		Auth:           req.Header.Get("Authorization"),
-		IdempotencyKey: req.Header.Get("Idempotency-Key"),
-		Body:           body,
-	})
-	status, response := http.StatusOK, `{}`
-	if f.respond != nil {
-		status, response = f.respond(req)
-	}
-	return &http.Response{
-		StatusCode: status,
-		Body:       io.NopCloser(strings.NewReader(response)),
-		Header:     make(http.Header),
-	}, nil
+func (f *fakePaddleAPI) GetTransaction(context.Context, *paddle.GetTransactionRequest) (*paddle.Transaction, error) {
+	return f.transaction, nil
+}
+
+func (f *fakePaddleAPI) GetCustomer(context.Context, *paddle.GetCustomerRequest) (*paddle.Customer, error) {
+	f.customerGets++
+	return f.customer, nil
+}
+
+func (f *fakePaddleAPI) CreateCustomerPortalSession(context.Context, *paddle.CreateCustomerPortalSessionRequest) (*paddle.CustomerPortalSession, error) {
+	return f.portal, nil
 }
 
 func newBillingTestDB(t *testing.T) *bun.DB {
@@ -72,6 +58,7 @@ func newBillingTestDB(t *testing.T) *bun.DB {
 		(*models.BillingSubscription)(nil),
 		(*models.BillingWebhookEvent)(nil),
 		(*models.BillingCheckoutAttempt)(nil),
+		(*models.BillingCustomer)(nil),
 		(*models.Job)(nil),
 	} {
 		_, err := db.NewCreateTable().Model(model).IfNotExists().Exec(context.Background())
@@ -83,24 +70,20 @@ func newBillingTestDB(t *testing.T) *bun.DB {
 	return db
 }
 
-func signedWebhookHeaders(secret string, now time.Time, eventID string, body []byte) WebhookHeaders {
+func paddleSignature(secret string, now time.Time, body []byte) string {
 	timestamp := fmt.Sprintf("%d", now.Unix())
-	mac := hmac.New(sha256.New, decodeWebhookSecret(secret))
-	_, _ = mac.Write([]byte(eventID + "." + timestamp + "." + string(body)))
-	return WebhookHeaders{
-		ID:        eventID,
-		Timestamp: timestamp,
-		Signature: "v1," + base64.StdEncoding.EncodeToString(mac.Sum(nil)),
-	}
+	mac := hmac.New(sha256.New, []byte(secret))
+	_, _ = mac.Write([]byte(timestamp + ":" + string(body)))
+	return "ts=" + timestamp + ";h1=" + hex.EncodeToString(mac.Sum(nil))
 }
 
 func testCatalog() map[string]PlanConfig {
 	return DefaultPlanCatalog(
-		ProviderPlanIDs{Monthly: "plan_starter_month", Annual: "plan_starter_year"},
-		ProviderPlanIDs{Monthly: "plan_founder_month", Annual: "plan_founder_year"},
-		ProviderPlanIDs{Monthly: "plan_pro_month", Annual: "plan_pro_year"},
-		ProviderPlanIDs{Monthly: "plan_team_month", Annual: "plan_team_year"},
-		ProviderPlanIDs{Monthly: "plan_agency_month", Annual: "plan_agency_year"},
+		PaddlePriceIDs{Monthly: "pri_starter_month", Annual: "pri_starter_year"},
+		PaddlePriceIDs{Monthly: "pri_founder_month", Annual: "pri_founder_year"},
+		PaddlePriceIDs{Monthly: "pri_pro_month", Annual: "pri_pro_year"},
+		PaddlePriceIDs{Monthly: "pri_team_month", Annual: "pri_team_year"},
+		PaddlePriceIDs{Monthly: "pri_agency_month", Annual: "pri_agency_year"},
 	)
 }
 
@@ -115,24 +98,17 @@ func TestDefaultPlanCatalogUsesUSDPricesAndMonotonicSeatLimits(t *testing.T) {
 	require.Equal(t, int64(5), catalog["agency"].Limits[entitlements.LimitTeamMembers])
 }
 
-func TestCreateCheckoutCreatesWhopConfigurationAndRecordsAttempt(t *testing.T) {
+func TestCreateCheckoutRecordsOpaquePaddleAttempt(t *testing.T) {
 	t.Parallel()
 	db := newBillingTestDB(t)
-	client := &fakeWhopHTTPClient{t: t, respond: func(*http.Request) (int, string) {
-		return http.StatusCreated, `{"id":"ch_1","purchase_url":"https://whop.com/checkout/ch_1","plan":{"id":"plan_founder_year"}}`
-	}}
-	now := time.Date(2026, 8, 4, 12, 0, 0, 0, time.UTC)
-	service := NewService(db, "", WhopConfig{
-		APIKey:     "whop-token",
-		APIBaseURL: "https://api.whop.test/api/v1",
-		AccountID:  "biz_1",
-		ProductID:  "prod_1",
-		AppURL:     "https://app.openpost.test",
-		ReturnURL:  "https://app.openpost.test/checkout?status=success",
-		Plans:      testCatalog(),
+	now := time.Date(2026, 8, 5, 12, 0, 0, 0, time.UTC)
+	service := NewService(db, "", PaddleConfig{
+		Environment: "sandbox",
+		ClientToken: "test_client_token",
+		AppURL:      "https://app.openpost.test",
+		Plans:       testCatalog(),
 	})
 	service.SetNowForTest(func() time.Time { return now })
-	service.SetHTTPClientForTest(client)
 
 	result, err := service.CreateCheckout(context.Background(), CreateCheckoutInput{
 		OrganizationID: "org-1",
@@ -141,74 +117,52 @@ func TestCreateCheckoutCreatesWhopConfigurationAndRecordsAttempt(t *testing.T) {
 		CustomerEmail:  "user@example.com",
 		PlanID:         "founder",
 		BillingPeriod:  "annual",
-		AffiliateCode:  "founder-friend",
 	})
 
 	require.NoError(t, err)
-	require.Equal(t, "ch_1", result.ID)
-	require.Equal(t, "plan_founder_year", result.ProviderPlanID)
-	require.Equal(t, 250, result.PriceUSD)
+	require.Regexp(t, `^chkat_[a-f0-9]{32}$`, result.ID)
+	require.Equal(t, "https://app.openpost.test/checkout?billing_period=annual&plan=founder", result.URL)
+	require.Equal(t, "pri_founder_year", result.ProviderPriceID)
+	require.Equal(t, "pri_agency_year", result.PriceIDs["agency"])
+	require.Equal(t, "sandbox", result.Environment)
+	require.Equal(t, "test_client_token", result.ClientToken)
 	require.Equal(t, now.AddDate(0, 0, TrialDays), result.TrialEndsAt)
-	require.Contains(t, result.URL, "https://app.openpost.test/checkout?")
-	require.Len(t, client.requests, 1)
-	req := client.requests[0]
-	require.Equal(t, http.MethodPost, req.Method)
-	require.Equal(t, "/api/v1/checkout_configurations", req.Path)
-	require.Equal(t, "Bearer whop-token", req.Auth)
-	require.Contains(t, req.IdempotencyKey, "checkout:org-1:founder:annual")
-	require.Equal(t, "biz_1", req.Body["company_id"])
-	require.Equal(t, "plan_founder_year", req.Body["plan_id"])
-	require.Equal(t, "payment", req.Body["mode"])
-	require.Equal(t, "founder-friend", req.Body["affiliate_code"])
-	metadata := req.Body["metadata"].(map[string]any)
-	require.Equal(t, "org-1", metadata["organization_id"])
-	require.Equal(t, "annual", metadata["billing_period"])
+	require.Equal(t, "https://app.openpost.test/checkout?status=success", result.ReturnURL)
 
 	var attempt models.BillingCheckoutAttempt
-	require.NoError(t, db.NewSelect().Model(&attempt).Where("checkout_configuration_id = ?", "ch_1").Scan(context.Background()))
+	require.NoError(t, db.NewSelect().Model(&attempt).Where("checkout_attempt_id = ?", result.ID).Scan(context.Background()))
+	require.Equal(t, ProviderPaddle, attempt.Provider)
 	require.Equal(t, "org-1", attempt.OrganizationID)
 	require.Equal(t, "founder", attempt.PlanID)
 	require.Equal(t, "annual", attempt.BillingPeriod)
 }
 
-func TestCreateCheckoutRejectsUnconfiguredWhopPlan(t *testing.T) {
+func TestCreateCheckoutRejectsImplicitEnvironmentAndMissingPrice(t *testing.T) {
 	t.Parallel()
-	service := NewService(nil, "", WhopConfig{APIKey: "key", AccountID: "biz_1", Plans: map[string]PlanConfig{}})
-	_, err := service.CreateCheckout(context.Background(), CreateCheckoutInput{OrganizationID: "org", CustomerEmail: "a@b.com", PlanID: "founder"})
-	require.ErrorContains(t, err, "unknown billing plan")
-}
-
-func TestCreateCheckoutMissingPlanIDIsConfigurationError(t *testing.T) {
-	t.Parallel()
-	catalog := testCatalog()
-	catalog["founder"] = PlanConfig{MonthlyPriceUSD: 25, AnnualPriceUSD: 250}
-	service := NewService(nil, "", WhopConfig{APIKey: "key", AccountID: "biz_1", Plans: catalog})
+	service := NewService(nil, "", PaddleConfig{ClientToken: "test_token", Plans: testCatalog()})
 	_, err := service.CreateCheckout(context.Background(), CreateCheckoutInput{OrganizationID: "org", CustomerEmail: "a@b.com", PlanID: "founder"})
 	require.True(t, IsConfigurationError(err))
-	require.ErrorContains(t, err, "OPENPOST_WHOP_FOUNDER_MONTHLY_PLAN_ID")
+	require.ErrorContains(t, err, "OPENPOST_PADDLE_ENVIRONMENT")
+
+	catalog := testCatalog()
+	catalog["founder"] = PlanConfig{MonthlyPriceUSD: 25, AnnualPriceUSD: 250}
+	service = NewService(nil, "", PaddleConfig{Environment: "sandbox", ClientToken: "test_token", Plans: catalog})
+	_, err = service.CreateCheckout(context.Background(), CreateCheckoutInput{OrganizationID: "org", CustomerEmail: "a@b.com", PlanID: "founder"})
+	require.True(t, IsConfigurationError(err))
+	require.ErrorContains(t, err, "OPENPOST_PADDLE_FOUNDER_MONTHLY_PRICE_ID")
 }
 
-func TestWhopAPIURLAcceptsRootOrVersionedBaseURL(t *testing.T) {
-	t.Parallel()
-	require.Equal(t, "https://api.whop.com/api/v1/memberships/mem_1", whopAPIURL("https://api.whop.com", "/memberships/mem_1"))
-	require.Equal(t, "https://api.whop.com/api/v1/memberships/mem_1", whopAPIURL("https://api.whop.com/api/v1", "/memberships/mem_1"))
-	require.Equal(t, "https://test.whop.dev/v1/memberships/mem_1", whopAPIURL("https://test.whop.dev/v1/", "/v1/memberships/mem_1"))
-}
-
-func TestAcceptWhopWebhookQueuesOnce(t *testing.T) {
-	t.Parallel()
-	secret := "whsec_" + base64.StdEncoding.EncodeToString([]byte("secret"))
-	now := time.Date(2026, 8, 4, 12, 0, 0, 0, time.UTC)
+func TestAcceptPaddleWebhookQueuesSupportedEventOnce(t *testing.T) {
 	db := newBillingTestDB(t)
+	secret := "pdl_webhook_secret"
 	service := NewService(db, secret)
-	service.SetNowForTest(func() time.Time { return now })
-	body := []byte(`{"id":"evt_1","type":"membership.activated","data":{"id":"mem_1"}}`)
-	headers := signedWebhookHeaders(secret, now, "evt_1", body)
+	body := []byte(`{"event_id":"evt_1","event_type":"subscription.updated","occurred_at":"2026-08-05T12:00:00Z","data":{"id":"sub_1"}}`)
+	signature := paddleSignature(secret, time.Now(), body)
 
-	first, err := service.AcceptWhopWebhook(context.Background(), body, headers)
+	first, err := service.AcceptPaddleWebhook(context.Background(), body, signature)
 	require.NoError(t, err)
 	require.False(t, first.Duplicate)
-	second, err := service.AcceptWhopWebhook(context.Background(), body, headers)
+	second, err := service.AcceptPaddleWebhook(context.Background(), body, signature)
 	require.NoError(t, err)
 	require.True(t, second.Duplicate)
 
@@ -217,89 +171,86 @@ func TestAcceptWhopWebhookQueuesOnce(t *testing.T) {
 	require.Equal(t, 1, count)
 }
 
-func TestHandleJobFetchesCurrentWhopMembershipAndUpsertsSubscription(t *testing.T) {
+func TestAcceptPaddleWebhookRejectsInvalidSignature(t *testing.T) {
 	t.Parallel()
-	db := newBillingTestDB(t)
-	now := time.Date(2026, 8, 4, 12, 0, 0, 0, time.UTC)
-	require.NoError(t, func() error {
-		_, err := db.NewInsert().Model(&models.BillingCheckoutAttempt{
-			CheckoutConfigurationID: "ch_1",
-			OrganizationID:          "org-1",
-			WorkspaceID:             "ws-1",
-			Provider:                ProviderWhop,
-			ProviderPlanID:          "plan_founder_month",
-			PlanID:                  "founder",
-			BillingPeriod:           "monthly",
-			Status:                  "created",
-			CreatedAt:               now,
-			UpdatedAt:               now,
-		}).Exec(context.Background())
-		return err
-	}())
-	client := &fakeWhopHTTPClient{t: t, respond: func(req *http.Request) (int, string) {
-		require.Equal(t, http.MethodGet, req.Method)
-		return http.StatusOK, `{
-			"id":"mem_1","status":"trialing","manage_url":"https://whop.com/manage/mem_1",
-			"checkout_configuration_id":"ch_1","renewal_period_end":"2026-08-18T12:00:00Z",
-			"cancel_at_period_end":false,"user":{"id":"user_whop_1","email":"user@example.com"},
-			"company":{"id":"biz_1"},"plan":{"id":"plan_founder_month"},"product":{"id":"prod_1"}
-		}`
-	}}
-	service := NewService(db, "", WhopConfig{APIKey: "key", APIBaseURL: "https://api.whop.test/api/v1", Plans: testCatalog()})
-	service.SetNowForTest(func() time.Time { return now })
-	service.SetHTTPClientForTest(client)
-	payload := `{"id":"evt_1","type":"membership.activated","data":{"id":"mem_1"}}`
-
-	require.NoError(t, service.HandleJob(context.Background(), JobTypeWebhook, payload))
-	var sub models.BillingSubscription
-	require.NoError(t, db.NewSelect().Model(&sub).Where("organization_id = ?", "org-1").Scan(context.Background()))
-	require.Equal(t, ProviderWhop, sub.Provider)
-	require.Equal(t, "mem_1", sub.ProviderSubscriptionID)
-	require.Equal(t, "trialing", sub.Status)
-	require.Equal(t, "founder", sub.PlanID)
-	require.Equal(t, "https://whop.com/manage/mem_1", sub.ProviderManageURL)
-	require.Equal(t, time.Date(2026, 8, 18, 12, 0, 0, 0, time.UTC), sub.CurrentPeriodEnd)
-	require.Contains(t, sub.EntitlementSnapshot, "scheduled_posts_monthly")
-
-	var attempt models.BillingCheckoutAttempt
-	require.NoError(t, db.NewSelect().Model(&attempt).Where("checkout_configuration_id = ?", "ch_1").Scan(context.Background()))
-	require.Equal(t, "mem_1", attempt.ProviderMembershipID)
-	require.Equal(t, "trialing", attempt.Status)
+	service := NewService(newBillingTestDB(t), "pdl_webhook_secret")
+	body := []byte(`{"event_id":"evt_1","event_type":"subscription.updated","data":{"id":"sub_1"}}`)
+	_, err := service.AcceptPaddleWebhook(context.Background(), body, "ts=1;h1=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+	require.ErrorContains(t, err, "invalid Paddle webhook signature")
 }
 
-func TestCreateCustomerPortalSessionUsesWhopManageURL(t *testing.T) {
+func TestHandleJobFetchesCanonicalPaddleStateAndKeepsScheduledCancelActive(t *testing.T) {
+	t.Parallel()
+	db := newBillingTestDB(t)
+	now := time.Date(2026, 8, 5, 12, 0, 0, 0, time.UTC)
+	_, err := db.NewInsert().Model(&models.BillingCheckoutAttempt{
+		CheckoutAttemptID: "chkat_1",
+		OrganizationID:    "org-1",
+		WorkspaceID:       "ws-1",
+		Provider:          ProviderPaddle,
+		ProviderPriceID:   "pri_founder_month",
+		PlanID:            "founder",
+		BillingPeriod:     "monthly",
+		Status:            "created",
+		CreatedAt:         now,
+		UpdatedAt:         now,
+	}).Exec(context.Background())
+	require.NoError(t, err)
+	name := "OpenPost Customer"
+	api := &fakePaddleAPI{
+		subscription: &paddle.Subscription{
+			ID:                   "sub_1",
+			Status:               paddle.SubscriptionStatusTrialing,
+			CustomerID:           "ctm_1",
+			CustomData:           paddle.CustomData{"checkout_id": "chkat_1"},
+			Items:                []paddle.SubscriptionItem{{Recurring: true, Price: paddle.Price{ID: "pri_founder_month", ProductID: "pro_founder"}}},
+			CurrentBillingPeriod: &paddle.TimePeriod{EndsAt: "2026-08-19T12:00:00Z"},
+			ScheduledChange:      &paddle.SubscriptionScheduledChange{Action: paddle.ScheduledChangeActionCancel, EffectiveAt: "2026-08-19T12:00:00Z"},
+		},
+		customer: &paddle.Customer{ID: "ctm_1", Email: "customer@example.com", Name: &name},
+	}
+	service := NewService(db, "", PaddleConfig{Plans: testCatalog()})
+	service.SetPaddleClientForTest(api)
+	service.SetNowForTest(func() time.Time { return now })
+	payload := `{"event_id":"evt_old","event_type":"subscription.updated","data":{"id":"sub_1","status":"active"}}`
+
+	require.NoError(t, service.HandleJob(context.Background(), JobTypeWebhook, payload))
+	require.Equal(t, 1, api.subGets)
+	var sub models.BillingSubscription
+	require.NoError(t, db.NewSelect().Model(&sub).Where("organization_id = ?", "org-1").Scan(context.Background()))
+	require.Equal(t, ProviderPaddle, sub.Provider)
+	require.Equal(t, "trialing", sub.Status)
+	require.True(t, sub.CancelAtPeriodEnd)
+	require.Equal(t, time.Date(2026, 8, 19, 12, 0, 0, 0, time.UTC), sub.CurrentPeriodEnd)
+	require.Contains(t, sub.EntitlementSnapshot, "scheduled_posts_monthly")
+
+	var customer models.BillingCustomer
+	require.NoError(t, db.NewSelect().Model(&customer).Where("provider = ? AND provider_customer_id = ?", ProviderPaddle, "ctm_1").Scan(context.Background()))
+	require.Equal(t, "customer@example.com", customer.Email)
+}
+
+func TestCreateCustomerPortalSessionReturnsFreshPaddleURL(t *testing.T) {
 	t.Parallel()
 	db := newBillingTestDB(t)
 	_, err := db.NewInsert().Model(&models.BillingSubscription{
 		OrganizationID:         "org-1",
 		WorkspaceID:            "ws-1",
-		Provider:               ProviderWhop,
-		ProviderCustomerID:     "user_1",
-		ProviderSubscriptionID: "mem_1",
-		ProviderManageURL:      "https://whop.com/manage/mem_1",
+		Provider:               ProviderPaddle,
+		ProviderCustomerID:     "ctm_1",
+		ProviderSubscriptionID: "sub_1",
 		Status:                 "active",
 		PlanID:                 "founder",
 	}).Exec(context.Background())
 	require.NoError(t, err)
+	api := &fakePaddleAPI{portal: &paddle.CustomerPortalSession{
+		ID:   "cpls_1",
+		URLs: paddle.CustomerPortalSessionURLs{General: paddle.CustomerPortalSessionGeneralURLs{Overview: "https://customer-portal.paddle.com/overview?token=fresh"}},
+	}}
 	service := NewService(db, "")
+	service.SetPaddleClientForTest(api)
+
 	result, err := service.CreateCustomerPortalSession(context.Background(), "org-1")
 	require.NoError(t, err)
-	require.Equal(t, "mem_1", result.ID)
-	require.Equal(t, "https://whop.com/manage/mem_1", result.URL)
-}
-
-func TestAcceptWhopWebhookRejectsInvalidOrStaleSignatures(t *testing.T) {
-	t.Parallel()
-	secret := "whsec_" + base64.StdEncoding.EncodeToString([]byte("secret"))
-	now := time.Date(2026, 8, 4, 12, 0, 0, 0, time.UTC)
-	service := NewService(newBillingTestDB(t), secret)
-	service.SetNowForTest(func() time.Time { return now })
-	body := []byte(`{"id":"evt_1","type":"membership.activated","data":{"id":"mem_1"}}`)
-	bad := signedWebhookHeaders(secret, now, "evt_1", body)
-	bad.Signature = "v1,not-valid"
-	_, err := service.AcceptWhopWebhook(context.Background(), body, bad)
-	require.ErrorContains(t, err, "invalid webhook signature")
-	stale := signedWebhookHeaders(secret, now.Add(-6*time.Minute), "evt_1", body)
-	_, err = service.AcceptWhopWebhook(context.Background(), body, stale)
-	require.ErrorContains(t, err, "outside tolerance")
+	require.Equal(t, "cpls_1", result.ID)
+	require.Equal(t, "https://customer-portal.paddle.com/overview?token=fresh", result.URL)
 }

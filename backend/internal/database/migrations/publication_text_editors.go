@@ -35,6 +35,12 @@ func backfillPublicationTextEditors(ctx context.Context, db *bun.DB) error {
 	var publications []models.Publication
 	if err := db.NewSelect().
 		Model(&publications).
+		Column(
+			"id", "workspace_id", "created_by", "title", "intent", "content_profile",
+			"source_text", "source_content", "source_url", "goal", "audience", "status",
+			"revision", "scheduled_at", "actual_run_at", "metadata_json", "release_plan_json",
+			"repost_override_json", "created_at", "updated_at",
+		).
 		Where("intent IN (?)", bun.List([]string{
 			models.PublishingIntentPost,
 			models.PublishingIntentThread,

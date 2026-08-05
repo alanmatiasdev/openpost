@@ -343,6 +343,7 @@ func (h *InstanceAdminHandler) loadInstanceUserPlans(
 		ColumnExpr("subscription.plan_id AS plan_id").
 		Join("JOIN billing_subscriptions AS subscription ON subscription.organization_id = member.organization_id").
 		Where("member.user_id IN (?)", bun.List(userIDs)).
+		Where("subscription.provider = ?", models.BillingProviderPaddle).
 		Where("LOWER(subscription.status) IN ('active', 'trialing')").
 		Where("subscription.plan_id != ''").
 		OrderExpr("member.user_id ASC").

@@ -50,7 +50,7 @@ func (h *BillingHandler) SetUsage(service *usage.Service) {
 	}
 }
 
-type WhopWebhookOutput struct {
+type PaddleWebhookOutput struct {
 	OK        bool   `json:"ok"`
 	Duplicate bool   `json:"duplicate"`
 	EventID   string `json:"event_id"`
@@ -58,7 +58,7 @@ type WhopWebhookOutput struct {
 }
 
 func (h *BillingHandler) RegisterRoutes(e *echo.Echo) {
-	e.POST("/api/v1/billing/whop/webhook", h.handleWhopWebhook)
+	e.POST("/api/v1/billing/paddle/webhook", h.handlePaddleWebhook)
 }
 
 func (h *BillingHandler) RegisterAPIRoutes(api huma.API) {
@@ -123,7 +123,7 @@ func (h *BillingHandler) RegisterAPIRoutes(api huma.API) {
 	}, h.createOrganizationPortalSession)
 }
 
-func (h *BillingHandler) handleWhopWebhook(c echo.Context) error {
+func (h *BillingHandler) handlePaddleWebhook(c echo.Context) error {
 	if h.billing == nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{fieldError: "billing service is not configured"})
 	}
@@ -131,16 +131,12 @@ func (h *BillingHandler) handleWhopWebhook(c echo.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{fieldError: "failed to read webhook body"})
 	}
-	result, err := h.billing.AcceptWhopWebhook(c.Request().Context(), body, billing.WebhookHeaders{
-		ID:        c.Request().Header.Get("webhook-id"),
-		Timestamp: c.Request().Header.Get("webhook-timestamp"),
-		Signature: c.Request().Header.Get("webhook-signature"),
-	})
+	result, err := h.billing.AcceptPaddleWebhook(c.Request().Context(), body, c.Request().Header.Get("Paddle-Signature"))
 	if err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{fieldError: err.Error()})
 	}
 
-	return c.JSON(http.StatusOK, WhopWebhookOutput{
+	return c.JSON(http.StatusOK, PaddleWebhookOutput{
 		OK:        true,
 		Duplicate: result.Duplicate,
 		EventID:   result.EventID,
@@ -161,7 +157,6 @@ type BillingStatusResponse struct {
 	PlanID            string                      `json:"plan_id,omitempty" doc:"Plan ID"`
 	CurrentPeriodEnd  string                      `json:"current_period_end,omitempty" doc:"Current billing period end"`
 	CancelAtPeriodEnd bool                        `json:"cancel_at_period_end" doc:"Whether the subscription cancels at period end"`
-	ManageURL         string                      `json:"manage_url,omitempty" doc:"Whop billing management URL for the active membership"`
 	Limits            map[string]int64            `json:"limits" doc:"Entitlement limits from the local subscription snapshot"`
 	Usage             map[string]int64            `json:"usage" doc:"Current-month product usage counters"`
 	PeriodStart       string                      `json:"period_start" doc:"UTC month start for the usage counters"`
@@ -219,11 +214,13 @@ func (h *BillingHandler) billingStatusForOrganization(ctx context.Context, organ
 	err = h.db.NewSelect().
 		Model(&sub).
 		Where("organization_id = ?", organizationID).
+		Where("provider = ?", models.BillingProviderPaddle).
 		Scan(ctx)
 	if err == sql.ErrNoRows && workspaceID != "" {
 		err = h.db.NewSelect().
 			Model(&sub).
 			Where("workspace_id = ?", workspaceID).
+			Where("provider = ?", models.BillingProviderPaddle).
 			Scan(ctx)
 	}
 	if err == sql.ErrNoRows {
@@ -237,7 +234,6 @@ func (h *BillingHandler) billingStatusForOrganization(ctx context.Context, organ
 	response.Status = sub.Status
 	response.PlanID = sub.PlanID
 	response.CancelAtPeriodEnd = sub.CancelAtPeriodEnd
-	response.ManageURL = sub.ProviderManageURL
 	if !sub.CurrentPeriodEnd.IsZero() {
 		response.CurrentPeriodEnd = sub.CurrentPeriodEnd.UTC().Format(time.RFC3339)
 	}
@@ -333,20 +329,21 @@ type CreateBillingCheckoutInput struct {
 		OrganizationID string `json:"organization_id,omitempty" doc:"Organization ID"`
 		PlanID         string `json:"plan_id" doc:"Plan ID: starter, founder, pro, team, or agency"`
 		BillingPeriod  string `json:"billing_period,omitempty" doc:"Billing period: monthly or annual" enum:"monthly,annual" default:"monthly"`
-		AffiliateCode  string `json:"affiliate_code,omitempty" doc:"Optional Whop affiliate code carried into checkout"`
 	}
 }
 
 type BillingURLResponse struct {
-	URL            string `json:"url" doc:"OpenPost checkout or billing management URL"`
-	ID             string `json:"id,omitempty" doc:"Whop checkout configuration or membership ID"`
-	PurchaseURL    string `json:"purchase_url,omitempty" doc:"Whop-hosted checkout fallback URL"`
-	ProviderPlanID string `json:"provider_plan_id,omitempty" doc:"Whop plan ID used by the embedded checkout"`
-	PlanID         string `json:"plan_id,omitempty" doc:"OpenPost plan ID"`
-	BillingPeriod  string `json:"billing_period,omitempty" doc:"Selected billing period"`
-	PriceUSD       int    `json:"price_usd,omitempty" doc:"Selected plan price in whole US dollars"`
-	TrialEndsAt    string `json:"trial_ends_at,omitempty" doc:"Expected end of the 14-day trial"`
-	ReturnURL      string `json:"return_url,omitempty" doc:"OpenPost URL used after Whop checkout completes"`
+	URL             string            `json:"url,omitempty" doc:"OpenPost checkout URL or short-lived Paddle customer portal URL"`
+	ID              string            `json:"id,omitempty" doc:"OpenPost checkout attempt or Paddle portal session ID"`
+	ProviderPriceID string            `json:"provider_price_id,omitempty" doc:"Paddle price ID for the selected plan and period"`
+	PriceIDs        map[string]string `json:"price_ids,omitempty" doc:"Paddle price IDs for localized previews in the selected billing period"`
+	PlanID          string            `json:"plan_id,omitempty" doc:"OpenPost plan ID"`
+	BillingPeriod   string            `json:"billing_period,omitempty" doc:"Selected billing period"`
+	TrialEndsAt     string            `json:"trial_ends_at,omitempty" doc:"Expected end of the 14-day trial"`
+	ReturnURL       string            `json:"return_url,omitempty" doc:"OpenPost URL used after Paddle checkout completes"`
+	ClientToken     string            `json:"client_token,omitempty" doc:"Browser-safe Paddle.js client token"`
+	Environment     string            `json:"environment,omitempty" doc:"Explicit Paddle.js environment: sandbox or production"`
+	CustomerEmail   string            `json:"customer_email,omitempty" doc:"Authenticated customer's checkout email"`
 }
 
 type BillingURLOutput struct {
@@ -388,7 +385,6 @@ func (h *BillingHandler) createCheckout(ctx context.Context, input *CreateBillin
 		CustomerEmail:  email,
 		PlanID:         input.Body.PlanID,
 		BillingPeriod:  input.Body.BillingPeriod,
-		AffiliateCode:  input.Body.AffiliateCode,
 	})
 	if err != nil {
 		return nil, billingAPIError(err)
@@ -439,7 +435,6 @@ type CreateOrganizationBillingCheckoutInput struct {
 	Body   struct {
 		PlanID        string `json:"plan_id" doc:"Plan ID: starter, founder, pro, team, or agency"`
 		BillingPeriod string `json:"billing_period,omitempty" doc:"Billing period: monthly or annual" enum:"monthly,annual" default:"monthly"`
-		AffiliateCode string `json:"affiliate_code,omitempty" doc:"Optional Whop affiliate code carried into checkout"`
 	}
 }
 
@@ -461,7 +456,6 @@ func (h *BillingHandler) createOrganizationCheckout(ctx context.Context, input *
 		CustomerEmail:  email,
 		PlanID:         input.Body.PlanID,
 		BillingPeriod:  input.Body.BillingPeriod,
-		AffiliateCode:  input.Body.AffiliateCode,
 	})
 	if err != nil {
 		return nil, billingAPIError(err)
@@ -471,14 +465,16 @@ func (h *BillingHandler) createOrganizationCheckout(ctx context.Context, input *
 
 func checkoutResponse(result billing.CheckoutResult) BillingURLResponse {
 	response := BillingURLResponse{
-		URL:            result.URL,
-		ID:             result.ID,
-		PurchaseURL:    result.PurchaseURL,
-		ProviderPlanID: result.ProviderPlanID,
-		PlanID:         result.PlanID,
-		BillingPeriod:  result.BillingPeriod,
-		PriceUSD:       result.PriceUSD,
-		ReturnURL:      result.ReturnURL,
+		URL:             result.URL,
+		ID:              result.ID,
+		ProviderPriceID: result.ProviderPriceID,
+		PriceIDs:        result.PriceIDs,
+		PlanID:          result.PlanID,
+		BillingPeriod:   result.BillingPeriod,
+		ReturnURL:       result.ReturnURL,
+		ClientToken:     result.ClientToken,
+		Environment:     result.Environment,
+		CustomerEmail:   result.CustomerEmail,
 	}
 	if !result.TrialEndsAt.IsZero() {
 		response.TrialEndsAt = result.TrialEndsAt.UTC().Format(time.RFC3339)
@@ -570,6 +566,7 @@ func (h *BillingHandler) resolveBillingScope(ctx context.Context, organizationID
 	hasSubscription, err := h.db.NewSelect().
 		Model((*models.BillingSubscription)(nil)).
 		Where("organization_id = ?", resolvedOrganizationID).
+		Where("provider = ?", models.BillingProviderPaddle).
 		Exists(ctx)
 	if err != nil {
 		return "", "", huma.Error500InternalServerError("failed to resolve billing organization")
@@ -594,6 +591,7 @@ func (h *BillingHandler) resolveBillingScope(ctx context.Context, organizationID
 		ColumnExpr("bs.organization_id").
 		Join("JOIN organization_members AS om ON om.organization_id = bs.organization_id").
 		Where("om.user_id = ?", userID).
+		Where("bs.provider = ?", models.BillingProviderPaddle).
 		Join("JOIN organizations AS o ON o.id = bs.organization_id").
 		Where("o.created_by = ?", userID).
 		Where("LOWER(bs.status) IN (?)", bun.List([]string{"active", "trialing"})).

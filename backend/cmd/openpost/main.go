@@ -175,19 +175,18 @@ func main() {
 	}
 	apiTokenService := apitokens.NewService(db)
 	sessionService := sessions.NewService(db)
-	billingService := billing.NewService(db, cfg.WhopWebhookSecret, billing.WhopConfig{
-		APIKey:     cfg.WhopAPIKey,
-		APIBaseURL: cfg.WhopAPIBaseURL,
-		AccountID:  cfg.WhopAccountID,
-		ProductID:  cfg.WhopProductID,
-		AppURL:     cfg.FrontendURL,
-		ReturnURL:  cfg.WhopCheckoutReturnURL,
+	billingService := billing.NewService(db, cfg.PaddleWebhookSecret, billing.PaddleConfig{
+		APIKey:      cfg.PaddleAPIKey,
+		Environment: cfg.PaddleEnvironment,
+		ClientToken: cfg.PaddleClientToken,
+		AppURL:      cfg.FrontendURL,
+		ReturnURL:   cfg.PaddleCheckoutReturnURL,
 		Plans: billing.DefaultPlanCatalog(
-			billing.ProviderPlanIDs{Monthly: cfg.WhopStarterMonthlyPlanID, Annual: cfg.WhopStarterAnnualPlanID},
-			billing.ProviderPlanIDs{Monthly: cfg.WhopFounderMonthlyPlanID, Annual: cfg.WhopFounderAnnualPlanID},
-			billing.ProviderPlanIDs{Monthly: cfg.WhopProMonthlyPlanID, Annual: cfg.WhopProAnnualPlanID},
-			billing.ProviderPlanIDs{Monthly: cfg.WhopTeamMonthlyPlanID, Annual: cfg.WhopTeamAnnualPlanID},
-			billing.ProviderPlanIDs{Monthly: cfg.WhopAgencyMonthlyPlanID, Annual: cfg.WhopAgencyAnnualPlanID},
+			billing.PaddlePriceIDs{Monthly: cfg.PaddleStarterMonthlyPriceID, Annual: cfg.PaddleStarterAnnualPriceID},
+			billing.PaddlePriceIDs{Monthly: cfg.PaddleFounderMonthlyPriceID, Annual: cfg.PaddleFounderAnnualPriceID},
+			billing.PaddlePriceIDs{Monthly: cfg.PaddleProMonthlyPriceID, Annual: cfg.PaddleProAnnualPriceID},
+			billing.PaddlePriceIDs{Monthly: cfg.PaddleTeamMonthlyPriceID, Annual: cfg.PaddleTeamAnnualPriceID},
+			billing.PaddlePriceIDs{Monthly: cfg.PaddleAgencyMonthlyPriceID, Annual: cfg.PaddleAgencyAnnualPriceID},
 		),
 	})
 	entitlementService := entitlements.Service(entitlements.NewSelfHostedService())

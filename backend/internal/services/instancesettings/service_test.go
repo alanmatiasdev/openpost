@@ -80,15 +80,16 @@ func TestSaveEncryptsValuesRedactsSecretsAndTracksRestart(t *testing.T) {
 	}
 }
 
-func TestWhopBillingCredentialsCanBeStoredWithoutBeingReturned(t *testing.T) {
+func TestPaddleBillingCredentialsCanBeStoredWithoutBeingReturned(t *testing.T) {
 	db := createTestDB(t)
 	encryptor := servicecrypto.NewTokenEncryptor("0123456789abcdef0123456789abcdef")
 	service := NewService(db, encryptor, config.Load())
 
 	_, err := service.Save(t.Context(), "user-1", []Update{
-		{Key: "OPENPOST_WHOP_API_KEY", Value: strptr("whop_runtime_secret")},
-		{Key: "OPENPOST_WHOP_ACCOUNT_ID", Value: strptr("biz_openpost")},
-		{Key: "OPENPOST_WHOP_FOUNDER_MONTHLY_PLAN_ID", Value: strptr("plan_founder_monthly")},
+		{Key: "OPENPOST_PADDLE_API_KEY", Value: strptr("pdl_sdbx_runtime_secret")},
+		{Key: "OPENPOST_PADDLE_ENVIRONMENT", Value: strptr("sandbox")},
+		{Key: "OPENPOST_PADDLE_CLIENT_TOKEN", Value: strptr("test_client_token")},
+		{Key: "OPENPOST_PADDLE_FOUNDER_MONTHLY_PRICE_ID", Value: strptr("pri_founder_monthly")},
 	})
 	require.NoError(t, err)
 
@@ -98,14 +99,17 @@ func TestWhopBillingCredentialsCanBeStoredWithoutBeingReturned(t *testing.T) {
 	for _, state := range states {
 		byKey[state.Definition.Key] = state
 	}
-	require.Empty(t, byKey["OPENPOST_WHOP_API_KEY"].Value)
-	require.True(t, byKey["OPENPOST_WHOP_API_KEY"].SecretConfigured)
-	require.Equal(t, "biz_openpost", byKey["OPENPOST_WHOP_ACCOUNT_ID"].Value)
+	require.Empty(t, byKey["OPENPOST_PADDLE_API_KEY"].Value)
+	require.True(t, byKey["OPENPOST_PADDLE_API_KEY"].SecretConfigured)
+	require.Equal(t, "sandbox", byKey["OPENPOST_PADDLE_ENVIRONMENT"].Value)
+	require.Equal(t, "test_client_token", byKey["OPENPOST_PADDLE_CLIENT_TOKEN"].Value)
 
 	applied := config.Load()
 	require.NoError(t, service.ApplyStored(t.Context(), applied))
-	require.Equal(t, "whop_runtime_secret", applied.WhopAPIKey)
-	require.Equal(t, "plan_founder_monthly", applied.WhopFounderMonthlyPlanID)
+	require.Equal(t, "pdl_sdbx_runtime_secret", applied.PaddleAPIKey)
+	require.Equal(t, "sandbox", applied.PaddleEnvironment)
+	require.Equal(t, "test_client_token", applied.PaddleClientToken)
+	require.Equal(t, "pri_founder_monthly", applied.PaddleFounderMonthlyPriceID)
 }
 
 func TestSaveAllowsEnvironmentOverrideAndRejectsInvalidCombinedConfiguration(t *testing.T) {

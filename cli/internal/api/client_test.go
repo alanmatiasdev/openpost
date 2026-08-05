@@ -254,7 +254,7 @@ func TestBillingStatus_WireFormat(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{
 			"workspace_id":"ws_1",
-			"provider":"whop",
+			"provider":"paddle",
 			"status":"active",
 			"plan_id":"founder",
 			"current_period_end":"2026-07-31T00:00:00Z",
@@ -271,7 +271,7 @@ func TestBillingStatus_WireFormat(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BillingStatus returned error: %v", err)
 	}
-	if got.WorkspaceID != "ws_1" || got.Provider != "whop" || got.Status != "active" || got.PlanID != "founder" {
+	if got.WorkspaceID != "ws_1" || got.Provider != "paddle" || got.Status != "active" || got.PlanID != "founder" {
 		t.Fatalf("billing status wrong: %+v", got)
 	}
 	if got.Limits["scheduled_posts_monthly"] != 500 || got.Usage["scheduled_posts_monthly"] != 42 {
@@ -295,7 +295,7 @@ func TestCreateBillingCheckout_WireFormat(t *testing.T) {
 			t.Fatalf("body = %#v", body)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"id":"checkout_1","url":"https://app.openpost.social/checkout?session_id=checkout_1","plan_id":"founder","billing_period":"annual","price_usd":250}`))
+		_, _ = w.Write([]byte(`{"id":"chkat_1","url":"https://app.openpost.social/checkout?billing_period=annual&plan=founder","plan_id":"founder","billing_period":"annual","provider_price_id":"pri_founder_year"}`))
 	}))
 	defer srv.Close()
 
@@ -304,7 +304,7 @@ func TestCreateBillingCheckout_WireFormat(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateBillingCheckout returned error: %v", err)
 	}
-	if got.ID != "checkout_1" || got.URL != "https://app.openpost.social/checkout?session_id=checkout_1" || got.BillingPeriod != "annual" || got.PriceUSD != 250 {
+	if got.ID != "chkat_1" || got.URL != "https://app.openpost.social/checkout?billing_period=annual&plan=founder" || got.BillingPeriod != "annual" {
 		t.Fatalf("checkout = %+v", got)
 	}
 }
@@ -325,7 +325,7 @@ func TestCreateBillingPortal_WireFormat(t *testing.T) {
 			t.Fatalf("body = %#v", body)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"id":"membership_1","url":"https://whop.com/hub/membership_1"}`))
+		_, _ = w.Write([]byte(`{"id":"cps_1","url":"https://customer-portal.paddle.com/overview?token=test"}`))
 	}))
 	defer srv.Close()
 
@@ -334,7 +334,7 @@ func TestCreateBillingPortal_WireFormat(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateBillingPortal returned error: %v", err)
 	}
-	if got.ID != "membership_1" || got.URL != "https://whop.com/hub/membership_1" {
+	if got.ID != "cps_1" || got.URL != "https://customer-portal.paddle.com/overview?token=test" {
 		t.Fatalf("portal = %+v", got)
 	}
 }

@@ -114,6 +114,63 @@ func TestResolveMediaFirstIntentsBeforeMediaIsAttached(t *testing.T) {
 	}
 }
 
+func TestResolveChoosesFormatsPerDestinationForMultiSegmentSource(t *testing.T) {
+	segments := []ResolveSegment{
+		{ID: "segment-1", Body: "First"},
+		{ID: "segment-2", Body: "Second"},
+	}
+
+	x := Resolve(ProviderX, ResolveInput{CreationPreset: IntentPost, Segments: segments})
+	require.Equal(t, models.ContentProfileThread, x.Profile)
+	require.Equal(t, "preserve", x.SegmentStrategy)
+
+	linkedIn := Resolve(ProviderLinkedIn, ResolveInput{CreationPreset: IntentPost, Segments: segments})
+	require.NotEqual(t, models.ContentProfileThread, linkedIn.Profile)
+	require.Equal(t, "join", linkedIn.SegmentStrategy)
+	requireNoIssueCode(t, linkedIn.Issues, "unsupported_destination")
+}
+
+func TestResolvePreservesExplicitDestinationFormat(t *testing.T) {
+	resolved := Resolve(ProviderInstagram, ResolveInput{
+		CreationPreset:         IntentPost,
+		RequestedOutputProfile: "instagram.story",
+		Segments:               []ResolveSegment{{ID: "segment-1", Body: "Caption"}},
+	})
+
+	require.Equal(t, "instagram.story", resolved.OutputProfile)
+	require.Equal(t, models.ContentProfileStory, resolved.Profile)
+	require.False(t, resolved.Compatible)
+	requireIssueCode(t, resolved.Issues, "media_required")
+}
+
+func TestResolveDoesNotInferStoryWithoutStoryPreset(t *testing.T) {
+	video := MediaItem{
+		ID: "video-1", MimeType: "video/mp4", Size: 1024, Width: 1080, Height: 1920,
+		DurationMS: 20_000, AnalysisStatus: "ready", PublicURLReady: true, PublicURLStatus: 200,
+	}
+	resolved := Resolve(ProviderInstagram, ResolveInput{
+		CreationPreset: IntentPost,
+		Segments:       []ResolveSegment{{ID: "segment-1", Body: "Caption", Media: []MediaItem{video}}},
+	})
+
+	require.NotEqual(t, models.ContentProfileStory, resolved.Profile)
+	require.NotEqual(t, "instagram.story", resolved.OutputProfile)
+}
+
+func TestResolveExposesDestinationFormatChoices(t *testing.T) {
+	resolved := Resolve(ProviderInstagram, ResolveInput{
+		CreationPreset: IntentPost,
+		Segments:       []ResolveSegment{{ID: "segment-1", Body: "Caption"}},
+	})
+	profiles := make([]string, 0, len(resolved.AvailableFormats))
+	for _, format := range resolved.AvailableFormats {
+		profiles = append(profiles, format.OutputProfile)
+	}
+	require.Contains(t, profiles, "instagram.feed")
+	require.Contains(t, profiles, "instagram.story")
+	require.Contains(t, profiles, "instagram.reel")
+}
+
 func TestCapabilitiesExposeValidationCategories(t *testing.T) {
 	capability, ok := Find(ProviderYouTube, models.ContentProfileLongVideo)
 

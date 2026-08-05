@@ -110,6 +110,56 @@ func TestRegistrationInsertErrorClassifiesUniqueConstraintRaces(t *testing.T) {
 	require.ErrorIs(t, registrationInsertError(original), original)
 }
 
+func TestUpdateUserProfilePersistsComposerExperience(t *testing.T) {
+	t.Parallel()
+
+	db := createHandlerTestDB(t, (*models.User)(nil))
+	handler := NewAuthHandler(db, auth.NewService("test-secret"), nil, nil, nil, false)
+	ctx := context.Background()
+	user := &models.User{ID: "user-1", Email: "user@example.com"}
+	_, err := db.NewInsert().Model(user).Exec(ctx)
+	require.NoError(t, err)
+	created, err := handler.getUserByID(ctx, user.ID)
+	require.NoError(t, err)
+	require.Equal(t, "specialized", created.ComposerExperience)
+
+	unified := "unified"
+	err = handler.updateUserProfile(ctx, user.ID, UpdateProfileInputBody{
+		ComposerExperience: &unified,
+	})
+	require.NoError(t, err)
+
+	updated, err := handler.getUserByID(ctx, user.ID)
+	require.NoError(t, err)
+	require.Equal(t, "unified", updated.ComposerExperience)
+	require.Equal(t, "unified", handler.toUserProfile(updated).ComposerExperience)
+}
+
+func TestUpdateUserProfileRejectsUnknownComposerExperience(t *testing.T) {
+	t.Parallel()
+
+	db := createHandlerTestDB(t, (*models.User)(nil))
+	handler := NewAuthHandler(db, auth.NewService("test-secret"), nil, nil, nil, false)
+	ctx := context.Background()
+	user := &models.User{ID: "user-1", Email: "user@example.com"}
+	_, err := db.NewInsert().Model(user).Exec(ctx)
+	require.NoError(t, err)
+
+	unknown := "custom"
+	err = handler.updateUserProfile(ctx, user.ID, UpdateProfileInputBody{
+		ComposerExperience: &unknown,
+	})
+	require.ErrorContains(t, err, "composer experience must be specialized or unified")
+}
+
+func TestUserProfileDefaultsUnknownComposerExperienceToSpecialized(t *testing.T) {
+	t.Parallel()
+
+	handler := NewAuthHandler(nil, nil, nil, nil, nil, false)
+	profile := handler.toUserProfile(&models.User{ComposerExperience: ""})
+	require.Equal(t, "specialized", profile.ComposerExperience)
+}
+
 func TestResolveTOTPSetupSecretDecryptsEncryptedPayload(t *testing.T) {
 	t.Parallel()
 

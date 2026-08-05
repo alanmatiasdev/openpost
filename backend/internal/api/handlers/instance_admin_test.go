@@ -84,7 +84,7 @@ func newInstanceAdminTestServer(
 	require.NoError(t, err)
 	_, err = db.NewInsert().Model(&models.BillingSubscription{
 		OrganizationID:         organization.ID,
-		Provider:               "whop",
+		Provider:               "paddle",
 		ProviderCustomerID:     "customer-1",
 		ProviderSubscriptionID: "subscription-1",
 		Status:                 "active",

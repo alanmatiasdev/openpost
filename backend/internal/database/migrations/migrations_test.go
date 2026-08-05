@@ -15,7 +15,7 @@ import (
 	"github.com/uptrace/bun/dialect/sqlitedialect"
 )
 
-func TestRunMigrationsRemovesSocialSetsAndPromotesSchedules(t *testing.T) {
+func TestRunMigrationsReplacesLegacySocialSetsAndPromotesSchedules(t *testing.T) {
 	t.Parallel()
 
 	sqldb, err := sql.Open("sqlite3", fmt.Sprintf("file:%s?mode=memory&cache=shared", t.Name()))
@@ -35,6 +35,10 @@ func TestRunMigrationsRemovesSocialSetsAndPromotesSchedules(t *testing.T) {
 		_, err := db.NewCreateTable().Model(model).IfNotExists().Exec(ctx)
 		require.NoError(t, err)
 	}
+	_, err = db.NewInsert().Model(&models.Workspace{
+		ID: "ws-1", Name: "Workspace", CreatedAt: time.Now().UTC(),
+	}).Exec(ctx)
+	require.NoError(t, err)
 	_, err = db.Exec(`CREATE TABLE social_media_sets (
 		id TEXT PRIMARY KEY,
 		workspace_id TEXT NOT NULL,
@@ -92,6 +96,18 @@ func TestRunMigrationsRemovesSocialSetsAndPromotesSchedules(t *testing.T) {
 	require.Error(t, err)
 	_, err = db.Exec("SELECT 1 FROM social_media_set_accounts LIMIT 1")
 	require.Error(t, err)
+
+	var socialSet models.SocialSet
+	err = db.NewSelect().Model(&socialSet).Where("workspace_id = ?", "ws-1").Scan(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "All channels", socialSet.Name)
+	require.True(t, socialSet.IsDefault)
+
+	var setAccounts []models.SocialSetAccount
+	err = db.NewSelect().Model(&setAccounts).Where("social_set_id = ?", socialSet.ID).Scan(ctx)
+	require.NoError(t, err)
+	require.Len(t, setAccounts, 1)
+	require.Equal(t, "active-account", setAccounts[0].SocialAccountID)
 }
 
 func TestRunMigrationsPromotesSingleExistingUserToInstanceAdmin(t *testing.T) {

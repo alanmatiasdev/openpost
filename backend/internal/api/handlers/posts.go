@@ -134,6 +134,8 @@ type PostResponse struct {
 type TextPostPublicationInput struct {
 	Title          *string                   `json:"title,omitempty" doc:"Publication title"`
 	Intent         *string                   `json:"intent,omitempty" doc:"Publishing intent"`
+	CreationPreset *string                   `json:"creation_preset,omitempty" doc:"Starter preset; destination renditions own their formats"`
+	SocialSetID    *string                   `json:"social_set_id,omitempty" doc:"Social Set provenance for the snapshotted destinations"`
 	ContentProfile *string                   `json:"content_profile,omitempty" doc:"Content profile"`
 	SourceText     *string                   `json:"source_text,omitempty" doc:"Canonical source text"`
 	SourceURL      *string                   `json:"source_url,omitempty" doc:"Canonical source URL"`
@@ -191,6 +193,8 @@ func publicationUpdateFromTextPost(input TextPostPublicationInput) PublicationUp
 	return PublicationUpdateBody{
 		Title:          input.Title,
 		Intent:         input.Intent,
+		CreationPreset: input.CreationPreset,
+		SocialSetID:    input.SocialSetID,
 		ContentProfile: input.ContentProfile,
 		SourceText:     input.SourceText,
 		SourceURL:      input.SourceURL,
@@ -1531,6 +1535,16 @@ func (h *PostHandler) CreateTextPostDraft(api huma.API) {
 
 		publicationHandler := NewPublicationHandler(h.db, h.auth, h.entitlement)
 		publicationHandler.SetCapabilityDependencies(h.providers, h.tokenSource)
+		if input.Body.Publication.SocialSetID != nil && *input.Body.Publication.SocialSetID != "" {
+			if _, err := loadSocialSetSnapshot(
+				ctx,
+				h.db,
+				input.Body.WorkspaceID,
+				*input.Body.Publication.SocialSetID,
+			); err != nil {
+				return nil, err
+			}
+		}
 		accountMap, err := publicationHandler.loadAccounts(
 			ctx,
 			input.Body.WorkspaceID,
@@ -1586,6 +1600,10 @@ func (h *PostHandler) CreateTextPostDraft(api huma.API) {
 			publishingIntentForProfile(valueOrEmpty(publicationInput.ContentProfile)),
 			models.PublishingIntentPost,
 		)
+		creationPreset := publicationFirstNonEmpty(
+			valueOrEmpty(publicationInput.CreationPreset),
+			intent,
+		)
 		profile := publicationFirstNonEmpty(
 			valueOrEmpty(publicationInput.ContentProfile),
 			compatibilityProfileForIntent(intent),
@@ -1602,6 +1620,8 @@ func (h *PostHandler) CreateTextPostDraft(api huma.API) {
 			CreatedByID:     userID,
 			Title:           title,
 			Intent:          intent,
+			CreationPreset:  creationPreset,
+			SocialSetID:     valueOrEmpty(publicationInput.SocialSetID),
 			ContentProfile:  profile,
 			SourceText:      sourceText,
 			SourceContent:   sourceText,
@@ -1791,6 +1811,26 @@ func (h *PostHandler) SaveTextPostDraft(api huma.API) {
 
 		publicationHandler := NewPublicationHandler(h.db, h.auth, h.entitlement)
 		publicationHandler.SetCapabilityDependencies(h.providers, h.tokenSource)
+		if input.Body.Publication.SocialSetID != nil {
+			var currentSocialSetID string
+			if err := h.db.NewSelect().
+				TableExpr("publications").
+				Column("social_set_id").
+				Where("id = ?", post.PublicationID).
+				Scan(ctx, &currentSocialSetID); err != nil {
+				return nil, huma.Error500InternalServerError("failed to load publication provenance")
+			}
+			if *input.Body.Publication.SocialSetID != "" && *input.Body.Publication.SocialSetID != currentSocialSetID {
+				if _, err := loadSocialSetSnapshot(
+					ctx,
+					h.db,
+					post.WorkspaceID,
+					*input.Body.Publication.SocialSetID,
+				); err != nil {
+					return nil, err
+				}
+			}
+		}
 		accountMap, err := publicationHandler.loadAccounts(
 			ctx,
 			post.WorkspaceID,

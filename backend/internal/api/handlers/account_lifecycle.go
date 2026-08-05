@@ -554,7 +554,9 @@ func (h *AccountLifecycleHandler) appendBillingBlockers(ctx context.Context, use
 	}
 	for _, organizationID := range organizationIDs {
 		active, err := h.db.NewSelect().Model((*models.BillingSubscription)(nil)).
-			Where("organization_id = ? AND status IN (?)", organizationID, bun.List(activeBillingStatuses)).Exists(ctx)
+			Where("organization_id = ? AND status IN (?)", organizationID, bun.List(activeBillingStatuses)).
+			Where("provider = ?", models.BillingProviderPaddle).
+			Exists(ctx)
 		if err != nil {
 			return err
 		}

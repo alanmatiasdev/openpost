@@ -66,13 +66,15 @@ type ResolveCapabilitySegmentInput struct {
 
 type ResolveCapabilitiesInput struct {
 	Body struct {
-		AccountIDs []string                        `json:"account_ids" minItems:"1" uniqueItems:"true" doc:"Connected account IDs"`
-		Intent     string                          `json:"intent" enum:"post,thread,story,short_video,video" doc:"Publishing intent"`
-		SourceURL  string                          `json:"source_url,omitempty" doc:"Canonical source URL"`
-		Locale     string                          `json:"locale,omitempty" doc:"BCP 47 locale for option labels"`
-		Region     string                          `json:"region,omitempty" doc:"ISO 3166-1 alpha-2 region"`
-		Segments   []ResolveCapabilitySegmentInput `json:"segments" minItems:"1" doc:"Ordered canonical segments"`
-		Settings   map[string]map[string]any       `json:"account_settings,omitempty" doc:"Destination settings keyed by connected account ID"`
+		AccountIDs              []string                        `json:"account_ids" minItems:"1" uniqueItems:"true" doc:"Connected account IDs"`
+		Intent                  string                          `json:"intent,omitempty" enum:"post,thread,story,short_video,video" doc:"Deprecated compatibility alias for creation_preset"`
+		CreationPreset          string                          `json:"creation_preset,omitempty" enum:"post,thread,story,short_video,video" doc:"Starter preset used only to choose initial destination formats"`
+		RequestedOutputProfiles map[string]string               `json:"requested_output_profiles,omitempty" doc:"Explicit or saved output profiles keyed by connected account ID"`
+		SourceURL               string                          `json:"source_url,omitempty" doc:"Canonical source URL"`
+		Locale                  string                          `json:"locale,omitempty" doc:"BCP 47 locale for option labels"`
+		Region                  string                          `json:"region,omitempty" doc:"ISO 3166-1 alpha-2 region"`
+		Segments                []ResolveCapabilitySegmentInput `json:"segments" minItems:"1" doc:"Ordered canonical segments"`
+		Settings                map[string]map[string]any       `json:"account_settings,omitempty" doc:"Destination settings keyed by connected account ID"`
 	}
 }
 
@@ -113,9 +115,11 @@ func (h *CapabilityResolverHandler) RegisterRoutes(api huma.API) {
 		output.Body.Accounts = make([]ResolvedAccountCapability, 0, len(accounts))
 		for _, account := range accounts {
 			resolved := capabilities.Resolve(account.Platform, capabilities.ResolveInput{
-				Intent:    input.Body.Intent,
-				SourceURL: input.Body.SourceURL,
-				Segments:  segments,
+				Intent:                 input.Body.Intent,
+				CreationPreset:         input.Body.CreationPreset,
+				RequestedOutputProfile: input.Body.RequestedOutputProfiles[account.ID],
+				SourceURL:              input.Body.SourceURL,
+				Segments:               segments,
 			})
 			h.mergeAccountCapability(
 				ctx,

@@ -326,7 +326,6 @@ type BillingStatus struct {
 	Status            string           `json:"status"`
 	PlanID            string           `json:"plan_id,omitempty"`
 	CurrentPeriodEnd  string           `json:"current_period_end,omitempty"`
-	ManageURL         string           `json:"manage_url,omitempty"`
 	CancelAtPeriodEnd bool             `json:"cancel_at_period_end"`
 	Limits            map[string]int64 `json:"limits"`
 	Usage             map[string]int64 `json:"usage"`
@@ -334,15 +333,13 @@ type BillingStatus struct {
 }
 
 type BillingURL struct {
-	URL            string `json:"url"`
-	ID             string `json:"id,omitempty"`
-	PlanID         string `json:"plan_id,omitempty"`
-	BillingPeriod  string `json:"billing_period,omitempty"`
-	ProviderPlanID string `json:"provider_plan_id,omitempty"`
-	PriceUSD       int    `json:"price_usd,omitempty"`
-	TrialEndsAt    string `json:"trial_ends_at,omitempty"`
-	ReturnURL      string `json:"return_url,omitempty"`
-	PurchaseURL    string `json:"purchase_url,omitempty"`
+	URL             string `json:"url"`
+	ID              string `json:"id,omitempty"`
+	PlanID          string `json:"plan_id,omitempty"`
+	BillingPeriod   string `json:"billing_period,omitempty"`
+	ProviderPriceID string `json:"provider_price_id,omitempty"`
+	TrialEndsAt     string `json:"trial_ends_at,omitempty"`
+	ReturnURL       string `json:"return_url,omitempty"`
 }
 
 func (c *Client) BillingStatus(ctx context.Context, workspaceID string) (*BillingStatus, error) {

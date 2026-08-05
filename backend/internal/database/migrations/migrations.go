@@ -154,17 +154,215 @@ func prepareMigration(ctx context.Context, db *bun.DB, migration migration) erro
 	case 61:
 		description = "repost override"
 		err = ensurePublicationRepostOverride(ctx, db)
+	case 62, 63, 64, 66:
+		return prepareRecentMigration(ctx, db, migration)
+	}
+	if err != nil {
+		return fmt.Errorf("migration %s %s preparation failed: %w", migration.name, description, err)
+	}
+	return nil
+}
+
+func prepareRecentMigration(ctx context.Context, db *bun.DB, migration migration) error {
+	var (
+		err         error
+		description string
+	)
+	switch migration.version {
 	case 62:
 		description = "media collections to tags"
 		err = ensureMediaTagMigration(ctx, db)
 	case 63:
 		description = "editor names"
 		err = ensureEditorNameMigration(ctx, db)
+	case 64:
+		description = "Social Sets and rendition inheritance"
+		err = ensureSocialSetsAndRenditionInheritance(ctx, db)
+	case 66:
+		description = "composer experience"
+		err = ensureComposerExperienceUserField(ctx, db)
 	}
 	if err != nil {
 		return fmt.Errorf("migration %s %s preparation failed: %w", migration.name, description, err)
 	}
 	return nil
+}
+
+func ensureSocialSetsAndRenditionInheritance(ctx context.Context, db *bun.DB) error {
+	if err := ensureSocialSetTables(ctx, db); err != nil {
+		return err
+	}
+	if err := ensureRenditionInheritanceColumns(ctx, db); err != nil {
+		return err
+	}
+	if err := backfillCreationPresets(ctx, db); err != nil {
+		return err
+	}
+	if err := backfillRenditionInheritance(ctx, db); err != nil {
+		return err
+	}
+	return backfillDefaultSocialSets(ctx, db)
+}
+
+func ensureSocialSetTables(ctx context.Context, db *bun.DB) error {
+	statements := []string{
+		`CREATE TABLE IF NOT EXISTS social_sets (
+			id TEXT PRIMARY KEY,
+			workspace_id TEXT NOT NULL,
+			name TEXT NOT NULL,
+			is_default BOOLEAN NOT NULL DEFAULT false,
+			created_at TIMESTAMP NOT NULL DEFAULT current_timestamp,
+			updated_at TIMESTAMP NOT NULL DEFAULT current_timestamp,
+			FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
+		)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS social_sets_workspace_name_idx ON social_sets (workspace_id, name)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS social_sets_workspace_default_idx ON social_sets (workspace_id) WHERE is_default = true`,
+		`CREATE TABLE IF NOT EXISTS social_set_accounts (
+			social_set_id TEXT NOT NULL,
+			social_account_id TEXT NOT NULL,
+			display_order INTEGER NOT NULL DEFAULT 0,
+			default_output_profile TEXT NOT NULL DEFAULT '',
+			created_at TIMESTAMP NOT NULL DEFAULT current_timestamp,
+			PRIMARY KEY (social_set_id, social_account_id),
+			FOREIGN KEY (social_set_id) REFERENCES social_sets(id) ON DELETE CASCADE,
+			FOREIGN KEY (social_account_id) REFERENCES social_accounts(id) ON DELETE CASCADE
+		)`,
+		`CREATE INDEX IF NOT EXISTS social_set_accounts_account_idx ON social_set_accounts (social_account_id)`,
+	}
+	for _, statement := range statements {
+		if _, err := db.ExecContext(ctx, statement); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func ensureRenditionInheritanceColumns(ctx context.Context, db *bun.DB) error {
+	for table, columns := range map[string][]struct {
+		name       string
+		definition string
+	}{
+		"publications": {
+			{name: "creation_preset", definition: "TEXT NOT NULL DEFAULT 'post'"},
+			{name: "social_set_id", definition: "TEXT NOT NULL DEFAULT ''"},
+		},
+		"renditions": {
+			{name: "format_locked", definition: "BOOLEAN NOT NULL DEFAULT false"},
+			{name: "schedule_override", definition: "TIMESTAMP"},
+		},
+		"rendition_segments": {
+			{name: "body_override", definition: "TEXT"},
+			{name: "title_override", definition: "TEXT"},
+			{name: "description_override", definition: "TEXT"},
+			{name: "url_override", definition: "TEXT"},
+			{name: "media_inherited", definition: "BOOLEAN NOT NULL DEFAULT true"},
+		},
+	} {
+		exists, err := migrationTableExists(ctx, db, table)
+		if err != nil {
+			return err
+		}
+		if !exists {
+			continue
+		}
+		for _, column := range columns {
+			present, err := migrationColumnExists(ctx, db, table, column.name)
+			if err != nil {
+				return err
+			}
+			if present {
+				continue
+			}
+			if _, err := db.ExecContext(ctx, fmt.Sprintf(
+				"ALTER TABLE %s ADD COLUMN %s %s",
+				table, column.name, column.definition,
+			)); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func backfillCreationPresets(ctx context.Context, db *bun.DB) error {
+	publicationsExist, err := migrationTableExists(ctx, db, "publications")
+	if err != nil {
+		return err
+	}
+	if publicationsExist {
+		intentExists, columnErr := migrationColumnExists(ctx, db, "publications", "intent")
+		if columnErr != nil {
+			return columnErr
+		}
+		if intentExists {
+			if _, err := db.ExecContext(ctx, `UPDATE publications SET creation_preset = CASE intent
+				WHEN 'thread' THEN 'thread' WHEN 'story' THEN 'story'
+				WHEN 'short_video' THEN 'short_video' WHEN 'video' THEN 'video'
+				ELSE 'post' END`); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func backfillRenditionInheritance(ctx context.Context, db *bun.DB) error {
+	for _, table := range []string{"rendition_segments", "publication_segments"} {
+		exists, err := migrationTableExists(ctx, db, table)
+		if err != nil || !exists {
+			return err
+		}
+	}
+	for _, field := range []string{"body", "title", "description", "url"} {
+		if _, err := db.ExecContext(ctx, fmt.Sprintf(`UPDATE rendition_segments
+			SET %s_override = %s
+			WHERE %s != COALESCE((SELECT publication_segments.%s FROM publication_segments
+				WHERE publication_segments.id = rendition_segments.publication_segment_id), '')`,
+			field, field, field, field)); err != nil {
+			return err
+		}
+	}
+	for _, table := range []string{"rendition_segment_media", "publication_segment_media"} {
+		exists, err := migrationTableExists(ctx, db, table)
+		if err != nil || !exists {
+			return err
+		}
+	}
+	_, err := db.ExecContext(ctx, `UPDATE rendition_segments SET media_inherited = false
+		WHERE EXISTS (SELECT 1 FROM rendition_segment_media rsm
+			WHERE rsm.rendition_segment_id = rendition_segments.id
+			AND NOT EXISTS (SELECT 1 FROM publication_segment_media psm
+				WHERE psm.segment_id = rendition_segments.publication_segment_id
+				AND psm.media_id = rsm.media_id AND psm.display_order = rsm.display_order))
+		OR EXISTS (SELECT 1 FROM publication_segment_media psm
+			WHERE psm.segment_id = rendition_segments.publication_segment_id
+			AND NOT EXISTS (SELECT 1 FROM rendition_segment_media rsm
+				WHERE rsm.rendition_segment_id = rendition_segments.id
+				AND rsm.media_id = psm.media_id AND rsm.display_order = psm.display_order))`)
+	return err
+}
+
+func backfillDefaultSocialSets(ctx context.Context, db *bun.DB) error {
+	for _, table := range []string{"workspaces", "social_accounts"} {
+		exists, err := migrationTableExists(ctx, db, table)
+		if err != nil || !exists {
+			return err
+		}
+	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO social_sets (id, workspace_id, name, is_default, created_at, updated_at)
+		SELECT 'default:' || workspaces.id, workspaces.id, 'All channels', true, current_timestamp, current_timestamp
+		FROM workspaces WHERE EXISTS (SELECT 1 FROM social_accounts
+			WHERE social_accounts.workspace_id = workspaces.id AND social_accounts.is_active = true)
+		AND NOT EXISTS (SELECT 1 FROM social_sets WHERE social_sets.workspace_id = workspaces.id)`); err != nil {
+		return err
+	}
+	_, err := db.ExecContext(ctx, `INSERT INTO social_set_accounts
+		(social_set_id, social_account_id, display_order, default_output_profile, created_at)
+		SELECT 'default:' || social_accounts.workspace_id, social_accounts.id, 0, '', current_timestamp
+		FROM social_accounts WHERE social_accounts.is_active = true
+		AND EXISTS (SELECT 1 FROM social_sets WHERE social_sets.id = 'default:' || social_accounts.workspace_id)
+		ON CONFLICT DO NOTHING`)
+	return err
 }
 
 func ensureMediaTagMigration(ctx context.Context, db *bun.DB) error {
@@ -316,6 +514,19 @@ func ensureEmailVerificationUserField(ctx context.Context, db *bun.DB) error {
 	_, err = db.ExecContext(ctx, `UPDATE users
 		SET email_verified_at = COALESCE(created_at, current_timestamp)
 		WHERE email_verified_at IS NULL`)
+	return err
+}
+
+func ensureComposerExperienceUserField(ctx context.Context, db *bun.DB) error {
+	exists, err := migrationTableExists(ctx, db, "users")
+	if err != nil || !exists {
+		return err
+	}
+	present, err := migrationColumnExists(ctx, db, "users", "composer_experience")
+	if err != nil || present {
+		return err
+	}
+	_, err = db.ExecContext(ctx, "ALTER TABLE users ADD COLUMN composer_experience TEXT NOT NULL DEFAULT 'specialized'")
 	return err
 }
 

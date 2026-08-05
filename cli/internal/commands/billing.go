@@ -46,7 +46,7 @@ func newBillingCheckoutCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "checkout <plan>",
 		Short: "Create an OpenPost checkout URL for the active workspace",
-		Long:  "Create an OpenPost checkout URL with an embedded Whop payment form. Plan IDs are starter, founder, pro, team, or agency.",
+		Long:  "Create an OpenPost checkout URL that opens Paddle's embedded payment form. Plan IDs are starter, founder, pro, team, or agency.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, client, workspaceID, err := billingRuntime(cmd)
@@ -71,7 +71,7 @@ func newBillingCheckoutCmd() *cobra.Command {
 func newBillingPortalCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "portal",
-		Short: "Open Whop billing management for the active workspace",
+		Short: "Open Paddle billing management for the active workspace",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cfg, client, workspaceID, err := billingRuntime(cmd)
@@ -115,7 +115,6 @@ func printBillingStatus(cfg *config.Runtime, status *api.BillingStatus) error {
 		{"Plan", emptyDash(status.PlanID)},
 		{"Period start", emptyDash(status.PeriodStart)},
 		{"Current period end", emptyDash(status.CurrentPeriodEnd)},
-		{"Manage URL", emptyDash(status.ManageURL)},
 		{"Canceling", yesNo(status.CancelAtPeriodEnd)},
 		{"Usage", emptyDash(strings.Join(billingUsageRatios(status.Limits, status.Usage), ", "))},
 	})
@@ -132,7 +131,6 @@ func printBillingURL(cfg *config.Runtime, session *api.BillingURL) error {
 		{"URL", session.URL},
 		{"Plan", emptyDash(session.PlanID)},
 		{"Billing period", emptyDash(session.BillingPeriod)},
-		{"Price (USD)", emptyDash(formatOptionalInt(session.PriceUSD))},
 		{"Trial ends", emptyDash(session.TrialEndsAt)},
 	})
 	return nil

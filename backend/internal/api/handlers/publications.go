@@ -101,28 +101,37 @@ type RenditionSegmentInput struct {
 	Title                string                  `json:"title,omitempty" doc:"Destination segment title override"`
 	Description          string                  `json:"description,omitempty" doc:"Destination segment description override"`
 	URL                  string                  `json:"url,omitempty" doc:"Destination segment URL override"`
+	BodyOverride         *string                 `json:"body_override,omitempty" doc:"Explicit destination body; omit or null to inherit"`
+	TitleOverride        *string                 `json:"title_override,omitempty" doc:"Explicit destination title; omit or null to inherit"`
+	DescriptionOverride  *string                 `json:"description_override,omitempty" doc:"Explicit destination description; omit or null to inherit"`
+	URLOverride          *string                 `json:"url_override,omitempty" doc:"Explicit destination URL; omit or null to inherit"`
+	MediaInherited       *bool                   `json:"media_inherited,omitempty" doc:"Whether destination media follows the canonical segment"`
 	Settings             map[string]interface{}  `json:"settings,omitempty" doc:"Segment-scoped destination settings"`
 	Media                []PublicationMediaInput `json:"media,omitempty" doc:"Destination segment ordered media"`
 }
 
 type RenditionInput struct {
-	ID              string                  `json:"id,omitempty" doc:"Legacy client reference; replacement IDs are server-generated"`
-	SocialAccountID string                  `json:"social_account_id" doc:"Social account ID"`
-	Profile         string                  `json:"profile,omitempty" doc:"Content profile override"`
-	OutputProfile   string                  `json:"output_profile,omitempty" doc:"Resolved provider-qualified output profile"`
-	Body            string                  `json:"body,omitempty" doc:"Platform-specific body"`
-	Title           string                  `json:"title,omitempty" doc:"Platform-specific title"`
-	Description     string                  `json:"description,omitempty" doc:"Platform-specific description"`
-	Settings        map[string]interface{}  `json:"settings,omitempty" doc:"Provider-specific settings"`
-	Media           []PublicationMediaInput `json:"media,omitempty" doc:"Rendition-specific ordered media"`
-	Segments        []RenditionSegmentInput `json:"segments,omitempty" doc:"Ordered destination segments"`
+	ID               string                  `json:"id,omitempty" doc:"Legacy client reference; replacement IDs are server-generated"`
+	SocialAccountID  string                  `json:"social_account_id" doc:"Social account ID"`
+	Profile          string                  `json:"profile,omitempty" doc:"Content profile override"`
+	OutputProfile    string                  `json:"output_profile,omitempty" doc:"Resolved provider-qualified output profile"`
+	FormatLocked     bool                    `json:"format_locked,omitempty" doc:"Preserve an explicitly selected format when source content changes"`
+	ScheduleOverride *time.Time              `json:"schedule_override,omitempty" doc:"Optional destination-specific schedule"`
+	Body             string                  `json:"body,omitempty" doc:"Platform-specific body"`
+	Title            string                  `json:"title,omitempty" doc:"Platform-specific title"`
+	Description      string                  `json:"description,omitempty" doc:"Platform-specific description"`
+	Settings         map[string]interface{}  `json:"settings,omitempty" doc:"Provider-specific settings"`
+	Media            []PublicationMediaInput `json:"media,omitempty" doc:"Rendition-specific ordered media"`
+	Segments         []RenditionSegmentInput `json:"segments,omitempty" doc:"Ordered destination segments"`
 }
 
 type CreatePublicationInput struct {
 	Body struct {
 		WorkspaceID      string                    `json:"workspace_id" doc:"Workspace ID"`
 		Title            string                    `json:"title" doc:"Internal publication title"`
-		Intent           string                    `json:"intent,omitempty" enum:"post,thread,story,short_video,video" doc:"Publishing intent"`
+		Intent           string                    `json:"intent,omitempty" enum:"post,thread,story,short_video,video" doc:"Deprecated compatibility alias for creation_preset"`
+		CreationPreset   string                    `json:"creation_preset,omitempty" enum:"post,thread,story,short_video,video" doc:"Starter preset; destination renditions own their formats"`
+		SocialSetID      string                    `json:"social_set_id,omitempty" doc:"Social Set used to initialize the snapshotted destinations"`
 		ContentProfile   string                    `json:"content_profile" doc:"Content profile"`
 		SourceText       string                    `json:"source_text" doc:"Canonical source text"`
 		SourceURL        string                    `json:"source_url,omitempty" doc:"Source URL for link shares"`
@@ -141,7 +150,9 @@ type CreatePublicationInput struct {
 type PublicationUpdateBody struct {
 	ExpectedRevision int                       `json:"expected_revision" minimum:"1" doc:"Revision loaded by the editor"`
 	Title            *string                   `json:"title,omitempty" doc:"Internal publication title"`
-	Intent           *string                   `json:"intent,omitempty" enum:"post,thread,story,short_video,video" doc:"Publishing intent"`
+	Intent           *string                   `json:"intent,omitempty" enum:"post,thread,story,short_video,video" doc:"Deprecated compatibility alias for creation_preset"`
+	CreationPreset   *string                   `json:"creation_preset,omitempty" enum:"post,thread,story,short_video,video" doc:"Starter preset; destination renditions own their formats"`
+	SocialSetID      *string                   `json:"social_set_id,omitempty" doc:"Social Set provenance; does not replace snapshotted destinations"`
 	ContentProfile   *string                   `json:"content_profile,omitempty" doc:"Content profile"`
 	SourceText       *string                   `json:"source_text,omitempty" doc:"Canonical source text"`
 	SourceURL        *string                   `json:"source_url,omitempty" doc:"Source URL"`
@@ -268,6 +279,8 @@ type PublicationResponse struct {
 	CreatedByID    string                       `json:"created_by"`
 	Title          string                       `json:"title"`
 	Intent         string                       `json:"intent"`
+	CreationPreset string                       `json:"creation_preset"`
+	SocialSetID    string                       `json:"social_set_id,omitempty"`
 	ContentProfile string                       `json:"content_profile"`
 	SourceText     string                       `json:"source_text"`
 	SourceURL      string                       `json:"source_url,omitempty"`
@@ -298,28 +311,30 @@ type PublicationSegmentResponse struct {
 }
 
 type RenditionResponse struct {
-	ID              string                     `json:"id"`
-	PublicationID   string                     `json:"publication_id"`
-	SocialAccountID string                     `json:"social_account_id"`
-	Platform        string                     `json:"platform"`
-	Profile         string                     `json:"profile"`
-	OutputProfile   string                     `json:"output_profile"`
-	Body            string                     `json:"body"`
-	Title           string                     `json:"title"`
-	Description     string                     `json:"description"`
-	Settings        map[string]interface{}     `json:"settings"`
-	Status          string                     `json:"status"`
-	ExternalID      string                     `json:"external_id,omitempty"`
-	ExternalURL     string                     `json:"external_url,omitempty"`
-	ErrorMessage    string                     `json:"error_message,omitempty"`
-	ErrorKind       string                     `json:"error_kind,omitempty"`
-	ErrorCode       string                     `json:"error_code,omitempty"`
-	ErrorHTTPStatus int                        `json:"error_http_status,omitempty"`
-	ErrorRetryable  bool                       `json:"error_retryable"`
-	ErrorRetryAt    string                     `json:"error_retry_at,omitempty"`
-	ErrorAction     string                     `json:"error_action,omitempty"`
-	Segments        []RenditionSegmentResponse `json:"segments"`
-	Media           []MediaSummary             `json:"media"`
+	ID               string                     `json:"id"`
+	PublicationID    string                     `json:"publication_id"`
+	SocialAccountID  string                     `json:"social_account_id"`
+	Platform         string                     `json:"platform"`
+	Profile          string                     `json:"profile"`
+	OutputProfile    string                     `json:"output_profile"`
+	FormatLocked     bool                       `json:"format_locked"`
+	ScheduleOverride string                     `json:"schedule_override,omitempty"`
+	Body             string                     `json:"body"`
+	Title            string                     `json:"title"`
+	Description      string                     `json:"description"`
+	Settings         map[string]interface{}     `json:"settings"`
+	Status           string                     `json:"status"`
+	ExternalID       string                     `json:"external_id,omitempty"`
+	ExternalURL      string                     `json:"external_url,omitempty"`
+	ErrorMessage     string                     `json:"error_message,omitempty"`
+	ErrorKind        string                     `json:"error_kind,omitempty"`
+	ErrorCode        string                     `json:"error_code,omitempty"`
+	ErrorHTTPStatus  int                        `json:"error_http_status,omitempty"`
+	ErrorRetryable   bool                       `json:"error_retryable"`
+	ErrorRetryAt     string                     `json:"error_retry_at,omitempty"`
+	ErrorAction      string                     `json:"error_action,omitempty"`
+	Segments         []RenditionSegmentResponse `json:"segments"`
+	Media            []MediaSummary             `json:"media"`
 }
 
 type RenditionSegmentResponse struct {
@@ -330,6 +345,11 @@ type RenditionSegmentResponse struct {
 	Title                string                 `json:"title"`
 	Description          string                 `json:"description"`
 	URL                  string                 `json:"url,omitempty"`
+	BodyOverride         *string                `json:"body_override,omitempty"`
+	TitleOverride        *string                `json:"title_override,omitempty"`
+	DescriptionOverride  *string                `json:"description_override,omitempty"`
+	URLOverride          *string                `json:"url_override,omitempty"`
+	MediaInherited       bool                   `json:"media_inherited"`
 	Settings             map[string]interface{} `json:"settings"`
 	Status               string                 `json:"status"`
 	ExternalID           string                 `json:"external_id,omitempty"`
@@ -518,11 +538,25 @@ func (h *PublicationHandler) createPublication(api huma.API) {
 		if err := h.checkWorkspaceEditAccess(ctx, input.Body.WorkspaceID, userID); err != nil {
 			return nil, err
 		}
+		var socialSetAccounts []SocialSetAccountInput
+		if input.Body.SocialSetID != "" {
+			var setErr error
+			socialSetAccounts, setErr = loadSocialSetSnapshot(ctx, h.db, input.Body.WorkspaceID, input.Body.SocialSetID)
+			if setErr != nil {
+				return nil, setErr
+			}
+		}
+		if input.Body.CreationPreset == "" {
+			input.Body.CreationPreset = input.Body.Intent
+		}
+		if input.Body.CreationPreset == "" {
+			input.Body.CreationPreset = publishingIntentForProfile(input.Body.ContentProfile)
+		}
 		if input.Body.ContentProfile == "" {
-			input.Body.ContentProfile = compatibilityProfileForIntent(input.Body.Intent)
+			input.Body.ContentProfile = compatibilityProfileForIntent(input.Body.CreationPreset)
 		}
 		if input.Body.Intent == "" {
-			input.Body.Intent = publishingIntentForProfile(input.Body.ContentProfile)
+			input.Body.Intent = input.Body.CreationPreset
 		}
 		if len(input.Body.Segments) == 0 {
 			input.Body.Segments = []PublicationSegmentInput{{
@@ -536,6 +570,9 @@ func (h *PublicationHandler) createPublication(api huma.API) {
 			input.Body.SourceText = publicationFirstNonEmpty(input.Body.SourceText, firstSegment.Body)
 			input.Body.SourceURL = publicationFirstNonEmpty(input.Body.SourceURL, firstSegment.URL)
 			input.Body.Title = publicationFirstNonEmpty(input.Body.Title, firstSegment.Title)
+		}
+		if len(input.Body.Renditions) == 0 && len(input.Body.SocialAccountIDs) == 0 && input.Body.SocialSetID != "" {
+			input.Body.Renditions = socialSetRenditionInputs(socialSetAccounts)
 		}
 		if len(input.Body.Renditions) == 0 {
 			input.Body.Renditions = h.defaultRenditionInputs(input.Body.SocialAccountIDs, input.Body.ContentProfile, input.Body.SourceText, input.Body.Title, input.Body.Media)
@@ -572,6 +609,8 @@ func (h *PublicationHandler) createPublication(api huma.API) {
 			CreatedByID:     userID,
 			Title:           publicationFirstNonEmpty(input.Body.Title, firstContentLine(input.Body.SourceText), "Untitled publication"),
 			Intent:          input.Body.Intent,
+			CreationPreset:  input.Body.CreationPreset,
+			SocialSetID:     input.Body.SocialSetID,
 			ContentProfile:  input.Body.ContentProfile,
 			SourceText:      input.Body.SourceText,
 			SourceContent:   input.Body.SourceText,
@@ -794,6 +833,13 @@ func (h *PublicationHandler) updatePublication(api huma.API) {
 		if err != nil {
 			return nil, err
 		}
+		if input.Body.SocialSetID != nil &&
+			*input.Body.SocialSetID != "" &&
+			*input.Body.SocialSetID != existing.SocialSetID {
+			if _, err := loadSocialSetSnapshot(ctx, h.db, existing.WorkspaceID, *input.Body.SocialSetID); err != nil {
+				return nil, err
+			}
+		}
 		if input.Body.Segments != nil {
 			if err := h.validateMediaBelongsToWorkspace(ctx, existing.WorkspaceID, allPublicationMediaIDs(nil, input.Body.Segments, nil)); err != nil {
 				return nil, err
@@ -961,6 +1007,13 @@ func applyPublicationFieldUpdates(publication *models.Publication, input Publica
 	if input.Intent != nil {
 		publication.Intent = *input.Intent
 	}
+	if input.CreationPreset != nil {
+		publication.CreationPreset = *input.CreationPreset
+		publication.Intent = *input.CreationPreset
+	}
+	if input.SocialSetID != nil {
+		publication.SocialSetID = *input.SocialSetID
+	}
 	if input.ContentProfile != nil {
 		publication.ContentProfile = *input.ContentProfile
 	}
@@ -989,7 +1042,7 @@ func applyPublicationFieldUpdates(publication *models.Publication, input Publica
 //nolint:gocyclo
 func publicationChangedDomains(input PublicationUpdateBody) []string {
 	var domains []string
-	if input.Title != nil || input.Intent != nil || input.ContentProfile != nil ||
+	if input.Title != nil || input.Intent != nil || input.CreationPreset != nil || input.ContentProfile != nil ||
 		input.SourceText != nil || input.SourceURL != nil || input.Goal != nil ||
 		input.Audience != nil || input.Segments != nil {
 		domains = append(domains, "content")
@@ -999,6 +1052,9 @@ func publicationChangedDomains(input PublicationUpdateBody) []string {
 	}
 	if input.Renditions != nil {
 		domains = append(domains, "destinations", "destination overrides", "media")
+	}
+	if input.SocialSetID != nil {
+		domains = append(domains, "destinations")
 	}
 	if input.ScheduledAt != nil || input.ClearSchedule {
 		domains = append(domains, "schedule")
@@ -1851,12 +1907,10 @@ func (h *PublicationHandler) insertRenditions(
 			return huma.Error400BadRequest("one or more social accounts are invalid, disconnected, or outside this workspace")
 		}
 		resolved := h.resolveRenditionCapability(ctx, tx, publication, account, input, canonicalInputs)
-		// The rendition capability must follow the current content shape. Inputs
-		// often contain the previous profile while autosave is propagating newly
-		// attached media, so preferring them leaves the destination permanently
-		// out of sync with the canonical post.
+		// Unlocked formats follow the current source shape. Requested output profiles
+		// are preserved by the resolver, including when their source becomes invalid.
 		profile := publicationFirstNonEmpty(resolved.Profile, input.Profile, publication.ContentProfile)
-		outputProfile := publicationFirstNonEmpty(resolved.OutputProfile, input.OutputProfile, account.Platform+".post")
+		outputProfile := publicationFirstNonEmpty(input.OutputProfile, resolved.OutputProfile, account.Platform+".post")
 		status := models.RenditionStatusDraft
 		if publication.Status == models.PublicationStatusScheduled {
 			status = models.RenditionStatusScheduled
@@ -1865,6 +1919,12 @@ func (h *PublicationHandler) insertRenditions(
 		if len(canonicalSegments) > 0 {
 			firstCanonical = canonicalSegments[0]
 		}
+		_, effectiveBody := renditionTextOverride(nil, input.Body, firstCanonical.Body)
+		_, effectiveTitle := renditionTextOverride(nil, input.Title, firstCanonical.Title)
+		_, effectiveDescription := renditionTextOverride(nil, input.Description, firstCanonical.Description)
+		if input.ScheduleOverride != nil && input.ScheduleOverride.Before(time.Now().UTC()) {
+			return huma.Error400BadRequest("schedule_override must be in the future")
+		}
 		rendition := &models.Rendition{
 			ID:              uuid.New().String(),
 			PublicationID:   publication.ID,
@@ -1872,13 +1932,17 @@ func (h *PublicationHandler) insertRenditions(
 			Platform:        account.Platform,
 			Profile:         profile,
 			OutputProfile:   outputProfile,
-			Body:            publicationFirstNonEmpty(input.Body, firstCanonical.Body, publication.SourceText),
-			Title:           publicationFirstNonEmpty(input.Title, firstCanonical.Title, publication.Title),
-			Description:     publicationFirstNonEmpty(input.Description, firstCanonical.Description),
+			FormatLocked:    input.FormatLocked,
+			Body:            publicationFirstNonEmpty(effectiveBody, publication.SourceText),
+			Title:           publicationFirstNonEmpty(effectiveTitle, publication.Title),
+			Description:     effectiveDescription,
 			SettingsJSON:    mustJSON(input.Settings),
 			Status:          status,
 			CreatedAt:       now,
 			UpdatedAt:       now,
+		}
+		if input.ScheduleOverride != nil {
+			rendition.ScheduleOverride = input.ScheduleOverride.UTC()
 		}
 		if _, err := tx.NewInsert().Model(rendition).Exec(ctx); err != nil {
 			return err
@@ -1886,29 +1950,33 @@ func (h *PublicationHandler) insertRenditions(
 
 		segmentInputs := input.Segments
 		if len(segmentInputs) == 0 {
-			segmentInputs = make([]RenditionSegmentInput, 0, len(canonicalSegments))
-			for position, canonical := range canonicalSegments {
-				segmentInput := RenditionSegmentInput{
-					PublicationSegmentID: canonical.ID,
-					Body:                 canonical.Body,
-					Title:                canonical.Title,
-					Description:          canonical.Description,
-					URL:                  canonical.URL,
-				}
-				if position == 0 {
-					segmentInput.Body = publicationFirstNonEmpty(input.Body, segmentInput.Body)
-					segmentInput.Title = publicationFirstNonEmpty(input.Title, segmentInput.Title)
-					segmentInput.Description = publicationFirstNonEmpty(input.Description, segmentInput.Description)
-					if len(input.Media) > 0 {
-						segmentInput.Media = input.Media
-					} else if len(defaultMedia) > 0 {
-						segmentInput.Media = defaultMedia
+			if resolved.SegmentStrategy == "join" && len(canonicalSegments) > 1 {
+				segmentInputs = []RenditionSegmentInput{joinedRenditionSegmentInput(canonicalSegments, canonicalInputs, input)}
+			} else {
+				segmentInputs = make([]RenditionSegmentInput, 0, len(canonicalSegments))
+				for position, canonical := range canonicalSegments {
+					segmentInput := RenditionSegmentInput{
+						PublicationSegmentID: canonical.ID,
+						Body:                 canonical.Body,
+						Title:                canonical.Title,
+						Description:          canonical.Description,
+						URL:                  canonical.URL,
 					}
+					if position == 0 {
+						segmentInput.Body = publicationFirstNonEmpty(input.Body, segmentInput.Body)
+						segmentInput.Title = publicationFirstNonEmpty(input.Title, segmentInput.Title)
+						segmentInput.Description = publicationFirstNonEmpty(input.Description, segmentInput.Description)
+						if len(input.Media) > 0 {
+							segmentInput.Media = input.Media
+						} else if len(defaultMedia) > 0 {
+							segmentInput.Media = defaultMedia
+						}
+					}
+					if len(segmentInput.Media) == 0 && position < len(canonicalInputs) {
+						segmentInput.Media = canonicalInputs[position].Media
+					}
+					segmentInputs = append(segmentInputs, segmentInput)
 				}
-				if len(segmentInput.Media) == 0 && position < len(canonicalInputs) {
-					segmentInput.Media = canonicalInputs[position].Media
-				}
-				segmentInputs = append(segmentInputs, segmentInput)
 			}
 		}
 		if err := h.insertRenditionSegments(ctx, tx, rendition, canonicalSegments, canonicalInputs, segmentInputs); err != nil {
@@ -1918,6 +1986,7 @@ func (h *PublicationHandler) insertRenditions(
 	return nil
 }
 
+//nolint:gocyclo // This keeps canonical inheritance and legacy-media fallback in one transactional write.
 func (h *PublicationHandler) insertRenditionSegments(
 	ctx context.Context,
 	tx bun.Tx,
@@ -1935,15 +2004,23 @@ func (h *PublicationHandler) insertRenditionSegments(
 			canonicalSegments,
 			canonicalInputs,
 		)
+		bodyOverride, effectiveBody := renditionTextOverride(input.BodyOverride, input.Body, canonical.Body)
+		titleOverride, effectiveTitle := renditionTextOverride(input.TitleOverride, input.Title, canonical.Title)
+		descriptionOverride, effectiveDescription := renditionTextOverride(input.DescriptionOverride, input.Description, canonical.Description)
+		urlOverride, effectiveURL := renditionTextOverride(input.URLOverride, input.URL, canonical.URL)
 		segment := &models.RenditionSegment{
 			ID:                   uuid.New().String(),
 			RenditionID:          rendition.ID,
 			PublicationSegmentID: canonical.ID,
 			Position:             position,
-			Body:                 publicationFirstNonEmpty(input.Body, canonical.Body),
-			Title:                publicationFirstNonEmpty(input.Title, canonical.Title),
-			Description:          publicationFirstNonEmpty(input.Description, canonical.Description),
-			URL:                  publicationFirstNonEmpty(input.URL, canonical.URL),
+			Body:                 effectiveBody,
+			Title:                effectiveTitle,
+			Description:          effectiveDescription,
+			URL:                  effectiveURL,
+			BodyOverride:         bodyOverride,
+			TitleOverride:        titleOverride,
+			DescriptionOverride:  descriptionOverride,
+			URLOverride:          urlOverride,
 			SettingsJSON:         mustJSON(input.Settings),
 			Status:               rendition.Status,
 			CreatedAt:            now,
@@ -1959,7 +2036,21 @@ func (h *PublicationHandler) insertRenditionSegments(
 			return err
 		}
 		mediaInputs := input.Media
-		if len(mediaInputs) == 0 && position < len(canonicalInputs) {
+		canonicalMedia := []PublicationMediaInput{}
+		if position < len(canonicalInputs) {
+			canonicalMedia = canonicalInputs[position].Media
+		}
+		mediaInherited := input.MediaInherited == nil && (len(mediaInputs) == 0 || publicationMediaInputsEqual(mediaInputs, canonicalMedia))
+		if input.MediaInherited != nil {
+			mediaInherited = *input.MediaInherited
+		}
+		segment.MediaInherited = mediaInherited
+		if _, err := tx.NewUpdate().Model(segment).Column("media_inherited").Where("id = ?", segment.ID).Exec(ctx); err != nil {
+			return err
+		}
+		if mediaInherited {
+			mediaInputs = canonicalMedia
+		} else if len(mediaInputs) == 0 && input.MediaInherited == nil && position < len(canonicalInputs) {
 			mediaInputs = canonicalInputs[position].Media
 		}
 		for order, media := range mediaInputs {
@@ -2087,15 +2178,76 @@ func (h *PublicationHandler) resolveRenditionCapability(
 		}
 		resolveSegments = append(resolveSegments, resolveSegment)
 	}
-	intent := publication.Intent
-	if input.Profile != "" && input.OutputProfile == "" {
-		intent = publishingIntentForProfile(input.Profile)
-	}
 	return capabilities.Resolve(account.Platform, capabilities.ResolveInput{
-		Intent:    intent,
-		SourceURL: publication.SourceURL,
-		Segments:  resolveSegments,
+		Intent:                 publication.Intent,
+		CreationPreset:         publicationFirstNonEmpty(publication.CreationPreset, publication.Intent),
+		RequestedOutputProfile: input.OutputProfile,
+		SourceURL:              publication.SourceURL,
+		Segments:               resolveSegments,
 	})
+}
+
+func renditionTextOverride(explicit *string, legacyValue, canonicalValue string) (*string, string) {
+	if explicit != nil {
+		value := *explicit
+		return &value, value
+	}
+	if legacyValue != "" && legacyValue != canonicalValue {
+		value := legacyValue
+		return &value, value
+	}
+	return nil, canonicalValue
+}
+
+func joinedRenditionSegmentInput(
+	canonicalSegments []models.PublicationSegment,
+	canonicalInputs []PublicationSegmentInput,
+	input RenditionInput,
+) RenditionSegmentInput {
+	bodies := make([]string, 0, len(canonicalSegments))
+	media := make([]PublicationMediaInput, 0)
+	for position, segment := range canonicalSegments {
+		if body := strings.TrimSpace(segment.Body); body != "" {
+			bodies = append(bodies, body)
+		}
+		if position < len(canonicalInputs) {
+			media = append(media, canonicalInputs[position].Media...)
+		}
+	}
+	joinedBody := strings.Join(bodies, "\n\n")
+	segment := RenditionSegmentInput{
+		PublicationSegmentID: canonicalSegments[0].ID,
+		Body:                 joinedBody,
+		Title:                canonicalSegments[0].Title,
+		Description:          canonicalSegments[0].Description,
+		URL:                  canonicalSegments[0].URL,
+		Media:                media,
+	}
+	if input.Body != "" {
+		segment.Body = input.Body
+	}
+	if input.Title != "" {
+		segment.Title = input.Title
+	}
+	if input.Description != "" {
+		segment.Description = input.Description
+	}
+	if len(input.Media) > 0 {
+		segment.Media = input.Media
+	}
+	return segment
+}
+
+func publicationMediaInputsEqual(left, right []PublicationMediaInput) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index].MediaID != right[index].MediaID {
+			return false
+		}
+	}
+	return true
 }
 
 func (h *PublicationHandler) capabilityMediaItems(ctx context.Context, db bun.IDB, inputs []PublicationMediaInput) []capabilities.MediaItem {
@@ -2334,6 +2486,7 @@ func (h *PublicationHandler) loadRenditionSegmentResponsesWithDB(
 				Body:                 rendition.Body,
 				Title:                rendition.Title,
 				Description:          rendition.Description,
+				MediaInherited:       true,
 				Settings:             map[string]interface{}{},
 				Status:               rendition.Status,
 				ExternalID:           rendition.ExternalID,
@@ -2357,6 +2510,7 @@ func (h *PublicationHandler) loadRenditionSegmentResponsesWithDB(
 			Body:                 rendition.Body,
 			Title:                rendition.Title,
 			Description:          rendition.Description,
+			MediaInherited:       true,
 			Settings:             map[string]interface{}{},
 			Status:               rendition.Status,
 			ExternalID:           rendition.ExternalID,
@@ -2390,6 +2544,11 @@ func (h *PublicationHandler) loadRenditionSegmentResponsesWithDB(
 			Title:                segment.Title,
 			Description:          segment.Description,
 			URL:                  segment.URL,
+			BodyOverride:         segment.BodyOverride,
+			TitleOverride:        segment.TitleOverride,
+			DescriptionOverride:  segment.DescriptionOverride,
+			URLOverride:          segment.URLOverride,
+			MediaInherited:       segment.MediaInherited,
 			Settings:             settings,
 			Status:               segment.Status,
 			ExternalID:           segment.ExternalID,
@@ -2717,7 +2876,7 @@ func (h *PublicationHandler) validateDynamicPublicationCapabilities(ctx context.
 				}
 			} else {
 				resolved, resolveErr := provider.ResolveAccountPublishingCapabilities(ctx, token, platform.AccountCapabilityInput{
-					Intent:        publication.Intent,
+					Intent:        publishingIntentForProfile(rendition.Profile),
 					OutputProfile: rendition.OutputProfile,
 					Settings:      destinationSettings,
 				})
@@ -3264,7 +3423,12 @@ func (h *PublicationHandler) queuePublicationWithRunAt(
 				}
 			}
 		}
-		jobID, err = h.replacePublicationJobTx(txCtx, tx, publicationID, runAt)
+		isScheduledQueue := !publication.ScheduledAt.IsZero() && runAt.Equal(publication.ScheduledAt)
+		if isScheduledQueue {
+			jobID, err = h.replacePublicationJobTx(txCtx, tx, publicationID, runAt)
+		} else {
+			jobID, err = h.replaceImmediatePublicationJobTx(txCtx, tx, publicationID, runAt)
+		}
 		if err != nil {
 			return err
 		}
@@ -3277,6 +3441,20 @@ func (h *PublicationHandler) queuePublicationWithRunAt(
 }
 
 func (h *PublicationHandler) replacePublicationJobTx(ctx context.Context, tx bun.Tx, publicationID string, runAt time.Time) (string, error) {
+	return h.replacePublicationJobsTx(ctx, tx, publicationID, runAt, true)
+}
+
+func (h *PublicationHandler) replaceImmediatePublicationJobTx(ctx context.Context, tx bun.Tx, publicationID string, runAt time.Time) (string, error) {
+	return h.replacePublicationJobsTx(ctx, tx, publicationID, runAt, false)
+}
+
+func (h *PublicationHandler) replacePublicationJobsTx(
+	ctx context.Context,
+	tx bun.Tx,
+	publicationID string,
+	runAt time.Time,
+	useScheduleOverrides bool,
+) (string, error) {
 	if err := lockPrimaryPublicationQueueTx(ctx, tx, publicationID); err != nil {
 		return "", err
 	}
@@ -3289,8 +3467,50 @@ func (h *PublicationHandler) replacePublicationJobTx(ctx context.Context, tx bun
 	if err := h.deletePendingPrimaryPublicationJobsTx(ctx, tx, publicationID); err != nil {
 		return "", err
 	}
-	payload := mustJSON(map[string]string{"publication_id": publicationID})
-	job := &models.Job{ID: uuid.New().String(), Type: jobTypePublishPublication, Payload: payload, Status: jobStatusPending, RunAt: runAt, MaxAttempts: 3}
+	if useScheduleOverrides {
+		var renditions []models.Rendition
+		if err := tx.NewSelect().Model(&renditions).
+			Where("publication_id = ?", publicationID).
+			Order("created_at ASC").Scan(ctx); err != nil {
+			return "", err
+		}
+		hasOverride := false
+		for _, rendition := range renditions {
+			hasOverride = hasOverride || !rendition.ScheduleOverride.IsZero()
+		}
+		if hasOverride {
+			firstJobID := ""
+			for _, rendition := range renditions {
+				renditionRunAt := runAt
+				if !rendition.ScheduleOverride.IsZero() {
+					renditionRunAt = rendition.ScheduleOverride
+				}
+				if !renditionRunAt.After(time.Now().UTC()) {
+					return "", errPublicationScheduleFuture
+				}
+				jobID, err := insertPublicationJobTx(ctx, tx, publicationID, rendition.ID, renditionRunAt)
+				if err != nil {
+					return "", err
+				}
+				if firstJobID == "" {
+					firstJobID = jobID
+				}
+			}
+			return firstJobID, nil
+		}
+	}
+	return insertPublicationJobTx(ctx, tx, publicationID, "", runAt)
+}
+
+func insertPublicationJobTx(ctx context.Context, tx bun.Tx, publicationID, renditionID string, runAt time.Time) (string, error) {
+	payload := map[string]string{"publication_id": publicationID}
+	if renditionID != "" {
+		payload["rendition_id"] = renditionID
+	}
+	job := &models.Job{
+		ID: uuid.New().String(), Type: jobTypePublishPublication, Payload: mustJSON(payload),
+		Status: jobStatusPending, RunAt: runAt, MaxAttempts: 3,
+	}
 	if _, err := tx.NewInsert().Model(job).Exec(ctx); err != nil {
 		return "", err
 	}
@@ -3371,6 +3591,7 @@ func (h *PublicationHandler) clearPublicationScheduleTx(ctx context.Context, tx 
 	if _, err := tx.NewUpdate().
 		Model((*models.Rendition)(nil)).
 		Set("status = ?", models.RenditionStatusDraft).
+		Set("schedule_override = NULL").
 		Set("updated_at = ?", updatedAt).
 		Where("publication_id = ?", publicationID).
 		Where("status = ?", models.RenditionStatusScheduled).
@@ -3444,6 +3665,8 @@ func publicationResponse(publication *models.Publication, media []MediaSummary) 
 		CreatedByID:    publication.CreatedByID,
 		Title:          publication.Title,
 		Intent:         publicationFirstNonEmpty(publication.Intent, publishingIntentForProfile(publication.ContentProfile)),
+		CreationPreset: publicationFirstNonEmpty(publication.CreationPreset, publication.Intent, publishingIntentForProfile(publication.ContentProfile)),
+		SocialSetID:    publication.SocialSetID,
 		ContentProfile: publication.ContentProfile,
 		SourceText:     publication.SourceText,
 		SourceURL:      publication.SourceURL,
@@ -3472,27 +3695,29 @@ func renditionResponse(rendition models.Rendition, media []MediaSummary) Renditi
 	settings := map[string]interface{}{}
 	_ = json.Unmarshal([]byte(rendition.SettingsJSON), &settings)
 	return RenditionResponse{
-		ID:              rendition.ID,
-		PublicationID:   rendition.PublicationID,
-		SocialAccountID: rendition.SocialAccountID,
-		Platform:        rendition.Platform,
-		Profile:         rendition.Profile,
-		OutputProfile:   publicationFirstNonEmpty(rendition.OutputProfile, rendition.Platform+".post"),
-		Body:            rendition.Body,
-		Title:           rendition.Title,
-		Description:     rendition.Description,
-		Settings:        settings,
-		Status:          rendition.Status,
-		ExternalID:      rendition.ExternalID,
-		ExternalURL:     rendition.ExternalURL,
-		ErrorMessage:    rendition.ErrorMessage,
-		ErrorKind:       rendition.ErrorKind,
-		ErrorCode:       rendition.ErrorCode,
-		ErrorHTTPStatus: rendition.ErrorHTTPStatus,
-		ErrorRetryable:  rendition.ErrorRetryable,
-		ErrorRetryAt:    formatOptionalTime(rendition.ErrorRetryAt),
-		ErrorAction:     rendition.ErrorAction,
-		Media:           media,
+		ID:               rendition.ID,
+		PublicationID:    rendition.PublicationID,
+		SocialAccountID:  rendition.SocialAccountID,
+		Platform:         rendition.Platform,
+		Profile:          rendition.Profile,
+		OutputProfile:    publicationFirstNonEmpty(rendition.OutputProfile, rendition.Platform+".post"),
+		FormatLocked:     rendition.FormatLocked,
+		ScheduleOverride: formatOptionalTime(rendition.ScheduleOverride),
+		Body:             rendition.Body,
+		Title:            rendition.Title,
+		Description:      rendition.Description,
+		Settings:         settings,
+		Status:           rendition.Status,
+		ExternalID:       rendition.ExternalID,
+		ExternalURL:      rendition.ExternalURL,
+		ErrorMessage:     rendition.ErrorMessage,
+		ErrorKind:        rendition.ErrorKind,
+		ErrorCode:        rendition.ErrorCode,
+		ErrorHTTPStatus:  rendition.ErrorHTTPStatus,
+		ErrorRetryable:   rendition.ErrorRetryable,
+		ErrorRetryAt:     formatOptionalTime(rendition.ErrorRetryAt),
+		ErrorAction:      rendition.ErrorAction,
+		Media:            media,
 	}
 }
 

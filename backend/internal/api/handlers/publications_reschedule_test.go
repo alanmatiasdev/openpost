@@ -14,6 +14,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/openpost/backend/internal/models"
 	"github.com/stretchr/testify/require"
+	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect"
 )
 
@@ -1281,4 +1282,46 @@ func jobIDs(jobs []models.Job) []string {
 		ids = append(ids, job.ID)
 	}
 	return ids
+}
+
+func TestReplaceScheduledPublicationJobUsesRenditionOverrides(t *testing.T) {
+	db := createHandlerTestDB(t,
+		(*models.Publication)(nil),
+		(*models.Rendition)(nil),
+		(*models.Job)(nil),
+	)
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Second)
+	defaultRunAt := now.Add(2 * time.Hour)
+	overrideRunAt := now.Add(3 * time.Hour)
+	_, err := db.NewInsert().Model(&models.Publication{
+		ID: "publication-overrides", WorkspaceID: "workspace-1", CreatedByID: "user-1",
+		Title: "Staggered", Intent: models.PublishingIntentPost,
+		CreationPreset: models.PublishingIntentPost, ContentProfile: models.ContentProfileShortText,
+		SourceText: "Shared", SourceContent: "Shared", Status: models.PublicationStatusDraft,
+		Revision: 1, MetadataJSON: "{}", ReleasePlanJSON: "{}", RepostOverride: "{}",
+	}).Exec(ctx)
+	require.NoError(t, err)
+	renditions := []models.Rendition{
+		{ID: "rendition-default", PublicationID: "publication-overrides", SocialAccountID: "account-1", Platform: "x", Profile: models.ContentProfileShortText, OutputProfile: "x.post", SettingsJSON: "{}", Status: models.RenditionStatusDraft, CreatedAt: now},
+		{ID: "rendition-override", PublicationID: "publication-overrides", SocialAccountID: "account-2", Platform: "bluesky", Profile: models.ContentProfileShortText, OutputProfile: "bluesky.post", ScheduleOverride: overrideRunAt, SettingsJSON: "{}", Status: models.RenditionStatusDraft, CreatedAt: now.Add(time.Second)},
+	}
+	_, err = db.NewInsert().Model(&renditions).Exec(ctx)
+	require.NoError(t, err)
+
+	err = db.RunInTx(ctx, nil, func(txCtx context.Context, tx bun.Tx) error {
+		_, replaceErr := (&PublicationHandler{db: db}).replacePublicationJobTx(
+			txCtx, tx, "publication-overrides", defaultRunAt,
+		)
+		return replaceErr
+	})
+	require.NoError(t, err)
+
+	var jobs []models.Job
+	require.NoError(t, db.NewSelect().Model(&jobs).Order("run_at ASC").Scan(ctx))
+	require.Len(t, jobs, 2)
+	require.JSONEq(t, `{"publication_id":"publication-overrides","rendition_id":"rendition-default"}`, jobs[0].Payload)
+	require.True(t, jobs[0].RunAt.Equal(defaultRunAt))
+	require.JSONEq(t, `{"publication_id":"publication-overrides","rendition_id":"rendition-override"}`, jobs[1].Payload)
+	require.True(t, jobs[1].RunAt.Equal(overrideRunAt))
 }

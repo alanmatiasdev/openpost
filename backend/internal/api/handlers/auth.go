@@ -219,6 +219,7 @@ type UserProfile struct {
 	DisplayName             string    `json:"display_name" doc:"User display name"`
 	AvatarURL               string    `json:"avatar_url" doc:"Profile avatar URL"`
 	PublicProfileEnabled    bool      `json:"public_profile_enabled" doc:"Whether the public activity profile is visible"`
+	ComposerExperience      string    `json:"composer_experience" enum:"specialized,unified" doc:"Preferred composer experience"`
 	IsAdmin                 bool      `json:"is_admin" doc:"Whether this user can manage instance-level settings"`
 	TermsVersion            string    `json:"terms_version,omitempty" doc:"Terms version accepted by the user"`
 	PrivacyVersion          string    `json:"privacy_version,omitempty" doc:"Privacy version acknowledged by the user"`
@@ -236,6 +237,7 @@ type UpdateProfileInputBody struct {
 	DisplayName          *string `json:"display_name,omitempty" maxLength:"120" doc:"User display name"`
 	AvatarURL            *string `json:"avatar_url,omitempty" maxLength:"1000" doc:"Profile avatar URL"`
 	PublicProfileEnabled *bool   `json:"public_profile_enabled,omitempty" doc:"Whether the public activity profile is visible"`
+	ComposerExperience   *string `json:"composer_experience,omitempty" enum:"specialized,unified" doc:"Preferred composer experience"`
 }
 
 type UpdateProfileInput struct {
@@ -978,6 +980,7 @@ func (h *AuthHandler) updateUserProfile(ctx context.Context, userID string, body
 		func() (bool, error) {
 			return h.applyPublicProfileUpdate(ctx, update, userID, body.Username, body.PublicProfileEnabled)
 		},
+		func() (bool, error) { return applyComposerExperienceUpdate(update, body.ComposerExperience) },
 	} {
 		changed, err := apply()
 		if err != nil {
@@ -1062,6 +1065,18 @@ func applyAvatarURLUpdate(update *bun.UpdateQuery, requested *string) (bool, err
 		return false, huma.Error400BadRequest("avatar url must be at most 1000 characters")
 	}
 	update.Set("avatar_url = ?", avatarURL)
+	return true, nil
+}
+
+func applyComposerExperienceUpdate(update *bun.UpdateQuery, requested *string) (bool, error) {
+	if requested == nil {
+		return false, nil
+	}
+	experience := strings.TrimSpace(*requested)
+	if experience != "specialized" && experience != "unified" {
+		return false, huma.Error400BadRequest("composer experience must be specialized or unified")
+	}
+	update.Set("composer_experience = ?", experience)
 	return true, nil
 }
 
@@ -1700,6 +1715,7 @@ func (h *AuthHandler) toUserProfile(user *models.User) *UserProfile {
 		DisplayName:          user.DisplayName,
 		AvatarURL:            user.AvatarURL,
 		PublicProfileEnabled: user.PublicProfile,
+		ComposerExperience:   normalizedComposerExperience(user.ComposerExperience),
 		IsAdmin:              user.IsAdmin,
 		HasPassword:          strings.TrimSpace(user.PasswordHash) != "",
 		TermsVersion:         user.TermsVersion,
@@ -1712,6 +1728,13 @@ func (h *AuthHandler) toUserProfile(user *models.User) *UserProfile {
 				user.PrivacyVersion != h.accountPolicy.PrivacyVersion),
 		CreatedAt: user.CreatedAt,
 	}
+}
+
+func normalizedComposerExperience(value string) string {
+	if strings.TrimSpace(value) == "unified" {
+		return "unified"
+	}
+	return "specialized"
 }
 
 func (h *AuthHandler) profileForUser(ctx context.Context, user *models.User) *UserProfile {

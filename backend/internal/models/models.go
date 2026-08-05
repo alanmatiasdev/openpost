@@ -152,24 +152,25 @@ type Workspace struct {
 type User struct {
 	bun.BaseModel `bun:"table:users"`
 
-	ID               string    `bun:",pk" json:"id"`
-	Email            string    `bun:",unique,notnull" json:"email"`
-	Username         string    `bun:",notnull,default:''" json:"username"`
-	DisplayName      string    `json:"display_name"`
-	AvatarURL        string    `json:"avatar_url"`
-	AvatarObjectKey  string    `json:"-"`
-	PublicProfile    bool      `bun:"public_profile_enabled,notnull,default:false" json:"public_profile_enabled"`
-	PasswordHash     string    `bun:",nullzero" json:"-"`
-	IsAdmin          bool      `bun:",notnull,default:false" json:"is_admin"`
-	IsBreakGlass     bool      `bun:"is_break_glass,notnull,default:false" json:"is_break_glass"`
-	TOTPSecretEnc    []byte    `bun:"totp_secret_encrypted" json:"-"`
-	TOTPEnabledAt    time.Time `bun:",nullzero" json:"totp_enabled_at"`
-	PasskeyEnabledAt time.Time `bun:",nullzero" json:"passkey_enabled_at"`
-	TermsVersion     string    `bun:"terms_version,notnull,default:''" json:"terms_version"`
-	PrivacyVersion   string    `bun:"privacy_version,notnull,default:''" json:"privacy_version"`
-	LegalAcceptedAt  time.Time `bun:"legal_accepted_at,nullzero" json:"legal_accepted_at"`
-	EmailVerifiedAt  time.Time `bun:"email_verified_at,nullzero" json:"email_verified_at"`
-	CreatedAt        time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
+	ID                 string    `bun:",pk" json:"id"`
+	Email              string    `bun:",unique,notnull" json:"email"`
+	Username           string    `bun:",notnull,default:''" json:"username"`
+	DisplayName        string    `json:"display_name"`
+	AvatarURL          string    `json:"avatar_url"`
+	AvatarObjectKey    string    `json:"-"`
+	PublicProfile      bool      `bun:"public_profile_enabled,notnull,default:false" json:"public_profile_enabled"`
+	ComposerExperience string    `bun:"composer_experience,notnull,default:'specialized'" json:"composer_experience"`
+	PasswordHash       string    `bun:",nullzero" json:"-"`
+	IsAdmin            bool      `bun:",notnull,default:false" json:"is_admin"`
+	IsBreakGlass       bool      `bun:"is_break_glass,notnull,default:false" json:"is_break_glass"`
+	TOTPSecretEnc      []byte    `bun:"totp_secret_encrypted" json:"-"`
+	TOTPEnabledAt      time.Time `bun:",nullzero" json:"totp_enabled_at"`
+	PasskeyEnabledAt   time.Time `bun:",nullzero" json:"passkey_enabled_at"`
+	TermsVersion       string    `bun:"terms_version,notnull,default:''" json:"terms_version"`
+	PrivacyVersion     string    `bun:"privacy_version,notnull,default:''" json:"privacy_version"`
+	LegalAcceptedAt    time.Time `bun:"legal_accepted_at,nullzero" json:"legal_accepted_at"`
+	EmailVerifiedAt    time.Time `bun:"email_verified_at,nullzero" json:"email_verified_at"`
+	CreatedAt          time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
 }
 
 type EmailVerificationChallenge struct {
@@ -561,17 +562,18 @@ type ProviderUsagePeriodCounter struct {
 	UpdatedAt          time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"updated_at"`
 }
 
+const BillingProviderPaddle = "paddle"
+
 type BillingSubscription struct {
 	bun.BaseModel `bun:"table:billing_subscriptions"`
 
 	OrganizationID         string    `bun:",pk" json:"organization_id"`
 	WorkspaceID            string    `json:"workspace_id,omitempty"`
-	Provider               string    `bun:",notnull,default:'whop'" json:"provider"`
+	Provider               string    `bun:",notnull,default:'paddle'" json:"provider"`
 	ProviderCustomerID     string    `bun:",notnull" json:"provider_customer_id"`
 	ProviderSubscriptionID string    `bun:",notnull,unique" json:"provider_subscription_id"`
 	ProviderProductID      string    `json:"provider_product_id"`
 	ProviderPriceID        string    `json:"provider_price_id"`
-	ProviderManageURL      string    `bun:"provider_manage_url,notnull,default:''" json:"provider_manage_url"`
 	Status                 string    `bun:",notnull" json:"status"`
 	PlanID                 string    `bun:",notnull,default:''" json:"plan_id"`
 	EntitlementSnapshot    string    `bun:",notnull,default:'{}'" json:"entitlement_snapshot"`
@@ -586,7 +588,7 @@ type BillingWebhookEvent struct {
 	bun.BaseModel `bun:"table:billing_webhook_events"`
 
 	EventID     string    `bun:",pk" json:"event_id"`
-	Provider    string    `bun:",notnull,default:'whop'" json:"provider"`
+	Provider    string    `bun:",notnull,default:'paddle'" json:"provider"`
 	EventType   string    `bun:",notnull" json:"event_type"`
 	ProcessedAt time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"processed_at"`
 }
@@ -594,18 +596,30 @@ type BillingWebhookEvent struct {
 type BillingCheckoutAttempt struct {
 	bun.BaseModel `bun:"table:billing_checkout_attempts"`
 
-	CheckoutConfigurationID string    `bun:",pk" json:"checkout_configuration_id"`
-	OrganizationID          string    `bun:",notnull" json:"organization_id"`
-	WorkspaceID             string    `json:"workspace_id,omitempty"`
-	UserID                  string    `json:"user_id,omitempty"`
-	Provider                string    `bun:",notnull,default:'whop'" json:"provider"`
-	ProviderPlanID          string    `bun:",notnull" json:"provider_plan_id"`
-	ProviderMembershipID    string    `json:"provider_membership_id,omitempty"`
-	PlanID                  string    `bun:",notnull" json:"plan_id"`
-	BillingPeriod           string    `bun:",notnull" json:"billing_period"`
-	Status                  string    `bun:",notnull,default:'created'" json:"status"`
-	CreatedAt               time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
-	UpdatedAt               time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"updated_at"`
+	CheckoutAttemptID      string    `bun:",pk" json:"checkout_attempt_id"`
+	OrganizationID         string    `bun:",notnull" json:"organization_id"`
+	WorkspaceID            string    `json:"workspace_id,omitempty"`
+	UserID                 string    `json:"user_id,omitempty"`
+	Provider               string    `bun:",notnull,default:'paddle'" json:"provider"`
+	ProviderPriceID        string    `bun:",notnull" json:"provider_price_id"`
+	ProviderSubscriptionID string    `json:"provider_subscription_id,omitempty"`
+	PlanID                 string    `bun:",notnull" json:"plan_id"`
+	BillingPeriod          string    `bun:",notnull" json:"billing_period"`
+	Status                 string    `bun:",notnull,default:'created'" json:"status"`
+	CreatedAt              time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
+	UpdatedAt              time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"updated_at"`
+}
+
+type BillingCustomer struct {
+	bun.BaseModel `bun:"table:billing_customers"`
+
+	Provider           string    `bun:",pk,notnull" json:"provider"`
+	ProviderCustomerID string    `bun:",pk,notnull" json:"provider_customer_id"`
+	Email              string    `bun:",notnull,default:''" json:"email"`
+	Name               string    `bun:",notnull,default:''" json:"name"`
+	RawPayload         string    `bun:",notnull,default:'{}'" json:"raw_payload"`
+	CreatedAt          time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
+	UpdatedAt          time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"updated_at"`
 }
 
 type MCPToolCall struct {
@@ -734,6 +748,8 @@ type Publication struct {
 	CreatedByID     string    `bun:"created_by,notnull" json:"created_by"`
 	Title           string    `bun:",notnull" json:"title"`
 	Intent          string    `bun:"intent,notnull,default:'post'" json:"intent"`
+	CreationPreset  string    `bun:"creation_preset,notnull,default:'post'" json:"creation_preset"`
+	SocialSetID     string    `bun:"social_set_id,notnull,default:''" json:"social_set_id,omitempty"`
 	ContentProfile  string    `bun:"content_profile,notnull,default:'short_text'" json:"content_profile"`
 	SourceText      string    `bun:"source_text,notnull,default:''" json:"source_text"`
 	SourceContent   string    `bun:"source_content,notnull" json:"source_content"` // legacy mirror until old post flows are removed
@@ -749,6 +765,31 @@ type Publication struct {
 	RepostOverride  string    `bun:"repost_override_json,notnull,default:'{}'" json:"repost_override_json"`
 	CreatedAt       time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
 	UpdatedAt       time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"updated_at"`
+}
+
+// SocialSet is a reusable, format-independent collection of connected accounts.
+// Publications copy its current membership into renditions when a draft is created.
+type SocialSet struct {
+	bun.BaseModel `bun:"table:social_sets"`
+
+	ID          string    `bun:",pk" json:"id"`
+	WorkspaceID string    `bun:"workspace_id,notnull" json:"workspace_id"`
+	Name        string    `bun:",notnull" json:"name"`
+	IsDefault   bool      `bun:"is_default,notnull,default:false" json:"is_default"`
+	CreatedAt   time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
+	UpdatedAt   time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"updated_at"`
+}
+
+// SocialSetAccount stores stable membership plus an optional destination-format
+// default. It never changes renditions already snapshotted into a publication.
+type SocialSetAccount struct {
+	bun.BaseModel `bun:"table:social_set_accounts"`
+
+	SocialSetID          string    `bun:"social_set_id,pk" json:"social_set_id"`
+	SocialAccountID      string    `bun:"social_account_id,pk" json:"social_account_id"`
+	DisplayOrder         int       `bun:"display_order,notnull,default:0" json:"display_order"`
+	DefaultOutputProfile string    `bun:"default_output_profile,notnull,default:''" json:"default_output_profile,omitempty"`
+	CreatedAt            time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
 }
 
 // RepostPolicy is a workspace-owned rule that turns a published rendition into
@@ -859,28 +900,30 @@ type PublicationSegmentMedia struct {
 type Rendition struct {
 	bun.BaseModel `bun:"table:renditions"`
 
-	ID              string    `bun:",pk" json:"id"`
-	PublicationID   string    `bun:"publication_id,notnull" json:"publication_id"`
-	SocialAccountID string    `bun:"social_account_id,notnull" json:"social_account_id"`
-	Platform        string    `bun:",notnull" json:"platform"`
-	Profile         string    `bun:",notnull" json:"profile"`
-	OutputProfile   string    `bun:"output_profile,notnull,default:''" json:"output_profile"`
-	Body            string    `bun:",notnull,default:''" json:"body"`
-	Title           string    `bun:",notnull,default:''" json:"title"`
-	Description     string    `bun:",notnull,default:''" json:"description"`
-	SettingsJSON    string    `bun:"settings_json,notnull,default:'{}'" json:"settings_json"`
-	Status          string    `bun:",notnull,default:'draft'" json:"status"`
-	ExternalID      string    `bun:"external_id" json:"external_id"`
-	ExternalURL     string    `bun:"external_url" json:"external_url"`
-	ErrorMessage    string    `bun:"error_message" json:"error_message"`
-	ErrorKind       string    `bun:"error_kind,notnull,default:''" json:"error_kind"`
-	ErrorCode       string    `bun:"error_code,notnull,default:''" json:"error_code"`
-	ErrorHTTPStatus int       `bun:"error_http_status,notnull,default:0" json:"error_http_status"`
-	ErrorRetryable  bool      `bun:"error_retryable,notnull,default:false" json:"error_retryable"`
-	ErrorRetryAt    time.Time `bun:"error_retry_at,nullzero" json:"error_retry_at"`
-	ErrorAction     string    `bun:"error_action,notnull,default:''" json:"error_action"`
-	CreatedAt       time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
-	UpdatedAt       time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"updated_at"`
+	ID               string    `bun:",pk" json:"id"`
+	PublicationID    string    `bun:"publication_id,notnull" json:"publication_id"`
+	SocialAccountID  string    `bun:"social_account_id,notnull" json:"social_account_id"`
+	Platform         string    `bun:",notnull" json:"platform"`
+	Profile          string    `bun:",notnull" json:"profile"`
+	OutputProfile    string    `bun:"output_profile,notnull,default:''" json:"output_profile"`
+	FormatLocked     bool      `bun:"format_locked,notnull,default:false" json:"format_locked"`
+	ScheduleOverride time.Time `bun:"schedule_override,nullzero" json:"schedule_override,omitempty"`
+	Body             string    `bun:",notnull,default:''" json:"body"`
+	Title            string    `bun:",notnull,default:''" json:"title"`
+	Description      string    `bun:",notnull,default:''" json:"description"`
+	SettingsJSON     string    `bun:"settings_json,notnull,default:'{}'" json:"settings_json"`
+	Status           string    `bun:",notnull,default:'draft'" json:"status"`
+	ExternalID       string    `bun:"external_id" json:"external_id"`
+	ExternalURL      string    `bun:"external_url" json:"external_url"`
+	ErrorMessage     string    `bun:"error_message" json:"error_message"`
+	ErrorKind        string    `bun:"error_kind,notnull,default:''" json:"error_kind"`
+	ErrorCode        string    `bun:"error_code,notnull,default:''" json:"error_code"`
+	ErrorHTTPStatus  int       `bun:"error_http_status,notnull,default:0" json:"error_http_status"`
+	ErrorRetryable   bool      `bun:"error_retryable,notnull,default:false" json:"error_retryable"`
+	ErrorRetryAt     time.Time `bun:"error_retry_at,nullzero" json:"error_retry_at"`
+	ErrorAction      string    `bun:"error_action,notnull,default:''" json:"error_action"`
+	CreatedAt        time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
+	UpdatedAt        time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"updated_at"`
 }
 
 type RenditionSegment struct {
@@ -894,6 +937,11 @@ type RenditionSegment struct {
 	Title                string    `bun:"title,notnull,default:''" json:"title"`
 	Description          string    `bun:"description,notnull,default:''" json:"description"`
 	URL                  string    `bun:"url,notnull,default:''" json:"url"`
+	BodyOverride         *string   `bun:"body_override" json:"body_override,omitempty"`
+	TitleOverride        *string   `bun:"title_override" json:"title_override,omitempty"`
+	DescriptionOverride  *string   `bun:"description_override" json:"description_override,omitempty"`
+	URLOverride          *string   `bun:"url_override" json:"url_override,omitempty"`
+	MediaInherited       bool      `bun:"media_inherited,notnull,default:true" json:"media_inherited"`
 	SettingsJSON         string    `bun:"settings_json,notnull,default:'{}'" json:"settings_json"`
 	Status               string    `bun:"status,notnull,default:'draft'" json:"status"`
 	ExternalID           string    `bun:"external_id,notnull,default:''" json:"external_id"`

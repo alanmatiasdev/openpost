@@ -183,7 +183,7 @@ func TestAccountDeletionPreviewsOwnershipTransferAndBlocksActiveBilling(t *testi
 	_, err = db.NewInsert().Model(&models.WorkspaceMember{WorkspaceID: "workspace-1", UserID: "user-1", Role: models.WorkspaceRoleAdmin}).Exec(t.Context())
 	require.NoError(t, err)
 	_, err = db.NewInsert().Model(&models.BillingSubscription{
-		OrganizationID: "org-1", WorkspaceID: "workspace-1", Provider: "whop", ProviderCustomerID: "customer-1",
+		OrganizationID: "org-1", WorkspaceID: "workspace-1", Provider: "paddle", ProviderCustomerID: "customer-1",
 		ProviderSubscriptionID: "subscription-1", Status: "active", CreatedAt: now, UpdatedAt: now,
 	}).Exec(t.Context())
 	require.NoError(t, err)

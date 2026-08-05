@@ -20,7 +20,7 @@ func TestBillingStatusCommand(t *testing.T) {
 			billingQuery = r.URL.RawQuery
 			_, _ = w.Write([]byte(`{
 				"workspace_id":"ws-1",
-				"provider":"whop",
+				"provider":"paddle",
 				"status":"active",
 				"plan_id":"founder",
 				"limits":{"scheduled_posts_monthly":500},
@@ -73,7 +73,7 @@ func TestBillingCheckoutCommand(t *testing.T) {
 			if err := json.NewDecoder(r.Body).Decode(&checkoutBody); err != nil {
 				t.Fatalf("decode checkout body: %v", err)
 			}
-			_, _ = w.Write([]byte(`{"id":"checkout_1","url":"https://app.openpost.social/checkout?session_id=checkout_1","plan_id":"founder","billing_period":"annual","price_usd":250}`))
+			_, _ = w.Write([]byte(`{"id":"chkat_1","url":"https://app.openpost.social/checkout?billing_period=annual&plan=founder","plan_id":"founder","billing_period":"annual","provider_price_id":"pri_founder_year"}`))
 		default:
 			http.NotFound(w, r)
 		}
@@ -99,7 +99,7 @@ func TestBillingCheckoutCommand(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &got); err != nil {
 		t.Fatalf("decode json output: %v\noutput:\n%s", err, out)
 	}
-	if got["id"] != "checkout_1" || got["url"] != "https://app.openpost.social/checkout?session_id=checkout_1" || got["billing_period"] != "annual" {
+	if got["id"] != "chkat_1" || got["url"] != "https://app.openpost.social/checkout?billing_period=annual&plan=founder" || got["billing_period"] != "annual" {
 		t.Fatalf("checkout output = %#v", got)
 	}
 }
@@ -120,7 +120,7 @@ func TestBillingPortalCommand(t *testing.T) {
 			if err := json.NewDecoder(r.Body).Decode(&portalBody); err != nil {
 				t.Fatalf("decode portal body: %v", err)
 			}
-			_, _ = w.Write([]byte(`{"id":"membership_1","url":"https://whop.com/hub/membership_1"}`))
+			_, _ = w.Write([]byte(`{"id":"cps_1","url":"https://customer-portal.paddle.com/overview?token=test"}`))
 		default:
 			http.NotFound(w, r)
 		}
@@ -146,7 +146,7 @@ func TestBillingPortalCommand(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &got); err != nil {
 		t.Fatalf("decode json output: %v\noutput:\n%s", err, out)
 	}
-	if got["id"] != "membership_1" || got["url"] != "https://whop.com/hub/membership_1" {
+	if got["id"] != "cps_1" || got["url"] != "https://customer-portal.paddle.com/overview?token=test" {
 		t.Fatalf("portal output = %#v", got)
 	}
 }

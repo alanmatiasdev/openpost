@@ -6,6 +6,7 @@ import (
 	"math"
 	"net/url"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -168,9 +169,11 @@ type ValidationIssue struct {
 }
 
 type ResolveInput struct {
-	Intent    string
-	SourceURL string
-	Segments  []ResolveSegment
+	Intent                 string
+	CreationPreset         string
+	RequestedOutputProfile string
+	SourceURL              string
+	Segments               []ResolveSegment
 }
 
 type ResolveSegment struct {
@@ -184,10 +187,19 @@ type ResolveSegment struct {
 type ResolvedCapability struct {
 	Capability
 	Compatible        bool                   `json:"compatible"`
+	SegmentStrategy   string                 `json:"segment_strategy" enum:"preserve,join"`
+	AvailableFormats  []DestinationFormat    `json:"available_formats"`
 	ActiveConstraints map[string]any         `json:"active_constraints"`
 	SettingGroups     []ResolvedSettingGroup `json:"setting_groups"`
 	DynamicOptions    map[string][]Option    `json:"dynamic_options,omitempty"`
 	Issues            []ValidationIssue      `json:"issues"`
+}
+
+type DestinationFormat struct {
+	OutputProfile string `json:"output_profile"`
+	Profile       string `json:"profile"`
+	Label         string `json:"label"`
+	Compatible    bool   `json:"compatible"`
 }
 
 type Option struct {
@@ -576,48 +588,32 @@ func uniqueStrings(values []string) []string {
 	return out
 }
 
-// Resolve selects the provider output implied by intent and content shape.
+// Resolve selects a destination format from source shape and an optional creation
+// preset. A requested output profile always wins so explicit user choices are never
+// silently replaced when the source changes.
 func Resolve(provider string, input ResolveInput) ResolvedCapability {
 	provider = strings.ToLower(strings.TrimSpace(provider))
-	intent := normalizeIntent(input.Intent)
+	preset := normalizeIntent(firstNonEmptyCapability(input.CreationPreset, input.Intent))
 	inputShape := resolveMediaShape(input.Segments, input.SourceURL)
-	shape := intendedMediaShape(intent, inputShape)
+	shape := intendedMediaShape(preset, inputShape)
 	issues := []ValidationIssue{}
-	if intent == IntentPost && shape == MediaShapeVideo {
-		issues = append(issues, validationIssue(
-			"video_requires_video_intent",
-			"Video attachments require Short video or Video.",
-			provider,
-			"",
-			"intent",
-		))
-	}
-
-	var selected *Capability
-	for _, candidate := range All() {
-		if candidate.Provider != provider || !slices.Contains(candidate.Intents, intent) {
-			continue
-		}
-		if slices.Contains(candidate.MediaShapes, shape) ||
-			(intent == IntentThread && candidate.Profile == models.ContentProfileThread) {
-			candidateCopy := candidate
-			selected = &candidateCopy
-			break
-		}
-	}
+	selected := selectDestinationCapability(provider, input, shape, preset)
+	availableFormats := destinationFormats(provider, input, shape, preset)
 	if selected == nil {
-		message := fmt.Sprintf("%s does not support %s with %s content", provider, intent, strings.ReplaceAll(shape, "_", " "))
-		issues = append(issues, validationIssue("unsupported_intent_shape", message, provider, "", "intent"))
+		message := fmt.Sprintf("%s does not expose a publishing format", provider)
+		issues = append(issues, validationIssue("unsupported_destination", message, provider, "", "output_profile"))
 		return ResolvedCapability{
 			Capability: Capability{
 				Provider:           provider,
-				Intents:            []string{intent},
+				Intents:            []string{preset},
 				MediaShapes:        []string{shape},
 				CapabilityRevision: "2026-08-03.1",
 			},
-			Compatible: false,
+			Compatible:       false,
+			SegmentStrategy:  "preserve",
+			AvailableFormats: availableFormats,
 			ActiveConstraints: map[string]any{
-				"intent":            intent,
+				"creation_preset":   preset,
 				"media_shape":       shape,
 				"input_media_shape": inputShape,
 			},
@@ -625,6 +621,7 @@ func Resolve(provider string, input ResolveInput) ResolvedCapability {
 		}
 	}
 
+	intent := firstCapabilityIntent(*selected)
 	activeSettings := make([]SettingDefinition, 0, len(selected.Settings))
 	for _, setting := range selected.Settings {
 		if settingApplies(setting, intent, selected.OutputProfile, shape) {
@@ -632,7 +629,9 @@ func Resolve(provider string, input ResolveInput) ResolvedCapability {
 		}
 	}
 	selected.Settings = activeSettings
-	for _, segment := range input.Segments {
+	segmentStrategy := destinationSegmentStrategy(*selected, len(input.Segments))
+	effectiveSegments := destinationSegments(input.Segments, segmentStrategy)
+	for _, segment := range effectiveSegments {
 		segmentIssues := validateCapability(
 			*selected,
 			segment.Body,
@@ -650,19 +649,240 @@ func Resolve(provider string, input ResolveInput) ResolvedCapability {
 		issues = append(issues, segmentIssues...)
 	}
 	return ResolvedCapability{
-		Capability: *selected,
-		Compatible: !hasErrorIssues(issues),
+		Capability:       *selected,
+		Compatible:       !hasErrorIssues(issues),
+		SegmentStrategy:  segmentStrategy,
+		AvailableFormats: availableFormats,
 		ActiveConstraints: map[string]any{
+			"creation_preset":   preset,
 			"intent":            intent,
 			"media_shape":       shape,
 			"input_media_shape": inputShape,
 			"text_limit":        selected.TextLimit,
 			"media":             selected.Media,
-			"segment_count":     len(input.Segments),
+			"segment_count":     len(effectiveSegments),
 		},
 		SettingGroups: groupSettings(activeSettings),
 		Issues:        issues,
 	}
+}
+
+func selectDestinationCapability(provider string, input ResolveInput, shape, preset string) *Capability {
+	requested := strings.TrimSpace(input.RequestedOutputProfile)
+	if requested != "" {
+		if candidate, ok := bestOutputCapability(provider, requested, shape); ok {
+			return &candidate
+		}
+		return nil
+	}
+	var selected *Capability
+	bestScore := -1 << 30
+	for _, candidate := range All() {
+		if candidate.Provider != provider {
+			continue
+		}
+		score := destinationCapabilityScore(candidate, input, shape, preset)
+		if score <= bestScore {
+			continue
+		}
+		candidateCopy := candidate
+		selected = &candidateCopy
+		bestScore = score
+	}
+	return selected
+}
+
+func destinationCapabilityScore(candidate Capability, input ResolveInput, shape, preset string) int {
+	return destinationMediaShapeScore(candidate, shape) +
+		destinationThreadScore(candidate, len(input.Segments)) +
+		destinationPresetScore(candidate, preset, len(input.Segments)) +
+		destinationSourceShapeScore(candidate, input, shape)
+}
+
+func destinationMediaShapeScore(candidate Capability, shape string) int {
+	if slices.Contains(candidate.MediaShapes, shape) {
+		return 120
+	}
+	return -80
+}
+
+func destinationThreadScore(candidate Capability, segmentCount int) int {
+	threadPreferred := destinationThreadPreferred(candidate, segmentCount)
+	if candidate.Profile == models.ContentProfileThread {
+		if threadPreferred {
+			return 90
+		}
+		return -35
+	}
+	if segmentCount > 1 && !threadPreferred {
+		return 35
+	}
+	return 0
+}
+
+func destinationPresetScore(candidate Capability, preset string, segmentCount int) int {
+	score := 0
+	if candidate.Profile == models.ContentProfileStory && preset != IntentStory {
+		score -= 160
+	}
+	switch preset {
+	case IntentThread:
+		if candidate.Profile == models.ContentProfileThread && destinationThreadPreferred(candidate, segmentCount) {
+			score += 45
+		}
+	case IntentStory:
+		if candidate.Profile == models.ContentProfileStory {
+			score += 180
+		}
+	case IntentShortVideo:
+		if candidate.Profile == models.ContentProfileShortVideo {
+			score += 150
+		}
+	case IntentVideo:
+		if candidate.Profile == models.ContentProfileLongVideo {
+			score += 150
+		}
+	}
+	return score
+}
+
+func destinationThreadPreferred(candidate Capability, segmentCount int) bool {
+	return segmentCount > 1 && slices.Contains(
+		[]string{ProviderX, ProviderThreads, ProviderBluesky, ProviderMastodon},
+		candidate.Provider,
+	)
+}
+
+func destinationSourceShapeScore(candidate Capability, input ResolveInput, shape string) int {
+	switch shape {
+	case MediaShapeDocument:
+		if candidate.OutputProfile == ProviderLinkedIn+".document" {
+			return 120
+		}
+	case MediaShapeMultipleImage, MediaShapeMixedMedia:
+		if candidate.Profile == models.ContentProfileCarousel {
+			return 80
+		}
+	case MediaShapeSingleImage:
+		if candidate.Profile == models.ContentProfileImagePost {
+			return 70
+		}
+	case MediaShapeLink:
+		if candidate.Profile == models.ContentProfileLinkShare {
+			return 70
+		}
+	case MediaShapeText:
+		if candidate.Profile == models.ContentProfileShortText {
+			return 60
+		}
+	case MediaShapeVideo:
+		if candidate.Profile == models.ContentProfileShortVideo && sourceLooksShortForm(input.Segments) {
+			return 45
+		}
+	}
+	return 0
+}
+
+func sourceLooksShortForm(segments []ResolveSegment) bool {
+	for _, segment := range segments {
+		for _, media := range segment.Media {
+			if !strings.HasPrefix(strings.ToLower(media.MimeType), "video/") {
+				continue
+			}
+			return (media.Height > 0 && media.Height >= media.Width) ||
+				(media.DurationMS > 0 && media.DurationMS <= 180_000)
+		}
+	}
+	return false
+}
+
+func destinationFormats(provider string, input ResolveInput, shape, preset string) []DestinationFormat {
+	seen := map[string]struct{}{}
+	formats := []DestinationFormat{}
+	for _, candidate := range All() {
+		if candidate.Provider != provider {
+			continue
+		}
+		if _, exists := seen[candidate.OutputProfile]; exists {
+			continue
+		}
+		selected, ok := bestOutputCapability(provider, candidate.OutputProfile, shape)
+		if !ok {
+			continue
+		}
+		strategy := destinationSegmentStrategy(selected, len(input.Segments))
+		segments := destinationSegments(input.Segments, strategy)
+		compatible := true
+		for _, segment := range segments {
+			if hasErrorIssues(validateCapability(selected, segment.Body, segment.Title, "", segment.Media, nil)) {
+				compatible = false
+				break
+			}
+		}
+		formats = append(formats, DestinationFormat{
+			OutputProfile: selected.OutputProfile,
+			Profile:       selected.Profile,
+			Label:         selected.Label,
+			Compatible:    compatible,
+		})
+		seen[selected.OutputProfile] = struct{}{}
+	}
+	sort.SliceStable(formats, func(i, j int) bool {
+		left := Capability{Provider: provider, Profile: formats[i].Profile, OutputProfile: formats[i].OutputProfile}
+		right := Capability{Provider: provider, Profile: formats[j].Profile, OutputProfile: formats[j].OutputProfile}
+		return destinationCapabilityScore(left, input, shape, preset) > destinationCapabilityScore(right, input, shape, preset)
+	})
+	return formats
+}
+
+func bestOutputCapability(provider, outputProfile, shape string) (Capability, bool) {
+	var fallback *Capability
+	for _, candidate := range All() {
+		if candidate.Provider != provider || candidate.OutputProfile != outputProfile {
+			continue
+		}
+		candidateCopy := candidate
+		if slices.Contains(candidate.MediaShapes, shape) {
+			return candidateCopy, true
+		}
+		if fallback == nil {
+			fallback = &candidateCopy
+		}
+	}
+	if fallback != nil {
+		return *fallback, true
+	}
+	return Capability{}, false
+}
+
+func destinationSegmentStrategy(capability Capability, segmentCount int) string {
+	if segmentCount > 1 && capability.Profile != models.ContentProfileThread {
+		return "join"
+	}
+	return "preserve"
+}
+
+func destinationSegments(segments []ResolveSegment, strategy string) []ResolveSegment {
+	if strategy != "join" || len(segments) < 2 {
+		return segments
+	}
+	joined := ResolveSegment{ID: segments[0].ID, Title: segments[0].Title, URL: segments[0].URL}
+	bodies := make([]string, 0, len(segments))
+	for _, segment := range segments {
+		if body := strings.TrimSpace(segment.Body); body != "" {
+			bodies = append(bodies, body)
+		}
+		joined.Media = append(joined.Media, segment.Media...)
+	}
+	joined.Body = strings.Join(bodies, "\n\n")
+	return []ResolveSegment{joined}
+}
+
+func firstCapabilityIntent(capability Capability) string {
+	if len(capability.Intents) == 0 {
+		return IntentPost
+	}
+	return capability.Intents[0]
 }
 
 // ApplyAccountConstraints replaces account-varying text and media limits, then
