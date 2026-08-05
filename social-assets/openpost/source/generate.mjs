@@ -2,7 +2,7 @@
 THESIS: OpenPost turns one founder's real company work into publishable content; refuse generic feature-icon banners.
 OWN-WORLD: Warm canvas, carbon ink, precise hairlines, tactile publishing tiles, and one scarce orange route through the work.
 STORY: Start with the company, shape the source, adapt destinations, publish, and inspect the result.
-FIRST VIEWPORT: A direct outcome statement owns the left; the actual nib-and-line mark and publishing system provide proof beside it.
+FIRST VIEWPORT: A direct outcome statement owns the left; the actual Converge mark and publishing system provide proof beside it.
 FORM: An established-world campaign kit using the paper field for hero banners and flat workshop diagrams for repeatable content assets.
 */
 
@@ -18,7 +18,7 @@ const fontData = (
   await readFile(
     path.join(
       repoRoot,
-      "frontend/node_modules/@fontsource-variable/geist/files/geist-latin-wght-normal.woff2",
+      "node_modules/@fontsource-variable/geist/files/geist-latin-wght-normal.woff2",
     ),
   )
 ).toString("base64");
@@ -31,7 +31,7 @@ const palette = {
     ink: "#2c2825",
     muted: "#786f68",
     border: "#e3ded7",
-    orange: "#bd5b2b",
+    orange: "#b74c05",
     orange2: "#d9763e",
     orange3: "#e9aa7d",
     orange4: "#f6ddca",
@@ -61,8 +61,6 @@ const mainScreenshotHref = pathToFileURL(
 const mediaScreenshotHref = pathToFileURL(
   path.join(repoRoot, "assets/screenshots/media-dark.png"),
 ).href;
-const iconHref = pathToFileURL(path.join(repoRoot, "assets/brand/icon.svg")).href;
-
 function escapeXml(value = "") {
   return String(value)
     .replaceAll("&", "&amp;")
@@ -72,20 +70,13 @@ function escapeXml(value = "") {
     .replaceAll("'", "&apos;");
 }
 
-function brandMark({ x, y, scale = 0.19, color }) {
-  return `<g transform="translate(${x} ${y}) scale(${scale})">
-    <defs>
-      <mask id="nib-cutout-${x}-${y}">
-        <rect x="-50" y="-20" width="100" height="150" fill="white" />
-        <circle cx="0" cy="35" r="5" fill="black" />
-        <rect x="-1.5" y="35" width="3" height="70" fill="black" />
-      </mask>
-    </defs>
-    <g transform="translate(160 180) rotate(-40)">
-      <path d="M -30 -170 A 30 30 0 0 1 30 -170 L 22 -10 L -22 -10 Z" fill="${color}" />
-      <path d="M -20 0 L 20 0 L 28 35 L 0 100 L -28 35 Z" fill="${color}" mask="url(#nib-cutout-${x}-${y})" />
-    </g>
-    <path d="M 235 280 C 250 290, 265 230, 275 230 C 285 230, 290 275, 300 275 C 310 275, 325 160, 340 160 C 355 160, 365 290, 380 290 C 395 290, 400 170, 415 170" fill="none" stroke="${color}" stroke-width="18" stroke-linecap="round" stroke-linejoin="round" />
+function brandMark({ x, y, size = 32, color }) {
+  const scale = size / 128;
+  return `<g transform="translate(${x} ${y}) scale(${scale})" fill="${color}">
+    <path d="M24 4h36v28L32 60H4V24A20 20 0 0 1 24 4Z" />
+    <path d="M68 4h36a20 20 0 0 1 20 20v36H96L68 32Z" />
+    <path d="M4 68h28l28 28v28H24a20 20 0 0 1-20-20Z" />
+    <path d="m68 96 28-28h28v36a20 20 0 0 1-20 20H68Z" />
   </g>`;
 }
 
@@ -122,9 +113,8 @@ function svgShell(width, height, content, colors) {
 
 function logoLockup(colors, x, y, size = 28, inverted = false) {
   const color = inverted ? "#f7f1eb" : colors.ink;
-  const scale = size / 180;
-  return `${brandMark({ x, y: y - 42, scale, color })}
-    <text x="${x + size * 2.45}" y="${y}" fill="${color}" font-family="Geist" font-size="${size}" font-weight="690" letter-spacing="${-size * 0.025}">OpenPost</text>`;
+  return `${brandMark({ x, y: y - size * 0.9, size: size * 0.92, color })}
+    <text x="${x + size * 1.22}" y="${y}" fill="${color}" font-family="Geist" font-size="${size}" font-weight="690" letter-spacing="${-size * 0.025}">OpenPost</text>`;
 }
 
 function label(colors, text, x, y, size = 15) {
@@ -201,7 +191,7 @@ function workshopBanner(spec, colors) {
     height,
     `${workshopSystem(colors, width, height, { dense: spec.pageBanner })}
       ${logoLockup(colors, contentX, height * 0.19, Math.max(25, height * 0.068), spec.theme === "dark")}
-      ${label(colors, "One source. Every destination.", contentX, height * 0.37, Math.max(12, height * 0.034))}
+      ${label(colors, "Publish clearly.", contentX, height * 0.37, Math.max(12, height * 0.034))}
       ${textBlock({ text: "Turn company work into content.", x: contentX, y: height * 0.53, size: titleSize, lineHeight, widthChars: spec.pageBanner ? 40 : 25, fill: colors.ink, maxLines: 2 })}
       <text x="${contentX}" y="${height * 0.53 + lineHeight * 2.05}" fill="${colors.orange}" font-family="Geist" font-size="${titleSize}" font-weight="690" letter-spacing="${-titleSize * 0.025}">Publish everywhere.</text>`,
     colors,
@@ -210,11 +200,17 @@ function workshopBanner(spec, colors) {
 
 function avatar(spec, colors) {
   const padding = spec.width * 0.075;
+  const iconX = spec.width * 0.14;
+  const iconY = spec.height * 0.14;
+  const iconSize = spec.width * 0.72;
+  const markInset = iconSize * 0.1875;
+  const markSize = iconSize * 0.625;
   return svgShell(
     spec.width,
     spec.height,
     `<rect x="${padding}" y="${padding}" width="${spec.width - padding * 2}" height="${spec.height - padding * 2}" rx="${spec.width * 0.2}" fill="${colors.surface}" stroke="${colors.border}" stroke-width="${Math.max(2, spec.width * 0.006)}" />
-      <image href="${escapeXml(iconHref)}" x="${spec.width * 0.14}" y="${spec.height * 0.14}" width="${spec.width * 0.72}" height="${spec.height * 0.72}" />`,
+      <rect x="${iconX}" y="${iconY}" width="${iconSize}" height="${iconSize}" fill="#b74c05" />
+      ${brandMark({ x: iconX + markInset, y: iconY + markInset, size: markSize, color: "#ffffff" })}`,
     colors,
   );
 }
@@ -332,11 +328,11 @@ const assets = [
   { id: "linkedin-profile-workshop-dark", group: "banners", width: 1584, height: 396, type: "workshop-banner", theme: "dark", profileSafe: true, platform: "LinkedIn profile background", alt: "Dark OpenPost LinkedIn profile banner." },
   { id: "linkedin-page-paper", group: "banners", width: 4200, height: 700, type: "paper-banner", theme: "light", pageBanner: true, platform: "LinkedIn Page cover", alt: "OpenPost LinkedIn Page cover with the product promise and tactile publishing tiles." },
   { id: "linkedin-page-workshop-dark", group: "banners", width: 4200, height: 700, type: "workshop-banner", theme: "dark", pageBanner: true, platform: "LinkedIn Page cover", alt: "Dark OpenPost LinkedIn Page cover." },
-  { id: "avatar-400", group: "profile", width: 400, height: 400, type: "avatar", theme: "light", platform: "Profile image", alt: "OpenPost orange nib icon." },
-  { id: "avatar-800", group: "profile", width: 800, height: 800, type: "avatar", theme: "light", platform: "High-resolution profile image", alt: "OpenPost orange nib icon." },
+  { id: "avatar-400", group: "profile", width: 400, height: 400, type: "avatar", theme: "light", platform: "Profile image", alt: "OpenPost orange Converge symbol." },
+  { id: "avatar-800", group: "profile", width: 800, height: 800, type: "avatar", theme: "light", platform: "High-resolution profile image", alt: "OpenPost orange Converge symbol." },
   { id: "content-team-square-light", group: "posts", width: 1080, height: 1080, type: "brand-card", theme: "light", label: "OpenPost", title: "The content team for companies of one.", platform: "Square feed post", alt: "The content team for companies of one." },
   { id: "content-team-square-dark", group: "posts", width: 1080, height: 1080, type: "brand-card", theme: "dark", label: "OpenPost", title: "The content team for companies of one.", platform: "Square feed post", alt: "The content team for companies of one on a dark OpenPost background." },
-  { id: "publish-everywhere-portrait", group: "posts", width: 1080, height: 1350, type: "portrait-card", theme: "light", label: "One source. Every destination.", title: "Turn what you’re building into content. Publish it everywhere.", platform: "Portrait feed post", alt: "Turn what you are building into content. Publish it everywhere." },
+  { id: "publish-everywhere-portrait", group: "posts", width: 1080, height: 1350, type: "portrait-card", theme: "light", label: "Publish clearly.", title: "Turn what you’re building into content for every channel.", platform: "Portrait feed post", alt: "Turn what you are building into content for every channel." },
   { id: "one-workspace-landscape", group: "posts", width: 1200, height: 675, type: "landscape-card", theme: "light", label: "One workspace", title: "Draft. Adapt. Schedule. Track.", body: "Keep the source, every destination version, and each publishing result together.", platform: "Landscape feed post", alt: "Draft, adapt, schedule, and track social content in one workspace." },
   { id: "product-composer-landscape", group: "posts", width: 1200, height: 675, type: "landscape-card", theme: "light", label: "Inside OpenPost", title: "The publishing workflow stays together.", body: "Draft posts and threads, manage media, plan the calendar, and check every result.", screenshot: "main", platform: "Product screenshot post", alt: "OpenPost publishing workspace and composer." },
   { id: "media-studio-landscape", group: "posts", width: 1200, height: 675, type: "landscape-card", theme: "light", label: "Media and Studio", title: "Prepare the asset where you publish it.", body: "Keep source files, alt text, favorites, and use history in the same content system.", screenshot: "media", platform: "Product screenshot post", alt: "OpenPost media library with reusable social assets." },
@@ -346,9 +342,9 @@ const assets = [
   { id: "02-start-with-work", group: "carousel", width: 1080, height: 1350, type: "carousel", slide: 2, theme: "light", label: "Capture", title: "Start with the work.", body: "Bring a launch, product update, lesson, or idea into one shared source.", platform: "Carousel slide", alt: "Start with a launch, product update, lesson, or idea." },
   { id: "03-shape-every-channel", group: "carousel", width: 1080, height: 1350, type: "carousel", slide: 3, theme: "light", label: "Adapt", title: "Shape it for every channel.", body: "Keep the core idea, then change the copy, media, format, and settings each destination needs.", platform: "Carousel slide", alt: "Shape one core idea for every social channel." },
   { id: "04-keep-moving", group: "carousel", width: 1080, height: 1350, type: "carousel", slide: 4, theme: "light", label: "Publish", title: "Keep the campaign moving.", body: "Schedule the next wave, see every result, and retry only the posts that need attention.", platform: "Carousel slide", alt: "Schedule content, see every result, and retry only what needs attention." },
-  { id: "05-publish-everywhere", group: "carousel", width: 1080, height: 1350, type: "carousel", slide: 5, theme: "dark", label: "OpenPost", title: "Build the company. Keep the content moving.", body: "Turn what you’re building into content. Publish it everywhere. openpost.social", platform: "Carousel slide", alt: "Build the company and keep the content moving with OpenPost." },
-  { id: "workflow-story-light", group: "stories", width: 1080, height: 1920, type: "story", theme: "light", title: "Build the company. Keep the content moving.", platform: "Story or Reel cover", alt: "OpenPost workflow: capture, shape, schedule, and track." },
-  { id: "workflow-story-dark", group: "stories", width: 1080, height: 1920, type: "story", theme: "dark", title: "Build the company. Keep the content moving.", platform: "Story or Reel cover", alt: "OpenPost workflow on a dark background: capture, shape, schedule, and track." },
+  { id: "05-publish-everywhere", group: "carousel", width: 1080, height: 1350, type: "carousel", slide: 5, theme: "dark", label: "OpenPost", title: "Publish clearly.", body: "Turn what you’re building into content, adapt it for each destination, and keep every result together. openpost.social", platform: "Carousel slide", alt: "Publish clearly with OpenPost." },
+  { id: "workflow-story-light", group: "stories", width: 1080, height: 1920, type: "story", theme: "light", title: "Publish clearly.", platform: "Story or Reel cover", alt: "OpenPost workflow: capture, shape, schedule, and track." },
+  { id: "workflow-story-dark", group: "stories", width: 1080, height: 1920, type: "story", theme: "dark", title: "Publish clearly.", platform: "Story or Reel cover", alt: "OpenPost workflow on a dark background: capture, shape, schedule, and track." },
   { id: "blank-square-light", group: "templates", width: 1080, height: 1080, type: "template", theme: "light", platform: "Editable square template", alt: "Blank light OpenPost square template." },
   { id: "blank-square-dark", group: "templates", width: 1080, height: 1080, type: "template", theme: "dark", platform: "Editable square template", alt: "Blank dark OpenPost square template." },
   { id: "blank-portrait-light", group: "templates", width: 1080, height: 1350, type: "template", theme: "light", platform: "Editable portrait template", alt: "Blank light OpenPost portrait template." },

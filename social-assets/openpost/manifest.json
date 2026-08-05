@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-04T10:22:35.228Z",
+  "generatedAt": "2026-08-05T10:45:17.701Z",
   "generator": "source/generate.mjs",
   "assets": [
     {
@@ -99,7 +99,7 @@
       "theme": "light",
       "png": "profile/avatar-400.png",
       "svg": "profile/avatar-400.svg",
-      "alt": "OpenPost orange nib icon."
+      "alt": "OpenPost orange Converge symbol."
     },
     {
       "id": "avatar-800",
@@ -110,7 +110,7 @@
       "theme": "light",
       "png": "profile/avatar-800.png",
       "svg": "profile/avatar-800.svg",
-      "alt": "OpenPost orange nib icon."
+      "alt": "OpenPost orange Converge symbol."
     },
     {
       "id": "content-team-square-light",
@@ -143,7 +143,7 @@
       "theme": "light",
       "png": "posts/publish-everywhere-portrait.png",
       "svg": "posts/publish-everywhere-portrait.svg",
-      "alt": "Turn what you are building into content. Publish it everywhere."
+      "alt": "Turn what you are building into content for every channel."
     },
     {
       "id": "one-workspace-landscape",
@@ -253,7 +253,7 @@
       "theme": "dark",
       "png": "carousel/05-publish-everywhere.png",
       "svg": "carousel/05-publish-everywhere.svg",
-      "alt": "Build the company and keep the content moving with OpenPost."
+      "alt": "Publish clearly with OpenPost."
     },
     {
       "id": "workflow-story-light",

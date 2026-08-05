@@ -110,7 +110,7 @@ FORM: Public activity ledger, adapted from contribution charts without gamified 
 				href="https://openpost.social"
 				class="focus-ring inline-flex min-h-11 items-center gap-2 rounded-md"
 			>
-				<Logo width={34} height={27} />
+				<Logo width={34} height={27} decorative />
 				<span class="text-sm font-semibold">OpenPost</span>
 			</a>
 			<Button href="/register" variant="outline" size="sm">

@@ -375,6 +375,13 @@ test.describe("product screenshot capture", () => {
             usage_count: item.usage,
             can_delete: item.canDelete,
             processing_status: "ready",
+            processing_progress: 100,
+            analysis_status: "complete",
+            duration_ms: 0,
+            frame_rate: 0,
+            source: "upload",
+            asset_kind: "image",
+            tags: [],
           })),
         },
       });

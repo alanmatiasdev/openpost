@@ -18,7 +18,7 @@
 	aria-live="polite"
 	aria-busy="true"
 >
-	<Logo width={52} height={40} />
+	<Logo width={52} height={40} decorative />
 	<div class="h-1 w-28 overflow-hidden rounded-full bg-muted" aria-hidden="true">
 		<div class="loading-progress h-full w-1/2 rounded-full bg-primary"></div>
 	</div>

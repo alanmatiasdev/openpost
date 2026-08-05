@@ -45,11 +45,11 @@
 				class="inline-flex size-16 items-center justify-center rounded-md focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none"
 				aria-label="OpenPost"
 			>
-				<Logo width={64} height={50} />
+				<Logo width={64} height={50} decorative />
 			</a>
 		{:else}
 			<div class="flex size-16 items-center justify-center" aria-hidden="true">
-				<Logo width={64} height={50} />
+				<Logo width={64} height={50} decorative />
 			</div>
 		{/if}
 

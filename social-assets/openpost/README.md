@@ -4,22 +4,22 @@ This folder contains ready-to-use OpenPost assets built from the canonical logo,
 
 ## Start here
 
-- X: `banners/x-signal-field-dark-imagegen.png` at 1500 x 500
-- X header explorations: `banners/concepts/` with nine 1500 x 500 concepts
-- LinkedIn profile: `banners/linkedin-profile-signal-field-dark-imagegen.png` at 1584 x 396
+- X: `banners/x-converge-slogan-dark-imagegen.png` at 1500 x 500
+- LinkedIn profile: `banners/linkedin-profile-converge-slogan-dark-imagegen.png` at 1584 x 396
+- Ten additional X and LinkedIn pairs: `banners/converge-series/`
+- Converge series overview: `banners/converge-series/contact-sheet.png`
 - LinkedIn Page: `banners/linkedin-page-paper.png` at 4200 x 700
 - Profile image: `profile/avatar-800.png`
 - Full overview: `preview/contact-sheet.png` or `preview/index.html`
 - Ready-to-post copy: `captions.md`
 
-The recommended `signal-field-dark-imagegen` headers turn the OpenPost pen mark and publishing activity tiles into an immersive brand world, with separate X and LinkedIn compositions. The nine X-sized images in `banners/concepts/` are review directions rather than official headers; they test cinematic, typographic, real-world, graphic, sculptural, layered, spatial, and human compositions. The `product-dark-imagegen` alternatives feature the real dark OpenPost workspace. The `paper` banners combine an AI-generated tactile background with deterministic OpenPost typography and the real vector logo. The `workshop` alternatives are fully deterministic and available in light and dark versions.
+The recommended `converge-slogan-dark-imagegen` headers pair a tactile, image-generated Converge environment with the exact vector OpenPost lockup and the line “Turn what you’re building into content. Publish it everywhere.” Separate X and LinkedIn compositions keep the copy clear at each platform's crop. The original no-slogan `converge-dark-imagegen` pair remains available. The ten-pair `converge-series` explores signal fields, a night publishing district, a physical control board, routing rails, an editorial worktable, a quiet orbit, folded paper, a signal wall, an in-the-wild tram, and a gallery monument. Their background artwork was generated separately, then finished with the exact vector OpenPost lockup. The `paper` banners combine an AI-generated tactile background with deterministic OpenPost typography and the real vector logo. The `workshop` alternatives are fully deterministic and available in light and dark versions.
 
 ## Included formats
 
 | Folder       | Use                                 | Formats                              |
 | ------------ | ----------------------------------- | ------------------------------------ |
-| `banners/`   | X and LinkedIn headers              | Signal field, product dark, paper, workshop light, workshop dark |
-| `banners/concepts/` | X header direction explorations     | Nine 1500 x 500 concepts             |
+| `banners/`   | X and LinkedIn headers              | Converge dark, paper, workshop light, workshop dark |
 | `profile/`   | Account avatar                      | 400 x 400 and 800 x 800              |
 | `posts/`     | X, LinkedIn, and general feed posts | Square, portrait, and landscape      |
 | `carousel/`  | LinkedIn document carousel          | Five 1080 x 1350 slides              |

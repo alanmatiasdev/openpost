@@ -6,7 +6,7 @@ Use these as starting points. Replace bracketed text with a specific result, les
 
 ### Bio
 
-The content team for companies of one. Turn what you’re building into content, then publish it everywhere.
+The content team for companies of one. Turn what you’re building into content, then publish with control.
 
 ### Pinned post
 
@@ -77,5 +77,5 @@ Save the carousel, then try it with one thing you shipped this week.
 
 - Turn what you’re building into content. Publish it everywhere.
 - Write from real work. Adapt with control. Publish everywhere.
-- One source. Every destination. Full control.
+- Publish clearly.
 - A focused content workspace for companies of one.

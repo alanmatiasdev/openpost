@@ -194,6 +194,16 @@ const staticMarketingEntries = [
     label: "Legal",
     kind: "document",
   },
+  {
+    path: "/refunds",
+    key: "refunds",
+    title: "Refund Policy - OpenPost",
+    socialTitle: "OpenPost refund policy.",
+    description:
+      "How to cancel, request a refund, report a billing error, and use mandatory consumer rights.",
+    label: "Legal",
+    kind: "document",
+  },
 ];
 
 const platformEntries = platformNames.map(([slug, name]) => ({
