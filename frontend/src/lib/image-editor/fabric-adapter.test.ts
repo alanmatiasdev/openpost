@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
 	computeImageGeometry,
 	OpenPostFabricAdapter,
-	imageEditorLayerRenderOrder
+	imageEditorLayerRenderOrder,
+	snapImageEditorResize
 } from './fabric-adapter';
 import type { ImageEditorDocument, ImageEditorLayer, ImageEditorPage } from './types';
 
@@ -178,6 +179,35 @@ describe('OpenPost Image Editor rotation gestures', () => {
 			snapAngle: undefined,
 			snapThreshold: undefined
 		});
+	});
+});
+
+describe('OpenPost Image Editor resize snapping', () => {
+	it('snaps a horizontal resize to the document edge', () => {
+		const snapped = snapImageEditorResize(
+			{ left: 30, top: 40, width: 1044, height: 500 },
+			'mr',
+			[0, 540, 1080],
+			[0, 540, 1080],
+			10
+		);
+
+		expect(snapped.bounds).toEqual({ left: 30, top: 40, width: 1050, height: 500 });
+		expect(snapped.guideX).toBe(1080);
+	});
+
+	it('preserves aspect ratio when a corner resize snaps to the document edge', () => {
+		const snapped = snapImageEditorResize(
+			{ left: 30, top: 40, width: 1044, height: 522 },
+			'br',
+			[0, 540, 1080],
+			[0, 540, 1080],
+			10
+		);
+
+		expect(snapped.bounds.width).toBe(1050);
+		expect(snapped.bounds.height).toBe(525);
+		expect(snapped.bounds.left + snapped.bounds.width).toBe(1080);
 	});
 });
 

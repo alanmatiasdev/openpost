@@ -2,13 +2,17 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { untrack } from 'svelte';
+	import Uppy from '@uppy/core';
+	import Webcam from '@uppy/webcam';
+	import ImageEditor from '@uppy/image-editor';
+	import Dashboard from '@uppy/svelte/dashboard';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import * as Sheet from '$lib/components/ui/sheet';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import AppSelect from '$lib/components/app-select.svelte';
 	import MediaTagFilter from '$lib/components/media-tag-filter.svelte';
-	import CameraCapture from './camera-capture.svelte';
+	import StockMediaBrowser from './stock-media-browser.svelte';
 	import { getAuthenticatedMediaURL } from '$lib/media-url';
 	import { uploadMediaFile } from '$lib/media-upload-client';
 	import { listImageEditorMedia } from '$lib/image-editor/api';
@@ -16,7 +20,6 @@
 	import { listMediaTags, type MediaTag } from '$lib/media-tags';
 	import SearchIcon from 'lucide-svelte/icons/search';
 	import UploadIcon from 'lucide-svelte/icons/upload';
-	import CameraIcon from 'lucide-svelte/icons/camera';
 	import ImageIcon from 'lucide-svelte/icons/image';
 	import VideoIcon from 'lucide-svelte/icons/video';
 	import FileAudioIcon from 'lucide-svelte/icons/file-audio';
@@ -25,13 +28,20 @@
 	import LoaderIcon from 'lucide-svelte/icons/loader-2';
 	import ArrowLeftIcon from 'lucide-svelte/icons/arrow-left';
 	import { m } from '$lib/paraglide/messages';
-	import { effectiveVideoConstraints } from '$lib/video/constraints';
 	import { videoPreparationErrorMessage } from '$lib/video/errors';
 	import type {
 		VideoConstraint,
 		VideoPreparationProgress,
 		VideoPreparationStage
 	} from '$lib/video/types';
+	import type { StockAsset } from '$lib/video-editor/api';
+	import type { StockMediaProvenance } from '@openpost/video-project';
+	import '@uppy/core/css/style.min.css';
+	import '@uppy/dashboard/css/style.min.css';
+	import '@uppy/webcam/css/style.min.css';
+	import '@uppy/image-editor/css/style.min.css';
+	import '@uppy/svelte/css/style.css';
+	import '@uppy/svelte/css/image-editor.css';
 
 	let {
 		open = $bindable(false),
@@ -45,6 +55,8 @@
 		showCreate = true,
 		desktopSize = 'default',
 		presentation = 'dialog',
+		initialMode = 'library',
+		autoConfirmUploads = false,
 		videoConstraints = [],
 		onConfirm,
 		onCreate,
@@ -61,34 +73,29 @@
 		showCreate?: boolean;
 		desktopSize?: 'default' | 'compact';
 		presentation?: 'dialog' | 'sheet';
+		initialMode?: 'library' | 'upload' | 'stock';
+		autoConfirmUploads?: boolean;
 		videoConstraints?: VideoConstraint[];
 		onConfirm: (mediaIDs: string[], media: ImageEditorMediaItem[]) => void | Promise<void>;
 		onCreate?: () => void | Promise<void>;
 		onCreateVideo?: () => void | Promise<void>;
 	} = $props();
 
-	let mode = $state<'library' | 'camera'>('library');
+	let mode = $state<'library' | 'upload' | 'stock'>('library');
 	let media = $state<ImageEditorMediaItem[]>([]);
 	let selectedIDs = $state.raw<string[]>([]);
 	let search = $state('');
 	let loading = $state(false);
 	let actionLoading = $state(false);
 	let error = $state('');
-	let uploadInput = $state<HTMLInputElement>();
 	let loadedForWorkspace = $state('');
 	let uploadProgress = $state<VideoPreparationProgress | null>(null);
 	let uploadController: AbortController | null = null;
-	let editorOpen = $state(false);
 	let tags = $state<MediaTag[]>([]);
 	let selectedTagIDs = $state.raw<string[]>([]);
 	let showUntagged = $state(false);
 	let mediaType = $state<'all' | 'image' | 'video' | 'audio'>('all');
 	let sort = $state<'newest' | 'oldest' | 'name' | 'size' | 'recently_used'>('newest');
-	let editorFile = $state<File | null>(null);
-	let videoEditorModule = $state.raw<Promise<typeof import('./video-editor-dialog.svelte')> | null>(
-		null
-	);
-	const editorAspectRatios = $derived(effectiveVideoConstraints(videoConstraints).aspectRatios);
 	const typeFilters = $derived(
 		[
 			{ value: 'image' as const, label: m.media_images(), allowed: mimeTypeAllowed('image') },
@@ -96,19 +103,44 @@
 			{ value: 'audio' as const, label: m.media_audio(), allowed: mimeTypeAllowed('audio') }
 		].filter((item) => item.allowed)
 	);
+	const emptyTitle = $derived(search.trim() ? m.media_picker_no_match() : m.media_empty_title());
+	const emptyBody = $derived(
+		search.trim()
+			? m.media_picker_no_match_body()
+			: selectedTagIDs.length > 0 || showUntagged || mediaType !== 'all'
+				? m.media_empty_filtered_body()
+				: m.media_empty_library_body()
+	);
 
-	function attachUploadInput(node: HTMLInputElement) {
-		uploadInput = node;
-		return () => {
-			if (uploadInput === node) uploadInput = undefined;
-		};
-	}
+	const uppy = new Uppy<Record<string, unknown>, { id?: string }>({
+		autoProceed: false
+	})
+		.use(Webcam, {
+			modes: ['picture'],
+			mirror: true
+		})
+		.use(ImageEditor, {
+			actions: {
+				cropSquare: true,
+				cropWidescreen: true,
+				cropWidescreenVertical: true,
+				rotate: true,
+				zoomIn: true,
+				zoomOut: true
+			}
+		});
+
+	uppy.addUploader(uploadWithUppy);
+	uppy.on('restriction-failed', (_file, cause) => {
+		error = cause.message || m.media_picker_upload_failed();
+	});
 
 	function initializePicker() {
 		untrack(() => {
 			selectedIDs = [...currentSelection];
-			mode = 'library';
+			mode = initialMode;
 			error = '';
+			uppy.cancelAll();
 			if (loadedForWorkspace !== workspaceId) {
 				selectedTagIDs = [];
 				showUntagged = false;
@@ -117,6 +149,22 @@
 			void Promise.all([loadMedia(), loadTags()]);
 		});
 	}
+
+	$effect(() => {
+		uppy.setOptions({
+			restrictions: {
+				...uppy.opts.restrictions,
+				maxNumberOfFiles: maxSelection,
+				allowedFileTypes: accept
+			}
+		});
+	});
+
+	$effect(() => {
+		return () => {
+			uppy.destroy();
+		};
+	});
 
 	async function loadTags(): Promise<void> {
 		if (!workspaceId) return;
@@ -235,42 +283,15 @@
 		}
 	}
 
-	async function uploadFiles(files: FileList | null): Promise<void> {
-		if (!files?.length) return;
-		const available = Math.max(0, maxSelection - selectedIDs.length);
-		const candidates = Array.from(files)
-			.filter((file) => mimeAllowed(file.type))
-			.slice(0, available);
-		if (candidates.length === 1 && candidates[0].type.startsWith('video/')) {
-			await openVideoEditor(candidates[0]);
-			if (uploadInput) uploadInput.value = '';
-			return;
-		}
-		await performUploads(candidates);
-	}
-
-	async function openVideoEditor(file: File): Promise<void> {
-		actionLoading = true;
-		error = '';
-		editorFile = file;
-		try {
-			videoEditorModule ??= import('./video-editor-dialog.svelte');
-			await videoEditorModule;
-			editorOpen = true;
-		} catch (cause) {
-			videoEditorModule = null;
-			editorFile = null;
-			error = videoPreparationErrorMessage(cause, m.media_picker_upload_failed());
-		} finally {
-			actionLoading = false;
-		}
-	}
-
-	async function performUploads(files: File[]): Promise<void> {
-		if (files.length === 0) return;
+	async function performUploads(
+		files: File[],
+		options: { source?: 'upload' | 'stock_import'; provenance?: StockMediaProvenance } = {}
+	): Promise<string[]> {
+		if (files.length === 0) return [];
 		actionLoading = true;
 		error = '';
 		uploadController = new AbortController();
+		const uploadedIDs: string[] = [];
 		try {
 			for (const file of files) {
 				uploadProgress = {
@@ -281,33 +302,96 @@
 				const uploaded = await uploadMediaFile({
 					workspaceId,
 					file,
-					source: 'upload',
+					source: options.source ?? 'upload',
+					retentionClass: purpose === 'media_library' ? 'library' : 'temporary',
+					stockProvenance: options.provenance,
 					tagId: uploadTagID(),
 					videoConstraints,
 					onProgress: (progress) => (uploadProgress = progress),
 					signal: uploadController.signal
 				});
 				selectedIDs = [...selectedIDs, uploaded.id];
+				uploadedIDs.push(uploaded.id);
 			}
 			await Promise.all([loadMedia(), loadTags()]);
 			mode = 'library';
+			return uploadedIDs;
 		} catch (cause) {
 			if (cause instanceof DOMException && cause.name === 'AbortError') {
 				error = '';
-				return;
+				return [];
 			}
 			error = videoPreparationErrorMessage(cause, m.media_picker_upload_failed());
+			return [];
 		} finally {
 			actionLoading = false;
 			uploadProgress = null;
 			uploadController = null;
-			if (uploadInput) uploadInput.value = '';
 		}
 	}
 
-	async function useEditorFile(file: File): Promise<void> {
-		editorFile = null;
-		await performUploads([file]);
+	async function uploadWithUppy(fileIDs: string[]): Promise<void> {
+		const files = fileIDs.flatMap((id) => {
+			const file = uppy.getFile(id);
+			if (!(file.data instanceof Blob)) return [];
+			return [
+				file.data instanceof File
+					? file.data
+					: new File([file.data], file.name, { type: file.type || 'application/octet-stream' })
+			];
+		});
+		const uploadedIDs = await performUploads(files);
+		if (uploadedIDs.length !== files.length) {
+			const cause = new Error(error || m.media_picker_upload_failed());
+			for (const id of fileIDs) uppy.emit('upload-error', uppy.getFile(id), cause);
+			throw cause;
+		}
+		for (const [index, id] of fileIDs.entries()) {
+			uppy.emit('upload-success', uppy.getFile(id), {
+				status: 200,
+				body: { id: uploadedIDs[index] },
+				uploadURL: undefined
+			});
+		}
+		if (autoConfirmUploads) {
+			await onConfirm(
+				uploadedIDs,
+				uploadedIDs
+					.map((id) => media.find((item) => item.id === id))
+					.filter((item): item is ImageEditorMediaItem => Boolean(item))
+			);
+			open = false;
+		}
+	}
+
+	function stockProvenance(asset: StockAsset): StockMediaProvenance {
+		return {
+			provider: asset.provider,
+			external_id: asset.external_id,
+			source_url: asset.source_url,
+			creator_name: asset.creator_name,
+			creator_url: asset.creator_url,
+			license_name: asset.license_name,
+			license_url: asset.license_url,
+			attribution_text: asset.attribution_text
+		};
+	}
+
+	async function addStockMedia(file: File, asset: StockAsset): Promise<void> {
+		const uploadedIDs = await performUploads([file], {
+			source: 'stock_import',
+			provenance: stockProvenance(asset)
+		});
+		if (uploadedIDs.length === 0) return;
+		if (autoConfirmUploads) {
+			await onConfirm(
+				uploadedIDs,
+				uploadedIDs
+					.map((id) => media.find((item) => item.id === id))
+					.filter((item): item is ImageEditorMediaItem => Boolean(item))
+			);
+			open = false;
+		}
 	}
 
 	function cancelUpload() {
@@ -328,26 +412,6 @@
 				return m.video_upload_finalizing();
 			case 'processing':
 				return m.video_upload_processing();
-		}
-	}
-
-	async function capturePhoto(file: File): Promise<void> {
-		actionLoading = true;
-		error = '';
-		try {
-			const uploaded = await uploadMediaFile({
-				workspaceId,
-				file,
-				source: 'camera',
-				tagId: uploadTagID()
-			});
-			selectedIDs = multiple ? [...selectedIDs, uploaded.id].slice(0, maxSelection) : [uploaded.id];
-			await Promise.all([loadMedia(), loadTags()]);
-			mode = 'library';
-		} catch (cause) {
-			error = cause instanceof Error ? cause.message : m.media_picker_photo_failed();
-		} finally {
-			actionLoading = false;
 		}
 	}
 
@@ -393,34 +457,30 @@
 		<div
 			class={[
 				'grid grid-cols-2 gap-2 border-b px-4 py-3',
-				showCreate && onCreateVideo ? 'sm:grid-cols-4' : showCreate ? 'sm:grid-cols-3' : ''
+				showCreate && onCreateVideo
+					? 'sm:grid-cols-5'
+					: showCreate
+						? 'sm:grid-cols-4'
+						: 'sm:grid-cols-2'
 			]}
 		>
-			<label
-				class="inline-flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-lg border bg-background px-3 text-sm font-medium focus-within:ring-2 focus-within:ring-ring hover:bg-muted"
-			>
-				{#if actionLoading}<LoaderIcon class="size-4 animate-spin" />{:else}<UploadIcon
-						class="size-4"
-					/>{/if}
-				{m.media_picker_upload()}
-				<Input
-					{@attach attachUploadInput}
-					type="file"
-					{multiple}
-					accept={accept.join(',')}
-					class="sr-only !size-px !p-0"
-					disabled={actionLoading}
-					onchange={(event) => uploadFiles(event.currentTarget.files)}
-				/>
-			</label>
 			<Button
 				variant="outline"
 				class="min-h-11"
 				disabled={actionLoading}
-				onclick={() => (mode = 'camera')}
+				onclick={() => (mode = 'upload')}
 			>
-				<CameraIcon />
-				{m.image_editor_camera()}
+				<UploadIcon />
+				{m.image_editor_upload_camera()}
+			</Button>
+			<Button
+				variant="outline"
+				class="min-h-11"
+				disabled={actionLoading}
+				onclick={() => (mode = 'stock')}
+			>
+				<ImageIcon />
+				{m.video_editor_stock()}
 			</Button>
 			{#if showCreate}
 				<Button
@@ -514,8 +574,8 @@
 					class="flex min-h-48 flex-col items-center justify-center rounded-xl border border-dashed px-4 text-center"
 				>
 					<ImageIcon class="mb-3 size-8 text-muted-foreground" />
-					<p class="font-medium">{m.media_picker_no_match()}</p>
-					<p class="mt-1 text-sm text-muted-foreground">{m.media_picker_no_match_body()}</p>
+					<p class="font-medium">{emptyTitle}</p>
+					<p class="mt-1 text-sm text-muted-foreground">{emptyBody}</p>
 				</div>
 			{:else}
 				<div class="grid grid-cols-[repeat(auto-fill,minmax(7rem,1fr))] gap-2">
@@ -587,13 +647,41 @@
 				</div>
 			{/if}
 		</div>
+	{:else if mode === 'upload'}
+		<div class="min-h-0 flex-1 overflow-y-auto p-4">
+			<Button variant="ghost" class="mb-3" onclick={() => (mode = 'library')}>
+				<ArrowLeftIcon />
+				{m.media_picker_back_to_library()}
+			</Button>
+			<div class="overflow-hidden rounded-xl border bg-muted/15 p-2">
+				<Dashboard
+					{uppy}
+					plugins={['Webcam', 'ImageEditor']}
+					props={{
+						inline: true,
+						height: 420,
+						width: '100%',
+						proudlyDisplayPoweredByUppy: false,
+						hideProgressDetails: false,
+						note: accept.join(', ')
+					}}
+				/>
+			</div>
+		</div>
 	{:else}
 		<div class="min-h-0 flex-1 overflow-y-auto p-4">
 			<Button variant="ghost" class="mb-3" onclick={() => (mode = 'library')}>
 				<ArrowLeftIcon />
 				{m.media_picker_back_to_library()}
 			</Button>
-			<CameraCapture onCapture={capturePhoto} />
+			<StockMediaBrowser
+				accept={mimeTypeAllowed('image') && mimeTypeAllowed('video')
+					? 'both'
+					: mimeTypeAllowed('video')
+						? 'video'
+						: 'photo'}
+				onSelect={addStockMedia}
+			/>
 		</div>
 	{/if}
 
@@ -674,16 +762,4 @@
 			{@render pickerBody()}
 		</Dialog.Content>
 	</Dialog.Root>
-{/if}
-
-{#if videoEditorModule}
-	{#await videoEditorModule then { default: VideoEditorDialog }}
-		<VideoEditorDialog
-			bind:open={editorOpen}
-			file={editorFile}
-			allowedAspectRatios={editorAspectRatios}
-			onConfirm={useEditorFile}
-			onSkip={useEditorFile}
-		/>
-	{/await}
 {/if}

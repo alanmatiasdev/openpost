@@ -1308,6 +1308,11 @@ type MediaAttachment struct {
 	VideoProjectID     string    `bun:"video_project_id,notnull,default:''" json:"video_project_id,omitempty"`
 	AltText            string    `json:"alt_text"`
 	IsFavorite         bool      `bun:",default:false" json:"is_favorite"`
+	RetentionClass     string    `bun:"retention_class,notnull,default:'library'" json:"retention_class"`
+	LastUsedAt         time.Time `bun:"last_used_at,nullzero" json:"last_used_at,omitempty"`
+	TrashedAt          time.Time `bun:"trashed_at,nullzero" json:"trashed_at,omitempty"`
+	PurgeAfter         time.Time `bun:"purge_after,nullzero" json:"purge_after,omitempty"`
+	TrashReason        string    `bun:"trash_reason,notnull,default:''" json:"trash_reason,omitempty"`
 	CreatedAt          time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
 }
 

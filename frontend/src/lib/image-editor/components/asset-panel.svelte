@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import { ContextMenu } from 'bits-ui';
 	import { useImageEditor } from '../editor.svelte';
 	import { listImageEditorMedia, loadImageEditorBrandKit } from '../api';
@@ -50,12 +49,20 @@
 	let showUntagged = $state(false);
 	let sort = $state<'newest' | 'oldest' | 'name' | 'size' | 'recently_used'>('newest');
 
-	onMount(() => {
+	$effect(() => {
 		const scopeID = guestMode ? editor.id : editor.workspaceID;
 		if (!scopeID || scopeID === loadedWorkspaceID) return;
 		loadedWorkspaceID = scopeID;
 		void loadAll();
 	});
+
+	const emptyMediaMessage = $derived(
+		search.trim()
+			? m.image_editor_no_media_found()
+			: selectedTagIDs.length > 0 || showUntagged
+				? m.media_empty_filtered_body()
+				: m.media_empty_library_body()
+	);
 
 	async function loadAll(): Promise<void> {
 		loading = true;
@@ -228,6 +235,7 @@
 					workspaceId: editor.workspaceID,
 					file,
 					source: 'stock_import',
+					retentionClass: 'temporary',
 					stockProvenance: provenance,
 					tagId: uploadTagID(),
 					prepareVideo: false
@@ -386,19 +394,21 @@
 			<PlusIcon />
 			{m.image_editor_upload_camera()}
 		</Button>
-		<Button
-			variant={stockOpen ? 'secondary' : 'outline'}
-			size="sm"
-			class="mb-3 w-full"
-			onclick={() => (stockOpen = !stockOpen)}
-		>
-			<ImagePlusIcon />
-			{stockOpen ? m.common_close() : m.video_editor_stock()}
-		</Button>
-		{#if stockOpen}
-			<div class="mb-4 rounded-lg border bg-card p-2">
-				<StockMediaBrowser accept="photo" compact onSelect={addStockMedia} />
-			</div>
+		{#if guestMode}
+			<Button
+				variant={stockOpen ? 'secondary' : 'outline'}
+				size="sm"
+				class="mb-3 w-full"
+				onclick={() => (stockOpen = !stockOpen)}
+			>
+				<ImagePlusIcon />
+				{stockOpen ? m.common_close() : m.video_editor_stock()}
+			</Button>
+			{#if stockOpen}
+				<div class="mb-4 rounded-lg border bg-card p-2">
+					<StockMediaBrowser accept="photo" compact onSelect={addStockMedia} />
+				</div>
+			{/if}
 		{/if}
 		{#if editor.backgroundImagePickerActive}
 			<div
@@ -536,7 +546,7 @@
 					</div>
 				{:else}
 					<p class="rounded-md border border-dashed p-4 text-center text-xs text-muted-foreground">
-						{m.image_editor_no_media_found()}
+						{emptyMediaMessage}
 					</p>
 				{/if}
 			</section>
@@ -553,8 +563,10 @@
 		maxSelection={1}
 		multiple={false}
 		showCreate={false}
-		presentation="sheet"
-		desktopSize="compact"
+		presentation="dialog"
+		desktopSize="default"
+		initialMode="upload"
+		autoConfirmUploads
 		title={m.image_editor_add_image()}
 		onConfirm={async (ids) => {
 			const id = ids[0];

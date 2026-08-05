@@ -20,6 +20,7 @@ export interface UploadMediaFileOptions {
 		| 'video_editor_export'
 		| 'stock_import';
 	assetKind?: 'library' | 'brand_asset' | 'brand_font' | 'design_preview' | 'template_preview';
+	retentionClass?: 'library' | 'temporary';
 	tagId?: string;
 	parentMediaId?: string;
 	designDocumentId?: string;
@@ -57,6 +58,7 @@ export async function uploadMediaFile({
 	altText = '',
 	source = 'upload',
 	assetKind = 'library',
+	retentionClass = 'library',
 	tagId = '',
 	parentMediaId = '',
 	designDocumentId = '',
@@ -78,6 +80,7 @@ export async function uploadMediaFile({
 	const metadata = {
 		source,
 		assetKind,
+		retentionClass,
 		tagId,
 		parentMediaId,
 		designDocumentId,
@@ -186,6 +189,7 @@ async function uploadViaDirectSession(
 	metadata: {
 		source: NonNullable<UploadMediaFileOptions['source']>;
 		assetKind: NonNullable<UploadMediaFileOptions['assetKind']>;
+		retentionClass: NonNullable<UploadMediaFileOptions['retentionClass']>;
 		tagId: string;
 		parentMediaId: string;
 		designDocumentId: string;
@@ -211,6 +215,7 @@ async function uploadViaDirectSession(
 			...(altText ? { alt_text: altText } : {}),
 			source: metadata.source,
 			asset_kind: metadata.assetKind,
+			retention_class: metadata.retentionClass,
 			...(metadata.tagId ? { tag_id: metadata.tagId } : {}),
 			...(metadata.parentMediaId ? { parent_media_id: metadata.parentMediaId } : {}),
 			...(metadata.designDocumentId ? { design_document_id: metadata.designDocumentId } : {}),
@@ -238,6 +243,7 @@ async function uploadViaDirectSession(
 			original_filename: file.name,
 			source: metadata.source,
 			asset_kind: metadata.assetKind,
+			retention_class: metadata.retentionClass,
 			processing_status: 'ready',
 			processing_progress: 100,
 			analysis_status: 'ready',
@@ -286,6 +292,7 @@ async function uploadViaMultipart(
 	metadata: {
 		source: NonNullable<UploadMediaFileOptions['source']>;
 		assetKind: NonNullable<UploadMediaFileOptions['assetKind']>;
+		retentionClass: NonNullable<UploadMediaFileOptions['retentionClass']>;
 		tagId: string;
 		parentMediaId: string;
 		designDocumentId: string;
@@ -305,6 +312,7 @@ async function uploadViaMultipart(
 	}
 	formData.append('source', metadata.source);
 	formData.append('asset_kind', metadata.assetKind);
+	formData.append('retention_class', metadata.retentionClass);
 	if (metadata.tagId) formData.append('tag_id', metadata.tagId);
 	if (metadata.parentMediaId) formData.append('parent_media_id', metadata.parentMediaId);
 	if (metadata.designDocumentId) formData.append('design_document_id', metadata.designDocumentId);

@@ -10,14 +10,7 @@
 	import { isSupportedMediaFile, uploadMediaFile } from '$lib/media-upload-client';
 	import type { VideoPreparationProgress, VideoPreparationStage } from '$lib/video/types';
 	import { videoPreparationErrorMessage } from '$lib/video/errors';
-	import {
-		deleteImageEditorDesign,
-		duplicateImageEditorDesign,
-		listImageEditorDesigns,
-		loadImageEditorConfig,
-		toggleImageEditorDesignFavorite
-	} from '$lib/image-editor/api';
-	import type { ImageEditorDesignSummary } from '$lib/image-editor/types';
+	import { loadImageEditorConfig } from '$lib/image-editor/api';
 	import { loadVideoEditorConfig } from '$lib/video-editor/api';
 	import { clampMediaPage } from '$lib/media-pagination';
 	import { workspaceCtx } from '$lib/stores/workspace.svelte';
@@ -66,6 +59,7 @@
 	import SlidersHorizontalIcon from 'lucide-svelte/icons/sliders-horizontal';
 	import FileAudioIcon from 'lucide-svelte/icons/file-audio';
 	import XIcon from 'lucide-svelte/icons/x';
+	import RotateCcwIcon from 'lucide-svelte/icons/rotate-ccw';
 	import { m } from '$lib/paraglide/messages';
 	import { getLocaleTag } from '$lib/i18n';
 	import { soundPreferences } from '$lib/stores/sound-preferences.svelte';
@@ -102,6 +96,11 @@
 		design_document_id?: string;
 		design_page_id?: string;
 		tags: string[];
+		retention_class: 'library' | 'temporary';
+		last_used_at?: string;
+		trashed_at?: string;
+		purge_after?: string;
+		trash_reason?: 'manual' | 'published' | 'expired';
 	}
 
 	interface MediaUsage {
@@ -120,9 +119,7 @@
 	}
 
 	type LibraryDeletionRequest =
-		| { kind: 'single'; media: MediaItem }
-		| { kind: 'batch'; ids: string[] }
-		| { kind: 'design'; design: ImageEditorDesignSummary };
+		{ kind: 'single'; media: MediaItem } | { kind: 'batch'; ids: string[] };
 
 	let workspaces = $derived<Workspace[]>(workspaceCtx.workspaces);
 	let selectedWorkspaceId = $derived(workspaceCtx.currentWorkspace?.id ?? '');
@@ -139,6 +136,7 @@
 	const pageSize = 40;
 
 	let filter = $state<string>('all');
+	let lifecycleView = $state<'library' | 'temporary' | 'trash'>('library');
 	let sort = $state<string>('newest');
 	let search = $state('');
 	let mediaType = $state('all');
@@ -153,7 +151,6 @@
 	let dateFrom = $state('');
 	let dateTo = $state('');
 	let layoutMode = $state<'grid' | 'list'>('grid');
-	let designs = $state<ImageEditorDesignSummary[]>([]);
 	let videoEditorEnabled = $state(false);
 	let tags = $state<MediaTag[]>([]);
 	let hubLoading = $state(false);
@@ -216,13 +213,11 @@
 	}
 
 	function deletionTitle(request: LibraryDeletionRequest | null) {
-		if (request?.kind === 'design') return m.image_editor_design_delete_title();
 		if (request?.kind === 'batch') return m.media_delete_batch_title();
 		return m.media_delete_title();
 	}
 
 	function deletionDescription(request: LibraryDeletionRequest | null) {
-		if (request?.kind === 'design') return m.image_editor_design_delete_body();
 		if (request?.kind === 'batch') {
 			return request.ids.length === 1
 				? m.media_delete_batch_body_one()
@@ -260,7 +255,7 @@
 	}
 
 	function mediaViewKey() {
-		return `${selectedWorkspaceId}:${filter}:${sort}:${search}:${mediaType}:${source}:${selectedTagIDs.join(',')}:${showUntagged}:${aspect}:${minWidth}:${minHeight}:${maxWidth}:${maxHeight}:${dateFrom}:${dateTo}:${currentPage}`;
+		return `${selectedWorkspaceId}:${lifecycleView}:${filter}:${sort}:${search}:${mediaType}:${source}:${selectedTagIDs.join(',')}:${showUntagged}:${aspect}:${minWidth}:${minHeight}:${maxWidth}:${maxHeight}:${dateFrom}:${dateTo}:${currentPage}`;
 	}
 
 	async function loadWorkspaces() {
@@ -296,6 +291,7 @@
 				params: {
 					query: {
 						workspace_id: workspaceID,
+						lifecycle: lifecycleView,
 						filter: filter,
 						sort: sort,
 						search,
@@ -355,12 +351,6 @@
 				void loadMedia(workspaceID);
 			}
 			if (storageResult.data) storageUsage = storageResult.data;
-			if (imageEditorEnabled) {
-				const designResult = await listImageEditorDesigns(workspaceID);
-				designs = designResult.designs;
-			} else {
-				designs = [];
-			}
 		} catch (cause) {
 			notify(cause instanceof Error ? cause.message : m.media_hub_load_failed(), 'error');
 		} finally {
@@ -476,17 +466,6 @@
 		}
 	}
 
-	async function toggleDesignFavorite(design: ImageEditorDesignSummary) {
-		try {
-			design.is_favorite = await toggleImageEditorDesignFavorite(design.id);
-		} catch (cause) {
-			notify(
-				cause instanceof Error ? cause.message : m.image_editor_design_favorite_failed(),
-				'error'
-			);
-		}
-	}
-
 	async function toggleFavoriteBatch() {
 		const ids = Array.from(selectedMediaIds);
 		for (const id of ids) {
@@ -540,11 +519,6 @@
 		deleteDialogOpen = true;
 	}
 
-	function requestDeleteDesign(design: ImageEditorDesignSummary) {
-		deletionRequest = { kind: 'design', design };
-		deleteDialogOpen = true;
-	}
-
 	async function deleteMedia(mediaId: string) {
 		const requestViewKey = mediaViewKey();
 		try {
@@ -568,6 +542,19 @@
 			notify(deletedCountLabel(1), 'success');
 		} catch (e) {
 			notify((e as Error).message, 'error');
+		}
+	}
+
+	async function restoreMedia(mediaId: string) {
+		try {
+			const { error: err } = await client.POST('/media/{id}/restore', {
+				params: { path: { id: mediaId } }
+			});
+			if (err) throw new Error(err.detail || m.media_trash_restore_failed());
+			await loadMedia();
+			notify(m.media_trash_restored(), 'success');
+		} catch (cause) {
+			notify(cause instanceof Error ? cause.message : m.media_trash_restore_failed(), 'error');
 		}
 	}
 
@@ -598,28 +585,11 @@
 		}
 	}
 
-	async function deleteDesign(design: ImageEditorDesignSummary) {
-		try {
-			await deleteImageEditorDesign(design.id);
-			designs = designs.filter((candidate) => candidate.id !== design.id);
-			notify(m.image_editor_design_deleted(), 'success');
-		} catch (cause) {
-			notify(
-				cause instanceof Error ? cause.message : m.image_editor_design_delete_failed(),
-				'error'
-			);
-		}
-	}
-
 	async function confirmLibraryDeletion() {
 		const request = deletionRequest;
 		if (!request) return;
 		if (request.kind === 'single') {
 			await deleteMedia(request.media.id);
-			return;
-		}
-		if (request.kind === 'design') {
-			await deleteDesign(request.design);
 			return;
 		}
 		await deleteSelectedBatch(request.ids);
@@ -920,27 +890,6 @@
 		});
 	}
 
-	function designDisplayTitle(title: string): string {
-		const normalized = title.trim().toLocaleLowerCase();
-		if (normalized === 'media edit' || normalized === 'edição de multimédia') {
-			return m.media_edited_image();
-		}
-		return title;
-	}
-
-	async function duplicateDesign(id: string): Promise<void> {
-		try {
-			await duplicateImageEditorDesign(id);
-			await loadImageEditorHub();
-			notify(m.image_editor_design_duplicated(), 'success');
-		} catch (cause) {
-			notify(
-				cause instanceof Error ? cause.message : m.image_editor_design_duplicate_failed(),
-				'error'
-			);
-		}
-	}
-
 	function isImage(mimeType: string): boolean {
 		return mimeType.startsWith('image/');
 	}
@@ -1146,22 +1095,6 @@
 			Boolean(dateTo)
 		].filter(Boolean).length
 	);
-	const visibleDesigns = $derived(
-		imageEditorEnabled &&
-			!isSelectionMode &&
-			currentPage === 0 &&
-			activeDetailFilterCount === 0 &&
-			(filter === 'all' || filter === 'favorites')
-			? designs.filter(
-					(design) =>
-						(filter !== 'favorites' || design.is_favorite) &&
-						designDisplayTitle(design.title)
-							.toLocaleLowerCase()
-							.includes(search.trim().toLocaleLowerCase())
-				)
-			: []
-	);
-
 	const totalPages = $derived(Math.ceil(totalCount / pageSize));
 	const allMediaSelected = $derived(
 		mediaItems.length > 0 && mediaItems.every((media) => selectedMediaIds.has(media.id))
@@ -1173,10 +1106,9 @@
 	);
 
 	const descriptionText = $derived.by(() => {
-		if (totalCount > 0 || designs.length > 0) {
-			let text: string = m.media_library_summary({
-				assets: totalCount,
-				designs: designs.length,
+		if (totalCount > 0) {
+			let text: string = m.media_storage_summary({
+				count: totalCount,
 				size: formatSize(storageUsage.used_bytes)
 			});
 			if (filter === 'unused') {
@@ -1184,7 +1116,9 @@
 			}
 			return text;
 		}
-		return m.media_library_description();
+		if (lifecycleView === 'temporary') return m.media_lifecycle_temporary_body();
+		if (lifecycleView === 'trash') return m.media_lifecycle_trash_body();
+		return m.media_lifecycle_library_body();
 	});
 </script>
 
@@ -1222,7 +1156,7 @@
 				</Select.Content>
 			</Select.Root>
 		{/if}
-		{#if mediaCanEdit}
+		{#if mediaCanEdit && lifecycleView !== 'trash'}
 			<DropdownMenu.Root>
 				<DropdownMenu.Trigger>
 					{#snippet child({ props })}
@@ -1241,19 +1175,6 @@
 						<CameraIcon />
 						{m.media_take_photo()}
 					</DropdownMenu.Item>
-					{#if imageEditorEnabled}
-						<DropdownMenu.Item
-							onclick={() =>
-								goto(
-									resolve(
-										`/image-editor/new?workspace=${encodeURIComponent(selectedWorkspaceId)}` as '/'
-									)
-								)}
-						>
-							<PaletteIcon />
-							{m.media_create_design()}
-						</DropdownMenu.Item>
-					{/if}
 				</DropdownMenu.Content>
 			</DropdownMenu.Root>
 		{/if}
@@ -1271,14 +1192,33 @@
 		/>
 	{/if}
 
-	<MediaTagFilter
-		{tags}
-		selectedIds={selectedTagIDs}
-		untagged={showUntagged}
-		canEdit={mediaCanEdit}
-		onChange={changeTagFilters}
-		onManage={() => (organizationDialogOpen = true)}
-	/>
+	<nav class="flex gap-1 overflow-x-auto border-b pb-3" aria-label="Media lifecycle">
+		{#each [{ value: 'library' as const, label: m.media_lifecycle_library() }, { value: 'temporary' as const, label: m.media_lifecycle_temporary() }, { value: 'trash' as const, label: m.media_lifecycle_trash() }] as view (view.value)}
+			<Button
+				variant={lifecycleView === view.value ? 'secondary' : 'ghost'}
+				size="sm"
+				class="shrink-0 rounded-full"
+				onclick={() => {
+					lifecycleView = view.value;
+					currentPage = 0;
+					void loadMedia();
+				}}
+			>
+				{view.label}
+			</Button>
+		{/each}
+	</nav>
+
+	{#if lifecycleView !== 'trash'}
+		<MediaTagFilter
+			{tags}
+			selectedIds={selectedTagIDs}
+			untagged={showUntagged}
+			canEdit={mediaCanEdit}
+			onChange={changeTagFilters}
+			onManage={() => (organizationDialogOpen = true)}
+		/>
+	{/if}
 
 	<form
 		class="flex gap-2"
@@ -1441,9 +1381,9 @@
 		</div>
 	{/if}
 
-	{#if (mediaLoading || hubLoading) && mediaItems.length === 0 && visibleDesigns.length === 0}
+	{#if (mediaLoading || hubLoading) && mediaItems.length === 0}
 		<PageLoading layout="gallery" label={m.common_loading()} items={10} />
-	{:else if error && mediaItems.length === 0 && visibleDesigns.length === 0}
+	{:else if error && mediaItems.length === 0}
 		<InlineNotice tone="error" message={error} class="my-2">
 			{#snippet actions()}
 				<Button variant="outline" size="sm" onclick={() => loadMedia()}>
@@ -1451,7 +1391,7 @@
 				</Button>
 			{/snippet}
 		</InlineNotice>
-	{:else if mediaItems.length === 0 && visibleDesigns.length === 0}
+	{:else if mediaItems.length === 0}
 		{#if activeFilterCount > 0 || search.trim()}
 			<EmptyState
 				icon={ImageIcon}
@@ -1480,103 +1420,6 @@
 				? 'grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5'
 				: 'grid grid-cols-1 gap-2'}
 		>
-			{#each visibleDesigns as design (design.id)}
-				<ContextMenu.Root>
-					<ContextMenu.Trigger>
-						{#snippet child({ props })}
-							<a
-								{...props}
-								href={resolve(`/image-editor/${design.id}` as '/')}
-								data-library-kind="design"
-								class="group min-w-0 overflow-hidden rounded-xl border bg-card transition-colors hover:border-foreground/25 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none {layoutMode ===
-								'list'
-									? 'grid grid-cols-[6rem_minmax(0,1fr)]'
-									: ''}"
-							>
-								<div
-									class="relative flex items-center justify-center overflow-hidden bg-neutral-900 p-3 {layoutMode ===
-									'grid'
-										? 'aspect-square'
-										: 'aspect-square h-24'}"
-								>
-									{#if design.cover_preview_media_id}
-										<img
-											src={getAuthenticatedMediaURL(`/media/${design.cover_preview_media_id}`)}
-											alt=""
-											class="max-h-full max-w-full object-contain shadow-md"
-										/>
-									{:else}
-										<div class="flex flex-col items-center gap-2 text-center text-neutral-400">
-											<PaletteIcon class="size-6" />
-											<span class="line-clamp-2 text-xs">{m.media_preview_unavailable()}</span>
-										</div>
-									{/if}
-									<span
-										class="absolute top-2 left-2 rounded-md bg-background/90 px-2 py-1 text-[11px] font-medium text-foreground shadow-sm"
-									>
-										{m.media_design()}
-									</span>
-									{#if design.is_favorite}
-										<div
-											class="absolute bottom-2 left-2 rounded-full bg-background/90 p-1.5 shadow-sm"
-											aria-label={m.media_filter_favorites()}
-										>
-											<HeartIcon class="size-3.5 fill-red-500 text-red-500" />
-										</div>
-									{/if}
-								</div>
-								<div class="min-w-0 p-2.5">
-									<p class="truncate text-sm font-medium">{designDisplayTitle(design.title)}</p>
-									<p class="mt-0.5 truncate text-xs text-muted-foreground">
-										{m.media_design_pages({
-											count: design.page_count,
-											suffix: design.page_count === 1 ? '' : 's'
-										})}
-										· {formatDate(design.updated_at)}
-									</p>
-								</div>
-							</a>
-						{/snippet}
-					</ContextMenu.Trigger>
-					<ContextMenu.Portal>
-						<ContextMenu.Content class={libraryContextContentClass}>
-							<ContextMenu.Item
-								class={libraryContextItemClass}
-								onclick={() => goto(resolve(`/image-editor/${design.id}` as '/'))}
-							>
-								<ExternalLinkIcon class="size-4" />
-								{m.image_editor_open_design()}
-							</ContextMenu.Item>
-							<ContextMenu.Item
-								class={libraryContextItemClass}
-								disabled={!mediaCanEdit}
-								onclick={() => duplicateDesign(design.id)}
-							>
-								<Grid2X2Icon class="size-4" />
-								{m.image_editor_duplicate_design()}
-							</ContextMenu.Item>
-							<ContextMenu.Item
-								class={libraryContextItemClass}
-								disabled={!mediaCanEdit}
-								onclick={() => toggleDesignFavorite(design)}
-							>
-								<HeartIcon class="size-4" fill={design.is_favorite ? 'currentColor' : 'none'} />
-								{design.is_favorite ? m.media_unfavorite() : m.media_favorite()}
-							</ContextMenu.Item>
-							{#if mediaCanEdit}
-								<ContextMenu.Separator class="my-1 h-px bg-border" />
-								<ContextMenu.Item
-									class="{libraryContextItemClass} text-destructive data-highlighted:text-destructive"
-									onclick={() => requestDeleteDesign(design)}
-								>
-									<TrashIcon class="size-4" />
-									{m.common_delete()}
-								</ContextMenu.Item>
-							{/if}
-						</ContextMenu.Content>
-					</ContextMenu.Portal>
-				</ContextMenu.Root>
-			{/each}
 			{#each mediaItems as media (media.id)}
 				<ContextMenu.Root>
 					<ContextMenu.Trigger disabled={isSelectionMode}>
@@ -1594,7 +1437,15 @@
 										? 'aspect-square'
 										: 'aspect-square h-24'}"
 								>
-									{#if isVideo(media.mime_type)}
+									{#if lifecycleView === 'trash'}
+										<div
+											class="flex size-full flex-col items-center justify-center gap-2 text-muted-foreground"
+										>
+											<TrashIcon class="size-8" />
+											<span class="px-3 text-center text-xs">{m.media_trash_preview_removed()}</span
+											>
+										</div>
+									{:else if isVideo(media.mime_type)}
 										{#if media.thumbnail_url || media.poster_thumbnail_url}
 											<img
 												src={getAuthenticatedMediaURL(
@@ -1723,106 +1574,135 @@
 										</p>
 									{/if}
 									<p class="mt-0.5 truncate text-xs text-muted-foreground">
-										{formatSize(media.size)} · {formatDate(media.created_at)}
+										{#if lifecycleView === 'trash'}
+											{m.media_trash_purge_date({
+												date: formatDate(media.purge_after || media.trashed_at || media.created_at)
+											})}
+										{:else}
+											{formatSize(media.size)} · {formatDate(media.created_at)}
+										{/if}
 									</p>
-									<div class="mt-2 flex min-w-0 flex-wrap items-center gap-1">
-										{#each media.tags.slice(0, 2) as tagID (tagID)}
-											{@const tag = tags.find((item) => item.id === tagID)}
-											{#if tag}
-												<Button
-													variant="secondary"
-													size="xs"
-													class="h-7 max-w-32 rounded-full px-2"
-													onclick={() => changeTagFilters([tag.id], false)}
+									{#if lifecycleView === 'trash' && mediaCanEdit}
+										<Button
+											class="mt-2 w-full"
+											variant="outline"
+											size="sm"
+											onclick={() => restoreMedia(media.id)}
+										>
+											<RotateCcwIcon />
+											{m.media_trash_restore()}
+										</Button>
+									{:else}
+										<div class="mt-2 flex min-w-0 flex-wrap items-center gap-1">
+											{#each media.tags.slice(0, 2) as tagID (tagID)}
+												{@const tag = tags.find((item) => item.id === tagID)}
+												{#if tag}
+													<Button
+														variant="secondary"
+														size="xs"
+														class="h-7 max-w-32 rounded-full px-2"
+														onclick={() => changeTagFilters([tag.id], false)}
+													>
+														<span class="truncate">#{tag.name}</span>
+													</Button>
+												{/if}
+											{/each}
+											{#if media.tags.length > 2}
+												<span class="px-1 text-xs text-muted-foreground"
+													>+{media.tags.length - 2}</span
 												>
-													<span class="truncate">#{tag.name}</span>
-												</Button>
 											{/if}
-										{/each}
-										{#if media.tags.length > 2}
-											<span class="px-1 text-xs text-muted-foreground"
-												>+{media.tags.length - 2}</span
-											>
-										{/if}
-										{#if mediaCanEdit}
-											<MediaTagPicker
-												{tags}
-												selectedIds={media.tags}
-												canEdit={mediaCanEdit}
-												onToggle={(tagID, selected) => toggleMediaTag(media.id, tagID, selected)}
-												onCreate={(name) => createAndAssignTag(media.id, name)}
-											/>
-										{/if}
-									</div>
+											{#if mediaCanEdit}
+												<MediaTagPicker
+													{tags}
+													selectedIds={media.tags}
+													canEdit={mediaCanEdit}
+													onToggle={(tagID, selected) => toggleMediaTag(media.id, tagID, selected)}
+													onCreate={(name) => createAndAssignTag(media.id, name)}
+												/>
+											{/if}
+										</div>
+									{/if}
 								</div>
 							</div>
 						{/snippet}
 					</ContextMenu.Trigger>
 					<ContextMenu.Portal>
 						<ContextMenu.Content class={libraryContextContentClass}>
-							<ContextMenu.Item class={libraryContextItemClass} onclick={() => showUsage(media)}>
-								<ExternalLinkIcon class="size-4" />
-								{m.media_details()}
-							</ContextMenu.Item>
-							{#if isImage(media.mime_type) && mediaCanEdit && imageEditorEnabled}
+							{#if lifecycleView === 'trash' && mediaCanEdit}
 								<ContextMenu.Item
 									class={libraryContextItemClass}
-									onclick={() => openMediaInImageEditor(media)}
+									onclick={() => restoreMedia(media.id)}
 								>
-									<PaletteIcon class="size-4" />
-									{m.media_edit_image_editor()}
-								</ContextMenu.Item>
-								<ContextMenu.Item
-									class={libraryContextItemClass}
-									onclick={() => openMediaInImageEditor(media, 'remove-background')}
-								>
-									<ImageIcon class="size-4" />
-									{m.image_editor_remove_background()}
+									<RotateCcwIcon class="size-4" />
+									{m.media_trash_restore()}
 								</ContextMenu.Item>
 							{/if}
-							{#if isVideo(media.mime_type) && mediaCanEdit && videoEditorEnabled}
+							{#if lifecycleView !== 'trash'}
+								<ContextMenu.Item class={libraryContextItemClass} onclick={() => showUsage(media)}>
+									<ExternalLinkIcon class="size-4" />
+									{m.media_details()}
+								</ContextMenu.Item>
+								{#if isImage(media.mime_type) && mediaCanEdit && imageEditorEnabled}
+									<ContextMenu.Item
+										class={libraryContextItemClass}
+										onclick={() => openMediaInImageEditor(media)}
+									>
+										<PaletteIcon class="size-4" />
+										{m.media_edit_image_editor()}
+									</ContextMenu.Item>
+									<ContextMenu.Item
+										class={libraryContextItemClass}
+										onclick={() => openMediaInImageEditor(media, 'remove-background')}
+									>
+										<ImageIcon class="size-4" />
+										{m.image_editor_remove_background()}
+									</ContextMenu.Item>
+								{/if}
+								{#if isVideo(media.mime_type) && mediaCanEdit && videoEditorEnabled}
+									<ContextMenu.Item
+										class={libraryContextItemClass}
+										onclick={() => openMediaInVideoEditor(media)}
+									>
+										<VideoIcon class="size-4" />
+										{m.media_edit_video_editor()}
+									</ContextMenu.Item>
+								{/if}
+								{#if mediaCanEdit}
+									<ContextMenu.Item
+										class={libraryContextItemClass}
+										onclick={() => duplicateMedia(media)}
+									>
+										<Grid2X2Icon class="size-4" />
+										{m.image_editor_duplicate()}
+									</ContextMenu.Item>
+								{/if}
 								<ContextMenu.Item
 									class={libraryContextItemClass}
-									onclick={() => openMediaInVideoEditor(media)}
+									onclick={() => downloadMedia(media)}
 								>
-									<VideoIcon class="size-4" />
-									{m.media_edit_video_editor()}
+									<DownloadIcon class="size-4" />
+									{m.media_download()}
 								</ContextMenu.Item>
-							{/if}
-							{#if mediaCanEdit}
-								<ContextMenu.Item
-									class={libraryContextItemClass}
-									onclick={() => duplicateMedia(media)}
-								>
-									<Grid2X2Icon class="size-4" />
-									{m.image_editor_duplicate()}
-								</ContextMenu.Item>
-							{/if}
-							<ContextMenu.Item
-								class={libraryContextItemClass}
-								onclick={() => downloadMedia(media)}
-							>
-								<DownloadIcon class="size-4" />
-								{m.media_download()}
-							</ContextMenu.Item>
-							{#if mediaCanEdit}
-								<ContextMenu.Item
-									class={libraryContextItemClass}
-									onclick={() => toggleFavorite(media.id)}
-								>
-									<HeartIcon class="size-4" fill={media.is_favorite ? 'currentColor' : 'none'} />
-									{media.is_favorite ? m.media_unfavorite() : m.media_favorite()}
-								</ContextMenu.Item>
-							{/if}
-							{#if mediaCanEdit && canDeleteMedia(media)}
-								<ContextMenu.Separator class="my-1 h-px bg-border" />
-								<ContextMenu.Item
-									class="{libraryContextItemClass} text-destructive data-highlighted:text-destructive"
-									onclick={() => requestDeleteMedia(media)}
-								>
-									<TrashIcon class="size-4" />
-									{m.common_delete()}
-								</ContextMenu.Item>
+								{#if mediaCanEdit}
+									<ContextMenu.Item
+										class={libraryContextItemClass}
+										onclick={() => toggleFavorite(media.id)}
+									>
+										<HeartIcon class="size-4" fill={media.is_favorite ? 'currentColor' : 'none'} />
+										{media.is_favorite ? m.media_unfavorite() : m.media_favorite()}
+									</ContextMenu.Item>
+								{/if}
+								{#if mediaCanEdit && canDeleteMedia(media)}
+									<ContextMenu.Separator class="my-1 h-px bg-border" />
+									<ContextMenu.Item
+										class="{libraryContextItemClass} text-destructive data-highlighted:text-destructive"
+										onclick={() => requestDeleteMedia(media)}
+									>
+										<TrashIcon class="size-4" />
+										{m.common_delete()}
+									</ContextMenu.Item>
+								{/if}
 							{/if}
 						</ContextMenu.Content>
 					</ContextMenu.Portal>

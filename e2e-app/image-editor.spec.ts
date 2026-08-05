@@ -103,13 +103,31 @@ test("public OpenPost Image Editor creates and restores a local design without a
     3,
   );
 
+  const zoomControl = page.getByRole("button", { name: /^Zoom \d+%$/ });
+  const zoomLabelBefore = await zoomControl.getAttribute("aria-label");
+  await page.getByRole("button", { name: "Zoom in" }).click();
+  await expect(zoomControl).not.toHaveAttribute(
+    "aria-label",
+    zoomLabelBefore ?? "",
+  );
+
+  await zoomControl.click();
+  const fittedStage = await stage.boundingBox();
+  if (!fittedStage) {
+    throw new Error(
+      "Public OpenPost Image Editor canvas did not fit on demand",
+    );
+  }
+  expect(fittedStage.width).toBeLessThanOrEqual(canvasBox.width);
+  expect(fittedStage.height).toBeLessThanOrEqual(canvasBox.height);
+
   const imageEditorMenus = page.getByRole("menubar", {
     name: "OpenPost Image Editor menus",
   });
   await expect(imageEditorMenus).toBeVisible();
   await imageEditorMenus.getByText("File", { exact: true }).click();
   await expect(
-    page.getByRole("menuitem", { name: /Save.*Ctrl S/ }),
+    page.getByRole("menuitem", { name: /Save.*(?:Ctrl|⌘) S/ }),
   ).toBeVisible();
   await page.keyboard.press("Escape");
 
@@ -134,17 +152,12 @@ test("public OpenPost Image Editor creates and restores a local design without a
   await page.mouse.click(canvasBox.x + 8, canvasBox.y + canvasBox.height / 2);
   await expect(page.getByRole("treeitem", { selected: true })).toHaveCount(0);
   const objectSelectionStart = {
-    x: (canvasBox.x + stageAfterZoom.x) / 2,
-    y: stageAfterZoom.y + stageAfterZoom.height * 0.1,
+    x: (canvasBox.x + fittedStage.x) / 2,
+    y: fittedStage.y + fittedStage.height * 0.1,
   };
   const objectSelectionEnd = {
-    x:
-      (stageAfterZoom.x +
-        stageAfterZoom.width +
-        canvasBox.x +
-        canvasBox.width) /
-      2,
-    y: stageAfterZoom.y + stageAfterZoom.height * 0.9,
+    x: (fittedStage.x + fittedStage.width + canvasBox.x + canvasBox.width) / 2,
+    y: fittedStage.y + fittedStage.height * 0.9,
   };
   await page.mouse.move(objectSelectionStart.x, objectSelectionStart.y);
   await page.mouse.down();
@@ -162,21 +175,16 @@ test("public OpenPost Image Editor creates and restores a local design without a
     page.getByRole("button", { name: "Rectangle select", pressed: true }),
   ).toBeVisible();
   const outsideSelectionStart = {
-    x: (canvasBox.x + stageAfterZoom.x) / 2,
-    y: stageAfterZoom.y + stageAfterZoom.height * 0.25,
+    x: (canvasBox.x + fittedStage.x) / 2,
+    y: fittedStage.y + fittedStage.height * 0.25,
   };
   const outsideSelectionEnd = {
-    x:
-      (stageAfterZoom.x +
-        stageAfterZoom.width +
-        canvasBox.x +
-        canvasBox.width) /
-      2,
-    y: stageAfterZoom.y + stageAfterZoom.height * 0.75,
+    x: (fittedStage.x + fittedStage.width + canvasBox.x + canvasBox.width) / 2,
+    y: fittedStage.y + fittedStage.height * 0.75,
   };
-  expect(outsideSelectionStart.x).toBeLessThan(stageAfterZoom.x);
+  expect(outsideSelectionStart.x).toBeLessThan(fittedStage.x);
   expect(outsideSelectionEnd.x).toBeGreaterThan(
-    stageAfterZoom.x + stageAfterZoom.width,
+    fittedStage.x + fittedStage.width,
   );
   await page.mouse.move(outsideSelectionStart.x, outsideSelectionStart.y);
   await page.mouse.down();
@@ -231,9 +239,11 @@ test("public OpenPost Image Editor creates and restores a local design without a
   await page.getByRole("button", { name: "Download" }).click();
   await download;
   await expect(
-    page.getByRole("heading", { name: "Export complete" }),
+    page.getByLabel("Notifications alt+T").getByText("Export downloaded."),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Keep editing" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Export complete" }),
+  ).toHaveCount(0);
 
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.getByRole("button", { name: "Export" })).toBeVisible();
@@ -343,6 +353,11 @@ test("public OpenPost Image Editor imports attributed stock photos into durable 
   await page.getByRole("button", { name: /Instagram square/ }).click();
   await expect(page).toHaveURL(/\/image-editor\/local_design_/);
   await page.getByRole("button", { name: "Browse stock" }).click();
+  await expect(
+    page.getByText(
+      "Search a configured provider to find photos for your design.",
+    ),
+  ).toBeVisible();
   await page
     .getByRole("textbox", { name: "Search stock photos and videos" })
     .fill("desk");
@@ -403,6 +418,16 @@ test("OpenPost Image Editor creates from an original template, adapts to mobile,
   await expect(
     page.getByRole("region", { name: "Starter templates" }),
   ).toBeVisible();
+  const starterTemplates = page.getByRole("region", {
+    name: "Starter templates",
+  });
+  await expect(starterTemplates.getByRole("button")).toHaveCount(15);
+  await expect(
+    starterTemplates.getByRole("button", { name: /Quiet quote/ }),
+  ).toBeVisible();
+  await expect(
+    starterTemplates.getByRole("button", { name: /YouTube list/ }),
+  ).toBeVisible();
 
   await page
     .getByRole("region", { name: "Starter templates" })
@@ -416,6 +441,26 @@ test("OpenPost Image Editor creates from an original template, adapts to mobile,
   await expect(
     page.getByRole("treeitem", { name: /A clear update, text/ }),
   ).toBeVisible();
+  await expect(
+    page.getByText("Upload files to build your media library."),
+  ).toBeVisible();
+
+  await page.getByRole("button", { name: "Upload or camera" }).click();
+  const mediaSourceDialog = page.getByRole("dialog", {
+    name: "Add an image",
+  });
+  await expect(mediaSourceDialog).toBeVisible();
+  await expect(mediaSourceDialog.getByText("My Device")).toBeVisible();
+  await expect(
+    mediaSourceDialog.getByRole("tab", { name: "Camera" }),
+  ).toBeVisible();
+  await mediaSourceDialog
+    .getByRole("button", { name: "Back to library" })
+    .click();
+  await expect(
+    mediaSourceDialog.getByRole("button", { name: "Browse stock" }),
+  ).toBeVisible();
+  await mediaSourceDialog.getByRole("button", { name: "Cancel" }).click();
 
   const designCanvas = page.getByRole("application", {
     name: "Design canvas",
@@ -435,6 +480,31 @@ test("OpenPost Image Editor creates from an original template, adapts to mobile,
   await expect(
     page.getByRole("treeitem", { name: /A clear update, text/ }),
   ).toHaveAttribute("aria-selected", "true");
+  const propertiesLayerName = page.getByRole("textbox", {
+    name: "Layer name",
+  });
+  await propertiesLayerName.fill("A clear update draft");
+  await expect(
+    page.getByRole("treeitem", { name: /A clear update draft, text/ }),
+  ).toBeVisible();
+  await propertiesLayerName.fill("A clear update");
+  await propertiesLayerName.press("Enter");
+  await expect(
+    page.getByRole("treeitem", { name: /A clear update, text/ }),
+  ).toBeVisible();
+  const fontFamily = page.getByRole("button", { name: "Font family" });
+  await fontFamily.click();
+  for (const family of [
+    "Manrope",
+    "DM Sans",
+    "Space Grotesk",
+    "Playfair Display",
+    "Source Serif 4",
+  ]) {
+    await expect(page.getByRole("button", { name: family })).toBeVisible();
+  }
+  await page.getByRole("button", { name: "Manrope" }).click();
+  await expect(fontFamily).toHaveText("Manrope");
   const headlinePoint = {
     x: stageBox.x + stageBox.width * 0.35,
     y: stageBox.y + stageBox.height * 0.4,
@@ -480,6 +550,7 @@ test("OpenPost Image Editor creates from an original template, adapts to mobile,
   await expect.poll(stagePosition).not.toBe(panBefore);
 
   await page.getByRole("treeitem", { name: /A clear update, text/ }).click();
+  await page.getByRole("button", { name: "Transform" }).click();
   const curveSelect = page.getByRole("button", { name: "Text curve" });
   await curveSelect.click();
   await page.getByRole("option", { name: "Circle", exact: true }).click();
@@ -493,7 +564,11 @@ test("OpenPost Image Editor creates from an original template, adapts to mobile,
   ).toHaveValue("487");
   await curveSelect.click();
   await page.getByRole("option", { name: "Wave", exact: true }).click();
+  await page.getByRole("button", { name: /^Effects(?: \d+ active)?$/ }).click();
   await page.getByRole("button", { name: "Add drop shadow" }).click();
+  await expect(
+    page.getByRole("button", { name: "Remove drop shadow" }),
+  ).toBeVisible();
   const textSaved = page.waitForResponse(
     (response) =>
       response.request().method() === "PATCH" &&
@@ -504,13 +579,23 @@ test("OpenPost Image Editor creates from an original template, adapts to mobile,
   await textSaved;
 
   await page.getByRole("treeitem", { name: /Accent, shape/ }).click();
+  await page.getByRole("button", { name: /^Effects(?: \d+ active)?$/ }).click();
   await page.getByRole("button", { name: "Mask" }).click();
   await page.getByRole("option", { name: "Diamond", exact: true }).click();
   await page.getByRole("button", { name: "Add border" }).click();
+  await expect(
+    page.getByRole("button", { name: "Remove border" }),
+  ).toBeVisible();
   await page.getByRole("button", { name: "Border position" }).click();
   await page.getByRole("option", { name: "Outside", exact: true }).click();
   await page.getByRole("button", { name: "Add drop shadow" }).click();
+  await expect(
+    page.getByRole("button", { name: "Remove drop shadow" }),
+  ).toBeVisible();
   await page.getByRole("button", { name: "Add inner shadow" }).click();
+  await expect(
+    page.getByRole("button", { name: "Remove inner shadow" }),
+  ).toBeVisible();
   const shapeSaved = page.waitForResponse(
     (response) =>
       response.request().method() === "PATCH" &&
@@ -528,6 +613,7 @@ test("OpenPost Image Editor creates from an original template, adapts to mobile,
 
   await page.reload();
   await page.getByRole("treeitem", { name: /Accent, shape/ }).click();
+  await page.getByRole("button", { name: /^Effects(?: \d+ active)?$/ }).click();
   await expect(page.getByRole("button", { name: "Mask" })).toHaveText(
     "Diamond",
   );
@@ -548,6 +634,7 @@ test("OpenPost Image Editor creates from an original template, adapts to mobile,
   ).toHaveText("Outside");
 
   await page.getByRole("treeitem", { name: /A clear update, text/ }).click();
+  await page.getByRole("button", { name: /^Effects(?: \d+ active)?$/ }).click();
   await expect(page.getByRole("button", { name: "Text curve" })).toHaveText(
     "Wave",
   );
@@ -892,27 +979,32 @@ test("OpenPost Image Editor creates from an original template, adapts to mobile,
 
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.getByRole("button", { name: "Export" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Text" })).toBeVisible();
+  const mobileTools = page.getByRole("navigation", { name: "Tools" });
+  await expect(mobileTools.getByRole("button")).toHaveCount(6);
+  await expect(mobileTools.getByRole("button", { name: "Add" })).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Select objects" }),
+    mobileTools.getByRole("button", { name: "Select" }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Select objects" }).click();
+  await expect(mobileTools.getByRole("button", { name: "Draw" })).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Magic select" }),
+    mobileTools.getByRole("button", { name: "Retouch" }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Select pixels" }).click();
+  await mobileTools.getByRole("button", { name: "Select" }).click();
+  await expect(
+    page.getByRole("menuitem", { name: "Magic select" }),
+  ).toBeVisible();
+  await page.getByRole("menuitem", { name: "Rectangle select" }).click();
+  await mobileTools.getByRole("button", { name: "Select" }).click();
   await expect(
     page.getByRole("menuitem", { name: "Rectangle select" }),
   ).toBeVisible();
   await expect(
     page.getByRole("menuitem", { name: "Ellipse select" }),
   ).toBeVisible();
-  await expect(
-    page.getByRole("menuitem", { name: "Magic select" }),
-  ).toHaveCount(0);
   await page.keyboard.press("Escape");
 
-  await page.getByRole("button", { name: "Text", exact: true }).click();
+  await mobileTools.getByRole("button", { name: "Draw" }).click();
+  await page.getByRole("menuitem", { name: "Text", exact: true }).click();
   const fabricTextarea = page.locator('textarea[data-fabric="textarea"]');
   await expect(fabricTextarea).toBeFocused();
   await page.setViewportSize({ width: 390, height: 560 });
@@ -1045,6 +1137,22 @@ test("OpenPost Image Editor creates from an original template, adapts to mobile,
     .toBe(true);
   await page.keyboard.press("Escape");
 
+  await page.setViewportSize({ width: 320, height: 720 });
+  await expect(page.getByRole("button", { name: "Undo" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Redo" })).toBeVisible();
+  await expect(mobileTools.getByRole("button")).toHaveCount(6);
+  expect(
+    await mobileTools.evaluate(
+      (element) => element.scrollWidth <= element.clientWidth,
+    ),
+  ).toBe(true);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+  await page.setViewportSize({ width: 390, height: 844 });
+
   expect(
     await page.evaluate(
       () =>
@@ -1131,31 +1239,16 @@ test("OpenPost Image Editor creates from an original template, adapts to mobile,
     ),
   ).toBeTruthy();
 
+  await page.goto("/editors");
+  await expect(
+    page.locator(`a[href="/image-editor/${designID}"]`),
+  ).toBeVisible();
+
   await page.goto("/media");
   const libraryGrid = page.getByTestId("media-library-grid");
-  await expect(libraryGrid.locator('[data-library-kind="design"]')).toHaveCount(
-    1,
-  );
   await expect(libraryGrid.locator('[data-library-kind="asset"]')).toHaveCount(
     1,
   );
-  const designCard = libraryGrid.locator('[data-library-kind="design"]');
-  await designCard.click({ button: "right" });
-  await expect(
-    page.getByRole("menuitem", { name: "Open design", exact: true }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("menuitem", { name: "Duplicate design", exact: true }),
-  ).toBeVisible();
-  await page.getByRole("menuitem", { name: "Favorite", exact: true }).click();
-  await expect(designCard.locator("svg.fill-red-500")).toBeVisible();
-
-  const favoriteDesigns = await request.get(
-    `/api/v1/image-editor/designs?workspace_id=${workspace.id}&limit=100&offset=0`,
-    { headers: { Authorization: `Bearer ${auth.token}` } },
-  );
-  expect(favoriteDesigns.ok()).toBeTruthy();
-  expect((await favoriteDesigns.json()).designs[0].is_favorite).toBe(true);
 
   await expect(page.getByText("quick-announcement-page-01.png")).toBeVisible();
   const exportedImage = page.getByRole("img", {
@@ -1185,6 +1278,8 @@ test("OpenPost Image Editor creates from an original template, adapts to mobile,
     )
     .toBeGreaterThanOrEqual(8);
 
+  await page.goto("/editors");
+  const designCard = page.locator(`a[href="/image-editor/${designID}"]`);
   await designCard.click({ button: "right" });
   await page.getByRole("menuitem", { name: "Delete", exact: true }).click();
   const deleteDesignDialog = page.getByRole("dialog", {
@@ -1194,9 +1289,7 @@ test("OpenPost Image Editor creates from an original template, adapts to mobile,
   await deleteDesignDialog
     .getByRole("button", { name: "Delete", exact: true })
     .click();
-  await expect(libraryGrid.locator('[data-library-kind="design"]')).toHaveCount(
-    0,
-  );
+  await expect(designCard).toHaveCount(0);
 
   expect({ browserErrors, failedResponses }).toEqual({
     browserErrors: [],

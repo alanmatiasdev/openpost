@@ -16,6 +16,7 @@ import (
 	billingservice "github.com/openpost/backend/internal/services/billing"
 	communicationsservice "github.com/openpost/backend/internal/services/communications"
 	"github.com/openpost/backend/internal/services/feedback"
+	"github.com/openpost/backend/internal/services/medialifecycle"
 	"github.com/openpost/backend/internal/services/mediastore"
 	"github.com/openpost/backend/internal/services/notifications"
 	"github.com/openpost/backend/internal/services/publisher"
@@ -104,6 +105,7 @@ func (w *BackgroundWorker) Start(ctx context.Context) {
 	defer ticker.Stop()
 
 	log.Printf("Worker %s started polling every %v\n", w.workerID, w.interval)
+	w.ensureMediaLifecycleJobs(ctx)
 	w.processDueJobs(ctx)
 
 	for {
@@ -526,119 +528,19 @@ func (w *BackgroundWorker) handleMediaCleanup(ctx context.Context, payload strin
 		return err
 	}
 
-	if cleanupJob.Days <= 0 {
-		return nil
+	if strings.TrimSpace(cleanupJob.WorkspaceID) == "" {
+		return errors.New("workspace_id is required for media cleanup")
 	}
-
-	cutoff := time.Now().Add(-time.Duration(cleanupJob.Days) * 24 * time.Hour)
-
-	var media []models.MediaAttachment
-	err := w.db.NewSelect().Model(&media).
-		Where("workspace_id = ?", cleanupJob.WorkspaceID).
-		Where("is_favorite = ?", false).
-		Where("created_at < ?", cutoff).
-		Where("id NOT IN (SELECT media_id FROM post_media)").
-		Where("id NOT IN (SELECT media_id FROM publication_segment_media)").
-		Where("id NOT IN (SELECT media_id FROM rendition_media)").
-		Where("id NOT IN (SELECT media_id FROM rendition_segment_media)").
-		Where("id NOT IN (SELECT media_id FROM design_media_references)").
-		Where("id NOT IN (SELECT media_id FROM design_template_media_references)").
-		Where("id NOT IN (SELECT media_id FROM brand_assets)").
-		Where("id NOT IN (SELECT media_id FROM brand_fonts)").
-		Where("id NOT IN (SELECT cover_preview_media_id FROM design_documents WHERE cover_preview_media_id IS NOT NULL AND cover_preview_media_id != '')").
-		Where("id NOT IN (SELECT preview_media_id FROM design_pages WHERE preview_media_id IS NOT NULL AND preview_media_id != '')").
-		Where("id NOT IN (SELECT latest_export_media_id FROM design_pages WHERE latest_export_media_id IS NOT NULL AND latest_export_media_id != '')").
-		Scan(ctx)
-	if err != nil {
+	if err := medialifecycle.NewService(w.db, w.storage).Sweep(ctx, cleanupJob.WorkspaceID, time.Now().UTC()); err != nil {
 		return err
 	}
-
-	variantMediaIDs, err := w.variantMediaIDs(ctx, cleanupJob.WorkspaceID)
-	if err != nil {
-		return err
-	}
-
-	for _, m := range media {
-		if _, usedByVariant := variantMediaIDs[m.ID]; usedByVariant {
-			continue
-		}
-		w.deleteUnusedMedia(ctx, m, cleanupJob.WorkspaceID)
-	}
-
-	var workspace models.Workspace
-	if err := w.db.NewSelect().Model(&workspace).Where("id = ?", cleanupJob.WorkspaceID).Scan(ctx); err == nil && workspace.MediaCleanupDays > 0 {
-		_ = w.scheduleMediaCleanup(ctx, cleanupJob.WorkspaceID, workspace.MediaCleanupDays)
-	}
-
-	return nil
+	return w.scheduleMediaCleanup(ctx, cleanupJob.WorkspaceID)
 }
 
-func (w *BackgroundWorker) deleteUnusedMedia(ctx context.Context, media models.MediaAttachment, workspaceID string) {
-	if err := w.storage.Delete(filepath.Base(media.FilePath)); err != nil {
-		log.Printf("Failed to delete media file %s: %v", media.ID, err)
-	}
-
-	var thumbs struct {
-		SM string `json:"sm,omitempty"`
-		MD string `json:"md,omitempty"`
-	}
-	if media.ThumbnailsJSON != "" {
-		if err := json.Unmarshal([]byte(media.ThumbnailsJSON), &thumbs); err == nil {
-			if thumbs.SM != "" {
-				if err := w.storage.Delete(thumbs.SM); err != nil {
-					log.Printf("Failed to delete thumbnail %s: %v", thumbs.SM, err)
-				}
-			}
-			if thumbs.MD != "" {
-				if err := w.storage.Delete(thumbs.MD); err != nil {
-					log.Printf("Failed to delete thumbnail %s: %v", thumbs.MD, err)
-				}
-			}
-		}
-	}
-
-	if _, err := w.db.NewDelete().Model(&media).Where("id = ?", media.ID).Exec(ctx); err != nil {
-		log.Printf("Failed to delete media record %s: %v", media.ID, err)
-	}
-	log.Printf("Cleaned up media %s for workspace %s", media.ID, workspaceID)
-}
-
-func (w *BackgroundWorker) variantMediaIDs(ctx context.Context, workspaceID string) (map[string]struct{}, error) {
-	var variantRows []struct {
-		MediaIDs string `bun:"media_ids"`
-	}
-	if err := w.db.NewSelect().
-		TableExpr("post_variants AS pv").
-		ColumnExpr("pv.media_ids").
-		Join("JOIN posts AS p ON p.id = pv.post_id").
-		Where("p.workspace_id = ?", workspaceID).
-		Where("pv.media_ids != ''").
-		Scan(ctx, &variantRows); err != nil {
-		return nil, err
-	}
-
-	variantMediaIDs := make(map[string]struct{})
-	for _, row := range variantRows {
-		var ids []string
-		if err := json.Unmarshal([]byte(row.MediaIDs), &ids); err != nil {
-			log.Printf("Failed to parse variant media IDs during cleanup: %v", err)
-			continue
-		}
-		for _, id := range ids {
-			variantMediaIDs[id] = struct{}{}
-		}
-	}
-	return variantMediaIDs, nil
-}
-
-func (w *BackgroundWorker) scheduleMediaCleanup(ctx context.Context, workspaceID string, days int) error {
-	if days <= 0 {
-		return nil
-	}
-
+func (w *BackgroundWorker) scheduleMediaCleanup(ctx context.Context, workspaceID string) error {
 	payload, err := json.Marshal(map[string]interface{}{
 		"workspace_id": workspaceID,
-		"days":         days,
+		"days":         14,
 	})
 	if err != nil {
 		return err
@@ -659,6 +561,38 @@ func (w *BackgroundWorker) scheduleMediaCleanup(ctx context.Context, workspaceID
 	return err
 }
 
+func (w *BackgroundWorker) ensureMediaLifecycleJobs(ctx context.Context) {
+	var workspaceIDs []string
+	if err := w.db.NewSelect().Model((*models.Workspace)(nil)).Column("id").Scan(ctx, &workspaceIDs); err != nil {
+		log.Printf("Failed to list workspaces for media lifecycle scheduling: %v", err)
+		return
+	}
+	for _, workspaceID := range workspaceIDs {
+		var jobs []models.Job
+		if err := w.db.NewSelect().Model(&jobs).
+			Where("type = ? AND status IN (?, ?)", jobTypeMediaCleanup, jobStatusPending, jobStatusProcessing).
+			Scan(ctx); err != nil {
+			log.Printf("Failed to inspect media lifecycle jobs for workspace %s: %v", workspaceID, err)
+			continue
+		}
+		found := false
+		for _, job := range jobs {
+			var payload struct {
+				WorkspaceID string `json:"workspace_id"`
+			}
+			if json.Unmarshal([]byte(job.Payload), &payload) == nil && payload.WorkspaceID == workspaceID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			if err := w.scheduleMediaCleanup(ctx, workspaceID); err != nil {
+				log.Printf("Failed to schedule media lifecycle for workspace %s: %v", workspaceID, err)
+			}
+		}
+	}
+}
+
 func (w *BackgroundWorker) CancelMediaCleanup(ctx context.Context, workspaceID string) error {
 	_, err := w.db.NewDelete().Model(&models.Job{}).
 		Where("type = 'media_cleanup' AND payload LIKE ?", "%"+workspaceID+"%").
@@ -666,17 +600,10 @@ func (w *BackgroundWorker) CancelMediaCleanup(ctx context.Context, workspaceID s
 	return err
 }
 
-func ScheduleMediaCleanup(db *bun.DB, workspaceID string, days int) error {
-	if days <= 0 {
-		_, err := db.NewDelete().Model(&models.Job{}).
-			Where("type = 'media_cleanup' AND payload LIKE ?", "%"+workspaceID+"%").
-			Exec(context.Background())
-		return err
-	}
-
+func ScheduleMediaCleanup(db *bun.DB, workspaceID string, _ int) error {
 	payload, err := json.Marshal(map[string]interface{}{
 		"workspace_id": workspaceID,
-		"days":         days,
+		"days":         14,
 	})
 	if err != nil {
 		return err

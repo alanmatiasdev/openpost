@@ -9,6 +9,7 @@
 	import * as Sheet from '$lib/components/ui/sheet';
 	import * as Tooltip from '$lib/components/ui/tooltip';
 	import { Button } from '$lib/components/ui/button';
+	import AppToast from '$lib/components/app-toast.svelte';
 	import SaveIndicator from '$lib/components/save-indicator.svelte';
 	import { Checkbox } from '$lib/components/ui/checkbox';
 	import { Input } from '$lib/components/ui/input';
@@ -90,6 +91,7 @@
 	import GroupIcon from 'lucide-svelte/icons/group';
 	import UngroupIcon from 'lucide-svelte/icons/ungroup';
 	import MoreIcon from 'lucide-svelte/icons/ellipsis';
+	import HelpIcon from 'lucide-svelte/icons/circle-help';
 	import SquareIcon from 'lucide-svelte/icons/square';
 	import CircleIcon from 'lucide-svelte/icons/circle';
 	import MinusIcon from 'lucide-svelte/icons/minus';
@@ -145,7 +147,9 @@
 	let lastPreviewAt = 0;
 	let coverPreviewMediaID = '';
 	let exportDialogOpen = $state(false);
-	let postExportDialogOpen = $state(false);
+	let exportToastVisible = $state(false);
+	let firstEditHintVisible = $state(false);
+	let helpDialogOpen = $state(false);
 	let conflictDialogOpen = $state(false);
 	let historyDialogOpen = $state(false);
 	let checkpointDialogOpen = $state(false);
@@ -182,10 +186,14 @@
 	let fillSlotTool = $state<'bucket' | 'gradient'>('bucket');
 	let eraserSlotTool = $state<'eraser' | 'magic_eraser'>('eraser');
 	let shapeSlotKind = $state<'rectangle' | 'rounded_rectangle' | 'ellipse' | 'line'>('rectangle');
+	let mobileSelectTool = $state<ImageEditorTool>('select');
+	let mobileDrawTool = $state<ImageEditorTool>('pencil');
+	let mobileRetouchTool = $state<ImageEditorTool>('eraser');
 	let assetPanelWidth = $state(260);
 	let inspectorPanelWidth = $state(320);
 	let layersPanelHeight = $state(280);
 	let inspectorElement = $state<HTMLElement>();
+	let shortcutModifier = $state('Ctrl');
 	let meaningfulEditTracked = false;
 	let panelResize:
 		| {
@@ -229,6 +237,18 @@
 	}
 
 	onMount(() => {
+		shortcutModifier = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl';
+		try {
+			if (!localStorage.getItem('openpost-image-editor-first-edit-v1')) {
+				const firstTextLayer = editor.activePage?.layers.find((layer) => layer.type === 'text');
+				if (firstTextLayer) {
+					editor.selectLayer(firstTextLayer.id);
+					firstEditHintVisible = true;
+				}
+			}
+		} catch {
+			// First-edit guidance is optional when browser storage is unavailable.
+		}
 		try {
 			editor.setRecentColors(
 				JSON.parse(
@@ -314,6 +334,20 @@
 		savedIndicatorTimer = setTimeout(() => {
 			savedIndicatorVisible = false;
 		}, 1_600);
+	}
+
+	function dismissFirstEditHint(): void {
+		firstEditHintVisible = false;
+		try {
+			localStorage.setItem('openpost-image-editor-first-edit-v1', '1');
+		} catch {
+			// The hint may return when browser storage is unavailable.
+		}
+	}
+
+	function openFirstEditProperties(): void {
+		if (window.innerWidth < 1024) mobileSheet = 'properties';
+		dismissFirstEditHint();
 	}
 
 	function clampPanelSize(
@@ -824,6 +858,7 @@
 			document.height_px = resizeHeight;
 			document.preset_key = 'custom';
 		});
+		editor.fitZoom();
 		resizeDialogOpen = false;
 	}
 
@@ -833,6 +868,11 @@
 			return;
 		}
 		editor.activeTool = tool;
+		if (['select', 'marquee', 'ellipse_marquee', 'lasso', 'magic_wand', 'hand'].includes(tool)) {
+			mobileSelectTool = tool;
+		}
+		if (['text', 'pencil', 'bucket', 'gradient'].includes(tool)) mobileDrawTool = tool;
+		if (['eraser', 'magic_eraser'].includes(tool)) mobileRetouchTool = tool;
 		if (isMarqueeTool(tool)) marqueeSlotTool = tool;
 		if (isFillTool(tool)) fillSlotTool = tool;
 		if (isEraserTool(tool)) eraserSlotTool = tool;
@@ -923,9 +963,7 @@
 		}
 		if (modifier && key === '0') {
 			event.preventDefault();
-			editor.zoom = 0.75;
-			editor.panX = 0;
-			editor.panY = 0;
+			editor.fitZoom();
 			return;
 		}
 		if (modifier && key === '1') {
@@ -942,6 +980,17 @@
 			const deltaX = key === 'arrowleft' ? -distance : key === 'arrowright' ? distance : 0;
 			const deltaY = key === 'arrowup' ? -distance : key === 'arrowdown' ? distance : 0;
 			editor.movePixelSelection(editor.pixelSelection.data, deltaX, deltaY);
+			return;
+		}
+		if (
+			editor.selectedLayerIDs.length > 0 &&
+			['arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key)
+		) {
+			event.preventDefault();
+			const distance = event.shiftKey ? 10 : 1;
+			const deltaX = key === 'arrowleft' ? -distance : key === 'arrowright' ? distance : 0;
+			const deltaY = key === 'arrowup' ? -distance : key === 'arrowdown' ? distance : 0;
+			editor.nudgeSelected(deltaX, deltaY);
 			return;
 		}
 		if (key === 'delete' || key === 'backspace') {
@@ -1029,7 +1078,8 @@
 				: await uploadMediaFile({
 						workspaceId: editor.workspaceID,
 						file,
-						source: 'upload'
+						source: 'upload',
+						retentionClass: 'temporary'
 					});
 			editor.addImage({ id: uploaded.id, name: m.image_editor_pasted_image() });
 			return;
@@ -1104,7 +1154,8 @@
 						source: 'background_removal',
 						parentMediaId: layer.image.media_id,
 						designDocumentId: editor.id,
-						designPageId: editor.activePageID
+						designPageId: editor.activePageID,
+						retentionClass: 'temporary'
 					});
 			editor.updateLayer(layer.id, {
 				image: { ...layer.image, media_id: uploaded.id }
@@ -1175,7 +1226,7 @@
 						format: exportFormat,
 						pages: publicImageEditorPageCountBucket(rendered.length)
 					});
-					postExportDialogOpen = true;
+					exportToastVisible = true;
 				}
 				finishMetric();
 				return;
@@ -1198,7 +1249,8 @@
 					file,
 					source: 'image_editor_export',
 					designDocumentId: editor.id,
-					designPageId: page.page.id
+					designPageId: page.page.id,
+					retentionClass: exportMode === 'attach' ? 'temporary' : 'library'
 				});
 				mediaIDs.push(uploaded.id);
 				exportSuccessfulByPage = {
@@ -1324,7 +1376,7 @@
 					<Menubar.Item onclick={() => saveNow()} disabled={!editor.canEdit}>
 						<SaveIcon />
 						{m.common_save()}
-						<Menubar.Shortcut>Ctrl S</Menubar.Shortcut>
+						<Menubar.Shortcut>{shortcutModifier} S</Menubar.Shortcut>
 					</Menubar.Item>
 					{#if guestMode}
 						<Menubar.Item onclick={saveToOpenPost}>
@@ -1354,11 +1406,11 @@
 				<Menubar.Content class="min-w-44">
 					<Menubar.Item onclick={() => editor.undo()} disabled={!editor.canUndo}>
 						{m.image_editor_undo()}
-						<Menubar.Shortcut>Ctrl Z</Menubar.Shortcut>
+						<Menubar.Shortcut>{shortcutModifier} Z</Menubar.Shortcut>
 					</Menubar.Item>
 					<Menubar.Item onclick={() => editor.redo()} disabled={!editor.canRedo}>
 						{m.image_editor_redo()}
-						<Menubar.Shortcut>Ctrl ⇧ Z</Menubar.Shortcut>
+						<Menubar.Shortcut>{shortcutModifier} ⇧ Z</Menubar.Shortcut>
 					</Menubar.Item>
 					<Menubar.Separator />
 					<Menubar.Item
@@ -1366,7 +1418,7 @@
 						disabled={editor.selectedLayerIDs.length === 0}
 					>
 						{m.image_editor_duplicate()}
-						<Menubar.Shortcut>Ctrl J</Menubar.Shortcut>
+						<Menubar.Shortcut>{shortcutModifier} J</Menubar.Shortcut>
 					</Menubar.Item>
 					<Menubar.Item
 						onclick={() => editor.deleteSelected()}
@@ -1386,7 +1438,7 @@
 					>
 						<GroupIcon />
 						{m.image_editor_group()}
-						<Menubar.Shortcut>Ctrl G</Menubar.Shortcut>
+						<Menubar.Shortcut>{shortcutModifier} G</Menubar.Shortcut>
 					</Menubar.Item>
 					<Menubar.Item
 						onclick={() => editor.ungroupSelected()}
@@ -1394,7 +1446,7 @@
 					>
 						<UngroupIcon />
 						{m.image_editor_ungroup()}
-						<Menubar.Shortcut>Ctrl ⇧ G</Menubar.Shortcut>
+						<Menubar.Shortcut>{shortcutModifier} ⇧ G</Menubar.Shortcut>
 					</Menubar.Item>
 					<Menubar.Item
 						onclick={() => removeBackground()}
@@ -1415,19 +1467,13 @@
 						{m.image_editor_toggle_inspector()}
 					</Menubar.CheckboxItem>
 					<Menubar.Separator />
-					<Menubar.Item
-						onclick={() => {
-							editor.zoom = 0.75;
-							editor.panX = 0;
-							editor.panY = 0;
-						}}
-					>
+					<Menubar.Item onclick={() => editor.fitZoom()}>
 						{m.image_editor_fit_canvas()}
-						<Menubar.Shortcut>Ctrl 0</Menubar.Shortcut>
+						<Menubar.Shortcut>{shortcutModifier} 0</Menubar.Shortcut>
 					</Menubar.Item>
 					<Menubar.Item onclick={() => (editor.zoom = 1)}>
 						{m.image_editor_zoom_100()}
-						<Menubar.Shortcut>Ctrl 1</Menubar.Shortcut>
+						<Menubar.Shortcut>{shortcutModifier} 1</Menubar.Shortcut>
 					</Menubar.Item>
 					<Menubar.CheckboxItem
 						checked={focusedCanvas}
@@ -1436,6 +1482,15 @@
 						{m.image_editor_focused_canvas()}
 						<Menubar.Shortcut>F</Menubar.Shortcut>
 					</Menubar.CheckboxItem>
+				</Menubar.Content>
+			</Menubar.Menu>
+			<Menubar.Menu value="help">
+				<Menubar.Trigger>{m.image_editor_help()}</Menubar.Trigger>
+				<Menubar.Content class="min-w-48">
+					<Menubar.Item onclick={() => (helpDialogOpen = true)}>
+						<HelpIcon />
+						{m.image_editor_help_open()}
+					</Menubar.Item>
 				</Menubar.Content>
 			</Menubar.Menu>
 		</Menubar.Root>
@@ -1457,7 +1512,7 @@
 		{/if}
 		<Input
 			value={editor.document?.title ?? ''}
-			class="h-11 min-w-0 flex-1 border-transparent bg-transparent px-2 font-medium hover:border-input focus:border-input sm:max-w-56 sm:flex-none md:h-11 lg:ml-auto lg:h-8 lg:max-w-72"
+			class="h-11 min-w-0 flex-1 border-transparent bg-transparent px-2 font-medium hover:border-input focus:border-input max-[359px]:hidden sm:max-w-56 sm:flex-none md:h-11 lg:ml-auto lg:h-8 lg:max-w-72"
 			aria-label={m.image_editor_design_title()}
 			disabled={!editor.canEdit}
 			oninput={(event) =>
@@ -1471,7 +1526,7 @@
 			<Button
 				variant="ghost"
 				size="icon-sm"
-				class="size-11 max-[359px]:hidden md:size-11 lg:size-8"
+				class="size-11 md:size-11 lg:size-8"
 				onclick={() => editor.undo()}
 				disabled={!editor.canUndo}
 				aria-label={m.image_editor_undo()}><UndoIcon /></Button
@@ -1479,7 +1534,7 @@
 			<Button
 				variant="ghost"
 				size="icon-sm"
-				class="size-11 max-[359px]:hidden md:size-11 lg:size-8"
+				class="size-11 md:size-11 lg:size-8"
 				onclick={() => editor.redo()}
 				disabled={!editor.canRedo}
 				aria-label={m.image_editor_redo()}><RedoIcon /></Button
@@ -1499,6 +1554,15 @@
 					{/snippet}
 				</DropdownMenu.Trigger>
 				<DropdownMenu.Content align="end">
+					<DropdownMenu.Item onclick={() => editor.undo()} disabled={!editor.canUndo}>
+						<UndoIcon />
+						{m.image_editor_undo()}
+					</DropdownMenu.Item>
+					<DropdownMenu.Item onclick={() => editor.redo()} disabled={!editor.canRedo}>
+						<RedoIcon />
+						{m.image_editor_redo()}
+					</DropdownMenu.Item>
+					<DropdownMenu.Separator />
 					<DropdownMenu.Item onclick={() => saveNow()} disabled={!editor.canEdit}
 						>{m.common_save()}</DropdownMenu.Item
 					>
@@ -1526,6 +1590,11 @@
 						disabled={!editor.selectedLayers[0]?.image}
 						>{m.image_editor_remove_background()}</DropdownMenu.Item
 					>
+					<DropdownMenu.Separator />
+					<DropdownMenu.Item onclick={() => (helpDialogOpen = true)}>
+						<HelpIcon />
+						{m.image_editor_help()}
+					</DropdownMenu.Item>
 				</DropdownMenu.Content>
 			</DropdownMenu.Root>
 			{#if guestMode}
@@ -1893,11 +1962,8 @@
 				<button
 					type="button"
 					class="min-h-11 min-w-14 rounded px-2 text-xs md:min-h-11 lg:min-h-7"
-					onclick={() => {
-						editor.zoom = 0.75;
-						editor.panX = 0;
-						editor.panY = 0;
-					}}
+					onclick={() => editor.fitZoom()}
+					aria-label={`${m.image_editor_zoom()} ${Math.round(editor.zoom * 100)}%`}
 				>
 					{Math.round(editor.zoom * 100)}%
 				</button>
@@ -1946,7 +2012,144 @@
 	</div>
 
 	<nav
-		class="flex h-[calc(4rem+env(safe-area-inset-bottom))] shrink-0 snap-x overflow-x-auto border-t bg-background px-1 pt-1 pb-[env(safe-area-inset-bottom)] lg:hidden"
+		class="flex h-[calc(4rem+env(safe-area-inset-bottom))] shrink-0 border-t bg-background px-1 pt-1 pb-[env(safe-area-inset-bottom)] sm:hidden"
+		aria-label={m.image_editor_tools()}
+	>
+		<Button
+			variant="ghost"
+			class="h-12 min-w-0 flex-1 flex-col gap-0 px-0 text-[10px]"
+			onclick={() => (mobileSheet = 'assets')}
+		>
+			<PanelLeftIcon />
+			<span class="max-w-full truncate">{m.image_editor_add()}</span>
+		</Button>
+		<DropdownMenu.Root>
+			<DropdownMenu.Trigger class="contents">
+				{#snippet child({ props })}
+					<Button
+						{...props}
+						variant={[
+							'select',
+							'marquee',
+							'ellipse_marquee',
+							'lasso',
+							'magic_wand',
+							'hand'
+						].includes(editor.activeTool)
+							? 'secondary'
+							: 'ghost'}
+						class="h-12 min-w-0 flex-1 flex-col gap-0 px-0 text-[10px]"
+						onclick={() => setTool(mobileSelectTool)}
+						aria-label={m.image_editor_select()}
+					>
+						<MousePointerIcon />
+						<span class="max-w-full truncate">{m.image_editor_select()}</span>
+					</Button>
+				{/snippet}
+			</DropdownMenu.Trigger>
+			<DropdownMenu.Content side="top" align="start" class="min-w-52">
+				<DropdownMenu.Item onclick={() => setTool('select')}
+					><MousePointerIcon />{m.image_editor_select_objects()}</DropdownMenu.Item
+				>
+				<DropdownMenu.Item onclick={() => setTool('marquee')}
+					><RectangleSelectIcon />{m.image_editor_rectangle_select()}</DropdownMenu.Item
+				>
+				<DropdownMenu.Item onclick={() => setTool('ellipse_marquee')}
+					><CircleDashedIcon />{m.image_editor_ellipse_select()}</DropdownMenu.Item
+				>
+				<DropdownMenu.Item onclick={() => setTool('lasso')}
+					><LassoSelectIcon />{m.image_editor_lasso_select()}</DropdownMenu.Item
+				>
+				<DropdownMenu.Item onclick={() => setTool('magic_wand')}
+					><WandIcon />{m.image_editor_magic_select()}</DropdownMenu.Item
+				>
+				<DropdownMenu.Item onclick={() => setTool('hand')}
+					><HandIcon />{m.image_editor_hand()}</DropdownMenu.Item
+				>
+			</DropdownMenu.Content>
+		</DropdownMenu.Root>
+		<DropdownMenu.Root>
+			<DropdownMenu.Trigger class="contents">
+				{#snippet child({ props })}
+					<Button
+						{...props}
+						variant={['text', 'pencil', 'bucket', 'gradient'].includes(editor.activeTool)
+							? 'secondary'
+							: 'ghost'}
+						class="h-12 min-w-0 flex-1 flex-col gap-0 px-0 text-[10px]"
+						onclick={() => setTool(mobileDrawTool)}
+						aria-label={m.image_editor_draw()}
+					>
+						<PencilIcon />
+						<span class="max-w-full truncate">{m.image_editor_draw()}</span>
+					</Button>
+				{/snippet}
+			</DropdownMenu.Trigger>
+			<DropdownMenu.Content side="top" align="start" class="min-w-44">
+				<DropdownMenu.Item onclick={() => setTool('text')}
+					><TypeIcon />{m.image_editor_text()}</DropdownMenu.Item
+				>
+				<DropdownMenu.Item onclick={() => setTool('pencil')}
+					><PencilIcon />{m.image_editor_pencil()}</DropdownMenu.Item
+				>
+				<DropdownMenu.Item onclick={() => setTool('bucket')}
+					><PaintBucketIcon />{m.image_editor_paint_bucket()}</DropdownMenu.Item
+				>
+				<DropdownMenu.Item onclick={() => setTool('gradient')}
+					><BlendIcon />{m.image_editor_gradient()}</DropdownMenu.Item
+				>
+			</DropdownMenu.Content>
+		</DropdownMenu.Root>
+		<DropdownMenu.Root>
+			<DropdownMenu.Trigger class="contents">
+				{#snippet child({ props })}
+					<Button
+						{...props}
+						variant={['eraser', 'magic_eraser'].includes(editor.activeTool) ? 'secondary' : 'ghost'}
+						class="h-12 min-w-0 flex-1 flex-col gap-0 px-0 text-[10px]"
+						onclick={() => setTool(mobileRetouchTool)}
+						aria-label={m.image_editor_retouch()}
+						disabled={!editor.canEdit}
+					>
+						<EraserIcon />
+						<span class="max-w-full truncate">{m.image_editor_retouch()}</span>
+					</Button>
+				{/snippet}
+			</DropdownMenu.Trigger>
+			<DropdownMenu.Content side="top" align="start" class="min-w-48">
+				<DropdownMenu.Item onclick={() => setTool('eraser')}
+					><EraserIcon />{m.image_editor_erase()}</DropdownMenu.Item
+				>
+				<DropdownMenu.Item onclick={() => setTool('magic_eraser')}
+					><WandIcon />{m.image_editor_magic_erase()}</DropdownMenu.Item
+				>
+				<DropdownMenu.Item
+					onclick={() => removeBackground()}
+					disabled={!editor.selectedLayers[0]?.image}
+					><WandIcon />{m.image_editor_remove_background()}</DropdownMenu.Item
+				>
+			</DropdownMenu.Content>
+		</DropdownMenu.Root>
+		<Button
+			variant={mobileSheet === 'layers' ? 'secondary' : 'ghost'}
+			class="h-12 min-w-0 flex-1 flex-col gap-0 px-0 text-[10px]"
+			onclick={() => (mobileSheet = 'layers')}
+		>
+			<LayersIcon />
+			<span class="max-w-full truncate">{m.image_editor_layers()}</span>
+		</Button>
+		<Button
+			variant={mobileSheet === 'properties' ? 'secondary' : 'ghost'}
+			class="h-12 min-w-0 flex-1 flex-col gap-0 px-0 text-[10px]"
+			onclick={() => (mobileSheet = 'properties')}
+		>
+			<SlidersIcon />
+			<span class="max-w-full truncate">{m.image_editor_properties()}</span>
+		</Button>
+	</nav>
+
+	<nav
+		class="hidden h-[calc(4rem+env(safe-area-inset-bottom))] shrink-0 snap-x overflow-x-auto border-t bg-background px-1 pt-1 pb-[env(safe-area-inset-bottom)] sm:flex lg:hidden"
 		aria-label={m.image_editor_tools()}
 	>
 		<Button
@@ -2535,26 +2738,47 @@
 	</Dialog.Content>
 </Dialog.Root>
 
-<Dialog.Root bind:open={postExportDialogOpen}>
+{#if exportToastVisible}
+	<AppToast
+		message={m.image_editor_export_downloaded()}
+		tone="success"
+		dismissLabel={m.common_dismiss()}
+		onDismiss={() => (exportToastVisible = false)}
+		actionLabel={guestMode ? m.image_editor_public_save_openpost() : undefined}
+		onAction={guestMode ? saveToOpenPost : undefined}
+	/>
+{/if}
+
+{#if firstEditHintVisible}
+	<AppToast
+		message={m.image_editor_first_edit_hint()}
+		dismissLabel={m.common_dismiss()}
+		onDismiss={dismissFirstEditHint}
+		actionLabel={m.image_editor_open_properties()}
+		onAction={openFirstEditProperties}
+	/>
+{/if}
+
+<Dialog.Root bind:open={helpDialogOpen}>
 	<Dialog.Content class="sm:max-w-md">
 		<Dialog.Header>
-			<Dialog.Title>{m.image_editor_public_export_title()}</Dialog.Title>
-			<Dialog.Description>{m.image_editor_public_export_description()}</Dialog.Description>
+			<Dialog.Title>{m.image_editor_help_title()}</Dialog.Title>
+			<Dialog.Description>{m.image_editor_help_description()}</Dialog.Description>
 		</Dialog.Header>
-		<div class="rounded-lg border bg-muted/35 p-3 text-sm text-muted-foreground">
-			{m.image_editor_public_cloud_value()}
+		<ol class="grid gap-3 text-sm">
+			<li class="rounded-lg border p-3"><strong>1.</strong> {m.image_editor_help_select()}</li>
+			<li class="rounded-lg border p-3"><strong>2.</strong> {m.image_editor_help_add()}</li>
+			<li class="rounded-lg border p-3"><strong>3.</strong> {m.image_editor_help_export()}</li>
+		</ol>
+		<div class="rounded-lg bg-muted p-3 text-sm">
+			<p class="font-medium">{m.image_editor_shortcuts()}</p>
+			<p class="mt-1 text-muted-foreground">
+				{shortcutModifier} Z {m.image_editor_undo().toLowerCase()} · {shortcutModifier} ⇧ Z
+				{m.image_editor_redo().toLowerCase()} · {shortcutModifier} 0 {m
+					.image_editor_fit_canvas()
+					.toLowerCase()}
+			</p>
 		</div>
-		<Dialog.Footer>
-			<Button variant="ghost" onclick={() => (postExportDialogOpen = false)}
-				>{m.image_editor_public_keep_editing()}</Button
-			>
-			<Button
-				onclick={() => {
-					postExportDialogOpen = false;
-					void saveToOpenPost();
-				}}>{m.image_editor_public_save_openpost()}</Button
-			>
-		</Dialog.Footer>
 	</Dialog.Content>
 </Dialog.Root>
 

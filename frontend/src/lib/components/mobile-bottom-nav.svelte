@@ -53,6 +53,10 @@
 			pathname.startsWith('/messages/') ||
 			pathname === '/notifications' ||
 			pathname.startsWith('/notifications/') ||
+			pathname === '/editors' ||
+			pathname.startsWith('/editors/') ||
+			pathname.startsWith('/image-editor/') ||
+			pathname.startsWith('/video-editor/') ||
 			pathname === '/accounts' ||
 			pathname.startsWith('/accounts/') ||
 			pathname === '/settings' ||

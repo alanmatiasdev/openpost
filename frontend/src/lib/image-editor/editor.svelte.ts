@@ -82,6 +82,8 @@ export class ImageEditorController {
 	private historyRevision = $state(0);
 	private changeListeners = new SvelteSet<() => void>();
 	private selectionAnchorID = '';
+	private viewportWidth = 0;
+	private viewportHeight = 0;
 
 	get activePage(): ImageEditorPage | null {
 		return this.document?.pages.find((page) => page.id === this.activePageID) ?? null;
@@ -790,6 +792,27 @@ export class ImageEditorController {
 		);
 	}
 
+	nudgeSelected(deltaX: number, deltaY: number): void {
+		if (!deltaX && !deltaY) return;
+		const movableRoots = this.selectedRootLayers().filter((layer) => !layer.locked);
+		if (movableRoots.length === 0) return;
+		const movableIDs = this.idsWithDescendants(movableRoots.map((layer) => layer.id));
+		this.mutate(
+			m.image_editor_move_layers(),
+			(document) => {
+				const page = document.pages.find((item) => item.id === this.activePageID);
+				if (!page) return;
+				for (const layer of page.layers) {
+					if (!movableIDs.has(layer.id)) continue;
+					layer.transform.x += deltaX;
+					layer.transform.y += deltaY;
+				}
+				this.recalculateAllGroupBounds(page);
+			},
+			`nudge:${[...movableIDs].sort().join(',')}`
+		);
+	}
+
 	deleteSelected(): void {
 		if (this.selectedLayerIDs.length === 0) return;
 		const ids = this.selectedWithDescendants();
@@ -1096,12 +1119,18 @@ export class ImageEditorController {
 		});
 	}
 
-	fitZoom(containerWidth: number, containerHeight: number): void {
-		if (!this.document) return;
+	setViewportSize(containerWidth: number, containerHeight: number): void {
+		if (containerWidth > 0) this.viewportWidth = containerWidth;
+		if (containerHeight > 0) this.viewportHeight = containerHeight;
+	}
+
+	fitZoom(containerWidth = this.viewportWidth, containerHeight = this.viewportHeight): void {
+		if (!this.document || containerWidth <= 0 || containerHeight <= 0) return;
+		this.setViewportSize(containerWidth, containerHeight);
 		this.zoom = Math.min(
 			1,
-			(containerWidth - 80) / this.document.width_px,
-			(containerHeight - 80) / this.document.height_px
+			Math.max(0.1, (containerWidth - 80) / this.document.width_px),
+			Math.max(0.1, (containerHeight - 80) / this.document.height_px)
 		);
 		this.panX = 0;
 		this.panY = 0;

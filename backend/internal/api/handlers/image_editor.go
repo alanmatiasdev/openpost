@@ -2145,7 +2145,17 @@ func replaceImageEditorMediaReferences(ctx context.Context, tx bun.Tx, document 
 	if len(refs) == 0 {
 		return nil
 	}
-	_, err := tx.NewInsert().Model(&refs).Exec(ctx)
+	if _, err := tx.NewInsert().Model(&refs).Exec(ctx); err != nil {
+		return err
+	}
+	mediaIDs := make([]string, 0, len(refs))
+	for _, ref := range refs {
+		mediaIDs = append(mediaIDs, ref.MediaID)
+	}
+	_, err := tx.NewUpdate().Model((*models.MediaAttachment)(nil)).
+		Set("last_used_at = ?", time.Now().UTC()).
+		Where("id IN (?)", bun.List(mediaIDs)).
+		Exec(ctx)
 	return err
 }
 

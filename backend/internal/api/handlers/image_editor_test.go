@@ -540,16 +540,18 @@ func TestImageEditorWorkspaceTemplateCanBeReplacedDeliberately(t *testing.T) {
 	require.Equal(t, "Replacement snapshot", replaced.Body.Document.Title)
 }
 
-func TestBuiltinImageEditorTemplatesIncludeOriginalMultipageSets(t *testing.T) {
+func TestBuiltinImageEditorTemplatesCoverDistinctCreativeJobs(t *testing.T) {
 	t.Parallel()
 	templates := builtinImageEditorTemplates()
-	require.Len(t, templates, 5)
+	require.Len(t, templates, 15)
 
 	multipage := 0
+	categories := map[string]bool{}
 	for _, template := range templates {
 		require.True(t, template.BuiltIn)
 		require.NotEmpty(t, template.Document.Pages)
 		require.NoError(t, validateImageEditorPayload(template.Document), template.ID)
+		categories[template.Category] = true
 		for _, page := range template.Document.Pages {
 			for _, layer := range page.Layers {
 				if layer.Text != nil {
@@ -561,7 +563,8 @@ func TestBuiltinImageEditorTemplatesIncludeOriginalMultipageSets(t *testing.T) {
 			multipage++
 		}
 	}
-	require.Equal(t, 1, multipage)
+	require.Equal(t, 3, multipage)
+	require.GreaterOrEqual(t, len(categories), 7)
 }
 
 func TestPublicImageEditorTemplatesExposeOnlyBuiltins(t *testing.T) {

@@ -47,6 +47,10 @@
 		...(accept !== 'video' ? [{ value: 'photo', label: m.video_editor_stock_photos() }] : []),
 		...(accept !== 'photo' ? [{ value: 'video', label: m.video_editor_stock_videos() }] : [])
 	]);
+	const selectingAsset = $derived(results.find((asset) => asset.external_id === selecting) ?? null);
+	const emptyMessage = $derived(
+		accept === 'photo' ? m.image_editor_stock_empty() : m.video_editor_stock_empty()
+	);
 
 	async function initialize(): Promise<void> {
 		try {
@@ -120,6 +124,18 @@
 	</div>
 
 	{#if error}<InlineNotice tone="error" message={error} />{/if}
+	{#if selectingAsset}
+		<p
+			class="flex items-center gap-2 text-sm text-muted-foreground"
+			role="status"
+			aria-live="polite"
+		>
+			<LoaderIcon class="size-4 animate-spin" />
+			{m.video_editor_stock_downloading({
+				title: selectingAsset.title || selectingAsset.kind
+			})}
+		</p>
+	{/if}
 
 	{#if loading}
 		<div class="flex items-center gap-2 py-6 text-sm text-muted-foreground" role="status">
@@ -231,7 +247,9 @@
 								onclick={() => selectAsset(asset)}
 							>
 								{#if selecting === asset.external_id}<LoaderIcon class="size-4 animate-spin" />{/if}
-								{m.video_editor_stock_use()}
+								{selecting === asset.external_id
+									? m.video_editor_stock_downloading({ title: asset.title || asset.kind })
+									: m.video_editor_stock_use()}
 							</Button>
 						</div>
 					</article>
@@ -243,7 +261,7 @@
 			</div>
 		{:else}
 			<div class="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-				{m.video_editor_stock_empty()}
+				{emptyMessage}
 			</div>
 		{/if}
 	{/if}

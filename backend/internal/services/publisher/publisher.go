@@ -18,6 +18,7 @@ import (
 	"github.com/openpost/backend/internal/platform"
 	"github.com/openpost/backend/internal/services/entitlements"
 	"github.com/openpost/backend/internal/services/lifecycle"
+	"github.com/openpost/backend/internal/services/medialifecycle"
 	"github.com/openpost/backend/internal/services/mediasigner"
 	"github.com/openpost/backend/internal/services/mediastore"
 	"github.com/openpost/backend/internal/services/notifications"
@@ -1089,6 +1090,9 @@ func (s *Service) finalizePost(ctx context.Context, post *models.Post) {
 		if _, err := s.db.NewUpdate().Model(post).Set("status = ?", models.PostStatusPublished).Where("id = ?", post.ID).Exec(ctx); err != nil {
 			log.Printf("[Publisher] Failed to update post %s status: %v", post.ID, err)
 		}
+		if err := medialifecycle.NewService(s.db, s.storage).TrashTemporaryForPost(ctx, post.ID); err != nil {
+			log.Printf("[Publisher] Failed to clean temporary media for post %s: %v", post.ID, err)
+		}
 		return
 	}
 
@@ -1111,6 +1115,9 @@ func (s *Service) finalizePost(ctx context.Context, post *models.Post) {
 			return
 		}
 		s.recordPublishedPost(ctx, post.WorkspaceID)
+		if err := medialifecycle.NewService(s.db, s.storage).TrashTemporaryForPost(ctx, post.ID); err != nil {
+			log.Printf("[Publisher] Failed to clean temporary media for post %s: %v", post.ID, err)
+		}
 	}
 }
 
@@ -1841,6 +1848,17 @@ func (s *Service) finalizePublication(ctx context.Context, publication *models.P
 	})
 	if err != nil {
 		log.Printf("[Publisher] Failed to finalize publication %s: %v", publication.ID, err)
+		return
+	}
+	s.cleanupPublishedPublicationMedia(ctx, publication.ID, status)
+}
+
+func (s *Service) cleanupPublishedPublicationMedia(ctx context.Context, publicationID, status string) {
+	if status != models.PublicationStatusPublished {
+		return
+	}
+	if err := medialifecycle.NewService(s.db, s.storage).TrashTemporaryForPublication(ctx, publicationID); err != nil {
+		log.Printf("[Publisher] Failed to clean temporary media for publication %s: %v", publicationID, err)
 	}
 }
 

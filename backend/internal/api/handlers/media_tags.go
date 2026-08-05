@@ -802,6 +802,13 @@ func (h *ImageEditorHandler) updateBrandKit(ctx context.Context, input *UpdateIm
 			if _, err := tx.NewInsert().Model(asset).Exec(txCtx); err != nil {
 				return err
 			}
+			if _, err := tx.NewUpdate().Model((*models.MediaAttachment)(nil)).
+				Set("retention_class = ?", "library").
+				Set("asset_kind = ?", "library").
+				Where("id = ? AND workspace_id = ?", item.MediaID, input.Body.WorkspaceID).
+				Exec(txCtx); err != nil {
+				return err
+			}
 		}
 		for _, item := range input.Body.Fonts {
 			font := &models.BrandFont{
@@ -1029,6 +1036,9 @@ func (h *ImageEditorHandler) replaceTagItems(ctx context.Context, input *Replace
 	}); err != nil {
 		return nil, huma.Error500InternalServerError("failed to update media tag")
 	}
+	if err := h.promoteTaggedMedia(ctx, tag.WorkspaceID, mode, ids); err != nil {
+		return nil, err
+	}
 	count, err := h.db.NewSelect().
 		Model((*models.MediaTagAssignment)(nil)).
 		Where("tag_id = ?", tag.ID).
@@ -1039,6 +1049,19 @@ func (h *ImageEditorHandler) replaceTagItems(ctx context.Context, input *Replace
 	return &ReplaceMediaTagItemsOutput{Body: struct {
 		Count int `json:"count"`
 	}{Count: count}}, nil
+}
+
+func (h *ImageEditorHandler) promoteTaggedMedia(ctx context.Context, workspaceID, mode string, mediaIDs []string) error {
+	if mode == "remove" || len(mediaIDs) == 0 {
+		return nil
+	}
+	if _, err := h.db.NewUpdate().Model((*models.MediaAttachment)(nil)).
+		Set("retention_class = ?", "library").
+		Where("workspace_id = ? AND id IN (?)", workspaceID, bun.List(mediaIDs)).
+		Exec(ctx); err != nil {
+		return huma.Error500InternalServerError("failed to keep tagged media in the library")
+	}
+	return nil
 }
 
 func (h *ImageEditorHandler) loadTag(ctx context.Context, id string) (*models.MediaTag, error) {
@@ -1157,14 +1180,24 @@ func uniqueImageEditorStrings(values []string) []string {
 
 func builtinImageEditorTemplates() []ImageEditorTemplateResponse {
 	specs := []struct {
-		id, name, category, preset, headline, subline, background, accent string
-		pageCount                                                         int
+		id, name, category, preset, headline, subline, background, accent, layout string
+		pageCount                                                                 int
 	}{
-		{"builtin-quick-announcement", "Quick announcement", "Announcement", "instagram-square", "A clear update", "Say what changed and why it matters.", "#161616", "#f97316", 1},
-		{"builtin-quote-card", "Quote card", "Quote", "instagram-square", "Put the useful line first.", "Name or source", "#ece7df", "#c45120", 1},
-		{"builtin-how-to-carousel", "How-to carousel", "Carousel", "instagram-portrait", "How to get it done", "A focused five-page walkthrough.", "#fff8f1", "#ea580c", 5},
-		{"builtin-linkedin-insight", "LinkedIn insight", "Professional", "linkedin-square", "One practical insight", "Explain the idea in one short paragraph.", "#f6f5f2", "#c2410c", 1},
-		{"builtin-youtube-focus", "YouTube headline", "Thumbnail", "youtube-thumbnail", "THE MAIN IDEA", "Use one strong subject and a short promise.", "#18181b", "#f97316", 1},
+		{"builtin-quick-announcement", "Quick announcement", "Announcement", "instagram-square", "A clear update", "Say what changed and why it matters.", "#161616", "#f97316", "signal", 1},
+		{"builtin-bold-announcement", "Bold announcement", "Announcement", "instagram-square", "BIG NEWS", "One short line with the useful detail.", "#f97316", "#171717", "bold", 1},
+		{"builtin-photo-caption", "Photo caption", "Photo", "instagram-portrait", "A moment worth sharing", "Add a short caption or location.", "#f5f5f4", "#292524", "photo", 1},
+		{"builtin-quote-card", "Quote card", "Quote", "instagram-square", "Put the useful line first.", "Name or source", "#ece7df", "#c45120", "quote", 1},
+		{"builtin-quiet-quote", "Quiet quote", "Quote", "instagram-portrait", "A thoughtful line can carry the whole post.", "Name or source", "#f7f3ed", "#9a3412", "quiet-quote", 1},
+		{"builtin-how-to-carousel", "How-to carousel", "Carousel", "instagram-portrait", "How to get it done", "A focused five-page walkthrough.", "#fff8f1", "#ea580c", "steps", 5},
+		{"builtin-carousel-opener", "Carousel opener", "Carousel", "instagram-portrait", "The idea in one sentence", "Swipe for the useful details.", "#1c1917", "#f97316", "split", 5},
+		{"builtin-carousel-step", "Numbered steps", "Education", "instagram-portrait", "A practical process", "Four clear steps from start to finish.", "#f5f5f4", "#c2410c", "numbered", 4},
+		{"builtin-story-prompt", "Story prompt", "Story", "story-reel-slide", "What are you working on?", "Invite a short answer from your audience.", "#431407", "#fb923c", "prompt", 1},
+		{"builtin-story-photo", "Story photo", "Photo", "story-reel-slide", "Behind the scenes", "Add context in one line.", "#292524", "#f97316", "story-photo", 1},
+		{"builtin-linkedin-insight", "LinkedIn insight", "Professional", "linkedin-square", "One practical insight", "Explain the idea in one short paragraph.", "#f6f5f2", "#c2410c", "editorial", 1},
+		{"builtin-linkedin-launch", "LinkedIn launch", "Professional", "linkedin-landscape", "We just launched", "What changed, who it helps, and where to learn more.", "#172554", "#fb923c", "launch", 1},
+		{"builtin-x-update", "X product update", "Announcement", "x-landscape", "Product update", "One clear change. One clear outcome.", "#fafaf9", "#f97316", "update", 1},
+		{"builtin-youtube-focus", "YouTube headline", "Thumbnail", "youtube-thumbnail", "THE MAIN IDEA", "Use one strong subject and a short promise.", "#18181b", "#f97316", "thumbnail", 1},
+		{"builtin-youtube-list", "YouTube list", "Thumbnail", "youtube-thumbnail", "3 THINGS TO FIX", "Make the list concrete and easy to scan.", "#0f172a", "#fb923c", "thumbnail-list", 1},
 	}
 	result := make([]ImageEditorTemplateResponse, 0, len(specs))
 	for _, spec := range specs {
@@ -1185,16 +1218,7 @@ func builtinImageEditorTemplates() []ImageEditorTemplateResponse {
 				headline = carouselHeadlines[pageIndex-1]
 				subline = carouselSublines[pageIndex-1]
 			}
-			pages = append(pages, ImageEditorPagePayload{
-				ID:              uuid.NewSHA1(uuid.NameSpaceURL, []byte(pageSeed)).String(),
-				Name:            fmt.Sprintf("Page %d", pageIndex+1),
-				BackgroundColor: spec.background,
-				Layers: []ImageEditorLayer{
-					builtinImageEditorAccent(pageSeed, width, height, spec.accent),
-					builtinImageEditorText(pageSeed+"/headline", headline, float64(width)*0.09, float64(height)*0.36, float64(width)*0.82, float64(height)*0.28, float64(width)*0.075, imageEditorTemplateForeground(spec.background)),
-					builtinImageEditorText(pageSeed+"/subline", subline, float64(width)*0.09, float64(height)*0.68, float64(width)*0.72, float64(height)*0.12, float64(width)*0.026, imageEditorTemplateMutedForeground(spec.background)),
-				},
-			})
+			pages = append(pages, builtinImageEditorTemplatePage(pageSeed, spec.layout, headline, subline, spec.background, spec.accent, width, height, pageIndex, spec.pageCount))
 		}
 		payload := ImageEditorDocumentPayload{
 			SchemaVersion:  imageEditorSchemaVersion,
@@ -1215,6 +1239,142 @@ func builtinImageEditorTemplates() []ImageEditorTemplateResponse {
 		})
 	}
 	return result
+}
+
+func builtinImageEditorTemplatePage(seed, layout, headline, subline, background, accent string, width, height, pageIndex, pageCount int) ImageEditorPagePayload {
+	w := float64(width)
+	h := float64(height)
+	foreground := imageEditorTemplateForeground(background)
+	muted := imageEditorTemplateMutedForeground(background)
+	layers := []ImageEditorLayer{}
+
+	switch layout {
+	case "bold":
+		layers = append(layers,
+			builtinImageEditorShape(seed+"/block", "Headline block", "rounded_rectangle", w*0.06, h*0.07, w*0.88, h*0.58, accent, w*0.035),
+			builtinImageEditorTextStyled(seed+"/headline", headline, w*0.1, h*0.15, w*0.8, h*0.38, w*0.13, foreground, 900, "center"),
+			builtinImageEditorTextStyled(seed+"/subline", subline, w*0.12, h*0.73, w*0.76, h*0.12, w*0.03, foreground, 600, "center"),
+		)
+	case "photo":
+		layers = append(layers,
+			builtinImageEditorShape(seed+"/photo", "Replace with your photo", "rectangle", 0, 0, w, h*0.72, "#d6d3d1", 0),
+			builtinImageEditorTextStyled(seed+"/photo-label", "REPLACE WITH YOUR PHOTO", w*0.12, h*0.32, w*0.76, h*0.08, w*0.026, "#57534e", 700, "center"),
+			builtinImageEditorTextStyled(seed+"/headline", headline, w*0.08, h*0.77, w*0.84, h*0.1, w*0.052, foreground, 750, "left"),
+			builtinImageEditorTextStyled(seed+"/subline", subline, w*0.08, h*0.89, w*0.78, h*0.06, w*0.024, muted, 500, "left"),
+		)
+	case "quote":
+		layers = append(layers,
+			builtinImageEditorTextStyled(seed+"/mark", "“", w*0.08, h*0.08, w*0.24, h*0.2, w*0.2, accent, 800, "left"),
+			builtinImageEditorTextStyled(seed+"/headline", headline, w*0.12, h*0.28, w*0.76, h*0.34, w*0.068, foreground, 650, "center"),
+			builtinImageEditorShape(seed+"/rule", "Quote rule", "rounded_rectangle", w*0.4, h*0.7, w*0.2, mathMax(8, h*0.008), accent, 999),
+			builtinImageEditorTextStyled(seed+"/subline", subline, w*0.2, h*0.76, w*0.6, h*0.08, w*0.025, muted, 600, "center"),
+		)
+	case "quiet-quote":
+		layers = append(layers,
+			builtinImageEditorShape(seed+"/rule", "Quote rule", "rounded_rectangle", w*0.1, h*0.2, mathMax(10, w*0.012), h*0.54, accent, 999),
+			builtinImageEditorTextStyled(seed+"/headline", headline, w*0.17, h*0.22, w*0.7, h*0.36, w*0.06, foreground, 550, "left"),
+			builtinImageEditorTextStyled(seed+"/subline", subline, w*0.17, h*0.68, w*0.55, h*0.08, w*0.025, muted, 650, "left"),
+		)
+	case "steps", "numbered":
+		number := pageIndex + 1
+		layers = append(layers,
+			builtinImageEditorShape(seed+"/number", fmt.Sprintf("Step %d", number), "ellipse", w*0.08, h*0.1, w*0.2, w*0.2, accent, 999),
+			builtinImageEditorTextStyled(seed+"/number-text", fmt.Sprintf("%02d", number), w*0.08, h*0.14, w*0.2, w*0.1, w*0.065, imageEditorTemplateForeground(accent), 800, "center"),
+			builtinImageEditorTextStyled(seed+"/headline", headline, w*0.09, h*0.38, w*0.82, h*0.25, w*0.075, foreground, 750, "left"),
+			builtinImageEditorTextStyled(seed+"/subline", subline, w*0.09, h*0.68, w*0.76, h*0.13, w*0.029, muted, 450, "left"),
+			builtinImageEditorTextStyled(seed+"/page", fmt.Sprintf("%d / %d", number, pageCount), w*0.7, h*0.9, w*0.2, h*0.04, w*0.018, muted, 600, "right"),
+		)
+	case "split":
+		layers = append(layers,
+			builtinImageEditorShape(seed+"/split", "Color field", "rectangle", w*0.58, 0, w*0.42, h, accent, 0),
+			builtinImageEditorTextStyled(seed+"/headline", headline, w*0.08, h*0.22, w*0.68, h*0.32, w*0.077, foreground, 780, "left"),
+			builtinImageEditorTextStyled(seed+"/subline", subline, w*0.08, h*0.63, w*0.45, h*0.1, w*0.027, muted, 500, "left"),
+			builtinImageEditorTextStyled(seed+"/page", fmt.Sprintf("%02d", pageIndex+1), w*0.68, h*0.76, w*0.22, h*0.1, w*0.08, imageEditorTemplateForeground(accent), 800, "center"),
+		)
+	case "prompt":
+		layers = append(layers,
+			builtinImageEditorTextStyled(seed+"/label", "YOUR TURN", w*0.1, h*0.12, w*0.8, h*0.05, w*0.022, accent, 800, "center"),
+			builtinImageEditorTextStyled(seed+"/headline", headline, w*0.1, h*0.3, w*0.8, h*0.3, w*0.074, foreground, 700, "center"),
+			builtinImageEditorShape(seed+"/answer", "Answer field", "rounded_rectangle", w*0.12, h*0.72, w*0.76, h*0.12, "#fff7ed", w*0.06),
+			builtinImageEditorTextStyled(seed+"/subline", subline, w*0.18, h*0.755, w*0.64, h*0.05, w*0.021, "#7c2d12", 550, "center"),
+		)
+	case "story-photo":
+		layers = append(layers,
+			builtinImageEditorShape(seed+"/photo", "Replace with your photo", "rectangle", 0, 0, w, h, "#57534e", 0),
+			builtinImageEditorTextStyled(seed+"/photo-label", "REPLACE WITH YOUR PHOTO", w*0.12, h*0.36, w*0.76, h*0.08, w*0.025, "#d6d3d1", 700, "center"),
+			builtinImageEditorShape(seed+"/caption", "Caption field", "rounded_rectangle", w*0.07, h*0.7, w*0.86, h*0.2, "#1c1917", w*0.035),
+			builtinImageEditorTextStyled(seed+"/headline", headline, w*0.12, h*0.74, w*0.76, h*0.08, w*0.05, "#fafaf9", 750, "left"),
+			builtinImageEditorTextStyled(seed+"/subline", subline, w*0.12, h*0.84, w*0.7, h*0.04, w*0.021, "#d6d3d1", 500, "left"),
+		)
+	case "editorial":
+		layers = append(layers,
+			builtinImageEditorTextStyled(seed+"/label", "INSIGHT", w*0.09, h*0.12, w*0.4, h*0.05, w*0.022, accent, 800, "left"),
+			builtinImageEditorTextStyled(seed+"/headline", headline, w*0.09, h*0.26, w*0.75, h*0.22, w*0.07, foreground, 700, "left"),
+			builtinImageEditorShape(seed+"/rule", "Editorial rule", "rectangle", w*0.09, h*0.56, w*0.82, mathMax(4, h*0.004), "#d6d3d1", 0),
+			builtinImageEditorTextStyled(seed+"/subline", subline, w*0.09, h*0.64, w*0.76, h*0.16, w*0.029, muted, 450, "left"),
+		)
+	case "launch":
+		layers = append(layers,
+			builtinImageEditorShape(seed+"/badge", "Launch badge", "rounded_rectangle", w*0.07, h*0.12, w*0.2, h*0.1, accent, h*0.05),
+			builtinImageEditorTextStyled(seed+"/badge-text", "NEW", w*0.07, h*0.145, w*0.2, h*0.05, w*0.024, imageEditorTemplateForeground(accent), 850, "center"),
+			builtinImageEditorTextStyled(seed+"/headline", headline, w*0.07, h*0.34, w*0.55, h*0.28, w*0.085, foreground, 800, "left"),
+			builtinImageEditorTextStyled(seed+"/subline", subline, w*0.66, h*0.34, w*0.27, h*0.24, w*0.027, muted, 500, "left"),
+		)
+	case "update":
+		layers = append(layers,
+			builtinImageEditorShape(seed+"/mark", "Update mark", "ellipse", w*0.07, h*0.12, w*0.07, w*0.07, accent, 999),
+			builtinImageEditorTextStyled(seed+"/label", "OPENPOST / UPDATE", w*0.17, h*0.13, w*0.5, h*0.05, w*0.02, muted, 700, "left"),
+			builtinImageEditorTextStyled(seed+"/headline", headline, w*0.07, h*0.35, w*0.55, h*0.22, w*0.08, foreground, 800, "left"),
+			builtinImageEditorTextStyled(seed+"/subline", subline, w*0.66, h*0.36, w*0.27, h*0.18, w*0.03, muted, 500, "left"),
+		)
+	case "thumbnail":
+		layers = append(layers,
+			builtinImageEditorShape(seed+"/subject", "Replace with your subject", "ellipse", w*0.04, h*0.1, w*0.4, h*0.8, "#44403c", w*0.2),
+			builtinImageEditorTextStyled(seed+"/subject-label", "YOUR SUBJECT", w*0.08, h*0.47, w*0.32, h*0.06, w*0.025, "#d6d3d1", 700, "center"),
+			builtinImageEditorTextStyled(seed+"/headline", headline, w*0.48, h*0.2, w*0.47, h*0.42, w*0.095, foreground, 900, "left"),
+			builtinImageEditorShape(seed+"/rule", "Headline underline", "rounded_rectangle", w*0.5, h*0.7, w*0.32, h*0.035, accent, 999),
+		)
+	case "thumbnail-list":
+		layers = append(layers,
+			builtinImageEditorTextStyled(seed+"/headline", headline, w*0.06, h*0.12, w*0.58, h*0.24, w*0.078, foreground, 900, "left"),
+			builtinImageEditorTextStyled(seed+"/list", "01  START HERE\n02  FIX THIS\n03  SHIP IT", w*0.08, h*0.46, w*0.52, h*0.34, w*0.04, "#e7e5e4", 700, "left"),
+			builtinImageEditorShape(seed+"/subject", "Replace with your subject", "rounded_rectangle", w*0.67, h*0.1, w*0.28, h*0.8, accent, w*0.04),
+		)
+	default:
+		layers = append(layers,
+			builtinImageEditorAccent(seed, width, height, accent),
+			builtinImageEditorText(seed+"/headline", headline, w*0.09, h*0.36, w*0.82, h*0.28, w*0.075, foreground),
+			builtinImageEditorText(seed+"/subline", subline, w*0.09, h*0.68, w*0.72, h*0.12, w*0.026, muted),
+		)
+	}
+
+	return ImageEditorPagePayload{
+		ID:              uuid.NewSHA1(uuid.NameSpaceURL, []byte(seed)).String(),
+		Name:            fmt.Sprintf("Page %d", pageIndex+1),
+		BackgroundColor: background,
+		Layers:          layers,
+	}
+}
+
+func builtinImageEditorShape(seed, name, kind string, x, y, width, height float64, color string, radius float64) ImageEditorLayer {
+	return ImageEditorLayer{
+		ID:      uuid.NewSHA1(uuid.NameSpaceURL, []byte(seed)).String(),
+		Type:    "shape",
+		Name:    name,
+		Visible: true,
+		Opacity: 1,
+		Transform: ImageEditorTransform{
+			X: x, Y: y, Width: width, Height: height,
+		},
+		Shape: &ImageEditorShapeValue{Kind: kind, Fill: color, Stroke: color, Radius: radius},
+	}
+}
+
+func builtinImageEditorTextStyled(seed, text string, x, y, width, height, fontSize float64, color string, fontWeight int, align string) ImageEditorLayer {
+	layer := builtinImageEditorText(seed, text, x, y, width, height, fontSize, color)
+	layer.Text.FontWeight = fontWeight
+	layer.Text.Align = align
+	return layer
 }
 
 func builtinImageEditorAccent(seed string, width, height int, color string) ImageEditorLayer {

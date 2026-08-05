@@ -177,7 +177,8 @@
 				workspaceId: kit.workspace_id,
 				file,
 				source: 'upload',
-				assetKind: 'brand_asset'
+				assetKind: 'library',
+				retentionClass: 'library'
 			});
 			assets = [
 				...assets,

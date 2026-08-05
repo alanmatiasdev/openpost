@@ -2895,6 +2895,11 @@
 						"description": "Source media ID for a derivative",
 						"type": "string"
 					},
+					"retention_class": {
+						"description": "Keep in the library or manage as temporary post media",
+						"enum": ["library", "temporary"],
+						"type": "string"
+					},
 					"size": {
 						"description": "Expected upload size in bytes",
 						"format": "int64",
@@ -7225,6 +7230,10 @@
 						"description": "Whether media is favorited",
 						"type": "boolean"
 					},
+					"last_used_at": {
+						"description": "Most recent known reference time",
+						"type": "string"
+					},
 					"mime_type": {
 						"description": "MIME type",
 						"type": "string"
@@ -7267,6 +7276,15 @@
 						"format": "int64",
 						"type": "integer"
 					},
+					"purge_after": {
+						"description": "Time the item becomes eligible for permanent deletion",
+						"type": "string"
+					},
+					"retention_class": {
+						"description": "Whether the asset is kept in the library or managed as temporary post media",
+						"enum": ["library", "temporary"],
+						"type": "string"
+					},
 					"rotation": {
 						"description": "Normalized display rotation",
 						"format": "int64",
@@ -7290,6 +7308,15 @@
 					},
 					"thumbnail_url": {
 						"description": "Thumbnail URL for grid view",
+						"type": "string"
+					},
+					"trash_reason": {
+						"description": "Why the item entered Trash",
+						"enum": ["manual", "published", "expired"],
+						"type": "string"
+					},
+					"trashed_at": {
+						"description": "Time the item entered Trash",
 						"type": "string"
 					},
 					"url": {
@@ -7349,7 +7376,8 @@
 					"public_url_status",
 					"source",
 					"asset_kind",
-					"tags"
+					"tags",
+					"retention_class"
 				],
 				"type": "object"
 			},
@@ -7550,6 +7578,11 @@
 						"description": "Media processing status",
 						"type": "string"
 					},
+					"retention_class": {
+						"description": "Media lifecycle class",
+						"enum": ["library", "temporary"],
+						"type": "string"
+					},
 					"size": {
 						"description": "File size in bytes",
 						"format": "int64",
@@ -7578,6 +7611,7 @@
 					"original_filename",
 					"source",
 					"asset_kind",
+					"retention_class",
 					"processing_status",
 					"processing_progress",
 					"analysis_status"
@@ -11438,6 +11472,24 @@
 					}
 				},
 				"required": ["expected_revision"],
+				"type": "object"
+			},
+			"RestoreMediaOutputBody": {
+				"additionalProperties": false,
+				"properties": {
+					"$schema": {
+						"description": "A URL to the JSON Schema for this object.",
+						"examples": ["https://example.com/schemas/RestoreMediaOutputBody.json"],
+						"format": "uri",
+						"readOnly": true,
+						"type": "string"
+					},
+					"message": {
+						"description": "Success message",
+						"type": "string"
+					}
+				},
+				"required": ["message"],
 				"type": "object"
 			},
 			"RestoreVideoProjectRevisionInputBody": {
@@ -22935,6 +22987,17 @@
 						}
 					},
 					{
+						"description": "Lifecycle view; defaults to library",
+						"explode": false,
+						"in": "query",
+						"name": "lifecycle",
+						"schema": {
+							"description": "Lifecycle view; defaults to library",
+							"enum": ["library", "temporary", "trash", "all"],
+							"type": "string"
+						}
+					},
+					{
 						"description": "Filter: square, portrait, landscape",
 						"explode": false,
 						"in": "query",
@@ -23178,7 +23241,7 @@
 						"description": "Internal Server Error"
 					}
 				},
-				"summary": "Delete multiple media attachments at once",
+				"summary": "Move multiple media attachments to Trash",
 				"tags": ["Media"]
 			}
 		},
@@ -23693,7 +23756,7 @@
 						"description": "Internal Server Error"
 					}
 				},
-				"summary": "Delete a media attachment (only if not used in any post)",
+				"summary": "Move a media attachment to Trash when active work does not use it",
 				"tags": ["Media"]
 			},
 			"patch": {
@@ -23925,6 +23988,77 @@
 					}
 				},
 				"summary": "Toggle favorite status of a media attachment",
+				"tags": ["Media"]
+			}
+		},
+		"/media/{id}/restore": {
+			"post": {
+				"operationId": "restore-media",
+				"parameters": [
+					{
+						"description": "Media ID",
+						"in": "path",
+						"name": "id",
+						"required": true,
+						"schema": {
+							"description": "Media ID",
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/RestoreMediaOutputBody"
+								}
+							}
+						},
+						"description": "OK"
+					},
+					"403": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Forbidden"
+					},
+					"404": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Not Found"
+					},
+					"422": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Unprocessable Entity"
+					},
+					"500": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Internal Server Error"
+					}
+				},
+				"summary": "Restore a media attachment from Trash",
 				"tags": ["Media"]
 			}
 		},

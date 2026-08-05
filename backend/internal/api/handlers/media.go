@@ -31,6 +31,7 @@ import (
 	"github.com/openpost/backend/internal/services/auth"
 	"github.com/openpost/backend/internal/services/entitlements"
 	"github.com/openpost/backend/internal/services/mediaanalysis"
+	"github.com/openpost/backend/internal/services/medialifecycle"
 	"github.com/openpost/backend/internal/services/mediasigner"
 	"github.com/openpost/backend/internal/services/mediastore"
 	"github.com/openpost/backend/internal/services/publicurl"
@@ -76,6 +77,7 @@ type mediaUploadBytesInput struct {
 	AltText          string
 	Source           string
 	AssetKind        string
+	RetentionClass   string
 	TagID            string
 	ParentMediaID    string
 	DesignDocumentID string
@@ -222,6 +224,11 @@ type MediaListItem struct {
 	DesignPageID       string   `json:"design_page_id,omitempty" doc:"Producing OpenPost Image Editor page"`
 	VideoProjectID     string   `json:"video_project_id,omitempty" doc:"Producing OpenPost Video Editor project"`
 	Tags               []string `json:"tags" doc:"Tag IDs assigned to this media"`
+	RetentionClass     string   `json:"retention_class" enum:"library,temporary" doc:"Whether the asset is kept in the library or managed as temporary post media"`
+	LastUsedAt         string   `json:"last_used_at,omitempty" doc:"Most recent known reference time"`
+	TrashedAt          string   `json:"trashed_at,omitempty" doc:"Time the item entered Trash"`
+	PurgeAfter         string   `json:"purge_after,omitempty" doc:"Time the item becomes eligible for permanent deletion"`
+	TrashReason        string   `json:"trash_reason,omitempty" enum:"manual,published,expired" doc:"Why the item entered Trash"`
 }
 
 type ListMediaInput struct {
@@ -232,6 +239,7 @@ type ListMediaInput struct {
 	Type        string `query:"type" doc:"Filter by dominant media type"`
 	Source      string `query:"source" doc:"Filter by media provenance"`
 	AssetKind   string `query:"asset_kind" doc:"Filter by asset role; defaults to library"`
+	Lifecycle   string `query:"lifecycle" enum:"library,temporary,trash,all" doc:"Lifecycle view; defaults to library"`
 	Aspect      string `query:"aspect" doc:"Filter: square, portrait, landscape"`
 	TagID       string `query:"tag_id" doc:"Filter by one tag ID"`
 	TagIDs      string `query:"tag_ids" doc:"Comma-separated tag IDs; media must have every selected tag"`
@@ -300,6 +308,7 @@ type MediaMetadataItem struct {
 	PublicURLCheckedAt string  `json:"public_url_checked_at,omitempty" doc:"Public URL verification time"`
 	PublicURLStatus    int     `json:"public_url_status" doc:"Public URL verification HTTP status"`
 	PublicURLError     string  `json:"public_url_error,omitempty" doc:"Public URL verification error"`
+	IsDeleted          bool    `json:"is_deleted" doc:"Whether the item is in Trash and unavailable to posts"`
 }
 
 type MediaMetadataInput struct {
@@ -346,6 +355,16 @@ type UpdateMediaFavoriteOutput struct {
 	}
 }
 
+type RestoreMediaInput struct {
+	PathID string `path:"id" doc:"Media ID"`
+}
+
+type RestoreMediaOutput struct {
+	Body struct {
+		Message string `json:"message" doc:"Success message"`
+	}
+}
+
 type UpdateMediaInput struct {
 	PathID string `path:"id" doc:"Media ID"`
 	Body   struct {
@@ -380,6 +399,7 @@ type CreateMediaUploadSessionInput struct {
 		AltText          string                             `json:"alt_text,omitempty" doc:"Alt text for accessibility"`
 		Source           string                             `json:"source,omitempty" enum:"upload,camera,image_editor_export,image_editor_edit,background_removal,video_editor_source,video_editor_export,stock_import" doc:"Media provenance"`
 		AssetKind        string                             `json:"asset_kind,omitempty" enum:"library,brand_asset,brand_font,design_preview,template_preview" doc:"Media library role"`
+		RetentionClass   string                             `json:"retention_class,omitempty" enum:"library,temporary" doc:"Keep in the library or manage as temporary post media"`
 		TagID            string                             `json:"tag_id,omitempty" doc:"Optional tag to assign to this upload"`
 		ParentMediaID    string                             `json:"parent_media_id,omitempty" doc:"Source media ID for a derivative"`
 		DesignDocumentID string                             `json:"design_document_id,omitempty" doc:"Producing OpenPost Image Editor design ID"`
@@ -424,6 +444,7 @@ type MediaUploadResult struct {
 	OriginalFilename   string `json:"original_filename" doc:"Persisted original filename"`
 	Source             string `json:"source" doc:"Media provenance"`
 	AssetKind          string `json:"asset_kind" doc:"Media library role"`
+	RetentionClass     string `json:"retention_class" enum:"library,temporary" doc:"Media lifecycle class"`
 	ParentMediaID      string `json:"parent_media_id,omitempty" doc:"Source media ID"`
 	DesignDocumentID   string `json:"design_document_id,omitempty" doc:"Producing OpenPost Image Editor design ID"`
 	DesignPageID       string `json:"design_page_id,omitempty" doc:"Producing OpenPost Image Editor page ID"`
@@ -467,6 +488,16 @@ func (h *MediaHandler) RegisterRoutes(api huma.API) {
 
 		query := h.db.NewSelect().Model(&models.MediaAttachment{}).
 			Where("workspace_id = ?", input.WorkspaceID)
+		switch strings.TrimSpace(input.Lifecycle) {
+		case "temporary":
+			query = query.Where("retention_class = ? AND trashed_at IS NULL", medialifecycle.RetentionTemporary)
+		case "trash":
+			query = query.Where("trashed_at IS NOT NULL")
+		case "all":
+			// Used only by internal organization surfaces that explicitly ask for all states.
+		default:
+			query = query.Where("(retention_class = ? OR retention_class = '' OR retention_class IS NULL) AND trashed_at IS NULL", medialifecycle.RetentionLibrary)
+		}
 		assetKind := strings.TrimSpace(input.AssetKind)
 		if assetKind == "" {
 			assetKind = "library"
@@ -684,12 +715,20 @@ func (h *MediaHandler) RegisterRoutes(api huma.API) {
 				DesignPageID:       m.DesignPageID,
 				VideoProjectID:     m.VideoProjectID,
 				Tags:               tagsByMedia[m.ID],
+				RetentionClass:     m.RetentionClass,
+				LastUsedAt:         formatMediaTime(m.LastUsedAt),
+				TrashedAt:          formatMediaTime(m.TrashedAt),
+				PurgeAfter:         formatMediaTime(m.PurgeAfter),
+				TrashReason:        m.TrashReason,
 			}
 			if result[i].Source == "" {
 				result[i].Source = "upload"
 			}
 			if result[i].AssetKind == "" {
 				result[i].AssetKind = "library"
+			}
+			if result[i].RetentionClass == "" {
+				result[i].RetentionClass = medialifecycle.RetentionLibrary
 			}
 			switch {
 			case thumbs.SM != "":
@@ -809,7 +848,7 @@ func (h *MediaHandler) RegisterRoutes(api huma.API) {
 		OperationID: "delete-media",
 		Method:      http.MethodDelete,
 		Path:        "/media/{id}",
-		Summary:     "Delete a media attachment (only if not used in any post)",
+		Summary:     "Move a media attachment to Trash when active work does not use it",
 		Tags:        []string{tagMedia},
 		Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.authn)},
 		Errors:      []int{403, 404},
@@ -837,20 +876,55 @@ func (h *MediaHandler) RegisterRoutes(api huma.API) {
 			return nil, huma.Error400BadRequest("cannot delete media while it is used by a draft, design, template, or brand kit")
 		}
 
-		if err := h.deleteMedia(ctx, &media); err != nil {
-			return nil, huma.Error500InternalServerError("failed to delete media record")
+		trashed, err := medialifecycle.NewService(h.db, h.storage).TrashManual(ctx, media.ID, media.WorkspaceID)
+		if err != nil {
+			return nil, huma.Error500InternalServerError("failed to move media to Trash")
+		}
+		if !trashed {
+			return nil, huma.Error400BadRequest("cannot delete media while it is used by active work")
 		}
 
 		return &DeleteMediaOutput{Body: struct {
 			Message string `json:"message" doc:"Success message"`
-		}{Message: "media deleted successfully"}}, nil
+		}{Message: "media moved to Trash"}}, nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "restore-media",
+		Method:      http.MethodPost,
+		Path:        "/media/{id}/restore",
+		Summary:     "Restore a media attachment from Trash",
+		Tags:        []string{tagMedia},
+		Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.authn)},
+		Errors:      []int{403, 404},
+	}, func(ctx context.Context, input *RestoreMediaInput) (*RestoreMediaOutput, error) {
+		var media models.MediaAttachment
+		if err := h.db.NewSelect().Model(&media).Where("id = ?", input.PathID).Scan(ctx); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return nil, huma.Error404NotFound(errMediaNotFound)
+			}
+			return nil, huma.Error500InternalServerError("failed to fetch media")
+		}
+		if err := h.ensureMediaWorkspaceEditAccess(ctx, middleware.GetUserID(ctx), media.WorkspaceID); err != nil {
+			return nil, err
+		}
+		restored, err := medialifecycle.NewService(h.db, h.storage).Restore(ctx, media.ID, media.WorkspaceID)
+		if err != nil {
+			return nil, huma.Error500InternalServerError("failed to restore media")
+		}
+		if !restored {
+			return nil, huma.Error400BadRequest("media is not in Trash")
+		}
+		return &RestoreMediaOutput{Body: struct {
+			Message string `json:"message" doc:"Success message"`
+		}{Message: "media restored"}}, nil
 	})
 
 	huma.Register(api, huma.Operation{
 		OperationID: "batch-delete-media",
 		Method:      http.MethodPost,
 		Path:        "/media/batch-delete",
-		Summary:     "Delete multiple media attachments at once",
+		Summary:     "Move multiple media attachments to Trash",
 		Tags:        []string{tagMedia},
 		Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.authn)},
 		Errors:      []int{400, 403},
@@ -887,7 +961,8 @@ func (h *MediaHandler) RegisterRoutes(api huma.API) {
 				continue
 			}
 
-			if err := h.deleteMedia(ctx, &media); err != nil {
+			trashed, err := medialifecycle.NewService(h.db, h.storage).TrashManual(ctx, media.ID, media.WorkspaceID)
+			if err != nil || !trashed {
 				failedIDs = append(failedIDs, mediaID)
 				continue
 			}
@@ -926,7 +1001,12 @@ func (h *MediaHandler) RegisterRoutes(api huma.API) {
 		}
 
 		media.IsFavorite = !media.IsFavorite
-		_, err = h.db.NewUpdate().Model(&media).Column("is_favorite").Where("id = ?", input.PathID).Exec(ctx)
+		query := h.db.NewUpdate().Model(&media).Column("is_favorite").Where("id = ?", input.PathID)
+		if media.IsFavorite {
+			media.RetentionClass = medialifecycle.RetentionLibrary
+			query = query.Column("retention_class")
+		}
+		_, err = query.Exec(ctx)
 		if err != nil {
 			return nil, huma.Error500InternalServerError("failed to update favorite status")
 		}
@@ -1054,6 +1134,10 @@ func (h *MediaHandler) RegisterRoutes(api huma.API) {
 		if err != nil {
 			return nil, err
 		}
+		retentionClass, err := medialifecycle.NormalizeRetention(input.Body.RetentionClass, assetKind, tagID != "")
+		if err != nil {
+			return nil, huma.Error400BadRequest(err.Error())
+		}
 		if err := validateStockUploadProvenance(source, input.Body.StockProvenance); err != nil {
 			return nil, huma.Error400BadRequest(err.Error())
 		}
@@ -1152,12 +1236,14 @@ func (h *MediaHandler) RegisterRoutes(api huma.API) {
 			FileHash:           "pending:" + mediaID,
 			Source:             source,
 			AssetKind:          assetKind,
+			RetentionClass:     retentionClass,
 			ParentMediaID:      strings.TrimSpace(input.Body.ParentMediaID),
 			DesignDocumentID:   strings.TrimSpace(input.Body.DesignDocumentID),
 			DesignPageID:       strings.TrimSpace(input.Body.DesignPageID),
 			VideoProjectID:     strings.TrimSpace(input.Body.VideoProjectID),
 			AltText:            input.Body.AltText,
 			AnalysisStatus:     mediaanalysis.AnalysisStatusPending,
+			LastUsedAt:         now,
 			CreatedAt:          now,
 		}
 		if _, err := h.db.NewInsert().Model(media).Exec(ctx); err != nil {
@@ -1273,6 +1359,9 @@ func (h *MediaHandler) addMediaTag(ctx context.Context, tagID, mediaID string) e
 	}
 	if _, err := h.db.NewInsert().Model(assignment).On("CONFLICT (tag_id, media_id) DO NOTHING").Exec(ctx); err != nil {
 		return huma.Error500InternalServerError("failed to tag media")
+	}
+	if err := medialifecycle.NewService(h.db, h.storage).Promote(ctx, mediaID); err != nil {
+		return huma.Error500InternalServerError("failed to keep tagged media in the library")
 	}
 	return nil
 }
@@ -1762,6 +1851,7 @@ func mediaUploadResultFromAttachment(media models.MediaAttachment, deduped bool)
 		OriginalFilename:   media.OriginalFilename,
 		Source:             defaultMediaSource(media.Source),
 		AssetKind:          defaultMediaAssetKind(media.AssetKind),
+		RetentionClass:     defaultMediaRetentionClass(media.RetentionClass),
 		ParentMediaID:      media.ParentMediaID,
 		DesignDocumentID:   media.DesignDocumentID,
 		DesignPageID:       media.DesignPageID,
@@ -1786,6 +1876,7 @@ func mediaUploadMap(media models.MediaAttachment, deduped bool) map[string]inter
 		"original_filename":    result.OriginalFilename,
 		"source":               result.Source,
 		"asset_kind":           result.AssetKind,
+		"retention_class":      result.RetentionClass,
 		"parent_media_id":      result.ParentMediaID,
 		"design_document_id":   result.DesignDocumentID,
 		"design_page_id":       result.DesignPageID,
@@ -1804,6 +1895,13 @@ func isInternalMediaAssetKind(assetKind string) bool {
 	default:
 		return false
 	}
+}
+
+func defaultMediaRetentionClass(value string) string {
+	if strings.TrimSpace(value) == medialifecycle.RetentionTemporary {
+		return medialifecycle.RetentionTemporary
+	}
+	return medialifecycle.RetentionLibrary
 }
 
 func mediaSourceSupportsDeduplication(source string) bool {
@@ -2125,6 +2223,42 @@ func (h *MediaHandler) mediaUsageSummaries(ctx context.Context, workspaceID stri
 			summary.Blocking++
 		}
 		summaries[row.MediaID] = summary
+	}
+	segmentQueries := []struct {
+		query           string
+		publishedStatus string
+	}{
+		{
+			query: `SELECT psm.media_id, p.id AS rendition_id, p.status
+				FROM publication_segment_media psm
+				JOIN publication_segments ps ON ps.id = psm.segment_id
+				JOIN publications p ON p.id = ps.publication_id
+				WHERE p.workspace_id = ? AND psm.media_id IN (?)`,
+			publishedStatus: models.PublicationStatusPublished,
+		},
+		{
+			query: `SELECT rsm.media_id, r.id AS rendition_id, r.status
+				FROM rendition_segment_media rsm
+				JOIN rendition_segments rs ON rs.id = rsm.rendition_segment_id
+				JOIN renditions r ON r.id = rs.rendition_id
+				JOIN publications p ON p.id = r.publication_id
+				WHERE p.workspace_id = ? AND rsm.media_id IN (?)`,
+			publishedStatus: models.RenditionStatusPublished,
+		},
+	}
+	for _, segmentQuery := range segmentQueries {
+		var rows []mediaRenditionUsageRow
+		if err := h.db.NewRaw(segmentQuery.query, workspaceID, bun.List(mediaIDs)).Scan(ctx, &rows); err != nil && !isMissingOptionalMediaTable(err) {
+			return nil, err
+		}
+		for _, row := range rows {
+			summary := summaries[row.MediaID]
+			summary.Total++
+			if row.Status != segmentQuery.publishedStatus {
+				summary.Blocking++
+			}
+			summaries[row.MediaID] = summary
+		}
 	}
 
 	blockingTables := []string{
@@ -2596,6 +2730,12 @@ func (h *MediaHandler) mediaMetadata(c echo.Context) error {
 			PublicURLCheckedAt: formatMediaTime(m.PublicURLCheckedAt),
 			PublicURLStatus:    m.PublicURLStatus,
 			PublicURLError:     m.PublicURLError,
+			IsDeleted:          !m.TrashedAt.IsZero(),
+		}
+		if item.IsDeleted {
+			item.URL = ""
+			item.Thumbnail = ""
+			item.PosterThumbnailURL = ""
 		}
 		if thumbsJSON := m.ThumbnailsJSON; thumbsJSON != "" {
 			var thumbs Thumbnails
@@ -2808,6 +2948,7 @@ func (h *MediaHandler) uploadMedia(c echo.Context) error {
 		AltText:          c.FormValue("alt_text"),
 		Source:           c.FormValue("source"),
 		AssetKind:        c.FormValue("asset_kind"),
+		RetentionClass:   c.FormValue("retention_class"),
 		TagID:            c.FormValue("tag_id"),
 		ParentMediaID:    c.FormValue("parent_media_id"),
 		DesignDocumentID: c.FormValue("design_document_id"),
@@ -2886,6 +3027,10 @@ func (h *MediaHandler) processUpload(ctx context.Context, workspaceID string, fi
 	metadata.TagID, err = h.resolveMediaUploadTag(ctx, workspaceID, metadata.TagID, assetKind)
 	if err != nil {
 		return nil, errors.New(err.Error())
+	}
+	metadata.RetentionClass, err = medialifecycle.NormalizeRetention(metadata.RetentionClass, assetKind, metadata.TagID != "")
+	if err != nil {
+		return nil, err
 	}
 	if err := validateStockUploadProvenance(source, metadata.StockProvenance); err != nil {
 		return nil, err
@@ -3001,12 +3146,14 @@ func (h *MediaHandler) processStreamUpload(
 		AltText:            input.AltText,
 		Source:             source,
 		AssetKind:          assetKind,
+		RetentionClass:     input.RetentionClass,
 		ParentMediaID:      strings.TrimSpace(input.ParentMediaID),
 		DesignDocumentID:   strings.TrimSpace(input.DesignDocumentID),
 		DesignPageID:       strings.TrimSpace(input.DesignPageID),
 		VideoProjectID:     strings.TrimSpace(input.VideoProjectID),
 		DominantType:       dominantMediaType(mimeType),
 		AnalysisStatus:     mediaanalysis.AnalysisStatusReady,
+		LastUsedAt:         time.Now().UTC(),
 	}
 	if strings.HasPrefix(mimeType, "video/") && h.video != nil {
 		media.ProcessingStatus = mediaProcessingStatus
@@ -3070,6 +3217,10 @@ func (h *MediaHandler) processUploadBytes(ctx context.Context, input mediaUpload
 	input.TagID, err = h.resolveMediaUploadTag(ctx, input.WorkspaceID, input.TagID, assetKind)
 	if err != nil {
 		return nil, errors.New(err.Error())
+	}
+	input.RetentionClass, err = medialifecycle.NormalizeRetention(input.RetentionClass, assetKind, input.TagID != "")
+	if err != nil {
+		return nil, err
 	}
 	sizeLimit := mediaUploadSizeLimit(assetKind, input.Filename, input.DeclaredMimeType)
 	if input.Size > sizeLimit {
@@ -3139,10 +3290,12 @@ func (h *MediaHandler) processUploadBytes(ctx context.Context, input mediaUpload
 		AltText:            input.AltText,
 		Source:             source,
 		AssetKind:          assetKind,
+		RetentionClass:     input.RetentionClass,
 		ParentMediaID:      strings.TrimSpace(input.ParentMediaID),
 		DesignDocumentID:   strings.TrimSpace(input.DesignDocumentID),
 		DesignPageID:       strings.TrimSpace(input.DesignPageID),
 		VideoProjectID:     strings.TrimSpace(input.VideoProjectID),
+		LastUsedAt:         time.Now().UTC(),
 	}
 
 	width, height := 0, 0
@@ -3333,6 +3486,9 @@ func (h *MediaHandler) serveMedia(c echo.Context) error {
 	if err := h.authorizeMediaAccess(c, media); err != nil {
 		return err
 	}
+	if !media.TrashedAt.IsZero() {
+		return c.JSON(http.StatusGone, map[string]string{fieldError: "media was deleted"})
+	}
 
 	file, err := h.storage.Open(filepath.Base(media.FilePath))
 	if err != nil {
@@ -3372,6 +3528,9 @@ func (h *MediaHandler) serveThumbnailSize(c echo.Context) error {
 	}
 	if err := h.authorizeMediaAccess(c, media); err != nil {
 		return err
+	}
+	if !media.TrashedAt.IsZero() {
+		return c.JSON(http.StatusGone, map[string]string{fieldError: "media was deleted"})
 	}
 
 	var thumbs Thumbnails
@@ -3422,6 +3581,9 @@ func (h *MediaHandler) serveVideoPoster(c echo.Context) error {
 	}
 	if err := h.authorizeMediaAccess(c, media); err != nil {
 		return err
+	}
+	if !media.TrashedAt.IsZero() {
+		return c.JSON(http.StatusGone, map[string]string{fieldError: "media was deleted"})
 	}
 	if strings.TrimSpace(media.ThumbnailObjectKey) == "" {
 		return c.JSON(http.StatusNotFound, map[string]string{fieldError: "video poster not found"})

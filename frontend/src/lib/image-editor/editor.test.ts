@@ -178,6 +178,38 @@ describe('OpenPost Image Editor editor layer interactions', () => {
 		expect(image.image?.intrinsic_pending).toBe(false);
 	});
 
+	it('fits the whole canvas inside the latest measured viewport', () => {
+		const editor = new ImageEditorController();
+		editor.load(response());
+		editor.setViewportSize(656, 540);
+
+		editor.fitZoom();
+
+		expect(editor.zoom).toBeCloseTo(460 / 1080);
+		expect(1080 * editor.zoom).toBeLessThanOrEqual(656 - 80);
+		expect(1080 * editor.zoom).toBeLessThanOrEqual(540 - 80);
+		expect(editor.panX).toBe(0);
+		expect(editor.panY).toBe(0);
+	});
+
+	it('nudges selected layers by one pixel or a larger keyboard step', () => {
+		const editor = new ImageEditorController();
+		editor.load(response());
+		editor.selectLayer('front');
+
+		editor.nudgeSelected(1, 0);
+		expect(editor.activePage?.layers.find((item) => item.id === 'front')?.transform.x).toBe(211);
+
+		editor.nudgeSelected(0, -10);
+		expect(editor.activePage?.layers.find((item) => item.id === 'front')?.transform.y).toBe(0);
+
+		editor.undo();
+		expect(editor.activePage?.layers.find((item) => item.id === 'front')?.transform).toMatchObject({
+			x: 210,
+			y: 10
+		});
+	});
+
 	it('resolves an image aspect ratio when media dimensions arrive after insertion', () => {
 		const editor = new ImageEditorController();
 		editor.load(response());

@@ -68,7 +68,6 @@
 	import {
 		apiTokenScopeOptions as apiTokenScopes,
 		billingPlans as billingPlanDefinitions,
-		cleanupDaysOptions as cleanupDayValues,
 		getTimezoneLabel,
 		inviteRoleOptions as inviteRoles,
 		timezones,
@@ -279,12 +278,6 @@
 		);
 	}
 
-	function cleanupDaysLabel(value: number) {
-		if (value === 0) return m.settings_disabled();
-		if (value === 365) return m.settings_cleanup_one_year();
-		return m.settings_cleanup_days({ count: value });
-	}
-
 	function roleLabel(value: string) {
 		if (value === 'editor') return m.settings_role_editor();
 		if (value === 'viewer') return m.settings_role_viewer();
@@ -473,9 +466,6 @@
 	const teamMembers = $derived(workspaceTeam?.members ?? []);
 	const pendingInvitations = $derived(workspaceTeam?.invitations ?? []);
 	const currentTeamSeats = $derived(workspaceTeam?.current_seats ?? 0);
-	const cleanupDaysOptions = $derived(
-		cleanupDayValues.map((value) => ({ value, label: cleanupDaysLabel(value) }))
-	);
 	const inviteRoleOptions = $derived(
 		inviteRoles.map((value) => ({
 			value,
@@ -1772,10 +1762,6 @@
 
 	function handleWeekStartChange(value: number) {
 		workspaceCtx.settings.week_start = value;
-	}
-
-	function handleCleanupDaysChange(value: number) {
-		workspaceCtx.settings.media_cleanup_days = value;
 	}
 </script>
 
@@ -3464,28 +3450,10 @@
 					class="scroll-mt-24 space-y-4"
 				>
 					<SectionHeader title={m.settings_media_cleanup()} icon={ImageIcon} class="mb-4" />
-					<div class="space-y-2">
-						<label class="text-sm font-medium" for="cleanup-select"
-							>{m.settings_auto_delete_media()}</label
-						>
-						<Select.Root
-							type="single"
-							value={String(workspaceCtx.settings.media_cleanup_days)}
-							onValueChange={(v) => handleCleanupDaysChange(Number(v))}
-						>
-							<Select.Trigger id="cleanup-select" class="w-full">
-								{cleanupDaysOptions.find(
-									(o) => o.value === workspaceCtx.settings.media_cleanup_days
-								)?.label || m.settings_disabled()}
-							</Select.Trigger>
-							<Select.Content>
-								{#each cleanupDaysOptions as option (option.value)}
-									<Select.Item value={String(option.value)}>{option.label}</Select.Item>
-								{/each}
-							</Select.Content>
-						</Select.Root>
-						<p class="text-sm text-muted-foreground">
-							{m.settings_auto_delete_media_body()}
+					<div class="rounded-xl border bg-muted/25 p-4">
+						<p class="text-sm font-medium">{m.settings_media_lifecycle_title()}</p>
+						<p class="mt-1 text-sm leading-relaxed text-muted-foreground">
+							{m.settings_media_lifecycle_body()}
 						</p>
 					</div>
 				</section>

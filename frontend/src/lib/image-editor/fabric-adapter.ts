@@ -26,6 +26,7 @@ type FabricObject = InstanceType<FabricModule['FabricObject']> & {
 	__imageEditorSourceHeight?: number;
 	snapAngle?: number;
 	snapThreshold?: number;
+	__corner?: string;
 };
 type FabricTextObject = FabricObject & {
 	text?: string;
@@ -67,8 +68,89 @@ interface FabricAdapterOptions {
 	onImageDimensions?(id: string, width: number, height: number): void;
 }
 
-const SNAP_SCREEN_PX = 7;
+const SNAP_SCREEN_PX = 10;
 const ROTATION_SNAP_ANGLE = 15;
+
+export interface ImageEditorSnapBounds {
+	left: number;
+	top: number;
+	width: number;
+	height: number;
+}
+
+export interface ImageEditorResizeSnap {
+	bounds: ImageEditorSnapBounds;
+	guideX: number | null;
+	guideY: number | null;
+}
+
+function nearestSnap(
+	value: number,
+	candidates: readonly number[],
+	threshold: number
+): number | null {
+	let nearest: number | null = null;
+	let distance = threshold + Number.EPSILON;
+	for (const candidate of candidates) {
+		const nextDistance = Math.abs(candidate - value);
+		if (nextDistance > threshold || nextDistance >= distance) continue;
+		nearest = candidate;
+		distance = nextDistance;
+	}
+	return nearest;
+}
+
+export function snapImageEditorResize(
+	bounds: ImageEditorSnapBounds,
+	corner: string,
+	candidatesX: readonly number[],
+	candidatesY: readonly number[],
+	threshold: number
+): ImageEditorResizeSnap {
+	const next = { ...bounds };
+	const right = bounds.left + bounds.width;
+	const bottom = bounds.top + bounds.height;
+	const horizontalEdge = corner.includes('l') ? 'left' : corner.includes('r') ? 'right' : '';
+	const verticalEdge = corner.includes('t') ? 'top' : corner.includes('b') ? 'bottom' : '';
+	const horizontalValue = horizontalEdge === 'left' ? bounds.left : right;
+	const verticalValue = verticalEdge === 'top' ? bounds.top : bottom;
+	const guideX = horizontalEdge ? nearestSnap(horizontalValue, candidatesX, threshold) : null;
+	const guideY = verticalEdge ? nearestSnap(verticalValue, candidatesY, threshold) : null;
+	const preserveAspect = Boolean(horizontalEdge && verticalEdge);
+
+	if (preserveAspect && guideX !== null && guideY !== null) {
+		if (Math.abs(guideX - horizontalValue) <= Math.abs(guideY - verticalValue)) {
+			return snapImageEditorResize(bounds, corner, [guideX], [], threshold);
+		}
+		return snapImageEditorResize(bounds, corner, [], [guideY], threshold);
+	}
+
+	if (guideX !== null) {
+		const width = horizontalEdge === 'left' ? right - guideX : guideX - bounds.left;
+		if (width >= 1) {
+			next.width = width;
+			if (horizontalEdge === 'left') next.left = guideX;
+			if (preserveAspect) {
+				next.height = bounds.height * (width / Math.max(1, bounds.width));
+				if (verticalEdge === 'top') next.top = bottom - next.height;
+			}
+		}
+	}
+
+	if (guideY !== null) {
+		const height = verticalEdge === 'top' ? bottom - guideY : guideY - bounds.top;
+		if (height >= 1) {
+			next.height = height;
+			if (verticalEdge === 'top') next.top = guideY;
+			if (preserveAspect) {
+				next.width = bounds.width * (height / Math.max(1, bounds.height));
+				if (horizontalEdge === 'left') next.left = right - next.width;
+			}
+		}
+	}
+
+	return { bounds: next, guideX, guideY };
+}
 
 function applyImageEditorRotationConstraint(
 	target: { snapAngle?: number; snapThreshold?: number },
@@ -601,9 +683,12 @@ export class OpenPostFabricAdapter {
 			this.snapObject(target);
 			this.syncDecorationTransform(target);
 		});
-		canvas.on('object:scaling', (event) =>
-			this.syncDecorationTransform(event.target as FabricObject)
-		);
+		canvas.on('object:scaling', (event) => {
+			const target = event.target as FabricObject;
+			const transform = event.transform as { corner?: string } | undefined;
+			this.snapScaledObject(target, transform?.corner ?? target.__corner ?? '');
+			this.syncDecorationTransform(target);
+		});
 		canvas.on('object:rotating', (event) => {
 			const target = event.target as FabricObject;
 			this.syncDecorationTransform(target);
@@ -773,29 +858,64 @@ export class OpenPostFabricAdapter {
 		const objectY = [target.top ?? 0, (target.top ?? 0) + height / 2, (target.top ?? 0) + height];
 		let guideX: number | null = null;
 		let guideY: number | null = null;
-		for (let index = 0; index < objectX.length; index++) {
-			for (const candidate of candidatesX) {
-				if (Math.abs(objectX[index] - candidate) <= threshold) {
-					target.left = candidate - [0, width / 2, width][index];
-					guideX = candidate;
-					break;
-				}
-			}
+		let deltaX = threshold + Number.EPSILON;
+		let deltaY = threshold + Number.EPSILON;
+		for (const [index, edge] of objectX.entries()) {
+			const candidate = nearestSnap(edge, candidatesX, threshold);
+			if (candidate === null || Math.abs(candidate - edge) >= Math.abs(deltaX)) continue;
+			deltaX = candidate - edge;
+			guideX = candidate;
+			target.left = candidate - [0, width / 2, width][index];
 		}
-		for (let index = 0; index < objectY.length; index++) {
-			for (const candidate of candidatesY) {
-				if (Math.abs(objectY[index] - candidate) <= threshold) {
-					target.top = candidate - [0, height / 2, height][index];
-					guideY = candidate;
-					break;
-				}
-			}
+		for (const [index, edge] of objectY.entries()) {
+			const candidate = nearestSnap(edge, candidatesY, threshold);
+			if (candidate === null || Math.abs(candidate - edge) >= Math.abs(deltaY)) continue;
+			deltaY = candidate - edge;
+			guideY = candidate;
+			target.top = candidate - [0, height / 2, height][index];
 		}
 		if (guideX !== null) {
 			this.addGuide([guideX, 0, guideX, this.document.height_px]);
 		}
 		if (guideY !== null) {
 			this.addGuide([0, guideY, this.document.width_px, guideY]);
+		}
+	}
+
+	private snapScaledObject(target?: FabricObject, corner = ''): void {
+		if (!target || !this.canvas || !this.fabric || !corner || Math.abs(target.angle ?? 0) > 0.01)
+			return;
+		this.clearGuides();
+		const zoom = Math.max(this.canvas.getZoom(), 0.01);
+		const threshold = SNAP_SCREEN_PX / zoom;
+		const candidatesX = [0, this.document.width_px / 2, this.document.width_px];
+		const candidatesY = [0, this.document.height_px / 2, this.document.height_px];
+		for (const object of this.canvas.getObjects() as FabricObject[]) {
+			if (object === target || !object.__imageEditorLayerID || this.guideObjects.includes(object))
+				continue;
+			const left = object.left ?? 0;
+			const top = object.top ?? 0;
+			candidatesX.push(left, left + object.getScaledWidth() / 2, left + object.getScaledWidth());
+			candidatesY.push(top, top + object.getScaledHeight() / 2, top + object.getScaledHeight());
+		}
+		const current = {
+			left: target.left ?? 0,
+			top: target.top ?? 0,
+			width: Math.max(1, target.getScaledWidth()),
+			height: Math.max(1, target.getScaledHeight())
+		};
+		const snapped = snapImageEditorResize(current, corner, candidatesX, candidatesY, threshold);
+		if (snapped.guideX === null && snapped.guideY === null) return;
+		target.left = snapped.bounds.left;
+		target.top = snapped.bounds.top;
+		target.scaleX = (target.scaleX ?? 1) * (snapped.bounds.width / current.width);
+		target.scaleY = (target.scaleY ?? 1) * (snapped.bounds.height / current.height);
+		target.setCoords();
+		if (snapped.guideX !== null) {
+			this.addGuide([snapped.guideX, 0, snapped.guideX, this.document.height_px]);
+		}
+		if (snapped.guideY !== null) {
+			this.addGuide([0, snapped.guideY, this.document.width_px, snapped.guideY]);
 		}
 	}
 

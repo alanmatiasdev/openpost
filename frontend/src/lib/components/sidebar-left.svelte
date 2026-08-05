@@ -26,6 +26,7 @@
 	import CommunicationsIcon from 'lucide-svelte/icons/messages-square';
 	import AnalyticsIcon from 'lucide-svelte/icons/chart-no-axes-combined';
 	import MediaIcon from 'lucide-svelte/icons/images';
+	import EditorsIcon from 'lucide-svelte/icons/clapperboard';
 	import AccountsIcon from 'lucide-svelte/icons/users';
 	import SettingsIcon from 'lucide-svelte/icons/settings';
 	import ChevronsUpDownIcon from 'lucide-svelte/icons/chevrons-up-down';
@@ -56,7 +57,7 @@
 	const sidebarNavigationItems = $derived(navigationItems.filter((item) => item.id !== 'new'));
 	const workspaceNavigationItems = $derived([
 		...navigationItems.filter((item) =>
-			['posts', 'communications', 'analytics', 'media'].includes(item.id)
+			['posts', 'communications', 'analytics', 'media', 'editors'].includes(item.id)
 		),
 		{
 			id: 'accounts' as const,
@@ -85,6 +86,8 @@
 				return CommunicationsIcon;
 			case 'media':
 				return MediaIcon;
+			case 'editors':
+				return EditorsIcon;
 			case 'accounts':
 				return AccountsIcon;
 			default:
@@ -106,6 +109,8 @@
 				return m.sidebar_communications();
 			case 'media':
 				return m.sidebar_media();
+			case 'editors':
+				return m.editors_title();
 			case 'accounts':
 				return m.sidebar_accounts();
 			case 'settings':

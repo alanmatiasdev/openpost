@@ -30,6 +30,8 @@
 	const editor = useImageEditor();
 	let layer = $derived(editor.selectedLayers[0] ?? null);
 	let cropOpen = $state(false);
+	let transformOpen = $state(false);
+	let adjustmentsOpen = $state(false);
 	let brandColors = $derived(editor.brandKit?.colors ?? []);
 	let brandFonts = $derived(editor.brandKit?.fonts ?? []);
 
@@ -200,7 +202,19 @@
 						id="layer-name"
 						value={layer.name}
 						disabled={!editor.canEdit}
-						onchange={(event) => editor.updateLayer(layer.id, { name: event.currentTarget.value })}
+						oninput={(event) => {
+							const name = event.currentTarget.value;
+							if (name.trim()) editor.updateLayer(layer.id, { name }, `layer-name:${layer.id}`);
+						}}
+						onblur={(event) => {
+							const name = event.currentTarget.value.trim();
+							if (!name) event.currentTarget.value = layer.name;
+							else if (name !== layer.name)
+								editor.updateLayer(layer.id, { name }, `layer-name:${layer.id}`);
+						}}
+						onkeydown={(event) => {
+							if (event.key === 'Enter') event.currentTarget.blur();
+						}}
 					/>
 					<div class="grid grid-cols-2 gap-2">
 						<Button variant="outline" size="sm" onclick={() => align('horizontal')}
@@ -308,103 +322,120 @@
 					</div>
 				</section>
 
-				<section class="space-y-2 border-t pt-4">
-					<h3 class="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-						{m.image_editor_transform()}
-					</h3>
-					<div class="grid grid-cols-2 gap-2">
-						{#each [['X', 'x'], ['Y', 'y'], ['W', 'width'], ['H', 'height']] as [label, key] (key)}
-							<label class="grid grid-cols-[1.5rem_1fr] items-center">
-								<span class="text-xs text-muted-foreground">{label}</span>
-								<Input
-									type="number"
-									value={Math.round(layer.transform[key as keyof typeof layer.transform] as number)}
-									disabled={!editor.canEdit || layer.locked}
-									oninput={(event) =>
-										editor.updateTransform(layer.id, {
-											[key]: numberValue(
-												event,
-												layer.transform[key as keyof typeof layer.transform] as number
-											)
-										})}
+				<Collapsible.Root bind:open={transformOpen} class="border-t pt-2">
+					<Collapsible.Trigger>
+						{#snippet child({ props })}
+							<button
+								{...props}
+								type="button"
+								class="flex min-h-9 w-full items-center gap-2 rounded-md px-2 text-left text-xs font-semibold hover:bg-muted"
+							>
+								<span class="min-w-0 flex-1">{m.image_editor_transform()}</span>
+								<ChevronDownIcon
+									class={`size-3.5 transition-transform ${transformOpen ? 'rotate-180' : ''}`}
 								/>
-							</label>
-						{/each}
-					</div>
-					<div class="space-y-1">
-						<div class="flex items-center justify-between gap-2">
-							<span class="text-xs">{m.image_editor_rotation()}</span>
-							<div class="flex items-center gap-1">
-								<Input
-									type="number"
-									min="-180"
-									max="180"
-									value={Math.round(layer.transform.rotation)}
-									class="h-8 w-16 px-1.5 text-right text-xs"
-									disabled={!editor.canEdit || layer.locked}
-									oninput={(event) =>
-										editor.updateTransform(layer.id, {
-											rotation: numberValue(event, layer.transform.rotation)
-										})}
-								/>
-								<Button
-									variant="ghost"
-									size="icon-xs"
-									onclick={() => editor.updateTransform(layer.id, { rotation: 0 })}
-									disabled={!editor.canEdit || layer.locked}
-									aria-label={m.image_editor_reset_rotation()}
-									title={m.image_editor_reset_rotation()}
-								>
-									<RotateCcwIcon />
-								</Button>
-							</div>
+							</button>
+						{/snippet}
+					</Collapsible.Trigger>
+					<Collapsible.Content class="space-y-2 pt-2">
+						<div class="grid grid-cols-2 gap-2">
+							{#each [['X', 'x'], ['Y', 'y'], ['W', 'width'], ['H', 'height']] as [label, key] (key)}
+								<label class="grid grid-cols-[1.5rem_1fr] items-center">
+									<span class="text-xs text-muted-foreground">{label}</span>
+									<Input
+										type="number"
+										value={Math.round(
+											layer.transform[key as keyof typeof layer.transform] as number
+										)}
+										disabled={!editor.canEdit || layer.locked}
+										oninput={(event) =>
+											editor.updateTransform(layer.id, {
+												[key]: numberValue(
+													event,
+													layer.transform[key as keyof typeof layer.transform] as number
+												)
+											})}
+									/>
+								</label>
+							{/each}
 						</div>
-						<Slider
-							value={layer.transform.rotation}
-							min={-180}
-							max={180}
-							step={1}
-							disabled={!editor.canEdit || layer.locked}
-							ariaLabel={m.image_editor_rotation()}
-							onValueChange={(rotation) =>
-								editor.updateTransform(layer.id, { rotation }, `rotation:${layer.id}`)}
-						/>
-					</div>
-					<div class="grid grid-cols-2 gap-2">
-						<Button
-							variant={layer.transform.flip_x ? 'secondary' : 'outline'}
-							size="sm"
-							onclick={() => editor.updateTransform(layer.id, { flip_x: !layer.transform.flip_x })}
-						>
-							<FlipHorizontalIcon />
-							{m.image_editor_flip_x()}
-						</Button>
-						<Button
-							variant={layer.transform.flip_y ? 'secondary' : 'outline'}
-							size="sm"
-							onclick={() => editor.updateTransform(layer.id, { flip_y: !layer.transform.flip_y })}
-						>
-							<FlipVerticalIcon />
-							{m.image_editor_flip_y()}
-						</Button>
-					</div>
-					<label class="grid gap-1 text-xs">
-						<span>{m.image_editor_opacity({ value: Math.round(layer.opacity * 100) })}</span>
-						<Slider
-							min={0}
-							max={1}
-							step={0.01}
-							value={layer.opacity}
-							disabled={!editor.canEdit}
-							ariaLabel={m.image_editor_opacity({ value: Math.round(layer.opacity * 100) })}
-							onValueChange={(opacity) =>
-								editor.updateLayer(layer.id, { opacity }, `opacity:${layer.id}`)}
-						/>
-					</label>
-				</section>
+						<div class="space-y-1">
+							<div class="flex items-center justify-between gap-2">
+								<span class="text-xs">{m.image_editor_rotation()}</span>
+								<div class="flex items-center gap-1">
+									<Input
+										type="number"
+										min="-180"
+										max="180"
+										value={Math.round(layer.transform.rotation)}
+										class="h-8 w-16 px-1.5 text-right text-xs"
+										disabled={!editor.canEdit || layer.locked}
+										oninput={(event) =>
+											editor.updateTransform(layer.id, {
+												rotation: numberValue(event, layer.transform.rotation)
+											})}
+									/>
+									<Button
+										variant="ghost"
+										size="icon-xs"
+										onclick={() => editor.updateTransform(layer.id, { rotation: 0 })}
+										disabled={!editor.canEdit || layer.locked}
+										aria-label={m.image_editor_reset_rotation()}
+										title={m.image_editor_reset_rotation()}
+									>
+										<RotateCcwIcon />
+									</Button>
+								</div>
+							</div>
+							<Slider
+								value={layer.transform.rotation}
+								min={-180}
+								max={180}
+								step={1}
+								disabled={!editor.canEdit || layer.locked}
+								ariaLabel={m.image_editor_rotation()}
+								onValueChange={(rotation) =>
+									editor.updateTransform(layer.id, { rotation }, `rotation:${layer.id}`)}
+							/>
+						</div>
+						<div class="grid grid-cols-2 gap-2">
+							<Button
+								variant={layer.transform.flip_x ? 'secondary' : 'outline'}
+								size="sm"
+								onclick={() =>
+									editor.updateTransform(layer.id, { flip_x: !layer.transform.flip_x })}
+							>
+								<FlipHorizontalIcon />
+								{m.image_editor_flip_x()}
+							</Button>
+							<Button
+								variant={layer.transform.flip_y ? 'secondary' : 'outline'}
+								size="sm"
+								onclick={() =>
+									editor.updateTransform(layer.id, { flip_y: !layer.transform.flip_y })}
+							>
+								<FlipVerticalIcon />
+								{m.image_editor_flip_y()}
+							</Button>
+						</div>
+						<label class="grid gap-1 text-xs">
+							<span>{m.image_editor_opacity({ value: Math.round(layer.opacity * 100) })}</span>
+							<Slider
+								min={0}
+								max={1}
+								step={0.01}
+								value={layer.opacity}
+								disabled={!editor.canEdit}
+								ariaLabel={m.image_editor_opacity({ value: Math.round(layer.opacity * 100) })}
+								onValueChange={(opacity) =>
+									editor.updateLayer(layer.id, { opacity }, `opacity:${layer.id}`)}
+							/>
+						</label>
+					</Collapsible.Content>
+				</Collapsible.Root>
 
 				{#if layer.type !== 'group'}
-					<LayerEffectsPanel {layer} />
+					{#key layer.id}<LayerEffectsPanel {layer} />{/key}
 				{/if}
 
 				{#if layer.type === 'text' && layer.text}
@@ -937,19 +968,6 @@
 								</div>
 							</Collapsible.Content>
 						</Collapsible.Root>
-						<div class="flex items-center justify-between">
-							<span class="text-xs font-medium">{m.image_editor_adjustments()}</span>
-							<Button
-								variant="ghost"
-								size="xs"
-								onclick={() =>
-									editor.updateLayer(layer.id, {
-										image: { ...layer.image!, adjustments: defaultImageAdjustments() }
-									})}
-							>
-								{m.image_editor_reset_all()}
-							</Button>
-						</div>
 						<div class="space-y-2">
 							<span class="text-xs font-medium">{m.image_editor_quick_looks()}</span>
 							<div class="grid grid-cols-3 gap-1">
@@ -965,30 +983,60 @@
 								{/each}
 							</div>
 						</div>
-						{#each adjustmentGroups as group (group.label)}
-							<div class="space-y-3 border-t pt-3">
-								<h4 class="text-xs font-medium">{group.label}</h4>
-								{#each group.controls as [label, key, min, max] (key)}
-									<label class="grid gap-1 text-xs">
-										<span class="flex items-center justify-between gap-2">
-											<span>{label}</span>
-											<span class="text-muted-foreground tabular-nums">
-												{Math.round(layer.image.adjustments[key] * 100)}
-											</span>
-										</span>
-										<Slider
-											{min}
-											{max}
-											step={0.01}
-											value={layer.image.adjustments[key]}
-											disabled={!editor.canEdit}
-											ariaLabel={label}
-											onValueChange={(value) => setAdjustment(key, value)}
-										/>
-									</label>
-								{/each}
+						<Collapsible.Root bind:open={adjustmentsOpen} class="rounded-md border">
+							<div class="flex min-h-9 items-center gap-1 px-1">
+								<Collapsible.Trigger>
+									{#snippet child({ props })}
+										<button
+											{...props}
+											type="button"
+											class="flex min-h-8 min-w-0 flex-1 items-center gap-2 rounded px-1.5 text-left text-xs font-medium hover:bg-muted"
+										>
+											<span class="min-w-0 flex-1">{m.image_editor_adjustments()}</span>
+											<ChevronDownIcon
+												class={`size-3.5 transition-transform ${adjustmentsOpen ? 'rotate-180' : ''}`}
+											/>
+										</button>
+									{/snippet}
+								</Collapsible.Trigger>
+								<Button
+									variant="ghost"
+									size="xs"
+									onclick={() =>
+										editor.updateLayer(layer.id, {
+											image: { ...layer.image!, adjustments: defaultImageAdjustments() }
+										})}
+								>
+									{m.image_editor_reset_all()}
+								</Button>
 							</div>
-						{/each}
+							<Collapsible.Content class="space-y-3 border-t p-2">
+								{#each adjustmentGroups as group (group.label)}
+									<div class="space-y-3 not-first:border-t not-first:pt-3">
+										<h4 class="text-xs font-medium">{group.label}</h4>
+										{#each group.controls as [label, key, min, max] (key)}
+											<label class="grid gap-1 text-xs">
+												<span class="flex items-center justify-between gap-2">
+													<span>{label}</span>
+													<span class="text-muted-foreground tabular-nums">
+														{Math.round(layer.image.adjustments[key] * 100)}
+													</span>
+												</span>
+												<Slider
+													{min}
+													{max}
+													step={0.01}
+													value={layer.image.adjustments[key]}
+													disabled={!editor.canEdit}
+													ariaLabel={label}
+													onValueChange={(value) => setAdjustment(key, value)}
+												/>
+											</label>
+										{/each}
+									</div>
+								{/each}
+							</Collapsible.Content>
+						</Collapsible.Root>
 					</section>
 				{/if}
 			</div>

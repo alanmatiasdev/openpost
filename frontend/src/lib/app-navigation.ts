@@ -6,6 +6,7 @@ export type PrimaryNavigationItem = {
 		| 'communications'
 		| 'analytics'
 		| 'media'
+		| 'editors'
 		| 'accounts'
 		| 'settings';
 	label: string;
@@ -33,6 +34,13 @@ export const primaryNavigation: PrimaryNavigationItem[] = [
 		mobile: false
 	},
 	{ id: 'media', label: 'Media', href: '/media', match: ['/media'], mobile: true },
+	{
+		id: 'editors',
+		label: 'Editors',
+		href: '/editors',
+		match: ['/editors', '/image-editor', '/video-editor'],
+		mobile: false
+	},
 	{ id: 'settings', label: 'Settings', href: '/settings', match: ['/settings'], mobile: false }
 ];
 

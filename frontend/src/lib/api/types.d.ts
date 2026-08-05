@@ -1819,7 +1819,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Delete multiple media attachments at once */
+        /** Move multiple media attachments to Trash */
         post: operations["batch-delete-media"];
         delete?: never;
         options?: never;
@@ -1941,7 +1941,7 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Delete a media attachment (only if not used in any post) */
+        /** Move a media attachment to Trash when active work does not use it */
         delete: operations["delete-media"];
         options?: never;
         head?: never;
@@ -1981,6 +1981,23 @@ export interface paths {
         head?: never;
         /** Toggle favorite status of a media attachment */
         patch: operations["update-media-favorite"];
+        trace?: never;
+    };
+    "/media/{id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Restore a media attachment from Trash */
+        post: operations["restore-media"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/media/{id}/usage": {
@@ -4518,6 +4535,11 @@ export interface components {
             /** @description Source media ID for a derivative */
             parent_media_id?: string;
             /**
+             * @description Keep in the library or manage as temporary post media
+             * @enum {string}
+             */
+            retention_class?: "library" | "temporary";
+            /**
              * Format: int64
              * @description Expected upload size in bytes
              */
@@ -6421,6 +6443,8 @@ export interface components {
             id: string;
             /** @description Whether media is favorited */
             is_favorite: boolean;
+            /** @description Most recent known reference time */
+            last_used_at?: string;
             /** @description MIME type */
             mime_type: string;
             /** @description Original filename */
@@ -6447,6 +6471,13 @@ export interface components {
              * @description Public URL verification HTTP status
              */
             public_url_status: number;
+            /** @description Time the item becomes eligible for permanent deletion */
+            purge_after?: string;
+            /**
+             * @description Whether the asset is kept in the library or managed as temporary post media
+             * @enum {string}
+             */
+            retention_class: "library" | "temporary";
             /**
              * Format: int64
              * @description Normalized display rotation
@@ -6463,6 +6494,13 @@ export interface components {
             tags: string[] | null;
             /** @description Thumbnail URL for grid view */
             thumbnail_url: string;
+            /**
+             * @description Why the item entered Trash
+             * @enum {string}
+             */
+            trash_reason?: "manual" | "published" | "expired";
+            /** @description Time the item entered Trash */
+            trashed_at?: string;
             /** @description URL to access the media */
             url: string;
             /**
@@ -6571,6 +6609,11 @@ export interface components {
             processing_progress: number;
             /** @description Media processing status */
             processing_status: string;
+            /**
+             * @description Media lifecycle class
+             * @enum {string}
+             */
+            retention_class: "library" | "temporary";
             /**
              * Format: int64
              * @description File size in bytes
@@ -8248,6 +8291,16 @@ export interface components {
             readonly $schema?: string;
             /** Format: int64 */
             expected_revision: number;
+        };
+        RestoreMediaOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/RestoreMediaOutputBody.json
+             */
+            readonly $schema?: string;
+            /** @description Success message */
+            message: string;
         };
         RestoreVideoProjectRevisionInputBody: {
             /**
@@ -16157,6 +16210,8 @@ export interface operations {
                 source?: string;
                 /** @description Filter by asset role; defaults to library */
                 asset_kind?: string;
+                /** @description Lifecycle view; defaults to library */
+                lifecycle?: "library" | "temporary" | "trash" | "all";
                 /** @description Filter: square, portrait, landscape */
                 aspect?: string;
                 /** @description Filter by one tag ID */
@@ -16856,6 +16911,65 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UpdateMediaFavoriteOutputBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "restore-media": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Media ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RestoreMediaOutputBody"];
                 };
             };
             /** @description Forbidden */

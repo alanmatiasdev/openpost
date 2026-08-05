@@ -284,6 +284,7 @@ func (h *WorkspaceHandler) CreateWorkspace(api huma.API) {
 		if err != nil {
 			return nil, huma.Error500InternalServerError("failed to create workspace")
 		}
+		_ = queue.ScheduleMediaCleanup(h.db, workspace.ID, 14) //nolint:errcheck
 
 		resp := &CreateWorkspaceOutput{}
 		resp.Body.WorkspaceID = workspace.ID

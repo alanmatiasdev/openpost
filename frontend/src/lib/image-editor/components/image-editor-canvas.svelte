@@ -117,7 +117,8 @@
 					return;
 				}
 				adapter = next;
-				editor.fitZoom(viewportElement.clientWidth, viewportElement.clientHeight);
+				editor.setViewportSize(viewportElement.clientWidth, viewportElement.clientHeight);
+				editor.fitZoom();
 				ready = true;
 				let viewportWidth = viewportElement.clientWidth;
 				let viewportHeight = viewportElement.clientHeight;
@@ -125,6 +126,7 @@
 					if (textEditing) return;
 					const nextWidth = viewportElement.clientWidth;
 					const nextHeight = viewportElement.clientHeight;
+					editor.setViewportSize(nextWidth, nextHeight);
 					if (
 						Math.abs(nextWidth - viewportWidth) > 32 ||
 						Math.abs(nextHeight - viewportHeight) > 32

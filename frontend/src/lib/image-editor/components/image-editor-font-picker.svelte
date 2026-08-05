@@ -5,6 +5,7 @@
 	import SearchIcon from 'lucide-svelte/icons/search';
 	import type { ImageEditorBrandFont } from '../types';
 	import { m } from '$lib/paraglide/messages';
+	import { openPostDesignFonts } from '$lib/design-fonts';
 
 	let {
 		value,
@@ -23,28 +24,24 @@
 		}) => void;
 	} = $props();
 
-	const systemFonts = [
-		{ family: 'Geist Variable' },
-		{ family: 'Arial' },
-		{ family: 'Georgia' },
-		{ family: 'Times New Roman' },
-		{ family: 'Courier New' }
-	];
 	let search = $state('');
 	let open = $state(false);
 	let filteredBrandFonts = $derived(
 		brandFonts.filter((font) => font.family.toLowerCase().includes(search.trim().toLowerCase()))
 	);
 	let filteredSystemFonts = $derived(
-		systemFonts.filter((font) => font.family.toLowerCase().includes(search.trim().toLowerCase()))
+		openPostDesignFonts.filter((font) =>
+			font.label.toLowerCase().includes(search.trim().toLowerCase())
+		)
 	);
 	const selectedBrandFont = $derived(
 		brandFonts.find((font) => value === font.family || value === (font.css_family || font.family))
 	);
+	const selectedDesignFont = $derived(openPostDesignFonts.find((font) => font.family === value));
 	const selectedFamily = $derived(
 		selectedBrandFont?.css_family || selectedBrandFont?.family || value
 	);
-	const selectedLabel = $derived(selectedBrandFont?.family || value);
+	const selectedLabel = $derived(selectedBrandFont?.family || selectedDesignFont?.label || value);
 
 	function choose(font: {
 		family: string;
@@ -116,7 +113,7 @@
 			{/if}
 			{#if filteredSystemFonts.length > 0}
 				<p class="px-2 py-1 text-xs font-medium text-muted-foreground">
-					{m.image_editor_system_fonts()}
+					{m.image_editor_fonts()}
 				</p>
 				{#each filteredSystemFonts as font (font.family)}
 					<button
@@ -125,8 +122,9 @@
 						onclick={() => choose({ family: font.family })}
 					>
 						<span class="min-w-0 flex-1 truncate text-sm" style:font-family={font.family}>
-							{font.family}
+							{font.label}
 						</span>
+						<span class="shrink-0 text-[10px] text-muted-foreground">{font.category}</span>
 						{#if value === font.family}<CheckIcon class="size-4 shrink-0" />{/if}
 					</button>
 				{/each}

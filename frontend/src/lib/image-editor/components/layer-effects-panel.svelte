@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { Button } from '$lib/components/ui/button';
 	import { Slider } from '$lib/components/ui/slider';
+	import * as Collapsible from '$lib/components/ui/collapsible';
 	import AppSelect from '$lib/components/app-select.svelte';
 	import { m } from '$lib/paraglide/messages';
 	import {
@@ -21,6 +22,7 @@
 	import ImageEditorColorPicker from './image-editor-color-picker.svelte';
 	import PlusIcon from 'lucide-svelte/icons/plus';
 	import XIcon from 'lucide-svelte/icons/x';
+	import ChevronDownIcon from 'lucide-svelte/icons/chevron-down';
 
 	let { layer }: { layer: ImageEditorLayer } = $props();
 	const editor = useImageEditor();
@@ -30,6 +32,14 @@
 	);
 	let canUseInnerShadow = $derived(canMask);
 	let canUseStroke = $derived(layer.type !== 'group' && layer.shape?.kind !== 'line');
+	let effectsOpen = $state(false);
+	let activeEffectCount = $derived(
+		Number(currentEffects().blend_mode !== 'normal') +
+			Number(Boolean(currentEffects().stroke)) +
+			Number(Boolean(currentEffects().drop_shadow)) +
+			Number(Boolean(currentEffects().inner_shadow)) +
+			Number(Boolean(layer.mask))
+	);
 
 	type ShadowKind = 'drop_shadow' | 'inner_shadow';
 
@@ -267,156 +277,174 @@
 	</div>
 {/snippet}
 
-<section class="space-y-3 border-t pt-4">
-	<h3 class="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-		{m.image_editor_effects()}
-	</h3>
-	<label class="grid gap-1 text-xs">
-		<span>{m.image_editor_blend_mode()}</span>
-		<AppSelect
-			value={currentEffects().blend_mode}
-			ariaLabel={m.image_editor_blend_mode()}
-			disabled={!editor.canEdit}
-			onValueChange={(value) => setBlendMode(value as ImageEditorBlendMode)}
-			options={blendModes.map((mode) => ({ value: mode, label: blendLabel(mode) }))}
-			class="h-9 w-full"
-		/>
-	</label>
-
-	{#if canUseStroke}
-		{@const stroke = currentEffects().stroke}
-		<div class="rounded-md border" data-testid="image-editor-layer-border">
-			<div class="flex min-h-10 items-center gap-2 px-2">
-				<span class="min-w-0 flex-1 text-xs font-medium">{m.image_editor_border()}</span>
-				<Button
-					variant={stroke ? 'secondary' : 'ghost'}
-					size="icon-xs"
-					disabled={!editor.canEdit}
-					onclick={toggleStroke}
-					aria-label={stroke ? m.image_editor_remove_border() : m.image_editor_add_border()}
-					title={stroke ? m.image_editor_remove_border() : m.image_editor_add_border()}
-				>
-					{#if stroke}<XIcon />{:else}<PlusIcon />{/if}
-				</Button>
-			</div>
-			{#if stroke}
-				<div class="space-y-3 border-t p-2">
-					<ImageEditorColorPicker
-						label={m.image_editor_border_color()}
-						value={stroke.color}
-						disabled={!editor.canEdit}
-						{brandColors}
-						recentColors={editor.recentColors}
-						onChange={(color) => updateStroke({ color }, `stroke-color:${layer.id}`)}
-						onCommit={(color) => editor.rememberColor(color)}
-					/>
-					{#if layer.type === 'image'}
-						<p class="text-xs leading-relaxed text-muted-foreground">
-							{m.image_editor_border_follows_content()}
-						</p>
-					{/if}
-					<label class="grid gap-1 text-xs">
-						<span>{m.image_editor_border_position()}</span>
-						<AppSelect
-							value={stroke.position}
-							ariaLabel={m.image_editor_border_position()}
-							disabled={!editor.canEdit}
-							onValueChange={(value) =>
-								updateStroke({
-									position: value as ImageEditorLayerStrokeEffect['position']
-								})}
-							options={[
-								{ value: 'inside', label: m.image_editor_border_inside() },
-								{ value: 'center', label: m.image_editor_border_center() },
-								{ value: 'outside', label: m.image_editor_border_outside() }
-							]}
-							class="h-9 w-full"
-						/>
-					</label>
-					<label class="grid gap-1 text-xs">
-						<span>{m.image_editor_stroke_width()} · {Math.round(stroke.width)}</span>
-						<Slider
-							value={stroke.width}
-							min={1}
-							max={200}
-							step={1}
-							disabled={!editor.canEdit}
-							ariaLabel={m.image_editor_stroke_width()}
-							onValueChange={(width) => updateStroke({ width }, `stroke-width:${layer.id}`)}
-						/>
-					</label>
-					<label class="grid gap-1 text-xs">
-						<span>{m.image_editor_opacity({ value: Math.round(stroke.opacity * 100) })}</span>
-						<Slider
-							value={stroke.opacity}
-							min={0}
-							max={1}
-							step={0.01}
-							disabled={!editor.canEdit}
-							ariaLabel={m.image_editor_opacity({
-								value: Math.round(stroke.opacity * 100)
-							})}
-							onValueChange={(opacity) => updateStroke({ opacity }, `stroke-opacity:${layer.id}`)}
-						/>
-					</label>
-				</div>
-			{/if}
-		</div>
-	{/if}
-
-	{#if canMask}
-		<div class="space-y-2">
-			<label class="grid gap-1 text-xs">
-				<span>{m.image_editor_mask()}</span>
-				<AppSelect
-					value={layer.mask?.shape ?? 'none'}
-					ariaLabel={m.image_editor_mask()}
-					disabled={!editor.canEdit}
-					onValueChange={setMask}
-					options={[
-						{ value: 'none', label: m.image_editor_mask_none() },
-						{ value: 'rectangle', label: m.image_editor_mask_rectangle() },
-						{ value: 'rounded_rectangle', label: m.image_editor_mask_rounded() },
-						{ value: 'circle', label: m.image_editor_mask_circle() },
-						{ value: 'ellipse', label: m.image_editor_mask_ellipse() },
-						{ value: 'diamond', label: m.image_editor_mask_diamond() }
-					]}
-					class="h-9 w-full"
+<Collapsible.Root bind:open={effectsOpen} class="border-t pt-2">
+	<Collapsible.Trigger>
+		{#snippet child({ props })}
+			<button
+				{...props}
+				type="button"
+				class="flex min-h-9 w-full items-center gap-2 rounded-md px-2 text-left text-xs font-semibold hover:bg-muted"
+			>
+				<span class="min-w-0 flex-1">{m.image_editor_effects()}</span>
+				{#if activeEffectCount > 0}
+					<span class="text-[11px] font-normal text-muted-foreground">
+						{m.image_editor_effects_active({ count: activeEffectCount })}
+					</span>
+				{/if}
+				<ChevronDownIcon
+					class={`size-3.5 transition-transform ${effectsOpen ? 'rotate-180' : ''}`}
 				/>
-			</label>
-			{#if layer.mask}
-				<label class="grid gap-1 text-xs">
-					<span>{m.image_editor_mask_inset()} · {Math.round(layer.mask.inset)}</span>
-					<Slider
-						value={layer.mask.inset}
-						min={0}
-						max={Math.max(1, Math.min(layer.transform.width, layer.transform.height) / 2 - 1)}
-						step={1}
+			</button>
+		{/snippet}
+	</Collapsible.Trigger>
+	<Collapsible.Content class="space-y-3 pt-3">
+		<label class="grid gap-1 text-xs">
+			<span>{m.image_editor_blend_mode()}</span>
+			<AppSelect
+				value={currentEffects().blend_mode}
+				ariaLabel={m.image_editor_blend_mode()}
+				disabled={!editor.canEdit}
+				onValueChange={(value) => setBlendMode(value as ImageEditorBlendMode)}
+				options={blendModes.map((mode) => ({ value: mode, label: blendLabel(mode) }))}
+				class="h-9 w-full"
+			/>
+		</label>
+
+		{#if canUseStroke}
+			{@const stroke = currentEffects().stroke}
+			<div class="rounded-md border" data-testid="image-editor-layer-border">
+				<div class="flex min-h-10 items-center gap-2 px-2">
+					<span class="min-w-0 flex-1 text-xs font-medium">{m.image_editor_border()}</span>
+					<Button
+						variant={stroke ? 'secondary' : 'ghost'}
+						size="icon-xs"
 						disabled={!editor.canEdit}
-						ariaLabel={m.image_editor_mask_inset()}
-						onValueChange={(inset) => updateMask({ inset }, `mask-inset:${layer.id}`)}
+						onclick={toggleStroke}
+						aria-label={stroke ? m.image_editor_remove_border() : m.image_editor_add_border()}
+						title={stroke ? m.image_editor_remove_border() : m.image_editor_add_border()}
+					>
+						{#if stroke}<XIcon />{:else}<PlusIcon />{/if}
+					</Button>
+				</div>
+				{#if stroke}
+					<div class="space-y-3 border-t p-2">
+						<ImageEditorColorPicker
+							label={m.image_editor_border_color()}
+							value={stroke.color}
+							disabled={!editor.canEdit}
+							{brandColors}
+							recentColors={editor.recentColors}
+							onChange={(color) => updateStroke({ color }, `stroke-color:${layer.id}`)}
+							onCommit={(color) => editor.rememberColor(color)}
+						/>
+						{#if layer.type === 'image'}
+							<p class="text-xs leading-relaxed text-muted-foreground">
+								{m.image_editor_border_follows_content()}
+							</p>
+						{/if}
+						<label class="grid gap-1 text-xs">
+							<span>{m.image_editor_border_position()}</span>
+							<AppSelect
+								value={stroke.position}
+								ariaLabel={m.image_editor_border_position()}
+								disabled={!editor.canEdit}
+								onValueChange={(value) =>
+									updateStroke({
+										position: value as ImageEditorLayerStrokeEffect['position']
+									})}
+								options={[
+									{ value: 'inside', label: m.image_editor_border_inside() },
+									{ value: 'center', label: m.image_editor_border_center() },
+									{ value: 'outside', label: m.image_editor_border_outside() }
+								]}
+								class="h-9 w-full"
+							/>
+						</label>
+						<label class="grid gap-1 text-xs">
+							<span>{m.image_editor_stroke_width()} · {Math.round(stroke.width)}</span>
+							<Slider
+								value={stroke.width}
+								min={1}
+								max={200}
+								step={1}
+								disabled={!editor.canEdit}
+								ariaLabel={m.image_editor_stroke_width()}
+								onValueChange={(width) => updateStroke({ width }, `stroke-width:${layer.id}`)}
+							/>
+						</label>
+						<label class="grid gap-1 text-xs">
+							<span>{m.image_editor_opacity({ value: Math.round(stroke.opacity * 100) })}</span>
+							<Slider
+								value={stroke.opacity}
+								min={0}
+								max={1}
+								step={0.01}
+								disabled={!editor.canEdit}
+								ariaLabel={m.image_editor_opacity({
+									value: Math.round(stroke.opacity * 100)
+								})}
+								onValueChange={(opacity) => updateStroke({ opacity }, `stroke-opacity:${layer.id}`)}
+							/>
+						</label>
+					</div>
+				{/if}
+			</div>
+		{/if}
+
+		{#if canMask}
+			<div class="space-y-2">
+				<label class="grid gap-1 text-xs">
+					<span>{m.image_editor_mask()}</span>
+					<AppSelect
+						value={layer.mask?.shape ?? 'none'}
+						ariaLabel={m.image_editor_mask()}
+						disabled={!editor.canEdit}
+						onValueChange={setMask}
+						options={[
+							{ value: 'none', label: m.image_editor_mask_none() },
+							{ value: 'rectangle', label: m.image_editor_mask_rectangle() },
+							{ value: 'rounded_rectangle', label: m.image_editor_mask_rounded() },
+							{ value: 'circle', label: m.image_editor_mask_circle() },
+							{ value: 'ellipse', label: m.image_editor_mask_ellipse() },
+							{ value: 'diamond', label: m.image_editor_mask_diamond() }
+						]}
+						class="h-9 w-full"
 					/>
 				</label>
-				{#if layer.mask.shape === 'rounded_rectangle'}
+				{#if layer.mask}
 					<label class="grid gap-1 text-xs">
-						<span>{m.image_editor_mask_radius()} · {Math.round(layer.mask.radius)}</span>
+						<span>{m.image_editor_mask_inset()} · {Math.round(layer.mask.inset)}</span>
 						<Slider
-							value={layer.mask.radius}
+							value={layer.mask.inset}
 							min={0}
-							max={Math.max(1, Math.min(layer.transform.width, layer.transform.height) / 2)}
+							max={Math.max(1, Math.min(layer.transform.width, layer.transform.height) / 2 - 1)}
 							step={1}
 							disabled={!editor.canEdit}
-							ariaLabel={m.image_editor_mask_radius()}
-							onValueChange={(radius) => updateMask({ radius }, `mask-radius:${layer.id}`)}
+							ariaLabel={m.image_editor_mask_inset()}
+							onValueChange={(inset) => updateMask({ inset }, `mask-inset:${layer.id}`)}
 						/>
 					</label>
+					{#if layer.mask.shape === 'rounded_rectangle'}
+						<label class="grid gap-1 text-xs">
+							<span>{m.image_editor_mask_radius()} · {Math.round(layer.mask.radius)}</span>
+							<Slider
+								value={layer.mask.radius}
+								min={0}
+								max={Math.max(1, Math.min(layer.transform.width, layer.transform.height) / 2)}
+								step={1}
+								disabled={!editor.canEdit}
+								ariaLabel={m.image_editor_mask_radius()}
+								onValueChange={(radius) => updateMask({ radius }, `mask-radius:${layer.id}`)}
+							/>
+						</label>
+					{/if}
 				{/if}
-			{/if}
-		</div>
-	{/if}
+			</div>
+		{/if}
 
-	{@render shadowEditor('drop_shadow', m.image_editor_drop_shadow())}
-	{#if canUseInnerShadow}
-		{@render shadowEditor('inner_shadow', m.image_editor_inner_shadow())}
-	{/if}
-</section>
+		{@render shadowEditor('drop_shadow', m.image_editor_drop_shadow())}
+		{#if canUseInnerShadow}
+			{@render shadowEditor('inner_shadow', m.image_editor_inner_shadow())}
+		{/if}
+	</Collapsible.Content>
+</Collapsible.Root>
