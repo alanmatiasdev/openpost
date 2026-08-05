@@ -46,6 +46,8 @@ All notable changes to this project are documented in this file.
 
 ### Fixed
 
+- Clarified the OpenPost purpose and Google and YouTube data use on the public homepage for OAuth branding review.
+
 - Made production-image smoke tests use an isolated Docker volume so the non-root server can create its database on Linux runners, and print container logs when startup exits early.
 - Kept the desktop platform menu at its intended wide layout by overriding the shared navigation content width with component-scoped CSS.
 - Updated marketing browser coverage to verify the publishing-activity proof that replaced the previous proof-card copy.

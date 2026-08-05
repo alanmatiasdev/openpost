@@ -338,7 +338,42 @@ FORM: Product-led publishing workspace with activity squares as the recurring pr
   </div>
 </section>
 
-<section class="section-pad" aria-labelledby="pricing-title">
+<section class="section-pad" aria-labelledby="google-data-title">
+  <div class="marketing-shell">
+    <ScrollReveal
+      class="mx-auto grid max-w-5xl gap-8 rounded-[2rem] border bg-card p-7 shadow-sm sm:p-10 lg:grid-cols-[0.9fr_1.1fr] lg:items-center"
+    >
+      <div>
+        <p class="section-label">Google and YouTube</p>
+        <h2 id="google-data-title" class="marketing-heading mt-4">
+          OpenPost connects your publishing workspace to YouTube.
+        </h2>
+      </div>
+      <div class="space-y-4 text-sm leading-6 text-muted-foreground sm:text-base/7">
+        <p>
+          When you connect YouTube, OpenPost uses the Google profile and channel
+          access you approve to identify your account, let you choose a channel,
+          publish and manage videos, and show channel and video analytics.
+        </p>
+        <p>
+          OpenPost stores connected-account tokens encrypted, does not use Google
+          user data for advertising, and lets you disconnect the account at any
+          time. Read the
+          <a
+            href={resolve("/privacy")}
+            class="focus-ring rounded-sm font-medium text-foreground underline decoration-border underline-offset-4 hover:text-primary"
+            >Privacy Policy</a
+          > for retention, deletion, and revocation details.
+        </p>
+      </div>
+    </ScrollReveal>
+  </div>
+</section>
+
+<section
+  class="section-pad marketing-rule border-t bg-muted/18"
+  aria-labelledby="pricing-title"
+>
   <div class="marketing-shell">
     <ScrollReveal class="mx-auto max-w-3xl text-center">
       <p class="section-label">Managed plans</p>
