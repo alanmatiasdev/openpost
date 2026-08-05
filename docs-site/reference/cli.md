@@ -388,14 +388,14 @@ openpost billing
 | Command | Description |
 | --- | --- |
 | `openpost billing checkout` | Create an OpenPost checkout URL for the active workspace |
-| `openpost billing portal` | Open Whop billing management for the active workspace |
+| `openpost billing portal` | Open Paddle billing management for the active workspace |
 | `openpost billing status` | Show billing plan and usage for the active workspace |
 
 ### `openpost billing checkout`
 
 Create an OpenPost checkout URL for the active workspace
 
-Create an OpenPost checkout URL with an embedded Whop payment form. Plan IDs are starter, founder, pro, team, or agency.
+Create an OpenPost checkout URL that opens Paddle's embedded payment form. Plan IDs are starter, founder, pro, team, or agency.
 
 **Usage**
 
@@ -424,7 +424,7 @@ openpost billing checkout &lt;plan&gt; [flags]
 
 ### `openpost billing portal`
 
-Open Whop billing management for the active workspace
+Open Paddle billing management for the active workspace
 
 **Usage**
 

@@ -28,7 +28,7 @@ Each attempt counts toward the workspace's monthly provider-write limit. If that
 
 ## Override one post
 
-Open **Repost settings** in the text-and-thread composer or any focused Story, short-video, or video composer.
+Open **Repost settings** in the publication composer.
 
 - **Use workspace rules** applies every matching enabled rule.
 - **Do not repost** disables automation for that post.

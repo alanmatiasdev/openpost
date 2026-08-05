@@ -1,6 +1,6 @@
 <p align="center">
   <a href="https://openpost.social">
-    <img alt="OpenPost" src="./assets/brand/logo.svg" width="280">
+    <img alt="OpenPost" src="./assets/brand/lockup.svg" width="280">
   </a>
 </p>
 
@@ -43,7 +43,8 @@
 
 OpenPost helps solo founders turn launches, product updates, lessons, and ideas into content, then adapt, schedule, and track it from one workspace.
 
-- **Write one shared post.** Change the text, media, format, and settings for each account.
+- **Write once, shape each destination.** Start from Post, Thread, Story, Short video, or Video, choose one unified composer or focused authoring layouts, then change the text, media, format, schedule, and settings for any account.
+- **Reuse account groups.** Social Sets keep a stable group of accounts and optional format defaults; each draft stores its own destination snapshot.
 - **See the full schedule.** Plan posts in a calendar, reuse posting times, and check scheduled, published, and failed posts.
 - **Track real platform numbers.** Keep account growth and post results while treating views, impressions, and reach as different metrics.
 - **Repost posts that earn attention.** Set native repost rules for selected accounts, wait for minimum engagement or stable growth, and override the rules on any post.

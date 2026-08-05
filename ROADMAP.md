@@ -9,7 +9,7 @@ OpenPost is a social publishing product with a managed service and a self-hosted
 - Monorepo/Turborepo workspace with `frontend`, `docs-site`, and `marketing-site`.
 - OpenPost marketing site with product, platform, pricing, security, open-source, tools, and comparison pages.
 - Hosted service support: edition mode, PostgreSQL, S3-compatible media, direct uploads, hosted-mode checks, and database fixes.
-- Whop billing: embedded checkout, memberships, signed webhooks, local subscription snapshots, entitlement checks, usage counters, billing management, and CLI billing commands.
+- Paddle billing: localized embedded checkout, customer and subscription mirrors, signed webhooks, entitlement checks, usage counters, customer portal sessions, and CLI billing commands.
 - MCP and ChatGPT-style app base: remote `/mcp`, local proxy, OAuth PKCE account linking, Apps SDK widget details, limited MCP tokens, tool-call history, prompts, and tools for schedules, media, and social networks.
 - Platform setup and publishing for Facebook Pages, Instagram Business and Creator accounts, TikTok, and YouTube, plus operator tools for social app keys and account discovery.
 - Production diagnostics: `/ready`, CLI `instance health`, redacted `instance diagnostics`, provider catalog snapshots, and billing usage snapshots.
@@ -23,7 +23,7 @@ OpenPost is a social publishing product with a managed service and a self-hosted
 
 1. **Hosted operations**
    - Keep `openpost.social`, `docs.openpost.social`, and `app.openpost.social` independently monitored and verified after changes.
-   - Keep the managed deployment on cloud mode, Postgres, S3/R2 media, Whop billing, readiness probes, backups, and tested recovery.
+   - Keep the managed deployment on cloud mode, Postgres, S3/R2 media, Paddle billing, readiness probes, backups, and tested recovery.
    - Repeat database, media, and secrets restore drills as the hosted data model changes.
 
 2. **Provider live-account verification**

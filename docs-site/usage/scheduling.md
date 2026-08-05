@@ -22,7 +22,9 @@ The composer interprets dates and times in the workspace timezone. You can:
 - save a time while the post stays a draft; or
 - choose **Schedule**, which checks the post and saves the posting job.
 
-For API, CLI, and MCP users: setting `scheduled_at` on a draft does not schedule it by itself. The schedule action creates the posting job and marks the post and account versions as scheduled. Clearing the schedule returns them to draft and keeps old success and error history.
+The publication time applies to every destination by default. To stagger delivery, open a destination tab, expand **Advanced delivery**, and set its schedule override. OpenPost keeps the publication grouped in Calendar and Activity while each rendition runs at its own time and records its own result.
+
+For API, CLI, and MCP users: setting `scheduled_at` on a draft does not schedule it by itself. The schedule action creates the required destination jobs and marks the publication and renditions as scheduled. Clearing the schedule returns them to draft, removes destination schedule overrides, and keeps old success and error history.
 
 Configure the workspace timezone, week start, reusable posting slots, and optional natural posting delay in **Settings → Workspace**.
 

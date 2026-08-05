@@ -86,22 +86,21 @@ Most variables loaded through the main backend config loader can also be loaded 
 | `OPENPOST_S3_SECRET_ACCESS_KEY`                 | S3 secret access key                                                                              |
 | `OPENPOST_S3_PUBLIC_BASE_URL`                   | Public media base URL for S3-backed media                                                         |
 | `OPENPOST_S3_FORCE_PATH_STYLE`                  | Force path-style S3 addressing                                                                    |
-| `OPENPOST_WHOP_API_KEY`                         | Server-only Whop API key                                                                          |
-| `OPENPOST_WHOP_API_BASE_URL`                    | Whop API base URL                                                                                 |
-| `OPENPOST_WHOP_WEBHOOK_SECRET`                  | Whop webhook verification secret                                                                  |
-| `OPENPOST_WHOP_ACCOUNT_ID`                      | Whop business account ID                                                                          |
-| `OPENPOST_WHOP_PRODUCT_ID`                      | Whop OpenPost product ID                                                                          |
-| `OPENPOST_WHOP_CHECKOUT_RETURN_URL`             | OpenPost return URL after checkout                                                                |
-| `OPENPOST_WHOP_STARTER_MONTHLY_PLAN_ID`         | Whop Starter monthly plan ID                                                                      |
-| `OPENPOST_WHOP_STARTER_ANNUAL_PLAN_ID`          | Whop Starter annual plan ID                                                                       |
-| `OPENPOST_WHOP_FOUNDER_MONTHLY_PLAN_ID`         | Whop Founder monthly plan ID                                                                      |
-| `OPENPOST_WHOP_FOUNDER_ANNUAL_PLAN_ID`          | Whop Founder annual plan ID                                                                       |
-| `OPENPOST_WHOP_PRO_MONTHLY_PLAN_ID`             | Whop Pro monthly plan ID                                                                          |
-| `OPENPOST_WHOP_PRO_ANNUAL_PLAN_ID`              | Whop Pro annual plan ID                                                                           |
-| `OPENPOST_WHOP_TEAM_MONTHLY_PLAN_ID`            | Whop Team monthly plan ID                                                                         |
-| `OPENPOST_WHOP_TEAM_ANNUAL_PLAN_ID`             | Whop Team annual plan ID                                                                          |
-| `OPENPOST_WHOP_AGENCY_MONTHLY_PLAN_ID`          | Whop Agency monthly plan ID                                                                       |
-| `OPENPOST_WHOP_AGENCY_ANNUAL_PLAN_ID`           | Whop Agency annual plan ID                                                                        |
+| `OPENPOST_PADDLE_API_KEY`                       | Server-only Paddle API key                                                                        |
+| `OPENPOST_PADDLE_ENVIRONMENT`                   | Explicit Paddle environment: sandbox or production                                                |
+| `OPENPOST_PADDLE_CLIENT_TOKEN`                  | Browser-safe Paddle.js client token                                                               |
+| `OPENPOST_PADDLE_WEBHOOK_SECRET`                | Paddle webhook verification secret                                                               |
+| `OPENPOST_PADDLE_CHECKOUT_RETURN_URL`           | OpenPost return URL after checkout                                                                |
+| `OPENPOST_PADDLE_STARTER_MONTHLY_PRICE_ID`      | Paddle Starter monthly price ID                                                                   |
+| `OPENPOST_PADDLE_STARTER_ANNUAL_PRICE_ID`       | Paddle Starter annual price ID                                                                    |
+| `OPENPOST_PADDLE_FOUNDER_MONTHLY_PRICE_ID`      | Paddle Founder monthly price ID                                                                   |
+| `OPENPOST_PADDLE_FOUNDER_ANNUAL_PRICE_ID`       | Paddle Founder annual price ID                                                                    |
+| `OPENPOST_PADDLE_PRO_MONTHLY_PRICE_ID`          | Paddle Pro monthly price ID                                                                       |
+| `OPENPOST_PADDLE_PRO_ANNUAL_PRICE_ID`           | Paddle Pro annual price ID                                                                        |
+| `OPENPOST_PADDLE_TEAM_MONTHLY_PRICE_ID`         | Paddle Team monthly price ID                                                                      |
+| `OPENPOST_PADDLE_TEAM_ANNUAL_PRICE_ID`          | Paddle Team annual price ID                                                                       |
+| `OPENPOST_PADDLE_AGENCY_MONTHLY_PRICE_ID`       | Paddle Agency monthly price ID                                                                    |
+| `OPENPOST_PADDLE_AGENCY_ANNUAL_PRICE_ID`        | Paddle Agency annual price ID                                                                     |
 | `OPENPOST_X_MONTHLY_BUDGET_MICROUSD`            | Cloud-only per-workspace X provider-cost safety limit                                             |
 | `OPENPOST_X_POST_CREATE_COST_MICROUSD`          | Estimated X post-create price without a URL                                                       |
 | `OPENPOST_X_POST_CREATE_WITH_URL_COST_MICROUSD` | Estimated X post-create price with a URL                                                          |

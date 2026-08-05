@@ -15,7 +15,7 @@ OpenPost uses one product core for the managed app and self-hosted servers. This
 
 - `OPENPOST_EDITION=selfhost|cloud` selects the server mode.
 - Self-hosted mode uses SQLite and local media by default.
-- Cloud mode requires Postgres, S3-compatible media storage, and Whop billing settings.
+- Cloud mode requires Postgres, S3-compatible media storage, and Paddle billing settings.
 - The API keeps normal database work portable across SQLite and Postgres.
 - Durable database jobs handle publishing, media work, token refresh, analytics, comments, and inbox updates that must survive a restart.
 - The built SvelteKit app is embedded in the Go server.
@@ -24,8 +24,8 @@ Keep production secrets, social app keys, monitoring, backups, and private opera
 
 ## Billing and limits
 
-- The managed app embeds Whop checkout inside OpenPost and uses Whop for memberships, billing management, tax collection, and signed webhooks.
-- OpenPost saves the current membership and plan limits in its own database. Normal API requests do not call Whop.
+- The managed app opens Paddle's one-page checkout inside OpenPost. Paddle acts as Merchant of Record for payment processing, tax, receipts, refunds, and subscription management.
+- OpenPost saves current Paddle customer and subscription mirrors plus plan limits in its own database. Normal API requests do not call Paddle.
 - Limits cover workspaces, members, social accounts, posts, media, schedules, and provider writes.
 - Self-hosted mode has permissive defaults unless the operator changes them.
 - The managed app creates one workspace before checkout. Every plan begins with a card-required 14-day trial; an active or trialing membership is required to connect social accounts, upload media, schedule, or publish.
@@ -46,10 +46,10 @@ Analytics, comments, and inbox reads use optional adapter interfaces. They do no
 ## Posts and media
 
 - Publications are the user-visible post list.
-- Post and Thread use the text-and-thread composer and a linked editor row.
-- Story, Short video, and Video use focused editors.
-- Each selected account can have its own text, media, format, and settings.
-- Schedules and current status stay on the publication and its account versions.
+- Post, Thread, Story, Short video, and Video are creation presets in one publication composer and use `/publications/:id`; a linked editor row and `/posts/:id` remain only for compatibility.
+- Social Sets provide reusable account groups and optional format defaults. Publications snapshot the chosen destinations.
+- Each selected account can have its own format, text, media, settings, and schedule override, with per-field inheritance from the shared source.
+- Schedules and current status stay on the grouped publication and its independently published renditions.
 - Media uses local storage or S3-compatible storage through `BlobStorage`.
 - Direct S3/R2 uploads use a signed browser upload when the file fits one request. Larger files stream through bounded multipart uploads.
 - OpenPost Image Editor saves still-image designs, pages, templates, brand items, history, and media links. Its saved document format does not depend on Fabric.js.

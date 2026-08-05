@@ -41,7 +41,7 @@ If any destination remains unverified, use a claim that does not imply publicati
 - Managed and self-hosted editions are the same AGPL product.
 - Self-hosting uses one Go binary or container, SQLite and local media by default, and no required Redis service.
 - Managed publishing starts at $15/month and includes a card-required 14-day trial.
-- A hosted registration creates one workspace before checkout, but connecting accounts, uploading media, scheduling, publishing, and other provider writes need an active or trialing Whop membership.
+- A hosted registration creates one workspace before checkout, but connecting accounts, uploading media, scheduling, publishing, and other provider writes need an active or trialing Paddle subscription.
 
 ## Claims the campaign must not use without evidence
 

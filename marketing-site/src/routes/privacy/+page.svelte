@@ -2,7 +2,7 @@
   import { resolve } from "$app/paths";
   import { siteUrl } from "../_marketing";
 
-  const effectiveDate = "4 August 2026";
+  const effectiveDate = "5 August 2026";
 </script>
 
 <svelte:head>
@@ -62,9 +62,9 @@
       </li>
       <li>
         <strong>Post data:</strong> drafts, scheduled and published content, media,
-        account versions, OpenPost Image Editor designs and saved versions, explicitly cloud-saved
-        OpenPost Video Editor projects, templates, brand settings, prompts, schedules, post
-        status, and job history.
+        account versions, OpenPost Image Editor designs and saved versions, explicitly
+        cloud-saved OpenPost Video Editor projects, templates, brand settings, prompts,
+        schedules, post status, and job history.
       </li>
       <li>
         <strong>Analytics data:</strong> account and post numbers, past results, update
@@ -95,8 +95,9 @@
       </li>
       <li>
         <strong>Billing data:</strong> plan access, subscription, checkout, customer,
-        and billing-status identifiers received from Whop. OpenPost does not receive
-        or store full payment-card details.
+        transaction, and billing-status identifiers received from Paddle or the payment
+        provider identified at checkout. OpenPost does not receive or store full payment-card
+        details.
       </li>
       <li>
         <strong>Support and service data:</strong> messages you send, service logs,
@@ -109,8 +110,8 @@
       We receive data from you when you register, set up a workspace, upload
       content, connect a social network, buy a plan, or contact support. We also
       receive account and post data from the networks you connect, billing
-      status from Whop, and limited technical data when your browser or client
-      uses the service.
+      status from Paddle or the payment provider identified at checkout, and
+      limited technical data when your browser or client uses the service.
     </p>
     <p>
       Camera access is requested only after you choose a camera action. A
@@ -162,7 +163,9 @@
         network, analytics, and backups under their service terms.
       </li>
       <li>
-        <strong>Whop</strong> for checkout, subscriptions, billing, and customer portals.
+        <strong>Paddle and prior payment providers</strong> for checkout, subscriptions,
+        tax, billing records, refunds, fraud prevention, and customer portals. Paddle
+        acts as Merchant of Record for orders it processes.
       </li>
       <li>
         <strong>Authorities or other parties</strong> when reasonably necessary to
@@ -221,16 +224,16 @@
     <p>
       The application uses essential session and security cookies. It may use
       local browser storage for the selected workspace, server address,
-      language, sound preference, composer return state, unsynced OpenPost Image Editor
-      recovery copies, and local OpenPost Video Editor projects, sources, recordings,
-      transcripts, analysis results, models, and exports. Clearing site data can
-      remove local OpenPost Video Editor content.
+      language, sound preference, composer return state, unsynced OpenPost Image
+      Editor recovery copies, and local OpenPost Video Editor projects, sources,
+      recordings, transcripts, analysis results, models, and exports. Clearing
+      site data can remove local OpenPost Video Editor content.
     </p>
     <p>
-      OpenPost Image Editor background removal runs in your browser with model and runtime
-      files served by the OpenPost operator. Source pixels are not sent to a
-      background-removal service. A result is uploaded to the selected workspace
-      only when processing succeeds.
+      OpenPost Image Editor background removal runs in your browser with model
+      and runtime files served by the OpenPost operator. Source pixels are not
+      sent to a background-removal service. A result is uploaded to the selected
+      workspace only when processing succeeds.
     </p>
     <p>
       The marketing and documentation sites use self-hosted, cookie-free Umami
@@ -241,11 +244,11 @@
       the product demo; YouTube may then process device and playback data.
     </p>
     <p>
-      OpenPost Video Editor editing, recording, transcription, voice detection, framing
-      analysis, and export run in the browser. Model files are downloaded only
-      after the user starts the related tool. Project sources and exports are
-      uploaded only when the user chooses a cloud save, Media save, or post
-      handoff.
+      OpenPost Video Editor editing, recording, transcription, voice detection,
+      framing analysis, and export run in the browser. Model files are
+      downloaded only after the user starts the related tool. Project sources
+      and exports are uploaded only when the user chooses a cloud save, Media
+      save, or post handoff.
     </p>
 
     <h2>9. International transfers</h2>

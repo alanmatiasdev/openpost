@@ -4,6 +4,25 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Added a durable personal Composer setting that switches between the default spacious text-and-thread plus focused-media experience and one unified rendition-first composer for every starter preset; both edit the same publications and account versions.
+- Added reusable Social Sets with ordered account membership, a workspace default, optional per-account format defaults, composer management, and destination snapshots that stay stable when a set changes or is deleted.
+- Added per-destination format locks, nullable text and media inheritance, reset controls, destination schedule overrides, and declarative format choices and segment strategies.
+- Added ten image-generated Converge header directions, each delivered in platform-safe X and LinkedIn profile sizes with the exact OpenPost vector lockup, plus a primary slogan-led pair for X and LinkedIn.
+
+### Changed
+
+- Unified Post, Thread, Story, Short video, and Video under one publication-and-rendition workflow while preserving the spacious text-and-thread writing canvas as the default composer experience; drafts use shared All channels content, account tabs, destination-specific settings, and canonical `/publications/:id` editing, and linked historical post URLs redirect there.
+- Changed creation modes into starter presets, stopped filtering accounts by a global mode, and made every selected account keep its own visible, independently validated rendition.
+- Replaced active Whop billing with Paddle Merchant of Record billing: localized Paddle.js checkout, sandbox and production isolation, mirrored customers and subscriptions, a Paddle-native billing schema, Paddle-scoped entitlements, raw-body signed webhooks with canonical reconciliation, scheduled-cancellation access, fresh customer portal sessions, configuration, CLI, policies, and operator documentation.
+- Replaced the pen identity with the four-module OpenPost Converge mark across the app, marketing site, documentation, favicons, Android assets, social previews, and downloadable social kit; adopted “Publish clearly.” as the optional short brand line.
+- Replaced the pen-era social header explorations with dark Converge banners for X and LinkedIn, using image-generated physical brand environments, the exact vector lockup, and the new primary line “Turn what you’re building into content. Publish it everywhere.”
+
+### Breaking
+
+- Replaced the Whop billing API, webhook, configuration keys, and subscription integration with Paddle. Cloud operators must configure the complete `OPENPOST_PADDLE_*` set and the `/api/v1/billing/paddle/webhook` notification destination before upgrading. Existing Whop subscription rows are retained as historical data but do not grant Paddle-backed entitlements; migrate active customers through Paddle before deploying this release.
+
 ## [2.1.0] - 2026-08-05
 
 ### Added

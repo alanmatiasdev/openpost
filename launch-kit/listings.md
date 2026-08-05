@@ -28,7 +28,8 @@ every active row.
 | First tagged release | `v0.1.0`, 2026-03-29 22:06 UTC |
 | License | [AGPL-3.0-only](../LICENSE) |
 | Icon | [`assets/brand/icon.svg`](../assets/brand/icon.svg), [raw GitHub](https://raw.githubusercontent.com/rodrgds/openpost/main/assets/brand/icon.svg) |
-| Primary logo | [`assets/brand/logo.svg`](../assets/brand/logo.svg), [raw GitHub](https://raw.githubusercontent.com/rodrgds/openpost/main/assets/brand/logo.svg) |
+| Primary lockup | [`assets/brand/lockup.svg`](../assets/brand/lockup.svg), [raw GitHub](https://raw.githubusercontent.com/rodrgds/openpost/main/assets/brand/lockup.svg) |
+| Symbol | [`assets/brand/logo.svg`](../assets/brand/logo.svg), [raw GitHub](https://raw.githubusercontent.com/rodrgds/openpost/main/assets/brand/logo.svg) |
 | Social card | [`assets/brand/og-image.png`](../assets/brand/og-image.png), [raw GitHub](https://raw.githubusercontent.com/rodrgds/openpost/main/assets/brand/og-image.png) |
 
 ## Description variants

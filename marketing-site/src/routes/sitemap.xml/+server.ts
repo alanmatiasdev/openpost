@@ -15,6 +15,7 @@ const routes = [
 	{ path: '/changelog', priority: '0.6' },
 	{ path: '/privacy', priority: '0.4' },
 	{ path: '/terms', priority: '0.4' },
+	{ path: '/refunds', priority: '0.4' },
 	...platforms.map((platform) => ({ path: `/platforms/${platform.slug}`, priority: '0.7' })),
 	...comparisons.map((comparison) => ({ path: `/compare/${comparison.slug}`, priority: '0.6' })),
 	...tools.map((tool) => ({ path: `/tools/${tool.slug}`, priority: '0.6' }))

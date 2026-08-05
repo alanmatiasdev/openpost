@@ -41,7 +41,7 @@
       href="/"
       aria-label="OpenPost home"
     >
-      <Logo width={36} height={28} />
+      <Logo width={36} height={28} decorative />
       <span class="text-sm font-semibold tracking-tight">OpenPost</span>
     </a>
 

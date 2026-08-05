@@ -1,7 +1,8 @@
 <script lang="ts">
+  import { resolve } from "$app/paths";
   import { siteUrl } from "../_marketing";
 
-  const effectiveDate = "4 August 2026";
+  const effectiveDate = "5 August 2026";
 </script>
 
 <svelte:head>
@@ -25,8 +26,9 @@
       Terms for the hosted OpenPost service. The open-source license governs
       self-hosted software.
     </p>
-    <a href="/pricing" class="mt-5 inline-flex text-sm font-medium text-primary"
-      >Pricing</a
+    <a
+      href={resolve("/pricing")}
+      class="mt-5 inline-flex text-sm font-medium text-primary">Pricing</a
     >
   </div>
 </header>
@@ -37,12 +39,13 @@
 
     <h2>1. Agreement and operator</h2>
     <p>
-      These Terms of Service form an agreement between you and Rodrigo Dias,
-      Porto, Portugal, operator of the hosted OpenPost service at
+      These Terms of Service form an agreement between you and Rodrigo Dias, a
+      sole trader in Porto, Portugal who operates the OpenPost trade name and
+      the hosted OpenPost service at
       <a href="https://app.openpost.social">app.openpost.social</a>. By creating
       an account or using the hosted service, you agree to these terms and
       acknowledge the
-      <a href="/privacy">Privacy Policy</a>. Contact
+      <a href={resolve("/privacy")}>Privacy Policy</a>. Contact
       <a href="mailto:openpost@rgo.pt">openpost@rgo.pt</a> with legal or account questions.
     </p>
     <p>
@@ -158,9 +161,14 @@
     <h2>7. Plans, billing, and cancellation</h2>
     <p>
       Paid plans renew for the billing period shown at checkout until cancelled.
-      Prices, included usage, seats, storage, and taxes are shown before
-      purchase. Whop processes checkout and billing. You authorize recurring
-      charges to the payment method managed there.
+      Prices, included usage, seats, storage, and applicable taxes are shown
+      before purchase. Paddle is the Merchant of Record for orders processed by
+      Paddle. Paddle processes the order, collects payment and taxes, issues the
+      customer document, and handles payment-related customer inquiries,
+      returns, and refunds. OpenPost provides the service and product support.
+      Paddle's buyer terms also apply to a Paddle order. If checkout identifies
+      another payment provider, that provider processes the order under the
+      terms shown at checkout.
     </p>
     <p>
       If checkout includes a free trial, the first charge occurs on the date
@@ -168,12 +176,14 @@
       required to begin the trial.
     </p>
     <p>
-      You can manage or cancel a subscription from the billing portal.
+      You authorize recurring charges to the payment method held by the payment
+      provider. You can manage or cancel a subscription from the billing portal.
       Cancellation normally takes effect at the end of the current paid period.
-      Unless law requires otherwise, amounts already paid are non-refundable and
-      unused plan limits do not roll over. Statutory consumer withdrawal,
-      refund, and warranty rights are not limited by these terms. Contact
-      openpost@rgo.pt promptly for billing errors.
+      The <a href={resolve("/refunds")}>Refund Policy</a> explains refund
+      requests and mandatory consumer rights. Unused plan limits do not roll
+      over. Contact
+      <a href="mailto:openpost@rgo.pt">openpost@rgo.pt</a> promptly for product or
+      billing help.
     </p>
     <p>
       We may change future prices or plan limits with reasonable advance notice.

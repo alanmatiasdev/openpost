@@ -218,6 +218,7 @@ test("marketing SEO routes expose the current public index", async ({
   expect(xml).toContain("<loc>https://openpost.social/security</loc>");
   expect(xml).toContain("<loc>https://openpost.social/privacy</loc>");
   expect(xml).toContain("<loc>https://openpost.social/terms</loc>");
+  expect(xml).toContain("<loc>https://openpost.social/refunds</loc>");
   expect(xml).not.toContain("<loc>https://openpost.social/blog</loc>");
   expect(xml).not.toContain("<loc>https://openpost.social/tips/");
 
@@ -229,6 +230,33 @@ test("marketing SEO routes expose the current public index", async ({
     const response = await request.get(path);
     expect(response.ok(), `${path} should be publicly reachable`).toBeTruthy();
   }
+});
+
+test("legal pages are public and describe Paddle billing", async ({ page }) => {
+  const pages = [
+    { path: "/terms", heading: "Terms of Service" },
+    { path: "/privacy", heading: "Privacy Policy" },
+    { path: "/refunds", heading: "Refund Policy" },
+  ];
+
+  for (const legalPage of pages) {
+    await page.goto(legalPage.path);
+    await expect(
+      page.getByRole("heading", { name: legalPage.heading, level: 1 }),
+    ).toBeVisible();
+    await expect(page.getByText(/Paddle/).first()).toBeVisible();
+  }
+
+  await page.goto("/");
+  await expect(
+    page.getByRole("link", { name: "Terms", exact: true }).last(),
+  ).toHaveAttribute("href", "/terms");
+  await expect(
+    page.getByRole("link", { name: "Privacy", exact: true }).last(),
+  ).toHaveAttribute("href", "/privacy");
+  await expect(
+    page.getByRole("link", { name: "Refunds", exact: true }).last(),
+  ).toHaveAttribute("href", "/refunds");
 });
 
 test("free marketing tools produce useful output", async ({ page }) => {

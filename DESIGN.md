@@ -87,7 +87,7 @@ components:
 
 **Creative North Star: "The Well-Maintained Workshop"**
 
-OpenPost is a focused working environment: every control has a clear job, related information stays aligned, and operational state is easy to scan. Its identity comes from precise composition, warm-tinted neutrals, a restrained orange signal, and the nib-and-line mark—not from decorative dashboard effects.
+OpenPost is a focused working environment: every control has a clear job, related information stays aligned, and operational state is easy to scan. Its identity comes from precise composition, warm-tinted neutrals, a restrained orange signal, and the Converge mark—not from decorative dashboard effects.
 
 The authenticated app stays compact and predictable. Marketing pages use the same materials with more breathing room and stronger type contrast. Documentation keeps VitePress reading conventions while sharing the product palette, assets, and direct voice. Light and dark are equal expressions of one system.
 
@@ -99,19 +99,25 @@ The authenticated app stays compact and predictable. Marketing pages use the sam
 - Compact app hierarchy with more spacious public and reading surfaces.
 - Consistent page, loading, empty, notice, toast, and destructive patterns.
 
+## Identity
+
+The Converge symbol is the canonical OpenPost mark. Four equal rounded modules face one centered opening, expressing one workspace publishing outward. Preserve the exact supplied geometry: four-fold symmetry, even axis gaps, and a square footprint that remains legible at 16px. Do not redraw it as a pen, star, flower, window, or generic app grid.
+
+Use the standalone mark when “OpenPost” is already written beside it or space is compact. Use the supplied outlined lockup for README, brand references, and static compositions that need the complete name. On light surfaces, use Workshop Orange for the symbol and Carbon Ink for the wordmark. On Workshop Orange, use the reversed white lockup. “Publish clearly.” is the only approved short brand line; it is optional, never mandatory UI chrome.
+
 ## Colors
 
 Warm neutrals carry most of the interface; orange is a scarce product signal. Every semantic role has a paired dark-theme value rather than an improvised inversion.
 
 ### Primary
 
-- **Workshop Orange** (`primary`, `primary-dark-theme`): Primary actions, active destinations, focus accents, short identity lines, and selected navigation.
+- **Workshop Orange** (`#B74C05`; `primary`, `primary-dark-theme`): Primary actions, active destinations, focus accents, short identity lines, the Converge symbol, and selected navigation.
 
 ### Neutral
 
 - **Warm Canvas** (`canvas`, `canvas-dark`): Page backgrounds and the base reading field.
 - **Clean Surface** (`surface`, `surface-dark`): Cards, popovers, menus, and elevated tonal regions.
-- **Carbon Ink** (`ink`, `ink-dark`): Primary text and high-confidence icons.
+- **Carbon Ink** (`#302B28`; `ink`, `ink-dark`): Primary text and high-confidence icons.
 - **Toolmark Gray** (`muted-ink`, `muted-ink-dark`): Supporting text, metadata, placeholders, and inactive navigation.
 - **Hairline Warmth** (`border`, `border-dark`): Dividers, control boundaries, and low-contrast structure.
 - **Failure Red** (`danger`, `danger-dark`): Destructive actions and genuine error state only.

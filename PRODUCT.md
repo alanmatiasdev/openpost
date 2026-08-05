@@ -26,7 +26,8 @@ The SvelteKit interface is embedded in the Go binary and also packaged as a Capa
 
 ## Capabilities and Constraints
 
-- A focused composer supports shared drafts plus account-specific text, media, formats, and settings.
+- One publication model supports shared source content plus independently valid account renditions while the text-and-thread composer keeps its spacious writing canvas. Post, Thread, Story, Short video, and Video are starter presets; each destination owns its format, text, media, schedule override, and provider settings.
+- Social Sets save format-independent account groups and optional account format defaults. New drafts snapshot their selected destinations so later set edits do not change scheduled work.
 - Publications can be scheduled through a durable database-backed queue, with visible draft, scheduled, published, failed, and retry states.
 - Workspaces organize accounts, media, prompts, schedules, members, billing, and usage limits.
 - OpenPost Image Editor creates editable, multi-page social images from workspace media, original templates, brand assets, text, and shapes. It exports ordered derivatives back to Media or the active composer without replacing source assets.
@@ -38,9 +39,9 @@ The SvelteKit interface is embedded in the Go binary and also packaged as a Capa
 
 ## Brand Commitments
 
-The product is named OpenPost. Use the nib-and-line mark from `assets/brand/` and its synchronized copies in the frontend, marketing, and documentation assets. The voice is direct, calm, and factual: focused, efficient, and clean without sounding cold. Prefer precise product terms and visible caveats over hype, stock metaphors, or broad claims.
+The product is named OpenPost. Use the Converge mark from `assets/brand/` and its synchronized copies in the frontend, marketing, documentation, application icons, and social assets. The symbol has four equal modules around one centered opening; preserve its four-fold symmetry, clear axis gaps, and rounded outer corners at every size. The voice is direct, calm, and factual: focused, efficient, and clean without sounding cold. Prefer precise product terms and visible caveats over hype, stock metaphors, or broad claims.
 
-The established identity uses warm orange as its product signal, warm-tinted neutrals, and equally supported light and dark modes. Future work should preserve this identity unless the user explicitly requests a redesign.
+The established identity uses Workshop Orange (`#B74C05`) as its product signal, Carbon Ink (`#302B28`) for primary type, warm-tinted neutrals, Geist, and equally supported light and dark modes. “Publish clearly.” is the approved short brand line; omit it when a surface does not need a slogan. Future work should preserve this identity unless the user explicitly requests a redesign.
 
 ## Evidence on Hand
 

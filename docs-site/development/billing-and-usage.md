@@ -1,19 +1,20 @@
 # Billing And Usage Foundation
 
-Managed OpenPost billing uses saved plan limits and durable usage counters. The backend does not call Whop on normal API requests.
+Managed OpenPost billing uses saved plan limits and durable usage counters. The backend does not call Paddle on normal API requests.
 
 ## Current pieces
 
 - `entitlements.Service`: evaluates plan limits and keeps self-hosted defaults unlimited.
 - `usage_counters`: monthly durable counters keyed by workspace, metric, and UTC month.
-- `billing_subscriptions`: current Whop membership snapshots keyed by organization.
-- `billing_checkout_attempts`: OpenPost-to-Whop checkout configuration mapping, including the selected product plan and billing period.
-- `billing_webhook_events`: webhook event ledger for idempotent Whop processing.
+- `billing_customers`: Paddle customer mirrors keyed by organization, with no payment-card data.
+- `billing_subscriptions`: current Paddle subscription snapshots keyed by organization.
+- `billing_checkout_attempts`: opaque OpenPost checkout attempt mapping, including the selected Paddle price, product plan, and billing period.
+- `billing_webhook_events`: webhook event ledger for idempotent Paddle processing.
 - `GET /api/v1/organizations/{id}/billing/status`: returns the local subscription snapshot and current-month usage counters for an organization.
-- `POST /api/v1/organizations/{id}/billing/checkout`: creates a Whop checkout configuration and returns the OpenPost embedded-checkout URL.
-- `POST /api/v1/organizations/{id}/billing/portal`: returns the current Whop membership management URL.
+- `POST /api/v1/organizations/{id}/billing/checkout`: records an opaque checkout attempt and returns the Paddle.js environment, browser-safe client token, selected price, period price map, authenticated email, and OpenPost return URL.
+- `POST /api/v1/organizations/{id}/billing/portal`: creates a fresh, short-lived Paddle customer portal session after authorization.
 - Workspace billing endpoints resolve the same organization-scoped contract for web and CLI clients.
-- `POST /api/v1/billing/whop/webhook`: verifies Whop Standard Webhooks signatures, stores the event once, and queues reconciliation.
+- `POST /api/v1/billing/paddle/webhook`: verifies the raw request body and `Paddle-Signature`, stores each event once, and queues canonical reconciliation.
 - Cloud mode reads `billing_subscriptions.entitlement_snapshot` for organization-scoped quota checks.
 - Workspace creation checks `LimitWorkspaces` before inserting a new workspace. In cloud mode, users get a one-workspace bootstrap allowance before checkout; after a subscription is active, workspace creation uses the active organization subscription snapshot.
 - Provider connection flows check `social_accounts` before inserting a new active social account.
@@ -61,33 +62,36 @@ Initial metrics match the production-readiness plan:
 
 - Approval workflows, shared calendars, or other future team-only features should use the same entitlement service instead of checking plan IDs directly.
 
-## Whop configuration
+## Paddle configuration
 
 Hosted/cloud deployments need the complete set below. Set it in the deployment environment or through **Settings → Instance → Configuration → Billing**. An instance administrator can intentionally override an existing environment value; the screen names the environment source and labels the override before and after saving. Database-backed secrets are encrypted and write-only, and every saved change requires a server restart.
 
-- `OPENPOST_WHOP_API_KEY`
-- `OPENPOST_WHOP_API_BASE_URL`
-- `OPENPOST_WHOP_WEBHOOK_SECRET`
-- `OPENPOST_WHOP_ACCOUNT_ID`
-- `OPENPOST_WHOP_PRODUCT_ID`
-- `OPENPOST_WHOP_CHECKOUT_RETURN_URL`
-- `OPENPOST_WHOP_STARTER_MONTHLY_PLAN_ID`
-- `OPENPOST_WHOP_STARTER_ANNUAL_PLAN_ID`
-- `OPENPOST_WHOP_FOUNDER_MONTHLY_PLAN_ID`
-- `OPENPOST_WHOP_FOUNDER_ANNUAL_PLAN_ID`
-- `OPENPOST_WHOP_PRO_MONTHLY_PLAN_ID`
-- `OPENPOST_WHOP_PRO_ANNUAL_PLAN_ID`
-- `OPENPOST_WHOP_TEAM_MONTHLY_PLAN_ID`
-- `OPENPOST_WHOP_TEAM_ANNUAL_PLAN_ID`
-- `OPENPOST_WHOP_AGENCY_MONTHLY_PLAN_ID`
-- `OPENPOST_WHOP_AGENCY_ANNUAL_PLAN_ID`
+This integration replaces Whop billing. Before upgrading an existing cloud deployment, create the Paddle products and prices, configure the notification destination at `/api/v1/billing/paddle/webhook`, and migrate each active customer to a Paddle subscription. OpenPost keeps old Whop subscription rows as historical data, but only Paddle subscriptions grant cloud entitlements after this release.
 
-`OPENPOST_WHOP_CHECKOUT_RETURN_URL` is the OpenPost checkout completion URL. It normally points to `/checkout?status=success`; OpenPost then waits for the signed webhook and local membership reconciliation before granting access.
+- `OPENPOST_PADDLE_API_KEY`
+- `OPENPOST_PADDLE_ENVIRONMENT`
+- `OPENPOST_PADDLE_CLIENT_TOKEN`
+- `OPENPOST_PADDLE_WEBHOOK_SECRET`
+- `OPENPOST_PADDLE_CHECKOUT_RETURN_URL`
+- `OPENPOST_PADDLE_STARTER_MONTHLY_PRICE_ID`
+- `OPENPOST_PADDLE_STARTER_ANNUAL_PRICE_ID`
+- `OPENPOST_PADDLE_FOUNDER_MONTHLY_PRICE_ID`
+- `OPENPOST_PADDLE_FOUNDER_ANNUAL_PRICE_ID`
+- `OPENPOST_PADDLE_PRO_MONTHLY_PRICE_ID`
+- `OPENPOST_PADDLE_PRO_ANNUAL_PRICE_ID`
+- `OPENPOST_PADDLE_TEAM_MONTHLY_PRICE_ID`
+- `OPENPOST_PADDLE_TEAM_ANNUAL_PRICE_ID`
+- `OPENPOST_PADDLE_AGENCY_MONTHLY_PRICE_ID`
+- `OPENPOST_PADDLE_AGENCY_ANNUAL_PRICE_ID`
 
-`OPENPOST_WHOP_API_BASE_URL` defaults to `https://api.whop.com/api/v1`.
+`OPENPOST_PADDLE_ENVIRONMENT` must be exactly `sandbox` or `production`. The API-key and client-token prefixes must match the selected environment, which prevents a sandbox browser from sending a checkout to the live catalog or the reverse.
 
-Checkout endpoints return `503` when Whop is missing required server-side configuration such as `OPENPOST_WHOP_API_KEY` or a monthly/annual plan ID. User input errors, such as an unknown OpenPost plan ID, remain `400`.
+`OPENPOST_PADDLE_CHECKOUT_RETURN_URL` is the OpenPost checkout completion URL. It normally points to `/checkout?status=success`; OpenPost then waits for the signed webhook and local subscription reconciliation before granting access.
 
-Checkout metadata carries the OpenPost organization, workspace, user, plan, and billing period. Webhooks may be duplicated or arrive out of order, so the worker retrieves the current Whop membership before writing the local subscription snapshot. API handlers consume that local snapshot only.
+Checkout endpoints return `503` when Paddle is missing required configuration such as `OPENPOST_PADDLE_CLIENT_TOKEN`, an explicit environment, or a monthly/annual price ID. User input errors, such as an unknown OpenPost plan ID, remain `400`.
+
+The browser sends only the opaque checkout attempt ID in Paddle custom data. It initializes Paddle.js with the server-selected environment, asks Paddle `PricePreview` for localized totals, and opens Paddle's one-page overlay. OpenPost never calculates or formats the displayed checkout amount itself.
+
+Webhooks may be duplicated or arrive out of order. The worker therefore retrieves the current Paddle customer, subscription, or completed transaction before writing local mirrors. Access is granted only for `active` and `trialing` subscriptions. A scheduled cancellation keeps access through the paid period; only Paddle's final `canceled` state removes it. API handlers consume the local snapshot only.
 
 All managed plans use a card-required 14-day trial. Prices are USD-first: Starter $15 monthly or $150 annually, Founder $25 or $250, Pro $49 or $490, Team $99 or $990, and Agency $199 or $1,990.

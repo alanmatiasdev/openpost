@@ -1,11 +1,11 @@
 <script lang="ts">
+  import { resolve } from "$app/paths";
   import Github from "lucide-svelte/icons/github";
   import MessageCircle from "lucide-svelte/icons/message-circle";
   import Logo from "$lib/components/Logo.svelte";
   import PlatformIcon from "$lib/components/platform-icon.svelte";
   import {
     developerDocsUrl,
-    githubUrl,
     platforms,
     resourceItems,
     selfHostingDocsUrl,
@@ -51,11 +51,11 @@
   >
     <div>
       <a
-        href="/"
+        href={resolve("/")}
         class="focus-ring inline-flex min-h-11 items-center gap-2 rounded-md"
         aria-label="OpenPost home"
       >
-        <Logo width={36} height={28} />
+        <Logo width={36} height={28} decorative />
         <span class="text-sm font-semibold">OpenPost</span>
       </a>
       <p class="mt-4 max-w-xs text-sm leading-6 text-muted-foreground">
@@ -64,7 +64,7 @@
       </p>
       <div class="mt-5 flex flex-wrap gap-x-5">
         <a
-          href={githubUrl}
+          href="https://github.com/rodrgds/openpost"
           target="_blank"
           rel="noreferrer"
           class="focus-ring inline-flex min-h-11 items-center gap-2 rounded-md text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
@@ -88,7 +88,7 @@
       >
         {#each platforms as platform (platform.slug)}
           <a
-            href={`/platforms/${platform.slug}`}
+            href={resolve(`/platforms/${platform.slug}`)}
             class="focus-ring inline-flex min-h-8 items-center rounded-md text-muted-foreground/75 transition-colors hover:text-primary"
             aria-label={`${platform.name} guide`}
           >
@@ -105,12 +105,21 @@
           <ul class="mt-3 grid gap-1">
             {#each group.links as link (link.href)}
               <li>
-                <a
-                  href={link.href}
-                  class="focus-ring inline-flex min-h-11 items-center rounded-md text-sm text-muted-foreground transition-colors hover:text-foreground"
-                >
-                  {link.label}
-                </a>
+                {#if link.href.startsWith("https://")}
+                  <a
+                    href={link.href}
+                    class="focus-ring inline-flex min-h-11 items-center rounded-md text-sm text-muted-foreground transition-colors hover:text-foreground"
+                  >
+                    {link.label}
+                  </a>
+                {:else}
+                  <a
+                    href={resolve(link.href as "/")}
+                    class="focus-ring inline-flex min-h-11 items-center rounded-md text-sm text-muted-foreground transition-colors hover:text-foreground"
+                  >
+                    {link.label}
+                  </a>
+                {/if}
               </li>
             {/each}
           </ul>
@@ -128,11 +137,15 @@
         <span class="hidden sm:inline">Made for companies of one</span>
         <a
           class="focus-ring inline-flex min-h-11 items-center rounded-md transition-colors hover:text-foreground"
-          href="/privacy">Privacy</a
+          href={resolve("/privacy")}>Privacy</a
         >
         <a
           class="focus-ring inline-flex min-h-11 items-center rounded-md transition-colors hover:text-foreground"
-          href="/terms">Terms</a
+          href={resolve("/terms")}>Terms</a
+        >
+        <a
+          class="focus-ring inline-flex min-h-11 items-center rounded-md transition-colors hover:text-foreground"
+          href={resolve("/refunds")}>Refunds</a
         >
       </span>
     </div>

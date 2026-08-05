@@ -26,7 +26,7 @@
   ] as const;
 
   const sharedFeatures = [
-    "Text-and-thread and focused media composers",
+    "One composer with destination-specific versions",
     "Account-specific versions and settings",
     "Calendar, scheduled posts, and clear status",
     "Reusable media library",

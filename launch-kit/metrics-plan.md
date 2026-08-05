@@ -46,7 +46,7 @@ Stars and mentions are secondary. Do not substitute them for connected accounts,
 | Time from registration to first scheduled post | _Pending_ | `[DEFINE]` | Registration and schedule timestamps |  | `[DEFINE]` |
 | Scheduled posts without a final state | _Pending_ | `[DEFINE]` | Queue and lifecycle review |  | `[DEFINE]` |
 | Server latency and queue backlog | _Pending_ | `[DEFINE]` | Operator health/log snapshot |  | `[DEFINE]` |
-| Refunds or immediate cancellations | _Pending_ | `[DEFINE]` | Whop/operator billing review |  | `[DEFINE]` |
+| Refunds or immediate cancellations | _Pending_ | `[DEFINE]` | Paddle/operator billing review |  | `[DEFINE]` |
 
 Do not claim a rate when the denominator is missing. Keep provider-specific values separate; an aggregate can hide one broken OAuth or publishing path.
 

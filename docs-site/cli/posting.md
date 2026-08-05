@@ -1,6 +1,6 @@
 # Posting with the CLI
 
-Use `openpost post` for the text-and-thread composer, `openpost thread` for markdown threads, `openpost publication` for format-first content, and `openpost media` for attachments.
+Use `openpost post` for quick post drafts, `openpost thread` for markdown threads, `openpost publication` for account-specific renditions and formats, and `openpost media` for attachments. Drafts from all three creation commands open in the unified publication composer.
 
 ## Check Account Support
 

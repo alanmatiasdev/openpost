@@ -42,10 +42,11 @@ changes live in [Developer Docs](/development/).
 - [ ] Set `OPENPOST_S3_REGION`, `OPENPOST_S3_BUCKET`, `OPENPOST_S3_ACCESS_KEY_ID`, and `OPENPOST_S3_SECRET_ACCESS_KEY`.
 - [ ] Set `OPENPOST_S3_PUBLIC_BASE_URL` to a stable public media origin.
 - [ ] Verify the S3 bucket lifecycle policy and object access model before launch.
-- [ ] Set `OPENPOST_WHOP_API_KEY`, `OPENPOST_WHOP_WEBHOOK_SECRET`, `OPENPOST_WHOP_ACCOUNT_ID`, `OPENPOST_WHOP_PRODUCT_ID`, and `OPENPOST_WHOP_CHECKOUT_RETURN_URL`.
-- [ ] Set the monthly and annual `OPENPOST_WHOP_<PLAN>_<PERIOD>_PLAN_ID` values for Starter, Founder, Pro, Team, and Agency.
-- [ ] Keep production on the default `OPENPOST_WHOP_API_BASE_URL=https://api.whop.com/api/v1`.
-- [ ] Configure the Whop webhook at `/api/v1/billing/whop/webhook`, send a signed test event, and confirm the event is stored once and reconciled through the billing job.
+- [ ] Set `OPENPOST_PADDLE_API_KEY`, `OPENPOST_PADDLE_ENVIRONMENT=production`, `OPENPOST_PADDLE_CLIENT_TOKEN`, `OPENPOST_PADDLE_WEBHOOK_SECRET`, and `OPENPOST_PADDLE_CHECKOUT_RETURN_URL`.
+- [ ] Set the monthly and annual `OPENPOST_PADDLE_<PLAN>_<PERIOD>_PRICE_ID` values for Starter, Founder, Pro, Team, and Agency.
+- [ ] Confirm the production API key and client token have live prefixes; never deploy sandbox credentials to the managed app.
+- [ ] Configure Paddle to send customer, subscription, and `transaction.completed` events to `/api/v1/billing/paddle/webhook`; send a signed test event and confirm it is stored once and reconciled through the billing job.
+- [ ] Before upgrading from Whop billing, migrate every active customer to Paddle and confirm the Paddle subscription is reconciled locally. Historical Whop rows do not grant entitlements after the upgrade.
 - [ ] Complete an embedded checkout smoke: plan and period selection, $0 trial start, return to OpenPost, local `trialing` status, and billing management URL.
 - [ ] Confirm a new hosted user can create the bootstrap workspace and is blocked from extra workspaces before checkout.
 - [ ] Confirm team invitations are blocked once active members plus pending invites reach the plan limit.

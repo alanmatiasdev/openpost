@@ -15,7 +15,7 @@ const colors = {
   ink: "#2c2825",
   muted: "#786f68",
   border: "#e3ded7",
-  orange: "#bd5b2b",
+  orange: "#b74c05",
   orangeSoft: "#f0c9ad",
   orangePale: "#f8e5d6",
   dark: "#1a1512",

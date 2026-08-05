@@ -6,6 +6,7 @@ FIRST VIEWPORT: A centered outcome statement and two clear routes into a real, w
 FORM: Product-led publishing workspace with activity squares as the recurring proof and motion language.
 -->
 <script lang="ts">
+  import { resolve } from "$app/paths";
   import {
     ArrowRight,
     CalendarRange,
@@ -55,7 +56,7 @@ FORM: Product-led publishing workspace with activity squares as the recurring pr
       description:
         "Draft posts and threads, manage reusable media, plan the calendar, and check every account from one focused workspace.",
       image: "/assets/screenshots/main-dark.png",
-      alt: "OpenPost text-and-thread composer and publication workspace",
+      alt: "OpenPost publication composer with destination-specific versions",
       icon: Layers3,
       points: [
         "Text and reply threads",
@@ -188,7 +189,7 @@ FORM: Product-led publishing workspace with activity squares as the recurring pr
     >
       {#each platforms as platform (platform.slug)}
         <a
-          href={`/platforms/${platform.slug}`}
+          href={resolve(`/platforms/${platform.slug}`)}
           class="platform-chip focus-ring"
         >
           <span

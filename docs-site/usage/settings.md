@@ -21,6 +21,7 @@ Use this tab when the setting should differ between brands, clients, or projects
 Account settings follow your user login across every workspace.
 
 - Display name and profile picture
+- Composer experience: Specialized or Unified
 - Password, two-factor authentication, and passkeys
 - Linked Google and organization sign-in identities
 - Active browser sessions
