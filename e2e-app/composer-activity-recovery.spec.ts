@@ -559,7 +559,7 @@ test("an in-flight autosave cannot attach an old-workspace draft after switching
   await page
     .getByLabel("Post text")
     .fill("Move this unsaved content safely to workspace B.");
-  await expect(page).toHaveURL(/\/posts\/post-workspace-b$/, {
+  await expect(page).toHaveURL(/\/publications\/draft-workspace-b$/, {
     timeout: 10_000,
   });
   expect(savedWorkspaceIDs).toEqual([first.id, second.id]);
