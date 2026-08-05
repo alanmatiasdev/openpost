@@ -5,7 +5,7 @@ image="${1:?usage: smoke-production-image.sh IMAGE [EXPECTED_COMMIT]}"
 expected_commit="${2:-}"
 container="openpost-smoke-${RANDOM}-$$"
 port="${OPENPOST_SMOKE_PORT:-18080}"
-database_dir="$(mktemp -d)"
+database_volume="openpost-smoke-db-${RANDOM}-$$"
 smoke_jwt_secret="$(openssl rand -hex 32)"
 smoke_encryption_key="$(openssl rand -hex 16)"
 smoke_environment=(
@@ -16,9 +16,11 @@ smoke_environment=(
 
 cleanup() {
   docker rm -f "$container" >/dev/null 2>&1 || true
-  find "$database_dir" -depth -delete >/dev/null 2>&1 || true
+  docker volume rm -f "$database_volume" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
+
+docker volume create "$database_volume" >/dev/null
 
 # Exercise the same no-side-effect configuration check used by the production
 # deployment gate before starting a database-backed container.
@@ -26,7 +28,7 @@ docker run --rm "${smoke_environment[@]}" "$image" ./openpost check-config >/dev
 
 docker run --detach --name "$container" \
   --publish "127.0.0.1:${port}:8080" \
-  --volume "$database_dir:/data/db" \
+  --volume "$database_volume:/data/db" \
   "${smoke_environment[@]}" \
   "$image" >/dev/null
 
@@ -36,6 +38,9 @@ for _ in $(seq 1 60); do
   fi
   sleep 1
 done
+if ! docker inspect --format '{{.State.Running}}' "$container" | grep -qx true; then
+  docker logs "$container" >&2
+fi
 curl --fail --show-error "http://127.0.0.1:${port}/api/v1/ready"
 
 docker restart "$container" >/dev/null

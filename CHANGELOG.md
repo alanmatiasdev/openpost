@@ -23,6 +23,7 @@ All notable changes to this project are documented in this file.
 
 ### Fixed
 
+- Made production-image smoke tests use an isolated Docker volume so the non-root server can create its database on Linux runners, and print container logs when startup exits early.
 - Kept the desktop platform menu at its intended wide layout by overriding the shared navigation content width with component-scoped CSS.
 - Updated marketing browser coverage to verify the publishing-activity proof that replaced the previous proof-card copy.
 - Fixed profile-picture uploads to S3-compatible storage by sending small objects with an explicit size and a seekable body. The uploader now shows the server's real error instead of Uppy's generic network warning.
