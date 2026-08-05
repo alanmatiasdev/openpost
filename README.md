@@ -1,6 +1,10 @@
 <p align="center">
   <a href="https://openpost.social">
-    <img alt="OpenPost" src="./assets/brand/lockup.svg" width="280">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="./assets/brand/lockup-dark.svg">
+      <source media="(prefers-color-scheme: light)" srcset="./assets/brand/lockup.svg">
+      <img alt="OpenPost" src="./assets/brand/lockup.svg" width="280">
+    </picture>
   </a>
 </p>
 
@@ -43,8 +47,8 @@
 
 OpenPost helps solo founders turn launches, product updates, lessons, and ideas into content, then adapt, schedule, and track it from one workspace.
 
-- **Write once, shape each destination.** Start from Post, Thread, Story, Short video, or Video, choose one unified composer or focused authoring layouts, then change the text, media, format, schedule, and settings for any account.
-- **Reuse account groups.** Social Sets keep a stable group of accounts and optional format defaults; each draft stores its own destination snapshot.
+- **Write once, shape each destination.** Write a post or thread, select accounts or a Social Set, and OpenPost infers each destination format. Required fields and true format choices appear in the composer, and each account can still have its own content, schedule, and settings.
+- **Reuse account groups.** Social Sets keep a stable group of accounts; each draft stores its own destination snapshot.
 - **See the full schedule.** Plan posts in a calendar, reuse posting times, and check scheduled, published, and failed posts.
 - **Track real platform numbers.** Keep account growth and post results while treating views, impressions, and reach as different metrics.
 - **Repost posts that earn attention.** Set native repost rules for selected accounts, wait for minimum engagement or stable growth, and override the rules on any post.

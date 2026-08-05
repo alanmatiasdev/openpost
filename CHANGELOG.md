@@ -4,6 +4,31 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Show the profile owner's highest active OpenPost plan beside their handle on public profiles.
+- Added provider-driven required fields and format validation to the composer for every supported destination.
+- Added a shared design-font catalog to both editors, fifteen varied Image Editor starter templates, keyboard nudging, edge and center snapping while moving, and canvas-aware snapping while resizing.
+- Added a combined Editors hub for image designs and video projects, plus separate Library, Temporary, and seven-day Trash views for workspace media.
+
+### Changed
+
+- Made the OpenPost Video Editor available on every instance and removed its environment and database-backed feature toggle.
+- Changed the OpenPost wordmark from Geist to Manrope Semibold across the canonical lockups, GitHub README, app shell, public headers, marketing chrome, and dynamic social previews while retaining Geist for interface copy.
+- Replaced the post-type and composer-experience choices with one text-and-thread composer that infers destination formats, asks only for ambiguous Instagram and Facebook formats, keeps direct account tabs for preview and customization, combines Social Sets with account selection, and moves repost overrides into Advanced delivery.
+- Unified OpenPost Media, upload and camera capture, stock providers, and editor creation in the reusable media picker used by the composer and Image Editor; also made the Image Editor's mobile tools, inspector, first-edit guidance, help, and guest export flow more compact and direct.
+- Reworked media retention so post-specific uploads are temporary, active drafts, schedules, retries, designs, video projects, tags, favorites, and brand roles protect their files, successful publications move unprotected temporary media to Trash immediately, and idle temporary media moves there after 14 days.
+- Kept logos and other brand assets in the normal reusable Media library while Settings assigns their brand roles; editable projects now live in Editors instead of being mixed into the asset grid.
+
+### Fixed
+
+- Kept Video Editor text visible in preview and export, stacked simultaneous timeline items into collision-safe named lanes, delayed recording project creation until capture starts, and added clear storage, import, picker, destructive-action, and mobile tool feedback.
+- Made the README brand lockup use a white wordmark in GitHub dark mode while retaining the carbon wordmark in light mode.
+- Made the managed app root publicly reviewable without JavaScript by exposing a concise product description, current monthly plan prices, trial terms, and direct Terms, Privacy, and Refund links, while preserving the signed-in composer and the self-hosted landing experience.
+- Tightened public profiles into a compact, content-sized layout, expanded the yearly activity field to its available width, and simplified ranking lists.
+- Fixed Image Editor fit-to-canvas calculations, initial Media loading, layer renaming, 320 px undo and redo access, stock-photo empty-state copy, and platform-specific shortcut labels.
+- Made media deletion preserve historical post metadata, block every active normalized post, rendition, design, template, video-project, and brand reference, and allow recovery before permanent blob removal.
+
 ## [3.0.0] - 2026-08-05
 
 ### Added
@@ -14,8 +39,6 @@ All notable changes to this project are documented in this file.
 - Added ten image-generated Converge header directions, each delivered in platform-safe X and LinkedIn profile sizes with the exact OpenPost vector lockup, plus a primary slogan-led pair for X and LinkedIn.
 
 ### Changed
-
-- Made the OpenPost Video Editor available on every instance and removed its environment and database-backed feature toggle.
 
 - Unified Post, Thread, Story, Short video, and Video under one publication-and-rendition workflow while preserving the spacious text-and-thread writing canvas as the default composer experience; drafts use shared All channels content, account tabs, destination-specific settings, and canonical `/publications/:id` editing, and linked historical post URLs redirect there.
 - Changed creation modes into starter presets, stopped filtering accounts by a global mode, and made every selected account keep its own visible, independently validated rendition.
@@ -45,8 +68,6 @@ All notable changes to this project are documented in this file.
 - Development backend runs, tests, vulnerability scans, and lint now use a filesystem-backed frontend build tag; only production builds embed frontend assets and use a disposable Go build cache.
 
 ### Fixed
-
-- Clarified the OpenPost purpose and Google and YouTube data use on the public homepage for OAuth branding review.
 
 - Made production-image smoke tests use an isolated Docker volume so the non-root server can create its database on Linux runners, and print container logs when startup exits early.
 - Kept the desktop platform menu at its intended wide layout by overriding the shared navigation content width with component-scoped CSS.

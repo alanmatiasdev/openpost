@@ -18,6 +18,12 @@ colors:
   danger-dark: "oklch(0.6 0.2 25)"
   docs-cta-shadow: "oklch(0.5 0.15 45 / 0.18)"
 typography:
+  wordmark:
+    fontFamily: "Manrope Variable, Manrope, Geist Variable, Geist, system-ui, sans-serif"
+    fontSize: "1rem"
+    fontWeight: 600
+    lineHeight: 1
+    letterSpacing: "-0.02em"
   display:
     fontFamily: "Geist Variable, Geist, system-ui, sans-serif"
     fontSize: "clamp(2.25rem, 7vw, 3.75rem)"
@@ -103,7 +109,7 @@ The authenticated app stays compact and predictable. Marketing pages use the sam
 
 The Converge symbol is the canonical OpenPost mark. Four equal rounded modules face one centered opening, expressing one workspace publishing outward. Preserve the exact supplied geometry: four-fold symmetry, even axis gaps, and a square footprint that remains legible at 16px. Do not redraw it as a pen, star, flower, window, or generic app grid.
 
-Use the standalone mark when “OpenPost” is already written beside it or space is compact. Use the supplied outlined lockup for README, brand references, and static compositions that need the complete name. On light surfaces, use Workshop Orange for the symbol and Carbon Ink for the wordmark. On Workshop Orange, use the reversed white lockup. “Publish clearly.” is the only approved short brand line; it is optional, never mandatory UI chrome.
+Use the standalone mark when “OpenPost” is already written beside it or space is compact. Use the supplied outlined Manrope Semibold lockup for README, brand references, and static compositions that need the complete name. On light surfaces, use Workshop Orange for the symbol and Carbon Ink for the wordmark. On Workshop Orange, use the reversed white lockup. “Publish clearly.” is the only approved short brand line; it is optional, never mandatory UI chrome.
 
 ## Colors
 
@@ -129,16 +135,19 @@ Warm neutrals carry most of the interface; orange is a scarce product signal. Ev
 
 ## Typography
 
+**Wordmark Font:** Manrope Variable Semibold (with Manrope, Geist, and system sans fallbacks)
+
 **Display Font:** Geist Variable (with Geist and system sans fallbacks)
 
 **Body Font:** Geist Variable (with Geist and system sans fallbacks)
 
 **Label/Mono Font:** the platform UI monospace stack
 
-**Character:** Geist gives the product a clean, compact voice without making metadata feel mechanical. Monospace is a functional accent for identifiers, timestamps, counts, tokens, handles, and queue data; it is not a general “technical” costume.
+**Character:** Manrope gives the OpenPost name a clean, softly rounded shape that matches the Converge mark without making the interface playful. It is reserved for the wordmark. Geist gives the product UI a compact voice without making metadata feel mechanical. Monospace is a functional accent for identifiers, timestamps, counts, tokens, handles, and queue data; it is not a general “technical” costume.
 
 ### Hierarchy
 
+- **Wordmark** (`wordmark`): The fixed OpenPost brand name beside the Converge mark, set at Semibold with restrained negative tracking.
 - **Display** (`display`): Public hero and major campaign headings, with strong contrast and tight tracking.
 - **App title** (`app-title`): Authenticated route `h1` headings through the shared page header.
 - **Body** (`body`): Controls, app copy, descriptions, and most supporting text; long prose should stay near 65–75 characters per line.

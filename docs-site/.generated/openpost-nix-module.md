@@ -42,10 +42,46 @@ let
       value = config.sops.placeholder.openpost_provider_apps;
     }
     {
+      name = "google-auth-client-id";
+      env = "OPENPOST_AUTH_GOOGLE_CLIENT_ID_FILE";
+      target = "/run/secrets/openpost_google_auth_client_id";
+      value = config.sops.placeholder.openpost_google_auth_client_id;
+    }
+    {
+      name = "google-auth-client-secret";
+      env = "OPENPOST_AUTH_GOOGLE_CLIENT_SECRET_FILE";
+      target = "/run/secrets/openpost_google_auth_client_secret";
+      value = config.sops.placeholder.openpost_google_auth_client_secret;
+    }
+    {
+      name = "pexels-api-key";
+      env = "OPENPOST_PEXELS_API_KEY_FILE";
+      target = "/run/secrets/openpost_pexels_api_key";
+      value = config.sops.placeholder.openpost_pexels_api_key;
+    }
+    {
+      name = "pixabay-api-key";
+      env = "OPENPOST_PIXABAY_API_KEY_FILE";
+      target = "/run/secrets/openpost_pixabay_api_key";
+      value = config.sops.placeholder.openpost_pixabay_api_key;
+    }
+    {
+      name = "unsplash-access-key";
+      env = "OPENPOST_UNSPLASH_ACCESS_KEY_FILE";
+      target = "/run/secrets/openpost_unsplash_access_key";
+      value = config.sops.placeholder.openpost_unsplash_access_key;
+    }
+    {
       name = "feedback-webhook";
       env = "OPENPOST_FEEDBACK_DESTINATION_URL_FILE";
       target = "/run/secrets/openpost_feedback_webhook";
       value = config.sops.placeholder.openpost_feedback_webhook;
+    }
+    {
+      name = "smtp-password";
+      env = "OPENPOST_SMTP_PASSWORD_FILE";
+      target = "/run/secrets/openpost_smtp_password";
+      value = config.sops.placeholder.openpost_smtp_password;
     }
     {
       name = "x-client-id";
@@ -220,6 +256,7 @@ in
         OPENPOST_PUBLIC_URL = "https://${cfg.domain}";
         OPENPOST_EXTRA_CORS_ORIGINS = "https://${cfg.domain}";
         OPENPOST_DISABLE_REGISTRATIONS = "false";
+        OPENPOST_STOCK_MEDIA_ENABLED = "true";
         LINKEDIN_DISABLE_THREAD_REPLIES = "true";
         X_REDIRECT_URI = "https://${cfg.domain}/api/v1/accounts/x/callback";
         LINKEDIN_REDIRECT_URI = "https://${cfg.domain}/api/v1/accounts/linkedin/callback";
@@ -319,14 +356,16 @@ in
             OPENPOST_PRIVACY_URL=https://openpost.social/privacy
             OPENPOST_TERMS_VERSION=2026-08-04
             OPENPOST_PRIVACY_VERSION=2026-08-04
-            OPENPOST_SUPPORT_EMAIL=openpost@rgo.pt
+            OPENPOST_SUPPORT_EMAIL=hello@openpost.social
+            OPENPOST_EMAIL_VERIFICATION_REQUIRED=true
             OPENPOST_EMAIL_PROVIDER=smtp
-            OPENPOST_SMTP_HOST=smtp.eu.mailgun.org
+            OPENPOST_EMAIL_FROM=hello@openpost.social
+            OPENPOST_SMTP_HOST=smtp.purelymail.com
             OPENPOST_SMTP_PORT=465
-            OPENPOST_SMTP_USERNAME=${config.sops.placeholder.ghost_mailgun_user}
-            OPENPOST_SMTP_PASSWORD=${config.sops.placeholder.ghost_mailgun_password}
-            OPENPOST_SMTP_FROM=openpost@rgo.pt
+            OPENPOST_SMTP_USERNAME=hello@openpost.social
+            OPENPOST_SMTP_FROM=hello@openpost.social
             OPENPOST_SMTP_TLS_MODE=tls
+            OPENPOST_SMTP_SERVER_NAME=smtp.purelymail.com
             OPENPOST_PADDLE_API_KEY=${config.sops.placeholder.openpost_paddle_api_key}
             OPENPOST_PADDLE_ENVIRONMENT=production
             OPENPOST_PADDLE_CLIENT_TOKEN=${config.sops.placeholder.openpost_paddle_client_token}
