@@ -42,8 +42,6 @@ var configTestEnvKeys = []string{
 	"OPENPOST_IMAGE_EDITOR_MODEL_BASE_URL",
 	"OPENPOST_STUDIO_ENABLED",
 	"OPENPOST_STUDIO_MODEL_BASE_URL",
-	"OPENPOST_VIDEO_EDITOR_ENABLED",
-	"OPENPOST_VIDEO_STUDIO_ENABLED",
 	"OPENPOST_VIDEO_MODEL_BASE_URL",
 	"OPENPOST_STOCK_MEDIA_ENABLED",
 	"OPENPOST_PEXELS_API_KEY",
@@ -145,7 +143,6 @@ func TestLoadProductionPrimitiveDefaults(t *testing.T) {
 	require.Empty(t, cfg.PaddleWebhookSecret)
 	require.True(t, cfg.ImageEditorEnabled)
 	require.Equal(t, "/image-editor-models", cfg.ImageEditorModelBaseURL)
-	require.False(t, cfg.VideoEditorEnabled)
 	require.Equal(t, "/video-editor-models", cfg.VideoModelBaseURL)
 	require.False(t, cfg.StockMediaEnabled)
 	require.False(t, cfg.FeedbackEnabled)
@@ -184,20 +181,17 @@ func TestLoadImageEditorConfiguration(t *testing.T) {
 	require.Equal(t, "https://assets.example.com/openpost/image-editor", cfg.ImageEditorModelBaseURL)
 }
 
-func TestLoadEditorConfigurationSupportsLegacyEnvironmentAliases(t *testing.T) {
+func TestLoadImageEditorConfigurationSupportsLegacyEnvironmentAliases(t *testing.T) {
 	t.Setenv("OPENPOST_STUDIO_ENABLED", "false")
 	t.Setenv("OPENPOST_STUDIO_MODEL_BASE_URL", "https://assets.example.com/legacy-image-editor/")
-	t.Setenv("OPENPOST_VIDEO_STUDIO_ENABLED", "true")
 
 	cfg := Load()
 
 	require.False(t, cfg.ImageEditorEnabled)
 	require.Equal(t, "https://assets.example.com/legacy-image-editor", cfg.ImageEditorModelBaseURL)
-	require.True(t, cfg.VideoEditorEnabled)
 }
 
 func TestLoadVideoEditorAndStockConfiguration(t *testing.T) {
-	t.Setenv("OPENPOST_VIDEO_EDITOR_ENABLED", "false")
 	t.Setenv("OPENPOST_VIDEO_MODEL_BASE_URL", " https://models.example.test/openpost ")
 	t.Setenv("OPENPOST_STOCK_MEDIA_ENABLED", "true")
 	t.Setenv("OPENPOST_PEXELS_API_KEY", " pexels-key ")
@@ -206,7 +200,6 @@ func TestLoadVideoEditorAndStockConfiguration(t *testing.T) {
 
 	cfg := Load()
 
-	require.False(t, cfg.VideoEditorEnabled)
 	require.Equal(t, "https://models.example.test/openpost", cfg.VideoModelBaseURL)
 	require.True(t, cfg.StockMediaEnabled)
 	require.Equal(t, "pexels-key", cfg.PexelsAPIKey)

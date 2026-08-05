@@ -2,6 +2,8 @@
 
 OpenPost Video Editor is a local-first editor for social videos and recordings up to two hours. Open `/video-editor` in current Chrome or Edge on a device that provides WebCodecs, origin-private file storage, and WebGL2 to import or record footage, edit it, and export without an account or watermark. Desktop uses the full four-zone workbench. Phones use a compact touch timeline, bottom tool dock, and contextual inspector sheets.
 
+The editor is available on every OpenPost instance. Operators can change the model asset base URL, but there is no Video Editor feature toggle.
+
 ## What stays on your device
 
 Guest projects, source files, recordings, captions, analysis results, proxies, and exports stay in browser-managed storage. OpenPost Video Editor does not create a cloud project or upload a source until you choose **Save to OpenPost** or **Use in a post**. Clearing site data can remove local projects, so use **Protect local projects** when the browser offers persistent storage and keep downloads of important exports.

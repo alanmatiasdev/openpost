@@ -209,10 +209,6 @@ const portugueseCopy: Record<string, SettingCopy> = {
 		description:
 			'URL ou caminho da aplicação usado para carregar os modelos do Editor de Imagens OpenPost.'
 	},
-	OPENPOST_VIDEO_EDITOR_ENABLED: {
-		label: 'Editor de Vídeo OpenPost',
-		description: 'Ativa o espaço de edição de vídeo no navegador.'
-	},
 	OPENPOST_VIDEO_MODEL_BASE_URL: {
 		label: 'Caminho dos modelos de vídeo',
 		description:

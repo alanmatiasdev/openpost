@@ -96,7 +96,6 @@ var managedSettingDefinitions = []ManagedSettingDefinition{
 
 	{Key: "OPENPOST_IMAGE_EDITOR_ENABLED", Group: "features", Label: "OpenPost Image Editor", Description: "Enable the design workspace and its model assets.", Kind: ManagedSettingBoolean, EnvVars: []string{"OPENPOST_IMAGE_EDITOR_ENABLED"}},
 	{Key: "OPENPOST_IMAGE_EDITOR_MODEL_BASE_URL", Group: "features", Label: "OpenPost Image Editor model path", Description: "URL or application path used to load OpenPost Image Editor models.", Kind: ManagedSettingString, EnvVars: []string{"OPENPOST_IMAGE_EDITOR_MODEL_BASE_URL"}},
-	{Key: "OPENPOST_VIDEO_EDITOR_ENABLED", Group: "features", Label: "OpenPost Video Editor", Description: "Enable the browser-based video editing workspace.", Kind: ManagedSettingBoolean, EnvVars: []string{"OPENPOST_VIDEO_EDITOR_ENABLED"}},
 	{Key: "OPENPOST_VIDEO_MODEL_BASE_URL", Group: "features", Label: "OpenPost Video Editor model path", Description: "URL or application path used to load OpenPost Video Editor models.", Kind: ManagedSettingString, EnvVars: []string{"OPENPOST_VIDEO_MODEL_BASE_URL"}},
 	{Key: "OPENPOST_STOCK_MEDIA_ENABLED", Group: "features", Label: "Stock media search", Description: "Enable stock search when at least one provider key is configured.", Kind: ManagedSettingBoolean, EnvVars: []string{"OPENPOST_STOCK_MEDIA_ENABLED"}},
 	{Key: "OPENPOST_PEXELS_API_KEY", Group: "features", Label: "Pexels API key", Description: "Optional API key for Pexels stock search.", Kind: ManagedSettingSecret, Secret: true, Optional: true, EnvVars: []string{"OPENPOST_PEXELS_API_KEY"}},
@@ -238,7 +237,6 @@ var managedSettingBindings = map[string]managedSettingBinding{
 	"OPENPOST_OIDC_NATIVE_CALLBACK_URL":             stringBinding(func(c *Config) *string { return &c.OIDCNativeCallbackURL }),
 	"OPENPOST_IMAGE_EDITOR_ENABLED":                 boolBinding(func(c *Config) *bool { return &c.ImageEditorEnabled }),
 	"OPENPOST_IMAGE_EDITOR_MODEL_BASE_URL":          trimmedStringBinding(func(c *Config) *string { return &c.ImageEditorModelBaseURL }),
-	"OPENPOST_VIDEO_EDITOR_ENABLED":                 boolBinding(func(c *Config) *bool { return &c.VideoEditorEnabled }),
 	"OPENPOST_VIDEO_MODEL_BASE_URL":                 trimmedStringBinding(func(c *Config) *string { return &c.VideoModelBaseURL }),
 	"OPENPOST_STOCK_MEDIA_ENABLED":                  boolBinding(func(c *Config) *bool { return &c.StockMediaEnabled }),
 	"OPENPOST_PEXELS_API_KEY":                       stringBinding(func(c *Config) *string { return &c.PexelsAPIKey }),

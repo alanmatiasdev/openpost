@@ -13,7 +13,6 @@ This page lists the most common core and provider variables. Use [Environment Va
 
 | Variable                        | Default                | Purpose                                                                                             |
 | ------------------------------- | ---------------------- | --------------------------------------------------------------------------------------------------- |
-| `OPENPOST_VIDEO_EDITOR_ENABLED` | `false`                | Enable the private-beta OpenPost Video Editor routes and APIs. Local projects remain browser-owned. |
 | `OPENPOST_VIDEO_MODEL_BASE_URL` | `/video-editor-models` | Serve the pinned local transcription and voice-detection files from another operator base URL.      |
 | `OPENPOST_STOCK_MEDIA_ENABLED`  | `false`                | Enable the public, rate-limited stock search API for providers with configured server keys.         |
 | `OPENPOST_PEXELS_API_KEY`       | empty                  | Server-only Pexels photo and video API key.                                                         |

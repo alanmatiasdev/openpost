@@ -33,7 +33,7 @@ func newVideoEditorHandlerTest(t *testing.T) (*VideoEditorHandler, context.Conte
 		WorkspaceID: "workspace-1", UserID: "user-1", Role: models.WorkspaceRoleAdmin,
 	}).Exec(ctx)
 	require.NoError(t, err)
-	return NewVideoEditorHandler(db, testAuthenticator{}, true, "/video-editor-models"), ctx
+	return NewVideoEditorHandler(db, testAuthenticator{}, "/video-editor-models"), ctx
 }
 
 func TestVideoReturnTokenCompletesAndConsumesExactlyOnce(t *testing.T) {

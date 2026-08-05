@@ -15,6 +15,8 @@ All notable changes to this project are documented in this file.
 
 ### Changed
 
+- Made the OpenPost Video Editor available on every instance and removed its environment and database-backed feature toggle.
+
 - Unified Post, Thread, Story, Short video, and Video under one publication-and-rendition workflow while preserving the spacious text-and-thread writing canvas as the default composer experience; drafts use shared All channels content, account tabs, destination-specific settings, and canonical `/publications/:id` editing, and linked historical post URLs redirect there.
 - Changed creation modes into starter presets, stopped filtering accounts by a global mode, and made every selected account keep its own visible, independently validated rendition.
 - Replaced active Whop billing with Paddle Merchant of Record billing: localized Paddle.js checkout, sandbox and production isolation, mirrored customers and subscriptions, a Paddle-native billing schema, Paddle-scoped entitlements, raw-body signed webhooks with canonical reconciliation, scheduled-cancellation access, fresh customer portal sessions, configuration, CLI, policies, and operator documentation.

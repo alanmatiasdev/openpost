@@ -42,7 +42,6 @@ type Config struct {
 	SupportEmail            string
 	ImageEditorEnabled      bool
 	ImageEditorModelBaseURL string
-	VideoEditorEnabled      bool
 	VideoModelBaseURL       string
 	StockMediaEnabled       bool
 	PexelsAPIKey            string
@@ -195,11 +194,6 @@ func Load() *Config {
 				"OPENPOST_STUDIO_MODEL_BASE_URL",
 			),
 			"/",
-		),
-		VideoEditorEnabled: getEnvBoolWithAliases(
-			false,
-			"OPENPOST_VIDEO_EDITOR_ENABLED",
-			"OPENPOST_VIDEO_STUDIO_ENABLED",
 		),
 		VideoModelBaseURL:      strings.TrimRight(strings.TrimSpace(getEnvDefault("OPENPOST_VIDEO_MODEL_BASE_URL", "/video-editor-models")), "/"),
 		StockMediaEnabled:      getEnvBoolWithAliases(false, "OPENPOST_STOCK_MEDIA_ENABLED"),

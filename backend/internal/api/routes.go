@@ -65,7 +65,6 @@ type RouteDeps struct {
 	DisableLinkedInThreadReplies bool
 	ImageEditorEnabled           bool
 	ImageEditorModelBaseURL      string
-	VideoEditorEnabled           bool
 	VideoModelBaseURL            string
 	StockMediaEnabled            bool
 	PexelsAPIKey                 string
@@ -120,7 +119,6 @@ func RegisterHumaRoutes(api huma.API, deps RouteDeps) {
 	videoEditorHandler := handlers.NewVideoEditorHandler(
 		deps.DB,
 		deps.Authenticator,
-		deps.VideoEditorEnabled,
 		deps.VideoModelBaseURL,
 	)
 	videoEditorHandler.SetEntitlement(deps.Entitlement)

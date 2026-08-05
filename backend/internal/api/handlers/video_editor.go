@@ -33,7 +33,6 @@ var errVideoProjectRevisionConflict = errors.New("video project revision conflic
 type VideoEditorHandler struct {
 	db             *bun.DB
 	auth           middleware.Authenticator
-	enabled        bool
 	modelBaseURL   string
 	stockProviders []string
 	entitlement    entitlements.Service
@@ -52,13 +51,11 @@ func (h *VideoEditorHandler) SetStockProviders(providers []string) {
 func NewVideoEditorHandler(
 	db *bun.DB,
 	authenticator middleware.Authenticator,
-	enabled bool,
 	modelBaseURL string,
 ) *VideoEditorHandler {
 	return &VideoEditorHandler{
 		db:           db,
 		auth:         authenticator,
-		enabled:      enabled,
 		modelBaseURL: strings.TrimRight(strings.TrimSpace(modelBaseURL), "/"),
 		entitlement:  entitlements.NewSelfHostedService(),
 	}
@@ -246,9 +243,6 @@ func (h *VideoEditorHandler) planSync(
 	ctx context.Context,
 	input *PlanVideoEditorSyncInput,
 ) (*PlanVideoEditorSyncOutput, error) {
-	if err := h.ensureEnabled(); err != nil {
-		return nil, err
-	}
 	workspaceID := strings.TrimSpace(input.WorkspaceID)
 	if workspaceID == "" {
 		return nil, huma.Error400BadRequest(errWorkspaceIDRequired)
@@ -524,7 +518,7 @@ func (h *VideoEditorHandler) getConfig(
 	_ *struct{},
 ) (*VideoEditorConfigOutput, error) {
 	out := &VideoEditorConfigOutput{}
-	out.Body.Enabled = h.enabled
+	out.Body.Enabled = true
 	out.Body.SchemaVersion = videoproject.SchemaVersion
 	out.Body.Limits = VideoEditorLimits{
 		MaxDurationSeconds: 2 * 60 * 60,
@@ -560,13 +554,6 @@ func (h *VideoEditorHandler) getConfig(
 	return out, nil
 }
 
-func (h *VideoEditorHandler) ensureEnabled() error {
-	if !h.enabled {
-		return huma.Error404NotFound("OpenPost Video Editor is disabled")
-	}
-	return nil
-}
-
 func (h *VideoEditorHandler) requireAccess(
 	ctx context.Context,
 	workspaceID string,
@@ -590,9 +577,6 @@ func (h *VideoEditorHandler) listProjects(
 	ctx context.Context,
 	input *ListVideoProjectsInput,
 ) (*ListVideoProjectsOutput, error) {
-	if err := h.ensureEnabled(); err != nil {
-		return nil, err
-	}
 	workspaceID := strings.TrimSpace(input.WorkspaceID)
 	if workspaceID == "" {
 		return nil, huma.Error400BadRequest(errWorkspaceIDRequired)
@@ -640,9 +624,6 @@ func (h *VideoEditorHandler) createProject(
 	ctx context.Context,
 	input *CreateVideoProjectInput,
 ) (*CreateVideoProjectOutput, error) {
-	if err := h.ensureEnabled(); err != nil {
-		return nil, err
-	}
 	workspaceID := strings.TrimSpace(input.Body.WorkspaceID)
 	if workspaceID == "" {
 		return nil, huma.Error400BadRequest(errWorkspaceIDRequired)
@@ -713,9 +694,6 @@ func (h *VideoEditorHandler) getProject(
 	ctx context.Context,
 	input *GetVideoProjectInput,
 ) (*GetVideoProjectOutput, error) {
-	if err := h.ensureEnabled(); err != nil {
-		return nil, err
-	}
 	response, err := h.projectResponse(ctx, input.PathID)
 	if err != nil {
 		return nil, err
@@ -727,9 +705,6 @@ func (h *VideoEditorHandler) updateProject(
 	ctx context.Context,
 	input *UpdateVideoProjectInput,
 ) (*UpdateVideoProjectOutput, error) {
-	if err := h.ensureEnabled(); err != nil {
-		return nil, err
-	}
 	input.Body.Document.Normalize()
 	if err := videoproject.Validate(input.Body.Document, true); err != nil {
 		return nil, huma.Error400BadRequest(err.Error())
@@ -945,9 +920,6 @@ func (h *VideoEditorHandler) createReturnToken(
 	ctx context.Context,
 	input *CreateVideoReturnTokenInput,
 ) (*CreateVideoReturnTokenOutput, error) {
-	if err := h.ensureEnabled(); err != nil {
-		return nil, err
-	}
 	workspaceID := strings.TrimSpace(input.Body.WorkspaceID)
 	if workspaceID == "" {
 		return nil, huma.Error400BadRequest(errWorkspaceIDRequired)
