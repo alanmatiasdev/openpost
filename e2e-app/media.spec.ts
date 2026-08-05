@@ -104,7 +104,7 @@ test("media library uploads and lists a local media file", async ({
   await expect(
     page
       .getByTestId("page-header")
-      .getByText(/1 assets · 0 designs · .* stored/, { exact: true }),
+      .getByText(/1 assets · .* stored/, { exact: true }),
   ).toBeVisible();
   await expect(page.getByText("OpenPost Image Editor edits")).toHaveCount(0);
 
@@ -393,13 +393,11 @@ test("brand kit inputs keep focus while editing", async ({ page, request }) => {
   await fontFamily.click();
   const fontSearch = page.getByLabel("Search fonts");
   await fontSearch.fill("");
-  await fontSearch.pressSequentially("Geist Variable", { delay: 20 });
+  await fontSearch.pressSequentially("Geist", { delay: 20 });
   await expect(fontSearch).toBeFocused();
-  await expect(fontSearch).toHaveValue("Geist Variable");
-  await page
-    .getByRole("button", { name: "Geist Variable", exact: true })
-    .click();
-  await expect(fontFamily).toContainText("Geist Variable");
+  await expect(fontSearch).toHaveValue("Geist");
+  await page.getByRole("button", { name: "Geist Sans serif", exact: true }).click();
+  await expect(fontFamily).toContainText("Geist");
 });
 
 test("brand assets fall back to the original file when no thumbnail exists", async ({

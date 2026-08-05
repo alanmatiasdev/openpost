@@ -79,9 +79,9 @@ func registerSpaRoutesWithProfileMetadata(
 	})
 
 	e.GET("/*", func(c echo.Context) error {
-		reqPath := c.Request().URL.Path
-		if reqPath == "" {
-			reqPath = "/"
+		reqPath := normalizedRequestPath(c.Request().URL)
+		if target, ok := legacyStudioRedirectTarget(c.Request().URL); ok {
+			return c.Redirect(http.StatusPermanentRedirect, target)
 		}
 
 		if strings.HasPrefix(reqPath, "/api") {
@@ -132,6 +132,24 @@ func registerSpaRoutesWithProfileMetadata(
 
 		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	})
+}
+
+func normalizedRequestPath(requestURL *url.URL) string {
+	if requestURL.Path == "" {
+		return "/"
+	}
+	return requestURL.Path
+}
+
+func legacyStudioRedirectTarget(requestURL *url.URL) (string, bool) {
+	if requestURL.Path != "/studio" && !strings.HasPrefix(requestURL.Path, "/studio/") {
+		return "", false
+	}
+	target := "/image-editor" + strings.TrimPrefix(requestURL.Path, "/studio")
+	if requestURL.RawQuery != "" {
+		target += "?" + requestURL.RawQuery
+	}
+	return target, true
 }
 
 func renderSpaRootHTML(webFS fs.FS, publicURL string, managedEdition bool) []byte {

@@ -28,6 +28,7 @@ All notable changes to this project are documented in this file.
 - Tightened public profiles into a compact, content-sized layout, expanded the yearly activity field to its available width, and simplified ranking lists.
 - Fixed Image Editor fit-to-canvas calculations, initial Media loading, layer renaming, 320 px undo and redo access, stock-photo empty-state copy, and platform-specific shortcut labels.
 - Made media deletion preserve historical post metadata, block every active normalized post, rendition, design, template, video-project, and brand reference, and allow recovery before permanent blob removal.
+- Kept legacy Studio links on the public Image Editor redirect path and preserved the desktop sidebar's paired workspace navigation after adding Editors.
 
 ## [3.0.0] - 2026-08-05
 

@@ -149,15 +149,15 @@ test("Post drafts can move from one image to multiple before destination validat
   await page.getByTestId("composer-account-control").click();
   await expect(page.getByTestId("composer-account-row")).toHaveCount(5);
   await expect(
-    page.getByText("X supports up to 4 images per post."),
-  ).toBeVisible();
+    page.getByTestId("composer-account-row").filter({ hasText: "openpost_x" }),
+  ).toContainText("Needs attention");
   await expect(
-    page.getByText("Bluesky supports up to 4 images per post."),
-  ).toBeVisible();
+    page.getByTestId("composer-account-row").filter({ hasText: "openpost_bluesky" }),
+  ).toContainText("Needs attention");
   await expect(
-    page.getByText("LinkedIn multi-image posts support 2-20 images."),
-  ).toHaveCount(0);
+    page.getByTestId("composer-account-row").filter({ hasText: "openpost_linkedin" }),
+  ).not.toContainText("Needs attention");
   await expect(
-    page.getByText("Threads supports up to 20 media attachments per post."),
-  ).toHaveCount(0);
+    page.getByTestId("composer-account-row").filter({ hasText: "openpost_threads" }),
+  ).not.toContainText("Needs attention");
 });

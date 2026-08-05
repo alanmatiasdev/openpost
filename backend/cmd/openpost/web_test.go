@@ -125,6 +125,26 @@ func TestSpaHTMLRemainsUncached(t *testing.T) {
 	require.Equal(t, "<html>login</html>", rec.Body.String())
 }
 
+func TestSpaRedirectsLegacyStudioRoutesBeforeRenderingTheApp(t *testing.T) {
+	webFS := fstest.MapFS{
+		"index.html": {Data: []byte("<html>app</html>")},
+	}
+	e := echo.New()
+	registerSpaRoutes(e, webFS)
+
+	req := httptest.NewRequestWithContext(
+		context.Background(),
+		http.MethodGet,
+		"/studio/new?legacy-route=1",
+		nil,
+	)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusPermanentRedirect, rec.Code)
+	require.Equal(t, "/image-editor/new?legacy-route=1", rec.Header().Get("Location"))
+}
+
 func TestManagedSpaRootExposesProductPricingAndPoliciesWithoutJavaScript(t *testing.T) {
 	webFS := fstest.MapFS{
 		"index.html": {Data: []byte(`<html><head></head><body><div id="app">app</div></body></html>`)},

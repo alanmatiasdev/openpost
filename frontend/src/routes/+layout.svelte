@@ -66,6 +66,7 @@
 		'/impersonate',
 		'/cli/authorize',
 		'/oauth/authorize',
+		'/studio',
 		'/accounts/mastodon/callback',
 		'/accounts/callback'
 	];
@@ -82,6 +83,7 @@
 		'/impersonate',
 		'/cli/authorize',
 		'/oauth/authorize',
+		'/studio',
 		'/accounts/mastodon/callback',
 		'/accounts/callback'
 	];

@@ -278,7 +278,7 @@
 				</p>
 				<Sidebar.Menu class="grid grid-cols-2 gap-1" data-testid="sidebar-workspace-navigation">
 					{#each workspaceNavigationItems as item (item.id)}
-						<Sidebar.MenuItem>
+						<Sidebar.MenuItem class={item.id === 'editors' ? 'col-span-2' : ''}>
 							<Sidebar.MenuButton
 								isActive={isSidebarNavigationItemActive(item)}
 								class="h-9 gap-1.5 px-2 text-xs"
