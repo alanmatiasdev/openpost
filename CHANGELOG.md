@@ -6,7 +6,7 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
-- Added bold Signal Field X and LinkedIn headers that turn the OpenPost pen mark and publishing activity tiles into an immersive brand scene.
+- Added nine image-generated dark X header concepts spanning cinematic, typographic, real-world, graphic, sculptural, layered, spatial, and human brand directions.
 
 ## [2.1.0] - 2026-08-05
 

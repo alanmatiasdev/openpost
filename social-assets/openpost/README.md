@@ -5,19 +5,21 @@ This folder contains ready-to-use OpenPost assets built from the canonical logo,
 ## Start here
 
 - X: `banners/x-signal-field-dark-imagegen.png` at 1500 x 500
+- X header explorations: `banners/concepts/` with nine 1500 x 500 concepts
 - LinkedIn profile: `banners/linkedin-profile-signal-field-dark-imagegen.png` at 1584 x 396
 - LinkedIn Page: `banners/linkedin-page-paper.png` at 4200 x 700
 - Profile image: `profile/avatar-800.png`
 - Full overview: `preview/contact-sheet.png` or `preview/index.html`
 - Ready-to-post copy: `captions.md`
 
-The recommended `signal-field-dark-imagegen` headers turn the OpenPost pen mark and publishing activity tiles into an immersive brand world, with separate X and LinkedIn compositions. The `product-dark-imagegen` alternatives feature the real dark OpenPost workspace. The `paper` banners combine an AI-generated tactile background with deterministic OpenPost typography and the real vector logo. The `workshop` alternatives are fully deterministic and available in light and dark versions.
+The recommended `signal-field-dark-imagegen` headers turn the OpenPost pen mark and publishing activity tiles into an immersive brand world, with separate X and LinkedIn compositions. The nine X-sized images in `banners/concepts/` are review directions rather than official headers; they test cinematic, typographic, real-world, graphic, sculptural, layered, spatial, and human compositions. The `product-dark-imagegen` alternatives feature the real dark OpenPost workspace. The `paper` banners combine an AI-generated tactile background with deterministic OpenPost typography and the real vector logo. The `workshop` alternatives are fully deterministic and available in light and dark versions.
 
 ## Included formats
 
 | Folder       | Use                                 | Formats                              |
 | ------------ | ----------------------------------- | ------------------------------------ |
 | `banners/`   | X and LinkedIn headers              | Signal field, product dark, paper, workshop light, workshop dark |
+| `banners/concepts/` | X header direction explorations     | Nine 1500 x 500 concepts             |
 | `profile/`   | Account avatar                      | 400 x 400 and 800 x 800              |
 | `posts/`     | X, LinkedIn, and general feed posts | Square, portrait, and landscape      |
 | `carousel/`  | LinkedIn document carousel          | Five 1080 x 1350 slides              |
