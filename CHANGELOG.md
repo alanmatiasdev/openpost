@@ -4,6 +4,8 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [3.1.0] - 2026-08-05
+
 ### Added
 
 - Show the profile owner's highest active OpenPost plan beside their handle on public profiles.
