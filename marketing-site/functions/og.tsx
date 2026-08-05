@@ -539,9 +539,10 @@ function SocialCard({ input, origin }: { input: OgInput; origin: string }) {
           top: 48,
           display: "flex",
           color: colors.ink,
+          fontFamily: "Manrope",
           fontSize: 28,
           fontWeight: 600,
-          letterSpacing: -0.7,
+          letterSpacing: -0.55,
         }}
       >
         OpenPost
@@ -671,9 +672,10 @@ export const onRequestGet: PagesFunction = async ({ request }) => {
   const url = new URL(request.url);
   const input = parseInput(url);
   try {
-    const [regular, semibold] = await Promise.all([
+    const [regular, semibold, wordmark] = await Promise.all([
       font(url.origin, "Geist-Regular.ttf"),
       font(url.origin, "Geist-SemiBold.ttf"),
+      font(url.origin, "Manrope-SemiBold.ttf"),
     ]);
     return new ImageResponse(<SocialCard input={input} origin={url.origin} />, {
       width: WIDTH,
@@ -681,6 +683,7 @@ export const onRequestGet: PagesFunction = async ({ request }) => {
       fonts: [
         { name: "Geist", data: regular, weight: 400, style: "normal" },
         { name: "Geist", data: semibold, weight: 600, style: "normal" },
+        { name: "Manrope", data: wordmark, weight: 600, style: "normal" },
       ],
       headers: {
         "X-Robots-Tag": "noindex",

@@ -42,7 +42,10 @@
       aria-label="OpenPost home"
     >
       <Logo width={36} height={28} decorative />
-      <span class="text-sm font-semibold tracking-tight">OpenPost</span>
+      <span
+        class="font-brand text-sm leading-none font-semibold tracking-[-0.02em]"
+        >OpenPost</span
+      >
     </a>
 
     <NavigationMenu.Root

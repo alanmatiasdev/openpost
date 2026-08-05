@@ -1,6 +1,11 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
 @import '@fontsource-variable/geist';
+@import '@fontsource-variable/manrope/wght.css';
+@import '@fontsource-variable/dm-sans/wght.css';
+@import '@fontsource-variable/space-grotesk/wght.css';
+@import '@fontsource-variable/playfair-display/wght.css';
+@import '@fontsource-variable/source-serif-4/wght.css';
 
 @source '../../../packages/social-preview/src';
 
@@ -10,6 +15,7 @@
 
 @theme inline {
 	--font-sans: 'Geist Variable', 'Geist', system-ui, -apple-system, sans-serif;
+	--font-brand: 'Manrope Variable', 'Manrope', 'Geist Variable', 'Geist', system-ui, sans-serif;
 	--radius-sm: calc(var(--radius) - 4px);
 	--radius-md: calc(var(--radius) - 2px);
 	--radius-lg: var(--radius);

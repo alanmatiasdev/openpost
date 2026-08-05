@@ -36,6 +36,9 @@
 		</g>
 	</svg>
 	{#if showText}
-		<span class="font-bold whitespace-nowrap text-sidebar-foreground">OpenPost</span>
+		<span
+			class="font-brand leading-none font-semibold tracking-[-0.02em] whitespace-nowrap text-sidebar-foreground"
+			>OpenPost</span
+		>
 	{/if}
 </div>

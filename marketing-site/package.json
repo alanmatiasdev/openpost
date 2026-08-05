@@ -32,6 +32,7 @@
   "dependencies": {
     "@cloudflare/pages-plugin-vercel-og": "^0.1.2",
     "@fontsource-variable/geist": "^5.2.8",
+    "@fontsource-variable/manrope": "^5.2.8",
     "@openpost/changelog": "workspace:*",
     "@openpost/social-images": "workspace:*",
     "@openpost/social-preview": "workspace:*",
