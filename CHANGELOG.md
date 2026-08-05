@@ -4,15 +4,12 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
-### Added
-
-- Added nine image-generated dark X header concepts spanning cinematic, typographic, real-world, graphic, sculptural, layered, spatial, and human brand directions.
-
 ## [2.1.0] - 2026-08-05
 
 ### Added
 
 - Added image-generated dark X and LinkedIn profile headers built around the real OpenPost workspace and a restrained OpenPost pen mark.
+- Added nine image-generated dark X header concepts spanning cinematic, typographic, real-world, graphic, sculptural, layered, spatial, and human brand directions.
 - Added release planning, exact local release checks, candidate and production status reporting, a public running-version endpoint, immutable SHA image smoke tests, and configuration-only startup validation.
 
 ### Changed
@@ -26,6 +23,7 @@ All notable changes to this project are documented in this file.
 
 ### Fixed
 
+- Updated marketing browser coverage to verify the publishing-activity proof that replaced the previous proof-card copy.
 - Fixed profile-picture uploads to S3-compatible storage by sending small objects with an explicit size and a seekable body. The uploader now shows the server's real error instead of Uppy's generic network warning.
 - Stabilized Video Editor release checks with deterministic, fully encoded WebM fixtures for analysis imports and switched recording segments.
 - Kept release checks reproducible on fresh Linux runners by installing their pinned browser and media-fixture dependencies, preserving executable script modes, and bounding the fully parallel app browser suite to two workers.

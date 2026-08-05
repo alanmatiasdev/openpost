@@ -56,7 +56,11 @@ test("marketing index links to the app and documentation", async ({ page }) => {
       name: "Everything you build deserves an audience.",
     }),
   ).toBeVisible();
-  await expect(page.getByText("Start with the work")).toBeVisible();
+  await expect(
+    page.getByRole("img", {
+      name: "Illustrative year of publishing activity across six social platforms",
+    }),
+  ).toBeVisible();
   await expect(
     page.getByRole("link", { name: "Self-host", exact: true }),
   ).toHaveCount(0);
