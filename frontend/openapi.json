@@ -3236,7 +3236,7 @@
 						"type": "string"
 					},
 					"accounts": {
-						"description": "Ordered connected accounts and optional format defaults",
+						"description": "Ordered connected accounts",
 						"items": {
 							"$ref": "#/components/schemas/SocialSetAccountInput"
 						},
@@ -9792,6 +9792,10 @@
 						"format": "int64",
 						"type": "integer"
 					},
+					"plan_id": {
+						"description": "Highest active OpenPost plan available to the profile owner",
+						"type": "string"
+					},
 					"top_platforms": {
 						"items": {
 							"$ref": "#/components/schemas/PublicProfileRanking"
@@ -11202,6 +11206,9 @@
 					"expires_at": {
 						"type": "string"
 					},
+					"format_selection_required": {
+						"type": "boolean"
+					},
 					"intents": {
 						"items": {
 							"type": "string"
@@ -11289,6 +11296,7 @@
 				"required": [
 					"account_id",
 					"compatible",
+					"format_selection_required",
 					"segment_strategy",
 					"available_formats",
 					"active_constraints",

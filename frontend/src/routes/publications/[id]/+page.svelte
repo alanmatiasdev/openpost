@@ -8,15 +8,7 @@
 	import PageLoading from '$lib/components/page-loading.svelte';
 	import InlineNotice from '$lib/components/inline-notice.svelte';
 	import ComposeTextPost from '$lib/components/compose-text-post.svelte';
-	import ComposeFocusedPublication from '$lib/components/compose-focused-publication.svelte';
-	import { auth } from '$lib/stores/auth';
 	import { ui } from '$lib/stores/ui.svelte';
-	import { usesSpecializedTextComposer } from '$lib/composer-experience';
-	import {
-		COMPOSER_MODE_KEYS,
-		intentForLegacyProfile,
-		type ComposerModeKey
-	} from '$lib/components/compose/modes';
 	import { m } from '$lib/paraglide/messages';
 
 	type Publication = components['schemas']['PublicationResponse'];
@@ -34,15 +26,6 @@
 	let publicationRequestSequence = 0;
 
 	const publicationId = $derived($page.params.id);
-	const authState = $derived($auth);
-	const specializedTextComposer = $derived(
-		publication
-			? usesSpecializedTextComposer(
-					authState.user?.composer_experience,
-					publicationMode(publication)
-				)
-			: false
-	);
 
 	async function loadPublication(id: string) {
 		const requestSequence = ++publicationRequestSequence;
@@ -55,11 +38,7 @@
 			});
 			if (err) throw new Error((err as any)?.detail || m.publication_edit_load_failed());
 			if (requestSequence !== publicationRequestSequence || publicationId !== id) return;
-			const mode = publicationMode(data);
-			if (
-				usesSpecializedTextComposer(authState.user?.composer_experience, mode) &&
-				data.text_post_id
-			) {
+			if (data.text_post_id) {
 				const { data: postData, error: postError } = await client.GET('/posts/{id}', {
 					params: { path: { id: data.text_post_id } }
 				});
@@ -85,19 +64,8 @@
 		}
 	}
 
-	function publicationMode(item: Publication): ComposerModeKey {
-		if (COMPOSER_MODE_KEYS.includes(item.intent as ComposerModeKey)) {
-			return item.intent as ComposerModeKey;
-		}
-		return intentForLegacyProfile(item.content_profile);
-	}
-
 	async function handleSuccess() {
 		ui.triggerRefresh();
-		goto(resolve('/'));
-	}
-
-	function handleCancel() {
 		goto(resolve('/'));
 	}
 
@@ -134,15 +102,11 @@
 	</div>
 {:else if publication}
 	<div class="flex flex-1 flex-col overflow-hidden">
-		{#if specializedTextComposer && textPost}
-			<ComposeTextPost initialPost={textPost} onSuccess={handleSuccess} onDeleted={handleSuccess} />
-		{:else}
-			<ComposeFocusedPublication
-				mode={publicationMode(publication)}
-				initialPublication={publication}
-				onSuccess={handleSuccess}
-				onCancel={handleCancel}
-			/>
-		{/if}
+		<ComposeTextPost
+			initialPost={textPost ?? undefined}
+			initialPublication={publication}
+			onSuccess={handleSuccess}
+			onDeleted={handleSuccess}
+		/>
 	</div>
 {/if}

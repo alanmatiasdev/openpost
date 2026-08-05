@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onDestroy, onMount, tick, type Snippet } from 'svelte';
+	import { onDestroy, onMount, tick } from 'svelte';
 	import { page } from '$app/stores';
 	import { beforeNavigate, goto, replaceState } from '$app/navigation';
 	import { resolve } from '$app/paths';
@@ -22,9 +22,8 @@
 	import * as Dialog from '$lib/components/ui/dialog';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import * as Tooltip from '$lib/components/ui/tooltip';
-	import ComposerAccountMenu from './composer-account-menu.svelte';
 	import SocialSetControl from './social-set-control.svelte';
-	import AppSelect from './app-select.svelte';
+	import ComposerRequiredFields from './composer-required-fields.svelte';
 	import ComposerPublishActions from './composer-publish-actions.svelte';
 	import SaveIndicator from './save-indicator.svelte';
 	import ComposerScheduleDialog from './composer-schedule-dialog.svelte';
@@ -69,10 +68,7 @@
 		uniquePlatformLimits
 	} from './compose/platform-limits';
 	import { editorAccountIdAfterVariantLoad } from './compose/editor-target';
-	import {
-		accountCapabilityNeedsAttention,
-		isActionableAccountIssue
-	} from './compose/account-attention';
+	import { isActionableAccountIssue } from './compose/account-attention';
 	import {
 		composerIssues,
 		isAccountSpecificIssue,
@@ -87,7 +83,6 @@
 	} from './compose/schedule-timezone';
 	import {
 		buildFocusedPublicationPayload,
-		composerMode,
 		type ComposerModeKey,
 		type FocusedMediaInput,
 		type FocusedPublicationPayload,
@@ -175,6 +170,7 @@
 
 	interface Props {
 		initialPost?: InitialPost;
+		initialPublication?: Publication | null;
 		initialScheduleDate?: string | null;
 		initialScheduleTime?: string | null;
 		initialWorkspaceId?: string | null;
@@ -182,7 +178,6 @@
 		onDeleted?: () => void;
 		onDraftCreated?: (id: string) => void;
 		onThreadStateChange?: (isThread: boolean) => void;
-		modeControl?: Snippet;
 	}
 
 	// --------------------------------------------------------------------------
@@ -190,16 +185,17 @@
 	// --------------------------------------------------------------------------
 	let {
 		initialPost,
+		initialPublication = null,
 		initialScheduleDate = null,
 		initialScheduleTime = null,
 		initialWorkspaceId = null,
 		onSuccess,
 		onDeleted,
 		onDraftCreated,
-		onThreadStateChange,
-		modeControl
+		onThreadStateChange
 	}: Props = $props();
-	let isEditMode = $derived(!!initialPost);
+	let isEditMode = $derived(Boolean(initialPost || initialPublication));
+	let publicationOnlyEdit = $derived(Boolean(initialPublication && !initialPost));
 
 	let posts = $state<PostItem[]>([makeEmptyPost()]);
 	let activePostIndex = $state(0);
@@ -207,6 +203,7 @@
 	let publicationId = $state('');
 	let revision = $state(1);
 	let lastInitializedPostId = $state<string | null>(null);
+	let lastInitializedPublicationId = $state<string | null>(null);
 	let isSaving = $state(false);
 	let isSubmitting = $state(false);
 	let isDeleting = $state(false);
@@ -342,9 +339,10 @@
 	const totalChars = $derived(posts.reduce((sum, p) => sum + p.content.length, 0));
 	const isThread = $derived(posts.length > 1);
 	const textComposerMode = $derived<ComposerModeKey>(isThread ? 'thread' : 'post');
-	const textComposerModeMeta = $derived(composerMode(textComposerMode));
 	const compatibleAccounts = $derived(accounts);
-	const autoSavesDraft = $derived(!isEditMode || initialPost?.status === 'draft');
+	const autoSavesDraft = $derived(
+		!isEditMode || initialPost?.status === 'draft' || initialPublication?.status === 'draft'
+	);
 	const selectedAccounts = $derived(
 		selectedAccountIds
 			.map((id) => accounts.find((account) => account.id === id))
@@ -365,17 +363,9 @@
 	const settingsDialogMediaValues = $derived(
 		settingsAccount ? mediaSettingsForDialog(settingsAccount) : {}
 	);
-	const settingsAccountIds = $derived(
-		selectedAccounts
-			.filter((account) => visibleSettings(account).length > 0)
-			.map((account) => account.id)
-	);
-	const accountSummaries = $derived(
+	const requiredValuesByAccount = $derived(
 		Object.fromEntries(
-			accounts.map((account) => [
-				account.id,
-				resolvedCapabilities[account.id]?.label ?? getPlatformName(account.platform)
-			])
+			selectedAccounts.map((account) => [account.id, dialogSettingsForAccount(account)])
 		)
 	);
 	const localBlockers = $derived(globalFormBlockers());
@@ -391,15 +381,14 @@
 	const accountBlockingMessages = $derived(
 		selectedAccounts.flatMap((account) => accountBlockers(account))
 	);
-	const warningAccountIds = $derived(
-		Array.from(
-			new Set([
-				...Object.values(resolvedCapabilities)
-					.filter(accountCapabilityNeedsAttention)
-					.map((capability) => capability.account_id),
-				...Object.keys(accountIssues)
-			])
-		)
+	const sharedProviderKeys = $derived(
+		new Set(selectedAccounts.map((account) => getPlatformKey(account.platform)))
+	);
+	const sharedTextIsYouTubeDescription = $derived(
+		sharedProviderKeys.size === 1 && sharedProviderKeys.has('youtube')
+	);
+	const sharedTextHasYouTubeDescription = $derived(
+		sharedProviderKeys.size > 1 && sharedProviderKeys.has('youtube')
 	);
 	const canSubmitPublication = $derived(
 		localBlockers.length === 0 && accountBlockingMessages.length === 0
@@ -426,6 +415,14 @@
 	);
 	const activeVariantIsUnsynced = $derived(
 		activeVariantAccountId ? variants.has(activeVariantAccountId) : false
+	);
+	const editorTextIsYouTubeDescription = $derived(
+		activeVariantAccount
+			? getPlatformKey(activeVariantAccount.platform) === 'youtube'
+			: sharedTextIsYouTubeDescription
+	);
+	const editorTextHasMixedMeaning = $derived(
+		!activeVariantAccount && sharedTextHasYouTubeDescription
 	);
 	const activeEditorContent = $derived(
 		activeVariantAccountId
@@ -728,10 +725,19 @@
 	}
 
 	function dialogSettingsForAccount(account: SocialAccount): Record<string, unknown> {
-		return {
+		const values = {
 			...settingsForAccount(account),
 			...segmentSettingsForAccount(account)
 		};
+		if (
+			getPlatformKey(account.platform) === 'youtube' &&
+			(typeof values.description !== 'string' || !values.description.trim())
+		) {
+			values.description = posts[0]
+				? (getVariantContent(account.id, posts[0].key) ?? posts[0].content)
+				: '';
+		}
+		return values;
 	}
 
 	function visibleSettings(account: SocialAccount): SettingDefinition[] {
@@ -1072,13 +1078,22 @@
 		selectedSocialSetId = publication.social_set_id ?? '';
 		requestedOutputProfiles = Object.fromEntries(
 			(publication.renditions ?? [])
-				.filter((rendition) => rendition.format_locked)
+				.filter(
+					(rendition) =>
+						rendition.format_locked ||
+						(publicationOnlyEdit &&
+							['instagram', 'facebook', 'tiktok'].includes(getPlatformKey(rendition.platform)))
+				)
 				.map((rendition) => [rendition.social_account_id, rendition.output_profile])
 		);
 		formatLockedByAccount = Object.fromEntries(
 			(publication.renditions ?? []).map((rendition) => [
 				rendition.social_account_id,
-				rendition.format_locked ?? false
+				Boolean(
+					rendition.format_locked ||
+					(publicationOnlyEdit &&
+						['instagram', 'facebook', 'tiktok'].includes(getPlatformKey(rendition.platform)))
+				)
 			])
 		);
 		scheduleOverridesByAccount = Object.fromEntries(
@@ -1243,6 +1258,7 @@
 				};
 			}
 			validationIssues = (data?.accounts ?? []).flatMap((capability) => capability.issues ?? []);
+			void loadRequiredDestinationOptions();
 		} catch (resolveError) {
 			if (requestSequence !== capabilityResolveRequestSequence) return;
 			capabilityResolveError =
@@ -1250,6 +1266,18 @@
 		} finally {
 			if (requestSequence === capabilityResolveRequestSequence) {
 				capabilityResolveLoading = false;
+			}
+		}
+	}
+
+	async function loadRequiredDestinationOptions() {
+		for (const account of selectedAccounts) {
+			const requiredSources = visibleSettings(account)
+				.filter((setting) => setting.required && Boolean(setting.options_source))
+				.map((setting) => setting.options_source!)
+				.filter((source) => destinationOptionsByAccount[account.id]?.[source] === undefined);
+			for (const source of new Set(requiredSources)) {
+				await loadDestinationOptions(account, false, source);
 			}
 		}
 	}
@@ -1768,6 +1796,61 @@
 		lastSavedSnapshot = getSaveSnapshot();
 	}
 
+	async function initializeFromPublication(publication: Publication) {
+		clearAutoSaveTimer();
+		await ensureComposerWorkspace(publication.workspace_id);
+		draftId = null;
+		publicationId = publication.id;
+		revision = publication.revision;
+		lastInitializedPostId = null;
+		lastInitializedPublicationId = publication.id;
+		selectedWorkspaceId = publication.workspace_id;
+		selectedAccountIds = (publication.renditions ?? []).map(
+			(rendition) => rendition.social_account_id
+		);
+		const canonicalSegments = [...(publication.segments ?? [])].sort(
+			(left, right) => left.position - right.position
+		);
+		posts = canonicalSegments.map((segment) => ({
+			key: segment.id,
+			content: segment.body,
+			mediaIds: (segment.media ?? []).map((media) => media.id)
+		}));
+		if (posts.length === 0) {
+			posts = [
+				{
+					...makeEmptyPost(),
+					content: publication.source_text ?? '',
+					mediaIds: (publication.media ?? []).map((media) => media.id)
+				}
+			];
+		}
+		activePostIndex = 0;
+		activeVariantAccountId = null;
+		variants = new Map();
+		mediaAltTexts = new Map();
+		const publicationMedia = [
+			...canonicalSegments.flatMap((segment) => segment.media ?? []),
+			...(publication.media ?? [])
+		];
+		mediaMimeTypes = new Map(publicationMedia.map((media) => [media.id, media.mime_type] as const));
+		mediaSizes = new Map();
+		const mediaIDs = publicationMedia.map((media) => media.id);
+		if (mediaIDs.length > 0) await hydrateMediaMetadata(publication.workspace_id, mediaIDs);
+		if (publication.scheduled_at && publication.scheduled_at !== '0001-01-01T00:00:00Z') {
+			const schedule = workspaceScheduleFromISO(publication.scheduled_at, scheduleTimezoneLabel);
+			selectedDate = schedule?.date;
+			selectedTime = schedule?.time ?? null;
+		} else {
+			selectedDate = undefined;
+			selectedTime = null;
+		}
+		await loadAccounts(selectedWorkspaceId, selectedAccountIds);
+		hydrateCanonicalSettings(publication);
+		await resolveCapabilities();
+		lastSavedSnapshot = getSaveSnapshot();
+	}
+
 	async function initializeComposer() {
 		const requestSequence = ++workspaceRequestSequence;
 		loadingWorkspaces = true;
@@ -1787,7 +1870,8 @@
 				throw new Error(capabilityError.detail || m.compose_load_capabilities_failed());
 			}
 			capabilities = capabilityData?.capabilities ?? [];
-			await initializeFromPost(initialPost);
+			if (initialPublication && !initialPost) await initializeFromPublication(initialPublication);
+			else await initializeFromPost(initialPost);
 		} catch (e) {
 			console.error('Failed to load workspaces:', e);
 			if (requestSequence === workspaceRequestSequence) {
@@ -1847,6 +1931,18 @@
 		const post = initialPost;
 		if (!loadingWorkspaces && post && lastInitializedPostId !== post.id) {
 			initializeFromPost(post);
+		}
+	});
+
+	$effect(() => {
+		const publication = initialPublication;
+		if (
+			!loadingWorkspaces &&
+			!initialPost &&
+			publication &&
+			lastInitializedPublicationId !== publication.id
+		) {
+			void initializeFromPublication(publication);
 		}
 	});
 
@@ -2135,14 +2231,8 @@
 		selectedAccountIds = (set.accounts ?? [])
 			.map((membership) => membership.social_account_id)
 			.filter((id) => accounts.some((account) => account.id === id));
-		requestedOutputProfiles = Object.fromEntries(
-			(set.accounts ?? [])
-				.filter((membership) => Boolean(membership.default_output_profile))
-				.map((membership) => [membership.social_account_id, membership.default_output_profile!])
-		);
-		formatLockedByAccount = Object.fromEntries(
-			Object.keys(requestedOutputProfiles).map((accountId) => [accountId, true])
-		);
+		requestedOutputProfiles = {};
+		formatLockedByAccount = {};
 		activeVariantAccountId = null;
 		scheduleAutoSave();
 		scheduleCapabilityResolve();
@@ -2167,7 +2257,17 @@
 		return options;
 	}
 
+	function accountUsesManualFormat(account: SocialAccount): boolean {
+		return ['instagram', 'facebook', 'tiktok'].includes(getPlatformKey(account.platform));
+	}
+
 	function destinationFormatLabel(account: SocialAccount): string {
+		if (
+			resolvedCapabilities[account.id]?.format_selection_required &&
+			!requestedOutputProfiles[account.id]
+		) {
+			return m.compose_choose_format();
+		}
 		const current =
 			requestedOutputProfiles[account.id] || resolvedCapabilities[account.id]?.output_profile || '';
 		return (
@@ -2282,7 +2382,49 @@
 			let savedDraftId = startingDraftId;
 			let savedPublicationId = options.saveAsCopy ? '' : publicationId;
 			let savedRevision = revision;
-			if (startingDraftId) {
+			if (publicationOnlyEdit) {
+				if (savedPublicationId) {
+					const { data, error: saveError } = await client.PUT('/publications/{id}', {
+						params: { path: { id: savedPublicationId } },
+						body: {
+							expected_revision: revision,
+							title: canonical.title,
+							creation_preset: canonical.creation_preset,
+							social_set_id: canonical.social_set_id ?? '',
+							content_profile: canonical.content_profile,
+							source_text: canonical.source_text,
+							source_url: canonical.source_url ?? '',
+							...(proposedSchedule ? { scheduled_at: proposedSchedule } : { clear_schedule: true }),
+							metadata: canonical.metadata,
+							segments: canonical.segments,
+							renditions: canonical.renditions,
+							repost_override: $state.snapshot(repostOverride)
+						}
+					});
+					if (saveError) {
+						const conflict = parseDraftConflict(saveError);
+						if (conflict) {
+							draftConflict = conflict;
+							conflictDialogOpen = true;
+						}
+						throw new Error(saveError.detail || m.compose_save_publication_failed());
+					}
+					savedRevision = data.revision;
+				} else {
+					const { data, error: createError } = await client.POST('/publications', {
+						body: {
+							...canonical,
+							...(proposedSchedule ? { scheduled_at: proposedSchedule } : {}),
+							repost_override: $state.snapshot(repostOverride)
+						}
+					});
+					if (createError) {
+						throw new Error(createError.detail || m.compose_create_publication_failed());
+					}
+					savedPublicationId = data.id;
+					savedRevision = data.revision;
+				}
+			} else if (startingDraftId) {
 				const { data, error: saveError } = await client.PUT('/posts/{id}/draft', {
 					params: { path: { id: startingDraftId } },
 					body: {
@@ -2320,14 +2462,15 @@
 			) {
 				return null;
 			}
-			const createdDraftId = startingDraftId ? null : savedDraftId;
+			const createdDraftId = startingDraftId || publicationOnlyEdit ? null : savedDraftId;
 			draftId = savedDraftId;
 			publicationId = savedPublicationId;
 			revision = savedRevision;
 			draftConflict = null;
 			lastSavedSnapshot = snapshot;
 			showSavedIndicator();
-			ui.setActiveComposerDraft(savedPublicationId || savedDraftId);
+			const activeDraftID = savedPublicationId || savedDraftId;
+			if (activeDraftID) ui.setActiveComposerDraft(activeDraftID);
 			ui.triggerRefresh();
 			if (createdDraftId && savedPublicationId) onDraftCreated?.(savedPublicationId);
 			return savedPublicationId || null;
@@ -2385,14 +2528,25 @@
 	}
 
 	async function deleteDraft() {
-		if (!draftId || isDeleting) return;
+		if ((!draftId && !publicationOnlyEdit) || isDeleting) return;
 		clearAutoSaveTimer();
 		isDeleting = true;
 		error = '';
 		try {
-			const { error: deleteErr } = await client.DELETE('/posts/{id}', {
-				params: { path: { id: draftId } }
-			});
+			const deleteErr = draftId
+				? (
+						await client.DELETE('/posts/{id}', {
+							params: { path: { id: draftId } }
+						})
+					).error
+				: (
+						await client.DELETE('/publications/{id}', {
+							params: {
+								path: { id: publicationId },
+								query: { confirm: true, expected_revision: revision }
+							}
+						})
+					).error;
 			if (deleteErr) throw new Error((deleteErr as any).detail || m.compose_delete_post_failed());
 
 			ui.triggerRefresh();
@@ -2416,7 +2570,7 @@
 	}
 
 	async function saveEditedPost() {
-		if (!draftId || !initialPost) return;
+		if ((!draftId || !initialPost) && !publicationOnlyEdit) return;
 		error = '';
 		success = '';
 
@@ -3253,20 +3407,20 @@
 			data-testid="mobile-composer-controls"
 		>
 			<div class="flex min-w-0 flex-wrap items-center gap-1.5">
-				{#if modeControl}
-					<div class="shrink-0 [&_[data-testid=composer-mode-select]]:h-11">
-						{@render modeControl()}
-					</div>
-				{/if}
 				{#if selectedWorkspaceId && accounts.length > 0}
 					<SocialSetControl
 						workspaceId={selectedWorkspaceId}
 						{accounts}
-						{capabilities}
+						{selectedAccountIds}
+						customAccountIds={[...variants.keys()]}
+						{accountIssues}
 						bind:selectedSetId={selectedSocialSetId}
 						disabled={isSaving || isSubmitting}
 						autoApplyDefault={!initialPost && !publicationId}
 						onApply={applySocialSet}
+						onToggle={(account) => toggleAccount(account.id)}
+						onSelectAll={selectAllAccounts}
+						onClearAll={clearAllAccounts}
 					/>
 				{/if}
 				{#if accountControlLoading}
@@ -3281,30 +3435,6 @@
 					>
 						<LoaderIcon class="size-4 animate-spin" />
 					</Button>
-				{:else if accounts.length > 0}
-					<ComposerAccountMenu
-						{accounts}
-						{selectedAccountIds}
-						compatibleAccountIds={compatibleAccounts.map((account) => account.id)}
-						customAccountIds={[...variants.keys()]}
-						{settingsAccountIds}
-						{accountSummaries}
-						{accountIssues}
-						{warningAccountIds}
-						activeAccountId={activeVariantAccountId}
-						triggerLabel={m.compose_publish_to()}
-						triggerVariant="outline"
-						triggerClass="h-11 px-2.5"
-						description={m.compose_accounts_compatible({ format: textComposerModeMeta.label })}
-						onToggle={(account) => toggleAccount(account.id)}
-						onSelectAll={selectAllAccounts}
-						onClearAll={clearAllAccounts}
-						onEditShared={() => activateVariantTab(null)}
-						onCustomize={(account) => editAccountVersion(account.id)}
-						onPreview={openAccountPreview}
-						onReset={(account) => resyncAccount(account.id)}
-						onSettings={openDestinationSettings}
-					/>
 				{/if}
 				{#if autoSavesDraft}
 					<SaveIndicator
@@ -3318,15 +3448,6 @@
 				{#if accounts.length > 0}
 					<ComposerValidationMenu issues={visibleGlobalIssues} />
 				{/if}
-				<ComposerRepostControl
-					workspaceID={selectedWorkspaceId}
-					sourcePlatforms={[
-						...new Set(selectedAccounts.map((account) => getPlatformKey(account.platform)))
-					]}
-					bind:value={repostOverride}
-					disabled={!selectedWorkspaceId || isSaving || isSubmitting}
-					onChange={scheduleAutoSave}
-				/>
 				<DropdownMenu.Root>
 					<DropdownMenu.Trigger>
 						{#snippet child({ props })}
@@ -3393,7 +3514,7 @@
 						onSchedule={openScheduleDialog}
 						onQuickSchedule={quickSchedule}
 						onPublish={() => publish(true)}
-						onDelete={draftId ? () => (showDeleteConfirm = true) : undefined}
+						onDelete={draftId || publicationOnlyEdit ? () => (showDeleteConfirm = true) : undefined}
 					/>
 				{/if}
 			</div>
@@ -3404,18 +3525,20 @@
 			data-testid="desktop-composer-controls"
 		>
 			<div class="flex flex-wrap items-center gap-2">
-				{#if modeControl}
-					{@render modeControl()}
-				{/if}
 				{#if selectedWorkspaceId && accounts.length > 0}
 					<SocialSetControl
 						workspaceId={selectedWorkspaceId}
 						{accounts}
-						{capabilities}
+						{selectedAccountIds}
+						customAccountIds={[...variants.keys()]}
+						{accountIssues}
 						bind:selectedSetId={selectedSocialSetId}
 						disabled={isSaving || isSubmitting}
 						autoApplyDefault={!initialPost && !publicationId}
 						onApply={applySocialSet}
+						onToggle={(account) => toggleAccount(account.id)}
+						onSelectAll={selectAllAccounts}
+						onClearAll={clearAllAccounts}
 					/>
 				{/if}
 
@@ -3432,28 +3555,6 @@
 						<LoaderIcon class="size-3.5 animate-spin" />
 						{m.compose_accounts_loading()}
 					</Button>
-				{:else if accounts.length > 0}
-					<ComposerAccountMenu
-						{accounts}
-						{selectedAccountIds}
-						compatibleAccountIds={compatibleAccounts.map((account) => account.id)}
-						customAccountIds={[...variants.keys()]}
-						{settingsAccountIds}
-						{accountSummaries}
-						{accountIssues}
-						{warningAccountIds}
-						activeAccountId={activeVariantAccountId}
-						triggerLabel={m.compose_publish_to()}
-						description={m.compose_accounts_compatible({ format: textComposerModeMeta.label })}
-						onToggle={(account) => toggleAccount(account.id)}
-						onSelectAll={selectAllAccounts}
-						onClearAll={clearAllAccounts}
-						onEditShared={() => activateVariantTab(null)}
-						onCustomize={(account) => editAccountVersion(account.id)}
-						onPreview={openAccountPreview}
-						onReset={(account) => resyncAccount(account.id)}
-						onSettings={openDestinationSettings}
-					/>
 				{/if}
 				{#if autoSavesDraft}
 					<SaveIndicator
@@ -3467,15 +3568,6 @@
 				{#if accounts.length > 0}
 					<ComposerValidationMenu issues={visibleGlobalIssues} class="size-8" />
 				{/if}
-				<ComposerRepostControl
-					workspaceID={selectedWorkspaceId}
-					sourcePlatforms={[
-						...new Set(selectedAccounts.map((account) => getPlatformKey(account.platform)))
-					]}
-					bind:value={repostOverride}
-					disabled={!selectedWorkspaceId || isSaving || isSubmitting}
-					onChange={scheduleAutoSave}
-				/>
 			</div>
 
 			<div class="flex flex-wrap items-center gap-1.5 md:gap-2">
@@ -3547,7 +3639,7 @@
 						onSchedule={openScheduleDialog}
 						onQuickSchedule={quickSchedule}
 						onPublish={() => publish(true)}
-						onDelete={draftId ? () => (showDeleteConfirm = true) : undefined}
+						onDelete={draftId || publicationOnlyEdit ? () => (showDeleteConfirm = true) : undefined}
 					/>
 				{/if}
 			</div>
@@ -3691,18 +3783,15 @@
 
 						{#if activeVariantAccount}
 							<div class="flex flex-wrap items-center gap-2 border-b py-3">
-								{#if destinationFormatOptions(activeVariantAccount).length > 1}
-									<AppSelect
-										value={requestedOutputProfiles[activeVariantAccount.id] ||
-											resolvedCapabilities[activeVariantAccount.id]?.output_profile ||
-											''}
-										options={destinationFormatOptions(activeVariantAccount)}
-										placeholder={m.compose_destination_format()}
-										ariaLabel={m.compose_destination_format()}
-										class="h-11 min-w-40 md:h-9"
-										onValueChange={(value) => selectDestinationFormat(activeVariantAccount!, value)}
-									/>
-								{/if}
+								<Button
+									type="button"
+									variant="ghost"
+									size="sm"
+									class="h-11 md:h-9"
+									onclick={() => openAccountPreview(activeVariantAccount!)}
+								>
+									{m.compose_preview()}
+								</Button>
 								<Button
 									type="button"
 									variant="ghost"
@@ -3794,6 +3883,36 @@
 							{/if}
 						{/if}
 					</section>
+				{/if}
+
+				{#if !activeVariantAccountId && selectedAccounts.length > 0}
+					<ComposerRequiredFields
+						accounts={selectedAccounts}
+						resolvedByAccount={resolvedCapabilities}
+						valuesByAccount={requiredValuesByAccount}
+						optionGroupsByAccount={destinationOptionsByAccount}
+						optionErrorsByAccount={destinationOptionsErrors}
+						optionsLoadingAccountId={destinationOptionsLoadingAccountId}
+						onChange={updateAccountSetting}
+						onFormatChange={selectDestinationFormat}
+						onAddMedia={() => openMediaPicker(activePostIndex)}
+					/>
+					<details class="mb-5 rounded-lg border border-border/60 px-3 py-2 text-sm">
+						<summary class="flex min-h-9 cursor-pointer items-center text-muted-foreground">
+							{m.compose_advanced_delivery()}
+						</summary>
+						<div class="border-t pt-3">
+							<ComposerRepostControl
+								workspaceID={selectedWorkspaceId}
+								sourcePlatforms={[
+									...new Set(selectedAccounts.map((account) => getPlatformKey(account.platform)))
+								]}
+								bind:value={repostOverride}
+								disabled={!selectedWorkspaceId || isSaving || isSubmitting}
+								onChange={scheduleAutoSave}
+							/>
+						</div>
+					</details>
 				{/if}
 
 				<!-- Prompt Card -->
@@ -3893,9 +4012,25 @@
 
 									<div class="min-w-0 flex-1">
 										<div class="relative">
+											{#if i === 0 && (editorTextIsYouTubeDescription || editorTextHasMixedMeaning)}
+												<div class="mb-1 px-1">
+													<p class="text-xs font-medium text-foreground">
+														{editorTextIsYouTubeDescription
+															? m.compose_description()
+															: m.compose_post_text()}
+													</p>
+													{#if editorTextHasMixedMeaning}
+														<p class="text-xs text-muted-foreground">
+															{m.compose_shared_text_meaning()}
+														</p>
+													{/if}
+												</div>
+											{/if}
 											<Textarea
 												id="post-textarea-{i}"
-												aria-label={m.compose_post_text()}
+												aria-label={editorTextIsYouTubeDescription
+													? m.compose_description()
+													: m.compose_post_text()}
 												unstyled
 												{@attach textareaAttachment(i)}
 												value={getEditorContentForPost(post)}
@@ -3908,12 +4043,16 @@
 												onfocus={() => setActivePost(i)}
 												placeholder={activeVariantAccountId
 													? activeVariantIsUnsynced
-														? m.compose_write_custom_version({
-																platform: getPlatformName(activeVariantAccount?.platform ?? '')
-															})
+														? editorTextIsYouTubeDescription
+															? m.compose_describe_video()
+															: m.compose_write_custom_version({
+																	platform: getPlatformName(activeVariantAccount?.platform ?? '')
+																})
 														: m.compose_unsync_to_edit_placeholder()
 													: i === 0
-														? m.compose_whats_on_your_mind()
+														? editorTextIsYouTubeDescription
+															? m.compose_describe_video()
+															: m.compose_whats_on_your_mind()
 														: m.compose_add_to_thread()}
 												class="w-full resize-none overflow-y-hidden border-0 bg-transparent py-2 pr-3 text-base leading-relaxed text-foreground placeholder:text-muted-foreground/50 focus:ring-0 focus:outline-none md:py-3 md:pr-4 md:text-lg"
 												style="min-height: {i === 0 ? '120px' : '56px'};"
@@ -4310,6 +4449,20 @@
 	optionsLoading={settingsAccount?.id === destinationOptionsLoadingAccountId}
 	optionsError={settingsAccount ? (destinationOptionsErrors[settingsAccount.id] ?? '') : ''}
 	scopeLabel={isThread ? m.compose_thread_post({ number: activePostIndex + 1 }) : ''}
+	formatValue={settingsAccount
+		? requestedOutputProfiles[settingsAccount.id] ||
+			resolvedCapabilities[settingsAccount.id]?.output_profile ||
+			''
+		: ''}
+	formatOptions={settingsAccount && accountUsesManualFormat(settingsAccount)
+		? destinationFormatOptions(settingsAccount)
+		: []}
+	formatRequired={settingsAccount
+		? (resolvedCapabilities[settingsAccount.id]?.format_selection_required ?? false)
+		: false}
+	onFormatChange={(value) => {
+		if (settingsAccount) selectDestinationFormat(settingsAccount, value);
+	}}
 	onChange={(key, value) => {
 		if (settingsAccount) updateAccountSetting(settingsAccount, key, value);
 	}}

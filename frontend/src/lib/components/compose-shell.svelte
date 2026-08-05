@@ -3,24 +3,12 @@
 	import { goto, replaceState } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import ComposeTextPost from './compose-text-post.svelte';
-	import ComposeFocusedPublication from './compose-focused-publication.svelte';
-	import ComposeModeSelect from './compose-mode-select.svelte';
-	import { auth } from '$lib/stores/auth';
 	import { ui } from '$lib/stores/ui.svelte';
-	import { usesSpecializedTextComposer } from '$lib/composer-experience';
-	import { type ComposerModeKey } from './compose/modes';
-	import { m } from '$lib/paraglide/messages';
 
-	let selectedMode = $state<ComposerModeKey>('post');
-	let lastComposerThreadState = false;
 	const initialScheduleDate = $derived(page.url.searchParams.get('date'));
 	const initialScheduleTime = $derived(page.url.searchParams.get('time'));
 	const initialWorkspaceId = $derived(page.url.searchParams.get('workspace_id'));
 	const composerResetCounter = $derived(ui.composerResetCounter);
-	const authState = $derived($auth);
-	const specializedTextComposer = $derived(
-		usesSpecializedTextComposer(authState.user?.composer_experience, selectedMode)
-	);
 
 	function handleComposerReset() {
 		ui.clearActiveComposerDraft();
@@ -31,58 +19,19 @@
 		ui.setActiveComposerDraft(id);
 		replaceState(resolve(`/publications/${encodeURIComponent(id)}` as '/'), {});
 	}
-
-	function handleThreadStateChange(isThread: boolean) {
-		if (isThread) {
-			selectedMode = 'thread';
-		} else if (lastComposerThreadState && selectedMode === 'thread') {
-			selectedMode = 'post';
-		}
-		lastComposerThreadState = isThread;
-	}
 </script>
 
 <div class="flex min-h-0 flex-1 flex-col bg-background" data-testid="compose-shell">
 	{#key composerResetCounter}
-		{#if specializedTextComposer}
-			<div data-testid="text-thread-composer-shell" class="flex min-h-0 flex-1 flex-col">
-				<ComposeTextPost
-					{initialScheduleDate}
-					{initialScheduleTime}
-					{initialWorkspaceId}
-					onSuccess={handleComposerReset}
-					onDeleted={handleComposerReset}
-					onDraftCreated={handlePublicationDraftCreated}
-					onThreadStateChange={handleThreadStateChange}
-				>
-					{#snippet modeControl()}
-						<ComposeModeSelect
-							{selectedMode}
-							compactOnNarrow
-							onModeChange={(mode) => (selectedMode = mode)}
-						/>
-					{/snippet}
-				</ComposeTextPost>
-			</div>
-		{:else}
-			{#key selectedMode}
-				<ComposeFocusedPublication
-					mode={selectedMode}
-					{initialScheduleDate}
-					{initialScheduleTime}
-					{initialWorkspaceId}
-					onSuccess={handleComposerReset}
-					onDraftCreated={handlePublicationDraftCreated}
-				>
-					{#snippet modeControl()}
-						<ComposeModeSelect
-							{selectedMode}
-							compactOnNarrow
-							onModeChange={(mode) => (selectedMode = mode)}
-						/>
-					{/snippet}
-				</ComposeFocusedPublication>
-			{/key}
-		{/if}
+		<div data-testid="text-thread-composer-shell" class="flex min-h-0 flex-1 flex-col">
+			<ComposeTextPost
+				{initialScheduleDate}
+				{initialScheduleTime}
+				{initialWorkspaceId}
+				onSuccess={handleComposerReset}
+				onDeleted={handleComposerReset}
+				onDraftCreated={handlePublicationDraftCreated}
+			/>
+		</div>
 	{/key}
 </div>

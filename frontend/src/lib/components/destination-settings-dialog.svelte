@@ -40,7 +40,11 @@
 		optionsLoading?: boolean;
 		optionsError?: string;
 		scopeLabel?: string;
+		formatValue?: string;
+		formatOptions?: Array<{ value: string; label: string }>;
+		formatRequired?: boolean;
 		onChange: (key: string, value: unknown) => void;
+		onFormatChange?: (value: string) => void;
 		onMediaChange?: (mediaId: string, key: string, value: unknown) => void;
 		onOptionSearch?: (setting: SettingDefinition, search: string) => void;
 		onRetry?: () => void;
@@ -59,7 +63,11 @@
 		optionsLoading = false,
 		optionsError = '',
 		scopeLabel = '',
+		formatValue = '',
+		formatOptions = [],
+		formatRequired = false,
 		onChange,
+		onFormatChange,
 		onMediaChange,
 		onOptionSearch,
 		onRetry,
@@ -218,6 +226,24 @@
 						{/if}
 					{/snippet}
 				</InlineNotice>
+			{/if}
+
+			{#if formatOptions.length > 1 && onFormatChange}
+				<section class="space-y-2" aria-labelledby="destination-format-heading">
+					<h3 id="destination-format-heading" class="text-sm font-semibold">
+						{m.compose_destination_format()}
+						{#if formatRequired}<span class="text-destructive" aria-hidden="true">*</span>{/if}
+					</h3>
+					<p class="text-xs text-muted-foreground">{m.compose_destination_format_body()}</p>
+					<AppSelect
+						value={formatRequired ? '' : formatValue}
+						options={formatOptions}
+						placeholder={m.compose_choose_format()}
+						ariaLabel={m.compose_destination_format()}
+						class="h-11"
+						onValueChange={onFormatChange}
+					/>
+				</section>
 			{/if}
 
 			{#each groupedSettings as entry (entry.group)}

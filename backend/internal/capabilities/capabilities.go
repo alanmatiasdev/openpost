@@ -174,6 +174,7 @@ type ResolveInput struct {
 	RequestedOutputProfile string
 	SourceURL              string
 	Segments               []ResolveSegment
+	Settings               map[string]any
 }
 
 type ResolveSegment struct {
@@ -186,13 +187,14 @@ type ResolveSegment struct {
 
 type ResolvedCapability struct {
 	Capability
-	Compatible        bool                   `json:"compatible"`
-	SegmentStrategy   string                 `json:"segment_strategy" enum:"preserve,join"`
-	AvailableFormats  []DestinationFormat    `json:"available_formats"`
-	ActiveConstraints map[string]any         `json:"active_constraints"`
-	SettingGroups     []ResolvedSettingGroup `json:"setting_groups"`
-	DynamicOptions    map[string][]Option    `json:"dynamic_options,omitempty"`
-	Issues            []ValidationIssue      `json:"issues"`
+	Compatible              bool                   `json:"compatible"`
+	FormatSelectionRequired bool                   `json:"format_selection_required"`
+	SegmentStrategy         string                 `json:"segment_strategy" enum:"preserve,join"`
+	AvailableFormats        []DestinationFormat    `json:"available_formats"`
+	ActiveConstraints       map[string]any         `json:"active_constraints"`
+	SettingGroups           []ResolvedSettingGroup `json:"setting_groups"`
+	DynamicOptions          map[string][]Option    `json:"dynamic_options,omitempty"`
+	Issues                  []ValidationIssue      `json:"issues"`
 }
 
 type DestinationFormat struct {
@@ -252,6 +254,8 @@ func All() []Capability {
 	}
 	publicMediaCarousel := publicMedia
 	publicMediaCarousel.MinCount = 2
+	threadsThreadMedia := publicMedia
+	threadsThreadMedia.MinCount = 0
 	threadsCarousel := MediaConstraint{
 		MinCount:               2,
 		MaxCount:               20,
@@ -329,7 +333,7 @@ func All() []Capability {
 		defaultQueued(Capability{Provider: ProviderMastodon, Profile: models.ContentProfileLongVideo, Label: "Mastodon video", TextLimit: 500, Media: mastodonVideo, Settings: mastodonSettings()}),
 
 		defaultQueued(Capability{Provider: ProviderThreads, Profile: models.ContentProfileShortText, Label: "Threads post", TextLimit: 500, Media: text, Settings: threadsSettings()}),
-		defaultQueued(Capability{Provider: ProviderThreads, Profile: models.ContentProfileThread, Label: "Threads thread", TextLimit: 500, Media: publicMedia, RequiresPublicMedia: true, Settings: threadsSettings()}),
+		defaultQueued(Capability{Provider: ProviderThreads, Profile: models.ContentProfileThread, Label: "Threads thread", TextLimit: 500, Media: threadsThreadMedia, RequiresPublicMedia: true, Settings: threadsSettings()}),
 		defaultQueued(Capability{Provider: ProviderThreads, Profile: models.ContentProfileLinkShare, Label: "Threads link", TextLimit: 500, Media: text, Settings: append(linkSettings(), threadsSettings()...)}),
 		defaultQueued(Capability{Provider: ProviderThreads, Profile: models.ContentProfileImagePost, Label: "Threads media", TextLimit: 500, Media: publicImage, RequiresPublicMedia: true, Settings: threadsSettings()}),
 		defaultQueued(Capability{Provider: ProviderThreads, Profile: models.ContentProfileCarousel, Label: "Threads carousel", TextLimit: 500, Media: threadsCarousel, RequiresPublicMedia: true, Settings: threadsSettings()}),
@@ -599,6 +603,7 @@ func Resolve(provider string, input ResolveInput) ResolvedCapability {
 	issues := []ValidationIssue{}
 	selected := selectDestinationCapability(provider, input, shape, preset)
 	availableFormats := destinationFormats(provider, input, shape, preset)
+	formatSelectionRequired := destinationFormatSelectionRequired(provider, input, shape)
 	if selected == nil {
 		message := fmt.Sprintf("%s does not expose a publishing format", provider)
 		issues = append(issues, validationIssue("unsupported_destination", message, provider, "", "output_profile"))
@@ -622,6 +627,10 @@ func Resolve(provider string, input ResolveInput) ResolvedCapability {
 	}
 
 	intent := firstCapabilityIntent(*selected)
+	if formatSelectionRequired {
+		message := fmt.Sprintf("Choose how this content should be published on %s", providerDisplayName(provider))
+		issues = append(issues, validationIssue("format_selection_required", message, provider, selected.Profile, "output_profile"))
+	}
 	activeSettings := make([]SettingDefinition, 0, len(selected.Settings))
 	for _, setting := range selected.Settings {
 		if settingApplies(setting, intent, selected.OutputProfile, shape) {
@@ -638,7 +647,7 @@ func Resolve(provider string, input ResolveInput) ResolvedCapability {
 			segment.Title,
 			"",
 			segment.Media,
-			nil,
+			input.Settings,
 		)
 		for index := range segmentIssues {
 			segmentIssues[index].SegmentID = segment.ID
@@ -649,10 +658,11 @@ func Resolve(provider string, input ResolveInput) ResolvedCapability {
 		issues = append(issues, segmentIssues...)
 	}
 	return ResolvedCapability{
-		Capability:       *selected,
-		Compatible:       !hasErrorIssues(issues),
-		SegmentStrategy:  segmentStrategy,
-		AvailableFormats: availableFormats,
+		Capability:              *selected,
+		Compatible:              !hasErrorIssues(issues),
+		FormatSelectionRequired: formatSelectionRequired,
+		SegmentStrategy:         segmentStrategy,
+		AvailableFormats:        availableFormats,
 		ActiveConstraints: map[string]any{
 			"creation_preset":   preset,
 			"intent":            intent,
@@ -664,6 +674,33 @@ func Resolve(provider string, input ResolveInput) ResolvedCapability {
 		},
 		SettingGroups: groupSettings(activeSettings),
 		Issues:        issues,
+	}
+}
+
+func providerDisplayName(provider string) string {
+	switch provider {
+	case ProviderX:
+		return "X"
+	case ProviderLinkedIn:
+		return "LinkedIn"
+	case ProviderTikTok:
+		return "TikTok"
+	case ProviderYouTube:
+		return "YouTube"
+	case ProviderFacebook:
+		return "Facebook"
+	case ProviderInstagram:
+		return "Instagram"
+	case ProviderMastodon:
+		return "Mastodon"
+	case ProviderBluesky:
+		return "Bluesky"
+	case ProviderThreads:
+		return "Threads"
+	case ProviderDiscord:
+		return "Discord"
+	default:
+		return provider
 	}
 }
 
@@ -776,9 +813,18 @@ func destinationSourceShapeScore(candidate Capability, input ResolveInput, shape
 			return 60
 		}
 	case MediaShapeVideo:
-		if candidate.Profile == models.ContentProfileShortVideo && sourceLooksShortForm(input.Segments) {
-			return 45
-		}
+		return destinationVideoShapeScore(candidate, input.Segments)
+	}
+	return 0
+}
+
+func destinationVideoShapeScore(candidate Capability, segments []ResolveSegment) int {
+	shortForm := sourceLooksShortForm(segments)
+	if candidate.Profile == models.ContentProfileShortVideo && shortForm {
+		return 45
+	}
+	if candidate.Provider == ProviderYouTube && candidate.Profile == models.ContentProfileLongVideo && !shortForm {
+		return 45
 	}
 	return 0
 }
@@ -789,11 +835,32 @@ func sourceLooksShortForm(segments []ResolveSegment) bool {
 			if !strings.HasPrefix(strings.ToLower(media.MimeType), "video/") {
 				continue
 			}
-			return (media.Height > 0 && media.Height >= media.Width) ||
-				(media.DurationMS > 0 && media.DurationMS <= 180_000)
+			// Shorts are inferred only when both facts needed for a certain
+			// classification are available. A short landscape video is still a
+			// regular YouTube video, and incomplete media analysis must not guess.
+			return media.Width > 0 && media.Height > 0 && media.Height >= media.Width &&
+				media.DurationMS > 0 && media.DurationMS <= 180_000
 		}
 	}
 	return false
+}
+
+func destinationFormatSelectionRequired(provider string, input ResolveInput, shape string) bool {
+	if strings.TrimSpace(input.RequestedOutputProfile) != "" {
+		return false
+	}
+	if !slices.Contains([]string{ProviderInstagram, ProviderFacebook, ProviderTikTok}, provider) {
+		return false
+	}
+
+	profiles := map[string]struct{}{}
+	for _, candidate := range All() {
+		if candidate.Provider != provider || !slices.Contains(candidate.MediaShapes, shape) {
+			continue
+		}
+		profiles[candidate.OutputProfile] = struct{}{}
+	}
+	return len(profiles) > 1
 }
 
 func destinationFormats(provider string, input ResolveInput, shape, preset string) []DestinationFormat {
@@ -810,20 +877,15 @@ func destinationFormats(provider string, input ResolveInput, shape, preset strin
 		if !ok {
 			continue
 		}
-		strategy := destinationSegmentStrategy(selected, len(input.Segments))
-		segments := destinationSegments(input.Segments, strategy)
-		compatible := true
-		for _, segment := range segments {
-			if hasErrorIssues(validateCapability(selected, segment.Body, segment.Title, "", segment.Media, nil)) {
-				compatible = false
-				break
-			}
-		}
 		formats = append(formats, DestinationFormat{
 			OutputProfile: selected.OutputProfile,
 			Profile:       selected.Profile,
 			Label:         selected.Label,
-			Compatible:    compatible,
+			// Compatibility here describes whether the current source shape can
+			// become this format. Missing provider settings and unfinished media
+			// processing remain validation issues, but must not hide a valid format
+			// from the user's explicit Instagram or Facebook choice.
+			Compatible: slices.Contains(selected.MediaShapes, shape),
 		})
 		seen[selected.OutputProfile] = struct{}{}
 	}

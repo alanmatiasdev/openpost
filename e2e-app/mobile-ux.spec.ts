@@ -101,6 +101,7 @@ test("mobile shell and composer expose touch-first controls without overflow", a
   });
 
   await page.goto("/");
+  await expect(page.getByTestId("text-thread-composer-shell")).toBeVisible();
 
   await expect(
     page.getByRole("button", { name: "Toggle Sidebar" }),
@@ -180,10 +181,6 @@ test("mobile shell and composer expose touch-first controls without overflow", a
   ).toHaveCount(1);
 
   await expectMinimumTouchTarget(
-    page.getByTestId("composer-mode-select"),
-    "post type selector",
-  );
-  await expectMinimumTouchTarget(
     page.getByRole("button", { name: "Add media" }).first(),
     "media picker button",
   );
@@ -208,12 +205,6 @@ test("mobile shell and composer expose touch-first controls without overflow", a
     ),
   ).toHaveCount(0);
 
-  const compactModeBox = await page
-    .getByTestId("composer-mode-select")
-    .boundingBox();
-  expect(compactModeBox).not.toBeNull();
-  expect(compactModeBox!.width).toBe(44);
-
   const accountControl = page.getByTestId("composer-account-control");
   await expectMinimumTouchTarget(accountControl, "account control");
   await expect(accountControl.getByTestId("composer-account-icon")).toHaveCount(
@@ -222,12 +213,14 @@ test("mobile shell and composer expose touch-first controls without overflow", a
   await accountControl.click();
   const accountRow = page.getByTestId("composer-account-row");
   await expect(accountRow).toHaveCount(1);
-  await expect(accountRow).toContainText("Bluesky post");
+  await expect(accountRow).toContainText("openpost_mobile");
+  await page.keyboard.press("Escape");
+  await page.getByRole("tab", { name: /openpost_mobile/ }).click();
   await expectMinimumTouchTarget(
-    page.getByTestId("composer-account-settings"),
+    page.getByRole("button", { name: "Platform settings" }),
     "destination settings",
   );
-  await page.getByTestId("composer-account-settings").click();
+  await page.getByRole("button", { name: "Platform settings" }).click();
   const settingsDialog = page.getByRole("dialog");
   await expect(
     settingsDialog.getByRole("heading", { name: "Bluesky settings" }),

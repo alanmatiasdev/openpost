@@ -219,8 +219,14 @@ test("Threads destination options stay scoped and touch accessible on mobile", a
   await page.getByLabel("Post text").fill("A scoped Threads poll");
   await page.getByTestId("composer-account-control").click();
   const accountRow = page.getByTestId("composer-account-row");
-  await expect(accountRow).toContainText("Threads post");
-  const settingsButton = page.getByTestId("composer-account-settings");
+  await expect(accountRow).toContainText(/openpost.*Threads/);
+  const accountRowBox = await accountRow.boundingBox();
+  expect(accountRowBox?.height).toBeGreaterThanOrEqual(44);
+  await page.keyboard.press("Escape");
+  await page.getByRole("tab", { name: /openpost/ }).click();
+  const settingsButton = page.getByRole("button", {
+    name: "Platform settings",
+  });
   const settingsBox = await settingsButton.boundingBox();
   expect(settingsBox?.width).toBeGreaterThanOrEqual(44);
   expect(settingsBox?.height).toBeGreaterThanOrEqual(44);

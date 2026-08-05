@@ -22,6 +22,7 @@ function capability(issues: ValidationIssue[], compatible = true): ResolvedAccou
 		active_constraints: {},
 		capability_revision: 'test',
 		compatible,
+		format_selection_required: false,
 		intents: ['post'],
 		issues,
 		label: 'X post',

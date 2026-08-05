@@ -1,6 +1,5 @@
 export const settingsTabIDs = [
 	'profile',
-	'composer',
 	'notifications',
 	'security',
 	'developer',

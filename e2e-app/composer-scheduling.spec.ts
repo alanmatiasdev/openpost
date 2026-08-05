@@ -43,8 +43,9 @@ test("composer quick-schedules a publication from the selected time", async ({
         capabilities: [
           {
             provider: "bluesky",
-            profile: "short_video",
-            label: "Short video",
+            profile: "short_text",
+            output_profile: "bluesky.post",
+            label: "Bluesky post",
             media: {
               min_count: 0,
               max_count: 4,
@@ -104,9 +105,9 @@ test("composer quick-schedules a publication from the selected time", async ({
           {
             account_id: "bluesky-main",
             provider: "bluesky",
-            profile: "short_video",
-            output_profile: "bluesky.video",
-            label: "Bluesky video",
+            profile: "short_text",
+            output_profile: "bluesky.post",
+            label: "Bluesky post",
             text_limit: 300,
             media: {
               min_count: 0,
@@ -115,8 +116,8 @@ test("composer quick-schedules a publication from the selected time", async ({
               requires_public_url: false,
               requires_https_fetchable: false,
             },
-            intents: ["short_video"],
-            media_shapes: ["video"],
+            intents: ["post"],
+            media_shapes: ["text"],
             settings: [],
             setting_groups: [],
             compatible: true,
@@ -151,6 +152,40 @@ test("composer quick-schedules a publication from the selected time", async ({
           },
         ],
         grants: [],
+      },
+    });
+  });
+  await page.route("**/api/v1/posts/draft", async (route) => {
+    const body = route.request().postDataJSON() as {
+      publication?: PostPayload;
+      workspace_id?: string;
+    };
+    publicationPayload = {
+      ...(body.publication ?? {}),
+      workspace_id: body.workspace_id,
+    };
+    await route.fulfill({
+      contentType: "application/json",
+      json: {
+        post_id: "post-schedule",
+        publication_id: "publication-schedule",
+        revision: 1,
+        updated_at: "2026-08-05T12:00:00Z",
+      },
+    });
+  });
+  await page.route("**/api/v1/posts/post-schedule/draft", async (route) => {
+    const body = route.request().postDataJSON() as {
+      publication?: PostPayload;
+    };
+    publicationPayload = body.publication;
+    await route.fulfill({
+      contentType: "application/json",
+      json: {
+        post_id: "post-schedule",
+        publication_id: "publication-schedule",
+        revision: 2,
+        updated_at: "2026-08-05T12:00:01Z",
       },
     });
   });
@@ -238,15 +273,11 @@ test("composer quick-schedules a publication from the selected time", async ({
   });
 
   await page.goto("/");
-  await page.getByTestId("composer-mode-select").click();
-  await page.getByRole("option", { name: "Short video" }).click();
-  await expect(
-    page.getByRole("button", { name: "Target accounts" }),
-  ).toBeVisible();
+  await expect(page.getByTestId("text-thread-composer-shell")).toBeVisible();
   await expect(page.getByTestId("composer-action-controls")).toBeVisible();
   await expect(page.getByRole("button", { name: "Save draft" })).toHaveCount(0);
-  await expect(page.getByTestId("composer-media-dropzone")).toBeVisible();
-  await page.getByLabel("Caption").fill(postContent);
+  await page.getByLabel("Post text").fill(postContent);
+  await page.getByText("Advanced delivery", { exact: true }).click();
   await page.getByRole("button", { name: "Repost settings" }).click();
   await page.getByText("Custom", { exact: true }).click();
   const repostTarget = page.getByRole("checkbox", {
@@ -289,19 +320,18 @@ test("composer quick-schedules a publication from the selected time", async ({
   await expect(quickSchedule.locator(".lucide-send")).toBeVisible();
   await quickSchedule.click();
 
-  await expect(page.getByText("Publication scheduled")).toBeVisible();
+  await expect(page.getByText("Scheduled!", { exact: true })).toBeVisible();
   await expect.poll(() => publicationPayload).toBeTruthy();
   await expect.poll(() => scheduleRequested).toBe(true);
 
   expect(publicationPayload).toMatchObject({
     workspace_id: workspaceBody.id,
-    content_profile: "short_video",
+    content_profile: "short_text",
     source_text: postContent,
-    media: [],
     renditions: [
       expect.objectContaining({
         social_account_id: "bluesky-main",
-        profile: "short_video",
+        profile: "short_text",
         body: postContent,
         settings: {},
         media: [],
@@ -316,7 +346,7 @@ test("composer quick-schedules a publication from the selected time", async ({
       }),
     },
   });
-  expect(publicationPayload?.source_url).toBeUndefined();
+  expect(publicationPayload?.source_url).toBe("");
   expect(publicationPayload?.scheduled_at).toBeTruthy();
   expect(new Date(publicationPayload?.scheduled_at ?? "").toString()).not.toBe(
     "Invalid Date",

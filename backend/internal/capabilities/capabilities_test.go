@@ -155,6 +155,111 @@ func TestResolveDoesNotInferStoryWithoutStoryPreset(t *testing.T) {
 
 	require.NotEqual(t, models.ContentProfileStory, resolved.Profile)
 	require.NotEqual(t, "instagram.story", resolved.OutputProfile)
+	require.True(t, resolved.FormatSelectionRequired)
+	requireIssueCode(t, resolved.Issues, "format_selection_required")
+}
+
+func TestResolveRequiresFormatOnlyForGenuinelyAmbiguousDestinations(t *testing.T) {
+	image := MediaItem{ID: "image-1", MimeType: "image/jpeg", Size: 1024, Width: 1080, Height: 1080, PublicURLReady: true, PublicURLStatus: 200}
+	video := MediaItem{ID: "video-1", MimeType: "video/mp4", Size: 1024, Width: 1080, Height: 1920, DurationMS: 20_000, AnalysisStatus: "ready", PublicURLReady: true, PublicURLStatus: 200}
+	tests := []struct {
+		name     string
+		provider string
+		media    []MediaItem
+		want     bool
+	}{
+		{name: "Instagram image can be feed or Story", provider: ProviderInstagram, media: []MediaItem{image}, want: true},
+		{name: "Instagram video can be Reel or Story", provider: ProviderInstagram, media: []MediaItem{video}, want: true},
+		{name: "Facebook image can be photo or Story", provider: ProviderFacebook, media: []MediaItem{image}, want: true},
+		{name: "Facebook video has multiple delivery formats", provider: ProviderFacebook, media: []MediaItem{video}, want: true},
+		{name: "TikTok video has one format", provider: ProviderTikTok, media: []MediaItem{video}, want: false},
+		{name: "YouTube format is inferred", provider: ProviderYouTube, media: []MediaItem{video}, want: false},
+		{name: "X format is inferred", provider: ProviderX, media: []MediaItem{image}, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resolved := Resolve(tt.provider, ResolveInput{CreationPreset: IntentPost, Segments: []ResolveSegment{{ID: "segment-1", Body: "Caption", Title: "Title", Media: tt.media}}})
+			require.Equal(t, tt.want, resolved.FormatSelectionRequired)
+			if tt.want {
+				requireIssueCode(t, resolved.Issues, "format_selection_required")
+			} else {
+				requireNoIssueCode(t, resolved.Issues, "format_selection_required")
+			}
+		})
+	}
+}
+
+func TestResolveInfersYouTubeShortOnlyFromCompleteQualifyingMetadata(t *testing.T) {
+	tests := []struct {
+		name       string
+		media      MediaItem
+		wantOutput string
+	}{
+		{name: "vertical short video", media: MediaItem{MimeType: "video/mp4", Width: 1080, Height: 1920, DurationMS: 60_000}, wantOutput: "youtube.short"},
+		{name: "landscape short video", media: MediaItem{MimeType: "video/mp4", Width: 1920, Height: 1080, DurationMS: 60_000}, wantOutput: "youtube.video"},
+		{name: "vertical long video", media: MediaItem{MimeType: "video/mp4", Width: 1080, Height: 1920, DurationMS: 240_000}, wantOutput: "youtube.video"},
+		{name: "analysis incomplete", media: MediaItem{MimeType: "video/mp4"}, wantOutput: "youtube.video"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			media := tt.media
+			media.ID = "video-1"
+			media.Size = 1024
+			media.AnalysisStatus = "ready"
+			resolved := Resolve(ProviderYouTube, ResolveInput{CreationPreset: IntentPost, Segments: []ResolveSegment{{ID: "segment-1", Title: "Title", Media: []MediaItem{media}}}})
+			require.Equal(t, tt.wantOutput, resolved.OutputProfile)
+		})
+	}
+}
+
+func TestResolveInfersUnambiguousFormatsAcrossEveryProvider(t *testing.T) {
+	image := MediaItem{ID: "image-1", MimeType: "image/jpeg", Size: 1024, Width: 1080, Height: 1080, PublicURLReady: true, PublicURLStatus: 200}
+	secondImage := image
+	secondImage.ID = "image-2"
+	video := MediaItem{ID: "video-1", MimeType: "video/mp4", Size: 1024, Width: 1080, Height: 1920, DurationMS: 60_000, AnalysisStatus: "ready", PublicURLReady: true, PublicURLStatus: 200}
+	document := MediaItem{ID: "document-1", MimeType: "application/pdf", Size: 1024}
+	thread := []ResolveSegment{{ID: "segment-1", Body: "First"}, {ID: "segment-2", Body: "Second"}}
+	tests := []struct {
+		provider string
+		segments []ResolveSegment
+		want     string
+	}{
+		{provider: ProviderX, segments: thread, want: "x.thread"},
+		{provider: ProviderBluesky, segments: thread, want: "bluesky.thread"},
+		{provider: ProviderMastodon, segments: thread, want: "mastodon.thread"},
+		{provider: ProviderThreads, segments: thread, want: "threads.thread"},
+		{provider: ProviderLinkedIn, segments: []ResolveSegment{{ID: "segment-1", Body: "Document", Media: []MediaItem{document}}}, want: "linkedin.document"},
+		{provider: ProviderFacebook, segments: []ResolveSegment{{ID: "segment-1", Body: "Photos", Media: []MediaItem{image, secondImage}}}, want: "facebook.carousel"},
+		{provider: ProviderInstagram, segments: []ResolveSegment{{ID: "segment-1", Body: "Photos", Media: []MediaItem{image, secondImage}}}, want: "instagram.carousel"},
+		{provider: ProviderYouTube, segments: []ResolveSegment{{ID: "segment-1", Body: "Description", Title: "Title", Media: []MediaItem{video}}}, want: "youtube.short"},
+		{provider: ProviderTikTok, segments: []ResolveSegment{{ID: "segment-1", Body: "Photos", Media: []MediaItem{image}}}, want: "tiktok.photo"},
+		{provider: ProviderDiscord, segments: []ResolveSegment{{ID: "segment-1", Body: "Video", Media: []MediaItem{video}}}, want: "discord.video"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.provider, func(t *testing.T) {
+			resolved := Resolve(tt.provider, ResolveInput{CreationPreset: IntentPost, Segments: tt.segments})
+			require.Equal(t, tt.want, resolved.OutputProfile)
+			require.False(t, resolved.FormatSelectionRequired)
+		})
+	}
+}
+
+func TestResolveAcceptsRequiredDestinationSettings(t *testing.T) {
+	video := MediaItem{ID: "video-1", MimeType: "video/mp4", Size: 1024, Width: 1920, Height: 1080, DurationMS: 60_000, AnalysisStatus: "ready"}
+	resolved := Resolve(ProviderYouTube, ResolveInput{
+		CreationPreset: IntentPost,
+		Segments:       []ResolveSegment{{ID: "segment-1", Body: "Description", Title: "Launch walkthrough", Media: []MediaItem{video}}},
+		Settings: map[string]any{
+			"title":       "Launch walkthrough",
+			"privacy":     "private",
+			"category_id": "28",
+		},
+	})
+
+	requireNoIssueCode(t, resolved.Issues, "title_required")
+	requireNoIssueCode(t, resolved.Issues, "setting_required")
 }
 
 func TestResolveExposesDestinationFormatChoices(t *testing.T) {

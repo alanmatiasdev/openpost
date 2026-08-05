@@ -1,43 +1,54 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { SvelteMap } from 'svelte/reactivity';
 	import { client, type SocialAccount } from '$lib/api/client';
 	import type { components } from '$lib/api/types';
-	import AppSelect from './app-select.svelte';
 	import DestructiveConfirmDialog from './destructive-confirm-dialog.svelte';
 	import InlineNotice from './inline-notice.svelte';
+	import PlatformIcon from './platform-icon.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { Checkbox } from '$lib/components/ui/checkbox';
 	import * as Dialog from '$lib/components/ui/dialog';
+	import * as Popover from '$lib/components/ui/popover';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
-	import Settings2Icon from 'lucide-svelte/icons/settings-2';
+	import ChevronDownIcon from 'lucide-svelte/icons/chevron-down';
+	import CheckIcon from 'lucide-svelte/icons/check';
+	import PencilIcon from 'lucide-svelte/icons/pencil';
 	import Trash2Icon from 'lucide-svelte/icons/trash-2';
-	import { getPlatformKey, getPlatformName } from '$lib/utils';
+	import { getPlatformName } from '$lib/utils';
 	import { m } from '$lib/paraglide/messages';
 
 	type SocialSet = components['schemas']['SocialSetResponse'];
-	type Capability = components['schemas']['Capability'];
 	type SocialSetAccountInput = components['schemas']['SocialSetAccountInput'];
 
 	interface Props {
 		workspaceId: string;
 		accounts: SocialAccount[];
-		capabilities: Capability[];
+		selectedAccountIds?: string[];
+		customAccountIds?: string[];
+		accountIssues?: Record<string, string[]>;
 		selectedSetId?: string;
 		disabled?: boolean;
 		autoApplyDefault?: boolean;
 		onApply: (set: SocialSet | null) => void;
+		onToggle?: (account: SocialAccount) => void;
+		onSelectAll?: () => void;
+		onClearAll?: () => void;
 	}
 
 	let {
 		workspaceId,
 		accounts,
-		capabilities,
+		selectedAccountIds = [],
+		customAccountIds = [],
+		accountIssues = {},
 		selectedSetId = $bindable(''),
 		disabled = false,
 		autoApplyDefault = false,
-		onApply
+		onApply,
+		onToggle,
+		onSelectAll,
+		onClearAll
 	}: Props = $props();
 
 	let sets = $state<SocialSet[]>([]);
@@ -48,22 +59,24 @@
 	let editorName = $state('');
 	let editorDefault = $state(false);
 	let editorAccountIds = $state<string[]>([]);
-	let editorFormats = $state<Record<string, string>>({});
 	let saving = $state(false);
 	let deleting = $state(false);
 	let deleteOpen = $state(false);
 	let loadedWorkspaceId = '';
+	let pickerOpen = $state(false);
+	let pendingCustomAccount = $state<SocialAccount | null>(null);
+	let customAccountConfirmOpen = $state(false);
 
-	const options = $derived([
-		{ value: '', label: m.social_set_custom_selection() },
-		...(selectedSetId && !sets.some((set) => set.id === selectedSetId)
-			? [{ value: selectedSetId, label: m.social_set_removed_snapshot() }]
-			: []),
-		...sets.map((set) => ({
-			value: set.id,
-			label: set.is_default ? m.social_set_default_label({ name: set.name }) : set.name
-		}))
-	]);
+	const selectedAccounts = $derived(
+		selectedAccountIds
+			.map((id) => accounts.find((account) => account.id === id))
+			.filter((account): account is SocialAccount => Boolean(account))
+	);
+	const selectedSet = $derived(sets.find((set) => set.id === selectedSetId) ?? null);
+	const destinationLabel = $derived(
+		selectedSet?.name ||
+			(selectedAccountIds.length > 0 ? m.social_set_custom_selection() : m.social_set_select())
+	);
 
 	onMount(() => {
 		if (workspaceId) void loadSets();
@@ -106,6 +119,7 @@
 	function selectSet(id: string) {
 		selectedSetId = id;
 		onApply(sets.find((set) => set.id === id) ?? null);
+		pickerOpen = false;
 	}
 
 	function startNewSet() {
@@ -113,7 +127,6 @@
 		editorName = '';
 		editorDefault = sets.length === 0;
 		editorAccountIds = accounts.map((account) => account.id);
-		editorFormats = {};
 	}
 
 	function startEditing(set: SocialSet) {
@@ -121,12 +134,6 @@
 		editorName = set.name;
 		editorDefault = set.is_default;
 		editorAccountIds = (set.accounts ?? []).map((account) => account.social_account_id);
-		editorFormats = Object.fromEntries(
-			(set.accounts ?? []).map((account) => [
-				account.social_account_id,
-				account.default_output_profile ?? ''
-			])
-		);
 	}
 
 	function toggleEditorAccount(accountId: string) {
@@ -135,24 +142,8 @@
 			: [...editorAccountIds, accountId];
 	}
 
-	function formatOptions(account: SocialAccount) {
-		const provider = getPlatformKey(account.platform);
-		const unique = new SvelteMap<string, string>();
-		for (const capability of capabilities) {
-			if (capability.provider !== provider || !capability.output_profile) continue;
-			unique.set(capability.output_profile, capability.label);
-		}
-		return [
-			{ value: '', label: m.social_set_format_automatic() },
-			...Array.from(unique, ([value, label]) => ({ value, label }))
-		];
-	}
-
 	function editorAccounts(): SocialSetAccountInput[] {
-		return editorAccountIds.map((accountId) => ({
-			social_account_id: accountId,
-			...(editorFormats[accountId] ? { default_output_profile: editorFormats[accountId] } : {})
-		}));
+		return editorAccountIds.map((accountId) => ({ social_account_id: accountId }));
 	}
 
 	async function saveSet() {
@@ -233,34 +224,137 @@
 		}
 		startNewSet();
 	}
+
+	function requestAccountToggle(account: SocialAccount) {
+		if (selectedAccountIds.includes(account.id) && customAccountIds.includes(account.id)) {
+			pendingCustomAccount = account;
+			pickerOpen = false;
+			customAccountConfirmOpen = true;
+			return;
+		}
+		onToggle?.(account);
+	}
+
+	function confirmCustomAccountRemoval() {
+		if (pendingCustomAccount) onToggle?.(pendingCustomAccount);
+		pendingCustomAccount = null;
+	}
 </script>
 
-<div class="flex min-w-0 items-center gap-1.5" data-testid="social-set-control">
-	<AppSelect
-		value={selectedSetId}
-		{options}
-		placeholder={m.social_set_select()}
-		ariaLabel={m.social_set_select()}
-		class="h-11 min-w-40 md:h-8 md:max-w-56"
-		disabled={disabled || loading}
-		onValueChange={selectSet}
-	/>
-	<Dialog.Root bind:open={manageOpen} onOpenChange={handleManageOpenChange}>
-		<Dialog.Trigger>
+<div class="min-w-0" data-testid="social-set-control">
+	<Popover.Root bind:open={pickerOpen}>
+		<Popover.Trigger>
 			{#snippet child({ props })}
 				<Button
 					{...props}
 					type="button"
-					variant="ghost"
-					size="icon"
-					class="size-11 md:size-8"
-					aria-label={m.social_set_manage()}
-					{disabled}
+					variant="outline"
+					size="sm"
+					class="h-11 max-w-[min(22rem,70vw)] gap-2 px-2.5 md:h-9"
+					aria-label={`${m.compose_destinations()}: ${destinationLabel}`}
+					disabled={disabled || loading}
+					data-testid="composer-account-control"
 				>
-					<Settings2Icon class="size-4" />
+					<span class="flex shrink-0 items-center -space-x-1" aria-hidden="true">
+						{#each selectedAccounts.slice(0, 3) as account (account.id)}
+							<span
+								class="flex size-5 items-center justify-center rounded-full bg-background ring-2 ring-background"
+								data-testid="composer-account-icon"
+							>
+								<PlatformIcon platform={account.platform} class="size-4" />
+							</span>
+						{/each}
+					</span>
+					<span class="min-w-0 truncate">{destinationLabel}</span>
+					{#if selectedAccounts.length > 3}<span class="text-xs text-muted-foreground"
+							>+{selectedAccounts.length - 3}</span
+						>{/if}
+					<ChevronDownIcon class="size-3.5 shrink-0 text-muted-foreground" />
 				</Button>
 			{/snippet}
-		</Dialog.Trigger>
+		</Popover.Trigger>
+		<Popover.Content class="w-80 max-w-[calc(100vw-1rem)] p-1.5" align="start">
+			<div class="flex min-h-11 items-center justify-between px-2">
+				<div>
+					<p class="text-sm font-medium">{m.compose_destinations()}</p>
+					<p class="text-xs text-muted-foreground">{m.social_set_picker_body()}</p>
+				</div>
+				{#if onSelectAll && onClearAll}
+					<Button
+						type="button"
+						variant="ghost"
+						size="sm"
+						class="h-9 text-xs"
+						onclick={selectedAccountIds.length === accounts.length ? onClearAll : onSelectAll}
+					>
+						{selectedAccountIds.length === accounts.length ? m.compose_clear() : m.common_all()}
+					</Button>
+				{/if}
+			</div>
+
+			{#if sets.length > 0}
+				<div class="border-t py-1" role="group" aria-label={m.social_set_select()}>
+					{#each sets as set (set.id)}
+						<button
+							type="button"
+							class="flex min-h-11 w-full items-center gap-2 rounded-md px-2 text-left text-sm hover:bg-accent"
+							onclick={() => selectSet(set.id)}
+						>
+							<span class="min-w-0 flex-1 truncate">{set.name}</span>
+							<span class="flex items-center -space-x-1" aria-hidden="true">
+								{#each (set.accounts ?? []).slice(0, 4) as membership (membership.social_account_id)}
+									{@const account = accounts.find(
+										(candidate) => candidate.id === membership.social_account_id
+									)}
+									{#if account}<PlatformIcon platform={account.platform} class="size-4" />{/if}
+								{/each}
+							</span>
+							{#if selectedSetId === set.id}<CheckIcon class="size-4" />{/if}
+						</button>
+					{/each}
+				</div>
+			{/if}
+
+			<div class="border-t py-1" role="group" aria-label={m.social_set_accounts()}>
+				{#each accounts as account (account.id)}
+					<label
+						class="flex min-h-12 cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 text-sm hover:bg-accent"
+						data-testid="composer-account-row"
+					>
+						<PlatformIcon platform={account.platform} class="size-5" />
+						<span class="min-w-0 flex-1">
+							<span class="block truncate font-medium">{accountLabel(account)}</span>
+							<span class="block truncate text-xs text-muted-foreground"
+								>{getPlatformName(account.platform)}{#if accountIssues[account.id]?.length}
+									· {m.compose_needs_attention()}{/if}</span
+							>
+						</span>
+						{#if customAccountIds.includes(account.id)}<PencilIcon
+								class="size-3.5 text-primary"
+								aria-label={m.compose_custom_state()}
+							/>{/if}
+						<Checkbox
+							checked={selectedAccountIds.includes(account.id)}
+							onCheckedChange={() => requestAccountToggle(account)}
+						/>
+					</label>
+				{/each}
+			</div>
+
+			<button
+				type="button"
+				class="flex min-h-11 w-full items-center rounded-md border-t px-2 text-left text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+				onclick={() => {
+					pickerOpen = false;
+					handleManageOpenChange(true);
+				}}
+			>
+				{m.social_set_manage()}
+			</button>
+		</Popover.Content>
+	</Popover.Root>
+
+	<Dialog.Root bind:open={manageOpen} onOpenChange={handleManageOpenChange}>
 		<Dialog.Content class="max-h-[min(44rem,90dvh)] overflow-y-auto sm:max-w-2xl">
 			<Dialog.Header>
 				<Dialog.Title>{m.social_set_manage()}</Dialog.Title>
@@ -315,17 +409,6 @@
 										{getPlatformName(account.platform)}
 									</span>
 								</label>
-								{#if editorAccountIds.includes(account.id)}
-									<div class="mt-2 pl-7">
-										<AppSelect
-											value={editorFormats[account.id] ?? ''}
-											options={formatOptions(account)}
-											ariaLabel={m.social_set_default_format({ account: accountLabel(account) })}
-											onValueChange={(value) =>
-												(editorFormats = { ...editorFormats, [account.id]: value })}
-										/>
-									</div>
-								{/if}
 							</div>
 						{/each}
 					</fieldset>
@@ -358,6 +441,16 @@
 		</Dialog.Content>
 	</Dialog.Root>
 </div>
+
+<DestructiveConfirmDialog
+	bind:open={customAccountConfirmOpen}
+	title={m.compose_remove_custom_account_title({
+		account: pendingCustomAccount ? accountLabel(pendingCustomAccount) : ''
+	})}
+	description={m.compose_remove_custom_account_body()}
+	confirmLabel={m.compose_remove_custom_account_confirm()}
+	onConfirm={confirmCustomAccountRemoval}
+/>
 
 <DestructiveConfirmDialog
 	bind:open={deleteOpen}

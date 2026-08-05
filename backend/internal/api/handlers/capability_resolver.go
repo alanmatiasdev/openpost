@@ -114,12 +114,14 @@ func (h *CapabilityResolverHandler) RegisterRoutes(api huma.API) {
 		output := &ResolveCapabilitiesOutput{}
 		output.Body.Accounts = make([]ResolvedAccountCapability, 0, len(accounts))
 		for _, account := range accounts {
+			accountSegments := segmentsWithDestinationFields(segments, input.Body.Settings[account.ID])
 			resolved := capabilities.Resolve(account.Platform, capabilities.ResolveInput{
 				Intent:                 input.Body.Intent,
 				CreationPreset:         input.Body.CreationPreset,
 				RequestedOutputProfile: input.Body.RequestedOutputProfiles[account.ID],
 				SourceURL:              input.Body.SourceURL,
-				Segments:               segments,
+				Segments:               accountSegments,
+				Settings:               input.Body.Settings[account.ID],
 			})
 			h.mergeAccountCapability(
 				ctx,
@@ -127,7 +129,7 @@ func (h *CapabilityResolverHandler) RegisterRoutes(api huma.API) {
 				input.Body.Locale,
 				input.Body.Region,
 				input.Body.Settings[account.ID],
-				segments,
+				accountSegments,
 				&resolved,
 			)
 			satisfyCanonicalURLRequirement(&resolved, input.Body.SourceURL, segments)
@@ -138,6 +140,25 @@ func (h *CapabilityResolverHandler) RegisterRoutes(api huma.API) {
 		}
 		return output, nil
 	})
+}
+
+func segmentsWithDestinationFields(segments []capabilities.ResolveSegment, settings map[string]any) []capabilities.ResolveSegment {
+	if len(segments) == 0 || len(settings) == 0 {
+		return segments
+	}
+	title, _ := settings["title"].(string)
+	description, _ := settings["description"].(string)
+	if strings.TrimSpace(title) == "" && strings.TrimSpace(description) == "" {
+		return segments
+	}
+	cloned := append([]capabilities.ResolveSegment(nil), segments...)
+	if strings.TrimSpace(cloned[0].Title) == "" {
+		cloned[0].Title = title
+	}
+	if strings.TrimSpace(description) != "" && strings.TrimSpace(cloned[0].Body) == "" {
+		cloned[0].Body = description
+	}
+	return cloned
 }
 
 func (h *CapabilityResolverHandler) loadResolveAccounts(ctx context.Context, accountIDs []string) ([]models.SocialAccount, string, error) {

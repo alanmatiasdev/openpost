@@ -47,7 +47,7 @@ Analytics, comments, and inbox reads use optional adapter interfaces. They do no
 
 - Publications are the user-visible post list.
 - Post, Thread, Story, Short video, and Video are creation presets in one publication composer and use `/publications/:id`; a linked editor row and `/posts/:id` remain only for compatibility.
-- Social Sets provide reusable account groups and optional format defaults. Publications snapshot the chosen destinations.
+- Social Sets provide reusable account groups. Publications snapshot the chosen destinations.
 - Each selected account can have its own format, text, media, settings, and schedule override, with per-field inheritance from the shared source.
 - Schedules and current status stay on the grouped publication and its independently published renditions.
 - Media uses local storage or S3-compatible storage through `BlobStorage`.

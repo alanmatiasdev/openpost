@@ -70,6 +70,29 @@ describe('composer intent mapping', () => {
 });
 
 describe('focused publication payloads', () => {
+	it('uses the shared writing surface as YouTube description and required settings as metadata', () => {
+		const payload = buildFocusedPublicationPayload({
+			mode: 'post',
+			workspaceId: 'ws-1',
+			accounts: [youtube],
+			fields: { postText: 'A complete tour of the release.' },
+			media: [{ id: 'video-1', mimeType: 'video/mp4' }],
+			settingsByAccount: {
+				'yt-1': { title: 'Launch walkthrough', privacy: 'private', category_id: '28' }
+			},
+			resolvedByAccount: {
+				'yt-1': { profile: 'long_video', outputProfile: 'youtube.video' }
+			}
+		});
+
+		expect(payload.renditions[0]).toMatchObject({
+			body: 'A complete tour of the release.',
+			title: 'Launch walkthrough',
+			description: 'A complete tour of the release.',
+			settings: { title: 'Launch walkthrough', privacy: 'private', category_id: '28' }
+		});
+	});
+
 	it('maps Video metadata and explicit destination choices', () => {
 		const payload = buildFocusedPublicationPayload({
 			mode: 'video',

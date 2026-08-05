@@ -348,6 +348,9 @@ export function buildFocusedPublicationPayload(
 			const platform = getPlatformKey(account.platform);
 			const resolved = input.resolvedByAccount?.[account.id];
 			const settings = { ...(input.settingsByAccount?.[account.id] ?? {}) };
+			const destinationTitle = typeof settings.title === 'string' ? settings.title.trim() : '';
+			const destinationDescription =
+				typeof settings.description === 'string' ? settings.description.trim() : '';
 			if (input.fields.linkUrl?.trim()) {
 				if (platform === 'bluesky') {
 					settings.link_url ??= input.fields.linkUrl.trim();
@@ -406,13 +409,19 @@ export function buildFocusedPublicationPayload(
 					overrides && Object.hasOwn(overrides, 'title')
 						? (overrides.title ?? '')
 						: platform === 'youtube'
-							? firstNonEmpty(input.fields.videoTitle, segment.title, title)
+							? firstNonEmpty(destinationTitle, input.fields.videoTitle, segment.title, title)
 							: firstNonEmpty(segment.title, title);
 				const segmentDescription =
 					overrides && Object.hasOwn(overrides, 'description')
 						? (overrides.description ?? '')
 						: platform === 'youtube'
-							? firstNonEmpty(input.fields.videoDescription, segment.description)
+							? firstNonEmpty(
+									destinationDescription,
+									input.fields.videoDescription,
+									segment.description,
+									segment.content,
+									input.fields.postText
+								)
 							: firstNonEmpty(
 									segment.description,
 									input.fields.videoDescription,

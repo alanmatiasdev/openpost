@@ -56,7 +56,7 @@ type CreateSocialSetInput struct {
 		WorkspaceID string                  `json:"workspace_id" doc:"Target workspace ID"`
 		Name        string                  `json:"name" minLength:"1" maxLength:"80" doc:"Social Set name"`
 		IsDefault   bool                    `json:"is_default,omitempty" doc:"Use this set when the composer opens"`
-		Accounts    []SocialSetAccountInput `json:"accounts" doc:"Ordered connected accounts and optional format defaults"`
+		Accounts    []SocialSetAccountInput `json:"accounts" doc:"Ordered connected accounts"`
 	}
 }
 

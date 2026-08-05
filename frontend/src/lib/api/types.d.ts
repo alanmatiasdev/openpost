@@ -4714,7 +4714,7 @@ export interface components {
              * @example https://example.com/schemas/CreateSocialSetInputBody.json
              */
             readonly $schema?: string;
-            /** @description Ordered connected accounts and optional format defaults */
+            /** @description Ordered connected accounts */
             accounts: components["schemas"]["SocialSetAccountInput"][] | null;
             /** @description Use this set when the composer opens */
             is_default?: boolean;
@@ -7555,6 +7555,8 @@ export interface components {
             longest_streak: number;
             /** Format: int64 */
             peak_posts: number;
+            /** @description Highest active OpenPost plan available to the profile owner */
+            plan_id?: string;
             top_platforms: components["schemas"]["PublicProfileRanking"][] | null;
             top_workspaces: components["schemas"]["PublicProfileRanking"][] | null;
             username: string;
@@ -8178,6 +8180,7 @@ export interface components {
                 [key: string]: components["schemas"]["Option"][] | null;
             };
             expires_at?: string;
+            format_selection_required: boolean;
             intents: string[] | null;
             issues: components["schemas"]["ValidationIssue"][] | null;
             label: string;

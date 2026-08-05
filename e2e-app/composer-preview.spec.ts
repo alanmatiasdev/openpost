@@ -83,9 +83,9 @@ test("composer renders account-specific renditions", async ({
         accounts: payload.account_ids.map((accountID) => ({
           account_id: accountID,
           provider: "bluesky",
-          profile: "short_video",
-          output_profile: "bluesky.video",
-          label: "Bluesky video",
+          profile: "short_text",
+          output_profile: "bluesky.post",
+          label: "Bluesky post",
           text_limit: 300,
           media: {
             min_count: 0,
@@ -94,8 +94,8 @@ test("composer renders account-specific renditions", async ({
             requires_public_url: false,
             requires_https_fetchable: false,
           },
-          intents: ["short_video"],
-          media_shapes: ["video"],
+          intents: ["post"],
+          media_shapes: ["text"],
           settings: [],
           setting_groups: [],
           compatible: true,
@@ -106,6 +106,44 @@ test("composer renders account-specific renditions", async ({
         })),
       },
     });
+  });
+  await page.route("**/api/v1/posts/draft", async (route) => {
+    const body = route.request().postDataJSON() as {
+      publication?: PostPayload;
+    };
+    publicationPayload = body.publication;
+    await route.fulfill({
+      contentType: "application/json",
+      json: {
+        post_id: "post-preview",
+        publication_id: "publication-preview",
+        revision: 1,
+        updated_at: "2026-08-05T12:00:00Z",
+      },
+    });
+  });
+  await page.route("**/api/v1/posts/post-preview/draft", async (route) => {
+    const body = route.request().postDataJSON() as {
+      publication?: PostPayload;
+    };
+    publicationPayload = body.publication;
+    await route.fulfill({
+      contentType: "application/json",
+      json: {
+        post_id: "post-preview",
+        publication_id: "publication-preview",
+        revision: 2,
+        updated_at: "2026-08-05T12:00:01Z",
+      },
+    });
+  });
+  await page.route("**/api/v1/posts/post-preview", async (route) => {
+    if (route.request().method() === "DELETE") {
+      deleteRequested = true;
+      await route.fulfill({ contentType: "application/json", json: {} });
+      return;
+    }
+    await route.continue();
   });
   await page.route("**/api/v1/publications", async (route) => {
     if (route.request().method() === "POST") {
@@ -174,14 +212,9 @@ test("composer renders account-specific renditions", async ({
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
-  await page.getByTestId("composer-mode-select").click();
-  await page.getByRole("option", { name: "Short video" }).click();
-  await expect(
-    page.getByRole("button", { name: "Target accounts" }),
-  ).toBeVisible();
+  await expect(page.getByTestId("text-thread-composer-shell")).toBeVisible();
   await expect(page.getByTestId("composer-action-controls")).toBeVisible();
   await expect(page.getByRole("button", { name: "Save draft" })).toHaveCount(0);
-  await expect(page.getByTestId("composer-media-dropzone")).toBeVisible();
   await expect
     .poll(() =>
       page.evaluate(
@@ -190,7 +223,7 @@ test("composer renders account-specific renditions", async ({
     )
     .toBe(true);
   await expect(page.getByLabel("Composer workspace")).toHaveCount(0);
-  await page.getByLabel("Caption").fill("Launch update");
+  await page.getByLabel("Post text").fill("Launch update");
 
   await expect(page.locator('[data-testid="instagram-preview"]')).toHaveCount(
     0,
@@ -202,18 +235,21 @@ test("composer renders account-specific renditions", async ({
   );
   await accountControl.click();
   await expect(page.getByTestId("composer-account-row")).toHaveCount(2);
-  await expect(page.getByText("@openpost_main", { exact: true })).toBeVisible();
+  const accountPicker = page.getByRole("group", { name: "Accounts" });
   await expect(
-    page.getByText("@openpost_studio", { exact: true }),
+    accountPicker.getByText("openpost_main", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    accountPicker.getByText("openpost_studio", { exact: true }),
   ).toBeVisible();
   const mainAccountRow = page
     .getByTestId("composer-account-row")
-    .filter({ hasText: "@openpost_main" });
-  await mainAccountRow.getByText("@openpost_main", { exact: true }).click();
+    .filter({ hasText: "openpost_main" });
+  await mainAccountRow.getByText("openpost_main", { exact: true }).click();
   await expect(accountControl.getByTestId("composer-account-icon")).toHaveCount(
     1,
   );
-  await mainAccountRow.getByText("@openpost_main", { exact: true }).click();
+  await mainAccountRow.getByText("openpost_main", { exact: true }).click();
   await expect(accountControl.getByTestId("composer-account-icon")).toHaveCount(
     2,
   );
@@ -222,22 +258,22 @@ test("composer renders account-specific renditions", async ({
   await expect(page.getByTestId("composer-delete")).toBeVisible();
 
   expect(publicationPayload).toMatchObject({
-    content_profile: "short_video",
+    content_profile: "short_text",
     source_text: "Launch update",
-    renditions: [
+    renditions: expect.arrayContaining([
       expect.objectContaining({
         social_account_id: "bluesky-main",
-        profile: "short_video",
+        profile: "short_text",
         body: "Launch update",
       }),
       expect.objectContaining({
         social_account_id: "bluesky-studio",
-        profile: "short_video",
+        profile: "short_text",
         body: "Launch update",
       }),
-    ],
+    ]),
   });
-  expect(publicationPayload?.source_url).toBeUndefined();
+  expect(publicationPayload?.source_url ?? "").toBe("");
   for (const rendition of publicationPayload?.renditions ?? []) {
     expect(rendition.settings).not.toHaveProperty("url");
     expect(rendition.settings?.link_url ?? "").toBe("");
@@ -259,7 +295,7 @@ test("composer renders account-specific renditions", async ({
   await expect.poll(() => deleteRequested).toBe(true);
 });
 
-test("video composers tolerate repeated destination validation identities", async ({
+test("the unified composer tolerates repeated destination validation identities", async ({
   page,
   request,
 }) => {
@@ -318,7 +354,7 @@ test("video composers tolerate repeated destination validation identities", asyn
   await page.route("**/api/v1/capabilities/resolve", async (route) => {
     const payload = route.request().postDataJSON() as {
       account_ids: string[];
-      intent: "short_video" | "video";
+      creation_preset: "post" | "thread";
     };
     await route.fulfill({
       contentType: "application/json",
@@ -330,7 +366,7 @@ test("video composers tolerate repeated destination validation identities", asyn
           return {
             account_id: accountID,
             provider,
-            profile: payload.intent === "video" ? "long_video" : "short_video",
+            profile: "long_video",
             output_profile: `${provider}.video`,
             label: `${provider} video`,
             text_limit: 3000,
@@ -367,37 +403,26 @@ test("video composers tolerate repeated destination validation identities", asyn
   });
 
   await page.goto("/");
+  await expect(page.getByTestId("text-thread-composer-shell")).toBeVisible();
+  await expect(page.getByTestId("page-loading")).toHaveCount(0);
+  await expect(
+    page
+      .getByTestId("composer-account-control")
+      .getByTestId("composer-account-icon"),
+  ).toHaveCount(2);
+  await page.getByLabel("Post text").fill("Video description");
 
-  for (const mode of ["short_video", "video"] as const) {
-    await page.getByTestId("composer-mode-select").click();
-    await page.getByTestId(`composer-mode-option-${mode}`).click();
+  await page.getByTestId("composer-account-control").click();
+  await expect(page.getByText("Add a video.", { exact: true })).toHaveCount(0);
+  await page.keyboard.press("Escape");
 
-    await expect(page.getByTestId("focused-composer")).toBeVisible();
-    await expect(page.getByTestId("page-loading")).toHaveCount(0);
-    await expect(
-      page
-        .getByTestId("composer-account-control")
-        .getByTestId("composer-account-icon"),
-    ).toHaveCount(2);
+  const validationControl = page.getByTestId("composer-validation-control");
+  await expect(validationControl).toBeVisible();
+  await validationControl.click();
+  await expect(page.getByText("Add a video.", { exact: true })).toHaveCount(1);
+  await page.keyboard.press("Escape");
 
-    await page.getByTestId("composer-account-control").click();
-    await expect(page.getByText("Add a video.", { exact: true })).toHaveCount(
-      0,
-    );
-    await page.keyboard.press("Escape");
-
-    const validationControl = page.getByTestId("composer-validation-control");
-    await expect(validationControl).toBeVisible();
-    await validationControl.click();
-    await expect(page.getByText("Add a video.", { exact: true })).toHaveCount(
-      1,
-    );
-    await page.keyboard.press("Escape");
-
-    expect(
-      pageErrors.filter((error) =>
-        error.message.includes("each_key_duplicate"),
-      ),
-    ).toEqual([]);
-  }
+  expect(
+    pageErrors.filter((error) => error.message.includes("each_key_duplicate")),
+  ).toEqual([]);
 });
