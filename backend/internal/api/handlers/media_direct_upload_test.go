@@ -255,7 +255,7 @@ func TestValidateMediaAssetContentRejectsSVG(t *testing.T) {
 			require.ErrorContains(
 				t,
 				validateMediaAssetContent("library", testCase.filename, testCase.mimeType, testCase.content),
-				"converted to PNG",
+				"could not be processed",
 			)
 		})
 	}

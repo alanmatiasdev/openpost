@@ -23,6 +23,7 @@
 	import InlineNotice from '$lib/components/inline-notice.svelte';
 	import AppToast from '$lib/components/app-toast.svelte';
 	import DestructiveConfirmDialog from '$lib/components/destructive-confirm-dialog.svelte';
+	import RenameDialog from '$lib/components/rename-dialog.svelte';
 	import MediaUploadDialog from '$lib/components/media-upload-dialog.svelte';
 	import AppSelect from '$lib/components/app-select.svelte';
 	import MediaOrganizationDialog from '$lib/components/media-organization-dialog.svelte';
@@ -54,6 +55,7 @@
 	import FileAudioIcon from 'lucide-svelte/icons/file-audio';
 	import XIcon from 'lucide-svelte/icons/x';
 	import RotateCcwIcon from 'lucide-svelte/icons/rotate-ccw';
+	import PencilIcon from 'lucide-svelte/icons/pencil';
 	import { m } from '$lib/paraglide/messages';
 	import { getLocaleTag } from '$lib/i18n';
 	import { soundPreferences } from '$lib/stores/sound-preferences.svelte';
@@ -168,6 +170,8 @@
 	let deletionBlockedByUsage = $state(false);
 	let detailAltText = $state('');
 	let detailSaving = $state(false);
+	let renameDialogOpen = $state(false);
+	let mediaToRename = $state.raw<MediaItem | null>(null);
 
 	let deleteDialogOpen = $state(false);
 	let deletionRequest = $state.raw<LibraryDeletionRequest | null>(null);
@@ -686,6 +690,31 @@
 		}
 	}
 
+	function requestRenameMedia(media: MediaItem): void {
+		mediaToRename = media;
+		if (usageDialogOpen) handleUsageDialogOpenChange(false);
+		renameDialogOpen = true;
+	}
+
+	async function renameMedia(filename: string): Promise<void> {
+		if (!mediaToRename) return;
+		const mediaID = mediaToRename.id;
+		const { error: updateError } = await client.PATCH('/media/{id}', {
+			params: { path: { id: mediaID } },
+			body: { original_filename: filename }
+		});
+		if (updateError) throw new Error(updateError.detail || m.media_rename_failed());
+
+		const current = mediaItems.find((media) => media.id === mediaID);
+		const extension = mediaToRename.original_filename.match(/\.[^.]+$/u)?.[0] ?? '';
+		const nextFilename =
+			/\.[^.]+$/u.test(filename) || !extension ? filename : `${filename}${extension}`;
+		if (current) current.original_filename = nextFilename;
+		if (selectedMedia?.id === mediaID) selectedMedia.original_filename = nextFilename;
+		mediaToRename.original_filename = nextFilename;
+		notify(m.media_renamed(), 'success');
+	}
+
 	async function retryVideoAnalysis(media: MediaItem): Promise<void> {
 		try {
 			const { error: retryError } = await client.POST('/media/{id}/analysis/retry', {
@@ -1020,7 +1049,11 @@
 		/>
 	{/if}
 
-	<nav class="flex gap-1 overflow-x-auto border-b pb-3" aria-label={m.media_lifecycle_navigation()}>
+	<nav
+		class="flex gap-1 overflow-x-auto pb-3"
+		aria-label={m.media_lifecycle_navigation()}
+		data-testid="media-lifecycle-tabs"
+	>
 		{#each [{ value: 'library' as const, label: m.media_lifecycle_library() }, { value: 'temporary' as const, label: m.media_lifecycle_temporary() }, { value: 'trash' as const, label: m.media_lifecycle_trash() }] as view (view.value)}
 			<Button
 				variant={lifecycleView === view.value ? 'secondary' : 'ghost'}
@@ -1037,7 +1070,7 @@
 		{/each}
 	</nav>
 
-	<div class="flex flex-col gap-2 border-b pb-4 md:flex-row md:items-center">
+	<div class="flex flex-col gap-2 pb-4 md:flex-row md:items-center" data-testid="media-filter-bar">
 		<form
 			class="flex min-w-0 flex-1 gap-2"
 			onsubmit={(event) => {
@@ -1463,6 +1496,13 @@
 									</ContextMenu.Item>
 								{/if}
 								{#if mediaCanEdit}
+									<ContextMenu.Item
+										class={libraryContextItemClass}
+										onclick={() => requestRenameMedia(media)}
+									>
+										<PencilIcon class="size-4" />
+										{m.common_rename()}
+									</ContextMenu.Item>
 									<ContextMenu.Item
 										class={libraryContextItemClass}
 										onclick={() => duplicateMedia(media)}
@@ -1931,6 +1971,10 @@
 					</Button>
 				{/if}
 				{#if mediaCanEdit}
+					<Button variant="outline" size="sm" onclick={() => requestRenameMedia(selectedMedia!)}>
+						<PencilIcon />
+						{m.common_rename()}
+					</Button>
 					<Button variant="outline" size="sm" onclick={() => duplicateMedia(selectedMedia!)}>
 						<Grid2X2Icon />
 						{m.image_editor_duplicate()}
@@ -2011,6 +2055,15 @@
 		</Dialog.Footer>
 	</Dialog.Content>
 </Dialog.Root>
+
+<RenameDialog
+	bind:open={renameDialogOpen}
+	title={m.media_rename()}
+	description={m.media_rename_body()}
+	label={m.media_filename()}
+	initialValue={mediaToRename?.original_filename ?? ''}
+	onConfirm={renameMedia}
+/>
 
 <style>
 	.media-card-control {

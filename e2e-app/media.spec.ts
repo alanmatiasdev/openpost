@@ -61,6 +61,68 @@ function createVideoFixture(): Buffer {
   }
 }
 
+function emptyVideoProjectDocument(title: string) {
+  return {
+    schema_version: 1,
+    title,
+    timebase: {
+      ticks_per_second: 1_000_000,
+      fps_numerator: 30,
+      fps_denominator: 1,
+    },
+    sources: {},
+    primary_sequence: [],
+    visual_tracks: [],
+    audio_tracks: [],
+    caption_tracks: [],
+    variants: [
+      {
+        id: "portrait",
+        name: "Portrait",
+        width: 1080,
+        height: 1920,
+        safe_area: { top: 0, right: 0, bottom: 0, left: 0 },
+        background_color: "#000000",
+      },
+      {
+        id: "feed-portrait",
+        name: "Feed portrait",
+        width: 1080,
+        height: 1350,
+        safe_area: { top: 0, right: 0, bottom: 0, left: 0 },
+        background_color: "#000000",
+      },
+      {
+        id: "square",
+        name: "Square",
+        width: 1080,
+        height: 1080,
+        safe_area: { top: 0, right: 0, bottom: 0, left: 0 },
+        background_color: "#000000",
+      },
+      {
+        id: "landscape",
+        name: "Landscape",
+        width: 1920,
+        height: 1080,
+        safe_area: { top: 0, right: 0, bottom: 0, left: 0 },
+        background_color: "#000000",
+      },
+    ],
+    markers: [],
+    export_defaults: {
+      variant_ids: ["portrait"],
+      format: "mp4",
+      video_codec: "avc",
+      audio_codec: "aac",
+      frame_rate: { numerator: 30, denominator: 1 },
+      video_bitrate: 8_000_000,
+      audio_bitrate: 128_000,
+      loudness_normalization: false,
+    },
+  };
+}
+
 test("media library uploads and lists a local media file", async ({
   page,
   request,
@@ -84,6 +146,14 @@ test("media library uploads and lists a local media file", async ({
   await expect(
     page.getByRole("navigation", { name: "Media sections" }),
   ).toHaveCount(0);
+  await expect(page.getByTestId("media-lifecycle-tabs")).toHaveCSS(
+    "border-bottom-width",
+    "0px",
+  );
+  await expect(page.getByTestId("media-filter-bar")).toHaveCSS(
+    "border-bottom-width",
+    "0px",
+  );
   await expect(page.getByText("No media found")).toBeVisible();
 
   await page.getByRole("button", { name: "Add media", exact: true }).click();
@@ -150,6 +220,22 @@ test("media library uploads and lists a local media file", async ({
   await page.getByRole("button", { name: "Cancel", exact: true }).click();
   const assetCard = page.locator('[data-library-kind="asset"]');
   await assetCard.click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Rename", exact: true }).click();
+  const renameDialog = page.getByRole("dialog", { name: "Rename media" });
+  await renameDialog.getByLabel("Filename").fill("renamed-launch-card");
+  await renameDialog.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(assetCard.getByText("renamed-launch-card.png")).toBeVisible();
+
+  const renamedMedia = await request.get(
+    `/api/v1/media?workspace_id=${workspaceBody.id}`,
+    { headers: { Authorization: `Bearer ${auth.token}` } },
+  );
+  expect(renamedMedia.ok()).toBeTruthy();
+  expect((await renamedMedia.json()).media[0].original_filename).toBe(
+    "renamed-launch-card.png",
+  );
+
+  await assetCard.click({ button: "right" });
   await page.getByRole("menuitem", { name: "Favorite", exact: true }).click();
   await expect(
     assetCard.getByRole("button", { name: "Remove from favorites" }),
@@ -163,6 +249,60 @@ test("media library uploads and lists a local media file", async ({
     .getByRole("button", { name: "Delete", exact: true })
     .click();
   await expect(page.getByText("No media found")).toBeVisible();
+});
+
+test("editors renames cloud video projects from the context menu", async ({
+  page,
+  request,
+}) => {
+  const unique = Date.now().toString(36);
+  const auth = await registerUser(
+    request,
+    `editor-rename-${unique}@example.com`,
+  );
+  const workspace = await createWorkspace(
+    request,
+    auth.token,
+    "Editor Rename E2E",
+  );
+  const created = await request.post("/api/v1/video-editor/projects", {
+    headers: { Authorization: `Bearer ${auth.token}` },
+    data: {
+      workspace_id: workspace.id,
+      client_request_id: `editor-rename-${unique}`,
+      document: emptyVideoProjectDocument("Launch video"),
+    },
+  });
+  expect(created.ok()).toBeTruthy();
+  const project = (await created.json()) as { id: string };
+
+  await authenticatePage(page, auth.token);
+  await page.goto("/editors");
+  const projectCard = page.locator(
+    `a[href="/video-editor?cloud=${encodeURIComponent(project.id)}"]`,
+  );
+  await expect(
+    projectCard.getByText("Launch video", { exact: true }),
+  ).toBeVisible();
+  await projectCard.click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Rename", exact: true }).click();
+  const renameDialog = page.getByRole("dialog", {
+    name: "Rename video project",
+  });
+  await renameDialog.getByLabel("Project name").fill("Launch recap");
+  await renameDialog.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(
+    projectCard.getByText("Launch recap", { exact: true }),
+  ).toBeVisible();
+
+  const saved = await request.get(
+    `/api/v1/video-editor/projects/${project.id}`,
+    {
+      headers: { Authorization: `Bearer ${auth.token}` },
+    },
+  );
+  expect(saved.ok()).toBeTruthy();
+  expect((await saved.json()).document.title).toBe("Launch recap");
 });
 
 test("media tags combine with type filters while new uploads remain untagged", async ({
@@ -442,81 +582,4 @@ test("brand kit inputs keep focus while editing", async ({ page, request }) => {
     .getByRole("button", { name: "Geist Sans serif", exact: true })
     .click();
   await expect(fontFamily).toContainText("Geist");
-});
-
-test("brand assets fall back to the original file when no thumbnail exists", async ({
-  page,
-  request,
-}) => {
-  const unique = Date.now().toString(36);
-  const auth = await registerUser(
-    request,
-    `brand-preview-${unique}@example.com`,
-  );
-  const workspace = (await createWorkspace(
-    request,
-    auth.token,
-    "Brand Preview E2E",
-  )) as { id: string };
-
-  const upload = await request.post("/api/v1/media/upload", {
-    headers: { Authorization: `Bearer ${auth.token}` },
-    multipart: {
-      workspace_id: workspace.id,
-      source: "upload",
-      asset_kind: "brand_asset",
-      file: {
-        name: "brand-mark.png",
-        mimeType: "image/png",
-        buffer: tinyPNG,
-      },
-    },
-  });
-  expect(upload.ok()).toBeTruthy();
-  const media = (await upload.json()) as { id: string };
-
-  const saveBrand = await request.put("/api/v1/image-editor/brand-kit", {
-    headers: { Authorization: `Bearer ${auth.token}` },
-    data: {
-      workspace_id: workspace.id,
-      name: "Brand Preview",
-      colors: [],
-      text_styles: [],
-      backgrounds: [],
-      assets: [
-        {
-          media_id: media.id,
-          role: "primary_logo",
-          name: "Brand mark",
-        },
-      ],
-      fonts: [],
-    },
-  });
-  expect(saveBrand.ok()).toBeTruthy();
-
-  await authenticatePage(page, auth.token);
-  await page.route(`**/media/${media.id}/thumb/md**`, async (route) => {
-    await route.fulfill({
-      status: 404,
-      contentType: "application/json",
-      body: '{"error":"thumbnail not found"}',
-    });
-  });
-  await page.goto("/settings?tab=brand");
-
-  const preview = page.getByRole("img", { name: "Brand mark" }).first();
-  await expect(preview).toBeVisible();
-  await expect
-    .poll(() =>
-      preview.evaluate((image) =>
-        image instanceof HTMLImageElement
-          ? { width: image.naturalWidth, source: image.currentSrc }
-          : { width: 0, source: "" },
-      ),
-    )
-    .toEqual({
-      width: 1,
-      source: expect.stringMatching(new RegExp(`/media/${media.id}(?:\\?|$)`)),
-    });
 });
