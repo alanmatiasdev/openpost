@@ -450,13 +450,16 @@ test("OpenPost Image Editor creates from an original template, adapts to mobile,
     name: "Add an image",
   });
   await expect(mediaSourceDialog).toBeVisible();
-  await expect(mediaSourceDialog.getByText("My Device")).toBeVisible();
+  const uploadDialog = page.getByRole("dialog", { name: "Upload media" });
+  await expect(uploadDialog).toBeVisible();
   await expect(
-    mediaSourceDialog.getByRole("tab", { name: "Camera" }),
+    uploadDialog.getByRole("button", { name: "Upload or camera" }),
   ).toBeVisible();
-  await mediaSourceDialog
-    .getByRole("button", { name: "Back to library" })
-    .click();
+  await expect(
+    uploadDialog.getByRole("button", { name: "Browse stock" }),
+  ).toBeVisible();
+  await uploadDialog.getByRole("button", { name: "Library" }).click();
+  await expect(uploadDialog).toHaveCount(0);
   await expect(
     mediaSourceDialog.getByRole("button", { name: "Browse stock" }),
   ).toBeVisible();

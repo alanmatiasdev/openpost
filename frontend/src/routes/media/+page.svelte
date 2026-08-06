@@ -1079,7 +1079,7 @@
 			<Button
 				type="button"
 				variant={activeDetailFilterCount > 0 ? 'secondary' : 'outline'}
-				class="h-10 shrink-0"
+				class="h-11 shrink-0"
 				aria-label={m.media_filters()}
 				onclick={() => (filterDialogOpen = true)}
 			>
@@ -1094,7 +1094,7 @@
 				{/if}
 			</Button>
 			<Select.Root type="single" value={sort} onValueChange={changeSort}>
-				<Select.Trigger class="h-10 w-[7.75rem] text-sm">
+				<Select.Trigger class="h-11 w-[7.75rem] text-sm">
 					{sort === 'newest'
 						? m.media_sort_newest()
 						: sort === 'oldest'
