@@ -120,7 +120,6 @@ func CreateSchema(db *bun.DB) error {
 		(*models.DesignTemplate)(nil),
 		(*models.DesignTemplateMediaReference)(nil),
 		(*models.BrandKit)(nil),
-		(*models.BrandAsset)(nil),
 		(*models.BrandFont)(nil),
 		(*models.MediaCollection)(nil),
 		(*models.MediaCollectionItem)(nil),
