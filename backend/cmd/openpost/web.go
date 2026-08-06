@@ -47,6 +47,22 @@ type publicProfilePageMetadata struct {
 	AvatarURL   string
 }
 
+func writeHTMLResponse(c echo.Context, data []byte, managedEdition bool) error {
+	if managedEdition {
+		data = renderManagedEditionMetadata(data)
+	}
+	c.Response().Header().Set("Content-Type", "text/html")
+	c.Response().Header().Set("Content-Length", strconv.Itoa(len(data)))
+	c.Response().Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+	c.Response().Header().Set("Pragma", "no-cache")
+	c.Response().Header().Set("Expires", "0")
+	if c.Request().Method == http.MethodHead {
+		return c.NoContent(http.StatusOK)
+	}
+	_, err := c.Response().Write(data)
+	return err
+}
+
 func registerSpaRoutesWithProfileMetadata(
 	e *echo.Echo,
 	webFS fs.FS,
@@ -55,19 +71,7 @@ func registerSpaRoutesWithProfileMetadata(
 	managedEdition bool,
 ) {
 	writeHTML := func(c echo.Context, data []byte) error {
-		if managedEdition {
-			data = renderManagedEditionMetadata(data)
-		}
-		c.Response().Header().Set("Content-Type", "text/html")
-		c.Response().Header().Set("Content-Length", strconv.Itoa(len(data)))
-		c.Response().Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
-		c.Response().Header().Set("Pragma", "no-cache")
-		c.Response().Header().Set("Expires", "0")
-		if c.Request().Method == http.MethodHead {
-			return c.NoContent(http.StatusOK)
-		}
-		_, err := c.Response().Write(data)
-		return err
+		return writeHTMLResponse(c, data, managedEdition)
 	}
 
 	publicProfileHandler := func(c echo.Context) error {
