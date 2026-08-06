@@ -5,6 +5,7 @@ const host = "127.0.0.1";
 const baseURL = `http://${host}:${port}`;
 const dbPath = `/tmp/openpost-app-e2e-${port}.db`;
 const reuseExistingServer = process.env.OPENPOST_APP_E2E_REUSE_SERVER === "1";
+const workers = Number(process.env.OPENPOST_APP_E2E_WORKERS ?? 2);
 const chromiumExecutablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
 const chromiumUse = {
   launchOptions: {
@@ -18,7 +19,7 @@ const chromiumUse = {
 export default defineConfig({
   testDir: "./e2e-app",
   fullyParallel: true,
-  workers: 2,
+  workers,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   reporter: process.env.CI ? [["github"], ["html", { open: "never" }]] : "list",

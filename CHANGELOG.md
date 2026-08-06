@@ -15,6 +15,7 @@ All notable changes to this project are documented in this file.
 
 ### Fixed
 
+- Allowed resource-sensitive app browser gates to serialize Playwright workers without slowing the default CI configuration.
 - Updated the pinned YAML parser to the patched release for CVE-2026-59870.
 - Prevented X analytics from replacing complete snapshots with partial batch results and added a 24-hour backoff when X API credits are depleted.
 - Derived relative local media URLs from the canonical public app origin so pull-from-URL providers receive an absolute media URL without duplicate deployment configuration.
