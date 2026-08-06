@@ -54,7 +54,7 @@ Every persistent editor operation must satisfy all applicable requirements:
 
 ## Release gates for this program
 
-- [x] Current focused Image Editor unit baseline: 96 tests across 18 files.
+- [x] Current focused Image Editor unit baseline: 98 tests across 18 files.
 - [x] Current focused Image Editor browser baseline: seven scenarios with page
       and console error diagnostics.
 - [x] Current 1280 px, 768 px, and 390 px smoke has no observed overflow or
@@ -75,7 +75,7 @@ The 2026-08-06 working tree passed:
 - `devenv shell -- verify`, covering repository checks, formatting and lint,
   333 frontend tests, backend tests, CLI tests, frontend/marketing/docs builds,
   generated contracts, docs links, and UI consistency.
-- The focused Image Editor unit suite: 96 tests across 18 files.
+- The focused Image Editor unit suite: 98 tests across 18 files.
 - The isolated Image Editor Playwright suite: 7 tests with one worker, including
   crop undo/redo/reload, portable-project round-trip, guest restore, external
   stock media, selection movement, 320 px/short landscape, and Media export.
@@ -229,28 +229,29 @@ partial requirements into complete ones.
 
 ### Pixel selection as content
 
-- [~] Rectangular, ellipse, lasso, and magic masks support boolean modes and can
-  constrain tools. Selection masks can now delete image/paint pixels or promote
-  them to a new non-flattened layer. Pointer/arrow movement still moves only the
-  mask, and clipboard/floating-selection behavior remains.
-- [ ] Distinguish “move selection boundary” from “move selected pixels” in the
-      active tool and cursor.
-- [ ] Move selected pixels on image and paint layers with a transparent source
-      hole and a floating preview.
+- [x] Rectangular, ellipse, lasso, and magic masks support boolean modes, constrain
+      paint tools, and feed non-flattened delete, promote, cut, copy, and paste
+      operations for image and paint layers.
+- [x] Distinguish “move selection boundary” from “move selected pixels” with
+      explicit Cut/New layer actions, floating-mode guidance, and a move cursor.
+- [x] Move selected pixels on image and paint layers by pointer or keyboard, with
+      a transparent source hole for Cut and a live floating preview.
 - [~] Delete selected pixels with a toolbar action or Delete/Backspace. Copy,
-  cut, duplicate, and paste still operate on whole layers.
+  cut, and paste use isolated structured content; Duplicate still follows
+  object-layer semantics until content is floating.
 - [x] Promote selected pixels to a new paint/image layer while preserving alpha
-      and document coordinates.
-- [ ] Let a floating selection be repositioned, transformed, committed, or
-      cancelled; switching tools must resolve it explicitly.
+      and document coordinates and leaving the source intact.
+- [~] A floating selection can be repositioned, committed, cancelled, or deleted;
+  tool changes commit it predictably. Resize and rotation handles remain.
 - [ ] Define active-layer versus composited-page behavior and prevent silent
       edits across locked/hidden layers.
 - [x] Keep one history entry per committed promote/delete operation and no entry
       for an empty operation.
-- [ ] Preserve or clear the selection predictably after each operation.
-- [ ] Support arrow nudge and Shift-modified nudge for floating content.
-- [ ] Test transformed image layers, paint layers, alpha, masks, groups, edges,
-      empty selections, save/reload, and every renderer.
+- [x] Preserve the original mask on cancel and clear it after commit/delete.
+- [x] Support arrow nudge and Shift-modified nudge for floating content.
+- [~] Paint-layer state/history/cancel and image-layer pointer/keyboard/save/reload
+  paths are covered. Broader alpha, masks, groups, transformed edges, empty
+  selections, revision restore, and every-renderer parity remain.
 
 ### Brand resources in the editor
 
@@ -669,7 +670,8 @@ partial requirements into complete ones.
       the source design is not overwritten.
 - [ ] Drop external files, see them immediately in Media Library, close, and
       reopen the design.
-- [ ] Magic-select pixels, move/cut/promote them, save, and export.
+- [~] Select pixels, move/cut/copy/paste them, save, and reload. Magic-selection,
+  promote, and exported-pixel coverage remain for this combined scenario.
 - [ ] Click through transparent PNG padding to the layer below and cycle layers.
 - [ ] Move/resize with guides and snapping; bypass snapping temporarily.
 - [ ] Apply brand text style and background, instantiate a template, and render.
@@ -690,7 +692,9 @@ partial requirements into complete ones.
 - [~] Interactive crop; image-within-frame repositioning remains.
 - [~] Canvas eyedropper; magnifier and keyboard sampling remain.
 - [~] Exact external file drops; full drag-overlay and validation matrix remain.
-- [~] Selected-pixel content operations; floating move/clipboard semantics remain.
+- [~] Selected-pixel content operations; pointer/keyboard floating move,
+  commit/cancel/delete, and structured copy/cut/paste are complete. Floating
+  resize/rotation, duplicate semantics, and the broader renderer matrix remain.
 - [~] Snap controls, rulers, guides, grid, and coordinates; shared snap behavior
   for crop/drawing/guide motion remains.
 - [~] Alpha-aware hit testing; caching and covered-layer cycling remain.

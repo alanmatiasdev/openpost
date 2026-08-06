@@ -82,20 +82,20 @@ workflow.
 
 ### Selection and hit testing
 
-| Capability                    | miniPaint                               | OpenPost                                                                  | Lead and notes   |
-| ----------------------------- | --------------------------------------- | ------------------------------------------------------------------------- | ---------------- |
-| Object selection              | Single layer                            | Single or multiple layers                                                 | OpenPost         |
-| Transparent-pixel hit testing | Per-pixel up to about 5 MP, then bounds | Alpha-aware transformed image and paint candidates                        | OpenPost         |
-| Rectangular pixel selection   | Yes                                     | Yes                                                                       | Tie              |
-| Ellipse selection             | No                                      | Yes                                                                       | OpenPost         |
-| Lasso                         | No                                      | Yes                                                                       | OpenPost         |
-| Magic selection               | No                                      | Tolerance, contiguous/global, active/all layers                           | OpenPost         |
-| Boolean selection modes       | No                                      | Replace, add, subtract, intersect, toggle                                 | OpenPost         |
-| Selection modifiers           | Limited                                 | Shift, Alt, and Shift+Alt modes                                           | OpenPost         |
-| Selection-constrained paint   | Limited active-layer selection          | Pencil, erase, fill, and gradient honor the mask                          | OpenPost         |
-| Move selection mask           | Source marks translation as not working | Arrow-key and pointer mask movement                                       | OpenPost         |
-| Move selected pixels          | Not reliable                            | Promote/cut/delete selected content; direct floating move remains partial | OpenPost partial |
-| New layer from selection      | Yes                                     | Promote selection to a new paint layer with a transparent source hole     | OpenPost         |
+| Capability                    | miniPaint                               | OpenPost                                                                            | Lead and notes |
+| ----------------------------- | --------------------------------------- | ----------------------------------------------------------------------------------- | -------------- |
+| Object selection              | Single layer                            | Single or multiple layers                                                           | OpenPost       |
+| Transparent-pixel hit testing | Per-pixel up to about 5 MP, then bounds | Alpha-aware transformed image and paint candidates                                  | OpenPost       |
+| Rectangular pixel selection   | Yes                                     | Yes                                                                                 | Tie            |
+| Ellipse selection             | No                                      | Yes                                                                                 | OpenPost       |
+| Lasso                         | No                                      | Yes                                                                                 | OpenPost       |
+| Magic selection               | No                                      | Tolerance, contiguous/global, active/all layers                                     | OpenPost       |
+| Boolean selection modes       | No                                      | Replace, add, subtract, intersect, toggle                                           | OpenPost       |
+| Selection modifiers           | Limited                                 | Shift, Alt, and Shift+Alt modes                                                     | OpenPost       |
+| Selection-constrained paint   | Limited active-layer selection          | Pencil, erase, fill, and gradient honor the mask                                    | OpenPost       |
+| Move selection mask           | Source marks translation as not working | Arrow-key and pointer mask movement                                                 | OpenPost       |
+| Move selected pixels          | Source marks translation as unreliable  | Pointer/keyboard floating move, commit/cancel/delete, and structured copy/cut/paste | OpenPost       |
+| New layer from selection      | Yes                                     | Promote selection to a new paint layer with a transparent source hole               | OpenPost       |
 
 ### Painting, fill, and cleanup
 
@@ -292,8 +292,9 @@ OpenPost's tested `magicPixelMask` should remain the basis for these tools.
   actions; the committed normalized crop itself is non-destructive.
 - Alpha hit testing needs caching and covered-layer cycling for very large or
   densely stacked documents.
-- Pixel selection can cut, delete, and promote content, but it is not yet a
-  floating clipboard object with direct pixel movement.
+- Pixel selection can cut, delete, promote, copy, paste, and move floating
+  content with commit/cancel history. Floating resize/rotation and dedicated
+  duplicate semantics remain.
 - Brand backgrounds and whole-layer text styles are exposed, but missing-asset
   recovery and mixed-value multi-selection UI remain incomplete.
 - External drops are exact and durable, but guest OPFS writes cannot be cancelled
@@ -319,7 +320,7 @@ OpenPost's tested `magicPixelMask` should remain the basis for these tools.
 5. Generate menus, tooltips, mobile actions, and enabled-state explanations from
    the typed command registry.
 6. Cache alpha hit masks and add an intentional covered-layer cycling gesture.
-7. Turn promoted selected pixels into a movable floating commit/cancel workflow.
+7. Add resize and rotation handles to the floating selected-pixel workflow.
 8. Complete missing brand-asset recovery and mixed-value application feedback.
 
 ### P1: creative depth
@@ -366,9 +367,10 @@ OpenPost's tested `magicPixelMask` should remain the basis for these tools.
   produced size warnings.
 - miniPaint has no automated test or lint script. Its full install audit reported
   15 advisories; the production-only audit reported one moderate `uuid` advisory.
-- OpenPost's focused Image Editor unit run passed 96 tests across 18 files.
+- OpenPost's focused Image Editor unit run passed 98 tests across 18 files.
 - OpenPost's focused Image Editor browser run passed all seven scenarios, with
-  console/page-error diagnostics and explicit 320 px and short-landscape coverage.
+  console/page-error diagnostics, pointer and keyboard floating-selection proof,
+  and explicit 320 px and short-landscape coverage.
 - The repository-owned `devenv shell -- verify` gate passed checks, lint, all
   tests, frontend/marketing/docs builds, and generated-contract validation.
 - The Svelte analyzer reported no component errors across the Image Editor
