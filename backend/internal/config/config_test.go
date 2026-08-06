@@ -155,6 +155,26 @@ func TestLoadProductionPrimitiveDefaults(t *testing.T) {
 	require.Equal(t, int64(15_000), cfg.XPostCreateCostMicrousd)
 	require.Equal(t, int64(200_000), cfg.XPostCreateWithURLCostMicrousd)
 	require.Equal(t, 180, cfg.ProviderUsageRetentionDays)
+	require.Equal(t, "https://openpost.example.com/media", cfg.MediaURL)
+}
+
+func TestLoadResolvesRelativeMediaURLAgainstCanonicalPublicURL(t *testing.T) {
+	t.Setenv("OPENPOST_APP_URL", "https://app.example.com")
+	t.Setenv("OPENPOST_PUBLIC_URL", "https://public.example.com/openpost")
+	t.Setenv("OPENPOST_MEDIA_URL", "assets/media/")
+
+	cfg := Load()
+
+	require.Equal(t, "https://public.example.com/openpost/assets/media", cfg.MediaURL)
+}
+
+func TestLoadPreservesExplicitAbsoluteMediaURL(t *testing.T) {
+	t.Setenv("OPENPOST_APP_URL", "https://app.example.com")
+	t.Setenv("OPENPOST_MEDIA_URL", "https://cdn.example.com/openpost-media/")
+
+	cfg := Load()
+
+	require.Equal(t, "https://cdn.example.com/openpost-media", cfg.MediaURL)
 }
 
 func TestLoadProviderCostGuardrailConfiguration(t *testing.T) {

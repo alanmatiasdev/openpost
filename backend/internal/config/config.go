@@ -286,6 +286,7 @@ func Load() *Config {
 	if cfg.PublicURL == "" {
 		cfg.PublicURL = cfg.FrontendURL
 	}
+	cfg.MediaURL = resolveMediaURL(cfg.MediaURL, cfg.PublicURL)
 	if cfg.EmailFrom == "" {
 		cfg.EmailFrom = strings.TrimSpace(cfg.SMTPFrom)
 	}
@@ -332,6 +333,22 @@ func Load() *Config {
 	warnOnPlaceholderURL(cfg)
 
 	return cfg
+}
+
+func resolveMediaURL(mediaURL, publicURL string) string {
+	mediaURL = strings.TrimSpace(mediaURL)
+	if mediaURL == "" {
+		return mediaURL
+	}
+	parsedMediaURL, err := url.Parse(mediaURL)
+	if err != nil || parsedMediaURL.IsAbs() {
+		return strings.TrimRight(mediaURL, "/")
+	}
+	parsedPublicURL, err := url.Parse(strings.TrimRight(strings.TrimSpace(publicURL), "/") + "/")
+	if err != nil || !parsedPublicURL.IsAbs() {
+		return strings.TrimRight(mediaURL, "/")
+	}
+	return strings.TrimRight(parsedPublicURL.ResolveReference(parsedMediaURL).String(), "/")
 }
 
 func providerAppsFromLegacyConfig(cfg *Config) []platform.AppConfig {

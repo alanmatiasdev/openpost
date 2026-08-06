@@ -16,7 +16,7 @@ extra origins only, and rejects wildcard `*` origins at startup.
 
 ## `OPENPOST_MEDIA_URL`
 
-The public base URL for uploaded media. Threads, Facebook, Instagram, and some TikTok posts need it. It should match your reverse proxy path.
+The public base URL for uploaded media. Threads, Facebook, Instagram, and some TikTok posts need it. The default `/media` path is resolved against `OPENPOST_PUBLIC_URL`, then `OPENPOST_APP_URL`. Override it with an absolute URL when media is served from a separate public origin.
 
 ## Provider callback URLs
 

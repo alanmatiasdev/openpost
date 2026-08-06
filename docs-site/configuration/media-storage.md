@@ -9,15 +9,22 @@ OpenPost requires `ffmpeg` and `ffprobe` on `PATH` to verify uploaded videos and
 ## Key settings
 
 - `OPENPOST_MEDIA_PATH` controls where files are stored on disk.
-- `OPENPOST_MEDIA_URL` controls how those files are exposed publicly.
+- `OPENPOST_MEDIA_URL` controls how those files are exposed publicly. Its default
+  `/media` path is resolved against `OPENPOST_PUBLIC_URL`, which falls back to
+  `OPENPOST_APP_URL`.
 - `OPENPOST_STORAGE_DRIVER` chooses `local` or `s3`.
 
 ## Recommended production values
 
 ```sh
 OPENPOST_MEDIA_PATH=/data/media
-OPENPOST_MEDIA_URL=https://openpost.example.com/media
+OPENPOST_APP_URL=https://openpost.example.com
+OPENPOST_PUBLIC_URL=https://openpost.example.com
 ```
+
+The default `OPENPOST_MEDIA_URL=/media` becomes
+`https://openpost.example.com/media`. Set an absolute `OPENPOST_MEDIA_URL` when
+media uses a separate domain or path.
 
 ## Why public media URLs matter
 

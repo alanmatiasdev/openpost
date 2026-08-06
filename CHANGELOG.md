@@ -4,6 +4,10 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- Derived relative local media URLs from the canonical public app origin so pull-from-URL providers receive an absolute media URL without duplicate deployment configuration.
+
 ## [3.3.1] - 2026-08-06
 
 ### Added
