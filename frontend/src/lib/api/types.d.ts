@@ -5806,9 +5806,14 @@ export interface components {
             fit: "cover" | "contain" | "stretch";
             media_id: string;
         };
+        ImageEditorPageGuides: {
+            horizontal: number[] | null;
+            vertical: number[] | null;
+        };
         ImageEditorPagePayload: {
             background?: components["schemas"]["ImageEditorPageBackground"];
             background_color: string;
+            guides?: components["schemas"]["ImageEditorPageGuides"];
             id: string;
             latest_export_media_id?: string;
             layers: components["schemas"]["ImageEditorLayer"][] | null;
@@ -5979,10 +5984,14 @@ export interface components {
             /** Format: double */
             line_height: number;
             shadow: components["schemas"]["ImageEditorTextShadow"];
+            strike?: boolean;
             stroke_color?: string;
             /** Format: double */
             stroke_width: number;
             text: string;
+            underline?: boolean;
+            /** @enum {string} */
+            wrap?: "word" | "character";
         };
         ImageEditorTransform: {
             flip_x: boolean;

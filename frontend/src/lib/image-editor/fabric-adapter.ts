@@ -11,6 +11,7 @@ import { createImageEditorCanvasGradient, gradientColorAt } from './gradient';
 import {
 	boundsIntersect,
 	colorsWithinTolerance,
+	pixelMaskToSpans,
 	polygonIntersectsBounds,
 	type SelectionBounds,
 	type SelectionPoint
@@ -82,6 +83,17 @@ export interface ImageEditorResizeSnap {
 	bounds: ImageEditorSnapBounds;
 	guideX: number | null;
 	guideY: number | null;
+}
+
+export function imageEditorPixelIsOpaque(
+	image: Pick<ImageData, 'data' | 'width' | 'height'>,
+	point: SelectionPoint,
+	minimumAlpha = 8
+): boolean {
+	const x = Math.floor(point.x);
+	const y = Math.floor(point.y);
+	if (x < 0 || y < 0 || x >= image.width || y >= image.height) return false;
+	return (image.data[(y * image.width + x) * 4 + 3] ?? 0) >= minimumAlpha;
 }
 
 function nearestSnap(
@@ -226,6 +238,10 @@ export class OpenPostFabricAdapter {
 	private page: ImageEditorPage;
 	private readOnly: boolean;
 	private interactionTool: ImageEditorTool = 'select';
+	private snappingEnabled = true;
+	private snapGuideX: number[] = [];
+	private snapGuideY: number[] = [];
+	private snapGridSize = 0;
 	private readonly staticMode: boolean;
 	private readonly renderScale: number;
 	private onSelection: FabricAdapterOptions['onSelection'];
@@ -416,6 +432,32 @@ export class OpenPostFabricAdapter {
 		this.refreshInteractivity();
 	}
 
+	setSnapping(enabled: boolean): void {
+		this.snappingEnabled = enabled;
+		if (!enabled) this.clearGuides();
+	}
+
+	setPrecisionSnapSources(
+		guides: { horizontal: number[]; vertical: number[] } | undefined,
+		gridSize: number
+	): void {
+		this.snapGuideX = [...(guides?.vertical ?? [])];
+		this.snapGuideY = [...(guides?.horizontal ?? [])];
+		this.snapGridSize = Number.isFinite(gridSize) ? Math.max(0, gridSize) : 0;
+	}
+
+	private appendPrecisionCandidates(candidatesX: number[], candidatesY: number[]): void {
+		candidatesX.push(...this.snapGuideX);
+		candidatesY.push(...this.snapGuideY);
+		if (this.snapGridSize <= 0) return;
+		for (let x = this.snapGridSize; x < this.document.width_px; x += this.snapGridSize) {
+			candidatesX.push(x);
+		}
+		for (let y = this.snapGridSize; y < this.document.height_px; y += this.snapGridSize) {
+			candidatesY.push(y);
+		}
+	}
+
 	layerIDsInRectangle(bounds: SelectionBounds): string[] {
 		const ids: string[] = [];
 		for (const layer of this.selectionRoots()) {
@@ -442,6 +484,7 @@ export class OpenPostFabricAdapter {
 			if (layer.type === 'group' || !this.layerCanBeSelected(layer)) continue;
 			const object = this.objectByLayerID.get(layer.id);
 			if (!object || !this.objectContainsPoint(object, point)) continue;
+			if (!this.layerHasVisiblePixelAtPoint(layer, point)) continue;
 			return this.selectionRootID(layer);
 		}
 		return null;
@@ -506,6 +549,66 @@ export class OpenPostFabricAdapter {
 			objects.forEach((object, index) => (object.visible = visibility[index]));
 			this.canvas.renderAll();
 		}
+	}
+
+	samplePagePixel(point: SelectionPoint): Uint8ClampedArray | null {
+		if (!this.canvas || this.staticMode) return null;
+		const x = Math.floor(point.x);
+		const y = Math.floor(point.y);
+		if (x < 0 || y < 0 || x >= this.document.width_px || y >= this.document.height_px) return null;
+		try {
+			return this.canvas.getContext().getImageData(x, y, 1, 1).data;
+		} catch {
+			return null;
+		}
+	}
+
+	sampleLayerPixel(id: string, point: SelectionPoint): Uint8ClampedArray | null {
+		const sample = this.rasterizeLayerAtPoint(id, point);
+		if (!sample) return null;
+		const x = Math.floor(sample.point.x);
+		const y = Math.floor(sample.point.y);
+		if (x < 0 || y < 0 || x >= sample.image.width || y >= sample.image.height) return null;
+		const offset = (y * sample.image.width + x) * 4;
+		return sample.image.data.slice(offset, offset + 4);
+	}
+
+	projectPixelMaskToLayer(
+		id: string,
+		mask: Uint8Array,
+		documentWidth: number,
+		documentHeight: number
+	): { width: number; height: number; data: Uint8Array } | null {
+		if (!this.fabric || typeof globalThis.document === 'undefined') return null;
+		const object = this.objectByLayerID.get(id);
+		if (!object) return null;
+		const width = Math.max(1, Math.round(object.width ?? 1));
+		const height = Math.max(1, Math.round(object.height ?? 1));
+		const canvas = globalThis.document.createElement('canvas');
+		canvas.width = width;
+		canvas.height = height;
+		const context = canvas.getContext('2d', { willReadFrequently: true });
+		if (!context) return null;
+		const inverse = this.fabric.util.invertTransform(object.calcTransformMatrix());
+		context.setTransform(
+			inverse[0],
+			inverse[1],
+			inverse[2],
+			inverse[3],
+			inverse[4] + width / 2,
+			inverse[5] + height / 2
+		);
+		context.fillStyle = '#ffffff';
+		for (const span of pixelMaskToSpans(mask, documentWidth, documentHeight)) {
+			context.fillRect(span.x, span.y, span.width, 1);
+		}
+		context.resetTransform();
+		const pixels = context.getImageData(0, 0, width, height).data;
+		const data = new Uint8Array(width * height);
+		for (let index = 0; index < data.length; index++) {
+			if ((pixels[index * 4 + 3] ?? 0) >= 8) data[index] = 1;
+		}
+		return { width, height, data };
 	}
 
 	rasterizeLayerAtPoint(
@@ -650,7 +753,7 @@ export class OpenPostFabricAdapter {
 			if (event.transform?.action !== 'rotate') return;
 			applyImageEditorRotationConstraint(
 				event.transform.target as FabricObject,
-				(event.e as MouseEvent).shiftKey
+				this.snappingEnabled && !this.snapBypassed(event.e) && (event.e as MouseEvent).shiftKey
 			);
 		});
 		canvas.on('mouse:down', (event) => {
@@ -680,13 +783,17 @@ export class OpenPostFabricAdapter {
 		canvas.on('selection:cleared', () => this.emitSelection());
 		canvas.on('object:moving', (event) => {
 			const target = event.target as FabricObject;
-			this.snapObject(target);
+			this.snapObject(target, this.snapBypassed(event.e));
 			this.syncDecorationTransform(target);
 		});
 		canvas.on('object:scaling', (event) => {
 			const target = event.target as FabricObject;
 			const transform = event.transform as { corner?: string } | undefined;
-			this.snapScaledObject(target, transform?.corner ?? target.__corner ?? '');
+			this.snapScaledObject(
+				target,
+				transform?.corner ?? target.__corner ?? '',
+				this.snapBypassed(event.e)
+			);
 			this.syncDecorationTransform(target);
 		});
 		canvas.on('object:rotating', (event) => {
@@ -835,8 +942,16 @@ export class OpenPostFabricAdapter {
 		this.onTextChange(target.__imageEditorLayerID, target.text);
 	}
 
-	private snapObject(target?: FabricObject): void {
-		if (!target || !this.canvas || !this.fabric) return;
+	private snapBypassed(event: Event | undefined): boolean {
+		const pointer = event as MouseEvent | undefined;
+		return Boolean(pointer?.ctrlKey || pointer?.metaKey);
+	}
+
+	private snapObject(target?: FabricObject, bypass = false): void {
+		if (!this.snappingEnabled || bypass || !target || !this.canvas || !this.fabric) {
+			this.clearGuides();
+			return;
+		}
 		this.clearGuides();
 		const selectionMembers = new Set(
 			!target.__imageEditorLayerID && 'getObjects' in target
@@ -849,6 +964,7 @@ export class OpenPostFabricAdapter {
 		const height = target.getScaledHeight();
 		const candidatesX = [0, this.document.width_px / 2, this.document.width_px];
 		const candidatesY = [0, this.document.height_px / 2, this.document.height_px];
+		this.appendPrecisionCandidates(candidatesX, candidatesY);
 		for (const object of this.canvas.getObjects() as FabricObject[]) {
 			if (
 				object === target ||
@@ -892,14 +1008,25 @@ export class OpenPostFabricAdapter {
 		}
 	}
 
-	private snapScaledObject(target?: FabricObject, corner = ''): void {
-		if (!target || !this.canvas || !this.fabric || !corner || Math.abs(target.angle ?? 0) > 0.01)
+	private snapScaledObject(target?: FabricObject, corner = '', bypass = false): void {
+		if (
+			!this.snappingEnabled ||
+			bypass ||
+			!target ||
+			!this.canvas ||
+			!this.fabric ||
+			!corner ||
+			Math.abs(target.angle ?? 0) > 0.01
+		) {
+			this.clearGuides();
 			return;
+		}
 		this.clearGuides();
 		const zoom = Math.max(this.canvas.getZoom(), 0.01);
 		const threshold = SNAP_SCREEN_PX / zoom;
 		const candidatesX = [0, this.document.width_px / 2, this.document.width_px];
 		const candidatesY = [0, this.document.height_px / 2, this.document.height_px];
+		this.appendPrecisionCandidates(candidatesX, candidatesY);
 		for (const object of this.canvas.getObjects() as FabricObject[]) {
 			if (object === target || !object.__imageEditorLayerID || this.guideObjects.includes(object))
 				continue;
@@ -1049,6 +1176,9 @@ export class OpenPostFabricAdapter {
 				fontFamily: layer.text.font_family,
 				fontWeight: layer.text.font_weight,
 				fontStyle: layer.text.font_style,
+				underline: layer.text.underline,
+				linethrough: layer.text.strike,
+				splitByGrapheme: layer.text.wrap === 'character',
 				fontSize: layer.text.font_size,
 				fill: layer.text.color,
 				textAlign: layer.text.align,
@@ -1265,6 +1395,9 @@ export class OpenPostFabricAdapter {
 				fontFamily: layer.text.font_family,
 				fontWeight: layer.text.font_weight,
 				fontStyle: layer.text.font_style,
+				underline: layer.text.underline,
+				linethrough: layer.text.strike,
+				splitByGrapheme: layer.text.wrap === 'character',
 				fontSize: layer.text.font_size,
 				fill: layer.text.color,
 				textAlign: layer.text.align,
@@ -1671,6 +1804,8 @@ export class OpenPostFabricAdapter {
 
 	private usesAreaSelection(): boolean {
 		return [
+			'crop',
+			'eyedropper',
 			'marquee',
 			'ellipse_marquee',
 			'lasso',
@@ -1730,6 +1865,12 @@ export class OpenPostFabricAdapter {
 		);
 	}
 
+	private layerHasVisiblePixelAtPoint(layer: ImageEditorLayer, point: SelectionPoint): boolean {
+		if (layer.type !== 'image' && layer.type !== 'paint') return true;
+		const sample = this.rasterizeLayerAtPoint(layer.id, point);
+		return sample ? imageEditorPixelIsOpaque(sample.image, sample.point) : true;
+	}
+
 	private baseObjectOptions(layer: ImageEditorLayer) {
 		return {
 			left: layer.transform.x,
@@ -1746,7 +1887,8 @@ export class OpenPostFabricAdapter {
 			borderColor: '#f97316',
 			cornerSize: 12,
 			touchCornerSize: 44,
-			padding: 1
+			padding: 1,
+			perPixelTargetFind: layer.type === 'image' || layer.type === 'paint'
 		};
 	}
 

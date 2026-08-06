@@ -3,6 +3,7 @@ import type { ImageEditorSelectionMode } from './types';
 export interface SelectionPoint {
 	x: number;
 	y: number;
+	pressure?: number;
 }
 
 export interface SelectionBounds extends SelectionPoint {
@@ -187,8 +188,10 @@ export function strokePixelMask(
 ): Uint8Array {
 	const mask = new Uint8Array(width * height);
 	if (points.length === 0) return mask;
-	const radius = Math.max(0.5, size / 2);
+	const radiusForPoint = (point: SelectionPoint): number =>
+		Math.max(0.5, (size / 2) * Math.max(0.1, Math.min(1, point.pressure ?? 1)));
 	const stamp = (point: SelectionPoint): void => {
+		const radius = radiusForPoint(point);
 		const startX = clampInteger(Math.floor(point.x - radius), 0, width);
 		const endX = clampInteger(Math.ceil(point.x + radius), 0, width);
 		const startY = clampInteger(Math.floor(point.y - radius), 0, height);
@@ -206,12 +209,14 @@ export function strokePixelMask(
 		const start = points[index - 1];
 		const end = points[index];
 		const distance = Math.hypot(end.x - start.x, end.y - start.y);
+		const radius = Math.max(radiusForPoint(start), radiusForPoint(end));
 		const steps = Math.max(1, Math.ceil(distance / Math.max(1, radius * 0.45)));
 		for (let step = 1; step <= steps; step++) {
 			const ratio = step / steps;
 			stamp({
 				x: start.x + (end.x - start.x) * ratio,
-				y: start.y + (end.y - start.y) * ratio
+				y: start.y + (end.y - start.y) * ratio,
+				pressure: (start.pressure ?? 1) + ((end.pressure ?? 1) - (start.pressure ?? 1)) * ratio
 			});
 		}
 	}
@@ -236,6 +241,24 @@ export function strokePixelMask(
 		}
 	}
 	return mask;
+}
+
+export function smoothSelectionPoints(points: SelectionPoint[], amount: number): SelectionPoint[] {
+	if (points.length < 3 || amount <= 0) return points.map((point) => ({ ...point }));
+	const smoothing = Math.max(0, Math.min(0.95, amount));
+	const next: SelectionPoint[] = [{ ...points[0] }];
+	for (let index = 1; index < points.length - 1; index++) {
+		const previous = next.at(-1)!;
+		const current = points[index];
+		const follow = 1 - smoothing;
+		next.push({
+			x: previous.x + (current.x - previous.x) * follow,
+			y: previous.y + (current.y - previous.y) * follow,
+			pressure: current.pressure
+		});
+	}
+	next.push({ ...points.at(-1)! });
+	return next;
 }
 
 export function pixelMaskContainsPoint(
@@ -307,28 +330,47 @@ export function magicPixelMask(
 		}
 		return mask;
 	}
-	const visited = new Uint8Array(width * height);
-	const queue = new Uint32Array(width * height);
-	let read = 0;
-	let write = 0;
-	queue[write++] = startIndex;
-	visited[startIndex] = 1;
-	while (read < write) {
-		const index = queue[read++];
-		if (!matches(index)) continue;
-		mask[index] = 1;
-		const x = index % width;
-		const y = Math.floor(index / width);
-		for (const neighbor of [
-			x > 0 ? index - 1 : -1,
-			x + 1 < width ? index + 1 : -1,
-			y > 0 ? index - width : -1,
-			y + 1 < height ? index + width : -1
-		]) {
-			if (neighbor < 0 || visited[neighbor]) continue;
-			visited[neighbor] = 1;
-			queue[write++] = neighbor;
+	const matchesAndMark = (index: number): boolean => {
+		if (mask[index] === 1 || mask[index] === 3 || mask[index] === 4) return true;
+		if (mask[index] === 2) return false;
+		mask[index] = matches(index) ? 1 : 2;
+		return mask[index] === 1;
+	};
+	const stack = [startX, startY];
+	mask[startIndex] = 4;
+	while (stack.length > 0) {
+		const y = stack.pop()!;
+		const seedX = stack.pop()!;
+		if (mask[y * width + seedX] === 3) continue;
+		let x = seedX;
+		while (x >= 0 && matchesAndMark(y * width + x)) x--;
+		x++;
+		let spanUp = false;
+		let spanDown = false;
+		for (; x < width && matchesAndMark(y * width + x); x++) {
+			mask[y * width + x] = 3;
+			if (y > 0) {
+				const upIndex = (y - 1) * width + x;
+				const matchesUp = matchesAndMark(upIndex);
+				if (matchesUp && !spanUp && mask[upIndex] === 1) {
+					mask[upIndex] = 4;
+					stack.push(x, y - 1);
+				}
+				spanUp = matchesUp;
+			}
+			if (y + 1 < height) {
+				const downIndex = (y + 1) * width + x;
+				const matchesDown = matchesAndMark(downIndex);
+				if (matchesDown && !spanDown && mask[downIndex] === 1) {
+					mask[downIndex] = 4;
+					stack.push(x, y + 1);
+				}
+				spanDown = matchesDown;
+			}
 		}
+	}
+	for (let index = 0; index < mask.length; index++) {
+		mask[index] = mask[index] === 3 ? 1 : 0;
 	}
 	return mask;
 }

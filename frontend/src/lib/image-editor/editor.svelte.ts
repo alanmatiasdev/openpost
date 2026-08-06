@@ -3,6 +3,7 @@ import { SvelteSet } from 'svelte/reactivity';
 import { m } from '$lib/paraglide/messages';
 import {
 	blankImageEditorPage,
+	cloneImageEditorLayer,
 	cloneImageEditorDocument,
 	cloneImageEditorPage,
 	defaultImageAdjustments,
@@ -11,6 +12,11 @@ import {
 	imageEditorID
 } from './document';
 import { defaultLayerEffects, defaultTextCurve } from './effects';
+import {
+	applyImageEditorCropWindow,
+	resetImageEditorCrop,
+	type ImageEditorCropWindow
+} from './crop';
 import { ImageEditorHistory } from './history';
 import {
 	combinePixelMasks,
@@ -19,6 +25,7 @@ import {
 	pixelSpansToMask,
 	pixelMaskToSpans,
 	strokePixelMask,
+	smoothSelectionPoints,
 	subtractPixelMasks,
 	translatePixelMask,
 	mergeSelectionIDs,
@@ -29,7 +36,9 @@ import type {
 	ImageEditorDocument,
 	ImageEditorDocumentResponse,
 	ImageEditorGradientType,
+	ImageEditorColorTarget,
 	ImageEditorBrandKit,
+	ImageEditorBrandTextStyle,
 	ImageEditorLayer,
 	ImageEditorPage,
 	ImageEditorPageBackground,
@@ -53,6 +62,7 @@ export class ImageEditorController {
 	magicSelectTolerance = $state(32);
 	magicSelectContiguous = $state(true);
 	sampleAllLayers = $state(false);
+	eyedropperTarget = $state<ImageEditorColorTarget>('foreground');
 	pixelSelection = $state.raw<ImageEditorPixelSelection | null>(null);
 	paintColor = $state('#f97316');
 	gradientEndColor = $state('#7c3aed');
@@ -60,6 +70,8 @@ export class ImageEditorController {
 	gradientReverse = $state(false);
 	pencilSize = $state(12);
 	pencilRoughness = $state(0);
+	pencilSmoothing = $state(0.35);
+	pencilPressure = $state(true);
 	eraserSize = $state(32);
 	magicEraserTolerance = $state(32);
 	magicEraserContiguous = $state(true);
@@ -71,6 +83,12 @@ export class ImageEditorController {
 	zoom = $state(1);
 	panX = $state(0);
 	panY = $state(0);
+	snappingEnabled = $state(true);
+	showRulers = $state(true);
+	showGuides = $state(true);
+	showGrid = $state(false);
+	snapToGrid = $state(false);
+	gridSize = $state(50);
 	leftPanel = $state<'media' | null>('media');
 	backgroundImagePickerActive = $state(false);
 	rightPanelVisible = $state(true);
@@ -78,6 +96,7 @@ export class ImageEditorController {
 	pagesExpanded = $state(true);
 	brandKit = $state.raw<ImageEditorBrandKit | null>(null);
 	recentColors = $state.raw<string[]>([]);
+	mediaLibraryRevision = $state(0);
 	private history = new ImageEditorHistory<ImageEditorDocument>(cloneImageEditorDocument);
 	private historyRevision = $state(0);
 	private changeListeners = new SvelteSet<() => void>();
@@ -87,6 +106,54 @@ export class ImageEditorController {
 
 	get activePage(): ImageEditorPage | null {
 		return this.document?.pages.find((page) => page.id === this.activePageID) ?? null;
+	}
+
+	refreshMediaLibrary(): void {
+		this.mediaLibraryRevision += 1;
+	}
+
+	addGuide(axis: 'horizontal' | 'vertical', value: number): void {
+		const page = this.activePage;
+		if (!page || !this.document) return;
+		const limit = axis === 'horizontal' ? this.document.height_px : this.document.width_px;
+		const next = Math.max(0, Math.min(limit, value));
+		this.mutate(m.image_editor_add_guide(), (document) => {
+			const target = document.pages.find((candidate) => candidate.id === this.activePageID);
+			if (!target) return;
+			target.guides ??= { horizontal: [], vertical: [] };
+			if (target.guides[axis].length >= 100) return;
+			target.guides[axis].push(next);
+		});
+	}
+
+	updateGuide(axis: 'horizontal' | 'vertical', index: number, value: number): void {
+		if (!this.document) return;
+		const limit = axis === 'horizontal' ? this.document.height_px : this.document.width_px;
+		this.mutate(
+			m.image_editor_move_guide(),
+			(document) => {
+				const guides = document.pages.find((page) => page.id === this.activePageID)?.guides;
+				if (!guides || index < 0 || index >= guides[axis].length) return;
+				guides[axis][index] = Math.max(0, Math.min(limit, value));
+			},
+			`guide-${this.activePageID}-${axis}-${index}`
+		);
+	}
+
+	removeGuide(axis: 'horizontal' | 'vertical', index: number): void {
+		this.mutate(m.image_editor_remove_guide(), (document) => {
+			const guides = document.pages.find((page) => page.id === this.activePageID)?.guides;
+			if (!guides || index < 0 || index >= guides[axis].length) return;
+			guides[axis].splice(index, 1);
+		});
+	}
+
+	clearGuides(): void {
+		this.mutate(m.image_editor_clear_guides(), (document) => {
+			const page = document.pages.find((candidate) => candidate.id === this.activePageID);
+			if (!page) return;
+			page.guides = { horizontal: [], vertical: [] };
+		});
 	}
 
 	get selectedLayers(): ImageEditorLayer[] {
@@ -100,6 +167,14 @@ export class ImageEditorController {
 
 	get canRedo(): boolean {
 		return this.historyRevision >= 0 && this.history.canRedo;
+	}
+
+	get undoLabel(): string {
+		return this.history.undoLabel;
+	}
+
+	get redoLabel(): string {
+		return this.history.redoLabel;
 	}
 
 	load(response: ImageEditorDocumentResponse): void {
@@ -141,7 +216,7 @@ export class ImageEditorController {
 		coalesceKey?: string
 	): void {
 		if (!this.document || !this.canEdit) return;
-		this.document = this.history.execute(this.document, {
+		const next = this.history.execute(this.document, {
 			label,
 			coalesceKey,
 			apply(document) {
@@ -152,6 +227,8 @@ export class ImageEditorController {
 				return document;
 			}
 		});
+		if (!this.history.lastExecutionChanged) return;
+		this.document = next;
 		this.historyRevision++;
 		this.emitChange();
 	}
@@ -235,6 +312,118 @@ export class ImageEditorController {
 		this.pixelSelection = null;
 	}
 
+	commitPixelSelectionContent(
+		mode: 'promote' | 'cut' | 'delete',
+		projections: Array<{ id: string; width: number; height: number; data: Uint8Array }>
+	): boolean {
+		if (!this.document || !this.pixelSelection || projections.length === 0) return false;
+		const before = this.document;
+		const promotedIDs: string[] = [];
+		this.mutate(
+			mode === 'promote'
+				? m.image_editor_promote_pixels()
+				: mode === 'cut'
+					? m.image_editor_cut_pixels()
+					: m.image_editor_delete_pixels(),
+			(document) => {
+				const page = document.pages.find((candidate) => candidate.id === this.activePageID);
+				if (!page) return;
+				for (const projection of projections) {
+					const targetIndex = page.layers.findIndex((layer) => layer.id === projection.id);
+					const target = page.layers[targetIndex];
+					if (!target || target.locked || !['image', 'paint'].includes(target.type)) continue;
+					let selected = projection.data;
+					if (target.paint) {
+						const paint = pixelSpansToMask(target.paint.spans, projection.width, projection.height);
+						selected = intersectPixelMasks(selected, paint);
+					} else if (target.erase_mask) {
+						let erased = pixelSpansToMask(
+							target.erase_mask.spans,
+							projection.width,
+							projection.height
+						);
+						for (const stroke of target.erase_mask.strokes) {
+							erased = combinePixelMasks(
+								erased,
+								strokePixelMask(projection.width, projection.height, stroke.points, stroke.size),
+								'add'
+							);
+						}
+						selected = subtractPixelMasks(selected, erased);
+					}
+					if (!pixelMaskBounds(selected, projection.width, projection.height)) continue;
+
+					if (mode === 'promote' || mode === 'cut') {
+						const copy = cloneImageEditorLayer(
+							target,
+							m.image_editor_selection_layer_name({ name: target.name })
+						);
+						if (copy.paint) {
+							copy.paint.spans = pixelMaskToSpans(selected, projection.width, projection.height);
+							copy.erase_mask = undefined;
+						} else if (copy.image) {
+							const all = new Uint8Array(projection.width * projection.height);
+							all.fill(1);
+							copy.erase_mask = {
+								source_width: projection.width,
+								source_height: projection.height,
+								strokes: [],
+								spans: pixelMaskToSpans(
+									subtractPixelMasks(all, selected),
+									projection.width,
+									projection.height
+								)
+							};
+						}
+						page.layers.splice(targetIndex + 1, 0, copy);
+						promotedIDs.push(copy.id);
+					}
+
+					if (mode === 'cut' || mode === 'delete') {
+						if (target.paint) {
+							const paint = pixelSpansToMask(
+								target.paint.spans,
+								projection.width,
+								projection.height
+							);
+							target.paint.spans = pixelMaskToSpans(
+								subtractPixelMasks(paint, selected),
+								projection.width,
+								projection.height
+							);
+						} else {
+							const eraseMask =
+								target.erase_mask?.source_width === projection.width &&
+								target.erase_mask.source_height === projection.height
+									? target.erase_mask
+									: {
+											source_width: projection.width,
+											source_height: projection.height,
+											strokes: [],
+											spans: []
+										};
+							target.erase_mask = {
+								...eraseMask,
+								spans: [
+									...eraseMask.spans,
+									...pixelMaskToSpans(selected, projection.width, projection.height)
+								]
+							};
+						}
+					}
+				}
+				this.recalculateAllGroupBounds(page);
+			}
+		);
+		if (this.document === before) return false;
+		this.pixelSelection = null;
+		if (promotedIDs.length > 0) {
+			this.selectedLayerIDs = promotedIDs;
+			this.selectionAnchorID = promotedIDs.at(-1) ?? '';
+		}
+		return true;
+	}
+
 	movePixelSelection(data: Uint8Array, deltaX: number, deltaY: number): void {
 		if (!this.pixelSelection) return;
 		const translated = translatePixelMask(
@@ -299,6 +488,9 @@ export class ImageEditorController {
 				font_family: 'Geist Variable',
 				font_weight: 700,
 				font_style: 'normal',
+				underline: false,
+				strike: false,
+				wrap: 'word',
 				font_size: Math.max(32, Math.round(this.document.width_px / 12)),
 				color: '#1c1917',
 				align: 'center',
@@ -389,10 +581,17 @@ export class ImageEditorController {
 
 	addPencilStroke(points: SelectionPoint[]): void {
 		if (!this.document || points.length === 0) return;
+		const samples = smoothSelectionPoints(
+			points.map((point) => ({
+				...point,
+				pressure: this.pencilPressure ? point.pressure : 1
+			})),
+			this.pencilSmoothing
+		);
 		const stroke = strokePixelMask(
 			this.document.width_px,
 			this.document.height_px,
-			points,
+			samples,
 			this.pencilSize,
 			this.pencilRoughness
 		);
@@ -450,6 +649,17 @@ export class ImageEditorController {
 					}
 				]
 			};
+		});
+	}
+
+	restoreImageEraseMask(id: string): void {
+		const layer = this.activePage?.layers.find((candidate) => candidate.id === id);
+		if (layer?.type !== 'image' || layer.locked || !layer.erase_mask) return;
+		this.mutate(m.image_editor_restore_erased_image(), (document) => {
+			const target = document.pages
+				.find((page) => page.id === this.activePageID)
+				?.layers.find((candidate) => candidate.id === id);
+			if (target?.type === 'image') target.erase_mask = undefined;
 		});
 	}
 
@@ -727,6 +937,34 @@ export class ImageEditorController {
 		);
 	}
 
+	applyImageCrop(id: string, window: ImageEditorCropWindow): void {
+		const layer = this.activePage?.layers.find((candidate) => candidate.id === id);
+		if (!layer?.image || layer.locked) return;
+		const result = applyImageEditorCropWindow(layer, window);
+		this.mutate(m.image_editor_crop(), (document) => {
+			const page = document.pages.find((candidate) => candidate.id === this.activePageID);
+			const target = page?.layers.find((candidate) => candidate.id === id);
+			if (!page || !target?.image) return;
+			target.transform = result.transform;
+			target.image.crop = result.crop;
+			this.recalculateAncestorBounds(page, target.parent_id);
+		});
+	}
+
+	resetImageCrop(id: string): void {
+		const layer = this.activePage?.layers.find((candidate) => candidate.id === id);
+		if (!layer?.image || layer.locked) return;
+		const result = resetImageEditorCrop(layer);
+		this.mutate(m.image_editor_reset_crop(), (document) => {
+			const page = document.pages.find((candidate) => candidate.id === this.activePageID);
+			const target = page?.layers.find((candidate) => candidate.id === id);
+			if (!page || !target?.image) return;
+			target.transform = result.transform;
+			target.image.crop = result.crop;
+			this.recalculateAncestorBounds(page, target.parent_id);
+		});
+	}
+
 	updateTransform(
 		id: string,
 		updates: Partial<ImageEditorLayer['transform']>,
@@ -814,16 +1052,30 @@ export class ImageEditorController {
 	}
 
 	deleteSelected(): void {
-		if (this.selectedLayerIDs.length === 0) return;
-		const ids = this.selectedWithDescendants();
+		const page = this.activePage;
+		const roots = this.selectedRootLayers().filter((layer) => !layer.locked);
+		if (!page || roots.length === 0) return;
+		const ids = this.idsWithDescendants(roots.map((layer) => layer.id));
+		const nearestIndex = Math.min(
+			...page.layers.filter((layer) => ids.has(layer.id)).map((layer) => page.layers.indexOf(layer))
+		);
+		const before = this.document;
 		this.mutate('Delete layers', (document) => {
-			const page = document.pages.find((item) => item.id === this.activePageID);
-			if (!page) return;
-			page.layers = page.layers.filter((layer) => !ids.has(layer.id));
-			this.recalculateAllGroupBounds(page);
+			const target = document.pages.find((item) => item.id === this.activePageID);
+			if (!target) return;
+			target.layers = target.layers.filter((layer) => !ids.has(layer.id));
+			this.recalculateAllGroupBounds(target);
 		});
-		this.selectedLayerIDs = [];
-		this.selectionAnchorID = '';
+		if (this.document === before) return;
+		const remaining = this.activePage?.layers ?? [];
+		const start = Math.min(nearestIndex, remaining.length - 1);
+		const candidate = [
+			...(start >= 0 ? [remaining[start]] : []),
+			...remaining.slice(0, Math.max(0, start)).reverse(),
+			...remaining.slice(start + 1)
+		].find((layer) => !layer.locked && layer.visible);
+		this.selectedLayerIDs = candidate ? [candidate.id] : [];
+		this.selectionAnchorID = candidate?.id ?? '';
 	}
 
 	duplicateSelected(): void {
@@ -1140,6 +1392,28 @@ export class ImageEditorController {
 		this.brandKit = brandKit;
 	}
 
+	applyBrandTextStyle(style: ImageEditorBrandTextStyle): void {
+		const ids = new SvelteSet(this.selectedLayerIDs);
+		this.mutate(m.image_editor_apply_text_style(), (document) => {
+			const page = document.pages.find((candidate) => candidate.id === this.activePageID);
+			if (!page) return;
+			for (const layer of page.layers) {
+				if (!ids.has(layer.id) || layer.locked || !layer.text) continue;
+				layer.text = {
+					...layer.text,
+					font_family: style.font_family,
+					font_asset_id: style.font_asset_id,
+					font_weight: style.font_weight,
+					font_style: style.font_style === 'italic' ? 'italic' : 'normal',
+					font_size: style.font_size,
+					color: style.color,
+					line_height: style.line_height,
+					letter_spacing: style.letter_spacing
+				};
+			}
+		});
+	}
+
 	setRecentColors(colors: string[]): void {
 		this.recentColors = [
 			...new Set(
@@ -1159,6 +1433,40 @@ export class ImageEditorController {
 		} catch {
 			// Recent colors are a convenience when browser storage is unavailable.
 		}
+	}
+
+	applySampledColor(color: string, alpha: number): void {
+		const opacity = Math.max(0, Math.min(1, alpha / 255));
+		this.paintColor = color;
+		this.paintOpacity = opacity;
+		this.rememberColor(color);
+		if (this.eyedropperTarget === 'foreground') return;
+		const colorWithAlpha = `${color}${Math.round(opacity * 255)
+			.toString(16)
+			.padStart(2, '0')}`;
+		if (this.eyedropperTarget === 'page_background') {
+			this.setPageBackground({ type: 'solid', color, opacity });
+			return;
+		}
+		const ids = new SvelteSet(this.selectedLayerIDs);
+		this.mutate(m.image_editor_apply_sampled_color(), (document) => {
+			const page = document.pages.find((candidate) => candidate.id === this.activePageID);
+			if (!page) return;
+			for (const layer of page.layers) {
+				if (!ids.has(layer.id) || layer.locked) continue;
+				if (this.eyedropperTarget === 'selected_fill') {
+					if (layer.shape) layer.shape.fill = colorWithAlpha;
+					else if (layer.text) layer.text.color = colorWithAlpha;
+					else if (layer.paint) {
+						layer.paint.color = color;
+						layer.paint.opacity = opacity;
+					}
+				} else if (this.eyedropperTarget === 'selected_stroke') {
+					if (layer.shape) layer.shape.stroke = colorWithAlpha;
+					else if (layer.text) layer.text.stroke_color = colorWithAlpha;
+				}
+			}
+		});
 	}
 
 	private selectionBounds(layers = this.selectedLayers): {

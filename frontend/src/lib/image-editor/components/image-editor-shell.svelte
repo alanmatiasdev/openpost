@@ -25,8 +25,10 @@
 	import { provideImageEditor, ImageEditorController } from '../editor.svelte';
 	import {
 		completeImageEditorReturnToken,
+		createImageEditorDesign,
 		createImageEditorCheckpoint,
 		createImageEditorTemplate,
+		deleteImageEditorDesign,
 		duplicateImageEditorDesign,
 		loadImageEditorDesign,
 		listImageEditorRevisions,
@@ -41,6 +43,12 @@
 		storeLocalImageEditorRecovery
 	} from '../recovery';
 	import { saveGuestImageEditorDesign, storeGuestImageEditorMedia } from '../local-persistence';
+	import {
+		createGuestImageEditorDesignFromDocument,
+		deleteGuestImageEditorDesign,
+		getGuestImageEditorMediaForMigration,
+		replaceGuestImageEditorMediaIDs
+	} from '../local-persistence';
 	import {
 		publicImageEditorPageCountBucket,
 		trackPublicImageEditorEvent
@@ -65,6 +73,7 @@
 		ImageEditorTemplate,
 		ImageEditorTool
 	} from '../types';
+	import type { SelectionPoint } from '../selection';
 	import { getAuthenticatedMediaURL } from '$lib/media-url';
 	import { uploadMediaFile } from '$lib/media-upload-client';
 	import ArrowLeftIcon from 'lucide-svelte/icons/arrow-left';
@@ -95,8 +104,21 @@
 	import SquareIcon from 'lucide-svelte/icons/square';
 	import CircleIcon from 'lucide-svelte/icons/circle';
 	import MinusIcon from 'lucide-svelte/icons/minus';
+	import CropIcon from 'lucide-svelte/icons/crop';
+	import PipetteIcon from 'lucide-svelte/icons/pipette';
 	import { m } from '$lib/paraglide/messages';
 	import { startImageEditorMetric } from '../telemetry';
+	import {
+		imageEditorCommandForKeyboardEvent,
+		imageEditorShortcutLabel,
+		IMAGE_EDITOR_COMMANDS,
+		type ImageEditorCommandID
+	} from '../commands';
+	import {
+		createImageEditorProjectArchive,
+		parseImageEditorProjectArchive,
+		safeImageEditorProjectFilename
+	} from '../portable-project';
 
 	let {
 		initial,
@@ -161,6 +183,22 @@
 	let exportProgress = $state('');
 	let exportError = $state('');
 	let exportSuccessfulByPage = $state.raw<Record<string, string>>({});
+	let externalDropBusy = $state(false);
+	let externalDropProgress = $state('');
+	let externalDropError = $state('');
+	let externalDropAbort: AbortController | null = null;
+	let externalDropRetry = $state.raw<{
+		files: File[];
+		point: SelectionPoint;
+		offset: number;
+	} | null>(null);
+	let projectBusy = $state(false);
+	let projectError = $state('');
+	let projectFileInput = $state<HTMLInputElement | null>(null);
+	let toolPreferencesReady = $state(false);
+	let guideDialogOpen = $state(false);
+	let guideAxis = $state<'horizontal' | 'vertical'>('vertical');
+	let guidePosition = $state(0);
 	let backgroundBusy = $state(false);
 	let backgroundProgress = $state('');
 	let backgroundError = $state('');
@@ -216,6 +254,34 @@
 		(editor.document?.width_px ?? 0) * (editor.document?.height_px ?? 0) * exportPages.length
 	);
 
+	$effect(() => {
+		if (!toolPreferencesReady) return;
+		const preferences = {
+			selectionMode: editor.selectionMode,
+			magicSelectTolerance: editor.magicSelectTolerance,
+			magicSelectContiguous: editor.magicSelectContiguous,
+			sampleAllLayers: editor.sampleAllLayers,
+			eyedropperTarget: editor.eyedropperTarget,
+			pencilSize: editor.pencilSize,
+			pencilRoughness: editor.pencilRoughness,
+			pencilSmoothing: editor.pencilSmoothing,
+			pencilPressure: editor.pencilPressure,
+			eraserSize: editor.eraserSize,
+			magicEraserTolerance: editor.magicEraserTolerance,
+			magicEraserContiguous: editor.magicEraserContiguous,
+			bucketTolerance: editor.bucketTolerance,
+			bucketContiguous: editor.bucketContiguous,
+			paintOpacity: editor.paintOpacity,
+			gradientType: editor.gradientType,
+			gradientReverse: editor.gradientReverse
+		};
+		try {
+			localStorage.setItem('openpost-image-editor-tools-v1', JSON.stringify(preferences));
+		} catch {
+			// Tool preferences are optional when browser storage is unavailable.
+		}
+	});
+
 	function initializeShell() {
 		if (!editor.document) {
 			editor.load(initial);
@@ -238,6 +304,77 @@
 
 	onMount(() => {
 		shortcutModifier = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl';
+		try {
+			const tools = JSON.parse(
+				localStorage.getItem('openpost-image-editor-tools-v1') || '{}'
+			) as Partial<{
+				selectionMode: typeof editor.selectionMode;
+				magicSelectTolerance: number;
+				magicSelectContiguous: boolean;
+				sampleAllLayers: boolean;
+				eyedropperTarget: typeof editor.eyedropperTarget;
+				pencilSize: number;
+				pencilRoughness: number;
+				pencilSmoothing: number;
+				pencilPressure: boolean;
+				eraserSize: number;
+				magicEraserTolerance: number;
+				magicEraserContiguous: boolean;
+				bucketTolerance: number;
+				bucketContiguous: boolean;
+				paintOpacity: number;
+				gradientType: typeof editor.gradientType;
+				gradientReverse: boolean;
+			}>;
+			if (
+				tools.selectionMode &&
+				['replace', 'add', 'subtract', 'intersect'].includes(tools.selectionMode)
+			)
+				editor.selectionMode = tools.selectionMode;
+			if (Number.isFinite(tools.magicSelectTolerance))
+				editor.magicSelectTolerance = Math.max(0, Math.min(255, tools.magicSelectTolerance!));
+			if (typeof tools.magicSelectContiguous === 'boolean')
+				editor.magicSelectContiguous = tools.magicSelectContiguous;
+			if (typeof tools.sampleAllLayers === 'boolean')
+				editor.sampleAllLayers = tools.sampleAllLayers;
+			if (
+				tools.eyedropperTarget &&
+				['foreground', 'selected_fill', 'selected_stroke', 'page_background'].includes(
+					tools.eyedropperTarget
+				)
+			)
+				editor.eyedropperTarget = tools.eyedropperTarget;
+			if (Number.isFinite(tools.pencilSize))
+				editor.pencilSize = Math.max(1, Math.min(512, tools.pencilSize!));
+			if (Number.isFinite(tools.pencilRoughness))
+				editor.pencilRoughness = Math.max(0, Math.min(1, tools.pencilRoughness!));
+			if (Number.isFinite(tools.pencilSmoothing))
+				editor.pencilSmoothing = Math.max(0, Math.min(0.95, tools.pencilSmoothing!));
+			if (typeof tools.pencilPressure === 'boolean') editor.pencilPressure = tools.pencilPressure;
+			if (Number.isFinite(tools.eraserSize))
+				editor.eraserSize = Math.max(1, Math.min(512, tools.eraserSize!));
+			if (Number.isFinite(tools.magicEraserTolerance))
+				editor.magicEraserTolerance = Math.max(0, Math.min(255, tools.magicEraserTolerance!));
+			if (typeof tools.magicEraserContiguous === 'boolean')
+				editor.magicEraserContiguous = tools.magicEraserContiguous;
+			if (Number.isFinite(tools.bucketTolerance))
+				editor.bucketTolerance = Math.max(0, Math.min(255, tools.bucketTolerance!));
+			if (typeof tools.bucketContiguous === 'boolean')
+				editor.bucketContiguous = tools.bucketContiguous;
+			if (Number.isFinite(tools.paintOpacity))
+				editor.paintOpacity = Math.max(0, Math.min(1, tools.paintOpacity!));
+			if (
+				tools.gradientType &&
+				['linear', 'radial', 'angle', 'reflected', 'diamond'].includes(tools.gradientType)
+			)
+				editor.gradientType = tools.gradientType;
+			if (typeof tools.gradientReverse === 'boolean')
+				editor.gradientReverse = tools.gradientReverse;
+		} catch {
+			// Invalid tool preferences fall back to tested defaults.
+		} finally {
+			toolPreferencesReady = true;
+		}
 		try {
 			if (!localStorage.getItem('openpost-image-editor-first-edit-v1')) {
 				const firstTextLayer = editor.activePage?.layers.find((layer) => layer.type === 'text');
@@ -272,6 +409,26 @@
 			constrainDesktopPanelWidths();
 		} catch {
 			// Invalid local layout preferences fall back to the balanced defaults.
+		}
+		try {
+			const view = JSON.parse(localStorage.getItem('openpost-image-editor-view-v1') || '{}') as {
+				snapping?: boolean;
+				rulers?: boolean;
+				guides?: boolean;
+				grid?: boolean;
+				snapToGrid?: boolean;
+				gridSize?: number;
+			};
+			if (typeof view.snapping === 'boolean') editor.snappingEnabled = view.snapping;
+			if (typeof view.rulers === 'boolean') editor.showRulers = view.rulers;
+			if (typeof view.guides === 'boolean') editor.showGuides = view.guides;
+			if (typeof view.grid === 'boolean') editor.showGrid = view.grid;
+			if (typeof view.snapToGrid === 'boolean') editor.snapToGrid = view.snapToGrid;
+			if ([10, 25, 50, 100, 200].includes(view.gridSize ?? 0)) {
+				editor.gridSize = view.gridSize!;
+			}
+		} catch {
+			// Invalid view preferences fall back to snapping enabled.
 		}
 		if (window.innerWidth < 1024 && window.innerHeight <= 520) {
 			editor.pagesExpanded = false;
@@ -447,6 +604,52 @@
 		} catch {
 			// Layout persistence is optional when browser storage is unavailable.
 		}
+	}
+
+	function setSnapping(enabled: boolean): void {
+		editor.snappingEnabled = enabled;
+		statusAnnouncement = enabled ? m.image_editor_snapping_on() : m.image_editor_snapping_off();
+		storeViewPreferences();
+	}
+
+	function storeViewPreferences(): void {
+		try {
+			localStorage.setItem(
+				'openpost-image-editor-view-v1',
+				JSON.stringify({
+					snapping: editor.snappingEnabled,
+					rulers: editor.showRulers,
+					guides: editor.showGuides,
+					grid: editor.showGrid,
+					snapToGrid: editor.snapToGrid,
+					gridSize: editor.gridSize
+				})
+			);
+		} catch {
+			// View preferences are optional when browser storage is unavailable.
+		}
+	}
+
+	function setViewOption(
+		option: 'rulers' | 'guides' | 'grid' | 'snapToGrid',
+		enabled: boolean
+	): void {
+		if (option === 'rulers') editor.showRulers = enabled;
+		else if (option === 'guides') editor.showGuides = enabled;
+		else if (option === 'grid') editor.showGrid = enabled;
+		else editor.snapToGrid = enabled;
+		storeViewPreferences();
+	}
+
+	function openGuideDialog(): void {
+		guideAxis = 'vertical';
+		guidePosition = Math.round((editor.document?.width_px ?? 0) / 2);
+		guideDialogOpen = true;
+	}
+
+	function addNumericGuide(): void {
+		editor.addGuide(guideAxis, guidePosition);
+		guideDialogOpen = false;
 	}
 
 	function resizePanelWithKeyboard(
@@ -704,6 +907,113 @@
 		await goto(resolve(`/image-editor/${duplicate.id}` as '/'));
 	}
 
+	async function projectMediaSource(id: string): Promise<{
+		name: string;
+		mimeType: string;
+		blob: Blob;
+	}> {
+		if (guestMode) {
+			try {
+				const local = await getGuestImageEditorMediaForMigration(id);
+				return { name: local.name, mimeType: local.mimeType, blob: local.blob };
+			} catch {
+				// Built-in templates can retain server-hosted source media in a guest document.
+			}
+		}
+		const response = await fetch(getAuthenticatedMediaURL(`/media/${id}`), {
+			credentials: 'include'
+		});
+		if (!response.ok) throw new Error(m.image_editor_project_media_failed());
+		const blob = await response.blob();
+		const extension =
+			blob.type === 'image/png'
+				? 'png'
+				: blob.type === 'image/webp'
+					? 'webp'
+					: blob.type === 'image/jpeg'
+						? 'jpg'
+						: blob.type.includes('font') || blob.type.includes('woff')
+							? 'woff2'
+							: 'bin';
+		return { name: `${id}.${extension}`, mimeType: blob.type, blob };
+	}
+
+	async function exportProject(): Promise<void> {
+		if (!editor.document || projectBusy) return;
+		projectBusy = true;
+		projectError = '';
+		try {
+			const blob = await createImageEditorProjectArchive(editor.document, projectMediaSource);
+			const url = URL.createObjectURL(blob);
+			const anchor = document.createElement('a');
+			anchor.href = url;
+			anchor.download = safeImageEditorProjectFilename(editor.document.title);
+			anchor.click();
+			setTimeout(() => URL.revokeObjectURL(url), 0);
+			statusAnnouncement = m.image_editor_project_exported();
+		} catch (cause) {
+			projectError =
+				cause instanceof Error ? cause.message : m.image_editor_project_export_failed();
+			statusAnnouncement = projectError;
+		} finally {
+			projectBusy = false;
+		}
+	}
+
+	async function importProject(event: Event): Promise<void> {
+		const input = event.currentTarget as HTMLInputElement;
+		const file = input.files?.[0];
+		input.value = '';
+		if (!file || projectBusy) return;
+		projectBusy = true;
+		projectError = '';
+		let createdGuestID = '';
+		let createdCloudID = '';
+		try {
+			const parsed = await parseImageEditorProjectArchive(file);
+			const replacements = new Map<string, string>();
+			if (guestMode) {
+				const created = await createGuestImageEditorDesignFromDocument(parsed.document);
+				createdGuestID = created.id;
+				for (const entry of parsed.media) {
+					const uploaded = await storeGuestImageEditorMedia(created.id, entry.file);
+					replacements.set(entry.id, uploaded.id);
+				}
+				const imported = replaceGuestImageEditorMediaIDs(parsed.document, replacements);
+				await saveGuestImageEditorDesign(created.id, imported);
+				await goto(resolve(`/image-editor/${created.id}` as '/'));
+				return;
+			}
+			for (const entry of parsed.media) {
+				const uploaded = await uploadMediaFile({
+					workspaceId: editor.workspaceID,
+					file: entry.file,
+					source: 'upload',
+					retentionClass: 'library'
+				});
+				replacements.set(entry.id, uploaded.id);
+			}
+			const imported = replaceGuestImageEditorMediaIDs(parsed.document, replacements);
+			const created = await createImageEditorDesign(editor.workspaceID, {
+				title: imported.title,
+				preset_key: 'custom',
+				width_px: imported.width_px,
+				height_px: imported.height_px
+			});
+			createdCloudID = created.id;
+			await saveImageEditorDesign(created.id, created.revision, imported);
+			await goto(resolve(`/image-editor/${created.id}` as '/'));
+		} catch (cause) {
+			if (createdGuestID) await deleteGuestImageEditorDesign(createdGuestID).catch(() => undefined);
+			if (createdCloudID) await deleteImageEditorDesign(createdCloudID).catch(() => undefined);
+			projectError =
+				cause instanceof Error ? cause.message : m.image_editor_project_import_failed();
+			statusAnnouncement = projectError;
+		} finally {
+			projectBusy = false;
+		}
+	}
+
 	async function goBack(): Promise<void> {
 		if (editor.canEdit) {
 			const saved = editor.saveState === 'saved' ? true : await saveNow(undefined, 'close');
@@ -867,12 +1177,27 @@
 			insertShape(shapeSlotKind);
 			return;
 		}
+		if (
+			tool === 'crop' &&
+			!editor.selectedLayers.some((layer) => layer.type === 'image' && !layer.locked)
+		)
+			return;
 		editor.activeTool = tool;
-		if (['select', 'marquee', 'ellipse_marquee', 'lasso', 'magic_wand', 'hand'].includes(tool)) {
+		if (
+			[
+				'select',
+				'marquee',
+				'ellipse_marquee',
+				'lasso',
+				'magic_wand',
+				'eyedropper',
+				'hand'
+			].includes(tool)
+		) {
 			mobileSelectTool = tool;
 		}
 		if (['text', 'pencil', 'bucket', 'gradient'].includes(tool)) mobileDrawTool = tool;
-		if (['eraser', 'magic_eraser'].includes(tool)) mobileRetouchTool = tool;
+		if (['crop', 'eraser', 'magic_eraser'].includes(tool)) mobileRetouchTool = tool;
 		if (isMarqueeTool(tool)) marqueeSlotTool = tool;
 		if (isFillTool(tool)) fillSlotTool = tool;
 		if (isEraserTool(tool)) eraserSlotTool = tool;
@@ -900,6 +1225,71 @@
 		if (window.innerWidth < 1024) mobileSheet = 'assets';
 	}
 
+	async function placeExternalFiles(
+		files: File[],
+		point: SelectionPoint,
+		offsetBase = 0
+	): Promise<void> {
+		if (!editor.canEdit || files.length === 0 || externalDropBusy) return;
+		externalDropBusy = true;
+		externalDropError = '';
+		externalDropRetry = null;
+		externalDropAbort = new AbortController();
+		let inserted = 0;
+		let currentIndex = 0;
+		try {
+			for (const [index, file] of files.entries()) {
+				currentIndex = index;
+				if (externalDropAbort.signal.aborted) throw new DOMException('Aborted', 'AbortError');
+				externalDropProgress = m.image_editor_importing_files({
+					current: index + 1,
+					total: files.length
+				});
+				const media = guestMode
+					? await storeGuestImageEditorMedia(editor.id, file)
+					: await uploadMediaFile({
+							workspaceId: editor.workspaceID,
+							file,
+							source: 'upload',
+							retentionClass: 'library',
+							signal: externalDropAbort.signal
+						});
+				const offset = (offsetBase + index) * 24;
+				editor.addImage(
+					{
+						id: media.id,
+						name: media.original_filename,
+						...('width' in media && typeof media.width === 'number' ? { width: media.width } : {}),
+						...('height' in media && typeof media.height === 'number'
+							? { height: media.height }
+							: {})
+					},
+					{ x: point.x + offset, y: point.y + offset }
+				);
+				inserted++;
+			}
+			statusAnnouncement = m.image_editor_imported_files({ count: inserted });
+		} catch (cause) {
+			if (cause instanceof DOMException && cause.name === 'AbortError') {
+				statusAnnouncement = m.image_editor_import_cancelled({ count: inserted });
+			} else {
+				externalDropRetry = {
+					files: files.slice(currentIndex),
+					point,
+					offset: offsetBase + currentIndex
+				};
+				externalDropError =
+					cause instanceof Error ? cause.message : m.image_editor_external_drop_failed();
+				statusAnnouncement = externalDropError;
+			}
+		} finally {
+			if (inserted > 0) editor.refreshMediaLibrary();
+			externalDropBusy = false;
+			externalDropProgress = '';
+			externalDropAbort = null;
+		}
+	}
+
 	function editableTarget(target: EventTarget | null): boolean {
 		return (
 			target instanceof HTMLInputElement ||
@@ -911,71 +1301,7 @@
 
 	function handleShortcut(event: KeyboardEvent): void {
 		if (editableTarget(event.target)) return;
-		const modifier = event.metaKey || event.ctrlKey;
 		const key = event.key.toLowerCase();
-		if (modifier && key === 's') {
-			event.preventDefault();
-			void saveNow();
-			return;
-		}
-		if (modifier && key === 'z') {
-			event.preventDefault();
-			if (event.shiftKey) editor.redo();
-			else editor.undo();
-			return;
-		}
-		if (modifier && key === 'y') {
-			event.preventDefault();
-			editor.redo();
-			return;
-		}
-		if (modifier && key === 'j') {
-			event.preventDefault();
-			editor.duplicateSelected();
-			return;
-		}
-		if (modifier && key === 'g') {
-			event.preventDefault();
-			if (event.shiftKey) editor.ungroupSelected();
-			else editor.groupSelected();
-			return;
-		}
-		if (modifier && key === 'a') {
-			event.preventDefault();
-			editor.selectAll();
-			return;
-		}
-		if (modifier && key === 'd') {
-			event.preventDefault();
-			if (editor.pixelSelection) editor.clearPixelSelection();
-			else editor.selectLayer('');
-			return;
-		}
-		if (modifier && key === 'c') {
-			event.preventDefault();
-			void copySelection();
-			return;
-		}
-		if (modifier && key === 'x') {
-			event.preventDefault();
-			void copySelection().then(() => editor.deleteSelected());
-			return;
-		}
-		if (modifier && key === 'v') {
-			event.preventDefault();
-			void pasteSelection();
-			return;
-		}
-		if (modifier && key === '0') {
-			event.preventDefault();
-			editor.fitZoom();
-			return;
-		}
-		if (modifier && key === '1') {
-			event.preventDefault();
-			editor.zoom = 1;
-			return;
-		}
 		if (
 			editor.pixelSelection &&
 			['arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key)
@@ -998,36 +1324,103 @@
 			editor.nudgeSelected(deltaX, deltaY);
 			return;
 		}
-		if (key === 'delete' || key === 'backspace') {
+		const command = imageEditorCommandForKeyboardEvent(event);
+		if (command) {
 			event.preventDefault();
-			editor.deleteSelected();
-			return;
+			executeEditorCommand(command);
 		}
-		const tools: Record<string, ImageEditorTool> = {
-			v: 'select',
-			l: 'lasso',
-			w: 'magic_wand',
-			b: 'pencil',
-			p: 'pencil',
-			e: event.shiftKey ? 'magic_eraser' : 'eraser',
-			g: event.shiftKey ? 'bucket' : 'gradient',
-			t: 'text',
-			h: 'hand',
-			z: 'zoom'
+	}
+
+	function executeEditorCommand(command: ImageEditorCommandID): void {
+		const handlers: Record<ImageEditorCommandID, () => void> = {
+			save: () => void saveNow(),
+			undo: undoEditor,
+			redo: redoEditor,
+			duplicate: () => editor.duplicateSelected(),
+			group: () => editor.groupSelected(),
+			ungroup: () => editor.ungroupSelected(),
+			select_all: () => editor.selectAll(),
+			deselect: () =>
+				editor.pixelSelection ? editor.clearPixelSelection() : editor.selectLayer(''),
+			copy: () => void copySelection(),
+			cut: () => void copySelection().then(() => editor.deleteSelected()),
+			paste: () => void pasteSelection(),
+			delete: () => editor.deleteSelected(),
+			fit_canvas: () => editor.fitZoom(),
+			zoom_100: () => (editor.zoom = 1),
+			focus_canvas: () => (focusedCanvas = !focusedCanvas),
+			tool_select: () => setTool('select'),
+			tool_marquee: () => setTool('marquee'),
+			tool_ellipse_marquee: () => setTool('ellipse_marquee'),
+			tool_lasso: () => setTool('lasso'),
+			tool_magic_wand: () => setTool('magic_wand'),
+			tool_crop: () => setTool('crop'),
+			tool_eyedropper: () => setTool('eyedropper'),
+			tool_text: () => setTool('text'),
+			tool_shape: () => insertShape(shapeSlotKind),
+			tool_pencil: () => setTool('pencil'),
+			tool_eraser: () => setTool('eraser'),
+			tool_magic_eraser: () => setTool('magic_eraser'),
+			tool_bucket: () => setTool('bucket'),
+			tool_gradient: () => setTool('gradient'),
+			tool_hand: () => setTool('hand'),
+			tool_zoom: () => setTool('zoom')
 		};
-		if (key === 'u') {
-			event.preventDefault();
-			insertShape(shapeSlotKind);
-			return;
-		}
-		if (key === 'm') {
-			event.preventDefault();
-			setTool(event.shiftKey ? 'ellipse_marquee' : 'marquee');
-		} else if (tools[key]) {
-			event.preventDefault();
-			setTool(tools[key]);
-		}
-		if (key === 'f') focusedCanvas = !focusedCanvas;
+		handlers[command]();
+	}
+
+	function undoEditor(): void {
+		const label = editor.undoLabel;
+		editor.undo();
+		if (label) statusAnnouncement = m.image_editor_undid({ name: label });
+	}
+
+	function redoEditor(): void {
+		const label = editor.redoLabel;
+		editor.redo();
+		if (label) statusAnnouncement = m.image_editor_redid({ name: label });
+	}
+
+	function commandShortcut(id: ImageEditorCommandID): string {
+		const command = IMAGE_EDITOR_COMMANDS.find((candidate) => candidate.id === id);
+		return command ? imageEditorShortcutLabel(command, shortcutModifier) : '';
+	}
+
+	function commandLabel(id: ImageEditorCommandID): string {
+		const labels: Record<ImageEditorCommandID, string> = {
+			save: m.common_save(),
+			undo: m.image_editor_undo(),
+			redo: m.image_editor_redo(),
+			duplicate: m.image_editor_duplicate(),
+			group: m.image_editor_group(),
+			ungroup: m.image_editor_ungroup(),
+			select_all: m.image_editor_select_all(),
+			deselect: m.image_editor_deselect(),
+			copy: m.common_copy(),
+			cut: m.image_editor_cut(),
+			paste: m.image_editor_paste(),
+			delete: m.common_delete(),
+			fit_canvas: m.image_editor_fit_canvas(),
+			zoom_100: m.image_editor_zoom_100(),
+			focus_canvas: m.image_editor_focused_canvas(),
+			tool_select: m.image_editor_select_objects(),
+			tool_marquee: m.image_editor_rectangle_select(),
+			tool_ellipse_marquee: m.image_editor_ellipse_select(),
+			tool_lasso: m.image_editor_lasso_select(),
+			tool_magic_wand: m.image_editor_magic_select(),
+			tool_crop: m.image_editor_crop(),
+			tool_eyedropper: m.image_editor_eyedropper(),
+			tool_text: m.image_editor_text(),
+			tool_shape: m.image_editor_shape(),
+			tool_pencil: m.image_editor_pencil(),
+			tool_eraser: m.image_editor_erase(),
+			tool_magic_eraser: m.image_editor_magic_erase(),
+			tool_bucket: m.image_editor_paint_bucket(),
+			tool_gradient: m.image_editor_gradient(),
+			tool_hand: m.image_editor_hand(),
+			tool_zoom: m.image_editor_zoom()
+		};
+		return labels[id];
 	}
 
 	async function copySelection(): Promise<void> {
@@ -1090,8 +1483,9 @@
 						workspaceId: editor.workspaceID,
 						file,
 						source: 'upload',
-						retentionClass: 'temporary'
+						retentionClass: 'library'
 					});
+			editor.refreshMediaLibrary();
 			editor.addImage({ id: uploaded.id, name: m.image_editor_pasted_image() });
 			return;
 		}
@@ -1166,8 +1560,9 @@
 						parentMediaId: layer.image.media_id,
 						designDocumentId: editor.id,
 						designPageId: editor.activePageID,
-						retentionClass: 'temporary'
+						retentionClass: 'library'
 					});
+			editor.refreshMediaLibrary();
 			editor.updateLayer(layer.id, {
 				image: { ...layer.image, media_id: uploaded.id }
 			});
@@ -1308,6 +1703,8 @@
 		{ key: 'marquee', label: m.image_editor_pixel_select(), icon: RectangleSelectIcon },
 		{ key: 'lasso', label: m.image_editor_lasso_select(), icon: LassoSelectIcon },
 		{ key: 'magic_wand', label: m.image_editor_magic_select(), icon: WandIcon },
+		{ key: 'crop', label: m.image_editor_crop(), icon: CropIcon },
+		{ key: 'eyedropper', label: m.image_editor_eyedropper(), icon: PipetteIcon },
 		{ key: 'text', label: m.image_editor_text(), icon: TypeIcon },
 		{ key: 'shape', label: m.image_editor_shape(), icon: SquareIcon },
 		{ key: 'pencil', label: m.image_editor_pencil(), icon: PencilIcon },
@@ -1365,6 +1762,14 @@
 	{@attach initializeShell}
 >
 	<div class="sr-only" aria-live="polite">{statusAnnouncement}</div>
+	<Input
+		bind:ref={projectFileInput}
+		type="file"
+		accept=".openpost-image,application/x-openpost-image-project+zip,application/zip"
+		class="sr-only"
+		tabindex={-1}
+		onchange={importProject}
+	/>
 	<header
 		class="flex h-14 shrink-0 items-center gap-1 border-b bg-background/95 px-2 backdrop-blur md:h-12"
 	>
@@ -1387,7 +1792,7 @@
 					<Menubar.Item onclick={() => saveNow()} disabled={!editor.canEdit}>
 						<SaveIcon />
 						{m.common_save()}
-						<Menubar.Shortcut>{shortcutModifier} S</Menubar.Shortcut>
+						<Menubar.Shortcut>{commandShortcut('save')}</Menubar.Shortcut>
 					</Menubar.Item>
 					{#if guestMode}
 						<Menubar.Item onclick={saveToOpenPost}>
@@ -1406,6 +1811,13 @@
 						{m.image_editor_resize_design()}
 					</Menubar.Item>
 					<Menubar.Separator />
+					<Menubar.Item onclick={() => void exportProject()} disabled={projectBusy}>
+						{m.image_editor_export_project()}
+					</Menubar.Item>
+					<Menubar.Item onclick={() => projectFileInput?.click()} disabled={projectBusy}>
+						{m.image_editor_import_project()}
+					</Menubar.Item>
+					<Menubar.Separator />
 					<Menubar.Item onclick={() => openExport('download')}>
 						<DownloadIcon />
 						{m.image_editor_export()}
@@ -1415,13 +1827,17 @@
 			<Menubar.Menu value="edit">
 				<Menubar.Trigger>{m.image_editor_edit()}</Menubar.Trigger>
 				<Menubar.Content class="min-w-44">
-					<Menubar.Item onclick={() => editor.undo()} disabled={!editor.canUndo}>
-						{m.image_editor_undo()}
-						<Menubar.Shortcut>{shortcutModifier} Z</Menubar.Shortcut>
+					<Menubar.Item onclick={undoEditor} disabled={!editor.canUndo}>
+						{editor.undoLabel
+							? m.image_editor_undo_named({ name: editor.undoLabel })
+							: m.image_editor_undo()}
+						<Menubar.Shortcut>{commandShortcut('undo')}</Menubar.Shortcut>
 					</Menubar.Item>
-					<Menubar.Item onclick={() => editor.redo()} disabled={!editor.canRedo}>
-						{m.image_editor_redo()}
-						<Menubar.Shortcut>{shortcutModifier} ⇧ Z</Menubar.Shortcut>
+					<Menubar.Item onclick={redoEditor} disabled={!editor.canRedo}>
+						{editor.redoLabel
+							? m.image_editor_redo_named({ name: editor.redoLabel })
+							: m.image_editor_redo()}
+						<Menubar.Shortcut>{commandShortcut('redo')}</Menubar.Shortcut>
 					</Menubar.Item>
 					<Menubar.Separator />
 					<Menubar.Item
@@ -1429,7 +1845,7 @@
 						disabled={editor.selectedLayerIDs.length === 0}
 					>
 						{m.image_editor_duplicate()}
-						<Menubar.Shortcut>{shortcutModifier} J</Menubar.Shortcut>
+						<Menubar.Shortcut>{commandShortcut('duplicate')}</Menubar.Shortcut>
 					</Menubar.Item>
 					<Menubar.Item
 						onclick={() => editor.deleteSelected()}
@@ -1449,7 +1865,7 @@
 					>
 						<GroupIcon />
 						{m.image_editor_group()}
-						<Menubar.Shortcut>{shortcutModifier} G</Menubar.Shortcut>
+						<Menubar.Shortcut>{commandShortcut('group')}</Menubar.Shortcut>
 					</Menubar.Item>
 					<Menubar.Item
 						onclick={() => editor.ungroupSelected()}
@@ -1457,7 +1873,7 @@
 					>
 						<UngroupIcon />
 						{m.image_editor_ungroup()}
-						<Menubar.Shortcut>{shortcutModifier} ⇧ G</Menubar.Shortcut>
+						<Menubar.Shortcut>{commandShortcut('ungroup')}</Menubar.Shortcut>
 					</Menubar.Item>
 					<Menubar.Item
 						onclick={() => removeBackground()}
@@ -1478,13 +1894,67 @@
 						{m.image_editor_toggle_inspector()}
 					</Menubar.CheckboxItem>
 					<Menubar.Separator />
+					<Menubar.CheckboxItem checked={editor.snappingEnabled} onCheckedChange={setSnapping}>
+						{m.image_editor_snapping()}
+						<Menubar.Shortcut>{shortcutModifier} drag</Menubar.Shortcut>
+					</Menubar.CheckboxItem>
+					<Menubar.CheckboxItem
+						checked={editor.showRulers}
+						onCheckedChange={(checked) => setViewOption('rulers', checked)}
+					>
+						{m.image_editor_rulers()}
+					</Menubar.CheckboxItem>
+					<Menubar.CheckboxItem
+						checked={editor.showGuides}
+						onCheckedChange={(checked) => setViewOption('guides', checked)}
+					>
+						{m.image_editor_guides()}
+					</Menubar.CheckboxItem>
+					<Menubar.CheckboxItem
+						checked={editor.showGrid}
+						onCheckedChange={(checked) => setViewOption('grid', checked)}
+					>
+						{m.image_editor_grid()}
+					</Menubar.CheckboxItem>
+					<Menubar.CheckboxItem
+						checked={editor.snapToGrid}
+						onCheckedChange={(checked) => setViewOption('snapToGrid', checked)}
+					>
+						{m.image_editor_snap_grid()}
+					</Menubar.CheckboxItem>
+					<Menubar.Sub>
+						<Menubar.SubTrigger>{m.image_editor_grid_spacing()}</Menubar.SubTrigger>
+						<Menubar.SubContent>
+							{#each [10, 25, 50, 100, 200] as size (size)}
+								<Menubar.Item
+									onclick={() => {
+										editor.gridSize = size;
+										storeViewPreferences();
+									}}
+								>
+									{size} px{editor.gridSize === size ? ' ✓' : ''}
+								</Menubar.Item>
+							{/each}
+						</Menubar.SubContent>
+					</Menubar.Sub>
+					<Menubar.Item
+						disabled={!editor.activePage?.guides?.horizontal.length &&
+							!editor.activePage?.guides?.vertical.length}
+						onclick={() => editor.clearGuides()}
+					>
+						{m.image_editor_clear_guides()}
+					</Menubar.Item>
+					<Menubar.Item onclick={openGuideDialog} disabled={!editor.canEdit}>
+						{m.image_editor_add_guide_ellipsis()}
+					</Menubar.Item>
+					<Menubar.Separator />
 					<Menubar.Item onclick={() => editor.fitZoom()}>
 						{m.image_editor_fit_canvas()}
-						<Menubar.Shortcut>{shortcutModifier} 0</Menubar.Shortcut>
+						<Menubar.Shortcut>{commandShortcut('fit_canvas')}</Menubar.Shortcut>
 					</Menubar.Item>
 					<Menubar.Item onclick={() => (editor.zoom = 1)}>
 						{m.image_editor_zoom_100()}
-						<Menubar.Shortcut>{shortcutModifier} 1</Menubar.Shortcut>
+						<Menubar.Shortcut>{commandShortcut('zoom_100')}</Menubar.Shortcut>
 					</Menubar.Item>
 					<Menubar.CheckboxItem
 						checked={focusedCanvas}
@@ -1538,17 +2008,21 @@
 				variant="ghost"
 				size="icon-sm"
 				class="size-11 md:size-11 lg:size-8"
-				onclick={() => editor.undo()}
+				onclick={undoEditor}
 				disabled={!editor.canUndo}
-				aria-label={m.image_editor_undo()}><UndoIcon /></Button
+				aria-label={editor.undoLabel
+					? m.image_editor_undo_named({ name: editor.undoLabel })
+					: m.image_editor_undo()}><UndoIcon /></Button
 			>
 			<Button
 				variant="ghost"
 				size="icon-sm"
 				class="size-11 md:size-11 lg:size-8"
-				onclick={() => editor.redo()}
+				onclick={redoEditor}
 				disabled={!editor.canRedo}
-				aria-label={m.image_editor_redo()}><RedoIcon /></Button
+				aria-label={editor.redoLabel
+					? m.image_editor_redo_named({ name: editor.redoLabel })
+					: m.image_editor_redo()}><RedoIcon /></Button
 			>
 			<DropdownMenu.Root>
 				<DropdownMenu.Trigger>
@@ -1565,13 +2039,17 @@
 					{/snippet}
 				</DropdownMenu.Trigger>
 				<DropdownMenu.Content align="end">
-					<DropdownMenu.Item onclick={() => editor.undo()} disabled={!editor.canUndo}>
+					<DropdownMenu.Item onclick={undoEditor} disabled={!editor.canUndo}>
 						<UndoIcon />
-						{m.image_editor_undo()}
+						{editor.undoLabel
+							? m.image_editor_undo_named({ name: editor.undoLabel })
+							: m.image_editor_undo()}
 					</DropdownMenu.Item>
-					<DropdownMenu.Item onclick={() => editor.redo()} disabled={!editor.canRedo}>
+					<DropdownMenu.Item onclick={redoEditor} disabled={!editor.canRedo}>
 						<RedoIcon />
-						{m.image_editor_redo()}
+						{editor.redoLabel
+							? m.image_editor_redo_named({ name: editor.redoLabel })
+							: m.image_editor_redo()}
 					</DropdownMenu.Item>
 					<DropdownMenu.Separator />
 					<DropdownMenu.Item onclick={() => saveNow()} disabled={!editor.canEdit}
@@ -1596,6 +2074,49 @@
 					<DropdownMenu.Item onclick={() => (mobileSheet = 'properties')}
 						>{m.image_editor_properties()}</DropdownMenu.Item
 					>
+					<DropdownMenu.Item onclick={() => void exportProject()} disabled={projectBusy}>
+						{m.image_editor_export_project()}
+					</DropdownMenu.Item>
+					<DropdownMenu.Item onclick={() => projectFileInput?.click()} disabled={projectBusy}>
+						{m.image_editor_import_project()}
+					</DropdownMenu.Item>
+					<DropdownMenu.CheckboxItem checked={editor.snappingEnabled} onCheckedChange={setSnapping}>
+						{m.image_editor_snapping()}
+					</DropdownMenu.CheckboxItem>
+					<DropdownMenu.CheckboxItem
+						checked={editor.showRulers}
+						onCheckedChange={(checked) => setViewOption('rulers', checked)}
+					>
+						{m.image_editor_rulers()}
+					</DropdownMenu.CheckboxItem>
+					<DropdownMenu.CheckboxItem
+						checked={editor.showGuides}
+						onCheckedChange={(checked) => setViewOption('guides', checked)}
+					>
+						{m.image_editor_guides()}
+					</DropdownMenu.CheckboxItem>
+					<DropdownMenu.CheckboxItem
+						checked={editor.showGrid}
+						onCheckedChange={(checked) => setViewOption('grid', checked)}
+					>
+						{m.image_editor_grid()}
+					</DropdownMenu.CheckboxItem>
+					<DropdownMenu.CheckboxItem
+						checked={editor.snapToGrid}
+						onCheckedChange={(checked) => setViewOption('snapToGrid', checked)}
+					>
+						{m.image_editor_snap_grid()}
+					</DropdownMenu.CheckboxItem>
+					<DropdownMenu.Item
+						disabled={!editor.activePage?.guides?.horizontal.length &&
+							!editor.activePage?.guides?.vertical.length}
+						onclick={() => editor.clearGuides()}
+					>
+						{m.image_editor_clear_guides()}
+					</DropdownMenu.Item>
+					<DropdownMenu.Item onclick={openGuideDialog} disabled={!editor.canEdit}>
+						{m.image_editor_add_guide_ellipsis()}
+					</DropdownMenu.Item>
 					<DropdownMenu.Item
 						onclick={() => removeBackground()}
 						disabled={!editor.selectedLayers[0]?.image}
@@ -1641,6 +2162,22 @@
 			>
 		</div>
 	{/if}
+	{#if projectBusy}
+		<div class="border-b bg-primary/10 px-3 py-2 text-center text-xs" aria-live="polite">
+			{m.image_editor_project_working()}
+		</div>
+	{/if}
+	{#if projectError}
+		<div
+			class="flex items-center justify-center gap-2 border-b bg-destructive/10 px-3 py-2 text-xs text-destructive"
+			role="alert"
+		>
+			<span>{projectError}</span>
+			<Button variant="ghost" size="xs" onclick={() => (projectError = '')}>
+				{m.common_dismiss()}
+			</Button>
+		</div>
+	{/if}
 	{#if backgroundError}
 		<div
 			class="flex items-center justify-center gap-2 border-b bg-destructive/10 px-3 py-2 text-xs text-destructive"
@@ -1648,6 +2185,37 @@
 		>
 			<span>{backgroundError}</span>
 			<Button variant="ghost" size="xs" onclick={() => (backgroundError = '')}
+				>{m.common_dismiss()}</Button
+			>
+		</div>
+	{/if}
+	{#if externalDropBusy}
+		<div class="border-b bg-primary/10 px-3 py-2 text-center text-xs" aria-live="polite">
+			{externalDropProgress}
+			<Button variant="ghost" size="xs" class="ml-2" onclick={() => externalDropAbort?.abort()}>
+				{m.common_cancel()}
+			</Button>
+		</div>
+	{/if}
+	{#if externalDropError}
+		<div
+			class="flex items-center justify-center gap-2 border-b bg-destructive/10 px-3 py-2 text-xs text-destructive"
+			role="alert"
+		>
+			<span>{externalDropError}</span>
+			{#if externalDropRetry}
+				<Button
+					variant="ghost"
+					size="xs"
+					onclick={() => {
+						const retry = externalDropRetry;
+						if (retry) void placeExternalFiles(retry.files, retry.point, retry.offset);
+					}}
+				>
+					{m.common_retry()}
+				</Button>
+			{/if}
+			<Button variant="ghost" size="xs" onclick={() => (externalDropError = '')}
 				>{m.common_dismiss()}</Button
 			>
 		</div>
@@ -1920,7 +2488,11 @@
 									onclick={() => setTool(tool.key)}
 									aria-label={tool.label}
 									aria-pressed={editor.activeTool === tool.key}
-									disabled={!editor.canEdit && !['select', 'hand', 'zoom'].includes(tool.key)}
+									disabled={(tool.key === 'crop' &&
+										!editor.selectedLayers.some(
+											(layer) => layer.type === 'image' && !layer.locked
+										)) ||
+										(!editor.canEdit && !['select', 'hand', 'zoom'].includes(tool.key))}
 								>
 									<Icon />
 								</Button>
@@ -1954,7 +2526,7 @@
 						? 'bottom-[8.75rem] lg:bottom-33'
 						: 'bottom-11 lg:bottom-9'}"
 			>
-				<ImageEditorCanvas />
+				<ImageEditorCanvas onExternalFiles={placeExternalFiles} />
 			</div>
 			<div
 				class="absolute right-3 {focusedCanvas
@@ -2045,6 +2617,7 @@
 							'ellipse_marquee',
 							'lasso',
 							'magic_wand',
+							'eyedropper',
 							'hand'
 						].includes(editor.activeTool)
 							? 'secondary'
@@ -2073,6 +2646,9 @@
 				>
 				<DropdownMenu.Item onclick={() => setTool('magic_wand')}
 					><WandIcon />{m.image_editor_magic_select()}</DropdownMenu.Item
+				>
+				<DropdownMenu.Item onclick={() => setTool('eyedropper')}
+					><PipetteIcon />{m.image_editor_eyedropper()}</DropdownMenu.Item
 				>
 				<DropdownMenu.Item onclick={() => setTool('hand')}
 					><HandIcon />{m.image_editor_hand()}</DropdownMenu.Item
@@ -2116,7 +2692,9 @@
 				{#snippet child({ props })}
 					<Button
 						{...props}
-						variant={['eraser', 'magic_eraser'].includes(editor.activeTool) ? 'secondary' : 'ghost'}
+						variant={['crop', 'eraser', 'magic_eraser'].includes(editor.activeTool)
+							? 'secondary'
+							: 'ghost'}
 						class="h-12 min-w-0 flex-1 flex-col gap-0 px-0 text-[10px]"
 						onclick={() => setTool(mobileRetouchTool)}
 						aria-label={m.image_editor_retouch()}
@@ -2133,6 +2711,11 @@
 				>
 				<DropdownMenu.Item onclick={() => setTool('magic_eraser')}
 					><WandIcon />{m.image_editor_magic_erase()}</DropdownMenu.Item
+				>
+				<DropdownMenu.Item
+					onclick={() => setTool('crop')}
+					disabled={!editor.selectedLayers.some((layer) => layer.type === 'image' && !layer.locked)}
+					><CropIcon />{m.image_editor_crop()}</DropdownMenu.Item
 				>
 				<DropdownMenu.Item
 					onclick={() => removeBackground()}
@@ -2171,7 +2754,7 @@
 			<PanelLeftIcon />
 			{m.image_editor_add()}
 		</Button>
-		{#each tools.filter( (tool) => ['select', 'marquee', 'lasso', 'magic_wand', 'text', 'pencil', 'bucket', 'eraser', 'hand'].includes(tool.key) ) as tool (tool.key)}
+		{#each tools.filter( (tool) => ['select', 'marquee', 'lasso', 'magic_wand', 'crop', 'eyedropper', 'text', 'pencil', 'bucket', 'eraser', 'hand'].includes(tool.key) ) as tool (tool.key)}
 			{@const Icon = tool.icon}
 			{#if tool.key === 'select'}
 				<Button
@@ -2557,6 +3140,47 @@
 	</Dialog.Content>
 </Dialog.Root>
 
+<Dialog.Root bind:open={guideDialogOpen}>
+	<Dialog.Content class="sm:max-w-sm">
+		<Dialog.Header>
+			<Dialog.Title>{m.image_editor_add_guide()}</Dialog.Title>
+			<Dialog.Description>{m.image_editor_guide_position()}</Dialog.Description>
+		</Dialog.Header>
+		<div class="grid gap-4">
+			<RadioGroup.Root bind:value={guideAxis} class="grid grid-cols-2 gap-2">
+				<label
+					class="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border px-3 text-sm has-data-[state=checked]:border-primary has-data-[state=checked]:bg-primary/5"
+				>
+					<RadioGroup.Item value="horizontal" aria-label={m.image_editor_horizontal()} />
+					{m.image_editor_horizontal()}
+				</label>
+				<label
+					class="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border px-3 text-sm has-data-[state=checked]:border-primary has-data-[state=checked]:bg-primary/5"
+				>
+					<RadioGroup.Item value="vertical" aria-label={m.image_editor_vertical()} />
+					{m.image_editor_vertical()}
+				</label>
+			</RadioGroup.Root>
+			<label class="grid gap-1.5 text-sm">
+				<span class="font-medium">{m.image_editor_guide_position()}</span>
+				<Input
+					type="number"
+					min="0"
+					max={guideAxis === 'horizontal' ? editor.document?.height_px : editor.document?.width_px}
+					bind:value={guidePosition}
+					onkeydown={(event) => {
+						if (event.key === 'Enter') addNumericGuide();
+					}}
+				/>
+			</label>
+		</div>
+		<Dialog.Footer>
+			<Button variant="ghost" onclick={() => (guideDialogOpen = false)}>{m.common_cancel()}</Button>
+			<Button onclick={addNumericGuide}>{m.image_editor_add_guide()}</Button>
+		</Dialog.Footer>
+	</Dialog.Content>
+</Dialog.Root>
+
 <Dialog.Root bind:open={exportDialogOpen}>
 	<Dialog.Content class="sm:max-w-lg">
 		<Dialog.Header>
@@ -2783,12 +3407,12 @@
 		</ol>
 		<div class="rounded-lg bg-muted p-3 text-sm">
 			<p class="font-medium">{m.image_editor_shortcuts()}</p>
-			<p class="mt-1 text-muted-foreground">
-				{shortcutModifier} Z {m.image_editor_undo().toLowerCase()} · {shortcutModifier} ⇧ Z
-				{m.image_editor_redo().toLowerCase()} · {shortcutModifier} 0 {m
-					.image_editor_fit_canvas()
-					.toLowerCase()}
-			</p>
+			<dl class="mt-2 grid max-h-72 grid-cols-[1fr_auto] gap-x-4 gap-y-1 overflow-y-auto">
+				{#each IMAGE_EDITOR_COMMANDS as command (command.id)}
+					<dt class="text-muted-foreground">{commandLabel(command.id)}</dt>
+					<dd class="text-right font-mono text-xs">{commandShortcut(command.id)}</dd>
+				{/each}
+			</dl>
 		</div>
 	</Dialog.Content>
 </Dialog.Root>

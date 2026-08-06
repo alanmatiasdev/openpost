@@ -53,6 +53,19 @@
 	const collapsedGroups = new SvelteSet<string>();
 	let items = $derived(flattenLayers(editor.activePage, collapsedGroups));
 
+	$effect(() => {
+		const selectedID = editor.selectedLayerIDs.at(-1);
+		const container = scrollContainer;
+		if (!selectedID || !container) return;
+		queueMicrotask(() => {
+			const row = [...container.querySelectorAll<HTMLElement>('[data-image-editor-layer-id]')].find(
+				(candidate) => candidate.dataset.imageEditorLayerId === selectedID
+			);
+			if (!row || row.contains(document.activeElement)) return;
+			row.scrollIntoView({ block: 'nearest' });
+		});
+	});
+
 	function layerIcon(layer: ImageEditorLayer) {
 		return layer.type === 'text'
 			? TypeIcon

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	computeImageGeometry,
+	imageEditorPixelIsOpaque,
 	OpenPostFabricAdapter,
 	imageEditorLayerRenderOrder,
 	snapImageEditorResize
@@ -52,6 +53,19 @@ function imageLayer(
 }
 
 describe('OpenPost Image Editor image geometry', () => {
+	it('treats transparent image padding as click-through while keeping visible edge pixels selectable', () => {
+		const image = {
+			width: 2,
+			height: 2,
+			data: new Uint8ClampedArray([255, 0, 0, 0, 255, 0, 0, 7, 255, 0, 0, 8, 255, 0, 0, 255])
+		};
+
+		expect(imageEditorPixelIsOpaque(image, { x: 0, y: 0 })).toBe(false);
+		expect(imageEditorPixelIsOpaque(image, { x: 1, y: 0 })).toBe(false);
+		expect(imageEditorPixelIsOpaque(image, { x: 0, y: 1 })).toBe(true);
+		expect(imageEditorPixelIsOpaque(image, { x: 2, y: 1 })).toBe(false);
+	});
+
 	it('keeps cover pixels flush with a resized frame', () => {
 		const geometry = computeImageGeometry(imageLayer(1200, 1200), 1920, 1080);
 
@@ -179,6 +193,20 @@ describe('OpenPost Image Editor rotation gestures', () => {
 			snapAngle: undefined,
 			snapThreshold: undefined
 		});
+
+		adapter.setSnapping(false);
+		dispatch('mouse:move:before', {
+			e: { shiftKey: true },
+			transform: { action: 'rotate', target }
+		});
+		expect(target).toMatchObject({ snapAngle: undefined, snapThreshold: undefined });
+
+		adapter.setSnapping(true);
+		dispatch('mouse:move:before', {
+			e: { shiftKey: true, ctrlKey: true },
+			transform: { action: 'rotate', target }
+		});
+		expect(target).toMatchObject({ snapAngle: undefined, snapThreshold: undefined });
 	});
 });
 

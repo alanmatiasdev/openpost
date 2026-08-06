@@ -41,3 +41,21 @@ export function readImageEditorMediaDrag(
 export function containsImageEditorMediaDrag(dataTransfer: DataTransfer | null): boolean {
 	return Boolean(dataTransfer && [...dataTransfer.types].includes(IMAGE_EDITOR_MEDIA_DRAG_TYPE));
 }
+
+export function containsExternalImageDrag(dataTransfer: DataTransfer | null): boolean {
+	return Boolean(
+		dataTransfer &&
+		!containsImageEditorMediaDrag(dataTransfer) &&
+		([...dataTransfer.types].includes('Files') || externalImageFiles(dataTransfer).length > 0)
+	);
+}
+
+export function externalImageFiles(dataTransfer: DataTransfer | null): File[] {
+	if (!dataTransfer) return [];
+	return [...dataTransfer.files].filter(isImageEditorImageFile);
+}
+
+export function isImageEditorImageFile(file: Pick<File, 'name' | 'type'>): boolean {
+	if (file.type.startsWith('image/')) return true;
+	return /\.(?:avif|gif|jpe?g|png|svg|webp)$/i.test(file.name);
+}

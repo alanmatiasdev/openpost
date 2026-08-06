@@ -28,6 +28,7 @@
 			: ({ type: 'solid', color: '#ffffff', opacity: 1 } as const)
 	);
 	let brandColors = $derived(editor.brandKit?.colors ?? []);
+	let brandBackgrounds = $derived(editor.brandKit?.backgrounds ?? []);
 	let gradientStops = $derived(
 		background.type === 'gradient' && background.gradient
 			? normalizedGradientStops(background.gradient.stops, background.gradient.reverse)
@@ -179,6 +180,26 @@
 			{m.image_editor_page_background_help()}
 		</p>
 	</div>
+
+	{#if brandBackgrounds.length > 0}
+		<div class="space-y-2">
+			<p class="text-xs font-medium">{m.brand_page_backgrounds()}</p>
+			<div class="grid grid-cols-6 gap-2">
+				{#each brandBackgrounds as color (color)}
+					<Button
+						variant="outline"
+						size="icon-sm"
+						class="size-11 p-1"
+						aria-label={m.image_editor_apply_brand_background({ color })}
+						disabled={!editor.canEdit}
+						onclick={() => updateBackground({ type: 'solid', color, opacity: 1 })}
+					>
+						<span class="size-full rounded border" style:background-color={color}></span>
+					</Button>
+				{/each}
+			</div>
+		</div>
+	{/if}
 
 	<div class="grid grid-cols-2 gap-2">
 		<Button

@@ -153,6 +153,7 @@ const developmentSidebar = [
 			{ text: 'Architecture', link: '/development/architecture' },
 			{ text: 'API Reference', link: '/development/api-reference' },
 			{ text: 'Frontend', link: '/development/frontend' },
+			{ text: 'Image Editor Completeness', link: '/development/image-editor-completeness' },
 			{ text: 'Backend', link: '/development/backend' },
 			{ text: 'Platform Adapters', link: '/development/platform-adapters' },
 			{ text: 'Background Jobs', link: '/development/background-jobs' },

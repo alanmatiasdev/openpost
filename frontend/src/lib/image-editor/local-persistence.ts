@@ -135,6 +135,28 @@ export async function createGuestImageEditorDesignFromTemplate(
 	return guestDesignResponse(record);
 }
 
+export async function createGuestImageEditorDesignFromDocument(
+	document: ImageEditorDocument
+): Promise<ImageEditorDocumentResponse> {
+	const now = new Date().toISOString();
+	const imported = cloneImageEditorDocument(document);
+	imported.brand_kit_id = undefined;
+	imported.brand_kit_revision = 0;
+	for (const page of imported.pages) {
+		page.preview_media_id = undefined;
+		page.latest_export_media_id = undefined;
+	}
+	const record: LocalImageEditorDesign = {
+		id: `${LOCAL_DESIGN_PREFIX}${crypto.randomUUID()}`,
+		revision: 1,
+		created_at: now,
+		updated_at: now,
+		document: imported
+	};
+	await putGuestDesign(record);
+	return guestDesignResponse(record);
+}
+
 export async function createGuestImageEditorDesignFromImage(
 	file: File,
 	title: string

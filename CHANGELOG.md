@@ -6,6 +6,20 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+- Added a source-grounded Image Editor completeness checklist covering interaction, history, persistence, renderer, responsive, accessibility, performance, recovery, and test requirements.
+- Added persistent desktop and mobile Image Editor object-snapping controls with an accessible status announcement and Command/Control-drag temporary bypass.
+- Added external image and SVG drops to the Image Editor canvas with exact placement, ordered multi-file cascading, guest OPFS storage, Media Library retention, progress, and error feedback.
+- Added an interactive Image Editor crop mode with a dimmed rule-of-thirds frame, pointer and keyboard controls, social aspect presets, rotated/flipped layer geometry, reset, cancel, and single-command undo/redo.
+- Added a typed Image Editor command and shortcut registry that drives keyboard dispatch, platform-aware menu labels, the complete help reference, and shortcut-collision tests.
+- Added a canvas eyedropper with active-layer or composited-page sampling, pointer color/alpha preview, recent colors, and explicit paint, selected fill/text, selected stroke, or page-background targets.
+- Exposed saved brand backgrounds and whole-layer brand text styles directly in the Image Editor with revision-safe snapshots and one-command multi-text-layer application.
+- Added selection-content actions that project document masks into transformed image or paint layer space, delete selected pixels non-destructively, or promote them to a new editable layer with one undo entry.
+- Added pressure-aware, smoothed freehand drawing with coalesced pen input, persisted tool options, and a live document-scale brush cursor.
+- Added page-specific rulers and persistent pointer/keyboard/numeric guides, configurable grid display and spacing, guide/grid snapping, and live document coordinates without including editor chrome in exports.
+- Added portable `.openpost-image` project export and import with bundled source media, validation, path and size limits, ID remapping, new-design creation, and guest or workspace media migration.
+- Added persisted text underline, strikethrough, and word or character wrapping, plus explicit shape no-fill/no-stroke controls and aspect-locked numeric sizing.
+- Added an explicit, undoable restore action for non-destructive image erase masks.
+
 - Added an OpenPost-native media chooser with device selection, drag and drop, file paste, camera capture, local image and video thumbnails, per-file size and progress, cancel and retry controls, and actionable validation and upload errors.
 - Added provider-aware stock-media filters for orientation, size, color, language, order, content safety, collections, image type, category, Editor's Choice, and minimum dimensions where each configured provider supports them.
 
@@ -15,11 +29,18 @@ All notable changes to this project are documented in this file.
 - Combined Library, Device, Camera, Stock, and editor creation in one media-picker surface, with stock providers labeled by their actual photo and video support.
 - Reduced test-suite overhead by removing assertion-free and duplicate checks and by running viewport-independent marketing contracts once instead of once per browser size.
 - Added the standalone video-project unit suite to the default local and CI test gates.
+- Added a maintained miniPaint source reference and an implementation-level Image Editor parity ledger covering tools, precision controls, persistence, accessibility, and adoption priorities.
 
 ### Fixed
 
+- Prevented no-op Image Editor mutations from dirtying a design, clearing redo history, or consuming an undo entry.
+- Made Image Editor image and paint hit testing click through transparent pixels after transformed bounds filtering.
+- Kept selected-pixel promotion from restoring pixels removed by earlier freehand erase masks, reduced contiguous color-selection memory use, and made pixel cut create an independently movable layer with a transparent source hole.
+- Made image replacement preserve its transform, normalized crop, adjustments, masks, and effects; kept locked layers safe from bulk deletion; and selected the nearest editable layer afterward.
+- Added cancellation and remaining-file retry to external image-drop batches without duplicating files that were already inserted.
 - Made Image Editor, Video Editor, and workspace-image uploads use library retention so newly uploaded reusable media remains visible after the picker refreshes and reopens.
 - Corrected upload guidance to show the backend's actual 16 GiB video limit and 50 MB image and audio limit.
+- Corrected the Image Editor guide to include paint layers and freehand drawing and to distinguish stored brand backgrounds and text styles from the colors and fonts currently exposed in the editor.
 
 ## [3.2.1] - 2026-08-06
 

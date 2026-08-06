@@ -50,7 +50,8 @@
 
 	$effect(() => {
 		const scopeID = guestMode ? editor.id : editor.workspaceID;
-		if (!scopeID || scopeID === loadedWorkspaceID) return;
+		const revision = editor.mediaLibraryRevision;
+		if (!scopeID || (scopeID === loadedWorkspaceID && revision === 0)) return;
 		loadedWorkspaceID = scopeID;
 		void loadAll();
 	});
@@ -134,8 +135,7 @@
 					...selected.image,
 					media_id: item.id,
 					source_width: item.width || selected.image.source_width,
-					source_height: item.height || selected.image.source_height,
-					crop: { x: 0, y: 0, width: 1, height: 1 }
+					source_height: item.height || selected.image.source_height
 				}
 			});
 			replaceMode = false;
@@ -224,11 +224,12 @@
 					workspaceId: editor.workspaceID,
 					file,
 					source: 'stock_import',
-					retentionClass: 'temporary',
+					retentionClass: 'library',
 					stockProvenance: provenance,
 					tagId: uploadTagID(),
 					prepareVideo: false
 				});
+				editor.refreshMediaLibrary();
 				await loadAll();
 				const item = media.find((entry) => entry.id === uploaded.id);
 				if (item) addMedia(item);
@@ -530,6 +531,7 @@
 		onConfirm={async (ids) => {
 			const id = ids[0];
 			if (!id) return;
+			editor.refreshMediaLibrary();
 			await loadAll();
 			const item = media.find((entry) => entry.id === id);
 			if (item) addMedia(item);
@@ -538,8 +540,7 @@
 				editor.updateLayer(selected.id, {
 					image: {
 						...selected.image!,
-						media_id: id,
-						crop: { x: 0, y: 0, width: 1, height: 1 }
+						media_id: id
 					}
 				});
 				replaceMode = false;

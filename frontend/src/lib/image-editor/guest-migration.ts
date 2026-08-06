@@ -33,7 +33,7 @@ export async function migrateGuestImageEditorDesign(
 			workspaceId: workspaceID,
 			file: new File([media.blob], media.name, { type: media.mimeType }),
 			source: media.provenance ? 'stock_import' : 'upload',
-			retentionClass: 'temporary',
+			retentionClass: 'library',
 			stockProvenance: media.provenance
 		});
 		replacements.set(mediaID, uploaded.id);

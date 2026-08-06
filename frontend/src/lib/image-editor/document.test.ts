@@ -40,6 +40,15 @@ describe('OpenPost Image Editor document contracts', () => {
 		expect(document.export_defaults.matte_color).toBe('#ffffff');
 	});
 
+	it('normalizes and validates page-specific non-exporting guides', () => {
+		const document = blankImageEditorDocument(preset);
+		document.pages[0].guides = { horizontal: [120], vertical: [240] };
+		expect(validateImageEditorDocument(document)).toEqual([]);
+
+		document.pages[0].guides.vertical.push(document.width_px + 1);
+		expect(validateImageEditorDocument(document)).toContain('Page 1 has invalid guides.');
+	});
+
 	it('supports transparent, gradient, and image page backgrounds', () => {
 		const document = blankImageEditorDocument(preset);
 		document.pages[0].background = { type: 'transparent', opacity: 0 };
@@ -161,6 +170,35 @@ describe('OpenPost Image Editor document contracts', () => {
 			opacity: 1
 		});
 		expect(result.document?.export_defaults.matte_color).toBe('#ffffff');
+	});
+
+	it('fills backward-compatible text decoration and wrapping defaults', () => {
+		const document = blankImageEditorDocument(preset);
+		document.pages[0].layers = [
+			{
+				...group('text'),
+				type: 'text',
+				text: {
+					text: 'A long heading',
+					font_family: 'Geist Variable',
+					font_weight: 700,
+					font_style: 'normal',
+					font_size: 64,
+					color: '#111111',
+					align: 'left',
+					line_height: 1.1,
+					letter_spacing: 0,
+					stroke_width: 0,
+					shadow: { color: '#00000000', blur: 0, offset_x: 0, offset_y: 0 }
+				}
+			}
+		];
+		const result = migrateImageEditorDocument(document);
+		expect(result.document?.pages[0].layers[0].text).toMatchObject({
+			underline: false,
+			strike: false,
+			wrap: 'word'
+		});
 	});
 
 	it('validates masks, curved text, blend modes, and layer shadows', () => {

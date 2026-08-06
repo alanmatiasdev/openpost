@@ -5835,6 +5835,27 @@
 				"required": ["media_id", "fit"],
 				"type": "object"
 			},
+			"ImageEditorPageGuides": {
+				"additionalProperties": false,
+				"properties": {
+					"horizontal": {
+						"items": {
+							"format": "double",
+							"type": "number"
+						},
+						"type": ["array", "null"]
+					},
+					"vertical": {
+						"items": {
+							"format": "double",
+							"type": "number"
+						},
+						"type": ["array", "null"]
+					}
+				},
+				"required": ["horizontal", "vertical"],
+				"type": "object"
+			},
 			"ImageEditorPagePayload": {
 				"additionalProperties": false,
 				"properties": {
@@ -5843,6 +5864,9 @@
 					},
 					"background_color": {
 						"type": "string"
+					},
+					"guides": {
+						"$ref": "#/components/schemas/ImageEditorPageGuides"
 					},
 					"id": {
 						"type": "string"
@@ -6280,6 +6304,9 @@
 					"shadow": {
 						"$ref": "#/components/schemas/ImageEditorTextShadow"
 					},
+					"strike": {
+						"type": "boolean"
+					},
 					"stroke_color": {
 						"type": "string"
 					},
@@ -6288,6 +6315,13 @@
 						"type": "number"
 					},
 					"text": {
+						"type": "string"
+					},
+					"underline": {
+						"type": "boolean"
+					},
+					"wrap": {
+						"enum": ["word", "character"],
 						"type": "string"
 					}
 				},

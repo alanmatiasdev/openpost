@@ -21,6 +21,8 @@
 	import FlipVerticalIcon from 'lucide-svelte/icons/flip-vertical-2';
 	import RotateCcwIcon from 'lucide-svelte/icons/rotate-ccw';
 	import CropIcon from 'lucide-svelte/icons/crop';
+	import LinkIcon from 'lucide-svelte/icons/link';
+	import UnlinkIcon from 'lucide-svelte/icons/unlink';
 	import ChevronDownIcon from 'lucide-svelte/icons/chevron-down';
 	import { m } from '$lib/paraglide/messages';
 	import type { ImageEditorImageAdjustments, ImageEditorTextCurveType } from '../types';
@@ -32,8 +34,10 @@
 	let cropOpen = $state(false);
 	let transformOpen = $state(false);
 	let adjustmentsOpen = $state(false);
+	let aspectLocked = $state(true);
 	let brandColors = $derived(editor.brandKit?.colors ?? []);
 	let brandFonts = $derived(editor.brandKit?.fonts ?? []);
+	let brandTextStyles = $derived(editor.brandKit?.text_styles ?? []);
 
 	function numberValue(event: Event, fallback: number): number {
 		const value = Number((event.currentTarget as HTMLInputElement).value);
@@ -47,6 +51,24 @@
 				? { x: (editor.document.width_px - layer.transform.width) / 2 }
 				: { y: (editor.document.height_px - layer.transform.height) / 2 })
 		});
+	}
+
+	function updateNumericTransform(key: 'x' | 'y' | 'width' | 'height', event: Event): void {
+		if (!layer) return;
+		const value = numberValue(event, layer.transform[key]);
+		if (key === 'x' || key === 'y' || !aspectLocked) {
+			editor.updateTransform(layer.id, {
+				[key]: key === 'x' || key === 'y' ? value : Math.max(1, value)
+			});
+			return;
+		}
+		const ratio = layer.transform.width / Math.max(1, layer.transform.height);
+		editor.updateTransform(
+			layer.id,
+			key === 'width'
+				? { width: Math.max(1, value), height: Math.max(1, value / Math.max(0.0001, ratio)) }
+				: { height: Math.max(1, value), width: Math.max(1, value * ratio) }
+		);
 	}
 
 	function updateCrop(key: 'x' | 'y' | 'width' | 'height', event: Event, fallback: number): void {
@@ -194,6 +216,14 @@
 			<PageBackgroundEditor {onOpenMedia} />
 		{:else}
 			<div class="space-y-5">
+				{#if editor.selectedLayers.length > 1}
+					<p class="rounded-md border bg-muted/40 px-2.5 py-2 text-xs text-muted-foreground">
+						{m.image_editor_primary_layer_properties({
+							count: editor.selectedLayers.length,
+							name: layer.name
+						})}
+					</p>
+				{/if}
 				<section class="space-y-2">
 					<label for="layer-name" class="block text-xs font-medium"
 						>{m.image_editor_layer_name()}</label
@@ -344,21 +374,26 @@
 									<span class="text-xs text-muted-foreground">{label}</span>
 									<Input
 										type="number"
+										min={key === 'width' || key === 'height' ? 1 : undefined}
 										value={Math.round(
 											layer.transform[key as keyof typeof layer.transform] as number
 										)}
 										disabled={!editor.canEdit || layer.locked}
 										oninput={(event) =>
-											editor.updateTransform(layer.id, {
-												[key]: numberValue(
-													event,
-													layer.transform[key as keyof typeof layer.transform] as number
-												)
-											})}
+											updateNumericTransform(key as 'x' | 'y' | 'width' | 'height', event)}
 									/>
 								</label>
 							{/each}
 						</div>
+						<Button
+							variant={aspectLocked ? 'secondary' : 'ghost'}
+							size="xs"
+							aria-pressed={aspectLocked}
+							onclick={() => (aspectLocked = !aspectLocked)}
+						>
+							{#if aspectLocked}<LinkIcon />{:else}<UnlinkIcon />{/if}
+							{m.image_editor_lock_aspect_ratio()}
+						</Button>
 						<div class="space-y-1">
 							<div class="flex items-center justify-between gap-2">
 								<span class="text-xs">{m.image_editor_rotation()}</span>
@@ -443,6 +478,26 @@
 						<h3 class="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
 							{m.image_editor_text()}
 						</h3>
+						{#if brandTextStyles.length > 0}
+							<label class="grid gap-1 text-xs">
+								<span>{m.image_editor_text_styles()}</span>
+								<AppSelect
+									value=""
+									ariaLabel={m.image_editor_apply_text_style()}
+									disabled={!editor.canEdit || layer.locked}
+									onValueChange={(value) => {
+										const style = brandTextStyles.find((candidate) => candidate.id === value);
+										if (style) editor.applyBrandTextStyle(style);
+									}}
+									options={brandTextStyles.map((style) => ({
+										value: style.id,
+										label: style.name
+									}))}
+									placeholder={m.image_editor_choose_text_style()}
+									class="h-9 w-full"
+								/>
+							</label>
+						{/if}
 						<Textarea
 							class="min-h-24"
 							value={layer.text.text}
@@ -565,6 +620,49 @@
 								/>
 							</label>
 						</div>
+						<div class="grid grid-cols-2 gap-2">
+							<Button
+								variant={layer.text.underline ? 'secondary' : 'outline'}
+								size="sm"
+								aria-pressed={Boolean(layer.text.underline)}
+								disabled={!editor.canEdit || layer.locked}
+								onclick={() =>
+									editor.updateLayer(layer.id, {
+										text: { ...layer.text!, underline: !layer.text!.underline }
+									})}
+							>
+								{m.image_editor_underline()}
+							</Button>
+							<Button
+								variant={layer.text.strike ? 'secondary' : 'outline'}
+								size="sm"
+								aria-pressed={Boolean(layer.text.strike)}
+								disabled={!editor.canEdit || layer.locked}
+								onclick={() =>
+									editor.updateLayer(layer.id, {
+										text: { ...layer.text!, strike: !layer.text!.strike }
+									})}
+							>
+								{m.image_editor_strikethrough()}
+							</Button>
+						</div>
+						<label class="grid gap-1 text-xs">
+							<span>{m.image_editor_text_wrapping()}</span>
+							<AppSelect
+								value={layer.text.wrap ?? 'word'}
+								ariaLabel={m.image_editor_text_wrapping()}
+								disabled={!editor.canEdit || layer.locked}
+								onValueChange={(value) =>
+									editor.updateLayer(layer.id, {
+										text: { ...layer.text!, wrap: value as 'word' | 'character' }
+									})}
+								options={[
+									{ value: 'word', label: m.image_editor_wrap_words() },
+									{ value: 'character', label: m.image_editor_wrap_characters() }
+								]}
+								class="h-9 w-full"
+							/>
+						</label>
 						<label class="grid gap-1 text-xs">
 							<span>{m.image_editor_letter_spacing()}</span>
 							<Input
@@ -827,6 +925,17 @@
 								onCommit={(value) => editor.rememberColor(value)}
 							/>
 						</label>
+						<Button
+							variant={layer.shape.fill === '#00000000' ? 'secondary' : 'ghost'}
+							size="xs"
+							disabled={!editor.canEdit || layer.locked || layer.shape.kind === 'line'}
+							onclick={() =>
+								editor.updateLayer(layer.id, {
+									shape: { ...layer.shape!, fill: '#00000000' }
+								})}
+						>
+							{m.image_editor_no_fill()}
+						</Button>
 						<div class="grid grid-cols-2 gap-2">
 							<label class="grid gap-1 text-xs">
 								<span>{m.image_editor_stroke()}</span>
@@ -861,6 +970,17 @@
 								/>
 							</label>
 						</div>
+						<Button
+							variant={layer.shape.stroke_width === 0 ? 'secondary' : 'ghost'}
+							size="xs"
+							disabled={!editor.canEdit || layer.locked}
+							onclick={() =>
+								editor.updateLayer(layer.id, {
+									shape: { ...layer.shape!, stroke_width: 0 }
+								})}
+						>
+							{m.image_editor_no_stroke()}
+						</Button>
 						<label class="grid gap-1 text-xs">
 							<span>{m.image_editor_corner_radius()}</span>
 							<Input
@@ -932,6 +1052,14 @@
 								<Button
 									variant="ghost"
 									size="xs"
+									onclick={() => (editor.activeTool = 'crop')}
+									disabled={!editor.canEdit || layer.locked}
+								>
+									{m.image_editor_edit_crop()}
+								</Button>
+								<Button
+									variant="ghost"
+									size="xs"
 									onclick={() =>
 										editor.updateLayer(layer.id, {
 											image: {
@@ -968,6 +1096,17 @@
 								</div>
 							</Collapsible.Content>
 						</Collapsible.Root>
+						{#if layer.erase_mask}
+							<Button
+								variant="outline"
+								size="sm"
+								class="w-full"
+								disabled={!editor.canEdit || layer.locked}
+								onclick={() => editor.restoreImageEraseMask(layer.id)}
+							>
+								{m.image_editor_restore_erased_image()}
+							</Button>
+						{/if}
 						<div class="space-y-2">
 							<span class="text-xs font-medium">{m.image_editor_quick_looks()}</span>
 							<div class="grid grid-cols-3 gap-1">

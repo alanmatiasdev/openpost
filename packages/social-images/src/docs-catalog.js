@@ -86,6 +86,10 @@ export const docsPageCatalog = Object.freeze([
     "title": "Frontend"
   },
   {
+    "page": "development/image-editor-completeness.md",
+    "title": "Image Editor Completeness Checklist"
+  },
+  {
     "page": "development/index.md",
     "title": "Developer Docs"
   },

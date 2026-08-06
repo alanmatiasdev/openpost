@@ -10,7 +10,7 @@ You can return to local designs on the same device and export PNG, JPEG, or WebP
 
 ## Create and edit
 
-Start with a social preset, an original OpenPost starter template, a workspace template, or an existing image. A design can contain up to 35 ordered pages. Each page has a solid background and ordered text, image, shape, and group layers.
+Start with a social preset, an original OpenPost starter template, a workspace template, or an existing image. A design can contain up to 35 ordered pages. Each page has a solid, transparent, gradient, or image background and ordered text, image, shape, paint, and group layers.
 
 Desktop OpenPost Image Editor provides the canvas, asset and brand panes, Layers, Properties, and the page strip at the same time. On a phone, use the bottom tool rail and open one editing sheet at a time. The mobile editor supports adding and transforming layers, crop and image adjustments, text and shape properties, layer order and visibility, page management, undo and redo, background removal, and export.
 
@@ -26,7 +26,7 @@ You can save a design as a new workspace template or replace a template. A desig
 
 Manage the workspace brand kit from **Settings → Brand**. It can hold named colors, default page backgrounds, whole-layer text styles, and custom WOFF2, TTF, or OTF fonts.
 
-You must confirm that you can use a custom font before upload. OpenPost previews it in the browser and checks its file type and size on the server. You cannot remove a font while a design or template uses it. Applying a brand style copies its current font, color, and text settings into the selected layer.
+You must confirm that you can use a custom font before upload. OpenPost previews it in the browser and checks its file type and size on the server. You cannot remove a font while a design or template uses it. The Image Editor exposes saved brand colors and fonts. Saved page backgrounds and whole-layer text styles remain available in the brand kit but do not yet have direct apply actions in the editor.
 
 ## Background removal
 
@@ -42,4 +42,4 @@ When OpenPost Image Editor opens from a post, OpenPost saves a local recovery co
 
 ## What OpenPost Image Editor supports
 
-OpenPost Image Editor edits still images only. It does not edit video, make animations, add any SVG or remote link as a layer, mix text styles in one layer, draw freehand, use CMYK or print units, let several people edit at once, or offer MCP editing tools.
+OpenPost Image Editor edits still images only. It does not edit video, make animations, add any SVG or remote link as a layer, mix text styles in one layer, use CMYK or print units, let several people edit at once, or offer MCP editing tools.

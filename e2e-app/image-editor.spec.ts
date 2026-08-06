@@ -6,11 +6,155 @@ const tinyPNG = Buffer.from(
   "base64",
 );
 
+test.beforeEach(({ page }) => {
+  page.on("pageerror", (error) =>
+    console.error(`[Image Editor page error] ${error.stack ?? error.message}`),
+  );
+  page.on("console", (message) => {
+    if (message.type() === "error") {
+      console.error(`[Image Editor console error] ${message.text()}`);
+    }
+  });
+});
+
 test("legacy Studio URLs redirect to the OpenPost Image Editor", async ({
   page,
 }) => {
   await page.goto("/studio/new?legacy-route=1");
   await expect(page).toHaveURL(/\/image-editor\/new\?legacy-route=1$/);
+});
+
+test("public Image Editor drops and crops an image with undo, redo, and reload", async ({
+  page,
+}) => {
+  test.setTimeout(60_000);
+  await page.goto("/image-editor");
+  await page.getByRole("button", { name: /Instagram square/ }).click();
+  const stage = page.getByTestId("image-editor-stage");
+  await expect(stage).toBeVisible();
+
+  await stage.evaluate((node, png) => {
+    const bytes = Uint8Array.from(atob(png), (character) =>
+      character.charCodeAt(0),
+    );
+    const transfer = new DataTransfer();
+    transfer.items.add(
+      new File([bytes], "dropped-launch.png", { type: "image/png" }),
+    );
+    for (const type of ["dragenter", "dragover", "drop"]) {
+      node.dispatchEvent(
+        new DragEvent(type, {
+          bubbles: true,
+          cancelable: true,
+          dataTransfer: transfer,
+          clientX: node.getBoundingClientRect().left + node.clientWidth / 2,
+          clientY: node.getBoundingClientRect().top + node.clientHeight / 2,
+        }),
+      );
+    }
+  }, tinyPNG.toString("base64"));
+
+  const imageLayer = page.getByRole("treeitem", {
+    name: /dropped-launch\.png, image/,
+  });
+  await expect(imageLayer).toBeVisible();
+  const desktopTools = page.getByRole("navigation", {
+    name: "OpenPost Image Editor tools",
+  });
+  await desktopTools.getByRole("button", { name: "Crop", exact: true }).click();
+  await expect(page.getByTestId("image-editor-crop-options")).toBeVisible();
+
+  const rightHandle = page.getByRole("button", {
+    name: "Resize crop from right",
+  });
+  const handleBox = await rightHandle.boundingBox();
+  if (!handleBox) throw new Error("Interactive crop handle did not render");
+  await page.mouse.move(
+    handleBox.x + handleBox.width / 2,
+    handleBox.y + handleBox.height / 2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    handleBox.x + handleBox.width / 2 - 40,
+    handleBox.y + handleBox.height / 2,
+    { steps: 6 },
+  );
+  await page.mouse.up();
+  await rightHandle.press("Shift+ArrowLeft");
+  await page.getByRole("button", { name: "Apply crop" }).click();
+
+  const undo = page.getByRole("button", { name: "Undo", exact: true }).first();
+  const redo = page.getByRole("button", { name: "Redo", exact: true }).first();
+  await expect(undo).toBeEnabled();
+  await undo.click();
+  await expect(redo).toBeEnabled();
+  await redo.click();
+  await expect(
+    page.getByRole("banner").getByText("Saved on this device"),
+  ).toBeVisible();
+
+  await page.reload();
+  await imageLayer.click();
+  await page.getByRole("button", { name: "Crop", exact: true }).last().click();
+  await expect(page.getByRole("spinbutton", { name: "W" })).not.toHaveValue(
+    "100",
+  );
+});
+
+test("public Image Editor round-trips an editable project without overwriting its source", async ({
+  page,
+}) => {
+  test.setTimeout(60_000);
+  await page.goto("/image-editor");
+  await page.getByRole("button", { name: /Instagram square/ }).click();
+  await page.getByRole("button", { name: "Add shape" }).click();
+  const sourceURL = page.url();
+
+  const menus = page.getByRole("menubar", {
+    name: "OpenPost Image Editor menus",
+  });
+  await menus.getByText("File", { exact: true }).click();
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("menuitem", { name: "Export editable project" }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toMatch(/\.openpost-image$/);
+  const projectPath = await download.path();
+  if (!projectPath)
+    throw new Error("Editable project download was unavailable");
+
+  await page
+    .locator('input[type="file"][accept*="openpost-image"]')
+    .setInputFiles(projectPath);
+  await expect(page).not.toHaveURL(sourceURL);
+  await expect(page).toHaveURL(/\/image-editor\/local_design_/);
+  await expect(
+    page.getByRole("treeitem", { name: /Rectangle, shape/ }),
+  ).toBeVisible();
+});
+
+test("public Image Editor keeps primary actions usable at 320 px and in short landscape", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 320, height: 667 });
+  await page.goto("/image-editor");
+  await page.getByRole("button", { name: /Instagram square/ }).click();
+  await expect(page.getByRole("button", { name: "Export" })).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+
+  await page.setViewportSize({ width: 667, height: 320 });
+  await expect(
+    page.getByRole("application", { name: "Design canvas" }),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Export" })).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
 });
 
 test("public OpenPost Image Editor creates and restores a local design without authentication", async ({

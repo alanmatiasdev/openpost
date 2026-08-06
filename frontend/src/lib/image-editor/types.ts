@@ -32,6 +32,8 @@ export type ImageEditorTool =
 	| 'zoom';
 export type ImageEditorSaveState =
 	'idle' | 'saving' | 'saved' | 'local' | 'conflict' | 'offline' | 'error';
+export type ImageEditorColorTarget =
+	'foreground' | 'selected_fill' | 'selected_stroke' | 'page_background';
 
 export interface ImageEditorTransform {
 	x: number;
@@ -66,6 +68,9 @@ export interface ImageEditorTextValue {
 	font_asset_id?: string;
 	font_weight: number;
 	font_style: 'normal' | 'italic';
+	underline?: boolean;
+	strike?: boolean;
+	wrap?: 'word' | 'character';
 	font_size: number;
 	color: string;
 	align: 'left' | 'center' | 'right';
@@ -232,6 +237,10 @@ export interface ImageEditorPage {
 	name: string;
 	background_color: string;
 	background?: ImageEditorPageBackground;
+	guides?: {
+		horizontal: number[];
+		vertical: number[];
+	};
 	layers: ImageEditorLayer[];
 	preview_media_id?: string;
 	latest_export_media_id?: string;

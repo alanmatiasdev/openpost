@@ -22,15 +22,30 @@
 	} from '../selection';
 	import type {
 		ImageEditorGradientType,
+		ImageEditorColorTarget,
 		ImageEditorSelectionMode,
 		ImageEditorSelectionTool
 	} from '../types';
 	import {
+		containsExternalImageDrag,
 		containsImageEditorMediaDrag,
+		externalImageFiles,
 		readImageEditorMediaDrag,
 		IMAGE_EDITOR_MEDIA_DRAG_TYPE
 	} from '../media-drag';
 	import { panForZoomAnchor } from '../viewport';
+	import {
+		imageEditorCropWindowForAspect,
+		normalizeImageEditorCropWindow,
+		type ImageEditorCropWindow
+	} from '../crop';
+	import type { ImageEditorLayer } from '../types';
+
+	let {
+		onExternalFiles
+	}: {
+		onExternalFiles?: (files: File[], point: SelectionPoint) => void | Promise<void>;
+	} = $props();
 
 	type AreaSelectionTool = Extract<
 		ImageEditorSelectionTool,
@@ -49,6 +64,8 @@
 	}
 
 	const editor = useImageEditor();
+	const GRID_BACKGROUND_IMAGE =
+		'linear-gradient(to right, rgb(249 115 22 / 0.22) 1px, transparent 1px), linear-gradient(to bottom, rgb(249 115 22 / 0.22) 1px, transparent 1px)';
 	let canvasElement = $state<HTMLCanvasElement>();
 	let viewport = $state<HTMLDivElement>();
 	let stageElement = $state<HTMLDivElement>();
@@ -63,13 +80,45 @@
 	let panning = $state(false);
 	let selectionGesture = $state<SelectionGesture | null>(null);
 	let magicPulse = $state<SelectionPoint | null>(null);
+	let eyedropperPreview = $state.raw<{
+		point: SelectionPoint;
+		color: string;
+		alpha: number;
+	} | null>(null);
+	let brushPreview = $state.raw<SelectionPoint | null>(null);
+	let cursorPoint = $state.raw<SelectionPoint | null>(null);
+	let guideGesture = $state.raw<{
+		pointerID: number;
+		axis: 'horizontal' | 'vertical';
+		index?: number;
+		value: number;
+	} | null>(null);
+	let canvasAnnouncement = $state('');
 	let selectionOverlay = $state<HTMLCanvasElement>();
 	let magicPulseTimer: ReturnType<typeof setTimeout> | undefined;
+	let eyedropperFrame: number | undefined;
+	let pendingEyedropperPoint: SelectionPoint | null = null;
+	let eyedropperPointerID = -1;
 	let mediaDropActive = $state(false);
+	let cropWindow = $state.raw<ImageEditorCropWindow>({ x: 0, y: 0, width: 1, height: 1 });
+	let cropAspect = $state('free');
+	let cropGesture = $state.raw<{
+		pointerID: number;
+		handle: CropHandle;
+		start: SelectionPoint;
+		origin: ImageEditorCropWindow;
+	} | null>(null);
 	let mediaDragDepth = 0;
 	let panStart = { x: 0, y: 0, panX: 0, panY: 0 };
 	const touchPointers = new SvelteMap<number, { x: number; y: number }>();
 	let pinchStart = { distance: 0, zoom: 1, centerX: 0, centerY: 0, panX: 0, panY: 0 };
+	type CropHandle = 'move' | 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
+
+	let cropLayer = $derived(
+		editor.activeTool === 'crop'
+			? (editor.selectedLayers.find((layer) => layer.type === 'image' && !layer.locked) ?? null)
+			: null
+	);
 
 	function attachCanvas(node: HTMLCanvasElement) {
 		canvasElement = node;
@@ -179,6 +228,7 @@
 
 	onDestroy(() => {
 		if (magicPulseTimer) clearTimeout(magicPulseTimer);
+		if (eyedropperFrame !== undefined) cancelAnimationFrame(eyedropperFrame);
 	});
 
 	$effect(() => {
@@ -215,6 +265,17 @@
 
 	$effect(() => {
 		adapter?.setInteractionTool(editor.activeTool);
+	});
+
+	$effect(() => {
+		adapter?.setSnapping(editor.snappingEnabled);
+	});
+
+	$effect(() => {
+		adapter?.setPrecisionSnapSources(
+			editor.showGuides ? editor.activePage?.guides : undefined,
+			editor.snapToGrid ? editor.gridSize : 0
+		);
 	});
 
 	$effect(() => {
@@ -266,8 +327,209 @@
 			editor.activeTool === 'eraser' ||
 			editor.activeTool === 'magic_eraser' ||
 			editor.activeTool === 'bucket' ||
-			editor.activeTool === 'gradient'
+			editor.activeTool === 'gradient' ||
+			editor.activeTool === 'eyedropper'
 		);
+	}
+
+	function sampleEyedropper(point: SelectionPoint, commit: boolean): boolean {
+		if (!adapter) return false;
+		const activeID = editor.selectedLayerIDs.at(-1);
+		const pixel =
+			editor.sampleAllLayers || !activeID
+				? adapter.samplePagePixel(point)
+				: adapter.sampleLayerPixel(activeID, point);
+		if (!pixel) return false;
+		const color = `#${[pixel[0], pixel[1], pixel[2]]
+			.map((channel) => channel.toString(16).padStart(2, '0'))
+			.join('')}`;
+		const alpha = pixel[3] ?? 0;
+		eyedropperPreview = { point, color, alpha };
+		if (commit) editor.applySampledColor(color, alpha);
+		return true;
+	}
+
+	function queueEyedropperSample(point: SelectionPoint): void {
+		pendingEyedropperPoint = point;
+		if (eyedropperFrame !== undefined) return;
+		eyedropperFrame = requestAnimationFrame(() => {
+			eyedropperFrame = undefined;
+			const pending = pendingEyedropperPoint;
+			pendingEyedropperPoint = null;
+			if (pending) sampleEyedropper(pending, false);
+		});
+	}
+
+	function commitPixelContent(mode: 'promote' | 'cut' | 'delete'): void {
+		const selection = editor.pixelSelection;
+		if (!selection || !adapter || !editor.document) return;
+		const targetIDs =
+			selection.targetLayerIDs.length > 0
+				? selection.targetLayerIDs
+				: editor.selectedLayerIDs.slice(-1);
+		const projections = targetIDs
+			.map((id) => {
+				const projected = adapter?.projectPixelMaskToLayer(
+					id,
+					selection.data,
+					selection.width,
+					selection.height
+				);
+				return projected ? { id, ...projected } : null;
+			})
+			.filter(
+				(
+					projection
+				): projection is { id: string; width: number; height: number; data: Uint8Array } =>
+					Boolean(projection)
+			);
+		editor.commitPixelSelectionContent(mode, projections);
+	}
+
+	function cropPointDelta(
+		layer: ImageEditorLayer,
+		start: SelectionPoint,
+		current: SelectionPoint
+	): SelectionPoint {
+		const deltaX = current.x - start.x;
+		const deltaY = current.y - start.y;
+		const radians = (-layer.transform.rotation * Math.PI) / 180;
+		return {
+			x:
+				(deltaX * Math.cos(radians) - deltaY * Math.sin(radians)) /
+				Math.max(1, layer.transform.width),
+			y:
+				(deltaX * Math.sin(radians) + deltaY * Math.cos(radians)) /
+				Math.max(1, layer.transform.height)
+		};
+	}
+
+	function updateCropWindow(
+		origin: ImageEditorCropWindow,
+		handle: CropHandle,
+		delta: SelectionPoint
+	): ImageEditorCropWindow {
+		if (handle === 'move') {
+			return {
+				...origin,
+				x: Math.max(0, Math.min(1 - origin.width, origin.x + delta.x)),
+				y: Math.max(0, Math.min(1 - origin.height, origin.y + delta.y))
+			};
+		}
+		let left = origin.x;
+		let top = origin.y;
+		let right = origin.x + origin.width;
+		let bottom = origin.y + origin.height;
+		if (handle.includes('w')) left += delta.x;
+		if (handle.includes('e')) right += delta.x;
+		if (handle.includes('n')) top += delta.y;
+		if (handle.includes('s')) bottom += delta.y;
+		const minimum = 0.005;
+		left = Math.max(0, Math.min(right - minimum, left));
+		top = Math.max(0, Math.min(bottom - minimum, top));
+		right = Math.min(1, Math.max(left + minimum, right));
+		bottom = Math.min(1, Math.max(top + minimum, bottom));
+		return normalizeImageEditorCropWindow({
+			x: left,
+			y: top,
+			width: right - left,
+			height: bottom - top
+		});
+	}
+
+	function startCrop(event: PointerEvent, handle: CropHandle): void {
+		const point = documentPoint(event, 'allow');
+		if (!point || !cropLayer || event.button !== 0) return;
+		event.preventDefault();
+		event.stopPropagation();
+		cropGesture = {
+			pointerID: event.pointerId,
+			handle,
+			start: point,
+			origin: { ...cropWindow }
+		};
+		(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+	}
+
+	function moveCrop(event: PointerEvent): void {
+		if (!cropGesture || cropGesture.pointerID !== event.pointerId || !cropLayer) return;
+		const point = documentPoint(event, 'allow');
+		if (!point) return;
+		cropWindow = updateCropWindow(
+			cropGesture.origin,
+			cropGesture.handle,
+			cropPointDelta(cropLayer, cropGesture.start, point)
+		);
+		cropAspect = 'free';
+		event.preventDefault();
+		event.stopPropagation();
+	}
+
+	function stopCrop(event: PointerEvent): void {
+		if (!cropGesture || cropGesture.pointerID !== event.pointerId) return;
+		cropGesture = null;
+		event.preventDefault();
+		event.stopPropagation();
+	}
+
+	function nudgeCrop(event: KeyboardEvent, handle: CropHandle): void {
+		if (!cropLayer || !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key))
+			return;
+		event.preventDefault();
+		const pixels = event.shiftKey ? 10 : 1;
+		const delta = {
+			x:
+				event.key === 'ArrowLeft'
+					? -pixels / Math.max(1, cropLayer.transform.width)
+					: event.key === 'ArrowRight'
+						? pixels / Math.max(1, cropLayer.transform.width)
+						: 0,
+			y:
+				event.key === 'ArrowUp'
+					? -pixels / Math.max(1, cropLayer.transform.height)
+					: event.key === 'ArrowDown'
+						? pixels / Math.max(1, cropLayer.transform.height)
+						: 0
+		};
+		cropWindow = updateCropWindow(cropWindow, handle, delta);
+		cropAspect = 'free';
+	}
+
+	function setCropAspect(value: string): void {
+		cropAspect = value;
+		if (!cropLayer || value === 'free') return;
+		const aspect =
+			value === 'original'
+				? cropLayer.image!.source_width / Math.max(1, cropLayer.image!.source_height)
+				: Number(value);
+		cropWindow = imageEditorCropWindowForAspect(cropLayer.transform, aspect);
+	}
+
+	function applyCrop(): void {
+		if (!cropLayer) return;
+		canvasAnnouncement = m.image_editor_crop_applied_dimensions({
+			width: Math.max(1, Math.round(cropLayer.transform.width * cropWindow.width)),
+			height: Math.max(1, Math.round(cropLayer.transform.height * cropWindow.height))
+		});
+		editor.applyImageCrop(cropLayer.id, cropWindow);
+		cropWindow = { x: 0, y: 0, width: 1, height: 1 };
+		cropAspect = 'free';
+		editor.activeTool = 'select';
+	}
+
+	function cancelCrop(): void {
+		cropGesture = null;
+		cropWindow = { x: 0, y: 0, width: 1, height: 1 };
+		cropAspect = 'free';
+		editor.activeTool = 'select';
+	}
+
+	function resetCrop(): void {
+		if (!cropLayer) return;
+		editor.resetImageCrop(cropLayer.id);
+		cropWindow = { x: 0, y: 0, width: 1, height: 1 };
+		cropAspect = 'free';
+		editor.activeTool = 'select';
 	}
 
 	function erasableTargetID(point: SelectionPoint): string | null {
@@ -313,6 +575,101 @@
 			x: Math.max(0, Math.min(document.width_px, x)),
 			y: Math.max(0, Math.min(document.height_px, y))
 		};
+	}
+
+	function pointerPressure(event: PointerEvent): number {
+		if (event.pointerType === 'mouse') return 1;
+		return event.pressure > 0 ? event.pressure : 0.5;
+	}
+
+	function rulerTicks(length: number): Array<{ value: number; major: boolean }> {
+		const desiredDocumentStep = 12 / Math.max(editor.zoom, 0.05);
+		const steps = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000];
+		const step = steps.find((candidate) => candidate >= desiredDocumentStep) ?? 1000;
+		const majorEvery = step * 5;
+		const ticks: Array<{ value: number; major: boolean }> = [];
+		for (let value = 0; value <= length; value += step) {
+			ticks.push({ value, major: value % majorEvery === 0 });
+		}
+		return ticks;
+	}
+
+	function guideValue(
+		event: Pick<PointerEvent, 'clientX' | 'clientY'>,
+		axis: 'horizontal' | 'vertical'
+	): number | null {
+		const point = documentPoint(event, 'allow');
+		if (!point || !editor.document) return null;
+		const limit = axis === 'horizontal' ? editor.document.height_px : editor.document.width_px;
+		return Math.max(0, Math.min(limit, axis === 'horizontal' ? point.y : point.x));
+	}
+
+	function startGuide(event: PointerEvent, axis: 'horizontal' | 'vertical', index?: number): void {
+		if (!editor.canEdit || event.button !== 0) return;
+		const value = guideValue(event, axis);
+		if (value === null) return;
+		guideGesture = { pointerID: event.pointerId, axis, index, value };
+		if (event.currentTarget instanceof Element) {
+			event.currentTarget.setPointerCapture(event.pointerId);
+		}
+		event.preventDefault();
+		event.stopPropagation();
+	}
+
+	function addCenteredGuideFromKeyboard(
+		event: KeyboardEvent,
+		axis: 'horizontal' | 'vertical'
+	): void {
+		if (event.key !== 'Enter' && event.key !== ' ') return;
+		event.preventDefault();
+		const document = editor.document;
+		if (!document) return;
+		editor.addGuide(axis, (axis === 'horizontal' ? document.height_px : document.width_px) / 2);
+	}
+
+	function moveGuide(event: PointerEvent): void {
+		if (!guideGesture || guideGesture.pointerID !== event.pointerId) return;
+		const value = guideValue(event, guideGesture.axis);
+		if (value !== null) guideGesture = { ...guideGesture, value };
+		event.preventDefault();
+		event.stopPropagation();
+	}
+
+	function finishGuide(event: PointerEvent): void {
+		const gesture = guideGesture;
+		if (!gesture || gesture.pointerID !== event.pointerId) return;
+		if (gesture.index === undefined) editor.addGuide(gesture.axis, gesture.value);
+		else editor.updateGuide(gesture.axis, gesture.index, gesture.value);
+		guideGesture = null;
+		if (
+			event.currentTarget instanceof Element &&
+			event.currentTarget.hasPointerCapture(event.pointerId)
+		) {
+			event.currentTarget.releasePointerCapture(event.pointerId);
+		}
+		event.preventDefault();
+		event.stopPropagation();
+	}
+
+	function guideKeydown(
+		event: KeyboardEvent,
+		axis: 'horizontal' | 'vertical',
+		index: number,
+		value: number
+	): void {
+		if (event.key === 'Delete' || event.key === 'Backspace') {
+			event.preventDefault();
+			editor.removeGuide(axis, index);
+			return;
+		}
+		const relevant =
+			axis === 'horizontal'
+				? event.key === 'ArrowUp' || event.key === 'ArrowDown'
+				: event.key === 'ArrowLeft' || event.key === 'ArrowRight';
+		if (!relevant) return;
+		event.preventDefault();
+		const direction = event.key === 'ArrowUp' || event.key === 'ArrowLeft' ? -1 : 1;
+		editor.updateGuide(axis, index, value + direction * (event.shiftKey ? 10 : 1));
 	}
 
 	function showMagicPulse(point: SelectionPoint): void {
@@ -397,16 +754,30 @@
 				tool !== 'eraser' &&
 				tool !== 'magic_eraser' &&
 				tool !== 'bucket' &&
-				tool !== 'gradient') ||
+				tool !== 'gradient' &&
+				tool !== 'eyedropper') ||
 			!adapter ||
 			event.button !== 0
 		)
 			return false;
 		const point = documentPoint(event, startsOnStage ? 'reject' : 'allow');
 		if (!point) return false;
+		if (tool === 'pencil') point.pressure = pointerPressure(event);
 		const mode = isAreaSelectionTool(tool)
 			? selectionModeForEvent(event, tool)
 			: editor.selectionMode;
+		if (
+			tool === 'eyedropper' ||
+			(event.altKey && ['pencil', 'bucket', 'gradient'].includes(tool))
+		) {
+			sampleEyedropper(point, false);
+			eyedropperPointerID = event.pointerId;
+			if (event.currentTarget instanceof Element) {
+				event.currentTarget.setPointerCapture(event.pointerId);
+			}
+			event.preventDefault();
+			return true;
+		}
 		if (
 			(tool === 'marquee' || tool === 'ellipse_marquee' || tool === 'lasso') &&
 			mode === 'replace' &&
@@ -567,15 +938,32 @@
 		} else if (gesture.tool === 'gradient') {
 			point = constrainGradientPoint(gesture.start, point, event);
 		}
-		const points =
-			(gesture.tool === 'lasso' || gesture.tool === 'pencil' || gesture.tool === 'eraser') &&
+		let points = gesture.points;
+		if (gesture.tool === 'pencil') {
+			const samples = event.getCoalescedEvents?.().length ? event.getCoalescedEvents() : [event];
+			for (const sample of samples) {
+				const samplePoint = documentPoint(sample, 'clamp');
+				if (!samplePoint) continue;
+				samplePoint.pressure = pointerPressure(sample);
+				const previous = points.at(-1) ?? samplePoint;
+				if (
+					Math.hypot(samplePoint.x - previous.x, samplePoint.y - previous.y) >=
+					0.5 / Math.max(editor.zoom, 0.1)
+				) {
+					points = [...points, samplePoint];
+				}
+			}
+			point.pressure = pointerPressure(event);
+		} else if (
+			(gesture.tool === 'lasso' || gesture.tool === 'eraser') &&
 			Math.hypot(
 				point.x - (gesture.points.at(-1)?.x ?? point.x),
 				point.y - (gesture.points.at(-1)?.y ?? point.y)
 			) >=
 				3 / Math.max(editor.zoom, 0.1)
-				? [...gesture.points, point]
-				: gesture.points;
+		) {
+			points = [...gesture.points, point];
+		}
 		selectionGesture = { ...gesture, current: point, points };
 		event.preventDefault();
 		return true;
@@ -639,6 +1027,7 @@
 			return true;
 		}
 		if (gesture.tool === 'pencil') {
+			point.pressure = pointerPressure(event);
 			editor.addPencilStroke([...gesture.points, point]);
 			selectionGesture = null;
 			if (
@@ -777,33 +1166,48 @@
 	}
 
 	function handleMediaDragEnter(event: DragEvent): void {
-		if (!containsImageEditorMediaDrag(event.dataTransfer)) return;
+		if (
+			!containsImageEditorMediaDrag(event.dataTransfer) &&
+			!containsExternalImageDrag(event.dataTransfer)
+		)
+			return;
 		event.preventDefault();
 		mediaDragDepth += 1;
 		mediaDropActive = true;
 	}
 
 	function handleMediaDragOver(event: DragEvent): void {
-		if (!containsImageEditorMediaDrag(event.dataTransfer)) return;
+		if (
+			!containsImageEditorMediaDrag(event.dataTransfer) &&
+			!containsExternalImageDrag(event.dataTransfer)
+		)
+			return;
 		event.preventDefault();
 		if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
 		mediaDropActive = true;
 	}
 
 	function handleMediaDragLeave(event: DragEvent): void {
-		if (!containsImageEditorMediaDrag(event.dataTransfer)) return;
+		if (
+			!containsImageEditorMediaDrag(event.dataTransfer) &&
+			!containsExternalImageDrag(event.dataTransfer)
+		)
+			return;
 		mediaDragDepth = Math.max(0, mediaDragDepth - 1);
 		if (mediaDragDepth === 0) mediaDropActive = false;
 	}
 
 	function handleMediaDrop(event: DragEvent): void {
 		const payload = readImageEditorMediaDrag(event.dataTransfer);
+		const files = payload ? [] : externalImageFiles(event.dataTransfer);
 		mediaDragDepth = 0;
 		mediaDropActive = false;
-		if (!payload || !editor.canEdit) return;
+		if ((!payload && files.length === 0) || !editor.canEdit) return;
 		event.preventDefault();
 		const point = documentPoint(event);
-		if (point) editor.addImage(payload, point);
+		if (!point) return;
+		if (payload) editor.addImage(payload, point);
+		else void onExternalFiles?.(files, point);
 	}
 
 	function startPan(event: PointerEvent): void {
@@ -871,6 +1275,17 @@
 	}
 
 	function movePan(event: PointerEvent): void {
+		cursorPoint = documentPoint(event);
+		if (editor.activeTool === 'pencil' || editor.activeTool === 'eraser') {
+			brushPreview = documentPoint(event);
+		}
+		if (
+			(editor.activeTool === 'eyedropper' || eyedropperPointerID === event.pointerId) &&
+			!panning
+		) {
+			const point = documentPoint(event);
+			if (point) queueEyedropperSample(point);
+		}
 		if (event.pointerType === 'touch' && touchPointers.has(event.pointerId)) {
 			touchPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
 			if (touchPointers.size >= 2) {
@@ -912,6 +1327,18 @@
 
 	function stopPan(event: PointerEvent): void {
 		if (event.pointerType === 'touch') touchPointers.delete(event.pointerId);
+		if (eyedropperPointerID === event.pointerId) {
+			const point = documentPoint(event, 'clamp');
+			if (point) sampleEyedropper(point, true);
+			eyedropperPointerID = -1;
+			if (
+				event.currentTarget instanceof Element &&
+				event.currentTarget.hasPointerCapture(event.pointerId)
+			) {
+				event.currentTarget.releasePointerCapture(event.pointerId);
+			}
+			return;
+		}
 		if (finishAreaSelection(event)) return;
 		if (!panning) return;
 		panning = false;
@@ -925,6 +1352,7 @@
 
 	function cancelPointer(event: PointerEvent): void {
 		if (event.pointerType === 'touch') touchPointers.delete(event.pointerId);
+		if (eyedropperPointerID === event.pointerId) eyedropperPointerID = -1;
 		cancelAreaSelection(event);
 		panning = false;
 	}
@@ -939,6 +1367,32 @@
 	}
 
 	function handleCanvasKeydown(event: KeyboardEvent): void {
+		if (
+			editor.pixelSelection &&
+			!editableTarget(event.target) &&
+			(event.key === 'Delete' || event.key === 'Backspace')
+		) {
+			event.preventDefault();
+			event.stopImmediatePropagation();
+			commitPixelContent('delete');
+			return;
+		}
+		if (
+			editor.activeTool === 'crop' &&
+			!editableTarget(event.target) &&
+			!(event.target instanceof HTMLButtonElement)
+		) {
+			if (event.key === 'Enter') {
+				event.preventDefault();
+				applyCrop();
+				return;
+			}
+			if (event.key === 'Escape') {
+				event.preventDefault();
+				cancelCrop();
+				return;
+			}
+		}
 		if (event.code !== 'Space' || editableTarget(event.target)) return;
 		event.preventDefault();
 		spacePressed = true;
@@ -981,10 +1435,96 @@
 	role="application"
 	aria-label={m.image_editor_design_canvas()}
 >
+	<div class="sr-only" aria-live="polite">{canvasAnnouncement}</div>
 	{#if editor.document}
+		{#if editor.activeTool === 'eyedropper'}
+			<div
+				class="pointer-events-none absolute top-3 left-1/2 z-30 flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 flex-wrap items-center justify-center gap-1 rounded-lg border border-white/10 bg-neutral-950/88 p-1.5 text-neutral-100 shadow-lg backdrop-blur [&>*]:pointer-events-auto"
+				data-testid="image-editor-eyedropper-options"
+			>
+				<span class="hidden px-1 text-xs font-medium sm:inline">{m.image_editor_eyedropper()}</span>
+				<AppSelect
+					value={editor.eyedropperTarget}
+					ariaLabel={m.image_editor_eyedropper_target()}
+					onValueChange={(value) => (editor.eyedropperTarget = value as ImageEditorColorTarget)}
+					options={[
+						{ value: 'foreground', label: m.image_editor_eyedropper_foreground() },
+						{ value: 'selected_fill', label: m.image_editor_eyedropper_selected_fill() },
+						{ value: 'selected_stroke', label: m.image_editor_eyedropper_selected_stroke() },
+						{ value: 'page_background', label: m.image_editor_eyedropper_page_background() }
+					]}
+					class="h-8 w-40 border-white/15 bg-neutral-900 text-neutral-100"
+				/>
+				<Button
+					variant={editor.sampleAllLayers ? 'secondary' : 'ghost'}
+					size="sm"
+					class="h-8 px-2 text-xs text-neutral-100 hover:text-foreground"
+					aria-pressed={editor.sampleAllLayers}
+					onclick={() => (editor.sampleAllLayers = !editor.sampleAllLayers)}
+				>
+					{editor.sampleAllLayers
+						? m.image_editor_sample_composite()
+						: m.image_editor_sample_active_layer()}
+				</Button>
+				{#if eyedropperPreview}
+					<span
+						class="size-6 rounded border border-white/30"
+						style:background-color={`${eyedropperPreview.color}${eyedropperPreview.alpha.toString(16).padStart(2, '0')}`}
+						aria-hidden="true"
+					></span>
+					<span class="font-mono text-xs">
+						{eyedropperPreview.color.toUpperCase()} · {Math.round(
+							(eyedropperPreview.alpha / 255) * 100
+						)}%
+					</span>
+				{/if}
+			</div>
+		{/if}
+		{#if editor.activeTool === 'crop' && cropLayer}
+			<div
+				class="pointer-events-none absolute top-3 left-1/2 z-30 flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 flex-wrap items-center justify-center gap-1 rounded-lg border border-white/10 bg-neutral-950/88 p-1.5 text-neutral-100 shadow-lg backdrop-blur [&>*]:pointer-events-auto"
+				data-testid="image-editor-crop-options"
+			>
+				<span class="hidden px-1 text-xs font-medium sm:inline">{m.image_editor_crop()}</span>
+				<AppSelect
+					value={cropAspect}
+					ariaLabel={m.image_editor_crop_aspect()}
+					onValueChange={setCropAspect}
+					options={[
+						{ value: 'free', label: m.image_editor_crop_free() },
+						{ value: 'original', label: m.image_editor_crop_original() },
+						{ value: '1', label: m.image_editor_crop_square() },
+						{ value: '0.8', label: m.image_editor_crop_portrait() },
+						{ value: String(1.91), label: m.image_editor_crop_landscape() },
+						{ value: String(9 / 16), label: m.image_editor_crop_story() },
+						{ value: String(16 / 9), label: m.image_editor_crop_thumbnail() }
+					]}
+					class="h-8 w-36 border-white/15 bg-neutral-900 text-neutral-100"
+				/>
+				<Button
+					variant="ghost"
+					size="sm"
+					class="h-8 px-2 text-xs text-neutral-100 hover:text-foreground"
+					onclick={resetCrop}
+				>
+					{m.image_editor_reset()}
+				</Button>
+				<Button
+					variant="ghost"
+					size="sm"
+					class="h-8 px-2 text-xs text-neutral-100 hover:text-foreground"
+					onclick={cancelCrop}
+				>
+					{m.common_cancel()}
+				</Button>
+				<Button size="sm" class="h-8 px-2 text-xs" onclick={applyCrop}>
+					{m.image_editor_apply_crop()}
+				</Button>
+			</div>
+		{/if}
 		{#if isAreaSelectionTool() || editor.activeTool === 'pencil' || editor.activeTool === 'eraser' || editor.activeTool === 'magic_eraser' || editor.activeTool === 'bucket' || editor.activeTool === 'gradient'}
 			<div
-				class="absolute top-3 left-1/2 z-30 flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 flex-wrap items-center justify-center gap-1 rounded-lg border border-white/10 bg-neutral-950/88 p-1.5 text-neutral-100 shadow-lg backdrop-blur"
+				class="pointer-events-none absolute top-3 left-1/2 z-30 flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 flex-wrap items-center justify-center gap-1 rounded-lg border border-white/10 bg-neutral-950/88 p-1.5 text-neutral-100 shadow-lg backdrop-blur [&>*]:pointer-events-auto"
 				data-testid="image-editor-selection-options"
 			>
 				<span class="hidden px-1 text-xs font-medium sm:inline">
@@ -1184,6 +1724,31 @@
 							onValueChange={(value) => (editor.pencilRoughness = value / 100)}
 						/>
 					</label>
+					<label class="flex min-w-40 items-center gap-2 px-1 text-xs">
+						<span class="whitespace-nowrap">
+							{m.image_editor_smoothing({ value: Math.round(editor.pencilSmoothing * 100) })}
+						</span>
+						<Slider
+							value={Math.round(editor.pencilSmoothing * 100)}
+							min={0}
+							max={95}
+							step={1}
+							class="w-20"
+							ariaLabel={m.image_editor_smoothing({
+								value: Math.round(editor.pencilSmoothing * 100)
+							})}
+							onValueChange={(value) => (editor.pencilSmoothing = value / 100)}
+						/>
+					</label>
+					<Button
+						variant={editor.pencilPressure ? 'secondary' : 'ghost'}
+						size="sm"
+						class="h-8 px-2 text-xs text-neutral-100 hover:text-foreground"
+						aria-pressed={editor.pencilPressure}
+						onclick={() => (editor.pencilPressure = !editor.pencilPressure)}
+					>
+						{m.image_editor_pen_pressure()}
+					</Button>
 				{/if}
 				{#if ['pencil', 'bucket', 'gradient'].includes(editor.activeTool)}
 					<label class="flex min-w-34 items-center gap-2 px-1 text-xs">
@@ -1208,6 +1773,30 @@
 						variant="ghost"
 						size="sm"
 						class="h-8 px-2 text-xs text-neutral-100 hover:text-foreground"
+						onclick={() => commitPixelContent('promote')}
+					>
+						{m.image_editor_promote_pixels()}
+					</Button>
+					<Button
+						variant="outline"
+						size="sm"
+						class="h-8 px-2 text-xs"
+						onclick={() => commitPixelContent('cut')}
+					>
+						{m.image_editor_cut_pixels()}
+					</Button>
+					<Button
+						variant="ghost"
+						size="sm"
+						class="h-8 px-2 text-xs text-red-200 hover:text-destructive"
+						onclick={() => commitPixelContent('delete')}
+					>
+						{m.image_editor_delete_pixels()}
+					</Button>
+					<Button
+						variant="ghost"
+						size="sm"
+						class="h-8 px-2 text-xs text-neutral-100 hover:text-foreground"
 						onclick={() => editor.clearPixelSelection()}
 					>
 						{m.image_editor_deselect_pixels()}
@@ -1228,9 +1817,111 @@
 				style:--image-editor-zoom={editor.zoom}
 				style:--image-editor-pencil-color={editor.paintColor}
 			>
+				{#if editor.showRulers}
+					<div
+						class="absolute -top-6 left-0 z-40 h-6 w-full cursor-s-resize overflow-hidden border-b border-neutral-600 bg-neutral-800 text-neutral-300 shadow-sm"
+						role="button"
+						tabindex="0"
+						aria-label={m.image_editor_add_vertical_guide()}
+						onpointerdown={(event) => startGuide(event, 'vertical')}
+						onpointermove={moveGuide}
+						onpointerup={finishGuide}
+						onkeydown={(event) => addCenteredGuideFromKeyboard(event, 'vertical')}
+					>
+						{#each rulerTicks(editor.document.width_px) as tick (tick.value)}
+							<span
+								class="absolute bottom-0 border-l border-neutral-400/70"
+								class:h-3={tick.major}
+								class:h-1.5={!tick.major}
+								style:left={`${tick.value * editor.zoom}px`}
+							>
+								{#if tick.major}
+									<span class="absolute bottom-2 left-0.5 text-[8px] leading-none"
+										>{tick.value}</span
+									>
+								{/if}
+							</span>
+						{/each}
+					</div>
+					<div
+						class="absolute top-0 -left-6 z-40 h-full w-6 cursor-e-resize overflow-hidden border-r border-neutral-600 bg-neutral-800 text-neutral-300 shadow-sm"
+						role="button"
+						tabindex="0"
+						aria-label={m.image_editor_add_horizontal_guide()}
+						onpointerdown={(event) => startGuide(event, 'horizontal')}
+						onpointermove={moveGuide}
+						onpointerup={finishGuide}
+						onkeydown={(event) => addCenteredGuideFromKeyboard(event, 'horizontal')}
+					>
+						{#each rulerTicks(editor.document.height_px) as tick (tick.value)}
+							<span
+								class="absolute right-0 border-t border-neutral-400/70"
+								class:w-3={tick.major}
+								class:w-1.5={!tick.major}
+								style:top={`${tick.value * editor.zoom}px`}
+							></span>
+						{/each}
+					</div>
+				{/if}
 				{#key canvasAttempt}
 					<canvas {@attach attachCanvas} aria-hidden="true"></canvas>
 				{/key}
+				{#if editor.showGrid}
+					<div
+						class="pointer-events-none absolute inset-0 z-9"
+						style:background-image={GRID_BACKGROUND_IMAGE}
+						style:background-size={`${editor.gridSize * editor.zoom}px ${editor.gridSize * editor.zoom}px`}
+						aria-hidden="true"
+					></div>
+				{/if}
+				{#if editor.showGuides}
+					{#each editor.activePage?.guides?.vertical ?? [] as value, index (`vertical-${index}`)}
+						<button
+							type="button"
+							class="group absolute top-0 z-35 h-full w-3 -translate-x-1/2 cursor-ew-resize touch-none border-0 bg-transparent p-0"
+							style:left={`${value * editor.zoom}px`}
+							aria-label={m.image_editor_vertical_guide_at({ value: Math.round(value) })}
+							onpointerdown={(event) => startGuide(event, 'vertical', index)}
+							onpointermove={moveGuide}
+							onpointerup={finishGuide}
+							onkeydown={(event) => guideKeydown(event, 'vertical', index, value)}
+						>
+							<span
+								class="mx-auto block h-full w-px bg-cyan-400 shadow-[0_0_0_1px_rgb(0_0_0/0.45)] group-focus-visible:w-0.5"
+							></span>
+						</button>
+					{/each}
+					{#each editor.activePage?.guides?.horizontal ?? [] as value, index (`horizontal-${index}`)}
+						<button
+							type="button"
+							class="group absolute left-0 z-35 h-3 w-full -translate-y-1/2 cursor-ns-resize touch-none border-0 bg-transparent p-0"
+							style:top={`${value * editor.zoom}px`}
+							aria-label={m.image_editor_horizontal_guide_at({ value: Math.round(value) })}
+							onpointerdown={(event) => startGuide(event, 'horizontal', index)}
+							onpointermove={moveGuide}
+							onpointerup={finishGuide}
+							onkeydown={(event) => guideKeydown(event, 'horizontal', index, value)}
+						>
+							<span
+								class="my-auto block h-px w-full bg-cyan-400 shadow-[0_0_0_1px_rgb(0_0_0/0.45)] group-focus-visible:h-0.5"
+							></span>
+						</button>
+					{/each}
+					{#if guideGesture}
+						<div
+							class={guideGesture.axis === 'vertical'
+								? 'pointer-events-none absolute top-0 z-35 h-full w-px bg-cyan-200'
+								: 'pointer-events-none absolute left-0 z-35 h-px w-full bg-cyan-200'}
+							style:left={guideGesture.axis === 'vertical'
+								? `${guideGesture.value * editor.zoom}px`
+								: undefined}
+							style:top={guideGesture.axis === 'horizontal'
+								? `${guideGesture.value * editor.zoom}px`
+								: undefined}
+							aria-hidden="true"
+						></div>
+					{/if}
+				{/if}
 				{#if usesCanvasSurface()}
 					<div
 						class="absolute inset-0 z-10 cursor-crosshair touch-none"
@@ -1240,6 +1931,12 @@
 						onpointermove={movePan}
 						onpointerup={stopPan}
 						onpointercancel={cancelPointer}
+						onpointerleave={() => {
+							if (editor.activeTool === 'eyedropper') eyedropperPreview = null;
+							if (editor.activeTool === 'pencil' || editor.activeTool === 'eraser') {
+								brushPreview = null;
+							}
+						}}
 					></div>
 				{/if}
 				<canvas
@@ -1251,6 +1948,77 @@
 					data-active={editor.pixelSelection ? 'true' : 'false'}
 					aria-hidden="true"
 				></canvas>
+				{#if editor.activeTool === 'crop' && cropLayer}
+					<div class="pointer-events-none absolute inset-0 z-25 overflow-hidden">
+						<div
+							class="image-editor-crop-frame pointer-events-auto absolute touch-none border-2 border-white shadow-[0_0_0_9999px_rgb(0_0_0/0.58)]"
+							role="group"
+							aria-label={m.image_editor_crop_frame()}
+							style:left={`${(cropLayer.transform.x + cropWindow.x * cropLayer.transform.width) * editor.zoom}px`}
+							style:top={`${(cropLayer.transform.y + cropWindow.y * cropLayer.transform.height) * editor.zoom}px`}
+							style:width={`${cropWindow.width * cropLayer.transform.width * editor.zoom}px`}
+							style:height={`${cropWindow.height * cropLayer.transform.height * editor.zoom}px`}
+							style:transform={`rotate(${cropLayer.transform.rotation}deg)`}
+							style:transform-origin="top left"
+							onpointerdown={(event) => startCrop(event, 'move')}
+							onpointermove={moveCrop}
+							onpointerup={stopCrop}
+							onpointercancel={stopCrop}
+						>
+							<span class="pointer-events-none absolute inset-x-0 top-1/3 border-t border-white/55"
+							></span>
+							<span class="pointer-events-none absolute inset-x-0 top-2/3 border-t border-white/55"
+							></span>
+							<span class="pointer-events-none absolute inset-y-0 left-1/3 border-l border-white/55"
+							></span>
+							<span class="pointer-events-none absolute inset-y-0 left-2/3 border-l border-white/55"
+							></span>
+							<button
+								type="button"
+								class="absolute inset-6 cursor-move border-0 bg-transparent"
+								aria-label={m.image_editor_crop_move()}
+								onpointerdown={(event) => startCrop(event, 'move')}
+								onkeydown={(event) => nudgeCrop(event, 'move')}
+							></button>
+							{#each [{ handle: 'nw', label: m.image_editor_crop_handle_nw(), class: '-top-[22px] -left-[22px] cursor-nwse-resize' }, { handle: 'n', label: m.image_editor_crop_handle_n(), class: '-top-[22px] left-1/2 -translate-x-1/2 cursor-ns-resize' }, { handle: 'ne', label: m.image_editor_crop_handle_ne(), class: '-top-[22px] -right-[22px] cursor-nesw-resize' }, { handle: 'e', label: m.image_editor_crop_handle_e(), class: 'top-1/2 -right-[22px] -translate-y-1/2 cursor-ew-resize' }, { handle: 'se', label: m.image_editor_crop_handle_se(), class: '-right-[22px] -bottom-[22px] cursor-nwse-resize' }, { handle: 's', label: m.image_editor_crop_handle_s(), class: '-bottom-[22px] left-1/2 -translate-x-1/2 cursor-ns-resize' }, { handle: 'sw', label: m.image_editor_crop_handle_sw(), class: '-bottom-[22px] -left-[22px] cursor-nesw-resize' }, { handle: 'w', label: m.image_editor_crop_handle_w(), class: 'top-1/2 -left-[22px] -translate-y-1/2 cursor-ew-resize' }] as handle (handle.handle)}
+								<button
+									type="button"
+									class={`absolute size-11 border-0 bg-transparent ${handle.class}`}
+									aria-label={handle.label}
+									onpointerdown={(event) => startCrop(event, handle.handle as CropHandle)}
+									onkeydown={(event) => nudgeCrop(event, handle.handle as CropHandle)}
+								>
+									<span
+										class="pointer-events-none absolute top-1/2 left-1/2 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-neutral-950 bg-white shadow"
+									></span>
+								</button>
+							{/each}
+						</div>
+					</div>
+				{/if}
+				{#if editor.activeTool === 'eyedropper' && eyedropperPreview}
+					<div
+						class="pointer-events-none absolute z-30 grid size-12 place-items-center rounded-full border-2 border-white bg-neutral-950 text-[9px] font-semibold text-white shadow-xl"
+						style:left={`${eyedropperPreview.point.x * editor.zoom + 14}px`}
+						style:top={`${eyedropperPreview.point.y * editor.zoom + 14}px`}
+						aria-hidden="true"
+					>
+						<span
+							class="size-7 rounded-full border border-white/40"
+							style:background-color={`${eyedropperPreview.color}${eyedropperPreview.alpha.toString(16).padStart(2, '0')}`}
+						></span>
+					</div>
+				{/if}
+				{#if (editor.activeTool === 'pencil' || editor.activeTool === 'eraser') && brushPreview}
+					<div
+						class="pointer-events-none absolute z-30 rounded-full border border-white shadow-[0_0_0_1px_rgb(0_0_0/0.8)]"
+						style:left={`${(brushPreview.x - (editor.activeTool === 'eraser' ? editor.eraserSize : editor.pencilSize) / 2) * editor.zoom}px`}
+						style:top={`${(brushPreview.y - (editor.activeTool === 'eraser' ? editor.eraserSize : editor.pencilSize) / 2) * editor.zoom}px`}
+						style:width={`${(editor.activeTool === 'eraser' ? editor.eraserSize : editor.pencilSize) * editor.zoom}px`}
+						style:height={`${(editor.activeTool === 'eraser' ? editor.eraserSize : editor.pencilSize) * editor.zoom}px`}
+						aria-hidden="true"
+					></div>
+				{/if}
 				{#if mediaDropActive}
 					<div
 						class="pointer-events-none absolute inset-0 z-30 grid place-items-center rounded-sm bg-primary/12 ring-4 ring-primary ring-inset"
@@ -1344,6 +2112,13 @@
 				{/if}
 			</div>
 		</div>
+		{#if cursorPoint}
+			<div
+				class="pointer-events-none absolute right-3 bottom-3 hidden rounded bg-neutral-950/80 px-2 py-1 font-mono text-[10px] text-neutral-200 lg:block"
+			>
+				{Math.round(cursorPoint.x)}, {Math.round(cursorPoint.y)} px
+			</div>
+		{/if}
 	{/if}
 	{#if canvasError}
 		<div

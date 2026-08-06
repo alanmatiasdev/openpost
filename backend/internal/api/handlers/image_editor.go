@@ -88,6 +88,9 @@ type ImageEditorTextValue struct {
 	FontAssetID    string                `json:"font_asset_id,omitempty"`
 	FontWeight     int                   `json:"font_weight"`
 	FontStyle      string                `json:"font_style"`
+	Underline      bool                  `json:"underline,omitempty"`
+	Strike         bool                  `json:"strike,omitempty"`
+	Wrap           string                `json:"wrap,omitempty" enum:"word,character"`
 	FontSize       float64               `json:"font_size"`
 	Color          string                `json:"color"`
 	Align          string                `json:"align"`
@@ -251,9 +254,15 @@ type ImageEditorPagePayload struct {
 	Name                string                     `json:"name"`
 	BackgroundColor     string                     `json:"background_color"`
 	Background          *ImageEditorPageBackground `json:"background,omitempty"`
+	Guides              *ImageEditorPageGuides     `json:"guides,omitempty"`
 	Layers              []ImageEditorLayer         `json:"layers"`
 	PreviewMediaID      string                     `json:"preview_media_id,omitempty"`
 	LatestExportMediaID string                     `json:"latest_export_media_id,omitempty"`
+}
+
+type ImageEditorPageGuides struct {
+	Horizontal []float64 `json:"horizontal"`
+	Vertical   []float64 `json:"vertical"`
 }
 
 func (page ImageEditorPagePayload) BackgroundMediaID() string {
@@ -1658,6 +1667,21 @@ func validateImageEditorPayload(payload ImageEditorDocumentPayload) error {
 		if err := validateImageEditorPageBackground(page); err != nil {
 			return err
 		}
+		if page.Guides != nil {
+			if len(page.Guides.Horizontal) > 100 || len(page.Guides.Vertical) > 100 {
+				return fmt.Errorf("image editor pages cannot contain more than 100 guides per axis")
+			}
+			for _, value := range page.Guides.Horizontal {
+				if !finiteImageEditorNumber(value) || value < 0 || value > float64(payload.HeightPX) {
+					return fmt.Errorf("image editor horizontal guides must remain inside the page")
+				}
+			}
+			for _, value := range page.Guides.Vertical {
+				if !finiteImageEditorNumber(value) || value < 0 || value > float64(payload.WidthPX) {
+					return fmt.Errorf("image editor vertical guides must remain inside the page")
+				}
+			}
+		}
 		pageLayerIDs := make(map[string]struct{}, len(page.Layers))
 		parents := make(map[string]string, len(page.Layers))
 		for _, layer := range page.Layers {
@@ -1814,6 +1838,7 @@ func validateImageEditorLayer(layer ImageEditorLayer) error {
 			layer.Text.FontWeight < 100 ||
 			layer.Text.FontWeight > 900 ||
 			!oneOfImageEditorString(layer.Text.FontStyle, "normal", "italic") ||
+			(layer.Text.Wrap != "" && !oneOfImageEditorString(layer.Text.Wrap, "word", "character")) ||
 			!oneOfImageEditorString(layer.Text.Align, "left", "center", "right", "justify") ||
 			layer.Text.LineHeight <= 0 ||
 			!finiteImageEditorNumber(layer.Text.LineHeight) ||

@@ -15,6 +15,7 @@ import {
 	polygonIntersectsBounds,
 	rectanglePixelMask,
 	strokePixelMask,
+	smoothSelectionPoints,
 	subtractPixelMasks,
 	translatePixelMask
 } from './selection';
@@ -107,6 +108,28 @@ describe('OpenPost Image Editor selection composition', () => {
 
 		expect(spans.length).toBeGreaterThan(0);
 		expect(spans.some((span) => span.width >= 7)).toBe(true);
+	});
+
+	it('uses pen pressure to vary the pencil footprint', () => {
+		const light = strokePixelMask(40, 40, [{ x: 20, y: 20, pressure: 0.15 }], 20);
+		const heavy = strokePixelMask(40, 40, [{ x: 20, y: 20, pressure: 1 }], 20);
+
+		expect(light.reduce((total, value) => total + value, 0)).toBeLessThan(
+			heavy.reduce((total, value) => total + value, 0)
+		);
+	});
+
+	it('smooths intermediate samples while preserving stroke endpoints', () => {
+		const points = [
+			{ x: 0, y: 0, pressure: 0.5 },
+			{ x: 10, y: 20, pressure: 0.75 },
+			{ x: 20, y: 0, pressure: 1 }
+		];
+		const smoothed = smoothSelectionPoints(points, 0.5);
+
+		expect(smoothed[0]).toEqual(points[0]);
+		expect(smoothed[1].y).toBe(10);
+		expect(smoothed[2]).toEqual(points[2]);
 	});
 
 	it('adds deterministic edge texture to rough pencil strokes', () => {

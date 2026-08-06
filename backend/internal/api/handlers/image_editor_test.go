@@ -567,6 +567,36 @@ func TestBuiltinImageEditorTemplatesCoverDistinctCreativeJobs(t *testing.T) {
 	require.GreaterOrEqual(t, len(categories), 7)
 }
 
+func TestValidateImageEditorPayloadGuides(t *testing.T) {
+	t.Parallel()
+	document := builtinImageEditorTemplates()[0].Document
+	document.Pages[0].Guides = &ImageEditorPageGuides{
+		Horizontal: []float64{100},
+		Vertical:   []float64{200},
+	}
+	require.NoError(t, validateImageEditorPayload(document))
+
+	document.Pages[0].Guides.Vertical = []float64{float64(document.WidthPX) + 1}
+	require.EqualError(t, validateImageEditorPayload(document), "image editor vertical guides must remain inside the page")
+}
+
+func TestValidateImageEditorPayloadTextWrapping(t *testing.T) {
+	t.Parallel()
+	document := builtinImageEditorTemplates()[0].Document
+	var text *ImageEditorTextValue
+	for _, layer := range document.Pages[0].Layers {
+		if layer.Text != nil {
+			text = layer.Text
+			break
+		}
+	}
+	require.NotNil(t, text)
+	text.Wrap = "character"
+	require.NoError(t, validateImageEditorPayload(document))
+	text.Wrap = "invalid"
+	require.EqualError(t, validateImageEditorPayload(document), "text layer properties are invalid")
+}
+
 func TestPublicImageEditorTemplatesExposeOnlyBuiltins(t *testing.T) {
 	t.Parallel()
 	handler, _ := newImageEditorHandlerTest(t)

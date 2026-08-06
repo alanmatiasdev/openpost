@@ -75,6 +75,7 @@ export function blankImageEditorPage(name = 'Page 1'): ImageEditorPage {
 		name,
 		background_color: '#ffffff',
 		background: defaultImageEditorPageBackground(),
+		guides: { horizontal: [], vertical: [] },
 		layers: []
 	};
 }
@@ -100,7 +101,16 @@ export function cloneImageEditorDocument(document: ImageEditorDocument): ImageEd
 	};
 	for (const page of clone.pages) {
 		page.background = imageEditorPageBackground(page);
+		page.guides = {
+			horizontal: [...(page.guides?.horizontal ?? [])],
+			vertical: [...(page.guides?.vertical ?? [])]
+		};
 		for (const layer of page.layers) {
+			if (layer.text) {
+				layer.text.underline = Boolean(layer.text.underline);
+				layer.text.strike = Boolean(layer.text.strike);
+				layer.text.wrap = layer.text.wrap === 'character' ? 'character' : 'word';
+			}
 			if (!layer.image) continue;
 			layer.image.adjustments = {
 				...defaultImageAdjustments(),
@@ -250,6 +260,18 @@ export function validateImageEditorDocument(document: ImageEditorDocument): stri
 		pageIDs.add(page.id);
 		if (!HEX_COLOR.test(page.background_color))
 			errors.push(`${page.name} has an invalid background.`);
+		if (
+			(page.guides?.horizontal.length ?? 0) > 100 ||
+			(page.guides?.vertical.length ?? 0) > 100 ||
+			(page.guides?.horizontal ?? []).some(
+				(value) => !Number.isFinite(value) || value < 0 || value > document.height_px
+			) ||
+			(page.guides?.vertical ?? []).some(
+				(value) => !Number.isFinite(value) || value < 0 || value > document.width_px
+			)
+		) {
+			errors.push(`${page.name} has invalid guides.`);
+		}
 		const background = imageEditorPageBackground(page);
 		if (
 			!Number.isFinite(background.opacity) ||
@@ -290,6 +312,9 @@ export function validateImageEditorDocument(document: ImageEditorDocument): stri
 					layer.text.curve.offset > 1)
 			) {
 				errors.push(`${layer.name} has an invalid text curve.`);
+			}
+			if (layer.text?.wrap && !['word', 'character'].includes(layer.text.wrap)) {
+				errors.push(`${layer.name} has an invalid text wrapping mode.`);
 			}
 			if (layer.type === 'image' && !layer.image?.media_id) {
 				errors.push(`${layer.name} has no media.`);

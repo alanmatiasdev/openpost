@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { defaultImageAdjustments } from './document';
 import { ImageEditorController } from './editor.svelte';
 import type { ImageEditorDocumentResponse, ImageEditorLayer } from './types';
 
@@ -59,6 +60,105 @@ function response(): ImageEditorDocumentResponse {
 }
 
 describe('OpenPost Image Editor editor layer interactions', () => {
+	it('adds, moves, removes, and undoes page guides as document mutations', () => {
+		const editor = new ImageEditorController();
+		editor.load(response());
+		editor.addGuide('vertical', 120);
+		expect(editor.activePage?.guides?.vertical).toEqual([120]);
+		editor.updateGuide('vertical', 0, 180);
+		expect(editor.activePage?.guides?.vertical).toEqual([180]);
+		editor.removeGuide('vertical', 0);
+		expect(editor.activePage?.guides?.vertical).toEqual([]);
+
+		editor.undo();
+		expect(editor.activePage?.guides?.vertical).toEqual([180]);
+	});
+
+	it('does not dirty history or emit changes for a no-op mutation', () => {
+		const editor = new ImageEditorController();
+		editor.load(response());
+		let changes = 0;
+		editor.onChange(() => changes++);
+
+		editor.mutate('No-op', () => undefined);
+
+		expect(changes).toBe(0);
+		expect(editor.canUndo).toBe(false);
+		expect(editor.saveState).toBe('saved');
+	});
+
+	it('keeps locked layers and selects the nearest editable sibling after deletion', () => {
+		const editor = new ImageEditorController();
+		const initial = response();
+		initial.document.pages[0].layers[1].locked = true;
+		editor.load(initial);
+
+		editor.selectLayer('middle');
+		editor.deleteSelected();
+		expect(editor.activePage?.layers.map((item) => item.id)).toContain('middle');
+
+		editor.selectLayer('front');
+		editor.deleteSelected();
+		expect(editor.activePage?.layers.map((item) => item.id)).toEqual(['back', 'middle']);
+		expect(editor.selectedLayerIDs).toEqual(['back']);
+	});
+
+	it('applies sampled colors to transient paint state or selected layer properties', () => {
+		const editor = new ImageEditorController();
+		editor.load(response());
+		editor.applySampledColor('#0ea5e9', 128);
+		expect(editor.paintColor).toBe('#0ea5e9');
+		expect(editor.paintOpacity).toBeCloseTo(128 / 255);
+		expect(editor.canUndo).toBe(false);
+
+		editor.selectLayer('front');
+		editor.eyedropperTarget = 'selected_fill';
+		editor.applySampledColor('#dc2626', 128);
+		expect(editor.selectedLayers[0].shape?.fill).toBe('#dc262680');
+		expect(editor.canUndo).toBe(true);
+
+		editor.undo();
+		expect(editor.selectedLayers[0].shape?.fill).toBe('#f97316');
+	});
+
+	it('applies a brand text style snapshot to every selected compatible layer', () => {
+		const editor = new ImageEditorController();
+		editor.load(response());
+		editor.addText();
+		const first = editor.selectedLayers[0];
+		editor.addText();
+		const second = editor.selectedLayers[0];
+		editor.selectLayer(first.id);
+		editor.selectLayer(second.id, 'toggle');
+
+		editor.applyBrandTextStyle({
+			id: 'heading',
+			name: 'Heading',
+			font_family: 'Brand Sans',
+			font_asset_id: 'font-1',
+			font_weight: 800,
+			font_style: 'italic',
+			font_size: 72,
+			color: '#7c3aed',
+			line_height: 1.2,
+			letter_spacing: 2
+		});
+
+		for (const layer of editor.selectedLayers) {
+			expect(layer.text).toMatchObject({
+				font_family: 'Brand Sans',
+				font_asset_id: 'font-1',
+				font_weight: 800,
+				font_style: 'italic',
+				font_size: 72,
+				color: '#7c3aed',
+				line_height: 1.2,
+				letter_spacing: 2
+			});
+		}
+		expect(editor.canUndo).toBe(true);
+	});
+
 	it('supports native range selection in visual layer order', () => {
 		const editor = new ImageEditorController();
 		editor.load(response());
@@ -115,6 +215,88 @@ describe('OpenPost Image Editor editor layer interactions', () => {
 		expect(bucket?.type).toBe('paint');
 		expect(bucket?.paint?.kind).toBe('fill');
 		expect(bucket?.paint?.spans).toEqual([{ x: 0, y: 0, width: 20 }]);
+	});
+
+	it('restores a non-destructively erased image in one undoable command', () => {
+		const editor = new ImageEditorController();
+		const initial = response();
+		initial.document.pages[0].layers.push({
+			id: 'image',
+			type: 'image',
+			name: 'Image',
+			visible: true,
+			locked: false,
+			opacity: 1,
+			transform: {
+				x: 0,
+				y: 0,
+				width: 100,
+				height: 100,
+				rotation: 0,
+				flip_x: false,
+				flip_y: false
+			},
+			image: {
+				media_id: 'media',
+				source_width: 100,
+				source_height: 100,
+				fit: 'cover',
+				crop: { x: 0, y: 0, width: 1, height: 1 },
+				adjustments: defaultImageAdjustments()
+			},
+			erase_mask: {
+				source_width: 100,
+				source_height: 100,
+				strokes: [{ size: 12, points: [{ x: 20, y: 20 }] }],
+				spans: []
+			}
+		});
+		editor.load(initial);
+
+		editor.restoreImageEraseMask('image');
+
+		expect(editor.activePage?.layers.at(-1)?.erase_mask).toBeUndefined();
+		expect(editor.undoLabel).toBe('Restore erased image areas');
+		editor.undo();
+		expect(editor.activePage?.layers.at(-1)?.erase_mask?.strokes).toHaveLength(1);
+	});
+
+	it('promotes and deletes selected paint pixels without flattening the source layer', () => {
+		const editor = new ImageEditorController();
+		editor.load(response());
+		const mask = new Uint8Array(1080 * 1080);
+		mask.fill(1, 10 * 1080 + 20, 10 * 1080 + 40);
+		editor.addPaintFill(mask);
+		const paint = editor.selectedLayers[0];
+		editor.pixelSelection = {
+			width: 1080,
+			height: 1080,
+			data: mask,
+			targetLayerIDs: [paint.id]
+		};
+
+		expect(
+			editor.commitPixelSelectionContent('promote', [
+				{ id: paint.id, width: 20, height: 1, data: new Uint8Array(20).fill(1, 0, 10) }
+			])
+		).toBe(true);
+		expect(editor.selectedLayers[0].paint?.spans).toEqual([{ x: 0, y: 0, width: 10 }]);
+		expect(editor.activePage?.layers.find((layer) => layer.id === paint.id)?.paint?.spans).toEqual([
+			{ x: 0, y: 0, width: 20 }
+		]);
+
+		editor.undo();
+		editor.selectLayer(paint.id);
+		editor.pixelSelection = {
+			width: 1080,
+			height: 1080,
+			data: mask,
+			targetLayerIDs: [paint.id]
+		};
+		editor.commitPixelSelectionContent('delete', [
+			{ id: paint.id, width: 20, height: 1, data: new Uint8Array(20).fill(1, 0, 10) }
+		]);
+		expect(editor.selectedLayers[0].paint?.spans).toEqual([{ x: 10, y: 0, width: 10 }]);
 	});
 
 	it('creates generic empty layers and paints into the selected empty layer', () => {
@@ -176,6 +358,41 @@ describe('OpenPost Image Editor editor layer interactions', () => {
 		expect(image.image?.fit).toBe('stretch');
 		expect(image.transform.width / image.transform.height).toBeCloseTo(16 / 9);
 		expect(image.image?.intrinsic_pending).toBe(false);
+	});
+
+	it('applies and resets an image crop as one undoable transform', () => {
+		const editor = new ImageEditorController();
+		editor.load(response());
+		editor.addImage({ id: 'media', width: 800, height: 400, name: 'Wide image' });
+		const image = editor.selectedLayers[0];
+		const original = structuredClone(image.transform);
+
+		editor.applyImageCrop(image.id, { x: 0.25, y: 0, width: 0.5, height: 1 });
+
+		expect(editor.selectedLayers[0].image?.crop).toEqual({
+			x: 0.25,
+			y: 0,
+			width: 0.5,
+			height: 1
+		});
+		expect(editor.selectedLayers[0].transform.width).toBeCloseTo(original.width / 2);
+
+		editor.undo();
+		expect(editor.selectedLayers[0].image?.crop).toEqual({ x: 0, y: 0, width: 1, height: 1 });
+		expect(editor.selectedLayers[0].transform).toEqual(original);
+
+		editor.redo();
+		editor.resetImageCrop(image.id);
+		expect(editor.selectedLayers[0].image?.crop).toEqual({ x: 0, y: 0, width: 1, height: 1 });
+		expect(editor.selectedLayers[0].transform).toMatchObject({
+			rotation: original.rotation,
+			flip_x: original.flip_x,
+			flip_y: original.flip_y
+		});
+		expect(editor.selectedLayers[0].transform.x).toBeCloseTo(original.x);
+		expect(editor.selectedLayers[0].transform.y).toBeCloseTo(original.y);
+		expect(editor.selectedLayers[0].transform.width).toBeCloseTo(original.width);
+		expect(editor.selectedLayers[0].transform.height).toBeCloseTo(original.height);
 	});
 
 	it('fits the whole canvas inside the latest measured viewport', () => {

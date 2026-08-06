@@ -55,4 +55,49 @@ describe('OpenPost Image Editor command history', () => {
 		});
 		expect(history.canRedo).toBe(false);
 	});
+
+	it('does not record or clear redo history for a no-op command', () => {
+		const history = new ImageEditorHistory<{ x: number }>(structuredClone);
+		const moved = history.execute(
+			{ x: 1 },
+			{
+				label: 'Move',
+				apply: () => ({ x: 2 }),
+				revert: () => ({ x: 1 })
+			}
+		);
+		const original = history.undo(moved);
+		const unchanged = history.execute(original, {
+			label: 'No-op',
+			apply: (value) => value,
+			revert: (value) => value
+		});
+
+		expect(unchanged).toBe(original);
+		expect(history.lastExecutionChanged).toBe(false);
+		expect(history.canUndo).toBe(false);
+		expect(history.canRedo).toBe(true);
+	});
+
+	it('evicts the oldest snapshots when the measured byte budget is exceeded', () => {
+		const history = new ImageEditorHistory<string>(
+			(value) => value,
+			100,
+			(left, right) => left === right,
+			24,
+			(value) => value.length
+		);
+		let value = 'aaaa';
+		for (const next of ['bbbb', 'cccc', 'dddd', 'eeee']) {
+			value = history.execute(value, {
+				label: 'Replace',
+				apply: () => next,
+				revert: (current) => current
+			});
+		}
+
+		expect(history.estimatedSizeBytes).toBeLessThanOrEqual(24);
+		expect(history.entryCount).toBe(3);
+		expect(history.undo(value)).toBe('dddd');
+	});
 });
