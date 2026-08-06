@@ -4,6 +4,10 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Added a floating pixel-selection mode in the Image Editor so selected pixels can be moved before committing, with Enter/Escape/Delete workflows, arrow-key nudging, undo labeling, and cancel-safe rollback.
+
 ## [3.3.0] - 2026-08-06
 
 ### Added
