@@ -1654,6 +1654,7 @@
 	"media_batch_upload": "Batch upload (up to 10)",
 	"media_select_files": "Select multiple files",
 	"media_upload_batch_hint": "Up to 10 files · images up to 50 MB · video and audio up to 16 GiB",
+	"media_svg_conversion_failed": "This SVG could not be converted to PNG. Export it as a PNG and try again.",
 	"media_images_or_videos": "Images, video, or audio",
 	"media_usage_title": "Media usage",
 	"media_view_usage": "View usage",

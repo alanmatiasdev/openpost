@@ -1793,6 +1793,9 @@ func detectedMediaMimeType(content []byte, fallback string) string {
 }
 
 func validateMediaAssetContent(assetKind, filename, declaredMimeType string, content []byte) error {
+	if isSVGMediaUpload(filename, declaredMimeType, content) {
+		return errors.New("SVG uploads must be converted to PNG before upload")
+	}
 	if assetKind != "brand_font" {
 		return nil
 	}
@@ -1832,6 +1835,15 @@ func validateMediaAssetContent(assetKind, filename, declaredMimeType string, con
 		return fmt.Errorf("brand font MIME type does not match the %s file", formatName)
 	}
 	return nil
+}
+
+func isSVGMediaUpload(filename, declaredMimeType string, content []byte) bool {
+	if strings.EqualFold(strings.TrimSpace(declaredMimeType), "image/svg+xml") ||
+		strings.EqualFold(filepath.Ext(strings.TrimSpace(filename)), ".svg") {
+		return true
+	}
+	normalized := bytes.ToLower(bytes.TrimSpace(content))
+	return bytes.Contains(normalized, []byte("<svg"))
 }
 
 func (h *MediaHandler) markMediaUploadFailed(ctx context.Context, mediaID string) {
