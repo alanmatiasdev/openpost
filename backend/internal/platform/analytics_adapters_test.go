@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -149,6 +150,46 @@ func TestXAnalyticsUsesPublicMetricsAndKeepsMetricKindsDistinct(t *testing.T) {
 	require.Equal(t, int64(1), content[MetricQuotes])
 	require.Equal(t, int64(100), content[MetricImpressions])
 	require.Equal(t, int64(4), content[MetricSaves])
+}
+
+func TestXAnalyticsRejectsPartialContentResponses(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"public_metrics":{"like_count":8}}],"errors":[{"type":"https://api.x.com/2/problems/resource-not-found","title":"Not Found"}]}`))
+	}))
+	defer server.Close()
+
+	adapter := NewXAdapter("consumer", "secret", "")
+	defer close(adapter.cleanupDone)
+	adapter.apiBaseURL = server.URL
+
+	_, err := adapter.FetchContentAnalytics(context.Background(), "access|secret", ContentAnalyticsRequest{ExternalIDs: []string{"tweet-1", "tweet-2"}})
+	require.Error(t, err)
+	var analyticsErr *AnalyticsError
+	require.ErrorAs(t, err, &analyticsErr)
+	require.Equal(t, AnalyticsStatusFailed, analyticsErr.Status)
+	require.Equal(t, "partial_response", analyticsErr.Code)
+}
+
+func TestXAnalyticsBacksOffWhenCreditsAreDepleted(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusPaymentRequired)
+		_, _ = w.Write([]byte(`{"title":"Credits depleted"}`))
+	}))
+	defer server.Close()
+
+	adapter := NewXAdapter("consumer", "secret", "")
+	defer close(adapter.cleanupDone)
+	adapter.apiBaseURL = server.URL
+
+	_, err := adapter.FetchAccountAnalytics(context.Background(), "access|secret", AccountAnalyticsRequest{AccountID: "user"})
+	require.Error(t, err)
+	var analyticsErr *AnalyticsError
+	require.ErrorAs(t, err, &analyticsErr)
+	require.Equal(t, AnalyticsStatusRateLimited, analyticsErr.Status)
+	require.Equal(t, "credits_depleted", analyticsErr.Code)
+	require.Equal(t, 24*time.Hour, analyticsErr.RetryAfter)
 }
 
 func TestLinkedInAnalyticsSupportsMembersAndOrganizationPages(t *testing.T) {

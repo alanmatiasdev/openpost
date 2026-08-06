@@ -3,11 +3,21 @@ package platform
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
+
+const xAnalyticsCreditsRetryAfter = 24 * time.Hour
+
+type xAnalyticsProviderError struct {
+	Type   string `json:"type"`
+	Title  string `json:"title"`
+	Detail string `json:"detail"`
+}
 
 func (x *XAdapter) AnalyticsSupport() AnalyticsSupport {
 	return AnalyticsSupport{Account: true, Content: true}
@@ -18,15 +28,22 @@ func (x *XAdapter) FetchAccountAnalytics(ctx context.Context, accessToken string
 	endpoint := strings.TrimRight(x.apiBaseURL, "/") + "/2/users/" + url.PathEscape(input.AccountID) + "?" + query.Encode()
 	body, err := x.doSignedRequest(ctx, accessToken, http.MethodGet, endpoint, nil, nil)
 	if err != nil {
-		return nil, fmt.Errorf("x account analytics: %w", err)
+		return nil, xAnalyticsRequestError("x account analytics", err)
 	}
 	var response struct {
-		Data struct {
+		Data *struct {
 			PublicMetrics map[string]int64 `json:"public_metrics"`
 		} `json:"data"`
+		Errors []xAnalyticsProviderError `json:"errors"`
 	}
 	if err := json.Unmarshal(body, &response); err != nil {
 		return nil, fmt.Errorf("decoding x account analytics: %w", err)
+	}
+	if len(response.Errors) > 0 {
+		return nil, NewAnalyticsError(AnalyticsStatusFailed, "partial_response")
+	}
+	if response.Data == nil {
+		return nil, NewAnalyticsError(AnalyticsStatusNotFound, "account_not_found")
 	}
 	return mapXMetrics(response.Data.PublicMetrics), nil
 }
@@ -47,15 +64,22 @@ func (x *XAdapter) FetchContentAnalytics(ctx context.Context, accessToken string
 		endpoint := strings.TrimRight(x.apiBaseURL, "/") + "/2/tweets?" + query.Encode()
 		body, err := x.doSignedRequest(ctx, accessToken, http.MethodGet, endpoint, nil, nil)
 		if err != nil {
-			return nil, fmt.Errorf("x content analytics: %w", err)
+			return nil, xAnalyticsRequestError("x content analytics", err)
 		}
 		var response struct {
 			Data []struct {
 				PublicMetrics map[string]int64 `json:"public_metrics"`
 			} `json:"data"`
+			Errors []xAnalyticsProviderError `json:"errors"`
 		}
 		if err := json.Unmarshal(body, &response); err != nil {
 			return nil, fmt.Errorf("decoding x content analytics: %w", err)
+		}
+		if len(response.Data) == 0 && len(response.Errors) > 0 {
+			return nil, NewAnalyticsError(AnalyticsStatusNotFound, "content_not_found")
+		}
+		if len(response.Errors) > 0 || len(response.Data) != end-start {
+			return nil, NewAnalyticsError(AnalyticsStatusFailed, "partial_response")
 		}
 		found += len(response.Data)
 		for _, tweet := range response.Data {
@@ -67,6 +91,18 @@ func (x *XAdapter) FetchContentAnalytics(ctx context.Context, accessToken string
 	}
 	subtractOwnReplies(total, input.OwnReplyCount)
 	return total, nil
+}
+
+func xAnalyticsRequestError(operation string, err error) error {
+	var httpErr *HTTPError
+	if errors.As(err, &httpErr) && httpErr.StatusCode == http.StatusPaymentRequired {
+		return fmt.Errorf("%s: %w", operation, &AnalyticsError{
+			Status:     AnalyticsStatusRateLimited,
+			Code:       "credits_depleted",
+			RetryAfter: xAnalyticsCreditsRetryAfter,
+		})
+	}
+	return fmt.Errorf("%s: %w", operation, err)
 }
 
 func mapXMetrics(metrics map[string]int64) AnalyticsValues {
