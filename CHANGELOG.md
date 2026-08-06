@@ -17,6 +17,7 @@ All notable changes to this project are documented in this file.
 
 ### Fixed
 
+- Made public app pages answer `HEAD` requests with their normal status and headers so payment-provider domain verification does not treat the live site as unreachable.
 - Allowed media referenced by failed publications to move to Trash even when a child rendition still has a pre-publish status, while keeping active drafts, schedules, and publishing work protected.
 - Removed the unintended divider lines immediately above and below the Media search and filter controls.
 - Made new text layers start with “New text,” prevented the T shortcut from typing into the layer it creates, kept later text dragging out of edit mode, and stopped multi-selection snapping from moving selected layers off-canvas.
