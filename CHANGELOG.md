@@ -15,6 +15,7 @@ All notable changes to this project are documented in this file.
 
 ### Fixed
 
+- Updated the pinned YAML parser to the patched release for CVE-2026-59870.
 - Prevented X analytics from replacing complete snapshots with partial batch results and added a 24-hour backoff when X API credits are depleted.
 - Derived relative local media URLs from the canonical public app origin so pull-from-URL providers receive an absolute media URL without duplicate deployment configuration.
 - Made Escape cancel a crop exactly even when focus remains on the tool rail or another button.
