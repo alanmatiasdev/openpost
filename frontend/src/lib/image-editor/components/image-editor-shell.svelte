@@ -153,6 +153,11 @@
 		recoveryReason: 'idle' | 'export' | 'close';
 	};
 	type SaveAttemptResult = 'saved' | 'retry' | 'blocked';
+	type PixelSelectionActions = {
+		copy(): ImageEditorLayer[];
+		begin(mode: 'promote' | 'cut'): boolean;
+		delete(): boolean;
+	};
 	const INITIAL_SAVE_RETRY_DELAY = 2_000;
 	const MAXIMUM_SAVE_RETRY_DELAY = 30_000;
 	let saveTimer: ReturnType<typeof setTimeout> | undefined;
@@ -206,6 +211,7 @@
 	let mobileSheet = $state<'assets' | 'layers' | 'properties' | null>(null);
 	let focusedCanvas = $state(false);
 	let copiedLayers = $state.raw<ImageEditorLayer[]>([]);
+	let pixelSelectionActions = $state.raw<PixelSelectionActions | null>(null);
 	let statusAnnouncement = $state('');
 	let suppressSavedAnnouncementUntil = 0;
 	let revisions = $state<ImageEditorRevisionSummary[]>([]);
@@ -1173,6 +1179,7 @@
 	}
 
 	function setTool(tool: ImageEditorTool): void {
+		if (editor.floatingPixelSelection) editor.commitFloatingPixelSelection();
 		if (tool === 'shape') {
 			insertShape(shapeSlotKind);
 			return;
@@ -1310,7 +1317,12 @@
 			const distance = event.shiftKey ? 10 : 1;
 			const deltaX = key === 'arrowleft' ? -distance : key === 'arrowright' ? distance : 0;
 			const deltaY = key === 'arrowup' ? -distance : key === 'arrowdown' ? distance : 0;
-			editor.movePixelSelection(editor.pixelSelection.data, deltaX, deltaY);
+			if (editor.floatingPixelSelection) {
+				editor.translateFloatingPixelSelection(deltaX, deltaY);
+				editor.finishFloatingPixelSelectionMove();
+			} else {
+				editor.movePixelSelection(editor.pixelSelection.data, deltaX, deltaY);
+			}
 			return;
 		}
 		if (
@@ -1343,9 +1355,13 @@
 			deselect: () =>
 				editor.pixelSelection ? editor.clearPixelSelection() : editor.selectLayer(''),
 			copy: () => void copySelection(),
-			cut: () => void copySelection().then(() => editor.deleteSelected()),
+			cut: () => void cutSelection(),
 			paste: () => void pasteSelection(),
-			delete: () => editor.deleteSelected(),
+			delete: () => {
+				if (editor.floatingPixelSelection) editor.deleteFloatingPixelSelection();
+				else if (editor.pixelSelection) pixelSelectionActions?.delete();
+				else editor.deleteSelected();
+			},
 			fit_canvas: () => editor.fitZoom(),
 			zoom_100: () => (editor.zoom = 1),
 			focus_canvas: () => (focusedCanvas = !focusedCanvas),
@@ -1424,7 +1440,9 @@
 	}
 
 	async function copySelection(): Promise<void> {
-		copiedLayers = structuredClone(editor.selectedLayers);
+		copiedLayers = editor.pixelSelection
+			? (pixelSelectionActions?.copy() ?? [])
+			: structuredClone(editor.selectedLayers);
 		if (copiedLayers.length === 0) return;
 		const payload = JSON.stringify({ version: 1, layers: copiedLayers });
 		try {
@@ -1439,6 +1457,16 @@
 		} catch {
 			// The in-session clipboard remains available when custom clipboard MIME is blocked.
 		}
+	}
+
+	async function cutSelection(): Promise<void> {
+		if (!editor.pixelSelection) {
+			await copySelection();
+			editor.deleteSelected();
+			return;
+		}
+		await copySelection();
+		pixelSelectionActions?.begin('cut');
 	}
 
 	async function pasteSelection(): Promise<void> {
@@ -2526,7 +2554,10 @@
 						? 'bottom-[8.75rem] lg:bottom-33'
 						: 'bottom-11 lg:bottom-9'}"
 			>
-				<ImageEditorCanvas onExternalFiles={placeExternalFiles} />
+				<ImageEditorCanvas
+					onExternalFiles={placeExternalFiles}
+					registerPixelSelectionActions={(actions) => (pixelSelectionActions = actions)}
+				/>
 			</div>
 			<div
 				class="absolute right-3 {focusedCanvas

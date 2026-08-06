@@ -299,6 +299,155 @@ describe('OpenPost Image Editor editor layer interactions', () => {
 		expect(editor.selectedLayers[0].paint?.spans).toEqual([{ x: 10, y: 0, width: 10 }]);
 	});
 
+	it('moves cut pixels as a floating selection and commits one undoable command', () => {
+		const editor = new ImageEditorController();
+		const initial = response();
+		initial.document.pages[0].layers = [
+			{
+				id: 'paint',
+				type: 'paint',
+				name: 'Paint',
+				visible: true,
+				locked: false,
+				opacity: 1,
+				transform: {
+					x: 20,
+					y: 10,
+					width: 20,
+					height: 1,
+					rotation: 0,
+					flip_x: false,
+					flip_y: false
+				},
+				paint: {
+					kind: 'fill',
+					color: '#f97316',
+					size: 1,
+					opacity: 1,
+					source_width: 20,
+					source_height: 1,
+					points: [],
+					spans: [{ x: 0, y: 0, width: 20 }]
+				}
+			}
+		];
+		editor.load(initial);
+		editor.selectLayer('paint');
+		const mask = new Uint8Array(1080 * 1080);
+		mask.fill(1, 10 * 1080 + 20, 10 * 1080 + 30);
+		editor.pixelSelection = {
+			width: 1080,
+			height: 1080,
+			data: mask,
+			targetLayerIDs: ['paint']
+		};
+
+		expect(
+			editor.beginFloatingPixelSelection('cut', [
+				{ id: 'paint', width: 20, height: 1, data: new Uint8Array(20).fill(1, 0, 10) }
+			])
+		).toBe(true);
+		expect(editor.floatingPixelSelection?.mode).toBe('cut');
+		expect(editor.activePage?.layers.find((layer) => layer.id === 'paint')?.paint?.spans).toEqual([
+			{ x: 10, y: 0, width: 10 }
+		]);
+		const floatingID = editor.floatingPixelSelection?.layerIDs[0] ?? '';
+		expect(
+			editor.activePage?.layers.find((layer) => layer.id === floatingID)?.transform
+		).toMatchObject({
+			x: 20,
+			y: 10
+		});
+
+		editor.translateFloatingPixelSelection(7, 4);
+		editor.finishFloatingPixelSelectionMove();
+		expect(
+			editor.activePage?.layers.find((layer) => layer.id === floatingID)?.transform
+		).toMatchObject({
+			x: 27,
+			y: 14
+		});
+		expect(editor.commitFloatingPixelSelection()).toBe(true);
+		expect(editor.pixelSelection).toBeNull();
+		expect(editor.undoLabel).toBe('Cut selected pixels');
+
+		editor.undo();
+		expect(editor.activePage?.layers).toHaveLength(1);
+		expect(editor.activePage?.layers[0].paint?.spans).toEqual([{ x: 0, y: 0, width: 20 }]);
+		expect(editor.canUndo).toBe(false);
+		editor.redo();
+		expect(editor.activePage?.layers).toHaveLength(2);
+		expect(
+			editor.activePage?.layers.find((layer) => layer.id === floatingID)?.transform
+		).toMatchObject({
+			x: 27,
+			y: 14
+		});
+	});
+
+	it('cancels a floating copy exactly and extracts selected pixels without mutating', () => {
+		const editor = new ImageEditorController();
+		const initial = response();
+		const paint: ImageEditorLayer = {
+			id: 'paint',
+			type: 'paint',
+			name: 'Paint',
+			visible: true,
+			locked: false,
+			opacity: 1,
+			transform: {
+				x: 20,
+				y: 10,
+				width: 20,
+				height: 1,
+				rotation: 0,
+				flip_x: false,
+				flip_y: false
+			},
+			paint: {
+				kind: 'fill',
+				color: '#f97316',
+				size: 1,
+				opacity: 1,
+				source_width: 20,
+				source_height: 1,
+				points: [],
+				spans: [{ x: 0, y: 0, width: 20 }]
+			}
+		};
+		initial.document.pages[0].layers = [paint];
+		editor.load(initial);
+		editor.selectLayer('paint');
+		const mask = new Uint8Array(1080 * 1080);
+		mask.fill(1, 10 * 1080 + 20, 10 * 1080 + 30);
+		editor.pixelSelection = {
+			width: 1080,
+			height: 1080,
+			data: mask,
+			targetLayerIDs: ['paint']
+		};
+		const projection = {
+			id: 'paint',
+			width: 20,
+			height: 1,
+			data: new Uint8Array(20).fill(1, 0, 10)
+		};
+		const before = structuredClone(editor.document);
+
+		const copied = editor.extractPixelSelectionLayers([projection]);
+		expect(copied).toHaveLength(1);
+		expect(copied[0].paint?.spans).toEqual([{ x: 0, y: 0, width: 10 }]);
+		expect(editor.document).toEqual(before);
+
+		editor.beginFloatingPixelSelection('promote', [projection]);
+		editor.translateFloatingPixelSelection(8, 3);
+		expect(editor.cancelFloatingPixelSelection()).toBe(true);
+		expect(editor.document).toEqual(before);
+		expect(editor.pixelSelection?.data).toEqual(mask);
+		expect(editor.selectedLayerIDs).toEqual(['paint']);
+		expect(editor.canUndo).toBe(false);
+	});
+
 	it('creates generic empty layers and paints into the selected empty layer', () => {
 		const editor = new ImageEditorController();
 		editor.load(response());
