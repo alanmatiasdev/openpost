@@ -73,12 +73,13 @@ Every persistent editor operation must satisfy all applicable requirements:
 The 2026-08-06 working tree passed:
 
 - `devenv shell -- verify`, covering repository checks, formatting and lint,
-  333 frontend tests, backend tests, CLI tests, frontend/marketing/docs builds,
+  335 frontend tests, backend tests, CLI tests, frontend/marketing/docs builds,
   generated contracts, docs links, and UI consistency.
 - The focused Image Editor unit suite: 98 tests across 18 files.
 - The isolated Image Editor Playwright suite: 7 tests with one worker, including
   crop undo/redo/reload, portable-project round-trip, guest restore, external
-  stock media, selection movement, 320 px/short landscape, and Media export.
+  stock media, floating pixel copy/cut/pointer/keyboard/history/reload, 320 px/
+  short landscape, and Media export.
 - Svelte autofixer on every changed Svelte component; no reported issues.
 
 These gates prove the implemented paths below. They do not turn unchecked or
