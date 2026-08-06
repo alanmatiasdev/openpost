@@ -4,6 +4,22 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Added filename editing for images, videos, audio, and other Media assets, plus right-click renaming for image designs and cloud video projects on Editors.
+
+### Changed
+
+- Removed logo and brand-asset roles from brand kits while keeping colors, backgrounds, text styles, and licensed fonts.
+- Made two-finger trackpad scrolling pan the Image Editor canvas and reduced pinch-zoom sensitivity.
+
+### Fixed
+
+- Allowed media referenced by failed publications to move to Trash even when a child rendition still has a pre-publish status, while keeping active drafts, schedules, and publishing work protected.
+- Removed the unintended divider lines immediately above and below the Media search and filter controls.
+- Made new text layers start with “New text,” prevented the T shortcut from typing into the layer it creates, kept later text dragging out of edit mode, and stopped multi-selection snapping from moving selected layers off-canvas.
+- Kept SVG conversion automatic while replacing the backend's manual-conversion instruction with a processing error for clients that bypass the supported upload flow.
+
 ## [3.2.0] - 2026-08-06
 
 ### Changed

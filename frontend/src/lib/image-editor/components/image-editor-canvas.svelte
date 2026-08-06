@@ -750,7 +750,8 @@
 		if (event.ctrlKey || event.metaKey) {
 			event.preventDefault();
 			const currentZoom = editor.zoom;
-			const nextZoom = Math.max(0.1, Math.min(4, currentZoom * (event.deltaY > 0 ? 0.9 : 1.1)));
+			const boundedDelta = Math.max(-60, Math.min(60, event.deltaY));
+			const nextZoom = Math.max(0.1, Math.min(4, currentZoom * Math.exp(-boundedDelta * 0.001)));
 			const bounds = viewport?.getBoundingClientRect();
 			if (bounds) {
 				const anchorX = event.clientX - (bounds.left + bounds.width / 2);
@@ -769,11 +770,10 @@
 			editor.zoom = nextZoom;
 			return;
 		}
-		if (editor.activeTool === 'hand' || event.shiftKey) {
-			event.preventDefault();
-			editor.panX -= event.deltaX || event.deltaY;
-			editor.panY -= event.deltaY;
-		}
+		event.preventDefault();
+		const horizontalDelta = event.shiftKey && event.deltaX === 0 ? event.deltaY : event.deltaX;
+		editor.panX -= horizontalDelta;
+		editor.panY -= event.shiftKey ? 0 : event.deltaY;
 	}
 
 	function handleMediaDragEnter(event: DragEvent): void {

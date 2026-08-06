@@ -94,6 +94,7 @@ test("public OpenPost Image Editor creates and restores a local design without a
     );
   }
   expect(stageAfterZoom.width).toBeGreaterThan(stageBeforeZoom.width);
+  expect(stageAfterZoom.width / stageBeforeZoom.width).toBeLessThan(1.08);
   expect((zoomAnchor.x - stageAfterZoom.x) / stageAfterZoom.width).toBeCloseTo(
     (zoomAnchor.x - stageBeforeZoom.x) / stageBeforeZoom.width,
     3,
@@ -120,6 +121,29 @@ test("public OpenPost Image Editor creates and restores a local design without a
   }
   expect(fittedStage.width).toBeLessThanOrEqual(canvasBox.width);
   expect(fittedStage.height).toBeLessThanOrEqual(canvasBox.height);
+
+  await designCanvas.dispatchEvent("wheel", {
+    bubbles: true,
+    cancelable: true,
+    clientX: zoomAnchor.x,
+    clientY: zoomAnchor.y,
+    deltaX: 28,
+    deltaY: 18,
+  });
+  await expect
+    .poll(async () => (await stage.boundingBox())?.x ?? 0)
+    .toBeCloseTo(fittedStage.x - 28, 0);
+  await expect
+    .poll(async () => (await stage.boundingBox())?.y ?? 0)
+    .toBeCloseTo(fittedStage.y - 18, 0);
+  await zoomControl.click();
+
+  await page.keyboard.press("t");
+  await expect(
+    page.getByRole("treeitem", { name: /New text, text/ }),
+  ).toBeVisible();
+  await expect(page.locator("textarea").last()).toHaveValue("New text");
+  await page.keyboard.press("Escape");
 
   const imageEditorMenus = page.getByRole("menubar", {
     name: "OpenPost Image Editor menus",
@@ -1283,6 +1307,19 @@ test("OpenPost Image Editor creates from an original template, adapts to mobile,
 
   await page.goto("/editors");
   const designCard = page.locator(`a[href="/image-editor/${designID}"]`);
+  await designCard.click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Rename", exact: true }).click();
+  const renameDesignDialog = page.getByRole("dialog", {
+    name: "Rename design",
+  });
+  await renameDesignDialog
+    .getByLabel("Project name")
+    .fill("Renamed announcement");
+  await renameDesignDialog
+    .getByRole("button", { name: "Save", exact: true })
+    .click();
+  await expect(designCard.getByText("Renamed announcement")).toBeVisible();
+
   await designCard.click({ button: "right" });
   await page.getByRole("menuitem", { name: "Delete", exact: true }).click();
   const deleteDesignDialog = page.getByRole("dialog", {
