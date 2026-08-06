@@ -173,7 +173,9 @@ export class ImageEditorController {
 	}
 
 	get canUndo(): boolean {
-		return Boolean(this.floatingPixelSelection) || (this.historyRevision >= 0 && this.history.canUndo);
+		return (
+			Boolean(this.floatingPixelSelection) || (this.historyRevision >= 0 && this.history.canUndo)
+		);
 	}
 
 	get canRedo(): boolean {
@@ -405,13 +407,7 @@ export class ImageEditorController {
 		this.document = nextDocument;
 		this.pixelSelection = {
 			...selection,
-			data: translatePixelMask(
-				selection.data,
-				selection.width,
-				selection.height,
-				offsetX,
-				offsetY
-			)
+			data: translatePixelMask(selection.data, selection.width, selection.height, offsetX, offsetY)
 		};
 	}
 
@@ -457,11 +453,7 @@ export class ImageEditorController {
 		const floatingIDs = new Set(floating.layerIDs);
 		page.layers = page.layers.filter((layer) => !floatingIDs.has(layer.id));
 		this.recalculateAllGroupBounds(page);
-		this.history.checkpoint(
-			m.image_editor_delete_pixels(),
-			floating.beforeDocument,
-			nextDocument
-		);
+		this.history.checkpoint(m.image_editor_delete_pixels(), floating.beforeDocument, nextDocument);
 		this.document = nextDocument;
 		this.floatingPixelSelection = null;
 		this.pixelSelection = null;
@@ -514,11 +506,7 @@ export class ImageEditorController {
 				const paint = pixelSpansToMask(target.paint.spans, projection.width, projection.height);
 				selected = intersectPixelMasks(selected, paint);
 			} else if (target.erase_mask) {
-				let erased = pixelSpansToMask(
-					target.erase_mask.spans,
-					projection.width,
-					projection.height
-				);
+				let erased = pixelSpansToMask(target.erase_mask.spans, projection.width, projection.height);
 				for (const stroke of target.erase_mask.strokes) {
 					erased = combinePixelMasks(
 						erased,
@@ -559,11 +547,7 @@ export class ImageEditorController {
 
 			if (mode === 'cut' || mode === 'delete') {
 				if (target.paint) {
-					const paint = pixelSpansToMask(
-						target.paint.spans,
-						projection.width,
-						projection.height
-					);
+					const paint = pixelSpansToMask(target.paint.spans, projection.width, projection.height);
 					target.paint.spans = pixelMaskToSpans(
 						subtractPixelMasks(paint, selected),
 						projection.width,
