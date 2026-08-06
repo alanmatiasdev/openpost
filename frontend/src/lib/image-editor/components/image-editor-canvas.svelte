@@ -400,9 +400,35 @@
 
 	function commitPixelContent(mode: 'promote' | 'cut' | 'delete'): boolean {
 		const projections = pixelContentProjections();
-		return mode === 'delete'
-			? editor.commitPixelSelectionContent(mode, projections)
-			: editor.beginFloatingPixelSelection(mode, projections);
+		const changed =
+			mode === 'delete'
+				? editor.commitPixelSelectionContent(mode, projections)
+				: editor.beginFloatingPixelSelection(mode, projections);
+		if (changed) {
+			canvasAnnouncement =
+				mode === 'delete'
+					? m.image_editor_selected_pixels_deleted()
+					: m.image_editor_floating_pixels_help();
+		}
+		return changed;
+	}
+
+	function commitFloatingPixels(): boolean {
+		const changed = editor.commitFloatingPixelSelection();
+		if (changed) canvasAnnouncement = m.image_editor_selected_pixels_applied();
+		return changed;
+	}
+
+	function cancelFloatingPixels(): boolean {
+		const changed = editor.cancelFloatingPixelSelection();
+		if (changed) canvasAnnouncement = m.image_editor_floating_pixels_cancelled();
+		return changed;
+	}
+
+	function deleteFloatingPixels(): boolean {
+		const changed = editor.deleteFloatingPixelSelection();
+		if (changed) canvasAnnouncement = m.image_editor_selected_pixels_deleted();
+		return changed;
 	}
 
 	const pixelSelectionActions: PixelSelectionActions = {
@@ -1424,19 +1450,19 @@
 			if (event.key === 'Enter') {
 				event.preventDefault();
 				event.stopImmediatePropagation();
-				editor.commitFloatingPixelSelection();
+				commitFloatingPixels();
 				return;
 			}
 			if (event.key === 'Escape') {
 				event.preventDefault();
 				event.stopImmediatePropagation();
-				editor.cancelFloatingPixelSelection();
+				cancelFloatingPixels();
 				return;
 			}
 			if (event.key === 'Delete' || event.key === 'Backspace') {
 				event.preventDefault();
 				event.stopImmediatePropagation();
-				editor.deleteFloatingPixelSelection();
+				deleteFloatingPixels();
 				return;
 			}
 		}
@@ -1849,18 +1875,14 @@
 						<span class="hidden px-1 text-xs text-neutral-300 xl:inline">
 							{m.image_editor_floating_pixels_help()}
 						</span>
-						<Button
-							size="sm"
-							class="h-8 px-2 text-xs"
-							onclick={() => editor.commitFloatingPixelSelection()}
-						>
+						<Button size="sm" class="h-8 px-2 text-xs" onclick={commitFloatingPixels}>
 							{m.common_done()}
 						</Button>
 						<Button
 							variant="ghost"
 							size="sm"
 							class="h-8 px-2 text-xs text-neutral-100 hover:text-foreground"
-							onclick={() => editor.cancelFloatingPixelSelection()}
+							onclick={cancelFloatingPixels}
 						>
 							{m.common_cancel()}
 						</Button>

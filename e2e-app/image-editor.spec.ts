@@ -27,7 +27,7 @@ test("legacy Studio URLs redirect to the OpenPost Image Editor", async ({
 test("public Image Editor drops and crops an image with undo, redo, and reload", async ({
   page,
 }) => {
-  test.setTimeout(60_000);
+  test.setTimeout(90_000);
   await page.goto("/image-editor");
   await page.getByRole("button", { name: /Instagram square/ }).click();
   const stage = page.getByTestId("image-editor-stage");
@@ -83,8 +83,8 @@ test("public Image Editor drops and crops an image with undo, redo, and reload",
   await rightHandle.press("Shift+ArrowLeft");
   await page.getByRole("button", { name: "Apply crop" }).click();
 
-  const undo = page.getByRole("button", { name: "Undo", exact: true }).first();
-  const redo = page.getByRole("button", { name: "Redo", exact: true }).first();
+  const undo = page.getByRole("button", { name: /^Undo(?: |$)/ }).first();
+  const redo = page.getByRole("button", { name: /^Redo(?: |$)/ }).first();
   await expect(undo).toBeEnabled();
   await undo.click();
   await expect(redo).toBeEnabled();
@@ -99,6 +99,104 @@ test("public Image Editor drops and crops an image with undo, redo, and reload",
   await expect(page.getByRole("spinbutton", { name: "W" })).not.toHaveValue(
     "100",
   );
+
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("m");
+  const selectionSurface = page.getByTestId("image-editor-selection-surface");
+  const selectionSurfaceBox = await selectionSurface.boundingBox();
+  if (!selectionSurfaceBox)
+    throw new Error("Pixel selection surface did not render");
+  await page.mouse.move(
+    selectionSurfaceBox.x + selectionSurfaceBox.width * 0.42,
+    selectionSurfaceBox.y + selectionSurfaceBox.height * 0.42,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    selectionSurfaceBox.x + selectionSurfaceBox.width * 0.58,
+    selectionSurfaceBox.y + selectionSurfaceBox.height * 0.58,
+    { steps: 5 },
+  );
+  await page.mouse.up();
+  const pixelSelection = page.getByTestId("image-editor-pixel-selection");
+  await expect(pixelSelection).toHaveAttribute("data-active", "true");
+  const selectionX = () =>
+    pixelSelection.evaluate((canvas) => {
+      if (!(canvas instanceof HTMLCanvasElement)) return -1;
+      const context = canvas.getContext("2d", { willReadFrequently: true });
+      if (!context) return -1;
+      const pixels = context.getImageData(
+        0,
+        0,
+        canvas.width,
+        canvas.height,
+      ).data;
+      let minimum = canvas.width;
+      for (let index = 3; index < pixels.length; index += 4) {
+        if (pixels[index] > 0)
+          minimum = Math.min(minimum, ((index - 3) / 4) % canvas.width);
+      }
+      return minimum;
+    });
+
+  await page.keyboard.press("Control+c");
+  await page.keyboard.press("Control+v");
+  const copiedSelectionLayer = page.getByRole("treeitem", {
+    name: /dropped-launch\.png selection copy, image/,
+  });
+  await expect(copiedSelectionLayer).toBeVisible();
+  await undo.click();
+  await expect(copiedSelectionLayer).toHaveCount(0);
+
+  const selectionOptions = page.getByTestId("image-editor-selection-options");
+  await selectionOptions
+    .getByRole("button", { name: "Cut selected pixels" })
+    .click();
+  await expect(
+    selectionOptions.getByText(/Drag or use arrow keys/),
+  ).toBeVisible();
+  const originalSelectionX = await selectionX();
+  await page.mouse.move(
+    selectionSurfaceBox.x + selectionSurfaceBox.width / 2,
+    selectionSurfaceBox.y + selectionSurfaceBox.height / 2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    selectionSurfaceBox.x + selectionSurfaceBox.width / 2 + 20,
+    selectionSurfaceBox.y + selectionSurfaceBox.height / 2,
+    { steps: 5 },
+  );
+  await page.mouse.up();
+  await expect.poll(selectionX).toBeGreaterThan(originalSelectionX);
+  const draggedSelectionX = await selectionX();
+  await page.keyboard.press("Shift+ArrowRight");
+  await expect.poll(selectionX).toBe(draggedSelectionX + 10);
+  await page.keyboard.press("Escape");
+  await expect(
+    page.getByRole("treeitem", {
+      name: /dropped-launch\.png selection, image/,
+    }),
+  ).toHaveCount(0);
+  await expect(pixelSelection).toHaveAttribute("data-active", "true");
+
+  await selectionOptions
+    .getByRole("button", { name: "Cut selected pixels" })
+    .click();
+  await page.keyboard.press("Shift+ArrowDown");
+  await page.keyboard.press("Enter");
+  const movedSelectionLayer = page.getByRole("treeitem", {
+    name: /dropped-launch\.png selection, image/,
+  });
+  await expect(movedSelectionLayer).toBeVisible();
+  await expect(pixelSelection).toHaveAttribute("data-active", "false");
+  await undo.click();
+  await expect(movedSelectionLayer).toHaveCount(0);
+  await redo.click();
+  await expect(movedSelectionLayer).toBeVisible();
+  await expect(
+    page.getByRole("banner").getByText("Saved on this device"),
+  ).toBeVisible();
+  await page.reload();
+  await expect(movedSelectionLayer).toBeVisible();
 });
 
 test("public Image Editor round-trips an editable project without overwriting its source", async ({

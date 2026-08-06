@@ -372,7 +372,9 @@ export class ImageEditorController {
 	): ImageEditorLayer[] {
 		if (!this.document || !this.pixelSelection || projections.length === 0) return [];
 		const document = cloneImageEditorDocument(this.document);
-		const layerIDs = new Set(this.applyPixelSelectionContent(document, 'promote', projections));
+		const layerIDs = new SvelteSet(
+			this.applyPixelSelectionContent(document, 'promote', projections)
+		);
 		return (
 			document.pages
 				.find((page) => page.id === this.activePageID)
@@ -397,7 +399,7 @@ export class ImageEditorController {
 		const nextDocument = cloneImageEditorDocument(this.document);
 		const page = nextDocument.pages.find((candidate) => candidate.id === this.activePageID);
 		if (!page) return;
-		const floatingIDs = new Set(floating.layerIDs);
+		const floatingIDs = new SvelteSet(floating.layerIDs);
 		for (const layer of page.layers) {
 			if (!floatingIDs.has(layer.id)) continue;
 			layer.transform.x += offsetX;
@@ -450,7 +452,7 @@ export class ImageEditorController {
 		const nextDocument = cloneImageEditorDocument(this.document);
 		const page = nextDocument.pages.find((candidate) => candidate.id === this.activePageID);
 		if (!page) return false;
-		const floatingIDs = new Set(floating.layerIDs);
+		const floatingIDs = new SvelteSet(floating.layerIDs);
 		page.layers = page.layers.filter((layer) => !floatingIDs.has(layer.id));
 		this.recalculateAllGroupBounds(page);
 		this.history.checkpoint(m.image_editor_delete_pixels(), floating.beforeDocument, nextDocument);
