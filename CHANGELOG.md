@@ -4,9 +4,16 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- Replaced the Media page, composer, and editor asset-picker upload paths with one styled Uppy dialog for files, camera capture, stock providers, OpenPost Library selection, and image or video preparation.
+- Simplified Media around Library, hidden-by-default Temporary uploads, and seven-day Trash, with direct favorite controls and focused filters for reusable assets.
+
 ### Fixed
 
 - Kept Google sign-in from the sign-up page out of new-account checkout when the Google identity already belongs to an OpenPost account with a workspace, while preserving onboarding and selected plan details for first-time accounts.
+- Kept media last-use timestamps accurate when posts, publication renditions, image designs, or video projects attach or detach files, and stopped published or failed posts and deleted editor projects from blocking media cleanup.
+- Converted browser SVG uploads to PNG before storage and rejected unconverted SVG input so unsupported vector assets cannot break the Image Editor.
 
 ## [3.1.1] - 2026-08-05
 
