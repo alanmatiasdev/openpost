@@ -39,19 +39,22 @@ export function imageEditorCropWindowForAspect(
 
 export function applyImageEditorCropWindow(
 	layer: Pick<ImageEditorLayer, 'transform' | 'image'>,
-	window: ImageEditorCropWindow
+	window: ImageEditorCropWindow,
+	sourceWindow: ImageEditorCropWindow = window
 ): { transform: ImageEditorTransform; crop: ImageEditorCrop } {
 	if (!layer.image) throw new Error('Image crop requires an image layer.');
 	const current = layer.image.crop;
 	const visualX = window.x;
 	const visualY = window.y;
-	const sourceX = layer.transform.flip_x ? 1 - window.x - window.width : window.x;
-	const sourceY = layer.transform.flip_y ? 1 - window.y - window.height : window.y;
+	const sourceX = layer.transform.flip_x ? 1 - sourceWindow.x - sourceWindow.width : sourceWindow.x;
+	const sourceY = layer.transform.flip_y
+		? 1 - sourceWindow.y - sourceWindow.height
+		: sourceWindow.y;
 	const crop = {
 		x: clamp(current.x + sourceX * current.width, 0, 1),
 		y: clamp(current.y + sourceY * current.height, 0, 1),
-		width: clamp(current.width * window.width, MINIMUM_CROP_FRACTION, 1),
-		height: clamp(current.height * window.height, MINIMUM_CROP_FRACTION, 1)
+		width: clamp(current.width * sourceWindow.width, MINIMUM_CROP_FRACTION, 1),
+		height: clamp(current.height * sourceWindow.height, MINIMUM_CROP_FRACTION, 1)
 	};
 	crop.width = Math.min(crop.width, 1 - crop.x);
 	crop.height = Math.min(crop.height, 1 - crop.y);

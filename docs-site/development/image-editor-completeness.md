@@ -70,17 +70,24 @@ Every persistent editor operation must satisfy all applicable requirements:
 
 ### Verification snapshot
 
-The 2026-08-06 working tree passed:
+The 2026-08-06 baseline working tree passed:
 
 - `devenv shell -- verify`, covering repository checks, formatting and lint,
   335 frontend tests, backend tests, CLI tests, frontend/marketing/docs builds,
   generated contracts, docs links, and UI consistency.
-- The focused Image Editor unit suite: 98 tests across 18 files.
-- The isolated Image Editor Playwright suite: 7 tests with one worker, including
+- The focused Image Editor unit suite: 111 tests across 19 files.
+- The isolated Image Editor Playwright suite: 8 tests with one worker, including
   crop undo/redo/reload, portable-project round-trip, guest restore, external
-  stock media, floating pixel copy/cut/pointer/keyboard/history/reload, 320 px/
-  short landscape, and Media export.
+  stock media, mixed-file page-targeted import/retry/reload, floating pixel
+  copy/cut/pointer/keyboard/history/reload, 320 px/short landscape, and Media
+  export.
 - Svelte autofixer on every changed Svelte component; no reported issues.
+
+The latest cohort also passed frontend diagnostics with no errors or warnings,
+scoped ESLint and Prettier, all 111 Image Editor unit tests, and all 8 browser
+tests. A new full-tree `verify` run reached global frontend lint but was blocked by
+an unrelated concurrent `frontend/src/lib/video/cover-frame.ts:69`
+`no-unused-expressions` error; this Image Editor cohort did not modify that file.
 
 These gates prove the implemented paths below. They do not turn unchecked or
 partial requirements into complete ones.
@@ -144,21 +151,21 @@ partial requirements into complete ones.
 
 ### Interactive crop
 
-- [~] Image layers store normalized crop data and all renderers consume it. A
-  transient canvas crop mode now supports move/resize, common aspects,
-  rotated/flipped geometry, reset, Apply/Cancel, keyboard nudge, and one-command
-  history. Image-within-frame repositioning and rotate/flip actions remain.
+- [x] Image layers store normalized crop data and all renderers consume it. The
+      transient canvas crop mode supports frame move/resize, image repositioning,
+      common aspects, crop-local rotate/flip, reset, Apply/Cancel, keyboard nudge,
+      and one-command history.
 - [~] Activate crop from the tool rail, image properties, keyboard, and mobile
   retouch menu. It is not yet generated from the shared command registry.
 - [x] Draw a dimmed crop frame with visible rule-of-thirds lines and handles.
 - [x] Use 44 px pointer targets around crop handles while keeping their visible
       marks compact.
-- [ ] Move/resize the frame and reposition the image within it without changing
+- [x] Move/resize the frame and reposition the image within it without changing
       the outer layer transform.
 - [x] Offer free, original, square, 4:5 portrait, 1.91:1 landscape, 9:16 Story/
       Reel, and 16:9 thumbnail aspect presets.
-- [~] Reset, cancel, and apply are explicit. Rotate left/right and flip actions
-  inside the transient crop session remain.
+- [x] Reset, cancel, apply, rotate left/right, and horizontal/vertical flip are
+      explicit actions inside the transient crop session.
 - [x] Use `Enter` to apply and `Escape` to restore the pre-crop state.
 - [x] Keep the crop inside source bounds and prevent zero/near-zero output.
 - [x] Support already rotated/flipped layers without miniPaint's
@@ -172,11 +179,11 @@ partial requirements into complete ones.
 
 ### Canvas eyedropper
 
-- [~] The color picker retains the browser screen `EyeDropper` API. A canvas
-  eyedropper now samples active/composited pixels, previews color and alpha, and
-  targets paint color, selected fill/text, selected stroke, or page background.
-  Alt temporarily samples from pencil, bucket, and gradient tools. A true
-  pixel-grid magnifier remains.
+- [x] The color picker retains the browser screen `EyeDropper` API. A canvas
+      eyedropper now samples active/composited pixels, previews color and alpha, and
+      targets paint color, selected fill/text, selected stroke, or page background.
+      Alt temporarily samples from pencil, bucket, and gradient tools. Its 9 by 9
+      pixel-grid magnifier follows pointer or keyboard sampling.
 - [x] Expose the canvas eyedropper in desktop and mobile tools while retaining
       screen sampling as an additional color-picker action.
 - [x] Sample either the active layer or the composited page, controlled by the
@@ -184,15 +191,15 @@ partial requirements into complete ones.
 - [x] Ignore selection outlines, transform controls, guides, grids, and other
       editor-only overlays by sampling the Fabric render below the DOM editor
       overlays.
-- [~] Show a pointer-following swatch, normalized hex value, and alpha while
-  hovering. Add a true magnified pixel grid.
+- [x] Show a pointer-following 9 by 9 pixel grid, normalized hex value, and alpha
+      while hovering or moving the keyboard sampling cursor.
 - [x] Apply the sampled color to an explicit paint, selected text/fill, selected
       stroke, or page-background target.
 - [ ] Extend explicit targeting to text highlight, active gradient stop, and
       shadow/effect color pickers.
-- [~] Click, pen, and touch commit on release, and Alt temporarily activates the
-  eyedropper from pencil, bucket, and gradient tools. Keyboard sampling still
-  needs a movable sampling cursor.
+- [x] Click, pen, and touch commit on release, Alt temporarily activates the
+      eyedropper from pencil, bucket, and gradient tools, and arrow keys move a
+      sampling cursor by one pixel or ten pixels with Shift before Enter commits.
 - [~] Correctly sample transparent pixels and document coordinates independent
   of zoom. Add browser proof for high-DPI, clipped images, masks, blend modes,
   and page backgrounds.
@@ -209,12 +216,12 @@ partial requirements into complete ones.
       internal media MIME.
 - [x] Prevent browser navigation when supported image files are dragged over
       the editor.
-- [ ] Validate image MIME, decoded dimensions, byte limits, SVG safety, and
+- [x] Validate image MIME, decoded dimensions, byte limits, SVG safety, and
       document limits before upload.
 - [x] Place one file at the exact document point and cascade multiple files in
       stable source order around that point.
-- [~] Show per-file preparation/upload progress, failure, retry, and cloud-upload
-  cancellation. A full-canvas drag-enter overlay is still missing.
+- [x] Show per-file preparation/upload progress, failure details, failed-file
+      retry, cloud-upload cancellation, and a full-pasteboard drag-enter overlay.
 - [x] Use OPFS for guest media and Media Library retention for signed-in media.
 - [x] Refresh uploaded assets into Media Library immediately and retain them
       across design close/reopen.
@@ -222,11 +229,12 @@ partial requirements into complete ones.
       source asset.
 - [x] Retry resumes at the failed file and never uploads the successful prefix
       twice. General content-hash deduplication remains the media service's policy.
-- [ ] Keep page-thumbnail and panel drop zones explicit so files never land in
-      an unexpected page.
-- [ ] Test multiple files, SVG, unsupported content, partial upload failure,
-      guest mode, signed-in mode, exact positioning, undo, immediate library
-      visibility, and reopen.
+- [~] Page thumbnails are explicit drop targets and async imports stay on the page
+  that accepted the drop. Asset-panel drop zones remain implicit.
+- [~] Unit and browser coverage includes multiple files, unsafe/unsupported
+  content, guest mode, page targeting, retry without duplicate success, undo,
+  exact positioning, and reopen. Signed-in partial upload/cancellation and SVG
+  browser decoding remain to be exercised end to end.
 
 ### Pixel selection as content
 
@@ -276,21 +284,22 @@ partial requirements into complete ones.
 
 ### Snapping controls
 
-- [~] Fabric move/resize snapping uses objects, page centers/edges, persistent
-  guides, and the optional grid behind a persistent View/mobile toggle. Crop,
-  drawing, guide movement, and rotation do not yet share every snap source.
+- [x] Fabric move/resize, crop handles, guide movement, and gradient endpoints
+      share object, page center/edge, persistent-guide, and optional-grid targets
+      behind one persistent View/mobile toggle. Freehand drawing stays continuous;
+      rotation retains its deliberate Shift-based 15-degree constraint.
 - [x] Add a persistent snap toggle in View and mobile More with an accessible
       checked state and local preference.
 - [x] Add a temporary Command/Control-drag bypass that does not conflict with Alt-duplicate,
       selection subtraction, browser gestures, or text input.
 - [ ] Consider separate object, guide, grid, and pixel snap sources only if one
       toggle becomes ambiguous in testing.
-- [~] Move and resize share object/guide/grid candidates. Drawing, crop, guide
-  movement, and rotation still need the same contract.
-- [ ] Exclude hidden layers, locked layers when appropriate, and members of the
-      active multi-selection from candidates.
-- [ ] Announce snap on/off and show the active target without noisy pointer-move
-      announcements.
+- [x] Move, resize, crop, guide movement, and gradient endpoints share the same
+      zoom-correct screen-space tolerance and Command/Control bypass.
+- [x] Exclude hidden layers and members of the active selection from candidates.
+      Locked visible layers remain useful alignment targets by design.
+- [x] Announce snap on/off and draw the active axis target without noisy
+      pointer-move announcements.
 
 ### Rulers, guides, grid, and coordinates
 
@@ -690,14 +699,18 @@ partial requirements into complete ones.
 
 ### Required for parity and completeness
 
-- [~] Interactive crop; image-within-frame repositioning remains.
-- [~] Canvas eyedropper; magnifier and keyboard sampling remain.
-- [~] Exact external file drops; full drag-overlay and validation matrix remain.
+- [x] Interactive crop with independent frame/image positioning and transient
+      rotate/flip controls.
+- [x] Canvas eyedropper with a true pixel-grid magnifier and keyboard sampling.
+- [~] Exact external file drops now include a full drag overlay, bounded preflight,
+  isolated failures, retry, and page targeting. Signed-in partial-failure browser
+  coverage and interruptible guest OPFS writes remain.
 - [~] Selected-pixel content operations; pointer/keyboard floating move,
   commit/cancel/delete, and structured copy/cut/paste are complete. Floating
   resize/rotation, duplicate semantics, and the broader renderer matrix remain.
-- [~] Snap controls, rulers, guides, grid, and coordinates; shared snap behavior
-  for crop/drawing/guide motion remains.
+- [~] Snap controls, rulers, guides, grid, coordinates, crop, guide motion, and
+  gradient endpoints share one screen-space contract. High-DPI browser proof
+  remains.
 - [~] Alpha-aware hit testing; caching and covered-layer cycling remain.
 - [~] Pressure, smoothing, hardness, spacing, and brush cursor; hardness,
   spacing, alternate tips, and palm rejection remain.

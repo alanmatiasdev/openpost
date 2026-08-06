@@ -70,6 +70,17 @@ describe('OpenPost Image Editor interactive crop geometry', () => {
 		expect(result.transform).toMatchObject({ x: 200, y: 250, width: 200, height: 100 });
 	});
 
+	it('repositions source pixels without moving the outer crop frame', () => {
+		const result = applyImageEditorCropWindow(
+			layer(),
+			{ x: 0.25, y: 0, width: 0.5, height: 1 },
+			{ x: 0.4, y: 0, width: 0.5, height: 1 }
+		);
+
+		expect(result.crop).toEqual({ x: 0.4, y: 0, width: 0.5, height: 1 });
+		expect(result.transform).toMatchObject({ x: 200, y: 200, width: 200, height: 200 });
+	});
+
 	it('rotates the crop offset with the image and maps flipped source coordinates', () => {
 		const result = applyImageEditorCropWindow(layer({ rotation: 90, flip_x: true }), {
 			x: 0.1,

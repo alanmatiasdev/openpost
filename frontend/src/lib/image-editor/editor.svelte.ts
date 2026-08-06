@@ -972,7 +972,8 @@ export class ImageEditorController {
 
 	addImage(
 		media: { id: string; width?: number; height?: number; name?: string },
-		center?: SelectionPoint
+		center?: SelectionPoint,
+		pageID = this.activePageID
 	): void {
 		if (!this.document) return;
 		const hasIntrinsicSize = Boolean(media.width && media.height);
@@ -1022,7 +1023,7 @@ export class ImageEditorController {
 			},
 			effects: defaultLayerEffects()
 		};
-		this.addLayer(layer);
+		this.addLayer(layer, pageID);
 	}
 
 	setPageBackground(background: ImageEditorPageBackground): void {
@@ -1069,12 +1070,12 @@ export class ImageEditorController {
 		});
 	}
 
-	addLayer(layer: ImageEditorLayer): void {
+	addLayer(layer: ImageEditorLayer, pageID = this.activePageID): void {
 		this.mutate(`Add ${layer.name}`, (document) => {
-			const page = document.pages.find((item) => item.id === this.activePageID);
+			const page = document.pages.find((item) => item.id === pageID);
 			page?.layers.push(layer);
 		});
-		this.selectedLayerIDs = [layer.id];
+		if (pageID === this.activePageID) this.selectedLayerIDs = [layer.id];
 	}
 
 	updateLayer(id: string, updates: Partial<ImageEditorLayer>, coalesceKey?: string): void {
@@ -1095,11 +1096,21 @@ export class ImageEditorController {
 		const layer = this.activePage?.layers.find((candidate) => candidate.id === id);
 		if (!layer?.image || layer.locked) return;
 		const result = applyImageEditorCropWindow(layer, window);
+		this.applyImageCropState(id, result);
+	}
+
+	applyImageCropState(
+		id: string,
+		result: {
+			transform: ImageEditorLayer['transform'];
+			crop: NonNullable<ImageEditorLayer['image']>['crop'];
+		}
+	): void {
 		this.mutate(m.image_editor_crop(), (document) => {
 			const page = document.pages.find((candidate) => candidate.id === this.activePageID);
 			const target = page?.layers.find((candidate) => candidate.id === id);
-			if (!page || !target?.image) return;
-			target.transform = result.transform;
+			if (!page || !target?.image || target.locked) return;
+			target.transform = structuredClone(result.transform);
 			target.image.crop = result.crop;
 			this.recalculateAncestorBounds(page, target.parent_id);
 		});

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	containsExternalImageDrag,
 	containsImageEditorMediaDrag,
+	externalFiles,
 	externalImageFiles,
 	isImageEditorImageFile,
 	readImageEditorMediaDrag,
@@ -65,6 +66,7 @@ describe('OpenPost Image Editor media drag payload', () => {
 		const dataTransfer = dataTransferFixture([image, svg, text]);
 
 		expect(containsExternalImageDrag(dataTransfer)).toBe(true);
+		expect(externalFiles(dataTransfer)).toEqual([image, svg, text]);
 		expect(externalImageFiles(dataTransfer)).toEqual([image, svg]);
 		expect(isImageEditorImageFile(text)).toBe(false);
 

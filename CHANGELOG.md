@@ -8,11 +8,18 @@ All notable changes to this project are documented in this file.
 
 - Added destination-aware video frame selection for Instagram Reel covers, TikTok cover timestamps, and YouTube thumbnails, including direct thumbnail and caption-file uploads from destination settings.
 - Defaulted new TikTok destinations to Direct Post while keeping inbox Upload as an explicit choice.
+- Completed the Image Editor crop session with independent frame and image positioning, transient rotate and flip controls, exact cancel rollback, and one-command apply history.
+- Added a true 9 by 9 canvas-eyedropper magnifier with transparent edge cells, one- or ten-pixel keyboard movement, Enter sampling, and exact color-coordinate announcements.
+- Added bounded Image Editor file preflight for MIME, bytes, decoded dimensions, pixel and layer budgets, and unsafe SVG content, with mixed-batch progress, isolated failures, failed-file retry, and page-thumbnail drop targeting.
+- Applied one zoom-correct snapping contract to Image Editor object transforms, crop handles, guides, and gradient endpoints, with active-axis guides and Command/Control bypass.
 
 ### Fixed
 
 - Prevented X analytics from replacing complete snapshots with partial batch results and added a 24-hour backoff when X API credits are depleted.
 - Derived relative local media URLs from the canonical public app origin so pull-from-URL providers receive an absolute media URL without duplicate deployment configuration.
+- Made Escape cancel a crop exactly even when focus remains on the tool rail or another button.
+- Prevented unsupported dropped files from being silently ignored, async imports from landing on a newly selected page, and completed import batches from retaining large browser `File` references.
+- Kept overlapping 44 px crop targets predictable on small images and made snapping tolerance remain ten screen pixels at every CSS zoom level.
 
 ## [3.3.1] - 2026-08-06
 

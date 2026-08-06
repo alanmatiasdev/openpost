@@ -54,6 +54,13 @@ export interface ImageEditorImageGeometry {
 	scaleY: number;
 }
 
+export interface ImageEditorPixelGrid {
+	data: Uint8ClampedArray;
+	width: number;
+	height: number;
+	centerPixel: Uint8ClampedArray;
+}
+
 interface FabricAdapterOptions {
 	canvas: HTMLCanvasElement;
 	document: ImageEditorDocument;
@@ -85,6 +92,23 @@ export interface ImageEditorResizeSnap {
 	guideY: number | null;
 }
 
+export interface ImageEditorPointSnap {
+	point: SelectionPoint;
+	guideX: number | null;
+	guideY: number | null;
+}
+
+export function imageEditorScreenZoom(
+	canvasZoom: number,
+	renderedWidth: number,
+	logicalWidth: number
+): number {
+	const internalZoom = Number.isFinite(canvasZoom) ? Math.max(0.01, canvasZoom) : 1;
+	if (!Number.isFinite(renderedWidth) || renderedWidth <= 0) return internalZoom;
+	if (!Number.isFinite(logicalWidth) || logicalWidth <= 0) return internalZoom;
+	return Math.max(0.01, internalZoom * (renderedWidth / logicalWidth));
+}
+
 export function imageEditorPixelIsOpaque(
 	image: Pick<ImageData, 'data' | 'width' | 'height'>,
 	point: SelectionPoint,
@@ -94,6 +118,36 @@ export function imageEditorPixelIsOpaque(
 	const y = Math.floor(point.y);
 	if (x < 0 || y < 0 || x >= image.width || y >= image.height) return false;
 	return (image.data[(y * image.width + x) * 4 + 3] ?? 0) >= minimumAlpha;
+}
+
+export function imageEditorPixelGrid(
+	image: Pick<ImageData, 'data' | 'width' | 'height'>,
+	point: SelectionPoint,
+	radius = 4
+): ImageEditorPixelGrid {
+	const safeRadius = Math.max(1, Math.min(16, Math.floor(radius)));
+	const size = safeRadius * 2 + 1;
+	const data = new Uint8ClampedArray(size * size * 4);
+	const centerX = Math.floor(point.x);
+	const centerY = Math.floor(point.y);
+	for (let outputY = 0; outputY < size; outputY++) {
+		const sourceY = centerY + outputY - safeRadius;
+		if (sourceY < 0 || sourceY >= image.height) continue;
+		for (let outputX = 0; outputX < size; outputX++) {
+			const sourceX = centerX + outputX - safeRadius;
+			if (sourceX < 0 || sourceX >= image.width) continue;
+			const sourceOffset = (sourceY * image.width + sourceX) * 4;
+			const outputOffset = (outputY * size + outputX) * 4;
+			data.set(image.data.subarray(sourceOffset, sourceOffset + 4), outputOffset);
+		}
+	}
+	const centerOffset = (safeRadius * size + safeRadius) * 4;
+	return {
+		data,
+		width: size,
+		height: size,
+		centerPixel: data.slice(centerOffset, centerOffset + 4)
+	};
 }
 
 function nearestSnap(
@@ -110,6 +164,26 @@ function nearestSnap(
 		distance = nextDistance;
 	}
 	return nearest;
+}
+
+export function snapImageEditorPoint(
+	point: SelectionPoint,
+	candidatesX: readonly number[],
+	candidatesY: readonly number[],
+	threshold: number,
+	axes: 'both' | 'x' | 'y' = 'both'
+): ImageEditorPointSnap {
+	const guideX = axes === 'y' ? null : nearestSnap(point.x, candidatesX, threshold);
+	const guideY = axes === 'x' ? null : nearestSnap(point.y, candidatesY, threshold);
+	return {
+		point: {
+			...point,
+			x: guideX ?? point.x,
+			y: guideY ?? point.y
+		},
+		guideX,
+		guideY
+	};
 }
 
 export function snapImageEditorResize(
@@ -446,6 +520,74 @@ export class OpenPostFabricAdapter {
 		this.snapGridSize = Number.isFinite(gridSize) ? Math.max(0, gridSize) : 0;
 	}
 
+	snapDocumentPoint(
+		point: SelectionPoint,
+		options: {
+			axes?: 'both' | 'x' | 'y';
+			bypass?: boolean;
+			excludeLayerIDs?: readonly string[];
+			excludeX?: number;
+			excludeY?: number;
+		} = {}
+	): ImageEditorPointSnap {
+		if (!this.snappingEnabled || options.bypass || !this.canvas) {
+			this.clearGuides();
+			return { point, guideX: null, guideY: null };
+		}
+		this.clearGuides();
+		const excluded = new Set(options.excludeLayerIDs ?? []);
+		const candidatesX = [0, this.document.width_px / 2, this.document.width_px];
+		const candidatesY = [0, this.document.height_px / 2, this.document.height_px];
+		this.appendPrecisionCandidates(candidatesX, candidatesY);
+		for (const object of this.canvas.getObjects() as FabricObject[]) {
+			if (
+				!object.__imageEditorLayerID ||
+				excluded.has(object.__imageEditorLayerID) ||
+				object.visible === false ||
+				this.guideObjects.includes(object)
+			)
+				continue;
+			const left = object.left ?? 0;
+			const top = object.top ?? 0;
+			const width = object.getScaledWidth();
+			const height = object.getScaledHeight();
+			candidatesX.push(left, left + width / 2, left + width);
+			candidatesY.push(top, top + height / 2, top + height);
+		}
+		const filteredX =
+			options.excludeX === undefined
+				? candidatesX
+				: candidatesX.filter((candidate) => Math.abs(candidate - options.excludeX!) > 0.001);
+		const filteredY =
+			options.excludeY === undefined
+				? candidatesY
+				: candidatesY.filter((candidate) => Math.abs(candidate - options.excludeY!) > 0.001);
+		const threshold = SNAP_SCREEN_PX / this.screenZoom();
+		const snapped = snapImageEditorPoint(point, filteredX, filteredY, threshold, options.axes);
+		if (snapped.guideX !== null) {
+			this.addGuide([snapped.guideX, 0, snapped.guideX, this.document.height_px]);
+		}
+		if (snapped.guideY !== null) {
+			this.addGuide([0, snapped.guideY, this.document.width_px, snapped.guideY]);
+		}
+		return snapped;
+	}
+
+	clearSnappingGuides(): void {
+		this.clearGuides();
+	}
+
+	private screenZoom(): number {
+		if (!this.canvas) return 1;
+		const logicalWidth =
+			typeof this.canvas.getWidth === 'function' ? this.canvas.getWidth() : this.document.width_px;
+		const renderedWidth =
+			typeof this.canvas.getElement === 'function'
+				? this.canvas.getElement().getBoundingClientRect().width
+				: 0;
+		return imageEditorScreenZoom(this.canvas.getZoom(), renderedWidth, logicalWidth);
+	}
+
 	private appendPrecisionCandidates(candidatesX: number[], candidatesY: number[]): void {
 		candidatesX.push(...this.snapGuideX);
 		candidatesY.push(...this.snapGuideY);
@@ -563,6 +705,32 @@ export class OpenPostFabricAdapter {
 		}
 	}
 
+	samplePagePixelGrid(point: SelectionPoint, radius = 4): ImageEditorPixelGrid | null {
+		if (!this.canvas || this.staticMode) return null;
+		const centerX = Math.floor(point.x);
+		const centerY = Math.floor(point.y);
+		if (
+			centerX < 0 ||
+			centerY < 0 ||
+			centerX >= this.document.width_px ||
+			centerY >= this.document.height_px
+		)
+			return null;
+		const safeRadius = Math.max(1, Math.min(16, Math.floor(radius)));
+		const startX = Math.max(0, centerX - safeRadius);
+		const startY = Math.max(0, centerY - safeRadius);
+		const endX = Math.min(this.document.width_px, centerX + safeRadius + 1);
+		const endY = Math.min(this.document.height_px, centerY + safeRadius + 1);
+		try {
+			const image = this.canvas
+				.getContext()
+				.getImageData(startX, startY, endX - startX, endY - startY);
+			return imageEditorPixelGrid(image, { x: centerX - startX, y: centerY - startY }, safeRadius);
+		} catch {
+			return null;
+		}
+	}
+
 	sampleLayerPixel(id: string, point: SelectionPoint): Uint8ClampedArray | null {
 		const sample = this.rasterizeLayerAtPoint(id, point);
 		if (!sample) return null;
@@ -571,6 +739,22 @@ export class OpenPostFabricAdapter {
 		if (x < 0 || y < 0 || x >= sample.image.width || y >= sample.image.height) return null;
 		const offset = (y * sample.image.width + x) * 4;
 		return sample.image.data.slice(offset, offset + 4);
+	}
+
+	sampleLayerPixelGrid(id: string, point: SelectionPoint, radius = 4): ImageEditorPixelGrid | null {
+		const sample = this.rasterizeLayerAtPoint(id, point);
+		return sample ? imageEditorPixelGrid(sample.image, sample.point, radius) : null;
+	}
+
+	previewImageLayer(id: string, preview?: ImageEditorLayer): void {
+		if (!this.canvas || this.staticMode) return;
+		const object = this.objectByLayerID.get(id);
+		const current = this.page.layers.find((layer) => layer.id === id);
+		const target = preview ?? current;
+		if (!object || !current || target?.type !== 'image' || !target.image) return;
+		this.updateObject(object, current, target);
+		object.setCoords();
+		this.canvas.requestRenderAll();
 	}
 
 	projectPixelMaskToLayer(
@@ -958,7 +1142,7 @@ export class OpenPostFabricAdapter {
 				? (target as FabricObject & { getObjects(): FabricObject[] }).getObjects()
 				: []
 		);
-		const zoom = Math.max(this.canvas.getZoom(), 0.01);
+		const zoom = this.screenZoom();
 		const threshold = SNAP_SCREEN_PX / zoom;
 		const width = target.getScaledWidth();
 		const height = target.getScaledHeight();
@@ -1022,7 +1206,7 @@ export class OpenPostFabricAdapter {
 			return;
 		}
 		this.clearGuides();
-		const zoom = Math.max(this.canvas.getZoom(), 0.01);
+		const zoom = this.screenZoom();
 		const threshold = SNAP_SCREEN_PX / zoom;
 		const candidatesX = [0, this.document.width_px / 2, this.document.width_px];
 		const candidatesY = [0, this.document.height_px / 2, this.document.height_px];

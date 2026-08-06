@@ -66,21 +66,82 @@ test("public Image Editor drops and crops an image with undo, redo, and reload",
 
   const rightHandle = page.getByRole("button", {
     name: "Resize crop from right",
+    exact: true,
   });
+  const cropFrame = page.getByRole("group", { name: "Crop frame" });
   const handleBox = await rightHandle.boundingBox();
+  const stageBox = await stage.boundingBox();
+  const initialFrame = await cropFrame.evaluate((element) => ({
+    left: Number.parseFloat((element as HTMLElement).style.left),
+    width: Number.parseFloat((element as HTMLElement).style.width),
+  }));
   if (!handleBox) throw new Error("Interactive crop handle did not render");
+  if (!stageBox) throw new Error("Image Editor stage did not render");
+  const documentCenter = initialFrame.left + initialFrame.width / 2;
+  const documentCenterX = stageBox.x + documentCenter;
   await page.mouse.move(
     handleBox.x + handleBox.width / 2,
     handleBox.y + handleBox.height / 2,
   );
   await page.mouse.down();
   await page.mouse.move(
-    handleBox.x + handleBox.width / 2 - 40,
+    documentCenterX + 3,
     handleBox.y + handleBox.height / 2,
     { steps: 6 },
   );
   await page.mouse.up();
+  await expect
+    .poll(async () => {
+      const frame = await cropFrame.evaluate((element) => ({
+        left: Number.parseFloat((element as HTMLElement).style.left),
+        width: Number.parseFloat((element as HTMLElement).style.width),
+      }));
+      return Math.abs(frame.left + frame.width - documentCenter);
+    })
+    .toBeLessThan(2);
+  const snappedHandle = await rightHandle.boundingBox();
+  if (!snappedHandle) throw new Error("Snapped crop handle did not render");
+  await page.keyboard.down("Meta");
+  const snappedHandleOuterX = snappedHandle.x + snappedHandle.width - 4;
+  await page.mouse.move(
+    snappedHandleOuterX,
+    snappedHandle.y + snappedHandle.height / 2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    snappedHandleOuterX + 6,
+    snappedHandle.y + snappedHandle.height / 2,
+    { steps: 3 },
+  );
+  await page.mouse.up();
+  await page.keyboard.up("Meta");
+  await expect
+    .poll(async () => {
+      const frame = await cropFrame.evaluate((element) => ({
+        left: Number.parseFloat((element as HTMLElement).style.left),
+        width: Number.parseFloat((element as HTMLElement).style.width),
+      }));
+      return frame.left + frame.width - documentCenter;
+    })
+    .toBeGreaterThan(3);
   await rightHandle.press("Shift+ArrowLeft");
+
+  const frameLeft = await cropFrame.evaluate(
+    (element) => (element as HTMLElement).style.left,
+  );
+  await page.getByRole("button", { name: "Image", exact: true }).click();
+  await expect(cropFrame).toHaveAttribute("data-mode", "content");
+  await page
+    .getByRole("button", { name: "Move image within crop frame" })
+    .press("Shift+ArrowRight");
+  await expect
+    .poll(() =>
+      cropFrame.evaluate((element) => (element as HTMLElement).style.left),
+    )
+    .toBe(frameLeft);
+  await page.getByRole("button", { name: "Rotate crop right" }).click();
+  await page.getByRole("button", { name: "Flip crop horizontally" }).click();
+  await expect(cropFrame).toHaveCSS("transform", /matrix\(0, 1, -1, 0,/);
   await page.getByRole("button", { name: "Apply crop" }).click();
 
   const undo = page.getByRole("button", { name: /^Undo(?: |$)/ }).first();
@@ -99,8 +160,34 @@ test("public Image Editor drops and crops an image with undo, redo, and reload",
   await expect(page.getByRole("spinbutton", { name: "W" })).not.toHaveValue(
     "100",
   );
+  await desktopTools.getByRole("button", { name: "Crop", exact: true }).click();
+  await expect(cropFrame).toHaveCSS("transform", /matrix\(0, 1, -1, 0,/);
+
+  await page.getByRole("button", { name: "Rotate crop left" }).click();
+  await expect(cropFrame).toHaveCSS("transform", /matrix\(1, 0, 0, 1,/);
+  await page.keyboard.press("Escape");
+  await desktopTools.getByRole("button", { name: "Crop", exact: true }).click();
+  await expect(cropFrame).toHaveCSS("transform", /matrix\(0, 1, -1, 0,/);
 
   await page.keyboard.press("Escape");
+  await page.keyboard.press("i");
+  await expect(
+    page.getByTestId("image-editor-eyedropper-options"),
+  ).toBeVisible();
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("Shift+ArrowDown");
+  const magnifier = page.getByTestId("image-editor-eyedropper-magnifier");
+  await expect(magnifier).toBeVisible();
+  await expect(magnifier.locator(".eyedropper-grid > span")).toHaveCount(81);
+  await page.keyboard.press("Enter");
+  await expect(
+    page.getByTestId("image-editor-eyedropper-options"),
+  ).toContainText(/#[0-9A-F]{6} · \d+%/);
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("image-editor-eyedropper-options")).toHaveCount(
+    0,
+  );
+
   await page.keyboard.press("m");
   const selectionSurface = page.getByTestId("image-editor-selection-surface");
   const selectionSurfaceBox = await selectionSurface.boundingBox();
@@ -197,6 +284,115 @@ test("public Image Editor drops and crops an image with undo, redo, and reload",
   ).toBeVisible();
   await page.reload();
   await expect(movedSelectionLayer).toBeVisible();
+});
+
+test("public Image Editor isolates invalid files and keeps page-targeted batch imports stable", async ({
+  page,
+}) => {
+  test.setTimeout(60_000);
+  await page.goto("/image-editor");
+  await page.getByRole("button", { name: /Instagram square/ }).click();
+  const stage = page.getByTestId("image-editor-stage");
+  await stage.evaluate((node, png) => {
+    const bytes = Uint8Array.from(atob(png), (character) =>
+      character.charCodeAt(0),
+    );
+    const transfer = new DataTransfer();
+    transfer.items.add(new File([bytes], "preview.png", { type: "image/png" }));
+    node.dispatchEvent(
+      new DragEvent("dragover", {
+        bubbles: true,
+        cancelable: true,
+        dataTransfer: transfer,
+      }),
+    );
+  }, tinyPNG.toString("base64"));
+  await expect(
+    page.getByTestId("image-editor-media-drop-target"),
+  ).toBeVisible();
+  await stage.evaluate((node, png) => {
+    const bytes = Uint8Array.from(atob(png), (character) =>
+      character.charCodeAt(0),
+    );
+    const transfer = new DataTransfer();
+    transfer.items.add(new File([bytes], "preview.png", { type: "image/png" }));
+    node.dispatchEvent(
+      new DragEvent("dragleave", {
+        bubbles: true,
+        cancelable: true,
+        dataTransfer: transfer,
+      }),
+    );
+  }, tinyPNG.toString("base64"));
+  await page.getByRole("button", { name: "Add page" }).click();
+  const pageOne = page.getByRole("button", { name: /Page 1:/ });
+  const pageTwo = page.getByRole("button", { name: /Page 2:/ });
+  if (!(await pageTwo.isVisible())) {
+    await page.getByRole("button", { name: "Expand pages" }).click();
+  }
+  await pageOne.click();
+
+  await pageTwo.evaluate((node, png) => {
+    const bytes = Uint8Array.from(atob(png), (character) =>
+      character.charCodeAt(0),
+    );
+    const transfer = new DataTransfer();
+    transfer.items.add(new File([bytes], "preview.png", { type: "image/png" }));
+    node.dispatchEvent(
+      new DragEvent("dragover", {
+        bubbles: true,
+        cancelable: true,
+        dataTransfer: transfer,
+      }),
+    );
+  }, tinyPNG.toString("base64"));
+  await expect(pageTwo).toHaveAttribute("data-external-drop", "active");
+
+  await pageTwo.evaluate((node, png) => {
+    const bytes = Uint8Array.from(atob(png), (character) =>
+      character.charCodeAt(0),
+    );
+    const transfer = new DataTransfer();
+    transfer.items.add(new File([bytes], "first.png", { type: "image/png" }));
+    transfer.items.add(new File([bytes], "second.png", { type: "image/png" }));
+    transfer.items.add(
+      new File(["not an image"], "notes.txt", { type: "text/plain" }),
+    );
+    node.dispatchEvent(
+      new DragEvent("drop", {
+        bubbles: true,
+        cancelable: true,
+        dataTransfer: transfer,
+      }),
+    );
+  }, tinyPNG.toString("base64"));
+
+  const first = page.getByRole("treeitem", { name: /first\.png, image/ });
+  const second = page.getByRole("treeitem", { name: /second\.png, image/ });
+  await expect(first).toBeVisible();
+  await expect(second).toBeVisible();
+  const failures = page.getByTestId("image-editor-import-errors");
+  await expect(failures).toContainText("1 of 3 images could not be imported");
+  await failures.getByText("Review failed files").click();
+  await expect(failures).toContainText("notes.txt");
+  await failures.getByRole("button", { name: "Retry failed files" }).click();
+  await expect(failures).toContainText("1 of 1 images could not be imported");
+  await expect(first).toHaveCount(1);
+  await expect(second).toHaveCount(1);
+
+  await page
+    .getByRole("button", { name: /^Undo(?: |$)/ })
+    .first()
+    .click();
+  await expect(second).toHaveCount(0);
+  await expect(first).toBeVisible();
+  await expect(
+    page.getByRole("banner").getByText("Saved on this device"),
+  ).toBeVisible();
+  await page.reload();
+  await page.getByRole("button", { name: /Page 2:/ }).click();
+  await expect(first).toBeVisible();
+  await expect(second).toHaveCount(0);
 });
 
 test("public Image Editor round-trips an editable project without overwriting its source", async ({

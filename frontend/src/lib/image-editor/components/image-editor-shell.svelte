@@ -119,6 +119,12 @@
 		parseImageEditorProjectArchive,
 		safeImageEditorProjectFilename
 	} from '../portable-project';
+	import {
+		assertImageEditorBatchMemory,
+		availableImageEditorImportSlots,
+		ImageEditorImportError,
+		prepareImageEditorImport
+	} from '../image-import';
 
 	let {
 		initial,
@@ -158,6 +164,15 @@
 		begin(mode: 'promote' | 'cut'): boolean;
 		delete(): boolean;
 	};
+	type ExternalImportRequest = {
+		id: string;
+		file: File;
+		offset: number;
+	};
+	type ExternalImportItem = ExternalImportRequest & {
+		status: 'waiting' | 'preparing' | 'uploading' | 'complete' | 'failed' | 'cancelled';
+		error?: string;
+	};
 	const INITIAL_SAVE_RETRY_DELAY = 2_000;
 	const MAXIMUM_SAVE_RETRY_DELAY = 30_000;
 	let saveTimer: ReturnType<typeof setTimeout> | undefined;
@@ -192,10 +207,11 @@
 	let externalDropProgress = $state('');
 	let externalDropError = $state('');
 	let externalDropAbort: AbortController | null = null;
+	let externalImportItems = $state.raw<ExternalImportItem[]>([]);
 	let externalDropRetry = $state.raw<{
-		files: File[];
+		requests: ExternalImportRequest[];
 		point: SelectionPoint;
-		offset: number;
+		pageID: string;
 	} | null>(null);
 	let projectBusy = $state(false);
 	let projectError = $state('');
@@ -1235,65 +1251,178 @@
 	async function placeExternalFiles(
 		files: File[],
 		point: SelectionPoint,
+		pageID = editor.activePageID,
 		offsetBase = 0
 	): Promise<void> {
 		if (!editor.canEdit || files.length === 0 || externalDropBusy) return;
+		const requests = files.map((file, index) => ({
+			id: crypto.randomUUID(),
+			file,
+			offset: offsetBase + index
+		}));
+		await placeExternalFileRequests(requests, point, pageID);
+	}
+
+	async function placeExternalFileRequests(
+		requests: ExternalImportRequest[],
+		point: SelectionPoint,
+		pageID: string
+	): Promise<void> {
+		if (!editor.canEdit || requests.length === 0 || externalDropBusy) return;
 		externalDropBusy = true;
 		externalDropError = '';
 		externalDropRetry = null;
 		externalDropAbort = new AbortController();
+		externalImportItems = requests.map((request) => ({ ...request, status: 'waiting' }));
+		const signal = externalDropAbort.signal;
+		const targetPage = editor.document?.pages.find((page) => page.id === pageID);
+		const availableSlots = availableImageEditorImportSlots(targetPage?.layers.length ?? 0);
+		const prepared: Array<
+			ExternalImportRequest & { preparedFile: File; width: number; height: number }
+		> = [];
+		let decodedBytes = 0;
 		let inserted = 0;
-		let currentIndex = 0;
 		try {
-			for (const [index, file] of files.entries()) {
-				currentIndex = index;
-				if (externalDropAbort.signal.aborted) throw new DOMException('Aborted', 'AbortError');
+			for (const [index, request] of requests.entries()) {
+				if (signal.aborted) break;
 				externalDropProgress = m.image_editor_importing_files({
 					current: index + 1,
-					total: files.length
+					total: requests.length
 				});
-				const media = guestMode
-					? await storeGuestImageEditorMedia(editor.id, file)
-					: await uploadMediaFile({
-							workspaceId: editor.workspaceID,
-							file,
-							source: 'upload',
-							retentionClass: 'library',
-							signal: externalDropAbort.signal
-						});
-				const offset = (offsetBase + index) * 24;
-				editor.addImage(
-					{
-						id: media.id,
-						name: media.original_filename,
-						...('width' in media && typeof media.width === 'number' ? { width: media.width } : {}),
-						...('height' in media && typeof media.height === 'number'
-							? { height: media.height }
-							: {})
-					},
-					{ x: point.x + offset, y: point.y + offset }
-				);
-				inserted++;
+				updateExternalImportItem(request.id, { status: 'preparing', error: undefined });
+				try {
+					if (prepared.length >= availableSlots) throw new ImageEditorImportError('layer_limit');
+					const result = await prepareImageEditorImport(request.file, { guestMode });
+					decodedBytes = assertImageEditorBatchMemory(decodedBytes, result.decodedBytes);
+					prepared.push({
+						...request,
+						preparedFile: result.file,
+						width: result.width,
+						height: result.height
+					});
+				} catch (cause) {
+					updateExternalImportItem(request.id, {
+						status: 'failed',
+						error: imageEditorImportErrorMessage(cause)
+					});
+				}
 			}
-			statusAnnouncement = m.image_editor_imported_files({ count: inserted });
-		} catch (cause) {
-			if (cause instanceof DOMException && cause.name === 'AbortError') {
+
+			for (const [index, request] of prepared.entries()) {
+				if (signal.aborted) break;
+				externalDropProgress = m.image_editor_uploading_file({
+					name: request.file.name,
+					current: index + 1,
+					total: prepared.length
+				});
+				updateExternalImportItem(request.id, { status: 'uploading', error: undefined });
+				try {
+					const currentTarget = editor.document?.pages.find((page) => page.id === pageID);
+					if (
+						!currentTarget ||
+						availableImageEditorImportSlots(currentTarget.layers.length) === 0
+					) {
+						throw new ImageEditorImportError('layer_limit');
+					}
+					const media = guestMode
+						? await storeGuestImageEditorMedia(editor.id, request.preparedFile)
+						: await uploadMediaFile({
+								workspaceId: editor.workspaceID,
+								file: request.preparedFile,
+								source: 'upload',
+								retentionClass: 'library',
+								signal
+							});
+					const offset = request.offset * 24;
+					editor.addImage(
+						{
+							id: media.id,
+							name: media.original_filename,
+							width: request.width,
+							height: request.height
+						},
+						{ x: point.x + offset, y: point.y + offset },
+						pageID
+					);
+					inserted++;
+					updateExternalImportItem(request.id, { status: 'complete', error: undefined });
+				} catch (cause) {
+					if (isAbortError(cause)) break;
+					updateExternalImportItem(request.id, {
+						status: 'failed',
+						error: imageEditorImportErrorMessage(cause)
+					});
+				}
+			}
+
+			if (signal.aborted) {
+				externalImportItems = externalImportItems.map((item) =>
+					item.status === 'waiting' || item.status === 'preparing' || item.status === 'uploading'
+						? { ...item, status: 'cancelled' }
+						: item
+				);
 				statusAnnouncement = m.image_editor_import_cancelled({ count: inserted });
 			} else {
-				externalDropRetry = {
-					files: files.slice(currentIndex),
-					point,
-					offset: offsetBase + currentIndex
-				};
-				externalDropError =
-					cause instanceof Error ? cause.message : m.image_editor_external_drop_failed();
-				statusAnnouncement = externalDropError;
+				statusAnnouncement = m.image_editor_imported_files({ count: inserted });
 			}
 		} finally {
 			if (inserted > 0) editor.refreshMediaLibrary();
+			const failed = externalImportItems.filter((item) => item.status === 'failed');
+			if (failed.length > 0) {
+				// Retain only the files the user can retry. Successful and cancelled files can be
+				// large, so release those references as soon as the batch finishes.
+				externalImportItems = failed;
+				externalDropRetry = {
+					requests: failed.map(({ id, file, offset }) => ({ id, file, offset })),
+					point,
+					pageID
+				};
+				externalDropError = m.image_editor_import_failed_files({
+					failed: failed.length,
+					total: requests.length
+				});
+				statusAnnouncement = externalDropError;
+			} else {
+				externalImportItems = [];
+			}
 			externalDropBusy = false;
 			externalDropProgress = '';
 			externalDropAbort = null;
+		}
+	}
+
+	function updateExternalImportItem(
+		id: string,
+		updates: Partial<Pick<ExternalImportItem, 'status' | 'error'>>
+	): void {
+		externalImportItems = externalImportItems.map((item) =>
+			item.id === id ? { ...item, ...updates } : item
+		);
+	}
+
+	function isAbortError(cause: unknown): boolean {
+		return cause instanceof DOMException && cause.name === 'AbortError';
+	}
+
+	function imageEditorImportErrorMessage(cause: unknown): string {
+		if (!(cause instanceof ImageEditorImportError)) {
+			return cause instanceof Error ? cause.message : m.image_editor_external_drop_failed();
+		}
+		switch (cause.code) {
+			case 'unsupported_type':
+				return m.image_editor_import_unsupported_type();
+			case 'file_too_large':
+				return m.image_editor_import_file_too_large();
+			case 'unsafe_svg':
+				return m.image_editor_import_unsafe_svg();
+			case 'decode_failed':
+				return m.image_editor_import_decode_failed();
+			case 'dimensions_too_large':
+				return m.image_editor_import_dimensions_too_large();
+			case 'batch_memory_limit':
+				return m.image_editor_import_batch_too_large();
+			case 'layer_limit':
+				return m.image_editor_import_layer_limit();
 		}
 	}
 
@@ -1505,16 +1634,13 @@
 			const file = new File([externalImage], `pasted-image.${extension}`, {
 				type: externalImage.type
 			});
-			const uploaded = guestMode
-				? await storeGuestImageEditorMedia(editor.id, file)
-				: await uploadMediaFile({
-						workspaceId: editor.workspaceID,
-						file,
-						source: 'upload',
-						retentionClass: 'library'
-					});
-			editor.refreshMediaLibrary();
-			editor.addImage({ id: uploaded.id, name: m.image_editor_pasted_image() });
+			const document = editor.document;
+			if (!document) return;
+			await placeExternalFiles(
+				[file],
+				{ x: document.width_px / 2, y: document.height_px / 2 },
+				editor.activePageID
+			);
 			return;
 		}
 		if (source.length === 0) {
@@ -2218,33 +2344,56 @@
 		</div>
 	{/if}
 	{#if externalDropBusy}
-		<div class="border-b bg-primary/10 px-3 py-2 text-center text-xs" aria-live="polite">
-			{externalDropProgress}
-			<Button variant="ghost" size="xs" class="ml-2" onclick={() => externalDropAbort?.abort()}>
+		<div
+			class="flex min-h-11 items-center justify-center gap-2 border-b bg-primary/10 px-3 py-1.5 text-xs"
+			aria-live="polite"
+			data-testid="image-editor-import-progress"
+		>
+			<span class="min-w-0 truncate">{externalDropProgress}</span>
+			<Button variant="ghost" size="xs" onclick={() => externalDropAbort?.abort()}>
 				{m.common_cancel()}
 			</Button>
 		</div>
 	{/if}
 	{#if externalDropError}
 		<div
-			class="flex items-center justify-center gap-2 border-b bg-destructive/10 px-3 py-2 text-xs text-destructive"
+			class="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 border-b bg-destructive/10 px-3 py-2 text-xs text-destructive"
 			role="alert"
+			data-testid="image-editor-import-errors"
 		>
 			<span>{externalDropError}</span>
+			<details class="max-w-full">
+				<summary class="cursor-pointer font-medium"
+					>{m.image_editor_import_failure_details()}</summary
+				>
+				<ul class="mt-1 max-h-24 max-w-[min(32rem,85vw)] space-y-0.5 overflow-auto text-left">
+					{#each externalImportItems.filter((item) => item.status === 'failed') as item (item.id)}
+						<li class="truncate" title={`${item.file.name}: ${item.error ?? ''}`}>
+							<span class="font-medium">{item.file.name}</span>: {item.error}
+						</li>
+					{/each}
+				</ul>
+			</details>
 			{#if externalDropRetry}
 				<Button
 					variant="ghost"
 					size="xs"
 					onclick={() => {
 						const retry = externalDropRetry;
-						if (retry) void placeExternalFiles(retry.files, retry.point, retry.offset);
+						if (retry) void placeExternalFileRequests(retry.requests, retry.point, retry.pageID);
 					}}
 				>
-					{m.common_retry()}
+					{m.image_editor_retry_failed_files()}
 				</Button>
 			{/if}
-			<Button variant="ghost" size="xs" onclick={() => (externalDropError = '')}
-				>{m.common_dismiss()}</Button
+			<Button
+				variant="ghost"
+				size="xs"
+				onclick={() => {
+					externalDropError = '';
+					externalDropRetry = null;
+					externalImportItems = [];
+				}}>{m.common_dismiss()}</Button
 			>
 		</div>
 	{/if}
@@ -2591,7 +2740,7 @@
 			</div>
 			{#if !focusedCanvas}
 				<div class="absolute inset-x-0 bottom-0">
-					<PageStrip />
+					<PageStrip onExternalFiles={placeExternalFiles} />
 				</div>
 			{/if}
 		</main>

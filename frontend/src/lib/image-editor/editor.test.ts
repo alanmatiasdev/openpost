@@ -509,6 +509,25 @@ describe('OpenPost Image Editor editor layer interactions', () => {
 		expect(image.image?.intrinsic_pending).toBe(false);
 	});
 
+	it('keeps asynchronous image imports on their captured target page', () => {
+		const editor = new ImageEditorController();
+		editor.load(response());
+		editor.addPage();
+		const targetPageID = editor.activePageID;
+		editor.activePageID = 'page';
+		editor.selectedLayerIDs = ['back'];
+
+		editor.addImage(
+			{ id: 'media', width: 640, height: 360, name: 'Delayed image' },
+			{ x: 200, y: 240 },
+			targetPageID
+		);
+
+		expect(editor.document?.pages.find((page) => page.id === targetPageID)?.layers).toHaveLength(1);
+		expect(editor.activePage?.layers).toHaveLength(3);
+		expect(editor.selectedLayerIDs).toEqual(['back']);
+	});
+
 	it('applies and resets an image crop as one undoable transform', () => {
 		const editor = new ImageEditorController();
 		editor.load(response());
@@ -542,6 +561,36 @@ describe('OpenPost Image Editor editor layer interactions', () => {
 		expect(editor.selectedLayers[0].transform.y).toBeCloseTo(original.y);
 		expect(editor.selectedLayers[0].transform.width).toBeCloseTo(original.width);
 		expect(editor.selectedLayers[0].transform.height).toBeCloseTo(original.height);
+	});
+
+	it('commits crop source placement and orientation as one history entry', () => {
+		const editor = new ImageEditorController();
+		editor.load(response());
+		editor.addImage({ id: 'media', width: 800, height: 400, name: 'Wide image' });
+		const image = editor.selectedLayers[0];
+		const original = structuredClone(image);
+
+		editor.applyImageCropState(image.id, {
+			transform: {
+				...image.transform,
+				x: image.transform.x + 40,
+				width: image.transform.width / 2,
+				rotation: 90,
+				flip_x: true
+			},
+			crop: { x: 0.4, y: 0, width: 0.5, height: 1 }
+		});
+
+		expect(editor.selectedLayers[0]).toMatchObject({
+			transform: { x: original.transform.x + 40, rotation: 90, flip_x: true },
+			image: { crop: { x: 0.4, y: 0, width: 0.5, height: 1 } }
+		});
+		expect(editor.undoLabel).toBe('Crop');
+		editor.undo();
+		expect(editor.selectedLayers[0]).toEqual(original);
+		editor.redo();
+		expect(editor.selectedLayers[0].transform.rotation).toBe(90);
+		expect(editor.selectedLayers[0].image?.crop.x).toBe(0.4);
 	});
 
 	it('fits the whole canvas inside the latest measured viewport', () => {

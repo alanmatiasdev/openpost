@@ -161,23 +161,23 @@ OpenPost's tested `magicPixelMask` should remain the basis for these tools.
 
 ### Canvas and image utilities
 
-| Capability                   | miniPaint                                              | OpenPost                                                                 | Lead and notes                  |
-| ---------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------ | ------------------------------- |
-| Interactive crop             | Yes; rotated layers must first be rasterized           | Non-destructive frame, presets, pointer/keyboard, rotated/flipped layers | OpenPost                        |
-| Trim transparent/white edges | Active/all layers with tolerance                       | No                                                                       | miniPaint                       |
-| Canvas resize                | Units, resolution, anchors, presets, autoresize        | Pixel dimensions and presets                                             | miniPaint                       |
-| Resample image               | Basic, Hermite, and Pica/Lanczos with optional sharpen | Object transform/export interpolation                                    | miniPaint                       |
-| Arbitrary image rotation     | Image command                                          | Per-layer transform rotation                                             | Split                           |
-| Flip                         | Image command                                          | Per-layer horizontal/vertical transform flags                            | Split                           |
-| Translate                    | Dedicated image command                                | Layer transform/nudge                                                    | OpenPost for normal design work |
-| Histogram                    | Yes                                                    | No                                                                       | miniPaint                       |
-| EXIF inspection              | Yes                                                    | No                                                                       | miniPaint                       |
-| Color palette extraction     | Yes                                                    | Recent and brand colors, no extraction                                   | miniPaint                       |
-| Decrease color depth         | Yes                                                    | No                                                                       | miniPaint                       |
-| Auto color adjustment        | Yes                                                    | No one-click auto adjustment                                             | miniPaint                       |
-| Sprite-sheet layout          | Packs visible trimmed layers with a gap                | No                                                                       | miniPaint                       |
-| Key-point visualization      | Home-grown SIFT-like analysis into a layer             | No                                                                       | miniPaint, but niche            |
-| Layer animation preview      | Cycles layer visibility                                | No still-image animation                                                 | miniPaint, but limited          |
+| Capability                   | miniPaint                                              | OpenPost                                                          | Lead and notes                  |
+| ---------------------------- | ------------------------------------------------------ | ----------------------------------------------------------------- | ------------------------------- |
+| Interactive crop             | Yes; rotated layers must first be rasterized           | Non-destructive frame/image modes, presets, keyboard, rotate/flip | OpenPost                        |
+| Trim transparent/white edges | Active/all layers with tolerance                       | No                                                                | miniPaint                       |
+| Canvas resize                | Units, resolution, anchors, presets, autoresize        | Pixel dimensions and presets                                      | miniPaint                       |
+| Resample image               | Basic, Hermite, and Pica/Lanczos with optional sharpen | Object transform/export interpolation                             | miniPaint                       |
+| Arbitrary image rotation     | Image command                                          | Per-layer transform rotation                                      | Split                           |
+| Flip                         | Image command                                          | Per-layer horizontal/vertical transform flags                     | Split                           |
+| Translate                    | Dedicated image command                                | Layer transform/nudge                                             | OpenPost for normal design work |
+| Histogram                    | Yes                                                    | No                                                                | miniPaint                       |
+| EXIF inspection              | Yes                                                    | No                                                                | miniPaint                       |
+| Color palette extraction     | Yes                                                    | Recent and brand colors, no extraction                            | miniPaint                       |
+| Decrease color depth         | Yes                                                    | No                                                                | miniPaint                       |
+| Auto color adjustment        | Yes                                                    | No one-click auto adjustment                                      | miniPaint                       |
+| Sprite-sheet layout          | Packs visible trimmed layers with a gap                | No                                                                | miniPaint                       |
+| Key-point visualization      | Home-grown SIFT-like analysis into a layer             | No                                                                | miniPaint, but niche            |
+| Layer animation preview      | Cycles layer visibility                                | No still-image animation                                          | miniPaint, but limited          |
 
 ### Assets and import
 
@@ -238,21 +238,21 @@ OpenPost's tested `magicPixelMask` should remain the basis for these tools.
 
 ### Keyboard, menus, and small interactions
 
-| Capability                  | miniPaint                                     | OpenPost                                                                         | Lead and notes        |
-| --------------------------- | --------------------------------------------- | -------------------------------------------------------------------------------- | --------------------- |
-| Command menus               | File/Edit/View/Image/Layer/Effects/Tools/Help | Compact File/Edit/View and contextual tool UI                                    | miniPaint for breadth |
-| Tool hotkeys                | Limited tool keys; H opens shapes             | V/L/W/B/P/E/Shift+E/G/Shift+G/T/H/Z/U/M/Shift+M                                  | OpenPost              |
-| Common edit keys            | Undo/redo/copy/paste/select all/delete        | Adds cut, duplicate, group, ungroup, deselect                                    | OpenPost              |
-| Shortcut help               | Lists about 22 shortcuts                      | Complete platform-aware list generated from typed commands                       | OpenPost              |
-| Search commands             | F3/Command+F search                           | No command palette                                                               | miniPaint             |
-| Repeated arrow history      | Consecutive movement is bundled               | Normal history coalescing                                                        | Split                 |
-| Alt-drag duplicate          | No                                            | Yes, with ghost preview                                                          | OpenPost              |
-| Layer/page keyboard reorder | No                                            | Alt+arrow                                                                        | OpenPost              |
-| Inline layer rename         | Double-click opens rename                     | Inline and F2                                                                    | OpenPost              |
-| Recent colors               | Basic swatches                                | Eight local recent colors plus brand colors                                      | OpenPost              |
-| Screen eyedropper           | Canvas sampler copies hex                     | Browser screen picker plus active/composite canvas sampler with explicit targets | OpenPost              |
-| Leave-page protection       | Optional exit confirmation                    | Unsaved-change/recovery integration                                              | OpenPost              |
-| Full screen                 | Yes                                           | Browser/application layout only                                                  | miniPaint             |
+| Capability                  | miniPaint                                     | OpenPost                                                                                             | Lead and notes        |
+| --------------------------- | --------------------------------------------- | ---------------------------------------------------------------------------------------------------- | --------------------- |
+| Command menus               | File/Edit/View/Image/Layer/Effects/Tools/Help | Compact File/Edit/View and contextual tool UI                                                        | miniPaint for breadth |
+| Tool hotkeys                | Limited tool keys; H opens shapes             | V/L/W/B/P/E/Shift+E/G/Shift+G/T/H/Z/U/M/Shift+M                                                      | OpenPost              |
+| Common edit keys            | Undo/redo/copy/paste/select all/delete        | Adds cut, duplicate, group, ungroup, deselect                                                        | OpenPost              |
+| Shortcut help               | Lists about 22 shortcuts                      | Complete platform-aware list generated from typed commands                                           | OpenPost              |
+| Search commands             | F3/Command+F search                           | No command palette                                                                                   | miniPaint             |
+| Repeated arrow history      | Consecutive movement is bundled               | Normal history coalescing                                                                            | Split                 |
+| Alt-drag duplicate          | No                                            | Yes, with ghost preview                                                                              | OpenPost              |
+| Layer/page keyboard reorder | No                                            | Alt+arrow                                                                                            | OpenPost              |
+| Inline layer rename         | Double-click opens rename                     | Inline and F2                                                                                        | OpenPost              |
+| Recent colors               | Basic swatches                                | Eight local recent colors plus brand colors                                                          | OpenPost              |
+| Screen eyedropper           | Canvas sampler copies hex                     | Browser picker plus active/composite canvas sampler, 9x9 grid, keyboard cursor, and explicit targets | OpenPost              |
+| Leave-page protection       | Optional exit confirmation                    | Unsaved-change/recovery integration                                                                  | OpenPost              |
+| Full screen                 | Yes                                           | Browser/application layout only                                                                      | miniPaint             |
 
 ### Responsive design, accessibility, and localization
 
@@ -288,8 +288,6 @@ OpenPost's tested `magicPixelMask` should remain the basis for these tools.
 
 ## Important OpenPost implementation constraints
 
-- Crop still lacks image-within-frame repositioning and transient rotate/flip
-  actions; the committed normalized crop itself is non-destructive.
 - Alpha hit testing needs caching and covered-layer cycling for very large or
   densely stacked documents.
 - Pixel selection can cut, delete, promote, copy, paste, and move floating
@@ -297,10 +295,11 @@ OpenPost's tested `magicPixelMask` should remain the basis for these tools.
   duplicate semantics remain.
 - Brand backgrounds and whole-layer text styles are exposed, but missing-asset
   recovery and mixed-value multi-selection UI remain incomplete.
-- External drops are exact and durable, but guest OPFS writes cannot be cancelled
-  mid-write and cloud batch recovery still needs a full failure matrix.
-- Guides, rulers, grid, snapping, and temporary bypass exist; crop/drawing/guide
-  motion do not yet share every snap behavior.
+- External drops are exact, bounded, page-targeted, and failure-isolated, but guest
+  OPFS writes cannot be cancelled mid-write and signed-in partial failure still
+  needs end-to-end coverage.
+- Guides, rulers, grid, crop handles, gradient endpoints, object transforms, and
+  temporary bypass share screen-space snapping. High-DPI browser proof remains.
 - Typed commands drive dispatch, labels, and help, but menus, tooltips, and mobile
   actions are not all generated from the registry.
 - A 25 MP full-resolution selection mask and composited sampling can be costly.
@@ -313,15 +312,23 @@ OpenPost's tested `magicPixelMask` should remain the basis for these tools.
 
 ### P0: expected editor behavior
 
-1. Finish image-within-frame repositioning and crop-local rotate/flip controls.
-2. Add a true pixel-grid eyedropper magnifier and keyboard sampling cursor.
-3. Complete external-drop cancellation, memory preflight, and partial-failure tests.
-4. Apply shared snapping to crop, drawing, and guide motion and add high-DPI proof.
-5. Generate menus, tooltips, mobile actions, and enabled-state explanations from
+Completed:
+
+- [x] Finish image-within-frame repositioning and crop-local rotate/flip controls.
+- [x] Add a true pixel-grid eyedropper magnifier and keyboard sampling cursor.
+- [x] Add bounded mixed-file import, per-file failure recovery, full-pasteboard
+      feedback, and stable page targeting.
+- [x] Apply one zoom-correct snap contract to object transforms, crop handles,
+      guides, and gradient endpoints.
+
+Remaining:
+
+1. Generate menus, tooltips, mobile actions, and enabled-state explanations from
    the typed command registry.
-6. Cache alpha hit masks and add an intentional covered-layer cycling gesture.
-7. Add resize and rotation handles to the floating selected-pixel workflow.
-8. Complete missing brand-asset recovery and mixed-value application feedback.
+2. Cache alpha hit masks and add an intentional covered-layer cycling gesture.
+3. Add resize and rotation handles to the floating selected-pixel workflow.
+4. Complete missing brand-asset recovery and mixed-value application feedback.
+5. Add high-DPI snapping/sampling proof and signed-in partial-import coverage.
 
 ### P1: creative depth
 

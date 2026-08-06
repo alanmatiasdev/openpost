@@ -46,13 +46,17 @@ export function containsExternalImageDrag(dataTransfer: DataTransfer | null): bo
 	return Boolean(
 		dataTransfer &&
 		!containsImageEditorMediaDrag(dataTransfer) &&
-		([...dataTransfer.types].includes('Files') || externalImageFiles(dataTransfer).length > 0)
+		([...dataTransfer.types].includes('Files') || externalFiles(dataTransfer).length > 0)
 	);
 }
 
-export function externalImageFiles(dataTransfer: DataTransfer | null): File[] {
+export function externalFiles(dataTransfer: DataTransfer | null): File[] {
 	if (!dataTransfer) return [];
-	return [...dataTransfer.files].filter(isImageEditorImageFile);
+	return [...dataTransfer.files];
+}
+
+export function externalImageFiles(dataTransfer: DataTransfer | null): File[] {
+	return externalFiles(dataTransfer).filter(isImageEditorImageFile);
 }
 
 export function isImageEditorImageFile(file: Pick<File, 'name' | 'type'>): boolean {

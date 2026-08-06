@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
 	computeImageGeometry,
+	imageEditorScreenZoom,
+	imageEditorPixelGrid,
 	imageEditorPixelIsOpaque,
 	OpenPostFabricAdapter,
 	imageEditorLayerRenderOrder,
+	snapImageEditorPoint,
 	snapImageEditorResize
 } from './fabric-adapter';
 import type { ImageEditorDocument, ImageEditorLayer, ImageEditorPage } from './types';
@@ -53,6 +56,25 @@ function imageLayer(
 }
 
 describe('OpenPost Image Editor image geometry', () => {
+	it('builds a centered pixel grid with transparent padding at image edges', () => {
+		const image = {
+			width: 2,
+			height: 2,
+			data: new Uint8ClampedArray([
+				255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255
+			])
+		};
+
+		const grid = imageEditorPixelGrid(image, { x: 0, y: 0 }, 1);
+
+		expect(grid.width).toBe(3);
+		expect(grid.height).toBe(3);
+		expect(Array.from(grid.centerPixel)).toEqual([255, 0, 0, 255]);
+		expect(Array.from(grid.data.slice(0, 4))).toEqual([0, 0, 0, 0]);
+		expect(Array.from(grid.data.slice(16, 20))).toEqual([255, 0, 0, 255]);
+		expect(Array.from(grid.data.slice(32, 36))).toEqual([255, 255, 255, 255]);
+	});
+
 	it('treats transparent image padding as click-through while keeping visible edge pixels selectable', () => {
 		const image = {
 			width: 2,
@@ -256,6 +278,41 @@ describe('OpenPost Image Editor multi-selection movement', () => {
 		internals.snapObject(selection);
 
 		expect(selection).toMatchObject({ left: 100, top: 100 });
+	});
+});
+
+describe('OpenPost Image Editor point snapping', () => {
+	it('uses the nearest axis target without changing pointer metadata', () => {
+		const snapped = snapImageEditorPoint(
+			{ x: 104, y: 197, pressure: 0.75 },
+			[0, 100, 200],
+			[0, 200, 400],
+			6
+		);
+
+		expect(snapped).toEqual({
+			point: { x: 100, y: 200, pressure: 0.75 },
+			guideX: 100,
+			guideY: 200
+		});
+	});
+
+	it('can restrict snapping to the axis used by a guide', () => {
+		const snapped = snapImageEditorPoint({ x: 104, y: 197 }, [100], [200], 6, 'x');
+		expect(snapped.point).toEqual({ x: 100, y: 197 });
+		expect(snapped.guideY).toBeNull();
+	});
+});
+
+describe('OpenPost Image Editor screen zoom', () => {
+	it('combines Fabric and CSS scaling so tolerances remain stable on screen', () => {
+		expect(imageEditorScreenZoom(1, 464.4, 1080)).toBeCloseTo(0.43);
+		expect(imageEditorScreenZoom(2, 540, 1080)).toBe(1);
+	});
+
+	it('falls back to the internal zoom when layout dimensions are unavailable', () => {
+		expect(imageEditorScreenZoom(1.5, 0, 1080)).toBe(1.5);
+		expect(imageEditorScreenZoom(1.5, 100, 0)).toBe(1.5);
 	});
 });
 
