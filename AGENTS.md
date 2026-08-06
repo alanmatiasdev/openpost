@@ -64,6 +64,8 @@ Engagement and inbox reads use the optional `CommentAdapter`/`EngagementAdapter`
 
 Keep shallow, Git-ignored checkouts of Postiz and Shoutrrr in `references/postiz/` and `references/shoutrrr/`. Before designing or implementing a social publishing, scheduling, automation, or provider feature—and whenever the requested behavior or UX is uncertain—check whether either project has an equivalent feature and inspect its current implementation. Postiz is especially useful for multi-account repost selection, delays, and plug-style thresholds. Shoutrrr is especially useful for durable repost jobs, engagement gates, plateau checks, and per-post overrides. Use them as references, not dependencies: OpenPost's architecture, security rules, provider capabilities, and product language remain authoritative. Never commit or vendor either checkout. If a checkout is missing, recreate it with `git clone --depth 1`; refresh an existing checkout with `git -C references/<name> pull --ff-only`.
 
+Keep a shallow, Git-ignored miniPaint checkout in `references/miniPaint/` as a source reference for Image Editor tools, raster workflows, effects, import/export behavior, and desktop/mobile editor UX. Use it as a reference, not a dependency; OpenPost's document model, storage rules, accessibility, and social-output workflows remain authoritative. Never commit or vendor the checkout. If it is missing, recreate it with `git clone --depth 1 https://github.com/viliusle/miniPaint.git references/miniPaint`; refresh it with `git -C references/miniPaint pull --ff-only`.
+
 ## 3. Agent Guidelines & Coding Mandates
 
 When an AI agent is invoked to assist with this repository, it MUST adhere to the following rules:
