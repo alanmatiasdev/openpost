@@ -4,6 +4,10 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- Kept Google sign-in from the sign-up page out of new-account checkout when the Google identity already belongs to an OpenPost account with a workspace, while preserving onboarding and selected plan details for first-time accounts.
+
 ## [3.1.1] - 2026-08-05
 
 ### Fixed

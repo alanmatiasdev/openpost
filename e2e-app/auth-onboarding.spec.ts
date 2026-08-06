@@ -173,6 +173,58 @@ test("login honors same-origin redirects for existing workspaces", async ({
   await expect(page.getByRole("heading", { name: "Billing" })).toBeVisible();
 });
 
+test("Google signup lets existing accounts resume without onboarding checkout", async ({
+  page,
+  request,
+}) => {
+  const unique = Date.now().toString(36);
+  const email = `auth-google-signup-${unique}@example.com`;
+  const auth = await registerUser(request, email);
+  await createWorkspace(request, auth.token, "Existing Google Account E2E");
+
+  await page.route("**/api/v1/auth/config", (route) =>
+    route.fulfill({
+      json: {
+        registration_enabled: true,
+        password_reset_enabled: true,
+        email_verification_required: false,
+        legal_acceptance_required: false,
+      },
+    }),
+  );
+  await page.route("**/api/v1/auth/oidc/providers", (route) =>
+    route.fulfill({
+      json: [
+        {
+          id: "google",
+          name: "Google",
+          kind: "oauth",
+          start_url: "/api/v1/auth/oidc/google/start",
+        },
+      ],
+    }),
+  );
+
+  const destination = "/settings?tab=accounts";
+  await page.goto(
+    `/register?plan=founder&billing_period=annual&redirect=${encodeURIComponent(destination)}`,
+  );
+  const startRequestPromise = page.waitForRequest(
+    (candidate) =>
+      new URL(candidate.url()).pathname === "/api/v1/auth/oidc/google/start",
+  );
+  await page.getByRole("button", { name: "Continue with Google" }).click();
+  const startURL = new URL((await startRequestPromise).url());
+  expect(startURL.searchParams.get("return_path")).toBe(
+    `/register?plan=founder&billing_period=annual&redirect=${encodeURIComponent(destination)}`,
+  );
+
+  await authenticatePage(page, auth.token);
+  await page.goto(startURL.searchParams.get("return_path")!);
+  await expect(page).toHaveURL(/\/settings\?tab=accounts$/);
+  await expect(page).not.toHaveURL(/\/checkout/);
+});
+
 test("signed-in startup never mounts the login form inside the app shell", async ({
   page,
   request,

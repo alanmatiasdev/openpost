@@ -116,7 +116,6 @@
 	let ssoChallengeInFlight = $state(false);
 
 	function authenticatedPublicTarget() {
-		if (currentPath !== '/login') return '/';
 		const target = safeSameOriginRedirect($page.url);
 		if (target === '/login' || target.startsWith('/login?') || target.startsWith('/register')) {
 			return '/';
@@ -125,16 +124,20 @@
 	}
 
 	function onboardingTarget() {
-		const target = onboardingPathForPlan($page.url.searchParams.get('plan'));
+		const target = new URL(onboardingPathForPlan($page.url.searchParams.get('plan')), $page.url);
+		const billingPeriod = $page.url.searchParams.get('billing_period');
+		if (billingPeriod) target.searchParams.set('billing_period', billingPeriod);
+
+		const redirect = safeSameOriginRedirect($page.url, '');
+		if (redirect) target.searchParams.set('redirect', redirect);
 		if (
-			!currentPath.startsWith('/image-editor/local_design_') ||
-			$page.url.searchParams.get('import') !== '1'
+			!redirect &&
+			currentPath.startsWith('/image-editor/local_design_') &&
+			$page.url.searchParams.get('import') === '1'
 		) {
-			return target;
+			target.searchParams.set('redirect', `${currentPath}${$page.url.search}`);
 		}
-		const returnPath = `${currentPath}${$page.url.search}`;
-		const separator = target.includes('?') ? '&' : '?';
-		return `${target}${separator}redirect=${encodeURIComponent(returnPath)}`;
+		return `${target.pathname}${target.search}`;
 	}
 
 	let pendingRedirect = $derived.by(() => {
