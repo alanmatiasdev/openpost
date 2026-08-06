@@ -739,6 +739,16 @@ func TestTikTokPrivacyIsRequiredOnlyForDirectPost(t *testing.T) {
 	}
 }
 
+func TestTikTokDefaultsToDirectPost(t *testing.T) {
+	for _, setting := range tiktokSettings() {
+		if setting.Key == "content_posting_method" {
+			require.Equal(t, "DIRECT_POST", setting.Default)
+			return
+		}
+	}
+	require.Fail(t, "TikTok posting method setting not found")
+}
+
 func requireIssueCode(t *testing.T, issues []ValidationIssue, code string) {
 	t.Helper()
 	for _, issue := range issues {

@@ -43,6 +43,7 @@ If `redirect_uri` is omitted, OpenPost derives it from `OPENPOST_APP_URL`.
 - Connects a selected Instagram Business or Creator account behind a Facebook Page.
 - Publishes a single image URL with a caption.
 - Publishes a single video URL as a Reel.
+- Lets you choose a Reel cover frame or upload a separate cover image from destination settings.
 - Publishes 2-10 media items as a carousel when multiple compatible media items are attached.
 - Publishes Stories and lists, replies to, hides, and deletes eligible comments.
 - Supports opt-in inbox collection and replies within Meta's reply window.

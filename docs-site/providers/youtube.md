@@ -40,7 +40,7 @@ If `redirect_uri` is omitted, OpenPost derives it from `OPENPOST_APP_URL`.
 - Connects a selected YouTube channel.
 - Uploads one video through the YouTube Data API `videos.insert` endpoint with resumable-upload handling.
 - Uploads videos as private by default, with YouTube-specific privacy settings available through publication/variant settings.
-- Supports title, description, tags, category, made-for-kids, thumbnail, and playlist settings when provided.
+- Supports title, description, tags, category, made-for-kids, thumbnail, and playlist settings when provided. A thumbnail can be uploaded or captured from the attached video in destination settings.
 - Uses the post or account version for a fallback title and description when those fields are empty.
 - Supports scheduling and platform variants through the normal OpenPost post flow.
 - Lists comments, sends replies, moderates comments, and deletes comments from the connected channel when Google grants access.

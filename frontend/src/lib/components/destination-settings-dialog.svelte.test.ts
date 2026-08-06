@@ -153,4 +153,57 @@ describe('DestinationSettingsDialog', () => {
 
 		expect(onChange).toHaveBeenCalledWith('playlist_id', 'launches');
 	});
+
+	it('uploads destination files through the composer callback', async () => {
+		const onFileChange = vi.fn().mockResolvedValue(undefined);
+		const screen = await render(DestinationSettingsDialog, {
+			props: {
+				open: true,
+				account: youtubeAccount,
+				settings: [
+					setting('thumbnail_media_id', 'Thumbnail', {
+						control: 'media_picker',
+						type: 'media',
+						media_shapes: ['video']
+					})
+				],
+				values: {},
+				onChange: vi.fn(),
+				onFileChange
+			}
+		});
+
+		const input = screen.getByLabelText('Thumbnail').element() as HTMLInputElement;
+		const file = new File(['thumbnail'], 'thumbnail.jpg', { type: 'image/jpeg' });
+		const transfer = new DataTransfer();
+		transfer.items.add(file);
+		input.files = transfer.files;
+		input.dispatchEvent(new Event('change', { bubbles: true }));
+
+		await vi.waitFor(() => expect(onFileChange).toHaveBeenCalledWith(expect.anything(), file));
+	});
+
+	it('shows a video frame picker for destination cover timestamps', async () => {
+		await page.viewport(390, 844);
+		const screen = await render(DestinationSettingsDialog, {
+			props: {
+				open: true,
+				account: youtubeAccount,
+				settings: [
+					setting('cover_timestamp_ms', 'Cover frame', {
+						control: 'cover_frame',
+						type: 'number',
+						media_shapes: ['video']
+					})
+				],
+				values: {},
+				mediaItems: [{ id: 'video-1', label: 'Video 1', mimeType: 'video/mp4' }],
+				onChange: vi.fn()
+			}
+		});
+
+		await expect.element(screen.getByLabelText('Video preview for Cover frame')).toBeVisible();
+		const dialog = screen.getByRole('dialog').element();
+		expect(dialog.scrollWidth).toBeLessThanOrEqual(dialog.clientWidth);
+	});
 });

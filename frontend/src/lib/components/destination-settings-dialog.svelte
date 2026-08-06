@@ -17,6 +17,9 @@
 	import PollBuilder from './compose/poll-builder.svelte';
 	import MediaTagEditor from './compose/media-tag-editor.svelte';
 	import TagInput from './tag-input.svelte';
+	import VideoCoverFramePicker, {
+		type GeneratedCoverFrame
+	} from './video-cover-frame-picker.svelte';
 
 	type SettingDefinition = components['schemas']['SettingDefinition'];
 	type SettingCondition = components['schemas']['SettingCondition'];
@@ -48,7 +51,11 @@
 		onMediaChange?: (mediaId: string, key: string, value: unknown) => void;
 		onOptionSearch?: (setting: SettingDefinition, search: string) => void;
 		onRetry?: () => void;
-		onFileChange?: (setting: SettingDefinition, file: File) => void;
+		onFileChange?: (
+			setting: SettingDefinition,
+			file: File,
+			metadata?: GeneratedCoverFrame
+		) => void | Promise<void>;
 		onRemove?: () => void;
 	}
 
@@ -77,6 +84,8 @@
 
 	let searchBySetting = $state<Record<string, string>>({});
 	let searchTimers: Record<string, ReturnType<typeof setTimeout>> = {};
+	let uploadingSettingKey = $state('');
+	let uploadErrorBySetting = $state<Record<string, string>>({});
 
 	const groupOrder: SettingGroup[] = [
 		'content',
@@ -99,6 +108,10 @@
 			.filter((entry) => entry.settings.length > 0)
 	);
 	const mediaSettings = $derived(settings.filter((setting) => setting.scope === 'media_item'));
+	const videoMediaItem = $derived(
+		mediaItems.find((item) => item.mimeType.startsWith('video/')) ??
+			(mediaItems.length === 1 ? mediaItems[0] : undefined)
+	);
 
 	function valueAsString(key: string, scopedValues = values): string {
 		const value = scopedValues[key];
@@ -175,6 +188,33 @@
 		if (setting.type === 'number') return 'number';
 		if (setting.type === 'url' || setting.control === 'quote_url') return 'url';
 		return 'text';
+	}
+
+	function acceptsFor(setting: SettingDefinition): string {
+		const configured = setting.constraints?.accept ?? [];
+		if (configured.length > 0) return configured.join(',');
+		if (['thumbnail_media_id', 'cover_media_id'].includes(setting.key)) return 'image/*';
+		return '';
+	}
+
+	function supportsGeneratedCover(setting: SettingDefinition): boolean {
+		return ['thumbnail_media_id', 'cover_media_id'].includes(setting.key);
+	}
+
+	async function uploadSelectedFile(setting: SettingDefinition, file: File) {
+		if (!onFileChange || uploadingSettingKey) return;
+		uploadErrorBySetting = { ...uploadErrorBySetting, [setting.key]: '' };
+		uploadingSettingKey = setting.key;
+		try {
+			await onFileChange(setting, file);
+		} catch {
+			uploadErrorBySetting = {
+				...uploadErrorBySetting,
+				[setting.key]: m.compose_destination_file_upload_failed()
+			};
+		} finally {
+			uploadingSettingKey = '';
+		}
 	}
 
 	function updateOptionSearch(setting: SettingDefinition, search: string) {
@@ -263,7 +303,9 @@
 								class={control === 'poll' ||
 								setting.type === 'textarea' ||
 								setting.type === 'tags' ||
-								control === 'follow_up'
+								control === 'follow_up' ||
+								control === 'cover_frame' ||
+								supportsGeneratedCover(setting)
 									? 'sm:col-span-2'
 									: ''}
 							>
@@ -283,12 +325,16 @@
 										<span>{settingLabel(setting)}</span>
 									</label>
 								{:else}
-									<label class="text-sm font-medium" for="destination-setting-{setting.key}">
-										{settingLabel(setting)}
-										{#if setting.required}
-											<span class="text-destructive" aria-hidden="true">*</span>
-										{/if}
-									</label>
+									{#if control === 'cover_frame'}
+										<p class="text-sm font-medium">{settingLabel(setting)}</p>
+									{:else}
+										<label class="text-sm font-medium" for="destination-setting-{setting.key}">
+											{settingLabel(setting)}
+											{#if setting.required}
+												<span class="text-destructive" aria-hidden="true">*</span>
+											{/if}
+										</label>
+									{/if}
 
 									{#if control === 'poll'}
 										<div class="mt-2">
@@ -353,17 +399,44 @@
 											value={valueAsString(setting.key)}
 											onChange={(value) => onChange(setting.key, value)}
 										/>
+									{:else if control === 'cover_frame' && videoMediaItem}
+										<VideoCoverFramePicker
+											mediaId={videoMediaItem.id}
+											value={values[setting.key]}
+											mode="timestamp"
+											label={settingLabel(setting)}
+											onTimestampChange={(timestampMs) => onChange(setting.key, timestampMs)}
+										/>
 									{:else if ['media_picker', 'captions_file'].includes(control) && onFileChange}
 										<Input
 											id="destination-setting-{setting.key}"
 											class="mt-1 h-11 file:mr-3"
 											type="file"
-											accept={(setting.constraints?.accept ?? []).join(',')}
+											accept={acceptsFor(setting)}
+											disabled={Boolean(uploadingSettingKey)}
 											onchange={(event) => {
 												const file = event.currentTarget.files?.[0];
-												if (file) onFileChange?.(setting, file);
+												if (file) void uploadSelectedFile(setting, file);
 											}}
 										/>
+										{#if uploadingSettingKey === setting.key}
+											<p class="mt-1 text-xs text-muted-foreground" aria-live="polite">
+												{m.compose_destination_file_uploading()}
+											</p>
+										{:else if uploadErrorBySetting[setting.key]}
+											<p class="mt-1 text-xs text-destructive" role="alert">
+												{uploadErrorBySetting[setting.key]}
+											</p>
+										{/if}
+										{#if supportsGeneratedCover(setting) && videoMediaItem}
+											<VideoCoverFramePicker
+												mediaId={videoMediaItem.id}
+												value={values[setting.key]}
+												mode="image"
+												label={settingLabel(setting)}
+												onFileChange={(file, metadata) => onFileChange?.(setting, file, metadata)}
+											/>
+										{/if}
 									{:else if setting.type === 'textarea' || control === 'follow_up'}
 										<Textarea
 											id="destination-setting-{setting.key}"

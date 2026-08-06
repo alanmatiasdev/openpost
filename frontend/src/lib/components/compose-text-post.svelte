@@ -107,6 +107,7 @@
 	import { SerializedSaveQueue } from '$lib/serialized-save-queue';
 	import { buildComposerPreview } from '$lib/compose-preview';
 	import { openPreviewWindow, type PreviewWindowSession } from '$lib/preview-window';
+	import { uploadMediaFile } from '$lib/media-upload-client';
 
 	// --------------------------------------------------------------------------
 	// Types
@@ -864,6 +865,23 @@
 		validationIssues = [];
 		scheduleAutoSave();
 		scheduleCapabilityResolve();
+	}
+
+	async function uploadDestinationSettingFile(
+		setting: SettingDefinition,
+		file: File,
+		metadata?: { sourceMediaId: string; timestampMs: number }
+	) {
+		const account = settingsAccount;
+		if (!account || !selectedWorkspaceId) {
+			throw new Error(m.compose_please_select_workspace());
+		}
+		const uploaded = await uploadMediaFile({
+			workspaceId: selectedWorkspaceId,
+			file,
+			parentMediaId: metadata?.sourceMediaId ?? ''
+		});
+		updateAccountSetting(account, setting.key, uploaded.id);
 	}
 
 	function configuredPollError(): string {
@@ -4445,6 +4463,7 @@
 	onRetry={() => {
 		if (settingsAccount) void loadDestinationOptions(settingsAccount, true);
 	}}
+	onFileChange={uploadDestinationSettingFile}
 />
 
 <DestructiveConfirmDialog

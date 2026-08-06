@@ -26,6 +26,7 @@ Example `OPENPOST_PROVIDER_APPS` entry:
 
 ## Support and limits
 
+- New destinations default to Direct Post. Choose Upload explicitly to send a video to the TikTok inbox without publishing it.
 - Direct Post supports one video.
 - Inbox upload supports one video when enabled.
 - Supports 1-35 JPEG or WebP photos, up to 20 MB each, when TikTok app access allows the photo-post path.
@@ -33,6 +34,7 @@ Example `OPENPOST_PROVIDER_APPS` entry:
 - Text-only posts are not supported.
 - Pull-from-URL media must use public HTTPS URLs under a URL prefix or domain verified in the TikTok developer console.
 - Test the real app and account after TikTok approves access.
+- For Direct Post video, destination settings include a video preview for selecting the TikTok cover frame.
 
 ## Analytics
 

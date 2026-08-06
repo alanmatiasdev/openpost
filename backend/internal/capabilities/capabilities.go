@@ -2008,7 +2008,7 @@ func youtubeSettings() []SettingField {
 func tiktokSettings() []SettingField {
 	directPost := []SettingCondition{{Key: "content_posting_method", Operator: "equals", Value: "DIRECT_POST"}}
 	return []SettingField{
-		{Key: "content_posting_method", Label: "Posting method", Type: "select", Required: true, Options: []string{"DIRECT_POST", "UPLOAD"}},
+		{Key: "content_posting_method", Label: "Posting method", Type: "select", Required: true, Default: "DIRECT_POST", Options: []string{"DIRECT_POST", "UPLOAD"}},
 		{Key: "privacy_level", Label: "Privacy", Type: "select", Control: "remote_picker", Required: true, RequiredPolicy: "when_available", OptionsSource: "tiktok_privacy_levels", Help: "Choose from the options returned for this TikTok creator.", Dependencies: directPost},
 		{Key: "duet", Label: "Allow Duet", Type: "boolean", MediaShapes: []string{MediaShapeVideo}, Dependencies: directPost},
 		{Key: "stitch", Label: "Allow Stitch", Type: "boolean", MediaShapes: []string{MediaShapeVideo}, Dependencies: directPost},
