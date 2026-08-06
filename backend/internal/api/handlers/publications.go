@@ -22,6 +22,7 @@ import (
 	"github.com/openpost/backend/internal/services/drafts"
 	"github.com/openpost/backend/internal/services/entitlements"
 	"github.com/openpost/backend/internal/services/lifecycle"
+	"github.com/openpost/backend/internal/services/medialifecycle"
 	postservice "github.com/openpost/backend/internal/services/posts"
 	"github.com/openpost/backend/internal/services/publicurl"
 	repostservice "github.com/openpost/backend/internal/services/reposts"
@@ -1739,6 +1740,9 @@ func (h *PublicationHandler) insertPublicationSegments(
 		}
 		segments = append(segments, segment)
 	}
+	if err := medialifecycle.TouchWithDB(ctx, tx, allPublicationMediaIDs(nil, inputs, nil), now); err != nil {
+		return nil, err
+	}
 	return segments, nil
 }
 
@@ -1749,6 +1753,15 @@ func (h *PublicationHandler) replacePublicationSegments(
 	publication *models.Publication,
 	inputs []PublicationSegmentInput,
 ) error {
+	previousMediaIDs := make([]string, 0, len(inputs))
+	if err := tx.NewSelect().
+		TableExpr("publication_segment_media AS media").
+		ColumnExpr("media.media_id").
+		Join("JOIN publication_segments AS segment ON segment.id = media.segment_id").
+		Where("segment.publication_id = ?", publication.ID).
+		Scan(ctx, &previousMediaIDs); err != nil && !isMissingPublicationSegmentTable(err) {
+		return err
+	}
 	if len(inputs) == 0 {
 		inputs = []PublicationSegmentInput{{Body: publication.SourceText, Title: publication.Title, URL: publication.SourceURL}}
 	}
@@ -1838,7 +1851,8 @@ func (h *PublicationHandler) replacePublicationSegments(
 			return err
 		}
 	}
-	return nil
+	previousMediaIDs = append(previousMediaIDs, allPublicationMediaIDs(nil, inputs, nil)...)
+	return medialifecycle.TouchWithDB(ctx, tx, previousMediaIDs, now)
 }
 
 func syncPublicationFirstSegmentBodyTx(
@@ -1983,7 +1997,12 @@ func (h *PublicationHandler) insertRenditions(
 			return err
 		}
 	}
-	return nil
+	return medialifecycle.TouchWithDB(
+		ctx,
+		tx,
+		allPublicationMediaIDs(defaultMedia, canonicalInputs, inputs),
+		now,
+	)
 }
 
 //nolint:gocyclo // This keeps canonical inheritance and legacy-media fallback in one transactional write.

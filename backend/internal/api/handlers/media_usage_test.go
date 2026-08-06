@@ -19,7 +19,7 @@ func (failingDeleteStorage) Delete(string) error                    { return err
 func (failingDeleteStorage) GetURL(string) string                   { return "" }
 func (failingDeleteStorage) Open(string) (io.ReadCloser, error)     { return nil, errors.New("not found") }
 
-func TestMediaUsageSummaryAllowsOnlyPublishedUsage(t *testing.T) {
+func TestMediaUsageSummaryAllowsTerminalPostUsage(t *testing.T) {
 	t.Parallel()
 
 	db := createHandlerTestDB(t,
@@ -56,7 +56,23 @@ func TestMediaUsageSummaryAllowsOnlyPublishedUsage(t *testing.T) {
 
 	usage, err = handler.mediaUsageSummary(ctx, "ws-1", "failed-media")
 	require.NoError(t, err)
-	require.Equal(t, mediaUsageSummary{Total: 1, Blocking: 1}, usage)
+	require.Equal(t, mediaUsageSummary{Total: 1, Blocking: 0}, usage)
+}
+
+func TestMediaUsageStatusBlocksOnlyActiveWork(t *testing.T) {
+	t.Parallel()
+
+	for _, status := range []string{
+		models.PostStatusDraft,
+		models.PostStatusScheduled,
+		models.PostStatusPublishing,
+		models.PublicationStatusReady,
+	} {
+		require.True(t, mediaUsageStatusBlocks(status), status)
+	}
+	for _, status := range []string{models.PostStatusPublished, models.PostStatusFailed} {
+		require.False(t, mediaUsageStatusBlocks(status), status)
+	}
 }
 
 func TestMediaUsageSummaryCountsVariantMediaAndDedupesByPost(t *testing.T) {

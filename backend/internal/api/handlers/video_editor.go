@@ -22,6 +22,7 @@ import (
 	"github.com/openpost/backend/internal/api/middleware"
 	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/services/entitlements"
+	"github.com/openpost/backend/internal/services/medialifecycle"
 	"github.com/openpost/backend/internal/videoproject"
 	"github.com/uptrace/bun"
 )
@@ -1227,13 +1228,21 @@ func replaceVideoProjectAssets(
 	projectID string,
 	document videoproject.Document,
 ) error {
+	var previousMediaIDs []string
+	if err := tx.NewSelect().
+		Model((*models.VideoProjectAsset)(nil)).
+		Column("media_id").
+		Where("video_project_id = ?", projectID).
+		Scan(ctx, &previousMediaIDs); err != nil {
+		return err
+	}
 	if _, err := tx.NewDelete().Model((*models.VideoProjectAsset)(nil)).
 		Where("video_project_id = ?", projectID).Exec(ctx); err != nil {
 		return err
 	}
 	references := videoproject.MediaReferences(document)
 	if len(references) == 0 {
-		return nil
+		return medialifecycle.TouchWithDB(ctx, tx, previousMediaIDs, time.Now().UTC())
 	}
 	assets := make([]models.VideoProjectAsset, 0, len(references))
 	now := time.Now().UTC()
@@ -1267,7 +1276,11 @@ func replaceVideoProjectAssets(
 			return err
 		}
 	}
-	return nil
+	mediaIDs := previousMediaIDs
+	for _, mediaID := range references {
+		mediaIDs = append(mediaIDs, mediaID)
+	}
+	return medialifecycle.TouchWithDB(ctx, tx, mediaIDs, now)
 }
 
 func storeVideoProjectRevision(

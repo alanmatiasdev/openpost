@@ -586,13 +586,14 @@ func (h *MediaHandler) RegisterRoutes(api huma.API) {
 			query = query.WhereGroup(" AND ", func(group *bun.SelectQuery) *bun.SelectQuery {
 				group = group.Where(`id IN (SELECT media_id FROM post_media)
 					OR id IN (SELECT media_id FROM rendition_media)
-					OR id IN (SELECT media_id FROM design_media_references)
+					OR id IN (SELECT r.media_id FROM design_media_references r JOIN design_documents d ON d.id = r.design_document_id WHERE d.deleted_at IS NULL)
 					OR id IN (SELECT media_id FROM design_template_media_references)
+					OR id IN (SELECT a.media_id FROM video_project_assets a JOIN video_projects p ON p.id = a.video_project_id WHERE p.deleted_at IS NULL)
 					OR id IN (SELECT media_id FROM brand_assets)
 					OR id IN (SELECT media_id FROM brand_fonts)
-					OR id IN (SELECT cover_preview_media_id FROM design_documents WHERE cover_preview_media_id IS NOT NULL)
-					OR id IN (SELECT preview_media_id FROM design_pages WHERE preview_media_id IS NOT NULL)
-					OR id IN (SELECT latest_export_media_id FROM design_pages WHERE latest_export_media_id IS NOT NULL)
+					OR id IN (SELECT cover_preview_media_id FROM design_documents WHERE cover_preview_media_id IS NOT NULL AND deleted_at IS NULL)
+					OR id IN (SELECT p.preview_media_id FROM design_pages p JOIN design_documents d ON d.id = p.design_document_id WHERE p.preview_media_id IS NOT NULL AND d.deleted_at IS NULL)
+					OR id IN (SELECT p.latest_export_media_id FROM design_pages p JOIN design_documents d ON d.id = p.design_document_id WHERE p.latest_export_media_id IS NOT NULL AND d.deleted_at IS NULL)
 					OR id IN (SELECT preview_media_id FROM design_templates WHERE preview_media_id IS NOT NULL)`)
 				if len(variantMediaIDs) > 0 {
 					group = group.WhereOr("id IN (?)", bun.List(variantMediaIDs))
@@ -602,13 +603,14 @@ func (h *MediaHandler) RegisterRoutes(api huma.API) {
 		case "unused":
 			query = query.Where(`id NOT IN (SELECT media_id FROM post_media)
 				AND id NOT IN (SELECT media_id FROM rendition_media)
-				AND id NOT IN (SELECT media_id FROM design_media_references)
+				AND id NOT IN (SELECT r.media_id FROM design_media_references r JOIN design_documents d ON d.id = r.design_document_id WHERE d.deleted_at IS NULL)
 				AND id NOT IN (SELECT media_id FROM design_template_media_references)
+				AND id NOT IN (SELECT a.media_id FROM video_project_assets a JOIN video_projects p ON p.id = a.video_project_id WHERE p.deleted_at IS NULL)
 				AND id NOT IN (SELECT media_id FROM brand_assets)
 				AND id NOT IN (SELECT media_id FROM brand_fonts)
-				AND id NOT IN (SELECT cover_preview_media_id FROM design_documents WHERE cover_preview_media_id IS NOT NULL)
-				AND id NOT IN (SELECT preview_media_id FROM design_pages WHERE preview_media_id IS NOT NULL)
-				AND id NOT IN (SELECT latest_export_media_id FROM design_pages WHERE latest_export_media_id IS NOT NULL)
+				AND id NOT IN (SELECT cover_preview_media_id FROM design_documents WHERE cover_preview_media_id IS NOT NULL AND deleted_at IS NULL)
+				AND id NOT IN (SELECT p.preview_media_id FROM design_pages p JOIN design_documents d ON d.id = p.design_document_id WHERE p.preview_media_id IS NOT NULL AND d.deleted_at IS NULL)
+				AND id NOT IN (SELECT p.latest_export_media_id FROM design_pages p JOIN design_documents d ON d.id = p.design_document_id WHERE p.latest_export_media_id IS NOT NULL AND d.deleted_at IS NULL)
 				AND id NOT IN (SELECT preview_media_id FROM design_templates WHERE preview_media_id IS NOT NULL)`)
 			if len(variantMediaIDs) > 0 {
 				query = query.Where("id NOT IN (?)", bun.List(variantMediaIDs))
@@ -2205,7 +2207,7 @@ func (h *MediaHandler) mediaUsageSummaries(ctx context.Context, workspaceID stri
 		summary := summaries[mediaID]
 		for _, status := range posts {
 			summary.Total++
-			if status != models.PostStatusPublished {
+			if mediaUsageStatusBlocks(status) {
 				summary.Blocking++
 			}
 		}
@@ -2219,67 +2221,64 @@ func (h *MediaHandler) mediaUsageSummaries(ctx context.Context, workspaceID stri
 	for _, row := range renditionRows {
 		summary := summaries[row.MediaID]
 		summary.Total++
-		if row.Status != models.RenditionStatusPublished {
+		if mediaUsageStatusBlocks(row.Status) {
 			summary.Blocking++
 		}
 		summaries[row.MediaID] = summary
 	}
-	segmentQueries := []struct {
-		query           string
-		publishedStatus string
-	}{
-		{
-			query: `SELECT psm.media_id, p.id AS rendition_id, p.status
+	segmentQueries := []string{
+		`SELECT psm.media_id, p.id AS rendition_id, p.status
 				FROM publication_segment_media psm
 				JOIN publication_segments ps ON ps.id = psm.segment_id
 				JOIN publications p ON p.id = ps.publication_id
 				WHERE p.workspace_id = ? AND psm.media_id IN (?)`,
-			publishedStatus: models.PublicationStatusPublished,
-		},
-		{
-			query: `SELECT rsm.media_id, r.id AS rendition_id, r.status
+		`SELECT rsm.media_id, r.id AS rendition_id, r.status
 				FROM rendition_segment_media rsm
 				JOIN rendition_segments rs ON rs.id = rsm.rendition_segment_id
 				JOIN renditions r ON r.id = rs.rendition_id
 				JOIN publications p ON p.id = r.publication_id
 				WHERE p.workspace_id = ? AND rsm.media_id IN (?)`,
-			publishedStatus: models.RenditionStatusPublished,
-		},
 	}
-	for _, segmentQuery := range segmentQueries {
+	for _, query := range segmentQueries {
 		var rows []mediaRenditionUsageRow
-		if err := h.db.NewRaw(segmentQuery.query, workspaceID, bun.List(mediaIDs)).Scan(ctx, &rows); err != nil && !isMissingOptionalMediaTable(err) {
+		if err := h.db.NewRaw(query, workspaceID, bun.List(mediaIDs)).Scan(ctx, &rows); err != nil && !isMissingOptionalMediaTable(err) {
 			return nil, err
 		}
 		for _, row := range rows {
 			summary := summaries[row.MediaID]
 			summary.Total++
-			if row.Status != segmentQuery.publishedStatus {
+			if mediaUsageStatusBlocks(row.Status) {
 				summary.Blocking++
 			}
 			summaries[row.MediaID] = summary
 		}
 	}
 
-	blockingTables := []string{
-		"design_media_references",
-		"design_template_media_references",
-		"video_project_assets",
-		"brand_assets",
-		"brand_fonts",
+	blockingQueries := []string{
+		`SELECT r.media_id, COUNT(*) AS usage_count
+			FROM design_media_references r
+			JOIN design_documents d ON d.id = r.design_document_id
+			WHERE r.media_id IN (?) AND d.deleted_at IS NULL
+			GROUP BY r.media_id`,
+		`SELECT r.media_id, COUNT(*) AS usage_count
+			FROM design_template_media_references r
+			WHERE r.media_id IN (?) GROUP BY r.media_id`,
+		`SELECT a.media_id, COUNT(*) AS usage_count
+			FROM video_project_assets a
+			JOIN video_projects p ON p.id = a.video_project_id
+			WHERE a.media_id IN (?) AND p.deleted_at IS NULL
+			GROUP BY a.media_id`,
+		`SELECT media_id, COUNT(*) AS usage_count FROM brand_assets
+			WHERE media_id IN (?) GROUP BY media_id`,
+		`SELECT media_id, COUNT(*) AS usage_count FROM brand_fonts
+			WHERE media_id IN (?) GROUP BY media_id`,
 	}
-	for _, table := range blockingTables {
+	for _, query := range blockingQueries {
 		var rows []struct {
 			MediaID string `bun:"media_id"`
 			Count   int    `bun:"usage_count"`
 		}
-		if err := h.db.NewSelect().
-			TableExpr(table).
-			ColumnExpr("media_id").
-			ColumnExpr("COUNT(*) AS usage_count").
-			Where("media_id IN (?)", bun.List(mediaIDs)).
-			Group("media_id").
-			Scan(ctx, &rows); err != nil && !isMissingOptionalMediaTable(err) {
+		if err := h.db.NewRaw(query, bun.List(mediaIDs)).Scan(ctx, &rows); err != nil && !isMissingOptionalMediaTable(err) {
 			return nil, err
 		}
 		for _, row := range rows {
@@ -2289,28 +2288,28 @@ func (h *MediaHandler) mediaUsageSummaries(ctx context.Context, workspaceID stri
 			summaries[row.MediaID] = summary
 		}
 	}
-	directReferences := []struct {
-		table  string
-		column string
-	}{
-		{table: "design_documents", column: "cover_preview_media_id"},
-		{table: "design_pages", column: "preview_media_id"},
-		{table: "design_pages", column: "latest_export_media_id"},
-		{table: "design_templates", column: "preview_media_id"},
-		{table: "video_projects", column: "cover_preview_media_id"},
+	directReferenceQueries := []string{
+		`SELECT cover_preview_media_id AS media_id, COUNT(*) AS usage_count
+			FROM design_documents WHERE cover_preview_media_id IN (?) AND deleted_at IS NULL
+			GROUP BY cover_preview_media_id`,
+		`SELECT p.preview_media_id AS media_id, COUNT(*) AS usage_count
+			FROM design_pages p JOIN design_documents d ON d.id = p.design_document_id
+			WHERE p.preview_media_id IN (?) AND d.deleted_at IS NULL GROUP BY p.preview_media_id`,
+		`SELECT p.latest_export_media_id AS media_id, COUNT(*) AS usage_count
+			FROM design_pages p JOIN design_documents d ON d.id = p.design_document_id
+			WHERE p.latest_export_media_id IN (?) AND d.deleted_at IS NULL GROUP BY p.latest_export_media_id`,
+		`SELECT preview_media_id AS media_id, COUNT(*) AS usage_count
+			FROM design_templates WHERE preview_media_id IN (?) GROUP BY preview_media_id`,
+		`SELECT cover_preview_media_id AS media_id, COUNT(*) AS usage_count
+			FROM video_projects WHERE cover_preview_media_id IN (?) AND deleted_at IS NULL
+			GROUP BY cover_preview_media_id`,
 	}
-	for _, reference := range directReferences {
+	for _, query := range directReferenceQueries {
 		var rows []struct {
 			MediaID string `bun:"media_id"`
 			Count   int    `bun:"usage_count"`
 		}
-		if err := h.db.NewSelect().
-			TableExpr(reference.table).
-			ColumnExpr(reference.column+" AS media_id").
-			ColumnExpr("COUNT(*) AS usage_count").
-			Where(reference.column+" IN (?)", bun.List(mediaIDs)).
-			GroupExpr(reference.column).
-			Scan(ctx, &rows); err != nil && !isMissingOptionalMediaTable(err) {
+		if err := h.db.NewRaw(query, bun.List(mediaIDs)).Scan(ctx, &rows); err != nil && !isMissingOptionalMediaTable(err) {
 			return nil, err
 		}
 		for _, row := range rows {
@@ -2322,6 +2321,10 @@ func (h *MediaHandler) mediaUsageSummaries(ctx context.Context, workspaceID stri
 	}
 
 	return summaries, nil
+}
+
+func mediaUsageStatusBlocks(status string) bool {
+	return status != models.PostStatusPublished && status != models.PostStatusFailed
 }
 
 func (h *MediaHandler) mediaPostUsage(ctx context.Context, workspaceID string, mediaIDs []string, targets map[string]struct{}, postUsage map[string]map[string]string) (map[string]map[string]string, error) {

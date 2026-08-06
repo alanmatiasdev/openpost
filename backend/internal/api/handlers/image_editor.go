@@ -24,6 +24,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/openpost/backend/internal/api/middleware"
 	"github.com/openpost/backend/internal/models"
+	"github.com/openpost/backend/internal/services/medialifecycle"
 	"github.com/uptrace/bun"
 )
 
@@ -2096,6 +2097,14 @@ func insertImageEditorPages(ctx context.Context, tx bun.Tx, documentID string, p
 }
 
 func replaceImageEditorMediaReferences(ctx context.Context, tx bun.Tx, document *models.DesignDocument, pages []ImageEditorPagePayload) error {
+	var previousMediaIDs []string
+	if err := tx.NewSelect().
+		Model((*models.DesignMediaReference)(nil)).
+		Column("media_id").
+		Where("design_document_id = ?", document.ID).
+		Scan(ctx, &previousMediaIDs); err != nil {
+		return err
+	}
 	if _, err := tx.NewDelete().Model((*models.DesignMediaReference)(nil)).
 		Where("design_document_id = ?", document.ID).
 		Exec(ctx); err != nil {
@@ -2142,21 +2151,17 @@ func replaceImageEditorMediaReferences(ctx context.Context, tx bun.Tx, document 
 			})
 		}
 	}
-	if len(refs) == 0 {
-		return nil
+	if len(refs) > 0 {
+		if _, err := tx.NewInsert().Model(&refs).Exec(ctx); err != nil {
+			return err
+		}
 	}
-	if _, err := tx.NewInsert().Model(&refs).Exec(ctx); err != nil {
-		return err
-	}
-	mediaIDs := make([]string, 0, len(refs))
+	mediaIDs := make([]string, 0, len(previousMediaIDs)+len(refs))
+	mediaIDs = append(mediaIDs, previousMediaIDs...)
 	for _, ref := range refs {
 		mediaIDs = append(mediaIDs, ref.MediaID)
 	}
-	_, err := tx.NewUpdate().Model((*models.MediaAttachment)(nil)).
-		Set("last_used_at = ?", time.Now().UTC()).
-		Where("id IN (?)", bun.List(mediaIDs)).
-		Exec(ctx)
-	return err
+	return medialifecycle.TouchWithDB(ctx, tx, mediaIDs, time.Now().UTC())
 }
 
 func (h *ImageEditorHandler) maybeStoreRecoveryRevision(

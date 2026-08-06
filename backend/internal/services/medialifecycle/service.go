@@ -62,14 +62,39 @@ func (s *Service) Promote(ctx context.Context, mediaID string) error {
 }
 
 func (s *Service) Touch(ctx context.Context, mediaIDs []string, at time.Time) error {
+	return TouchWithDB(ctx, s.db, mediaIDs, at)
+}
+
+// TouchWithDB records use inside the caller's transaction. Callers should pass
+// both the old and new reference sets so detaching media also starts a fresh
+// inactivity window instead of making it immediately eligible for cleanup.
+func TouchWithDB(ctx context.Context, db bun.IDB, mediaIDs []string, at time.Time) error {
+	mediaIDs = uniqueIDs(mediaIDs)
 	if len(mediaIDs) == 0 {
 		return nil
 	}
-	_, err := s.db.NewUpdate().Model((*models.MediaAttachment)(nil)).
+	_, err := db.NewUpdate().Model((*models.MediaAttachment)(nil)).
 		Set("last_used_at = ?", at.UTC()).
 		Where("id IN (?)", bun.List(mediaIDs)).
 		Exec(ctx)
 	return err
+}
+
+func uniqueIDs(ids []string) []string {
+	seen := make(map[string]struct{}, len(ids))
+	result := make([]string, 0, len(ids))
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		if _, exists := seen[id]; exists {
+			continue
+		}
+		seen[id] = struct{}{}
+		result = append(result, id)
+	}
+	return result
 }
 
 func (s *Service) TrashManual(ctx context.Context, mediaID, workspaceID string) (bool, error) {
@@ -258,11 +283,11 @@ func (s *Service) hasProtectedReference(ctx context.Context, mediaID string) (bo
 	protectedQueries := []string{
 		"SELECT COUNT(*) FROM brand_assets WHERE media_id = ?",
 		"SELECT COUNT(*) FROM brand_fonts WHERE media_id = ?",
-		"SELECT COUNT(*) FROM design_media_references WHERE media_id = ?",
+		"SELECT COUNT(*) FROM design_media_references r JOIN design_documents d ON d.id = r.design_document_id WHERE r.media_id = ? AND d.deleted_at IS NULL",
 		"SELECT COUNT(*) FROM design_template_media_references WHERE media_id = ?",
-		"SELECT COUNT(*) FROM video_project_assets WHERE media_id = ?",
+		"SELECT COUNT(*) FROM video_project_assets a JOIN video_projects p ON p.id = a.video_project_id WHERE a.media_id = ? AND p.deleted_at IS NULL",
 		"SELECT COUNT(*) FROM design_documents WHERE cover_preview_media_id = ? AND deleted_at IS NULL",
-		"SELECT COUNT(*) FROM design_pages WHERE (preview_media_id = ? OR latest_export_media_id = ?)",
+		"SELECT COUNT(*) FROM design_pages p JOIN design_documents d ON d.id = p.design_document_id WHERE (p.preview_media_id = ? OR p.latest_export_media_id = ?) AND d.deleted_at IS NULL",
 		"SELECT COUNT(*) FROM design_templates WHERE preview_media_id = ?",
 		"SELECT COUNT(*) FROM video_projects WHERE cover_preview_media_id = ? AND deleted_at IS NULL",
 	}

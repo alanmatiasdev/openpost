@@ -19,6 +19,7 @@ import (
 	"github.com/openpost/backend/internal/platform"
 	"github.com/openpost/backend/internal/services/drafts"
 	"github.com/openpost/backend/internal/services/entitlements"
+	"github.com/openpost/backend/internal/services/medialifecycle"
 	postservice "github.com/openpost/backend/internal/services/posts"
 	repostservice "github.com/openpost/backend/internal/services/reposts"
 	"github.com/openpost/backend/internal/services/usage"
@@ -485,6 +486,9 @@ func (h *PostHandler) CreatePost(api huma.API) {
 				if _, err := tx.NewInsert().Model(&postMedia).Exec(txCtx); err != nil {
 					return err
 				}
+			}
+			if err := medialifecycle.TouchWithDB(txCtx, tx, input.Body.MediaIDs, now); err != nil {
+				return err
 			}
 			if post.Status == statusScheduled {
 				payload, err := json.Marshal(map[string]string{postIDKey: post.ID})
@@ -1267,6 +1271,13 @@ func (h *PostHandler) CreateThread(api huma.API) {
 				if _, err := tx.NewInsert().Model(&allPostMedia).Exec(txCtx); err != nil {
 					return err
 				}
+			}
+			threadMediaIDs := make([]string, 0, len(allPostMedia))
+			for _, media := range allPostMedia {
+				threadMediaIDs = append(threadMediaIDs, media.MediaID)
+			}
+			if err := medialifecycle.TouchWithDB(txCtx, tx, threadMediaIDs, time.Now().UTC()); err != nil {
+				return err
 			}
 			if status == statusScheduled {
 				payload, _ := json.Marshal(map[string]string{postIDKey: posts[0].ID})
@@ -2200,13 +2211,22 @@ func replaceTextPostMediaTx(
 	postID string,
 	mediaIDs []string,
 ) error {
+	previousMediaIDs := make([]string, 0, len(mediaIDs))
+	if err := tx.NewSelect().
+		Model((*models.PostMedia)(nil)).
+		Column("media_id").
+		Where("post_id = ?", postID).
+		Scan(ctx, &previousMediaIDs); err != nil {
+		return err
+	}
 	if _, err := tx.NewDelete().
 		Model((*models.PostMedia)(nil)).
 		Where("post_id = ?", postID).
 		Exec(ctx); err != nil {
 		return err
 	}
-	for displayOrder, mediaID := range uniqueNonEmpty(mediaIDs) {
+	mediaIDs = uniqueNonEmpty(mediaIDs)
+	for displayOrder, mediaID := range mediaIDs {
 		row := &models.PostMedia{
 			PostID:       postID,
 			MediaID:      mediaID,
@@ -2216,7 +2236,7 @@ func replaceTextPostMediaTx(
 			return err
 		}
 	}
-	return nil
+	return medialifecycle.TouchWithDB(ctx, tx, append(previousMediaIDs, mediaIDs...), time.Now().UTC())
 }
 
 func replaceTextPostVariantsTx(
@@ -2568,18 +2588,8 @@ func (h *PostHandler) UpdatePost(api huma.API) {
 			// 3. Update media (always processed)
 			// ------------------------------------------------------------------
 			if input.Body.MediaIDs != nil {
-				if _, err := tx.NewDelete().Model(&models.PostMedia{}).Where("post_id = ?", post.ID).Exec(txCtx); err != nil {
-					return fmt.Errorf("failed to remove old media: %w", err)
-				}
-				for i, mediaID := range input.Body.MediaIDs {
-					pm := models.PostMedia{
-						PostID:       post.ID,
-						MediaID:      mediaID,
-						DisplayOrder: i,
-					}
-					if _, err := tx.NewInsert().Model(&pm).Exec(txCtx); err != nil {
-						return fmt.Errorf("failed to add media: %w", err)
-					}
+				if err := replaceTextPostMediaTx(txCtx, tx, post.ID, input.Body.MediaIDs); err != nil {
+					return fmt.Errorf("failed to replace media: %w", err)
 				}
 			}
 

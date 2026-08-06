@@ -107,6 +107,26 @@ func TestManualTrashAllowsTaggedLibraryMedia(t *testing.T) {
 	require.True(t, trashed)
 }
 
+func TestManualTrashIgnoresSoftDeletedEditorProjects(t *testing.T) {
+	t.Parallel()
+
+	db := newMediaLifecycleTestDB(t)
+	service := NewService(db, nil)
+	now := time.Now().UTC()
+	_, err := db.Exec("INSERT INTO media_attachments (id, workspace_id, retention_class, created_at) VALUES ('media-1', 'workspace-1', 'library', ?)", now)
+	require.NoError(t, err)
+	_, err = db.Exec("INSERT INTO design_documents (id, workspace_id, cover_preview_media_id, deleted_at) VALUES ('design-1', 'workspace-1', 'media-1', ?)", now)
+	require.NoError(t, err)
+	_, err = db.Exec("INSERT INTO design_pages (design_document_id, preview_media_id, latest_export_media_id) VALUES ('design-1', 'media-1', 'media-1')")
+	require.NoError(t, err)
+	_, err = db.Exec("INSERT INTO design_media_references (design_document_id, media_id) VALUES ('design-1', 'media-1')")
+	require.NoError(t, err)
+
+	trashed, err := service.TrashManual(context.Background(), "media-1", "workspace-1")
+	require.NoError(t, err)
+	require.True(t, trashed)
+}
+
 func newMediaLifecycleTestDB(t *testing.T) *bun.DB {
 	t.Helper()
 	sqldb, err := sql.Open("sqlite3", fmt.Sprintf("file:%s?mode=memory&cache=shared", uuid.NewString()))
@@ -117,12 +137,12 @@ func newMediaLifecycleTestDB(t *testing.T) *bun.DB {
 		`CREATE TABLE media_attachments (id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, retention_class TEXT NOT NULL DEFAULT 'library', is_favorite BOOLEAN NOT NULL DEFAULT false, created_at TIMESTAMP NOT NULL, last_used_at TIMESTAMP NULL, trashed_at TIMESTAMP NULL, purge_after TIMESTAMP NULL, trash_reason TEXT NOT NULL DEFAULT '')`,
 		`CREATE TABLE media_tag_assignments (tag_id TEXT, media_id TEXT)`,
 		`CREATE TABLE brand_assets (media_id TEXT)`, `CREATE TABLE brand_fonts (media_id TEXT)`,
-		`CREATE TABLE design_media_references (media_id TEXT)`, `CREATE TABLE design_template_media_references (media_id TEXT)`,
-		`CREATE TABLE video_project_assets (media_id TEXT)`,
-		`CREATE TABLE design_documents (cover_preview_media_id TEXT, deleted_at TIMESTAMP NULL)`,
-		`CREATE TABLE design_pages (preview_media_id TEXT, latest_export_media_id TEXT)`,
+		`CREATE TABLE design_media_references (design_document_id TEXT, media_id TEXT)`, `CREATE TABLE design_template_media_references (media_id TEXT)`,
+		`CREATE TABLE video_project_assets (video_project_id TEXT, media_id TEXT)`,
+		`CREATE TABLE design_documents (id TEXT PRIMARY KEY, workspace_id TEXT, cover_preview_media_id TEXT, deleted_at TIMESTAMP NULL)`,
+		`CREATE TABLE design_pages (design_document_id TEXT, preview_media_id TEXT, latest_export_media_id TEXT)`,
 		`CREATE TABLE design_templates (preview_media_id TEXT)`,
-		`CREATE TABLE video_projects (cover_preview_media_id TEXT, deleted_at TIMESTAMP NULL)`,
+		`CREATE TABLE video_projects (id TEXT PRIMARY KEY, cover_preview_media_id TEXT, deleted_at TIMESTAMP NULL)`,
 		`CREATE TABLE posts (id TEXT PRIMARY KEY, workspace_id TEXT, status TEXT)`,
 		`CREATE TABLE post_media (post_id TEXT, media_id TEXT)`,
 		`CREATE TABLE post_variants (id TEXT, post_id TEXT, media_ids TEXT)`,
