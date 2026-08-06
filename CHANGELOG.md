@@ -4,6 +4,8 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [3.2.1] - 2026-08-06
+
 ### Added
 
 - Added filename editing for images, videos, audio, and other Media assets, plus right-click renaming for image designs and cloud video projects on Editors.
