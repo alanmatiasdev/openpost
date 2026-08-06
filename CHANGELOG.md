@@ -4,6 +4,8 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [3.3.2] - 2026-08-06
+
 ### Added
 
 - Added destination-aware video frame selection for Instagram Reel covers, TikTok cover timestamps, and YouTube thumbnails, including direct thumbnail and caption-file uploads from destination settings.
