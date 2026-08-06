@@ -214,6 +214,7 @@
 	"image_editor_promote_pixels": "New layer from selection",
 	"image_editor_cut_pixels": "Cut selected pixels",
 	"image_editor_delete_pixels": "Delete selected pixels",
+	"image_editor_floating_pixels_help": "Drag or use arrow keys. Enter applies; Escape cancels.",
 	"image_editor_selection_layer_name": "{name} selection",
 	"image_editor_drag_to_place": "Drag to place",
 	"image_editor_drop_to_place": "Drop to place",

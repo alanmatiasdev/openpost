@@ -4,6 +4,8 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [3.3.0] - 2026-08-06
+
 ### Added
 
 - Added a source-grounded Image Editor completeness checklist covering interaction, history, persistence, renderer, responsive, accessibility, performance, recovery, and test requirements.

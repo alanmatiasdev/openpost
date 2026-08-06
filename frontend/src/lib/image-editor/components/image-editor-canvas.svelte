@@ -42,10 +42,18 @@
 	import type { ImageEditorLayer } from '../types';
 
 	let {
-		onExternalFiles
+		onExternalFiles,
+		registerPixelSelectionActions
 	}: {
 		onExternalFiles?: (files: File[], point: SelectionPoint) => void | Promise<void>;
+		registerPixelSelectionActions?: (actions: PixelSelectionActions | null) => void;
 	} = $props();
+
+	interface PixelSelectionActions {
+		copy(): ImageEditorLayer[];
+		begin(mode: 'promote' | 'cut'): boolean;
+		delete(): boolean;
+	}
 
 	type AreaSelectionTool = Extract<
 		ImageEditorSelectionTool,
@@ -360,14 +368,19 @@
 		});
 	}
 
-	function commitPixelContent(mode: 'promote' | 'cut' | 'delete'): void {
+	function pixelContentProjections(): Array<{
+		id: string;
+		width: number;
+		height: number;
+		data: Uint8Array;
+	}> {
 		const selection = editor.pixelSelection;
-		if (!selection || !adapter || !editor.document) return;
+		if (!selection || !adapter || !editor.document) return [];
 		const targetIDs =
 			selection.targetLayerIDs.length > 0
 				? selection.targetLayerIDs
 				: editor.selectedLayerIDs.slice(-1);
-		const projections = targetIDs
+		return targetIDs
 			.map((id) => {
 				const projected = adapter?.projectPixelMaskToLayer(
 					id,
@@ -383,8 +396,25 @@
 				): projection is { id: string; width: number; height: number; data: Uint8Array } =>
 					Boolean(projection)
 			);
-		editor.commitPixelSelectionContent(mode, projections);
 	}
+
+	function commitPixelContent(mode: 'promote' | 'cut' | 'delete'): boolean {
+		const projections = pixelContentProjections();
+		return mode === 'delete'
+			? editor.commitPixelSelectionContent(mode, projections)
+			: editor.beginFloatingPixelSelection(mode, projections);
+	}
+
+	const pixelSelectionActions: PixelSelectionActions = {
+		copy: () => editor.extractPixelSelectionLayers(pixelContentProjections()),
+		begin: (mode) => commitPixelContent(mode),
+		delete: () => commitPixelContent('delete')
+	};
+
+	$effect(() => {
+		registerPixelSelectionActions?.(pixelSelectionActions);
+		return () => registerPixelSelectionActions?.(null);
+	});
 
 	function cropPointDelta(
 		layer: ImageEditorLayer,
@@ -928,11 +958,18 @@
 		if (!point) return false;
 		if (gesture.originalSelection) {
 			point = constrainGradientPoint(gesture.start, point, event);
-			editor.movePixelSelection(
-				gesture.originalSelection,
-				point.x - gesture.start.x,
-				point.y - gesture.start.y
-			);
+			if (editor.floatingPixelSelection) {
+				editor.translateFloatingPixelSelection(
+					point.x - gesture.current.x,
+					point.y - gesture.current.y
+				);
+			} else {
+				editor.movePixelSelection(
+					gesture.originalSelection,
+					point.x - gesture.start.x,
+					point.y - gesture.start.y
+				);
+			}
 		} else if (['marquee', 'ellipse_marquee'].includes(gesture.tool)) {
 			point = constrainMarqueePoint(gesture.start, point, event);
 		} else if (gesture.tool === 'gradient') {
@@ -982,11 +1019,19 @@
 			) ?? gesture.current;
 		if (gesture.originalSelection) {
 			point = constrainGradientPoint(gesture.start, point, event);
-			editor.movePixelSelection(
-				gesture.originalSelection,
-				point.x - gesture.start.x,
-				point.y - gesture.start.y
-			);
+			if (editor.floatingPixelSelection) {
+				editor.translateFloatingPixelSelection(
+					point.x - gesture.current.x,
+					point.y - gesture.current.y
+				);
+				editor.finishFloatingPixelSelectionMove();
+			} else {
+				editor.movePixelSelection(
+					gesture.originalSelection,
+					point.x - gesture.start.x,
+					point.y - gesture.start.y
+				);
+			}
 			selectionGesture = null;
 			if (
 				event.currentTarget instanceof HTMLDivElement &&
@@ -1126,7 +1171,15 @@
 	}
 
 	function cancelAreaSelection(event: PointerEvent): void {
-		if (selectionGesture?.pointerID === event.pointerId) selectionGesture = null;
+		if (selectionGesture?.pointerID === event.pointerId) {
+			if (selectionGesture.originalSelection && editor.floatingPixelSelection) {
+				editor.translateFloatingPixelSelection(
+					selectionGesture.start.x - selectionGesture.current.x,
+					selectionGesture.start.y - selectionGesture.current.y
+				);
+			}
+			selectionGesture = null;
+		}
 		if (
 			event.currentTarget instanceof HTMLDivElement &&
 			event.currentTarget.hasPointerCapture(event.pointerId)
@@ -1367,6 +1420,26 @@
 	}
 
 	function handleCanvasKeydown(event: KeyboardEvent): void {
+		if (editor.floatingPixelSelection && !editableTarget(event.target)) {
+			if (event.key === 'Enter') {
+				event.preventDefault();
+				event.stopImmediatePropagation();
+				editor.commitFloatingPixelSelection();
+				return;
+			}
+			if (event.key === 'Escape') {
+				event.preventDefault();
+				event.stopImmediatePropagation();
+				editor.cancelFloatingPixelSelection();
+				return;
+			}
+			if (event.key === 'Delete' || event.key === 'Backspace') {
+				event.preventDefault();
+				event.stopImmediatePropagation();
+				editor.deleteFloatingPixelSelection();
+				return;
+			}
+		}
 		if (
 			editor.pixelSelection &&
 			!editableTarget(event.target) &&
@@ -1422,7 +1495,10 @@
 	class="image-editor-pasteboard relative size-full min-h-0 touch-none overflow-hidden bg-neutral-800 dark:bg-neutral-950"
 	class:cursor-grab={(editor.activeTool === 'hand' || spacePressed) && !panning}
 	class:cursor-grabbing={panning}
-	class:cursor-crosshair={(usesCanvasSurface() || selectionGesture?.tool === 'select') && !panning}
+	class:cursor-move={Boolean(editor.floatingPixelSelection) && !panning}
+	class:cursor-crosshair={(usesCanvasSurface() || selectionGesture?.tool === 'select') &&
+		!editor.floatingPixelSelection &&
+		!panning}
 	onwheel={handleWheel}
 	onpointerdowncapture={startPasteboardPointer}
 	onpointermovecapture={movePasteboardPointer}
@@ -1769,38 +1845,59 @@
 					</label>
 				{/if}
 				{#if editor.pixelSelection}
-					<Button
-						variant="ghost"
-						size="sm"
-						class="h-8 px-2 text-xs text-neutral-100 hover:text-foreground"
-						onclick={() => commitPixelContent('promote')}
-					>
-						{m.image_editor_promote_pixels()}
-					</Button>
-					<Button
-						variant="outline"
-						size="sm"
-						class="h-8 px-2 text-xs"
-						onclick={() => commitPixelContent('cut')}
-					>
-						{m.image_editor_cut_pixels()}
-					</Button>
-					<Button
-						variant="ghost"
-						size="sm"
-						class="h-8 px-2 text-xs text-red-200 hover:text-destructive"
-						onclick={() => commitPixelContent('delete')}
-					>
-						{m.image_editor_delete_pixels()}
-					</Button>
-					<Button
-						variant="ghost"
-						size="sm"
-						class="h-8 px-2 text-xs text-neutral-100 hover:text-foreground"
-						onclick={() => editor.clearPixelSelection()}
-					>
-						{m.image_editor_deselect_pixels()}
-					</Button>
+					{#if editor.floatingPixelSelection}
+						<span class="hidden px-1 text-xs text-neutral-300 xl:inline">
+							{m.image_editor_floating_pixels_help()}
+						</span>
+						<Button
+							size="sm"
+							class="h-8 px-2 text-xs"
+							onclick={() => editor.commitFloatingPixelSelection()}
+						>
+							{m.common_done()}
+						</Button>
+						<Button
+							variant="ghost"
+							size="sm"
+							class="h-8 px-2 text-xs text-neutral-100 hover:text-foreground"
+							onclick={() => editor.cancelFloatingPixelSelection()}
+						>
+							{m.common_cancel()}
+						</Button>
+					{:else}
+						<Button
+							variant="ghost"
+							size="sm"
+							class="h-8 px-2 text-xs text-neutral-100 hover:text-foreground"
+							onclick={() => commitPixelContent('promote')}
+						>
+							{m.image_editor_promote_pixels()}
+						</Button>
+						<Button
+							variant="outline"
+							size="sm"
+							class="h-8 px-2 text-xs"
+							onclick={() => commitPixelContent('cut')}
+						>
+							{m.image_editor_cut_pixels()}
+						</Button>
+						<Button
+							variant="ghost"
+							size="sm"
+							class="h-8 px-2 text-xs text-red-200 hover:text-destructive"
+							onclick={() => commitPixelContent('delete')}
+						>
+							{m.image_editor_delete_pixels()}
+						</Button>
+						<Button
+							variant="ghost"
+							size="sm"
+							class="h-8 px-2 text-xs text-neutral-100 hover:text-foreground"
+							onclick={() => editor.clearPixelSelection()}
+						>
+							{m.image_editor_deselect_pixels()}
+						</Button>
+					{/if}
 				{/if}
 			</div>
 		{/if}
@@ -1924,7 +2021,9 @@
 				{/if}
 				{#if usesCanvasSurface()}
 					<div
-						class="absolute inset-0 z-10 cursor-crosshair touch-none"
+						class="absolute inset-0 z-10 touch-none"
+						class:cursor-move={Boolean(editor.floatingPixelSelection)}
+						class:cursor-crosshair={!editor.floatingPixelSelection}
 						data-testid="image-editor-selection-surface"
 						aria-hidden="true"
 						onpointerdown={startPan}

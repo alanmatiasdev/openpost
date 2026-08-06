@@ -214,6 +214,7 @@
 	"image_editor_promote_pixels": "Nova camada a partir da seleção",
 	"image_editor_cut_pixels": "Cortar píxeis selecionados",
 	"image_editor_delete_pixels": "Eliminar píxeis selecionados",
+	"image_editor_floating_pixels_help": "Arraste ou use as setas. Enter aplica; Escape cancela.",
 	"image_editor_selection_layer_name": "Seleção de {name}",
 	"image_editor_drag_to_place": "Arrastar para posicionar",
 	"image_editor_drop_to_place": "Largar para posicionar",

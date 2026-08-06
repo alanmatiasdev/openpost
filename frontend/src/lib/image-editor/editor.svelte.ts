@@ -49,6 +49,16 @@ import type {
 
 const IMAGE_EDITOR_CONTEXT = Symbol('openpost-image-editor-editor');
 
+interface FloatingPixelSelectionState {
+	mode: 'promote' | 'cut';
+	label: string;
+	beforeDocument: ImageEditorDocument;
+	originalSelection: ImageEditorPixelSelection;
+	selectedLayerIDs: string[];
+	selectionAnchorID: string;
+	layerIDs: string[];
+}
+
 export class ImageEditorController {
 	id = $state('');
 	workspaceID = $state('');
@@ -64,6 +74,7 @@ export class ImageEditorController {
 	sampleAllLayers = $state(false);
 	eyedropperTarget = $state<ImageEditorColorTarget>('foreground');
 	pixelSelection = $state.raw<ImageEditorPixelSelection | null>(null);
+	floatingPixelSelection = $state.raw<FloatingPixelSelectionState | null>(null);
 	paintColor = $state('#f97316');
 	gradientEndColor = $state('#7c3aed');
 	gradientType = $state<ImageEditorGradientType>('linear');
@@ -162,15 +173,15 @@ export class ImageEditorController {
 	}
 
 	get canUndo(): boolean {
-		return this.historyRevision >= 0 && this.history.canUndo;
+		return Boolean(this.floatingPixelSelection) || (this.historyRevision >= 0 && this.history.canUndo);
 	}
 
 	get canRedo(): boolean {
-		return this.historyRevision >= 0 && this.history.canRedo;
+		return !this.floatingPixelSelection && this.historyRevision >= 0 && this.history.canRedo;
 	}
 
 	get undoLabel(): string {
-		return this.history.undoLabel;
+		return this.floatingPixelSelection?.label ?? this.history.undoLabel;
 	}
 
 	get redoLabel(): string {
@@ -186,6 +197,7 @@ export class ImageEditorController {
 		this.activePageID = response.document.pages[0]?.id ?? '';
 		this.selectedLayerIDs = [];
 		this.pixelSelection = null;
+		this.floatingPixelSelection = null;
 		this.selectionAnchorID = '';
 		this.saveState = 'saved';
 		this.saveMessage = m.image_editor_saved();
@@ -216,6 +228,7 @@ export class ImageEditorController {
 		coalesceKey?: string
 	): void {
 		if (!this.document || !this.canEdit) return;
+		if (this.floatingPixelSelection) this.commitFloatingPixelSelection();
 		const next = this.history.execute(this.document, {
 			label,
 			coalesceKey,
@@ -234,6 +247,10 @@ export class ImageEditorController {
 	}
 
 	undo(): void {
+		if (this.floatingPixelSelection) {
+			this.cancelFloatingPixelSelection();
+			return;
+		}
 		if (!this.document || !this.canUndo || !this.canEdit) return;
 		this.document = this.history.undo(this.document);
 		this.historyRevision++;
@@ -242,6 +259,7 @@ export class ImageEditorController {
 	}
 
 	redo(): void {
+		if (this.floatingPixelSelection) return;
 		if (!this.document || !this.canRedo || !this.canEdit) return;
 		this.document = this.history.redo(this.document);
 		this.historyRevision++;
@@ -290,6 +308,7 @@ export class ImageEditorController {
 		mode: ImageEditorSelectionMode = 'replace'
 	): void {
 		if (!this.document) return;
+		if (this.floatingPixelSelection) this.commitFloatingPixelSelection();
 		const current =
 			this.pixelSelection?.width === this.document.width_px &&
 			this.pixelSelection.height === this.document.height_px
@@ -309,7 +328,148 @@ export class ImageEditorController {
 	}
 
 	clearPixelSelection(): void {
+		if (this.floatingPixelSelection) this.commitFloatingPixelSelection();
 		this.pixelSelection = null;
+	}
+
+	beginFloatingPixelSelection(
+		mode: 'promote' | 'cut',
+		projections: Array<{ id: string; width: number; height: number; data: Uint8Array }>
+	): boolean {
+		if (!this.document || !this.pixelSelection || projections.length === 0) return false;
+		if (this.floatingPixelSelection) this.commitFloatingPixelSelection();
+		const beforeDocument = cloneImageEditorDocument(this.document);
+		const nextDocument = cloneImageEditorDocument(this.document);
+		const label =
+			mode === 'promote' ? m.image_editor_promote_pixels() : m.image_editor_cut_pixels();
+		const layerIDs = this.applyPixelSelectionContent(nextDocument, mode, projections);
+		if (layerIDs.length === 0) return false;
+		this.floatingPixelSelection = {
+			mode,
+			label,
+			beforeDocument,
+			originalSelection: {
+				...this.pixelSelection,
+				data: this.pixelSelection.data.slice(),
+				targetLayerIDs: [...this.pixelSelection.targetLayerIDs]
+			},
+			selectedLayerIDs: [...this.selectedLayerIDs],
+			selectionAnchorID: this.selectionAnchorID,
+			layerIDs
+		};
+		this.document = nextDocument;
+		this.selectedLayerIDs = layerIDs;
+		this.selectionAnchorID = layerIDs.at(-1) ?? '';
+		this.historyRevision++;
+		this.emitChange();
+		return true;
+	}
+
+	extractPixelSelectionLayers(
+		projections: Array<{ id: string; width: number; height: number; data: Uint8Array }>
+	): ImageEditorLayer[] {
+		if (!this.document || !this.pixelSelection || projections.length === 0) return [];
+		const document = cloneImageEditorDocument(this.document);
+		const layerIDs = new Set(this.applyPixelSelectionContent(document, 'promote', projections));
+		return (
+			document.pages
+				.find((page) => page.id === this.activePageID)
+				?.layers.filter((layer) => layerIDs.has(layer.id))
+				.map((layer) => structuredClone(layer)) ?? []
+		);
+	}
+
+	translateFloatingPixelSelection(deltaX: number, deltaY: number): void {
+		const floating = this.floatingPixelSelection;
+		const selection = this.pixelSelection;
+		if (!floating || !selection || !this.document) return;
+		const bounds = pixelMaskBounds(selection.data, selection.width, selection.height);
+		if (!bounds) return;
+		const offsetX = Math.round(
+			Math.max(-bounds.x, Math.min(selection.width - bounds.x - bounds.width, deltaX))
+		);
+		const offsetY = Math.round(
+			Math.max(-bounds.y, Math.min(selection.height - bounds.y - bounds.height, deltaY))
+		);
+		if (!offsetX && !offsetY) return;
+		const nextDocument = cloneImageEditorDocument(this.document);
+		const page = nextDocument.pages.find((candidate) => candidate.id === this.activePageID);
+		if (!page) return;
+		const floatingIDs = new Set(floating.layerIDs);
+		for (const layer of page.layers) {
+			if (!floatingIDs.has(layer.id)) continue;
+			layer.transform.x += offsetX;
+			layer.transform.y += offsetY;
+		}
+		this.recalculateAllGroupBounds(page);
+		this.document = nextDocument;
+		this.pixelSelection = {
+			...selection,
+			data: translatePixelMask(
+				selection.data,
+				selection.width,
+				selection.height,
+				offsetX,
+				offsetY
+			)
+		};
+	}
+
+	finishFloatingPixelSelectionMove(): void {
+		if (!this.floatingPixelSelection) return;
+		this.emitChange();
+	}
+
+	commitFloatingPixelSelection(): boolean {
+		const floating = this.floatingPixelSelection;
+		if (!floating || !this.document) return false;
+		this.history.checkpoint(floating.label, floating.beforeDocument, this.document);
+		this.floatingPixelSelection = null;
+		this.pixelSelection = null;
+		this.historyRevision++;
+		this.emitChange();
+		return true;
+	}
+
+	cancelFloatingPixelSelection(): boolean {
+		const floating = this.floatingPixelSelection;
+		if (!floating) return false;
+		this.document = cloneImageEditorDocument(floating.beforeDocument);
+		this.pixelSelection = {
+			...floating.originalSelection,
+			data: floating.originalSelection.data.slice(),
+			targetLayerIDs: [...floating.originalSelection.targetLayerIDs]
+		};
+		this.selectedLayerIDs = [...floating.selectedLayerIDs];
+		this.selectionAnchorID = floating.selectionAnchorID;
+		this.floatingPixelSelection = null;
+		this.historyRevision++;
+		this.emitChange();
+		return true;
+	}
+
+	deleteFloatingPixelSelection(): boolean {
+		const floating = this.floatingPixelSelection;
+		if (!floating || !this.document) return false;
+		const nextDocument = cloneImageEditorDocument(this.document);
+		const page = nextDocument.pages.find((candidate) => candidate.id === this.activePageID);
+		if (!page) return false;
+		const floatingIDs = new Set(floating.layerIDs);
+		page.layers = page.layers.filter((layer) => !floatingIDs.has(layer.id));
+		this.recalculateAllGroupBounds(page);
+		this.history.checkpoint(
+			m.image_editor_delete_pixels(),
+			floating.beforeDocument,
+			nextDocument
+		);
+		this.document = nextDocument;
+		this.floatingPixelSelection = null;
+		this.pixelSelection = null;
+		this.selectedLayerIDs = [...floating.selectedLayerIDs];
+		this.selectionAnchorID = floating.selectionAnchorID;
+		this.historyRevision++;
+		this.emitChange();
+		return true;
 	}
 
 	commitPixelSelectionContent(
@@ -317,103 +477,16 @@ export class ImageEditorController {
 		projections: Array<{ id: string; width: number; height: number; data: Uint8Array }>
 	): boolean {
 		if (!this.document || !this.pixelSelection || projections.length === 0) return false;
+		if (this.floatingPixelSelection) this.commitFloatingPixelSelection();
 		const before = this.document;
-		const promotedIDs: string[] = [];
+		let promotedIDs: string[] = [];
 		this.mutate(
 			mode === 'promote'
 				? m.image_editor_promote_pixels()
 				: mode === 'cut'
 					? m.image_editor_cut_pixels()
 					: m.image_editor_delete_pixels(),
-			(document) => {
-				const page = document.pages.find((candidate) => candidate.id === this.activePageID);
-				if (!page) return;
-				for (const projection of projections) {
-					const targetIndex = page.layers.findIndex((layer) => layer.id === projection.id);
-					const target = page.layers[targetIndex];
-					if (!target || target.locked || !['image', 'paint'].includes(target.type)) continue;
-					let selected = projection.data;
-					if (target.paint) {
-						const paint = pixelSpansToMask(target.paint.spans, projection.width, projection.height);
-						selected = intersectPixelMasks(selected, paint);
-					} else if (target.erase_mask) {
-						let erased = pixelSpansToMask(
-							target.erase_mask.spans,
-							projection.width,
-							projection.height
-						);
-						for (const stroke of target.erase_mask.strokes) {
-							erased = combinePixelMasks(
-								erased,
-								strokePixelMask(projection.width, projection.height, stroke.points, stroke.size),
-								'add'
-							);
-						}
-						selected = subtractPixelMasks(selected, erased);
-					}
-					if (!pixelMaskBounds(selected, projection.width, projection.height)) continue;
-
-					if (mode === 'promote' || mode === 'cut') {
-						const copy = cloneImageEditorLayer(
-							target,
-							m.image_editor_selection_layer_name({ name: target.name })
-						);
-						if (copy.paint) {
-							copy.paint.spans = pixelMaskToSpans(selected, projection.width, projection.height);
-							copy.erase_mask = undefined;
-						} else if (copy.image) {
-							const all = new Uint8Array(projection.width * projection.height);
-							all.fill(1);
-							copy.erase_mask = {
-								source_width: projection.width,
-								source_height: projection.height,
-								strokes: [],
-								spans: pixelMaskToSpans(
-									subtractPixelMasks(all, selected),
-									projection.width,
-									projection.height
-								)
-							};
-						}
-						page.layers.splice(targetIndex + 1, 0, copy);
-						promotedIDs.push(copy.id);
-					}
-
-					if (mode === 'cut' || mode === 'delete') {
-						if (target.paint) {
-							const paint = pixelSpansToMask(
-								target.paint.spans,
-								projection.width,
-								projection.height
-							);
-							target.paint.spans = pixelMaskToSpans(
-								subtractPixelMasks(paint, selected),
-								projection.width,
-								projection.height
-							);
-						} else {
-							const eraseMask =
-								target.erase_mask?.source_width === projection.width &&
-								target.erase_mask.source_height === projection.height
-									? target.erase_mask
-									: {
-											source_width: projection.width,
-											source_height: projection.height,
-											strokes: [],
-											spans: []
-										};
-							target.erase_mask = {
-								...eraseMask,
-								spans: [
-									...eraseMask.spans,
-									...pixelMaskToSpans(selected, projection.width, projection.height)
-								]
-							};
-						}
-					}
-				}
-				this.recalculateAllGroupBounds(page);
-			}
+			(document) => (promotedIDs = this.applyPixelSelectionContent(document, mode, projections))
 		);
 		if (this.document === before) return false;
 		this.pixelSelection = null;
@@ -422,6 +495,103 @@ export class ImageEditorController {
 			this.selectionAnchorID = promotedIDs.at(-1) ?? '';
 		}
 		return true;
+	}
+
+	private applyPixelSelectionContent(
+		document: ImageEditorDocument,
+		mode: 'promote' | 'cut' | 'delete',
+		projections: Array<{ id: string; width: number; height: number; data: Uint8Array }>
+	): string[] {
+		const page = document.pages.find((candidate) => candidate.id === this.activePageID);
+		if (!page) return [];
+		const promotedIDs: string[] = [];
+		for (const projection of projections) {
+			const targetIndex = page.layers.findIndex((layer) => layer.id === projection.id);
+			const target = page.layers[targetIndex];
+			if (!target || target.locked || !['image', 'paint'].includes(target.type)) continue;
+			let selected = projection.data;
+			if (target.paint) {
+				const paint = pixelSpansToMask(target.paint.spans, projection.width, projection.height);
+				selected = intersectPixelMasks(selected, paint);
+			} else if (target.erase_mask) {
+				let erased = pixelSpansToMask(
+					target.erase_mask.spans,
+					projection.width,
+					projection.height
+				);
+				for (const stroke of target.erase_mask.strokes) {
+					erased = combinePixelMasks(
+						erased,
+						strokePixelMask(projection.width, projection.height, stroke.points, stroke.size),
+						'add'
+					);
+				}
+				selected = subtractPixelMasks(selected, erased);
+			}
+			if (!pixelMaskBounds(selected, projection.width, projection.height)) continue;
+
+			if (mode === 'promote' || mode === 'cut') {
+				const copy = cloneImageEditorLayer(
+					target,
+					m.image_editor_selection_layer_name({ name: target.name })
+				);
+				copy.transform = structuredClone(target.transform);
+				if (copy.paint) {
+					copy.paint.spans = pixelMaskToSpans(selected, projection.width, projection.height);
+					copy.erase_mask = undefined;
+				} else if (copy.image) {
+					const all = new Uint8Array(projection.width * projection.height);
+					all.fill(1);
+					copy.erase_mask = {
+						source_width: projection.width,
+						source_height: projection.height,
+						strokes: [],
+						spans: pixelMaskToSpans(
+							subtractPixelMasks(all, selected),
+							projection.width,
+							projection.height
+						)
+					};
+				}
+				page.layers.splice(targetIndex + 1, 0, copy);
+				promotedIDs.push(copy.id);
+			}
+
+			if (mode === 'cut' || mode === 'delete') {
+				if (target.paint) {
+					const paint = pixelSpansToMask(
+						target.paint.spans,
+						projection.width,
+						projection.height
+					);
+					target.paint.spans = pixelMaskToSpans(
+						subtractPixelMasks(paint, selected),
+						projection.width,
+						projection.height
+					);
+				} else {
+					const eraseMask =
+						target.erase_mask?.source_width === projection.width &&
+						target.erase_mask.source_height === projection.height
+							? target.erase_mask
+							: {
+									source_width: projection.width,
+									source_height: projection.height,
+									strokes: [],
+									spans: []
+								};
+					target.erase_mask = {
+						...eraseMask,
+						spans: [
+							...eraseMask.spans,
+							...pixelMaskToSpans(selected, projection.width, projection.height)
+						]
+					};
+				}
+			}
+		}
+		this.recalculateAllGroupBounds(page);
+		return promotedIDs;
 	}
 
 	movePixelSelection(data: Uint8Array, deltaX: number, deltaY: number): void {
