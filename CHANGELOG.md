@@ -4,6 +4,11 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- Reduced test-suite overhead by removing assertion-free and duplicate checks and by running viewport-independent marketing contracts once instead of once per browser size.
+- Added the standalone video-project unit suite to the default local and CI test gates.
+
 ## [3.2.1] - 2026-08-06
 
 ### Added
