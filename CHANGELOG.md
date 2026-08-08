@@ -4,6 +4,8 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [3.5.0] - 2026-08-08
+
 ### Added
 
 - Added responsive pointer-reactive platform and AI marks plus project-owned ENF., The Actual World, Uni's Easy, ARC Gym, Ark, Dias Solutions, Montra, and Unprompted identity assets to the marketing hero.
