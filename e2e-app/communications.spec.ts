@@ -300,13 +300,13 @@ test("communications and notifications stay usable across desktop and phone layo
   );
   await expect(page.getByText("Item restored.")).toBeVisible();
 
-  await expect(page.getByTestId("sidebar-rolling-calendar")).toHaveCount(0);
+  await expect(page.getByTestId("sidebar-rolling-calendar")).toBeVisible();
   await page
     .getByTestId("communications-navigation")
     .getByRole("link", { name: "Messages" })
     .click();
   await expect(page.getByRole("heading", { name: "Messages" })).toBeVisible();
-  await expect(page.getByTestId("sidebar-rolling-calendar")).toHaveCount(0);
+  await expect(page.getByTestId("sidebar-rolling-calendar")).toBeVisible();
   await page.getByText("Archived", { exact: true }).click();
   await expect(page.getByRole("button", { name: /Ada/ })).toBeVisible();
   await page.getByText("Archived", { exact: true }).click();

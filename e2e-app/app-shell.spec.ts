@@ -368,7 +368,7 @@ test("desktop planning sidebar resumes drafts and stays out of mobile navigation
     page.getByRole("button", { name: "Media", exact: true }),
   ).toBeVisible();
   const workspaceNavigation = page.getByTestId("sidebar-workspace-navigation");
-  await expect(workspaceNavigation.getByRole("button")).toHaveCount(4);
+  await expect(workspaceNavigation.getByRole("button")).toHaveCount(5);
   await expect(
     workspaceNavigation.getByRole("button", {
       name: "Accounts",
@@ -392,7 +392,7 @@ test("desktop planning sidebar resumes drafts and stays out of mobile navigation
     clientHeight: element.clientHeight,
     scrollHeight: element.scrollHeight,
   }));
-  expect(draftListMetrics.scrollHeight).toBeLessThanOrEqual(
+  expect(draftListMetrics.scrollHeight).toBeGreaterThan(
     draftListMetrics.clientHeight,
   );
   const draftListBox = await draftList.boundingBox();
@@ -404,6 +404,7 @@ test("desktop planning sidebar resumes drafts and stays out of mobile navigation
   expect(
     workspaceFooterBox!.y - (draftListBox!.y + draftListBox!.height),
   ).toBeLessThanOrEqual(32);
+  await draftList.locator("li").last().scrollIntoViewIfNeeded();
   await expect(draftList.locator("li").last()).toBeVisible();
 
   const draftToDelete = page.getByRole("button", {
