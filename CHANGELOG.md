@@ -4,6 +4,36 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Added grouped recovery queues for publication and engagement collection failures, analytics coverage denominators and highlights, searchable settings navigation, and read-only details for published publications.
+- Completed the Image Editor command registry across desktop and mobile menus, tool rails, tooltips, shortcuts, handlers, checked states, and disabled explanations.
+- Added adaptive cached alpha hit testing, Alt-click layer cycling, a visible Select layer menu, and floating pixel resize, rotation, and duplicate controls.
+- Added one cancellable RGBA scan contract for magic selection, bucket fill, and magic erase, including transparent/global/contiguous semantics, previews, progress, locked-target guidance, and large-image limits.
+- Added Image Editor export memory budgeting, cancellation, and resumable page-level Media/composer uploads without duplicating successful assets.
+
+### Changed
+
+- Simplified the text composer with contextual inspiration, a dedicated post-settings sheet for repost behavior, automatic URL recognition, and a device-first media chooser with clearer source tabs and upload guidance.
+- Made the desktop planner contextual to authoring and calendar routes, reduced the primary navigation to five workflow destinations, and separated diagnostic job records from failed-publication totals.
+- Reworked the desktop sidebar into a calm task stack with a stable brand and compose action, compact workspace and notification controls, three recent drafts, and one readable destination list.
+- Made instance release status show the configured source, effective running value, edition override, and pending-restart state together.
+- Unified Image Editor canvas, template, preview, download, Media, and composer-return rendering on the same Fabric adapter and added browser pixel-parity checks.
+- Made Image Editor history restore the active page, object and pixel selection, tool, zoom, and pan while avoiding a redundant post-command document clone.
+
+### Fixed
+
+- Prevented the managed public home from flashing for signed-in sessions and stopped photo-only stock providers from offering video searches.
+- Fixed stored conversation history loading, added missing-conversation handling and retry UX, generated request IDs, and kept the reply composer hidden until history loads.
+- Made Media Library and instance-user searches submit reliably with Enter, added applied-query state, clear search, and Media result counts.
+- Disabled settings save actions until their forms contain changes and corrected singular analytics destination copy.
+- Fixed Threads location customization by waiting for a search term, using the provider's `q` parameter, requesting `threads_location_tagging`, and returning reconnection guidance when an existing account lacks that scope.
+- Made Image Editor multi-selection show mixed transform and opacity values, apply compatible values to every unlocked root, and report skipped layers; missing fonts and page media now expose recovery actions.
+- Completed nested Image Editor group movement with cycle-safe drag-into targets, keyboard/context move-out actions, inherited lock protection, ancestor-bound repair, and undo restoration.
+- Preserved floating pixels across save, project, template, and export boundaries, and added recoverable handling for corrupt or missing local media, quota errors, concurrent tabs, and revision conflicts.
+- Made Image Editor conflict reloads preserve local work as a separately titled cloud design before loading the newer server revision, with visible failure recovery.
+- Added signed-in project-import cancellation and resume, stylus palm rejection, touch pinch routing, dialog/sheet focus restoration, keyboard-only export coverage, and Portuguese browser-zoom proof.
+
 ## [3.3.2] - 2026-08-06
 
 ### Added
