@@ -1,84 +1,46 @@
 <!--
 THESIS: OpenPost gives solo founders one content team for turning company work into destination-specific publishing without reopening every network.
 OWN-WORLD: A dark launch stage gives way to a warm working page, with raised workshop-orange controls, framed product surfaces, and precise editorial pacing.
-STORY: Understand the promise, watch the real demo, follow the working loop, inspect the product, see example creator workflows, choose a plan, and start.
+STORY: Understand the promise, inspect the result views, watch the real demo, see the product, choose a plan, and start.
 FIRST VIEWPORT: One centered promise, one raised action, all supported networks in motion, and three overlapping result screens with no carousel chrome.
-FORM: A focused product demonstration paced between dark studio stages, light working surfaces, real screenshots, and transparent illustrative profiles.
+FORM: A focused product demonstration paced between dark studio stages, light working surfaces, and real product screenshots.
 -->
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import { ArrowRight, CalendarRange, Check, Layers3, LockKeyhole } from 'lucide-svelte';
 	import { Button } from '$lib/components/ui/button';
-	import PlatformIcon from '$lib/components/platform-icon.svelte';
 	import CreatorStories from './_components/CreatorStories.svelte';
 	import FloatingNetworkField from './_components/FloatingNetworkField.svelte';
 	import HeroResultsCarousel from './_components/HeroResultsCarousel.svelte';
 	import LandingVideoDemo from './_components/LandingVideoDemo.svelte';
+	import PostizSocialLogo from './_components/PostizSocialLogo.svelte';
 	import ScrollReveal from './_components/ScrollReveal.svelte';
-	import {
-		faqs,
-		managedSignupUrl,
-		platforms,
-		plans,
-		siteUrl
-	} from './_marketing';
-
-	const workflow = [
-		{
-			number: '01',
-			title: 'Capture what matters',
-			description: 'Turn a launch, product update, or lesson into one shared source.'
-		},
-		{
-			number: '02',
-			title: 'Shape every channel',
-			description: 'Change copy, media, format, and settings for every destination.'
-		},
-		{
-			number: '03',
-			title: 'Keep the campaign moving',
-			description: 'Publish on time, see each result, and retry only what needs attention.'
-		}
-	] as const;
+	import { faqs, managedSignupUrl, platforms, plans, siteUrl } from './_marketing';
 
 	const productStories = [
 		{
 			eyebrow: 'One workspace',
-			title: 'The whole publishing workflow stays together.',
-			description:
-				'Draft posts and threads, manage reusable media, plan the calendar, and check every account from one focused workspace.',
+			title: 'Create in one place.',
+			description: 'Write posts and threads, schedule them, and see what published.',
 			image: '/assets/screenshots/main-dark.png',
 			alt: 'OpenPost publication composer with destination-specific versions',
-			icon: Layers3,
-			points: [
-				'Text and reply threads',
-				'Stories, short video, and video',
-				'Calendar and publication status'
-			]
+			icon: Layers3
 		},
 		{
-			eyebrow: 'Destination controls',
-			title: 'Each platform gets the version it needs.',
-			description:
-				'OpenPost keeps the shared idea intact while you adjust the copy, media, limits, and publishing options for each account.',
+			eyebrow: 'Every platform',
+			title: 'Adapt every post.',
+			description: 'Change the copy, media, and settings for each platform before you publish.',
 			image: '/assets/screenshots/accounts-dark.png',
 			alt: 'OpenPost connected social accounts page',
-			icon: LockKeyhole,
-			points: [
-				'Account-aware limits',
-				'Per-destination previews',
-				'Encrypted connected-account tokens'
-			]
+			icon: LockKeyhole
 		},
 		{
 			eyebrow: 'Media workspace',
-			title: 'Prepare the asset where you publish it.',
-			description:
-				'Keep source files, alt text, favorites, and use history in the media library, then open focused editors for video work.',
+			title: 'Reuse your media.',
+			description: 'Keep assets and alt text ready for the next post.',
 			image: '/assets/screenshots/media-dark.png',
 			alt: 'OpenPost media library with reusable assets',
-			icon: CalendarRange,
-			points: ['Reusable media library', 'Alt text and metadata', 'Focused video editing modes']
+			icon: CalendarRange
 		}
 	] as const;
 
@@ -87,7 +49,11 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 
 	const customerLogos = [
 		{ name: 'ENF.', src: '/assets/customer-logos/enf.svg', treatment: 'wordmark' },
-		{ name: 'The Actual World', src: '/assets/customer-logos/the-actual-world.png', treatment: 'mark' },
+		{
+			name: 'The Actual World',
+			src: '/assets/customer-logos/the-actual-world.png',
+			treatment: 'mark'
+		},
 		{ name: "Uni's Easy", src: '/assets/customer-logos/unis-easy.png', treatment: 'mark' },
 		{ name: 'ARC Gym', src: '/assets/customer-logos/arc-gym.png', treatment: 'wordmark' },
 		{ name: 'Ark', src: '/assets/customer-logos/ark.png', treatment: 'mark' },
@@ -95,7 +61,6 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 		{ name: 'Montra', src: '/assets/customer-logos/montra.svg', treatment: 'mark' },
 		{ name: 'Unprompted', src: '/assets/customer-logos/unprompted.png', treatment: 'mark' }
 	] as const;
-
 </script>
 
 <svelte:head>
@@ -114,8 +79,8 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 			Your socials, <span>on steroids.</span>
 		</h1>
 		<p class="hero-copy hero-enter hero-enter-2 mx-auto mt-6 max-w-3xl">
-			Create better content, adapt it for every platform,<br class="hidden sm:block" /> and publish
-			it everywhere from one workspace.
+			Create better content, adapt it for every platform,<br class="hidden sm:block" /> and publish it
+			everywhere from one workspace.
 		</p>
 		<div class="hero-enter hero-enter-3 mt-8 flex justify-center">
 			<Button href={managedSignupUrl} size="lg" class="hero-cta">
@@ -150,7 +115,7 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 		<div class="supported-marks" aria-label="Supported social platforms">
 			{#each platforms as platform (platform.slug)}
 				<a href={resolve(`/platforms/${platform.slug}`)} aria-label={`${platform.name} guide`}>
-					<PlatformIcon platform={platform.short} />
+					<PostizSocialLogo platform={platform.slug} />
 				</a>
 			{/each}
 		</div>
@@ -159,39 +124,6 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 
 <LandingVideoDemo />
 
-<section class="section-pad" aria-labelledby="workflow-title">
-	<div class="marketing-shell">
-		<div class="workflow-intro">
-			<div>
-				<p class="section-label">One working loop</p>
-				<h2 id="workflow-title" class="marketing-heading mt-4">
-					One source enters. A week of useful content leaves.
-				</h2>
-			</div>
-			<p class="marketing-copy">
-				OpenPost keeps the source, destination versions, schedule, and publishing state connected
-				without flattening every network into the same post.
-			</p>
-		</div>
-
-		<ol class="workflow-list marketing-rule mt-14 border-y">
-			{#each workflow as step, index (step.title)}
-				<li class="workflow-step">
-					<ScrollReveal delay={index * 90}>
-						<div class="workflow-row">
-							<span>{step.number}</span>
-							<h3>{step.title}</h3>
-							<p>
-							{step.description}
-							</p>
-						</div>
-					</ScrollReveal>
-				</li>
-			{/each}
-		</ol>
-	</div>
-</section>
-
 <section
 	id="product"
 	class="section-pad marketing-rule scroll-mt-24 border-y bg-muted/18"
@@ -199,10 +131,7 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 >
 	<div class="marketing-shell">
 		<ScrollReveal class="max-w-3xl">
-			<p class="section-label">Inside OpenPost</p>
-			<h2 id="product-title" class="marketing-heading mt-4">
-				Your ideas, assets, calendar, and results in one system.
-			</h2>
+			<h2 id="product-title" class="marketing-heading">Everything you need to publish.</h2>
 		</ScrollReveal>
 
 		<div class="mt-16 grid gap-20 lg:gap-28">
@@ -224,14 +153,6 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 						<p class="mt-5 max-w-xl leading-7 text-muted-foreground">
 							{story.description}
 						</p>
-						<ul class="mt-6 grid gap-3 text-sm">
-							{#each story.points as point (point)}
-								<li class="flex items-center gap-3">
-									<Check class="size-4 text-primary" aria-hidden="true" />
-									{point}
-								</li>
-							{/each}
-						</ul>
 					</ScrollReveal>
 					<ScrollReveal class="product-shot" delay={index % 2 === 0 ? 140 : 60}>
 						<img
@@ -255,14 +176,12 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 	<div class="marketing-shell">
 		<ScrollReveal class="mx-auto max-w-3xl text-center">
 			<p class="section-label">Managed plans</p>
-			<h2 id="pricing-title" class="marketing-heading mx-auto mt-4">
-				Start as a company of one. Keep the same content system as you grow.
-			</h2>
+			<h2 id="pricing-title" class="marketing-heading mx-auto mt-4">Pick your plan.</h2>
 		</ScrollReveal>
 
 		<div class="mt-12 grid gap-4 lg:grid-cols-3">
 			{#each featuredPlans as plan, index (plan.id)}
-				<ScrollReveal delay={index * 80}>
+				<ScrollReveal class="h-full" delay={index * 80}>
 					<article class:featured-plan={plan.featured} class="plan-card">
 						<div class="flex items-start justify-between gap-4">
 							<div>
@@ -335,10 +254,10 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 			id="closing-title"
 			class="mx-auto mt-5 max-w-4xl text-4xl leading-[0.98] font-semibold tracking-[-0.045em] text-balance sm:text-6xl"
 		>
-			Give your company a content team.
+			Start publishing.
 		</h2>
 		<p class="mx-auto mt-6 max-w-xl leading-7 text-white/62">
-			Create the source once, adapt it for each account, and keep every result in one place.
+			Create, adapt, and schedule every post from one place.
 		</p>
 		<div class="mt-8 flex flex-wrap justify-center gap-3">
 			<Button href={managedSignupUrl} size="lg">
@@ -372,10 +291,10 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 	.hero-title {
 		max-width: 64rem;
 		font-family: 'Manrope Variable', Manrope, sans-serif;
-		font-size: clamp(3.1rem, 7.4vw, 7rem);
+		font-size: clamp(3.1rem, 7vw, 6rem);
 		font-weight: 760;
 		line-height: 0.94;
-		letter-spacing: -0.065em;
+		letter-spacing: -0.04em;
 		text-wrap: balance;
 	}
 
@@ -522,56 +441,17 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 		color: white;
 	}
 
-	.supported-marks :global(svg) {
-		width: 1.05rem;
-		height: 1.05rem;
+	.supported-marks :global(img) {
+		display: block;
+		width: 2rem;
+		height: 2rem;
+		object-fit: contain;
 	}
 
 	@keyframes customer-scroll {
 		to {
 			transform: translateX(-50%);
 		}
-	}
-
-	.workflow-intro {
-		display: grid;
-		max-width: 64rem;
-		gap: 0 4rem;
-	}
-
-	.workflow-intro .marketing-copy {
-		max-width: 34rem;
-	}
-
-	.workflow-step + .workflow-step {
-		border-top: 1px solid var(--border);
-	}
-
-	.workflow-row {
-		display: grid;
-		gap: 0.8rem;
-		align-items: baseline;
-		padding-block: 1.7rem;
-	}
-
-	.workflow-row > span {
-		color: var(--primary);
-		font-family: ui-monospace, monospace;
-		font-size: 0.72rem;
-		font-weight: 700;
-	}
-
-	.workflow-row h3 {
-		font-size: clamp(1.25rem, 2.5vw, 2rem);
-		font-weight: 650;
-		letter-spacing: -0.03em;
-	}
-
-	.workflow-row p {
-		max-width: 32rem;
-		color: var(--muted-foreground);
-		font-size: 0.9rem;
-		line-height: 1.65;
 	}
 
 	.product-story {
@@ -622,11 +502,8 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 	}
 
 	.plan-tag {
-		position: absolute;
-		top: -0.75rem;
-		left: 50%;
-		transform: translateX(-50%);
-		border-radius: 999px;
+		flex: none;
+		border-radius: 0.5rem;
 		background: var(--primary);
 		padding: 0.32rem 0.8rem;
 		color: var(--primary-foreground);
@@ -663,24 +540,6 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 			opacity: 1;
 			transform: none;
 			filter: none;
-		}
-	}
-
-	@media (min-width: 48rem) {
-		.workflow-intro {
-			grid-template-columns: 1fr 0.72fr;
-			align-items: end;
-		}
-
-		.workflow-intro .marketing-copy {
-			grid-column: 2;
-			align-self: end;
-		}
-
-		.workflow-row {
-			grid-template-columns: 3rem minmax(12rem, 0.8fr) 1.2fr;
-			gap: 2rem;
-			padding-block: 2.2rem;
 		}
 	}
 

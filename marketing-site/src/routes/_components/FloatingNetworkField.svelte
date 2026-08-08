@@ -1,24 +1,165 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
-	import PlatformIcon from '$lib/components/platform-icon.svelte';
+	import PostizSocialLogo from './PostizSocialLogo.svelte';
+	import type { PostizSocialLogo as PostizSocialLogoName } from './postiz-social-logos';
 
 	type NetworkMark =
-		| { kind: 'platform'; name: string; platform: string; x: string; y: string; color: string; delay: string; rotate: string; size?: string; quietOnPhone?: boolean }
-		| { kind: 'image'; name: string; src: string; x: string; y: string; color: string; delay: string; rotate: string; size?: string; quietOnPhone?: boolean };
+		| {
+				kind: 'platform';
+				name: string;
+				platform: PostizSocialLogoName;
+				x: string;
+				y: string;
+				color: string;
+				delay: string;
+				rotate: string;
+				size?: string;
+				quietOnPhone?: boolean;
+		  }
+		| {
+				kind: 'image';
+				name: string;
+				src: string;
+				x: string;
+				y: string;
+				color: string;
+				delay: string;
+				rotate: string;
+				size?: string;
+				quietOnPhone?: boolean;
+		  };
 
 	const marks: NetworkMark[] = [
-		{ kind: 'platform', name: 'X', platform: 'x', x: '5%', y: '10%', color: '#f7f4ec', delay: '-0.8s', rotate: '-8deg' },
-		{ kind: 'platform', name: 'YouTube', platform: 'youtube', x: '2%', y: '62%', color: '#ff3b30', delay: '-2.2s', rotate: '8deg', size: '4.7rem' },
-		{ kind: 'platform', name: 'Mastodon', platform: 'mastodon', x: '14%', y: '37%', color: '#8c8dff', delay: '-4.7s', rotate: '6deg', quietOnPhone: true },
-		{ kind: 'platform', name: 'LinkedIn', platform: 'linkedin', x: '19%', y: '78%', color: '#73a7ff', delay: '-1.6s', rotate: '-5deg', quietOnPhone: true },
-		{ kind: 'platform', name: 'Bluesky', platform: 'bluesky', x: '91%', y: '12%', color: '#54a9ff', delay: '-3.4s', rotate: '9deg', size: '4.8rem' },
-		{ kind: 'platform', name: 'Instagram', platform: 'instagram', x: '94%', y: '63%', color: '#ff7b85', delay: '-5.2s', rotate: '-7deg' },
-		{ kind: 'platform', name: 'TikTok', platform: 'tiktok', x: '82%', y: '39%', color: '#f7f4ec', delay: '-2.8s', rotate: '5deg', quietOnPhone: true },
-		{ kind: 'platform', name: 'Threads', platform: 'threads', x: '76%', y: '82%', color: '#f7f4ec', delay: '-0.2s', rotate: '-6deg', quietOnPhone: true },
-		{ kind: 'platform', name: 'Facebook', platform: 'facebook', x: '8%', y: '88%', color: '#7aa5ff', delay: '-6.2s', rotate: '7deg', quietOnPhone: true },
-		{ kind: 'platform', name: 'Discord', platform: 'discord', x: '88%', y: '91%', color: '#9b91ff', delay: '-4.1s', rotate: '5deg', quietOnPhone: true },
-		{ kind: 'image', name: 'ChatGPT', src: '/assets/ai-logos/chatgpt.png', x: '25%', y: '23%', color: '#f7f4ec', delay: '-5.8s', rotate: '-7deg', quietOnPhone: true },
-		{ kind: 'image', name: 'Claude', src: '/assets/ai-logos/claude.png', x: '72%', y: '17%', color: '#d69b78', delay: '-1.1s', rotate: '7deg', quietOnPhone: true }
+		{
+			kind: 'platform',
+			name: 'X',
+			platform: 'x',
+			x: '5%',
+			y: '10%',
+			color: '#f7f4ec',
+			delay: '-0.8s',
+			rotate: '-8deg'
+		},
+		{
+			kind: 'platform',
+			name: 'YouTube',
+			platform: 'youtube',
+			x: '2%',
+			y: '62%',
+			color: '#ff3b30',
+			delay: '-2.2s',
+			rotate: '8deg',
+			size: '4.7rem'
+		},
+		{
+			kind: 'platform',
+			name: 'Mastodon',
+			platform: 'mastodon',
+			x: '14%',
+			y: '37%',
+			color: '#8c8dff',
+			delay: '-4.7s',
+			rotate: '6deg',
+			quietOnPhone: true
+		},
+		{
+			kind: 'platform',
+			name: 'LinkedIn',
+			platform: 'linkedin',
+			x: '19%',
+			y: '78%',
+			color: '#73a7ff',
+			delay: '-1.6s',
+			rotate: '-5deg',
+			quietOnPhone: true
+		},
+		{
+			kind: 'platform',
+			name: 'Bluesky',
+			platform: 'bluesky',
+			x: '91%',
+			y: '12%',
+			color: '#54a9ff',
+			delay: '-3.4s',
+			rotate: '9deg',
+			size: '4.8rem'
+		},
+		{
+			kind: 'platform',
+			name: 'Instagram',
+			platform: 'instagram',
+			x: '94%',
+			y: '63%',
+			color: '#ff7b85',
+			delay: '-5.2s',
+			rotate: '-7deg'
+		},
+		{
+			kind: 'platform',
+			name: 'TikTok',
+			platform: 'tiktok',
+			x: '82%',
+			y: '39%',
+			color: '#f7f4ec',
+			delay: '-2.8s',
+			rotate: '5deg',
+			quietOnPhone: true
+		},
+		{
+			kind: 'platform',
+			name: 'Threads',
+			platform: 'threads',
+			x: '76%',
+			y: '82%',
+			color: '#f7f4ec',
+			delay: '-0.2s',
+			rotate: '-6deg',
+			quietOnPhone: true
+		},
+		{
+			kind: 'platform',
+			name: 'Facebook',
+			platform: 'facebook',
+			x: '8%',
+			y: '88%',
+			color: '#7aa5ff',
+			delay: '-6.2s',
+			rotate: '7deg',
+			quietOnPhone: true
+		},
+		{
+			kind: 'platform',
+			name: 'Discord',
+			platform: 'discord',
+			x: '88%',
+			y: '91%',
+			color: '#9b91ff',
+			delay: '-4.1s',
+			rotate: '5deg',
+			quietOnPhone: true
+		},
+		{
+			kind: 'image',
+			name: 'ChatGPT',
+			src: '/assets/ai-logos/chatgpt.png',
+			x: '25%',
+			y: '23%',
+			color: '#f7f4ec',
+			delay: '-5.8s',
+			rotate: '-7deg',
+			quietOnPhone: true
+		},
+		{
+			kind: 'image',
+			name: 'Claude',
+			src: '/assets/ai-logos/claude.png',
+			x: '72%',
+			y: '17%',
+			color: '#d69b78',
+			delay: '-1.1s',
+			rotate: '7deg',
+			quietOnPhone: true
+		}
 	];
 
 	let field: HTMLDivElement;
@@ -49,7 +190,13 @@
 	}
 
 	function handlePointerMove(event: PointerEvent) {
-		if (!field || !isVisible || event.pointerType !== 'mouse' || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+		if (
+			!field ||
+			!isVisible ||
+			event.pointerType !== 'mouse' ||
+			matchMedia('(prefers-reduced-motion: reduce)').matches
+		)
+			return;
 		cancelAnimationFrame(animationFrame);
 		animationFrame = requestAnimationFrame(() => setRepulsion(event.clientX, event.clientY));
 	}
@@ -90,7 +237,7 @@
 		>
 			<span class="network-card">
 				{#if mark.kind === 'platform'}
-					<PlatformIcon platform={mark.platform} />
+					<PostizSocialLogo platform={mark.platform} />
 				{:else}
 					<img src={mark.src} alt="" />
 				{/if}
@@ -144,6 +291,8 @@
 	}
 
 	.network-card img {
+		width: 66%;
+		height: 66%;
 		filter: saturate(0.88) brightness(1.08);
 	}
 

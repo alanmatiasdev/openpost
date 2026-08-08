@@ -1,22 +1,20 @@
 <script lang="ts">
-	import { resolve } from '$app/paths';
 	import ExternalLink from 'lucide-svelte/icons/external-link';
 	import Play from 'lucide-svelte/icons/play';
+	import X from 'lucide-svelte/icons/x';
 	import { Button } from '$lib/components/ui/button';
+	import * as Dialog from '$lib/components/ui/dialog';
 	import { demoVideoEmbedUrl, demoVideoUrl } from '../_marketing';
 
-	let playing = $state(false);
+	let open = $state(false);
 </script>
 
 <section class="demo-section" aria-labelledby="demo-title">
 	<div class="marketing-shell demo-shell">
 		<div class="demo-copy">
-			<p class="demo-kicker">Four-minute product tour</p>
-			<h2 id="demo-title">See the whole publishing loop.</h2>
-			<p>
-				Watch a source idea become destination-specific content, move onto the calendar, and stay
-				visible through publishing.
-			</p>
+			<p class="demo-kicker">Product tour</p>
+			<h2 id="demo-title">See OpenPost in four minutes.</h2>
+			<p>Watch one post move from draft to every platform.</p>
 			<Button
 				href={demoVideoUrl}
 				target="_blank"
@@ -27,46 +25,71 @@
 				Open on YouTube
 				<ExternalLink data-icon="inline-end" />
 			</Button>
-			<p class="privacy-note">
-				Connecting YouTube is optional. OpenPost encrypts connected-account tokens and does not use
-				Google user data for advertising. <a href={resolve('/privacy')}>Read the Privacy Policy.</a>
-			</p>
 		</div>
 
-		<div class="demo-frame">
-			<div class="frame-bar" aria-hidden="true">
-				<span></span><span></span><span></span>
-				<strong>openpost.social / product tour</strong>
+		<Dialog.Root bind:open>
+			<div class="demo-frame">
+				<div class="frame-bar" aria-hidden="true">
+					<span></span><span></span><span></span>
+					<strong>openpost.social / product tour</strong>
+				</div>
+				<Dialog.Trigger>
+					{#snippet child({ props })}
+						<button
+							{...props}
+							type="button"
+							class="demo-trigger"
+							aria-label="Play the OpenPost product demo"
+							data-cuelume-press="press"
+							data-cuelume-release="release"
+						>
+							<img
+								src="/assets/screenshots/main-dark.png"
+								alt="OpenPost publishing workspace"
+								width="1440"
+								height="900"
+								loading="lazy"
+								decoding="async"
+							/>
+							<span class="demo-shade" aria-hidden="true"></span>
+							<span class="play-button" aria-hidden="true"><Play /></span>
+							<span class="play-label">Watch the demo</span>
+						</button>
+					{/snippet}
+				</Dialog.Trigger>
 			</div>
-			{#if playing}
-				<iframe
-					src={demoVideoEmbedUrl}
-					title="OpenPost product demo"
-					allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-					allowfullscreen
-				></iframe>
-			{:else}
-				<button
-					type="button"
-					class="demo-trigger"
-					aria-label="Play the OpenPost product demo"
-					data-cuelume-press="press"
-					onclick={() => (playing = true)}
-				>
-					<img
-						src="/assets/screenshots/main-dark.png"
-						alt="OpenPost publishing workspace"
-						width="1440"
-						height="900"
-						loading="lazy"
-						decoding="async"
-					/>
-					<span class="demo-shade" aria-hidden="true"></span>
-					<span class="play-button" aria-hidden="true"><Play /></span>
-					<span class="play-label">Watch the demo</span>
-				</button>
-			{/if}
-		</div>
+
+			<Dialog.Content
+				showCloseButton={false}
+				class="video-dialog max-w-[min(72rem,calc(100%-2rem))] overflow-visible bg-black p-0 text-white ring-white/20"
+			>
+				<Dialog.Title class="sr-only">OpenPost product demo</Dialog.Title>
+				<Dialog.Description class="sr-only">
+					A four-minute walkthrough of drafting, adapting, scheduling, and publishing with OpenPost.
+				</Dialog.Description>
+				<Dialog.Close>
+					{#snippet child({ props })}
+						<button
+							{...props}
+							type="button"
+							class="video-close"
+							aria-label="Close product demo"
+							data-cuelume-release="droplet"
+						>
+							<X />
+						</button>
+					{/snippet}
+				</Dialog.Close>
+				{#if open}
+					<iframe
+						src={demoVideoEmbedUrl}
+						title="OpenPost product demo"
+						allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+						allowfullscreen
+					></iframe>
+				{/if}
+			</Dialog.Content>
+		</Dialog.Root>
 	</div>
 </section>
 
@@ -108,7 +131,7 @@
 
 	.demo-copy h2 {
 		margin-top: 1rem;
-		font-size: clamp(2.6rem, 5.5vw, 5.5rem);
+		font-size: clamp(2.5rem, 4.8vw, 4.2rem);
 		font-weight: 720;
 		line-height: 0.96;
 		letter-spacing: -0.04em;
@@ -127,20 +150,6 @@
 		border-color: rgb(255 255 255 / 0.24);
 		background: rgb(255 255 255 / 0.94);
 		color: oklch(0.16 0.01 52);
-	}
-
-	.demo-copy .privacy-note {
-		max-width: 31rem;
-		margin-top: 1.25rem;
-		color: rgb(255 255 255 / 0.42);
-		font-size: 0.7rem;
-		line-height: 1.55;
-	}
-
-	.demo-copy .privacy-note a {
-		color: rgb(255 255 255 / 0.72);
-		text-decoration: underline;
-		text-underline-offset: 0.18rem;
 	}
 
 	.demo-frame {
@@ -182,12 +191,60 @@
 		font-weight: 500;
 	}
 
-	.demo-frame iframe,
 	.demo-trigger {
 		display: block;
 		width: 100%;
 		aspect-ratio: 16 / 9;
 		border: 0;
+	}
+
+	.video-dialog {
+		aspect-ratio: 16 / 9;
+		box-shadow: 0 2.5rem 8rem rgb(0 0 0 / 0.58);
+	}
+
+	:global([data-slot='dialog-content'].video-dialog iframe) {
+		display: block;
+		width: 100%;
+		height: 100%;
+		border: 0;
+		border-radius: inherit;
+	}
+
+	.video-close {
+		position: absolute;
+		top: -3.25rem;
+		right: 0;
+		display: grid;
+		width: 2.75rem;
+		height: 2.75rem;
+		place-items: center;
+		border: 1px solid rgb(255 255 255 / 0.22);
+		border-radius: 50%;
+		background: rgb(14 13 12 / 0.82);
+		color: white;
+		box-shadow: 0 4px 0 rgb(0 0 0 / 0.72);
+		cursor: pointer;
+		transition:
+			transform 100ms ease,
+			box-shadow 100ms ease,
+			background 100ms ease;
+	}
+
+	.video-close:hover {
+		transform: translateY(-1px);
+		background: rgb(40 36 33 / 0.94);
+		box-shadow: 0 5px 0 rgb(0 0 0 / 0.72);
+	}
+
+	.video-close:active {
+		transform: translateY(3px);
+		box-shadow: 0 1px 0 rgb(0 0 0 / 0.72);
+	}
+
+	.video-close :global(svg) {
+		width: 1.15rem;
+		height: 1.15rem;
 	}
 
 	.demo-trigger {
@@ -275,7 +332,8 @@
 
 	@media (prefers-reduced-motion: reduce) {
 		.demo-trigger img,
-		.play-button {
+		.play-button,
+		.video-close {
 			transition: none;
 		}
 	}

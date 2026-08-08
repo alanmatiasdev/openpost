@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import Heart from 'lucide-svelte/icons/heart';
 	import MessageCircle from 'lucide-svelte/icons/message-circle';
 	import Repeat2 from 'lucide-svelte/icons/repeat-2';
@@ -29,19 +30,51 @@
 		}
 	];
 
+	let activeIndex = $state(1);
+	let autoplayStopped = $state(false);
+
 	function positionFor(index: number) {
-		if (index === 1) return 'active';
-		return index === 0 ? 'previous' : 'next';
+		const distance = (index - activeIndex + slides.length) % slides.length;
+		if (distance === 0) return 'active';
+		return distance === 1 ? 'next' : 'previous';
 	}
+
+	function selectSlide(index: number) {
+		autoplayStopped = true;
+		activeIndex = index;
+	}
+
+	function handleKeydown(event: KeyboardEvent) {
+		if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+		event.preventDefault();
+		const step = event.key === 'ArrowRight' ? 1 : -1;
+		selectSlide((activeIndex + step + slides.length) % slides.length);
+	}
+
+	onMount(() => {
+		if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+		const timer = window.setInterval(() => {
+			if (autoplayStopped || document.hidden) return;
+			activeIndex = (activeIndex + 1) % slides.length;
+		}, 5000);
+		return () => window.clearInterval(timer);
+	});
 </script>
 
-<div class="results-carousel" role="img" aria-label="Social publishing result previews">
+<div class="results-carousel" role="group" aria-label="Social publishing result previews">
+	<p class="sr-only" aria-live="polite">Showing {slides[activeIndex].name}</p>
 	<div class="phone-stage">
 		{#each slides as slide, index (slide.platform)}
 			{@const position = positionFor(index)}
-			<div
+			<button
+				type="button"
 				class={['phone-position', `phone-${position}`]}
-				aria-label={slide.name}
+				aria-label={`Show ${slide.name}`}
+				aria-pressed={index === activeIndex}
+				data-active={index === activeIndex ? 'true' : undefined}
+				data-cuelume-release="page"
+				onclick={() => selectSlide(index)}
+				onkeydown={handleKeydown}
 			>
 				<span class="phone-shell">
 					<span class="phone-hardware" aria-hidden="true">
@@ -55,7 +88,7 @@
 							<span class="screen-brand">
 								<PlatformIcon platform="tiktok" class="size-4" />
 								TikTok Studio
-								<small>Sample</small>
+								<small>Preview</small>
 							</span>
 							<span class="video-card">
 								<span class="video-art" aria-hidden="true">
@@ -93,7 +126,7 @@
 							<span class="screen-brand">
 								<PlatformIcon platform="x" class="size-4" />
 								Audience
-								<small>Sample</small>
+								<small>Preview</small>
 							</span>
 							<span class="profile-block">
 								<span class="profile-mark">OP</span>
@@ -130,7 +163,7 @@
 							<span class="screen-brand">
 								<PlatformIcon platform="instagram" class="size-4" />
 								Insights
-								<small>Sample</small>
+								<small>Preview</small>
 							</span>
 							<span class="insight-period">Last 30 days</span>
 							<span class="reach-ring">
@@ -151,7 +184,7 @@
 
 					<span class="phone-home" aria-hidden="true"></span>
 				</span>
-			</div>
+			</button>
 		{/each}
 	</div>
 </div>
@@ -178,11 +211,21 @@
 		border-radius: 2.6rem;
 		background: transparent;
 		color: white;
-		pointer-events: none;
+		cursor: pointer;
+		pointer-events: auto;
 		transition:
 			transform 560ms cubic-bezier(0.16, 1, 0.3, 1),
 			opacity 420ms ease,
 			filter 420ms ease;
+	}
+
+	.phone-position:focus-visible {
+		outline: 3px solid oklch(0.78 0.14 50);
+		outline-offset: 0.45rem;
+	}
+
+	.phone-position:active {
+		transition-duration: 110ms;
 	}
 
 	.phone-active {
@@ -701,7 +744,6 @@
 			transform: translateX(calc(-50% + 9.8rem)) translateY(3.8rem) rotateY(-11deg) rotateZ(2.5deg)
 				scale(0.77);
 		}
-
 	}
 
 	@media (prefers-reduced-motion: reduce) {

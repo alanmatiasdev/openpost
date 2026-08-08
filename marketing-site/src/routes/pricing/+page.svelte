@@ -94,14 +94,13 @@
       <h1
         class="mt-4 max-w-4xl text-4xl leading-[1.02] font-semibold tracking-[-0.035em] text-balance sm:text-6xl"
       >
-        Give your company a content team.
+        Choose your plan.
       </h1>
     </div>
     <div>
       <p class="marketing-copy">
-        Every plan helps you create, adapt, schedule, and track content from one
-        place. Higher plans add more workspaces, accounts, posts, storage, or
-        seats as the company grows.
+        Every plan includes drafting, platform versions, scheduling, media, and
+        publishing status.
       </p>
       <p class="mt-4 text-xs leading-5 text-muted-foreground">
         {managedAccessSummary}
@@ -150,22 +149,17 @@
           aria-labelledby="buyer-stage-title"
         >
           {#each buyerStages as stage (stage.id)}
-            <button
-              type="button"
+            <Button
+              variant={activeStage === stage.id ? "default" : "outline"}
               aria-pressed={activeStage === stage.id}
-              class={[
-                "focus-ring min-h-16 rounded-xl px-4 py-3 text-left transition-colors",
-                activeStage === stage.id
-                  ? "bg-foreground text-background"
-                  : "bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground",
-              ]}
+              class="h-auto min-h-16 w-full flex-col items-start px-4 py-3 text-left whitespace-normal"
               onclick={() => (activeStage = stage.id)}
             >
               <strong class="block text-sm">{stage.label}</strong>
               <span class="mt-1 block text-xs leading-5 opacity-75"
                 >{stage.description}</span
               >
-            </button>
+            </Button>
           {/each}
         </div>
       </div>
@@ -265,7 +259,7 @@
     <div class="max-w-3xl">
       <p class="section-label">Exact limits</p>
       <h2 id="limits-title" class="marketing-heading mt-4">
-        Compare only when you need the detail.
+        Compare plan limits.
       </h2>
       <p class="marketing-copy mt-5">
         Pro remains a single-user plan with higher limits. Team includes three

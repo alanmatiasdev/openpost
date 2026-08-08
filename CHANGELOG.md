@@ -7,10 +7,12 @@ All notable changes to this project are documented in this file.
 ### Added
 
 - Added tactile press and release sounds across raised buttons and common selection controls, plus reduced-motion-aware orange confetti when a post is scheduled.
+- Added the current official Postiz social logo set, an image-led publishing workflow mosaic, and an animated product-demo dialog to the marketing site.
 
 ### Changed
 
 - Kept the expanded planner sidebar and Calendar, Posts, Inbox, Analytics, and Media navigation consistent across authenticated routes, and eased raised-button press travel.
+- Restored clickable five-second hero result rotation that stops after manual selection, simplified landing-page copy, and tightened pricing layouts.
 
 ### Fixed
 

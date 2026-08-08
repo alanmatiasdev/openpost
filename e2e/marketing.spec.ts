@@ -27,13 +27,14 @@ test("marketing index links to the app and documentation @desktop", async ({
     "href",
     "https://app.openpost.social/register?plan=founder",
   );
-  await expect(
-    page.getByRole("img", { name: "Social publishing result previews" }),
-  ).toBeVisible();
+  const resultPreviews = page.getByRole("group", {
+    name: "Social publishing result previews",
+  });
+  await expect(resultPreviews).toBeVisible();
   await expect(page.getByText("Illustrative campaign results")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Next result" })).toHaveCount(
-    0,
-  );
+  await expect(
+    resultPreviews.getByRole("button", { name: "Show Audience growth" }),
+  ).toBeVisible();
   await expect(page.getByLabel("Companies using OpenPost")).toContainText(
     "The Actual World",
   );
@@ -41,25 +42,30 @@ test("marketing index links to the app and documentation @desktop", async ({
   await expect(page.getByAltText("Ark logo")).toBeVisible();
   await expect(
     page.getByRole("heading", {
-      name: "See the whole publishing loop.",
+      name: "See OpenPost in four minutes.",
     }),
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Play the OpenPost product demo" }),
   ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Play the OpenPost product demo" })
+    .click();
+  await expect(
+    page.getByRole("dialog", { name: "OpenPost product demo" }),
+  ).toBeVisible();
+  await expect(page.getByTitle("OpenPost product demo")).toBeVisible();
+  await page.getByRole("button", { name: "Close product demo" }).click();
+  await expect(page.getByTitle("OpenPost product demo")).toHaveCount(0);
+  await expect(page.getByText("One working loop")).toHaveCount(0);
   await expect(
     page.getByRole("heading", {
-      name: "One source enters. A week of useful content leaves.",
+      name: "Everything you need to publish.",
     }),
   ).toBeVisible();
   await expect(
     page.getByRole("heading", {
-      name: "Your ideas, assets, calendar, and results in one system.",
-    }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("heading", {
-      name: "Each platform gets the version it needs.",
+      name: "Adapt every post.",
     }),
   ).toBeVisible();
   await expect(page.getByAltText("OpenPost social accounts page")).toHaveCount(
@@ -70,11 +76,16 @@ test("marketing index links to the app and documentation @desktop", async ({
   ).toHaveAttribute("src", "/assets/screenshots/accounts-dark.png");
   await expect(
     page.getByRole("heading", {
-      name: "A content team that fits the founder’s day.",
+      name: "Built for focused publishing.",
     }),
   ).toBeVisible();
-  await expect(page.getByText("Illustrative creator stories")).toBeVisible();
-  await expect(page.getByAltText("Illustrative portrait of Maya Ribeiro")).toBeVisible();
+  await expect(page.getByText("Illustrative creator stories")).toHaveCount(0);
+  await expect(page.getByText("Example workflows using OpenPost")).toHaveCount(
+    0,
+  );
+  await expect(
+    page.getByAltText("Creator working at a desk").first(),
+  ).toBeVisible();
   await expect(
     page.getByRole("link", { name: "Self-host", exact: true }),
   ).toHaveCount(0);
@@ -155,6 +166,25 @@ test("marketing index has no horizontal overflow", async ({ page }) => {
   expect(overflow).toBeLessThanOrEqual(1);
 });
 
+test("hero result views rotate until the visitor chooses one", async ({
+  page,
+}) => {
+  await page.goto("/");
+
+  const tiktok = page.getByRole("button", { name: "Show Video reach" });
+  const instagram = page.getByRole("button", { name: "Show Content results" });
+  const x = page.getByRole("button", { name: "Show Audience growth" });
+
+  await expect(tiktok).toHaveAttribute("data-active", "true");
+  await page.waitForTimeout(5_200);
+  await expect(instagram).toHaveAttribute("data-active", "true");
+
+  await x.click();
+  await expect(x).toHaveAttribute("data-active", "true");
+  await page.waitForTimeout(5_200);
+  await expect(x).toHaveAttribute("data-active", "true");
+});
+
 test("marketing raised buttons synthesize tactile feedback @desktop", async ({
   page,
 }) => {
@@ -170,8 +200,9 @@ test("marketing raised buttons synthesize tactile feedback @desktop", async ({
       },
       disconnect() {},
       start() {
-        (window as Window & { __openpostSoundStarts?: number })
-          .__openpostSoundStarts =
+        (
+          window as Window & { __openpostSoundStarts?: number }
+        ).__openpostSoundStarts =
           ((window as Window & { __openpostSoundStarts?: number })
             .__openpostSoundStarts ?? 0) + 1;
       },
@@ -219,7 +250,9 @@ test("marketing raised buttons synthesize tactile feedback @desktop", async ({
   await page.goto("/");
   const hopOn = page.getByRole("link", { name: "Hop on", exact: true });
   await expect(hopOn).toHaveAttribute("data-cuelume-press", "press");
+  await expect(hopOn).toHaveAttribute("data-cuelume-release", "release");
   await hopOn.dispatchEvent("pointerdown", { pointerType: "mouse" });
+  await hopOn.dispatchEvent("pointerup", { pointerType: "mouse" });
   await expect
     .poll(() =>
       page.evaluate(
@@ -228,7 +261,7 @@ test("marketing raised buttons synthesize tactile feedback @desktop", async ({
             .__openpostSoundStarts ?? 0,
       ),
     )
-    .toBeGreaterThan(0);
+    .toBeGreaterThan(1);
 });
 
 test("marketing navigation uses the shared responsive menu patterns", async ({

@@ -1,30 +1,57 @@
 <script lang="ts">
 	import PlatformIcon from '$lib/components/platform-icon.svelte';
 
-	const stories = [
+	interface Workflow {
+		title: string;
+		role: string;
+		image?: string;
+		platform: string;
+		content: string;
+	}
+
+	const workflows: readonly Workflow[] = [
 		{
-			name: 'Maya Ribeiro',
-			role: 'Founder, Norte Studio',
+			title: 'Launch day',
+			role: 'Solo founder',
 			image: '/assets/testimonial-portraits/maya-ribeiro.webp',
-			quote:
-				'I start with the release note, then shape the LinkedIn post, X thread, and visual update while the idea is still fresh.',
-			platforms: ['linkedin', 'x', 'instagram']
+			platform: 'linkedin',
+			content:
+				'Turn one product update into a LinkedIn post, an X thread, and a short video without starting over.'
 		},
 		{
-			name: 'Jordan Ellis',
-			role: 'Founder, Patchwork Labs',
+			title: 'A full week, planned',
+			role: 'Creator',
+			platform: 'instagram',
+			content: 'Draft the week, choose each destination, and schedule every post from one calendar.'
+		},
+		{
+			title: 'Every format in view',
+			role: 'Product team',
 			image: '/assets/testimonial-portraits/jordan-ellis.webp',
-			quote:
-				'The useful part is seeing every destination next to the source. I can change the format without losing the point of the post.',
-			platforms: ['youtube', 'mastodon', 'bluesky']
+			platform: 'youtube',
+			content:
+				'Keep the source idea beside the text, image, Story, short-video, and video versions it becomes.'
 		},
 		{
-			name: 'Priya Nair',
-			role: 'Founder, Little Atlas',
+			title: 'Replies stay close',
+			role: 'Community lead',
+			platform: 'mastodon',
+			content: 'Read and answer conversations without losing the post or account behind them.'
+		},
+		{
+			title: 'One clear workspace',
+			role: 'Small team',
 			image: '/assets/testimonial-portraits/priya-nair.webp',
-			quote:
-				'I can prepare a week of publishing in one focused pass, then get back to the product instead of reopening every network.',
-			platforms: ['tiktok', 'threads', 'facebook']
+			platform: 'tiktok',
+			content:
+				'Share drafts, media, schedules, and publishing status without passing files between tools.'
+		},
+		{
+			title: 'Results beside the work',
+			role: 'Founder',
+			platform: 'x',
+			content:
+				'See what published, what failed, and what earned attention while the campaign is still fresh.'
 		}
 	] as const;
 </script>
@@ -32,29 +59,27 @@
 <section class="stories" aria-labelledby="stories-title">
 	<div class="marketing-shell">
 		<header class="stories-heading">
-			<div>
-				<p>Illustrative creator stories</p>
-				<h2 id="stories-title">A content team that fits the founder’s day.</h2>
-			</div>
-			<span>Example workflows using OpenPost</span>
+			<h2 id="stories-title">Built for focused publishing.</h2>
+			<p>Everything stays close, from the first draft to the final result.</p>
 		</header>
 
-		<div class="story-grid">
-			{#each stories as story, index (story.name)}
-				<article class:story-featured={index === 0} class="story-card">
-					<img src={story.image} alt={`Illustrative portrait of ${story.name}`} loading="lazy" />
-					<div class="story-body">
-						<div class="story-platforms" aria-label="Example destinations">
-							{#each story.platforms as platform (platform)}
-								<span><PlatformIcon {platform} /></span>
-							{/each}
+		<div class="story-mosaic">
+			{#each workflows as workflow (workflow.title)}
+				<article class="story-card">
+					{#if workflow.image}
+						<img class="story-image" src={workflow.image} alt="Creator working at a desk" />
+					{/if}
+					<header>
+						<span class="story-mark"><PlatformIcon platform={workflow.platform} /></span>
+						<div>
+							<h3>{workflow.title}</h3>
+							<span>{workflow.role}</span>
 						</div>
-						<blockquote>“{story.quote}”</blockquote>
-						<footer>
-							<strong>{story.name}</strong>
-							<span>{story.role}</span>
-						</footer>
-					</div>
+						<span class="story-source" aria-label={`${workflow.platform} workflow`}>
+							<PlatformIcon platform={workflow.platform} />
+						</span>
+					</header>
+					<p>{workflow.content}</p>
 				</article>
 			{/each}
 		</div>
@@ -63,147 +88,128 @@
 
 <style>
 	.stories {
-		padding-block: clamp(5rem, 10vw, 9rem);
+		padding-block: clamp(4.5rem, 9vw, 7.5rem);
 		background: color-mix(in oklch, var(--muted) 38%, var(--background));
 	}
 
 	.stories-heading {
 		display: grid;
-		gap: 1.5rem;
-		align-items: end;
-		margin-bottom: clamp(2.5rem, 6vw, 5rem);
-	}
-
-	.stories-heading p {
-		color: var(--primary);
-		font-size: 0.75rem;
-		font-weight: 700;
-		letter-spacing: 0.08em;
-		text-transform: uppercase;
+		gap: 1rem;
+		margin: 0 auto clamp(2.5rem, 5vw, 4rem);
+		text-align: center;
 	}
 
 	.stories-heading h2 {
-		max-width: 46rem;
-		margin-top: 0.9rem;
-		font-size: clamp(2.5rem, 5vw, 5rem);
+		font-size: clamp(2.25rem, 4.5vw, 4rem);
 		font-weight: 710;
-		line-height: 0.98;
-		letter-spacing: -0.04em;
+		line-height: 1;
+		letter-spacing: -0.038em;
 		text-wrap: balance;
 	}
 
-	.stories-heading > span {
-		max-width: 18rem;
+	.stories-heading p {
 		color: var(--muted-foreground);
-		font-size: 0.78rem;
-		line-height: 1.5;
+		font-size: 1rem;
+		line-height: 1.6;
 	}
 
-	.story-grid {
-		display: grid;
-		gap: 1rem;
+	.story-mosaic {
+		columns: 1;
+		column-gap: 1rem;
 	}
 
 	.story-card {
-		display: grid;
-		overflow: hidden;
-		min-width: 0;
-		border-radius: 1.15rem;
+		break-inside: avoid;
+		margin-bottom: 1rem;
+		padding: clamp(1.25rem, 2vw, 1.6rem);
+		border: 1px solid var(--border);
+		border-radius: 1rem;
 		background: var(--card);
-		box-shadow: 0 1.5rem 4rem -2.5rem color-mix(in oklch, var(--foreground) 30%, transparent);
+		box-shadow: 0 0.9rem 2.5rem -2rem color-mix(in oklch, var(--foreground) 32%, transparent);
 	}
 
-	.story-card > img {
+	.story-card:nth-child(3n + 1) {
+		padding-bottom: clamp(1.8rem, 3vw, 2.4rem);
+	}
+
+	.story-image {
 		display: block;
-		width: 100%;
-		aspect-ratio: 5 / 4;
+		width: calc(100% + clamp(2.5rem, 4vw, 3.2rem));
+		height: clamp(10rem, 18vw, 14rem);
+		margin: calc(clamp(1.25rem, 2vw, 1.6rem) * -1);
+		margin-bottom: 1.35rem;
+		border-radius: 1rem 1rem 0.45rem 0.45rem;
 		object-fit: cover;
 	}
 
-	.story-body {
+	.story-card header {
 		display: flex;
-		min-height: 17rem;
-		flex-direction: column;
-		padding: clamp(1.4rem, 3vw, 2.25rem);
+		align-items: center;
+		gap: 0.75rem;
 	}
 
-	.story-platforms {
-		display: flex;
-		gap: 0.35rem;
+	.story-mark {
+		display: grid;
+		width: 2.5rem;
+		height: 2.5rem;
+		flex: none;
+		place-items: center;
+		border-radius: 50%;
+		background: var(--muted);
+		object-fit: cover;
 	}
 
-	.story-platforms span {
+	.story-mark :global(svg) {
+		width: 1rem;
+		height: 1rem;
+	}
+
+	.story-card header > div {
+		display: grid;
+		min-width: 0;
+		gap: 0.12rem;
+	}
+
+	.story-card h3 {
+		font-size: 0.9rem;
+		font-weight: 650;
+	}
+
+	.story-card header div span {
+		color: var(--muted-foreground);
+		font-size: 0.75rem;
+	}
+
+	.story-source {
 		display: grid;
 		width: 2rem;
 		height: 2rem;
+		margin-left: auto;
 		place-items: center;
-		border-radius: 0.6rem;
-		background: var(--muted);
 		color: var(--muted-foreground);
 	}
 
-	.story-platforms :global(svg) {
+	.story-source :global(svg) {
 		width: 0.9rem;
 		height: 0.9rem;
 	}
 
-	blockquote {
-		margin: 2rem 0;
-		font-size: clamp(1.05rem, 1.6vw, 1.35rem);
-		font-weight: 570;
-		line-height: 1.48;
-		letter-spacing: -0.02em;
-	}
-
-	.story-body footer {
-		display: grid;
-		gap: 0.18rem;
-		margin-top: auto;
-	}
-
-	.story-body footer strong {
-		font-size: 0.9rem;
-	}
-
-	.story-body footer span {
-		color: var(--muted-foreground);
-		font-size: 0.75rem;
+	.story-card > p {
+		margin-top: 1.5rem;
+		color: color-mix(in oklch, var(--foreground) 72%, transparent);
+		font-size: clamp(0.96rem, 1.4vw, 1.08rem);
+		line-height: 1.7;
 	}
 
 	@media (min-width: 48rem) {
-		.stories-heading {
-			grid-template-columns: 1fr auto;
+		.story-mosaic {
+			columns: 2;
 		}
+	}
 
-		.story-grid {
-			grid-template-columns: 1.15fr 0.85fr;
-		}
-
-		.story-featured {
-			grid-row: span 2;
-		}
-
-		.story-featured > img {
-			aspect-ratio: 4 / 3;
-		}
-
-		.story-card:not(.story-featured) {
-			grid-template-columns: minmax(10rem, 0.62fr) 1fr;
-		}
-
-		.story-card:not(.story-featured) > img {
-			height: 100%;
-			aspect-ratio: auto;
-		}
-
-		.story-card:not(.story-featured) .story-body {
-			min-height: 18rem;
-			padding: 1.5rem;
-		}
-
-		.story-card:not(.story-featured) blockquote {
-			margin-block: 1.4rem;
-			font-size: 1rem;
+	@media (min-width: 64rem) {
+		.story-mosaic {
+			columns: 3;
 		}
 	}
 </style>
