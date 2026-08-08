@@ -34,6 +34,8 @@ All notable changes to this project are documented in this file.
 - Made Image Editor conflict reloads preserve local work as a separately titled cloud design before loading the newer server revision, with visible failure recovery.
 - Added signed-in project-import cancellation and resume, stylus palm rejection, touch pinch routing, dialog/sheet focus restoration, keyboard-only export coverage, and Portuguese browser-zoom proof.
 
+- Preserve plan and destination context through Google signup and legal acceptance, remove duplicate workspace bootstrap redirects, and send existing Google users back to their intended destination instead of checkout.
+
 ## [3.3.2] - 2026-08-06
 
 ### Added
