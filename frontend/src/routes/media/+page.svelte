@@ -134,7 +134,8 @@
 	let filter = $state<string>('all');
 	let lifecycleView = $state<'library' | 'temporary' | 'trash'>('library');
 	let sort = $state<string>('newest');
-	let search = $state('');
+	let searchInput = $state('');
+	let appliedSearch = $state('');
 	let mediaType = $state('all');
 	let source = $state('all');
 	let selectedTagIDs = $state.raw<string[]>([]);
@@ -243,7 +244,7 @@
 	}
 
 	function mediaViewKey() {
-		return `${selectedWorkspaceId}:${lifecycleView}:${filter}:${sort}:${search}:${mediaType}:${source}:${selectedTagIDs.join(',')}:${showUntagged}:${aspect}:${minWidth}:${minHeight}:${maxWidth}:${maxHeight}:${dateFrom}:${dateTo}:${currentPage}`;
+		return `${selectedWorkspaceId}:${lifecycleView}:${filter}:${sort}:${appliedSearch}:${mediaType}:${source}:${selectedTagIDs.join(',')}:${showUntagged}:${aspect}:${minWidth}:${minHeight}:${maxWidth}:${maxHeight}:${dateFrom}:${dateTo}:${currentPage}`;
 	}
 
 	async function loadWorkspaces() {
@@ -282,7 +283,7 @@
 						lifecycle: lifecycleView,
 						filter: filter,
 						sort: sort,
-						search,
+						search: appliedSearch,
 						type: mediaType,
 						source,
 						tag_ids: selectedTagIDs.join(','),
@@ -371,7 +372,8 @@
 	}
 
 	function showAllAssets() {
-		search = '';
+		searchInput = '';
+		appliedSearch = '';
 		resetAssetFilters();
 	}
 
@@ -419,6 +421,19 @@
 	function applyAssetFilters() {
 		currentPage = 0;
 		filterDialogOpen = false;
+		void loadMedia();
+	}
+
+	function submitSearch() {
+		appliedSearch = searchInput.trim();
+		currentPage = 0;
+		void loadMedia();
+	}
+
+	function clearSearch() {
+		searchInput = '';
+		appliedSearch = '';
+		currentPage = 0;
 		void loadMedia();
 	}
 
@@ -1075,7 +1090,7 @@
 			class="flex min-w-0 flex-1 gap-2"
 			onsubmit={(event) => {
 				event.preventDefault();
-				applyAssetFilters();
+				submitSearch();
 			}}
 		>
 			<div class="relative min-w-0 flex-1">
@@ -1083,10 +1098,28 @@
 					class="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
 				/>
 				<Input
-					class="h-11 pr-3 pl-9"
-					bind:value={search}
+					class="h-11 pr-10 pl-9"
+					bind:value={searchInput}
 					placeholder={m.media_search_filename_alt()}
+					onkeydown={(event) => {
+						if (event.key === 'Enter' && !event.isComposing) {
+							event.preventDefault();
+							submitSearch();
+						}
+					}}
 				/>
+				{#if searchInput || appliedSearch}
+					<Button
+						type="button"
+						variant="ghost"
+						size="icon"
+						class="absolute top-1/2 right-0.5 size-10 -translate-y-1/2"
+						aria-label={m.media_clear_search()}
+						onclick={clearSearch}
+					>
+						<XIcon class="size-4" />
+					</Button>
+				{/if}
 			</div>
 			<Button
 				type="submit"
@@ -1162,6 +1195,13 @@
 			{/if}
 		</div>
 	</div>
+	{#if appliedSearch && !mediaLoading && !error}
+		<p class="pb-3 text-sm text-muted-foreground" role="status" data-testid="media-result-count">
+			{totalCount === 1
+				? m.media_search_result_one({ query: appliedSearch })
+				: m.media_search_results({ count: totalCount, query: appliedSearch })}
+		</p>
+	{/if}
 
 	{#if isSelectionMode}
 		<div
@@ -1232,7 +1272,7 @@
 			{/snippet}
 		</InlineNotice>
 	{:else if mediaItems.length === 0}
-		{#if activeFilterCount > 0 || search.trim()}
+		{#if activeFilterCount > 0 || appliedSearch}
 			<EmptyState
 				icon={ImageIcon}
 				title={m.media_empty_title()}

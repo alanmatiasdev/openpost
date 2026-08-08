@@ -2,6 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { untrack } from 'svelte';
+	import { fade } from 'svelte/transition';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import * as Sheet from '$lib/components/ui/sheet';
 	import { Button } from '$lib/components/ui/button';
@@ -293,11 +294,17 @@
 </script>
 
 {#snippet pickerBody()}
-	<div class="flex shrink-0 gap-1 overflow-x-auto border-b px-4 py-2" aria-label={m.media_source()}>
+	<div
+		class="flex shrink-0 gap-1 overflow-x-auto border-b bg-muted/10 px-3 py-2 sm:px-4"
+		role="tablist"
+		aria-label={m.media_source()}
+	>
 		<Button
 			variant={pickerMode === 'library' ? 'secondary' : 'ghost'}
 			size="sm"
-			class="min-h-11 shrink-0 sm:min-h-9"
+			class="min-h-11 shrink-0 rounded-lg px-3 shadow-none sm:min-h-9"
+			role="tab"
+			aria-selected={pickerMode === 'library'}
 			onclick={() => {
 				pickerMode = 'library';
 				void loadMedia();
@@ -309,7 +316,9 @@
 		<Button
 			variant={pickerMode === 'device' ? 'secondary' : 'ghost'}
 			size="sm"
-			class="min-h-11 shrink-0 sm:min-h-9"
+			class="min-h-11 shrink-0 rounded-lg px-3 shadow-none sm:min-h-9"
+			role="tab"
+			aria-selected={pickerMode === 'device'}
 			disabled={actionLoading || selectedIDs.length >= maxSelection}
 			onclick={() => (pickerMode = 'device')}
 		>
@@ -320,7 +329,9 @@
 			<Button
 				variant={pickerMode === 'camera' ? 'secondary' : 'ghost'}
 				size="sm"
-				class="min-h-11 shrink-0 sm:min-h-9"
+				class="min-h-11 shrink-0 rounded-lg px-3 shadow-none sm:min-h-9"
+				role="tab"
+				aria-selected={pickerMode === 'camera'}
 				disabled={actionLoading || selectedIDs.length >= maxSelection}
 				onclick={() => (pickerMode = 'camera')}
 			>
@@ -332,7 +343,9 @@
 			<Button
 				variant={pickerMode === 'stock' ? 'secondary' : 'ghost'}
 				size="sm"
-				class="min-h-11 shrink-0 sm:min-h-9"
+				class="min-h-11 shrink-0 rounded-lg px-3 shadow-none sm:min-h-9"
+				role="tab"
+				aria-selected={pickerMode === 'stock'}
 				disabled={actionLoading || selectedIDs.length >= maxSelection}
 				onclick={() => (pickerMode = 'stock')}
 			>
@@ -344,7 +357,7 @@
 			<Button
 				variant="ghost"
 				size="sm"
-				class="min-h-11 shrink-0 sm:min-h-9"
+				class="min-h-11 shrink-0 rounded-lg px-3 shadow-none sm:min-h-9"
 				disabled={actionLoading}
 				onclick={createDesign}
 			>
@@ -356,7 +369,7 @@
 			<Button
 				variant="ghost"
 				size="sm"
-				class="min-h-11 shrink-0 sm:min-h-9"
+				class="min-h-11 shrink-0 rounded-lg px-3 shadow-none sm:min-h-9"
 				disabled={actionLoading}
 				onclick={createVideo}
 			>
@@ -530,20 +543,24 @@
 			</Button>
 		</div>
 	{:else}
-		<div class="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
+		<div
+			class="min-h-0 flex-1 overflow-y-auto bg-gradient-to-b from-muted/5 to-transparent p-4 sm:p-5"
+		>
 			{#key pickerMode}
-				<MediaAcquisitionPanel
-					mode={pickerMode}
-					{workspaceId}
-					{accept}
-					maxFiles={Math.max(1, maxSelection - selectedIDs.length)}
-					retentionClass={purpose === 'media_library' ? 'library' : 'temporary'}
-					tagId={uploadTagID()}
-					{videoConstraints}
-					{initialFiles}
-					{onInitialFilesConsumed}
-					onUploaded={handleUploaded}
-				/>
+				<div transition:fade={{ duration: 150 }}>
+					<MediaAcquisitionPanel
+						mode={pickerMode}
+						{workspaceId}
+						{accept}
+						maxFiles={Math.max(1, maxSelection - selectedIDs.length)}
+						retentionClass={purpose === 'media_library' ? 'library' : 'temporary'}
+						tagId={uploadTagID()}
+						{videoConstraints}
+						{initialFiles}
+						{onInitialFilesConsumed}
+						onUploaded={handleUploaded}
+					/>
+				</div>
 			{/key}
 		</div>
 	{/if}

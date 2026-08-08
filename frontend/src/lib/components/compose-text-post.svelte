@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onDestroy, onMount, tick } from 'svelte';
+	import { fade, fly } from 'svelte/transition';
 	import { page } from '$app/stores';
 	import { beforeNavigate, goto, replaceState } from '$app/navigation';
 	import { resolve } from '$app/paths';
@@ -20,6 +21,7 @@
 	import { Textarea } from '$lib/components/ui/textarea';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
+	import * as Sheet from '$lib/components/ui/sheet';
 	import * as Tooltip from '$lib/components/ui/tooltip';
 	import SocialSetControl from './social-set-control.svelte';
 	import ComposerRequiredFields from './composer-required-fields.svelte';
@@ -45,7 +47,7 @@
 	import Trash2Icon from 'lucide-svelte/icons/trash-2';
 	import TypeIcon from 'lucide-svelte/icons/type';
 	import MoreHorizontalIcon from 'lucide-svelte/icons/ellipsis';
-	import LinkIcon from 'lucide-svelte/icons/link';
+	import SettingsIcon from 'lucide-svelte/icons/settings-2';
 	import { ui } from '$lib/stores/ui.svelte';
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import { ReorderableList } from 'svelte-reorderable-list';
@@ -108,6 +110,7 @@
 	import { buildComposerPreview } from '$lib/compose-preview';
 	import { openPreviewWindow, type PreviewWindowSession } from '$lib/preview-window';
 	import { uploadMediaFile } from '$lib/media-upload-client';
+	import { firstComposerURL } from './compose/composer-links';
 
 	// --------------------------------------------------------------------------
 	// Types
@@ -155,7 +158,6 @@
 		draft_id: string | null;
 		publication_id: string;
 		link_url: string;
-		show_link_input: boolean;
 		settings_by_account: Record<string, Record<string, unknown>>;
 		segment_settings_by_post: Record<string, Record<string, Record<string, unknown>>>;
 		media_settings_by_account: Record<string, Record<string, Record<string, unknown>>>;
@@ -213,7 +215,7 @@
 	let draftConflict = $state<DraftConflictProblem | null>(null);
 	let conflictDialogOpen = $state(false);
 	let linkUrl = $state('');
-	let showLinkInput = $state(false);
+	let composerSettingsOpen = $state(false);
 
 	let workspaces = $state<Workspace[]>([]);
 	let selectedWorkspaceId = $state<string>('');
@@ -336,6 +338,8 @@
 
 	const activePost = $derived(posts[activePostIndex] ?? posts[0]);
 	const hasContent = $derived(hasAnyContent(posts));
+	const hasWrittenContent = $derived(posts.some((post) => post.content.trim().length > 0));
+	const showInspirationControl = $derived(!hasWrittenContent && !isSubmitting);
 	const totalChars = $derived(posts.reduce((sum, p) => sum + p.content.length, 0));
 	const isThread = $derived(posts.length > 1);
 	const textComposerMode = $derived<ComposerModeKey>(isThread ? 'thread' : 'post');
@@ -1120,8 +1124,7 @@
 				.filter((rendition) => Boolean(rendition.schedule_override))
 				.map((rendition) => [rendition.social_account_id, rendition.schedule_override!])
 		);
-		linkUrl = publication.source_url ?? '';
-		showLinkInput = Boolean(linkUrl);
+		linkUrl = firstComposerURL(posts[0]?.content ?? '') || publication.source_url || '';
 		settingsByAccount = Object.fromEntries(
 			(publication.renditions ?? []).map((rendition) => [
 				rendition.social_account_id,
@@ -1587,7 +1590,6 @@
 				draft_id: draftId,
 				publication_id: publicationId,
 				link_url: linkUrl,
-				show_link_input: showLinkInput,
 				settings_by_account: $state.snapshot(settingsByAccount),
 				segment_settings_by_post: $state.snapshot(segmentSettingsByPost),
 				media_settings_by_account: $state.snapshot(mediaSettingsByAccount),
@@ -1635,8 +1637,7 @@
 				activeVariantAccountId = payload.active_variant_account_id;
 				draftId = payload.draft_id;
 				publicationId = payload.publication_id;
-				linkUrl = payload.link_url;
-				showLinkInput = payload.show_link_input;
+				linkUrl = firstComposerURL(payload.posts[0]?.content ?? '') || payload.link_url;
 				settingsByAccount = structuredClone(payload.settings_by_account);
 				segmentSettingsByPost = structuredClone(payload.segment_settings_by_post);
 				mediaSettingsByAccount = structuredClone(payload.media_settings_by_account);
@@ -1718,7 +1719,6 @@
 			mediaMimeTypes = new Map();
 			mediaSizes = new Map();
 			linkUrl = '';
-			showLinkInput = false;
 			settingsByAccount = {};
 			segmentSettingsByPost = {};
 			mediaSettingsByAccount = {};
@@ -2186,7 +2186,6 @@
 		mediaMimeTypes = new Map();
 		mediaSizes = new Map();
 		linkUrl = '';
-		showLinkInput = false;
 		settingsByAccount = {};
 		segmentSettingsByPost = {};
 		mediaSettingsByAccount = {};
@@ -2301,24 +2300,6 @@
 		validationIssues = [];
 		scheduleAutoSave();
 		scheduleCapabilityResolve();
-	}
-
-	function destinationScheduleValue(accountId: string): string {
-		const value = scheduleOverridesByAccount[accountId];
-		if (!value) return '';
-		const date = new Date(value);
-		if (Number.isNaN(date.getTime())) return '';
-		const offset = date.getTimezoneOffset() * 60_000;
-		return new Date(date.getTime() - offset).toISOString().slice(0, 16);
-	}
-
-	function updateDestinationSchedule(accountId: string, value: string) {
-		const next = { ...scheduleOverridesByAccount };
-		if (value) next[accountId] = new Date(value).toISOString();
-		else delete next[accountId];
-		scheduleOverridesByAccount = next;
-		validationIssues = [];
-		scheduleAutoSave();
 	}
 
 	// --------------------------------------------------------------------------
@@ -2777,7 +2758,6 @@
 				variants = new Map();
 				activeVariantAccountId = null;
 				linkUrl = '';
-				showLinkInput = false;
 				settingsByAccount = {};
 				segmentSettingsByPost = {};
 				mediaSettingsByAccount = {};
@@ -3001,10 +2981,13 @@
 	}
 
 	function applyPromptContent(prompt: { text: string; example?: string }) {
-		posts = [{ ...makeEmptyPost(), content: resolvePromptContent(prompt) }];
+		const content = resolvePromptContent(prompt);
+		posts = [{ ...makeEmptyPost(), content }];
+		linkUrl = firstComposerURL(content);
 		activePostIndex = 0;
 		variants = new Map();
 		activeVariantAccountId = null;
+		dismissPrompt();
 		scheduleAutoSave();
 	}
 
@@ -3373,6 +3356,8 @@
 	// --------------------------------------------------------------------------
 	function setPostContent(index: number, value: string) {
 		posts = posts.map((p, pi) => (pi === index ? { ...p, content: value } : p));
+		if (index === 0) linkUrl = firstComposerURL(value);
+		if (value.trim() && showPromptCard) dismissPrompt();
 		scheduleAutoSave();
 	}
 
@@ -3440,31 +3425,32 @@
 				{#if accounts.length > 0}
 					<ComposerValidationMenu issues={visibleGlobalIssues} />
 				{/if}
-				<DropdownMenu.Root>
-					<DropdownMenu.Trigger>
-						{#snippet child({ props })}
-							<Button
-								{...props}
-								type="button"
-								variant="outline"
-								size="icon"
-								class="size-11 shrink-0"
-								aria-label={m.sidebar_more()}
-							>
-								<MoreHorizontalIcon class="size-4" />
-							</Button>
-						{/snippet}
-					</DropdownMenu.Trigger>
-					<DropdownMenu.Content class="w-56" align="end">
-						<DropdownMenu.Item
-							class="min-h-11"
+				{#if showInspirationControl}
+					<div transition:fade={{ duration: 160 }}>
+						<Button
+							type="button"
+							variant="ghost"
+							size="icon"
+							class={showPromptCard ? 'size-11 text-primary' : 'size-11 text-muted-foreground'}
 							onclick={() => (showPromptCard ? dismissPrompt() : fetchRandomPrompt())}
+							aria-label={showPromptCard
+								? m.compose_dismiss_inspiration()
+								: m.compose_need_inspiration()}
 						>
-							<LightbulbIcon class="mr-2 size-4" />
-							{showPromptCard ? m.compose_dismiss_inspiration() : m.compose_need_inspiration()}
-						</DropdownMenu.Item>
-					</DropdownMenu.Content>
-				</DropdownMenu.Root>
+							<LightbulbIcon class="size-4" />
+						</Button>
+					</div>
+				{/if}
+				<Button
+					type="button"
+					variant="ghost"
+					size="icon"
+					class="size-11 text-muted-foreground"
+					onclick={() => (composerSettingsOpen = true)}
+					aria-label={m.compose_post_settings()}
+				>
+					<SettingsIcon class="size-4" />
+				</Button>
 				{#if isEditMode && !autoSavesDraft}
 					<Button
 						type="button"
@@ -3563,7 +3549,34 @@
 			</div>
 
 			<div class="flex flex-wrap items-center gap-1.5 md:gap-2">
-				<!-- Prompt -->
+				{#if showInspirationControl}
+					<div transition:fade={{ duration: 160 }}>
+						<Tooltip.Root>
+							<Tooltip.Trigger>
+								{#snippet child({ props })}
+									<Button
+										{...props}
+										variant="ghost"
+										size="icon"
+										class={showPromptCard ? 'text-primary' : 'text-muted-foreground'}
+										onclick={() => (showPromptCard ? dismissPrompt() : fetchRandomPrompt())}
+										aria-label={showPromptCard
+											? m.compose_dismiss_inspiration()
+											: m.compose_need_inspiration()}
+									>
+										<LightbulbIcon class="size-4" />
+									</Button>
+								{/snippet}
+							</Tooltip.Trigger>
+							<Tooltip.Content>
+								<p class="text-sm">
+									{showPromptCard ? m.compose_dismiss_inspiration() : m.compose_need_inspiration()}
+								</p>
+							</Tooltip.Content>
+						</Tooltip.Root>
+					</div>
+				{/if}
+
 				<Tooltip.Root>
 					<Tooltip.Trigger>
 						{#snippet child({ props })}
@@ -3571,24 +3584,15 @@
 								{...props}
 								variant="ghost"
 								size="icon"
-								class={showPromptCard ? 'text-amber-500' : ''}
-								onclick={() => (showPromptCard ? dismissPrompt() : fetchRandomPrompt())}
-								title={showPromptCard
-									? m.compose_dismiss_inspiration()
-									: m.compose_need_inspiration()}
-								aria-label={showPromptCard
-									? m.compose_dismiss_inspiration()
-									: m.compose_need_inspiration()}
+								class="text-muted-foreground"
+								onclick={() => (composerSettingsOpen = true)}
+								aria-label={m.compose_post_settings()}
 							>
-								<LightbulbIcon class="h-4 w-4" />
+								<SettingsIcon class="size-4" />
 							</Button>
 						{/snippet}
 					</Tooltip.Trigger>
-					<Tooltip.Content>
-						<p class="text-sm">
-							{showPromptCard ? m.compose_dismiss_inspiration() : m.compose_need_inspiration()}
-						</p>
-					</Tooltip.Content>
+					<Tooltip.Content><p class="text-sm">{m.compose_post_settings()}</p></Tooltip.Content>
 				</Tooltip.Root>
 
 				{#if isEditMode && !autoSavesDraft}
@@ -3839,34 +3843,6 @@
 										{/if}
 									</DropdownMenu.Content>
 								</DropdownMenu.Root>
-								<details class="ml-auto text-sm">
-									<summary class="flex min-h-11 cursor-pointer items-center md:min-h-9">
-										{m.compose_advanced_delivery()}
-									</summary>
-									<div class="mt-2 w-[min(20rem,calc(100vw-2rem))] space-y-1.5 pb-1">
-										<label
-											class="text-xs font-medium"
-											for="destination-schedule-{activeVariantAccount.id}"
-										>
-											{m.compose_destination_schedule()}
-										</label>
-										<Input
-											id="destination-schedule-{activeVariantAccount.id}"
-											type="datetime-local"
-											value={destinationScheduleValue(activeVariantAccount.id)}
-											oninput={(event) =>
-												updateDestinationSchedule(
-													activeVariantAccount!.id,
-													event.currentTarget.value
-												)}
-										/>
-										<p class="text-xs text-muted-foreground">
-											{scheduleOverridesByAccount[activeVariantAccount.id]
-												? m.compose_custom_state()
-												: m.compose_schedule_inherited()}
-										</p>
-									</div>
-								</details>
 							</div>
 							{#if resolvedCapabilities[activeVariantAccount.id]?.segment_strategy === 'join' && posts.length > 1}
 								<p class="pt-2 text-xs text-muted-foreground">
@@ -3889,65 +3865,73 @@
 						onFormatChange={selectDestinationFormat}
 						onAddMedia={() => openMediaPicker(activePostIndex)}
 					/>
-					<details class="mb-5 rounded-lg border border-border/60 px-3 py-2 text-sm">
-						<summary class="flex min-h-9 cursor-pointer items-center text-muted-foreground">
-							{m.compose_advanced_delivery()}
-						</summary>
-						<div class="border-t pt-3">
-							<ComposerRepostControl
-								workspaceID={selectedWorkspaceId}
-								sourcePlatforms={[
-									...new Set(selectedAccounts.map((account) => getPlatformKey(account.platform)))
-								]}
-								bind:value={repostOverride}
-								disabled={!selectedWorkspaceId || isSaving || isSubmitting}
-								onChange={scheduleAutoSave}
-							/>
-						</div>
-					</details>
 				{/if}
 
 				<!-- Prompt Card -->
-				{#if showPromptCard}
-					<div class="relative mb-5 rounded border bg-muted/30 p-4 pr-20">
-						<div class="absolute top-2 right-2 flex items-center gap-1">
-							<Button
-								variant="ghost"
-								size="icon"
-								class="text-muted-foreground"
-								onclick={fetchRandomPrompt}
-								disabled={loadingPrompt}
-								title={m.compose_shuffle()}
-								aria-label={m.compose_shuffle()}
-							>
-								<ShuffleIcon class="size-4" />
-							</Button>
-							<Button
-								variant="ghost"
-								size="icon"
-								class="text-muted-foreground"
-								onclick={dismissPrompt}
-								title={m.compose_close()}
-								aria-label={m.compose_close()}
-							>
-								<XIcon class="size-4" />
-							</Button>
+				{#if showPromptCard && !hasWrittenContent}
+					<section
+						class="relative mb-5 overflow-hidden rounded-xl border border-primary/20 bg-primary/[0.035] p-4 shadow-sm sm:p-5"
+						aria-labelledby="composer-inspiration-title"
+						transition:fly={{ y: -6, duration: 200 }}
+					>
+						<div class="flex items-start justify-between gap-3">
+							<div class="flex min-w-0 items-center gap-2 text-primary">
+								<span
+									class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10"
+								>
+									<LightbulbIcon class="size-4" />
+								</span>
+								<p
+									id="composer-inspiration-title"
+									class="text-xs font-semibold tracking-wide uppercase"
+								>
+									{m.compose_writing_prompt()}
+								</p>
+							</div>
+							<div class="flex shrink-0 items-center gap-1">
+								<Button
+									variant="ghost"
+									size="icon"
+									class="size-9 text-muted-foreground"
+									onclick={fetchRandomPrompt}
+									disabled={loadingPrompt}
+									title={m.compose_shuffle()}
+									aria-label={m.compose_shuffle()}
+								>
+									<ShuffleIcon class="size-4" />
+								</Button>
+								<Button
+									variant="ghost"
+									size="icon"
+									class="size-9 text-muted-foreground"
+									onclick={dismissPrompt}
+									title={m.compose_close()}
+									aria-label={m.compose_close()}
+								>
+									<XIcon class="size-4" />
+								</Button>
+							</div>
 						</div>
 						{#if loadingPrompt}
-							<div class="space-y-2 py-2">
+							<div class="mt-4 space-y-2" role="status">
 								<Skeleton class="h-3 w-full" />
 								<Skeleton class="h-3 w-3/4" />
 							</div>
 						{:else if currentPrompt}
-							<p class="text-sm leading-relaxed text-foreground/80">{currentPrompt.text}</p>
+							<p class="mt-4 max-w-prose text-base leading-7 text-foreground">
+								{currentPrompt.text}
+							</p>
 							{#if currentPrompt.example}
-								<p
-									class="mt-3 border-t pt-3 text-sm leading-relaxed whitespace-pre-wrap text-foreground/90"
-								>
-									{currentPrompt.example}
-								</p>
+								<div class="mt-4 rounded-lg border border-border/70 bg-background/70 p-3 sm:p-4">
+									<p class="mb-1.5 text-xs font-medium text-muted-foreground">
+										{m.compose_prompt_example()}
+									</p>
+									<p class="text-sm leading-6 whitespace-pre-wrap text-foreground/90">
+										{currentPrompt.example}
+									</p>
+								</div>
 							{/if}
-							<div class="mt-3 flex justify-end">
+							<div class="mt-4 flex justify-end">
 								<Button
 									size="sm"
 									class="gap-1.5"
@@ -3961,7 +3945,7 @@
 						{:else}
 							<p class="text-sm text-muted-foreground">{m.compose_no_prompts()}</p>
 						{/if}
-					</div>
+					</section>
 				{/if}
 
 				<!-- Posts -->
@@ -3974,6 +3958,7 @@
 						direction="vertical"
 					>
 						{#snippet item(post, i)}
+							{@const editorContent = getEditorContentForPost(post)}
 							<div
 								class="group/post relative {isDraggingFile && activePostIndex === i
 									? 'bg-primary/5'
@@ -4025,7 +4010,7 @@
 													: m.compose_post_text()}
 												unstyled
 												{@attach textareaAttachment(i)}
-												value={getEditorContentForPost(post)}
+												value={editorContent}
 												oninput={(e) => {
 													const target = e.target as HTMLTextAreaElement;
 													setEditorContent(i, target.value);
@@ -4046,7 +4031,7 @@
 															? m.compose_describe_video()
 															: m.compose_whats_on_your_mind()
 														: m.compose_add_to_thread()}
-												class="w-full resize-none overflow-y-hidden border-0 bg-transparent py-2 pr-3 text-base leading-relaxed text-foreground placeholder:text-muted-foreground/50 focus:ring-0 focus:outline-none md:py-3 md:pr-4 md:text-lg"
+												class="relative z-10 w-full resize-none overflow-y-hidden border-0 bg-transparent py-2 pr-3 text-base leading-relaxed text-foreground placeholder:text-muted-foreground/50 focus:ring-0 focus:outline-none md:py-3 md:pr-4 md:text-lg"
 												style="min-height: {i === 0 ? '120px' : '56px'};"
 												disabled={isSubmitting ||
 													(!!activeVariantAccountId && !activeVariantIsUnsynced)}
@@ -4074,40 +4059,6 @@
 												</div>
 											{/if}
 										</div>
-
-										{#if i === 0 && showLinkInput}
-											<div
-												class="mb-3 flex items-center gap-2 rounded-md border bg-muted/15 p-2"
-												data-testid="composer-link-field"
-											>
-												<LinkIcon class="ml-1 size-4 shrink-0 text-muted-foreground" />
-												<Input
-													type="url"
-													class="h-11 min-w-0 border-0 bg-transparent shadow-none focus-visible:ring-0 md:h-9"
-													value={linkUrl}
-													placeholder={m.compose_shared_link()}
-													aria-label={m.compose_link_url()}
-													oninput={(event) => {
-														linkUrl = event.currentTarget.value;
-														scheduleAutoSave();
-													}}
-												/>
-												<Button
-													type="button"
-													variant="ghost"
-													size="icon"
-													class="size-11 shrink-0 text-muted-foreground md:size-9"
-													aria-label={m.compose_remove_link()}
-													onclick={() => {
-														linkUrl = '';
-														showLinkInput = false;
-														scheduleAutoSave();
-													}}
-												>
-													<XIcon class="size-4" />
-												</Button>
-											</div>
-										{/if}
 
 										<!-- Media grid -->
 										{#if getEditorMediaIdsForPost(post).length > 0}
@@ -4234,32 +4185,6 @@
 											>
 												<ImageIcon class="h-3.5 w-3.5" />
 											</button>
-
-											{#if i === 0}
-												<Tooltip.Root>
-													<Tooltip.Trigger>
-														{#snippet child({ props })}
-															<button
-																{...props}
-																type="button"
-																class="flex size-11 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground md:size-7"
-																aria-label={m.compose_link_url()}
-																aria-pressed={showLinkInput}
-																onclick={() => {
-																	showLinkInput = !showLinkInput;
-																	if (!showLinkInput) linkUrl = '';
-																	scheduleAutoSave();
-																}}
-															>
-																<LinkIcon class="size-3.5" />
-															</button>
-														{/snippet}
-													</Tooltip.Trigger>
-													<Tooltip.Content
-														><p class="text-sm">{m.compose_link_url()}</p></Tooltip.Content
-													>
-												</Tooltip.Root>
-											{/if}
 
 											<Tooltip.Root>
 												<Tooltip.Trigger>
@@ -4406,6 +4331,38 @@
 	</Dialog.Content>
 </Dialog.Root>
 
+<Sheet.Root bind:open={composerSettingsOpen}>
+	<Sheet.Content
+		side="right"
+		class="w-full! gap-0 overflow-y-auto p-0 sm:max-w-lg!"
+		data-testid="composer-settings-sheet"
+	>
+		<Sheet.Header class="border-b px-5 py-5 pr-16 text-left">
+			<Sheet.Title>{m.compose_post_settings()}</Sheet.Title>
+			<Sheet.Description>{m.compose_post_settings_body()}</Sheet.Description>
+		</Sheet.Header>
+		<div class="p-5">
+			<section class="rounded-xl border border-border/70 bg-muted/15 p-4">
+				<div class="mb-3">
+					<h3 class="text-sm font-semibold">{m.composer_repost_settings()}</h3>
+					<p class="mt-1 text-sm text-muted-foreground">
+						{m.composer_repost_settings_body()}
+					</p>
+				</div>
+				<ComposerRepostControl
+					workspaceID={selectedWorkspaceId}
+					sourcePlatforms={[
+						...new Set(selectedAccounts.map((account) => getPlatformKey(account.platform)))
+					]}
+					bind:value={repostOverride}
+					disabled={!selectedWorkspaceId || isSaving || isSubmitting}
+					onChange={scheduleAutoSave}
+				/>
+			</section>
+		</div>
+	</Sheet.Content>
+</Sheet.Root>
+
 <MediaPicker
 	bind:open={mediaPickerOpen}
 	workspaceId={selectedWorkspaceId}
@@ -4415,6 +4372,7 @@
 	maxSelection={composerMediaLimit}
 	multiple={composerMediaLimit > 1}
 	purpose={isThread ? 'thread_segment' : 'post_media'}
+	initialMode="upload"
 	initialFiles={mediaPickerInitialFiles}
 	onInitialFilesConsumed={() => (mediaPickerInitialFiles = [])}
 	onConfirm={async (ids) => {

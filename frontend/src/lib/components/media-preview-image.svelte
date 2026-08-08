@@ -5,13 +5,16 @@
 		mediaId,
 		alt,
 		thumbnailSize = 'md',
-		class: className = ''
+		class: className = '',
+		onMissing
 	}: {
 		mediaId: string;
 		alt: string;
 		thumbnailSize?: 'sm' | 'md';
 		class?: string;
+		onMissing?: () => void;
 	} = $props();
+	let originalAttemptedFor = $state('');
 
 	const thumbnailURL = $derived(
 		getAuthenticatedMediaURL(`/media/${mediaId}/thumb/${thumbnailSize}`)
@@ -20,8 +23,12 @@
 
 	function useOriginal(event: Event) {
 		const image = event.currentTarget as HTMLImageElement;
-		if (!image.src.includes('/thumb/')) return;
-		image.src = originalURL;
+		if (originalAttemptedFor !== mediaId && image.src.includes('/thumb/')) {
+			originalAttemptedFor = mediaId;
+			image.src = originalURL;
+			return;
+		}
+		onMissing?.();
 	}
 </script>
 

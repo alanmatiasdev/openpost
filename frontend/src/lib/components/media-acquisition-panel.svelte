@@ -403,8 +403,10 @@
 		<button
 			type="button"
 			class={[
-				'group flex min-h-44 w-full flex-col items-center justify-center rounded-xl border border-dashed px-5 text-center transition-colors focus-visible:ring-2 focus-visible:ring-ring',
-				dragging ? 'border-primary bg-primary/5' : 'border-border bg-muted/15 hover:bg-muted/30'
+				'group flex min-h-52 w-full flex-col items-center justify-center rounded-2xl border border-dashed px-5 py-8 text-center transition-[border-color,background-color,transform] duration-200 focus-visible:ring-2 focus-visible:ring-ring',
+				dragging
+					? 'scale-[1.005] border-primary bg-primary/7'
+					: 'border-border/80 bg-background shadow-sm hover:border-primary/45 hover:bg-primary/[0.025]'
 			]}
 			disabled={busy || queue.length >= maxFiles}
 			onclick={() => fileInput?.click()}
@@ -417,15 +419,17 @@
 			ondrop={handleDrop}
 		>
 			<span
-				class="mb-3 flex size-11 items-center justify-center rounded-lg bg-background ring-1 ring-border"
+				class="mb-4 flex size-14 items-center justify-center rounded-2xl bg-primary/8 ring-1 ring-primary/15 transition-transform duration-200 group-hover:-translate-y-0.5"
 			>
-				<UploadIcon class="size-5 text-primary" />
+				<UploadIcon class="size-6 text-primary" />
 			</span>
-			<span class="font-medium">{m.media_upload_drop_title()}</span>
-			<span class="mt-1 max-w-md text-sm text-muted-foreground">
+			<span class="text-base font-semibold">{m.media_upload_drop_title()}</span>
+			<span class="mt-1.5 max-w-md text-sm leading-6 text-muted-foreground">
 				{m.media_upload_drop_body()}
 			</span>
-			<span class="mt-3 text-xs text-muted-foreground">{m.media_upload_limits_accurate()}</span>
+			<span class="mt-4 rounded-full bg-muted/60 px-3 py-1 text-xs text-muted-foreground">
+				{m.media_upload_limits_accurate()}
+			</span>
 		</button>
 		<Input
 			bind:ref={fileInput}
@@ -560,15 +564,19 @@
 			</div>
 		{/if}
 
-		<div class="flex flex-wrap items-center justify-between gap-3">
-			<p class="text-xs text-muted-foreground">{m.media_upload_paste_hint()}</p>
-			<Button onclick={uploadReady} disabled={busy || readyCount === 0 || !workspaceId}>
-				{#if busy}<LoaderIcon class="animate-spin" />{:else}<UploadIcon />{/if}
-				{readyCount === 1
-					? m.media_upload_one_file_action()
-					: m.media_upload_files_action({ count: readyCount })}
-			</Button>
-		</div>
+		{#if queue.length > 0}
+			<div class="flex flex-wrap items-center justify-between gap-3">
+				<p class="text-xs text-muted-foreground">{m.media_upload_paste_hint()}</p>
+				<Button onclick={uploadReady} disabled={busy || readyCount === 0 || !workspaceId}>
+					{#if busy}<LoaderIcon class="animate-spin" />{:else}<UploadIcon />{/if}
+					{readyCount === 1
+						? m.media_upload_one_file_action()
+						: m.media_upload_files_action({ count: readyCount })}
+				</Button>
+			</div>
+		{:else}
+			<p class="text-center text-xs text-muted-foreground">{m.media_upload_paste_hint()}</p>
+		{/if}
 	</div>
 {:else if mode === 'camera'}
 	<div class="mx-auto w-full max-w-2xl">

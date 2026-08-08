@@ -224,6 +224,24 @@ test("media library uploads and lists a local media file", async ({
   ).toBeVisible();
   await expect(page.getByText("OpenPost Image Editor edits")).toHaveCount(0);
 
+  const mediaSearch = page.getByPlaceholder("Search filename or alt text");
+  await mediaSearch.fill("launch-card");
+  await page.getByRole("button", { name: "Search", exact: true }).click();
+  await expect(page.getByTestId("media-result-count")).toHaveText(
+    "1 result for “launch-card”",
+  );
+  await expect(page.getByText("launch-card.png")).toBeVisible();
+
+  await mediaSearch.fill("guaranteed-no-match");
+  await mediaSearch.press("Enter");
+  await expect(page.getByTestId("media-result-count")).toHaveText(
+    "0 results for “guaranteed-no-match”",
+  );
+  await expect(page.getByText("No media found")).toBeVisible();
+  await page.getByRole("button", { name: "Clear search" }).click();
+  await expect(page.getByTestId("media-result-count")).toHaveCount(0);
+  await expect(page.getByText("launch-card.png")).toBeVisible();
+
   await page
     .getByRole("button", { name: "Open details for launch-card.png" })
     .click();

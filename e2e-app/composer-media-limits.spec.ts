@@ -126,6 +126,11 @@ test("Post drafts can move from one image to multiple before destination validat
   await composer.getByRole("button", { name: "Add media" }).click();
   const picker = page.getByRole("dialog");
   await expect(picker).toContainText("0 of 35 selected");
+  await expect(picker.getByRole("tab", { name: "Device" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await picker.getByRole("tab", { name: "Library" }).click();
   await picker
     .getByRole("button", { name: "Select draft-image-1.png" })
     .click();
@@ -136,6 +141,7 @@ test("Post drafts can move from one image to multiple before destination validat
 
   await composer.getByRole("button", { name: "Add media" }).click();
   await expect(picker).toContainText("1 of 35 selected");
+  await picker.getByRole("tab", { name: "Library" }).click();
   for (let index = 2; index <= 5; index += 1) {
     await picker
       .getByRole("button", { name: `Select draft-image-${index}.png` })
@@ -152,12 +158,18 @@ test("Post drafts can move from one image to multiple before destination validat
     page.getByTestId("composer-account-row").filter({ hasText: "openpost_x" }),
   ).toContainText("Needs attention");
   await expect(
-    page.getByTestId("composer-account-row").filter({ hasText: "openpost_bluesky" }),
+    page
+      .getByTestId("composer-account-row")
+      .filter({ hasText: "openpost_bluesky" }),
   ).toContainText("Needs attention");
   await expect(
-    page.getByTestId("composer-account-row").filter({ hasText: "openpost_linkedin" }),
+    page
+      .getByTestId("composer-account-row")
+      .filter({ hasText: "openpost_linkedin" }),
   ).not.toContainText("Needs attention");
   await expect(
-    page.getByTestId("composer-account-row").filter({ hasText: "openpost_threads" }),
+    page
+      .getByTestId("composer-account-row")
+      .filter({ hasText: "openpost_threads" }),
   ).not.toContainText("Needs attention");
 });

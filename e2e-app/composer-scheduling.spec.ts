@@ -276,8 +276,15 @@ test("composer quick-schedules a publication from the selected time", async ({
   await expect(page.getByTestId("text-thread-composer-shell")).toBeVisible();
   await expect(page.getByTestId("composer-action-controls")).toBeVisible();
   await expect(page.getByRole("button", { name: "Save draft" })).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Need inspiration?" }),
+  ).toBeVisible();
   await page.getByLabel("Post text").fill(postContent);
-  await page.getByText("Advanced delivery", { exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Need inspiration?" }),
+  ).toHaveCount(0);
+  await page.getByRole("button", { name: "Post settings" }).click();
+  await expect(page.getByTestId("composer-settings-sheet")).toBeVisible();
   await page.getByRole("button", { name: "Repost settings" }).click();
   await page.getByText("Custom", { exact: true }).click();
   const repostTarget = page.getByRole("checkbox", {
@@ -286,6 +293,7 @@ test("composer quick-schedules a publication from the selected time", async ({
   await expect(repostTarget).toBeVisible();
   if (!(await repostTarget.isChecked())) await repostTarget.click();
   await page.getByLabel("Minimum likes").fill("10");
+  await page.keyboard.press("Escape");
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Schedule" }).first().click();
   const futureDate = new Date();

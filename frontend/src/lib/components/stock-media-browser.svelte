@@ -1,11 +1,13 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { slide } from 'svelte/transition';
 	import { Button } from '$lib/components/ui/button';
 	import { Checkbox } from '$lib/components/ui/checkbox';
 	import { Input } from '$lib/components/ui/input';
 	import AppSelect from '$lib/components/app-select.svelte';
 	import InlineNotice from '$lib/components/inline-notice.svelte';
 	import { m } from '$lib/paraglide/messages';
+	import { stockMediaKindsForProvider } from '$lib/stock-media-kinds';
 	import {
 		listStockProviders,
 		resolveStockAsset,
@@ -71,14 +73,12 @@
 			.filter((item) => (kind === 'photo' ? item.photos : item.videos))
 			.map((item) => ({ value: item.key, label: providerLabel(item) }))
 	);
-	const kindOptions = $derived([
-		...(accept !== 'video' && providers.some((item) => item.photos)
-			? [{ value: 'photo', label: m.video_editor_stock_photos() }]
-			: []),
-		...(accept !== 'photo' && providers.some((item) => item.videos)
-			? [{ value: 'video', label: m.video_editor_stock_videos() }]
-			: [])
-	]);
+	const kindOptions = $derived(
+		stockMediaKindsForProvider(currentProvider, accept).map((value) => ({
+			value,
+			label: value === 'photo' ? m.video_editor_stock_photos() : m.video_editor_stock_videos()
+		}))
+	);
 	const orientationOptions = $derived([
 		{ value: '', label: m.stock_filter_any_orientation() },
 		{ value: 'landscape', label: m.stock_filter_landscape() },
@@ -371,7 +371,10 @@
 			</div>
 
 			{#if filtersOpen}
-				<div class="grid gap-3 rounded-xl border bg-muted/15 p-3 sm:grid-cols-2 lg:grid-cols-3">
+				<div
+					class="grid gap-3 rounded-xl border bg-muted/15 p-3 sm:grid-cols-2 lg:grid-cols-3"
+					transition:slide={{ duration: 180 }}
+				>
 					{#if availableFilters.has('orientation')}
 						<label class="grid gap-1 text-xs text-muted-foreground">
 							<span>{m.stock_filter_orientation()}</span>
