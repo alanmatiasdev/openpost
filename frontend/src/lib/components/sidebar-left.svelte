@@ -177,7 +177,7 @@
 									{...props}
 									type="button"
 									class="inline-flex size-8 items-center justify-center rounded-md hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:outline-none data-[state=open]:bg-sidebar-accent"
-									aria-label={m.sidebar_switch_workspace()}
+									aria-label={`${m.sidebar_switch_workspace()}: ${currentWorkspaceName}`}
 									title={m.sidebar_switch_workspace()}
 									data-testid="workspace-menu-trigger"
 								>
@@ -191,6 +191,7 @@
 											{currentWorkspaceInitials}
 										</Avatar.Fallback>
 									</Avatar.Root>
+									<span class="sr-only">{currentWorkspaceName}</span>
 								</button>
 							{/snippet}
 						</DropdownMenu.Trigger>

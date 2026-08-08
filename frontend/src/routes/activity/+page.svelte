@@ -632,7 +632,8 @@
 				>
 				<TabsTrigger value="failed"
 					>{m.activity_tab_failed()}
-					<span class="text-muted-foreground">{failedPosts.length}</span></TabsTrigger
+					<span class="text-muted-foreground">{failedPosts.length + failedJobs.length}</span
+					></TabsTrigger
 				>
 				<TabsTrigger value="drafts"
 					>{m.activity_tab_drafts()}

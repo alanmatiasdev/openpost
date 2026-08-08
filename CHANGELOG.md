@@ -25,6 +25,7 @@ All notable changes to this project are documented in this file.
 
 - Updated SvelteKit and Nano ID to their patched security releases and pinned the transitive versions used by the workspace.
 - Kept the marketing changelog page's server data typed with the current SvelteKit load contract.
+- Kept workspace names available to the sidebar switcher and counted failed background jobs in the Activity failure tab.
 - Prevented the managed public home from flashing for signed-in sessions and stopped photo-only stock providers from offering video searches.
 - Fixed stored conversation history loading, added missing-conversation handling and retry UX, generated request IDs, and kept the reply composer hidden until history loads.
 - Made Media Library and instance-user searches submit reliably with Enter, added applied-query state, clear search, and Media result counts.

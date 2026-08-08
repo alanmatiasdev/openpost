@@ -193,7 +193,7 @@ test("failed delivery details stay secondary to post status", async ({
   await expect(page.getByRole("tab", { name: "Jobs" })).toHaveCount(0);
   await page.getByRole("tab", { name: /Failed 2/ }).click();
 
-  const details = page.getByText("Technical details for 2 failed deliveries");
+  const details = page.getByText("Technical job records (2)");
   await expect(details).toBeVisible();
   await details.click();
   await expect(page.getByText("Provider rejected the post")).toBeVisible();
