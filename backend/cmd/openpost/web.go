@@ -103,7 +103,11 @@ func registerSpaRoutesWithProfileMetadata(
 		}
 
 		if relPath == "" {
-			return writeHTML(c, renderSpaRootHTML(webFS, publicURL, managedEdition))
+			return writeHTML(c, renderSpaRootHTML(
+				webFS,
+				publicURL,
+				managedEdition && !requestHasSessionCookie(c.Request()),
+			))
 		}
 		if path.Ext(relPath) == ".html" {
 			data, readErr := fs.ReadFile(webFS, relPath)
@@ -162,9 +166,14 @@ func legacyStudioRedirectTarget(requestURL *url.URL) (string, bool) {
 	return target, true
 }
 
-func renderSpaRootHTML(webFS fs.FS, publicURL string, managedEdition bool) []byte {
+func requestHasSessionCookie(request *http.Request) bool {
+	cookie, err := request.Cookie("openpost_session")
+	return err == nil && strings.TrimSpace(cookie.Value) != ""
+}
+
+func renderSpaRootHTML(webFS fs.FS, publicURL string, showManagedPublicHome bool) []byte {
 	indexData, _ := fs.ReadFile(webFS, "index.html")
-	if managedEdition {
+	if showManagedPublicHome {
 		return renderManagedPublicHomeHTML(indexData, publicURL)
 	}
 	return indexData

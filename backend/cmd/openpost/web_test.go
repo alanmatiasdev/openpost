@@ -178,6 +178,19 @@ func TestManagedSpaRootExposesProductPricingAndPoliciesWithoutJavaScript(t *test
 	require.Contains(t, rootHTML, `href="https://openpost.social/refunds"`)
 	require.Contains(t, rootHTML, `rel="canonical" href="https://app.openpost.social/"`)
 
+	authenticatedReq := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
+	authenticatedReq.AddCookie(&http.Cookie{Name: "openpost_session", Value: "opaque-session"})
+	authenticatedRec := httptest.NewRecorder()
+	e.ServeHTTP(authenticatedRec, authenticatedReq)
+	require.Equal(t, http.StatusOK, authenticatedRec.Code)
+	require.Contains(t, authenticatedRec.Body.String(), `name="openpost-edition" content="cloud"`)
+	require.NotContains(
+		t,
+		authenticatedRec.Body.String(),
+		`id="openpost-managed-public-home"`,
+		"a session-bearing request must let the authenticated app own the first paint",
+	)
+
 	loginReq := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/login", nil)
 	loginRec := httptest.NewRecorder()
 	e.ServeHTTP(loginRec, loginReq)
