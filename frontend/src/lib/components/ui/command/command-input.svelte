@@ -12,8 +12,10 @@
 	}: CommandPrimitive.InputProps = $props();
 </script>
 
-<div data-slot="command-input-wrapper" class="p-1 pb-0">
-	<InputGroup.Root class="h-8! bg-input/20 dark:bg-input/30">
+<div data-slot="command-input-wrapper" class="p-2 pb-1">
+	<InputGroup.Root
+		class="h-10! rounded-lg border-primary/30 bg-background shadow-none focus-within:border-primary focus-within:ring-primary/20"
+	>
 		<CommandPrimitive.Input
 			{value}
 			data-slot="command-input"

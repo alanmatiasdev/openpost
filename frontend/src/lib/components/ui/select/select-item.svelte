@@ -18,13 +18,13 @@
 	{value}
 	data-slot="select-item"
 	class={cn(
-		"relative flex min-h-7 w-full cursor-default items-center gap-2 rounded-md px-2 py-1 text-xs/relaxed outline-hidden select-none focus:bg-accent focus:bg-accent focus:text-accent-foreground focus:text-accent-foreground not-data-[variant=destructive]:focus:**:text-accent-foreground data-highlighted:bg-accent data-highlighted:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-3.5 *:[span]:last:flex *:[span]:last:items-center *:[span]:last:gap-2",
+		"relative flex min-h-9 w-full cursor-default items-center gap-2 rounded-lg px-3 py-1.5 pr-9 text-sm/relaxed outline-hidden transition-colors duration-75 select-none focus:bg-primary/10 focus:text-foreground not-data-[variant=destructive]:focus:**:text-foreground data-highlighted:bg-primary/10 data-highlighted:text-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[state=checked]:font-medium [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-3.5 *:[span]:last:flex *:[span]:last:items-center *:[span]:last:gap-2",
 		className
 	)}
 	{...restProps}
 >
 	{#snippet children({ selected, highlighted })}
-		<span class="absolute end-2 flex size-3.5 items-center justify-center">
+		<span class="absolute end-3 flex size-4 items-center justify-center text-primary">
 			{#if selected}
 				<RiCheckLine class="cn-select-item-indicator-icon" />
 			{/if}

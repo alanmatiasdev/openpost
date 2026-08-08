@@ -4,14 +4,15 @@
 	import { type VariantProps, tv } from 'tailwind-variants';
 
 	export const buttonVariants = tv({
-		base: "focus-visible:border-ring focus-visible:ring-ring/30 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive dark:aria-invalid:border-destructive/50 rounded-md border border-transparent bg-clip-padding text-sm font-medium focus-visible:ring-2 active:translate-y-px aria-invalid:ring-2 [&_svg:not([class*='size-'])]:size-4 group/button inline-flex shrink-0 items-center justify-center whitespace-nowrap transition-all outline-none select-none disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0",
+		base: "focus-visible:border-ring focus-visible:ring-ring/30 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive dark:aria-invalid:border-destructive/50 rounded-md border border-transparent bg-clip-padding text-sm font-medium focus-visible:ring-2 aria-invalid:ring-2 [&_svg:not([class*='size-'])]:size-4 group/button inline-flex shrink-0 items-center justify-center whitespace-nowrap transition-[transform,box-shadow,background-color,border-color,color] duration-100 ease-out outline-none select-none disabled:pointer-events-none disabled:translate-y-0 disabled:opacity-50 disabled:shadow-none [&_svg]:pointer-events-none [&_svg]:shrink-0",
 		variants: {
 			variant: {
-				default: 'bg-primary text-primary-foreground hover:bg-primary/80',
+				default:
+					'border-primary bg-primary text-primary-foreground font-semibold shadow-[0_3px_0_color-mix(in_oklch,var(--primary)_68%,black)] hover:-translate-y-0.5 hover:bg-primary/90 hover:shadow-[0_5px_0_color-mix(in_oklch,var(--primary)_68%,black)] active:translate-y-0.5 active:shadow-[0_1px_0_color-mix(in_oklch,var(--primary)_68%,black)]',
 				outline:
-					'border-border dark:bg-input/30 hover:bg-input/50 hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground',
+					'border-primary/75 bg-background text-foreground shadow-[0_3px_0_color-mix(in_oklch,var(--primary)_68%,black)] hover:-translate-y-0.5 hover:border-primary hover:bg-primary/6 hover:shadow-[0_5px_0_color-mix(in_oklch,var(--primary)_68%,black)] active:translate-y-0.5 active:shadow-[0_1px_0_color-mix(in_oklch,var(--primary)_68%,black)] aria-expanded:translate-y-0.5 aria-expanded:bg-primary/8 aria-expanded:shadow-[0_1px_0_color-mix(in_oklch,var(--primary)_68%,black)]',
 				secondary:
-					'bg-secondary text-secondary-foreground hover:bg-secondary/80 aria-expanded:bg-secondary aria-expanded:text-secondary-foreground',
+					'border-border bg-secondary text-secondary-foreground shadow-[0_3px_0_color-mix(in_oklch,var(--border)_72%,var(--foreground))] hover:-translate-y-0.5 hover:bg-secondary/80 hover:shadow-[0_5px_0_color-mix(in_oklch,var(--border)_72%,var(--foreground))] active:translate-y-0.5 active:shadow-[0_1px_0_color-mix(in_oklch,var(--border)_72%,var(--foreground))] aria-expanded:translate-y-0.5 aria-expanded:bg-secondary aria-expanded:shadow-[0_1px_0_color-mix(in_oklch,var(--border)_72%,var(--foreground))]',
 				ghost:
 					'hover:bg-muted hover:text-foreground dark:hover:bg-muted/50 aria-expanded:bg-muted aria-expanded:text-foreground',
 				destructive:
@@ -58,12 +59,17 @@
 		children,
 		...restProps
 	}: ButtonProps = $props();
+
+	const hasTactileFeedback = $derived(
+		variant === 'default' || variant === 'outline' || variant === 'secondary'
+	);
 </script>
 
 {#if href}
 	<a
 		bind:this={ref}
 		data-slot="button"
+		data-cuelume-press={hasTactileFeedback ? 'press' : undefined}
 		class={cn(buttonVariants({ variant, size }), className)}
 		href={disabled ? undefined : href}
 		aria-disabled={disabled}
@@ -77,6 +83,7 @@
 	<button
 		bind:this={ref}
 		data-slot="button"
+		data-cuelume-press={hasTactileFeedback ? 'press' : undefined}
 		class={cn(buttonVariants({ variant, size }), className)}
 		{type}
 		{disabled}

@@ -1,5 +1,10 @@
 import { browser } from '$app/environment';
-import { play as playCue, setEnabled as setCuelumeEnabled, type SoundName } from 'cuelume';
+import {
+	bind as bindCuelume,
+	play as playCue,
+	setEnabled as setCuelumeEnabled,
+	type SoundName
+} from 'cuelume';
 
 const STORAGE_KEY = 'openpost:interface-sounds';
 
@@ -17,6 +22,7 @@ class SoundPreferences {
 		}
 
 		setCuelumeEnabled(this.enabled);
+		bindCuelume(document);
 		this.initialized = true;
 	}
 
