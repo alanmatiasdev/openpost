@@ -4,6 +4,8 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [3.4.0] - 2026-08-08
+
 ### Added
 
 - Added grouped recovery queues for publication and engagement collection failures, analytics coverage denominators and highlights, searchable settings navigation, and read-only details for published publications.
