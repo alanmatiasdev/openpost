@@ -32,13 +32,24 @@ test("marketing index links to the app and documentation @desktop", async ({
       )
       .first(),
   ).toBeVisible();
-  await expect(
-    page.getByRole("region", {
-      name: "Illustrative social publishing results",
-    }),
-  ).toBeVisible();
+  const resultCarousel = page.getByRole("region", {
+    name: "Illustrative social publishing results",
+  });
+  await expect(resultCarousel).toBeVisible();
   await expect(page.getByText("Illustrative campaign results")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Next result" })).toBeVisible();
+  await expect(
+    resultCarousel.getByRole("button", { name: "Next result" }),
+  ).toBeVisible();
+  await resultCarousel.getByRole("button", { name: "Next result" }).click();
+  await expect(resultCarousel.locator(".result-caption strong")).toHaveText(
+    "Content results",
+  );
+  await resultCarousel
+    .getByRole("button", { name: "Content results, current result view" })
+    .press("ArrowLeft");
+  await expect(resultCarousel.locator(".result-caption strong")).toHaveText(
+    "Video reach",
+  );
   await expect(page.getByLabel("Companies using OpenPost")).toContainText(
     "Montra",
   );

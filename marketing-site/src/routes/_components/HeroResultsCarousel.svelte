@@ -94,7 +94,12 @@
 								TikTok Studio
 							</span>
 							<span class="video-card">
-								<img src="/assets/screenshots/main-dark.png" alt="" width="1440" height="900" />
+								<span class="video-art" aria-hidden="true">
+									<span class="video-art-brand"><i>OP</i> OpenPost</span>
+									<strong>Build once.</strong>
+									<strong>Publish everywhere.</strong>
+									<span class="publishing-path"><i></i><i></i><i></i><i></i><i></i></span>
+								</span>
 								<span class="video-shade"></span>
 								<span class="video-copy">
 									<strong>One idea. Every destination.</strong>
@@ -376,12 +381,81 @@
 		background: oklch(0.1 0.005 55);
 	}
 
-	.video-card img {
-		width: 100%;
-		height: 100%;
-		object-fit: cover;
-		object-position: 54% top;
-		filter: saturate(0.85) contrast(1.04);
+	.video-art {
+		position: absolute;
+		inset: 0;
+		display: flex;
+		flex-direction: column;
+		justify-content: center;
+		padding: 1.25rem 1rem 5rem;
+		background:
+			radial-gradient(circle at 82% 22%, oklch(0.75 0.16 48 / 0.36), transparent 26%),
+			linear-gradient(145deg, oklch(0.25 0.08 35), oklch(0.11 0.008 52) 64%);
+	}
+
+	.video-art-brand {
+		display: flex;
+		align-items: center;
+		gap: 0.38rem;
+		margin-bottom: 1.15rem;
+		color: rgb(255 255 255 / 0.64);
+		font-size: 0.56rem;
+		font-weight: 700;
+	}
+
+	.video-art-brand i {
+		display: grid;
+		width: 1.35rem;
+		height: 1.35rem;
+		place-items: center;
+		border-radius: 0.35rem;
+		background: oklch(0.67 0.18 45);
+		color: oklch(0.14 0.008 52);
+		font-size: 0.45rem;
+		font-style: normal;
+		font-weight: 850;
+	}
+
+	.video-art > strong {
+		max-width: 9ch;
+		font-size: clamp(1rem, 2vw, 1.45rem);
+		line-height: 0.96;
+		letter-spacing: -0.04em;
+	}
+
+	.video-art > strong + strong {
+		color: oklch(0.72 0.16 48);
+	}
+
+	.publishing-path {
+		display: flex;
+		align-items: center;
+		gap: 0.28rem;
+		margin-top: 1.35rem;
+	}
+
+	.publishing-path i {
+		width: 1.25rem;
+		height: 1.25rem;
+		border: 1px solid rgb(255 255 255 / 0.14);
+		border-radius: 0.38rem;
+		background: rgb(255 255 255 / 0.08);
+	}
+
+	.publishing-path i:first-child {
+		position: relative;
+		margin-right: 0.55rem;
+		background: oklch(0.67 0.18 45);
+	}
+
+	.publishing-path i:first-child::after {
+		position: absolute;
+		top: 50%;
+		left: calc(100% + 0.08rem);
+		width: 0.65rem;
+		height: 1px;
+		background: rgb(255 255 255 / 0.34);
+		content: '';
 	}
 
 	.video-shade {
@@ -732,8 +806,8 @@
 
 	.carousel-dots button {
 		display: grid;
-		width: 2rem;
-		height: 2rem;
+		width: 2.75rem;
+		height: 2.75rem;
 		place-items: center;
 		border: 0;
 		background: transparent;

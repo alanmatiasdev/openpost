@@ -159,7 +159,21 @@ FORM: Product-led publishing workspace with activity squares as the recurring pr
 		<div class="customer-rail" aria-label="Companies using OpenPost">
 			<div class="customer-track">
 				{#each [...customerNames, ...customerNames] as name, index (`${name}-${index}`)}
-					<span aria-hidden={index >= customerNames.length ? 'true' : undefined}>{name}</span>
+					<span
+						class={['customer-logo', `customer-${name.toLowerCase()}`]}
+						aria-hidden={index >= customerNames.length ? 'true' : undefined}
+					>
+						{#if name === 'Montra'}
+							<svg viewBox="219 211 820 837" aria-hidden="true">
+								<path
+									fill="currentColor"
+									fill-rule="evenodd"
+									d="M235 211h57l10 5 169 174v2l61 62v2l19 18v2l57 58v2l17 16 3 5h2v-2l16-15v-2l44-44v-2l19-18v-2l17-16v-2l87-89v-2l144-148 9-4h58l5 2 7 7 3 9v802l-2 8-5 6-6 3H686l-6-3-3-3-4-11V690l-38 39-5 3-5-1-34-34v-2l-7-5v345l-6 10-6 3H232l-9-6-4-9V229l4-10 5-5 7-3Zm96 220-1 519 8 7h132l4-2 3-5V577l-96-98v-2l-39-39-11-7Zm594 1-10 7-63 63v2l-65 65-9 12v366l2 6 6 4h133l3-1 5-7V434l-2-2Z"
+								/>
+							</svg>
+						{/if}
+						{name}
+					</span>
 				{/each}
 			</div>
 		</div>
@@ -648,15 +662,41 @@ FORM: Product-led publishing workspace with activity squares as the recurring pr
 		animation: customer-scroll 18s linear infinite;
 	}
 
-	.customer-track span {
+	.customer-logo {
 		display: grid;
+		grid-auto-flow: column;
 		min-width: 13rem;
 		place-items: center;
+		justify-content: center;
+		gap: 0.55rem;
 		color: rgb(255 255 255 / 0.7);
 		font-family: 'Manrope Variable', Manrope, sans-serif;
 		font-size: 1rem;
 		font-weight: 650;
 		letter-spacing: -0.02em;
+	}
+
+	.customer-logo svg {
+		width: 1.1rem;
+		height: 1.1rem;
+	}
+
+	.customer-montra {
+		font-weight: 720;
+		letter-spacing: -0.045em;
+	}
+
+	.customer-ark {
+		font-size: 1.08rem;
+		font-weight: 780;
+		letter-spacing: -0.055em;
+	}
+
+	.customer-unprompted {
+		font-family: Georgia, 'Times New Roman', serif;
+		font-size: 1.04rem;
+		font-weight: 600;
+		letter-spacing: -0.025em;
 	}
 
 	@keyframes network-float {
@@ -832,7 +872,7 @@ FORM: Product-led publishing workspace with activity squares as the recurring pr
 			animation: none;
 		}
 
-		.customer-track span:nth-child(n + 4) {
+		.customer-logo:nth-child(n + 4) {
 			display: none;
 		}
 	}
