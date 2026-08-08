@@ -2,8 +2,10 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import * as Select from '$lib/components/ui/select';
+	import { Input } from '$lib/components/ui/input';
 	import { m } from '$lib/paraglide/messages';
 	import type { SettingsDestinationID } from '$lib/settings-navigation';
+	import SearchIcon from 'lucide-svelte/icons/search';
 
 	interface SettingsDestination {
 		id: SettingsDestinationID;
@@ -16,6 +18,7 @@
 	}
 
 	let { active, showInstance = false }: Props = $props();
+	let search = $state('');
 
 	const personalDestinations = $derived<SettingsDestination[]>([
 		{ id: 'profile', label: m.settings_profile() },
@@ -53,6 +56,30 @@
 	const activeLabel = $derived(
 		allDestinations.find((destination) => destination.id === active)?.label ?? m.settings_general()
 	);
+	const normalizedSearch = $derived(search.trim().toLocaleLowerCase());
+	const filteredPersonalDestinations = $derived(
+		personalDestinations.filter((destination) => matchesSearch(destination))
+	);
+	const filteredWorkspaceDestinations = $derived(
+		workspaceDestinations.filter((destination) => matchesSearch(destination))
+	);
+	const filteredOrganizationDestinations = $derived(
+		organizationDestinations.filter((destination) => matchesSearch(destination))
+	);
+	const filteredInstanceDestinations = $derived(
+		instanceDestinations.filter((destination) => matchesSearch(destination))
+	);
+	const hasSearchResults = $derived(
+		filteredPersonalDestinations.length +
+			filteredWorkspaceDestinations.length +
+			filteredOrganizationDestinations.length +
+			filteredInstanceDestinations.length >
+			0
+	);
+
+	function matchesSearch(destination: SettingsDestination) {
+		return !normalizedSearch || destination.label.toLocaleLowerCase().includes(normalizedSearch);
+	}
 
 	function destinationHref(destination: SettingsDestinationID): string {
 		return `/settings?tab=${destination}`;
@@ -80,6 +107,17 @@
 {/snippet}
 
 <aside class="min-w-0 lg:sticky lg:top-6 lg:self-start" data-testid="settings-navigation">
+	<div class="relative mb-3">
+		<SearchIcon
+			class="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
+		/>
+		<Input
+			bind:value={search}
+			class="pl-9"
+			placeholder={m.settings_search()}
+			aria-label={m.settings_search()}
+		/>
+	</div>
 	<Select.Root
 		type="single"
 		value={active}
@@ -89,31 +127,31 @@
 			{activeLabel}
 		</Select.Trigger>
 		<Select.Content>
-			<Select.Group>
-				<Select.GroupHeading>{m.settings_personal()}</Select.GroupHeading>
-				{#each personalDestinations as destination (destination.id)}
-					<Select.Item value={destination.id}>{destination.label}</Select.Item>
-				{/each}
-			</Select.Group>
-			<Select.Separator />
-			<Select.Group>
-				<Select.GroupHeading>{m.settings_workspace()}</Select.GroupHeading>
-				{#each workspaceDestinations as destination (destination.id)}
-					<Select.Item value={destination.id}>{destination.label}</Select.Item>
-				{/each}
-			</Select.Group>
-			<Select.Separator />
-			<Select.Group>
-				<Select.GroupHeading>{m.settings_organization()}</Select.GroupHeading>
-				{#each organizationDestinations as destination (destination.id)}
-					<Select.Item value={destination.id}>{destination.label}</Select.Item>
-				{/each}
-			</Select.Group>
-			{#if instanceDestinations.length}
+			{#if filteredPersonalDestinations.length}<Select.Group>
+					<Select.GroupHeading>{m.settings_personal()}</Select.GroupHeading>
+					{#each filteredPersonalDestinations as destination (destination.id)}
+						<Select.Item value={destination.id}>{destination.label}</Select.Item>
+					{/each}
+				</Select.Group>{/if}
+			{#if filteredWorkspaceDestinations.length}<Select.Separator />
+				<Select.Group>
+					<Select.GroupHeading>{m.settings_workspace()}</Select.GroupHeading>
+					{#each filteredWorkspaceDestinations as destination (destination.id)}
+						<Select.Item value={destination.id}>{destination.label}</Select.Item>
+					{/each}
+				</Select.Group>{/if}
+			{#if filteredOrganizationDestinations.length}<Select.Separator />
+				<Select.Group>
+					<Select.GroupHeading>{m.settings_organization()}</Select.GroupHeading>
+					{#each filteredOrganizationDestinations as destination (destination.id)}
+						<Select.Item value={destination.id}>{destination.label}</Select.Item>
+					{/each}
+				</Select.Group>{/if}
+			{#if filteredInstanceDestinations.length}
 				<Select.Separator />
 				<Select.Group>
 					<Select.GroupHeading>{m.settings_instance()}</Select.GroupHeading>
-					{#each instanceDestinations as destination (destination.id)}
+					{#each filteredInstanceDestinations as destination (destination.id)}
 						<Select.Item value={destination.id}>{destination.label}</Select.Item>
 					{/each}
 				</Select.Group>
@@ -125,33 +163,36 @@
 		<p class="px-2 text-[11px] font-medium tracking-[0.12em] text-muted-foreground uppercase">
 			{m.settings_personal()}
 		</p>
-		{#each personalDestinations as destination (destination.id)}
+		{#each filteredPersonalDestinations as destination (destination.id)}
 			{@render destinationLink(destination)}
 		{/each}
 
 		<p class="px-2 pt-4 text-[11px] font-medium tracking-[0.12em] text-muted-foreground uppercase">
 			{m.settings_workspace()}
 		</p>
-		{#each workspaceDestinations as destination (destination.id)}
+		{#each filteredWorkspaceDestinations as destination (destination.id)}
 			{@render destinationLink(destination)}
 		{/each}
 
 		<p class="px-2 pt-4 text-[11px] font-medium tracking-[0.12em] text-muted-foreground uppercase">
 			{m.settings_organization()}
 		</p>
-		{#each organizationDestinations as destination (destination.id)}
+		{#each filteredOrganizationDestinations as destination (destination.id)}
 			{@render destinationLink(destination)}
 		{/each}
 
-		{#if instanceDestinations.length}
+		{#if filteredInstanceDestinations.length}
 			<p
 				class="px-2 pt-4 text-[11px] font-medium tracking-[0.12em] text-muted-foreground uppercase"
 			>
 				{m.settings_instance()}
 			</p>
-			{#each instanceDestinations as destination (destination.id)}
+			{#each filteredInstanceDestinations as destination (destination.id)}
 				{@render destinationLink(destination)}
 			{/each}
+		{/if}
+		{#if !hasSearchResults}
+			<p class="px-3 py-4 text-sm text-muted-foreground">{m.settings_search_empty()}</p>
 		{/if}
 	</nav>
 </aside>

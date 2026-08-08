@@ -22,7 +22,6 @@
 	import { workspaceColor } from '$lib/workspace-color';
 	import FileTextIcon from 'lucide-svelte/icons/file-text';
 	import ImageIcon from 'lucide-svelte/icons/image';
-	import MaximizeIcon from 'lucide-svelte/icons/maximize-2';
 	import TrashIcon from 'lucide-svelte/icons/trash-2';
 
 	let { onNavigate }: { onNavigate: (href: string) => void } = $props();
@@ -143,7 +142,7 @@
 					query: {
 						workspace_id: currentWorkspaceId,
 						status: 'draft',
-						limit: 8,
+						limit: 3,
 						offset: 0
 					}
 				}
@@ -153,7 +152,7 @@
 			drafts = publications
 				.map(publicationDraft)
 				.sort((left, right) => right.createdAt.localeCompare(left.createdAt))
-				.slice(0, 8);
+				.slice(0, 3);
 		} catch {
 			if (request === draftsRequest) drafts = [];
 		} finally {
@@ -303,6 +302,21 @@
 			timeZone: viewerTimeZone
 		});
 	}
+
+	function formatDraftTimestamp(value: string) {
+		const timestamp = new Date(value);
+		const elapsedSeconds = Math.max(0, Math.round((Date.now() - timestamp.getTime()) / 1000));
+		const relative = new Intl.RelativeTimeFormat(getLocaleTag(), { numeric: 'auto' });
+		if (elapsedSeconds < 60) return relative.format(0, 'minute');
+		if (elapsedSeconds < 3600) return relative.format(-Math.round(elapsedSeconds / 60), 'minute');
+		if (elapsedSeconds < 86400) return relative.format(-Math.round(elapsedSeconds / 3600), 'hour');
+		if (elapsedSeconds < 604800) return relative.format(-Math.round(elapsedSeconds / 86400), 'day');
+		return timestamp.toLocaleDateString(getLocaleTag(), {
+			month: 'short',
+			day: 'numeric',
+			year: timestamp.getFullYear() === new Date().getFullYear() ? undefined : 'numeric'
+		});
+	}
 </script>
 
 <div class="flex min-h-0 flex-1 flex-col" data-testid="desktop-sidebar-planner">
@@ -310,25 +324,23 @@
 		class="shrink-0 border-b border-sidebar-border px-2 pb-3"
 		aria-label={m.sidebar_calendar()}
 	>
-		<div class="flex h-7 items-center justify-between px-2">
+		<div class="flex h-8 items-center justify-between px-2">
 			<span
-				class="truncate text-xs font-medium text-sidebar-foreground/64"
+				class="truncate text-sm font-semibold text-sidebar-foreground/88"
 				data-testid="sidebar-calendar-month"
 			>
 				{visibleCalendarMonth}
 			</span>
 			<button
 				type="button"
-				class="inline-flex size-7 items-center justify-center rounded-md text-sidebar-foreground/52 hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:outline-none"
-				onclick={() => onNavigate('/calendar')}
-				aria-label={m.sidebar_calendar()}
-				title={m.sidebar_calendar()}
+				class="inline-flex h-7 items-center justify-center rounded-md px-2 text-xs text-sidebar-foreground/52 hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:outline-none"
+				onclick={() => openPlannerDay(plannerToday)}
 			>
-				<MaximizeIcon class="size-3.5" />
+				{m.common_today()}
 			</button>
 		</div>
 		<div
-			class="sidebar-calendar-scrollbar h-45 overflow-y-auto overscroll-contain select-none"
+			class="sidebar-calendar-scrollbar h-41 overflow-y-auto overscroll-contain select-none"
 			data-testid="sidebar-rolling-calendar"
 			onscroll={loadMoreWeeks}
 		>
@@ -388,7 +400,7 @@
 		</div>
 	</section>
 
-	<section class="flex min-h-0 flex-1 flex-col px-2 py-3">
+	<section class="flex min-h-0 flex-1 flex-col px-2 py-2">
 		<div class="mb-1 flex h-7 shrink-0 items-center justify-between px-2">
 			<div class="flex items-center gap-1.5">
 				<span class="text-xs font-medium tracking-[0.1em] text-sidebar-foreground/52 uppercase"
@@ -428,7 +440,7 @@
 				>
 			</button>
 		{:else}
-			<ul class="min-h-0 flex-1 space-y-0.5 overflow-y-auto" data-testid="sidebar-draft-list">
+			<ul class="min-h-0 flex-1 space-y-0.5" data-testid="sidebar-draft-list">
 				{#each drafts as draft (draft.id)}
 					<li>
 						<ContextMenu.Root>
@@ -437,24 +449,23 @@
 									<button
 										{...props}
 										type="button"
-										class="group/draft flex min-h-9 w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:outline-none"
+										class="group/draft flex min-h-10 w-full items-center gap-2 rounded-md px-2 py-1 text-left hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:outline-none"
 										onclick={() => onNavigate(draft.href)}
 										aria-label={m.sidebar_resume_draft({ title: draft.title })}
 									>
-										<span
-											class="flex size-6 shrink-0 items-center justify-center rounded-md bg-sidebar-accent/70 text-sidebar-foreground/58 group-hover/draft:text-sidebar-foreground"
-										>
-											<FileTextIcon class="size-3.5" />
-										</span>
 										<span class="min-w-0 flex-1">
 											<span class="block truncate text-xs font-medium text-sidebar-foreground/88"
 												>{draft.title}</span
 											>
-											{#if draft.isThread}
-												<span class="block text-xs leading-4 text-sidebar-foreground/45"
-													>{m.sidebar_thread_count({ count: draft.postCount })}</span
-												>
-											{/if}
+											<span
+												class="flex items-center gap-1 text-[11px] leading-4 text-sidebar-foreground/45"
+											>
+												<span>{formatDraftTimestamp(draft.createdAt)}</span>
+												{#if draft.isThread}
+													<span aria-hidden="true">·</span>
+													<span>{m.sidebar_thread_count({ count: draft.postCount })}</span>
+												{/if}
+											</span>
 										</span>
 										{#if draft.hasMedia}
 											<ImageIcon

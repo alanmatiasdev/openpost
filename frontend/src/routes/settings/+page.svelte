@@ -427,6 +427,12 @@
 		return normalized.slice(0, 12);
 	}
 
+	function updateConfigurationSourceLabel(source: string) {
+		if (source === 'environment') return m.settings_configuration_source_environment();
+		if (source === 'database') return m.settings_configuration_source_admin();
+		return m.settings_configuration_source_default();
+	}
+
 	function mcpStatusLabel(status: string) {
 		if (status === 'success') return m.settings_mcp_status_success();
 		if (status === 'error') return m.settings_mcp_status_error();
@@ -1926,6 +1932,7 @@
 							label={m.settings_save_profile()}
 							savingLabel={m.settings_save_profile()}
 							saving={profileBusy}
+							disabled={!profileDirty}
 							type="submit"
 						/>
 					</form>
@@ -2023,7 +2030,12 @@
 									{:else if updateStatus.state === 'unavailable'}
 										<InlineNotice tone="info" message={m.settings_instance_unavailable()} />
 									{:else if updateStatus.state === 'disabled'}
-										<InlineNotice tone="info" message={m.settings_instance_disabled()} />
+										<InlineNotice
+											tone="info"
+											message={updateStatus.disabled_reason === 'managed_edition'
+												? m.settings_instance_managed_release_checks()
+												: m.settings_instance_disabled()}
+										/>
 									{:else if updateStatus.state === 'development'}
 										<InlineNotice tone="info" message={m.settings_instance_development()} />
 									{:else}
@@ -2036,6 +2048,34 @@
 												{m.settings_instance_running_version()}
 											</dt>
 											<dd class="mt-1 font-medium">{updateStatus.running_version}</dd>
+										</div>
+										<div class="min-w-0">
+											<dt class="text-sm text-muted-foreground">
+												{m.settings_instance_configured_check()}
+											</dt>
+											<dd class="mt-1 font-medium">
+												{updateStatus.configured_enabled
+													? m.settings_value_enabled()
+													: m.settings_value_disabled()}
+												<span class="font-normal text-muted-foreground">
+													· {updateConfigurationSourceLabel(updateStatus.configuration_source)}
+												</span>
+											</dd>
+										</div>
+										<div class="min-w-0">
+											<dt class="text-sm text-muted-foreground">
+												{m.settings_instance_effective_check()}
+											</dt>
+											<dd class="mt-1 font-medium">
+												{updateStatus.effective_enabled
+													? m.settings_value_enabled()
+													: m.settings_value_disabled()}
+												{#if updateStatus.requires_restart}
+													<span class="text-warning-foreground font-normal">
+														· {m.settings_configuration_pending()}
+													</span>
+												{/if}
+											</dd>
 										</div>
 										<div class="min-w-0">
 											<dt class="text-sm text-muted-foreground">
@@ -3818,7 +3858,7 @@
 						label={m.settings_save_changes()}
 						savingLabel={m.settings_save_changes()}
 						{saving}
-						disabled={Boolean(intervalError || draftGapError)}
+						disabled={!workspaceCtx.settingsDirty || Boolean(intervalError || draftGapError)}
 						onSave={saveSettings}
 					/>
 				{/if}

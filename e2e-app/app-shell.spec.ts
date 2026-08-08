@@ -38,6 +38,7 @@ test("authenticated navigation keeps the app shell mounted", async ({
   await page.getByRole("button", { name: "Posts", exact: true }).click();
   await expect(page).toHaveURL(/\/activity$/);
   await expect(page.getByTestId("app-sidebar")).toBeVisible();
+  await expect(page.getByTestId("desktop-sidebar-planner")).toHaveCount(0);
   await expect(page.getByTestId("sidebar-new-post")).toBeVisible();
   await expect
     .poll(() =>
@@ -60,8 +61,8 @@ test("first autosave establishes the draft URL and keeps draft actions in one co
 }) => {
   const unique = Date.now().toString(36);
   const email = `composer-draft-${unique}@example.com`;
-  const content = "Keep this draft attached to its own URL.";
   const link = "https://example.com/openpost-draft";
+  const content = `Keep this draft attached to its own URL: ${link}`;
 
   const auth = await registerUser(request, email);
   await createWorkspace(request, auth.token, "Draft URL E2E");
@@ -73,24 +74,12 @@ test("first autosave establishes the draft URL and keeps draft actions in one co
   const newPostAction = sidebarHeader.locator('a[aria-label="New post"]');
 
   await expect(page.getByTestId("sidebar-home-brand")).toBeVisible();
-  await expect(page.getByTestId("sidebar-new-post")).toHaveCount(0);
-  await expect(homeBrand).toHaveAttribute("data-swap-position", "active");
-  await expect(newPostAction).toHaveAttribute("data-swap-position", "after");
-  await expect(newPostAction).toHaveAttribute("inert", "");
-  await expect(homeBrand).toHaveCSS("transition-duration", "0.26s, 0.2s");
+  await expect(page.getByTestId("sidebar-new-post")).toBeVisible();
+  await expect(homeBrand).toBeVisible();
+  await expect(newPostAction).toBeVisible();
+  await expect(page.getByTestId("sidebar-notifications")).toBeVisible();
+  await expect(page.getByTestId("workspace-menu-trigger")).toBeVisible();
 
-  await page.emulateMedia({ reducedMotion: "reduce" });
-  await expect
-    .poll(() =>
-      homeBrand.evaluate((element) =>
-        Number.parseFloat(getComputedStyle(element).transitionDuration),
-      ),
-    )
-    .toBeLessThanOrEqual(0.001);
-  await page.emulateMedia({ reducedMotion: "no-preference" });
-
-  await page.getByRole("button", { name: "Link URL", exact: true }).click();
-  await page.getByRole("textbox", { name: "Link URL", exact: true }).fill(link);
   await page.getByLabel("Post text").fill(content);
   await expect(page).toHaveURL(/\/publications\/[a-zA-Z0-9-]+$/, {
     timeout: 10_000,
@@ -101,10 +90,8 @@ test("first autosave establishes the draft URL and keeps draft actions in one co
   );
   await expect(page.getByTestId("composer-context-status")).toHaveCount(0);
   await expect(page.getByTestId("sidebar-new-post")).toBeVisible();
-  await expect(homeBrand).toHaveAttribute("data-swap-position", "before");
-  await expect(homeBrand).toHaveAttribute("inert", "");
-  await expect(newPostAction).toHaveAttribute("data-swap-position", "active");
-  await expect(newPostAction).not.toHaveAttribute("inert", "");
+  await expect(homeBrand).toBeVisible();
+  await expect(newPostAction).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Schedule", exact: true }).first(),
   ).toBeVisible();
@@ -117,9 +104,7 @@ test("first autosave establishes the draft URL and keeps draft actions in one co
   await expect(page.getByText("Editing draft post")).toHaveCount(0);
   await page.reload();
   await expect(page.getByLabel("Post text")).toHaveValue(content);
-  await expect(
-    page.getByRole("textbox", { name: "Link URL", exact: true }),
-  ).toHaveValue(link);
+  await expect(page.getByRole("button", { name: "Link URL" })).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: "Save changes", exact: true }),
   ).toHaveCount(0);
@@ -139,9 +124,11 @@ test("first autosave establishes the draft URL and keeps draft actions in one co
   const publicationDetailBody = (await publicationDetail.json()) as {
     id: string;
     text_post_id: string;
+    source_url: string;
   };
   expect(publicationDetailBody.id).toBe(publicationId);
   expect(publicationDetailBody.text_post_id).toBeTruthy();
+  expect(publicationDetailBody.source_url).toBe(link);
 
   const postDetail = await request.get(
     `/api/v1/posts/${publicationDetailBody.text_post_id}`,
@@ -158,10 +145,10 @@ test("first autosave establishes the draft URL and keeps draft actions in one co
   await page.goto(`/publications/${publicationId}`);
   await expect(page).toHaveURL(new RegExp(`/publications/${publicationId}$`));
   await expect(page.getByLabel("Post text")).toHaveValue(content);
-  await expect(
-    page.getByRole("textbox", { name: "Link URL", exact: true }),
-  ).toHaveValue(link);
+  await expect(page.getByRole("button", { name: "Link URL" })).toHaveCount(0);
   await expect(page.getByTestId("focused-composer")).toHaveCount(0);
+  await expect(page.getByTestId("desktop-sidebar-planner")).toHaveCount(0);
+  await page.goto("/calendar");
   await expect(
     page.getByTestId("sidebar-draft-list").locator("li"),
   ).toHaveCount(1);
@@ -293,7 +280,7 @@ test("desktop planning sidebar resumes drafts and stays out of mobile navigation
     id: string;
     publication_id: string;
   };
-  for (let index = 2; index <= 8; index += 1) {
+  for (let index = 2; index <= 3; index += 1) {
     const extraDraft = await request.post("/api/v1/posts", {
       headers: { Authorization: `Bearer ${auth.token}` },
       data: {
@@ -380,38 +367,32 @@ test("desktop planning sidebar resumes drafts and stays out of mobile navigation
   await expect(
     page.getByRole("button", { name: "Media", exact: true }),
   ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Settings", exact: true }),
-  ).toBeVisible();
   const workspaceNavigation = page.getByTestId("sidebar-workspace-navigation");
-  const accountsNavigation = workspaceNavigation.getByRole("button", {
-    name: "Accounts",
-    exact: true,
-  });
-  const settingsNavigation = workspaceNavigation.getByRole("button", {
-    name: "Settings",
-    exact: true,
-  });
-  const [accountsNavigationBox, settingsNavigationBox] = await Promise.all([
-    accountsNavigation.boundingBox(),
-    settingsNavigation.boundingBox(),
-  ]);
-  expect(accountsNavigationBox).not.toBeNull();
-  expect(settingsNavigationBox).not.toBeNull();
-  expect(accountsNavigationBox!.y).toBeCloseTo(settingsNavigationBox!.y, 0);
+  await expect(workspaceNavigation.getByRole("button")).toHaveCount(4);
   await expect(
-    page.getByTestId("sidebar-secondary-navigation").getByRole("button", {
+    workspaceNavigation.getByRole("button", {
       name: "Accounts",
       exact: true,
     }),
   ).toHaveCount(0);
+  await expect(
+    workspaceNavigation.getByRole("button", {
+      name: "Settings",
+      exact: true,
+    }),
+  ).toHaveCount(0);
+  await page.getByTestId("profile-menu-trigger").click();
+  await expect(page.getByRole("menuitem", { name: "Editors" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Accounts" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Settings" })).toBeVisible();
+  await page.keyboard.press("Escape");
   const draftList = page.getByTestId("sidebar-draft-list");
-  await expect(draftList.locator("li")).toHaveCount(8);
+  await expect(draftList.locator("li")).toHaveCount(3);
   const draftListMetrics = await draftList.evaluate((element) => ({
     clientHeight: element.clientHeight,
     scrollHeight: element.scrollHeight,
   }));
-  expect(draftListMetrics.scrollHeight).toBeGreaterThan(
+  expect(draftListMetrics.scrollHeight).toBeLessThanOrEqual(
     draftListMetrics.clientHeight,
   );
   const draftListBox = await draftList.boundingBox();
@@ -423,30 +404,16 @@ test("desktop planning sidebar resumes drafts and stays out of mobile navigation
   expect(
     workspaceFooterBox!.y - (draftListBox!.y + draftListBox!.height),
   ).toBeLessThanOrEqual(32);
-  await draftList.evaluate((element) => {
-    element.scrollTop = element.scrollHeight;
-  });
   await expect(draftList.locator("li").last()).toBeVisible();
 
   const draftToDelete = page.getByRole("button", {
     name: "Resume draft: Sidebar draft 2",
   });
   await draftToDelete.scrollIntoViewIfNeeded();
-  const draftDocumentIcons = draftList.locator(".lucide-file-text");
-  const draftDocumentColors = await draftDocumentIcons.evaluateAll((icons) =>
-    icons.map((icon) => getComputedStyle(icon).color),
-  );
   await planner.getByRole("button", { name: "View all" }).hover();
   await expect(
     draftList.getByRole("button", { name: /^Delete draft:/ }),
   ).toHaveCount(0);
-  await expect
-    .poll(() =>
-      draftDocumentIcons.evaluateAll((icons) =>
-        icons.map((icon) => getComputedStyle(icon).color),
-      ),
-    )
-    .toEqual(draftDocumentColors);
 
   await draftToDelete.click({ button: "right" });
   await expect(
@@ -460,7 +427,7 @@ test("desktop planning sidebar resumes drafts and stays out of mobile navigation
     page.getByText("Delete this draft?", { exact: true }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Delete", exact: true }).click();
-  await expect(draftList.locator("li")).toHaveCount(7);
+  await expect(draftList.locator("li")).toHaveCount(2);
 
   await page
     .getByRole("button", {

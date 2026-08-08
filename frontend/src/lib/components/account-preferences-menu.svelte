@@ -13,6 +13,7 @@
 	import WorkspaceMenuItems from './workspace-menu-items.svelte';
 	import AnalyticsIcon from 'lucide-svelte/icons/chart-no-axes-combined';
 	import CommunicationsIcon from 'lucide-svelte/icons/messages-square';
+	import EditorsIcon from 'lucide-svelte/icons/clapperboard';
 	import BellIcon from 'lucide-svelte/icons/bell';
 	import AccountsIcon from 'lucide-svelte/icons/users';
 	import SettingsIcon from 'lucide-svelte/icons/settings';
@@ -32,11 +33,19 @@
 
 	interface Props {
 		showDestinations?: boolean;
+		showEditors?: boolean;
+		showAdministration?: boolean;
 		onNavigate?: () => void;
 		onCreateWorkspace?: () => void;
 	}
 
-	let { showDestinations = false, onNavigate, onCreateWorkspace }: Props = $props();
+	let {
+		showDestinations = false,
+		showEditors = showDestinations,
+		showAdministration = showDestinations,
+		onNavigate,
+		onCreateWorkspace
+	}: Props = $props();
 	let workspacesExpanded = $state(false);
 	const menuItemClass = $derived(showDestinations ? 'min-h-11' : '');
 
@@ -148,6 +157,28 @@
 			</a>
 		{/snippet}
 	</DropdownMenu.Item>
+	<DropdownMenu.Separator />
+{/if}
+
+{#if showEditors}
+	<DropdownMenu.Item>
+		{#snippet child({ props })}
+			<a
+				{...props}
+				class={[props.class, menuItemClass, 'gap-3']}
+				href={resolve('/editors' as '/')}
+				onclick={onNavigate}
+			>
+				<EditorsIcon class="size-4 text-muted-foreground" />
+				{m.editors_title()}
+			</a>
+		{/snippet}
+	</DropdownMenu.Item>
+	<DropdownMenu.Separator />
+{/if}
+
+{#if showAdministration}
+	<DropdownMenu.Label>{m.sidebar_administration()}</DropdownMenu.Label>
 	<DropdownMenu.Item>
 		{#snippet child({ props })}
 			<a

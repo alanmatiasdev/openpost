@@ -29,7 +29,7 @@
 	import EditorsIcon from 'lucide-svelte/icons/clapperboard';
 	import AccountsIcon from 'lucide-svelte/icons/users';
 	import SettingsIcon from 'lucide-svelte/icons/settings';
-	import ChevronsUpDownIcon from 'lucide-svelte/icons/chevrons-up-down';
+	import MoreHorizontalIcon from 'lucide-svelte/icons/ellipsis';
 	import type { Workspace } from '$lib/api/client';
 	import NotificationBell from './notification-bell.svelte';
 
@@ -54,23 +54,20 @@
 			icon: navigationIcon(item.id)
 		}))
 	);
-	const sidebarNavigationItems = $derived(navigationItems.filter((item) => item.id !== 'new'));
+	const sidebarNavigationItems = $derived(
+		navigationItems.filter((item) =>
+			['calendar', 'posts', 'communications', 'analytics', 'media'].includes(item.id)
+		)
+	);
 	const workspaceNavigationItems = $derived([
 		...navigationItems.filter((item) =>
-			['posts', 'communications', 'analytics', 'media', 'editors'].includes(item.id)
-		),
-		{
-			id: 'accounts' as const,
-			label: navigationLabel('accounts'),
-			href: '/settings?tab=accounts',
-			match: ['/settings'],
-			mobile: false,
-			icon: AccountsIcon
-		},
-		...navigationItems.filter((item) => item.id === 'settings')
+			['posts', 'communications', 'analytics', 'media'].includes(item.id)
+		)
 	]);
-	const showDesktopPlanner = $derived(!sidebar.isMobile && sidebar.state === 'expanded');
-	const showHomeBrand = $derived(currentPath === '/' && !ui.activeComposerDraftId);
+	const plannerIsContextual = $derived(currentPath === '/' || currentPath.startsWith('/calendar'));
+	const showDesktopPlanner = $derived(
+		!sidebar.isMobile && sidebar.state === 'expanded' && plannerIsContextual
+	);
 
 	function navigationIcon(id: PrimaryNavigationItem['id']) {
 		switch (id) {
@@ -160,81 +157,64 @@
 
 <Sidebar.Root collapsible="icon" class="pt-[env(safe-area-inset-top)]">
 	<Sidebar.Header class="gap-2 border-b border-sidebar-border p-2" data-testid="app-sidebar">
-		<div class="relative h-10 overflow-hidden rounded-md">
+		<div class="flex h-8 items-center gap-2">
 			<a
 				href={resolve('/')}
-				class={[
-					'sidebar-context-swap absolute inset-0 flex items-center gap-2 rounded-md px-2 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0 focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:outline-none',
-					!showHomeBrand && 'pointer-events-none'
-				]}
-				data-swap-position={showHomeBrand ? 'active' : 'before'}
+				class="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0 focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:outline-none"
 				aria-label={m.sidebar_openpost_home()}
-				aria-hidden={!showHomeBrand}
-				tabindex={showHomeBrand ? undefined : -1}
-				inert={!showHomeBrand}
-				data-testid={showHomeBrand ? 'sidebar-home-brand' : undefined}
+				data-testid="sidebar-home-brand"
 			>
 				<Logo width={26} height={26} showText={sidebar.state !== 'collapsed'} decorative />
 			</a>
 
-			<a
-				href={resolve('/')}
-				class={[
-					'sidebar-context-swap absolute inset-0 flex items-center gap-2 rounded-md bg-primary px-3 text-sm font-semibold text-primary-foreground shadow-xs group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0 hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:outline-none',
-					showHomeBrand && 'pointer-events-none'
-				]}
-				data-swap-position={showHomeBrand ? 'after' : 'active'}
-				aria-label={m.sidebar_new_post()}
-				aria-hidden={showHomeBrand}
-				tabindex={showHomeBrand ? -1 : undefined}
-				inert={showHomeBrand}
-				data-testid={!showHomeBrand ? 'sidebar-new-post' : undefined}
-				onclick={() => ui.startNewPost()}
-			>
-				<ComposeIcon class="size-4" />
-				{#if sidebar.state !== 'collapsed'}<span>{m.sidebar_new_post()}</span>{/if}
-			</a>
+			{#if sidebar.state !== 'collapsed'}
+				<div class="ms-auto flex shrink-0 items-center gap-0.5">
+					<NotificationBell compact />
+					<DropdownMenu.Root>
+						<DropdownMenu.Trigger>
+							{#snippet child({ props })}
+								<button
+									{...props}
+									type="button"
+									class="inline-flex size-8 items-center justify-center rounded-md hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:outline-none data-[state=open]:bg-sidebar-accent"
+									aria-label={m.sidebar_switch_workspace()}
+									title={m.sidebar_switch_workspace()}
+									data-testid="workspace-menu-trigger"
+								>
+									<Avatar.Root class="size-7 rounded-md">
+										{#if currentWorkspaceAvatarURL}
+											<Avatar.Image src={currentWorkspaceAvatarURL} alt={currentWorkspaceName} />
+										{/if}
+										<Avatar.Fallback
+											class="rounded-md bg-sidebar-accent text-[10px] font-semibold text-sidebar-foreground"
+										>
+											{currentWorkspaceInitials}
+										</Avatar.Fallback>
+									</Avatar.Root>
+								</button>
+							{/snippet}
+						</DropdownMenu.Trigger>
+						<DropdownMenu.Content class="w-64" side="right" align="start" sideOffset={6}>
+							<WorkspaceMenuItems
+								onCreate={openCreateWorkspace}
+								onSelect={() => sidebar.setOpenMobile(false)}
+							/>
+						</DropdownMenu.Content>
+					</DropdownMenu.Root>
+				</div>
+			{/if}
 		</div>
 
-		<DropdownMenu.Root>
-			<DropdownMenu.Trigger>
-				{#snippet child({ props })}
-					<Sidebar.MenuButton
-						{...props}
-						size="lg"
-						class="border border-sidebar-border bg-sidebar-accent/35 data-[state=open]:bg-sidebar-accent"
-						tooltipContent={m.sidebar_switch_workspace()}
-					>
-						<Avatar.Root class="size-8 rounded-md">
-							{#if currentWorkspaceAvatarURL}
-								<Avatar.Image src={currentWorkspaceAvatarURL} alt={currentWorkspaceName} />
-							{/if}
-							<Avatar.Fallback class="rounded-md bg-primary/12 text-xs font-semibold text-primary">
-								{currentWorkspaceInitials}
-							</Avatar.Fallback>
-						</Avatar.Root>
-						<div class="grid min-w-0 flex-1 text-start leading-tight">
-							<span class="truncate text-sm font-medium">{currentWorkspaceName}</span>
-							<span class="truncate text-xs text-sidebar-foreground/62"
-								>{m.sidebar_workspace()}</span
-							>
-						</div>
-						<ChevronsUpDownIcon class="ms-auto size-4" />
-					</Sidebar.MenuButton>
-				{/snippet}
-			</DropdownMenu.Trigger>
-			<DropdownMenu.Content
-				class="w-64"
-				side={sidebar.isMobile ? 'bottom' : 'right'}
-				align="start"
-				sideOffset={6}
-			>
-				<WorkspaceMenuItems
-					onCreate={openCreateWorkspace}
-					onSelect={() => sidebar.setOpenMobile(false)}
-				/>
-			</DropdownMenu.Content>
-		</DropdownMenu.Root>
+		<a
+			href={resolve('/')}
+			class="flex h-10 items-center justify-center gap-2 rounded-md bg-primary px-3 text-sm font-semibold text-primary-foreground shadow-xs group-data-[collapsible=icon]:px-0 hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:outline-none"
+			aria-label={m.sidebar_new_post()}
+			data-testid="sidebar-new-post"
+			onclick={() => ui.startNewPost()}
+		>
+			<ComposeIcon class="size-4" />
+			{#if sidebar.state !== 'collapsed'}<span>{m.sidebar_new_post()}</span>{/if}
+		</a>
 	</Sidebar.Header>
 
 	<Sidebar.Content class={showDesktopPlanner ? 'overflow-hidden py-2' : 'px-2 py-3'}>
@@ -242,13 +222,8 @@
 			<SidebarPlanner onNavigate={navigate} />
 		{:else}
 			<Sidebar.Group class="p-0">
-				<Sidebar.GroupLabel
-					class="px-2 text-[11px] tracking-[0.12em] text-sidebar-foreground/48 uppercase"
-				>
-					{m.sidebar_publish()}
-				</Sidebar.GroupLabel>
 				<Sidebar.GroupContent>
-					<Sidebar.Menu class="gap-1">
+					<Sidebar.Menu class="gap-0.5">
 						{#each sidebarNavigationItems as item (item.id)}
 							<Sidebar.MenuItem>
 								<Sidebar.MenuButton
@@ -270,18 +245,13 @@
 
 	<Sidebar.Footer class="border-t border-sidebar-border p-2" data-testid="sidebar-workspace-footer">
 		{#if showDesktopPlanner}
-			<div class="pb-1">
-				<p
-					class="flex h-7 items-center px-2 text-[11px] tracking-[0.1em] text-sidebar-foreground/52 uppercase"
-				>
-					{m.sidebar_workspace()}
-				</p>
-				<Sidebar.Menu class="grid grid-cols-2 gap-1" data-testid="sidebar-workspace-navigation">
+			<div class="pb-2">
+				<Sidebar.Menu class="gap-0.5" data-testid="sidebar-workspace-navigation">
 					{#each workspaceNavigationItems as item (item.id)}
-						<Sidebar.MenuItem class={item.id === 'editors' ? 'col-span-2' : ''}>
+						<Sidebar.MenuItem>
 							<Sidebar.MenuButton
 								isActive={isSidebarNavigationItemActive(item)}
-								class="h-9 gap-1.5 px-2 text-xs"
+								class="h-8 gap-2 px-2 text-xs"
 								tooltipContent={item.label}
 								onclick={() => navigate(item.href)}
 							>
@@ -294,24 +264,25 @@
 			</div>
 		{/if}
 		<Sidebar.Menu
-			class={showDesktopPlanner ? 'border-t border-sidebar-border pt-1' : ''}
+			class={showDesktopPlanner ? 'border-t border-sidebar-border pt-2' : ''}
 			data-testid="sidebar-secondary-navigation"
 		>
 			{#if !showDesktopPlanner}
 				<Sidebar.MenuItem>
 					<Sidebar.MenuButton
 						class="h-10 text-sm"
-						tooltipContent={m.sidebar_accounts()}
-						isActive={currentPath.startsWith('/settings') &&
-							page.url.searchParams.get('tab') === 'accounts'}
-						onclick={() => navigate('/settings?tab=accounts')}
+						tooltipContent={m.editors_title()}
+						isActive={currentPath.startsWith('/editors')}
+						onclick={() => navigate('/editors')}
 					>
-						<AccountsIcon class="size-4" />
-						<span>{m.sidebar_accounts()}</span>
+						<EditorsIcon class="size-4" />
+						<span>{m.editors_title()}</span>
 					</Sidebar.MenuButton>
 				</Sidebar.MenuItem>
 			{/if}
-			<NotificationBell />
+			{#if sidebar.state === 'collapsed'}
+				<NotificationBell />
+			{/if}
 			<Sidebar.MenuItem>
 				<DropdownMenu.Root>
 					<DropdownMenu.Trigger>
@@ -323,10 +294,10 @@
 								tooltipContent={m.sidebar_profile_appearance()}
 								data-testid="profile-menu-trigger"
 							>
-								<Avatar.Root class="size-8 rounded-full">
+								<Avatar.Root class="size-8 rounded-md">
 									{#if userAvatarURL}<Avatar.Image src={userAvatarURL} alt={userDisplayName} />{/if}
 									<Avatar.Fallback
-										class="bg-sidebar-primary text-xs text-sidebar-primary-foreground"
+										class="rounded-md bg-sidebar-accent text-xs font-semibold text-sidebar-foreground"
 									>
 										{userInitials}
 									</Avatar.Fallback>
@@ -337,7 +308,7 @@
 										>{authState.user?.email}</span
 									>
 								</div>
-								<ChevronsUpDownIcon class="ms-auto size-4" />
+								<MoreHorizontalIcon class="ms-auto size-4 text-sidebar-foreground/52" />
 							</Sidebar.MenuButton>
 						{/snippet}
 					</DropdownMenu.Trigger>
@@ -348,6 +319,9 @@
 						sideOffset={6}
 					>
 						<AccountPreferencesMenu
+							showDestinations={sidebar.state === 'collapsed'}
+							showEditors={showDesktopPlanner}
+							showAdministration
 							onCreateWorkspace={openCreateWorkspace}
 							onNavigate={() => sidebar.setOpenMobile(false)}
 						/>
@@ -360,32 +334,3 @@
 </Sidebar.Root>
 
 <CreateWorkspaceDialog bind:open={createWorkspaceOpen} />
-
-<style>
-	.sidebar-context-swap {
-		transition:
-			transform 260ms cubic-bezier(0.22, 1, 0.36, 1),
-			opacity 200ms cubic-bezier(0.22, 1, 0.36, 1);
-	}
-
-	.sidebar-context-swap[data-swap-position='active'] {
-		transform: translateX(0);
-		opacity: 1;
-	}
-
-	.sidebar-context-swap[data-swap-position='before'] {
-		transform: translateX(-100%);
-		opacity: 0;
-	}
-
-	.sidebar-context-swap[data-swap-position='after'] {
-		transform: translateX(100%);
-		opacity: 0;
-	}
-
-	@media (prefers-reduced-motion: reduce) {
-		.sidebar-context-swap {
-			transition: none;
-		}
-	}
-</style>

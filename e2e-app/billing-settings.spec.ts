@@ -154,6 +154,7 @@ test("instance admins can review usage, users, and update status", async ({
   let overviewRequests = 0;
   const requestedUserPages: number[] = [];
   const requestedUserSorts: string[] = [];
+  const requestedUserSearches: string[] = [];
   let impersonationLinkRequests = 0;
   let updateStatusRequests = 0;
 
@@ -192,6 +193,8 @@ test("instance admins can review usage, users, and update status", async ({
     requestedUserSorts.push(
       `${requestURL.searchParams.get("sort")}:${requestURL.searchParams.get("direction")}`,
     );
+    const requestedSearch = requestURL.searchParams.get("search") ?? "";
+    requestedUserSearches.push(requestedSearch);
     const pageStart = (requestedPage - 1) * 25;
     const userCount = requestedPage === 2 ? 17 : 25;
     const users = Array.from({ length: userCount }, (_, index) => {
@@ -216,14 +219,21 @@ test("instance admins can review usage, users, and update status", async ({
         created_at: `2026-07-${String(29 - (index % 20)).padStart(2, "0")}T12:00:00Z`,
       };
     });
+    const filteredUsers = requestedSearch
+      ? users.filter((user) =>
+          `${user.display_name} ${user.email}`
+            .toLocaleLowerCase()
+            .includes(requestedSearch.toLocaleLowerCase()),
+        )
+      : users;
     await route.fulfill({
       contentType: "application/json",
       json: {
-        users,
-        total: 42,
+        users: filteredUsers,
+        total: requestedSearch ? filteredUsers.length : 42,
         page: requestedPage,
         per_page: 25,
-        total_pages: 2,
+        total_pages: requestedSearch ? 1 : 2,
       },
     });
   });
@@ -245,13 +255,14 @@ test("instance admins can review usage, users, and update status", async ({
     await route.fulfill({
       contentType: "application/json",
       json: {
-        state: "update_available",
+        state: "disabled",
         running_version: "v1.27.9",
         running_build: "0123456789abcdef",
-        latest_version: "v1.28.0",
-        release_url: "https://github.com/rodrgds/openpost/releases/tag/v1.28.0",
-        published_at: "2026-07-27T10:00:00Z",
-        checked_at: "2026-07-27T12:00:00Z",
+        configured_enabled: true,
+        effective_enabled: false,
+        configuration_source: "default",
+        requires_restart: false,
+        disabled_reason: "managed_edition",
       },
     });
   });
@@ -273,17 +284,21 @@ test("instance admins can review usage, users, and update status", async ({
   await expect(overview.locator('[data-slot="chart"]')).toHaveCount(2);
 
   const status = page.getByTestId("instance-update-status");
-  await expect(status).toContainText("OpenPost v1.28.0 is available.");
-  await expect(status).toContainText("v1.27.9");
-  await expect(status).toContainText("OpenPost never installs updates");
-  await expect(
-    status.getByRole("link", { name: "View release" }),
-  ).toHaveAttribute(
-    "href",
-    "https://github.com/rodrgds/openpost/releases/tag/v1.28.0",
+  await expect(status).toContainText(
+    "OpenPost Cloud uses managed releases, so self-hosted release checks do not apply.",
   );
+  await expect(status).toContainText("v1.27.9");
+  await expect(status).toContainText("Configured release checks");
+  await expect(status).toContainText("Enabled · Default");
+  await expect(status).toContainText("Running release checks");
+  await expect(status).toContainText("Disabled");
+  await expect(status).toContainText("OpenPost never installs updates");
   await expect(status.getByRole("button", { name: /update/i })).toHaveCount(0);
 
+  const settingsSearch = page.getByRole("textbox", { name: "Search settings" });
+  await settingsSearch.fill("users");
+  await expect(page.locator('[data-settings-tab="users"]')).toBeVisible();
+  await expect(page.locator('[data-settings-tab="profile"]')).toHaveCount(0);
   await page.locator('[data-settings-tab="users"]').click();
   await expect(page).toHaveURL(/settings\?tab=users/);
   await expect(
@@ -298,6 +313,17 @@ test("instance admins can review usage, users, and update status", async ({
   await expect(directory).toContainText("Founder");
   await expect(directory).toContainText("Publications");
   await expect(usersPanel).toContainText("Showing 1–25 of 42");
+
+  const userSearch = usersPanel.getByRole("textbox", {
+    name: "Search by name or email",
+  });
+  await userSearch.fill("Ada Admin");
+  await userSearch.press("Enter");
+  await expect.poll(() => requestedUserSearches).toContain("Ada Admin");
+  await expect(directory).toContainText("Ada Admin");
+  await expect(directory).not.toContainText("User 2");
+  await usersPanel.getByRole("button", { name: "Clear" }).click();
+  await expect.poll(() => requestedUserSearches.at(-1)).toBe("");
 
   await directory.getByRole("button", { name: "Sort by User" }).click();
   await expect.poll(() => requestedUserSorts).toContain("display_name:asc");
@@ -424,6 +450,10 @@ test("settings keeps the active mobile tab visible and exposes dismissible statu
   await expect(activeTab).toBeInViewport();
 
   await page.goto("/settings?tab=profile");
+  await page
+    .locator("section#profile")
+    .getByRole("textbox", { name: "Display name", exact: true })
+    .fill("Mobile Settings User");
   await page.getByRole("button", { name: "Save Profile" }).click();
   const savedToast = page.locator("[data-sonner-toast]").filter({
     hasText: "Profile updated",

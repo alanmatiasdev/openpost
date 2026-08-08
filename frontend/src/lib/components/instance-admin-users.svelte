@@ -247,6 +247,10 @@
 
 	function searchUsers(event: SubmitEvent) {
 		event.preventDefault();
+		submitSearch();
+	}
+
+	function submitSearch() {
 		appliedSearch = searchInput.trim();
 		userPage = 1;
 		void loadUsers(1, sorting, appliedSearch);
@@ -369,6 +373,12 @@
 					aria-label={m.settings_instance_search_users()}
 					maxlength={200}
 					class="pl-9"
+					onkeydown={(event) => {
+						if (event.key === 'Enter' && !event.isComposing) {
+							event.preventDefault();
+							submitSearch();
+						}
+					}}
 				/>
 			</div>
 			<Button type="submit" variant="outline" disabled={usersLoading}>
