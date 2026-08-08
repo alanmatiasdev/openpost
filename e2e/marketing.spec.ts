@@ -12,50 +12,44 @@ test("marketing index links to the app and documentation @desktop", async ({
   );
   await expect(
     page.getByRole("heading", {
-      name: "Turn what you’re building into content. Publish it everywhere.",
+      name: "Your socials, on steroids.",
     }),
   ).toBeVisible();
-  await expect(page.getByText("Testimonials", { exact: true })).toHaveCount(0);
   await expect(
-    page
-      .getByRole("link", { name: "Start your 14-day trial", exact: true })
-      .first(),
+    page.getByText(
+      "Create better content, adapt it for every platform, and publish it everywhere from one workspace.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Hop on", exact: true }).first(),
   ).toHaveAttribute(
     "href",
     "https://app.openpost.social/register?plan=founder",
   );
   await expect(
-    page
-      .getByText(
-        "Start with a 14-day free trial. A card is required, and you can cancel before the first charge.",
-        { exact: true },
-      )
-      .first(),
+    page.getByRole("img", { name: "Social publishing result previews" }),
   ).toBeVisible();
-  const resultCarousel = page.getByRole("region", {
-    name: "Illustrative social publishing results",
-  });
-  await expect(resultCarousel).toBeVisible();
-  await expect(page.getByText("Illustrative campaign results")).toBeVisible();
-  await expect(
-    resultCarousel.getByRole("button", { name: "Next result" }),
-  ).toBeVisible();
-  await resultCarousel.getByRole("button", { name: "Next result" }).click();
-  await expect(resultCarousel.locator(".result-caption strong")).toHaveText(
-    "Content results",
-  );
-  await resultCarousel
-    .getByRole("button", { name: "Content results, current result view" })
-    .press("ArrowLeft");
-  await expect(resultCarousel.locator(".result-caption strong")).toHaveText(
-    "Video reach",
+  await expect(page.getByText("Illustrative campaign results")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Next result" })).toHaveCount(
+    0,
   );
   await expect(page.getByLabel("Companies using OpenPost")).toContainText(
-    "Montra",
+    "The Actual World",
   );
+  await expect(page.getByAltText("ENF. logo")).toBeVisible();
+  await expect(page.getByAltText("Ark logo")).toBeVisible();
   await expect(
     page.getByRole("heading", {
-      name: "From company update to content on every channel.",
+      name: "See the whole publishing loop.",
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Play the OpenPost product demo" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", {
+      name: "One source enters. A week of useful content leaves.",
     }),
   ).toBeVisible();
   await expect(
@@ -76,14 +70,11 @@ test("marketing index links to the app and documentation @desktop", async ({
   ).toHaveAttribute("src", "/assets/screenshots/accounts-dark.png");
   await expect(
     page.getByRole("heading", {
-      name: "Everything you build deserves an audience.",
+      name: "A content team that fits the founder’s day.",
     }),
   ).toBeVisible();
-  await expect(
-    page.getByRole("img", {
-      name: "Illustrative year of publishing activity across six social platforms",
-    }),
-  ).toBeVisible();
+  await expect(page.getByText("Illustrative creator stories")).toBeVisible();
+  await expect(page.getByAltText("Illustrative portrait of Maya Ribeiro")).toBeVisible();
   await expect(
     page.getByRole("link", { name: "Self-host", exact: true }),
   ).toHaveCount(0);
@@ -162,6 +153,82 @@ test("marketing index has no horizontal overflow", async ({ page }) => {
       document.documentElement.clientWidth,
   );
   expect(overflow).toBeLessThanOrEqual(1);
+});
+
+test("marketing raised buttons synthesize tactile feedback @desktop", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    const parameter = () => ({
+      value: 0,
+      setValueAtTime() {},
+      exponentialRampToValueAtTime() {},
+    });
+    const audioNode = () => ({
+      connect() {
+        return this;
+      },
+      disconnect() {},
+      start() {
+        (window as Window & { __openpostSoundStarts?: number })
+          .__openpostSoundStarts =
+          ((window as Window & { __openpostSoundStarts?: number })
+            .__openpostSoundStarts ?? 0) + 1;
+      },
+      stop() {},
+    });
+
+    class TestAudioContext {
+      currentTime = 0;
+      destination = audioNode();
+      sampleRate = 44_100;
+      state = "running";
+
+      createGain() {
+        return { ...audioNode(), gain: parameter() };
+      }
+      createBuffer(_channels: number, length: number) {
+        return { getChannelData: () => new Float32Array(length) };
+      }
+      createBufferSource() {
+        return { ...audioNode(), buffer: null };
+      }
+      createBiquadFilter() {
+        return {
+          ...audioNode(),
+          type: "bandpass",
+          frequency: parameter(),
+          Q: parameter(),
+        };
+      }
+      resume() {
+        return Promise.resolve();
+      }
+    }
+
+    Object.defineProperty(window, "AudioContext", {
+      configurable: true,
+      value: TestAudioContext,
+    });
+    Object.defineProperty(navigator, "userActivation", {
+      configurable: true,
+      value: { hasBeenActive: true },
+    });
+  });
+
+  await page.goto("/");
+  const hopOn = page.getByRole("link", { name: "Hop on", exact: true });
+  await expect(hopOn).toHaveAttribute("data-cuelume-press", "press");
+  await hopOn.dispatchEvent("pointerdown", { pointerType: "mouse" });
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as Window & { __openpostSoundStarts?: number })
+            .__openpostSoundStarts ?? 0,
+      ),
+    )
+    .toBeGreaterThan(0);
 });
 
 test("marketing navigation uses the shared responsive menu patterns", async ({
