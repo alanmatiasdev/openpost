@@ -9208,12 +9208,28 @@ export interface components {
             readonly $schema?: string;
             /** @description Last bounded release-check attempt */
             checked_at?: string;
+            /**
+             * @description Source of the configured value
+             * @enum {string}
+             */
+            configuration_source: "default" | "environment" | "database";
+            /** @description Configured OPENPOST_UPDATE_CHECK_ENABLED value */
+            configured_enabled: boolean;
+            /**
+             * @description Reason the configured value is not effective
+             * @enum {string}
+             */
+            disabled_reason?: "managed_edition" | "configuration";
+            /** @description Whether release checks run in this process */
+            effective_enabled: boolean;
             /** @description Latest stable OpenPost release tag */
             latest_version?: string;
             /** @description Latest release publication time */
             published_at?: string;
             /** @description Validated GitHub release page */
             release_url?: string;
+            /** @description Whether the configured value differs from the running process */
+            requires_restart: boolean;
             /** @description Source revision embedded in or detected from the running server */
             running_build: string;
             /** @description Version embedded in the running server */

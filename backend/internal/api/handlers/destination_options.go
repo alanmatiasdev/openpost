@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -132,6 +133,12 @@ func (h *DestinationOptionsHandler) registerPublishingOptions(api huma.API) {
 		if adapter == nil {
 			return nil, huma.Error400BadRequest("provider is not configured")
 		}
+		if input.Source == "threads_locations" && strings.TrimSpace(input.Search) == "" {
+			return &PublishingOptionsOutput{}, nil
+		}
+		if requiredScope := publishingOptionsRequiredScope(account.Platform, input.Source); requiredScope != "" && !accountHasGrantedScope(account, requiredScope) {
+			return nil, huma.Error403Forbidden("Reconnect this Threads account to grant threads_location_tagging and enable location search")
+		}
 		if h.tokenSource == nil {
 			return nil, huma.Error502BadGateway("provider access token service is unavailable")
 		}
@@ -168,6 +175,7 @@ func (h *DestinationOptionsHandler) registerPublishingOptions(api huma.API) {
 			return nil, huma.Error400BadRequest("provider does not expose account-specific publishing options")
 		}
 		if err != nil {
+			log.Printf("failed to load provider publishing options account=%s provider=%s source=%s: %v", account.ID, account.Platform, input.Source, err)
 			return nil, huma.Error502BadGateway("failed to load provider publishing options")
 		}
 		output := &PublishingOptionsOutput{}
@@ -175,6 +183,22 @@ func (h *DestinationOptionsHandler) registerPublishingOptions(api huma.API) {
 		output.Body.NextCursor = page.NextCursor
 		return output, nil
 	})
+}
+
+func publishingOptionsRequiredScope(provider, source string) string {
+	if provider == "threads" && source == "threads_locations" {
+		return "threads_location_tagging"
+	}
+	return ""
+}
+
+func accountHasGrantedScope(account models.SocialAccount, required string) bool {
+	for _, granted := range strings.Fields(account.GrantedScopes) {
+		if granted == required {
+			return true
+		}
+	}
+	return false
 }
 
 func (h *DestinationOptionsHandler) loadDestinationAccount(ctx context.Context, accountID string) (models.SocialAccount, error) {

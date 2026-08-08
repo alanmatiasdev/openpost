@@ -86,6 +86,35 @@
 				(!accountFilter || state.social_account_id === accountFilter)
 		)
 	);
+	const recoveryGroups = $derived.by(() => {
+		const groups = new SvelteMap<
+			string,
+			{
+				key: string;
+				kind: 'reconnect' | 'retry' | 'unavailable' | 'investigate';
+				account?: SocialAccount;
+				platform: string;
+				states: EngagementSyncState[];
+			}
+		>();
+		for (const state of filteredSyncStates) {
+			const kind = recoveryKind(state);
+			const key = `${state.social_account_id}:${kind}:${state.error_code || state.status}`;
+			const group = groups.get(key) ?? {
+				key,
+				kind,
+				account: syncStateAccount(state),
+				platform: state.platform,
+				states: []
+			};
+			group.states.push(state);
+			groups.set(key, group);
+		}
+		const priority = { reconnect: 0, investigate: 1, retry: 2, unavailable: 3 } as const;
+		return [...groups.values()].toSorted(
+			(left, right) => priority[left.kind] - priority[right.kind]
+		);
+	});
 	const groupedItems = $derived.by(() => {
 		const groups = new SvelteMap<
 			string,
@@ -302,18 +331,42 @@
 		return accounts.find((account) => account.id === state.social_account_id);
 	}
 
-	function syncStatePublication(state: EngagementSyncState) {
-		return publications.find((publication) =>
-			(publication.renditions ?? []).some((rendition) => rendition.id === state.rendition_id)
-		);
-	}
-
 	function syncStateMessage(state: EngagementSyncState) {
 		if (state.status === 'rate_limited') {
 			return m.engagement_rate_limited({ date: dateLabel(state.next_sync_at) });
 		}
 		if (state.status === 'failed') return m.engagement_collection_failed();
 		return state.error_message || m.engagement_sync_delayed();
+	}
+
+	function recoveryKind(state: EngagementSyncState) {
+		const code = state.error_code.toLocaleLowerCase();
+		if (
+			state.status === 'permission_required' ||
+			code.includes('permission') ||
+			code.includes('auth')
+		) {
+			return 'reconnect' as const;
+		}
+		if (state.status === 'not_found') return 'unavailable' as const;
+		if (
+			state.status === 'rate_limited' ||
+			state.status === 'temporarily_unavailable' ||
+			Boolean(state.next_sync_at)
+		) {
+			return 'retry' as const;
+		}
+		return 'investigate' as const;
+	}
+
+	function recoveryRecommendation(
+		kind: 'reconnect' | 'retry' | 'unavailable' | 'investigate',
+		count: number
+	) {
+		if (kind === 'reconnect') return m.engagement_recovery_reconnect({ count });
+		if (kind === 'retry') return m.engagement_recovery_retry({ count });
+		if (kind === 'unavailable') return m.engagement_recovery_unavailable({ count });
+		return m.engagement_recovery_investigate({ count });
 	}
 
 	function orderThread(source: EngagementItem[]) {
@@ -367,13 +420,13 @@
 	loadingItems={6}
 >
 	{#snippet actions()}
-		{#if filteredSyncStates.length > 0}
+		{#if recoveryGroups.length > 0}
 			<Popover.Root>
 				<Popover.Trigger>
 					{#snippet child({ props })}
 						<Button {...props} variant="outline">
 							<CircleAlertIcon class="size-4 text-amber-600 dark:text-amber-400" />
-							{m.engagement_collection_issues({ count: filteredSyncStates.length })}
+							{m.engagement_collection_issues({ count: recoveryGroups.length })}
 						</Button>
 					{/snippet}
 				</Popover.Trigger>
@@ -385,27 +438,44 @@
 						</p>
 					</div>
 					<div class="max-h-80 divide-y overflow-y-auto">
-						{#each filteredSyncStates as state (state.id)}
-							{@const account = syncStateAccount(state)}
-							{@const publication = syncStatePublication(state)}
+						{#each recoveryGroups as group (group.key)}
+							{@const state = group.states[0]}
 							<div class="flex gap-3 px-4 py-3">
 								<span
 									class="flex size-8 shrink-0 items-center justify-center rounded-full border bg-background"
 								>
-									<PlatformIcon platform={state.platform} class="size-4" />
+									<PlatformIcon platform={group.platform} class="size-4" />
 								</span>
 								<div class="min-w-0">
 									<p class="truncate text-sm font-medium">
-										{account?.account_username || getPlatformName(state.platform)}
+										{group.account?.account_username || getPlatformName(group.platform)}
 									</p>
-									<p class="truncate text-xs text-muted-foreground">
-										{publication
-											? publicationLabel(publication)
-											: m.engagement_collection_published_post()}
+									<p class="text-xs font-medium text-foreground">
+										{recoveryRecommendation(group.kind, group.states.length)}
 									</p>
 									<p class="mt-1 text-xs leading-5 text-muted-foreground">
 										{syncStateMessage(state)}
 									</p>
+									{#if group.kind === 'reconnect'}
+										<Button
+											href="/settings?tab=accounts"
+											variant="link"
+											size="sm"
+											class="mt-1 h-auto min-h-8 px-0"
+										>
+											{m.analytics_reconnect()}
+										</Button>
+									{:else if group.kind === 'retry' || group.kind === 'investigate'}
+										<Button
+											variant="link"
+											size="sm"
+											class="mt-1 h-auto min-h-8 px-0"
+											onclick={refresh}
+											disabled={refreshing}
+										>
+											{m.communications_refresh()}
+										</Button>
+									{/if}
 								</div>
 							</div>
 						{/each}

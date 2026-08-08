@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-func TestThreadsExchangeCodeRecordsGrantedAnalyticsScope(t *testing.T) {
+func TestThreadsExchangeCodeRecordsGrantedOptionalScopes(t *testing.T) {
 	originalClient := httpClient
 	defer func() { httpClient = originalClient }()
 
@@ -33,8 +33,8 @@ func TestThreadsExchangeCodeRecordsGrantedAnalyticsScope(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ExchangeCode returned error: %v", err)
 	}
-	if token.AccessToken != "long" || !strings.Contains(token.Extra["scope"], "threads_manage_insights") {
-		t.Fatalf("expected token with analytics scope, got %#v", token)
+	if token.AccessToken != "long" || !strings.Contains(token.Extra["scope"], "threads_manage_insights") || !strings.Contains(token.Extra["scope"], "threads_location_tagging") {
+		t.Fatalf("expected token with analytics and location scopes, got %#v", token)
 	}
 }
 
@@ -369,7 +369,7 @@ func TestThreadsSearchesPublishingLocations(t *testing.T) {
 		if req.Method != http.MethodGet || req.URL.Path != "/v1.0/location_search" {
 			t.Fatalf("unexpected request %s %s", req.Method, req.URL.String())
 		}
-		if req.URL.Query().Get("query") != "Lisbon" || req.URL.Query().Get("access_token") != "threads-token" {
+		if req.URL.Query().Get("q") != "Lisbon" || req.URL.Query().Get("query") != "" || req.URL.Query().Get("access_token") != "threads-token" {
 			t.Fatalf("unexpected location query %#v", req.URL.Query())
 		}
 		return jsonResponse(req, `{"data":[{"id":"location-1","name":"Lisbon","city":"Lisbon","country":"Portugal"}],"paging":{"cursors":{"after":"next"}}}`), nil
@@ -385,5 +385,27 @@ func TestThreadsSearchesPublishingLocations(t *testing.T) {
 	}
 	if page.NextCursor != "next" || len(page.Options) != 1 || page.Options[0].Value != "location-1" || page.Options[0].Label != "Lisbon · Lisbon, Portugal" {
 		t.Fatalf("unexpected locations page %#v", page)
+	}
+}
+
+func TestThreadsLocationSearchWaitsForAQuery(t *testing.T) {
+	originalClient := httpClient
+	defer func() { httpClient = originalClient }()
+
+	httpClient = &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		t.Fatalf("empty location search should not call Threads: %s %s", req.Method, req.URL.String())
+		return nil, nil
+	})}
+
+	page, err := NewThreadsAdapter("", "", "").SearchPublishingOptions(context.Background(), "threads-token", PublishingOptionsInput{
+		Source: "threads_locations",
+		Search: "   ",
+		Limit:  100,
+	})
+	if err != nil {
+		t.Fatalf("SearchPublishingOptions returned error: %v", err)
+	}
+	if len(page.Options) != 0 || page.NextCursor != "" {
+		t.Fatalf("expected an empty location page, got %#v", page)
 	}
 }

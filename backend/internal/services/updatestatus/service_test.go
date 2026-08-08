@@ -24,6 +24,7 @@ func TestCheckIsDisabledWithoutNetworkAccess(t *testing.T) {
 	requests := 0
 	service := NewService(Options{
 		Enabled:        false,
+		DisabledReason: "managed_edition",
 		RunningVersion: "v1.2.3",
 		RunningBuild:   "abc123",
 		HTTPClient: &http.Client{Transport: roundTripFunc(func(_ *http.Request) (*http.Response, error) {
@@ -37,6 +38,8 @@ func TestCheckIsDisabledWithoutNetworkAccess(t *testing.T) {
 	require.Equal(t, StateDisabled, status.State)
 	require.Equal(t, "v1.2.3", status.RunningVersion)
 	require.Equal(t, "abc123", status.RunningBuild)
+	require.False(t, status.EffectiveEnabled)
+	require.Equal(t, "managed_edition", status.DisabledReason)
 	require.Zero(t, requests)
 }
 

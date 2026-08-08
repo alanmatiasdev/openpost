@@ -212,6 +212,50 @@ test("analytics keeps provider metrics distinct across desktop and phone layouts
       },
     });
   });
+  await page.route("**/api/v1/publications/publication-1", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      json: {
+        id: "publication-1",
+        workspace_id: workspace.id,
+        created_by: "user-1",
+        status: "published",
+        intent: "post",
+        content_profile: "text",
+        creation_preset: "manual",
+        title: "Launch notes",
+        source_text: "Launch notes are live.",
+        metadata: {},
+        segments: [],
+        media: [],
+        renditions: [
+          {
+            id: "rendition-1",
+            publication_id: "publication-1",
+            social_account_id: "account-x",
+            platform: "x",
+            profile: "text",
+            output_profile: "text",
+            status: "published",
+            title: "",
+            body: "Launch notes are live.",
+            description: "",
+            settings: {},
+            segments: [],
+            media: [],
+            format_locked: false,
+            error_retryable: false,
+            external_url: "https://x.com/openpost/status/1",
+          },
+        ],
+        repost_override: {},
+        revision: 1,
+        actual_run_at: "2026-07-25T09:00:00Z",
+        created_at: "2026-07-25T08:00:00Z",
+        updated_at: "2026-07-25T09:00:00Z",
+      },
+    });
+  });
 
   await page.setViewportSize({ width: 1280, height: 820 });
   await page.goto(`/analytics?workspace=${workspace.id}`);
@@ -298,6 +342,21 @@ test("analytics keeps provider metrics distinct across desktop and phone layouts
   await page.getByRole("button", { name: "Refresh data" }).click();
   await expect(page.getByText("Updating analytics for 4 items.")).toBeVisible();
   expect(refreshRequests).toBe(1);
+
+  await launch.getByRole("link", { name: "Launch notes" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Launch notes" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      "This post has already been sent to its destinations. OpenPost cannot change the copies on social networks.",
+    ),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Save changes" })).toHaveCount(
+    0,
+  );
+  await page.goBack();
+  await expect(page.getByRole("heading", { name: "Analytics" })).toBeVisible();
 
   await page.setViewportSize({ width: 390, height: 844 });
   await expect

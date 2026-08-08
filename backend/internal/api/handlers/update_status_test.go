@@ -52,6 +52,9 @@ func TestUpdateStatusReturnsReadOnlyDisabledState(t *testing.T) {
 	require.Equal(t, "v1.2.3", body.RunningVersion)
 	require.Equal(t, "abc123", body.RunningBuild)
 	require.Empty(t, body.ReleaseURL)
+	require.False(t, body.EffectiveEnabled)
+	require.False(t, body.ConfiguredEnabled)
+	require.Equal(t, "default", body.ConfigurationSource)
 }
 
 func newUpdateStatusTestServer(t *testing.T, isAdmin bool, authenticator middleware.Authenticator) *echo.Echo {
@@ -74,7 +77,7 @@ func newUpdateStatusTestServer(t *testing.T, isAdmin bool, authenticator middlew
 		RunningVersion: "v1.2.3",
 		RunningBuild:   "abc123",
 	})
-	NewUpdateStatusHandler(db, authenticator, service).RegisterRoutes(api)
+	NewUpdateStatusHandler(db, authenticator, service, nil).RegisterRoutes(api)
 	return e
 }
 

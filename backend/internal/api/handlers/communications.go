@@ -2,6 +2,8 @@ package handlers
 
 import (
 	"context"
+	"errors"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -252,6 +254,10 @@ func (h *CommunicationsHandler) RegisterRoutes(api huma.API) {
 		}
 		items, err := h.service.ListMessages(ctx, input.WorkspaceID, input.ConversationID, input.Limit, input.Offset)
 		if err != nil {
+			if errors.Is(err, communications.ErrConversationNotFound) {
+				return nil, huma.Error404NotFound("conversation not found")
+			}
+			log.Printf("failed to load conversation %s in workspace %s: %v", input.ConversationID, input.WorkspaceID, err)
 			return nil, huma.Error500InternalServerError("failed to load conversation")
 		}
 		return &ListMessagesOutput{Body: items}, nil

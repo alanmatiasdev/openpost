@@ -2,6 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
+	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 	import { client, type SocialAccount } from '$lib/api/client';
 	import type { components } from '$lib/api/types';
 	import { workspaceCtx } from '$lib/stores/workspace.svelte';
@@ -17,6 +18,7 @@
 	import RefreshIcon from 'lucide-svelte/icons/refresh-cw';
 	import FileTextIcon from 'lucide-svelte/icons/file-text';
 	import PencilIcon from 'lucide-svelte/icons/pencil';
+	import EyeIcon from 'lucide-svelte/icons/eye';
 	import PostsIcon from 'lucide-svelte/icons/files';
 	import PlusIcon from 'lucide-svelte/icons/plus';
 	import ClockIcon from 'lucide-svelte/icons/clock';
@@ -81,6 +83,43 @@
 			.filter((post) => post.status === 'failed')
 			.toSorted((a, b) => timestamp(b.created_at) - timestamp(a.created_at))
 	);
+	const failureGroups = $derived.by(() => {
+		const groups = new SvelteMap<
+			string,
+			{
+				key: string;
+				label: string;
+				postIDs: SvelteSet<string>;
+				samplePost: ActivityItem;
+				sampleDestination: ActivityDestination;
+			}
+		>();
+		for (const post of failedPosts) {
+			for (const destination of post.destinations.filter((item) => item.status === 'failed')) {
+				const key = `${destination.social_account_id}:${destination.error_action || 'edit'}:${destination.error_code || destination.error_kind || 'failed'}`;
+				const group = groups.get(key) ?? {
+					key,
+					label: destinationName(destination),
+					postIDs: new SvelteSet<string>(),
+					samplePost: post,
+					sampleDestination: destination
+				};
+				group.postIDs.add(post.id);
+				groups.set(key, group);
+			}
+		}
+		const priority: Record<string, number> = {
+			reconnect: 0,
+			billing: 1,
+			open_provider: 2,
+			retry: 3
+		};
+		return [...groups.values()].toSorted(
+			(left, right) =>
+				(priority[left.sampleDestination.error_action ?? ''] ?? 4) -
+				(priority[right.sampleDestination.error_action ?? ''] ?? 4)
+		);
+	});
 	const drafts = $derived(
 		posts
 			.filter((post) => post.status === 'draft')
@@ -516,10 +555,17 @@
 						size="sm"
 						class="min-h-10 shrink-0"
 						onclick={() => goto(resolve(post.href as '/'))}
-						aria-label={m.activity_edit_post({ title: truncate(postText(post), 40) })}
+						aria-label={post.status === 'published' || post.status === 'publishing'
+							? m.activity_view_post({ title: truncate(postText(post), 40) })
+							: m.activity_edit_post({ title: truncate(postText(post), 40) })}
 					>
-						<PencilIcon class="size-4 sm:mr-1.5" />
-						<span class="hidden sm:inline">{m.common_edit()}</span>
+						{#if post.status === 'published' || post.status === 'publishing'}
+							<EyeIcon class="size-4 sm:mr-1.5" />
+							<span class="hidden sm:inline">{m.activity_view_details()}</span>
+						{:else}
+							<PencilIcon class="size-4 sm:mr-1.5" />
+							<span class="hidden sm:inline">{m.common_edit()}</span>
+						{/if}
 					</Button>
 				</article>
 			{/each}
@@ -586,8 +632,7 @@
 				>
 				<TabsTrigger value="failed"
 					>{m.activity_tab_failed()}
-					<span class="text-muted-foreground">{failedPosts.length + failedJobs.length}</span
-					></TabsTrigger
+					<span class="text-muted-foreground">{failedPosts.length}</span></TabsTrigger
 				>
 				<TabsTrigger value="drafts"
 					>{m.activity_tab_drafts()}
@@ -610,6 +655,36 @@
 				)}
 			</TabsContent>
 			<TabsContent value="failed">
+				{#if failureGroups.length > 0}
+					<div class="mb-6 space-y-3" aria-label={m.activity_recovery_queue()}>
+						{#each failureGroups as group (group.key)}
+							<div
+								class="flex flex-col gap-3 rounded-xl border bg-muted/20 p-4 sm:flex-row sm:items-center"
+							>
+								<div class="min-w-0 flex-1">
+									<p class="font-medium">{group.label}</p>
+									<p class="mt-1 text-sm text-muted-foreground">
+										{group.postIDs.size === 1
+											? m.activity_recovery_affected_one()
+											: m.activity_recovery_affected({ count: group.postIDs.size })}
+										{#if group.sampleDestination.error_message}
+											· {group.sampleDestination.error_message}
+										{/if}
+									</p>
+								</div>
+								<Button
+									variant="outline"
+									size="sm"
+									onclick={() => runDestinationAction(group.samplePost, group.sampleDestination)}
+									disabled={retryingDestination ===
+										`${group.samplePost.id}:${group.sampleDestination.social_account_id}`}
+								>
+									{destinationActionLabel(group.sampleDestination)}
+								</Button>
+							</div>
+						{/each}
+					</div>
+				{/if}
 				{@render postList(
 					failedPosts,
 					m.activity_empty_failed_title(),
@@ -622,6 +697,9 @@
 						>
 							{m.activity_technical_details({ count: failedJobs.length })}
 						</summary>
+						<p class="mt-2 max-w-2xl text-xs leading-5 text-muted-foreground">
+							{m.activity_technical_details_description()}
+						</p>
 						<div class="mt-3 divide-y rounded-md bg-muted/35 px-4">
 							{#each failedJobs as job (job.id)}
 								<div class="flex items-start justify-between gap-4 py-3 text-sm">

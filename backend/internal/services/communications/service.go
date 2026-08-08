@@ -33,6 +33,8 @@ const (
 
 const sweepInterval = 5 * time.Minute
 
+var ErrConversationNotFound = errors.New("conversation not found")
+
 type TokenSource interface {
 	GetValidAccessToken(ctx context.Context, accountID string) (string, error)
 }
@@ -1256,13 +1258,25 @@ func (s *Service) ListMessages(ctx context.Context, workspaceID, conversationID 
 	if limit <= 0 || limit > 200 {
 		limit = 100
 	}
+	exists, err := s.db.NewSelect().Model((*models.Conversation)(nil)).
+		Where("id = ? AND workspace_id = ?", conversationID, workspaceID).
+		Exists(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("check conversation: %w", err)
+	}
+	if !exists {
+		return nil, ErrConversationNotFound
+	}
 	var messages []models.DirectMessage
-	err := s.db.NewSelect().Model(&messages).
+	err = s.db.NewSelect().Model(&messages).
 		Join("JOIN conversations AS conversation ON conversation.id = direct_message.conversation_id").
 		Where("direct_message.conversation_id = ? AND conversation.workspace_id = ?", conversationID, workspaceID).
-		Order("COALESCE(direct_message.remote_created_at, direct_message.created_at) ASC").
+		OrderExpr("COALESCE(direct_message.remote_created_at, direct_message.created_at) ASC").
 		Limit(limit).Offset(max(0, offset)).Scan(ctx)
-	return messages, err
+	if err != nil {
+		return nil, fmt.Errorf("list conversation messages: %w", err)
+	}
+	return messages, nil
 }
 
 func (s *Service) SetConversationState(ctx context.Context, workspaceID, conversationID string, read, archived *bool) error {

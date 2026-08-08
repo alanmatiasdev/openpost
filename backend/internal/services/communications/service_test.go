@@ -193,6 +193,43 @@ func TestMessageSyncRequiresOptInAndIsIdempotent(t *testing.T) {
 	require.Equal(t, "Hello", messages[0].Body)
 }
 
+func TestListMessagesOrdersStoredMessagesByProviderTime(t *testing.T) {
+	db := communicationsTestDB(t)
+	ctx := context.Background()
+	now := time.Date(2026, 8, 7, 12, 0, 0, 0, time.UTC)
+	conversation := &models.Conversation{
+		ID: "conversation-1", WorkspaceID: "workspace-1", SocialAccountID: "account-1",
+		Platform: "mastodon", RemoteConversationID: "remote-conversation-1",
+		CreatedAt: now, UpdatedAt: now,
+	}
+	_, err := db.NewInsert().Model(conversation).Exec(ctx)
+	require.NoError(t, err)
+	messages := []models.DirectMessage{
+		{
+			ID: "message-later", WorkspaceID: "workspace-1", ConversationID: conversation.ID,
+			Direction: "inbound", Body: "Later", RemoteCreatedAt: now.Add(time.Minute),
+			CreatedAt: now, UpdatedAt: now,
+		},
+		{
+			ID: "message-earlier", WorkspaceID: "workspace-1", ConversationID: conversation.ID,
+			Direction: "outbound", Body: "Earlier", RemoteCreatedAt: now.Add(-time.Minute),
+			CreatedAt: now.Add(time.Minute), UpdatedAt: now.Add(time.Minute),
+		},
+	}
+	_, err = db.NewInsert().Model(&messages).Exec(ctx)
+	require.NoError(t, err)
+
+	service := NewService(db, staticTokenSource{}, nil)
+	got, err := service.ListMessages(ctx, "workspace-1", conversation.ID, 100, 0)
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+	require.Equal(t, "message-earlier", got[0].ID)
+	require.Equal(t, "message-later", got[1].ID)
+
+	_, err = service.ListMessages(ctx, "workspace-2", conversation.ID, 100, 0)
+	require.ErrorIs(t, err, ErrConversationNotFound)
+}
+
 func TestMessageSyncAlwaysChecksNewestPageWhileBackfilling(t *testing.T) {
 	db := communicationsTestDB(t)
 	ctx := context.Background()

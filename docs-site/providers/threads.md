@@ -10,7 +10,7 @@ Threads supports text, single media, replies, and 2-20 item media carousels, but
 - `THREADS_CLIENT_SECRET`
 - Callback URL: `https://your-domain.com/api/v1/accounts/threads/callback`
 - Public `OPENPOST_MEDIA_URL`
-- Scopes: `threads_basic`, `threads_content_publish`, `threads_manage_replies`, `threads_manage_insights`
+- Scopes: `threads_basic`, `threads_content_publish`, `threads_manage_replies`, `threads_manage_insights`, `threads_location_tagging`
 
 ## Important requirement
 
@@ -31,6 +31,10 @@ OpenPost can list replies, send replies, and hide replies. The Threads API path 
 ## Analytics
 
 OpenPost collects follower counts and supported post views, likes, replies, reposts, quotes, and shares. Accounts connected before `threads_manage_insights` was added must be reconnected before collection can start.
+
+## Location tags
+
+Threads location search requires `threads_location_tagging`. Accounts connected before this scope was added must be reconnected before locations can be searched or attached to a post. Your Meta app may also need access to this permission before non-test users can grant it.
 
 ## Local development
 

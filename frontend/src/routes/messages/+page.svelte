@@ -35,6 +35,7 @@
 	let selectedId = $state('');
 	let error = $state('');
 	let messageError = $state('');
+	let messageErrorReference = $state('');
 	let loadedWorkspace = $state('');
 	let dataWorkspaceId = $state('');
 	let loadingMessages = $state(false);
@@ -119,7 +120,12 @@
 		if (!workspaceId) return;
 		loadingMessages = true;
 		messageError = '';
-		const { data, error: apiError } = await client.GET('/messages/{conversation_id}', {
+		messageErrorReference = '';
+		const {
+			data,
+			error: apiError,
+			response
+		} = await client.GET('/messages/{conversation_id}', {
 			params: {
 				path: { conversation_id: conversationId },
 				query: { workspace_id: workspaceId, limit: 200, offset: 0 }
@@ -127,7 +133,13 @@
 		});
 		if (selectedId !== conversationId) return;
 		if (apiError) {
-			messageError = apiError.detail || m.messages_load_failed();
+			messageError =
+				apiError.status === 404
+					? m.messages_conversation_unavailable()
+					: apiError.detail || m.messages_load_failed();
+			if (apiError.status !== undefined && apiError.status >= 500) {
+				messageErrorReference = response.headers.get('x-request-id') ?? '';
+			}
 			messages = [];
 		} else {
 			messages = data ?? [];
@@ -411,7 +423,23 @@
 							aria-busy={loadingMessages}
 						>
 							{#if messageError}
-								<InlineNotice tone="error" message={messageError} />
+								<InlineNotice tone="error" message={messageError}>
+									{#if messageErrorReference}
+										<p class="mt-1 font-mono text-xs">
+											{m.messages_error_reference({ id: messageErrorReference })}
+										</p>
+									{/if}
+									{#snippet actions()}
+										<Button
+											variant="outline"
+											size="sm"
+											onclick={() => void loadMessages(selected.id)}
+										>
+											<RefreshIcon class="mr-1.5 size-3.5" />
+											{m.common_retry()}
+										</Button>
+									{/snippet}
+								</InlineNotice>
 							{:else if loadingMessages}
 								<p class="text-sm text-muted-foreground">{m.common_loading()}</p>
 							{:else}
@@ -463,43 +491,45 @@
 							{/if}
 						</div>
 
-						<div class="border-t p-3 sm:p-4">
-							{#if replyWindowClosed}
-								<InlineNotice tone="warning" message={m.messages_window_closed()} />
-							{:else}
-								{#if selected.messaging_window_expires_at}
-									<p class="mb-2 text-xs text-muted-foreground">
-										{m.messages_window_until({
-											date: dateLabel(selected.messaging_window_expires_at)
-										})}
-									</p>
-								{/if}
-								<form
-									class="flex items-end gap-2"
-									onsubmit={(event) => {
-										event.preventDefault();
-										void sendMessage();
-									}}
-								>
-									<Textarea
-										class="min-h-11 resize-none"
-										bind:value={replyBody}
-										placeholder={m.messages_reply_placeholder()}
-										rows={2}
-										required
-									/>
-									<Button
-										type="submit"
-										size="icon"
-										class="mb-0.5 shrink-0"
-										disabled={sending || !replyBody.trim()}
-										aria-label={m.messages_send()}
+						{#if !loadingMessages && !messageError}
+							<div class="border-t p-3 sm:p-4" data-testid="conversation-reply-composer">
+								{#if replyWindowClosed}
+									<InlineNotice tone="warning" message={m.messages_window_closed()} />
+								{:else}
+									{#if selected.messaging_window_expires_at}
+										<p class="mb-2 text-xs text-muted-foreground">
+											{m.messages_window_until({
+												date: dateLabel(selected.messaging_window_expires_at)
+											})}
+										</p>
+									{/if}
+									<form
+										class="flex items-end gap-2"
+										onsubmit={(event) => {
+											event.preventDefault();
+											void sendMessage();
+										}}
 									>
-										<SendIcon class="size-4" />
-									</Button>
-								</form>
-							{/if}
-						</div>
+										<Textarea
+											class="min-h-11 resize-none"
+											bind:value={replyBody}
+											placeholder={m.messages_reply_placeholder()}
+											rows={2}
+											required
+										/>
+										<Button
+											type="submit"
+											size="icon"
+											class="mb-0.5 shrink-0"
+											disabled={sending || !replyBody.trim()}
+											aria-label={m.messages_send()}
+										>
+											<SendIcon class="size-4" />
+										</Button>
+									</form>
+								{/if}
+							</div>
+						{/if}
 					{:else}
 						<EmptyState
 							icon={InboxIcon}

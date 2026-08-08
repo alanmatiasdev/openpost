@@ -32,6 +32,7 @@ const (
 
 type Options struct {
 	Enabled        bool
+	DisabledReason string
 	RunningVersion string
 	RunningBuild   string
 	HTTPClient     *http.Client
@@ -39,17 +40,20 @@ type Options struct {
 }
 
 type Status struct {
-	State          string
-	RunningVersion string
-	RunningBuild   string
-	LatestVersion  string
-	ReleaseURL     string
-	PublishedAt    time.Time
-	CheckedAt      time.Time
+	State            string
+	EffectiveEnabled bool
+	DisabledReason   string
+	RunningVersion   string
+	RunningBuild     string
+	LatestVersion    string
+	ReleaseURL       string
+	PublishedAt      time.Time
+	CheckedAt        time.Time
 }
 
 type Service struct {
 	enabled        bool
+	disabledReason string
 	runningVersion string
 	runningBuild   string
 	client         *http.Client
@@ -93,6 +97,7 @@ func NewService(options Options) *Service {
 
 	return &Service{
 		enabled:        options.Enabled,
+		disabledReason: strings.TrimSpace(options.DisabledReason),
 		runningVersion: runningVersion,
 		runningBuild:   runningBuild,
 		client:         &boundedClient,
@@ -102,8 +107,10 @@ func NewService(options Options) *Service {
 
 func (s *Service) Check(ctx context.Context) Status {
 	base := Status{
-		RunningVersion: s.runningVersion,
-		RunningBuild:   s.runningBuild,
+		EffectiveEnabled: s.enabled,
+		DisabledReason:   s.disabledReason,
+		RunningVersion:   s.runningVersion,
+		RunningBuild:     s.runningBuild,
 	}
 	if !s.enabled {
 		base.State = StateDisabled
@@ -142,13 +149,15 @@ func (s *Service) Check(ctx context.Context) Status {
 
 	s.etag = etag
 	s.cached = Status{
-		State:          compareState(s.runningVersion, release.TagName),
-		RunningVersion: s.runningVersion,
-		RunningBuild:   s.runningBuild,
-		LatestVersion:  release.TagName,
-		ReleaseURL:     release.HTMLURL,
-		PublishedAt:    release.PublishedAt.UTC(),
-		CheckedAt:      now,
+		State:            compareState(s.runningVersion, release.TagName),
+		EffectiveEnabled: s.enabled,
+		DisabledReason:   s.disabledReason,
+		RunningVersion:   s.runningVersion,
+		RunningBuild:     s.runningBuild,
+		LatestVersion:    release.TagName,
+		ReleaseURL:       release.HTMLURL,
+		PublishedAt:      release.PublishedAt.UTC(),
+		CheckedAt:        now,
 	}
 	s.nextCheckAt = now.Add(successCacheTTL)
 	return s.cached

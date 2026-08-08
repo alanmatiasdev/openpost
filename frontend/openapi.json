@@ -13548,6 +13548,24 @@
 						"description": "Last bounded release-check attempt",
 						"type": "string"
 					},
+					"configuration_source": {
+						"description": "Source of the configured value",
+						"enum": ["default", "environment", "database"],
+						"type": "string"
+					},
+					"configured_enabled": {
+						"description": "Configured OPENPOST_UPDATE_CHECK_ENABLED value",
+						"type": "boolean"
+					},
+					"disabled_reason": {
+						"description": "Reason the configured value is not effective",
+						"enum": ["managed_edition", "configuration"],
+						"type": "string"
+					},
+					"effective_enabled": {
+						"description": "Whether release checks run in this process",
+						"type": "boolean"
+					},
 					"latest_version": {
 						"description": "Latest stable OpenPost release tag",
 						"type": "string"
@@ -13559,6 +13577,10 @@
 					"release_url": {
 						"description": "Validated GitHub release page",
 						"type": "string"
+					},
+					"requires_restart": {
+						"description": "Whether the configured value differs from the running process",
+						"type": "boolean"
 					},
 					"running_build": {
 						"description": "Source revision embedded in or detected from the running server",
@@ -13581,7 +13603,15 @@
 						"type": "string"
 					}
 				},
-				"required": ["state", "running_version", "running_build"],
+				"required": [
+					"state",
+					"running_version",
+					"running_build",
+					"configured_enabled",
+					"effective_enabled",
+					"configuration_source",
+					"requires_restart"
+				],
 				"type": "object"
 			},
 			"UpdateVideoProjectInputBody": {

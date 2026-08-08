@@ -33,7 +33,13 @@ func NewThreadsAdapter(clientID, clientSecret, redirectURI string) *ThreadsAdapt
 				AuthURL:  "https://www.threads.com/oauth/authorize",
 				TokenURL: "https://graph.threads.net/oauth/access_token",
 			},
-			Scopes: []string{"threads_basic", "threads_content_publish", "threads_manage_replies", "threads_manage_insights"},
+			Scopes: []string{
+				"threads_basic",
+				"threads_content_publish",
+				"threads_manage_replies",
+				"threads_manage_insights",
+				"threads_location_tagging",
+			},
 		},
 	}
 }
@@ -610,12 +616,14 @@ func (t *ThreadsAdapter) SearchPublishingOptions(ctx context.Context, accessToke
 	if input.Source != "threads_locations" {
 		return PublishingOptionsPage{}, fmt.Errorf("threads publishing option source %q is not supported", input.Source)
 	}
+	search := strings.TrimSpace(input.Search)
+	if search == "" {
+		return PublishingOptionsPage{}, nil
+	}
 	query := url.Values{
 		oauthParamAccessToken: {accessToken},
 		"fields":              {"id,name,address,city,country"},
-	}
-	if search := strings.TrimSpace(input.Search); search != "" {
-		query.Set("query", search)
+		"q":                   {search},
 	}
 	if input.Cursor != "" {
 		query.Set("after", input.Cursor)

@@ -26,6 +26,7 @@ test("communications and notifications stay usable across desktop and phone layo
   )) as { id: string };
   await authenticatePage(page, auth.token);
   let engagementArchived = false;
+  let conversationMessageLoads = 0;
 
   await page.route("**/api/v1/engagement**", async (route) => {
     const url = new URL(route.request().url());
@@ -137,6 +138,20 @@ test("communications and notifications stay usable across desktop and phone layo
       });
       return;
     }
+    conversationMessageLoads += 1;
+    if (conversationMessageLoads === 1) {
+      await route.fulfill({
+        status: 500,
+        contentType: "application/problem+json",
+        headers: { "x-request-id": "messages-e2e-reference" },
+        json: {
+          status: 500,
+          title: "Internal Server Error",
+          detail: "Failed to load conversation",
+        },
+      });
+      return;
+    }
     await route.fulfill({
       contentType: "application/json",
       json: [
@@ -242,7 +257,7 @@ test("communications and notifications stay usable across desktop and phone layo
   ).toBeVisible();
   await page.getByRole("button", { name: "Collection issues (1)" }).click();
   await expect(
-    page.getByText("Posts with collection issues", { exact: true }),
+    page.getByText("Collection recovery", { exact: true }),
   ).toBeVisible();
   await expect(
     page.getByRole("paragraph").filter({ hasText: /^YouTube$/ }),
@@ -285,45 +300,28 @@ test("communications and notifications stay usable across desktop and phone layo
   );
   await expect(page.getByText("Item restored.")).toBeVisible();
 
-  const sidebarCalendar = page.getByTestId("sidebar-rolling-calendar");
-  await expect(sidebarCalendar).toBeVisible();
-  await sidebarCalendar.evaluate((element) => {
-    element.scrollTop = Math.min(
-      40,
-      element.scrollHeight - element.clientHeight,
-    );
-    (
-      window as Window & { __openpostSidebarCalendar?: Element }
-    ).__openpostSidebarCalendar = element;
-  });
-  const sidebarCalendarScrollTop = await sidebarCalendar.evaluate(
-    (element) => element.scrollTop,
-  );
+  await expect(page.getByTestId("sidebar-rolling-calendar")).toHaveCount(0);
   await page
     .getByTestId("communications-navigation")
     .getByRole("link", { name: "Messages" })
     .click();
   await expect(page.getByRole("heading", { name: "Messages" })).toBeVisible();
-  await expect
-    .poll(() =>
-      sidebarCalendar.evaluate(
-        (element) =>
-          (window as Window & { __openpostSidebarCalendar?: Element })
-            .__openpostSidebarCalendar === element,
-      ),
-    )
-    .toBe(true);
-  await expect
-    .poll(() => sidebarCalendar.evaluate((element) => element.scrollTop))
-    .toBe(sidebarCalendarScrollTop);
+  await expect(page.getByTestId("sidebar-rolling-calendar")).toHaveCount(0);
   await page.getByText("Archived", { exact: true }).click();
   await expect(page.getByRole("button", { name: /Ada/ })).toBeVisible();
   await page.getByText("Archived", { exact: true }).click();
   await page.getByRole("button", { name: /Ada/ }).click();
+  await expect(page.getByText("Failed to load conversation")).toBeVisible();
+  await expect(
+    page.getByText("Request reference: messages-e2e-reference"),
+  ).toBeVisible();
+  await expect(page.getByTestId("conversation-reply-composer")).toHaveCount(0);
+  await page.getByRole("button", { name: "Try again" }).click();
   await expect(
     page.getByText("Is this available for teams?").last(),
   ).toBeVisible();
   await expect(page.getByPlaceholder("Write a message…")).toBeVisible();
+  await expect(page.getByTestId("conversation-reply-composer")).toBeVisible();
 
   await page.goto(`/notifications?workspace=${workspace.id}`);
   await expect(
@@ -352,7 +350,15 @@ test("communications and notifications stay usable across desktop and phone layo
       .toBe(true);
   }
 
-  expect({ consoleErrors, unauthorizedResponses }).toEqual({
+  const expectedConversationFailure =
+    "Failed to load resource: the server responded with a status of 500 (Internal Server Error)";
+  expect(consoleErrors).toContain(expectedConversationFailure);
+  expect({
+    consoleErrors: consoleErrors.filter(
+      (message) => message !== expectedConversationFailure,
+    ),
+    unauthorizedResponses,
+  }).toEqual({
     consoleErrors: [],
     unauthorizedResponses: [],
   });

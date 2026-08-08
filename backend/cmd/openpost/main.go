@@ -103,6 +103,7 @@ func main() {
 	}
 
 	e := echo.New()
+	e.Use(middleware.RequestID())
 	e.Use(middleware.RequestLoggerWithConfig(middleware.RequestLoggerConfig{
 		LogLatency:      true,
 		LogRemoteIP:     true,
@@ -431,8 +432,16 @@ func main() {
 	mcpOAuthHandler := handlers.NewMCPOAuthHandler(mcpOAuthService, authenticator, cfg.PublicURL)
 	mcpOAuthHandler.SetIdentityService(identityService)
 	mcpOAuthHandler.RegisterEchoRoutes(e)
+	updateChecksEnabled := cfg.Edition == config.EditionSelfHost && cfg.UpdateCheckEnabled
+	updateChecksDisabledReason := ""
+	if cfg.Edition != config.EditionSelfHost {
+		updateChecksDisabledReason = "managed_edition"
+	} else if !cfg.UpdateCheckEnabled {
+		updateChecksDisabledReason = "configuration"
+	}
 	updateStatusService := updatestatus.NewService(updatestatus.Options{
-		Enabled:        cfg.Edition == config.EditionSelfHost && cfg.UpdateCheckEnabled,
+		Enabled:        updateChecksEnabled,
+		DisabledReason: updateChecksDisabledReason,
 		RunningVersion: version,
 		RunningBuild:   runningBuildRevision(),
 	})

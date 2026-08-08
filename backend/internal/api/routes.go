@@ -220,7 +220,7 @@ func RegisterHumaRoutes(api huma.API, deps RouteDeps) {
 		deps.FrontendURL,
 	).RegisterRoutes(api)
 	handlers.NewInstanceSettingsHandler(deps.InstanceSettingsService, deps.DB, deps.Authenticator).RegisterRoutes(api)
-	handlers.NewUpdateStatusHandler(deps.DB, deps.Authenticator, deps.UpdateStatusService).RegisterRoutes(api)
+	handlers.NewUpdateStatusHandler(deps.DB, deps.Authenticator, deps.UpdateStatusService, deps.InstanceSettingsService).RegisterRoutes(api)
 
 	mcpOAuthHandler := deps.MCPOAuthHandler
 	if mcpOAuthHandler == nil {

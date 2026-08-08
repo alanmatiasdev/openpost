@@ -149,3 +149,65 @@ func TestPublishingOptionsForwardsSearchPaginationAndContext(t *testing.T) {
 	}, adapter.searchInput)
 	require.Equal(t, "valid-access-token", adapter.token)
 }
+
+func TestThreadsLocationOptionsRequireLocationTaggingScope(t *testing.T) {
+	db := createHandlerTestDB(t, (*models.WorkspaceMember)(nil), (*models.SocialAccount)(nil))
+	ctx := context.Background()
+	_, err := db.NewInsert().Model(&models.WorkspaceMember{
+		WorkspaceID: "ws-1",
+		UserID:      "user-1",
+		Role:        models.WorkspaceRoleAdmin,
+	}).Exec(ctx)
+	require.NoError(t, err)
+	_, err = db.NewInsert().Model(&models.SocialAccount{
+		ID:             "threads-1",
+		WorkspaceID:    "ws-1",
+		Slug:           "threads-main",
+		Platform:       "threads",
+		AccountID:      "threads-user-1",
+		AccessTokenEnc: []byte("encrypted"),
+		GrantedScopes:  "threads_basic threads_content_publish",
+		IsActive:       true,
+	}).Exec(ctx)
+	require.NoError(t, err)
+
+	adapter := &destinationOptionsTestAdapter{}
+	tokenSource := &destinationOptionsTokenSource{}
+	e := echo.New()
+	api := humaecho.NewWithGroup(e, e.Group("/api/v1"), huma.DefaultConfig("Test", "1.0.0"))
+	NewDestinationOptionsHandler(db, testAuthenticator{}, map[string]platform.Adapter{
+		"threads": adapter,
+	}, tokenSource).RegisterRoutes(api)
+
+	emptyReq := httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodGet,
+		"/api/v1/accounts/threads-1/publishing-options/threads_locations?search=",
+		nil,
+	)
+	emptyReq.Header.Set("Authorization", "Bearer web-token")
+	emptyRec := httptest.NewRecorder()
+	e.ServeHTTP(emptyRec, emptyReq)
+	require.Equal(t, http.StatusOK, emptyRec.Code, emptyRec.Body.String())
+	var emptyOutput struct {
+		Options []platform.DestinationOption `json:"options"`
+	}
+	require.NoError(t, json.Unmarshal(emptyRec.Body.Bytes(), &emptyOutput))
+	require.Empty(t, emptyOutput.Options)
+	require.Empty(t, tokenSource.accountID)
+
+	req := httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodGet,
+		"/api/v1/accounts/threads-1/publishing-options/threads_locations?search=Lisbon",
+		nil,
+	)
+	req.Header.Set("Authorization", "Bearer web-token")
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusForbidden, rec.Code, rec.Body.String())
+	require.Contains(t, rec.Body.String(), "Reconnect this Threads account")
+	require.Empty(t, tokenSource.accountID)
+	require.Empty(t, adapter.token)
+}

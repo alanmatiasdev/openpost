@@ -78,6 +78,16 @@ FORM: Publications are the primary rows; provider renditions disclose in place w
 		if (!overview) return null;
 		return selectedAnalyticsSummary(overview, selectedAccount, publications);
 	});
+	const destinationCount = $derived(
+		publications.reduce(
+			(total, publication) =>
+				total +
+				(publication.renditions?.filter(
+					(rendition) => !selectedAccount || rendition.account_id === selectedAccount.id
+				).length ?? 0),
+			0
+		)
+	);
 	const hasMeasurements = $derived(
 		(selectedAccount
 			? Boolean(selectedAccount.last_synced_at)
@@ -93,12 +103,84 @@ FORM: Publications are the primary rows; provider renditions disclose in place w
 		const summary = displayedSummary;
 		if (!summary) return [];
 		return [
-			{ label: m.analytics_summary_followers(), metric: summary.followers },
-			{ label: m.analytics_summary_engagement(), metric: summary.engagement },
-			{ label: m.analytics_views(), metric: summary.views },
-			{ label: m.analytics_impressions(), metric: summary.impressions },
-			{ label: m.analytics_reach(), metric: summary.reach }
+			{
+				label: m.analytics_summary_followers(),
+				metric: summary.followers,
+				denominator: selectedAccount ? 1 : accounts.length,
+				unit: 'account' as const
+			},
+			{
+				label: m.analytics_summary_engagement(),
+				metric: summary.engagement,
+				denominator: destinationCount,
+				unit: 'destination' as const
+			},
+			{
+				label: m.analytics_views(),
+				metric: summary.views,
+				denominator: destinationCount,
+				unit: 'destination' as const
+			},
+			{
+				label: m.analytics_impressions(),
+				metric: summary.impressions,
+				denominator: destinationCount,
+				unit: 'destination' as const
+			},
+			{
+				label: m.analytics_reach(),
+				metric: summary.reach,
+				denominator: destinationCount,
+				unit: 'destination' as const
+			}
 		];
+	});
+	const availableSummaryMetrics = $derived(
+		summaryMetrics.filter((item) => item.metric.measured > 0)
+	);
+	const unavailableSummaryMetrics = $derived(
+		summaryMetrics.filter((item) => item.metric.measured === 0)
+	);
+	const analyticsInsights = $derived.by(() => {
+		const insights: { title: string; body: string }[] = [];
+		const strongestPublication = publications
+			.filter((publication) => publication.engagement_measured > 0)
+			.toSorted((left, right) => right.engagement - left.engagement)[0];
+		if (strongestPublication) {
+			insights.push({
+				title: m.analytics_insight_top_post(),
+				body: m.analytics_insight_top_post_body({
+					post: publicationLabel(strongestPublication),
+					engagement: formatNumber(strongestPublication.engagement)
+				})
+			});
+		}
+		const strongestDestination = publications
+			.flatMap((publication) => publication.renditions ?? [])
+			.filter(hasEngagementMeasurement)
+			.toSorted((left, right) => right.engagement - left.engagement)[0];
+		if (strongestDestination) {
+			insights.push({
+				title: m.analytics_insight_top_destination(),
+				body: m.analytics_insight_top_destination_body({
+					account: strongestDestination.username,
+					engagement: formatNumber(strongestDestination.engagement)
+				})
+			});
+		}
+		const decliningAccount = accounts
+			.filter((account) => (account.follower_delta ?? 0) < 0)
+			.toSorted((left, right) => (left.follower_delta ?? 0) - (right.follower_delta ?? 0))[0];
+		if (decliningAccount) {
+			insights.push({
+				title: m.analytics_insight_follower_decline(),
+				body: m.analytics_insight_follower_decline_body({
+					account: decliningAccount.username,
+					count: formatNumber(Math.abs(decliningAccount.follower_delta ?? 0))
+				})
+			});
+		}
+		return insights.slice(0, 3);
 	});
 
 	$effect(() => {
@@ -197,6 +279,12 @@ FORM: Publications are the primary rows; provider renditions disclose in place w
 
 	function metricValue(metric: MetricSummary) {
 		return metric.measured > 0 ? formatNumber(metric.value) : '—';
+	}
+
+	function coverageLabel(measured: number, denominator: number, unit: 'account' | 'destination') {
+		return unit === 'account'
+			? m.analytics_account_coverage({ measured, total: denominator })
+			: m.analytics_destination_coverage({ measured, total: denominator });
 	}
 
 	function accountStatus(account: AnalyticsAccount) {
@@ -400,7 +488,7 @@ FORM: Publications are the primary rows; provider renditions disclose in place w
 
 			<section aria-label={m.analytics_title()} class="border-y border-border">
 				<div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
-					{#each summaryMetrics as item (item.label)}
+					{#each availableSummaryMetrics as item (item.label)}
 						<div
 							class="min-w-0 border-b border-border px-3 py-4 odd:border-r md:border-r lg:border-b-0"
 						>
@@ -409,8 +497,21 @@ FORM: Publications are the primary rows; provider renditions disclose in place w
 								{metricValue(item.metric)}
 							</p>
 							<p class="mt-1 text-xs text-muted-foreground">
-								{m.analytics_measured_count({ count: item.metric.measured })}
+								{coverageLabel(item.metric.measured, item.denominator, item.unit)}
 							</p>
+							{#if item.metric.delta !== undefined}
+								<p
+									class={[
+										'mt-1 text-xs font-medium tabular-nums',
+										item.metric.delta >= 0
+											? 'text-emerald-700 dark:text-emerald-300'
+											: 'text-destructive'
+									]}
+								>
+									{item.metric.delta >= 0 ? '+' : ''}{formatNumber(item.metric.delta)}
+									{m.analytics_previous_period()}
+								</p>
+							{/if}
 						</div>
 					{/each}
 					<div class="min-w-0 px-3 py-4">
@@ -423,10 +524,33 @@ FORM: Publications are the primary rows; provider renditions disclose in place w
 						</p>
 					</div>
 				</div>
+				{#if unavailableSummaryMetrics.length}
+					<p class="border-t border-border px-3 py-2.5 text-xs leading-5 text-muted-foreground">
+						{m.analytics_unavailable_metrics({
+							metrics: unavailableSummaryMetrics.map((item) => item.label).join(', ')
+						})}
+					</p>
+				{/if}
 				<p class="border-t border-border px-3 py-2.5 text-xs leading-5 text-muted-foreground">
 					{m.analytics_metric_definitions()}
 				</p>
 			</section>
+
+			{#if analyticsInsights.length}
+				<section aria-labelledby="analytics-insights-heading">
+					<h2 id="analytics-insights-heading" class="mb-3 text-base font-semibold">
+						{m.analytics_insights_title()}
+					</h2>
+					<div class="grid gap-3 md:grid-cols-3">
+						{#each analyticsInsights as insight (insight.title)}
+							<div class="rounded-xl border bg-muted/20 p-4">
+								<p class="text-sm font-semibold">{insight.title}</p>
+								<p class="mt-1 text-sm leading-5 text-muted-foreground">{insight.body}</p>
+							</div>
+						{/each}
+					</div>
+				</section>
+			{/if}
 
 			{#if !hasMeasurements}
 				<InlineNotice tone="info" message={m.analytics_waiting_description()} />
@@ -591,7 +715,11 @@ FORM: Publications are the primary rows; provider renditions disclose in place w
 										>
 											<span>{formatDate(publication.published_at)}</span>
 											<span aria-hidden="true">·</span>
-											<span>{m.analytics_destinations({ count: renditions.length })}</span>
+											<span
+												>{renditions.length === 1
+													? m.analytics_destination_singular()
+													: m.analytics_destinations({ count: renditions.length })}</span
+											>
 											<span class="flex items-center gap-1" aria-hidden="true">
 												{#each renditions.slice(0, 6) as rendition (rendition.rendition_id)}
 													<PlatformIcon platform={rendition.platform} class="size-3.5" />

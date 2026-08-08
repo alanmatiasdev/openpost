@@ -77,7 +77,8 @@ OpenPost saves the error type, status, safe error code, next retry time, and the
 
 ## Threads
 
-- Threads requires the Meta app's Threads product and scopes: `threads_basic`, `threads_content_publish`, and `threads_manage_replies`.
+- Threads requires the Meta app's Threads product and scopes: `threads_basic`, `threads_content_publish`, `threads_manage_replies`, `threads_manage_insights`, and `threads_location_tagging`.
+- If location search asks for reconnection, reconnect the Threads account so its token includes `threads_location_tagging`. The Meta app must have access to that permission.
 - Media URLs must be public HTTPS. Meta fetches media server-side and cannot use localhost, private DNS, or plain local paths.
 - For local testing, expose both the app callback and `/media/...` paths through a tunnel.
 - Threads posts support up to 20 JPEG, PNG, WebP, MP4, or MOV attachments, including mixed-media carousels.
