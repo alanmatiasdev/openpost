@@ -2,8 +2,11 @@
   import { resolve } from "$app/paths";
   import Github from "lucide-svelte/icons/github";
   import MessageCircle from "lucide-svelte/icons/message-circle";
+  import Volume2 from "lucide-svelte/icons/volume-2";
+  import VolumeX from "lucide-svelte/icons/volume-x";
   import Logo from "$lib/components/Logo.svelte";
   import PlatformIcon from "$lib/components/platform-icon.svelte";
+  import { soundPreferences } from "$lib/stores/sound-preferences.svelte";
   import {
     developerDocsUrl,
     platforms,
@@ -138,6 +141,16 @@
       <span>© 2026 OpenPost Contributors · AGPL-3.0-only</span>
       <span class="flex items-center gap-5">
         <span class="hidden sm:inline">Made for companies of one</span>
+        <button
+          type="button"
+          class="focus-ring inline-flex min-h-11 items-center gap-1.5 rounded-md transition-colors hover:text-foreground"
+          aria-pressed={soundPreferences.enabled}
+          aria-label={soundPreferences.enabled ? "Mute interface sounds" : "Enable interface sounds"}
+          onclick={() => soundPreferences.setEnabled(!soundPreferences.enabled)}
+        >
+          {#if soundPreferences.enabled}<Volume2 class="size-3.5" />{:else}<VolumeX class="size-3.5" />{/if}
+          Sound
+        </button>
         <a
           class="focus-ring inline-flex min-h-11 items-center rounded-md transition-colors hover:text-foreground"
           href={resolve("/privacy")}>Privacy</a

@@ -3,12 +3,16 @@
 	import { page } from '$app/state';
 	import { resolveMarketingSocial } from '@openpost/social-images';
 	import { ModeWatcher } from 'mode-watcher';
+	import { onMount } from 'svelte';
+	import { soundPreferences } from '$lib/stores/sound-preferences.svelte';
 	import MarketingFooter from './_components/MarketingFooter.svelte';
 	import MarketingNav from './_components/MarketingNav.svelte';
 
 	let { children } = $props();
 	const social = $derived(resolveMarketingSocial(page.url.pathname));
 	const socialImage = $derived(social.imageUrl);
+
+	onMount(() => soundPreferences.initialize());
 </script>
 
 <svelte:head>

@@ -1,21 +1,22 @@
 <!--
-THESIS: OpenPost gives solo founders an all-in-one content team for turning company work into content and publishing it everywhere.
-OWN-WORLD: Centered product-led narrative, warm orange proof cells, dark framed product surfaces, and spacious editorial pacing.
-STORY: Understand the promise, use the real product demo, see the workflow, choose a plan, and start.
-FIRST VIEWPORT: A centered outcome statement and two clear routes into a real, working destination composer.
-FORM: Product-led publishing workspace with activity squares as the recurring proof and motion language.
+THESIS: OpenPost gives solo founders one content team for turning company work into destination-specific publishing without reopening every network.
+OWN-WORLD: A dark launch stage gives way to a warm working page, with raised workshop-orange controls, framed product surfaces, and precise editorial pacing.
+STORY: Understand the promise, watch the real demo, follow the working loop, inspect the product, see example creator workflows, choose a plan, and start.
+FIRST VIEWPORT: One centered promise, one raised action, all supported networks in motion, and three overlapping result screens with no carousel chrome.
+FORM: A focused product demonstration paced between dark studio stages, light working surfaces, real screenshots, and transparent illustrative profiles.
 -->
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import { ArrowRight, CalendarRange, Check, Layers3, LockKeyhole } from 'lucide-svelte';
 	import { Button } from '$lib/components/ui/button';
 	import PlatformIcon from '$lib/components/platform-icon.svelte';
+	import CreatorStories from './_components/CreatorStories.svelte';
+	import FloatingNetworkField from './_components/FloatingNetworkField.svelte';
 	import HeroResultsCarousel from './_components/HeroResultsCarousel.svelte';
-	import PublishingActivityField from './_components/PublishingActivityField.svelte';
+	import LandingVideoDemo from './_components/LandingVideoDemo.svelte';
 	import ScrollReveal from './_components/ScrollReveal.svelte';
 	import {
 		faqs,
-		managedAccessSummary,
 		managedSignupUrl,
 		platforms,
 		plans,
@@ -84,72 +85,48 @@ FORM: Product-led publishing workspace with activity squares as the recurring pr
 	const featuredPlans = plans.slice(0, 3);
 	const shortFaqs = faqs.slice(0, 4);
 
-	const customerNames = ['Montra', 'Ark', 'Unprompted'] as const;
-
-	const platformBrands: Record<string, string> = {
-		x: 'var(--foreground)',
-		linkedin: 'oklch(0.48 0.15 255)',
-		bluesky: 'oklch(0.6 0.17 250)',
-		mastodon: 'oklch(0.52 0.18 285)',
-		threads: 'var(--foreground)',
-		facebook: 'oklch(0.5 0.17 262)',
-		instagram: 'oklch(0.56 0.2 10)',
-		tiktok: 'var(--foreground)',
-		youtube: 'oklch(0.55 0.22 27)',
-		discord: 'oklch(0.52 0.16 275)'
-	};
-
-	const proofStats = [
-		{ value: '10+', label: 'destinations from one composer' },
-		{ value: '4', label: 'creation tools in one workspace' },
-		{ value: '0', label: 'watermarks, re-uploads, or tab-switching' },
-		{ value: '100%', label: 'open source under AGPL-3.0' }
+	const customerLogos = [
+		{ name: 'ENF.', src: '/assets/customer-logos/enf.svg', treatment: 'wordmark' },
+		{ name: 'The Actual World', src: '/assets/customer-logos/the-actual-world.png', treatment: 'mark' },
+		{ name: "Uni's Easy", src: '/assets/customer-logos/unis-easy.png', treatment: 'mark' },
+		{ name: 'ARC Gym', src: '/assets/customer-logos/arc-gym.png', treatment: 'wordmark' },
+		{ name: 'Ark', src: '/assets/customer-logos/ark.png', treatment: 'mark' },
+		{ name: 'Dias Solutions', src: '/assets/customer-logos/dias-solutions.png', treatment: 'mark' },
+		{ name: 'Montra', src: '/assets/customer-logos/montra.svg', treatment: 'mark' },
+		{ name: 'Unprompted', src: '/assets/customer-logos/unprompted.png', treatment: 'mark' }
 	] as const;
+
 </script>
 
 <svelte:head>
 	<title>OpenPost - The all-in-one content team for solo founders</title>
 	<meta
 		name="description"
-		content="Turn what you are building into content, adapt it for every channel, and publish it everywhere from one place. Start free for 14 days."
+		content="Create better content, adapt it for every platform, and publish it everywhere from one workspace."
 	/>
 	<link rel="canonical" href={siteUrl} />
 	<meta name="robots" content="index, follow" />
 </svelte:head>
 
 <section class="hero overflow-hidden text-white">
-	<div class="marketing-shell relative pt-16 pb-10 text-center sm:pt-24 sm:pb-12 lg:pt-28">
-		<p class="section-label hero-enter hero-enter-1">The content team for companies of one</p>
-		<h1 class="marketing-title hero-enter hero-enter-2 mx-auto mt-5 text-white">
-			Turn what you’re building into content.<br /><span class="text-primary"
-				>Publish it everywhere.</span
-			>
+	<div class="marketing-shell relative pt-16 pb-9 text-center sm:pt-24 sm:pb-11 lg:pt-28">
+		<h1 class="hero-title hero-enter hero-enter-1 mx-auto text-white">
+			Your socials, <span>on steroids.</span>
 		</h1>
-		<p class="hero-copy hero-enter hero-enter-3 mx-auto mt-7 max-w-2xl">
-			OpenPost helps solo founders shape ideas into posts, adapt them for every channel, schedule
-			the work, and track what went live from one place.
+		<p class="hero-copy hero-enter hero-enter-2 mx-auto mt-6 max-w-3xl">
+			Create better content, adapt it for every platform,<br class="hidden sm:block" /> and publish
+			it everywhere from one workspace.
 		</p>
-		<div class="hero-enter hero-enter-4 mt-8 flex flex-wrap justify-center gap-3">
+		<div class="hero-enter hero-enter-3 mt-8 flex justify-center">
 			<Button href={managedSignupUrl} size="lg" class="hero-cta">
-				Start your 14-day trial
+				Hop on
 				<ArrowRight data-icon="inline-end" />
 			</Button>
-			<Button href="#product" variant="ghost" size="lg" class="hero-secondary">
-				See how it works
-			</Button>
-		</div>
-		<p class="hero-enter hero-enter-4 mx-auto mt-5 max-w-xl text-xs leading-5 text-white/48">
-			{managedAccessSummary}
-		</p>
-
-		<div class="floating-networks hero-enter hero-enter-5" aria-hidden="true">
-			<span class="network-float network-x"><PlatformIcon platform="x" /></span>
-			<span class="network-float network-youtube"><PlatformIcon platform="youtube" /></span>
-			<span class="network-float network-bluesky"><PlatformIcon platform="bluesky" /></span>
-			<span class="network-float network-instagram"><PlatformIcon platform="instagram" /></span>
 		</div>
 
-		<div class="hero-enter hero-enter-5 mx-auto mt-10 max-w-5xl sm:mt-12">
+		<FloatingNetworkField />
+
+		<div class="hero-enter hero-enter-4 relative z-10 mx-auto mt-10 max-w-5xl sm:mt-12">
 			<HeroResultsCarousel />
 		</div>
 	</div>
@@ -158,75 +135,56 @@ FORM: Product-led publishing workspace with activity squares as the recurring pr
 		<p>Used by builders at</p>
 		<div class="customer-rail" aria-label="Companies using OpenPost">
 			<div class="customer-track">
-				{#each [...customerNames, ...customerNames] as name, index (`${name}-${index}`)}
+				{#each [...customerLogos, ...customerLogos] as logo, index (`${logo.name}-${index}`)}
 					<span
-						class={['customer-logo', `customer-${name.toLowerCase()}`]}
-						aria-hidden={index >= customerNames.length ? 'true' : undefined}
+						class:customer-wordmark={logo.treatment === 'wordmark'}
+						class="customer-logo"
+						aria-hidden={index >= customerLogos.length ? 'true' : undefined}
 					>
-						{#if name === 'Montra'}
-							<svg viewBox="219 211 820 837" aria-hidden="true">
-								<path
-									fill="currentColor"
-									fill-rule="evenodd"
-									d="M235 211h57l10 5 169 174v2l61 62v2l19 18v2l57 58v2l17 16 3 5h2v-2l16-15v-2l44-44v-2l19-18v-2l17-16v-2l87-89v-2l144-148 9-4h58l5 2 7 7 3 9v802l-2 8-5 6-6 3H686l-6-3-3-3-4-11V690l-38 39-5 3-5-1-34-34v-2l-7-5v345l-6 10-6 3H232l-9-6-4-9V229l4-10 5-5 7-3Zm96 220-1 519 8 7h132l4-2 3-5V577l-96-98v-2l-39-39-11-7Zm594 1-10 7-63 63v2l-65 65-9 12v366l2 6 6 4h133l3-1 5-7V434l-2-2Z"
-								/>
-							</svg>
-						{/if}
-						{name}
+						<img src={logo.src} alt={index < customerLogos.length ? `${logo.name} logo` : ''} />
+						{#if logo.treatment === 'mark'}<span>{logo.name}</span>{/if}
 					</span>
 				{/each}
 			</div>
 		</div>
-	</div>
-</section>
-
-<section aria-label="Supported platforms" class="marketing-rule border-y bg-muted/24">
-	<div class="marketing-shell py-9">
-		<p class="text-center text-xs font-semibold tracking-[0.12em] text-muted-foreground uppercase">
-			Publish to the accounts you already run
-		</p>
-		<div class="mt-6 flex flex-wrap items-center justify-center gap-2.5">
+		<div class="supported-marks" aria-label="Supported social platforms">
 			{#each platforms as platform (platform.slug)}
-				<a href={resolve(`/platforms/${platform.slug}`)} class="platform-chip focus-ring">
-					<span
-						class="platform-chip-icon"
-						style:--brand={platformBrands[platform.slug] ?? 'var(--foreground)'}
-					>
-						<PlatformIcon platform={platform.short} class="size-3.5" />
-					</span>
-					{platform.name}
+				<a href={resolve(`/platforms/${platform.slug}`)} aria-label={`${platform.name} guide`}>
+					<PlatformIcon platform={platform.short} />
 				</a>
 			{/each}
 		</div>
 	</div>
 </section>
 
+<LandingVideoDemo />
+
 <section class="section-pad" aria-labelledby="workflow-title">
 	<div class="marketing-shell">
-		<ScrollReveal class="mx-auto max-w-3xl text-center">
-			<p class="section-label">From draft to result</p>
-			<h2 id="workflow-title" class="marketing-heading mx-auto mt-4">
-				From company update to content on every channel.
-			</h2>
-			<p class="marketing-copy mx-auto mt-6">
-				OpenPost keeps the source, every destination version, and each publishing result together.
+		<div class="workflow-intro">
+			<div>
+				<p class="section-label">One working loop</p>
+				<h2 id="workflow-title" class="marketing-heading mt-4">
+					One source enters. A week of useful content leaves.
+				</h2>
+			</div>
+			<p class="marketing-copy">
+				OpenPost keeps the source, destination versions, schedule, and publishing state connected
+				without flattening every network into the same post.
 			</p>
-		</ScrollReveal>
+		</div>
 
-		<ol class="marketing-rule mt-14 grid border-y md:grid-cols-3">
+		<ol class="workflow-list marketing-rule mt-14 border-y">
 			{#each workflow as step, index (step.title)}
-				<li class="workflow-step py-8 md:px-8 md:first:pl-0 md:last:pr-0">
+				<li class="workflow-step">
 					<ScrollReveal delay={index * 90}>
-						<span
-							class="grid size-9 place-items-center rounded-lg border bg-primary/10 font-mono text-xs font-semibold text-primary"
-							>{step.number}</span
-						>
-						<h3 class="mt-5 text-xl font-semibold tracking-tight">
-							{step.title}
-						</h3>
-						<p class="mt-3 max-w-sm text-sm leading-6 text-muted-foreground">
+						<div class="workflow-row">
+							<span>{step.number}</span>
+							<h3>{step.title}</h3>
+							<p>
 							{step.description}
-						</p>
+							</p>
+						</div>
 					</ScrollReveal>
 				</li>
 			{/each}
@@ -291,70 +249,7 @@ FORM: Product-led publishing workspace with activity squares as the recurring pr
 	</div>
 </section>
 
-<section
-	class="section-pad marketing-rule border-y bg-muted/18"
-	aria-labelledby="product-proof-title"
->
-	<div class="marketing-shell">
-		<ScrollReveal class="mx-auto max-w-3xl text-center">
-			<p class="section-label">Your company is the source</p>
-			<h2 id="product-proof-title" class="marketing-heading mx-auto mt-4">
-				Everything you build deserves an audience.
-			</h2>
-			<p class="marketing-copy mx-auto mt-6">
-				Consistency is the whole game — this is what a year of founder-led publishing looks like
-				when the calendar keeps itself.
-			</p>
-		</ScrollReveal>
-		<ScrollReveal class="mx-auto mt-12 max-w-4xl" delay={120}>
-			<PublishingActivityField />
-		</ScrollReveal>
-		<dl class="mx-auto mt-12 grid max-w-4xl grid-cols-2 gap-x-6 gap-y-8 text-center sm:grid-cols-4">
-			{#each proofStats as stat, index (stat.label)}
-				<ScrollReveal delay={index * 70}>
-					<div>
-						<dt class="sr-only">{stat.label}</dt>
-						<dd class="text-3xl font-semibold tracking-[-0.03em] text-balance sm:text-4xl">
-							{stat.value}
-						</dd>
-						<dd class="mt-1.5 text-xs/5 text-muted-foreground">{stat.label}</dd>
-					</div>
-				</ScrollReveal>
-			{/each}
-		</dl>
-	</div>
-</section>
-
-<section class="section-pad" aria-labelledby="google-data-title">
-	<div class="marketing-shell">
-		<ScrollReveal
-			class="mx-auto grid max-w-5xl gap-8 rounded-[2rem] border bg-card p-7 shadow-sm sm:p-10 lg:grid-cols-[0.9fr_1.1fr] lg:items-center"
-		>
-			<div>
-				<p class="section-label">Google and YouTube</p>
-				<h2 id="google-data-title" class="marketing-heading mt-4">
-					OpenPost connects your publishing workspace to YouTube.
-				</h2>
-			</div>
-			<div class="space-y-4 text-sm leading-6 text-muted-foreground sm:text-base/7">
-				<p>
-					When you connect YouTube, OpenPost uses the Google profile and channel access you approve
-					to identify your account, let you choose a channel, publish and manage videos, and show
-					channel and video analytics.
-				</p>
-				<p>
-					OpenPost stores connected-account tokens encrypted, does not use Google user data for
-					advertising, and lets you disconnect the account at any time. Read the
-					<a
-						href={resolve('/privacy')}
-						class="focus-ring rounded-sm font-medium text-foreground underline decoration-border underline-offset-4 hover:text-primary"
-						>Privacy Policy</a
-					> for retention, deletion, and revocation details.
-				</p>
-			</div>
-		</ScrollReveal>
-	</div>
-</section>
+<CreatorStories />
 
 <section class="section-pad marketing-rule border-t bg-muted/18" aria-labelledby="pricing-title">
 	<div class="marketing-shell">
@@ -456,41 +351,6 @@ FORM: Product-led publishing workspace with activity squares as the recurring pr
 </section>
 
 <style>
-	.platform-chip {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.55rem;
-		min-height: 2.75rem;
-		padding: 0.4rem 0.95rem 0.4rem 0.5rem;
-		border: 1px solid var(--border);
-		border-radius: 0.8rem;
-		background: var(--card);
-		font-size: 0.85rem;
-		font-weight: 550;
-		color: var(--foreground);
-		box-shadow: 0 1px 2px color-mix(in oklch, var(--foreground) 5%, transparent);
-		transition:
-			transform 0.18s cubic-bezier(0.16, 1, 0.3, 1),
-			box-shadow 0.18s cubic-bezier(0.16, 1, 0.3, 1),
-			border-color 0.18s;
-	}
-
-	.platform-chip:hover {
-		transform: translateY(-2px);
-		border-color: color-mix(in oklch, var(--foreground) 22%, transparent);
-		box-shadow: 0 0.6rem 1.6rem -0.8rem color-mix(in oklch, var(--foreground) 22%, transparent);
-	}
-
-	.platform-chip-icon {
-		display: grid;
-		width: 1.8rem;
-		height: 1.8rem;
-		place-items: center;
-		border-radius: 0.55rem;
-		background: color-mix(in oklch, var(--brand) 12%, transparent);
-		color: var(--brand);
-	}
-
 	.hero {
 		position: relative;
 		background:
@@ -509,14 +369,26 @@ FORM: Product-led publishing workspace with activity squares as the recurring pr
 		pointer-events: none;
 	}
 
-	.hero :global(.section-label) {
-		color: oklch(0.72 0.15 48);
+	.hero-title {
+		max-width: 64rem;
+		font-family: 'Manrope Variable', Manrope, sans-serif;
+		font-size: clamp(3.1rem, 7.4vw, 7rem);
+		font-weight: 760;
+		line-height: 0.94;
+		letter-spacing: -0.065em;
+		text-wrap: balance;
+	}
+
+	.hero-title span {
+		color: oklch(0.72 0.16 48);
 	}
 
 	.hero-copy {
-		font-size: clamp(1rem, 1.3vw, 1.125rem);
-		line-height: 1.75;
-		color: rgb(255 255 255 / 0.66);
+		font-size: clamp(1.05rem, 1.7vw, 1.35rem);
+		font-weight: 520;
+		line-height: 1.55;
+		letter-spacing: -0.018em;
+		color: rgb(255 255 255 / 0.72);
 	}
 
 	.hero-enter {
@@ -535,10 +407,6 @@ FORM: Product-led publishing workspace with activity squares as the recurring pr
 	.hero-enter-4 {
 		animation-delay: 250ms;
 	}
-	.hero-enter-5 {
-		animation-delay: 340ms;
-	}
-
 	:global(.hero-cta) {
 		border-color: oklch(0.74 0.16 48) !important;
 		background: oklch(0.65 0.18 45) !important;
@@ -548,9 +416,9 @@ FORM: Product-led publishing workspace with activity squares as the recurring pr
 			0 5px 0 oklch(0.4 0.13 43),
 			0 1rem 2.4rem oklch(0.55 0.17 45 / 0.26) !important;
 		transition:
-			transform 160ms cubic-bezier(0.16, 1, 0.3, 1),
-			box-shadow 160ms cubic-bezier(0.16, 1, 0.3, 1),
-			background 160ms ease !important;
+			transform 110ms cubic-bezier(0.2, 0.8, 0.2, 1),
+			box-shadow 110ms cubic-bezier(0.2, 0.8, 0.2, 1),
+			background 110ms ease !important;
 	}
 
 	:global(.hero-cta:hover) {
@@ -566,72 +434,6 @@ FORM: Product-led publishing workspace with activity squares as the recurring pr
 		box-shadow:
 			0 1px 0 oklch(0.4 0.13 43),
 			0 0.5rem 1.2rem oklch(0.55 0.17 45 / 0.18) !important;
-	}
-
-	:global(.hero-secondary) {
-		color: rgb(255 255 255 / 0.76) !important;
-	}
-
-	:global(.hero-secondary:hover) {
-		background: rgb(255 255 255 / 0.08) !important;
-		color: white !important;
-	}
-
-	.floating-networks {
-		position: absolute;
-		z-index: 6;
-		inset: 26rem 0 auto;
-		height: 30rem;
-		pointer-events: none;
-	}
-
-	.network-float {
-		position: absolute;
-		display: grid;
-		width: clamp(3rem, 5vw, 4.2rem);
-		height: clamp(3rem, 5vw, 4.2rem);
-		place-items: center;
-		border: 1px solid rgb(255 255 255 / 0.13);
-		border-radius: 1.05rem;
-		background: oklch(0.2 0.012 52);
-		box-shadow: 0 1.2rem 2.8rem rgb(0 0 0 / 0.38);
-		animation: network-float 6s ease-in-out infinite;
-	}
-
-	.network-float :global(svg) {
-		width: 52%;
-		height: 52%;
-	}
-
-	.network-x {
-		top: 2rem;
-		left: 4%;
-		color: white;
-		transform: rotate(-8deg);
-	}
-
-	.network-youtube {
-		top: 18rem;
-		left: 1%;
-		color: oklch(0.64 0.24 28);
-		animation-delay: -1.6s;
-		transform: rotate(7deg);
-	}
-
-	.network-bluesky {
-		top: 4rem;
-		right: 3%;
-		color: oklch(0.68 0.17 250);
-		animation-delay: -3.1s;
-		transform: rotate(9deg);
-	}
-
-	.network-instagram {
-		top: 20rem;
-		right: 1%;
-		color: oklch(0.7 0.18 18);
-		animation-delay: -4.4s;
-		transform: rotate(-7deg);
 	}
 
 	.customer-proof {
@@ -651,7 +453,7 @@ FORM: Product-led publishing workspace with activity squares as the recurring pr
 
 	.customer-rail {
 		overflow: hidden;
-		width: min(100% - 2rem, 58rem);
+		width: min(100% - 2rem, 72rem);
 		margin-inline: auto;
 		mask-image: linear-gradient(to right, transparent, black 12%, black 88%, transparent);
 	}
@@ -659,16 +461,17 @@ FORM: Product-led publishing workspace with activity squares as the recurring pr
 	.customer-track {
 		display: flex;
 		width: max-content;
-		animation: customer-scroll 18s linear infinite;
+		animation: customer-scroll 30s linear infinite;
 	}
 
 	.customer-logo {
-		display: grid;
+		display: flex;
 		grid-auto-flow: column;
-		min-width: 13rem;
+		min-width: 12.5rem;
 		place-items: center;
+		align-items: center;
 		justify-content: center;
-		gap: 0.55rem;
+		gap: 0.65rem;
 		color: rgb(255 255 255 / 0.7);
 		font-family: 'Manrope Variable', Manrope, sans-serif;
 		font-size: 1rem;
@@ -676,37 +479,52 @@ FORM: Product-led publishing workspace with activity squares as the recurring pr
 		letter-spacing: -0.02em;
 	}
 
-	.customer-logo svg {
-		width: 1.1rem;
-		height: 1.1rem;
+	.customer-logo img {
+		display: block;
+		width: 2rem;
+		height: 2rem;
+		object-fit: contain;
+		filter: saturate(0.78) brightness(1.08);
 	}
 
-	.customer-montra {
-		font-weight: 720;
-		letter-spacing: -0.045em;
+	.customer-wordmark img {
+		width: 5.5rem;
+		height: 2rem;
 	}
 
-	.customer-ark {
-		font-size: 1.08rem;
-		font-weight: 780;
-		letter-spacing: -0.055em;
+	.supported-marks {
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: center;
+		gap: 0.35rem;
+		width: min(100% - 2rem, 38rem);
+		margin: 0.3rem auto 0;
+		padding-top: 1rem;
+		border-top: 1px solid rgb(255 255 255 / 0.08);
 	}
 
-	.customer-unprompted {
-		font-family: Georgia, 'Times New Roman', serif;
-		font-size: 1.04rem;
-		font-weight: 600;
-		letter-spacing: -0.025em;
+	.supported-marks a {
+		display: grid;
+		width: 2.75rem;
+		height: 2.75rem;
+		place-items: center;
+		border-radius: 0.8rem;
+		color: rgb(255 255 255 / 0.5);
+		transition:
+			color 120ms ease,
+			background 120ms ease,
+			transform 120ms ease;
 	}
 
-	@keyframes network-float {
-		0%,
-		100% {
-			translate: 0 0;
-		}
-		50% {
-			translate: 0 -0.7rem;
-		}
+	.supported-marks a:hover {
+		transform: translateY(-2px);
+		background: rgb(255 255 255 / 0.06);
+		color: white;
+	}
+
+	.supported-marks :global(svg) {
+		width: 1.05rem;
+		height: 1.05rem;
 	}
 
 	@keyframes customer-scroll {
@@ -715,8 +533,45 @@ FORM: Product-led publishing workspace with activity squares as the recurring pr
 		}
 	}
 
+	.workflow-intro {
+		display: grid;
+		max-width: 64rem;
+		gap: 0 4rem;
+	}
+
+	.workflow-intro .marketing-copy {
+		max-width: 34rem;
+	}
+
 	.workflow-step + .workflow-step {
 		border-top: 1px solid var(--border);
+	}
+
+	.workflow-row {
+		display: grid;
+		gap: 0.8rem;
+		align-items: baseline;
+		padding-block: 1.7rem;
+	}
+
+	.workflow-row > span {
+		color: var(--primary);
+		font-family: ui-monospace, monospace;
+		font-size: 0.72rem;
+		font-weight: 700;
+	}
+
+	.workflow-row h3 {
+		font-size: clamp(1.25rem, 2.5vw, 2rem);
+		font-weight: 650;
+		letter-spacing: -0.03em;
+	}
+
+	.workflow-row p {
+		max-width: 32rem;
+		color: var(--muted-foreground);
+		font-size: 0.9rem;
+		line-height: 1.65;
 	}
 
 	.product-story {
@@ -812,9 +667,20 @@ FORM: Product-led publishing workspace with activity squares as the recurring pr
 	}
 
 	@media (min-width: 48rem) {
-		.workflow-step + .workflow-step {
-			border-top: 0;
-			border-left: 1px solid var(--border);
+		.workflow-intro {
+			grid-template-columns: 1fr 0.72fr;
+			align-items: end;
+		}
+
+		.workflow-intro .marketing-copy {
+			grid-column: 2;
+			align-self: end;
+		}
+
+		.workflow-row {
+			grid-template-columns: 3rem minmax(12rem, 0.8fr) 1.2fr;
+			gap: 2rem;
+			padding-block: 2.2rem;
 		}
 	}
 
@@ -835,30 +701,8 @@ FORM: Product-led publishing workspace with activity squares as the recurring pr
 	}
 
 	@media (max-width: 47.99rem) {
-		.floating-networks {
-			inset: 29rem 0 auto;
-		}
-
-		.network-float {
-			width: 2.8rem;
-			height: 2.8rem;
-			border-radius: 0.85rem;
-			opacity: 0.82;
-		}
-
-		.network-x,
-		.network-youtube {
-			left: -0.7rem;
-		}
-
-		.network-bluesky,
-		.network-instagram {
-			right: -0.7rem;
-		}
-
-		.network-youtube,
-		.network-instagram {
-			top: 20rem;
+		.hero-title {
+			font-size: clamp(3rem, 15vw, 4.6rem);
 		}
 	}
 
@@ -867,12 +711,24 @@ FORM: Product-led publishing workspace with activity squares as the recurring pr
 			animation: none;
 		}
 
-		.network-float,
 		.customer-track {
 			animation: none;
+			width: 100%;
+			flex-wrap: wrap;
+			justify-content: center;
+			row-gap: 1rem;
 		}
 
-		.customer-logo:nth-child(n + 4) {
+		.customer-rail {
+			mask-image: none;
+		}
+
+		.customer-logo {
+			min-width: 9rem;
+			flex: 1 0 min(11rem, 50%);
+		}
+
+		.customer-logo:nth-child(n + 9) {
 			display: none;
 		}
 	}

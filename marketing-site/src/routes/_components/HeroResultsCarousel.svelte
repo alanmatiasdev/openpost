@@ -1,12 +1,9 @@
 <script lang="ts">
-	import ChevronLeft from 'lucide-svelte/icons/chevron-left';
-	import ChevronRight from 'lucide-svelte/icons/chevron-right';
 	import Heart from 'lucide-svelte/icons/heart';
 	import MessageCircle from 'lucide-svelte/icons/message-circle';
 	import Repeat2 from 'lucide-svelte/icons/repeat-2';
 	import Send from 'lucide-svelte/icons/send';
 	import PlatformIcon from '$lib/components/platform-icon.svelte';
-	import { Button } from '$lib/components/ui/button';
 
 	type ResultSlide = {
 		platform: 'tiktok' | 'x' | 'instagram';
@@ -32,53 +29,19 @@
 		}
 	];
 
-	let activeIndex = $state(1);
-
-	const activeSlide = $derived(slides[activeIndex]);
-
-	function setActive(index: number) {
-		activeIndex = (index + slides.length) % slides.length;
-	}
-
 	function positionFor(index: number) {
-		if (index === activeIndex) return 'active';
-		if (index === (activeIndex + 1) % slides.length) return 'next';
-		return 'previous';
-	}
-
-	function handleKeydown(event: KeyboardEvent) {
-		if (event.key === 'ArrowLeft') {
-			event.preventDefault();
-			setActive(activeIndex - 1);
-		}
-		if (event.key === 'ArrowRight') {
-			event.preventDefault();
-			setActive(activeIndex + 1);
-		}
+		if (index === 1) return 'active';
+		return index === 0 ? 'previous' : 'next';
 	}
 </script>
 
-<div
-	class="results-carousel"
-	role="region"
-	aria-roledescription="carousel"
-	aria-label="Illustrative social publishing results"
->
-	<p class="results-note">Illustrative campaign results</p>
-
+<div class="results-carousel" role="img" aria-label="Social publishing result previews">
 	<div class="phone-stage">
 		{#each slides as slide, index (slide.platform)}
 			{@const position = positionFor(index)}
-			<button
-				type="button"
+			<div
 				class={['phone-position', `phone-${position}`]}
-				aria-label={position === 'active'
-					? `${slide.name}, current result view`
-					: `Show ${slide.name}`}
-				aria-current={position === 'active' ? 'true' : undefined}
-				tabindex={position === 'active' ? 0 : -1}
-				onclick={() => setActive(index)}
-				onkeydown={handleKeydown}
+				aria-label={slide.name}
 			>
 				<span class="phone-shell">
 					<span class="phone-hardware" aria-hidden="true">
@@ -92,6 +55,7 @@
 							<span class="screen-brand">
 								<PlatformIcon platform="tiktok" class="size-4" />
 								TikTok Studio
+								<small>Sample</small>
 							</span>
 							<span class="video-card">
 								<span class="video-art" aria-hidden="true">
@@ -129,6 +93,7 @@
 							<span class="screen-brand">
 								<PlatformIcon platform="x" class="size-4" />
 								Audience
+								<small>Sample</small>
 							</span>
 							<span class="profile-block">
 								<span class="profile-mark">OP</span>
@@ -165,6 +130,7 @@
 							<span class="screen-brand">
 								<PlatformIcon platform="instagram" class="size-4" />
 								Insights
+								<small>Sample</small>
 							</span>
 							<span class="insight-period">Last 30 days</span>
 							<span class="reach-ring">
@@ -185,43 +151,7 @@
 
 					<span class="phone-home" aria-hidden="true"></span>
 				</span>
-			</button>
-		{/each}
-	</div>
-
-	<div class="carousel-controls">
-		<Button
-			variant="outline"
-			size="icon"
-			class="carousel-arrow"
-			aria-label="Previous result"
-			onclick={() => setActive(activeIndex - 1)}
-		>
-			<ChevronLeft />
-		</Button>
-		<div class="result-caption" aria-live="polite">
-			<strong>{activeSlide.name}</strong>
-			<span>{activeSlide.summary}</span>
-		</div>
-		<Button
-			variant="outline"
-			size="icon"
-			class="carousel-arrow"
-			aria-label="Next result"
-			onclick={() => setActive(activeIndex + 1)}
-		>
-			<ChevronRight />
-		</Button>
-	</div>
-
-	<div class="carousel-dots" aria-label="Choose a result view">
-		{#each slides as slide, index (slide.platform)}
-			<button
-				type="button"
-				aria-label={`Show ${slide.name}`}
-				aria-pressed={index === activeIndex}
-				onclick={() => setActive(index)}
-			></button>
+			</div>
 		{/each}
 	</div>
 </div>
@@ -232,24 +162,9 @@
 		outline: none;
 	}
 
-	.results-carousel:focus-visible {
-		border-radius: 1.5rem;
-		box-shadow: 0 0 0 2px oklch(0.72 0.15 48);
-	}
-
-	.results-note {
-		margin: 0;
-		color: rgb(255 255 255 / 0.48);
-		font-size: 0.68rem;
-		font-weight: 650;
-		letter-spacing: 0.1em;
-		text-transform: uppercase;
-	}
-
 	.phone-stage {
 		position: relative;
 		height: clamp(31rem, 62vw, 42rem);
-		margin-top: 0.75rem;
 		perspective: 90rem;
 	}
 
@@ -263,16 +178,11 @@
 		border-radius: 2.6rem;
 		background: transparent;
 		color: white;
-		cursor: pointer;
+		pointer-events: none;
 		transition:
 			transform 560ms cubic-bezier(0.16, 1, 0.3, 1),
 			opacity 420ms ease,
 			filter 420ms ease;
-	}
-
-	.phone-position:focus-visible {
-		outline: 2px solid oklch(0.72 0.15 48);
-		outline-offset: 5px;
 	}
 
 	.phone-active {
@@ -371,6 +281,20 @@
 		border-bottom: 1px solid rgb(255 255 255 / 0.1);
 		font-size: 0.76rem;
 		font-weight: 700;
+	}
+
+	.screen-brand small {
+		margin-left: auto;
+		padding: 0.16rem 0.34rem;
+		border: 1px solid rgb(255 255 255 / 0.16);
+		border-radius: 0.35rem;
+		background: rgb(255 255 255 / 0.08);
+		color: rgb(255 255 255 / 0.72);
+		font-size: 0.46rem;
+		font-weight: 750;
+		letter-spacing: 0.08em;
+		line-height: 1;
+		text-transform: uppercase;
 	}
 
 	.video-card {
@@ -759,83 +683,6 @@
 		background: linear-gradient(145deg, transparent 48%, rgb(0 0 0 / 0.3) 49%), oklch(0.5 0.12 155);
 	}
 
-	.carousel-controls {
-		position: relative;
-		z-index: 5;
-		display: grid;
-		grid-template-columns: auto minmax(0, 28rem) auto;
-		align-items: center;
-		justify-content: center;
-		gap: 1rem;
-		margin-top: -1rem;
-	}
-
-	:global(.carousel-arrow) {
-		border-color: rgb(255 255 255 / 0.16) !important;
-		background: rgb(255 255 255 / 0.06) !important;
-		color: white !important;
-	}
-
-	:global(.carousel-arrow:hover) {
-		background: rgb(255 255 255 / 0.12) !important;
-	}
-
-	.result-caption {
-		display: grid;
-		gap: 0.2rem;
-		min-height: 3.3rem;
-		align-content: center;
-	}
-
-	.result-caption strong {
-		font-size: 0.86rem;
-	}
-
-	.result-caption span {
-		color: rgb(255 255 255 / 0.52);
-		font-size: 0.72rem;
-		line-height: 1.45;
-	}
-
-	.carousel-dots {
-		display: flex;
-		justify-content: center;
-		gap: 0.25rem;
-		margin-top: 0.8rem;
-	}
-
-	.carousel-dots button {
-		display: grid;
-		width: 2.75rem;
-		height: 2.75rem;
-		place-items: center;
-		border: 0;
-		background: transparent;
-		cursor: pointer;
-	}
-
-	.carousel-dots button::before {
-		width: 0.42rem;
-		height: 0.42rem;
-		border-radius: 999px;
-		background: rgb(255 255 255 / 0.26);
-		content: '';
-		transition:
-			width 220ms ease,
-			background 220ms ease;
-	}
-
-	.carousel-dots button[aria-pressed='true']::before {
-		width: 1.15rem;
-		background: oklch(0.68 0.17 45);
-	}
-
-	.carousel-dots button:focus-visible {
-		outline: 2px solid oklch(0.72 0.15 48);
-		outline-offset: -4px;
-		border-radius: 999px;
-	}
-
 	@media (max-width: 39.99rem) {
 		.phone-stage {
 			height: 31.5rem;
@@ -855,19 +702,10 @@
 				scale(0.77);
 		}
 
-		.carousel-controls {
-			grid-template-columns: auto minmax(0, 1fr) auto;
-			gap: 0.6rem;
-		}
-
-		.result-caption span {
-			display: none;
-		}
 	}
 
 	@media (prefers-reduced-motion: reduce) {
-		.phone-position,
-		.carousel-dots button::before {
+		.phone-position {
 			transition: none;
 		}
 	}

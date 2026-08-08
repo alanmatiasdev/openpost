@@ -4,6 +4,21 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Added responsive pointer-reactive platform and AI marks plus project-owned ENF., The Actual World, Uni's Easy, ARC Gym, Ark, Dias Solutions, Montra, and Unprompted identity assets to the marketing hero.
+- Added a privacy-aware YouTube product-tour section and clearly labeled illustrative creator workflows with original generated portraits.
+
+### Changed
+
+- Simplified the marketing hero around the “Your socials, on steroids.” promise, one raised trial action, the three illustrative result views, and a broader customer logo rail.
+- Reworked the full landing-page sequence around the product demo, a tighter publishing loop, alternating product proof, creator workflows, plans, and a direct closing action; removed the separate platform-chip band and carousel controls below the result phones.
+- Gave shared buttons, selects, comboboxes, badges, and tag inputs a faster raised orange interaction language, with optional interface-sound feedback on raised controls and a marketing-site sound toggle.
+
+### Fixed
+
+- Initialized delegated interface sounds on the marketing site so raised-button feedback plays before navigation instead of remaining silent outside the authenticated app.
+
 ## [3.4.0] - 2026-08-08
 
 ### Added
