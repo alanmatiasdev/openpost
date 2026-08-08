@@ -16,7 +16,6 @@
 	import {
 		ellipsePixelMask,
 		intersectPixelMasks,
-		magicPixelMask,
 		normalizeSelectionBounds,
 		pixelMaskContainsPoint,
 		polygonPixelMask,
@@ -37,7 +36,8 @@
 		readImageEditorMediaDrag,
 		IMAGE_EDITOR_MEDIA_DRAG_TYPE
 	} from '../media-drag';
-	import { panForZoomAnchor } from '../viewport';
+	import { imageEditorDocumentPoint, panForZoomAnchor } from '../viewport';
+	import { ImageEditorMagicScan, MAXIMUM_MAGIC_SCAN_PIXELS } from '../magic-scan';
 	import {
 		applyImageEditorCropWindow,
 		imageEditorCropWindowForAspect,
@@ -49,7 +49,8 @@
 
 	let {
 		onExternalFiles,
-		registerPixelSelectionActions
+		registerPixelSelectionActions,
+		onMissingMedia
 	}: {
 		onExternalFiles?: (
 			files: File[],
@@ -57,6 +58,7 @@
 			pageID: string
 		) => void | Promise<void>;
 		registerPixelSelectionActions?: (actions: PixelSelectionActions | null) => void;
+		onMissingMedia?: (mediaID: string, layerID?: string) => void;
 	} = $props();
 
 	interface PixelSelectionActions {
@@ -82,6 +84,7 @@
 	}
 
 	const editor = useImageEditor();
+	const magicScan = new ImageEditorMagicScan();
 	const GRID_BACKGROUND_IMAGE =
 		'linear-gradient(to right, rgb(249 115 22 / 0.22) 1px, transparent 1px), linear-gradient(to bottom, rgb(249 115 22 / 0.22) 1px, transparent 1px)';
 	let canvasElement = $state<HTMLCanvasElement>();
@@ -119,7 +122,28 @@
 	let eyedropperFrame: number | undefined;
 	let pendingEyedropperPoint: SelectionPoint | null = null;
 	let eyedropperPointerID = -1;
+	let stylusPointerID = -1;
 	let mediaDropActive = $state(false);
+	let layerPicker = $state.raw<{ point: SelectionPoint; layerIDs: string[] } | null>(null);
+	let layerCycleGesture = $state.raw<{
+		pointerID: number;
+		clientX: number;
+		clientY: number;
+		layerIDs: string[];
+	} | null>(null);
+	let magicScanBusy = $state(false);
+	let magicScanProgress = $state(0);
+	let magicScanError = $state('');
+	let magicScanAbort: AbortController | null = null;
+	let magicPreviewMask = $state.raw<{ width: number; height: number; data: Uint8Array } | null>(
+		null
+	);
+	type FloatingTransformHandle = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw' | 'rotate';
+	let floatingTransformGesture = $state.raw<{
+		pointerID: number;
+		handle: FloatingTransformHandle;
+		point: SelectionPoint;
+	} | null>(null);
 	const FULL_CROP_WINDOW: ImageEditorCropWindow = { x: 0, y: 0, width: 1, height: 1 };
 	let cropWindow = $state.raw<ImageEditorCropWindow>({ ...FULL_CROP_WINDOW });
 	let cropSourceWindow = $state.raw<ImageEditorCropWindow>({ ...FULL_CROP_WINDOW });
@@ -185,6 +209,9 @@
 				},
 				onImageDimensions(id, width, height) {
 					editor.resolveImageDimensions(id, width, height);
+				},
+				onMissingMedia(mediaID, layerID) {
+					onMissingMedia?.(mediaID, layerID);
 				}
 			});
 			mountedAdapter = next;
@@ -241,6 +268,16 @@
 		};
 	}
 
+	function capturePointer(target: EventTarget | null, pointerID: number): void {
+		if (!(target instanceof Element)) return;
+		try {
+			target.setPointerCapture(pointerID);
+		} catch {
+			// Synthetic tests and interrupted OS gestures may no longer own the pointer.
+			// Window/capture handlers still finish or cancel the transient edit safely.
+		}
+	}
+
 	function attachStage(node: HTMLDivElement) {
 		stageElement = node;
 		return () => {
@@ -258,6 +295,8 @@
 	onDestroy(() => {
 		if (magicPulseTimer) clearTimeout(magicPulseTimer);
 		if (eyedropperFrame !== undefined) cancelAnimationFrame(eyedropperFrame);
+		magicScanAbort?.abort();
+		magicScan.dispose();
 	});
 
 	$effect(() => {
@@ -322,7 +361,7 @@
 	});
 
 	$effect(() => {
-		const selection = editor.pixelSelection;
+		const selection = magicPreviewMask ?? editor.pixelSelection;
 		const canvas = selectionOverlay;
 		if (!canvas || !editor.document) return;
 		const context = canvas.getContext('2d');
@@ -521,6 +560,116 @@
 		const changed = editor.deleteFloatingPixelSelection();
 		if (changed) canvasAnnouncement = m.image_editor_selected_pixels_deleted();
 		return changed;
+	}
+
+	function startFloatingTransform(event: PointerEvent, handle: FloatingTransformHandle): void {
+		if (!editor.floatingPixelSelection || event.button !== 0) return;
+		const point = documentPoint(event, 'allow');
+		if (!point) return;
+		floatingTransformGesture = { pointerID: event.pointerId, handle, point };
+		capturePointer(event.currentTarget, event.pointerId);
+		event.preventDefault();
+		event.stopPropagation();
+	}
+
+	function applyFloatingTransformDelta(
+		handle: FloatingTransformHandle,
+		start: SelectionPoint,
+		point: SelectionPoint,
+		constrain = false
+	): boolean {
+		const bounds = editor.floatingPixelSelectionBounds;
+		if (!bounds) return false;
+		const center = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+		if (handle === 'rotate') {
+			const startAngle = Math.atan2(start.y - center.y, start.x - center.x);
+			const nextAngle = Math.atan2(point.y - center.y, point.x - center.x);
+			let degrees = ((nextAngle - startAngle) * 180) / Math.PI;
+			if (constrain) degrees = Math.round(degrees / 15) * 15;
+			return editor.transformFloatingPixelSelection(center, 1, 1, degrees);
+		}
+		const deltaX = point.x - start.x;
+		const deltaY = point.y - start.y;
+		let scaleX = 1;
+		let scaleY = 1;
+		let anchorX = center.x;
+		let anchorY = center.y;
+		if (handle.includes('e')) {
+			scaleX = Math.max(1 / Math.max(1, bounds.width), (bounds.width + deltaX) / bounds.width);
+			anchorX = bounds.x;
+		} else if (handle.includes('w')) {
+			scaleX = Math.max(1 / Math.max(1, bounds.width), (bounds.width - deltaX) / bounds.width);
+			anchorX = bounds.x + bounds.width;
+		}
+		if (handle.includes('s')) {
+			scaleY = Math.max(1 / Math.max(1, bounds.height), (bounds.height + deltaY) / bounds.height);
+			anchorY = bounds.y;
+		} else if (handle.includes('n')) {
+			scaleY = Math.max(1 / Math.max(1, bounds.height), (bounds.height - deltaY) / bounds.height);
+			anchorY = bounds.y + bounds.height;
+		}
+		if (constrain && handle.length === 2) {
+			const uniform = Math.max(scaleX, scaleY);
+			scaleX = uniform;
+			scaleY = uniform;
+		}
+		return editor.transformFloatingPixelSelection({ x: anchorX, y: anchorY }, scaleX, scaleY);
+	}
+
+	function moveFloatingTransform(event: PointerEvent): void {
+		const gesture = floatingTransformGesture;
+		if (!gesture || gesture.pointerID !== event.pointerId) return;
+		const point = documentPoint(event, 'allow');
+		if (!point) return;
+		if (applyFloatingTransformDelta(gesture.handle, gesture.point, point, event.shiftKey)) {
+			floatingTransformGesture = { ...gesture, point };
+		}
+		event.preventDefault();
+		event.stopPropagation();
+	}
+
+	function finishFloatingTransform(event: PointerEvent): void {
+		if (!floatingTransformGesture || floatingTransformGesture.pointerID !== event.pointerId) return;
+		floatingTransformGesture = null;
+		editor.finishFloatingPixelSelectionMove();
+		if (
+			event.currentTarget instanceof Element &&
+			event.currentTarget.hasPointerCapture(event.pointerId)
+		) {
+			event.currentTarget.releasePointerCapture(event.pointerId);
+		}
+		event.preventDefault();
+		event.stopPropagation();
+	}
+
+	function nudgeFloatingTransform(event: KeyboardEvent, handle: FloatingTransformHandle): void {
+		if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return;
+		event.preventDefault();
+		event.stopPropagation();
+		const step = event.shiftKey ? 10 : 1;
+		if (handle === 'rotate') {
+			const direction = event.key === 'ArrowLeft' || event.key === 'ArrowDown' ? -1 : 1;
+			const bounds = editor.floatingPixelSelectionBounds;
+			if (bounds) {
+				editor.transformFloatingPixelSelection(
+					{ x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 },
+					1,
+					1,
+					direction * step
+				);
+				editor.finishFloatingPixelSelectionMove();
+			}
+			return;
+		}
+		applyFloatingTransformDelta(
+			handle,
+			{ x: 0, y: 0 },
+			{
+				x: event.key === 'ArrowLeft' ? -step : event.key === 'ArrowRight' ? step : 0,
+				y: event.key === 'ArrowUp' ? -step : event.key === 'ArrowDown' ? step : 0
+			}
+		);
+		editor.finishFloatingPixelSelectionMove();
 	}
 
 	const pixelSelectionActions: PixelSelectionActions = {
@@ -743,7 +892,7 @@
 			origin: { ...cropWindow },
 			sourceOrigin: { ...cropSourceWindow }
 		};
-		(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+		capturePointer(event.currentTarget, event.pointerId);
 	}
 
 	function moveCrop(event: PointerEvent): void {
@@ -929,19 +1078,12 @@
 		const document = editor.document;
 		if (!stage || !document) return null;
 		const bounds = stage.getBoundingClientRect();
-		const x = ((event.clientX - bounds.left) / Math.max(1, bounds.width)) * document.width_px;
-		const y = ((event.clientY - bounds.top) / Math.max(1, bounds.height)) * document.height_px;
-		if (
-			outside === 'reject' &&
-			(x < 0 || y < 0 || x > document.width_px || y > document.height_px)
-		) {
-			return null;
-		}
-		if (outside === 'allow') return { x, y };
-		return {
-			x: Math.max(0, Math.min(document.width_px, x)),
-			y: Math.max(0, Math.min(document.height_px, y))
-		};
+		return imageEditorDocumentPoint(
+			{ x: event.clientX, y: event.clientY },
+			bounds,
+			{ width: document.width_px, height: document.height_px },
+			outside
+		);
 	}
 
 	function pointerPressure(event: PointerEvent): number {
@@ -990,9 +1132,7 @@
 		const value = guideValue(event, axis, index);
 		if (value === null) return;
 		guideGesture = { pointerID: event.pointerId, axis, index, value };
-		if (event.currentTarget instanceof Element) {
-			event.currentTarget.setPointerCapture(event.pointerId);
-		}
+		capturePointer(event.currentTarget, event.pointerId);
 		event.preventDefault();
 		event.stopPropagation();
 	}
@@ -1077,11 +1217,65 @@
 
 	function selectionTargetIDs(point: SelectionPoint): string[] {
 		const activeID = editor.selectedLayerIDs.at(-1);
-		if (activeID) return [activeID];
+		const active = editor.activePage?.layers.find((layer) => layer.id === activeID);
+		if (activeID && active && !active.locked) return [activeID];
 		const hitID = adapter?.topmostLayerIDAtPoint(point);
 		if (!hitID) return [];
 		editor.selectLayer(hitID);
 		return [hitID];
+	}
+
+	function openLayerPicker(event: MouseEvent): void {
+		if (editor.activeTool !== 'select' || !adapter) return;
+		const point = documentPoint(event, 'reject');
+		if (!point) return;
+		const layerIDs = adapter.layerIDsAtPoint(point);
+		if (layerIDs.length === 0) return;
+		event.preventDefault();
+		event.stopPropagation();
+		layerPicker = { point, layerIDs };
+		canvasAnnouncement = m.image_editor_select_layer_count({ count: layerIDs.length });
+	}
+
+	function layerPickerName(id: string): string {
+		return editor.activePage?.layers.find((layer) => layer.id === id)?.name ?? id;
+	}
+
+	function chooseLayerFromPicker(id: string): void {
+		editor.selectLayer(id);
+		layerPicker = null;
+		canvasAnnouncement = m.image_editor_layer_selected({ name: layerPickerName(id) });
+	}
+
+	function startLayerCycle(event: PointerEvent): void {
+		if (!event.altKey || event.button !== 0 || editor.activeTool !== 'select' || !adapter) return;
+		const point = documentPoint(event, 'reject');
+		if (!point) return;
+		const layerIDs = adapter.layerIDsAtPoint(point);
+		if (layerIDs.length < 2) return;
+		layerCycleGesture = {
+			pointerID: event.pointerId,
+			clientX: event.clientX,
+			clientY: event.clientY,
+			layerIDs
+		};
+	}
+
+	function finishLayerCycle(event: PointerEvent): void {
+		const gesture = layerCycleGesture;
+		layerCycleGesture = null;
+		if (
+			!gesture ||
+			gesture.pointerID !== event.pointerId ||
+			Math.hypot(event.clientX - gesture.clientX, event.clientY - gesture.clientY) > 5
+		)
+			return;
+		const current = gesture.layerIDs.findIndex((id) => editor.selectedLayerIDs.includes(id));
+		const nextID = gesture.layerIDs[(current + 1) % gesture.layerIDs.length];
+		editor.selectLayer(nextID);
+		canvasAnnouncement = m.image_editor_layer_cycled({ name: layerPickerName(nextID) });
+		event.preventDefault();
+		event.stopPropagation();
 	}
 
 	function sampledPixels(point: SelectionPoint): {
@@ -1095,6 +1289,81 @@
 			: selectionTargetIDs(point);
 		const image = adapter?.rasterizeLayerIDs(targetLayerIDs);
 		return image ? { image, targetLayerIDs } : null;
+	}
+
+	function hasLockedMagicTarget(point: SelectionPoint): boolean {
+		const activeID = editor.selectedLayerIDs.at(-1);
+		const active = editor.activePage?.layers.find((layer) => layer.id === activeID);
+		return Boolean(active?.locked || adapter?.lockedLayerIDAtPoint(point));
+	}
+
+	function magicNoTargetMessage(point: SelectionPoint, fallback: string): string {
+		return hasLockedMagicTarget(point) ? m.image_editor_magic_target_locked() : fallback;
+	}
+
+	async function runMagicScan(
+		image: ImageData,
+		point: SelectionPoint,
+		tolerance: number,
+		contiguous: boolean,
+		onComplete: (mask: Uint8Array) => void,
+		preview = true
+	): Promise<void> {
+		magicScanAbort?.abort();
+		const controller = new AbortController();
+		magicScanAbort = controller;
+		magicScanBusy = true;
+		magicScanProgress = 0;
+		magicScanError = '';
+		try {
+			const mask = await magicScan.scan(
+				{
+					width: image.width,
+					height: image.height,
+					data: image.data,
+					point,
+					tolerance,
+					contiguous
+				},
+				{
+					signal: controller.signal,
+					onProgress: (fraction) => (magicScanProgress = fraction)
+				}
+			);
+			if (controller.signal.aborted) return;
+			if (
+				preview &&
+				editor.document &&
+				image.width === editor.document.width_px &&
+				image.height === editor.document.height_px
+			) {
+				magicPreviewMask = { width: image.width, height: image.height, data: mask };
+				await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+			}
+			onComplete(mask);
+		} catch (cause) {
+			if (cause instanceof DOMException && cause.name === 'AbortError') return;
+			magicScanError =
+				cause instanceof RangeError
+					? m.image_editor_magic_scan_too_large({ limit: MAXIMUM_MAGIC_SCAN_PIXELS })
+					: cause instanceof Error
+						? cause.message
+						: m.image_editor_magic_scan_failed();
+			canvasAnnouncement = magicScanError;
+		} finally {
+			if (magicScanAbort === controller) magicScanAbort = null;
+			magicScanBusy = false;
+			magicScanProgress = 0;
+			magicPreviewMask = null;
+		}
+	}
+
+	function cancelMagicScan(): void {
+		magicScanAbort?.abort();
+		magicScan.cancel();
+		magicScanBusy = false;
+		magicPreviewMask = null;
+		canvasAnnouncement = m.image_editor_magic_scan_cancelled();
 	}
 
 	function constrainMarqueePoint(
@@ -1146,6 +1415,20 @@
 
 	function startAreaSelection(event: PointerEvent): boolean {
 		const tool = editor.activeTool;
+		if (event.pointerType === 'touch' && stylusPointerID >= 0) {
+			event.preventDefault();
+			return true;
+		}
+		if (event.pointerType === 'pen' && (tool === 'pencil' || tool === 'eraser')) {
+			if (
+				selectionGesture &&
+				(selectionGesture.tool === 'pencil' || selectionGesture.tool === 'eraser')
+			) {
+				selectionGesture = null;
+			}
+			touchPointers.clear();
+			stylusPointerID = event.pointerId;
+		}
 		const startsOnStage = event.target instanceof Node && stageElement?.contains(event.target);
 		const startsOnPasteboard =
 			event.currentTarget === viewport && !targetsPasteboardChrome(event.target);
@@ -1174,9 +1457,7 @@
 		) {
 			sampleEyedropper(point, false);
 			eyedropperPointerID = event.pointerId;
-			if (event.currentTarget instanceof Element) {
-				event.currentTarget.setPointerCapture(event.pointerId);
-			}
+			capturePointer(event.currentTarget, event.pointerId);
 			event.preventDefault();
 			return true;
 		}
@@ -1200,9 +1481,7 @@
 				mode,
 				originalSelection: editor.pixelSelection.data.slice()
 			};
-			if (event.currentTarget instanceof HTMLDivElement) {
-				event.currentTarget.setPointerCapture(event.pointerId);
-			}
+			capturePointer(event.currentTarget, event.pointerId);
 			event.preventDefault();
 			return true;
 		}
@@ -1210,16 +1489,19 @@
 			const targetLayerID = erasableTargetID(point);
 			const sampled = targetLayerID ? adapter.rasterizeLayerAtPoint(targetLayerID, point) : null;
 			if (targetLayerID && sampled) {
-				editor.addMagicErase(
-					targetLayerID,
-					sampled.image.width,
-					sampled.image.height,
-					magicPixelMask(
-						sampled.image,
-						sampled.point,
-						editor.magicEraserTolerance,
-						editor.magicEraserContiguous
-					)
+				void runMagicScan(
+					sampled.image,
+					sampled.point,
+					editor.magicEraserTolerance,
+					editor.magicEraserContiguous,
+					(mask) =>
+						editor.addMagicErase(targetLayerID, sampled.image.width, sampled.image.height, mask),
+					false
+				);
+			} else {
+				canvasAnnouncement = magicNoTargetMessage(
+					point,
+					m.image_editor_magic_erase_requires_target()
 				);
 			}
 			showMagicPulse(point);
@@ -1229,16 +1511,15 @@
 		if (tool === 'magic_wand') {
 			const sampled = sampledPixels(point);
 			if (sampled) {
-				editor.applyPixelSelection(
-					magicPixelMask(
-						sampled.image,
-						point,
-						editor.magicSelectTolerance,
-						editor.magicSelectContiguous
-					),
-					sampled.targetLayerIDs,
-					mode
+				void runMagicScan(
+					sampled.image,
+					point,
+					editor.magicSelectTolerance,
+					editor.magicSelectContiguous,
+					(mask) => editor.applyPixelSelection(mask, sampled.targetLayerIDs, mode)
 				);
+			} else {
+				canvasAnnouncement = magicNoTargetMessage(point, m.image_editor_magic_select_no_target());
 			}
 			showMagicPulse(point);
 			event.preventDefault();
@@ -1247,16 +1528,20 @@
 		if (tool === 'bucket') {
 			const sampled = sampledPixels(point);
 			if (sampled) {
-				let mask = magicPixelMask(
+				void runMagicScan(
 					sampled.image,
 					point,
 					editor.bucketTolerance,
-					editor.bucketContiguous
+					editor.bucketContiguous,
+					(scannedMask) => {
+						const mask = editor.pixelSelection
+							? intersectPixelMasks(scannedMask, editor.pixelSelection.data)
+							: scannedMask;
+						editor.addPaintFill(mask);
+					}
 				);
-				if (editor.pixelSelection) {
-					mask = intersectPixelMasks(mask, editor.pixelSelection.data);
-				}
-				editor.addPaintFill(mask);
+			} else if (hasLockedMagicTarget(point)) {
+				canvasAnnouncement = m.image_editor_magic_target_locked();
 			} else if (editor.pixelSelection) {
 				editor.addPaintFill(editor.pixelSelection.data);
 			} else if (editor.document) {
@@ -1281,9 +1566,7 @@
 			selectionGesture = null;
 			return false;
 		}
-		if (event.currentTarget instanceof HTMLDivElement) {
-			event.currentTarget.setPointerCapture(event.pointerId);
-		}
+		capturePointer(event.currentTarget, event.pointerId);
 		event.preventDefault();
 		return true;
 	}
@@ -1311,9 +1594,7 @@
 			points: [point],
 			mode
 		};
-		if (event.currentTarget instanceof HTMLDivElement) {
-			event.currentTarget.setPointerCapture(event.pointerId);
-		}
+		capturePointer(event.currentTarget, event.pointerId);
 		event.preventDefault();
 		return true;
 	}
@@ -1666,9 +1947,7 @@
 				panX: editor.panX,
 				panY: editor.panY
 			};
-			if (event.currentTarget instanceof HTMLDivElement) {
-				event.currentTarget.setPointerCapture(event.pointerId);
-			}
+			capturePointer(event.currentTarget, event.pointerId);
 			event.preventDefault();
 			return;
 		}
@@ -1684,6 +1963,12 @@
 
 	function startPasteboardPointer(event: PointerEvent): void {
 		if (targetsToolSurface(event)) return;
+		// A touch that lands on pasteboard chrome still belongs to viewport navigation.
+		// Route it before object hit-testing so the second contact can always start a pinch.
+		if (event.pointerType === 'touch') {
+			startPan(event);
+			return;
+		}
 		const outsideStage = !(event.target instanceof Node) || !stageElement?.contains(event.target);
 		if (outsideStage && event.button === 0 && editor.activeTool === 'select' && !spacePressed) {
 			if (startObjectSelection(event)) return;
@@ -1768,7 +2053,11 @@
 			}
 			return;
 		}
-		if (finishAreaSelection(event)) return;
+		if (finishAreaSelection(event)) {
+			if (stylusPointerID === event.pointerId) stylusPointerID = -1;
+			return;
+		}
+		if (stylusPointerID === event.pointerId) stylusPointerID = -1;
 		if (!panning) return;
 		panning = false;
 		if (
@@ -1782,6 +2071,7 @@
 	function cancelPointer(event: PointerEvent): void {
 		if (event.pointerType === 'touch') touchPointers.delete(event.pointerId);
 		if (eyedropperPointerID === event.pointerId) eyedropperPointerID = -1;
+		if (stylusPointerID === event.pointerId) stylusPointerID = -1;
 		cancelAreaSelection(event);
 		panning = false;
 	}
@@ -1796,6 +2086,11 @@
 	}
 
 	function handleCanvasKeydown(event: KeyboardEvent): void {
+		if (event.key === 'Escape' && layerPicker) {
+			layerPicker = null;
+			event.preventDefault();
+			return;
+		}
 		const insideEyedropperOptions =
 			event.target instanceof Element &&
 			Boolean(event.target.closest('[data-testid="image-editor-eyedropper-options"]'));
@@ -1981,6 +2276,20 @@
 							(eyedropperPreview.alpha / 255) * 100
 						)}%
 					</span>
+				{/if}
+			</div>
+		{/if}
+		{#if magicScanBusy || magicScanError}
+			<div
+				class="absolute top-3 left-1/2 z-50 flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 items-center gap-2 rounded-lg border bg-background/95 px-3 py-2 text-xs shadow-lg"
+				role="status"
+			>
+				<span>
+					{magicScanError ||
+						m.image_editor_magic_scanning({ value: Math.round(magicScanProgress * 100) })}
+				</span>
+				{#if magicScanBusy}
+					<Button variant="ghost" size="xs" onclick={cancelMagicScan}>{m.common_cancel()}</Button>
 				{/if}
 			</div>
 		{/if}
@@ -2328,6 +2637,14 @@
 							{m.common_done()}
 						</Button>
 						<Button
+							variant="outline"
+							size="sm"
+							class="h-8 px-2 text-xs"
+							onclick={() => editor.duplicateFloatingPixelSelection()}
+						>
+							{m.image_editor_duplicate()}
+						</Button>
+						<Button
 							variant="ghost"
 							size="sm"
 							class="h-8 px-2 text-xs text-neutral-100 hover:text-foreground"
@@ -2379,11 +2696,17 @@
 			<div
 				{@attach attachStage}
 				class="fabric-stage relative shadow-2xl ring-1 ring-black/30"
+				role="region"
+				aria-label={m.image_editor_design_canvas()}
 				data-testid="image-editor-stage"
 				style:width={`${editor.document.width_px * editor.zoom}px`}
 				style:height={`${editor.document.height_px * editor.zoom}px`}
 				style:--image-editor-zoom={editor.zoom}
 				style:--image-editor-pencil-color={editor.paintColor}
+				onpointerdown={startLayerCycle}
+				onpointerup={finishLayerCycle}
+				onpointercancel={() => (layerCycleGesture = null)}
+				oncontextmenu={openLayerPicker}
 			>
 				{#if editor.showRulers}
 					<div
@@ -2524,6 +2847,72 @@
 					data-active={editor.pixelSelection ? 'true' : 'false'}
 					aria-hidden="true"
 				></canvas>
+				{#if editor.floatingPixelSelection && editor.floatingPixelSelectionBounds}
+					{@const floatingBounds = editor.floatingPixelSelectionBounds}
+					<div
+						class="pointer-events-none absolute z-20 border border-dashed border-orange-400 shadow-[0_0_0_1px_rgb(0_0_0/0.55)]"
+						style:left={`${floatingBounds.x * editor.zoom}px`}
+						style:top={`${floatingBounds.y * editor.zoom}px`}
+						style:width={`${floatingBounds.width * editor.zoom}px`}
+						style:height={`${floatingBounds.height * editor.zoom}px`}
+						role="group"
+						aria-label={m.image_editor_floating_transform()}
+						data-testid="image-editor-floating-transform"
+					>
+						<button
+							type="button"
+							class="pointer-events-auto absolute -top-14 left-1/2 size-11 -translate-x-1/2 touch-none rounded-full border border-neutral-950 bg-white shadow after:absolute after:top-10 after:left-1/2 after:h-4 after:border-l after:border-orange-400"
+							aria-label={m.image_editor_rotate_floating_pixels()}
+							onpointerdown={(event) => startFloatingTransform(event, 'rotate')}
+							onpointermove={moveFloatingTransform}
+							onpointerup={finishFloatingTransform}
+							onpointercancel={finishFloatingTransform}
+							onkeydown={(event) => nudgeFloatingTransform(event, 'rotate')}
+						></button>
+						{#each [{ handle: 'nw', class: '-top-[22px] -left-[22px] cursor-nwse-resize' }, { handle: 'n', class: '-top-[22px] left-1/2 -translate-x-1/2 cursor-ns-resize' }, { handle: 'ne', class: '-top-[22px] -right-[22px] cursor-nesw-resize' }, { handle: 'e', class: 'top-1/2 -right-[22px] -translate-y-1/2 cursor-ew-resize' }, { handle: 'se', class: '-right-[22px] -bottom-[22px] cursor-nwse-resize' }, { handle: 's', class: '-bottom-[22px] left-1/2 -translate-x-1/2 cursor-ns-resize' }, { handle: 'sw', class: '-bottom-[22px] -left-[22px] cursor-nesw-resize' }, { handle: 'w', class: 'top-1/2 -left-[22px] -translate-y-1/2 cursor-ew-resize' }] as item (item.handle)}
+							<button
+								type="button"
+								class={`pointer-events-auto absolute size-11 touch-none border-0 bg-transparent ${item.class}`}
+								aria-label={m.image_editor_resize_floating_pixels({ handle: item.handle })}
+								onpointerdown={(event) =>
+									startFloatingTransform(event, item.handle as FloatingTransformHandle)}
+								onpointermove={moveFloatingTransform}
+								onpointerup={finishFloatingTransform}
+								onpointercancel={finishFloatingTransform}
+								onkeydown={(event) =>
+									nudgeFloatingTransform(event, item.handle as FloatingTransformHandle)}
+							>
+								<span
+									class="pointer-events-none absolute top-1/2 left-1/2 size-3 -translate-x-1/2 -translate-y-1/2 rounded-sm border-2 border-neutral-950 bg-white shadow"
+								></span>
+							</button>
+						{/each}
+					</div>
+				{/if}
+				{#if layerPicker}
+					<div
+						class="absolute z-50 max-w-64 min-w-44 rounded-lg border bg-popover p-1 text-popover-foreground shadow-xl"
+						style:left={`${Math.min(editor.document.width_px - 180 / editor.zoom, layerPicker.point.x) * editor.zoom}px`}
+						style:top={`${Math.min(editor.document.height_px - 48 / editor.zoom, layerPicker.point.y) * editor.zoom}px`}
+						role="menu"
+						aria-label={m.image_editor_select_layer()}
+						data-testid="image-editor-layer-picker"
+					>
+						<p class="px-2 py-1 text-xs font-medium text-muted-foreground">
+							{m.image_editor_select_layer()}
+						</p>
+						{#each layerPicker.layerIDs as id (id)}
+							<button
+								type="button"
+								class="flex min-h-10 w-full items-center rounded-md px-2 text-left text-sm hover:bg-muted focus-visible:bg-muted focus-visible:outline-none"
+								role="menuitem"
+								onclick={() => chooseLayerFromPicker(id)}
+							>
+								<span class="min-w-0 flex-1 truncate">{layerPickerName(id)}</span>
+							</button>
+						{/each}
+					</div>
+				{/if}
 				{#if editor.activeTool === 'crop' && cropPreviewLayer}
 					<div class="pointer-events-none absolute inset-0 z-25 overflow-hidden">
 						<div

@@ -22,12 +22,14 @@ import {
 	combinePixelMasks,
 	intersectPixelMasks,
 	pixelMaskBounds,
+	pixelMaskTransformAround,
 	pixelSpansToMask,
 	pixelMaskToSpans,
 	strokePixelMask,
 	smoothSelectionPoints,
 	subtractPixelMasks,
 	translatePixelMask,
+	transformPixelMask,
 	mergeSelectionIDs,
 	type SelectionPoint,
 	type ImageEditorPixelSelection
@@ -49,6 +51,10 @@ import type {
 
 const IMAGE_EDITOR_CONTEXT = Symbol('openpost-image-editor-editor');
 
+function normalizeEditorRotation(value: number): number {
+	return ((((value + 180) % 360) + 360) % 360) - 180;
+}
+
 interface FloatingPixelSelectionState {
 	mode: 'promote' | 'cut';
 	label: string;
@@ -57,6 +63,34 @@ interface FloatingPixelSelectionState {
 	selectedLayerIDs: string[];
 	selectionAnchorID: string;
 	layerIDs: string[];
+	beforeContext: ImageEditorHistoryContext;
+}
+
+interface ImageEditorHistoryContext {
+	activePageID: string;
+	selectedLayerIDs: string[];
+	selectionAnchorID: string;
+	activeTool: ImageEditorTool;
+	selectionMode: ImageEditorSelectionMode;
+	pixelSelection: ImageEditorPixelSelection | null;
+	zoom: number;
+	panX: number;
+	panY: number;
+}
+
+export interface ImageEditorPartialApplicationResult {
+	applied: number;
+	skippedLocked: number;
+	skippedUnsupported: number;
+}
+
+export function imageEditorMixedValue<T>(values: readonly T[]): {
+	value: T | undefined;
+	mixed: boolean;
+} {
+	if (values.length === 0) return { value: undefined, mixed: false };
+	const first = values[0];
+	return { value: first, mixed: values.some((value) => !Object.is(value, first)) };
 }
 
 export class ImageEditorController {
@@ -108,7 +142,9 @@ export class ImageEditorController {
 	brandKit = $state.raw<ImageEditorBrandKit | null>(null);
 	recentColors = $state.raw<string[]>([]);
 	mediaLibraryRevision = $state(0);
-	private history = new ImageEditorHistory<ImageEditorDocument>(cloneImageEditorDocument);
+	private history = new ImageEditorHistory<ImageEditorDocument, ImageEditorHistoryContext>(
+		cloneImageEditorDocument
+	);
 	private historyRevision = $state(0);
 	private changeListeners = new SvelteSet<() => void>();
 	private selectionAnchorID = '';
@@ -190,6 +226,16 @@ export class ImageEditorController {
 		return this.history.redoLabel;
 	}
 
+	get floatingPixelSelectionBounds(): {
+		x: number;
+		y: number;
+		width: number;
+		height: number;
+	} | null {
+		const selection = this.pixelSelection;
+		return selection ? pixelMaskBounds(selection.data, selection.width, selection.height) : null;
+	}
+
 	load(response: ImageEditorDocumentResponse): void {
 		this.id = response.id;
 		this.workspaceID = response.workspace_id;
@@ -231,9 +277,11 @@ export class ImageEditorController {
 	): void {
 		if (!this.document || !this.canEdit) return;
 		if (this.floatingPixelSelection) this.commitFloatingPixelSelection();
+		this.history.updateCurrentContext(this.historyContext());
 		const next = this.history.execute(this.document, {
 			label,
 			coalesceKey,
+			context: this.historyContext(),
 			apply(document) {
 				mutation(document);
 				return document;
@@ -254,9 +302,12 @@ export class ImageEditorController {
 			return;
 		}
 		if (!this.document || !this.canUndo || !this.canEdit) return;
+		this.history.updateCurrentContext(this.historyContext());
 		this.document = this.history.undo(this.document);
 		this.historyRevision++;
-		this.reconcileSelection();
+		const context = this.history.restoredContext;
+		if (context) this.restoreHistoryContext(context);
+		else this.reconcileSelection();
 		this.emitChange();
 	}
 
@@ -265,7 +316,9 @@ export class ImageEditorController {
 		if (!this.document || !this.canRedo || !this.canEdit) return;
 		this.document = this.history.redo(this.document);
 		this.historyRevision++;
-		this.reconcileSelection();
+		const context = this.history.restoredContext;
+		if (context) this.restoreHistoryContext(context);
+		else this.reconcileSelection();
 		this.emitChange();
 	}
 
@@ -357,7 +410,8 @@ export class ImageEditorController {
 			},
 			selectedLayerIDs: [...this.selectedLayerIDs],
 			selectionAnchorID: this.selectionAnchorID,
-			layerIDs
+			layerIDs,
+			beforeContext: this.historyContext()
 		};
 		this.document = nextDocument;
 		this.selectedLayerIDs = layerIDs;
@@ -416,12 +470,95 @@ export class ImageEditorController {
 		this.emitChange();
 	}
 
+	transformFloatingPixelSelection(
+		center: { x: number; y: number },
+		scaleX: number,
+		scaleY: number,
+		rotationDegrees = 0
+	): boolean {
+		const floating = this.floatingPixelSelection;
+		const selection = this.pixelSelection;
+		if (!floating || !selection || !this.document) return false;
+		const safeScaleX = Math.max(0.02, Math.min(50, scaleX));
+		const safeScaleY = Math.max(0.02, Math.min(50, scaleY));
+		const transform = pixelMaskTransformAround(center, safeScaleX, safeScaleY, rotationDegrees);
+		const nextDocument = cloneImageEditorDocument(this.document);
+		const page = nextDocument.pages.find((candidate) => candidate.id === this.activePageID);
+		if (!page) return false;
+		const floatingIDs = new Set(floating.layerIDs);
+		for (const layer of page.layers) {
+			if (!floatingIDs.has(layer.id)) continue;
+			const x = layer.transform.x;
+			const y = layer.transform.y;
+			layer.transform.x = transform.a * x + transform.c * y + transform.e;
+			layer.transform.y = transform.b * x + transform.d * y + transform.f;
+			layer.transform.width = Math.max(1, layer.transform.width * safeScaleX);
+			layer.transform.height = Math.max(1, layer.transform.height * safeScaleY);
+			layer.transform.rotation = normalizeEditorRotation(
+				layer.transform.rotation + rotationDegrees
+			);
+		}
+		this.recalculateAllGroupBounds(page);
+		this.document = nextDocument;
+		this.pixelSelection = {
+			...selection,
+			data: transformPixelMask(selection.data, selection.width, selection.height, transform)
+		};
+		this.historyRevision++;
+		return true;
+	}
+
+	duplicateFloatingPixelSelection(offset = 10): boolean {
+		const floating = this.floatingPixelSelection;
+		const selection = this.pixelSelection;
+		if (!floating || !selection || !this.document) return false;
+		const nextDocument = cloneImageEditorDocument(this.document);
+		const page = nextDocument.pages.find((candidate) => candidate.id === this.activePageID);
+		if (!page) return false;
+		const duplicateIDs: string[] = [];
+		for (const id of floating.layerIDs) {
+			const index = page.layers.findIndex((layer) => layer.id === id);
+			const source = page.layers[index];
+			if (!source) continue;
+			const duplicate = cloneImageEditorLayer(
+				source,
+				m.image_editor_layer_copy_name({ name: source.name })
+			);
+			duplicate.transform.x += offset;
+			duplicate.transform.y += offset;
+			page.layers.splice(index + 1, 0, duplicate);
+			duplicateIDs.push(duplicate.id);
+		}
+		if (duplicateIDs.length === 0) return false;
+		this.document = nextDocument;
+		this.pixelSelection = {
+			...selection,
+			data: translatePixelMask(selection.data, selection.width, selection.height, offset, offset),
+			targetLayerIDs: duplicateIDs
+		};
+		this.floatingPixelSelection = { ...floating, layerIDs: duplicateIDs };
+		this.selectedLayerIDs = duplicateIDs;
+		this.selectionAnchorID = duplicateIDs.at(-1) ?? '';
+		this.historyRevision++;
+		this.emitChange();
+		return true;
+	}
+
 	commitFloatingPixelSelection(): boolean {
 		const floating = this.floatingPixelSelection;
 		if (!floating || !this.document) return false;
-		this.history.checkpoint(floating.label, floating.beforeDocument, this.document);
 		this.floatingPixelSelection = null;
 		this.pixelSelection = null;
+		const afterContext = this.historyContext();
+		this.history.updateCurrentContext(floating.beforeContext);
+		this.history.checkpoint(
+			floating.label,
+			floating.beforeDocument,
+			this.document,
+			undefined,
+			floating.beforeContext,
+			afterContext
+		);
 		this.historyRevision++;
 		this.emitChange();
 		return true;
@@ -439,6 +576,7 @@ export class ImageEditorController {
 		this.selectedLayerIDs = [...floating.selectedLayerIDs];
 		this.selectionAnchorID = floating.selectionAnchorID;
 		this.floatingPixelSelection = null;
+		this.restoreHistoryContext(floating.beforeContext);
 		this.historyRevision++;
 		this.emitChange();
 		return true;
@@ -453,12 +591,19 @@ export class ImageEditorController {
 		const floatingIDs = new Set(floating.layerIDs);
 		page.layers = page.layers.filter((layer) => !floatingIDs.has(layer.id));
 		this.recalculateAllGroupBounds(page);
-		this.history.checkpoint(m.image_editor_delete_pixels(), floating.beforeDocument, nextDocument);
 		this.document = nextDocument;
 		this.floatingPixelSelection = null;
 		this.pixelSelection = null;
 		this.selectedLayerIDs = [...floating.selectedLayerIDs];
 		this.selectionAnchorID = floating.selectionAnchorID;
+		this.history.checkpoint(
+			m.image_editor_delete_pixels(),
+			floating.beforeDocument,
+			nextDocument,
+			undefined,
+			floating.beforeContext,
+			this.historyContext()
+		);
 		this.historyRevision++;
 		this.emitChange();
 		return true;
@@ -1138,61 +1283,58 @@ export class ImageEditorController {
 		this.mutate(
 			'Transform layer',
 			(document) => {
-				const layer = document.pages
-					.find((page) => page.id === this.activePageID)
-					?.layers.find((item) => item.id === id);
-				if (!layer) return;
 				const page = document.pages.find((item) => item.id === this.activePageID);
 				if (!page) return;
-				if (layer.type !== 'group') {
-					Object.assign(layer.transform, updates);
-					this.recalculateAncestorBounds(page, layer.parent_id);
-					return;
-				}
-				const previous = { ...layer.transform };
-				const next = { ...previous, ...updates };
-				const scaleX = previous.width > 0 ? next.width / previous.width : 1;
-				const scaleY = previous.height > 0 ? next.height / previous.height : 1;
-				const rotationDelta = next.rotation - previous.rotation;
-				const radians = (rotationDelta * Math.PI) / 180;
-				const descendants = new SvelteSet<string>();
-				let changed = true;
-				while (changed) {
-					changed = false;
-					for (const candidate of page.layers) {
-						if (
-							candidate.parent_id &&
-							(candidate.parent_id === layer.id || descendants.has(candidate.parent_id)) &&
-							!descendants.has(candidate.id)
-						) {
-							descendants.add(candidate.id);
-							changed = true;
-						}
-					}
-				}
-				for (const child of page.layers) {
-					if (!descendants.has(child.id)) continue;
-					const relativeX = (child.transform.x - previous.x) * scaleX;
-					const relativeY = (child.transform.y - previous.y) * scaleY;
-					child.transform.x =
-						next.x + relativeX * Math.cos(radians) - relativeY * Math.sin(radians);
-					child.transform.y =
-						next.y + relativeX * Math.sin(radians) + relativeY * Math.cos(radians);
-					child.transform.width *= scaleX;
-					child.transform.height *= scaleY;
-					child.transform.rotation += rotationDelta;
-					if (updates.flip_x !== undefined && updates.flip_x !== previous.flip_x) {
-						child.transform.flip_x = !child.transform.flip_x;
-					}
-					if (updates.flip_y !== undefined && updates.flip_y !== previous.flip_y) {
-						child.transform.flip_y = !child.transform.flip_y;
-					}
-				}
-				Object.assign(layer.transform, next);
-				this.recalculateAncestorBounds(page, layer.parent_id);
+				const layer = page.layers.find((item) => item.id === id);
+				if (!layer || layer.locked) return;
+				this.applyTransformToLayer(page, layer, updates);
 			},
 			coalesceKey
 		);
+	}
+
+	updateSelectedTransform(
+		key: 'x' | 'y' | 'width' | 'height' | 'rotation' | 'flip_x' | 'flip_y',
+		value: number | boolean,
+		preserveAspect = false
+	): ImageEditorPartialApplicationResult {
+		const roots = this.selectedRootLayers();
+		const result: ImageEditorPartialApplicationResult = {
+			applied: roots.filter((layer) => !layer.locked).length,
+			skippedLocked: roots.filter((layer) => layer.locked).length,
+			skippedUnsupported: 0
+		};
+		const ids = new SvelteSet(roots.filter((layer) => !layer.locked).map((layer) => layer.id));
+		this.mutate(
+			m.image_editor_transform_layers(),
+			(document) => {
+				const page = document.pages.find((candidate) => candidate.id === this.activePageID);
+				if (!page) return;
+				for (const layer of page.layers.filter((candidate) => ids.has(candidate.id))) {
+					let updates: Partial<ImageEditorLayer['transform']> = { [key]: value };
+					if (typeof value === 'number' && (key === 'width' || key === 'height')) {
+						const nextValue = Math.max(1, value);
+						const ratio = layer.transform.width / Math.max(1, layer.transform.height);
+						updates =
+							key === 'width'
+								? {
+										width: nextValue,
+										...(preserveAspect
+											? { height: Math.max(1, nextValue / Math.max(0.0001, ratio)) }
+											: {})
+									}
+								: {
+										height: nextValue,
+										...(preserveAspect ? { width: Math.max(1, nextValue * ratio) } : {})
+									};
+					}
+					this.applyTransformToLayer(page, layer, updates);
+				}
+				this.recalculateAllGroupBounds(page);
+			},
+			`multi-transform:${key}:${[...ids].sort().join(',')}`
+		);
+		return result;
 	}
 
 	nudgeSelected(deltaX: number, deltaY: number): void {
@@ -1395,6 +1537,56 @@ export class ImageEditorController {
 		this.selectionAnchorID = childIDs.at(-1) ?? '';
 	}
 
+	groupDestinationsForLayer(id: string): ImageEditorLayer[] {
+		const page = this.activePage;
+		const source = page?.layers.find((layer) => layer.id === id);
+		if (!page || !source) return [];
+		const blocked = this.idsWithDescendants([id]);
+		return page.layers.filter(
+			(layer) =>
+				layer.type === 'group' &&
+				!blocked.has(layer.id) &&
+				!this.layerIsEffectivelyLocked(layer, page.layers)
+		);
+	}
+
+	moveLayerToGroup(id: string, parentID?: string): boolean {
+		const page = this.activePage;
+		const source = page?.layers.find((layer) => layer.id === id);
+		if (!page || !source || this.layerIsEffectivelyLocked(source, page.layers)) return false;
+		const nextParentID = parentID || undefined;
+		if (source.parent_id === nextParentID) return false;
+		if (nextParentID) {
+			const destination = this.groupDestinationsForLayer(id).find(
+				(layer) => layer.id === nextParentID
+			);
+			if (!destination) return false;
+		}
+		const previousParentID = source.parent_id;
+		this.mutate(
+			nextParentID ? m.image_editor_move_into_group() : m.image_editor_move_out_of_group(),
+			(document) => {
+				const activePage = document.pages.find((candidate) => candidate.id === this.activePageID);
+				const target = activePage?.layers.find((layer) => layer.id === id);
+				if (!activePage || !target) return;
+				target.parent_id = nextParentID;
+				this.recalculateAncestorBounds(activePage, previousParentID);
+				this.recalculateAncestorBounds(activePage, nextParentID);
+			}
+		);
+		this.selectedLayerIDs = [id];
+		this.selectionAnchorID = id;
+		return true;
+	}
+
+	moveLayerOutOfGroup(id: string): boolean {
+		const page = this.activePage;
+		const layer = page?.layers.find((candidate) => candidate.id === id);
+		if (!page || !layer?.parent_id) return false;
+		const parent = page.layers.find((candidate) => candidate.id === layer.parent_id);
+		return this.moveLayerToGroup(id, parent?.parent_id);
+	}
+
 	reorderLayer(id: string, direction: 'front' | 'forward' | 'backward' | 'back'): void {
 		this.mutate('Reorder layer', (document) => {
 			const page = document.pages.find((item) => item.id === this.activePageID);
@@ -1557,8 +1749,18 @@ export class ImageEditorController {
 		this.brandKit = brandKit;
 	}
 
-	applyBrandTextStyle(style: ImageEditorBrandTextStyle): void {
+	applyBrandTextStyle(style: ImageEditorBrandTextStyle): ImageEditorPartialApplicationResult {
 		const ids = new SvelteSet(this.selectedLayerIDs);
+		const result: ImageEditorPartialApplicationResult = {
+			applied: 0,
+			skippedLocked: 0,
+			skippedUnsupported: 0
+		};
+		for (const layer of this.selectedLayers) {
+			if (layer.locked) result.skippedLocked += 1;
+			else if (!layer.text) result.skippedUnsupported += 1;
+			else result.applied += 1;
+		}
 		this.mutate(m.image_editor_apply_text_style(), (document) => {
 			const page = document.pages.find((candidate) => candidate.id === this.activePageID);
 			if (!page) return;
@@ -1577,6 +1779,31 @@ export class ImageEditorController {
 				};
 			}
 		});
+		return result;
+	}
+
+	updateSelectedOpacity(opacity: number): ImageEditorPartialApplicationResult {
+		const ids = new SvelteSet(this.selectedLayerIDs);
+		const result: ImageEditorPartialApplicationResult = {
+			applied: 0,
+			skippedLocked: 0,
+			skippedUnsupported: 0
+		};
+		for (const layer of this.selectedLayers) {
+			if (layer.locked) result.skippedLocked += 1;
+			else result.applied += 1;
+		}
+		this.mutate(
+			m.image_editor_change_opacity(),
+			(document) => {
+				const page = document.pages.find((candidate) => candidate.id === this.activePageID);
+				for (const layer of page?.layers ?? []) {
+					if (ids.has(layer.id) && !layer.locked) layer.opacity = Math.max(0, Math.min(1, opacity));
+				}
+			},
+			`opacity:${[...ids].sort().join(',')}`
+		);
+		return result;
 	}
 
 	setRecentColors(colors: string[]): void {
@@ -1653,6 +1880,47 @@ export class ImageEditorController {
 		if (!ids.has(this.selectionAnchorID)) this.selectionAnchorID = '';
 	}
 
+	private historyContext(): ImageEditorHistoryContext {
+		return {
+			activePageID: this.activePageID,
+			selectedLayerIDs: [...this.selectedLayerIDs],
+			selectionAnchorID: this.selectionAnchorID,
+			activeTool: this.activeTool,
+			selectionMode: this.selectionMode,
+			pixelSelection: this.pixelSelection
+				? {
+						...this.pixelSelection,
+						data: this.pixelSelection.data.slice(),
+						targetLayerIDs: [...this.pixelSelection.targetLayerIDs]
+					}
+				: null,
+			zoom: this.zoom,
+			panX: this.panX,
+			panY: this.panY
+		};
+	}
+
+	private restoreHistoryContext(context: ImageEditorHistoryContext): void {
+		this.activePageID = this.document?.pages.some((page) => page.id === context.activePageID)
+			? context.activePageID
+			: (this.document?.pages[0]?.id ?? '');
+		this.selectedLayerIDs = [...context.selectedLayerIDs];
+		this.selectionAnchorID = context.selectionAnchorID;
+		this.activeTool = context.activeTool;
+		this.selectionMode = context.selectionMode;
+		this.pixelSelection = context.pixelSelection
+			? {
+					...context.pixelSelection,
+					data: context.pixelSelection.data.slice(),
+					targetLayerIDs: [...context.pixelSelection.targetLayerIDs]
+				}
+			: null;
+		this.zoom = context.zoom;
+		this.panX = context.panX;
+		this.panY = context.panY;
+		this.reconcileSelection();
+	}
+
 	private layerSelectionOrder(): string[] {
 		const page = this.activePage;
 		if (!page) return [];
@@ -1706,6 +1974,72 @@ export class ImageEditorController {
 
 	private selectedWithDescendants(): SvelteSet<string> {
 		return this.idsWithDescendants(this.selectedRootLayers().map((layer) => layer.id));
+	}
+
+	private layerIsEffectivelyLocked(
+		layer: ImageEditorLayer,
+		layers: readonly ImageEditorLayer[]
+	): boolean {
+		let current: ImageEditorLayer | undefined = layer;
+		const visited = new Set<string>();
+		while (current) {
+			if (current.locked) return true;
+			if (!current.parent_id || visited.has(current.parent_id)) break;
+			visited.add(current.parent_id);
+			current = layers.find((candidate) => candidate.id === current?.parent_id);
+		}
+		return false;
+	}
+
+	private applyTransformToLayer(
+		page: ImageEditorPage,
+		layer: ImageEditorLayer,
+		updates: Partial<ImageEditorLayer['transform']>
+	): void {
+		if (layer.type !== 'group') {
+			Object.assign(layer.transform, updates);
+			this.recalculateAncestorBounds(page, layer.parent_id);
+			return;
+		}
+		const previous = { ...layer.transform };
+		const next = { ...previous, ...updates };
+		const scaleX = previous.width > 0 ? next.width / previous.width : 1;
+		const scaleY = previous.height > 0 ? next.height / previous.height : 1;
+		const rotationDelta = next.rotation - previous.rotation;
+		const radians = (rotationDelta * Math.PI) / 180;
+		const descendants = new SvelteSet<string>();
+		let changed = true;
+		while (changed) {
+			changed = false;
+			for (const candidate of page.layers) {
+				if (
+					candidate.parent_id &&
+					(candidate.parent_id === layer.id || descendants.has(candidate.parent_id)) &&
+					!descendants.has(candidate.id)
+				) {
+					descendants.add(candidate.id);
+					changed = true;
+				}
+			}
+		}
+		for (const child of page.layers) {
+			if (!descendants.has(child.id)) continue;
+			const relativeX = (child.transform.x - previous.x) * scaleX;
+			const relativeY = (child.transform.y - previous.y) * scaleY;
+			child.transform.x = next.x + relativeX * Math.cos(radians) - relativeY * Math.sin(radians);
+			child.transform.y = next.y + relativeX * Math.sin(radians) + relativeY * Math.cos(radians);
+			child.transform.width *= scaleX;
+			child.transform.height *= scaleY;
+			child.transform.rotation = normalizeEditorRotation(child.transform.rotation + rotationDelta);
+			if (updates.flip_x !== undefined && updates.flip_x !== previous.flip_x) {
+				child.transform.flip_x = !child.transform.flip_x;
+			}
+			if (updates.flip_y !== undefined && updates.flip_y !== previous.flip_y) {
+				child.transform.flip_y = !child.transform.flip_y;
+			}
+		}
+		Object.assign(layer.transform, next);
+		this.recalculateAncestorBounds(page, layer.parent_id);
 	}
 
 	private recalculateAncestorBounds(page: ImageEditorPage, parentID?: string): void {

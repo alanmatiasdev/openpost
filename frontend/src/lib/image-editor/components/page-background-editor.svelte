@@ -29,6 +29,7 @@
 	);
 	let brandColors = $derived(editor.brandKit?.colors ?? []);
 	let brandBackgrounds = $derived(editor.brandKit?.backgrounds ?? []);
+	let backgroundImageMissing = $state(false);
 	let gradientStops = $derived(
 		background.type === 'gradient' && background.gradient
 			? normalizedGradientStops(background.gradient.stops, background.gradient.reverse)
@@ -379,7 +380,27 @@
 					mediaId={background.image.media_id}
 					alt={m.image_editor_page_background()}
 					class="aspect-video w-full rounded-md border object-cover"
+					onMissing={() => (backgroundImageMissing = true)}
 				/>
+				{#if backgroundImageMissing}
+					<div
+						class="rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-xs"
+						role="alert"
+					>
+						<p>{m.image_editor_background_image_missing()}</p>
+						<Button
+							variant="outline"
+							size="xs"
+							class="mt-2"
+							onclick={() => {
+								backgroundImageMissing = false;
+								setBackgroundType('solid');
+							}}
+						>
+							{m.image_editor_use_solid_background()}
+						</Button>
+					</div>
+				{/if}
 				<AppSelect
 					value={background.image.fit}
 					ariaLabel={m.image_editor_fit()}
@@ -405,6 +426,7 @@
 				class="min-h-11 w-full"
 				disabled={!editor.canEdit}
 				onclick={() => {
+					backgroundImageMissing = false;
 					editor.backgroundImagePickerActive = true;
 					onOpenMedia();
 				}}

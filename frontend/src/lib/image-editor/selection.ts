@@ -18,6 +18,75 @@ export interface ImageEditorPixelSelection {
 	targetLayerIDs: string[];
 }
 
+export interface PixelMaskAffineTransform {
+	a: number;
+	b: number;
+	c: number;
+	d: number;
+	e: number;
+	f: number;
+}
+
+export function transformPixelMask(
+	mask: Uint8Array,
+	width: number,
+	height: number,
+	transform: PixelMaskAffineTransform
+): Uint8Array {
+	const result = new Uint8Array(width * height);
+	const bounds = pixelMaskBounds(mask, width, height);
+	if (!bounds) return result;
+	const determinant = transform.a * transform.d - transform.b * transform.c;
+	if (Math.abs(determinant) < Number.EPSILON) return result;
+	const corners = [
+		{ x: bounds.x, y: bounds.y },
+		{ x: bounds.x + bounds.width, y: bounds.y },
+		{ x: bounds.x + bounds.width, y: bounds.y + bounds.height },
+		{ x: bounds.x, y: bounds.y + bounds.height }
+	].map((point) => ({
+		x: transform.a * point.x + transform.c * point.y + transform.e,
+		y: transform.b * point.x + transform.d * point.y + transform.f
+	}));
+	const startX = clampInteger(Math.floor(Math.min(...corners.map((point) => point.x))), 0, width);
+	const endX = clampInteger(Math.ceil(Math.max(...corners.map((point) => point.x))), 0, width);
+	const startY = clampInteger(Math.floor(Math.min(...corners.map((point) => point.y))), 0, height);
+	const endY = clampInteger(Math.ceil(Math.max(...corners.map((point) => point.y))), 0, height);
+	for (let y = startY; y < endY; y++) {
+		for (let x = startX; x < endX; x++) {
+			const targetX = x + 0.5 - transform.e;
+			const targetY = y + 0.5 - transform.f;
+			const sourceX = Math.floor((transform.d * targetX - transform.c * targetY) / determinant);
+			const sourceY = Math.floor((-transform.b * targetX + transform.a * targetY) / determinant);
+			if (sourceX < 0 || sourceY < 0 || sourceX >= width || sourceY >= height) continue;
+			if (mask[sourceY * width + sourceX]) result[y * width + x] = 1;
+		}
+	}
+	return result;
+}
+
+export function pixelMaskTransformAround(
+	center: SelectionPoint,
+	scaleX: number,
+	scaleY: number,
+	rotationDegrees = 0
+): PixelMaskAffineTransform {
+	const radians = (rotationDegrees * Math.PI) / 180;
+	const cosine = Math.cos(radians);
+	const sine = Math.sin(radians);
+	const a = cosine * scaleX;
+	const b = sine * scaleX;
+	const c = -sine * scaleY;
+	const d = cosine * scaleY;
+	return {
+		a,
+		b,
+		c,
+		d,
+		e: center.x - a * center.x - c * center.y,
+		f: center.y - b * center.x - d * center.y
+	};
+}
+
 export function normalizeSelectionBounds(
 	start: SelectionPoint,
 	end: SelectionPoint

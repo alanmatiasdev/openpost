@@ -17,7 +17,9 @@ import {
 	strokePixelMask,
 	smoothSelectionPoints,
 	subtractPixelMasks,
-	translatePixelMask
+	translatePixelMask,
+	transformPixelMask,
+	pixelMaskTransformAround
 } from './selection';
 
 describe('OpenPost Image Editor area selection geometry', () => {
@@ -177,6 +179,25 @@ describe('OpenPost Image Editor selection composition', () => {
 		expect(pixelMaskContainsPoint(moved, 8, 6, { x: 3, y: 2 })).toBe(true);
 		expect(pixelMaskContainsPoint(moved, 8, 6, { x: 1, y: 1 })).toBe(false);
 		expect(moved.reduce((total, value) => total + value, 0)).toBe(6);
+	});
+
+	it('resizes and rotates masks around an explicit transform origin', () => {
+		const original = rectanglePixelMask(20, 20, { x: 4, y: 4, width: 4, height: 2 });
+		const resized = transformPixelMask(
+			original,
+			20,
+			20,
+			pixelMaskTransformAround({ x: 4, y: 4 }, 2, 2)
+		);
+		expect(pixelMaskBounds(resized, 20, 20)).toEqual({ x: 4, y: 4, width: 8, height: 4 });
+
+		const rotated = transformPixelMask(
+			original,
+			20,
+			20,
+			pixelMaskTransformAround({ x: 6, y: 5 }, 1, 1, 90)
+		);
+		expect(pixelMaskBounds(rotated, 20, 20)).toEqual({ x: 5, y: 3, width: 2, height: 4 });
 	});
 
 	it('subtracts an erase mask from compact paint spans', () => {

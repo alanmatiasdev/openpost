@@ -12,20 +12,24 @@ export interface ImageEditorRenderedPage {
 export async function renderImageEditorPages(
 	imageEditorDocument: ImageEditorDocument,
 	pageIDs: string[] = imageEditorDocument.pages.map((page) => page.id),
-	onProgress?: (completed: number, total: number) => void
+	onProgress?: (completed: number, total: number) => void,
+	signal?: AbortSignal
 ): Promise<ImageEditorRenderedPage[]> {
 	const pages = imageEditorDocument.pages.filter((page) => pageIDs.includes(page.id));
 	const results: ImageEditorRenderedPage[] = [];
 	for (let index = 0; index < pages.length; index++) {
+		signal?.throwIfAborted();
 		const page = pages[index];
 		results.push(
 			await renderImageEditorPage(
 				imageEditorDocument,
 				page,
-				imageEditorDocument.pages.indexOf(page)
+				imageEditorDocument.pages.indexOf(page),
+				signal
 			)
 		);
 		onProgress?.(index + 1, pages.length);
+		signal?.throwIfAborted();
 		await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
 	}
 	return results;
@@ -34,9 +38,12 @@ export async function renderImageEditorPages(
 export async function renderImageEditorPage(
 	imageEditorDocument: ImageEditorDocument,
 	page: ImageEditorPage,
-	pageIndex: number
+	pageIndex: number,
+	signal?: AbortSignal
 ): Promise<ImageEditorRenderedPage> {
+	signal?.throwIfAborted();
 	await globalThis.document.fonts?.ready;
+	signal?.throwIfAborted();
 	const canvas = globalThis.document.createElement('canvas');
 	const adapter = new OpenPostFabricAdapter({
 		canvas,
@@ -49,30 +56,35 @@ export async function renderImageEditorPage(
 		onTextChange() {}
 	});
 	await adapter.mount();
-	const format =
-		imageEditorDocument.export_defaults.format === 'jpeg'
-			? 'image/jpeg'
-			: imageEditorDocument.export_defaults.format === 'webp'
-				? 'image/webp'
-				: 'image/png';
-	const outputCanvas =
-		format === 'image/jpeg'
-			? flattenCanvas(canvas, imageEditorDocument.export_defaults.matte_color || '#ffffff')
-			: canvas;
-	const blob = await new Promise<Blob>((resolve, reject) => {
-		outputCanvas.toBlob(
-			(result) =>
-				result ? resolve(result) : reject(new Error(m.image_editor_page_render_failed())),
-			format,
-			imageEditorDocument.export_defaults.quality
-		);
-	});
-	adapter.dispose();
-	return {
-		page,
-		filename: `${sanitizeFilename(imageEditorDocument.title)}-page-${String(pageIndex + 1).padStart(2, '0')}.${extensionForFormat(format)}`,
-		blob
-	};
+	try {
+		signal?.throwIfAborted();
+		const format =
+			imageEditorDocument.export_defaults.format === 'jpeg'
+				? 'image/jpeg'
+				: imageEditorDocument.export_defaults.format === 'webp'
+					? 'image/webp'
+					: 'image/png';
+		const outputCanvas =
+			format === 'image/jpeg'
+				? flattenCanvas(canvas, imageEditorDocument.export_defaults.matte_color || '#ffffff')
+				: canvas;
+		const blob = await new Promise<Blob>((resolve, reject) => {
+			outputCanvas.toBlob(
+				(result) =>
+					result ? resolve(result) : reject(new Error(m.image_editor_page_render_failed())),
+				format,
+				imageEditorDocument.export_defaults.quality
+			);
+		});
+		signal?.throwIfAborted();
+		return {
+			page,
+			filename: `${sanitizeFilename(imageEditorDocument.title)}-page-${String(pageIndex + 1).padStart(2, '0')}.${extensionForFormat(format)}`,
+			blob
+		};
+	} finally {
+		adapter.dispose();
+	}
 }
 
 function flattenCanvas(source: HTMLCanvasElement, matteColor: string): HTMLCanvasElement {
@@ -109,40 +121,42 @@ export async function renderImageEditorPreview(
 		onTextChange() {}
 	});
 	await adapter.mount();
-	const blob = await new Promise<Blob>((resolve, reject) => {
-		canvas.toBlob(
-			(result) =>
-				result ? resolve(result) : reject(new Error(m.image_editor_page_render_failed())),
-			'image/webp',
-			0.82
-		);
-	});
-	adapter.dispose();
-	return blob;
+	try {
+		return await new Promise<Blob>((resolve, reject) => {
+			canvas.toBlob(
+				(result) =>
+					result ? resolve(result) : reject(new Error(m.image_editor_page_render_failed())),
+				'image/webp',
+				0.82
+			);
+		});
+	} finally {
+		adapter.dispose();
+	}
 }
 
-export function downloadRenderedPages(pages: ImageEditorRenderedPage[], title: string): void {
+export async function downloadRenderedPages(
+	pages: ImageEditorRenderedPage[],
+	title: string
+): Promise<void> {
 	if (pages.length === 1) {
 		downloadBlob(pages[0].blob, pages[0].filename);
 		return;
 	}
-	Promise.all(
+	const entries = await Promise.all(
 		pages.map(
 			async (page) => [page.filename, new Uint8Array(await page.blob.arrayBuffer())] as const
 		)
-	)
-		.then((entries) => {
-			const files = Object.fromEntries(entries);
-			const zipped = zipSync({
-				...files,
-				'manifest.txt': strToU8(m.image_editor_zip_manifest({ count: pages.length }))
-			});
-			downloadBlob(
-				new Blob([zipped.slice().buffer], { type: 'application/zip' }),
-				`${sanitizeFilename(title)}.zip`
-			);
-		})
-		.catch(() => undefined);
+	);
+	const files = Object.fromEntries(entries);
+	const zipped = zipSync({
+		...files,
+		'manifest.txt': strToU8(m.image_editor_zip_manifest({ count: pages.length }))
+	});
+	downloadBlob(
+		new Blob([zipped.slice().buffer], { type: 'application/zip' }),
+		`${sanitizeFilename(title)}.zip`
+	);
 }
 
 function downloadBlob(blob: Blob, filename: string): void {

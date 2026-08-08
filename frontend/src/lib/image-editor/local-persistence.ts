@@ -204,8 +204,8 @@ export async function createGuestImageEditorDesignFromImage(
 export async function loadGuestImageEditorDesign(id: string): Promise<ImageEditorDocumentResponse> {
 	const record = await getGuestDesign(id);
 	if (!record) throw new Error(m.image_editor_public_design_missing());
-	await warmGuestImageEditorMedia(record.document);
-	return guestDesignResponse(record);
+	const missingLocalMediaIDs = await warmGuestImageEditorMedia(record.document);
+	return { ...guestDesignResponse(record), missing_local_media_ids: missingLocalMediaIDs };
 }
 
 export async function saveGuestImageEditorDesign(
@@ -442,14 +442,21 @@ async function getGuestMediaRecord(id: string): Promise<LocalImageEditorMedia | 
 	return record ?? null;
 }
 
-async function warmGuestImageEditorMedia(document: ImageEditorDocument): Promise<void> {
-	await Promise.all(
+async function warmGuestImageEditorMedia(document: ImageEditorDocument): Promise<string[]> {
+	const results = await Promise.all(
 		guestImageEditorMediaIDs(document).map(async (mediaID) => {
-			if (localImageEditorMediaURL(mediaID)) return;
-			const record = await getGuestMediaRecord(mediaID);
-			if (record) await warmGuestMediaRecord(record);
+			if (localImageEditorMediaURL(mediaID)) return '';
+			try {
+				const record = await getGuestMediaRecord(mediaID);
+				if (!record) return mediaID;
+				await warmGuestMediaRecord(record);
+				return localImageEditorMediaURL(mediaID) ? '' : mediaID;
+			} catch {
+				return mediaID;
+			}
 		})
 	);
+	return results.filter(Boolean);
 }
 
 async function warmGuestMediaRecord(record: LocalImageEditorMedia): Promise<void> {

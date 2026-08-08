@@ -39,7 +39,7 @@
 	let draggingID = $state('');
 	let pointerDraggingID = $state('');
 	let pointerTargetID = $state('');
-	let pointerTargetPosition = $state<'above' | 'below'>('above');
+	let pointerTargetPosition = $state<'above' | 'below' | 'inside'>('above');
 	let renamingID = $state('');
 	let renameDraft = $state('');
 	let scrollContainer: HTMLDivElement | null = null;
@@ -80,8 +80,13 @@
 							: SquareIcon;
 	}
 
-	function reorder(droppedID: string, targetID: string, position: 'above' | 'below'): void {
-		editor.moveLayerRelative(droppedID, targetID, position);
+	function reorder(
+		droppedID: string,
+		targetID: string,
+		position: 'above' | 'below' | 'inside'
+	): void {
+		if (position === 'inside') editor.moveLayerToGroup(droppedID, targetID);
+		else editor.moveLayerRelative(droppedID, targetID, position);
 	}
 
 	function moveWithKeyboard(id: string, delta: number): void {
@@ -92,17 +97,28 @@
 		x: number,
 		y: number,
 		sourceID: string
-	): { id: string; position: 'above' | 'below' } | null {
+	): { id: string; position: 'above' | 'below' | 'inside' } | null {
 		const rows = scrollContainer?.querySelectorAll<HTMLElement>('[data-image-editor-layer-id]');
 		const source = editor.activePage?.layers.find((layer) => layer.id === sourceID);
 		if (!rows?.length || !source) return null;
-		let nearest: { id: string; position: 'above' | 'below' } | null = null;
+		const groupDestinations = new Set(
+			editor.groupDestinationsForLayer(sourceID).map((group) => group.id)
+		);
+		let nearest: { id: string; position: 'above' | 'below' | 'inside' } | null = null;
 		let nearestDistance = Number.POSITIVE_INFINITY;
 		for (const row of rows) {
 			const id = row.dataset.imageEditorLayerId ?? '';
 			const candidate = editor.activePage?.layers.find((layer) => layer.id === id);
-			if (!candidate || candidate.parent_id !== source.parent_id || id === sourceID) continue;
+			if (!candidate || id === sourceID) continue;
 			const bounds = row.getBoundingClientRect();
+			const inside =
+				candidate.type === 'group' &&
+				groupDestinations.has(candidate.id) &&
+				x >= bounds.left + Math.min(44, bounds.width * 0.2) &&
+				y >= bounds.top &&
+				y <= bounds.bottom;
+			if (inside) return { id, position: 'inside' };
+			if (candidate.parent_id !== source.parent_id) continue;
 			const position = y < (bounds.top + bounds.bottom) / 2 ? 'above' : 'below';
 			if (x >= bounds.left && x <= bounds.right && y >= bounds.top && y <= bounds.bottom) {
 				return { id, position };
@@ -338,6 +354,7 @@
 			{#each items as item (item.layer.id)}
 				{@const layer = item.layer}
 				{@const Icon = layerIcon(layer)}
+				{@const groupDestinations = editor.groupDestinationsForLayer(layer.id)}
 				<ContextMenu.Root
 					onOpenChange={(open) => {
 						if (open) ensureContextSelection(layer);
@@ -379,22 +396,18 @@
 								ondragstart={() => (draggingID = layer.id)}
 								ondragover={(event) => {
 									event.preventDefault();
-									pointerTargetID = layer.id;
-									pointerTargetPosition =
-										event.clientY <
-										event.currentTarget.getBoundingClientRect().top +
-											event.currentTarget.getBoundingClientRect().height / 2
-											? 'above'
-											: 'below';
+									const target = draggingID
+										? layerAtPoint(event.clientX, event.clientY, draggingID)
+										: null;
+									if (target?.id === layer.id) {
+										pointerTargetID = target.id;
+										pointerTargetPosition = target.position;
+									}
 								}}
 								ondrop={(event) => {
 									if (draggingID) {
-										const bounds = event.currentTarget.getBoundingClientRect();
-										reorder(
-											draggingID,
-											layer.id,
-											event.clientY < bounds.top + bounds.height / 2 ? 'above' : 'below'
-										);
+										const target = layerAtPoint(event.clientX, event.clientY, draggingID);
+										if (target?.id === layer.id) reorder(draggingID, target.id, target.position);
 									}
 									draggingID = '';
 									pointerTargetID = '';
@@ -411,6 +424,10 @@
 									if (event.altKey && event.key === 'ArrowDown') {
 										event.preventDefault();
 										moveWithKeyboard(layer.id, -1);
+									}
+									if (event.altKey && event.key === 'ArrowLeft' && layer.parent_id) {
+										event.preventDefault();
+										editor.moveLayerOutOfGroup(layer.id);
 									}
 								}}
 							>
@@ -576,6 +593,36 @@
 								<UngroupIcon class="size-4" />
 								{m.image_editor_ungroup()}
 							</ContextMenu.Item>
+							{#if groupDestinations.length > 0}
+								<ContextMenu.Sub>
+									<ContextMenu.SubTrigger class="image-editor-context-item">
+										<GroupIcon class="size-4" />
+										{m.image_editor_move_into_group()}
+									</ContextMenu.SubTrigger>
+									<ContextMenu.SubContent
+										class="z-50 min-w-48 rounded-lg bg-popover/95 p-1 text-sm text-popover-foreground shadow-md ring-1 ring-foreground/10 backdrop-blur outline-none"
+									>
+										{#each groupDestinations as destination (destination.id)}
+											<ContextMenu.Item
+												class="image-editor-context-item"
+												onclick={() => editor.moveLayerToGroup(layer.id, destination.id)}
+											>
+												<GroupIcon class="size-4" />
+												{m.image_editor_move_to_group({ name: destination.name })}
+											</ContextMenu.Item>
+										{/each}
+									</ContextMenu.SubContent>
+								</ContextMenu.Sub>
+							{/if}
+							{#if layer.parent_id}
+								<ContextMenu.Item
+									class="image-editor-context-item"
+									onclick={() => editor.moveLayerOutOfGroup(layer.id)}
+								>
+									<UngroupIcon class="size-4" />
+									{m.image_editor_move_out_of_group()}
+								</ContextMenu.Item>
+							{/if}
 							<ContextMenu.Separator class="my-1 h-px bg-border" />
 							<ContextMenu.Item
 								class="image-editor-context-item"
@@ -646,6 +693,10 @@
 
 	.image-editor-layer-row[data-drop-position='below']::after {
 		bottom: -1px;
+	}
+
+	.image-editor-layer-row[data-drop-position='inside'] {
+		box-shadow: inset 0 0 0 2px var(--primary);
 	}
 
 	.image-editor-mobile-order-button {

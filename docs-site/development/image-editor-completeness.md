@@ -1,6 +1,6 @@
 # Image Editor Completeness Checklist
 
-Reviewed: 2026-08-06
+Reviewed: 2026-08-07
 
 This is the implementation contract for bringing the OpenPost Image Editor to a
 complete, polished editing experience. It is intentionally broader than a
@@ -54,16 +54,17 @@ Every persistent editor operation must satisfy all applicable requirements:
 
 ## Release gates for this program
 
-- [x] Current focused Image Editor unit baseline: 98 tests across 18 files.
-- [x] Current focused Image Editor browser baseline: seven scenarios with page
+- [x] Current focused Image Editor unit baseline: 130 tests across 23 files.
+- [x] Current focused Image Editor browser baseline: twelve scenarios with page
       and console error diagnostics.
 - [x] Current 1280 px, 768 px, and 390 px smoke has no observed overflow or
       console errors.
 - [x] Add 320 px and short-landscape browser coverage for primary action
       visibility and horizontal overflow.
-- [ ] Add keyboard-only create-to-export coverage.
-- [ ] Add touch/stylus gesture coverage where Playwright can represent it.
-- [ ] Add light/dark and 200% browser zoom coverage.
+- [x] Add keyboard-only create-to-export coverage.
+- [x] Add touch/stylus gesture coverage where Playwright can represent it.
+- [~] Add light/dark and 200% browser zoom coverage. The localized 200% zoom
+  path is covered; the paired light/dark visual matrix remains.
 - [ ] Add common, minimum, maximum, many-page, and many-layer performance cases.
 - [x] Run `frontend-check`, `check:ui-consistency`, the focused unit suite, the
       focused browser suite, docs links/build, and the repository's broad gate.
@@ -83,11 +84,16 @@ The 2026-08-06 baseline working tree passed:
   export.
 - Svelte autofixer on every changed Svelte component; no reported issues.
 
-The latest cohort also passed frontend diagnostics with no errors or warnings,
-scoped ESLint and Prettier, all 111 Image Editor unit tests, and all 8 browser
-tests. A new full-tree `verify` run reached global frontend lint but was blocked by
-an unrelated concurrent `frontend/src/lib/video/cover-frame.ts:69`
-`no-unused-expressions` error; this Image Editor cohort did not modify that file.
+The 2026-08-07 cohort passed the repository check, full frontend lint, UI
+consistency, docs build, frontend diagnostics with no errors or warnings, all
+130 Image Editor unit tests across 23 files, the production frontend build, and
+all 12 browser tests with one worker. The browser cohort includes signed-in
+import cancellation/resume, Portuguese at 200%, pinch zoom, stylus palm
+rejection, keyboard-only create-to-export, renderer pixel sampling, 320 px,
+short landscape, guest recovery, project round-trip, and Media export. The full
+frontend unit run passed 373 of 374 tests and remains blocked by an independently
+modified Stock Media component test that cannot find its `Media type` control;
+the isolated rerun reproduced that outside-editor failure.
 
 These gates prove the implemented paths below. They do not turn unchecked or
 partial requirements into complete ones.
@@ -96,25 +102,25 @@ partial requirements into complete ones.
 
 ### Typed command registry
 
-- [~] A typed registry now owns command IDs, categories, shortcut matching,
-  platform labels, collision tests, keyboard dispatch, menu labels, and the full
-  help list. Tooltips, mobile actions, enabled state, and handlers still need to
-  be generated from it.
-- [~] Give every command a stable ID, localized name and description, category,
-  platform-aware shortcut, enabled predicate, hidden predicate, handler,
-  undoability, and applicable context.
-- [ ] Generate menubar items, context-menu items, tooltip shortcut labels,
+- [x] A typed registry now owns command IDs, categories, shortcut matching,
+      platform labels, collision tests, keyboard dispatch, menu placement, tool
+      placement, audience, and availability. Exhaustive localized label, handler,
+      checked-state, and disabled-explanation maps make missing runtime behavior a
+      type error.
+- [x] Give every command a stable ID, localized label and explanation, category,
+      platform-aware shortcut, availability/audience rule, exhaustive handler, and
+      applicable context.
+- [x] Generate menubar items, context-menu items, tooltip shortcut labels,
       shortcut help, mobile More actions, and accessible descriptions from that
       registry.
-- [~] Detect duplicate shortcuts. Add tests for commands missing help or an enabled-state
-  explanation in unit tests.
-- [ ] Keep tool activation separate from commands that create an object. A text
+- [x] Detect duplicate shortcuts and require placement and availability metadata
+      for every registered tool in unit tests.
+- [x] Keep tool activation separate from commands that create an object. A text
       shortcut must not leave the first typed character inside the new text layer.
-- [~] Support `Escape`, `Enter`, `Delete`, `Backspace`, arrow nudge, modified
-  arrow nudge, select all, deselect, copy, cut, paste, duplicate, group,
-  ungroup, save, zoom, and tool selection without intercepting text editing,
-  dialogs, or form controls. IME composition is explicitly ignored and tested;
-  complete dialog and focus coverage remains.
+- [x] Support `Escape`, `Enter`, `Delete`, `Backspace`, arrow nudge, modified
+      arrow nudge, select all, deselect, copy, cut, paste, duplicate, group,
+      ungroup, save, zoom, and tool selection without intercepting text editing,
+      dialogs, or form controls. IME composition is explicitly ignored and tested.
 - [ ] Later: allow shortcut customization only after collision detection and a
       reset path exist.
 
@@ -124,27 +130,29 @@ partial requirements into complete ones.
   remaining direct document writes and transient state changes.
 - [x] Make `mutate` skip no-op documents instead of emitting unsaved state and a
       redundant history snapshot.
-- [ ] Preserve and restore the active page, object selection, pixel selection,
+- [x] Preserve and restore the active page, object selection, pixel selection,
       active tool, and relevant transient commit state with undo/redo where users
       expect it.
 - [~] Coalesce continuous sliders and transforms. Verify Enter, Tab, blur,
   pointer-up, and cancellation boundaries individually.
 - [~] History retains at most 100 entries within a measured 64 MiB budget and
-  evicts the oldest entries first. Structural sharing or deltas are still
-  needed to reduce cloning cost for large paint documents.
+  evicts the oldest entries first. It no longer clones the post-command snapshot
+  a second time; structural sharing or deltas can reduce large-paint cost further.
 - [x] Expose undo/redo command names to menu items and assistive announcements.
 - [~] Tests cover no-op commands, byte-budget eviction, and redo invalidation;
   maximum-size paint history still needs performance coverage.
 
 ### Shared raster-tool contract
 
-- [~] Pencil, eraser, magic eraser, bucket, gradient, marquee, lasso, and magic
-  selection share some selection helpers but not a full behavior contract.
-- [ ] Standardize target layer, sample source, selection mode, preview,
-      parameters, no-op detection, locked/hidden/group handling, `Escape`, undo,
-      persistence, export, and option persistence.
-- [ ] Provide the reason when a raster tool is disabled or has no valid target.
-- [ ] Keep all document coordinates independent of viewport zoom, device pixel
+- [x] Magic eraser, bucket, and magic selection share one cancellable RGBA
+      scan contract. Pencil, regular eraser, gradient, marquee, and lasso still have
+      tool-specific interaction contracts where their semantics differ.
+- [x] Standardize target layer, sample source, contiguous/global selection,
+      transparent-pixel comparison, live preview, no-op detection,
+      locked/hidden/group handling, `Escape`, undo, persistence, export, and
+      option persistence for bucket, magic selection, and magic erase.
+- [x] Provide the reason when a raster tool is disabled or has no valid target.
+- [x] Keep all document coordinates independent of viewport zoom, device pixel
       ratio, and CSS transforms.
 
 ## 2. Essential familiar editing interactions
@@ -155,8 +163,8 @@ partial requirements into complete ones.
       transient canvas crop mode supports frame move/resize, image repositioning,
       common aspects, crop-local rotate/flip, reset, Apply/Cancel, keyboard nudge,
       and one-command history.
-- [~] Activate crop from the tool rail, image properties, keyboard, and mobile
-  retouch menu. It is not yet generated from the shared command registry.
+- [x] Activate crop from the shared command registry in the tool rail, image
+      properties, keyboard, and mobile retouch menu.
 - [x] Draw a dimmed crop frame with visible rule-of-thirds lines and handles.
 - [x] Use 44 px pointer targets around crop handles while keeping their visible
       marks compact.
@@ -200,9 +208,10 @@ partial requirements into complete ones.
 - [x] Click, pen, and touch commit on release, Alt temporarily activates the
       eyedropper from pencil, bucket, and gradient tools, and arrow keys move a
       sampling cursor by one pixel or ten pixels with Shift before Enter commits.
-- [~] Correctly sample transparent pixels and document coordinates independent
-  of zoom. Add browser proof for high-DPI, clipped images, masks, blend modes,
-  and page backgrounds.
+- [x] Correctly sample transparent pixels and document coordinates independent
+      of browser zoom and high-DPI backing resolution. Unit geometry proof and
+      browser magnifier/keyboard sampling cover the shared coordinate contract;
+      the renderer matrix separately covers masks, blends, and backgrounds.
 - [x] Store the RGB result in recent colors and carry alpha separately. Create
       history only when a document property changes.
 
@@ -231,10 +240,11 @@ partial requirements into complete ones.
       twice. General content-hash deduplication remains the media service's policy.
 - [~] Page thumbnails are explicit drop targets and async imports stay on the page
   that accepted the drop. Asset-panel drop zones remain implicit.
-- [~] Unit and browser coverage includes multiple files, unsafe/unsupported
-  content, guest mode, page targeting, retry without duplicate success, undo,
-  exact positioning, and reopen. Signed-in partial upload/cancellation and SVG
-  browser decoding remain to be exercised end to end.
+- [x] Unit and browser coverage includes multiple files, unsafe/unsupported
+      content, guest mode, page targeting, retry without duplicate success, undo,
+      exact positioning, reopen, and signed-in partial upload cancellation/resume.
+      SVG browser decoding remains covered by the shared ingestion path rather than
+      a dedicated archive-import fixture.
 
 ### Pixel selection as content
 
@@ -245,22 +255,23 @@ partial requirements into complete ones.
       explicit Cut/New layer actions, floating-mode guidance, and a move cursor.
 - [x] Move selected pixels on image and paint layers by pointer or keyboard, with
       a transparent source hole for Cut and a live floating preview.
-- [~] Delete selected pixels with a toolbar action or Delete/Backspace. Copy,
-  cut, and paste use isolated structured content; Duplicate still follows
-  object-layer semantics until content is floating.
+- [x] Delete selected pixels with a toolbar action or Delete/Backspace. Copy,
+      cut, paste, and duplicate use isolated structured content; duplicate offsets
+      only the floating copy and preserves the original extraction.
 - [x] Promote selected pixels to a new paint/image layer while preserving alpha
       and document coordinates and leaving the source intact.
-- [~] A floating selection can be repositioned, committed, cancelled, or deleted;
-  tool changes commit it predictably. Resize and rotation handles remain.
-- [ ] Define active-layer versus composited-page behavior and prevent silent
+- [x] A floating selection can be repositioned, resized, rotated, duplicated,
+      committed, cancelled, or deleted with pointer and keyboard controls; tool,
+      save, project, template, and export boundaries commit it predictably.
+- [x] Define active-layer versus composited-page behavior and prevent silent
       edits across locked/hidden layers.
 - [x] Keep one history entry per committed promote/delete operation and no entry
       for an empty operation.
 - [x] Preserve the original mask on cancel and clear it after commit/delete.
 - [x] Support arrow nudge and Shift-modified nudge for floating content.
-- [~] Paint-layer state/history/cancel and image-layer pointer/keyboard/save/reload
-  paths are covered. Broader alpha, masks, groups, transformed edges, empty
-  selections, revision restore, and every-renderer parity remain.
+- [~] Paint/image resize, rotation, duplicate, history, cancel, save, and export
+  boundaries are covered. Broader masks, transformed edges, and revision-restore
+  fixtures remain.
 
 ### Brand resources in the editor
 
@@ -274,9 +285,9 @@ partial requirements into complete ones.
 - [x] Show saved brand text styles for compatible text selection.
 - [x] Apply font, weight, style, size, color, line height, and letter spacing in
       one undoable command.
-- [~] Support one or many compatible text layers in one command. Add mixed-value
-  display and a clear explanation when part of a selection is incompatible.
-- [ ] Resolve missing fonts/media with a visible fallback and recovery action.
+- [x] Support one or many compatible text layers in one command, display mixed
+      values explicitly, and explain skipped incompatible or locked layers.
+- [x] Resolve missing fonts/media with a visible fallback and recovery action.
 - [ ] Test brand revision changes, deleted assets, template instantiation,
       multi-selection, undo/redo, save/reload, and export.
 
@@ -335,16 +346,16 @@ partial requirements into complete ones.
 
 ### Alpha-aware hit testing
 
-- [~] Normal image/paint selection now uses Fabric per-pixel targeting and
-  tool-assisted topmost lookup filters bounds then tests rendered alpha. Cached
-  adaptive masks and layer cycling remain incomplete.
+- [x] Normal image/paint selection uses Fabric per-pixel targeting and
+      tool-assisted topmost lookup filters bounds then tests a cached adaptive alpha
+      mask. Content/effect fingerprints invalidate masks without full-image reads per click.
 - [x] Filter top-down by transformed bounding boxes, then test image/paint alpha
       at the local source coordinate.
 - [x] Account for normalized crop, fit mode, masks, erase masks, object opacity,
       and selection-root group ancestry through the rendered-object alpha sample.
-- [ ] Cache or adapt alpha masks so large images do not introduce a fixed
+- [x] Cache or adapt alpha masks so large images do not introduce a fixed
       quality cliff or synchronous full-canvas readback.
-- [ ] Add overlapping-layer cycling and a “Select layer” context submenu for
+- [x] Add overlapping-layer cycling and a “Select layer” context submenu for
       intentionally choosing transparent or covered objects.
 - [x] Preserve locked/hidden semantics and select the appropriate root group.
 - [ ] Test transparent PNG padding, clipped/rotated/flipped/scaled images, paint,
@@ -357,8 +368,8 @@ partial requirements into complete ones.
 - [~] Pencil supports size, opacity, roughness, smoothing, pressure, selection
   masks, compact spans, a live size cursor, and undo. It lacks hardness,
   spacing, alternate tips, and palm rejection.
-- [~] Record coalesced pointer events and pressure. Rejecting accidental touch
-  while a pen is active remains.
+- [x] Record coalesced pointer events and pressure, and reject accidental touch
+      while a pen is active.
 - [~] Add smoothing and a precise size cursor. Hardness, spacing, round/square
   tip selection, and hardness visualization remain.
 - [ ] Keep lines continuous at high pointer speed and canvas edges.
@@ -382,17 +393,18 @@ partial requirements into complete ones.
 
 ### Magic selection, bucket, and magic erase
 
-- [~] All three have tolerance and contiguous/global behavior; magic selection
-  and bucket can sample all layers.
-- [ ] Share one named sampling contract so “contiguous” and “all layers” mean the
+- [x] All three have shared tolerance, transparent-pixel, and contiguous/global
+      behavior; magic selection and bucket can sample all layers.
+- [x] Share one named sampling contract so “contiguous” and “all layers” mean the
       same thing everywhere.
-- [ ] Add transparent-pixel behavior, optional feather/antialias, and an outline
-      preview before destructive commit.
-- [ ] Move large scans to cancellable workers with progress and adaptive limits.
-- [ ] Handle edges, transformed layers, empty samples, no target, locked target,
+- [~] Add transparent-pixel behavior and an outline preview before destructive
+  commit. Optional feather/antialias remains deliberately explicit future work.
+- [x] Move large scans to cancellable workers with progress and adaptive limits.
+- [x] Handle edges, transformed layers, empty samples, no target, locked target,
       and no-op results explicitly.
-- [ ] Test global versus contiguous regions, tolerance boundaries, alpha,
-      selection intersection, sample-all layers, and export parity.
+- [x] Test global versus contiguous regions, tolerance boundaries, alpha,
+      cancellation, and unsafe dimensions. Existing browser/export coverage
+      exercises selection intersection and sample-all rendering.
 
 ### Gradient
 
@@ -438,7 +450,7 @@ partial requirements into complete ones.
 - [ ] Verify double-click/direct focus, caret/selection, `Escape`, Command/Control
       +A, clipboard, context menu, IME, emoji, newlines, very long text, and mobile
       keyboard behavior.
-- [ ] Ensure the text tool creates and focuses a layer without inserting the
+- [x] Ensure the text tool creates and focuses a layer without inserting the
       activation shortcut character.
 - [ ] Expose auto-width versus fixed-width boxes and resize-versus-scale
       semantics.
@@ -486,12 +498,14 @@ partial requirements into complete ones.
 
 ### Nested groups
 
-- [~] Nested group data and descendant traversal exist.
-- [ ] Verify transforms, reparenting, lock/hide inheritance, selection root,
+- [x] Nested group data and descendant traversal exist.
+- [x] Verify transforms, reparenting, lock/hide inheritance, selection root,
       duplicate ID remapping, clipboard, persistence, renderer order, and undo.
-- [ ] Make tree drop targets and nesting intent clear for mouse, touch, and
+      Cycle-safe moves preserve document-space geometry and recalculate both old
+      and new ancestor bounds.
+- [x] Make tree drop targets and nesting intent clear for mouse, touch, and
       keyboard users.
-- [ ] Add accessible collapse/expand, move in/out of group, and context menus.
+- [x] Add accessible collapse/expand, move in/out of group, and context menus.
 
 ### Layer tree scale and polish
 
@@ -506,14 +520,16 @@ partial requirements into complete ones.
 
 ### Multi-selection properties
 
-- [~] Transform/alignment/group actions support multiple layers. Property-panel
-  compatibility and mixed state are incomplete.
-- [ ] Display mixed values explicitly and apply compatible properties to all
+- [x] Transform/alignment/group actions and the property panel support multiple
+      selected roots with explicit compatibility and mixed state.
+- [x] Display mixed values explicitly and apply compatible properties to all
       eligible layers in one command.
-- [ ] Explain partial application instead of silently ignoring incompatible,
+- [x] Explain partial application instead of silently ignoring incompatible,
       hidden, or locked layers.
-- [ ] Define relative versus absolute transform, opacity, visibility, lock,
-      blend, effect, and text-style changes.
+- [~] Define relative versus absolute transform, opacity, visibility, lock,
+  blend, effect, and text-style changes. Transform and opacity are absolute,
+  alignment stays relative, and text styles report compatibility; bulk
+  visibility, blend, and effects remain type-specific.
 
 ## 8. Persistence, recovery, and conflicts
 
@@ -529,21 +545,28 @@ partial requirements into complete ones.
 
 ### Guest storage
 
-- [~] IndexedDB documents and OPFS media support guest editing and migration.
-- [ ] Handle storage unavailable, private browsing, quota pressure, browser
-      eviction, missing OPFS files, corrupt records, schema upgrades, and two tabs.
+- [~] IndexedDB documents and OPFS media support guest editing and migration,
+  including recoverable missing/corrupt media and corrupt-document handling.
+- [~] Handle storage unavailable, private browsing, quota pressure, browser
+  eviction, missing OPFS files, corrupt records, schema upgrades, and two tabs.
+  Quota errors preserve the last stored copy, missing/corrupt records have
+  visible repair, and concurrent tabs warn; private-mode and schema-upgrade
+  browser fixtures remain.
 - [ ] Explain what “clear local designs” removes before destructive action.
 - [ ] Preserve a recoverable copy when sign-up/migration partially fails.
 
 ### Cloud save and revisions
 
 - [~] Debounced save, local recovery, expected-revision conflicts, checkpoints,
-  history, soft deletion, and restore exist.
+  history, soft deletion, restore, concurrent-tab warnings, and named conflict
+  recovery choices exist.
 - [ ] Test slow/offline transitions, auth expiry, read-only permissions, deleted
       designs, concurrent browser edits, media removal, navigation, and crash
       recovery.
-- [ ] Make conflict choices name the local/server versions and preserve a copy
-      before overwriting either side.
+- [x] Conflict choices name the local/server revisions. Reload first preserves
+      the complete local document as a separately titled cloud design and aborts
+      without clearing recovery state when preservation fails. Browser coverage
+      forces a real revision race and verifies both resulting cloud documents.
 - [ ] Verify restored designs retain pages, revision links, media, previews,
       latest exports, and composer return behavior.
 
@@ -559,28 +582,32 @@ partial requirements into complete ones.
   re-home bundled media. Dedicated licensed-font import policy still needs a
   first-class path.
 - [~] Unit tests cover round trip, missing media, unexpected paths, malformed
-  metadata, and size/reference validation. Future-version, duplicate-ID,
-  partial-upload, browser media, and renderer-pixel coverage remain.
+  metadata, and size/reference validation; browser coverage proves signed-in
+  cancellation/resume without repeating successful work. Future-version,
+  duplicate-ID, and licensed-font fixtures remain.
 
 ## 9. Renderer and export parity
 
-- [~] Fabric and static renderers support current text, images, shapes, paint,
-  groups, crop, adjustments, gradients, masks, erase masks, blend, opacity,
-  borders, shadows, background, transparency, and matte.
-- [ ] Maintain one feature-parity test matrix for interactive canvas, template
+- [x] Fabric and static renderers support current text, images, shapes, paint,
+      groups, crop, adjustments, gradients, masks, erase masks, blend, opacity,
+      borders, shadows, background, transparency, and matte. Live canvas, template
+      thumbnails, generated previews, downloads, Media exports, and composer return
+      all use `OpenPostFabricAdapter`; output modes branch only after one shared render.
+- [x] Maintain one feature-parity test matrix for interactive canvas, template
       preview, generated design preview, download, Media Library, and composer
-      return.
+      return. Browser sampling compares template, live-canvas, and saved-Media
+      pixels while the single rendered-page result feeds download, Media, and return.
 - [ ] Verify fonts, emoji, curved/wrapped text, crop/rotation/flip, nested groups,
       paint/erase, gradient types/stops, blends, masks, effects, transparent page,
       JPEG matte, and maximum dimensions.
-- [~] Export active/all pages, stable order, format, quality, matte, progress,
-  and partial page results exist; complete cancellation and retry semantics.
+- [x] Export active/all pages, stable order, format, quality, matte, progress,
+      cancellation, and partial page results exist.
 - [ ] Use stable sanitized filenames and document MIME-specific controls.
-- [ ] Estimate memory/output cost before starting and refuse unsafe work with a
+- [x] Estimate memory/output cost before starting and refuse unsafe work with a
       useful remediation.
-- [ ] Make multi-page partial failure resumable and idempotent without duplicating
+- [x] Make multi-page partial failure resumable and idempotent without duplicating
       Media Library assets.
-- [ ] Keep successful exports visible immediately in Media Library.
+- [x] Keep successful exports visible immediately in Media Library.
 - [ ] Handle expired composer tokens and repeated return attempts without losing
       the exported pages.
 - [ ] Store derivation/provenance for exported results where useful.
@@ -601,11 +628,11 @@ partial requirements into complete ones.
 - [ ] Use at least 44 px coarse-pointer targets for handles and actions without
       making the desktop UI oversized.
 - [ ] Distinguish canvas gestures from sheet dragging and browser navigation.
-- [ ] Support stylus drawing without accidental palm/touch edits.
+- [x] Support stylus drawing without accidental palm/touch edits.
 - [~] Test 390 px, 320 px, short landscape, iOS safe areas, Android browser
-  chrome, 200% zoom, and long translations. Automated 320 px and short-landscape
-  primary-action/overflow coverage is now present; device chrome, safe areas,
-  zoom, and long-locale coverage remain.
+  chrome, 200% zoom, and long translations. Automated 320 px, short-landscape,
+  Portuguese at 200%, pinch, and stylus coverage is present; device chrome and
+  real safe-area emulation remain.
 
 ## 11. Accessibility completeness
 
@@ -614,7 +641,7 @@ partial requirements into complete ones.
 - [ ] Complete keyboard paths for crop, guides, numeric transforms, reorder,
       text editing, pixel selections/content, floating selection commit/cancel, and
       every dialog.
-- [ ] Restore focus predictably after dialogs, sheets, uploads, errors, and
+- [x] Restore focus predictably after dialogs, sheets, uploads, errors, and
       destructive confirmations.
 - [ ] Announce active tool/mode, selection summary, save/upload/removal/export
       state, snap/zoom/page changes, reorder/group results, history actions, and
@@ -634,7 +661,9 @@ partial requirements into complete ones.
 - [ ] Measure 25 MP selection masks, sample-all rendering, document cloning,
       history snapshots, paint spans, decoded media, object URLs, fonts, offscreen
       pages, and ML model memory.
-- [ ] Move expensive scans/rendering to workers with cancellation and progress.
+- [~] Move expensive scans/rendering to workers with cancellation and progress.
+  Magic scans and background removal use cancellable workers; page rendering
+  is cancellable and yields between pages but remains on the main thread.
 - [ ] Use adaptive previews during interaction and full-quality work only at
       commit/export.
 - [~] Bound history to 100 entries and an estimated 64 MiB. Decoded-image,
@@ -642,7 +671,7 @@ partial requirements into complete ones.
   budgets and explicit cleanup contracts.
 - [ ] Lazy-load offscreen pages and virtualize large trees where measurements
       show a need.
-- [ ] Yield during large synchronous document work and refuse operations that
+- [x] Yield during large synchronous scan/export work and refuse operations that
       cannot safely fit the client budget.
 - [ ] Add performance regression fixtures at minimum/common/maximum dimensions,
       35 pages, 500 layers, large paint masks, and repeated undo/redo.
@@ -686,13 +715,13 @@ partial requirements into complete ones.
 - [ ] Move/resize with guides and snapping; bypass snapping temporarily.
 - [ ] Apply brand text style and background, instantiate a template, and render.
 - [ ] Replace an image while preserving transform/crop/effects/masks.
-- [ ] Resume a multi-page export after one page fails without duplicate assets.
+- [x] Resume a multi-page export after one page fails without duplicate assets.
 - [ ] Hit guest storage quota and preserve the last recoverable document.
 - [ ] Edit offline in two browser contexts and preserve both conflict versions.
 - [ ] Transform, duplicate, save, reload, and export a nested group.
 - [ ] Draw a large paint document until history compacts/evicts within budget.
 - [ ] Cancel background removal, retry, close, and reopen the derived result.
-- [ ] Complete create-to-export using only the keyboard.
+- [x] Complete create-to-export using only the keyboard.
 - [ ] Complete create-to-composer return at 390 px and 320 px widths.
 
 ## 15. Deliberate scope order
@@ -702,28 +731,29 @@ partial requirements into complete ones.
 - [x] Interactive crop with independent frame/image positioning and transient
       rotate/flip controls.
 - [x] Canvas eyedropper with a true pixel-grid magnifier and keyboard sampling.
-- [~] Exact external file drops now include a full drag overlay, bounded preflight,
-  isolated failures, retry, and page targeting. Signed-in partial-failure browser
-  coverage and interruptible guest OPFS writes remain.
-- [~] Selected-pixel content operations; pointer/keyboard floating move,
-  commit/cancel/delete, and structured copy/cut/paste are complete. Floating
-  resize/rotation, duplicate semantics, and the broader renderer matrix remain.
-- [~] Snap controls, rulers, guides, grid, coordinates, crop, guide motion, and
-  gradient endpoints share one screen-space contract. High-DPI browser proof
-  remains.
-- [~] Alpha-aware hit testing; caching and covered-layer cycling remain.
+- [x] Exact external file drops include a full drag overlay, bounded preflight,
+      isolated failures, retry, page targeting, and signed-in partial-failure
+      cancellation/resume. A browser-started guest OPFS write remains atomic
+      rather than interruptible.
+- [x] Selected-pixel content operations include pointer/keyboard move,
+      resize/rotation, duplicate, commit/cancel/delete, structured copy/cut/paste,
+      and safe persistence/export boundaries.
+- [x] Snap controls, rulers, guides, grid, coordinates, crop, guide motion, and
+      gradient endpoints share one high-DPI and browser-zoom-safe screen-space contract.
+- [x] Alpha-aware hit testing includes adaptive fingerprinted caching,
+      Alt-click cycling, and a visible Select layer menu.
 - [~] Pressure, smoothing, hardness, spacing, and brush cursor; hardness,
   spacing, alternate tips, and palm rejection remain.
 - [ ] Clear feather/antialias semantics for magic tools.
-- [~] Complete generated shortcut/help reference; menu/tooltip/action generation
-  and enabled-state reasons remain.
+- [x] Complete generated shortcut/help reference, desktop/mobile menu and tool
+      placement, tooltips, handlers, checked states, and disabled explanations.
 - [~] Text wrapping, underline, and strike; fixed-width overflow and vertical
   alignment remain.
 - [ ] High-quality, memory-safe resize.
 - [~] Portable project import/export; licensed-font transfer and renderer-pixel
   round-trip coverage remain.
-- [~] Brand backgrounds and text styles in the editor; missing-asset recovery
-  and mixed-value UI remain.
+- [x] Brand backgrounds and text styles include missing-asset recovery,
+      compatible multi-apply, mixed values, and partial-application feedback.
 
 ### Areas where OpenPost should stay ahead
 
@@ -732,8 +762,10 @@ partial requirements into complete ones.
 - [x] Multi-page documents and social presets.
 - [x] Autosave, revisions, recovery, and conflict protection.
 - [x] Templates, Media Library, and composer return.
-- [~] Multi-selection, nested groups, alignment, and structured clipboard.
-- [~] Touch/mobile and accessibility coverage.
+- [x] Multi-selection, nested groups, alignment, and structured clipboard,
+      including mixed transforms/properties and accessible cycle-safe reparenting.
+- [~] Touch/mobile and accessibility coverage, now including pinch, stylus palm
+  rejection, keyboard-only export, focus restoration, and Portuguese at 200%.
 - [~] Provenance, validation, managed media, and deletion protection.
 
 ### Add after the completeness contract is green

@@ -39,3 +39,37 @@ export async function loadImageEditorBrandFonts(brand: ImageEditorBrandKit): Pro
 	}
 	await document.fonts.ready;
 }
+
+export interface ImageEditorBrandFontLoadReport {
+	loaded: string[];
+	failed: Array<{ mediaID: string; message: string }>;
+}
+
+export async function loadImageEditorBrandFontsWithReport(
+	brand: ImageEditorBrandKit
+): Promise<ImageEditorBrandFontLoadReport> {
+	const report: ImageEditorBrandFontLoadReport = { loaded: [], failed: [] };
+	if (!globalThis.document?.fonts) return report;
+	for (const font of brand.fonts) {
+		try {
+			if (!hasRegisteredImageEditorBrandFont(font, document.fonts)) {
+				const family = font.css_family || font.family;
+				const source = getAuthenticatedMediaURL(`/media/${font.media_id}`);
+				const face = new FontFace(family, `url("${source}")`, {
+					weight: String(font.weight),
+					style: font.style
+				});
+				await face.load();
+				document.fonts.add(face);
+			}
+			report.loaded.push(font.media_id);
+		} catch (cause) {
+			report.failed.push({
+				mediaID: font.media_id,
+				message: cause instanceof Error ? cause.message : 'Font could not be loaded.'
+			});
+		}
+	}
+	await document.fonts.ready;
+	return report;
+}

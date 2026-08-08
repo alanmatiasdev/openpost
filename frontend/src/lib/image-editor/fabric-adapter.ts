@@ -74,6 +74,7 @@ interface FabricAdapterOptions {
 	onTextChange(id: string, text: string): void;
 	onTextEditingChange?(editing: boolean): void;
 	onImageDimensions?(id: string, width: number, height: number): void;
+	onMissingMedia?(mediaID: string, layerID?: string): void;
 }
 
 const SNAP_SCREEN_PX = 10;
@@ -97,6 +98,14 @@ export interface ImageEditorPointSnap {
 	guideX: number | null;
 	guideY: number | null;
 }
+
+interface ImageEditorAlphaHitMask {
+	width: number;
+	height: number;
+	alpha: Uint8Array;
+}
+
+const MAXIMUM_ALPHA_HIT_MASK_PIXELS = 1_048_576;
 
 export function imageEditorScreenZoom(
 	canvasZoom: number,
@@ -293,6 +302,17 @@ function layerIsLockedIn(layer: ImageEditorLayer, layers: readonly ImageEditorLa
 	return false;
 }
 
+function alphaHitFingerprint(layer: ImageEditorLayer): string {
+	return JSON.stringify({
+		type: layer.type,
+		image: layer.image,
+		paint: layer.paint,
+		eraseMask: layer.erase_mask,
+		mask: layer.mask,
+		effects: layer.effects
+	});
+}
+
 export class OpenPostFabricAdapter {
 	private fabric: FabricModule | null = null;
 	private canvas: FabricStaticCanvas | null = null;
@@ -301,6 +321,7 @@ export class OpenPostFabricAdapter {
 	private objectByLayerID = new Map<string, FabricObject>();
 	private decorationsByLayerID = new Map<string, FabricObject[]>();
 	private layerSnapshots = new Map<string, ImageEditorLayer>();
+	private alphaHitMasks = new Map<string, ImageEditorAlphaHitMask>();
 	private desiredSelectionIDs: string[] = [];
 	private pendingTextEditingID = '';
 	private guideObjects: FabricObject[] = [];
@@ -324,6 +345,7 @@ export class OpenPostFabricAdapter {
 	private onTextChange: FabricAdapterOptions['onTextChange'];
 	private onTextEditingChange: NonNullable<FabricAdapterOptions['onTextEditingChange']>;
 	private onImageDimensions: NonNullable<FabricAdapterOptions['onImageDimensions']>;
+	private onMissingMedia: NonNullable<FabricAdapterOptions['onMissingMedia']>;
 	private altDuplicatePending = false;
 	private altOriginGhost: FabricObject | null = null;
 
@@ -341,6 +363,7 @@ export class OpenPostFabricAdapter {
 		this.onTextChange = options.onTextChange;
 		this.onTextEditingChange = options.onTextEditingChange ?? (() => undefined);
 		this.onImageDimensions = options.onImageDimensions ?? (() => undefined);
+		this.onMissingMedia = options.onMissingMedia ?? (() => undefined);
 	}
 
 	async mount(): Promise<void> {
@@ -379,6 +402,7 @@ export class OpenPostFabricAdapter {
 		this.objectByLayerID.clear();
 		this.decorationsByLayerID.clear();
 		this.layerSnapshots.clear();
+		this.alphaHitMasks.clear();
 		this.guideObjects = [];
 		this.backgroundObject = null;
 		this.canvas.setDimensions({
@@ -441,9 +465,13 @@ export class OpenPostFabricAdapter {
 				this.removeLayerObjects(id, object);
 				this.objectByLayerID.delete(id);
 				this.layerSnapshots.delete(id);
+				this.alphaHitMasks.delete(id);
 			}
 			for (const layer of imageEditorLayerRenderOrder(page.layers)) {
 				const previous = this.layerSnapshots.get(layer.id);
+				if (previous && alphaHitFingerprint(previous) !== alphaHitFingerprint(layer)) {
+					this.alphaHitMasks.delete(layer.id);
+				}
 				let object = this.objectByLayerID.get(layer.id);
 				if (!previous || !object || this.requiresObjectRebuild(previous, layer)) {
 					if (object) this.removeLayerObjects(layer.id, object);
@@ -621,13 +649,31 @@ export class OpenPostFabricAdapter {
 	}
 
 	topmostLayerIDAtPoint(point: SelectionPoint): string | null {
-		if (!this.fabric) return null;
+		return this.layerIDsAtPoint(point)[0] ?? null;
+	}
+
+	layerIDsAtPoint(point: SelectionPoint): string[] {
+		if (!this.fabric) return [];
+		const ids: string[] = [];
 		for (const layer of imageEditorLayerRenderOrder(this.page.layers).reverse()) {
 			if (layer.type === 'group' || !this.layerCanBeSelected(layer)) continue;
 			const object = this.objectByLayerID.get(layer.id);
 			if (!object || !this.objectContainsPoint(object, point)) continue;
 			if (!this.layerHasVisiblePixelAtPoint(layer, point)) continue;
-			return this.selectionRootID(layer);
+			const id = this.selectionRootID(layer);
+			if (!ids.includes(id)) ids.push(id);
+		}
+		return ids;
+	}
+
+	lockedLayerIDAtPoint(point: SelectionPoint): string | null {
+		if (!this.fabric) return null;
+		for (const layer of imageEditorLayerRenderOrder(this.page.layers).reverse()) {
+			if (layer.type === 'group' || !this.layerIsVisible(layer) || !this.layerIsLocked(layer))
+				continue;
+			const object = this.objectByLayerID.get(layer.id);
+			if (!object || !this.objectContainsPoint(object, point)) continue;
+			if (this.layerHasVisiblePixelAtPoint(layer, point)) return this.selectionRootID(layer);
 		}
 		return null;
 	}
@@ -1297,18 +1343,27 @@ export class OpenPostFabricAdapter {
 			return object;
 		}
 		if (background.type !== 'image' || !background.image?.media_id) return null;
-		const response = await fetch(getAuthenticatedMediaURL(`/media/${background.image.media_id}`), {
-			credentials: 'include'
-		});
-		if (!response.ok) return null;
-		const objectURL = URL.createObjectURL(await response.blob());
+		const backgroundMediaID = background.image.media_id;
+		let backgroundBlob: Blob;
+		try {
+			const response = await fetch(getAuthenticatedMediaURL(`/media/${backgroundMediaID}`), {
+				credentials: 'include'
+			});
+			if (!response.ok) throw new Error(`Missing media ${backgroundMediaID}`);
+			backgroundBlob = await response.blob();
+		} catch {
+			this.onMissingMedia(backgroundMediaID);
+			return null;
+		}
+		const objectURL = URL.createObjectURL(backgroundBlob);
 		this.objectURLs.add(objectURL);
 		let image: InstanceType<FabricModule['FabricImage']>;
 		try {
 			image = await this.fabric.FabricImage.fromURL(objectURL);
-		} catch (cause) {
+		} catch {
 			this.revokeObjectURL(objectURL);
-			throw cause;
+			this.onMissingMedia(backgroundMediaID);
+			return null;
 		}
 		const sourceWidth = Math.max(1, image.width);
 		const sourceHeight = Math.max(1, image.height);
@@ -1467,18 +1522,27 @@ export class OpenPostFabricAdapter {
 			};
 		}
 		if (layer.type === 'image' && layer.image) {
-			const response = await fetch(getAuthenticatedMediaURL(`/media/${layer.image.media_id}`), {
-				credentials: 'include'
-			});
-			if (!response.ok) return null;
-			const objectURL = URL.createObjectURL(await response.blob());
+			const layerMediaID = layer.image.media_id;
+			let layerBlob: Blob;
+			try {
+				const response = await fetch(getAuthenticatedMediaURL(`/media/${layerMediaID}`), {
+					credentials: 'include'
+				});
+				if (!response.ok) throw new Error(`Missing media ${layerMediaID}`);
+				layerBlob = await response.blob();
+			} catch {
+				this.onMissingMedia(layerMediaID, layer.id);
+				return null;
+			}
+			const objectURL = URL.createObjectURL(layerBlob);
 			this.objectURLs.add(objectURL);
 			let image: InstanceType<FabricModule['FabricImage']>;
 			try {
 				image = await this.fabric.FabricImage.fromURL(objectURL);
-			} catch (cause) {
+			} catch {
 				this.revokeObjectURL(objectURL);
-				throw cause;
+				this.onMissingMedia(layerMediaID, layer.id);
+				return null;
 			}
 			const sourceWidth = Math.max(1, image.width);
 			const sourceHeight = Math.max(1, image.height);
@@ -2051,8 +2115,51 @@ export class OpenPostFabricAdapter {
 
 	private layerHasVisiblePixelAtPoint(layer: ImageEditorLayer, point: SelectionPoint): boolean {
 		if (layer.type !== 'image' && layer.type !== 'paint') return true;
-		const sample = this.rasterizeLayerAtPoint(layer.id, point);
-		return sample ? imageEditorPixelIsOpaque(sample.image, sample.point) : true;
+		if (layer.opacity * 255 < 8) return false;
+		const geometry = this.layerLocalGeometry(layer.id, point);
+		if (!geometry) return false;
+		const mask = this.alphaHitMask(layer.id);
+		if (!mask) return true;
+		const x = Math.max(
+			0,
+			Math.min(mask.width - 1, Math.floor((geometry.point.x / geometry.width) * mask.width))
+		);
+		const y = Math.max(
+			0,
+			Math.min(mask.height - 1, Math.floor((geometry.point.y / geometry.height) * mask.height))
+		);
+		return (mask.alpha[y * mask.width + x] ?? 0) * layer.opacity >= 8;
+	}
+
+	private alphaHitMask(id: string): ImageEditorAlphaHitMask | null {
+		const cached = this.alphaHitMasks.get(id);
+		if (cached) return cached;
+		const object = this.objectByLayerID.get(id);
+		if (!object) return null;
+		const sourceWidth = Math.max(1, Math.ceil(object.width ?? 1));
+		const sourceHeight = Math.max(1, Math.ceil(object.height ?? 1));
+		const scale = Math.min(
+			1,
+			Math.sqrt(MAXIMUM_ALPHA_HIT_MASK_PIXELS / Math.max(1, sourceWidth * sourceHeight))
+		);
+		const canvas = object.toCanvasElement({
+			withoutTransform: true,
+			withoutShadow: true,
+			enableRetinaScaling: false,
+			multiplier: scale
+		});
+		const context = canvas.getContext('2d', { willReadFrequently: true });
+		if (!context || canvas.width <= 0 || canvas.height <= 0) return null;
+		try {
+			const rgba = context.getImageData(0, 0, canvas.width, canvas.height).data;
+			const alpha = new Uint8Array(canvas.width * canvas.height);
+			for (let index = 0; index < alpha.length; index++) alpha[index] = rgba[index * 4 + 3] ?? 0;
+			const result = { width: canvas.width, height: canvas.height, alpha };
+			this.alphaHitMasks.set(id, result);
+			return result;
+		} catch {
+			return null;
+		}
 	}
 
 	private baseObjectOptions(layer: ImageEditorLayer) {

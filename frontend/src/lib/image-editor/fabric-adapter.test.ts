@@ -308,6 +308,9 @@ describe('OpenPost Image Editor screen zoom', () => {
 	it('combines Fabric and CSS scaling so tolerances remain stable on screen', () => {
 		expect(imageEditorScreenZoom(1, 464.4, 1080)).toBeCloseTo(0.43);
 		expect(imageEditorScreenZoom(2, 540, 1080)).toBe(1);
+		// A 2160 px backing store displayed at 540 CSS px remains a 0.5x screen zoom
+		// even on a 2x display; device pixels must not double snapping tolerances.
+		expect(imageEditorScreenZoom(2, 540, 2160)).toBe(0.5);
 	});
 
 	it('falls back to the internal zoom when layout dimensions are unavailable', () => {

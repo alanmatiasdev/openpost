@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { panForZoomAnchor } from './viewport';
+import { imageEditorDocumentPoint, panForZoomAnchor } from './viewport';
 
 describe('OpenPost Image Editor viewport zoom', () => {
 	it('keeps the canvas point beneath the cursor fixed while zooming', () => {
@@ -32,5 +32,22 @@ describe('OpenPost Image Editor viewport zoom', () => {
 		expect(next).toEqual({ panX: 13, panY: -4 });
 		expect((55 - next.panX) / 0.75).toBe((40 - 12) / 0.5);
 		expect((14 - next.panY) / 0.75).toBe((20 - 8) / 0.5);
+	});
+
+	it('maps the same CSS point at 200% browser zoom and high-DPI backing resolution', () => {
+		const point = imageEditorDocumentPoint(
+			{ x: 370, y: 280 },
+			{ left: 100, top: 10, width: 540, height: 540 },
+			{ width: 2160, height: 2160 }
+		);
+		expect(point).toEqual({ x: 1080, y: 1080 });
+		expect(
+			imageEditorDocumentPoint(
+				{ x: 50, y: 600 },
+				{ left: 100, top: 10, width: 540, height: 540 },
+				{ width: 2160, height: 2160 },
+				'clamp'
+			)
+		).toEqual({ x: 0, y: 2160 });
 	});
 });

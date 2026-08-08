@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { useImageEditor } from '../editor.svelte';
+	import { imageEditorMixedValue, useImageEditor } from '../editor.svelte';
 	import { defaultImageAdjustments } from '../document';
 	import { defaultTextCurve } from '../effects';
 	import { Input } from '$lib/components/ui/input';
@@ -38,6 +38,40 @@
 	let brandColors = $derived(editor.brandKit?.colors ?? []);
 	let brandFonts = $derived(editor.brandKit?.fonts ?? []);
 	let brandTextStyles = $derived(editor.brandKit?.text_styles ?? []);
+	let mixedOpacity = $derived(
+		imageEditorMixedValue(editor.selectedLayers.map((item) => item.opacity))
+	);
+	let mixedTransforms = $derived({
+		x: imageEditorMixedValue(editor.selectedLayers.map((item) => item.transform.x)),
+		y: imageEditorMixedValue(editor.selectedLayers.map((item) => item.transform.y)),
+		width: imageEditorMixedValue(editor.selectedLayers.map((item) => item.transform.width)),
+		height: imageEditorMixedValue(editor.selectedLayers.map((item) => item.transform.height)),
+		rotation: imageEditorMixedValue(editor.selectedLayers.map((item) => item.transform.rotation)),
+		flip_x: imageEditorMixedValue(editor.selectedLayers.map((item) => item.transform.flip_x)),
+		flip_y: imageEditorMixedValue(editor.selectedLayers.map((item) => item.transform.flip_y))
+	});
+	let missingFontAsset = $derived(
+		layer?.text?.font_asset_id &&
+			!brandFonts.some((font) => font.media_id === layer?.text?.font_asset_id)
+			? layer.text.font_asset_id
+			: ''
+	);
+	let applicationFeedback = $state('');
+
+	function partialApplicationMessage(result: {
+		applied: number;
+		skippedLocked: number;
+		skippedUnsupported: number;
+	}): string {
+		if (result.skippedLocked || result.skippedUnsupported) {
+			return m.image_editor_partial_application({
+				applied: result.applied,
+				locked: result.skippedLocked,
+				unsupported: result.skippedUnsupported
+			});
+		}
+		return m.image_editor_applied_to_layers({ count: result.applied });
+	}
 
 	function numberValue(event: Event, fallback: number): number {
 		const value = Number((event.currentTarget as HTMLInputElement).value);
@@ -56,6 +90,12 @@
 	function updateNumericTransform(key: 'x' | 'y' | 'width' | 'height', event: Event): void {
 		if (!layer) return;
 		const value = numberValue(event, layer.transform[key]);
+		if (editor.selectedLayers.length > 1) {
+			applicationFeedback = partialApplicationMessage(
+				editor.updateSelectedTransform(key, value, aspectLocked)
+			);
+			return;
+		}
 		if (key === 'x' || key === 'y' || !aspectLocked) {
 			editor.updateTransform(layer.id, {
 				[key]: key === 'x' || key === 'y' ? value : Math.max(1, value)
@@ -69,6 +109,18 @@
 				? { width: Math.max(1, value), height: Math.max(1, value / Math.max(0.0001, ratio)) }
 				: { height: Math.max(1, value), width: Math.max(1, value * ratio) }
 		);
+	}
+
+	function updateSelectedTransform(
+		key: 'rotation' | 'flip_x' | 'flip_y',
+		value: number | boolean
+	): void {
+		if (!layer) return;
+		if (editor.selectedLayers.length > 1) {
+			applicationFeedback = partialApplicationMessage(editor.updateSelectedTransform(key, value));
+			return;
+		}
+		editor.updateTransform(layer.id, { [key]: value });
 	}
 
 	function updateCrop(key: 'x' | 'y' | 'width' | 'height', event: Event, fallback: number): void {
@@ -218,10 +270,21 @@
 			<div class="space-y-5">
 				{#if editor.selectedLayers.length > 1}
 					<p class="rounded-md border bg-muted/40 px-2.5 py-2 text-xs text-muted-foreground">
-						{m.image_editor_primary_layer_properties({
+						{m.image_editor_mixed_layer_properties({
 							count: editor.selectedLayers.length,
 							name: layer.name
 						})}
+					</p>
+					<p class="text-xs text-muted-foreground">
+						{m.image_editor_multi_selection_values_help()}
+					</p>
+				{/if}
+				{#if applicationFeedback}
+					<p
+						class="rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-2 text-xs"
+						role="status"
+					>
+						{applicationFeedback}
 					</p>
 				{/if}
 				<section class="space-y-2">
@@ -370,15 +433,17 @@
 					<Collapsible.Content class="space-y-2 pt-2">
 						<div class="grid grid-cols-2 gap-2">
 							{#each [['X', 'x'], ['Y', 'y'], ['W', 'width'], ['H', 'height']] as [label, key] (key)}
+								{@const mixed = mixedTransforms[key as 'x' | 'y' | 'width' | 'height']}
 								<label class="grid grid-cols-[1.5rem_1fr] items-center">
 									<span class="text-xs text-muted-foreground">{label}</span>
 									<Input
 										type="number"
 										min={key === 'width' || key === 'height' ? 1 : undefined}
-										value={Math.round(
-											layer.transform[key as keyof typeof layer.transform] as number
-										)}
-										disabled={!editor.canEdit || layer.locked}
+										value={mixed.mixed
+											? ''
+											: Math.round(layer.transform[key as keyof typeof layer.transform] as number)}
+										placeholder={mixed.mixed ? m.image_editor_mixed_value() : undefined}
+										disabled={!editor.canEdit}
 										oninput={(event) =>
 											updateNumericTransform(key as 'x' | 'y' | 'width' | 'height', event)}
 									/>
@@ -402,19 +467,25 @@
 										type="number"
 										min="-180"
 										max="180"
-										value={Math.round(layer.transform.rotation)}
+										value={mixedTransforms.rotation.mixed
+											? ''
+											: Math.round(layer.transform.rotation)}
+										placeholder={mixedTransforms.rotation.mixed
+											? m.image_editor_mixed_value()
+											: undefined}
 										class="h-8 w-16 px-1.5 text-right text-xs"
-										disabled={!editor.canEdit || layer.locked}
+										disabled={!editor.canEdit}
 										oninput={(event) =>
-											editor.updateTransform(layer.id, {
-												rotation: numberValue(event, layer.transform.rotation)
-											})}
+											updateSelectedTransform(
+												'rotation',
+												numberValue(event, layer.transform.rotation)
+											)}
 									/>
 									<Button
 										variant="ghost"
 										size="icon-xs"
-										onclick={() => editor.updateTransform(layer.id, { rotation: 0 })}
-										disabled={!editor.canEdit || layer.locked}
+										onclick={() => updateSelectedTransform('rotation', 0)}
+										disabled={!editor.canEdit}
 										aria-label={m.image_editor_reset_rotation()}
 										title={m.image_editor_reset_rotation()}
 									>
@@ -427,34 +498,47 @@
 								min={-180}
 								max={180}
 								step={1}
-								disabled={!editor.canEdit || layer.locked}
+								disabled={!editor.canEdit}
 								ariaLabel={m.image_editor_rotation()}
-								onValueChange={(rotation) =>
-									editor.updateTransform(layer.id, { rotation }, `rotation:${layer.id}`)}
+								onValueChange={(rotation) => updateSelectedTransform('rotation', rotation)}
 							/>
 						</div>
 						<div class="grid grid-cols-2 gap-2">
 							<Button
-								variant={layer.transform.flip_x ? 'secondary' : 'outline'}
+								variant={!mixedTransforms.flip_x.mixed && layer.transform.flip_x
+									? 'secondary'
+									: 'outline'}
 								size="sm"
 								onclick={() =>
-									editor.updateTransform(layer.id, { flip_x: !layer.transform.flip_x })}
+									updateSelectedTransform(
+										'flip_x',
+										mixedTransforms.flip_x.mixed ? true : !layer.transform.flip_x
+									)}
 							>
 								<FlipHorizontalIcon />
 								{m.image_editor_flip_x()}
 							</Button>
 							<Button
-								variant={layer.transform.flip_y ? 'secondary' : 'outline'}
+								variant={!mixedTransforms.flip_y.mixed && layer.transform.flip_y
+									? 'secondary'
+									: 'outline'}
 								size="sm"
 								onclick={() =>
-									editor.updateTransform(layer.id, { flip_y: !layer.transform.flip_y })}
+									updateSelectedTransform(
+										'flip_y',
+										mixedTransforms.flip_y.mixed ? true : !layer.transform.flip_y
+									)}
 							>
 								<FlipVerticalIcon />
 								{m.image_editor_flip_y()}
 							</Button>
 						</div>
 						<label class="grid gap-1 text-xs">
-							<span>{m.image_editor_opacity({ value: Math.round(layer.opacity * 100) })}</span>
+							<span>
+								{mixedOpacity.mixed
+									? m.image_editor_opacity_mixed()
+									: m.image_editor_opacity({ value: Math.round(layer.opacity * 100) })}
+							</span>
 							<Slider
 								min={0}
 								max={1}
@@ -462,14 +546,21 @@
 								value={layer.opacity}
 								disabled={!editor.canEdit}
 								ariaLabel={m.image_editor_opacity({ value: Math.round(layer.opacity * 100) })}
-								onValueChange={(opacity) =>
-									editor.updateLayer(layer.id, { opacity }, `opacity:${layer.id}`)}
+								onValueChange={(opacity) => {
+									const result = editor.updateSelectedOpacity(opacity);
+									applicationFeedback = partialApplicationMessage(result);
+								}}
 							/>
 						</label>
 					</Collapsible.Content>
 				</Collapsible.Root>
 
 				{#if layer.type !== 'group'}
+					{#if editor.selectedLayers.length > 1}
+						<p class="text-xs text-muted-foreground">
+							{m.image_editor_primary_layer_properties_help({ name: layer.name })}
+						</p>
+					{/if}
 					{#key layer.id}<LayerEffectsPanel {layer} />{/key}
 				{/if}
 
@@ -487,7 +578,11 @@
 									disabled={!editor.canEdit || layer.locked}
 									onValueChange={(value) => {
 										const style = brandTextStyles.find((candidate) => candidate.id === value);
-										if (style) editor.applyBrandTextStyle(style);
+										if (style) {
+											applicationFeedback = partialApplicationMessage(
+												editor.applyBrandTextStyle(style)
+											);
+										}
 									}}
 									options={brandTextStyles.map((style) => ({
 										value: style.id,
@@ -497,6 +592,29 @@
 									class="h-9 w-full"
 								/>
 							</label>
+						{/if}
+						{#if missingFontAsset}
+							<div
+								class="rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-xs"
+								role="alert"
+							>
+								<p>{m.image_editor_missing_brand_font()}</p>
+								<Button
+									variant="outline"
+									size="xs"
+									class="mt-2"
+									onclick={() =>
+										editor.updateLayer(layer.id, {
+											text: {
+												...layer.text!,
+												font_family: 'Geist Variable',
+												font_asset_id: undefined
+											}
+										})}
+								>
+									{m.image_editor_use_fallback_font()}
+								</Button>
+							</div>
 						{/if}
 						<Textarea
 							class="min-h-24"

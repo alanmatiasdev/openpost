@@ -1,23 +1,27 @@
-export interface ImageEditorCommand<T> {
+export interface ImageEditorCommand<T, C = undefined> {
 	label: string;
 	apply(current: T): T;
 	revert(current: T): T;
 	coalesceKey?: string;
+	context?: C;
 }
 
-interface HistoryEntry<T> {
+interface HistoryEntry<T, C> {
 	label: string;
 	before: T;
 	after: T;
 	coalesceKey?: string;
 	createdAt: number;
 	estimatedBytes: number;
+	beforeContext?: C;
+	afterContext?: C;
 }
 
-export class ImageEditorHistory<T> {
-	private undoStack: HistoryEntry<T>[] = [];
-	private redoStack: HistoryEntry<T>[] = [];
+export class ImageEditorHistory<T, C = undefined> {
+	private undoStack: HistoryEntry<T, C>[] = [];
+	private redoStack: HistoryEntry<T, C>[] = [];
 	private executionChanged = false;
+	private restored: C | undefined;
 
 	constructor(
 		private readonly clone: (value: T) => T,
@@ -26,10 +30,11 @@ export class ImageEditorHistory<T> {
 			JSON.stringify(left) === JSON.stringify(right),
 		private readonly maximumBytes = 64 * 1024 * 1024,
 		private readonly estimateBytes: (value: T) => number = (value) =>
-			JSON.stringify(value).length * 2
+			JSON.stringify(value).length * 2,
+		private readonly cloneContext: (value: C) => C = (value) => structuredClone(value)
 	) {}
 
-	execute(current: T, command: ImageEditorCommand<T>): T {
+	execute(current: T, command: ImageEditorCommand<T, C>): T {
 		const before = this.clone(current);
 		const after = command.apply(this.clone(current));
 		this.executionChanged = !this.equal(before, after);
@@ -41,17 +46,24 @@ export class ImageEditorHistory<T> {
 			previous?.coalesceKey === command.coalesceKey &&
 			now - previous.createdAt < 1000
 		) {
-			previous.after = this.clone(after);
+			previous.after = after;
+			if (command.context !== undefined) previous.afterContext = this.cloneContext(command.context);
 			previous.createdAt = now;
 			previous.estimatedBytes = this.entryBytes(previous.before, previous.after);
 		} else {
 			this.undoStack.push({
 				label: command.label,
 				before,
-				after: this.clone(after),
+				after,
 				coalesceKey: command.coalesceKey,
 				createdAt: now,
-				estimatedBytes: this.entryBytes(before, after)
+				estimatedBytes: this.entryBytes(before, after),
+				...(command.context === undefined
+					? {}
+					: {
+							beforeContext: this.cloneContext(command.context),
+							afterContext: this.cloneContext(command.context)
+						})
 			});
 		}
 		this.redoStack = [];
@@ -59,7 +71,14 @@ export class ImageEditorHistory<T> {
 		return after;
 	}
 
-	checkpoint(label: string, before: T, after: T, coalesceKey?: string): void {
+	checkpoint(
+		label: string,
+		before: T,
+		after: T,
+		coalesceKey?: string,
+		beforeContext?: C,
+		afterContext?: C
+	): void {
 		if (this.equal(before, after)) return;
 		this.undoStack.push({
 			label,
@@ -67,7 +86,9 @@ export class ImageEditorHistory<T> {
 			after: this.clone(after),
 			coalesceKey,
 			createdAt: Date.now(),
-			estimatedBytes: this.entryBytes(before, after)
+			estimatedBytes: this.entryBytes(before, after),
+			...(beforeContext === undefined ? {} : { beforeContext: this.cloneContext(beforeContext) }),
+			...(afterContext === undefined ? {} : { afterContext: this.cloneContext(afterContext) })
 		});
 		this.redoStack = [];
 		this.trim();
@@ -77,6 +98,8 @@ export class ImageEditorHistory<T> {
 		const entry = this.undoStack.pop();
 		if (!entry) return current;
 		this.redoStack.push(entry);
+		this.restored =
+			entry.beforeContext === undefined ? undefined : this.cloneContext(entry.beforeContext);
 		return this.clone(entry.before);
 	}
 
@@ -84,7 +107,18 @@ export class ImageEditorHistory<T> {
 		const entry = this.redoStack.pop();
 		if (!entry) return current;
 		this.undoStack.push(entry);
+		this.restored =
+			entry.afterContext === undefined ? undefined : this.cloneContext(entry.afterContext);
 		return this.clone(entry.after);
+	}
+
+	updateCurrentContext(context: C): void {
+		const current = this.undoStack.at(-1);
+		if (current) current.afterContext = this.cloneContext(context);
+	}
+
+	get restoredContext(): C | undefined {
+		return this.restored === undefined ? undefined : this.cloneContext(this.restored);
 	}
 
 	get canUndo(): boolean {
@@ -122,6 +156,7 @@ export class ImageEditorHistory<T> {
 		this.undoStack = [];
 		this.redoStack = [];
 		this.executionChanged = false;
+		this.restored = undefined;
 	}
 
 	private entryBytes(before: T, after: T): number {

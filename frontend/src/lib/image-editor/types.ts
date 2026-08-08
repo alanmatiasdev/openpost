@@ -272,6 +272,7 @@ export interface ImageEditorDocumentResponse {
 	created_at: string;
 	updated_at: string;
 	document: ImageEditorDocument;
+	missing_local_media_ids?: string[];
 }
 
 export interface ImageEditorPreset {

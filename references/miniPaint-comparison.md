@@ -1,6 +1,6 @@
 # miniPaint and OpenPost Image Editor comparison
 
-Reviewed: 2026-08-06
+Reviewed: 2026-08-07
 
 Reference snapshot: miniPaint 4.14.3 at `a79733eb803fc97084ef0ee4faa96b031e69e1c0`
 
@@ -288,25 +288,25 @@ OpenPost's tested `magicPixelMask` should remain the basis for these tools.
 
 ## Important OpenPost implementation constraints
 
-- Alpha hit testing needs caching and covered-layer cycling for very large or
-  densely stacked documents.
-- Pixel selection can cut, delete, promote, copy, paste, and move floating
-  content with commit/cancel history. Floating resize/rotation and dedicated
-  duplicate semantics remain.
-- Brand backgrounds and whole-layer text styles are exposed, but missing-asset
-  recovery and mixed-value multi-selection UI remain incomplete.
-- External drops are exact, bounded, page-targeted, and failure-isolated, but guest
-  OPFS writes cannot be cancelled mid-write and signed-in partial failure still
-  needs end-to-end coverage.
+- Alpha hit testing uses fingerprinted adaptive masks, Alt-click cycling, and a
+  visible Select layer menu without miniPaint's fixed five-megapixel quality cliff.
+- Pixel selection can cut, delete, promote, copy, paste, move, resize, rotate,
+  and duplicate floating content with one commit/cancel history boundary.
+- Brand backgrounds and whole-layer text styles include missing-asset recovery,
+  mixed values, compatible multi-apply, and partial-application feedback.
+- External drops are exact, bounded, page-targeted, and failure-isolated;
+  signed-in project import is cancellable and resumes completed work. A single
+  guest OPFS write still cannot be interrupted once the browser starts it.
 - Guides, rulers, grid, crop handles, gradient endpoints, object transforms, and
-  temporary bypass share screen-space snapping. High-DPI browser proof remains.
-- Typed commands drive dispatch, labels, and help, but menus, tooltips, and mobile
-  actions are not all generated from the registry.
+  temporary bypass share a high-DPI and CSS-zoom-safe screen-space contract.
+- Typed commands drive dispatch, desktop/mobile placement, labels, shortcut help,
+  tooltips, handlers, checked state, and disabled explanations.
 - A 25 MP full-resolution selection mask and composited sampling can be costly.
-- History retains up to 100 full document snapshots, which can be expensive for
-  large multi-page documents.
+- History restores page, object/pixel selection, tool, zoom, and pan and avoids a
+  redundant post-command clone, but full snapshots can still be expensive for
+  very large multi-page paint documents.
 - Portable project files validate archive paths and sizes and remap media into a
-  new design, but licensed-font transfer and renderer-pixel round-trip proof remain.
+  new design, but licensed-font transfer remains.
 
 ## Recommended adoption sequence
 
@@ -321,19 +321,18 @@ Completed:
 - [x] Apply one zoom-correct snap contract to object transforms, crop handles,
       guides, and gradient endpoints.
 
-Remaining:
-
-1. Generate menus, tooltips, mobile actions, and enabled-state explanations from
-   the typed command registry.
-2. Cache alpha hit masks and add an intentional covered-layer cycling gesture.
-3. Add resize and rotation handles to the floating selected-pixel workflow.
-4. Complete missing brand-asset recovery and mixed-value application feedback.
-5. Add high-DPI snapping/sampling proof and signed-in partial-import coverage.
+- [x] Generate menus, tooltips, mobile actions, handlers, checked states, and
+      disabled explanations from the typed command registry.
+- [x] Cache adaptive alpha masks and add Alt-click cycling plus Select layer.
+- [x] Add resize, rotation, and duplicate controls to floating pixel selections.
+- [x] Complete missing brand-asset recovery and mixed-value/partial application.
+- [x] Add high-DPI/browser-zoom coordinate proof, touch/stylus coverage, and
+      signed-in cancellable/resumable project import.
 
 ### P1: creative depth
 
-1. Complete hardness, spacing, alternate brush tips, and palm rejection; pressure
-   and smoothing are now available.
+1. Complete hardness, spacing, and alternate brush tips; pressure, smoothing,
+   and stylus palm rejection are now available.
 2. Add a non-destructive clone/heal workflow.
 3. Add localized blur, sharpen, and desaturate tools.
 4. Add replace-color and color-to-alpha operations.
@@ -374,10 +373,11 @@ Remaining:
   produced size warnings.
 - miniPaint has no automated test or lint script. Its full install audit reported
   15 advisories; the production-only audit reported one moderate `uuid` advisory.
-- OpenPost's focused Image Editor unit run passed 98 tests across 18 files.
-- OpenPost's focused Image Editor browser run passed all seven scenarios, with
-  console/page-error diagnostics, pointer and keyboard floating-selection proof,
-  and explicit 320 px and short-landscape coverage.
+- OpenPost's focused Image Editor unit run passed 130 tests across 23 files.
+- OpenPost's focused Image Editor browser suite now covers twelve scenarios,
+  including renderer sampling, signed-in import cancellation/resume, keyboard-only
+  export, Portuguese at 200%, pinch zoom, stylus palm rejection, 320 px, and
+  short landscape.
 - The repository-owned `devenv shell -- verify` gate passed checks, lint, all
   tests, frontend/marketing/docs builds, and generated-contract validation.
 - The Svelte analyzer reported no component errors across the Image Editor

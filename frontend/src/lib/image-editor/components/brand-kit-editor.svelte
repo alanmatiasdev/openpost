@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { SvelteSet } from 'svelte/reactivity';
 	import { Button } from '$lib/components/ui/button';
 	import { Checkbox } from '$lib/components/ui/checkbox';
 	import { Input } from '$lib/components/ui/input';
@@ -6,7 +7,7 @@
 	import SettingsFormFooter from '$lib/components/settings-form-footer.svelte';
 	import { uploadMediaFile } from '$lib/media-upload-client';
 	import { saveImageEditorBrandKit } from '../api';
-	import { loadImageEditorBrandFonts } from '../fonts';
+	import { loadImageEditorBrandFontsWithReport } from '../fonts';
 	import ImageEditorColorPicker from './image-editor-color-picker.svelte';
 	import ImageEditorFontPicker from './image-editor-font-picker.svelte';
 	import type {
@@ -52,6 +53,7 @@
 	let fontStyle = $state<'normal' | 'italic'>('normal');
 	let fontLicenseAcknowledged = $state(false);
 	let savedSnapshot = $state('');
+	const failedFontIDs = new SvelteSet<string>();
 	const unsavedChanges = getOptionalUnsavedChanges();
 	const editorSnapshot = $derived(JSON.stringify({ name, colors, backgrounds, textStyles, fonts }));
 	const dirty = $derived(Boolean(savedSnapshot) && editorSnapshot !== savedSnapshot);
@@ -73,9 +75,13 @@
 				fonts.find((font) => font.media_id === style.font_asset_id)?.css_family || style.font_family
 		}));
 		savedSnapshot = JSON.stringify({ name, colors, backgrounds, textStyles, fonts });
-		void loadImageEditorBrandFonts(kit).catch(() => {
-			// A failed preview does not prevent the user from replacing or removing the font.
-		});
+		void refreshFontAvailability();
+	}
+
+	async function refreshFontAvailability(): Promise<void> {
+		const report = await loadImageEditorBrandFontsWithReport({ ...kit, fonts });
+		failedFontIDs.clear();
+		for (const failure of report.failed) failedFontIDs.add(failure.mediaID);
 	}
 
 	$effect(() => {
@@ -218,6 +224,7 @@
 					license_acknowledged: true
 				}
 			];
+			failedFontIDs.delete(uploaded.id);
 			fontFamily = '';
 			fontLicenseAcknowledged = false;
 		} catch (cause) {
@@ -376,6 +383,14 @@
 						<div class="min-w-0">
 							<p class="truncate text-base font-semibold">{font.family}</p>
 							<p class="text-xs text-muted-foreground">{font.weight} · {font.style}</p>
+							{#if failedFontIDs.has(font.media_id)}
+								<p class="mt-1 text-xs text-amber-700 dark:text-amber-300" role="alert">
+									{m.brand_font_missing_recovery()}
+								</p>
+								<Button variant="outline" size="xs" class="mt-2" onclick={refreshFontAvailability}>
+									{m.common_retry()}
+								</Button>
+							{/if}
 						</div>
 						<Button
 							variant="ghost"
@@ -478,6 +493,25 @@
 					</p>
 				</summary>
 				<div class="space-y-4 border-t p-4">
+					{#if style.font_asset_id && !fonts.some((font) => font.media_id === style.font_asset_id)}
+						<div
+							class="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs"
+							role="alert"
+						>
+							<p>{m.brand_style_font_missing()}</p>
+							<Button
+								variant="outline"
+								size="xs"
+								class="mt-2"
+								onclick={() => {
+									updateTextStyle(index, 'font_asset_id', undefined);
+									updateTextStyle(index, 'font_family', 'Geist Variable');
+								}}
+							>
+								{m.brand_repair_with_fallback()}
+							</Button>
+						</div>
+					{/if}
 					<div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
 						<label class="grid gap-1 text-xs font-medium">
 							<span>{m.brand_style_name()}</span>

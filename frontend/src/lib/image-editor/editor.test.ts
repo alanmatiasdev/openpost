@@ -74,6 +74,39 @@ describe('OpenPost Image Editor editor layer interactions', () => {
 		expect(editor.activePage?.guides?.vertical).toEqual([180]);
 	});
 
+	it('restores the active page, selection, tool, zoom, and pan with history', () => {
+		const editor = new ImageEditorController();
+		editor.load(response());
+		editor.selectLayer('front');
+		editor.activeTool = 'pencil';
+		editor.zoom = 0.75;
+		editor.panX = 42;
+		editor.panY = -18;
+
+		editor.addPage();
+		const addedPageID = editor.activePageID;
+		editor.activeTool = 'gradient';
+		editor.zoom = 0.5;
+		editor.panX = 8;
+		editor.panY = 12;
+
+		editor.undo();
+		expect(editor.activePageID).toBe('page');
+		expect(editor.selectedLayerIDs).toEqual(['front']);
+		expect(editor.activeTool).toBe('pencil');
+		expect(editor.zoom).toBe(0.75);
+		expect(editor.panX).toBe(42);
+		expect(editor.panY).toBe(-18);
+
+		editor.redo();
+		expect(editor.activePageID).toBe(addedPageID);
+		expect(editor.selectedLayerIDs).toEqual([]);
+		expect(editor.activeTool).toBe('gradient');
+		expect(editor.zoom).toBe(0.5);
+		expect(editor.panX).toBe(8);
+		expect(editor.panY).toBe(12);
+	});
+
 	it('does not dirty history or emit changes for a no-op mutation', () => {
 		const editor = new ImageEditorController();
 		editor.load(response());
@@ -188,6 +221,98 @@ describe('OpenPost Image Editor editor layer interactions', () => {
 		editor.deleteSelected();
 
 		expect(editor.activePage?.layers.map((candidate) => candidate.id)).toEqual(['back']);
+	});
+
+	it('preserves nested group ownership and flipped descendants through transforms and duplication', () => {
+		const editor = new ImageEditorController();
+		editor.load(response());
+		editor.selectLayer('front');
+		editor.selectLayer('middle', 'toggle');
+		editor.groupSelected();
+		const innerID = editor.selectedLayerIDs[0];
+		editor.selectLayer('back', 'toggle');
+		editor.groupSelected();
+		const outerID = editor.selectedLayerIDs[0];
+		const outer = editor.selectedLayers[0];
+
+		editor.updateTransform(outerID, {
+			width: outer.transform.width * 1.5,
+			flip_x: true,
+			rotation: 15
+		});
+
+		const transformed = editor.activePage?.layers ?? [];
+		expect(transformed.find((item) => item.id === innerID)?.parent_id).toBe(outerID);
+		expect(transformed.find((item) => item.id === 'front')?.parent_id).toBe(innerID);
+		expect(transformed.find((item) => item.id === 'front')?.transform.flip_x).toBe(true);
+		expect(transformed.find((item) => item.id === 'middle')?.transform.rotation).toBe(15);
+
+		editor.duplicateSelected();
+		const duplicateOuterID = editor.selectedLayerIDs[0];
+		const duplicateIDs = new Set(
+			(editor.activePage?.layers ?? [])
+				.filter((item) => item.id === duplicateOuterID || item.parent_id === duplicateOuterID)
+				.map((item) => item.id)
+		);
+		const duplicateInner = (editor.activePage?.layers ?? []).find(
+			(item) => item.parent_id === duplicateOuterID && item.type === 'group'
+		);
+		expect(duplicateInner).toBeTruthy();
+		expect(
+			(editor.activePage?.layers ?? []).filter((item) => item.parent_id === duplicateInner?.id)
+		).toHaveLength(2);
+		expect(duplicateIDs.has(innerID)).toBe(false);
+	});
+
+	it('reparents nested layers without cycles and restores the move through history', () => {
+		const editor = new ImageEditorController();
+		editor.load(response());
+		editor.selectLayer('front');
+		editor.selectLayer('middle', 'toggle');
+		editor.groupSelected();
+		const groupID = editor.selectedLayerIDs[0];
+
+		expect(editor.groupDestinationsForLayer('back').map((layer) => layer.id)).toContain(groupID);
+		expect(editor.moveLayerToGroup('back', groupID)).toBe(true);
+		expect(editor.activePage?.layers.find((layer) => layer.id === 'back')?.parent_id).toBe(groupID);
+		expect(editor.moveLayerToGroup(groupID, 'back')).toBe(false);
+
+		editor.updateLayer(groupID, { locked: true });
+		expect(editor.moveLayerOutOfGroup('back')).toBe(false);
+		editor.updateLayer(groupID, { locked: false });
+		expect(editor.moveLayerOutOfGroup('back')).toBe(true);
+		expect(
+			editor.activePage?.layers.find((layer) => layer.id === 'back')?.parent_id
+		).toBeUndefined();
+
+		editor.undo();
+		expect(editor.activePage?.layers.find((layer) => layer.id === 'back')?.parent_id).toBe(groupID);
+		expect(editor.selectedLayerIDs).toEqual(['back']);
+	});
+
+	it('applies absolute mixed transforms to unlocked selected roots with partial feedback', () => {
+		const editor = new ImageEditorController();
+		const initial = response();
+		initial.document.pages[0].layers[1].locked = true;
+		editor.load(initial);
+		editor.selectLayer('back');
+		editor.selectLayer('middle', 'toggle');
+		editor.selectLayer('front', 'toggle');
+
+		const result = editor.updateSelectedTransform('width', 160, true);
+
+		expect(result).toEqual({ applied: 2, skippedLocked: 1, skippedUnsupported: 0 });
+		expect(editor.activePage?.layers.find((item) => item.id === 'back')?.transform).toMatchObject({
+			width: 160,
+			height: 160
+		});
+		expect(editor.activePage?.layers.find((item) => item.id === 'middle')?.transform.width).toBe(
+			80
+		);
+		expect(editor.activePage?.layers.find((item) => item.id === 'front')?.transform.width).toBe(
+			160
+		);
+		expect(editor.undoLabel).toBe('Transform layers');
 	});
 
 	it('adds persistent pencil and bucket paint layers above the active layer', () => {
@@ -443,9 +568,70 @@ describe('OpenPost Image Editor editor layer interactions', () => {
 		editor.translateFloatingPixelSelection(8, 3);
 		expect(editor.cancelFloatingPixelSelection()).toBe(true);
 		expect(editor.document).toEqual(before);
-		expect(editor.pixelSelection?.data).toEqual(mask);
+		expect(editor.pixelSelection?.data.byteLength).toBe(mask.byteLength);
+		expect(editor.pixelSelection?.data.some((value, index) => value !== mask[index])).toBe(false);
 		expect(editor.selectedLayerIDs).toEqual(['paint']);
 		expect(editor.canUndo).toBe(false);
+	});
+
+	it('resizes, rotates, and duplicates floating pixels before one commit', () => {
+		const editor = new ImageEditorController();
+		const initial = response();
+		const paint: ImageEditorLayer = {
+			...layer('paint', 20),
+			type: 'paint',
+			transform: { ...layer('paint', 20).transform, y: 10, width: 20, height: 10 },
+			shape: undefined,
+			paint: {
+				kind: 'fill',
+				color: '#f97316',
+				size: 1,
+				opacity: 1,
+				source_width: 20,
+				source_height: 10,
+				points: [],
+				spans: Array.from({ length: 10 }, (_, y) => ({ x: 0, y, width: 20 }))
+			}
+		};
+		initial.document.pages[0].layers = [paint];
+		editor.load(initial);
+		editor.selectLayer('paint');
+		const mask = new Uint8Array(1080 * 1080);
+		for (let y = 10; y < 20; y++) mask.fill(1, y * 1080 + 20, y * 1080 + 40);
+		editor.pixelSelection = {
+			width: 1080,
+			height: 1080,
+			data: mask,
+			targetLayerIDs: ['paint']
+		};
+		expect(
+			editor.beginFloatingPixelSelection('promote', [
+				{ id: 'paint', width: 20, height: 10, data: new Uint8Array(200).fill(1) }
+			])
+		).toBe(true);
+		const floatingID = editor.floatingPixelSelection?.layerIDs[0] ?? '';
+
+		expect(editor.transformFloatingPixelSelection({ x: 20, y: 10 }, 2, 2)).toBe(true);
+		expect(
+			editor.activePage?.layers.find((item) => item.id === floatingID)?.transform
+		).toMatchObject({
+			x: 20,
+			y: 10,
+			width: 40,
+			height: 20
+		});
+		expect(editor.transformFloatingPixelSelection({ x: 40, y: 20 }, 1, 1, 90)).toBe(true);
+		expect(
+			editor.activePage?.layers.find((item) => item.id === floatingID)?.transform.rotation
+		).toBe(90);
+		expect(editor.duplicateFloatingPixelSelection(5)).toBe(true);
+		expect(editor.floatingPixelSelection?.layerIDs).toHaveLength(1);
+		expect(editor.selectedLayerIDs).not.toContain(floatingID);
+		expect(editor.commitFloatingPixelSelection()).toBe(true);
+		expect(editor.activePage?.layers).toHaveLength(3);
+
+		editor.undo();
+		expect(editor.activePage?.layers).toHaveLength(1);
 	});
 
 	it('creates generic empty layers and paints into the selected empty layer', () => {
