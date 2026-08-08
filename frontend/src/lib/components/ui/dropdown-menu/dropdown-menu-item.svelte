@@ -17,6 +17,7 @@
 <DropdownMenuPrimitive.Item
 	bind:ref
 	data-slot="dropdown-menu-item"
+	data-cuelume-toggle="tick"
 	data-inset={inset}
 	data-variant={variant}
 	class={cn(

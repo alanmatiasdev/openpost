@@ -90,6 +90,7 @@
 		type ResolvedComposerTarget
 	} from './compose/modes';
 	import { soundPreferences } from '$lib/stores/sound-preferences.svelte';
+	import { celebrateSchedule } from '$lib/celebrate-schedule';
 	import AppToast from './app-toast.svelte';
 	import DestructiveConfirmDialog from './destructive-confirm-dialog.svelte';
 	import DraftConflictDialog from './draft-conflict-dialog.svelte';
@@ -2630,6 +2631,7 @@
 			lastSavedSnapshot = getSaveSnapshot();
 			success = m.compose_changes_saved();
 			soundPreferences.play('success');
+			if (scheduledAt) void celebrateSchedule();
 			ui.triggerRefresh();
 
 			if (onSuccess) {
@@ -2745,6 +2747,7 @@
 
 			success = publishNow ? m.compose_publishing_now() : m.compose_scheduled_success();
 			soundPreferences.play('success');
+			if (!publishNow) void celebrateSchedule();
 			ui.triggerRefresh();
 
 			if (isEditMode && onSuccess) {

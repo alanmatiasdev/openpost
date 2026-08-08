@@ -4,6 +4,14 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Added tactile press and release sounds across raised buttons and common selection controls, plus reduced-motion-aware orange confetti when a post is scheduled.
+
+### Changed
+
+- Kept the expanded planner sidebar and Calendar, Posts, Inbox, Analytics, and Media navigation consistent across authenticated routes, and eased raised-button press travel.
+
 ### Fixed
 
 - Preserve plan and destination context through Google signup and legal acceptance, remove duplicate workspace bootstrap redirects, and send existing Google users back to their intended destination instead of checkout.

@@ -61,6 +61,7 @@
 		'data-sidebar': 'menu-button',
 		'data-size': size,
 		'data-active': isActive,
+		'data-cuelume-toggle': 'tick',
 		...restProps
 	});
 </script>

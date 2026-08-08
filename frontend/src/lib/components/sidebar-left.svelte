@@ -32,6 +32,7 @@
 	import MoreHorizontalIcon from 'lucide-svelte/icons/ellipsis';
 	import type { Workspace } from '$lib/api/client';
 	import NotificationBell from './notification-bell.svelte';
+	import { Button } from '$lib/components/ui/button';
 
 	let authState = $derived($auth);
 	let createWorkspaceOpen = $state(false);
@@ -61,13 +62,10 @@
 	);
 	const workspaceNavigationItems = $derived([
 		...navigationItems.filter((item) =>
-			['posts', 'communications', 'analytics', 'media'].includes(item.id)
+			['calendar', 'posts', 'communications', 'analytics', 'media'].includes(item.id)
 		)
 	]);
-	const plannerIsContextual = $derived(currentPath === '/' || currentPath.startsWith('/calendar'));
-	const showDesktopPlanner = $derived(
-		!sidebar.isMobile && sidebar.state === 'expanded' && plannerIsContextual
-	);
+	const showDesktopPlanner = $derived(!sidebar.isMobile && sidebar.state === 'expanded');
 
 	function navigationIcon(id: PrimaryNavigationItem['id']) {
 		switch (id) {
@@ -206,16 +204,17 @@
 			{/if}
 		</div>
 
-		<a
+		<Button
 			href={resolve('/')}
-			class="flex h-10 items-center justify-center gap-2 rounded-md bg-primary px-3 text-sm font-semibold text-primary-foreground shadow-xs group-data-[collapsible=icon]:px-0 hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:outline-none"
+			size="sm"
+			class="h-10 w-full gap-2 group-data-[collapsible=icon]:px-0"
 			aria-label={m.sidebar_new_post()}
 			data-testid="sidebar-new-post"
 			onclick={() => ui.startNewPost()}
 		>
 			<ComposeIcon class="size-4" />
 			{#if sidebar.state !== 'collapsed'}<span>{m.sidebar_new_post()}</span>{/if}
-		</a>
+		</Button>
 	</Sidebar.Header>
 
 	<Sidebar.Content class={showDesktopPlanner ? 'overflow-hidden py-2' : 'px-2 py-3'}>

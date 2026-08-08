@@ -4,4 +4,4 @@
 	let { ref = $bindable(null), ...restProps }: PopoverPrimitive.TriggerProps = $props();
 </script>
 
-<PopoverPrimitive.Trigger bind:ref {...restProps} />
+<PopoverPrimitive.Trigger bind:ref data-cuelume-toggle="toggle" {...restProps} />

@@ -75,6 +75,9 @@
 			<li>
 				<button
 					type="button"
+					data-cuelume-press={item.id === 'new' ? 'press' : undefined}
+					data-cuelume-release={item.id === 'new' ? 'release' : undefined}
+					data-cuelume-toggle={item.id === 'new' ? undefined : 'tick'}
 					class={[
 						'flex min-h-14 w-full flex-col items-center justify-center gap-1 rounded-md px-1 text-[0.625rem] font-medium transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
 						item.id === 'new'
@@ -91,7 +94,7 @@
 				>
 					<span
 						class={item.id === 'new'
-							? 'flex size-8 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm'
+							? 'flex size-9 -translate-y-0.5 items-center justify-center rounded-lg border border-primary bg-primary text-primary-foreground shadow-[0_3px_0_color-mix(in_oklch,var(--primary)_68%,black)] transition-[transform,box-shadow] duration-100 active:translate-y-0.5 active:shadow-[0_1px_0_color-mix(in_oklch,var(--primary)_68%,black)]'
 							: 'flex size-5 items-center justify-center'}
 					>
 						<Icon class={item.id === 'new' ? 'size-5' : 'size-4'} />

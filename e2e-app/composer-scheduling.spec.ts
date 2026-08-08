@@ -329,6 +329,10 @@ test("composer quick-schedules a publication from the selected time", async ({
   await quickSchedule.click();
 
   await expect(page.getByText("Scheduled!", { exact: true })).toBeVisible();
+  await expect(page.locator("html")).toHaveAttribute(
+    "data-celebrating-schedule",
+    "true",
+  );
   await expect.poll(() => publicationPayload).toBeTruthy();
   await expect.poll(() => scheduleRequested).toBe(true);
 

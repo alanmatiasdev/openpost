@@ -38,7 +38,7 @@ test("authenticated navigation keeps the app shell mounted", async ({
   await page.getByRole("button", { name: "Posts", exact: true }).click();
   await expect(page).toHaveURL(/\/activity$/);
   await expect(page.getByTestId("app-sidebar")).toBeVisible();
-  await expect(page.getByTestId("desktop-sidebar-planner")).toHaveCount(0);
+  await expect(page.getByTestId("desktop-sidebar-planner")).toBeVisible();
   await expect(page.getByTestId("sidebar-new-post")).toBeVisible();
   await expect
     .poll(() =>
@@ -147,7 +147,7 @@ test("first autosave establishes the draft URL and keeps draft actions in one co
   await expect(page.getByLabel("Post text")).toHaveValue(content);
   await expect(page.getByRole("button", { name: "Link URL" })).toHaveCount(0);
   await expect(page.getByTestId("focused-composer")).toHaveCount(0);
-  await expect(page.getByTestId("desktop-sidebar-planner")).toHaveCount(0);
+  await expect(page.getByTestId("desktop-sidebar-planner")).toBeVisible();
   await page.goto("/calendar");
   await expect(
     page.getByTestId("sidebar-draft-list").locator("li"),
