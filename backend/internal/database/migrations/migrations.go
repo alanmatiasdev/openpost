@@ -125,6 +125,9 @@ func prepareMigration(ctx context.Context, db *bun.DB, migration migration) erro
 		description string
 	)
 	switch migration.version {
+	case 38:
+		description = "post update timestamp"
+		err = ensurePostUpdatedAtColumn(ctx, db)
 	case 36:
 		description = "media hash"
 		err = removeGlobalMediaHashConstraint(ctx, db)
@@ -161,6 +164,154 @@ func prepareMigration(ctx context.Context, db *bun.DB, migration migration) erro
 		return fmt.Errorf("migration %s %s preparation failed: %w", migration.name, description, err)
 	}
 	return nil
+}
+
+func ensurePostUpdatedAtColumn(ctx context.Context, db *bun.DB) error {
+	exists, err := migrationTableExists(ctx, db, "posts")
+	if err != nil || !exists {
+		return err
+	}
+	present, err := migrationColumnExists(ctx, db, "posts", "updated_at")
+	if err != nil || present {
+		return err
+	}
+	if db.Dialect().Name() != dialect.SQLite {
+		return nil
+	}
+	return rebuildSQLitePostsWithUpdatedAt(ctx, db)
+}
+
+type sqliteSchemaObject struct {
+	Type string `bun:"type"`
+	Name string `bun:"name"`
+	SQL  string `bun:"sql"`
+}
+
+type sqlitePostsRebuildPlan struct {
+	createSQL     string
+	columnList    string
+	schemaObjects []sqliteSchemaObject
+}
+
+func loadSQLitePostsRebuildPlan(ctx context.Context, db *bun.DB) (sqlitePostsRebuildPlan, error) {
+	var createSQL string
+	err := db.NewSelect().
+		TableExpr("sqlite_master").
+		Column("sql").
+		Where("type = 'table' AND name = 'posts'").
+		Scan(ctx, &createSQL)
+	if errors.Is(err, sql.ErrNoRows) {
+		return sqlitePostsRebuildPlan{}, nil
+	}
+	if err != nil {
+		return sqlitePostsRebuildPlan{}, err
+	}
+
+	var schemaObjects []sqliteSchemaObject
+	if err := db.NewSelect().
+		TableExpr("sqlite_master").
+		Column("type", "name", "sql").
+		Where("type IN ('index', 'trigger') AND tbl_name = 'posts' AND sql IS NOT NULL").
+		Order("type ASC", "name ASC").
+		Scan(ctx, &schemaObjects); err != nil {
+		return sqlitePostsRebuildPlan{}, err
+	}
+
+	type sqliteColumn struct {
+		Name string `bun:"name"`
+	}
+	var columns []sqliteColumn
+	if err := db.NewSelect().
+		TableExpr("pragma_table_info('posts')").
+		Column("name").
+		Order("cid ASC").
+		Scan(ctx, &columns); err != nil {
+		return sqlitePostsRebuildPlan{}, err
+	}
+	if len(columns) == 0 {
+		return sqlitePostsRebuildPlan{}, errors.New("posts table has no columns")
+	}
+
+	rebuildSQL, err := sqlitePostsCreateSQL(createSQL)
+	if err != nil {
+		return sqlitePostsRebuildPlan{}, err
+	}
+	quotedColumns := make([]string, 0, len(columns))
+	for _, column := range columns {
+		quotedColumns = append(quotedColumns, `"`+strings.ReplaceAll(column.Name, `"`, `""`)+`"`)
+	}
+	return sqlitePostsRebuildPlan{
+		createSQL:     rebuildSQL,
+		columnList:    strings.Join(quotedColumns, ", "),
+		schemaObjects: schemaObjects,
+	}, nil
+}
+
+func sqlitePostsCreateSQL(createSQL string) (string, error) {
+	closingParen := strings.LastIndex(createSQL, ")")
+	if closingParen < 0 {
+		return "", errors.New("posts table schema has no closing parenthesis")
+	}
+	rebuildSQL := strings.Replace(createSQL, `"posts"`, `"posts_rebuild_038"`, 1)
+	if rebuildSQL == createSQL {
+		rebuildSQL = strings.Replace(createSQL, "posts", "posts_rebuild_038", 1)
+	}
+	closingParen = strings.LastIndex(rebuildSQL, ")")
+	insertAt := closingParen
+	tableConstraintExpr := regexp.MustCompile(`(?i),\s*(?:CONSTRAINT\b|PRIMARY\s+KEY\b|UNIQUE\s*\(|CHECK\s*\(|FOREIGN\s+KEY\b)`)
+	if constraint := tableConstraintExpr.FindStringIndex(rebuildSQL); constraint != nil {
+		insertAt = constraint[0]
+	}
+	rebuildSQL = rebuildSQL[:insertAt] +
+		`, "updated_at" TIMESTAMP NOT NULL DEFAULT current_timestamp` +
+		rebuildSQL[insertAt:]
+	return rebuildSQL, nil
+}
+
+func rebuildSQLitePostsWithUpdatedAt(ctx context.Context, db *bun.DB) error {
+	plan, err := loadSQLitePostsRebuildPlan(ctx, db)
+	if err != nil || plan.createSQL == "" {
+		return err
+	}
+
+	var foreignKeysEnabled int
+	if err := db.QueryRowContext(ctx, "PRAGMA foreign_keys").Scan(&foreignKeysEnabled); err != nil {
+		return err
+	}
+	if foreignKeysEnabled != 0 {
+		if _, err := db.ExecContext(ctx, "PRAGMA foreign_keys=OFF"); err != nil {
+			return err
+		}
+		defer func() {
+			_, _ = db.ExecContext(context.Background(), "PRAGMA foreign_keys=ON")
+		}()
+	}
+
+	return db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
+		if _, err := tx.ExecContext(txCtx, plan.createSQL); err != nil {
+			return fmt.Errorf("create rebuilt posts table: %w", err)
+		}
+		copySQL := fmt.Sprintf(
+			`INSERT INTO posts_rebuild_038 (%s, "updated_at") SELECT %s, COALESCE("created_at", current_timestamp) FROM posts`,
+			plan.columnList,
+			plan.columnList,
+		)
+		if _, err := tx.ExecContext(txCtx, copySQL); err != nil {
+			return fmt.Errorf("copy posts into rebuilt table: %w", err)
+		}
+		if _, err := tx.ExecContext(txCtx, "DROP TABLE posts"); err != nil {
+			return fmt.Errorf("drop legacy posts table: %w", err)
+		}
+		if _, err := tx.ExecContext(txCtx, "ALTER TABLE posts_rebuild_038 RENAME TO posts"); err != nil {
+			return fmt.Errorf("rename rebuilt posts table: %w", err)
+		}
+		for _, object := range plan.schemaObjects {
+			if _, err := tx.ExecContext(txCtx, object.SQL); err != nil {
+				return fmt.Errorf("recreate posts %s %s: %w", object.Type, object.Name, err)
+			}
+		}
+		return nil
+	})
 }
 
 func prepareRecentMigration(ctx context.Context, db *bun.DB, migration migration) error {
