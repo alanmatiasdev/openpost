@@ -20,7 +20,7 @@ async function readCanonicalChangelog() {
 
 export const prerender = true;
 
-export const load: PageServerLoad = async () => {
+export const load = (async () => {
   const sections = parseChangelog(await readCanonicalChangelog())
     .filter((section) => section.groups.some((group) => group.items.length > 0))
     .slice(0, 4)
@@ -38,4 +38,4 @@ export const load: PageServerLoad = async () => {
     }));
 
   return { sections };
-};
+}) satisfies PageServerLoad;

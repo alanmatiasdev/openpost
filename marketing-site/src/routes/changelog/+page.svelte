@@ -2,9 +2,21 @@
   import { ArrowRight, CheckCircle2, ExternalLink } from "lucide-svelte";
   import { Button } from "$lib/components/ui/button";
   import { githubUrl, siteUrl } from "../_marketing";
-  import type { PageData } from "./$types";
 
-  let { data }: { data: PageData } = $props();
+  type ChangelogPageData = {
+    sections: Array<{
+      label: string;
+      date?: string;
+      intro: string[];
+      groups: Array<{
+        title: string;
+        items: string[];
+        remaining: number;
+      }>;
+    }>;
+  };
+
+  let { data }: { data: ChangelogPageData } = $props();
 </script>
 
 <svelte:head>
