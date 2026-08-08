@@ -2,7 +2,9 @@ import { readFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
 import { parseChangelog } from "../packages/changelog/src/index.js";
 
-test("marketing index links to the app and documentation @desktop", async ({ page }) => {
+test("marketing index links to the app and documentation @desktop", async ({
+  page,
+}) => {
   await page.goto("/");
 
   await expect(page).toHaveTitle(
@@ -30,6 +32,16 @@ test("marketing index links to the app and documentation @desktop", async ({ pag
       )
       .first(),
   ).toBeVisible();
+  await expect(
+    page.getByRole("region", {
+      name: "Illustrative social publishing results",
+    }),
+  ).toBeVisible();
+  await expect(page.getByText("Illustrative campaign results")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Next result" })).toBeVisible();
+  await expect(page.getByLabel("Companies using OpenPost")).toContainText(
+    "Montra",
+  );
   await expect(
     page.getByRole("heading", {
       name: "From company update to content on every channel.",
@@ -107,7 +119,9 @@ test("pricing presents Founder at the configured monthly and annual prices", asy
   );
 });
 
-test("security page states AI tool access accurately @desktop", async ({ page }) => {
+test("security page states AI tool access accurately @desktop", async ({
+  page,
+}) => {
   await page.goto("/security");
 
   await expect(
@@ -232,7 +246,9 @@ test("marketing SEO routes expose the current public index @desktop", async ({
   }
 });
 
-test("legal pages are public and describe Paddle billing @desktop", async ({ page }) => {
+test("legal pages are public and describe Paddle billing @desktop", async ({
+  page,
+}) => {
   const pages = [
     { path: "/terms", heading: "Terms of Service" },
     { path: "/privacy", heading: "Privacy Policy" },
@@ -259,7 +275,9 @@ test("legal pages are public and describe Paddle billing @desktop", async ({ pag
   ).toHaveAttribute("href", "/refunds");
 });
 
-test("free marketing tools produce useful output @desktop", async ({ page }) => {
+test("free marketing tools produce useful output @desktop", async ({
+  page,
+}) => {
   await page.goto("/tools/multi-platform-character-counter");
   await page.waitForLoadState("networkidle");
   await page.getByRole("textbox", { name: "Post text" }).fill("hello");

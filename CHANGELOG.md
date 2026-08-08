@@ -14,6 +14,7 @@ All notable changes to this project are documented in this file.
 
 ### Changed
 
+- Rebuilt the marketing hero around illustrative cross-network result views, floating social icons, a raised trial action, and a customer logo ticker while keeping the existing product promise and plan terms.
 - Simplified the text composer with contextual inspiration, a dedicated post-settings sheet for repost behavior, automatic URL recognition, and a device-first media chooser with clearer source tabs and upload guidance.
 - Made the desktop planner contextual to authoring and calendar routes, reduced the primary navigation to five workflow destinations, and separated diagnostic job records from failed-publication totals.
 - Reworked the desktop sidebar into a calm task stack with a stable brand and compose action, compact workspace and notification controls, three recent drafts, and one readable destination list.
