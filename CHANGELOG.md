@@ -23,6 +23,7 @@ All notable changes to this project are documented in this file.
 
 ### Fixed
 
+- Updated SvelteKit and Nano ID to their patched security releases and pinned the transitive versions used by the workspace.
 - Prevented the managed public home from flashing for signed-in sessions and stopped photo-only stock providers from offering video searches.
 - Fixed stored conversation history loading, added missing-conversation handling and retry UX, generated request IDs, and kept the reply composer hidden until history loads.
 - Made Media Library and instance-user searches submit reliably with Enter, added applied-query state, clear search, and Media result counts.
