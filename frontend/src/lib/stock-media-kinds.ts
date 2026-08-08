@@ -20,5 +20,5 @@ export function stockMediaKindsForProviders(
 	for (const provider of providers) {
 		for (const kind of stockMediaKindsForProvider(provider, accept)) available.add(kind);
 	}
-	return ['photo', 'video'].filter((kind): kind is StockMediaKind => available.has(kind));
+	return (['photo', 'video'] as StockMediaKind[]).filter((kind) => available.has(kind));
 }
