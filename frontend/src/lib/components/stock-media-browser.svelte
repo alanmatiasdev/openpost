@@ -7,7 +7,7 @@
 	import AppSelect from '$lib/components/app-select.svelte';
 	import InlineNotice from '$lib/components/inline-notice.svelte';
 	import { m } from '$lib/paraglide/messages';
-	import { stockMediaKindsForProvider } from '$lib/stock-media-kinds';
+	import { stockMediaKindsForProviders } from '$lib/stock-media-kinds';
 	import {
 		listStockProviders,
 		resolveStockAsset,
@@ -74,7 +74,7 @@
 			.map((item) => ({ value: item.key, label: providerLabel(item) }))
 	);
 	const kindOptions = $derived(
-		stockMediaKindsForProvider(currentProvider, accept).map((value) => ({
+		stockMediaKindsForProviders(providers, accept).map((value) => ({
 			value,
 			label: value === 'photo' ? m.video_editor_stock_photos() : m.video_editor_stock_videos()
 		}))
