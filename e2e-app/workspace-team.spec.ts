@@ -37,7 +37,7 @@ test('workspace admins manage the complete member and invitation lifecycle', asy
 	await authenticatePage(page, admin.token);
 	await page.setViewportSize({ width: 1280, height: 900 });
 	await page.goto(`/settings?tab=members&workspace=${workspace.id}`);
-	await expect(page.getByRole('heading', { name: 'Team' })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Team', exact: true })).toBeVisible();
 	await expect(page.getByText('2 seats reserved')).toBeVisible();
 
 	await page.getByLabel('Search team').fill(memberEmail);
