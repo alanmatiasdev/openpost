@@ -90,7 +90,7 @@ This integration replaces Whop billing. Before upgrading an existing cloud deplo
 
 Checkout endpoints return `503` when Paddle is missing required configuration such as `OPENPOST_PADDLE_CLIENT_TOKEN`, an explicit environment, or a monthly/annual price ID. User input errors, such as an unknown OpenPost plan ID, remain `400`.
 
-The browser sends only the opaque checkout attempt ID in Paddle custom data. It initializes Paddle.js with the server-selected environment, asks Paddle `PricePreview` for localized totals, and mounts Paddle's one-page inline checkout inside an OpenPost dialog. OpenPost owns the surrounding plan summary, theme, responsive layout, and close behavior; Paddle continues to own the sensitive payment fields and final localized totals.
+The browser sends only the opaque checkout attempt ID in Paddle custom data. It initializes Paddle.js with the server-selected environment, asks Paddle `PricePreview` for localized totals, and mounts Paddle's one-page inline checkout directly in the standalone OpenPost checkout page. OpenPost owns the surrounding plan summary, responsive layout, loading and error states, and a contrast-safe light payment canvas; Paddle continues to own the sensitive payment fields and final localized totals.
 
 Set both the minimum and maximum quantity to `1` on every Paddle plan price. OpenPost subscriptions are workspace plans rather than per-seat line items, so allowing Paddle's default maximum of `100` exposes an invalid quantity stepper at checkout.
 

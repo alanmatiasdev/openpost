@@ -709,10 +709,7 @@ test("plan selection from signup starts checkout after onboarding", async ({
   ).toBeVisible();
   await expect(page.getByText("$0 due today")).toBeVisible();
   await expect(page.getByText("$25.00/month")).toBeVisible();
-  await page
-    .getByRole("button", { name: "Continue to secure payment" })
-    .click();
-  await expect(page.getByRole("dialog")).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(page.getByTestId("paddle-checkout-frame")).toBeVisible();
   const paddleState = await page.evaluate(
     () =>
@@ -729,6 +726,10 @@ test("plan selection from signup starts checkout after onboarding", async ({
                 displayMode?: string;
                 variant?: string;
                 locale?: string;
+                theme?: string;
+                frameTarget?: string;
+                frameInitialHeight?: number;
+                frameStyle?: string;
                 successUrl?: string;
               };
             } | null;
@@ -744,8 +745,11 @@ test("plan selection from signup starts checkout after onboarding", async ({
   expect(paddleState?.checkout?.settings).toMatchObject({
     displayMode: "inline",
     variant: "one-page",
+    theme: "light",
     frameTarget: "openpost-paddle-checkout",
-    frameInitialHeight: 560,
+    frameInitialHeight: 720,
+    frameStyle:
+      "width: 100%; min-width: 312px; background-color: #ffffff; color-scheme: light; border: none;",
     locale: "en",
     successUrl:
       "http://127.0.0.1/checkout?plan=founder&billing_period=monthly&status=success",
@@ -753,14 +757,33 @@ test("plan selection from signup starts checkout after onboarding", async ({
   expect(checkoutURL).toContain("/api/v1/billing/checkout");
   expect(checkoutBody?.plan_id).toBe("founder");
 
-  await page.getByRole("button", { name: "Close" }).click();
-  await expect(page.getByRole("dialog")).toHaveCount(0);
-
   await page.getByRole("button", { name: /^Annual/ }).click();
   await page.getByRole("button", { name: "Monthly", exact: true }).click();
   await expect(page.getByText("$25.00/month")).toBeVisible();
   await page.waitForTimeout(250);
   await expect(page.getByText("$250.00/year")).toHaveCount(0);
+
+  await page.evaluate(() => {
+    localStorage.setItem("mode-watcher-mode", "dark");
+  });
+  await page.reload();
+  await expect(page.locator("html")).toHaveClass(/dark/);
+  await expect(page.getByTestId("paddle-checkout-frame")).toBeVisible();
+  const paymentSurfaceTheme = await page
+    .getByTestId("checkout-payment-surface")
+    .evaluate((element) => {
+      const style = getComputedStyle(element);
+      return {
+        backgroundColor: style.backgroundColor,
+        color: style.color,
+        colorScheme: style.colorScheme,
+      };
+    });
+  expect(paymentSurfaceTheme).toEqual({
+    backgroundColor: "rgb(255, 255, 255)",
+    color: "rgb(48, 43, 40)",
+    colorScheme: "light",
+  });
 
   await page.setViewportSize({ width: 320, height: 720 });
   await expect(
@@ -772,26 +795,11 @@ test("plan selection from signup starts checkout after onboarding", async ({
       document.documentElement.clientWidth,
   );
   expect(mobileOverflow).toBeLessThanOrEqual(1);
-
-  await page
-    .getByRole("button", { name: "Continue to secure payment" })
-    .click();
-  const mobileDialog = page.getByRole("dialog");
-  await expect(mobileDialog).toBeVisible();
-  await expect
-    .poll(
-      async () =>
-        (await mobileDialog.boundingBox())?.x ?? Number.POSITIVE_INFINITY,
-    )
-    .toBeLessThanOrEqual(1);
-  await expect
-    .poll(async () => (await mobileDialog.boundingBox())?.width ?? 0)
-    .toBeGreaterThanOrEqual(319);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByTestId("paddle-checkout-frame")).toBeVisible();
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= window.innerWidth,
     ),
   ).toBe(true);
-  await page.keyboard.press("Escape");
-  await expect(mobileDialog).toHaveCount(0);
 });

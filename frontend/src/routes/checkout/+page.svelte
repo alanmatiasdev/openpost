@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, tick } from 'svelte';
+	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
@@ -11,7 +11,6 @@
 	import InlineNotice from '$lib/components/inline-notice.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { Card, CardContent } from '$lib/components/ui/card';
-	import * as Dialog from '$lib/components/ui/dialog';
 	import * as RadioGroup from '$lib/components/ui/radio-group';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import {
@@ -26,7 +25,6 @@
 	import { safeSameOriginRedirect } from '$lib/redirects';
 	import { getLocaleTag } from '$lib/i18n';
 	import { m } from '$lib/paraglide/messages';
-	import { mode } from 'mode-watcher';
 	import {
 		initializePaddle,
 		type Environments,
@@ -38,7 +36,6 @@
 	import LockIcon from 'lucide-svelte/icons/lock-keyhole';
 	import ShieldCheckIcon from 'lucide-svelte/icons/shield-check';
 	import SparklesIcon from 'lucide-svelte/icons/sparkles';
-	import XIcon from 'lucide-svelte/icons/x';
 
 	type BillingURL = components['schemas']['BillingURLResponse'];
 	type BillingStatus = components['schemas']['BillingStatusResponse'];
@@ -55,7 +52,6 @@
 	let stopped = false;
 	let paddlePromise: Promise<Paddle | undefined> | null = null;
 	let paddleConfiguration = '';
-	let paymentDialogOpen = $state(false);
 	let paymentFrameLoaded = $state(false);
 
 	let selectedPlan = $derived(hostedPlanByID(selectedPlanID));
@@ -101,13 +97,10 @@
 			return;
 		}
 		if (event.name === 'checkout.closed') {
-			paymentDialogOpen = false;
 			paymentFrameLoaded = false;
-			if (checkoutState === 'opening') checkoutState = 'ready';
 			return;
 		}
 		if (event.name === 'checkout.completed' && checkoutState !== 'confirming') {
-			paymentDialogOpen = false;
 			paymentFrameLoaded = false;
 			void confirmSubscription();
 			return;
@@ -186,6 +179,8 @@
 			return;
 		}
 		const sequence = ++requestSequence;
+		paddle?.Checkout.close();
+		paymentFrameLoaded = false;
 		checkoutState = 'loading';
 		checkout = null;
 		localizedPrices = {};
@@ -213,7 +208,7 @@
 			if (sequence !== requestSequence || stopped) return;
 			localizedPrices = nextPrices;
 			checkout = data;
-			checkoutState = 'ready';
+			await openPaddleCheckout(instance, data);
 		} catch (caught) {
 			if (sequence !== requestSequence || stopped) return;
 			checkoutState = 'error';
@@ -221,55 +216,34 @@
 		}
 	}
 
-	function closePaymentDialog() {
-		if (!paymentDialogOpen) return;
-		paymentDialogOpen = false;
-		paymentFrameLoaded = false;
-		paddle?.Checkout.close();
-		if (checkoutState === 'opening') checkoutState = 'ready';
-	}
-
-	function handlePaymentDialogChange(open: boolean) {
-		if (open) {
-			paymentDialogOpen = true;
-			return;
-		}
-		closePaymentDialog();
-	}
-
-	async function openPaddleCheckout() {
-		if (
-			!paddle ||
-			!checkout?.id ||
-			!checkout.provider_price_id ||
-			!checkout.customer_email ||
-			!checkout.return_url
-		) {
+	async function openPaddleCheckout(instance: Paddle, data: BillingURL) {
+		if (!data.id || !data.provider_price_id || !data.customer_email || !data.return_url) {
 			error = m.checkout_load_failed();
 			checkoutState = 'error';
 			return;
 		}
 		checkoutState = 'opening';
 		paymentFrameLoaded = false;
-		paymentDialogOpen = true;
-		await tick();
-		if (!paymentDialogOpen || stopped) return;
-		paddle.Checkout.open({
-			items: [{ priceId: checkout.provider_price_id, quantity: 1 }],
-			customData: { checkout_id: checkout.id },
-			customer: { email: checkout.customer_email },
+		if (stopped) return;
+		instance.Checkout.open({
+			items: [{ priceId: data.provider_price_id, quantity: 1 }],
+			customData: { checkout_id: data.id },
+			customer: { email: data.customer_email },
 			settings: {
 				displayMode: 'inline',
 				variant: 'one-page',
-				theme: mode.current === 'dark' ? 'dark' : 'light',
+				// Granular branded-input colors are managed in Paddle. Keep the hosted fields
+				// on a deliberate light canvas so labels, values, and errors remain readable.
+				theme: 'light',
 				locale: paddleLocale(),
 				allowLogout: false,
 				showAddDiscounts: true,
 				showAddTaxId: true,
 				frameTarget: 'openpost-paddle-checkout',
-				frameInitialHeight: 560,
-				frameStyle: 'width: 100%; min-width: 312px; background-color: transparent; border: none;',
-				successUrl: checkout.return_url
+				frameInitialHeight: 720,
+				frameStyle:
+					'width: 100%; min-width: 312px; background-color: #ffffff; color-scheme: light; border: none;',
+				successUrl: data.return_url
 			}
 		});
 	}
@@ -344,20 +318,31 @@
 	<meta name="robots" content="noindex" />
 </svelte:head>
 
-<main class="min-h-dvh bg-muted/30 px-4 py-8 sm:px-6 lg:py-12">
-	<div class="mx-auto w-full max-w-6xl">
-		<header class="mb-7 flex items-center justify-between gap-4">
-			<a href={resolve('/')} aria-label="OpenPost">
-				<Logo width={112} height={33} />
+<div class="min-h-dvh bg-background">
+	<header class="border-b bg-background/95">
+		<div
+			class="mx-auto flex min-h-16 w-full max-w-7xl items-center justify-between gap-4 px-4 sm:min-h-20 sm:px-6 lg:px-8"
+		>
+			<a
+				href={resolve('/')}
+				class="rounded-md focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none"
+				aria-label="OpenPost"
+			>
+				<Logo width={132} height={30} showText />
 			</a>
-			<div class="flex items-center gap-2 text-sm text-muted-foreground">
-				<LockIcon class="size-4" />
+			<div class="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+				<LockIcon class="size-4 text-primary" />
 				{m.checkout_secure()}
 			</div>
-		</header>
+		</div>
+	</header>
 
+	<main
+		class="mx-auto w-full max-w-7xl py-8 sm:px-6 sm:py-10 lg:px-8 lg:py-14"
+		style="padding-bottom: max(3rem, calc(env(safe-area-inset-bottom) + 1.5rem));"
+	>
 		{#if checkoutState === 'success'}
-			<Card class="mx-auto max-w-xl">
+			<Card class="mx-4 max-w-xl sm:mx-auto">
 				<CardContent class="flex flex-col items-center gap-5 px-6 py-10 text-center sm:px-10">
 					<div
 						class="flex size-14 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-600"
@@ -379,7 +364,7 @@
 				</CardContent>
 			</Card>
 		{:else if checkoutState === 'confirming'}
-			<Card class="mx-auto max-w-xl">
+			<Card class="mx-4 max-w-xl sm:mx-auto">
 				<CardContent class="space-y-5 px-6 py-10 text-center sm:px-10" role="status">
 					<SparklesIcon class="mx-auto size-10 animate-pulse text-primary" />
 					<div class="space-y-2">
@@ -389,260 +374,208 @@
 				</CardContent>
 			</Card>
 		{:else}
-			<div class="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(360px,0.72fr)]">
-				<section class="space-y-6">
-					<div class="space-y-2">
-						<p class="text-sm font-medium text-primary">{m.checkout_eyebrow()}</p>
-						<h1 class="text-3xl font-semibold tracking-tight sm:text-4xl">
+			<div
+				class="grid items-start gap-10 lg:grid-cols-[22rem_minmax(0,47rem)] lg:justify-center lg:gap-16"
+			>
+				<aside class="space-y-7 px-4 sm:px-0 lg:sticky lg:top-8">
+					<div class="space-y-3">
+						<p class="text-sm font-semibold text-primary">{m.checkout_eyebrow()}</p>
+						<h1
+							class="max-w-[15ch] text-3xl font-semibold tracking-[-0.025em] text-balance sm:text-4xl"
+						>
 							{m.checkout_heading()}
 						</h1>
-						<p class="max-w-xl text-base/7 text-muted-foreground">{m.checkout_description()}</p>
+						<p class="max-w-[42ch] text-sm/6 text-muted-foreground">
+							{m.checkout_description()}
+						</p>
 					</div>
 
-					<div
-						class="inline-flex rounded-lg border bg-background p-1"
-						role="group"
-						aria-label={m.checkout_billing_period()}
-					>
-						<Button
-							variant={billingPeriod === 'monthly' ? 'default' : 'ghost'}
-							size="sm"
-							aria-pressed={billingPeriod === 'monthly'}
-							onclick={() => void choosePeriod('monthly')}
-						>
-							{m.checkout_monthly()}
-						</Button>
-						<Button
-							variant={billingPeriod === 'annual' ? 'default' : 'ghost'}
-							size="sm"
-							aria-pressed={billingPeriod === 'annual'}
-							onclick={() => void choosePeriod('annual')}
-						>
-							{m.checkout_annual()} <span class="ml-1 text-xs opacity-80">{m.checkout_save()}</span>
-						</Button>
+					<div class="grid grid-cols-3 gap-3 border-y py-4 text-xs text-muted-foreground">
+						<span class="flex flex-col gap-1.5">
+							<ShieldCheckIcon class="size-4 text-primary" />{m.checkout_trial()}
+						</span>
+						<span class="flex flex-col gap-1.5">
+							<LockIcon class="size-4 text-primary" />{m.checkout_card_required()}
+						</span>
+						<span class="flex flex-col gap-1.5">
+							<CheckIcon class="size-4 text-primary" />{m.checkout_cancel()}
+						</span>
 					</div>
 
-					<RadioGroup.Root
-						value={selectedPlanID}
-						name="checkout_plan"
-						class="grid gap-2 sm:grid-cols-2"
-						onValueChange={(value) => void choosePlan(value as HostedPlanID)}
-					>
-						{#each hostedPlans as plan (plan.id)}
-							<label
-								class={[
-									'flex cursor-pointer items-start gap-3 rounded-lg border bg-background p-4 transition-colors',
-									selectedPlanID === plan.id
-										? 'border-primary ring-2 ring-primary/15'
-										: 'hover:border-foreground/30'
-								]}
+					<div class="space-y-3">
+						<div
+							class="grid grid-cols-2 rounded-lg bg-muted p-1"
+							role="group"
+							aria-label={m.checkout_billing_period()}
+						>
+							<Button
+								variant={billingPeriod === 'monthly' ? 'default' : 'ghost'}
+								size="sm"
+								aria-pressed={billingPeriod === 'monthly'}
+								onclick={() => void choosePeriod('monthly')}
 							>
-								<RadioGroup.Item class="mt-1" value={plan.id} aria-label={plan.name} />
-								<span class="min-w-0 flex-1">
-									<span class="flex items-center justify-between gap-2 font-medium">
-										{plan.name}
-										{#if plan.featured}<span class="text-xs text-primary"
-												>{m.checkout_popular()}</span
-											>{/if}
-									</span>
-									<span class="mt-1 block text-sm text-muted-foreground">
+								{m.checkout_monthly()}
+							</Button>
+							<Button
+								variant={billingPeriod === 'annual' ? 'default' : 'ghost'}
+								size="sm"
+								aria-pressed={billingPeriod === 'annual'}
+								onclick={() => void choosePeriod('annual')}
+							>
+								{m.checkout_annual()}
+								<span class="ml-1 text-xs opacity-80">{m.checkout_save()}</span>
+							</Button>
+						</div>
+
+						<RadioGroup.Root
+							value={selectedPlanID}
+							name="checkout_plan"
+							class="grid gap-1.5"
+							onValueChange={(value) => void choosePlan(value as HostedPlanID)}
+						>
+							{#each hostedPlans as plan (plan.id)}
+								<label
+									class={[
+										'flex min-h-12 cursor-pointer items-center gap-3 rounded-lg px-3 py-2 transition-colors',
+										selectedPlanID === plan.id
+											? 'bg-primary/10 text-foreground'
+											: 'text-muted-foreground hover:bg-muted hover:text-foreground'
+									]}
+								>
+									<RadioGroup.Item value={plan.id} aria-label={plan.name} />
+									<span class="min-w-0 flex-1 font-medium text-foreground">{plan.name}</span>
+									{#if plan.featured}
+										<span class="text-xs font-medium text-primary">{m.checkout_popular()}</span>
+									{/if}
+									<span class="shrink-0 text-sm tabular-nums">
 										{#if localizedPrices[plan.id]}
 											{localizedPrices[plan.id]}/{billingPeriod === 'annual'
 												? m.checkout_year()
 												: m.checkout_month()}
 										{:else}
-											<Skeleton class="mt-1 h-4 w-20" />
+											<Skeleton class="h-4 w-16" />
 										{/if}
 									</span>
-								</span>
-							</label>
-						{/each}
-					</RadioGroup.Root>
-
-					<Card>
-						<CardContent class="space-y-4 p-5">
-							<div>
-								<p class="font-semibold">{selectedPlan.name}</p>
-								<p class="text-sm text-muted-foreground">{selectedPlan.bestFor}</p>
-							</div>
-							<ul class="grid gap-2 text-sm sm:grid-cols-2">
-								{#each selectedPlan.limits as limit (limit)}
-									<li class="flex items-center gap-2">
-										<CheckIcon class="size-4 text-emerald-600" />{limit}
-									</li>
-								{/each}
-							</ul>
-						</CardContent>
-					</Card>
-
-					<div class="grid gap-3 text-sm text-muted-foreground sm:grid-cols-3">
-						<span class="flex items-center gap-2"
-							><ShieldCheckIcon class="size-4 text-emerald-600" />{m.checkout_trial()}</span
-						>
-						<span class="flex items-center gap-2"
-							><LockIcon class="size-4 text-emerald-600" />{m.checkout_card_required()}</span
-						>
-						<span class="flex items-center gap-2"
-							><CheckIcon class="size-4 text-emerald-600" />{m.checkout_cancel()}</span
-						>
+								</label>
+							{/each}
+						</RadioGroup.Root>
 					</div>
-				</section>
 
-				<Card class="overflow-hidden lg:sticky lg:top-6">
-					<CardContent class="space-y-5 p-6">
-						<div class="flex items-center gap-3">
-							<div
-								class="flex size-10 items-center justify-center rounded-full bg-primary/10 text-primary"
-							>
-								<CreditCardIcon class="size-5" />
-							</div>
+					<div class="space-y-3 border-t pt-5">
+						<div class="flex items-start justify-between gap-4">
 							<div>
-								<p class="font-semibold">{m.checkout_order_summary()}</p>
-								<p class="text-sm text-muted-foreground">{userEmail}</p>
+								<p class="font-semibold">OpenPost {selectedPlan.name}</p>
+								<p class="mt-0.5 text-sm text-muted-foreground">{selectedPlan.bestFor}</p>
+							</div>
+							{#if selectedPrice}
+								<p class="shrink-0 text-lg font-semibold tabular-nums">{selectedPrice}</p>
+							{:else}
+								<Skeleton class="h-7 w-20" />
+							{/if}
+						</div>
+						<ul class="grid gap-2 text-sm text-muted-foreground">
+							{#each selectedPlan.limits as limit (limit)}
+								<li class="flex items-start gap-2">
+									<CheckIcon class="mt-0.5 size-4 shrink-0 text-primary" />{limit}
+								</li>
+							{/each}
+						</ul>
+					</div>
+				</aside>
+
+				<section class="min-w-0" aria-labelledby="payment-heading">
+					<div class="border-y bg-card sm:rounded-xl sm:border">
+						<div class="space-y-4 border-b px-4 py-5 sm:px-7 sm:py-6">
+							<div class="flex items-start justify-between gap-4">
+								<div class="flex min-w-0 items-start gap-3">
+									<div
+										class="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary"
+									>
+										<CreditCardIcon class="size-4" />
+									</div>
+									<div class="min-w-0">
+										<h2 id="payment-heading" class="font-semibold">{m.checkout_secure()}</h2>
+										<p class="truncate text-sm text-muted-foreground">{userEmail}</p>
+									</div>
+								</div>
+								<div class="shrink-0 text-right">
+									<p class="font-semibold tabular-nums">{selectedPrice || '—'}</p>
+									<p class="text-xs text-muted-foreground">
+										{billingPeriod === 'annual'
+											? m.checkout_billed_annually()
+											: m.checkout_billed_monthly()}
+									</p>
+								</div>
+							</div>
+
+							<div class="rounded-lg bg-primary/8 px-4 py-3">
+								<p class="font-semibold">{m.checkout_zero_today()}</p>
+								{#if selectedPrice}
+									<p class="mt-1 text-sm/6 text-muted-foreground">
+										{m.checkout_charge_date({
+											price: selectedPrice,
+											date: trialEndLabel(checkout?.trial_ends_at)
+										})}
+									</p>
+								{/if}
 							</div>
 						</div>
 
 						{#if checkoutState === 'error'}
-							<InlineNotice tone="error" message={error} />
-							<Button class="w-full" onclick={() => void createCheckout()}
-								>{m.common_retry()}</Button
-							>
-						{:else}
-							<div class="space-y-3 border-y py-4">
-								<div class="flex items-start justify-between gap-4">
-									<div>
-										<p class="font-medium">OpenPost {selectedPlan.name}</p>
-										<p class="text-sm text-muted-foreground">
-											{billingPeriod === 'annual'
-												? m.checkout_billed_annually()
-												: m.checkout_billed_monthly()}
-										</p>
-									</div>
-									{#if selectedPrice}<p class="text-lg font-semibold">
-											{selectedPrice}
-										</p>{:else}<Skeleton class="h-7 w-20" />{/if}
-								</div>
-								<div class="rounded-lg bg-primary/7 p-4">
-									<p class="font-semibold">{m.checkout_zero_today()}</p>
-									{#if selectedPrice}
-										<p class="mt-1 text-sm/6 text-muted-foreground">
-											{m.checkout_charge_date({
-												price: selectedPrice,
-												date: trialEndLabel(checkout?.trial_ends_at)
-											})}
-										</p>
-									{/if}
-								</div>
+							<div class="space-y-4 px-4 py-8 sm:px-7">
+								<InlineNotice tone="error" message={error} />
+								<Button onclick={() => void createCheckout()}>{m.common_retry()}</Button>
 							</div>
-
-							<Button
-								class="w-full"
-								size="lg"
-								disabled={checkoutState !== 'ready' || !selectedPrice}
-								onclick={() => void openPaddleCheckout()}
+						{:else}
+							<div
+								data-testid="checkout-payment-surface"
+								class="relative min-h-[45rem] overflow-hidden bg-white text-[#302b28] [color-scheme:light] sm:rounded-b-xl"
+								aria-busy={!paymentFrameLoaded}
 							>
-								<LockIcon class="mr-2 size-4" />{checkoutState === 'opening'
-									? m.checkout_opening_secure()
-									: m.checkout_open_secure()}
-							</Button>
+								{#if !paymentFrameLoaded}
+									<div
+										class="pointer-events-none absolute inset-0 z-10 grid content-start gap-5 bg-white p-4 sm:p-7 md:grid-cols-[minmax(0,0.85fr)_minmax(20rem,1.15fr)]"
+										role="status"
+									>
+										<span class="sr-only">{m.checkout_loading()}</span>
+										<div class="space-y-4">
+											<Skeleton class="h-28 w-full bg-[#eceae8]" />
+											<Skeleton class="h-36 w-full bg-[#eceae8]" />
+										</div>
+										<div class="space-y-4">
+											<Skeleton class="h-11 w-full bg-[#eceae8]" />
+											<Skeleton class="h-24 w-full bg-[#eceae8]" />
+											<Skeleton class="h-11 w-full bg-[#eceae8]" />
+											<Skeleton class="h-11 w-full bg-[#eceae8]" />
+										</div>
+									</div>
+								{/if}
+								<div
+									class="openpost-paddle-checkout min-h-[45rem] w-full"
+									data-testid="paddle-checkout-frame"
+								></div>
+							</div>
 						{/if}
+					</div>
 
-						<p class="text-center text-xs/5 text-muted-foreground">
-							{m.checkout_paddle_mor()}
-							<a
-								class="underline underline-offset-2 hover:text-foreground"
-								href="https://openpost.social/terms">{m.checkout_terms()}</a
-							>,
-							<a
-								class="underline underline-offset-2 hover:text-foreground"
-								href="https://openpost.social/privacy">{m.checkout_privacy()}</a
-							>,
-							{m.checkout_and()}
-							<a
-								class="underline underline-offset-2 hover:text-foreground"
-								href="https://openpost.social/refunds">{m.checkout_refunds()}</a
-							>.
-						</p>
-					</CardContent>
-				</Card>
+					<p class="px-4 pt-4 text-center text-xs/5 text-muted-foreground sm:px-7">
+						{m.checkout_paddle_mor()}
+						<a
+							class="underline underline-offset-2 hover:text-foreground"
+							href="https://openpost.social/terms">{m.checkout_terms()}</a
+						>,
+						<a
+							class="underline underline-offset-2 hover:text-foreground"
+							href="https://openpost.social/privacy">{m.checkout_privacy()}</a
+						>,
+						{m.checkout_and()}
+						<a
+							class="underline underline-offset-2 hover:text-foreground"
+							href="https://openpost.social/refunds">{m.checkout_refunds()}</a
+						>.
+					</p>
+				</section>
 			</div>
 		{/if}
-	</div>
-</main>
-
-<Dialog.Root open={paymentDialogOpen} onOpenChange={handlePaymentDialogChange}>
-	<Dialog.Content
-		class="h-dvh max-h-dvh max-w-none gap-0 overflow-hidden rounded-none p-0 sm:h-auto sm:max-h-[min(92dvh,56rem)] sm:max-w-5xl sm:rounded-xl"
-		showCloseButton={false}
-		aria-busy={!paymentFrameLoaded}
-	>
-		<Dialog.Header class="shrink-0 border-b px-5 py-4 pr-16 sm:px-6 sm:py-5 sm:pr-16">
-			<div class="flex items-start justify-between gap-4">
-				<div class="min-w-0 space-y-1">
-					<Dialog.Title class="text-base font-semibold sm:text-lg"
-						>{m.checkout_secure()}</Dialog.Title
-					>
-					<Dialog.Description class="text-sm text-muted-foreground">
-						OpenPost {selectedPlan.name} · {m.checkout_trial()}
-					</Dialog.Description>
-				</div>
-				{#if selectedPrice}
-					<div class="shrink-0 text-right">
-						<p class="font-semibold">{selectedPrice}</p>
-						<p class="text-xs text-muted-foreground">
-							{billingPeriod === 'annual'
-								? m.checkout_billed_annually()
-								: m.checkout_billed_monthly()}
-						</p>
-					</div>
-				{/if}
-			</div>
-		</Dialog.Header>
-
-		<Button
-			variant="ghost"
-			size="icon"
-			class="absolute top-2.5 right-2.5 z-10 min-h-11 min-w-11 sm:top-3 sm:right-3"
-			onclick={closePaymentDialog}
-			aria-label={m.common_close()}
-		>
-			<XIcon class="size-5" />
-		</Button>
-
-		<div
-			class="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-muted/25 px-0 py-3 sm:px-4 sm:py-4"
-		>
-			{#if checkoutState === 'error'}
-				<div class="mx-4 mb-3 sm:mx-0">
-					<InlineNotice tone="error" message={error} />
-				</div>
-			{/if}
-			<div
-				class="relative mx-auto min-h-[35rem] w-full max-w-4xl overflow-hidden bg-background sm:rounded-lg sm:ring-1 sm:ring-foreground/10"
-			>
-				{#if !paymentFrameLoaded}
-					<div
-						class="pointer-events-none absolute inset-0 z-10 grid content-start gap-5 bg-background p-5 sm:grid-cols-[minmax(0,0.85fr)_minmax(20rem,1.15fr)] sm:p-7"
-						role="status"
-					>
-						<span class="sr-only">{m.checkout_loading()}</span>
-						<div class="space-y-4">
-							<Skeleton class="h-28 w-full" />
-							<Skeleton class="h-36 w-full" />
-						</div>
-						<div class="space-y-4">
-							<Skeleton class="h-11 w-full" />
-							<Skeleton class="h-24 w-full" />
-							<Skeleton class="h-11 w-full" />
-							<Skeleton class="h-11 w-full" />
-						</div>
-					</div>
-				{/if}
-				<div
-					class="openpost-paddle-checkout min-h-[35rem] w-full"
-					data-testid="paddle-checkout-frame"
-				></div>
-			</div>
-		</div>
-	</Dialog.Content>
-</Dialog.Root>
+	</main>
+</div>
