@@ -16,6 +16,8 @@ OpenPost infers posts, threads, links, documents, image sets, videos, Shorts, an
 
 When automatic alt text is enabled, adding an image without saved alt text drafts shared alt text without blocking the attachment or publication if the request fails. When present, up to 1,000 characters of the current relevant post or thread segment are sent with the thumbnail as untrusted context for better disambiguation. Review or replace the draft, then use account settings for destination-specific text. See [Media](/usage/media-library#automatic-alt-text) for the processing and privacy details.
 
+Use **Create** in the media picker to open the Image Editor. Select one saved video and choose **Edit in OpenPost Video Editor** to replace it, or choose **Create video** with no selected video to add one. OpenPost saves the draft before leaving, restores the same composer after cancel or completion, and keeps its text, destinations, schedule, other media, and destination-specific versions. A completed Video Editor handoff can return separate portrait, square, and landscape exports to the destinations that require them. See [OpenPost Video Editor](/usage/video-editor#use-an-export-in-a-post) for local-storage and upload behavior.
+
 ## Drafts and account versions
 
 A draft keeps the shared text, thread parts, and media. Each selected account has its own format, nullable field and media overrides, platform settings, thread changes, and optional schedule override. Changing a shared field updates every destination that still inherits that field. An explicit empty destination field remains empty.

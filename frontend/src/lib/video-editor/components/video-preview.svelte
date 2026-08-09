@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onDestroy, onMount } from 'svelte';
+	import { onDestroy, onMount, untrack } from 'svelte';
 	import {
 		captionDisplayText,
 		isPrimarySequenceClip,
@@ -10,7 +10,7 @@
 		type VisualTrackItem
 	} from '@openpost/video-project';
 	import { evaluateAudio, evaluateFrame, type EvaluatedPrimaryLayer } from '../render-graph';
-	import { localVideoSourceURL } from '../source-url';
+	import { acquireVideoSourceURL, VideoSourceURLSlot } from '../source-url';
 	import { subscribeToSourceArtifacts } from '../artifacts';
 	import { VideoEditorPreviewEngine, type PreviewEngineDiagnostics } from '../preview-engine';
 	import { m } from '$lib/paraglide/messages';
@@ -45,8 +45,11 @@
 	}: Props = $props();
 	let sourceURL = $state('');
 	let sourceError = $state('');
-	let loadedSourceID = $state('');
 	let overlaySourceURLs = $state<Record<string, string>>({});
+	const primarySourceURL = new VideoSourceURLSlot();
+	const overlaySourceURLSlots = new Map<string, VideoSourceURLSlot>();
+	const overlaySourceFingerprints = new Map<string, string>();
+	let primarySourceFingerprint = '';
 	let previewCanvas: HTMLCanvasElement;
 	let previewEngine = $state.raw<VideoEditorPreviewEngine | undefined>();
 	let previewWorkerReady = $state(false);
@@ -99,8 +102,6 @@
 			if (previous === next || (next !== 'ready' && next !== 'pending' && next !== 'not-needed')) {
 				return;
 			}
-			loadedSourceID = '';
-			overlaySourceURLs = {};
 			artifactRevision += 1;
 		});
 		try {
@@ -121,7 +122,13 @@
 		return unsubscribeArtifacts;
 	});
 
-	onDestroy(() => previewEngine?.dispose());
+	onDestroy(() => {
+		previewEngine?.dispose();
+		primarySourceURL.dispose();
+		for (const slot of overlaySourceURLSlots.values()) slot.dispose();
+		overlaySourceURLSlots.clear();
+		overlaySourceFingerprints.clear();
+	});
 
 	$effect(() => {
 		const engine = previewEngine;
@@ -142,18 +149,25 @@
 
 	$effect(() => {
 		const layer = primary;
-		void artifactRevision;
+		const revision = artifactRevision;
 		const source = layer ? project.sources[layer.source_id] : undefined;
 		if (!source) {
+			primarySourceURL.clear();
+			primarySourceFingerprint = '';
 			sourceURL = '';
-			loadedSourceID = '';
+			sourceError = '';
 			return;
 		}
-		if (loadedSourceID !== source.id) {
-			void localVideoSourceURL(source, projectID, true)
+		const fingerprint = sourceURLFingerprint(source, projectID, revision);
+		if (primarySourceFingerprint !== fingerprint) {
+			primarySourceFingerprint = fingerprint;
+			sourceURL = '';
+			sourceError = '';
+			void primarySourceURL
+				.replace(() => acquireVideoSourceURL(source, projectID, true, fingerprint))
 				.then((url) => {
+					if (!url) return;
 					sourceURL = url;
-					loadedSourceID = source.id;
 					sourceError = '';
 				})
 				.catch((cause) => {
@@ -163,7 +177,7 @@
 	});
 
 	$effect(() => {
-		void artifactRevision;
+		const revision = artifactRevision;
 		const sources = [
 			...frame.primary_layers.map((layer) => project.sources[layer.source_id]),
 			...frame.visual_layers.flatMap((layer) =>
@@ -172,13 +186,51 @@
 					: []
 			),
 			...audioFrame.sources.map((audio) => project.sources[audio.source_id])
-		].filter((source) => source && !overlaySourceURLs[source.id]);
-		for (const source of sources) {
-			void localVideoSourceURL(source!, projectID, true).then((url) => {
-				overlaySourceURLs = { ...overlaySourceURLs, [source!.id]: url };
-			});
+		].filter((source) => source !== undefined);
+		const activeSources = new Map(sources.map((source) => [source.id, source]));
+		const currentURLs = untrack(() => overlaySourceURLs);
+		const retainedURLs: Record<string, string> = {};
+
+		for (const [sourceID, slot] of overlaySourceURLSlots) {
+			if (activeSources.has(sourceID)) continue;
+			slot.dispose();
+			overlaySourceURLSlots.delete(sourceID);
+			overlaySourceFingerprints.delete(sourceID);
 		}
+		for (const source of activeSources.values()) {
+			const fingerprint = sourceURLFingerprint(source, projectID, revision);
+			let slot = overlaySourceURLSlots.get(source.id);
+			if (!slot) {
+				slot = new VideoSourceURLSlot();
+				overlaySourceURLSlots.set(source.id, slot);
+			}
+			if (overlaySourceFingerprints.get(source.id) === fingerprint) {
+				if (currentURLs[source.id]) retainedURLs[source.id] = currentURLs[source.id];
+				continue;
+			}
+			overlaySourceFingerprints.set(source.id, fingerprint);
+			void slot
+				.replace(() => acquireVideoSourceURL(source, projectID, true, fingerprint))
+				.then((url) => {
+					if (!url) return;
+					overlaySourceURLs = { ...overlaySourceURLs, [source.id]: url };
+				})
+				.catch((cause) => {
+					sourceError = cause instanceof Error ? cause.message : m.video_editor_project_missing();
+				});
+		}
+		overlaySourceURLs = retainedURLs;
 	});
+
+	function sourceURLFingerprint(
+		source: VideoProjectDocumentV1['sources'][string],
+		currentProjectID: string,
+		revision: number
+	): string {
+		const locator =
+			source.locator.type === 'local-opfs' ? source.locator.path : source.locator.media_id;
+		return `${currentProjectID}:${revision}:${source.id}:${source.kind}:${locator}:${source.content_hash ?? ''}:${source.size_bytes}:${source.mime_type}`;
+	}
 
 	$effect(() => {
 		const elements = Array.from(

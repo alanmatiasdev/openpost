@@ -1,7 +1,7 @@
 import type { VideoProjectDocumentV1 } from '@openpost/video-project';
 
 export const VIDEO_EDITOR_DB_NAME = 'openpost-video-editor';
-export const VIDEO_EDITOR_DB_VERSION = 2;
+export const VIDEO_EDITOR_DB_VERSION = 3;
 export const VIDEO_EDITOR_ROOT = 'openpost-video-editor';
 
 export const VIDEO_EDITOR_STORES = [
@@ -62,6 +62,7 @@ export interface LocalAssetIndex {
 	content_hash?: string;
 	created_at: string;
 	updated_at: string;
+	last_accessed_at: string;
 	disposable: boolean;
 }
 

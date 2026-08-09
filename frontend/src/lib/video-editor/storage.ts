@@ -28,7 +28,49 @@ type StorageManagerWithDirectory = StorageManager & {
 
 const AUTOMATIC_REVISION_LIMIT = 20;
 const TRANSIENT_HEADROOM_RATIO = 0.2;
-const STALE_CACHE_AGE_MS = 7 * 24 * 60 * 60 * 1_000;
+const DISPOSABLE_CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1_000;
+const ASSET_ACCESS_WRITE_INTERVAL_MS = 5 * 60 * 1_000;
+const IDLE_CLEANUP_MAX_ASSETS = 24;
+const IDLE_CLEANUP_MAX_BYTES = 256 * 1_024 * 1_024;
+const PRESSURE_CLEANUP_MAX_ASSETS = 64;
+const PRESSURE_CLEANUP_MAX_BYTES = 2 * 1_024 * 1_024 * 1_024;
+
+export type LocalAssetIndexInput = Omit<LocalAssetIndex, 'last_accessed_at'> &
+	Partial<Pick<LocalAssetIndex, 'last_accessed_at'>>;
+
+export interface DisposableAssetCleanupOptions {
+	mode?: 'idle' | 'pressure';
+	now?: number;
+	maxAgeMS?: number;
+	maxAssets?: number;
+	maxBytes?: number;
+	targetBytes?: number;
+	protectedProjectIDs?: Iterable<string>;
+	protectedPaths?: Iterable<string>;
+	signal?: AbortSignal;
+}
+
+export interface DisposableAssetCleanupResult {
+	planned_count: number;
+	removed_count: number;
+	removed_bytes: number;
+	skipped_active_count: number;
+	failed_count: number;
+	interrupted: boolean;
+}
+
+export interface VideoStorageRecoveryDependencies {
+	estimate(requiredBytes: number): Promise<StorageBudget>;
+	cleanup(options: DisposableAssetCleanupOptions): Promise<DisposableAssetCleanupResult>;
+}
+
+const activeProjectReferences = new Map<string, number>();
+const activeProjectLockReleases = new Map<string, () => void>();
+let scheduledCleanup:
+	| {
+			protectedProjectIDs: Set<string>;
+	  }
+	| undefined;
 
 export async function openVideoEditorDatabase(): Promise<IDBDatabase> {
 	return await new Promise((resolve, reject) => {
@@ -45,6 +87,9 @@ export async function openVideoEditorDatabase(): Promise<IDBDatabase> {
 			}
 			if (oldVersion < 2 && database.objectStoreNames.contains('recording-manifests')) {
 				migrateRecordingManifestsToV2(request.transaction!.objectStore('recording-manifests'));
+			}
+			if (oldVersion < 3 && database.objectStoreNames.contains('asset-index')) {
+				migrateAssetIndexToV3(request.transaction!.objectStore('asset-index'));
 			}
 		};
 		request.onsuccess = () => resolve(request.result);
@@ -78,6 +123,30 @@ export async function estimateStorageBudget(requiredBytes: number): Promise<Stor
 	return calculateStorageBudget(estimate?.usage ?? 0, estimate?.quota ?? 0, requiredBytes);
 }
 
+export async function recoverVideoStorageBudget(
+	requiredBytes: number,
+	options: Pick<DisposableAssetCleanupOptions, 'protectedProjectIDs' | 'signal'> = {},
+	dependencies: VideoStorageRecoveryDependencies = {
+		estimate: estimateStorageBudget,
+		cleanup: cleanupDisposableVideoAssets
+	}
+): Promise<StorageBudget> {
+	let budget = await dependencies.estimate(requiredBytes);
+	if (budget.can_continue || budget.quota_bytes === 0 || options.signal?.aborted) return budget;
+	const bytesNeeded = Math.max(1, requiredBytes + budget.headroom_bytes - budget.available_bytes);
+	await dependencies.cleanup({
+		mode: 'pressure',
+		targetBytes: bytesNeeded,
+		maxAssets: PRESSURE_CLEANUP_MAX_ASSETS,
+		maxBytes: PRESSURE_CLEANUP_MAX_BYTES,
+		protectedProjectIDs: options.protectedProjectIDs,
+		signal: options.signal
+	});
+	if (options.signal?.aborted) return budget;
+	budget = await dependencies.estimate(requiredBytes);
+	return budget;
+}
+
 export function calculateStorageBudget(
 	usageBytes: number,
 	quotaBytes: number,
@@ -100,6 +169,7 @@ export function calculateStorageBudget(
 
 export async function listLocalVideoProjects(limit = 30): Promise<LocalVideoProject[]> {
 	const projects = await getAll<LocalVideoProject>('projects');
+	scheduleDisposableVideoCacheCleanup();
 	return projects
 		.sort((left, right) => right.last_opened_at.localeCompare(left.last_opened_at))
 		.slice(0, limit)
@@ -136,6 +206,7 @@ export async function loadLocalVideoProject(id: string): Promise<LocalVideoProje
 	}
 	project.last_opened_at = new Date().toISOString();
 	await putOne('projects', project);
+	scheduleDisposableVideoCacheCleanup({ protectedProjectIDs: [id] });
 	return cloneLocalProject(project);
 }
 
@@ -233,6 +304,7 @@ export async function createLocalVideoProject(
 		stores['project-revisions'].add(firstRevision);
 	});
 	await ensureProjectDirectories(id);
+	scheduleDisposableVideoCacheCleanup({ protectedProjectIDs: [id] });
 	return cloneLocalProject(project);
 }
 
@@ -422,29 +494,47 @@ export async function readProjectFile(path: string): Promise<File | null> {
 		for (const segment of segments.slice(0, -1)) {
 			current = await current.getDirectoryHandle(segment);
 		}
-		return await (await current.getFileHandle(segments.at(-1)!)).getFile();
+		const file = await (await current.getFileHandle(segments.at(-1)!)).getFile();
+		await touchProjectFileAccess(path).catch(() => undefined);
+		return file;
 	} catch {
 		return null;
 	}
 }
 
-export async function removeProjectFile(path: string): Promise<void> {
+export async function removeProjectFile(path: string): Promise<boolean> {
 	const segments = validateProjectPath(path);
 	const root = await videoEditorRoot(false);
-	if (!root) return;
+	if (!root) return false;
 	try {
 		let current = root;
 		for (const segment of segments.slice(0, -1)) {
 			current = await current.getDirectoryHandle(segment);
 		}
 		await current.removeEntry(segments.at(-1)!);
+		return true;
 	} catch (cause) {
-		if (!(cause instanceof DOMException && cause.name === 'NotFoundError')) throw cause;
+		if (cause instanceof DOMException && cause.name === 'NotFoundError') return true;
+		throw cause;
 	}
 }
 
-export async function indexProjectAsset(asset: LocalAssetIndex): Promise<void> {
-	await putOne('asset-index', asset);
+export async function indexProjectAsset(asset: LocalAssetIndexInput): Promise<void> {
+	await putOne('asset-index', normalizeLocalAssetIndex(asset));
+}
+
+async function touchProjectFileAccess(path: string, now = Date.now()): Promise<void> {
+	await transaction(['asset-index'], 'readwrite', (stores) => {
+		const request = stores['asset-index'].index('path').openCursor(IDBKeyRange.only(path));
+		request.onsuccess = () => {
+			const cursor = request.result;
+			if (!cursor) return;
+			const asset = normalizeLocalAssetIndex(cursor.value as LocalAssetIndex);
+			const refreshed = refreshLocalAssetAccess(asset, now);
+			if (refreshed.last_accessed_at !== asset.last_accessed_at) cursor.update(refreshed);
+			cursor.continue();
+		};
+	});
 }
 
 export async function listProjectAssets(
@@ -452,6 +542,7 @@ export async function listProjectAssets(
 	sourceID?: string
 ): Promise<LocalAssetIndex[]> {
 	return (await getAll<LocalAssetIndex>('asset-index'))
+		.map(normalizeLocalAssetIndex)
 		.filter(
 			(asset) =>
 				asset.project_id === projectID && (sourceID === undefined || asset.source_id === sourceID)
@@ -467,16 +558,18 @@ export async function removeDisposableProjectAssets(
 	} = {}
 ): Promise<{ removed_count: number; removed_bytes: number }> {
 	const kinds = options.kinds ? new Set(options.kinds) : undefined;
-	const assets = (await getAll<LocalAssetIndex>('asset-index')).filter(
-		(asset) =>
-			asset.project_id === projectID &&
-			asset.disposable &&
-			(options.sourceID === undefined || asset.source_id === options.sourceID) &&
-			(!kinds || kinds.has(asset.kind))
-	);
+	const assets = (await getAll<LocalAssetIndex>('asset-index'))
+		.map(normalizeLocalAssetIndex)
+		.filter(
+			(asset) =>
+				asset.project_id === projectID &&
+				asset.disposable &&
+				(options.sourceID === undefined || asset.source_id === options.sourceID) &&
+				(!kinds || kinds.has(asset.kind))
+		);
 	let removedBytes = 0;
 	for (const asset of assets) {
-		await removeProjectFile(asset.path);
+		if (!(await removeProjectFile(asset.path))) continue;
 		await deleteOne('asset-index', asset.id);
 		removedBytes += asset.size_bytes;
 	}
@@ -540,28 +633,188 @@ export async function removeModelCacheMetadata(id: string): Promise<void> {
 	await deleteOne('model-cache-metadata', id);
 }
 
-export async function cleanStaleDisposableAssets(now = Date.now()): Promise<number> {
-	const assets = await getAll<LocalAssetIndex>('asset-index');
-	let removed = 0;
-	for (const asset of assets) {
-		if (!asset.disposable || now - Date.parse(asset.updated_at) < STALE_CACHE_AGE_MS) continue;
-		const segments = validateProjectPath(asset.path);
-		const root = await videoEditorRoot(false);
-		if (root) {
-			try {
-				let current = root;
-				for (const segment of segments.slice(0, -1)) {
-					current = await current.getDirectoryHandle(segment);
-				}
-				await current.removeEntry(segments.at(-1)!);
-			} catch {
-				// A cleared or interrupted cache is already removed.
-			}
-		}
-		await deleteOne('asset-index', asset.id);
-		removed += 1;
+export function normalizeLocalAssetIndex(asset: LocalAssetIndexInput): LocalAssetIndex {
+	return {
+		...asset,
+		last_accessed_at: asset.last_accessed_at ?? asset.updated_at ?? asset.created_at
+	};
+}
+
+export function refreshLocalAssetAccess(
+	asset: LocalAssetIndexInput,
+	now = Date.now(),
+	minimumWriteIntervalMS = ASSET_ACCESS_WRITE_INTERVAL_MS
+): LocalAssetIndex {
+	const normalized = normalizeLocalAssetIndex(asset);
+	const previous = Date.parse(normalized.last_accessed_at);
+	if (Number.isFinite(previous) && now - previous < Math.max(0, minimumWriteIntervalMS)) {
+		return normalized;
 	}
-	return removed;
+	return { ...normalized, last_accessed_at: new Date(now).toISOString() };
+}
+
+export function planDisposableAssetCleanup(
+	assets: Iterable<LocalAssetIndexInput>,
+	options: DisposableAssetCleanupOptions = {}
+): LocalAssetIndex[] {
+	const mode = options.mode ?? 'idle';
+	const now = options.now ?? Date.now();
+	const maxAgeMS = Math.max(0, options.maxAgeMS ?? DISPOSABLE_CACHE_MAX_AGE_MS);
+	const maxAssets = Math.max(0, Math.floor(options.maxAssets ?? IDLE_CLEANUP_MAX_ASSETS));
+	const maxBytes = Math.max(0, options.maxBytes ?? IDLE_CLEANUP_MAX_BYTES);
+	const targetBytes = Math.max(0, options.targetBytes ?? Number.POSITIVE_INFINITY);
+	const protectedProjects = new Set(options.protectedProjectIDs ?? []);
+	const protectedPaths = new Set(options.protectedPaths ?? []);
+	const candidates = [...assets]
+		.map(normalizeLocalAssetIndex)
+		.filter((asset) => {
+			if (!asset.disposable) return false;
+			if (protectedProjects.has(asset.project_id) || protectedPaths.has(asset.path)) return false;
+			if (mode === 'pressure') return true;
+			const accessedAt = Date.parse(asset.last_accessed_at);
+			return !Number.isFinite(accessedAt) || now - accessedAt >= maxAgeMS;
+		})
+		.sort((left, right) => {
+			const accessOrder = left.last_accessed_at.localeCompare(right.last_accessed_at);
+			if (accessOrder !== 0) return accessOrder;
+			const creationOrder = left.created_at.localeCompare(right.created_at);
+			return creationOrder !== 0 ? creationOrder : left.id.localeCompare(right.id);
+		});
+
+	const planned: LocalAssetIndex[] = [];
+	let plannedBytes = 0;
+	for (const asset of candidates) {
+		if (planned.length >= maxAssets || plannedBytes >= targetBytes) break;
+		if (asset.size_bytes > maxBytes - plannedBytes) continue;
+		planned.push(asset);
+		plannedBytes += asset.size_bytes;
+	}
+	return planned;
+}
+
+export async function executeDisposableAssetCleanup(
+	assets: readonly LocalAssetIndex[],
+	remove: (asset: LocalAssetIndex) => Promise<boolean>,
+	signal?: AbortSignal
+): Promise<DisposableAssetCleanupResult> {
+	const result: DisposableAssetCleanupResult = {
+		planned_count: assets.length,
+		removed_count: 0,
+		removed_bytes: 0,
+		skipped_active_count: 0,
+		failed_count: 0,
+		interrupted: false
+	};
+	for (const asset of assets) {
+		if (signal?.aborted) {
+			result.interrupted = true;
+			break;
+		}
+		try {
+			if (!(await remove(asset))) {
+				result.skipped_active_count += 1;
+				continue;
+			}
+			result.removed_count += 1;
+			result.removed_bytes += asset.size_bytes;
+		} catch {
+			result.failed_count += 1;
+		}
+	}
+	return result;
+}
+
+export async function cleanupDisposableVideoAssets(
+	options: DisposableAssetCleanupOptions = {}
+): Promise<DisposableAssetCleanupResult> {
+	const [assets, projects] = await Promise.all([
+		getAll<LocalAssetIndex>('asset-index'),
+		getAll<LocalVideoProject>('projects')
+	]);
+	const protectedProjectIDs = new Set(options.protectedProjectIDs ?? []);
+	for (const projectID of activeProjectReferences.keys()) protectedProjectIDs.add(projectID);
+	const protectedPaths = new Set(options.protectedPaths ?? []);
+	for (const project of projects) {
+		for (const source of Object.values(project.document.sources)) {
+			if (source.locator.type === 'local-opfs') protectedPaths.add(source.locator.path);
+		}
+	}
+	const planned = planDisposableAssetCleanup(assets, {
+		...options,
+		protectedProjectIDs,
+		protectedPaths
+	});
+	return await executeDisposableAssetCleanup(
+		planned,
+		async (asset) =>
+			await withVideoProjectCleanupLock(asset.project_id, async () => {
+				if (!(await removeProjectFile(asset.path))) {
+					throw new Error('Origin-private file storage is temporarily unavailable.');
+				}
+				await deleteOne('asset-index', asset.id);
+			}),
+		options.signal
+	);
+}
+
+export async function cleanStaleDisposableAssets(now = Date.now()): Promise<number> {
+	return (await cleanupDisposableVideoAssets({ mode: 'idle', now })).removed_count;
+}
+
+export function registerActiveVideoProject(projectID: string): () => void {
+	const id = projectID.trim();
+	if (!id) return () => undefined;
+	const references = activeProjectReferences.get(id) ?? 0;
+	activeProjectReferences.set(id, references + 1);
+	if (references === 0) holdSharedVideoProjectLock(id);
+	scheduleDisposableVideoCacheCleanup({ protectedProjectIDs: [id] });
+	let released = false;
+	return () => {
+		if (released) return;
+		released = true;
+		const remaining = (activeProjectReferences.get(id) ?? 1) - 1;
+		if (remaining > 0) {
+			activeProjectReferences.set(id, remaining);
+			return;
+		}
+		activeProjectReferences.delete(id);
+		activeProjectLockReleases.get(id)?.();
+		activeProjectLockReleases.delete(id);
+	};
+}
+
+export function scheduleDisposableVideoCacheCleanup(
+	options: Pick<DisposableAssetCleanupOptions, 'protectedProjectIDs'> = {}
+): void {
+	if (typeof window === 'undefined') return;
+	if (scheduledCleanup) {
+		for (const projectID of options.protectedProjectIDs ?? []) {
+			scheduledCleanup.protectedProjectIDs.add(projectID);
+		}
+		return;
+	}
+	const state = {
+		protectedProjectIDs: new Set(options.protectedProjectIDs ?? [])
+	};
+	scheduledCleanup = state;
+	const run = () => {
+		if (scheduledCleanup !== state) return;
+		scheduledCleanup = undefined;
+		void cleanupDisposableVideoAssets({
+			mode: 'idle',
+			maxAssets: IDLE_CLEANUP_MAX_ASSETS,
+			maxBytes: IDLE_CLEANUP_MAX_BYTES,
+			protectedProjectIDs: state.protectedProjectIDs
+		}).catch(() => undefined);
+	};
+	const idleWindow = window as Window & {
+		requestIdleCallback?: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number;
+	};
+	if (typeof idleWindow.requestIdleCallback === 'function') {
+		idleWindow.requestIdleCallback(run, { timeout: 5_000 });
+	} else {
+		globalThis.setTimeout(run, 1_000);
+	}
 }
 
 export type ProjectArea =
@@ -660,6 +913,10 @@ function createVideoEditorStore(database: IDBDatabase, storeName: VideoEditorSto
 			store.createIndex('project_revision', ['project_id', 'revision']);
 			break;
 		case 'asset-index':
+			store.createIndex('project_id', 'project_id');
+			store.createIndex('path', 'path');
+			store.createIndex('last_accessed_at', 'last_accessed_at');
+			break;
 		case 'recording-manifests':
 		case 'analysis-results':
 		case 'export-jobs':
@@ -668,6 +925,22 @@ function createVideoEditorStore(database: IDBDatabase, storeName: VideoEditorSto
 		case 'model-cache-metadata':
 			break;
 	}
+}
+
+function migrateAssetIndexToV3(store: IDBObjectStore): void {
+	if (!store.indexNames.contains('path')) store.createIndex('path', 'path');
+	if (!store.indexNames.contains('last_accessed_at')) {
+		store.createIndex('last_accessed_at', 'last_accessed_at');
+	}
+	const request = store.openCursor();
+	request.onsuccess = () => {
+		const cursor = request.result;
+		if (!cursor) return;
+		const asset = cursor.value as Partial<LocalAssetIndex>;
+		asset.last_accessed_at ??= asset.updated_at ?? asset.created_at ?? new Date(0).toISOString();
+		cursor.update(asset);
+		cursor.continue();
+	};
 }
 
 function migrateProjectMetadataToV2(store: IDBObjectStore): void {
@@ -695,6 +968,45 @@ function migrateRecordingManifestsToV2(store: IDBObjectStore): void {
 		cursor.update(normalizeRecordingManifest(cursor.value as RecordingManifest));
 		cursor.continue();
 	};
+}
+
+function holdSharedVideoProjectLock(projectID: string): void {
+	let release!: () => void;
+	const held = new Promise<void>((resolve) => (release = resolve));
+	activeProjectLockReleases.set(projectID, release);
+	const locks = typeof navigator === 'undefined' ? undefined : navigator.locks;
+	if (!locks) return;
+	void locks
+		.request(videoProjectLockName(projectID), { mode: 'shared' }, async () => await held)
+		.catch(() => undefined);
+}
+
+async function withVideoProjectCleanupLock(
+	projectID: string,
+	work: () => Promise<void>
+): Promise<boolean> {
+	if (activeProjectReferences.has(projectID)) return false;
+	const locks = typeof navigator === 'undefined' ? undefined : navigator.locks;
+	if (!locks) {
+		if (activeProjectReferences.has(projectID)) return false;
+		await work();
+		return true;
+	}
+	let completed = false;
+	await locks.request(
+		videoProjectLockName(projectID),
+		{ mode: 'exclusive', ifAvailable: true },
+		async (lock) => {
+			if (!lock || activeProjectReferences.has(projectID)) return;
+			await work();
+			completed = true;
+		}
+	);
+	return completed;
+}
+
+function videoProjectLockName(projectID: string): string {
+	return `openpost-video-editor:active-project:${projectID}`;
 }
 
 export function normalizeRecordingManifest(manifest: RecordingManifest): RecordingManifest {

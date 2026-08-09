@@ -90,12 +90,27 @@ export async function saveImageEditorDesign(
 	return data as unknown as ImageEditorDocumentResponse;
 }
 
+export interface ListImageEditorDesignsOptions {
+	search?: string;
+	limit?: number;
+	offset?: number;
+	signal?: AbortSignal;
+}
+
 export async function listImageEditorDesigns(
 	workspaceID: string,
-	search = ''
+	options: ListImageEditorDesignsOptions = {}
 ): Promise<{ designs: ImageEditorDesignSummary[]; total: number; can_edit: boolean }> {
 	const { data, error } = await client.GET('/image-editor/designs', {
-		params: { query: { workspace_id: workspaceID, search, limit: 100, offset: 0 } }
+		params: {
+			query: {
+				workspace_id: workspaceID,
+				search: options.search ?? '',
+				limit: options.limit ?? 100,
+				offset: options.offset ?? 0
+			}
+		},
+		signal: options.signal
 	});
 	if (error || !data) throw new Error(problemMessage(error, 'Could not load designs.'));
 	return data as unknown as {

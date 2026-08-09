@@ -12,6 +12,7 @@
 	import MediaAcquisitionPanel from './media-acquisition-panel.svelte';
 	import { getAuthenticatedMediaURL } from '$lib/media-url';
 	import type { MediaUploadResult } from '$lib/media-upload-client';
+	import type { MediaPickerVideoSelection } from '$lib/media-picker';
 	import { listImageEditorMedia } from '$lib/image-editor/api';
 	import type { ImageEditorMediaItem } from '$lib/image-editor/types';
 	import { listMediaTags, type MediaTag } from '$lib/media-tags';
@@ -32,6 +33,7 @@
 		open = $bindable(false),
 		workspaceId,
 		currentSelection = [],
+		currentMediaMimeTypes = {},
 		accept = ['image/*', 'video/*'],
 		maxSelection = 4,
 		multiple = true,
@@ -52,6 +54,7 @@
 		open?: boolean;
 		workspaceId: string;
 		currentSelection?: string[];
+		currentMediaMimeTypes?: Record<string, string>;
 		accept?: string[];
 		maxSelection?: number;
 		multiple?: boolean;
@@ -67,7 +70,7 @@
 		onConfirm: (mediaIDs: string[], media: ImageEditorMediaItem[]) => void | Promise<void>;
 		onInitialFilesConsumed?: () => void;
 		onCreate?: () => void | Promise<void>;
-		onCreateVideo?: () => void | Promise<void>;
+		onCreateVideo?: (media?: MediaPickerVideoSelection) => void | Promise<void>;
 	} = $props();
 
 	let media = $state<ImageEditorMediaItem[]>([]);
@@ -100,6 +103,20 @@
 				? m.media_empty_filtered_body()
 				: m.media_empty_library_body()
 	);
+	const selectedVideoForEditing = $derived.by(() => {
+		const selectedVideos = selectedIDs
+			.map((id) => {
+				const loaded = media.find((item) => item.id === id);
+				if (loaded) return loaded;
+				const mimeType = currentMediaMimeTypes[id] ?? '';
+				if (!mimeType.startsWith('video/')) return undefined;
+				return { id, mime_type: mimeType } satisfies MediaPickerVideoSelection;
+			})
+			.filter((item): item is MediaPickerVideoSelection =>
+				Boolean(item?.mime_type.startsWith('video/'))
+			);
+		return selectedVideos.length === 1 ? selectedVideos[0] : undefined;
+	});
 
 	function initializePicker() {
 		untrack(() => {
@@ -283,7 +300,7 @@
 		actionLoading = true;
 		error = '';
 		try {
-			await onCreateVideo();
+			await onCreateVideo(selectedVideoForEditing);
 			open = false;
 		} catch (cause) {
 			error = cause instanceof Error ? cause.message : m.media_picker_video_editor_failed();
@@ -374,7 +391,7 @@
 				onclick={createVideo}
 			>
 				<VideoIcon />
-				{m.media_picker_create_video()}
+				{selectedVideoForEditing ? m.media_edit_video_editor() : m.media_picker_create_video()}
 			</Button>
 		{/if}
 	</div>

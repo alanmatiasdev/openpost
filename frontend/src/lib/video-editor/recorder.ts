@@ -1,4 +1,4 @@
-import { estimateStorageBudget, saveRecordingManifest } from './storage';
+import { recoverVideoStorageBudget, saveRecordingManifest } from './storage';
 import { VIDEO_EDITOR_ROOT, type RecordingManifest, type RecordingTrackManifest } from './types';
 
 const CHUNK_INTERVAL_MS = 1_000;
@@ -520,7 +520,9 @@ export class VideoRecordingSession {
 			);
 			const oneMinuteAtCurrentRate = Math.ceil((bytesWritten / elapsedSeconds) * 60 * 1.2);
 			const reserve = Math.max(MINIMUM_RECORDING_RESERVE_BYTES, oneMinuteAtCurrentRate);
-			const budget = await estimateStorageBudget(reserve);
+			const budget = await recoverVideoStorageBudget(reserve, {
+				protectedProjectIDs: [this.options.projectID]
+			});
 			this.storageAvailableBytes = budget.available_bytes;
 			if (budget.can_continue) {
 				this.storageStatus =

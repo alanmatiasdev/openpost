@@ -12,7 +12,7 @@ import {
 import type { VideoSource } from '@openpost/video-project';
 import { createFileSystemAccessOutputTarget } from '$lib/video/stream-target';
 import {
-	estimateStorageBudget,
+	recoverVideoStorageBudget,
 	indexProjectAsset,
 	listProjectAssets,
 	projectFileHandle,
@@ -606,7 +606,10 @@ export async function generateProxy(
 	const estimatedBytes = Math.ceil(
 		(source.duration_us / 1_000_000) * ((videoBitrate + audioBitrate) / 8) * 1.08
 	);
-	const budget = await estimateStorageBudget(estimatedBytes);
+	const budget = await recoverVideoStorageBudget(estimatedBytes, {
+		protectedProjectIDs: [projectID],
+		signal
+	});
 	if (!budget.can_continue) {
 		throw new Error(
 			`Not enough local space for the preview proxy. It needs about ${Math.ceil((estimatedBytes + budget.headroom_bytes) / 1_048_576)} MB.`

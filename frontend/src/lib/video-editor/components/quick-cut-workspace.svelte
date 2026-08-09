@@ -23,7 +23,7 @@ FORM: LosslessCut-style focused operate surface; no asset library, effects brows
 		type SourceArtifactIndex
 	} from '../artifacts';
 	import { listProjectAssets, readProjectFile } from '../storage';
-	import { localVideoSourceURL } from '../source-url';
+	import { acquireVideoSourceURL, createObjectURLLease, VideoSourceURLSlot } from '../source-url';
 	import {
 		isKeyframeAligned,
 		nearestKeyframeUS,
@@ -83,9 +83,11 @@ FORM: LosslessCut-style focused operate surface; no asset library, effects brows
 	}: Props = $props();
 	let videoElement = $state<HTMLVideoElement>();
 	let sourceURL = $state('');
+	const sourceURLSlot = new VideoSourceURLSlot();
 	let keyframesUS = $state.raw<number[]>([]);
 	let waveformPeaks = $state.raw<number[]>([]);
 	let thumbnailURL = $state('');
+	const thumbnailURLSlot = new VideoSourceURLSlot();
 	let artifact = $state.raw<SourceArtifactIndex | null>(null);
 	let artifactError = $state('');
 	const compatibility = $derived(quickCutCompatibility(project));
@@ -122,6 +124,7 @@ FORM: LosslessCut-style focused operate surface; no asset library, effects brows
 
 	onMount(() => {
 		let stopped = false;
+		let visualGeneration = 0;
 		const controller = new AbortController();
 		const unsubscribe = subscribeToSourceArtifacts((progress) => {
 			if (progress.project_id !== projectID || progress.source_id !== source?.id || stopped) return;
@@ -134,7 +137,11 @@ FORM: LosslessCut-style focused operate surface; no asset library, effects brows
 		async function loadArtifacts() {
 			if (!source) return;
 			try {
-				sourceURL = await localVideoSourceURL(source, projectID, false);
+				const nextSourceURL = await sourceURLSlot.replace(() =>
+					acquireVideoSourceURL(source, projectID, false)
+				);
+				if (stopped || !nextSourceURL) return;
+				sourceURL = nextSourceURL;
 				artifact = await getSourceArtifactIndex(projectID, source.id);
 				if (artifact) {
 					keyframesUS = artifact.keyframes_us;
@@ -155,26 +162,43 @@ FORM: LosslessCut-style focused operate surface; no asset library, effects brows
 		}
 		async function refreshVisualAssets() {
 			if (!source) return;
+			const generation = ++visualGeneration;
 			const assets = await listProjectAssets(projectID, source.id);
+			if (stopped || generation !== visualGeneration) return;
 			const waveform = assets.find((item) => item.kind === 'waveform');
 			const thumbnail = assets.find((item) => item.kind === 'thumbnail');
 			if (waveform) {
 				const file = await readProjectFile(waveform.path);
-				if (file && !stopped) waveformPeaks = JSON.parse(await file.text()) as number[];
+				const encoded = file ? await file.text() : '';
+				if (encoded && !stopped && generation === visualGeneration) {
+					waveformPeaks = JSON.parse(encoded) as number[];
+				}
 			}
+			if (stopped || generation !== visualGeneration) return;
 			if (thumbnail) {
 				const file = await readProjectFile(thumbnail.path);
-				if (file && !stopped) {
-					if (thumbnailURL) URL.revokeObjectURL(thumbnailURL);
-					thumbnailURL = URL.createObjectURL(file);
+				if (stopped || generation !== visualGeneration) return;
+				if (file) {
+					const nextThumbnailURL = await thumbnailURLSlot.replace(async () =>
+						createObjectURLLease(file)
+					);
+					if (!stopped && nextThumbnailURL) thumbnailURL = nextThumbnailURL;
+				} else {
+					thumbnailURLSlot.clear();
+					thumbnailURL = '';
 				}
+			} else {
+				thumbnailURLSlot.clear();
+				thumbnailURL = '';
 			}
 		}
 		return () => {
 			stopped = true;
+			visualGeneration += 1;
 			controller.abort();
 			unsubscribe();
-			if (thumbnailURL) URL.revokeObjectURL(thumbnailURL);
+			sourceURLSlot.dispose();
+			thumbnailURLSlot.dispose();
 		};
 	});
 

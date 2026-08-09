@@ -48,7 +48,9 @@ Run `devenv shell -- bun run benchmark:video-editor` (or `bun run benchmark:vide
 
 ## Use an export in a post
 
-Open OpenPost Video Editor from Media, a Story, short-video, or video composer, or the main create menu. The composer tells OpenPost Video Editor which unique format variants are required. OpenPost Video Editor uploads only the selected final exports, assigns each one to the matching destination rendition, and returns to the composer. Publishing and scheduling remain in the composer.
+Open OpenPost Video Editor from Media, a Story, short-video, or video composer, or the main create menu. In the text-and-thread composer, choose **Edit in Video Editor** with one selected video to replace that item, or choose **Create video** to add a new item. OpenPost saves the current draft before it leaves the composer and restores its text, destinations, schedule, media, and destination-specific variants after a cancel, recoverable error, or completed export.
+
+The composer tells OpenPost Video Editor which unique format variants are required. OpenPost Video Editor uploads only the selected final exports, assigns each one to the matching destination rendition, and returns to the exact originating draft. The return token is scoped to its user, workspace, and safe return path, expires, and can be used only once. Publishing and scheduling remain in the composer.
 
 ## Stock media and credits
 

@@ -22,6 +22,7 @@
 	import LoaderIcon from 'lucide-svelte/icons/loader-2';
 	import { m } from '$lib/paraglide/messages';
 	import { startImageEditorMetric } from '$lib/image-editor/telemetry';
+	import { editorHandoffReturnURL } from '$lib/editor-handoff';
 
 	let design = $state.raw<ImageEditorDocumentResponse | null>(null);
 	let backgroundModelBaseURL = $state('/image-editor-models');
@@ -33,6 +34,9 @@
 	let migrationBusy = $state(false);
 	let loadRequest = 0;
 	let returnToken = $derived(page.url.searchParams.get('return_token') || '');
+	let cancelledReturnURL = $derived(
+		returnToken ? editorHandoffReturnURL(returnToken, 'image', 'cancelled') : null
+	);
 	let initialAction = $derived(page.url.searchParams.get('action') || '');
 	let authState = $derived($auth);
 
@@ -146,10 +150,14 @@
 			<h1 class="text-lg font-semibold">{m.image_editor_open_failed_title()}</h1>
 			<p class="mt-2 text-sm text-muted-foreground">{error}</p>
 			<a
-				href={resolve((guestMode ? '/image-editor' : '/media') as '/')}
+				href={resolve((cancelledReturnURL ?? (guestMode ? '/image-editor' : '/media')) as '/')}
 				class="mt-5 inline-flex text-sm font-medium text-primary hover:underline"
 			>
-				{guestMode ? m.image_editor_public_return() : m.image_editor_return_media()}
+				{cancelledReturnURL
+					? m.editor_back_to_post()
+					: guestMode
+						? m.image_editor_public_return()
+						: m.image_editor_return_media()}
 			</a>
 		</div>
 	</div>

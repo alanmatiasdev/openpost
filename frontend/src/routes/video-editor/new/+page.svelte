@@ -34,7 +34,7 @@ FORM: Operate surface; no template carousel, hidden permissions, automatic uploa
 		deleteRecording,
 		deleteRecordingManifest,
 		deleteLocalVideoProject,
-		estimateStorageBudget,
+		recoverVideoStorageBudget,
 		createLocalVideoProject,
 		readProjectFile,
 		removeProjectFile,
@@ -44,6 +44,7 @@ FORM: Operate surface; no template carousel, hidden permissions, automatic uploa
 	} from '$lib/video-editor/storage';
 	import { createBlankVideoProject } from '@openpost/video-project';
 	import type { LocalVideoProject } from '$lib/video-editor/types';
+	import { editorHandoffReturnURL } from '$lib/editor-handoff';
 	import ArrowLeftIcon from 'lucide-svelte/icons/arrow-left';
 	import CameraIcon from 'lucide-svelte/icons/camera';
 	import FileVideoIcon from 'lucide-svelte/icons/file-video';
@@ -57,6 +58,15 @@ FORM: Operate surface; no template carousel, hidden permissions, automatic uploa
 
 	let mode = $derived($page.url.searchParams.get('mode') ?? 'import');
 	const composerHandoff = $derived(Boolean($page.url.searchParams.get('return_token')));
+	const composerReturnURL = $derived(
+		composerHandoff
+			? editorHandoffReturnURL(
+					$page.url.searchParams.get('return_token') ?? '',
+					'video',
+					'cancelled'
+				)
+			: null
+	);
 	let editingMode = $state<'quick-cut' | 'editor'>('editor');
 	let error = $state('');
 	let creating = $state(false);
@@ -217,7 +227,7 @@ FORM: Operate surface; no template carousel, hidden permissions, automatic uploa
 		let session: VideoRecordingSession | null = null;
 		try {
 			await requestPersistentVideoStorage();
-			const budget = await estimateStorageBudget(estimatedRecordingBytes);
+			const budget = await recoverVideoStorageBudget(estimatedRecordingBytes);
 			if (!budget.can_continue) {
 				throw new Error(
 					m.video_editor_recording_space({ available: formatBytes(budget.available_bytes) })
@@ -364,9 +374,14 @@ FORM: Operate surface; no template carousel, hidden permissions, automatic uploa
 	</header>
 
 	<main class="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-10">
-		<Button href="/video-editor" variant="ghost" size="sm" class="-ml-2">
+		<Button
+			href={resolve((composerReturnURL ?? '/video-editor') as '/')}
+			variant="ghost"
+			size="sm"
+			class="-ml-2"
+		>
 			<ArrowLeftIcon class="size-4" />
-			{m.video_editor_back()}
+			{composerReturnURL ? m.editor_back_to_post() : m.video_editor_back()}
 		</Button>
 
 		<div class="mt-5 max-w-2xl">

@@ -101,17 +101,29 @@
 		consumeImageEditorReturnToken,
 		createImageEditorReturnToken
 	} from '$lib/image-editor/api';
+	import { consumeVideoReturnToken, createVideoReturnToken } from '$lib/video-editor/api';
 	import {
-		clearComposerRecovery,
-		loadComposerRecovery,
-		storeComposerRecovery
-	} from '$lib/image-editor/recovery';
-	import type { ComposerRecoverySnapshot } from '$lib/image-editor/types';
+		clearEditorHandoff,
+		loadEditorHandoff,
+		storeEditorHandoff,
+		type ComposerRecoverySnapshot,
+		type EditorHandoffKind
+	} from '$lib/editor-handoff';
+	import {
+		planVideoComposerHandoff,
+		replaceOrAppendMediaID,
+		videoReturnConstraints,
+		type VideoHandoffPlan,
+		type VideoVariantID
+	} from '$lib/video-editor/composer-handoff';
+	import type { ImageEditorMediaItem } from '$lib/image-editor/types';
+	import type { VideoConstraint } from '$lib/video/types';
 	import { parseDraftConflict, type DraftConflictProblem } from '$lib/draft-conflict';
 	import { SerializedSaveQueue } from '$lib/serialized-save-queue';
 	import { buildComposerPreview } from '$lib/compose-preview';
 	import { openPreviewWindow, type PreviewWindowSession } from '$lib/preview-window';
 	import { uploadMediaFile } from '$lib/media-upload-client';
+	import type { MediaPickerVideoSelection } from '$lib/media-picker';
 	import {
 		boundImageCaptionPostContext,
 		generateImageAltText,
@@ -152,7 +164,7 @@
 		is_unsynced: boolean;
 	};
 
-	interface ImageEditorComposerSnapshotPayload {
+	interface ComposerHandoffPayload {
 		posts: PostItem[];
 		variants: Array<[string, Record<string, VariantPost>]>;
 		active_post_index: number;
@@ -175,6 +187,12 @@
 		selected_time: string | null;
 		random_delay_override: string;
 		repost_override: components['schemas']['Override'];
+		revision: number;
+		video?: {
+			replace_media_id?: string;
+			scope_account_id?: string;
+			plan: VideoHandoffPlan;
+		};
 	}
 
 	interface Props {
@@ -1576,10 +1594,7 @@
 		mediaPickerOpen = true;
 	}
 
-	async function openImageEditorFromComposer() {
-		if (!selectedWorkspaceId) return;
-		mediaPickerOpen = false;
-		if (hasContent) await saveDraft();
+	function composerHandoffReturnURL(): URL {
 		const returnURL = new URL(
 			publicationId
 				? resolve(`/publications/${encodeURIComponent(publicationId)}` as '/')
@@ -1588,11 +1603,105 @@
 					: $page.url,
 			$page.url
 		);
-		returnURL.searchParams.delete('image_editor_return');
+		for (const key of ['image_editor_return', 'video_editor_return', 'editor_handoff_cancelled']) {
+			returnURL.searchParams.delete(key);
+		}
+		return returnURL;
+	}
+
+	function composerHandoffPayload(video?: ComposerHandoffPayload['video']): ComposerHandoffPayload {
+		return {
+			posts: $state.snapshot(posts),
+			variants: Array.from(variants.entries()),
+			active_post_index: mediaPickerPostIndex,
+			selected_account_ids: [...selectedAccountIds],
+			selected_social_set_id: selectedSocialSetId,
+			requested_output_profiles: $state.snapshot(requestedOutputProfiles),
+			format_locked_by_account: $state.snapshot(formatLockedByAccount),
+			schedule_overrides_by_account: $state.snapshot(scheduleOverridesByAccount),
+			active_variant_account_id: activeVariantAccountId,
+			draft_id: draftId,
+			publication_id: publicationId,
+			link_url: linkUrl,
+			settings_by_account: $state.snapshot(settingsByAccount),
+			segment_settings_by_post: $state.snapshot(segmentSettingsByPost),
+			media_settings_by_account: $state.snapshot(mediaSettingsByAccount),
+			media_alt_texts: Array.from(mediaAltTexts.entries()),
+			media_mime_types: Array.from(mediaMimeTypes.entries()),
+			media_sizes: Array.from(mediaSizes.entries()),
+			selected_date: selectedDate?.toString(),
+			selected_time: selectedTime,
+			random_delay_override: randomDelayOverride,
+			repost_override: $state.snapshot(repostOverride),
+			revision,
+			...(video ? { video } : {})
+		};
+	}
+
+	async function restoreComposerHandoff(snapshot: ComposerRecoverySnapshot): Promise<void> {
+		const payload = snapshot.payload as ComposerHandoffPayload;
+		await ensureComposerWorkspace(snapshot.workspace_id);
+		selectedWorkspaceId = snapshot.workspace_id;
+		posts = structuredClone(payload.posts);
+		variants = new SvelteMap(payload.variants ?? []);
+		activePostIndex = Math.max(
+			0,
+			Math.min(payload.active_post_index, Math.max(0, posts.length - 1))
+		);
+		mediaPickerPostIndex = activePostIndex;
+		selectedAccountIds = [...(payload.selected_account_ids ?? [])];
+		selectedSocialSetId = payload.selected_social_set_id ?? '';
+		requestedOutputProfiles = structuredClone(payload.requested_output_profiles ?? {});
+		formatLockedByAccount = structuredClone(payload.format_locked_by_account ?? {});
+		scheduleOverridesByAccount = structuredClone(payload.schedule_overrides_by_account ?? {});
+		activeVariantAccountId = payload.active_variant_account_id ?? null;
+		draftId = payload.draft_id ?? null;
+		publicationId = payload.publication_id ?? '';
+		revision = payload.revision ?? revision;
+		linkUrl = firstComposerURL(payload.posts[0]?.content ?? '') || payload.link_url;
+		settingsByAccount = structuredClone(payload.settings_by_account ?? {});
+		segmentSettingsByPost = structuredClone(payload.segment_settings_by_post ?? {});
+		mediaSettingsByAccount = structuredClone(payload.media_settings_by_account ?? {});
+		mediaAltTexts = new SvelteMap(payload.media_alt_texts ?? []);
+		mediaMimeTypes = new SvelteMap(payload.media_mime_types ?? []);
+		mediaSizes = new SvelteMap(payload.media_sizes ?? []);
+		selectedDate = undefined;
+		if (payload.selected_date) {
+			const [year, month, day] = payload.selected_date.split('-').map(Number);
+			selectedDate = new CalendarDate(year, month, day);
+		}
+		selectedTime = payload.selected_time ?? null;
+		randomDelayOverride = payload.random_delay_override ?? 'default';
+		repostOverride = structuredClone(payload.repost_override ?? { mode: 'inherit' });
+		await loadAccounts(selectedWorkspaceId, selectedAccountIds);
+		await resolveCapabilities();
+		lastSavedSnapshot = getSaveSnapshot();
+	}
+
+	function finishEditorHandoff(token: string, editor: EditorHandoffKind): void {
+		clearEditorHandoff(token);
+		const clean = new URL($page.url);
+		clean.searchParams.delete(editor === 'image' ? 'image_editor_return' : 'video_editor_return');
+		clean.searchParams.delete('editor_handoff_cancelled');
+		replaceState(resolve(`${clean.pathname}${clean.search}${clean.hash}` as '/'), {});
+	}
+
+	async function requireSavedComposerBeforeHandoff(): Promise<void> {
+		if (!hasContent) return;
+		const saved = await saveDraft();
+		if (!saved) throw new Error(error || m.compose_save_draft_failed());
+	}
+
+	async function openImageEditorFromComposer() {
+		if (!selectedWorkspaceId) return;
+		mediaPickerOpen = false;
+		await requireSavedComposerBeforeHandoff();
+		const returnURL = composerHandoffReturnURL();
+		const purpose = isThread ? 'thread_segment' : 'post_media';
 		const token = await createImageEditorReturnToken({
 			workspace_id: selectedWorkspaceId,
 			return_url: `${returnURL.pathname}${returnURL.search}`,
-			purpose: isThread ? 'thread_segment' : 'post_media',
+			purpose,
 			max_selection: composerMediaLimit,
 			constraints: {
 				max_count: composerMediaLimit,
@@ -1600,39 +1709,16 @@
 				thread_segment: mediaPickerPostIndex
 			}
 		});
-		const snapshot: ComposerRecoverySnapshot = {
-			version: 1,
+		storeEditorHandoff(token.token, {
+			version: 2,
+			editor: 'image',
 			workspace_id: selectedWorkspaceId,
 			return_url: `${returnURL.pathname}${returnURL.search}`,
-			purpose: isThread ? 'thread_segment' : 'post_media',
+			purpose,
 			created_at: new Date().toISOString(),
 			expires_at: token.expires_at,
-			payload: {
-				posts: $state.snapshot(posts),
-				variants: Array.from(variants.entries()),
-				active_post_index: mediaPickerPostIndex,
-				selected_account_ids: [...selectedAccountIds],
-				selected_social_set_id: selectedSocialSetId,
-				requested_output_profiles: $state.snapshot(requestedOutputProfiles),
-				format_locked_by_account: $state.snapshot(formatLockedByAccount),
-				schedule_overrides_by_account: $state.snapshot(scheduleOverridesByAccount),
-				active_variant_account_id: activeVariantAccountId,
-				draft_id: draftId,
-				publication_id: publicationId,
-				link_url: linkUrl,
-				settings_by_account: $state.snapshot(settingsByAccount),
-				segment_settings_by_post: $state.snapshot(segmentSettingsByPost),
-				media_settings_by_account: $state.snapshot(mediaSettingsByAccount),
-				media_alt_texts: Array.from(mediaAltTexts.entries()),
-				media_mime_types: Array.from(mediaMimeTypes.entries()),
-				media_sizes: Array.from(mediaSizes.entries()),
-				selected_date: selectedDate?.toString(),
-				selected_time: selectedTime,
-				random_delay_override: randomDelayOverride,
-				repost_override: $state.snapshot(repostOverride)
-			} satisfies ImageEditorComposerSnapshotPayload
-		};
-		storeComposerRecovery(token.token, snapshot);
+			payload: composerHandoffPayload()
+		});
 		await goto(
 			resolve(
 				`/image-editor/new?workspace=${encodeURIComponent(selectedWorkspaceId)}&return_token=${encodeURIComponent(token.token)}` as '/'
@@ -1644,45 +1730,17 @@
 		if (!$page?.url) return;
 		const token = $page.url.searchParams.get('image_editor_return');
 		if (!token) return;
-		const clean = new URL($page.url);
-		clean.searchParams.delete('image_editor_return');
-		replaceState(resolve(`${clean.pathname}${clean.search}` as '/'), {});
 		try {
-			const snapshot = loadComposerRecovery(token);
+			const snapshot = loadEditorHandoff(token, 'image');
+			if (!snapshot) throw new Error('This OpenPost Image Editor return is no longer active.');
+			await restoreComposerHandoff(snapshot);
+			if ($page.url.searchParams.get('editor_handoff_cancelled') === '1') {
+				finishEditorHandoff(token, 'image');
+				return;
+			}
 			const result = await consumeImageEditorReturnToken(token);
-			if (snapshot?.workspace_id === result.workspace_id) {
-				const payload = snapshot.payload as ImageEditorComposerSnapshotPayload;
-				posts = structuredClone(payload.posts);
-				variants = new SvelteMap(payload.variants);
-				activePostIndex = Math.max(
-					0,
-					Math.min(payload.active_post_index, Math.max(0, posts.length - 1))
-				);
-				mediaPickerPostIndex = activePostIndex;
-				selectedAccountIds = [...payload.selected_account_ids];
-				selectedSocialSetId = payload.selected_social_set_id ?? '';
-				requestedOutputProfiles = structuredClone(payload.requested_output_profiles ?? {});
-				formatLockedByAccount = structuredClone(payload.format_locked_by_account ?? {});
-				scheduleOverridesByAccount = structuredClone(payload.schedule_overrides_by_account ?? {});
-				activeVariantAccountId = payload.active_variant_account_id;
-				draftId = payload.draft_id;
-				publicationId = payload.publication_id;
-				linkUrl = firstComposerURL(payload.posts[0]?.content ?? '') || payload.link_url;
-				settingsByAccount = structuredClone(payload.settings_by_account);
-				segmentSettingsByPost = structuredClone(payload.segment_settings_by_post);
-				mediaSettingsByAccount = structuredClone(payload.media_settings_by_account);
-				mediaAltTexts = new SvelteMap(payload.media_alt_texts);
-				mediaMimeTypes = new SvelteMap(payload.media_mime_types);
-				mediaSizes = new SvelteMap(payload.media_sizes);
-				if (payload.selected_date) {
-					const [year, month, day] = payload.selected_date.split('-').map(Number);
-					selectedDate = new CalendarDate(year, month, day);
-				}
-				selectedTime = payload.selected_time;
-				randomDelayOverride = payload.random_delay_override;
-				repostOverride = structuredClone(payload.repost_override ?? { mode: 'inherit' });
-				await loadAccounts(selectedWorkspaceId, selectedAccountIds);
-				await resolveCapabilities();
+			if (snapshot.workspace_id !== result.workspace_id) {
+				throw new Error('The OpenPost Image Editor return belongs to another workspace.');
 			}
 			const targetIndex = Math.max(
 				0,
@@ -1701,7 +1759,7 @@
 				getEditorContentForPost(posts[targetIndex])
 			);
 			scheduleAutoSave();
-			clearComposerRecovery(token);
+			finishEditorHandoff(token, 'image');
 			notifyImageEditorReturn(result.media_ids.length);
 		} catch (cause) {
 			error =
@@ -1711,8 +1769,204 @@
 		}
 	}
 
+	async function canonicalPublicationForHandoff(): Promise<Publication | null> {
+		if (!publicationId) return null;
+		const { data, error: publicationError } = await client.GET('/publications/{id}', {
+			params: { path: { id: publicationId } }
+		});
+		if (publicationError || !data) {
+			throw new Error(publicationError?.detail || m.compose_load_composer_failed());
+		}
+		return data;
+	}
+
+	async function openVideoEditorFromComposer(selectedVideo?: MediaPickerVideoSelection) {
+		if (!selectedWorkspaceId) return;
+		mediaPickerOpen = false;
+		await requireSavedComposerBeforeHandoff();
+		await resolveCapabilities();
+		const publication = await canonicalPublicationForHandoff();
+		const scopeAccountID =
+			activeVariantAccountId && activeVariantIsUnsynced ? activeVariantAccountId : undefined;
+		const targetAccountIDs = scopeAccountID ? [scopeAccountID] : selectedAccountIds;
+		const targetRenditions = (publication?.renditions ?? []).filter((rendition) =>
+			targetAccountIDs.includes(rendition.social_account_id)
+		);
+		if (
+			publication &&
+			(targetRenditions.length !== targetAccountIDs.length ||
+				new Set(targetRenditions.map((rendition) => rendition.social_account_id)).size !==
+					targetAccountIDs.length)
+		) {
+			throw new Error(m.compose_load_composer_failed());
+		}
+		const renditionByAccount = new Map(
+			targetRenditions.map((rendition) => [rendition.social_account_id, rendition])
+		);
+		const plan = planVideoComposerHandoff(
+			targetAccountIDs.map((accountID) => ({
+				account_id: accountID,
+				rendition_id: renditionByAccount.get(accountID)?.id,
+				output_profile:
+					renditionByAccount.get(accountID)?.output_profile ||
+					requestedOutputProfiles[accountID] ||
+					resolvedCapabilities[accountID]?.output_profile ||
+					'',
+				aspect_ratios: resolvedCapabilities[accountID]?.media.aspect_ratios ?? []
+			})),
+			{ width: selectedVideo?.width, height: selectedVideo?.height }
+		);
+		const destinationConstraints = targetAccountIDs
+			.map((accountID) => resolvedCapabilities[accountID]?.media)
+			.filter((constraint): constraint is VideoConstraint => Boolean(constraint));
+		const returnURL = composerHandoffReturnURL();
+		const purpose = isThread ? 'thread_segment' : 'post_media';
+		const token = await createVideoReturnToken({
+			workspace_id: selectedWorkspaceId,
+			return_url: `${returnURL.pathname}${returnURL.search}`,
+			purpose,
+			constraints: videoReturnConstraints(destinationConstraints, plan, {
+				thread_segment: mediaPickerPostIndex,
+				...(selectedVideo ? { replace_media_id: selectedVideo.id } : {})
+			})
+		});
+		storeEditorHandoff(token.token, {
+			version: 2,
+			editor: 'video',
+			workspace_id: selectedWorkspaceId,
+			return_url: `${returnURL.pathname}${returnURL.search}`,
+			purpose,
+			created_at: new Date().toISOString(),
+			expires_at: token.expires_at,
+			payload: composerHandoffPayload({
+				replace_media_id: selectedVideo?.id,
+				scope_account_id: scopeAccountID,
+				plan
+			})
+		});
+		const query = new URLSearchParams({
+			workspace: selectedWorkspaceId,
+			return_token: token.token,
+			required_variants: plan.required_variants.join(','),
+			variant_renditions: JSON.stringify(plan.variant_renditions)
+		});
+		if (selectedVideo) {
+			query.set('source_media', selectedVideo.id);
+			if (selectedVideo.original_filename) {
+				query.set('source_name', selectedVideo.original_filename);
+			}
+		}
+		await goto(resolve(`/video-editor/new?${query.toString()}` as '/'));
+	}
+
+	function applyVideoEditorReturn(
+		payload: ComposerHandoffPayload,
+		result: components['schemas']['VideoReturnResult'],
+		constraints: Record<string, unknown>
+	): string[] {
+		if (!payload.video) throw new Error('The OpenPost Video Editor return metadata is missing.');
+		const targetIndex = Math.max(
+			0,
+			Math.min(
+				Number(constraints.thread_segment ?? payload.active_post_index),
+				Math.max(0, posts.length - 1)
+			)
+		);
+		const targetPost = posts[targetIndex];
+		if (!targetPost) throw new Error('The originating post segment is no longer available.');
+		const exports = result.exports ?? [];
+		const exportByVariant = new Map(
+			exports.map((item) => [item.variant_id as VideoVariantID, item.media_id])
+		);
+		const primaryMediaID =
+			exportByVariant.get(payload.video.plan.primary_variant) ?? exports[0]?.media_id;
+		if (!primaryMediaID) throw new Error('The OpenPost Video Editor returned no usable export.');
+		const previousCanonical = [...targetPost.mediaIds];
+		const replacementID = payload.video.replace_media_id;
+		const scopeAccountID = payload.video.scope_account_id;
+		if (scopeAccountID) {
+			const scopedMedia = getVariantMediaIds(scopeAccountID, targetPost.key) ?? previousCanonical;
+			setVariantMediaIds(
+				scopeAccountID,
+				targetIndex,
+				replaceOrAppendMediaID(scopedMedia, replacementID, primaryMediaID, composerMediaLimit)
+			);
+		} else {
+			posts = posts.map((post, index) =>
+				index === targetIndex
+					? {
+							...post,
+							mediaIds: replaceOrAppendMediaID(
+								post.mediaIds,
+								replacementID,
+								primaryMediaID,
+								composerMediaLimit
+							)
+						}
+					: post
+			);
+		}
+		for (const [variantID, accountIDs] of Object.entries(payload.video.plan.variant_accounts)) {
+			const variantMediaID = exportByVariant.get(variantID as VideoVariantID);
+			if (!variantMediaID) continue;
+			for (const accountID of accountIDs) {
+				if (scopeAccountID && accountID !== scopeAccountID) continue;
+				const existingOverride = getVariantMediaIds(accountID, targetPost.key);
+				if (!scopeAccountID && variantMediaID === primaryMediaID && !existingOverride) continue;
+				setVariantMediaIds(
+					accountID,
+					targetIndex,
+					replaceOrAppendMediaID(
+						existingOverride ?? previousCanonical,
+						replacementID,
+						variantMediaID,
+						composerMediaLimit
+					)
+				);
+			}
+		}
+		return Array.from(new Set(exports.map((item) => item.media_id)));
+	}
+
+	async function restoreVideoEditorReturn() {
+		if (!$page?.url) return;
+		const token = $page.url.searchParams.get('video_editor_return');
+		if (!token) return;
+		try {
+			const snapshot = loadEditorHandoff(token, 'video');
+			if (!snapshot) throw new Error('This OpenPost Video Editor return is no longer active.');
+			await restoreComposerHandoff(snapshot);
+			if ($page.url.searchParams.get('editor_handoff_cancelled') === '1') {
+				finishEditorHandoff(token, 'video');
+				return;
+			}
+			const returned = await consumeVideoReturnToken(token);
+			if (snapshot.workspace_id !== returned.workspace_id) {
+				throw new Error('The OpenPost Video Editor return belongs to another workspace.');
+			}
+			const payload = snapshot.payload as ComposerHandoffPayload;
+			const mediaIDs = applyVideoEditorReturn(payload, returned.result, returned.constraints);
+			await hydrateMediaMetadata(returned.workspace_id, mediaIDs, true);
+			scheduleAutoSave();
+			scheduleCapabilityResolve();
+			finishEditorHandoff(token, 'video');
+			notifyVideoEditorReturn(mediaIDs.length);
+		} catch (cause) {
+			error =
+				cause instanceof Error
+					? `${cause.message} ${m.video_editor_return_recovery()}`
+					: m.video_editor_return_recovery();
+		}
+	}
+
 	function notifyImageEditorReturn(count: number) {
 		error = '';
+		if (count > 0) soundPreferences.play('success');
+	}
+
+	function notifyVideoEditorReturn(count: number) {
+		error = '';
+		success = m.video_editor_return_success({ count });
 		if (count > 0) soundPreferences.play('success');
 	}
 
@@ -1947,6 +2201,7 @@
 		void (async () => {
 			await initializeComposer();
 			await restoreImageEditorReturn();
+			await restoreVideoEditorReturn();
 		})();
 		return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
 	});
@@ -3512,7 +3767,7 @@
 <!-- ====================================================================== -->
 <!-- Top Bar -->
 <!-- ====================================================================== -->
-<div class="flex flex-1 flex-col overflow-hidden">
+<div class="flex flex-1 flex-col overflow-hidden" data-testid="text-thread-composer-shell">
 	{#if !desktopComposerControls.current}
 		<div
 			class="sticky top-0 z-20 border-b bg-background/94 px-3 py-2 backdrop-blur-md"
@@ -4531,6 +4786,7 @@
 	currentSelection={posts[mediaPickerPostIndex]
 		? getEditorMediaIdsForPost(posts[mediaPickerPostIndex])
 		: []}
+	currentMediaMimeTypes={Object.fromEntries(mediaMimeTypes)}
 	maxSelection={composerMediaLimit}
 	multiple={composerMediaLimit > 1}
 	purpose={isThread ? 'thread_segment' : 'post_media'}
@@ -4550,6 +4806,7 @@
 		void generateMissingMediaAltText(addedIds, postContext);
 	}}
 	onCreate={openImageEditorFromComposer}
+	onCreateVideo={openVideoEditorFromComposer}
 />
 
 <DestinationSettingsDialog

@@ -56,6 +56,7 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 	import ImageEditorFontPicker from '$lib/image-editor/components/image-editor-font-picker.svelte';
 	import type { ImageEditorBrandKit, ImageEditorBrandTextStyle } from '$lib/image-editor/types';
 	import { uploadMediaFile } from '$lib/media-upload-client';
+	import { editorHandoffReturnURL } from '$lib/editor-handoff';
 	import { Button } from '$lib/components/ui/button';
 	import { Checkbox } from '$lib/components/ui/checkbox';
 	import * as Dialog from '$lib/components/ui/dialog';
@@ -108,13 +109,14 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 	import {
 		deleteRecording,
 		deleteRecordingManifest,
-		estimateStorageBudget,
 		indexProjectAsset,
 		listProjectRevisions,
 		listProjectAssets,
 		listRecoverableRecordings,
 		loadLocalVideoProject,
 		readProjectFile,
+		recoverVideoStorageBudget,
+		registerActiveVideoProject,
 		requestPersistentVideoStorage,
 		restoreLocalRevision,
 		saveLocalVideoProject,
@@ -454,6 +456,9 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 	const project = $derived(localProject?.document);
 	const quickCutMode = $derived(project?.editing_mode === 'quick-cut');
 	const returnToken = $derived(page.url.searchParams.get('return_token') ?? '');
+	const composerReturnURL = $derived(
+		returnToken ? editorHandoffReturnURL(returnToken, 'video', 'cancelled') : null
+	);
 	const requiredVariantIDs = $derived.by(() => {
 		const values = (page.url.searchParams.get('required_variants') ?? '')
 			.split(',')
@@ -609,6 +614,7 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 	}
 
 	onMount(() => {
+		const unregisterActiveProject = registerActiveVideoProject(page.params.id ?? '');
 		void initialize();
 		if (window.innerWidth < 640) timelineHeight = 208;
 		window.addEventListener('keydown', handleKeyboard);
@@ -621,6 +627,7 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 			sourceArtifacts = { ...sourceArtifacts, [progress.source_id]: progress.artifact };
 		});
 		return () => {
+			unregisterActiveProject();
 			window.removeEventListener('keydown', handleKeyboard);
 			navigator.mediaDevices?.removeEventListener('devicechange', handleDeviceChange);
 			unsubscribeArtifacts?.();
@@ -2703,7 +2710,9 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 
 	async function prepareRecordingStorage(): Promise<void> {
 		await requestPersistentVideoStorage();
-		const budget = await estimateStorageBudget(200 * 1024 * 1024);
+		const budget = await recoverVideoStorageBudget(200 * 1024 * 1024, {
+			protectedProjectIDs: [page.params.id ?? '']
+		});
 		if (!budget.can_continue) {
 			throw new Error(
 				m.video_editor_recording_space({
@@ -3376,9 +3385,9 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 {:else if error && !localProject}
 	<main class="mx-auto flex min-h-dvh max-w-xl flex-col justify-center gap-4 px-5">
 		<InlineNotice tone="error" message={error} />
-		<Button href={resolve('/video-editor')} variant="outline">
+		<Button href={resolve((composerReturnURL ?? '/video-editor') as '/')} variant="outline">
 			<ArrowLeftIcon class="size-4" />
-			{m.video_editor_back_projects()}
+			{composerReturnURL ? m.editor_back_to_post() : m.video_editor_back_projects()}
 		</Button>
 	</main>
 {:else if localProject && project}
@@ -3388,10 +3397,10 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 		>
 			<div class="flex min-w-0 items-center gap-2">
 				<Button
-					href={resolve('/video-editor')}
+					href={resolve((composerReturnURL ?? '/video-editor') as '/')}
 					variant="ghost"
 					size="icon-sm"
-					aria-label={m.video_editor_back_projects()}
+					aria-label={composerReturnURL ? m.editor_back_to_post() : m.video_editor_back_projects()}
 				>
 					<ArrowLeftIcon class="size-4" />
 				</Button>

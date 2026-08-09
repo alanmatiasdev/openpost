@@ -1,9 +1,9 @@
 import type { VideoSource } from '@openpost/video-project';
 import {
-	estimateStorageBudget,
 	indexProjectAsset,
 	listProjectAssets,
 	readProjectFile,
+	recoverVideoStorageBudget,
 	writeProjectStream
 } from './storage';
 
@@ -36,7 +36,10 @@ export async function openVideoProjectSource(
 		if (cached && cached.size === source.size_bytes) return cached;
 	}
 
-	const budget = await estimateStorageBudget(source.size_bytes);
+	const budget = await recoverVideoStorageBudget(source.size_bytes, {
+		protectedProjectIDs: [projectID],
+		signal
+	});
 	if (!budget.can_continue) {
 		throw new Error(
 			`There is not enough local space to cache ${source.original_name}. Free local space and try again.`

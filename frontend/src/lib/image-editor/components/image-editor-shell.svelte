@@ -80,6 +80,7 @@
 	import type { SelectionPoint } from '../selection';
 	import { getAuthenticatedMediaURL } from '$lib/media-url';
 	import { uploadMediaFile } from '$lib/media-upload-client';
+	import { editorHandoffReturnURL } from '$lib/editor-handoff';
 	import ArrowLeftIcon from 'lucide-svelte/icons/arrow-left';
 	import UndoIcon from 'lucide-svelte/icons/undo-2';
 	import RedoIcon from 'lucide-svelte/icons/redo-2';
@@ -1343,6 +1344,13 @@
 			if (previewTask) await previewTask;
 			if (!guestMode && saved && previewPending) await runPreview('close');
 		}
+		if (returnToken) {
+			const returnURL = editorHandoffReturnURL(returnToken, 'image', 'cancelled');
+			if (returnURL) {
+				await goto(resolve(returnURL as '/'));
+				return;
+			}
+		}
 		if (history.length > 1) history.back();
 		else void goto(resolve((guestMode ? '/image-editor' : '/media') as '/'));
 	}
@@ -2419,7 +2427,7 @@
 			size="icon-sm"
 			class="size-11 md:size-11 lg:size-8"
 			onclick={goBack}
-			aria-label={m.common_back()}
+			aria-label={returnToken ? m.editor_back_to_post() : m.common_back()}
 		>
 			<ArrowLeftIcon />
 		</Button>

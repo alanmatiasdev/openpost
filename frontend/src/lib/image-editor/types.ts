@@ -398,13 +398,3 @@ export interface ImageEditorMediaItem {
 	design_page_id?: string;
 	tags: string[];
 }
-
-export interface ComposerRecoverySnapshot {
-	version: 1;
-	workspace_id: string;
-	return_url: string;
-	purpose: string;
-	created_at: string;
-	expires_at: string;
-	payload: unknown;
-}

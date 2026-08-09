@@ -12,6 +12,13 @@ export type StockAsset = components['schemas']['Asset'];
 export type ResolvedStockAsset = components['schemas']['ResolvedAsset'];
 export type VideoEditorSyncPlan = components['schemas']['PlanVideoEditorSyncOutputBody'];
 
+export interface ListCloudVideoProjectsOptions {
+	search?: string;
+	limit?: number;
+	offset?: number;
+	signal?: AbortSignal;
+}
+
 export async function loadVideoEditorConfig(): Promise<VideoEditorConfig> {
 	const { data, error } = await client.GET('/video-editor/config');
 	if (error || !data)
@@ -21,10 +28,18 @@ export async function loadVideoEditorConfig(): Promise<VideoEditorConfig> {
 
 export async function listCloudVideoProjects(
 	workspaceID: string,
-	search = ''
+	options: ListCloudVideoProjectsOptions = {}
 ): Promise<{ projects: CloudVideoProjectSummary[]; total: number; canEdit: boolean }> {
 	const { data, error } = await client.GET('/video-editor/projects', {
-		params: { query: { workspace_id: workspaceID, search, limit: 50, offset: 0 } }
+		params: {
+			query: {
+				workspace_id: workspaceID,
+				search: options.search ?? '',
+				limit: options.limit ?? 50,
+				offset: options.offset ?? 0
+			}
+		},
+		signal: options.signal
 	});
 	if (error || !data)
 		throw new Error(error?.detail ?? 'Cloud OpenPost Video Editor projects could not load.');
@@ -33,6 +48,13 @@ export async function listCloudVideoProjects(
 		total: data.total,
 		canEdit: data.can_edit
 	};
+}
+
+export async function deleteCloudVideoProject(projectID: string): Promise<void> {
+	const { error } = await client.DELETE('/video-editor/projects/{id}', {
+		params: { path: { id: projectID } }
+	});
+	if (error) throw new Error(error.detail ?? 'The cloud video project could not be deleted.');
 }
 
 export async function createCloudVideoProject(

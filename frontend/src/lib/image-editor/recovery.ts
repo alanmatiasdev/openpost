@@ -1,9 +1,6 @@
 import { browser } from '$app/environment';
-import type { ComposerRecoverySnapshot, ImageEditorDocument } from './types';
+import type { ImageEditorDocument } from './types';
 import { openImageEditorDatabase, IMAGE_EDITOR_RECOVERY_STORE } from './local-persistence';
-
-const COMPOSER_PREFIX = 'openpost:image-editor:return:';
-const LEGACY_COMPOSER_PREFIX = 'openpost:studio:return:';
 
 interface LocalImageEditorRecovery {
 	design_id: string;
@@ -66,34 +63,4 @@ export async function clearLocalImageEditorRecovery(designID: string): Promise<v
 		transaction.onerror = () => reject(transaction.error);
 	});
 	db.close();
-}
-
-export function storeComposerRecovery(token: string, snapshot: ComposerRecoverySnapshot): void {
-	if (!browser) return;
-	sessionStorage.setItem(`${COMPOSER_PREFIX}${token}`, JSON.stringify(snapshot));
-}
-
-export function loadComposerRecovery(token: string): ComposerRecoverySnapshot | null {
-	if (!browser) return null;
-	const raw =
-		sessionStorage.getItem(`${COMPOSER_PREFIX}${token}`) ??
-		sessionStorage.getItem(`${LEGACY_COMPOSER_PREFIX}${token}`);
-	if (!raw) return null;
-	try {
-		const snapshot = JSON.parse(raw) as ComposerRecoverySnapshot;
-		if (Date.parse(snapshot.expires_at) < Date.now()) {
-			clearComposerRecovery(token);
-			return null;
-		}
-		return snapshot;
-	} catch {
-		clearComposerRecovery(token);
-		return null;
-	}
-}
-
-export function clearComposerRecovery(token: string): void {
-	if (!browser) return;
-	sessionStorage.removeItem(`${COMPOSER_PREFIX}${token}`);
-	sessionStorage.removeItem(`${LEGACY_COMPOSER_PREFIX}${token}`);
 }

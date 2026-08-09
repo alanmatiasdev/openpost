@@ -19,6 +19,7 @@
 	import { m } from '$lib/paraglide/messages';
 	import { startImageEditorMetric } from '$lib/image-editor/telemetry';
 	import TemplatePreview from '$lib/image-editor/components/template-preview.svelte';
+	import { editorHandoffReturnURL } from '$lib/editor-handoff';
 
 	let loading = $state(true);
 	let creating = $state('');
@@ -147,6 +148,13 @@
 	}
 
 	function goBack(): void {
+		if (returnToken) {
+			const returnURL = editorHandoffReturnURL(returnToken, 'image', 'cancelled');
+			if (returnURL) {
+				void goto(resolve(returnURL as '/'));
+				return;
+			}
+		}
 		if (history.length > 1) history.back();
 		else void goto(resolve('/media' as '/'));
 	}
@@ -239,8 +247,11 @@
 	<header
 		class="sticky top-0 z-10 flex h-14 items-center border-b bg-background/95 px-3 backdrop-blur"
 	>
-		<Button variant="ghost" size="icon-sm" onclick={goBack} aria-label={m.common_back()}
-			><ArrowLeftIcon /></Button
+		<Button
+			variant="ghost"
+			size="icon-sm"
+			onclick={goBack}
+			aria-label={returnToken ? m.editor_back_to_post() : m.common_back()}><ArrowLeftIcon /></Button
 		>
 		<div class="ml-2">
 			<h1 class="text-sm font-semibold">{m.image_editor_new_design()}</h1>

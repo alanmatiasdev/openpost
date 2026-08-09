@@ -93,7 +93,7 @@ These do not assert a newly observed production incident. They block Pinterest, 
 
 ### EDIT-001 — Restore the Video Editor ↔ composer round trip
 
-- [ ] **Problem — Baseline audit:** the editor can complete a handoff token, but the unified composer no longer creates or consumes the video handoff even though the docs promise it.
+- [x] **Problem — Baseline audit:** the editor can complete a handoff token, but the unified composer no longer creates or consumes the video handoff even though the docs promise it.
 - **Fix:** add an editor-agnostic handoff coordinator shared by Image and Video editors. Preserve the composer draft across launch, cancel, error, and completion; return media plus relevant metadata to the exact originating draft.
 - **Done when:** a user can start editing a selected video from the composer and return it to the same draft without losing text, destinations, schedule, or media; both editor directions have browser tests and accurate docs.
 - **Evidence:** `frontend/src/lib/video-editor/api.ts:206`, `frontend/src/routes/video-editor/[id]/+page.svelte:3245`, `frontend/src/lib/components/compose-text-post.svelte:4391`, `docs-site/usage/video-editor.md:49`.
@@ -128,7 +128,7 @@ These do not assert a newly observed production incident. They block Pinterest, 
 
 ### EDIT-002 — Reset editor catalog state on workspace changes
 
-- [ ] **Problem — Current source audit:** `/editors` does not react to workspace switches and keeps bounded design/video results from the previous workspace. That is both confusing and a cross-workspace data-separation UX defect.
+- [x] **Problem — Current source audit:** `/editors` does not react to workspace switches and keeps bounded design/video results from the previous workspace. That is both confusing and a cross-workspace data-separation UX defect.
 - **Fix:** key editor queries, selection, loading, errors, and caches by workspace; cancel/ignore stale requests; clear old results immediately; add real pagination or scoped search beyond the current fixed caps.
 - **Done when:** switching workspaces never shows or opens assets from the prior workspace; race tests cover slow old requests; users can reach more than 100 designs and 50 videos.
 - **Evidence:** `frontend/src/routes/editors/+page.svelte` workspace/query lifecycle.
@@ -804,7 +804,7 @@ Maintenance contract for this lane: a new social provider requires no n8n packag
 
 ### MEDIA-003 — Expose cloud-video deletion in the editor UI
 
-- [ ] **Problem — Current source audit:** a cloud-video delete API exists but users cannot invoke it from the editor/project catalogue, leaving obsolete cloud projects without a complete lifecycle.
+- [x] **Problem — Current source audit:** a cloud-video delete API exists but users cannot invoke it from the editor/project catalogue, leaving obsolete cloud projects without a complete lifecycle.
 - **Fix:** add a role-appropriate delete/archive action with dependency/consequence copy, shared destructive confirmation, optimistic-state rollback, and refresh of the correct workspace cache.
 - **Done when:** a user can remove an eligible project, failures restore it visibly, referenced/published media are protected according to policy, and unauthorized users cannot see or call the action.
 - **Evidence:** video cloud API and `frontend/src/routes/editors/+page.svelte` project actions.
@@ -832,14 +832,14 @@ Maintenance contract for this lane: a new social provider requires no n8n packag
 
 ### VIDEO-001 — Give video Blob URLs editor-scoped ownership
 
-- [ ] **Problem — Baseline audit:** global Blob URL cache entries are never released, concurrent identical loads can leak an untracked URL, and stale async preview results are not generation-guarded.
+- [x] **Problem — Baseline audit:** global Blob URL cache entries are never released, concurrent identical loads can leak an untracked URL, and stale async preview results are not generation-guarded.
 - **Fix:** coalesce in-flight loads; use editor-scoped reference ownership; revoke exactly once on replacement/unmount; ignore stale-generation results.
 - **Done when:** tests instrument `URL.createObjectURL`/`revokeObjectURL`, prove no leak across open/replace/close, and prove slow stale loads cannot replace the current preview.
 - **Evidence:** `frontend/src/lib/video-editor/source-url.ts:5`, `frontend/src/lib/video-editor/components/video-preview.svelte:143`.
 
 ### VIDEO-002 — Define and run disposable-video-cache cleanup
 
-- [ ] **Problem — Baseline audit:** cache cleanup has no caller, and reads do not refresh the timestamp used for age, so frequently used artifacts can expire as if unused.
+- [x] **Problem — Baseline audit:** cache cleanup has no caller, and reads do not refresh the timestamp used for age, so frequently used artifacts can expire as if unused.
 - **Fix:** choose creation-age or last-access semantics, store the matching metadata, run bounded cleanup during idle/quota pressure, and protect active/referenced assets.
 - **Done when:** deterministic clock/quota tests cover expiry, recent use, active projects, interrupted cleanup, and storage-pressure recovery.
 - **Evidence:** `frontend/src/lib/video-editor/storage.ts:543`.

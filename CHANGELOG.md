@@ -20,6 +20,9 @@ All notable changes to this project are documented in this file.
 ### Fixed
 
 - Added the missing OpenPost Studio overview and made the documentation gate validate every configured VitePress navigation target as well as Markdown links.
+- Restored composer round trips through both editors so draft text, destinations, schedule, existing media, cancellations, and destination-specific video variants return to the exact originating publication.
+- Isolated the editor catalog by workspace and query, added independent paginated design and video results, and exposed permission-safe cloud-video deletion with consequence copy and optimistic rollback.
+- Gave video previews editor-scoped Blob URL leases, stale-load guards, and bounded pressure cleanup that preserves active projects while reclaiming disposable artifacts.
 - Unified publication creation for REST, MCP, and the CLI's REST client behind one transactional command so every content mode stores the same intent and creation preset, resolves the same destination capabilities, and remains a draft until explicitly scheduled or published.
 - Made recurring media cleanup use exact workspace and dedupe identities, an active-job uniqueness constraint, and one crash-recoverable rescheduled job per workspace; migration 071 safely consolidates older duplicate cleanup chains while preserving completed history.
 - Scoped notification inbox reads and bulk actions to the authorized selected workspace plus the account-wide notices shown there; synchronized the persistent bell and paginated feed through one workspace cache; kept failed reads, deletes, and page loads recoverable without changing unread truth; and added read filters, date groups, event labels, complete time semantics, and explicit row actions.
