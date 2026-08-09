@@ -20,7 +20,6 @@ interface WorkspaceSettings {
 	color: string;
 	timezone: string;
 	week_start: number;
-	media_cleanup_days: number;
 	random_delay_minutes: number;
 	draft_gap_minutes: number;
 	slot_start_hour: number;
@@ -36,7 +35,6 @@ function defaultWorkspaceSettings(): WorkspaceSettings {
 		color: '#f97316',
 		timezone: 'UTC',
 		week_start: 1,
-		media_cleanup_days: 0,
 		random_delay_minutes: 0,
 		draft_gap_minutes: 60,
 		slot_start_hour: 5,
@@ -226,7 +224,6 @@ export class WorkspaceContext {
 				color: data.color || '#f97316',
 				timezone: safeWorkspaceTimezone(data.timezone),
 				week_start: data.week_start ?? 1,
-				media_cleanup_days: data.media_cleanup_days ?? 0,
 				random_delay_minutes: data.random_delay_minutes ?? 0,
 				draft_gap_minutes: data.draft_gap_minutes ?? 60,
 				slot_start_hour: data.slot_start_hour ?? 5,
@@ -309,8 +306,6 @@ export class WorkspaceContext {
 				}
 			}
 			if (updates.week_start !== undefined) this.settings.week_start = updates.week_start;
-			if (updates.media_cleanup_days !== undefined)
-				this.settings.media_cleanup_days = updates.media_cleanup_days;
 			if (updates.random_delay_minutes !== undefined)
 				this.settings.random_delay_minutes = updates.random_delay_minutes;
 			if (updates.draft_gap_minutes !== undefined)

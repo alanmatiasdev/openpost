@@ -8,13 +8,15 @@ Workspace settings belong to the selected workspace.
 
 - Connected social accounts
 - Workspace timezone and week start
-- Media cleanup policy
+- Fixed media lifecycle policy and current Trash behavior
 - Posting schedule and default slot behavior
 - Natural posting delay
 - Native auto repost rules, engagement gates, and account access grants
 - Brand colors, marks, text styles, and custom WOFF2, TTF, or OTF fonts
 
 Use this tab when the setting should differ between brands, clients, or projects.
+
+The media lifecycle information is not a workspace control. Temporary post-specific media moves to Trash after its final successful publication or 14 days without use, and Trash is permanently removed after seven days. Favorites, organized media, active work, and editor projects remain protected. OpenPost keeps the periods fixed so an old client or stored workspace value cannot weaken the policy.
 
 ## Account
 

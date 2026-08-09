@@ -34,6 +34,18 @@ Threads, Facebook, Instagram, and some TikTok posts need a public HTTPS link to 
 
 Back up the media directory together with the SQLite database when using local storage. For S3/R2-style storage, back up the bucket or configure provider-side versioning and lifecycle protection.
 
+## Lifecycle cleanup
+
+OpenPost applies a fixed application-level lifecycle to local and S3-compatible storage:
+
+- Post-specific temporary media moves to Trash after its final successful publication or 14 days without use.
+- Trash remains recoverable for seven days, then becomes eligible for permanent removal.
+- Favorites, tags, collections, brand files, active posts and publications, retryable work, source relationships, and live editor projects protect their media from automatic cleanup.
+
+These periods are not workspace or environment settings. The deprecated `media_cleanup_days` API field remains only for old clients: reads return `14` and writes are ignored. Old queued cleanup jobs that contain a `days` value also use the fixed 14-day policy.
+
+Each cleanup run computes protection once for a bounded database batch. OpenPost commits database changes before it asks local or remote object storage to delete bytes, so a slow storage service does not keep a SQLite or PostgreSQL transaction open.
+
 ## S3-compatible storage
 
 Use these settings for S3/R2-style storage:

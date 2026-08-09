@@ -36,6 +36,7 @@ All notable changes to this project are documented in this file.
 
 ### Fixed
 
+- Enforced the fixed media lifecycle as 14 days for unused temporary media and seven days in Trash, kept legacy cleanup fields as ignored compatibility inputs, computed protected references once per bounded batch, and added migration 078's media-leading index for constant-query cleanup on SQLite and PostgreSQL.
 - Made each JavaScript workspace own its build output, added an atomic and crash-recoverable frontend packaging boundary, proved clean and cached frontend artifacts are identical, included documentation in the root build, and made app browser tests serve the packaged artifact.
 - Limited CI package-write permission to the production-image job and added a release-contract regression that prevents broader jobs from gaining it.
 - Aligned provider-application administration guidance with the live instance-admin UI and API, documented encrypted secret ownership and source precedence, and rejected administrator rows that cannot become effective runtime configuration.

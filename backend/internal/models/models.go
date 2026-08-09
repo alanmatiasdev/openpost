@@ -133,20 +133,23 @@ type OrganizationInvitation struct {
 type Workspace struct {
 	bun.BaseModel `bun:"table:workspaces"`
 
-	ID                  string    `bun:",pk" json:"id"`
-	OrganizationID      string    `bun:"organization_id" json:"organization_id"`
-	Name                string    `bun:",notnull" json:"name"`
-	AvatarURL           string    `bun:"avatar_url" json:"avatar_url"`
-	Color               string    `bun:",notnull,default:'#f97316'" json:"color"`
-	Timezone            string    `bun:",default:'UTC'" json:"timezone"`
-	WeekStart           int       `bun:",default:1" json:"week_start"`             // 0=Sunday, 1=Monday
-	MediaCleanupDays    int       `bun:",default:0" json:"media_cleanup_days"`     // 0 = disabled
-	RandomDelayMinutes  int       `bun:",default:0" json:"random_delay_minutes"`   // ±N minutes natural posting
-	DraftGapMinutes     int       `bun:",default:60" json:"draft_gap_minutes"`     // Minimum gap when spilling past configured schedule slots
-	SlotStartHour       int       `bun:",default:5" json:"slot_start_hour"`        // 0-23
-	SlotEndHour         int       `bun:",default:23" json:"slot_end_hour"`         // 0-23
-	SlotIntervalMinutes int       `bun:",default:15" json:"slot_interval_minutes"` // 1-180
-	CreatedAt           time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
+	ID             string `bun:",pk" json:"id"`
+	OrganizationID string `bun:"organization_id" json:"organization_id"`
+	Name           string `bun:",notnull" json:"name"`
+	AvatarURL      string `bun:"avatar_url" json:"avatar_url"`
+	Color          string `bun:",notnull,default:'#f97316'" json:"color"`
+	Timezone       string `bun:",default:'UTC'" json:"timezone"`
+	WeekStart      int    `bun:",default:1" json:"week_start"` // 0=Sunday, 1=Monday
+	// DeprecatedMediaCleanupDays is a database tombstone for pre-fixed-policy
+	// installations. Runtime cleanup is always governed by medialifecycle's
+	// 14-day inactivity policy; this value is never read or exposed.
+	DeprecatedMediaCleanupDays int       `bun:"media_cleanup_days,default:14" json:"-"`
+	RandomDelayMinutes         int       `bun:",default:0" json:"random_delay_minutes"`   // ±N minutes natural posting
+	DraftGapMinutes            int       `bun:",default:60" json:"draft_gap_minutes"`     // Minimum gap when spilling past configured schedule slots
+	SlotStartHour              int       `bun:",default:5" json:"slot_start_hour"`        // 0-23
+	SlotEndHour                int       `bun:",default:23" json:"slot_end_hour"`         // 0-23
+	SlotIntervalMinutes        int       `bun:",default:15" json:"slot_interval_minutes"` // 1-180
+	CreatedAt                  time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
 }
 
 type User struct {

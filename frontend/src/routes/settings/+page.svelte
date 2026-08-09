@@ -1464,7 +1464,6 @@
 				color: workspaceCtx.settings.color,
 				timezone: workspaceCtx.settings.timezone,
 				week_start: workspaceCtx.settings.week_start,
-				media_cleanup_days: workspaceCtx.settings.media_cleanup_days,
 				random_delay_minutes: workspaceCtx.settings.random_delay_minutes,
 				draft_gap_minutes: workspaceCtx.settings.draft_gap_minutes,
 				slot_start_hour: workspaceCtx.settings.slot_start_hour,

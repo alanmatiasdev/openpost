@@ -790,14 +790,14 @@ Maintenance contract for this lane: a new social provider requires no n8n packag
 
 ### MEDIA-001 — Retire the zombie `media_cleanup_days` setting
 
-- [ ] **Problem — Baseline audit:** policy is intentionally fixed at 14 days, but model/API/frontend still imply that a workspace can configure or disable cleanup; the scheduler ignores the supplied value.
+- [x] **Problem — Baseline audit:** policy is intentionally fixed at 14 days, but model/API/frontend still imply that a workspace can configure or disable cleanup; the scheduler ignores the supplied value.
 - **Fix:** remove or explicitly deprecate the setting and job payload through forward-compatible contracts/migration. Keep the fixed policy and explain it in product/operations copy.
 - **Done when:** no UI/API round-trip suggests configurability, old clients receive a defined compatibility response, and cleanup remains fixed at 14 days with tests.
 - **Evidence:** `backend/internal/models/models.go:143`, `backend/internal/queue/worker.go:603`, `frontend/src/routes/settings/settings-data.ts:69`.
 
 ### MEDIA-002 — Compute protected media once per lifecycle batch
 
-- [ ] **Problem — Baseline audit:** each cleanup candidate can trigger roughly 15 queries plus a workspace-wide JSON decode; purge repeats the work.
+- [x] **Problem — Baseline audit:** each cleanup candidate can trigger roughly 15 queries plus a workspace-wide JSON decode; purge repeats the work.
 - **Fix:** normalize remaining media references where appropriate and calculate one protected-media set per batch with joins/CTEs; reuse it for dry-run and purge.
 - **Done when:** query count scales with batches, not candidate count; realistic-volume performance tests enforce a budget; safety tests prove referenced media cannot be deleted.
 - **Evidence:** `backend/internal/services/medialifecycle/service.go:240`.

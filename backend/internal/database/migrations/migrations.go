@@ -276,7 +276,7 @@ func prepareMigration(ctx context.Context, db *bun.DB, migration migration) erro
 	case 61:
 		description = "repost override"
 		err = ensurePublicationRepostOverride(ctx, db)
-	case 62, 63, 64, 66, 71, 73, 74, 75, 76, 77:
+	case 62, 63, 64, 66, 71, 73, 74, 75, 76, 77, 78:
 		return prepareRecentMigration(ctx, db, migration)
 	}
 	if err != nil {
@@ -469,6 +469,9 @@ func prepareRecentMigration(ctx context.Context, db *bun.DB, migration migration
 	case 77:
 		description = "provider readiness certification"
 		err = prepareProviderReadinessMigration(ctx, db)
+	case 78:
+		description = "media reference indexes"
+		err = ensureMediaReferenceIndexPrerequisites(ctx, db)
 	}
 	if err != nil {
 		return fmt.Errorf("migration %s %s preparation failed: %w", migration.name, description, err)
@@ -527,6 +530,11 @@ func prepareProviderReadinessMigration(ctx context.Context, db *bun.DB) error {
 
 func ensureJobsTable(ctx context.Context, db *bun.DB) error {
 	_, err := db.NewCreateTable().Model((*models.Job)(nil)).IfNotExists().Exec(ctx)
+	return err
+}
+
+func ensureMediaReferenceIndexPrerequisites(ctx context.Context, db *bun.DB) error {
+	_, err := db.NewCreateTable().Model((*models.PostMedia)(nil)).IfNotExists().Exec(ctx)
 	return err
 }
 

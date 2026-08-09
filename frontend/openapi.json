@@ -5423,6 +5423,10 @@
 						"type": "integer"
 					},
 					"media_cleanup_days": {
+						"default": 14,
+						"deprecated": true,
+						"description": "Deprecated compatibility value. Always 14; temporary-media cleanup cannot be configured.",
+						"enum": [14],
 						"format": "int64",
 						"type": "integer"
 					},
@@ -14214,6 +14218,8 @@
 						"type": "integer"
 					},
 					"media_cleanup_days": {
+						"deprecated": true,
+						"description": "Deprecated and ignored. Temporary media always becomes eligible after 14 unused days.",
 						"format": "int64",
 						"type": "integer"
 					},
@@ -14264,6 +14270,10 @@
 						"type": "integer"
 					},
 					"media_cleanup_days": {
+						"default": 14,
+						"deprecated": true,
+						"description": "Deprecated compatibility value. Always 14; temporary-media cleanup cannot be configured.",
+						"enum": [14],
 						"format": "int64",
 						"type": "integer"
 					},

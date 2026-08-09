@@ -24,7 +24,6 @@ const (
 	TypeMediaCleanup = "media_cleanup"
 
 	mediaCleanupDedupeKey = "daily"
-	mediaCleanupDays      = 14
 )
 
 // Definition describes queue policy that must not be reimplemented by callers.
@@ -41,11 +40,11 @@ type Identity struct {
 	DedupeKey string
 }
 
-// MediaCleanupPayload is the versioned payload contract for media lifecycle work.
-// Days remains encoded for compatibility; lifecycle policy owns the actual ages.
+// MediaCleanupPayload identifies the workspace lifecycle sweep. Historical
+// payloads may also contain a days field; JSON decoding deliberately ignores it
+// because retention policy belongs to medialifecycle and is not configurable.
 type MediaCleanupPayload struct {
 	WorkspaceID string `json:"workspace_id"`
-	Days        int    `json:"days"`
 }
 
 type InvalidPayloadError struct {
@@ -93,9 +92,6 @@ func DecodeMediaCleanupPayload(payload string) (MediaCleanupPayload, error) {
 	if decoded.WorkspaceID == "" {
 		return MediaCleanupPayload{}, &InvalidPayloadError{err: errors.New("workspace_id is required for media cleanup")}
 	}
-	if decoded.Days == 0 {
-		decoded.Days = mediaCleanupDays
-	}
 	return decoded, nil
 }
 
@@ -125,7 +121,7 @@ func EnqueueMediaCleanup(ctx context.Context, db bun.IDB, workspaceID string, ru
 	if runAt.IsZero() {
 		runAt = time.Now().UTC().Add(definitions[TypeMediaCleanup].Recurrence)
 	}
-	payload, err := json.Marshal(MediaCleanupPayload{WorkspaceID: workspaceID, Days: mediaCleanupDays})
+	payload, err := json.Marshal(MediaCleanupPayload{WorkspaceID: workspaceID})
 	if err != nil {
 		return "", false, fmt.Errorf("encode media cleanup payload: %w", err)
 	}

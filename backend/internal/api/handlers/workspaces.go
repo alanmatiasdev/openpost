@@ -21,6 +21,7 @@ import (
 	"github.com/openpost/backend/internal/queue"
 	"github.com/openpost/backend/internal/services/entitlements"
 	"github.com/openpost/backend/internal/services/identity"
+	"github.com/openpost/backend/internal/services/medialifecycle"
 	"github.com/openpost/backend/internal/services/notifications"
 	"github.com/uptrace/bun"
 )
@@ -284,7 +285,7 @@ func (h *WorkspaceHandler) CreateWorkspace(api huma.API) {
 		if err != nil {
 			return nil, huma.Error500InternalServerError("failed to create workspace")
 		}
-		_ = queue.ScheduleMediaCleanup(h.db, workspace.ID, 14) //nolint:errcheck
+		_ = queue.ScheduleMediaCleanup(h.db, workspace.ID) //nolint:errcheck
 
 		resp := &CreateWorkspaceOutput{}
 		resp.Body.WorkspaceID = workspace.ID
@@ -1129,7 +1130,7 @@ type GetWorkspaceSettingsOutput struct {
 		Color               string `json:"color"`
 		Timezone            string `json:"timezone"`
 		WeekStart           int    `json:"week_start"`
-		MediaCleanupDays    int    `json:"media_cleanup_days"`
+		MediaCleanupDays    int    `json:"media_cleanup_days" enum:"14" default:"14" deprecated:"true" doc:"Deprecated compatibility value. Always 14; temporary-media cleanup cannot be configured."`
 		RandomDelayMinutes  int    `json:"random_delay_minutes"`
 		DraftGapMinutes     int    `json:"draft_gap_minutes"`
 		SlotStartHour       int    `json:"slot_start_hour"`
@@ -1145,7 +1146,7 @@ type UpdateWorkspaceSettingsInput struct {
 		Color               *string `json:"color,omitempty" pattern:"^#[0-9A-Fa-f]{6}$" doc:"Workspace accent color as a six-digit hex value"`
 		Timezone            *string `json:"timezone,omitempty"`
 		WeekStart           *int    `json:"week_start,omitempty"`
-		MediaCleanupDays    *int    `json:"media_cleanup_days,omitempty"`
+		MediaCleanupDays    *int    `json:"media_cleanup_days,omitempty" deprecated:"true" doc:"Deprecated and ignored. Temporary media always becomes eligible after 14 unused days."`
 		RandomDelayMinutes  *int    `json:"random_delay_minutes,omitempty"`
 		DraftGapMinutes     *int    `json:"draft_gap_minutes,omitempty"`
 		SlotStartHour       *int    `json:"slot_start_hour,omitempty"`
@@ -1160,7 +1161,7 @@ type UpdateWorkspaceSettingsOutput struct {
 		Color               string `json:"color"`
 		Timezone            string `json:"timezone"`
 		WeekStart           int    `json:"week_start"`
-		MediaCleanupDays    int    `json:"media_cleanup_days"`
+		MediaCleanupDays    int    `json:"media_cleanup_days" enum:"14" default:"14" deprecated:"true" doc:"Deprecated compatibility value. Always 14; temporary-media cleanup cannot be configured."`
 		RandomDelayMinutes  int    `json:"random_delay_minutes"`
 		DraftGapMinutes     int    `json:"draft_gap_minutes"`
 		SlotStartHour       int    `json:"slot_start_hour"`
@@ -1209,7 +1210,7 @@ func (h *WorkspaceHandler) GetWorkspaceSettings(api huma.API) {
 			Color               string `json:"color"`
 			Timezone            string `json:"timezone"`
 			WeekStart           int    `json:"week_start"`
-			MediaCleanupDays    int    `json:"media_cleanup_days"`
+			MediaCleanupDays    int    `json:"media_cleanup_days" enum:"14" default:"14" deprecated:"true" doc:"Deprecated compatibility value. Always 14; temporary-media cleanup cannot be configured."`
 			RandomDelayMinutes  int    `json:"random_delay_minutes"`
 			DraftGapMinutes     int    `json:"draft_gap_minutes"`
 			SlotStartHour       int    `json:"slot_start_hour"`
@@ -1220,7 +1221,7 @@ func (h *WorkspaceHandler) GetWorkspaceSettings(api huma.API) {
 			Color:               normalizedWorkspaceColor(workspace.Color),
 			Timezone:            workspace.Timezone,
 			WeekStart:           workspace.WeekStart,
-			MediaCleanupDays:    workspace.MediaCleanupDays,
+			MediaCleanupDays:    medialifecycle.TemporaryIdleDays,
 			RandomDelayMinutes:  workspace.RandomDelayMinutes,
 			DraftGapMinutes:     workspace.DraftGapMinutes,
 			SlotStartHour:       workspace.SlotStartHour,
@@ -1282,12 +1283,6 @@ func (h *WorkspaceHandler) UpdateWorkspaceSettings(api huma.API) {
 			}
 			workspace.WeekStart = *input.Body.WeekStart
 		}
-		if input.Body.MediaCleanupDays != nil {
-			if *input.Body.MediaCleanupDays < 0 || *input.Body.MediaCleanupDays > 365 {
-				return nil, huma.Error400BadRequest("media_cleanup_days must be between 0 and 365")
-			}
-			workspace.MediaCleanupDays = *input.Body.MediaCleanupDays
-		}
 		if input.Body.RandomDelayMinutes != nil {
 			if *input.Body.RandomDelayMinutes < 0 || *input.Body.RandomDelayMinutes > 60 {
 				return nil, huma.Error400BadRequest("random_delay_minutes must be between 0 and 60")
@@ -1320,15 +1315,11 @@ func (h *WorkspaceHandler) UpdateWorkspaceSettings(api huma.API) {
 		}
 
 		_, err = h.db.NewUpdate().Model(&workspace).
-			Column("avatar_url", "color", "timezone", "week_start", "media_cleanup_days", "random_delay_minutes", "draft_gap_minutes", "slot_start_hour", "slot_end_hour", "slot_interval_minutes").
+			Column("avatar_url", "color", "timezone", "week_start", "random_delay_minutes", "draft_gap_minutes", "slot_start_hour", "slot_end_hour", "slot_interval_minutes").
 			Where("id = ?", input.PathID).
 			Exec(ctx)
 		if err != nil {
 			return nil, huma.Error500InternalServerError("failed to update workspace")
-		}
-
-		if input.Body.MediaCleanupDays != nil {
-			_ = queue.ScheduleMediaCleanup(h.db, input.PathID, workspace.MediaCleanupDays) //nolint:errcheck
 		}
 
 		return &UpdateWorkspaceSettingsOutput{Body: struct {
@@ -1336,7 +1327,7 @@ func (h *WorkspaceHandler) UpdateWorkspaceSettings(api huma.API) {
 			Color               string `json:"color"`
 			Timezone            string `json:"timezone"`
 			WeekStart           int    `json:"week_start"`
-			MediaCleanupDays    int    `json:"media_cleanup_days"`
+			MediaCleanupDays    int    `json:"media_cleanup_days" enum:"14" default:"14" deprecated:"true" doc:"Deprecated compatibility value. Always 14; temporary-media cleanup cannot be configured."`
 			RandomDelayMinutes  int    `json:"random_delay_minutes"`
 			DraftGapMinutes     int    `json:"draft_gap_minutes"`
 			SlotStartHour       int    `json:"slot_start_hour"`
@@ -1347,7 +1338,7 @@ func (h *WorkspaceHandler) UpdateWorkspaceSettings(api huma.API) {
 			Color:               normalizedWorkspaceColor(workspace.Color),
 			Timezone:            workspace.Timezone,
 			WeekStart:           workspace.WeekStart,
-			MediaCleanupDays:    workspace.MediaCleanupDays,
+			MediaCleanupDays:    medialifecycle.TemporaryIdleDays,
 			RandomDelayMinutes:  workspace.RandomDelayMinutes,
 			DraftGapMinutes:     workspace.DraftGapMinutes,
 			SlotStartHour:       workspace.SlotStartHour,

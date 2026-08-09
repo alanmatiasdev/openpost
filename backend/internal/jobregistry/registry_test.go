@@ -3,6 +3,7 @@ package jobregistry
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"testing"
 	"time"
@@ -14,6 +15,19 @@ import (
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect/sqlitedialect"
 )
+
+func TestMediaCleanupPayloadRetiresClientSuppliedDays(t *testing.T) {
+	t.Parallel()
+
+	legacy, err := DecodeMediaCleanupPayload(`{"workspace_id":"workspace-1","days":365}`)
+	require.NoError(t, err)
+	require.Equal(t, "workspace-1", legacy.WorkspaceID)
+
+	payload, err := json.Marshal(MediaCleanupPayload{WorkspaceID: "workspace-1"})
+	require.NoError(t, err)
+	require.JSONEq(t, `{"workspace_id":"workspace-1"}`, string(payload))
+	require.NotContains(t, string(payload), "days")
+}
 
 func TestEnqueueMediaCleanupIsIdempotentOnlyWhileTheChainIsActive(t *testing.T) {
 	t.Parallel()
@@ -44,4 +58,8 @@ func TestEnqueueMediaCleanupIsIdempotentOnlyWhileTheChainIsActive(t *testing.T) 
 	require.NoError(t, err)
 	require.True(t, created)
 	require.NotEqual(t, firstID, thirdID)
+
+	var newest models.Job
+	require.NoError(t, db.NewSelect().Model(&newest).Where("id = ?", thirdID).Scan(t.Context()))
+	require.JSONEq(t, `{"workspace_id":"workspace-1"}`, newest.Payload)
 }

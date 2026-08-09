@@ -5847,8 +5847,14 @@ export interface components {
             color: string;
             /** Format: int64 */
             draft_gap_minutes: number;
-            /** Format: int64 */
-            media_cleanup_days: number;
+            /**
+             * Format: int64
+             * @deprecated
+             * @description Deprecated compatibility value. Always 14; temporary-media cleanup cannot be configured.
+             * @default 14
+             * @enum {integer}
+             */
+            media_cleanup_days: 14;
             /** Format: int64 */
             random_delay_minutes: number;
             /** Format: int64 */
@@ -9651,7 +9657,11 @@ export interface components {
             color?: string;
             /** Format: int64 */
             draft_gap_minutes?: number;
-            /** Format: int64 */
+            /**
+             * Format: int64
+             * @deprecated
+             * @description Deprecated and ignored. Temporary media always becomes eligible after 14 unused days.
+             */
             media_cleanup_days?: number;
             /** Format: int64 */
             random_delay_minutes?: number;
@@ -9676,8 +9686,14 @@ export interface components {
             color: string;
             /** Format: int64 */
             draft_gap_minutes: number;
-            /** Format: int64 */
-            media_cleanup_days: number;
+            /**
+             * Format: int64
+             * @deprecated
+             * @description Deprecated compatibility value. Always 14; temporary-media cleanup cannot be configured.
+             * @default 14
+             * @enum {integer}
+             */
+            media_cleanup_days: 14;
             /** Format: int64 */
             random_delay_minutes: number;
             /** Format: int64 */

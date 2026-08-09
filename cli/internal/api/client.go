@@ -302,7 +302,6 @@ func (c *Client) CreateWorkspace(ctx context.Context, in CreateWorkspaceInput) (
 type WorkspaceSettings struct {
 	Timezone            string `json:"timezone"`
 	WeekStart           int    `json:"week_start"`
-	MediaCleanupDays    int    `json:"media_cleanup_days"`
 	RandomDelayMinutes  int    `json:"random_delay_minutes"`
 	DraftGapMinutes     int    `json:"draft_gap_minutes"`
 	SlotStartHour       int    `json:"slot_start_hour"`

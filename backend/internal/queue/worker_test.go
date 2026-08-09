@@ -212,8 +212,8 @@ func TestScheduleMediaCleanupUsesExactWorkspaceIdentity(t *testing.T) {
 	t.Parallel()
 
 	db := createTestDB(t)
-	require.NoError(t, ScheduleMediaCleanup(db, "workspace-10", 14))
-	require.NoError(t, ScheduleMediaCleanup(db, "workspace-1", 14))
+	require.NoError(t, ScheduleMediaCleanup(db, "workspace-10"))
+	require.NoError(t, ScheduleMediaCleanup(db, "workspace-1"))
 
 	count, err := db.NewSelect().Model((*models.Job)(nil)).Where("type = ?", jobTypeMediaCleanup).Count(t.Context())
 	require.NoError(t, err)
@@ -231,7 +231,7 @@ func TestScheduleMediaCleanupIgnoresCompletedHistory(t *testing.T) {
 	}).Exec(t.Context())
 	require.NoError(t, err)
 
-	require.NoError(t, ScheduleMediaCleanup(db, "workspace-1", 14))
+	require.NoError(t, ScheduleMediaCleanup(db, "workspace-1"))
 	active, err := db.NewSelect().Model((*models.Job)(nil)).
 		Where("type = ? AND status IN (?, ?)", jobTypeMediaCleanup, jobStatusPending, jobStatusProcessing).
 		Count(t.Context())
@@ -245,7 +245,7 @@ func TestMediaCleanupReschedulesTheSameDurableChain(t *testing.T) {
 	db := createTestDB(t)
 	_, err := db.NewCreateTable().Model((*models.MediaAttachment)(nil)).IfNotExists().Exec(t.Context())
 	require.NoError(t, err)
-	require.NoError(t, ScheduleMediaCleanup(db, "workspace-1", 14))
+	require.NoError(t, ScheduleMediaCleanup(db, "workspace-1"))
 	_, err = db.NewUpdate().Model((*models.Job)(nil)).
 		Set("run_at = ?", time.Now().UTC().Add(-time.Second)).
 		Where("type = ?", jobTypeMediaCleanup).Exec(t.Context())
@@ -274,7 +274,7 @@ func TestScheduleMediaCleanupConcurrentEnqueueKeepsOneActiveChain(t *testing.T) 
 		go func() {
 			ready.Done()
 			<-start
-			errs <- ScheduleMediaCleanup(db, "workspace-1", 14)
+			errs <- ScheduleMediaCleanup(db, "workspace-1")
 		}()
 	}
 	ready.Wait()

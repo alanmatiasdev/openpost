@@ -41,7 +41,7 @@ function settings(timezone: string) {
 		color: '#f97316',
 		timezone,
 		week_start: 1,
-		media_cleanup_days: 30,
+		media_cleanup_days: 365,
 		random_delay_minutes: 5,
 		draft_gap_minutes: 60,
 		slot_start_hour: 6,
@@ -89,6 +89,7 @@ describe('workspace settings state', () => {
 			mocks.get.mock.calls.filter(([path]) => path === '/workspaces/{id}/settings')
 		).toHaveLength(1);
 		expect(context.currentWorkspace?.id).toBe(workspaceA.id);
+		expect(context.settings).not.toHaveProperty('media_cleanup_days');
 		expect(context.settingsReady).toBe(true);
 		expect(context.loading).toBe(false);
 	});
