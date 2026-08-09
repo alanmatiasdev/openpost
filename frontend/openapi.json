@@ -7258,6 +7258,10 @@
 						"description": "Job payload",
 						"type": "string"
 					},
+					"publication_id": {
+						"description": "Publication associated with this job, when available",
+						"type": "string"
+					},
 					"run_at": {
 						"description": "Scheduled run time",
 						"type": "string"
@@ -10352,24 +10356,76 @@
 				"required": ["key", "name", "count"],
 				"type": "object"
 			},
-			"PublicationLifecycleEventResponse": {
+			"PublicationLifecycleActor": {
 				"additionalProperties": false,
 				"properties": {
-					"created_at": {
+					"kind": {
+						"enum": ["user", "automation", "system"],
 						"type": "string"
 					},
-					"id": {
+					"name": {
 						"type": "string"
 					},
-					"idempotency_key": {
+					"origin": {
+						"type": "string"
+					}
+				},
+				"required": ["kind"],
+				"type": "object"
+			},
+			"PublicationLifecycleError": {
+				"additionalProperties": false,
+				"properties": {
+					"action": {
+						"type": "string"
+					},
+					"code": {
+						"type": "string"
+					},
+					"http_status": {
+						"format": "int64",
+						"type": "integer"
+					},
+					"kind": {
 						"type": "string"
 					},
 					"message": {
 						"type": "string"
 					},
-					"metadata": {
-						"additionalProperties": {},
-						"type": "object"
+					"retryable": {
+						"type": "boolean"
+					}
+				},
+				"required": ["retryable"],
+				"type": "object"
+			},
+			"PublicationLifecycleEventResponse": {
+				"additionalProperties": false,
+				"properties": {
+					"actor": {
+						"$ref": "#/components/schemas/PublicationLifecycleActor"
+					},
+					"changed_domains": {
+						"items": {
+							"type": "string"
+						},
+						"type": ["array", "null"]
+					},
+					"created_at": {
+						"type": "string"
+					},
+					"destination_count": {
+						"format": "int64",
+						"type": "integer"
+					},
+					"error": {
+						"$ref": "#/components/schemas/PublicationLifecycleError"
+					},
+					"id": {
+						"type": "string"
+					},
+					"platform": {
+						"type": "string"
 					},
 					"publication_id": {
 						"type": "string"
@@ -10377,7 +10433,17 @@
 					"rendition_id": {
 						"type": "string"
 					},
+					"revision": {
+						"format": "int64",
+						"type": "integer"
+					},
+					"scheduled_at": {
+						"type": "string"
+					},
 					"status": {
+						"type": "string"
+					},
+					"summary": {
 						"type": "string"
 					},
 					"type": {
@@ -10393,8 +10459,8 @@
 					"publication_id",
 					"type",
 					"status",
-					"message",
-					"metadata",
+					"summary",
+					"actor",
 					"created_at"
 				],
 				"type": "object"
@@ -24168,6 +24234,16 @@
 						}
 					},
 					{
+						"description": "Opaque cursor for stable newest-first pagination",
+						"explode": false,
+						"in": "query",
+						"name": "cursor",
+						"schema": {
+							"description": "Opaque cursor for stable newest-first pagination",
+							"type": "string"
+						}
+					},
+					{
 						"description": "Filter by status (pending, processing, completed, failed)",
 						"explode": false,
 						"in": "query",
@@ -24184,6 +24260,26 @@
 						"name": "workspace_id",
 						"schema": {
 							"description": "Filter by workspace ID",
+							"type": "string"
+						}
+					},
+					{
+						"description": "Include jobs scheduled at or after this RFC3339 timestamp",
+						"explode": false,
+						"in": "query",
+						"name": "run_from",
+						"schema": {
+							"description": "Include jobs scheduled at or after this RFC3339 timestamp",
+							"type": "string"
+						}
+					},
+					{
+						"description": "Include jobs scheduled before this RFC3339 timestamp",
+						"explode": false,
+						"in": "query",
+						"name": "run_before",
+						"schema": {
+							"description": "Include jobs scheduled before this RFC3339 timestamp",
 							"type": "string"
 						}
 					}
@@ -24213,6 +24309,12 @@
 									"description": "Applied page limit",
 									"format": "int64",
 									"type": "integer"
+								}
+							},
+							"X-Next-Cursor": {
+								"schema": {
+									"description": "Opaque cursor for the next page",
+									"type": "string"
 								}
 							},
 							"X-Next-Offset": {
@@ -27899,6 +28001,7 @@
 		},
 		"/posts/schedule-overview": {
 			"get": {
+				"description": "Compatibility path for a monthly summary sourced exclusively from canonical publications and renditions.",
 				"operationId": "get-schedule-overview",
 				"parameters": [
 					{
@@ -27984,7 +28087,7 @@
 						"description": "Internal Server Error"
 					}
 				},
-				"summary": "Get monthly schedule overview",
+				"summary": "Get canonical publication schedule overview",
 				"tags": ["Posts"]
 			}
 		},
@@ -29067,6 +29170,56 @@
 						}
 					},
 					{
+						"description": "Opaque cursor for stable newest-first pagination",
+						"explode": false,
+						"in": "query",
+						"name": "cursor",
+						"schema": {
+							"description": "Opaque cursor for stable newest-first pagination",
+							"type": "string"
+						}
+					},
+					{
+						"description": "Include publications created at or after this RFC3339 timestamp",
+						"explode": false,
+						"in": "query",
+						"name": "created_from",
+						"schema": {
+							"description": "Include publications created at or after this RFC3339 timestamp",
+							"type": "string"
+						}
+					},
+					{
+						"description": "Include publications created before this RFC3339 timestamp",
+						"explode": false,
+						"in": "query",
+						"name": "created_before",
+						"schema": {
+							"description": "Include publications created before this RFC3339 timestamp",
+							"type": "string"
+						}
+					},
+					{
+						"description": "Include calendar occurrences at or after this RFC3339 timestamp",
+						"explode": false,
+						"in": "query",
+						"name": "calendar_from",
+						"schema": {
+							"description": "Include calendar occurrences at or after this RFC3339 timestamp",
+							"type": "string"
+						}
+					},
+					{
+						"description": "Include calendar occurrences before this RFC3339 timestamp",
+						"explode": false,
+						"in": "query",
+						"name": "calendar_before",
+						"schema": {
+							"description": "Include calendar occurrences before this RFC3339 timestamp",
+							"type": "string"
+						}
+					},
+					{
 						"description": "Limit, default 50",
 						"explode": false,
 						"in": "query",
@@ -29112,6 +29265,11 @@
 								"schema": {
 									"format": "int64",
 									"type": "integer"
+								}
+							},
+							"X-Next-Cursor": {
+								"schema": {
+									"type": "string"
 								}
 							},
 							"X-Next-Offset": {
@@ -29462,6 +29620,16 @@
 							"format": "int64",
 							"type": "integer"
 						}
+					},
+					{
+						"description": "Opaque cursor for older lifecycle entries",
+						"explode": false,
+						"in": "query",
+						"name": "cursor",
+						"schema": {
+							"description": "Opaque cursor for older lifecycle entries",
+							"type": "string"
+						}
 					}
 				],
 				"responses": {
@@ -29476,7 +29644,19 @@
 								}
 							}
 						},
-						"description": "OK"
+						"description": "OK",
+						"headers": {
+							"X-Has-More": {
+								"schema": {
+									"type": "boolean"
+								}
+							},
+							"X-Next-Cursor": {
+								"schema": {
+									"type": "string"
+								}
+							}
+						}
 					},
 					"404": {
 						"content": {

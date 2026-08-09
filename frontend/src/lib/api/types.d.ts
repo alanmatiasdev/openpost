@@ -2629,7 +2629,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get monthly schedule overview */
+        /**
+         * Get canonical publication schedule overview
+         * @description Compatibility path for a monthly summary sourced exclusively from canonical publications and renditions.
+         */
         get: operations["get-schedule-overview"];
         put?: never;
         post?: never;
@@ -3606,6 +3609,7 @@ export interface components {
             media: components["schemas"]["AccountExportMedia"][] | null;
             organizations: components["schemas"]["AccountExportOrganization"][] | null;
             posts: components["schemas"]["AccountExportPost"][] | null;
+            publication_authorizations: components["schemas"]["AccountExportPublicationAuthorization"][] | null;
             publications: components["schemas"]["AccountExportPublication"][] | null;
             shared_workspace_content_excluded: boolean;
             social_accounts: components["schemas"]["AccountExportSocialAccount"][] | null;
@@ -3663,6 +3667,28 @@ export interface components {
             /** Format: date-time */
             updated_at: string;
             workspace_id: string;
+        };
+        AccountExportPublicationAuthorization: {
+            action: string;
+            actor_client_id?: string;
+            actor_client_name?: string;
+            actor_origin: string;
+            batch_id: string;
+            /** Format: date-time */
+            confirmed_at: string;
+            fingerprints_recorded: boolean;
+            id: string;
+            policy_mode: string;
+            publication_id: string;
+            /** Format: int64 */
+            publication_revision: number;
+            rendition_id: string;
+            /** Format: date-time */
+            scheduled_at: string;
+            session_identity_stored: boolean;
+            social_account_id: string;
+            target_key: string;
+            token_identity_stored: boolean;
         };
         AccountExportSocialAccount: {
             account_id: string;
@@ -6567,6 +6593,8 @@ export interface components {
             max_attempts: number;
             /** @description Job payload */
             payload?: string;
+            /** @description Publication associated with this job, when available */
+            publication_id?: string;
             /** @description Scheduled run time */
             run_at: string;
             /** @description Job status */
@@ -7966,17 +7994,37 @@ export interface components {
             /** @description Display label */
             name: string;
         };
+        PublicationLifecycleActor: {
+            /** @enum {string} */
+            kind: "user" | "automation" | "system";
+            name?: string;
+            origin?: string;
+        };
+        PublicationLifecycleError: {
+            action?: string;
+            code?: string;
+            /** Format: int64 */
+            http_status?: number;
+            kind?: string;
+            message?: string;
+            retryable: boolean;
+        };
         PublicationLifecycleEventResponse: {
+            actor: components["schemas"]["PublicationLifecycleActor"];
+            changed_domains?: string[] | null;
             created_at: string;
+            /** Format: int64 */
+            destination_count?: number;
+            error?: components["schemas"]["PublicationLifecycleError"];
             id: string;
-            idempotency_key?: string;
-            message: string;
-            metadata: {
-                [key: string]: unknown;
-            };
+            platform?: string;
             publication_id: string;
             rendition_id?: string;
+            /** Format: int64 */
+            revision?: number;
+            scheduled_at?: string;
             status: string;
+            summary: string;
             type: string;
             workspace_id: string;
         };
@@ -17197,10 +17245,16 @@ export interface operations {
                 limit?: number;
                 /** @description Offset for pagination */
                 offset?: number;
+                /** @description Opaque cursor for stable newest-first pagination */
+                cursor?: string;
                 /** @description Filter by status (pending, processing, completed, failed) */
                 status?: string;
                 /** @description Filter by workspace ID */
                 workspace_id?: string;
+                /** @description Include jobs scheduled at or after this RFC3339 timestamp */
+                run_from?: string;
+                /** @description Include jobs scheduled before this RFC3339 timestamp */
+                run_before?: string;
             };
             header?: never;
             path?: never;
@@ -17213,6 +17267,7 @@ export interface operations {
                 headers: {
                     "X-Has-More"?: boolean;
                     "X-Limit"?: number;
+                    "X-Next-Cursor"?: string;
                     "X-Next-Offset"?: number;
                     "X-Offset"?: number;
                     "X-Total-Count"?: number;
@@ -20883,6 +20938,16 @@ export interface operations {
                 status?: string;
                 /** @description Optional content profile filter */
                 content_profile?: string;
+                /** @description Opaque cursor for stable newest-first pagination */
+                cursor?: string;
+                /** @description Include publications created at or after this RFC3339 timestamp */
+                created_from?: string;
+                /** @description Include publications created before this RFC3339 timestamp */
+                created_before?: string;
+                /** @description Include calendar occurrences at or after this RFC3339 timestamp */
+                calendar_from?: string;
+                /** @description Include calendar occurrences before this RFC3339 timestamp */
+                calendar_before?: string;
                 /** @description Limit, default 50 */
                 limit?: number;
                 /** @description Offset */
@@ -20899,6 +20964,7 @@ export interface operations {
                 headers: {
                     "X-Has-More"?: boolean;
                     "X-Limit"?: number;
+                    "X-Next-Cursor"?: string;
                     "X-Next-Offset"?: number;
                     "X-Offset"?: number;
                     "X-Total-Count"?: number;
@@ -21152,6 +21218,8 @@ export interface operations {
             query?: {
                 /** @description Limit, default 100 */
                 limit?: number;
+                /** @description Opaque cursor for older lifecycle entries */
+                cursor?: string;
             };
             header?: never;
             path: {
@@ -21165,6 +21233,8 @@ export interface operations {
             /** @description OK */
             200: {
                 headers: {
+                    "X-Has-More"?: boolean;
+                    "X-Next-Cursor"?: string;
                     [name: string]: unknown;
                 };
                 content: {
