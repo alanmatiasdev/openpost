@@ -174,7 +174,12 @@ func (h *MCPHandler) SetProviderReadiness(service *providerreadiness.Service) {
 }
 
 func (h *MCPHandler) publicationHandler() *PublicationHandler {
-	return &PublicationHandler{db: h.db, readiness: h.readiness}
+	return &PublicationHandler{
+		db:          h.db,
+		providers:   h.providers,
+		tokenSource: h.tokenSource,
+		readiness:   h.readiness,
+	}
 }
 
 func (h *MCPHandler) RegisterRoutes(e *echo.Echo) {
@@ -3274,6 +3279,9 @@ func (h *MCPHandler) createPublication(ctx context.Context, userID string, args 
 	if rpcErr := validateMCPCreatePublicationInput(input, now); rpcErr != nil {
 		return nil, rpcErr
 	}
+	if rpcErr := h.ensureWorkspaceEditAccess(ctx, userID, input.WorkspaceID); rpcErr != nil {
+		return nil, rpcErr
+	}
 
 	defaultMedia, rpcErr := mcpDefaultPublicationMedia(input)
 	if rpcErr != nil {
@@ -3283,8 +3291,7 @@ func (h *MCPHandler) createPublication(ctx context.Context, userID string, args 
 	if rpcErr != nil {
 		return nil, rpcErr
 	}
-	publicationHandler := &PublicationHandler{db: h.db}
-	publication, err := publicationHandler.newCreateCommand().Execute(ctx, userID, CreatePublicationBody{
+	publication, err := h.publicationHandler().publicationCommands().Create(ctx, userID, CreatePublicationBody{
 		WorkspaceID:      input.WorkspaceID,
 		Title:            input.Title,
 		ContentProfile:   input.ContentProfile,
@@ -3419,42 +3426,6 @@ type mcpPublicationUpdateInput struct {
 	Metadata         *map[string]interface{} `json:"metadata"`
 }
 
-func applyMCPPublicationUpdate(publication *models.Publication, input mcpPublicationUpdateInput, now time.Time) (bool, bool, error) {
-	if input.Title != nil {
-		publication.Title = *input.Title
-	}
-	if input.ContentProfile != nil {
-		publication.ContentProfile = *input.ContentProfile
-	}
-	if input.SourceText != nil {
-		publication.SourceText, publication.SourceContent = *input.SourceText, *input.SourceText
-	}
-	if input.SourceURL != nil {
-		publication.SourceURL = *input.SourceURL
-	}
-	if input.Goal != nil {
-		publication.Goal = *input.Goal
-	}
-	if input.Audience != nil {
-		publication.Audience = *input.Audience
-	}
-	clearQueuedSchedule, rescheduleQueuedJob, err := applyPublicationScheduleUpdate(
-		publication,
-		input.ScheduledAt,
-		input.ClearSchedule,
-		now,
-	)
-	if err != nil {
-		return false, false, err
-	}
-	if input.Metadata != nil {
-		publication.MetadataJSON, publication.ReleasePlanJSON = mustJSON(*input.Metadata), mustJSON(*input.Metadata)
-	}
-	publication.UpdatedAt = time.Now().UTC()
-	return clearQueuedSchedule, rescheduleQueuedJob, nil
-}
-
-//nolint:gocyclo // Coordinates one atomic publication, schedule-job, and linked-text-post mutation.
 func (h *MCPHandler) updatePublication(ctx context.Context, userID string, args map[string]any) (any, *mcpError) {
 	var input mcpPublicationUpdateInput
 	if err := decodeMCPArguments(args, &input); err != nil ||
@@ -3472,97 +3443,17 @@ func (h *MCPHandler) updatePublication(ctx context.Context, userID string, args 
 	if !isPublicationEditable(publication.Status) {
 		return nil, &mcpError{Code: -32602, Message: errPublicationNotEditable.Error()}
 	}
-	handler := &PublicationHandler{db: h.db}
-	if err := h.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
-		currentPublication, err := handler.loadEditablePublicationTx(txCtx, tx, publication.ID)
-		if err != nil {
-			return err
-		}
-		if currentPublication.Revision != input.ExpectedRevision {
-			return handler.publicationRevisionConflict(txCtx, tx, currentPublication, input.ExpectedRevision)
-		}
-		editor, err := postservice.EnsurePublicationEditorTx(txCtx, tx, currentPublication)
-		if err != nil {
-			return err
-		}
-		clearQueuedSchedule, rescheduleQueuedJob, err := applyMCPPublicationUpdate(currentPublication, input, time.Now().UTC())
-		if err != nil {
-			return err
-		}
-		nextRevision := currentPublication.Revision + 1
-		currentPublication.Revision = nextRevision
-		if clearQueuedSchedule {
-			if err := handler.clearPublicationScheduleTx(txCtx, tx, currentPublication.ID, currentPublication.UpdatedAt); err != nil {
-				return err
-			}
-		}
-		result, err := tx.NewUpdate().
-			Model(currentPublication).
-			Where("id = ? AND revision = ?", currentPublication.ID, input.ExpectedRevision).
-			Exec(txCtx)
-		if err != nil {
-			return err
-		}
-		if affected, _ := result.RowsAffected(); affected == 0 {
-			return handler.publicationRevisionConflict(txCtx, tx, currentPublication, input.ExpectedRevision)
-		}
-		if input.SourceText != nil {
-			if err := syncPublicationFirstSegmentBodyTx(
-				txCtx,
-				tx,
-				currentPublication.ID,
-				*input.SourceText,
-				currentPublication.UpdatedAt,
-			); err != nil {
-				return err
-			}
-		}
-		if rescheduleQueuedJob {
-			if _, err := handler.replacePublicationJobTx(txCtx, tx, currentPublication.ID, currentPublication.ScheduledAt); err != nil {
-				return err
-			}
-		}
-		changedDomains := publicationChangedDomains(PublicationUpdateBody{
-			Title:          input.Title,
-			ContentProfile: input.ContentProfile,
-			SourceText:     input.SourceText,
-			SourceURL:      input.SourceURL,
-			Goal:           input.Goal,
-			Audience:       input.Audience,
-			ScheduledAt:    input.ScheduledAt,
-			ClearSchedule:  input.ClearSchedule,
-			Metadata:       mcpMetadataValue(input.Metadata),
-		})
-		if err := postservice.SyncPublicationEditorTx(
-			txCtx,
-			tx,
-			currentPublication,
-			editor,
-		); err != nil {
-			return err
-		}
-		if err := handler.syncTextPostRevisionsTx(
-			txCtx,
-			tx,
-			currentPublication.ID,
-			input.ExpectedRevision,
-			nextRevision,
-			changedDomains,
-			userID,
-			currentPublication.UpdatedAt,
-		); err != nil {
-			return err
-		}
-		return drafts.RecordChange(
-			txCtx,
-			tx,
-			drafts.AggregatePublication,
-			currentPublication.ID,
-			nextRevision,
-			changedDomains,
-			userID,
-			currentPublication.UpdatedAt,
-		)
+	if err := h.publicationHandler().publicationCommands().Update(ctx, userID, &publication, PublicationUpdateBody{
+		ExpectedRevision: input.ExpectedRevision,
+		Title:            input.Title,
+		ContentProfile:   input.ContentProfile,
+		SourceText:       input.SourceText,
+		SourceURL:        input.SourceURL,
+		Goal:             input.Goal,
+		Audience:         input.Audience,
+		ScheduledAt:      input.ScheduledAt,
+		ClearSchedule:    input.ClearSchedule,
+		Metadata:         mcpMetadataValue(input.Metadata),
 	}); err != nil {
 		return nil, publicationMutationMCPError(err, "failed to update publication")
 	}
@@ -3578,9 +3469,12 @@ func mcpMetadataValue(metadata *map[string]interface{}) map[string]interface{} {
 
 func publicationMutationMCPError(err error, fallback string) *mcpError {
 	var notReady *providerreadiness.NotReadyError
+	var statusErr huma.StatusError
 	switch {
 	case isDraftRevisionConflict(err):
 		return &mcpError{Code: -32602, Message: err.Error()}
+	case errors.As(err, &statusErr) && statusErr.GetStatus() < http.StatusInternalServerError:
+		return &mcpError{Code: -32602, Message: statusErr.Error()}
 	case errors.Is(err, errPublicationNotFound),
 		errors.Is(err, errPublicationAlreadyProcessing),
 		errors.Is(err, errPublicationNotEditable),
@@ -3604,7 +3498,6 @@ func isDraftRevisionConflict(err error) bool {
 	return errors.As(err, &conflict)
 }
 
-//nolint:gocyclo
 func (h *MCPHandler) setPublicationRenditions(ctx context.Context, userID string, args map[string]any) (any, *mcpError) {
 	var input struct {
 		PublicationID    string           `json:"publication_id"`
@@ -3627,92 +3520,9 @@ func (h *MCPHandler) setPublicationRenditions(ctx context.Context, userID string
 	if !isPublicationEditable(publication.Status) {
 		return nil, &mcpError{Code: -32602, Message: errPublicationNotEditable.Error()}
 	}
-	handler := &PublicationHandler{db: h.db}
-	accounts, err := handler.loadAccounts(ctx, publication.WorkspaceID, renditionAccountIDs(input.Renditions))
-	if err != nil {
-		return nil, &mcpError{Code: -32602, Message: err.Error()}
-	}
-	if err := handler.validateMediaBelongsToWorkspace(ctx, publication.WorkspaceID, allPublicationMediaIDs(nil, nil, input.Renditions)); err != nil {
-		return nil, &mcpError{Code: -32602, Message: err.Error()}
-	}
-	if err := h.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
-		currentPublication, err := handler.loadEditablePublicationTx(txCtx, tx, publication.ID)
-		if err != nil {
-			return err
-		}
-		if currentPublication.Revision != input.ExpectedRevision {
-			return handler.publicationRevisionConflict(txCtx, tx, currentPublication, input.ExpectedRevision)
-		}
-		editor, err := postservice.EnsurePublicationEditorTx(txCtx, tx, currentPublication)
-		if err != nil {
-			return err
-		}
-		var IDs []string
-		if err := tx.NewSelect().Model((*models.Rendition)(nil)).Column("id").Where("publication_id = ?", publication.ID).Scan(txCtx, &IDs); err != nil {
-			return err
-		}
-		if len(IDs) > 0 {
-			if _, err := tx.NewDelete().Model((*models.RenditionMedia)(nil)).Where("rendition_id IN (?)", bun.List(IDs)).Exec(txCtx); err != nil {
-				return err
-			}
-			if _, err := tx.NewDelete().Model((*models.Rendition)(nil)).Where("publication_id = ?", publication.ID).Exec(txCtx); err != nil {
-				return err
-			}
-		}
-		segments, segmentInputs, err := handler.loadCanonicalSegmentInputsWithDB(txCtx, tx, publication.ID)
-		if err != nil {
-			return err
-		}
-		if err := handler.insertRenditions(txCtx, tx, currentPublication, segments, segmentInputs, input.Renditions, nil, accounts); err != nil {
-			return err
-		}
-		now := time.Now().UTC()
-		nextRevision := currentPublication.Revision + 1
-		result, err := tx.NewUpdate().
-			Model((*models.Publication)(nil)).
-			Set("revision = ?", nextRevision).
-			Set("updated_at = ?", now).
-			Where("id = ? AND revision = ?", currentPublication.ID, input.ExpectedRevision).
-			Exec(txCtx)
-		if err != nil {
-			return err
-		}
-		if affected, _ := result.RowsAffected(); affected == 0 {
-			return handler.publicationRevisionConflict(txCtx, tx, currentPublication, input.ExpectedRevision)
-		}
-		currentPublication.Revision = nextRevision
-		currentPublication.UpdatedAt = now
-		if err := postservice.SyncPublicationEditorTx(
-			txCtx,
-			tx,
-			currentPublication,
-			editor,
-		); err != nil {
-			return err
-		}
-		changedDomains := []string{"destinations", "destination overrides", "media"}
-		if err := handler.syncTextPostRevisionsTx(
-			txCtx,
-			tx,
-			currentPublication.ID,
-			input.ExpectedRevision,
-			nextRevision,
-			changedDomains,
-			userID,
-			now,
-		); err != nil {
-			return err
-		}
-		return drafts.RecordChange(
-			txCtx,
-			tx,
-			drafts.AggregatePublication,
-			currentPublication.ID,
-			nextRevision,
-			changedDomains,
-			userID,
-			now,
-		)
+	if err := h.publicationHandler().publicationCommands().Update(ctx, userID, &publication, PublicationUpdateBody{
+		ExpectedRevision: input.ExpectedRevision,
+		Renditions:       input.Renditions,
 	}); err != nil {
 		return nil, publicationMutationMCPError(err, "failed to update publication renditions")
 	}
@@ -3783,7 +3593,7 @@ func (h *MCPHandler) validatePublication(ctx context.Context, userID string, arg
 	if rpcErr := h.ensureWorkspaceAccess(ctx, userID, publication.WorkspaceID); rpcErr != nil {
 		return nil, rpcErr
 	}
-	issues, err := (&PublicationHandler{db: h.db}).validatePublicationByID(ctx, publication.ID)
+	issues, err := h.publicationHandler().publicationQueries().Validate(ctx, publication.ID)
 	if err != nil {
 		return nil, &mcpError{Code: -32603, Message: "failed to validate publication"}
 	}
@@ -3803,7 +3613,7 @@ func (h *MCPHandler) schedulePublication(ctx context.Context, userID string, arg
 		return nil, rpcErr
 	}
 	handler := h.publicationHandler()
-	jobID, err := handler.queueScheduledPublicationExpected(ctx, publication.ID, expectedRevision, intent)
+	jobID, err := handler.publicationCommands().Schedule(ctx, publication.ID, expectedRevision, intent)
 	if err != nil {
 		return nil, publicationMutationMCPError(err, "failed to schedule publication")
 	}
@@ -3820,7 +3630,7 @@ func (h *MCPHandler) publishPublicationNow(ctx context.Context, userID string, a
 		return nil, rpcErr
 	}
 	handler := h.publicationHandler()
-	jobID, err := handler.queuePublicationNowExpected(ctx, publication.ID, expectedRevision, intent)
+	jobID, err := handler.publicationCommands().PublishNow(ctx, publication.ID, expectedRevision, intent)
 	if err != nil {
 		return nil, publicationMutationMCPError(err, "failed to queue publication")
 	}

@@ -21,7 +21,6 @@ import (
 	"github.com/openpost/backend/internal/platform"
 	"github.com/openpost/backend/internal/services/drafts"
 	"github.com/openpost/backend/internal/services/entitlements"
-	"github.com/openpost/backend/internal/services/lifecycle"
 	"github.com/openpost/backend/internal/services/medialifecycle"
 	postservice "github.com/openpost/backend/internal/services/posts"
 	"github.com/openpost/backend/internal/services/providerreadiness"
@@ -575,7 +574,7 @@ func (h *PublicationHandler) createPublication(api huma.API) {
 		Errors:      []int{400, 403},
 	}, func(ctx context.Context, input *CreatePublicationInput) (*PublicationOutput, error) {
 		userID := middleware.GetUserID(ctx)
-		publication, err := h.newCreateCommand().Execute(ctx, userID, input.Body)
+		publication, err := h.publicationCommands().Create(ctx, userID, input.Body)
 		if err != nil {
 			var statusErr huma.StatusError
 			if errors.As(err, &statusErr) {
@@ -721,7 +720,6 @@ func (h *PublicationHandler) listPublicationEvents(api huma.API) {
 	})
 }
 
-//nolint:gocyclo // The transaction keeps revision checks, aggregate replacement, scheduling, and change tracking atomic.
 func (h *PublicationHandler) updatePublication(api huma.API) {
 	huma.Register(api, huma.Operation{
 		OperationID: "update-publication",
@@ -739,134 +737,7 @@ func (h *PublicationHandler) updatePublication(api huma.API) {
 		if err != nil {
 			return nil, err
 		}
-		if input.Body.SocialSetID != nil &&
-			*input.Body.SocialSetID != "" &&
-			*input.Body.SocialSetID != existing.SocialSetID {
-			if _, err := loadSocialSetSnapshot(ctx, h.db, existing.WorkspaceID, *input.Body.SocialSetID); err != nil {
-				return nil, err
-			}
-		}
-		if input.Body.Segments != nil {
-			if err := h.validateMediaBelongsToWorkspace(ctx, existing.WorkspaceID, allPublicationMediaIDs(nil, input.Body.Segments, nil)); err != nil {
-				return nil, err
-			}
-		}
-		accountMap := map[string]models.SocialAccount{}
-		if input.Body.Renditions != nil {
-			accountMap, err = h.loadAccounts(ctx, existing.WorkspaceID, renditionAccountIDs(input.Body.Renditions))
-			if err != nil {
-				return nil, err
-			}
-			if err := h.validateMediaBelongsToWorkspace(ctx, existing.WorkspaceID, allPublicationMediaIDs(nil, nil, input.Body.Renditions)); err != nil {
-				return nil, err
-			}
-		}
-		if input.Body.RepostOverride != nil {
-			normalized, validationErr := h.validateRepostOverride(ctx, existing.WorkspaceID, userID, *input.Body.RepostOverride)
-			if validationErr != nil {
-				return nil, huma.Error400BadRequest(validationErr.Error())
-			}
-			input.Body.RepostOverride = &normalized
-		}
-		if err := h.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
-			publication, err := h.loadEditablePublicationTx(txCtx, tx, input.PathID)
-			if err != nil {
-				return err
-			}
-			if publication.Revision != input.Body.ExpectedRevision {
-				return h.publicationRevisionConflict(txCtx, tx, publication, input.Body.ExpectedRevision)
-			}
-			editor, err := postservice.EnsurePublicationEditorTx(txCtx, tx, publication)
-			if err != nil {
-				return err
-			}
-			clearQueuedSchedule, rescheduleQueuedJob, err := applyPublicationScheduleUpdate(
-				publication,
-				input.Body.ScheduledAt,
-				input.Body.ClearSchedule,
-				time.Now().UTC(),
-			)
-			if err != nil {
-				return err
-			}
-			changedDomains := publicationChangedDomains(input.Body)
-			applyPublicationFieldUpdates(publication, input.Body)
-			publication.UpdatedAt = time.Now().UTC()
-			publication.Revision++
-			if clearQueuedSchedule {
-				if err := h.clearPublicationScheduleTx(txCtx, tx, publication.ID, publication.UpdatedAt); err != nil {
-					return err
-				}
-			}
-			result, err := tx.NewUpdate().
-				Model(publication).
-				Where("id = ? AND revision = ?", publication.ID, input.Body.ExpectedRevision).
-				Exec(txCtx)
-			if err != nil {
-				return err
-			}
-			if affected, _ := result.RowsAffected(); affected == 0 {
-				return h.publicationRevisionConflict(txCtx, tx, publication, input.Body.ExpectedRevision)
-			}
-			if input.Body.Segments != nil {
-				if err := h.replacePublicationSegments(txCtx, tx, publication, input.Body.Segments); err != nil {
-					return err
-				}
-			} else if input.Body.SourceText != nil {
-				if err := syncPublicationFirstSegmentBodyTx(
-					txCtx,
-					tx,
-					publication.ID,
-					*input.Body.SourceText,
-					publication.UpdatedAt,
-				); err != nil {
-					return err
-				}
-			}
-			if input.Body.Renditions != nil {
-				if err := h.replaceAllPublicationRenditions(
-					txCtx,
-					tx,
-					publication,
-					input.Body.Segments,
-					input.Body.Renditions,
-					accountMap,
-				); err != nil {
-					return err
-				}
-			}
-			if rescheduleQueuedJob {
-				_, err := h.replacePublicationJobTx(txCtx, tx, publication.ID, publication.ScheduledAt)
-				if err != nil {
-					return err
-				}
-			}
-			if err := postservice.SyncPublicationEditorTx(txCtx, tx, publication, editor); err != nil {
-				return err
-			}
-			if err := h.syncTextPostRevisionsTx(
-				txCtx,
-				tx,
-				publication.ID,
-				input.Body.ExpectedRevision,
-				publication.Revision,
-				changedDomains,
-				userID,
-				publication.UpdatedAt,
-			); err != nil {
-				return err
-			}
-			return drafts.RecordChange(
-				txCtx,
-				tx,
-				drafts.AggregatePublication,
-				publication.ID,
-				publication.Revision,
-				changedDomains,
-				userID,
-				publication.UpdatedAt,
-			)
-		}); err != nil {
+		if err := h.publicationCommands().Update(ctx, userID, existing, input.Body); err != nil {
 			return nil, publicationMutationHTTPError(err, "failed to update publication")
 		}
 		resp, err := h.loadPublicationResponse(ctx, input.PathID, userID)
@@ -1284,7 +1155,7 @@ func (h *PublicationHandler) validatePublication(api huma.API) {
 		if err != nil {
 			return nil, err
 		}
-		issues, err := h.validatePublicationByID(ctx, publication.ID)
+		issues, err := h.publicationQueries().Validate(ctx, publication.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -1311,16 +1182,11 @@ func (h *PublicationHandler) schedulePublication(api huma.API) {
 		if err != nil {
 			return nil, err
 		}
-		if issues, err := h.validatePublicationByID(ctx, publication.ID); err != nil {
-			return nil, err
-		} else if hasBlockingIssues(issues) {
-			return nil, publicationMutationHTTPError(errPublicationValidationBlocked, "publication capability validation failed")
-		}
 		intent, err := providerReadinessExecutionIntent(ctx, h.db, input.Body.ExecutionIntent)
 		if err != nil {
 			return nil, err
 		}
-		jobID, err := h.queueScheduledPublicationExpected(
+		jobID, err := h.publicationCommands().Schedule(
 			ctx, publication.ID, input.Body.ExpectedRevision, intent,
 		)
 		if err != nil {
@@ -1346,16 +1212,11 @@ func (h *PublicationHandler) publishNow(api huma.API) {
 		if err != nil {
 			return nil, err
 		}
-		if issues, err := h.validatePublicationByID(ctx, publication.ID); err != nil {
-			return nil, err
-		} else if hasBlockingIssues(issues) {
-			return nil, publicationMutationHTTPError(errPublicationValidationBlocked, "publication capability validation failed")
-		}
 		intent, err := providerReadinessExecutionIntent(ctx, h.db, input.Body.ExecutionIntent)
 		if err != nil {
 			return nil, err
 		}
-		jobID, err := h.queuePublicationNowExpected(
+		jobID, err := h.publicationCommands().PublishNow(
 			ctx, publication.ID, input.Body.ExpectedRevision, intent,
 		)
 		if err != nil {
@@ -1386,86 +1247,7 @@ func (h *PublicationHandler) retryRendition(api huma.API) {
 		); err != nil {
 			return nil, err
 		}
-		var rendition models.Rendition
-		if err := h.db.NewSelect().
-			Model(&rendition).
-			Where("publication_id = ?", publication.ID).
-			Where("social_account_id = ?", input.AccountID).
-			Scan(ctx); err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return nil, huma.Error404NotFound("rendition not found")
-			}
-			return nil, huma.Error500InternalServerError("failed to load rendition")
-		}
-		if rendition.Status != models.RenditionStatusFailed {
-			return nil, huma.Error409Conflict("only a failed destination can be retried")
-		}
-		if !rendition.ErrorRetryable {
-			return nil, huma.Error409Conflict("this failure requires the recommended account or content action")
-		}
-
-		jobID := uuid.NewString()
-		batchID := uuid.NewString()
-		now := time.Now().UTC()
-		payload := mustJSON(map[string]string{
-			"publication_id":             publication.ID,
-			"rendition_id":               rendition.ID,
-			"authorization_batch_id":     batchID,
-			"authorization_scheduled_at": now.Format(time.RFC3339Nano),
-		})
-		err = h.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
-			result, err := tx.NewUpdate().
-				Model((*models.Rendition)(nil)).
-				Set("status = ?", models.RenditionStatusScheduled).
-				Set("error_retry_at = NULL").
-				Set("updated_at = ?", now).
-				Where("id = ?", rendition.ID).
-				Where("status = ?", models.RenditionStatusFailed).
-				Where("error_retryable = ?", true).
-				Exec(txCtx)
-			if err != nil {
-				return err
-			}
-			affected, _ := result.RowsAffected()
-			if affected == 0 {
-				return errPublicationAlreadyProcessing
-			}
-			if _, err := tx.NewUpdate().
-				Model((*models.Publication)(nil)).
-				Set("status = ?", models.PublicationStatusScheduled).
-				Set("updated_at = ?", now).
-				Where("id = ?", publication.ID).
-				Where("status = ?", models.PublicationStatusFailed).
-				Exec(txCtx); err != nil {
-				return err
-			}
-			if _, err := tx.NewUpdate().
-				Model((*models.Post)(nil)).
-				Set("status = ?", models.PostStatusScheduled).
-				Where("publication_id = ?", publication.ID).
-				Where("status = ?", models.PostStatusFailed).
-				Exec(txCtx); err != nil && !isMissingLegacyPostsTable(err) {
-				return err
-			}
-			job := &models.Job{
-				ID:          jobID,
-				Type:        jobTypePublishPublication,
-				Payload:     payload,
-				Status:      jobStatusPending,
-				RunAt:       now,
-				MaxAttempts: 3,
-			}
-			if _, err = tx.NewInsert().Model(job).Exec(txCtx); err != nil {
-				return err
-			}
-			_, _, err = publicationauth.CreateBatch(txCtx, tx, publicationauth.BatchInput{
-				BatchID: batchID, PublicationID: publication.ID,
-				Actor:  publicationAuthorizationActor(txCtx, publication.CreatedByID),
-				Action: publicationauth.ActionPublish, PolicyMode: publicationauth.PolicyRetry, ConfirmedAt: now,
-				Targets: []publicationauth.JobTarget{{JobID: jobID, RenditionID: rendition.ID, RunAt: now}},
-			})
-			return err
-		})
+		jobID, err := h.publicationCommands().RetryRendition(ctx, publication, input.AccountID)
 		if err != nil {
 			return nil, publicationMutationHTTPError(err, "failed to queue destination retry")
 		}
@@ -1473,7 +1255,6 @@ func (h *PublicationHandler) retryRendition(api huma.API) {
 	})
 }
 
-//nolint:gocyclo // Retry selection, state transitions, jobs, receipts, and audit events must commit atomically.
 func (h *PublicationHandler) retryFailedRenditions(api huma.API) {
 	huma.Register(api, huma.Operation{
 		OperationID: "retry-failed-publication-renditions",
@@ -1493,106 +1274,7 @@ func (h *PublicationHandler) retryFailedRenditions(api huma.API) {
 			return nil, err
 		}
 
-		jobID := uuid.NewString()
-		batchID := uuid.NewString()
-		now := time.Now().UTC()
-		payload := mustJSON(map[string]string{
-			"publication_id":             publication.ID,
-			"authorization_batch_id":     batchID,
-			"authorization_scheduled_at": now.Format(time.RFC3339Nano),
-		})
-		err = h.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
-			if err := lockPublicationMutationTx(txCtx, tx, publication.ID); err != nil {
-				return err
-			}
-			if err := h.lockActivePrimaryPublicationJobsTx(txCtx, tx, publication.ID); err != nil {
-				return err
-			}
-			if err := h.rejectProcessingPrimaryPublicationJobTx(txCtx, tx, publication.ID); err != nil {
-				return err
-			}
-			if err := h.deletePendingPrimaryPublicationJobsTx(txCtx, tx, publication.ID); err != nil {
-				return err
-			}
-			var retryRenditions []models.Rendition
-			if err := tx.NewSelect().Model(&retryRenditions).
-				Where("publication_id = ?", publication.ID).
-				Where("status = ?", models.RenditionStatusFailed).
-				Where("error_retryable = ?", true).
-				Order("created_at ASC", "id ASC").
-				Scan(txCtx); err != nil {
-				return err
-			}
-			result, err := tx.NewUpdate().
-				Model((*models.Rendition)(nil)).
-				Set("status = ?", models.RenditionStatusScheduled).
-				Set("error_retry_at = NULL").
-				Set("updated_at = ?", now).
-				Where("publication_id = ?", publication.ID).
-				Where("status = ?", models.RenditionStatusFailed).
-				Where("error_retryable = ?", true).
-				Exec(txCtx)
-			if err != nil {
-				return err
-			}
-			affected, _ := result.RowsAffected()
-			if affected == 0 {
-				return huma.Error409Conflict("no retryable failed destinations remain")
-			}
-			if _, err := tx.NewUpdate().
-				Model((*models.Publication)(nil)).
-				Set("status = ?", models.PublicationStatusScheduled).
-				Set("updated_at = ?", now).
-				Where("id = ?", publication.ID).
-				Exec(txCtx); err != nil {
-				return err
-			}
-			if _, err := tx.NewUpdate().
-				Model((*models.Post)(nil)).
-				Set("status = ?", models.PostStatusScheduled).
-				Where("publication_id = ?", publication.ID).
-				Where("status = ?", models.PostStatusFailed).
-				Exec(txCtx); err != nil && !isMissingLegacyPostsTable(err) {
-				return err
-			}
-			if _, err := tx.NewInsert().Model(&models.Job{
-				ID:          jobID,
-				Type:        jobTypePublishPublication,
-				Payload:     payload,
-				Status:      jobStatusPending,
-				RunAt:       now,
-				MaxAttempts: 3,
-			}).Exec(txCtx); err != nil {
-				return err
-			}
-			targets := make([]publicationauth.JobTarget, 0, len(retryRenditions))
-			for _, retryRendition := range retryRenditions {
-				targets = append(targets, publicationauth.JobTarget{
-					JobID: jobID, RenditionID: retryRendition.ID, RunAt: now,
-				})
-			}
-			if _, _, err := publicationauth.CreateBatch(txCtx, tx, publicationauth.BatchInput{
-				BatchID: batchID, PublicationID: publication.ID,
-				Actor:  publicationAuthorizationActor(txCtx, publication.CreatedByID),
-				Action: publicationauth.ActionPublish, PolicyMode: publicationauth.PolicyRetry, ConfirmedAt: now,
-				Targets: targets,
-			}); err != nil {
-				return err
-			}
-			event := &models.PublicationLifecycleEvent{
-				ID:             uuid.NewString(),
-				WorkspaceID:    publication.WorkspaceID,
-				PublicationID:  publication.ID,
-				Type:           lifecycle.EventRetried,
-				Status:         lifecycle.StatusStarted,
-				Message:        "Retry queued for failed destinations",
-				MetadataJSON:   mustJSON(map[string]any{"destination_count": affected}),
-				IdempotencyKey: "retry-failed:" + jobID,
-				CreatedAt:      now,
-			}
-			_, err = tx.NewInsert().Model(event).Exec(txCtx)
-			return err
-		})
+		jobID, err := h.publicationCommands().RetryFailedRenditions(ctx, publication)
 		if err != nil {
 			return nil, publicationMutationHTTPError(err, "failed to queue destination retries")
 		}

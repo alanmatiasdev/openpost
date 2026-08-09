@@ -707,8 +707,15 @@ func TestMCPPublicationScheduleSemanticsMatchREST(t *testing.T) {
 
 	publication.Status = models.PublicationStatusScheduled
 	publication.SourceURL = "https://example.com/source"
-	clear, reschedule, updateErr := applyMCPPublicationUpdate(publication, mcpPublicationUpdateInput{ClearSchedule: true}, now)
+	update := PublicationUpdateBody{ClearSchedule: true}
+	clear, reschedule, updateErr := applyPublicationScheduleUpdate(
+		publication,
+		update.ScheduledAt,
+		update.ClearSchedule,
+		now,
+	)
 	require.NoError(t, updateErr)
+	applyPublicationFieldUpdates(publication, update)
 	require.True(t, clear)
 	require.False(t, reschedule)
 	require.Equal(t, models.PublicationStatusDraft, publication.Status)

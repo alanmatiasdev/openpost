@@ -24,6 +24,7 @@ All notable changes to this project are documented in this file.
 
 ### Changed
 
+- Consolidated REST and MCP publication updates, rendition replacement, validation, scheduling, immediate publishing, and REST retry orchestration behind a shared application command/query boundary, with matching workspace authorization and enqueue validation.
 - Pinned the production Bun toolchain, Node frontend builder, Go backend builder, and supported Alpine runtime inputs by digest; kept Vite and SvelteKit on real Node while Bun owns installs and scripts; declared Linux AMD64 as the tested container architecture; separated process liveness from traffic readiness; and expanded restart smoke coverage across OCI health, configuration, SQLite, FFmpeg, FFprobe, and release identity.
 - Replaced three full shared-asset copies with a typed per-surface manifest that validates every source reference and staged output before installing the exact frontend, documentation, or marketing files.
 - Made one canonical marketing route manifest own prerender entries, sitemap priorities, canonical URLs, and social metadata, including bidirectional page and content-catalog checks.
