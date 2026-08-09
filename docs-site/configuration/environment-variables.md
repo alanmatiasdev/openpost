@@ -137,6 +137,14 @@ Automatic alt text is off when `OPENROUTER_API_KEY` is empty. When it is configu
 
 This is external processing: the thumbnail and any relevant segment text leave the OpenPost instance and are handled by OpenRouter and the selected model provider. Review their current privacy and retention terms before enabling the feature. Existing or newly entered manual alt text always wins. With no key, OpenPost makes no caption request. A captioning failure does not stop users from attaching or publishing media.
 
+## Meme generator
+
+The meme generator is off by default. When enabled, OpenPost loads Memegen's template catalog on the server, validates template IDs and caption counts, asks Memegen to render bounded image data, and immediately saves the chosen result in the workspace Media library. OpenPost saves an immutable recipe with captions, overlay media IDs, output format, catalog revision, and a safe template source link when one is available.
+
+Manual template search, caption editing, preview, and rendering need only Memegen. AI suggestions also need `OPENROUTER_API_KEY`: OpenPost sends the idea and a bounded template shortlist to the configured model, validates its structured response, and leaves every caption editable before rendering. It does not send the full template catalog or save the original idea in the recipe.
+
+Memegen is external processing unless you operate it yourself. The service receives unpublished caption text and, for replaceable image slots, short-lived public HTTPS URLs for the selected Media items. Review Memegen's current [client guidance](https://memegen.link/clients/) and [API guide](https://memegen.link/guide/) for privacy, watermark, rate-limit, and access details before enabling its hosted API. A key changes hosted service access but does not establish rights to every community template. Treat any source link OpenPost can safely show as provenance, not a license, and confirm that you can publish each template. Use a private, hardened Memegen deployment when draft confidentiality or service continuity matters.
+
 ## Update status
 
 When enabled in `selfhost` mode, the Instance settings page lets an instance admin compare the running version and build revision with the latest stable OpenPost release. The server checks the fixed public GitHub release endpoint only when an admin requests this page. It sends no hostname, account data, content, or credentials.
