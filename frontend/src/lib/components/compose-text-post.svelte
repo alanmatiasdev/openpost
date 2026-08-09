@@ -80,6 +80,7 @@
 	import { loadableDestinationOptionSources } from './compose/destination-options';
 	import {
 		workspaceClock,
+		workspaceDateKeyFromISO,
 		workspaceScheduleFromISO,
 		workspaceScheduleToISO
 	} from './compose/schedule-timezone';
@@ -326,6 +327,7 @@
 	let savedIndicatorTimer: ReturnType<typeof setTimeout> | null = null;
 	let savedIndicatorVisible = $state(false);
 	let lastSavedSnapshot = $state('');
+	let lastSavedScheduleAt = '';
 	let appliedInitialContextKey = $state('');
 	const previewSessions = new SvelteMap<string, PreviewWindowSession>();
 	const textareaRefs = new SvelteMap<number, HTMLTextAreaElement>();
@@ -2000,6 +2002,7 @@
 			posts = [makeEmptyPost()];
 			activePostIndex = 0;
 			lastSavedSnapshot = '';
+			lastSavedScheduleAt = '';
 			variants = new Map();
 			activeVariantAccountId = null;
 			selectedAccountIds = [];
@@ -2092,6 +2095,8 @@
 			selectedDate = undefined;
 			selectedTime = null;
 		}
+		lastSavedScheduleAt =
+			post.scheduled_at && post.scheduled_at !== '0001-01-01T00:00:00Z' ? post.scheduled_at : '';
 
 		await loadAccounts(selectedWorkspaceId, selectedAccountIds);
 		if (!source) {
@@ -2152,6 +2157,10 @@
 			selectedDate = undefined;
 			selectedTime = null;
 		}
+		lastSavedScheduleAt =
+			publication.scheduled_at && publication.scheduled_at !== '0001-01-01T00:00:00Z'
+				? publication.scheduled_at
+				: '';
 		await Promise.all([
 			mediaIDs.length > 0
 				? hydrateMediaMetadata(publication.workspace_id, mediaIDs)
@@ -2551,6 +2560,7 @@
 		formatLockedByAccount = {};
 		scheduleOverridesByAccount = {};
 		lastSavedSnapshot = '';
+		lastSavedScheduleAt = '';
 		isSaving = false;
 		showDeleteConfirm = false;
 		selectedDate = undefined;
@@ -2849,7 +2859,15 @@
 			showSavedIndicator();
 			const activeDraftID = savedPublicationId || savedDraftId;
 			if (activeDraftID) ui.setActiveComposerDraft(activeDraftID);
-			ui.triggerRefresh();
+			const previousScheduleAt = lastSavedScheduleAt;
+			lastSavedScheduleAt = proposedSchedule ?? '';
+			const scheduleChanged = previousScheduleAt !== lastSavedScheduleAt;
+			const affectedDateKeys = publicationDateKeys(previousScheduleAt, lastSavedScheduleAt);
+			ui.invalidatePublications({
+				workspaceId,
+				scopes: scheduleChanged ? ['activity', 'calendar', 'drafts'] : ['drafts'],
+				dateKeys: affectedDateKeys
+			});
 			if (createdDraftId && savedPublicationId) onDraftCreated?.(savedPublicationId);
 			return savedPublicationId || null;
 		} catch (cause) {
@@ -2863,6 +2881,16 @@
 				isSaving = false;
 			}
 		}
+	}
+
+	function publicationDateKeys(...timestamps: Array<string | null | undefined>) {
+		return [
+			...new Set(
+				timestamps
+					.map((value) => (value ? workspaceDateKeyFromISO(value, scheduleTimezoneLabel) : null))
+					.filter((value): value is string => Boolean(value))
+			)
+		];
 	}
 
 	async function reloadSavedTextDraft() {
@@ -2927,11 +2955,24 @@
 					).error;
 			if (deleteErr) throw new Error((deleteErr as any).detail || m.compose_delete_post_failed());
 
-			ui.triggerRefresh();
+			const affectedDateKeys = publicationDateKeys(lastSavedScheduleAt);
+			ui.invalidatePublications(
+				{
+					workspaceId: selectedWorkspaceId,
+					scopes:
+						affectedDateKeys.length > 0
+							? ['activity', 'calendar', 'drafts']
+							: ['activity', 'drafts'],
+					dateKeys: affectedDateKeys
+				},
+				{ immediate: true }
+			);
 			posts = [makeEmptyPost()];
 			activePostIndex = 0;
 			draftId = null;
+			publicationId = '';
 			lastSavedSnapshot = '';
+			lastSavedScheduleAt = '';
 			variants = new Map();
 			activeVariantAccountId = null;
 			selectedDate = undefined;
@@ -3008,7 +3049,13 @@
 			success = m.compose_changes_saved();
 			soundPreferences.play('success');
 			if (scheduledAt) void celebrateSchedule();
-			ui.triggerRefresh();
+			ui.invalidatePublications(
+				{
+					workspaceId: selectedWorkspaceId,
+					scopes: ['activity', 'drafts']
+				},
+				{ immediate: true }
+			);
 
 			if (onSuccess) {
 				setTimeout(() => onSuccess(), 500);
@@ -3124,7 +3171,14 @@
 			success = publishNow ? m.compose_publishing_now() : m.compose_scheduled_success();
 			soundPreferences.play('success');
 			if (!publishNow) void celebrateSchedule();
-			ui.triggerRefresh();
+			ui.invalidatePublications(
+				{
+					workspaceId: selectedWorkspaceId,
+					scopes: ['activity', 'calendar', 'drafts'],
+					dateKeys: publicationDateKeys(scheduledAt)
+				},
+				{ immediate: true }
+			);
 
 			if (isEditMode && onSuccess) {
 				setTimeout(() => onSuccess(), 800);
@@ -3134,6 +3188,7 @@
 				draftId = null;
 				publicationId = '';
 				lastSavedSnapshot = '';
+				lastSavedScheduleAt = '';
 				variants = new Map();
 				activeVariantAccountId = null;
 				linkUrl = '';

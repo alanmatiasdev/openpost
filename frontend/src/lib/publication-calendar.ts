@@ -7,7 +7,7 @@ export interface CalendarPublication {
 }
 
 export function publicationCalendarOccurrence(publication: CalendarPublication): string | null {
-	if (publication.status === 'scheduled') {
+	if (publication.status === 'scheduled' || publication.status === 'publishing') {
 		return publication.scheduled_at || null;
 	}
 	if (publication.status === 'published') {

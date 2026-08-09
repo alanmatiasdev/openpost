@@ -1,4 +1,11 @@
 import { type DateValue } from '@internationalized/date';
+import {
+	PublicationInvalidationCoalescer,
+	type PublicationInvalidationBatch,
+	type PublicationInvalidationRequest
+} from '$lib/publication-invalidation';
+
+const publicationRefreshDebounceMS = 2_500;
 
 export interface PendingPrompt {
 	text: string;
@@ -11,10 +18,13 @@ class UIState {
 	isDayPostsOpen = $state(false);
 	dayPostsDate = $state<DateValue | undefined>(undefined);
 	refreshCounter = $state(0);
+	publicationInvalidations = $state.raw<PublicationInvalidationBatch>({ revision: 0, entries: [] });
 	composerResetCounter = $state(0);
 	activeComposerDraftId = $state<string | null>(null);
 	pendingPrompt = $state<PendingPrompt | null>(null);
 	isFeedbackOpen = $state(false);
+	#publicationInvalidationCoalescer = new PublicationInvalidationCoalescer();
+	#publicationRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 
 	openCompose(date?: DateValue) {
 		this.composeInitialDate = date;
@@ -61,8 +71,34 @@ class UIState {
 		this.composerResetCounter++;
 	}
 
-	triggerRefresh() {
+	invalidatePublications(
+		request: PublicationInvalidationRequest = {},
+		options: { immediate?: boolean } = {}
+	) {
+		this.#publicationInvalidationCoalescer.add(request);
+		if (this.#publicationRefreshTimer) clearTimeout(this.#publicationRefreshTimer);
+		this.#publicationRefreshTimer = null;
+		if (options.immediate) {
+			this.flushPublicationInvalidations();
+			return;
+		}
+		this.#publicationRefreshTimer = setTimeout(
+			() => this.flushPublicationInvalidations(),
+			publicationRefreshDebounceMS
+		);
+	}
+
+	flushPublicationInvalidations() {
+		if (this.#publicationRefreshTimer) clearTimeout(this.#publicationRefreshTimer);
+		this.#publicationRefreshTimer = null;
+		const nextRevision = this.publicationInvalidations.revision + 1;
+		const batch = this.#publicationInvalidationCoalescer.drain(nextRevision);
+		if (batch) this.publicationInvalidations = batch;
+	}
+
+	triggerRefresh(request: PublicationInvalidationRequest = {}) {
 		this.refreshCounter++;
+		this.invalidatePublications(request, { immediate: true });
 	}
 
 	openFeedback() {

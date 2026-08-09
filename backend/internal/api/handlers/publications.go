@@ -187,6 +187,11 @@ type ListPublicationsInput struct {
 	WorkspaceID    string `query:"workspace_id" required:"true" doc:"Workspace ID"`
 	Status         string `query:"status" doc:"Optional status filter"`
 	ContentProfile string `query:"content_profile" doc:"Optional content profile filter"`
+	Cursor         string `query:"cursor" doc:"Opaque cursor for stable newest-first pagination"`
+	CreatedFrom    string `query:"created_from" doc:"Include publications created at or after this RFC3339 timestamp"`
+	CreatedBefore  string `query:"created_before" doc:"Include publications created before this RFC3339 timestamp"`
+	CalendarFrom   string `query:"calendar_from" doc:"Include calendar occurrences at or after this RFC3339 timestamp"`
+	CalendarBefore string `query:"calendar_before" doc:"Include calendar occurrences before this RFC3339 timestamp"`
 	Limit          int    `query:"limit" doc:"Limit, default 50"`
 	Offset         int    `query:"offset" doc:"Offset"`
 }
@@ -204,6 +209,7 @@ type DeletePublicationInput struct {
 type ListPublicationEventsInput struct {
 	PathID string `path:"id" doc:"Publication ID"`
 	Limit  int    `query:"limit" doc:"Limit, default 100"`
+	Cursor string `query:"cursor" doc:"Opaque cursor for older lifecycle entries"`
 }
 
 type PublicationActionInput struct {
@@ -249,11 +255,12 @@ type PublicationOutput struct {
 }
 
 type PublicationListOutput struct {
-	TotalCount int  `header:"X-Total-Count"`
-	Limit      int  `header:"X-Limit"`
-	Offset     int  `header:"X-Offset"`
-	NextOffset int  `header:"X-Next-Offset"`
-	HasMore    bool `header:"X-Has-More"`
+	TotalCount int    `header:"X-Total-Count"`
+	Limit      int    `header:"X-Limit"`
+	Offset     int    `header:"X-Offset"`
+	NextOffset int    `header:"X-Next-Offset"`
+	NextCursor string `header:"X-Next-Cursor"`
+	HasMore    bool   `header:"X-Has-More"`
 	Body       []PublicationResponse
 }
 
@@ -265,7 +272,9 @@ type PublicationValidationOutput struct {
 }
 
 type PublicationEventsOutput struct {
-	Body []PublicationLifecycleEventResponse
+	NextCursor string `header:"X-Next-Cursor"`
+	HasMore    bool   `header:"X-Has-More"`
+	Body       []PublicationLifecycleEventResponse
 }
 
 type ActionOutput struct {
@@ -395,16 +404,36 @@ type MediaSummary struct {
 }
 
 type PublicationLifecycleEventResponse struct {
-	ID             string         `json:"id"`
-	WorkspaceID    string         `json:"workspace_id"`
-	PublicationID  string         `json:"publication_id"`
-	RenditionID    string         `json:"rendition_id,omitempty"`
-	Type           string         `json:"type"`
-	Status         string         `json:"status"`
-	Message        string         `json:"message"`
-	Metadata       map[string]any `json:"metadata"`
-	IdempotencyKey string         `json:"idempotency_key,omitempty"`
-	CreatedAt      string         `json:"created_at"`
+	ID               string                     `json:"id"`
+	WorkspaceID      string                     `json:"workspace_id"`
+	PublicationID    string                     `json:"publication_id"`
+	RenditionID      string                     `json:"rendition_id,omitempty"`
+	Type             string                     `json:"type"`
+	Status           string                     `json:"status"`
+	Summary          string                     `json:"summary"`
+	Actor            PublicationLifecycleActor  `json:"actor"`
+	Platform         string                     `json:"platform,omitempty"`
+	ChangedDomains   []string                   `json:"changed_domains,omitempty"`
+	Revision         int                        `json:"revision,omitempty"`
+	ScheduledAt      string                     `json:"scheduled_at,omitempty"`
+	DestinationCount int                        `json:"destination_count,omitempty"`
+	Error            *PublicationLifecycleError `json:"error,omitempty"`
+	CreatedAt        string                     `json:"created_at"`
+}
+
+type PublicationLifecycleActor struct {
+	Kind   string `json:"kind" enum:"user,automation,system"`
+	Name   string `json:"name,omitempty"`
+	Origin string `json:"origin,omitempty"`
+}
+
+type PublicationLifecycleError struct {
+	Message    string `json:"message,omitempty"`
+	Kind       string `json:"kind,omitempty"`
+	Code       string `json:"code,omitempty"`
+	HTTPStatus int    `json:"http_status,omitempty"`
+	Retryable  bool   `json:"retryable"`
+	Action     string `json:"action,omitempty"`
 }
 
 func (h *PublicationHandler) RegisterRoutes(api huma.API) {
@@ -566,38 +595,7 @@ func (h *PublicationHandler) listPublications(api huma.API) {
 		if err := h.checkWorkspaceAccess(ctx, input.WorkspaceID, userID); err != nil {
 			return nil, err
 		}
-		limit := input.Limit
-		if limit <= 0 || limit > 200 {
-			limit = 50
-		}
-		query := h.db.NewSelect().Model((*models.Publication)(nil)).Where("workspace_id = ?", input.WorkspaceID)
-		if input.Status != "" {
-			query = query.Where("status = ?", input.Status)
-		}
-		if input.ContentProfile != "" {
-			query = query.Where("content_profile = ?", input.ContentProfile)
-		}
-		total, err := query.Count(ctx)
-		if err != nil {
-			return nil, huma.Error500InternalServerError("failed to count publications")
-		}
-		var publications []models.Publication
-		if err := query.Order("created_at DESC").Limit(limit).Offset(input.Offset).Scan(ctx, &publications); err != nil {
-			return nil, huma.Error500InternalServerError("failed to list publications")
-		}
-		body, err := h.loadPublicationResponses(ctx, publications)
-		if err != nil {
-			return nil, err
-		}
-		next := input.Offset + len(body)
-		return &PublicationListOutput{
-			TotalCount: total,
-			Limit:      limit,
-			Offset:     input.Offset,
-			NextOffset: next,
-			HasMore:    next < total,
-			Body:       body,
-		}, nil
+		return h.listPublicationsPage(ctx, input)
 	})
 }
 
@@ -702,15 +700,14 @@ func (h *PublicationHandler) listPublicationEvents(api huma.API) {
 		if err != nil {
 			return nil, err
 		}
-		events, err := lifecycle.NewService(h.db).ListForPublication(ctx, publication.WorkspaceID, publication.ID, input.Limit)
+		events, nextCursor, hasMore, err := h.listPublicationHistory(ctx, publication, input.Limit, input.Cursor)
 		if err != nil {
+			if errors.Is(err, errInvalidHistoryCursor) {
+				return nil, huma.Error400BadRequest("invalid publication history cursor")
+			}
 			return nil, huma.Error500InternalServerError("failed to load publication events")
 		}
-		body := make([]PublicationLifecycleEventResponse, 0, len(events))
-		for _, event := range events {
-			body = append(body, publicationLifecycleEventResponse(event))
-		}
-		return &PublicationEventsOutput{Body: body}, nil
+		return &PublicationEventsOutput{Body: events, NextCursor: nextCursor, HasMore: hasMore}, nil
 	})
 }
 
@@ -3686,23 +3683,6 @@ func mediaPublicationPosterURL(media models.MediaAttachment) string {
 		return ""
 	}
 	return "/media/" + media.ID + "/poster"
-}
-
-func publicationLifecycleEventResponse(event models.PublicationLifecycleEvent) PublicationLifecycleEventResponse {
-	metadata := map[string]any{}
-	_ = json.Unmarshal([]byte(event.MetadataJSON), &metadata)
-	return PublicationLifecycleEventResponse{
-		ID:             event.ID,
-		WorkspaceID:    event.WorkspaceID,
-		PublicationID:  event.PublicationID,
-		RenditionID:    event.RenditionID,
-		Type:           event.Type,
-		Status:         event.Status,
-		Message:        event.Message,
-		Metadata:       metadata,
-		IdempotencyKey: event.IdempotencyKey,
-		CreatedAt:      event.CreatedAt.Format(time.RFC3339),
-	}
 }
 
 func renditionAccountIDs(renditions []RenditionInput) []string {

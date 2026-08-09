@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 	"time"
 
@@ -30,6 +31,7 @@ func newJobsTestServer(t *testing.T) *jobsTestServer {
 		(*models.Workspace)(nil),
 		(*models.WorkspaceMember)(nil),
 		(*models.Post)(nil),
+		(*models.Publication)(nil),
 		(*models.SocialAccount)(nil),
 		(*models.Job)(nil),
 	)
@@ -74,7 +76,7 @@ func TestListJobsPaginatesVisibleJobsWithHeaders(t *testing.T) {
 	srv := newJobsTestServer(t)
 	srv.seedJobs(t)
 
-	resp := srv.getJSON(t, "/api/v1/jobs?limit=2&offset=1", "web-token")
+	resp := srv.getJSON(t, "/api/v1/jobs?limit=2&offset=1")
 
 	require.Equal(t, http.StatusOK, resp.Code, resp.Body.String())
 	require.Equal(t, "4", resp.Header().Get("X-Total-Count"))
@@ -96,7 +98,7 @@ func TestListJobsCountsFilteredWorkspaceScope(t *testing.T) {
 	srv := newJobsTestServer(t)
 	srv.seedJobs(t)
 
-	resp := srv.getJSON(t, "/api/v1/jobs?workspace_id=ws-1&status=pending&limit=1", "web-token")
+	resp := srv.getJSON(t, "/api/v1/jobs?workspace_id=ws-1&status=pending&limit=1")
 
 	require.Equal(t, http.StatusOK, resp.Code, resp.Body.String())
 	require.Equal(t, "2", resp.Header().Get("X-Total-Count"))
@@ -117,10 +119,72 @@ func TestListJobsRejectsNegativeOffset(t *testing.T) {
 
 	srv := newJobsTestServer(t)
 
-	resp := srv.getJSON(t, "/api/v1/jobs?offset=-1", "web-token")
+	resp := srv.getJSON(t, "/api/v1/jobs?offset=-1")
 
 	require.Equal(t, http.StatusBadRequest, resp.Code, resp.Body.String())
 	require.Contains(t, resp.Body.String(), "offset must be greater than or equal to 0")
+}
+
+func TestListJobsCursorAndRunRangeReachOlderRecordsWithoutDuplicates(t *testing.T) {
+	t.Parallel()
+
+	srv := newJobsTestServer(t)
+	srv.seedJobs(t)
+
+	first := srv.getJSON(t, "/api/v1/jobs?workspace_id=ws-1&limit=2")
+	require.Equal(t, http.StatusOK, first.Code, first.Body.String())
+	require.Equal(t, "true", first.Header().Get("X-Has-More"))
+	cursor := first.Header().Get("X-Next-Cursor")
+	require.NotEmpty(t, cursor)
+	var firstPage []JobResponse
+	require.NoError(t, json.Unmarshal(first.Body.Bytes(), &firstPage))
+	require.Equal(t, []string{"job-4", "job-3"}, []string{firstPage[0].ID, firstPage[1].ID})
+
+	second := srv.getJSON(
+		t,
+		"/api/v1/jobs?workspace_id=ws-1&limit=2&cursor="+url.QueryEscape(cursor),
+	)
+	require.Equal(t, http.StatusOK, second.Code, second.Body.String())
+	require.Equal(t, "false", second.Header().Get("X-Has-More"))
+	var secondPage []JobResponse
+	require.NoError(t, json.Unmarshal(second.Body.Bytes(), &secondPage))
+	require.Equal(t, []string{"job-2", "job-1"}, []string{secondPage[0].ID, secondPage[1].ID})
+
+	rangeResponse := srv.getJSON(
+		t,
+		"/api/v1/jobs?workspace_id=ws-1&run_from=2026-07-01T12:02:00Z&run_before=2026-07-01T12:04:00Z",
+	)
+	require.Equal(t, http.StatusOK, rangeResponse.Code, rangeResponse.Body.String())
+	var rangePage []JobResponse
+	require.NoError(t, json.Unmarshal(rangeResponse.Body.Bytes(), &rangePage))
+	require.Equal(t, []string{"job-3", "job-2"}, []string{rangePage[0].ID, rangePage[1].ID})
+}
+
+func TestListJobsIncludesCanonicalPublicationJobsInWorkspaceScope(t *testing.T) {
+	t.Parallel()
+
+	srv := newJobsTestServer(t)
+	ctx := context.Background()
+	_, err := srv.db.NewInsert().Model(&models.Publication{
+		ID: "publication-1", WorkspaceID: "ws-1", CreatedByID: "user-1", Title: "Launch",
+		ContentProfile: models.ContentProfileShortText, SourceText: "Launch", SourceContent: "Launch",
+		Status: models.PublicationStatusFailed,
+	}).Exec(ctx)
+	require.NoError(t, err)
+	_, err = srv.db.NewInsert().Model(&models.Job{
+		ID: "publication-job", Type: "publish_publication", Payload: `{"publication_id":"publication-1"}`,
+		Status: "failed", RunAt: time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC), MaxAttempts: 3,
+	}).Exec(ctx)
+	require.NoError(t, err)
+
+	response := srv.getJSON(t, "/api/v1/jobs?workspace_id=ws-1&status=failed")
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	var jobs []JobResponse
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &jobs))
+	require.Len(t, jobs, 1)
+	require.Equal(t, "publication-job", jobs[0].ID)
+	require.Equal(t, "publication-1", jobs[0].PublicationID)
+	require.Empty(t, jobs[0].Payload)
 }
 
 func (s *jobsTestServer) seedJobs(t *testing.T) {
@@ -138,13 +202,11 @@ func (s *jobsTestServer) seedJobs(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func (s *jobsTestServer) getJSON(t *testing.T, path string, token string) *httptest.ResponseRecorder {
+func (s *jobsTestServer) getJSON(t *testing.T, path string) *httptest.ResponseRecorder {
 	t.Helper()
 
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, nil)
-	if token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
-	}
+	req.Header.Set("Authorization", "Bearer web-token")
 	rec := httptest.NewRecorder()
 	s.echo.ServeHTTP(rec, req)
 	return rec

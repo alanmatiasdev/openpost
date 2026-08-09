@@ -2,8 +2,10 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -13,31 +15,36 @@ import (
 )
 
 type JobResponse struct {
-	ID          string `json:"id" doc:"Job ID"`
-	Type        string `json:"type" doc:"Job type"`
-	Status      string `json:"status" doc:"Job status"`
-	Payload     string `json:"payload,omitempty" doc:"Job payload"`
-	RunAt       string `json:"run_at" doc:"Scheduled run time"`
-	Attempts    int    `json:"attempts" doc:"Number of attempts"`
-	MaxAttempts int    `json:"max_attempts" doc:"Maximum attempts"`
-	LastError   string `json:"last_error,omitempty" doc:"Last error message"`
-	LockedAt    string `json:"locked_at,omitempty" doc:"When job was locked"`
-	CreatedAt   string `json:"created_at" doc:"Creation time"`
+	ID            string `json:"id" doc:"Job ID"`
+	Type          string `json:"type" doc:"Job type"`
+	Status        string `json:"status" doc:"Job status"`
+	Payload       string `json:"payload,omitempty" doc:"Job payload"`
+	RunAt         string `json:"run_at" doc:"Scheduled run time"`
+	Attempts      int    `json:"attempts" doc:"Number of attempts"`
+	MaxAttempts   int    `json:"max_attempts" doc:"Maximum attempts"`
+	LastError     string `json:"last_error,omitempty" doc:"Last error message"`
+	LockedAt      string `json:"locked_at,omitempty" doc:"When job was locked"`
+	CreatedAt     string `json:"created_at" doc:"Creation time"`
+	PublicationID string `json:"publication_id,omitempty" doc:"Publication associated with this job, when available"`
 }
 
 type ListJobsInput struct {
 	Limit       int    `query:"limit" doc:"Number of jobs to return (default 50, max 200)"`
 	Offset      int    `query:"offset" doc:"Offset for pagination"`
+	Cursor      string `query:"cursor" doc:"Opaque cursor for stable newest-first pagination"`
 	Status      string `query:"status" doc:"Filter by status (pending, processing, completed, failed)"`
 	WorkspaceID string `query:"workspace_id" doc:"Filter by workspace ID"`
+	RunFrom     string `query:"run_from" doc:"Include jobs scheduled at or after this RFC3339 timestamp"`
+	RunBefore   string `query:"run_before" doc:"Include jobs scheduled before this RFC3339 timestamp"`
 }
 
 type ListJobsOutput struct {
-	TotalCount int  `header:"X-Total-Count" doc:"Total number of matching jobs"`
-	Limit      int  `header:"X-Limit" doc:"Applied page limit"`
-	Offset     int  `header:"X-Offset" doc:"Applied page offset"`
-	NextOffset int  `header:"X-Next-Offset" doc:"Offset for the next page"`
-	HasMore    bool `header:"X-Has-More" doc:"Whether another page is available"`
+	TotalCount int    `header:"X-Total-Count" doc:"Total number of matching jobs"`
+	Limit      int    `header:"X-Limit" doc:"Applied page limit"`
+	Offset     int    `header:"X-Offset" doc:"Applied page offset"`
+	NextOffset int    `header:"X-Next-Offset" doc:"Offset for the next page"`
+	NextCursor string `header:"X-Next-Cursor" doc:"Opaque cursor for the next page"`
+	HasMore    bool   `header:"X-Has-More" doc:"Whether another page is available"`
 	Body       []JobResponse
 }
 
@@ -80,23 +87,51 @@ func (h *JobHandler) listJobs(ctx context.Context, input *ListJobsInput) (*ListJ
 	if !hasListJobsWorkspaceScope(input, allowedWorkspaces, isAdmin) {
 		return listJobsOutput([]JobResponse{}, 0, limit, input.Offset), nil
 	}
+	pageCursor, runFrom, runBefore, err := validateListJobsPage(input)
+	if err != nil {
+		return nil, err
+	}
 
-	total, err := h.listJobsQuery((*models.Job)(nil), input, allowedWorkspaces, isAdmin).Count(ctx)
+	total, err := h.listJobsQuery((*models.Job)(nil), input, allowedWorkspaces, isAdmin, runFrom, runBefore).Count(ctx)
 	if err != nil {
 		return nil, huma.Error500InternalServerError("failed to count jobs")
 	}
 
 	var jobs []models.Job
-	query := h.listJobsQuery(&jobs, input, allowedWorkspaces, isAdmin).
+	query := h.listJobsQuery(&jobs, input, allowedWorkspaces, isAdmin, runFrom, runBefore).
 		ColumnExpr("job.*").
-		Order("job.run_at DESC").
-		Limit(limit).
-		Offset(input.Offset)
+		Order("job.run_at DESC", "job.id DESC")
+	if pageCursor != nil {
+		query = query.Where(
+			"(job.run_at < ? OR (job.run_at = ? AND job.id < ?))",
+			pageCursor.Timestamp,
+			pageCursor.Timestamp,
+			pageCursor.ID,
+		)
+	} else {
+		query = query.Offset(input.Offset)
+	}
+	scanLimit := limit
+	if pageCursor != nil {
+		scanLimit++
+	}
+	query = query.Limit(scanLimit)
 	if err := query.Scan(ctx); err != nil {
 		return nil, huma.Error500InternalServerError("failed to fetch jobs")
 	}
-
-	return listJobsOutput(jobResponses(jobs, isAdmin), total, limit, input.Offset), nil
+	cursorHasMore := pageCursor != nil && len(jobs) > limit
+	if cursorHasMore {
+		jobs = jobs[:limit]
+	}
+	output := listJobsOutput(jobResponses(jobs, isAdmin), total, limit, input.Offset)
+	if pageCursor != nil {
+		output.HasMore = cursorHasMore
+	}
+	if output.HasMore && len(jobs) > 0 {
+		last := jobs[len(jobs)-1]
+		output.NextCursor = encodeTimestampIDCursor(last.RunAt, last.ID)
+	}
+	return output, nil
 }
 
 func listJobsLimit(input *ListJobsInput) (int, error) {
@@ -107,6 +142,31 @@ func listJobsLimit(input *ListJobsInput) (int, error) {
 		return 50, nil
 	}
 	return input.Limit, nil
+}
+
+func validateListJobsPage(input *ListJobsInput) (*timestampIDCursor, time.Time, time.Time, error) {
+	if input.Cursor != "" && input.Offset != 0 {
+		return nil, time.Time{}, time.Time{}, huma.Error400BadRequest("cursor and offset cannot be used together")
+	}
+	runFrom, err := parseOptionalRFC3339(input.RunFrom)
+	if err != nil {
+		return nil, time.Time{}, time.Time{}, huma.Error400BadRequest("run_from must use RFC3339")
+	}
+	runBefore, err := parseOptionalRFC3339(input.RunBefore)
+	if err != nil {
+		return nil, time.Time{}, time.Time{}, huma.Error400BadRequest("run_before must use RFC3339")
+	}
+	if !runFrom.IsZero() && !runBefore.IsZero() && !runFrom.Before(runBefore) {
+		return nil, time.Time{}, time.Time{}, huma.Error400BadRequest("run_from must be before run_before")
+	}
+	if input.Cursor == "" {
+		return nil, runFrom, runBefore, nil
+	}
+	cursor, err := parseTimestampIDCursor(input.Cursor)
+	if err != nil {
+		return nil, time.Time{}, time.Time{}, huma.Error400BadRequest("invalid job cursor")
+	}
+	return &cursor, runFrom, runBefore, nil
 }
 
 func listJobsScopeError(err error) error {
@@ -125,13 +185,14 @@ func jobResponses(jobs []models.Job, includePayload bool) []JobResponse {
 	resp := make([]JobResponse, 0, len(jobs))
 	for _, j := range jobs {
 		item := JobResponse{
-			ID:          j.ID,
-			Type:        j.Type,
-			Status:      j.Status,
-			RunAt:       j.RunAt.Format(time.RFC3339),
-			Attempts:    j.Attempts,
-			MaxAttempts: j.MaxAttempts,
-			LastError:   j.LastError,
+			ID:            j.ID,
+			Type:          j.Type,
+			Status:        j.Status,
+			RunAt:         j.RunAt.Format(time.RFC3339),
+			Attempts:      j.Attempts,
+			MaxAttempts:   j.MaxAttempts,
+			LastError:     j.LastError,
+			PublicationID: jobPublicationID(j.Payload),
 		}
 		if !j.LockedAt.IsZero() {
 			item.LockedAt = j.LockedAt.Format(time.RFC3339)
@@ -144,18 +205,42 @@ func jobResponses(jobs []models.Job, includePayload bool) []JobResponse {
 	return resp
 }
 
-func (h *JobHandler) listJobsQuery(model interface{}, input *ListJobsInput, allowedWorkspaces map[string]bool, isAdmin bool) *bun.SelectQuery {
+func jobPublicationID(payload string) string {
+	var subject struct {
+		PublicationID string `json:"publication_id"`
+	}
+	if err := json.Unmarshal([]byte(payload), &subject); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(subject.PublicationID)
+}
+
+func (h *JobHandler) listJobsQuery(
+	model interface{},
+	input *ListJobsInput,
+	allowedWorkspaces map[string]bool,
+	isAdmin bool,
+	runFrom time.Time,
+	runBefore time.Time,
+) *bun.SelectQuery {
 	query := h.db.NewSelect().
 		Model(model).
 		ModelTableExpr("jobs AS job").
 		Join("LEFT JOIN posts AS p ON p.id = " + aliasedJobPayloadTextExpr(h.db, "job", postIDKey)).
+		Join("LEFT JOIN publications AS publication ON publication.id = " + aliasedJobPayloadTextExpr(h.db, "job", "publication_id")).
 		Join("LEFT JOIN social_accounts AS sa ON sa.id = " + aliasedJobPayloadTextExpr(h.db, "job", "account_id"))
 
 	if input.Status != "" {
 		query = query.Where("job.status = ?", input.Status)
 	}
+	if !runFrom.IsZero() {
+		query = query.Where("job.run_at >= ?", runFrom)
+	}
+	if !runBefore.IsZero() {
+		query = query.Where("job.run_at < ?", runBefore)
+	}
 	if input.WorkspaceID != "" {
-		return query.Where("COALESCE(p.workspace_id, sa.workspace_id) = ?", input.WorkspaceID)
+		return query.Where("COALESCE(publication.workspace_id, p.workspace_id, sa.workspace_id) = ?", input.WorkspaceID)
 	}
 	if isAdmin {
 		return query
@@ -165,7 +250,7 @@ func (h *JobHandler) listJobsQuery(model interface{}, input *ListJobsInput, allo
 	for workspaceID := range allowedWorkspaces {
 		workspaceIDs = append(workspaceIDs, workspaceID)
 	}
-	return query.Where("COALESCE(p.workspace_id, sa.workspace_id) IN (?)", bun.List(workspaceIDs))
+	return query.Where("COALESCE(publication.workspace_id, p.workspace_id, sa.workspace_id) IN (?)", bun.List(workspaceIDs))
 }
 
 func listJobsOutput(body []JobResponse, total, limit, offset int) *ListJobsOutput {

@@ -4,20 +4,17 @@
 	import { resolve } from '$app/paths';
 	import type { CalendarDate } from '@internationalized/date';
 	import { tick, untrack } from 'svelte';
-	import { SvelteMap } from 'svelte/reactivity';
-	import { client } from '$lib/api/client';
+	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
+	import { client, type ScheduleOverview } from '$lib/api/client';
 	import { prefetchDraftComposerData } from '$lib/api/performance-cache';
 	import type { components } from '$lib/api/types';
-	import {
-		workspaceClock,
-		workspaceDateKeyFromISO
-	} from '$lib/components/compose/schedule-timezone';
+	import { workspaceClock } from '$lib/components/compose/schedule-timezone';
 	import { buildRollingCalendarWeeks } from '$lib/components/sidebar-rolling-calendar';
-	import { publicationCalendarOccurrence } from '$lib/publication-calendar';
 	import AppToast from '$lib/components/app-toast.svelte';
 	import DestructiveConfirmDialog from '$lib/components/destructive-confirm-dialog.svelte';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import { ui } from '$lib/stores/ui.svelte';
+	import { publicationInvalidationForWorkspace } from '$lib/publication-invalidation';
 	import { workspaceCtx } from '$lib/stores/workspace.svelte';
 	import { m } from '$lib/paraglide/messages';
 	import { getLocaleTag } from '$lib/i18n';
@@ -49,7 +46,10 @@
 	let draftDeleteError = $state('');
 	let overviewRequest = 0;
 	let draftsRequest = 0;
-	let overviewWorkspaceId = '';
+	let overviewWorkspaceKey = '';
+	let loadedOverviewMonths = new SvelteSet<string>();
+	let pendingOverviewMonths = new SvelteSet<string>();
+	let handledInvalidationRevision = 0;
 	let draftsWorkspaceId = '';
 	let renderedWeekCount = $state(12);
 	let focusedDayKey = $state('');
@@ -68,6 +68,7 @@
 	const rollingWeeks = $derived(
 		buildRollingCalendarWeeks(plannerToday, workspaceCtx.weekStartsOn, renderedWeekCount)
 	);
+	const overviewMonthKeys = $derived(plannerOverviewMonths(rollingWeeks));
 	const visibleCalendarDate = $derived(
 		rollingWeeks.flat().find((day) => day.key === visibleCalendarDayKey)?.date ?? plannerToday
 	);
@@ -78,61 +79,100 @@
 	});
 	$effect(() => {
 		const currentWorkspaceId = workspaceId;
-		const refresh = ui.refreshCounter;
-		void refresh;
-		untrack(() => void loadOverview(currentWorkspaceId));
+		const workspaceKey = `${currentWorkspaceId}|${viewerTimeZone}`;
+		const months = overviewMonthKeys;
+		untrack(() => void loadOverviewMonths(currentWorkspaceId, workspaceKey, months));
 	});
 
 	$effect(() => {
 		const currentWorkspaceId = workspaceId;
-		const refresh = ui.refreshCounter;
-		void refresh;
 		untrack(() => void loadDrafts(currentWorkspaceId));
 	});
 
-	async function loadOverview(currentWorkspaceId: string) {
-		const request = ++overviewRequest;
+	$effect(() => {
+		const batch = ui.publicationInvalidations;
+		if (batch.revision === 0 || batch.revision === handledInvalidationRevision) return;
+		handledInvalidationRevision = batch.revision;
+		untrack(() => {
+			const currentWorkspaceId = workspaceId;
+			if (!currentWorkspaceId) return;
+			const invalidation = publicationInvalidationForWorkspace(batch, currentWorkspaceId);
+			if (!invalidation) return;
+			if (invalidation.scopes.includes('calendar')) {
+				const months =
+					invalidation.dateKeys.length > 0
+						? [...new Set(invalidation.dateKeys.map((dateKey) => dateKey.slice(0, 7)))]
+						: overviewMonthKeys;
+				void loadOverviewMonths(
+					currentWorkspaceId,
+					`${currentWorkspaceId}|${viewerTimeZone}`,
+					[...new Set([...overviewMonthKeys, ...months])],
+					months
+				);
+			}
+			if (invalidation.scopes.includes('drafts')) void loadDrafts(currentWorkspaceId);
+		});
+	});
+
+	async function loadOverviewMonths(
+		currentWorkspaceId: string,
+		workspaceKey: string,
+		months: string[],
+		invalidateMonths: string[] = []
+	) {
 		if (!currentWorkspaceId) {
 			dayCounts = new SvelteMap();
-			overviewWorkspaceId = '';
+			overviewWorkspaceKey = '';
+			loadedOverviewMonths = new SvelteSet();
+			pendingOverviewMonths = new SvelteSet();
 			return;
 		}
-		if (overviewWorkspaceId !== currentWorkspaceId) {
+		if (overviewWorkspaceKey !== workspaceKey) {
+			overviewRequest++;
 			dayCounts = new SvelteMap();
-			overviewWorkspaceId = currentWorkspaceId;
+			overviewWorkspaceKey = workspaceKey;
+			loadedOverviewMonths = new SvelteSet();
+			pendingOverviewMonths = new SvelteSet();
 		}
+		if (invalidateMonths.length > 0) {
+			overviewRequest++;
+			loadedOverviewMonths = new SvelteSet(
+				[...loadedOverviewMonths].filter((month) => !invalidateMonths.includes(month))
+			);
+			pendingOverviewMonths = new SvelteSet();
+		}
+		const request = overviewRequest;
+		const requestedMonths = months.filter(
+			(month) => !loadedOverviewMonths.has(month) && !pendingOverviewMonths.has(month)
+		);
+		if (requestedMonths.length === 0) return;
+		for (const month of requestedMonths) pendingOverviewMonths.add(month);
 		try {
-			const publications: Publication[] = [];
-			let offset = 0;
-			while (true) {
-				const { data, error, response } = await client.GET('/publications', {
-					params: {
-						query: {
-							workspace_id: currentWorkspaceId,
-							limit: 200,
-							offset
-						}
-					}
-				});
-				if (error) throw new Error(error.detail);
-				publications.push(...(data ?? []));
-				if (response.headers.get('X-Has-More') !== 'true') break;
-				const nextOffset = Number(response.headers.get('X-Next-Offset') ?? offset + 200);
-				if (!Number.isFinite(nextOffset) || nextOffset <= offset) break;
-				offset = nextOffset;
-			}
-			if (request !== overviewRequest) return;
-			const nextCounts = new SvelteMap<string, number>();
-			for (const publication of publications) {
-				const occursAt = publicationCalendarOccurrence(publication);
-				if (!occursAt) continue;
-				const key = workspaceDateKeyFromISO(occursAt, workspaceCtx.settings.timezone || 'UTC');
-				if (!key) continue;
-				nextCounts.set(key, (nextCounts.get(key) ?? 0) + 1);
+			const overviews = await Promise.all(
+				requestedMonths.map(async (month): Promise<[string, ScheduleOverview]> => {
+					const { data, error } = await client.GET('/posts/schedule-overview', {
+						params: { query: { workspace_id: currentWorkspaceId, month } }
+					});
+					if (error || !data) throw new Error(error?.detail);
+					return [month, data];
+				})
+			);
+			if (request !== overviewRequest || overviewWorkspaceKey !== workspaceKey) return;
+			const nextCounts = new SvelteMap(dayCounts);
+			for (const [month, overview] of overviews) {
+				for (const dateKey of [...nextCounts.keys()]) {
+					if (dateKey.startsWith(`${month}-`)) nextCounts.delete(dateKey);
+				}
+				for (const day of overview.days ?? []) nextCounts.set(day.date, day.count);
+				loadedOverviewMonths.add(month);
 			}
 			dayCounts = nextCounts;
 		} catch {
 			// Keep the last successful planner state visible during a background refresh.
+		} finally {
+			if (request === overviewRequest) {
+				for (const month of requestedMonths) pendingOverviewMonths.delete(month);
+			}
 		}
 	}
 
@@ -217,7 +257,10 @@
 			}
 
 			drafts = drafts.filter((candidate) => candidate.id !== draft.id);
-			ui.triggerRefresh();
+			ui.triggerRefresh({
+				workspaceId,
+				scopes: ['activity', 'calendar', 'drafts']
+			});
 			if (page.url.pathname === draft.href) onNavigate('/');
 		} catch (error) {
 			draftDeleteError = error instanceof Error ? error.message : m.sidebar_delete_draft_failed();
@@ -299,6 +342,10 @@
 			year: 'numeric',
 			timeZone: viewerTimeZone
 		});
+	}
+
+	function plannerOverviewMonths(weeks: ReturnType<typeof buildRollingCalendarWeeks>) {
+		return [...new Set(weeks.flat().map((day) => day.key.slice(0, 7)))];
 	}
 
 	function formatWeekday(date: CalendarDate) {

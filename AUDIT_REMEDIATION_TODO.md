@@ -769,21 +769,21 @@ Maintenance contract for this lane: a new social provider requires no n8n packag
 
 ### PUB-002 — Move the calendar day drawer to canonical publications
 
-- [ ] **Problem — Baseline audit:** the calendar/planner use publications, but the day drawer still reads and deletes legacy `/posts`, so focused Story/video modes can be omitted or misrepresented.
+- [x] **Problem — Baseline audit:** the calendar/planner use publications, but the day drawer still reads and deletes legacy `/posts`, so focused Story/video modes can be omitted or misrepresented.
 - **Fix:** load publication responses, use publication deletion/archive behavior, and render every supported mode exactly once with the same status vocabulary as the main inventory.
 - **Done when:** fixtures for post, thread, story, short video, and video appear once and open/delete correctly; no new `/posts` dependency is introduced.
 - **Evidence:** `frontend/src/lib/components/day-posts-modal.svelte:83`.
 
 ### ACTIVITY-001 — Make bounded activity history honest and navigable
 
-- [ ] **Problem — Current source audit:** Activity requests at most 200 publications and 100 failed jobs with no pagination or copy saying this is a recent snapshot.
+- [x] **Problem — Current source audit:** Activity requests at most 200 publications and 100 failed jobs with no pagination or copy saying this is a recent snapshot.
 - **Fix:** add cursor pagination/date-range filters and a result/range summary, or deliberately label it “Recent activity” and link to a complete filtered history. Load details on demand.
 - **Done when:** older records are reachable or the bounded scope is explicit, failures and publications cannot silently disappear, and large-workspace performance stays bounded.
 - **Evidence:** `frontend/src/routes/activity/+page.svelte:164`.
 
 ### PERF-001 — Stop full-history hydration on calendar/planner refreshes
 
-- [ ] **Problem — Current source audit:** Calendar paginates all publication history across selected workspaces on view changes. The persistent sidebar planner also paginates the entire workspace, and every successful two-second composer autosave triggers its refresh counter.
+- [x] **Problem — Current source audit:** Calendar paginates all publication history across selected workspaces on view changes. The persistent sidebar planner also paginates the entire workspace, and every successful two-second composer autosave triggers its refresh counter.
 - **Fix:** query only the visible date range/summary; reuse or adapt `/posts/schedule-overview` only after resolving its legacy/publication contract; debounce/coalesce refreshes; invalidate affected dates rather than the full history.
 - **Done when:** composer typing/autosave cannot trigger unbounded history fetches, month/week navigation has bounded request/query volume, and new/updated schedule dots still appear promptly.
 - **Evidence:** `frontend/src/lib/components/compose-text-post.svelte:2331`, `frontend/src/lib/components/compose-text-post.svelte:2495`, `frontend/src/lib/components/sidebar-planner.svelte:75`, `frontend/src/lib/components/sidebar-planner.svelte:89`, `backend/internal/api/handlers/posts.go:861`.
@@ -811,7 +811,7 @@ Maintenance contract for this lane: a new social provider requires no n8n packag
 
 ### PUB-003 — Render publication lifecycle history
 
-- [ ] **Problem — Current source audit:** backend publication lifecycle events exist, but the detail/activity UX does not show who or what changed status and when.
+- [x] **Problem — Current source audit:** backend publication lifecycle events exist, but the detail/activity UX does not show who or what changed status and when.
 - **Fix:** add a chronological, permission-safe activity section for creation, edits, schedule changes, publish attempts, retries, provider results, archive/delete, and relevant actor/system attribution.
 - **Done when:** users can diagnose a publication without logs, timestamps use exact accessible values, provider-safe errors are shown, and sensitive internal details remain hidden.
 - **Evidence:** publication event backend models/endpoints and `frontend/src/routes/publications/[id]/+page.svelte`.

@@ -1,8 +1,10 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { untrack } from 'svelte';
 	import { SvelteDate, SvelteMap, SvelteSet } from 'svelte/reactivity';
 	import { resolve } from '$app/paths';
 	import { client, type SocialAccount } from '$lib/api/client';
+	import { loadWorkspaceAccounts } from '$lib/api/performance-cache';
 	import type { components } from '$lib/api/types';
 	import { publicationCalendarOccurrence } from '$lib/publication-calendar';
 	import {
@@ -27,6 +29,7 @@
 	import { workspaceColor } from '$lib/workspace-color';
 	import { m } from '$lib/paraglide/messages';
 	import { ui } from '$lib/stores/ui.svelte';
+	import { publicationInvalidationForWorkspace } from '$lib/publication-invalidation';
 	import { WorkspaceContextError, workspaceCtx } from '$lib/stores/workspace.svelte';
 	import { cn } from '$lib/utils';
 	import { CalendarDate } from '@internationalized/date';
@@ -94,6 +97,7 @@
 	let dataRevision = 0;
 	let completedLoadKey = $state('');
 	let initializedCalendarWorkspace = '';
+	let handledInvalidationRevision = 0;
 
 	const workspaces = $derived(workspaceCtx.workspaces);
 	const viewerWorkspaceId = $derived(workspaceCtx.currentWorkspace?.id ?? '');
@@ -107,10 +111,6 @@
 		if (selectedWorkspaceIds.length > 0) return selectedWorkspaceIds;
 		return workspaces.map((workspace) => workspace.id);
 	});
-	const loadKey = $derived(
-		`${monthKey(currentMonth)}|${activeWorkspaceIds.join(',')}|${workspaces.map((w) => w.id).join(',')}|${viewerTimeZone}`
-	);
-	const initialLoading = $derived(loading && completedLoadKey !== loadKey);
 	const days = $derived.by(() =>
 		buildCalendarDays(currentMonth, workspaceCtx.weekStartsOn, workspaceTodayDate(viewerTimeZone))
 	);
@@ -118,6 +118,11 @@
 		buildWeekDays(currentMonth, workspaceCtx.weekStartsOn, workspaceTodayDate(viewerTimeZone))
 	);
 	const displayDays = $derived(viewMode === 'week' ? weekDays : days);
+	const visibleRange = $derived(calendarRequestRange(displayDays, viewerTimeZone));
+	const loadKey = $derived(
+		`${visibleRange.from}|${visibleRange.before}|${activeWorkspaceIds.join(',')}|${workspaces.map((w) => w.id).join(',')}|${viewerTimeZone}`
+	);
+	const initialLoading = $derived(loading && completedLoadKey !== loadKey);
 	const weekdayLabels = $derived.by(() =>
 		days.slice(0, 7).map((day) => formatWorkspaceDate(day.date, { weekday: 'short' }))
 	);
@@ -235,7 +240,28 @@
 
 	$effect(() => {
 		const key = loadKey;
-		void loadCalendarData(key);
+		untrack(() => void loadCalendarData(key));
+	});
+
+	$effect(() => {
+		const batch = ui.publicationInvalidations;
+		if (batch.revision === 0 || batch.revision === handledInvalidationRevision) return;
+		handledInvalidationRevision = batch.revision;
+		untrack(() => {
+			const range = visibleRange;
+			const workspaceIds = activeWorkspaceIds;
+			const shouldRefresh = workspaceIds.some((workspaceId) => {
+				const invalidation = publicationInvalidationForWorkspace(batch, workspaceId);
+				if (!invalidation?.scopes.includes('calendar')) return false;
+				return (
+					invalidation.dateKeys.length === 0 ||
+					invalidation.dateKeys.some(
+						(dateKey) => dateKey >= range.firstKey && dateKey <= range.lastKey
+					)
+				);
+			});
+			if (shouldRefresh) void loadCalendarData(loadKey);
+		});
 	});
 
 	async function loadCalendarData(_key: string) {
@@ -260,8 +286,11 @@
 				return;
 			}
 
+			const requestRange = visibleRange;
 			const [publicationGroups, accountEntries] = await Promise.all([
-				Promise.all(workspaceIds.map(fetchPublications)),
+				Promise.all(
+					workspaceIds.map((workspaceId) => fetchPublications(workspaceId, requestRange))
+				),
 				Promise.all(workspaceIds.map(fetchAccounts))
 			]);
 
@@ -283,12 +312,19 @@
 		}
 	}
 
-	async function fetchPublications(workspaceId: string) {
+	async function fetchPublications(workspaceId: string, range: { from: string; before: string }) {
 		const out: Publication[] = [];
 		let offset = 0;
 		while (true) {
+			const query = {
+				workspace_id: workspaceId,
+				calendar_from: range.from,
+				calendar_before: range.before,
+				limit: 200,
+				offset
+			};
 			const { data, error, response } = await client.GET('/publications', {
-				params: { query: { workspace_id: workspaceId, limit: 200, offset } }
+				params: { query }
 			});
 			if (error) throw new Error(problemMessage(error, m.calendar_failed_load()));
 			out.push(...(data ?? []));
@@ -302,11 +338,7 @@
 	}
 
 	async function fetchAccounts(workspaceId: string): Promise<[string, SocialAccount[]]> {
-		const { data, error } = await client.GET('/accounts', {
-			params: { query: { workspace_id: workspaceId } }
-		});
-		if (error) throw new Error(problemMessage(error, m.calendar_failed_load()));
-		return [workspaceId, data ?? []];
+		return [workspaceId, await loadWorkspaceAccounts(workspaceId)];
 	}
 
 	function publicationToCalendarItem(publication: Publication): CalendarItem | null {
@@ -585,7 +617,13 @@
 					date: formatLongDateTime(nextScheduledAt)
 				});
 			}
-			ui.triggerRefresh();
+			const previousDateKey = workspaceDateKeyFromISO(item.occursAt, viewerTimeZone);
+			const nextDateKey = workspaceDateKeyFromISO(nextScheduledAt, viewerTimeZone);
+			ui.triggerRefresh({
+				workspaceId: item.workspaceId,
+				scopes: ['activity', 'calendar'],
+				dateKeys: [previousDateKey, nextDateKey].filter((value): value is string => Boolean(value))
+			});
 		} catch (error) {
 			if (loadKey === mutationLoadKey && dataRevision === mutationDataRevision) {
 				publications = previousPublications;
@@ -667,6 +705,20 @@
 
 	function calendarDate(date: Date) {
 		return new CalendarDate(date.getFullYear(), date.getMonth() + 1, date.getDate());
+	}
+
+	function calendarRequestRange(calendarDays: CalendarDay[], timeZone: string) {
+		const first = calendarDays[0]?.date ?? currentMonth;
+		const last = calendarDays[calendarDays.length - 1]?.date ?? currentMonth;
+		const beforeDate = addDays(last, 1);
+		return {
+			from: workspaceScheduleToISO(calendarDate(first), '00:00', timeZone) ?? first.toISOString(),
+			before:
+				workspaceScheduleToISO(calendarDate(beforeDate), '00:00', timeZone) ??
+				beforeDate.toISOString(),
+			firstKey: dateKey(first),
+			lastKey: dateKey(last)
+		};
 	}
 
 	function workspaceTodayDate(timeZone: string, instant = new Date()) {

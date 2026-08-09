@@ -29,6 +29,8 @@
 
 	type Publication = components['schemas']['PublicationResponse'];
 	type ActivityDestination = NonNullable<Publication['renditions']>[number];
+	type ActivityPublicationBucket = 'scheduled' | 'published' | 'failed' | 'draft';
+	type ActivityPageState = { total: number; nextCursor: string };
 	type ActivityItem = {
 		id: string;
 		publication_id: string;
@@ -47,6 +49,7 @@
 		id: string;
 		type: string;
 		status: string;
+		publication_id?: string;
 		payload?: string;
 		run_at: string;
 		last_error?: string;
@@ -54,6 +57,8 @@
 
 	let posts = $state.raw<ActivityItem[]>([]);
 	let failedJobs = $state.raw<JobLog[]>([]);
+	let publicationPage = $state.raw<ActivityPageState>({ total: 0, nextCursor: '' });
+	let failedJobsPage = $state.raw<ActivityPageState>({ total: 0, nextCursor: '' });
 	let accounts = $state.raw<SocialAccount[]>([]);
 	let copiedReportPostID = $state('');
 	let retryingDestination = $state('');
@@ -63,16 +68,20 @@
 	let error = $state('');
 	let dataWorkspaceID = $state('');
 	let dataRequestSequence = 0;
+	let loadingMorePublications = $state(false);
+	let loadingMoreJobs = $state(false);
 	let activeTab = $state(page.url.searchParams.get('tab') === 'drafts' ? 'drafts' : 'scheduled');
+	const publicationPageSize = 40;
+	const jobPageSize = 50;
 
 	const scheduledPosts = $derived(
 		posts
-			.filter((post) => post.status === 'scheduled')
+			.filter((post) => activityBucket(post) === 'scheduled')
 			.toSorted((a, b) => timestamp(a.scheduled_at) - timestamp(b.scheduled_at))
 	);
 	const publishedPosts = $derived(
 		posts
-			.filter((post) => post.status === 'published')
+			.filter((post) => activityBucket(post) === 'published')
 			.toSorted(
 				(a, b) =>
 					timestamp(b.actual_run_at || b.scheduled_at || b.created_at) -
@@ -81,7 +90,7 @@
 	);
 	const failedPosts = $derived(
 		posts
-			.filter((post) => post.status === 'failed')
+			.filter((post) => activityBucket(post) === 'failed')
 			.toSorted((a, b) => timestamp(b.created_at) - timestamp(a.created_at))
 	);
 	const failureGroups = $derived.by(() => {
@@ -123,7 +132,7 @@
 	});
 	const drafts = $derived(
 		posts
-			.filter((post) => post.status === 'draft')
+			.filter((post) => activityBucket(post) === 'draft')
 			.toSorted((a, b) => timestamp(b.created_at) - timestamp(a.created_at))
 	);
 	const currentWorkspaceID = $derived(workspaceCtx.currentWorkspace?.id ?? '');
@@ -140,6 +149,8 @@
 	async function loadData(requestedWorkspaceID = workspaceCtx.currentWorkspace?.id ?? '') {
 		const requestSequence = ++dataRequestSequence;
 		let workspaceId = requestedWorkspaceID;
+		loadingMorePublications = false;
+		loadingMoreJobs = false;
 		loading = true;
 		error = '';
 		try {
@@ -158,16 +169,20 @@
 				posts = [];
 				failedJobs = [];
 				accounts = [];
+				publicationPage = { total: 0, nextCursor: '' };
+				failedJobsPage = { total: 0, nextCursor: '' };
 				hasLoaded = false;
 			}
 
-			const [postsResponse, jobsResponse, accountsResponse] = await Promise.all([
+			const [publicationsResponse, jobsResponse, accountsResponse] = await Promise.all([
 				client.GET('/publications', {
-					params: { query: { workspace_id: workspaceId, limit: 200, offset: 0 } }
+					params: {
+						query: { workspace_id: workspaceId, limit: publicationPageSize, offset: 0 }
+					}
 				}),
 				client.GET('/jobs', {
 					params: {
-						query: { workspace_id: workspaceId, status: 'failed', limit: 100, offset: 0 }
+						query: { workspace_id: workspaceId, status: 'failed', limit: jobPageSize, offset: 0 }
 					}
 				}),
 				client.GET('/accounts', { params: { query: { workspace_id: workspaceId } } })
@@ -179,13 +194,17 @@
 			) {
 				return;
 			}
-			if (postsResponse.error || !postsResponse.data) {
+			if (publicationsResponse.error || !publicationsResponse.data) {
 				throw new Error(m.activity_failed_posts());
 			}
-			posts = postsResponse.data.map(activityItem);
+			posts = publicationsResponse.data.map(activityItem);
+			publicationPage = pageStateFromResponse(publicationsResponse.response);
 			failedJobs = jobsResponse.error
 				? []
 				: (jobsResponse.data ?? []).filter((job) => job.status === 'failed');
+			failedJobsPage = jobsResponse.error
+				? { total: 0, nextCursor: '' }
+				: pageStateFromResponse(jobsResponse.response);
 			accounts = accountsResponse.error ? [] : (accountsResponse.data ?? []);
 			error = jobsResponse.error
 				? m.activity_failed_jobs()
@@ -205,6 +224,77 @@
 			if (requestSequence === dataRequestSequence) {
 				loading = false;
 			}
+		}
+	}
+
+	function pageStateFromResponse(response: Response): ActivityPageState {
+		const total = Number(response.headers.get('X-Total-Count') ?? 0);
+		return {
+			total: Number.isFinite(total) ? total : 0,
+			nextCursor: response.headers.get('X-Next-Cursor') ?? ''
+		};
+	}
+
+	async function loadMorePublicationHistory() {
+		const workspaceId = currentWorkspaceID;
+		const cursor = publicationPage.nextCursor;
+		if (!workspaceId || !cursor || loadingMorePublications) return;
+		const requestSequence = dataRequestSequence;
+		loadingMorePublications = true;
+		error = '';
+		try {
+			const query = {
+				workspace_id: workspaceId,
+				limit: publicationPageSize,
+				offset: 0,
+				cursor
+			};
+			const response = await client.GET('/publications', { params: { query } });
+			if (response.error || !response.data) throw new Error(m.activity_failed_posts());
+			if (requestSequence !== dataRequestSequence || currentWorkspaceID !== workspaceId) return;
+			const existingIDs = new Set(posts.map((post) => post.id));
+			posts = [
+				...posts,
+				...response.data.map(activityItem).filter((post) => !existingIDs.has(post.id))
+			];
+			publicationPage = pageStateFromResponse(response.response);
+		} catch (cause) {
+			if (requestSequence !== dataRequestSequence || currentWorkspaceID !== workspaceId) return;
+			error = cause instanceof Error ? cause.message : m.activity_failed_posts();
+		} finally {
+			if (requestSequence === dataRequestSequence) loadingMorePublications = false;
+		}
+	}
+
+	async function loadMoreFailedJobs() {
+		const workspaceId = currentWorkspaceID;
+		const cursor = failedJobsPage.nextCursor;
+		if (!workspaceId || !cursor || loadingMoreJobs) return;
+		const requestSequence = dataRequestSequence;
+		loadingMoreJobs = true;
+		error = '';
+		try {
+			const query = {
+				workspace_id: workspaceId,
+				status: 'failed',
+				limit: jobPageSize,
+				offset: 0,
+				cursor
+			};
+			const response = await client.GET('/jobs', { params: { query } });
+			if (response.error || !response.data) throw new Error(m.activity_failed_jobs());
+			if (requestSequence !== dataRequestSequence || currentWorkspaceID !== workspaceId) return;
+			const existingIDs = new Set(failedJobs.map((job) => job.id));
+			failedJobs = [
+				...failedJobs,
+				...response.data.filter((job) => job.status === 'failed' && !existingIDs.has(job.id))
+			];
+			failedJobsPage = pageStateFromResponse(response.response);
+		} catch (cause) {
+			if (requestSequence !== dataRequestSequence || currentWorkspaceID !== workspaceId) return;
+			error = cause instanceof Error ? cause.message : m.activity_failed_jobs();
+		} finally {
+			if (requestSequence === dataRequestSequence) loadingMoreJobs = false;
 		}
 	}
 
@@ -260,10 +350,17 @@
 		return value.length > max ? `${value.slice(0, max).trim()}…` : value;
 	}
 
-	function failedJobPostID(job: JobLog) {
+	function failedJobHref(job: JobLog) {
+		if (job.publication_id) {
+			return `/publications/${encodeURIComponent(job.publication_id)}`;
+		}
 		if (!job.payload) return '';
 		try {
-			return JSON.parse(job.payload).post_id ?? '';
+			const payload = JSON.parse(job.payload);
+			if (payload.publication_id) {
+				return `/publications/${encodeURIComponent(payload.publication_id)}`;
+			}
+			return payload.post_id ? `/posts/${encodeURIComponent(payload.post_id)}` : '';
 		} catch {
 			return '';
 		}
@@ -277,8 +374,28 @@
 				return m.activity_status_published();
 			case 'failed':
 				return m.activity_status_failed();
+			case 'publishing':
+				return m.activity_status_publishing();
+			case 'ready':
+				return m.activity_status_pending();
 			default:
 				return m.activity_status_draft();
+		}
+	}
+
+	function activityBucket(post: ActivityItem): ActivityPublicationBucket {
+		switch (post.status) {
+			case 'published':
+				return 'published';
+			case 'failed':
+				return 'failed';
+			case 'scheduled':
+			case 'publishing':
+				return 'scheduled';
+			case 'ready':
+				return post.scheduled_at ? 'scheduled' : 'draft';
+			default:
+				return 'draft';
 		}
 	}
 
@@ -299,6 +416,9 @@
 		switch (post.status) {
 			case 'scheduled':
 				return 'text-amber-700 dark:text-amber-300';
+			case 'publishing':
+			case 'ready':
+				return 'text-blue-700 dark:text-blue-300';
 			case 'published':
 				return 'text-emerald-700 dark:text-emerald-300';
 			case 'failed':
@@ -450,14 +570,14 @@
 </script>
 
 {#snippet postList(items: ActivityItem[], emptyTitle: string, emptyDescription: string)}
-	{#if items.length === 0}
+	{#if items.length === 0 && !publicationPage.nextCursor}
 		<EmptyState
 			icon={FileTextIcon}
 			title={emptyTitle}
 			description={emptyDescription}
 			variant="muted"
 		/>
-	{:else}
+	{:else if items.length > 0}
 		<div class="divide-y border-y">
 			{#each items as post (post.id)}
 				{@const StatusIcon = statusIcon(post)}
@@ -623,23 +743,10 @@
 				variant="line"
 				class="mb-6 no-scrollbar w-full justify-start overflow-x-auto overflow-y-hidden"
 			>
-				<TabsTrigger value="scheduled"
-					>{m.activity_tab_scheduled()}
-					<span class="text-muted-foreground">{scheduledPosts.length}</span></TabsTrigger
-				>
-				<TabsTrigger value="published"
-					>{m.activity_tab_published()}
-					<span class="text-muted-foreground">{publishedPosts.length}</span></TabsTrigger
-				>
-				<TabsTrigger value="failed"
-					>{m.activity_tab_failed()}
-					<span class="text-muted-foreground">{failedPosts.length + failedJobs.length}</span
-					></TabsTrigger
-				>
-				<TabsTrigger value="drafts"
-					>{m.activity_tab_drafts()}
-					<span class="text-muted-foreground">{drafts.length}</span></TabsTrigger
-				>
+				<TabsTrigger value="scheduled">{m.activity_tab_scheduled()}</TabsTrigger>
+				<TabsTrigger value="published">{m.activity_tab_published()}</TabsTrigger>
+				<TabsTrigger value="failed">{m.activity_tab_failed()}</TabsTrigger>
+				<TabsTrigger value="drafts">{m.activity_tab_drafts()}</TabsTrigger>
 			</TabsList>
 
 			<TabsContent value="scheduled">
@@ -697,7 +804,7 @@
 						<summary
 							class="cursor-pointer text-sm font-medium text-destructive focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
 						>
-							{m.activity_technical_details({ count: failedJobs.length })}
+							{m.activity_technical_details({ count: failedJobsPage.total })}
 						</summary>
 						<p class="mt-2 max-w-2xl text-xs leading-5 text-muted-foreground">
 							{m.activity_technical_details_description()}
@@ -711,16 +818,36 @@
 											{job.last_error || m.activity_delivery_failed()}
 										</p>
 									</div>
-									{#if failedJobPostID(job)}
+									{#if failedJobHref(job)}
 										<Button
 											variant="ghost"
 											size="sm"
-											onclick={() => goto(resolve('/posts/[id]', { id: failedJobPostID(job) }))}
+											onclick={() => goto(resolve(failedJobHref(job) as '/'))}
 											>{m.activity_open_post()}</Button
 										>
 									{/if}
 								</div>
 							{/each}
+						</div>
+						<div class="flex min-h-10 items-center justify-between gap-3 py-3">
+							<span class="text-xs text-muted-foreground tabular-nums" aria-live="polite">
+								{failedJobs.length} / {failedJobsPage.total}
+							</span>
+							{#if failedJobsPage.nextCursor}
+								<Button
+									variant="outline"
+									size="sm"
+									disabled={loading || loadingMoreJobs}
+									onclick={loadMoreFailedJobs}
+								>
+									{#if loadingMoreJobs}
+										<RefreshIcon class="mr-1.5 size-3.5 animate-spin" />
+									{/if}
+									{m.activity_load_more_jobs({
+										count: Math.min(jobPageSize, failedJobsPage.total - failedJobs.length)
+									})}
+								</Button>
+							{/if}
 						</div>
 					</details>
 				{/if}
@@ -729,5 +856,23 @@
 				{@render postList(drafts, m.activity_empty_drafts_title(), m.activity_empty_drafts_body())}
 			</TabsContent>
 		</Tabs>
+		<div class="mt-6 flex min-h-10 items-center justify-between gap-3 border-t pt-4">
+			<span class="text-xs text-muted-foreground tabular-nums" aria-live="polite">
+				{m.stock_results_count({ shown: posts.length, total: publicationPage.total })}
+			</span>
+			{#if publicationPage.nextCursor}
+				<Button
+					variant="outline"
+					size="sm"
+					disabled={loading || loadingMorePublications}
+					onclick={loadMorePublicationHistory}
+				>
+					{#if loadingMorePublications}
+						<RefreshIcon class="mr-1.5 size-3.5 animate-spin" />
+					{/if}
+					{m.notifications_load_more()}
+				</Button>
+			{/if}
+		</div>
 	{/if}
 </PageContainer>

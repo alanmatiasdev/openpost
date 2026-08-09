@@ -1690,8 +1690,10 @@ func TestMCPCallListPublicationEvents(t *testing.T) {
 	event := events[0].(map[string]any)
 	require.Equal(t, "published", event["type"])
 	require.Equal(t, "succeeded", event["status"])
-	require.Equal(t, "rendition published", event["message"])
-	require.Equal(t, "x", event["metadata"].(map[string]any)["provider"])
+	require.Equal(t, "Published to provider", event["summary"])
+	require.Equal(t, "x", event["platform"])
+	require.NotContains(t, event, "message")
+	require.NotContains(t, event, "metadata")
 }
 
 func TestMCPCallProviderReadiness(t *testing.T) {

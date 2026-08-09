@@ -257,6 +257,12 @@ type scheduleOverviewPeriod struct {
 	end   time.Time
 }
 
+type scheduleOverviewPublication struct {
+	ID          string    `bun:"id"`
+	WorkspaceID string    `bun:"workspace_id"`
+	OccursAt    time.Time `bun:"occurs_at"`
+}
+
 type ScheduleOverviewInput struct {
 	WorkspaceID string `query:"workspace_id" doc:"Filter by workspace ID"`
 	Platform    string `query:"platform" doc:"Filter by platform"`
@@ -869,7 +875,8 @@ func (h *PostHandler) GetScheduleOverview(api huma.API) {
 		OperationID: "get-schedule-overview",
 		Method:      http.MethodGet,
 		Path:        "/posts/schedule-overview",
-		Summary:     "Get monthly schedule overview",
+		Summary:     "Get canonical publication schedule overview",
+		Description: "Compatibility path for a monthly summary sourced exclusively from canonical publications and renditions.",
 		Tags:        []string{tagPosts},
 		Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
 		Errors:      []int{400, 403},
@@ -967,44 +974,68 @@ func (h *PostHandler) GetScheduleOverview(api huma.API) {
 			}
 		}
 
-		var scheduledPosts []models.Post
+		var scheduledPublications []scheduleOverviewPublication
 		if selectedWorkspaceID != "" {
+			occurrenceSQL := `CASE
+				WHEN publication.status = 'published' THEN COALESCE(publication.actual_run_at, publication.scheduled_at, publication.updated_at, publication.created_at)
+				ELSE publication.scheduled_at
+			END`
+			var publicationRows []models.Publication
 			if err = h.db.NewSelect().
-				Model(&scheduledPosts).
-				Where("workspace_id = ?", selectedWorkspaceID).
-				Where("scheduled_at >= ?", period.start).
-				Where("scheduled_at < ?", period.end).
-				Where("status IN (?)", bun.List([]string{"scheduled", "publishing", "published"})).
-				Where("(parent_post_id IS NULL OR parent_post_id = '')").
+				Model(&publicationRows).
+				ModelTableExpr("publications AS publication").
+				ColumnExpr("publication.*").
+				Where("publication.workspace_id = ?", selectedWorkspaceID).
+				Where("publication.status IN (?)", bun.List([]string{
+					models.PublicationStatusScheduled,
+					models.PublicationStatusPublishing,
+					models.PublicationStatusPublished,
+				})).
+				Where(occurrenceSQL+" >= ?", period.start).
+				Where(occurrenceSQL+" < ?", period.end).
 				Scan(ctx); err != nil {
-				return nil, huma.Error500InternalServerError("failed to fetch schedule days")
+				return nil, huma.Error500InternalServerError("failed to fetch publication schedule days")
+			}
+			scheduledPublications = make([]scheduleOverviewPublication, 0, len(publicationRows))
+			for _, publication := range publicationRows {
+				occursAt := publication.ScheduledAt
+				if publication.Status == models.PublicationStatusPublished {
+					occursAt = firstNonZeroTime(
+						publication.ActualRunAt,
+						publication.ScheduledAt,
+						publication.UpdatedAt,
+						publication.CreatedAt,
+					)
+				}
+				scheduledPublications = append(scheduledPublications, scheduleOverviewPublication{
+					ID: publication.ID, WorkspaceID: publication.WorkspaceID, OccursAt: occursAt,
+				})
 			}
 		}
 
-		platformsByPost := make(map[string][]string, len(scheduledPosts))
-		if len(scheduledPosts) > 0 {
-			postIDs := make([]string, 0, len(scheduledPosts))
-			for _, post := range scheduledPosts {
-				postIDs = append(postIDs, post.ID)
+		platformsByPublication := make(map[string][]string, len(scheduledPublications))
+		if len(scheduledPublications) > 0 {
+			publicationIDs := make([]string, 0, len(scheduledPublications))
+			for _, publication := range scheduledPublications {
+				publicationIDs = append(publicationIDs, publication.ID)
 			}
 			var destinationRows []struct {
-				PostID   string `bun:"post_id"`
-				Platform string `bun:"platform"`
+				PublicationID string `bun:"publication_id"`
+				Platform      string `bun:"platform"`
 			}
 			if err = h.db.NewSelect().
-				TableExpr("post_destinations AS pd").
-				ColumnExpr("pd.post_id, sa.platform").
-				Join("JOIN social_accounts AS sa ON sa.id = pd.social_account_id").
-				Where("pd.post_id IN (?)", bun.List(postIDs)).
+				TableExpr("renditions AS rendition").
+				ColumnExpr("rendition.publication_id, rendition.platform").
+				Where("rendition.publication_id IN (?)", bun.List(publicationIDs)).
 				Scan(ctx, &destinationRows); err != nil {
-				return nil, huma.Error500InternalServerError("failed to fetch schedule details")
+				return nil, huma.Error500InternalServerError("failed to fetch publication schedule details")
 			}
 			for _, row := range destinationRows {
-				platformsByPost[row.PostID] = append(platformsByPost[row.PostID], row.Platform)
+				platformsByPublication[row.PublicationID] = append(platformsByPublication[row.PublicationID], row.Platform)
 			}
 		}
 
-		days := buildScheduleOverviewDays(scheduledPosts, platformsByPost, location, selectedPlatform)
+		days := buildScheduleOverviewDays(scheduledPublications, platformsByPublication, location, selectedPlatform)
 
 		resp := &ScheduleOverviewOutput{}
 		resp.Body.Year = period.year
@@ -1023,6 +1054,15 @@ func (h *PostHandler) GetScheduleOverview(api huma.API) {
 		resp.Body.Days = days
 		return resp, nil
 	})
+}
+
+func firstNonZeroTime(values ...time.Time) time.Time {
+	for _, value := range values {
+		if !value.IsZero() {
+			return value
+		}
+	}
+	return time.Time{}
 }
 
 func resolveScheduleOverviewPeriod(month string, location *time.Location, now time.Time) (scheduleOverviewPeriod, error) {
@@ -1050,8 +1090,8 @@ func resolveScheduleOverviewPeriod(month string, location *time.Location, now ti
 }
 
 func buildScheduleOverviewDays(
-	posts []models.Post,
-	platformsByPost map[string][]string,
+	publications []scheduleOverviewPublication,
+	platformsByPublication map[string][]string,
 	location *time.Location,
 	selectedPlatform string,
 ) []ScheduleDay {
@@ -1059,16 +1099,16 @@ func buildScheduleOverviewDays(
 		location = time.UTC
 	}
 	countsByDate := make(map[string]*scheduleDayCounts)
-	for _, post := range posts {
-		if post.ParentPostID != "" || post.ScheduledAt.IsZero() {
+	for _, publication := range publications {
+		if publication.OccursAt.IsZero() {
 			continue
 		}
-		platforms, matches := schedulePlatformsForPost(platformsByPost[post.ID], selectedPlatform)
+		platforms, matches := schedulePlatformsForPost(platformsByPublication[publication.ID], selectedPlatform)
 		if !matches {
 			continue
 		}
 
-		date := post.ScheduledAt.In(location).Format("2006-01-02")
+		date := publication.OccursAt.In(location).Format("2006-01-02")
 		counts := countsByDate[date]
 		if counts == nil {
 			counts = &scheduleDayCounts{
@@ -1078,7 +1118,7 @@ func buildScheduleOverviewDays(
 			countsByDate[date] = counts
 		}
 		counts.count++
-		counts.workspaces[post.WorkspaceID]++
+		counts.workspaces[publication.WorkspaceID]++
 		for _, platform := range platforms {
 			counts.platforms[platform]++
 		}

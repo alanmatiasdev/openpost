@@ -9,13 +9,16 @@
 	import PageContainer from '$lib/components/page-container.svelte';
 	import InlineNotice from '$lib/components/inline-notice.svelte';
 	import PlatformIcon from '$lib/components/platform-icon.svelte';
+	import PublicationHistory from '$lib/components/publication-history.svelte';
 	import ComposeTextPost from '$lib/components/compose-text-post.svelte';
+	import * as Sheet from '$lib/components/ui/sheet';
 	import { ui } from '$lib/stores/ui.svelte';
 	import { m } from '$lib/paraglide/messages';
 	import { getPlatformName } from '$lib/utils';
 	import { getLocaleTag } from '$lib/i18n';
 	import ArrowLeftIcon from 'lucide-svelte/icons/arrow-left';
 	import ExternalLinkIcon from 'lucide-svelte/icons/external-link';
+	import HistoryIcon from 'lucide-svelte/icons/history';
 
 	type Publication = components['schemas']['PublicationResponse'];
 	let publication = $state.raw<Publication | null>(null);
@@ -23,6 +26,7 @@
 	let error = $state('');
 	let requestedPublicationId = $state('');
 	let publicationRequestSequence = 0;
+	let historyOpen = $state(false);
 
 	const publicationId = $derived(page.params.id);
 	const readOnlyPublication = $derived(
@@ -172,14 +176,30 @@
 					{/each}
 				</div>
 			</section>
+
+			<PublicationHistory publicationId={publication.id} />
 		</div>
 	</PageContainer>
 {:else if publication}
 	<div class="flex flex-1 flex-col overflow-hidden">
+		<div class="flex shrink-0 justify-end border-b px-3 py-2 sm:px-4">
+			<Button variant="ghost" size="sm" onclick={() => (historyOpen = true)}>
+				<HistoryIcon class="mr-1.5 size-4" />
+				{m.image_editor_version_history()}
+			</Button>
+		</div>
 		<ComposeTextPost
 			initialPublication={publication}
 			onSuccess={handleSuccess}
 			onDeleted={handleSuccess}
 		/>
+		<Sheet.Root bind:open={historyOpen}>
+			<Sheet.Content side="right" class="w-full! overflow-y-auto sm:max-w-lg!">
+				<Sheet.Header class="sr-only">
+					<Sheet.Title>{m.image_editor_version_history()}</Sheet.Title>
+				</Sheet.Header>
+				<PublicationHistory publicationId={publication.id} headingLevel={3} />
+			</Sheet.Content>
+		</Sheet.Root>
 	</div>
 {/if}

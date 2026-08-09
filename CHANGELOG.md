@@ -22,6 +22,8 @@ All notable changes to this project are documented in this file.
 ### Fixed
 
 - Pinned managed automatic image-caption requests to the verified `azure/eu` OpenRouter route, disabled provider fallbacks, denied provider data collection, and required a zero-data-retention endpoint; cloud startup now fails closed if that policy drifts.
+- Bounded calendar, planner, and activity reads with canonical publication date ranges, stable cursors, complete pagination, and workspace/date-scoped refresh coalescing so autosaves no longer hydrate full history.
+- Added a permission-safe publication timeline for creation, edits, authorization attempts, and provider outcomes while suppressing raw metadata, provider messages, and idempotency details.
 - Added the missing OpenPost Studio overview and made the documentation gate validate every configured VitePress navigation target as well as Markdown links.
 - Restored composer round trips through both editors so draft text, destinations, schedule, existing media, cancellations, and destination-specific video variants return to the exact originating publication.
 - Isolated the editor catalog by workspace and query, added independent paginated design and video results, and exposed permission-safe cloud-video deletion with consequence copy and optimistic rollback.

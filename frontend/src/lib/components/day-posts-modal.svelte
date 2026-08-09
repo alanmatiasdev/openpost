@@ -6,11 +6,13 @@
 	import PageLoading from '$lib/components/page-loading.svelte';
 	import InlineNotice from '$lib/components/inline-notice.svelte';
 	import EmptyState from '$lib/components/empty-state.svelte';
-	import { client, type Post } from '$lib/api/client';
+	import { client } from '$lib/api/client';
+	import type { components } from '$lib/api/types';
+	import { publicationCalendarOccurrence } from '$lib/publication-calendar';
 	import { workspaceClock } from '$lib/components/compose/schedule-timezone';
 	import { ui } from '$lib/stores/ui.svelte';
 	import { workspaceCtx } from '$lib/stores/workspace.svelte';
-	import type { DateValue } from '@internationalized/date';
+	import { CalendarDate, type DateValue } from '@internationalized/date';
 	import PlusIcon from 'lucide-svelte/icons/plus';
 	import CalendarIcon from 'lucide-svelte/icons/calendar-days';
 	import TrashIcon from 'lucide-svelte/icons/trash-2';
@@ -23,12 +25,14 @@
 	import { m } from '$lib/paraglide/messages';
 	import { getLocaleTag } from '$lib/i18n';
 
-	let posts = $state.raw<Post[]>([]);
+	type Publication = components['schemas']['PublicationResponse'];
+
+	let posts = $state.raw<Publication[]>([]);
 	let loading = $state(false);
 	let error = $state('');
 	let open = $state(false);
 	let deleteDialogOpen = $state(false);
-	let postToDelete = $state.raw<Post | null>(null);
+	let postToDelete = $state.raw<Publication | null>(null);
 	let loadRequestSequence = 0;
 
 	const currentDate = $derived<DateValue | undefined>(ui.dayPostsDate);
@@ -80,16 +84,38 @@
 		loading = true;
 		error = '';
 		try {
-			const { data, error: responseError } = await client.GET('/posts', {
-				params: { query: { date, ...(workspaceId ? { workspace_id: workspaceId } : {}) } }
-			});
-			if (responseError) throw new Error(m.day_posts_load_failed());
+			const range = publicationDayRange();
+			if (!range) return;
+			const publications: Publication[] = [];
+			let offset = 0;
+			while (true) {
+				const query = {
+					workspace_id: workspaceId,
+					calendar_from: range.from,
+					calendar_before: range.before,
+					limit: 200,
+					offset
+				};
+				const {
+					data,
+					error: responseError,
+					response
+				} = await client.GET('/publications', {
+					params: { query }
+				});
+				if (responseError) throw new Error(responseError.detail || m.day_posts_load_failed());
+				publications.push(...(data ?? []));
+				if (response.headers.get('X-Has-More') !== 'true') break;
+				const nextOffset = Number(response.headers.get('X-Next-Offset') ?? offset + 200);
+				if (!Number.isFinite(nextOffset) || nextOffset <= offset) break;
+				offset = nextOffset;
+			}
 			if (!isCurrentRequest()) return;
-			posts = (data ?? [])
-				.filter((post) => !post.parent_post_id)
-				.toSorted(
-					(a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime()
-				);
+			posts = publications.toSorted(
+				(a, b) =>
+					new Date(publicationOccurrence(a)).getTime() -
+					new Date(publicationOccurrence(b)).getTime()
+			);
 		} catch (cause) {
 			if (!isCurrentRequest()) return;
 			error = cause instanceof Error ? cause.message : m.day_posts_load_failed();
@@ -107,9 +133,34 @@
 		});
 	}
 
-	function postExcerpt(post: Post) {
-		const text = post.content || m.calendar_untitled_post();
+	function publicationDayRange() {
+		if (!currentDate) return null;
+		const date = new CalendarDate(currentDate.year, currentDate.month, currentDate.day);
+		return {
+			from: date.toDate(viewerTimeZone).toISOString(),
+			before: date.add({ days: 1 }).toDate(viewerTimeZone).toISOString()
+		};
+	}
+
+	function publicationOccurrence(publication: Publication) {
+		return publicationCalendarOccurrence(publication) || publication.updated_at;
+	}
+
+	function postExcerpt(post: Publication) {
+		const text =
+			post.source_text.trim() ||
+			post.segments?.find((segment) => segment.body.trim())?.body.trim() ||
+			post.title.trim() ||
+			m.calendar_untitled_publication();
 		return text.length > 100 ? `${text.slice(0, 100).trim()}…` : text;
+	}
+
+	function canDeletePublication(publication: Publication) {
+		const role = workspaceCtx.currentWorkspace?.role;
+		return (
+			(role === 'admin' || role === 'editor') &&
+			['draft', 'scheduled', 'failed'].includes(publication.status)
+		);
 	}
 
 	function statusLabel(status: string) {
@@ -145,15 +196,13 @@
 		goto(resolve(target as '/'));
 	}
 
-	function handleEdit(post: Post) {
+	function handleEdit(post: Publication) {
 		ui.closeDayPosts();
-		const href = post.publication_id
-			? `/publications/${encodeURIComponent(post.publication_id)}`
-			: `/posts/${encodeURIComponent(post.id)}`;
+		const href = `/publications/${encodeURIComponent(post.id)}`;
 		goto(resolve(href as '/'));
 	}
 
-	function requestDelete(post: Post) {
+	function requestDelete(post: Publication) {
 		postToDelete = post;
 		deleteDialogOpen = true;
 	}
@@ -162,12 +211,19 @@
 		const post = postToDelete;
 		if (!post) return;
 		try {
-			const { error: responseError } = await client.DELETE('/posts/{id}', {
-				params: { path: { id: post.id } }
+			const { error: responseError } = await client.DELETE('/publications/{id}', {
+				params: {
+					path: { id: post.id },
+					query: { confirm: true, expected_revision: post.revision }
+				}
 			});
 			if (responseError) throw new Error(responseError.detail || m.day_posts_delete_failed());
 			await loadPosts(dateStr);
-			ui.triggerRefresh();
+			ui.triggerRefresh({
+				workspaceId: post.workspace_id,
+				scopes: ['activity', 'calendar', 'drafts'],
+				dateKeys: dateStr ? [dateStr] : []
+			});
 		} catch (cause) {
 			error = cause instanceof Error ? cause.message : m.day_posts_delete_failed();
 		}
@@ -181,7 +237,7 @@
 				<div class="min-w-0">
 					<Sheet.Title class="truncate text-base font-semibold">{formattedDate}</Sheet.Title>
 					<Sheet.Description class="mt-1 text-sm">
-						{m.day_posts_scheduled_count({ count: posts.length })}
+						{m.calendar_day_posts_summary({ count: posts.length })}
 					</Sheet.Description>
 				</div>
 				{#if isFutureDay}
@@ -217,14 +273,14 @@
 			{:else}
 				<div class="divide-y">
 					{#each posts as post (post.id)}
-						{@const destinations = post.destinations ?? []}
+						{@const destinations = post.renditions ?? []}
 						{@const visibleDestinations = destinations.slice(0, 5)}
 						{@const hiddenDestinationCount = Math.max(0, destinations.length - 5)}
 						<article class="flex items-start gap-3 py-4">
 							<time
 								class="w-12 shrink-0 pt-0.5 font-mono text-xs font-medium text-muted-foreground"
 							>
-								{getTime(post.scheduled_at)}
+								{getTime(publicationOccurrence(post))}
 							</time>
 							<button
 								type="button"
@@ -278,16 +334,18 @@
 								</DropdownMenu.Trigger>
 								<DropdownMenu.Content align="end">
 									<DropdownMenu.Item onclick={() => handleEdit(post)}
-										><PencilIcon
-											class="mr-2 size-4"
-										/>{m.day_posts_edit_in_composer()}</DropdownMenu.Item
+										><PencilIcon class="mr-2 size-4" />{canDeletePublication(post)
+											? m.day_posts_edit_in_composer()
+											: m.activity_view_details()}</DropdownMenu.Item
 									>
-									<DropdownMenu.Separator />
-									<DropdownMenu.Item class="text-destructive" onclick={() => requestDelete(post)}
-										><TrashIcon
-											class="mr-2 size-4"
-										/>{m.day_posts_delete_action()}</DropdownMenu.Item
-									>
+									{#if canDeletePublication(post)}
+										<DropdownMenu.Separator />
+										<DropdownMenu.Item class="text-destructive" onclick={() => requestDelete(post)}
+											><TrashIcon
+												class="mr-2 size-4"
+											/>{m.day_posts_delete_action()}</DropdownMenu.Item
+										>
+									{/if}
 								</DropdownMenu.Content>
 							</DropdownMenu.Root>
 						</article>

@@ -84,41 +84,34 @@ func TestPostResponseForListPreservesThreadHierarchy(t *testing.T) {
 	require.Equal(t, 2, response.ThreadSequence)
 }
 
-func TestBuildScheduleOverviewDaysUsesWorkspaceDSTAndCountsThreadRoots(t *testing.T) {
+func TestBuildScheduleOverviewDaysUsesWorkspaceDSTAndCountsCanonicalPublications(t *testing.T) {
 	t.Parallel()
 
 	location, err := time.LoadLocation("America/New_York")
 	require.NoError(t, err)
 
-	posts := []models.Post{
+	publications := []scheduleOverviewPublication{
 		{
 			ID:          "before-dst-jump",
 			WorkspaceID: "workspace-1",
-			ScheduledAt: time.Date(2026, time.March, 8, 4, 30, 0, 0, time.UTC),
+			OccursAt:    time.Date(2026, time.March, 8, 4, 30, 0, 0, time.UTC),
 		},
 		{
 			ID:          "after-dst-jump",
 			WorkspaceID: "workspace-1",
-			ScheduledAt: time.Date(2026, time.March, 8, 7, 30, 0, 0, time.UTC),
-		},
-		{
-			ID:           "thread-child",
-			WorkspaceID:  "workspace-1",
-			ParentPostID: "after-dst-jump",
-			ScheduledAt:  time.Date(2026, time.March, 8, 8, 30, 0, 0, time.UTC),
+			OccursAt:    time.Date(2026, time.March, 8, 7, 30, 0, 0, time.UTC),
 		},
 		{
 			ID:          "unscheduled",
 			WorkspaceID: "workspace-1",
 		},
 	}
-	platformsByPost := map[string][]string{
+	platformsByPublication := map[string][]string{
 		"before-dst-jump": {"x", "bluesky", "x", ""},
 		"after-dst-jump":  {"x"},
-		"thread-child":    {"x"},
 	}
 
-	days := buildScheduleOverviewDays(posts, platformsByPost, location, "")
+	days := buildScheduleOverviewDays(publications, platformsByPublication, location, "")
 
 	require.Equal(t, []ScheduleDay{
 		{
@@ -138,11 +131,11 @@ func TestBuildScheduleOverviewDaysUsesWorkspaceDSTAndCountsThreadRoots(t *testin
 		},
 	}, days)
 
-	xDays := buildScheduleOverviewDays(posts, platformsByPost, location, "x")
+	xDays := buildScheduleOverviewDays(publications, platformsByPublication, location, "x")
 	require.Len(t, xDays, 2)
 	require.Equal(t, []ScheduleDayPlatform{{Platform: "x", Count: 1}}, xDays[0].Platforms)
 	require.Equal(t, []ScheduleDayPlatform{{Platform: "x", Count: 1}}, xDays[1].Platforms)
-	require.Empty(t, buildScheduleOverviewDays(posts, platformsByPost, location, "linkedin"))
+	require.Empty(t, buildScheduleOverviewDays(publications, platformsByPublication, location, "linkedin"))
 }
 
 func TestResolveScheduleOverviewPeriodUsesWorkspaceMonthAndDSTBounds(t *testing.T) {
@@ -187,6 +180,8 @@ func TestPostReadEndpointsHonorTokenWorkspaceScope(t *testing.T) {
 		(*models.WorkspaceMember)(nil),
 		(*models.Post)(nil),
 		(*models.PostDestination)(nil),
+		(*models.Publication)(nil),
+		(*models.Rendition)(nil),
 		(*models.SocialAccount)(nil),
 		(*models.PostMedia)(nil),
 	)
@@ -205,6 +200,30 @@ func TestPostReadEndpointsHonorTokenWorkspaceScope(t *testing.T) {
 	_, err = db.NewInsert().Model(&[]models.Post{
 		{ID: "scoped-post", WorkspaceID: "ws-1", CreatedByID: "user-1", Content: "visible", Status: statusScheduled, ScheduledAt: time.Date(2026, time.July, 10, 12, 0, 0, 0, time.UTC), CreatedAt: createdAt},
 		{ID: "outside-post", WorkspaceID: "ws-2", CreatedByID: "user-1", Content: "hidden", Status: statusScheduled, ScheduledAt: time.Date(2026, time.July, 11, 12, 0, 0, 0, time.UTC), CreatedAt: createdAt},
+	}).Exec(ctx)
+	require.NoError(t, err)
+	_, err = db.NewInsert().Model(&[]models.Publication{
+		{
+			ID: "scoped-publication", WorkspaceID: "ws-1", CreatedByID: "user-1",
+			Title: "visible", SourceContent: "visible", Status: models.PublicationStatusScheduled,
+			ScheduledAt: time.Date(2026, time.July, 10, 12, 0, 0, 0, time.UTC), CreatedAt: createdAt, UpdatedAt: createdAt,
+		},
+		{
+			ID: "outside-publication", WorkspaceID: "ws-2", CreatedByID: "user-1",
+			Title: "hidden", SourceContent: "hidden", Status: models.PublicationStatusScheduled,
+			ScheduledAt: time.Date(2026, time.July, 11, 12, 0, 0, 0, time.UTC), CreatedAt: createdAt, UpdatedAt: createdAt,
+		},
+	}).Exec(ctx)
+	require.NoError(t, err)
+	_, err = db.NewInsert().Model(&[]models.Rendition{
+		{
+			ID: "scoped-rendition", PublicationID: "scoped-publication", SocialAccountID: "account-1",
+			Platform: "x", Status: models.RenditionStatusScheduled, SettingsJSON: "{}", CreatedAt: createdAt, UpdatedAt: createdAt,
+		},
+		{
+			ID: "outside-rendition", PublicationID: "outside-publication", SocialAccountID: "account-2",
+			Platform: "x", Status: models.RenditionStatusScheduled, SettingsJSON: "{}", CreatedAt: createdAt, UpdatedAt: createdAt,
+		},
 	}).Exec(ctx)
 	require.NoError(t, err)
 
@@ -241,6 +260,7 @@ func TestPostReadEndpointsHonorTokenWorkspaceScope(t *testing.T) {
 		WorkspaceCreatedAt: createdAt.Format(time.RFC3339),
 	}}, overview.Body.Workspaces)
 	require.Len(t, overview.Body.Days, 1)
+	require.Equal(t, 1, overview.Body.Days[0].Count, "the legacy post and canonical publication must not be double counted")
 	require.Equal(t, http.StatusForbidden, get("/api/v1/posts/schedule-overview?workspace_id=ws-2&month=2026-07").Code)
 
 	_, err = db.NewUpdate().Model((*models.Workspace)(nil)).

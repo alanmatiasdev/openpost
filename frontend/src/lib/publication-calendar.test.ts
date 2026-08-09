@@ -19,6 +19,14 @@ describe('publication calendar occurrence', () => {
 		).toBe('2026-08-01T09:00:00Z');
 	});
 
+	it('keeps a publishing publication on its scheduled day', () => {
+		expect(
+			publicationCalendarOccurrence(
+				publication({ status: 'publishing', scheduled_at: '2026-08-01T09:00:00Z' })
+			)
+		).toBe('2026-08-01T09:00:00Z');
+	});
+
 	it('uses the actual run time for published publications', () => {
 		expect(
 			publicationCalendarOccurrence(
