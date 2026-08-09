@@ -8,6 +8,20 @@ const dockerfile = readFileSync("docker/Dockerfile", "utf8");
 const localRelease = readFileSync("scripts/release.mjs", "utf8");
 const smoke = readFileSync("scripts/smoke-production-image.sh", "utf8");
 
+test("only the candidate image job can write packages", () => {
+  const jobsStart = ci.indexOf("\njobs:\n");
+  const imageStart = ci.indexOf("\n  image:\n", jobsStart);
+  const nextJob = ci.indexOf("\n  release-candidate:\n", imageStart);
+
+  assert.ok(jobsStart > 0 && imageStart > jobsStart && nextJob > imageStart);
+  assert.doesNotMatch(ci.slice(0, jobsStart), /packages:\s*write/);
+  assert.match(
+    ci.slice(imageStart, nextJob),
+    /permissions:\n\s+contents: read\n\s+packages: write/,
+  );
+  assert.equal(ci.match(/packages:\s*write/g)?.length, 1);
+});
+
 test("candidate CI embeds one stable version and exact-revision manifest", () => {
   assert.match(
     ci,

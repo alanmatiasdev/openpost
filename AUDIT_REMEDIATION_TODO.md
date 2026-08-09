@@ -968,7 +968,7 @@ Candidate decisions under this registry:
 
 ### CI-001 — Reduce workflow permissions to job scope
 
-- [ ] **Problem — Baseline audit:** CI grants `packages: write` globally.
+- [x] **Problem — Baseline audit:** CI grants `packages: write` globally.
 - **Fix:** default to read-only and grant package write only to the production-image publication job.
 - **Done when:** non-publishing jobs cannot write packages and image publishing still works.
 
