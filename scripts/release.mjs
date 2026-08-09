@@ -7,6 +7,13 @@ import path from "node:path";
 
 import { checkMCPRegistryOwnership } from "./check-mcp-registry.mjs";
 import { readReleaseManifest } from "./release-manifest.mjs";
+import {
+  changedReleasePaths,
+  maintainedReleasePaths,
+  readReleaseSurfaceManifest,
+  releaseSurfacePlan,
+  validateReleaseSurfaceManifest,
+} from "./release-surfaces.mjs";
 
 const root = path.resolve(import.meta.dir, "..");
 const command = process.argv[2] ?? "plan";
@@ -52,10 +59,18 @@ async function plan() {
     .find(Boolean);
   if (!latestTag) throw new Error("no v* release tags found");
 
-  const changed = runCapture(["git", "status", "--short"])
-    .trimEnd()
-    .split("\n")
-    .filter(Boolean);
+  const releaseSurfaceManifest = readReleaseSurfaceManifest(root);
+  const changed = changedReleasePaths(latestTag, root);
+  const ownershipProblems = validateReleaseSurfaceManifest(
+    releaseSurfaceManifest,
+    [...new Set([...maintainedReleasePaths(root), ...changed])],
+    root,
+  );
+  if (ownershipProblems.length > 0) {
+    throw new Error(
+      `release surface ownership failed: ${ownershipProblems.join("; ")}`,
+    );
+  }
   const pendingMessage = process.env.COMMIT_MESSAGE?.trim() ?? "";
   const commitCount = Number(
     git(["rev-list", "--count", `${latestTag}..HEAD`]),
@@ -66,34 +81,32 @@ async function plan() {
       : runCapture(["bun", "scripts/next-release-version.mjs", latestTag], {
           PENDING_COMMIT_MESSAGE: pendingMessage,
         }).trim();
-  const files = changed.map((line) => line.slice(3));
-  const surfaces = {
-    application: files.some((file) =>
-      /^(backend|frontend|packages)\//.test(file),
-    ),
-    marketing: files.some((file) =>
-      /^(marketing-site|assets|social-assets)\//.test(file),
-    ),
-    docs: files.some((file) => /^(docs-site|README\.md|AGENTS\.md)/.test(file)),
-    delivery: files.some((file) =>
-      /^(\.github|docker|devenv|scripts\/release)/.test(file),
-    ),
-    mcpRegistry: files.some((file) =>
-      /^(server\.json|launch-kit\/listings\.md|docs-site\/development\/mcp\.md|scripts\/check-mcp-registry)/.test(
-        file,
-      ),
-    ),
-  };
+  const surfacePlan = releaseSurfacePlan(changed, releaseSurfaceManifest);
+  const touchedSurfaces = new Set(
+    surfacePlan.flatMap((entry) => entry.surfaces),
+  );
 
   console.log(`Latest release: ${latestTag}`);
   console.log(`Planned release: ${nextTag}`);
   console.log(`MCP registry listing: ${mcpRegistryVersion}`);
-  console.log(`Changed paths: ${changed.length}`);
-  for (const [surface, touched] of Object.entries(surfaces)) {
-    console.log(`  ${touched ? "CHECK" : "skip "} ${surface}`);
+  console.log(`Changed paths since ${latestTag}: ${changed.length}`);
+  for (const surface of Object.keys(releaseSurfaceManifest.surfaces)) {
+    console.log(
+      `  ${touchedSurfaces.has(surface) ? "CHECK" : "skip "} ${surface}`,
+    );
   }
-  if (changed.length > 0)
-    console.log(changed.map((line) => `  ${line}`).join("\n"));
+  if (surfacePlan.length > 0) {
+    console.log(
+      surfacePlan
+        .map((entry) => {
+          const owners = entry.surfaces.length
+            ? entry.surfaces.join(",")
+            : `exempt:${entry.exemption.reason}`;
+          return `  [${owners}] ${entry.file}`;
+        })
+        .join("\n"),
+    );
+  }
 }
 
 async function preflight() {
@@ -143,11 +156,14 @@ async function check() {
 
   const revision = git(["rev-parse", "HEAD"]);
   const image = `openpost-release-check:${fingerprint.slice(0, 12)}`;
+  const imagePlatform = await publishedImagePlatform();
   try {
     run(
       [
         "docker",
         "build",
+        "--platform",
+        imagePlatform,
         "--file",
         "docker/Dockerfile",
         "--tag",
@@ -176,6 +192,19 @@ async function check() {
     ) + "\n",
   );
   console.log(`release:check: complete (${fingerprint.slice(0, 12)})`);
+}
+
+async function publishedImagePlatform() {
+  const policy = JSON.parse(
+    await readFile(path.join(root, "docker", "image-policy.json"), "utf8"),
+  );
+  if (
+    !Array.isArray(policy.supported_platforms) ||
+    policy.supported_platforms.length !== 1
+  ) {
+    throw new Error("image policy must declare exactly one published platform");
+  }
+  return policy.supported_platforms[0];
 }
 
 async function prepare(commitMessage) {
@@ -283,8 +312,8 @@ async function promote(requestedTag) {
   }
   if (!tag) throw new Error("pass the prepared version tag to release:promote");
 
-  const ciRunID = await waitForCI(revision);
-  await verifyCandidateManifest(ciRunID, tag, revision);
+  const ciRun = await waitForCI(revision);
+  await verifyCandidateManifest(ciRun, tag, revision);
 
   const remoteTag = runOptional([
     "git",
@@ -308,8 +337,8 @@ async function promote(requestedTag) {
       );
   }
 
-  const runID = await waitForWorkflow("Build and Release", tag, revision);
-  run(["gh", "run", "watch", runID, "--exit-status"]);
+  const releaseRun = await waitForWorkflow("Build and Release", tag, revision);
+  run(["gh", "run", "watch", releaseRun.id, "--exit-status"]);
   const releaseURL = runCapture([
     "gh",
     "release",
@@ -380,9 +409,9 @@ async function status() {
 }
 
 async function waitForCI(revision) {
-  const runID = await waitForWorkflow("CI", "main", revision);
-  run(["gh", "run", "watch", runID, "--exit-status"]);
-  return runID;
+  const workflowRun = await waitForWorkflow("CI", "main", revision);
+  run(["gh", "run", "watch", workflowRun.id, "--exit-status"]);
+  return workflowRun;
 }
 
 async function waitForWorkflow(workflow, branch, revision) {
@@ -398,7 +427,7 @@ async function waitForWorkflow(workflow, branch, revision) {
       "--limit",
       "20",
       "--json",
-      "databaseId,headBranch,status,conclusion",
+      "databaseId,attempt,headBranch,status,conclusion",
     ]);
     if (result.ok) {
       const runs = JSON.parse(result.stdout || "[]");
@@ -409,7 +438,10 @@ async function waitForWorkflow(workflow, branch, revision) {
             `${workflow} failed for ${revision}: ${match.conclusion}`,
           );
         }
-        return String(match.databaseId);
+        return {
+          id: String(match.databaseId),
+          attempt: Number(match.attempt),
+        };
       }
     }
     await Bun.sleep(5_000);
@@ -436,7 +468,7 @@ async function verifyProduction(version, revision) {
   );
 }
 
-async function verifyCandidateManifest(ciRunID, version, revision) {
+async function verifyCandidateManifest(ciRun, version, revision) {
   const directory = await mkdtemp(
     path.join(os.tmpdir(), "openpost-release-candidate-"),
   );
@@ -445,9 +477,9 @@ async function verifyCandidateManifest(ciRunID, version, revision) {
       "gh",
       "run",
       "download",
-      ciRunID,
+      ciRun.id,
       "--name",
-      `release-manifest-${revision}`,
+      `release-manifest-${revision}-${ciRun.attempt}`,
       "--dir",
       directory,
     ]);

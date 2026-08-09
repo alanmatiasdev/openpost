@@ -4,12 +4,15 @@ This is the fastest path to a working OpenPost instance.
 
 If you prefer not to use Docker, jump to [Single Binary](/installation/binary).
 
+The published image and maintained Dockerfile support `linux/amd64` only. Other host architectures need amd64 emulation. A native image requires a downstream Dockerfile/source change and complete runtime validation.
+
 ## 1. Create `docker-compose.yml`
 
 ```yaml
 services:
   openpost:
     image: ghcr.io/rodrgds/openpost:latest
+    platform: linux/amd64
     container_name: openpost
     restart: unless-stopped
     env_file:

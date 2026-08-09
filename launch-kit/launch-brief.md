@@ -51,7 +51,7 @@ If any destination remains unverified, use a claim that does not imply publicati
 - Do not say a scheduled post published. Record the provider result or failure after the queue runs.
 - Do not call sample renditions real campaign output.
 - Do not invent users, testimonials, time savings, published URLs, reach, revenue, or conversion results.
-- Do not lead with nine equivalent providers. Keep preview and unverified paths out of the main demo.
+- Do not present every implemented provider as equally ready. Keep preview and unverified paths out of the main demo.
 
 ## Deliverables
 

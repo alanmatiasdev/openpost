@@ -12,6 +12,8 @@
         "$TURBO_ROOT$/frontend/src/lib/**",
         "!$TURBO_ROOT$/frontend/src/lib/paraglide/**",
         "$TURBO_ROOT$/provider-certification/public-claims.json",
+        "$TURBO_ROOT$/scripts/asset-surfaces.mjs",
+        "$TURBO_ROOT$/scripts/asset-surfaces.ts",
         "$TURBO_ROOT$/scripts/sync-assets.mjs"
       ],
       "outputs": ["dist/**", ".wrangler/functions/**"]

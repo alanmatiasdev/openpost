@@ -282,13 +282,6 @@ func GetClientName(ctx context.Context) string {
 	return ""
 }
 
-func GetScope(ctx context.Context) string {
-	if v, ok := ctx.Value(ScopeKey).(string); ok {
-		return v
-	}
-	return ""
-}
-
 func GetUserAgent(ctx context.Context) string {
 	if v, ok := ctx.Value(UserAgentKey).(string); ok {
 		return v

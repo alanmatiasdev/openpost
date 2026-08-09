@@ -127,6 +127,7 @@ const selfHostingSidebar = [
 		collapsed: false,
 		items: [
 			{ text: 'Backups', link: '/operations/backups' },
+			{ text: 'Container Image', link: '/operations/container-image' },
 			{ text: 'Health Checks', link: '/operations/health-checks' },
 			{ text: 'Logs', link: '/operations/logs' },
 			{ text: 'Upgrades', link: '/operations/upgrades' },

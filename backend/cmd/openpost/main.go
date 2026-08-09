@@ -113,16 +113,21 @@ func main() {
 		LogRemoteIP:     true,
 		LogMethod:       true,
 		LogURIPath:      true,
+		LogRoutePath:    true,
 		LogRequestID:    true,
+		LogUserAgent:    true,
 		LogStatus:       true,
 		LogError:        true,
 		LogResponseSize: true,
 		HandleError:     true,
 		LogValuesFunc: func(_ echo.Context, values middleware.RequestLoggerValues) error {
+			route := normalizedRequestRoute(values.RoutePath)
 			log.Printf(
-				"request method=%s path=%s status=%d latency=%s bytes_out=%d remote_ip=%s request_id=%s error=%v",
+				"request method=%s path=%s route=%s consumer=%s status=%d latency=%s bytes_out=%d remote_ip=%s request_id=%s error=%v",
 				values.Method,
 				values.URIPath,
+				route,
+				requestConsumerClass(route, values.UserAgent),
 				values.Status,
 				values.Latency,
 				values.ResponseSize,

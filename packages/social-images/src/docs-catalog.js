@@ -182,6 +182,10 @@ export const docsPageCatalog = Object.freeze([
     "title": "Backups"
   },
   {
+    "page": "operations/container-image.md",
+    "title": "Container Image Support and Assurance"
+  },
+  {
     "page": "operations/health-checks.md",
     "title": "Health Checks"
   },

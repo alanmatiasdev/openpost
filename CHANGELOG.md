@@ -6,6 +6,8 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+- Added final-image SPDX SBOM and full vulnerability-report artifacts to candidate and release workflows, a separately enforced pinned-scanner gate for fixable high and critical findings, and digest evidence that binds each report to the exact promoted image.
+- Added continuous Go and TypeScript reachability, documentation-graph, provider-fact, canonical public-route, and release-surface ownership checks with explicit roots and narrow exceptions.
 - Added a complete feature hub and canonical FAQ grouped around verified product scope, current provider-certification evidence, plan and provider limits, maintained proof, and contextual documentation and support paths.
 - Added a complete, audited workspace-access lifecycle with server-enforced admin, editor, and viewer permissions; active and inactive accepted members; atomic seat and pending-invitation limits; role changes, deactivation, restoration, removal, resend, revoke, search, and filters; last-admin safeguards; and an admin-only access history. Migration 080 preserves existing access as active and adds the lifecycle and audit schema.
 - Added accessible password reveal controls and exact Unicode-aware server rules, preserved safe protected deep links through authentication, documented the fixed session lifetime instead of adding a cosmetic persistence toggle, and expanded authenticator enrollment into a six-step flow with a copyable manual key, resilient verification, and explicit enabled-factor confirmation.
@@ -21,6 +23,11 @@ All notable changes to this project are documented in this file.
 
 ### Changed
 
+- Pinned the production Bun toolchain, Node frontend builder, Go backend builder, and supported Alpine runtime inputs by digest; kept Vite and SvelteKit on real Node while Bun owns installs and scripts; declared Linux AMD64 as the tested container architecture; separated process liveness from traffic readiness; and expanded restart smoke coverage across OCI health, configuration, SQLite, FFmpeg, FFprobe, and release identity.
+- Replaced three full shared-asset copies with a typed per-surface manifest that validates every source reference and staged output before installing the exact frontend, documentation, or marketing files.
+- Made one canonical marketing route manifest own prerender entries, sitemap priorities, canonical URLs, and social metadata, including bidirectional page and content-catalog checks.
+- Made release planning classify every maintained path by application, site, delivery, launch, agent-tool, asset, or repository ownership, with only documented reference-checkout exemptions.
+- Replaced stale contributor design instructions with canonical guidance links and made launch, documentation, assets, and public provider-count copy agree with the backend catalogue.
 - Added source, owner, evidence basis, review date, recheck deadline, and plan or region qualifier to every mutable comparison row, with a freshness check that fails when evidence expires.
 - Put plan audience, exact limits, trial renewal behavior, cancellation, billing management, refunds, tax, and Paddle's Merchant of Record role beside managed-plan choices; billing-period changes now preserve focus and use one concise live announcement.
 - Defined `server.json` as the immutable Official MCP Registry listing version, documented its compatibility policy separately from application and negotiated protocol versions, and made registry drift fail repository and release planning checks.

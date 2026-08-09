@@ -10,6 +10,8 @@ env:
   IMAGE_NAME: ${{ github.repository }}
   BUN_VERSION: "1.3.11"
 
+permissions: {}
+
 jobs:
   verify-candidate:
     name: Verify exact release candidate
@@ -20,6 +22,7 @@ jobs:
       packages: read
     outputs:
       ci_run_id: ${{ steps.candidate.outputs.run_id }}
+      ci_run_attempt: ${{ steps.candidate.outputs.run_attempt }}
       digest: ${{ steps.image.outputs.digest }}
     steps:
       - uses: actions/checkout@v4
@@ -32,45 +35,69 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
-          run_id="$(gh run list \
+          candidate="$(gh run list \
             --repo "$GITHUB_REPOSITORY" \
             --workflow CI \
             --commit "$GITHUB_SHA" \
             --event push \
             --limit 20 \
-            --json databaseId,conclusion \
-            --jq '[.[] | select(.conclusion == "success")][0].databaseId // empty')"
-          [[ -n "$run_id" ]] || {
+            --json databaseId,attempt,conclusion \
+            --jq '[.[] | select(.conclusion == "success")][0] | if . then [.databaseId, .attempt] | @tsv else empty end')"
+          [[ -n "$candidate" ]] || {
             echo "No successful CI run exists for tagged SHA $GITHUB_SHA." >&2
             exit 1
           }
+          IFS=$'\t' read -r run_id run_attempt <<<"$candidate"
+          [[ "$run_id" =~ ^[0-9]+$ && "$run_attempt" =~ ^[1-9][0-9]*$ ]]
           echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+          echo "run_attempt=$run_attempt" >> "$GITHUB_OUTPUT"
       - name: Download the candidate release manifest
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CI_RUN_ID: ${{ steps.candidate.outputs.run_id }}
+          CI_RUN_ATTEMPT: ${{ steps.candidate.outputs.run_attempt }}
         run: |
           gh run download "$CI_RUN_ID" \
             --repo "$GITHUB_REPOSITORY" \
-            --name "release-manifest-${GITHUB_SHA}" \
+            --name "release-manifest-${GITHUB_SHA}-${CI_RUN_ATTEMPT}" \
             --dir candidate-release
           bun scripts/release-manifest.mjs verify \
             --manifest candidate-release/release-manifest.json \
             --version "$GITHUB_REF_NAME" \
             --revision "$GITHUB_SHA"
-      - name: Verify the immutable candidate image and manifest
+          expected_repository="${REGISTRY}/${IMAGE_NAME,,}"
+          expected_tag="sha-${GITHUB_SHA}"
+          bun scripts/image-evidence.mjs verify \
+            --evidence candidate-release/openpost-image-evidence.json \
+            --repository "$expected_repository" \
+            --tag "$expected_tag" \
+            --revision "$GITHUB_SHA" \
+            --release-manifest candidate-release/release-manifest.json \
+            --sbom candidate-release/openpost-image.spdx.json \
+            --vulnerability-report candidate-release/openpost-image-trivy.json \
+            >/dev/null
+          jq -e '(.spdxVersion | startswith("SPDX-")) and (.packages | type == "array") and (.packages | length > 0)' candidate-release/openpost-image.spdx.json >/dev/null
+          jq -e '(.SchemaVersion // 0) >= 2 and (.Results | type == "array") and (.Results | length > 0)' candidate-release/openpost-image-trivy.json >/dev/null
+      - name: Verify the immutable candidate digest and manifest
         id: image
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
           printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin >/dev/null
-          image="${REGISTRY}/${IMAGE_NAME}:sha-${GITHUB_SHA}"
+          repository="${REGISTRY}/${IMAGE_NAME,,}"
+          digest="$(bun scripts/image-evidence.mjs verify \
+            --evidence candidate-release/openpost-image-evidence.json \
+            --repository "$repository" \
+            --tag "sha-${GITHUB_SHA}" \
+            --revision "$GITHUB_SHA" \
+            --release-manifest candidate-release/release-manifest.json \
+            --sbom candidate-release/openpost-image.spdx.json \
+            --vulnerability-report candidate-release/openpost-image-trivy.json)"
+          image="${repository}@${digest}"
           docker pull "$image"
           scripts/verify-image-release-manifest.sh \
             "$image" candidate-release/release-manifest.json
-          digest="$(docker inspect --format '{{ index .RepoDigests 0 }}' "$image" | sed 's/^.*@//')"
-          [[ "$digest" == sha256:* ]]
           echo "digest=$digest" >> "$GITHUB_OUTPUT"
 
   create-release:
@@ -78,21 +105,46 @@ jobs:
     runs-on: ubuntu-latest
     needs: verify-candidate
     permissions:
+      actions: read
       contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: ${{ env.BUN_VERSION }}
+      - name: Download exact candidate image evidence
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CI_RUN_ID: ${{ needs.verify-candidate.outputs.ci_run_id }}
+          CI_RUN_ATTEMPT: ${{ needs.verify-candidate.outputs.ci_run_attempt }}
+        run: |
+          gh run download "$CI_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name "release-manifest-${GITHUB_SHA}-${CI_RUN_ATTEMPT}" \
+            --dir candidate-release
       - name: Publish the canonical changelog section
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CANDIDATE_DIGEST: ${{ needs.verify-candidate.outputs.digest }}
         run: |
+          repository="${REGISTRY}/${IMAGE_NAME,,}"
+          verified_digest="$(bun scripts/image-evidence.mjs verify \
+            --evidence candidate-release/openpost-image-evidence.json \
+            --repository "$repository" \
+            --tag "sha-${GITHUB_SHA}" \
+            --revision "$GITHUB_SHA" \
+            --release-manifest candidate-release/release-manifest.json \
+            --sbom candidate-release/openpost-image.spdx.json \
+            --vulnerability-report candidate-release/openpost-image-trivy.json)"
+          [[ "$verified_digest" == "$CANDIDATE_DIGEST" ]]
           bun scripts/release-notes.mjs "$GITHUB_REF_NAME" |
             gh release create "$GITHUB_REF_NAME" \
               --repo "$GITHUB_REPOSITORY" \
               --verify-tag \
-              --notes-file -
+              --notes-file - \
+              candidate-release/openpost-image-evidence.json \
+              candidate-release/openpost-image.spdx.json \
+              candidate-release/openpost-image-trivy.json
 
   promote-image:
     name: Promote tested image
@@ -133,6 +185,7 @@ jobs:
     name: Deploy production
     runs-on: ubuntu-latest
     needs: [promote-image, create-release]
+    timeout-minutes: 10
     steps:
       - name: Trigger the verified VPS deployment
         env:
@@ -145,23 +198,28 @@ jobs:
             "$GITHUB_REPOSITORY" "$GITHUB_SHA" "$GITHUB_REF_NAME" "$IMAGE_DIGEST")
           signature=$(printf '%s' "$payload" | openssl dgst -sha256 -hmac "$DEPLOY_WEBHOOK_SECRET" | awk '{print "sha256=" $2}')
           response=$(curl --fail-with-body --silent --show-error \
+            --connect-timeout 10 \
+            --max-time 300 \
             -H 'Content-Type: application/json' \
             -H "X-Hub-Signature-256: $signature" \
             --data "$payload" \
             https://webhooks.rgo.pt/hooks/deploy-openpost)
           printf '%s\n' "$response"
           grep -q "DEPLOY_OK openpost ${GITHUB_SHA}" <<<"$response"
-      - name: Verify the public version and revision
+      - name: Verify public readiness, version, and revision
         shell: bash
         run: |
           for _ in $(seq 1 60); do
-            info=$(curl --fail --silent https://app.openpost.social/api/v1/version 2>/dev/null || true)
+            info=$(curl --fail --silent --connect-timeout 2 --max-time 5 https://app.openpost.social/api/v1/version 2>/dev/null || true)
+            ready=$(curl --fail --silent --connect-timeout 2 --max-time 5 https://app.openpost.social/api/v1/ready 2>/dev/null || true)
             revision=$(jq -r '.revision // empty' <<<"$info" 2>/dev/null || true)
             version=$(jq -r '.version // empty' <<<"$info" 2>/dev/null || true)
-            [[ "$revision" == "$GITHUB_SHA" && "$version" == "$GITHUB_REF_NAME" ]] && exit 0
+            readiness=$(jq -r '.status // empty' <<<"$ready" 2>/dev/null || true)
+            database=$(jq -r '.database // empty' <<<"$ready" 2>/dev/null || true)
+            [[ "$revision" == "$GITHUB_SHA" && "$version" == "$GITHUB_REF_NAME" && "$readiness" == ready && "$database" == ok ]] && exit 0
             sleep 5
           done
-          echo "Production did not report $GITHUB_REF_NAME at revision $GITHUB_SHA." >&2
+          echo "Production did not become ready at $GITHUB_REF_NAME revision $GITHUB_SHA." >&2
           exit 1
 
   build-binaries:
@@ -187,7 +245,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CI_RUN_ID: ${{ needs.verify-candidate.outputs.ci_run_id }}
-        run: gh run download "$CI_RUN_ID" --repo "$GITHUB_REPOSITORY" --name "frontend-public-${GITHUB_SHA}" --dir backend/cmd/openpost/public
+          CI_RUN_ATTEMPT: ${{ needs.verify-candidate.outputs.ci_run_attempt }}
+        run: gh run download "$CI_RUN_ID" --repo "$GITHUB_REPOSITORY" --name "frontend-public-${GITHUB_SHA}-${CI_RUN_ATTEMPT}" --dir backend/cmd/openpost/public
       - name: Build binary
         shell: bash
         run: |

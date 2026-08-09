@@ -40,14 +40,19 @@ jobs:
       - name: Check generated contracts and repository policy
         run: |
           bun run check:build-graph
+          bun run check:assets
+          bun run check:public-routes
           bun run check:mcp-registry
           bun run check:docs
           bun run check:release-version
           bun run check:app-routes
           bun run check:legal-policy
           bun run check:provider-certification
+          bun run check:provider-facts
           bun run check:changelog
           bun run check:social-images
+          bun run check:image-policy
+          bun run check:reachability
           bun run check:ui-consistency
           bun run check:contracts
       - name: Check Go formatting
@@ -121,7 +126,7 @@ jobs:
       - run: bun run verify:frontend-build-cache -- --keep-output
       - uses: actions/upload-artifact@v4
         with:
-          name: frontend-public-${{ github.sha }}
+          name: frontend-public-${{ github.sha }}-${{ github.run_attempt }}
           path: backend/cmd/openpost/public
           if-no-files-found: error
           retention-days: 14
@@ -243,12 +248,14 @@ jobs:
             echo "sha256=$manifest_sha256"
             echo "base64=$(base64 -w0 release-manifest.json)"
           } >> "$GITHUB_OUTPUT"
-      - name: Build the immutable candidate once
+      - name: Build the candidate once
         shell: bash
         run: |
           image="ghcr.io/${GITHUB_REPOSITORY,,}:sha-${GITHUB_SHA}"
+          platform="$(jq -er '.supported_platforms | if length == 1 then .[0] else error("candidate build requires exactly one supported platform") end' docker/image-policy.json)"
           docker buildx build \
             --load \
+            --platform "$platform" \
             --file docker/Dockerfile \
             --tag "$image" \
             --build-arg VERSION="${{ steps.manifest.outputs.version }}" \
@@ -263,13 +270,86 @@ jobs:
             "$GITHUB_SHA" \
             "${{ steps.manifest.outputs.version }}" \
             release-manifest.json
-          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
-            docker push "$image"
-          fi
-      - uses: actions/upload-artifact@v4
+      - name: Generate the final-image SPDX SBOM
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
-          name: release-manifest-${{ github.sha }}
-          path: release-manifest.json
+          image-ref: ghcr.io/${{ github.repository }}:sha-${{ github.sha }}
+          scan-type: image
+          scanners: vuln
+          format: spdx-json
+          output: openpost-image.spdx.json
+          version: v0.70.0
+      - name: Record the full final-image vulnerability report
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ghcr.io/${{ github.repository }}:sha-${{ github.sha }}
+          scan-type: image
+          scanners: vuln
+          format: json
+          output: openpost-image-trivy.json
+          severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
+          ignore-unfixed: false
+          exit-code: 0
+          version: v0.70.0
+      - name: Validate image assurance evidence
+        shell: bash
+        run: |
+          jq -e '(.spdxVersion | startswith("SPDX-")) and (.packages | type == "array") and (.packages | length > 0)' openpost-image.spdx.json >/dev/null
+          jq -e '(.SchemaVersion // 0) >= 2 and (.Results | type == "array") and (.Results | length > 0)' openpost-image-trivy.json >/dev/null
+      - name: Retain final-image diagnostic evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-diagnostics-${{ github.sha }}-${{ github.run_attempt }}
+          path: |
+            release-manifest.json
+            openpost-image.spdx.json
+            openpost-image-trivy.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Block fixable high-severity vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ghcr.io/${{ github.repository }}:sha-${{ github.sha }}
+          scan-type: image
+          scanners: vuln
+          format: table
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: 1
+          version: v0.70.0
+      - name: Publish the validated candidate and record its digest
+        if: github.event_name == 'push'
+        id: publish
+        shell: bash
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY,,}:sha-${GITHUB_SHA}"
+          docker push "$image"
+          repository="${image%:sha-*}"
+          digest_ref="$(docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$image" | awk -v prefix="${repository}@" 'index($0, prefix) == 1 { print; exit }')"
+          digest="${digest_ref#*@}"
+          [[ "$digest" == sha256:* ]] || {
+            echo "Published candidate did not resolve to a registry digest." >&2
+            exit 1
+          }
+          bun scripts/image-evidence.mjs create \
+            --repository "$repository" \
+            --tag "sha-${GITHUB_SHA}" \
+            --revision "$GITHUB_SHA" \
+            --digest "$digest" \
+            --release-manifest release-manifest.json \
+            --sbom openpost-image.spdx.json \
+            --vulnerability-report openpost-image-trivy.json \
+            --output openpost-image-evidence.json
+      - name: Upload exact candidate evidence
+        uses: actions/upload-artifact@v4
+        if: github.event_name == 'push'
+        with:
+          name: release-manifest-${{ github.sha }}-${{ github.run_attempt }}
+          path: |
+            release-manifest.json
+            openpost-image-evidence.json
+            openpost-image.spdx.json
+            openpost-image-trivy.json
           if-no-files-found: error
           retention-days: 14
 

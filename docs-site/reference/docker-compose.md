@@ -4,6 +4,7 @@
 services:
   openpost:
     image: ghcr.io/rodrgds/openpost:latest
+    platform: linux/amd64
     container_name: openpost
     restart: unless-stopped
     env_file:
@@ -17,10 +18,9 @@ services:
       - OPENPOST_DATABASE_PATH=/data/db/openpost.db
       - OPENPOST_MEDIA_PATH=/data/media
       - OPENPOST_MEDIA_URL=https://openpost.example.com/media
-    # The shipped image uses /api/v1/health for liveness. Use /api/v1/ready here
-    # if you want Compose to also wait for database readiness.
+    # Keep container health on liveness. Gate traffic and rollouts on /api/v1/ready.
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/api/v1/ready"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/api/v1/health"]
       interval: 30s
       timeout: 3s
       retries: 3
@@ -40,3 +40,5 @@ environment:
 ```
 
 Leave the direct variables unset when the `_FILE` variants should be used.
+
+The published image supports `linux/amd64` only. See [Container Image Support and Assurance](/operations/container-image) for architecture, probe, SBOM, and scan policy.

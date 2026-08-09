@@ -21,6 +21,7 @@ changes live in [Developer Docs](/development/).
 - [ ] Decide whether to enable automatic image alt text. If enabled, store `OPENROUTER_API_KEY` through `OPENROUTER_API_KEY_FILE` and review OpenRouter and model provider privacy and retention terms.
 - [ ] Confirm `GET /api/v1/health` returns `{"status":"ok"}`.
 - [ ] Confirm `GET /api/v1/ready` returns `{"status":"ready","database":"ok"}`.
+- [ ] Use `/api/v1/health` for process liveness and `/api/v1/ready` for traffic admission, rollouts, and dependency-aware monitoring.
 - [ ] Confirm `openpost instance health --instance <public-url>` succeeds against the public URL.
 - [ ] Capture `openpost instance diagnostics --instance <public-url> --json` for the launch/support handoff.
 
@@ -85,7 +86,7 @@ changes live in [Developer Docs](/development/).
 
 ## Operations
 
-- [ ] Point uptime monitoring at `/api/v1/ready`, not only `/api/v1/health`.
+- [ ] Point dependency-aware uptime monitoring at `/api/v1/ready`; keep container or orchestrator liveness on `/api/v1/health`.
 - [ ] Confirm logs include startup configuration, database readiness errors, provider publish failures, and MCP tool-call failures.
 - [ ] Document your deployment rollback path.
 - [ ] Document where database backups, media backups, and secret backups live.

@@ -1,7 +1,7 @@
-import { platforms } from '../../_marketing';
+import { marketingPrerenderEntries } from "@openpost/social-images";
 
 export const prerender = true;
 
 export function entries() {
-	return platforms.map((platform) => ({ slug: platform.slug }));
+  return marketingPrerenderEntries("/platforms");
 }

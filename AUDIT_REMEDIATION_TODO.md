@@ -949,14 +949,14 @@ Candidate decisions under this registry:
 
 ### OPS-001 — Use a supported digest-pinned runtime base with image assurance
 
-- [ ] **Problem — Baseline audit:** runtime uses Alpine 3.19, now outside normal support. No specific exploitable CVE was established.
+- [x] **Problem — Baseline audit:** runtime uses Alpine 3.19, now outside normal support. No specific exploitable CVE was established.
 - **Fix:** move to a supported pinned digest; generate an SBOM; scan the final image in CI; document update cadence; smoke readiness and core media dependencies.
 - **Done when:** the exact digest and scan evidence are attached to release checks and the image restart smoke passes. Do not market this as a remediated exploit unless one is proven.
 - **Evidence:** `docker/Dockerfile:52`.
 
 ### OPS-002 — Decide and document ARM64 image support
 
-- [ ] **Problem — Baseline audit:** public Docker image is amd64-only.
+- [x] **Problem — Baseline audit:** public Docker image is amd64-only.
 - **Fix:** either add a tested multi-arch image with CGO/SQLite/FFmpeg and runtime smoke proof, or state amd64-only prominently in install docs/manifests.
 - **Done when:** supported architectures are unambiguous and CI tests every published architecture.
 
@@ -980,37 +980,37 @@ Candidate decisions under this registry:
 
 ### CI-002 — Add continuous reachability and release-surface checks
 
-- [ ] **Problem — Baseline audit:** deep manual scans found real dead code and route/config blind spots, but these are not continuous gates.
+- [x] **Problem — Baseline audit:** deep manual scans found real dead code and route/config blind spots, but these are not continuous gates.
 - **Fix:** configure Go `deadcode -test`, TypeScript/Knip with generated/dynamic allowlists, config-derived docs-nav crawling, bidirectional route metadata checks, and API-consumer telemetry.
 - **Done when:** gates catch intentional fixtures without recurring false positives and block newly unreachable shipped code/config links.
 
 ### OPS-003 — Clarify readiness versus liveness policy
 
-- [ ] **Problem — Baseline audit:** Dockerfile/docs use readiness while comments and Compose overrides describe liveness inconsistently.
+- [x] **Problem — Baseline audit:** Dockerfile/docs use readiness while comments and Compose overrides describe liveness inconsistently.
 - **Fix:** define what each endpoint proves and which orchestrator probe uses it; align comments, Compose, container health, runbooks, and tests.
 - **Done when:** operators can predict restart/traffic behavior during dependency degradation and checks enforce the chosen policy.
 
 ### BUILD-004 — Ship assets through per-surface manifests
 
-- [ ] **Problem — Baseline audit:** `sync-assets.mjs` copies the full roughly 1.9 MiB shared tree into app, docs, and marketing.
+- [x] **Problem — Baseline audit:** `sync-assets.mjs` copies the full roughly 1.9 MiB shared tree into app, docs, and marketing.
 - **Fix:** declare per-surface assets in one typed manifest; copy only referenced assets; validate missing/extra entries.
 - **Done when:** builds fail on undeclared use and measured shipped size drops without broken assets.
 
 ### MKT-OPS-001 — Derive route metadata from one manifest
 
-- [ ] **Problem — Baseline audit:** prerender, sitemap, and social-image route sets are duplicated; current checks validate only one direction.
+- [x] **Problem — Baseline audit:** prerender, sitemap, and social-image route sets are duplicated; current checks validate only one direction.
 - **Fix:** derive all three from a typed route manifest or enforce bidirectional set equality with documented exceptions.
 - **Done when:** adding/removing a public route cannot leave stale/missing sitemap or social metadata.
 
 ### DOC-003 — Correct stale launch and contributor facts
 
-- [ ] **Problem — Baseline audit:** launch-kit/brief retain an old network count, and Copilot instructions retain a superseded design direction.
+- [x] **Problem — Baseline audit:** launch-kit/brief retain an old network count, and Copilot instructions retain a superseded design direction.
 - **Fix:** update canonical facts, remove duplicated counts where possible, and validate public/provider totals from one catalogue.
 - **Done when:** README/docs/launch materials/instructions agree with current capability data.
 
 ### REL-003 — Complete release-plan path ownership
 
-- [ ] **Problem — Baseline audit:** advisory release planning omits root build/config, Compose, `server.json`, skills, launch-kit, and scripts even though the broad release gate still runs.
+- [x] **Problem — Baseline audit:** advisory release planning omits root build/config, Compose, `server.json`, skills, launch-kit, and scripts even though the broad release gate still runs.
 - **Fix:** assign every release-relevant path an owner/category or explicit exemption and validate coverage.
 - **Done when:** changed relevant files cannot silently fall outside impact planning.
 

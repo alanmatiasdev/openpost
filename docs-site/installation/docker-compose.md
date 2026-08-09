@@ -8,12 +8,15 @@ Docker Compose is the recommended installation path for long-running OpenPost de
 - Docker Compose
 - A writable persistent volume or bind mount for `/data`
 
+The published image and maintained Dockerfile support `linux/amd64` only. On another host architecture, use amd64 emulation. A native image requires a downstream Dockerfile/source change and complete runtime validation. See [Container Image Support and Assurance](/operations/container-image).
+
 ## Create `docker-compose.yml`
 
 ```yaml
 services:
   openpost:
     image: ghcr.io/rodrgds/openpost:latest
+    platform: linux/amd64
     container_name: openpost
     restart: unless-stopped
     env_file:
@@ -26,10 +29,9 @@ services:
       - OPENPOST_PORT=8080
       - OPENPOST_DATABASE_PATH=/data/db/openpost.db
       - OPENPOST_MEDIA_PATH=/data/media
-    # The shipped image uses /api/v1/health for liveness. Use /api/v1/ready here
-    # if you want Docker Compose to also wait for database readiness.
+    # Keep container health on liveness. Gate traffic and rollouts on /api/v1/ready.
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/api/v1/ready"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/api/v1/health"]
       interval: 30s
       timeout: 3s
       retries: 3
@@ -87,6 +89,8 @@ Expected response:
 ```json
 {"status":"ready","database":"ok"}
 ```
+
+The container health check uses `/api/v1/health`; this explicit readiness check also proves that the database is available. See [Health Checks](/operations/health-checks).
 
 ## Where data is stored
 

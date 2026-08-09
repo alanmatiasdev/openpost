@@ -73,7 +73,7 @@ export function localDocumentationTargetExists(root, sourceFile, target) {
   );
 }
 
-function markdownTargets(contents) {
+export function markdownTargets(contents) {
   return [
     ...[...contents.matchAll(/!?\[[^\]]*\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g)].map(
       (match) => match[1],
@@ -85,6 +85,52 @@ function markdownTargets(contents) {
       (match) => match[1],
     ),
   ];
+}
+
+export function unreachableDocumentationPages(
+  root,
+  pageFiles,
+  navigationTargets,
+  readPage = (file) => readFileSync(path.join(root, file), "utf8"),
+) {
+  const pages = new Set(pageFiles);
+  const resolvePage = (sourceFile, target) => {
+    for (const candidate of localDocumentationCandidates(
+      root,
+      sourceFile,
+      target,
+    )) {
+      const relativeCandidate = path
+        .relative(root, candidate)
+        .split(path.sep)
+        .join("/");
+      if (pages.has(relativeCandidate)) return relativeCandidate;
+    }
+    return undefined;
+  };
+
+  const pending = [];
+  const queue = (file) => {
+    if (file && !pending.includes(file)) pending.push(file);
+  };
+
+  queue(pages.has("docs-site/index.md") ? "docs-site/index.md" : undefined);
+  for (const target of navigationTargets) {
+    queue(resolvePage("docs-site/.vitepress/config.ts", target));
+  }
+
+  const reachable = new Set();
+  while (pending.length > 0) {
+    const file = pending.shift();
+    if (!file || reachable.has(file)) continue;
+    reachable.add(file);
+
+    for (const target of markdownTargets(readPage(file))) {
+      queue(resolvePage(file, target));
+    }
+  }
+
+  return [...pages].filter((file) => !reachable.has(file)).sort();
 }
 
 async function main() {
@@ -125,13 +171,30 @@ async function main() {
     }
   }
 
+  const documentationPages = files.filter(
+    (file) =>
+      file.startsWith("docs-site/") &&
+      !file.startsWith("docs-site/.generated/"),
+  );
+  const unreachablePages = unreachableDocumentationPages(
+    repositoryRoot,
+    documentationPages,
+    navigationTargets,
+  );
+  failures.push(
+    ...unreachablePages.map(
+      (file) =>
+        `${file} is not reachable from the docs home or configured navigation`,
+    ),
+  );
+
   if (failures.length > 0) {
     console.error(`Broken local documentation links:\n${failures.join("\n")}`);
     process.exit(1);
   }
 
   console.log(
-    `Checked local links in ${files.length} maintained Markdown files and ${navigationTargets.length} configured navigation targets.`,
+    `Checked local links in ${files.length} maintained Markdown files, ${navigationTargets.length} configured navigation targets, and reachability for ${documentationPages.length} documentation pages.`,
   );
 }
 

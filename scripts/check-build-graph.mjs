@@ -86,6 +86,8 @@ for (const [relativePath, expectedOutputs] of packageTurboPaths) {
 const frontendTurbo = await readJSON("frontend/turbo.json");
 for (const input of [
   "$TURBO_ROOT$/assets/**",
+  "$TURBO_ROOT$/scripts/asset-surfaces.mjs",
+  "$TURBO_ROOT$/scripts/asset-surfaces.ts",
   "$TURBO_ROOT$/scripts/sync-assets.mjs",
   "$TURBO_ROOT$/scripts/generate-app-route-manifest.mjs",
   "$TURBO_ROOT$/scripts/precompress-static.mjs",
@@ -94,6 +96,23 @@ for (const input of [
     frontendTurbo.tasks.build.inputs.includes(input),
     `frontend build hash is missing ${input}`,
   );
+}
+
+for (const [label, turboConfig] of [
+  ["docs", await readJSON("docs-site/turbo.json")],
+  ["marketing", await readJSON("marketing-site/turbo.json")],
+]) {
+  for (const input of [
+    "$TURBO_ROOT$/assets/**",
+    "$TURBO_ROOT$/scripts/asset-surfaces.mjs",
+    "$TURBO_ROOT$/scripts/asset-surfaces.ts",
+    "$TURBO_ROOT$/scripts/sync-assets.mjs",
+  ]) {
+    requireCondition(
+      turboConfig.tasks.build.inputs.includes(input),
+      `${label} build hash is missing ${input}`,
+    );
+  }
 }
 
 const marketingTurbo = await readJSON("marketing-site/turbo.json");
@@ -142,6 +161,11 @@ requireIncludes(
   dockerfile,
   "/app/frontend/build",
   "production image frontend copy",
+);
+requireIncludes(
+  dockerfile,
+  "bun run --filter @openpost/web build",
+  "production image frontend build",
 );
 requireIncludes(devenv, "bun run docs:build", "Devenv docs build");
 requireIncludes(

@@ -6,6 +6,8 @@
 			"inputs": [
 				"$TURBO_DEFAULT$",
 				"$TURBO_ROOT$/assets/**",
+				"$TURBO_ROOT$/scripts/asset-surfaces.mjs",
+				"$TURBO_ROOT$/scripts/asset-surfaces.ts",
 				"$TURBO_ROOT$/scripts/sync-assets.mjs",
 				"$TURBO_ROOT$/scripts/generate-app-route-manifest.mjs",
 				"$TURBO_ROOT$/scripts/precompress-static.mjs"

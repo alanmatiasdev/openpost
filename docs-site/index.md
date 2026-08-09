@@ -49,6 +49,7 @@ Managed plans start at $15 per month. Every plan includes a card-required 14-day
 services:
   openpost:
     image: ghcr.io/rodrgds/openpost:latest
+    platform: linux/amd64
     container_name: openpost
     restart: unless-stopped
     env_file:

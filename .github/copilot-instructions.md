@@ -1,24 +1,26 @@
 # Copilot Instructions
 
-## Design Context
+Read and follow [`AGENTS.md`](../AGENTS.md) before changing this repository. It
+owns the development workflow and architecture rules. For product or interface
+work, also read:
 
-### Users
-Solo creators, indie hackers, social media managers, and small teams who need to schedule and publish content across multiple social platforms. They range from technical (developers self-hosting) to non-technical (content creators). They use OpenPost at their desk during focused work sessions, but also on mobile for quick checks. Their primary job is publishing content efficiently — the tool should feel fast and stay out of the way.
+- [`PRODUCT.md`](../PRODUCT.md) for the current audience, product model, and
+  scope;
+- [`DESIGN.md`](../DESIGN.md) for the current brand, tokens, typography, layout,
+  and interaction direction.
 
-### Brand Personality
-**Focused. Efficient. Clean.** OpenPost is the tool that respects your time. It's sharp without being cold, capable without being complicated. Think well-maintained workshop, not corporate dashboard. Directness over decoration. Precision over polish.
+Treat those files and the implemented shared components as authoritative. Do
+not maintain a second design manifesto here.
 
-### Aesthetic Direction
-**Technical Minimal** — Crisp, precise, monospace accents, dark/light equally supported. Inspired by well-crafted developer tools refined for everyday use. Strong grid discipline, restrained color, typography that earns its weight. Dark mode should feel native, not bolted on.
+Keep these invariants in mind:
 
-- **Theme**: Both dark and light modes, equally supported. System preference respected.
-- **Anti-references**: No corporate dashboard aesthetics, no bubbly startup vibes, no Typefully-style editorial whimsy.
-- **Current state**: UI uses shadcn/svelte components with Inter Variable font and oklch-based color system. The foundation is solid but generic — needs intentional differentiation.
-
-### Design Principles
-
-1. **Get out of the way** — The interface should disappear into the task. Every element earns its pixel. If it doesn't help publish content, it doesn't belong.
-2. **Precision in restraint** — Monospace for data and labels, humanist for content. Tight spacing, deliberate alignment. Like a well-set terminal that's actually pleasant to read.
-3. **Information density without clutter** — Show what matters, hide what doesn't. The dashboard should feel like a cockpit, not a brochure. Dense but scannable.
-4. **Monochrome confidence** — Restrained palette built around warm neutrals (the existing oklch warm hue at ~48-58). One sharp accent for actions. Color is a signal, never decoration.
-5. **Consistency as trust** — Predictable patterns across pages. Platform icons and badges always work the same way. State changes are visible but never jarring.
+- OpenPost is founder-first, with the managed app as the primary path and
+  self-hosting as a supported option.
+- The authenticated application is compact and task-focused. Public surfaces
+  can be more expressive and spacious, while remaining factual, responsive,
+  accessible, and complete in both themes.
+- Use Svelte 5 runes and the shared UI primitives described in `AGENTS.md`.
+- Source provider lists and totals from the provider catalog and current
+  readiness evidence. Never copy a static provider count into product guidance.
+- Verify product, plan, provider, security, and deployment claims against the
+  current code or an official source before publishing them.

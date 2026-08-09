@@ -289,10 +289,6 @@ func (s *Service) Configuration(provider, instanceURL string) RuntimeConfigurati
 	return s.resolveConfiguration(provider, instanceURL)
 }
 
-func (s *Service) ManagedProduction() bool {
-	return s != nil && s.managedProduction
-}
-
 func (s *Service) resolveConfiguration(provider, instanceURL string) RuntimeConfiguration {
 	providerEnv := ProviderEnvironmentDevelopment
 	if s != nil {

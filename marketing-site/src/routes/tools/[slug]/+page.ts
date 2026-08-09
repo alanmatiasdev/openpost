@@ -1,7 +1,7 @@
-import { tools } from '../../_marketing';
+import { marketingPrerenderEntries } from "@openpost/social-images";
 
 export const prerender = true;
 
 export function entries() {
-	return tools.map((tool) => ({ slug: tool.slug }));
+  return marketingPrerenderEntries("/tools");
 }

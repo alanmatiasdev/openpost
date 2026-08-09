@@ -145,10 +145,10 @@ Releases include:
 
 - Linux, macOS, and Windows server binaries;
 - CLI and MCP binaries;
-- the container image at `ghcr.io/rodrgds/openpost`;
+- the `linux/amd64` container image at `ghcr.io/rodrgds/openpost`;
 - an Android APK.
 
-See the [installation docs](https://docs.openpost.social/self-hosting/) for binary installs, reverse proxies, storage, backups, and upgrades.
+The published container image is amd64-only; binary and CLI artifacts have their own architecture matrix. See the [installation docs](https://docs.openpost.social/self-hosting/) for supported artifacts, reverse proxies, storage, backups, upgrades, and the [`image-policy.json`](docker/image-policy.json) assurance contract.
 
 ## Contributing
 

@@ -14,7 +14,9 @@ Expected response:
 {"status":"ok"}
 ```
 
-Use this endpoint when you only need to know whether the HTTP process is alive.
+Use this endpoint when you only need to know whether the HTTP process is alive. The published image's OCI health check and the maintained Compose file use it so a database outage does not turn into a container restart loop.
+
+Docker Engine records this result as container health. The Compose `restart: unless-stopped` policy reacts when the process exits; it does not restart a running container solely because the health check reports `unhealthy`. An orchestrator or external watchdog may choose to act on that state.
 
 ## Readiness
 
@@ -28,7 +30,11 @@ Expected response:
 {"status":"ready","database":"ok"}
 ```
 
-Use this endpoint for container health checks, deploy rollouts, and external uptime probes that should fail when the database is unavailable. It returns `503` when OpenPost cannot run a database probe.
+Use this endpoint for load-balancer traffic admission, deploy rollouts, and external uptime probes that should fail when the database is unavailable. It returns `503` when OpenPost cannot run a database probe.
+
+Compose does not remove traffic when readiness fails by itself. Configure the reverse proxy, load balancer, deploy hook, or monitor that owns traffic to call this endpoint.
+
+For Kubernetes-style orchestration, use `/api/v1/health` as the liveness probe and `/api/v1/ready` as the readiness probe. A failed liveness probe may restart the process. A failed readiness probe should stop new traffic without assuming that a restart can repair the database dependency.
 
 ## CLI check
 
@@ -80,7 +86,8 @@ last-100-line log tail. It never prints raw API tokens or server secrets.
 
 ## Recommended probes
 
-- Load balancer liveness: `GET /api/v1/health`
+- Container or orchestrator liveness: `GET /api/v1/health`
+- Load-balancer traffic readiness: `GET /api/v1/ready`
 - Deploy rollout readiness: `GET /api/v1/ready`
 - External uptime monitor: `GET /api/v1/ready`
 - Operator smoke from a shell: `openpost instance health`
