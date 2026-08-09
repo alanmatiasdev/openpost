@@ -26,6 +26,7 @@ All notable changes to this project are documented in this file.
 
 ### Fixed
 
+- Aligned provider-application administration guidance with the live instance-admin UI and API, documented encrypted secret ownership and source precedence, and rejected administrator rows that cannot become effective runtime configuration.
 - Pinned managed automatic image-caption requests to the verified `azure/eu` OpenRouter route, disabled provider fallbacks, denied provider data collection, and required a zero-data-retention endpoint; cloud startup now fails closed if that policy drifts.
 - Bounded calendar, planner, and activity reads with canonical publication date ranges, stable cursors, complete pagination, and workspace/date-scoped refresh coalescing so autosaves no longer hydrate full history.
 - Added a permission-safe publication timeline for creation, edits, authorization attempts, and provider outcomes while suppressing raw metadata, provider messages, and idempotency details.

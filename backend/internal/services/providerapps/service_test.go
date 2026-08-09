@@ -191,14 +191,40 @@ func TestUpsertProviderAppValidatesProviderInput(t *testing.T) {
 
 	service := NewService(createProviderAppsTestDB(t), crypto.NewTokenEncryptor("0123456789abcdef0123456789abcdef"))
 
-	_, _, err := service.UpsertProviderApp(context.Background(), UpsertInput{Provider: "reddit", ClientID: "client", IsActive: true})
+	for _, provider := range []string{"reddit", "bluesky", "discord"} {
+		_, _, err := service.UpsertProviderApp(context.Background(), UpsertInput{Provider: provider, ClientID: "client", IsActive: true})
+		var validationErr ValidationError
+		require.ErrorAs(t, err, &validationErr)
+		require.ErrorContains(t, err, "unsupported provider app")
+	}
+
+	_, _, err := service.UpsertProviderApp(context.Background(), UpsertInput{Provider: "mastodon", ClientID: "client", IsActive: true})
 	var validationErr ValidationError
 	require.ErrorAs(t, err, &validationErr)
-	require.ErrorContains(t, err, "unsupported provider app")
-
-	_, _, err = service.UpsertProviderApp(context.Background(), UpsertInput{Provider: "mastodon", ClientID: "client", IsActive: true})
-	require.ErrorAs(t, err, &validationErr)
 	require.ErrorContains(t, err, "instance_url is required")
+
+	_, _, err = service.UpsertProviderApp(context.Background(), UpsertInput{
+		Provider: "x", ClientID: "client", InstanceURL: "https://example.social", IsActive: true,
+	})
+	require.ErrorAs(t, err, &validationErr)
+	require.ErrorContains(t, err, "instance_url is only supported for mastodon")
+}
+
+func TestUpsertProviderAppAcceptsEveryManagedProviderIdentity(t *testing.T) {
+	t.Parallel()
+
+	service := NewService(createProviderAppsTestDB(t), crypto.NewTokenEncryptor("0123456789abcdef0123456789abcdef"))
+	for _, provider := range []string{"x", "linkedin", "threads", "facebook", "instagram", "tiktok", "youtube"} {
+		_, _, err := service.UpsertProviderApp(context.Background(), UpsertInput{
+			Provider: provider, ClientID: provider + "-client", IsActive: true,
+		})
+		require.NoError(t, err, provider)
+	}
+
+	_, _, err := service.UpsertProviderApp(context.Background(), UpsertInput{
+		Provider: "mastodon", ClientID: "mastodon-client", InstanceURL: "https://example.social", IsActive: true,
+	})
+	require.NoError(t, err)
 }
 
 func TestDeleteProviderAppRemovesRow(t *testing.T) {

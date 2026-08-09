@@ -48,6 +48,10 @@ func newProviderAppAdminTestServer(t *testing.T, isAdmin bool, options ...Provid
 }
 
 func (s *providerAppAdminTestServer) requestJSON(t *testing.T, method, path string, body any) *httptest.ResponseRecorder {
+	return s.requestJSONWithToken(t, method, path, body, "web-token")
+}
+
+func (s *providerAppAdminTestServer) requestJSONWithToken(t *testing.T, method, path string, body any, token string) *httptest.ResponseRecorder {
 	t.Helper()
 
 	var payload bytes.Buffer
@@ -55,7 +59,9 @@ func (s *providerAppAdminTestServer) requestJSON(t *testing.T, method, path stri
 		require.NoError(t, json.NewEncoder(&payload).Encode(body))
 	}
 	req := httptest.NewRequestWithContext(t.Context(), method, path, &payload)
-	req.Header.Set("Authorization", "Bearer web-token")
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
@@ -142,13 +148,45 @@ func TestProviderAppAdminRequiresInstanceAdmin(t *testing.T) {
 	t.Parallel()
 
 	srv := newProviderAppAdminTestServer(t, false)
-	resp := srv.requestJSON(t, http.MethodPost, "/api/v1/admin/provider-apps", map[string]any{
-		"provider":  "x",
-		"client_id": "x-client",
-	})
+	requests := []struct {
+		name   string
+		method string
+		path   string
+		body   any
+	}{
+		{name: "list", method: http.MethodGet, path: "/api/v1/admin/provider-apps"},
+		{name: "save", method: http.MethodPost, path: "/api/v1/admin/provider-apps", body: map[string]any{"provider": "x", "client_id": "x-client"}},
+		{name: "delete", method: http.MethodDelete, path: "/api/v1/admin/provider-apps/missing"},
+	}
+	for _, request := range requests {
+		t.Run(request.name, func(t *testing.T) {
+			resp := srv.requestJSON(t, request.method, request.path, request.body)
+			require.Equal(t, http.StatusForbidden, resp.Code, resp.Body.String())
+			require.Contains(t, resp.Body.String(), "instance admin role required")
+		})
+	}
+}
 
-	require.Equal(t, http.StatusForbidden, resp.Code, resp.Body.String())
-	require.Contains(t, resp.Body.String(), "instance admin role required")
+func TestProviderAppAdminRequiresAuthenticationForEveryRoute(t *testing.T) {
+	t.Parallel()
+
+	srv := newProviderAppAdminTestServer(t, true)
+	requests := []struct {
+		name   string
+		method string
+		path   string
+		body   any
+	}{
+		{name: "list", method: http.MethodGet, path: "/api/v1/admin/provider-apps"},
+		{name: "save", method: http.MethodPost, path: "/api/v1/admin/provider-apps", body: map[string]any{"provider": "x", "client_id": "x-client"}},
+		{name: "delete", method: http.MethodDelete, path: "/api/v1/admin/provider-apps/missing"},
+	}
+	for _, request := range requests {
+		t.Run(request.name, func(t *testing.T) {
+			resp := srv.requestJSONWithToken(t, request.method, request.path, request.body, "")
+			require.Equal(t, http.StatusUnauthorized, resp.Code, resp.Body.String())
+		})
+	}
 }
 
 func TestProviderAppAdminRejectsWorkspaceScopedTokens(t *testing.T) {
@@ -171,32 +209,54 @@ func TestProviderAppAdminRejectsWorkspaceScopedTokens(t *testing.T) {
 		"scoped-token": {UserID: "user-1", Email: "user@example.com", WorkspaceID: "ws-1"},
 	}).RegisterRoutes(api)
 
-	var payload bytes.Buffer
-	require.NoError(t, json.NewEncoder(&payload).Encode(map[string]any{
-		"provider":  "x",
-		"client_id": "x-client",
-	}))
-	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/admin/provider-apps", &payload)
-	req.Header.Set("Authorization", "Bearer scoped-token")
-	req.Header.Set("Content-Type", "application/json")
-	rec := httptest.NewRecorder()
-	e.ServeHTTP(rec, req)
+	requests := []struct {
+		name   string
+		method string
+		path   string
+		body   any
+	}{
+		{name: "list", method: http.MethodGet, path: "/api/v1/admin/provider-apps"},
+		{name: "save", method: http.MethodPost, path: "/api/v1/admin/provider-apps", body: map[string]any{"provider": "x", "client_id": "x-client"}},
+		{name: "delete", method: http.MethodDelete, path: "/api/v1/admin/provider-apps/missing"},
+	}
+	for _, request := range requests {
+		t.Run(request.name, func(t *testing.T) {
+			var payload bytes.Buffer
+			if request.body != nil {
+				require.NoError(t, json.NewEncoder(&payload).Encode(request.body))
+			}
+			req := httptest.NewRequestWithContext(t.Context(), request.method, request.path, &payload)
+			req.Header.Set("Authorization", "Bearer scoped-token")
+			if request.body != nil {
+				req.Header.Set("Content-Type", "application/json")
+			}
+			rec := httptest.NewRecorder()
+			e.ServeHTTP(rec, req)
 
-	require.Equal(t, http.StatusForbidden, rec.Code, rec.Body.String())
-	require.Contains(t, rec.Body.String(), "unscoped credentials")
+			require.Equal(t, http.StatusForbidden, rec.Code, rec.Body.String())
+			require.Contains(t, rec.Body.String(), "unscoped credentials")
+		})
+	}
 }
 
 func TestProviderAppAdminRejectsUnsupportedProvider(t *testing.T) {
 	t.Parallel()
 
 	srv := newProviderAppAdminTestServer(t, true)
-	resp := srv.requestJSON(t, http.MethodPost, "/api/v1/admin/provider-apps", map[string]any{
-		"provider":  "reddit",
-		"client_id": "reddit-client",
-	})
+	for _, provider := range []string{"reddit", "bluesky", "discord"} {
+		resp := srv.requestJSON(t, http.MethodPost, "/api/v1/admin/provider-apps", map[string]any{
+			"provider":  provider,
+			"client_id": provider + "-client",
+		})
+		require.Equal(t, http.StatusBadRequest, resp.Code, resp.Body.String())
+		require.Contains(t, resp.Body.String(), "unsupported provider app")
+	}
 
+	resp := srv.requestJSON(t, http.MethodPost, "/api/v1/admin/provider-apps", map[string]any{
+		"provider": "x", "client_id": "x-client", "instance_url": "https://example.social",
+	})
 	require.Equal(t, http.StatusBadRequest, resp.Code, resp.Body.String())
-	require.Contains(t, resp.Body.String(), "unsupported provider app")
+	require.Contains(t, resp.Body.String(), "instance_url is only supported for mastodon")
 }
 
 func TestProviderAppAdminDeletesRows(t *testing.T) {

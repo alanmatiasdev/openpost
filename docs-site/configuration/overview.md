@@ -6,7 +6,7 @@ OpenPost settings fall into these groups:
 - Database: SQLite path by default, or Postgres URL for cloud deployments
 - Secrets: JWT signing and token encryption
 - Media: local filesystem path by default, or S3-compatible storage for cloud deployments
-- Social networks: client keys, callback addresses, and server-specific settings
+- Social networks: [provider application](/configuration/provider-applications) ownership, client keys, callback addresses, and server-specific settings
 - Operations: self-hosted update checks and cloud-only limits on social network costs
 - Platform-specific behavior: options such as LinkedIn thread reply disabling
 

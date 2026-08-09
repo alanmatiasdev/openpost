@@ -186,14 +186,30 @@ func validateProviderAppConfig(app platform.AppConfig) error {
 	if app.Provider == "" {
 		return ValidationError{Message: "provider is required"}
 	}
-	if !platform.IsAppProviderSupported(app.Provider) {
+	if !isManagedProviderApp(app.Provider) {
 		return ValidationError{Message: fmt.Sprintf("unsupported provider app: %s", app.Provider)}
 	}
-	if app.Provider != "bluesky" && app.ClientID == "" {
+	if app.ClientID == "" {
 		return ValidationError{Message: "client_id is required"}
 	}
 	if app.Provider == "mastodon" && app.InstanceURL == "" {
 		return ValidationError{Message: "instance_url is required for mastodon provider apps"}
 	}
+	if app.Provider != "mastodon" && app.InstanceURL != "" {
+		return ValidationError{Message: "instance_url is only supported for mastodon provider apps"}
+	}
 	return nil
+}
+
+// isManagedProviderApp is deliberately narrower than the platform adapter
+// registry. Bluesky and Discord have built-in adapters and user-owned
+// credentials, so accepting encrypted instance-level rows for them would
+// create configuration that can never become the effective runtime app.
+func isManagedProviderApp(provider string) bool {
+	switch provider {
+	case "x", "mastodon", "linkedin", "threads", "facebook", "instagram", "tiktok", "youtube":
+		return true
+	default:
+		return false
+	}
 }

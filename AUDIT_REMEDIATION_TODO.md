@@ -928,7 +928,7 @@ Candidate decisions under this registry:
 
 ### DOC-002 — Correct provider-app administration guidance
 
-- [ ] **Problem — Baseline audit:** contributor guidance says the provider-app admin UI was removed, while encrypted provider-app management is live.
+- [x] **Problem — Baseline audit:** contributor guidance says the provider-app admin UI was removed, while encrypted provider-app management is live.
 - **Fix:** update `AGENTS.md` and operator docs to describe the current scope, authorization, secret handling, and hosted/self-hosted ownership. Do not delete the feature to make stale guidance true.
 - **Done when:** guidance and live API/UI agree and security constraints are tested/documented.
 - **Evidence:** `frontend/src/lib/components/instance-configuration.svelte:124`.
