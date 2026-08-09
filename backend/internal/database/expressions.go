@@ -33,10 +33,6 @@ func JSONTextExprForDialect(name dialect.Name, column, key string) string {
 	return fmt.Sprintf("json_extract(%s, '$.%s')", column, key)
 }
 
-func DateExpr(db *bun.DB, column, offset string) string {
-	return DateExprForDialect(db.Dialect().Name(), column, offset)
-}
-
 func DateExprForDialect(name dialect.Name, column, offset string) string {
 	if !safeSQLIdentifierExpr.MatchString(column) {
 		panic(fmt.Sprintf("unsafe SQL column expression %q", column))

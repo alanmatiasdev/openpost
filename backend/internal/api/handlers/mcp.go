@@ -129,12 +129,6 @@ func (h *MCPHandler) SetServerVersion(version string) {
 	h.serverVersion = version
 }
 
-func (h *MCPHandler) SetUsage(usageService *usage.Service) {
-	if usageService != nil {
-		h.usage = usageService
-	}
-}
-
 func (h *MCPHandler) SetMediaStorage(storage mediastore.BlobStorage) {
 	h.mediaStorage = storage
 }

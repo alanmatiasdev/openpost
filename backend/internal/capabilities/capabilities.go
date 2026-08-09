@@ -1236,16 +1236,6 @@ func FindOutput(provider, outputProfile string) (Capability, bool) {
 	return Capability{}, false
 }
 
-func ForProfile(profile string) []Capability {
-	out := []Capability{}
-	for _, capability := range All() {
-		if capability.Profile == profile {
-			out = append(out, capability)
-		}
-	}
-	return out
-}
-
 func Validate(provider, profile, body, title, description string, media []MediaItem, settings map[string]any) []ValidationIssue {
 	capability, ok := Find(provider, profile)
 	if !ok {

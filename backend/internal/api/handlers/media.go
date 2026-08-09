@@ -138,17 +138,6 @@ func (h *MediaHandler) SetUsage(usageService *usage.Service) {
 	}
 }
 
-func (h *MediaHandler) SetAnalyzer(analyzer mediaanalysis.Analyzer) {
-	if analyzer == nil {
-		return
-	}
-	if h.video == nil {
-		h.video = videoprocessing.NewService(h.db, h.storage, analyzer)
-		return
-	}
-	h.video.SetAnalyzer(analyzer)
-}
-
 func (h *MediaHandler) SetVideoProcessor(service *videoprocessing.Service) {
 	if service != nil {
 		h.video = service

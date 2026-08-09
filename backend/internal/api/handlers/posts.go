@@ -67,12 +67,6 @@ func NewPostHandler(db *bun.DB, authenticator middleware.Authenticator, entitlem
 	}
 }
 
-func (h *PostHandler) SetEntitlement(entitlement entitlements.Service) {
-	if entitlement != nil {
-		h.entitlement = entitlement
-	}
-}
-
 func (h *PostHandler) SetUsage(usageService *usage.Service) {
 	if usageService != nil {
 		h.usage = usageService

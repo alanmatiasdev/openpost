@@ -106,10 +106,6 @@ type CompositeService struct {
 	apiTokens *apitokens.Service
 }
 
-func NewCompositeService(jwtService *auth.Service, apiTokenService *apitokens.Service) *CompositeService {
-	return NewCompositeServiceWithSessions(jwtService, apiTokenService, nil)
-}
-
 func NewCompositeServiceWithSessions(
 	jwtService *auth.Service,
 	apiTokenService *apitokens.Service,

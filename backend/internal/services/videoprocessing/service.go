@@ -45,12 +45,6 @@ func NewService(db *bun.DB, storage mediastore.BlobStorage, analyzer mediaanalys
 	return &Service{db: db, storage: storage, analyzer: analyzer}
 }
 
-func (s *Service) SetAnalyzer(analyzer mediaanalysis.Analyzer) {
-	if analyzer != nil {
-		s.analyzer = analyzer
-	}
-}
-
 func (s *Service) EnqueueAnalysis(ctx context.Context, mediaID string) error {
 	mediaID = strings.TrimSpace(mediaID)
 	if mediaID == "" {

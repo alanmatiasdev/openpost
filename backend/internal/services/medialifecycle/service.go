@@ -61,10 +61,6 @@ func (s *Service) Promote(ctx context.Context, mediaID string) error {
 	return err
 }
 
-func (s *Service) Touch(ctx context.Context, mediaIDs []string, at time.Time) error {
-	return TouchWithDB(ctx, s.db, mediaIDs, at)
-}
-
 // TouchWithDB records use inside the caller's transaction. Callers should pass
 // both the old and new reference sets so detaching media also starts a fresh
 // inactivity window instead of making it immediately eligible for cleanup.

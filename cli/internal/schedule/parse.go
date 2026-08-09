@@ -198,15 +198,6 @@ func parseNextWeekday(input string, now time.Time, loc *time.Location) (time.Tim
 	return time.Date(day.Year(), day.Month(), day.Day(), hour, minute, 0, 0, loc), true
 }
 
-// FormatHuman is a small helper used by post/thread commands when
-// confirming a parsed time to the user.
-func FormatHuman(t time.Time) string {
-	if t.IsZero() {
-		return "draft"
-	}
-	return t.Format("Mon, 02 Jan 2006 15:04 MST")
-}
-
 // MustLoadLocation wraps time.LoadLocation with a sensible fallback.
 func MustLoadLocation(name string) *time.Location {
 	if name == "" {

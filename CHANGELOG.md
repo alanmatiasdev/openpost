@@ -16,6 +16,7 @@ All notable changes to this project are documented in this file.
 
 ### Changed
 
+- Removed confirmed unreachable backend and CLI helper APIs after verifying the supported runtime and test entry points remain unchanged.
 - Moved destination-preview coverage into the shared social-preview package and removed the unused application wrapper.
 - Removed unreachable pre-Trash media deletion and overflow posting-time helpers after preserving their database-ordering and scheduling assertions on the active lifecycle paths.
 - Restored the original expressive landing hero, floating provider field, customer-logo rail, rotating result previews, and complete provider-icon definitions after product review; retained larger mobile platform-guide targets and the confirmed unreachable-code cleanup.

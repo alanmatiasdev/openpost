@@ -252,10 +252,6 @@ func (s *Service) syncManagedProvider(ctx context.Context, config EnvironmentPro
 	return err
 }
 
-func (s *Service) EnvironmentConfigured() bool {
-	return s.config.Environment.Issuer != "" && s.config.Environment.ClientID != ""
-}
-
 func (s *Service) ListPublicProviders(ctx context.Context) ([]models.IdentityProvider, error) {
 	var providers []models.IdentityProvider
 	err := s.db.NewSelect().
@@ -914,10 +910,6 @@ func (s *Service) providerSecret(provider models.IdentityProvider) (string, erro
 
 func (s *Service) callbackURL(providerID string) string {
 	return s.config.PublicURL + "/api/v1/auth/oidc/" + url.PathEscape(providerID) + "/callback"
-}
-
-func (s *Service) CallbackURL(providerID string) string {
-	return s.callbackURL(providerID)
 }
 
 func (s *Service) NativeCallbackURL() string {

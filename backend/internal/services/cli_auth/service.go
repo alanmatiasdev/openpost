@@ -178,10 +178,6 @@ func (s *Service) PollSession(ctx context.Context, deviceCode string) (*PollResu
 	}
 }
 
-func (s *Service) ApproveSession(ctx context.Context, userID, code, scopes, tokenName string) error {
-	return s.ApproveSessionWithOptions(ctx, userID, code, scopes, tokenName, ApprovalOptions{})
-}
-
 func (s *Service) ApproveSessionWithOptions(
 	ctx context.Context,
 	userID,

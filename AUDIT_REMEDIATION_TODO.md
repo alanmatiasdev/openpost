@@ -1123,7 +1123,7 @@ These tasks are deliberately lower priority. Remove only code proven unreachable
 
 ### CLEAN-GO-002 — Remove confirmed unreachable backend/CLI symbols
 
-- [ ] Review then remove or unexport: `MCPHandler.SetUsage`, `MediaHandler.SetAnalyzer`, `PostHandler.SetEntitlement`, `NewCompositeService`, `ForProfile`, `DateExpr`, `ApproveSession`, `EnvironmentConfigured`, `CallbackURL`, `medialifecycle.Service.Touch`, `videoprocessing.SetAnalyzer`, `StableMediaIDs`, and CLI `FormatHuman`.
+- [x] Review then remove or unexport: `MCPHandler.SetUsage`, `MediaHandler.SetAnalyzer`, `PostHandler.SetEntitlement`, `NewCompositeService`, `ForProfile`, `DateExpr`, `ApproveSession`, `EnvironmentConfigured`, `CallbackURL`, `medialifecycle.Service.Touch`, `videoprocessing.SetAnalyzer`, `StableMediaIDs`, and CLI `FormatHuman`.
 - **Done when:** configured `deadcode -test` no longer reports them, no supported external API was accidentally removed, and focused tests pass.
 - **Evidence:** supplied deep audit “Confirmed dead code and low-risk removals.”
 

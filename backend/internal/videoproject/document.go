@@ -906,16 +906,6 @@ func ReferencedSourceIDs(document Document) []string {
 	return result
 }
 
-func StableMediaIDs(document Document) []string {
-	references := MediaReferences(document)
-	result := make([]string, 0, len(references))
-	for _, mediaID := range references {
-		result = append(result, mediaID)
-	}
-	sort.Strings(result)
-	return result
-}
-
 func clipDurationUS(clip PrimarySequenceClip) int64 {
 	if clip.Mode == "freeze" {
 		return clip.FreezeDurationUS
