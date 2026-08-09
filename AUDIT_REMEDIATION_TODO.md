@@ -818,14 +818,14 @@ Maintenance contract for this lane: a new social provider requires no n8n packag
 
 ### COMPOSE-001 — Make workspace switching safe while a draft is dirty
 
-- [ ] **Problem — Current source audit:** composer workspace changes can discard or strand unsaved context while feedback is limited to a transient toast.
+- [x] **Problem — Current source audit:** composer workspace changes can discard or strand unsaved context while feedback is limited to a transient toast.
 - **Fix:** block or confirm the switch when state cannot move safely; offer save draft/stay/discard; key autosave and requests to the originating workspace; make recovery persistent rather than toast-only.
 - **Done when:** rapid workspace switches cannot write a draft/media/schedule into the wrong workspace; cancel preserves all work; discard is explicit; browser races are covered.
 - **Evidence:** workspace effects and draft/autosave handling in `frontend/src/lib/components/compose-text-post.svelte`.
 
 ### COMPOSE-002 — Attach scheduling failures to the affected destination
 
-- [ ] **Problem — Current source audit:** some scheduling/publishing errors surface only as a global message, which is unclear when destination variants fail differently.
+- [x] **Problem — Current source audit:** some scheduling/publishing errors surface only as a global message, which is unclear when destination variants fail differently.
 - **Fix:** map validation and server errors to the publication segment/rendition/destination that caused them; keep a global summary with focus links; preserve successful destinations only when partial behavior is intentional and clear.
 - **Done when:** users can identify and fix the exact failing platform/field; focus moves to the first error; retry semantics are explicit; mixed-success fixtures are covered.
 - **Evidence:** scheduling actions/errors in `frontend/src/lib/components/compose-text-post.svelte` and publication handlers.

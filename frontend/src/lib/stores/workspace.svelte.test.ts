@@ -187,6 +187,79 @@ describe('workspace settings state', () => {
 		expect(context.settingsReady).toBe(true);
 	});
 
+	it('keeps the current workspace when a switch guard declines', async () => {
+		mocks.get.mockResolvedValueOnce({ data: settings('Europe/Lisbon'), error: null });
+		const context = new WorkspaceContext();
+		await context.setWorkspace(workspaceA);
+		const guard = vi.fn(() => false);
+		context.registerWorkspaceSwitchGuard(guard);
+
+		await expect(context.setWorkspace(workspaceB)).resolves.toBe(false);
+
+		expect(guard).toHaveBeenCalledWith({ from: workspaceA, to: workspaceB });
+		expect(context.currentWorkspace?.id).toBe(workspaceA.id);
+		expect(context.settings.timezone).toBe('Europe/Lisbon');
+		expect(localStorage.getItem('openpost_current_workspace')).toContain(workspaceA.id);
+		expect(mocks.get).toHaveBeenCalledTimes(1);
+	});
+
+	it('fails a workspace switch closed when a guard throws', async () => {
+		mocks.get.mockResolvedValueOnce({ data: settings('Europe/Lisbon'), error: null });
+		const context = new WorkspaceContext();
+		await context.setWorkspace(workspaceA);
+		context.registerWorkspaceSwitchGuard(() => {
+			throw new Error('guard unavailable');
+		});
+
+		await expect(context.setWorkspace(workspaceB)).resolves.toBe(false);
+
+		expect(context.currentWorkspace?.id).toBe(workspaceA.id);
+		expect(mocks.get).toHaveBeenCalledTimes(1);
+	});
+
+	it('rejects a competing switch while a guarded decision is pending', async () => {
+		mocks.get
+			.mockResolvedValueOnce({ data: settings('Europe/Lisbon'), error: null })
+			.mockResolvedValueOnce({ data: settings('Europe/Paris'), error: null });
+		const context = new WorkspaceContext();
+		await context.setWorkspace(workspaceA);
+		const firstDecision = deferred<boolean>();
+		const guard = vi.fn(() => firstDecision.promise);
+		context.registerWorkspaceSwitchGuard(guard);
+		const workspaceC = {
+			...workspaceB,
+			id: 'workspace-c',
+			name: 'Workspace C'
+		} satisfies Workspace;
+
+		const firstSwitch = context.setWorkspace(workspaceB);
+		const secondSwitch = context.setWorkspace(workspaceC);
+		await expect(secondSwitch).resolves.toBe(false);
+		firstDecision.resolve(true);
+		await expect(firstSwitch).resolves.toBe(true);
+
+		expect(context.currentWorkspace?.id).toBe(workspaceB.id);
+		expect(context.settings.timezone).toBe('Europe/Paris');
+		expect(localStorage.getItem('openpost_current_workspace')).toContain(workspaceB.id);
+		expect(guard).toHaveBeenCalledTimes(1);
+	});
+
+	it('stops consulting a workspace switch guard after it is unregistered', async () => {
+		mocks.get
+			.mockResolvedValueOnce({ data: settings('Europe/Lisbon'), error: null })
+			.mockResolvedValueOnce({ data: settings('Europe/Paris'), error: null });
+		const context = new WorkspaceContext();
+		await context.setWorkspace(workspaceA);
+		const guard = vi.fn(() => false);
+		const unregister = context.registerWorkspaceSwitchGuard(guard);
+		unregister();
+
+		await expect(context.setWorkspace(workspaceB)).resolves.toBe(true);
+
+		expect(guard).not.toHaveBeenCalled();
+		expect(context.currentWorkspace?.id).toBe(workspaceB.id);
+	});
+
 	it('falls back safely when legacy workspace data contains an invalid timezone', async () => {
 		mocks.get.mockResolvedValueOnce({ data: settings('Bad/Zone'), error: null });
 		const context = new WorkspaceContext();

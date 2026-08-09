@@ -15,7 +15,7 @@
 		mediaCapabilityItemsFromIds,
 		providerMediaWarningMessages
 	} from '$lib/media-capabilities';
-	import { workspaceCtx } from '$lib/stores/workspace.svelte';
+	import { workspaceCtx, type WorkspaceSwitchRequest } from '$lib/stores/workspace.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { Checkbox } from '$lib/components/ui/checkbox';
 	import { Input } from '$lib/components/ui/input';
@@ -76,7 +76,9 @@
 		composerIssues,
 		isAccountSpecificIssue,
 		issueMatchesProvider,
-		uniqueIssueMessages
+		uniqueIssueMessages,
+		type ComposerIssue,
+		type TargetedComposerIssue
 	} from './compose/validation';
 	import { loadableDestinationOptionSources } from './compose/destination-options';
 	import {
@@ -230,6 +232,11 @@
 		onThreadStateChange?: (isThread: boolean) => void;
 	}
 
+	interface PendingWorkspaceSwitch {
+		request: WorkspaceSwitchRequest;
+		resolve: (allowed: boolean) => void;
+	}
+
 	// --------------------------------------------------------------------------
 	// Props & core state
 	// --------------------------------------------------------------------------
@@ -281,6 +288,10 @@
 	let workspaceLoadError = $state('');
 	let workspaceSettingsError = $state('');
 	let workspaceChangeNotice = $state('');
+	let pendingWorkspaceSwitch = $state.raw<PendingWorkspaceSwitch | null>(null);
+	let workspaceSwitchAction = $state<'save' | 'discard' | ''>('');
+	let workspaceSwitchError = $state('');
+	let leaveEditorForWorkspaceID = '';
 	let accountLoadError = $state('');
 	let accountsWorkspaceId = $state('');
 	let accountRetryIds: string[] | undefined = undefined;
@@ -427,6 +438,11 @@
 	const autoSavesDraft = $derived(
 		!isEditMode || initialPost?.status === 'draft' || initialPublication?.status === 'draft'
 	);
+	const composerWorkspaceStateDirty = $derived(
+		hasPendingPasteMediaUploads ||
+		((hasContent || Boolean(lastSavedSnapshot)) && getSaveSnapshot() !== lastSavedSnapshot) ||
+		Boolean(draftConflict)
+	);
 	const selectedAccounts = $derived(
 		selectedAccountIds
 			.map((id) => accounts.find((account) => account.id === id))
@@ -475,7 +491,35 @@
 		selectedAccountIds.every((accountID) => Boolean(resolvedCapabilities[accountID]))
 	);
 	const localBlockers = $derived(globalFormBlockers());
-	const globalIssues = $derived(composerIssues(localBlockers, validationIssues));
+	const validationDestinations = $derived(
+		selectedAccounts.map((account) => ({
+			accountId: account.id,
+			provider: getPlatformKey(account.platform),
+			label: `${accountLabel(account)} · ${getPlatformName(account.platform)}`
+		}))
+	);
+	const targetedRuntimeIssues = $derived.by(() =>
+		selectedAccounts.flatMap<TargetedComposerIssue>((account) =>
+			uniqueIssueMessages([
+				configuredPollErrorForAccount(account),
+				...accountReadinessMessages(account)
+			]).map((message, index) => ({
+				id: `account-${account.id}-${index}-${message}`,
+				message,
+				accountId: account.id,
+				targetLabel: `${accountLabel(account)} · ${getPlatformName(account.platform)}`,
+				provider: getPlatformKey(account.platform)
+			}))
+		)
+	);
+	const globalIssues = $derived(
+		composerIssues(
+			localBlockers,
+			validationIssues,
+			validationDestinations,
+			targetedRuntimeIssues
+		)
+	);
 	const visibleGlobalIssues = $derived(hasContent ? globalIssues : []);
 	const accountIssues = $derived.by(() =>
 		Object.fromEntries(
@@ -485,7 +529,7 @@
 		)
 	);
 	const accountBlockingMessages = $derived(
-		selectedAccounts.flatMap((account) => accountBlockers(account))
+		selectedAccounts.flatMap((account) => accountBlockers(account, true, false))
 	);
 	const sharedProviderKeys = $derived(
 		new Set(selectedAccounts.map((account) => getPlatformKey(account.platform)))
@@ -1059,7 +1103,11 @@
 		return uniqueIssueMessages(blockers);
 	}
 
-	function accountBlockers(account: SocialAccount, includeShared = true): string[] {
+	function accountBlockers(
+		account: SocialAccount,
+		includeShared = true,
+		includeServerValidation = true
+	): string[] {
 		const provider = getPlatformKey(account.platform);
 		return uniqueIssueMessages([
 			...(resolvedCapabilities[account.id]?.issues ?? [])
@@ -1067,14 +1115,16 @@
 					(issue) => issue.severity === 'error' && (includeShared || isAccountSpecificIssue(issue))
 				)
 				.map((issue) => issue.message),
-			...validationIssues
-				.filter(
-					(issue) =>
-						issue.severity === 'error' &&
-						(includeShared || isAccountSpecificIssue(issue)) &&
-						issueMatchesProvider(issue, provider)
-				)
-				.map((issue) => issue.message),
+			...(includeServerValidation
+				? validationIssues
+						.filter(
+							(issue) =>
+								issue.severity === 'error' &&
+								(includeShared || isAccountSpecificIssue(issue)) &&
+								issueMatchesProvider(issue, provider)
+						)
+						.map((issue) => issue.message)
+				: []),
 			configuredPollErrorForAccount(account)
 		]);
 	}
@@ -1173,6 +1223,86 @@
 				.map((issue) => issue.message),
 			...mediaWarnings
 		]);
+	}
+
+	function composerIssuePostIndex(issue: ComposerIssue): number {
+		for (const identifier of [issue.scopeId, issue.segmentId]) {
+			if (!identifier) continue;
+			const directIndex = posts.findIndex((post) => post.key === identifier);
+			if (directIndex >= 0) return directIndex;
+			const legacyIndex = Number(identifier.match(/:(\d+)$/)?.[1] ?? Number.NaN);
+			if (Number.isInteger(legacyIndex) && legacyIndex >= 0 && legacyIndex < posts.length) {
+				return legacyIndex;
+			}
+		}
+		if (issue.mediaId) {
+			return posts.findIndex((post) => {
+				if (post.mediaIds.includes(issue.mediaId!)) return true;
+				return issue.accountId
+					? (getVariantMediaIds(issue.accountId, post.key) ?? []).includes(issue.mediaId!)
+					: false;
+			});
+		}
+		return -1;
+	}
+
+	async function focusComposerIssue(issue: ComposerIssue) {
+		const postIndex = composerIssuePostIndex(issue);
+		if (postIndex >= 0) activePostIndex = postIndex;
+
+		const account = issue.accountId
+			? selectedAccounts.find((candidate) => candidate.id === issue.accountId)
+			: null;
+		const destinationSetting =
+			account && issue.field
+				? visibleSettings(account).find((setting) => setting.key === issue.field)
+				: null;
+		const targetsTextField = ['body', 'description', 'source_text', 'text'].includes(
+			issue.field ?? ''
+		);
+		if (account && destinationSetting) {
+			activeVariantAccountId = account.id;
+			openDestinationSettings(account);
+		} else if (account && targetsTextField && postIndex >= 0) {
+			activeVariantAccountId = variants.has(account.id) ? account.id : null;
+		} else if (account) {
+			activeVariantAccountId = account.id;
+		}
+
+		await tick();
+		let target: HTMLElement | null = null;
+		if (destinationSetting) {
+			target = document.getElementById(`destination-setting-${destinationSetting.key}`);
+		} else if (issue.mediaId) {
+			target = document.querySelector<HTMLElement>(
+				`[data-composer-media-id="${CSS.escape(issue.mediaId)}"]`
+			);
+		} else if (postIndex >= 0) {
+			target = document.getElementById(`post-textarea-${postIndex}`);
+		} else if (account) {
+			target = document.getElementById(`composer-destination-${account.id}`);
+		}
+		target?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+		target?.focus({ preventScroll: true });
+	}
+
+	function firstValidationIssue(): ComposerIssue | null {
+		return (
+			composerIssues([], validationIssues, validationDestinations).find(
+				(candidate) => candidate.severity === 'error'
+			) ?? null
+		);
+	}
+
+	async function refreshPublicationValidation(
+		publicationID: string
+	): Promise<ComposerIssue | null> {
+		const { data, error: validationError } = await client.POST('/publications/{id}/validate', {
+			params: { path: { id: publicationID } }
+		});
+		if (validationError) return null;
+		validationIssues = data?.issues ?? [];
+		return firstValidationIssue();
 	}
 
 	function publicationMedia(mediaIDs: string[]): PublicationMediaInput[] {
@@ -2386,6 +2516,62 @@
 		}
 	}
 
+	function finishWorkspaceSwitchDecision(allowed: boolean) {
+		const pending = pendingWorkspaceSwitch;
+		if (!pending) return;
+		const resumeAutoSave = !allowed && autoSavesDraft && hasContent;
+		if (allowed && isEditMode) leaveEditorForWorkspaceID = pending.request.to.id;
+		pendingWorkspaceSwitch = null;
+		workspaceSwitchAction = '';
+		workspaceSwitchError = '';
+		pending.resolve(allowed);
+		if (resumeAutoSave) scheduleAutoSave();
+	}
+
+	function requestComposerWorkspaceSwitch(request: WorkspaceSwitchRequest): Promise<boolean> {
+		if (!selectedWorkspaceId || request.from.id !== selectedWorkspaceId) {
+			return Promise.resolve(true);
+		}
+		if (!composerWorkspaceStateDirty) {
+			if (isEditMode) leaveEditorForWorkspaceID = request.to.id;
+			return Promise.resolve(true);
+		}
+		if (pendingWorkspaceSwitch || workspaceSwitchAction) return Promise.resolve(false);
+		clearAutoSaveTimer();
+		workspaceSwitchError = '';
+		return new Promise<boolean>((resolveSwitch) => {
+			pendingWorkspaceSwitch = { request, resolve: resolveSwitch };
+		});
+	}
+
+	async function saveBeforeWorkspaceSwitch() {
+		if (!pendingWorkspaceSwitch || workspaceSwitchAction) return;
+		if (hasPendingPasteMediaUploads) {
+			workspaceSwitchError = pasteMediaUploadBlocker();
+			return;
+		}
+		workspaceSwitchAction = 'save';
+		workspaceSwitchError = '';
+		const saved = autoSavesDraft
+			? await flushPendingTextDraft()
+			: await saveEditedPost(false);
+		if (!saved) {
+			workspaceSwitchAction = '';
+			workspaceSwitchError = error || m.compose_workspace_switch_save_failed();
+			return;
+		}
+		finishWorkspaceSwitchDecision(true);
+	}
+
+	function discardBeforeWorkspaceSwitch() {
+		if (!pendingWorkspaceSwitch || workspaceSwitchAction) return;
+		workspaceSwitchAction = 'discard';
+		clearAutoSaveTimer();
+		saveGeneration += 1;
+		pasteMediaUploadQueue.reset();
+		finishWorkspaceSwitchDecision(true);
+	}
+
 	onMount(() => {
 		const handleVisibilityChange = () => {
 			if (document.visibilityState === 'hidden') void flushPendingTextDraft();
@@ -2395,6 +2581,9 @@
 			error = pasteMediaUploadBlocker();
 			return false;
 		});
+		const unregisterWorkspaceSwitchGuard = workspaceCtx.registerWorkspaceSwitchGuard(
+			requestComposerWorkspaceSwitch
+		);
 		document.addEventListener('visibilitychange', handleVisibilityChange);
 		void (async () => {
 			await initializeComposer();
@@ -2404,6 +2593,7 @@
 		return () => {
 			document.removeEventListener('visibilitychange', handleVisibilityChange);
 			unregisterComposerResetGuard();
+			unregisterWorkspaceSwitchGuard();
 		};
 	});
 
@@ -2416,6 +2606,7 @@
 	}
 
 	onDestroy(() => {
+		if (pendingWorkspaceSwitch) finishWorkspaceSwitchDecision(false);
 		invalidatePendingComposerRequests();
 		pasteMediaUploadQueue.reset();
 		clearAutoSaveTimer();
@@ -2489,7 +2680,10 @@
 
 	$effect(() => {
 		const workspaceId = workspaceCtx.currentWorkspace?.id ?? '';
-		if (
+		if (isEditMode && leaveEditorForWorkspaceID && workspaceId === leaveEditorForWorkspaceID) {
+			leaveEditorForWorkspaceID = '';
+			onSuccess?.();
+		} else if (
 			!isEditMode &&
 			!initialWorkspaceId &&
 			workspaceId &&
@@ -2751,6 +2945,7 @@
 			selectedTime ||
 			posts.some((post) => post.mediaIds.length > 0)
 		);
+		pasteMediaUploadQueue.reset();
 		clearAutoSaveTimer();
 		saveGeneration += 1;
 		nextSlotRequestSequence += 1;
@@ -2770,7 +2965,9 @@
 		showScheduleDialog = false;
 		scheduleInputError = '';
 		randomDelayOverride = 'default';
-		posts = posts.map((post) => ({ ...post, mediaIds: [] }));
+		posts = [makeEmptyPost()];
+		activePostIndex = 0;
+		onThreadStateChange?.(false);
 		mediaAltTexts = new Map();
 		mediaMimeTypes = new Map();
 		mediaSizes = new Map();
@@ -2791,6 +2988,10 @@
 		activeVariantAccountId = null;
 		accountLoadError = '';
 		workspaceChangeNotice = resetWorkspaceState ? m.compose_workspace_context_reset() : '';
+		if (resetWorkspaceState) {
+			ui.clearActiveComposerDraft();
+			replaceState(resolve('/'), {});
+		}
 		void loadAccounts(value);
 	}
 
@@ -3199,46 +3400,46 @@
 		}
 	}
 
-	async function saveEditedPost() {
-		if ((!draftId || (!initialPost && !initialPublication)) && !publicationOnlyEdit) return;
+	async function saveEditedPost(navigateOnSuccess = true): Promise<boolean> {
+		if ((!draftId || (!initialPost && !initialPublication)) && !publicationOnlyEdit) return false;
 		error = '';
 		success = '';
 
 		if (!selectedWorkspaceId) {
 			error = m.compose_please_select_workspace();
-			return;
+			return false;
 		}
 		if (!hasContent) {
 			error = m.compose_please_enter_content();
-			return;
+			return false;
 		}
 		const pasteUploadBlocker = pasteMediaUploadBlocker();
 		if (pasteUploadBlocker) {
 			error = pasteUploadBlocker;
-			return;
+			return false;
 		}
 		if (selectedAccountIds.length === 0) {
 			error = m.compose_select_account();
-			return;
+			return false;
 		}
 		if ((selectedDate && !selectedTime) || (!selectedDate && selectedTime)) {
 			error = m.compose_select_date_time();
-			return;
+			return false;
 		}
 		const pollError = configuredPollError();
 		if (pollError) {
 			error = pollError;
-			return;
+			return false;
 		}
 		if (selectedDate && selectedTime && !selectedWorkspaceSettingsReady) {
 			error = m.compose_load_workspace_settings_failed();
 			workspaceSettingsError = error;
-			return;
+			return false;
 		}
 		const scheduledAt = getScheduledAt();
 		if (selectedDate && selectedTime && !scheduledAt) {
 			error = m.compose_invalid_timezone_time();
-			return;
+			return false;
 		}
 		isSaving = true;
 		try {
@@ -3256,8 +3457,25 @@
 					if (conflict) {
 						draftConflict = conflict;
 						conflictDialogOpen = true;
+						throw new Error(scheduleError.detail || m.compose_schedule_failed());
 					}
-					throw new Error(scheduleError.detail || m.compose_schedule_failed());
+					await resolveCapabilities();
+					const readinessFailure = capabilityResolveError
+						? ''
+						: operationReadinessBlocker('publish_scheduled');
+					if (readinessFailure) {
+						const blockingIssue =
+							globalIssues.find((candidate) => candidate.severity === 'error') ?? null;
+						if (blockingIssue) await focusComposerIssue(blockingIssue);
+						throw new Error(readinessFailure);
+					}
+					const blockingIssue = await refreshPublicationValidation(targetPublicationID);
+					if (blockingIssue) await focusComposerIssue(blockingIssue);
+					throw new Error(
+						blockingIssue
+							? m.compose_fix_before_scheduling()
+							: scheduleError.detail || m.compose_schedule_failed()
+					);
 				}
 			}
 
@@ -3273,12 +3491,14 @@
 				{ immediate: true }
 			);
 
-			if (onSuccess) {
+			if (navigateOnSuccess && onSuccess) {
 				setTimeout(() => onSuccess(), 500);
 			}
+			return true;
 		} catch (e) {
 			error = (e as Error).message || m.compose_save_changes_failed();
 			soundPreferences.play('error');
+			return false;
 		} finally {
 			isSaving = false;
 		}
@@ -3338,6 +3558,7 @@
 			}
 		}
 
+		let issueToFocusAfterSubmit: ComposerIssue | null = null;
 		isSubmitting = true;
 
 		try {
@@ -3354,7 +3575,11 @@
 			const readinessBlocker = operationReadinessBlocker(
 				publishNow ? 'publish_immediate' : 'publish_scheduled'
 			);
-			if (readinessBlocker) throw new Error(readinessBlocker);
+			if (readinessBlocker) {
+				issueToFocusAfterSubmit =
+					globalIssues.find((candidate) => candidate.severity === 'error') ?? null;
+				throw new Error(readinessBlocker);
+			}
 			const targetPublicationID = await saveDraft({
 				scheduledAt: publishNow ? null : (scheduledAt ?? null)
 			});
@@ -3370,7 +3595,12 @@
 			}
 			validationIssues = validation?.issues ?? [];
 			const blocker = validationIssues.find((issue) => issue.severity === 'error');
-			if (blocker) throw new Error(blocker.message);
+			if (blocker) {
+				issueToFocusAfterSubmit = firstValidationIssue();
+				throw new Error(
+					publishNow ? m.compose_fix_before_publishing() : m.compose_fix_before_scheduling()
+				);
+			}
 
 			const { error: actionError } = publishNow
 				? await client.POST('/publications/{id}/publish-now', {
@@ -3386,10 +3616,31 @@
 				if (conflict) {
 					draftConflict = conflict;
 					conflictDialogOpen = true;
+					throw new Error(
+						actionError.detail ||
+							(publishNow ? m.compose_publish_failed() : m.compose_schedule_failed())
+					);
 				}
+				await resolveCapabilities();
+				const readinessFailure = capabilityResolveError
+					? ''
+					: operationReadinessBlocker(
+							publishNow ? 'publish_immediate' : 'publish_scheduled'
+						);
+				if (readinessFailure) {
+					issueToFocusAfterSubmit =
+						globalIssues.find((candidate) => candidate.severity === 'error') ?? null;
+					throw new Error(readinessFailure);
+				}
+				const blockingIssue = await refreshPublicationValidation(targetPublicationID);
+				issueToFocusAfterSubmit = blockingIssue;
 				throw new Error(
-					actionError.detail ||
-						(publishNow ? m.compose_publish_failed() : m.compose_schedule_failed())
+					blockingIssue
+						? publishNow
+							? m.compose_fix_before_publishing()
+							: m.compose_fix_before_scheduling()
+						: actionError.detail ||
+							(publishNow ? m.compose_publish_failed() : m.compose_schedule_failed())
 				);
 			}
 
@@ -3434,6 +3685,10 @@
 			soundPreferences.play('error');
 		} finally {
 			isSubmitting = false;
+			if (issueToFocusAfterSubmit) {
+				await tick();
+				await focusComposerIssue(issueToFocusAfterSubmit);
+			}
 		}
 	}
 
@@ -4272,7 +4527,10 @@
 					/>
 				{/if}
 				{#if accounts.length > 0}
-					<ComposerValidationMenu issues={visibleGlobalIssues} />
+					<ComposerValidationMenu
+						issues={visibleGlobalIssues}
+						onSelect={focusComposerIssue}
+					/>
 				{/if}
 				{#if showInspirationControl}
 					<div transition:fade={{ duration: 160 }}>
@@ -4316,7 +4574,7 @@
 					<Button
 						size="sm"
 						class="ml-auto h-11 shrink-0 px-3"
-						onclick={saveEditedPost}
+						onclick={() => saveEditedPost()}
 						disabled={isSaving || isSubmitting || !canSaveEditedPost}
 					>
 						{#if isSaving}<LoaderIcon class="size-3.5 animate-spin" />{/if}
@@ -4393,7 +4651,11 @@
 					/>
 				{/if}
 				{#if accounts.length > 0}
-					<ComposerValidationMenu issues={visibleGlobalIssues} class="size-8" />
+					<ComposerValidationMenu
+						issues={visibleGlobalIssues}
+						class="size-8"
+						onSelect={focusComposerIssue}
+					/>
 				{/if}
 			</div>
 
@@ -4460,7 +4722,7 @@
 					<Button
 						size="sm"
 						class="gap-1.5"
-						onclick={saveEditedPost}
+						onclick={() => saveEditedPost()}
 						disabled={isSaving || isSubmitting || !canSaveEditedPost}
 					>
 						{#if isSaving}<LoaderIcon class="h-3.5 w-3.5 animate-spin" />{/if}
@@ -4612,6 +4874,7 @@
 							{#each selectedAccounts as account (account.id)}
 								{@const issueCount = accountIssueMessages(account).length}
 								<button
+									id="composer-destination-{account.id}"
 									type="button"
 									role="tab"
 									aria-selected={activeVariantAccountId === account.id}
@@ -4961,6 +5224,8 @@
 												{#each editorMediaIds as mediaId, mi (mediaId)}
 													{@const isFirstOfThree = editorMediaCount === 3 && mi === 0}
 													<div
+														tabindex="-1"
+														data-composer-media-id={mediaId}
 														class="group/media relative overflow-hidden rounded-lg {isFirstOfThree
 															? 'col-span-2'
 															: ''}"
@@ -5450,6 +5715,60 @@
 	}}
 	onFileChange={uploadDestinationSettingFile}
 />
+
+<Dialog.Root
+	open={pendingWorkspaceSwitch !== null}
+	onOpenChange={(open) => {
+		if (!open && pendingWorkspaceSwitch && !workspaceSwitchAction) {
+			finishWorkspaceSwitchDecision(false);
+		}
+	}}
+>
+	<Dialog.Content class="sm:max-w-lg" data-testid="composer-workspace-switch-dialog">
+		<Dialog.Header>
+			<Dialog.Title>{m.compose_workspace_switch_title()}</Dialog.Title>
+			<Dialog.Description>
+				{m.compose_workspace_switch_body({
+					workspace: pendingWorkspaceSwitch?.request.to.name ?? ''
+				})}
+			</Dialog.Description>
+		</Dialog.Header>
+		{#if workspaceSwitchError}
+			<p class="text-sm text-destructive" role="alert">{workspaceSwitchError}</p>
+		{/if}
+		<Dialog.Footer class="gap-2 sm:justify-between">
+			<Button
+				type="button"
+				variant="ghost"
+				onclick={() => finishWorkspaceSwitchDecision(false)}
+				disabled={Boolean(workspaceSwitchAction)}
+			>
+				{m.compose_workspace_switch_stay()}
+			</Button>
+			<div class="flex flex-col-reverse gap-2 sm:flex-row">
+				<Button
+					type="button"
+					variant="destructive"
+					onclick={discardBeforeWorkspaceSwitch}
+					disabled={Boolean(workspaceSwitchAction)}
+				>
+					{m.compose_workspace_switch_discard()}
+				</Button>
+				<Button
+					type="button"
+					onclick={saveBeforeWorkspaceSwitch}
+					disabled={Boolean(workspaceSwitchAction)}
+					aria-busy={workspaceSwitchAction === 'save'}
+				>
+					{#if workspaceSwitchAction === 'save'}
+						<LoaderIcon class="size-4 animate-spin" />
+					{/if}
+					{isEditMode ? m.compose_save_changes() : m.compose_save_draft()}
+				</Button>
+			</div>
+		</Dialog.Footer>
+	</Dialog.Content>
+</Dialog.Root>
 
 <DestructiveConfirmDialog
 	bind:open={showDeleteConfirm}

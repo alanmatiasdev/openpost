@@ -45,7 +45,8 @@
 	async function switchWorkspace(workspace: Workspace) {
 		if (workspace.id !== workspaceCtx.currentWorkspace?.id) {
 			if (unsavedChanges && !unsavedChanges.confirmDiscard()) return;
-			await workspaceCtx.setWorkspace(workspace);
+			const switched = await workspaceCtx.setWorkspace(workspace);
+			if (!switched) return;
 		}
 		onSelect?.();
 	}

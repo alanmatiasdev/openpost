@@ -27,6 +27,13 @@ interface WorkspaceSettings {
 	slot_interval_minutes: number;
 }
 
+export interface WorkspaceSwitchRequest {
+	from: Workspace;
+	to: Workspace;
+}
+
+export type WorkspaceSwitchGuard = (request: WorkspaceSwitchRequest) => boolean | Promise<boolean>;
+
 const STORAGE_KEY = 'openpost_current_workspace';
 
 function defaultWorkspaceSettings(): WorkspaceSettings {
@@ -56,6 +63,9 @@ function safeWorkspaceTimezone(value: string | null | undefined): string {
 export class WorkspaceContext {
 	private initializePromise: Promise<void> | null = null;
 	private settingsRequestSequence = 0;
+	private workspaceSwitchRequestSequence = 0;
+	private workspaceSwitchGuardPending = false;
+	private readonly workspaceSwitchGuards = new Set<WorkspaceSwitchGuard>();
 
 	currentWorkspace = $state<Workspace | null>(null);
 	workspaces = $state<Workspace[]>([]);
@@ -128,6 +138,8 @@ export class WorkspaceContext {
 	}
 
 	reset() {
+		this.workspaceSwitchRequestSequence += 1;
+		this.workspaceSwitchGuardPending = false;
 		this.initializePromise = null;
 		this.loading = false;
 		this.workspaces = [];
@@ -179,7 +191,51 @@ export class WorkspaceContext {
 		}
 	}
 
-	async setWorkspace(workspace: Workspace) {
+	registerWorkspaceSwitchGuard(guard: WorkspaceSwitchGuard): () => void {
+		this.workspaceSwitchGuards.add(guard);
+		return () => this.workspaceSwitchGuards.delete(guard);
+	}
+
+	async setWorkspace(workspace: Workspace): Promise<boolean> {
+		const current = this.currentWorkspace;
+		if (current?.id === workspace.id) {
+			this.currentWorkspace = workspace;
+			if (browser) localStorage.setItem(STORAGE_KEY, JSON.stringify(workspace));
+			if (workspace.sso_required && !workspace.sso_authenticated) {
+				this.settings = defaultWorkspaceSettings();
+				this.savedSettings = defaultWorkspaceSettings();
+				this.settingsLoading = false;
+				this.settingsError = '';
+				this.settingsWorkspaceID = '';
+				return true;
+			}
+			await this.loadSettings(workspace.id);
+			return true;
+		}
+
+		if (current && this.workspaceSwitchGuards.size > 0 && this.workspaceSwitchGuardPending) {
+			return false;
+		}
+		const requestSequence = ++this.workspaceSwitchRequestSequence;
+		if (current) {
+			this.workspaceSwitchGuardPending = true;
+			try {
+				for (const guard of [...this.workspaceSwitchGuards]) {
+					let allowed = false;
+					try {
+						allowed = await guard({ from: current, to: workspace });
+					} catch (error) {
+						console.error('Workspace switch guard failed:', error);
+					}
+					if (!allowed) return false;
+					if (requestSequence !== this.workspaceSwitchRequestSequence) return false;
+				}
+			} finally {
+				this.workspaceSwitchGuardPending = false;
+			}
+		}
+
+		if (requestSequence !== this.workspaceSwitchRequestSequence) return false;
 		this.currentWorkspace = workspace;
 		if (browser) {
 			localStorage.setItem(STORAGE_KEY, JSON.stringify(workspace));
@@ -189,9 +245,10 @@ export class WorkspaceContext {
 			this.settingsLoading = false;
 			this.settingsError = '';
 			this.settingsWorkspaceID = '';
-			return;
+			return true;
 		}
 		await this.loadSettings(workspace.id);
+		return this.currentWorkspace?.id === workspace.id;
 	}
 
 	async loadSettings(workspaceID = this.currentWorkspace?.id) {

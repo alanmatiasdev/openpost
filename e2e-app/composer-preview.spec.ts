@@ -379,7 +379,26 @@ test("the composer tolerates repeated destination validation identities", async 
             },
             intents: ["short_video", "video"],
             media_shapes: ["video"],
-            settings: [],
+            settings:
+              provider === "youtube"
+                ? [
+                    {
+                      key: "title",
+                      message_key: "publishing.setting.title",
+                      label: "Title",
+                      group: "content",
+                      control: "text",
+                      type: "text",
+                      scope: "destination",
+                      intents: ["video"],
+                      output_profiles: ["youtube.video"],
+                      media_shapes: ["video"],
+                      required: true,
+                      required_policy: "always",
+                      constraints: {},
+                    },
+                  ]
+                : [],
             setting_groups: [],
             compatible: false,
             active_constraints: {},
@@ -393,6 +412,19 @@ test("the composer tolerates repeated destination validation identities", async 
                 severity: "error",
                 provider,
               },
+              ...(provider === "youtube"
+                ? [
+                    {
+                      code: "title_required",
+                      field: "title",
+                      media_id: "",
+                      message: "Add a title for YouTube.",
+                      fallback_message: "Add a title for YouTube.",
+                      severity: "error",
+                      provider,
+                    },
+                  ]
+                : []),
             ],
             capability_revision: "test-v1",
             dynamic_options: {},
@@ -420,7 +452,19 @@ test("the composer tolerates repeated destination validation identities", async 
   await expect(validationControl).toBeVisible();
   await validationControl.click();
   await expect(page.getByText("Add a video.", { exact: true })).toHaveCount(1);
-  await page.keyboard.press("Escape");
+  const targetedIssue = page.getByRole("button", {
+    name: "Edit: OpenPost · YouTube: Add a title for YouTube.",
+  });
+  await expect(targetedIssue).toBeVisible();
+  await targetedIssue.click();
+  const youtubeTab = page.locator("#composer-destination-youtube-main");
+  await expect(youtubeTab).toHaveAttribute("aria-selected", "true");
+  const destinationDialog = page.getByRole("dialog");
+  await expect(destinationDialog).toBeVisible();
+  await expect(
+    destinationDialog.locator("#destination-setting-title"),
+  ).toBeFocused();
+  await destinationDialog.getByRole("button", { name: "Close" }).click();
 
   expect(
     pageErrors.filter((error) => error.message.includes("each_key_duplicate")),

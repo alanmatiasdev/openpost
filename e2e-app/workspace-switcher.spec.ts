@@ -149,6 +149,131 @@ test("workspace-scoped pages reload when the sidebar workspace changes", async (
   await expect(workspaceButton).toContainText(previous.name);
 });
 
+test("dirty composer workspace switches can stay, save to the origin, or discard", async ({
+  page,
+  request,
+}) => {
+  const unique = Date.now().toString(36);
+  const auth = await registerUser(
+    request,
+    `workspace-composer-${unique}@example.com`,
+  );
+  const first = (await createWorkspace(
+    request,
+    auth.token,
+    `Origin ${unique}`,
+  )) as { id: string; name: string };
+  const second = (await createWorkspace(
+    request,
+    auth.token,
+    `Target ${unique}`,
+  )) as { id: string; name: string };
+
+  await authenticatePage(page, auth.token);
+  await page.addInitScript((workspace) => {
+    localStorage.setItem(
+      "openpost_current_workspace",
+      JSON.stringify(workspace),
+    );
+  }, first);
+
+  const draftWrites: Array<{ workspace_id?: string; content?: string }> = [];
+  let draftAttempt = 0;
+  let releaseDraftResponse!: () => void;
+  const draftResponseGate = new Promise<void>((resolveDraft) => {
+    releaseDraftResponse = resolveDraft;
+  });
+  await page.route("**/api/v1/posts/draft", async (route) => {
+    draftAttempt += 1;
+    draftWrites.push(
+      route.request().postDataJSON() as {
+        workspace_id?: string;
+        content?: string;
+      },
+    );
+    if (draftAttempt === 1) {
+      await draftResponseGate;
+      await route.fulfill({
+        status: 503,
+        contentType: "application/problem+json",
+        json: {
+          title: "Draft unavailable",
+          status: 503,
+          detail: "Temporary save failure",
+        },
+      });
+      return;
+    }
+    await route.fulfill({
+      contentType: "application/json",
+      json: {
+        post_id: "workspace-switch-draft",
+        publication_id: "workspace-switch-publication",
+        revision: 1,
+        updated_at: "2026-08-09T20:00:00Z",
+      },
+    });
+  });
+
+  await page.goto("/");
+  const composer = page.getByTestId("text-thread-composer-shell");
+  const textarea = composer.getByLabel("Post text");
+  await expect(textarea).toBeVisible();
+  const workspaceButton = page
+    .getByRole("button", { name: new RegExp(`${first.name}|${second.name}`) })
+    .first();
+  await expect(workspaceButton).toContainText(first.name);
+
+  await textarea.fill("Keep this exact draft");
+  await workspaceButton.click();
+  await page.getByRole("menuitem", { name: new RegExp(second.name) }).click();
+  const switchDialog = page.getByTestId("composer-workspace-switch-dialog");
+  await expect(switchDialog).toBeVisible();
+  await expect(switchDialog).toContainText(second.name);
+  await switchDialog.getByRole("button", { name: "Stay here" }).click();
+  await expect(switchDialog).toBeHidden();
+  await expect(workspaceButton).toContainText(first.name);
+  await expect(textarea).toHaveValue("Keep this exact draft");
+  await textarea.fill("Keep this exact draft after staying");
+
+  await workspaceButton.click();
+  await page.getByRole("menuitem", { name: new RegExp(second.name) }).click();
+  await switchDialog.getByRole("button", { name: "Save draft" }).click();
+  releaseDraftResponse();
+  await expect(switchDialog).toBeVisible();
+  await expect(switchDialog.getByRole("alert")).toContainText(
+    "Temporary save failure",
+  );
+  await expect(workspaceButton).toContainText(first.name);
+  await expect(textarea).toHaveValue("Keep this exact draft after staying");
+  await switchDialog.getByRole("button", { name: "Save draft" }).click();
+  await expect(switchDialog).toBeHidden();
+  await expect(workspaceButton).toContainText(second.name);
+  await expect(textarea).toHaveValue("");
+  expect(draftWrites).toHaveLength(2);
+  for (const draftWrite of draftWrites) {
+    expect(draftWrite).toEqual(
+      expect.objectContaining({
+        workspace_id: first.id,
+        content: "Keep this exact draft after staying",
+      }),
+    );
+  }
+  await expect(page).toHaveURL(/\/$/);
+
+  await textarea.fill("Discard only after confirmation");
+  await workspaceButton.click();
+  await page.getByRole("menuitem", { name: new RegExp(first.name) }).click();
+  await expect(switchDialog).toBeVisible();
+  await switchDialog
+    .getByRole("button", { name: "Discard and switch" })
+    .click();
+  await expect(switchDialog).toBeHidden();
+  await expect(workspaceButton).toContainText(first.name);
+  await expect(textarea).toHaveValue("");
+  expect(draftWrites).toHaveLength(2);
+});
+
 test("a slow previous-workspace response cannot replace current account data", async ({
   page,
   request,

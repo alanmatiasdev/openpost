@@ -49,7 +49,8 @@ test("composer uses the exact immediate and scheduled readiness decisions", asyn
   const email = `composer-scheduling-${unique}@example.com`;
   const postContent = "Schedule this launch note from the composer.";
   let publicationPayload: PostPayload | undefined;
-  let scheduleRequested = false;
+  let scheduleAttempts = 0;
+  let injectChangedDestinationValidation = true;
 
   const auth = await registerUser(request, email);
   const workspaceBody = await createWorkspace(
@@ -208,7 +209,10 @@ test("composer uses the exact immediate and scheduled readiness decisions", asyn
     const body = route.request().postDataJSON() as {
       publication?: PostPayload;
     };
-    publicationPayload = body.publication;
+    publicationPayload = {
+      ...(publicationPayload ?? {}),
+      ...(body.publication ?? {}),
+    };
     await route.fulfill({
       contentType: "application/json",
       json: {
@@ -278,7 +282,21 @@ test("composer uses the exact immediate and scheduled readiness decisions", asyn
         contentType: "application/json",
         json: {
           publication_id: "publication-schedule",
-          issues: [],
+          issues:
+            scheduleAttempts === 1 && injectChangedDestinationValidation
+              ? [
+                  {
+                    code: "text_too_long",
+                    field: "body",
+                    segment_id: "segment:0",
+                    message: "Shorten this Bluesky post before scheduling.",
+                    fallback_message:
+                      "Shorten this Bluesky post before scheduling.",
+                    severity: "error",
+                    provider: "bluesky",
+                  },
+                ]
+              : [],
         },
       });
       return;
@@ -288,7 +306,19 @@ test("composer uses the exact immediate and scheduled readiness decisions", asyn
   });
   await page.route("**/api/v1/publications/*/schedule", async (route) => {
     if (route.request().method() === "POST") {
-      scheduleRequested = true;
+      scheduleAttempts += 1;
+      if (scheduleAttempts === 1) {
+        await route.fulfill({
+          status: 422,
+          contentType: "application/problem+json",
+          json: {
+            title: "Publication changed",
+            status: 422,
+            detail: "Destination validation changed before scheduling.",
+          },
+        });
+        return;
+      }
       await route.fulfill({
         contentType: "application/json",
         json: {
@@ -310,7 +340,9 @@ test("composer uses the exact immediate and scheduled readiness decisions", asyn
     page.getByRole("button", { name: "Need inspiration?" }),
   ).toBeVisible();
   await page.getByLabel("Post text").fill(postContent);
-  await expect(page.getByRole("button", { name: "Publish now" })).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "Publish now" }),
+  ).toBeDisabled();
   await page.getByTestId("composer-account-control").click();
   await expect(page.getByTestId("composer-account-row")).toContainText(
     "Publish now: The selected Bluesky account, format, or publishing policy is blocked.",
@@ -364,13 +396,29 @@ test("composer uses the exact immediate and scheduled readiness decisions", asyn
   await expect(quickSchedule.locator(".lucide-send")).toBeVisible();
   await quickSchedule.click();
 
+  await expect(page.getByLabel("Post text")).toBeFocused();
+  await expect(
+    page.getByText("Fix the blocking issues before scheduling."),
+  ).toBeVisible();
+  const validationControl = page.getByTestId("composer-validation-control");
+  await validationControl.click();
+  await expect(
+    page.getByRole("button", {
+      name: "Edit: openpost.bsky.social · Bluesky: Shorten this Bluesky post before scheduling.",
+    }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+
+  injectChangedDestinationValidation = false;
+  await quickSchedule.click();
+
   await expect(page.getByText("Scheduled!", { exact: true })).toBeVisible();
   await expect(page.locator("html")).toHaveAttribute(
     "data-celebrating-schedule",
     "true",
   );
   await expect.poll(() => publicationPayload).toBeTruthy();
-  await expect.poll(() => scheduleRequested).toBe(true);
+  await expect.poll(() => scheduleAttempts).toBe(2);
 
   expect(publicationPayload).toMatchObject({
     workspace_id: workspaceBody.id,

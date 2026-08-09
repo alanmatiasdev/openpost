@@ -10,14 +10,27 @@
 	interface Props {
 		issues: ComposerIssue[];
 		class?: string;
+		onSelect?: (issue: ComposerIssue) => void;
 	}
 
-	let { issues, class: className = '' }: Props = $props();
+	let { issues, class: className = '', onSelect }: Props = $props();
+	let open = $state(false);
 	const hasErrors = $derived(issues.some((issue) => issue.severity === 'error'));
+
+	function hasTarget(issue: ComposerIssue): boolean {
+		return Boolean(
+			issue.accountId || issue.segmentId || issue.scopeId || issue.field || issue.mediaId
+		);
+	}
+
+	function selectIssue(issue: ComposerIssue) {
+		open = false;
+		onSelect?.(issue);
+	}
 </script>
 
 {#if issues.length > 0}
-	<Popover.Root>
+	<Popover.Root bind:open>
 		<Popover.Trigger>
 			{#snippet child({ props })}
 				<Button
@@ -54,16 +67,35 @@
 				{#each issues as issue (issue.id)}
 					<li
 						class={cn(
-							'flex gap-2 rounded-md px-2 py-2 text-sm leading-5',
+							'rounded-md text-sm leading-5',
 							issue.severity === 'error' ? 'text-destructive' : 'text-amber-700 dark:text-amber-300'
 						)}
 					>
-						{#if issue.severity === 'error'}
-							<CircleAlertIcon class="mt-0.5 size-4 shrink-0" />
+						{#snippet issueContent()}
+							{#if issue.severity === 'error'}
+								<CircleAlertIcon class="mt-0.5 size-4 shrink-0" />
+							{:else}
+								<TriangleAlertIcon class="mt-0.5 size-4 shrink-0" />
+							{/if}
+							<span class="min-w-0 flex-1">
+								{#if issue.targetLabel}
+									<span class="block text-xs font-semibold">{issue.targetLabel}</span>
+								{/if}
+								<span class="block">{issue.message}</span>
+							</span>
+						{/snippet}
+						{#if onSelect && hasTarget(issue)}
+							<button
+								type="button"
+								class="flex min-h-11 w-full gap-2 rounded-md px-2 py-2 text-left hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+								onclick={() => selectIssue(issue)}
+								aria-label={`${m.common_edit()}: ${issue.targetLabel ? `${issue.targetLabel}: ` : ''}${issue.message}`}
+							>
+								{@render issueContent()}
+							</button>
 						{:else}
-							<TriangleAlertIcon class="mt-0.5 size-4 shrink-0" />
+							<div class="flex gap-2 px-2 py-2">{@render issueContent()}</div>
 						{/if}
-						<span>{issue.message}</span>
 					</li>
 				{/each}
 			</ul>
