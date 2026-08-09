@@ -31,7 +31,8 @@ var errCaptionThumbnailUnavailable = errors.New("caption thumbnail is unavailabl
 type GenerateMediaAltTextInput struct {
 	PathID string `path:"id" doc:"Media ID"`
 	Body   struct {
-		Locale string `json:"locale,omitempty" maxLength:"35" pattern:"^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$" doc:"BCP 47 locale for the generated alt text; defaults to English"`
+		Locale      string `json:"locale,omitempty" maxLength:"35" pattern:"^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$" doc:"BCP 47 locale for the generated alt text; defaults to English"`
+		PostContext string `json:"post_context,omitempty" maxLength:"1000" doc:"Optional post text used only to disambiguate details visible in the image"`
 	}
 }
 
@@ -54,7 +55,7 @@ func (h *MediaHandler) RegisterImageCaptionRoutes(api huma.API, captioner imagec
 		Method:      http.MethodPost,
 		Path:        "/media/{id}/alt-text/generate",
 		Summary:     "Generate alternative text for an image",
-		Description: "Generates alternative text from the stored 400-pixel JPEG thumbnail and saves it only when the media still has no alternative text.",
+		Description: "Generates alternative text from the stored 400-pixel JPEG thumbnail and optional post text used as untrusted context, then saves it only when the media still has no alternative text.",
 		Tags:        []string{tagMedia},
 		Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.authn)},
 		Errors:      []int{400, 403, 404, 429, 502, 503},
@@ -95,9 +96,10 @@ func (h *MediaHandler) generateMediaAltText(
 	requestCtx, cancel := context.WithTimeout(ctx, imageCaptionRequestTimeout)
 	defer cancel()
 	generated, err := captioner.Caption(requestCtx, imagecaption.Input{
-		Image:    thumbnail,
-		MIMEType: "image/jpeg",
-		Locale:   input.Body.Locale,
+		Image:       thumbnail,
+		MIMEType:    "image/jpeg",
+		Locale:      input.Body.Locale,
+		PostContext: input.Body.PostContext,
 	})
 	if err != nil {
 		log.Printf("automatic image caption failed for media %s (%T)", media.ID, err)

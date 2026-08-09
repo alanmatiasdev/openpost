@@ -83,6 +83,7 @@ test("Post drafts can move from one image to multiple before destination validat
     });
   });
   const captionRequests: string[] = [];
+  const captionPostContexts = new Map<string, string>();
   await page.route("**/api/v1/media**", async (route) => {
     const url = new URL(route.request().url());
     const captionMatch = url.pathname.match(
@@ -91,6 +92,10 @@ test("Post drafts can move from one image to multiple before destination validat
     if (captionMatch) {
       const mediaID = captionMatch[1];
       captionRequests.push(mediaID);
+      const requestBody = route.request().postDataJSON() as {
+        post_context?: string;
+      };
+      captionPostContexts.set(mediaID, requestBody.post_context ?? "");
       await route.fulfill({
         contentType: "application/json",
         json: {
@@ -139,6 +144,8 @@ test("Post drafts can move from one image to multiple before destination validat
   await page.goto("/");
   await expect(page.getByTestId("composer-account-row")).toHaveCount(0);
   const composer = page.getByTestId("text-thread-composer-shell");
+  const postText = "We are launching the new OpenPost media workflow today.";
+  await composer.getByRole("textbox", { name: "Post text" }).fill(postText);
 
   await composer.getByRole("button", { name: "Add media" }).click();
   const picker = page.getByRole("dialog");
@@ -156,6 +163,7 @@ test("Post drafts can move from one image to multiple before destination validat
     1,
   );
   await expect.poll(() => [...captionRequests]).toEqual(["media-1"]);
+  expect(captionPostContexts.get("media-1")).toBe(postText);
   await composer.getByRole("button", { name: "Alt text" }).click();
   await expect(composer.getByRole("textbox", { name: "Alt text" })).toHaveValue(
     "Generated description for media-1.",
@@ -181,6 +189,9 @@ test("Post drafts can move from one image to multiple before destination validat
   await expect
     .poll(() => [...captionRequests].sort())
     .toEqual(mediaItems.map((item) => item.id).sort());
+  expect([...captionPostContexts.values()]).toEqual(
+    mediaItems.map(() => postText),
+  );
   await page.getByTestId("composer-account-control").click();
   await expect(page.getByTestId("composer-account-row")).toHaveCount(5);
   await expect(

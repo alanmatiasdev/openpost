@@ -4768,6 +4768,11 @@
 						"maxLength": 35,
 						"pattern": "^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$",
 						"type": "string"
+					},
+					"post_context": {
+						"description": "Optional post text used only to disambiguate details visible in the image",
+						"maxLength": 1000,
+						"type": "string"
 					}
 				},
 				"type": "object"
@@ -23932,7 +23937,7 @@
 		},
 		"/media/{id}/alt-text/generate": {
 			"post": {
-				"description": "Generates alternative text from the stored 400-pixel JPEG thumbnail and saves it only when the media still has no alternative text.",
+				"description": "Generates alternative text from the stored 400-pixel JPEG thumbnail and optional post text used as untrusted context, then saves it only when the media still has no alternative text.",
 				"operationId": "generate-media-alt-text",
 				"parameters": [
 					{

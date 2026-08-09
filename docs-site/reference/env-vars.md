@@ -14,7 +14,7 @@ This page lists the most common core and provider variables. Use [Environment Va
 | Variable                           | Default               | Purpose                                                                                                        |
 | ---------------------------------- | --------------------- | -------------------------------------------------------------------------------------------------------------- |
 | `OPENROUTER_API_KEY`               | empty                 | Server-only OpenRouter key that enables automatic alt text for images without saved alt text; supports `_FILE`. |
-| `OPENPOST_IMAGE_CAPTION_MODEL`     | `openai/gpt-5.6-luna` | OpenRouter model ID used to caption a 400px JPEG thumbnail.                                                     |
+| `OPENPOST_IMAGE_CAPTION_MODEL`     | `openai/gpt-5.6-luna` | Model used with a 400px JPEG thumbnail and up to 1,000 characters of relevant post or thread segment text.     |
 
 ## OpenPost Video Editor and stock media
 

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { generateImageAltText } from './image-caption';
+import { generateImageAltText, resolveImageCaptionRetryContext } from './image-caption';
 
 const mocks = vi.hoisted(() => ({ post: vi.fn() }));
 
@@ -12,7 +12,7 @@ describe('generateImageAltText', () => {
 		mocks.post.mockReset();
 	});
 
-	it('requests a localized caption for the selected media', async () => {
+	it('requests a localized caption with the relevant post context', async () => {
 		const controller = new AbortController();
 		const caption = {
 			alt_text: 'Two people reviewing a design on a laptop.',
@@ -25,12 +25,19 @@ describe('generateImageAltText', () => {
 			response: new Response(null, { status: 200 })
 		});
 
-		await expect(generateImageAltText('media-1', 'pt-PT', controller.signal)).resolves.toEqual(
-			caption
-		);
+		await expect(
+			generateImageAltText('media-1', {
+				locale: 'pt-PT',
+				postContext: '  A nossa equipa prepara o lançamento.  ',
+				signal: controller.signal
+			})
+		).resolves.toEqual(caption);
 		expect(mocks.post).toHaveBeenCalledWith('/media/{id}/alt-text/generate', {
 			params: { path: { id: 'media-1' } },
-			body: { locale: 'pt-PT' },
+			body: {
+				locale: 'pt-PT',
+				post_context: 'A nossa equipa prepara o lançamento.'
+			},
 			signal: controller.signal
 		});
 	});
@@ -42,7 +49,23 @@ describe('generateImageAltText', () => {
 			response: new Response(null, { status: 503 })
 		});
 
-		await expect(generateImageAltText('media-1', 'en-US')).resolves.toBeNull();
+		await expect(generateImageAltText('media-1', { locale: 'en-US' })).resolves.toBeNull();
+	});
+
+	it('bounds post context by Unicode character before sending it', async () => {
+		mocks.post.mockResolvedValue({
+			data: { alt_text: 'A launch graphic.', generated: true, model: 'test-model' },
+			error: undefined,
+			response: new Response(null, { status: 200 })
+		});
+
+		await generateImageAltText('media-1', {
+			locale: 'en-US',
+			postContext: ` ${'🙂'.repeat(1001)} `
+		});
+
+		const request = mocks.post.mock.calls[0][1];
+		expect(Array.from(request.body.post_context)).toHaveLength(1000);
 	});
 
 	it('surfaces actionable provider failures', async () => {
@@ -52,8 +75,23 @@ describe('generateImageAltText', () => {
 			response: new Response(null, { status: 502 })
 		});
 
-		await expect(generateImageAltText('media-1', 'en-US')).rejects.toThrow(
+		await expect(generateImageAltText('media-1', { locale: 'en-US' })).rejects.toThrow(
 			'image captioning is temporarily unavailable'
 		);
+	});
+});
+
+describe('resolveImageCaptionRetryContext', () => {
+	it('keeps the original context when the same image appears under different post text', () => {
+		expect(
+			resolveImageCaptionRetryContext(
+				'Second thread segment where the image was added.',
+				'First segment or a newly selected destination variant.'
+			)
+		).toBe('Second thread segment where the image was added.');
+	});
+
+	it('bounds the current context when no original request context is available', () => {
+		expect(resolveImageCaptionRetryContext(undefined, ` ${'x'.repeat(1001)} `)).toHaveLength(1000);
 	});
 });

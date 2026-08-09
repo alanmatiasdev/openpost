@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -134,11 +135,15 @@ func (s *mediaCaptionTestServer) insertMedia(t *testing.T, media models.MediaAtt
 	require.NoError(t, err)
 }
 
-func (s *mediaCaptionTestServer) generate(t *testing.T, mediaID, locale string) *httptest.ResponseRecorder {
+func (s *mediaCaptionTestServer) generate(t *testing.T, mediaID, locale string, postContext ...string) *httptest.ResponseRecorder {
 	t.Helper()
 
 	body := bytes.NewBuffer(nil)
-	require.NoError(t, json.NewEncoder(body).Encode(map[string]string{"locale": locale}))
+	payload := map[string]string{"locale": locale}
+	if len(postContext) > 0 {
+		payload["post_context"] = postContext[0]
+	}
+	require.NoError(t, json.NewEncoder(body).Encode(payload))
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/media/"+mediaID+"/alt-text/generate", body)
 	req.Header.Set("Authorization", "Bearer web-token")
 	req.Header.Set("Content-Type", "application/json")
@@ -156,11 +161,12 @@ func TestGenerateMediaAltTextUsesOnlyMediumThumbnailAndPersistsResult(t *testing
 		require.Equal(t, []byte("bounded-medium-thumbnail"), input.Image)
 		require.Equal(t, "image/jpeg", input.MIMEType)
 		require.Equal(t, "pt-PT", input.Locale)
+		require.Equal(t, "Our team is preparing the public launch.", input.PostContext)
 		return imagecaption.Result{AltText: "Uma equipa prepara uma publicação.", Model: "openai/gpt-5.6-luna"}, nil
 	}))
 	srv.insertMedia(t, models.MediaAttachment{ID: "image-1"})
 
-	response := srv.generate(t, "image-1", "pt-PT")
+	response := srv.generate(t, "image-1", "pt-PT", "Our team is preparing the public launch.")
 	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
 	var output GenerateMediaAltTextOutput
 	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &output.Body))
@@ -173,6 +179,22 @@ func TestGenerateMediaAltTextUsesOnlyMediumThumbnailAndPersistsResult(t *testing
 	var media models.MediaAttachment
 	require.NoError(t, srv.db.NewSelect().Model(&media).Where("id = ?", "image-1").Scan(t.Context()))
 	require.Equal(t, "Uma equipa prepara uma publicação.", media.AltText)
+}
+
+func TestGenerateMediaAltTextRejectsOversizedPostContextBeforeCaptioning(t *testing.T) {
+	t.Parallel()
+
+	providerCalls := 0
+	srv := newMediaCaptionTestServer(t, captionerFunc(func(_ context.Context, _ imagecaption.Input) (imagecaption.Result, error) {
+		providerCalls++
+		return imagecaption.Result{AltText: "Generated"}, nil
+	}))
+	srv.insertMedia(t, models.MediaAttachment{ID: "image-1"})
+
+	response := srv.generate(t, "image-1", "en", strings.Repeat("x", imagecaption.MaxPostContextCharacters+1))
+	require.Equal(t, http.StatusUnprocessableEntity, response.Code, response.Body.String())
+	require.Zero(t, providerCalls)
+	require.Empty(t, srv.storage.openedKeys())
 }
 
 func TestGenerateMediaAltTextReturnsExistingTextWithoutProviderOrStorage(t *testing.T) {

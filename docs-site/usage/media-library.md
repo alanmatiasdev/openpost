@@ -27,11 +27,11 @@ OpenPost keeps files in the order you choose. It checks the file types and count
 
 ### Automatic alt text
 
-If your instance operator has configured OpenRouter, adding an image with no saved alt text to the text-and-thread composer asks OpenPost to draft shared alt text. The server sends a 400px JPEG thumbnail to OpenRouter and an eligible provider that declares it does not collect request data. It does not send the original image for this task.
+If your instance operator has configured OpenRouter, adding an image with no saved alt text to the text-and-thread composer asks OpenPost to draft shared alt text. The server sends a 400px JPEG thumbnail and, when present, up to 1,000 characters of the current relevant post or thread segment to OpenRouter and an eligible provider that declares it does not collect request data. OpenPost treats the text as untrusted context for better disambiguation, not as model instructions. It does not send the original image for this task.
 
 OpenPost saves the caption only while the shared alt text is still blank, so existing text and edits made while the request runs always win. Review the result and adjust it before publishing. You can also customize alt text for a specific account. A missing API key or a captioning error does not stop the image from being attached or published.
 
-Instance operators can review the external-processing boundary and setup in [Environment Variables](/configuration/environment-variables#automatic-image-alt-text).
+The thumbnail and any relevant segment text leave the OpenPost instance for this external processing. Instance operators can review the full privacy boundary and setup in [Environment Variables](/configuration/environment-variables#automatic-image-alt-text).
 
 ## Prepare and edit video
 

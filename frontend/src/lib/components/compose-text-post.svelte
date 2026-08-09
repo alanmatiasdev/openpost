@@ -112,7 +112,11 @@
 	import { buildComposerPreview } from '$lib/compose-preview';
 	import { openPreviewWindow, type PreviewWindowSession } from '$lib/preview-window';
 	import { uploadMediaFile } from '$lib/media-upload-client';
-	import { generateImageAltText } from '$lib/image-caption';
+	import {
+		boundImageCaptionPostContext,
+		generateImageAltText,
+		resolveImageCaptionRetryContext
+	} from '$lib/image-caption';
 	import { firstComposerURL } from './compose/composer-links';
 
 	// --------------------------------------------------------------------------
@@ -276,6 +280,7 @@
 	const failedCaptionMediaIds = new SvelteSet<string>();
 	const suppressedCaptionMediaIds = new SvelteSet<string>();
 	const captionRequests = new SvelteMap<string, AbortController>();
+	const captionPostContexts = new SvelteMap<string, string>();
 	let captionGenerationError = $state('');
 	let editingAltMediaId = $state<string | null>(null);
 	let settingsByAccount = $state<Record<string, Record<string, unknown>>>({});
@@ -1691,7 +1696,10 @@
 				...result.media_ids
 			]);
 			await hydrateMediaMetadata(result.workspace_id, result.media_ids, true);
-			void generateMissingMediaAltText(result.media_ids);
+			void generateMissingMediaAltText(
+				result.media_ids,
+				getEditorContentForPost(posts[targetIndex])
+			);
 			scheduleAutoSave();
 			clearComposerRecovery(token);
 			notifyImageEditorReturn(result.media_ids.length);
@@ -1951,6 +1959,7 @@
 		capabilityResolveAbortController?.abort();
 		for (const controller of captionRequests.values()) controller.abort();
 		captionRequests.clear();
+		captionPostContexts.clear();
 		for (const session of previewSessions.values()) session.close();
 		previewSessions.clear();
 	});
@@ -2126,7 +2135,16 @@
 		}
 	}
 
-	async function generateMissingMediaAltText(mediaIds: string[]) {
+	function captionPostContextForRetry(mediaId: string): string {
+		const post = posts.find((candidate) => getEditorMediaIdsForPost(candidate).includes(mediaId));
+		return resolveImageCaptionRetryContext(
+			captionPostContexts.get(mediaId),
+			post ? getEditorContentForPost(post) : ''
+		);
+	}
+
+	async function generateMissingMediaAltText(mediaIds: string[], postContext: string) {
+		const boundedPostContext = boundImageCaptionPostContext(postContext);
 		const candidates = Array.from(new Set(mediaIds.filter(Boolean))).filter(
 			(mediaId) =>
 				mediaMimeTypes.get(mediaId)?.startsWith('image/') &&
@@ -2134,17 +2152,26 @@
 				!captioningMediaIds.has(mediaId) &&
 				!suppressedCaptionMediaIds.has(mediaId)
 		);
-		await Promise.all(candidates.map((mediaId) => generateMediaAltText(mediaId)));
+		await Promise.all(
+			candidates.map((mediaId) => {
+				captionPostContexts.set(mediaId, boundedPostContext);
+				return generateMediaAltText(mediaId, boundedPostContext);
+			})
+		);
 	}
 
-	async function generateMediaAltText(mediaId: string) {
+	async function generateMediaAltText(mediaId: string, postContext: string) {
 		const controller = new AbortController();
 		captionRequests.set(mediaId, controller);
 		captioningMediaIds.add(mediaId);
 		failedCaptionMediaIds.delete(mediaId);
 
 		try {
-			const result = await generateImageAltText(mediaId, getLocaleTag(), controller.signal);
+			const result = await generateImageAltText(mediaId, {
+				locale: getLocaleTag(),
+				postContext,
+				signal: controller.signal
+			});
 			if (!result || suppressedCaptionMediaIds.has(mediaId)) return;
 			if (!mediaAltTexts.get(mediaId)?.trim()) {
 				const nextAltTexts = new SvelteMap(mediaAltTexts);
@@ -2166,7 +2193,13 @@
 	function retryFailedMediaAltText() {
 		const mediaIds = [...failedCaptionMediaIds];
 		captionGenerationError = '';
-		void generateMissingMediaAltText(mediaIds);
+		void Promise.all(
+			mediaIds.map((mediaId) => {
+				const postContext = captionPostContextForRetry(mediaId);
+				captionPostContexts.set(mediaId, postContext);
+				return generateMediaAltText(mediaId, postContext);
+			})
+		);
 	}
 
 	async function loadAccounts(
@@ -2965,6 +2998,7 @@
 			generatedCaptionMediaIds.delete(mediaId);
 			failedCaptionMediaIds.delete(mediaId);
 			suppressedCaptionMediaIds.delete(mediaId);
+			captionPostContexts.delete(mediaId);
 			const newAlts = new SvelteMap(mediaAltTexts);
 			newAlts.delete(mediaId);
 			mediaAltTexts = newAlts;
@@ -4494,13 +4528,16 @@
 	initialFiles={mediaPickerInitialFiles}
 	onInitialFilesConsumed={() => (mediaPickerInitialFiles = [])}
 	onConfirm={async (ids) => {
+		const postContext = posts[mediaPickerPostIndex]
+			? getEditorContentForPost(posts[mediaPickerPostIndex])
+			: '';
 		const previousIds = posts[mediaPickerPostIndex]
 			? getEditorMediaIdsForPost(posts[mediaPickerPostIndex])
 			: [];
 		const addedIds = ids.filter((id) => !previousIds.includes(id));
 		setEditorMediaIds(mediaPickerPostIndex, ids);
 		await hydrateMediaMetadata(selectedWorkspaceId, addedIds, true);
-		void generateMissingMediaAltText(addedIds);
+		void generateMissingMediaAltText(addedIds, postContext);
 	}}
 	onCreate={openImageEditorFromComposer}
 />

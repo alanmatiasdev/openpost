@@ -2,7 +2,7 @@
   import { resolve } from "$app/paths";
   import { siteUrl } from "../_marketing";
 
-  const effectiveDate = "5 August 2026";
+  const effectiveDate = "9 August 2026";
 </script>
 
 <svelte:head>
@@ -126,6 +126,7 @@
         analytics, and automation.
       </li>
       <li>Send content to the social networks and accounts you select.</li>
+      <li>Draft image alternative text when automatic captioning is enabled.</li>
       <li>
         Process subscriptions, enforce plan limits, and keep billing records.
       </li>
@@ -161,6 +162,13 @@
       <li>
         <strong>Hosting companies</strong> that run the app, database, media, email,
         network, analytics, and backups under their service terms.
+      </li>
+      <li>
+        <strong>OpenRouter and selected AI model providers</strong>, when automatic
+        image captioning is enabled, to process a 400-pixel JPEG thumbnail and
+        up to 1,000 characters of the relevant draft or thread segment as untrusted
+        context. OpenPost does not send the original image for this feature. Their
+        service and privacy terms apply.
       </li>
       <li>
         <strong>Paddle and prior payment providers</strong> for checkout, subscriptions,

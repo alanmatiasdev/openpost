@@ -1960,7 +1960,7 @@ export interface paths {
         put?: never;
         /**
          * Generate alternative text for an image
-         * @description Generates alternative text from the stored 400-pixel JPEG thumbnail and saves it only when the media still has no alternative text.
+         * @description Generates alternative text from the stored 400-pixel JPEG thumbnail and optional post text used as untrusted context, then saves it only when the media still has no alternative text.
          */
         post: operations["generate-media-alt-text"];
         delete?: never;
@@ -5432,6 +5432,8 @@ export interface components {
             readonly $schema?: string;
             /** @description BCP 47 locale for the generated alt text; defaults to English */
             locale?: string;
+            /** @description Optional post text used only to disambiguate details visible in the image */
+            post_context?: string;
         };
         GenerateMediaAltTextOutputBody: {
             /**

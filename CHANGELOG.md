@@ -6,7 +6,7 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
-- Added automatic, reviewable image alt text when blank images are attached in the text-and-thread composer, using an optional server-side OpenRouter integration that never replaces user-written text.
+- Added automatic, reviewable image alt text when images without alt text are attached in the text-and-thread composer. The optional server-side OpenRouter integration sends a 400px JPEG thumbnail and, when present, up to 1,000 characters of the current relevant post or thread segment as untrusted context for better disambiguation; it never replaces user-written text or blocks media attachment and publishing when unavailable.
 
 ### Changed
 

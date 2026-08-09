@@ -14,7 +14,7 @@ Open **Advanced delivery** to change repost behavior for this publication. Keep 
 
 OpenPost infers posts, threads, links, documents, image sets, videos, Shorts, and other destination formats from the content. Instagram and Facebook ask for a format only when the same media can validly become more than one format. TikTok photo posts and videos are inferred from the media.
 
-When automatic alt text is enabled, adding an image without saved alt text drafts shared alt text without blocking the attachment or publication if the request fails. Review or replace the draft, then use account settings for destination-specific text. See [Media](/usage/media-library#automatic-alt-text) for the processing and privacy details.
+When automatic alt text is enabled, adding an image without saved alt text drafts shared alt text without blocking the attachment or publication if the request fails. When present, up to 1,000 characters of the current relevant post or thread segment are sent with the thumbnail as untrusted context for better disambiguation. Review or replace the draft, then use account settings for destination-specific text. See [Media](/usage/media-library#automatic-alt-text) for the processing and privacy details.
 
 ## Drafts and account versions
 

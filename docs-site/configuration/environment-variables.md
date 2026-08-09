@@ -123,9 +123,9 @@ Bootstrap and data-plane settings stay deployment-only because OpenPost needs th
 
 ## Automatic image alt text
 
-Automatic alt text is off when `OPENROUTER_API_KEY` is empty. When it is configured, adding an image with no saved alt text to the text-and-thread composer sends a 400px JPEG thumbnail from the server to OpenRouter. OpenPost restricts routing to eligible providers that declare they do not collect request data, then saves the result as the media item's shared base alt text only if that field is still blank. The original image is not sent for this task.
+Automatic alt text is off when `OPENROUTER_API_KEY` is empty. When it is configured, adding an image with no saved alt text to the text-and-thread composer sends a 400px JPEG thumbnail from the server to OpenRouter. When present, OpenPost also sends up to 1,000 characters of the current relevant post or thread segment as untrusted context to help the model distinguish what the image means in that post. The model is instructed to treat this text as context, not as instructions. OpenPost restricts routing to eligible providers that declare they do not collect request data, then saves the result as the media item's shared base alt text only if that field is still blank. The original image is not sent for this task.
 
-This is external processing: the thumbnail leaves the OpenPost instance and is handled by OpenRouter and the selected model provider. Review their current privacy and retention terms before enabling the feature. Existing or newly entered manual alt text always wins. With no key, OpenPost makes no caption request. A captioning failure does not stop users from attaching or publishing media.
+This is external processing: the thumbnail and any relevant segment text leave the OpenPost instance and are handled by OpenRouter and the selected model provider. Review their current privacy and retention terms before enabling the feature. Existing or newly entered manual alt text always wins. With no key, OpenPost makes no caption request. A captioning failure does not stop users from attaching or publishing media.
 
 ## Update status
 
