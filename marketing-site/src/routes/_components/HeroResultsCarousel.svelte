@@ -2,11 +2,8 @@
 	import { onMount } from 'svelte';
 	import Heart from 'lucide-svelte/icons/heart';
 	import MessageCircle from 'lucide-svelte/icons/message-circle';
-	import Pause from 'lucide-svelte/icons/pause';
-	import Play from 'lucide-svelte/icons/play';
 	import Repeat2 from 'lucide-svelte/icons/repeat-2';
 	import Send from 'lucide-svelte/icons/send';
-	import { Button } from '$lib/components/ui/button';
 	import PlatformIcon from '$lib/components/platform-icon.svelte';
 
 	type ResultSlide = {
@@ -32,13 +29,9 @@
 			summary: 'Keep reach, interactions, and follower activity next to the work.'
 		}
 	];
-	const MOTION_PREFERENCE_KEY = 'openpost:marketing-motion';
 
 	let activeIndex = $state(1);
-	let userPaused = $state(false);
-	let reducedMotion = $state(false);
-	let interactionPaused = $state(false);
-	let announcement = $state('');
+	let autoplayStopped = $state(false);
 
 	function positionFor(index: number) {
 		const distance = (index - activeIndex + slides.length) % slides.length;
@@ -47,31 +40,8 @@
 	}
 
 	function selectSlide(index: number) {
-		setUserPaused(true);
+		autoplayStopped = true;
 		activeIndex = index;
-		announcement = `Showing ${slides[index].name}`;
-	}
-
-	function setUserPaused(paused: boolean) {
-		userPaused = paused;
-		try {
-			sessionStorage.setItem(MOTION_PREFERENCE_KEY, paused ? 'paused' : 'playing');
-		} catch {
-			// Session storage is optional; the control remains usable in memory.
-		}
-	}
-
-	function toggleAutoplay() {
-		if (reducedMotion) return;
-		setUserPaused(!userPaused);
-	}
-
-	function handleFocusOut(event: FocusEvent) {
-		const group = event.currentTarget as HTMLElement;
-		const nextTarget = event.relatedTarget;
-		if (!(nextTarget instanceof Node) || !group.contains(nextTarget)) {
-			interactionPaused = false;
-		}
 	}
 
 	function handleKeydown(event: KeyboardEvent) {
@@ -82,52 +52,17 @@
 	}
 
 	onMount(() => {
-		const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
-		const updateReducedMotion = () => {
-			reducedMotion = reducedMotionQuery.matches;
-		};
-		updateReducedMotion();
-		reducedMotionQuery.addEventListener('change', updateReducedMotion);
-		try {
-			userPaused = sessionStorage.getItem(MOTION_PREFERENCE_KEY) === 'paused';
-		} catch {
-			userPaused = false;
-		}
+		if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 		const timer = window.setInterval(() => {
-			if (userPaused || reducedMotion || interactionPaused || document.hidden) return;
+			if (autoplayStopped || document.hidden) return;
 			activeIndex = (activeIndex + 1) % slides.length;
 		}, 5000);
-		return () => {
-			window.clearInterval(timer);
-			reducedMotionQuery.removeEventListener('change', updateReducedMotion);
-		};
+		return () => window.clearInterval(timer);
 	});
 </script>
 
-<div
-	class="results-carousel"
-	role="group"
-	aria-label="Social publishing result previews"
-	onfocusin={() => (interactionPaused = true)}
-	onfocusout={handleFocusOut}
-	onmouseenter={() => (interactionPaused = true)}
-	onmouseleave={() => (interactionPaused = false)}
->
-	<p class="sr-only" aria-live="polite">{announcement}</p>
-	<div class="motion-control">
-		<Button variant="outline" size="sm" onclick={toggleAutoplay} disabled={reducedMotion}>
-			{#if reducedMotion}
-				<Pause data-icon="inline-start" />
-				Automatic rotation off
-			{:else if userPaused}
-				<Play data-icon="inline-start" />
-				Play previews
-			{:else}
-				<Pause data-icon="inline-start" />
-				Pause previews
-			{/if}
-		</Button>
-	</div>
+<div class="results-carousel" role="group" aria-label="Social publishing result previews">
+	<p class="sr-only" aria-live="polite">Showing {slides[activeIndex].name}</p>
 	<div class="phone-stage">
 		{#each slides as slide, index (slide.platform)}
 			{@const position = positionFor(index)}
@@ -258,14 +193,6 @@
 	.results-carousel {
 		position: relative;
 		outline: none;
-	}
-
-	.motion-control {
-		display: flex;
-		min-height: 2.75rem;
-		align-items: center;
-		justify-content: center;
-		margin-bottom: 0.75rem;
 	}
 
 	.phone-stage {

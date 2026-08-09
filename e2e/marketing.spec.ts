@@ -8,22 +8,21 @@ test("marketing index links to the app and documentation @desktop", async ({
   await page.goto("/");
 
   await expect(page).toHaveTitle(
-    "OpenPost - Social publishing workspace for solo founders",
+    "OpenPost - The all-in-one content team for solo founders",
   );
   await expect(
     page.getByRole("heading", {
-      name: "Write and schedule social posts in one workspace.",
+      name: "Your socials, on steroids.",
     }),
   ).toBeVisible();
   await expect(
     page.getByText(
-      "OpenPost helps solo founders write, adapt, preview, and schedule each post without reopening every network.",
+      "Create better content, adapt it for every platform, and publish it everywhere from one workspace.",
       { exact: true },
     ),
   ).toBeVisible();
-  const hero = page.locator("section.hero");
   await expect(
-    hero.getByRole("link", { name: "Start your 14-day trial" }),
+    page.getByRole("link", { name: "Hop on", exact: true }).first(),
   ).toHaveAttribute(
     "href",
     "https://app.openpost.social/register?plan=founder",
@@ -36,7 +35,11 @@ test("marketing index links to the app and documentation @desktop", async ({
   await expect(
     resultPreviews.getByRole("button", { name: "Show Audience growth" }),
   ).toBeVisible();
-  await expect(page.getByLabel("Companies using OpenPost")).toHaveCount(0);
+  await expect(page.getByLabel("Companies using OpenPost")).toContainText(
+    "The Actual World",
+  );
+  await expect(page.getByAltText("ENF. logo")).toBeVisible();
+  await expect(page.getByAltText("Ark logo")).toBeVisible();
   await expect(
     page.getByRole("heading", {
       name: "See OpenPost in four minutes.",
@@ -234,26 +237,7 @@ test("landing stays responsive and theme-aware", async ({ page }) => {
   await page.goto("/");
 
   const viewportWidth = page.viewportSize()?.width ?? 1280;
-  await expect(page.locator("[data-floating-mark]")).toHaveCount(0);
-  await expect(
-    page.getByRole("heading", {
-      level: 1,
-      name: "Write and schedule social posts in one workspace.",
-    }),
-  ).toBeVisible();
-  await expect(
-    page
-      .locator("section.hero")
-      .getByRole("link", { name: "Start your 14-day trial" }),
-  ).toHaveAttribute(
-    "href",
-    "https://app.openpost.social/register?plan=founder",
-  );
-  await expect(
-    page.locator("section.hero").getByText(
-      "Start with a 14-day free trial. A card is required, and you can cancel before the first charge.",
-    ),
-  ).toBeVisible();
+  await expect(page.locator("[data-floating-mark]")).toHaveCount(12);
   await expect(page.locator(".hero-title")).toHaveCSS(
     "color",
     "oklch(0.2 0.01 50)",
@@ -279,71 +263,25 @@ test("landing stays responsive and theme-aware", async ({ page }) => {
   expect(overflow).toBeLessThanOrEqual(1);
 });
 
-test("hero previews provide persistent, quiet motion controls", async ({
+test("hero result views rotate until the visitor chooses one", async ({
   page,
 }) => {
   await page.goto("/");
 
-  const carousel = page.getByRole("group", {
-    name: "Social publishing result previews",
-  });
-  const tiktok = carousel.getByRole("button", { name: "Show Video reach" });
-  const instagram = carousel.getByRole("button", {
+  const tiktok = page.getByRole("button", { name: "Show Video reach" });
+  const instagram = page.getByRole("button", {
     name: "Show Content results",
   });
-  const x = carousel.getByRole("button", { name: "Show Audience growth" });
-  const announcement = carousel.locator('[aria-live="polite"]');
+  const x = page.getByRole("button", { name: "Show Audience growth" });
 
   await expect(tiktok).toHaveAttribute("data-active", "true");
-  await expect(announcement).toHaveText("");
-
-  await carousel.getByRole("button", { name: "Pause previews" }).click();
-  await expect(
-    carousel.getByRole("button", { name: "Play previews" }),
-  ).toBeVisible();
-  await expect
-    .poll(() =>
-      page.evaluate(() => sessionStorage.getItem("openpost:marketing-motion")),
-    )
-    .toBe("paused");
-  await page.waitForTimeout(5_200);
-  await expect(tiktok).toHaveAttribute("data-active", "true");
-
-  await page.reload();
-  await expect(
-    carousel.getByRole("button", { name: "Play previews" }),
-  ).toBeVisible();
-  await carousel.getByRole("button", { name: "Play previews" }).focus();
-  await page.keyboard.press("Enter");
-  await expect(
-    carousel.getByRole("button", { name: "Pause previews" }),
-  ).toBeVisible();
-  await page.evaluate(() =>
-    (document.activeElement as HTMLElement | null)?.blur(),
-  );
   await page.waitForTimeout(5_200);
   await expect(instagram).toHaveAttribute("data-active", "true");
-  await expect(announcement).toHaveText("");
 
-  await x.focus();
-  await page.keyboard.press("Enter");
+  await x.click();
   await expect(x).toHaveAttribute("data-active", "true");
-  await expect(announcement).toHaveText("Showing Audience growth");
   await page.waitForTimeout(5_200);
   await expect(x).toHaveAttribute("data-active", "true");
-
-  await page.evaluate(() =>
-    sessionStorage.setItem("openpost:marketing-motion", "playing"),
-  );
-  await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.reload();
-  const reducedMotionControl = carousel.getByRole("button", {
-    name: "Automatic rotation off",
-  });
-  await expect(reducedMotionControl).toBeDisabled();
-  await expect(tiktok).toHaveAttribute("data-active", "true");
-  await page.waitForTimeout(5_200);
-  await expect(tiktok).toHaveAttribute("data-active", "true");
 });
 
 test("hero and footer actions remain usable at 320 pixels", async ({
@@ -352,12 +290,12 @@ test("hero and footer actions remain usable at 320 pixels", async ({
   await page.setViewportSize({ width: 320, height: 720 });
   await page.goto("/");
 
-  const trialLink = page
+  const heroLink = page
     .locator("section.hero")
-    .getByRole("link", { name: "Start your 14-day trial" });
-  await expect(trialLink).toBeVisible();
-  await trialLink.focus();
-  await expect(trialLink).toBeFocused();
+    .getByRole("link", { name: "Hop on", exact: true });
+  await expect(heroLink).toBeVisible();
+  await heroLink.focus();
+  await expect(heroLink).toBeFocused();
 
   const footerGuides = page
     .locator("footer")
@@ -442,13 +380,11 @@ test("marketing raised buttons synthesize tactile feedback @desktop", async ({
   });
 
   await page.goto("/");
-  const trialLink = page
-    .locator("section.hero")
-    .getByRole("link", { name: "Start your 14-day trial" });
-  await expect(trialLink).toHaveAttribute("data-cuelume-press", "press");
-  await expect(trialLink).toHaveAttribute("data-cuelume-release", "release");
-  await trialLink.dispatchEvent("pointerdown", { pointerType: "mouse" });
-  await trialLink.dispatchEvent("pointerup", { pointerType: "mouse" });
+  const hopOn = page.getByRole("link", { name: "Hop on", exact: true });
+  await expect(hopOn).toHaveAttribute("data-cuelume-press", "press");
+  await expect(hopOn).toHaveAttribute("data-cuelume-release", "release");
+  await hopOn.dispatchEvent("pointerdown", { pointerType: "mouse" });
+  await hopOn.dispatchEvent("pointerup", { pointerType: "mouse" });
   await expect
     .poll(() =>
       page.evaluate(

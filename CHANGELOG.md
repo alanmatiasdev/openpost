@@ -16,7 +16,7 @@ All notable changes to this project are documented in this file.
 
 ### Changed
 
-- Simplified the landing hero around a literal solo-founder publishing outcome and exact trial terms, removed unverified customer-logo and floating-mark proof, added session-persistent pause controls for moving previews, enlarged mobile platform-guide targets, and pruned unreachable marketing components, unsupported shipped icons, and private package exports.
+- Restored the original expressive landing hero, floating provider field, customer-logo rail, rotating result previews, and complete provider-icon definitions after product review; retained larger mobile platform-guide targets and the confirmed unreachable-code cleanup.
 - Removed tracked backend import-probe commands and the unused authentication-only middleware whose name incorrectly implied workspace authorization.
 - Made one validated legal-policy manifest drive the hosted Terms, Privacy, and Refund Policy dates, versions, URLs, acceptance rules, public pages, generated backend constants, cloud startup checks, and release gates so substantive Terms or Privacy changes reliably re-prompt existing accounts.
 - Stamped each immutable release candidate from one strict stable-version and full-revision manifest, verified that identity across image labels, the embedded file, runtime metadata, artifact download, digest-only promotion, and deployed version checks, and blocked promotion on any mismatch.
