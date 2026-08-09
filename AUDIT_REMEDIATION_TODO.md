@@ -149,7 +149,7 @@ These do not assert a newly observed production incident. They block Pinterest, 
 
 ### PRICE-001 — Make all five public plans selectable
 
-- [ ] **Problem — User-reported live:** public pricing visibly offers CTAs only for Starter, Founder, and Pro; Team and Agency appear later as limits without a purchase action. The current checkout also contains an in-flight `plans.slice(0, 3)` implementation, so this remains a release blocker even if production is rechecked.
+- [x] **Problem — User-reported live:** public pricing visibly offers CTAs only for Starter, Founder, and Pro; Team and Agency appear later as limits without a purchase action. The current checkout also contains an in-flight `plans.slice(0, 3)` implementation, so this remains a release blocker even if production is rechecked.
 - **Fix:** present all sellable plans in one coherent decision model with “best for” guidance and an action for every plan; keep monthly/annual state synchronized across cards, mobile details, comparisons, registration, and checkout.
 - **Done when:** all five plans have discoverable monthly and annual CTAs, generated URLs select the right plan/period, mobile and desktop agree, and browser tests cover every plan.
 - **Evidence:** `marketing-site/src/routes/_components/PricingShowcase.svelte:13`, `marketing-site/src/routes/pricing/+page.svelte:74`.

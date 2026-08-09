@@ -44,6 +44,16 @@ describe('hosted billing catalog', () => {
 		);
 	});
 
+	it('preserves every sellable plan across monthly and annual checkout links', () => {
+		for (const plan of hostedPlans) {
+			for (const period of ['monthly', 'annual'] as const) {
+				expect(checkoutPathForPlan(plan.id, period)).toBe(
+					`/checkout?plan=${plan.id}&billing_period=${period}`
+				);
+			}
+		}
+	});
+
 	it('returns the full-period price used by checkout', () => {
 		const founder = hostedPlanByID('founder');
 		expect(planPriceUSD(founder, 'monthly')).toBe(25);

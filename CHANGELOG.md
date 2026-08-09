@@ -16,6 +16,7 @@ All notable changes to this project are documented in this file.
 
 ### Fixed
 
+- Made Starter, Founder, Pro, Team, and Agency selectable for monthly or annual billing across public pricing cards and comparisons, with plan-specific guidance and verified registration links at desktop and 320 px widths.
 - Made draft navigation reuse prefetched canonical publication and composer data, removed legacy and duplicate capability request waterfalls, bounded publication detail queries across destinations, stopped duplicate shell and Posts page loads, and kept the planner sidebar stable during background autosave refreshes.
 
 ## [3.6.0] - 2026-08-08

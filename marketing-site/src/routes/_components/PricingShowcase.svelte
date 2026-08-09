@@ -6,11 +6,10 @@
 
 	interface Props {
 		compact?: boolean;
+		billingPeriod?: 'monthly' | 'annual';
 	}
 
-	let { compact = false }: Props = $props();
-	let billingPeriod = $state<'monthly' | 'annual'>('monthly');
-	const featuredPlans = plans.slice(0, 3);
+	let { compact = false, billingPeriod = $bindable('monthly') }: Props = $props();
 
 	function numericPrice(price: string) {
 		return Number(price.replace(/[^0-9.]/g, ''));
@@ -46,13 +45,19 @@
 			</Button>
 		</div>
 	</div>
+	<p class="sr-only" aria-live="polite">
+		{billingPeriod === 'annual'
+			? 'Annual billing selected. Prices show the monthly equivalent.'
+			: 'Monthly billing selected.'}
+	</p>
 
-	<div class="pricing-grid" aria-live="polite">
-		{#each featuredPlans as plan (plan.id)}
-			<article class:featured={plan.featured} class="pricing-card">
+	<div class="pricing-grid">
+		{#each plans as plan (plan.id)}
+			<article class:featured={plan.featured} class="pricing-card" data-plan-id={plan.id}>
 				{#if plan.featured}<span class="popular-label">Most popular</span>{/if}
 				<div>
 					<h3>{plan.name}</h3>
+					<p class="best-for">Best for {plan.bestFor.toLocaleLowerCase()}</p>
 					<p class="plan-description">{plan.description}</p>
 				</div>
 				<p class="price-line">
@@ -141,25 +146,20 @@
 		flex-direction: column;
 		padding: clamp(1.4rem, 2.5vw, 2rem);
 		border: 1px solid var(--border);
-		border-radius: 1.5rem;
+		border-radius: 1rem;
 		background: color-mix(in oklch, var(--card) 95%, var(--background));
-		box-shadow: 0 1rem 3rem -2.2rem color-mix(in oklch, var(--foreground) 28%, transparent);
 		transition:
 			transform 180ms cubic-bezier(0.16, 1, 0.3, 1),
-			box-shadow 180ms cubic-bezier(0.16, 1, 0.3, 1),
 			border-color 180ms ease;
 	}
 
 	.pricing-card:hover {
 		transform: translateY(-0.25rem);
-		box-shadow: 0 1.5rem 4rem -2rem color-mix(in oklch, var(--foreground) 30%, transparent);
+		border-color: color-mix(in oklch, var(--foreground) 28%, var(--border));
 	}
 
 	.pricing-card.featured {
 		border-color: color-mix(in oklch, var(--primary) 76%, var(--border));
-		box-shadow:
-			0 0 0 1px color-mix(in oklch, var(--primary) 22%, transparent),
-			0 1.5rem 4rem -2rem color-mix(in oklch, var(--primary) 38%, transparent);
 	}
 
 	.popular-label {
@@ -180,9 +180,17 @@
 		font-weight: 700;
 	}
 
+	.best-for {
+		margin-top: 0.45rem;
+		color: var(--foreground);
+		font-size: 0.78rem;
+		font-weight: 600;
+		line-height: 1.4;
+	}
+
 	.plan-description {
-		min-height: 3rem;
-		margin-top: 0.75rem;
+		min-height: 2.9rem;
+		margin-top: 0.55rem;
 		color: var(--muted-foreground);
 		font-size: 0.9rem;
 		line-height: 1.65;
@@ -194,7 +202,7 @@
 		margin-top: 2rem;
 		font-size: clamp(2.7rem, 5vw, 4rem);
 		font-weight: 720;
-		letter-spacing: -0.055em;
+		letter-spacing: -0.04em;
 	}
 
 	.price-line > span:last-child {
@@ -239,7 +247,19 @@
 
 	@media (min-width: 64rem) {
 		.pricing-grid {
-			grid-template-columns: repeat(3, minmax(0, 1fr));
+			grid-template-columns: repeat(6, minmax(0, 1fr));
+		}
+
+		.pricing-card {
+			grid-column: span 2;
+		}
+
+		.pricing-card:nth-child(4) {
+			grid-column: 2 / span 2;
+		}
+
+		.pricing-card:nth-child(5) {
+			grid-column: 4 / span 2;
 		}
 
 		.pricing-card.featured {

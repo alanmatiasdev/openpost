@@ -130,35 +130,73 @@ test("marketing index links to the app and documentation @desktop", async ({
   ).toHaveAttribute("href", "https://discord.gg/u2QwukmY4W");
 });
 
-test("pricing presents Founder at the configured monthly and annual prices", async ({
+test("pricing makes every plan selectable for monthly and annual billing", async ({
   page,
 }) => {
+  const planCases = [
+    { id: "starter", name: "Starter", monthly: "$15", annual: "$150" },
+    { id: "founder", name: "Founder", monthly: "$25", annual: "$250" },
+    { id: "pro", name: "Pro", monthly: "$49", annual: "$490" },
+    { id: "team", name: "Team", monthly: "$99", annual: "$990" },
+    { id: "agency", name: "Agency", monthly: "$199", annual: "$1,990" },
+  ] as const;
+
   await page.goto("/pricing");
 
-  const founderPlan = page
-    .getByRole("article")
-    .filter({ has: page.getByRole("heading", { name: "Founder" }) });
-  await expect(founderPlan.locator(".price-line")).toContainText(
-    /\$25\s*\/month/,
-  );
-  await expect(
-    founderPlan.getByRole("link", { name: "Start Founder" }),
-  ).toHaveAttribute(
-    "href",
-    "https://app.openpost.social/register?plan=founder&billing_period=monthly",
-  );
+  await expect(page.getByRole("article")).toHaveCount(5);
+  for (const plan of planCases) {
+    const card = page
+      .getByRole("article")
+      .filter({ has: page.getByRole("heading", { name: plan.name }) });
+    await expect(card.locator(".animated-price")).toHaveAttribute(
+      "aria-label",
+      plan.monthly,
+    );
+    await expect(
+      card.getByRole("link", { name: `Start ${plan.name}` }),
+    ).toHaveAttribute(
+      "href",
+      `https://app.openpost.social/register?plan=${plan.id}&billing_period=monthly`,
+    );
+  }
 
   await page.getByRole("button", { name: /^Yearly/ }).click();
-  await expect(founderPlan.locator(".price-line")).toContainText(
-    /\$20\.83\s*\/month/,
-  );
-  await expect(founderPlan).toContainText("Billed $250 yearly");
-  await expect(
-    founderPlan.getByRole("link", { name: "Start Founder" }),
-  ).toHaveAttribute(
-    "href",
-    "https://app.openpost.social/register?plan=founder&billing_period=annual",
-  );
+  for (const plan of planCases) {
+    const card = page
+      .getByRole("article")
+      .filter({ has: page.getByRole("heading", { name: plan.name }) });
+    await expect(card).toContainText(`Billed ${plan.annual} yearly`);
+    await expect(
+      card.getByRole("link", { name: `Start ${plan.name}` }),
+    ).toHaveAttribute(
+      "href",
+      `https://app.openpost.social/register?plan=${plan.id}&billing_period=annual`,
+    );
+  }
+
+  if ((page.viewportSize()?.width ?? 0) >= 1024) {
+    const comparison = page.locator(".desktop-limits");
+    for (const plan of planCases) {
+      await expect(
+        comparison.getByRole("columnheader", { name: plan.name }),
+      ).toContainText(`${plan.annual}/year`);
+    }
+  } else {
+    const comparison = page.locator(".mobile-limits");
+    for (const plan of planCases) {
+      await expect(
+        comparison.locator(`[data-plan-id="${plan.id}"]`),
+      ).toContainText(`${plan.annual}/year`);
+    }
+  }
+
+  await page.setViewportSize({ width: 320, height: 720 });
+  await expect(page.getByRole("article")).toHaveCount(5);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
 });
 
 test("security page states AI tool access accurately @desktop", async ({

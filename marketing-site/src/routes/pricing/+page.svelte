@@ -3,6 +3,8 @@
 	import PricingShowcase from '../_components/PricingShowcase.svelte';
 	import { plans, siteUrl } from '../_marketing';
 
+	let billingPeriod = $state<'monthly' | 'annual'>('monthly');
+
 	const sharedFeatures = [
 		'One composer with account-specific versions',
 		'Calendar, scheduling, and publishing status',
@@ -11,6 +13,10 @@
 		'HTTP API, CLI, and MCP access',
 		'Encrypted social account keys'
 	] as const;
+
+	function comparisonPrice(plan: (typeof plans)[number]) {
+		return billingPeriod === 'annual' ? `${plan.annualPrice}/year` : `${plan.price}/month`;
+	}
 
 	const comparisonRows = [
 		{ label: 'Workspaces', value: (plan: (typeof plans)[number]) => plan.workspaces },
@@ -45,7 +51,7 @@
 
 <section id="plans" class="plans-section scroll-mt-20">
 	<div class="marketing-shell">
-		<PricingShowcase />
+		<PricingShowcase bind:billingPeriod />
 	</div>
 </section>
 
@@ -73,14 +79,17 @@
 
 		<div class="mobile-limits">
 			{#each plans as plan (plan.id)}
-				<details>
+				<details data-plan-id={plan.id}>
 					<summary class="focus-ring">
-						<span><strong>{plan.name}</strong> <small>{plan.price}/month</small></span>
+						<span><strong>{plan.name}</strong> <small>{comparisonPrice(plan)}</small></span>
 						<span aria-hidden="true">+</span>
 					</summary>
 					<dl>
 						{#each comparisonRows as row (row.label)}
-							<div><dt>{row.label}</dt><dd>{row.value(plan)}</dd></div>
+							<div>
+								<dt>{row.label}</dt>
+								<dd>{row.value(plan)}</dd>
+							</div>
 						{/each}
 					</dl>
 				</details>
@@ -92,7 +101,12 @@
 				<thead>
 					<tr>
 						<th scope="col">Limit</th>
-						{#each plans as plan (plan.id)}<th scope="col">{plan.name}</th>{/each}
+						{#each plans as plan (plan.id)}
+							<th scope="col">
+								<span>{plan.name}</span>
+								<small>{comparisonPrice(plan)}</small>
+							</th>
+						{/each}
 					</tr>
 				</thead>
 				<tbody>
@@ -113,7 +127,11 @@
 		padding-block: clamp(4.5rem, 9vw, 8rem) clamp(3rem, 6vw, 5rem);
 		border-bottom: 1px solid var(--border);
 		background:
-			radial-gradient(circle at 50% 0, color-mix(in oklch, var(--primary) 14%, transparent), transparent 28rem),
+			radial-gradient(
+				circle at 50% 0,
+				color-mix(in oklch, var(--primary) 14%, transparent),
+				transparent 28rem
+			),
 			var(--background);
 	}
 
@@ -273,6 +291,18 @@
 
 	.desktop-limits th {
 		font-weight: 650;
+	}
+
+	.desktop-limits thead th span,
+	.desktop-limits thead th small {
+		display: block;
+	}
+
+	.desktop-limits thead th small {
+		margin-top: 0.3rem;
+		color: var(--muted-foreground);
+		font-size: 0.72rem;
+		font-weight: 500;
 	}
 
 	@media (min-width: 48rem) {
