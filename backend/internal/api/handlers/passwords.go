@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
@@ -409,10 +410,11 @@ func (h *AuthHandler) ChangePassword(api huma.API) {
 }
 
 func validateNewPassword(password string) error {
-	if len(password) < 12 {
+	characters := utf8.RuneCountInString(password)
+	if characters < 12 {
 		return fmt.Errorf("password must be at least 12 characters")
 	}
-	if len(password) > 1024 {
+	if characters > 1024 {
 		return fmt.Errorf("password is too long")
 	}
 	return nil

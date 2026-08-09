@@ -161,7 +161,8 @@
 
 		const isOnboardingPage = currentPath === '/onboarding';
 		if (!authState.isAuthenticated && !isPublicRoute && !isOnboardingPage) {
-			return '/login';
+			const destination = `${currentPath}${$page.url.search}${$page.url.hash}`;
+			return `/login?redirect=${encodeURIComponent(destination)}`;
 		}
 
 		if (!authState.isAuthenticated) return null;

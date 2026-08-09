@@ -2,7 +2,10 @@ package auth
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -10,6 +13,8 @@ import (
 )
 
 const TokenTTL = 7 * 24 * time.Hour
+
+const passwordHashPrefix = "$openpost$bcrypt-sha256$"
 
 type Service struct {
 	jwtSecret []byte
@@ -22,16 +27,34 @@ func NewService(jwtSecret string) *Service {
 }
 
 func (s *Service) HashPassword(password string) (string, error) {
-	bytes, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-	return string(bytes), err
+	bytes, err := bcrypt.GenerateFromPassword(prehashPassword(password), bcrypt.DefaultCost)
+	if err != nil {
+		return "", err
+	}
+	return passwordHashPrefix + string(bytes), nil
 }
 
 func (s *Service) CheckPassword(password, hash string) bool {
 	if hash == "" {
 		return false
 	}
-	err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
+	candidate := []byte(password)
+	if strings.HasPrefix(hash, passwordHashPrefix) {
+		hash = strings.TrimPrefix(hash, passwordHashPrefix)
+		candidate = prehashPassword(password)
+	}
+	err := bcrypt.CompareHashAndPassword([]byte(hash), candidate)
 	return err == nil
+}
+
+// prehashPassword lets the documented Unicode password policy exceed
+// bcrypt's 72-byte input limit. The versioned database prefix above keeps
+// existing raw-bcrypt hashes readable until the user next changes a password.
+func prehashPassword(password string) []byte {
+	digest := sha256.Sum256([]byte(password))
+	encoded := make([]byte, base64.RawStdEncoding.EncodedLen(len(digest)))
+	base64.RawStdEncoding.Encode(encoded, digest[:])
+	return encoded
 }
 
 type Claims struct {

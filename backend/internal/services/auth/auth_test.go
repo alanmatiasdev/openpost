@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"golang.org/x/crypto/bcrypt"
 )
 
 func TestNewService(t *testing.T) {
@@ -36,7 +37,8 @@ func TestHashPassword(t *testing.T) {
 	}{
 		{"simple password", "password123"},
 		{"complex password", "C0mpl3x_P@ssw0rd!"},
-		{"max length password", strings.Repeat("a", 72)},
+		{"password beyond bcrypt raw input limit", strings.Repeat("a", 1024)},
+		{"long Unicode password", strings.Repeat("🔐", 1024)},
 		{"empty password", ""},
 	}
 
@@ -55,6 +57,24 @@ func TestHashPassword(t *testing.T) {
 				t.Error("hash should not equal plaintext password")
 			}
 		})
+	}
+}
+
+func TestCheckPasswordKeepsLegacyRawBcryptHashesReadable(t *testing.T) {
+	t.Parallel()
+
+	legacyPassword := "existing-password"
+	legacyHash, err := bcrypt.GenerateFromPassword([]byte(legacyPassword), bcrypt.DefaultCost)
+	if err != nil {
+		t.Fatalf("create legacy bcrypt hash: %v", err)
+	}
+
+	service := NewService("test-secret")
+	if !service.CheckPassword(legacyPassword, string(legacyHash)) {
+		t.Fatal("expected the versioned checker to accept an existing raw bcrypt hash")
+	}
+	if service.CheckPassword("wrong-password", string(legacyHash)) {
+		t.Fatal("expected the versioned checker to reject a wrong legacy password")
 	}
 }
 

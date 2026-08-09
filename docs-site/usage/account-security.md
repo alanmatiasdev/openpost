@@ -2,15 +2,22 @@
 
 Open **Settings → Account → Security** to manage your password, authenticator app, recovery codes, passkeys, linked sign-in identities, and active browser sessions. These settings belong to your login and apply in every workspace.
 
+## Sign-in sessions
+
+Web sign-in creates a persistent, HTTP-only session cookie that expires after seven days. OpenPost does not show a cosmetic “Remember me” option because there is currently one server-enforced lifetime. Sign out when you finish on a shared device. You can review and revoke active browser sessions from **Settings → Account → Security**; revocation invalidates that session before its normal expiry.
+
 ## Set up an authenticator app
 
-1. Confirm your current password, passkey, or linked sign-in identity.
-2. Scan the QR code with a TOTP authenticator app, or enter the displayed key manually.
-3. Enter the six-digit code from the app.
-4. Copy or download the recovery codes and store them somewhere safe.
-5. Confirm that the recovery codes are saved, then enable the authenticator app.
+1. Choose **Authenticator app** as your two-factor sign-in method.
+2. Confirm your current password, passkey, or linked sign-in identity.
+3. Keep the OpenPost page open, add OpenPost in your authenticator app, and scan the QR code. If you cannot scan it, choose manual entry in the app and use **Copy setup key**. You can switch between the apps without losing the setup.
+4. Return to OpenPost and enter the current six-digit code from the app.
+5. Copy or download the recovery codes and store them somewhere safe and separate from the authenticator.
+6. Confirm that the recovery codes are saved. OpenPost then enables the authenticator app.
 
-The authenticator app is not enabled after step 3. Setup finishes only after you confirm that the recovery codes are saved. If you close or discard the one-time code list first, restart setup to get a new authenticator secret and recovery-code set.
+The setup key gives the same access as the QR code. Keep it private. If browser clipboard access is unavailable, select the read-only key field and copy it manually.
+
+The authenticator app is not enabled after step 4. Setup finishes only after you confirm that the recovery codes are saved. If you close or discard the one-time code list first, restart setup to get a new authenticator secret and recovery-code set.
 
 OpenPost displays each recovery-code set once and stores only hashes. Each code can finish one sign-in, after which it cannot be used again. Keep the codes private and separate from the device that holds your authenticator app.
 

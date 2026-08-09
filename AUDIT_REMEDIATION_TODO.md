@@ -549,28 +549,28 @@ Maintenance contract for this lane: a new social provider requires no n8n packag
 
 ### SEC-002 — Make TOTP setup instructions and fallback setup key complete
 
-- [ ] **Problem — Current source audit:** TOTP enrollment has QR and verification fundamentals, but the flow needs clearer ordered instructions, app-switch guidance, a reliably copyable manual key, recovery expectations, and a stronger final success state. Passkeys are a second strong factor, but are not a substitute for explaining TOTP setup and recovery.
+- [x] **Problem — Current source audit:** TOTP enrollment has QR and verification fundamentals, but the flow needs clearer ordered instructions, app-switch guidance, a reliably copyable manual key, recovery expectations, and a stronger final success state. Passkeys are a second strong factor, but are not a substitute for explaining TOTP setup and recovery.
 - **Fix:** use an explicit setup sequence: choose factor, re-authenticate, scan QR or copy setup key, enter code, save recovery codes, confirm enabled. State what disabling/resetting does and require recent re-authentication.
 - **Done when:** a user can complete setup without prior authenticator knowledge, QR is comfortably scannable, manual copy has accessible feedback, failure preserves safe progress, and final status names the enabled factor.
 - **Evidence:** security/MFA section in `frontend/src/routes/settings/+page.svelte`.
 
 ### AUTH-001 — Preserve protected deep links through login
 
-- [ ] **Problem — Current source:** the root layout sends an unauthenticated protected URL to bare `/login`; login only resumes a destination when a `redirect` query was already supplied.
+- [x] **Problem — Current source:** the root layout sends an unauthenticated protected URL to bare `/login`; login only resumes a destination when a `redirect` query was already supplied.
 - **Fix:** attach the exact same-origin path and query to the login redirect, validate it again after authentication, and keep external or malformed targets rejected.
 - **Done when:** `/calendar?view=week` → login → `/calendar?view=week`; manually supplied external destinations still fall back safely; direct-navigation E2E covers both.
 - **Evidence:** `frontend/src/routes/+layout.svelte:158`, `frontend/src/routes/login/+page.svelte:50`, `e2e-app/auth-onboarding.spec.ts:160`.
 
 ### AUTH-002 — Add password visibility and useful password rules
 
-- [ ] **Problem — Current source audit:** login and registration have no show/hide control; registration does not expose password rules or a useful strength/readiness cue before submission.
+- [x] **Problem — Current source audit:** login and registration have no show/hide control; registration does not expose password rules or a useful strength/readiness cue before submission.
 - **Fix:** add an accessible pressed-state visibility button to password fields; show the actual server rules before entry and update rule satisfaction without pretending a simplistic meter guarantees security.
 - **Done when:** reveal state is keyboard/screen-reader accessible, does not move focus or clear autofill, validation matches the backend, and login preserves the entered email after failure.
 - **Evidence:** `frontend/src/routes/login/+page.svelte`, `frontend/src/routes/register/+page.svelte`.
 
 ### AUTH-003 — Decide session persistence explicitly
 
-- [ ] **Problem — Conditional:** there is no “Remember me” control, but the current seven-day session is already persistent. Adding a checkbox without multiple session policies would be misleading.
+- [x] **Problem — Conditional:** there is no “Remember me” control, but the current seven-day session is already persistent. Adding a checkbox without multiple session policies would be misleading.
 - **Fix:** either document the fixed session duration and keep login focused, or implement genuinely distinct session-cookie lifetimes and explain the shared-device trade-off.
 - **Done when:** UI copy, cookie behavior, security docs, and tests agree; no cosmetic checkbox is added without server behavior.
 - **Evidence:** `backend/internal/services/auth/auth.go:12`, authentication cookie handlers in `backend/internal/api/handlers/auth.go`.

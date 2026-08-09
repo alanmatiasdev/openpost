@@ -3,9 +3,14 @@ package handlers
 import (
 	"bytes"
 	"context"
+	"crypto/subtle"
+	"encoding/base64"
 	"encoding/json"
+	"image/png"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -82,6 +87,28 @@ func TestTOTPRecoveryCodeLifecycle(t *testing.T) {
 	require.NoError(t, json.Unmarshal(setup.Body.Bytes(), &setupBody.Body))
 	require.NotEmpty(t, setupBody.Body.ChallengeID)
 	require.NotEmpty(t, setupBody.Body.ManualEntryKey)
+	setupURI, err := url.Parse(setupBody.Body.OTPAuthURL)
+	if err != nil {
+		t.Fatal("authenticator setup URI must be parseable")
+	}
+	require.Equal(t, "otpauth", setupURI.Scheme)
+	require.Equal(t, "totp", setupURI.Host)
+	require.Equal(t, "/OpenPost:user@example.com", setupURI.Path)
+	require.Equal(t, "OpenPost", setupURI.Query().Get("issuer"))
+	if subtle.ConstantTimeCompare(
+		[]byte(setupBody.Body.ManualEntryKey),
+		[]byte(setupURI.Query().Get("secret")),
+	) != 1 {
+		t.Fatal("manual setup key must match the QR setup URI secret")
+	}
+	encodedQRCode, found := strings.CutPrefix(setupBody.Body.QRCodeDataURL, "data:image/png;base64,")
+	if !found {
+		t.Fatal("authenticator setup must return a PNG data URL")
+	}
+	qrCodePNG, err := base64.StdEncoding.DecodeString(encodedQRCode)
+	require.NoError(t, err)
+	_, err = png.Decode(bytes.NewReader(qrCodePNG))
+	require.NoError(t, err)
 	prematureEnable := recoveryJSONRequest(t, e, "/api/v1/auth/security/totp/enable", map[string]any{
 		"challenge_id":         setupBody.Body.ChallengeID,
 		"recovery_codes_saved": true,

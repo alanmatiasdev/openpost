@@ -13,7 +13,7 @@ function decodeBase32(value: string): Buffer {
   let bits = "";
   for (const character of value.replace(/=+$/u, "").toUpperCase()) {
     const index = base32Alphabet.indexOf(character);
-    if (index < 0) throw new Error(`Invalid base32 character: ${character}`);
+    if (index < 0) throw new Error("Invalid Base32 setup value");
     bits += index.toString(2).padStart(5, "0");
   }
 
@@ -43,7 +43,7 @@ function currentTOTP(secret: string): string {
 async function beginPasswordMFA(page: Page, email: string) {
   await page.goto("/login");
   await page.getByLabel("Email", { exact: true }).fill(email);
-  await page.getByLabel("Password").fill(password);
+  await page.getByLabel("Password", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Sign In" }).click();
   await expect(
     page.getByRole("heading", { name: "Verify your identity" }),
@@ -66,6 +66,7 @@ test("recovery codes gate authenticator setup, replace exactly once, and recover
 }) => {
   test.setTimeout(90_000);
   await page.setViewportSize({ width: 320, height: 800 });
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   const consoleErrors: string[] = [];
   page.on("console", (message) => {
     if (
@@ -84,14 +85,58 @@ test("recovery codes gate authenticator setup, replace exactly once, and recover
   await page.goto("/settings?tab=security");
 
   const authenticator = page.getByTestId("authenticator-security-card");
+  const setupSteps = authenticator.getByTestId("totp-setup-steps");
+  await expect(setupSteps.locator("li")).toHaveCount(6);
+  await expect(setupSteps).toContainText(
+    "Verify your identity with your current password or another sign-in method.",
+  );
+  await expect(setupSteps).toContainText(
+    "Save the one-time recovery codes somewhere separate from your authenticator.",
+  );
   await authenticator.getByLabel("Current password").fill(password);
   await authenticator
     .getByRole("button", { name: "Start authenticator setup" })
     .click();
 
-  const manualKey = (
-    await authenticator.getByTestId("totp-manual-entry-key").innerText()
-  ).trim();
+  await expect(
+    authenticator.getByText(
+      "Keep this page open. You can switch to your authenticator app and return without losing this setup.",
+    ),
+  ).toBeVisible();
+  const qrCode = authenticator.getByTestId("totp-setup-qr-code");
+  await expect(qrCode).toHaveAttribute("src", /^data:image\/png;base64,/u);
+  const qrCodeBounds = await qrCode.boundingBox();
+  expect((qrCodeBounds?.width ?? 0) >= 220).toBe(true);
+  expect((qrCodeBounds?.height ?? 0) >= 220).toBe(true);
+
+  const manualKeyInput = authenticator.getByTestId("totp-manual-entry-key");
+  const manualKey = await manualKeyInput.inputValue();
+  expect(manualKey.length > 0).toBe(true);
+  await authenticator.getByRole("button", { name: "Copy setup key" }).click();
+  await expect(authenticator.getByText("Setup key copied.")).toBeVisible();
+  const clipboardMatches = await page.evaluate(
+    async (expectedValue) =>
+      (await navigator.clipboard.readText()) === expectedValue,
+    manualKey,
+  );
+  expect(clipboardMatches).toBe(true);
+
+  const initialCode = currentTOTP(manualKey);
+  const rejectedCode = `${initialCode.startsWith("0") ? "1" : "0"}${initialCode.slice(1)}`;
+  await authenticator
+    .getByLabel("Enter the 6-digit code from your app")
+    .fill(rejectedCode);
+  await authenticator
+    .getByRole("button", { name: "Verify authenticator app" })
+    .click();
+  await expect(
+    authenticator.getByText("invalid authenticator code"),
+  ).toBeVisible();
+  await expect(qrCode).toBeVisible();
+  expect((await manualKeyInput.inputValue()) === manualKey).toBe(true);
+  // The deliberately rejected code produces the browser's expected 400 resource log.
+  consoleErrors.length = 0;
+
   await authenticator
     .getByLabel("Enter the 6-digit code from your app")
     .fill(currentTOTP(manualKey));
@@ -133,6 +178,11 @@ test("recovery codes gate authenticator setup, replace exactly once, and recover
   await expect(recoveryPanel).toHaveCount(0);
   await expect(
     authenticator.getByText("Authenticator app is enabled."),
+  ).toBeVisible();
+  await expect(
+    authenticator.getByText(
+      "Your authenticator app is now an enabled sign-in factor. Password sign-ins require its six-digit code or a one-time recovery code.",
+    ),
   ).toBeVisible();
 
   const managementPassword = authenticator.getByLabel("Current password");
@@ -221,7 +271,7 @@ test("recovery codes gate authenticator setup, replace exactly once, and recover
   await clearSession(page);
   await page.goto("/login");
   await page.getByLabel("Email", { exact: true }).fill(email);
-  await page.getByLabel("Password").fill(password);
+  await page.getByLabel("Password", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Sign In" }).click();
   await expect(page).toHaveURL(/\/$/u);
   await expect(

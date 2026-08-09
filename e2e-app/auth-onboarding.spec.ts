@@ -166,11 +166,117 @@ test("login honors same-origin redirects for existing workspaces", async ({
     `/login?redirect=${encodeURIComponent("/settings?tab=plan")}`,
   );
   await page.getByLabel("Email", { exact: true }).fill(email);
-  await page.getByLabel("Password").fill(password);
+  await page.getByLabel("Password", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Sign In" }).click();
 
   await expect(page).toHaveURL(/\/settings\?tab=plan$/);
   await expect(page.getByRole("heading", { name: "Billing" })).toBeVisible();
+});
+
+test("protected navigation carries its exact destination through login", async ({
+  page,
+  request,
+}) => {
+  const unique = Date.now().toString(36);
+  const email = `auth-deep-link-${unique}@example.com`;
+  const auth = await registerUser(request, email);
+  await createWorkspace(request, auth.token, "Deep Link E2E");
+
+  await page.goto("/calendar?view=week");
+  await expect(page).toHaveURL(/\/login\?redirect=/);
+  expect(new URL(page.url()).searchParams.get("redirect")).toBe(
+    "/calendar?view=week",
+  );
+  await page.getByLabel("Email", { exact: true }).fill(email);
+  await page.getByLabel("Password", { exact: true }).fill(password);
+  await page.getByRole("button", { name: "Sign In" }).click();
+
+  await expect(page).toHaveURL(/\/calendar\?view=week$/);
+
+  await page.context().clearCookies();
+  await page.goto(
+    `/login?redirect=${encodeURIComponent("https://example.com/steal")}`,
+  );
+  await expect(page).toHaveURL(/\/login\?redirect=/);
+  await page.getByLabel("Email", { exact: true }).fill(email);
+  await page.getByLabel("Password", { exact: true }).fill(password);
+  await page.getByRole("button", { name: "Sign In" }).click();
+  await expect(page).toHaveURL(/\/$/);
+  expect(new URL(page.url()).origin).not.toBe("https://example.com");
+});
+
+test("password controls expose the real rules without losing entered values", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 320, height: 720 });
+  await page.route("**/api/v1/auth/config", (route) =>
+    route.fulfill({
+      json: {
+        registration_enabled: true,
+        password_reset_enabled: true,
+        email_verification_required: false,
+        legal_acceptance_required: false,
+      },
+    }),
+  );
+  await page.route("**/api/v1/auth/oidc/providers", (route) =>
+    route.fulfill({ json: [] }),
+  );
+  await page.route("**/api/v1/auth/login", (route) =>
+    route.fulfill({
+      status: 401,
+      contentType: "application/problem+json",
+      json: {
+        status: 401,
+        title: "Unauthorized",
+        detail: "invalid credentials",
+      },
+    }),
+  );
+
+  await page.goto("/login");
+  const loginEmail = page.getByLabel("Email", { exact: true });
+  const loginPassword = page.getByLabel("Password", { exact: true });
+  await loginEmail.fill("person@example.com");
+  await loginPassword.fill("entered-password");
+
+  const showLoginPassword = page.getByRole("button", { name: "Show password" });
+  await showLoginPassword.focus();
+  await expect(showLoginPassword).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(
+    page.getByRole("button", { name: "Hide password" }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await expect(loginPassword).toHaveAttribute("type", "text");
+  await expect(loginPassword).toHaveValue("entered-password");
+
+  await page.getByRole("button", { name: "Sign In" }).click();
+  await expect(page.getByText("invalid credentials")).toBeVisible();
+  await expect(loginEmail).toHaveValue("person@example.com");
+
+  await page.goto("/register");
+  await expect(page.getByText("At least 12 characters")).toBeVisible();
+  await expect(page.getByText("No more than 1,024 characters")).toBeVisible();
+  await expect(page.getByText("Both password fields match")).toBeVisible();
+
+  const registrationPassword = page.getByLabel("Password", { exact: true });
+  const confirmation = page.getByLabel("Confirm Password");
+  await registrationPassword.fill(password);
+  await confirmation.fill(password);
+  await expect(
+    page.getByText("Both password fields match").locator(".."),
+  ).toContainText("Satisfied:");
+
+  const revealButtons = page.getByRole("button", { name: "Show password" });
+  await expect(revealButtons).toHaveCount(2);
+  await revealButtons.last().click();
+  await expect(confirmation).toHaveAttribute("type", "text");
+  await expect(confirmation).toHaveValue(password);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
 });
 
 test("Google signup lets existing accounts resume without onboarding checkout", async ({

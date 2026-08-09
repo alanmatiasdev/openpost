@@ -35,6 +35,7 @@
 	import type { ImageEditorBrandKit } from '$lib/image-editor/types';
 	import { createPasskeyCredential } from '$lib/auth/webauthn';
 	import { acquireReauthGrant, startOIDCIdentityLink } from '$lib/auth/reauth';
+	import { copyAuthenticatorSetupKey, isAuthenticatorCodeReady } from '$lib/authenticator-setup';
 	import LoaderIcon from 'lucide-svelte/icons/loader-2';
 	import SettingsIcon from 'lucide-svelte/icons/settings';
 	import ClockIcon from 'lucide-svelte/icons/clock';
@@ -130,6 +131,8 @@
 	let totpManualEntryKey = $state('');
 	let totpQRCodeDataURL = $state('');
 	let totpCode = $state('');
+	let totpSetupError = $state('');
+	let totpSetupKeyCopyState = $state<'idle' | 'copied' | 'failed'>('idle');
 	let recoveryCodeFlow = $state<RecoveryCodeFlow | null>(null);
 	let recoveryCodeChallengeId = $state('');
 	let recoveryCodes = $state.raw<string[]>([]);
@@ -1138,6 +1141,7 @@
 	async function startTOTPSetup() {
 		securityBusy = true;
 		securityError = '';
+		totpSetupError = '';
 		try {
 			const grant = hasPasswordCredential
 				? ''
@@ -1158,9 +1162,10 @@
 			totpManualEntryKey = data.manual_entry_key;
 			totpQRCodeDataURL = data.qr_code_data_url;
 			totpCode = '';
+			totpSetupKeyCopyState = 'idle';
 			totpCurrentPassword = '';
 		} catch (e) {
-			securityError = (e as Error).message;
+			totpSetupError = (e as Error).message;
 		} finally {
 			securityBusy = false;
 		}
@@ -1170,6 +1175,7 @@
 		if (!totpSetupChallengeId) return;
 		securityBusy = true;
 		securityError = '';
+		totpSetupError = '';
 		try {
 			const { data, error: err } = await client.POST('/auth/security/totp/confirm', {
 				body: {
@@ -1188,8 +1194,9 @@
 			totpManualEntryKey = '';
 			totpQRCodeDataURL = '';
 			totpCode = '';
+			totpSetupKeyCopyState = 'idle';
 		} catch (e) {
-			securityError = (e as Error).message;
+			totpSetupError = (e as Error).message;
 		} finally {
 			securityBusy = false;
 		}
@@ -1207,6 +1214,15 @@
 		totpManualEntryKey = '';
 		totpQRCodeDataURL = '';
 		totpCode = '';
+		totpSetupError = '';
+		totpSetupKeyCopyState = 'idle';
+	}
+
+	async function copyTOTPSetupKey() {
+		const copied = await copyAuthenticatorSetupKey(totpManualEntryKey, (value) =>
+			navigator.clipboard.writeText(value)
+		);
+		totpSetupKeyCopyState = copied ? 'copied' : 'failed';
 	}
 
 	function cancelTOTPSetup() {
@@ -3261,9 +3277,10 @@
 
 									{#if securityStatus?.totp_enabled}
 										<div class="space-y-3">
-											<div class="rounded-md bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700">
-												{m.settings_authenticator_enabled()}
-											</div>
+											<InlineNotice tone="success">
+												<p class="font-medium">{m.settings_authenticator_enabled()}</p>
+												<p class="mt-1">{m.settings_totp_setup_enabled_body()}</p>
+											</InlineNotice>
 											{#if recoveryCodeFlow === 'regenerate' && recoveryCodes.length > 0}
 												{@render recoveryCodePanel()}
 											{:else}
@@ -3336,29 +3353,99 @@
 										</div>
 									{:else}
 										<div class="space-y-3">
+											<div
+												class="rounded-md border bg-muted/20 px-3 py-3"
+												data-testid="totp-setup-steps"
+											>
+												<p class="mb-2 text-sm font-medium">
+													{m.settings_totp_setup_steps_label()}
+												</p>
+												<ol
+													class="list-decimal space-y-1.5 pl-5 text-sm leading-5 text-muted-foreground marker:font-medium marker:text-foreground"
+												>
+													<li>{m.settings_totp_setup_step_choose()}</li>
+													<li>{m.settings_totp_setup_step_reauth()}</li>
+													<li>{m.settings_totp_setup_step_add()}</li>
+													<li>{m.settings_totp_setup_step_code()}</li>
+													<li>{m.settings_totp_setup_step_recovery()}</li>
+													<li>{m.settings_totp_setup_step_complete()}</li>
+												</ol>
+											</div>
+											{#if totpSetupError}
+												<InlineNotice tone="error" message={totpSetupError} />
+											{/if}
 											{#if recoveryCodeFlow === 'setup' && recoveryCodes.length > 0}
 												{@render recoveryCodePanel()}
 											{:else if totpSetupChallengeId}
 												<div
-													class="space-y-3 rounded-lg border bg-muted/20 p-4"
+													class="space-y-4 rounded-lg border bg-muted/20 p-3 sm:p-4"
 													data-feedback-redact
 												>
-													<img
-														src={totpQRCodeDataURL}
-														alt={m.settings_totp_qr_alt()}
-														class="mx-auto h-48 w-48 max-w-full rounded-lg border bg-white p-2"
-													/>
-													<div class="space-y-1">
-														<p class="text-sm font-medium">{m.settings_manual_key()}</p>
+													<InlineNotice tone="info" message={m.settings_totp_setup_keep_open()} />
+													<div class="space-y-2">
+														<div>
+															<p class="text-sm font-medium">
+																{m.settings_totp_setup_scan_title()}
+															</p>
+															<p class="mt-1 text-sm leading-5 text-muted-foreground">
+																{m.settings_totp_setup_scan_body()}
+															</p>
+														</div>
+														<img
+															src={totpQRCodeDataURL}
+															alt={m.settings_totp_setup_qr_alt()}
+															class="mx-auto size-56 max-w-full rounded-lg border bg-white p-2"
+															data-testid="totp-setup-qr-code"
+														/>
+													</div>
+													<div class="space-y-2">
+														<div>
+															<Label for="totp-manual-entry-key">{m.settings_manual_key()}</Label>
+															<p
+																id="totp-manual-entry-key-help"
+																class="mt-1 text-sm leading-5 text-muted-foreground"
+															>
+																{m.settings_totp_setup_manual_body()}
+															</p>
+														</div>
+														<div class="flex flex-col gap-2 sm:flex-row">
+															<Input
+																id="totp-manual-entry-key"
+																value={totpManualEntryKey}
+																readonly
+																aria-describedby="totp-manual-entry-key-help totp-manual-entry-key-status"
+																class="font-mono text-xs tracking-wide"
+																data-testid="totp-manual-entry-key"
+																onfocus={(event) => event.currentTarget.select()}
+															/>
+															<Button
+																type="button"
+																variant="outline"
+																class="shrink-0"
+																onclick={() => void copyTOTPSetupKey()}
+															>
+																<CopyIcon class="mr-2 size-4" />
+																{m.settings_totp_setup_copy_key()}
+															</Button>
+														</div>
 														<p
-															class="font-mono text-xs break-all text-muted-foreground"
-															data-testid="totp-manual-entry-key"
+															id="totp-manual-entry-key-status"
+															class="text-xs text-muted-foreground"
+															role="status"
+															aria-live="polite"
 														>
-															{totpManualEntryKey}
+															{#if totpSetupKeyCopyState === 'copied'}
+																{m.settings_totp_setup_key_copied()}
+															{:else if totpSetupKeyCopyState === 'failed'}
+																{m.settings_totp_setup_key_copy_failed()}
+															{/if}
 														</p>
 													</div>
 													<div class="space-y-2">
 														<Label for="totp-code">{m.settings_totp_code()}</Label>
+														<p class="text-sm leading-5 text-muted-foreground">
+															{m.settings_totp_setup_code_body()}
+														</p>
 														<Input
 															id="totp-code"
 															bind:value={totpCode}
@@ -3367,13 +3454,14 @@
 															pattern="[0-9]{6}"
 															maxlength={6}
 															placeholder="123456"
+															oninput={() => (totpSetupError = '')}
 														/>
 													</div>
 													<div class="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
 														<Button
 															type="button"
 															onclick={() => void confirmTOTPSetup()}
-															disabled={securityBusy || !/^\d{6}$/.test(totpCode)}
+															disabled={securityBusy || !isAuthenticatorCodeReady(totpCode)}
 														>
 															{m.settings_verify_authenticator()}
 														</Button>

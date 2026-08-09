@@ -6,11 +6,12 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
+	import PasswordField from '$lib/components/password-field.svelte';
 	import InlineNotice from '$lib/components/inline-notice.svelte';
 	import StandaloneShell from '$lib/components/standalone-shell.svelte';
-	import LoaderIcon from 'lucide-svelte/icons/loader-2';
-	import ShieldIcon from 'lucide-svelte/icons/shield';
-	import KeyRoundIcon from 'lucide-svelte/icons/key-round';
+	import LoaderIcon from '@lucide/svelte/icons/loader-2';
+	import ShieldIcon from '@lucide/svelte/icons/shield';
+	import KeyRoundIcon from '@lucide/svelte/icons/key-round';
 	import { m } from '$lib/paraglide/messages';
 	import { safeSameOriginRedirect } from '$lib/redirects';
 	import { onMount } from 'svelte';
@@ -19,7 +20,7 @@
 	import AuthProviderButtons from '$lib/components/auth-provider-buttons.svelte';
 	import { getApiBase } from '$lib/stores/instance.svelte';
 	import { IS_CAPACITOR } from '$lib/env';
-	import BuildingIcon from 'lucide-svelte/icons/building-2';
+	import BuildingIcon from '@lucide/svelte/icons/building-2';
 
 	let email = $state('');
 	let password = $state('');
@@ -348,17 +349,16 @@
 				/>
 			</div>
 
-			<div class="space-y-2">
-				<Label for="password">{m.common_password()}</Label>
-				<Input
-					type="password"
-					id="password"
-					bind:value={password}
-					required
-					autocomplete="current-password"
-					placeholder="••••••••"
-				/>
-			</div>
+			<PasswordField
+				id="password"
+				label={m.common_password()}
+				bind:value={password}
+				required
+				autocomplete="current-password"
+				placeholder="••••••••"
+			/>
+
+			<p class="text-sm leading-6 text-muted-foreground">{m.auth_login_session_notice()}</p>
 
 			{#if authConfiguration?.password_reset_enabled}
 				<div class="-mt-2 text-right">

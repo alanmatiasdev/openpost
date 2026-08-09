@@ -7,9 +7,10 @@
 	import { Checkbox } from '$lib/components/ui/checkbox';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
+	import PasswordField from '$lib/components/password-field.svelte';
 	import InlineNotice from '$lib/components/inline-notice.svelte';
 	import StandaloneShell from '$lib/components/standalone-shell.svelte';
-	import LoaderIcon from 'lucide-svelte/icons/loader-2';
+	import LoaderIcon from '@lucide/svelte/icons/loader-2';
 	import { m } from '$lib/paraglide/messages';
 	import { onboardingPathForPlan } from '$lib/billing';
 	import { safeSameOriginRedirect } from '$lib/redirects';
@@ -18,6 +19,13 @@
 	import { client, type AuthConfiguration } from '$lib/api/client';
 	import type { OIDCProvider } from '$lib/api/client';
 	import AuthProviderButtons from '$lib/components/auth-provider-buttons.svelte';
+	import CheckIcon from '@lucide/svelte/icons/check';
+	import CircleIcon from '@lucide/svelte/icons/circle';
+	import {
+		PASSWORD_MAX_CHARACTERS,
+		PASSWORD_MIN_CHARACTERS,
+		passwordCharacterCount
+	} from '$lib/password-policy';
 
 	let email = $state('');
 	let password = $state('');
@@ -29,6 +37,12 @@
 	let configurationLoading = $state(true);
 	let oidcProviders = $state.raw<OIDCProvider[]>([]);
 	const signupProviders = $derived(oidcProviders.filter((provider) => provider.kind === 'oauth'));
+	const passwordLength = $derived(passwordCharacterCount(password));
+	const passwordHasMinimum = $derived(passwordLength >= PASSWORD_MIN_CHARACTERS);
+	const passwordWithinMaximum = $derived(
+		passwordLength > 0 && passwordLength <= PASSWORD_MAX_CHARACTERS
+	);
+	const passwordsMatch = $derived(confirmPassword.length > 0 && confirmPassword === password);
 
 	async function loadConfiguration() {
 		configurationLoading = true;
@@ -86,8 +100,13 @@
 			return;
 		}
 
-		if (password.length < 12) {
+		if (passwordLength < PASSWORD_MIN_CHARACTERS) {
 			error = m.auth_register_password_short();
+			return;
+		}
+
+		if (passwordLength > PASSWORD_MAX_CHARACTERS) {
+			error = m.auth_register_password_long();
 			return;
 		}
 
@@ -167,31 +186,44 @@
 			/>
 		</div>
 
-		<div class="space-y-2">
-			<Label for="password">{m.common_password()}</Label>
-			<Input
-				type="password"
-				id="password"
-				bind:value={password}
-				required
-				minlength={12}
-				autocomplete="new-password"
-				placeholder={m.auth_password_min_placeholder()}
-			/>
+		<PasswordField
+			id="password"
+			label={m.common_password()}
+			bind:value={password}
+			required
+			autocomplete="new-password"
+			placeholder={m.auth_password_min_placeholder()}
+			describedby="password-rules"
+		/>
+
+		<div id="password-rules" class="rounded-md border bg-muted/20 p-3 text-sm">
+			<p class="font-medium">{m.auth_password_rules_heading()}</p>
+			<ul class="mt-2 space-y-2" aria-live="polite">
+				{#each [{ met: passwordHasMinimum, label: m.auth_password_rule_minimum() }, { met: passwordWithinMaximum, label: m.auth_password_rule_maximum() }, { met: passwordsMatch, label: m.auth_password_rule_match() }] as rule (rule.label)}
+					<li class="flex items-center gap-2" class:text-muted-foreground={!rule.met}>
+						{#if rule.met}
+							<CheckIcon class="size-4 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
+						{:else}
+							<CircleIcon class="size-4" aria-hidden="true" />
+						{/if}
+						<span class="sr-only">
+							{rule.met ? m.auth_password_rule_met() : m.auth_password_rule_pending()}
+						</span>
+						<span>{rule.label}</span>
+					</li>
+				{/each}
+			</ul>
 		</div>
 
-		<div class="space-y-2">
-			<Label for="confirmPassword">{m.auth_confirm_password()}</Label>
-			<Input
-				type="password"
-				id="confirmPassword"
-				bind:value={confirmPassword}
-				required
-				minlength={12}
-				autocomplete="new-password"
-				placeholder={m.auth_password_confirm_placeholder()}
-			/>
-		</div>
+		<PasswordField
+			id="confirmPassword"
+			label={m.auth_confirm_password()}
+			bind:value={confirmPassword}
+			required
+			autocomplete="new-password"
+			placeholder={m.auth_password_confirm_placeholder()}
+			describedby="password-rules"
+		/>
 
 		{#if authConfiguration?.legal_acceptance_required}
 			<div class="flex items-start gap-3 rounded-md border p-3">

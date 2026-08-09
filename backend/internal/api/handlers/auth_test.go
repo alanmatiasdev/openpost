@@ -369,6 +369,22 @@ func TestAuthSessionStateSupportsAnonymousAndAuthenticatedRequests(t *testing.T)
 	require.False(t, invalidBody.Body.Authenticated)
 }
 
+func TestSessionCookieUsesTheDocumentedPersistentLifetime(t *testing.T) {
+	t.Parallel()
+
+	expiresAt := time.Now().UTC().Add(auth.TokenTTL)
+	cookie := sessionCookie("signed-token", expiresAt, true)
+
+	require.Equal(t, "openpost_session", cookie.Name)
+	require.Equal(t, "signed-token", cookie.Value)
+	require.Equal(t, "/", cookie.Path)
+	require.True(t, cookie.HttpOnly)
+	require.True(t, cookie.Secure)
+	require.Equal(t, http.SameSiteLaxMode, cookie.SameSite)
+	require.WithinDuration(t, expiresAt, cookie.Expires, time.Second)
+	require.InDelta(t, auth.TokenTTL.Seconds(), cookie.MaxAge, 2)
+}
+
 func authSessionRequest(t *testing.T, e *echo.Echo, method, path, token string) *httptest.ResponseRecorder {
 	t.Helper()
 
