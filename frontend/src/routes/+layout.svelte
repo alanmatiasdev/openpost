@@ -50,6 +50,7 @@
 	let currentPath = $derived($page.url.pathname);
 	let isPreviewRoute = $derived(currentPath === '/preview');
 	let isPublicProfileRoute = $derived(currentPath.startsWith('/u/'));
+	let isErrorRoute = $derived($page.status >= 400);
 	let isManagedEdition = $state(false);
 	const publicRoutes = [
 		'/login',
@@ -89,6 +90,7 @@
 	];
 	let isStandaloneRoute = $derived(
 		standaloneRoutes.includes(currentPath) ||
+			isErrorRoute ||
 			isPublicProfileRoute ||
 			currentPath === '/image-editor' ||
 			currentPath.startsWith('/image-editor/') ||
@@ -103,6 +105,7 @@
 	);
 	let isPublicRoute = $derived(
 		currentPath === '/' ||
+			isErrorRoute ||
 			isPublicProfileRoute ||
 			isPublicImageEditorRoute ||
 			isPublicVideoEditorRoute ||
@@ -114,8 +117,8 @@
 	let onboardingCheckedPath = $state('');
 	let onboardingCheckInFlightForPath = $state('');
 	let ssoChallengeInFlight = $state(false);
-	let routeOwnsWorkspaceBootstrap = $derived(
-		currentPath === '/onboarding' || currentPath === '/checkout'
+	let routeSkipsWorkspaceBootstrap = $derived(
+		currentPath === '/onboarding' || currentPath === '/checkout' || isErrorRoute
 	);
 
 	function authenticatedPublicTarget() {
@@ -172,7 +175,7 @@
 				? '/'
 				: target;
 		}
-		if (!onboardingChecked && !routeOwnsWorkspaceBootstrap) return null;
+		if (!onboardingChecked && !routeSkipsWorkspaceBootstrap) return null;
 
 		if (needsOnboarding) {
 			if (
@@ -334,7 +337,7 @@
 	}
 
 	$effect(() => {
-		if (isPublicProfileRoute || routeOwnsWorkspaceBootstrap) return;
+		if (isPublicProfileRoute || routeSkipsWorkspaceBootstrap) return;
 		if (
 			authState.isLoading ||
 			!authState.isAuthenticated ||
@@ -368,7 +371,7 @@
 <Toaster position="bottom-center" richColors closeButton />
 {#if isPreviewRoute}
 	{@render children()}
-{:else if instance.isLoading || authState.isLoading || pendingRedirect || ssoChallengeInFlight || (!isPublicProfileRoute && !routeOwnsWorkspaceBootstrap && authState.isAuthenticated && !authState.user?.legal_acceptance_required && !onboardingChecked)}
+{:else if instance.isLoading || authState.isLoading || pendingRedirect || ssoChallengeInFlight || (!isPublicProfileRoute && !routeSkipsWorkspaceBootstrap && authState.isAuthenticated && !authState.user?.legal_acceptance_required && !onboardingChecked)}
 	<AppLoading label={m.common_loading()} />
 {:else if !authState.isAuthenticated}
 	{#if !isPublicProfileRoute && !(currentPath === '/' && isManagedEdition) && currentPath !== '/image-editor' && !currentPath.startsWith('/image-editor/') && !currentPath.startsWith('/video-editor')}
