@@ -154,6 +154,14 @@
       "dependencies": {
         "@lucide/svelte": "^0.577.0",
       },
+      "devDependencies": {
+        "@sveltejs/vite-plugin-svelte": "^6.2.4",
+        "@vitest/browser-playwright": "^4.1.10",
+        "playwright": "^1.58.2",
+        "vite": "^7.3.1",
+        "vitest": "^4.1.10",
+        "vitest-browser-svelte": "^2.2.1",
+      },
       "peerDependencies": {
         "svelte": "^5.0.0",
       },

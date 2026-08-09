@@ -1159,7 +1159,7 @@ These tasks are deliberately lower priority. Remove only code proven unreachable
 
 ### CLEAN-FE-002 — Move preview tests before deleting the dead wrapper
 
-- [ ] Move broad behavior tests from production-dead `platform-preview.svelte` into `packages/social-preview`, then delete the wrapper.
+- [x] Move broad behavior tests from production-dead `platform-preview.svelte` into `packages/social-preview`, then delete the wrapper.
 - **Done when:** package-level coverage still proves every supported platform presentation and no shipped import remains.
 - **Evidence:** `frontend/src/lib/components/platform-preview.svelte`.
 
