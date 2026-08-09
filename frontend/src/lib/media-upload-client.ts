@@ -118,20 +118,6 @@ export async function uploadMediaFile({
 	}
 }
 
-export async function uploadMediaFiles(
-	workspaceId: string,
-	files: FileList | File[],
-	onProgress?: (uploaded: number, total: number) => void
-): Promise<MediaUploadResult[]> {
-	const selectedFiles = Array.from(files).filter(isSupportedMediaFile);
-	const results: MediaUploadResult[] = [];
-	for (const file of selectedFiles) {
-		results.push(await uploadMediaFile({ workspaceId, file }));
-		onProgress?.(results.length, selectedFiles.length);
-	}
-	return results;
-}
-
 export function isSupportedMediaFile(file: File): boolean {
 	return (
 		file.type.startsWith('image/') ||

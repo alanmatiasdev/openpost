@@ -1165,7 +1165,7 @@ These tasks are deliberately lower priority. Remove only code proven unreachable
 
 ### CLEAN-FE-003 — Prune confirmed unused frontend exports
 
-- [ ] Remove imports/re-exports and then delete: `countTotalChars`, `getPostMediaIdsForSave`, `deleteImageEditorTemplate`, `getInstanceUrl`, `settingsPathForPlan`, `ScheduleOverview`, `AuthResponse`, `cleanupDaysOptions`, `uploadMediaFiles`, `cloneProjectDocument`, `hashVideoSource`, `cloudDocumentForTest`, `EXPORT_MINIMUM_BITRATES`, and `ExportJob`.
+- [x] Remove imports/re-exports and then delete: `countTotalChars`, `getPostMediaIdsForSave`, `deleteImageEditorTemplate`, `getInstanceUrl`, `settingsPathForPlan`, `ScheduleOverview`, `AuthResponse`, `cleanupDaysOptions`, `uploadMediaFiles`, `cloneProjectDocument`, `hashVideoSource`, `cloudDocumentForTest`, `EXPORT_MINIMUM_BITRATES`, and `ExportJob`.
 - **Done when:** TypeScript/Knip with appropriate dynamic/generated allowlists is green and public contracts are unchanged.
 
 ### CLEAN-MKT-001 — Prune unreachable marketing/package/script assets

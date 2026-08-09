@@ -152,14 +152,3 @@ export function getDraftSnapshot(posts: PostItem[]): string {
 export function hasAnyContent(posts: PostItem[]): boolean {
 	return posts.some((p) => p.content.trim().length > 0 || p.mediaIds.length > 0);
 }
-
-export function countTotalChars(posts: PostItem[]): number {
-	return posts.reduce((sum, p) => sum + p.content.length, 0);
-}
-
-export function getPostMediaIdsForSave(posts: PostItem[], isThread: boolean): string[] {
-	if (isThread) {
-		return posts.flatMap((p) => p.mediaIds);
-	}
-	return posts[0]?.mediaIds ?? [];
-}

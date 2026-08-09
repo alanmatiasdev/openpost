@@ -164,18 +164,6 @@ export interface ModelCacheMetadata {
 	last_used_at: string;
 }
 
-export interface ExportJob {
-	id: string;
-	project_id: string;
-	variant_id: string;
-	state: 'queued' | 'rendering' | 'complete' | 'cancelled' | 'failed';
-	progress: number;
-	output_path?: string;
-	error?: string;
-	created_at: string;
-	updated_at: string;
-}
-
 export interface VideoEditorCapabilities {
 	supported: boolean;
 	editorMode: 'full' | 'compact' | 'preview';

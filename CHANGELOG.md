@@ -16,6 +16,7 @@ All notable changes to this project are documented in this file.
 
 ### Changed
 
+- Removed confirmed unused frontend helper exports and convenience types after proving no static, namespace, dynamic, glob, or package-export consumer remained.
 - Removed unused drawer and scroll-area UI primitives, duplicate sidebar constants, empty frontend barrels, and the now-unneeded `vaul-svelte` dependency after proving the shipped import graph no longer reaches them.
 - Made each new CLI authorization request expire older pending device sessions, and made transactional workspace deletion the sole owner of removing that workspace's media-cleanup jobs.
 - Removed obsolete CLI post-write and API-token creation wrappers, and kept MCP stdio framing helpers private to the production proxy implementation.

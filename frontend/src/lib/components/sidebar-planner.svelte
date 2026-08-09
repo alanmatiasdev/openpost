@@ -5,7 +5,7 @@
 	import type { CalendarDate } from '@internationalized/date';
 	import { tick, untrack } from 'svelte';
 	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
-	import { client, type ScheduleOverview } from '$lib/api/client';
+	import { client } from '$lib/api/client';
 	import { prefetchDraftComposerData } from '$lib/api/performance-cache';
 	import type { components } from '$lib/api/types';
 	import { workspaceClock } from '$lib/components/compose/schedule-timezone';
@@ -26,6 +26,7 @@
 	let { onNavigate }: { onNavigate: (href: string) => void } = $props();
 
 	type Publication = components['schemas']['PublicationResponse'];
+	type PlannerOverview = components['schemas']['ScheduleOverviewOutputBody'];
 	type PlannerDraft = {
 		id: string;
 		revision: number;
@@ -149,7 +150,7 @@
 		for (const month of requestedMonths) pendingOverviewMonths.add(month);
 		try {
 			const overviews = await Promise.all(
-				requestedMonths.map(async (month): Promise<[string, ScheduleOverview]> => {
+				requestedMonths.map(async (month): Promise<[string, PlannerOverview]> => {
 					const { data, error } = await client.GET('/posts/schedule-overview', {
 						params: { query: { workspace_id: currentWorkspaceId, month } }
 					});

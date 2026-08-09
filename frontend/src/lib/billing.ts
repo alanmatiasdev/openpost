@@ -110,7 +110,3 @@ export function checkoutPathForPlan(
 	});
 	return `/checkout?${query}`;
 }
-
-export function settingsPathForPlan(planID: string | null | undefined): string {
-	return checkoutPathForPlan(planID);
-}

@@ -24,10 +24,6 @@ function normalizeUrl(raw: string): string {
 	return url.replace(/\/+$/, '');
 }
 
-export function getInstanceUrl(): string | null {
-	return instanceUrl;
-}
-
 export function getApiBase(): string {
 	if (IS_CAPACITOR && instanceUrl) {
 		return `${instanceUrl}/api/v1`;

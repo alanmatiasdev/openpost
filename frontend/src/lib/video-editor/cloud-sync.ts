@@ -2,7 +2,6 @@ import {
 	cloneVideoProject,
 	projectWithReferencedSourcesOnly,
 	referencedSourceIDs,
-	type VideoProjectDocumentV1,
 	type VideoSource
 } from '@openpost/video-project';
 import { uploadMediaFile } from '$lib/media-upload-client';
@@ -173,20 +172,4 @@ export async function syncVideoProjectToOpenPost(
 		}),
 		state: 'cloud'
 	});
-}
-
-export function hashVideoSource(file: File, signal?: AbortSignal): Promise<string> {
-	return hashLocalFile(file, signal);
-}
-
-export function cloudDocumentForTest(
-	document: VideoProjectDocumentV1,
-	mediaBySourceID: Record<string, string>
-): VideoProjectDocumentV1 {
-	const next = cloneVideoProject(document);
-	for (const [sourceID, mediaID] of Object.entries(mediaBySourceID)) {
-		const source = next.sources[sourceID];
-		if (source) source.locator = { type: 'openpost-media', media_id: mediaID };
-	}
-	return next;
 }

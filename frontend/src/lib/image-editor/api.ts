@@ -186,13 +186,6 @@ export async function updateImageEditorTemplate(
 	return data as unknown as ImageEditorTemplate;
 }
 
-export async function deleteImageEditorTemplate(id: string): Promise<void> {
-	const { error } = await client.DELETE('/image-editor/templates/{id}', {
-		params: { path: { id } }
-	});
-	if (error) throw new Error(problemMessage(error, 'Could not delete the template.'));
-}
-
 export async function instantiateImageEditorTemplate(
 	templateID: string,
 	workspaceID: string,

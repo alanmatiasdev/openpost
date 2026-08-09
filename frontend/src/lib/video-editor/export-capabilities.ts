@@ -219,8 +219,3 @@ function uniqueNumbers(values: number[]): number[] {
 function formatFrameRate(value: number): string {
 	return Number.isInteger(value) ? String(value) : value.toFixed(2);
 }
-
-export const EXPORT_MINIMUM_BITRATES = {
-	mp4: MIN_H264_BITRATE,
-	webm: MIN_WEBM_BITRATE
-} as const;

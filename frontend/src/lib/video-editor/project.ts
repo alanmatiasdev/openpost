@@ -4,7 +4,6 @@ import {
 	defaultVideoPresentation,
 	type PrimarySequenceClip,
 	type StockMediaProvenance,
-	type VideoProjectDocumentV1,
 	type VideoSource,
 	type VideoSourceKind
 } from '@openpost/video-project';
@@ -408,8 +407,4 @@ async function audioDuration(file: File): Promise<number> {
 	} finally {
 		URL.revokeObjectURL(url);
 	}
-}
-
-export function cloneProjectDocument(document: VideoProjectDocumentV1): VideoProjectDocumentV1 {
-	return structuredClone(document);
 }
