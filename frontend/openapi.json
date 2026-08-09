@@ -1600,6 +1600,14 @@
 						"readOnly": true,
 						"type": "string"
 					},
+					"access_restricted": {
+						"description": "Whether failed payment currently restricts paid-plan access",
+						"type": "boolean"
+					},
+					"can_manage_billing": {
+						"description": "Whether the current user may manage organization billing",
+						"type": "boolean"
+					},
 					"cancel_at_period_end": {
 						"description": "Whether the subscription cancels at period end",
 						"type": "boolean"
@@ -1618,6 +1626,10 @@
 					},
 					"organization_id": {
 						"description": "Organization ID",
+						"type": "string"
+					},
+					"past_due_since": {
+						"description": "Canonical Paddle time when the current past-due state began",
 						"type": "string"
 					},
 					"period_start": {
@@ -1660,6 +1672,8 @@
 					"organization_id",
 					"workspace_id",
 					"status",
+					"can_manage_billing",
+					"access_restricted",
 					"cancel_at_period_end",
 					"limits",
 					"usage",
@@ -2931,6 +2945,12 @@
 					},
 					"organization_id": {
 						"description": "Organization ID",
+						"type": "string"
+					},
+					"purpose": {
+						"default": "manage",
+						"description": "Portal destination",
+						"enum": ["manage", "update_payment_method"],
 						"type": "string"
 					},
 					"workspace_id": {

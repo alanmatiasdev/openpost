@@ -4116,6 +4116,10 @@ export interface components {
              * @example https://example.com/schemas/BillingStatusResponse.json
              */
             readonly $schema?: string;
+            /** @description Whether failed payment currently restricts paid-plan access */
+            access_restricted: boolean;
+            /** @description Whether the current user may manage organization billing */
+            can_manage_billing: boolean;
             /** @description Whether the subscription cancels at period end */
             cancel_at_period_end: boolean;
             /** @description Current billing period end */
@@ -4126,6 +4130,8 @@ export interface components {
             };
             /** @description Organization ID */
             organization_id: string;
+            /** @description Canonical Paddle time when the current past-due state began */
+            past_due_since?: string;
             /** @description UTC month start for the usage counters */
             period_start: string;
             /** @description Plan ID */
@@ -4667,6 +4673,12 @@ export interface components {
             readonly $schema?: string;
             /** @description Organization ID */
             organization_id?: string;
+            /**
+             * @description Portal destination
+             * @default manage
+             * @enum {string}
+             */
+            purpose: "manage" | "update_payment_method";
             /** @description Workspace ID */
             workspace_id?: string;
         };

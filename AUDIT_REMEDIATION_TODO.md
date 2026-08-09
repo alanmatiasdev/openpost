@@ -142,7 +142,7 @@ These do not assert a newly observed production incident. They block Pinterest, 
 
 ### BILL-001 — Give past-due accounts an explicit recovery path
 
-- [ ] **Problem — Current source audit:** `past_due` is rendered as a status label only. There is no prominent explanation, deadline/access impact, or direct payment-update recovery action.
+- [x] **Problem — Current source audit:** `past_due` is rendered as a status label only. There is no prominent explanation, deadline/access impact, or direct payment-update recovery action.
 - **Fix:** add an account-wide past-due notice and billing-page recovery card with the failed state, what may happen, the safe next action, and a Paddle portal deep link or native update flow. Keep access gating and retry state consistent with webhook truth.
 - **Done when:** simulated failed-payment/webhook states surface recovery everywhere relevant; the user can reach payment update in one action; successful recovery clears the warning; tests cover stale and repeated webhooks.
 - **Evidence:** `frontend/src/routes/settings/+page.svelte:354`, `frontend/src/routes/settings/+page.svelte:2440`.

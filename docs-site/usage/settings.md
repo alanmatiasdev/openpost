@@ -52,6 +52,14 @@ Organization settings group collaboration and hosted billing.
 
 Invite people from **Settings -> Organization**. Pending invitations reserve seats until they are accepted, revoked, or expired.
 
+### Failed-payment recovery
+
+When Paddle reports the organization subscription as `past_due`, OpenPost shows the same payment notice throughout the authenticated app and in **Settings → Plan & usage**. Paid-plan access remains restricted until a newer Paddle subscription snapshot confirms recovery.
+
+Every member can see the notice, but only an organization owner or administrator can open billing recovery. Select **Update payment method** to create a fresh Paddle customer-portal link for the exact subscription. OpenPost does not store or reuse that temporary link. If you are a member, ask an organization owner or administrator to complete the update.
+
+Paddle controls retry timing and whether an unrecovered subscription is canceled. OpenPost does not show an estimated deadline. Return to OpenPost after updating the payment method; the notice clears after Paddle confirms that the subscription is active again.
+
 The **Single sign-on** tab is available for organization administration. Add an
 exact OIDC issuer, copy the callback and back-channel logout URLs into the
 provider, then test optional login before requiring SSO. Required mode checks

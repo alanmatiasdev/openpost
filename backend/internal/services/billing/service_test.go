@@ -25,6 +25,8 @@ type fakePaddleAPI struct {
 	transaction  *paddle.Transaction
 	customer     *paddle.Customer
 	portal       *paddle.CustomerPortalSession
+	portalInput  *paddle.CreateCustomerPortalSessionRequest
+	portalCalls  int
 	subGets      int
 	customerGets int
 }
@@ -43,7 +45,9 @@ func (f *fakePaddleAPI) GetCustomer(context.Context, *paddle.GetCustomerRequest)
 	return f.customer, nil
 }
 
-func (f *fakePaddleAPI) CreateCustomerPortalSession(context.Context, *paddle.CreateCustomerPortalSessionRequest) (*paddle.CustomerPortalSession, error) {
+func (f *fakePaddleAPI) CreateCustomerPortalSession(_ context.Context, input *paddle.CreateCustomerPortalSessionRequest) (*paddle.CustomerPortalSession, error) {
+	f.portalCalls++
+	f.portalInput = input
 	return f.portal, nil
 }
 
@@ -169,6 +173,9 @@ func TestAcceptPaddleWebhookQueuesSupportedEventOnce(t *testing.T) {
 	var count int
 	require.NoError(t, db.NewSelect().ColumnExpr("COUNT(*)").TableExpr("jobs").Where("type = ?", JobTypeWebhook).Scan(context.Background(), &count))
 	require.Equal(t, 1, count)
+	var event models.BillingWebhookEvent
+	require.NoError(t, db.NewSelect().Model(&event).Where("event_id = ?", "evt_1").Scan(context.Background()))
+	require.Equal(t, time.Date(2026, 8, 5, 12, 0, 0, 0, time.UTC), event.OccurredAt)
 }
 
 func TestAcceptPaddleWebhookRejectsInvalidSignature(t *testing.T) {
@@ -177,6 +184,23 @@ func TestAcceptPaddleWebhookRejectsInvalidSignature(t *testing.T) {
 	body := []byte(`{"event_id":"evt_1","event_type":"subscription.updated","data":{"id":"sub_1"}}`)
 	_, err := service.AcceptPaddleWebhook(context.Background(), body, "ts=1;h1=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
 	require.ErrorContains(t, err, "invalid Paddle webhook signature")
+}
+
+func TestAcceptPaddleWebhookRequiresCanonicalOccurredAt(t *testing.T) {
+	t.Parallel()
+	db := newBillingTestDB(t)
+	secret := "pdl_webhook_secret"
+	service := NewService(db, secret)
+	body := []byte(`{"event_id":"evt_1","event_type":"subscription.updated","data":{"id":"sub_1"}}`)
+
+	_, err := service.AcceptPaddleWebhook(context.Background(), body, paddleSignature(secret, time.Now(), body))
+
+	require.ErrorContains(t, err, "webhook occurred_at must be a valid RFC3339 timestamp")
+	var eventCount, jobCount int
+	require.NoError(t, db.NewSelect().ColumnExpr("COUNT(*)").TableExpr("billing_webhook_events").Scan(context.Background(), &eventCount))
+	require.NoError(t, db.NewSelect().ColumnExpr("COUNT(*)").TableExpr("jobs").Scan(context.Background(), &jobCount))
+	require.Zero(t, eventCount)
+	require.Zero(t, jobCount)
 }
 
 func TestHandleJobFetchesCanonicalPaddleStateAndKeepsScheduledCancelActive(t *testing.T) {
@@ -202,6 +226,7 @@ func TestHandleJobFetchesCanonicalPaddleStateAndKeepsScheduledCancelActive(t *te
 			ID:                   "sub_1",
 			Status:               paddle.SubscriptionStatusTrialing,
 			CustomerID:           "ctm_1",
+			UpdatedAt:            "2026-08-05T11:59:00Z",
 			CustomData:           paddle.CustomData{"checkout_id": "chkat_1"},
 			Items:                []paddle.SubscriptionItem{{Recurring: true, Price: paddle.Price{ID: "pri_founder_month", ProductID: "pro_founder"}}},
 			CurrentBillingPeriod: &paddle.TimePeriod{EndsAt: "2026-08-19T12:00:00Z"},
@@ -243,14 +268,179 @@ func TestCreateCustomerPortalSessionReturnsFreshPaddleURL(t *testing.T) {
 	}).Exec(context.Background())
 	require.NoError(t, err)
 	api := &fakePaddleAPI{portal: &paddle.CustomerPortalSession{
-		ID:   "cpls_1",
-		URLs: paddle.CustomerPortalSessionURLs{General: paddle.CustomerPortalSessionGeneralURLs{Overview: "https://customer-portal.paddle.com/overview?token=fresh"}},
+		ID:         "cpls_1",
+		CustomerID: "ctm_1",
+		URLs:       paddle.CustomerPortalSessionURLs{General: paddle.CustomerPortalSessionGeneralURLs{Overview: "https://customer-portal.paddle.com/overview?token=fresh"}},
 	}}
 	service := NewService(db, "")
 	service.SetPaddleClientForTest(api)
 
-	result, err := service.CreateCustomerPortalSession(context.Background(), "org-1")
+	result, err := service.CreateCustomerPortalSession(context.Background(), CreateCustomerPortalInput{OrganizationID: "org-1"})
 	require.NoError(t, err)
 	require.Equal(t, "cpls_1", result.ID)
 	require.Equal(t, "https://customer-portal.paddle.com/overview?token=fresh", result.URL)
+	require.Equal(t, "ctm_1", api.portalInput.CustomerID)
+	require.Equal(t, []string{"sub_1"}, api.portalInput.SubscriptionIDs)
+	api.portal.URLs.General.Overview = "https://customer-portal.paddle.com/overview?token=newer"
+	second, err := service.CreateCustomerPortalSession(context.Background(), CreateCustomerPortalInput{OrganizationID: "org-1"})
+	require.NoError(t, err)
+	require.Equal(t, "https://customer-portal.paddle.com/overview?token=newer", second.URL)
+	require.Equal(t, 2, api.portalCalls, "every action must mint a new temporary Paddle portal session")
+}
+
+func TestCreateCustomerPortalSessionReturnsExactPaymentRecoveryURL(t *testing.T) {
+	t.Parallel()
+	db := newBillingTestDB(t)
+	_, err := db.NewInsert().Model(&models.BillingSubscription{
+		OrganizationID:         "org-1",
+		WorkspaceID:            "ws-1",
+		Provider:               ProviderPaddle,
+		ProviderCustomerID:     "ctm_1",
+		ProviderSubscriptionID: "sub_1",
+		Status:                 "past_due",
+		PlanID:                 "founder",
+	}).Exec(context.Background())
+	require.NoError(t, err)
+	api := &fakePaddleAPI{portal: &paddle.CustomerPortalSession{
+		ID:         "cpls_1",
+		CustomerID: "ctm_1",
+		URLs: paddle.CustomerPortalSessionURLs{
+			General: paddle.CustomerPortalSessionGeneralURLs{Overview: "https://customer-portal.paddle.com/overview?token=fresh"},
+			Subscriptions: []paddle.CustomerPortalSessionSubscriptionURLs{
+				{ID: "sub_other", UpdateSubscriptionPaymentMethod: "https://customer-portal.paddle.com/wrong"},
+				{ID: "sub_1", UpdateSubscriptionPaymentMethod: "https://customer-portal.paddle.com/payment-method?token=fresh"},
+			},
+		},
+	}}
+	service := NewService(db, "")
+	service.SetPaddleClientForTest(api)
+
+	result, err := service.CreateCustomerPortalSession(context.Background(), CreateCustomerPortalInput{
+		OrganizationID: "org-1",
+		Purpose:        CustomerPortalPurposeUpdatePaymentMethod,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, "https://customer-portal.paddle.com/payment-method?token=fresh", result.URL)
+	require.Equal(t, []string{"sub_1"}, api.portalInput.SubscriptionIDs)
+}
+
+func TestCreateCustomerPortalSessionRejectsMismatchedRecoveryLink(t *testing.T) {
+	t.Parallel()
+	db := newBillingTestDB(t)
+	_, err := db.NewInsert().Model(&models.BillingSubscription{
+		OrganizationID:         "org-1",
+		WorkspaceID:            "ws-1",
+		Provider:               ProviderPaddle,
+		ProviderCustomerID:     "ctm_1",
+		ProviderSubscriptionID: "sub_1",
+		Status:                 "past_due",
+		PlanID:                 "founder",
+	}).Exec(context.Background())
+	require.NoError(t, err)
+	api := &fakePaddleAPI{portal: &paddle.CustomerPortalSession{
+		ID:         "cpls_1",
+		CustomerID: "ctm_1",
+		URLs: paddle.CustomerPortalSessionURLs{Subscriptions: []paddle.CustomerPortalSessionSubscriptionURLs{
+			{ID: "sub_other", UpdateSubscriptionPaymentMethod: "https://customer-portal.paddle.com/wrong"},
+		}},
+	}}
+	service := NewService(db, "")
+	service.SetPaddleClientForTest(api)
+
+	_, err = service.CreateCustomerPortalSession(context.Background(), CreateCustomerPortalInput{
+		OrganizationID: "org-1",
+		Purpose:        CustomerPortalPurposeUpdatePaymentMethod,
+	})
+
+	require.ErrorContains(t, err, "missing payment-method update URL for subscription")
+}
+
+func TestReconcileSubscriptionPreservesCanonicalRecoveryOrder(t *testing.T) {
+	t.Parallel()
+	db := newBillingTestDB(t)
+	now := time.Date(2026, 8, 9, 10, 0, 0, 0, time.UTC)
+	_, err := db.NewInsert().Model(&models.BillingCheckoutAttempt{
+		CheckoutAttemptID: "chkat_recovery",
+		OrganizationID:    "org-1",
+		WorkspaceID:       "ws-1",
+		Provider:          ProviderPaddle,
+		ProviderPriceID:   "pri_founder_month",
+		PlanID:            "founder",
+		BillingPeriod:     "monthly",
+		Status:            "created",
+		CreatedAt:         now,
+		UpdatedAt:         now,
+	}).Exec(context.Background())
+	require.NoError(t, err)
+	name := "Billing Owner"
+	api := &fakePaddleAPI{customer: &paddle.Customer{ID: "ctm_1", Email: "owner@example.com", Name: &name}}
+	service := NewService(db, "", PaddleConfig{Plans: testCatalog()})
+	service.SetPaddleClientForTest(api)
+	service.SetNowForTest(func() time.Time { return now })
+
+	pastDueAt := time.Date(2026, 8, 9, 11, 0, 0, 0, time.UTC)
+	stillPastDueAt := pastDueAt.Add(time.Hour)
+	recoveredAt := stillPastDueAt.Add(time.Hour)
+	require.NoError(t, service.reconcileSubscription(context.Background(), recoverySubscription(paddle.SubscriptionStatusPastDue, pastDueAt), nil))
+
+	now = now.Add(time.Hour)
+	require.NoError(t, service.reconcileSubscription(context.Background(), recoverySubscription(paddle.SubscriptionStatusPastDue, stillPastDueAt), nil))
+	assertStoredSubscriptionRecovery(t, db, "past_due", stillPastDueAt, pastDueAt)
+
+	now = now.Add(time.Hour)
+	recovered := recoverySubscription(paddle.SubscriptionStatusActive, recoveredAt)
+	require.NoError(t, service.reconcileSubscription(context.Background(), recovered, nil))
+	assertStoredSubscriptionRecovery(t, db, "active", recoveredAt, time.Time{})
+
+	var afterRecovery models.BillingSubscription
+	require.NoError(t, db.NewSelect().Model(&afterRecovery).Where("organization_id = ?", "org-1").Scan(context.Background()))
+	now = now.Add(time.Hour)
+	require.NoError(t, service.reconcileSubscription(context.Background(), recoverySubscription(paddle.SubscriptionStatusPastDue, stillPastDueAt), nil))
+	require.NoError(t, service.reconcileSubscription(context.Background(), recovered, nil))
+	assertStoredSubscriptionRecovery(t, db, "active", recoveredAt, time.Time{})
+
+	var afterReplay models.BillingSubscription
+	require.NoError(t, db.NewSelect().Model(&afterReplay).Where("organization_id = ?", "org-1").Scan(context.Background()))
+	require.Equal(t, afterRecovery.UpdatedAt, afterReplay.UpdatedAt, "stale and equal-version snapshots must be deterministic no-ops")
+	api.subscription = recovered
+	require.NoError(t, service.HandleJob(
+		context.Background(),
+		JobTypeWebhook,
+		`{"event_id":"evt_stale","event_type":"subscription.past_due","data":{"id":"sub_1"}}`,
+	))
+	require.Equal(t, 1, api.subGets)
+	assertStoredSubscriptionRecovery(t, db, "active", recoveredAt, time.Time{})
+
+	conflicting := recoverySubscription(paddle.SubscriptionStatusPastDue, recoveredAt)
+	err = service.reconcileSubscription(context.Background(), conflicting, nil)
+	require.ErrorContains(t, err, "conflicting Paddle subscription snapshots share updated_at")
+	assertStoredSubscriptionRecovery(t, db, "active", recoveredAt, time.Time{})
+}
+
+func recoverySubscription(status paddle.SubscriptionStatus, updatedAt time.Time) *paddle.Subscription {
+	return &paddle.Subscription{
+		ID:         "sub_1",
+		Status:     status,
+		CustomerID: "ctm_1",
+		UpdatedAt:  updatedAt.Format(time.RFC3339Nano),
+		CustomData: paddle.CustomData{"checkout_id": "chkat_recovery"},
+		Items: []paddle.SubscriptionItem{{
+			Recurring: true,
+			Price:     paddle.Price{ID: "pri_founder_month", ProductID: "pro_founder"},
+		}},
+	}
+}
+
+func assertStoredSubscriptionRecovery(t *testing.T, db *bun.DB, status string, providerUpdatedAt, pastDueSince time.Time) {
+	t.Helper()
+	var subscription models.BillingSubscription
+	require.NoError(t, db.NewSelect().Model(&subscription).Where("organization_id = ?", "org-1").Scan(context.Background()))
+	require.Equal(t, status, subscription.Status)
+	require.True(t, providerUpdatedAt.Equal(subscription.ProviderUpdatedAt))
+	if pastDueSince.IsZero() {
+		require.True(t, subscription.PastDueSince.IsZero())
+	} else {
+		require.True(t, pastDueSince.Equal(subscription.PastDueSince))
+	}
 }

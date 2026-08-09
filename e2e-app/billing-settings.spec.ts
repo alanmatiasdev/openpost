@@ -66,6 +66,8 @@ test("settings keeps hosted X costs separate from product usage", async ({
         workspace_id: workspace.id,
         status: "active",
         plan_id: "founder",
+        can_manage_billing: true,
+        access_restricted: false,
         cancel_at_period_end: false,
         limits: {},
         usage: {},

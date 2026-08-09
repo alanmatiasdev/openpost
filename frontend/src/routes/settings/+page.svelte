@@ -63,6 +63,11 @@
 	import { showToast } from '$lib/toast';
 	import { getLocaleTag } from '$lib/i18n';
 	import { checkoutPathForPlan, hostedPlanFromSearchParams } from '$lib/billing';
+	import {
+		billingPortalBody,
+		requiresBillingRecovery,
+		type BillingPortalPurpose
+	} from '$lib/billing-recovery';
 	import { m } from '$lib/paraglide/messages';
 	import { getOptionalUnsavedChanges } from '$lib/unsaved-changes.svelte';
 	import {
@@ -618,6 +623,7 @@
 			['active', 'trialing'].includes((billingStatus.status ?? '').toLowerCase())
 		)
 	);
+	const billingRecoveryRequired = $derived(requiresBillingRecovery(billingStatus));
 	const activeSettingsTitle = $derived.by(() => {
 		if (activeSettingsTab === 'profile') return m.settings_profile();
 		if (activeSettingsTab === 'notifications') return m.notifications_settings();
@@ -1084,26 +1090,28 @@
 	}
 
 	async function startCheckout(planID: string) {
+		if (billingStatus && !billingStatus.can_manage_billing) return;
 		billingBusyPlan = planID;
 		await goto(resolve(checkoutPathForPlan(planID) as '/'));
 		billingBusyPlan = '';
 	}
 
-	async function openBillingPortal() {
+	async function openBillingPortal(purpose: BillingPortalPurpose = 'manage') {
 		const workspaceID = workspaceCtx.currentWorkspace?.id;
 		const organizationID =
 			billingStatus?.organization_id ?? workspaceCtx.currentWorkspace?.organization_id ?? '';
-		if (!workspaceID) return;
+		if (!workspaceID || !billingStatus?.can_manage_billing) return;
 		billingPortalBusy = true;
 		billingError = '';
 		try {
-			const { data, error: err } = organizationID
-				? await client.POST('/organizations/{id}/billing/portal', {
-						params: { path: { id: organizationID } }
-					})
-				: await client.POST('/billing/portal', {
-						body: { workspace_id: workspaceID }
-					});
+			const { data, error: err } =
+				purpose === 'update_payment_method' || !organizationID
+					? await client.POST('/billing/portal', {
+							body: billingPortalBody(workspaceID, purpose)
+						})
+					: await client.POST('/organizations/{id}/billing/portal', {
+							params: { path: { id: organizationID } }
+						});
 			if (err || !data?.url) throw new Error(err?.detail || m.settings_action_failed());
 			if (!isCurrentBillingTarget(workspaceID, organizationID)) return;
 			window.location.assign(data.url);
@@ -1113,6 +1121,17 @@
 			}
 		} finally {
 			billingPortalBusy = false;
+		}
+	}
+
+	function refreshBillingAfterReturn() {
+		if (
+			document.visibilityState === 'visible' &&
+			activeSettingsTab === 'plan' &&
+			workspaceCtx.currentWorkspace?.id &&
+			!billingStatusLoading
+		) {
+			void loadBillingStatus();
 		}
 	}
 
@@ -1929,6 +1948,7 @@
 		if (
 			requestedBillingPlan &&
 			workspaceCtx.currentWorkspace &&
+			billingStatus?.can_manage_billing &&
 			handledCheckoutPlan !== requestedBillingPlan &&
 			!billingBusyPlan
 		) {
@@ -1976,6 +1996,8 @@
 		workspaceCtx.settings.week_start = value;
 	}
 </script>
+
+<svelte:window onfocus={refreshBillingAfterReturn} onpageshow={refreshBillingAfterReturn} />
 
 <svelte:head>
 	<title>{m.settings_page_title()}</title>
@@ -2751,14 +2773,20 @@
 						class="mb-4"
 					>
 						{#snippet actions()}
-							<Button variant="outline" onclick={openBillingPortal} disabled={billingPortalBusy}>
-								{#if billingPortalBusy}
-									<LoaderIcon class="mr-2 h-4 w-4 animate-spin" />
-								{:else}
-									<ExternalLinkIcon class="mr-2 h-4 w-4" />
-								{/if}
-								{m.settings_customer_portal()}
-							</Button>
+							{#if billingStatus?.can_manage_billing}
+								<Button
+									variant="outline"
+									onclick={() => void openBillingPortal()}
+									disabled={billingPortalBusy}
+								>
+									{#if billingPortalBusy}
+										<LoaderIcon class="mr-2 h-4 w-4 animate-spin" />
+									{:else}
+										<ExternalLinkIcon class="mr-2 h-4 w-4" />
+									{/if}
+									{m.settings_customer_portal()}
+								</Button>
+							{/if}
 						{/snippet}
 					</SectionHeader>
 
@@ -2780,6 +2808,40 @@
 							<PageLoading layout="grid" label={m.common_loading()} items={2} />
 						</div>
 					{:else if billingStatus}
+						{#if billingRecoveryRequired}
+							<InlineNotice tone="error" class="mb-4">
+								<div data-testid="billing-recovery-card">
+									<p class="font-semibold">{m.settings_billing_recovery_title()}</p>
+									<p class="mt-1 leading-6">{m.settings_billing_recovery_body()}</p>
+									{#if billingStatus.past_due_since}
+										<p class="mt-1 text-xs">
+											{m.billing_recovery_notice_since({
+												date: formatDateTime(billingStatus.past_due_since)
+											})}
+										</p>
+									{/if}
+									<p class="mt-1 text-sm font-medium">
+										{billingStatus.can_manage_billing
+											? m.settings_billing_recovery_confirmation()
+											: m.billing_recovery_notice_member_action()}
+									</p>
+									{#if billingStatus.can_manage_billing}
+										<Button
+											variant="destructive"
+											class="mt-3 w-full sm:w-auto"
+											onclick={() => void openBillingPortal('update_payment_method')}
+											disabled={billingPortalBusy}
+										>
+											{#if billingPortalBusy}
+												<LoaderIcon class="mr-2 h-4 w-4 animate-spin" />
+											{/if}
+											{m.billing_recovery_update_payment_method()}
+										</Button>
+									{/if}
+								</div>
+							</InlineNotice>
+						{/if}
+
 						<div class="mb-4 grid gap-3 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
 							<div class="rounded-lg border bg-muted/20 p-4">
 								<p class="text-xs font-medium tracking-wide text-muted-foreground uppercase">
@@ -2989,7 +3051,10 @@
 										class="w-full"
 										variant={plan.featured ? 'default' : 'outline'}
 										onclick={() => startCheckout(plan.id)}
-										disabled={Boolean(billingBusyPlan) || hasActiveBillingPlan}
+										disabled={Boolean(billingBusyPlan) ||
+											hasActiveBillingPlan ||
+											billingRecoveryRequired ||
+											Boolean(billingStatus && !billingStatus.can_manage_billing)}
 									>
 										{#if billingBusyPlan === plan.id}
 											<LoaderIcon class="mr-2 h-4 w-4 animate-spin" />

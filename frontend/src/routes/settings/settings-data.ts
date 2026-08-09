@@ -217,6 +217,9 @@ export interface BillingStatus {
 	status: string;
 	plan_id?: string;
 	current_period_end?: string;
+	can_manage_billing: boolean;
+	access_restricted: boolean;
+	past_due_since?: string;
 	cancel_at_period_end: boolean;
 	limits: Record<string, number>;
 	usage: Record<string, number>;

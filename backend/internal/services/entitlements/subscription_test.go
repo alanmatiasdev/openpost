@@ -267,6 +267,25 @@ func TestSubscriptionServiceRejectsInactiveSubscription(t *testing.T) {
 	require.Equal(t, "active subscription required", decision.Reason)
 }
 
+func TestSubscriptionServiceKeepsPastDueAccessRestrictedUntilCanonicalRecovery(t *testing.T) {
+	t.Parallel()
+
+	db := newSubscriptionEntitlementTestDB(t)
+	seedBillingSubscription(t, db, "past_due", `{"limits":{"media_bytes_stored":1000}}`)
+	service := NewSubscriptionService(db, NewSelfHostedService())
+
+	decision, err := service.Check(context.Background(), Request{
+		WorkspaceID: "ws-1",
+		Limit:       LimitMediaBytesStored,
+		Current:     0,
+		Amount:      1,
+	})
+
+	require.NoError(t, err)
+	require.False(t, decision.Allowed)
+	require.Equal(t, "active subscription required", decision.Reason)
+}
+
 func TestSubscriptionServiceFallsBackForNonWorkspaceChecks(t *testing.T) {
 	t.Parallel()
 

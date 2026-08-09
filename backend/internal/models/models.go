@@ -597,6 +597,8 @@ type BillingSubscription struct {
 	EntitlementSnapshot    string    `bun:",notnull,default:'{}'" json:"entitlement_snapshot"`
 	CurrentPeriodEnd       time.Time `bun:",nullzero" json:"current_period_end"`
 	CancelAtPeriodEnd      bool      `bun:",notnull,default:false" json:"cancel_at_period_end"`
+	ProviderUpdatedAt      time.Time `bun:",nullzero" json:"provider_updated_at"`
+	PastDueSince           time.Time `bun:",nullzero" json:"past_due_since"`
 	RawPayload             string    `bun:",notnull,default:'{}'" json:"raw_payload"`
 	CreatedAt              time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
 	UpdatedAt              time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"updated_at"`
@@ -608,6 +610,7 @@ type BillingWebhookEvent struct {
 	EventID     string    `bun:",pk" json:"event_id"`
 	Provider    string    `bun:",notnull,default:'paddle'" json:"provider"`
 	EventType   string    `bun:",notnull" json:"event_type"`
+	OccurredAt  time.Time `bun:",nullzero" json:"occurred_at"`
 	ProcessedAt time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"processed_at"`
 }
 

@@ -17,6 +17,7 @@ import (
 	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/services/entitlements"
 	"github.com/uptrace/bun"
+	"github.com/uptrace/bun/dialect"
 )
 
 const (
@@ -306,10 +307,26 @@ type CustomerPortalResult struct {
 	URL string
 }
 
-func (s *Service) CreateCustomerPortalSession(ctx context.Context, organizationID string) (CustomerPortalResult, error) {
-	organizationID = strings.TrimSpace(organizationID)
+type CustomerPortalPurpose string
+
+const (
+	CustomerPortalPurposeManage              CustomerPortalPurpose = "manage"
+	CustomerPortalPurposeUpdatePaymentMethod CustomerPortalPurpose = "update_payment_method"
+)
+
+type CreateCustomerPortalInput struct {
+	OrganizationID string
+	Purpose        CustomerPortalPurpose
+}
+
+func (s *Service) CreateCustomerPortalSession(ctx context.Context, input CreateCustomerPortalInput) (CustomerPortalResult, error) {
+	organizationID := strings.TrimSpace(input.OrganizationID)
 	if organizationID == "" {
 		return CustomerPortalResult{}, fmt.Errorf("organization id is required")
+	}
+	purpose, err := normalizeCustomerPortalPurpose(input.Purpose)
+	if err != nil {
+		return CustomerPortalResult{}, err
 	}
 	if s.db == nil {
 		return CustomerPortalResult{}, fmt.Errorf("billing database is not configured")
@@ -324,7 +341,7 @@ func (s *Service) CreateCustomerPortalSession(ctx context.Context, organizationI
 		}
 		return CustomerPortalResult{}, fmt.Errorf("loading billing subscription: %w", err)
 	}
-	if subscription.Provider != ProviderPaddle || strings.TrimSpace(subscription.ProviderCustomerID) == "" {
+	if subscription.Provider != ProviderPaddle || strings.TrimSpace(subscription.ProviderCustomerID) == "" || strings.TrimSpace(subscription.ProviderSubscriptionID) == "" {
 		return CustomerPortalResult{}, fmt.Errorf("paddle customer portal is not ready for this subscription")
 	}
 	session, err := s.api.CreateCustomerPortalSession(ctx, &paddle.CreateCustomerPortalSessionRequest{
@@ -334,10 +351,53 @@ func (s *Service) CreateCustomerPortalSession(ctx context.Context, organizationI
 	if err != nil {
 		return CustomerPortalResult{}, fmt.Errorf("creating Paddle customer portal session: %w", err)
 	}
-	if session == nil || strings.TrimSpace(session.URLs.General.Overview) == "" {
-		return CustomerPortalResult{}, fmt.Errorf("paddle customer portal response missing overview URL")
+	if session == nil || strings.TrimSpace(session.ID) == "" {
+		return CustomerPortalResult{}, fmt.Errorf("paddle customer portal response missing session id")
 	}
-	return CustomerPortalResult{ID: session.ID, URL: session.URLs.General.Overview}, nil
+	if strings.TrimSpace(session.CustomerID) != subscription.ProviderCustomerID {
+		return CustomerPortalResult{}, fmt.Errorf("paddle customer portal response customer does not match subscription")
+	}
+	portalURL, err := customerPortalURL(session, subscription.ProviderSubscriptionID, purpose)
+	if err != nil {
+		return CustomerPortalResult{}, err
+	}
+	return CustomerPortalResult{ID: session.ID, URL: portalURL}, nil
+}
+
+func normalizeCustomerPortalPurpose(purpose CustomerPortalPurpose) (CustomerPortalPurpose, error) {
+	if purpose == "" {
+		return CustomerPortalPurposeManage, nil
+	}
+	switch purpose {
+	case CustomerPortalPurposeManage, CustomerPortalPurposeUpdatePaymentMethod:
+		return purpose, nil
+	default:
+		return "", fmt.Errorf("unsupported customer portal purpose %q", purpose)
+	}
+}
+
+func customerPortalURL(session *paddle.CustomerPortalSession, subscriptionID string, purpose CustomerPortalPurpose) (string, error) {
+	if purpose == CustomerPortalPurposeManage {
+		if value := strings.TrimSpace(session.URLs.General.Overview); value != "" {
+			return value, nil
+		}
+		return "", fmt.Errorf("paddle customer portal response missing overview URL")
+	}
+
+	var matchingURL string
+	for _, links := range session.URLs.Subscriptions {
+		if strings.TrimSpace(links.ID) != subscriptionID {
+			continue
+		}
+		if matchingURL != "" {
+			return "", fmt.Errorf("paddle customer portal response contains duplicate subscription links")
+		}
+		matchingURL = strings.TrimSpace(links.UpdateSubscriptionPaymentMethod)
+	}
+	if matchingURL == "" {
+		return "", fmt.Errorf("paddle customer portal response missing payment-method update URL for subscription")
+	}
+	return matchingURL, nil
 }
 
 func (s *Service) ensureAPI() error {
@@ -433,10 +493,14 @@ func (s *Service) AcceptPaddleWebhook(ctx context.Context, body []byte, signatur
 	if strings.TrimSpace(event.EventID) == "" || strings.TrimSpace(event.EventType) == "" {
 		return WebhookResult{}, fmt.Errorf("webhook event_id and event_type are required")
 	}
+	occurredAt, err := parseRequiredPaddleTime("webhook occurred_at", event.OccurredAt)
+	if err != nil {
+		return WebhookResult{}, err
+	}
 
 	result := WebhookResult{EventID: event.EventID, EventType: event.EventType}
 	err = s.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
-		inserted, err := insertWebhookEvent(txCtx, tx, event.EventID, event.EventType, s.now())
+		inserted, err := insertWebhookEvent(txCtx, tx, event.EventID, event.EventType, occurredAt, s.now())
 		if err != nil {
 			return err
 		}
@@ -475,12 +539,20 @@ func eventNeedsReconciliation(eventType string) bool {
 	}
 }
 
-func insertWebhookEvent(ctx context.Context, tx bun.Tx, eventID, eventType string, now time.Time) (bool, error) {
+func insertWebhookEvent(
+	ctx context.Context,
+	tx bun.Tx,
+	eventID string,
+	eventType string,
+	occurredAt time.Time,
+	processedAt time.Time,
+) (bool, error) {
 	event := &models.BillingWebhookEvent{
 		EventID:     eventID,
 		Provider:    ProviderPaddle,
 		EventType:   eventType,
-		ProcessedAt: now.UTC(),
+		OccurredAt:  occurredAt.UTC(),
+		ProcessedAt: processedAt.UTC(),
 	}
 	res, err := tx.NewInsert().Model(event).On("CONFLICT (event_id) DO NOTHING").Exec(ctx)
 	if err != nil {
@@ -647,6 +719,10 @@ func (s *Service) reconcileSubscription(ctx context.Context, subscription *paddl
 	if subscription == nil || strings.TrimSpace(subscription.ID) == "" {
 		return fmt.Errorf("paddle subscription payload missing id")
 	}
+	providerUpdatedAt, err := parseRequiredPaddleTime("paddle subscription updated_at", subscription.UpdatedAt)
+	if err != nil {
+		return err
+	}
 	resolved, err := s.resolvePaddleSubscription(ctx, subscription, fallbackCustom)
 	if err != nil {
 		return err
@@ -687,16 +763,21 @@ func (s *Service) reconcileSubscription(ctx context.Context, subscription *paddl
 		EntitlementSnapshot:    string(snapshot),
 		CurrentPeriodEnd:       periodEnd,
 		CancelAtPeriodEnd:      cancelAtPeriodEnd,
+		ProviderUpdatedAt:      providerUpdatedAt,
 		RawPayload:             string(raw),
 		CreatedAt:              now,
 		UpdatedAt:              now,
 	}
+	if status == string(paddle.SubscriptionStatusPastDue) {
+		model.PastDueSince = providerUpdatedAt
+	}
 
 	return s.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
-		if err := upsertSubscription(txCtx, tx, model); err != nil {
+		applied, err := upsertSubscription(txCtx, tx, model)
+		if err != nil {
 			return err
 		}
-		if resolved.Attempt.CheckoutAttemptID != "" {
+		if applied && resolved.Attempt.CheckoutAttemptID != "" {
 			if _, err := tx.NewUpdate().Model((*models.BillingCheckoutAttempt)(nil)).
 				Set("status = ?", status).
 				Set("provider_subscription_id = ?", subscription.ID).
@@ -773,8 +854,28 @@ func (s *Service) planIDForProviderPrice(providerPriceID string) string {
 	return ""
 }
 
-func upsertSubscription(ctx context.Context, tx bun.Tx, subscription *models.BillingSubscription) error {
-	_, err := tx.NewInsert().Model(subscription).
+func upsertSubscription(ctx context.Context, tx bun.Tx, subscription *models.BillingSubscription) (bool, error) {
+	targetPrefix := ""
+	switch tx.Dialect().Name() {
+	case dialect.SQLite:
+	case dialect.PG:
+		targetPrefix = "billing_subscription."
+	default:
+		return false, fmt.Errorf("unsupported billing database dialect %s", tx.Dialect().Name())
+	}
+	pastDueExpression := fmt.Sprintf(`past_due_since = CASE
+		WHEN EXCLUDED.status = 'past_due' THEN
+			CASE
+				WHEN LOWER(%[1]sstatus) = 'past_due'
+					AND %[1]spast_due_since IS NOT NULL
+				THEN %[1]spast_due_since
+				ELSE EXCLUDED.provider_updated_at
+			END
+		ELSE NULL
+	END`, targetPrefix)
+	versionPredicate := fmt.Sprintf("%[1]sprovider_updated_at IS NULL OR %[1]sprovider_updated_at < EXCLUDED.provider_updated_at", targetPrefix)
+
+	result, err := tx.NewInsert().Model(subscription).
 		On("CONFLICT (organization_id) DO UPDATE").
 		Set("workspace_id = EXCLUDED.workspace_id").
 		Set("provider = EXCLUDED.provider").
@@ -787,13 +888,55 @@ func upsertSubscription(ctx context.Context, tx bun.Tx, subscription *models.Bil
 		Set("entitlement_snapshot = EXCLUDED.entitlement_snapshot").
 		Set("current_period_end = EXCLUDED.current_period_end").
 		Set("cancel_at_period_end = EXCLUDED.cancel_at_period_end").
+		Set("provider_updated_at = EXCLUDED.provider_updated_at").
+		Set(pastDueExpression).
 		Set("raw_payload = EXCLUDED.raw_payload").
 		Set("updated_at = EXCLUDED.updated_at").
+		Where(versionPredicate).
 		Exec(ctx)
 	if err != nil {
-		return fmt.Errorf("upserting billing subscription: %w", err)
+		return false, fmt.Errorf("upserting billing subscription: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("checking billing subscription reconciliation result: %w", err)
+	}
+	if rows > 0 {
+		return true, nil
+	}
+	if err := validateSkippedSubscriptionSnapshot(ctx, tx, subscription); err != nil {
+		return false, err
+	}
+	return false, nil
+}
+
+func validateSkippedSubscriptionSnapshot(ctx context.Context, tx bun.Tx, incoming *models.BillingSubscription) error {
+	var current models.BillingSubscription
+	if err := tx.NewSelect().
+		Model(&current).
+		Where("organization_id = ?", incoming.OrganizationID).
+		Scan(ctx); err != nil {
+		return fmt.Errorf("loading current billing subscription after skipped reconciliation: %w", err)
+	}
+	if current.ProviderUpdatedAt.Equal(incoming.ProviderUpdatedAt) && !sameSubscriptionSnapshot(current, *incoming) {
+		return fmt.Errorf("conflicting Paddle subscription snapshots share updated_at %s", incoming.ProviderUpdatedAt.Format(time.RFC3339Nano))
 	}
 	return nil
+}
+
+func sameSubscriptionSnapshot(current, incoming models.BillingSubscription) bool {
+	return current.OrganizationID == incoming.OrganizationID &&
+		current.WorkspaceID == incoming.WorkspaceID &&
+		current.Provider == incoming.Provider &&
+		current.ProviderCustomerID == incoming.ProviderCustomerID &&
+		current.ProviderSubscriptionID == incoming.ProviderSubscriptionID &&
+		current.ProviderProductID == incoming.ProviderProductID &&
+		current.ProviderPriceID == incoming.ProviderPriceID &&
+		current.Status == incoming.Status &&
+		current.PlanID == incoming.PlanID &&
+		current.EntitlementSnapshot == incoming.EntitlementSnapshot &&
+		current.CurrentPeriodEnd.Equal(incoming.CurrentPeriodEnd) &&
+		current.CancelAtPeriodEnd == incoming.CancelAtPeriodEnd
 }
 
 func parsePaddleTime(value string) time.Time {
@@ -802,4 +945,12 @@ func parsePaddleTime(value string) time.Time {
 		return time.Time{}
 	}
 	return parsed.UTC()
+}
+
+func parseRequiredPaddleTime(field, value string) (time.Time, error) {
+	parsed, err := time.Parse(time.RFC3339, strings.TrimSpace(value))
+	if err != nil {
+		return time.Time{}, fmt.Errorf("%s must be a valid RFC3339 timestamp", field)
+	}
+	return parsed.UTC(), nil
 }

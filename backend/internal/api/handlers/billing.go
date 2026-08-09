@@ -154,6 +154,9 @@ type BillingStatusResponse struct {
 	WorkspaceID       string                      `json:"workspace_id" doc:"Workspace ID"`
 	Provider          string                      `json:"provider,omitempty" doc:"Billing provider"`
 	Status            string                      `json:"status" doc:"Subscription status"`
+	CanManageBilling  bool                        `json:"can_manage_billing" doc:"Whether the current user may manage organization billing"`
+	AccessRestricted  bool                        `json:"access_restricted" doc:"Whether failed payment currently restricts paid-plan access"`
+	PastDueSince      string                      `json:"past_due_since,omitempty" doc:"Canonical Paddle time when the current past-due state began"`
 	PlanID            string                      `json:"plan_id,omitempty" doc:"Plan ID"`
 	CurrentPeriodEnd  string                      `json:"current_period_end,omitempty" doc:"Current billing period end"`
 	CancelAtPeriodEnd bool                        `json:"cancel_at_period_end" doc:"Whether the subscription cancels at period end"`
@@ -176,7 +179,7 @@ func (h *BillingHandler) getStatus(ctx context.Context, input *GetBillingStatusI
 	if err != nil {
 		return nil, err
 	}
-	return h.billingStatusForOrganization(ctx, organizationID, workspaceID)
+	return h.billingStatusForOrganization(ctx, organizationID, workspaceID, userID)
 }
 
 type GetOrganizationBillingStatusInput struct {
@@ -191,23 +194,33 @@ func (h *BillingHandler) getOrganizationStatus(ctx context.Context, input *GetOr
 	if err := h.checkOrganizationAccess(ctx, input.PathID, userID, false); err != nil {
 		return nil, err
 	}
-	return h.billingStatusForOrganization(ctx, input.PathID, "")
+	return h.billingStatusForOrganization(ctx, input.PathID, "", userID)
 }
 
-func (h *BillingHandler) billingStatusForOrganization(ctx context.Context, organizationID, workspaceID string) (*BillingStatusOutput, error) {
+func (h *BillingHandler) billingStatusForOrganization(
+	ctx context.Context,
+	organizationID string,
+	workspaceID string,
+	userID string,
+) (*BillingStatusOutput, error) {
 	now := time.Now().UTC()
 	usageSnapshot, providerCosts, err := h.billingUsageForScope(ctx, organizationID, workspaceID, now)
 	if err != nil {
 		return nil, huma.Error500InternalServerError("failed to load billing usage")
 	}
+	canManageBilling, err := h.canManageOrganizationBilling(ctx, organizationID, userID)
+	if err != nil {
+		return nil, err
+	}
 	response := BillingStatusResponse{
-		OrganizationID: organizationID,
-		WorkspaceID:    workspaceID,
-		Status:         "none",
-		Limits:         map[string]int64{},
-		Usage:          usageSnapshotToStrings(usageSnapshot),
-		PeriodStart:    usage.MonthStart(now).Format(time.RFC3339),
-		ProviderCosts:  providerCosts,
+		OrganizationID:   organizationID,
+		WorkspaceID:      workspaceID,
+		Status:           "none",
+		CanManageBilling: canManageBilling,
+		Limits:           map[string]int64{},
+		Usage:            usageSnapshotToStrings(usageSnapshot),
+		PeriodStart:      usage.MonthStart(now).Format(time.RFC3339),
+		ProviderCosts:    providerCosts,
 	}
 
 	var sub models.BillingSubscription
@@ -232,8 +245,12 @@ func (h *BillingHandler) billingStatusForOrganization(ctx context.Context, organ
 
 	response.Provider = sub.Provider
 	response.Status = sub.Status
+	response.AccessRestricted = strings.EqualFold(sub.Status, "past_due")
 	response.PlanID = sub.PlanID
 	response.CancelAtPeriodEnd = sub.CancelAtPeriodEnd
+	if !sub.PastDueSince.IsZero() {
+		response.PastDueSince = sub.PastDueSince.UTC().Format(time.RFC3339)
+	}
 	if !sub.CurrentPeriodEnd.IsZero() {
 		response.CurrentPeriodEnd = sub.CurrentPeriodEnd.UTC().Format(time.RFC3339)
 	}
@@ -368,10 +385,8 @@ func (h *BillingHandler) createCheckout(ctx context.Context, input *CreateBillin
 			return nil, huma.Error403Forbidden("workspace admin role required")
 		}
 	}
-	if strings.TrimSpace(input.Body.OrganizationID) != "" {
-		if err := h.checkOrganizationAccess(ctx, organizationID, userID, true); err != nil {
-			return nil, err
-		}
+	if err := h.checkOrganizationAccess(ctx, organizationID, userID, true); err != nil {
+		return nil, err
 	}
 	email, err := h.userEmail(ctx, userID)
 	if err != nil {
@@ -396,6 +411,7 @@ type CreateBillingPortalInput struct {
 	Body struct {
 		WorkspaceID    string `json:"workspace_id,omitempty" doc:"Workspace ID"`
 		OrganizationID string `json:"organization_id,omitempty" doc:"Organization ID"`
+		Purpose        string `json:"purpose,omitempty" doc:"Portal destination" enum:"manage,update_payment_method" default:"manage"`
 	}
 }
 
@@ -417,13 +433,14 @@ func (h *BillingHandler) createPortalSession(ctx context.Context, input *CreateB
 			return nil, huma.Error403Forbidden("workspace admin role required")
 		}
 	}
-	if strings.TrimSpace(input.Body.OrganizationID) != "" {
-		if err := h.checkOrganizationAccess(ctx, organizationID, userID, true); err != nil {
-			return nil, err
-		}
+	if err := h.checkOrganizationAccess(ctx, organizationID, userID, true); err != nil {
+		return nil, err
 	}
 
-	result, err := h.billing.CreateCustomerPortalSession(ctx, organizationID)
+	result, err := h.billing.CreateCustomerPortalSession(ctx, billing.CreateCustomerPortalInput{
+		OrganizationID: organizationID,
+		Purpose:        billing.CustomerPortalPurpose(input.Body.Purpose),
+	})
 	if err != nil {
 		return nil, billingAPIError(err)
 	}
@@ -494,7 +511,9 @@ func (h *BillingHandler) createOrganizationPortalSession(ctx context.Context, in
 	if err := h.checkOrganizationAccess(ctx, input.PathID, userID, true); err != nil {
 		return nil, err
 	}
-	result, err := h.billing.CreateCustomerPortalSession(ctx, input.PathID)
+	result, err := h.billing.CreateCustomerPortalSession(ctx, billing.CreateCustomerPortalInput{
+		OrganizationID: input.PathID,
+	})
 	if err != nil {
 		return nil, billingAPIError(err)
 	}
@@ -594,7 +613,7 @@ func (h *BillingHandler) resolveBillingScope(ctx context.Context, organizationID
 		Where("bs.provider = ?", models.BillingProviderPaddle).
 		Join("JOIN organizations AS o ON o.id = bs.organization_id").
 		Where("o.created_by = ?", userID).
-		Where("LOWER(bs.status) IN (?)", bun.List([]string{"active", "trialing"})).
+		Where("LOWER(bs.status) IN (?)", bun.List([]string{"active", "trialing", "past_due"})).
 		OrderExpr("bs.updated_at DESC").
 		Limit(1).
 		Scan(ctx, &subscribedOrganizationID)
@@ -639,6 +658,32 @@ func (h *BillingHandler) checkOrganizationAccess(ctx context.Context, organizati
 		return huma.Error403Forbidden("organization not accessible")
 	}
 	return nil
+}
+
+func (h *BillingHandler) canManageOrganizationBilling(ctx context.Context, organizationID, userID string) (bool, error) {
+	decision, err := identity.EvaluateOrganizationAccess(
+		ctx,
+		h.db,
+		organizationID,
+		userID,
+		middleware.GetSessionID(ctx),
+		middleware.GetTokenID(ctx),
+	)
+	if err != nil {
+		return false, huma.Error500InternalServerError("failed to check organization SSO access")
+	}
+	if !decision.Allowed {
+		return false, nil
+	}
+	count, err := h.db.NewSelect().
+		Model((*models.OrganizationMember)(nil)).
+		Where("organization_id = ? AND user_id = ?", organizationID, userID).
+		Where("role IN (?)", bun.List([]string{models.OrganizationRoleOwner, models.OrganizationRoleAdmin})).
+		Count(ctx)
+	if err != nil {
+		return false, huma.Error500InternalServerError("failed to check organization billing access")
+	}
+	return count > 0, nil
 }
 
 func (h *BillingHandler) userEmail(ctx context.Context, userID string) (string, error) {

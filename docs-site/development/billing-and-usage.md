@@ -7,13 +7,13 @@ Managed OpenPost billing uses saved plan limits and durable usage counters. The 
 - `entitlements.Service`: evaluates plan limits and keeps self-hosted defaults unlimited.
 - `usage_counters`: monthly durable counters keyed by workspace, metric, and UTC month.
 - `billing_customers`: Paddle customer mirrors keyed by organization, with no payment-card data.
-- `billing_subscriptions`: current Paddle subscription snapshots keyed by organization.
+- `billing_subscriptions`: current Paddle subscription snapshots keyed by organization, fenced by Paddle's `updated_at` value so an older fetch cannot replace a newer recovery state.
 - `billing_checkout_attempts`: opaque OpenPost checkout attempt mapping, including the selected Paddle price, product plan, and billing period.
-- `billing_webhook_events`: webhook event ledger for idempotent Paddle processing.
+- `billing_webhook_events`: webhook event ledger for idempotent Paddle processing, including Paddle's event occurrence time and OpenPost's processing time.
 - `GET /api/v1/organizations/{id}/billing/status`: returns the local subscription snapshot and current-month usage counters for an organization.
 - `POST /api/v1/organizations/{id}/billing/checkout`: records an opaque checkout attempt and returns the Paddle.js environment, browser-safe client token, selected price, period price map, authenticated email, and OpenPost return URL.
-- `POST /api/v1/organizations/{id}/billing/portal`: creates a fresh, short-lived Paddle customer portal session after authorization.
-- Workspace billing endpoints resolve the same organization-scoped contract for web and CLI clients.
+- `POST /api/v1/organizations/{id}/billing/portal`: creates a fresh, short-lived Paddle customer portal session after organization-admin authorization.
+- Workspace billing endpoints resolve the same organization-scoped contract for web and CLI clients. `POST /api/v1/billing/portal` accepts `purpose: "update_payment_method"` to return only the exact subscription's payment-method form.
 - `POST /api/v1/billing/paddle/webhook`: verifies the raw request body and `Paddle-Signature`, stores each event once, and queues canonical reconciliation.
 - Cloud mode reads `billing_subscriptions.entitlement_snapshot` for organization-scoped quota checks.
 - Workspace creation checks `LimitWorkspaces` before inserting a new workspace. In cloud mode, users get a one-workspace bootstrap allowance before checkout; after a subscription is active, workspace creation uses the active organization subscription snapshot.
@@ -94,6 +94,18 @@ The browser sends only the opaque checkout attempt ID in Paddle custom data. It 
 
 Set both the minimum and maximum quantity to `1` on every Paddle plan price. OpenPost subscriptions are workspace plans rather than per-seat line items, so allowing Paddle's default maximum of `100` exposes an invalid quantity stepper at checkout.
 
-Webhooks may be duplicated or arrive out of order. The worker therefore retrieves the current Paddle customer, subscription, or completed transaction before writing local mirrors. Access is granted only for `active` and `trialing` subscriptions. A scheduled cancellation keeps access through the paid period; only Paddle's final `canceled` state removes it. API handlers consume the local snapshot only.
+Webhooks may be duplicated or arrive out of order. The worker therefore retrieves the current Paddle customer, subscription, or completed transaction before writing local mirrors. Event `occurred_at` is retained for delivery audit, but it never overrides a newer canonical subscription snapshot. The subscription mirror applies only a strictly newer Paddle `updated_at` value; an identical snapshot is an idempotent no-op, and conflicting payloads with the same provider version fail closed.
+
+## Failed-payment recovery
+
+Paddle changes an automatically collected subscription to `past_due` after a failed payment and runs the recovery schedule configured for the Paddle account. OpenPost does not invent a payment deadline because retry timing and the final action can differ by account. It records when the current canonical `past_due` state began, restricts paid-plan actions immediately, and shows the issue to every affected organization member.
+
+Organization owners and admins can start recovery in one action. OpenPost creates a new Paddle portal session for each click, requests links for the exact local subscription, verifies that Paddle returned the same customer and subscription, and returns only the temporary `update_subscription_payment_method` URL. The URL is never stored. Members without billing permission see the same account-wide state and are told to contact an organization owner or admin.
+
+Paddle remains the source of truth after the payment method changes. The notice stays visible until a signed webhook job fetches a strictly newer canonical subscription with `active` status. That recovery clears `past_due_since` and restores paid-plan access. A stale or repeated `past_due` event cannot reinstate the failure after the newer active snapshot has been saved.
+
+See Paddle's documentation for [`past_due` subscription recovery](https://developer.paddle.com/webhooks/subscriptions/subscription-past-due), [webhook delivery and ordering](https://developer.paddle.com/webhooks/about/how-webhooks-work), and [temporary payment-method portal links](https://developer.paddle.com/build/subscriptions/update-payment-details/).
+
+Access is granted only for `active` and `trialing` subscriptions. A scheduled cancellation keeps access while Paddle still reports one of those states. `past_due`, paused, and canceled subscriptions do not grant paid-plan access. API handlers consume the local snapshot only.
 
 All managed plans use a card-required 14-day trial. Prices are USD-first: Starter $15 monthly or $150 annually, Founder $25 or $250, Pro $49 or $490, Team $99 or $990, and Agency $199 or $1,990.
