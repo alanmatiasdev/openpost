@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	directUploadSupportedFromStorageResponse,
 	directUploadHeadersForBrowser,
+	normalizedUploadErrorMessage,
 	shouldUseMultipartFallback,
 	UploadRequestError
 } from './media-upload-client';
@@ -39,5 +40,35 @@ describe('media-upload-client', () => {
 		expect(
 			shouldUseMultipartFallback(new UploadRequestError('media_bytes_stored limit exceeded', 400))
 		).toBe(false);
+	});
+
+	it('normalizes JSON upload problems without exposing serialized response bodies', () => {
+		expect(
+			normalizedUploadErrorMessage(
+				JSON.stringify({ title: 'Upload failed', detail: 'This image exceeds the limit.' }),
+				'application/problem+json',
+				'Upload failed',
+				413
+			)
+		).toBe('This image exceeds the limit.');
+		expect(
+			normalizedUploadErrorMessage(
+				JSON.stringify({ unexpected: true }),
+				'application/json',
+				'Upload failed',
+				422
+			)
+		).toBe('Upload failed (422)');
+		expect(
+			normalizedUploadErrorMessage(
+				JSON.stringify({ detail: 'Upload quota reached.' }),
+				null,
+				'Upload failed',
+				429
+			)
+		).toBe('Upload quota reached.');
+		expect(
+			normalizedUploadErrorMessage('Temporary upload failure', 'text/plain', 'Upload failed', 503)
+		).toBe('Temporary upload failure');
 	});
 });

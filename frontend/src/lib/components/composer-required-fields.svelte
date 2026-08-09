@@ -28,6 +28,7 @@
 		onChange: (account: SocialAccount, key: string, value: unknown) => void;
 		onFormatChange: (account: SocialAccount, outputProfile: string) => void;
 		onAddMedia: () => void;
+		mediaActionDisabled?: boolean;
 	}
 
 	let {
@@ -39,7 +40,8 @@
 		optionsLoadingAccountId = '',
 		onChange,
 		onFormatChange,
-		onAddMedia
+		onAddMedia,
+		mediaActionDisabled = false
 	}: Props = $props();
 
 	const accountById = $derived(new Map(accounts.map((account) => [account.id, account])));
@@ -210,6 +212,8 @@
 						variant="outline"
 						size="sm"
 						class="h-9 shrink-0"
+						disabled={mediaActionDisabled}
+						aria-busy={mediaActionDisabled}
 						onclick={onAddMedia}
 					>
 						{m.media_picker_add_media()}

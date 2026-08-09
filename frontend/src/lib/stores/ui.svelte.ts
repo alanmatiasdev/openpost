@@ -1,4 +1,5 @@
 import { type DateValue } from '@internationalized/date';
+import { SvelteSet } from 'svelte/reactivity';
 import {
 	PublicationInvalidationCoalescer,
 	type PublicationInvalidationBatch,
@@ -12,7 +13,7 @@ export interface PendingPrompt {
 	example: string;
 }
 
-class UIState {
+export class UIState {
 	isComposeOpen = $state(false);
 	composeInitialDate = $state<DateValue | undefined>(undefined);
 	isDayPostsOpen = $state(false);
@@ -25,6 +26,7 @@ class UIState {
 	isFeedbackOpen = $state(false);
 	#publicationInvalidationCoalescer = new PublicationInvalidationCoalescer();
 	#publicationRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+	#composerResetGuards = new SvelteSet<() => boolean>();
 
 	openCompose(date?: DateValue) {
 		this.composeInitialDate = date;
@@ -66,9 +68,18 @@ class UIState {
 		this.activeComposerDraftId = null;
 	}
 
-	startNewPost() {
+	registerComposerResetGuard(guard: () => boolean): () => void {
+		this.#composerResetGuards.add(guard);
+		return () => this.#composerResetGuards.delete(guard);
+	}
+
+	startNewPost(): boolean {
+		for (const guard of this.#composerResetGuards) {
+			if (!guard()) return false;
+		}
 		this.activeComposerDraftId = null;
 		this.composerResetCounter++;
+		return true;
 	}
 
 	invalidatePublications(

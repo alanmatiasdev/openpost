@@ -36,19 +36,20 @@
 	import { Badge } from '$lib/components/ui/badge';
 	import { getPlatformKey, getPlatformName } from '$lib/utils';
 	import { CalendarDate, isEqualDay } from '@internationalized/date';
-	import LoaderIcon from 'lucide-svelte/icons/loader-2';
-	import PlusIcon from 'lucide-svelte/icons/plus';
-	import XIcon from 'lucide-svelte/icons/x';
-	import LightbulbIcon from 'lucide-svelte/icons/lightbulb';
-	import ShuffleIcon from 'lucide-svelte/icons/shuffle';
-	import CheckIcon from 'lucide-svelte/icons/check';
-	import ImageIcon from 'lucide-svelte/icons/image';
-	import UnlinkIcon from 'lucide-svelte/icons/unlink';
-	import GripVerticalIcon from 'lucide-svelte/icons/grip-vertical';
-	import Trash2Icon from 'lucide-svelte/icons/trash-2';
-	import TypeIcon from 'lucide-svelte/icons/type';
-	import MoreHorizontalIcon from 'lucide-svelte/icons/ellipsis';
-	import SettingsIcon from 'lucide-svelte/icons/settings-2';
+	import LoaderIcon from '@lucide/svelte/icons/loader-2';
+	import PlusIcon from '@lucide/svelte/icons/plus';
+	import XIcon from '@lucide/svelte/icons/x';
+	import LightbulbIcon from '@lucide/svelte/icons/lightbulb';
+	import ShuffleIcon from '@lucide/svelte/icons/shuffle';
+	import CheckIcon from '@lucide/svelte/icons/check';
+	import ImageIcon from '@lucide/svelte/icons/image';
+	import UnlinkIcon from '@lucide/svelte/icons/unlink';
+	import GripVerticalIcon from '@lucide/svelte/icons/grip-vertical';
+	import Trash2Icon from '@lucide/svelte/icons/trash-2';
+	import TypeIcon from '@lucide/svelte/icons/type';
+	import MoreHorizontalIcon from '@lucide/svelte/icons/ellipsis';
+	import RefreshCwIcon from '@lucide/svelte/icons/refresh-cw';
+	import SettingsIcon from '@lucide/svelte/icons/settings-2';
 	import { ui } from '$lib/stores/ui.svelte';
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import { ReorderableList } from 'svelte-reorderable-list';
@@ -123,7 +124,7 @@
 	import { SerializedSaveQueue } from '$lib/serialized-save-queue';
 	import { buildComposerPreview } from '$lib/compose-preview';
 	import { openPreviewWindow, type PreviewWindowSession } from '$lib/preview-window';
-	import { uploadMediaFile } from '$lib/media-upload-client';
+	import { uploadMediaFile, type MediaUploadResult } from '$lib/media-upload-client';
 	import type { MediaPickerVideoSelection } from '$lib/media-picker';
 	import {
 		boundImageCaptionPostContext,
@@ -131,6 +132,23 @@
 		resolveImageCaptionRetryContext
 	} from '$lib/image-caption';
 	import { firstComposerURL } from './compose/composer-links';
+	import {
+		presentProviderReadiness,
+		type ProviderReadinessDecision,
+		type ProviderReadinessOperation,
+		type ProviderReadinessPresentation
+	} from '$lib/provider-readiness';
+	import {
+		PasteMediaUploadQueue,
+		availablePasteMediaSlots,
+		hasUnsettledPasteMediaUploads,
+		pasteMediaTargetKey,
+		pastedImageFileSignature,
+		selectPastedImageFiles,
+		type PasteMediaUploadItem,
+		type PasteMediaUploadTarget,
+		type PastedImageRejectionReason
+	} from './compose/paste-media-upload';
 
 	// --------------------------------------------------------------------------
 	// Types
@@ -155,6 +173,10 @@
 	type Capability = components['schemas']['Capability'];
 	type SettingDefinition = components['schemas']['SettingDefinition'];
 	type ResolvedAccountCapability = components['schemas']['ResolvedAccountCapability'];
+	type ResolvedAccountCapabilityWithReadiness = ResolvedAccountCapability & {
+		immediate_readiness?: ProviderReadinessDecision;
+		scheduled_readiness?: ProviderReadinessDecision;
+	};
 	type DestinationOption = components['schemas']['DestinationOption'];
 	type ValidationIssue = components['schemas']['ValidationIssue'];
 
@@ -294,6 +316,25 @@
 	let mediaAltTexts = $state<Map<string, string>>(new Map());
 	let mediaMimeTypes = $state<Map<string, string>>(new Map());
 	let mediaSizes = $state<Map<string, number>>(new Map());
+	let pasteMediaUploads = $state.raw<PasteMediaUploadItem[]>([]);
+	let pasteMediaFeedback = $state.raw<{ targetKey: string; messages: string[] } | null>(null);
+	let pasteMediaAnnouncement = $state('');
+	const pasteMediaUploadQueue = new PasteMediaUploadQueue<MediaUploadResult>({
+		upload: ({ file, target, signal, onProgress }) =>
+			uploadMediaFile({
+				workspaceId: target.workspaceId,
+				file,
+				source: 'upload',
+				retentionClass: 'temporary',
+				signal,
+				onProgress: (progress) => onProgress(progress.fraction)
+			}),
+		onComplete: completePastedMediaUpload,
+		onChange: (items) => (pasteMediaUploads = items),
+		errorMessage: (cause) =>
+			cause instanceof Error && cause.message ? cause.message : m.compose_upload_failed(),
+		maxConcurrentUploads: 3
+	});
 	const captioningMediaIds = new SvelteSet<string>();
 	const generatedCaptionMediaIds = new SvelteSet<string>();
 	const failedCaptionMediaIds = new SvelteSet<string>();
@@ -308,7 +349,7 @@
 	let mediaPickerOpen = $state(false);
 	let mediaPickerPostIndex = $state(0);
 	let mediaPickerInitialFiles = $state.raw<File[]>([]);
-	let resolvedCapabilities = $state<Record<string, ResolvedAccountCapability>>({});
+	let resolvedCapabilities = $state<Record<string, ResolvedAccountCapabilityWithReadiness>>({});
 	let capabilityResolveLoading = $state(false);
 	let capabilityResolveError = $state('');
 	let validationIssues = $state<ValidationIssue[]>([]);
@@ -376,6 +417,7 @@
 
 	const activePost = $derived(posts[activePostIndex] ?? posts[0]);
 	const hasContent = $derived(hasAnyContent(posts));
+	const hasPendingPasteMediaUploads = $derived(hasUnsettledPasteMediaUploads(pasteMediaUploads));
 	const hasWrittenContent = $derived(posts.some((post) => post.content.trim().length > 0));
 	const showInspirationControl = $derived(!hasWrittenContent && !isSubmitting);
 	const totalChars = $derived(posts.reduce((sum, p) => sum + p.content.length, 0));
@@ -410,6 +452,28 @@
 			selectedAccounts.map((account) => [account.id, dialogSettingsForAccount(account)])
 		)
 	);
+	const capabilityInputSnapshot = $derived(
+		JSON.stringify({
+			workspace: selectedWorkspaceId,
+			accounts: selectedAccountIds,
+			mode: textComposerMode,
+			requestedOutputProfiles,
+			linkUrl,
+			posts: posts.map((post) => ({
+				key: post.key,
+				content: post.content,
+				mediaIds: post.mediaIds
+			})),
+			settingsByAccount,
+			segmentSettingsByPost,
+			mediaSettingsByAccount
+		})
+	);
+	const capabilityReadinessCurrent = $derived(
+		!capabilityResolveLoading &&
+		lastResolvedCapabilityInputSnapshot === capabilityInputSnapshot &&
+		selectedAccountIds.every((accountID) => Boolean(resolvedCapabilities[accountID]))
+	);
 	const localBlockers = $derived(globalFormBlockers());
 	const globalIssues = $derived(composerIssues(localBlockers, validationIssues));
 	const visibleGlobalIssues = $derived(hasContent ? globalIssues : []);
@@ -433,24 +497,27 @@
 		sharedProviderKeys.size > 1 && sharedProviderKeys.has('youtube')
 	);
 	const canSubmitPublication = $derived(
-		localBlockers.length === 0 && accountBlockingMessages.length === 0
+		!hasPendingPasteMediaUploads &&
+			localBlockers.length === 0 &&
+			accountBlockingMessages.length === 0
 	);
-	const capabilityInputSnapshot = $derived(
-		JSON.stringify({
-			workspace: selectedWorkspaceId,
-			accounts: selectedAccountIds,
-			mode: textComposerMode,
-			requestedOutputProfiles,
-			linkUrl,
-			posts: posts.map((post) => ({
-				key: post.key,
-				content: post.content,
-				mediaIds: post.mediaIds
-			})),
-			settingsByAccount,
-			segmentSettingsByPost,
-			mediaSettingsByAccount
-		})
+	const canPublishNow = $derived(
+		canSubmitPublication &&
+		capabilityReadinessCurrent &&
+		selectedAccounts.every((account) =>
+			accountReadiness(account, 'publish_immediate').canProceed
+		)
+	);
+	const canSchedulePublication = $derived(
+		canSubmitPublication &&
+		capabilityReadinessCurrent &&
+		selectedAccounts.every((account) =>
+			accountReadiness(account, 'publish_scheduled').canProceed
+		)
+	);
+	const canSaveEditedPost = $derived(
+		canSubmitPublication &&
+		(!(selectedDate && selectedTime) || canSchedulePublication)
 	);
 	const activeVariantAccount = $derived(
 		activeVariantAccountId ? (accounts.find((a) => a.id === activeVariantAccountId) ?? null) : null
@@ -636,6 +703,7 @@
 				return;
 			}
 			if (nextWorkspaceId !== selectedWorkspaceId) {
+				pasteMediaUploadQueue.reset();
 				selectedWorkspaceId = nextWorkspaceId;
 				variants = new Map();
 				activeVariantAccountId = null;
@@ -656,6 +724,7 @@
 	function sanitizeSelectedAccounts(validAccounts: SocialAccount[]) {
 		const validIds = new Set(validAccounts.map((account) => account.id));
 		const nextSelectedIds = selectedAccountIds.filter((id) => validIds.has(id));
+		const nextSelectedIdSet = new Set(nextSelectedIds);
 		if (!arraysEqual(nextSelectedIds, selectedAccountIds)) {
 			selectedAccountIds = nextSelectedIds;
 		}
@@ -675,9 +744,19 @@
 			);
 		}
 
-		if (activeVariantAccountId && !validIds.has(activeVariantAccountId)) {
+		if (
+			activeVariantAccountId &&
+			(!nextSelectedIdSet.has(activeVariantAccountId) || !nextVariants.has(activeVariantAccountId))
+		) {
 			activeVariantAccountId = null;
 		}
+
+		pasteMediaUploadQueue.discardWhere((upload) => {
+			const accountId = upload.target.variantAccountId;
+			return (
+				accountId !== null && (!nextSelectedIdSet.has(accountId) || !nextVariants.has(accountId))
+			);
+		});
 	}
 
 	function getCharCounterStrokeColor(count: number, max: number): string {
@@ -955,6 +1034,14 @@
 		return '';
 	}
 
+	function pasteMediaUploadBlocker(): string {
+		if (pasteMediaUploads.length === 0) return '';
+		const failedUpload = pasteMediaUploads.find((upload) => upload.status === 'failed');
+		return (
+			failedUpload?.error || m.media_uploaded_progress({ done: 0, total: pasteMediaUploads.length })
+		);
+	}
+
 	function globalFormBlockers(): string[] {
 		const blockers: string[] = [];
 		if (!selectedWorkspaceId) blockers.push(m.compose_choose_workspace_blocker());
@@ -966,6 +1053,8 @@
 		) {
 			blockers.push(m.compose_thread_minimum());
 		}
+		const pasteUploadBlocker = pasteMediaUploadBlocker();
+		if (pasteUploadBlocker) blockers.push(pasteUploadBlocker);
 		if (capabilityResolveError) blockers.push(capabilityResolveError);
 		return uniqueIssueMessages(blockers);
 	}
@@ -990,6 +1079,79 @@
 		]);
 	}
 
+	function accountReadiness(
+		account: SocialAccount,
+		operation: Extract<ProviderReadinessOperation, 'publish_immediate' | 'publish_scheduled'>
+	): ProviderReadinessPresentation {
+		const resolved = resolvedCapabilities[account.id];
+		const decision =
+			operation === 'publish_immediate'
+				? resolved?.immediate_readiness
+				: resolved?.scheduled_readiness;
+		return presentProviderReadiness(decision, operation);
+	}
+
+	function readinessReason(
+		account: SocialAccount,
+		presentation: ProviderReadinessPresentation
+	): string {
+		const platform = getPlatformName(account.platform);
+		switch (presentation.state) {
+			case 'unsupported':
+				return m.provider_readiness_unsupported({ platform });
+			case 'disabled':
+				return m.provider_readiness_disabled({ platform });
+			case 'needs_configuration':
+				return m.provider_readiness_needs_configuration({ platform });
+			case 'reconnect_required':
+				return m.provider_readiness_reconnect_required({ platform });
+			case 'degraded':
+				return m.provider_readiness_degraded({ platform });
+			case 'approval_required':
+				return m.provider_readiness_approval_required({ platform });
+			case 'trial_only':
+				return m.provider_readiness_trial_only({ platform });
+			case 'policy_restricted':
+				return m.provider_readiness_policy_restricted({ platform });
+			case 'certification_required':
+				return m.provider_readiness_certification_required({ platform });
+			case 'expired_proof':
+				return m.provider_readiness_expired_proof({ platform });
+			case 'healthy':
+			default:
+				return '';
+		}
+	}
+
+	function accountReadinessMessages(account: SocialAccount): string[] {
+		if (!capabilityReadinessCurrent) return [];
+		const immediate = accountReadiness(account, 'publish_immediate');
+		const scheduled = accountReadiness(account, 'publish_scheduled');
+		return uniqueIssueMessages([
+			...(immediate.quiet
+				? []
+				: [m.compose_publish_now_readiness({ reason: readinessReason(account, immediate) })]),
+			...(scheduled.quiet
+				? []
+				: [m.compose_schedule_readiness({ reason: readinessReason(account, scheduled) })])
+		]);
+	}
+
+	function operationReadinessBlocker(
+		operation: Extract<ProviderReadinessOperation, 'publish_immediate' | 'publish_scheduled'>
+	): string {
+		if (!capabilityReadinessCurrent) return m.compose_load_readiness_failed();
+		for (const account of selectedAccounts) {
+			const presentation = accountReadiness(account, operation);
+			if (presentation.canProceed) continue;
+			const reason = readinessReason(account, presentation);
+			return operation === 'publish_immediate'
+				? m.compose_publish_now_readiness({ reason })
+				: m.compose_schedule_readiness({ reason });
+		}
+		return '';
+	}
+
 	function accountIssueMessages(account: SocialAccount): string[] {
 		const provider = getPlatformKey(account.platform);
 		const sourcePosts = isThread ? posts : activePost ? [activePost] : [];
@@ -1002,6 +1164,7 @@
 		});
 		return uniqueIssueMessages([
 			...accountBlockers(account, false),
+			...accountReadinessMessages(account),
 			...(resolvedCapabilities[account.id]?.issues ?? [])
 				.filter((issue) => isAccountSpecificIssue(issue) && isActionableAccountIssue(issue))
 				.map((issue) => issue.message),
@@ -1302,10 +1465,26 @@
 				throw new Error(resolveError.detail || m.compose_load_capabilities_failed());
 			}
 			if (requestSequence !== capabilityResolveRequestSequence) return;
+			const resolvedAccounts = (data?.accounts ?? []) as ResolvedAccountCapabilityWithReadiness[];
 			resolvedCapabilities = Object.fromEntries(
-				(data?.accounts ?? []).map((capability) => [capability.account_id, capability])
+				resolvedAccounts.map((capability) => [capability.account_id, capability])
 			);
-			for (const capability of data?.accounts ?? []) {
+			if (
+				resolvedAccounts.some(
+					(capability) =>
+						presentProviderReadiness(
+							capability.immediate_readiness,
+							'publish_immediate'
+						).action === 'retry' ||
+						presentProviderReadiness(
+							capability.scheduled_readiness,
+							'publish_scheduled'
+						).action === 'retry'
+				)
+			) {
+				capabilityResolveError = m.compose_load_readiness_failed();
+			}
+			for (const capability of resolvedAccounts) {
 				const dynamic = capability.dynamic_options ?? {};
 				if (Object.keys(dynamic).length === 0) continue;
 				destinationOptionsByAccount = {
@@ -1324,7 +1503,7 @@
 					}
 				};
 			}
-			validationIssues = (data?.accounts ?? []).flatMap((capability) => capability.issues ?? []);
+			validationIssues = resolvedAccounts.flatMap((capability) => capability.issues ?? []);
 			lastResolvedCapabilityInputSnapshot = inputSnapshot;
 			void loadRequiredDestinationOptions();
 		} catch (resolveError) {
@@ -1591,6 +1770,9 @@
 	}
 
 	function openMediaPicker(postIndex: number) {
+		const post = posts[postIndex];
+		const target = post ? pasteMediaTargetForPost(post) : null;
+		if (target && pasteMediaUploadsForTarget(target).length > 0) return;
 		mediaPickerInitialFiles = [];
 		mediaPickerPostIndex = postIndex;
 		mediaPickerOpen = true;
@@ -1990,6 +2172,7 @@
 	// Initialization
 	// --------------------------------------------------------------------------
 	async function initializeFromPost(post: InitialPost | undefined, resolveAfter = true) {
+		pasteMediaUploadQueue.reset();
 		clearAutoSaveTimer();
 		if (!post) {
 			draftId = null;
@@ -2110,6 +2293,7 @@
 	}
 
 	async function initializeFromPublication(publication: Publication, resolveAfter = true) {
+		pasteMediaUploadQueue.reset();
 		clearAutoSaveTimer();
 		draftId = publication.text_post_id || null;
 		publicationId = publication.id;
@@ -2206,13 +2390,21 @@
 		const handleVisibilityChange = () => {
 			if (document.visibilityState === 'hidden') void flushPendingTextDraft();
 		};
+		const unregisterComposerResetGuard = ui.registerComposerResetGuard(() => {
+			if (!hasPendingPasteMediaUploads) return true;
+			error = pasteMediaUploadBlocker();
+			return false;
+		});
 		document.addEventListener('visibilitychange', handleVisibilityChange);
 		void (async () => {
 			await initializeComposer();
 			await restoreImageEditorReturn();
 			await restoreVideoEditorReturn();
 		})();
-		return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+		return () => {
+			document.removeEventListener('visibilitychange', handleVisibilityChange);
+			unregisterComposerResetGuard();
+		};
 	});
 
 	function invalidatePendingComposerRequests() {
@@ -2225,6 +2417,7 @@
 
 	onDestroy(() => {
 		invalidatePendingComposerRequests();
+		pasteMediaUploadQueue.reset();
 		clearAutoSaveTimer();
 		clearSavedIndicator();
 		if (capabilityResolveTimer) clearTimeout(capabilityResolveTimer);
@@ -2237,6 +2430,11 @@
 	});
 
 	beforeNavigate((navigation) => {
+		if (hasPendingPasteMediaUploads) {
+			navigation.cancel();
+			error = pasteMediaUploadBlocker();
+			return;
+		}
 		if (allowNavigationOnce) {
 			allowNavigationOnce = false;
 			invalidatePendingComposerRequests();
@@ -2542,6 +2740,10 @@
 
 	function handleWorkspaceChange(value: string) {
 		if (!value || value === selectedWorkspaceId) return;
+		if (hasPendingPasteMediaUploads) {
+			error = pasteMediaUploadBlocker();
+			return;
+		}
 		const resetWorkspaceState = Boolean(
 			draftId ||
 			hasContent ||
@@ -2597,6 +2799,7 @@
 		if (!account) return;
 		selectedSocialSetId = '';
 		if (selectedAccountIds.includes(id)) {
+			pasteMediaUploadQueue.discardWhere((upload) => upload.target.variantAccountId === id);
 			selectedAccountIds = selectedAccountIds.filter((a) => a !== id);
 			if (variants.has(id)) {
 				const nextVariants = new SvelteMap(variants);
@@ -2621,6 +2824,7 @@
 	}
 
 	function clearAllAccounts() {
+		pasteMediaUploadQueue.discardWhere((upload) => upload.target.variantAccountId !== null);
 		selectedAccountIds = [];
 		selectedSocialSetId = '';
 		scheduleAutoSave();
@@ -2634,9 +2838,15 @@
 			return;
 		}
 		selectedSocialSetId = set.id;
-		selectedAccountIds = (set.accounts ?? [])
+		const nextAccountIds = (set.accounts ?? [])
 			.map((membership) => membership.social_account_id)
 			.filter((id) => accounts.some((account) => account.id === id));
+		pasteMediaUploadQueue.discardWhere(
+			(upload) =>
+				upload.target.variantAccountId !== null &&
+				!nextAccountIds.includes(upload.target.variantAccountId)
+		);
+		selectedAccountIds = nextAccountIds;
 		requestedOutputProfiles = {};
 		formatLockedByAccount = {};
 		activeVariantAccountId = null;
@@ -2967,6 +3177,7 @@
 				},
 				{ immediate: true }
 			);
+			pasteMediaUploadQueue.reset();
 			posts = [makeEmptyPost()];
 			activePostIndex = 0;
 			draftId = null;
@@ -2999,6 +3210,11 @@
 		}
 		if (!hasContent) {
 			error = m.compose_please_enter_content();
+			return;
+		}
+		const pasteUploadBlocker = pasteMediaUploadBlocker();
+		if (pasteUploadBlocker) {
+			error = pasteUploadBlocker;
 			return;
 		}
 		if (selectedAccountIds.length === 0) {
@@ -3084,6 +3300,11 @@
 			error = m.compose_please_enter_content();
 			return;
 		}
+		const pasteUploadBlocker = pasteMediaUploadBlocker();
+		if (pasteUploadBlocker) {
+			error = pasteUploadBlocker;
+			return;
+		}
 		if (selectedAccountIds.length === 0) {
 			error = m.compose_select_account();
 			return;
@@ -3130,6 +3351,10 @@
 			}
 			await resolveCapabilities();
 			if (capabilityResolveError) throw new Error(capabilityResolveError);
+			const readinessBlocker = operationReadinessBlocker(
+				publishNow ? 'publish_immediate' : 'publish_scheduled'
+			);
+			if (readinessBlocker) throw new Error(readinessBlocker);
 			const targetPublicationID = await saveDraft({
 				scheduledAt: publishNow ? null : (scheduledAt ?? null)
 			});
@@ -3183,6 +3408,7 @@
 			if (isEditMode && onSuccess) {
 				setTimeout(() => onSuccess(), 800);
 			} else {
+				pasteMediaUploadQueue.reset();
 				posts = [makeEmptyPost()];
 				activePostIndex = 0;
 				draftId = null;
@@ -3228,6 +3454,10 @@
 
 	function removePost(index: number) {
 		if (posts.length <= 1) return;
+		const removedPostKey = posts[index]?.key;
+		if (removedPostKey) {
+			pasteMediaUploadQueue.discardWhere((upload) => upload.target.postKey === removedPostKey);
+		}
 		posts = posts.filter((_, i) => i !== index);
 		variants = normalizeVariantsMap(variants, posts);
 		if (activePostIndex >= posts.length) {
@@ -3247,10 +3477,123 @@
 	// --------------------------------------------------------------------------
 	// Media
 	// --------------------------------------------------------------------------
+	function pasteMediaTargetForPost(post: PostItem): PasteMediaUploadTarget | null {
+		if (!selectedWorkspaceId) return null;
+		return {
+			workspaceId: selectedWorkspaceId,
+			postKey: post.key,
+			variantAccountId:
+				activeVariantAccountId && activeVariantIsUnsynced ? activeVariantAccountId : null
+		};
+	}
+
+	function pasteMediaUploadsForTarget(target: PasteMediaUploadTarget): PasteMediaUploadItem[] {
+		return pasteMediaUploads.filter(
+			(upload) =>
+				upload.target.workspaceId === target.workspaceId &&
+				upload.target.postKey === target.postKey &&
+				upload.target.variantAccountId === target.variantAccountId
+		);
+	}
+
+	function visiblePasteMediaUploads(post: PostItem): PasteMediaUploadItem[] {
+		const target = pasteMediaTargetForPost(post);
+		return target ? pasteMediaUploadsForTarget(target) : [];
+	}
+
+	function visiblePasteMediaFeedback(post: PostItem): string[] {
+		const target = pasteMediaTargetForPost(post);
+		if (!target || pasteMediaFeedback?.targetKey !== pasteMediaTargetKey(target)) return [];
+		return pasteMediaFeedback.messages;
+	}
+
+	function pastedImageRejectionMessage(reason: PastedImageRejectionReason, file: File): string {
+		switch (reason) {
+			case 'empty':
+				return m.media_upload_empty_file({ name: file.name });
+			case 'too_large':
+				return m.media_upload_file_too_large({ name: file.name });
+			case 'duplicate':
+				return m.media_upload_duplicates();
+			case 'capacity':
+				return m.media_upload_too_many({ maximum: composerMediaLimit });
+		}
+	}
+
+	function mediaIdsForPasteTarget(target: PasteMediaUploadTarget): string[] {
+		const post = posts.find((candidate) => candidate.key === target.postKey);
+		if (!post) return [];
+		if (!target.variantAccountId) return post.mediaIds;
+		return getVariantMediaIds(target.variantAccountId, post.key) ?? post.mediaIds;
+	}
+
+	function pasteMediaTargetIsCurrent(target: PasteMediaUploadTarget): boolean {
+		if (selectedWorkspaceId !== target.workspaceId) return false;
+		if (!posts.some((post) => post.key === target.postKey)) return false;
+		return (
+			!target.variantAccountId ||
+			(selectedAccountIds.includes(target.variantAccountId) &&
+				variants.has(target.variantAccountId))
+		);
+	}
+
+	function setPasteTargetMediaIds(target: PasteMediaUploadTarget, mediaIds: string[]): void {
+		const postIndex = posts.findIndex((post) => post.key === target.postKey);
+		if (postIndex < 0) return;
+		if (target.variantAccountId) {
+			setVariantMediaIds(target.variantAccountId, postIndex, mediaIds);
+		} else {
+			posts = posts.map((post, index) => (index === postIndex ? { ...post, mediaIds } : post));
+		}
+		validationIssues = [];
+		scheduleAutoSave();
+		scheduleCapabilityResolve();
+	}
+
+	function completePastedMediaUpload(
+		upload: PasteMediaUploadItem,
+		result: MediaUploadResult
+	): boolean {
+		if (!pasteMediaTargetIsCurrent(upload.target)) return false;
+		const currentMediaIds = mediaIdsForPasteTarget(upload.target);
+		if (!currentMediaIds.includes(result.id)) {
+			const nextMediaIds = mergeMediaIds(currentMediaIds, [result.id]);
+			if (!nextMediaIds.includes(result.id)) {
+				throw new Error(m.media_upload_too_many({ maximum: composerMediaLimit }));
+			}
+			setPasteTargetMediaIds(upload.target, nextMediaIds);
+		}
+
+		const nextMimeTypes = new SvelteMap(mediaMimeTypes);
+		nextMimeTypes.set(
+			result.id,
+			result.mime_type || upload.file.type || 'application/octet-stream'
+		);
+		mediaMimeTypes = nextMimeTypes;
+		const nextSizes = new SvelteMap(mediaSizes);
+		nextSizes.set(result.id, result.size || upload.file.size);
+		mediaSizes = nextSizes;
+		if (result.alt_text) {
+			mediaAltTexts = new SvelteMap(mediaAltTexts).set(result.id, result.alt_text);
+		}
+		pasteMediaAnnouncement = `${upload.file.name}: ${m.media_upload_complete()}`;
+
+		const post = posts.find((candidate) => candidate.key === upload.target.postKey);
+		const postContext = upload.target.variantAccountId
+			? (getVariantContent(upload.target.variantAccountId, upload.target.postKey) ??
+				post?.content ??
+				'')
+			: (post?.content ?? '');
+		void generateMissingMediaAltText([result.id], postContext);
+		return true;
+	}
+
 	function queueMediaFiles(files: FileList | File[], targetPostIndex = activePostIndex): void {
 		if (!selectedWorkspaceId || isSubmitting) return;
 		const targetPost = posts[targetPostIndex];
 		if (!targetPost || getEditorMediaIdsForPost(targetPost).length >= composerMediaLimit) return;
+		const pasteTarget = pasteMediaTargetForPost(targetPost);
+		if (pasteTarget && pasteMediaUploadsForTarget(pasteTarget).length > 0) return;
 		mediaPickerPostIndex = targetPostIndex;
 		mediaPickerInitialFiles = Array.from(files).slice(
 			0,
@@ -3261,19 +3604,49 @@
 
 	function handlePaste(e: ClipboardEvent, postIndex: number = activePostIndex) {
 		const items = e.clipboardData?.items;
-		if (!items) return;
+		const post = posts[postIndex];
+		if (
+			!items ||
+			!post ||
+			!selectedWorkspaceId ||
+			isSubmitting ||
+			(activeVariantAccountId !== null && !activeVariantIsUnsynced)
+		) {
+			return;
+		}
 
-		const files: File[] = [];
-		for (const item of Array.from(items)) {
-			if (item.kind === 'file') {
-				const file = item.getAsFile();
-				if (file) files.push(file);
-			}
+		const target = pasteMediaTargetForPost(post);
+		if (!target) return;
+		const targetUploads = pasteMediaUploadsForTarget(target);
+		const capacity = availablePasteMediaSlots(
+			mediaIdsForPasteTarget(target).length,
+			targetUploads.length,
+			composerMediaLimit
+		);
+		const selection = selectPastedImageFiles(
+			Array.from(items),
+			capacity,
+			targetUploads.map((upload) => pastedImageFileSignature(upload.file))
+		);
+		if (selection.hasImageFiles && selection.rejected.length > 0) {
+			pasteMediaFeedback = {
+				targetKey: pasteMediaTargetKey(target),
+				messages: uniqueIssueMessages(
+					selection.rejected.map(({ file, reason }) => pastedImageRejectionMessage(reason, file))
+				)
+			};
+		} else if (
+			selection.hasImageFiles &&
+			pasteMediaFeedback?.targetKey === pasteMediaTargetKey(target)
+		) {
+			pasteMediaFeedback = null;
 		}
-		if (files.length > 0) {
-			e.preventDefault();
-			queueMediaFiles(files, postIndex);
-		}
+		if (selection.accepted.length === 0) return;
+
+		e.preventDefault();
+		error = '';
+		pasteMediaAnnouncement = '';
+		pasteMediaUploadQueue.enqueue(selection.accepted, target);
 	}
 
 	function handleDragOver(e: DragEvent) {
@@ -3425,8 +3798,13 @@
 		return prompt.example?.trim() ? prompt.example : prompt.text;
 	}
 
-	function applyPromptContent(prompt: { text: string; example?: string }) {
+	function applyPromptContent(prompt: { text: string; example?: string }): boolean {
+		if (hasPendingPasteMediaUploads) {
+			error = pasteMediaUploadBlocker();
+			return false;
+		}
 		const content = resolvePromptContent(prompt);
+		pasteMediaUploadQueue.reset();
 		posts = [{ ...makeEmptyPost(), content }];
 		linkUrl = firstComposerURL(content);
 		activePostIndex = 0;
@@ -3434,9 +3812,14 @@
 		activeVariantAccountId = null;
 		dismissPrompt();
 		scheduleAutoSave();
+		return true;
 	}
 
 	function requestApplyPrompt(prompt: { text: string; example?: string }) {
+		if (hasPendingPasteMediaUploads) {
+			error = pasteMediaUploadBlocker();
+			return;
+		}
 		if (hasContent) {
 			pendingPromptToApply = { text: prompt.text, example: prompt.example ?? '' };
 			promptApplyDialogOpen = true;
@@ -3448,7 +3831,7 @@
 	function confirmApplyPrompt() {
 		const prompt = pendingPromptToApply;
 		if (!prompt) return;
-		applyPromptContent(prompt);
+		if (!applyPromptContent(prompt)) return;
 		pendingPromptToApply = null;
 		promptApplyDialogOpen = false;
 	}
@@ -3557,6 +3940,7 @@
 
 	function resyncAccount(accountId: string) {
 		if (!variants.has(accountId)) return;
+		pasteMediaUploadQueue.discardWhere((upload) => upload.target.variantAccountId === accountId);
 		const nextVariants = new SvelteMap(variants);
 		nextVariants.delete(accountId);
 		variants = nextVariants;
@@ -3577,6 +3961,9 @@
 	function resetVariantField(accountId: string, field: 'content' | 'media') {
 		const existing = variants.get(accountId);
 		if (!existing) return;
+		if (field === 'media') {
+			pasteMediaUploadQueue.discardWhere((upload) => upload.target.variantAccountId === accountId);
+		}
 		const nextRecord = normalizeVariantRecord(existing, posts);
 		for (const post of posts) {
 			const variant = nextRecord[post.key];
@@ -3603,6 +3990,10 @@
 
 	function openDestinationAction(action: 'copy' | 'media') {
 		if (!activeVariantAccountId) return;
+		if (hasPendingPasteMediaUploads) {
+			error = pasteMediaUploadBlocker();
+			return;
+		}
 		destinationAction = action;
 		destinationActionTargetIds = selectedAccountIds.filter(
 			(accountId) => accountId !== activeVariantAccountId
@@ -3611,6 +4002,7 @@
 	}
 
 	function toggleDestinationActionTarget(accountId: string) {
+		if (hasPendingPasteMediaUploads || !selectedAccountIds.includes(accountId)) return;
 		destinationActionTargetIds = destinationActionTargetIds.includes(accountId)
 			? destinationActionTargetIds.filter((id) => id !== accountId)
 			: [...destinationActionTargetIds, accountId];
@@ -3632,7 +4024,19 @@
 
 	function applyDestinationAction() {
 		const sourceAccountId = activeVariantAccountId;
-		if (!sourceAccountId || destinationActionTargetIds.length === 0) return;
+		if (hasPendingPasteMediaUploads) {
+			error = pasteMediaUploadBlocker();
+			return;
+		}
+		if (!sourceAccountId || !selectedAccountIds.includes(sourceAccountId)) {
+			destinationActionOpen = false;
+			return;
+		}
+		const currentTargetIds = destinationActionTargetIds.filter(
+			(accountId) => accountId !== sourceAccountId && selectedAccountIds.includes(accountId)
+		);
+		destinationActionTargetIds = currentTargetIds;
+		if (currentTargetIds.length === 0) return;
 		const source = normalizeVariantRecord(
 			variants.get(sourceAccountId) ?? inheritedVariantRecord(),
 			posts
@@ -3640,7 +4044,7 @@
 		const nextVariants = new SvelteMap(variants);
 		const nextSchedules = { ...scheduleOverridesByAccount };
 
-		for (const targetId of destinationActionTargetIds) {
+		for (const targetId of currentTargetIds) {
 			const target = normalizeVariantRecord(
 				nextVariants.get(targetId) ?? inheritedVariantRecord(),
 				posts
@@ -3822,7 +4226,7 @@
 <!-- ====================================================================== -->
 <!-- Top Bar -->
 <!-- ====================================================================== -->
-<div class="flex flex-1 flex-col overflow-hidden" data-testid="text-thread-composer-shell">
+<div class="flex flex-1 flex-col overflow-hidden" data-testid="text-thread-composer-content">
 	{#if !desktopComposerControls.current}
 		<div
 			class="sticky top-0 z-20 border-b bg-background/94 px-3 py-2 backdrop-blur-md"
@@ -3913,7 +4317,7 @@
 						size="sm"
 						class="ml-auto h-11 shrink-0 px-3"
 						onclick={saveEditedPost}
-						disabled={isSaving || isSubmitting || !canSubmitPublication}
+						disabled={isSaving || isSubmitting || !canSaveEditedPost}
 					>
 						{#if isSaving}<LoaderIcon class="size-3.5 animate-spin" />{/if}
 						<span>{isSaving ? m.compose_saving_changes() : m.compose_save_changes()}</span>
@@ -3932,8 +4336,8 @@
 						quickScheduleBusy={suggestingSlot}
 						scheduleSelected={Boolean(selectedDate && selectedTime)}
 						canOpenSchedule={selectedWorkspaceSettingsReady}
-						canQuickSchedule={canSubmitPublication && selectedWorkspaceSettingsReady}
-						canPublish={canSubmitPublication}
+						canQuickSchedule={canSchedulePublication && selectedWorkspaceSettingsReady}
+						canPublish={canPublishNow}
 						onSchedule={openScheduleDialog}
 						onQuickSchedule={quickSchedule}
 						onPublish={() => publish(true)}
@@ -4057,7 +4461,7 @@
 						size="sm"
 						class="gap-1.5"
 						onclick={saveEditedPost}
-						disabled={isSaving || isSubmitting || !canSubmitPublication}
+						disabled={isSaving || isSubmitting || !canSaveEditedPost}
 					>
 						{#if isSaving}<LoaderIcon class="h-3.5 w-3.5 animate-spin" />{/if}
 						<span>{isSaving ? m.compose_saving_changes() : m.compose_save_changes()}</span>
@@ -4075,8 +4479,8 @@
 						quickScheduleBusy={suggestingSlot}
 						scheduleSelected={Boolean(selectedDate && selectedTime)}
 						canOpenSchedule={selectedWorkspaceSettingsReady}
-						canQuickSchedule={canSubmitPublication && selectedWorkspaceSettingsReady}
-						canPublish={canSubmitPublication}
+						canQuickSchedule={canSchedulePublication && selectedWorkspaceSettingsReady}
+						canPublish={canPublishNow}
 						onSchedule={openScheduleDialog}
 						onQuickSchedule={quickSchedule}
 						onPublish={() => publish(true)}
@@ -4098,7 +4502,7 @@
 		externalError={scheduleInputError}
 		suggesting={suggestingSlot}
 		submitting={isSubmitting}
-		canSchedule={canSubmitPublication}
+		canSchedule={canSchedulePublication}
 		bind:randomDelayOverride
 		randomDelayOptions={randomDelaySelectOptions}
 		defaultRandomDelayMinutes={workspaceCtx.settings.random_delay_minutes}
@@ -4177,6 +4581,7 @@
 			onDismiss={() => (success = '')}
 		/>
 	{/if}
+	<p class="sr-only" role="status" aria-live="polite">{pasteMediaAnnouncement}</p>
 
 	<!-- ====================================================================== -->
 	<!-- Main Content Area -->
@@ -4289,10 +4694,16 @@
 										{/if}
 										{#if selectedAccounts.length > 1}
 											<DropdownMenu.Separator />
-											<DropdownMenu.Item onclick={() => openDestinationAction('media')}>
+											<DropdownMenu.Item
+												disabled={hasPendingPasteMediaUploads}
+												onclick={() => openDestinationAction('media')}
+											>
 												{m.compose_apply_media()}
 											</DropdownMenu.Item>
-											<DropdownMenu.Item onclick={() => openDestinationAction('copy')}>
+											<DropdownMenu.Item
+												disabled={hasPendingPasteMediaUploads}
+												onclick={() => openDestinationAction('copy')}
+											>
 												{m.compose_copy_rendition()}
 											</DropdownMenu.Item>
 										{/if}
@@ -4319,6 +4730,7 @@
 						onChange={updateAccountSetting}
 						onFormatChange={selectDestinationFormat}
 						onAddMedia={() => openMediaPicker(activePostIndex)}
+						mediaActionDisabled={hasPendingPasteMediaUploads}
 					/>
 				{/if}
 
@@ -4391,6 +4803,7 @@
 									size="sm"
 									class="gap-1.5"
 									onclick={() => requestApplyPrompt(currentPrompt!)}
+									disabled={hasPendingPasteMediaUploads}
 									title={m.compose_apply_prompt_title()}
 								>
 									<CheckIcon class="size-3.5" />
@@ -4414,6 +4827,10 @@
 					>
 						{#snippet item(post, i)}
 							{@const editorContent = getEditorContentForPost(post)}
+							{@const editorMediaIds = getEditorMediaIdsForPost(post)}
+							{@const pendingMediaUploads = visiblePasteMediaUploads(post)}
+							{@const pasteFeedback = visiblePasteMediaFeedback(post)}
+							{@const editorMediaCount = editorMediaIds.length + pendingMediaUploads.length}
 							<div
 								class="group/post relative {isDraggingFile && activePostIndex === i
 									? 'bg-primary/5'
@@ -4515,16 +4932,34 @@
 											{/if}
 										</div>
 
-										<!-- Media grid -->
-										{#if getEditorMediaIdsForPost(post).length > 0}
+										{#if pasteFeedback.length > 0}
 											<div
-												class="mb-3 {getEditorMediaIdsForPost(post).length === 1
-													? ''
-													: 'grid grid-cols-2 gap-1.5'}"
+												class="mb-3 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive"
+												role="status"
+												aria-live="polite"
+												data-testid="composer-paste-feedback"
 											>
-												{#each getEditorMediaIdsForPost(post) as mediaId, mi (mediaId)}
-													{@const isFirstOfThree =
-														getEditorMediaIdsForPost(post).length === 3 && mi === 0}
+												<ul class="min-w-0 flex-1 space-y-1">
+													{#each pasteFeedback as message (message)}
+														<li>{message}</li>
+													{/each}
+												</ul>
+												<button
+													type="button"
+													class="flex size-7 shrink-0 items-center justify-center rounded-md hover:bg-destructive/10 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+													onclick={() => (pasteMediaFeedback = null)}
+													aria-label={m.common_dismiss()}
+												>
+													<XIcon class="size-3.5" />
+												</button>
+											</div>
+										{/if}
+
+										<!-- Media grid -->
+										{#if editorMediaCount > 0}
+											<div class="mb-3 {editorMediaCount === 1 ? '' : 'grid grid-cols-2 gap-1.5'}">
+												{#each editorMediaIds as mediaId, mi (mediaId)}
+													{@const isFirstOfThree = editorMediaCount === 3 && mi === 0}
 													<div
 														class="group/media relative overflow-hidden rounded-lg {isFirstOfThree
 															? 'col-span-2'
@@ -4533,7 +4968,7 @@
 														{#if isVideoMedia(mediaId)}
 															<video
 																src={getAuthenticatedMediaByID(mediaId)}
-																class="{getEditorMediaIdsForPost(post).length === 1
+																class="{editorMediaCount === 1
 																	? 'aspect-video'
 																	: 'aspect-square'} w-full object-cover"
 																controls
@@ -4544,7 +4979,7 @@
 															<img
 																src={getAuthenticatedMediaByID(mediaId)}
 																alt={mediaAltTexts.get(mediaId) || ''}
-																class="{getEditorMediaIdsForPost(post).length === 1
+																class="{editorMediaCount === 1
 																	? 'aspect-video'
 																	: 'aspect-square'} w-full object-cover"
 															/>
@@ -4634,6 +5069,111 @@
 														{/if}
 													</div>
 												{/each}
+												{#each pendingMediaUploads as upload, uploadIndex (upload.id)}
+													{@const mediaIndex = editorMediaIds.length + uploadIndex}
+													<div
+														class="relative overflow-hidden rounded-lg {editorMediaCount === 3 &&
+														mediaIndex === 0
+															? 'col-span-2'
+															: ''}"
+														data-testid="composer-paste-upload"
+														data-status={upload.status}
+														role="group"
+														aria-label={upload.file.name}
+														aria-busy={upload.status === 'queued' || upload.status === 'uploading'}
+													>
+														<img
+															src={upload.previewURL}
+															alt=""
+															class="{editorMediaCount === 1
+																? 'aspect-video'
+																: 'aspect-square'} w-full object-cover"
+														/>
+														<div
+															class="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/60 p-3 text-center text-white"
+														>
+															<p
+																class="max-w-full truncate text-xs font-semibold"
+																title={upload.file.name}
+															>
+																{upload.file.name}
+															</p>
+															{#if upload.status === 'uploading'}
+																<LoaderIcon class="size-5 animate-spin" />
+																<p class="text-xs font-medium">
+																	{upload.file.name}: {m.media_upload_action()}
+																	{#if upload.progress !== null}
+																		{Math.round(upload.progress * 100)}%
+																	{/if}
+																</p>
+																{#if upload.progress !== null}
+																	<div
+																		class="h-1.5 w-full max-w-36 overflow-hidden rounded-full bg-white/25"
+																		role="progressbar"
+																		aria-label={`${m.media_upload_action()}: ${upload.file.name}`}
+																		aria-valuemin="0"
+																		aria-valuemax="100"
+																		aria-valuenow={Math.round(upload.progress * 100)}
+																	>
+																		<div
+																			class="h-full rounded-full bg-white transition-[width]"
+																			style:width={`${Math.round(upload.progress * 100)}%`}
+																		></div>
+																	</div>
+																{/if}
+																<button
+																	type="button"
+																	class="rounded-md bg-black/65 px-3 py-1.5 text-xs font-medium hover:bg-black/85 focus-visible:ring-2 focus-visible:ring-white focus-visible:outline-none"
+																	onclick={() => pasteMediaUploadQueue.cancel(upload.id)}
+																	aria-label={`${m.common_cancel()}: ${upload.file.name}`}
+																>
+																	{m.common_cancel()}
+																</button>
+															{:else if upload.status === 'queued'}
+																<LoaderIcon class="size-5 animate-spin" />
+																<p class="text-xs font-medium">
+																	{upload.file.name}: {m.media_upload_ready()}
+																</p>
+																<button
+																	type="button"
+																	class="rounded-md bg-black/65 px-3 py-1.5 text-xs font-medium hover:bg-black/85 focus-visible:ring-2 focus-visible:ring-white focus-visible:outline-none"
+																	onclick={() => pasteMediaUploadQueue.remove(upload.id)}
+																	aria-label={`${m.common_cancel()}: ${upload.file.name}`}
+																>
+																	{m.common_cancel()}
+																</button>
+															{:else}
+																<p
+																	class="line-clamp-3 text-xs font-medium"
+																	role={upload.status === 'failed' ? 'alert' : 'status'}
+																>
+																	{upload.file.name}: {upload.status === 'failed'
+																		? upload.error || m.compose_upload_failed()
+																		: m.media_upload_ready()}
+																</p>
+																<div class="flex flex-wrap justify-center gap-2">
+																	<button
+																		type="button"
+																		class="flex items-center gap-1 rounded-md bg-white px-3 py-1.5 text-xs font-medium text-black hover:bg-white/90 focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-black focus-visible:outline-none"
+																		onclick={() => pasteMediaUploadQueue.retry(upload.id)}
+																		aria-label={`${m.common_retry()}: ${upload.file.name}`}
+																	>
+																		<RefreshCwIcon class="size-3.5" />
+																		{m.common_retry()}
+																	</button>
+																	<button
+																		type="button"
+																		class="rounded-md bg-black/65 px-3 py-1.5 text-xs font-medium hover:bg-black/85 focus-visible:ring-2 focus-visible:ring-white focus-visible:outline-none"
+																		onclick={() => pasteMediaUploadQueue.remove(upload.id)}
+																		aria-label={m.media_upload_remove({ name: upload.file.name })}
+																	>
+																		{m.compose_remove_media()}
+																	</button>
+																</div>
+															{/if}
+														</div>
+													</div>
+												{/each}
 											</div>
 										{/if}
 
@@ -4651,7 +5191,11 @@
 											<button
 												type="button"
 												class="flex size-11 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 md:size-7"
-												disabled={!!activeVariantAccountId && !activeVariantIsUnsynced}
+												disabled={isSubmitting ||
+													pendingMediaUploads.length > 0 ||
+													editorMediaCount >= composerMediaLimit ||
+													(!!activeVariantAccountId && !activeVariantIsUnsynced)}
+												aria-busy={pendingMediaUploads.length > 0}
 												onclick={() => openMediaPicker(i)}
 												aria-label={m.media_picker_add_media()}
 											>
@@ -4779,6 +5323,7 @@
 				<label class="flex min-h-11 items-center gap-3 rounded-md border px-3 py-2 text-sm">
 					<Checkbox
 						checked={destinationActionTargetIds.includes(account.id)}
+						disabled={hasPendingPasteMediaUploads}
 						onCheckedChange={() => toggleDestinationActionTarget(account.id)}
 					/>
 					<span class="min-w-0 truncate">{accountLabel(account)}</span>
@@ -4794,7 +5339,7 @@
 			</Button>
 			<Button
 				type="button"
-				disabled={destinationActionTargetIds.length === 0}
+				disabled={hasPendingPasteMediaUploads || destinationActionTargetIds.length === 0}
 				onclick={applyDestinationAction}
 			>
 				{m.compose_apply_changes()}

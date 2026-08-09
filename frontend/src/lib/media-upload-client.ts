@@ -159,6 +159,29 @@ export function directUploadHeadersForBrowser(headers: Record<string, string>): 
 	return directHeaders;
 }
 
+export function normalizedUploadErrorMessage(
+	body: string,
+	contentType: string | null,
+	fallback: string,
+	status: number
+): string {
+	const fallbackWithStatus = status > 0 ? `${fallback} (${status})` : fallback;
+	const trimmed = body.trim();
+	if (!trimmed) return fallbackWithStatus;
+	const looksLikeJSON =
+		(contentType ?? '').toLowerCase().includes('json') || trimmed.startsWith('{');
+	if (!looksLikeJSON) return trimmed;
+	try {
+		const problem = JSON.parse(trimmed) as UploadProblem;
+		for (const value of [problem.detail, problem.error, problem.title]) {
+			if (typeof value === 'string' && value.trim()) return value.trim();
+		}
+	} catch {
+		// Invalid JSON is an invalid problem response, not useful user-facing copy.
+	}
+	return fallbackWithStatus;
+}
+
 async function mediaStorageSupportsDirectUploads(workspaceId: string): Promise<boolean> {
 	const cacheKey = `${getApiBase()}:${workspaceId}`;
 	const cached = directUploadCapabilityByWorkspace.get(cacheKey);
@@ -351,22 +374,13 @@ async function uploadErrorFromResponse(
 	response: Response,
 	fallback: string
 ): Promise<UploadRequestError> {
-	const problem = await parseUploadProblem(response);
-	const message =
-		problem.detail || problem.error || problem.title || `${fallback} (${response.status})`;
+	const message = normalizedUploadErrorMessage(
+		await response.text(),
+		response.headers.get('Content-Type'),
+		fallback,
+		response.status
+	);
 	return new UploadRequestError(message, response.status);
-}
-
-async function parseUploadProblem(response: Response): Promise<UploadProblem> {
-	const contentType = response.headers.get('Content-Type') ?? '';
-	if (!contentType.includes('json')) {
-		return { detail: await response.text() };
-	}
-	try {
-		return (await response.json()) as UploadProblem;
-	} catch {
-		return {};
-	}
 }
 
 function isForbiddenBrowserUploadHeader(header: string): boolean {
@@ -501,7 +515,17 @@ function putBlobWithProgress(
 				resolve();
 				return;
 			}
-			reject(new UploadRequestError(xhr.responseText || 'Media upload failed', xhr.status));
+			reject(
+				new UploadRequestError(
+					normalizedUploadErrorMessage(
+						xhr.responseText,
+						xhr.getResponseHeader('Content-Type'),
+						'Media upload failed',
+						xhr.status
+					),
+					xhr.status
+				)
+			);
 		};
 		xhr.onerror = () => {
 			cleanup();
@@ -539,7 +563,17 @@ function uploadFormWithProgress(
 		xhr.onload = () => {
 			cleanup();
 			if (xhr.status < 200 || xhr.status >= 300) {
-				reject(new UploadRequestError(xhr.responseText || 'Upload failed', xhr.status));
+				reject(
+					new UploadRequestError(
+						normalizedUploadErrorMessage(
+							xhr.responseText,
+							xhr.getResponseHeader('Content-Type'),
+							'Upload failed',
+							xhr.status
+						),
+						xhr.status
+					)
+				);
 				return;
 			}
 			try {

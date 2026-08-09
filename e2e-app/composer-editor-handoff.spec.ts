@@ -320,7 +320,7 @@ test("composer preserves its draft through Image cancel and Video replacement", 
   );
 
   await page.goto("/publications/publication-handoff");
-  const composer = page.getByTestId("text-thread-composer-shell");
+  const composer = page.getByTestId("text-thread-composer-content");
   await expect(composer).toBeVisible();
   await composer
     .getByRole("textbox", { name: "Description" })
