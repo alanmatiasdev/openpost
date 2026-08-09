@@ -72,32 +72,25 @@ func newPostCreateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			in := api.CreatePostInput{
-				WorkspaceID:        workspaceID,
-				Content:            content,
-				ScheduledAt:        scheduledAt,
-				SocialAccountIDs:   accountIDs,
-				MediaIDs:           mediaIDs,
-				RandomDelayMinutes: flags.randomDelay,
-			}
+			var threadDraft *string
 			if flags.threadDraft != "" {
-				in.ThreadDraft = &flags.threadDraft
+				threadDraft = &flags.threadDraft
 			}
 			scheduledAtText := optionalScheduleText(scheduledAt)
 			intent := "post"
 			profile := "short_text"
-			if in.ThreadDraft != nil {
+			if threadDraft != nil {
 				intent = "thread"
 				profile = "thread"
 			}
 			result, err := client.CreateTextPostDraft(cmd.Context(), api.CreateTextPostDraftInput{
-				WorkspaceID:        in.WorkspaceID,
-				Content:            in.Content,
+				WorkspaceID:        workspaceID,
+				Content:            content,
 				ScheduledAt:        scheduledAtText,
-				SocialAccountIDs:   in.SocialAccountIDs,
-				MediaIDs:           in.MediaIDs,
-				RandomDelayMinutes: in.RandomDelayMinutes,
-				ThreadDraft:        in.ThreadDraft,
+				SocialAccountIDs:   accountIDs,
+				MediaIDs:           mediaIDs,
+				RandomDelayMinutes: flags.randomDelay,
+				ThreadDraft:        threadDraft,
 				Publication: api.TextPostPublicationInput{
 					Intent:         &intent,
 					ContentProfile: &profile,

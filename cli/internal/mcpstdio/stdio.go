@@ -36,10 +36,6 @@ type Proxy struct {
 	protocolVersion string
 }
 
-func NewProxy(instance, token string) *Proxy {
-	return NewProxyWithVersion(instance, token, defaultVersion)
-}
-
 func NewProxyWithVersion(instance, token, version string) *Proxy {
 	version = strings.TrimSpace(version)
 	if version == "" {
@@ -63,7 +59,7 @@ func (p *Proxy) Serve(ctx context.Context, in io.Reader, out io.Writer) error {
 			}
 			return err
 		}
-		resp, err := p.Forward(ctx, frame)
+		resp, err := p.forward(ctx, frame)
 		if err != nil {
 			resp = jsonRPCError(frame, err)
 		}
@@ -76,7 +72,7 @@ func (p *Proxy) Serve(ctx context.Context, in io.Reader, out io.Writer) error {
 	}
 }
 
-func (p *Proxy) Forward(ctx context.Context, frame []byte) ([]byte, error) {
+func (p *Proxy) forward(ctx context.Context, frame []byte) ([]byte, error) {
 	if strings.TrimSpace(p.Endpoint) == "" {
 		return nil, fmt.Errorf("endpoint is required")
 	}
@@ -122,11 +118,6 @@ func (p *Proxy) Forward(ctx context.Context, frame []byte) ([]byte, error) {
 		p.setNegotiatedProtocolVersion(mcpInitializeResponseVersion(body))
 	}
 	return body, nil
-}
-
-func ReadFrame(r *bufio.Reader) ([]byte, error) {
-	body, _, err := readFrame(r)
-	return body, err
 }
 
 func readFrame(r *bufio.Reader) ([]byte, frameFormat, error) {
@@ -175,10 +166,6 @@ func readFrame(r *bufio.Reader) ([]byte, frameFormat, error) {
 		return nil, frameFormatContentLength, fmt.Errorf("legacy MCP frame body is not valid JSON")
 	}
 	return body, frameFormatContentLength, nil
-}
-
-func WriteFrame(w io.Writer, body []byte) error {
-	return writeFrame(w, body, frameFormatNewline)
 }
 
 func writeFrame(w io.Writer, body []byte, format frameFormat) error {
@@ -240,10 +227,6 @@ func mcpInitializeResponseVersion(frame []byte) string {
 		return ""
 	}
 	return strings.TrimSpace(message.Result.ProtocolVersion)
-}
-
-func writeLegacyFrame(w io.Writer, body []byte) error {
-	return writeFrame(w, body, frameFormatContentLength)
 }
 
 func (p *Proxy) negotiatedProtocolVersion() string {

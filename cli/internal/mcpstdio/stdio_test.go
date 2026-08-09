@@ -14,13 +14,16 @@ import (
 func TestReadWriteFrameRoundTrip(t *testing.T) {
 	var buf bytes.Buffer
 	body := []byte(`{"jsonrpc":"2.0","id":1,"method":"initialize"}`)
-	if err := WriteFrame(&buf, body); err != nil {
-		t.Fatalf("WriteFrame: %v", err)
+	if err := writeFrame(&buf, body, frameFormatNewline); err != nil {
+		t.Fatalf("writeFrame: %v", err)
 	}
 
-	got, err := ReadFrame(bufio.NewReader(&buf))
+	got, format, err := readFrame(bufio.NewReader(&buf))
 	if err != nil {
-		t.Fatalf("ReadFrame: %v", err)
+		t.Fatalf("readFrame: %v", err)
+	}
+	if format != frameFormatNewline {
+		t.Fatalf("format = %v, want newline", format)
 	}
 	if string(got) != string(body) {
 		t.Fatalf("body mismatch: got %q want %q", got, body)
@@ -30,8 +33,8 @@ func TestReadWriteFrameRoundTrip(t *testing.T) {
 func TestWriteFrameCompactsHTTPStyleJSON(t *testing.T) {
 	var buf bytes.Buffer
 	body := []byte("{\n  \"jsonrpc\": \"2.0\",\n  \"id\": 1,\n  \"result\": {}\n}\n")
-	if err := WriteFrame(&buf, body); err != nil {
-		t.Fatalf("WriteFrame: %v", err)
+	if err := writeFrame(&buf, body, frameFormatNewline); err != nil {
+		t.Fatalf("writeFrame: %v", err)
 	}
 	if got, want := buf.String(), "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}\n"; got != want {
 		t.Fatalf("unexpected compact frame: got %q want %q", got, want)
@@ -39,7 +42,7 @@ func TestWriteFrameCompactsHTTPStyleJSON(t *testing.T) {
 }
 
 func TestReadFrameRejectsMissingContentLength(t *testing.T) {
-	_, err := ReadFrame(bufio.NewReader(strings.NewReader("X-Test: yes\r\n\r\n{}")))
+	_, _, err := readFrame(bufio.NewReader(strings.NewReader("X-Test: yes\r\n\r\n{}")))
 	if err == nil || !strings.Contains(err.Error(), "Content-Length") {
 		t.Fatalf("expected Content-Length error, got %v", err)
 	}
@@ -74,7 +77,7 @@ func TestProxyForwardUsesBearerAndMCPPath(t *testing.T) {
 	defer srv.Close()
 
 	proxy := NewProxyWithVersion(srv.URL, "token-1", "v1.2.3")
-	resp, err := proxy.Forward(context.Background(), []byte(`{"jsonrpc":"2.0","id":"a","method":"tools/list"}`))
+	resp, err := proxy.forward(context.Background(), []byte(`{"jsonrpc":"2.0","id":"a","method":"tools/list"}`))
 	if err != nil {
 		t.Fatalf("Forward: %v", err)
 	}
@@ -107,13 +110,13 @@ func TestProxyServeForwardsNegotiatedProtocolVersion(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	proxy := NewProxy(srv.URL, "token")
+	proxy := NewProxyWithVersion(srv.URL, "token", defaultVersion)
 	var in bytes.Buffer
-	if err := WriteFrame(&in, []byte(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}`)); err != nil {
-		t.Fatalf("WriteFrame initialize: %v", err)
+	if err := writeFrame(&in, []byte(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}`), frameFormatNewline); err != nil {
+		t.Fatalf("writeFrame initialize: %v", err)
 	}
-	if err := WriteFrame(&in, []byte(`{"jsonrpc":"2.0","id":2,"method":"tools/list"}`)); err != nil {
-		t.Fatalf("WriteFrame tools/list: %v", err)
+	if err := writeFrame(&in, []byte(`{"jsonrpc":"2.0","id":2,"method":"tools/list"}`), frameFormatNewline); err != nil {
+		t.Fatalf("writeFrame tools/list: %v", err)
 	}
 	var out bytes.Buffer
 	if err := proxy.Serve(context.Background(), &in, &out); err != nil {
@@ -124,8 +127,8 @@ func TestProxyServeForwardsNegotiatedProtocolVersion(t *testing.T) {
 	}
 	reader := bufio.NewReader(&out)
 	for range 2 {
-		if _, err := ReadFrame(reader); err != nil {
-			t.Fatalf("ReadFrame: %v", err)
+		if _, _, err := readFrame(reader); err != nil {
+			t.Fatalf("readFrame: %v", err)
 		}
 	}
 }
@@ -139,10 +142,10 @@ func TestProxyServePreservesLegacyContentLengthFraming(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	proxy := NewProxy(srv.URL, "token")
+	proxy := NewProxyWithVersion(srv.URL, "token", defaultVersion)
 	var in bytes.Buffer
-	if err := writeLegacyFrame(&in, []byte(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`)); err != nil {
-		t.Fatalf("writeLegacyFrame: %v", err)
+	if err := writeFrame(&in, []byte(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`), frameFormatContentLength); err != nil {
+		t.Fatalf("writeFrame legacy: %v", err)
 	}
 	var out bytes.Buffer
 	if err := proxy.Serve(context.Background(), &in, &out); err != nil {
@@ -161,18 +164,18 @@ func TestProxyServeWrapsHTTPErrorAsJSONRPCError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	proxy := NewProxy(srv.URL, "bad-token")
+	proxy := NewProxyWithVersion(srv.URL, "bad-token", defaultVersion)
 	var in bytes.Buffer
-	if err := WriteFrame(&in, []byte(`{"jsonrpc":"2.0","id":"req-1","method":"initialize"}`)); err != nil {
-		t.Fatalf("WriteFrame: %v", err)
+	if err := writeFrame(&in, []byte(`{"jsonrpc":"2.0","id":"req-1","method":"initialize"}`), frameFormatNewline); err != nil {
+		t.Fatalf("writeFrame: %v", err)
 	}
 	var out bytes.Buffer
 	if err := proxy.Serve(context.Background(), &in, &out); err != nil {
 		t.Fatalf("Serve: %v", err)
 	}
-	frame, err := ReadFrame(bufio.NewReader(&out))
+	frame, _, err := readFrame(bufio.NewReader(&out))
 	if err != nil {
-		t.Fatalf("ReadFrame: %v", err)
+		t.Fatalf("readFrame: %v", err)
 	}
 	got := string(frame)
 	if !strings.Contains(got, `"id":"req-1"`) || !strings.Contains(got, `"error"`) || !strings.Contains(got, "HTTP 401") {
@@ -195,10 +198,10 @@ func TestProxyServeSkipsAcceptedNotificationResponse(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	proxy := NewProxy(srv.URL, "token")
+	proxy := NewProxyWithVersion(srv.URL, "token", defaultVersion)
 	var in bytes.Buffer
-	if err := WriteFrame(&in, []byte(`{"jsonrpc":"2.0","method":"notifications/initialized"}`)); err != nil {
-		t.Fatalf("WriteFrame: %v", err)
+	if err := writeFrame(&in, []byte(`{"jsonrpc":"2.0","method":"notifications/initialized"}`), frameFormatNewline); err != nil {
+		t.Fatalf("writeFrame: %v", err)
 	}
 	var out bytes.Buffer
 	if err := proxy.Serve(context.Background(), &in, &out); err != nil {

@@ -1142,7 +1142,7 @@ These tasks are deliberately lower priority. Remove only code proven unreachable
 
 ### CLEAN-CLI-001 — Remove or unexport test-only CLI APIs
 
-- [ ] Remove/unexport CLI `CreatePost`, `UpdatePost`, `CreateAPIToken`, and package-internal MCP stdio wrappers after tests use supported helpers.
+- [x] Remove/unexport CLI `CreatePost`, `UpdatePost`, `CreateAPIToken`, and package-internal MCP stdio wrappers after tests use supported helpers.
 - **Done when:** production import graph stays clean and CLI tests exercise supported public behavior.
 - **Evidence:** `cli/internal/api/client.go:885`, `cli/internal/api/client.go:970`, `cli/internal/api/client.go:1413`, `cli/internal/mcpstdio/stdio.go:39`.
 

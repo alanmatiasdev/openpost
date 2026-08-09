@@ -792,16 +792,6 @@ type PostRendition struct {
 	IsUnsynced        bool     `json:"is_unsynced"`
 }
 
-type CreatePostInput struct {
-	WorkspaceID        string     `json:"workspace_id"`
-	Content            string     `json:"content"`
-	ScheduledAt        *time.Time `json:"scheduled_at,omitempty"`
-	SocialAccountIDs   []string   `json:"social_account_ids"`
-	MediaIDs           []string   `json:"media_ids,omitempty"`
-	RandomDelayMinutes int        `json:"random_delay_minutes,omitempty"`
-	ThreadDraft        *string    `json:"thread_draft,omitempty"`
-}
-
 type TextPostPublicationInput struct {
 	Title          *string                `json:"title,omitempty"`
 	Intent         *string                `json:"intent,omitempty"`
@@ -882,14 +872,6 @@ func (c *Client) SaveTextPostDraft(ctx context.Context, postID string, in SaveTe
 	return &out, nil
 }
 
-func (c *Client) CreatePost(ctx context.Context, in CreatePostInput) (*Post, error) {
-	var out Post
-	if err := c.PostJSON(ctx, "/api/v1/posts", in, &out); err != nil {
-		return nil, err
-	}
-	return &out, nil
-}
-
 type ListPostsInput struct {
 	WorkspaceID string
 	Status      string
@@ -956,23 +938,6 @@ func (c *Client) GetPost(ctx context.Context, id string) (*Post, error) {
 
 func (c *Client) DeletePost(ctx context.Context, id string) error {
 	return c.DeleteJSON(ctx, "/api/v1/posts/"+url.PathEscape(id), nil)
-}
-
-type UpdatePostInput struct {
-	Content            *string   `json:"content,omitempty"`
-	ScheduledAt        *string   `json:"scheduled_at,omitempty"`
-	SocialAccountIDs   []string  `json:"social_account_ids,omitempty"`
-	MediaIDs           *[]string `json:"media_ids,omitempty"`
-	RandomDelayMinutes *int      `json:"random_delay_minutes,omitempty"`
-	ThreadDraft        *string   `json:"thread_draft,omitempty"`
-}
-
-func (c *Client) UpdatePost(ctx context.Context, id string, in UpdatePostInput) (*Post, error) {
-	var out Post
-	if err := c.PatchJSON(ctx, "/api/v1/posts/"+url.PathEscape(id), in, &out); err != nil {
-		return nil, err
-	}
-	return &out, nil
 }
 
 type PostMedia struct {
@@ -1390,32 +1355,12 @@ type Token struct {
 	CreatedAt   time.Time  `json:"created_at"`
 }
 
-type CreateAPITokenInput struct {
-	Name        string     `json:"name"`
-	Scope       string     `json:"scope"`
-	WorkspaceID string     `json:"workspace_id,omitempty"`
-	ExpiresAt   *time.Time `json:"expires_at,omitempty"`
-}
-
-type CreateAPITokenOutput struct {
-	RawToken string `json:"token"`
-	Item     Token  `json:"item"`
-}
-
 func (c *Client) ListAPITokens(ctx context.Context) ([]Token, error) {
 	var out []Token
 	if err := c.GetJSON(ctx, "/api/v1/api-tokens", &out); err != nil {
 		return nil, err
 	}
 	return out, nil
-}
-
-func (c *Client) CreateAPIToken(ctx context.Context, in CreateAPITokenInput) (*CreateAPITokenOutput, error) {
-	var out CreateAPITokenOutput
-	if err := c.PostJSON(ctx, "/api/v1/api-tokens", in, &out); err != nil {
-		return nil, err
-	}
-	return &out, nil
 }
 
 func (c *Client) RevokeAPIToken(ctx context.Context, id string) error {

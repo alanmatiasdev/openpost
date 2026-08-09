@@ -16,6 +16,7 @@ All notable changes to this project are documented in this file.
 
 ### Changed
 
+- Removed obsolete CLI post-write and API-token creation wrappers, and kept MCP stdio framing helpers private to the production proxy implementation.
 - Removed confirmed unreachable backend and CLI helper APIs after verifying the supported runtime and test entry points remain unchanged.
 - Moved destination-preview coverage into the shared social-preview package and removed the unused application wrapper.
 - Removed unreachable pre-Trash media deletion and overflow posting-time helpers after preserving their database-ordering and scheduling assertions on the active lifecycle paths.

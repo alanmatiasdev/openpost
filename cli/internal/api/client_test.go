@@ -542,28 +542,35 @@ func TestNextAvailableSlot_WireFormat(t *testing.T) {
 	}
 }
 
-// TestCreatePost_WireFormat: server returns the Post object directly.
-func TestCreatePost_WireFormat(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+func TestCreateTextPostDraftWireFormat(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/api/v1/posts/draft" {
+			t.Fatalf("request = %s %s", r.Method, r.URL.Path)
+		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		if body["workspace_id"] != "ws_1" || body["content"] != "Hi" {
+			t.Fatalf("body = %#v", body)
+		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"id":"p_new","workspace_id":"ws_1","created_by":"u_1","content":"Hi","status":"draft","scheduled_at":"","created_at":"2026-06-15T10:00:00Z","random_delay_minutes":0}`))
+		_, _ = w.Write([]byte(`{"post_id":"p_new","publication_id":"pub_new","revision":1,"updated_at":"2026-06-15T10:00:00Z"}`))
 	}))
 	defer srv.Close()
 
 	c := New(srv.URL, "")
-	got, err := c.CreatePost(context.Background(), CreatePostInput{
+	got, err := c.CreateTextPostDraft(context.Background(), CreateTextPostDraftInput{
 		WorkspaceID:      "ws_1",
 		Content:          "Hi",
 		SocialAccountIDs: []string{"acc_1"},
+		MediaIDs:         []string{},
 	})
 	if err != nil {
-		t.Fatalf("CreatePost returned error: %v", err)
+		t.Fatalf("CreateTextPostDraft returned error: %v", err)
 	}
-	if got.ID != "p_new" {
-		t.Errorf("expected id p_new, got %q", got.ID)
-	}
-	if got.Content != "Hi" {
-		t.Errorf("expected content Hi, got %q", got.Content)
+	if got.PostID != "p_new" || got.PublicationID != "pub_new" || got.Revision != 1 {
+		t.Fatalf("result = %+v", got)
 	}
 }
 
@@ -624,45 +631,73 @@ func TestGetPostRejectsNullRenditionMediaJSON(t *testing.T) {
 	}
 }
 
-func TestUpdatePostMediaDistinguishesOmittedFromCleared(t *testing.T) {
-	var bodies []map[string]any
+func TestSaveTextPostDraftWireFormat(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut || r.URL.Path != "/api/v1/posts/p1/draft" {
+			t.Fatalf("request = %s %s", r.Method, r.URL.Path)
+		}
 		var body map[string]any
-		_ = json.NewDecoder(r.Body).Decode(&body)
-		bodies = append(bodies, body)
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		if body["expected_revision"] != float64(7) || body["force"] != true {
+			t.Fatalf("revision controls = %#v", body)
+		}
+		mediaIDs, ok := body["media_ids"].([]any)
+		if !ok || len(mediaIDs) != 0 {
+			t.Fatalf("media_ids = %#v", body["media_ids"])
+		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"id":"p1"}`))
+		_, _ = w.Write([]byte(`{"post_id":"p1","publication_id":"pub1","revision":8,"updated_at":"2026-06-15T10:00:00Z"}`))
 	}))
 	defer srv.Close()
-	c := New(srv.URL, "")
-	_, _ = c.UpdatePost(context.Background(), "p1", UpdatePostInput{})
-	empty := []string{}
-	_, _ = c.UpdatePost(context.Background(), "p1", UpdatePostInput{MediaIDs: &empty})
-	if _, ok := bodies[0]["media_ids"]; ok {
-		t.Fatal("omitted update unexpectedly sent media_ids")
+	got, err := New(srv.URL, "").SaveTextPostDraft(context.Background(), "p1", SaveTextPostDraftInput{
+		ExpectedRevision: 7,
+		Force:            true,
+		Content:          "Updated",
+		SocialAccountIDs: []string{},
+		MediaIDs:         []string{},
+		Variants:         []TextPostVariantInput{},
+	})
+	if err != nil {
+		t.Fatalf("SaveTextPostDraft returned error: %v", err)
 	}
-	if got, ok := bodies[1]["media_ids"].([]any); !ok || len(got) != 0 {
-		t.Fatalf("clear media_ids = %#v", bodies[1]["media_ids"])
+	if got.PublicationID != "pub1" || got.Revision != 8 {
+		t.Fatalf("result = %+v", got)
 	}
 }
 
-// TestCreateAPIToken_WireFormat: server returns `{token, item}`.
-func TestCreateAPIToken_WireFormat(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+func TestListAndRevokeAPITokensWireFormat(t *testing.T) {
+	var revoked bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodDelete {
+			if r.URL.Path != "/api/v1/api-tokens/t_1" {
+				t.Fatalf("delete path = %s", r.URL.Path)
+			}
+			revoked = true
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		if r.Method != http.MethodGet || r.URL.Path != "/api/v1/api-tokens" {
+			t.Fatalf("request = %s %s", r.Method, r.URL.Path)
+		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"token":"op_cli_abc_secret","item":{"id":"t_1","name":"laptop","token_prefix":"op_cli_","scope":"cli:full","created_at":"2026-06-15T10:00:00Z"}}`))
+		_, _ = w.Write([]byte(`[{"id":"t_1","name":"laptop","token_prefix":"op_cli_","scope":"cli:full","created_at":"2026-06-15T10:00:00Z"}]`))
 	}))
 	defer srv.Close()
 
 	c := New(srv.URL, "")
-	got, err := c.CreateAPIToken(context.Background(), CreateAPITokenInput{Name: "laptop"})
+	got, err := c.ListAPITokens(context.Background())
 	if err != nil {
-		t.Fatalf("CreateAPIToken returned error: %v", err)
+		t.Fatalf("ListAPITokens returned error: %v", err)
 	}
-	if got.RawToken != "op_cli_abc_secret" {
-		t.Errorf("expected raw token, got %q", got.RawToken)
+	if len(got) != 1 || got[0].ID != "t_1" || got[0].Name != "laptop" {
+		t.Fatalf("tokens = %+v", got)
 	}
-	if got.Item.Name != "laptop" {
-		t.Errorf("expected item.name laptop, got %q", got.Item.Name)
+	if err := c.RevokeAPIToken(context.Background(), "t_1"); err != nil {
+		t.Fatalf("RevokeAPIToken returned error: %v", err)
+	}
+	if !revoked {
+		t.Fatal("revoke request was not observed")
 	}
 }
