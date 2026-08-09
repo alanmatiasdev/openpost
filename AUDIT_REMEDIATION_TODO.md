@@ -79,7 +79,7 @@ These do not assert a newly observed production incident. They block Pinterest, 
 
 ### REL-001 — Stamp a stable version into the immutable release candidate
 
-- [ ] **Problem — Baseline audit:** CI embeds `candidate-${SHA}` into the image and promotion retags that exact image. Production therefore reports a candidate version, and the update checker treats it as a development build and stops checking releases.
+- [x] **Problem — Baseline audit:** CI embeds `candidate-${SHA}` into the image and promotion retags that exact image. Production therefore reports a candidate version, and the update checker treats it as a development build and stops checking releases.
 - **Fix:** generate one release manifest containing SemVer and revision before candidate CI; embed it into the candidate; preserve no-rebuild digest promotion; verify both values before promotion, after deployment, and at `/api/v1/version`.
 - **Done when:** candidate and promoted digest expose the intended stable SemVer plus exact SHA; update checks run on production builds; a mismatch blocks promotion or rolls deployment back.
 - **Evidence:** `.github/workflows/ci.yml:213`, `.github/workflows/release.yml:89`, `.github/workflows/release.yml:124`, `scripts/release.mjs:406`, `backend/internal/services/updatestatus/service.go:119`.
