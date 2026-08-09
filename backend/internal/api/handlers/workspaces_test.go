@@ -41,6 +41,7 @@ func newWorkspaceTestServerWithAuthenticator(t *testing.T, entitlement entitleme
 		(*models.Workspace)(nil),
 		(*models.WorkspaceMember)(nil),
 		(*models.WorkspaceInvitation)(nil),
+		(*models.WorkspaceAccessAuditEvent)(nil),
 	)
 	e := echo.New()
 	api := humaecho.NewWithGroup(e, e.Group("/api/v1"), huma.DefaultConfig("Test", "1.0.0"))
@@ -49,7 +50,11 @@ func newWorkspaceTestServerWithAuthenticator(t *testing.T, entitlement entitleme
 	handler.CreateWorkspace(api)
 	handler.ListWorkspaceTeam(api)
 	handler.CreateWorkspaceInvitation(api)
+	handler.ResendWorkspaceInvitation(api)
 	handler.RevokeWorkspaceInvitation(api)
+	handler.UpdateWorkspaceMember(api)
+	handler.RemoveWorkspaceMember(api)
+	handler.ListWorkspaceAccessAudit(api)
 	handler.AcceptWorkspaceInvitation(api)
 
 	return &workspaceTestServer{echo: e, db: db}
@@ -75,6 +80,27 @@ func (s *workspaceTestServer) postJSON(t *testing.T, path string, body any, toke
 	require.NoError(t, json.NewEncoder(&payload).Encode(body))
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, path, &payload)
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	s.echo.ServeHTTP(rec, req)
+	return rec
+}
+
+func (s *workspaceTestServer) patchJSON(t *testing.T, path string, body any, token string) *httptest.ResponseRecorder {
+	t.Helper()
+	var payload bytes.Buffer
+	require.NoError(t, json.NewEncoder(&payload).Encode(body))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPatch, path, &payload)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	s.echo.ServeHTTP(rec, req)
+	return rec
+}
+
+func (s *workspaceTestServer) deleteJSON(t *testing.T, path string, token string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodDelete, path, nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	rec := httptest.NewRecorder()
 	s.echo.ServeHTTP(rec, req)
@@ -374,4 +400,101 @@ func TestAcceptWorkspaceInvitationAddsWorkspaceMember(t *testing.T) {
 	require.NoError(t, srv.db.NewSelect().Model(&invitation).Where("id = ?", "invite-1").Scan(ctx))
 	require.Equal(t, "user-1", invitation.AcceptedByUserID)
 	require.False(t, invitation.AcceptedAt.IsZero())
+}
+
+func TestWorkspaceMemberLifecycleEndpointsEnforceRolesAndLastAdmin(t *testing.T) {
+	t.Parallel()
+	authenticator := workspaceTestAuthenticator{
+		"admin-token":        {UserID: "admin-1", Email: "admin@example.com"},
+		"editor-token":       {UserID: "editor-1", Email: "editor@example.com"},
+		"scoped-admin-token": {UserID: "admin-1", Email: "admin@example.com", WorkspaceID: "ws-2"},
+	}
+	srv := newWorkspaceTestServerWithAuthenticator(t, nil, authenticator)
+	seedWorkspaceUserAndMember(t, srv.db, "admin-1", "admin@example.com", models.WorkspaceRoleAdmin)
+	_, err := srv.db.NewInsert().Model(&models.User{ID: "editor-1", Email: "editor@example.com"}).Exec(t.Context())
+	require.NoError(t, err)
+	_, err = srv.db.NewInsert().Model(&models.WorkspaceMember{
+		WorkspaceID: "ws-1", UserID: "editor-1", Role: models.WorkspaceRoleEditor,
+		Status: models.WorkspaceMemberStatusActive,
+	}).Exec(t.Context())
+	require.NoError(t, err)
+
+	scopeChecks := []*httptest.ResponseRecorder{
+		srv.getJSON(t, "/api/v1/workspaces/ws-1/team", "scoped-admin-token"),
+		srv.postJSON(t, "/api/v1/workspaces/ws-1/invitations", map[string]string{
+			"email": "other@example.com", "role": "viewer",
+		}, "scoped-admin-token"),
+		srv.postJSON(t, "/api/v1/workspaces/ws-1/invitations/invite-1/resend", map[string]string{}, "scoped-admin-token"),
+		srv.deleteJSON(t, "/api/v1/workspaces/ws-1/invitations/invite-1", "scoped-admin-token"),
+		srv.patchJSON(t, "/api/v1/workspaces/ws-1/members/editor-1", map[string]string{"role": "viewer"}, "scoped-admin-token"),
+		srv.deleteJSON(t, "/api/v1/workspaces/ws-1/members/editor-1", "scoped-admin-token"),
+		srv.getJSON(t, "/api/v1/workspaces/ws-1/access-audit", "scoped-admin-token"),
+	}
+	for _, response := range scopeChecks {
+		require.Equal(t, http.StatusForbidden, response.Code, response.Body.String())
+	}
+
+	teamResponse := srv.getJSON(t, "/api/v1/workspaces/ws-1/team", "editor-token")
+	require.Equal(t, http.StatusOK, teamResponse.Code, teamResponse.Body.String())
+	var team WorkspaceTeamOutput
+	require.NoError(t, json.Unmarshal(teamResponse.Body.Bytes(), &team.Body))
+	require.False(t, team.Body.CanManage)
+
+	unauthorized := srv.patchJSON(t, "/api/v1/workspaces/ws-1/members/admin-1", map[string]string{"role": "viewer"}, "editor-token")
+	require.Equal(t, http.StatusForbidden, unauthorized.Code)
+
+	roleChanged := srv.patchJSON(t, "/api/v1/workspaces/ws-1/members/editor-1", map[string]string{"role": "viewer"}, "admin-token")
+	require.Equal(t, http.StatusOK, roleChanged.Code, roleChanged.Body.String())
+	deactivated := srv.patchJSON(t, "/api/v1/workspaces/ws-1/members/editor-1", map[string]string{"status": "inactive"}, "admin-token")
+	require.Equal(t, http.StatusOK, deactivated.Code, deactivated.Body.String())
+
+	filtered := srv.getJSON(t, "/api/v1/workspaces/ws-1/team?status=inactive&q=EDITOR", "admin-token")
+	require.Equal(t, http.StatusOK, filtered.Code, filtered.Body.String())
+	var filteredTeam WorkspaceTeamOutput
+	require.NoError(t, json.Unmarshal(filtered.Body.Bytes(), &filteredTeam.Body))
+	require.Len(t, filteredTeam.Body.Members, 1)
+	require.Equal(t, models.WorkspaceMemberStatusInactive, filteredTeam.Body.Members[0].Status)
+	require.Equal(t, int64(1), filteredTeam.Body.CurrentSeats)
+
+	audit := srv.getJSON(t, "/api/v1/workspaces/ws-1/access-audit?limit=10", "admin-token")
+	require.Equal(t, http.StatusOK, audit.Code, audit.Body.String())
+	var auditEvents []WorkspaceAccessAuditResponse
+	require.NoError(t, json.Unmarshal(audit.Body.Bytes(), &auditEvents))
+	require.Len(t, auditEvents, 2)
+
+	lastAdminRemoval := srv.deleteJSON(t, "/api/v1/workspaces/ws-1/members/admin-1", "admin-token")
+	require.Equal(t, http.StatusConflict, lastAdminRemoval.Code)
+	require.Contains(t, lastAdminRemoval.Body.String(), "at least one active administrator")
+}
+
+func TestResendInvitationRotatesLinkAndRevokedInviteCannotBeAccepted(t *testing.T) {
+	t.Parallel()
+	authenticator := workspaceTestAuthenticator{
+		"admin-token":   {UserID: "admin-1", Email: "admin@example.com"},
+		"invitee-token": {UserID: "invitee-1", Email: "invitee@example.com"},
+	}
+	srv := newWorkspaceTestServerWithAuthenticator(t, nil, authenticator)
+	seedWorkspaceUserAndMember(t, srv.db, "admin-1", "admin@example.com", models.WorkspaceRoleAdmin)
+	_, err := srv.db.NewInsert().Model(&models.User{ID: "invitee-1", Email: "invitee@example.com"}).Exec(t.Context())
+	require.NoError(t, err)
+
+	created := srv.postJSON(t, "/api/v1/workspaces/ws-1/invitations", map[string]string{
+		"email": "invitee@example.com", "role": "viewer",
+	}, "admin-token")
+	require.Equal(t, http.StatusOK, created.Code, created.Body.String())
+	var first WorkspaceInvitationResponse
+	require.NoError(t, json.Unmarshal(created.Body.Bytes(), &first))
+
+	resent := srv.postJSON(t, "/api/v1/workspaces/ws-1/invitations/"+first.ID+"/resend", map[string]string{}, "admin-token")
+	require.Equal(t, http.StatusOK, resent.Code, resent.Body.String())
+	var second WorkspaceInvitationResponse
+	require.NoError(t, json.Unmarshal(resent.Body.Bytes(), &second))
+	require.NotEqual(t, first.Token, second.Token)
+	require.NotEqual(t, first.AcceptURL, second.AcceptURL)
+
+	revoked := srv.deleteJSON(t, "/api/v1/workspaces/ws-1/invitations/"+first.ID, "admin-token")
+	require.Equal(t, http.StatusOK, revoked.Code, revoked.Body.String())
+	accepted := srv.postJSON(t, "/api/v1/workspace-invitations/accept", map[string]string{"token": second.Token}, "invitee-token")
+	require.Equal(t, http.StatusConflict, accepted.Code)
+	require.Contains(t, accepted.Body.String(), "revoked")
 }

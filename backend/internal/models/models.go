@@ -63,6 +63,9 @@ const (
 	WorkspaceRoleAdmin  = "admin"
 	WorkspaceRoleEditor = "editor"
 	WorkspaceRoleViewer = "viewer"
+
+	WorkspaceMemberStatusActive   = "active"
+	WorkspaceMemberStatusInactive = "inactive"
 )
 
 // Organization role values stored in the `organization_members.role` column.
@@ -492,9 +495,13 @@ type CLIAuthSession struct {
 type WorkspaceMember struct {
 	bun.BaseModel `bun:"table:workspace_members"`
 
-	WorkspaceID string `bun:",pk" json:"workspace_id"`
-	UserID      string `bun:",pk" json:"user_id"`
-	Role        string `bun:",notnull" json:"role"` // 'admin', 'editor', 'viewer'
+	WorkspaceID   string    `bun:",pk" json:"workspace_id"`
+	UserID        string    `bun:",pk" json:"user_id"`
+	Role          string    `bun:",notnull" json:"role"` // 'admin', 'editor', 'viewer'
+	Status        string    `bun:",notnull,default:'active'" json:"status"`
+	CreatedAt     time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
+	UpdatedAt     time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"updated_at"`
+	DeactivatedAt time.Time `bun:"deactivated_at,nullzero" json:"deactivated_at,omitempty"`
 }
 
 type WorkspaceInvitation struct {
@@ -510,7 +517,25 @@ type WorkspaceInvitation struct {
 	ExpiresAt        time.Time `bun:",notnull" json:"expires_at"`
 	AcceptedAt       time.Time `bun:",nullzero" json:"accepted_at"`
 	RevokedAt        time.Time `bun:",nullzero" json:"revoked_at"`
+	LastSentAt       time.Time `bun:"last_sent_at,nullzero" json:"last_sent_at"`
 	CreatedAt        time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
+}
+
+type WorkspaceAccessAuditEvent struct {
+	bun.BaseModel `bun:"table:workspace_access_audit_events"`
+
+	ID             string    `bun:",pk" json:"id"`
+	WorkspaceID    string    `bun:"workspace_id,notnull" json:"workspace_id"`
+	ActorUserID    string    `bun:"actor_user_id,nullzero" json:"actor_user_id,omitempty"`
+	SubjectUserID  string    `bun:"subject_user_id,nullzero" json:"subject_user_id,omitempty"`
+	InvitationID   string    `bun:"invitation_id,nullzero" json:"invitation_id,omitempty"`
+	SubjectEmail   string    `bun:"subject_email,notnull,default:''" json:"subject_email,omitempty"`
+	Action         string    `bun:",notnull" json:"action"`
+	PreviousRole   string    `bun:"previous_role,notnull,default:''" json:"previous_role,omitempty"`
+	Role           string    `bun:",notnull,default:''" json:"role,omitempty"`
+	PreviousStatus string    `bun:"previous_status,notnull,default:''" json:"previous_status,omitempty"`
+	Status         string    `bun:",notnull,default:''" json:"status,omitempty"`
+	CreatedAt      time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
 }
 
 type UsageCounter struct {

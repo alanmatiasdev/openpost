@@ -885,7 +885,7 @@ func (h *PostHandler) GetScheduleOverview(api huma.API) {
 		workspaceQuery := h.db.NewSelect().
 			Model(&workspaces).
 			Join("JOIN workspace_members AS wm ON wm.workspace_id = workspace.id").
-			Where("wm.user_id = ?", userID).
+			Where("wm.user_id = ? AND wm.status = ?", userID, models.WorkspaceMemberStatusActive).
 			Order("workspace.created_at DESC")
 		if scopedWorkspaceID != "" {
 			workspaceQuery = workspaceQuery.Where("workspace.id = ?", scopedWorkspaceID)
@@ -939,7 +939,7 @@ func (h *PostHandler) GetScheduleOverview(api huma.API) {
 				TableExpr("social_accounts AS sa").
 				ColumnExpr("DISTINCT sa.platform AS platform").
 				Join("JOIN workspace_members AS wm ON wm.workspace_id = sa.workspace_id").
-				Where("wm.user_id = ?", userID).
+				Where("wm.user_id = ? AND wm.status = ?", userID, models.WorkspaceMemberStatusActive).
 				Where("sa.is_active = ?", true).
 				Where("sa.workspace_id = ?", selectedWorkspaceID).
 				Scan(ctx, &platformRows); err != nil {

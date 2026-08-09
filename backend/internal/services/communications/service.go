@@ -1740,7 +1740,7 @@ func (s *Service) notify(ctx context.Context, userID, workspaceID, eventType, ti
 func (s *Service) workspaceMemberIDs(ctx context.Context, workspaceID string) []string {
 	var ids []string
 	_ = s.db.NewSelect().Model((*models.WorkspaceMember)(nil)).
-		Column("user_id").Where("workspace_id = ?", workspaceID).Scan(ctx, &ids)
+		Column("user_id").Where("workspace_id = ? AND status = ?", workspaceID, models.WorkspaceMemberStatusActive).Scan(ctx, &ids)
 	return ids
 }
 

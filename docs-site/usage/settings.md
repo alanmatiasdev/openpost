@@ -45,12 +45,19 @@ sign in. OpenPost blocks unlinking the last usable sign-in method.
 
 Organization settings group collaboration and hosted billing.
 
-- Workspace team members and pending invitations
+- Workspace team members, active or inactive access, pending invitations, and
+  access history
 - Seat usage
 - Managed app plan, usage, checkout, and billing links
 - OIDC identity providers, verified domains, SSO enforcement, provider assurance, and machine-token policy
 
-Invite people from **Settings -> Organization**. Pending invitations reserve seats until they are accepted, revoked, or expired.
+Invite people from **Settings -> Organization**. Pending invitations reserve
+seats until they are accepted, revoked, or expired. Active workspace admins can
+change accepted roles, deactivate or restore access, permanently remove a
+member, resend or revoke invitations, search and filter the team, and review the
+access history. OpenPost blocks any change that would leave the workspace
+without an active admin. Inactive members cannot open the workspace and do not
+consume a seat.
 
 ### Failed-payment recovery
 

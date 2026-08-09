@@ -2,10 +2,7 @@ package handlers
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -23,6 +20,7 @@ import (
 	"github.com/openpost/backend/internal/services/identity"
 	"github.com/openpost/backend/internal/services/medialifecycle"
 	"github.com/openpost/backend/internal/services/notifications"
+	"github.com/openpost/backend/internal/services/workspaceteam"
 	"github.com/uptrace/bun"
 )
 
@@ -31,6 +29,7 @@ type WorkspaceHandler struct {
 	auth          middleware.Authenticator
 	entitlement   entitlements.Service
 	notifications *notifications.Service
+	team          *workspaceteam.Service
 	frontendURL   string
 }
 
@@ -39,7 +38,10 @@ func NewWorkspaceHandler(db *bun.DB, authenticator middleware.Authenticator, ent
 	if len(entitlement) > 0 && entitlement[0] != nil {
 		entitlementService = entitlement[0]
 	}
-	return &WorkspaceHandler{db: db, auth: authenticator, entitlement: entitlementService}
+	return &WorkspaceHandler{
+		db: db, auth: authenticator, entitlement: entitlementService,
+		team: workspaceteam.NewService(db, entitlementService, nil),
+	}
 }
 
 func (h *WorkspaceHandler) SetFrontendURL(frontendURL string) {
@@ -48,6 +50,7 @@ func (h *WorkspaceHandler) SetFrontendURL(frontendURL string) {
 
 func (h *WorkspaceHandler) SetNotificationService(service *notifications.Service) {
 	h.notifications = service
+	h.team = workspaceteam.NewService(h.db, h.entitlement, service)
 }
 
 type CreateWorkspaceInput struct {
@@ -126,9 +129,13 @@ type OrganizationTeamOutput struct {
 }
 
 type WorkspaceMemberResponse struct {
-	UserID string `json:"user_id" doc:"User ID"`
-	Email  string `json:"email" doc:"User email"`
-	Role   string `json:"role" doc:"Workspace role"`
+	UserID        string  `json:"user_id" doc:"User ID"`
+	Email         string  `json:"email" doc:"User email"`
+	Role          string  `json:"role" enum:"admin,editor,viewer" doc:"Workspace role"`
+	Status        string  `json:"status" enum:"active,inactive" doc:"Workspace access state"`
+	CreatedAt     string  `json:"created_at" doc:"When access was first granted"`
+	UpdatedAt     string  `json:"updated_at" doc:"When access last changed"`
+	DeactivatedAt *string `json:"deactivated_at,omitempty" doc:"When access was temporarily deactivated"`
 }
 
 type WorkspaceInvitationResponse struct {
@@ -143,6 +150,8 @@ type WorkspaceInvitationResponse struct {
 	ExpiresAt        string  `json:"expires_at" doc:"Invitation expiry time"`
 	AcceptedAt       *string `json:"accepted_at,omitempty" doc:"When the invitation was accepted"`
 	RevokedAt        *string `json:"revoked_at,omitempty" doc:"When the invitation was revoked"`
+	LastSentAt       string  `json:"last_sent_at" doc:"When the invitation was most recently sent"`
+	Status           string  `json:"status" enum:"pending,expired" doc:"Current invitation state"`
 	CreatedAt        string  `json:"created_at" doc:"Invitation creation time"`
 }
 
@@ -151,11 +160,15 @@ type WorkspaceTeamOutput struct {
 		Members      []WorkspaceMemberResponse     `json:"members"`
 		Invitations  []WorkspaceInvitationResponse `json:"invitations"`
 		CurrentSeats int64                         `json:"current_seats"`
+		CanManage    bool                          `json:"can_manage" doc:"Whether the current user may administer workspace access"`
 	}
 }
 
 type WorkspaceTeamInput struct {
 	PathID string `path:"id" doc:"Workspace ID"`
+	Query  string `query:"q" maxLength:"200" doc:"Case-insensitive member or invitation email search"`
+	Role   string `query:"role" enum:"all,admin,editor,viewer" default:"all" doc:"Filter by role"`
+	Status string `query:"status" enum:"all,active,inactive,pending,expired" default:"all" doc:"Filter by access state"`
 }
 
 type CreateWorkspaceInvitationInput struct {
@@ -179,6 +192,63 @@ type RevokeWorkspaceInvitationOutput struct {
 	Body struct {
 		Revoked bool `json:"revoked"`
 	}
+}
+
+type ResendWorkspaceInvitationInput struct {
+	PathID       string `path:"id" doc:"Workspace ID"`
+	InvitationID string `path:"invitation_id" doc:"Invitation ID"`
+}
+
+type ResendWorkspaceInvitationOutput struct {
+	Body WorkspaceInvitationResponse
+}
+
+type UpdateWorkspaceMemberInput struct {
+	PathID string `path:"id" doc:"Workspace ID"`
+	UserID string `path:"user_id" doc:"Workspace member user ID"`
+	Body   struct {
+		Role   string `json:"role,omitempty" enum:"admin,editor,viewer" doc:"Replacement workspace role"`
+		Status string `json:"status,omitempty" enum:"active,inactive" doc:"Replacement workspace access state"`
+	}
+}
+
+type UpdateWorkspaceMemberOutput struct {
+	Body WorkspaceMemberResponse
+}
+
+type RemoveWorkspaceMemberInput struct {
+	PathID string `path:"id" doc:"Workspace ID"`
+	UserID string `path:"user_id" doc:"Workspace member user ID"`
+}
+
+type RemoveWorkspaceMemberOutput struct {
+	Body struct {
+		Removed bool `json:"removed"`
+	}
+}
+
+type WorkspaceAccessAuditInput struct {
+	PathID string `path:"id" doc:"Workspace ID"`
+	Limit  int    `query:"limit" minimum:"1" maximum:"200" default:"50" doc:"Maximum events to return"`
+}
+
+type WorkspaceAccessAuditResponse struct {
+	ID             string `json:"id"`
+	WorkspaceID    string `json:"workspace_id"`
+	ActorUserID    string `json:"actor_user_id,omitempty"`
+	SubjectUserID  string `json:"subject_user_id,omitempty"`
+	InvitationID   string `json:"invitation_id,omitempty"`
+	SubjectEmail   string `json:"subject_email,omitempty"`
+	Action         string `json:"action"`
+	PreviousRole   string `json:"previous_role,omitempty"`
+	Role           string `json:"role,omitempty"`
+	PreviousStatus string `json:"previous_status,omitempty"`
+	Status         string `json:"status,omitempty"`
+	CreatedAt      string `json:"created_at"`
+}
+
+type WorkspaceAccessAuditOutput struct {
+	Body []WorkspaceAccessAuditResponse
 }
 
 type AcceptWorkspaceInvitationInput struct {
@@ -261,6 +331,9 @@ func (h *WorkspaceHandler) CreateWorkspace(api huma.API) {
 			WorkspaceID: workspace.ID,
 			UserID:      userID,
 			Role:        models.WorkspaceRoleAdmin,
+			Status:      models.WorkspaceMemberStatusActive,
+			CreatedAt:   now,
+			UpdatedAt:   now,
 		}
 
 		err := h.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
@@ -330,23 +403,21 @@ func (h *WorkspaceHandler) ListWorkspaceTeam(api huma.API) {
 		Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
 		Errors:      []int{403, 404},
 	}, func(ctx context.Context, input *WorkspaceTeamInput) (*WorkspaceTeamOutput, error) {
-		if _, err := h.requireWorkspaceMember(ctx, input.PathID, middleware.GetUserID(ctx)); err != nil {
-			return nil, err
+		if !middleware.WorkspaceScopeAllows(ctx, input.PathID) {
+			return nil, huma.Error403Forbidden(errWorkspaceAccessDenied)
 		}
-
-		members, err := h.listWorkspaceMembers(ctx, input.PathID)
+		team, err := h.team.List(ctx, input.PathID, middleware.GetUserID(ctx), workspaceteam.Filters{
+			Query: input.Query, Role: input.Role, Status: input.Status,
+		})
 		if err != nil {
-			return nil, huma.Error500InternalServerError("failed to fetch workspace members")
-		}
-		invitations, err := h.listPendingWorkspaceInvitations(ctx, input.PathID, time.Now().UTC())
-		if err != nil {
-			return nil, huma.Error500InternalServerError("failed to fetch workspace invitations")
+			return nil, workspaceTeamHTTPError(err, "failed to fetch workspace team")
 		}
 
 		resp := &WorkspaceTeamOutput{}
-		resp.Body.Members = members
-		resp.Body.Invitations = workspaceInvitationResponses(invitations, "", "")
-		resp.Body.CurrentSeats = int64(len(members) + len(invitations))
+		resp.Body.Members = workspaceMemberResponses(team.Members)
+		resp.Body.Invitations = workspaceTeamInvitationResponses(team.Invitations, "", "")
+		resp.Body.CurrentSeats = team.CurrentSeats
+		resp.Body.CanManage = team.CanManage
 		return resp, nil
 	})
 }
@@ -425,80 +496,19 @@ func (h *WorkspaceHandler) CreateWorkspaceInvitation(api huma.API) {
 		Middlewares:   huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
 		Errors:        []int{400, 402, 403, 404, 409},
 	}, func(ctx context.Context, input *CreateWorkspaceInvitationInput) (*CreateWorkspaceInvitationOutput, error) {
-		userID := middleware.GetUserID(ctx)
-		if err := h.requireWorkspaceAdmin(ctx, input.PathID, userID); err != nil {
-			return nil, err
+		if !middleware.WorkspaceScopeAllows(ctx, input.PathID) {
+			return nil, huma.Error403Forbidden(errWorkspaceAccessDenied)
 		}
-
-		email := normalizeWorkspaceInvitationEmail(input.Body.Email)
-		if email == "" {
-			return nil, huma.Error400BadRequest("email is required")
-		}
-		role := strings.TrimSpace(input.Body.Role)
-		if role == "" {
-			role = models.WorkspaceRoleEditor
-		}
-		if !isWorkspaceRole(role) {
-			return nil, huma.Error400BadRequest("invalid workspace role")
-		}
-
-		now := time.Now().UTC()
-		if err := h.ensureCanInviteWorkspaceSeat(ctx, input.PathID, email, now); err != nil {
-			return nil, err
-		}
-
-		token, tokenHash, err := generateWorkspaceInvitationToken()
+		invitation, token, err := h.team.Invite(ctx, workspaceteam.InviteInput{
+			WorkspaceID: input.PathID, ActorUserID: middleware.GetUserID(ctx),
+			Email: input.Body.Email, Role: input.Body.Role,
+		})
 		if err != nil {
-			return nil, huma.Error500InternalServerError("failed to generate invitation token")
-		}
-		invitation := &models.WorkspaceInvitation{
-			ID:              uuid.New().String(),
-			WorkspaceID:     input.PathID,
-			Email:           email,
-			Role:            role,
-			InvitedByUserID: userID,
-			TokenHash:       tokenHash,
-			ExpiresAt:       now.Add(7 * 24 * time.Hour),
-			CreatedAt:       now,
-		}
-		var invitedUser models.User
-		userLookupErr := h.db.NewSelect().
-			Model(&invitedUser).
-			Where("LOWER(email) = ?", email).
-			Scan(ctx)
-		if userLookupErr != nil && !errors.Is(userLookupErr, sql.ErrNoRows) {
-			return nil, huma.Error500InternalServerError("failed to resolve invited user")
-		}
-		var workspace models.Workspace
-		if err := h.db.NewSelect().Model(&workspace).Where("id = ?", input.PathID).Scan(ctx); err != nil {
-			return nil, huma.Error500InternalServerError("failed to load workspace")
-		}
-		if err := h.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
-			if _, err := tx.NewInsert().Model(invitation).Exec(txCtx); err != nil {
-				return err
-			}
-			if errors.Is(userLookupErr, sql.ErrNoRows) || h.notifications == nil {
-				return nil
-			}
-			return h.notifications.CreateWithDB(txCtx, tx, notifications.CreateInput{
-				UserID:   invitedUser.ID,
-				Type:     notifications.TypeWorkspaceInvite,
-				Title:    "Workspace invitation",
-				Body:     "You were invited to " + workspace.Name + ".",
-				Href:     "/invite?id=" + invitation.ID,
-				DedupKey: "workspace-invitation:" + invitation.ID,
-				Actions: []models.NotificationAction{{
-					Label: "Review invitation",
-					Href:  "/invite?id=" + invitation.ID,
-					Kind:  "primary",
-				}},
-			})
-		}); err != nil {
-			return nil, huma.Error500InternalServerError("failed to create workspace invitation")
+			return nil, workspaceTeamHTTPError(err, "failed to create workspace invitation")
 		}
 
 		resp := &CreateWorkspaceInvitationOutput{}
-		resp.Body = workspaceInvitationResponse(*invitation, token, h.acceptWorkspaceInvitationURL(token))
+		resp.Body = workspaceInvitationResponse(invitation, token, h.acceptWorkspaceInvitationURL(token), "pending")
 		return resp, nil
 	})
 }
@@ -511,28 +521,123 @@ func (h *WorkspaceHandler) RevokeWorkspaceInvitation(api huma.API) {
 		Summary:     "Revoke a pending workspace invitation",
 		Tags:        []string{tagWorkspaces},
 		Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
-		Errors:      []int{403, 404},
+		Errors:      []int{403, 404, 409},
 	}, func(ctx context.Context, input *RevokeWorkspaceInvitationInput) (*RevokeWorkspaceInvitationOutput, error) {
-		if err := h.requireWorkspaceAdmin(ctx, input.PathID, middleware.GetUserID(ctx)); err != nil {
-			return nil, err
+		if !middleware.WorkspaceScopeAllows(ctx, input.PathID) {
+			return nil, huma.Error403Forbidden(errWorkspaceAccessDenied)
 		}
-
-		res, err := h.db.NewUpdate().
-			Model((*models.WorkspaceInvitation)(nil)).
-			Set("revoked_at = ?", time.Now().UTC()).
-			Where("id = ? AND workspace_id = ? AND accepted_at IS NULL AND revoked_at IS NULL", input.InvitationID, input.PathID).
-			Exec(ctx)
-		if err != nil {
-			return nil, huma.Error500InternalServerError("failed to revoke workspace invitation")
-		}
-		affected, _ := res.RowsAffected()
-		if affected == 0 {
-			return nil, huma.Error404NotFound("workspace invitation not found")
+		if err := h.team.RevokeInvitation(ctx, input.PathID, input.InvitationID, middleware.GetUserID(ctx)); err != nil {
+			return nil, workspaceTeamHTTPError(err, "failed to revoke workspace invitation")
 		}
 
 		return &RevokeWorkspaceInvitationOutput{Body: struct {
 			Revoked bool `json:"revoked"`
 		}{Revoked: true}}, nil
+	})
+}
+
+func (h *WorkspaceHandler) ResendWorkspaceInvitation(api huma.API) {
+	huma.Register(api, huma.Operation{
+		OperationID: "resend-workspace-invitation",
+		Method:      http.MethodPost,
+		Path:        "/workspaces/{id}/invitations/{invitation_id}/resend",
+		Summary:     "Resend a pending or expired workspace invitation",
+		Description: "Rotates the invitation secret and returns the new invitation URL once.",
+		Tags:        []string{tagWorkspaces},
+		Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
+		Errors:      []int{403, 404, 409},
+	}, func(ctx context.Context, input *ResendWorkspaceInvitationInput) (*ResendWorkspaceInvitationOutput, error) {
+		if !middleware.WorkspaceScopeAllows(ctx, input.PathID) {
+			return nil, huma.Error403Forbidden(errWorkspaceAccessDenied)
+		}
+		invitation, token, err := h.team.ResendInvitation(ctx, input.PathID, input.InvitationID, middleware.GetUserID(ctx))
+		if err != nil {
+			return nil, workspaceTeamHTTPError(err, "failed to resend workspace invitation")
+		}
+		return &ResendWorkspaceInvitationOutput{Body: workspaceInvitationResponse(
+			invitation, token, h.acceptWorkspaceInvitationURL(token), "pending",
+		)}, nil
+	})
+}
+
+func (h *WorkspaceHandler) UpdateWorkspaceMember(api huma.API) {
+	huma.Register(api, huma.Operation{
+		OperationID: "update-workspace-member",
+		Method:      http.MethodPatch,
+		Path:        "/workspaces/{id}/members/{user_id}",
+		Summary:     "Change a workspace member's role or access state",
+		Description: "Temporarily deactivate or reactivate access, or change the member role. The last active administrator cannot be demoted or deactivated.",
+		Tags:        []string{tagWorkspaces},
+		Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
+		Errors:      []int{400, 402, 403, 404, 409},
+	}, func(ctx context.Context, input *UpdateWorkspaceMemberInput) (*UpdateWorkspaceMemberOutput, error) {
+		if !middleware.WorkspaceScopeAllows(ctx, input.PathID) {
+			return nil, huma.Error403Forbidden(errWorkspaceAccessDenied)
+		}
+		member, err := h.team.UpdateMember(ctx, workspaceteam.UpdateMemberInput{
+			WorkspaceID: input.PathID, ActorUserID: middleware.GetUserID(ctx),
+			SubjectUserID: input.UserID, Role: input.Body.Role, Status: input.Body.Status,
+		})
+		if err != nil {
+			return nil, workspaceTeamHTTPError(err, "failed to update workspace member")
+		}
+		return &UpdateWorkspaceMemberOutput{Body: workspaceMemberResponse(member)}, nil
+	})
+}
+
+func (h *WorkspaceHandler) RemoveWorkspaceMember(api huma.API) {
+	huma.Register(api, huma.Operation{
+		OperationID: "remove-workspace-member",
+		Method:      http.MethodDelete,
+		Path:        "/workspaces/{id}/members/{user_id}",
+		Summary:     "Permanently remove a workspace member",
+		Description: "Removes workspace access. The last active administrator cannot be removed.",
+		Tags:        []string{tagWorkspaces},
+		Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
+		Errors:      []int{403, 404, 409},
+	}, func(ctx context.Context, input *RemoveWorkspaceMemberInput) (*RemoveWorkspaceMemberOutput, error) {
+		if !middleware.WorkspaceScopeAllows(ctx, input.PathID) {
+			return nil, huma.Error403Forbidden(errWorkspaceAccessDenied)
+		}
+		if err := h.team.RemoveMember(ctx, input.PathID, input.UserID, middleware.GetUserID(ctx)); err != nil {
+			return nil, workspaceTeamHTTPError(err, "failed to remove workspace member")
+		}
+		return &RemoveWorkspaceMemberOutput{Body: struct {
+			Removed bool `json:"removed"`
+		}{Removed: true}}, nil
+	})
+}
+
+func (h *WorkspaceHandler) ListWorkspaceAccessAudit(api huma.API) {
+	huma.Register(api, huma.Operation{
+		OperationID: "list-workspace-access-audit",
+		Method:      http.MethodGet,
+		Path:        "/workspaces/{id}/access-audit",
+		Summary:     "List workspace access changes",
+		Description: "Returns the newest role, member-state, invitation, and removal events. Requires an active workspace administrator.",
+		Tags:        []string{tagWorkspaces},
+		Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
+		Errors:      []int{403, 404},
+	}, func(ctx context.Context, input *WorkspaceAccessAuditInput) (*WorkspaceAccessAuditOutput, error) {
+		if !middleware.WorkspaceScopeAllows(ctx, input.PathID) {
+			return nil, huma.Error403Forbidden(errWorkspaceAccessDenied)
+		}
+		events, err := h.team.ListAudit(ctx, input.PathID, middleware.GetUserID(ctx), input.Limit)
+		if err != nil {
+			return nil, workspaceTeamHTTPError(err, "failed to fetch workspace access history")
+		}
+		out := make([]WorkspaceAccessAuditResponse, 0, len(events))
+		for _, event := range events {
+			out = append(out, WorkspaceAccessAuditResponse{
+				ID: event.ID, WorkspaceID: event.WorkspaceID, ActorUserID: event.ActorUserID,
+				SubjectUserID: event.SubjectUserID, InvitationID: event.InvitationID,
+				SubjectEmail: event.SubjectEmail, Action: event.Action,
+				PreviousRole: event.PreviousRole, Role: event.Role,
+				PreviousStatus: event.PreviousStatus, Status: event.Status,
+				CreatedAt: event.CreatedAt.UTC().Format(time.RFC3339),
+			})
+		}
+		return &WorkspaceAccessAuditOutput{Body: out}, nil
 	})
 }
 
@@ -547,23 +652,11 @@ func (h *WorkspaceHandler) AcceptWorkspaceInvitation(api huma.API) {
 		Middlewares:   huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
 		Errors:        []int{400, 403, 404, 409},
 	}, func(ctx context.Context, input *AcceptWorkspaceInvitationInput) (*AcceptWorkspaceInvitationOutput, error) {
-		userID := middleware.GetUserID(ctx)
-		userEmail := normalizeWorkspaceInvitationEmail(middleware.GetUserEmail(ctx))
-		tokenHash := hashWorkspaceInvitationToken(input.Body.Token)
-		now := time.Now().UTC()
-
-		var invitation models.WorkspaceInvitation
-		err := h.db.NewSelect().
-			Model(&invitation).
-			Where("token_hash = ?", tokenHash).
-			Scan(ctx)
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, huma.Error404NotFound("workspace invitation not found")
-		}
+		invitation, err := h.team.FindInvitationByToken(ctx, input.Body.Token)
 		if err != nil {
-			return nil, huma.Error500InternalServerError("failed to fetch workspace invitation")
+			return nil, workspaceTeamHTTPError(err, "failed to fetch workspace invitation")
 		}
-		return h.acceptWorkspaceInvitation(ctx, invitation, userID, userEmail, now)
+		return h.acceptWorkspaceInvitation(ctx, invitation, middleware.GetUserID(ctx), middleware.GetUserEmail(ctx))
 	})
 
 	huma.Register(api, huma.Operation{
@@ -577,20 +670,15 @@ func (h *WorkspaceHandler) AcceptWorkspaceInvitation(api huma.API) {
 		Middlewares:   huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
 		Errors:        []int{400, 403, 404, 409},
 	}, func(ctx context.Context, input *AcceptWorkspaceInvitationByIDInput) (*AcceptWorkspaceInvitationOutput, error) {
-		var invitation models.WorkspaceInvitation
-		err := h.db.NewSelect().Model(&invitation).Where("id = ?", input.PathID).Scan(ctx)
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, huma.Error404NotFound("workspace invitation not found")
-		}
+		invitation, err := h.team.FindInvitationByID(ctx, input.PathID)
 		if err != nil {
-			return nil, huma.Error500InternalServerError("failed to fetch workspace invitation")
+			return nil, workspaceTeamHTTPError(err, "failed to fetch workspace invitation")
 		}
 		return h.acceptWorkspaceInvitation(
 			ctx,
 			invitation,
 			middleware.GetUserID(ctx),
-			normalizeWorkspaceInvitationEmail(middleware.GetUserEmail(ctx)),
-			time.Now().UTC(),
+			middleware.GetUserEmail(ctx),
 		)
 	})
 }
@@ -600,79 +688,12 @@ func (h *WorkspaceHandler) acceptWorkspaceInvitation(
 	invitation models.WorkspaceInvitation,
 	userID string,
 	userEmail string,
-	now time.Time,
 ) (*AcceptWorkspaceInvitationOutput, error) {
 	if !middleware.WorkspaceScopeAllows(ctx, invitation.WorkspaceID) {
 		return nil, huma.Error403Forbidden("token is not scoped to this workspace")
 	}
-	if !invitation.AcceptedAt.IsZero() {
-		return nil, huma.NewError(http.StatusConflict, "workspace invitation already accepted")
-	}
-	if !invitation.RevokedAt.IsZero() {
-		return nil, huma.NewError(http.StatusConflict, "workspace invitation was revoked")
-	}
-	if !invitation.ExpiresAt.After(now) {
-		return nil, huma.NewError(http.StatusConflict, "workspace invitation expired")
-	}
-	if invitation.Email != userEmail {
-		return nil, huma.Error403Forbidden("workspace invitation belongs to a different email address")
-	}
-
-	err := h.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
-		var workspace models.Workspace
-		if err := tx.NewSelect().
-			Model(&workspace).
-			Column("id", "organization_id").
-			Where("id = ?", invitation.WorkspaceID).
-			Scan(txCtx); err != nil {
-			return err
-		}
-		member := &models.WorkspaceMember{
-			WorkspaceID: invitation.WorkspaceID,
-			UserID:      userID,
-			Role:        invitation.Role,
-		}
-		if _, err := tx.NewInsert().
-			Model(member).
-			On("CONFLICT (workspace_id, user_id) DO NOTHING").
-			Exec(txCtx); err != nil {
-			return err
-		}
-		organizationMember := &models.OrganizationMember{
-			OrganizationID: workspace.OrganizationID,
-			UserID:         userID,
-			Role:           models.OrganizationRoleMember,
-			CreatedAt:      now,
-		}
-		if _, err := tx.NewInsert().
-			Model(organizationMember).
-			On("CONFLICT (organization_id, user_id) DO NOTHING").
-			Exec(txCtx); err != nil {
-			return err
-		}
-		result, err := tx.NewUpdate().
-			Model((*models.WorkspaceInvitation)(nil)).
-			Set("accepted_by_user_id = ?", userID).
-			Set("accepted_at = ?", now).
-			Where("id = ? AND accepted_at IS NULL AND revoked_at IS NULL", invitation.ID).
-			Exec(txCtx)
-		if err != nil {
-			return err
-		}
-		affected, err := result.RowsAffected()
-		if err != nil {
-			return err
-		}
-		if affected == 0 {
-			return sql.ErrNoRows
-		}
-		return nil
-	})
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, huma.NewError(http.StatusConflict, "workspace invitation is no longer pending")
-	}
-	if err != nil {
-		return nil, huma.Error500InternalServerError("failed to accept workspace invitation")
+	if err := h.team.AcceptInvitation(ctx, invitation, userID, userEmail); err != nil {
+		return nil, workspaceTeamHTTPError(err, "failed to accept workspace invitation")
 	}
 
 	return &AcceptWorkspaceInvitationOutput{Body: struct {
@@ -700,7 +721,7 @@ func (h *WorkspaceHandler) checkCreateWorkspaceEntitlement(ctx context.Context, 
 		if err := h.db.NewSelect().
 			ColumnExpr("COUNT(*)").
 			Model((*models.WorkspaceMember)(nil)).
-			Where("user_id = ?", userID).
+			Where("user_id = ? AND status = ?", userID, models.WorkspaceMemberStatusActive).
 			Scan(ctx, &current); err != nil {
 			return huma.Error500InternalServerError("failed to check workspace limit")
 		}
@@ -734,7 +755,9 @@ func (h *WorkspaceHandler) requireWorkspaceMember(ctx context.Context, workspace
 	if !ok {
 		return nil, huma.Error403Forbidden(errWorkspaceAccessDenied)
 	}
-	return &models.WorkspaceMember{WorkspaceID: workspaceID, UserID: userID, Role: role}, nil
+	return &models.WorkspaceMember{
+		WorkspaceID: workspaceID, UserID: userID, Role: role, Status: models.WorkspaceMemberStatusActive,
+	}, nil
 }
 
 func (h *WorkspaceHandler) requireWorkspaceAdmin(ctx context.Context, workspaceID, userID string) error {
@@ -800,91 +823,6 @@ func (h *WorkspaceHandler) listOrganizationMembers(ctx context.Context, organiza
 	return rows, err
 }
 
-func (h *WorkspaceHandler) listWorkspaceMembers(ctx context.Context, workspaceID string) ([]WorkspaceMemberResponse, error) {
-	var rows []WorkspaceMemberResponse
-	err := h.db.NewSelect().
-		Model((*models.WorkspaceMember)(nil)).
-		ModelTableExpr("workspace_members AS wm").
-		ColumnExpr("wm.user_id, u.email, wm.role").
-		Join("JOIN users AS u ON u.id = wm.user_id").
-		Where("wm.workspace_id = ?", workspaceID).
-		Order("u.email ASC").
-		Scan(ctx, &rows)
-	return rows, err
-}
-
-func (h *WorkspaceHandler) listPendingWorkspaceInvitations(ctx context.Context, workspaceID string, now time.Time) ([]models.WorkspaceInvitation, error) {
-	var invitations []models.WorkspaceInvitation
-	err := h.db.NewSelect().
-		Model(&invitations).
-		Where("workspace_id = ? AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at > ?", workspaceID, now).
-		Order("created_at DESC").
-		Scan(ctx)
-	return invitations, err
-}
-
-func (h *WorkspaceHandler) ensureCanInviteWorkspaceSeat(ctx context.Context, workspaceID, email string, now time.Time) error {
-	var existingMemberCount int
-	if err := h.db.NewSelect().
-		ColumnExpr("COUNT(*)").
-		TableExpr("workspace_members AS wm").
-		Join("JOIN users AS u ON u.id = wm.user_id").
-		Where("wm.workspace_id = ? AND u.email = ?", workspaceID, email).
-		Scan(ctx, &existingMemberCount); err != nil {
-		return huma.Error500InternalServerError("failed to check workspace members")
-	}
-	if existingMemberCount > 0 {
-		return huma.NewError(http.StatusConflict, "user is already a workspace member")
-	}
-
-	var pendingForEmail int
-	if err := h.db.NewSelect().
-		ColumnExpr("COUNT(*)").
-		Model((*models.WorkspaceInvitation)(nil)).
-		Where("workspace_id = ? AND email = ? AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at > ?", workspaceID, email, now).
-		Scan(ctx, &pendingForEmail); err != nil {
-		return huma.Error500InternalServerError("failed to check workspace invitations")
-	}
-	if pendingForEmail > 0 {
-		return huma.NewError(http.StatusConflict, "workspace invitation already pending")
-	}
-
-	var memberCount int
-	if err := h.db.NewSelect().
-		ColumnExpr("COUNT(*)").
-		Model((*models.WorkspaceMember)(nil)).
-		Where("workspace_id = ?", workspaceID).
-		Scan(ctx, &memberCount); err != nil {
-		return huma.Error500InternalServerError("failed to check team member limit")
-	}
-	var pendingCount int
-	if err := h.db.NewSelect().
-		ColumnExpr("COUNT(*)").
-		Model((*models.WorkspaceInvitation)(nil)).
-		Where("workspace_id = ? AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at > ?", workspaceID, now).
-		Scan(ctx, &pendingCount); err != nil {
-		return huma.Error500InternalServerError("failed to check team member limit")
-	}
-
-	decision, err := h.entitlement.Check(ctx, entitlements.Request{
-		WorkspaceID: workspaceID,
-		Limit:       entitlements.LimitTeamMembers,
-		Current:     int64(memberCount + pendingCount),
-		Amount:      1,
-	})
-	if err != nil {
-		return huma.Error500InternalServerError("failed to check team member limit")
-	}
-	if !decision.Allowed {
-		reason := decision.Reason
-		if reason == "" {
-			reason = "team member limit exceeded"
-		}
-		return huma.NewError(http.StatusPaymentRequired, reason)
-	}
-	return nil
-}
-
 func (h *WorkspaceHandler) ListWorkspaces(api huma.API) {
 	huma.Register(api, huma.Operation{
 		OperationID: "list-workspaces",
@@ -912,7 +850,7 @@ func (h *WorkspaceHandler) ListWorkspaces(api huma.API) {
 			ColumnExpr("COALESCE(o.name, '') AS organization_name").
 			Join("JOIN workspace_members AS wm ON wm.workspace_id = w.id").
 			Join("LEFT JOIN organizations AS o ON o.id = w.organization_id").
-			Where("wm.user_id = ?", userID)
+			Where("wm.user_id = ? AND wm.status = ?", userID, models.WorkspaceMemberStatusActive)
 		if workspaceID := middleware.GetWorkspaceID(ctx); workspaceID != "" {
 			query = query.Where("w.id = ?", workspaceID)
 		}
@@ -984,7 +922,7 @@ func (h *WorkspaceHandler) DeleteWorkspace(api huma.API) {
 		var otherWorkspaceIDs []string
 		if err := h.db.NewSelect().Model((*models.WorkspaceMember)(nil)).
 			Column("workspace_id").
-			Where("user_id = ? AND workspace_id != ?", userID, workspaceID).
+			Where("user_id = ? AND workspace_id != ? AND status = ?", userID, workspaceID, models.WorkspaceMemberStatusActive).
 			Scan(ctx, &otherWorkspaceIDs); !isNoRowsOrNil(err) {
 			return nil, huma.Error500InternalServerError("failed to check remaining workspaces")
 		}
@@ -1044,15 +982,7 @@ func (h *WorkspaceHandler) workspaceStoredObjectKeys(ctx context.Context, worksp
 	return ordered, nil
 }
 
-func workspaceInvitationResponses(invitations []models.WorkspaceInvitation, rawToken, acceptURL string) []WorkspaceInvitationResponse {
-	out := make([]WorkspaceInvitationResponse, 0, len(invitations))
-	for _, invitation := range invitations {
-		out = append(out, workspaceInvitationResponse(invitation, rawToken, acceptURL))
-	}
-	return out
-}
-
-func workspaceInvitationResponse(invitation models.WorkspaceInvitation, rawToken, acceptURL string) WorkspaceInvitationResponse {
+func workspaceInvitationResponse(invitation models.WorkspaceInvitation, rawToken, acceptURL, status string) WorkspaceInvitationResponse {
 	return WorkspaceInvitationResponse{
 		ID:               invitation.ID,
 		WorkspaceID:      invitation.WorkspaceID,
@@ -1065,8 +995,43 @@ func workspaceInvitationResponse(invitation models.WorkspaceInvitation, rawToken
 		ExpiresAt:        invitation.ExpiresAt.UTC().Format(time.RFC3339),
 		AcceptedAt:       optionalTime(invitation.AcceptedAt),
 		RevokedAt:        optionalTime(invitation.RevokedAt),
+		LastSentAt:       formatRequiredTime(invitation.LastSentAt, invitation.CreatedAt),
+		Status:           status,
 		CreatedAt:        invitation.CreatedAt.UTC().Format(time.RFC3339),
 	}
+}
+
+func workspaceTeamInvitationResponses(invitations []workspaceteam.Invitation, rawToken, acceptURL string) []WorkspaceInvitationResponse {
+	out := make([]WorkspaceInvitationResponse, 0, len(invitations))
+	for _, invitation := range invitations {
+		out = append(out, workspaceInvitationResponse(invitation.WorkspaceInvitation, rawToken, acceptURL, invitation.Status))
+	}
+	return out
+}
+
+func workspaceMemberResponses(members []workspaceteam.Member) []WorkspaceMemberResponse {
+	out := make([]WorkspaceMemberResponse, 0, len(members))
+	for _, member := range members {
+		out = append(out, workspaceMemberResponse(member))
+	}
+	return out
+}
+
+func workspaceMemberResponse(member workspaceteam.Member) WorkspaceMemberResponse {
+	return WorkspaceMemberResponse{
+		UserID: member.UserID, Email: member.Email, Role: member.Role, Status: member.Status,
+		CreatedAt: formatRequiredTime(member.CreatedAt), UpdatedAt: formatRequiredTime(member.UpdatedAt, member.CreatedAt),
+		DeactivatedAt: optionalTime(member.DeactivatedAt),
+	}
+}
+
+func formatRequiredTime(values ...time.Time) string {
+	for _, value := range values {
+		if !value.IsZero() {
+			return value.UTC().Format(time.RFC3339)
+		}
+	}
+	return ""
 }
 
 func optionalString(value string) *string {
@@ -1076,41 +1041,29 @@ func optionalString(value string) *string {
 	return &value
 }
 
-func normalizeWorkspaceInvitationEmail(email string) string {
-	return strings.TrimSpace(strings.ToLower(email))
-}
-
-func isWorkspaceRole(role string) bool {
-	switch role {
-	case models.WorkspaceRoleAdmin, models.WorkspaceRoleEditor, models.WorkspaceRoleViewer:
-		return true
-	default:
-		return false
-	}
-}
-
-const workspaceInvitationTokenPrefix = "op_inv"
-
-func generateWorkspaceInvitationToken() (string, string, error) {
-	secret, err := randomWorkspaceInvitationSecret()
-	if err != nil {
-		return "", "", err
-	}
-	token := workspaceInvitationTokenPrefix + "_" + secret
-	return token, hashWorkspaceInvitationToken(token), nil
-}
-
-func randomWorkspaceInvitationSecret() (string, error) {
-	buf := make([]byte, 32)
-	if _, err := rand.Read(buf); err != nil {
-		return "", err
-	}
-	return base64.RawURLEncoding.EncodeToString(buf), nil
-}
-
 func hashWorkspaceInvitationToken(token string) string {
-	sum := sha256.Sum256([]byte(strings.TrimSpace(token)))
-	return base64.RawURLEncoding.EncodeToString(sum[:])
+	return workspaceteam.HashInvitationToken(token)
+}
+
+func workspaceTeamHTTPError(err error, fallback string) error {
+	message := strings.TrimSpace(err.Error())
+	if message == "" {
+		message = fallback
+	}
+	switch workspaceteam.ErrorKindOf(err) {
+	case workspaceteam.ErrorInvalid:
+		return huma.Error400BadRequest(message)
+	case workspaceteam.ErrorPayment:
+		return huma.NewError(http.StatusPaymentRequired, message)
+	case workspaceteam.ErrorForbidden:
+		return huma.Error403Forbidden(message)
+	case workspaceteam.ErrorNotFound:
+		return huma.Error404NotFound(message)
+	case workspaceteam.ErrorConflict:
+		return huma.Error409Conflict(message)
+	default:
+		return huma.Error500InternalServerError(fallback)
+	}
 }
 
 func (h *WorkspaceHandler) acceptWorkspaceInvitationURL(token string) string {
@@ -1185,14 +1138,11 @@ func (h *WorkspaceHandler) GetWorkspaceSettings(api huma.API) {
 			return nil, huma.Error403Forbidden(errWorkspaceAccessDenied)
 		}
 
-		var memberCount int
-		memberCount, err := h.db.NewSelect().Model((*models.WorkspaceMember)(nil)).
-			Where("workspace_id = ? AND user_id = ?", input.PathID, userID).
-			Count(ctx)
+		allowed, err := middleware.CheckWorkspaceAccess(ctx, h.db, input.PathID, userID)
 		if err != nil {
 			return nil, huma.Error500InternalServerError(errValidateWorkspaceAccess)
 		}
-		if memberCount == 0 {
+		if !allowed {
 			return nil, huma.Error403Forbidden(errWorkspaceAccessDenied)
 		}
 

@@ -286,20 +286,26 @@ func (h *JobHandler) allowedWorkspaces(ctx context.Context, userID string, isAdm
 			return map[string]bool{requestedWorkspaceID: true}, nil
 		}
 
-		count, err := h.db.NewSelect().
-			Model((*models.WorkspaceMember)(nil)).
-			Where("workspace_id = ? AND user_id = ?", requestedWorkspaceID, userID).
-			Count(ctx)
+		allowed, err := middleware.CheckWorkspaceAccess(ctx, h.db, requestedWorkspaceID, userID)
 		if err != nil {
 			return nil, err
 		}
-		if count == 0 {
+		if !allowed {
 			return nil, huma.Error403Forbidden("workspace not accessible")
 		}
 		return map[string]bool{requestedWorkspaceID: true}, nil
 	}
 
 	if scopedWorkspaceID != "" {
+		if !isAdmin {
+			allowed, err := middleware.CheckWorkspaceAccess(ctx, h.db, scopedWorkspaceID, userID)
+			if err != nil {
+				return nil, err
+			}
+			if !allowed {
+				return nil, huma.Error403Forbidden("workspace not accessible")
+			}
+		}
 		return map[string]bool{scopedWorkspaceID: true}, nil
 	}
 
@@ -310,7 +316,7 @@ func (h *JobHandler) allowedWorkspaces(ctx context.Context, userID string, isAdm
 	var members []models.WorkspaceMember
 	if err := h.db.NewSelect().
 		Model(&members).
-		Where("user_id = ?", userID).
+		Where("user_id = ? AND status = ?", userID, models.WorkspaceMemberStatusActive).
 		Scan(ctx); err != nil {
 		return nil, err
 	}

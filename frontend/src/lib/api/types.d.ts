@@ -3444,6 +3444,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/workspaces/{id}/access-audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List workspace access changes
+         * @description Returns the newest role, member-state, invitation, and removal events. Requires an active workspace administrator.
+         */
+        get: operations["list-workspace-access-audit"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/workspaces/{id}/invitations": {
         parameters: {
             query?: never;
@@ -3476,6 +3496,50 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/workspaces/{id}/invitations/{invitation_id}/resend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resend a pending or expired workspace invitation
+         * @description Rotates the invitation secret and returns the new invitation URL once.
+         */
+        post: operations["resend-workspace-invitation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/workspaces/{id}/members/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Permanently remove a workspace member
+         * @description Removes workspace access. The last active administrator cannot be removed.
+         */
+        delete: operations["remove-workspace-member"];
+        options?: never;
+        head?: never;
+        /**
+         * Change a workspace member's role or access state
+         * @description Temporarily deactivate or reactivate access, or change the member role. The last active administrator cannot be demoted or deactivated.
+         */
+        patch: operations["update-workspace-member"];
         trace?: never;
     };
     "/workspaces/{id}/settings": {
@@ -8365,6 +8429,15 @@ export interface components {
             /** @description One-time action-bound reauthentication grant */
             reauth_grant?: string;
         };
+        RemoveWorkspaceMemberOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/RemoveWorkspaceMemberOutputBody.json
+             */
+            readonly $schema?: string;
+            removed: boolean;
+        };
         RenditionInput: {
             /** @description Platform-specific body */
             body?: string;
@@ -9705,6 +9778,24 @@ export interface components {
             /** Format: int64 */
             expected_revision: number;
         };
+        UpdateWorkspaceMemberInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/UpdateWorkspaceMemberInputBody.json
+             */
+            readonly $schema?: string;
+            /**
+             * @description Replacement workspace role
+             * @enum {string}
+             */
+            role?: "admin" | "editor" | "viewer";
+            /**
+             * @description Replacement workspace access state
+             * @enum {string}
+             */
+            status?: "active" | "inactive";
+        };
         UpdateWorkspaceSettingsInputBody: {
             /**
              * Format: uri
@@ -10227,6 +10318,20 @@ export interface components {
             };
             visible: boolean;
         };
+        WorkspaceAccessAuditResponse: {
+            action: string;
+            actor_user_id?: string;
+            created_at: string;
+            id: string;
+            invitation_id?: string;
+            previous_role?: string;
+            previous_status?: string;
+            role?: string;
+            status?: string;
+            subject_email?: string;
+            subject_user_id?: string;
+            workspace_id: string;
+        };
         WorkspaceInvitationResponse: {
             /**
              * Format: uri
@@ -10250,20 +10355,47 @@ export interface components {
             id: string;
             /** @description Inviting user ID */
             invited_by_user_id: string;
+            /** @description When the invitation was most recently sent */
+            last_sent_at: string;
             /** @description When the invitation was revoked */
             revoked_at?: string;
             /** @description Workspace role to grant */
             role: string;
+            /**
+             * @description Current invitation state
+             * @enum {string}
+             */
+            status: "pending" | "expired";
             /** @description Raw invite token returned once on creation */
             token?: string;
             /** @description Workspace ID */
             workspace_id: string;
         };
         WorkspaceMemberResponse: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/WorkspaceMemberResponse.json
+             */
+            readonly $schema?: string;
+            /** @description When access was first granted */
+            created_at: string;
+            /** @description When access was temporarily deactivated */
+            deactivated_at?: string;
             /** @description User email */
             email: string;
-            /** @description Workspace role */
-            role: string;
+            /**
+             * @description Workspace role
+             * @enum {string}
+             */
+            role: "admin" | "editor" | "viewer";
+            /**
+             * @description Workspace access state
+             * @enum {string}
+             */
+            status: "active" | "inactive";
+            /** @description When access last changed */
+            updated_at: string;
             /** @description User ID */
             user_id: string;
         };
@@ -10308,6 +10440,8 @@ export interface components {
              * @example https://example.com/schemas/WorkspaceTeamOutputBody.json
              */
             readonly $schema?: string;
+            /** @description Whether the current user may administer workspace access */
+            can_manage: boolean;
             /** Format: int64 */
             current_seats: number;
             invitations: components["schemas"]["WorkspaceInvitationResponse"][] | null;
@@ -23652,6 +23786,68 @@ export interface operations {
             };
         };
     };
+    "list-workspace-access-audit": {
+        parameters: {
+            query?: {
+                /** @description Maximum events to return */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Workspace ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceAccessAuditResponse"][] | null;
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "create-workspace-invitation": {
         parameters: {
             query?: never;
@@ -23776,6 +23972,247 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "resend-workspace-invitation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Workspace ID */
+                id: string;
+                /** @description Invitation ID */
+                invitation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceInvitationResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "remove-workspace-member": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Workspace ID */
+                id: string;
+                /** @description Workspace member user ID */
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RemoveWorkspaceMemberOutputBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "update-workspace-member": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Workspace ID */
+                id: string;
+                /** @description Workspace member user ID */
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateWorkspaceMemberInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceMemberResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Payment Required */
+            402: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -23936,7 +24373,14 @@ export interface operations {
     };
     "list-workspace-team": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Case-insensitive member or invitation email search */
+                q?: string;
+                /** @description Filter by role */
+                role?: "all" | "admin" | "editor" | "viewer";
+                /** @description Filter by access state */
+                status?: "all" | "active" | "inactive" | "pending" | "expired";
+            };
             header?: never;
             path: {
                 /** @description Workspace ID */

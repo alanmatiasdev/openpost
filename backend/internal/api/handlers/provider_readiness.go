@@ -200,11 +200,11 @@ func providerReadinessWorkspaceAccess(ctx context.Context, db *bun.DB, workspace
 	if !middleware.WorkspaceScopeAllows(ctx, workspaceID) {
 		return huma.Error403Forbidden(errWorkspaceAccessDenied)
 	}
-	count, err := db.NewSelect().Model((*models.WorkspaceMember)(nil)).Where("workspace_id = ? AND user_id = ?", workspaceID, userID).Count(ctx)
+	allowed, err := middleware.CheckWorkspaceAccess(ctx, db, workspaceID, userID)
 	if err != nil {
 		return huma.Error500InternalServerError(errValidateWorkspaceAccess)
 	}
-	if count == 0 {
+	if !allowed {
 		return huma.Error403Forbidden(errWorkspaceAccessDenied)
 	}
 	return nil

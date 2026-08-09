@@ -231,6 +231,10 @@ export interface TeamMember {
 	user_id: string;
 	email: string;
 	role: string;
+	status: 'active' | 'inactive';
+	created_at: string;
+	updated_at: string;
+	deactivated_at?: string;
 }
 
 export interface WorkspaceInvitation {
@@ -245,6 +249,8 @@ export interface WorkspaceInvitation {
 	expires_at: string;
 	accepted_at?: string;
 	revoked_at?: string;
+	last_sent_at: string;
+	status: 'pending' | 'expired';
 	created_at: string;
 }
 
@@ -252,6 +258,22 @@ export interface WorkspaceTeam {
 	members: TeamMember[];
 	invitations: WorkspaceInvitation[];
 	current_seats: number;
+	can_manage: boolean;
+}
+
+export interface WorkspaceAccessAuditEvent {
+	id: string;
+	workspace_id: string;
+	actor_user_id?: string;
+	subject_user_id?: string;
+	invitation_id?: string;
+	subject_email?: string;
+	action: string;
+	previous_role?: string;
+	role?: string;
+	previous_status?: string;
+	status?: string;
+	created_at: string;
 }
 
 export interface PostingSchedule {

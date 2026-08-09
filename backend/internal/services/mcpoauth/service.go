@@ -22,6 +22,7 @@ import (
 	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/netguard"
 	"github.com/openpost/backend/internal/services/apitokens"
+	"github.com/openpost/backend/internal/services/workspaceaccess"
 	"github.com/uptrace/bun"
 )
 
@@ -315,14 +316,11 @@ func (s *Service) normalizeWorkspaceScope(ctx context.Context, userID, workspace
 	if workspaceID == "" {
 		return "", nil
 	}
-	count, err := s.db.NewSelect().
-		Model((*models.WorkspaceMember)(nil)).
-		Where("workspace_id = ? AND user_id = ?", workspaceID, strings.TrimSpace(userID)).
-		Count(ctx)
+	allowed, err := workspaceaccess.Allows(ctx, s.db, workspaceID, strings.TrimSpace(userID))
 	if err != nil {
 		return "", err
 	}
-	if count == 0 {
+	if !allowed {
 		return "", ErrWorkspaceNotAllowed
 	}
 	return workspaceID, nil

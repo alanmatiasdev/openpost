@@ -99,14 +99,11 @@ func (h *MCPActivityHandler) checkWorkspaceAccess(ctx context.Context, workspace
 	if !middleware.WorkspaceScopeAllows(ctx, workspaceID) {
 		return huma.Error403Forbidden("workspace not accessible")
 	}
-	count, err := h.db.NewSelect().
-		Model((*models.WorkspaceMember)(nil)).
-		Where("workspace_id = ? AND user_id = ?", workspaceID, userID).
-		Count(ctx)
+	allowed, err := middleware.CheckWorkspaceAccess(ctx, h.db, workspaceID, userID)
 	if err != nil {
 		return huma.Error500InternalServerError("failed to check workspace access")
 	}
-	if count == 0 {
+	if !allowed {
 		return huma.Error403Forbidden("workspace not accessible")
 	}
 	return nil

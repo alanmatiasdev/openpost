@@ -11166,6 +11166,23 @@
 				"required": ["current_password"],
 				"type": "object"
 			},
+			"RemoveWorkspaceMemberOutputBody": {
+				"additionalProperties": false,
+				"properties": {
+					"$schema": {
+						"description": "A URL to the JSON Schema for this object.",
+						"examples": ["https://example.com/schemas/RemoveWorkspaceMemberOutputBody.json"],
+						"format": "uri",
+						"readOnly": true,
+						"type": "string"
+					},
+					"removed": {
+						"type": "boolean"
+					}
+				},
+				"required": ["removed"],
+				"type": "object"
+			},
 			"RenditionInput": {
 				"additionalProperties": false,
 				"properties": {
@@ -14281,6 +14298,29 @@
 				"required": ["expected_revision", "document"],
 				"type": "object"
 			},
+			"UpdateWorkspaceMemberInputBody": {
+				"additionalProperties": false,
+				"properties": {
+					"$schema": {
+						"description": "A URL to the JSON Schema for this object.",
+						"examples": ["https://example.com/schemas/UpdateWorkspaceMemberInputBody.json"],
+						"format": "uri",
+						"readOnly": true,
+						"type": "string"
+					},
+					"role": {
+						"description": "Replacement workspace role",
+						"enum": ["admin", "editor", "viewer"],
+						"type": "string"
+					},
+					"status": {
+						"description": "Replacement workspace access state",
+						"enum": ["active", "inactive"],
+						"type": "string"
+					}
+				},
+				"type": "object"
+			},
 			"UpdateWorkspaceSettingsInputBody": {
 				"additionalProperties": false,
 				"properties": {
@@ -15578,6 +15618,49 @@
 				"required": ["id", "type", "timeline_start_us", "duration_us", "visible", "presentation"],
 				"type": "object"
 			},
+			"WorkspaceAccessAuditResponse": {
+				"additionalProperties": false,
+				"properties": {
+					"action": {
+						"type": "string"
+					},
+					"actor_user_id": {
+						"type": "string"
+					},
+					"created_at": {
+						"type": "string"
+					},
+					"id": {
+						"type": "string"
+					},
+					"invitation_id": {
+						"type": "string"
+					},
+					"previous_role": {
+						"type": "string"
+					},
+					"previous_status": {
+						"type": "string"
+					},
+					"role": {
+						"type": "string"
+					},
+					"status": {
+						"type": "string"
+					},
+					"subject_email": {
+						"type": "string"
+					},
+					"subject_user_id": {
+						"type": "string"
+					},
+					"workspace_id": {
+						"type": "string"
+					}
+				},
+				"required": ["id", "workspace_id", "action", "created_at"],
+				"type": "object"
+			},
 			"WorkspaceInvitationResponse": {
 				"additionalProperties": false,
 				"properties": {
@@ -15620,12 +15703,21 @@
 						"description": "Inviting user ID",
 						"type": "string"
 					},
+					"last_sent_at": {
+						"description": "When the invitation was most recently sent",
+						"type": "string"
+					},
 					"revoked_at": {
 						"description": "When the invitation was revoked",
 						"type": "string"
 					},
 					"role": {
 						"description": "Workspace role to grant",
+						"type": "string"
+					},
+					"status": {
+						"description": "Current invitation state",
+						"enum": ["pending", "expired"],
 						"type": "string"
 					},
 					"token": {
@@ -15644,6 +15736,8 @@
 					"role",
 					"invited_by_user_id",
 					"expires_at",
+					"last_sent_at",
+					"status",
 					"created_at"
 				],
 				"type": "object"
@@ -15651,12 +15745,37 @@
 			"WorkspaceMemberResponse": {
 				"additionalProperties": false,
 				"properties": {
+					"$schema": {
+						"description": "A URL to the JSON Schema for this object.",
+						"examples": ["https://example.com/schemas/WorkspaceMemberResponse.json"],
+						"format": "uri",
+						"readOnly": true,
+						"type": "string"
+					},
+					"created_at": {
+						"description": "When access was first granted",
+						"type": "string"
+					},
+					"deactivated_at": {
+						"description": "When access was temporarily deactivated",
+						"type": "string"
+					},
 					"email": {
 						"description": "User email",
 						"type": "string"
 					},
 					"role": {
 						"description": "Workspace role",
+						"enum": ["admin", "editor", "viewer"],
+						"type": "string"
+					},
+					"status": {
+						"description": "Workspace access state",
+						"enum": ["active", "inactive"],
+						"type": "string"
+					},
+					"updated_at": {
+						"description": "When access last changed",
 						"type": "string"
 					},
 					"user_id": {
@@ -15664,7 +15783,7 @@
 						"type": "string"
 					}
 				},
-				"required": ["user_id", "email", "role"],
+				"required": ["user_id", "email", "role", "status", "created_at", "updated_at"],
 				"type": "object"
 			},
 			"WorkspaceResp": {
@@ -15766,6 +15885,10 @@
 						"readOnly": true,
 						"type": "string"
 					},
+					"can_manage": {
+						"description": "Whether the current user may administer workspace access",
+						"type": "boolean"
+					},
 					"current_seats": {
 						"format": "int64",
 						"type": "integer"
@@ -15783,7 +15906,7 @@
 						"type": ["array", "null"]
 					}
 				},
-				"required": ["members", "invitations", "current_seats"],
+				"required": ["members", "invitations", "current_seats", "can_manage"],
 				"type": "object"
 			}
 		}
@@ -32763,6 +32886,95 @@
 				"tags": ["Workspaces"]
 			}
 		},
+		"/workspaces/{id}/access-audit": {
+			"get": {
+				"description": "Returns the newest role, member-state, invitation, and removal events. Requires an active workspace administrator.",
+				"operationId": "list-workspace-access-audit",
+				"parameters": [
+					{
+						"description": "Workspace ID",
+						"in": "path",
+						"name": "id",
+						"required": true,
+						"schema": {
+							"description": "Workspace ID",
+							"type": "string"
+						}
+					},
+					{
+						"description": "Maximum events to return",
+						"explode": false,
+						"in": "query",
+						"name": "limit",
+						"schema": {
+							"default": 50,
+							"description": "Maximum events to return",
+							"format": "int64",
+							"maximum": 200,
+							"minimum": 1,
+							"type": "integer"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"items": {
+										"$ref": "#/components/schemas/WorkspaceAccessAuditResponse"
+									},
+									"type": ["array", "null"]
+								}
+							}
+						},
+						"description": "OK"
+					},
+					"403": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Forbidden"
+					},
+					"404": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Not Found"
+					},
+					"422": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Unprocessable Entity"
+					},
+					"500": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Internal Server Error"
+					}
+				},
+				"summary": "List workspace access changes",
+				"tags": ["Workspaces"]
+			}
+		},
 		"/workspaces/{id}/invitations": {
 			"post": {
 				"operationId": "create-workspace-invitation",
@@ -32930,6 +33142,16 @@
 						},
 						"description": "Not Found"
 					},
+					"409": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Conflict"
+					},
 					"422": {
 						"content": {
 							"application/problem+json": {
@@ -32952,6 +33174,310 @@
 					}
 				},
 				"summary": "Revoke a pending workspace invitation",
+				"tags": ["Workspaces"]
+			}
+		},
+		"/workspaces/{id}/invitations/{invitation_id}/resend": {
+			"post": {
+				"description": "Rotates the invitation secret and returns the new invitation URL once.",
+				"operationId": "resend-workspace-invitation",
+				"parameters": [
+					{
+						"description": "Workspace ID",
+						"in": "path",
+						"name": "id",
+						"required": true,
+						"schema": {
+							"description": "Workspace ID",
+							"type": "string"
+						}
+					},
+					{
+						"description": "Invitation ID",
+						"in": "path",
+						"name": "invitation_id",
+						"required": true,
+						"schema": {
+							"description": "Invitation ID",
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/WorkspaceInvitationResponse"
+								}
+							}
+						},
+						"description": "OK"
+					},
+					"403": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Forbidden"
+					},
+					"404": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Not Found"
+					},
+					"409": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Conflict"
+					},
+					"422": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Unprocessable Entity"
+					},
+					"500": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Internal Server Error"
+					}
+				},
+				"summary": "Resend a pending or expired workspace invitation",
+				"tags": ["Workspaces"]
+			}
+		},
+		"/workspaces/{id}/members/{user_id}": {
+			"delete": {
+				"description": "Removes workspace access. The last active administrator cannot be removed.",
+				"operationId": "remove-workspace-member",
+				"parameters": [
+					{
+						"description": "Workspace ID",
+						"in": "path",
+						"name": "id",
+						"required": true,
+						"schema": {
+							"description": "Workspace ID",
+							"type": "string"
+						}
+					},
+					{
+						"description": "Workspace member user ID",
+						"in": "path",
+						"name": "user_id",
+						"required": true,
+						"schema": {
+							"description": "Workspace member user ID",
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/RemoveWorkspaceMemberOutputBody"
+								}
+							}
+						},
+						"description": "OK"
+					},
+					"403": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Forbidden"
+					},
+					"404": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Not Found"
+					},
+					"409": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Conflict"
+					},
+					"422": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Unprocessable Entity"
+					},
+					"500": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Internal Server Error"
+					}
+				},
+				"summary": "Permanently remove a workspace member",
+				"tags": ["Workspaces"]
+			},
+			"patch": {
+				"description": "Temporarily deactivate or reactivate access, or change the member role. The last active administrator cannot be demoted or deactivated.",
+				"operationId": "update-workspace-member",
+				"parameters": [
+					{
+						"description": "Workspace ID",
+						"in": "path",
+						"name": "id",
+						"required": true,
+						"schema": {
+							"description": "Workspace ID",
+							"type": "string"
+						}
+					},
+					{
+						"description": "Workspace member user ID",
+						"in": "path",
+						"name": "user_id",
+						"required": true,
+						"schema": {
+							"description": "Workspace member user ID",
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/UpdateWorkspaceMemberInputBody"
+							}
+						}
+					},
+					"required": true
+				},
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/WorkspaceMemberResponse"
+								}
+							}
+						},
+						"description": "OK"
+					},
+					"400": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Bad Request"
+					},
+					"402": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Payment Required"
+					},
+					"403": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Forbidden"
+					},
+					"404": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Not Found"
+					},
+					"409": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Conflict"
+					},
+					"422": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Unprocessable Entity"
+					},
+					"500": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Internal Server Error"
+					}
+				},
+				"summary": "Change a workspace member's role or access state",
 				"tags": ["Workspaces"]
 			}
 		},
@@ -33126,6 +33652,41 @@
 						"required": true,
 						"schema": {
 							"description": "Workspace ID",
+							"type": "string"
+						}
+					},
+					{
+						"description": "Case-insensitive member or invitation email search",
+						"explode": false,
+						"in": "query",
+						"name": "q",
+						"schema": {
+							"description": "Case-insensitive member or invitation email search",
+							"maxLength": 200,
+							"type": "string"
+						}
+					},
+					{
+						"description": "Filter by role",
+						"explode": false,
+						"in": "query",
+						"name": "role",
+						"schema": {
+							"default": "all",
+							"description": "Filter by role",
+							"enum": ["all", "admin", "editor", "viewer"],
+							"type": "string"
+						}
+					},
+					{
+						"description": "Filter by access state",
+						"explode": false,
+						"in": "query",
+						"name": "status",
+						"schema": {
+							"default": "all",
+							"description": "Filter by access state",
+							"enum": ["all", "active", "inactive", "pending", "expired"],
 							"type": "string"
 						}
 					}

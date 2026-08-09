@@ -282,12 +282,11 @@ func requireSocialSetWorkspaceAccess(ctx context.Context, db *bun.DB, workspaceI
 		}
 		return nil
 	}
-	count, err := db.NewSelect().Model((*models.WorkspaceMember)(nil)).
-		Where("workspace_id = ? AND user_id = ?", workspaceID, userID).Count(ctx)
+	allowed, err := middleware.CheckWorkspaceAccess(ctx, db, workspaceID, userID)
 	if err != nil {
 		return huma.Error500InternalServerError(errValidateWorkspaceAccess)
 	}
-	if count == 0 {
+	if !allowed {
 		return huma.Error403Forbidden(errWorkspaceAccessDenied)
 	}
 	return nil

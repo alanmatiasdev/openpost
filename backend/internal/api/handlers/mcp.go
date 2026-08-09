@@ -3053,14 +3053,11 @@ func (h *MCPHandler) ensureWorkspaceAccess(ctx context.Context, userID, workspac
 	if scopedWorkspaceID := mcpWorkspaceScopeFromContext(ctx); scopedWorkspaceID != "" && scopedWorkspaceID != workspaceID {
 		return &mcpError{Code: -32602, Message: "workspace outside token scope"}
 	}
-	count, err := h.db.NewSelect().
-		Model((*models.WorkspaceMember)(nil)).
-		Where("workspace_id = ? AND user_id = ?", workspaceID, userID).
-		Count(ctx)
+	allowed, err := middleware.CheckWorkspaceAccess(ctx, h.db, workspaceID, userID)
 	if err != nil {
 		return &mcpError{Code: -32603, Message: "failed to check workspace access"}
 	}
-	if count == 0 {
+	if !allowed {
 		return &mcpError{Code: -32602, Message: "workspace not accessible"}
 	}
 	return nil
@@ -3098,7 +3095,7 @@ func (h *MCPHandler) listWorkspaces(ctx context.Context, userID string) (any, *m
 		ColumnExpr("workspace.*").
 		ColumnExpr("wm.role").
 		Join("JOIN workspace_members AS wm ON wm.workspace_id = workspace.id").
-		Where("wm.user_id = ?", userID)
+		Where("wm.user_id = ? AND wm.status = ?", userID, models.WorkspaceMemberStatusActive)
 	if workspaceID := mcpWorkspaceScopeFromContext(ctx); workspaceID != "" {
 		query = query.Where("workspace.id = ?", workspaceID)
 	}

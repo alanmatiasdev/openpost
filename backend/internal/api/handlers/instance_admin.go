@@ -267,8 +267,8 @@ func (h *InstanceAdminHandler) listUsers(ctx context.Context, input *ListInstanc
 			"instance_user.created_at",
 		).
 		ColumnExpr("(SELECT COUNT(*) FROM organization_members AS member WHERE member.user_id = instance_user.id) AS organization_count").
-		ColumnExpr("(SELECT COUNT(*) FROM workspace_members AS member WHERE member.user_id = instance_user.id) AS workspace_count").
-		ColumnExpr("(SELECT COUNT(*) FROM social_accounts AS account WHERE account.workspace_id IN (SELECT member.workspace_id FROM workspace_members AS member WHERE member.user_id = instance_user.id)) AS social_account_count").
+		ColumnExpr("(SELECT COUNT(*) FROM workspace_members AS member WHERE member.user_id = instance_user.id AND member.status = 'active') AS workspace_count").
+		ColumnExpr("(SELECT COUNT(*) FROM social_accounts AS account WHERE account.workspace_id IN (SELECT member.workspace_id FROM workspace_members AS member WHERE member.user_id = instance_user.id AND member.status = 'active')) AS social_account_count").
 		ColumnExpr("(SELECT COUNT(*) FROM publications AS publication WHERE publication.created_by = instance_user.id) AS publication_count")
 	query = applyInstanceUserSearch(query, search)
 	orderExpr, direction := instanceUserOrder(input.Sort, input.Direction)
@@ -408,7 +408,7 @@ func instanceUserOrder(field, direction string) (string, string) {
 		"email":             "LOWER(instance_user.email)",
 		"display_name":      "COALESCE(NULLIF(LOWER(instance_user.display_name), ''), LOWER(instance_user.email))",
 		"last_active_at":    "COALESCE((SELECT MAX(session.last_used_at) FROM user_sessions AS session WHERE session.user_id = instance_user.id), instance_user.created_at)",
-		"workspace_count":   "(SELECT COUNT(*) FROM workspace_members AS member WHERE member.user_id = instance_user.id)",
+		"workspace_count":   "(SELECT COUNT(*) FROM workspace_members AS member WHERE member.user_id = instance_user.id AND member.status = 'active')",
 		"publication_count": "(SELECT COUNT(*) FROM publications AS publication WHERE publication.created_by = instance_user.id)",
 	}
 	expression, ok := expressions[strings.TrimSpace(field)]

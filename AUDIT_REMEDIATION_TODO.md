@@ -135,7 +135,7 @@ These do not assert a newly observed production incident. They block Pinterest, 
 
 ### TEAM-001 — Complete member access lifecycle, not only invitations
 
-- [ ] **Problem — Current source audit:** workspace invites, roles at invite time, pending revoke, and seat limits exist, but admins cannot change an accepted member’s role, deactivate/remove a member, resend an invite, or quickly search/filter the team. Non-admins can see an invite form that the API correctly rejects.
+- [x] **Problem — Current source audit:** workspace invites, roles at invite time, pending revoke, and seat limits exist, but admins cannot change an accepted member’s role, deactivate/remove a member, resend an invite, or quickly search/filter the team. Non-admins can see an invite form that the API correctly rejects.
 - **Fix:** add authorized role change, temporary deactivation, permanent removal, resend, revoke, search/filter, and optional bulk invite; hide or disable admin actions for non-admins; preserve last-owner/admin safeguards and audit every access change.
 - **Done when:** admin/member/viewer permissions are enforced server-side and reflected in UI; pending and accepted users have complete state transitions; seat counts update atomically; tests cover self-removal, last-admin, revoked invite, and unauthorized mutations.
 - **Evidence:** team/invitation section in `frontend/src/routes/settings/+page.svelte` and workspace invitation handlers/services.

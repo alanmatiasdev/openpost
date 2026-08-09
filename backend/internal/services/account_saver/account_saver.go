@@ -19,6 +19,7 @@ import (
 	"github.com/openpost/backend/internal/services/crypto"
 	"github.com/openpost/backend/internal/services/entitlements"
 	"github.com/openpost/backend/internal/services/tokenmanager"
+	"github.com/openpost/backend/internal/services/workspaceaccess"
 	"github.com/uptrace/bun"
 )
 
@@ -546,14 +547,11 @@ func (s *AccountSaver) validateSaveAccountInput(ctx context.Context, input SaveA
 		return fmt.Errorf("token response is required")
 	}
 
-	memberCount, err := s.db.NewSelect().
-		Model((*models.WorkspaceMember)(nil)).
-		Where("workspace_id = ? AND user_id = ?", input.WorkspaceID, input.UserID).
-		Count(ctx)
+	allowed, err := workspaceaccess.Allows(ctx, s.db, input.WorkspaceID, input.UserID)
 	if err != nil {
 		return fmt.Errorf("validating workspace membership: %w", err)
 	}
-	if memberCount == 0 {
+	if !allowed {
 		return fmt.Errorf("workspace not accessible")
 	}
 	return nil

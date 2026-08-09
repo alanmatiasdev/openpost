@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/platform"
+	"github.com/openpost/backend/internal/services/workspaceaccess"
 	"github.com/uptrace/bun"
 )
 
@@ -228,14 +229,12 @@ func (s *Service) RevokeGrant(ctx context.Context, grantID, workspaceID, userID 
 }
 
 func (s *Service) workspaceMember(ctx context.Context, workspaceID, userID string) (models.WorkspaceMember, error) {
-	var member models.WorkspaceMember
-	if err := s.db.NewSelect().Model(&member).
-		Where("workspace_id = ? AND user_id = ?", workspaceID, userID).
-		Scan(ctx); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return member, ErrWorkspaceAccess
-		}
+	member, ok, err := workspaceaccess.Member(ctx, s.db, workspaceID, userID)
+	if err != nil {
 		return member, err
+	}
+	if !ok {
+		return member, ErrWorkspaceAccess
 	}
 	return member, nil
 }

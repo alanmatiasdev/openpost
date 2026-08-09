@@ -3224,11 +3224,11 @@ func (h *PublicationHandler) checkWorkspaceAccess(ctx context.Context, workspace
 	if !middleware.WorkspaceScopeAllows(ctx, workspaceID) {
 		return huma.Error403Forbidden(errWorkspaceAccessDenied)
 	}
-	var members []models.WorkspaceMember
-	if err := h.db.NewSelect().Model(&members).Where("workspace_id = ? AND user_id = ?", workspaceID, userID).Scan(ctx); err != nil {
+	allowed, err := middleware.CheckWorkspaceAccess(ctx, h.db, workspaceID, userID)
+	if err != nil {
 		return huma.Error500InternalServerError(errValidateWorkspaceAccess)
 	}
-	if len(members) == 0 {
+	if !allowed {
 		return huma.Error403Forbidden(errWorkspaceAccessDenied)
 	}
 	return nil

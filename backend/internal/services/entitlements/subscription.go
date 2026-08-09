@@ -180,7 +180,7 @@ func (s *SubscriptionService) checkUserWorkspaceLimit(ctx context.Context, req R
 			ModelTableExpr("billing_subscriptions AS bs").
 			ColumnExpr("bs.*").
 			Join("JOIN workspace_members AS wm ON wm.workspace_id = bs.workspace_id").
-			Where("wm.user_id = ?", req.UserID).
+			Where("wm.user_id = ? AND wm.status = ?", req.UserID, models.WorkspaceMemberStatusActive).
 			Where("bs.provider = ?", models.BillingProviderPaddle).
 			Scan(ctx)
 	}

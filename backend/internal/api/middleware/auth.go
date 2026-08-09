@@ -2,8 +2,6 @@ package middleware
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 	"net"
 	"net/http"
 	"net/netip"
@@ -15,6 +13,7 @@ import (
 	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/services/apitokens"
 	"github.com/openpost/backend/internal/services/auth"
+	"github.com/openpost/backend/internal/services/workspaceaccess"
 	"github.com/uptrace/bun"
 )
 
@@ -339,37 +338,29 @@ func WorkspaceRole(ctx context.Context, db *bun.DB, workspaceID, userID string) 
 	if !WorkspaceScopeAllows(ctx, workspaceID) {
 		return "", false, nil
 	}
-	var member models.WorkspaceMember
-	err := db.NewSelect().Model(&member).
-		Where("workspace_id = ? AND user_id = ?", workspaceID, userID).
-		Scan(ctx)
-	if errors.Is(err, sql.ErrNoRows) {
-		return "", false, nil
-	}
-	if err != nil {
+	member, ok, err := workspaceaccess.Member(ctx, db, workspaceID, userID)
+	if err != nil || !ok {
 		return "", false, err
 	}
-	return member.Role, true, nil
+	return member.Role, ok, nil
 }
 
 // CheckWorkspaceEditAccess permits workspace administrators and editors to
 // mutate editorial content. Viewers remain read-only.
 func CheckWorkspaceEditAccess(ctx context.Context, db *bun.DB, workspaceID, userID string) (bool, error) {
-	role, ok, err := WorkspaceRole(ctx, db, workspaceID, userID)
-	if err != nil || !ok {
-		return false, err
+	if !WorkspaceScopeAllows(ctx, workspaceID) {
+		return false, nil
 	}
-	return role == models.WorkspaceRoleAdmin || role == models.WorkspaceRoleEditor, nil
+	return workspaceaccess.CanEdit(ctx, db, workspaceID, userID)
 }
 
 // CheckWorkspaceAdminAccess restricts workspace configuration and team
 // administration to workspace administrators.
 func CheckWorkspaceAdminAccess(ctx context.Context, db *bun.DB, workspaceID, userID string) (bool, error) {
-	role, ok, err := WorkspaceRole(ctx, db, workspaceID, userID)
-	if err != nil || !ok {
-		return false, err
+	if !WorkspaceScopeAllows(ctx, workspaceID) {
+		return false, nil
 	}
-	return role == models.WorkspaceRoleAdmin, nil
+	return workspaceaccess.IsAdmin(ctx, db, workspaceID, userID)
 }
 
 func WorkspaceScopeAllows(ctx context.Context, workspaceID string) bool {

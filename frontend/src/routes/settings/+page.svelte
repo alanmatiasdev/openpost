@@ -20,6 +20,7 @@
 	import NotificationPreferences from '$lib/components/notification-preferences.svelte';
 	import OrganizationSSOSettings from '$lib/components/organization-sso-settings.svelte';
 	import SettingsFormFooter from '$lib/components/settings-form-footer.svelte';
+	import WorkspaceTeamSettings from '$lib/components/workspace-team-settings.svelte';
 	import MediaPicker from '$lib/components/media-picker.svelte';
 	import BrandKitEditor from '$lib/image-editor/components/brand-kit-editor.svelte';
 	import ImageEditorColorPicker from '$lib/image-editor/components/image-editor-color-picker.svelte';
@@ -50,8 +51,6 @@
 	import CreditCardIcon from '@lucide/svelte/icons/credit-card';
 	import ExternalLinkIcon from '@lucide/svelte/icons/external-link';
 	import ActivityIcon from '@lucide/svelte/icons/activity';
-	import UsersIcon from '@lucide/svelte/icons/users';
-	import UserPlusIcon from '@lucide/svelte/icons/user-plus';
 	import CopyIcon from '@lucide/svelte/icons/copy';
 	import DownloadIcon from '@lucide/svelte/icons/download';
 	import MonitorIcon from '@lucide/svelte/icons/monitor';
@@ -75,7 +74,6 @@
 		apiTokenScopeOptions as apiTokenScopes,
 		billingPlans as billingPlanDefinitions,
 		getTimezoneLabel,
-		inviteRoleOptions as inviteRoles,
 		timezones,
 		type APITokenSummary,
 		type AuthSessionSummary,
@@ -87,13 +85,10 @@
 		type ProviderCostSummary,
 		type ScheduleRow,
 		type SecurityStatus,
-		type UpdateStatus,
-		type WorkspaceInvitation,
-		type WorkspaceTeam
+		type UpdateStatus
 	} from './settings-data';
 
 	type SettingsDestructiveAction =
-		| { kind: 'invitation'; invitationID: string }
 		| { kind: 'session'; session: AuthSessionSummary }
 		| { kind: 'api-token'; tokenID: string }
 		| { kind: 'time-row'; row: ScheduleRow }
@@ -170,19 +165,10 @@
 	let updateStatusLoading = $state(false);
 	let updateStatusError = $state('');
 	let handledCheckoutPlan = '';
-	let teamLoading = $state(false);
-	let teamBusy = $state(false);
-	let teamError = $state('');
-	let teamLoadError = $state('');
-	let workspaceTeam = $state<WorkspaceTeam | null>(null);
 	let brandKit = $state.raw<ImageEditorBrandKit | null>(null);
 	let brandLoading = $state(false);
 	let brandError = $state('');
-	let inviteEmail = $state('');
-	let inviteRole = $state<'viewer' | 'editor' | 'admin'>('editor');
-	let createdInviteURL = $state('');
 	let loadedBillingWorkspaceID = '';
-	let loadedTeamWorkspaceID = '';
 	let loadedScheduleWorkspaceID = '';
 	let loadedBrandWorkspaceID = '';
 	let loadedSecurityUserID = '';
@@ -191,7 +177,6 @@
 	let apiTokensRequestUserID = '';
 	let loadedMCPActivityUserID = '';
 	let billingRequestSequence = 0;
-	let teamRequestSequence = 0;
 	let scheduleRequestSequence = 0;
 	let brandRequestSequence = 0;
 	let apiTokensRequestSequence = 0;
@@ -209,7 +194,6 @@
 	}
 
 	function destructiveActionTitle() {
-		if (destructiveAction?.kind === 'invitation') return m.settings_revoke_invitation_title();
 		if (destructiveAction?.kind === 'session') {
 			return destructiveAction.session.current
 				? m.settings_sign_out_session_title()
@@ -227,7 +211,6 @@
 	}
 
 	function destructiveActionDescription() {
-		if (destructiveAction?.kind === 'invitation') return m.settings_revoke_invitation_body();
 		if (destructiveAction?.kind === 'session') {
 			return destructiveAction.session.current
 				? m.settings_sign_out_session_body()
@@ -253,10 +236,6 @@
 	async function confirmDestructiveAction() {
 		const action = destructiveAction;
 		if (!action) return;
-		if (action.kind === 'invitation') {
-			await revokeWorkspaceInvitation(action.invitationID);
-			return;
-		}
 		if (action.kind === 'session') {
 			await revokeAuthSession(action.session);
 			return;
@@ -497,16 +476,6 @@
 	const hasStepUpMethod = $derived(
 		hasPasswordCredential || passkeyCount > 0 || Boolean(reauthProviderID)
 	);
-	const teamMembers = $derived(workspaceTeam?.members ?? []);
-	const pendingInvitations = $derived(workspaceTeam?.invitations ?? []);
-	const currentTeamSeats = $derived(workspaceTeam?.current_seats ?? 0);
-	const inviteRoleOptions = $derived(
-		inviteRoles.map((value) => ({
-			value,
-			label: roleLabel(value),
-			description: roleDescription(value)
-		}))
-	);
 	const apiTokenScopeOptions = $derived(
 		apiTokenScopes.map((value) => ({
 			value,
@@ -521,9 +490,6 @@
 			description: billingPlanDescription(plan.id),
 			limits: plan.limits.map(billingPlanLimitLabel)
 		}))
-	);
-	const selectedInviteRole = $derived(
-		inviteRoleOptions.find((option) => option.value === inviteRole) ?? inviteRoleOptions[0]
 	);
 	const selectedAPITokenScope = $derived(
 		apiTokenScopeOptions.find((option) => option.value === apiTokenScope) ?? apiTokenScopeOptions[0]
@@ -606,7 +572,6 @@
 			: m.settings_unsaved_changes()
 	);
 	const developerDraftDirty = $derived(apiTokenDraftSnapshot() !== savedAPITokenDraft);
-	const memberDraftDirty = $derived(Boolean(inviteEmail.trim()) || inviteRole !== 'editor');
 	const profileAvatarURL = $derived(authState.user?.avatar_url ?? '');
 	const profileInitials = $derived.by(() => {
 		const source = profileDisplayName || profileEmail || 'OP';
@@ -873,91 +838,6 @@
 		} finally {
 			mcpActivityLoading = false;
 		}
-	}
-
-	async function loadWorkspaceTeam(workspaceID = workspaceCtx.currentWorkspace?.id ?? '') {
-		if (!workspaceID) return;
-		const requestSequence = ++teamRequestSequence;
-		const workspaceChanged = loadedTeamWorkspaceID !== workspaceID;
-		loadedTeamWorkspaceID = workspaceID;
-		teamLoading = true;
-		teamError = '';
-		teamLoadError = '';
-		workspaceTeam = null;
-		if (workspaceChanged) createdInviteURL = '';
-		try {
-			const { data, error: err } = await client.GET('/workspaces/{id}/team', {
-				params: { path: { id: workspaceID } }
-			});
-			if (err || !data) throw new Error(err?.detail || m.settings_team_load_failed());
-			if (requestSequence !== teamRequestSequence || !isCurrentWorkspace(workspaceID)) return;
-			workspaceTeam = data as WorkspaceTeam;
-		} catch (e) {
-			if (requestSequence !== teamRequestSequence || !isCurrentWorkspace(workspaceID)) return;
-			loadedTeamWorkspaceID = '';
-			workspaceTeam = null;
-			teamLoadError = (e as Error).message || m.settings_team_load_failed();
-		} finally {
-			if (requestSequence === teamRequestSequence) teamLoading = false;
-		}
-	}
-
-	async function createWorkspaceInvitation(event: SubmitEvent) {
-		event.preventDefault();
-		const workspaceID = workspaceCtx.currentWorkspace?.id;
-		if (!workspaceID) return;
-		teamBusy = true;
-		teamError = '';
-		createdInviteURL = '';
-		try {
-			const { data, error: err } = await client.POST('/workspaces/{id}/invitations', {
-				params: { path: { id: workspaceID } },
-				body: {
-					email: inviteEmail.trim(),
-					role: inviteRole
-				}
-			});
-			if (err || !data) throw new Error(err?.detail || m.settings_action_failed());
-			if (!isCurrentWorkspace(workspaceID)) return;
-			const invitation = data as WorkspaceInvitation;
-			createdInviteURL =
-				invitation.accept_url ||
-				(invitation.token ? `${window.location.origin}/invite?token=${invitation.token}` : '');
-			inviteEmail = '';
-			inviteRole = 'editor';
-			await loadWorkspaceTeam(workspaceID);
-			notify(m.settings_invite_created());
-		} catch (e) {
-			if (isCurrentWorkspace(workspaceID)) teamError = (e as Error).message;
-		} finally {
-			teamBusy = false;
-		}
-	}
-
-	async function revokeWorkspaceInvitation(invitationID: string) {
-		const workspaceID = workspaceCtx.currentWorkspace?.id;
-		if (!workspaceID) return;
-		teamBusy = true;
-		teamError = '';
-		try {
-			const { error: err } = await client.DELETE('/workspaces/{id}/invitations/{invitation_id}', {
-				params: { path: { id: workspaceID, invitation_id: invitationID } }
-			});
-			if (err) throw new Error(err.detail || m.settings_action_failed());
-			if (!isCurrentWorkspace(workspaceID)) return;
-			await loadWorkspaceTeam(workspaceID);
-			notify(m.settings_invitation_revoked());
-		} catch (e) {
-			if (isCurrentWorkspace(workspaceID)) teamError = (e as Error).message;
-		} finally {
-			teamBusy = false;
-		}
-	}
-
-	async function copyCreatedInviteURL() {
-		if (!createdInviteURL) return;
-		await navigator.clipboard.writeText(createdInviteURL);
-		notify(m.settings_invite_copied());
 	}
 
 	async function createAPIToken() {
@@ -1540,11 +1420,6 @@
 		return () => unsavedChanges?.clear('developer-settings');
 	});
 
-	$effect(() => {
-		unsavedChanges?.set('member-settings', memberDraftDirty, m.settings_unsaved_changes());
-		return () => unsavedChanges?.clear('member-settings');
-	});
-
 	function otherSecurityDraftDirty() {
 		return Boolean(
 			totpCurrentPassword ||
@@ -1945,9 +1820,6 @@
 
 		if (tab === 'plan' && loadedBillingWorkspaceID !== workspaceID) {
 			void loadBillingStatus(workspaceID, organizationID);
-		}
-		if (tab === 'members' && loadedTeamWorkspaceID !== workspaceID) {
-			void loadWorkspaceTeam(workspaceID);
 		}
 		if (tab === 'schedule' && loadedScheduleWorkspaceID !== workspaceID) {
 			void loadSchedules(workspaceID);
@@ -2588,190 +2460,12 @@
 				</section>
 
 				<section id="team" class:hidden={activeSettingsTab !== 'members'} class="scroll-mt-24">
-					{#snippet teamHeaderActions()}
-						{#if !teamLoading && workspaceTeam}
-							<div class="rounded-md border bg-muted/20 px-3 py-2 text-sm">
-								<span class="text-muted-foreground">
-									{currentTeamSeats === 1
-										? m.settings_seat_reserved()
-										: m.settings_seats_reserved({ count: currentTeamSeats })}
-								</span>
-							</div>
-						{/if}
-					{/snippet}
-					<SectionHeader
-						title={m.settings_team()}
-						description={m.settings_team_body()}
-						icon={UsersIcon}
-						actions={!teamLoading && workspaceTeam ? teamHeaderActions : undefined}
-						class="mb-4"
+					<WorkspaceTeamSettings
+						workspaceID={workspaceCtx.currentWorkspace?.id ?? ''}
+						currentUserID={authState.user?.id ?? ''}
+						active={activeSettingsTab === 'members'}
+						onMembershipChanged={() => workspaceCtx.loadWorkspaces()}
 					/>
-
-					{#if teamLoadError}
-						<div data-testid="team-load-error" class="mb-4">
-							<InlineNotice tone="error" message={teamLoadError}>
-								{#snippet actions()}
-									<Button
-										variant="outline"
-										size="sm"
-										onclick={() => void loadWorkspaceTeam()}
-										disabled={teamLoading}
-									>
-										{m.common_retry()}
-									</Button>
-								{/snippet}
-							</InlineNotice>
-						</div>
-					{/if}
-					{#if teamError}
-						<div data-testid="team-error" class="mb-4">
-							<InlineNotice tone="error" message={teamError} />
-						</div>
-					{/if}
-
-					<form
-						onsubmit={createWorkspaceInvitation}
-						class="mb-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px_auto]"
-					>
-						<div class="space-y-2">
-							<Label for="team-invite-email">{m.settings_invite_email()}</Label>
-							<Input
-								id="team-invite-email"
-								data-testid="team-invite-email"
-								type="email"
-								bind:value={inviteEmail}
-								placeholder="teammate@example.com"
-								autocomplete="email"
-								required
-							/>
-						</div>
-						<div class="space-y-2">
-							<Label for="team-invite-role">{m.settings_role()}</Label>
-							<Select.Root
-								type="single"
-								value={inviteRole}
-								onValueChange={(value) => {
-									if (value === 'viewer' || value === 'editor' || value === 'admin') {
-										inviteRole = value;
-									}
-								}}
-							>
-								<Select.Trigger id="team-invite-role" data-testid="team-invite-role" class="w-full">
-									{selectedInviteRole.label}
-								</Select.Trigger>
-								<Select.Content>
-									{#each inviteRoleOptions as option (option.value)}
-										<Select.Item value={option.value}>
-											<div class="flex flex-col gap-0.5 text-left">
-												<span>{option.label}</span>
-												<span class="text-xs text-muted-foreground">{option.description}</span>
-											</div>
-										</Select.Item>
-									{/each}
-								</Select.Content>
-							</Select.Root>
-						</div>
-						<div class="flex items-end">
-							<Button type="submit" disabled={teamBusy || !inviteEmail.trim()}>
-								{#if teamBusy}
-									<LoaderIcon class="mr-2 h-4 w-4 animate-spin" />
-								{:else}
-									<UserPlusIcon class="mr-2 h-4 w-4" />
-								{/if}
-								{m.settings_send_invite()}
-							</Button>
-						</div>
-					</form>
-
-					{#if createdInviteURL}
-						<div
-							data-testid="team-invite-link"
-							data-feedback-redact
-							class="mb-4 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-4"
-						>
-							<p class="text-sm font-medium text-emerald-900">{m.settings_invite_created()}</p>
-							<div class="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
-								<p
-									class="min-w-0 flex-1 rounded-md bg-background px-3 py-2 font-mono text-xs break-all"
-								>
-									{createdInviteURL}
-								</p>
-								<Button type="button" variant="outline" size="sm" onclick={copyCreatedInviteURL}>
-									<CopyIcon class="mr-2 h-4 w-4" />
-									{m.common_copy()}
-								</Button>
-							</div>
-						</div>
-					{/if}
-
-					{#if teamLoading}
-						<PageLoading layout="grid" label={m.common_loading()} items={2} />
-					{:else if !teamLoadError}
-						<div class="grid gap-4 lg:grid-cols-2">
-							<div>
-								<h3 class="mb-2 text-sm font-semibold">{m.settings_members_heading()}</h3>
-								<div data-testid="team-members-list" class="space-y-2">
-									{#each teamMembers as member (member.user_id)}
-										<div
-											class="flex flex-col gap-2 rounded-md border px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
-										>
-											<div class="min-w-0">
-												<p class="truncate text-sm font-medium">{member.email}</p>
-											</div>
-											<span
-												class="inline-flex w-fit items-center rounded-full border px-2 py-0.5 text-xs font-medium capitalize"
-											>
-												{roleLabel(member.role)}
-											</span>
-										</div>
-									{:else}
-										<p class="rounded-md border bg-muted/20 p-4 text-sm text-muted-foreground">
-											{m.settings_no_members()}
-										</p>
-									{/each}
-								</div>
-							</div>
-
-							<div>
-								<h3 class="mb-2 text-sm font-semibold">{m.settings_pending_invitations()}</h3>
-								<div data-testid="team-invitations-list" class="space-y-2">
-									{#each pendingInvitations as invitation (invitation.id)}
-										<div
-											class="flex flex-col gap-2 rounded-md border px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
-										>
-											<div class="min-w-0">
-												<p class="truncate text-sm font-medium">{invitation.email}</p>
-												<p class="text-xs text-muted-foreground">
-													{m.settings_invitation_expires({
-														role: roleLabel(invitation.role),
-														date: formatDate(invitation.expires_at)
-													})}
-												</p>
-											</div>
-											<Button
-												type="button"
-												variant="ghost"
-												size="sm"
-												class="text-destructive hover:text-destructive"
-												onclick={() =>
-													requestDestructiveAction({
-														kind: 'invitation',
-														invitationID: invitation.id
-													})}
-												disabled={teamBusy}
-											>
-												{m.settings_revoke()}
-											</Button>
-										</div>
-									{:else}
-										<p class="rounded-md border bg-muted/20 p-4 text-sm text-muted-foreground">
-											{m.settings_no_invitations()}
-										</p>
-									{/each}
-								</div>
-							</div>
-						</div>
-					{/if}
 				</section>
 
 				<section id="sso" class:hidden={activeSettingsTab !== 'sso'} class="scroll-mt-24">
