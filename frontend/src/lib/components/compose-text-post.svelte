@@ -1929,10 +1929,9 @@
 			capabilities = capabilityData.capabilities ?? [];
 			await resolveCapabilities();
 		} catch (e) {
+			if (requestSequence !== workspaceRequestSequence) return;
 			console.error('Failed to load workspaces:', e);
-			if (requestSequence === workspaceRequestSequence) {
-				workspaceLoadError = m.compose_load_workspaces_failed();
-			}
+			workspaceLoadError = m.compose_load_workspaces_failed();
 		} finally {
 			if (requestSequence === workspaceRequestSequence) {
 				loadingWorkspaces = false;
@@ -1952,7 +1951,16 @@
 		return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
 	});
 
+	function invalidatePendingComposerRequests() {
+		workspaceRequestSequence++;
+		accountRequestSequence++;
+		nextSlotRequestSequence++;
+		destinationOptionsRequestSequence++;
+		capabilityResolveRequestSequence++;
+	}
+
 	onDestroy(() => {
+		invalidatePendingComposerRequests();
 		clearAutoSaveTimer();
 		clearSavedIndicator();
 		if (capabilityResolveTimer) clearTimeout(capabilityResolveTimer);
@@ -1967,6 +1975,7 @@
 	beforeNavigate((navigation) => {
 		if (allowNavigationOnce) {
 			allowNavigationOnce = false;
+			invalidatePendingComposerRequests();
 			return;
 		}
 		if (
@@ -1976,6 +1985,7 @@
 			getSaveSnapshot() === lastSavedSnapshot ||
 			draftConflict
 		) {
+			invalidatePendingComposerRequests();
 			return;
 		}
 		const target = `${navigation.to.url.pathname}${navigation.to.url.search}${navigation.to.url.hash}`;
@@ -2254,10 +2264,10 @@
 			}
 			sanitizeSelectedAccounts(nextCompatibleAccounts);
 		} catch (e) {
-			console.error('Failed to load accounts:', e);
 			if (requestSequence !== accountRequestSequence || selectedWorkspaceId !== workspaceId) {
 				return;
 			}
+			console.error('Failed to load accounts:', e);
 			accountLoadError = m.compose_load_accounts_failed();
 		} finally {
 			if (requestSequence === accountRequestSequence && selectedWorkspaceId === workspaceId) {
