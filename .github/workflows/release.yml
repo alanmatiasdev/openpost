@@ -20,8 +20,12 @@ jobs:
       packages: read
     outputs:
       ci_run_id: ${{ steps.candidate.outputs.run_id }}
+      digest: ${{ steps.image.outputs.digest }}
     steps:
       - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
       - name: Require successful CI for the tagged SHA
         id: candidate
         env:
@@ -41,13 +45,33 @@ jobs:
             exit 1
           }
           echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
-      - name: Verify immutable image exists
+      - name: Download the candidate release manifest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CI_RUN_ID: ${{ steps.candidate.outputs.run_id }}
+        run: |
+          gh run download "$CI_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name "release-manifest-${GITHUB_SHA}" \
+            --dir candidate-release
+          bun scripts/release-manifest.mjs verify \
+            --manifest candidate-release/release-manifest.json \
+            --version "$GITHUB_REF_NAME" \
+            --revision "$GITHUB_SHA"
+      - name: Verify the immutable candidate image and manifest
+        id: image
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
           printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin >/dev/null
-          docker buildx imagetools inspect "${REGISTRY}/${IMAGE_NAME}:sha-${GITHUB_SHA}" >/dev/null
+          image="${REGISTRY}/${IMAGE_NAME}:sha-${GITHUB_SHA}"
+          docker pull "$image"
+          scripts/verify-image-release-manifest.sh \
+            "$image" candidate-release/release-manifest.json
+          digest="$(docker inspect --format '{{ index .RepoDigests 0 }}' "$image" | sed 's/^.*@//')"
+          [[ "$digest" == sha256:* ]]
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
 
   create-release:
     name: Create GitHub release
@@ -88,16 +112,22 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Add release tags without rebuilding
         id: promote
+        env:
+          SOURCE_DIGEST: ${{ needs.verify-candidate.outputs.digest }}
         shell: bash
         run: |
-          source_image="${REGISTRY}/${IMAGE_NAME}:sha-${GITHUB_SHA}"
+          source_image="${REGISTRY}/${IMAGE_NAME}@${SOURCE_DIGEST}"
           docker buildx imagetools create \
+            --prefer-index=false \
             --tag "${REGISTRY}/${IMAGE_NAME}:${GITHUB_REF_NAME}" \
             --tag "${REGISTRY}/${IMAGE_NAME}:latest" \
             "$source_image"
-          digest="sha256:$(docker buildx imagetools inspect --raw "${REGISTRY}/${IMAGE_NAME}:${GITHUB_REF_NAME}" | sha256sum | cut -d' ' -f1)"
-          [[ "$digest" == sha256:* ]]
-          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          promoted_digest="$(docker buildx imagetools inspect "${REGISTRY}/${IMAGE_NAME}:${GITHUB_REF_NAME}" | awk '$1 == "Digest:" { print $2; exit }')"
+          [[ "$promoted_digest" == "$SOURCE_DIGEST" ]] || {
+            echo "Promoted digest $promoted_digest does not match verified candidate $SOURCE_DIGEST." >&2
+            exit 1
+          }
+          echo "digest=$SOURCE_DIGEST" >> "$GITHUB_OUTPUT"
 
   deploy-production:
     name: Deploy production
@@ -121,15 +151,17 @@ jobs:
             https://webhooks.rgo.pt/hooks/deploy-openpost)
           printf '%s\n' "$response"
           grep -q "DEPLOY_OK openpost ${GITHUB_SHA}" <<<"$response"
-      - name: Verify the public revision
+      - name: Verify the public version and revision
         shell: bash
         run: |
           for _ in $(seq 1 60); do
-            revision=$(curl --fail --silent https://app.openpost.social/api/v1/version | jq -r .revision 2>/dev/null || true)
-            [[ "$revision" == "$GITHUB_SHA" ]] && exit 0
+            info=$(curl --fail --silent https://app.openpost.social/api/v1/version 2>/dev/null || true)
+            revision=$(jq -r '.revision // empty' <<<"$info" 2>/dev/null || true)
+            version=$(jq -r '.version // empty' <<<"$info" 2>/dev/null || true)
+            [[ "$revision" == "$GITHUB_SHA" && "$version" == "$GITHUB_REF_NAME" ]] && exit 0
             sleep 5
           done
-          echo "Production did not report revision $GITHUB_SHA." >&2
+          echo "Production did not report $GITHUB_REF_NAME at revision $GITHUB_SHA." >&2
           exit 1
 
   build-binaries:

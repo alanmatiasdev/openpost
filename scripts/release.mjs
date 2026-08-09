@@ -1,8 +1,11 @@
 #!/usr/bin/env bun
 
 import { createHash } from "node:crypto";
-import { mkdir, readFile, stat } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
+
+import { readReleaseManifest } from "./release-manifest.mjs";
 
 const root = path.resolve(import.meta.dir, "..");
 const command = process.argv[2] ?? "plan";
@@ -255,7 +258,6 @@ async function promote(requestedTag) {
   const revision = git(["rev-parse", "HEAD"]);
   const branch = git(["branch", "--show-current"]);
   if (branch !== "main") throw new Error("promotion requires main");
-  await waitForCI(revision);
 
   let tag = requestedTag?.trim();
   if (!tag) {
@@ -271,6 +273,9 @@ async function promote(requestedTag) {
       .find(Boolean);
   }
   if (!tag) throw new Error("pass the prepared version tag to release:promote");
+
+  const ciRunID = await waitForCI(revision);
+  await verifyCandidateManifest(ciRunID, tag, revision);
 
   const remoteTag = runOptional([
     "git",
@@ -306,7 +311,7 @@ async function promote(requestedTag) {
     "--jq",
     ".url",
   ]).trim();
-  await verifyProduction(revision);
+  await verifyProduction(tag, revision);
   console.log(`release:promote: shipped ${tag}`);
   console.log(releaseURL);
 }
@@ -403,7 +408,7 @@ async function waitForWorkflow(workflow, branch, revision) {
   throw new Error(`${workflow} did not appear for ${revision}`);
 }
 
-async function verifyProduction(revision) {
+async function verifyProduction(version, revision) {
   for (let attempt = 0; attempt < 60; attempt += 1) {
     try {
       const response = await fetch(
@@ -411,13 +416,39 @@ async function verifyProduction(revision) {
         { signal: AbortSignal.timeout(10_000) },
       );
       const info = response.ok ? await response.json() : {};
-      if (info.revision === revision) return;
+      if (info.version === version && info.revision === revision) return;
     } catch {
       // Deployment readiness may briefly fail while the service restarts.
     }
     await Bun.sleep(5_000);
   }
-  throw new Error(`production did not report revision ${revision}`);
+  throw new Error(
+    `production did not report ${version} at revision ${revision}`,
+  );
+}
+
+async function verifyCandidateManifest(ciRunID, version, revision) {
+  const directory = await mkdtemp(
+    path.join(os.tmpdir(), "openpost-release-candidate-"),
+  );
+  try {
+    run([
+      "gh",
+      "run",
+      "download",
+      ciRunID,
+      "--name",
+      `release-manifest-${revision}`,
+      "--dir",
+      directory,
+    ]);
+    await readReleaseManifest(path.join(directory, "release-manifest.json"), {
+      expectedVersion: version,
+      expectedRevision: revision,
+    });
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 }
 
 async function verifyProductionReady() {

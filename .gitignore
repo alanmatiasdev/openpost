@@ -61,6 +61,7 @@ docs-site/.vitepress/.temp/
 /logs/
 test-results/
 playwright-report/
+/release-manifest.json
 
 # Android signing
 *.jks

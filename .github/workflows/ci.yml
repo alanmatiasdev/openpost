@@ -203,6 +203,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
       - uses: docker/setup-buildx-action@v3
       - name: Log in to GHCR
         if: github.event_name == 'push'
@@ -211,6 +216,26 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Derive the exact candidate release manifest
+        id: manifest
+        shell: bash
+        run: |
+          latest_tag="$(git for-each-ref --count=1 --sort=-version:refname --format='%(refname:short)' 'refs/tags/v*')"
+          [[ -n "$latest_tag" ]]
+          bun scripts/release-manifest.mjs create \
+            --changelog CHANGELOG.md \
+            --latest-tag "$latest_tag" \
+            --revision "$GITHUB_SHA" \
+            --output release-manifest.json
+          version="$(jq -er .version release-manifest.json)"
+          revision="$(jq -er .revision release-manifest.json)"
+          [[ "$revision" == "$GITHUB_SHA" ]]
+          manifest_sha256="$(openssl dgst -sha256 -r release-manifest.json | awk '{print $1}')"
+          {
+            echo "version=$version"
+            echo "sha256=$manifest_sha256"
+            echo "base64=$(base64 -w0 release-manifest.json)"
+          } >> "$GITHUB_OUTPUT"
       - name: Build the immutable candidate once
         shell: bash
         run: |
@@ -219,21 +244,43 @@ jobs:
             --load \
             --file docker/Dockerfile \
             --tag "$image" \
-            --build-arg VERSION="candidate-${GITHUB_SHA::12}" \
+            --build-arg VERSION="${{ steps.manifest.outputs.version }}" \
             --build-arg COMMIT="$GITHUB_SHA" \
+            --build-arg RELEASE_MANIFEST_B64="${{ steps.manifest.outputs.base64 }}" \
+            --build-arg RELEASE_MANIFEST_SHA256="${{ steps.manifest.outputs.sha256 }}" \
             --cache-from type=gha,scope=openpost-production \
             --cache-to type=gha,mode=max,scope=openpost-production \
             .
-          scripts/smoke-production-image.sh "$image" "$GITHUB_SHA"
+          scripts/smoke-production-image.sh \
+            "$image" \
+            "$GITHUB_SHA" \
+            "${{ steps.manifest.outputs.version }}" \
+            release-manifest.json
           if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
             docker push "$image"
           fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-manifest-${{ github.sha }}
+          path: release-manifest.json
+          if-no-files-found: error
+          retention-days: 14
 
   release-candidate:
     name: Release Candidate
     if: always()
     needs:
-      [quality, backend, backend-race, frontend, sites, browser, security, cli, image]
+      [
+        quality,
+        backend,
+        backend-race,
+        frontend,
+        sites,
+        browser,
+        security,
+        cli,
+        image,
+      ]
     runs-on: ubuntu-latest
     steps:
       - name: Require the complete matrix

@@ -10,6 +10,7 @@ All notable changes to this project are documented in this file.
 
 ### Changed
 
+- Stamped each immutable release candidate from one strict stable-version and full-revision manifest, verified that identity across image labels, the embedded file, runtime metadata, artifact download, digest-only promotion, and deployed version checks, and blocked promotion on any mismatch.
 - Replaced the nested payment dialog with a standalone responsive checkout page and kept Paddle's hosted fields on a contrast-safe light payment canvas in both app themes.
 - Rebuilt the marketing landing and pricing pages with paired light and dark surfaces, a viewport-safe product-video dialog, richer destination previews, a collapsible creator-workflow mosaic, animated yearly pricing, and an interactive follower-growth planner.
 - Grouped Social Set destination icons into clear overlapping avatar stacks, kept overflow counts beside the icons, and standardized shared checkbox styling and optional toggle sounds across app and menu surfaces.

@@ -26,7 +26,9 @@ The production-image check enforces a 20 GB budget for unused local BuildKit cac
 
 On a 16 GiB Mac, configure Docker Desktop with 10 GB memory and 4 GB swap. The production frontend build has been verified with that allocation and can be killed by the VM with Docker's 8 GB memory and 1 GB swap allocation. Preflight rejects a macOS Docker VM below 9.5 GiB; `OPENPOST_DOCKER_MIN_MEMORY_GIB` is available only for a host-specific, proven override.
 
-CI publishes one immutable `sha-<revision>` image only after building it and restarting it against a clean database. The tag workflow promotes that same image to the release tag and `latest` without rebuilding. The signed deployment hook receives its digest, validates the candidate against production configuration and mounted secrets, checks the image revision, and automatically restores the previous image if readiness fails.
+At the candidate boundary, CI derives a versioned release manifest from the prepared `CHANGELOG.md` release section and the exact Git SHA. The manifest contains the stable SemVer and full revision. CI embeds that same manifest in the image, stamps both OCI labels and server build values from it, and verifies the labels, embedded file, and `/api/v1/version` response while restart-smoking the image against a clean database.
+
+CI publishes the verified image once as immutable `sha-<revision>`. The tag workflow downloads the manifest from the exact successful CI run, requires its version to match the tag and its revision to match the tagged SHA, verifies the image again, and promotes the verified digest to the release tag and `latest` without rebuilding. The signed deployment hook receives that digest, validates the candidate against production configuration and mounted secrets, and automatically restores the previous image if readiness fails. Hosted verification then requires `/api/v1/version` to report both the release tag and exact revision.
 
 Use `bun run release:prepare "<commit>"` when you want to stop after the exact SHA has passed local and hosted checks. Finish later with `bun run release:promote <tag>`. `bun run release:status` compares the local SHA, candidate CI run, and public production revision.
 
@@ -42,4 +44,4 @@ The code shipped as `v1.1.22` therefore maps to `v1.27.7`. The versioning and do
 
 ## Failure policy
 
-Never move or reuse a published tag. If a tag workflow fails, fix the cause and release a new SemVer version. A release is complete only after the workflow succeeds, the GitHub release exists, `/api/v1/ready` succeeds, and `/api/v1/version` reports the exact tagged source revision.
+Never move or reuse a published tag. If a tag workflow fails, fix the cause and release a new SemVer version. A release is complete only after the workflow succeeds, the GitHub release exists, `/api/v1/ready` succeeds, and `/api/v1/version` reports the stable tag and exact tagged source revision.

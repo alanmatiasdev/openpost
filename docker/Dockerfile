@@ -31,8 +31,10 @@ FROM golang:1.26.5-alpine AS backend-builder
 
 ARG VERSION=dev
 ARG COMMIT=unknown
+ARG RELEASE_MANIFEST_B64=""
+ARG RELEASE_MANIFEST_SHA256=""
 
-RUN apk add --no-cache gcc musl-dev sqlite-dev
+RUN apk add --no-cache gcc jq musl-dev sqlite-dev
 
 WORKDIR /app
 
@@ -44,6 +46,19 @@ COPY backend/ ./backend/
 # Copy frontend build output from the correct location
 COPY --from=frontend-builder /app/backend/cmd/openpost/public ./backend/cmd/openpost/public
 
+RUN if [ -n "${RELEASE_MANIFEST_B64}" ]; then \
+      printf '%s' "${RELEASE_MANIFEST_B64}" | base64 -d > release-manifest.json; \
+      printf '%s  %s\n' "${RELEASE_MANIFEST_SHA256}" release-manifest.json | sha256sum -c -; \
+    else \
+      jq -n \
+        --arg version "${VERSION}" \
+        --arg revision "${COMMIT}" \
+        '{schema_version: 1, version: $version, revision: $revision}' > release-manifest.json; \
+    fi && \
+    test "$(jq -er '.schema_version' release-manifest.json)" = 1 && \
+    test "$(jq -er '.version' release-manifest.json)" = "${VERSION}" && \
+    test "$(jq -er '.revision' release-manifest.json)" = "${COMMIT}"
+
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     cd backend && CGO_ENABLED=1 GOOS=linux go build -buildvcs=false -ldflags="-s -w -X main.version=${VERSION} -X main.commit=${COMMIT}" -o openpost ./cmd/openpost
@@ -53,10 +68,12 @@ FROM alpine:3.19
 
 ARG VERSION=dev
 ARG COMMIT=unknown
+ARG RELEASE_MANIFEST_SHA256=""
 LABEL org.opencontainers.image.title="OpenPost" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.revision="${COMMIT}" \
-      org.opencontainers.image.source="https://github.com/rodrgds/openpost"
+      org.opencontainers.image.source="https://github.com/rodrgds/openpost" \
+      io.openpost.release-manifest.sha256="${RELEASE_MANIFEST_SHA256}"
 
 RUN apk add --no-cache ca-certificates ffmpeg tzdata sqlite
 
@@ -65,6 +82,7 @@ RUN adduser -D -u 1000 openpost
 WORKDIR /app
 
 COPY --from=backend-builder /app/backend/openpost .
+COPY --from=backend-builder /app/release-manifest.json ./release-manifest.json
 
 RUN mkdir -p /data/media /data/db && chown -R openpost:openpost /data
 

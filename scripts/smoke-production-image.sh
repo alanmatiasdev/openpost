@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-image="${1:?usage: smoke-production-image.sh IMAGE [EXPECTED_COMMIT]}"
+image="${1:?usage: smoke-production-image.sh IMAGE [EXPECTED_COMMIT [EXPECTED_VERSION [RELEASE_MANIFEST]]]}"
 expected_commit="${2:-}"
+expected_version="${3:-}"
+release_manifest="${4:-}"
 container="openpost-smoke-${RANDOM}-$$"
 port="${OPENPOST_SMOKE_PORT:-18080}"
 database_volume="openpost-smoke-db-${RANDOM}-$$"
@@ -63,4 +65,21 @@ if [[ -n "$expected_commit" ]]; then
     printf 'expected running revision %s, got %s\n' "$expected_commit" "$running_commit" >&2
     exit 1
   }
+fi
+
+if [[ -n "$expected_version" ]]; then
+  actual_version="$(docker inspect --format '{{ index .Config.Labels "org.opencontainers.image.version" }}' "$image")"
+  [[ "$actual_version" == "$expected_version" ]] || {
+    printf 'expected image version %s, got %s\n' "$expected_version" "$actual_version" >&2
+    exit 1
+  }
+  running_version="$(curl --fail --silent "http://127.0.0.1:${port}/api/v1/version" | jq -r .version)"
+  [[ "$running_version" == "$expected_version" ]] || {
+    printf 'expected running version %s, got %s\n' "$expected_version" "$running_version" >&2
+    exit 1
+  }
+fi
+
+if [[ -n "$release_manifest" ]]; then
+  scripts/verify-image-release-manifest.sh "$image" "$release_manifest"
 fi

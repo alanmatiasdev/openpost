@@ -23,7 +23,7 @@
     "check": "bun run check:docs && bun run check:release-version && bun run check:app-routes && bun run check:changelog && bun run check:social-images && bun run check:ui-consistency && turbo run check",
     "check:contracts": "bun scripts/check-contracts.mjs",
     "check:docs": "bun test scripts/check-doc-links.test.mjs && bun scripts/check-doc-links.mjs",
-    "check:release-version": "bun test scripts/next-release-version.test.mjs",
+    "check:release-version": "bun test scripts/next-release-version.test.mjs scripts/release-manifest.test.mjs scripts/release-ci-contract.test.mjs",
     "check:app-routes": "bun test scripts/generate-app-route-manifest.test.mjs && bun scripts/generate-app-route-manifest.mjs --check",
     "check:changelog": "bun scripts/check-changelog.mjs && bun test packages/changelog/src/index.test.mjs",
     "check:ui-consistency": "bun scripts/check-ui-consistency.mjs",
