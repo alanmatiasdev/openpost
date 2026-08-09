@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/openpost/backend/internal/legalpolicy"
 	"github.com/stretchr/testify/require"
 )
 
@@ -42,6 +43,8 @@ var configTestEnvKeys = []string{
 	"OPENPOST_SUPPORT_EMAIL",
 	"OPENROUTER_API_KEY",
 	"OPENPOST_IMAGE_CAPTION_MODEL",
+	"OPENPOST_IMAGE_CAPTION_PROVIDER",
+	"OPENPOST_IMAGE_CAPTION_REQUIRE_ZDR",
 	"OPENPOST_IMAGE_EDITOR_ENABLED",
 	"OPENPOST_IMAGE_EDITOR_MODEL_BASE_URL",
 	"OPENPOST_STUDIO_ENABLED",
@@ -147,6 +150,8 @@ func TestLoadProductionPrimitiveDefaults(t *testing.T) {
 	require.Empty(t, cfg.PaddleWebhookSecret)
 	require.Empty(t, cfg.OpenRouterAPIKey)
 	require.Equal(t, "openai/gpt-5.6-luna", cfg.ImageCaptionModel)
+	require.Empty(t, cfg.ImageCaptionProvider)
+	require.False(t, cfg.ImageCaptionRequireZDR)
 	require.True(t, cfg.ImageEditorEnabled)
 	require.Equal(t, "/image-editor-models", cfg.ImageEditorModelBaseURL)
 	require.Equal(t, "/video-editor-models", cfg.VideoModelBaseURL)
@@ -168,11 +173,15 @@ func TestLoadImageCaptionConfigurationSupportsFileBackedSecret(t *testing.T) {
 		writeEnvFile(t, "openrouter-api-key", " openrouter-secret\n"),
 	)
 	t.Setenv("OPENPOST_IMAGE_CAPTION_MODEL", " openai/gpt-5.6-luna-20260709 ")
+	t.Setenv("OPENPOST_IMAGE_CAPTION_PROVIDER", " azure/eu ")
+	t.Setenv("OPENPOST_IMAGE_CAPTION_REQUIRE_ZDR", "true")
 
 	cfg := Load()
 
 	require.Equal(t, "openrouter-secret", cfg.OpenRouterAPIKey)
 	require.Equal(t, "openai/gpt-5.6-luna-20260709", cfg.ImageCaptionModel)
+	require.Equal(t, "azure/eu", cfg.ImageCaptionProvider)
+	require.True(t, cfg.ImageCaptionRequireZDR)
 }
 
 func TestLoadResolvesRelativeMediaURLAgainstCanonicalPublicURL(t *testing.T) {
@@ -330,7 +339,8 @@ func TestLoadCloudPostgresAndS3Primitives(t *testing.T) {
 	require.True(t, cfg.S3ForcePathStyle)
 	require.True(t, cfg.LegalAcceptanceRequired)
 	require.Equal(t, "https://openpost.social/terms", cfg.TermsURL)
-	require.Equal(t, "2026-07-22", cfg.TermsVersion)
+	require.Equal(t, legalpolicy.TermsVersion, cfg.TermsVersion)
+	require.Equal(t, legalpolicy.PrivacyVersion, cfg.PrivacyVersion)
 }
 
 func TestLoadPasswordRecoveryConfiguration(t *testing.T) {
@@ -640,6 +650,35 @@ func TestValidateRuntimeRejectsCloudWithoutAccountRecoveryAndLegalConfig(t *test
 	require.ErrorContains(t, err, "OPENPOST_EMAIL_VERIFICATION_REQUIRED=true")
 }
 
+func TestValidateRuntimeRejectsManagedPolicyVersionDrift(t *testing.T) {
+	cfg := validCloudRuntimeConfig()
+	cfg.TermsVersion = "2026-08-04"
+	cfg.PrivacyVersion = "2026-08-04"
+
+	err := cfg.ValidateRuntime()
+
+	require.Error(t, err)
+	require.ErrorContains(t, err, "OPENPOST_TERMS_VERSION="+legalpolicy.TermsVersion)
+	require.ErrorContains(t, err, "OPENPOST_PRIVACY_VERSION="+legalpolicy.PrivacyVersion)
+}
+
+func TestValidateRuntimePinsManagedImageCaptionsToZdrEUProvider(t *testing.T) {
+	cfg := validCloudRuntimeConfig()
+	cfg.OpenRouterAPIKey = "openrouter-key"
+	cfg.ImageCaptionProvider = "openai"
+	cfg.ImageCaptionRequireZDR = false
+
+	err := cfg.ValidateRuntime()
+
+	require.Error(t, err)
+	require.ErrorContains(t, err, "OPENPOST_IMAGE_CAPTION_PROVIDER=azure/eu")
+	require.ErrorContains(t, err, "OPENPOST_IMAGE_CAPTION_REQUIRE_ZDR=true")
+
+	cfg.ImageCaptionProvider = "azure/eu"
+	cfg.ImageCaptionRequireZDR = true
+	require.NoError(t, cfg.ValidateRuntime())
+}
+
 func validCloudRuntimeConfig() *Config {
 	return &Config{
 		Edition:                     EditionCloud,
@@ -669,8 +708,8 @@ func validCloudRuntimeConfig() *Config {
 		LegalAcceptanceRequired:     true,
 		TermsURL:                    "https://openpost.social/terms",
 		PrivacyURL:                  "https://openpost.social/privacy",
-		TermsVersion:                "2026-07-22",
-		PrivacyVersion:              "2026-07-22",
+		TermsVersion:                legalpolicy.TermsVersion,
+		PrivacyVersion:              legalpolicy.PrivacyVersion,
 		SupportEmail:                "openpost@rgo.pt",
 		EmailVerificationRequired:   true,
 		EmailProvider:               "smtp",

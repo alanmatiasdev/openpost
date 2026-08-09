@@ -111,6 +111,7 @@
         "@fontsource-variable/geist": "^5.2.8",
         "@fontsource-variable/manrope": "^5.2.8",
         "@openpost/changelog": "workspace:*",
+        "@openpost/legal-policy": "workspace:*",
         "@openpost/social-images": "workspace:*",
         "@openpost/social-preview": "workspace:*",
         "clsx": "^2.1.1",
@@ -141,6 +142,9 @@
     },
     "packages/changelog": {
       "name": "@openpost/changelog",
+    },
+    "packages/legal-policy": {
+      "name": "@openpost/legal-policy",
     },
     "packages/social-images": {
       "name": "@openpost/social-images",
@@ -695,6 +699,8 @@
     "@openpost/changelog": ["@openpost/changelog@workspace:packages/changelog"],
 
     "@openpost/docs": ["@openpost/docs@workspace:docs-site"],
+
+    "@openpost/legal-policy": ["@openpost/legal-policy@workspace:packages/legal-policy"],
 
     "@openpost/site": ["@openpost/site@workspace:marketing-site"],
 

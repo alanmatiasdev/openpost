@@ -1,8 +1,9 @@
 <script lang="ts">
   import { resolve } from "$app/paths";
+  import { formatPolicyEffectiveDate, legalPolicy } from "@openpost/legal-policy";
   import { siteUrl } from "../_marketing";
 
-  const effectiveDate = "5 August 2026";
+  const effectiveDate = formatPolicyEffectiveDate(legalPolicy.refunds);
 </script>
 
 <svelte:head>
@@ -36,6 +37,11 @@
 <section class="section-pad">
   <article class="reading-shell prose dark:prose-invert">
     <p><strong>Effective date:</strong> {effectiveDate}</p>
+    <p><strong>Policy version:</strong> {legalPolicy.refunds.version}</p>
+    <p>
+      This Refund Policy is incorporated into the Terms of Service. OpenPost does
+      not record a separate acceptance for this document.
+    </p>
 
     <h2>1. Who processes refunds</h2>
     <p>
@@ -126,8 +132,10 @@
     <h2>8. Changes</h2>
     <p>
       We may update this policy for service, provider, or legal changes. The
-      effective date above identifies the current version. Material changes
-      apply prospectively unless law requires otherwise.
+      policy version and effective date above identify the current text.
+      Material changes apply prospectively unless law requires otherwise and,
+      when they change the agreement, are handled through the Terms acceptance
+      flow. Corrections that do not change meaning keep the same version.
     </p>
   </article>
 </section>

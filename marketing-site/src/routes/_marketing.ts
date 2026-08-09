@@ -43,6 +43,7 @@ export const resourceItems = [
   { label: "Platforms", href: "/platforms" },
   { label: "Compare", href: "/compare" },
   { label: "Security", href: "/security" },
+  { label: "Trust register", href: "/trust" },
   { label: "Changelog", href: "/changelog" },
   { label: "Developers", href: developerDocsUrl },
 ] as const;

@@ -364,6 +364,8 @@ func main() {
 			APIKey:      cfg.OpenRouterAPIKey,
 			HTTPReferer: cfg.PublicURL,
 			XTitle:      "OpenPost",
+			Provider:    cfg.ImageCaptionProvider,
+			RequireZDR:  cfg.ImageCaptionRequireZDR,
 		})
 		if generatorErr != nil {
 			log.Fatalf("failed to initialize OpenRouter: %v", generatorErr)
@@ -372,7 +374,12 @@ func main() {
 		if err != nil {
 			log.Fatalf("failed to initialize automatic image captioning: %v", err)
 		}
-		log.Printf("Automatic image captioning enabled with model %s", cfg.ImageCaptionModel)
+		log.Printf(
+			"Automatic image captioning enabled with model %s provider %s zero_data_retention=%t",
+			cfg.ImageCaptionModel,
+			cfg.ImageCaptionProvider,
+			cfg.ImageCaptionRequireZDR,
+		)
 	}
 
 	var feedbackDestination feedback.Destination

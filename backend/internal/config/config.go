@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/openpost/backend/internal/legalpolicy"
 	"github.com/openpost/backend/internal/platform"
 )
 
@@ -42,6 +43,8 @@ type Config struct {
 	SupportEmail            string
 	OpenRouterAPIKey        string
 	ImageCaptionModel       string
+	ImageCaptionProvider    string
+	ImageCaptionRequireZDR  bool
 	ImageEditorEnabled      bool
 	ImageEditorModelBaseURL string
 	VideoModelBaseURL       string
@@ -158,12 +161,14 @@ func Load() *Config {
 	legalRequired := edition == EditionCloud
 	defaultTermsURL := ""
 	defaultPrivacyURL := ""
-	defaultPolicyVersion := ""
+	defaultTermsVersion := ""
+	defaultPrivacyVersion := ""
 	defaultSupportEmail := ""
 	if legalRequired {
-		defaultTermsURL = "https://openpost.social/terms"
-		defaultPrivacyURL = "https://openpost.social/privacy"
-		defaultPolicyVersion = "2026-07-22"
+		defaultTermsURL = legalpolicy.TermsURL
+		defaultPrivacyURL = legalpolicy.PrivacyURL
+		defaultTermsVersion = legalpolicy.TermsVersion
+		defaultPrivacyVersion = legalpolicy.PrivacyVersion
 		defaultSupportEmail = "openpost@rgo.pt"
 	}
 
@@ -181,11 +186,13 @@ func Load() *Config {
 		LegalAcceptanceRequired: getEnvBoolWithAliases(legalRequired, "OPENPOST_LEGAL_ACCEPTANCE_REQUIRED"),
 		TermsURL:                strings.TrimRight(getEnvDefault("OPENPOST_TERMS_URL", defaultTermsURL), "/"),
 		PrivacyURL:              strings.TrimRight(getEnvDefault("OPENPOST_PRIVACY_URL", defaultPrivacyURL), "/"),
-		TermsVersion:            getEnvDefault("OPENPOST_TERMS_VERSION", defaultPolicyVersion),
-		PrivacyVersion:          getEnvDefault("OPENPOST_PRIVACY_VERSION", defaultPolicyVersion),
+		TermsVersion:            getEnvDefault("OPENPOST_TERMS_VERSION", defaultTermsVersion),
+		PrivacyVersion:          getEnvDefault("OPENPOST_PRIVACY_VERSION", defaultPrivacyVersion),
 		SupportEmail:            getEnvDefault("OPENPOST_SUPPORT_EMAIL", defaultSupportEmail),
 		OpenRouterAPIKey:        strings.TrimSpace(getEnvDefault("OPENROUTER_API_KEY", "")),
 		ImageCaptionModel:       strings.TrimSpace(getEnvDefault("OPENPOST_IMAGE_CAPTION_MODEL", "openai/gpt-5.6-luna")),
+		ImageCaptionProvider:    strings.TrimSpace(getEnvDefault("OPENPOST_IMAGE_CAPTION_PROVIDER", "")),
+		ImageCaptionRequireZDR:  getEnvBoolWithAliases(false, "OPENPOST_IMAGE_CAPTION_REQUIRE_ZDR"),
 		ImageEditorEnabled: getEnvBoolWithAliases(
 			true,
 			"OPENPOST_IMAGE_EDITOR_ENABLED",
@@ -486,6 +493,7 @@ func (c *Config) ValidateRuntime() error {
 
 	missing := append(c.missingCloudDataPlaneConfig(), c.missingCloudBillingConfig()...)
 	missing = append(missing, c.missingCloudAccountConfig()...)
+	missing = append(missing, c.invalidCloudImageCaptionConfig()...)
 	missing = append(missing, c.invalidCloudCORSConfig()...)
 	if c.XMonthlyBudgetMicrousd < 0 {
 		missing = append(missing, "OPENPOST_X_MONTHLY_BUDGET_MICROUSD >= 0")
@@ -503,6 +511,20 @@ func (c *Config) ValidateRuntime() error {
 		return fmt.Errorf("OPENPOST_EDITION=cloud requires: %s", strings.Join(missing, ", "))
 	}
 	return nil
+}
+
+func (c *Config) invalidCloudImageCaptionConfig() []string {
+	if strings.TrimSpace(c.OpenRouterAPIKey) == "" {
+		return nil
+	}
+	var invalid []string
+	if c.ImageCaptionProvider != "azure/eu" {
+		invalid = append(invalid, "OPENPOST_IMAGE_CAPTION_PROVIDER=azure/eu")
+	}
+	if !c.ImageCaptionRequireZDR {
+		invalid = append(invalid, "OPENPOST_IMAGE_CAPTION_REQUIRE_ZDR=true")
+	}
+	return invalid
 }
 
 func (c *Config) ValidateManagedSettings() error {
@@ -529,6 +551,22 @@ func (c *Config) missingCloudAccountConfig() []string {
 	} {
 		if strings.TrimSpace(value) == "" {
 			missing = append(missing, key)
+		}
+	}
+	officialPolicy := map[string]struct {
+		configured string
+		expected   string
+	}{
+		"OPENPOST_TERMS_URL":       {configured: c.TermsURL, expected: legalpolicy.TermsURL},
+		"OPENPOST_PRIVACY_URL":     {configured: c.PrivacyURL, expected: legalpolicy.PrivacyURL},
+		"OPENPOST_TERMS_VERSION":   {configured: c.TermsVersion, expected: legalpolicy.TermsVersion},
+		"OPENPOST_PRIVACY_VERSION": {configured: c.PrivacyVersion, expected: legalpolicy.PrivacyVersion},
+	}
+	for key, policy := range officialPolicy {
+		configured := strings.TrimSpace(policy.configured)
+		expected := policy.expected
+		if configured != "" && configured != expected {
+			missing = append(missing, key+"="+expected)
 		}
 	}
 	sort.Strings(missing)

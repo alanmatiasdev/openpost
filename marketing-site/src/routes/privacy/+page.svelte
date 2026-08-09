@@ -1,8 +1,12 @@
 <script lang="ts">
   import { resolve } from "$app/paths";
+  import {
+    formatPolicyEffectiveDate,
+    legalPolicy,
+  } from "@openpost/legal-policy";
   import { siteUrl } from "../_marketing";
 
-  const effectiveDate = "9 August 2026";
+  const effectiveDate = formatPolicyEffectiveDate(legalPolicy.privacy);
 </script>
 
 <svelte:head>
@@ -22,21 +26,29 @@
     >
       Privacy Policy
     </h1>
-    <p class="mt-5 text-lg leading-8 text-muted-foreground">
+    <p class="text-muted-foreground mt-5 text-lg leading-8">
       What the hosted OpenPost service processes, why it does so, and the
       choices available to you.
     </p>
-    <a
-      href={resolve("/security")}
-      class="mt-5 inline-flex text-sm font-medium text-primary"
-      >Security details</a
-    >
+    <div class="mt-5 flex flex-wrap gap-x-5 gap-y-2 text-sm font-medium">
+      <a
+        href={resolve("/security")}
+        class="focus-ring text-primary inline-flex min-h-11 items-center rounded-md"
+        >Security details</a
+      >
+      <a
+        href={resolve("/trust")}
+        class="focus-ring text-primary inline-flex min-h-11 items-center rounded-md"
+        >Managed service trust register</a
+      >
+    </div>
   </div>
 </header>
 
 <section class="section-pad">
   <article class="reading-shell prose dark:prose-invert">
     <p><strong>Effective date:</strong> {effectiveDate}</p>
+    <p><strong>Policy version:</strong> {legalPolicy.privacy.version}</p>
 
     <h2>1. Who is responsible</h2>
     <p>
@@ -114,9 +126,12 @@
       limited technical data when your browser or client uses the service.
     </p>
     <p>
-      Camera access is requested only after you choose a camera action. A
-      captured photo is uploaded to the selected workspace only after you choose
-      to use it. Camera video is not recorded.
+      Camera access is requested only after you choose a camera action. A live
+      preview stays in the browser and is not saved. A still photo is uploaded
+      to the selected workspace only after you choose to use it. OpenPost Video
+      Editor can optionally record a camera track; that recording and its local
+      project stay in browser storage until you choose a cloud save, Media save,
+      or post handoff.
     </p>
 
     <h2>4. Why we use data</h2>
@@ -126,7 +141,9 @@
         analytics, and automation.
       </li>
       <li>Send content to the social networks and accounts you select.</li>
-      <li>Draft image alternative text when automatic captioning is enabled.</li>
+      <li>
+        Draft image alternative text when automatic captioning is enabled.
+      </li>
       <li>
         Process subscriptions, enforce plan limits, and keep billing records.
       </li>
@@ -160,20 +177,33 @@
         and privacy policies then apply.
       </li>
       <li>
+        <strong>An identity provider you choose</strong>, such as Google, when
+        you use that provider to sign in or link an identity.
+      </li>
+      <li>
         <strong>Hosting companies</strong> that run the app, database, media, email,
         network, analytics, and backups under their service terms.
       </li>
       <li>
-        <strong>OpenRouter and selected AI model providers</strong>, when automatic
-        image captioning is enabled, to process a 400-pixel JPEG thumbnail and
-        up to 1,000 characters of the relevant draft or thread segment as untrusted
-        context. OpenPost does not send the original image for this feature. Their
-        service and privacy terms apply.
+        <strong>OpenRouter and selected AI model providers</strong>, when
+        automatic image captioning is enabled, to process a 400-pixel JPEG
+        thumbnail and up to 1,000 characters of the relevant draft or thread
+        segment as untrusted context. OpenPost does not send the original image
+        for this feature. Their service and privacy terms apply.
       </li>
       <li>
         <strong>Paddle and prior payment providers</strong> for checkout, subscriptions,
         tax, billing records, refunds, fraud prevention, and customer portals. Paddle
         acts as Merchant of Record for orders it processes.
+      </li>
+      <li>
+        <strong>Stock-media services you search</strong> to return requested photo
+        or video results and record provider-required selection or download events.
+      </li>
+      <li>
+        <strong>The disclosed feedback recipient</strong> when you choose to send
+        the in-app report, including its text, optional screenshot, and the diagnostics
+        shown before submission.
       </li>
       <li>
         <strong>Authorities or other parties</strong> when reasonably necessary to
@@ -184,6 +214,11 @@
     <p>
       OpenPost does not sell personal data, build advertising profiles, or share
       personal data for cross-context behavioral advertising.
+    </p>
+    <p>
+      The dated <a href={resolve("/trust")}>managed service trust register</a>
+      names current data locations, service providers, user-directed recipients, international-transfer
+      facts, and the human production-access boundary.
     </p>
 
     <h2>6. Google and YouTube API data</h2>
@@ -223,9 +258,15 @@
       account settings. Deletion can be delayed when you must first transfer
       shared ownership, cancel active billing, or preserve the last required
       instance administrator. Primary account and personal workspace data are
-      removed when deletion completes. Encrypted database backups may retain a
-      copy for up to 14 days before automatic expiry. We may retain minimal
-      records when law requires it or to prevent fraud and enforce legal rights.
+      removed when deletion completes. The managed service makes daily database
+      and media recovery copies in root-restricted operator storage. Routine
+      database dumps and changed or deleted media versions are pruned by a daily
+      job after they become more than 14 days old. A copy can therefore remain
+      until the next daily run. Operator-created repair or incident snapshots
+      follow a separate review and are kept only while needed for recovery,
+      security, legal duties, fraud prevention, or enforcing legal rights.
+      OpenPost does not add a separate application-level encryption layer to
+      each backup artifact.
     </p>
 
     <h2>8. Cookies and local storage</h2>
@@ -252,20 +293,23 @@
       the product demo; YouTube may then process device and playback data.
     </p>
     <p>
-      OpenPost Video Editor editing, recording, transcription, voice detection,
-      framing analysis, and export run in the browser. Model files are
-      downloaded only after the user starts the related tool. Project sources
-      and exports are uploaded only when the user chooses a cloud save, Media
-      save, or post handoff.
+      OpenPost Video Editor live previews, optional screen, camera, and audio
+      recording, editing, transcription, voice detection, framing analysis, and
+      export run in the browser. Model files are downloaded only after the user
+      starts the related tool. Local project data, recordings, sources, and
+      exports are uploaded only when the user chooses a cloud save, Media save,
+      or post handoff.
     </p>
 
     <h2>9. International transfers</h2>
     <p>
       Your selected social networks and some service providers may process data
-      outside Portugal or the European Economic Area. Where required, transfers
-      use an adequacy decision, contractual safeguards, or another lawful
-      transfer method. Publishing to a social network is also a transfer that
-      you choose.
+      outside Portugal or the European Economic Area. When OpenPost controls a
+      transfer and a safeguard is required, it must use an adequacy decision,
+      contractual safeguards, or another lawful transfer method. The managed
+      service trust register states the current provider-specific facts and any
+      unresolved documentation gap. Publishing to a social network is also a
+      transfer that you choose.
     </p>
 
     <h2>10. Your rights</h2>
@@ -304,8 +348,9 @@
     <p>
       We may update this policy when the service or legal requirements change.
       Material changes will be announced in the service or by email when
-      appropriate, and the effective date will change. Questions and requests
-      can be sent to
+      appropriate, and the policy version and effective date will change.
+      Corrections to spelling, formatting, or links that do not change meaning
+      keep the same version. Questions and requests can be sent to
       <a href="mailto:openpost@rgo.pt">openpost@rgo.pt</a>.
     </p>
   </article>

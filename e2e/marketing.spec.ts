@@ -438,6 +438,7 @@ test("marketing SEO routes expose the current public index @desktop", async ({
     "<loc>https://openpost.social/tools/best-time-to-post-calculator</loc>",
   );
   expect(xml).toContain("<loc>https://openpost.social/security</loc>");
+  expect(xml).toContain("<loc>https://openpost.social/trust</loc>");
   expect(xml).toContain("<loc>https://openpost.social/privacy</loc>");
   expect(xml).toContain("<loc>https://openpost.social/terms</loc>");
   expect(xml).toContain("<loc>https://openpost.social/refunds</loc>");
@@ -454,13 +455,13 @@ test("marketing SEO routes expose the current public index @desktop", async ({
   }
 });
 
-test("legal pages are public and describe Paddle billing @desktop", async ({
+test("legal and trust pages expose current managed-service facts @desktop", async ({
   page,
 }) => {
   const pages = [
-    { path: "/terms", heading: "Terms of Service" },
-    { path: "/privacy", heading: "Privacy Policy" },
-    { path: "/refunds", heading: "Refund Policy" },
+    { path: "/terms", heading: "Terms of Service", version: "2026-08-05" },
+    { path: "/privacy", heading: "Privacy Policy", version: "2026-08-09" },
+    { path: "/refunds", heading: "Refund Policy", version: "2026-08-05" },
   ];
 
   for (const legalPage of pages) {
@@ -469,7 +470,79 @@ test("legal pages are public and describe Paddle billing @desktop", async ({
       page.getByRole("heading", { name: legalPage.heading, level: 1 }),
     ).toBeVisible();
     await expect(page.getByText(/Paddle/).first()).toBeVisible();
+    await expect(
+      page.getByText(`Policy version: ${legalPage.version}`),
+    ).toBeVisible();
   }
+
+  await page.goto("/privacy");
+  await expect(
+    page.getByText(/optionally record a camera track/),
+  ).toBeVisible();
+  await expect(
+    page.locator("p").filter({
+      hasText:
+        "Local project data, recordings, sources, and exports are uploaded only",
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(/does not add a separate application-level encryption/),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", {
+      name: "Managed service trust register",
+      exact: true,
+    }),
+  ).toHaveAttribute("href", "/trust");
+
+  await page.goto("/trust");
+  await expect(
+    page.getByRole("heading", {
+      name: "Where managed OpenPost data is stored and processed.",
+      level: 1,
+    }),
+  ).toBeVisible();
+  await expect(page.getByText("9 August 2026", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("9 November 2026", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Falkenstein, Germany (FSN1)").first(),
+  ).toBeVisible();
+  await expect(
+    page.getByText(/Cloudflare automatic placement/).first(),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Add Rabbit LLC (Purelymail)" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(/open operator and legal review item/),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Microsoft Azure" }),
+  ).toBeVisible();
+  await expect(page.getByText(/azure\/eu/)).toBeVisible();
+  await expect(
+    page.getByText(/There is no two-person approval control/),
+  ).toBeVisible();
+  await expect(
+    page.getByText(/does not provide a complete command-level audit trail/),
+  ).toBeVisible();
+  await expect(page.getByText(/SOC 2|ISO 27001|GDPR certified/)).toHaveCount(0);
+
+  await page.setViewportSize({ width: 320, height: 720 });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+
+  await page.goto("/refunds");
+  await expect(
+    page
+      .locator("p")
+      .filter({ hasText: "OpenPost does not record a separate acceptance" }),
+  ).toBeVisible();
 
   await page.goto("/");
   await expect(
@@ -481,6 +554,9 @@ test("legal pages are public and describe Paddle billing @desktop", async ({
   await expect(
     page.getByRole("link", { name: "Refunds", exact: true }).last(),
   ).toHaveAttribute("href", "/refunds");
+  await expect(
+    page.getByRole("link", { name: "Trust", exact: true }).last(),
+  ).toHaveAttribute("href", "/trust");
 });
 
 test("free marketing tools produce useful output @desktop", async ({

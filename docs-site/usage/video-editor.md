@@ -36,6 +36,8 @@ Changing caption text changes only the caption. Each locally timed transcript wo
 
 The browser chooser controls which screen, window, or tab is shared. Camera, microphone, and browser-supplied system or tab audio are recorded as separate synchronized sources. System audio depends on the browser and operating system and is available only when the returned capture stream includes it.
 
+Camera and screen preview begin only after you choose the related action. Optional camera video is recorded locally with the other selected tracks. The recording, project, and export stay in browser-managed storage until you explicitly choose **Save to OpenPost**, **Save to Media**, or **Use in a post**. A still photo captured in the Image Editor is separate and is uploaded only after you choose to use it.
+
 Recording chunks and an append-only manifest are written to origin-private storage. Each chunk records its byte range, session and media timestamps, flush sequence, and SHA-256 checksum. Recovery stops at the first invalid chunk and steps back to a decodable boundary. During capture, OpenPost Video Editor checks storage headroom against the current recording rate and stops cleanly before the browser runs out of space. If a camera or microphone disappears, it tries the selected device, falls back to the default device, and records the recovered stream as a synchronized segment. If a tab closes or recovery cannot continue, the editor offers the flushed tracks. A browser recording contains cursor pixels, not native cursor or click telemetry; focus zoom and click-pulse tools remain manual or reviewable suggestions.
 
 ## Save, recover, and export

@@ -9,6 +9,7 @@ COPY frontend/package.json ./frontend/
 COPY docs-site/package.json ./docs-site/
 COPY marketing-site/package.json ./marketing-site/
 COPY packages/changelog/package.json ./packages/changelog/
+COPY packages/legal-policy/package.json ./packages/legal-policy/
 COPY packages/social-images/package.json ./packages/social-images/
 COPY packages/social-preview/package.json ./packages/social-preview/
 COPY packages/video-project/package.json ./packages/video-project/
@@ -18,6 +19,7 @@ RUN --mount=type=cache,target=/root/.bun/install/cache \
 COPY frontend/ ./frontend/
 COPY packages/social-preview/ ./packages/social-preview/
 COPY packages/social-images/ ./packages/social-images/
+COPY packages/legal-policy/ ./packages/legal-policy/
 COPY packages/video-project/ ./packages/video-project/
 COPY assets/ ./assets/
 COPY docs-site/ ./docs-site/

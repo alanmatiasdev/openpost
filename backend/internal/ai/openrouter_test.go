@@ -48,6 +48,8 @@ func TestOpenRouterGenerateSendsPrivateMultimodalRequest(t *testing.T) {
 		HTTPClient:  server.Client(),
 		HTTPReferer: "https://app.example.test",
 		XTitle:      "OpenPost Test",
+		Provider:    " azure/eu ",
+		RequireZDR:  true,
 	})
 	require.NoError(t, err)
 
@@ -78,8 +80,11 @@ func TestOpenRouterGenerateSendsPrivateMultimodalRequest(t *testing.T) {
 	require.Equal(t, "none", received["reasoning_effort"])
 	require.Equal(t, false, received["stream"])
 	require.Equal(t, map[string]any{
+		"allow_fallbacks":    false,
 		"data_collection":    "deny",
+		"only":               []any{"azure/eu"},
 		"require_parameters": true,
+		"zdr":                true,
 	}, received["provider"])
 
 	messages := received["messages"].([]any)

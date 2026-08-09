@@ -7,11 +7,13 @@ All notable changes to this project are documented in this file.
 ### Added
 
 - Added automatic, reviewable image alt text when images without alt text are attached in the text-and-thread composer. The optional server-side OpenRouter integration sends a 400px JPEG thumbnail and, when present, up to 1,000 characters of the current relevant post or thread segment as untrusted context for better disambiguation; it never replaces user-written text or blocks media attachment and publishing when unavailable.
+- Added a dated managed-service trust register that names current data locations, required and feature-triggered service providers, user-directed recipients, transfer facts and open reviews, and the exact human production-access boundary without implying certifications that do not exist.
 - Added normalized, encrypted provider authorization grants shared by sibling destinations, with atomic rotating-token refresh, revocation state, lossless migration, workspace isolation, and explicit destination-only versus saved-authorization removal; migration 073 adds the grant store.
 - Added immutable, hash-only publication authorization receipts for scheduled, immediate, retry, reply, and compatibility publication writes, with exact actor provenance, revision and destination binding, fail-closed publisher preflight, legacy queue repair, and redacted audit/export behavior; migration 075 adds the receipt store and immutability guards.
 
 ### Changed
 
+- Made one validated legal-policy manifest drive the hosted Terms, Privacy, and Refund Policy dates, versions, URLs, acceptance rules, public pages, generated backend constants, cloud startup checks, and release gates so substantive Terms or Privacy changes reliably re-prompt existing accounts.
 - Stamped each immutable release candidate from one strict stable-version and full-revision manifest, verified that identity across image labels, the embedded file, runtime metadata, artifact download, digest-only promotion, and deployed version checks, and blocked promotion on any mismatch.
 - Replaced the nested payment dialog with a standalone responsive checkout page and kept Paddle's hosted fields on a contrast-safe light payment canvas in both app themes.
 - Rebuilt the marketing landing and pricing pages with paired light and dark surfaces, a viewport-safe product-video dialog, richer destination previews, a collapsible creator-workflow mosaic, animated yearly pricing, and an interactive follower-growth planner.
@@ -19,6 +21,7 @@ All notable changes to this project are documented in this file.
 
 ### Fixed
 
+- Pinned managed automatic image-caption requests to the verified `azure/eu` OpenRouter route, disabled provider fallbacks, denied provider data collection, and required a zero-data-retention endpoint; cloud startup now fails closed if that policy drifts.
 - Added the missing OpenPost Studio overview and made the documentation gate validate every configured VitePress navigation target as well as Markdown links.
 - Restored composer round trips through both editors so draft text, destinations, schedule, existing media, cancellations, and destination-specific video variants return to the exact originating publication.
 - Isolated the editor catalog by workspace and query, added independent paginated design and video results, and exposed permission-safe cloud-video deletion with consequence copy and optimistic rollback.

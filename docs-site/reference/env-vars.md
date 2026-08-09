@@ -11,20 +11,22 @@ This page lists the most common core and provider variables. Use [Environment Va
 
 ## Automatic image alt text
 
-| Variable                           | Default               | Purpose                                                                                                        |
-| ---------------------------------- | --------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `OPENROUTER_API_KEY`               | empty                 | Server-only OpenRouter key that enables automatic alt text for images without saved alt text; supports `_FILE`. |
-| `OPENPOST_IMAGE_CAPTION_MODEL`     | `openai/gpt-5.6-luna` | Model used with a 400px JPEG thumbnail and up to 1,000 characters of relevant post or thread segment text.     |
+| Variable                             | Default               | Purpose                                                                                                         |
+| ------------------------------------ | --------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `OPENROUTER_API_KEY`                 | empty                 | Server-only OpenRouter key that enables automatic alt text for images without saved alt text; supports `_FILE`. |
+| `OPENPOST_IMAGE_CAPTION_MODEL`       | `openai/gpt-5.6-luna` | Model used with a 400px JPEG thumbnail and up to 1,000 characters of relevant post or thread segment text.      |
+| `OPENPOST_IMAGE_CAPTION_PROVIDER`    | empty                 | Optional exact OpenRouter provider slug allowed for automatic image alt text.                                   |
+| `OPENPOST_IMAGE_CAPTION_REQUIRE_ZDR` | `false`               | Require a zero-data-retention endpoint for automatic image alt text.                                            |
 
 ## OpenPost Video Editor and stock media
 
-| Variable                        | Default                | Purpose                                                                                             |
-| ------------------------------- | ---------------------- | --------------------------------------------------------------------------------------------------- |
-| `OPENPOST_VIDEO_MODEL_BASE_URL` | `/video-editor-models` | Serve the pinned local transcription and voice-detection files from another operator base URL.      |
-| `OPENPOST_STOCK_MEDIA_ENABLED`  | `false`                | Enable the public, rate-limited stock search API for providers with configured server keys.         |
-| `OPENPOST_PEXELS_API_KEY`       | empty                  | Server-only Pexels photo and video API key.                                                         |
-| `OPENPOST_UNSPLASH_ACCESS_KEY`  | empty                  | Server-only Unsplash photo API access key.                                                          |
-| `OPENPOST_PIXABAY_API_KEY`      | empty                  | Server-only Pixabay image and video API key.                                                        |
+| Variable                        | Default                | Purpose                                                                                        |
+| ------------------------------- | ---------------------- | ---------------------------------------------------------------------------------------------- |
+| `OPENPOST_VIDEO_MODEL_BASE_URL` | `/video-editor-models` | Serve the pinned local transcription and voice-detection files from another operator base URL. |
+| `OPENPOST_STOCK_MEDIA_ENABLED`  | `false`                | Enable the public, rate-limited stock search API for providers with configured server keys.    |
+| `OPENPOST_PEXELS_API_KEY`       | empty                  | Server-only Pexels photo and video API key.                                                    |
+| `OPENPOST_UNSPLASH_ACCESS_KEY`  | empty                  | Server-only Unsplash photo API access key.                                                     |
+| `OPENPOST_PIXABAY_API_KEY`      | empty                  | Server-only Pixabay image and video API key.                                                   |
 
 ## User feedback
 
@@ -70,7 +72,9 @@ Most variables loaded through the main backend config loader can also be loaded 
 | `OPENPOST_FEEDBACK_SUPPORT_URL`                 | Fallback support URL                                                                              |
 | `OPENPOST_UPDATE_CHECK_ENABLED`                 | Enable read-only stable release checks for self-hosted instance admins                            |
 | `OPENROUTER_API_KEY`                            | Enable server-side automatic image alt text; supports `_FILE`                                     |
-| `OPENPOST_IMAGE_CAPTION_MODEL`                  | OpenRouter model ID for automatic image alt text                                                   |
+| `OPENPOST_IMAGE_CAPTION_MODEL`                  | OpenRouter model ID for automatic image alt text                                                  |
+| `OPENPOST_IMAGE_CAPTION_PROVIDER`               | Exact OpenRouter provider slug allowed for automatic image alt text                               |
+| `OPENPOST_IMAGE_CAPTION_REQUIRE_ZDR`            | Require a zero-data-retention endpoint for automatic image alt text                               |
 | `OPENPOST_JWT_SECRET`                           | JWT signing secret                                                                                |
 | `OPENPOST_ENCRYPTION_KEY`                       | OAuth token encryption secret                                                                     |
 | `OPENPOST_AUTH_GOOGLE_CLIENT_ID`                | Google OAuth client ID for first-party sign-in and linking                                        |
@@ -97,7 +101,7 @@ Most variables loaded through the main backend config loader can also be loaded 
 | `OPENPOST_PADDLE_API_KEY`                       | Server-only Paddle API key                                                                        |
 | `OPENPOST_PADDLE_ENVIRONMENT`                   | Explicit Paddle environment: sandbox or production                                                |
 | `OPENPOST_PADDLE_CLIENT_TOKEN`                  | Browser-safe Paddle.js client token                                                               |
-| `OPENPOST_PADDLE_WEBHOOK_SECRET`                | Paddle webhook verification secret                                                               |
+| `OPENPOST_PADDLE_WEBHOOK_SECRET`                | Paddle webhook verification secret                                                                |
 | `OPENPOST_PADDLE_CHECKOUT_RETURN_URL`           | OpenPost return URL after checkout                                                                |
 | `OPENPOST_PADDLE_STARTER_MONTHLY_PRICE_ID`      | Paddle Starter monthly price ID                                                                   |
 | `OPENPOST_PADDLE_STARTER_ANNUAL_PRICE_ID`       | Paddle Starter annual price ID                                                                    |

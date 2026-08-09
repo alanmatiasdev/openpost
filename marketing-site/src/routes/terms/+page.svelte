@@ -1,8 +1,9 @@
 <script lang="ts">
   import { resolve } from "$app/paths";
+  import { formatPolicyEffectiveDate, legalPolicy } from "@openpost/legal-policy";
   import { siteUrl } from "../_marketing";
 
-  const effectiveDate = "5 August 2026";
+  const effectiveDate = formatPolicyEffectiveDate(legalPolicy.terms);
 </script>
 
 <svelte:head>
@@ -36,6 +37,7 @@
 <section class="section-pad">
   <article class="reading-shell prose dark:prose-invert">
     <p><strong>Effective date:</strong> {effectiveDate}</p>
+    <p><strong>Policy version:</strong> {legalPolicy.terms.version}</p>
 
     <h2>1. Agreement and operator</h2>
     <p>
@@ -266,7 +268,10 @@
       We may update these terms for legal, security, or service changes. We will
       provide reasonable notice of material changes. Continued use after the
       stated effective date means you accept the updated terms; if you do not,
-      stop using the service and cancel your plan.
+      stop using the service and cancel your plan. A substantive change updates
+      the policy version and requires acceptance in OpenPost. Corrections to
+      spelling, formatting, or links that do not change meaning keep the same
+      version.
     </p>
     <p>
       If one provision is unenforceable, the others remain effective. A failure

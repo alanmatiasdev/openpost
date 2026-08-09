@@ -38,6 +38,10 @@ type OpenRouterConfig struct {
 	HTTPReferer string
 	XTitle      string
 	Timeout     time.Duration
+	// Provider pins requests to one exact OpenRouter provider slug, such as
+	// azure/eu. An empty value keeps the normal eligible-provider routing.
+	Provider   string
+	RequireZDR bool
 
 	RetryInitialInterval time.Duration
 	RetryMaxInterval     time.Duration
@@ -45,8 +49,10 @@ type OpenRouterConfig struct {
 }
 
 type OpenRouter struct {
-	client  *openrouter.OpenRouter
-	headers map[string]string
+	client     *openrouter.OpenRouter
+	headers    map[string]string
+	provider   string
+	requireZDR bool
 }
 
 var _ Generator = (*OpenRouter)(nil)
@@ -109,11 +115,13 @@ func NewOpenRouter(config OpenRouterConfig) (*OpenRouter, error) {
 			"HTTP-Referer": httpReferer,
 			"X-Title":      title,
 		},
+		provider:   strings.TrimSpace(config.Provider),
+		requireZDR: config.RequireZDR,
 	}, nil
 }
 
 func (o *OpenRouter) Generate(ctx context.Context, request GenerateRequest) (GenerateResult, error) {
-	chatRequest, err := buildOpenRouterRequest(request)
+	chatRequest, err := buildOpenRouterRequest(request, o.provider, o.requireZDR)
 	if err != nil {
 		return GenerateResult{}, err
 	}
@@ -144,7 +152,7 @@ func (o *OpenRouter) Generate(ctx context.Context, request GenerateRequest) (Gen
 	}, nil
 }
 
-func buildOpenRouterRequest(request GenerateRequest) (components.ChatRequest, error) {
+func buildOpenRouterRequest(request GenerateRequest, providerSlug string, requireZDR bool) (components.ChatRequest, error) {
 	model := strings.TrimSpace(request.Model)
 	if model == "" {
 		return components.ChatRequest{}, errors.New("AI model is required")
@@ -185,13 +193,26 @@ func buildOpenRouterRequest(request GenerateRequest) (components.ChatRequest, er
 	dataCollection := components.DataCollectionDeny
 	requireParameters := true
 	stream := false
+	providerPreferences := &components.ProviderPreferences{
+		DataCollection:    optionalnullable.From(&dataCollection),
+		RequireParameters: optionalnullable.From(&requireParameters),
+	}
+	if providerSlug = strings.TrimSpace(providerSlug); providerSlug != "" {
+		allowedProvider := []components.ProviderPreferencesOnly{
+			components.CreateProviderPreferencesOnlyStr(providerSlug),
+		}
+		allowFallbacks := false
+		providerPreferences.Only = optionalnullable.From(&allowedProvider)
+		providerPreferences.AllowFallbacks = optionalnullable.From(&allowFallbacks)
+	}
+	if requireZDR {
+		zdr := true
+		providerPreferences.Zdr = optionalnullable.From(&zdr)
+	}
 	chatRequest := components.ChatRequest{
-		Messages: messages,
-		Model:    &model,
-		Provider: optionalnullable.From(&components.ProviderPreferences{
-			DataCollection:    optionalnullable.From(&dataCollection),
-			RequireParameters: optionalnullable.From(&requireParameters),
-		}),
+		Messages:        messages,
+		Model:           &model,
+		Provider:        optionalnullable.From(providerPreferences),
 		ReasoningEffort: optionalnullable.From(&reasoningEffort),
 		Stream:          &stream,
 	}

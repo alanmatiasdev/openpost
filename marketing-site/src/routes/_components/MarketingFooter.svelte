@@ -46,9 +46,13 @@
       ],
     },
   ];
+
+  function externalHref(source: string) {
+    return { href: new URL(source).href } as const;
+  }
 </script>
 
-<footer class="border-t bg-muted/30">
+<footer class="bg-muted/30 border-t">
   <div
     class="marketing-shell grid gap-12 py-14 lg:grid-cols-[1.15fr_1.85fr] lg:py-16"
   >
@@ -64,7 +68,7 @@
           >OpenPost</span
         >
       </a>
-      <p class="mt-4 max-w-xs text-sm leading-6 text-muted-foreground">
+      <p class="text-muted-foreground mt-4 max-w-xs text-sm leading-6">
         The content workspace for solo founders. Create once, adapt for every
         platform, stay visible everywhere.
       </p>
@@ -73,7 +77,7 @@
           href="https://github.com/rodrgds/openpost"
           target="_blank"
           rel="noreferrer"
-          class="focus-ring inline-flex min-h-11 items-center gap-2 rounded-md text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+          class="focus-ring text-muted-foreground hover:text-foreground inline-flex min-h-11 items-center gap-2 rounded-md text-sm font-medium transition-colors"
         >
           <Github class="size-4" />
           GitHub source
@@ -82,20 +86,20 @@
           href={discordCommunityUrl}
           target="_blank"
           rel="noreferrer"
-          class="focus-ring inline-flex min-h-11 items-center gap-2 rounded-md text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+          class="focus-ring text-muted-foreground hover:text-foreground inline-flex min-h-11 items-center gap-2 rounded-md text-sm font-medium transition-colors"
         >
           <MessageCircle class="size-4" />
           Discord
         </a>
       </div>
       <div
-        class="mt-6 flex flex-wrap items-center gap-x-3 gap-y-2 text-muted-foreground"
+        class="text-muted-foreground mt-6 flex flex-wrap items-center gap-x-3 gap-y-2"
         aria-label="Supported platforms"
       >
         {#each platforms as platform (platform.slug)}
           <a
             href={resolve(`/platforms/${platform.slug}`)}
-            class="focus-ring inline-flex min-h-8 items-center rounded-md text-muted-foreground/75 transition-colors hover:text-primary"
+            class="focus-ring text-muted-foreground/75 hover:text-primary inline-flex min-h-8 items-center rounded-md transition-colors"
             aria-label={`${platform.name} guide`}
           >
             <PlatformIcon platform={platform.short} class="size-4" />
@@ -113,15 +117,15 @@
               <li>
                 {#if link.href.startsWith("https://")}
                   <a
-                    href={link.href}
-                    class="focus-ring inline-flex min-h-11 items-center rounded-md text-sm text-muted-foreground transition-colors hover:text-foreground"
+                    {...externalHref(link.href)}
+                    class="focus-ring text-muted-foreground hover:text-foreground inline-flex min-h-11 items-center rounded-md text-sm transition-colors"
                   >
                     {link.label}
                   </a>
                 {:else}
                   <a
                     href={resolve(link.href as "/")}
-                    class="focus-ring inline-flex min-h-11 items-center rounded-md text-sm text-muted-foreground transition-colors hover:text-foreground"
+                    class="focus-ring text-muted-foreground hover:text-foreground inline-flex min-h-11 items-center rounded-md text-sm transition-colors"
                   >
                     {link.label}
                   </a>
@@ -136,32 +140,40 @@
 
   <div class="border-t">
     <div
-      class="marketing-shell flex flex-col gap-3 py-5 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between"
+      class="marketing-shell text-muted-foreground flex flex-col gap-3 py-5 text-xs sm:flex-row sm:items-center sm:justify-between"
     >
       <span>© 2026 OpenPost Contributors · AGPL-3.0-only</span>
-      <span class="flex items-center gap-5">
+      <span class="flex flex-wrap items-center gap-x-5 gap-y-1">
         <span class="hidden sm:inline">Made for companies of one</span>
         <button
           type="button"
-          class="focus-ring inline-flex min-h-11 items-center gap-1.5 rounded-md transition-colors hover:text-foreground"
+          class="focus-ring hover:text-foreground inline-flex min-h-11 items-center gap-1.5 rounded-md transition-colors"
           aria-pressed={soundPreferences.enabled}
-          aria-label={soundPreferences.enabled ? "Mute interface sounds" : "Enable interface sounds"}
+          aria-label={soundPreferences.enabled
+            ? "Mute interface sounds"
+            : "Enable interface sounds"}
           onclick={() => soundPreferences.setEnabled(!soundPreferences.enabled)}
         >
-          {#if soundPreferences.enabled}<Volume2 class="size-3.5" />{:else}<VolumeX class="size-3.5" />{/if}
+          {#if soundPreferences.enabled}<Volume2
+              class="size-3.5"
+            />{:else}<VolumeX class="size-3.5" />{/if}
           Sound
         </button>
         <a
-          class="focus-ring inline-flex min-h-11 items-center rounded-md transition-colors hover:text-foreground"
+          class="focus-ring hover:text-foreground inline-flex min-h-11 items-center rounded-md transition-colors"
           href={resolve("/privacy")}>Privacy</a
         >
         <a
-          class="focus-ring inline-flex min-h-11 items-center rounded-md transition-colors hover:text-foreground"
+          class="focus-ring hover:text-foreground inline-flex min-h-11 items-center rounded-md transition-colors"
           href={resolve("/terms")}>Terms</a
         >
         <a
-          class="focus-ring inline-flex min-h-11 items-center rounded-md transition-colors hover:text-foreground"
+          class="focus-ring hover:text-foreground inline-flex min-h-11 items-center rounded-md transition-colors"
           href={resolve("/refunds")}>Refunds</a
+        >
+        <a
+          class="focus-ring hover:text-foreground inline-flex min-h-11 items-center rounded-md transition-colors"
+          href={resolve("/trust")}>Trust</a
         >
       </span>
     </div>

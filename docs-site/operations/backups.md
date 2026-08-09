@@ -1,5 +1,17 @@
 # Backups
 
+## Managed-service boundary
+
+The managed OpenPost service makes daily Postgres dumps and a daily synchronized copy of Cloudflare R2 media in a root-owned directory on the application host. The directory is not public or application-served. The deployment configuration restricts its directory and newly created file modes, validates database compression before an atomic rename, disables SSH password and direct root login, and grants the named operator access through authorized SSH keys and `sudo`. Application users, support requests, and the OpenPost container do not receive backup-directory access.
+
+OpenPost does not add a separate application-level encryption layer to each managed backup artifact. Do not describe those artifacts as encrypted. There is no artifact-encryption key to rotate or recover. The application encryption key is still required to use encrypted provider credentials after a restore and is stored separately through the host's secret-management configuration. Transport to R2 uses its HTTPS endpoint; local Postgres dumps and the local media copy remain inside the host boundary. Provider-managed infrastructure controls do not change this application-level statement.
+
+Routine database dumps and changed or deleted media versions are pruned by daily jobs after they become more than 14 days old, so removal occurs on the first daily run after that threshold. The current media mirror follows the live bucket; an object removed from the live bucket moves into a dated version directory before that version expires. Operator-created repair, migration, or incident snapshots are not routine backups. They require a stated recovery, security, or legal purpose and a separate review and deletion decision when that purpose ends; the routine filename-based job does not silently delete them.
+
+The database-backup, media-backup, and restore-drill units expose their last result and next timer run through systemd. A weekly drill validates the newest compressed database dump, restores it into a uniquely named temporary database, checks the schema and core row counts, checks that a non-empty database media inventory has a non-empty media snapshot, writes root-readable evidence, and drops the temporary database on exit. On 9 August 2026, the controlled host drill passed those database and media-inventory checks. This proves that the tested database and media copy were readable together; it is not proof of a separate encryption layer.
+
+Self-hosted operators choose and must document their own storage encryption, access, retention, deletion, monitoring, key recovery, and restore process. If a deployment adds artifact encryption, its restore drill must start from the encrypted artifact and test current and rotated-key recovery before that deployment describes backups as encrypted.
+
 You need the database, media objects, and secrets for a usable backup. The exact
 commands depend on whether you run the self-hosted SQLite/local-storage default
 or a hosted Postgres/S3-compatible deployment.
