@@ -550,7 +550,13 @@ func (l *LinkedInAdapter) completeDocumentUpload(ctx context.Context, accessToke
 	return registerResult.Value.Document, nil
 }
 
-func (l *LinkedInAdapter) Publish(ctx context.Context, accessToken, accountID string, req *PublishRequest) (string, error) {
+func (l *LinkedInAdapter) Publish(ctx context.Context, accessToken, accountID string, req *PublishRequest) (PublishResult, error) {
+	return executePublishWrite(req, "create_post", func() (string, error) {
+		return l.publish(ctx, accessToken, accountID, req)
+	})
+}
+
+func (l *LinkedInAdapter) publish(ctx context.Context, accessToken, accountID string, req *PublishRequest) (string, error) {
 	apiVersion := linkedInAPIVersion()
 	authorURN := linkedInAuthorURN(accountID)
 

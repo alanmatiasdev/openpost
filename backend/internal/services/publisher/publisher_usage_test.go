@@ -14,6 +14,7 @@ import (
 	"github.com/openpost/backend/internal/platform"
 	"github.com/openpost/backend/internal/services/crypto"
 	"github.com/openpost/backend/internal/services/entitlements"
+	"github.com/openpost/backend/internal/services/providerwrite"
 	"github.com/openpost/backend/internal/services/tokenmanager"
 	"github.com/openpost/backend/internal/services/usage"
 	"github.com/stretchr/testify/require"
@@ -48,6 +49,7 @@ func newPublisherUsageTestServer(t *testing.T, adapter *fakePublisherAdapter) *p
 		(*models.ProviderUsageEvent)(nil),
 		(*models.ProviderUsageReservation)(nil),
 		(*models.ProviderUsagePeriodCounter)(nil),
+		(*models.ProviderWriteAttempt)(nil),
 	} {
 		_, err = db.NewCreateTable().Model(model).IfNotExists().Exec(context.Background())
 		require.NoError(t, err)
@@ -280,6 +282,7 @@ func TestPublisherPricesXURLFromRenderedSettings(t *testing.T) {
 		usage.ProviderX,
 		"rendition-setting-url",
 		"publish",
+		legacyWriteScope(context.Background(), "ws-1", "account-1", "x", "rendition-setting-url", "publish"),
 		adapter,
 		"access-token",
 		"x-account",
@@ -295,6 +298,83 @@ func TestPublisherPricesXURLFromRenderedSettings(t *testing.T) {
 	require.NoError(t, srv.db.NewSelect().Model(&event).Scan(context.Background()))
 	require.Equal(t, usage.XOperationPostCreateWithURL, event.Operation)
 	require.Equal(t, int64(200_000), event.CostMicrousd)
+}
+
+func TestPublisherAcceptedFenceSurvivesLocalCommitFailureWithoutReplay(t *testing.T) {
+	t.Parallel()
+
+	adapter := &fakePublisherAdapter{externalID: "external-once"}
+	srv := newPublisherUsageTestServer(t, adapter)
+	lockedAt := time.Date(2026, 8, 9, 12, 0, 0, 0, time.UTC)
+	ctx := WithJobExecution(context.Background(), "job-provider-once", 1, lockedAt)
+	scope := legacyWriteScope(ctx, "ws-1", "account-1", "x", "destination-once", "publish")
+	request := &platform.PublishRequest{Content: "Persist me once"}
+
+	first, err := srv.service.publishProviderWithUsage(
+		ctx, "ws-1", usage.ProviderX, "destination-once", "publish",
+		scope, adapter, "access-token", "x-account", request, nil,
+	)
+	require.NoError(t, err)
+	require.Equal(t, "external-once", first.ExternalID)
+
+	// Simulate a crash before the caller stores first.ExternalID on its local
+	// rendition/destination row by invoking the same logical operation again.
+	second, err := srv.service.publishProviderWithUsage(
+		ctx, "ws-1", usage.ProviderX, "destination-once", "publish",
+		scope, adapter, "access-token", "x-account", request, nil,
+	)
+	require.NoError(t, err)
+	require.Equal(t, first.ExternalID, second.ExternalID)
+	require.Equal(t, 1, adapter.publishCalls, "the accepted provider mutation must come from the durable fence")
+
+	var attempts []models.ProviderWriteAttempt
+	require.NoError(t, srv.db.NewSelect().Model(&attempts).Where("operation_id = ?", scope.operationID).Scan(ctx))
+	require.Len(t, attempts, 1)
+	require.Equal(t, "accepted", attempts[0].Status)
+}
+
+func TestPublisherAuthorizationFingerprintIgnoresTransientMediaSignatures(t *testing.T) {
+	t.Parallel()
+
+	adapter := &fakePublisherAdapter{externalID: "external-signed-media"}
+	srv := newPublisherUsageTestServer(t, adapter)
+	scope := providerWriteScope{
+		operationID: "authorization:receipt-1:rendition-1:publish", authorizationID: "receipt-1",
+		publicationID: "publication-1", renditionID: "rendition-1",
+		socialAccountID: "account-1", targetKey: "x", operation: "publish",
+		contentHash: "sha256:content", mediaHash: "sha256:media", settingsHash: "sha256:settings",
+	}
+	media := []models.MediaAttachment{{
+		ID: "media-1", FileHash: "sha256:file", MimeType: "image/png", Size: 42,
+	}}
+	request := func(signature string) *platform.PublishRequest {
+		return &platform.PublishRequest{
+			Content: "Authorized content", SettingsJSON: `{"cover_media_id":"media-1"}`,
+			Settings:         map[string]interface{}{"cover_url": "https://app.example/media/media-1?exp=1&sig=" + signature},
+			PlatformMediaIDs: []string{"https://app.example/media/media-1?exp=1&sig=" + signature},
+		}
+	}
+
+	first, err := srv.service.publishProviderWithUsage(
+		t.Context(), "ws-1", usage.ProviderX, "rendition-1", "publish",
+		scope, adapter, "access-token", "x-account", request("first"), media,
+	)
+	require.NoError(t, err)
+	second, err := srv.service.publishProviderWithUsage(
+		t.Context(), "ws-1", usage.ProviderX, "rendition-1", "publish",
+		scope, adapter, "access-token", "x-account", request("refreshed"), media,
+	)
+	require.NoError(t, err)
+	require.Equal(t, first.ExternalID, second.ExternalID)
+	require.Equal(t, 1, adapter.publishCalls, "refreshing a signed URL must reuse the accepted logical operation")
+
+	changed := request("refreshed")
+	changed.Content = "Different content"
+	_, err = srv.service.publishProviderWithUsage(
+		t.Context(), "ws-1", usage.ProviderX, "rendition-1", "publish",
+		scope, adapter, "access-token", "x-account", changed, media,
+	)
+	require.ErrorIs(t, err, providerwrite.ErrOperationChanged)
 }
 
 func TestPublisherDoesNotBillDefiniteXFailure(t *testing.T) {

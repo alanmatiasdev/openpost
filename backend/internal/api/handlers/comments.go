@@ -13,8 +13,8 @@ import (
 	"github.com/openpost/backend/internal/api/middleware"
 	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/platform"
+	communicationsservice "github.com/openpost/backend/internal/services/communications"
 	servicecrypto "github.com/openpost/backend/internal/services/crypto"
-	"github.com/openpost/backend/internal/services/lifecycle"
 	"github.com/uptrace/bun"
 )
 
@@ -159,25 +159,19 @@ func (h *CommentHandler) replyToComment(api huma.API) {
 		if err := h.checkWorkspaceEditAccess(ctx, publication.WorkspaceID, middleware.GetUserID(ctx)); err != nil {
 			return nil, err
 		}
-		commenter, accessToken, err := h.commentAdapter(ctx, account)
-		if err != nil {
+		if _, err := h.commentProvider(account); err != nil {
 			return nil, err
 		}
-		replyID, err := commenter.ReplyToComment(ctx, accessToken, account.AccountID, ref.ProviderCommentID, input.Body.Body)
-		if err != nil {
-			h.recordCommentLifecycleEvent(ctx, publication, rendition, lifecycle.EventModerationActionFailed, lifecycle.StatusFailed, "comment reply failed", map[string]any{
-				"action":              "reply",
-				"provider_comment_id": ref.ProviderCommentID,
-				"error":               err.Error(),
-			})
-			return nil, commentProviderError("reply to provider comment", err)
-		}
-		h.recordCommentLifecycleEvent(ctx, publication, rendition, lifecycle.EventCommentActionSucceeded, lifecycle.StatusSucceeded, "comment reply sent", map[string]any{
-			"action":              "reply",
-			"provider_comment_id": ref.ProviderCommentID,
-			"reply_id":            replyID,
+		jobID, err := communicationsservice.QueueProviderCommentAction(ctx, h.db, communicationsservice.ProviderCommentActionInput{
+			WorkspaceID: publication.WorkspaceID, PublicationID: publication.ID,
+			RenditionID: rendition.ID, SocialAccountID: account.ID,
+			ProviderCommentID: ref.ProviderCommentID, Action: "reply",
+			Message: input.Body.Body, UserID: middleware.GetUserID(ctx),
 		})
-		return commentActionMessage("comment reply sent", replyID), nil
+		if err != nil {
+			return nil, huma.Error500InternalServerError("failed to queue comment reply")
+		}
+		return commentActionMessage("comment reply queued", jobID), nil
 	})
 }
 
@@ -202,23 +196,19 @@ func (h *CommentHandler) hideComment(api huma.API) {
 		if err := h.checkWorkspaceEditAccess(ctx, publication.WorkspaceID, middleware.GetUserID(ctx)); err != nil {
 			return nil, err
 		}
-		commenter, accessToken, err := h.commentAdapter(ctx, account)
-		if err != nil {
+		if _, err := h.commentProvider(account); err != nil {
 			return nil, err
 		}
-		if err := commenter.HideComment(ctx, accessToken, account.AccountID, ref.ProviderCommentID); err != nil {
-			h.recordCommentLifecycleEvent(ctx, publication, rendition, lifecycle.EventModerationActionFailed, lifecycle.StatusFailed, "comment hide failed", map[string]any{
-				"action":              "hide",
-				"provider_comment_id": ref.ProviderCommentID,
-				"error":               err.Error(),
-			})
-			return nil, commentProviderError("hide provider comment", err)
-		}
-		h.recordCommentLifecycleEvent(ctx, publication, rendition, lifecycle.EventCommentActionSucceeded, lifecycle.StatusSucceeded, "comment hidden", map[string]any{
-			"action":              "hide",
-			"provider_comment_id": ref.ProviderCommentID,
+		jobID, err := communicationsservice.QueueProviderCommentAction(ctx, h.db, communicationsservice.ProviderCommentActionInput{
+			WorkspaceID: publication.WorkspaceID, PublicationID: publication.ID,
+			RenditionID: rendition.ID, SocialAccountID: account.ID,
+			ProviderCommentID: ref.ProviderCommentID, Action: "hide",
+			UserID: middleware.GetUserID(ctx),
 		})
-		return commentActionMessage("comment hidden", ""), nil
+		if err != nil {
+			return nil, huma.Error500InternalServerError("failed to queue comment hide")
+		}
+		return commentActionMessage("comment hide queued", jobID), nil
 	})
 }
 
@@ -243,23 +233,19 @@ func (h *CommentHandler) deleteComment(api huma.API) {
 		if err := h.checkWorkspaceEditAccess(ctx, publication.WorkspaceID, middleware.GetUserID(ctx)); err != nil {
 			return nil, err
 		}
-		commenter, accessToken, err := h.commentAdapter(ctx, account)
-		if err != nil {
+		if _, err := h.commentProvider(account); err != nil {
 			return nil, err
 		}
-		if err := commenter.DeleteComment(ctx, accessToken, account.AccountID, ref.ProviderCommentID); err != nil {
-			h.recordCommentLifecycleEvent(ctx, publication, rendition, lifecycle.EventModerationActionFailed, lifecycle.StatusFailed, "comment delete failed", map[string]any{
-				"action":              "delete",
-				"provider_comment_id": ref.ProviderCommentID,
-				"error":               err.Error(),
-			})
-			return nil, commentProviderError("delete provider comment", err)
-		}
-		h.recordCommentLifecycleEvent(ctx, publication, rendition, lifecycle.EventCommentActionSucceeded, lifecycle.StatusSucceeded, "comment deleted", map[string]any{
-			"action":              "delete",
-			"provider_comment_id": ref.ProviderCommentID,
+		jobID, err := communicationsservice.QueueProviderCommentAction(ctx, h.db, communicationsservice.ProviderCommentActionInput{
+			WorkspaceID: publication.WorkspaceID, PublicationID: publication.ID,
+			RenditionID: rendition.ID, SocialAccountID: account.ID,
+			ProviderCommentID: ref.ProviderCommentID, Action: "delete",
+			UserID: middleware.GetUserID(ctx),
 		})
-		return commentActionMessage("comment deleted", ""), nil
+		if err != nil {
+			return nil, huma.Error500InternalServerError("failed to queue comment delete")
+		}
+		return commentActionMessage("comment delete queued", jobID), nil
 	})
 }
 
@@ -293,26 +279,10 @@ func (h *CommentHandler) loadCommentContext(ctx context.Context, renditionID, us
 	return &rendition, &publication, &account, nil
 }
 
-func (h *CommentHandler) recordCommentLifecycleEvent(ctx context.Context, publication *models.Publication, rendition *models.Rendition, eventType, status, message string, metadata map[string]any) {
-	if h == nil || h.db == nil || publication == nil || rendition == nil {
-		return
-	}
-	_, _ = lifecycle.NewService(h.db).Record(ctx, lifecycle.EventInput{
-		WorkspaceID:   publication.WorkspaceID,
-		PublicationID: publication.ID,
-		RenditionID:   rendition.ID,
-		Type:          eventType,
-		Status:        status,
-		Message:       message,
-		Metadata:      metadata,
-	})
-}
-
 func (h *CommentHandler) commentAdapter(ctx context.Context, account *models.SocialAccount) (platform.CommentAdapter, string, error) {
-	provider := h.providers[account.Platform]
-	commenter, ok := provider.(platform.CommentAdapter)
-	if !ok || commenter == nil {
-		return nil, "", huma.NewError(http.StatusNotImplemented, fmt.Sprintf("comments are not supported for %s", account.Platform))
+	commenter, err := h.commentProvider(account)
+	if err != nil {
+		return nil, "", err
 	}
 	if h.tokenSource != nil {
 		token, err := h.tokenSource.GetValidAccessToken(ctx, account.ID)
@@ -329,6 +299,15 @@ func (h *CommentHandler) commentAdapter(ctx context.Context, account *models.Soc
 		return nil, "", huma.Error500InternalServerError("failed to decrypt account token")
 	}
 	return commenter, token, nil
+}
+
+func (h *CommentHandler) commentProvider(account *models.SocialAccount) (platform.CommentAdapter, error) {
+	provider := h.providers[account.Platform]
+	commenter, ok := provider.(platform.CommentAdapter)
+	if !ok || commenter == nil {
+		return nil, huma.NewError(http.StatusNotImplemented, fmt.Sprintf("comments are not supported for %s", account.Platform))
+	}
+	return commenter, nil
 }
 
 func commentResponse(renditionID, encodedID string, comment platform.Comment) CommentResponse {

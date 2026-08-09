@@ -148,7 +148,7 @@ func TestTikTokPublishDirectVideoFromPublicURL(t *testing.T) {
 	})}
 
 	adapter := NewTikTokAdapter("client-key", "client-secret", "https://app.example/callback")
-	externalID, err := adapter.Publish(context.Background(), "access", "open-1", &PublishRequest{
+	request := &PublishRequest{
 		Content:          "Launch video",
 		PlatformMediaIDs: []string{"https://media.example/video.mp4"},
 		Media:            []MediaItem{{ID: "media-1", MimeType: "video/mp4"}},
@@ -156,12 +156,22 @@ func TestTikTokPublishDirectVideoFromPublicURL(t *testing.T) {
 			"content_posting_method": "DIRECT_POST",
 			"privacy_level":          "PUBLIC_TO_EVERYONE",
 		},
+	}
+	var checkpoints []PublishResult
+	request.SetWriteFence(func(PublishResult) error { return nil }, func(result PublishResult) error {
+		checkpoints = append(checkpoints, result)
+		return nil
 	})
+	externalID, err := adapter.Publish(context.Background(), "access", "open-1", request)
 	if err != nil {
 		t.Fatalf("Publish returned error: %v", err)
 	}
-	if externalID != "video-1" {
+	if externalID.ExternalID != "video-1" {
 		t.Fatalf("expected video id, got %q", externalID)
+	}
+	if len(checkpoints) != 2 || checkpoints[0].SubmissionState != PublishSubmissionPending ||
+		checkpoints[0].ProviderReference != "publish-1" || checkpoints[1].SubmissionState != PublishSubmissionAccepted {
+		t.Fatalf("unexpected durable publish checkpoints: %#v", checkpoints)
 	}
 
 	postInfo, ok := initPayload["post_info"].(map[string]any)
@@ -217,7 +227,7 @@ func TestTikTokPublishUploadInboxVideoFromPublicURLUsesInboxEndpoint(t *testing.
 	if err != nil {
 		t.Fatalf("Publish returned error: %v", err)
 	}
-	if externalID != "publish-inbox-1" {
+	if externalID.ExternalID != "publish-inbox-1" {
 		t.Fatalf("expected publish id, got %q", externalID)
 	}
 	sourceInfo, ok := initPayload["source_info"].(map[string]any)
@@ -362,7 +372,7 @@ func TestTikTokPublishUploadPhotoUsesUploadContractWithoutDirectPostSettings(t *
 	if err != nil {
 		t.Fatalf("Publish returned error: %v", err)
 	}
-	if externalID != "photo-upload-1" {
+	if externalID.ExternalID != "photo-upload-1" {
 		t.Fatalf("expected publish id, got %q", externalID)
 	}
 	if initPayload["post_mode"] != "MEDIA_UPLOAD" || initPayload["media_type"] != "PHOTO" {

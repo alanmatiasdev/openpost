@@ -9,14 +9,17 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humaecho"
 	"github.com/labstack/echo/v4"
 	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/platform"
+	communicationsservice "github.com/openpost/backend/internal/services/communications"
 	servicecrypto "github.com/openpost/backend/internal/services/crypto"
 	"github.com/openpost/backend/internal/services/lifecycle"
+	"github.com/openpost/backend/internal/services/providerwrite"
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun"
 )
@@ -103,6 +106,17 @@ func TestReplyToCommentRecordsLifecycleEvent(t *testing.T) {
 	resp := srv.request(t, http.MethodPost, "/api/v1/comments/"+commentID+"/reply", map[string]string{"body": "Thanks"})
 
 	require.Equal(t, http.StatusOK, resp.Code, resp.Body.String())
+	var queued struct {
+		Message string `json:"message"`
+		ID      string `json:"id"`
+	}
+	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &queued))
+	require.Equal(t, "comment reply queued", queued.Message)
+	var job models.Job
+	require.NoError(t, srv.db.NewSelect().Model(&job).Where("id = ?", queued.ID).Scan(t.Context()))
+	require.Equal(t, communicationsservice.JobTypeEngagementAct, job.Type)
+	require.Equal(t, 1, job.MaxAttempts)
+	require.NoError(t, srv.runQueuedCommentJob(t))
 	events := srv.lifecycleEvents(t)
 	require.Len(t, events, 1)
 	require.Equal(t, lifecycle.EventCommentActionSucceeded, events[0].Type)
@@ -120,17 +134,20 @@ func TestHideCommentProviderFailureRecordsLifecycleEvent(t *testing.T) {
 
 	resp := srv.request(t, http.MethodPost, "/api/v1/comments/"+commentID+"/hide", nil)
 
-	require.Equal(t, http.StatusBadGateway, resp.Code, resp.Body.String())
+	require.Equal(t, http.StatusOK, resp.Code, resp.Body.String())
+	require.Error(t, srv.runQueuedCommentJob(t))
 	events := srv.lifecycleEvents(t)
 	require.Len(t, events, 1)
 	require.Equal(t, lifecycle.EventModerationActionFailed, events[0].Type)
 	require.Equal(t, lifecycle.StatusFailed, events[0].Status)
-	require.Contains(t, events[0].MetadataJSON, "provider moderation failed")
+	require.Contains(t, events[0].MetadataJSON, "ambiguous_provider_write")
+	require.NotContains(t, events[0].MetadataJSON, "provider moderation failed")
 }
 
 type commentsTestServer struct {
-	echo *echo.Echo
-	db   *bun.DB
+	echo      *echo.Echo
+	db        *bun.DB
+	providers map[string]platform.Adapter
 }
 
 func newCommentsTestServer(t *testing.T, providers map[string]platform.Adapter) *commentsTestServer {
@@ -143,6 +160,8 @@ func newCommentsTestServer(t *testing.T, providers map[string]platform.Adapter) 
 		(*models.Publication)(nil),
 		(*models.Rendition)(nil),
 		(*models.PublicationLifecycleEvent)(nil),
+		(*models.ProviderWriteAttempt)(nil),
+		(*models.Job)(nil),
 	)
 	ctx := context.Background()
 	_, err := db.NewInsert().Model(&models.Workspace{ID: "ws-1", Name: "Comments"}).Exec(ctx)
@@ -162,7 +181,7 @@ func newCommentsTestServer(t *testing.T, providers map[string]platform.Adapter) 
 	e := echo.New()
 	api := humaecho.NewWithGroup(e, e.Group("/api/v1"), huma.DefaultConfig("Test", "1.0.0"))
 	NewCommentHandler(db, testAuthenticator{}, providers, encryptor).RegisterRoutes(api)
-	return &commentsTestServer{echo: e, db: db}
+	return &commentsTestServer{echo: e, db: db, providers: providers}
 }
 
 func (s *commentsTestServer) request(t *testing.T, method, path string, body any) *httptest.ResponseRecorder {
@@ -186,6 +205,26 @@ func (s *commentsTestServer) lifecycleEvents(t *testing.T) []models.PublicationL
 	return events
 }
 
+func (s *commentsTestServer) runQueuedCommentJob(t *testing.T) error {
+	t.Helper()
+	var job models.Job
+	require.NoError(t, s.db.NewSelect().Model(&job).
+		Where("type = ?", communicationsservice.JobTypeEngagementAct).
+		Order("created_at DESC").Limit(1).Scan(t.Context()))
+	service := communicationsservice.NewService(s.db, commentsTokenSource{}, nil)
+	for name, adapter := range s.providers {
+		service.SetProvider(name, adapter)
+	}
+	ctx := providerwrite.WithJobExecution(t.Context(), job.ID, 1, time.Now().UTC())
+	return service.HandleJob(ctx, job.Type, job.Payload)
+}
+
+type commentsTokenSource struct{}
+
+func (commentsTokenSource) GetValidAccessToken(context.Context, string) (string, error) {
+	return "token", nil
+}
+
 type fakeCommentAdapter struct {
 	comments []platform.Comment
 	hideErr  error
@@ -207,8 +246,8 @@ func (f fakeCommentAdapter) GetProfile(context.Context, string) (*platform.UserP
 func (f fakeCommentAdapter) UploadMedia(context.Context, string, string, string, io.Reader) (string, error) {
 	return "", nil
 }
-func (f fakeCommentAdapter) Publish(context.Context, string, string, *platform.PublishRequest) (string, error) {
-	return "", nil
+func (f fakeCommentAdapter) Publish(context.Context, string, string, *platform.PublishRequest) (platform.PublishResult, error) {
+	return platform.PublishResult{}, nil
 }
 func (f fakeCommentAdapter) ListComments(context.Context, string, string, string) ([]platform.Comment, error) {
 	return f.comments, nil

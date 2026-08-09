@@ -117,6 +117,11 @@ func finalizeMigrations(ctx context.Context, db *bun.DB, appliedSet map[int64]bo
 			return fmt.Errorf("publication authorization migration failed: %w", err)
 		}
 	}
+	if appliedSet[76] {
+		if err := ensureProviderWriteAttemptSchema(ctx, db); err != nil {
+			return fmt.Errorf("provider write attempt migration failed: %w", err)
+		}
+	}
 	if err := MigrateLegacyPublicationAuthoring(ctx, db); err != nil {
 		return fmt.Errorf("legacy publication authoring migration failed: %w", err)
 	}
@@ -266,7 +271,7 @@ func prepareMigration(ctx context.Context, db *bun.DB, migration migration) erro
 	case 61:
 		description = "repost override"
 		err = ensurePublicationRepostOverride(ctx, db)
-	case 62, 63, 64, 66, 71, 73, 74, 75:
+	case 62, 63, 64, 66, 71, 73, 74, 75, 76:
 		return prepareRecentMigration(ctx, db, migration)
 	}
 	if err != nil {
@@ -453,6 +458,9 @@ func prepareRecentMigration(ctx context.Context, db *bun.DB, migration migration
 	case 75:
 		description = "publication authorizations"
 		err = preparePublicationAuthorizationMigration(ctx, db)
+	case 76:
+		description = "durable provider write attempts"
+		err = ensureProviderWriteAttemptPrerequisites(ctx, db)
 	}
 	if err != nil {
 		return fmt.Errorf("migration %s %s preparation failed: %w", migration.name, description, err)
@@ -463,6 +471,32 @@ func prepareRecentMigration(ctx context.Context, db *bun.DB, migration migration
 func ensureJobsTable(ctx context.Context, db *bun.DB) error {
 	_, err := db.NewCreateTable().Model((*models.Job)(nil)).IfNotExists().Exec(ctx)
 	return err
+}
+
+func ensureProviderWriteAttemptPrerequisites(ctx context.Context, db *bun.DB) error {
+	for _, model := range []interface{}{
+		(*models.Workspace)(nil),
+		(*models.Publication)(nil),
+		(*models.SocialAccount)(nil),
+		(*models.Rendition)(nil),
+		(*models.PublicationAuthorization)(nil),
+	} {
+		if _, err := db.NewCreateTable().Model(model).IfNotExists().Exec(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func ensureProviderWriteAttemptSchema(ctx context.Context, db *bun.DB) error {
+	exists, err := migrationTableExists(ctx, db, "provider_write_attempts")
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return errors.New("provider_write_attempts is missing after migration 076")
+	}
+	return nil
 }
 
 // Isolated historical migration fixtures do not always bootstrap publishing

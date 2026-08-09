@@ -142,14 +142,14 @@ func (m *MastodonAdapter) SendMessage(ctx context.Context, accessToken string, i
 	if handle != "" && !strings.Contains(body, "@"+handle) {
 		body = "@" + handle + " " + body
 	}
-	id, err := m.Publish(ctx, accessToken, input.AccountID, &PublishRequest{
+	result, err := m.Publish(ctx, accessToken, input.AccountID, &PublishRequest{
 		Content: body, ReplyToID: input.ReplyToRemoteID,
 		Settings: map[string]interface{}{"visibility": "direct"},
 	})
 	if err != nil {
 		return SendMessageResult{}, err
 	}
-	return SendMessageResult{RemoteMessageID: id, CreatedAt: time.Now().UTC()}, nil
+	return SendMessageResult{RemoteMessageID: result.ExternalID, CreatedAt: time.Now().UTC()}, nil
 }
 
 func mastodonPlainText(value string) string {

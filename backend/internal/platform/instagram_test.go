@@ -271,7 +271,7 @@ func TestInstagramPublishImageFromPublicURL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Publish returned error: %v", err)
 	}
-	if externalID != "ig-media-1" {
+	if externalID.ExternalID != "ig-media-1" {
 		t.Fatalf("expected media id, got %q", externalID)
 	}
 	if createForm.Get("image_url") != "https://media.example/image.jpg" || createForm.Get("caption") != "Launch image" {

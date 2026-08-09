@@ -44,8 +44,8 @@ func (a providerAvailabilityAdapter) UploadMedia(context.Context, string, string
 	return "", nil
 }
 
-func (a providerAvailabilityAdapter) Publish(context.Context, string, string, *platform.PublishRequest) (string, error) {
-	return "", nil
+func (a providerAvailabilityAdapter) Publish(context.Context, string, string, *platform.PublishRequest) (platform.PublishResult, error) {
+	return platform.PublishResult{}, nil
 }
 
 func (a providerAvailabilityAdapter) InstanceURL() string {

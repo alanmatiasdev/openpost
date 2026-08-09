@@ -52,7 +52,8 @@ func (m *MastodonAdapter) ListComments(ctx context.Context, accessToken, account
 }
 
 func (m *MastodonAdapter) ReplyToComment(ctx context.Context, accessToken, accountID, commentID, message string) (string, error) {
-	return m.Publish(ctx, accessToken, accountID, &PublishRequest{Content: message, ReplyToID: commentID})
+	result, err := m.Publish(ctx, accessToken, accountID, &PublishRequest{Content: message, ReplyToID: commentID})
+	return result.ExternalID, err
 }
 
 func (m *MastodonAdapter) HideComment(context.Context, string, string, string) error {
@@ -155,7 +156,8 @@ func (b *BlueskyAdapter) ListComments(ctx context.Context, accessToken, accountI
 }
 
 func (b *BlueskyAdapter) ReplyToComment(ctx context.Context, accessToken, accountID, commentID, message string) (string, error) {
-	return b.Publish(ctx, accessToken, accountID, &PublishRequest{Content: message, ReplyToID: commentID})
+	result, err := b.Publish(ctx, accessToken, accountID, &PublishRequest{Content: message, ReplyToID: commentID})
+	return result.ExternalID, err
 }
 
 func (b *BlueskyAdapter) HideComment(context.Context, string, string, string) error {
@@ -272,7 +274,8 @@ func (x *XAdapter) ListComments(ctx context.Context, accessToken, accountID, ext
 }
 
 func (x *XAdapter) ReplyToComment(ctx context.Context, accessToken, accountID, commentID, message string) (string, error) {
-	return x.Publish(ctx, accessToken, accountID, &PublishRequest{Content: message, ReplyToID: commentID})
+	result, err := x.Publish(ctx, accessToken, accountID, &PublishRequest{Content: message, ReplyToID: commentID})
+	return result.ExternalID, err
 }
 
 func (x *XAdapter) HideComment(context.Context, string, string, string) error {

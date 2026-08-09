@@ -44,6 +44,44 @@ func TestWorkerRequeuesStaleProcessingJobs(t *testing.T) {
 	require.Equal(t, 1, stored.Attempts)
 }
 
+func TestWorkerMarksStaleProviderWriteAmbiguousBeforeRequeue(t *testing.T) {
+	t.Parallel()
+
+	db := createTestDB(t)
+	ctx := t.Context()
+	now := time.Now().UTC()
+	job := &models.Job{
+		ID: uuid.NewString(), Type: jobTypePublishPublication, Payload: "{}",
+		Status: jobStatusProcessing, RunAt: now.Add(-time.Hour), MaxAttempts: 3,
+		LockedAt: now.Add(-20 * time.Minute), LockedBy: "dead-worker",
+	}
+	require.NoError(t, func() error {
+		_, err := db.NewInsert().Model(job).Exec(ctx)
+		return err
+	}())
+	attempt := &models.ProviderWriteAttempt{
+		ID: uuid.NewString(), OperationID: "operation-stale", AttemptNumber: 1,
+		JobID: job.ID, WorkspaceID: "workspace-1", SocialAccountID: "account-1",
+		TargetKey: "x", Provider: "x", Operation: "publish",
+		PayloadFingerprint: "sha256:payload", Status: "sending", SubmissionState: "unknown",
+		RetrySafety: "never", CreatedAt: now.Add(-20 * time.Minute), UpdatedAt: now.Add(-20 * time.Minute),
+	}
+	require.NoError(t, func() error {
+		_, err := db.NewInsert().Model(attempt).Exec(ctx)
+		return err
+	}())
+
+	worker := &BackgroundWorker{db: db, workerID: "worker-test"}
+	worker.requeueStaleProcessingJobs(ctx)
+
+	require.NoError(t, db.NewSelect().Model(job).WherePK().Scan(ctx))
+	require.Equal(t, jobStatusPending, job.Status)
+	require.NoError(t, db.NewSelect().Model(attempt).WherePK().Scan(ctx))
+	require.Equal(t, "ambiguous", attempt.Status)
+	require.Equal(t, "unknown", attempt.SubmissionState)
+	require.Equal(t, "worker_interrupted", attempt.SafeErrorClass)
+}
+
 func TestWorkerKeepsRecentProcessingJobsLocked(t *testing.T) {
 	t.Parallel()
 

@@ -630,7 +630,13 @@ func (x *XAdapter) waitForMediaProcessing(ctx context.Context, accessToken, medi
 	return fmt.Errorf("x media processing unexpected state: %s", info.State)
 }
 
-func (x *XAdapter) Publish(ctx context.Context, accessToken, _ string, req *PublishRequest) (string, error) {
+func (x *XAdapter) Publish(ctx context.Context, accessToken, _ string, req *PublishRequest) (PublishResult, error) {
+	return executePublishWrite(req, "create_tweet", func() (string, error) {
+		return x.publish(ctx, accessToken, req)
+	})
+}
+
+func (x *XAdapter) publish(ctx context.Context, accessToken string, req *PublishRequest) (string, error) {
 	// Set alt text for each media before posting
 	for i, mediaID := range req.PlatformMediaIDs {
 		altText := ""

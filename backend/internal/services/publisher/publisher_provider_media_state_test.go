@@ -49,6 +49,7 @@ func newPublisherMediaStateTestServer(t *testing.T, platformName string, adapter
 		(*models.RenditionMedia)(nil),
 		(*models.RenditionMediaDelivery)(nil),
 		(*models.RenditionMediaDeliveryRelation)(nil),
+		(*models.ProviderWriteAttempt)(nil),
 		(*models.UsageCounter)(nil),
 	} {
 		_, err = db.NewCreateTable().Model(model).IfNotExists().Exec(context.Background())
@@ -261,7 +262,7 @@ func (f *secretLeakingResumablePublisherAdapter) UploadMediaResumable(_ context.
 func TestPublisherReusesProviderMediaStateOnDestinationRetry(t *testing.T) {
 	t.Parallel()
 
-	adapter := &fakePublisherAdapter{publishErr: &platform.HTTPError{StatusCode: 503, Code: "temporarily_unavailable"}}
+	adapter := &fakePublisherAdapter{preFenceErrors: []error{&platform.HTTPError{StatusCode: 503, Code: "temporarily_unavailable"}}}
 	srv := newPublisherMediaStateTestServer(t, "x", adapter)
 	srv.seedPostWithMedia(t, "post-retry", models.MediaAttachment{
 		ID:       "media-retry",
@@ -291,6 +292,27 @@ func TestPublisherReusesProviderMediaStateOnDestinationRetry(t *testing.T) {
 	require.Equal(t, 2, adapter.publishCalls)
 	require.NotNil(t, adapter.lastRequest)
 	require.Equal(t, []string{"platform-media-id"}, adapter.lastRequest.PlatformMediaIDs)
+}
+
+func TestPublisherDoesNotReplayAmbiguousNonResumableMediaUpload(t *testing.T) {
+	t.Parallel()
+
+	adapter := &fakePublisherAdapter{uploadErr: context.DeadlineExceeded}
+	srv := newPublisherMediaStateTestServer(t, "x", adapter)
+	srv.seedPostWithMedia(t, "post-ambiguous-upload", models.MediaAttachment{
+		ID: "media-ambiguous-upload", FilePath: "uploads/ambiguous.png", MimeType: "image/png",
+	})
+
+	require.Error(t, srv.publishPost(t, "post-ambiguous-upload"))
+	require.Equal(t, 1, adapter.uploadCalls)
+	_ = srv.publishPost(t, "post-ambiguous-upload")
+	require.Equal(t, 1, adapter.uploadCalls, "an upload with an unknown external outcome must not be replayed")
+
+	var delivery models.PostMediaDelivery
+	require.NoError(t, srv.db.NewSelect().Model(&delivery).
+		Where("post_id = ? AND social_account_id = ? AND media_id = ?", "post-ambiguous-upload", "account-1", "media-ambiguous-upload").
+		Scan(t.Context()))
+	require.Equal(t, providerMediaStatusFailed, delivery.Status)
 }
 
 func TestPublisherDoesNotPersistProviderMediaStateForPublicURLProviders(t *testing.T) {

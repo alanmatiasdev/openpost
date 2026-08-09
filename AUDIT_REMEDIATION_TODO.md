@@ -56,7 +56,7 @@ These do not assert a newly observed production incident. They block Pinterest, 
 
 ### PROV-WRITE-001 — Fence ambiguous external writes durably
 
-- [ ] **Problem — Confirmed architecture gate:** `Adapter.Publish` returns only an external ID and normal publishing flattens acceptance into `published`; stale sending jobs can be retried even when a provider accepted the write but OpenPost lost the response.
+- [x] **Problem — Confirmed architecture gate:** `Adapter.Publish` returns only an external ID and normal publishing flattens acceptance into `published`; stale sending jobs can be retried even when a provider accepted the write but OpenPost lost the response.
 - **Fix:** add `provider_write_attempts` (`prepared → sending → accepted | definite_failure | ambiguous`) and structured `PublishResult` fields for external ID/URL, submission/provider state, retry safety, and reconciliation delay. Persist payload fingerprint and safe error class, never raw response/token. A stale `sending` attempt becomes reconcile-only `ambiguous`.
 - **Done when:** crash tests before send, during send, after acceptance, and before DB commit prove an unknown outcome cannot be recreated automatically; only definitely pre-send, definitely rejected, or provider-idempotent work retries.
 - **Evidence:** `backend/internal/platform/adapter.go:223`, `backend/internal/services/publisher/publisher.go:295`, `backend/internal/queue/worker.go:209`.

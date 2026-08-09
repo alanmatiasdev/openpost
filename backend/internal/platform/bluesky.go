@@ -409,7 +409,13 @@ func (b *BlueskyAdapter) pollVideoJob(ctx context.Context, serviceToken, jobID s
 	return nil, fmt.Errorf("bluesky video processing timed out")
 }
 
-func (b *BlueskyAdapter) Publish(ctx context.Context, accessToken, accountID string, req *PublishRequest) (string, error) {
+func (b *BlueskyAdapter) Publish(ctx context.Context, accessToken, accountID string, req *PublishRequest) (PublishResult, error) {
+	return executePublishWrite(req, "create_record", func() (string, error) {
+		return b.publish(ctx, accessToken, accountID, req)
+	})
+}
+
+func (b *BlueskyAdapter) publish(ctx context.Context, accessToken, accountID string, req *PublishRequest) (string, error) {
 	prepared := *req
 	prepared.Settings = copyPlatformSettings(req.Settings)
 	if err := b.resolveBlueskyComposerReferences(ctx, accessToken, &prepared); err != nil {

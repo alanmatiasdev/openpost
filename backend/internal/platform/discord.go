@@ -94,18 +94,22 @@ func (d *DiscordAdapter) UploadMedia(context.Context, string, string, string, io
 	return "", fmt.Errorf("discord media is attached when the webhook message is sent")
 }
 
-func (d *DiscordAdapter) Publish(ctx context.Context, webhookURL, _ string, req *PublishRequest) (string, error) {
-	return d.publish(ctx, webhookURL, req, nil)
+func (d *DiscordAdapter) Publish(ctx context.Context, webhookURL, _ string, req *PublishRequest) (PublishResult, error) {
+	return executePublishWrite(req, "execute_webhook", func() (string, error) {
+		return d.publish(ctx, webhookURL, req, nil)
+	})
 }
 
-func (d *DiscordAdapter) PublishWithMedia(ctx context.Context, webhookURL, _ string, req *PublishRequest, media []UploadMediaRequest) (string, error) {
+func (d *DiscordAdapter) PublishWithMedia(ctx context.Context, webhookURL, _ string, req *PublishRequest, media []UploadMediaRequest) (PublishResult, error) {
 	if len(media) == 0 {
 		return d.Publish(ctx, webhookURL, "", req)
 	}
 	if len(media) > 10 {
-		return "", fmt.Errorf("discord webhook messages support up to 10 attachments")
+		return PublishResult{}, fmt.Errorf("discord webhook messages support up to 10 attachments")
 	}
-	return d.publish(ctx, webhookURL, req, media)
+	return executePublishWrite(req, "execute_webhook", func() (string, error) {
+		return d.publish(ctx, webhookURL, req, media)
+	})
 }
 
 func (d *DiscordAdapter) publish(ctx context.Context, webhookURL string, req *PublishRequest, media []UploadMediaRequest) (string, error) {

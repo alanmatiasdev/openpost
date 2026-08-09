@@ -19,6 +19,7 @@ import (
 	"github.com/openpost/backend/internal/services/medialifecycle"
 	"github.com/openpost/backend/internal/services/mediastore"
 	"github.com/openpost/backend/internal/services/notifications"
+	"github.com/openpost/backend/internal/services/providerwrite"
 	"github.com/openpost/backend/internal/services/publisher"
 	repostservice "github.com/openpost/backend/internal/services/reposts"
 	"github.com/openpost/backend/internal/services/tokenmanager"
@@ -137,6 +138,14 @@ func (w *BackgroundWorker) processDueJobs(ctx context.Context) {
 //nolint:gocyclo
 func (w *BackgroundWorker) requeueStaleProcessingJobs(ctx context.Context) {
 	cutoff := time.Now().UTC().Add(-staleProcessingJobAge)
+	protected, err := providerwrite.New(w.db).MarkStaleJobAttempts(ctx, cutoff)
+	if err != nil {
+		log.Printf("[Worker %s] failed to fence stale provider writes: %v\n", w.workerID, err)
+		return
+	}
+	if protected > 0 {
+		log.Printf("[Worker %s] marked %d stale provider write attempt(s) ambiguous before recovery\n", w.workerID, protected)
+	}
 	if w.reposts != nil {
 		var ambiguousWrites []models.Job
 		if err := w.db.NewSelect().Model(&ambiguousWrites).

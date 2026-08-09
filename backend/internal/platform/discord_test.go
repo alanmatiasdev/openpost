@@ -102,7 +102,7 @@ func TestDiscordPublishWithMediaStreamsMultipart(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PublishWithMedia returned error: %v", err)
 	}
-	if messageID != "message-123" {
+	if messageID.ExternalID != "message-123" {
 		t.Fatalf("unexpected message ID %q", messageID)
 	}
 }

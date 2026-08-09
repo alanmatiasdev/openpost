@@ -59,8 +59,8 @@ func (a *blockingRefreshAdapter) GetProfile(context.Context, string) (*platform.
 func (a *blockingRefreshAdapter) UploadMedia(context.Context, string, string, string, io.Reader) (string, error) {
 	return "", nil
 }
-func (a *blockingRefreshAdapter) Publish(context.Context, string, string, *platform.PublishRequest) (string, error) {
-	return "", nil
+func (a *blockingRefreshAdapter) Publish(context.Context, string, string, *platform.PublishRequest) (platform.PublishResult, error) {
+	return platform.PublishResult{}, nil
 }
 
 func newGrantSQLiteDB(t *testing.T) *bun.DB {

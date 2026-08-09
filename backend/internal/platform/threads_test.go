@@ -234,7 +234,7 @@ func TestThreadsPublishMixedMediaCarousel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Publish returned error: %v", err)
 	}
-	if id != "thread-1" {
+	if id.ExternalID != "thread-1" {
 		t.Fatalf("expected thread-1, got %q", id)
 	}
 }

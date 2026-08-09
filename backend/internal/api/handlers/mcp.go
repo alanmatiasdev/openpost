@@ -26,6 +26,7 @@ import (
 	"github.com/openpost/backend/internal/netguard"
 	"github.com/openpost/backend/internal/platform"
 	"github.com/openpost/backend/internal/services/apitokens"
+	communicationsservice "github.com/openpost/backend/internal/services/communications"
 	servicecrypto "github.com/openpost/backend/internal/services/crypto"
 	"github.com/openpost/backend/internal/services/drafts"
 	"github.com/openpost/backend/internal/services/entitlements"
@@ -1658,15 +1659,15 @@ func mcpListRenditionCommentsTool() mcpOperationDefinition {
 }
 
 func mcpReplyToCommentTool() mcpOperationDefinition {
-	return mcpCommentActionTool(mcpToolReplyComment, "Reply to comment", "Send a provider reply after selecting an opaque ID from list_rendition_comments. Returns a success message and the provider reply ID when available.", true, false)
+	return mcpCommentActionTool(mcpToolReplyComment, "Reply to comment", "Queue a durable one-attempt provider reply after selecting an opaque ID from list_rendition_comments. Returns a confirmation message and job ID.", true, false)
 }
 
 func mcpHideCommentTool() mcpOperationDefinition {
-	return mcpCommentActionTool(mcpToolHideComment, "Hide comment", "Hide a provider comment when moderation is supported and removal is not required. Returns a confirmation message for the selected opaque comment ID.", false, true)
+	return mcpCommentActionTool(mcpToolHideComment, "Hide comment", "Queue a durable one-attempt hide action when moderation is supported and removal is not required. Returns a confirmation message and job ID.", false, true)
 }
 
 func mcpDeleteCommentTool() mcpOperationDefinition {
-	return mcpCommentActionTool(mcpToolDeleteComment, "Delete comment", "Permanently delete a provider comment only when irreversible moderation is intended. Returns a confirmation message for the selected opaque comment ID.", false, true)
+	return mcpCommentActionTool(mcpToolDeleteComment, "Delete comment", "Queue a durable one-attempt deletion of a provider comment only when irreversible moderation is intended. Returns a confirmation message and job ID.", false, true)
 }
 
 func mcpCommentActionTool(name, title, description string, requiresBody, destructive bool) mcpOperationDefinition {
@@ -2181,9 +2182,9 @@ var mcpToolStatuses = map[string]mcpToolStatus{
 	mcpToolPublishPubNow:  {Invoking: "Queueing publication", Invoked: "Publication queued"},
 	mcpToolPubEvents:      {Invoking: "Loading publication events", Invoked: "Publication events loaded"},
 	mcpToolComments:       {Invoking: "Loading comments", Invoked: "Comments loaded"},
-	mcpToolReplyComment:   {Invoking: "Replying to comment", Invoked: "Comment reply sent"},
-	mcpToolHideComment:    {Invoking: "Hiding comment", Invoked: "Comment hidden"},
-	mcpToolDeleteComment:  {Invoking: "Deleting comment", Invoked: "Comment deleted"},
+	mcpToolReplyComment:   {Invoking: "Queueing comment reply", Invoked: "Comment reply queued"},
+	mcpToolHideComment:    {Invoking: "Queueing comment hide", Invoked: "Comment hide queued"},
+	mcpToolDeleteComment:  {Invoking: "Queueing comment deletion", Invoked: "Comment deletion queued"},
 	mcpToolListDrafts:     {Invoking: "Loading drafts", Invoked: "Drafts loaded"},
 	mcpToolUpdateDraft:    {Invoking: "Updating draft", Invoked: "Draft updated"},
 	mcpToolRenditions:     {Invoking: "Updating renditions", Invoked: "Renditions updated"},
@@ -3946,39 +3947,38 @@ func (h *MCPHandler) moderateComment(ctx context.Context, userID, operation stri
 	if rpcErr := h.ensureWorkspaceEditAccess(ctx, userID, publication.WorkspaceID); rpcErr != nil {
 		return nil, rpcErr
 	}
-	commenter, accessToken, rpcErr := h.commentAdapter(ctx, account)
-	if rpcErr != nil {
+	if _, rpcErr := h.commentProvider(account); rpcErr != nil {
 		return nil, rpcErr
 	}
-	events := &CommentHandler{db: h.db}
-	message, actionID, action := "", "", ""
+	message, action := "", ""
 	switch operation {
 	case mcpToolReplyComment:
 		if strings.TrimSpace(input.Body) == "" {
 			return nil, &mcpError{Code: -32602, Message: "reply body is required"}
 		}
 		action = "reply"
-		actionID, err = commenter.ReplyToComment(ctx, accessToken, account.AccountID, ref.ProviderCommentID, input.Body)
-		message = "comment reply sent"
+		message = "comment reply queued"
 	case mcpToolHideComment:
 		action = "hide"
-		err = commenter.HideComment(ctx, accessToken, account.AccountID, ref.ProviderCommentID)
-		message = "comment hidden"
+		message = "comment hide queued"
 	case mcpToolDeleteComment:
 		action = "delete"
-		err = commenter.DeleteComment(ctx, accessToken, account.AccountID, ref.ProviderCommentID)
-		message = "comment deleted"
+		message = "comment deletion queued"
 	default:
 		return nil, &mcpError{Code: -32602, Message: "unknown comment action"}
 	}
+	jobID, err := communicationsservice.QueueProviderCommentAction(ctx, h.db, communicationsservice.ProviderCommentActionInput{
+		WorkspaceID: publication.WorkspaceID, PublicationID: publication.ID,
+		RenditionID: rendition.ID, SocialAccountID: account.ID,
+		ProviderCommentID: ref.ProviderCommentID, Action: action,
+		Message: input.Body, UserID: userID,
+	})
 	if err != nil {
-		events.recordCommentLifecycleEvent(ctx, publication, rendition, lifecycle.EventModerationActionFailed, lifecycle.StatusFailed, "comment "+action+" failed", map[string]any{"action": action, "provider_comment_id": ref.ProviderCommentID, "error": err.Error()})
-		return nil, &mcpError{Code: -32603, Message: "provider comment action failed: " + err.Error()}
+		return nil, &mcpError{Code: -32603, Message: "failed to queue provider comment action"}
 	}
-	events.recordCommentLifecycleEvent(ctx, publication, rendition, lifecycle.EventCommentActionSucceeded, lifecycle.StatusSucceeded, message, map[string]any{"action": action, "provider_comment_id": ref.ProviderCommentID, "id": actionID})
 	return map[string]any{
 		"content":           []mcpContent{{Type: "text", Text: message}},
-		"structuredContent": map[string]any{"message": message, "id": actionID},
+		"structuredContent": map[string]any{"message": message, "id": jobID},
 	}, nil
 }
 
@@ -4005,10 +4005,9 @@ func (h *MCPHandler) loadMCPCommentContext(ctx context.Context, userID, renditio
 }
 
 func (h *MCPHandler) commentAdapter(ctx context.Context, account *models.SocialAccount) (platform.CommentAdapter, string, *mcpError) {
-	provider := h.providers[account.Platform]
-	commenter, ok := provider.(platform.CommentAdapter)
-	if !ok || commenter == nil {
-		return nil, "", &mcpError{Code: -32603, Message: fmt.Sprintf("comments are not supported for %s", account.Platform)}
+	commenter, rpcErr := h.commentProvider(account)
+	if rpcErr != nil {
+		return nil, "", rpcErr
 	}
 	if h.tokenSource != nil {
 		token, err := h.tokenSource.GetValidAccessToken(ctx, account.ID)
@@ -4025,6 +4024,15 @@ func (h *MCPHandler) commentAdapter(ctx context.Context, account *models.SocialA
 		return nil, "", &mcpError{Code: -32603, Message: "failed to decrypt account token"}
 	}
 	return commenter, token, nil
+}
+
+func (h *MCPHandler) commentProvider(account *models.SocialAccount) (platform.CommentAdapter, *mcpError) {
+	provider := h.providers[account.Platform]
+	commenter, ok := provider.(platform.CommentAdapter)
+	if !ok || commenter == nil {
+		return nil, &mcpError{Code: -32603, Message: fmt.Sprintf("comments are not supported for %s", account.Platform)}
+	}
+	return commenter, nil
 }
 
 func (h *MCPHandler) loadMCPPublicationStatus(ctx context.Context, publicationID string) (mcpPublicationStatus, *mcpError) {

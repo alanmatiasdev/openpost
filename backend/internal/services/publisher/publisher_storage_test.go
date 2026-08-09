@@ -43,9 +43,11 @@ func (f *fakePublisherStorage) Open(id string) (io.ReadCloser, error) {
 type fakePublisherAdapter struct {
 	uploadedBody    string
 	uploadCalls     int
+	uploadErr       error
 	publishCalls    int
 	publishErr      error
 	publishErrors   []error
+	preFenceErrors  []error
 	externalID      string
 	externalIDs     []string
 	lastRequest     *platform.PublishRequest
@@ -74,26 +76,39 @@ func (f *fakePublisherAdapter) UploadMedia(_ context.Context, _, _, _ string, re
 		return "", err
 	}
 	f.uploadedBody = string(body)
+	if f.uploadErr != nil {
+		return "", f.uploadErr
+	}
 	return "platform-media-id", nil
 }
-func (f *fakePublisherAdapter) Publish(_ context.Context, _, _ string, req *platform.PublishRequest) (string, error) {
+func (f *fakePublisherAdapter) Publish(_ context.Context, _, _ string, req *platform.PublishRequest) (platform.PublishResult, error) {
+	callIndex := f.publishCalls
 	f.publishCalls++
+	if callIndex < len(f.preFenceErrors) && f.preFenceErrors[callIndex] != nil {
+		return platform.PublishResult{}, f.preFenceErrors[callIndex]
+	}
+	if err := req.BeginWrite(platform.PublishResult{ProviderState: "fake_publish", RetrySafety: platform.PublishRetryNever}); err != nil {
+		return platform.PublishResult{}, err
+	}
 	f.lastRequest = req
 	requestCopy := *req
 	f.publishRequests = append(f.publishRequests, &requestCopy)
-	if index := f.publishCalls - 1; index < len(f.publishErrors) && f.publishErrors[index] != nil {
-		return "", f.publishErrors[index]
+	if callIndex < len(f.publishErrors) && f.publishErrors[callIndex] != nil {
+		return platform.PublishResult{}, f.publishErrors[callIndex]
 	}
 	if f.publishErr != nil {
-		return "", f.publishErr
+		return platform.PublishResult{}, f.publishErr
 	}
-	if index := f.publishCalls - 1; index < len(f.externalIDs) && f.externalIDs[index] != "" {
-		return f.externalIDs[index], nil
+	if callIndex < len(f.externalIDs) && f.externalIDs[callIndex] != "" {
+		result := platform.AcceptedPublishResult(f.externalIDs[callIndex])
+		return result, req.Checkpoint(result)
 	}
 	if f.externalID != "" {
-		return f.externalID, nil
+		result := platform.AcceptedPublishResult(f.externalID)
+		return result, req.Checkpoint(result)
 	}
-	return "external-post-id", nil
+	result := platform.AcceptedPublishResult("external-post-id")
+	return result, req.Checkpoint(result)
 }
 
 type fakeMetadataPublisherAdapter struct {

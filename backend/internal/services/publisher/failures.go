@@ -11,6 +11,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/openpost/backend/internal/platform"
+	"github.com/openpost/backend/internal/services/providerwrite"
 )
 
 const (
@@ -56,6 +57,23 @@ func (e *RetryableError) Error() string {
 func ClassifyFailure(err error) Failure {
 	if err == nil {
 		return Failure{}
+	}
+	if retryAfter, pending := providerwrite.IsPending(err); pending {
+		failure := failureForKind(FailureProviderProcessing, "provider_submission_pending", 0, retryAfter)
+		failure.Message = "The provider is still processing this publish. OpenPost will check its status without sending it again."
+		return failure
+	}
+	if providerwrite.IsAmbiguous(err) {
+		if retryAfter, retryable := providerwrite.IsRetryable(err); retryable {
+			failure := failureForKind(FailureProviderProcessing, "idempotent_provider_retry", 0, retryAfter)
+			failure.Message = "The provider result was interrupted. OpenPost will retry with the same provider idempotency key."
+			return failure
+		}
+		failure := failureForKind(FailureUnknown, "ambiguous_provider_write", 0, 0)
+		failure.Message = "The provider may have accepted this publish. OpenPost did not send it again. Check the provider before retrying manually."
+		failure.Action = FailureActionProvider
+		failure.Retryable = false
+		return failure
 	}
 	if retryClass, ok := platform.MediaRetryClassificationForError(err); ok {
 		failure := failureForKind(FailureProviderProcessing, "", 0, 0)

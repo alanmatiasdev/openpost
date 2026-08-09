@@ -208,7 +208,13 @@ func (t *ThreadsAdapter) UploadMedia(_ context.Context, _ string, _ string, _ st
 	return "", fmt.Errorf("threads requires publicly accessible URLs, use the media serve URL directly")
 }
 
-func (t *ThreadsAdapter) Publish(ctx context.Context, accessToken, userID string, req *PublishRequest) (string, error) {
+func (t *ThreadsAdapter) Publish(ctx context.Context, accessToken, userID string, req *PublishRequest) (PublishResult, error) {
+	return executePublishWrite(req, "publish_container", func() (string, error) {
+		return t.publish(ctx, accessToken, userID, req)
+	})
+}
+
+func (t *ThreadsAdapter) publish(ctx context.Context, accessToken, userID string, req *PublishRequest) (string, error) {
 	if len(req.PlatformMediaIDs) != len(req.Media) {
 		return "", fmt.Errorf("threads media publishing requires media metadata")
 	}

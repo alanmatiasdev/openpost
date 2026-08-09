@@ -111,6 +111,13 @@ func TestCustomOverrideSchedulesEvaluatesAndExecutes(t *testing.T) {
 	require.Equal(t, "repost-1", execution.ExternalID)
 	require.Len(t, adapter.requests, 1)
 	require.Equal(t, "post-1", adapter.requests[0].ExternalID)
+	_, err = db.NewUpdate().Model((*models.RepostExecution)(nil)).
+		Set("status = ?", StatusReady).
+		Set("external_id = ''").Set("external_url = ''").Set("completed_at = NULL").
+		Where("id = ?", execution.ID).Exec(ctx)
+	require.NoError(t, err)
+	require.NoError(t, service.execute(ctx, execution.ID))
+	require.Len(t, adapter.requests, 1, "recovery after a local commit failure must reuse the accepted repost result")
 	var usage models.UsageCounter
 	require.NoError(t, db.NewSelect().Model(&usage).
 		Where("workspace_id = ? AND metric = ?", workspace.ID, "provider_write_calls_monthly").
@@ -148,7 +155,7 @@ func repostTestDB(t *testing.T) *bun.DB {
 		(*models.Publication)(nil), (*models.Rendition)(nil), (*models.RepostPolicy)(nil), (*models.RepostPolicyAccount)(nil),
 		(*models.RepostAccountGrant)(nil), (*models.RepostExecution)(nil), (*models.AnalyticsSyncState)(nil),
 		(*models.UsageCounter)(nil),
-		(*models.PublicationLifecycleEvent)(nil), (*models.Job)(nil),
+		(*models.PublicationLifecycleEvent)(nil), (*models.Job)(nil), (*models.ProviderWriteAttempt)(nil),
 	} {
 		_, err := db.NewCreateTable().Model(model).IfNotExists().Exec(ctx)
 		require.NoError(t, err)

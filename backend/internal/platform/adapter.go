@@ -23,6 +23,123 @@ type PublishRequest struct {
 	MediaSettings    []map[string]interface{} // Per-media settings parallel to PlatformMediaIDs
 	Media            []MediaItem
 	ReplyToID        string // External ID of parent post (empty for first post in thread)
+
+	// OperationID and IdempotencyKey identify one logical provider mutation.
+	// They never contain content or credentials. Adapters may use the
+	// idempotency key only when their provider documents an idempotency
+	// contract for the exact endpoint being called.
+	OperationID    string
+	IdempotencyKey string
+
+	// Resume* contains only provider-issued, non-secret identifiers persisted by
+	// the durable provider-write fence. It lets an adapter reconcile an accepted
+	// asynchronous submission without replaying the original mutation.
+	ResumeProviderState     string
+	ResumeProviderReference string
+	ResumeExternalID        string
+
+	writeBoundary   PublishWriteBoundary
+	writeCheckpoint PublishWriteCheckpoint
+}
+
+type PublishSubmissionState string
+
+const (
+	PublishSubmissionNotSent  PublishSubmissionState = "not_sent"
+	PublishSubmissionAccepted PublishSubmissionState = "accepted"
+	PublishSubmissionPending  PublishSubmissionState = "pending"
+	PublishSubmissionRejected PublishSubmissionState = "rejected"
+	PublishSubmissionUnknown  PublishSubmissionState = "unknown"
+)
+
+type PublishRetrySafety string
+
+const (
+	PublishRetrySafe          PublishRetrySafety = "safe"
+	PublishRetryIdempotent    PublishRetrySafety = "idempotent"
+	PublishRetryReconcileOnly PublishRetrySafety = "reconcile_only"
+	PublishRetryNever         PublishRetrySafety = "never"
+)
+
+// PublishResult is the durable, provider-neutral result of one logical
+// publish. ProviderState and ProviderReference must contain only short,
+// provider-issued identifiers or normalized state names; raw responses,
+// request payloads, tokens, and credential-bearing URLs are forbidden.
+type PublishResult struct {
+	ExternalID        string
+	ExternalURL       string
+	SubmissionState   PublishSubmissionState
+	ProviderState     string
+	ProviderReference string
+	RetrySafety       PublishRetrySafety
+	ReconcileAfter    time.Duration
+	IdempotencyTTL    time.Duration
+}
+
+type PublishWriteBoundary func(PublishResult) error
+type PublishWriteCheckpoint func(PublishResult) error
+
+func AcceptedPublishResult(externalID string) PublishResult {
+	return PublishResult{
+		ExternalID:      externalID,
+		SubmissionState: PublishSubmissionAccepted,
+		RetrySafety:     PublishRetryNever,
+	}
+}
+
+// executePublishWrite wraps the externally visible mutation performed by an
+// adapter. Keeping this boundary in the platform package makes every adapter
+// participate in the same durable fence while still allowing provider-specific
+// validation and preparation to remain in the adapter implementation.
+func executePublishWrite(req *PublishRequest, providerState string, write func() (string, error)) (PublishResult, error) {
+	prepared := PublishResult{
+		ProviderState: providerState,
+		RetrySafety:   PublishRetryNever,
+	}
+	return executePreparedPublishWrite(req, prepared, write)
+}
+
+func executePreparedPublishWrite(req *PublishRequest, prepared PublishResult, write func() (string, error)) (PublishResult, error) {
+	if err := req.BeginWrite(prepared); err != nil {
+		return PublishResult{}, err
+	}
+	externalID, err := write()
+	if err != nil {
+		return prepared, err
+	}
+	result := AcceptedPublishResult(externalID)
+	result.ProviderState = prepared.ProviderState
+	result.ProviderReference = prepared.ProviderReference
+	if err := req.Checkpoint(result); err != nil {
+		return result, err
+	}
+	return result, nil
+}
+
+// SetWriteFence is called by the application execution primitive. Provider
+// adapters must call BeginWrite immediately before their first externally
+// visible mutation and Checkpoint as soon as they receive a durable provider
+// reference or accepted external ID.
+func (r *PublishRequest) SetWriteFence(boundary PublishWriteBoundary, checkpoint PublishWriteCheckpoint) {
+	if r == nil {
+		return
+	}
+	r.writeBoundary = boundary
+	r.writeCheckpoint = checkpoint
+}
+
+func (r *PublishRequest) BeginWrite(result PublishResult) error {
+	if r == nil || r.writeBoundary == nil {
+		return nil
+	}
+	return r.writeBoundary(result)
+}
+
+func (r *PublishRequest) Checkpoint(result PublishResult) error {
+	if r == nil || r.writeCheckpoint == nil {
+		return nil
+	}
+	return r.writeCheckpoint(result)
 }
 
 type MediaItem struct {
@@ -59,7 +176,13 @@ type UploadMediaRequest struct {
 // as Discord webhooks, that accept message fields and file bodies in one
 // request. Readers are owned by the caller and are valid only for this call.
 type DirectMediaPublisher interface {
-	PublishWithMedia(ctx context.Context, accessToken, accountID string, req *PublishRequest, media []UploadMediaRequest) (string, error)
+	PublishWithMedia(ctx context.Context, accessToken, accountID string, req *PublishRequest, media []UploadMediaRequest) (PublishResult, error)
+}
+
+// PublishReconciler performs a read-only lookup for a previously submitted
+// provider operation. It must never recreate the write.
+type PublishReconciler interface {
+	ReconcilePublish(ctx context.Context, accessToken, accountID, providerReference string) (PublishResult, error)
 }
 
 type MediaValidationIssue struct {
@@ -264,10 +387,11 @@ type Adapter interface {
 	// The reader is consumed and should contain the raw file bytes.
 	UploadMedia(ctx context.Context, accessToken, accountID, mimeType string, reader io.Reader) (string, error)
 
-	// Publishing — returns an external ID for the published post.
-	// For Bluesky this is JSON {"uri":"...","cid":"..."} for threading support.
-	// For LinkedIn this is the activity URN for the first post, or comment ID for replies.
-	Publish(ctx context.Context, accessToken, accountID string, req *PublishRequest) (string, error)
+	// Publishing returns a structured acceptance result. For Bluesky,
+	// ExternalID is JSON {"uri":"...","cid":"..."} for threading support.
+	// For LinkedIn it is the activity URN for the first post, or comment ID for
+	// replies.
+	Publish(ctx context.Context, accessToken, accountID string, req *PublishRequest) (PublishResult, error)
 }
 
 type CommentAttachment struct {

@@ -256,7 +256,16 @@ func (m *MastodonAdapter) waitForMediaProcessing(ctx context.Context, accessToke
 	return "", fmt.Errorf("mastodon media processing timed out")
 }
 
-func (m *MastodonAdapter) Publish(ctx context.Context, accessToken, _ string, req *PublishRequest) (string, error) {
+func (m *MastodonAdapter) Publish(ctx context.Context, accessToken, _ string, req *PublishRequest) (PublishResult, error) {
+	return executePreparedPublishWrite(req, PublishResult{
+		ProviderState: "create_status", RetrySafety: PublishRetryIdempotent,
+		IdempotencyTTL: time.Hour,
+	}, func() (string, error) {
+		return m.publish(ctx, accessToken, req)
+	})
+}
+
+func (m *MastodonAdapter) publish(ctx context.Context, accessToken string, req *PublishRequest) (string, error) {
 	// Update alt text for each uploaded media before attaching to the status
 	for i, mediaID := range req.PlatformMediaIDs {
 		altText := ""
@@ -289,9 +298,11 @@ func (m *MastodonAdapter) Publish(ctx context.Context, accessToken, _ string, re
 	if err != nil {
 		return "", err
 	}
-	respBody, err := DoFormURLEncodedValues(ctx, "POST", m.instanceURL+"/api/v1/statuses", formValues, map[string]string{
-		headerAuthorization: bearerPrefix + accessToken,
-	})
+	headers := map[string]string{headerAuthorization: bearerPrefix + accessToken}
+	if req.IdempotencyKey != "" {
+		headers["Idempotency-Key"] = req.IdempotencyKey
+	}
+	respBody, err := DoFormURLEncodedValues(ctx, "POST", m.instanceURL+"/api/v1/statuses", formValues, headers)
 	if err != nil {
 		return "", fmt.Errorf("posting to mastodon: %w", err)
 	}

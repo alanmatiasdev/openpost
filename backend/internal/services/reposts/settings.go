@@ -583,15 +583,20 @@ func ruleFromPolicy(policy models.RepostPolicy) Rule {
 }
 
 func (s *Service) repostAdapter(account models.SocialAccount) platform.RepostAdapter {
-	key := account.Platform
-	if account.Platform == "mastodon" {
-		key = "mastodon:" + account.InstanceURL
-	}
+	key := repostProviderKey(account)
 	s.providersMu.RLock()
 	adapter := s.providers[key]
 	s.providersMu.RUnlock()
 	repost, _ := adapter.(platform.RepostAdapter)
 	return repost
+}
+
+func repostProviderKey(account models.SocialAccount) string {
+	key := account.Platform
+	if account.Platform == "mastodon" {
+		key = "mastodon:" + account.InstanceURL
+	}
+	return key
 }
 
 func firstNonEmpty(values ...string) string {

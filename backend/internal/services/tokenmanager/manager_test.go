@@ -39,8 +39,8 @@ func (s *stubAdapter) GetProfile(context.Context, string) (*platform.UserProfile
 func (s *stubAdapter) UploadMedia(context.Context, string, string, string, io.Reader) (string, error) {
 	return "", nil
 }
-func (s *stubAdapter) Publish(context.Context, string, string, *platform.PublishRequest) (string, error) {
-	return "", nil
+func (s *stubAdapter) Publish(context.Context, string, string, *platform.PublishRequest) (platform.PublishResult, error) {
+	return platform.PublishResult{}, nil
 }
 
 func createTestDB(t *testing.T) *bun.DB {

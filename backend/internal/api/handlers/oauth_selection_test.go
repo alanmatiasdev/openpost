@@ -57,8 +57,8 @@ func (a *selectionTestAdapter) UploadMedia(context.Context, string, string, stri
 	return "", nil
 }
 
-func (a *selectionTestAdapter) Publish(context.Context, string, string, *platform.PublishRequest) (string, error) {
-	return "", nil
+func (a *selectionTestAdapter) Publish(context.Context, string, string, *platform.PublishRequest) (platform.PublishResult, error) {
+	return platform.PublishResult{}, nil
 }
 
 func (a *selectionTestAdapter) ListAccountSelections(_ context.Context, token *platform.TokenResult) ([]platform.AccountSelectionOption, error) {

@@ -857,7 +857,13 @@ func (y *YouTubeAdapter) startYouTubeResumableUpload(ctx context.Context, access
 	return sessionURL, nil
 }
 
-func (y *YouTubeAdapter) Publish(_ context.Context, _ string, _ string, req *PublishRequest) (string, error) {
+func (y *YouTubeAdapter) Publish(_ context.Context, _ string, _ string, req *PublishRequest) (PublishResult, error) {
+	return executePublishWrite(req, "finalize_resumable_upload", func() (string, error) {
+		return y.publish(req)
+	})
+}
+
+func (y *YouTubeAdapter) publish(req *PublishRequest) (string, error) {
 	if req.ReplyToID != "" {
 		return "", fmt.Errorf("youtube thread replies are not supported")
 	}

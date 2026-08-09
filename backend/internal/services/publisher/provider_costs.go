@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/openpost/backend/internal/platform"
+	"github.com/openpost/backend/internal/services/providerwrite"
 	"github.com/openpost/backend/internal/services/usage"
 )
 
@@ -34,11 +35,12 @@ var xProviderURLPattern = regexp.MustCompile(
 )
 
 func WithJobExecution(ctx context.Context, jobID string, attempt int, lockedAt time.Time) context.Context {
-	return context.WithValue(ctx, jobExecutionContextKey{}, jobExecution{
+	ctx = context.WithValue(ctx, jobExecutionContextKey{}, jobExecution{
 		ID:       strings.TrimSpace(jobID),
 		Attempt:  attempt,
 		LockedAt: lockedAt.UTC(),
 	})
+	return providerwrite.WithJobExecution(ctx, jobID, attempt, lockedAt)
 }
 
 func (s *Service) reserveProviderPublishCost(

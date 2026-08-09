@@ -67,8 +67,8 @@ func (s *stubAdapter) GetProfile(context.Context, string) (*platform.UserProfile
 func (s *stubAdapter) UploadMedia(context.Context, string, string, string, io.Reader) (string, error) {
 	return "", nil
 }
-func (s *stubAdapter) Publish(context.Context, string, string, *platform.PublishRequest) (string, error) {
-	return "", nil
+func (s *stubAdapter) Publish(context.Context, string, string, *platform.PublishRequest) (platform.PublishResult, error) {
+	return platform.PublishResult{}, nil
 }
 
 func createTestDB(t *testing.T) *bun.DB {
@@ -78,7 +78,7 @@ func createTestDB(t *testing.T) *bun.DB {
 	require.NoError(t, err)
 
 	db := bun.NewDB(sqldb, sqlitedialect.New())
-	for _, model := range []interface{}{(*models.SocialAccount)(nil), (*models.Job)(nil)} {
+	for _, model := range []interface{}{(*models.SocialAccount)(nil), (*models.Job)(nil), (*models.ProviderWriteAttempt)(nil)} {
 		_, err = db.NewCreateTable().Model(model).IfNotExists().Exec(context.Background())
 		require.NoError(t, err)
 	}

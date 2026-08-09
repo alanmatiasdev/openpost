@@ -14,7 +14,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/platform"
+	"github.com/openpost/backend/internal/services/lifecycle"
 	"github.com/openpost/backend/internal/services/notifications"
+	"github.com/openpost/backend/internal/services/providerwrite"
 	"github.com/uptrace/bun"
 )
 
@@ -116,10 +118,27 @@ type subjectJob struct {
 }
 
 type engagementActionJob struct {
-	ItemID  string `json:"item_id"`
-	Action  string `json:"action"`
-	Message string `json:"message,omitempty"`
-	UserID  string `json:"user_id"`
+	ItemID            string `json:"item_id,omitempty"`
+	JobID             string `json:"job_id,omitempty"`
+	WorkspaceID       string `json:"workspace_id,omitempty"`
+	PublicationID     string `json:"publication_id,omitempty"`
+	RenditionID       string `json:"rendition_id,omitempty"`
+	SocialAccountID   string `json:"social_account_id,omitempty"`
+	ProviderCommentID string `json:"provider_comment_id,omitempty"`
+	Action            string `json:"action"`
+	Message           string `json:"message,omitempty"`
+	UserID            string `json:"user_id"`
+}
+
+type ProviderCommentActionInput struct {
+	WorkspaceID       string
+	PublicationID     string
+	RenditionID       string
+	SocialAccountID   string
+	ProviderCommentID string
+	Action            string
+	Message           string
+	UserID            string
 }
 
 func (s *Service) handleSweep(ctx context.Context) error {
@@ -696,7 +715,74 @@ func (s *Service) QueueEngagementAction(ctx context.Context, itemID, action, mes
 	return err
 }
 
+// QueueProviderCommentAction moves the publication comment endpoints onto the
+// same durable, one-attempt provider-write path as the communications inbox.
+// The opaque provider comment ID and reply body stay in the application job
+// payload; provider_write_attempts stores only their digest.
+func QueueProviderCommentAction(ctx context.Context, db bun.IDB, input ProviderCommentActionInput) (string, error) {
+	input.WorkspaceID = strings.TrimSpace(input.WorkspaceID)
+	input.PublicationID = strings.TrimSpace(input.PublicationID)
+	input.RenditionID = strings.TrimSpace(input.RenditionID)
+	input.SocialAccountID = strings.TrimSpace(input.SocialAccountID)
+	input.ProviderCommentID = strings.TrimSpace(input.ProviderCommentID)
+	input.Action = strings.ToLower(strings.TrimSpace(input.Action))
+	input.Message = strings.TrimSpace(input.Message)
+	input.UserID = strings.TrimSpace(input.UserID)
+	if input.WorkspaceID == "" || input.PublicationID == "" || input.RenditionID == "" ||
+		input.SocialAccountID == "" || input.ProviderCommentID == "" || input.UserID == "" {
+		return "", fmt.Errorf("provider comment action ownership is required")
+	}
+	switch input.Action {
+	case "reply":
+		if input.Message == "" {
+			return "", fmt.Errorf("reply message is required")
+		}
+	case "hide", "delete":
+		if input.Message != "" {
+			return "", fmt.Errorf("%s comment action cannot include a message", input.Action)
+		}
+	default:
+		return "", fmt.Errorf("unsupported provider comment action %q", input.Action)
+	}
+	var ownerCount int
+	if err := db.NewSelect().
+		ColumnExpr("COUNT(*)").
+		TableExpr("renditions AS rendition").
+		Join("JOIN publications AS publication ON publication.id = rendition.publication_id").
+		Join("JOIN social_accounts AS account ON account.id = rendition.social_account_id").
+		Where("publication.id = ? AND publication.workspace_id = ?", input.PublicationID, input.WorkspaceID).
+		Where("rendition.id = ? AND rendition.social_account_id = ?", input.RenditionID, input.SocialAccountID).
+		Where("account.workspace_id = publication.workspace_id AND account.is_active = ?", true).
+		Scan(ctx, &ownerCount); err != nil {
+		return "", fmt.Errorf("validate provider comment action owner: %w", err)
+	}
+	if ownerCount != 1 {
+		return "", fmt.Errorf("provider comment action target does not belong to the publication workspace")
+	}
+	jobID := uuid.NewString()
+	payload, err := json.Marshal(engagementActionJob{
+		JobID: jobID, WorkspaceID: input.WorkspaceID, PublicationID: input.PublicationID,
+		RenditionID: input.RenditionID, SocialAccountID: input.SocialAccountID,
+		ProviderCommentID: input.ProviderCommentID, Action: input.Action,
+		Message: input.Message, UserID: input.UserID,
+	})
+	if err != nil {
+		return "", fmt.Errorf("encode provider comment action: %w", err)
+	}
+	job := &models.Job{
+		ID: jobID, Type: JobTypeEngagementAct, Payload: string(payload),
+		Status: "pending", RunAt: time.Now().UTC(), MaxAttempts: 1,
+	}
+	if _, err := db.NewInsert().Model(job).Exec(ctx); err != nil {
+		return "", fmt.Errorf("queue provider comment action: %w", err)
+	}
+	return jobID, nil
+}
+
 func (s *Service) performEngagementAction(ctx context.Context, input engagementActionJob) error {
+	if input.ProviderCommentID != "" || input.RenditionID != "" || input.JobID != "" {
+		return s.performProviderCommentAction(ctx, input)
+	}
 	var item models.EngagementItem
 	if err := s.db.NewSelect().Model(&item).Where("id = ?", input.ItemID).Scan(ctx); err != nil {
 		return err
@@ -728,48 +814,302 @@ func (s *Service) executeEngagementAction(
 	item *models.EngagementItem,
 	input engagementActionJob,
 ) error {
+	fingerprint, err := providerwrite.Fingerprint("communications-engagement-action-v1", map[string]string{
+		"item_id": item.ID, "remote_id": item.RemoteID, "action": input.Action, "message": input.Message,
+	})
+	if err != nil {
+		return err
+	}
+	execution, _ := providerwrite.JobExecutionFromContext(ctx)
+	operationOwner := execution.ID
+	if operationOwner == "" {
+		operationOwner = item.ID + ":" + input.Action
+	}
+	_, err = providerwrite.New(s.db).Execute(ctx, providerwrite.Input{
+		OperationID: "communications:" + operationOwner,
+		JobID:       execution.ID, WorkspaceID: item.WorkspaceID,
+		SocialAccountID: account.ID, TargetKey: communicationProviderKey(account),
+		Provider: account.Platform, Operation: "engagement_" + input.Action,
+		PayloadFingerprint: fingerprint,
+	}, func(sendCtx context.Context, control *providerwrite.Control) (platform.PublishResult, error) {
+		if err := control.Begin(platform.PublishResult{
+			ProviderState: "engagement_" + input.Action,
+			RetrySafety:   platform.PublishRetryNever,
+		}); err != nil {
+			return platform.PublishResult{}, err
+		}
+		return sendEngagementAction(sendCtx, commenter, token, account, item, input)
+	}, nil)
+	if err != nil {
+		return err
+	}
 	switch input.Action {
 	case "reply":
-		if strings.TrimSpace(input.Message) == "" {
-			return fmt.Errorf("reply message is required")
-		}
-		_, err := commenter.ReplyToComment(ctx, token, account.AccountID, item.RemoteID, input.Message)
-		return err
+		return nil
 	case "hide":
-		return s.hideEngagementItem(ctx, commenter, token, account, item)
+		_, err = s.db.NewUpdate().Model(item).Set("hidden = ?", true).WherePK().Exec(ctx)
+		return err
 	case "delete":
-		return s.deleteEngagementItem(ctx, commenter, token, account, item)
+		return s.markEngagementItemDeleted(ctx, item)
 	case "like", "unlike":
-		return s.reactToEngagementItem(ctx, commenter, token, account, item, input.Action == "like")
+		liked := input.Action == "like"
+		_, err = s.db.NewUpdate().Model(item).
+			Set("liked = ?", liked).
+			Set("can_like = ?", !liked).
+			Set("can_unlike = ?", liked).
+			Set("updated_at = ?", s.now()).
+			WherePK().Exec(ctx)
+		return err
 	default:
 		return fmt.Errorf("unsupported engagement action %q", input.Action)
 	}
 }
 
-func (s *Service) hideEngagementItem(
+func sendEngagementAction(
 	ctx context.Context,
 	commenter platform.CommentAdapter,
 	token string,
 	account models.SocialAccount,
 	item *models.EngagementItem,
-) error {
-	if err := commenter.HideComment(ctx, token, account.AccountID, item.RemoteID); err != nil {
-		return err
+	input engagementActionJob,
+) (platform.PublishResult, error) {
+	switch input.Action {
+	case "reply":
+		if strings.TrimSpace(input.Message) == "" {
+			return platform.PublishResult{}, fmt.Errorf("reply message is required")
+		}
+		externalID, err := commenter.ReplyToComment(ctx, token, account.AccountID, item.RemoteID, input.Message)
+		if err != nil {
+			return platform.PublishResult{}, err
+		}
+		return platform.AcceptedPublishResult(externalID), nil
+	case "hide":
+		if err := commenter.HideComment(ctx, token, account.AccountID, item.RemoteID); err != nil {
+			return platform.PublishResult{}, err
+		}
+		return platform.AcceptedPublishResult(""), nil
+	case "delete":
+		if err := commenter.DeleteComment(ctx, token, account.AccountID, item.RemoteID); err != nil {
+			return platform.PublishResult{}, err
+		}
+		return platform.AcceptedPublishResult(""), nil
+	case "like", "unlike":
+		reactions, supported := commenter.(platform.CommentReactionAdapter)
+		if !supported {
+			return platform.PublishResult{}, fmt.Errorf("reactions are unsupported")
+		}
+		var err error
+		if input.Action == "like" {
+			err = reactions.LikeComment(ctx, token, account.AccountID, item.RemoteID)
+		} else {
+			err = reactions.UnlikeComment(ctx, token, account.AccountID, item.RemoteID)
+		}
+		if err != nil {
+			return platform.PublishResult{}, err
+		}
+		return platform.AcceptedPublishResult(""), nil
+	default:
+		return platform.PublishResult{}, fmt.Errorf("unsupported engagement action %q", input.Action)
 	}
-	_, err := s.db.NewUpdate().Model(item).Set("hidden = ?", true).WherePK().Exec(ctx)
-	return err
 }
 
-func (s *Service) deleteEngagementItem(
-	ctx context.Context,
-	commenter platform.CommentAdapter,
-	token string,
-	account models.SocialAccount,
-	item *models.EngagementItem,
-) error {
-	if err := commenter.DeleteComment(ctx, token, account.AccountID, item.RemoteID); err != nil {
+func (s *Service) performProviderCommentAction(ctx context.Context, input engagementActionJob) error {
+	input, err := normalizeProviderCommentActionJob(input)
+	if err != nil {
 		return err
 	}
+	execution, hasExecution := providerwrite.JobExecutionFromContext(ctx)
+	if hasExecution && execution.ID != input.JobID {
+		return fmt.Errorf("provider comment action job identity changed")
+	}
+	account, err := s.loadProviderCommentActionAccount(ctx, input)
+	if err != nil {
+		return err
+	}
+	commenter, ok := s.adapter(account).(platform.CommentAdapter)
+	if !ok || commenter == nil {
+		return fmt.Errorf("provider comment actions are unsupported")
+	}
+	if s.tokenSource == nil {
+		return fmt.Errorf("provider comment token source is unavailable")
+	}
+	token, err := s.tokenSource.GetValidAccessToken(ctx, account.ID)
+	if err != nil {
+		return fmt.Errorf("load provider comment token: %w", err)
+	}
+	result, writeErr := s.executeProviderCommentWrite(ctx, input, account, commenter, token)
+	return s.finishProviderCommentAction(ctx, input, result, writeErr)
+}
+
+func normalizeProviderCommentActionJob(input engagementActionJob) (engagementActionJob, error) {
+	input.JobID = strings.TrimSpace(input.JobID)
+	input.WorkspaceID = strings.TrimSpace(input.WorkspaceID)
+	input.PublicationID = strings.TrimSpace(input.PublicationID)
+	input.RenditionID = strings.TrimSpace(input.RenditionID)
+	input.SocialAccountID = strings.TrimSpace(input.SocialAccountID)
+	input.ProviderCommentID = strings.TrimSpace(input.ProviderCommentID)
+	input.Action = strings.ToLower(strings.TrimSpace(input.Action))
+	input.Message = strings.TrimSpace(input.Message)
+	if input.JobID == "" || input.WorkspaceID == "" || input.PublicationID == "" ||
+		input.RenditionID == "" || input.SocialAccountID == "" || input.ProviderCommentID == "" {
+		return engagementActionJob{}, fmt.Errorf("provider comment action job is incomplete")
+	}
+	switch input.Action {
+	case "reply":
+		if input.Message == "" {
+			return engagementActionJob{}, fmt.Errorf("provider comment reply message is required")
+		}
+	case "hide", "delete":
+		if input.Message != "" {
+			return engagementActionJob{}, fmt.Errorf("provider comment %s action cannot include a message", input.Action)
+		}
+	default:
+		return engagementActionJob{}, fmt.Errorf("unsupported provider comment action %q", input.Action)
+	}
+	return input, nil
+}
+
+func (s *Service) loadProviderCommentActionAccount(ctx context.Context, input engagementActionJob) (models.SocialAccount, error) {
+	var rendition models.Rendition
+	if err := s.db.NewSelect().Model(&rendition).
+		Where("id = ? AND publication_id = ? AND social_account_id = ?", input.RenditionID, input.PublicationID, input.SocialAccountID).
+		Scan(ctx); err != nil {
+		return models.SocialAccount{}, fmt.Errorf("load provider comment rendition: %w", err)
+	}
+	var publication models.Publication
+	if err := s.db.NewSelect().Model(&publication).
+		Where("id = ? AND workspace_id = ?", input.PublicationID, input.WorkspaceID).
+		Scan(ctx); err != nil {
+		return models.SocialAccount{}, fmt.Errorf("load provider comment publication: %w", err)
+	}
+	var account models.SocialAccount
+	if err := s.db.NewSelect().Model(&account).
+		Where("id = ? AND workspace_id = ? AND is_active = ?", input.SocialAccountID, input.WorkspaceID, true).
+		Scan(ctx); err != nil {
+		return models.SocialAccount{}, fmt.Errorf("load provider comment account: %w", err)
+	}
+	return account, nil
+}
+
+func (s *Service) finishProviderCommentAction(
+	ctx context.Context,
+	input engagementActionJob,
+	result platform.PublishResult,
+	writeErr error,
+) error {
+	if writeErr != nil {
+		s.recordProviderCommentLifecycle(ctx, input, lifecycle.EventModerationActionFailed, lifecycle.StatusFailed, "comment "+input.Action+" failed", map[string]any{
+			"action": input.Action, "provider_comment_id": input.ProviderCommentID,
+			"error_class": providerCommentErrorClass(writeErr),
+		})
+		_ = s.notify(ctx, input.UserID, input.WorkspaceID, notifications.TypeReplyFailed, "Comment action failed", "OpenPost did not repeat the provider action. Check the provider before trying again.", "/publications")
+		return writeErr
+	}
+	message := "comment " + input.Action + " completed"
+	switch input.Action {
+	case "reply":
+		message = "comment reply sent"
+	case "hide":
+		message = "comment hidden"
+	case "delete":
+		message = "comment deleted"
+	}
+	metadata := map[string]any{
+		"action": input.Action, "provider_comment_id": input.ProviderCommentID,
+	}
+	if result.ExternalID != "" {
+		metadata["reply_id"] = result.ExternalID
+	}
+	s.recordProviderCommentLifecycle(ctx, input, lifecycle.EventCommentActionSucceeded, lifecycle.StatusSucceeded, message, metadata)
+	return nil
+}
+
+func (s *Service) executeProviderCommentWrite(
+	ctx context.Context,
+	input engagementActionJob,
+	account models.SocialAccount,
+	commenter platform.CommentAdapter,
+	token string,
+) (platform.PublishResult, error) {
+	fingerprint, err := providerwrite.Fingerprint("provider-comment-action-v1", map[string]string{
+		"workspace_id": input.WorkspaceID, "publication_id": input.PublicationID,
+		"rendition_id": input.RenditionID, "social_account_id": input.SocialAccountID,
+		"provider_comment_id": input.ProviderCommentID, "action": input.Action,
+		"message": input.Message,
+	})
+	if err != nil {
+		return platform.PublishResult{}, err
+	}
+	return providerwrite.New(s.db).Execute(ctx, providerwrite.Input{
+		OperationID: "provider-comment:" + input.JobID, JobID: input.JobID,
+		WorkspaceID: input.WorkspaceID, SocialAccountID: account.ID,
+		TargetKey: communicationProviderKey(account), Provider: account.Platform,
+		Operation: "comment_" + input.Action, PayloadFingerprint: fingerprint,
+	}, func(sendCtx context.Context, control *providerwrite.Control) (platform.PublishResult, error) {
+		if beginErr := control.Begin(platform.PublishResult{
+			ProviderState: "comment_" + input.Action, RetrySafety: platform.PublishRetryNever,
+		}); beginErr != nil {
+			return platform.PublishResult{}, beginErr
+		}
+		switch input.Action {
+		case "reply":
+			replyID, replyErr := commenter.ReplyToComment(sendCtx, token, account.AccountID, input.ProviderCommentID, input.Message)
+			if replyErr != nil {
+				return platform.PublishResult{}, replyErr
+			}
+			return platform.AcceptedPublishResult(replyID), nil
+		case "hide":
+			if hideErr := commenter.HideComment(sendCtx, token, account.AccountID, input.ProviderCommentID); hideErr != nil {
+				return platform.PublishResult{}, hideErr
+			}
+			return platform.AcceptedPublishResult(""), nil
+		case "delete":
+			if deleteErr := commenter.DeleteComment(sendCtx, token, account.AccountID, input.ProviderCommentID); deleteErr != nil {
+				return platform.PublishResult{}, deleteErr
+			}
+			return platform.AcceptedPublishResult(""), nil
+		default:
+			return platform.PublishResult{}, fmt.Errorf("unsupported provider comment action %q", input.Action)
+		}
+	}, nil)
+}
+
+func (s *Service) recordProviderCommentLifecycle(
+	ctx context.Context,
+	input engagementActionJob,
+	eventType, status, message string,
+	metadata map[string]any,
+) {
+	metadata["job_id"] = input.JobID
+	_, _ = lifecycle.NewService(s.db).Record(ctx, lifecycle.EventInput{
+		WorkspaceID: input.WorkspaceID, PublicationID: input.PublicationID,
+		RenditionID: input.RenditionID, Type: eventType, Status: status,
+		Message: message, Metadata: metadata,
+		IdempotencyKey: "provider-comment:" + input.JobID + ":" + status,
+	})
+}
+
+func providerCommentErrorClass(err error) string {
+	if providerwrite.IsAmbiguous(err) {
+		return "ambiguous_provider_write"
+	}
+	if _, pending := providerwrite.IsPending(err); pending {
+		return "provider_processing"
+	}
+	var providerErr *platform.HTTPError
+	if errors.As(err, &providerErr) {
+		if providerErr.StatusCode >= 400 && providerErr.StatusCode < 500 {
+			return "provider_rejected"
+		}
+		return "provider_unavailable"
+	}
+	return "provider_write_failed"
+}
+
+func (s *Service) markEngagementItemDeleted(
+	ctx context.Context,
+	item *models.EngagementItem,
+) error {
 	now := s.now()
 	_, err := s.db.NewUpdate().Model(item).
 		Set("body = ''").
@@ -781,36 +1121,6 @@ func (s *Service) deleteEngagementItem(
 		Set("can_like = ?", false).
 		Set("can_unlike = ?", false).
 		Set("updated_at = ?", now).
-		WherePK().Exec(ctx)
-	return err
-}
-
-func (s *Service) reactToEngagementItem(
-	ctx context.Context,
-	commenter platform.CommentAdapter,
-	token string,
-	account models.SocialAccount,
-	item *models.EngagementItem,
-	liked bool,
-) error {
-	reactions, supported := commenter.(platform.CommentReactionAdapter)
-	if !supported {
-		return fmt.Errorf("reactions are unsupported")
-	}
-	var err error
-	if liked {
-		err = reactions.LikeComment(ctx, token, account.AccountID, item.RemoteID)
-	} else {
-		err = reactions.UnlikeComment(ctx, token, account.AccountID, item.RemoteID)
-	}
-	if err != nil {
-		return err
-	}
-	_, err = s.db.NewUpdate().Model(item).
-		Set("liked = ?", liked).
-		Set("can_like = ?", !liked).
-		Set("can_unlike = ?", liked).
-		Set("updated_at = ?", s.now()).
 		WherePK().Exec(ctx)
 	return err
 }
@@ -899,16 +1209,13 @@ func (s *Service) sendMessage(ctx context.Context, messageID string) error {
 	if err != nil {
 		return err
 	}
-	result, err := messenger.SendMessage(ctx, token, platform.SendMessageRequest{
-		AccountID:            account.AccountID,
-		RemoteConversationID: conversation.RemoteConversationID,
-		CounterpartRemoteID:  conversation.CounterpartRemoteID,
-		CounterpartHandle:    conversation.CounterpartHandle,
-		ReplyToRemoteID:      conversation.LastRemoteMessageID,
-		Body:                 message.Body,
-	})
+	writeResult, err := s.sendMessageThroughFence(ctx, message, conversation, account, messenger, token)
 	if err != nil {
-		_, _ = s.db.NewUpdate().Model(&message).Set("send_status = ?", "failed").Set("error_message = ?", "The provider rejected this message.").Set("updated_at = ?", s.now()).WherePK().Exec(ctx)
+		errorMessage := "The provider rejected this message."
+		if providerwrite.IsAmbiguous(err) {
+			errorMessage = "The provider may have accepted this message. OpenPost did not send it again."
+		}
+		_, _ = s.db.NewUpdate().Model(&message).Set("send_status = ?", "failed").Set("error_message = ?", errorMessage).Set("updated_at = ?", s.now()).WherePK().Exec(ctx)
 		for _, userID := range s.workspaceMemberIDs(ctx, conversation.WorkspaceID) {
 			_ = s.notify(ctx, userID, conversation.WorkspaceID, notifications.TypeReplyFailed,
 				"Message failed", "OpenPost could not send a message to "+firstNonEmpty(conversation.CounterpartName, conversation.CounterpartHandle, "this conversation")+".",
@@ -916,13 +1223,10 @@ func (s *Service) sendMessage(ctx context.Context, messageID string) error {
 		}
 		return err
 	}
-	createdAt := result.CreatedAt
-	if createdAt.IsZero() {
-		createdAt = s.now()
-	}
+	createdAt := s.now()
 	return s.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
 		if _, err := tx.NewUpdate().Model(&message).
-			Set("remote_message_id = ?", result.RemoteMessageID).
+			Set("remote_message_id = ?", writeResult.ExternalID).
 			Set("send_status = ?", "sent").
 			Set("error_message = ''").
 			Set("remote_created_at = ?", createdAt).
@@ -931,13 +1235,54 @@ func (s *Service) sendMessage(ctx context.Context, messageID string) error {
 			return err
 		}
 		_, err := tx.NewUpdate().Model(&conversation).
-			Set("last_remote_message_id = ?", result.RemoteMessageID).
+			Set("last_remote_message_id = ?", writeResult.ExternalID).
 			Set("last_message_at = ?", createdAt).
 			Set("last_message_preview = ?", message.Body).
 			Set("updated_at = ?", s.now()).
 			WherePK().Exec(txCtx)
 		return err
 	})
+}
+
+func (s *Service) sendMessageThroughFence(
+	ctx context.Context,
+	message models.DirectMessage,
+	conversation models.Conversation,
+	account models.SocialAccount,
+	messenger platform.MessagingAdapter,
+	token string,
+) (platform.PublishResult, error) {
+	request := platform.SendMessageRequest{
+		AccountID: account.AccountID, RemoteConversationID: conversation.RemoteConversationID,
+		CounterpartRemoteID: conversation.CounterpartRemoteID, CounterpartHandle: conversation.CounterpartHandle,
+		ReplyToRemoteID: conversation.LastRemoteMessageID, Body: message.Body,
+	}
+	fingerprint, err := providerwrite.Fingerprint("communications-message-send-v1", request)
+	if err != nil {
+		return platform.PublishResult{}, err
+	}
+	execution, _ := providerwrite.JobExecutionFromContext(ctx)
+	operationOwner := execution.ID
+	if operationOwner == "" {
+		operationOwner = message.ID
+	}
+	return providerwrite.New(s.db).Execute(ctx, providerwrite.Input{
+		OperationID: "communications:" + operationOwner,
+		JobID:       execution.ID, WorkspaceID: message.WorkspaceID,
+		SocialAccountID: account.ID, TargetKey: communicationProviderKey(account),
+		Provider: account.Platform, Operation: "message_send", PayloadFingerprint: fingerprint,
+	}, func(sendCtx context.Context, control *providerwrite.Control) (platform.PublishResult, error) {
+		if beginErr := control.Begin(platform.PublishResult{
+			ProviderState: "send_message", RetrySafety: platform.PublishRetryNever,
+		}); beginErr != nil {
+			return platform.PublishResult{}, beginErr
+		}
+		result, sendErr := messenger.SendMessage(sendCtx, token, request)
+		if sendErr != nil {
+			return platform.PublishResult{}, sendErr
+		}
+		return platform.AcceptedPublishResult(result.RemoteMessageID), nil
+	}, nil)
 }
 
 func (s *Service) ListEngagement(ctx context.Context, workspaceID, platformName, accountID, publicationID string, unreadOnly, archived bool, limit, offset int) ([]models.EngagementItem, int, error) {
@@ -1301,13 +1646,18 @@ func (s *Service) SetConversationState(ctx context.Context, workspaceID, convers
 }
 
 func (s *Service) adapter(account models.SocialAccount) platform.Adapter {
+	key := communicationProviderKey(account)
+	s.providersMu.RLock()
+	defer s.providersMu.RUnlock()
+	return s.providers[key]
+}
+
+func communicationProviderKey(account models.SocialAccount) string {
 	key := account.Platform
 	if account.Platform == "mastodon" {
 		key += ":" + account.InstanceURL
 	}
-	s.providersMu.RLock()
-	defer s.providersMu.RUnlock()
-	return s.providers[key]
+	return key
 }
 
 func (s *Service) due(ctx context.Context, capability, subjectType, subjectID string, now time.Time) bool {

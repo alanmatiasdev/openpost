@@ -13,6 +13,7 @@ import (
 	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/platform"
 	"github.com/openpost/backend/internal/services/lifecycle"
+	"github.com/openpost/backend/internal/services/providerwrite"
 )
 
 const (
@@ -339,29 +340,12 @@ func (s *Service) execute(ctx context.Context, executionID string) error {
 	if adapter == nil {
 		return s.finishExecution(ctx, execution, "provider_unsupported", "The target provider no longer supports native reposts.")
 	}
-	allowed, reason, err := s.checkProviderWriteQuota(ctx, execution.WorkspaceID)
-	if err != nil {
-		return err
-	}
-	if !allowed {
-		if strings.TrimSpace(reason) == "" {
-			reason = "The workspace provider-write quota was reached."
-		}
-		return s.finishExecution(ctx, execution, "quota_exceeded", reason)
-	}
 	token, err := s.tokenSource.GetValidAccessToken(ctx, target.ID)
 	if err != nil {
 		s.markExecutionFailed(ctx, execution, "authentication_failed", "The target account needs to be reconnected.")
 		return fmt.Errorf("repost target authentication: %w", err)
 	}
-	sourceURL := repostSourceURL(source, rendition)
-	s.recordProviderWrite(ctx, execution.WorkspaceID)
-	result, err := adapter.Repost(ctx, token, target.AccountID, platform.RepostRequest{
-		SourceAccountID:   source.AccountID,
-		SourceInstanceURL: source.InstanceURL,
-		ExternalID:        rendition.ExternalID,
-		ExternalURL:       sourceURL,
-	})
+	result, err := s.executeRepostWrite(ctx, *execution, source, target, rendition, adapter, token)
 	if err != nil {
 		s.markExecutionFailed(ctx, execution, "provider_write_failed", "The provider write failed. OpenPost did not retry because the result may be ambiguous.")
 		return err
@@ -386,6 +370,55 @@ func (s *Service) execute(ctx context.Context, executionID string) error {
 		"external_url":      result.ExternalURL,
 	})
 	return nil
+}
+
+func (s *Service) executeRepostWrite(
+	ctx context.Context,
+	execution models.RepostExecution,
+	source, target models.SocialAccount,
+	rendition models.Rendition,
+	adapter platform.RepostAdapter,
+	token string,
+) (platform.PublishResult, error) {
+	request := platform.RepostRequest{
+		SourceAccountID: source.AccountID, SourceInstanceURL: source.InstanceURL,
+		ExternalID: rendition.ExternalID, ExternalURL: repostSourceURL(source, rendition),
+	}
+	fingerprint, err := providerwrite.Fingerprint("provider-repost-v1", request)
+	if err != nil {
+		return platform.PublishResult{}, err
+	}
+	jobExecution, _ := providerwrite.JobExecutionFromContext(ctx)
+	return providerwrite.New(s.db).Execute(ctx, providerwrite.Input{
+		OperationID: "repost:" + execution.ID,
+		JobID:       jobExecution.ID, WorkspaceID: execution.WorkspaceID,
+		SocialAccountID: target.ID, TargetKey: repostProviderKey(target),
+		Provider: target.Platform, Operation: "repost", PayloadFingerprint: fingerprint,
+	}, func(sendCtx context.Context, control *providerwrite.Control) (platform.PublishResult, error) {
+		allowed, reason, quotaErr := s.checkProviderWriteQuota(sendCtx, execution.WorkspaceID)
+		if quotaErr != nil {
+			return platform.PublishResult{}, quotaErr
+		}
+		if !allowed {
+			if strings.TrimSpace(reason) == "" {
+				reason = "The workspace provider-write quota was reached."
+			}
+			return platform.PublishResult{}, fmt.Errorf("repost provider-write quota: %s", reason)
+		}
+		if beginErr := control.Begin(platform.PublishResult{
+			ProviderState: "repost", RetrySafety: platform.PublishRetryNever,
+		}); beginErr != nil {
+			return platform.PublishResult{}, beginErr
+		}
+		repostResult, repostErr := adapter.Repost(sendCtx, token, target.AccountID, request)
+		if repostErr != nil {
+			return platform.PublishResult{}, repostErr
+		}
+		s.recordProviderWrite(sendCtx, execution.WorkspaceID)
+		accepted := platform.AcceptedPublishResult(repostResult.ExternalID)
+		accepted.ExternalURL = repostResult.ExternalURL
+		return accepted, nil
+	}, nil)
 }
 
 func repostSourceURL(source models.SocialAccount, rendition models.Rendition) string {

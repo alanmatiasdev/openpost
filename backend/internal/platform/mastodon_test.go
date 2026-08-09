@@ -62,6 +62,9 @@ func TestMastodonPublishAppliesStatusSettings(t *testing.T) {
 		if req.Header.Get(headerAuthorization) != "Bearer access-token" {
 			t.Fatalf("unexpected auth header %q", req.Header.Get(headerAuthorization))
 		}
+		if req.Header.Get("Idempotency-Key") != "pw_test_operation" {
+			t.Fatalf("unexpected idempotency key %q", req.Header.Get("Idempotency-Key"))
+		}
 		body, err := io.ReadAll(req.Body)
 		if err != nil {
 			t.Fatalf("reading form body: %v", err)
@@ -75,7 +78,7 @@ func TestMastodonPublishAppliesStatusSettings(t *testing.T) {
 
 	adapter := NewMastodonAdapter("client-id", "client-secret", "https://app.example/callback", "https://mastodon.example")
 	externalID, err := adapter.Publish(context.Background(), "access-token", "acct-1", &PublishRequest{
-		Content: "Launch post",
+		Content: "Launch post", IdempotencyKey: "pw_test_operation",
 		Settings: map[string]interface{}{
 			"visibility":              "unlisted",
 			"spoiler_text":            "Launch details",
@@ -90,7 +93,7 @@ func TestMastodonPublishAppliesStatusSettings(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Publish returned error: %v", err)
 	}
-	if externalID != "scheduled-1" {
+	if externalID.ExternalID != "scheduled-1" {
 		t.Fatalf("expected scheduled id, got %q", externalID)
 	}
 

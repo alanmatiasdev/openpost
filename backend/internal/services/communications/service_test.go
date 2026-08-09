@@ -11,6 +11,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/platform"
+	"github.com/openpost/backend/internal/services/providerwrite"
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect/sqlitedialect"
@@ -29,6 +30,9 @@ type fakeCommenter struct {
 	contentURL string
 	likedIDs   []string
 	unlikedIDs []string
+	replyCalls int
+	replyID    string
+	replyErr   error
 }
 
 func (*fakeCommenter) EngagementSupport() platform.EngagementSupport {
@@ -40,8 +44,9 @@ func (f *fakeCommenter) ListComments(_ context.Context, _ string, accountID, _ s
 	return f.comments, nil
 }
 
-func (*fakeCommenter) ReplyToComment(context.Context, string, string, string, string) (string, error) {
-	return "", nil
+func (f *fakeCommenter) ReplyToComment(context.Context, string, string, string, string) (string, error) {
+	f.replyCalls++
+	return f.replyID, f.replyErr
 }
 
 func (*fakeCommenter) HideComment(context.Context, string, string, string) error {
@@ -69,6 +74,7 @@ func (f *fakeCommenter) ResolveContentURL(context.Context, string, string, strin
 type fakeMessenger struct {
 	platform.Adapter
 	fetches  int
+	sends    int
 	requests []platform.FetchMessagesRequest
 	result   platform.FetchMessagesResult
 	results  map[string]platform.FetchMessagesResult
@@ -88,7 +94,145 @@ func (f *fakeMessenger) FetchMessages(_ context.Context, _ string, input platfor
 }
 
 func (f *fakeMessenger) SendMessage(context.Context, string, platform.SendMessageRequest) (platform.SendMessageResult, error) {
+	f.sends++
 	return platform.SendMessageResult{RemoteMessageID: "sent-1", CreatedAt: time.Now().UTC()}, nil
+}
+
+func TestMessageSendRecoveryDoesNotReplayAcceptedProviderWrite(t *testing.T) {
+	db := communicationsTestDB(t)
+	ctx := t.Context()
+	now := time.Date(2026, 8, 9, 12, 0, 0, 0, time.UTC)
+	account := &models.SocialAccount{
+		ID: "account-1", WorkspaceID: "workspace-1", Platform: "facebook",
+		AccountID: "page-1", Slug: "page-1", AccessTokenEnc: []byte("token"), IsActive: true,
+		CapabilityState: `{"messages_enabled":"true"}`,
+	}
+	conversation := &models.Conversation{
+		ID: "conversation-1", WorkspaceID: "workspace-1", SocialAccountID: account.ID,
+		Platform: account.Platform, RemoteConversationID: "remote-conversation-1",
+		CreatedAt: now, UpdatedAt: now,
+	}
+	message := &models.DirectMessage{
+		ID: "message-1", WorkspaceID: "workspace-1", ConversationID: conversation.ID,
+		Direction: "outbound", Body: "Hello", AttachmentsJSON: "[]", SendStatus: "queued",
+		CreatedAt: now, UpdatedAt: now,
+	}
+	require.NoError(t, func() error {
+		_, err := db.NewInsert().Model(account).Exec(ctx)
+		return err
+	}())
+	require.NoError(t, func() error {
+		_, err := db.NewInsert().Model(conversation).Exec(ctx)
+		return err
+	}())
+	require.NoError(t, func() error {
+		_, err := db.NewInsert().Model(message).Exec(ctx)
+		return err
+	}())
+
+	messenger := &fakeMessenger{}
+	service := NewService(db, staticTokenSource{}, nil)
+	service.now = func() time.Time { return now }
+	service.SetProvider("facebook", messenger)
+	require.NoError(t, service.sendMessage(ctx, message.ID))
+	require.Equal(t, 1, messenger.sends)
+
+	_, err := db.NewUpdate().Model((*models.DirectMessage)(nil)).
+		Set("send_status = 'queued'").Set("remote_message_id = ''").
+		Where("id = ?", message.ID).Exec(ctx)
+	require.NoError(t, err)
+	_, err = db.NewUpdate().Model((*models.Conversation)(nil)).
+		Set("last_remote_message_id = ''").Where("id = ?", conversation.ID).Exec(ctx)
+	require.NoError(t, err)
+	require.NoError(t, service.sendMessage(ctx, message.ID))
+	require.Equal(t, 1, messenger.sends, "recovery after a local commit failure must reuse the accepted message result")
+	require.NoError(t, db.NewSelect().Model(message).WherePK().Scan(ctx))
+	require.Equal(t, "sent", message.SendStatus)
+	require.Equal(t, "sent-1", message.RemoteMessageID)
+}
+
+func TestQueuedProviderCommentActionUsesAcceptedFenceAndIdempotentLifecycle(t *testing.T) {
+	db := communicationsTestDB(t)
+	seedProviderCommentAction(t, db)
+	commenter := &fakeCommenter{replyID: "provider-reply-1"}
+	service := NewService(db, staticTokenSource{}, nil)
+	service.SetProvider("x", commenter)
+
+	jobID, err := QueueProviderCommentAction(t.Context(), db, ProviderCommentActionInput{
+		WorkspaceID: "workspace-1", PublicationID: "publication-1",
+		RenditionID: "rendition-1", SocialAccountID: "account-1",
+		ProviderCommentID: "comment-1", Action: "reply",
+		Message: "A private reply body", UserID: "user-1",
+	})
+	require.NoError(t, err)
+	var job models.Job
+	require.NoError(t, db.NewSelect().Model(&job).Where("id = ?", jobID).Scan(t.Context()))
+	require.Equal(t, 1, job.MaxAttempts)
+	ctx := providerwrite.WithJobExecution(t.Context(), job.ID, 1, time.Now().UTC())
+	require.NoError(t, service.HandleJob(ctx, job.Type, job.Payload))
+
+	// Simulate a crash after provider acceptance and the lifecycle write but
+	// before the queue marks the job complete.
+	require.NoError(t, service.HandleJob(ctx, job.Type, job.Payload))
+	require.Equal(t, 1, commenter.replyCalls)
+	var attempt models.ProviderWriteAttempt
+	require.NoError(t, db.NewSelect().Model(&attempt).
+		Where("operation_id = ?", "provider-comment:"+job.ID).Scan(t.Context()))
+	require.Equal(t, providerwrite.StatusAccepted, attempt.Status)
+	require.NotContains(t, attempt.PayloadFingerprint, "private reply")
+	var events []models.PublicationLifecycleEvent
+	require.NoError(t, db.NewSelect().Model(&events).
+		Where("idempotency_key = ?", "provider-comment:"+job.ID+":succeeded").Scan(t.Context()))
+	require.Len(t, events, 1)
+}
+
+func TestQueuedProviderCommentActionNeverReplaysAmbiguousWrite(t *testing.T) {
+	db := communicationsTestDB(t)
+	seedProviderCommentAction(t, db)
+	commenter := &fakeCommenter{replyErr: context.DeadlineExceeded}
+	service := NewService(db, staticTokenSource{}, nil)
+	service.SetProvider("x", commenter)
+	jobID, err := QueueProviderCommentAction(t.Context(), db, ProviderCommentActionInput{
+		WorkspaceID: "workspace-1", PublicationID: "publication-1",
+		RenditionID: "rendition-1", SocialAccountID: "account-1",
+		ProviderCommentID: "comment-1", Action: "reply", Message: "Thanks", UserID: "user-1",
+	})
+	require.NoError(t, err)
+	var job models.Job
+	require.NoError(t, db.NewSelect().Model(&job).Where("id = ?", jobID).Scan(t.Context()))
+	ctx := providerwrite.WithJobExecution(t.Context(), job.ID, 1, time.Now().UTC())
+	require.Error(t, service.HandleJob(ctx, job.Type, job.Payload))
+	require.Error(t, service.HandleJob(ctx, job.Type, job.Payload))
+	require.Equal(t, 1, commenter.replyCalls)
+	var attempt models.ProviderWriteAttempt
+	require.NoError(t, db.NewSelect().Model(&attempt).
+		Where("operation_id = ?", "provider-comment:"+job.ID).Scan(t.Context()))
+	require.Equal(t, providerwrite.StatusAmbiguous, attempt.Status)
+}
+
+func seedProviderCommentAction(t *testing.T, db *bun.DB) {
+	t.Helper()
+	now := time.Now().UTC()
+	_, err := db.NewInsert().Model(&models.SocialAccount{
+		ID: "account-1", WorkspaceID: "workspace-1", Platform: "x",
+		AccountID: "x-account", Slug: "x-account", AccessTokenEnc: []byte("encrypted"),
+		IsActive: true, CreatedAt: now,
+	}).Exec(t.Context())
+	require.NoError(t, err)
+	_, err = db.NewInsert().Model(&models.Publication{
+		ID: "publication-1", WorkspaceID: "workspace-1", CreatedByID: "user-1",
+		Title: "Launch", ContentProfile: models.ContentProfileShortText,
+		SourceText: "Launch", SourceContent: "Launch", Status: models.PublicationStatusPublished,
+		Revision: 1, CreatedAt: now, UpdatedAt: now,
+	}).Exec(t.Context())
+	require.NoError(t, err)
+	_, err = db.NewInsert().Model(&models.Rendition{
+		ID: "rendition-1", PublicationID: "publication-1", SocialAccountID: "account-1",
+		Platform: "x", Profile: models.ContentProfileShortText, Body: "Launch",
+		Status: models.RenditionStatusPublished, ExternalID: "external-1",
+		CreatedAt: now, UpdatedAt: now,
+	}).Exec(t.Context())
+	require.NoError(t, err)
 }
 
 func communicationsTestDB(t *testing.T) *bun.DB {
@@ -102,8 +246,10 @@ func communicationsTestDB(t *testing.T) *bun.DB {
 		(*models.SocialAccount)(nil),
 		(*models.Publication)(nil),
 		(*models.Rendition)(nil),
+		(*models.PublicationLifecycleEvent)(nil),
 		(*models.EngagementItem)(nil),
 		(*models.Job)(nil),
+		(*models.ProviderWriteAttempt)(nil),
 	} {
 		_, err := db.NewCreateTable().Model(model).IfNotExists().Exec(ctx)
 		require.NoError(t, err)
@@ -525,13 +671,13 @@ func TestEngagementReactionUpdatesAvailableInverseAction(t *testing.T) {
 	service := NewService(db, staticTokenSource{}, nil)
 	service.now = func() time.Time { return now.Add(time.Minute) }
 
-	require.NoError(t, service.reactToEngagementItem(
+	require.NoError(t, service.executeEngagementAction(
 		ctx,
 		commenter,
 		"token",
-		models.SocialAccount{AccountID: "remote-account"},
+		models.SocialAccount{ID: "account-1", WorkspaceID: "workspace-1", Platform: "x", AccountID: "remote-account"},
 		item,
-		true,
+		engagementActionJob{ItemID: item.ID, Action: "like", UserID: "user-1"},
 	))
 	require.Equal(t, []string{"comment-1"}, commenter.likedIDs)
 

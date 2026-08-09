@@ -1284,6 +1284,45 @@ type PublicationAuthorization struct {
 	CreatedAt           time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
 }
 
+// ProviderWriteAttempt is the durable fence around one externally visible
+// provider mutation. It stores only normalized state, provider-issued IDs, and
+// a one-way payload fingerprint. Content, raw provider responses, bearer
+// values, and credential-bearing URLs must never be persisted here.
+type ProviderWriteAttempt struct {
+	bun.BaseModel `bun:"table:provider_write_attempts"`
+
+	ID                   string    `bun:",pk" json:"id"`
+	OperationID          string    `bun:"operation_id,notnull" json:"operation_id"`
+	AttemptNumber        int       `bun:"attempt_number,notnull" json:"attempt_number"`
+	JobID                string    `bun:"job_id,notnull,default:''" json:"job_id,omitempty"`
+	AuthorizationID      string    `bun:"authorization_id,nullzero" json:"authorization_id,omitempty"`
+	WorkspaceID          string    `bun:"workspace_id,notnull" json:"workspace_id"`
+	PublicationID        string    `bun:"publication_id,nullzero" json:"publication_id,omitempty"`
+	RenditionID          string    `bun:"rendition_id,nullzero" json:"rendition_id,omitempty"`
+	SocialAccountID      string    `bun:"social_account_id,notnull" json:"social_account_id"`
+	TargetKey            string    `bun:"target_key,notnull" json:"target_key"`
+	Provider             string    `bun:",notnull" json:"provider"`
+	Operation            string    `bun:",notnull" json:"operation"`
+	PayloadFingerprint   string    `bun:"payload_fingerprint,notnull" json:"-"`
+	Status               string    `bun:",notnull" json:"status"`
+	SubmissionState      string    `bun:"submission_state,notnull" json:"submission_state"`
+	ProviderState        string    `bun:"provider_state,notnull,default:''" json:"provider_state,omitempty"`
+	ProviderReference    string    `bun:"provider_reference,notnull,default:''" json:"provider_reference,omitempty"`
+	RetrySafety          string    `bun:"retry_safety,notnull" json:"retry_safety"`
+	IdempotencyKey       string    `bun:"idempotency_key,notnull,default:''" json:"idempotency_key,omitempty"`
+	IdempotencyExpiresAt time.Time `bun:"idempotency_expires_at,nullzero" json:"idempotency_expires_at,omitempty"`
+	ExternalID           string    `bun:"external_id,notnull,default:''" json:"external_id,omitempty"`
+	ExternalURL          string    `bun:"external_url,notnull,default:''" json:"external_url,omitempty"`
+	SafeErrorClass       string    `bun:"safe_error_class,notnull,default:''" json:"safe_error_class,omitempty"`
+	SafeErrorCode        string    `bun:"safe_error_code,notnull,default:''" json:"safe_error_code,omitempty"`
+	ErrorHTTPStatus      int       `bun:"error_http_status,notnull,default:0" json:"error_http_status,omitempty"`
+	ReconcileAfter       time.Time `bun:"reconcile_after,nullzero" json:"reconcile_after,omitempty"`
+	SendingStartedAt     time.Time `bun:"sending_started_at,nullzero" json:"sending_started_at,omitempty"`
+	CompletedAt          time.Time `bun:"completed_at,nullzero" json:"completed_at,omitempty"`
+	CreatedAt            time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
+	UpdatedAt            time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"updated_at"`
+}
+
 type Post struct {
 	bun.BaseModel `bun:"table:posts"`
 

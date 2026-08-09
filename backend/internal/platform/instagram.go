@@ -248,7 +248,13 @@ func (i *InstagramAdapter) UploadMedia(_ context.Context, _ string, _ string, _ 
 	return "", fmt.Errorf("instagram uses publicly accessible HTTPS media URLs for the initial adapter")
 }
 
-func (i *InstagramAdapter) Publish(ctx context.Context, accessToken, instagramUserID string, req *PublishRequest) (string, error) {
+func (i *InstagramAdapter) Publish(ctx context.Context, accessToken, instagramUserID string, req *PublishRequest) (PublishResult, error) {
+	return executePublishWrite(req, "publish_media", func() (string, error) {
+		return i.publish(ctx, accessToken, instagramUserID, req)
+	})
+}
+
+func (i *InstagramAdapter) publish(ctx context.Context, accessToken, instagramUserID string, req *PublishRequest) (string, error) {
 	if req.ReplyToID != "" {
 		return i.publishCommentReply(ctx, accessToken, req.ReplyToID, req.Content)
 	}

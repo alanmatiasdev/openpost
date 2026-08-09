@@ -23,6 +23,7 @@ import (
 	"github.com/openpost/backend/internal/services/mediasigner"
 	"github.com/openpost/backend/internal/services/mediastore"
 	"github.com/openpost/backend/internal/services/notifications"
+	"github.com/openpost/backend/internal/services/providerwrite"
 	"github.com/openpost/backend/internal/services/publicurl"
 	"github.com/openpost/backend/internal/services/tokenmanager"
 	"github.com/openpost/backend/internal/services/usage"
@@ -275,7 +276,7 @@ func (s *Service) HandlePublishPublicationJob(ctx context.Context, jobPayload st
 		return err
 	}
 	if payload.Action == "reply" {
-		return s.publishRenditionReply(ctx, payload.RenditionID, payload.Body, payload.ParentID, payload.Settings)
+		return s.publishRenditionReply(ctx, payload.RenditionID, payload.Body, payload.ParentID, payload.Settings, &receipts[0])
 	}
 	if payload.PublicationID == "" {
 		return fmt.Errorf("publication_id is required")
@@ -334,7 +335,12 @@ func (s *Service) HandlePublishPublicationJob(ctx context.Context, jobPayload st
 		return err
 	}
 
+	receiptByRendition := make(map[string]*models.PublicationAuthorization, len(receipts))
+	for index := range receipts {
+		receiptByRendition[receipts[index].RenditionID] = &receipts[index]
+	}
 	var retryFailure *RetryableError
+	var terminalWriteFailure error
 	for i := range renditions {
 		rendition := renditions[i]
 		wasRetry := rendition.Status == models.RenditionStatusFailed
@@ -357,7 +363,10 @@ func (s *Service) HandlePublishPublicationJob(ctx context.Context, jobPayload st
 			Exec(ctx); err != nil {
 			log.Printf("[Publisher] Failed to mark rendition %s as publishing: %v", rendition.ID, err)
 		}
-		if err := s.publishRendition(ctx, publication, &rendition); err != nil {
+		if err := s.publishRendition(ctx, publication, &rendition, receiptByRendition[rendition.ID]); err != nil {
+			if providerwrite.IsAmbiguous(err) {
+				terminalWriteFailure = err
+			}
 			failure := ClassifyFailure(err)
 			if failure.Retryable &&
 				(retryFailure == nil || failure.RetryAfter > retryFailure.Failure.RetryAfter) {
@@ -388,6 +397,9 @@ func (s *Service) HandlePublishPublicationJob(ctx context.Context, jobPayload st
 	s.finalizePublication(ctx, publication)
 	if retryFailure != nil {
 		return retryFailure
+	}
+	if terminalWriteFailure != nil {
+		return terminalWriteFailure
 	}
 	return nil
 }
@@ -426,14 +438,19 @@ func (s *Service) persistRenditionFailure(
 }
 
 //nolint:gocyclo
-func (s *Service) publishRendition(ctx context.Context, publication *models.Publication, rendition *models.Rendition) error {
+func (s *Service) publishRendition(
+	ctx context.Context,
+	publication *models.Publication,
+	rendition *models.Rendition,
+	authorization *models.PublicationAuthorization,
+) error {
 	var segments []models.RenditionSegment
 	if err := s.db.NewSelect().
 		Model(&segments).
 		Where("rendition_id = ?", rendition.ID).
 		Order("position ASC").
 		Scan(ctx); err == nil && len(segments) > 0 {
-		return s.publishRenditionSegments(ctx, publication, rendition, segments)
+		return s.publishRenditionSegments(ctx, publication, rendition, segments, authorization)
 	} else if err != nil && !isMissingNormalizedSegmentTable(err) {
 		return fmt.Errorf("loading rendition segments: %w", err)
 	}
@@ -496,19 +513,18 @@ func (s *Service) publishRendition(ctx context.Context, publication *models.Publ
 		MediaSettings:    mediaSettings,
 		Media:            mediaItems,
 	}
-	if err := s.checkMonthlyQuota(ctx, publication.WorkspaceID, entitlements.LimitProviderWriteCallsMonthly); err != nil {
-		return err
-	}
 	s.recordPublicationLifecycleEvent(ctx, publication.WorkspaceID, publication.ID, rendition.ID, lifecycle.EventProviderProcessing, lifecycle.StatusStarted, "provider publish started", map[string]any{
 		"platform":     rendition.Platform,
 		"provider_key": providerKey,
 	})
-	externalID, err := s.publishProviderWithUsage(
+	writeScope := publicationWriteScope(authorization, rendition.ID, "publish")
+	publishResult, err := s.publishProviderWithUsage(
 		ctx,
 		publication.WorkspaceID,
 		account.Platform,
 		rendition.ID,
 		"publish",
+		writeScope,
 		provider,
 		token,
 		account.AccountID,
@@ -524,15 +540,13 @@ func (s *Service) publishRendition(ctx context.Context, publication *models.Publ
 			"platform":     rendition.Platform,
 			"provider_key": providerKey,
 		})
-		if quotaErr := s.checkMonthlyQuota(ctx, publication.WorkspaceID, entitlements.LimitProviderWriteCallsMonthly); quotaErr != nil {
-			return quotaErr
-		}
-		externalID, err = s.publishProviderWithUsage(
+		publishResult, err = s.publishProviderWithUsage(
 			ctx,
 			publication.WorkspaceID,
 			account.Platform,
 			rendition.ID,
 			"publish-token-refresh",
+			writeScope,
 			provider,
 			refreshedToken,
 			account.AccountID,
@@ -543,9 +557,10 @@ func (s *Service) publishRendition(ctx context.Context, publication *models.Publ
 	if err != nil {
 		return err
 	}
-	externalURL := ""
-	if strings.HasPrefix(externalID, "http://") || strings.HasPrefix(externalID, "https://") {
-		externalURL = externalID
+	externalID := publishResult.ExternalID
+	externalURL := publishResult.ExternalURL
+	if externalURL == "" {
+		externalURL = publisherExternalURL(externalID)
 	}
 	if _, err := s.db.NewUpdate().Model(rendition).
 		Set("status = ?", models.RenditionStatusPublished).
@@ -579,6 +594,7 @@ func (s *Service) publishRenditionSegments(
 	publication *models.Publication,
 	rendition *models.Rendition,
 	segments []models.RenditionSegment,
+	authorization *models.PublicationAuthorization,
 ) error {
 	account := new(models.SocialAccount)
 	if err := s.db.NewSelect().Model(account).Where("id = ?", rendition.SocialAccountID).Scan(ctx); err != nil {
@@ -677,21 +693,20 @@ func (s *Service) publishRenditionSegments(
 			Media:            mediaItems,
 			ReplyToID:        parentExternalID,
 		}
-		if err := s.checkMonthlyQuota(ctx, publication.WorkspaceID, entitlements.LimitProviderWriteCallsMonthly); err != nil {
-			return s.failRenditionSegment(ctx, segment, err)
-		}
 		s.recordPublicationLifecycleEvent(ctx, publication.WorkspaceID, publication.ID, rendition.ID, lifecycle.EventProviderProcessing, lifecycle.StatusStarted, "rendition segment publish started", map[string]any{
 			"platform":     rendition.Platform,
 			"provider_key": providerKey,
 			"segment_id":   segment.ID,
 			"position":     segment.Position,
 		})
-		externalID, publishErr := s.publishProviderWithUsage(
+		writeScope := publicationWriteScope(authorization, segment.ID, "publish")
+		publishResult, publishErr := s.publishProviderWithUsage(
 			ctx,
 			publication.WorkspaceID,
 			account.Platform,
 			segment.ID,
 			"publish",
+			writeScope,
 			provider,
 			token,
 			account.AccountID,
@@ -703,15 +718,13 @@ func (s *Service) publishRenditionSegments(
 			if err != nil {
 				return s.failRenditionSegment(ctx, segment, fmt.Errorf("%s token refresh failed after expiry: %w", providerKey, err))
 			}
-			if quotaErr := s.checkMonthlyQuota(ctx, publication.WorkspaceID, entitlements.LimitProviderWriteCallsMonthly); quotaErr != nil {
-				return s.failRenditionSegment(ctx, segment, quotaErr)
-			}
-			externalID, publishErr = s.publishProviderWithUsage(
+			publishResult, publishErr = s.publishProviderWithUsage(
 				ctx,
 				publication.WorkspaceID,
 				account.Platform,
 				segment.ID,
 				"publish-token-refresh",
+				writeScope,
 				provider,
 				token,
 				account.AccountID,
@@ -723,7 +736,8 @@ func (s *Service) publishRenditionSegments(
 			return s.failRenditionSegment(ctx, segment, publishErr)
 		}
 
-		externalURL := publisherExternalURL(externalID)
+		externalID := publishResult.ExternalID
+		externalURL := firstNonEmptyPublisherString(publishResult.ExternalURL, publisherExternalURL(externalID))
 		if _, err := s.db.NewUpdate().Model(segment).
 			Set("status = ?", models.RenditionStatusPublished).
 			Set("external_id = ?", externalID).
@@ -896,7 +910,12 @@ func isMissingNormalizedSegmentTable(err error) bool {
 		(strings.Contains(message, "relation") && strings.Contains(message, "does not exist"))
 }
 
-func (s *Service) publishRenditionReply(ctx context.Context, renditionID, body, parentID string, settings map[string]interface{}) error {
+func (s *Service) publishRenditionReply(
+	ctx context.Context,
+	renditionID, body, parentID string,
+	settings map[string]interface{},
+	authorization *models.PublicationAuthorization,
+) error {
 	rendition := new(models.Rendition)
 	if err := s.db.NewSelect().Model(rendition).Where("id = ?", renditionID).Scan(ctx); err != nil {
 		return fmt.Errorf("rendition not found: %w", err)
@@ -929,15 +948,13 @@ func (s *Service) publishRenditionReply(ctx context.Context, renditionID, body, 
 	if req.ReplyToID == "" {
 		return fmt.Errorf("reply requires a parent external id")
 	}
-	if err := s.checkMonthlyQuota(ctx, publication.WorkspaceID, entitlements.LimitProviderWriteCallsMonthly); err != nil {
-		return err
-	}
 	_, err = s.publishProviderWithUsage(
 		ctx,
 		publication.WorkspaceID,
 		account.Platform,
 		rendition.ID,
 		"reply",
+		publicationWriteScope(authorization, rendition.ID, "reply"),
 		provider,
 		token,
 		account.AccountID,
@@ -1152,7 +1169,7 @@ func (s *Service) publishToDestination(ctx context.Context, post *models.Post, d
 		return fmt.Errorf("account not found: %v", err)
 	}
 
-	provider, _, err := s.providerForAccount(account)
+	provider, providerKey, err := s.providerForAccount(account)
 	if err != nil {
 		return err
 	}
@@ -1244,15 +1261,14 @@ func (s *Service) publishToDestination(ctx context.Context, post *models.Post, d
 		ReplyToID:        replyToID,
 	}
 
-	if err := s.checkMonthlyQuota(ctx, post.WorkspaceID, entitlements.LimitProviderWriteCallsMonthly); err != nil {
-		return err
-	}
-	externalID, err := s.publishProviderWithUsage(
+	writeScope := legacyWriteScope(ctx, post.WorkspaceID, account.ID, providerKey, dest.ID, "publish")
+	publishResult, err := s.publishProviderWithUsage(
 		ctx,
 		post.WorkspaceID,
 		account.Platform,
 		dest.ID,
 		"publish",
+		writeScope,
 		provider,
 		token,
 		account.AccountID,
@@ -1266,15 +1282,13 @@ func (s *Service) publishToDestination(ctx context.Context, post *models.Post, d
 			if refreshErr != nil {
 				return fmt.Errorf("%s token refresh failed after expiry: %w", account.Platform, refreshErr)
 			}
-			if quotaErr := s.checkMonthlyQuota(ctx, post.WorkspaceID, entitlements.LimitProviderWriteCallsMonthly); quotaErr != nil {
-				return quotaErr
-			}
-			externalID, err = s.publishProviderWithUsage(
+			publishResult, err = s.publishProviderWithUsage(
 				ctx,
 				post.WorkspaceID,
 				account.Platform,
 				dest.ID,
 				"publish-token-refresh",
+				writeScope,
 				provider,
 				refreshedToken,
 				account.AccountID,
@@ -1289,6 +1303,7 @@ func (s *Service) publishToDestination(ctx context.Context, post *models.Post, d
 		}
 	}
 
+	externalID := publishResult.ExternalID
 	if externalID != "" {
 		if _, dbErr := s.db.NewUpdate().Model(dest).
 			Set("external_id = ?", externalID).
@@ -1516,16 +1531,23 @@ func (s *Service) loadReadyProviderMediaState(ctx context.Context, postID, socia
 	var state models.PostMediaDelivery
 	if err := s.db.NewSelect().
 		Model(&state).
-		Column("provider_media_id").
 		Where("post_id = ?", postID).
 		Where("social_account_id = ?", socialAccountID).
 		Where("media_id = ?", mediaID).
-		Where("status = ?", providerMediaStatusReady).
 		Scan(ctx); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return "", nil
 		}
 		return "", fmt.Errorf("loading post media delivery: %w", err)
+	}
+	if state.Status == providerMediaStatusFailed {
+		return "", &platform.MediaUploadError{
+			RetryClassification: platform.MediaRetryTerminal,
+			Err:                 errors.New("the previous provider media upload ended with an unknown or rejected outcome; OpenPost did not upload it again"),
+		}
+	}
+	if state.Status != providerMediaStatusReady {
+		return "", nil
 	}
 	return state.ProviderMediaID, nil
 }
@@ -1750,6 +1772,12 @@ func (s *Service) loadReadyRenditionMediaDelivery(ctx context.Context, publicati
 		return "", err
 	}
 	if state.Status != platform.MediaUploadReady || !storedRelations.equal(expectedRelations) {
+		if state.Status == platform.MediaUploadFailed && state.RetryClassification == platform.MediaRetryTerminal {
+			return "", &platform.MediaUploadError{
+				RetryClassification: platform.MediaRetryTerminal,
+				Err:                 errors.New("the previous provider media upload ended with an unknown or rejected outcome; OpenPost did not upload it again"),
+			}
+		}
 		return "", nil
 	}
 	return state.ProviderMediaID, nil
@@ -1926,13 +1954,13 @@ func (s *Service) publishProvider(
 	token, accountID string,
 	req *platform.PublishRequest,
 	media []models.MediaAttachment,
-) (string, error) {
+) (platform.PublishResult, error) {
 	direct, ok := provider.(platform.DirectMediaPublisher)
 	if !ok || len(media) == 0 {
 		return provider.Publish(ctx, token, accountID, req)
 	}
 	if s.storage == nil {
-		return "", fmt.Errorf("media storage is not configured")
+		return platform.PublishResult{}, fmt.Errorf("media storage is not configured")
 	}
 
 	inputs := make([]platform.UploadMediaRequest, 0, len(media))
@@ -1946,7 +1974,7 @@ func (s *Service) publishProvider(
 		reader, err := s.storage.Open(filepath.Base(item.FilePath))
 		if err != nil {
 			closeReaders()
-			return "", fmt.Errorf("opening media file %s: %w", item.FilePath, err)
+			return platform.PublishResult{}, fmt.Errorf("opening media file %s: %w", item.FilePath, err)
 		}
 		readers = append(readers, reader)
 		inputs = append(inputs, platform.UploadMediaRequest{
@@ -1960,22 +1988,172 @@ func (s *Service) publishProvider(
 	return direct.PublishWithMedia(ctx, token, accountID, req, inputs)
 }
 
+type providerWriteScope struct {
+	operationID     string
+	authorizationID string
+	publicationID   string
+	renditionID     string
+	socialAccountID string
+	targetKey       string
+	operation       string
+	contentHash     string
+	mediaHash       string
+	settingsHash    string
+}
+
+func publicationWriteScope(
+	authorization *models.PublicationAuthorization,
+	subject, operation string,
+) providerWriteScope {
+	if authorization == nil {
+		return providerWriteScope{operation: operation}
+	}
+	return providerWriteScope{
+		operationID:     strings.Join([]string{"authorization", authorization.ID, subject, operation}, ":"),
+		authorizationID: authorization.ID,
+		publicationID:   authorization.PublicationID,
+		renditionID:     authorization.RenditionID,
+		socialAccountID: authorization.SocialAccountID,
+		targetKey:       authorization.TargetKey,
+		operation:       operation,
+		contentHash:     authorization.ContentHash,
+		mediaHash:       authorization.MediaHash,
+		settingsHash:    authorization.SettingsHash,
+	}
+}
+
+func legacyWriteScope(
+	ctx context.Context,
+	workspaceID, socialAccountID, targetKey, subject, operation string,
+) providerWriteScope {
+	execution, _ := providerwrite.JobExecutionFromContext(ctx)
+	owner := execution.ID
+	if owner == "" {
+		owner = workspaceID
+	}
+	return providerWriteScope{
+		operationID:     strings.Join([]string{"legacy", owner, subject, operation}, ":"),
+		socialAccountID: socialAccountID,
+		targetKey:       targetKey,
+		operation:       operation,
+	}
+}
+
 func (s *Service) publishProviderWithUsage(
 	ctx context.Context,
 	workspaceID, providerName, subject, phase string,
+	writeScope providerWriteScope,
 	provider platform.Adapter,
 	token, accountID string,
 	req *platform.PublishRequest,
 	media []models.MediaAttachment,
-) (string, error) {
-	reservation, err := s.reserveProviderPublishCost(ctx, workspaceID, providerName, subject, phase, req)
-	if err != nil {
-		return "", err
+) (platform.PublishResult, error) {
+	if writeScope.operationID == "" || writeScope.socialAccountID == "" || writeScope.targetKey == "" {
+		return platform.PublishResult{}, fmt.Errorf("provider write ownership is required")
 	}
-	s.recordProviderWriteCall(ctx, workspaceID)
-	externalID, publishErr := s.publishProvider(ctx, provider, token, accountID, req, media)
-	s.settleProviderPublishCost(ctx, reservation, publishErr)
-	return externalID, publishErr
+	fingerprint, err := providerPublishFingerprint(writeScope, req, media)
+	if err != nil {
+		return platform.PublishResult{}, err
+	}
+	execution, _ := providerwrite.JobExecutionFromContext(ctx)
+	input := providerwrite.Input{
+		OperationID: writeScope.operationID, JobID: execution.ID,
+		AuthorizationID: writeScope.authorizationID, WorkspaceID: workspaceID,
+		PublicationID: writeScope.publicationID, RenditionID: writeScope.renditionID,
+		SocialAccountID: writeScope.socialAccountID, TargetKey: writeScope.targetKey,
+		Provider: providerName, Operation: writeScope.operation,
+		PayloadFingerprint: fingerprint,
+	}
+	send := func(sendCtx context.Context, control *providerwrite.Control) (platform.PublishResult, error) {
+		if quotaErr := s.checkMonthlyQuota(sendCtx, workspaceID, entitlements.LimitProviderWriteCallsMonthly); quotaErr != nil {
+			return platform.PublishResult{}, quotaErr
+		}
+		reservation, reserveErr := s.reserveProviderPublishCost(sendCtx, workspaceID, providerName, subject, phase, req)
+		if reserveErr != nil {
+			return platform.PublishResult{}, reserveErr
+		}
+		requestCopy := *req
+		control.BindPublishRequest(&requestCopy)
+		s.recordProviderWriteCall(sendCtx, workspaceID)
+		result, publishErr := s.publishProvider(sendCtx, provider, token, accountID, &requestCopy, media)
+		s.settleProviderPublishCost(sendCtx, reservation, publishErr)
+		return result, publishErr
+	}
+	var reconcile providerwrite.ReconcileFunc
+	if reconciler, ok := provider.(platform.PublishReconciler); ok {
+		reconcile = func(reconcileCtx context.Context, reference string) (platform.PublishResult, error) {
+			return reconciler.ReconcilePublish(reconcileCtx, token, accountID, reference)
+		}
+	}
+	return providerwrite.New(s.db).Execute(ctx, input, send, reconcile)
+}
+
+type providerPublishLogicalPayload struct {
+	AuthorizationID string                            `json:"authorization_id,omitempty"`
+	ContentHash     string                            `json:"content_hash,omitempty"`
+	MediaHash       string                            `json:"media_hash,omitempty"`
+	SettingsHash    string                            `json:"settings_hash,omitempty"`
+	Content         string                            `json:"content"`
+	Profile         string                            `json:"profile"`
+	OutputProfile   string                            `json:"output_profile"`
+	Title           string                            `json:"title"`
+	Description     string                            `json:"description"`
+	ReplyToID       string                            `json:"reply_to_id"`
+	SettingsJSON    string                            `json:"settings_json,omitempty"`
+	Settings        map[string]interface{}            `json:"settings,omitempty"`
+	MediaAltTexts   []string                          `json:"media_alt_texts,omitempty"`
+	MediaSettings   []map[string]interface{}          `json:"media_settings,omitempty"`
+	Media           []providerPublishMediaFingerprint `json:"media"`
+}
+
+type providerPublishMediaFingerprint struct {
+	ID               string `json:"id"`
+	FileHash         string `json:"file_hash"`
+	MimeType         string `json:"mime_type"`
+	Size             int64  `json:"size"`
+	DurationMS       int64  `json:"duration_ms"`
+	OriginalFilename string `json:"original_filename"`
+}
+
+func providerPublishFingerprint(
+	scope providerWriteScope,
+	req *platform.PublishRequest,
+	media []models.MediaAttachment,
+) (string, error) {
+	if req == nil {
+		return "", fmt.Errorf("provider publish request is required")
+	}
+	payload := providerPublishLogicalPayload{
+		AuthorizationID: scope.authorizationID,
+		ContentHash:     scope.contentHash,
+		MediaHash:       scope.mediaHash,
+		SettingsHash:    scope.settingsHash,
+		Content:         req.Content,
+		Profile:         req.Profile,
+		OutputProfile:   req.OutputProfile,
+		Title:           req.Title,
+		Description:     req.Description,
+		ReplyToID:       req.ReplyToID,
+		Media:           make([]providerPublishMediaFingerprint, 0, len(media)),
+	}
+	// Authorization receipts already hash the exact logical settings, media,
+	// and ordered descriptors. Do not fingerprint hydrated provider URLs here:
+	// their short-lived signatures change between safe retries even though the
+	// authorized payload did not.
+	if scope.authorizationID == "" {
+		payload.SettingsJSON = req.SettingsJSON
+		payload.Settings = req.Settings
+		payload.MediaAltTexts = req.MediaAltTexts
+		payload.MediaSettings = req.MediaSettings
+	}
+	for _, item := range media {
+		payload.Media = append(payload.Media, providerPublishMediaFingerprint{
+			ID: item.ID, FileHash: item.FileHash, MimeType: item.MimeType,
+			Size: item.Size, DurationMS: item.DurationMS,
+			OriginalFilename: item.OriginalFilename,
+		})
+	}
+	return providerwrite.Fingerprint("provider-publish-v2", payload)
 }
 
 func (s *Service) uploadMediaToPlatform(ctx context.Context, account *models.SocialAccount, provider platform.Adapter, token string, media models.MediaAttachment, content string) (string, error) {

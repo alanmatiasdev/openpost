@@ -262,7 +262,7 @@ func TestFacebookPublishPhotoFromPublicURL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Publish returned error: %v", err)
 	}
-	if externalID != "page-1_post-1" {
+	if externalID.ExternalID != "page-1_post-1" {
 		t.Fatalf("expected post id, got %q", externalID)
 	}
 	if form.Get("url") != "https://media.example/photo.jpg" || form.Get("caption") != "Launch photo" || form.Get(oauthParamAccessToken) != "page-token" {

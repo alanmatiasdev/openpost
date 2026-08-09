@@ -301,7 +301,13 @@ func (f *FacebookAdapter) UploadMedia(_ context.Context, _ string, _ string, _ s
 	return "", fmt.Errorf("facebook uses publicly accessible HTTPS media URLs for the initial adapter")
 }
 
-func (f *FacebookAdapter) Publish(ctx context.Context, accessToken, pageID string, req *PublishRequest) (string, error) {
+func (f *FacebookAdapter) Publish(ctx context.Context, accessToken, pageID string, req *PublishRequest) (PublishResult, error) {
+	return executePublishWrite(req, "publish_graph_object", func() (string, error) {
+		return f.publish(ctx, accessToken, pageID, req)
+	})
+}
+
+func (f *FacebookAdapter) publish(ctx context.Context, accessToken, pageID string, req *PublishRequest) (string, error) {
 	if req.ReplyToID != "" {
 		return f.publishCommentReply(ctx, accessToken, req.ReplyToID, req.Content)
 	}

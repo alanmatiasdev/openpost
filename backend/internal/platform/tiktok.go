@@ -197,7 +197,13 @@ func (t *TikTokAdapter) UploadMediaWithMetadata(ctx context.Context, accessToken
 	return t.uploadVideoFileToInbox(ctx, accessToken, req.MimeType, data)
 }
 
-func (t *TikTokAdapter) Publish(ctx context.Context, accessToken, _ string, req *PublishRequest) (string, error) {
+func (t *TikTokAdapter) Publish(ctx context.Context, accessToken, _ string, req *PublishRequest) (PublishResult, error) {
+	return executePublishWrite(req, "submit_post", func() (string, error) {
+		return t.publish(ctx, accessToken, req)
+	})
+}
+
+func (t *TikTokAdapter) publish(ctx context.Context, accessToken string, req *PublishRequest) (string, error) {
 	if len(req.PlatformMediaIDs) == 0 || len(req.PlatformMediaIDs) != len(req.Media) {
 		return "", fmt.Errorf("tiktok publishing requires media URLs and metadata")
 	}
@@ -215,7 +221,7 @@ func (t *TikTokAdapter) Publish(ctx context.Context, accessToken, _ string, req 
 		return "", err
 	}
 	if postingMethod == "UPLOAD" {
-		return t.publishInboxVideoFromURL(ctx, accessToken, req.PlatformMediaIDs[0])
+		return t.publishInboxVideoFromURL(ctx, accessToken, req.PlatformMediaIDs[0], req)
 	}
 	return t.publishDirectVideoFromURL(ctx, accessToken, req)
 }
@@ -269,6 +275,9 @@ func (t *TikTokAdapter) publishDirectVideoFromURL(ctx context.Context, accessTok
 	if initResp.Data.PublishID == "" {
 		return "", fmt.Errorf("tiktok video init: missing publish_id")
 	}
+	if err := checkpointTikTokSubmission(req, initResp.Data.PublishID); err != nil {
+		return "", err
+	}
 
 	return t.waitForPublishID(ctx, accessToken, initResp.Data.PublishID)
 }
@@ -282,14 +291,14 @@ func validateTikTokPublicMediaURLs(mediaURLs []string) error {
 	return nil
 }
 
-func (t *TikTokAdapter) publishInboxVideoFromURL(ctx context.Context, accessToken, mediaURL string) (string, error) {
+func (t *TikTokAdapter) publishInboxVideoFromURL(ctx context.Context, accessToken, mediaURL string, req *PublishRequest) (string, error) {
 	payload := map[string]any{
 		"source_info": map[string]any{
 			"source":    "PULL_FROM_URL",
 			"video_url": mediaURL,
 		},
 	}
-	return t.initInboxVideo(ctx, accessToken, payload)
+	return t.initInboxVideo(ctx, accessToken, payload, req)
 }
 
 func (t *TikTokAdapter) uploadVideoFileToInbox(ctx context.Context, accessToken, mimeType string, data []byte) (string, error) {
@@ -333,9 +342,12 @@ func (t *TikTokAdapter) uploadVideoFileToInbox(ctx context.Context, accessToken,
 	return t.waitForPublishID(ctx, accessToken, publishID)
 }
 
-func (t *TikTokAdapter) initInboxVideo(ctx context.Context, accessToken string, payload map[string]any) (string, error) {
+func (t *TikTokAdapter) initInboxVideo(ctx context.Context, accessToken string, payload map[string]any, req *PublishRequest) (string, error) {
 	publishID, _, err := t.initInboxVideoUpload(ctx, accessToken, payload)
 	if err != nil {
+		return "", err
+	}
+	if err := checkpointTikTokSubmission(req, publishID); err != nil {
 		return "", err
 	}
 	return t.waitForPublishID(ctx, accessToken, publishID)
@@ -436,7 +448,44 @@ func (t *TikTokAdapter) publishPhotoPost(ctx context.Context, accessToken string
 	if initResp.Data.PublishID == "" {
 		return "", fmt.Errorf("tiktok photo init: missing publish_id")
 	}
+	if err := checkpointTikTokSubmission(req, initResp.Data.PublishID); err != nil {
+		return "", err
+	}
 	return t.waitForPublishID(ctx, accessToken, initResp.Data.PublishID)
+}
+
+func checkpointTikTokSubmission(req *PublishRequest, publishID string) error {
+	return req.Checkpoint(PublishResult{
+		SubmissionState: PublishSubmissionPending,
+		ProviderState:   "processing", ProviderReference: publishID,
+		RetrySafety: PublishRetryReconcileOnly, ReconcileAfter: 30 * time.Second,
+	})
+}
+
+func (t *TikTokAdapter) ReconcilePublish(ctx context.Context, accessToken, _ string, providerReference string) (PublishResult, error) {
+	providerReference = strings.TrimSpace(providerReference)
+	if providerReference == "" {
+		return PublishResult{}, fmt.Errorf("tiktok publish reconciliation requires a publish id")
+	}
+	externalID, err := t.waitForPublishID(ctx, accessToken, providerReference)
+	if err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "publish failed") {
+			return PublishResult{
+				SubmissionState: PublishSubmissionRejected,
+				ProviderState:   "failed", ProviderReference: providerReference,
+				RetrySafety: PublishRetryNever,
+			}, err
+		}
+		return PublishResult{
+			SubmissionState: PublishSubmissionPending,
+			ProviderState:   "processing", ProviderReference: providerReference,
+			RetrySafety: PublishRetryReconcileOnly, ReconcileAfter: time.Minute,
+		}, err
+	}
+	result := AcceptedPublishResult(externalID)
+	result.ProviderState = "complete"
+	result.ProviderReference = providerReference
+	return result, nil
 }
 
 func (t *TikTokAdapter) privacyLevel(ctx context.Context, accessToken string, settings map[string]interface{}) (string, error) {

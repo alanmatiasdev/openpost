@@ -1884,6 +1884,60 @@ func TestMCPCallListRenditionComments(t *testing.T) {
 	require.NotEmpty(t, comment["id"])
 }
 
+func TestMCPCommentMutationQueuesOneAttemptProviderJob(t *testing.T) {
+	t.Parallel()
+
+	srv := newMCPTestServer(t)
+	ctx := t.Context()
+	_, err := srv.db.NewInsert().Model(&models.Publication{
+		ID: "publication-comment-action", WorkspaceID: "ws-1", CreatedByID: "user-1",
+		Title: "Launch", ContentProfile: models.ContentProfileShortText,
+		SourceText: "Launch", SourceContent: "Launch", Status: models.PublicationStatusPublished,
+		MetadataJSON: "{}", ReleasePlanJSON: "{}",
+	}).Exec(ctx)
+	require.NoError(t, err)
+	_, err = srv.db.NewInsert().Model(&models.Rendition{
+		ID: "rendition-comment-action", PublicationID: "publication-comment-action",
+		SocialAccountID: "account-1", Platform: "x", Profile: models.ContentProfileShortText,
+		Body: "Launch", SettingsJSON: "{}", Status: models.RenditionStatusPublished,
+		ExternalID: "external-1",
+	}).Exec(ctx)
+	require.NoError(t, err)
+	srv.handler.SetProviderCatalog(map[string]platform.Adapter{"x": fakeCommentAdapter{}}, false)
+	commentID, err := encodeCommentReference(commentReference{
+		RenditionID: "rendition-comment-action", ProviderCommentID: "provider-comment-1",
+	})
+	require.NoError(t, err)
+
+	resp := srv.request(t, "web-token", map[string]any{
+		"jsonrpc": "2.0", "id": "queue-comment-reply", "method": "tools/call",
+		"params": map[string]any{
+			"name": mcpToolExecute,
+			"arguments": map[string]any{
+				"operation": mcpToolReplyComment,
+				"arguments": map[string]any{"comment_id": commentID, "body": "Thanks"},
+			},
+		},
+	})
+
+	require.Equal(t, http.StatusOK, resp.Code, resp.Body.String())
+	var out map[string]any
+	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &out))
+	require.Nil(t, out["error"])
+	structured := out["result"].(map[string]any)["structuredContent"].(map[string]any)
+	require.Equal(t, "comment reply queued", structured["message"])
+	jobID := structured["id"].(string)
+	require.NotEmpty(t, jobID)
+	var job models.Job
+	require.NoError(t, srv.db.NewSelect().Model(&job).Where("id = ?", jobID).Scan(ctx))
+	require.Equal(t, "engagement_action", job.Type)
+	require.Equal(t, 1, job.MaxAttempts)
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal([]byte(job.Payload), &payload))
+	require.Equal(t, "reply", payload["action"])
+	require.Equal(t, "provider-comment-1", payload["provider_comment_id"])
+}
+
 func TestMCPCallRenderSchedulerWidget(t *testing.T) {
 	t.Parallel()
 

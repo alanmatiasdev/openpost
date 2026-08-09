@@ -32,7 +32,7 @@ func TestHandlePublishPublicationJobRecordsLifecycleEvents(t *testing.T) {
 	requireLifecycleTypes(t, events, lifecycle.EventProviderProcessing, lifecycle.EventPublished)
 }
 
-func TestHandlePublishPublicationJobRecordsRetryAndFailureEvents(t *testing.T) {
+func TestHandlePublishPublicationJobRecordsAmbiguousFailureWithoutRetry(t *testing.T) {
 	t.Parallel()
 
 	srv := newPublisherLifecycleTestServer(t, &fakePublisherAdapter{publishErr: &platform.HTTPError{StatusCode: 503, Code: "temporarily_unavailable"}})
@@ -48,7 +48,9 @@ func TestHandlePublishPublicationJobRecordsRetryAndFailureEvents(t *testing.T) {
 	require.Error(t, err)
 	events := srv.lifecycleEvents(t)
 	requireLifecycleTypes(t, events, lifecycle.EventRetried, lifecycle.EventProviderProcessing, lifecycle.EventFailed)
-	require.Contains(t, events[len(events)-1].MetadataJSON, string(FailureProviderServer))
+	require.Contains(t, events[len(events)-1].MetadataJSON, string(FailureUnknown))
+	require.Contains(t, events[len(events)-1].MetadataJSON, "ambiguous_provider_write")
+	require.Contains(t, events[len(events)-1].MetadataJSON, `"retryable":false`)
 	require.NotContains(t, events[len(events)-1].MetadataJSON, "provider rejected post")
 }
 
@@ -56,8 +58,8 @@ func TestSegmentedRenditionRetryResumesWithoutDuplicatingPublishedPrefix(t *test
 	t.Parallel()
 
 	adapter := &fakePublisherAdapter{
-		publishErrors: []error{nil, &platform.HTTPError{StatusCode: 503, Code: "temporarily_unavailable"}, nil},
-		externalIDs:   []string{"external-root", "", "external-reply"},
+		preFenceErrors: []error{nil, &platform.HTTPError{StatusCode: 503, Code: "temporarily_unavailable"}, nil},
+		externalIDs:    []string{"external-root", "", "external-reply"},
 	}
 	srv := newPublisherLifecycleTestServer(t, adapter)
 	ctx := context.Background()
@@ -82,13 +84,11 @@ func TestSegmentedRenditionRetryResumesWithoutDuplicatingPublishedPrefix(t *test
 
 	require.NoError(t, srv.publishPublication(t))
 	require.Equal(t, 3, adapter.publishCalls)
-	require.Len(t, adapter.publishRequests, 3)
+	require.Len(t, adapter.publishRequests, 2)
 	require.Equal(t, "", adapter.publishRequests[0].ReplyToID)
 	require.Equal(t, "external-root", adapter.publishRequests[1].ReplyToID)
-	require.Equal(t, "external-root", adapter.publishRequests[2].ReplyToID)
 	require.Equal(t, "Root", adapter.publishRequests[0].Content)
 	require.Equal(t, "Reply", adapter.publishRequests[1].Content)
-	require.Equal(t, "Reply", adapter.publishRequests[2].Content)
 
 	var second models.RenditionSegment
 	require.NoError(t, srv.db.NewSelect().Model(&second).Where("id = ?", "rendition-segment-2").Scan(ctx))
@@ -241,7 +241,7 @@ func TestTextPostTransientFailureStillRetriesWhenAnotherDestinationIsPermanent(t
 	t.Parallel()
 
 	srv := newPublisherLifecycleTestServer(t, &fakePublisherAdapter{
-		publishErrors: []error{
+		preFenceErrors: []error{
 			&platform.HTTPError{StatusCode: 503, Code: "temporarily_unavailable"},
 			&platform.HTTPError{StatusCode: 422, Code: "invalid_media"},
 		},
@@ -305,6 +305,7 @@ func newPublisherLifecycleTestServer(t *testing.T, adapter *fakePublisherAdapter
 		(*models.MediaAttachment)(nil),
 		(*models.PublicationLifecycleEvent)(nil),
 		(*models.PublicationAuthorization)(nil),
+		(*models.ProviderWriteAttempt)(nil),
 		(*models.UsageCounter)(nil),
 		(*models.Post)(nil),
 		(*models.PostDestination)(nil),
