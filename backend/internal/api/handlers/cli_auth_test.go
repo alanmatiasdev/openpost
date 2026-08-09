@@ -203,7 +203,7 @@ func TestCLIAuthStartExpiresOlderPendingSessions(t *testing.T) {
 
 	var sessions []models.CLIAuthSession
 	require.NoError(t, srv.db.NewSelect().Model(&sessions).
-		Where("id IN (?)", bun.In([]string{"expired-pending", "future-pending"})).
+		Where("id IN (?, ?)", "expired-pending", "future-pending").
 		Order("id ASC").Scan(t.Context()))
 	require.Len(t, sessions, 2)
 	require.Equal(t, "expired", sessions[0].Status)
