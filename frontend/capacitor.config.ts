@@ -3,7 +3,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 const config: CapacitorConfig = {
 	appId: 'com.openpost.app',
 	appName: 'OpenPost',
-	webDir: '../backend/cmd/openpost/public',
+	webDir: 'build',
 	server: {
 		androidScheme: 'https'
 	},

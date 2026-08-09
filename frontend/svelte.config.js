@@ -4,8 +4,8 @@ import adapter from '@sveltejs/adapter-static';
 const config = {
 	kit: {
 		adapter: adapter({
-			pages: '../backend/cmd/openpost/public',
-			assets: '../backend/cmd/openpost/public',
+			pages: 'build',
+			assets: 'build',
 			fallback: 'index.html',
 			// Text assets are selectively precompressed after the Vite build.
 			// Adapter-wide compression would also duplicate the large image-editor model files.

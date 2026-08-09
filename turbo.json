@@ -1,10 +1,6 @@
 {
   "$schema": "https://turbo.build/schema.json",
-  "globalDependencies": [
-    "package.json",
-    "bun.lock",
-    "bunfig.toml"
-  ],
+  "globalDependencies": ["package.json", "bun.lock", "bunfig.toml"],
   "globalPassThroughEnv": ["PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH"],
   "tasks": {
     "dev": {
@@ -13,13 +9,7 @@
     },
     "build": {
       "dependsOn": ["^build"],
-      "outputs": [
-        "backend/cmd/openpost/public/**",
-        "build/**",
-        "dist/**",
-        ".svelte-kit/output/**",
-        ".vitepress/dist/**"
-      ]
+      "outputs": []
     },
     "check": {
       "dependsOn": ["^check"],

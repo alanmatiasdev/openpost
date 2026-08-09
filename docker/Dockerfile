@@ -18,15 +18,11 @@ RUN --mount=type=cache,target=/root/.bun/install/cache \
 
 COPY frontend/ ./frontend/
 COPY packages/social-preview/ ./packages/social-preview/
-COPY packages/social-images/ ./packages/social-images/
-COPY packages/legal-policy/ ./packages/legal-policy/
 COPY packages/video-project/ ./packages/video-project/
 COPY assets/ ./assets/
-COPY docs-site/ ./docs-site/
-COPY scripts/sync-assets.mjs scripts/precompress-static.mjs ./scripts/
-COPY scripts/social-images/catalog.mjs ./scripts/social-images/
+COPY scripts/sync-assets.mjs scripts/generate-app-route-manifest.mjs scripts/precompress-static.mjs ./scripts/
 ENV NODE_OPTIONS=--max-old-space-size=4096
-RUN mkdir -p backend/cmd/openpost/public && bun run --filter @openpost/web build
+RUN bun run --filter @openpost/web build
 
 # Build stage for backend
 FROM golang:1.26.5-alpine AS backend-builder
@@ -45,8 +41,8 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     cd backend && go mod download
 
 COPY backend/ ./backend/
-# Copy frontend build output from the correct location
-COPY --from=frontend-builder /app/backend/cmd/openpost/public ./backend/cmd/openpost/public
+# Package the frontend-owned build output at the backend embed boundary.
+COPY --from=frontend-builder /app/frontend/build ./backend/cmd/openpost/public
 
 RUN if [ -n "${RELEASE_MANIFEST_B64}" ]; then \
       printf '%s' "${RELEASE_MANIFEST_B64}" | base64 -d > release-manifest.json; \

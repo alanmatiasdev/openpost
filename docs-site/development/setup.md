@@ -42,7 +42,7 @@ docs      # documentation site on :4174
 check     # types and generated contracts
 lint      # backend and frontend lint
 test      # backend and frontend tests
-build     # frontend assets and backend binary
+build     # app, sites, backend, and CLI
 verify    # check, lint, test, and build
 ```
 
@@ -67,3 +67,10 @@ high-risk push.
 
 In shells where `test` resolves to the shell builtin, run `test-all` inside
 direnv or `devenv shell -- test` from outside it.
+
+The root `bun run build` command has a narrower JavaScript workspace contract:
+it prepares the generated docs inputs, builds the frontend, marketing site, and
+docs through Turbo, then atomically copies `frontend/build` to the Go embed
+directory. It does not compile the Go backend or CLI. Use `devenv shell -- build`
+for the complete repository build and `bun run frontend:build` when you only
+need the cached frontend artifact and its backend packaging step.

@@ -1,0 +1,17 @@
+{
+	"$schema": "https://turbo.build/schema.json",
+	"extends": ["//"],
+	"tasks": {
+		"build": {
+			"inputs": [
+				"$TURBO_DEFAULT$",
+				"$TURBO_ROOT$/assets/**",
+				"$TURBO_ROOT$/scripts/sync-assets.mjs",
+				"$TURBO_ROOT$/scripts/generate-app-route-manifest.mjs",
+				"$TURBO_ROOT$/scripts/precompress-static.mjs"
+			],
+			"outputs": ["build/**"],
+			"env": ["VITE_APP_MODE"]
+		}
+	}
+}

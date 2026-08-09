@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -7,6 +7,7 @@ import test from "node:test";
 import {
   collectAppRoutes,
   serializeAppRouteManifest,
+  writeAppRouteManifest,
 } from "./generate-app-route-manifest.mjs";
 
 async function addPage(routesDirectory, route, filename = "+page.svelte") {
@@ -63,4 +64,21 @@ test("serializes a strict, versioned manifest", () => {
   ]
 }\n`,
   );
+});
+
+test("writes a manifest into an explicit package-owned output", async () => {
+  const directory = await mkdtemp(
+    path.join(os.tmpdir(), "openpost-app-routes-"),
+  );
+  const routesDirectory = path.join(directory, "routes");
+  const manifestPath = path.join(directory, "package-build", "app-routes.json");
+  await addPage(routesDirectory, "");
+  await addPage(routesDirectory, "calendar");
+
+  await writeAppRouteManifest({ routesDirectory, manifestPath });
+
+  assert.deepEqual(JSON.parse(await readFile(manifestPath, "utf8")), {
+    schema_version: 1,
+    routes: ["/", "/calendar"],
+  });
 });

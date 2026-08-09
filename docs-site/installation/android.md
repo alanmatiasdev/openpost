@@ -75,7 +75,7 @@ The Capacitor config is in `frontend/capacitor.config.ts`:
 
 - App ID: `com.openpost.app`
 - App name: `OpenPost`
-- Web directory: `../backend/cmd/openpost/public`
+- Web directory: `build` (the frontend package-owned output)
 - Android scheme: `https`
 - Plugins: `@capacitor/app`, `@capacitor/splash-screen`, `@capacitor/status-bar`, and Capacitor HTTP support
 

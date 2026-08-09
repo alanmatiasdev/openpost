@@ -19,4 +19,9 @@ bun run --filter @openpost/web check
 bun run --filter @openpost/web lint
 bun run --filter @openpost/web test
 bun run check:ui-consistency
+bun run frontend:build
 ```
+
+The cached frontend task owns `frontend/build`. `bun run frontend:build`
+packages that validated artifact into `backend/cmd/openpost/public` only after
+the build completes, so stale or partial files cannot enter the Go embed tree.

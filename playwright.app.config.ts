@@ -30,7 +30,7 @@ export default defineConfig({
   webServer: {
     command: [
       `rm -f ${dbPath}`,
-      "bun run --filter @openpost/web build",
+      "bun run frontend:build",
       [
         "cd backend &&",
         `OPENPOST_PORT=${port}`,

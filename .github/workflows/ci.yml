@@ -39,6 +39,7 @@ jobs:
       - run: bun install --frozen-lockfile
       - name: Check generated contracts and repository policy
         run: |
+          bun run check:build-graph
           bun run check:docs
           bun run check:release-version
           bun run check:app-routes
@@ -115,7 +116,7 @@ jobs:
       - run: bunx playwright install --with-deps chromium
       - run: bun run --filter @openpost/web test
       - run: bun run --filter @openpost/video-project test
-      - run: bun run --filter @openpost/web build
+      - run: bun run verify:frontend-build-cache -- --keep-output
       - uses: actions/upload-artifact@v4
         with:
           name: frontend-public-${{ github.sha }}

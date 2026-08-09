@@ -3,8 +3,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite dev --host 0.0.0.0 --port 4322",
-    "build": "vite build && bun run build:functions && bun scripts/check-routing-output.mjs && bun scripts/check-social-metadata-output.mjs",
+    "sync:assets": "bun ../scripts/sync-assets.mjs --surface marketing",
+    "dev": "bun run sync:assets && vite dev --host 0.0.0.0 --port 4322",
+    "build": "bun run sync:assets && vite build && bun run build:functions && bun scripts/check-routing-output.mjs && bun scripts/check-social-metadata-output.mjs",
     "build:functions": "bun run check:functions && wrangler pages functions build functions --outdir .wrangler/functions --project-directory .",
     "check:functions": "tsc --noEmit -p tsconfig.functions.json",
     "check:routing": "bun scripts/check-routing-output.mjs",

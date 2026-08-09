@@ -1,0 +1,16 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "build": {
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/assets/**",
+        "$TURBO_ROOT$/docs-site/.generated/**",
+        "$TURBO_ROOT$/docs-site/public/openapi.json",
+        "$TURBO_ROOT$/scripts/sync-assets.mjs"
+      ],
+      "outputs": [".vitepress/dist/**"]
+    }
+  }
+}

@@ -55,7 +55,7 @@
 
     docs.exec = ''
       cd "${config.git.root}"
-      bun run --filter @openpost/docs docs:dev
+      bun run docs:dev
     '';
 
     build.exec = ''
@@ -69,11 +69,12 @@
 
     docs-build.exec = ''
       cd "${config.git.root}"
-      bun run --filter @openpost/docs docs:build
+      bun run docs:build
     '';
 
     check.exec = ''
       cd "${config.git.root}"
+      bun run check:build-graph &&
       bun run check:docs &&
       bun run check:release-version &&
       bun run check:app-routes &&

@@ -2,49 +2,76 @@ import { cp, mkdir, rm, stat } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { setTimeout as delay } from "node:timers/promises";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { generateSocialCatalog } from "./social-images/catalog.mjs";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(scriptDir, "..");
 const source = path.join(root, "assets");
 const frontendRoot = path.join(root, "frontend");
 
-const targets = [
-  path.join(frontendRoot, "static", "assets"),
-  path.join(root, "docs-site", "public", "assets"),
-  path.join(root, "marketing-site", "static", "assets"),
-];
+const targets = new Map([
+  ["frontend", path.join(frontendRoot, "static", "assets")],
+  ["docs", path.join(root, "docs-site", "public", "assets")],
+  ["marketing", path.join(root, "marketing-site", "static", "assets")],
+]);
 
 const brandIconSource = path.join(source, "brand", "icon.svg");
 const capacitorAssetsTarget = path.join(frontendRoot, "assets");
 const lockDir = path.join(root, ".sync-assets.lock");
 
-if (!existsSync(source)) {
-  console.error("Missing assets/ directory");
-  process.exit(1);
+export async function syncAssets({ surface = "all" } = {}) {
+  if (!existsSync(source)) {
+    throw new Error("Missing assets/ directory");
+  }
+  if (surface !== "all" && !targets.has(surface)) {
+    throw new Error(
+      `Unknown asset surface ${JSON.stringify(surface)}; expected frontend, docs, marketing, or all`,
+    );
+  }
+
+  await acquireLock();
+  try {
+    const selectedTargets =
+      surface === "all"
+        ? [...targets.entries()]
+        : [[surface, targets.get(surface)]];
+    for (const [, target] of selectedTargets) {
+      await rm(target, { recursive: true, force: true });
+      await mkdir(path.dirname(target), { recursive: true });
+      await cp(source, target, { recursive: true });
+      console.log(`Synced assets -> ${path.relative(root, target)}`);
+    }
+
+    if (surface === "all" || surface === "frontend") {
+      if (!existsSync(brandIconSource)) {
+        throw new Error("Missing brand icon at assets/brand/icon.svg");
+      }
+      await mkdir(capacitorAssetsTarget, { recursive: true });
+      await cp(brandIconSource, path.join(capacitorAssetsTarget, "logo.svg"));
+      console.log(
+        "Prepared frontend/assets/logo.svg for Capacitor asset generation",
+      );
+    }
+  } finally {
+    await rm(lockDir, { recursive: true, force: true });
+  }
 }
 
-await acquireLock();
-try {
-  await generateSocialCatalog();
-
-  for (const target of targets) {
-    await rm(target, { recursive: true, force: true });
-    await mkdir(path.dirname(target), { recursive: true });
-    await cp(source, target, { recursive: true });
-    console.log(`Synced assets -> ${path.relative(root, target)}`);
+function optionValue(name) {
+  const index = process.argv.indexOf(name);
+  if (index === -1) return undefined;
+  const value = process.argv[index + 1];
+  if (!value || value.startsWith("--")) {
+    throw new Error(`${name} requires a value`);
   }
+  return value;
+}
 
-  if (!existsSync(brandIconSource)) {
-    throw new Error("Missing brand icon at assets/brand/icon.svg");
-  }
-
-  await mkdir(capacitorAssetsTarget, { recursive: true });
-  await cp(brandIconSource, path.join(capacitorAssetsTarget, "logo.svg"));
-  console.log("Prepared frontend/assets/logo.svg for Capacitor asset generation");
-} finally {
-  await rm(lockDir, { recursive: true, force: true });
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href
+) {
+  await syncAssets({ surface: optionValue("--surface") ?? "all" });
 }
 
 async function acquireLock() {

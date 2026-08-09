@@ -1,4 +1,4 @@
-import { readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -10,7 +10,7 @@ export const defaultRoutesDirectory = path.join(
 );
 export const defaultManifestPath = path.join(
   repositoryRoot,
-  "backend/cmd/openpost/public/app-routes.json",
+  "frontend/build/app-routes.json",
 );
 
 const pageFilePattern = /^\+page(?:\.[^.]+)?\.(?:js|ts|svelte)$/;
@@ -74,8 +74,19 @@ export async function writeAppRouteManifest({
   manifestPath = defaultManifestPath,
 } = {}) {
   const routes = await collectAppRoutes(routesDirectory);
+  await mkdir(path.dirname(manifestPath), { recursive: true });
   await writeFile(manifestPath, serializeAppRouteManifest(routes));
   return routes;
+}
+
+function optionValue(name) {
+  const index = process.argv.indexOf(name);
+  if (index === -1) return undefined;
+  const value = process.argv[index + 1];
+  if (!value || value.startsWith("--")) {
+    throw new Error(`${name} requires a path`);
+  }
+  return value;
 }
 
 async function run() {
@@ -84,8 +95,13 @@ async function run() {
     console.log(`Validated ${routes.length} application routes.`);
     return;
   }
-  await writeFile(defaultManifestPath, serializeAppRouteManifest(routes));
-  const persisted = JSON.parse(await readFile(defaultManifestPath, "utf8"));
+  const outputDirectory = optionValue("--output-directory");
+  const manifestPath = outputDirectory
+    ? path.resolve(process.cwd(), outputDirectory, "app-routes.json")
+    : defaultManifestPath;
+  await mkdir(path.dirname(manifestPath), { recursive: true });
+  await writeFile(manifestPath, serializeAppRouteManifest(routes));
+  const persisted = JSON.parse(await readFile(manifestPath, "utf8"));
   if (
     persisted.schema_version !== 1 ||
     persisted.routes.length !== routes.length

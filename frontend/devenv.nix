@@ -76,9 +76,7 @@ let
       # for Vite to transform those lazy chunks and adapter-static to finish.
       export NODE_OPTIONS="--max-old-space-size=4096"
       cd "${config.git.root}"
-      bun run --filter @openpost/web build
-      mkdir -p "${config.git.root}/backend/cmd/openpost/public"
-      touch "${config.git.root}/backend/cmd/openpost/public/.gitkeep"
+      bun run frontend:build
     '';
   };
 in

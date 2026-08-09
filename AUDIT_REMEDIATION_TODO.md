@@ -935,7 +935,7 @@ Candidate decisions under this registry:
 
 ### BUILD-001 — Fix Turbo input/output ownership
 
-- [ ] **Problem — Baseline audit:** Turbo declares package-relative outputs while frontend build writes into a sibling backend path, so cache ownership/invalidation is wrong even though canonical release paths currently bypass it.
+- [x] **Problem — Baseline audit:** Turbo declares package-relative outputs while frontend build writes into a sibling backend path, so cache ownership/invalidation is wrong even though canonical release paths currently bypass it.
 - **Fix:** use package-local output plus an explicit packaging task or correct root-relative ownership; declare every frontend/backend embed input.
 - **Done when:** clean and cached builds produce identical artifacts, relevant changes invalidate the right tasks, and release reproducibility is unchanged.
 - **Evidence:** `turbo.json:14`.
@@ -962,7 +962,7 @@ Candidate decisions under this registry:
 
 ### BUILD-003 — Make root `bun run build` honest about docs
 
-- [ ] **Problem — Baseline audit:** root build silently omits the actual docs build because docs expose `docs:build`, not `build`.
+- [x] **Problem — Baseline audit:** root build silently omits the actual docs build because docs expose `docs:build`, not `build`.
 - **Fix:** include docs explicitly or fail with a clear supported-command message; keep Devenv/CI commands canonical.
 - **Done when:** root build contract is documented and CI prevents future task-name gaps.
 
