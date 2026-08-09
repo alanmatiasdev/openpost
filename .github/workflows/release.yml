@@ -25,8 +25,8 @@ jobs:
       ci_run_attempt: ${{ steps.candidate.outputs.run_attempt }}
       digest: ${{ steps.image.outputs.digest }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: ${{ env.BUN_VERSION }}
       - name: Require successful CI for the tagged SHA
@@ -100,16 +100,16 @@ jobs:
             "$image" candidate-release/release-manifest.json
           echo "digest=$digest" >> "$GITHUB_OUTPUT"
 
-  create-release:
-    name: Create GitHub release
+  prepare-draft:
+    name: Prepare reusable draft release
     runs-on: ubuntu-latest
     needs: verify-candidate
     permissions:
       actions: read
       contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: ${{ env.BUN_VERSION }}
       - name: Download exact candidate image evidence
@@ -122,11 +122,13 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --name "release-manifest-${GITHUB_SHA}-${CI_RUN_ATTEMPT}" \
             --dir candidate-release
-      - name: Publish the canonical changelog section
+      - name: Create or verify the draft and upload candidate evidence
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CANDIDATE_DIGEST: ${{ needs.verify-candidate.outputs.digest }}
+        shell: bash
         run: |
+          set -euo pipefail
           repository="${REGISTRY}/${IMAGE_NAME,,}"
           verified_digest="$(bun scripts/image-evidence.mjs verify \
             --evidence candidate-release/openpost-image-evidence.json \
@@ -137,95 +139,61 @@ jobs:
             --sbom candidate-release/openpost-image.spdx.json \
             --vulnerability-report candidate-release/openpost-image-trivy.json)"
           [[ "$verified_digest" == "$CANDIDATE_DIGEST" ]]
-          bun scripts/release-notes.mjs "$GITHUB_REF_NAME" |
-            gh release create "$GITHUB_REF_NAME" \
-              --repo "$GITHUB_REPOSITORY" \
-              --verify-tag \
-              --notes-file - \
-              candidate-release/openpost-image-evidence.json \
-              candidate-release/openpost-image.spdx.json \
-              candidate-release/openpost-image-trivy.json
-
-  promote-image:
-    name: Promote tested image
-    runs-on: ubuntu-latest
-    needs: verify-candidate
-    permissions:
-      contents: read
-      packages: write
-    outputs:
-      digest: ${{ steps.promote.outputs.digest }}
-    steps:
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Add release tags without rebuilding
-        id: promote
-        env:
-          SOURCE_DIGEST: ${{ needs.verify-candidate.outputs.digest }}
-        shell: bash
-        run: |
-          source_image="${REGISTRY}/${IMAGE_NAME}@${SOURCE_DIGEST}"
-          docker buildx imagetools create \
-            --prefer-index=false \
-            --tag "${REGISTRY}/${IMAGE_NAME}:${GITHUB_REF_NAME}" \
-            --tag "${REGISTRY}/${IMAGE_NAME}:latest" \
-            "$source_image"
-          promoted_digest="$(docker buildx imagetools inspect "${REGISTRY}/${IMAGE_NAME}:${GITHUB_REF_NAME}" | awk '$1 == "Digest:" { print $2; exit }')"
-          [[ "$promoted_digest" == "$SOURCE_DIGEST" ]] || {
-            echo "Promoted digest $promoted_digest does not match verified candidate $SOURCE_DIGEST." >&2
-            exit 1
+          bun scripts/release-notes.mjs "$GITHUB_REF_NAME" > release-notes.md
+          release_url="https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/${GITHUB_REF_NAME}"
+          fetch_release() {
+            curl --silent --show-error \
+              --connect-timeout 10 \
+              --max-time 30 \
+              --output draft-release.json \
+              --write-out '%{http_code}' \
+              -H 'Accept: application/vnd.github+json' \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H 'X-GitHub-Api-Version: 2022-11-28' \
+              "$release_url"
           }
-          echo "digest=$SOURCE_DIGEST" >> "$GITHUB_OUTPUT"
-
-  deploy-production:
-    name: Deploy production
-    runs-on: ubuntu-latest
-    needs: [promote-image, create-release]
-    timeout-minutes: 10
-    steps:
-      - name: Trigger the verified VPS deployment
-        env:
-          DEPLOY_WEBHOOK_SECRET: ${{ secrets.DEPLOY_WEBHOOK_SECRET }}
-          IMAGE_DIGEST: ${{ needs.promote-image.outputs.digest }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          payload=$(printf '{"repository":"%s","sha":"%s","tag":"%s","digest":"%s"}' \
-            "$GITHUB_REPOSITORY" "$GITHUB_SHA" "$GITHUB_REF_NAME" "$IMAGE_DIGEST")
-          signature=$(printf '%s' "$payload" | openssl dgst -sha256 -hmac "$DEPLOY_WEBHOOK_SECRET" | awk '{print "sha256=" $2}')
-          response=$(curl --fail-with-body --silent --show-error \
-            --connect-timeout 10 \
-            --max-time 300 \
-            -H 'Content-Type: application/json' \
-            -H "X-Hub-Signature-256: $signature" \
-            --data "$payload" \
-            https://webhooks.rgo.pt/hooks/deploy-openpost)
-          printf '%s\n' "$response"
-          grep -q "DEPLOY_OK openpost ${GITHUB_SHA}" <<<"$response"
-      - name: Verify public readiness, version, and revision
-        shell: bash
-        run: |
-          for _ in $(seq 1 60); do
-            info=$(curl --fail --silent --connect-timeout 2 --max-time 5 https://app.openpost.social/api/v1/version 2>/dev/null || true)
-            ready=$(curl --fail --silent --connect-timeout 2 --max-time 5 https://app.openpost.social/api/v1/ready 2>/dev/null || true)
-            revision=$(jq -r '.revision // empty' <<<"$info" 2>/dev/null || true)
-            version=$(jq -r '.version // empty' <<<"$info" 2>/dev/null || true)
-            readiness=$(jq -r '.status // empty' <<<"$ready" 2>/dev/null || true)
-            database=$(jq -r '.database // empty' <<<"$ready" 2>/dev/null || true)
-            [[ "$revision" == "$GITHUB_SHA" && "$version" == "$GITHUB_REF_NAME" && "$readiness" == ready && "$database" == ok ]] && exit 0
-            sleep 5
-          done
-          echo "Production did not become ready at $GITHUB_REF_NAME revision $GITHUB_SHA." >&2
-          exit 1
+          status="$(fetch_release)"
+          case "$status" in
+            200) ;;
+            404)
+              if ! gh release create "$GITHUB_REF_NAME" \
+                --repo "$GITHUB_REPOSITORY" \
+                --draft \
+                --verify-tag \
+                --title "$GITHUB_REF_NAME" \
+                --notes-file release-notes.md; then
+                echo "Draft creation raced with another attempt; validating the resulting release." >&2
+              fi
+              status="$(fetch_release)"
+              [[ "$status" == 200 ]]
+              ;;
+            *)
+              echo "Could not determine release state for $GITHUB_REF_NAME (HTTP $status)." >&2
+              exit 1
+              ;;
+          esac
+          bun scripts/release-assets.mjs verify \
+            --release-json draft-release.json \
+            --tag "$GITHUB_REF_NAME" \
+            --notes-file release-notes.md
+          gh release upload "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber \
+            candidate-release/release-manifest.json \
+            candidate-release/openpost-image-evidence.json \
+            candidate-release/openpost-image.spdx.json \
+            candidate-release/openpost-image-trivy.json
+          status="$(fetch_release)"
+          [[ "$status" == 200 ]]
+          bun scripts/release-assets.mjs verify \
+            --release-json draft-release.json \
+            --tag "$GITHUB_REF_NAME" \
+            --notes-file release-notes.md
 
   build-binaries:
     name: Build server (${{ matrix.os }}-${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
-    needs: [verify-candidate, create-release]
+    needs: [verify-candidate, prepare-draft]
     permissions:
       actions: read
       contents: write
@@ -236,8 +204,8 @@ jobs:
           - { os: darwin, arch: arm64, runner: macos-latest, ext: "" }
           - { os: windows, arch: amd64, runner: ubuntu-latest, ext: ".exe" }
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version-file: backend/go.mod
           cache-dependency-path: backend/go.sum
@@ -256,15 +224,23 @@ jobs:
           else
             CGO_ENABLED=1 go build -buildvcs=false -ldflags="-s -w -X main.version=${GITHUB_REF_NAME} -X main.commit=${GITHUB_SHA}" -o ../openpost-server-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.ext }} ./cmd/openpost
           fi
-      - uses: softprops/action-gh-release@v2
-        with:
-          files: openpost-server-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.ext }}
-          fail_on_unmatched_files: true
+      - name: Upload server binary to the draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          release_state="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${GITHUB_REF_NAME}" --jq '[.draft, .prerelease, .tag_name] | @tsv')"
+          expected_state=$'true\tfalse\t'"$GITHUB_REF_NAME"
+          [[ "$release_state" == "$expected_state" ]]
+          gh release upload "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber \
+            "openpost-server-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.ext }}"
 
   build-cli:
     name: Build CLI (${{ matrix.os }}-${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
-    needs: [verify-candidate, create-release]
+    needs: [verify-candidate, prepare-draft]
     permissions:
       contents: write
     strategy:
@@ -275,8 +251,8 @@ jobs:
           - { os: darwin, arch: arm64, runner: macos-latest, ext: "" }
           - { os: windows, arch: amd64, runner: ubuntu-latest, ext: ".exe" }
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version-file: cli/go.mod
           cache-dependency-path: cli/go.sum
@@ -286,29 +262,36 @@ jobs:
           cd cli
           CGO_ENABLED=0 GOOS=${{ matrix.os }} GOARCH=${{ matrix.arch }} go build -ldflags="-s -w -X main.version=${GITHUB_REF_NAME}" -o ../openpost-cli-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.ext }} ./cmd/openpost
           CGO_ENABLED=0 GOOS=${{ matrix.os }} GOARCH=${{ matrix.arch }} go build -ldflags="-s -w -X main.version=${GITHUB_REF_NAME}" -o ../openpost-mcp-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.ext }} ./cmd/openpost-mcp
-      - uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            openpost-cli-*
-            openpost-mcp-*
-          fail_on_unmatched_files: true
+      - name: Upload CLI and MCP binaries to the draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          release_state="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${GITHUB_REF_NAME}" --jq '[.draft, .prerelease, .tag_name] | @tsv')"
+          expected_state=$'true\tfalse\t'"$GITHUB_REF_NAME"
+          [[ "$release_state" == "$expected_state" ]]
+          gh release upload "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber \
+            "openpost-cli-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.ext }}" \
+            "openpost-mcp-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.ext }}"
 
   build-android:
     name: Build Android APK
     runs-on: ubuntu-latest
-    needs: [verify-candidate, create-release]
+    needs: [verify-candidate, prepare-draft]
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: ${{ env.BUN_VERSION }}
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
         with:
           java-version: "21"
           distribution: temurin
-      - uses: actions/cache@v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
             ~/.bun/install/cache
@@ -346,7 +329,171 @@ jobs:
           else
             cp frontend/android/app/build/outputs/apk/release/app-release-unsigned.apk openpost-app-android.apk
           fi
-      - uses: softprops/action-gh-release@v2
+      - name: Upload the Android APK to the draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          release_state="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${GITHUB_REF_NAME}" --jq '[.draft, .prerelease, .tag_name] | @tsv')"
+          expected_state=$'true\tfalse\t'"$GITHUB_REF_NAME"
+          [[ "$release_state" == "$expected_state" ]]
+          gh release upload "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber \
+            openpost-app-android.apk
+
+  promote-image:
+    name: Promote tested image
+    runs-on: ubuntu-latest
+    needs:
+      [
+        verify-candidate,
+        prepare-draft,
+        build-binaries,
+        build-cli,
+        build-android,
+      ]
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digest: ${{ steps.promote.outputs.digest }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
-          files: openpost-app-android.apk
-          fail_on_unmatched_files: true
+          bun-version: ${{ env.BUN_VERSION }}
+      - name: Require every draft release asset before promotion
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          bun scripts/release-notes.mjs "$GITHUB_REF_NAME" > release-notes.md
+          gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${GITHUB_REF_NAME}" > draft-release.json
+          bun scripts/release-assets.mjs verify \
+            --release-json draft-release.json \
+            --tag "$GITHUB_REF_NAME" \
+            --notes-file release-notes.md \
+            --complete
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Add release tags without rebuilding
+        id: promote
+        env:
+          SOURCE_DIGEST: ${{ needs.verify-candidate.outputs.digest }}
+        shell: bash
+        run: |
+          source_image="${REGISTRY}/${IMAGE_NAME}@${SOURCE_DIGEST}"
+          docker buildx imagetools create \
+            --prefer-index=false \
+            --tag "${REGISTRY}/${IMAGE_NAME}:${GITHUB_REF_NAME}" \
+            --tag "${REGISTRY}/${IMAGE_NAME}:latest" \
+            "$source_image"
+          promoted_digest="$(docker buildx imagetools inspect "${REGISTRY}/${IMAGE_NAME}:${GITHUB_REF_NAME}" | awk '$1 == "Digest:" { print $2; exit }')"
+          [[ "$promoted_digest" == "$SOURCE_DIGEST" ]] || {
+            echo "Promoted digest $promoted_digest does not match verified candidate $SOURCE_DIGEST." >&2
+            exit 1
+          }
+          echo "digest=$SOURCE_DIGEST" >> "$GITHUB_OUTPUT"
+
+  deploy-production:
+    name: Deploy production
+    runs-on: ubuntu-latest
+    needs: promote-image
+    timeout-minutes: 10
+    steps:
+      - name: Trigger the verified VPS deployment
+        env:
+          DEPLOY_WEBHOOK_SECRET: ${{ secrets.DEPLOY_WEBHOOK_SECRET }}
+          IMAGE_DIGEST: ${{ needs.promote-image.outputs.digest }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          payload=$(printf '{"repository":"%s","sha":"%s","tag":"%s","digest":"%s"}' \
+            "$GITHUB_REPOSITORY" "$GITHUB_SHA" "$GITHUB_REF_NAME" "$IMAGE_DIGEST")
+          signature=$(printf '%s' "$payload" | openssl dgst -sha256 -hmac "$DEPLOY_WEBHOOK_SECRET" | awk '{print "sha256=" $2}')
+          response=$(curl --fail-with-body --silent --show-error \
+            --connect-timeout 10 \
+            --max-time 300 \
+            -H 'Content-Type: application/json' \
+            -H "X-Hub-Signature-256: $signature" \
+            --data "$payload" \
+            https://webhooks.rgo.pt/hooks/deploy-openpost)
+          printf '%s\n' "$response"
+          grep -q "DEPLOY_OK openpost ${GITHUB_SHA}" <<<"$response"
+      - name: Verify public readiness, version, and revision
+        shell: bash
+        run: |
+          for _ in $(seq 1 60); do
+            info=$(curl --fail --silent --connect-timeout 2 --max-time 5 https://app.openpost.social/api/v1/version 2>/dev/null || true)
+            ready=$(curl --fail --silent --connect-timeout 2 --max-time 5 https://app.openpost.social/api/v1/ready 2>/dev/null || true)
+            revision=$(jq -r '.revision // empty' <<<"$info" 2>/dev/null || true)
+            version=$(jq -r '.version // empty' <<<"$info" 2>/dev/null || true)
+            readiness=$(jq -r '.status // empty' <<<"$ready" 2>/dev/null || true)
+            database=$(jq -r '.database // empty' <<<"$ready" 2>/dev/null || true)
+            [[ "$revision" == "$GITHUB_SHA" && "$version" == "$GITHUB_REF_NAME" && "$readiness" == ready && "$database" == ok ]] && exit 0
+            sleep 5
+          done
+          echo "Production did not become ready at $GITHUB_REF_NAME revision $GITHUB_SHA." >&2
+          exit 1
+
+  publish-release:
+    name: Publish complete deployed release
+    runs-on: ubuntu-latest
+    needs:
+      [
+        prepare-draft,
+        build-binaries,
+        build-cli,
+        build-android,
+        promote-image,
+        deploy-production,
+      ]
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - name: Verify the exact asset set and publish the draft
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          bun scripts/release-notes.mjs "$GITHUB_REF_NAME" > release-notes.md
+          release_url="https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/${GITHUB_REF_NAME}"
+          fetch_release() {
+            curl --fail --silent --show-error \
+              --connect-timeout 10 \
+              --max-time 30 \
+              --output release.json \
+              -H 'Accept: application/vnd.github+json' \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H 'X-GitHub-Api-Version: 2022-11-28' \
+              "$release_url"
+          }
+          fetch_release
+          bun scripts/release-assets.mjs verify \
+            --release-json release.json \
+            --tag "$GITHUB_REF_NAME" \
+            --notes-file release-notes.md \
+            --complete
+          gh release edit "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --draft=false \
+            --latest \
+            --verify-tag
+          fetch_release
+          bun scripts/release-assets.mjs verify \
+            --release-json release.json \
+            --tag "$GITHUB_REF_NAME" \
+            --notes-file release-notes.md \
+            --complete \
+            --published

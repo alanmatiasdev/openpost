@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import test from "node:test";
+
+import { expectedReleaseAssets } from "./release-assets.mjs";
 
 const ci = readFileSync(".github/workflows/ci.yml", "utf8");
 const release = readFileSync(".github/workflows/release.yml", "utf8");
@@ -8,6 +10,150 @@ const dockerfile = readFileSync("docker/Dockerfile", "utf8");
 const imageEvidence = readFileSync("scripts/image-evidence.mjs", "utf8");
 const localRelease = readFileSync("scripts/release.mjs", "utf8");
 const smoke = readFileSync("scripts/smoke-production-image.sh", "utf8");
+const dependabot = readFileSync(".github/dependabot.yml", "utf8");
+const workflows = readdirSync(".github/workflows", { withFileTypes: true })
+  .filter((entry) => entry.isFile() && /\.(?:ya?ml)$/u.test(entry.name))
+  .map((entry) => ({
+    name: entry.name,
+    source: readFileSync(`.github/workflows/${entry.name}`, "utf8"),
+  }));
+
+function workflowJob(workflow, jobName) {
+  const escapedName = jobName.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+  const start = new RegExp(`^  ${escapedName}:\\s*$`, "mu").exec(workflow);
+  assert.ok(start, `workflow job ${jobName} must exist`);
+  const remainder = workflow.slice(start.index + start[0].length);
+  const next = /^  [a-zA-Z0-9_-]+:\s*$/mu.exec(remainder);
+  return workflow.slice(
+    start.index,
+    next ? start.index + start[0].length + next.index : workflow.length,
+  );
+}
+
+function assertJobNeeds(job, dependencies) {
+  const preSteps = job.slice(0, job.indexOf("\n    steps:\n"));
+  for (const dependency of dependencies) {
+    assert.match(preSteps, new RegExp(`\\b${dependency}\\b`, "u"));
+  }
+}
+
+function matrixTargets(job) {
+  return [
+    ...job.matchAll(
+      /- \{ os: ([a-z]+), arch: ([a-z0-9]+), runner: [^,]+, ext: "([^"]*)" \}/gu,
+    ),
+  ].map((match) => match.slice(1));
+}
+
+function assertPinnedExternalActions(workflowSources) {
+  const actionLine = /^\s*(?:-\s+)?uses:\s+([^\s#]+)(?:\s+#\s*(.*?))?\s*$/gmu;
+  let actionCount = 0;
+  for (const workflow of workflowSources) {
+    for (const match of workflow.source.matchAll(actionLine)) {
+      const [, target, version] = match;
+      if (target.startsWith("./")) continue;
+      actionCount += 1;
+      assert.match(
+        target,
+        /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.\/-]+)?@[a-f0-9]{40}$/u,
+        `${workflow.name} has a mutable or non-commit action reference: ${target}`,
+      );
+      assert.match(
+        version ?? "",
+        /^v\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?$/u,
+        `${workflow.name} must document the release tag beside ${target}`,
+      );
+    }
+  }
+  assert.ok(actionCount > 0);
+}
+
+function assertFailureAtomicReleaseWorkflow(workflow) {
+  const prepare = workflowJob(workflow, "prepare-draft");
+  const binaries = workflowJob(workflow, "build-binaries");
+  const cli = workflowJob(workflow, "build-cli");
+  const android = workflowJob(workflow, "build-android");
+  const promote = workflowJob(workflow, "promote-image");
+  const deploy = workflowJob(workflow, "deploy-production");
+  const publish = workflowJob(workflow, "publish-release");
+
+  const workflowAssets = [
+    "release-manifest.json",
+    "openpost-image-evidence.json",
+    "openpost-image.spdx.json",
+    "openpost-image-trivy.json",
+    ...matrixTargets(binaries).map(
+      ([os, architecture, extension]) =>
+        `openpost-server-${os}-${architecture}${extension}`,
+    ),
+    ...matrixTargets(cli).flatMap(([os, architecture, extension]) => [
+      `openpost-cli-${os}-${architecture}${extension}`,
+      `openpost-mcp-${os}-${architecture}${extension}`,
+    ]),
+    "openpost-app-android.apk",
+  ];
+  assert.deepEqual(
+    [...workflowAssets].sort(),
+    [...expectedReleaseAssets].sort(),
+  );
+
+  assertJobNeeds(prepare, ["verify-candidate"]);
+  assert.match(prepare, /case "\$status" in[\s\S]*200\) ;;[\s\S]*404\)/u);
+  assert.match(prepare, /gh release create[\s\S]*--draft\s/u);
+  const prepareValidation = prepare.indexOf("release-assets.mjs verify");
+  const evidenceUpload = prepare.indexOf("gh release upload");
+  assert.ok(prepareValidation >= 0 && prepareValidation < evidenceUpload);
+  assert.doesNotMatch(prepare, /--draft=false/u);
+
+  for (const job of [binaries, cli, android]) {
+    assertJobNeeds(job, ["verify-candidate", "prepare-draft"]);
+    const draftCheck = job.indexOf("release_state=");
+    const upload = job.indexOf("gh release upload");
+    assert.ok(draftCheck >= 0 && draftCheck < upload);
+    assert.match(job, /expected_state=\$'true\\tfalse\\t'/u);
+  }
+
+  assertJobNeeds(promote, [
+    "verify-candidate",
+    "prepare-draft",
+    "build-binaries",
+    "build-cli",
+    "build-android",
+  ]);
+  const completeDraft = promote.indexOf("--complete");
+  const registryWrite = promote.indexOf("docker buildx imagetools create");
+  assert.ok(completeDraft >= 0 && completeDraft < registryWrite);
+
+  assertJobNeeds(deploy, ["promote-image"]);
+  assert.match(deploy, /\/api\/v1\/ready/u);
+  assert.match(deploy, /\/api\/v1\/version/u);
+
+  assertJobNeeds(publish, [
+    "prepare-draft",
+    "build-binaries",
+    "build-cli",
+    "build-android",
+    "promote-image",
+    "deploy-production",
+  ]);
+  const exactAssetCheck = publish.indexOf("--complete");
+  const publicEdit = publish.indexOf("gh release edit");
+  const publishedCheck = publish.indexOf("--published");
+  assert.ok(
+    exactAssetCheck >= 0 &&
+      exactAssetCheck < publicEdit &&
+      publicEdit < publishedCheck,
+  );
+  assert.match(publish, /--draft=false/u);
+
+  const outsidePublish = workflow.replace(publish, "");
+  assert.doesNotMatch(outsidePublish, /--draft=false|gh release edit/u);
+  assert.equal(workflow.match(/gh release create/g)?.length, 1);
+  assert.doesNotMatch(
+    workflow,
+    /softprops\/action-gh-release|gh release delete/u,
+  );
+}
 
 test("only the candidate image job can write packages", () => {
   const jobsStart = ci.indexOf("\njobs:\n");
@@ -22,6 +168,36 @@ test("only the candidate image job can write packages", () => {
   );
   assert.equal(ci.match(/packages:\s*write/g)?.length, 1);
   assert.match(release, /\npermissions: \{\}\n\njobs:\n/);
+});
+
+test("maintained workflows pin every external action and receive weekly updates", () => {
+  assertPinnedExternalActions(workflows);
+  assert.match(
+    dependabot,
+    /package-ecosystem: github-actions[\s\S]*directory: \/[\s\S]*interval: weekly/u,
+  );
+});
+
+test("tag releases stay draft until every artifact, promotion, and deployment succeeds", () => {
+  assertFailureAtomicReleaseWorkflow(release);
+});
+
+test("contract checks reject a mutable action or premature public release", () => {
+  const mutableWorkflows = workflows.map((workflow, index) => ({
+    ...workflow,
+    source:
+      index === 0
+        ? workflow.source.replace(/@[a-f0-9]{40}/u, "@v4")
+        : workflow.source,
+  }));
+  assert.throws(
+    () => assertPinnedExternalActions(mutableWorkflows),
+    /mutable or non-commit action reference/u,
+  );
+
+  const prematureRelease = release.replace("--draft \\", "--draft=false \\");
+  assert.notEqual(prematureRelease, release);
+  assert.throws(() => assertFailureAtomicReleaseWorkflow(prematureRelease));
 });
 
 test("candidate CI embeds one stable version and exact-revision manifest", () => {

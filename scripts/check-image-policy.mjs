@@ -377,10 +377,7 @@ export function validateImagePolicy(inputs, now = new Date()) {
     if (!inputs.ci.includes(evidence)) {
       problems.push(`candidate CI does not upload ${evidence}`);
     }
-    if (
-      evidence !== "release-manifest.json" &&
-      !inputs.release.includes(evidence)
-    ) {
+    if (!inputs.release.includes(evidence)) {
       problems.push(`tagged release does not publish ${evidence}`);
     }
   }
