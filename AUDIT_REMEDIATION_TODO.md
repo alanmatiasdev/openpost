@@ -1153,7 +1153,7 @@ These tasks are deliberately lower priority. Remove only code proven unreachable
 
 ### CLEAN-FE-001 — Remove unused UI primitives and duplicate tombstones
 
-- [ ] Remove drawer primitive plus `vaul-svelte`, scroll-area primitive, duplicate sidebar `constants.js`/`constants.ts`, and empty `lib/index.ts`/`types/index.ts` after import checks.
+- [x] Remove drawer primitive plus `vaul-svelte`, scroll-area primitive, duplicate sidebar `constants.js`/`constants.ts`, and empty `lib/index.ts`/`types/index.ts` after import checks.
 - **Done when:** no import remains, the lockfile is pruned, and UI consistency/type/build checks pass.
 - **Evidence:** `frontend/src/lib/components/ui/drawer/index.ts`, `frontend/src/lib/components/ui/scroll-area/index.ts`, `frontend/src/lib/components/ui/sidebar/constants.ts`.
 
