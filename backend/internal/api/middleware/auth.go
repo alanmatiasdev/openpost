@@ -331,23 +331,6 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
-// WorkspaceAccessMiddleware validates that the user has access to the workspace specified in the request.
-// This should be used after AuthMiddleware.
-func WorkspaceAccessMiddleware(api huma.API, _ *bun.DB) func(ctx huma.Context, next func(huma.Context)) {
-	return func(ctx huma.Context, next func(huma.Context)) {
-		userID := GetUserID(ctx.Context())
-		if userID == "" {
-			_ = huma.WriteErr(api, ctx, http.StatusUnauthorized, "unauthorized")
-			return
-		}
-
-		// Get workspace_id from query or body - this is a simplified version
-		// In practice, you'd need to extract it from the specific input structure
-		// This middleware serves as a pattern that handlers can follow
-		next(ctx)
-	}
-}
-
 // CheckWorkspaceAccess is a helper function to verify workspace access.
 func CheckWorkspaceAccess(ctx context.Context, db *bun.DB, workspaceID, userID string) (bool, error) {
 	_, ok, err := WorkspaceRole(ctx, db, workspaceID, userID)

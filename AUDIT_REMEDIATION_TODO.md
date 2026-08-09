@@ -1132,7 +1132,7 @@ These tasks are deliberately lower priority. Remove only code proven unreachable
 
 ### CLEAN-GO-001 — Remove tracked root debugging commands
 
-- [ ] Delete `backend/debug_import.go` and `backend/test_imports.go` after one final import/build check.
+- [x] Delete `backend/debug_import.go` and `backend/test_imports.go` after one final import/build check.
 - **Done when:** the extra root command/package is gone and backend build/test behavior is unchanged.
 
 ### CLEAN-GO-002 — Remove confirmed unreachable backend/CLI symbols
@@ -1143,7 +1143,7 @@ These tasks are deliberately lower priority. Remove only code proven unreachable
 
 ### CLEAN-GO-003 — Remove the misleading `WorkspaceAccessMiddleware`
 
-- [ ] **Problem:** the unused middleware’s name claims workspace authorization but it only authenticates.
+- [x] **Problem:** the unused middleware’s name claims workspace authorization but it only authenticates.
 - **Fix:** delete it rather than risk future use; verify every live workspace route uses the real membership/role guard.
 - **Done when:** authorization tests prove cross-workspace requests fail and no registration/import remains.
 - **Evidence:** `backend/internal/api/middleware/auth.go:283`.

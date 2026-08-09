@@ -15,6 +15,7 @@ All notable changes to this project are documented in this file.
 
 ### Changed
 
+- Removed tracked backend import-probe commands and the unused authentication-only middleware whose name incorrectly implied workspace authorization.
 - Made one validated legal-policy manifest drive the hosted Terms, Privacy, and Refund Policy dates, versions, URLs, acceptance rules, public pages, generated backend constants, cloud startup checks, and release gates so substantive Terms or Privacy changes reliably re-prompt existing accounts.
 - Stamped each immutable release candidate from one strict stable-version and full-revision manifest, verified that identity across image labels, the embedded file, runtime metadata, artifact download, digest-only promotion, and deployed version checks, and blocked promotion on any mismatch.
 - Replaced the nested payment dialog with a standalone responsive checkout page and kept Paddle's hosted fields on a contrast-safe light payment canvas in both app themes.
