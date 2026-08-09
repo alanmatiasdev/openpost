@@ -4,6 +4,10 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Added an optional Memegen-backed meme maker to the shared media picker with cached template search, editable captions and image slots, validated AI suggestions, bounded previews, Media-library imports, source metadata, and durable generation recipes for linked edits.
+
 ### Changed
 
 - Split Profile, Security, Developer, Billing, Schedule, Brand, Instance, and workspace preferences into tab-owned Settings modules that each keep loading, mutation, dirty-state, and rendering behavior local while the route owns only navigation and composition.

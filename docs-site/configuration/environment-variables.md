@@ -100,6 +100,10 @@ Bootstrap and data-plane settings stay deployment-only because OpenPost needs th
 | `OPENPOST_IMAGE_CAPTION_MODEL` | No | `openai/gpt-5.6-luna` | OpenRouter model ID used for automatic image alt text. |
 | `OPENPOST_IMAGE_CAPTION_PROVIDER` | No | empty | Exact OpenRouter provider slug allowed for automatic image alt text. An empty value uses normal eligible-provider routing. |
 | `OPENPOST_IMAGE_CAPTION_REQUIRE_ZDR` | No | `false` | Require OpenRouter to use a zero-data-retention endpoint for automatic image alt text. Verify the configured model/provider pair supports ZDR before enabling. |
+| `OPENPOST_MEME_GENERATOR_ENABLED` | No | `false` | Enables authenticated Memegen template search, previews, rendering, and durable OpenPost recipes. |
+| `OPENPOST_MEMEGEN_URL` | No | `https://api.memegen.link` | Base URL of the hosted or operator-controlled Memegen API. |
+| `OPENPOST_MEMEGEN_API_KEY` | No | empty | Optional server-only Memegen key. Use `OPENPOST_MEMEGEN_API_KEY_FILE` for a managed secret. |
+| `OPENPOST_MEME_GENERATION_MODEL` | No | `openai/gpt-5.6-luna` | OpenRouter model used for optional meme template and caption suggestions. |
 | `OPENPOST_FEEDBACK_ENABLED` | No | `false` | Shows the authenticated feedback form only when a valid destination and recipient are also configured. |
 | `OPENPOST_FEEDBACK_DESTINATION_URL` | Required when feedback is enabled | empty | Server-only HTTPS Discord-compatible webhook. Use `OPENPOST_FEEDBACK_DESTINATION_URL_FILE` for a managed secret. |
 | `OPENPOST_FEEDBACK_RECIPIENT` | Required when feedback is enabled | empty | Plain recipient name shown to users before they send a report, such as `OpenPost team` or `Example operator`. |
