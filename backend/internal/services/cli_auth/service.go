@@ -88,6 +88,11 @@ func NewService(db *bun.DB, tokens *apitokens.Service) *Service {
 }
 
 func (s *Service) StartSession(ctx context.Context, input StartInput) (*StartedSession, error) {
+	now := s.now()
+	if err := s.cleanupExpired(ctx, now); err != nil {
+		return nil, err
+	}
+
 	clientName := strings.TrimSpace(input.ClientName)
 	if clientName == "" {
 		clientName = "OpenPost CLI"
@@ -102,7 +107,7 @@ func (s *Service) StartSession(ctx context.Context, input StartInput) (*StartedS
 		return nil, err
 	}
 
-	expiresAt := s.now().Add(DefaultLifetime)
+	expiresAt := now.Add(DefaultLifetime)
 	for range 8 {
 		userCode, err := generateUserCode()
 		if err != nil {
@@ -120,7 +125,7 @@ func (s *Service) StartSession(ctx context.Context, input StartInput) (*StartedS
 			Status:          statusPending,
 			IntervalSeconds: DefaultInterval,
 			ExpiresAt:       expiresAt,
-			CreatedAt:       s.now(),
+			CreatedAt:       now,
 		}
 
 		if _, err := s.db.NewInsert().Model(session).Exec(ctx); err != nil {
@@ -249,11 +254,11 @@ func (s *Service) DenySession(ctx context.Context, code string) error {
 	return err
 }
 
-func (s *Service) CleanupExpired(ctx context.Context) error {
+func (s *Service) cleanupExpired(ctx context.Context, now time.Time) error {
 	_, err := s.db.NewUpdate().
 		Model((*models.CLIAuthSession)(nil)).
 		Set("status = ?", statusExpired).
-		Where("status = ? AND expires_at <= ?", statusPending, s.now()).
+		Where("status = ? AND expires_at <= ?", statusPending, now).
 		Exec(ctx)
 	return err
 }

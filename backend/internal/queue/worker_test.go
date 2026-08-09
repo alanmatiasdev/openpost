@@ -239,34 +239,6 @@ func TestScheduleMediaCleanupIgnoresCompletedHistory(t *testing.T) {
 	require.Equal(t, 1, active)
 }
 
-func TestCancelMediaCleanupUsesTheExactActiveIdentity(t *testing.T) {
-	t.Parallel()
-
-	db := createTestDB(t)
-	require.NoError(t, ScheduleMediaCleanup(db, "workspace-1", 14))
-	require.NoError(t, ScheduleMediaCleanup(db, "workspace-10", 14))
-	_, err := db.NewInsert().Model(&models.Job{
-		ID: "cleanup-history", Type: jobTypeMediaCleanup,
-		ScopeID: "workspace-1", DedupeKey: "daily",
-		Payload: `{"workspace_id":"workspace-1","days":14}`,
-		Status:  jobStatusCompleted, RunAt: time.Now().UTC().Add(-time.Hour),
-	}).Exec(t.Context())
-	require.NoError(t, err)
-
-	worker := &BackgroundWorker{db: db}
-	require.NoError(t, worker.CancelMediaCleanup(t.Context(), "workspace-1"))
-
-	var rows []models.Job
-	require.NoError(t, db.NewSelect().Model(&rows).Where("type = ?", jobTypeMediaCleanup).Scan(t.Context()))
-	require.Len(t, rows, 2)
-	byScopeAndStatus := make(map[string]models.Job, len(rows))
-	for _, row := range rows {
-		byScopeAndStatus[row.ScopeID+":"+row.Status] = row
-	}
-	require.Equal(t, "cleanup-history", byScopeAndStatus["workspace-1:"+jobStatusCompleted].ID)
-	require.NotEmpty(t, byScopeAndStatus["workspace-10:"+jobStatusPending].ID)
-}
-
 func TestMediaCleanupReschedulesTheSameDurableChain(t *testing.T) {
 	t.Parallel()
 

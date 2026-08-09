@@ -587,18 +587,6 @@ func (w *BackgroundWorker) ensureMediaLifecycleJobs(ctx context.Context) {
 	}
 }
 
-func (w *BackgroundWorker) CancelMediaCleanup(ctx context.Context, workspaceID string) error {
-	identity, err := jobregistry.MediaCleanupIdentity(workspaceID)
-	if err != nil {
-		return err
-	}
-	_, err = w.db.NewDelete().Model(&models.Job{}).
-		Where("type = ? AND scope_id = ? AND dedupe_key = ?", jobTypeMediaCleanup, identity.ScopeID, identity.DedupeKey).
-		Where("status IN (?, ?)", jobStatusPending, jobStatusProcessing).
-		Exec(ctx)
-	return err
-}
-
 func ScheduleMediaCleanup(db *bun.DB, workspaceID string, _ int) error {
 	_, _, err := jobregistry.EnqueueMediaCleanup(context.Background(), db, workspaceID, time.Time{})
 	if err != nil {

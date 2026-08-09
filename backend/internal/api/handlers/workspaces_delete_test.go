@@ -84,6 +84,19 @@ func TestDeleteWorkspaceRemovesWorkspaceContent(t *testing.T) {
 		CreatedAt: time.Now().UTC(),
 	}).Exec(ctx)
 	require.NoError(t, err)
+	for _, job := range []*models.Job{
+		{
+			ID: "cleanup-workspace-1", Type: "media_cleanup", ScopeID: "workspace-1", DedupeKey: "daily",
+			Payload: `{"workspace_id":"workspace-1"}`, Status: "pending", RunAt: time.Now().UTC(), MaxAttempts: 3,
+		},
+		{
+			ID: "cleanup-workspace-2", Type: "media_cleanup", ScopeID: "workspace-2", DedupeKey: "daily",
+			Payload: `{"workspace_id":"workspace-2"}`, Status: "pending", RunAt: time.Now().UTC(), MaxAttempts: 3,
+		},
+	} {
+		_, err = server.db.NewInsert().Model(job).Exec(ctx)
+		require.NoError(t, err)
+	}
 
 	rec := jsonRequest(t, server.echo, http.MethodDelete, "/api/v1/workspaces/workspace-1", nil, "web-token")
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
@@ -94,6 +107,8 @@ func TestDeleteWorkspaceRemovesWorkspaceContent(t *testing.T) {
 	require.Zero(t, countRows[models.MediaAttachment](t, server.db, "id = ?", "media-1"))
 	require.Zero(t, countRows[models.UserNotification](t, server.db, "id = ?", "notification-1"))
 	require.Equal(t, 1, countRows[models.Job](t, server.db, "type = ?", "storage_delete"))
+	require.Zero(t, countRows[models.Job](t, server.db, "id = ?", "cleanup-workspace-1"))
+	require.Equal(t, 1, countRows[models.Job](t, server.db, "id = ?", "cleanup-workspace-2"))
 	require.Equal(t, 1, countRows[models.Workspace](t, server.db, ""))
 }
 

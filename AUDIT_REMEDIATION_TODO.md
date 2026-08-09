@@ -1148,7 +1148,7 @@ These tasks are deliberately lower priority. Remove only code proven unreachable
 
 ### CLEAN-LIFECYCLE-001 — Decide, then wire or remove unreachable lifecycle hooks
 
-- [ ] Decide product/operations intent for `CancelMediaCleanup` and `CleanupExpired`; do not delete them just because reachability says unused.
+- [x] Make new CLI authorization requests expire older pending sessions; remove `CancelMediaCleanup` because transactional workspace deletion already removes exact workspace jobs and deleting a processing row cannot cancel an in-flight worker.
 - **Done when:** each is either called from an explicit tested lifecycle or removed with an approved replacement/non-requirement.
 
 ### CLEAN-FE-001 — Remove unused UI primitives and duplicate tombstones

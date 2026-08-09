@@ -178,6 +178,38 @@ func TestCLIAuthStartStoresOnlyHashes(t *testing.T) {
 	require.NotContains(t, start.VerificationURL, start.DeviceCode)
 }
 
+func TestCLIAuthStartExpiresOlderPendingSessions(t *testing.T) {
+	t.Parallel()
+
+	srv := newCLIAuthTestServer(t)
+	now := time.Now().UTC()
+	for _, session := range []*models.CLIAuthSession{
+		{
+			ID: "expired-pending", DeviceCodeHash: "expired-device", UserCodeHash: "expired-user",
+			ClientName: "Old CLI", RequestedScopes: "cli:full", Status: "pending",
+			IntervalSeconds: 5, ExpiresAt: now.Add(-time.Minute), CreatedAt: now.Add(-time.Hour),
+		},
+		{
+			ID: "future-pending", DeviceCodeHash: "future-device", UserCodeHash: "future-user",
+			ClientName: "Current CLI", RequestedScopes: "cli:full", Status: "pending",
+			IntervalSeconds: 5, ExpiresAt: now.Add(time.Hour), CreatedAt: now,
+		},
+	} {
+		_, err := srv.db.NewInsert().Model(session).Exec(t.Context())
+		require.NoError(t, err)
+	}
+
+	srv.startCLIAuth(t)
+
+	var sessions []models.CLIAuthSession
+	require.NoError(t, srv.db.NewSelect().Model(&sessions).
+		Where("id IN (?)", bun.In([]string{"expired-pending", "future-pending"})).
+		Order("id ASC").Scan(t.Context()))
+	require.Len(t, sessions, 2)
+	require.Equal(t, "expired", sessions[0].Status)
+	require.Equal(t, "pending", sessions[1].Status)
+}
+
 type startResponse struct {
 	DeviceCode      string `json:"device_code"`
 	UserCode        string `json:"user_code"`
