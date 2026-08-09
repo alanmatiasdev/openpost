@@ -466,42 +466,6 @@ func findNextConfiguredScheduleSlotTime(
 	return nil, time.Time{}
 }
 
-func findNextOverflowPostingTime(
-	now time.Time,
-	loc *time.Location,
-	scheduledPosts []models.Post,
-	gapMinutes int,
-) time.Time {
-	if gapMinutes <= 0 || len(scheduledPosts) == 0 {
-		return time.Time{}
-	}
-
-	for dayOffset := 0; dayOffset < 30; dayOffset++ {
-		dayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc).AddDate(0, 0, dayOffset)
-		dayEnd := dayStart.Add(24 * time.Hour)
-
-		dayPosts := make([]time.Time, 0)
-		for _, post := range scheduledPosts {
-			localScheduledAt := post.ScheduledAt.In(loc)
-			if !localScheduledAt.Before(dayStart) && localScheduledAt.Before(dayEnd) {
-				dayPosts = append(dayPosts, localScheduledAt)
-			}
-		}
-		if len(dayPosts) == 0 {
-			continue
-		}
-
-		sort.Slice(dayPosts, func(i, j int) bool { return dayPosts[i].Before(dayPosts[j]) })
-
-		fallbackTime := dayPosts[len(dayPosts)-1].Add(time.Duration(gapMinutes) * time.Minute)
-		if fallbackTime.After(now) && fallbackTime.Before(dayEnd) {
-			return fallbackTime
-		}
-	}
-
-	return time.Time{}
-}
-
 func (h *PostingScheduleHandler) SuggestSchedule(api huma.API) {
 	huma.Register(api, huma.Operation{
 		OperationID: "suggest-posting-schedule",

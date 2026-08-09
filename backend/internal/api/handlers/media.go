@@ -2619,76 +2619,6 @@ func (h *MediaHandler) nonPostMediaUsage(ctx context.Context, workspaceID, media
 	return usage, nil
 }
 
-func (h *MediaHandler) removeMediaReferences(ctx context.Context, db bun.IDB, workspaceID, mediaID string) error {
-	if _, err := db.NewDelete().
-		Model((*models.PostMedia)(nil)).
-		Where("media_id = ?", mediaID).
-		Exec(ctx); err != nil {
-		return err
-	}
-	if _, err := db.NewDelete().
-		Model((*models.RenditionMedia)(nil)).
-		Where("media_id = ?", mediaID).
-		Exec(ctx); err != nil {
-		return err
-	}
-
-	var variants []models.PostVariant
-	var workspacePostIDs []string
-	if err := db.NewSelect().
-		Model((*models.Post)(nil)).
-		Column("id").
-		Where("workspace_id = ?", workspaceID).
-		Scan(ctx, &workspacePostIDs); err != nil {
-		return err
-	}
-	if len(workspacePostIDs) == 0 {
-		return nil
-	}
-	if err := db.NewSelect().
-		Model(&variants).
-		Where("post_id IN (?)", bun.List(workspacePostIDs)).
-		Where("media_ids != ''").
-		Scan(ctx); err != nil {
-		return err
-	}
-
-	for _, variant := range variants {
-		var ids []string
-		if err := json.Unmarshal([]byte(variant.MediaIDs), &ids); err != nil {
-			continue
-		}
-
-		changed := false
-		filtered := ids[:0]
-		for _, id := range ids {
-			if id == mediaID {
-				changed = true
-				continue
-			}
-			filtered = append(filtered, id)
-		}
-		if !changed {
-			continue
-		}
-
-		encoded, err := json.Marshal(filtered)
-		if err != nil {
-			return err
-		}
-		if _, err := db.NewUpdate().
-			Model(&variant).
-			Column("media_ids").
-			Set("media_ids = ?", string(encoded)).
-			Where("id = ?", variant.ID).
-			Exec(ctx); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
 func variantContainsMedia(mediaIDsJSON, mediaID string) bool {
 	var ids []string
 	if err := json.Unmarshal([]byte(mediaIDsJSON), &ids); err != nil {
@@ -2801,39 +2731,6 @@ func (h *MediaHandler) deleteMediaFiles(media *models.MediaAttachment) error {
 		h.storage.Delete(media.ThumbnailObjectKey) //nolint:errcheck
 	}
 
-	return nil
-}
-
-func (h *MediaHandler) deleteMedia(ctx context.Context, media *models.MediaAttachment) error {
-	if err := h.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
-		if err := h.removeMediaReferences(txCtx, tx, media.WorkspaceID, media.ID); err != nil {
-			return err
-		}
-		result, err := tx.NewDelete().Model((*models.MediaAttachment)(nil)).
-			Where("id = ? AND workspace_id = ?", media.ID, media.WorkspaceID).
-			Exec(txCtx)
-		if err != nil {
-			return err
-		}
-		rows, err := result.RowsAffected()
-		if err != nil {
-			return err
-		}
-		if rows != 1 {
-			return sql.ErrNoRows
-		}
-		return nil
-	}); err != nil {
-		return err
-	}
-
-	// Blob storage cannot participate in the database transaction. Removing the
-	// record first guarantees APIs never retain references to a missing blob;
-	// a storage failure leaves only an unreferenced object that can be retried or
-	// garbage-collected safely.
-	if err := h.deleteMediaFiles(media); err != nil {
-		log.Printf("failed to delete unreferenced media files for %s: %v", media.ID, err)
-	}
 	return nil
 }
 

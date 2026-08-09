@@ -2,22 +2,12 @@ package handlers
 
 import (
 	"context"
-	"errors"
-	"io"
 	"testing"
 	"time"
 
 	"github.com/openpost/backend/internal/models"
 	"github.com/stretchr/testify/require"
 )
-
-type failingDeleteStorage struct{}
-
-func (failingDeleteStorage) Driver() string                         { return "test" }
-func (failingDeleteStorage) Save(string, io.Reader) (string, error) { return "", nil }
-func (failingDeleteStorage) Delete(string) error                    { return errors.New("storage unavailable") }
-func (failingDeleteStorage) GetURL(string) string                   { return "" }
-func (failingDeleteStorage) Open(string) (io.ReadCloser, error)     { return nil, errors.New("not found") }
 
 func TestMediaUsageSummaryAllowsTerminalPostUsage(t *testing.T) {
 	t.Parallel()
@@ -154,32 +144,4 @@ func TestMediaUsageSummaryCountsVariantMediaAndDedupesByPost(t *testing.T) {
 	usage, err := handler.mediaUsageSummary(ctx, "ws-1", "variant-media")
 	require.NoError(t, err)
 	require.Equal(t, mediaUsageSummary{Total: 2, Blocking: 1}, usage)
-}
-
-func TestDeleteMediaCommitsDatabaseRemovalBeforeBestEffortBlobCleanup(t *testing.T) {
-	t.Parallel()
-
-	db := createHandlerTestDB(t,
-		(*models.Post)(nil),
-		(*models.PostMedia)(nil),
-		(*models.PostVariant)(nil),
-		(*models.RenditionMedia)(nil),
-		(*models.MediaAttachment)(nil),
-	)
-	handler := &MediaHandler{db: db, storage: failingDeleteStorage{}}
-	ctx := context.Background()
-	media := &models.MediaAttachment{
-		ID:          "media-delete",
-		WorkspaceID: "ws-1",
-		FilePath:    "media-delete.jpg",
-		MimeType:    "image/jpeg",
-	}
-	_, err := db.NewInsert().Model(media).Exec(ctx)
-	require.NoError(t, err)
-
-	require.NoError(t, handler.deleteMedia(ctx, media))
-
-	count, err := db.NewSelect().Model((*models.MediaAttachment)(nil)).Where("id = ?", media.ID).Count(ctx)
-	require.NoError(t, err)
-	require.Zero(t, count)
 }

@@ -1136,8 +1136,8 @@ These tasks are deliberately lower priority. Remove only code proven unreachable
 
 ### CLEAN-GO-004 — Retire obsolete implementation-only helpers/tests
 
-- [ ] Move useful assertions to current Trash behavior, then remove `removeMediaReferences` and `deleteMedia` plus their implementation-only tests.
-- [ ] Move useful scheduling assertions to configured-slot behavior, then remove `findNextOverflowPostingTime` and its implementation-only tests.
+- [x] Move useful assertions to current Trash behavior, then remove `removeMediaReferences` and `deleteMedia` plus their implementation-only tests.
+- [x] Move useful scheduling assertions to configured-slot behavior, then remove `findNextOverflowPostingTime` and its implementation-only tests.
 - **Evidence:** `backend/internal/api/handlers/media.go:2622`, `backend/internal/api/handlers/media.go:2807`, `backend/internal/api/handlers/posting_schedules.go:469`.
 
 ### CLEAN-CLI-001 — Remove or unexport test-only CLI APIs
