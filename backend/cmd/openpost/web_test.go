@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -15,6 +17,19 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/require"
 )
+
+func withAppRoutes(webFS fstest.MapFS, routes ...string) fstest.MapFS {
+	type routeManifest struct {
+		SchemaVersion int      `json:"schema_version"`
+		Routes        []string `json:"routes"`
+	}
+	data, err := json.Marshal(routeManifest{SchemaVersion: 1, Routes: routes})
+	if err != nil {
+		panic(err)
+	}
+	webFS[spaRouteManifestPath] = &fstest.MapFile{Data: data}
+	return webFS
+}
 
 func TestSpaStaticAssetsPreferPrecompressedImmutableResponses(t *testing.T) {
 	modTime := time.Date(2026, time.July, 27, 12, 0, 0, 0, time.UTC)
@@ -124,6 +139,111 @@ func TestSpaHTMLRemainsUncached(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Equal(t, "no-cache, no-store, must-revalidate", rec.Header().Get("Cache-Control"))
 	require.Equal(t, "<html>login</html>", rec.Body.String())
+}
+
+func TestSpaFallbackDistinguishesKnownDynamicRoutesFromUnknownDocuments(t *testing.T) {
+	webFS := withAppRoutes(fstest.MapFS{
+		"index.html": {Data: []byte("<html>app</html>")},
+	}, "/", "/calendar", "/publications/[id]", "/video-studio/[...path]")
+	e := echo.New()
+	registerSpaRoutes(e, webFS)
+
+	tests := []struct {
+		name   string
+		path   string
+		status int
+	}{
+		{name: "known static route without emitted page", path: "/calendar", status: http.StatusOK},
+		{name: "known dynamic route", path: "/publications/pub_123", status: http.StatusOK},
+		{name: "known nested rest route", path: "/video-studio/projects/example", status: http.StatusOK},
+		{name: "unknown route", path: "/this-route-does-not-exist", status: http.StatusNotFound},
+		{name: "static-prefix lookalike", path: "/calendar-export", status: http.StatusNotFound},
+		{name: "dynamic route missing parameter", path: "/publications", status: http.StatusNotFound},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			request := httptest.NewRequestWithContext(context.Background(), http.MethodGet, test.path, nil)
+			e.ServeHTTP(recorder, request)
+
+			require.Equal(t, test.status, recorder.Code)
+			require.Equal(t, "<html>app</html>", recorder.Body.String())
+			require.Equal(t, "text/html", recorder.Header().Get("Content-Type"))
+			require.Equal(t, "no-cache, no-store, must-revalidate", recorder.Header().Get("Cache-Control"))
+		})
+	}
+}
+
+func TestSpaUnknownHeadMatchesGetStatusAndHeadersWithoutBody(t *testing.T) {
+	webFS := withAppRoutes(fstest.MapFS{
+		"index.html": {Data: []byte("<html>app</html>")},
+	}, "/")
+	e := echo.New()
+	registerSpaRoutes(e, webFS)
+
+	getRecorder := httptest.NewRecorder()
+	e.ServeHTTP(getRecorder, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/missing", nil))
+	headRecorder := httptest.NewRecorder()
+	e.ServeHTTP(headRecorder, httptest.NewRequestWithContext(context.Background(), http.MethodHead, "/missing", nil))
+
+	require.Equal(t, http.StatusNotFound, getRecorder.Code)
+	require.Equal(t, getRecorder.Code, headRecorder.Code)
+	for _, header := range []string{"Content-Type", "Content-Length", "Cache-Control", "Pragma", "Expires"} {
+		require.Equal(t, getRecorder.Header().Get(header), headRecorder.Header().Get(header), header)
+	}
+	require.Equal(t, strconv.Itoa(getRecorder.Body.Len()), headRecorder.Header().Get("Content-Length"))
+	require.Empty(t, headRecorder.Body.String())
+}
+
+func TestSpaStartupRejectsMissingOrMalformedRouteManifest(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		files fstest.MapFS
+	}{
+		{
+			name: "missing",
+			files: fstest.MapFS{
+				"index.html": {Data: []byte("<html>app</html>")},
+			},
+		},
+		{
+			name: "unknown field",
+			files: fstest.MapFS{
+				"index.html":         {Data: []byte("<html>app</html>")},
+				spaRouteManifestPath: {Data: []byte(`{"schema_version":1,"routes":["/"],"extra":true}`)},
+			},
+		},
+		{
+			name: "unsorted",
+			files: withAppRoutes(fstest.MapFS{
+				"index.html": {Data: []byte("<html>app</html>")},
+			}, "/settings", "/"),
+		},
+		{
+			name: "empty parameter",
+			files: withAppRoutes(fstest.MapFS{
+				"index.html": {Data: []byte("<html>app</html>")},
+			}, "/publications/[]"),
+		},
+		{
+			name: "non-final rest parameter",
+			files: withAppRoutes(fstest.MapFS{
+				"index.html": {Data: []byte("<html>app</html>")},
+			}, "/files/[...path]/details"),
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var recovered any
+			func() {
+				defer func() {
+					recovered = recover()
+				}()
+				registerSpaRoutesFromFS(echo.New(), test.files, nil, "", false)
+			}()
+			require.NotNil(t, recovered)
+			require.Contains(t, fmt.Sprint(recovered), "route manifest is missing or invalid")
+		})
+	}
 }
 
 func TestSpaRedirectsLegacyStudioRoutesBeforeRenderingTheApp(t *testing.T) {

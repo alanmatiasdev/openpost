@@ -1,16 +1,21 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"html"
+	"io"
 	"io/fs"
 	"mime"
 	"net/http"
 	"net/url"
 	"os"
 	"path"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -34,11 +39,150 @@ func registerSpaRoutesFromFS(
 		panic("openpost: frontend is missing or empty (backend/cmd/openpost/public/index.html). " +
 			"Run the frontend build first: `bun run frontend:build` (or use `devenv shell -- build`).")
 	}
-	registerSpaRoutesWithProfileMetadata(e, webFS, db, publicURL, managedEdition)
+	routes, err := loadSpaRouteManifest(webFS)
+	if err != nil {
+		panic("openpost: frontend application route manifest is missing or invalid. " +
+			"Run the frontend build first: `bun run frontend:build` (or use `devenv shell -- build`): " + err.Error())
+	}
+	registerSpaRoutesWithProfileMetadataAndMatcher(e, webFS, db, publicURL, managedEdition, routes)
 }
 
 func registerSpaRoutes(e *echo.Echo, webFS fs.FS) {
 	registerSpaRoutesWithProfileMetadata(e, webFS, nil, "", false)
+}
+
+const spaRouteManifestPath = "app-routes.json"
+
+var spaRouteParameterPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*(?:=[A-Za-z_][A-Za-z0-9_]*)?$`)
+
+type spaRouteManifest struct {
+	SchemaVersion int      `json:"schema_version"`
+	Routes        []string `json:"routes"`
+}
+
+type spaRouteMatcher struct {
+	routes []string
+}
+
+func loadSpaRouteManifest(webFS fs.FS) (spaRouteMatcher, error) {
+	data, err := fs.ReadFile(webFS, spaRouteManifestPath)
+	if err != nil {
+		return spaRouteMatcher{}, fmt.Errorf("read %s: %w", spaRouteManifestPath, err)
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	var manifest spaRouteManifest
+	if err := decoder.Decode(&manifest); err != nil {
+		return spaRouteMatcher{}, fmt.Errorf("decode %s: %w", spaRouteManifestPath, err)
+	}
+	if err := ensureJSONEnd(decoder); err != nil {
+		return spaRouteMatcher{}, fmt.Errorf("decode %s: %w", spaRouteManifestPath, err)
+	}
+	if manifest.SchemaVersion != 1 {
+		return spaRouteMatcher{}, fmt.Errorf("unsupported schema_version %d", manifest.SchemaVersion)
+	}
+	if len(manifest.Routes) == 0 {
+		return spaRouteMatcher{}, errors.New("route manifest is empty")
+	}
+	for index, route := range manifest.Routes {
+		if err := validateSpaRouteTemplate(route); err != nil {
+			return spaRouteMatcher{}, fmt.Errorf("route %q: %w", route, err)
+		}
+		if index > 0 && manifest.Routes[index-1] >= route {
+			return spaRouteMatcher{}, errors.New("routes must be sorted and unique")
+		}
+	}
+	return spaRouteMatcher{routes: manifest.Routes}, nil
+}
+
+func ensureJSONEnd(decoder *json.Decoder) error {
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return errors.New("manifest must contain one JSON document")
+		}
+		return err
+	}
+	return nil
+}
+
+func validateSpaRouteTemplate(route string) error {
+	if route == "" || !strings.HasPrefix(route, "/") || path.Clean(route) != route {
+		return errors.New("path must be an absolute canonical route")
+	}
+	segments := splitRoutePath(route)
+	for index, segment := range segments {
+		if isRestRouteSegment(segment) {
+			if index != len(segments)-1 {
+				return errors.New("rest parameters must be valid final segments")
+			}
+			continue
+		}
+		if strings.ContainsAny(segment, "[]") && !isDynamicRouteSegment(segment) && !isOptionalRouteSegment(segment) {
+			return errors.New("parameter segment has invalid brackets")
+		}
+	}
+	return nil
+}
+
+func (matcher spaRouteMatcher) matches(requestPath string) bool {
+	actual := splitRoutePath(path.Clean("/" + strings.TrimPrefix(requestPath, "/")))
+	for _, route := range matcher.routes {
+		if routeSegmentsMatch(splitRoutePath(route), actual) {
+			return true
+		}
+	}
+	return false
+}
+
+func splitRoutePath(route string) []string {
+	trimmed := strings.Trim(route, "/")
+	if trimmed == "" {
+		return nil
+	}
+	return strings.Split(trimmed, "/")
+}
+
+func routeSegmentsMatch(template, actual []string) bool {
+	if len(template) == 0 {
+		return len(actual) == 0
+	}
+	segment := template[0]
+	if isRestRouteSegment(segment) {
+		return len(template) == 1
+	}
+	if isOptionalRouteSegment(segment) {
+		if routeSegmentsMatch(template[1:], actual) {
+			return true
+		}
+		return len(actual) > 0 && routeSegmentsMatch(template[1:], actual[1:])
+	}
+	if len(actual) == 0 {
+		return false
+	}
+	if segment != actual[0] && !isDynamicRouteSegment(segment) {
+		return false
+	}
+	return routeSegmentsMatch(template[1:], actual[1:])
+}
+
+func isDynamicRouteSegment(segment string) bool {
+	return len(segment) > 2 && strings.HasPrefix(segment, "[") && strings.HasSuffix(segment, "]") &&
+		!strings.HasPrefix(segment, "[[") && !strings.HasPrefix(segment, "[...") &&
+		spaRouteParameterPattern.MatchString(segment[1:len(segment)-1])
+}
+
+func isOptionalRouteSegment(segment string) bool {
+	return len(segment) > 4 && strings.HasPrefix(segment, "[[") && strings.HasSuffix(segment, "]]") &&
+		!strings.HasPrefix(segment, "[[...") &&
+		spaRouteParameterPattern.MatchString(segment[2:len(segment)-2])
+}
+
+func isRestRouteSegment(segment string) bool {
+	return (len(segment) > 5 && strings.HasPrefix(segment, "[...") && strings.HasSuffix(segment, "]") &&
+		spaRouteParameterPattern.MatchString(segment[4:len(segment)-1])) ||
+		(len(segment) > 7 && strings.HasPrefix(segment, "[[...") && strings.HasSuffix(segment, "]]") &&
+			spaRouteParameterPattern.MatchString(segment[5:len(segment)-2]))
 }
 
 type publicProfilePageMetadata struct {
@@ -48,6 +192,10 @@ type publicProfilePageMetadata struct {
 }
 
 func writeHTMLResponse(c echo.Context, data []byte, managedEdition bool) error {
+	return writeHTMLStatusResponse(c, data, managedEdition, http.StatusOK)
+}
+
+func writeHTMLStatusResponse(c echo.Context, data []byte, managedEdition bool, status int) error {
 	if managedEdition {
 		data = renderManagedEditionMetadata(data)
 	}
@@ -57,8 +205,9 @@ func writeHTMLResponse(c echo.Context, data []byte, managedEdition bool) error {
 	c.Response().Header().Set("Pragma", "no-cache")
 	c.Response().Header().Set("Expires", "0")
 	if c.Request().Method == http.MethodHead {
-		return c.NoContent(http.StatusOK)
+		return c.NoContent(status)
 	}
+	c.Response().WriteHeader(status)
 	_, err := c.Response().Write(data)
 	return err
 }
@@ -69,6 +218,18 @@ func registerSpaRoutesWithProfileMetadata(
 	db *bun.DB,
 	publicURL string,
 	managedEdition bool,
+) {
+	routes, _ := loadSpaRouteManifest(webFS)
+	registerSpaRoutesWithProfileMetadataAndMatcher(e, webFS, db, publicURL, managedEdition, routes)
+}
+
+func registerSpaRoutesWithProfileMetadataAndMatcher(
+	e *echo.Echo,
+	webFS fs.FS,
+	db *bun.DB,
+	publicURL string,
+	managedEdition bool,
+	routes spaRouteMatcher,
 ) {
 	writeHTML := func(c echo.Context, data []byte) error {
 		return writeHTMLResponse(c, data, managedEdition)
@@ -87,65 +248,95 @@ func registerSpaRoutesWithProfileMetadata(
 	}
 	e.Match([]string{http.MethodGet, http.MethodHead}, "/u/:username", publicProfileHandler)
 
-	spaHandler := func(c echo.Context) error {
-		reqPath := normalizedRequestPath(c.Request().URL)
-		if target, ok := legacyStudioRedirectTarget(c.Request().URL); ok {
-			return c.Redirect(http.StatusPermanentRedirect, target)
-		}
-
-		if strings.HasPrefix(reqPath, "/api") {
-			return echo.NewHTTPError(http.StatusNotFound, "API not found")
-		}
-
-		relPath := strings.TrimPrefix(path.Clean(reqPath), "/")
-		if relPath == "." {
-			relPath = ""
-		}
-
-		if relPath == "" {
-			return writeHTML(c, renderSpaRootHTML(
-				webFS,
-				publicURL,
-				managedEdition && !requestHasSessionCookie(c.Request()),
-			))
-		}
-		if path.Ext(relPath) == ".html" {
-			data, readErr := fs.ReadFile(webFS, relPath)
-			if readErr == nil {
-				return writeHTML(c, data)
-			}
-		}
-
-		htmlFile := relPath + ".html"
-		if _, err := fs.Stat(webFS, htmlFile); err == nil {
-			data, _ := fs.ReadFile(webFS, htmlFile)
-			return writeHTML(c, data)
-		}
-
-		info, err := fs.Stat(webFS, relPath)
-		if err == nil {
-			if info.IsDir() {
-				indexPath := relPath + "/index.html"
-				if _, statErr := fs.Stat(webFS, indexPath); statErr == nil {
-					indexData, _ := fs.ReadFile(webFS, indexPath)
-					return writeHTML(c, indexData)
-				}
-
-				indexData, _ := fs.ReadFile(webFS, "index.html")
-				return writeHTML(c, indexData)
-			}
-
-			return serveStaticAsset(c, webFS, relPath, info)
-		}
-
-		if os.IsNotExist(err) {
-			indexData, _ := fs.ReadFile(webFS, "index.html")
-			return writeHTML(c, indexData)
-		}
-
-		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	handler := spaRequestHandler{
+		webFS:          webFS,
+		publicURL:      publicURL,
+		managedEdition: managedEdition,
+		routes:         routes,
 	}
-	e.Match([]string{http.MethodGet, http.MethodHead}, "/*", spaHandler)
+	e.Match([]string{http.MethodGet, http.MethodHead}, "/*", handler.serve)
+}
+
+type spaRequestHandler struct {
+	webFS          fs.FS
+	publicURL      string
+	managedEdition bool
+	routes         spaRouteMatcher
+}
+
+func (h spaRequestHandler) serve(c echo.Context) error {
+	reqPath := normalizedRequestPath(c.Request().URL)
+	if target, ok := legacyStudioRedirectTarget(c.Request().URL); ok {
+		return c.Redirect(http.StatusPermanentRedirect, target)
+	}
+	if reqPath == "/api" || strings.HasPrefix(reqPath, "/api/") {
+		return echo.NewHTTPError(http.StatusNotFound, "API not found")
+	}
+
+	relPath := strings.TrimPrefix(path.Clean(reqPath), "/")
+	if relPath == "." {
+		relPath = ""
+	}
+	if relPath == "" {
+		return h.writeHTML(c, renderSpaRootHTML(
+			h.webFS,
+			h.publicURL,
+			h.managedEdition && !requestHasSessionCookie(c.Request()),
+		))
+	}
+	if path.Ext(relPath) == ".html" {
+		if data, err := fs.ReadFile(h.webFS, relPath); err == nil {
+			return h.writeHTML(c, data)
+		}
+	}
+	return h.servePath(c, reqPath, relPath)
+}
+
+func (h spaRequestHandler) servePath(c echo.Context, reqPath, relPath string) error {
+	htmlFile := relPath + ".html"
+	if _, err := fs.Stat(h.webFS, htmlFile); err == nil {
+		data, _ := fs.ReadFile(h.webFS, htmlFile)
+		return h.writeHTML(c, data)
+	}
+
+	info, err := fs.Stat(h.webFS, relPath)
+	if err == nil {
+		return h.serveExistingPath(c, reqPath, relPath, info)
+	}
+	if os.IsNotExist(err) {
+		return h.writeFallback(c, reqPath)
+	}
+	return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+}
+
+func (h spaRequestHandler) serveExistingPath(
+	c echo.Context,
+	reqPath string,
+	relPath string,
+	info fs.FileInfo,
+) error {
+	if !info.IsDir() {
+		return serveStaticAsset(c, h.webFS, relPath, info)
+	}
+	indexPath := relPath + "/index.html"
+	if _, err := fs.Stat(h.webFS, indexPath); err == nil {
+		indexData, _ := fs.ReadFile(h.webFS, indexPath)
+		return h.writeHTML(c, indexData)
+	}
+	return h.writeFallback(c, reqPath)
+}
+
+func (h spaRequestHandler) writeHTML(c echo.Context, data []byte) error {
+	return writeHTMLResponse(c, data, h.managedEdition)
+}
+
+func (h spaRequestHandler) writeFallback(c echo.Context, requestPath string) error {
+	indexData, _ := fs.ReadFile(h.webFS, "index.html")
+	status := http.StatusNotFound
+	if h.routes.matches(requestPath) {
+		status = http.StatusOK
+	}
+	return writeHTMLStatusResponse(c, indexData, h.managedEdition, status)
 }
 
 func normalizedRequestPath(requestURL *url.URL) string {

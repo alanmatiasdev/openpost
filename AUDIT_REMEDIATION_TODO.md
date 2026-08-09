@@ -177,7 +177,7 @@ These do not assert a newly observed production incident. They block Pinterest, 
 
 ### APP-001 — Return a real, recoverable app 404 instead of a blank HTTP 200
 
-- [ ] **Problem — User-reported live/current source:** an unknown app URL falls through the SPA handler, returns `index.html` with HTTP 200, and can render a blank page plus a console “Not found” error. Users have no route home and crawlers receive the wrong status.
+- [x] **Problem — User-reported live/current source:** an unknown app URL falls through the SPA handler, returns `index.html` with HTTP 200, and can render a blank page plus a console “Not found” error. Users have no route home and crawlers receive the wrong status.
 - **Fix:** introduce a route-aware app not-found experience with brand, explanation, back/home, primary product destinations, docs/support, and optional search. Make direct unknown-document requests return a real 404 while preserving adapter-static deep links for known SPA routes.
 - **Done when:** direct and client-side unknown routes show the same recovery UI, return correct status where the server can know it, preserve accessibility/theme/mobile behavior, and produce no console error.
 - **Evidence:** `backend/cmd/openpost/web.go:90`, `frontend/svelte.config.js:6`.

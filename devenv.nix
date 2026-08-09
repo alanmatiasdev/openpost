@@ -76,6 +76,7 @@
       cd "${config.git.root}"
       bun run check:docs &&
       bun run check:release-version &&
+      bun run check:app-routes &&
       bun run check:changelog &&
       bun run check:social-images &&
       bun run check:ui-consistency &&

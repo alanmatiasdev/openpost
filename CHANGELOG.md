@@ -17,6 +17,7 @@ All notable changes to this project are documented in this file.
 ### Fixed
 
 - Scoped notification inbox reads and bulk actions to the authorized selected workspace plus the account-wide notices shown there; synchronized the persistent bell and paginated feed through one workspace cache; kept failed reads, deletes, and page loads recoverable without changing unread truth; and added read filters, date groups, event labels, complete time semantics, and explicit row actions.
+- Made the embedded app distinguish generated SPA routes from unknown documents, return a real 404 with an accessible recovery page for unknown routes, and generate the route manifest during production builds; precompiled Paraglide message modules also make production builds deterministic.
 - Made Starter, Founder, Pro, Team, and Agency selectable for monthly or annual billing across public pricing cards and comparisons, with plan-specific guidance and verified registration links at desktop and 320 px widths.
 - Made draft navigation reuse prefetched canonical publication and composer data, removed legacy and duplicate capability request waterfalls, bounded publication detail queries across destinations, stopped duplicate shell and Posts page loads, and kept the planner sidebar stable during background autosave refreshes.
 

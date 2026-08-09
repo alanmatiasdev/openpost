@@ -10,6 +10,7 @@ const paraglidePlugin = paraglideVitePlugin({
 	project: './project.inlang',
 	outdir: './src/lib/paraglide'
 }) as unknown as PluginOption;
+const usesPrecompiledParaglide = process.env.OPENPOST_PARAGLIDE_PRECOMPILED === '1';
 const chromiumExecutablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
 
 export default defineConfig({
@@ -19,7 +20,7 @@ export default defineConfig({
 	plugins: [
 		tailwindcss(),
 		sveltekit(),
-		paraglidePlugin,
+		...(!usesPrecompiledParaglide ? [paraglidePlugin] : []),
 		VitePWA({
 			registerType: 'autoUpdate',
 			injectRegister: 'auto',
