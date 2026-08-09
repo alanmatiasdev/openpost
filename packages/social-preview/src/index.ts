@@ -6,12 +6,10 @@ export {
   normalizePreviewPlatform,
   platformNames,
   previewCapabilities,
-  previewFormats,
   previewPlatforms,
   supportsPreviewFormat,
 } from "./model";
 export type {
-  PreviewCapability,
   PreviewCard,
   PreviewFormat,
   PreviewIdentity,

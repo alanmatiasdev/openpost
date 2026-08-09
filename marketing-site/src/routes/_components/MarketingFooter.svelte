@@ -93,13 +93,13 @@
         </a>
       </div>
       <div
-        class="text-muted-foreground mt-6 flex flex-wrap items-center gap-x-3 gap-y-2"
-        aria-label="Supported platforms"
+        class="mt-6 flex flex-wrap items-center gap-1 text-muted-foreground"
+        aria-label="Platform publishing guides"
       >
         {#each platforms as platform (platform.slug)}
           <a
             href={resolve(`/platforms/${platform.slug}`)}
-            class="focus-ring text-muted-foreground/75 hover:text-primary inline-flex min-h-8 items-center rounded-md transition-colors"
+            class="focus-ring inline-flex size-11 items-center justify-center rounded-md text-muted-foreground/75 transition-colors hover:text-primary"
             aria-label={`${platform.name} guide`}
           >
             <PlatformIcon platform={platform.short} class="size-4" />

@@ -2,7 +2,7 @@
 THESIS: OpenPost gives solo founders one content team for turning company work into destination-specific publishing without reopening every network.
 OWN-WORLD: A dark launch stage gives way to a warm working page, with raised workshop-orange controls, framed product surfaces, and precise editorial pacing.
 STORY: Understand the promise, inspect the result views, watch the real demo, see the product, choose a plan, and start.
-FIRST VIEWPORT: One centered promise, one raised action, all supported networks in motion, and three overlapping result screens with no carousel chrome.
+FIRST VIEWPORT: One specific publishing promise for solo founders, the exact trial action and terms, a restrained result preview, and direct platform-guide links.
 FORM: A focused product demonstration paced between dark studio stages, light working surfaces, and real product screenshots.
 -->
 <script lang="ts">
@@ -11,14 +11,13 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 	import { Button } from '$lib/components/ui/button';
 	import CreatorStories from './_components/CreatorStories.svelte';
 	import DestinationComposerDemo from './_components/DestinationComposerDemo.svelte';
-	import FloatingNetworkField from './_components/FloatingNetworkField.svelte';
 	import FollowerGrowthPlanner from './_components/FollowerGrowthPlanner.svelte';
 	import HeroResultsCarousel from './_components/HeroResultsCarousel.svelte';
 	import LandingVideoDemo from './_components/LandingVideoDemo.svelte';
 	import PostizSocialLogo from './_components/PostizSocialLogo.svelte';
 	import PricingShowcase from './_components/PricingShowcase.svelte';
 	import ScrollReveal from './_components/ScrollReveal.svelte';
-	import { faqs, managedSignupUrl, platforms, siteUrl } from './_marketing';
+	import { faqs, managedAccessSummary, managedSignupUrl, platforms, siteUrl } from './_marketing';
 
 	const productStories = [
 		{
@@ -48,28 +47,13 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 	] as const;
 
 	const shortFaqs = faqs.slice(0, 4);
-
-	const customerLogos = [
-		{ name: 'ENF.', src: '/assets/customer-logos/enf.svg', treatment: 'wordmark' },
-		{
-			name: 'The Actual World',
-			src: '/assets/customer-logos/the-actual-world.png',
-			treatment: 'mark'
-		},
-		{ name: "Uni's Easy", src: '/assets/customer-logos/unis-easy.png', treatment: 'mark' },
-		{ name: 'ARC Gym', src: '/assets/customer-logos/arc-gym.png', treatment: 'wordmark' },
-		{ name: 'Ark', src: '/assets/customer-logos/ark.png', treatment: 'mark' },
-		{ name: 'Dias Solutions', src: '/assets/customer-logos/dias-solutions.png', treatment: 'mark' },
-		{ name: 'Montra', src: '/assets/customer-logos/montra.svg', treatment: 'mark' },
-		{ name: 'Unprompted', src: '/assets/customer-logos/unprompted.png', treatment: 'mark' }
-	] as const;
 </script>
 
 <svelte:head>
-	<title>OpenPost - The all-in-one content team for solo founders</title>
+	<title>OpenPost - Social publishing workspace for solo founders</title>
 	<meta
 		name="description"
-		content="Create better content, adapt it for every platform, and publish it everywhere from one workspace."
+		content="Write, adapt, preview, and schedule posts for your connected social accounts from one OpenPost workspace."
 	/>
 	<link rel="canonical" href={siteUrl} />
 	<meta name="robots" content="index, follow" />
@@ -78,43 +62,30 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 <section class="hero overflow-hidden">
 	<div class="marketing-shell relative pt-16 pb-9 text-center sm:pt-24 sm:pb-11 lg:pt-28">
 		<h1 class="hero-title hero-enter hero-enter-1 mx-auto">
-			Your socials, <span>on steroids.</span>
+			Write and schedule social posts <span>in one workspace.</span>
 		</h1>
 		<p class="hero-copy hero-enter hero-enter-2 mx-auto mt-6 max-w-3xl">
-			Create better content, adapt it for every platform,<br class="hidden sm:block" /> and publish it
-			everywhere from one workspace.
+			OpenPost helps solo founders write, adapt, preview, and schedule each post without reopening
+			every network.
 		</p>
-		<div class="hero-enter hero-enter-3 mt-8 flex justify-center">
+		<div class="hero-enter hero-enter-3 mt-8 flex flex-col items-center gap-3">
 			<Button href={managedSignupUrl} size="lg" class="hero-cta">
-				Hop on
+				Start your 14-day trial
 				<ArrowRight data-icon="inline-end" />
 			</Button>
+			<p class="max-w-md text-sm leading-6 text-muted-foreground">
+				{managedAccessSummary}
+			</p>
 		</div>
-
-		<FloatingNetworkField />
 
 		<div class="hero-enter hero-enter-4 relative z-10 mx-auto mt-10 max-w-5xl sm:mt-12">
 			<HeroResultsCarousel />
 		</div>
 	</div>
 
-	<div class="customer-proof border-t py-5 sm:py-6">
-		<p>Used by builders at</p>
-		<div class="customer-rail" aria-label="Companies using OpenPost">
-			<div class="customer-track">
-				{#each [...customerLogos, ...customerLogos] as logo, index (`${logo.name}-${index}`)}
-					<span
-						class:customer-wordmark={logo.treatment === 'wordmark'}
-						class="customer-logo"
-						aria-hidden={index >= customerLogos.length ? 'true' : undefined}
-					>
-						<img src={logo.src} alt={index < customerLogos.length ? `${logo.name} logo` : ''} />
-						{#if logo.treatment === 'mark'}<span>{logo.name}</span>{/if}
-					</span>
-				{/each}
-			</div>
-		</div>
-		<div class="supported-marks" aria-label="Supported social platforms">
+	<div class="platform-guides border-t py-5 sm:py-6">
+		<p>Explore platform publishing guides</p>
+		<div class="supported-marks" aria-label="Platform publishing guides">
 			{#each platforms as platform (platform.slug)}
 				<a href={resolve(`/platforms/${platform.slug}`)} aria-label={`${platform.name} guide`}>
 					<PostizSocialLogo platform={platform.slug} />
@@ -258,14 +229,25 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 	.hero {
 		position: relative;
 		background:
-			radial-gradient(circle at 50% 42%, color-mix(in oklch, var(--primary) 16%, transparent), transparent 31rem),
-			linear-gradient(to bottom, color-mix(in oklch, var(--card) 72%, var(--background)), var(--background));
+			radial-gradient(
+				circle at 50% 42%,
+				color-mix(in oklch, var(--primary) 16%, transparent),
+				transparent 31rem
+			),
+			linear-gradient(
+				to bottom,
+				color-mix(in oklch, var(--card) 72%, var(--background)),
+				var(--background)
+			);
 	}
 
 	.hero::before {
 		position: absolute;
 		inset: 0;
-		background-image: radial-gradient(color-mix(in oklch, var(--foreground) 14%, transparent) 0.6px, transparent 0.6px);
+		background-image: radial-gradient(
+			color-mix(in oklch, var(--foreground) 14%, transparent) 0.6px,
+			transparent 0.6px
+		);
 		background-size: 1.7rem 1.7rem;
 		mask-image: linear-gradient(to bottom, black, transparent 74%);
 		opacity: 0.22;
@@ -340,60 +322,19 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 			0 0.5rem 1.2rem oklch(0.55 0.17 45 / 0.18) !important;
 	}
 
-	.customer-proof {
+	.platform-guides {
 		position: relative;
 		display: grid;
 		gap: 0.8rem;
 		text-align: center;
 	}
 
-	.customer-proof > p {
+	.platform-guides > p {
 		color: var(--muted-foreground);
 		font-size: 0.68rem;
 		font-weight: 650;
 		letter-spacing: 0.1em;
 		text-transform: uppercase;
-	}
-
-	.customer-rail {
-		overflow: hidden;
-		width: min(100% - 2rem, 72rem);
-		margin-inline: auto;
-		mask-image: linear-gradient(to right, transparent, black 12%, black 88%, transparent);
-	}
-
-	.customer-track {
-		display: flex;
-		width: max-content;
-		animation: customer-scroll 30s linear infinite;
-	}
-
-	.customer-logo {
-		display: flex;
-		grid-auto-flow: column;
-		min-width: 12.5rem;
-		place-items: center;
-		align-items: center;
-		justify-content: center;
-		gap: 0.65rem;
-		color: color-mix(in oklch, var(--foreground) 72%, transparent);
-		font-family: 'Manrope Variable', Manrope, sans-serif;
-		font-size: 1rem;
-		font-weight: 650;
-		letter-spacing: -0.02em;
-	}
-
-	.customer-logo img {
-		display: block;
-		width: 2rem;
-		height: 2rem;
-		object-fit: contain;
-		filter: saturate(0.78);
-	}
-
-	.customer-wordmark img {
-		width: 5.5rem;
-		height: 2rem;
 	}
 
 	.supported-marks {
@@ -433,12 +374,6 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 		object-fit: contain;
 	}
 
-	@keyframes customer-scroll {
-		to {
-			transform: translateX(-50%);
-		}
-	}
-
 	.product-story {
 		display: grid;
 		gap: 2.5rem;
@@ -464,7 +399,6 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 		object-position: top;
 	}
 
-
 	:global(.dark) .hero {
 		background:
 			radial-gradient(circle at 50% 43%, oklch(0.5 0.15 45 / 0.2), transparent 31rem),
@@ -483,16 +417,8 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 		color: white;
 	}
 
-	:global(.dark) .customer-proof > p {
+	:global(.dark) .platform-guides > p {
 		color: rgb(255 255 255 / 0.4);
-	}
-
-	:global(.dark) .customer-logo {
-		color: rgb(255 255 255 / 0.7);
-	}
-
-	:global(.dark) .customer-logo img {
-		filter: saturate(0.78) brightness(1.08);
 	}
 
 	:global(.dark) .supported-marks {
@@ -562,27 +488,6 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 	@media (prefers-reduced-motion: reduce) {
 		.hero-enter {
 			animation: none;
-		}
-
-		.customer-track {
-			animation: none;
-			width: 100%;
-			flex-wrap: wrap;
-			justify-content: center;
-			row-gap: 1rem;
-		}
-
-		.customer-rail {
-			mask-image: none;
-		}
-
-		.customer-logo {
-			min-width: 9rem;
-			flex: 1 0 min(11rem, 50%);
-		}
-
-		.customer-logo:nth-child(n + 9) {
-			display: none;
 		}
 	}
 </style>

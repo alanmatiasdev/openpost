@@ -1079,21 +1079,21 @@ Candidate decisions under this registry:
 
 ### MKT-003 — Simplify the hero and use a literal primary CTA
 
-- [ ] **Problem — Supplied/current source:** visitors must process a hype headline, rotating results, floating platform marks, a logo rail, and proof-like metrics before a plain product explanation. “Hop on” has weak information scent.
+- [x] **Problem — Supplied/current source:** visitors must process a hype headline, rotating results, floating platform marks, a logo rail, and proof-like metrics before a plain product explanation. “Hop on” has weak information scent.
 - **Fix:** lead with the specific scheduling outcome and audience; reduce simultaneous moving/proof elements; make “Start your 14-day trial” (or the legally correct equivalent) the primary action; keep secondary self-host/demo paths subordinate.
 - **Done when:** first viewport communicates what OpenPost is, for whom, and the next action without relying on animation; message tests and mobile hierarchy are clear.
 - **Evidence:** `marketing-site/src/routes/+page.svelte:78`.
 
 ### MKT-004 — Give moving marketing content a pause control
 
-- [ ] **Problem — Supplied audit:** rotating results and the moving logo rail respect reduced motion, but users who do not set that OS preference cannot pause them.
+- [x] **Problem — Supplied audit:** rotating results and the moving logo rail respect reduced motion, but users who do not set that OS preference cannot pause them.
 - **Fix:** add visible keyboard-accessible pause/play controls; pause on interaction/focus where appropriate; persist the choice for the session; avoid auto-advance announcements.
 - **Done when:** WCAG pause/stop expectations are met, reduced-motion remains honored, focus never moves automatically, and controls work at 320 px.
 - **Evidence:** `marketing-site/src/routes/_components/HeroResultsCarousel.svelte:42` and moving logo-rail component.
 
 ### MKT-005 — Increase footer social-link touch targets
 
-- [ ] **Problem — Supplied measurement:** social-icon targets are about 16 × 32 px on mobile, below the project’s 44 px coarse-pointer target.
+- [x] **Problem — Supplied measurement:** social-icon targets are about 16 × 32 px on mobile, below the project’s 44 px coarse-pointer target.
 - **Fix:** expand the interactive box without visually inflating icons; maintain spacing, focus ring, accessible name, and no overflow.
 - **Done when:** computed hit boxes are at least 44 × 44 px under coarse pointer at 320/390 px and keyboard focus is visible.
 - **Evidence:** marketing footer social links.
@@ -1121,7 +1121,7 @@ Candidate decisions under this registry:
 
 ### QA-001 — Reconcile the marketing browser suite before release
 
-- [ ] **Problem — Supplied validation limit:** marketing type/UI checks passed, but the current local Playwright result was 8 passed / 7 failed. Some assertions appear stale and a direct browser check showed the demo dialog works, so this is a test/release-confidence gap rather than seven confirmed production defects.
+- [x] **Problem — Supplied validation limit:** marketing type/UI checks passed, but the current local Playwright result was 8 passed / 7 failed. Some assertions appear stale and a direct browser check showed the demo dialog works, so this is a test/release-confidence gap rather than seven confirmed production defects.
 - **Fix:** classify each failure as product regression, fixture/server contamination, or stale assertion; repair the right side; run the isolated marketing suite against the intended build/server and pin current behavior.
 - **Done when:** the suite is green without weakening behavioral coverage, demo/dialog/pricing/navigation checks reflect current UX, and the release candidate runs the same isolated command.
 - **Evidence:** `e2e/marketing.spec.ts` and the supplied audit run summary.
@@ -1184,11 +1184,11 @@ These tasks are deliberately lower priority. Remove only code proven unreachable
 
 ### CLEAN-MKT-001 — Prune unreachable marketing/package/script assets
 
-- [ ] Delete `PublishingActivityField.svelte`.
-- [ ] Prune unused `_marketing.ts` exports: `demoVideoThumbnailUrl`, `planIDs`, `platformLimitSummaries`, `launchProviderMatrix`, `illustrativeLaunchRenditions`, `productFeatures`, `workflowBlocks`, `securityItems`, and unused slug types.
-- [ ] Remove or move the 20 unsupported Postiz icons to a non-shipped reference area.
-- [ ] Delete orphaned `scripts/install-cachix-with-retry.sh`.
-- [ ] Unexport unused private-package `AnalysisSuggestion`, `previewFormats`, and `PreviewCapability`.
+- [x] Delete `PublishingActivityField.svelte`.
+- [x] Prune unused `_marketing.ts` exports: `demoVideoThumbnailUrl`, `planIDs`, `platformLimitSummaries`, `launchProviderMatrix`, `illustrativeLaunchRenditions`, `productFeatures`, `workflowBlocks`, `securityItems`, and unused slug types.
+- [x] Remove or move the 20 unsupported Postiz icons to a non-shipped reference area.
+- [x] Delete orphaned `scripts/install-cachix-with-retry.sh`.
+- [x] Unexport unused private-package `AnalysisSuggestion`, `previewFormats`, and `PreviewCapability`.
 - **Done when:** no shipped reference remains and package/marketing tests pass.
 - **Evidence:** `marketing-site/src/routes/_components/PublishingActivityField.svelte`, `marketing-site/src/routes/_marketing.ts:33`, `marketing-site/src/routes/_components/postiz-social-logos.ts`, `scripts/install-cachix-with-retry.sh`.
 

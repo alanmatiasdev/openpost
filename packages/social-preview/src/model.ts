@@ -14,7 +14,7 @@ export const previewPlatforms = [
 export type PreviewPlatform = (typeof previewPlatforms)[number];
 export type PreviewPlatformKey = PreviewPlatform | 'unsupported';
 
-export const previewFormats = [
+const previewFormats = [
 	'post',
 	'thread',
 	'story',
@@ -83,7 +83,7 @@ export interface PreviewModel {
 	approximate?: boolean;
 }
 
-export interface PreviewCapability {
+interface PreviewCapability {
 	formats: readonly PreviewFormat[];
 	media: readonly PreviewMediaKind[];
 	polls?: boolean;

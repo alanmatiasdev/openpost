@@ -372,14 +372,3 @@ export interface VideoProjectValidation {
   issues: ValidationIssue[];
   document?: VideoProjectDocumentV1;
 }
-
-export interface AnalysisSuggestion<T = unknown> {
-  id: string;
-  kind: "silence" | "filler" | "reframe" | "focus-zoom" | "low-confidence-word";
-  source_hash: string;
-  timeline_fingerprint: string;
-  engine_version: string;
-  settings: Record<string, string | number | boolean>;
-  result: T;
-  review_status: "pending" | "accepted" | "dismissed";
-}

@@ -1,23 +1,14 @@
 import {
-  Activity,
-  CalendarClock,
   CheckCircle2,
   Clapperboard,
   Clock3,
-  Code2,
   FileText,
   GitBranch,
   Images,
-  KeyRound,
-  Library,
-  LockKeyhole,
   MessageSquareText,
   PanelTop,
-  ShieldCheck,
-  UsersRound,
-  Workflow,
 } from "lucide-svelte";
-import { PLATFORM_LIMITS, publicPlatformLimits } from "$lib/platform-limits";
+import { PLATFORM_LIMITS } from "$lib/platform-limits";
 
 export const appUrl = "https://app.openpost.social";
 export const managedSignupUrl = `${appUrl}/register?plan=founder`;
@@ -30,7 +21,6 @@ export const siteUrl = "https://openpost.social";
 export const demoVideoUrl = "https://youtu.be/_mZf3HzQaN8";
 export const demoVideoEmbedUrl =
   "https://www.youtube-nocookie.com/embed/_mZf3HzQaN8?autoplay=1&rel=0";
-export const demoVideoThumbnailUrl = "/assets/screenshots/main-dark.png";
 
 export const navItems = [
   { label: "Product", href: "/#product" },
@@ -47,7 +37,6 @@ export const resourceItems = [
   { label: "Changelog", href: "/changelog" },
   { label: "Developers", href: developerDocsUrl },
 ] as const;
-export const planIDs = ["starter", "founder", "pro", "team", "agency"] as const;
 
 export const managedAccessSummary =
   "Start with a 14-day free trial. A card is required, and you can cancel before the first charge.";
@@ -718,202 +707,6 @@ export const platforms = [
   },
 ] as const;
 
-export const platformLimitSummaries = publicPlatformLimits();
-
-export const launchProviderMatrix = [
-  {
-    slug: "x",
-    name: "X",
-    short: "x",
-    state: "Available",
-    text: "Posts and links · 280 standard, up to 25,000 subscribed",
-    media: "1-4 images or 1 account-tier-aware video",
-    threads: "Reply chains",
-    schedule: "Supported",
-    verify: "OAuth 1.0a, API plan, account limits, and each planned post type",
-  },
-  {
-    slug: "linkedin",
-    name: "LinkedIn",
-    short: "linkedin",
-    state: "Available",
-    text: "Posts and links · 3,000 characters",
-    media: "1 image, PDF, or video",
-    threads: "Comment continuations",
-    schedule: "Supported",
-    verify: "App products, scopes, account role, and each planned format",
-  },
-  {
-    slug: "bluesky",
-    name: "Bluesky",
-    short: "bluesky",
-    state: "Available",
-    text: "Posts and links · 300 characters",
-    media: "1-4 images or 1 MP4 video",
-    threads: "AT Protocol replies",
-    schedule: "Supported",
-    verify: "App password and a real-account video test when video is planned",
-  },
-  {
-    slug: "mastodon",
-    name: "Mastodon",
-    short: "mastodon",
-    state: "Available",
-    text: "Posts and links · 500 characters by default",
-    media: "Up to 4 attachments by default",
-    threads: "Reply chains",
-    schedule: "Supported",
-    verify: "Server rules and a media test on that server",
-  },
-  {
-    slug: "threads",
-    name: "Threads",
-    short: "threads",
-    state: "Available",
-    text: "Posts and replies · 500 characters",
-    media: "1 item or a 2-20 item carousel",
-    threads: "Reply chains",
-    schedule: "Supported",
-    verify: "Approved Meta access and fetchable production HTTPS media URLs",
-  },
-] as const;
-
-export const illustrativeLaunchRenditions = [
-  {
-    slug: "x",
-    name: "X",
-    short: "x",
-    purpose: "Compact technical hook",
-    content:
-      "AI can draft a campaign, but you should still check it. OpenPost keeps social account keys private, shows each account version, and tracks every scheduled post.",
-  },
-  {
-    slug: "linkedin",
-    name: "LinkedIn",
-    short: "linkedin",
-    purpose: "Context for a professional audience",
-    content:
-      "An AI tool does not need your social account keys. Give it OpenPost access that you can limit to one workspace and remove at any time.",
-  },
-  {
-    slug: "bluesky",
-    name: "Bluesky",
-    short: "bluesky",
-    purpose: "Short open-source update",
-    content:
-      "An AI tool prepared this campaign without seeing a social account key. I checked each account version in OpenPost, then chose what to schedule. Open source, hosted, or self-hosted.",
-  },
-  {
-    slug: "mastodon",
-    name: "Mastodon",
-    short: "mastodon",
-    purpose: "Self-hosting detail",
-    content:
-      "OpenPost is a publishing workspace for humans and agents. Run the managed app or self-host one Go service with SQLite and local media by default. Redis is not required.",
-  },
-  {
-    slug: "threads",
-    name: "Threads",
-    short: "threads",
-    purpose: "Conversational summary",
-    content:
-      "The AI tool prepared the draft. I checked the copy, media, and time for each account. OpenPost kept the account keys private and showed the posting status.",
-  },
-] as const;
-
-export const productFeatures = [
-  {
-    eyebrow: "Composer",
-    title: "Review the shared draft and each account version together.",
-    description:
-      "An agent or a person can prepare the campaign. The web composer keeps the base content, account-specific copy, media, formats, and schedule available for human review.",
-    icon: MessageSquareText,
-    image: "/assets/screenshots/main-dark.png",
-    alt: "OpenPost composer and schedule calendar",
-  },
-  {
-    eyebrow: "Social accounts",
-    title: "Keep social account keys inside OpenPost.",
-    description:
-      "AI tools and scripts use OpenPost tokens that you can remove. OpenPost encrypts your social account keys and never sends them to those tools.",
-    icon: PanelTop,
-    image: "/assets/screenshots/accounts-dark.png",
-    alt: "OpenPost Social accounts page with connected accounts and setup notices",
-  },
-  {
-    eyebrow: "Media",
-    title: "Keep campaign media in one library.",
-    description:
-      "People and tools can use the same files. OpenPost keeps alt text, post links, use history, and delete checks with each file.",
-    icon: Library,
-    image: "/assets/screenshots/media-dark.png",
-    alt: "OpenPost media library",
-  },
-  {
-    eyebrow: "Workspace settings",
-    title: "See who or what can act in each workspace.",
-    description:
-      "Review workspace members, sessions, dedicated API and MCP tokens, recent tool activity, posting slots, billing, and security controls from one settings area.",
-    icon: Activity,
-    image: "/assets/screenshots/settings-dark.png",
-    alt: "OpenPost workspace settings with schedule, security, team, billing, and developer sections",
-  },
-] as const;
-
-export const workflowBlocks = [
-  {
-    title: "Access for one workspace",
-    description:
-      "Give an MCP tool read-only or full access to one workspace. Remove access without changing your social account keys.",
-    icon: UsersRound,
-  },
-  {
-    title: "Read and write access",
-    description:
-      "MCP keeps read-only work separate from actions that change data or call a social network.",
-    icon: GitBranch,
-  },
-  {
-    title: "Review each account",
-    description:
-      "Compare account-specific copy, media, formats, limits, and timing in the web app before scheduling.",
-    icon: Workflow,
-  },
-  {
-    title: "Clear status and errors",
-    description:
-      "Scheduled posts survive restarts. You can see which posts worked, failed, or need another try.",
-    icon: CalendarClock,
-  },
-] as const;
-
-export const securityItems = [
-  {
-    title: "Encrypted social account keys",
-    description:
-      "Social access and refresh tokens use AES-256-GCM authenticated encryption at rest.",
-    icon: LockKeyhole,
-  },
-  {
-    title: "TOTP, passkeys, and sessions",
-    description:
-      "Users can add a second sign-in factor and review or revoke active browser sessions.",
-    icon: ShieldCheck,
-  },
-  {
-    title: "Access keys you can remove",
-    description:
-      "CLI, scheduled scripts, and MCP tools use their own tokens. You can limit a token to one workspace and remove it at any time.",
-    icon: KeyRound,
-  },
-  {
-    title: "Public source code",
-    description:
-      "You can review the API, scheduled jobs, key storage, and social network code.",
-    icon: Code2,
-  },
-] as const;
-
 export const tools = [
   {
     slug: "social-media-video-editor",
@@ -1398,7 +1191,4 @@ export function getTool(slug: string) {
   return tools.find((tool) => tool.slug === slug);
 }
 
-export type PlatformSlug = (typeof platforms)[number]["slug"];
 export type MarketingPlatform = (typeof platforms)[number];
-export type ComparisonSlug = (typeof comparisons)[number]["slug"];
-export type ToolSlug = (typeof tools)[number]["slug"];
