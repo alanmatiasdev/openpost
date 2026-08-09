@@ -272,11 +272,11 @@
 		width: 100%;
 		height: 100%;
 		place-items: center;
-		border: 1px solid rgb(255 255 255 / 0.13);
+		border: 1px solid color-mix(in oklch, var(--foreground) 14%, transparent);
 		border-radius: 1.1rem;
-		background: oklch(0.2 0.012 52 / 0.92);
+		background: color-mix(in oklch, var(--card) 92%, transparent);
 		color: var(--brand);
-		box-shadow: 0 1.2rem 2.8rem rgb(0 0 0 / 0.38);
+		box-shadow: 0 1.2rem 2.8rem color-mix(in oklch, var(--foreground) 22%, transparent);
 		animation: drift 6.8s ease-in-out var(--delay) infinite;
 		transform: rotate(var(--turn));
 		will-change: transform;
@@ -288,6 +288,12 @@
 		width: 52%;
 		height: 52%;
 		object-fit: contain;
+	}
+
+	:global(.dark) .network-card {
+		border-color: rgb(255 255 255 / 0.13);
+		background: oklch(0.2 0.012 52 / 0.92);
+		box-shadow: 0 1.2rem 2.8rem rgb(0 0 0 / 0.38);
 	}
 
 	.network-card img {
@@ -316,8 +322,21 @@
 		}
 
 		.network-orbit.quiet-on-phone {
-			opacity: 0.58;
+			opacity: 0.78;
 		}
+
+		.network-orbit:nth-child(1) { top: 7%; left: 5%; }
+		.network-orbit:nth-child(2) { top: 14%; left: 96%; }
+		.network-orbit:nth-child(3) { top: 28%; left: 4%; }
+		.network-orbit:nth-child(4) { top: 31%; left: 95%; }
+		.network-orbit:nth-child(5) { top: 47%; left: 3%; }
+		.network-orbit:nth-child(6) { top: 50%; left: 97%; }
+		.network-orbit:nth-child(7) { top: 66%; left: 4%; }
+		.network-orbit:nth-child(8) { top: 69%; left: 96%; }
+		.network-orbit:nth-child(9) { top: 85%; left: 6%; }
+		.network-orbit:nth-child(10) { top: 88%; left: 94%; }
+		.network-orbit:nth-child(11) { top: 2%; left: 25%; }
+		.network-orbit:nth-child(12) { top: 3%; left: 76%; }
 	}
 
 	@media (prefers-reduced-motion: reduce) {

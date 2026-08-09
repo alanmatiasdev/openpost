@@ -1,331 +1,298 @@
 <script lang="ts">
-  import { Check } from "lucide-svelte";
-  import { Button } from "$lib/components/ui/button";
-  import { appUrl, managedAccessSummary, plans, siteUrl } from "../_marketing";
+	import Check from 'lucide-svelte/icons/check';
+	import PricingShowcase from '../_components/PricingShowcase.svelte';
+	import { plans, siteUrl } from '../_marketing';
 
-  const buyerStages = [
-    {
-      id: "solo",
-      label: "Solo founder",
-      description:
-        "One person turning company work into content and publishing it consistently.",
-      planIds: ["starter", "founder", "pro"],
-    },
-    {
-      id: "team",
-      label: "Team",
-      description: "A small group sharing accounts and posting work.",
-      planIds: ["team"],
-    },
-    {
-      id: "agency",
-      label: "Agency",
-      description: "More workspaces and accounts for client publishing.",
-      planIds: ["agency"],
-    },
-  ] as const;
+	const sharedFeatures = [
+		'One composer with account-specific versions',
+		'Calendar, scheduling, and publishing status',
+		'Reusable media library',
+		'Analytics and inbox for supported accounts',
+		'HTTP API, CLI, and MCP access',
+		'Encrypted social account keys'
+	] as const;
 
-  const sharedFeatures = [
-    "One composer with destination-specific versions",
-    "Account-specific versions and settings",
-    "Calendar, scheduled posts, and clear status",
-    "Reusable media library",
-    "HTTP API, CLI, and MCP access",
-    "Encrypted social account keys",
-  ] as const;
-
-  const comparisonRows = [
-    {
-      label: "Workspaces",
-      value: (plan: (typeof plans)[number]) => plan.workspaces,
-    },
-    {
-      label: "Social accounts",
-      value: (plan: (typeof plans)[number]) => plan.accounts,
-    },
-    {
-      label: "Scheduled posts / month",
-      value: (plan: (typeof plans)[number]) => plan.posts,
-    },
-    {
-      label: "Media storage",
-      value: (plan: (typeof plans)[number]) => plan.storage,
-    },
-    {
-      label: "Included seats",
-      value: (plan: (typeof plans)[number]) => plan.seats,
-    },
-    {
-      label: "Team roles",
-      value: (plan: (typeof plans)[number]) =>
-        plan.id === "team" || plan.id === "agency" ? "Included" : "—",
-    },
-  ] as const;
-
-  let activeStage = $state<(typeof buyerStages)[number]["id"]>("solo");
-  let billingPeriod = $state<"monthly" | "annual">("monthly");
-  const selectedStage = $derived(
-    buyerStages.find((stage) => stage.id === activeStage) ?? buyerStages[0],
-  );
-  const stagePlans = $derived(
-    plans.filter((plan) => new Set<string>(selectedStage.planIds).has(plan.id)),
-  );
-
-  function displayPrice(plan: (typeof plans)[number]) {
-    return billingPeriod === "annual" ? plan.annualPrice : plan.price;
-  }
+	const comparisonRows = [
+		{ label: 'Workspaces', value: (plan: (typeof plans)[number]) => plan.workspaces },
+		{ label: 'Social accounts', value: (plan: (typeof plans)[number]) => plan.accounts },
+		{ label: 'Scheduled posts / month', value: (plan: (typeof plans)[number]) => plan.posts },
+		{ label: 'Media storage', value: (plan: (typeof plans)[number]) => plan.storage },
+		{ label: 'Included seats', value: (plan: (typeof plans)[number]) => plan.seats },
+		{
+			label: 'Team roles',
+			value: (plan: (typeof plans)[number]) =>
+				plan.id === 'team' || plan.id === 'agency' ? 'Included' : '—'
+		}
+	] as const;
 </script>
 
 <svelte:head>
-  <title>OpenPost pricing</title>
-  <meta
-    name="description"
-    content="Build your solo-founder content system from $15 per month with a 14-day card-required free trial."
-  />
-  <link rel="canonical" href={`${siteUrl}/pricing`} />
+	<title>OpenPost pricing</title>
+	<meta
+		name="description"
+		content="OpenPost managed plans start at $15 per month with a 14-day card-required trial."
+	/>
+	<link rel="canonical" href={`${siteUrl}/pricing`} />
 </svelte:head>
 
-<section class="border-b py-14 sm:py-20 lg:py-24">
-  <div
-    class="marketing-shell grid gap-8 lg:grid-cols-[0.95fr_1.05fr] lg:items-end"
-  >
-    <div>
-      <p class="section-label">Pricing</p>
-      <h1
-        class="mt-4 max-w-4xl text-4xl leading-[1.02] font-semibold tracking-[-0.035em] text-balance sm:text-6xl"
-      >
-        Choose your plan.
-      </h1>
-    </div>
-    <div>
-      <p class="marketing-copy">
-        Every plan includes drafting, platform versions, scheduling, media, and
-        publishing status.
-      </p>
-      <p class="mt-4 text-xs leading-5 text-muted-foreground">
-        {managedAccessSummary}
-      </p>
-    </div>
-  </div>
+<section class="pricing-hero">
+	<div class="marketing-shell text-center">
+		<p class="section-label">Simple pricing</p>
+		<h1>Choose your plan.</h1>
+		<p>Every plan includes the complete publishing workflow. Choose the limits that fit.</p>
+	</div>
 </section>
 
-<section id="plans" class="section-pad scroll-mt-20">
-  <div class="marketing-shell">
-    <div
-      class="mb-8 flex flex-col justify-between gap-4 border-b pb-6 sm:flex-row sm:items-center"
-    >
-      <div>
-        <p class="text-sm font-semibold">14 days free on every plan</p>
-        <p class="mt-1 text-sm text-muted-foreground">
-          Card required. Cancel before the first charge.
-        </p>
-      </div>
-      <div
-        class="inline-flex w-fit rounded-lg border bg-background p-1"
-        aria-label="Billing period"
-      >
-        <Button
-          variant={billingPeriod === "monthly" ? "default" : "ghost"}
-          size="sm"
-          onclick={() => (billingPeriod = "monthly")}>Monthly</Button
-        >
-        <Button
-          variant={billingPeriod === "annual" ? "default" : "ghost"}
-          size="sm"
-          onclick={() => (billingPeriod = "annual")}
-          >Annual <span class="ml-1 text-xs opacity-80">2 months free</span
-          ></Button
-        >
-      </div>
-    </div>
-    <div class="grid gap-8 lg:grid-cols-[18rem_minmax(0,1fr)]">
-      <div>
-        <h2 id="buyer-stage-title" class="text-xl font-semibold">
-          Who is publishing?
-        </h2>
-        <div
-          class="mt-5 grid gap-2"
-          role="group"
-          aria-labelledby="buyer-stage-title"
-        >
-          {#each buyerStages as stage (stage.id)}
-            <Button
-              variant={activeStage === stage.id ? "default" : "outline"}
-              aria-pressed={activeStage === stage.id}
-              class="h-auto min-h-16 w-full flex-col items-start px-4 py-3 text-left whitespace-normal"
-              onclick={() => (activeStage = stage.id)}
-            >
-              <strong class="block text-sm">{stage.label}</strong>
-              <span class="mt-1 block text-xs leading-5 opacity-75"
-                >{stage.description}</span
-              >
-            </Button>
-          {/each}
-        </div>
-      </div>
-
-      <div aria-live="polite">
-        <div class="flex items-end justify-between gap-4 border-b pb-5">
-          <div>
-            <p class="text-sm font-medium text-primary">
-              {selectedStage.label}
-            </p>
-            <h2 class="mt-1 text-2xl font-semibold">
-              {selectedStage.description}
-            </h2>
-          </div>
-          <span class="hidden text-sm text-muted-foreground sm:block"
-            >Billed {billingPeriod}</span
-          >
-        </div>
-
-        <div
-          class={[
-            "mt-6 grid gap-px overflow-hidden rounded-xl bg-border",
-            stagePlans.length > 1 ? "md:grid-cols-3" : "md:grid-cols-1",
-          ]}
-        >
-          {#each stagePlans as plan (plan.id)}
-            <article class="flex min-h-full flex-col bg-card p-5 sm:p-6">
-              <div class="flex items-start justify-between gap-3">
-                <div>
-                  <h3 class="text-lg font-semibold">{plan.name}</h3>
-                  <p class="mt-2 text-3xl font-semibold tracking-[-0.03em]">
-                    {displayPrice(plan)}<span
-                      class="text-sm font-normal tracking-normal text-muted-foreground"
-                      >/{billingPeriod === "annual" ? "year" : "month"}</span
-                    >
-                  </p>
-                </div>
-                {#if plan.featured}
-                  <span
-                    class="rounded-md bg-primary px-2 py-1 text-xs font-medium text-primary-foreground"
-                  >
-                    Recommended
-                  </span>
-                {/if}
-              </div>
-              <p class="mt-4 text-sm leading-6 text-muted-foreground">
-                {plan.description}
-              </p>
-              <ul class="mt-5 grid gap-2">
-                {#each plan.limits as limit (limit)}
-                  <li
-                    class="flex gap-2 text-sm leading-5 text-muted-foreground"
-                  >
-                    <Check
-                      class="mt-0.5 size-4 shrink-0 text-primary"
-                      aria-hidden="true"
-                    />
-                    <span>{limit}</span>
-                  </li>
-                {/each}
-              </ul>
-              <Button
-                href={`${appUrl}/register?plan=${plan.id}&billing_period=${billingPeriod}`}
-                class="mt-6 w-full"
-                variant={plan.featured ? "default" : "outline"}
-              >
-                Start {plan.name}
-              </Button>
-            </article>
-          {/each}
-        </div>
-      </div>
-    </div>
-
-    <div class="mt-14 border-y py-8">
-      <h2 class="text-lg font-semibold">Included on every managed plan</h2>
-      <ul class="mt-5 grid gap-x-8 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
-        {#each sharedFeatures as feature (feature)}
-          <li class="flex gap-3 text-sm leading-6 text-muted-foreground">
-            <Check
-              class="mt-0.5 size-4 shrink-0 text-primary"
-              aria-hidden="true"
-            />
-            <span>{feature}</span>
-          </li>
-        {/each}
-      </ul>
-    </div>
-  </div>
+<section id="plans" class="plans-section scroll-mt-20">
+	<div class="marketing-shell">
+		<PricingShowcase />
+	</div>
 </section>
 
-<section
-  class="section-pad border-y bg-muted/20"
-  aria-labelledby="limits-title"
->
-  <div class="marketing-shell">
-    <div class="max-w-3xl">
-      <p class="section-label">Exact limits</p>
-      <h2 id="limits-title" class="marketing-heading mt-4">
-        Compare plan limits.
-      </h2>
-      <p class="marketing-copy mt-5">
-        Pro remains a single-user plan with higher limits. Team includes three
-        seats; Agency includes five.
-      </p>
-    </div>
-
-    <div class="mt-10 grid gap-3 lg:hidden">
-      {#each plans as plan (plan.id)}
-        <details class="rounded-xl border bg-card">
-          <summary
-            class="focus-ring flex min-h-16 cursor-pointer list-none items-center justify-between gap-4 rounded-xl px-4"
-          >
-            <span>
-              <strong>{plan.name}</strong>
-              <span class="ml-2 text-sm text-muted-foreground"
-                >{displayPrice(plan)}/{billingPeriod === "annual"
-                  ? "year"
-                  : "month"}</span
-              >
-            </span>
-            <span class="text-xl text-muted-foreground" aria-hidden="true"
-              >+</span
-            >
-          </summary>
-          <dl class="grid gap-3 border-t px-4 py-4">
-            {#each comparisonRows as row (row.label)}
-              <div class="flex items-baseline justify-between gap-4 text-sm">
-                <dt class="text-muted-foreground">{row.label}</dt>
-                <dd class="font-medium">{row.value(plan)}</dd>
-              </div>
-            {/each}
-          </dl>
-        </details>
-      {/each}
-    </div>
-
-    <div
-      class="mt-10 hidden overflow-hidden rounded-xl border bg-card lg:block"
-    >
-      <table class="w-full border-collapse text-left">
-        <thead class="border-b bg-muted/45">
-          <tr>
-            <th class="px-5 py-4 text-sm font-semibold" scope="col">Limit</th>
-            {#each plans as plan (plan.id)}
-              <th class="px-5 py-4 text-sm font-semibold" scope="col"
-                >{plan.name}</th
-              >
-            {/each}
-          </tr>
-        </thead>
-        <tbody class="divide-y">
-          {#each comparisonRows as row (row.label)}
-            <tr>
-              <th class="px-5 py-4 text-sm font-medium" scope="row"
-                >{row.label}</th
-              >
-              {#each plans as plan (plan.id)}
-                <td class="px-5 py-4 text-sm text-muted-foreground"
-                  >{row.value(plan)}</td
-                >
-              {/each}
-            </tr>
-          {/each}
-        </tbody>
-      </table>
-    </div>
-  </div>
+<section class="included-section" aria-labelledby="included-title">
+	<div class="marketing-shell included-grid">
+		<div>
+			<p class="section-label">Every plan</p>
+			<h2 id="included-title">The full workflow is included.</h2>
+		</div>
+		<ul>
+			{#each sharedFeatures as feature (feature)}
+				<li><Check aria-hidden="true" /> <span>{feature}</span></li>
+			{/each}
+		</ul>
+	</div>
 </section>
+
+<section class="section-pad" aria-labelledby="limits-title">
+	<div class="marketing-shell">
+		<div class="limits-heading">
+			<p class="section-label">Exact limits</p>
+			<h2 id="limits-title">Compare every plan.</h2>
+			<p>Team includes three seats. Agency includes five.</p>
+		</div>
+
+		<div class="mobile-limits">
+			{#each plans as plan (plan.id)}
+				<details>
+					<summary class="focus-ring">
+						<span><strong>{plan.name}</strong> <small>{plan.price}/month</small></span>
+						<span aria-hidden="true">+</span>
+					</summary>
+					<dl>
+						{#each comparisonRows as row (row.label)}
+							<div><dt>{row.label}</dt><dd>{row.value(plan)}</dd></div>
+						{/each}
+					</dl>
+				</details>
+			{/each}
+		</div>
+
+		<div class="desktop-limits">
+			<table>
+				<thead>
+					<tr>
+						<th scope="col">Limit</th>
+						{#each plans as plan (plan.id)}<th scope="col">{plan.name}</th>{/each}
+					</tr>
+				</thead>
+				<tbody>
+					{#each comparisonRows as row (row.label)}
+						<tr>
+							<th scope="row">{row.label}</th>
+							{#each plans as plan (plan.id)}<td>{row.value(plan)}</td>{/each}
+						</tr>
+					{/each}
+				</tbody>
+			</table>
+		</div>
+	</div>
+</section>
+
+<style>
+	.pricing-hero {
+		padding-block: clamp(4.5rem, 9vw, 8rem) clamp(3rem, 6vw, 5rem);
+		border-bottom: 1px solid var(--border);
+		background:
+			radial-gradient(circle at 50% 0, color-mix(in oklch, var(--primary) 14%, transparent), transparent 28rem),
+			var(--background);
+	}
+
+	.pricing-hero h1 {
+		margin-top: 1rem;
+		font-size: clamp(3rem, 7vw, 6rem);
+		font-weight: 740;
+		line-height: 0.95;
+		letter-spacing: -0.05em;
+		text-wrap: balance;
+	}
+
+	.pricing-hero p:last-child {
+		max-width: 38rem;
+		margin: 1.5rem auto 0;
+		color: var(--muted-foreground);
+		font-size: 1.05rem;
+		line-height: 1.7;
+	}
+
+	.plans-section {
+		padding-block: clamp(3.5rem, 7vw, 7rem);
+	}
+
+	.included-section {
+		padding-block: clamp(4rem, 8vw, 7rem);
+		border-block: 1px solid var(--border);
+		background: color-mix(in oklch, var(--muted) 32%, var(--background));
+	}
+
+	.included-grid {
+		display: grid;
+		gap: 2.5rem;
+	}
+
+	.included-grid h2,
+	.limits-heading h2 {
+		margin-top: 1rem;
+		font-size: clamp(2.3rem, 4vw, 3.8rem);
+		font-weight: 700;
+		line-height: 1;
+		letter-spacing: -0.04em;
+		text-wrap: balance;
+	}
+
+	.included-grid ul {
+		display: grid;
+		gap: 1rem;
+		padding: 0;
+		list-style: none;
+	}
+
+	.included-grid li {
+		display: flex;
+		gap: 0.8rem;
+		align-items: flex-start;
+		color: var(--muted-foreground);
+		line-height: 1.55;
+	}
+
+	.included-grid li :global(svg) {
+		width: 1.1rem;
+		height: 1.1rem;
+		flex: none;
+		margin-top: 0.15rem;
+		color: var(--primary);
+	}
+
+	.limits-heading {
+		max-width: 44rem;
+	}
+
+	.limits-heading > p:last-child {
+		margin-top: 1.25rem;
+		color: var(--muted-foreground);
+	}
+
+	.mobile-limits {
+		display: grid;
+		gap: 0.75rem;
+		margin-top: 2.5rem;
+	}
+
+	.mobile-limits details {
+		border: 1px solid var(--border);
+		border-radius: 1rem;
+		background: var(--card);
+	}
+
+	.mobile-limits summary {
+		display: flex;
+		min-height: 4rem;
+		cursor: pointer;
+		list-style: none;
+		align-items: center;
+		justify-content: space-between;
+		gap: 1rem;
+		padding-inline: 1rem;
+		border-radius: 1rem;
+	}
+
+	.mobile-limits summary small {
+		margin-left: 0.35rem;
+		color: var(--muted-foreground);
+		font-size: 0.78rem;
+	}
+
+	.mobile-limits dl {
+		display: grid;
+		gap: 0.8rem;
+		padding: 1rem;
+		border-top: 1px solid var(--border);
+	}
+
+	.mobile-limits dl div {
+		display: flex;
+		align-items: baseline;
+		justify-content: space-between;
+		gap: 1rem;
+		font-size: 0.85rem;
+	}
+
+	.mobile-limits dt,
+	.desktop-limits td {
+		color: var(--muted-foreground);
+	}
+
+	.desktop-limits {
+		display: none;
+		margin-top: 2.5rem;
+		overflow: hidden;
+		border: 1px solid var(--border);
+		border-radius: 1rem;
+		background: var(--card);
+	}
+
+	.desktop-limits table {
+		width: 100%;
+		border-collapse: collapse;
+		text-align: left;
+	}
+
+	.desktop-limits thead {
+		border-bottom: 1px solid var(--border);
+		background: color-mix(in oklch, var(--muted) 45%, transparent);
+	}
+
+	.desktop-limits tr + tr {
+		border-top: 1px solid var(--border);
+	}
+
+	.desktop-limits th,
+	.desktop-limits td {
+		padding: 1rem 1.15rem;
+		font-size: 0.82rem;
+	}
+
+	.desktop-limits th {
+		font-weight: 650;
+	}
+
+	@media (min-width: 48rem) {
+		.included-grid {
+			grid-template-columns: 0.8fr 1.2fr;
+			align-items: start;
+		}
+
+		.included-grid ul {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+		}
+	}
+
+	@media (min-width: 64rem) {
+		.mobile-limits {
+			display: none;
+		}
+
+		.desktop-limits {
+			display: block;
+		}
+	}
+</style>

@@ -9,7 +9,9 @@
   import Check from "lucide-svelte/icons/check";
   import ImageIcon from "lucide-svelte/icons/image";
   import PlatformIcon from "$lib/components/platform-icon.svelte";
+  import { Button } from "$lib/components/ui/button";
   import { Textarea } from "$lib/components/ui/textarea";
+  import { cn } from "$lib/utils";
 
   let selectedPlatform = $state<PreviewPlatform>("linkedin");
   let includeMedia = $state(true);
@@ -111,20 +113,20 @@
       aria-label="Choose an account type"
     >
       {#each previewPlatforms as platform (platform)}
-        <button
-          type="button"
-          class={[
+        <Button
+          variant="ghost"
+          class={cn(
             "focus-ring flex min-h-11 shrink-0 snap-start items-center gap-2 rounded-lg px-3 text-sm font-medium transition-colors",
             selectedPlatform === platform
               ? "bg-foreground text-background"
               : "text-muted-foreground hover:bg-muted hover:text-foreground",
-          ]}
+          )}
           aria-pressed={selectedPlatform === platform}
           onclick={() => choosePlatform(platform)}
         >
           <PlatformIcon {platform} class="size-4" />
           {platformNames[platform]}
-        </button>
+        </Button>
       {/each}
     </div>
   </div>
@@ -133,32 +135,32 @@
     class="grid grid-cols-2 gap-1 border-b p-2 lg:hidden"
     aria-label="Account demo view"
   >
-    <button
-      type="button"
-      class={[
+    <Button
+      variant="ghost"
+      class={cn(
         "focus-ring min-h-11 rounded-lg text-sm font-medium",
         mobilePane === "edit"
           ? "bg-foreground text-background"
           : "text-muted-foreground",
-      ]}
+      )}
       aria-pressed={mobilePane === "edit"}
       onclick={() => (mobilePane = "edit")}
     >
       Edit account version
-    </button>
-    <button
-      type="button"
-      class={[
+    </Button>
+    <Button
+      variant="ghost"
+      class={cn(
         "focus-ring min-h-11 rounded-lg text-sm font-medium",
         mobilePane === "preview"
           ? "bg-foreground text-background"
           : "text-muted-foreground",
-      ]}
+      )}
       aria-pressed={mobilePane === "preview"}
       onclick={() => (mobilePane = "preview")}
     >
       View preview
-    </button>
+    </Button>
   </div>
 
   <div class="grid lg:grid-cols-[0.78fr_1.22fr]">
@@ -194,14 +196,14 @@
       </label>
 
       <div class="mt-4 flex flex-wrap gap-2">
-        <button
-          type="button"
-          class={[
+        <Button
+          variant="outline"
+          class={cn(
             "focus-ring inline-flex min-h-11 items-center gap-2 rounded-lg border px-3 text-sm font-medium",
             includeMedia
               ? "border-primary/40 bg-primary/10 text-primary"
               : "bg-background",
-          ]}
+          )}
           aria-pressed={includeMedia}
           disabled={selectedPlatform === "youtube"}
           onclick={() => (includeMedia = !includeMedia)}
@@ -212,7 +214,7 @@
             : includeMedia
               ? "Image included"
               : "Add image"}
-        </button>
+        </Button>
         <span
           class="inline-flex min-h-11 items-center px-2 text-xs text-muted-foreground"
         >

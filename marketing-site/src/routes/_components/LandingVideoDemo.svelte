@@ -61,7 +61,7 @@
 
 			<Dialog.Content
 				showCloseButton={false}
-				class="video-dialog max-w-[min(72rem,calc(100%-2rem))] overflow-visible bg-black p-0 text-white ring-white/20"
+				class="video-dialog bg-black p-0 text-white ring-white/20"
 			>
 				<Dialog.Title class="sr-only">OpenPost product demo</Dialog.Title>
 				<Dialog.Description class="sr-only">
@@ -97,8 +97,9 @@
 	.demo-section {
 		position: relative;
 		overflow: hidden;
-		background: oklch(0.13 0.01 52);
-		color: white;
+		border-block: 1px solid var(--border);
+		background: color-mix(in oklch, var(--muted) 38%, var(--background));
+		color: var(--foreground);
 	}
 
 	.demo-section::before {
@@ -141,15 +142,13 @@
 	.demo-copy > p:not(.demo-kicker) {
 		max-width: 31rem;
 		margin: 1.5rem 0 2rem;
-		color: rgb(255 255 255 / 0.65);
+		color: var(--muted-foreground);
 		font-size: 1.05rem;
 		line-height: 1.7;
 	}
 
 	.demo-copy :global(.youtube-button) {
-		border-color: rgb(255 255 255 / 0.24);
-		background: rgb(255 255 255 / 0.94);
-		color: oklch(0.16 0.01 52);
+		background: var(--card);
 	}
 
 	.demo-frame {
@@ -198,12 +197,22 @@
 		border: 0;
 	}
 
-	.video-dialog {
-		aspect-ratio: 16 / 9;
+	:global([data-slot='dialog-content'].video-dialog) {
+		position: fixed;
+		display: block;
+		width: min(72rem, calc(100vw - 2rem));
+		height: min(40.5rem, calc((100vw - 2rem) * 9 / 16), calc(100dvh - 2rem));
+		max-width: none;
+		max-height: calc(100dvh - 2rem);
+		overflow: hidden;
+		aspect-ratio: auto;
+		border-radius: 1rem;
 		box-shadow: 0 2.5rem 8rem rgb(0 0 0 / 0.58);
 	}
 
 	:global([data-slot='dialog-content'].video-dialog iframe) {
+		position: absolute;
+		inset: 0;
 		display: block;
 		width: 100%;
 		height: 100%;
@@ -213,8 +222,9 @@
 
 	.video-close {
 		position: absolute;
-		top: -3.25rem;
-		right: 0;
+		z-index: 2;
+		top: 0.75rem;
+		right: 0.75rem;
 		display: grid;
 		width: 2.75rem;
 		height: 2.75rem;
@@ -229,6 +239,22 @@
 			transform 100ms ease,
 			box-shadow 100ms ease,
 			background 100ms ease;
+	}
+
+	:global(.dark) .demo-section {
+		border-color: rgb(255 255 255 / 0.08);
+		background: oklch(0.13 0.01 52);
+		color: white;
+	}
+
+	:global(.dark) .demo-copy > p:not(.demo-kicker) {
+		color: rgb(255 255 255 / 0.65);
+	}
+
+	:global(.dark) .demo-copy :global(.youtube-button) {
+		border-color: rgb(255 255 255 / 0.24);
+		background: rgb(255 255 255 / 0.94);
+		color: oklch(0.16 0.01 52);
 	}
 
 	.video-close:hover {

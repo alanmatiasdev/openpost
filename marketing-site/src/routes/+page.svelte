@@ -7,15 +7,18 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 -->
 <script lang="ts">
 	import { resolve } from '$app/paths';
-	import { ArrowRight, CalendarRange, Check, Layers3, LockKeyhole } from 'lucide-svelte';
+	import { ArrowRight, CalendarRange, Layers3, LockKeyhole } from 'lucide-svelte';
 	import { Button } from '$lib/components/ui/button';
 	import CreatorStories from './_components/CreatorStories.svelte';
+	import DestinationComposerDemo from './_components/DestinationComposerDemo.svelte';
 	import FloatingNetworkField from './_components/FloatingNetworkField.svelte';
+	import FollowerGrowthPlanner from './_components/FollowerGrowthPlanner.svelte';
 	import HeroResultsCarousel from './_components/HeroResultsCarousel.svelte';
 	import LandingVideoDemo from './_components/LandingVideoDemo.svelte';
 	import PostizSocialLogo from './_components/PostizSocialLogo.svelte';
+	import PricingShowcase from './_components/PricingShowcase.svelte';
 	import ScrollReveal from './_components/ScrollReveal.svelte';
-	import { faqs, managedSignupUrl, platforms, plans, siteUrl } from './_marketing';
+	import { faqs, managedSignupUrl, platforms, siteUrl } from './_marketing';
 
 	const productStories = [
 		{
@@ -44,7 +47,6 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 		}
 	] as const;
 
-	const featuredPlans = plans.slice(0, 3);
 	const shortFaqs = faqs.slice(0, 4);
 
 	const customerLogos = [
@@ -73,9 +75,9 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 	<meta name="robots" content="index, follow" />
 </svelte:head>
 
-<section class="hero overflow-hidden text-white">
+<section class="hero overflow-hidden">
 	<div class="marketing-shell relative pt-16 pb-9 text-center sm:pt-24 sm:pb-11 lg:pt-28">
-		<h1 class="hero-title hero-enter hero-enter-1 mx-auto text-white">
+		<h1 class="hero-title hero-enter hero-enter-1 mx-auto">
 			Your socials, <span>on steroids.</span>
 		</h1>
 		<p class="hero-copy hero-enter hero-enter-2 mx-auto mt-6 max-w-3xl">
@@ -96,7 +98,7 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 		</div>
 	</div>
 
-	<div class="customer-proof border-t border-white/8 py-5 sm:py-6">
+	<div class="customer-proof border-t py-5 sm:py-6">
 		<p>Used by builders at</p>
 		<div class="customer-rail" aria-label="Companies using OpenPost">
 			<div class="customer-track">
@@ -131,10 +133,19 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 >
 	<div class="marketing-shell">
 		<ScrollReveal class="max-w-3xl">
+			<p class="section-label">The workspace</p>
 			<h2 id="product-title" class="marketing-heading">Everything you need to publish.</h2>
+			<p class="marketing-copy mt-5">
+				Write once, tune the version for each account, preview it, and schedule it without leaving
+				the page.
+			</p>
 		</ScrollReveal>
 
-		<div class="mt-16 grid gap-20 lg:gap-28">
+		<ScrollReveal class="mt-12" delay={80}>
+			<DestinationComposerDemo />
+		</ScrollReveal>
+
+		<div class="mt-20 grid gap-20 lg:gap-28">
 			{#each productStories as story, index (story.title)}
 				{@const Icon = story.icon}
 				<article class="product-story" class:product-story-reverse={index % 2 === 1}>
@@ -172,6 +183,8 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 
 <CreatorStories />
 
+<FollowerGrowthPlanner />
+
 <section class="section-pad marketing-rule border-t bg-muted/18" aria-labelledby="pricing-title">
 	<div class="marketing-shell">
 		<ScrollReveal class="mx-auto max-w-3xl text-center">
@@ -179,35 +192,7 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 			<h2 id="pricing-title" class="marketing-heading mx-auto mt-4">Pick your plan.</h2>
 		</ScrollReveal>
 
-		<div class="mt-12 grid gap-4 lg:grid-cols-3">
-			{#each featuredPlans as plan, index (plan.id)}
-				<ScrollReveal class="h-full" delay={index * 80}>
-					<article class:featured-plan={plan.featured} class="plan-card">
-						<div class="flex items-start justify-between gap-4">
-							<div>
-								<h3 class="text-lg font-semibold">{plan.name}</h3>
-								<p class="mt-2 text-sm leading-6 text-muted-foreground">
-									{plan.description}
-								</p>
-							</div>
-							{#if plan.featured}<span class="plan-tag">Most popular</span>{/if}
-						</div>
-						<p class="mt-8 text-4xl font-semibold tracking-[-0.04em]">
-							{plan.price}<span class="text-sm font-normal tracking-normal text-muted-foreground"
-								>/month</span
-							>
-						</p>
-						<ul class="mt-7 grid gap-3 text-sm text-muted-foreground">
-							{#each plan.limits.slice(0, 4) as limit (limit)}
-								<li class="flex items-center gap-3">
-									<Check class="size-4 text-primary" aria-hidden="true" />{limit}
-								</li>
-							{/each}
-						</ul>
-					</article>
-				</ScrollReveal>
-			{/each}
-		</div>
+		<div class="mt-12"><PricingShowcase compact /></div>
 		<div class="mt-7 text-center">
 			<Button href="/pricing" variant="outline">Compare all managed plans</Button>
 		</div>
@@ -273,14 +258,14 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 	.hero {
 		position: relative;
 		background:
-			radial-gradient(circle at 50% 43%, oklch(0.5 0.15 45 / 0.2), transparent 31rem),
-			oklch(0.115 0.008 52);
+			radial-gradient(circle at 50% 42%, color-mix(in oklch, var(--primary) 16%, transparent), transparent 31rem),
+			linear-gradient(to bottom, color-mix(in oklch, var(--card) 72%, var(--background)), var(--background));
 	}
 
 	.hero::before {
 		position: absolute;
 		inset: 0;
-		background-image: radial-gradient(rgb(255 255 255 / 0.13) 0.6px, transparent 0.6px);
+		background-image: radial-gradient(color-mix(in oklch, var(--foreground) 14%, transparent) 0.6px, transparent 0.6px);
 		background-size: 1.7rem 1.7rem;
 		mask-image: linear-gradient(to bottom, black, transparent 74%);
 		opacity: 0.22;
@@ -307,7 +292,7 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 		font-weight: 520;
 		line-height: 1.55;
 		letter-spacing: -0.018em;
-		color: rgb(255 255 255 / 0.72);
+		color: var(--muted-foreground);
 	}
 
 	.hero-enter {
@@ -335,9 +320,9 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 			0 5px 0 oklch(0.4 0.13 43),
 			0 1rem 2.4rem oklch(0.55 0.17 45 / 0.26) !important;
 		transition:
-			transform 110ms cubic-bezier(0.2, 0.8, 0.2, 1),
-			box-shadow 110ms cubic-bezier(0.2, 0.8, 0.2, 1),
-			background 110ms ease !important;
+			transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
+			box-shadow 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
+			background 140ms ease !important;
 	}
 
 	:global(.hero-cta:hover) {
@@ -363,7 +348,7 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 	}
 
 	.customer-proof > p {
-		color: rgb(255 255 255 / 0.4);
+		color: var(--muted-foreground);
 		font-size: 0.68rem;
 		font-weight: 650;
 		letter-spacing: 0.1em;
@@ -391,7 +376,7 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 		align-items: center;
 		justify-content: center;
 		gap: 0.65rem;
-		color: rgb(255 255 255 / 0.7);
+		color: color-mix(in oklch, var(--foreground) 72%, transparent);
 		font-family: 'Manrope Variable', Manrope, sans-serif;
 		font-size: 1rem;
 		font-weight: 650;
@@ -403,7 +388,7 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 		width: 2rem;
 		height: 2rem;
 		object-fit: contain;
-		filter: saturate(0.78) brightness(1.08);
+		filter: saturate(0.78);
 	}
 
 	.customer-wordmark img {
@@ -419,7 +404,7 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 		width: min(100% - 2rem, 38rem);
 		margin: 0.3rem auto 0;
 		padding-top: 1rem;
-		border-top: 1px solid rgb(255 255 255 / 0.08);
+		border-top: 1px solid var(--border);
 	}
 
 	.supported-marks a {
@@ -428,7 +413,7 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 		height: 2.75rem;
 		place-items: center;
 		border-radius: 0.8rem;
-		color: rgb(255 255 255 / 0.5);
+		color: var(--muted-foreground);
 		transition:
 			color 120ms ease,
 			background 120ms ease,
@@ -437,8 +422,8 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 
 	.supported-marks a:hover {
 		transform: translateY(-2px);
-		background: rgb(255 255 255 / 0.06);
-		color: white;
+		background: var(--muted);
+		color: var(--foreground);
 	}
 
 	.supported-marks :global(img) {
@@ -479,39 +464,48 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 		object-position: top;
 	}
 
-	.plan-card {
-		position: relative;
-		min-height: 100%;
-		padding: 1.75rem;
-		border: 1px solid var(--border);
-		border-radius: 1.15rem;
-		background: var(--card);
-		transition:
-			transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
-			box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+
+	:global(.dark) .hero {
+		background:
+			radial-gradient(circle at 50% 43%, oklch(0.5 0.15 45 / 0.2), transparent 31rem),
+			oklch(0.115 0.008 52);
 	}
 
-	.plan-card:hover {
-		transform: translateY(-3px);
-		box-shadow: 0 1.2rem 3rem -1.2rem color-mix(in oklch, var(--foreground) 20%, transparent);
+	:global(.dark) .hero::before {
+		background-image: radial-gradient(rgb(255 255 255 / 0.13) 0.6px, transparent 0.6px);
 	}
 
-	.featured-plan {
-		border: 1.5px solid color-mix(in oklch, var(--primary) 65%, var(--border));
-		box-shadow: 0 1.6rem 4rem -1.4rem color-mix(in oklch, var(--primary) 35%, transparent);
+	:global(.dark) .hero-copy {
+		color: rgb(255 255 255 / 0.72);
 	}
 
-	.plan-tag {
-		flex: none;
-		border-radius: 0.5rem;
-		background: var(--primary);
-		padding: 0.32rem 0.8rem;
-		color: var(--primary-foreground);
-		font-size: 0.68rem;
-		font-weight: 650;
-		letter-spacing: 0.02em;
-		white-space: nowrap;
-		box-shadow: 0 0.4rem 1.2rem -0.4rem color-mix(in oklch, var(--primary) 55%, transparent);
+	:global(.dark) .hero-title {
+		color: white;
+	}
+
+	:global(.dark) .customer-proof > p {
+		color: rgb(255 255 255 / 0.4);
+	}
+
+	:global(.dark) .customer-logo {
+		color: rgb(255 255 255 / 0.7);
+	}
+
+	:global(.dark) .customer-logo img {
+		filter: saturate(0.78) brightness(1.08);
+	}
+
+	:global(.dark) .supported-marks {
+		border-color: rgb(255 255 255 / 0.08);
+	}
+
+	:global(.dark) .supported-marks a {
+		color: rgb(255 255 255 / 0.5);
+	}
+
+	:global(.dark) .supported-marks a:hover {
+		background: rgb(255 255 255 / 0.06);
+		color: white;
 	}
 
 	.closing-section {

@@ -1,215 +1,314 @@
 <script lang="ts">
 	import PlatformIcon from '$lib/components/platform-icon.svelte';
+	import { Button } from '$lib/components/ui/button';
 
-	interface Workflow {
-		title: string;
+	interface Story {
+		id: string;
+		name: string;
 		role: string;
-		image?: string;
+		avatar?: string;
 		platform: string;
 		content: string;
 	}
 
-	const workflows: readonly Workflow[] = [
+	const stories: readonly Story[] = [
 		{
-			title: 'Launch day',
-			role: 'Solo founder',
-			image: '/assets/testimonial-portraits/maya-ribeiro.webp',
+			id: 'launch',
+			name: 'Solo founder',
+			role: 'Product launch',
+			avatar: '/assets/testimonial-portraits/maya-ribeiro.webp',
 			platform: 'linkedin',
 			content:
-				'Turn one product update into a LinkedIn post, an X thread, and a short video without starting over.'
+				'Turn a product update into a LinkedIn post, an X thread, and a short video. Keep each version tied to the same launch.'
 		},
 		{
-			title: 'A full week, planned',
-			role: 'Creator',
+			id: 'week',
+			name: 'Creator',
+			role: 'Weekly planning',
 			platform: 'instagram',
-			content: 'Draft the week, choose each destination, and schedule every post from one calendar.'
+			content: 'Draft the week, pick each destination, and schedule every post from one calendar.'
 		},
 		{
-			title: 'Every format in view',
-			role: 'Product team',
-			image: '/assets/testimonial-portraits/jordan-ellis.webp',
+			id: 'formats',
+			name: 'Product team',
+			role: 'Campaign production',
+			avatar: '/assets/testimonial-portraits/jordan-ellis.webp',
 			platform: 'youtube',
 			content:
 				'Keep the source idea beside the text, image, Story, short-video, and video versions it becomes.'
 		},
 		{
-			title: 'Replies stay close',
-			role: 'Community lead',
+			id: 'community',
+			name: 'Community lead',
+			role: 'Replies and inbox',
 			platform: 'mastodon',
 			content: 'Read and answer conversations without losing the post or account behind them.'
 		},
 		{
-			title: 'One clear workspace',
-			role: 'Small team',
-			image: '/assets/testimonial-portraits/priya-nair.webp',
+			id: 'workspace',
+			name: 'Small team',
+			role: 'Shared workspace',
+			avatar: '/assets/testimonial-portraits/priya-nair.webp',
 			platform: 'tiktok',
 			content:
 				'Share drafts, media, schedules, and publishing status without passing files between tools.'
 		},
 		{
-			title: 'Results beside the work',
-			role: 'Founder',
+			id: 'results',
+			name: 'Founder',
+			role: 'Performance review',
 			platform: 'x',
+			content: 'See what published, what failed, and what earned attention while the work is still fresh.'
+		},
+		{
+			id: 'media',
+			name: 'Social manager',
+			role: 'Media library',
+			platform: 'facebook',
 			content:
-				'See what published, what failed, and what earned attention while the campaign is still fresh.'
+				'Reuse approved images, video, captions, and alt text without hunting through old folders.'
+		},
+		{
+			id: 'threads',
+			name: 'Writer',
+			role: 'Long-form ideas',
+			platform: 'threads',
+			content: 'Split one longer idea into a clear thread, then review every reply before it goes live.'
+		},
+		{
+			id: 'automation',
+			name: 'Developer',
+			role: 'API and automation',
+			platform: 'discord',
+			content:
+				'Create drafts from scripts and AI tools while OpenPost keeps account access and publishing rules in one place.'
 		}
 	] as const;
+
+	let expanded = $state(false);
+	const clampClasses = [
+		'line-clamp-3',
+		'line-clamp-4',
+		'line-clamp-3',
+		'line-clamp-2',
+		'line-clamp-4',
+		'line-clamp-3',
+		'line-clamp-3',
+		'line-clamp-2',
+		'line-clamp-4'
+	];
 </script>
 
 <section class="stories" aria-labelledby="stories-title">
 	<div class="marketing-shell">
 		<header class="stories-heading">
-			<h2 id="stories-title">Built for focused publishing.</h2>
-			<p>Everything stays close, from the first draft to the final result.</p>
+			<p class="section-label">Creator workflows</p>
+			<h2 id="stories-title">Built around real publishing work.</h2>
+			<p>Launches, weekly planning, media, replies, and results stay in the same workspace.</p>
 		</header>
 
-		<div class="story-mosaic">
-			{#each workflows as workflow (workflow.title)}
-				<article class="story-card">
-					{#if workflow.image}
-						<img class="story-image" src={workflow.image} alt="Creator working at a desk" />
-					{/if}
-					<header>
-						<span class="story-mark"><PlatformIcon platform={workflow.platform} /></span>
-						<div>
-							<h3>{workflow.title}</h3>
-							<span>{workflow.role}</span>
-						</div>
-						<span class="story-source" aria-label={`${workflow.platform} workflow`}>
-							<PlatformIcon platform={workflow.platform} />
-						</span>
-					</header>
-					<p>{workflow.content}</p>
-				</article>
-			{/each}
+		<div class="proof-wrap">
+			<div class:proof-collapsed={!expanded} class="proof-cols">
+				{#each stories as story, index (story.id)}
+					<article class="proof-item">
+						<header class="proof-head">
+							<div class="proof-who">
+								<span class="avatar">
+									{#if story.avatar}
+										<img src={story.avatar} alt="" />
+									{:else}
+										<span>{story.name.charAt(0)}</span>
+									{/if}
+								</span>
+								<div class="proof-meta">
+									<h3>{story.name}</h3>
+									<p>{story.role}</p>
+								</div>
+							</div>
+							<span class="proof-source" aria-label={`${story.platform} workflow`}>
+								<PlatformIcon platform={story.platform} />
+							</span>
+						</header>
+						<p class={`proof-copy ${expanded ? '' : clampClasses[index]}`}>{story.content}</p>
+					</article>
+				{/each}
+			</div>
+
+			{#if !expanded}
+				<div class="proof-reveal">
+					<Button variant="secondary" onclick={() => (expanded = true)}>Show more stories</Button>
+				</div>
+			{/if}
 		</div>
 	</div>
 </section>
 
 <style>
 	.stories {
-		padding-block: clamp(4.5rem, 9vw, 7.5rem);
+		padding-block: clamp(5rem, 9vw, 8.5rem);
 		background: color-mix(in oklch, var(--muted) 38%, var(--background));
 	}
 
 	.stories-heading {
-		display: grid;
+		display: flex;
+		max-width: 44rem;
+		flex-direction: column;
+		align-items: center;
 		gap: 1rem;
 		margin: 0 auto clamp(2.5rem, 5vw, 4rem);
 		text-align: center;
 	}
 
 	.stories-heading h2 {
-		font-size: clamp(2.25rem, 4.5vw, 4rem);
+		font-size: clamp(2.35rem, 4.5vw, 4rem);
 		font-weight: 710;
 		line-height: 1;
-		letter-spacing: -0.038em;
+		letter-spacing: -0.04em;
 		text-wrap: balance;
 	}
 
-	.stories-heading p {
+	.stories-heading > p:last-child {
+		max-width: 38rem;
 		color: var(--muted-foreground);
-		font-size: 1rem;
-		line-height: 1.6;
+		line-height: 1.7;
 	}
 
-	.story-mosaic {
+	.proof-wrap {
+		position: relative;
+	}
+
+	.proof-cols {
 		columns: 1;
-		column-gap: 1rem;
+		column-gap: 1.25rem;
 	}
 
-	.story-card {
+	.proof-collapsed {
+		max-height: 35rem;
+		overflow: hidden;
+	}
+
+	.proof-item {
 		break-inside: avoid;
-		margin-bottom: 1rem;
-		padding: clamp(1.25rem, 2vw, 1.6rem);
+		margin-bottom: 1.25rem;
+		padding: 1.25rem;
 		border: 1px solid var(--border);
 		border-radius: 1rem;
 		background: var(--card);
-		box-shadow: 0 0.9rem 2.5rem -2rem color-mix(in oklch, var(--foreground) 32%, transparent);
+		box-shadow: 0 1rem 2.8rem -2.3rem color-mix(in oklch, var(--foreground) 32%, transparent);
 	}
 
-	.story-card:nth-child(3n + 1) {
-		padding-bottom: clamp(1.8rem, 3vw, 2.4rem);
-	}
-
-	.story-image {
-		display: block;
-		width: calc(100% + clamp(2.5rem, 4vw, 3.2rem));
-		height: clamp(10rem, 18vw, 14rem);
-		margin: calc(clamp(1.25rem, 2vw, 1.6rem) * -1);
-		margin-bottom: 1.35rem;
-		border-radius: 1rem 1rem 0.45rem 0.45rem;
-		object-fit: cover;
-	}
-
-	.story-card header {
+	.proof-head {
 		display: flex;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: 1rem;
+	}
+
+	.proof-who {
+		display: flex;
+		min-width: 0;
 		align-items: center;
 		gap: 0.75rem;
 	}
 
-	.story-mark {
+	.avatar {
 		display: grid;
-		width: 2.5rem;
-		height: 2.5rem;
+		width: 2.4rem;
+		height: 2.4rem;
 		flex: none;
+		overflow: hidden;
 		place-items: center;
+		border: 1px solid var(--border);
 		border-radius: 50%;
 		background: var(--muted);
+		color: var(--muted-foreground);
+		font-size: 0.8rem;
+		font-weight: 700;
+	}
+
+	.avatar img {
+		width: 100%;
+		height: 100%;
 		object-fit: cover;
 	}
 
-	.story-mark :global(svg) {
+	.proof-meta {
+		min-width: 0;
+		line-height: 1.25;
+	}
+
+	.proof-meta h3 {
+		font-size: 0.88rem;
+		font-weight: 650;
+	}
+
+	.proof-meta p {
+		margin-top: 0.15rem;
+		color: var(--muted-foreground);
+		font-size: 0.78rem;
+	}
+
+	.proof-source {
+		display: grid;
+		width: 2rem;
+		height: 2rem;
+		flex: none;
+		place-items: center;
+		color: var(--muted-foreground);
+	}
+
+	.proof-source :global(svg) {
 		width: 1rem;
 		height: 1rem;
 	}
 
-	.story-card header > div {
-		display: grid;
-		min-width: 0;
-		gap: 0.12rem;
-	}
-
-	.story-card h3 {
-		font-size: 0.9rem;
-		font-weight: 650;
-	}
-
-	.story-card header div span {
-		color: var(--muted-foreground);
-		font-size: 0.75rem;
-	}
-
-	.story-source {
-		display: grid;
-		width: 2rem;
-		height: 2rem;
-		margin-left: auto;
-		place-items: center;
-		color: var(--muted-foreground);
-	}
-
-	.story-source :global(svg) {
-		width: 0.9rem;
-		height: 0.9rem;
-	}
-
-	.story-card > p {
-		margin-top: 1.5rem;
+	.proof-copy {
+		margin-top: 1.25rem;
 		color: color-mix(in oklch, var(--foreground) 72%, transparent);
-		font-size: clamp(0.96rem, 1.4vw, 1.08rem);
-		line-height: 1.7;
+		font-size: 0.96rem;
+		line-height: 1.75;
+	}
+
+	.proof-reveal {
+		position: absolute;
+		inset-inline: 0;
+		bottom: 0;
+		display: flex;
+		align-items: end;
+		justify-content: center;
+		padding-block: 6rem 1.5rem;
+		background: linear-gradient(
+			to top,
+			color-mix(in oklch, var(--muted) 38%, var(--background)),
+			color-mix(in oklch, var(--background) 70%, transparent) 62%,
+			transparent
+		);
 	}
 
 	@media (min-width: 48rem) {
-		.story-mosaic {
+		.proof-cols {
 			columns: 2;
 		}
 	}
 
 	@media (min-width: 64rem) {
-		.story-mosaic {
+		.proof-cols {
 			columns: 3;
+		}
+
+		.proof-collapsed {
+			max-height: 27rem;
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.proof-collapsed {
+			max-height: none;
+			overflow: visible;
+		}
+
+		.proof-reveal {
+			display: none;
 		}
 	}
 </style>

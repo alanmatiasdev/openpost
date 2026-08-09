@@ -54,6 +54,18 @@ test("marketing index links to the app and documentation @desktop", async ({
   await expect(
     page.getByRole("dialog", { name: "OpenPost product demo" }),
   ).toBeVisible();
+  const videoDialog = page.getByRole("dialog", {
+    name: "OpenPost product demo",
+  });
+  const dialogBox = await videoDialog.boundingBox();
+  expect(dialogBox).not.toBeNull();
+  expect(dialogBox!.width / dialogBox!.height).toBeCloseTo(16 / 9, 1);
+  expect(dialogBox!.width).toBeLessThanOrEqual(
+    (page.viewportSize()?.width ?? dialogBox!.width) - 16,
+  );
+  expect(dialogBox!.height).toBeLessThanOrEqual(
+    (page.viewportSize()?.height ?? dialogBox!.height) - 16,
+  );
   await expect(page.getByTitle("OpenPost product demo")).toBeVisible();
   await page.getByRole("button", { name: "Close product demo" }).click();
   await expect(page.getByTitle("OpenPost product demo")).toHaveCount(0);
@@ -76,15 +88,27 @@ test("marketing index links to the app and documentation @desktop", async ({
   ).toHaveAttribute("src", "/assets/screenshots/accounts-dark.png");
   await expect(
     page.getByRole("heading", {
-      name: "Built for focused publishing.",
+      name: "Built around real publishing work.",
     }),
   ).toBeVisible();
   await expect(page.getByText("Illustrative creator stories")).toHaveCount(0);
   await expect(page.getByText("Example workflows using OpenPost")).toHaveCount(
     0,
   );
+  const creatorMosaic = page.getByRole("region", {
+    name: "Built around real publishing work.",
+  });
   await expect(
-    page.getByAltText("Creator working at a desk").first(),
+    creatorMosaic.getByRole("button", { name: "Show more stories" }),
+  ).toBeVisible();
+  await creatorMosaic
+    .getByRole("button", { name: "Show more stories" })
+    .click();
+  await expect(
+    creatorMosaic.getByRole("heading", { name: "Developer" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "See what consistency can build." }),
   ).toBeVisible();
   await expect(
     page.getByRole("link", { name: "Self-host", exact: true }),
@@ -114,7 +138,9 @@ test("pricing presents Founder at the configured monthly and annual prices", asy
   const founderPlan = page
     .getByRole("article")
     .filter({ has: page.getByRole("heading", { name: "Founder" }) });
-  await expect(founderPlan).toContainText("$25/month");
+  await expect(founderPlan.locator(".price-line")).toContainText(
+    /\$25\s*\/month/,
+  );
   await expect(
     founderPlan.getByRole("link", { name: "Start Founder" }),
   ).toHaveAttribute(
@@ -122,8 +148,11 @@ test("pricing presents Founder at the configured monthly and annual prices", asy
     "https://app.openpost.social/register?plan=founder&billing_period=monthly",
   );
 
-  await page.getByRole("button", { name: /^Annual/ }).click();
-  await expect(founderPlan).toContainText("$250/year");
+  await page.getByRole("button", { name: /^Yearly/ }).click();
+  await expect(founderPlan.locator(".price-line")).toContainText(
+    /\$20\.83\s*\/month/,
+  );
+  await expect(founderPlan).toContainText("Billed $250 yearly");
   await expect(
     founderPlan.getByRole("link", { name: "Start Founder" }),
   ).toHaveAttribute(
@@ -157,6 +186,36 @@ test("security page states AI tool access accurately @desktop", async ({
 
 test("marketing index has no horizontal overflow", async ({ page }) => {
   await page.goto("/");
+
+  const overflow = await page.evaluate(
+    () =>
+      document.documentElement.scrollWidth -
+      document.documentElement.clientWidth,
+  );
+  expect(overflow).toBeLessThanOrEqual(1);
+});
+
+test("landing stays responsive and theme-aware", async ({ page }) => {
+  await page.goto("/");
+
+  const viewportWidth = page.viewportSize()?.width ?? 1280;
+  await expect(page.locator("[data-floating-mark]")).toHaveCount(12);
+  await expect(page.locator(".hero-title")).toHaveCSS(
+    "color",
+    "oklch(0.2 0.01 50)",
+  );
+
+  if (viewportWidth >= 1024) {
+    await page.getByRole("button", { name: "Use dark theme" }).click();
+  } else {
+    await page.getByRole("button", { name: "Open navigation" }).click();
+    await page.getByRole("button", { name: "Use dark theme" }).click();
+  }
+  await expect(page.locator("html")).toHaveClass(/dark/);
+  await expect(page.locator(".hero-title")).toHaveCSS(
+    "color",
+    "rgb(255, 255, 255)",
+  );
 
   const overflow = await page.evaluate(
     () =>
