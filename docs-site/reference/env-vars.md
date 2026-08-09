@@ -118,6 +118,7 @@ Most variables loaded through the main backend config loader can also be loaded 
 | `OPENPOST_X_POST_CREATE_WITH_URL_COST_MICROUSD` | Estimated X post-create price with a URL                                                          |
 | `OPENPOST_PROVIDER_USAGE_RETENTION_DAYS`        | Immutable provider-cost event retention                                                           |
 | `OPENPOST_PROVIDER_APPS`                        | Structured provider app registry JSON; entries override matching encrypted database rows          |
+| `OPENPOST_DISABLED_PROVIDERS`                   | Emergency provider deny-list; overrides readiness-ledger controls after restart                    |
 | `X_CLIENT_ID`                                   | X client ID                                                                                       |
 | `X_CLIENT_SECRET`                               | X client secret                                                                                   |
 | `X_REDIRECT_URI`                                | X callback override                                                                               |

@@ -50,6 +50,10 @@ export const docsPageCatalog = Object.freeze([
     "title": "Production Checklist"
   },
   {
+    "page": "configuration/provider-applications.md",
+    "title": "Provider Applications"
+  },
+  {
     "page": "configuration/update-status.md",
     "title": "Update Status"
   },
