@@ -3176,7 +3176,7 @@
 	"video_editor_create_failed": "Não foi possível criar o projeto local.",
 	"video_editor_creating": "A preparar o projeto local…",
 	"video_editor_record_screen": "Gravar ecrã",
-	"video_editor_record_screen_description": "Captura um ecrã, janela ou separador, com faixas opcionais de câmara e microfone.",
+	"video_editor_record_screen_description": "Captura um ecrã, janela ou separador com faixas opcionais de câmara e microfone. A gravação fica neste navegador até escolheres guardar na nuvem, guardar em Multimédia ou usar numa publicação.",
 	"video_editor_system_audio": "Áudio do sistema",
 	"video_editor_system_audio_caveat": "O áudio do separador ou sistema só aparece quando o navegador e o sistema operativo o fornecem.",
 	"video_editor_system_audio_note": "O áudio do separador ou sistema só aparece quando o navegador e o sistema operativo o fornecem.",

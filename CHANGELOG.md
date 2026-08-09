@@ -38,6 +38,7 @@ All notable changes to this project are documented in this file.
 
 ### Fixed
 
+- Clarified that screen recordings remain local to the current browser until the user explicitly saves them to cloud storage, Media, or a post handoff.
 - Restored direct image paste in the text-and-thread composer with an immediate local preview and ordered in-place upload instead of a media-picker modal; progress, cancellation, retry, validation feedback, bounded concurrency, destination changes, navigation, and teardown now preserve or safely discard transient uploads without leaking them into draft payloads.
 - Enforced the fixed media lifecycle as 14 days for unused temporary media and seven days in Trash, kept legacy cleanup fields as ignored compatibility inputs, computed protected references once per bounded batch, and added migration 078's media-leading index for constant-query cleanup on SQLite and PostgreSQL.
 - Made each JavaScript workspace own its build output, added an atomic and crash-recoverable frontend packaging boundary, proved clean and cached frontend artifacts are identical, included documentation in the root build, and made app browser tests serve the packaged artifact.

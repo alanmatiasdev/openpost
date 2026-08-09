@@ -3176,7 +3176,7 @@
 	"video_editor_create_failed": "The local project could not be created.",
 	"video_editor_creating": "Preparing local project…",
 	"video_editor_record_screen": "Record screen",
-	"video_editor_record_screen_description": "Capture a screen, window, or tab, with optional camera and microphone tracks.",
+	"video_editor_record_screen_description": "Capture a screen, window, or tab with optional camera and microphone tracks. The recording stays in this browser until you choose cloud save, Media, or a post handoff.",
 	"video_editor_system_audio": "System audio",
 	"video_editor_system_audio_caveat": "Tab or system audio appears only when your browser and operating system provide it.",
 	"video_editor_system_audio_note": "Tab or system audio appears only when your browser and operating system provide it.",
