@@ -16,6 +16,8 @@ const xAccount: SocialAccount = {
 	account_avatar_url: '',
 	instance_url: '',
 	is_active: true,
+	grant_destination_count: 1,
+	shared_grant: false,
 	messaging_supported: true,
 	messages_enabled: false,
 	thread_replies_supported: true

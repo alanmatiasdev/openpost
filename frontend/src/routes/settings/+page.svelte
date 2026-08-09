@@ -52,6 +52,7 @@
 	import UsersIcon from 'lucide-svelte/icons/users';
 	import UserPlusIcon from 'lucide-svelte/icons/user-plus';
 	import CopyIcon from 'lucide-svelte/icons/copy';
+	import DownloadIcon from 'lucide-svelte/icons/download';
 	import MonitorIcon from 'lucide-svelte/icons/monitor';
 	import LogOutIcon from 'lucide-svelte/icons/log-out';
 	import CameraIcon from 'lucide-svelte/icons/camera';
@@ -90,7 +91,9 @@
 		| { kind: 'session'; session: AuthSessionSummary }
 		| { kind: 'api-token'; tokenID: string }
 		| { kind: 'time-row'; row: ScheduleRow }
+		| { kind: 'totp' }
 		| { kind: 'workspace' };
+	type RecoveryCodeFlow = 'setup' | 'regenerate';
 
 	const groupedTimezones = $derived.by(() => {
 		const groups: Record<string, typeof timezones> = {};
@@ -122,6 +125,11 @@
 	let totpManualEntryKey = $state('');
 	let totpQRCodeDataURL = $state('');
 	let totpCode = $state('');
+	let recoveryCodeFlow = $state<RecoveryCodeFlow | null>(null);
+	let recoveryCodeChallengeId = $state('');
+	let recoveryCodes = $state.raw<string[]>([]);
+	let recoveryCodesSaved = $state(false);
+	let recoveryCodesRemaining = $state<number | null>(null);
 	let newPasskeyName = $state('');
 
 	let securityStatus = $state<SecurityStatus | null>(null);
@@ -205,6 +213,7 @@
 				time: formatTime(destructiveAction.row.local_hour, destructiveAction.row.local_minute)
 			});
 		}
+		if (destructiveAction?.kind === 'totp') return m.settings_disable_authenticator_title();
 		if (destructiveAction?.kind === 'workspace') return m.workspace_delete_title();
 		return '';
 	}
@@ -218,6 +227,7 @@
 		}
 		if (destructiveAction?.kind === 'api-token') return m.settings_revoke_token_body();
 		if (destructiveAction?.kind === 'time-row') return m.settings_remove_time_body();
+		if (destructiveAction?.kind === 'totp') return m.settings_disable_authenticator_body();
 		if (destructiveAction?.kind === 'workspace') return m.workspace_delete_description();
 		return '';
 	}
@@ -227,6 +237,7 @@
 			return m.settings_sign_out();
 		}
 		if (destructiveAction?.kind === 'time-row') return m.settings_remove();
+		if (destructiveAction?.kind === 'totp') return m.settings_disable_authenticator();
 		if (destructiveAction?.kind === 'workspace') return m.workspace_delete_confirm();
 		return m.settings_revoke();
 	}
@@ -248,6 +259,10 @@
 		}
 		if (action.kind === 'time-row') {
 			await removeTimeRow(action.row);
+			return;
+		}
+		if (action.kind === 'totp') {
+			await disableTOTP();
 			return;
 		}
 		await deleteCurrentWorkspace();
@@ -450,6 +465,12 @@
 		return method;
 	}
 
+	function recoveryCodesRemainingLabel(count: number) {
+		return count === 1
+			? m.settings_recovery_codes_remaining_one()
+			: m.settings_recovery_codes_remaining({ count });
+	}
+
 	const authState = $derived($auth);
 	const weekdayFormatter = $derived(
 		new Intl.DateTimeFormat(getLocaleTag(), { weekday: 'short', timeZone: 'UTC' })
@@ -571,6 +592,11 @@
 			profilePublic !== Boolean(authState.user?.public_profile_enabled)
 	);
 	const securityDraftDirty = $derived(Boolean(identityPassword || otherSecurityDraftDirty()));
+	const securityDraftMessage = $derived(
+		recoveryCodes.length > 0
+			? m.settings_recovery_codes_unsaved_changes()
+			: m.settings_unsaved_changes()
+	);
 	const developerDraftDirty = $derived(apiTokenDraftSnapshot() !== savedAPITokenDraft);
 	const memberDraftDirty = $derived(Boolean(inviteEmail.trim()) || inviteRole !== 'editor');
 	const profileAvatarURL = $derived(authState.user?.avatar_url ?? '');
@@ -1108,10 +1134,12 @@
 				}
 			});
 			if (err || !data) throw new Error(err?.detail || m.settings_action_failed());
+			clearRecoveryCodeStage();
 			totpSetupChallengeId = data.challenge_id;
 			totpManualEntryKey = data.manual_entry_key;
 			totpQRCodeDataURL = data.qr_code_data_url;
 			totpCode = '';
+			totpCurrentPassword = '';
 		} catch (e) {
 			securityError = (e as Error).message;
 		} finally {
@@ -1130,14 +1158,190 @@
 					code: totpCode
 				}
 			});
-			if (err || !data) throw new Error(err?.detail || m.settings_action_failed());
-			securityStatus = data;
-			totpSetupChallengeId = '';
+			if (err || !data?.recovery_codes?.length) {
+				throw new Error(err?.detail || m.settings_action_failed());
+			}
+			recoveryCodeFlow = 'setup';
+			recoveryCodeChallengeId = data.challenge_id;
+			recoveryCodes = data.recovery_codes;
+			recoveryCodesSaved = false;
+			totpSetupChallengeId = data.challenge_id;
 			totpManualEntryKey = '';
 			totpQRCodeDataURL = '';
 			totpCode = '';
+		} catch (e) {
+			securityError = (e as Error).message;
+		} finally {
+			securityBusy = false;
+		}
+	}
+
+	function clearRecoveryCodeStage() {
+		recoveryCodeFlow = null;
+		recoveryCodeChallengeId = '';
+		recoveryCodes = [];
+		recoveryCodesSaved = false;
+	}
+
+	function clearTOTPSetupStage() {
+		totpSetupChallengeId = '';
+		totpManualEntryKey = '';
+		totpQRCodeDataURL = '';
+		totpCode = '';
+	}
+
+	function cancelTOTPSetup() {
+		clearRecoveryCodeStage();
+		clearTOTPSetupStage();
+		notify(m.settings_recovery_codes_setup_discarded());
+	}
+
+	function discardRecoveryCodeStage() {
+		const discardedSetup = recoveryCodeFlow === 'setup';
+		clearRecoveryCodeStage();
+		if (discardedSetup) {
+			clearTOTPSetupStage();
+		}
+		notify(
+			discardedSetup
+				? m.settings_recovery_codes_setup_discarded()
+				: m.settings_recovery_codes_regeneration_discarded()
+		);
+	}
+
+	function recoveryCodesText() {
+		return [
+			m.settings_recovery_codes_file_title(),
+			m.settings_recovery_codes_file_warning(),
+			'',
+			...recoveryCodes,
+			''
+		].join('\n');
+	}
+
+	async function copyRecoveryCodes() {
+		securityError = '';
+		try {
+			await navigator.clipboard.writeText(recoveryCodesText());
+			notify(m.settings_recovery_codes_copied());
+		} catch {
+			securityError = m.settings_recovery_codes_copy_failed();
+		}
+	}
+
+	function downloadRecoveryCodes() {
+		securityError = '';
+		try {
+			const blob = new Blob([recoveryCodesText()], { type: 'text/plain;charset=utf-8' });
+			const url = URL.createObjectURL(blob);
+			const anchor = document.createElement('a');
+			anchor.href = url;
+			anchor.download = 'openpost-recovery-codes.txt';
+			document.body.append(anchor);
+			anchor.click();
+			anchor.remove();
+			setTimeout(() => URL.revokeObjectURL(url), 0);
+			notify(m.settings_recovery_codes_downloaded());
+		} catch {
+			securityError = m.settings_recovery_codes_download_failed();
+		}
+	}
+
+	async function activateRecoveryCodes() {
+		if (!recoveryCodeChallengeId || !recoveryCodeFlow || !recoveryCodesSaved) return;
+		securityBusy = true;
+		securityError = '';
+		try {
+			const result =
+				recoveryCodeFlow === 'setup'
+					? await client.POST('/auth/security/totp/enable', {
+							body: {
+								challenge_id: recoveryCodeChallengeId,
+								recovery_codes_saved: true
+							}
+						})
+					: await client.POST('/auth/security/totp/recovery-codes/activate', {
+							body: {
+								challenge_id: recoveryCodeChallengeId,
+								recovery_codes_saved: true
+							}
+						});
+			if (result.error || !result.data) {
+				throw new Error(result.error?.detail || m.settings_action_failed());
+			}
+			const completedFlow = recoveryCodeFlow;
+			securityStatus = result.data;
+			clearRecoveryCodeStage();
+			clearTOTPSetupStage();
+			recoveryCodesRemaining = null;
+			notify(
+				completedFlow === 'setup'
+					? m.settings_authenticator_enabled_notice()
+					: m.settings_recovery_codes_replaced()
+			);
+		} catch (e) {
+			securityError = (e as Error).message;
+		} finally {
+			securityBusy = false;
+		}
+	}
+
+	async function checkRecoveryCodeStatus() {
+		securityBusy = true;
+		securityError = '';
+		try {
+			const grant = hasPasswordCredential
+				? ''
+				: await acquireReauthGrant('security.totp.recovery.inspect', {
+						providerID: reauthProviderID,
+						hasPasskey: passkeyCount > 0
+					});
+			if (grant === null) return;
+			const { data, error: err } = await client.POST('/auth/security/totp/recovery-codes/status', {
+				body: {
+					current_password: totpCurrentPassword,
+					reauth_grant: grant || undefined
+				}
+			});
+			if (err || !data) throw new Error(err?.detail || m.settings_action_failed());
+			recoveryCodesRemaining = data.remaining;
 			totpCurrentPassword = '';
-			notify(m.settings_authenticator_enabled_notice());
+		} catch (e) {
+			securityError = (e as Error).message;
+		} finally {
+			securityBusy = false;
+		}
+	}
+
+	async function regenerateRecoveryCodes() {
+		securityBusy = true;
+		securityError = '';
+		try {
+			const grant = hasPasswordCredential
+				? ''
+				: await acquireReauthGrant('security.totp.recovery.regenerate', {
+						providerID: reauthProviderID,
+						hasPasskey: passkeyCount > 0
+					});
+			if (grant === null) return;
+			const { data, error: err } = await client.POST(
+				'/auth/security/totp/recovery-codes/regenerate',
+				{
+					body: {
+						current_password: totpCurrentPassword,
+						reauth_grant: grant || undefined
+					}
+				}
+			);
+			if (err || !data?.recovery_codes?.length) {
+				throw new Error(err?.detail || m.settings_action_failed());
+			}
+			recoveryCodeFlow = 'regenerate';
+			recoveryCodeChallengeId = data.challenge_id;
+			recoveryCodes = data.recovery_codes;
+			recoveryCodesSaved = false;
+			recoveryCodesRemaining = null;
+			totpCurrentPassword = '';
 		} catch (e) {
 			securityError = (e as Error).message;
 		} finally {
@@ -1165,6 +1369,8 @@
 			if (err || !data) throw new Error(err?.detail || m.settings_action_failed());
 			securityStatus = data;
 			totpCurrentPassword = '';
+			recoveryCodesRemaining = null;
+			clearRecoveryCodeStage();
 			notify(m.settings_authenticator_disabled_notice());
 		} catch (e) {
 			securityError = (e as Error).message;
@@ -1291,7 +1497,7 @@
 	});
 
 	$effect(() => {
-		unsavedChanges?.set('security-settings', securityDraftDirty, m.settings_unsaved_changes());
+		unsavedChanges?.set('security-settings', securityDraftDirty, securityDraftMessage);
 		return () => unsavedChanges?.clear('security-settings');
 	});
 
@@ -1311,7 +1517,9 @@
 			passkeyCurrentPassword ||
 			totpCode ||
 			newPasskeyName ||
-			totpSetupChallengeId
+			totpSetupChallengeId ||
+			recoveryCodeChallengeId ||
+			recoveryCodes.length > 0
 		);
 	}
 
@@ -1773,6 +1981,105 @@
 <svelte:head>
 	<title>{m.settings_page_title()}</title>
 </svelte:head>
+
+{#snippet recoveryCodePanel()}
+	<div
+		class="space-y-4 rounded-lg border border-amber-500/40 bg-amber-500/5 p-4"
+		data-feedback-redact
+		data-testid="recovery-code-panel"
+		aria-labelledby="recovery-codes-title"
+	>
+		<div class="space-y-1">
+			<h4 id="recovery-codes-title" class="font-medium">
+				{recoveryCodeFlow === 'setup'
+					? m.settings_recovery_codes_setup_title()
+					: m.settings_recovery_codes_regenerate_title()}
+			</h4>
+			<p class="text-sm leading-6 text-muted-foreground">
+				{m.settings_recovery_codes_once_body()}
+			</p>
+			{#if recoveryCodeFlow === 'regenerate'}
+				<p class="text-sm leading-6 text-muted-foreground">
+					{m.settings_recovery_codes_old_active_until_replace()}
+				</p>
+			{/if}
+		</div>
+
+		<InlineNotice tone="warning" message={m.settings_recovery_codes_warning()} />
+
+		<ol
+			class="grid gap-2 rounded-md border bg-background p-3 sm:grid-cols-2"
+			aria-label={m.settings_recovery_codes_list_label()}
+			data-testid="recovery-code-list"
+		>
+			{#each recoveryCodes as code, index (code)}
+				<li class="flex min-w-0 items-center gap-2 font-mono text-sm">
+					<span class="w-5 shrink-0 text-right text-xs text-muted-foreground">{index + 1}.</span>
+					<code class="break-all">{code}</code>
+				</li>
+			{/each}
+		</ol>
+
+		<div class="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+			<Button
+				type="button"
+				variant="outline"
+				class="gap-2"
+				onclick={() => void copyRecoveryCodes()}
+				disabled={securityBusy}
+			>
+				<CopyIcon class="h-4 w-4" />
+				{m.settings_copy_recovery_codes()}
+			</Button>
+			<Button
+				type="button"
+				variant="outline"
+				class="gap-2"
+				onclick={downloadRecoveryCodes}
+				disabled={securityBusy}
+			>
+				<DownloadIcon class="h-4 w-4" />
+				{m.settings_download_recovery_codes()}
+			</Button>
+		</div>
+
+		<div class="flex items-start gap-3 rounded-md border bg-background p-3">
+			<Checkbox
+				id="recovery-codes-saved"
+				bind:checked={recoveryCodesSaved}
+				aria-describedby="recovery-codes-saved-help"
+			/>
+			<div class="min-w-0 flex-1">
+				<Label for="recovery-codes-saved" class="font-medium">
+					{m.settings_recovery_codes_saved_acknowledgement()}
+				</Label>
+				<p id="recovery-codes-saved-help" class="mt-1 text-sm text-muted-foreground">
+					{m.settings_recovery_codes_saved_help()}
+				</p>
+			</div>
+		</div>
+
+		<div class="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+			<Button
+				type="button"
+				onclick={() => void activateRecoveryCodes()}
+				disabled={securityBusy || !recoveryCodesSaved}
+			>
+				{recoveryCodeFlow === 'setup'
+					? m.settings_enable_authenticator()
+					: m.settings_replace_recovery_codes()}
+			</Button>
+			<Button
+				type="button"
+				variant="ghost"
+				onclick={discardRecoveryCodeStage}
+				disabled={securityBusy}
+			>
+				{m.settings_discard_recovery_codes()}
+			</Button>
+		</div>
+	</div>
+{/snippet}
 
 <PageContainer
 	title={activeSettingsTitle}
@@ -2879,7 +3186,7 @@
 							</div>
 
 							<div class="grid gap-4 lg:grid-cols-2">
-								<div class="rounded-lg border p-4">
+								<div class="rounded-lg border p-4" data-testid="authenticator-security-card">
 									<div class="mb-3 flex items-center gap-2">
 										<SmartphoneIcon class="h-4 w-4 text-muted-foreground" />
 										<h3 class="font-medium">{m.settings_authenticator()}</h3>
@@ -2893,34 +3200,130 @@
 											<div class="rounded-md bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700">
 												{m.settings_authenticator_enabled()}
 											</div>
-											{#if hasPasswordCredential}
-												<div class="space-y-2">
-													<Label for="disable-password">{m.settings_current_password()}</Label>
-													<Input
-														id="disable-password"
-														type="password"
-														bind:value={totpCurrentPassword}
-														autocomplete="current-password"
-														placeholder={m.settings_password_required_disable()}
-													/>
-												</div>
+											{#if recoveryCodeFlow === 'regenerate' && recoveryCodes.length > 0}
+												{@render recoveryCodePanel()}
 											{:else}
-												<p class="text-sm text-muted-foreground">
-													{m.settings_step_up_body()}
+												<p class="text-sm leading-6 text-muted-foreground">
+													{m.settings_recovery_codes_management_body()}
 												</p>
+												{#if hasPasswordCredential}
+													<div class="space-y-2">
+														<Label for="totp-management-password">
+															{m.settings_current_password()}
+														</Label>
+														<Input
+															id="totp-management-password"
+															type="password"
+															bind:value={totpCurrentPassword}
+															autocomplete="current-password"
+															placeholder={m.settings_password_required_recovery_codes()}
+														/>
+													</div>
+												{:else}
+													<p class="text-sm text-muted-foreground">
+														{m.settings_step_up_body()}
+													</p>
+												{/if}
+
+												{#if recoveryCodesRemaining !== null}
+													<InlineNotice
+														tone={recoveryCodesRemaining <= 2 ? 'warning' : 'info'}
+														message={recoveryCodesRemainingLabel(recoveryCodesRemaining)}
+													/>
+												{/if}
+
+												<div class="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+													<Button
+														type="button"
+														variant="outline"
+														onclick={() => void checkRecoveryCodeStatus()}
+														disabled={securityBusy ||
+															(hasPasswordCredential
+																? totpCurrentPassword.length === 0
+																: !hasStepUpMethod)}
+													>
+														{m.settings_check_recovery_codes()}
+													</Button>
+													<Button
+														type="button"
+														variant="outline"
+														onclick={() => void regenerateRecoveryCodes()}
+														disabled={securityBusy ||
+															(hasPasswordCredential
+																? totpCurrentPassword.length === 0
+																: !hasStepUpMethod)}
+													>
+														{m.settings_generate_recovery_codes()}
+													</Button>
+													<Button
+														type="button"
+														variant="outline"
+														class="text-destructive hover:text-destructive"
+														onclick={() => requestDestructiveAction({ kind: 'totp' })}
+														disabled={securityBusy ||
+															(hasPasswordCredential
+																? totpCurrentPassword.length === 0
+																: !hasStepUpMethod)}
+													>
+														{m.settings_disable_authenticator()}
+													</Button>
+												</div>
 											{/if}
-											<Button
-												variant="outline"
-												onclick={disableTOTP}
-												disabled={securityBusy ||
-													(hasPasswordCredential ? !totpCurrentPassword.trim() : !hasStepUpMethod)}
-											>
-												{m.settings_disable_authenticator()}
-											</Button>
 										</div>
 									{:else}
 										<div class="space-y-3">
-											{#if hasPasswordCredential}
+											{#if recoveryCodeFlow === 'setup' && recoveryCodes.length > 0}
+												{@render recoveryCodePanel()}
+											{:else if totpSetupChallengeId}
+												<div
+													class="space-y-3 rounded-lg border bg-muted/20 p-4"
+													data-feedback-redact
+												>
+													<img
+														src={totpQRCodeDataURL}
+														alt={m.settings_totp_qr_alt()}
+														class="mx-auto h-48 w-48 max-w-full rounded-lg border bg-white p-2"
+													/>
+													<div class="space-y-1">
+														<p class="text-sm font-medium">{m.settings_manual_key()}</p>
+														<p
+															class="font-mono text-xs break-all text-muted-foreground"
+															data-testid="totp-manual-entry-key"
+														>
+															{totpManualEntryKey}
+														</p>
+													</div>
+													<div class="space-y-2">
+														<Label for="totp-code">{m.settings_totp_code()}</Label>
+														<Input
+															id="totp-code"
+															bind:value={totpCode}
+															inputmode="numeric"
+															autocomplete="one-time-code"
+															pattern="[0-9]{6}"
+															maxlength={6}
+															placeholder="123456"
+														/>
+													</div>
+													<div class="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+														<Button
+															type="button"
+															onclick={() => void confirmTOTPSetup()}
+															disabled={securityBusy || !/^\d{6}$/.test(totpCode)}
+														>
+															{m.settings_verify_authenticator()}
+														</Button>
+														<Button
+															type="button"
+															variant="ghost"
+															onclick={cancelTOTPSetup}
+															disabled={securityBusy}
+														>
+															{m.settings_cancel_authenticator_setup()}
+														</Button>
+													</div>
+												</div>
+											{:else if hasPasswordCredential}
 												<div class="space-y-2">
 													<Label for="totp-password">{m.settings_current_password()}</Label>
 													<Input
@@ -2936,48 +3339,17 @@
 													{m.settings_step_up_body()}
 												</p>
 											{/if}
-											<Button
-												onclick={startTOTPSetup}
-												disabled={securityBusy ||
-													(hasPasswordCredential ? !totpCurrentPassword.trim() : !hasStepUpMethod)}
-											>
-												{m.settings_start_authenticator()}
-											</Button>
-
-											{#if totpSetupChallengeId}
-												<div
-													class="space-y-3 rounded-lg border bg-muted/20 p-4"
-													data-feedback-redact
+											{#if !totpSetupChallengeId && recoveryCodeFlow !== 'setup'}
+												<Button
+													type="button"
+													onclick={() => void startTOTPSetup()}
+													disabled={securityBusy ||
+														(hasPasswordCredential
+															? totpCurrentPassword.length === 0
+															: !hasStepUpMethod)}
 												>
-													<img
-														src={totpQRCodeDataURL}
-														alt={m.settings_totp_qr_alt()}
-														class="mx-auto h-48 w-48 rounded-lg border bg-white p-2"
-													/>
-													<div class="space-y-1">
-														<p class="text-sm font-medium">{m.settings_manual_key()}</p>
-														<p class="font-mono text-xs break-all text-muted-foreground">
-															{totpManualEntryKey}
-														</p>
-													</div>
-													<div class="space-y-2">
-														<Label for="totp-code">{m.settings_totp_code()}</Label>
-														<Input
-															id="totp-code"
-															bind:value={totpCode}
-															inputmode="numeric"
-															autocomplete="one-time-code"
-															maxlength={6}
-															placeholder="123456"
-														/>
-													</div>
-													<Button
-														onclick={confirmTOTPSetup}
-														disabled={securityBusy || totpCode.trim().length !== 6}
-													>
-														{m.settings_confirm_authenticator()}
-													</Button>
-												</div>
+													{m.settings_start_authenticator()}
+												</Button>
 											{/if}
 										</div>
 									{/if}
@@ -3020,7 +3392,9 @@
 										<Button
 											onclick={addPasskey}
 											disabled={securityBusy ||
-												(hasPasswordCredential ? !passkeyCurrentPassword.trim() : !hasStepUpMethod)}
+												(hasPasswordCredential
+													? passkeyCurrentPassword.length === 0
+													: !hasStepUpMethod)}
 										>
 											{m.settings_add_passkey()}
 										</Button>
@@ -3051,7 +3425,7 @@
 														onclick={() => removePasskey(passkey.id)}
 														disabled={securityBusy ||
 															(hasPasswordCredential
-																? !passkeyCurrentPassword.trim()
+																? passkeyCurrentPassword.length === 0
 																: !hasStepUpMethod)}
 													>
 														{m.settings_remove()}

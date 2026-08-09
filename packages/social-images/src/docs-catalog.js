@@ -282,6 +282,10 @@ export const docsPageCatalog = Object.freeze([
     "title": "Self-Hosting Docs"
   },
   {
+    "page": "usage/account-security.md",
+    "title": "Account Security"
+  },
+  {
     "page": "usage/accounts.md",
     "title": "Accounts"
   },

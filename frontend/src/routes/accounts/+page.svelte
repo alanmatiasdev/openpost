@@ -27,6 +27,16 @@
 	import UsersIcon from 'lucide-svelte/icons/users';
 	import { m } from '$lib/paraglide/messages';
 	import { getOptionalUnsavedChanges } from '$lib/unsaved-changes.svelte';
+	import {
+		accountRemovalKinds,
+		grantDestinationCount,
+		type AccountRemovalKind
+	} from './account-removal';
+
+	type AccountRemovalAction = {
+		kind: AccountRemovalKind;
+		account: SocialAccount;
+	};
 
 	let embedded = $derived(page.url.pathname === '/settings');
 
@@ -99,8 +109,8 @@
 	});
 	let editAccountLoading = $state(false);
 	let editAccountError = $state('');
-	let disconnectDialogOpen = $state(false);
-	let accountToDisconnect = $state.raw<SocialAccount | null>(null);
+	let accountRemovalDialogOpen = $state(false);
+	let accountRemovalAction = $state.raw<AccountRemovalAction | null>(null);
 	const accountSlugPattern = '[a-z0-9][a-z0-9-]{0,62}';
 
 	function clearToast() {
@@ -189,22 +199,100 @@
 		}
 	}
 
-	function requestDisconnectAccount(account: SocialAccount) {
-		accountToDisconnect = account;
-		disconnectDialogOpen = true;
+	function requestAccountRemoval(account: SocialAccount, kind: AccountRemovalKind) {
+		accountRemovalAction = { account, kind };
+		accountRemovalDialogOpen = true;
 	}
 
-	async function disconnectAccount() {
-		const account = accountToDisconnect;
-		if (!account) return;
+	function accountRemovalActionLabel(account: SocialAccount, kind: AccountRemovalKind): string {
+		if (kind === 'disconnect-destination') return m.accounts_disconnect_destination();
+		const count = grantDestinationCount(account);
+		return count > 1
+			? m.accounts_remove_shared_authorization({ count })
+			: m.accounts_remove_connection();
+	}
+
+	function accountRemovalTitle(): string {
+		const action = accountRemovalAction;
+		if (!action) return '';
+		const account = accountDisplayName(action.account);
+		if (action.kind === 'disconnect-destination') {
+			return m.accounts_disconnect_destination_title({ account });
+		}
+		const count = grantDestinationCount(action.account);
+		return count > 1
+			? m.accounts_remove_shared_title({ count })
+			: m.accounts_remove_connection_title({ account });
+	}
+
+	function accountRemovalDescription(): string {
+		const action = accountRemovalAction;
+		if (!action) return '';
+		const account = accountDisplayName(action.account);
+		const count = grantDestinationCount(action.account);
+		if (action.kind === 'disconnect-destination') {
+			return m.accounts_disconnect_destination_body({ account, count });
+		}
+		const platform = getPlatformName(action.account.platform);
+		return count > 1
+			? m.accounts_remove_shared_body({ count, platform })
+			: m.accounts_remove_connection_body({
+					account,
+					platform
+				});
+	}
+
+	function accountRemovalConfirmLabel(): string {
+		const action = accountRemovalAction;
+		if (!action) return '';
+		if (action.kind === 'disconnect-destination') return m.accounts_disconnect_destination();
+		return grantDestinationCount(action.account) > 1
+			? m.accounts_remove_authorization()
+			: m.accounts_remove_connection();
+	}
+
+	async function confirmAccountRemoval() {
+		const action = accountRemovalAction;
+		if (!action) return;
+		const account = action.account;
+		const count = grantDestinationCount(account);
 		try {
-			const { error: err } = await client.DELETE('/accounts/{account_id}', {
-				params: { path: { account_id: account.id } }
-			});
-			if (err) throw new Error(err.detail || m.accounts_disconnect_failed());
+			const result =
+				action.kind === 'disconnect-destination'
+					? await client.DELETE('/accounts/{account_id}', {
+							params: { path: { account_id: account.id } }
+						})
+					: await client.DELETE('/accounts/{account_id}/grant', {
+							params: { path: { account_id: account.id } }
+						});
+			const fallback =
+				action.kind === 'disconnect-destination'
+					? m.accounts_disconnect_failed()
+					: m.accounts_remove_authorization_failed();
+			if (result.error) throw new Error(result.error.detail || fallback);
 			await loadAccounts();
+			if (action.kind === 'disconnect-destination') {
+				showToast(
+					m.accounts_destination_disconnected_success({ account: accountDisplayName(account) }),
+					undefined,
+					'neutral'
+				);
+			} else if (count > 1) {
+				showToast(m.accounts_authorization_removed_success({ count }), undefined, 'neutral');
+			} else {
+				showToast(
+					m.accounts_connection_removed_success({ account: accountDisplayName(account) }),
+					undefined,
+					'neutral'
+				);
+			}
 		} catch (e) {
-			error = e instanceof Error && e.message ? e.message : m.accounts_disconnect_failed();
+			error =
+				e instanceof Error && e.message
+					? e.message
+					: action.kind === 'disconnect-destination'
+						? m.accounts_disconnect_failed()
+						: m.accounts_remove_authorization_failed();
 		}
 	}
 
@@ -275,7 +363,7 @@
 		if (!embedded) {
 			const params = new URLSearchParams(window.location.search);
 			params.set('tab', 'accounts');
-			void goto(`${resolve('/settings')}?${params.toString()}`, { replaceState: true });
+			void goto(resolve(`/settings?${params.toString()}`), { replaceState: true });
 			return;
 		}
 		const params = new URLSearchParams(window.location.search);
@@ -283,10 +371,11 @@
 		if (urlError) {
 			error = urlError;
 			params.delete('error');
-			const cleanURL = params.size
-				? `${window.location.pathname}?${params.toString()}`
-				: window.location.pathname;
-			replaceState(cleanURL, {});
+			if (params.size) {
+				replaceState(resolve(`/settings?${params.toString()}`), {});
+			} else {
+				replaceState(resolve('/settings'), {});
+			}
 		}
 
 		const unsubscribe = auth.subscribe(async (state) => {
@@ -834,7 +923,10 @@
 							class="grid gap-px overflow-hidden rounded-lg border bg-border sm:grid-cols-2 xl:grid-cols-3"
 						>
 							{#each accounts as account (account.id)}
-								<article class="flex min-h-28 flex-col justify-between gap-3 bg-background p-4">
+								<article
+									data-testid={`account-card-${account.id}`}
+									class="flex min-h-28 flex-col justify-between gap-3 bg-background p-4"
+								>
 									<div class="flex items-start gap-3">
 										<div
 											class="flex size-10 shrink-0 items-center justify-center rounded-lg {getPlatformColor(
@@ -874,16 +966,19 @@
 													</Button>
 												{/snippet}
 											</DropdownMenu.Trigger>
-											<DropdownMenu.Content align="end" class="w-48">
+											<DropdownMenu.Content align="end" class="w-64">
 												<DropdownMenu.Item onclick={() => openEditAccount(account)}
 													>{m.accounts_details()}</DropdownMenu.Item
 												>
 												<DropdownMenu.Separator />
-												<DropdownMenu.Item
-													class="text-destructive"
-													onclick={() => requestDisconnectAccount(account)}
-													>{m.common_disconnect()}</DropdownMenu.Item
-												>
+												{#each accountRemovalKinds(account) as kind (kind)}
+													<DropdownMenu.Item
+														class="text-destructive"
+														onclick={() => requestAccountRemoval(account, kind)}
+													>
+														{accountRemovalActionLabel(account, kind)}
+													</DropdownMenu.Item>
+												{/each}
 											</DropdownMenu.Content>
 										</DropdownMenu.Root>
 									</div>
@@ -993,13 +1088,11 @@
 </PageContainer>
 
 <DestructiveConfirmDialog
-	bind:open={disconnectDialogOpen}
-	title={m.accounts_disconnect_title()}
-	description={m.accounts_disconnect_body({
-		account: accountToDisconnect ? accountDisplayName(accountToDisconnect) : ''
-	})}
-	confirmLabel={m.common_disconnect()}
-	onConfirm={disconnectAccount}
+	bind:open={accountRemovalDialogOpen}
+	title={accountRemovalTitle()}
+	description={accountRemovalDescription()}
+	confirmLabel={accountRemovalConfirmLabel()}
+	onConfirm={confirmAccountRemoval}
 />
 
 <Dialog.Root bind:open={oauthConfirmOpen}>

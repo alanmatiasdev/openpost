@@ -157,7 +157,20 @@ function createAuthStore() {
 				});
 				if (error || !data) throw new Error(error?.detail ?? 'Authenticator verification failed');
 				setToken(IS_CAPACITOR ? data.token : null);
-				set({ user: data.user ?? null, isLoading: false, isAuthenticated: true });
+				setAuthenticatedUser(data.user ?? null);
+				return { success: true };
+			} catch (e) {
+				return { success: false, error: (e as Error).message };
+			}
+		},
+		async verifyRecoveryCode(mfaToken: string, code: string): Promise<AuthActionResult> {
+			try {
+				const { data, error } = await client.POST('/auth/login/recovery-code', {
+					body: { mfa_token: mfaToken, code }
+				});
+				if (error || !data) throw new Error(error?.detail ?? 'Recovery code verification failed');
+				setToken(IS_CAPACITOR ? data.token : null);
+				setAuthenticatedUser(data.user ?? null);
 				return { success: true };
 			} catch (e) {
 				return { success: false, error: (e as Error).message };

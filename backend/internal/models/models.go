@@ -209,6 +209,20 @@ type UserPasskey struct {
 	LastUsedAt     time.Time `bun:",nullzero" json:"last_used_at"`
 }
 
+// UserMFARecoveryCode stores only a digest of a high-entropy recovery code.
+// Codes belong to a batch and are removed when that batch is replaced or TOTP
+// is disabled, keeping storage bounded without retaining plaintext values.
+type UserMFARecoveryCode struct {
+	bun.BaseModel `bun:"table:user_mfa_recovery_codes"`
+
+	ID        string    `bun:",pk" json:"id"`
+	UserID    string    `bun:"user_id,notnull" json:"user_id"`
+	BatchID   string    `bun:"batch_id,notnull" json:"batch_id"`
+	CodeHash  string    `bun:"code_hash,notnull" json:"-"`
+	UsedAt    time.Time `bun:"used_at,nullzero" json:"used_at"`
+	CreatedAt time.Time `bun:"created_at,nullzero,notnull,default:current_timestamp" json:"created_at"`
+}
+
 type UserSession struct {
 	bun.BaseModel `bun:"table:user_sessions"`
 

@@ -114,7 +114,7 @@ These do not assert a newly observed production incident. They block Pinterest, 
 
 ### SEC-001 — Add MFA recovery codes and prove recovery before enabling TOTP
 
-- [ ] **Problem — Current source audit:** TOTP/passkey security is substantial, but TOTP enrollment has no one-time recovery-code set or required save/copy acknowledgement. Loss of the authenticator can become a support-led lockout.
+- [x] **Problem — Current source audit:** TOTP/passkey security is substantial, but TOTP enrollment has no one-time recovery-code set or required save/copy acknowledgement. Loss of the authenticator can become a support-led lockout.
 - **Fix:** generate hashed, single-use recovery codes; show them exactly once; require download/copy acknowledgement before setup completes; expose regeneration and remaining-code count behind recent re-authentication; invalidate old codes on regeneration or MFA reset.
 - **Done when:** setup cannot finish before backup-code acknowledgement; each code works once; regeneration revokes the old set; disabling/resetting MFA requires re-authentication; login and recovery paths are covered end to end.
 - **Evidence:** `frontend/src/routes/settings/+page.svelte` security section and `backend/internal/api/handlers/auth.go` security/MFA handlers.

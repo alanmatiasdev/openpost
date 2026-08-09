@@ -24,6 +24,8 @@
 	let email = $state('');
 	let password = $state('');
 	let totpCode = $state('');
+	let recoveryCode = $state('');
+	let mfaMode = $state<'totp' | 'recovery'>('totp');
 	let error = $state('');
 	let isLoading = $state(false);
 	let mfaToken = $state('');
@@ -80,8 +82,25 @@
 			mfaToken = result.mfaToken;
 			mfaMethods = result.mfaMethods ?? [];
 			totpCode = '';
+			recoveryCode = '';
+			mfaMode = mfaMethods.includes('totp') ? 'totp' : 'recovery';
 		} else {
 			error = result.error || m.auth_login_failed();
+		}
+
+		isLoading = false;
+	}
+
+	async function handleVerifyRecoveryCode(e: Event) {
+		e.preventDefault();
+		error = '';
+		isLoading = true;
+
+		const result = await auth.verifyRecoveryCode(mfaToken, recoveryCode);
+		if (result.success) {
+			goto(resolve(loginTarget() as '/'));
+		} else {
+			error = result.error || m.auth_login_recovery_code_failed();
 		}
 
 		isLoading = false;
@@ -134,6 +153,13 @@
 		mfaToken = '';
 		mfaMethods = [];
 		totpCode = '';
+		recoveryCode = '';
+		mfaMode = 'totp';
+		error = '';
+	}
+
+	function setMfaMode(mode: 'totp' | 'recovery') {
+		mfaMode = mode;
 		error = '';
 	}
 
@@ -206,7 +232,7 @@
 				</Button>
 			{/if}
 
-			{#if mfaMethods.includes('totp')}
+			{#if mfaMode === 'totp' && mfaMethods.includes('totp')}
 				<form onsubmit={handleVerifyTOTP} class="space-y-4">
 					<div class="space-y-2">
 						<Label for="totpCode">{m.auth_login_authenticator_code()}</Label>
@@ -232,6 +258,61 @@
 						{/if}
 					</Button>
 				</form>
+			{:else if mfaMode === 'recovery' && mfaMethods.includes('recovery_code')}
+				<form onsubmit={handleVerifyRecoveryCode} class="space-y-4">
+					<div class="space-y-2">
+						<Label for="recoveryCode">{m.auth_login_recovery_code()}</Label>
+						<Input
+							id="recoveryCode"
+							bind:value={recoveryCode}
+							autocomplete="one-time-code"
+							autocapitalize="characters"
+							spellcheck={false}
+							maxlength={32}
+							placeholder="XXXX-XXXX-XXXX-XXXX"
+							required
+						/>
+						<p class="text-sm text-muted-foreground">
+							{m.auth_login_recovery_code_help()}
+						</p>
+					</div>
+
+					<Button
+						type="submit"
+						disabled={isLoading || recoveryCode.trim().length < 16}
+						class="w-full gap-2"
+					>
+						{#if isLoading}
+							<LoaderIcon class="h-4 w-4 animate-spin" />
+							{m.auth_login_verifying()}
+						{:else}
+							<ShieldIcon class="h-4 w-4" />
+							{m.auth_login_verify_recovery_code()}
+						{/if}
+					</Button>
+				</form>
+			{/if}
+
+			{#if mfaMethods.includes('recovery_code') && mfaMode !== 'recovery'}
+				<Button
+					type="button"
+					variant="outline"
+					class="w-full"
+					onclick={() => setMfaMode('recovery')}
+					disabled={isLoading}
+				>
+					{m.auth_login_use_recovery_code()}
+				</Button>
+			{:else if mfaMode === 'recovery' && mfaMethods.includes('totp')}
+				<Button
+					type="button"
+					variant="outline"
+					class="w-full"
+					onclick={() => setMfaMode('totp')}
+					disabled={isLoading}
+				>
+					{m.auth_login_use_authenticator()}
+				</Button>
 			{/if}
 
 			<Button type="button" variant="ghost" class="w-full" onclick={resetMfa} disabled={isLoading}>

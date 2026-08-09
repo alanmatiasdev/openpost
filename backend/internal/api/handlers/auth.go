@@ -21,6 +21,7 @@ import (
 	"github.com/openpost/backend/internal/services/emailverification"
 	"github.com/openpost/backend/internal/services/identity"
 	"github.com/openpost/backend/internal/services/mfa"
+	"github.com/openpost/backend/internal/services/mfarecovery"
 	"github.com/openpost/backend/internal/services/passwordmail"
 	"github.com/openpost/backend/internal/services/ratelimit"
 	"github.com/openpost/backend/internal/services/sessions"
@@ -32,14 +33,18 @@ import (
 const (
 	authChallengeLoginMFA      = "login_mfa"
 	authChallengeTOTPSetup     = "totp_setup"
+	authChallengeTOTPRecovery  = "totp_recovery_regeneration"
 	authChallengePasskeySetup  = "passkey_setup"
 	authChallengePasskeyLogin  = "passkey_login"
 	authChallengePasskeyReauth = "passkey_reauth"
 	mfaMethodTOTP              = "totp"
 	mfaMethodPasskey           = "passkey"
+	mfaMethodRecoveryCode      = "recovery_code"
 	defaultPasskeyDisplayName  = "Unnamed passkey"
 	reauthActionTOTPSetup      = "security.totp.setup"
 	reauthActionTOTPDisable    = "security.totp.disable"
+	reauthActionRecoveryStatus = "security.totp.recovery.inspect"
+	reauthActionRecoveryReset  = "security.totp.recovery.regenerate"
 	reauthActionPasskeyAdd     = "security.passkey.add"
 	reauthActionPasskeyRemove  = "security.passkey.remove"
 	reauthActionPassword       = "security.password.change"
@@ -52,6 +57,7 @@ type AuthHandler struct {
 	sessions                  *sessions.Service
 	encryptor                 *crypto.TokenEncryptor
 	mfa                       *mfa.Service
+	mfaRecovery               *mfarecovery.Service
 	registrationsDisabled     bool
 	limiter                   *ratelimit.Limiter
 	passwordResetSender       passwordmail.Sender
@@ -80,6 +86,7 @@ func NewAuthHandler(
 		authenticator:         authenticator,
 		encryptor:             encryptor,
 		mfa:                   mfaService,
+		mfaRecovery:           mfarecovery.NewService(db),
 		registrationsDisabled: registrationsDisabled,
 		limiter:               ratelimit.New(),
 	}
@@ -141,6 +148,13 @@ type VerifyTOTPLoginInput struct {
 	}
 }
 
+type VerifyRecoveryCodeLoginInput struct {
+	Body struct {
+		MFAToken string `json:"mfa_token" doc:"Pending MFA challenge token"`
+		Code     string `json:"code" minLength:"16" maxLength:"32" doc:"Single-use MFA recovery code"`
+	}
+}
+
 type BeginPasskeyLoginInput struct {
 	Body struct {
 		MFAToken string `json:"mfa_token" doc:"Pending MFA challenge token"`
@@ -178,6 +192,20 @@ type ConfirmTOTPSetupInput struct {
 	Body struct {
 		ChallengeID string `json:"challenge_id" doc:"TOTP setup challenge ID"`
 		Code        string `json:"code" minLength:"6" maxLength:"6" doc:"Six digit authenticator code"`
+	}
+}
+
+type AcknowledgeRecoveryCodesInput struct {
+	Body struct {
+		ChallengeID        string `json:"challenge_id" doc:"Recovery-code challenge ID"`
+		RecoveryCodesSaved bool   `json:"recovery_codes_saved" doc:"Explicit acknowledgement that the one-time recovery codes were saved"`
+	}
+}
+
+type RecoveryCodeSensitiveActionInput struct {
+	Body struct {
+		CurrentPassword string `json:"current_password" doc:"Current password for re-authentication"`
+		ReauthGrant     string `json:"reauth_grant,omitempty" doc:"One-time action-bound reauthentication grant"`
 	}
 }
 
@@ -251,7 +279,7 @@ type AuthOutput struct {
 		User                      *UserProfile `json:"user,omitempty"`
 		RequiresMFA               bool         `json:"requires_mfa" doc:"Whether the login requires a second factor"`
 		MFAToken                  string       `json:"mfa_token,omitempty" doc:"Pending MFA token for follow-up verification"`
-		MFAMethods                []string     `json:"mfa_methods,omitempty" doc:"Enabled MFA methods for this account"`
+		MFAMethods                []string     `json:"mfa_methods,omitempty" doc:"MFA verification methods available for this login challenge"`
 		RequiresEmailVerification bool         `json:"requires_email_verification" doc:"Whether a six-digit email code must be confirmed before sign-in"`
 		EmailVerificationID       string       `json:"email_verification_id,omitempty" doc:"Opaque email verification challenge ID"`
 		EmailVerificationEmail    string       `json:"email_verification_email,omitempty" doc:"Email address receiving the verification code"`
@@ -320,11 +348,26 @@ type RevokeUserSessionOutput struct {
 }
 
 type SetupTOTPOutput struct {
-	Body struct {
+	CacheControl string `header:"Cache-Control"`
+	Body         struct {
 		ChallengeID    string `json:"challenge_id"`
 		ManualEntryKey string `json:"manual_entry_key"`
 		OTPAuthURL     string `json:"otpauth_url"`
 		QRCodeDataURL  string `json:"qr_code_data_url"`
+	}
+}
+
+type RecoveryCodeSetOutput struct {
+	CacheControl string `header:"Cache-Control"`
+	Body         struct {
+		ChallengeID   string   `json:"challenge_id" doc:"Expiring challenge that activates this code set after acknowledgement"`
+		RecoveryCodes []string `json:"recovery_codes" doc:"One-time plaintext recovery codes; these are never returned again"`
+	}
+}
+
+type RecoveryCodeStatusOutput struct {
+	Body struct {
+		Remaining int `json:"remaining" doc:"Number of unused active MFA recovery codes"`
 	}
 }
 
@@ -340,8 +383,15 @@ type loginChallengePayload struct {
 }
 
 type totpSetupPayload struct {
-	Secret          string `json:"secret,omitempty"`
-	SecretEncrypted string `json:"secret_encrypted,omitempty"`
+	Secret             string   `json:"secret,omitempty"`
+	SecretEncrypted    string   `json:"secret_encrypted,omitempty"`
+	RecoveryBatchID    string   `json:"recovery_batch_id,omitempty"`
+	RecoveryCodeHashes []string `json:"recovery_code_hashes,omitempty"`
+}
+
+type recoveryCodeChallengePayload struct {
+	BatchID string   `json:"batch_id"`
+	Hashes  []string `json:"hashes"`
 }
 
 type passkeyChallengePayload struct {
@@ -551,7 +601,7 @@ func (h *AuthHandler) Login(api huma.API) {
 			return h.beginEmailVerification(ctx, user, false)
 		}
 
-		methods, err := h.enabledMFAMethods(ctx, user)
+		methods, err := h.loginMFAMethods(ctx, user)
 		if err != nil {
 			return nil, huma.Error500InternalServerError("failed to load account security")
 		}
@@ -638,6 +688,66 @@ func (h *AuthHandler) VerifyTOTPLogin(api huma.API) {
 		}
 
 		if err := h.deleteChallenge(ctx, challenge.ID); err != nil {
+			return nil, huma.Error500InternalServerError("failed to finish MFA login")
+		}
+
+		return h.issueAuthResponse(ctx, user)
+	})
+}
+
+func (h *AuthHandler) VerifyRecoveryCodeLogin(api huma.API) {
+	huma.Register(api, huma.Operation{
+		OperationID: "verify-login-recovery-code",
+		Method:      http.MethodPost,
+		Path:        "/auth/login/recovery-code",
+		Summary:     "Complete MFA login with a single-use recovery code",
+		Tags:        []string{tagAuth},
+		Middlewares: huma.Middlewares{middleware.RequestMetadataMiddleware()},
+		Errors:      []int{400, 401, 429},
+	}, func(ctx context.Context, input *VerifyRecoveryCodeLoginInput) (*AuthOutput, error) {
+		challenge, err := h.getChallenge(ctx, input.Body.MFAToken, authChallengeLoginMFA)
+		if err != nil {
+			return nil, huma.Error401Unauthorized("invalid or expired MFA token")
+		}
+		if !h.allowAuthAttempt(clientIP(ctx), "mfa:ip", 20, 15*time.Minute) {
+			return nil, huma.Error429TooManyRequests("too many MFA attempts")
+		}
+		if !h.allowAuthAttempt(challenge.UserID, "mfa:user", 10, 15*time.Minute) {
+			return nil, huma.Error429TooManyRequests("too many MFA attempts")
+		}
+
+		var challengePayload loginChallengePayload
+		if err := json.Unmarshal([]byte(challenge.Payload), &challengePayload); err != nil ||
+			!slices.Contains(challengePayload.Methods, mfaMethodRecoveryCode) {
+			return nil, huma.Error400BadRequest("recovery-code login is not available for this challenge")
+		}
+
+		user, err := h.getUserByID(ctx, challenge.UserID)
+		if err != nil || len(user.TOTPSecretEnc) == 0 {
+			return nil, huma.Error401Unauthorized("invalid recovery code")
+		}
+
+		now := time.Now().UTC()
+		err = h.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
+			consumed, consumeErr := h.mfaRecovery.ConsumeWithDB(
+				txCtx,
+				tx,
+				challenge.UserID,
+				input.Body.Code,
+				now,
+			)
+			if consumeErr != nil {
+				return consumeErr
+			}
+			if !consumed {
+				return sql.ErrNoRows
+			}
+			return consumeChallengeWithDB(txCtx, tx, challenge.ID, challenge.UserID, authChallengeLoginMFA)
+		})
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, huma.Error401Unauthorized("invalid recovery code")
+		}
+		if err != nil {
 			return nil, huma.Error500InternalServerError("failed to finish MFA login")
 		}
 
@@ -1209,7 +1319,7 @@ func (h *AuthHandler) BeginTOTPSetup(api huma.API) {
 		Summary:     "Start TOTP enrollment for the current user",
 		Tags:        []string{tagAuth},
 		Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.authenticator)},
-		Errors:      []int{400, 401, 409},
+		Errors:      []int{400, 401, 409, 429},
 	}, func(ctx context.Context, input *SetupTOTPInput) (*SetupTOTPOutput, error) {
 		userID := middleware.GetUserID(ctx)
 		user, err := h.getUserByID(ctx, userID)
@@ -1239,7 +1349,7 @@ func (h *AuthHandler) BeginTOTPSetup(api huma.API) {
 			return nil, huma.Error500InternalServerError("failed to protect authenticator secret")
 		}
 
-		challengeID, err := h.createChallenge(ctx, user.ID, authChallengeTOTPSetup, totpSetupPayload{
+		challengeID, err := h.createExclusiveChallenge(ctx, user.ID, authChallengeTOTPSetup, totpSetupPayload{
 			SecretEncrypted: base64.StdEncoding.EncodeToString(secretEnc),
 		})
 		if err != nil {
@@ -1247,6 +1357,7 @@ func (h *AuthHandler) BeginTOTPSetup(api huma.API) {
 		}
 
 		resp := &SetupTOTPOutput{}
+		resp.CacheControl = "no-store"
 		resp.Body.ChallengeID = challengeID
 		resp.Body.ManualEntryKey = key.Secret()
 		resp.Body.OTPAuthURL = key.URL()
@@ -1263,8 +1374,8 @@ func (h *AuthHandler) ConfirmTOTPSetup(api huma.API) {
 		Summary:     "Confirm TOTP enrollment with a verification code",
 		Tags:        []string{tagAuth},
 		Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.authenticator)},
-		Errors:      []int{400, 401},
-	}, func(ctx context.Context, input *ConfirmTOTPSetupInput) (*SecurityStatusOutput, error) {
+		Errors:      []int{400, 401, 409},
+	}, func(ctx context.Context, input *ConfirmTOTPSetupInput) (*RecoveryCodeSetOutput, error) {
 		challenge, err := h.getChallenge(ctx, input.Body.ChallengeID, authChallengeTOTPSetup)
 		if err != nil {
 			return nil, huma.Error401Unauthorized("invalid or expired setup challenge")
@@ -1277,6 +1388,9 @@ func (h *AuthHandler) ConfirmTOTPSetup(api huma.API) {
 		if err := json.Unmarshal([]byte(challenge.Payload), &payload); err != nil {
 			return nil, huma.Error500InternalServerError("failed to read setup challenge")
 		}
+		if len(payload.RecoveryCodeHashes) > 0 {
+			return nil, huma.Error409Conflict("recovery codes were already issued; restart setup if they were lost")
+		}
 
 		secret, err := h.resolveTOTPSetupSecret(payload)
 		if err != nil {
@@ -1286,22 +1400,240 @@ func (h *AuthHandler) ConfirmTOTPSetup(api huma.API) {
 			return nil, huma.Error400BadRequest("invalid authenticator code")
 		}
 
+		set, err := h.mfaRecovery.Generate()
+		if err != nil {
+			return nil, huma.Error500InternalServerError("failed to generate recovery codes")
+		}
+		payload.RecoveryBatchID = set.BatchID
+		payload.RecoveryCodeHashes = set.Hashes
+		updatedPayload, err := json.Marshal(payload)
+		if err != nil {
+			return nil, huma.Error500InternalServerError("failed to protect recovery codes")
+		}
+		result, err := h.db.NewUpdate().Model((*models.AuthChallenge)(nil)).
+			Set("payload = ?", string(updatedPayload)).
+			Where(
+				"id = ? AND user_id = ? AND type = ? AND payload = ? AND expires_at > ?",
+				challenge.ID,
+				challenge.UserID,
+				authChallengeTOTPSetup,
+				challenge.Payload,
+				time.Now().UTC(),
+			).
+			Exec(ctx)
+		if err != nil {
+			return nil, huma.Error500InternalServerError("failed to protect recovery codes")
+		}
+		affected, err := result.RowsAffected()
+		if err != nil {
+			return nil, huma.Error500InternalServerError("failed to protect recovery codes")
+		}
+		if affected != 1 {
+			return nil, huma.Error409Conflict("setup expired or recovery codes were already issued; restart setup")
+		}
+
+		response := &RecoveryCodeSetOutput{}
+		response.CacheControl = "no-store"
+		response.Body.ChallengeID = challenge.ID
+		response.Body.RecoveryCodes = set.Codes
+		return response, nil
+	})
+}
+
+func (h *AuthHandler) AcknowledgeTOTPSetup(api huma.API) {
+	huma.Register(api, huma.Operation{
+		OperationID: "enable-totp-after-recovery-code-acknowledgement",
+		Method:      http.MethodPost,
+		Path:        "/auth/security/totp/enable",
+		Summary:     "Enable TOTP after recovery codes are saved",
+		Tags:        []string{tagAuth},
+		Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.authenticator)},
+		Errors:      []int{400, 401, 409},
+	}, func(ctx context.Context, input *AcknowledgeRecoveryCodesInput) (*SecurityStatusOutput, error) {
+		if !input.Body.RecoveryCodesSaved {
+			return nil, huma.Error400BadRequest("confirm that the recovery codes were saved before enabling the authenticator app")
+		}
+		challenge, payload, err := h.loadVerifiedTOTPSetupChallenge(ctx, input.Body.ChallengeID)
+		if err != nil {
+			return nil, err
+		}
+		secret, err := h.resolveTOTPSetupSecret(payload)
+		if err != nil {
+			return nil, huma.Error500InternalServerError("failed to read setup challenge")
+		}
 		secretEnc, err := h.encryptor.Encrypt(secret)
 		if err != nil {
 			return nil, huma.Error500InternalServerError("failed to save authenticator secret")
 		}
-
-		if _, err := h.db.NewUpdate().Model((*models.User)(nil)).
-			Set("totp_secret_encrypted = ?", secretEnc).
-			Set("totp_enabled_at = ?", time.Now().UTC()).
-			Where("id = ?", challenge.UserID).
-			Exec(ctx); err != nil {
+		set := mfarecovery.GeneratedSet{BatchID: payload.RecoveryBatchID, Hashes: payload.RecoveryCodeHashes}
+		now := time.Now().UTC()
+		err = h.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
+			if consumeErr := consumeChallengeWithDB(
+				txCtx,
+				tx,
+				challenge.ID,
+				challenge.UserID,
+				authChallengeTOTPSetup,
+			); consumeErr != nil {
+				return consumeErr
+			}
+			result, updateErr := tx.NewUpdate().Model((*models.User)(nil)).
+				Set("totp_secret_encrypted = ?", secretEnc).
+				Set("totp_enabled_at = ?", now).
+				Where("id = ? AND totp_secret_encrypted IS NULL", challenge.UserID).
+				Exec(txCtx)
+			if updateErr != nil {
+				return updateErr
+			}
+			affected, updateErr := result.RowsAffected()
+			if updateErr != nil || affected != 1 {
+				return sql.ErrNoRows
+			}
+			return h.mfaRecovery.ReplaceWithDB(txCtx, tx, challenge.UserID, set, now)
+		})
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, huma.Error409Conflict("authenticator setup was already completed or replaced")
+		}
+		if err != nil {
 			return nil, huma.Error500InternalServerError("failed to enable authenticator app")
 		}
-		if err := h.deleteChallenge(ctx, challenge.ID); err != nil {
-			return nil, huma.Error500InternalServerError("failed to finish setup")
-		}
+		return h.securityStatusResponse(ctx, challenge.UserID)
+	})
+}
 
+func (h *AuthHandler) RecoveryCodeStatus(api huma.API) {
+	huma.Register(api, huma.Operation{
+		OperationID: "get-totp-recovery-code-status",
+		Method:      http.MethodPost,
+		Path:        "/auth/security/totp/recovery-codes/status",
+		Summary:     "Get the unused TOTP recovery-code count after reauthentication",
+		Tags:        []string{tagAuth},
+		Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.authenticator)},
+		Errors:      []int{400, 401, 409, 429},
+	}, func(ctx context.Context, input *RecoveryCodeSensitiveActionInput) (*RecoveryCodeStatusOutput, error) {
+		userID := middleware.GetUserID(ctx)
+		user, err := h.getUserByID(ctx, userID)
+		if err != nil {
+			return nil, huma.Error404NotFound("user not found")
+		}
+		if len(user.TOTPSecretEnc) == 0 {
+			return nil, huma.Error409Conflict("authenticator app is not enabled")
+		}
+		if err := h.authorizeSensitiveAction(
+			ctx,
+			user,
+			reauthActionRecoveryStatus,
+			input.Body.CurrentPassword,
+			input.Body.ReauthGrant,
+		); err != nil {
+			return nil, err
+		}
+		remaining, err := h.mfaRecovery.CountRemaining(ctx, userID)
+		if err != nil {
+			return nil, huma.Error500InternalServerError("failed to load recovery-code status")
+		}
+		response := &RecoveryCodeStatusOutput{}
+		response.Body.Remaining = remaining
+		return response, nil
+	})
+}
+
+func (h *AuthHandler) BeginRecoveryCodeRegeneration(api huma.API) {
+	huma.Register(api, huma.Operation{
+		OperationID: "begin-totp-recovery-code-regeneration",
+		Method:      http.MethodPost,
+		Path:        "/auth/security/totp/recovery-codes/regenerate",
+		Summary:     "Generate a replacement recovery-code set after reauthentication",
+		Tags:        []string{tagAuth},
+		Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.authenticator)},
+		Errors:      []int{400, 401, 409, 429},
+	}, func(ctx context.Context, input *RecoveryCodeSensitiveActionInput) (*RecoveryCodeSetOutput, error) {
+		userID := middleware.GetUserID(ctx)
+		user, err := h.getUserByID(ctx, userID)
+		if err != nil {
+			return nil, huma.Error404NotFound("user not found")
+		}
+		if len(user.TOTPSecretEnc) == 0 {
+			return nil, huma.Error409Conflict("authenticator app is not enabled")
+		}
+		if err := h.authorizeSensitiveAction(
+			ctx,
+			user,
+			reauthActionRecoveryReset,
+			input.Body.CurrentPassword,
+			input.Body.ReauthGrant,
+		); err != nil {
+			return nil, err
+		}
+		set, err := h.mfaRecovery.Generate()
+		if err != nil {
+			return nil, huma.Error500InternalServerError("failed to generate recovery codes")
+		}
+		challengeID, err := h.createExclusiveChallenge(ctx, userID, authChallengeTOTPRecovery, recoveryCodeChallengePayload{
+			BatchID: set.BatchID,
+			Hashes:  set.Hashes,
+		})
+		if err != nil {
+			return nil, huma.Error500InternalServerError("failed to protect recovery codes")
+		}
+		response := &RecoveryCodeSetOutput{}
+		response.CacheControl = "no-store"
+		response.Body.ChallengeID = challengeID
+		response.Body.RecoveryCodes = set.Codes
+		return response, nil
+	})
+}
+
+func (h *AuthHandler) AcknowledgeRecoveryCodeRegeneration(api huma.API) {
+	huma.Register(api, huma.Operation{
+		OperationID: "activate-regenerated-totp-recovery-codes",
+		Method:      http.MethodPost,
+		Path:        "/auth/security/totp/recovery-codes/activate",
+		Summary:     "Replace old recovery codes after the new set is saved",
+		Tags:        []string{tagAuth},
+		Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.authenticator)},
+		Errors:      []int{400, 401, 409},
+	}, func(ctx context.Context, input *AcknowledgeRecoveryCodesInput) (*SecurityStatusOutput, error) {
+		if !input.Body.RecoveryCodesSaved {
+			return nil, huma.Error400BadRequest("confirm that the new recovery codes were saved before replacing the old set")
+		}
+		challenge, err := h.getChallenge(ctx, input.Body.ChallengeID, authChallengeTOTPRecovery)
+		if err != nil || challenge.UserID != middleware.GetUserID(ctx) {
+			return nil, huma.Error401Unauthorized("invalid or expired recovery-code challenge")
+		}
+		var payload recoveryCodeChallengePayload
+		if err := json.Unmarshal([]byte(challenge.Payload), &payload); err != nil {
+			return nil, huma.Error500InternalServerError("failed to read recovery-code challenge")
+		}
+		set := mfarecovery.GeneratedSet{BatchID: payload.BatchID, Hashes: payload.Hashes}
+		now := time.Now().UTC()
+		err = h.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
+			if consumeErr := consumeChallengeWithDB(
+				txCtx,
+				tx,
+				challenge.ID,
+				challenge.UserID,
+				authChallengeTOTPRecovery,
+			); consumeErr != nil {
+				return consumeErr
+			}
+			enabled, selectErr := tx.NewSelect().Model((*models.User)(nil)).
+				Where("id = ? AND totp_secret_encrypted IS NOT NULL", challenge.UserID).
+				Exists(txCtx)
+			if selectErr != nil {
+				return selectErr
+			}
+			if !enabled {
+				return sql.ErrNoRows
+			}
+			return h.mfaRecovery.ReplaceWithDB(txCtx, tx, challenge.UserID, set, now)
+		})
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, huma.Error409Conflict("authenticator recovery-code setup was replaced or disabled")
+		}
+		if err != nil {
+			return nil, huma.Error500InternalServerError("failed to replace recovery codes")
+		}
 		return h.securityStatusResponse(ctx, challenge.UserID)
 	})
 }
@@ -1314,7 +1646,7 @@ func (h *AuthHandler) DisableTOTP(api huma.API) {
 		Summary:     "Disable TOTP for the current user",
 		Tags:        []string{tagAuth},
 		Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.authenticator)},
-		Errors:      []int{400, 401},
+		Errors:      []int{400, 401, 429},
 	}, func(ctx context.Context, input *DisableTOTPInput) (*SecurityStatusOutput, error) {
 		userID := middleware.GetUserID(ctx)
 		user, err := h.getUserByID(ctx, userID)
@@ -1331,11 +1663,22 @@ func (h *AuthHandler) DisableTOTP(api huma.API) {
 			return nil, err
 		}
 
-		if _, err := h.db.NewUpdate().Model((*models.User)(nil)).
-			Set("totp_secret_encrypted = NULL").
-			Set("totp_enabled_at = NULL").
-			Where("id = ?", userID).
-			Exec(ctx); err != nil {
+		if err := h.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
+			if _, updateErr := tx.NewUpdate().Model((*models.User)(nil)).
+				Set("totp_secret_encrypted = NULL").
+				Set("totp_enabled_at = NULL").
+				Where("id = ?", userID).
+				Exec(txCtx); updateErr != nil {
+				return updateErr
+			}
+			if revokeErr := h.mfaRecovery.RevokeAllWithDB(txCtx, tx, userID); revokeErr != nil {
+				return revokeErr
+			}
+			_, deleteErr := tx.NewDelete().Model((*models.AuthChallenge)(nil)).
+				Where("user_id = ? AND type IN (?, ?)", userID, authChallengeTOTPSetup, authChallengeTOTPRecovery).
+				Exec(txCtx)
+			return deleteErr
+		}); err != nil {
 			return nil, huma.Error500InternalServerError("failed to disable authenticator app")
 		}
 
@@ -1351,7 +1694,7 @@ func (h *AuthHandler) BeginPasskeyRegistration(api huma.API) {
 		Summary:     "Begin passkey registration for the current user",
 		Tags:        []string{tagAuth},
 		Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.authenticator)},
-		Errors:      []int{400, 401},
+		Errors:      []int{400, 401, 429},
 	}, func(ctx context.Context, input *BeginPasskeyRegistrationInput) (*PasskeyCeremonyOutput, error) {
 		userID := middleware.GetUserID(ctx)
 		user, err := h.getUserByID(ctx, userID)
@@ -1494,7 +1837,7 @@ func (h *AuthHandler) RemovePasskey(api huma.API) {
 		Summary:     "Remove a passkey from the current user",
 		Tags:        []string{tagAuth},
 		Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.authenticator)},
-		Errors:      []int{400, 401, 404},
+		Errors:      []int{400, 401, 404, 429},
 	}, func(ctx context.Context, input *RemovePasskeyInput) (*SecurityStatusOutput, error) {
 		userID := middleware.GetUserID(ctx)
 		user, err := h.getUserByID(ctx, userID)
@@ -1610,6 +1953,24 @@ func (h *AuthHandler) enabledMFAMethods(ctx context.Context, user *models.User) 
 	return methods, nil
 }
 
+func (h *AuthHandler) loginMFAMethods(ctx context.Context, user *models.User) ([]string, error) {
+	methods, err := h.enabledMFAMethods(ctx, user)
+	if err != nil {
+		return nil, err
+	}
+	if !slices.Contains(methods, mfaMethodTOTP) {
+		return methods, nil
+	}
+	remaining, err := h.mfaRecovery.CountRemaining(ctx, user.ID)
+	if err != nil {
+		return nil, err
+	}
+	if remaining > 0 {
+		methods = append(methods, mfaMethodRecoveryCode)
+	}
+	return methods, nil
+}
+
 func (h *AuthHandler) createChallenge(ctx context.Context, userID, challengeType string, payload interface{}) (string, error) {
 	payloadBytes, err := json.Marshal(payload)
 	if err != nil {
@@ -1625,6 +1986,39 @@ func (h *AuthHandler) createChallenge(ctx context.Context, userID, challengeType
 		CreatedAt: time.Now().UTC(),
 	}
 	if _, err := h.db.NewInsert().Model(record).Exec(ctx); err != nil {
+		return "", err
+	}
+	return record.ID, nil
+}
+
+func (h *AuthHandler) createExclusiveChallenge(
+	ctx context.Context,
+	userID,
+	challengeType string,
+	payload interface{},
+) (string, error) {
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		return "", err
+	}
+	record := &models.AuthChallenge{
+		ID:        uuid.NewString(),
+		UserID:    userID,
+		Type:      challengeType,
+		Payload:   string(payloadBytes),
+		ExpiresAt: mfa.ChallengeExpiry(),
+		CreatedAt: time.Now().UTC(),
+	}
+	err = h.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
+		if _, deleteErr := tx.NewDelete().Model((*models.AuthChallenge)(nil)).
+			Where("user_id = ? AND type = ?", userID, challengeType).
+			Exec(txCtx); deleteErr != nil {
+			return deleteErr
+		}
+		_, insertErr := tx.NewInsert().Model(record).Exec(txCtx)
+		return insertErr
+	})
+	if err != nil {
 		return "", err
 	}
 	return record.ID, nil
@@ -1650,6 +2044,32 @@ func (h *AuthHandler) deleteChallenge(ctx context.Context, challengeID string) e
 	return err
 }
 
+func consumeChallengeWithDB(
+	ctx context.Context,
+	db bun.IDB,
+	challengeID,
+	userID,
+	challengeType string,
+) error {
+	result, err := db.NewDelete().Model((*models.AuthChallenge)(nil)).
+		Where(
+			"id = ? AND user_id = ? AND type = ? AND expires_at > ?",
+			challengeID,
+			userID,
+			challengeType,
+			time.Now().UTC(),
+		).
+		Exec(ctx)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil || affected != 1 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
 func (h *AuthHandler) resolveTOTPSetupSecret(payload totpSetupPayload) (string, error) {
 	if payload.SecretEncrypted != "" {
 		secretEnc, err := base64.StdEncoding.DecodeString(payload.SecretEncrypted)
@@ -1659,6 +2079,24 @@ func (h *AuthHandler) resolveTOTPSetupSecret(payload totpSetupPayload) (string, 
 		return h.encryptor.Decrypt(secretEnc)
 	}
 	return payload.Secret, nil
+}
+
+func (h *AuthHandler) loadVerifiedTOTPSetupChallenge(
+	ctx context.Context,
+	challengeID string,
+) (*models.AuthChallenge, totpSetupPayload, error) {
+	challenge, err := h.getChallenge(ctx, challengeID, authChallengeTOTPSetup)
+	if err != nil || challenge.UserID != middleware.GetUserID(ctx) {
+		return nil, totpSetupPayload{}, huma.Error401Unauthorized("invalid or expired setup challenge")
+	}
+	var payload totpSetupPayload
+	if err := json.Unmarshal([]byte(challenge.Payload), &payload); err != nil {
+		return nil, totpSetupPayload{}, huma.Error500InternalServerError("failed to read setup challenge")
+	}
+	if payload.RecoveryBatchID == "" || len(payload.RecoveryCodeHashes) != mfarecovery.CodeCount {
+		return nil, totpSetupPayload{}, huma.Error409Conflict("verify the authenticator code before enabling the authenticator app")
+	}
+	return challenge, payload, nil
 }
 
 func (h *AuthHandler) listPasskeys(ctx context.Context, userID string) ([]models.UserPasskey, error) {
@@ -1757,6 +2195,10 @@ func (h *AuthHandler) authorizeSensitiveAction(
 	currentPassword,
 	grant string,
 ) error {
+	if strings.TrimSpace(grant) == "" && currentPassword != "" &&
+		!h.allowAuthAttempt(user.ID, "reauth:user", 20, 15*time.Minute) {
+		return huma.Error429TooManyRequests("too many reauthentication attempts")
+	}
 	if h.identity != nil && strings.TrimSpace(grant) != "" {
 		if err := h.identity.ConsumeReauthGrant(
 			ctx,
@@ -1778,10 +2220,10 @@ func (h *AuthHandler) authorizeSensitiveAction(
 		passwordAllowed = allowed
 	}
 	if passwordAllowed && h.auth != nil &&
-		h.auth.CheckPassword(strings.TrimSpace(currentPassword), user.PasswordHash) {
+		h.auth.CheckPassword(currentPassword, user.PasswordHash) {
 		return nil
 	}
-	if strings.TrimSpace(currentPassword) == "" && strings.TrimSpace(grant) == "" {
+	if currentPassword == "" && strings.TrimSpace(grant) == "" {
 		return huma.Error400BadRequest("a current password or one-time reauthentication grant is required")
 	}
 	return huma.Error401Unauthorized("recent reauthentication is required")

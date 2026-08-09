@@ -23,6 +23,7 @@ const userDocsSidebar = [
 			{ text: 'Agent-Assisted Publishing', link: '/usage/agent-assisted-publishing' },
 			{ text: 'Workspaces', link: '/usage/workspaces' },
 			{ text: 'Settings', link: '/usage/settings' },
+			{ text: 'Account Security', link: '/usage/account-security' },
 			{ text: 'Accounts', link: '/usage/accounts' },
 			{ text: 'Composing Posts', link: '/usage/composing-posts' },
 			{ text: 'Destination Options', link: '/usage/destination-options' },

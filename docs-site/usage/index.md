@@ -10,6 +10,7 @@ The web app is the main place to work.
 
 - [Workspaces](/usage/workspaces) keep brands, accounts, prompts, schedules, and media separate.
 - [Settings](/usage/settings) explains the Workspace, Account, and Organization split.
+- [Account Security](/usage/account-security) covers authenticator setup, one-time recovery codes, passkeys, and secure replacement or removal.
 - [Accounts](/usage/accounts) explains how connected social accounts appear in a workspace.
 - [Agent-Assisted Publishing](/usage/agent-assisted-publishing) shows how an MCP tool can prepare account versions while a person reviews the work.
 - [Composing Posts](/usage/composing-posts) covers account selection, media, account versions, and the editor.

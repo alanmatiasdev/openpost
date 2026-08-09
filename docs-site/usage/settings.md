@@ -31,6 +31,8 @@ Use an `mcp:read` token limited to one workspace when an AI tool only needs to r
 
 Use this tab when the setting is about you, not a workspace.
 
+Authenticator setup does not finish until you save and acknowledge the one-time recovery codes. The codes are shown once and each works for one sign-in. Viewing the remaining count, replacing the set, and disabling the authenticator require a recent password, passkey, or linked-identity check. See [Account Security](/usage/account-security) for the complete setup and recovery flow.
+
 OpenPost keeps account linking explicit. If a Google or organization account
 uses the same email as an existing OpenPost user, sign in with the existing
 method first. Open **Settings → Account → Security**, confirm your current
