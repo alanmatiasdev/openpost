@@ -19,6 +19,7 @@ import (
 	"github.com/openpost/backend/internal/services/entitlements"
 	"github.com/openpost/backend/internal/services/feedback"
 	"github.com/openpost/backend/internal/services/identity"
+	"github.com/openpost/backend/internal/services/imagecaption"
 	"github.com/openpost/backend/internal/services/instancesettings"
 	"github.com/openpost/backend/internal/services/mastodonapps"
 	"github.com/openpost/backend/internal/services/mcpoauth"
@@ -46,6 +47,7 @@ type RouteDeps struct {
 	BillingService               *billing.Service
 	MediaStorage                 mediastore.BlobStorage
 	MediaSigner                  *mediasigner.Signer
+	ImageCaptioner               imagecaption.Captioner
 	PublicMediaVerifier          *publicurl.MediaVerifier
 	Entitlement                  entitlements.Service
 	TokenEncryptor               *servicecrypto.TokenEncryptor
@@ -102,6 +104,7 @@ func RegisterHumaRoutes(api huma.API, deps RouteDeps) {
 	}
 	mediaHandler.SetPublicMediaVerifier(deps.PublicMediaVerifier)
 	mediaHandler.RegisterRoutes(api)
+	mediaHandler.RegisterImageCaptionRoutes(api, deps.ImageCaptioner)
 	handlers.NewImageEditorHandler(
 		deps.DB,
 		deps.Authenticator,

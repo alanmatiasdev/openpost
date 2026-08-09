@@ -4753,6 +4753,51 @@
 				"required": ["challenge_id", "name", "credential"],
 				"type": "object"
 			},
+			"GenerateMediaAltTextInputBody": {
+				"additionalProperties": false,
+				"properties": {
+					"$schema": {
+						"description": "A URL to the JSON Schema for this object.",
+						"examples": ["https://example.com/schemas/GenerateMediaAltTextInputBody.json"],
+						"format": "uri",
+						"readOnly": true,
+						"type": "string"
+					},
+					"locale": {
+						"description": "BCP 47 locale for the generated alt text; defaults to English",
+						"maxLength": 35,
+						"pattern": "^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$",
+						"type": "string"
+					}
+				},
+				"type": "object"
+			},
+			"GenerateMediaAltTextOutputBody": {
+				"additionalProperties": false,
+				"properties": {
+					"$schema": {
+						"description": "A URL to the JSON Schema for this object.",
+						"examples": ["https://example.com/schemas/GenerateMediaAltTextOutputBody.json"],
+						"format": "uri",
+						"readOnly": true,
+						"type": "string"
+					},
+					"alt_text": {
+						"description": "Persisted alternative text",
+						"type": "string"
+					},
+					"generated": {
+						"description": "Whether this request generated and persisted new alternative text",
+						"type": "boolean"
+					},
+					"model": {
+						"description": "Model that generated the alternative text; empty when existing text was returned",
+						"type": "string"
+					}
+				},
+				"required": ["alt_text", "generated", "model"],
+				"type": "object"
+			},
 			"Get-running-versionResponse": {
 				"additionalProperties": false,
 				"properties": {
@@ -19904,7 +19949,14 @@
 								}
 							}
 						},
-						"description": "OK"
+						"description": "OK",
+						"headers": {
+							"Cache-Control": {
+								"schema": {
+									"type": "string"
+								}
+							}
+						}
 					},
 					"default": {
 						"content": {
@@ -23875,6 +23927,128 @@
 					}
 				},
 				"summary": "Update media metadata",
+				"tags": ["Media"]
+			}
+		},
+		"/media/{id}/alt-text/generate": {
+			"post": {
+				"description": "Generates alternative text from the stored 400-pixel JPEG thumbnail and saves it only when the media still has no alternative text.",
+				"operationId": "generate-media-alt-text",
+				"parameters": [
+					{
+						"description": "Media ID",
+						"in": "path",
+						"name": "id",
+						"required": true,
+						"schema": {
+							"description": "Media ID",
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/GenerateMediaAltTextInputBody"
+							}
+						}
+					},
+					"required": true
+				},
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/GenerateMediaAltTextOutputBody"
+								}
+							}
+						},
+						"description": "OK"
+					},
+					"400": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Bad Request"
+					},
+					"403": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Forbidden"
+					},
+					"404": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Not Found"
+					},
+					"422": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Unprocessable Entity"
+					},
+					"429": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Too Many Requests"
+					},
+					"500": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Internal Server Error"
+					},
+					"502": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Bad Gateway"
+					},
+					"503": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Service Unavailable"
+					}
+				},
+				"summary": "Generate alternative text for an image",
 				"tags": ["Media"]
 			}
 		},

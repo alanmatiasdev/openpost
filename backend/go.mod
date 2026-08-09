@@ -3,6 +3,8 @@ module github.com/openpost/backend
 go 1.26.5
 
 require (
+	github.com/OpenRouterTeam/go-sdk v0.7.31
+	github.com/PaddleHQ/paddle-go-sdk/v5 v5.2.0
 	github.com/aws/aws-sdk-go-v2 v1.42.0
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.25
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.104.1
@@ -10,6 +12,7 @@ require (
 	github.com/danielgtaylor/huma/v2 v2.37.3
 	github.com/dghubble/oauth1 v0.7.3
 	github.com/disintegration/imaging v1.6.2
+	github.com/go-jose/go-jose/v4 v4.1.4
 	github.com/go-webauthn/webauthn v0.17.2
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
@@ -31,7 +34,6 @@ require (
 )
 
 require (
-	github.com/PaddleHQ/paddle-go-sdk/v5 v5.2.0 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.13 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.29 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.29 // indirect
@@ -48,7 +50,6 @@ require (
 	github.com/fxamacker/cbor/v2 v2.9.1 // indirect
 	github.com/ggicci/httpin v0.20.3 // indirect
 	github.com/ggicci/owl v0.8.2 // indirect
-	github.com/go-jose/go-jose/v4 v4.1.4 // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
 	github.com/go-webauthn/x v0.2.3 // indirect
 	github.com/google/go-tpm v0.9.8 // indirect
@@ -62,6 +63,7 @@ require (
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/puzpuzpuz/xsync/v3 v3.5.1 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
+	github.com/spyzhov/ajson v0.8.0 // indirect
 	github.com/tinylib/msgp v1.6.4 // indirect
 	github.com/tmthrgd/go-hex v0.0.0-20190904060850-447a3041c3bc // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect

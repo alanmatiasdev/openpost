@@ -6,6 +6,7 @@
 	import { resolve } from '$app/paths';
 	import { MediaQuery, SvelteMap, SvelteSet } from 'svelte/reactivity';
 	import { client, type SocialAccount, type Workspace, getToken } from '$lib/api/client';
+	import { loadCapabilityCatalog, loadWorkspaceAccounts } from '$lib/api/performance-cache';
 	import type { components } from '$lib/api/types';
 	import { getApiBase } from '$lib/stores/instance.svelte';
 	import { getAuthenticatedMediaByID } from '$lib/media-url';
@@ -111,6 +112,7 @@
 	import { buildComposerPreview } from '$lib/compose-preview';
 	import { openPreviewWindow, type PreviewWindowSession } from '$lib/preview-window';
 	import { uploadMediaFile } from '$lib/media-upload-client';
+	import { generateImageAltText } from '$lib/image-caption';
 	import { firstComposerURL } from './compose/composer-links';
 
 	// --------------------------------------------------------------------------
@@ -198,7 +200,9 @@
 		onThreadStateChange
 	}: Props = $props();
 	let isEditMode = $derived(Boolean(initialPost || initialPublication));
-	let publicationOnlyEdit = $derived(Boolean(initialPublication && !initialPost));
+	let publicationOnlyEdit = $derived(
+		Boolean(initialPublication && !initialPost && !initialPublication.text_post_id)
+	);
 
 	let posts = $state<PostItem[]>([makeEmptyPost()]);
 	let activePostIndex = $state(0);
@@ -218,12 +222,12 @@
 	let linkUrl = $state('');
 	let composerSettingsOpen = $state(false);
 
-	let workspaces = $state<Workspace[]>([]);
+	let workspaces = $state.raw<Workspace[]>([]);
 	let selectedWorkspaceId = $state<string>('');
-	let accounts = $state<SocialAccount[]>([]);
+	let accounts = $state.raw<SocialAccount[]>([]);
 	let selectedAccountIds = $state<string[]>([]);
 	let selectedSocialSetId = $state('');
-	let capabilities = $state<Capability[]>([]);
+	let capabilities = $state.raw<Capability[]>([]);
 	let requestedOutputProfiles = $state<Record<string, string>>({});
 	let formatLockedByAccount = $state<Record<string, boolean>>({});
 	let scheduleOverridesByAccount = $state<Record<string, string>>({});
@@ -267,6 +271,12 @@
 	let mediaAltTexts = $state<Map<string, string>>(new Map());
 	let mediaMimeTypes = $state<Map<string, string>>(new Map());
 	let mediaSizes = $state<Map<string, number>>(new Map());
+	const captioningMediaIds = new SvelteSet<string>();
+	const generatedCaptionMediaIds = new SvelteSet<string>();
+	const failedCaptionMediaIds = new SvelteSet<string>();
+	const suppressedCaptionMediaIds = new SvelteSet<string>();
+	const captionRequests = new SvelteMap<string, AbortController>();
+	let captionGenerationError = $state('');
 	let editingAltMediaId = $state<string | null>(null);
 	let settingsByAccount = $state<Record<string, Record<string, unknown>>>({});
 	let segmentSettingsByPost = $state<Record<string, Record<string, Record<string, unknown>>>>({});
@@ -284,6 +294,8 @@
 	let destinationOptionsErrors = $state<Record<string, string>>({});
 	let destinationOptionsLoadingAccountId = $state('');
 	let capabilityResolveTimer: ReturnType<typeof setTimeout> | null = null;
+	let capabilityResolveAbortController: AbortController | null = null;
+	let lastResolvedCapabilityInputSnapshot = '';
 	let destinationOptionsRequestSequence = 0;
 	let capabilityResolveRequestSequence = 0;
 
@@ -1214,6 +1226,7 @@
 
 	function scheduleCapabilityResolve() {
 		if (capabilityResolveTimer) clearTimeout(capabilityResolveTimer);
+		capabilityResolveAbortController?.abort();
 		capabilityResolveTimer = setTimeout(() => {
 			capabilityResolveTimer = null;
 			void resolveCapabilities();
@@ -1221,17 +1234,23 @@
 	}
 
 	async function resolveCapabilities() {
+		const inputSnapshot = capabilityInputSnapshot;
 		if (!selectedWorkspaceId || selectedAccountIds.length === 0) {
 			resolvedCapabilities = {};
 			capabilityResolveError = '';
+			lastResolvedCapabilityInputSnapshot = inputSnapshot;
 			return;
 		}
+		capabilityResolveAbortController?.abort();
+		const abortController = new AbortController();
+		capabilityResolveAbortController = abortController;
 		const requestSequence = ++capabilityResolveRequestSequence;
 		capabilityResolveLoading = true;
 		capabilityResolveError = '';
 		const [, region = 'US'] = getLocaleTag().split('-');
 		try {
 			const { data, error: resolveError } = await client.POST('/capabilities/resolve', {
+				signal: abortController.signal,
 				body: {
 					account_ids: selectedAccountIds,
 					creation_preset: textComposerMode,
@@ -1281,12 +1300,17 @@
 				};
 			}
 			validationIssues = (data?.accounts ?? []).flatMap((capability) => capability.issues ?? []);
+			lastResolvedCapabilityInputSnapshot = inputSnapshot;
 			void loadRequiredDestinationOptions();
 		} catch (resolveError) {
+			if (abortController.signal.aborted) return;
 			if (requestSequence !== capabilityResolveRequestSequence) return;
 			capabilityResolveError =
 				resolveError instanceof Error ? resolveError.message : m.compose_load_capabilities_failed();
 		} finally {
+			if (capabilityResolveAbortController === abortController) {
+				capabilityResolveAbortController = null;
+			}
 			if (requestSequence === capabilityResolveRequestSequence) {
 				capabilityResolveLoading = false;
 			}
@@ -1666,7 +1690,8 @@
 				...getEditorMediaIdsForPost(posts[targetIndex]),
 				...result.media_ids
 			]);
-			await hydrateMediaMetadata(result.workspace_id, result.media_ids);
+			await hydrateMediaMetadata(result.workspace_id, result.media_ids, true);
+			void generateMissingMediaAltText(result.media_ids);
 			scheduleAutoSave();
 			clearComposerRecovery(token);
 			notifyImageEditorReturn(result.media_ids.length);
@@ -1700,7 +1725,7 @@
 	// --------------------------------------------------------------------------
 	// Initialization
 	// --------------------------------------------------------------------------
-	async function initializeFromPost(post: InitialPost | undefined) {
+	async function initializeFromPost(post: InitialPost | undefined, resolveAfter = true) {
 		clearAutoSaveTimer();
 		if (!post) {
 			draftId = null;
@@ -1733,7 +1758,7 @@
 				selectedWorkspaceId = workspaceCtx.currentWorkspace?.id ?? workspaces[0].id;
 				await ensureComposerWorkspace(selectedWorkspaceId);
 				await loadAccounts(selectedWorkspaceId);
-				await resolveCapabilities();
+				if (resolveAfter) await resolveCapabilities();
 			}
 			return;
 		}
@@ -1813,14 +1838,13 @@
 		if (publicationId) {
 			await loadCanonicalPublication(publicationId);
 		}
-		await resolveCapabilities();
+		if (resolveAfter) await resolveCapabilities();
 		lastSavedSnapshot = getSaveSnapshot();
 	}
 
-	async function initializeFromPublication(publication: Publication) {
+	async function initializeFromPublication(publication: Publication, resolveAfter = true) {
 		clearAutoSaveTimer();
-		await ensureComposerWorkspace(publication.workspace_id);
-		draftId = null;
+		draftId = publication.text_post_id || null;
 		publicationId = publication.id;
 		revision = publication.revision;
 		lastInitializedPostId = null;
@@ -1857,7 +1881,7 @@
 		mediaMimeTypes = new Map(publicationMedia.map((media) => [media.id, media.mime_type] as const));
 		mediaSizes = new Map();
 		const mediaIDs = publicationMedia.map((media) => media.id);
-		if (mediaIDs.length > 0) await hydrateMediaMetadata(publication.workspace_id, mediaIDs);
+		await ensureComposerWorkspace(publication.workspace_id);
 		if (publication.scheduled_at && publication.scheduled_at !== '0001-01-01T00:00:00Z') {
 			const schedule = workspaceScheduleFromISO(publication.scheduled_at, scheduleTimezoneLabel);
 			selectedDate = schedule?.date;
@@ -1866,9 +1890,14 @@
 			selectedDate = undefined;
 			selectedTime = null;
 		}
-		await loadAccounts(selectedWorkspaceId, selectedAccountIds);
+		await Promise.all([
+			mediaIDs.length > 0
+				? hydrateMediaMetadata(publication.workspace_id, mediaIDs)
+				: Promise.resolve(),
+			loadAccounts(selectedWorkspaceId, selectedAccountIds)
+		]);
 		hydrateCanonicalSettings(publication);
-		await resolveCapabilities();
+		if (resolveAfter) await resolveCapabilities();
 		lastSavedSnapshot = getSaveSnapshot();
 	}
 
@@ -1883,16 +1912,14 @@
 			}
 			if (requestSequence !== workspaceRequestSequence) return;
 			workspaces = [...workspaceCtx.workspaces];
-			const { data: capabilityData, error: capabilityError } = await client.GET(
-				'/capabilities',
-				{}
-			);
-			if (capabilityError) {
-				throw new Error(capabilityError.detail || m.compose_load_capabilities_failed());
-			}
-			capabilities = capabilityData?.capabilities ?? [];
-			if (initialPublication && !initialPost) await initializeFromPublication(initialPublication);
-			else await initializeFromPost(initialPost);
+			const [capabilityData] = await Promise.all([
+				loadCapabilityCatalog(),
+				initialPublication && !initialPost
+					? initializeFromPublication(initialPublication, false)
+					: initializeFromPost(initialPost, false)
+			]);
+			capabilities = capabilityData.capabilities ?? [];
+			await resolveCapabilities();
 		} catch (e) {
 			console.error('Failed to load workspaces:', e);
 			if (requestSequence === workspaceRequestSequence) {
@@ -1921,6 +1948,9 @@
 		clearAutoSaveTimer();
 		clearSavedIndicator();
 		if (capabilityResolveTimer) clearTimeout(capabilityResolveTimer);
+		capabilityResolveAbortController?.abort();
+		for (const controller of captionRequests.values()) controller.abort();
+		captionRequests.clear();
 		for (const session of previewSessions.values()) session.close();
 		previewSessions.clear();
 	});
@@ -2017,8 +2047,12 @@
 	});
 
 	$effect(() => {
-		void capabilityInputSnapshot;
-		if (!loadingWorkspaces && !loadingAccounts) {
+		const inputSnapshot = capabilityInputSnapshot;
+		if (
+			!loadingWorkspaces &&
+			!loadingAccounts &&
+			inputSnapshot !== lastResolvedCapabilityInputSnapshot
+		) {
 			scheduleCapabilityResolve();
 		}
 	});
@@ -2047,10 +2081,11 @@
 	// --------------------------------------------------------------------------
 	// Data loading
 	// --------------------------------------------------------------------------
-	async function hydrateMediaMetadata(workspaceId: string, mediaIds: string[]) {
-		const missingIds = Array.from(new Set(mediaIds.filter(Boolean))).filter(
-			(id) => !mediaMimeTypes.has(id) || !mediaSizes.has(id)
-		);
+	async function hydrateMediaMetadata(workspaceId: string, mediaIds: string[], force = false) {
+		const requestedIds = Array.from(new Set(mediaIds.filter(Boolean)));
+		const missingIds = force
+			? requestedIds
+			: requestedIds.filter((id) => !mediaMimeTypes.has(id) || !mediaSizes.has(id));
 		if (!workspaceId || missingIds.length === 0) return;
 
 		try {
@@ -2079,6 +2114,8 @@
 				}
 				if (media.alt_text) {
 					nextAltTexts.set(media.id, media.alt_text);
+				} else {
+					nextAltTexts.delete(media.id);
 				}
 			}
 			mediaMimeTypes = nextMimeTypes;
@@ -2089,9 +2126,53 @@
 		}
 	}
 
+	async function generateMissingMediaAltText(mediaIds: string[]) {
+		const candidates = Array.from(new Set(mediaIds.filter(Boolean))).filter(
+			(mediaId) =>
+				mediaMimeTypes.get(mediaId)?.startsWith('image/') &&
+				!mediaAltTexts.get(mediaId)?.trim() &&
+				!captioningMediaIds.has(mediaId) &&
+				!suppressedCaptionMediaIds.has(mediaId)
+		);
+		await Promise.all(candidates.map((mediaId) => generateMediaAltText(mediaId)));
+	}
+
+	async function generateMediaAltText(mediaId: string) {
+		const controller = new AbortController();
+		captionRequests.set(mediaId, controller);
+		captioningMediaIds.add(mediaId);
+		failedCaptionMediaIds.delete(mediaId);
+
+		try {
+			const result = await generateImageAltText(mediaId, getLocaleTag(), controller.signal);
+			if (!result || suppressedCaptionMediaIds.has(mediaId)) return;
+			if (!mediaAltTexts.get(mediaId)?.trim()) {
+				const nextAltTexts = new SvelteMap(mediaAltTexts);
+				nextAltTexts.set(mediaId, result.alt_text);
+				mediaAltTexts = nextAltTexts;
+				if (result.generated) generatedCaptionMediaIds.add(mediaId);
+				scheduleAutoSave();
+			}
+		} catch (cause) {
+			if (cause instanceof Error && cause.name === 'AbortError') return;
+			failedCaptionMediaIds.add(mediaId);
+			captionGenerationError = m.compose_alt_text_generation_failed();
+		} finally {
+			if (captionRequests.get(mediaId) === controller) captionRequests.delete(mediaId);
+			captioningMediaIds.delete(mediaId);
+		}
+	}
+
+	function retryFailedMediaAltText() {
+		const mediaIds = [...failedCaptionMediaIds];
+		captionGenerationError = '';
+		void generateMissingMediaAltText(mediaIds);
+	}
+
 	async function loadAccounts(
 		workspaceId: string,
-		preferredAccountIds: string[] | undefined = undefined
+		preferredAccountIds: string[] | undefined = undefined,
+		force = false
 	) {
 		const requestSequence = ++accountRequestSequence;
 		if (!workspaceId) {
@@ -2124,15 +2205,12 @@
 		}
 
 		try {
-			const { data, error: err } = await client.GET('/accounts', {
-				params: { query: { workspace_id: workspaceId } }
-			});
-			if (err) throw new Error(err.detail || m.compose_load_accounts_failed());
+			const data = await loadWorkspaceAccounts(workspaceId, force);
 			if (requestSequence !== accountRequestSequence || selectedWorkspaceId !== workspaceId) {
 				return;
 			}
 
-			const nextAccounts = data ?? [];
+			const nextAccounts = data;
 			const nextCompatibleAccounts = nextAccounts;
 			accounts = nextAccounts;
 			if (selectionToPreserve && selectionToPreserve.length > 0) {
@@ -2572,7 +2650,7 @@
 	}
 
 	async function saveEditedPost() {
-		if ((!draftId || !initialPost) && !publicationOnlyEdit) return;
+		if ((!draftId || (!initialPost && !initialPublication)) && !publicationOnlyEdit) return;
 		error = '';
 		success = '';
 
@@ -2881,6 +2959,12 @@
 			);
 		}
 		if (mediaId) {
+			captionRequests.get(mediaId)?.abort();
+			captionRequests.delete(mediaId);
+			captioningMediaIds.delete(mediaId);
+			generatedCaptionMediaIds.delete(mediaId);
+			failedCaptionMediaIds.delete(mediaId);
+			suppressedCaptionMediaIds.delete(mediaId);
 			const newAlts = new SvelteMap(mediaAltTexts);
 			newAlts.delete(mediaId);
 			mediaAltTexts = newAlts;
@@ -2929,6 +3013,10 @@
 	}
 
 	function setMediaAltText(mediaId: string, alt: string) {
+		captionRequests.get(mediaId)?.abort();
+		suppressedCaptionMediaIds.add(mediaId);
+		generatedCaptionMediaIds.delete(mediaId);
+		failedCaptionMediaIds.delete(mediaId);
 		const newAlts = new SvelteMap(mediaAltTexts);
 		if (alt.trim()) {
 			newAlts.set(mediaId, alt.trim());
@@ -3690,7 +3778,7 @@
 			dismissLabel={m.common_dismiss()}
 			onDismiss={() => (accountLoadError = '')}
 			actionLabel={m.common_retry()}
-			onAction={() => void loadAccounts(selectedWorkspaceId, accountRetryIds)}
+			onAction={() => void loadAccounts(selectedWorkspaceId, accountRetryIds, true)}
 		/>
 	{:else if capabilityResolveError}
 		<AppToast
@@ -3707,6 +3795,16 @@
 			message={workspaceChangeNotice}
 			dismissLabel={m.common_dismiss()}
 			onDismiss={() => (workspaceChangeNotice = '')}
+		/>
+	{/if}
+	{#if captionGenerationError}
+		<AppToast
+			message={captionGenerationError}
+			tone="error"
+			dismissLabel={m.common_dismiss()}
+			onDismiss={() => (captionGenerationError = '')}
+			actionLabel={m.common_retry()}
+			onAction={retryFailedMediaAltText}
 		/>
 	{/if}
 	{#if error}
@@ -4109,19 +4207,27 @@
 																		? 'ring-2 ring-primary/80 ring-offset-1 ring-offset-transparent'
 																		: ''
 																]}
-																aria-label={mediaAltTexts.get(mediaId)
-																	? m.media_alt_text()
-																	: m.media_add_alt_text()}
-																title={mediaAltTexts.get(mediaId)
-																	? m.media_alt_text()
-																	: m.media_add_alt_text()}
+																aria-label={captioningMediaIds.has(mediaId)
+																	? m.compose_alt_text_generating()
+																	: mediaAltTexts.get(mediaId)
+																		? m.media_alt_text()
+																		: m.media_add_alt_text()}
+																title={captioningMediaIds.has(mediaId)
+																	? m.compose_alt_text_generating()
+																	: mediaAltTexts.get(mediaId)
+																		? m.media_alt_text()
+																		: m.media_add_alt_text()}
 																onclick={(e) => {
 																	e.stopPropagation();
 																	editingAltMediaId =
 																		editingAltMediaId === mediaId ? null : mediaId;
 																}}
 															>
-																<TypeIcon class="size-4 md:size-3.5" />
+																{#if captioningMediaIds.has(mediaId)}
+																	<LoaderIcon class="size-4 animate-spin md:size-3.5" />
+																{:else}
+																	<TypeIcon class="size-4 md:size-3.5" />
+																{/if}
 															</button>
 															<button
 																type="button"
@@ -4153,6 +4259,15 @@
 																	class="w-full resize-none rounded bg-white/10 px-2 py-2 text-base text-white placeholder:text-white/60 focus:ring-2 focus:ring-white/70 focus:outline-none md:py-1 md:text-xs"
 																	aria-label={m.media_alt_text()}
 																/>
+																{#if captioningMediaIds.has(mediaId)}
+																	<p class="mt-1 text-xs text-white/80" aria-live="polite">
+																		{m.compose_alt_text_generating()}
+																	</p>
+																{:else if generatedCaptionMediaIds.has(mediaId)}
+																	<p class="mt-1 text-xs text-white/80">
+																		{m.compose_alt_text_ai_generated()}
+																	</p>
+																{/if}
 																<div class="mt-1 flex justify-end gap-1">
 																	<button
 																		type="button"
@@ -4379,8 +4494,13 @@
 	initialFiles={mediaPickerInitialFiles}
 	onInitialFilesConsumed={() => (mediaPickerInitialFiles = [])}
 	onConfirm={async (ids) => {
+		const previousIds = posts[mediaPickerPostIndex]
+			? getEditorMediaIdsForPost(posts[mediaPickerPostIndex])
+			: [];
+		const addedIds = ids.filter((id) => !previousIds.includes(id));
 		setEditorMediaIds(mediaPickerPostIndex, ids);
-		await hydrateMediaMetadata(selectedWorkspaceId, ids);
+		await hydrateMediaMetadata(selectedWorkspaceId, addedIds, true);
+		void generateMissingMediaAltText(addedIds);
 	}}
 	onCreate={openImageEditorFromComposer}
 />

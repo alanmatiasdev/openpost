@@ -15,7 +15,8 @@ func NewCapabilityHandler() *CapabilityHandler {
 }
 
 type CapabilitiesOutput struct {
-	Body struct {
+	CacheControl string `header:"Cache-Control"`
+	Body         struct {
 		Profiles     []capabilities.Profile    `json:"profiles" doc:"Content profiles supported by OpenPost"`
 		Capabilities []capabilities.Capability `json:"capabilities" doc:"Provider/profile capability matrix"`
 	} `json:"body"`
@@ -29,7 +30,7 @@ func (h *CapabilityHandler) RegisterRoutes(api huma.API) {
 		Summary:     "List provider publishing capabilities",
 		Tags:        []string{tagCapabilities},
 	}, func(_ context.Context, _ *struct{}) (*CapabilitiesOutput, error) {
-		resp := &CapabilitiesOutput{}
+		resp := &CapabilitiesOutput{CacheControl: "public, max-age=300, stale-while-revalidate=60"}
 		resp.Body.Profiles = capabilities.Profiles()
 		resp.Body.Capabilities = capabilities.All()
 		return resp, nil

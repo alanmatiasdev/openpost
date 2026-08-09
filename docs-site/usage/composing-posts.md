@@ -14,6 +14,8 @@ Open **Advanced delivery** to change repost behavior for this publication. Keep 
 
 OpenPost infers posts, threads, links, documents, image sets, videos, Shorts, and other destination formats from the content. Instagram and Facebook ask for a format only when the same media can validly become more than one format. TikTok photo posts and videos are inferred from the media.
 
+When automatic alt text is enabled, adding an image without saved alt text drafts shared alt text without blocking the attachment or publication if the request fails. Review or replace the draft, then use account settings for destination-specific text. See [Media](/usage/media-library#automatic-alt-text) for the processing and privacy details.
+
 ## Drafts and account versions
 
 A draft keeps the shared text, thread parts, and media. Each selected account has its own format, nullable field and media overrides, platform settings, thread changes, and optional schedule override. Changing a shared field updates every destination that still inherits that field. An explicit empty destination field remains empty.
@@ -54,5 +56,5 @@ See [Account Options](/usage/destination-options) for the options each social ne
 ## Practical advice
 
 - Keep the shared text simple. Change it only when an account needs a different version.
-- Add alt text and media tags in account settings because platforms use different media details.
+- Review shared alt text, then use account settings for destination-specific text and media tags.
 - Fix all errors before scheduling. A warning may point to app review, API limits, or account limits that OpenPost cannot change.

@@ -9,6 +9,13 @@ This page lists the most common core and provider variables. Use [Environment Va
 | `OPENPOST_IMAGE_EDITOR_ENABLED`        | `true`                 | Enable the OpenPost Image Editor UI and API. Disabling it leaves the Media library operational.  |
 | `OPENPOST_IMAGE_EDITOR_MODEL_BASE_URL` | `/image-editor-models` | Serve the pinned background-removal model and runtime from another operator-controlled base URL. |
 
+## Automatic image alt text
+
+| Variable                           | Default               | Purpose                                                                                                        |
+| ---------------------------------- | --------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `OPENROUTER_API_KEY`               | empty                 | Server-only OpenRouter key that enables automatic alt text for images without saved alt text; supports `_FILE`. |
+| `OPENPOST_IMAGE_CAPTION_MODEL`     | `openai/gpt-5.6-luna` | OpenRouter model ID used to caption a 400px JPEG thumbnail.                                                     |
+
 ## OpenPost Video Editor and stock media
 
 | Variable                        | Default                | Purpose                                                                                             |
@@ -62,6 +69,8 @@ Most variables loaded through the main backend config loader can also be loaded 
 | `OPENPOST_FEEDBACK_RECIPIENT`                   | Recipient label disclosed to users                                                                |
 | `OPENPOST_FEEDBACK_SUPPORT_URL`                 | Fallback support URL                                                                              |
 | `OPENPOST_UPDATE_CHECK_ENABLED`                 | Enable read-only stable release checks for self-hosted instance admins                            |
+| `OPENROUTER_API_KEY`                            | Enable server-side automatic image alt text; supports `_FILE`                                     |
+| `OPENPOST_IMAGE_CAPTION_MODEL`                  | OpenRouter model ID for automatic image alt text                                                   |
 | `OPENPOST_JWT_SECRET`                           | JWT signing secret                                                                                |
 | `OPENPOST_ENCRYPTION_KEY`                       | OAuth token encryption secret                                                                     |
 | `OPENPOST_AUTH_GOOGLE_CLIENT_ID`                | Google OAuth client ID for first-party sign-in and linking                                        |

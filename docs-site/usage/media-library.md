@@ -25,6 +25,14 @@ Each post editor uses the same media picker:
 
 OpenPost keeps files in the order you choose. It checks the file types and count against the rules for all selected accounts.
 
+### Automatic alt text
+
+If your instance operator has configured OpenRouter, adding an image with no saved alt text to the text-and-thread composer asks OpenPost to draft shared alt text. The server sends a 400px JPEG thumbnail to OpenRouter and an eligible provider that declares it does not collect request data. It does not send the original image for this task.
+
+OpenPost saves the caption only while the shared alt text is still blank, so existing text and edits made while the request runs always win. Review the result and adjust it before publishing. You can also customize alt text for a specific account. A missing API key or a captioning error does not stop the image from being attached or published.
+
+Instance operators can review the external-processing boundary and setup in [Environment Variables](/configuration/environment-variables#automatic-image-alt-text).
+
 ## Prepare and edit video
 
 OpenPost checks a video in your browser before upload. It keeps a compatible H.264/AAC MP4 as it is. If needed, it changes or shrinks the video to fit the selected accounts. Audio files upload directly when the active composer accepts them. The strictest size, length, file type, and shape rules apply.

@@ -19,6 +19,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 
+	"github.com/openpost/backend/internal/ai"
 	apiroutes "github.com/openpost/backend/internal/api"
 	"github.com/openpost/backend/internal/api/handlers"
 	apimiddleware "github.com/openpost/backend/internal/api/middleware"
@@ -37,6 +38,7 @@ import (
 	"github.com/openpost/backend/internal/services/entitlements"
 	"github.com/openpost/backend/internal/services/feedback"
 	"github.com/openpost/backend/internal/services/identity"
+	"github.com/openpost/backend/internal/services/imagecaption"
 	"github.com/openpost/backend/internal/services/instancesettings"
 	"github.com/openpost/backend/internal/services/mastodonapps"
 	"github.com/openpost/backend/internal/services/mcpoauth"
@@ -355,6 +357,23 @@ func main() {
 	mediaHandler.SetVideoProcessor(videoProcessingService)
 	profileHandler := handlers.NewProfileHandler(db, authenticator, storage)
 
+	var imageCaptioner imagecaption.Captioner
+	if cfg.OpenRouterAPIKey != "" {
+		generator, generatorErr := ai.NewOpenRouter(ai.OpenRouterConfig{
+			APIKey:      cfg.OpenRouterAPIKey,
+			HTTPReferer: cfg.PublicURL,
+			XTitle:      "OpenPost",
+		})
+		if generatorErr != nil {
+			log.Fatalf("failed to initialize OpenRouter: %v", generatorErr)
+		}
+		imageCaptioner, err = imagecaption.New(generator, cfg.ImageCaptionModel)
+		if err != nil {
+			log.Fatalf("failed to initialize automatic image captioning: %v", err)
+		}
+		log.Printf("Automatic image captioning enabled with model %s", cfg.ImageCaptionModel)
+	}
+
 	var feedbackDestination feedback.Destination
 	if cfg.FeedbackEnabled {
 		if strings.TrimSpace(cfg.FeedbackRecipient) == "" {
@@ -456,6 +475,7 @@ func main() {
 		BillingService:            billingService,
 		MediaStorage:              storage,
 		MediaSigner:               mediaSigner,
+		ImageCaptioner:            imageCaptioner,
 		Entitlement:               entitlementService,
 		TokenEncryptor:            tokenEncryptor,
 		TokenSource:               tokenManager,

@@ -40,6 +40,8 @@ var configTestEnvKeys = []string{
 	"OPENPOST_TERMS_VERSION",
 	"OPENPOST_PRIVACY_VERSION",
 	"OPENPOST_SUPPORT_EMAIL",
+	"OPENROUTER_API_KEY",
+	"OPENPOST_IMAGE_CAPTION_MODEL",
 	"OPENPOST_IMAGE_EDITOR_ENABLED",
 	"OPENPOST_IMAGE_EDITOR_MODEL_BASE_URL",
 	"OPENPOST_STUDIO_ENABLED",
@@ -143,6 +145,8 @@ func TestLoadProductionPrimitiveDefaults(t *testing.T) {
 	require.Empty(t, cfg.PaddleEnvironment)
 	require.Empty(t, cfg.PaddleClientToken)
 	require.Empty(t, cfg.PaddleWebhookSecret)
+	require.Empty(t, cfg.OpenRouterAPIKey)
+	require.Equal(t, "openai/gpt-5.6-luna", cfg.ImageCaptionModel)
 	require.True(t, cfg.ImageEditorEnabled)
 	require.Equal(t, "/image-editor-models", cfg.ImageEditorModelBaseURL)
 	require.Equal(t, "/video-editor-models", cfg.VideoModelBaseURL)
@@ -156,6 +160,19 @@ func TestLoadProductionPrimitiveDefaults(t *testing.T) {
 	require.Equal(t, int64(200_000), cfg.XPostCreateWithURLCostMicrousd)
 	require.Equal(t, 180, cfg.ProviderUsageRetentionDays)
 	require.Equal(t, "https://openpost.example.com/media", cfg.MediaURL)
+}
+
+func TestLoadImageCaptionConfigurationSupportsFileBackedSecret(t *testing.T) {
+	t.Setenv(
+		"OPENROUTER_API_KEY_FILE",
+		writeEnvFile(t, "openrouter-api-key", " openrouter-secret\n"),
+	)
+	t.Setenv("OPENPOST_IMAGE_CAPTION_MODEL", " openai/gpt-5.6-luna-20260709 ")
+
+	cfg := Load()
+
+	require.Equal(t, "openrouter-secret", cfg.OpenRouterAPIKey)
+	require.Equal(t, "openai/gpt-5.6-luna-20260709", cfg.ImageCaptionModel)
 }
 
 func TestLoadResolvesRelativeMediaURLAgainstCanonicalPublicURL(t *testing.T) {

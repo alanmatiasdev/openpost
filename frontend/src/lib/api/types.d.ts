@@ -1949,6 +1949,26 @@ export interface paths {
         patch: operations["update-media"];
         trace?: never;
     };
+    "/media/{id}/alt-text/generate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Generate alternative text for an image
+         * @description Generates alternative text from the stored 400-pixel JPEG thumbnail and saves it only when the media still has no alternative text.
+         */
+        post: operations["generate-media-alt-text"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/media/{id}/analysis/retry": {
         parameters: {
             query?: never;
@@ -5402,6 +5422,30 @@ export interface components {
             credential: unknown;
             /** @description Optional passkey label */
             name: string;
+        };
+        GenerateMediaAltTextInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/GenerateMediaAltTextInputBody.json
+             */
+            readonly $schema?: string;
+            /** @description BCP 47 locale for the generated alt text; defaults to English */
+            locale?: string;
+        };
+        GenerateMediaAltTextOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/GenerateMediaAltTextOutputBody.json
+             */
+            readonly $schema?: string;
+            /** @description Persisted alternative text */
+            alt_text: string;
+            /** @description Whether this request generated and persisted new alternative text */
+            generated: boolean;
+            /** @description Model that generated the alternative text; empty when existing text was returned */
+            model: string;
         };
         "Get-running-versionResponse": {
             /**
@@ -13760,6 +13804,7 @@ export interface operations {
             /** @description OK */
             200: {
                 headers: {
+                    "Cache-Control"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -16835,6 +16880,105 @@ export interface operations {
             };
             /** @description Internal Server Error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "generate-media-alt-text": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Media ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GenerateMediaAltTextInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GenerateMediaAltTextOutputBody"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

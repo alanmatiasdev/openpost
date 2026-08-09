@@ -40,6 +40,8 @@ type Config struct {
 	TermsVersion            string
 	PrivacyVersion          string
 	SupportEmail            string
+	OpenRouterAPIKey        string
+	ImageCaptionModel       string
 	ImageEditorEnabled      bool
 	ImageEditorModelBaseURL string
 	VideoModelBaseURL       string
@@ -182,6 +184,8 @@ func Load() *Config {
 		TermsVersion:            getEnvDefault("OPENPOST_TERMS_VERSION", defaultPolicyVersion),
 		PrivacyVersion:          getEnvDefault("OPENPOST_PRIVACY_VERSION", defaultPolicyVersion),
 		SupportEmail:            getEnvDefault("OPENPOST_SUPPORT_EMAIL", defaultSupportEmail),
+		OpenRouterAPIKey:        strings.TrimSpace(getEnvDefault("OPENROUTER_API_KEY", "")),
+		ImageCaptionModel:       strings.TrimSpace(getEnvDefault("OPENPOST_IMAGE_CAPTION_MODEL", "openai/gpt-5.6-luna")),
 		ImageEditorEnabled: getEnvBoolWithAliases(
 			true,
 			"OPENPOST_IMAGE_EDITOR_ENABLED",

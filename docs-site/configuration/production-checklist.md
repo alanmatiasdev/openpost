@@ -18,6 +18,7 @@ changes live in [Developer Docs](/development/).
 - [ ] Keep `OPENPOST_EXTRA_CORS_ORIGINS` explicit and do not use `*`.
 - [ ] Configure a reverse proxy with HTTPS before connecting OAuth providers.
 - [ ] Align reverse-proxy and CDN request-body limits with the largest video you accept, and disable request buffering for streamed uploads.
+- [ ] Decide whether to enable automatic image alt text. If enabled, store `OPENROUTER_API_KEY` through `OPENROUTER_API_KEY_FILE` and review OpenRouter and model provider privacy and retention terms.
 - [ ] Confirm `GET /api/v1/health` returns `{"status":"ok"}`.
 - [ ] Confirm `GET /api/v1/ready` returns `{"status":"ready","database":"ok"}`.
 - [ ] Confirm `openpost instance health --instance <public-url>` succeeds against the public URL.
@@ -76,6 +77,7 @@ changes live in [Developer Docs](/development/).
 - [ ] Invite a second user, accept the link, and confirm both members appear in **Settings -> Organization**.
 - [ ] Connect at least one social account.
 - [ ] Upload a small image and confirm it appears in the media library.
+- [ ] If automatic alt text is enabled, add an image without alt text to the text-and-thread composer, confirm OpenPost fills its shared alt text, and confirm a manual edit is not replaced.
 - [ ] Create a draft and scheduled post from the web app.
 - [ ] Create a draft or scheduled post through the CLI.
 - [ ] Create a draft or scheduled post through MCP if assistant access is enabled.

@@ -82,8 +82,25 @@ test("Post drafts can move from one image to multiple before destination validat
       json: { accounts: providers.map(resolvedCapability) },
     });
   });
+  const captionRequests: string[] = [];
   await page.route("**/api/v1/media**", async (route) => {
     const url = new URL(route.request().url());
+    const captionMatch = url.pathname.match(
+      /\/media\/([^/]+)\/alt-text\/generate$/,
+    );
+    if (captionMatch) {
+      const mediaID = captionMatch[1];
+      captionRequests.push(mediaID);
+      await route.fulfill({
+        contentType: "application/json",
+        json: {
+          alt_text: `Generated description for ${mediaID}.`,
+          generated: true,
+          model: "openai/gpt-5.6-luna",
+        },
+      });
+      return;
+    }
     if (url.pathname.endsWith("/media/tags")) {
       await route.fulfill({
         contentType: "application/json",
@@ -138,6 +155,15 @@ test("Post drafts can move from one image to multiple before destination validat
   await expect(page.getByRole("button", { name: "Remove media" })).toHaveCount(
     1,
   );
+  await expect.poll(() => [...captionRequests]).toEqual(["media-1"]);
+  await composer.getByRole("button", { name: "Alt text" }).click();
+  await expect(composer.getByRole("textbox", { name: "Alt text" })).toHaveValue(
+    "Generated description for media-1.",
+  );
+  await expect(composer).toContainText(
+    "AI-generated — review before publishing.",
+  );
+  await composer.getByRole("button", { name: "Done" }).click();
 
   await composer.getByRole("button", { name: "Add media" }).click();
   await expect(picker).toContainText("1 of 35 selected");
@@ -152,6 +178,9 @@ test("Post drafts can move from one image to multiple before destination validat
   await expect(page.getByRole("button", { name: "Remove media" })).toHaveCount(
     5,
   );
+  await expect
+    .poll(() => [...captionRequests].sort())
+    .toEqual(mediaItems.map((item) => item.id).sort());
   await page.getByTestId("composer-account-control").click();
   await expect(page.getByTestId("composer-account-row")).toHaveCount(5);
   await expect(
