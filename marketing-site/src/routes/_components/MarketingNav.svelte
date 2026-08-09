@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { resolve } from "$app/paths";
   import { page } from "$app/state";
   import { ArrowRight, Menu, Moon, Sun, X } from "@lucide/svelte";
   import { mode, toggleMode } from "mode-watcher";
@@ -8,6 +9,7 @@
   import * as NavigationMenu from "$lib/components/ui/navigation-menu";
   import {
     appUrl,
+    discordCommunityUrl,
     docsUrl,
     managedSignupUrl,
     navItems,
@@ -20,7 +22,7 @@
   const navigationResourceItems = [
     { label: "User docs", href: docsUrl },
     ...resourceItems.filter((item) => item.href !== "/platforms"),
-    { label: "Discord community", href: "https://discord.gg/u2QwukmY4W" },
+    { label: "Discord community", href: discordCommunityUrl },
   ] as const;
 
   function isActive(href: string): boolean {
@@ -32,13 +34,17 @@
   function resourcesActive(): boolean {
     return navigationResourceItems.some((item) => isActive(item.href));
   }
+
+  function navigationHref(href: string) {
+    return { href: href.startsWith("/") ? resolve(href as "/") : href };
+  }
 </script>
 
 <header class="marketing-nav sticky top-0 z-40">
   <div class="marketing-shell flex min-h-16 items-center justify-between gap-4">
     <a
       class="focus-ring inline-flex min-h-11 items-center gap-2 rounded-md"
-      href="/"
+      href={resolve("/")}
       aria-label="OpenPost home"
     >
       <Logo width={36} height={28} decorative />
@@ -213,7 +219,7 @@
         {#each navItems as item (item.href)}
           {#if item.href !== "/platforms"}
             <a
-              href={item.href}
+              href={resolve(item.href as "/")}
               aria-current={isActive(item.href) ? "page" : undefined}
               class={[
                 "focus-ring flex min-h-11 items-center rounded-md px-3 text-sm font-medium",
@@ -231,7 +237,7 @@
         <div class="mt-3 flex min-h-11 items-center justify-between px-3">
           <p class="text-xs font-semibold text-muted-foreground">Platforms</p>
           <a
-            href="/platforms"
+            href={resolve("/platforms")}
             class="focus-ring inline-flex min-h-9 items-center gap-1 rounded-md px-2 text-xs font-semibold"
             onclick={() => (mobileOpen = false)}
           >
@@ -241,7 +247,7 @@
         <div class="grid grid-cols-2 gap-1">
           {#each platforms as platform (platform.slug)}
             <a
-              href={`/platforms/${platform.slug}`}
+              href={resolve(`/platforms/${platform.slug}`)}
               aria-current={isActive(`/platforms/${platform.slug}`)
                 ? "page"
                 : undefined}
@@ -264,7 +270,7 @@
         </p>
         {#each navigationResourceItems as item (item.href)}
           <a
-            href={item.href}
+            {...navigationHref(item.href)}
             class="focus-ring flex min-h-11 items-center rounded-md px-3 text-sm text-muted-foreground"
             onclick={() => (mobileOpen = false)}
           >

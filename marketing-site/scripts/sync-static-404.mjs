@@ -1,4 +1,48 @@
-<!doctype html>
+import assert from "node:assert/strict";
+import { readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { marketingErrorRecovery as content } from "../src/routes/_error-recovery.ts";
+
+const siteRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+);
+const output = path.join(siteRoot, "static/404.html");
+
+function escapeHTML(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function externalAttributes(href) {
+  return href.startsWith("https://") ? ' target="_blank" rel="noreferrer"' : "";
+}
+
+const routes = content.routes
+  .map(
+    (route) => `
+            <li>
+              <a class="route-link" href="${escapeHTML(route.href)}"${externalAttributes(route.href)}>
+                <span><strong>${escapeHTML(route.label)}</strong><small>${escapeHTML(route.description)}</small></span>
+                <span aria-hidden="true">${route.href.startsWith("https://") ? "↗" : "→"}</span>
+              </a>
+            </li>`,
+  )
+  .join("");
+
+const support = content.support
+  .map(
+    (link) =>
+      `<a href="${escapeHTML(link.href)}"${externalAttributes(link.href)}>${escapeHTML(link.label)}</a>`,
+  )
+  .join("\n              ");
+
+const html = `<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
@@ -49,36 +93,17 @@
         <a class="brand" href="/" aria-label="OpenPost home"><img src="/logo.svg" alt="" width="36" height="28" /><span>OpenPost</span></a>
         <div class="grid">
           <div>
-            <p class="code">404 · Page not found</p>
-            <h1>This route does not lead to an OpenPost page.</h1>
-            <p class="description">The address may be old, incomplete, or mistyped. Use one of the maintained paths below to keep going.</p>
-            <a class="primary" href="/"><span aria-hidden="true">←</span>Go to OpenPost home</a>
+            <p class="code">${content.status} · ${escapeHTML(content.label)}</p>
+            <h1>${escapeHTML(content.title)}</h1>
+            <p class="description">${escapeHTML(content.description)}</p>
+            <a class="primary" href="${escapeHTML(content.primary.href)}"><span aria-hidden="true">←</span>${escapeHTML(content.primary.label)}</a>
           </div>
           <div class="panel">
             <p class="panel-label">Continue from a maintained page</p>
-            <nav aria-label="Page recovery"><ul>
-            <li>
-              <a class="route-link" href="/features">
-                <span><strong>Explore features</strong><small>See the complete publishing workflow and its current limits.</small></span>
-                <span aria-hidden="true">→</span>
-              </a>
-            </li>
-            <li>
-              <a class="route-link" href="/faq">
-                <span><strong>Read the FAQ</strong><small>Check setup, providers, billing, privacy, and self-hosting.</small></span>
-                <span aria-hidden="true">→</span>
-              </a>
-            </li>
-            <li>
-              <a class="route-link" href="https://docs.openpost.social/usage/" target="_blank" rel="noreferrer">
-                <span><strong>Open user docs</strong><small>Follow maintained product and setup guidance.</small></span>
-                <span aria-hidden="true">↗</span>
-              </a>
-            </li>
+            <nav aria-label="Page recovery"><ul>${routes}
             </ul></nav>
             <div class="support"><span aria-hidden="true">?</span><span>Need help?</span>
-              <a href="mailto:openpost@rgo.pt">Email support</a>
-              <a href="https://discord.gg/u2QwukmY4W" target="_blank" rel="noreferrer">Ask the Discord community</a>
+              ${support}
             </div>
           </div>
         </div>
@@ -86,3 +111,19 @@
     </main>
   </body>
 </html>
+`;
+
+if (process.argv.includes("--check")) {
+  const existing = await readFile(output, "utf8");
+  assert.equal(
+    existing,
+    html,
+    "static/404.html is stale; run bun run sync:404",
+  );
+  console.log(
+    "Verified static 404 content matches the shared recovery source.",
+  );
+} else {
+  await writeFile(output, html);
+  console.log(`Updated ${path.relative(process.cwd(), output)}.`);
+}

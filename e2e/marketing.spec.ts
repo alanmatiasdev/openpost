@@ -141,7 +141,27 @@ test("pricing makes every plan selectable for monthly and annual billing", async
     { id: "agency", name: "Agency", monthly: "$199", annual: "$1,990" },
   ] as const;
 
+  if ((page.viewportSize()?.width ?? 0) < 1024) {
+    await page.setViewportSize({ width: 390, height: 844 });
+  }
+
   await page.goto("/pricing");
+
+  await expect(
+    page.getByText("Paddle is the Merchant of Record"),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Refund policy" }),
+  ).toHaveAttribute("href", "/refunds");
+  await expect(
+    page.getByRole("link", { name: "Billing settings" }),
+  ).toHaveAttribute(
+    "href",
+    "https://app.openpost.social/settings?tab=billing#billing",
+  );
+  await expect(page.locator('[role="status"][aria-live="polite"]')).toHaveCount(
+    1,
+  );
 
   await expect(page.getByRole("article")).toHaveCount(5);
   for (const plan of planCases) {
@@ -158,9 +178,18 @@ test("pricing makes every plan selectable for monthly and annual billing", async
       "href",
       `https://app.openpost.social/register?plan=${plan.id}&billing_period=monthly`,
     );
+    await expect(card).toContainText(
+      `Card required. After 14 days: ${plan.monthly} per month until canceled.`,
+    );
   }
 
-  await page.getByRole("button", { name: /^Yearly/ }).click();
+  const yearly = page.getByRole("button", { name: /^Yearly/ });
+  await yearly.focus();
+  await yearly.click();
+  await expect(yearly).toBeFocused();
+  await expect(
+    page.locator('[role="status"][aria-live="polite"]'),
+  ).toContainText("Yearly billing selected");
   for (const plan of planCases) {
     const card = page
       .getByRole("article")
@@ -171,6 +200,9 @@ test("pricing makes every plan selectable for monthly and annual billing", async
     ).toHaveAttribute(
       "href",
       `https://app.openpost.social/register?plan=${plan.id}&billing_period=annual`,
+    );
+    await expect(card).toContainText(
+      `Card required. After 14 days: ${plan.annual} per year until canceled.`,
     );
   }
 
@@ -197,6 +229,209 @@ test("pricing makes every plan selectable for monthly and annual billing", async
       () => document.documentElement.scrollWidth <= window.innerWidth,
     ),
   ).toBe(true);
+});
+
+test("features and FAQ expose complete, qualified product guidance", async ({
+  page,
+}) => {
+  const initialViewport = page.viewportSize() ?? { width: 1280, height: 720 };
+  const reviewViewport =
+    initialViewport.width >= 1024
+      ? initialViewport
+      : { width: 390, height: 844 };
+  await page.setViewportSize(reviewViewport);
+
+  await page.goto("/features");
+  await expect(
+    page.getByRole("heading", {
+      name: "One system for the whole publishing job.",
+      level: 1,
+    }),
+  ).toBeVisible();
+  await expect(page.locator("[data-feature-station]")).toHaveCount(6);
+  await expect(page.getByText("Implemented adapters")).toBeVisible();
+  await expect(page.getByText("Current exact managed claims")).toBeVisible();
+  await expect(
+    page.getByText(
+      "No exact managed provider-format certification claim is current.",
+    ),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", {
+      name: "Implementation and current managed availability are different facts.",
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Compare every plan" }),
+  ).toHaveAttribute("href", "/pricing");
+
+  await page.setViewportSize({ width: 320, height: 720 });
+  const featureJump = page.getByRole("link", { name: "Compose and adapt" });
+  await featureJump.focus();
+  await expect(featureJump).toBeFocused();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+
+  await page.setViewportSize(reviewViewport);
+  await page.goto("/faq");
+  await expect(
+    page.getByRole("heading", {
+      name: "Know the boundary before you start.",
+      level: 1,
+    }),
+  ).toBeVisible();
+  await expect(page.locator("details")).toHaveCount(7);
+  await expect(
+    page.getByText("Setup and publishing", { exact: true }).first(),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Providers and results", { exact: true }).first(),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Plans and billing", { exact: true }).first(),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Privacy and access", { exact: true }).first(),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Self-hosting", { exact: true }).first(),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Ask the Discord community" }),
+  ).toHaveAttribute("href", "https://discord.gg/u2QwukmY4W");
+  await expect(
+    page.getByRole("link", { name: /Email openpost@rgo.pt/ }),
+  ).toHaveAttribute("href", "mailto:openpost@rgo.pt");
+
+  await page.setViewportSize({ width: 320, height: 720 });
+  const firstQuestion = page
+    .locator("summary")
+    .filter({ hasText: "What happens if a post fails?" });
+  await firstQuestion.focus();
+  await expect(firstQuestion).toBeFocused();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+});
+
+test("comparison rows expose current claim-level evidence", async ({
+  page,
+}) => {
+  const slugs = [
+    "buffer",
+    "hootsuite",
+    "typefully",
+    "postiz",
+    "post-bridge",
+    "mixpost",
+  ] as const;
+  const isDesktop = (page.viewportSize()?.width ?? 0) >= 1024;
+  if (!isDesktop) {
+    await page.setViewportSize({ width: 390, height: 844 });
+  }
+
+  for (const slug of slugs) {
+    await page.goto(`/compare/${slug}`);
+    const mobileRows = page.locator(".lg\\:hidden article");
+    await expect(mobileRows).toHaveCount(4);
+    await expect(page.locator(".claim-evidence")).toHaveCount(16);
+    const tableEvidence = page.locator("table .claim-evidence");
+    await expect(tableEvidence).toHaveCount(8);
+    const visibleEvidence = isDesktop
+      ? tableEvidence
+      : page.locator(".lg\\:hidden .claim-evidence");
+    await expect(visibleEvidence).toHaveCount(8);
+    await expect(visibleEvidence.first()).toContainText(
+      "Recheck by Nov 9, 2026",
+    );
+    await expect(visibleEvidence.getByText(/^Owner:/).first()).toBeVisible();
+    await expect(
+      visibleEvidence
+        .getByRole("link", { name: /source|pricing|guide|docs/i })
+        .first(),
+    ).toBeVisible();
+  }
+
+  await page.setViewportSize({ width: 320, height: 720 });
+  const evidenceLink = page
+    .locator(".lg\\:hidden .claim-evidence")
+    .getByRole("link")
+    .first();
+  await evidenceLink.focus();
+  await expect(evidenceLink).toBeFocused();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+});
+
+test("route and static not-found pages share useful recovery", async ({
+  page,
+}) => {
+  if ((page.viewportSize()?.width ?? 0) < 1024) {
+    await page.setViewportSize({ width: 390, height: 844 });
+  }
+
+  const routeResponse = await page.goto("/compare/not-a-product");
+  expect(routeResponse?.status()).toBe(404);
+  await expect(
+    page.getByRole("heading", {
+      name: "This route does not lead to an OpenPost page.",
+      level: 1,
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Explore features" }),
+  ).toHaveAttribute("href", "/features");
+  await expect(
+    page.getByRole("link", { name: "Read the FAQ" }),
+  ).toHaveAttribute("href", "/faq");
+  await expect(
+    page.getByRole("link", { name: "Open user docs" }),
+  ).toHaveAttribute("href", "https://docs.openpost.social/usage/");
+
+  await page.goto("/404.html");
+  await expect(
+    page.getByRole("heading", {
+      name: "This route does not lead to an OpenPost page.",
+      level: 1,
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Explore features" }),
+  ).toHaveAttribute("href", "/features");
+  await page.setViewportSize({ width: 320, height: 720 });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+});
+
+test("marketing decision routes remain console-clean", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") errors.push(message.text());
+  });
+  page.on("pageerror", (error) => errors.push(error.message));
+
+  for (const route of [
+    "/features",
+    "/faq",
+    "/pricing",
+    "/compare/buffer",
+  ]) {
+    await page.goto(route);
+    await page.waitForLoadState("networkidle");
+  }
+
+  expect(errors).toEqual([]);
 });
 
 test("security page states AI tool access accurately @desktop", async ({
@@ -448,6 +683,8 @@ test("marketing SEO routes expose the current public index @desktop", async ({
   expect(sitemap.ok()).toBeTruthy();
   const xml = await sitemap.text();
   expect(xml).toContain("<loc>https://openpost.social/</loc>");
+  expect(xml).toContain("<loc>https://openpost.social/features</loc>");
+  expect(xml).toContain("<loc>https://openpost.social/faq</loc>");
   expect(xml).toContain("<loc>https://openpost.social/platforms</loc>");
   expect(xml).toContain("<loc>https://openpost.social/platforms/x</loc>");
   expect(xml).toContain("<loc>https://openpost.social/platforms/discord</loc>");

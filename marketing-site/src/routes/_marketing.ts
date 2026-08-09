@@ -1,15 +1,21 @@
 import {
+  BarChart3,
+  CalendarCheck2,
   CheckCircle2,
   Clapperboard,
+  Code2,
   Clock3,
   FileText,
   GitBranch,
+  Image,
   Images,
   MessageSquareText,
   PanelTop,
+  UsersRound,
 } from "@lucide/svelte";
 import { PLATFORM_LIMITS } from "$lib/platform-limits";
 import publicClaimManifest from "../../../provider-certification/public-claims.json";
+import { attachComparisonEvidence } from "./_comparison-evidence";
 
 type PublicProviderClaim = {
   subject: {
@@ -20,18 +26,22 @@ type PublicProviderClaim = {
 
 export const appUrl = "https://app.openpost.social";
 export const managedSignupUrl = `${appUrl}/register?plan=founder`;
+export const billingSettingsUrl = `${appUrl}/settings?tab=billing#billing`;
 export const userDocsUrl = "https://docs.openpost.social/usage/";
 export const selfHostingDocsUrl = "https://docs.openpost.social/self-hosting/";
 export const developerDocsUrl = "https://docs.openpost.social/development/";
 export const docsUrl = userDocsUrl;
 export const githubUrl = "https://github.com/rodrgds/openpost";
 export const siteUrl = "https://openpost.social";
+export const discordCommunityUrl = "https://discord.gg/u2QwukmY4W";
+export const supportEmail = "openpost@rgo.pt";
+export const supportMailUrl = `mailto:${supportEmail}`;
 export const demoVideoUrl = "https://youtu.be/_mZf3HzQaN8";
 export const demoVideoEmbedUrl =
   "https://www.youtube-nocookie.com/embed/_mZf3HzQaN8?autoplay=1&rel=0";
 
 export const navItems = [
-  { label: "Product", href: "/#product" },
+  { label: "Features", href: "/features" },
   { label: "Platforms", href: "/platforms" },
   { label: "Pricing", href: "/pricing" },
   { label: "Free tools", href: "/tools" },
@@ -40,6 +50,7 @@ export const navItems = [
 export const resourceItems = [
   { label: "Platforms", href: "/platforms" },
   { label: "Compare", href: "/compare" },
+  { label: "FAQ", href: "/faq" },
   { label: "Security", href: "/security" },
   { label: "Trust register", href: "/trust" },
   { label: "Changelog", href: "/changelog" },
@@ -48,6 +59,14 @@ export const resourceItems = [
 
 export const managedAccessSummary =
   "Start with a 14-day free trial. A card is required, and you can cancel before the first charge.";
+
+export const publicProviderCertification = {
+  currentClaimCount: publicClaimManifest.claims.length,
+  summary:
+    publicClaimManifest.claims.length === 0
+      ? "No exact managed provider-format certification claim is current."
+      : `${publicClaimManifest.claims.length} exact managed provider-format certification claim${publicClaimManifest.claims.length === 1 ? " is" : "s are"} current.`,
+} as const;
 
 export const plans = [
   {
@@ -154,6 +173,143 @@ export const plans = [
       "5 included seats",
     ],
     featured: false,
+  },
+] as const;
+
+export const featureGroups = [
+  {
+    id: "compose",
+    label: "Compose and adapt",
+    title: "Keep one source idea and make each destination version fit.",
+    outcome:
+      "Write the shared publication once, then change text, media, schedule, and provider settings for each selected account before it leaves OpenPost.",
+    scope: [
+      "Posts, threads, Stories, short videos, and videos use focused authoring paths.",
+      "Previews and validation stay tied to the selected destination and account.",
+      "Reusable Social Sets can start a draft with the right group of accounts.",
+    ],
+    limit:
+      "Available formats, text rules, media rules, and settings still depend on the connected account and provider.",
+    proof: {
+      kind: "image",
+      src: "/assets/screenshots/main-dark.png",
+      alt: "OpenPost publication composer with destination-specific versions",
+    },
+    docsUrl: "https://docs.openpost.social/usage/composing-posts",
+    next: { label: "See destination guides", href: "/platforms" },
+    icon: Images,
+  },
+  {
+    id: "schedule",
+    label: "Plan and publish",
+    title: "See what is drafted, scheduled, running, published, or failed.",
+    outcome:
+      "Choose an exact time or a saved weekly slot, then follow the publication and every account result from the calendar and activity views.",
+    scope: [
+      "Durable background jobs keep scheduled work across server restarts.",
+      "Each destination keeps its own status, result, and actionable error.",
+      "Safe failures can be retried without re-publishing successful destinations.",
+    ],
+    limit:
+      "Managed plans set monthly scheduled-post limits. Provider outages, review rules, and account access can still block a destination.",
+    proof: {
+      kind: "docs",
+      label: "Scheduling and publication status guide",
+      href: "https://docs.openpost.social/usage/scheduling",
+    },
+    docsUrl: "https://docs.openpost.social/usage/scheduling",
+    next: { label: "Compare plan limits", href: "/pricing#limits" },
+    icon: CalendarCheck2,
+  },
+  {
+    id: "media-editing",
+    label: "Media and editing",
+    title: "Keep reusable assets beside the tools that prepare them.",
+    outcome:
+      "Store media with alt text and metadata, create still designs in OpenPost Image Editor, or prepare clips in OpenPost Video Editor before returning the result to a draft.",
+    scope: [
+      "The media library keeps originals, previews, tags, collections, and editor exports together.",
+      "OpenPost Image Editor supports multi-page social designs and mobile editing.",
+      "OpenPost Video Editor supports local projects, timeline edits, captions, recovery, and export.",
+    ],
+    limit:
+      "Video editing needs a compatible browser, and every publishing destination still enforces its own size, duration, codec, and aspect-ratio rules.",
+    proof: {
+      kind: "image",
+      src: "/assets/screenshots/media-dark.png",
+      alt: "OpenPost media library with reusable assets",
+    },
+    docsUrl: "https://docs.openpost.social/usage/studio",
+    next: { label: "Open the free editors", href: "/tools" },
+    icon: Image,
+  },
+  {
+    id: "analytics-inbox",
+    label: "Analytics and conversations",
+    title:
+      "Review available results and replies without calling providers on page load.",
+    outcome:
+      "Inspect stored account and post snapshots, then handle supported comments, replies, alerts, and opted-in inbox messages from the same workspace.",
+    scope: [
+      "Analytics separates views, impressions, reach, engagement, and follower counts when providers expose them.",
+      "Comments, reply actions, and inbox collection appear only for accounts that support them.",
+      "Permission and rate-limit errors keep the last successful counters visible.",
+    ],
+    limit:
+      "Coverage depends on provider permissions and the connected account. OpenPost does not provide social listening or cross-industry benchmarks.",
+    proof: {
+      kind: "docs",
+      label: "Analytics and communications guides",
+      href: "https://docs.openpost.social/usage/analytics",
+    },
+    docsUrl: "https://docs.openpost.social/usage/communications",
+    next: { label: "Check provider scope", href: "/platforms" },
+    icon: BarChart3,
+  },
+  {
+    id: "teams",
+    label: "Workspaces and teams",
+    title:
+      "Separate brands and clients without separating the publishing system.",
+    outcome:
+      "Keep accounts, media, schedules, automation, and member access inside an explicit workspace boundary, with plan usage enforced for its organization.",
+    scope: [
+      "Workspace roles control who can view, edit, publish, manage members, or administer the workspace.",
+      "Invitations and membership changes stay tied to the invited email and active workspace.",
+      "Team includes three seats and Agency includes five. Each managed plan sets its own workspace limit.",
+    ],
+    limit:
+      "Team roles are included on Team and Agency managed plans. Included seats and workspace counts vary by plan.",
+    proof: {
+      kind: "image",
+      src: "/assets/screenshots/settings-dark.png",
+      alt: "OpenPost workspace and account settings",
+    },
+    docsUrl: "https://docs.openpost.social/usage/workspaces",
+    next: { label: "Compare seats and workspaces", href: "/pricing#limits" },
+    icon: UsersRound,
+  },
+  {
+    id: "automation",
+    label: "Automation and self-hosting",
+    title: "Use the same workspace rules from HTTP, the CLI, or an AI tool.",
+    outcome:
+      "Create scoped tokens for scripts and MCP clients, inspect operations before executing them, or run the complete service on infrastructure you control.",
+    scope: [
+      "The typed HTTP API, CLI, and MCP server use the same authorization and workspace boundaries.",
+      "Read-only and state-changing MCP operations stay separate.",
+      "Self-hosting uses one Go service, SQLite by default, and configurable database, media, and provider settings.",
+    ],
+    limit:
+      "Automation still follows plan quotas, token scopes, workspace roles, provider readiness, and destination validation.",
+    proof: {
+      kind: "docs",
+      label: "Agent-assisted publishing guide",
+      href: "https://docs.openpost.social/usage/agent-assisted-publishing",
+    },
+    docsUrl: developerDocsUrl,
+    next: { label: "Review self-hosting", href: selfHostingDocsUrl },
+    icon: Code2,
   },
 ] as const;
 
@@ -796,7 +952,7 @@ export const tools = [
   },
 ] as const;
 
-export const comparisons = [
+const comparisonDrafts = [
   {
     slug: "buffer",
     name: "Buffer",
@@ -856,7 +1012,7 @@ export const comparisons = [
         href: "https://developers.buffer.com/guides/integrations/mcp.html",
       },
     ],
-    reviewedAt: "2026-07-29",
+    reviewedAt: "2026-08-09",
   },
   {
     slug: "hootsuite",
@@ -915,7 +1071,7 @@ export const comparisons = [
         href: "https://www.hootsuite.com/integrations/mcp",
       },
     ],
-    reviewedAt: "2026-07-29",
+    reviewedAt: "2026-08-09",
   },
   {
     slug: "typefully",
@@ -978,7 +1134,7 @@ export const comparisons = [
         href: "https://support.typefully.com/",
       },
     ],
-    reviewedAt: "2026-07-29",
+    reviewedAt: "2026-08-09",
   },
   {
     slug: "postiz",
@@ -1040,7 +1196,7 @@ export const comparisons = [
         href: "https://github.com/gitroomhq/postiz-app",
       },
     ],
-    reviewedAt: "2026-07-29",
+    reviewedAt: "2026-08-09",
   },
   {
     slug: "post-bridge",
@@ -1107,7 +1263,7 @@ export const comparisons = [
         href: "https://support.post-bridge.com/social-media-scheduling/thread-scheduling-on-x-twitter-and-instagram-threads-current-limitations",
       },
     ],
-    reviewedAt: "2026-07-29",
+    reviewedAt: "2026-08-09",
   },
   {
     slug: "mixpost",
@@ -1167,45 +1323,109 @@ export const comparisons = [
       },
       { label: "Mixpost source", href: "https://github.com/inovector/mixpost" },
     ],
-    reviewedAt: "2026-07-29",
+    reviewedAt: "2026-08-09",
   },
 ] as const;
 
+export const comparisons = comparisonDrafts.map(attachComparisonEvidence);
+
 export const faqs = [
   {
+    id: "ai-credentials",
+    category: "privacy",
     question: "Can an AI agent see my social account credentials?",
     answer:
       "No. The AI tool uses its own OpenPost token. Your social account keys stay encrypted inside OpenPost. Use mcp:read for read-only access. Use mcp:full only when the tool must create, change, schedule, or publish.",
+    learnMore: { label: "Review security controls", href: "/security" },
   },
   {
+    id: "free-trial",
+    category: "billing",
     question: "How does the free trial work?",
     answer:
       "Every managed plan starts with 14 days free. A card is required. OpenPost shows the exact renewal price and date before you start, and you can cancel from billing settings before the first charge.",
+    learnMore: { label: "See plans and limits", href: "/pricing" },
   },
   {
+    id: "change-plans",
+    category: "billing",
     question: "Can I change plans later?",
     answer:
       "Yes. Choose the limits you need now, then manage your subscription from OpenPost billing settings as your account count or team grows.",
+    learnMore: { label: "Read billing terms", href: "/terms" },
   },
   {
+    id: "analytics",
+    category: "providers",
     question: "Does OpenPost include analytics?",
     answer:
       "Yes. OpenPost shows account growth and post results for 7, 30, or 90 days when the platform gives access. It also has comments, replies, and inboxes for supported accounts. It does not include social listening or large-company benchmarks.",
+    learnMore: {
+      label: "Read the analytics guide",
+      href: "https://docs.openpost.social/usage/analytics",
+    },
   },
   {
+    id: "video-publishing",
+    category: "providers",
     question: "Does video publishing work everywhere?",
     answer:
       "No. Video support and limits differ by platform. Some platforms also require app review or a public media link.",
+    learnMore: { label: "Compare provider formats", href: "/platforms" },
   },
   {
+    id: "own-provider-keys",
+    category: "self-hosting",
     question: "Can I use my own social app keys?",
     answer:
-      "Yes. A self-hosted operator can set social app keys in the server settings. The exact settings depend on the platform.",
+      "Yes. A self-hosted operator can configure provider applications through deployment settings or the encrypted instance-admin fallback. The exact credentials and approval requirements depend on the provider.",
+    learnMore: {
+      label: "Configure provider applications",
+      href: "https://docs.openpost.social/configuration/provider-applications",
+    },
   },
   {
+    id: "failed-post",
+    category: "setup",
     question: "What happens if a post fails?",
     answer:
       "OpenPost keeps the error for each failed account. You can review it and retry only the accounts that can be retried.",
+    learnMore: {
+      label: "Read the scheduling guide",
+      href: "https://docs.openpost.social/usage/scheduling",
+    },
+  },
+] as const;
+
+export const faqCategories = [
+  {
+    id: "setup",
+    label: "Setup and publishing",
+    description:
+      "What happens while you connect accounts, schedule work, and recover a failure.",
+  },
+  {
+    id: "providers",
+    label: "Providers and results",
+    description:
+      "Where account permissions, formats, analytics, and media rules still differ.",
+  },
+  {
+    id: "billing",
+    label: "Plans and billing",
+    description:
+      "What the trial includes, when payment starts, and how plan changes work.",
+  },
+  {
+    id: "privacy",
+    label: "Privacy and access",
+    description: "How tokens and connected-account credentials stay separate.",
+  },
+  {
+    id: "self-hosting",
+    label: "Self-hosting",
+    description:
+      "How operators can use their own deployment and provider applications.",
   },
 ] as const;
 

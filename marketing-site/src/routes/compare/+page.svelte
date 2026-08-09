@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { resolve } from "$app/paths";
   import { ArrowRight, Waypoints } from "@lucide/svelte";
   import { Button } from "$lib/components/ui/button";
   import {
@@ -7,6 +8,17 @@
     selfHostingDocsUrl,
     siteUrl,
   } from "../_marketing";
+
+  const evidenceReview = comparisons[0];
+
+  function formatDate(value: string) {
+    return new Intl.DateTimeFormat("en", {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+      timeZone: "UTC",
+    }).format(new Date(`${value}T00:00:00Z`));
+  }
 </script>
 
 <svelte:head>
@@ -41,10 +53,10 @@
       </div>
       <div class="border-l pl-6">
         <Waypoints class="size-5 text-primary" />
-        <p class="mt-4 font-semibold">Reviewed 29 July 2026</p>
+        <p class="mt-4 font-semibold">Reviewed {formatDate(evidenceReview.reviewedAt)}</p>
         <p class="mt-2 text-sm leading-6 text-muted-foreground">
           Each factual claim links to an official pricing, product, API, or help
-          page.
+          page. Recheck by {formatDate(evidenceReview.reviewDueAt)}.
         </p>
       </div>
     </div>
@@ -67,7 +79,7 @@
       <div class="divide-y border-y">
         {#each comparisons as comparison (comparison.slug)}
           <a
-            href={`/compare/${comparison.slug}`}
+            href={resolve(`/compare/${comparison.slug}`)}
             class="group grid gap-3 py-6 transition sm:grid-cols-[minmax(11rem,0.55fr)_1.45fr_auto] sm:items-center"
           >
             <div>
@@ -76,6 +88,11 @@
             </div>
             <p class="text-sm leading-6 text-muted-foreground">
               {comparison.bestFor}
+            </p>
+            <p class="font-mono text-xs text-muted-foreground">
+              Reviewed {formatDate(comparison.reviewedAt)} · Recheck by {formatDate(
+                comparison.reviewDueAt,
+              )}
             </p>
             <ArrowRight
               class="size-4 text-muted-foreground transition group-hover:translate-x-0.5 group-hover:text-foreground"

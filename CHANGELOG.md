@@ -6,6 +6,7 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+- Added a complete feature hub and canonical FAQ grouped around verified product scope, current provider-certification evidence, plan and provider limits, maintained proof, and contextual documentation and support paths.
 - Added a complete, audited workspace-access lifecycle with server-enforced admin, editor, and viewer permissions; active and inactive accepted members; atomic seat and pending-invitation limits; role changes, deactivation, restoration, removal, resend, revoke, search, and filters; last-admin safeguards; and an admin-only access history. Migration 080 preserves existing access as active and adds the lifecycle and audit schema.
 - Added accessible password reveal controls and exact Unicode-aware server rules, preserved safe protected deep links through authentication, documented the fixed session lifetime instead of adding a cosmetic persistence toggle, and expanded authenticator enrollment into a six-step flow with a copyable manual key, resilient verification, and explicit enabled-factor confirmation.
 - Added permission-aware failed-payment recovery with an account-wide notice and billing-page action that mints a fresh exact-subscription Paddle payment-method link; migration 079 preserves the first past-due transition and atomically fences stale, repeated, and out-of-order provider snapshots until newer active truth clears the restriction.
@@ -20,6 +21,8 @@ All notable changes to this project are documented in this file.
 
 ### Changed
 
+- Added source, owner, evidence basis, review date, recheck deadline, and plan or region qualifier to every mutable comparison row, with a freshness check that fails when evidence expires.
+- Put plan audience, exact limits, trial renewal behavior, cancellation, billing management, refunds, tax, and Paddle's Merchant of Record role beside managed-plan choices; billing-period changes now preserve focus and use one concise live announcement.
 - Defined `server.json` as the immutable Official MCP Registry listing version, documented its compatibility policy separately from application and negotiated protocol versions, and made registry drift fail repository and release planning checks.
 - Standardized the application, marketing site, and shared previews on the supported `@lucide/svelte` package, removed the duplicate legacy dependency, and replaced legacy icon-constructor annotations with a Svelte 5 component contract.
 - Removed confirmed unused frontend helper exports and convenience types after proving no static, namespace, dynamic, glob, or package-export consumer remained.
@@ -40,6 +43,7 @@ All notable changes to this project are documented in this file.
 ### Fixed
 
 - Prevented text-and-thread drafts, media, and schedules from crossing workspace boundaries by requiring save, stay, or discard decisions with origin-scoped race guards; scheduling and publishing failures now retain exact destination, segment, and field targets, focus the affected control, and remain retryable after authoritative revalidation.
+- Unified marketing route errors and the static-host 404 around one branded recovery source with product, documentation, email, and community paths that remain usable without application assets.
 - Clarified that screen recordings remain local to the current browser until the user explicitly saves them to cloud storage, Media, or a post handoff.
 - Restored direct image paste in the text-and-thread composer with an immediate local preview and ordered in-place upload instead of a media-picker modal; progress, cancellation, retry, validation feedback, bounded concurrency, destination changes, navigation, and teardown now preserve or safely discard transient uploads without leaking them into draft payloads.
 - Enforced the fixed media lifecycle as 14 days for unused temporary media and seven days in Trash, kept legacy cleanup fields as ignored compatibility inputs, computed protected references once per bounded batch, and added migration 078's media-leading index for constant-query cleanup on SQLite and PostgreSQL.

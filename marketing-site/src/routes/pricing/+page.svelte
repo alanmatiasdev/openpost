@@ -1,9 +1,12 @@
 <script lang="ts">
 	import Check from '@lucide/svelte/icons/check';
+	import ArrowRight from '@lucide/svelte/icons/arrow-right';
+	import { Button } from '$lib/components/ui/button';
 	import PricingShowcase from '../_components/PricingShowcase.svelte';
-	import { plans, siteUrl } from '../_marketing';
+	import { faqs, plans, siteUrl, supportMailUrl } from '../_marketing';
 
 	let billingPeriod = $state<'monthly' | 'annual'>('monthly');
+	const pricingFaqs = faqs.filter((faq) => faq.category === 'billing');
 
 	const sharedFeatures = [
 		'One composer with account-specific versions',
@@ -16,6 +19,10 @@
 
 	function comparisonPrice(plan: (typeof plans)[number]) {
 		return billingPeriod === 'annual' ? `${plan.annualPrice}/year` : `${plan.price}/month`;
+	}
+
+	function mailHref(href: string) {
+		return { href } as const;
 	}
 
 	const comparisonRows = [
@@ -69,7 +76,7 @@
 	</div>
 </section>
 
-<section class="section-pad" aria-labelledby="limits-title">
+<section id="limits" class="section-pad scroll-mt-20" aria-labelledby="limits-title">
 	<div class="marketing-shell">
 		<div class="limits-heading">
 			<p class="section-label">Exact limits</p>
@@ -118,6 +125,37 @@
 					{/each}
 				</tbody>
 			</table>
+		</div>
+	</div>
+</section>
+
+<section class="purchase-faq border-t" aria-labelledby="purchase-faq-title">
+	<div class="marketing-shell purchase-faq-grid">
+		<div>
+			<p class="section-label">Purchase questions</p>
+			<h2 id="purchase-faq-title">Know what happens after you choose.</h2>
+			<p>
+				The full FAQ covers provider access, privacy, failures, and self-hosting. These answers are
+				the ones that change a purchase decision.
+			</p>
+			<div class="purchase-faq-actions">
+				<Button href="/faq" variant="outline">
+					Read the full FAQ
+					<ArrowRight data-icon="inline-end" />
+				</Button>
+				<a class="focus-ring" {...mailHref(supportMailUrl)}>Ask a billing question</a>
+			</div>
+		</div>
+		<div class="purchase-faq-list">
+			{#each pricingFaqs as item (item.id)}
+				<details>
+					<summary class="focus-ring">
+						<span>{item.question}</span>
+						<span aria-hidden="true">+</span>
+					</summary>
+					<p>{item.answer}</p>
+				</details>
+			{/each}
 		</div>
 	</div>
 </section>
@@ -268,6 +306,83 @@
 		background: var(--card);
 	}
 
+	.purchase-faq {
+		padding-block: clamp(4rem, 8vw, 7rem);
+		background: color-mix(in oklch, var(--muted) 28%, var(--background));
+	}
+
+	.purchase-faq-grid {
+		display: grid;
+		gap: 3rem;
+	}
+
+	.purchase-faq h2 {
+		max-width: 16ch;
+		margin-top: 1rem;
+		font-size: clamp(2.2rem, 4vw, 3.8rem);
+		font-weight: 680;
+		line-height: 1;
+		letter-spacing: -0.038em;
+		text-wrap: balance;
+	}
+
+	.purchase-faq-grid > div:first-child > p:last-of-type {
+		max-width: 52ch;
+		margin-top: 1.25rem;
+		color: var(--muted-foreground);
+		line-height: 1.7;
+	}
+
+	.purchase-faq-actions {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.5rem 1.25rem;
+		margin-top: 1.5rem;
+	}
+
+	.purchase-faq-actions > a {
+		display: inline-flex;
+		min-height: 2.75rem;
+		align-items: center;
+		border-radius: 0.5rem;
+		color: var(--primary);
+		font-size: 0.82rem;
+		font-weight: 650;
+	}
+
+	.purchase-faq-list {
+		border-block: 1px solid var(--border);
+	}
+
+	.purchase-faq-list details + details {
+		border-top: 1px solid var(--border);
+	}
+
+	.purchase-faq-list summary {
+		display: flex;
+		min-height: 4rem;
+		cursor: pointer;
+		list-style: none;
+		align-items: center;
+		justify-content: space-between;
+		gap: 1rem;
+		border-radius: 0.5rem;
+		font-weight: 620;
+	}
+
+	.purchase-faq-list details[open] summary span:last-child {
+		transform: rotate(45deg);
+	}
+
+	.purchase-faq-list p {
+		max-width: 65ch;
+		padding: 0 2rem 1.5rem 0;
+		color: var(--muted-foreground);
+		font-size: 0.88rem;
+		line-height: 1.65;
+	}
+
 	.desktop-limits table {
 		width: 100%;
 		border-collapse: collapse;
@@ -323,6 +438,11 @@
 
 		.desktop-limits {
 			display: block;
+		}
+
+		.purchase-faq-grid {
+			grid-template-columns: minmax(18rem, 0.72fr) minmax(0, 1.28fr);
+			gap: clamp(3rem, 7vw, 7rem);
 		}
 	}
 </style>

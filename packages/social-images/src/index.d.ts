@@ -24,21 +24,30 @@ export interface SocialEntry {
   canonical: string;
   imageUrl: string;
   imageAlt: string;
+  priority?: string;
   subject?: string;
   platform?: string;
+}
+
+export interface MarketingRouteEntry extends SocialEntry {
+  priority: string;
 }
 
 export const marketingSiteUrl: "https://openpost.social";
 export const docsSiteUrl: "https://docs.openpost.social";
 export const socialRendererVersion: string;
-export const marketingSocialEntries: readonly SocialEntry[];
+export const marketingRouteManifest: readonly MarketingRouteEntry[];
+export const marketingSocialEntries: readonly MarketingRouteEntry[];
 export const docsSocialEntries: readonly SocialEntry[];
 
 export function socialImageUrl(entry: Pick<SocialEntry, "id">): string;
 export function resolveSocialImageEntry(id: string): SocialEntry;
 export function normalizeMarketingPath(pathname: string): string;
 export function canonicalMarketingUrl(pathname: string): string;
-export function resolveMarketingSocial(pathname: string): SocialEntry;
+export function resolveMarketingSocial(pathname: string): MarketingRouteEntry;
+export function marketingPrerenderEntries(
+  section: "/platforms" | "/compare" | "/tools",
+): { slug: string }[];
 export function docsRouteFromPage(page: string): string;
 export function docsImageKey(page: string): string;
 export function docsSectionForPage(page: string): string;

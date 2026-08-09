@@ -53,8 +53,7 @@ const toolPages = [
     slug: "multi-platform-character-counter",
     name: "Multi-platform character counter",
     title: "Free social media character counter - OpenPost",
-    description:
-      "Check one draft against the limits and counting rules for ten social networks.",
+    description: `Check one draft against the limits and counting rules for ${platformNames.length} social networks.`,
   },
   {
     slug: "post-preview-generator",
@@ -98,11 +97,24 @@ const staticMarketingEntries = [
     path: "/",
     key: "home",
     title: "OpenPost - The all-in-one content team for solo founders",
-    socialTitle: "Turn what you’re building into content. Publish it everywhere.",
+    socialTitle:
+      "Turn what you’re building into content. Publish it everywhere.",
     description:
       "OpenPost helps solo founders create, adapt, schedule, and track content from one workspace.",
     label: "The content team for companies of one",
     kind: "home",
+    priority: "1.0",
+  },
+  {
+    path: "/features",
+    key: "features",
+    title: "OpenPost features",
+    socialTitle: "One system for the whole publishing job.",
+    description:
+      "See OpenPost composing, scheduling, media, analytics, conversations, teams, automation, and self-hosting with current limits.",
+    label: "Product features",
+    kind: "workflow",
+    priority: "0.9",
   },
   {
     path: "/pricing",
@@ -113,6 +125,7 @@ const staticMarketingEntries = [
       "Compare managed OpenPost plans with clear limits for workspaces, accounts, posts, media, and seats.",
     label: "Managed plans",
     kind: "workflow",
+    priority: "0.9",
   },
   {
     path: "/platforms",
@@ -121,8 +134,9 @@ const staticMarketingEntries = [
     socialTitle: "Publish where your audience already is.",
     description:
       "See formats, account needs, limits, and live-test notes for every platform in OpenPost.",
-    label: "Ten publishing destinations",
+    label: `${platformNames.length} publishing destinations`,
     kind: "platforms",
+    priority: "0.9",
   },
   {
     path: "/compare",
@@ -133,6 +147,7 @@ const staticMarketingEntries = [
       "Compare OpenPost with established publishing tools using reviewed product facts.",
     label: "Honest comparisons",
     kind: "compare-index",
+    priority: "0.8",
   },
   {
     path: "/tools",
@@ -143,6 +158,18 @@ const staticMarketingEntries = [
       "Preview, write, prepare, edit, and plan social content in your browser.",
     label: "OpenPost free tools",
     kind: "tools-index",
+    priority: "0.8",
+  },
+  {
+    path: "/faq",
+    key: "faq",
+    title: "OpenPost FAQ",
+    socialTitle: "Know the boundary before you start.",
+    description:
+      "Answers about OpenPost setup, providers, billing, privacy, publishing failures, and self-hosting.",
+    label: "Frequently asked questions",
+    kind: "document",
+    priority: "0.7",
   },
   {
     path: "/security",
@@ -153,6 +180,18 @@ const staticMarketingEntries = [
       "See how OpenPost encrypts account keys, limits tool access, and protects sign-in sessions.",
     label: "Security",
     kind: "security",
+    priority: "0.7",
+  },
+  {
+    path: "/trust",
+    key: "trust",
+    title: "Managed service trust and data locations - OpenPost",
+    socialTitle: "Where managed OpenPost data is stored and processed.",
+    description:
+      "The reviewed data locations, service providers, international transfers, and human production-access facts for managed OpenPost.",
+    label: "Managed service trust register",
+    kind: "security",
+    priority: "0.6",
   },
   {
     path: "/open-source",
@@ -163,6 +202,7 @@ const staticMarketingEntries = [
       "Run the complete AGPL OpenPost service yourself or use the managed product.",
     label: "Open source",
     kind: "open-source",
+    priority: "0.7",
   },
   {
     path: "/changelog",
@@ -173,6 +213,7 @@ const staticMarketingEntries = [
       "Read recent product, publishing, security, OpenPost Image Editor, CLI, and MCP changes.",
     label: "Changelog",
     kind: "document",
+    priority: "0.6",
   },
   {
     path: "/privacy",
@@ -183,6 +224,7 @@ const staticMarketingEntries = [
       "How OpenPost collects, uses, shares, protects, exports, and deletes hosted-service data.",
     label: "Legal",
     kind: "document",
+    priority: "0.4",
   },
   {
     path: "/terms",
@@ -193,6 +235,7 @@ const staticMarketingEntries = [
       "Terms for hosted accounts, plans, connected networks, publishing, and acceptable use.",
     label: "Legal",
     kind: "document",
+    priority: "0.4",
   },
   {
     path: "/refunds",
@@ -203,6 +246,7 @@ const staticMarketingEntries = [
       "How to cancel, request a refund, report a billing error, and use mandatory consumer rights.",
     label: "Legal",
     kind: "document",
+    priority: "0.4",
   },
 ];
 
@@ -216,6 +260,7 @@ const platformEntries = platformNames.map(([slug, name]) => ({
   kind: "platform",
   subject: name,
   platform: slug,
+  priority: "0.7",
 }));
 
 const comparisonEntries = comparisonNames.map(([slug, name]) => ({
@@ -228,6 +273,7 @@ const comparisonEntries = comparisonNames.map(([slug, name]) => ({
   label: "Reviewed comparison",
   kind: "comparison",
   subject: name,
+  priority: "0.6",
 }));
 
 const toolEntries = toolPages.map((tool) => ({
@@ -239,21 +285,42 @@ const toolEntries = toolPages.map((tool) => ({
   label: "Free browser tool",
   kind: "tool",
   subject: tool.name,
+  priority: "0.6",
 }));
 
-export const marketingSocialEntries = Object.freeze(
-  [...staticMarketingEntries, ...platformEntries, ...comparisonEntries, ...toolEntries].map(
-    (entry) => {
-      const resolved = {
-        ...entry,
-        id: `marketing:${entry.key}`,
-        canonical: canonicalMarketingUrl(entry.path),
-        imageAlt: `${entry.socialTitle} OpenPost social preview.`,
-      };
-      return { ...resolved, imageUrl: socialImageUrl(resolved) };
-    },
-  ),
+export const marketingRouteManifest = Object.freeze(
+  [
+    ...staticMarketingEntries,
+    ...platformEntries,
+    ...comparisonEntries,
+    ...toolEntries,
+  ].map((entry) => {
+    const resolved = {
+      ...entry,
+      id: `marketing:${entry.key}`,
+      canonical: canonicalMarketingUrl(entry.path),
+      imageAlt: `${entry.socialTitle} OpenPost social preview.`,
+    };
+    return { ...resolved, imageUrl: socialImageUrl(resolved) };
+  }),
 );
+
+export const marketingSocialEntries = marketingRouteManifest;
+
+const prerenderSections = new Set(["/platforms", "/compare", "/tools"]);
+
+export function marketingPrerenderEntries(section) {
+  const normalizedSection = normalizeMarketingPath(section);
+  if (!prerenderSections.has(normalizedSection)) {
+    throw new Error(`Unknown marketing prerender section: ${section}`);
+  }
+  const prefix = `${normalizedSection}/`;
+  return marketingRouteManifest.flatMap((entry) => {
+    if (!entry.path.startsWith(prefix)) return [];
+    const slug = entry.path.slice(prefix.length);
+    return slug && !slug.includes("/") ? [{ slug }] : [];
+  });
+}
 
 const marketingByPath = new Map(
   marketingSocialEntries.map((entry) => [entry.path, entry]),
@@ -261,7 +328,10 @@ const marketingByPath = new Map(
 
 export function normalizeMarketingPath(pathname) {
   if (!pathname || pathname === "/") return "/";
-  return `/${pathname.split("?")[0].split("#")[0].replace(/^\/+|\/+$/g, "")}`;
+  return `/${pathname
+    .split("?")[0]
+    .split("#")[0]
+    .replace(/^\/+|\/+$/g, "")}`;
 }
 
 export function canonicalMarketingUrl(pathname) {
@@ -334,12 +404,14 @@ export function docsDescriptionForPage(page) {
       "Operate OpenPost with clear health checks, logs, backups, upgrades, and recovery steps.",
     "Self-hosting":
       "Run OpenPost as one Go service with SQLite and local media by default.",
-    "CLI guide": "Use OpenPost from a terminal, script, scheduled job, or CI workflow.",
+    "CLI guide":
+      "Use OpenPost from a terminal, script, scheduled job, or CI workflow.",
     "MCP guide":
       "Connect AI tools to OpenPost without sharing social account credentials.",
     "Developer docs":
       "Understand the OpenPost architecture, API, tests, adapters, jobs, and release workflow.",
-    Reference: "Look up OpenPost API, CLI, configuration, and deployment details.",
+    Reference:
+      "Look up OpenPost API, CLI, configuration, and deployment details.",
   };
   return descriptions[section];
 }
@@ -370,7 +442,10 @@ export const docsSocialEntries = Object.freeze(
 );
 
 const socialById = new Map(
-  [...marketingSocialEntries, ...docsSocialEntries].map((entry) => [entry.id, entry]),
+  [...marketingSocialEntries, ...docsSocialEntries].map((entry) => [
+    entry.id,
+    entry,
+  ]),
 );
 
 export function resolveSocialImageEntry(id) {

@@ -9,18 +9,19 @@
   import { soundPreferences } from "$lib/stores/sound-preferences.svelte";
   import {
     developerDocsUrl,
+    discordCommunityUrl,
     platforms,
     resourceItems,
     selfHostingDocsUrl,
     userDocsUrl,
   } from "../_marketing";
 
-  const discordCommunityUrl = "https://discord.gg/u2QwukmY4W";
   const groups = [
     {
       title: "Product",
       links: [
         { label: "Overview", href: "/#product" },
+        { label: "Features", href: "/features" },
         { label: "Platforms", href: "/platforms" },
         { label: "Pricing", href: "/pricing" },
         { label: "Free tools", href: "/tools" },
@@ -83,7 +84,7 @@
           GitHub source
         </a>
         <a
-          href={discordCommunityUrl}
+          {...externalHref(discordCommunityUrl)}
           target="_blank"
           rel="noreferrer"
           class="focus-ring text-muted-foreground hover:text-foreground inline-flex min-h-11 items-center gap-2 rounded-md text-sm font-medium transition-colors"

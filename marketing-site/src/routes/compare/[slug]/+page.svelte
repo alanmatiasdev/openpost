@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { resolve } from "$app/paths";
   import { page } from "$app/state";
   import { error } from "@sveltejs/kit";
   import {
@@ -9,6 +10,7 @@
     Scale,
   } from "@lucide/svelte";
   import { Button } from "$lib/components/ui/button";
+  import ClaimEvidence from "../_components/ClaimEvidence.svelte";
   import {
     comparisons,
     getComparison,
@@ -26,6 +28,19 @@
   const otherComparisons = $derived(
     comparisons.filter((item) => item.slug !== comparison.slug).slice(0, 3),
   );
+
+  function formatDate(value: string) {
+    return new Intl.DateTimeFormat("en", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      timeZone: "UTC",
+    }).format(new Date(`${value}T00:00:00Z`));
+  }
+
+  function externalHref(href: string) {
+    return { href: new URL(href).href } as const;
+  }
 </script>
 
 <svelte:head>
@@ -40,7 +55,7 @@
 <section class="border-b py-16 sm:py-24">
   <div class="marketing-shell">
     <a
-      href="/compare"
+      href={resolve("/compare")}
       class="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
     >
       <ArrowLeft class="size-4" />
@@ -67,7 +82,7 @@
           {comparison.verdict}
         </p>
         <p class="mt-5 border-t pt-4 font-mono text-xs text-muted-foreground">
-          Reviewed {comparison.reviewedAt}
+          Reviewed {formatDate(comparison.reviewedAt)} · Recheck by {formatDate(comparison.reviewDueAt)}
         </p>
       </aside>
     </div>
@@ -123,6 +138,7 @@
               <p class="mt-2 text-sm leading-6 text-muted-foreground">
                 {row.openpost}
               </p>
+              <ClaimEvidence evidence={row.evidence.openpost} area={row.area} />
             </div>
             <div>
               <p class="text-xs font-semibold text-primary">
@@ -131,6 +147,7 @@
               <p class="mt-2 text-sm leading-6 text-muted-foreground">
                 {row.competitor}
               </p>
+              <ClaimEvidence evidence={row.evidence.competitor} area={row.area} />
             </div>
           </div>
         </article>
@@ -157,11 +174,17 @@
               >
               <td
                 class="px-5 py-5 align-top text-sm leading-6 text-muted-foreground"
-                >{row.openpost}</td
+              >
+                {row.openpost}
+                <ClaimEvidence evidence={row.evidence.openpost} area={row.area} />
+              </td
               >
               <td
                 class="px-5 py-5 align-top text-sm leading-6 text-muted-foreground"
-                >{row.competitor}</td
+              >
+                {row.competitor}
+                <ClaimEvidence evidence={row.evidence.competitor} area={row.area} />
+              </td
               >
             </tr>
           {/each}
@@ -209,15 +232,15 @@
         Check the current product pages.
       </h2>
       <p class="mt-4 text-sm leading-6 text-muted-foreground">
-        No affiliate links. Competitor facts were reviewed on {comparison.reviewedAt};
-        prices and features can change.
+        No affiliate links. Competitor facts were reviewed on {formatDate(comparison.reviewedAt)}
+        and must be checked again by {formatDate(comparison.reviewDueAt)}. {comparison.evidenceQualifier}
       </p>
     </div>
     <ul class="divide-y border-y">
       {#each comparison.sources as source (source.href)}
         <li>
           <a
-            href={source.href}
+            {...externalHref(source.href)}
             target="_blank"
             rel="noreferrer"
             class="group flex items-center justify-between gap-4 p-5 hover:bg-muted/25"
@@ -243,7 +266,7 @@
         </h2>
       </div>
       <a
-        href="/compare"
+        href={resolve("/compare")}
         class="inline-flex items-center gap-2 text-sm font-medium text-primary"
       >
         All comparisons <ArrowRight class="size-4" />
@@ -254,7 +277,7 @@
     >
       {#each otherComparisons as item (item.slug)}
         <a
-          href={`/compare/${item.slug}`}
+          href={resolve(`/compare/${item.slug}`)}
           class="p-5 transition hover:bg-muted/25"
         >
           <p class="text-xs text-primary">{item.category}</p>

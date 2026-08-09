@@ -4,13 +4,16 @@
   "type": "module",
   "scripts": {
     "sync:assets": "bun ../scripts/sync-assets.mjs --surface marketing",
-    "dev": "bun run sync:assets && vite dev --host 0.0.0.0 --port 4322",
-    "build": "bun run sync:assets && vite build && bun run build:functions && bun scripts/check-routing-output.mjs && bun scripts/check-social-metadata-output.mjs",
+    "sync:404": "bun scripts/sync-static-404.mjs",
+    "check:404": "bun scripts/sync-static-404.mjs --check",
+    "check:content": "bun scripts/check-comparison-evidence.mjs",
+    "dev": "bun run sync:assets && bun run sync:404 && vite dev --host 0.0.0.0 --port 4322",
+    "build": "bun run sync:assets && bun run sync:404 && vite build && bun run build:functions && bun scripts/check-routing-output.mjs && bun scripts/check-social-metadata-output.mjs",
     "build:functions": "bun run check:functions && wrangler pages functions build functions --outdir .wrangler/functions --project-directory .",
     "check:functions": "tsc --noEmit -p tsconfig.functions.json",
     "check:routing": "bun scripts/check-routing-output.mjs",
     "preview": "vite preview --host 0.0.0.0 --port 4322",
-    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json"
+    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json && bun run check:404 && bun run check:content"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260801.1",

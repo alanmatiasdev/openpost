@@ -224,6 +224,12 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 					</details>
 				</ScrollReveal>
 			{/each}
+			<div class="pt-6 text-right">
+				<Button href="/faq" variant="outline">
+					Read every question
+					<ArrowRight data-icon="inline-end" />
+				</Button>
+			</div>
 		</div>
 	</div>
 </section>

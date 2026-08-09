@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { marketingErrorRecovery } from '../src/routes/_error-recovery.ts';
 
 const siteRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const outputRoot = path.join(siteRoot, 'dist');
@@ -20,8 +21,13 @@ assert.equal(
 const notFound = await readFile(path.join(outputRoot, '404.html'), 'utf8');
 assert.match(notFound, /<title>Page not found · OpenPost<\/title>/);
 assert.match(notFound, /<meta name="robots" content="noindex" \/>/);
-assert.match(notFound, /<h1>Page not found<\/h1>/);
-assert.match(notFound, /<a href="\/">Return to OpenPost<\/a>/);
+assert.ok(notFound.includes(`<h1>${marketingErrorRecovery.title}</h1>`));
+assert.ok(notFound.includes(marketingErrorRecovery.description));
+assert.ok(notFound.includes(marketingErrorRecovery.primary.label));
+for (const route of marketingErrorRecovery.routes) {
+  assert.ok(notFound.includes(`href="${route.href}"`));
+  assert.ok(notFound.includes(route.label));
+}
 assert.doesNotMatch(
 	notFound,
 	/(?:href|src)="\.\/_app\//,

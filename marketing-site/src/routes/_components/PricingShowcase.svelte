@@ -1,7 +1,8 @@
 <script lang="ts">
+	import { resolve } from '$app/paths';
 	import Check from '@lucide/svelte/icons/check';
 	import { Button } from '$lib/components/ui/button';
-	import { appUrl, managedAccessSummary, plans } from '../_marketing';
+	import { appUrl, billingSettingsUrl, managedAccessSummary, plans } from '../_marketing';
 	import AnimatedPrice from './AnimatedPrice.svelte';
 
 	interface Props {
@@ -20,6 +21,22 @@
 			? numericPrice(plan.price)
 			: numericPrice(plan.annualPrice) / 12;
 	}
+
+	function renewalPrice(plan: (typeof plans)[number]) {
+		return billingPeriod === 'annual'
+			? `${plan.annualPrice} per year`
+			: `${plan.price} per month`;
+	}
+
+	function externalHref(href: string) {
+		return { href } as const;
+	}
+
+	const billingAnnouncement = $derived(
+		billingPeriod === 'annual'
+			? 'Yearly billing selected. Monthly equivalents range from $12.50 to $165.83, with the yearly total shown on each plan.'
+			: 'Monthly billing selected. Prices range from $15 to $199 per month.'
+	);
 </script>
 
 <div class:pricing-compact={compact} class="pricing-showcase">
@@ -45,11 +62,24 @@
 			</Button>
 		</div>
 	</div>
-	<p class="sr-only" aria-live="polite">
-		{billingPeriod === 'annual'
-			? 'Annual billing selected. Prices show the monthly equivalent.'
-			: 'Monthly billing selected.'}
+	<p class="sr-only" role="status" aria-live="polite" aria-atomic="true">
+		{billingAnnouncement}
 	</p>
+
+	<div class="purchase-summary" aria-label="Managed plan purchase terms">
+		<p>
+			<strong>Before checkout:</strong> a card is required for the 14-day trial. OpenPost shows
+			the renewal date and price before you start. Cancel or change the subscription from
+			<a class="focus-ring" {...externalHref(billingSettingsUrl)}>Billing settings</a> before
+			renewal.
+		</p>
+		<p>
+			Paddle is the Merchant of Record and calculates applicable taxes at checkout.
+			<a class="focus-ring" href={resolve('/refunds')}>Refund policy</a>
+			<span aria-hidden="true">·</span>
+			<a class="focus-ring" href={resolve('/terms')}>Billing terms</a>
+		</p>
+	</div>
 
 	<div class="pricing-grid">
 		{#each plans as plan (plan.id)}
@@ -80,9 +110,13 @@
 					href={`${appUrl}/register?plan=${plan.id}&billing_period=${billingPeriod}`}
 					variant={plan.featured ? 'default' : 'outline'}
 					class="w-full"
+					aria-describedby={`plan-${plan.id}-purchase-note`}
 				>
 					Start {plan.name}
 				</Button>
+				<p id={`plan-${plan.id}-purchase-note`} class="purchase-note">
+					Card required. After 14 days: {renewalPrice(plan)} until canceled.
+				</p>
 			</article>
 		{/each}
 	</div>
@@ -131,6 +165,28 @@
 		margin-left: 0.2rem;
 		font-size: 0.68rem;
 		opacity: 0.72;
+	}
+
+	.purchase-summary {
+		display: grid;
+		gap: 0.45rem;
+		padding: 1rem;
+		border: 1px solid var(--border);
+		border-radius: 0.75rem;
+		background: color-mix(in oklch, var(--muted) 38%, var(--background));
+		color: var(--muted-foreground);
+		font-size: 0.8rem;
+		line-height: 1.55;
+	}
+
+	.purchase-summary a {
+		display: inline-flex;
+		min-height: 2.75rem;
+		align-items: center;
+		margin-inline: 0.25rem;
+		border-radius: 0.5rem;
+		color: var(--foreground);
+		font-weight: 620;
 	}
 
 	.pricing-grid {
@@ -218,6 +274,14 @@
 		margin-top: 0.35rem;
 		color: var(--muted-foreground);
 		font-size: 0.72rem;
+	}
+
+	.purchase-note {
+		margin-top: 0.75rem;
+		color: var(--muted-foreground);
+		font-size: 0.7rem;
+		line-height: 1.45;
+		text-align: center;
 	}
 
 	.pricing-card ul {

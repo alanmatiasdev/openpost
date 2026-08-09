@@ -1038,21 +1038,21 @@ Candidate decisions under this registry:
 
 ### MKT-001 — Create a complete `/features` hub from verified capabilities
 
-- [ ] **Problem — Supplied audit:** strong composer demos, screenshots, platform detail pages, tools, and CTAs exist, but scheduling, analytics, inbox, teams, automation, and editing are scattered. Feature benefits, limits, and proof are inconsistent.
+- [x] **Problem — Supplied audit:** strong composer demos, screenshots, platform detail pages, tools, and CTAs exist, but scheduling, analytics, inbox, teams, automation, and editing are scattered. Feature benefits, limits, and proof are inconsistent.
 - **Fix:** build a concise hub that links feature-specific pages/sections; state user outcome, supported scope, provider/plan limits, screenshot/demo proof, and next action; derive mutable capability facts from canonical catalogues.
 - **Done when:** every promoted feature has one discoverable canonical explanation, factual proof, relevant caveats, and cross-links to docs/pricing; no unsupported roadmap item is presented as live.
 - **Evidence:** marketing route inventory; no complete `/features` route in the audited baseline.
 
 ### MKT-002 — Put claim-level evidence and review dates on comparisons
 
-- [ ] **Problem — Supplied audit:** comparison pages are unusually fair and responsive, but factual competitor rows rely on a generic source block. Switcher proof is unverified and pricing comparisons are largely prose.
+- [x] **Problem — Supplied audit:** comparison pages are unusually fair and responsive, but factual competitor rows rely on a generic source block. Switcher proof is unverified and pricing comparisons are largely prose.
 - **Fix:** attach source URL, reviewed-on date, region/tier qualifier, and claim owner to each mutable row; distinguish direct evidence from interpretation; add side-by-side pricing/features only where like-for-like facts can be verified.
 - **Done when:** every competitor fact can be audited at row level, stale review dates are visible/fail a content check, strengths remain acknowledged, and any interactive switcher is browser-verified.
 - **Evidence:** `marketing-site/src/routes/compare` and supplied comparison review.
 
 ### PRICE-002 — Improve pricing decision support and accessibility
 
-- [ ] **Problem — Supplied audit:** plan names, monthly/annual prices, trial terms, Founder recommendation, and limits exist, but “best for” guidance is thin; refunds and Paddle/Merchant-of-Record reassurance appear too far from the choice; the full card grid is one `aria-live` region.
+- [x] **Problem — Supplied audit:** plan names, monthly/annual prices, trial terms, Founder recommendation, and limits exist, but “best for” guidance is thin; refunds and Paddle/Merchant-of-Record reassurance appear too far from the choice; the full card grid is one `aria-live` region.
 - **Fix:** add concise audience/outcome guidance per plan; place trial end/charge behavior, cancellation, refund, tax/MoR, and billing-management links near CTAs; limit live announcements to the changed price text and preserve focus when the billing period changes.
 - **Done when:** users can explain price, billing frequency, trial outcome, included seats/limits, and management path before checkout; screen readers receive one useful price-change announcement; all five CTA paths work.
 - **Evidence:** `marketing-site/src/routes/_components/PricingShowcase.svelte`, `marketing-site/src/routes/pricing/+page.svelte`.
@@ -1065,14 +1065,14 @@ Candidate decisions under this registry:
 
 ### FAQ-001 — Expose the full useful FAQ and a contextual contact path
 
-- [ ] **Problem — Current source/supplied audit:** seven useful answers exist in source, but the homepage renders only four; Pricing has no purchase FAQ or clear “all questions” route. Search/TOC is unnecessary until the collection grows.
+- [x] **Problem — Current source/supplied audit:** seven useful answers exist in source, but the homepage renders only four; Pricing has no purchase FAQ or clear “all questions” route. Search/TOC is unnecessary until the collection grows.
 - **Fix:** add a dedicated FAQ route or a clearly linked complete section; group by setup, providers, billing, privacy, and self-hosting; put purchase-relevant answers on/near Pricing; end with a support/contact action.
 - **Done when:** all canonical answers are reachable, duplicated answers are sourced from one data set, structured data matches visible content if used, and contact is contextual.
 - **Evidence:** `marketing-site/src/routes/_marketing.ts:1345`, `marketing-site/src/routes/+page.svelte:202`, `marketing-site/src/routes/pricing/+page.svelte`.
 
 ### MKT-404-001 — Unify and improve marketing not-found recovery
 
-- [ ] **Problem — Supplied/current source:** the static 404 has a title, explanation, and home link, but lacks brand mark, docs/support/search recovery, and personality; static-host and route-level errors differ.
+- [x] **Problem — Supplied/current source:** the static 404 has a title, explanation, and home link, but lacks brand mark, docs/support/search recovery, and personality; static-host and route-level errors differ.
 - **Fix:** create one branded error design that can render as static host fallback and Svelte error boundary; add home, docs, support, and relevant navigation; add search only if MKT-001/FAQ scope justifies it.
 - **Done when:** unknown static and dynamic routes have equivalent content/status, no broken app dependency, and responsive/a11y checks pass.
 - **Evidence:** `marketing-site/static/404.html:7`, dynamic routes under `marketing-site/src/routes/*/[slug]`.
