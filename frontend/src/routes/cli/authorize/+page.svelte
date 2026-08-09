@@ -11,10 +11,10 @@
 	import { client } from '$lib/api/client';
 	import { auth } from '$lib/stores/auth';
 	import { m } from '$lib/paraglide/messages';
-	import LoaderIcon from 'lucide-svelte/icons/loader-2';
-	import TerminalIcon from 'lucide-svelte/icons/terminal';
-	import ShieldCheckIcon from 'lucide-svelte/icons/shield-check';
-	import XIcon from 'lucide-svelte/icons/x';
+	import LoaderIcon from '@lucide/svelte/icons/loader-2';
+	import TerminalIcon from '@lucide/svelte/icons/terminal';
+	import ShieldCheckIcon from '@lucide/svelte/icons/shield-check';
+	import XIcon from '@lucide/svelte/icons/x';
 
 	type CLIAuthSession = {
 		client_name: string;

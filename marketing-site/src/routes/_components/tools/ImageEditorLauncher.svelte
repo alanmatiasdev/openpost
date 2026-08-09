@@ -6,7 +6,7 @@
     MonitorSmartphone,
     Palette,
     ShieldCheck,
-  } from "lucide-svelte";
+  } from "@lucide/svelte";
   import { appUrl } from "../../_marketing";
 
   const imageEditorURL = `${appUrl}/image-editor?utm_source=openpost.social&utm_medium=free-tool&utm_campaign=public-image-editor`;

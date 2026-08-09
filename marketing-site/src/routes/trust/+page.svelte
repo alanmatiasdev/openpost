@@ -1,7 +1,7 @@
 <script lang="ts">
   import { resolve } from "$app/paths";
   import { managedService } from "@openpost/legal-policy";
-  import { ExternalLink, Mail, ShieldCheck } from "lucide-svelte";
+  import { ExternalLink, Mail, ShieldCheck } from "@lucide/svelte";
   import { siteUrl } from "../_marketing";
 
   type Provider = (typeof managedService.providers)[number];

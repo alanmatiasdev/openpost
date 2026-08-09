@@ -9,7 +9,7 @@
 	import * as RadioGroup from '$lib/components/ui/radio-group';
 	import * as Select from '$lib/components/ui/select';
 	import { m } from '$lib/paraglide/messages';
-	import Repeat2Icon from 'lucide-svelte/icons/repeat-2';
+	import Repeat2Icon from '@lucide/svelte/icons/repeat-2';
 
 	type RepostOverride = components['schemas']['Override'];
 	type RepostRule = components['schemas']['Rule'];

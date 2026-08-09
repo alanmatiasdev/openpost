@@ -6,9 +6,9 @@
 	import { m } from '$lib/paraglide/messages';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import * as Avatar from '$lib/components/ui/avatar';
-	import CheckIcon from 'lucide-svelte/icons/check';
-	import PlusIcon from 'lucide-svelte/icons/plus';
-	import SettingsIcon from 'lucide-svelte/icons/settings';
+	import CheckIcon from '@lucide/svelte/icons/check';
+	import PlusIcon from '@lucide/svelte/icons/plus';
+	import SettingsIcon from '@lucide/svelte/icons/settings';
 	import type { Workspace } from '$lib/api/client';
 	import { getOptionalUnsavedChanges } from '$lib/unsaved-changes.svelte';
 	import { workspaceColor } from '$lib/workspace-color';

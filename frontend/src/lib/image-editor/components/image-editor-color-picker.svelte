@@ -3,8 +3,8 @@
 	import { Input } from '$lib/components/ui/input';
 	import { Button } from '$lib/components/ui/button';
 	import { Slider } from '$lib/components/ui/slider';
-	import PipetteIcon from 'lucide-svelte/icons/pipette';
-	import CheckIcon from 'lucide-svelte/icons/check';
+	import PipetteIcon from '@lucide/svelte/icons/pipette';
+	import CheckIcon from '@lucide/svelte/icons/check';
 	import { hslToHex, hexToRGB, normalizeHex, rgbToHSL, rgbToHex } from '../color';
 	import type { ImageEditorHSL, ImageEditorRGB } from '../color';
 	import type { ImageEditorBrandColor } from '../types';

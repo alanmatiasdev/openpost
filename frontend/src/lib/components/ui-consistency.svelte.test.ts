@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
-import ImageIcon from 'lucide-svelte/icons/image';
+import ImageIcon from '@lucide/svelte/icons/image';
 import AppToast from './app-toast.svelte';
 import { Toaster } from './ui/sonner';
 import DestructiveConfirmDialog from './destructive-confirm-dialog.svelte';

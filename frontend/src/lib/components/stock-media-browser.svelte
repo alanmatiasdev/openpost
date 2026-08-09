@@ -15,12 +15,12 @@
 		type StockAsset,
 		type StockProvider
 	} from '$lib/video-editor/api';
-	import ChevronDownIcon from 'lucide-svelte/icons/chevron-down';
-	import ImageIcon from 'lucide-svelte/icons/image';
-	import LoaderIcon from 'lucide-svelte/icons/loader-2';
-	import SearchIcon from 'lucide-svelte/icons/search';
-	import SlidersIcon from 'lucide-svelte/icons/sliders-horizontal';
-	import VideoIcon from 'lucide-svelte/icons/video';
+	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
+	import ImageIcon from '@lucide/svelte/icons/image';
+	import LoaderIcon from '@lucide/svelte/icons/loader-2';
+	import SearchIcon from '@lucide/svelte/icons/search';
+	import SlidersIcon from '@lucide/svelte/icons/sliders-horizontal';
+	import VideoIcon from '@lucide/svelte/icons/video';
 
 	interface Props {
 		accept?: 'photo' | 'video' | 'both';

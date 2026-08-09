@@ -9,10 +9,10 @@
 	import InlineNotice from '$lib/components/inline-notice.svelte';
 	import PageLoading from '$lib/components/page-loading.svelte';
 	import SectionHeader from '$lib/components/section-header.svelte';
-	import BuildingIcon from 'lucide-svelte/icons/building-2';
-	import LoaderIcon from 'lucide-svelte/icons/loader-2';
-	import PlusIcon from 'lucide-svelte/icons/plus';
-	import ShieldCheckIcon from 'lucide-svelte/icons/shield-check';
+	import BuildingIcon from '@lucide/svelte/icons/building-2';
+	import LoaderIcon from '@lucide/svelte/icons/loader-2';
+	import PlusIcon from '@lucide/svelte/icons/plus';
+	import ShieldCheckIcon from '@lucide/svelte/icons/shield-check';
 	import { m } from '$lib/paraglide/messages';
 	import { getOptionalUnsavedChanges } from '$lib/unsaved-changes.svelte';
 

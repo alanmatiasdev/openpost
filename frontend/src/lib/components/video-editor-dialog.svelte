@@ -11,8 +11,8 @@
 	import { firstPlatformVideoCodec } from '$lib/video/support';
 	import type { VideoMetadata } from '$lib/video/types';
 	import VideoCropOverlay from './video-crop-overlay.svelte';
-	import LoaderIcon from 'lucide-svelte/icons/loader-2';
-	import ScissorsIcon from 'lucide-svelte/icons/scissors';
+	import LoaderIcon from '@lucide/svelte/icons/loader-2';
+	import ScissorsIcon from '@lucide/svelte/icons/scissors';
 
 	interface Props {
 		open?: boolean;

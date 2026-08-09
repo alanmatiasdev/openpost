@@ -6,8 +6,8 @@
     previewPlatforms,
     type PreviewPlatform,
   } from "@openpost/social-preview";
-  import Check from "lucide-svelte/icons/check";
-  import ImageIcon from "lucide-svelte/icons/image";
+  import Check from "@lucide/svelte/icons/check";
+  import ImageIcon from "@lucide/svelte/icons/image";
   import PlatformIcon from "$lib/components/platform-icon.svelte";
   import { Button } from "$lib/components/ui/button";
   import { Textarea } from "$lib/components/ui/textarea";

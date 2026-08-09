@@ -19,7 +19,7 @@
 	import ImageEditorShell from '$lib/image-editor/components/image-editor-shell.svelte';
 	import { auth } from '$lib/stores/auth';
 	import { workspaceCtx } from '$lib/stores/workspace.svelte';
-	import LoaderIcon from 'lucide-svelte/icons/loader-2';
+	import LoaderIcon from '@lucide/svelte/icons/loader-2';
 	import { m } from '$lib/paraglide/messages';
 	import { startImageEditorMetric } from '$lib/image-editor/telemetry';
 	import { editorHandoffReturnURL } from '$lib/editor-handoff';

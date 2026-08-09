@@ -1,6 +1,6 @@
 <script lang="ts">
-	import LoaderIcon from 'lucide-svelte/icons/loader-2';
-	import CheckIcon from 'lucide-svelte/icons/check';
+	import LoaderIcon from '@lucide/svelte/icons/loader-2';
+	import CheckIcon from '@lucide/svelte/icons/check';
 	import { Button } from '$lib/components/ui/button';
 	import { Slider } from '$lib/components/ui/slider';
 	import { getAuthenticatedMediaByID } from '$lib/media-url';

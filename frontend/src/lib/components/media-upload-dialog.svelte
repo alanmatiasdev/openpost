@@ -5,10 +5,10 @@
 	import MediaAcquisitionPanel from '$lib/components/media-acquisition-panel.svelte';
 	import type { MediaUploadResult } from '$lib/media-upload-client';
 	import type { VideoConstraint } from '$lib/video/types';
-	import CameraIcon from 'lucide-svelte/icons/camera';
-	import ImageIcon from 'lucide-svelte/icons/image';
-	import LibraryIcon from 'lucide-svelte/icons/library';
-	import UploadIcon from 'lucide-svelte/icons/upload';
+	import CameraIcon from '@lucide/svelte/icons/camera';
+	import ImageIcon from '@lucide/svelte/icons/image';
+	import LibraryIcon from '@lucide/svelte/icons/library';
+	import UploadIcon from '@lucide/svelte/icons/upload';
 	import { m } from '$lib/paraglide/messages';
 
 	type SourceMode = 'device' | 'camera' | 'stock';

@@ -17,9 +17,9 @@ FORM: Settings surface; no technical cache names, promotional cards, or automati
 	import type { ModelCacheMetadata } from '$lib/video-editor/types';
 	import { formatBytes } from '$lib/video-editor/project';
 	import { m } from '$lib/paraglide/messages';
-	import ArrowLeftIcon from 'lucide-svelte/icons/arrow-left';
-	import LoaderIcon from 'lucide-svelte/icons/loader-2';
-	import TrashIcon from 'lucide-svelte/icons/trash-2';
+	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
+	import LoaderIcon from '@lucide/svelte/icons/loader-2';
+	import TrashIcon from '@lucide/svelte/icons/trash-2';
 
 	let config = $state<VideoEditorConfig | null>(null);
 	let cached = $state<ModelCacheMetadata[]>([]);

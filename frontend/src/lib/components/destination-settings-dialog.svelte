@@ -10,7 +10,7 @@
 	import DestinationOptionCombobox from './destination-option-combobox.svelte';
 	import { getPlatformName } from '$lib/utils';
 	import { m } from '$lib/paraglide/messages';
-	import RotateCcwIcon from 'lucide-svelte/icons/rotate-ccw';
+	import RotateCcwIcon from '@lucide/svelte/icons/rotate-ccw';
 	import { onDestroy } from 'svelte';
 	import InlineNotice from './inline-notice.svelte';
 	import PlatformIcon from './platform-icon.svelte';

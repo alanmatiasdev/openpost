@@ -1,7 +1,7 @@
 <script lang="ts">
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
-	import LanguagesIcon from 'lucide-svelte/icons/languages';
-	import CheckIcon from 'lucide-svelte/icons/check';
+	import LanguagesIcon from '@lucide/svelte/icons/languages';
+	import CheckIcon from '@lucide/svelte/icons/check';
 	import { m } from '$lib/paraglide/messages';
 	import { locales, type Locale } from '$lib/paraglide/runtime';
 	import { getCurrentLocale, localeLabels, switchLocale } from '$lib/i18n';

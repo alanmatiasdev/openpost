@@ -8,7 +8,7 @@
 	import InlineNotice from '$lib/components/inline-notice.svelte';
 	import StandaloneShell from '$lib/components/standalone-shell.svelte';
 	import { m } from '$lib/paraglide/messages';
-	import LoaderIcon from 'lucide-svelte/icons/loader-2';
+	import LoaderIcon from '@lucide/svelte/icons/loader-2';
 
 	const instance = instanceStore();
 

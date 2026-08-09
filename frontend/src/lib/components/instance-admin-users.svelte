@@ -7,12 +7,12 @@
 		type Updater,
 		type VisibilityState
 	} from '@tanstack/table-core';
-	import CheckIcon from 'lucide-svelte/icons/check';
-	import ChevronDownIcon from 'lucide-svelte/icons/chevron-down';
-	import CopyIcon from 'lucide-svelte/icons/copy';
-	import LoaderIcon from 'lucide-svelte/icons/loader-2';
-	import SearchIcon from 'lucide-svelte/icons/search';
-	import UserRoundIcon from 'lucide-svelte/icons/user-round';
+	import CheckIcon from '@lucide/svelte/icons/check';
+	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
+	import CopyIcon from '@lucide/svelte/icons/copy';
+	import LoaderIcon from '@lucide/svelte/icons/loader-2';
+	import SearchIcon from '@lucide/svelte/icons/search';
+	import UserRoundIcon from '@lucide/svelte/icons/user-round';
 	import type { components } from '$lib/api/types';
 	import { client } from '$lib/api/client';
 	import EmptyState from '$lib/components/empty-state.svelte';

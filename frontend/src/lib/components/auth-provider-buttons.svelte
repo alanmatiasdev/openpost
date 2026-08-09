@@ -4,8 +4,8 @@
 	import { IS_CAPACITOR } from '$lib/env';
 	import type { OIDCProvider } from '$lib/api/client';
 	import { m } from '$lib/paraglide/messages';
-	import BuildingIcon from 'lucide-svelte/icons/building-2';
-	import LoaderIcon from 'lucide-svelte/icons/loader-2';
+	import BuildingIcon from '@lucide/svelte/icons/building-2';
+	import LoaderIcon from '@lucide/svelte/icons/loader-2';
 
 	let {
 		providers,

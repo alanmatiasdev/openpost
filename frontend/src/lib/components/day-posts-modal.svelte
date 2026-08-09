@@ -13,11 +13,11 @@
 	import { ui } from '$lib/stores/ui.svelte';
 	import { workspaceCtx } from '$lib/stores/workspace.svelte';
 	import { CalendarDate, type DateValue } from '@internationalized/date';
-	import PlusIcon from 'lucide-svelte/icons/plus';
-	import CalendarIcon from 'lucide-svelte/icons/calendar-days';
-	import TrashIcon from 'lucide-svelte/icons/trash-2';
-	import PencilIcon from 'lucide-svelte/icons/pencil';
-	import MoreIcon from 'lucide-svelte/icons/ellipsis';
+	import PlusIcon from '@lucide/svelte/icons/plus';
+	import CalendarIcon from '@lucide/svelte/icons/calendar-days';
+	import TrashIcon from '@lucide/svelte/icons/trash-2';
+	import PencilIcon from '@lucide/svelte/icons/pencil';
+	import MoreIcon from '@lucide/svelte/icons/ellipsis';
 	import { getStatusColor } from '$lib/utils';
 	import PlatformIcon from '$lib/components/platform-icon.svelte';
 	import { goto } from '$app/navigation';

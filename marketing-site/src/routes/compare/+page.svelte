@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ArrowRight, Waypoints } from "lucide-svelte";
+  import { ArrowRight, Waypoints } from "@lucide/svelte";
   import { Button } from "$lib/components/ui/button";
   import {
     comparisons,

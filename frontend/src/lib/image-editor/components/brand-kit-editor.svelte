@@ -16,12 +16,12 @@
 		ImageEditorBrandKit,
 		ImageEditorBrandTextStyle
 	} from '../types';
-	import LoaderIcon from 'lucide-svelte/icons/loader-2';
-	import PlusIcon from 'lucide-svelte/icons/plus';
-	import TrashIcon from 'lucide-svelte/icons/trash-2';
-	import UploadIcon from 'lucide-svelte/icons/upload';
-	import PaletteIcon from 'lucide-svelte/icons/palette';
-	import TypeIcon from 'lucide-svelte/icons/type';
+	import LoaderIcon from '@lucide/svelte/icons/loader-2';
+	import PlusIcon from '@lucide/svelte/icons/plus';
+	import TrashIcon from '@lucide/svelte/icons/trash-2';
+	import UploadIcon from '@lucide/svelte/icons/upload';
+	import PaletteIcon from '@lucide/svelte/icons/palette';
+	import TypeIcon from '@lucide/svelte/icons/type';
 	import { m } from '$lib/paraglide/messages';
 	import { getOptionalUnsavedChanges } from '$lib/unsaved-changes.svelte';
 

@@ -4,7 +4,7 @@
 	import { workspaceCtx } from '$lib/stores/workspace.svelte';
 	import { m } from '$lib/paraglide/messages';
 	import * as Sidebar from '$lib/components/ui/sidebar';
-	import BellIcon from 'lucide-svelte/icons/bell';
+	import BellIcon from '@lucide/svelte/icons/bell';
 
 	let { compact = false }: { compact?: boolean } = $props();
 	const workspaceId = $derived(workspaceCtx.currentWorkspace?.id ?? '');

@@ -13,18 +13,18 @@
 	import { subscribeToSourceArtifacts } from '../artifacts';
 	import { layoutTimelineIntervals } from '../timeline-layout';
 	import { onMount } from 'svelte';
-	import FoldHorizontalIcon from 'lucide-svelte/icons/fold-horizontal';
-	import MapPinIcon from 'lucide-svelte/icons/map-pin';
-	import ScissorsIcon from 'lucide-svelte/icons/scissors';
-	import TrashIcon from 'lucide-svelte/icons/trash-2';
-	import ZoomInIcon from 'lucide-svelte/icons/zoom-in';
-	import ChevronLeftIcon from 'lucide-svelte/icons/chevron-left';
-	import ChevronRightIcon from 'lucide-svelte/icons/chevron-right';
-	import CaptionsIcon from 'lucide-svelte/icons/captions';
-	import ImageIcon from 'lucide-svelte/icons/image';
-	import MusicIcon from 'lucide-svelte/icons/music-2';
-	import ShapesIcon from 'lucide-svelte/icons/shapes';
-	import TypeIcon from 'lucide-svelte/icons/type';
+	import FoldHorizontalIcon from '@lucide/svelte/icons/fold-horizontal';
+	import MapPinIcon from '@lucide/svelte/icons/map-pin';
+	import ScissorsIcon from '@lucide/svelte/icons/scissors';
+	import TrashIcon from '@lucide/svelte/icons/trash-2';
+	import ZoomInIcon from '@lucide/svelte/icons/zoom-in';
+	import ChevronLeftIcon from '@lucide/svelte/icons/chevron-left';
+	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
+	import CaptionsIcon from '@lucide/svelte/icons/captions';
+	import ImageIcon from '@lucide/svelte/icons/image';
+	import MusicIcon from '@lucide/svelte/icons/music-2';
+	import ShapesIcon from '@lucide/svelte/icons/shapes';
+	import TypeIcon from '@lucide/svelte/icons/type';
 
 	interface Props {
 		project: VideoProjectDocumentV1;

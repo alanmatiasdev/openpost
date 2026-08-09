@@ -9,8 +9,8 @@
 	import { Button } from '$lib/components/ui/button';
 	import StandaloneShell from '$lib/components/standalone-shell.svelte';
 	import InlineNotice from '$lib/components/inline-notice.svelte';
-	import RocketIcon from 'lucide-svelte/icons/rocket';
-	import LoaderIcon from 'lucide-svelte/icons/loader-2';
+	import RocketIcon from '@lucide/svelte/icons/rocket';
+	import LoaderIcon from '@lucide/svelte/icons/loader-2';
 	import { m } from '$lib/paraglide/messages';
 	import { safeSameOriginRedirect } from '$lib/redirects';
 	import {

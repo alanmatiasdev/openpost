@@ -17,11 +17,11 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Checkbox } from '$lib/components/ui/checkbox';
 	import { Textarea } from '$lib/components/ui/textarea';
-	import InboxIcon from 'lucide-svelte/icons/inbox';
-	import RefreshIcon from 'lucide-svelte/icons/refresh-cw';
-	import ArrowLeftIcon from 'lucide-svelte/icons/arrow-left';
-	import ArchiveIcon from 'lucide-svelte/icons/archive';
-	import SendIcon from 'lucide-svelte/icons/send';
+	import InboxIcon from '@lucide/svelte/icons/inbox';
+	import RefreshIcon from '@lucide/svelte/icons/refresh-cw';
+	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
+	import ArchiveIcon from '@lucide/svelte/icons/archive';
+	import SendIcon from '@lucide/svelte/icons/send';
 
 	type Conversation = components['schemas']['Conversation'];
 	type DirectMessage = components['schemas']['DirectMessage'];

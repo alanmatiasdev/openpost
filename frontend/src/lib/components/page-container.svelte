@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { ComponentProps, Snippet } from 'svelte';
+	import type { IconComponent } from '$lib/component-types';
 	import PageHeader from '$lib/components/page-header.svelte';
 	import PageLoading from '$lib/components/page-loading.svelte';
 
@@ -9,7 +10,7 @@
 		/** Page title displayed in the header */
 		title: string;
 		/** Optional icon component to display before title */
-		icon?: ConstructorOfATypedSvelteComponent;
+		icon?: IconComponent;
 		/** Optional plain-text description below the title */
 		description?: string;
 		/** Optional header actions (buttons, etc.) */

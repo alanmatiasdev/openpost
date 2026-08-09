@@ -1,10 +1,10 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
-	import AlertCircleIcon from 'lucide-svelte/icons/alert-circle';
-	import CheckCircleIcon from 'lucide-svelte/icons/check-circle-2';
-	import InfoIcon from 'lucide-svelte/icons/info';
-	import TriangleAlertIcon from 'lucide-svelte/icons/triangle-alert';
-	import XIcon from 'lucide-svelte/icons/x';
+	import AlertCircleIcon from '@lucide/svelte/icons/alert-circle';
+	import CheckCircleIcon from '@lucide/svelte/icons/check-circle-2';
+	import InfoIcon from '@lucide/svelte/icons/info';
+	import TriangleAlertIcon from '@lucide/svelte/icons/triangle-alert';
+	import XIcon from '@lucide/svelte/icons/x';
 	import { Button } from '$lib/components/ui/button';
 	import { cn } from '$lib/utils';
 

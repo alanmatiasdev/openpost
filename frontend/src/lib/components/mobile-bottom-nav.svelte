@@ -7,11 +7,11 @@
 	import { m } from '$lib/paraglide/messages';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import AccountPreferencesMenu from './account-preferences-menu.svelte';
-	import CalendarIcon from 'lucide-svelte/icons/calendar-days';
-	import ComposeIcon from 'lucide-svelte/icons/plus';
-	import PostsIcon from 'lucide-svelte/icons/files';
-	import MediaIcon from 'lucide-svelte/icons/images';
-	import MoreIcon from 'lucide-svelte/icons/menu';
+	import CalendarIcon from '@lucide/svelte/icons/calendar-days';
+	import ComposeIcon from '@lucide/svelte/icons/plus';
+	import PostsIcon from '@lucide/svelte/icons/files';
+	import MediaIcon from '@lucide/svelte/icons/images';
+	import MoreIcon from '@lucide/svelte/icons/menu';
 
 	const items = mobileNavigation;
 	const pathname = $derived(String(page.url.pathname));

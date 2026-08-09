@@ -11,10 +11,10 @@
 	import { auth } from '$lib/stores/auth';
 	import { workspaceCtx } from '$lib/stores/workspace.svelte';
 	import { m } from '$lib/paraglide/messages';
-	import BotIcon from 'lucide-svelte/icons/bot';
-	import LoaderIcon from 'lucide-svelte/icons/loader-2';
-	import ShieldCheckIcon from 'lucide-svelte/icons/shield-check';
-	import XIcon from 'lucide-svelte/icons/x';
+	import BotIcon from '@lucide/svelte/icons/bot';
+	import LoaderIcon from '@lucide/svelte/icons/loader-2';
+	import ShieldCheckIcon from '@lucide/svelte/icons/shield-check';
+	import XIcon from '@lucide/svelte/icons/x';
 
 	let authState = $derived($auth);
 	let error = $state('');

@@ -1,6 +1,6 @@
 <script lang="ts">
-	import CheckIcon from 'lucide-svelte/icons/check';
-	import LoaderIcon from 'lucide-svelte/icons/loader-2';
+	import CheckIcon from '@lucide/svelte/icons/check';
+	import LoaderIcon from '@lucide/svelte/icons/loader-2';
 	import { cn } from '$lib/utils';
 
 	interface Props {

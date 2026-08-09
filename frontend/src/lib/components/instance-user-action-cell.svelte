@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { components } from '$lib/api/types';
-	import LoaderIcon from 'lucide-svelte/icons/loader-2';
-	import UserRoundCogIcon from 'lucide-svelte/icons/user-round-cog';
+	import LoaderIcon from '@lucide/svelte/icons/loader-2';
+	import UserRoundCogIcon from '@lucide/svelte/icons/user-round-cog';
 	import { Button } from '$lib/components/ui/button';
 	import { m } from '$lib/paraglide/messages';
 

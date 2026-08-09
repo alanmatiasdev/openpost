@@ -1,11 +1,12 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
+	import type { IconComponent } from '$lib/component-types';
 	import { cn } from '$lib/utils';
 
 	interface Props {
 		title: string;
 		description?: string;
-		icon?: ConstructorOfATypedSvelteComponent;
+		icon?: IconComponent;
 		actions?: Snippet;
 		headingLevel?: 2 | 3 | 4;
 		class?: string;

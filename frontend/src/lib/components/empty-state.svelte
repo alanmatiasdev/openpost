@@ -1,9 +1,10 @@
 <script lang="ts">
+	import type { IconComponent } from '$lib/component-types';
 	import { Button } from '$lib/components/ui/button';
 
 	interface Props {
 		/** Icon component to display */
-		icon: ConstructorOfATypedSvelteComponent;
+		icon: IconComponent;
 		/** Main title text */
 		title: string;
 		/** Description text */

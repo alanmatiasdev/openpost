@@ -7,7 +7,7 @@
     CheckCircle2,
     ExternalLink,
     Scale,
-  } from "lucide-svelte";
+  } from "@lucide/svelte";
   import { Button } from "$lib/components/ui/button";
   import {
     comparisons,

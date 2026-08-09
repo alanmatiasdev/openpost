@@ -10,8 +10,8 @@
 	import { m } from '$lib/paraglide/messages';
 	import { safeSameOriginRedirect } from '$lib/redirects';
 	import { auth } from '$lib/stores/auth';
-	import LoaderIcon from 'lucide-svelte/icons/loader-2';
-	import MailCheckIcon from 'lucide-svelte/icons/mail-check';
+	import LoaderIcon from '@lucide/svelte/icons/loader-2';
+	import MailCheckIcon from '@lucide/svelte/icons/mail-check';
 	import { onMount } from 'svelte';
 
 	let challengeID = $state(page.url.searchParams.get('challenge') ?? '');

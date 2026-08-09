@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Button } from '$lib/components/ui/button';
-	import LoaderIcon from 'lucide-svelte/icons/loader-2';
-	import SaveIcon from 'lucide-svelte/icons/save';
+	import LoaderIcon from '@lucide/svelte/icons/loader-2';
+	import SaveIcon from '@lucide/svelte/icons/save';
 
 	interface Props {
 		label: string;

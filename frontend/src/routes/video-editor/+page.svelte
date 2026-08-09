@@ -47,15 +47,15 @@ FORM: Operate surface extending the OpenPost Video Editor start screen; no water
 		formatBytes
 	} from '$lib/video-editor/project';
 	import type { LocalVideoProject, VideoEditorCapabilities } from '$lib/video-editor/types';
-	import CameraIcon from 'lucide-svelte/icons/video';
-	import CloudIcon from 'lucide-svelte/icons/cloud';
-	import FolderIcon from 'lucide-svelte/icons/folder-open';
-	import HardDriveIcon from 'lucide-svelte/icons/hard-drive';
-	import LoaderIcon from 'lucide-svelte/icons/loader-2';
-	import PlusIcon from 'lucide-svelte/icons/plus';
-	import ShieldIcon from 'lucide-svelte/icons/shield-check';
-	import SparklesIcon from 'lucide-svelte/icons/sparkles';
-	import TrashIcon from 'lucide-svelte/icons/trash-2';
+	import CameraIcon from '@lucide/svelte/icons/video';
+	import CloudIcon from '@lucide/svelte/icons/cloud';
+	import FolderIcon from '@lucide/svelte/icons/folder-open';
+	import HardDriveIcon from '@lucide/svelte/icons/hard-drive';
+	import LoaderIcon from '@lucide/svelte/icons/loader-2';
+	import PlusIcon from '@lucide/svelte/icons/plus';
+	import ShieldIcon from '@lucide/svelte/icons/shield-check';
+	import SparklesIcon from '@lucide/svelte/icons/sparkles';
+	import TrashIcon from '@lucide/svelte/icons/trash-2';
 
 	let authState = $derived($auth);
 	let loading = $state(true);

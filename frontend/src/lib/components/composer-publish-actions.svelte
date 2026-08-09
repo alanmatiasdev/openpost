@@ -1,11 +1,11 @@
 <script lang="ts">
 	import { Button } from '$lib/components/ui/button';
 	import { cn } from '$lib/utils';
-	import ArrowRightIcon from 'lucide-svelte/icons/arrow-right';
-	import CalendarClockIcon from 'lucide-svelte/icons/calendar-clock';
-	import LoaderIcon from 'lucide-svelte/icons/loader-2';
-	import SendIcon from 'lucide-svelte/icons/send';
-	import Trash2Icon from 'lucide-svelte/icons/trash-2';
+	import ArrowRightIcon from '@lucide/svelte/icons/arrow-right';
+	import CalendarClockIcon from '@lucide/svelte/icons/calendar-clock';
+	import LoaderIcon from '@lucide/svelte/icons/loader-2';
+	import SendIcon from '@lucide/svelte/icons/send';
+	import Trash2Icon from '@lucide/svelte/icons/trash-2';
 
 	interface Props {
 		scheduleLabel: string;

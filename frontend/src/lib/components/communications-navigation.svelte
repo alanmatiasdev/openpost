@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import { goto } from '$app/navigation';
-	import MessageCircleIcon from 'lucide-svelte/icons/message-circle';
-	import InboxIcon from 'lucide-svelte/icons/inbox';
+	import MessageCircleIcon from '@lucide/svelte/icons/message-circle';
+	import InboxIcon from '@lucide/svelte/icons/inbox';
 	import { m } from '$lib/paraglide/messages';
 
 	interface Props {

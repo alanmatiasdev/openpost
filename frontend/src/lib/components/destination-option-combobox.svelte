@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { tick } from 'svelte';
-	import ChevronsUpDownIcon from 'lucide-svelte/icons/chevrons-up-down';
-	import LoaderIcon from 'lucide-svelte/icons/loader-2';
+	import ChevronsUpDownIcon from '@lucide/svelte/icons/chevrons-up-down';
+	import LoaderIcon from '@lucide/svelte/icons/loader-2';
 	import { Button } from '$lib/components/ui/button';
 	import * as Command from '$lib/components/ui/command';
 	import * as Popover from '$lib/components/ui/popover';

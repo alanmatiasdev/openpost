@@ -14,7 +14,7 @@
 	import { subscribeToSourceArtifacts } from '../artifacts';
 	import { VideoEditorPreviewEngine, type PreviewEngineDiagnostics } from '../preview-engine';
 	import { m } from '$lib/paraglide/messages';
-	import PlayIcon from 'lucide-svelte/icons/play';
+	import PlayIcon from '@lucide/svelte/icons/play';
 
 	interface Props {
 		project: VideoProjectDocumentV1;

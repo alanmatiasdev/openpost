@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import BarChartIcon from 'lucide-svelte/icons/chart-no-axes-column-increasing';
+	import BarChartIcon from '@lucide/svelte/icons/chart-no-axes-column-increasing';
 	import type { components } from '$lib/api/types';
 	import { client } from '$lib/api/client';
 	import InlineNotice from '$lib/components/inline-notice.svelte';

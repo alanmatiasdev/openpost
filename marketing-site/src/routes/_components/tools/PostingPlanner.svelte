@@ -5,7 +5,7 @@
     ClipboardCopy,
     Download,
     Info,
-  } from "lucide-svelte";
+  } from "@lucide/svelte";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
   import AppSelect from "$lib/components/app-select.svelte";

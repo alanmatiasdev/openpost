@@ -1,9 +1,9 @@
 <script lang="ts">
   import { resolve } from "$app/paths";
-  import Github from "lucide-svelte/icons/github";
-  import MessageCircle from "lucide-svelte/icons/message-circle";
-  import Volume2 from "lucide-svelte/icons/volume-2";
-  import VolumeX from "lucide-svelte/icons/volume-x";
+  import Github from "@lucide/svelte/icons/github";
+  import MessageCircle from "@lucide/svelte/icons/message-circle";
+  import Volume2 from "@lucide/svelte/icons/volume-2";
+  import VolumeX from "@lucide/svelte/icons/volume-x";
   import Logo from "$lib/components/Logo.svelte";
   import PlatformIcon from "$lib/components/platform-icon.svelte";
   import { soundPreferences } from "$lib/stores/sound-preferences.svelte";

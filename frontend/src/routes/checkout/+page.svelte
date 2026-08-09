@@ -31,11 +31,11 @@
 		type Paddle,
 		type PaddleEventData
 	} from '@paddle/paddle-js';
-	import CheckIcon from 'lucide-svelte/icons/check';
-	import CreditCardIcon from 'lucide-svelte/icons/credit-card';
-	import LockIcon from 'lucide-svelte/icons/lock-keyhole';
-	import ShieldCheckIcon from 'lucide-svelte/icons/shield-check';
-	import SparklesIcon from 'lucide-svelte/icons/sparkles';
+	import CheckIcon from '@lucide/svelte/icons/check';
+	import CreditCardIcon from '@lucide/svelte/icons/credit-card';
+	import LockIcon from '@lucide/svelte/icons/lock-keyhole';
+	import ShieldCheckIcon from '@lucide/svelte/icons/shield-check';
+	import SparklesIcon from '@lucide/svelte/icons/sparkles';
 
 	type BillingURL = components['schemas']['BillingURLResponse'];
 	type BillingStatus = components['schemas']['BillingStatusResponse'];

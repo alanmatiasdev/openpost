@@ -16,12 +16,12 @@
 	import { m } from '$lib/paraglide/messages';
 	import { showToast } from '$lib/toast';
 	import { getOptionalUnsavedChanges } from '$lib/unsaved-changes.svelte';
-	import KeyRoundIcon from 'lucide-svelte/icons/key-round';
-	import LoaderIcon from 'lucide-svelte/icons/loader-2';
-	import PencilIcon from 'lucide-svelte/icons/pencil';
-	import PlusIcon from 'lucide-svelte/icons/plus';
-	import RotateCcwIcon from 'lucide-svelte/icons/rotate-ccw';
-	import TrashIcon from 'lucide-svelte/icons/trash';
+	import KeyRoundIcon from '@lucide/svelte/icons/key-round';
+	import LoaderIcon from '@lucide/svelte/icons/loader-2';
+	import PencilIcon from '@lucide/svelte/icons/pencil';
+	import PlusIcon from '@lucide/svelte/icons/plus';
+	import RotateCcwIcon from '@lucide/svelte/icons/rotate-ccw';
+	import TrashIcon from '@lucide/svelte/icons/trash';
 
 	type Setting = components['schemas']['InstanceSettingResponse'];
 	type SettingUpdate = components['schemas']['InstanceSettingUpdateInput'];

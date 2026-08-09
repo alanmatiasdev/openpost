@@ -3,8 +3,8 @@
 	import * as Popover from '$lib/components/ui/popover';
 	import { cn } from '$lib/utils';
 	import { m } from '$lib/paraglide/messages';
-	import CircleAlertIcon from 'lucide-svelte/icons/circle-alert';
-	import TriangleAlertIcon from 'lucide-svelte/icons/triangle-alert';
+	import CircleAlertIcon from '@lucide/svelte/icons/circle-alert';
+	import TriangleAlertIcon from '@lucide/svelte/icons/triangle-alert';
 	import type { ComposerIssue } from './compose/validation';
 
 	interface Props {

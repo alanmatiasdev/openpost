@@ -45,16 +45,16 @@ FORM: Operate surface; no template carousel, hidden permissions, automatic uploa
 	import { createBlankVideoProject } from '@openpost/video-project';
 	import type { LocalVideoProject } from '$lib/video-editor/types';
 	import { editorHandoffReturnURL } from '$lib/editor-handoff';
-	import ArrowLeftIcon from 'lucide-svelte/icons/arrow-left';
-	import CameraIcon from 'lucide-svelte/icons/camera';
-	import FileVideoIcon from 'lucide-svelte/icons/file-video';
-	import LoaderIcon from 'lucide-svelte/icons/loader-2';
-	import MicIcon from 'lucide-svelte/icons/mic';
-	import MonitorIcon from 'lucide-svelte/icons/monitor-up';
-	import PlusIcon from 'lucide-svelte/icons/plus';
-	import ScissorsIcon from 'lucide-svelte/icons/scissors';
-	import SlidersHorizontalIcon from 'lucide-svelte/icons/sliders-horizontal';
-	import VolumeIcon from 'lucide-svelte/icons/volume-2';
+	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
+	import CameraIcon from '@lucide/svelte/icons/camera';
+	import FileVideoIcon from '@lucide/svelte/icons/file-video';
+	import LoaderIcon from '@lucide/svelte/icons/loader-2';
+	import MicIcon from '@lucide/svelte/icons/mic';
+	import MonitorIcon from '@lucide/svelte/icons/monitor-up';
+	import PlusIcon from '@lucide/svelte/icons/plus';
+	import ScissorsIcon from '@lucide/svelte/icons/scissors';
+	import SlidersHorizontalIcon from '@lucide/svelte/icons/sliders-horizontal';
+	import VolumeIcon from '@lucide/svelte/icons/volume-2';
 
 	let mode = $derived($page.url.searchParams.get('mode') ?? 'import');
 	const composerHandoff = $derived(Boolean($page.url.searchParams.get('return_token')));

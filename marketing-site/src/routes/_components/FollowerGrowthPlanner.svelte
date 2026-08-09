@@ -1,5 +1,5 @@
 <script lang="ts">
-	import TrendingUp from 'lucide-svelte/icons/trending-up';
+	import TrendingUp from '@lucide/svelte/icons/trending-up';
 	import { Button } from '$lib/components/ui/button';
 
 	const scenarios = [

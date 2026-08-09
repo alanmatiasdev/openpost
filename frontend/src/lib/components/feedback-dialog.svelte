@@ -11,10 +11,10 @@
 	import { feedbackDiagnostics, type FeedbackDiagnosticsSnapshot } from '$lib/feedback-diagnostics';
 	import { ui } from '$lib/stores/ui.svelte';
 	import { m } from '$lib/paraglide/messages';
-	import LoaderIcon from 'lucide-svelte/icons/loader-2';
-	import CheckIcon from 'lucide-svelte/icons/circle-check';
-	import ExternalLinkIcon from 'lucide-svelte/icons/external-link';
-	import XIcon from 'lucide-svelte/icons/x';
+	import LoaderIcon from '@lucide/svelte/icons/loader-2';
+	import CheckIcon from '@lucide/svelte/icons/circle-check';
+	import ExternalLinkIcon from '@lucide/svelte/icons/external-link';
+	import XIcon from '@lucide/svelte/icons/x';
 
 	type FeedbackCategory = 'bug' | 'idea' | 'question';
 	type FeedbackConfig = {

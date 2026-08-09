@@ -7,8 +7,8 @@
 	import { Input } from '$lib/components/ui/input';
 	import * as Select from '$lib/components/ui/select';
 	import { m } from '$lib/paraglide/messages';
-	import ArrowRightIcon from 'lucide-svelte/icons/arrow-right';
-	import LoaderIcon from 'lucide-svelte/icons/loader-2';
+	import ArrowRightIcon from '@lucide/svelte/icons/arrow-right';
+	import LoaderIcon from '@lucide/svelte/icons/loader-2';
 	import { parseNaturalScheduleInput } from './compose/schedule-language';
 	import { workspaceClock, workspaceScheduleToISO } from './compose/schedule-timezone';
 

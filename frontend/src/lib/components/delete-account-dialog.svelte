@@ -4,7 +4,7 @@
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import InlineNotice from '$lib/components/inline-notice.svelte';
-	import LoaderIcon from 'lucide-svelte/icons/loader-2';
+	import LoaderIcon from '@lucide/svelte/icons/loader-2';
 	import { client, type AccountDeletionImpact } from '$lib/api/client';
 	import { acquireReauthGrant } from '$lib/auth/reauth';
 	import { m } from '$lib/paraglide/messages';

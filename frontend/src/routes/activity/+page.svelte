@@ -13,17 +13,17 @@
 	import EmptyState from '$lib/components/empty-state.svelte';
 	import InlineNotice from '$lib/components/inline-notice.svelte';
 	import PlatformIcon from '$lib/components/platform-icon.svelte';
-	import CalendarIcon from 'lucide-svelte/icons/calendar-days';
-	import CheckCircleIcon from 'lucide-svelte/icons/circle-check';
-	import XCircleIcon from 'lucide-svelte/icons/circle-x';
-	import RefreshIcon from 'lucide-svelte/icons/refresh-cw';
-	import FileTextIcon from 'lucide-svelte/icons/file-text';
-	import PencilIcon from 'lucide-svelte/icons/pencil';
-	import EyeIcon from 'lucide-svelte/icons/eye';
-	import PostsIcon from 'lucide-svelte/icons/files';
-	import PlusIcon from 'lucide-svelte/icons/plus';
-	import ClockIcon from 'lucide-svelte/icons/clock';
-	import CopyIcon from 'lucide-svelte/icons/copy';
+	import CalendarIcon from '@lucide/svelte/icons/calendar-days';
+	import CheckCircleIcon from '@lucide/svelte/icons/circle-check';
+	import XCircleIcon from '@lucide/svelte/icons/circle-x';
+	import RefreshIcon from '@lucide/svelte/icons/refresh-cw';
+	import FileTextIcon from '@lucide/svelte/icons/file-text';
+	import PencilIcon from '@lucide/svelte/icons/pencil';
+	import EyeIcon from '@lucide/svelte/icons/eye';
+	import PostsIcon from '@lucide/svelte/icons/files';
+	import PlusIcon from '@lucide/svelte/icons/plus';
+	import ClockIcon from '@lucide/svelte/icons/clock';
+	import CopyIcon from '@lucide/svelte/icons/copy';
 	import { m } from '$lib/paraglide/messages';
 	import { getLocaleTag } from '$lib/i18n';
 

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import Check from 'lucide-svelte/icons/check';
+	import Check from '@lucide/svelte/icons/check';
 	import PricingShowcase from '../_components/PricingShowcase.svelte';
 	import { plans, siteUrl } from '../_marketing';
 

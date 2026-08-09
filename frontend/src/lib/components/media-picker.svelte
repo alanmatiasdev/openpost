@@ -16,16 +16,16 @@
 	import { listImageEditorMedia } from '$lib/image-editor/api';
 	import type { ImageEditorMediaItem } from '$lib/image-editor/types';
 	import { listMediaTags, type MediaTag } from '$lib/media-tags';
-	import SearchIcon from 'lucide-svelte/icons/search';
-	import UploadIcon from 'lucide-svelte/icons/upload';
-	import CameraIcon from 'lucide-svelte/icons/camera';
-	import LibraryIcon from 'lucide-svelte/icons/library';
-	import ImageIcon from 'lucide-svelte/icons/image';
-	import VideoIcon from 'lucide-svelte/icons/video';
-	import FileAudioIcon from 'lucide-svelte/icons/file-audio';
-	import PaletteIcon from 'lucide-svelte/icons/palette';
-	import CheckIcon from 'lucide-svelte/icons/check';
-	import LoaderIcon from 'lucide-svelte/icons/loader-2';
+	import SearchIcon from '@lucide/svelte/icons/search';
+	import UploadIcon from '@lucide/svelte/icons/upload';
+	import CameraIcon from '@lucide/svelte/icons/camera';
+	import LibraryIcon from '@lucide/svelte/icons/library';
+	import ImageIcon from '@lucide/svelte/icons/image';
+	import VideoIcon from '@lucide/svelte/icons/video';
+	import FileAudioIcon from '@lucide/svelte/icons/file-audio';
+	import PaletteIcon from '@lucide/svelte/icons/palette';
+	import CheckIcon from '@lucide/svelte/icons/check';
+	import LoaderIcon from '@lucide/svelte/icons/loader-2';
 	import { m } from '$lib/paraglide/messages';
 	import type { VideoConstraint } from '$lib/video/types';
 

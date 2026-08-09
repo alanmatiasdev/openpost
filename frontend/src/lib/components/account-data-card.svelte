@@ -7,11 +7,11 @@
 	import * as Collapsible from '$lib/components/ui/collapsible';
 	import InlineNotice from '$lib/components/inline-notice.svelte';
 	import DeleteAccountDialog from '$lib/components/delete-account-dialog.svelte';
-	import ChevronDownIcon from 'lucide-svelte/icons/chevron-down';
-	import DownloadIcon from 'lucide-svelte/icons/download';
-	import KeyRoundIcon from 'lucide-svelte/icons/key-round';
-	import LoaderIcon from 'lucide-svelte/icons/loader-2';
-	import TrashIcon from 'lucide-svelte/icons/trash';
+	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
+	import DownloadIcon from '@lucide/svelte/icons/download';
+	import KeyRoundIcon from '@lucide/svelte/icons/key-round';
+	import LoaderIcon from '@lucide/svelte/icons/loader-2';
+	import TrashIcon from '@lucide/svelte/icons/trash';
 	import { client, type AccountDeletionImpact } from '$lib/api/client';
 	import { acquireReauthGrant } from '$lib/auth/reauth';
 	import { auth } from '$lib/stores/auth';

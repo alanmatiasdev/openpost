@@ -1016,7 +1016,7 @@ Candidate decisions under this registry:
 
 ### BUILD-005 — Standardize the Lucide dependency family
 
-- [ ] **Problem — Baseline audit:** both `@lucide/svelte` and `lucide-svelte` are installed and used.
+- [x] **Problem — Baseline audit:** both `@lucide/svelte` and `lucide-svelte` are installed and used.
 - **Fix:** choose the supported package, mechanically migrate imports, remove the duplicate dependency, and compare bundle/types.
 - **Done when:** one family remains and application/marketing builds and visual smoke tests pass.
 

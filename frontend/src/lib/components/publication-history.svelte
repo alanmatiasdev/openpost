@@ -9,10 +9,10 @@
 	import { workspaceCtx } from '$lib/stores/workspace.svelte';
 	import { getPlatformName } from '$lib/utils';
 	import { untrack } from 'svelte';
-	import CheckIcon from 'lucide-svelte/icons/circle-check';
-	import ClockIcon from 'lucide-svelte/icons/clock-3';
-	import HistoryIcon from 'lucide-svelte/icons/history';
-	import XIcon from 'lucide-svelte/icons/circle-x';
+	import CheckIcon from '@lucide/svelte/icons/circle-check';
+	import ClockIcon from '@lucide/svelte/icons/clock-3';
+	import HistoryIcon from '@lucide/svelte/icons/history';
+	import XIcon from '@lucide/svelte/icons/circle-x';
 
 	type HistoryActor = {
 		kind: 'user' | 'automation' | 'system';

@@ -28,16 +28,16 @@
 	import * as Popover from '$lib/components/ui/popover';
 	import * as Select from '$lib/components/ui/select';
 	import { Textarea } from '$lib/components/ui/textarea';
-	import MessagesSquareIcon from 'lucide-svelte/icons/messages-square';
-	import RefreshIcon from 'lucide-svelte/icons/refresh-cw';
-	import ArchiveIcon from 'lucide-svelte/icons/archive';
-	import ExternalLinkIcon from 'lucide-svelte/icons/external-link';
-	import InboxIcon from 'lucide-svelte/icons/inbox';
-	import ReplyIcon from 'lucide-svelte/icons/reply';
-	import EyeOffIcon from 'lucide-svelte/icons/eye-off';
-	import TrashIcon from 'lucide-svelte/icons/trash-2';
-	import HeartIcon from 'lucide-svelte/icons/heart';
-	import CircleAlertIcon from 'lucide-svelte/icons/circle-alert';
+	import MessagesSquareIcon from '@lucide/svelte/icons/messages-square';
+	import RefreshIcon from '@lucide/svelte/icons/refresh-cw';
+	import ArchiveIcon from '@lucide/svelte/icons/archive';
+	import ExternalLinkIcon from '@lucide/svelte/icons/external-link';
+	import InboxIcon from '@lucide/svelte/icons/inbox';
+	import ReplyIcon from '@lucide/svelte/icons/reply';
+	import EyeOffIcon from '@lucide/svelte/icons/eye-off';
+	import TrashIcon from '@lucide/svelte/icons/trash-2';
+	import HeartIcon from '@lucide/svelte/icons/heart';
+	import CircleAlertIcon from '@lucide/svelte/icons/circle-alert';
 
 	type EngagementItem = components['schemas']['EngagementItem'];
 	type EngagementSyncState = components['schemas']['EngagementSyncState'];

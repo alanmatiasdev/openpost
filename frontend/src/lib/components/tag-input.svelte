@@ -2,7 +2,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { m } from '$lib/paraglide/messages';
-	import XIcon from 'lucide-svelte/icons/x';
+	import XIcon from '@lucide/svelte/icons/x';
 
 	interface Props {
 		id: string;

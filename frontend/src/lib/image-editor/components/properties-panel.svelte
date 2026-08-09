@@ -13,17 +13,17 @@
 	import ImageEditorFontPicker from './image-editor-font-picker.svelte';
 	import LayerEffectsPanel from './layer-effects-panel.svelte';
 	import PageBackgroundEditor from './page-background-editor.svelte';
-	import CopyIcon from 'lucide-svelte/icons/copy';
-	import TrashIcon from 'lucide-svelte/icons/trash-2';
-	import BringToFrontIcon from 'lucide-svelte/icons/bring-to-front';
-	import SendToBackIcon from 'lucide-svelte/icons/send-to-back';
-	import FlipHorizontalIcon from 'lucide-svelte/icons/flip-horizontal-2';
-	import FlipVerticalIcon from 'lucide-svelte/icons/flip-vertical-2';
-	import RotateCcwIcon from 'lucide-svelte/icons/rotate-ccw';
-	import CropIcon from 'lucide-svelte/icons/crop';
-	import LinkIcon from 'lucide-svelte/icons/link';
-	import UnlinkIcon from 'lucide-svelte/icons/unlink';
-	import ChevronDownIcon from 'lucide-svelte/icons/chevron-down';
+	import CopyIcon from '@lucide/svelte/icons/copy';
+	import TrashIcon from '@lucide/svelte/icons/trash-2';
+	import BringToFrontIcon from '@lucide/svelte/icons/bring-to-front';
+	import SendToBackIcon from '@lucide/svelte/icons/send-to-back';
+	import FlipHorizontalIcon from '@lucide/svelte/icons/flip-horizontal-2';
+	import FlipVerticalIcon from '@lucide/svelte/icons/flip-vertical-2';
+	import RotateCcwIcon from '@lucide/svelte/icons/rotate-ccw';
+	import CropIcon from '@lucide/svelte/icons/crop';
+	import LinkIcon from '@lucide/svelte/icons/link';
+	import UnlinkIcon from '@lucide/svelte/icons/unlink';
+	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
 	import { m } from '$lib/paraglide/messages';
 	import type { ImageEditorImageAdjustments, ImageEditorTextCurveType } from '../types';
 

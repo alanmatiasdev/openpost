@@ -9,7 +9,7 @@ FORM: Public activity ledger, adapted from contribution charts without gamified 
 	import { page } from '$app/state';
 	import { onMount } from 'svelte';
 	import type { Attachment } from 'svelte/attachments';
-	import { ArrowRight } from 'lucide-svelte';
+	import { ArrowRight } from '@lucide/svelte';
 	import Logo from '$lib/components/Logo.svelte';
 	import PlatformIcon from '$lib/components/platform-icon.svelte';
 	import { Button } from '$lib/components/ui/button';

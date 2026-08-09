@@ -20,9 +20,9 @@
 		ImageEditorShadowEffect
 	} from '../types';
 	import ImageEditorColorPicker from './image-editor-color-picker.svelte';
-	import PlusIcon from 'lucide-svelte/icons/plus';
-	import XIcon from 'lucide-svelte/icons/x';
-	import ChevronDownIcon from 'lucide-svelte/icons/chevron-down';
+	import PlusIcon from '@lucide/svelte/icons/plus';
+	import XIcon from '@lucide/svelte/icons/x';
+	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
 
 	let { layer }: { layer: ImageEditorLayer } = $props();
 	const editor = useImageEditor();

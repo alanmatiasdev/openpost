@@ -3,10 +3,10 @@
 	import { SvelteMap } from 'svelte/reactivity';
 	import { Button } from '$lib/components/ui/button';
 	import { Slider } from '$lib/components/ui/slider';
-	import FlipHorizontalIcon from 'lucide-svelte/icons/flip-horizontal-2';
-	import FlipVerticalIcon from 'lucide-svelte/icons/flip-vertical-2';
-	import RotateCcwIcon from 'lucide-svelte/icons/rotate-ccw';
-	import RotateCwIcon from 'lucide-svelte/icons/rotate-cw';
+	import FlipHorizontalIcon from '@lucide/svelte/icons/flip-horizontal-2';
+	import FlipVerticalIcon from '@lucide/svelte/icons/flip-vertical-2';
+	import RotateCcwIcon from '@lucide/svelte/icons/rotate-ccw';
+	import RotateCwIcon from '@lucide/svelte/icons/rotate-cw';
 	import AppSelect from '$lib/components/app-select.svelte';
 	import { OpenPostFabricAdapter, type ImageEditorPixelGrid } from '../fabric-adapter';
 	import { useImageEditor } from '../editor.svelte';

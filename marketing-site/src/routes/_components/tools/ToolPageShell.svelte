@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { ArrowLeft, ArrowRight, LockKeyhole } from 'lucide-svelte';
+	import { ArrowLeft, ArrowRight, LockKeyhole } from '@lucide/svelte';
 	import type { Snippet } from 'svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { appUrl } from '../../_marketing';

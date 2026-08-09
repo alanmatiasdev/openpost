@@ -1,6 +1,6 @@
 <script lang="ts">
   import { resolve } from "$app/paths";
-  import { ArrowRight, LockKeyhole } from "lucide-svelte";
+  import { ArrowRight, LockKeyhole } from "@lucide/svelte";
   import { siteUrl, tools } from "../_marketing";
 
   const groups = [

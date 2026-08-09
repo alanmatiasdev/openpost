@@ -16,16 +16,16 @@
 	} from '$lib/video/types';
 	import type { StockAsset } from '$lib/video-editor/api';
 	import type { StockMediaProvenance } from '@openpost/video-project';
-	import CheckIcon from 'lucide-svelte/icons/check';
-	import FileAudioIcon from 'lucide-svelte/icons/file-audio';
-	import FileIcon from 'lucide-svelte/icons/file';
-	import ImageIcon from 'lucide-svelte/icons/image';
-	import LoaderIcon from 'lucide-svelte/icons/loader-2';
-	import RefreshCwIcon from 'lucide-svelte/icons/refresh-cw';
-	import TrashIcon from 'lucide-svelte/icons/trash-2';
-	import UploadIcon from 'lucide-svelte/icons/upload';
-	import VideoIcon from 'lucide-svelte/icons/video';
-	import XIcon from 'lucide-svelte/icons/x';
+	import CheckIcon from '@lucide/svelte/icons/check';
+	import FileAudioIcon from '@lucide/svelte/icons/file-audio';
+	import FileIcon from '@lucide/svelte/icons/file';
+	import ImageIcon from '@lucide/svelte/icons/image';
+	import LoaderIcon from '@lucide/svelte/icons/loader-2';
+	import RefreshCwIcon from '@lucide/svelte/icons/refresh-cw';
+	import TrashIcon from '@lucide/svelte/icons/trash-2';
+	import UploadIcon from '@lucide/svelte/icons/upload';
+	import VideoIcon from '@lucide/svelte/icons/video';
+	import XIcon from '@lucide/svelte/icons/x';
 	import { m } from '$lib/paraglide/messages';
 
 	type AcquisitionMode = 'device' | 'camera' | 'stock';

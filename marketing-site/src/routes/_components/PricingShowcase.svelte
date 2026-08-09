@@ -1,5 +1,5 @@
 <script lang="ts">
-	import Check from 'lucide-svelte/icons/check';
+	import Check from '@lucide/svelte/icons/check';
 	import { Button } from '$lib/components/ui/button';
 	import { appUrl, managedAccessSummary, plans } from '../_marketing';
 	import AnimatedPrice from './AnimatedPrice.svelte';

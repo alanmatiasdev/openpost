@@ -1,7 +1,7 @@
 <script lang="ts">
-	import ExternalLink from 'lucide-svelte/icons/external-link';
-	import Play from 'lucide-svelte/icons/play';
-	import X from 'lucide-svelte/icons/x';
+	import ExternalLink from '@lucide/svelte/icons/external-link';
+	import Play from '@lucide/svelte/icons/play';
+	import X from '@lucide/svelte/icons/x';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { demoVideoEmbedUrl, demoVideoUrl } from '../_marketing';

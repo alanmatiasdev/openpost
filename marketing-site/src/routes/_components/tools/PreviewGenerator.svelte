@@ -13,9 +13,9 @@
     type PreviewMediaKind,
     type PreviewPlatform,
   } from "@openpost/social-preview";
-  import ImagePlus from "lucide-svelte/icons/image-plus";
-  import SlidersHorizontal from "lucide-svelte/icons/sliders-horizontal";
-  import Trash2 from "lucide-svelte/icons/trash-2";
+  import ImagePlus from "@lucide/svelte/icons/image-plus";
+  import SlidersHorizontal from "@lucide/svelte/icons/sliders-horizontal";
+  import Trash2 from "@lucide/svelte/icons/trash-2";
   import { Button } from "$lib/components/ui/button";
   import { Checkbox } from "$lib/components/ui/checkbox";
   import { Input } from "$lib/components/ui/input";

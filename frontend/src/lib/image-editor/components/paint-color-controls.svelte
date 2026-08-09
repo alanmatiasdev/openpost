@@ -1,5 +1,5 @@
 <script lang="ts">
-	import ArrowLeftRightIcon from 'lucide-svelte/icons/arrow-left-right';
+	import ArrowLeftRightIcon from '@lucide/svelte/icons/arrow-left-right';
 	import { Button } from '$lib/components/ui/button';
 	import { m } from '$lib/paraglide/messages';
 	import ImageEditorColorPicker from './image-editor-color-picker.svelte';

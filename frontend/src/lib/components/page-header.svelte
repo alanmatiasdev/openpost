@@ -1,11 +1,12 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
+	import type { IconComponent } from '$lib/component-types';
 	import { cn } from '$lib/utils';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 
 	interface Props {
 		title: string;
-		icon?: ConstructorOfATypedSvelteComponent;
+		icon?: IconComponent;
 		eyebrow?: string;
 		description?: string;
 		meta?: Snippet;

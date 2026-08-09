@@ -1,8 +1,8 @@
 <script lang="ts">
 	import type { Column } from '@tanstack/table-core';
-	import ArrowDownIcon from 'lucide-svelte/icons/arrow-down';
-	import ArrowUpIcon from 'lucide-svelte/icons/arrow-up';
-	import ArrowUpDownIcon from 'lucide-svelte/icons/arrow-up-down';
+	import ArrowDownIcon from '@lucide/svelte/icons/arrow-down';
+	import ArrowUpIcon from '@lucide/svelte/icons/arrow-up';
+	import ArrowUpDownIcon from '@lucide/svelte/icons/arrow-up-down';
 	import type { components } from '$lib/api/types';
 	import { Button } from '$lib/components/ui/button';
 

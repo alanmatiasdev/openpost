@@ -18,16 +18,16 @@
 	import { listMediaTags, type MediaTag } from '$lib/media-tags';
 	import type { StockAsset } from '$lib/video-editor/api';
 	import type { StockMediaProvenance } from '@openpost/video-project';
-	import SearchIcon from 'lucide-svelte/icons/search';
-	import PlusIcon from 'lucide-svelte/icons/plus';
-	import LoaderIcon from 'lucide-svelte/icons/loader-2';
-	import ImagePlusIcon from 'lucide-svelte/icons/image-plus';
-	import ReplaceIcon from 'lucide-svelte/icons/replace';
-	import SquareIcon from 'lucide-svelte/icons/square';
-	import CircleIcon from 'lucide-svelte/icons/circle';
-	import MinusIcon from 'lucide-svelte/icons/minus';
-	import TypeIcon from 'lucide-svelte/icons/type';
-	import WallpaperIcon from 'lucide-svelte/icons/wallpaper';
+	import SearchIcon from '@lucide/svelte/icons/search';
+	import PlusIcon from '@lucide/svelte/icons/plus';
+	import LoaderIcon from '@lucide/svelte/icons/loader-2';
+	import ImagePlusIcon from '@lucide/svelte/icons/image-plus';
+	import ReplaceIcon from '@lucide/svelte/icons/replace';
+	import SquareIcon from '@lucide/svelte/icons/square';
+	import CircleIcon from '@lucide/svelte/icons/circle';
+	import MinusIcon from '@lucide/svelte/icons/minus';
+	import TypeIcon from '@lucide/svelte/icons/type';
+	import WallpaperIcon from '@lucide/svelte/icons/wallpaper';
 	import { m } from '$lib/paraglide/messages';
 	import { writeImageEditorMediaDrag, type ImageEditorMediaDragPayload } from '../media-drag';
 

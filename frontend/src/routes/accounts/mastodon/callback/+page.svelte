@@ -8,7 +8,7 @@
 	import { Label } from '$lib/components/ui/label';
 	import StandaloneShell from '$lib/components/standalone-shell.svelte';
 	import InlineNotice from '$lib/components/inline-notice.svelte';
-	import CheckCircleIcon from 'lucide-svelte/icons/circle-check';
+	import CheckCircleIcon from '@lucide/svelte/icons/circle-check';
 	import { m } from '$lib/paraglide/messages';
 
 	let code = $state('');

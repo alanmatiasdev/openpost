@@ -2,11 +2,11 @@
 	import { useImageEditor } from '../editor.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import TemplatePreview from './template-preview.svelte';
-	import PlusIcon from 'lucide-svelte/icons/plus';
-	import CopyIcon from 'lucide-svelte/icons/copy';
-	import TrashIcon from 'lucide-svelte/icons/trash-2';
-	import ChevronDownIcon from 'lucide-svelte/icons/chevron-down';
-	import ChevronUpIcon from 'lucide-svelte/icons/chevron-up';
+	import PlusIcon from '@lucide/svelte/icons/plus';
+	import CopyIcon from '@lucide/svelte/icons/copy';
+	import TrashIcon from '@lucide/svelte/icons/trash-2';
+	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
+	import ChevronUpIcon from '@lucide/svelte/icons/chevron-up';
 	import { m } from '$lib/paraglide/messages';
 	import type { SelectionPoint } from '../selection';
 	import { containsExternalImageDrag, externalFiles } from '../media-drag';

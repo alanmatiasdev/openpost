@@ -13,11 +13,11 @@
 	import InlineNotice from '$lib/components/inline-notice.svelte';
 	import AppToast from '$lib/components/app-toast.svelte';
 	import DestructiveConfirmDialog from '$lib/components/destructive-confirm-dialog.svelte';
-	import LoaderIcon from 'lucide-svelte/icons/loader-2';
-	import LightbulbIcon from 'lucide-svelte/icons/lightbulb';
-	import PlusIcon from 'lucide-svelte/icons/plus';
-	import TrashIcon from 'lucide-svelte/icons/trash';
-	import ShuffleIcon from 'lucide-svelte/icons/shuffle';
+	import LoaderIcon from '@lucide/svelte/icons/loader-2';
+	import LightbulbIcon from '@lucide/svelte/icons/lightbulb';
+	import PlusIcon from '@lucide/svelte/icons/plus';
+	import TrashIcon from '@lucide/svelte/icons/trash';
+	import ShuffleIcon from '@lucide/svelte/icons/shuffle';
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';

@@ -13,7 +13,7 @@
     Server,
     ShieldCheck,
     UserRoundCheck,
-  } from "lucide-svelte";
+  } from "@lucide/svelte";
   import { Button } from "$lib/components/ui/button";
   import { formatLegalDate, securityAssurance } from "@openpost/legal-policy";
   import { githubUrl, siteUrl } from "../_marketing";

@@ -3,11 +3,11 @@
 	import { Input } from '$lib/components/ui/input';
 	import * as Popover from '$lib/components/ui/popover';
 	import type { MediaTag } from '$lib/media-tags';
-	import HashIcon from 'lucide-svelte/icons/hash';
-	import CheckIcon from 'lucide-svelte/icons/check';
-	import LoaderIcon from 'lucide-svelte/icons/loader-2';
-	import PlusIcon from 'lucide-svelte/icons/plus';
-	import TagIcon from 'lucide-svelte/icons/tag';
+	import HashIcon from '@lucide/svelte/icons/hash';
+	import CheckIcon from '@lucide/svelte/icons/check';
+	import LoaderIcon from '@lucide/svelte/icons/loader-2';
+	import PlusIcon from '@lucide/svelte/icons/plus';
+	import TagIcon from '@lucide/svelte/icons/tag';
 	import { m } from '$lib/paraglide/messages';
 
 	let {

@@ -16,6 +16,7 @@ All notable changes to this project are documented in this file.
 
 ### Changed
 
+- Standardized the application, marketing site, and shared previews on the supported `@lucide/svelte` package, removed the duplicate legacy dependency, and replaced legacy icon-constructor annotations with a Svelte 5 component contract.
 - Removed confirmed unused frontend helper exports and convenience types after proving no static, namespace, dynamic, glob, or package-export consumer remained.
 - Removed unused drawer and scroll-area UI primitives, duplicate sidebar constants, empty frontend barrels, and the now-unneeded `vaul-svelte` dependency after proving the shipped import graph no longer reaches them.
 - Made each new CLI authorization request expire older pending device sessions, and made transactional workspace deletion the sole owner of removing that workspace's media-cleanup jobs.

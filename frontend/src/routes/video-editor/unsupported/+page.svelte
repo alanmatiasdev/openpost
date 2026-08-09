@@ -7,8 +7,8 @@
 	import { m } from '$lib/paraglide/messages';
 	import { detectVideoEditorCapabilities } from '$lib/video-editor/capabilities';
 	import type { VideoEditorCapabilities } from '$lib/video-editor/types';
-	import CheckIcon from 'lucide-svelte/icons/check';
-	import XIcon from 'lucide-svelte/icons/x';
+	import CheckIcon from '@lucide/svelte/icons/check';
+	import XIcon from '@lucide/svelte/icons/x';
 
 	let capabilities = $state<VideoEditorCapabilities | null>(null);
 

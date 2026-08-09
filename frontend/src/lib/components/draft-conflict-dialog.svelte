@@ -1,5 +1,5 @@
 <script lang="ts">
-	import LoaderIcon from 'lucide-svelte/icons/loader-2';
+	import LoaderIcon from '@lucide/svelte/icons/loader-2';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Button } from '$lib/components/ui/button';
 	import { m } from '$lib/paraglide/messages';

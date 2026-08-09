@@ -14,9 +14,9 @@
 	import { getPlatformName } from '$lib/utils';
 	import { getLocaleTag } from '$lib/i18n';
 	import { m } from '$lib/paraglide/messages';
-	import CheckCircleIcon from 'lucide-svelte/icons/circle-check';
-	import AlertTriangleIcon from 'lucide-svelte/icons/triangle-alert';
-	import PenLineIcon from 'lucide-svelte/icons/square-pen';
+	import CheckCircleIcon from '@lucide/svelte/icons/circle-check';
+	import AlertTriangleIcon from '@lucide/svelte/icons/triangle-alert';
+	import PenLineIcon from '@lucide/svelte/icons/square-pen';
 
 	type Selection = components['schemas']['AccountSelectionResponse'];
 	type SelectionOption = components['schemas']['AccountSelectionOption'];

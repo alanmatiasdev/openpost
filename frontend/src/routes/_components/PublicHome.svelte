@@ -6,7 +6,7 @@ FIRST VIEWPORT: Brand and sign-in above a split offer; the entry price and trial
 FORM: A concise public verification page inside the established OpenPost world, shaped directly from the approval requirements.
 -->
 <script lang="ts">
-	import { ArrowRight, CalendarClock, ChartNoAxesCombined, PanelsTopLeft } from 'lucide-svelte';
+	import { ArrowRight, CalendarClock, ChartNoAxesCombined, PanelsTopLeft } from '@lucide/svelte';
 	import LanguageSwitcher from '$lib/components/language-switcher.svelte';
 	import Logo from '$lib/components/Logo.svelte';
 	import { Button } from '$lib/components/ui/button';

@@ -2,10 +2,10 @@
 	import { onMount } from 'svelte';
 	import { Button } from '$lib/components/ui/button';
 	import AppSelect from '$lib/components/app-select.svelte';
-	import CameraIcon from 'lucide-svelte/icons/camera';
-	import RefreshCwIcon from 'lucide-svelte/icons/refresh-cw';
-	import SwitchCameraIcon from 'lucide-svelte/icons/switch-camera';
-	import LoaderIcon from 'lucide-svelte/icons/loader-2';
+	import CameraIcon from '@lucide/svelte/icons/camera';
+	import RefreshCwIcon from '@lucide/svelte/icons/refresh-cw';
+	import SwitchCameraIcon from '@lucide/svelte/icons/switch-camera';
+	import LoaderIcon from '@lucide/svelte/icons/loader-2';
 	import { m } from '$lib/paraglide/messages';
 
 	let {

@@ -7,7 +7,7 @@
 	import { Label } from '$lib/components/ui/label';
 	import InlineNotice from '$lib/components/inline-notice.svelte';
 	import StandaloneShell from '$lib/components/standalone-shell.svelte';
-	import LoaderIcon from 'lucide-svelte/icons/loader-2';
+	import LoaderIcon from '@lucide/svelte/icons/loader-2';
 	import { client, type AuthConfiguration } from '$lib/api/client';
 	import { auth } from '$lib/stores/auth';
 	import { m } from '$lib/paraglide/messages';

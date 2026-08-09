@@ -30,15 +30,15 @@ FORM: LosslessCut-style focused operate surface; no asset library, effects brows
 		quickCutCompatibility,
 		resolveKeyframeAlignment
 	} from '../lossless';
-	import CheckIcon from 'lucide-svelte/icons/check';
-	import DownloadIcon from 'lucide-svelte/icons/download';
-	import FilmIcon from 'lucide-svelte/icons/film';
-	import LoaderIcon from 'lucide-svelte/icons/loader-2';
-	import PauseIcon from 'lucide-svelte/icons/pause';
-	import PlayIcon from 'lucide-svelte/icons/play';
-	import ScissorsIcon from 'lucide-svelte/icons/scissors';
-	import SparklesIcon from 'lucide-svelte/icons/sparkles';
-	import TrashIcon from 'lucide-svelte/icons/trash-2';
+	import CheckIcon from '@lucide/svelte/icons/check';
+	import DownloadIcon from '@lucide/svelte/icons/download';
+	import FilmIcon from '@lucide/svelte/icons/film';
+	import LoaderIcon from '@lucide/svelte/icons/loader-2';
+	import PauseIcon from '@lucide/svelte/icons/pause';
+	import PlayIcon from '@lucide/svelte/icons/play';
+	import ScissorsIcon from '@lucide/svelte/icons/scissors';
+	import SparklesIcon from '@lucide/svelte/icons/sparkles';
+	import TrashIcon from '@lucide/svelte/icons/trash-2';
 
 	interface Props {
 		project: VideoProjectDocumentV1;

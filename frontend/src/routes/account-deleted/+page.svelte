@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
-	import CheckCircleIcon from 'lucide-svelte/icons/check-circle-2';
+	import CheckCircleIcon from '@lucide/svelte/icons/check-circle-2';
 	import StandaloneShell from '$lib/components/standalone-shell.svelte';
 	import { m } from '$lib/paraglide/messages';
 </script>

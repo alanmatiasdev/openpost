@@ -44,16 +44,16 @@
 	import RenameDialog from '$lib/components/rename-dialog.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
-	import ClapperboardIcon from 'lucide-svelte/icons/clapperboard';
-	import ImageIcon from 'lucide-svelte/icons/image';
-	import VideoIcon from 'lucide-svelte/icons/video';
-	import PlusIcon from 'lucide-svelte/icons/plus';
-	import SearchIcon from 'lucide-svelte/icons/search';
-	import CopyIcon from 'lucide-svelte/icons/copy';
-	import HeartIcon from 'lucide-svelte/icons/heart';
-	import LoaderIcon from 'lucide-svelte/icons/loader-2';
-	import TrashIcon from 'lucide-svelte/icons/trash-2';
-	import PencilIcon from 'lucide-svelte/icons/pencil';
+	import ClapperboardIcon from '@lucide/svelte/icons/clapperboard';
+	import ImageIcon from '@lucide/svelte/icons/image';
+	import VideoIcon from '@lucide/svelte/icons/video';
+	import PlusIcon from '@lucide/svelte/icons/plus';
+	import SearchIcon from '@lucide/svelte/icons/search';
+	import CopyIcon from '@lucide/svelte/icons/copy';
+	import HeartIcon from '@lucide/svelte/icons/heart';
+	import LoaderIcon from '@lucide/svelte/icons/loader-2';
+	import TrashIcon from '@lucide/svelte/icons/trash-2';
+	import PencilIcon from '@lucide/svelte/icons/pencil';
 	import { m } from '$lib/paraglide/messages';
 
 	type CatalogView = EditorCatalogSnapshot & {

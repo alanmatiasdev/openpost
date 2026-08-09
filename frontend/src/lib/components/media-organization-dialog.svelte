@@ -4,10 +4,10 @@
 	import { Input } from '$lib/components/ui/input';
 	import DestructiveConfirmDialog from '$lib/components/destructive-confirm-dialog.svelte';
 	import { createMediaTag, deleteMediaTag, updateMediaTag, type MediaTag } from '$lib/media-tags';
-	import HashIcon from 'lucide-svelte/icons/hash';
-	import LoaderIcon from 'lucide-svelte/icons/loader-2';
-	import PencilIcon from 'lucide-svelte/icons/pencil';
-	import TrashIcon from 'lucide-svelte/icons/trash-2';
+	import HashIcon from '@lucide/svelte/icons/hash';
+	import LoaderIcon from '@lucide/svelte/icons/loader-2';
+	import PencilIcon from '@lucide/svelte/icons/pencil';
+	import TrashIcon from '@lucide/svelte/icons/trash-2';
 	import { m } from '$lib/paraglide/messages';
 
 	let {

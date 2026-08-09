@@ -33,15 +33,15 @@
 	import { WorkspaceContextError, workspaceCtx } from '$lib/stores/workspace.svelte';
 	import { cn } from '$lib/utils';
 	import { CalendarDate } from '@internationalized/date';
-	import CalendarDaysIcon from 'lucide-svelte/icons/calendar-days';
-	import ChevronLeftIcon from 'lucide-svelte/icons/chevron-left';
-	import ChevronRightIcon from 'lucide-svelte/icons/chevron-right';
-	import Loader2Icon from 'lucide-svelte/icons/loader-2';
-	import ListIcon from 'lucide-svelte/icons/list';
-	import LockIcon from 'lucide-svelte/icons/lock-keyhole';
-	import PlusIcon from 'lucide-svelte/icons/plus';
-	import RefreshCwIcon from 'lucide-svelte/icons/refresh-cw';
-	import Rows3Icon from 'lucide-svelte/icons/rows-3';
+	import CalendarDaysIcon from '@lucide/svelte/icons/calendar-days';
+	import ChevronLeftIcon from '@lucide/svelte/icons/chevron-left';
+	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
+	import Loader2Icon from '@lucide/svelte/icons/loader-2';
+	import ListIcon from '@lucide/svelte/icons/list';
+	import LockIcon from '@lucide/svelte/icons/lock-keyhole';
+	import PlusIcon from '@lucide/svelte/icons/plus';
+	import RefreshCwIcon from '@lucide/svelte/icons/refresh-cw';
+	import Rows3Icon from '@lucide/svelte/icons/rows-3';
 
 	type Publication = components['schemas']['PublicationResponse'];
 	type Rendition = components['schemas']['RenditionResponse'];

@@ -5,7 +5,7 @@
 	import { Input } from '$lib/components/ui/input';
 	import { m } from '$lib/paraglide/messages';
 	import type { SettingsDestinationID } from '$lib/settings-navigation';
-	import SearchIcon from 'lucide-svelte/icons/search';
+	import SearchIcon from '@lucide/svelte/icons/search';
 
 	interface SettingsDestination {
 		id: SettingsDestinationID;

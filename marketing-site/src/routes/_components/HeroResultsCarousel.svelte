@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import Heart from 'lucide-svelte/icons/heart';
-	import MessageCircle from 'lucide-svelte/icons/message-circle';
-	import Repeat2 from 'lucide-svelte/icons/repeat-2';
-	import Send from 'lucide-svelte/icons/send';
+	import Heart from '@lucide/svelte/icons/heart';
+	import MessageCircle from '@lucide/svelte/icons/message-circle';
+	import Repeat2 from '@lucide/svelte/icons/repeat-2';
+	import Send from '@lucide/svelte/icons/send';
 	import PlatformIcon from '$lib/components/platform-icon.svelte';
 
 	type ResultSlide = {

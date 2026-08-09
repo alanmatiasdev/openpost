@@ -13,9 +13,9 @@
 	import type { ImageEditorPreset, ImageEditorTemplate } from '$lib/image-editor/types';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
-	import ArrowLeftIcon from 'lucide-svelte/icons/arrow-left';
-	import LoaderIcon from 'lucide-svelte/icons/loader-2';
-	import PaletteIcon from 'lucide-svelte/icons/palette';
+	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
+	import LoaderIcon from '@lucide/svelte/icons/loader-2';
+	import PaletteIcon from '@lucide/svelte/icons/palette';
 	import { m } from '$lib/paraglide/messages';
 	import { startImageEditorMetric } from '$lib/image-editor/telemetry';
 	import TemplatePreview from '$lib/image-editor/components/template-preview.svelte';

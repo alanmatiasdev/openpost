@@ -2,8 +2,8 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { m } from '$lib/paraglide/messages';
-	import PlusIcon from 'lucide-svelte/icons/plus';
-	import XIcon from 'lucide-svelte/icons/x';
+	import PlusIcon from '@lucide/svelte/icons/plus';
+	import XIcon from '@lucide/svelte/icons/x';
 
 	interface PollConstraints {
 		min_items?: number;

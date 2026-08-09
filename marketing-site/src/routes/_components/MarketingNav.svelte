@@ -1,6 +1,6 @@
 <script lang="ts">
   import { page } from "$app/state";
-  import { ArrowRight, Menu, Moon, Sun, X } from "lucide-svelte";
+  import { ArrowRight, Menu, Moon, Sun, X } from "@lucide/svelte";
   import { mode, toggleMode } from "mode-watcher";
   import Logo from "$lib/components/Logo.svelte";
   import PlatformIcon from "$lib/components/platform-icon.svelte";

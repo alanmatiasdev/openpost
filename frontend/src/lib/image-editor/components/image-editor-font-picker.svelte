@@ -1,8 +1,8 @@
 <script lang="ts">
 	import * as Popover from '$lib/components/ui/popover';
 	import { Input } from '$lib/components/ui/input';
-	import CheckIcon from 'lucide-svelte/icons/check';
-	import SearchIcon from 'lucide-svelte/icons/search';
+	import CheckIcon from '@lucide/svelte/icons/check';
+	import SearchIcon from '@lucide/svelte/icons/search';
 	import type { ImageEditorBrandFont } from '../types';
 	import { m } from '$lib/paraglide/messages';
 	import { openPostDesignFonts } from '$lib/design-fonts';

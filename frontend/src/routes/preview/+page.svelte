@@ -4,7 +4,7 @@
 	import { SocialPreviewPage, platformNames, type PreviewModel } from '@openpost/social-preview';
 	import { channelName } from '$lib/preview-window';
 	import { m } from '$lib/paraglide/messages';
-	import UnplugIcon from 'lucide-svelte/icons/unplug';
+	import UnplugIcon from '@lucide/svelte/icons/unplug';
 
 	type PreviewChannelMessage =
 		| { type: 'ready' }

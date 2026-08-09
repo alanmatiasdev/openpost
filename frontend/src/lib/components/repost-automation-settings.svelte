@@ -15,10 +15,10 @@
 	import { m } from '$lib/paraglide/messages';
 	import { showToast } from '$lib/toast';
 	import { getOptionalUnsavedChanges } from '$lib/unsaved-changes.svelte';
-	import ActivityIcon from 'lucide-svelte/icons/activity';
-	import PlusIcon from 'lucide-svelte/icons/plus';
-	import Repeat2Icon from 'lucide-svelte/icons/repeat-2';
-	import TrashIcon from 'lucide-svelte/icons/trash';
+	import ActivityIcon from '@lucide/svelte/icons/activity';
+	import PlusIcon from '@lucide/svelte/icons/plus';
+	import Repeat2Icon from '@lucide/svelte/icons/repeat-2';
+	import TrashIcon from '@lucide/svelte/icons/trash';
 
 	type RepostSettings = components['schemas']['SettingsResponse'];
 	type RepostAccount = components['schemas']['AccountOption'];

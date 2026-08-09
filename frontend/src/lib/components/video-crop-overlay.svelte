@@ -1,5 +1,5 @@
 <script lang="ts">
-	import MoveIcon from 'lucide-svelte/icons/move';
+	import MoveIcon from '@lucide/svelte/icons/move';
 
 	interface CropRect {
 		x: number;

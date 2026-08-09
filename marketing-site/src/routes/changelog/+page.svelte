@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ArrowRight, CheckCircle2, ExternalLink } from "lucide-svelte";
+  import { ArrowRight, CheckCircle2, ExternalLink } from "@lucide/svelte";
   import { Button } from "$lib/components/ui/button";
   import { githubUrl, siteUrl } from "../_marketing";
 

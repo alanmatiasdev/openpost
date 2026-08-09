@@ -18,11 +18,11 @@ FORM: Publications are the primary rows; provider renditions disclose in place w
 	import AppToast from '$lib/components/app-toast.svelte';
 	import AnalyticsTrend from '$lib/components/analytics-trend.svelte';
 	import PlatformIcon from '$lib/components/platform-icon.svelte';
-	import AnalyticsIcon from 'lucide-svelte/icons/chart-no-axes-combined';
-	import AccountsIcon from 'lucide-svelte/icons/users';
-	import ChevronDownIcon from 'lucide-svelte/icons/chevron-down';
-	import RefreshIcon from 'lucide-svelte/icons/refresh-cw';
-	import ExternalLinkIcon from 'lucide-svelte/icons/external-link';
+	import AnalyticsIcon from '@lucide/svelte/icons/chart-no-axes-combined';
+	import AccountsIcon from '@lucide/svelte/icons/users';
+	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
+	import RefreshIcon from '@lucide/svelte/icons/refresh-cw';
+	import ExternalLinkIcon from '@lucide/svelte/icons/external-link';
 	import { m } from '$lib/paraglide/messages';
 	import { getLocaleTag } from '$lib/i18n';
 	import {

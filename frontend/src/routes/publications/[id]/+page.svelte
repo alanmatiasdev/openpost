@@ -16,9 +16,9 @@
 	import { m } from '$lib/paraglide/messages';
 	import { getPlatformName } from '$lib/utils';
 	import { getLocaleTag } from '$lib/i18n';
-	import ArrowLeftIcon from 'lucide-svelte/icons/arrow-left';
-	import ExternalLinkIcon from 'lucide-svelte/icons/external-link';
-	import HistoryIcon from 'lucide-svelte/icons/history';
+	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
+	import ExternalLinkIcon from '@lucide/svelte/icons/external-link';
+	import HistoryIcon from '@lucide/svelte/icons/history';
 
 	type Publication = components['schemas']['PublicationResponse'];
 	let publication = $state.raw<Publication | null>(null);

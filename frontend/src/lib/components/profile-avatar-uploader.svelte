@@ -8,10 +8,10 @@
 	import { getApiBase } from '$lib/stores/instance.svelte';
 	import { getToken } from '$lib/api/client';
 	import { formatBytes } from '$lib/video/constraints';
-	import CameraIcon from 'lucide-svelte/icons/camera';
-	import ImageIcon from 'lucide-svelte/icons/image';
-	import LoaderIcon from 'lucide-svelte/icons/loader-2';
-	import UploadIcon from 'lucide-svelte/icons/upload';
+	import CameraIcon from '@lucide/svelte/icons/camera';
+	import ImageIcon from '@lucide/svelte/icons/image';
+	import LoaderIcon from '@lucide/svelte/icons/loader-2';
+	import UploadIcon from '@lucide/svelte/icons/upload';
 	import { m } from '$lib/paraglide/messages';
 
 	let {

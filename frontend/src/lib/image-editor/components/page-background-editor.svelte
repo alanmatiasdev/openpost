@@ -14,9 +14,9 @@
 		ImageEditorPageBackground
 	} from '../types';
 	import ImageEditorColorPicker from './image-editor-color-picker.svelte';
-	import PlusIcon from 'lucide-svelte/icons/plus';
-	import TrashIcon from 'lucide-svelte/icons/trash-2';
-	import ImageIcon from 'lucide-svelte/icons/image';
+	import PlusIcon from '@lucide/svelte/icons/plus';
+	import TrashIcon from '@lucide/svelte/icons/trash-2';
+	import ImageIcon from '@lucide/svelte/icons/image';
 
 	let { onOpenMedia = () => undefined }: { onOpenMedia?: () => void } = $props();
 

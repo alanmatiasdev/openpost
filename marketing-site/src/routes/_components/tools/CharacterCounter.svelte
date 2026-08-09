@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { RotateCcw, Sparkles } from "lucide-svelte";
+  import { RotateCcw, Sparkles } from "@lucide/svelte";
   import { Button } from "$lib/components/ui/button";
   import { Textarea } from "$lib/components/ui/textarea";
   import PlatformIcon from "$lib/components/platform-icon.svelte";

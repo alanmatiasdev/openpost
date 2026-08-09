@@ -10,7 +10,7 @@
 	import SettingsFormFooter from '$lib/components/settings-form-footer.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { Checkbox } from '$lib/components/ui/checkbox';
-	import BellRingIcon from 'lucide-svelte/icons/bell-ring';
+	import BellRingIcon from '@lucide/svelte/icons/bell-ring';
 
 	type ChannelPreference = components['schemas']['ChannelPreference'];
 	type Preferences = Record<string, ChannelPreference>;

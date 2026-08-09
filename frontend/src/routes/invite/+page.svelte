@@ -9,8 +9,8 @@
 	import { auth } from '$lib/stores/auth';
 	import { workspaceCtx } from '$lib/stores/workspace.svelte';
 	import { m } from '$lib/paraglide/messages';
-	import ShieldCheckIcon from 'lucide-svelte/icons/shield-check';
-	import UsersIcon from 'lucide-svelte/icons/users';
+	import ShieldCheckIcon from '@lucide/svelte/icons/shield-check';
+	import UsersIcon from '@lucide/svelte/icons/users';
 
 	let authState = $derived($auth);
 	let token = $derived($page.url.searchParams.get('token') ?? '');

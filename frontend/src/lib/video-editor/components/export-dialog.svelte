@@ -7,8 +7,8 @@
 	import InlineNotice from '$lib/components/inline-notice.svelte';
 	import { m } from '$lib/paraglide/messages';
 	import { formatBytes } from '$lib/video-editor/project';
-	import CheckIcon from 'lucide-svelte/icons/check';
-	import DownloadIcon from 'lucide-svelte/icons/download';
+	import CheckIcon from '@lucide/svelte/icons/check';
+	import DownloadIcon from '@lucide/svelte/icons/download';
 
 	let {
 		open = $bindable(),

@@ -19,9 +19,9 @@
 	import { m } from '$lib/paraglide/messages';
 	import { getLocaleTag } from '$lib/i18n';
 	import { workspaceColor } from '$lib/workspace-color';
-	import FileTextIcon from 'lucide-svelte/icons/file-text';
-	import ImageIcon from 'lucide-svelte/icons/image';
-	import TrashIcon from 'lucide-svelte/icons/trash-2';
+	import FileTextIcon from '@lucide/svelte/icons/file-text';
+	import ImageIcon from '@lucide/svelte/icons/image';
+	import TrashIcon from '@lucide/svelte/icons/trash-2';
 
 	let { onNavigate }: { onNavigate: (href: string) => void } = $props();
 

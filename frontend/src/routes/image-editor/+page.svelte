@@ -29,11 +29,11 @@ FORM: Operate surface extending the established OpenPost Image Editor start scre
 	} from '$lib/image-editor/local-persistence';
 	import { trackPublicImageEditorEvent } from '$lib/image-editor/public-telemetry';
 	import type { ImageEditorPreset, ImageEditorTemplate } from '$lib/image-editor/types';
-	import ArrowRightIcon from 'lucide-svelte/icons/arrow-right';
-	import ImageIcon from 'lucide-svelte/icons/image-plus';
-	import LoaderIcon from 'lucide-svelte/icons/loader-2';
-	import PaletteIcon from 'lucide-svelte/icons/palette';
-	import TrashIcon from 'lucide-svelte/icons/trash-2';
+	import ArrowRightIcon from '@lucide/svelte/icons/arrow-right';
+	import ImageIcon from '@lucide/svelte/icons/image-plus';
+	import LoaderIcon from '@lucide/svelte/icons/loader-2';
+	import PaletteIcon from '@lucide/svelte/icons/palette';
+	import TrashIcon from '@lucide/svelte/icons/trash-2';
 	import { m } from '$lib/paraglide/messages';
 
 	let authState = $derived($auth);
