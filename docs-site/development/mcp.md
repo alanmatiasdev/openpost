@@ -121,7 +121,10 @@ For `mcp:read`, `tools/list` omits `execute_operation`, `search_operations` omit
 Example discovery and execution calls:
 
 ```json
-{"name":"search_operations","arguments":{"query":"list connected accounts"}}
+{
+  "name": "search_operations",
+  "arguments": { "query": "list connected accounts" }
+}
 ```
 
 ```json
@@ -129,7 +132,7 @@ Example discovery and execution calls:
   "name": "query_operation",
   "arguments": {
     "operation": "list_accounts",
-    "arguments": {"workspace_id": "workspace-id"}
+    "arguments": { "workspace_id": "workspace-id" }
   }
 }
 ```
@@ -189,6 +192,20 @@ boundary.
 
 The directly advertised `render_scheduler_widget` is intentionally outside the
 delegated operation catalog; clients call it only when they want the Apps UI.
+
+## Registry listing version and compatibility
+
+The `version` in the repository's `server.json` belongs to the immutable **Official MCP Registry listing**. It is not the OpenPost application version and it is not the date-based MCP protocol version negotiated during `initialize`. The application reports its release through `/api/v1/version`; each MCP session reports and validates its negotiated protocol version separately.
+
+OpenPost changes the registry version only when it publishes a new registry entry for the managed `https://app.openpost.social/mcp` endpoint. Registry versions use stable semantic versioning:
+
+- Major: an intentionally incompatible transport, authentication, tool-name, required-input, or result-contract change.
+- Minor: a backward-compatible tool, prompt, resource, optional input, or result addition.
+- Patch: metadata, description, example, or other behavior-preserving correction.
+
+Every published registry version is immutable. `server.json` and the live-publication record in `launch-kit/listings.md` must therefore keep the same exact version, and the repository check rejects ranges, prereleases, a changed managed endpoint, or unexplained version drift. Application releases that do not publish a new MCP Registry entry leave this number unchanged.
+
+This policy follows the [Official MCP Registry versioning guidance](https://modelcontextprotocol.io/registry/versioning), reviewed 2026-08-09. Clients should use MCP capability negotiation—not registry SemVer alone—to decide whether a specific operation is available.
 
 ## Current prompts
 

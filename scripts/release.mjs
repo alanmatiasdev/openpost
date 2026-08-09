@@ -5,6 +5,7 @@ import { mkdir, mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
+import { checkMCPRegistryOwnership } from "./check-mcp-registry.mjs";
 import { readReleaseManifest } from "./release-manifest.mjs";
 
 const root = path.resolve(import.meta.dir, "..");
@@ -45,6 +46,7 @@ try {
 }
 
 async function plan() {
+  const mcpRegistryVersion = checkMCPRegistryOwnership(root);
   const latestTag = git(["tag", "--list", "v*", "--sort=-v:refname"])
     .split("\n")
     .find(Boolean);
@@ -76,10 +78,16 @@ async function plan() {
     delivery: files.some((file) =>
       /^(\.github|docker|devenv|scripts\/release)/.test(file),
     ),
+    mcpRegistry: files.some((file) =>
+      /^(server\.json|launch-kit\/listings\.md|docs-site\/development\/mcp\.md|scripts\/check-mcp-registry)/.test(
+        file,
+      ),
+    ),
   };
 
   console.log(`Latest release: ${latestTag}`);
   console.log(`Planned release: ${nextTag}`);
+  console.log(`MCP registry listing: ${mcpRegistryVersion}`);
   console.log(`Changed paths: ${changed.length}`);
   for (const [surface, touched] of Object.entries(surfaces)) {
     console.log(`  ${touched ? "CHECK" : "skip "} ${surface}`);

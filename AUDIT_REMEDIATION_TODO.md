@@ -974,7 +974,7 @@ Candidate decisions under this registry:
 
 ### REL-002 — Define `server.json` version ownership
 
-- [ ] **Problem — Baseline audit:** `server.json` has an apparently independent `1.32.1` with no documented relation to app SemVer.
+- [x] **Problem — Baseline audit:** `server.json` has an apparently independent `1.32.1` with no documented relation to app SemVer.
 - **Fix:** document whether it is protocol, catalogue, or app version; derive or validate it in release planning; add a compatibility policy.
 - **Done when:** unexplained divergence fails a check and consumers can reason about upgrades.
 
