@@ -11,7 +11,7 @@
       "provider": "Hetzner Online GmbH",
       "location": "Falkenstein, Germany (FSN1)",
       "data": "Accounts, workspaces, drafts, schedules, encrypted social credentials, billing status, operational logs, and cookie-free Umami website analytics.",
-      "retention": "Active service data is kept while needed to provide the account and for the legal, security, and dispute periods described in the Privacy Policy. Logs are size-bounded rather than kept for a fixed number of days.",
+      "retention": "Active service data is kept while needed to provide the account and for the legal, security, and dispute periods described in the Privacy Policy. Managed host journals are size-bounded to 50 MiB of persistent storage and 10 MiB of runtime storage rather than kept for a fixed number of days. The live Umami database has no configured age-based event purge; daily Umami recovery copies are pruned after they become more than seven days old.",
       "protection": "The host uses key-only SSH, blocks direct root and password login, and limits database and service access to the application and operator boundary."
     },
     {

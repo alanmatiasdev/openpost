@@ -163,7 +163,7 @@ These do not assert a newly observed production incident. They block Pinterest, 
 
 ### LEGAL-002 — Use one canonical legal-policy version everywhere
 
-- [ ] **Problem — Current source:** Privacy, Terms, and Refunds say “Effective date: 5 August 2026,” while production acceptance configuration records `2026-08-04`. Re-prompt logic compares exact version strings, so users can be recorded against the wrong version and miss a required re-acceptance.
+- [x] **Problem — Current source:** Privacy, Terms, and Refunds say “Effective date: 5 August 2026,” while production acceptance configuration records `2026-08-04`. Re-prompt logic compares exact version strings, so users can be recorded against the wrong version and miss a required re-acceptance.
 - **Fix:** create one canonical policy-version source consumed by public documents, hosted configuration, acceptance records, and release checks; decide whether Refunds requires separate acceptance; migrate or re-prompt affected users deliberately.
 - **Done when:** displayed date/version, API configuration, stored acceptance, and changelog agree; a substantive version bump forces re-acceptance; cosmetic changes follow the documented policy; migration tests cover existing `2026-08-04` records.
 - **Evidence:** `marketing-site/src/routes/privacy/+page.svelte:5`, `marketing-site/src/routes/terms/+page.svelte:5`, `marketing-site/src/routes/refunds/+page.svelte:5`, `/Users/rgo/.config/home/modules/services/openpost/default.nix:352`, `backend/internal/api/handlers/auth.go:1721`.

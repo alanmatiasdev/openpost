@@ -16,6 +16,7 @@ import (
 	"github.com/danielgtaylor/huma/v2/adapters/humaecho"
 	"github.com/labstack/echo/v4"
 	"github.com/openpost/backend/internal/api/middleware"
+	"github.com/openpost/backend/internal/legalpolicy"
 	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/services/auth"
 	"github.com/openpost/backend/internal/services/passwordmail"
@@ -213,14 +214,18 @@ func TestRegistrationRequiresAndPersistsCurrentLegalAcceptance(t *testing.T) {
 	require.False(t, user.LegalAcceptedAt.IsZero())
 }
 
-func TestExistingAccountCanAcceptCurrentPolicy(t *testing.T) {
+func TestExistingAccountAcceptedOlderPolicyMustAcceptCurrentPolicy(t *testing.T) {
 	t.Parallel()
 
 	db := createHandlerTestDB(t, (*models.User)(nil), (*models.UserSession)(nil))
 	authService := auth.NewService("test-secret")
 	hash, err := authService.HashPassword("long-password-123")
 	require.NoError(t, err)
-	user := &models.User{ID: "user-1", Email: "existing@example.com", PasswordHash: hash, CreatedAt: time.Now().UTC()}
+	user := &models.User{
+		ID: "user-1", Email: "existing@example.com", PasswordHash: hash,
+		TermsVersion: "2026-08-04", PrivacyVersion: "2026-08-04",
+		LegalAcceptedAt: time.Now().UTC().Add(-24 * time.Hour), CreatedAt: time.Now().UTC(),
+	}
 	_, err = db.NewInsert().Model(user).Exec(t.Context())
 	require.NoError(t, err)
 	sessionService := sessions.NewService(db)
@@ -237,7 +242,7 @@ func TestExistingAccountCanAcceptCurrentPolicy(t *testing.T) {
 		db, authService, middleware.NewJWTAuthenticatorWithSessions(authService, sessionService), nil, nil, false,
 	)
 	handler.SetAccountPolicy(AccountPolicy{
-		Required: true, TermsVersion: "2026-07-22", PrivacyVersion: "2026-07-22",
+		Required: true, TermsVersion: legalpolicy.TermsVersion, PrivacyVersion: legalpolicy.PrivacyVersion,
 	})
 	handler.Me(api)
 	handler.AcceptAccountPolicy(api)
@@ -254,8 +259,8 @@ func TestExistingAccountCanAcceptCurrentPolicy(t *testing.T) {
 
 	var stored models.User
 	require.NoError(t, db.NewSelect().Model(&stored).Where("id = ?", user.ID).Scan(t.Context()))
-	require.Equal(t, "2026-07-22", stored.TermsVersion)
-	require.Equal(t, "2026-07-22", stored.PrivacyVersion)
+	require.Equal(t, legalpolicy.TermsVersion, stored.TermsVersion)
+	require.Equal(t, legalpolicy.PrivacyVersion, stored.PrivacyVersion)
 	require.False(t, stored.LegalAcceptedAt.IsZero())
 }
 

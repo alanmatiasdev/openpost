@@ -1,12 +1,37 @@
 <script lang="ts">
   import { resolve } from "$app/paths";
   import {
+    formatLegalDate,
     formatPolicyEffectiveDate,
+    legalChangeHistory,
     legalPolicy,
+    privacyInventory,
+    type LegalPolicyKey,
   } from "@openpost/legal-policy";
   import { siteUrl } from "../_marketing";
 
   const effectiveDate = formatPolicyEffectiveDate(legalPolicy.privacy);
+  const inventoryReviewedOn = formatLegalDate(privacyInventory.reviewed_on);
+  const storageTechnologies = [
+    "cookie",
+    "localStorage",
+    "sessionStorage",
+    "IndexedDB",
+    "OPFS",
+    "Cache Storage",
+  ] as const;
+
+  function policyName(document: LegalPolicyKey) {
+    if (document === "terms") return "Terms of Service";
+    if (document === "refunds") return "Refund Policy";
+    return "Privacy Policy";
+  }
+
+  function policyPath(document: LegalPolicyKey) {
+    if (document === "terms") return "/terms" as const;
+    if (document === "refunds") return "/refunds" as const;
+    return "/privacy" as const;
+  }
 </script>
 
 <svelte:head>
@@ -49,6 +74,30 @@
   <article class="reading-shell prose dark:prose-invert">
     <p><strong>Effective date:</strong> {effectiveDate}</p>
     <p><strong>Policy version:</strong> {legalPolicy.privacy.version}</p>
+
+    <aside class="not-prose bg-muted/30 my-10 rounded-xl border p-6 sm:p-8">
+      <p class="text-primary text-sm font-semibold tracking-wide uppercase">
+        Plain-language summary
+      </p>
+      <p class="text-muted-foreground mt-3 text-sm leading-6">
+        {privacyInventory.summary_notice}
+      </p>
+      <ul class="mt-5 space-y-3 text-sm leading-6">
+        {#each privacyInventory.summary_points as point (point)}
+          <li class="flex gap-3">
+            <span class="text-primary" aria-hidden="true">•</span>
+            <span>{point}</span>
+          </li>
+        {/each}
+      </ul>
+      <p class="text-muted-foreground mt-5 text-sm leading-6">
+        The <a
+          class="focus-ring text-primary rounded-sm font-medium underline underline-offset-4"
+          href={resolve("/terms")}>Terms of Service</a
+        > set the contract for the hosted service. The full sections below state the
+        privacy rules.
+      </p>
+    </aside>
 
     <h2>1. Who is responsible</h2>
     <p>
@@ -247,11 +296,11 @@
 
     <h2>7. Retention and deletion</h2>
     <p>
-      We keep account, post, and analytics data while your account is active and
-      as needed to provide the service. Single-use reset tokens expire quickly
-      and are invalidated after use. Operational and security records are kept
-      only as long as needed for reliability, abuse prevention, legal
-      obligations, and dispute handling.
+      The schedule below states who operates each managed data category, why it
+      is kept, its current duration, and the event that deletes it or ends its
+      use. “No general age-based purge” means the database does not currently
+      delete that category merely because it reached a fixed age. Authorization
+      can still expire before a row is physically removed.
     </p>
     <p>
       You can download an account export or request permanent deletion from
@@ -268,15 +317,71 @@
       OpenPost does not add a separate application-level encryption layer to
       each backup artifact.
     </p>
+    <p><strong>Retention schedule reviewed:</strong> {inventoryReviewedOn}</p>
 
-    <h2>8. Cookies and local storage</h2>
+    <div
+      class="not-prose my-8 overflow-x-auto rounded-xl border"
+      role="region"
+      aria-label="Managed-service retention schedule"
+    >
+      <table class="min-w-[76rem] border-collapse text-left text-sm">
+        <caption class="sr-only">
+          Managed-service data retention schedule and deletion triggers
+        </caption>
+        <thead class="bg-muted/50">
+          <tr>
+            <th class="w-64 border-b p-4 font-semibold" scope="col">Category</th
+            >
+            <th class="w-72 border-b p-4 font-semibold" scope="col"
+              >Owner and purpose</th
+            >
+            <th class="w-80 border-b p-4 font-semibold" scope="col">Duration</th
+            >
+            <th class="w-96 border-b p-4 font-semibold" scope="col"
+              >Deletion trigger and limits</th
+            >
+          </tr>
+        </thead>
+        <tbody class="divide-y">
+          {#each privacyInventory.managed_retention as entry (entry.id)}
+            <tr class="align-top">
+              <th class="p-4 font-semibold" scope="row">
+                {entry.category}
+                <span
+                  class="text-muted-foreground mt-2 block text-xs leading-5 font-normal"
+                  >{entry.includes}</span
+                >
+              </th>
+              <td class="p-4 leading-6">
+                <span class="font-medium">{entry.owner}</span>
+                <span class="text-muted-foreground mt-2 block"
+                  >{entry.purpose}</span
+                >
+              </td>
+              <td class="text-muted-foreground p-4 leading-6">
+                {entry.duration}
+              </td>
+              <td class="p-4 leading-6">
+                {entry.deletion_trigger}
+                <span class="text-muted-foreground mt-2 block"
+                  ><strong class="text-foreground font-medium">Limits:</strong>
+                  {entry.exceptions}</span
+                >
+              </td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+    </div>
+
+    <h2>8. Cookies and browser storage</h2>
     <p>
-      The application uses essential session and security cookies. It may use
-      local browser storage for the selected workspace, server address,
-      language, sound preference, composer return state, unsynced OpenPost Image
-      Editor recovery copies, and local OpenPost Video Editor projects, sources,
-      recordings, transcripts, analysis results, models, and exports. Clearing
-      site data can remove local OpenPost Video Editor content.
+      The inventory below covers first-party cookies, localStorage,
+      sessionStorage, IndexedDB databases and object stores, Origin Private File
+      System (OPFS) roots and patterns, and Cache Storage names used by the app,
+      marketing site, and documentation site. An exact identifier is one fixed
+      name. A prefix covers names with a generated suffix. The inventory was
+      reviewed on {inventoryReviewedOn}.
     </p>
     <p>
       OpenPost Image Editor background removal runs in your browser with model
@@ -300,6 +405,71 @@
       exports are uploaded only when the user chooses a cloud save, Media save,
       or post handoff.
     </p>
+
+    {#each storageTechnologies as technology (technology)}
+      {@const entries = privacyInventory.browser_storage.filter(
+        (entry) => entry.technology === technology,
+      )}
+      <h3>{technology}</h3>
+      <div
+        class="not-prose my-6 overflow-x-auto rounded-xl border"
+        role="region"
+        aria-label={`${technology} identifier inventory`}
+      >
+        <table class="min-w-[70rem] border-collapse text-left text-sm">
+          <caption class="sr-only">{technology} identifier inventory</caption>
+          <thead class="bg-muted/50">
+            <tr>
+              <th class="w-64 border-b p-4 font-semibold" scope="col"
+                >Identifier</th
+              >
+              <th class="w-80 border-b p-4 font-semibold" scope="col"
+                >Owner and purpose</th
+              >
+              <th class="w-96 border-b p-4 font-semibold" scope="col"
+                >Scope and duration</th
+              >
+              <th class="w-40 border-b p-4 font-semibold" scope="col"
+                >Necessity</th
+              >
+            </tr>
+          </thead>
+          <tbody class="divide-y">
+            {#each entries as entry (entry.id)}
+              <tr class="align-top">
+                <th class="p-4 font-normal" scope="row">
+                  <code class="break-all">{entry.identifier}</code>
+                  <span
+                    class="text-muted-foreground mt-2 block text-xs tracking-wide uppercase"
+                    >{entry.identifier_kind}</span
+                  >
+                </th>
+                <td class="p-4 leading-6">
+                  <span class="font-medium">{entry.owner}</span>
+                  <span class="text-muted-foreground mt-2 block"
+                    >{entry.purpose}</span
+                  >
+                </td>
+                <td class="p-4 leading-6">
+                  {entry.scope}
+                  <span class="text-muted-foreground mt-2 block"
+                    ><strong class="text-foreground font-medium"
+                      >Duration:</strong
+                    >
+                    {entry.duration}</span
+                  >
+                </td>
+                <td class="p-4 leading-6">
+                  {entry.necessity === "strictly_necessary"
+                    ? "Strictly necessary"
+                    : "Functional"}
+                </td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+    {/each}
 
     <h2>9. International transfers</h2>
     <p>
@@ -353,5 +523,37 @@
       keep the same version. Questions and requests can be sent to
       <a href="mailto:openpost@rgo.pt">openpost@rgo.pt</a>.
     </p>
+    <p>
+      {legalChangeHistory.scope} This history was reviewed on {formatLegalDate(
+        legalChangeHistory.reviewed_on,
+      )}.
+    </p>
+    <div class="not-prose mt-8 divide-y border-y">
+      {#each legalChangeHistory.entries as entry (`${entry.document}:${entry.version}`)}
+        <section class="py-6">
+          <h3 class="text-base font-semibold">
+            <a
+              class="focus-ring text-primary rounded-sm underline underline-offset-4"
+              href={resolve(policyPath(entry.document))}
+              >{policyName(entry.document)}</a
+            >
+            <span class="text-muted-foreground font-normal"
+              >version {entry.version}</span
+            >
+          </h3>
+          <p class="text-muted-foreground mt-2 text-sm leading-6">
+            Effective {formatLegalDate(entry.effective_date)}
+          </p>
+          <ul class="mt-3 space-y-2 text-sm leading-6">
+            {#each entry.changes as change (change)}
+              <li class="flex gap-3">
+                <span class="text-primary" aria-hidden="true">•</span>
+                <span>{change}</span>
+              </li>
+            {/each}
+          </ul>
+        </section>
+      {/each}
+    </div>
   </article>
 </section>
