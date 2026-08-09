@@ -19,6 +19,7 @@ The web app is the main place to work.
 - [Analytics](/usage/analytics) covers account growth, post results, platform access, and update times.
 - [Engagement, Inbox, and Notifications](/usage/communications) covers comments, replies, messages, and alerts.
 - [Media](/usage/media-library) covers reusable files, designs, templates, brand items, tags, file sources, use checks, and safe cleanup.
+- [OpenPost Studio](/usage/studio) helps you choose between the image and video editing workflows.
 - [OpenPost Image Editor](/usage/image-editor) covers the no-account editor, multi-page still-image designs, saved versions, background removal, export, and return to the post editor.
 - [OpenPost Video Editor](/usage/video-editor) covers local video editing and recording, captions, format variants, recovery, export, cloud save, and return to a post.
 

@@ -16,6 +16,7 @@ All notable changes to this project are documented in this file.
 
 ### Fixed
 
+- Added the missing OpenPost Studio overview and made the documentation gate validate every configured VitePress navigation target as well as Markdown links.
 - Scoped notification inbox reads and bulk actions to the authorized selected workspace plus the account-wide notices shown there; synchronized the persistent bell and paginated feed through one workspace cache; kept failed reads, deletes, and page loads recoverable without changing unread truth; and added read filters, date groups, event labels, complete time semantics, and explicit row actions.
 - Made the embedded app distinguish generated SPA routes from unknown documents, return a real 404 with an accessible recovery page for unknown routes, and generate the route manifest during production builds; precompiled Paraglide message modules also make production builds deterministic.
 - Invalidated in-flight composer requests before navigation and teardown so canceled account, workspace, capability, destination-option, and scheduling reads cannot report or mutate stale screens.

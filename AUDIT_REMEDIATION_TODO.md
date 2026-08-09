@@ -100,7 +100,7 @@ These do not assert a newly observed production incident. They block Pinterest, 
 
 ### DOC-001 — Remove the live Studio docs dead end
 
-- [ ] **Problem — Baseline audit:** the docs sidebar links to `/usage/studio`, which has no page; the Markdown-only link check does not inspect configured navigation.
+- [x] **Problem — Baseline audit:** the docs sidebar links to `/usage/studio`, which has no page; the Markdown-only link check does not inspect configured navigation.
 - **Fix:** point navigation to the Image and Video Editor guides or add an intentional Studio overview; preserve an inbound redirect if old links exist; make CI crawl every configured sidebar/nav target.
 - **Done when:** the deployed route is valid or redirects intentionally, all navigation targets return success, and a config-nav regression test fails on future dead links.
 - **Evidence:** `docs-site/.vitepress/config.ts:34`, `docs-site/usage/index.md:22`, `scripts/check-doc-links.mjs:14`.

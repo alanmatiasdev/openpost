@@ -330,6 +330,10 @@ export const docsPageCatalog = Object.freeze([
     "title": "Settings"
   },
   {
+    "page": "usage/studio.md",
+    "title": "OpenPost Studio"
+  },
+  {
     "page": "usage/threads.md",
     "title": "Threads"
   },
