@@ -911,20 +911,20 @@ Maintenance contract for this lane: a new social provider requires no n8n packag
 
 ### COMPAT-001 — Create an API/schema compatibility retirement registry
 
-- [ ] **Problem — Baseline audit:** repository non-use cannot prove that public API-token, MCP, or CLI consumers are absent.
+- [x] **Problem — Baseline audit:** repository non-use cannot prove that public API-token, MCP, or CLI consumers are absent.
 - **Fix:** record owner, consumer telemetry, introduced/deprecated/removal versions, replacement, notice, and migration path for every candidate; define a minimum sunset window.
 - **Done when:** no public endpoint/schema is removed from a source-only reachability result and removal gates require observed usage plus announced policy.
 
 Candidate decisions under this registry:
 
-- [ ] `GET /posts/schedule-overview`: reconcile with publications; telemetry; replace stale E2E mock; remove only if no valid bounded-calendar use remains.
-- [ ] `GET /accounts/mastodon/servers`: deprecate only after provider-catalog migration proof.
-- [ ] `GET /accounts/{id}/destination-options`: n8n v0.1 explicitly consumes this. Retain and stabilize it for automation, or ship a fully equivalent capability endpoint and migrate the node before deprecation.
-- [ ] legacy `POST /posts` and `PATCH /posts/{id}`: preserve until API/CLI consumers and sunset requirements are handled.
-- [ ] `GET /organizations` and `GET /organizations/{id}/team`: consolidate only after external-consumer review.
-- [ ] organization billing status/checkout duplicates: move the live portal to generic `organization_id` endpoints first.
-- [ ] OIDC provider logout: integrate RP-initiated logout or explicitly deprecate/document it.
-- [ ] `/prompts`: decide hidden advanced page vs retirement; do not remove the prompt/random backend used by the composer.
+- [x] `GET /posts/schedule-overview`: reconcile with publications; telemetry; replace stale E2E mock; remove only if no valid bounded-calendar use remains.
+- [x] `GET /accounts/mastodon/servers`: deprecate only after provider-catalog migration proof.
+- [x] `GET /accounts/{id}/destination-options`: n8n v0.1 explicitly consumes this. Retain and stabilize it for automation, or ship a fully equivalent capability endpoint and migrate the node before deprecation.
+- [x] legacy `POST /posts` and `PATCH /posts/{id}`: preserve until API/CLI consumers and sunset requirements are handled.
+- [x] `GET /organizations` and `GET /organizations/{id}/team`: consolidate only after external-consumer review.
+- [x] organization billing status/checkout duplicates: move the live portal to generic `organization_id` endpoints first.
+- [x] OIDC provider logout: integrate RP-initiated logout or explicitly deprecate/document it.
+- [x] `/prompts`: decide hidden advanced page vs retirement; do not remove the prompt/random backend used by the composer.
 
 ### DOC-002 — Correct provider-app administration guidance
 

@@ -82,6 +82,10 @@ export const docsPageCatalog = Object.freeze([
     "title": "Billing And Usage Foundation"
   },
   {
+    "page": "development/compatibility-policy.md",
+    "title": "API and schema compatibility"
+  },
+  {
     "page": "development/contributing.md",
     "title": "Contributing"
   },

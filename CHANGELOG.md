@@ -6,6 +6,7 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+- Added a machine-checked API and schema compatibility retirement registry with exact ownership, introduction history, replacement and migration decisions, normalized consumer evidence, a 90-day and two-stable-release sunset floor, and fail-closed OpenAPI removal gates.
 - Added final-image SPDX SBOM and full vulnerability-report artifacts to candidate and release workflows, a separately enforced pinned-scanner gate for fixable high and critical findings, and digest evidence that binds each report to the exact promoted image.
 - Added continuous Go and TypeScript reachability, documentation-graph, provider-fact, canonical public-route, and release-surface ownership checks with explicit roots and narrow exceptions.
 - Added a complete feature hub and canonical FAQ grouped around verified product scope, current provider-certification evidence, plan and provider limits, maintained proof, and contextual documentation and support paths.
