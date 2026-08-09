@@ -41,6 +41,14 @@ func NewTikTokAdapter(clientKey, clientSecret, redirectURI string) *TikTokAdapte
 	}
 }
 
+func (t *TikTokAdapter) AuthorizationGrantDescriptor() AuthorizationGrantDescriptor {
+	return AuthorizationGrantDescriptor{
+		ProjectID:     t.clientKey,
+		ExecutionMode: "oauth2",
+		Evidence:      map[string]string{"protocol": "oauth2", "exchange": "authorization_code"},
+	}
+}
+
 func (t *TikTokAdapter) GenerateAuthURL(state string) (string, map[string]string) {
 	params := url.Values{}
 	params.Set("client_key", t.clientKey)
@@ -93,14 +101,15 @@ func (t *TikTokAdapter) exchangeToken(ctx context.Context, values map[string]str
 	}
 
 	var tokenResp struct {
-		AccessToken  string `json:"access_token"`
-		RefreshToken string `json:"refresh_token"`
-		ExpiresIn    int    `json:"expires_in"`
-		TokenType    string `json:"token_type"`
-		Scope        string `json:"scope"`
-		OpenID       string `json:"open_id"`
-		Error        string `json:"error"`
-		Description  string `json:"error_description"`
+		AccessToken      string `json:"access_token"`
+		RefreshToken     string `json:"refresh_token"`
+		ExpiresIn        int    `json:"expires_in"`
+		RefreshExpiresIn int    `json:"refresh_expires_in"`
+		TokenType        string `json:"token_type"`
+		Scope            string `json:"scope"`
+		OpenID           string `json:"open_id"`
+		Error            string `json:"error"`
+		Description      string `json:"error_description"`
 	}
 	if err := json.Unmarshal(respBody, &tokenResp); err != nil {
 		return nil, fmt.Errorf("decoding %s: %w", label, err)
@@ -121,11 +130,12 @@ func (t *TikTokAdapter) exchangeToken(ctx context.Context, values map[string]str
 	}
 
 	return &TokenResult{
-		AccessToken:  tokenResp.AccessToken,
-		RefreshToken: tokenResp.RefreshToken,
-		ExpiresIn:    tokenResp.ExpiresIn,
-		TokenType:    firstNonEmptyString(tokenResp.TokenType, tokenTypeBearer),
-		Extra:        extra,
+		AccessToken:      tokenResp.AccessToken,
+		RefreshToken:     tokenResp.RefreshToken,
+		ExpiresIn:        tokenResp.ExpiresIn,
+		RefreshExpiresIn: tokenResp.RefreshExpiresIn,
+		TokenType:        firstNonEmptyString(tokenResp.TokenType, tokenTypeBearer),
+		Extra:            extra,
 	}, nil
 }
 

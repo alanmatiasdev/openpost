@@ -142,7 +142,7 @@ func TestOAuthCallbackCreatesAndCompletesAccountSelection(t *testing.T) {
 	require.NoError(t, err)
 	connectionID := callbackURL.Query().Get("connection_id")
 	require.NotEmpty(t, connectionID)
-	require.Equal(t, 0, adapter.profileCalls, "selection adapters should not use the direct profile save path")
+	require.Equal(t, 1, adapter.profileCalls, "selection adapters resolve the authorizing subject before saving destinations")
 
 	selectionResp := oauthSelectionRequest(t, e, http.MethodGet, "/api/v1/accounts/selections/"+connectionID, nil, true)
 	require.Equal(t, http.StatusOK, selectionResp.Code, selectionResp.Body.String())
@@ -169,7 +169,9 @@ func TestOAuthCallbackCreatesAndCompletesAccountSelection(t *testing.T) {
 	var account models.SocialAccount
 	require.NoError(t, db.NewSelect().Model(&account).Where("id = ?", accountBody.ID).Scan(ctx))
 	require.Equal(t, "https://cdn.example/image-editor.png", account.AccountAvatarURL)
-	decryptedAccess, err := encryptor.Decrypt(account.AccessTokenEnc)
+	var grant models.OAuthGrant
+	require.NoError(t, db.NewSelect().Model(&grant).Where("id = ?", account.OAuthGrantID).Scan(ctx))
+	decryptedAccess, err := encryptor.Decrypt(grant.AccessTokenEnc)
 	require.NoError(t, err)
 	require.Equal(t, "page-access-token", decryptedAccess)
 
@@ -179,6 +181,43 @@ func TestOAuthCallbackCreatesAndCompletesAccountSelection(t *testing.T) {
 
 	selectionAfterComplete := oauthSelectionRequest(t, e, http.MethodGet, "/api/v1/accounts/selections/"+connectionID, nil, true)
 	require.Equal(t, http.StatusNotFound, selectionAfterComplete.Code)
+}
+
+func TestPendingAccountSelectionPreservesRefreshTokenExpiry(t *testing.T) {
+	db := createHandlerTestDB(t, (*models.OAuthAccountSelection)(nil))
+	handler := NewOAuthHandler(
+		db,
+		crypto.NewTokenEncryptor("0123456789abcdef0123456789abcdef"),
+		nil,
+		testAuthenticator{},
+		false,
+		"https://app.openpost.test",
+	)
+
+	pending, err := handler.createPendingAccountSelection(
+		t.Context(),
+		"user-1",
+		"linkedin",
+		"workspace-1",
+		"",
+		&platform.TokenResult{
+			AccessToken:      "access-token",
+			RefreshToken:     "refresh-token",
+			ExpiresIn:        3600,
+			RefreshExpiresIn: 7200,
+			Extra:            map[string]string{"scope": "w_member_social"},
+		},
+		nil,
+	)
+	require.NoError(t, err)
+
+	restored, err := handler.tokenResultFromPendingSelection(pending)
+	require.NoError(t, err)
+	require.Equal(t, "access-token", restored.AccessToken)
+	require.Equal(t, "refresh-token", restored.RefreshToken)
+	require.InDelta(t, 7200, restored.RefreshExpiresIn, 2)
+	require.Equal(t, "w_member_social", restored.Extra["scope"])
+	require.NotContains(t, restored.Extra, pendingSelectionRefreshExpiresAtKey)
 }
 
 func TestGetAuthURLRejectsMissingSocialAccountEntitlement(t *testing.T) {

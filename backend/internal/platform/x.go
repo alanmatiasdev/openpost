@@ -74,6 +74,14 @@ func NewXAdapter(clientID, clientSecret, redirectURI string) *XAdapter {
 	return x
 }
 
+func (x *XAdapter) AuthorizationGrantDescriptor() AuthorizationGrantDescriptor {
+	return AuthorizationGrantDescriptor{
+		ProjectID:     x.consumerKey,
+		ExecutionMode: "oauth1",
+		Evidence:      map[string]string{"protocol": "oauth1", "exchange": "request_token_verifier"},
+	}
+}
+
 func (x *XAdapter) SetRequestStore(store XRequestStore) {
 	x.requestStore = store
 }

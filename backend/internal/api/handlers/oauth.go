@@ -26,12 +26,19 @@ import (
 	"github.com/openpost/backend/internal/services/entitlements"
 	"github.com/openpost/backend/internal/services/mastodonapps"
 	"github.com/openpost/backend/internal/services/oauthstate"
+	"github.com/openpost/backend/internal/services/tokenmanager"
 	"github.com/uptrace/bun"
 )
 
 const mastodonProvider = "mastodon"
 
 const pendingAccountSelectionTTL = 20 * time.Minute
+
+const pendingSelectionRefreshExpiresAtKey = "_openpost_refresh_token_expires_at"
+
+const lastGrantDestinationMessage = "this is the last destination for this authorization; revoke the authorization to remove it and clear its credentials"
+
+var errLastGrantDestination = errors.New("last active oauth grant destination")
 
 type OAuthHandler struct {
 	db                           *bun.DB
@@ -90,6 +97,31 @@ func cloneProviderAdapters(providers map[string]platform.Adapter) map[string]pla
 		cloned[key] = adapter
 	}
 	return cloned
+}
+
+func authorizationGrantInput(adapter platform.Adapter, subject string) account_saver.AuthorizationGrantInput {
+	input := account_saver.AuthorizationGrantInput{ProviderSubject: strings.TrimSpace(subject)}
+	describer, ok := adapter.(platform.AuthorizationGrantDescriber)
+	if !ok {
+		return input
+	}
+	descriptor := describer.AuthorizationGrantDescriptor()
+	input.ProviderProjectID = descriptor.ProjectID
+	input.ExecutionMode = descriptor.ExecutionMode
+	input.Evidence = descriptor.Evidence
+	return input
+}
+
+func firstNonEmptyTokenValue(token *platform.TokenResult, keys ...string) string {
+	if token == nil {
+		return ""
+	}
+	for _, key := range keys {
+		if value := strings.TrimSpace(token.Extra[key]); value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func (h *OAuthHandler) SetEntitlement(entitlement entitlements.Service) {
@@ -183,6 +215,8 @@ type AccountResponse struct {
 	AccountKind            string     `json:"account_kind,omitempty" doc:"Normalized identity kind, such as person, organization, creator, or business"`
 	MessagingSupported     bool       `json:"messaging_supported" doc:"Whether OpenPost has a messaging connector for this provider"`
 	MessagesEnabled        bool       `json:"messages_enabled" doc:"Whether this account opted in to inbox synchronization"`
+	GrantDestinationCount  int        `json:"grant_destination_count" doc:"Number of active destinations using this provider authorization"`
+	SharedGrant            bool       `json:"shared_grant" doc:"Whether revoking this authorization disconnects other destinations"`
 }
 
 type ListAccountsOutput struct {
@@ -710,6 +744,12 @@ func (h *OAuthHandler) Callback(api huma.API) {
 		}
 
 		if selector, ok := adapter.(platform.AccountSelectionAdapter); ok {
+			if profile, profileErr := adapter.GetProfile(ctx, tokenResp.AccessToken); profileErr == nil && profile != nil && profile.ID != "" {
+				if tokenResp.Extra == nil {
+					tokenResp.Extra = map[string]string{}
+				}
+				tokenResp.Extra["_grant_subject"] = profile.ID
+			}
 			return h.saveAccountSelectionAndRedirect(ctx, userID, input.Platform, workspaceID, mastodonInstanceURL(adapter), tokenResp, selector)
 		}
 
@@ -732,7 +772,7 @@ func (h *OAuthHandler) Callback(api huma.API) {
 			return h.redirectWithError("workspace access denied")
 		}
 
-		return h.saveAccountAndRedirect(ctx, userID, input.Platform, workspaceID, profile.ID, profile.Username, instanceRef, profile.CapabilityState, tokenResp)
+		return h.saveAccountAndRedirect(ctx, userID, input.Platform, workspaceID, profile.ID, profile.Username, instanceRef, profile.CapabilityState, tokenResp, adapter)
 	})
 }
 
@@ -810,9 +850,13 @@ func (h *OAuthHandler) createPendingAccountSelection(ctx context.Context, userID
 		return nil, err
 	}
 
-	extra := tokenResp.Extra
-	if extra == nil {
-		extra = map[string]string{}
+	now := time.Now().UTC()
+	extra := make(map[string]string, len(tokenResp.Extra)+1)
+	for key, value := range tokenResp.Extra {
+		extra[key] = value
+	}
+	if tokenResp.RefreshExpiresIn > 0 {
+		extra[pendingSelectionRefreshExpiresAtKey] = now.Add(time.Duration(tokenResp.RefreshExpiresIn) * time.Second).Format(time.RFC3339Nano)
 	}
 	extraJSON, err := json.Marshal(extra)
 	if err != nil {
@@ -821,7 +865,7 @@ func (h *OAuthHandler) createPendingAccountSelection(ctx context.Context, userID
 
 	var tokenExpiresAt time.Time
 	if tokenResp.ExpiresIn > 0 {
-		tokenExpiresAt = time.Now().UTC().Add(time.Duration(tokenResp.ExpiresIn) * time.Second)
+		tokenExpiresAt = now.Add(time.Duration(tokenResp.ExpiresIn) * time.Second)
 	}
 
 	pending := &models.OAuthAccountSelection{
@@ -836,8 +880,8 @@ func (h *OAuthHandler) createPendingAccountSelection(ctx context.Context, userID
 		TokenExpiresAt:  tokenExpiresAt,
 		TokenExtraJSON:  string(extraJSON),
 		OptionsJSON:     string(optionsJSON),
-		ExpiresAt:       time.Now().UTC().Add(pendingAccountSelectionTTL),
-		CreatedAt:       time.Now().UTC(),
+		ExpiresAt:       now.Add(pendingAccountSelectionTTL),
+		CreatedAt:       now,
 	}
 	if _, err := h.db.NewInsert().Model(pending).Exec(ctx); err != nil {
 		return nil, err
@@ -845,7 +889,7 @@ func (h *OAuthHandler) createPendingAccountSelection(ctx context.Context, userID
 	return pending, nil
 }
 
-func (h *OAuthHandler) saveAccountAndRedirect(ctx context.Context, userID, platformName, workspaceID, accountID, accountUsername, instanceURL string, capabilityState map[string]string, tokenResp *platform.TokenResult) (*huma.StreamResponse, error) {
+func (h *OAuthHandler) saveAccountAndRedirect(ctx context.Context, userID, platformName, workspaceID, accountID, accountUsername, instanceURL string, capabilityState map[string]string, tokenResp *platform.TokenResult, adapter platform.Adapter) (*huma.StreamResponse, error) {
 	// For Threads, the account ID comes from the token response extra
 	if tokenResp.Extra != nil {
 		if uid, ok := tokenResp.Extra["user_id"]; ok && uid != "" {
@@ -862,6 +906,7 @@ func (h *OAuthHandler) saveAccountAndRedirect(ctx context.Context, userID, platf
 		InstanceURL:     instanceURL,
 		Token:           tokenResp,
 		CapabilityState: capabilityState,
+		Grant:           authorizationGrantInput(adapter, accountID),
 	})
 	if err != nil {
 		log.Printf("[Callback] Failed to save account: %v", err)
@@ -966,8 +1011,16 @@ func (h *OAuthHandler) ExchangeCode(api huma.API) {
 
 		instanceURL := mastodonInstanceURL(adapter)
 
-		// Delegate saving the account (encrypting tokens and inserting) to AccountSaver
-		if _, err := h.accountSaver.SaveAccount(ctx, userID, mastodonProvider, input.Body.WorkspaceID, profile.ID, profile.Username, instanceURL, tokenResp); err != nil {
+		if _, err := h.accountSaver.SaveAccountFromInput(ctx, account_saver.SaveAccountInput{
+			UserID:          userID,
+			PlatformName:    mastodonProvider,
+			WorkspaceID:     input.Body.WorkspaceID,
+			AccountID:       profile.ID,
+			AccountUsername: profile.Username,
+			InstanceURL:     instanceURL,
+			Token:           tokenResp,
+			Grant:           authorizationGrantInput(adapter, profile.ID),
+		}); err != nil {
 			log.Printf("[ExchangeCode] Failed to save account: %v", err)
 			return nil, huma.Error403Forbidden(accountConnectionErrorMessage(err))
 		}
@@ -1024,7 +1077,16 @@ func (h *OAuthHandler) BlueskyLogin(api huma.API) {
 			Extra:        nil,
 		}
 
-		if _, err := h.accountSaver.SaveAccount(ctx, userID, "bluesky", input.Body.WorkspaceID, did, input.Body.Handle, "https://bsky.social", tokenResp); err != nil {
+		if _, err := h.accountSaver.SaveAccountFromInput(ctx, account_saver.SaveAccountInput{
+			UserID:          userID,
+			PlatformName:    "bluesky",
+			WorkspaceID:     input.Body.WorkspaceID,
+			AccountID:       did,
+			AccountUsername: input.Body.Handle,
+			InstanceURL:     "https://bsky.social",
+			Token:           tokenResp,
+			Grant:           authorizationGrantInput(adapter, did),
+		}); err != nil {
 			log.Printf("[BlueskyLogin] Failed to save account: %v", err)
 			return nil, huma.Error403Forbidden(accountConnectionErrorMessage(err))
 		}
@@ -1075,6 +1137,7 @@ func (h *OAuthHandler) DiscordWebhookLogin(api huma.API) {
 			AccountUsername: firstNonEmpty(profile.DisplayName, profile.Username),
 			Token:           token,
 			CapabilityState: profile.CapabilityState,
+			Grant:           authorizationGrantInput(adapter, profile.ID),
 		})
 		if err != nil {
 			return nil, huma.Error403Forbidden(accountConnectionErrorMessage(err))
@@ -1190,6 +1253,7 @@ func (h *OAuthHandler) CompleteAccountSelection(api huma.API) {
 				InstanceURL:      firstNonEmpty(selected.InstanceURL, pending.InstanceURL),
 				Token:            selected.Token,
 				CapabilityState:  selected.CapabilityState,
+				Grant:            authorizationGrantInput(adapter, firstNonEmptyTokenValue(tokenResp, "_grant_subject", "user_id", "open_id", "sub")),
 			})
 		}
 
@@ -1264,6 +1328,18 @@ func (h *OAuthHandler) tokenResultFromPendingSelection(pending *models.OAuthAcco
 			return nil, err
 		}
 	}
+	refreshExpiresIn := 0
+	if rawExpiry := strings.TrimSpace(extra[pendingSelectionRefreshExpiresAtKey]); rawExpiry != "" {
+		delete(extra, pendingSelectionRefreshExpiresAtKey)
+		refreshExpiresAt, err := time.Parse(time.RFC3339Nano, rawExpiry)
+		if err != nil {
+			return nil, fmt.Errorf("parse pending refresh token expiry: %w", err)
+		}
+		refreshExpiresIn = int(time.Until(refreshExpiresAt).Seconds())
+		if refreshExpiresIn < 0 {
+			refreshExpiresIn = 0
+		}
+	}
 
 	expiresIn := 0
 	if !pending.TokenExpiresAt.IsZero() {
@@ -1274,11 +1350,12 @@ func (h *OAuthHandler) tokenResultFromPendingSelection(pending *models.OAuthAcco
 	}
 
 	return &platform.TokenResult{
-		AccessToken:  accessToken,
-		RefreshToken: refreshToken,
-		ExpiresIn:    expiresIn,
-		TokenType:    pending.TokenType,
-		Extra:        extra,
+		AccessToken:      accessToken,
+		RefreshToken:     refreshToken,
+		ExpiresIn:        expiresIn,
+		RefreshExpiresIn: refreshExpiresIn,
+		TokenType:        pending.TokenType,
+		Extra:            extra,
 	}, nil
 }
 
@@ -1341,8 +1418,16 @@ func (h *OAuthHandler) ListAccounts(api huma.API) {
 		}
 
 		response := make([]AccountResponse, len(accounts))
+		grantCounts := make(map[string]int, len(accounts))
+		for _, account := range accounts {
+			if account.OAuthGrantID != "" {
+				grantCounts[account.OAuthGrantID]++
+			}
+		}
 		for i, acc := range accounts {
 			response[i] = accountResponse(acc, h.disableLinkedInThreadReplies)
+			response[i].GrantDestinationCount = max(grantCounts[acc.OAuthGrantID], 1)
+			response[i].SharedGrant = response[i].GrantDestinationCount > 1
 		}
 
 		return &ListAccountsOutput{Body: response}, nil
@@ -1415,29 +1500,161 @@ type DisconnectAccountInput struct {
 	AccountID string `path:"account_id"`
 }
 
+type RevokeAccountGrantInput struct {
+	AccountID string `path:"account_id"`
+}
+
 func (h *OAuthHandler) DisconnectAccount(api huma.API) {
 	huma.Register(api, huma.Operation{
 		OperationID: "disconnect-account",
 		Method:      http.MethodDelete,
 		Path:        "/accounts/{account_id}",
-		Summary:     "Disconnect a social account",
+		Summary:     "Disconnect one social destination without revoking its provider grant",
 		Tags:        []string{tagAccounts},
 		Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
-		Errors:      []int{404},
+		Errors:      []int{404, 409},
 	}, func(ctx context.Context, input *DisconnectAccountInput) (*struct{}, error) {
 		account, err := h.getEditableAccount(ctx, input.AccountID, middleware.GetUserID(ctx))
 		if err != nil {
 			return nil, err
 		}
+		if account.OAuthGrantID == "" {
+			return nil, huma.Error409Conflict(lastGrantDestinationMessage)
+		}
 
-		if _, err := h.db.NewUpdate().
-			Model((*models.SocialAccount)(nil)).
-			Set("is_active = ?", false).
-			Where("id = ?", account.ID).
-			Exec(ctx); err != nil {
+		err = h.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
+			lockResult, err := tx.NewUpdate().Model((*models.OAuthGrant)(nil)).
+				Set("updated_at = updated_at").
+				Where("id = ? AND workspace_id = ? AND revoked_at IS NULL", account.OAuthGrantID, account.WorkspaceID).
+				Exec(txCtx)
+			if err != nil {
+				return err
+			}
+			locked, err := lockResult.RowsAffected()
+			if err != nil {
+				return err
+			}
+			if locked != 1 {
+				return sql.ErrNoRows
+			}
+
+			activeDestinations, err := tx.NewSelect().Model((*models.SocialAccount)(nil)).
+				Where("oauth_grant_id = ? AND workspace_id = ? AND is_active = ?", account.OAuthGrantID, account.WorkspaceID, true).
+				Count(txCtx)
+			if err != nil {
+				return err
+			}
+			if activeDestinations <= 1 {
+				return errLastGrantDestination
+			}
+
+			result, err := tx.NewUpdate().Model((*models.SocialAccount)(nil)).
+				Set("is_active = ?", false).
+				Where("id = ? AND workspace_id = ? AND oauth_grant_id = ? AND is_active = ?", account.ID, account.WorkspaceID, account.OAuthGrantID, true).
+				Exec(txCtx)
+			if err != nil {
+				return err
+			}
+			updated, err := result.RowsAffected()
+			if err != nil {
+				return err
+			}
+			if updated != 1 {
+				return sql.ErrNoRows
+			}
+			return nil
+		})
+		if errors.Is(err, errLastGrantDestination) {
+			return nil, huma.Error409Conflict(lastGrantDestinationMessage)
+		}
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, huma.Error404NotFound("active provider grant not found")
+		}
+		if err != nil {
 			return nil, huma.Error500InternalServerError("failed to disconnect account")
 		}
 
+		return nil, nil
+	})
+}
+
+func (h *OAuthHandler) RevokeAccountGrant(api huma.API) {
+	huma.Register(api, huma.Operation{
+		OperationID: "revoke-account-grant",
+		Method:      http.MethodDelete,
+		Path:        "/accounts/{account_id}/grant",
+		Summary:     "Revoke a provider grant and disconnect every destination that uses it",
+		Tags:        []string{tagAccounts},
+		Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
+		Errors:      []int{403, 404},
+	}, func(ctx context.Context, input *RevokeAccountGrantInput) (*struct{}, error) {
+		userID := middleware.GetUserID(ctx)
+		account, err := h.getEditableAccount(ctx, input.AccountID, userID)
+		if err != nil {
+			return nil, err
+		}
+		now := time.Now().UTC()
+		if err := h.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
+			if account.OAuthGrantID == "" {
+				_, err := tx.NewUpdate().Model((*models.SocialAccount)(nil)).
+					Set("is_active = ?", false).
+					Set("access_token_encrypted = ?", []byte{}).
+					Set("refresh_token_encrypted = ?", []byte{}).
+					Set("token_expires_at = NULL").
+					Set("error_message = ?", "Provider authorization revoked").
+					Where("id = ?", account.ID).
+					Exec(txCtx)
+				return err
+			}
+
+			result, err := tx.NewUpdate().Model((*models.OAuthGrant)(nil)).
+				Set("access_token_encrypted = ?", []byte{}).
+				Set("refresh_token_encrypted = ?", []byte{}).
+				Set("access_token_expires_at = NULL").
+				Set("refresh_token_expires_at = NULL").
+				Set("token_version = token_version + 1").
+				Set("refresh_lease_owner = ''").
+				Set("refresh_lease_expires_at = NULL").
+				Set("revoked_by_id = ?", userID).
+				Set("revocation_reason = ?", "user_revoked").
+				Set("revoked_at = ?", now).
+				Set("validation_status = ?", "revoked").
+				Set("updated_at = ?", now).
+				Where("id = ? AND workspace_id = ? AND revoked_at IS NULL", account.OAuthGrantID, account.WorkspaceID).
+				Exec(txCtx)
+			if err != nil {
+				return err
+			}
+			rows, err := result.RowsAffected()
+			if err != nil {
+				return err
+			}
+			if rows == 0 {
+				var exists int
+				if err := tx.NewSelect().Model((*models.OAuthGrant)(nil)).
+					ColumnExpr("COUNT(*)").
+					Where("id = ? AND workspace_id = ?", account.OAuthGrantID, account.WorkspaceID).
+					Scan(txCtx, &exists); err != nil {
+					return err
+				}
+				if exists == 0 {
+					return sql.ErrNoRows
+				}
+			}
+			if _, err := tx.NewUpdate().Model((*models.SocialAccount)(nil)).
+				Set("is_active = ?", false).
+				Set("error_message = ?", "Provider authorization revoked").
+				Where("oauth_grant_id = ? AND workspace_id = ?", account.OAuthGrantID, account.WorkspaceID).
+				Exec(txCtx); err != nil {
+				return err
+			}
+			return tokenmanager.CancelGrantRefreshJobs(txCtx, tx, account.OAuthGrantID)
+		}); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return nil, huma.Error404NotFound("provider grant not found")
+			}
+			return nil, huma.Error500InternalServerError("failed to revoke provider grant")
+		}
 		return nil, nil
 	})
 }
@@ -1502,6 +1719,7 @@ func accountResponse(acc models.SocialAccount, disableLinkedInThreadReplies bool
 		AccountKind:            accountKind,
 		MessagingSupported:     accountMessagingSupported(acc.Platform),
 		MessagesEnabled:        capabilityState["messages_enabled"] == "true",
+		GrantDestinationCount:  1,
 	}
 }
 

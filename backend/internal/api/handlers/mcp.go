@@ -32,6 +32,7 @@ import (
 	"github.com/openpost/backend/internal/services/lifecycle"
 	"github.com/openpost/backend/internal/services/mediastore"
 	postservice "github.com/openpost/backend/internal/services/posts"
+	"github.com/openpost/backend/internal/services/publicationauth"
 	"github.com/openpost/backend/internal/services/usage"
 	"github.com/uptrace/bun"
 )
@@ -100,6 +101,7 @@ type MCPHandler struct {
 	providers         map[string]platform.Adapter
 	dynamicMastodon   bool
 	tokenEncryptor    *servicecrypto.TokenEncryptor
+	tokenSource       AccessTokenSource
 	serverVersion     string
 }
 
@@ -164,6 +166,10 @@ func (h *MCPHandler) SetProviderCatalog(providers map[string]platform.Adapter, d
 
 func (h *MCPHandler) SetTokenEncryptor(encryptor *servicecrypto.TokenEncryptor) {
 	h.tokenEncryptor = encryptor
+}
+
+func (h *MCPHandler) SetTokenSource(source AccessTokenSource) {
+	h.tokenSource = source
 }
 
 func (h *MCPHandler) RegisterRoutes(e *echo.Echo) {
@@ -2558,6 +2564,11 @@ func (h *MCPHandler) callTool(ctx context.Context, principal *middleware.Princip
 		h.recordToolCall(ctx, principal, auditToolName, workspaceIDFromMCPArguments(auditArgs), time.Since(start), rpcErr)
 		return nil, rpcErr
 	}
+	ctx = publicationauth.WithActor(ctx, publicationauth.Actor{
+		Origin: publicationauth.OriginMCP, UserID: principal.UserID,
+		SessionID: principal.SessionID, TokenID: principal.TokenID,
+		ClientID: principal.ClientID, ClientName: principal.ClientName,
+	})
 	result, auditToolName, auditArgs, rpcErr := h.executeMCPTool(ctx, principal.UserID, principal.Scope, canonicalName, params.Arguments)
 	if rpcErr == nil {
 		rpcErr = validateMCPResult(canonicalName, auditToolName, result)
@@ -3243,9 +3254,6 @@ func (h *MCPHandler) createPublication(ctx context.Context, userID string, args 
 	if err := decodeMCPArguments(args, &input); err != nil {
 		return nil, &mcpError{Code: -32602, Message: "invalid create_publication arguments"}
 	}
-	if rpcErr := h.ensureWorkspaceEditAccess(ctx, userID, input.WorkspaceID); rpcErr != nil {
-		return nil, rpcErr
-	}
 	now := time.Now().UTC()
 	if rpcErr := validateMCPCreatePublicationInput(input, now); rpcErr != nil {
 		return nil, rpcErr
@@ -3255,42 +3263,25 @@ func (h *MCPHandler) createPublication(ctx context.Context, userID string, args 
 	if rpcErr != nil {
 		return nil, rpcErr
 	}
-	publicationHandler := &PublicationHandler{db: h.db}
-	renditions, rpcErr := mcpPublicationRenditions(publicationHandler, input, defaultMedia)
+	accountIDs, rpcErr := normalizeMCPIDs(input.SocialAccountIDs, "social_account_ids")
 	if rpcErr != nil {
 		return nil, rpcErr
 	}
-	accountMap, err := publicationHandler.loadAccounts(ctx, input.WorkspaceID, renditionAccountIDs(renditions))
-	if err != nil {
-		return nil, &mcpError{Code: -32602, Message: err.Error()}
-	}
-	segmentInputs := []PublicationSegmentInput{{
-		Body:  input.SourceText,
-		Title: input.Title,
-		URL:   input.SourceURL,
-		Media: defaultMedia,
-	}}
-	if err := publicationHandler.validateMediaBelongsToWorkspace(ctx, input.WorkspaceID, allPublicationMediaIDs(defaultMedia, segmentInputs, renditions)); err != nil {
-		return nil, &mcpError{Code: -32602, Message: err.Error()}
-	}
-
-	publication := newMCPPublication(input, userID, now)
-	err = h.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
-		if _, err := tx.NewInsert().Model(publication).Exec(txCtx); err != nil {
-			return err
-		}
-		segments, err := publicationHandler.insertPublicationSegments(txCtx, tx, publication, segmentInputs)
-		if err != nil {
-			return err
-		}
-		if err := publicationHandler.insertRenditions(txCtx, tx, publication, segments, segmentInputs, renditions, defaultMedia, accountMap); err != nil {
-			return err
-		}
-		_, err = postservice.EnsurePublicationEditorTx(txCtx, tx, publication)
-		return err
+	publicationHandler := &PublicationHandler{db: h.db}
+	publication, err := publicationHandler.newCreateCommand().Execute(ctx, userID, CreatePublicationBody{
+		WorkspaceID:      input.WorkspaceID,
+		Title:            input.Title,
+		ContentProfile:   input.ContentProfile,
+		SourceText:       input.SourceText,
+		SourceURL:        input.SourceURL,
+		ScheduledAt:      input.ScheduledAt,
+		Metadata:         map[string]interface{}{"created_from": "mcp"},
+		SocialAccountIDs: accountIDs,
+		Media:            defaultMedia,
+		Renditions:       input.Renditions,
 	})
 	if err != nil {
-		return nil, &mcpError{Code: -32603, Message: "failed to create publication"}
+		return nil, mcpPublicationCreateError(err)
 	}
 	status, rpcErr := h.loadMCPPublicationStatus(ctx, publication.ID)
 	if rpcErr != nil {
@@ -3302,6 +3293,14 @@ func (h *MCPHandler) createPublication(ctx context.Context, userID string, args 
 			"publication": status,
 		},
 	}, nil
+}
+
+func mcpPublicationCreateError(err error) *mcpError {
+	var statusErr huma.StatusError
+	if errors.As(err, &statusErr) && statusErr.GetStatus() < http.StatusInternalServerError {
+		return &mcpError{Code: -32602, Message: statusErr.Error()}
+	}
+	return &mcpError{Code: -32603, Message: "failed to create publication"}
 }
 
 func validateMCPCreatePublicationInput(input mcpCreatePublicationInput, now time.Time) *mcpError {
@@ -3329,41 +3328,6 @@ func mcpDefaultPublicationMedia(input mcpCreatePublicationInput) ([]PublicationM
 		defaultMedia = append(defaultMedia, PublicationMediaInput{MediaID: mediaID, Role: "attachment"})
 	}
 	return defaultMedia, nil
-}
-
-func mcpPublicationRenditions(publicationHandler *PublicationHandler, input mcpCreatePublicationInput, defaultMedia []PublicationMediaInput) ([]RenditionInput, *mcpError) {
-	if len(input.Renditions) > 0 {
-		return input.Renditions, nil
-	}
-	accountIDs, rpcErr := normalizeMCPIDs(input.SocialAccountIDs, "social_account_ids")
-	if rpcErr != nil {
-		return nil, rpcErr
-	}
-	return publicationHandler.defaultRenditionInputs(accountIDs, input.ContentProfile, input.SourceText, input.Title, defaultMedia), nil
-}
-
-func newMCPPublication(input mcpCreatePublicationInput, userID string, now time.Time) *models.Publication {
-	metadata := map[string]interface{}{"created_from": "mcp"}
-	publication := &models.Publication{
-		ID:              newUUID(),
-		WorkspaceID:     input.WorkspaceID,
-		CreatedByID:     userID,
-		Title:           publicationFirstNonEmpty(input.Title, firstMCPContentLine(input.SourceText), "Untitled publication"),
-		Intent:          publishingIntentForProfile(input.ContentProfile),
-		ContentProfile:  input.ContentProfile,
-		SourceText:      input.SourceText,
-		SourceContent:   input.SourceText,
-		SourceURL:       input.SourceURL,
-		Status:          models.PublicationStatusDraft,
-		MetadataJSON:    mustJSON(metadata),
-		ReleasePlanJSON: mustJSON(metadata),
-		CreatedAt:       now,
-		UpdatedAt:       now,
-	}
-	if input.ScheduledAt != nil {
-		publication.ScheduledAt = *input.ScheduledAt
-	}
-	return publication
 }
 
 func (h *MCPHandler) listPublications(ctx context.Context, userID string, args map[string]any) (any, *mcpError) {
@@ -3757,18 +3721,19 @@ func (h *MCPHandler) replyToRendition(ctx context.Context, userID string, args m
 	}
 	runAt := time.Now().UTC()
 	if input.RunAt != nil {
-		runAt = *input.RunAt
+		runAt = input.RunAt.UTC()
 	}
-	payload := mustJSON(map[string]any{"rendition_id": rendition.ID, "publication_id": publication.ID, "body": input.Body, "parent_id": input.ParentID, "settings": input.Settings, "media": input.Media, "action": "reply"})
-	job := &models.Job{ID: newUUID(), Type: jobTypePublishPublication, Payload: payload, Status: "pending", RunAt: runAt, MaxAttempts: 3}
-	if _, err := h.db.NewInsert().Model(job).Exec(ctx); err != nil {
+	jobID, err := (&PublicationHandler{db: h.db}).queueRenditionReply(
+		ctx, rendition, publication, input.Body, input.ParentID, input.Settings, input.Media, runAt,
+	)
+	if err != nil {
 		return nil, &mcpError{Code: -32603, Message: "failed to enqueue reply"}
 	}
 	status, statusErr := h.loadMCPPublicationStatus(ctx, publication.ID)
 	if statusErr != nil {
 		return nil, statusErr
 	}
-	return mcpPublicationActionResult("Reply queued: "+rendition.ID, job.ID, status), nil
+	return mcpPublicationActionResult("Reply queued: "+rendition.ID, jobID, status), nil
 }
 
 func decodeMCPPublicationID(args map[string]any, invalid string) (string, *mcpError) {
@@ -3932,7 +3897,7 @@ func (h *MCPHandler) listRenditionComments(ctx context.Context, userID string, a
 	if rpcErr != nil {
 		return nil, rpcErr
 	}
-	commenter, accessToken, rpcErr := h.commentAdapter(account)
+	commenter, accessToken, rpcErr := h.commentAdapter(ctx, account)
 	if rpcErr != nil {
 		return nil, rpcErr
 	}
@@ -3981,7 +3946,7 @@ func (h *MCPHandler) moderateComment(ctx context.Context, userID, operation stri
 	if rpcErr := h.ensureWorkspaceEditAccess(ctx, userID, publication.WorkspaceID); rpcErr != nil {
 		return nil, rpcErr
 	}
-	commenter, accessToken, rpcErr := h.commentAdapter(account)
+	commenter, accessToken, rpcErr := h.commentAdapter(ctx, account)
 	if rpcErr != nil {
 		return nil, rpcErr
 	}
@@ -4039,11 +4004,18 @@ func (h *MCPHandler) loadMCPCommentContext(ctx context.Context, userID, renditio
 	return &rendition, &publication, &account, nil
 }
 
-func (h *MCPHandler) commentAdapter(account *models.SocialAccount) (platform.CommentAdapter, string, *mcpError) {
+func (h *MCPHandler) commentAdapter(ctx context.Context, account *models.SocialAccount) (platform.CommentAdapter, string, *mcpError) {
 	provider := h.providers[account.Platform]
 	commenter, ok := provider.(platform.CommentAdapter)
 	if !ok || commenter == nil {
 		return nil, "", &mcpError{Code: -32603, Message: fmt.Sprintf("comments are not supported for %s", account.Platform)}
+	}
+	if h.tokenSource != nil {
+		token, err := h.tokenSource.GetValidAccessToken(ctx, account.ID)
+		if err != nil {
+			return nil, "", &mcpError{Code: -32603, Message: "failed to load account token"}
+		}
+		return commenter, token, nil
 	}
 	if h.tokenEncryptor == nil {
 		return nil, "", &mcpError{Code: -32603, Message: "comment provider tokens are unavailable"}
@@ -4078,15 +4050,6 @@ func (h *MCPHandler) loadMCPPublicationStatus(ctx context.Context, publicationID
 		UpdatedAt:      publication.UpdatedAt.Format(time.RFC3339),
 		RenditionCount: count,
 	}, nil
-}
-
-func firstMCPContentLine(content string) string {
-	for _, line := range strings.Split(content, "\n") {
-		if trimmed := strings.TrimSpace(line); trimmed != "" {
-			return trimmed
-		}
-	}
-	return ""
 }
 
 func (h *MCPHandler) createDraft(ctx context.Context, userID string, args map[string]any) (any, *mcpError) {
@@ -4148,8 +4111,9 @@ func (h *MCPHandler) createDraft(ctx context.Context, userID string, args map[st
 	if err != nil {
 		return nil, &mcpError{Code: -32603, Message: "failed to create draft"}
 	}
-	if rpcErr := h.ensureMCPPostAuthoring(ctx); rpcErr != nil {
-		return nil, rpcErr
+	actor, _ := publicationauth.ActorFromContext(ctx)
+	if err := databasemigrations.MigrateLegacyPublicationAuthoringForActor(ctx, h.db, post.ID, actor); err != nil {
+		return nil, &mcpError{Code: -32603, Message: "failed to prepare canonical post authoring"}
 	}
 
 	postStatus, rpcErr := h.loadMCPPostStatus(ctx, post.ID)
@@ -4845,8 +4809,9 @@ func (h *MCPHandler) schedulePost(ctx context.Context, userID string, args map[s
 	if err != nil {
 		return nil, &mcpError{Code: -32603, Message: "failed to schedule post"}
 	}
-	if rpcErr := h.ensureMCPPostAuthoring(ctx); rpcErr != nil {
-		return nil, rpcErr
+	actor, _ := publicationauth.ActorFromContext(ctx)
+	if err := databasemigrations.MigrateLegacyPublicationAuthoringForActor(ctx, h.db, post.ID, actor); err != nil {
+		return nil, &mcpError{Code: -32603, Message: "failed to prepare canonical post authoring"}
 	}
 	if rpcErr := h.recordScheduledPostUsage(ctx, input.WorkspaceID, 1, scheduledAt); rpcErr != nil {
 		return nil, rpcErr
@@ -5730,6 +5695,14 @@ func (h *MCPHandler) finishMCPTextPostMutation(
 			userID,
 			mutation.UpdatedAt,
 		); err != nil {
+			return err
+		}
+		actor, _ := publicationauth.ActorFromContext(ctx)
+		if err := publicationauth.AuthorizeLegacyJobs(ctx, tx, publicationauth.LegacyJobsInput{
+			PublicationID: mutation.Publication.ID,
+			Actor:         actor,
+			Force:         true,
+		}); err != nil {
 			return err
 		}
 	}

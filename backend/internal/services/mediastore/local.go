@@ -18,6 +18,12 @@ type BlobStorage interface {
 	Open(id string) (io.ReadCloser, error)
 }
 
+// RangeBlobStorage is an optional extension for provider resumable uploads.
+// It avoids downloading or reading bytes that the provider already committed.
+type RangeBlobStorage interface {
+	OpenRange(id string, offset int64) (io.ReadCloser, error)
+}
+
 type Config struct {
 	Driver string
 
@@ -103,6 +109,26 @@ func (s *LocalStorage) Open(id string) (io.ReadCloser, error) {
 		return nil, err
 	}
 	return os.Open(path)
+}
+
+func (s *LocalStorage) OpenRange(id string, offset int64) (io.ReadCloser, error) {
+	if offset < 0 {
+		return nil, fmt.Errorf("invalid media offset %d", offset)
+	}
+	reader, err := s.Open(id)
+	if err != nil {
+		return nil, err
+	}
+	file, ok := reader.(*os.File)
+	if !ok {
+		_ = reader.Close()
+		return nil, fmt.Errorf("local media reader does not support seeking")
+	}
+	if _, err := file.Seek(offset, io.SeekStart); err != nil {
+		_ = file.Close()
+		return nil, err
+	}
+	return file, nil
 }
 
 func (s *LocalStorage) resolvePath(id string) (string, error) {

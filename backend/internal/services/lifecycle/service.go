@@ -20,6 +20,7 @@ const (
 	EventPublished              = "published"
 	EventFailed                 = "failed"
 	EventRetried                = "retried"
+	EventAuthorizationConfirmed = "authorization_confirmed"
 	EventCommentActionSucceeded = "comment_action_succeeded"
 	EventModerationActionFailed = "moderation_action_failed"
 

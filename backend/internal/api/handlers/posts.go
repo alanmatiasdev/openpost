@@ -384,10 +384,11 @@ func postServiceError(err error, fallback string) error {
 }
 
 func (h *PostHandler) translateLegacyPostMutation(ctx context.Context, postID string) error {
-	if err := databasemigrations.MigrateLegacyPublicationAuthoring(ctx, h.db); err != nil {
+	actor := publicationAuthorizationActor(ctx, middleware.GetUserID(ctx))
+	if err := databasemigrations.MigrateLegacyPublicationAuthoringForActor(ctx, h.db, postID, actor); err != nil {
 		return err
 	}
-	return databasemigrations.RefreshLegacyPublicationAuthoring(ctx, h.db, postID)
+	return databasemigrations.SyncTextPostAuthoringForActor(ctx, h.db, postID, actor)
 }
 
 //nolint:gocyclo
@@ -517,7 +518,12 @@ func (h *PostHandler) CreatePost(api huma.API) {
 		if err != nil {
 			return nil, huma.Error500InternalServerError("failed to create post")
 		}
-		if err := databasemigrations.MigrateLegacyPublicationAuthoring(ctx, h.db); err != nil {
+		if err := databasemigrations.MigrateLegacyPublicationAuthoringForActor(
+			ctx,
+			h.db,
+			post.ID,
+			publicationAuthorizationActor(ctx, userID),
+		); err != nil {
 			return nil, huma.Error500InternalServerError("failed to translate post into a publication")
 		}
 		if err := h.db.NewSelect().
@@ -1306,7 +1312,12 @@ func (h *PostHandler) CreateThread(api huma.API) {
 		if err != nil {
 			return nil, huma.Error500InternalServerError("failed to create thread")
 		}
-		if err := databasemigrations.MigrateLegacyPublicationAuthoring(ctx, h.db); err != nil {
+		if err := databasemigrations.MigrateLegacyPublicationAuthoringForActor(
+			ctx,
+			h.db,
+			posts[0].ID,
+			publicationAuthorizationActor(ctx, userID),
+		); err != nil {
 			return nil, huma.Error500InternalServerError("failed to translate thread into a publication")
 		}
 		if status == statusScheduled {

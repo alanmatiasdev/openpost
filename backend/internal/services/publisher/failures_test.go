@@ -29,6 +29,8 @@ func TestClassifyFailureUsesStableTaxonomyAndRetryPolicy(t *testing.T) {
 		{"network", context.DeadlineExceeded, FailureNetwork, true, FailureActionRetry},
 		{"provider server", &platform.HTTPError{StatusCode: 503}, FailureProviderServer, true, FailureActionRetry},
 		{"provider processing", errors.New("provider processing timeout"), FailureProviderProcessing, true, FailureActionRetry},
+		{"media reconcile", &platform.MediaUploadError{RetryClassification: platform.MediaRetryReconcile, Err: errors.New("processing pending")}, FailureProviderProcessing, true, FailureActionRetry},
+		{"media terminal", &platform.MediaUploadError{RetryClassification: platform.MediaRetryTerminal, Err: errors.New("processing failed")}, FailureProviderProcessing, false, FailureActionEdit},
 		{"unknown", errors.New("unexpected adapter failure"), FailureUnknown, false, FailureActionEdit},
 	}
 	for _, test := range tests {

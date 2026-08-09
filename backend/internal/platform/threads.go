@@ -44,6 +44,14 @@ func NewThreadsAdapter(clientID, clientSecret, redirectURI string) *ThreadsAdapt
 	}
 }
 
+func (t *ThreadsAdapter) AuthorizationGrantDescriptor() AuthorizationGrantDescriptor {
+	return AuthorizationGrantDescriptor{
+		ProjectID:     t.config.ClientID,
+		ExecutionMode: "oauth2",
+		Evidence:      map[string]string{"protocol": "oauth2", "exchange": "authorization_code"},
+	}
+}
+
 func (t *ThreadsAdapter) GenerateAuthURL(state string) (string, map[string]string) {
 	authURL := t.config.AuthCodeURL(state)
 

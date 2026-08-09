@@ -21,6 +21,7 @@ const (
 	DefaultLifetime = 10 * time.Minute
 	DefaultInterval = 5
 	DefaultScope    = apitokens.DefaultScope
+	ClientID        = "openpost-cli"
 
 	statusPending  = "pending"
 	statusApproved = "approved"
@@ -291,6 +292,7 @@ func (s *Service) consumeApprovedSession(ctx context.Context, session *models.CL
 			OrganizationID:     session.OrganizationID,
 			IdentityProviderID: session.IdentityProviderID,
 			AssuredAt:          session.AssuredAt,
+			ClientID:           ClientID,
 		},
 	)
 	if err != nil {

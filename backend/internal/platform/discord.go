@@ -23,6 +23,14 @@ func NewDiscordAdapter() *DiscordAdapter {
 	return &DiscordAdapter{}
 }
 
+func (*DiscordAdapter) AuthorizationGrantDescriptor() AuthorizationGrantDescriptor {
+	return AuthorizationGrantDescriptor{
+		ProjectID:     "discord-incoming-webhook",
+		ExecutionMode: "webhook",
+		Evidence:      map[string]string{"protocol": "webhook", "exchange": "user_supplied_url"},
+	}
+}
+
 func (d *DiscordAdapter) GenerateAuthURL(string) (string, map[string]string) {
 	return "", nil
 }

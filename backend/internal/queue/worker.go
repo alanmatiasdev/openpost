@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
+	"github.com/openpost/backend/internal/jobregistry"
 	"github.com/openpost/backend/internal/models"
 	analyticsservice "github.com/openpost/backend/internal/services/analytics"
 	billingservice "github.com/openpost/backend/internal/services/billing"
@@ -31,13 +31,13 @@ const (
 	StorageDeleteMaxKeys      = 10_000
 	jobTypePublishPost        = "publish_post"
 	jobTypePublishPublication = "publish_publication"
-	jobStatusPending          = "pending"
-	jobTypeMediaCleanup       = "media_cleanup"
+	jobStatusPending          = jobregistry.StatusPending
+	jobTypeMediaCleanup       = jobregistry.TypeMediaCleanup
 	jobTypeStorageDelete      = "storage_delete"
 	jobTypeRefreshToken       = "refresh_token"
-	jobStatusProcessing       = "processing"
-	jobStatusFailed           = "failed"
-	jobStatusCompleted        = "completed"
+	jobStatusProcessing       = jobregistry.StatusProcessing
+	jobStatusFailed           = jobregistry.StatusFailed
+	jobStatusCompleted        = jobregistry.StatusCompleted
 	staleProcessingJobAge     = 15 * time.Minute
 	processingHeartbeat       = staleProcessingJobAge / 3
 )
@@ -308,6 +308,11 @@ func (w *BackgroundWorker) handleLockedJob(ctx context.Context, job *models.Job)
 		case communicationsservice.JobTypeEngagementAct, communicationsservice.JobTypeMessageSend:
 			retryable = false
 			lastError = "The provider write failed. OpenPost did not retry because the provider result may be ambiguous."
+		case jobTypeMediaCleanup:
+			if jobregistry.IsInvalidPayload(processErr) {
+				retryable = false
+				lastError = processErr.Error()
+			}
 		case repostservice.JobTypeSweep, repostservice.JobTypeEvaluate:
 			failure := publisher.ClassifyFailure(processErr)
 			retryable = failure.Retryable || failure.Kind == publisher.FailureUnknown
@@ -321,9 +326,15 @@ func (w *BackgroundWorker) handleLockedJob(ctx context.Context, job *models.Job)
 			retryable = false
 			lastError = "The provider repost failed. OpenPost did not retry because the provider result may be ambiguous."
 		}
-		if !retryable || job.Attempts >= job.MaxAttempts {
+		definition, recurring := jobregistry.Lookup(job.Type)
+		switch {
+		case recurring && definition.Recurrence > 0 && retryable && job.Attempts >= job.MaxAttempts:
+			job.Status = jobStatusPending
+			job.Attempts = 0
+			job.RunAt = time.Now().UTC().Add(definition.Recurrence)
+		case !retryable || job.Attempts >= job.MaxAttempts:
 			job.Status = jobStatusFailed
-		} else {
+		default:
 			job.Status = jobStatusPending
 			jitter := float64((time.Now().UnixNano()%401)-200) / 1000
 			backoff := publisher.RetryDelay(job.Attempts, retryAfter, jitter)
@@ -347,6 +358,22 @@ func (w *BackgroundWorker) handleLockedJob(ctx context.Context, job *models.Job)
 			Exec(ctx); dbErr != nil {
 			log.Printf("[Worker %s] failed to update job %s status: %v\n", w.workerID, job.ID, dbErr)
 		}
+		return
+	}
+	if definition, ok := jobregistry.Lookup(job.Type); ok && definition.Recurrence > 0 {
+		nextRun := time.Now().UTC().Add(definition.Recurrence)
+		if _, dbErr := w.db.NewUpdate().Model((*models.Job)(nil)).
+			Set("status = ?", jobStatusPending).
+			Set("attempts = 0").
+			Set("last_error = ''").
+			Set("run_at = ?", nextRun).
+			Set("locked_at = NULL").
+			Set("locked_by = ''").
+			Where("id = ? AND status = ? AND locked_by = ?", job.ID, jobStatusProcessing, w.workerID).
+			Exec(ctx); dbErr != nil {
+			log.Printf("[Worker %s] failed to reschedule recurring job %s: %v\n", w.workerID, job.ID, dbErr)
+		}
+		log.Printf("[Worker %s] recurring job %s scheduled for %s\n", w.workerID, job.ID, nextRun.Format(time.RFC3339))
 		return
 	}
 
@@ -510,51 +537,28 @@ func (w *BackgroundWorker) handleRefreshTokenJob(ctx context.Context, payload st
 		return nil
 	}
 
-	accountID, err := tokenmanager.ParseRefreshJobPayload(payload)
+	target, err := tokenmanager.ParseRefreshJobPayload(payload)
 	if err != nil {
 		return err
 	}
-
-	_, err = w.tokens.ForceRefreshAccessToken(ctx, accountID)
+	if target.GrantID != "" {
+		_, err = w.tokens.ForceRefreshGrant(ctx, target.GrantID)
+		return err
+	}
+	_, err = w.tokens.ForceRefreshAccessToken(ctx, target.AccountID)
 	return err
 }
 
 func (w *BackgroundWorker) handleMediaCleanup(ctx context.Context, payload string) error {
-	var cleanupJob struct {
-		WorkspaceID string `json:"workspace_id"`
-		Days        int    `json:"days"`
-	}
-	if err := json.Unmarshal([]byte(payload), &cleanupJob); err != nil {
-		return err
-	}
-
-	if strings.TrimSpace(cleanupJob.WorkspaceID) == "" {
-		return errors.New("workspace_id is required for media cleanup")
-	}
-	if err := medialifecycle.NewService(w.db, w.storage).Sweep(ctx, cleanupJob.WorkspaceID, time.Now().UTC()); err != nil {
-		return err
-	}
-	return w.scheduleMediaCleanup(ctx, cleanupJob.WorkspaceID)
-}
-
-func (w *BackgroundWorker) scheduleMediaCleanup(ctx context.Context, workspaceID string) error {
-	payload, err := json.Marshal(map[string]interface{}{
-		"workspace_id": workspaceID,
-		"days":         14,
-	})
+	cleanupJob, err := jobregistry.DecodeMediaCleanupPayload(payload)
 	if err != nil {
 		return err
 	}
+	return medialifecycle.NewService(w.db, w.storage).Sweep(ctx, cleanupJob.WorkspaceID, time.Now().UTC())
+}
 
-	job := &models.Job{
-		ID:      uuid.New().String(),
-		Type:    "media_cleanup",
-		Payload: string(payload),
-		Status:  jobStatusPending,
-		RunAt:   time.Now().Add(24 * time.Hour),
-	}
-
-	_, err = w.db.NewInsert().Model(job).Exec(ctx)
+func (w *BackgroundWorker) scheduleMediaCleanup(ctx context.Context, workspaceID string) error {
+	_, _, err := jobregistry.EnqueueMediaCleanup(ctx, w.db, workspaceID, time.Time{})
 	if err != nil {
 		log.Printf("Failed to schedule media cleanup for workspace %s: %v", workspaceID, err)
 	}
@@ -568,64 +572,26 @@ func (w *BackgroundWorker) ensureMediaLifecycleJobs(ctx context.Context) {
 		return
 	}
 	for _, workspaceID := range workspaceIDs {
-		var jobs []models.Job
-		if err := w.db.NewSelect().Model(&jobs).
-			Where("type = ? AND status IN (?, ?)", jobTypeMediaCleanup, jobStatusPending, jobStatusProcessing).
-			Scan(ctx); err != nil {
-			log.Printf("Failed to inspect media lifecycle jobs for workspace %s: %v", workspaceID, err)
-			continue
-		}
-		found := false
-		for _, job := range jobs {
-			var payload struct {
-				WorkspaceID string `json:"workspace_id"`
-			}
-			if json.Unmarshal([]byte(job.Payload), &payload) == nil && payload.WorkspaceID == workspaceID {
-				found = true
-				break
-			}
-		}
-		if !found {
-			if err := w.scheduleMediaCleanup(ctx, workspaceID); err != nil {
-				log.Printf("Failed to schedule media lifecycle for workspace %s: %v", workspaceID, err)
-			}
+		if err := w.scheduleMediaCleanup(ctx, workspaceID); err != nil {
+			log.Printf("Failed to schedule media lifecycle for workspace %s: %v", workspaceID, err)
 		}
 	}
 }
 
 func (w *BackgroundWorker) CancelMediaCleanup(ctx context.Context, workspaceID string) error {
-	_, err := w.db.NewDelete().Model(&models.Job{}).
-		Where("type = 'media_cleanup' AND payload LIKE ?", "%"+workspaceID+"%").
+	identity, err := jobregistry.MediaCleanupIdentity(workspaceID)
+	if err != nil {
+		return err
+	}
+	_, err = w.db.NewDelete().Model(&models.Job{}).
+		Where("type = ? AND scope_id = ? AND dedupe_key = ?", jobTypeMediaCleanup, identity.ScopeID, identity.DedupeKey).
+		Where("status IN (?, ?)", jobStatusPending, jobStatusProcessing).
 		Exec(ctx)
 	return err
 }
 
 func ScheduleMediaCleanup(db *bun.DB, workspaceID string, _ int) error {
-	payload, err := json.Marshal(map[string]interface{}{
-		"workspace_id": workspaceID,
-		"days":         14,
-	})
-	if err != nil {
-		return err
-	}
-
-	var existing models.Job
-	err = db.NewSelect().Model(&existing).
-		Where("type = 'media_cleanup' AND payload LIKE ?", "%"+workspaceID+"%").
-		Scan(context.Background())
-	if err == nil {
-		return nil
-	}
-
-	job := &models.Job{
-		ID:      uuid.New().String(),
-		Type:    "media_cleanup",
-		Payload: string(payload),
-		Status:  jobStatusPending,
-		RunAt:   time.Now().Add(24 * time.Hour),
-	}
-
-	_, err = db.NewInsert().Model(job).Exec(context.Background())
+	_, _, err := jobregistry.EnqueueMediaCleanup(context.Background(), db, workspaceID, time.Time{})
 	if err != nil {
 		log.Printf("Failed to schedule media cleanup for workspace %s: %v", workspaceID, err)
 	}

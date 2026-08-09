@@ -46,6 +46,7 @@ type Principal struct {
 	Scope       string
 	WorkspaceID string
 	Audience    string
+	ClientID    string
 	TokenID     string
 	TokenName   string
 	TokenPrefix string
@@ -63,6 +64,7 @@ type GenerateOptions struct {
 	IdentityProviderID string
 	AssuredAt          time.Time
 	Audience           string
+	ClientID           string
 }
 
 func NewService(db *bun.DB) *Service {
@@ -100,6 +102,7 @@ func (s *Service) GenerateTokenWithOptions(ctx context.Context, userID, name, sc
 		ID:                 uuid.NewString(),
 		UserID:             userID,
 		Name:               name,
+		ClientID:           strings.TrimSpace(options.ClientID),
 		TokenHash:          tokenHash,
 		TokenPrefix:        tokenPrefix,
 		Scope:              scope,
@@ -228,6 +231,7 @@ func (s *Service) validateMatchedToken(ctx context.Context, token *models.APITok
 		Scope:       token.Scope,
 		WorkspaceID: token.WorkspaceID,
 		Audience:    token.Audience,
+		ClientID:    token.ClientID,
 		TokenID:     token.ID,
 		TokenName:   token.Name,
 		TokenPrefix: token.TokenPrefix,

@@ -89,6 +89,9 @@ func TestCLIAuthHappyPathReturnsTokenOnFirstApprovedPollOnly(t *testing.T) {
 		Count(context.Background())
 	require.NoError(t, err)
 	require.Equal(t, 1, tokenCount)
+	var storedToken models.APIToken
+	require.NoError(t, srv.db.NewSelect().Model(&storedToken).Where("user_id = ?", "user-1").Scan(context.Background()))
+	require.Equal(t, cliauth.ClientID, storedToken.ClientID)
 
 	srv.allowImmediatePoll(t)
 	secondPollResp := srv.request(t, http.MethodPost, "/api/v1/cli/auth/poll", map[string]string{

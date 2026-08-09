@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -12,6 +13,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humaecho"
 	"github.com/labstack/echo/v4"
+	"github.com/openpost/backend/internal/api/middleware"
 	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/services/entitlements"
 	"github.com/openpost/backend/internal/services/usage"
@@ -23,6 +25,15 @@ type postQuotaTestServer struct {
 	echo  *echo.Echo
 	db    *bun.DB
 	usage *usage.Service
+}
+
+type postQuotaAuthenticator struct{}
+
+func (postQuotaAuthenticator) AuthenticateBearer(_ context.Context, token string) (*middleware.Principal, error) {
+	if token != "web-token" {
+		return nil, fmt.Errorf("invalid token")
+	}
+	return &middleware.Principal{UserID: "user-1", Email: "user@example.com", SessionID: "session-1"}, nil
 }
 
 func newPostQuotaTestServer(t *testing.T, entitlement entitlements.Service) *postQuotaTestServer {
@@ -39,9 +50,16 @@ func newPostQuotaTestServer(t *testing.T, entitlement entitlements.Service) *pos
 		(*models.Job)(nil),
 		(*models.ThreadDraft)(nil),
 		(*models.UsageCounter)(nil),
+		(*models.User)(nil),
+		(*models.MediaAttachment)(nil),
+		(*models.Publication)(nil),
 	)
 	ctx := context.Background()
-	_, err := db.NewInsert().Model(&models.Workspace{ID: "ws-1", Name: "Launch"}).Exec(ctx)
+	_, err := db.NewInsert().Model(&models.User{
+		ID: "user-1", Email: "user@example.com", PasswordHash: "hash",
+	}).Exec(ctx)
+	require.NoError(t, err)
+	_, err = db.NewInsert().Model(&models.Workspace{ID: "ws-1", Name: "Launch"}).Exec(ctx)
 	require.NoError(t, err)
 	_, err = db.NewInsert().Model(&models.WorkspaceMember{
 		WorkspaceID: "ws-1",
@@ -63,7 +81,7 @@ func newPostQuotaTestServer(t *testing.T, entitlement entitlements.Service) *pos
 	usageSvc := usage.NewService(db)
 	e := echo.New()
 	api := humaecho.NewWithGroup(e, e.Group("/api/v1"), huma.DefaultConfig("Test", "1.0.0"))
-	handler := NewPostHandler(db, testAuthenticator{}, entitlement)
+	handler := NewPostHandler(db, postQuotaAuthenticator{}, entitlement)
 	handler.SetUsage(usageSvc)
 	handler.CreatePost(api)
 	handler.CreateThread(api)
@@ -147,11 +165,22 @@ func TestCreatePostIncrementsScheduledUsage(t *testing.T) {
 	srv := newPostQuotaTestServer(t, entitlements.NewSelfHostedService())
 
 	resp := srv.createPost(t, &scheduledAt)
-
-	require.Equal(t, http.StatusOK, resp.Code)
+	require.Equal(t, http.StatusOK, resp.Code, resp.Body.String())
 	current, err := srv.usage.CurrentMonthly(context.Background(), "ws-1", entitlements.LimitScheduledPostsMonthly, scheduledAt)
 	require.NoError(t, err)
 	require.Equal(t, int64(1), current)
+	var job models.Job
+	require.NoError(t, srv.db.NewSelect().Model(&job).Where("type = ?", "publish_publication").Scan(t.Context()))
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal([]byte(job.Payload), &payload))
+	batchID, ok := payload["authorization_batch_id"].(string)
+	require.True(t, ok)
+	require.NotEmpty(t, batchID)
+	var receipt models.PublicationAuthorization
+	require.NoError(t, srv.db.NewSelect().Model(&receipt).Where("batch_id = ?", batchID).Scan(t.Context()))
+	require.Equal(t, "browser", receipt.ActorOrigin)
+	require.Equal(t, "session-1", receipt.ActorSessionID)
+	require.Equal(t, job.ID, receipt.JobID)
 }
 
 func TestCreateDraftDoesNotIncrementScheduledUsage(t *testing.T) {
@@ -161,7 +190,7 @@ func TestCreateDraftDoesNotIncrementScheduledUsage(t *testing.T) {
 
 	resp := srv.createPost(t, nil)
 
-	require.Equal(t, http.StatusOK, resp.Code)
+	require.Equal(t, http.StatusOK, resp.Code, resp.Body.String())
 	current, err := srv.usage.CurrentMonthly(context.Background(), "ws-1", entitlements.LimitScheduledPostsMonthly, time.Now())
 	require.NoError(t, err)
 	require.Equal(t, int64(0), current)
@@ -194,7 +223,7 @@ func TestCreateThreadIncrementsScheduledUsageForEachThreadPost(t *testing.T) {
 
 	resp := srv.createThread(t, &scheduledAt, 3)
 
-	require.Equal(t, http.StatusOK, resp.Code)
+	require.Equal(t, http.StatusOK, resp.Code, resp.Body.String())
 	current, err := srv.usage.CurrentMonthly(context.Background(), "ws-1", entitlements.LimitScheduledPostsMonthly, scheduledAt)
 	require.NoError(t, err)
 	require.Equal(t, int64(3), current)

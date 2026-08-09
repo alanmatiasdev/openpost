@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"embed"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"path"
@@ -13,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/openpost/backend/internal/jobregistry"
 	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/usernames"
 	"github.com/uptrace/bun"
@@ -100,10 +102,117 @@ func finalizeMigrations(ctx context.Context, db *bun.DB, appliedSet map[int64]bo
 	if err := repairAppliedSchema(ctx, db, appliedSet); err != nil {
 		return err
 	}
+	if appliedSet[71] {
+		if err := backfillJobDedupeIdentities(ctx, db); err != nil {
+			return fmt.Errorf("job dedupe identity migration failed: %w", err)
+		}
+	}
+	if appliedSet[73] {
+		if err := ensureOAuthGrantSchema(ctx, db); err != nil {
+			return fmt.Errorf("oauth grant migration failed: %w", err)
+		}
+	}
+	if appliedSet[75] {
+		if err := ensurePublicationAuthorizationSchema(ctx, db); err != nil {
+			return fmt.Errorf("publication authorization migration failed: %w", err)
+		}
+	}
 	if err := MigrateLegacyPublicationAuthoring(ctx, db); err != nil {
 		return fmt.Errorf("legacy publication authoring migration failed: %w", err)
 	}
 	return nil
+}
+
+func backfillJobDedupeIdentities(ctx context.Context, db *bun.DB) error {
+	exists, err := migrationTableExists(ctx, db, "jobs")
+	if err != nil || !exists {
+		return err
+	}
+	if err := validateJobDedupeColumns(ctx, db); err != nil {
+		return err
+	}
+	if err := db.RunInTx(ctx, &sql.TxOptions{}, backfillJobDedupeRows); err != nil {
+		return err
+	}
+	return jobregistry.EnsureActiveDedupeIndex(ctx, db)
+}
+
+func validateJobDedupeColumns(ctx context.Context, db *bun.DB) error {
+	for _, column := range []string{"scope_id", "dedupe_key"} {
+		present, columnErr := migrationColumnExists(ctx, db, "jobs", column)
+		if columnErr != nil {
+			return columnErr
+		}
+		if !present {
+			return fmt.Errorf("jobs.%s is missing after migration 071", column)
+		}
+	}
+	return nil
+}
+
+func backfillJobDedupeRows(ctx context.Context, tx bun.Tx) error {
+	var rows []models.Job
+	if err := tx.NewSelect().Model(&rows).
+		Where("type = ?", jobregistry.TypeMediaCleanup).
+		WhereGroup(" AND ", func(query *bun.SelectQuery) *bun.SelectQuery {
+			return query.
+				WhereOr("scope_id = '' OR dedupe_key = ''").
+				WhereOr("status IN (?, ?)", jobregistry.StatusPending, jobregistry.StatusProcessing)
+		}).
+		OrderExpr("CASE WHEN status = ? THEN 0 WHEN status = ? THEN 1 ELSE 2 END", jobregistry.StatusProcessing, jobregistry.StatusPending).
+		Order("run_at ASC", "id ASC").
+		Scan(ctx); err != nil {
+		return err
+	}
+	active := make(map[jobregistry.Identity]string)
+	for index := range rows {
+		identity, err := jobregistry.IdentityForPayload(rows[index].Type, rows[index].Payload)
+		if err != nil {
+			continue
+		}
+		isActive := rows[index].Status == jobregistry.StatusPending || rows[index].Status == jobregistry.StatusProcessing
+		if keptID, duplicate := active[identity]; isActive && duplicate {
+			if err := supersedeDuplicateCleanupJob(ctx, tx, rows[index].ID, keptID, identity); err != nil {
+				return err
+			}
+			continue
+		}
+		if isActive {
+			active[identity] = rows[index].ID
+		}
+		if err := setJobDedupeIdentity(ctx, tx, rows[index].ID, identity); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func supersedeDuplicateCleanupJob(
+	ctx context.Context,
+	tx bun.Tx,
+	jobID string,
+	keptID string,
+	identity jobregistry.Identity,
+) error {
+	_, err := tx.NewUpdate().Model((*models.Job)(nil)).
+		Set("status = ?", jobregistry.StatusCompleted).
+		Set("scope_id = ?", identity.ScopeID).
+		Set("dedupe_key = ?", identity.DedupeKey).
+		Set("last_error = ?", "Superseded by active recurring job "+keptID+" during exact dedupe migration.").
+		Set("locked_at = NULL").
+		Set("locked_by = ''").
+		Where("id = ?", jobID).
+		Exec(ctx)
+	return err
+}
+
+func setJobDedupeIdentity(ctx context.Context, tx bun.Tx, jobID string, identity jobregistry.Identity) error {
+	_, err := tx.NewUpdate().Model((*models.Job)(nil)).
+		Set("scope_id = ?", identity.ScopeID).
+		Set("dedupe_key = ?", identity.DedupeKey).
+		Where("id = ?", jobID).
+		Exec(ctx)
+	return err
 }
 
 func repairAppliedSchema(ctx context.Context, db *bun.DB, appliedSet map[int64]bool) error {
@@ -157,7 +266,7 @@ func prepareMigration(ctx context.Context, db *bun.DB, migration migration) erro
 	case 61:
 		description = "repost override"
 		err = ensurePublicationRepostOverride(ctx, db)
-	case 62, 63, 64, 66:
+	case 62, 63, 64, 66, 71, 73, 74, 75:
 		return prepareRecentMigration(ctx, db, migration)
 	}
 	if err != nil {
@@ -332,11 +441,262 @@ func prepareRecentMigration(ctx context.Context, db *bun.DB, migration migration
 	case 66:
 		description = "composer experience"
 		err = ensureComposerExperienceUserField(ctx, db)
+	case 71:
+		description = "job dedupe identity"
+		err = ensureJobsTable(ctx, db)
+	case 73:
+		description = "normalized OAuth grants"
+		err = prepareOAuthGrantMigration(ctx, db)
+	case 74:
+		description = "rendition media deliveries"
+		err = ensureProviderMediaDeliveryPrerequisites(ctx, db)
+	case 75:
+		description = "publication authorizations"
+		err = preparePublicationAuthorizationMigration(ctx, db)
 	}
 	if err != nil {
 		return fmt.Errorf("migration %s %s preparation failed: %w", migration.name, description, err)
 	}
 	return nil
+}
+
+func ensureJobsTable(ctx context.Context, db *bun.DB) error {
+	_, err := db.NewCreateTable().Model((*models.Job)(nil)).IfNotExists().Exec(ctx)
+	return err
+}
+
+// Isolated historical migration fixtures do not always bootstrap publishing
+// tables before running the full embedded migration set. Production does, but
+// creating absent prerequisites here keeps migration 074 deterministic in
+// both paths without weakening its composite foreign keys.
+func ensureProviderMediaDeliveryPrerequisites(ctx context.Context, db *bun.DB) error {
+	for _, model := range []interface{}{
+		(*models.Workspace)(nil),
+		(*models.Post)(nil),
+		(*models.Publication)(nil),
+		(*models.SocialAccount)(nil),
+		(*models.MediaAttachment)(nil),
+		(*models.Rendition)(nil),
+		(*models.RenditionMedia)(nil),
+	} {
+		if _, err := db.NewCreateTable().Model(model).IfNotExists().Exec(ctx); err != nil {
+			return err
+		}
+	}
+	exists, err := migrationTableExists(ctx, db, "provider_media_states")
+	if err != nil {
+		return err
+	}
+	if !exists {
+		_, err = db.ExecContext(ctx, `CREATE TABLE provider_media_states (
+			post_id TEXT NOT NULL,
+			social_account_id TEXT NOT NULL,
+			media_id TEXT NOT NULL,
+			platform TEXT NOT NULL,
+			platform_media_id TEXT NOT NULL DEFAULT '',
+			status TEXT NOT NULL DEFAULT 'ready',
+			error_message TEXT,
+			created_at TIMESTAMP NOT NULL DEFAULT current_timestamp,
+			updated_at TIMESTAMP,
+			rendition_id TEXT NOT NULL DEFAULT '',
+			PRIMARY KEY (post_id, social_account_id, media_id)
+		)`)
+		return err
+	}
+	for _, column := range []struct {
+		name       string
+		definition string
+	}{
+		{name: "rendition_id", definition: "TEXT NOT NULL DEFAULT ''"},
+		{name: "updated_at", definition: "TIMESTAMP"},
+	} {
+		present, columnErr := migrationColumnExists(ctx, db, "provider_media_states", column.name)
+		if columnErr != nil {
+			return columnErr
+		}
+		if present {
+			continue
+		}
+		if _, columnErr = db.ExecContext(ctx, "ALTER TABLE provider_media_states ADD COLUMN "+column.name+" "+column.definition); columnErr != nil {
+			return columnErr
+		}
+	}
+	return nil
+}
+
+func preparePublicationAuthorizationMigration(ctx context.Context, db *bun.DB) error {
+	exists, err := migrationTableExists(ctx, db, "api_tokens")
+	if err != nil || !exists {
+		return err
+	}
+	present, err := migrationColumnExists(ctx, db, "api_tokens", "client_id")
+	if err != nil || present {
+		return err
+	}
+	_, err = db.ExecContext(ctx, "ALTER TABLE api_tokens ADD COLUMN client_id TEXT NOT NULL DEFAULT ''")
+	return err
+}
+
+func ensurePublicationAuthorizationSchema(ctx context.Context, db *bun.DB) error {
+	exists, err := migrationTableExists(ctx, db, "publication_authorizations")
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return errors.New("publication_authorizations is missing after migration 075")
+	}
+
+	var statements []string
+	switch db.Dialect().Name() {
+	case dialect.SQLite:
+		statements = []string{
+			`CREATE TRIGGER IF NOT EXISTS publication_authorizations_immutable
+			BEFORE UPDATE ON publication_authorizations
+			BEGIN
+				SELECT RAISE(ABORT, 'publication authorization receipts are immutable');
+			END`,
+		}
+	case dialect.PG:
+		statements = []string{
+			`CREATE OR REPLACE FUNCTION openpost_prevent_publication_authorization_update()
+			RETURNS trigger AS $$
+			BEGIN
+				RAISE EXCEPTION 'publication authorization receipts are immutable';
+			END;
+			$$ LANGUAGE plpgsql`,
+			`DROP TRIGGER IF EXISTS publication_authorizations_immutable ON publication_authorizations`,
+			`CREATE TRIGGER publication_authorizations_immutable
+			BEFORE UPDATE ON publication_authorizations
+			FOR EACH ROW EXECUTE FUNCTION openpost_prevent_publication_authorization_update()`,
+		}
+	default:
+		return fmt.Errorf("unsupported database dialect %s", db.Dialect().Name())
+	}
+	for _, statement := range statements {
+		if _, err := db.ExecContext(ctx, statement); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func prepareOAuthGrantMigration(ctx context.Context, db *bun.DB) error {
+	exists, err := migrationTableExists(ctx, db, "social_accounts")
+	if err != nil || !exists {
+		return err
+	}
+	present, err := migrationColumnExists(ctx, db, "social_accounts", "oauth_grant_id")
+	if err != nil {
+		return err
+	}
+	if !present {
+		if _, err := db.ExecContext(ctx, "ALTER TABLE social_accounts ADD COLUMN oauth_grant_id TEXT NOT NULL DEFAULT ''"); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func ensureOAuthGrantSchema(ctx context.Context, db *bun.DB) error {
+	grantsExist, err := migrationTableExists(ctx, db, "oauth_grants")
+	if err != nil {
+		return err
+	}
+	if !grantsExist {
+		return fmt.Errorf("oauth_grants is missing after migration 073")
+	}
+	accountsExist, err := migrationTableExists(ctx, db, "social_accounts")
+	if err != nil || !accountsExist {
+		return err
+	}
+	present, err := migrationColumnExists(ctx, db, "social_accounts", "oauth_grant_id")
+	if err != nil {
+		return err
+	}
+	if !present {
+		return fmt.Errorf("social_accounts.oauth_grant_id is missing after migration 073")
+	}
+	if err := backfillLegacyOAuthGrants(ctx, db); err != nil {
+		return err
+	}
+	_, err = db.ExecContext(ctx, "CREATE INDEX IF NOT EXISTS social_accounts_oauth_grant_idx ON social_accounts (oauth_grant_id)")
+	return err
+}
+
+func backfillLegacyOAuthGrants(ctx context.Context, db *bun.DB) error {
+	var accounts []models.SocialAccount
+	if err := db.NewSelect().Model(&accounts).
+		Where("oauth_grant_id = '' OR oauth_grant_id IS NULL").
+		Order("created_at ASC", "id ASC").
+		Scan(ctx); err != nil {
+		return err
+	}
+	if len(accounts) == 0 {
+		return nil
+	}
+
+	return db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
+		for index := range accounts {
+			account := &accounts[index]
+			grantID := "legacy:" + account.ID
+			evidenceJSON, err := json.Marshal(map[string]string{
+				"source":            "migration_073",
+				"legacy_account_id": account.ID,
+			})
+			if err != nil {
+				return fmt.Errorf("encode oauth grant evidence for account %s: %w", account.ID, err)
+			}
+			createdAt := account.CreatedAt
+			if createdAt.IsZero() {
+				createdAt = time.Now().UTC()
+			}
+			grant := &models.OAuthGrant{
+				ID:                    grantID,
+				WorkspaceID:           account.WorkspaceID,
+				Provider:              account.Platform,
+				ProviderProjectID:     "legacy",
+				ProviderSubject:       account.AccountID,
+				InstanceURL:           account.InstanceURL,
+				AccessTokenEnc:        account.AccessTokenEnc,
+				RefreshTokenEnc:       account.RefreshTokenEnc,
+				AccessTokenExpiresAt:  account.TokenExpiresAt,
+				GrantedScopes:         account.GrantedScopes,
+				TokenVersion:          1,
+				ExecutionMode:         legacyGrantExecutionMode(account.Platform),
+				AuthorizationEvidence: string(evidenceJSON),
+				ConsentedAt:           createdAt,
+				ValidationStatus:      "legacy_unverified",
+				CreatedAt:             createdAt,
+				UpdatedAt:             time.Now().UTC(),
+			}
+			if _, err := tx.NewInsert().Model(grant).Ignore().Exec(txCtx); err != nil {
+				return fmt.Errorf("backfill oauth grant for account %s: %w", account.ID, err)
+			}
+			if _, err := tx.NewUpdate().Model((*models.SocialAccount)(nil)).
+				Set("oauth_grant_id = ?", grantID).
+				Set("access_token_encrypted = ?", []byte{}).
+				Set("refresh_token_encrypted = ?", []byte{}).
+				Set("token_expires_at = NULL").
+				Where("id = ? AND (oauth_grant_id = '' OR oauth_grant_id IS NULL)", account.ID).
+				Exec(txCtx); err != nil {
+				return fmt.Errorf("link oauth grant for account %s: %w", account.ID, err)
+			}
+		}
+		return nil
+	})
+}
+
+func legacyGrantExecutionMode(provider string) string {
+	switch provider {
+	case "bluesky":
+		return "app_password"
+	case "discord":
+		return "webhook"
+	case "x":
+		return "oauth1"
+	default:
+		return "oauth2"
+	}
 }
 
 func ensureSocialSetsAndRenditionInheritance(ctx context.Context, db *bun.DB) error {

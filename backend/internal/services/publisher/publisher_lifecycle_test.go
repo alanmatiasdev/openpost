@@ -14,6 +14,7 @@ import (
 	"github.com/openpost/backend/internal/platform"
 	"github.com/openpost/backend/internal/services/crypto"
 	"github.com/openpost/backend/internal/services/lifecycle"
+	"github.com/openpost/backend/internal/services/publicationauth"
 	"github.com/openpost/backend/internal/services/tokenmanager"
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun"
@@ -153,6 +154,72 @@ func TestPublicationPartialSuccessKeepsPerDestinationSafeOutcomes(t *testing.T) 
 	require.NotContains(t, destinations[1].ErrorMessage, "Second destination")
 }
 
+func TestPublicationAuthorizationPreflightRejectsChangedContentBeforeProviderCall(t *testing.T) {
+	adapter := &fakePublisherAdapter{externalID: "must-not-publish"}
+	srv := newPublisherLifecycleTestServer(t, adapter)
+	ctx, payload := srv.authorizedPublicationJob(t, nil)
+	_, err := srv.db.NewUpdate().Model((*models.Rendition)(nil)).
+		Set("body = ?", "changed after confirmation").Where("id = ?", "rendition-1").Exec(t.Context())
+	require.NoError(t, err)
+
+	err = srv.service.HandlePublishPublicationJob(ctx, payload)
+
+	require.ErrorContains(t, err, "receipt no longer matches")
+	require.Zero(t, adapter.publishCalls)
+	var publication models.Publication
+	require.NoError(t, srv.db.NewSelect().Model(&publication).Where("id = ?", "publication-1").Scan(t.Context()))
+	require.Equal(t, models.PublicationStatusReady, publication.Status, "preflight must run before publishing state changes")
+}
+
+func TestPublicationAuthorizationPreflightUsesReceiptDestinationAllowlist(t *testing.T) {
+	adapter := &fakePublisherAdapter{externalIDs: []string{"external-1"}}
+	srv := newPublisherLifecycleTestServer(t, adapter)
+	ctx := t.Context()
+	var account models.SocialAccount
+	require.NoError(t, srv.db.NewSelect().Model(&account).Where("id = ?", "account-1").Scan(ctx))
+	account.ID, account.Slug, account.AccountID = "account-2", "account-2", "account-2"
+	_, err := srv.db.NewInsert().Model(&account).Exec(ctx)
+	require.NoError(t, err)
+	_, err = srv.db.NewInsert().Model(&models.Rendition{
+		ID: "rendition-2", PublicationID: "publication-1", SocialAccountID: "account-2",
+		Platform: "x", Profile: models.ContentProfileShortText, Body: "not authorized",
+		Status: models.RenditionStatusReady,
+	}).Exec(ctx)
+	require.NoError(t, err)
+
+	jobCtx, payload := srv.authorizedPublicationJob(t, []publicationauth.JobTarget{{
+		JobID: srv.jobID, RenditionID: "rendition-1", RunAt: srv.runAt,
+	}})
+	require.NoError(t, srv.service.HandlePublishPublicationJob(jobCtx, payload))
+	require.Equal(t, 1, adapter.publishCalls)
+	var second models.Rendition
+	require.NoError(t, srv.db.NewSelect().Model(&second).Where("id = ?", "rendition-2").Scan(ctx))
+	require.Equal(t, models.RenditionStatusReady, second.Status)
+}
+
+func TestLegacyPublicationJobAuthorizationRunsThroughPublisherPreflight(t *testing.T) {
+	adapter := &fakePublisherAdapter{externalID: "external-legacy"}
+	srv := newPublisherLifecycleTestServer(t, adapter)
+	job := models.Job{
+		ID: srv.jobID, Type: "publish_publication",
+		Payload: `{"publication_id":"publication-1"}`, Status: "pending", RunAt: srv.runAt,
+	}
+	_, err := srv.db.NewInsert().Model(&job).Exec(t.Context())
+	require.NoError(t, err)
+	require.NoError(t, publicationauth.AuthorizeLegacyJobs(t.Context(), srv.db, publicationauth.LegacyJobsInput{
+		PublicationID: "publication-1",
+		Actor:         publicationauth.Actor{Origin: publicationauth.OriginLegacy, UserID: "user-1"},
+	}))
+	require.NoError(t, srv.db.NewSelect().Model(&job).Where("id = ?", job.ID).Scan(t.Context()))
+
+	err = srv.service.HandlePublishPublicationJob(
+		WithJobExecution(t.Context(), job.ID, 1, time.Now().UTC()),
+		job.Payload,
+	)
+	require.NoError(t, err)
+	require.Equal(t, 1, adapter.publishCalls)
+}
+
 func TestTextPostPermanentFailureDoesNotRequestAJobRetry(t *testing.T) {
 	t.Parallel()
 
@@ -213,6 +280,9 @@ func TestTextPostTransientFailureStillRetriesWhenAnotherDestinationIsPermanent(t
 type publisherLifecycleTestServer struct {
 	db      *bun.DB
 	service *Service
+	jobID   string
+	batchID string
+	runAt   time.Time
 }
 
 func newPublisherLifecycleTestServer(t *testing.T, adapter *fakePublisherAdapter) *publisherLifecycleTestServer {
@@ -234,11 +304,13 @@ func newPublisherLifecycleTestServer(t *testing.T, adapter *fakePublisherAdapter
 		(*models.RenditionMedia)(nil),
 		(*models.MediaAttachment)(nil),
 		(*models.PublicationLifecycleEvent)(nil),
+		(*models.PublicationAuthorization)(nil),
 		(*models.UsageCounter)(nil),
 		(*models.Post)(nil),
 		(*models.PostDestination)(nil),
 		(*models.PostMedia)(nil),
 		(*models.PostVariant)(nil),
+		(*models.Job)(nil),
 	} {
 		_, err = db.NewCreateTable().Model(model).IfNotExists().Exec(context.Background())
 		require.NoError(t, err)
@@ -308,20 +380,50 @@ func newPublisherLifecycleTestServer(t *testing.T, adapter *fakePublisherAdapter
 	service := NewService(db, manager)
 	service.SetProvider("x", adapter)
 
-	return &publisherLifecycleTestServer{db: db, service: service}
+	return &publisherLifecycleTestServer{
+		db: db, service: service, jobID: uuid.NewString(), batchID: uuid.NewString(),
+		runAt: time.Now().UTC().Add(time.Minute).Truncate(time.Microsecond),
+	}
 }
 
 func (s *publisherLifecycleTestServer) publishPublication(t *testing.T) error {
 	t.Helper()
-	payload, err := json.Marshal(map[string]string{"publication_id": "publication-1"})
+	ctx, payload := s.authorizedPublicationJob(t, nil)
+	return s.service.HandlePublishPublicationJob(ctx, payload)
+}
+
+func (s *publisherLifecycleTestServer) authorizedPublicationJob(t *testing.T, targets []publicationauth.JobTarget) (context.Context, string) {
+	t.Helper()
+	ctx := t.Context()
+	count, err := s.db.NewSelect().Model((*models.PublicationAuthorization)(nil)).
+		Where("batch_id = ?", s.batchID).Count(ctx)
 	require.NoError(t, err)
-	return s.service.HandlePublishPublicationJob(context.Background(), string(payload))
+	if count == 0 {
+		if len(targets) == 0 {
+			targets = []publicationauth.JobTarget{{JobID: s.jobID, RunAt: s.runAt}}
+		}
+		_, _, err = publicationauth.CreateBatch(ctx, s.db, publicationauth.BatchInput{
+			BatchID: s.batchID, PublicationID: "publication-1",
+			Actor:  publicationauth.Actor{Origin: publicationauth.OriginLegacy, UserID: "user-1"},
+			Action: publicationauth.ActionPublish, PolicyMode: publicationauth.PolicyScheduled,
+			Targets: targets,
+		})
+		require.NoError(t, err)
+	}
+	payload, err := json.Marshal(map[string]string{
+		"publication_id": "publication-1", "authorization_batch_id": s.batchID,
+		"authorization_scheduled_at": s.runAt.Format(time.RFC3339Nano),
+	})
+	require.NoError(t, err)
+	return WithJobExecution(ctx, s.jobID, 1, time.Now().UTC()), string(payload)
 }
 
 func (s *publisherLifecycleTestServer) lifecycleEvents(t *testing.T) []models.PublicationLifecycleEvent {
 	t.Helper()
 	var events []models.PublicationLifecycleEvent
-	require.NoError(t, s.db.NewSelect().Model(&events).Order("created_at ASC").Scan(context.Background()))
+	require.NoError(t, s.db.NewSelect().Model(&events).
+		Where("type != ?", lifecycle.EventAuthorizationConfirmed).
+		Order("created_at ASC").Scan(context.Background()))
 	return events
 }
 

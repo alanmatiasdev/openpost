@@ -34,6 +34,14 @@ func NewFacebookAdapter(clientID, clientSecret, redirectURI string) *FacebookAda
 	}
 }
 
+func (f *FacebookAdapter) AuthorizationGrantDescriptor() AuthorizationGrantDescriptor {
+	return AuthorizationGrantDescriptor{
+		ProjectID:     f.clientID,
+		ExecutionMode: "oauth2",
+		Evidence:      map[string]string{"protocol": "oauth2", "exchange": "authorization_code", "graph_version": f.graphVersion},
+	}
+}
+
 func metaGraphAPIVersion() string {
 	if version := strings.TrimSpace(os.Getenv("META_GRAPH_API_VERSION")); version != "" {
 		return strings.TrimPrefix(version, "/")

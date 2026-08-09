@@ -16,6 +16,7 @@ import (
 	"github.com/openpost/backend/internal/capabilities"
 	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/platform"
+	servicecrypto "github.com/openpost/backend/internal/services/crypto"
 	"github.com/openpost/backend/internal/services/entitlements"
 	"github.com/openpost/backend/internal/services/lifecycle"
 	"github.com/openpost/backend/internal/services/medialifecycle"
@@ -44,6 +45,7 @@ type Service struct {
 	publicMediaURL               string
 	mediaSigner                  *mediasigner.Signer
 	storage                      mediastore.BlobStorage
+	mediaStateEncryptor          *servicecrypto.TokenEncryptor
 	usage                        *usage.Service
 	quota                        entitlements.Service
 	notifications                *notifications.Service
@@ -78,6 +80,10 @@ func (s *Service) SetMediaSigner(signer *mediasigner.Signer) {
 
 func (s *Service) SetStorage(storage mediastore.BlobStorage) {
 	s.storage = storage
+}
+
+func (s *Service) SetMediaStateEncryptor(encryptor *servicecrypto.TokenEncryptor) {
+	s.mediaStateEncryptor = encryptor
 }
 
 func (s *Service) SetUsage(usageService *usage.Service) {
@@ -244,15 +250,28 @@ func (s *Service) UpdateJobRetryAt(ctx context.Context, jobType, jobPayload stri
 //nolint:gocyclo // One handler preserves publication, rendition, media, lifecycle, and retry state across every job action.
 func (s *Service) HandlePublishPublicationJob(ctx context.Context, jobPayload string) error {
 	var payload struct {
-		PublicationID string                   `json:"publication_id"`
-		RenditionID   string                   `json:"rendition_id"`
-		Action        string                   `json:"action"`
-		Body          string                   `json:"body"`
-		ParentID      string                   `json:"parent_id"`
-		Settings      map[string]interface{}   `json:"settings"`
-		Media         []map[string]interface{} `json:"media"`
+		PublicationID            string                   `json:"publication_id"`
+		RenditionID              string                   `json:"rendition_id"`
+		Action                   string                   `json:"action"`
+		Body                     string                   `json:"body"`
+		ParentID                 string                   `json:"parent_id"`
+		Settings                 map[string]interface{}   `json:"settings"`
+		Media                    []map[string]interface{} `json:"media"`
+		AuthorizationBatchID     string                   `json:"authorization_batch_id"`
+		AuthorizationScheduledAt string                   `json:"authorization_scheduled_at"`
 	}
 	if err := json.Unmarshal([]byte(jobPayload), &payload); err != nil {
+		return err
+	}
+	receipts, err := s.preflightPublicationAuthorization(ctx, publicationAuthorizationPreflight{
+		BatchID: payload.AuthorizationBatchID, PublicationID: payload.PublicationID,
+		RenditionID: payload.RenditionID, Action: payload.Action,
+		ScheduledAt: payload.AuthorizationScheduledAt,
+		Content:     payload.Body, Media: payload.Media,
+		Settings: map[string]any{"parent_id": payload.ParentID, "settings": payload.Settings},
+		Explicit: payload.Action == "reply",
+	})
+	if err != nil {
 		return err
 	}
 	if payload.Action == "reply" {
@@ -306,6 +325,11 @@ func (s *Service) HandlePublishPublicationJob(ctx context.Context, jobPayload st
 	if payload.RenditionID != "" {
 		query = query.Where("id = ?", payload.RenditionID)
 	}
+	allowedRenditionIDs := make([]string, 0, len(receipts))
+	for _, receipt := range receipts {
+		allowedRenditionIDs = append(allowedRenditionIDs, receipt.RenditionID)
+	}
+	query = query.Where("id IN (?)", bun.List(allowedRenditionIDs))
 	if err := query.Scan(ctx); err != nil {
 		return err
 	}
@@ -445,7 +469,7 @@ func (s *Service) publishRendition(ctx context.Context, publication *models.Publ
 			"media_id": media.ID,
 		})
 		if !publishesMediaDirectly {
-			mediaID, err := s.platformMediaIDForRendition(ctx, rendition, account, provider, token, media)
+			mediaID, err := s.platformMediaIDForRendition(ctx, publication, rendition, account, provider, token, media)
 			if err != nil {
 				return fmt.Errorf("media upload failed for %s: %w", media.ID, err)
 			}
@@ -610,7 +634,7 @@ func (s *Service) publishRenditionSegments(
 				"media_id":   media.ID,
 			})
 			if !publishesMediaDirectly {
-				mediaID, uploadErr := s.platformMediaIDForRendition(ctx, &uploadRendition, account, provider, token, media)
+				mediaID, uploadErr := s.platformMediaIDForRendition(ctx, publication, &uploadRendition, account, provider, token, media)
 				if uploadErr != nil {
 					return s.failRenditionSegment(ctx, segment, fmt.Errorf("media upload failed for %s: %w", media.ID, uploadErr))
 				}
@@ -1415,25 +1439,53 @@ func (s *Service) platformMediaIDForDestination(ctx context.Context, post *model
 			return s.uploadMediaToPlatform(ctx, account, provider, token, media, content)
 		},
 		func(platformMediaID, status, errorMessage string) error {
-			return s.saveProviderMediaState(ctx, post.ID, dest.SocialAccountID, media.ID, account.Platform, platformMediaID, status, errorMessage)
+			return s.savePostMediaDelivery(ctx, post.WorkspaceID, post.ID, dest.SocialAccountID, media.ID, account.Platform, platformMediaID, status, errorMessage)
 		})
 }
 
-//nolint:dupl
-func (s *Service) platformMediaIDForRendition(ctx context.Context, rendition *models.Rendition, account *models.SocialAccount, provider platform.Adapter, token string, media models.MediaAttachment) (string, error) {
+type renditionMediaRelations struct {
+	coverID     string
+	thumbnailID string
+	captionID   string
+}
+
+func (r renditionMediaRelations) equal(other renditionMediaRelations) bool {
+	return r.coverID == other.coverID && r.thumbnailID == other.thumbnailID && r.captionID == other.captionID
+}
+
+func (s *Service) platformMediaIDForRendition(ctx context.Context, publication *models.Publication, rendition *models.Rendition, account *models.SocialAccount, provider platform.Adapter, token string, media models.MediaAttachment) (string, error) {
 	if requiresPublicMedia(account.Platform, rendition.Profile) {
 		return s.uploadRenditionMediaToPlatform(ctx, account, provider, token, rendition, media)
+	}
+	if err := s.validateRenditionMediaDeliveryOwner(ctx, publication, rendition, account, media); err != nil {
+		return "", err
+	}
+	relations, err := s.renditionMediaRelations(ctx, publication.WorkspaceID, rendition.SettingsJSON)
+	if err != nil {
+		return "", err
+	}
+	if uploader, ok := provider.(platform.ResumableMetadataMediaUploader); ok {
+		return s.resumablePlatformMediaIDForRendition(ctx, publication, rendition, account, uploader, token, media, relations)
 	}
 
 	return s.cachedPlatformMediaID(ctx, media.ID,
 		func() (string, error) {
-			return s.loadReadyProviderMediaStateForRendition(ctx, rendition.ID, rendition.SocialAccountID, media.ID)
+			return s.loadReadyRenditionMediaDelivery(ctx, publication, rendition, account, media.ID, relations)
 		},
 		func() (string, error) {
 			return s.uploadRenditionMediaToPlatform(ctx, account, provider, token, rendition, media)
 		},
 		func(platformMediaID, status, errorMessage string) error {
-			return s.saveProviderMediaStateForRendition(ctx, rendition.ID, rendition.SocialAccountID, media.ID, account.Platform, platformMediaID, status, errorMessage)
+			state := platform.ResumableMediaUploadState{
+				ProviderMediaID:     platformMediaID,
+				TotalBytes:          media.Size,
+				Status:              platform.MediaUploadStatus(status),
+				RetryClassification: platform.MediaRetryNone,
+			}
+			if status == providerMediaStatusFailed {
+				state.RetryClassification = platform.MediaRetryTerminal
+			}
+			return s.saveRenditionMediaDelivery(ctx, publication, rendition, account, media.ID, relations, state, errorMessage)
 		})
 }
 
@@ -1460,47 +1512,12 @@ func (s *Service) cachedPlatformMediaID(_ context.Context, mediaID string, load 
 	return platformMediaID, nil
 }
 
-func (s *Service) loadReadyProviderMediaStateForRendition(ctx context.Context, renditionID, socialAccountID, mediaID string) (string, error) {
-	return s.loadReadyProviderMediaStateByKey(ctx, "rendition_id", renditionID, socialAccountID, mediaID)
-}
-
-func (s *Service) saveProviderMediaStateForRendition(ctx context.Context, renditionID, socialAccountID, mediaID, platformName, platformMediaID, status, errorMessage string) error {
-	now := time.Now().UTC()
-	state := &models.ProviderMediaState{
-		PostID:          renditionID,
-		RenditionID:     renditionID,
-		SocialAccountID: socialAccountID,
-		MediaID:         mediaID,
-		Platform:        platformName,
-		PlatformMediaID: platformMediaID,
-		Status:          status,
-		ErrorMessage:    errorMessage,
-		CreatedAt:       now,
-		UpdatedAt:       now,
-	}
-	_, err := s.db.NewInsert().
-		Model(state).
-		On("CONFLICT (post_id, social_account_id, media_id) DO UPDATE").
-		Set("rendition_id = EXCLUDED.rendition_id").
-		Set("platform = EXCLUDED.platform").
-		Set("platform_media_id = EXCLUDED.platform_media_id").
-		Set("status = EXCLUDED.status").
-		Set("error_message = EXCLUDED.error_message").
-		Set("updated_at = EXCLUDED.updated_at").
-		Exec(ctx)
-	return err
-}
-
 func (s *Service) loadReadyProviderMediaState(ctx context.Context, postID, socialAccountID, mediaID string) (string, error) {
-	return s.loadReadyProviderMediaStateByKey(ctx, "post_id", postID, socialAccountID, mediaID)
-}
-
-func (s *Service) loadReadyProviderMediaStateByKey(ctx context.Context, keyColumn, keyValue, socialAccountID, mediaID string) (string, error) {
-	var state models.ProviderMediaState
+	var state models.PostMediaDelivery
 	if err := s.db.NewSelect().
 		Model(&state).
-		Column("platform_media_id").
-		Where(keyColumn+" = ?", keyValue).
+		Column("provider_media_id").
+		Where("post_id = ?", postID).
 		Where("social_account_id = ?", socialAccountID).
 		Where("media_id = ?", mediaID).
 		Where("status = ?", providerMediaStatusReady).
@@ -1508,19 +1525,20 @@ func (s *Service) loadReadyProviderMediaStateByKey(ctx context.Context, keyColum
 		if errors.Is(err, sql.ErrNoRows) {
 			return "", nil
 		}
-		return "", fmt.Errorf("loading provider media state: %w", err)
+		return "", fmt.Errorf("loading post media delivery: %w", err)
 	}
-	return state.PlatformMediaID, nil
+	return state.ProviderMediaID, nil
 }
 
-func (s *Service) saveProviderMediaState(ctx context.Context, postID, socialAccountID, mediaID, platformName, platformMediaID, status, errorMessage string) error {
+func (s *Service) savePostMediaDelivery(ctx context.Context, workspaceID, postID, socialAccountID, mediaID, platformName, providerMediaID, status, errorMessage string) error {
 	now := time.Now().UTC()
-	state := &models.ProviderMediaState{
+	state := &models.PostMediaDelivery{
+		WorkspaceID:     workspaceID,
 		PostID:          postID,
 		SocialAccountID: socialAccountID,
 		MediaID:         mediaID,
 		Platform:        platformName,
-		PlatformMediaID: platformMediaID,
+		ProviderMediaID: providerMediaID,
 		Status:          status,
 		ErrorMessage:    errorMessage,
 		CreatedAt:       now,
@@ -1529,13 +1547,377 @@ func (s *Service) saveProviderMediaState(ctx context.Context, postID, socialAcco
 	_, err := s.db.NewInsert().
 		Model(state).
 		On("CONFLICT (post_id, social_account_id, media_id) DO UPDATE").
+		Set("workspace_id = EXCLUDED.workspace_id").
 		Set("platform = EXCLUDED.platform").
-		Set("platform_media_id = EXCLUDED.platform_media_id").
+		Set("provider_media_id = EXCLUDED.provider_media_id").
 		Set("status = EXCLUDED.status").
 		Set("error_message = EXCLUDED.error_message").
 		Set("updated_at = EXCLUDED.updated_at").
 		Exec(ctx)
 	return err
+}
+
+func (s *Service) validateRenditionMediaDeliveryOwner(ctx context.Context, publication *models.Publication, rendition *models.Rendition, account *models.SocialAccount, media models.MediaAttachment) error {
+	var count int
+	err := s.db.NewSelect().
+		ColumnExpr("COUNT(*)").
+		TableExpr("renditions AS rendition").
+		Join("JOIN publications AS publication ON publication.id = rendition.publication_id").
+		Join("JOIN social_accounts AS account ON account.id = rendition.social_account_id").
+		Join("JOIN rendition_media AS rendition_media ON rendition_media.rendition_id = rendition.id").
+		Join("JOIN media_attachments AS media ON media.id = rendition_media.media_id").
+		Where("rendition.id = ?", rendition.ID).
+		Where("rendition.publication_id = ?", publication.ID).
+		Where("publication.workspace_id = ?", publication.WorkspaceID).
+		Where("rendition.social_account_id = ?", account.ID).
+		Where("rendition.platform = ?", account.Platform).
+		Where("account.workspace_id = publication.workspace_id").
+		Where("media.id = ?", media.ID).
+		Where("media.workspace_id = publication.workspace_id").
+		Scan(ctx, &count)
+	if err != nil {
+		return fmt.Errorf("validating rendition media delivery owner: %w", err)
+	}
+	if count != 1 {
+		return fmt.Errorf("media %s does not belong to rendition %s and account %s", media.ID, rendition.ID, account.ID)
+	}
+	return nil
+}
+
+func (s *Service) renditionMediaRelations(ctx context.Context, workspaceID, settingsJSON string) (renditionMediaRelations, error) {
+	settings := map[string]interface{}{}
+	_ = json.Unmarshal([]byte(settingsJSON), &settings)
+	relations := renditionMediaRelations{
+		coverID:     localSettingMediaID(settings, "cover_media_id"),
+		thumbnailID: localSettingMediaID(settings, "thumbnail_media_id"),
+		captionID:   localSettingMediaID(settings, "caption_media_id"),
+	}
+	for role, mediaID := range map[string]string{
+		"cover": relations.coverID, "thumbnail": relations.thumbnailID, "caption": relations.captionID,
+	} {
+		if mediaID == "" {
+			continue
+		}
+		var count int
+		if err := s.db.NewSelect().ColumnExpr("COUNT(*)").TableExpr("media_attachments").
+			Where("id = ? AND workspace_id = ?", mediaID, workspaceID).Scan(ctx, &count); err != nil {
+			return renditionMediaRelations{}, fmt.Errorf("validating %s media relation: %w", role, err)
+		}
+		if count != 1 {
+			return renditionMediaRelations{}, fmt.Errorf("%s media %s does not belong to workspace %s", role, mediaID, workspaceID)
+		}
+	}
+	return relations, nil
+}
+
+func localSettingMediaID(settings map[string]interface{}, key string) string {
+	value := settingStringPublisher(settings, key)
+	if strings.HasPrefix(value, "http://") || strings.HasPrefix(value, "https://") {
+		return ""
+	}
+	return value
+}
+
+func (s *Service) resumablePlatformMediaIDForRendition(
+	ctx context.Context,
+	publication *models.Publication,
+	rendition *models.Rendition,
+	account *models.SocialAccount,
+	uploader platform.ResumableMetadataMediaUploader,
+	token string,
+	media models.MediaAttachment,
+	relations renditionMediaRelations,
+) (string, error) {
+	state, storedRelations, err := s.loadRenditionMediaDeliveryState(ctx, publication, rendition, account, media.ID)
+	if err != nil {
+		return "", err
+	}
+	if state.Status == platform.MediaUploadReady && state.ProviderMediaID != "" && storedRelations.equal(relations) {
+		return state.ProviderMediaID, nil
+	}
+	if state.Status == platform.MediaUploadReady && state.ProviderMediaID != "" {
+		state.Status = platform.MediaUploadUploaded
+		state.RetryClassification = platform.MediaRetryReconcile
+	}
+	if state.Status == platform.MediaUploadFailed && state.RetryClassification == platform.MediaRetryTerminal {
+		return "", fmt.Errorf("provider media delivery is terminal; replace the media before retrying")
+	}
+	if state.TotalBytes == 0 {
+		state.TotalBytes = media.Size
+	}
+	checkpoint := func(next platform.ResumableMediaUploadState) error {
+		state = next
+		return s.saveRenditionMediaDelivery(ctx, publication, rendition, account, media.ID, relations, next, "")
+	}
+	providerMediaID, uploadErr := s.uploadRenditionMediaResumable(ctx, account, uploader, token, rendition, media, state, checkpoint)
+	if uploadErr != nil {
+		return "", s.recordRenditionMediaUploadFailure(ctx, publication, rendition, account, media.ID, relations, state, uploadErr)
+	}
+	if providerMediaID == "" {
+		return "", fmt.Errorf("provider resumable upload returned an empty media id")
+	}
+	state.ProviderMediaID = providerMediaID
+	state.Status = platform.MediaUploadReady
+	state.RetryClassification = platform.MediaRetryNone
+	state.UploadedBytes = state.TotalBytes
+	state.OpaqueState = ""
+	state.SessionExpiresAt = time.Time{}
+	state.LastCheckedAt = time.Now().UTC()
+	if err := checkpoint(state); err != nil {
+		return "", fmt.Errorf("persisting completed rendition media delivery: %w", err)
+	}
+	return providerMediaID, nil
+}
+
+func (s *Service) recordRenditionMediaUploadFailure(
+	ctx context.Context,
+	publication *models.Publication,
+	rendition *models.Rendition,
+	account *models.SocialAccount,
+	mediaID string,
+	relations renditionMediaRelations,
+	state platform.ResumableMediaUploadState,
+	uploadErr error,
+) error {
+	uploadErr = redactResumableMediaStateFromError(uploadErr, state.OpaqueState)
+	state.Status = platform.MediaUploadFailed
+	classification, classified := platform.MediaRetryClassificationForError(uploadErr)
+	switch {
+	case classified:
+		state.RetryClassification = classification
+	case state.ProviderMediaID != "":
+		state.RetryClassification = platform.MediaRetryReconcile
+	case state.OpaqueState != "":
+		state.RetryClassification = platform.MediaRetrySafeResume
+	default:
+		state.RetryClassification = platform.MediaRetryTerminal
+	}
+	if saveErr := s.saveRenditionMediaDelivery(ctx, publication, rendition, account, mediaID, relations, state, uploadErr.Error()); saveErr != nil {
+		log.Printf("[Publisher] Failed to checkpoint resumable media error for rendition %s media %s: %v", rendition.ID, mediaID, saveErr)
+	}
+	return uploadErr
+}
+
+func redactResumableMediaStateFromError(err error, opaqueState string) error {
+	if err == nil || opaqueState == "" {
+		return err
+	}
+	message := err.Error()
+	secrets := []string{opaqueState}
+	var decoded any
+	if json.Unmarshal([]byte(opaqueState), &decoded) == nil {
+		secrets = append(secrets, resumableStateStrings(decoded)...)
+	}
+	for _, secret := range secrets {
+		if secret != "" {
+			message = strings.ReplaceAll(message, secret, "[redacted provider state]")
+		}
+	}
+	if message == err.Error() {
+		return err
+	}
+	redacted := errors.New(message)
+	if classification, ok := platform.MediaRetryClassificationForError(err); ok {
+		return &platform.MediaUploadError{RetryClassification: classification, Err: redacted}
+	}
+	return redacted
+}
+
+func resumableStateStrings(value any) []string {
+	switch typed := value.(type) {
+	case string:
+		return []string{typed}
+	case []any:
+		var values []string
+		for _, item := range typed {
+			values = append(values, resumableStateStrings(item)...)
+		}
+		return values
+	case map[string]any:
+		var values []string
+		for _, item := range typed {
+			values = append(values, resumableStateStrings(item)...)
+		}
+		return values
+	default:
+		return nil
+	}
+}
+
+func (s *Service) loadReadyRenditionMediaDelivery(ctx context.Context, publication *models.Publication, rendition *models.Rendition, account *models.SocialAccount, mediaID string, expectedRelations renditionMediaRelations) (string, error) {
+	state, storedRelations, err := s.loadRenditionMediaDeliveryState(ctx, publication, rendition, account, mediaID)
+	if err != nil {
+		return "", err
+	}
+	if state.Status != platform.MediaUploadReady || !storedRelations.equal(expectedRelations) {
+		return "", nil
+	}
+	return state.ProviderMediaID, nil
+}
+
+func (s *Service) loadRenditionMediaDeliveryState(ctx context.Context, publication *models.Publication, rendition *models.Rendition, account *models.SocialAccount, mediaID string) (platform.ResumableMediaUploadState, renditionMediaRelations, error) {
+	var delivery models.RenditionMediaDelivery
+	err := s.db.NewSelect().Model(&delivery).
+		Where("workspace_id = ?", publication.WorkspaceID).
+		Where("publication_id = ?", publication.ID).
+		Where("rendition_id = ?", rendition.ID).
+		Where("social_account_id = ?", account.ID).
+		Where("media_id = ?", mediaID).
+		Where("platform = ?", account.Platform).
+		Scan(ctx)
+	if errors.Is(err, sql.ErrNoRows) {
+		return platform.ResumableMediaUploadState{Status: platform.MediaUploadPending, RetryClassification: platform.MediaRetrySafeResume}, renditionMediaRelations{}, nil
+	}
+	if err != nil {
+		return platform.ResumableMediaUploadState{}, renditionMediaRelations{}, fmt.Errorf("loading rendition media delivery: %w", err)
+	}
+	storedRelations, err := s.loadRenditionMediaDeliveryRelations(ctx, rendition.ID, mediaID)
+	if err != nil {
+		return platform.ResumableMediaUploadState{}, renditionMediaRelations{}, err
+	}
+	opaqueState := ""
+	if len(delivery.SessionStateEnc) > 0 {
+		if s.mediaStateEncryptor == nil {
+			return platform.ResumableMediaUploadState{}, renditionMediaRelations{}, fmt.Errorf("media upload state encryption is not configured")
+		}
+		opaqueState, err = s.mediaStateEncryptor.Decrypt(delivery.SessionStateEnc)
+		if err != nil {
+			return platform.ResumableMediaUploadState{}, renditionMediaRelations{}, fmt.Errorf("decrypting rendition media delivery state: %w", err)
+		}
+	}
+	return platform.ResumableMediaUploadState{
+		ProviderMediaID:     delivery.ProviderMediaID,
+		OpaqueState:         opaqueState,
+		UploadedBytes:       delivery.UploadedBytes,
+		TotalBytes:          delivery.TotalBytes,
+		SessionExpiresAt:    delivery.SessionExpiresAt,
+		LastCheckedAt:       delivery.LastCheckedAt,
+		Status:              platform.MediaUploadStatus(delivery.Status),
+		RetryClassification: platform.MediaRetryClassification(delivery.RetryClassification),
+	}, storedRelations, nil
+}
+
+func (s *Service) loadRenditionMediaDeliveryRelations(ctx context.Context, renditionID, mediaID string) (renditionMediaRelations, error) {
+	var rows []models.RenditionMediaDeliveryRelation
+	if err := s.db.NewSelect().Model(&rows).
+		Where("rendition_id = ? AND delivery_media_id = ?", renditionID, mediaID).
+		Scan(ctx); err != nil {
+		return renditionMediaRelations{}, fmt.Errorf("loading rendition media delivery relations: %w", err)
+	}
+	var relations renditionMediaRelations
+	for _, row := range rows {
+		switch row.Role {
+		case "cover":
+			relations.coverID = row.RelatedMediaID
+		case "thumbnail":
+			relations.thumbnailID = row.RelatedMediaID
+		case "caption":
+			relations.captionID = row.RelatedMediaID
+		}
+	}
+	return relations, nil
+}
+
+func (s *Service) saveRenditionMediaDelivery(
+	ctx context.Context,
+	publication *models.Publication,
+	rendition *models.Rendition,
+	account *models.SocialAccount,
+	mediaID string,
+	relations renditionMediaRelations,
+	state platform.ResumableMediaUploadState,
+	errorMessage string,
+) error {
+	var encryptedState []byte
+	var err error
+	if state.OpaqueState != "" {
+		if s.mediaStateEncryptor == nil {
+			return fmt.Errorf("media upload state encryption is not configured")
+		}
+		encryptedState, err = s.mediaStateEncryptor.Encrypt(state.OpaqueState)
+		if err != nil {
+			return fmt.Errorf("encrypting rendition media delivery state: %w", err)
+		}
+	}
+	now := time.Now().UTC()
+	delivery := &models.RenditionMediaDelivery{
+		WorkspaceID:         publication.WorkspaceID,
+		PublicationID:       publication.ID,
+		RenditionID:         rendition.ID,
+		SocialAccountID:     account.ID,
+		MediaID:             mediaID,
+		Platform:            account.Platform,
+		ProviderMediaID:     state.ProviderMediaID,
+		Status:              string(state.Status),
+		SessionStateEnc:     encryptedState,
+		UploadedBytes:       state.UploadedBytes,
+		TotalBytes:          state.TotalBytes,
+		SessionExpiresAt:    state.SessionExpiresAt,
+		LastCheckedAt:       state.LastCheckedAt,
+		RetryClassification: string(state.RetryClassification),
+		ErrorMessage:        errorMessage,
+		CreatedAt:           now,
+		UpdatedAt:           now,
+	}
+	return s.db.RunInTx(ctx, &sql.TxOptions{}, func(ctx context.Context, tx bun.Tx) error {
+		if _, err := tx.NewInsert().Model(delivery).
+			On("CONFLICT (rendition_id, media_id) DO UPDATE").
+			Set("workspace_id = EXCLUDED.workspace_id").
+			Set("publication_id = EXCLUDED.publication_id").
+			Set("social_account_id = EXCLUDED.social_account_id").
+			Set("platform = EXCLUDED.platform").
+			Set("provider_media_id = EXCLUDED.provider_media_id").
+			Set("status = EXCLUDED.status").
+			Set("session_state_encrypted = EXCLUDED.session_state_encrypted").
+			Set("uploaded_bytes = EXCLUDED.uploaded_bytes").
+			Set("total_bytes = EXCLUDED.total_bytes").
+			Set("session_expires_at = EXCLUDED.session_expires_at").
+			Set("last_checked_at = EXCLUDED.last_checked_at").
+			Set("retry_classification = EXCLUDED.retry_classification").
+			Set("error_message = EXCLUDED.error_message").
+			Set("updated_at = EXCLUDED.updated_at").
+			Exec(ctx); err != nil {
+			return fmt.Errorf("saving rendition media delivery: %w", err)
+		}
+		if _, err := tx.NewDelete().Model((*models.RenditionMediaDeliveryRelation)(nil)).
+			Where("rendition_id = ? AND delivery_media_id = ?", rendition.ID, mediaID).
+			Exec(ctx); err != nil {
+			return fmt.Errorf("replacing rendition media delivery relations: %w", err)
+		}
+		rows := renditionMediaRelationRows(publication.WorkspaceID, rendition.ID, mediaID, relations)
+		if len(rows) == 0 {
+			return nil
+		}
+		if _, err := tx.NewInsert().Model(&rows).Exec(ctx); err != nil {
+			return fmt.Errorf("saving rendition media delivery relations: %w", err)
+		}
+		return nil
+	})
+}
+
+func renditionMediaRelationRows(workspaceID, renditionID, mediaID string, relations renditionMediaRelations) []models.RenditionMediaDeliveryRelation {
+	values := []struct {
+		role    string
+		mediaID string
+	}{
+		{role: "cover", mediaID: relations.coverID},
+		{role: "thumbnail", mediaID: relations.thumbnailID},
+		{role: "caption", mediaID: relations.captionID},
+	}
+	rows := make([]models.RenditionMediaDeliveryRelation, 0, len(values))
+	for _, value := range values {
+		if value.mediaID == "" {
+			continue
+		}
+		rows = append(rows, models.RenditionMediaDeliveryRelation{
+			WorkspaceID:     workspaceID,
+			RenditionID:     renditionID,
+			DeliveryMediaID: mediaID,
+			Role:            value.role,
+			RelatedMediaID:  value.mediaID,
+		})
+	}
+	return rows
 }
 
 func (s *Service) publishProvider(
@@ -1631,6 +2013,15 @@ func (s *Service) uploadRenditionMediaToPlatform(ctx context.Context, account *m
 	if requiresPublicMedia(account.Platform, rendition.Profile) && !usesTikTokFileUpload(account.Platform, settings) {
 		return s.getPublicMediaURL(media), nil
 	}
+	if uploader, ok := provider.(platform.MetadataMediaUploader); ok {
+		req, closeReaders, err := s.renditionUploadRequest(ctx, rendition, media, settings, true)
+		if err != nil {
+			return "", err
+		}
+		defer closeReaders()
+		return uploader.UploadMediaWithMetadata(ctx, token, account.AccountID, req)
+	}
+
 	if s.storage == nil {
 		return "", fmt.Errorf("media storage is not configured")
 	}
@@ -1639,47 +2030,114 @@ func (s *Service) uploadRenditionMediaToPlatform(ctx context.Context, account *m
 		return "", fmt.Errorf("opening media file %s: %w", media.FilePath, err)
 	}
 	defer data.Close()
+	return provider.UploadMedia(ctx, token, account.AccountID, media.MimeType, data)
+}
 
-	if uploader, ok := provider.(platform.MetadataMediaUploader); ok {
-		thumbnail, thumbnailReader, err := s.openThumbnailFromSettings(ctx, settings)
+func (s *Service) uploadRenditionMediaResumable(
+	ctx context.Context,
+	account *models.SocialAccount,
+	uploader platform.ResumableMetadataMediaUploader,
+	token string,
+	rendition *models.Rendition,
+	media models.MediaAttachment,
+	state platform.ResumableMediaUploadState,
+	checkpoint platform.MediaUploadCheckpoint,
+) (string, error) {
+	settings := map[string]interface{}{}
+	_ = json.Unmarshal([]byte(rendition.SettingsJSON), &settings)
+	req, closeReaders, err := s.renditionUploadRequest(ctx, rendition, media, settings, false)
+	if err != nil {
+		return "", err
+	}
+	defer closeReaders()
+	return uploader.UploadMediaResumable(ctx, token, account.AccountID, req, state, checkpoint)
+}
+
+func (s *Service) renditionUploadRequest(ctx context.Context, rendition *models.Rendition, media models.MediaAttachment, settings map[string]interface{}, openPrimaryReader bool) (platform.UploadMediaRequest, func(), error) {
+	if s.storage == nil {
+		return platform.UploadMediaRequest{}, nil, fmt.Errorf("media storage is not configured")
+	}
+	storageKey := filepath.Base(media.FilePath)
+	var data io.ReadCloser
+	readers := make([]io.ReadCloser, 0, 3)
+	if openPrimaryReader {
+		var err error
+		data, err = s.storage.Open(storageKey)
 		if err != nil {
-			return "", err
+			return platform.UploadMediaRequest{}, nil, fmt.Errorf("opening media file %s: %w", media.FilePath, err)
 		}
-		if thumbnailReader != nil {
-			defer thumbnailReader.Close()
+		readers = append(readers, data)
+	}
+	closeReaders := func() {
+		for _, reader := range readers {
+			_ = reader.Close()
 		}
-		caption, captionReader, err := s.openSettingMedia(ctx, settings, "caption_media_id", "")
-		if err != nil {
-			return "", err
-		}
-		if captionReader != nil {
-			defer captionReader.Close()
-		}
-		req := platform.UploadMediaRequest{
-			MimeType:    media.MimeType,
-			Filename:    firstNonEmptyPublisherString(media.OriginalFilename, filepath.Base(media.FilePath)),
-			Size:        media.Size,
-			Title:       firstNonEmptyPublisherString(rendition.Title, firstContentLine(rendition.Body)),
-			Description: strings.TrimSpace(firstNonEmptyPublisherString(rendition.Description, rendition.Body)),
-			Settings:    settings,
-			Reader:      data,
-		}
-		if thumbnail != nil {
-			req.ThumbnailMimeType = thumbnail.MimeType
-			req.ThumbnailFilename = firstNonEmptyPublisherString(thumbnail.OriginalFilename, filepath.Base(thumbnail.FilePath))
-			req.ThumbnailSize = thumbnail.Size
-			req.ThumbnailReader = thumbnailReader
-		}
-		if caption != nil {
-			req.CaptionMimeType = caption.MimeType
-			req.CaptionFilename = firstNonEmptyPublisherString(caption.OriginalFilename, filepath.Base(caption.FilePath))
-			req.CaptionSize = caption.Size
-			req.CaptionReader = captionReader
-		}
-		return uploader.UploadMediaWithMetadata(ctx, token, account.AccountID, req)
+	}
+	fail := func(err error) (platform.UploadMediaRequest, func(), error) {
+		closeReaders()
+		return platform.UploadMediaRequest{}, nil, err
 	}
 
-	return provider.UploadMedia(ctx, token, account.AccountID, media.MimeType, data)
+	thumbnail, thumbnailReader, err := s.openThumbnailFromSettings(ctx, settings)
+	if err != nil {
+		return fail(err)
+	}
+	if thumbnailReader != nil {
+		readers = append(readers, thumbnailReader)
+	}
+	caption, captionReader, err := s.openSettingMedia(ctx, settings, "caption_media_id", "")
+	if err != nil {
+		return fail(err)
+	}
+	if captionReader != nil {
+		readers = append(readers, captionReader)
+	}
+	req := platform.UploadMediaRequest{
+		MimeType:    media.MimeType,
+		Filename:    firstNonEmptyPublisherString(media.OriginalFilename, storageKey),
+		Size:        media.Size,
+		Title:       firstNonEmptyPublisherString(rendition.Title, firstContentLine(rendition.Body)),
+		Description: strings.TrimSpace(firstNonEmptyPublisherString(rendition.Description, rendition.Body)),
+		Settings:    settings,
+		Reader:      data,
+		OpenReaderAt: func(offset int64) (io.ReadCloser, error) {
+			return s.openMediaReaderAt(storageKey, offset)
+		},
+	}
+	if thumbnail != nil {
+		req.ThumbnailMimeType = thumbnail.MimeType
+		req.ThumbnailFilename = firstNonEmptyPublisherString(thumbnail.OriginalFilename, filepath.Base(thumbnail.FilePath))
+		req.ThumbnailSize = thumbnail.Size
+		req.ThumbnailReader = thumbnailReader
+	}
+	if caption != nil {
+		req.CaptionMimeType = caption.MimeType
+		req.CaptionFilename = firstNonEmptyPublisherString(caption.OriginalFilename, filepath.Base(caption.FilePath))
+		req.CaptionSize = caption.Size
+		req.CaptionReader = captionReader
+	}
+	return req, closeReaders, nil
+}
+
+func (s *Service) openMediaReaderAt(storageKey string, offset int64) (io.ReadCloser, error) {
+	if offset < 0 {
+		return nil, fmt.Errorf("invalid media offset %d", offset)
+	}
+	if ranged, ok := s.storage.(mediastore.RangeBlobStorage); ok {
+		return ranged.OpenRange(storageKey, offset)
+	}
+	reader, err := s.storage.Open(storageKey)
+	if err != nil {
+		return nil, err
+	}
+	if offset == 0 {
+		return reader, nil
+	}
+	if _, err := io.CopyN(io.Discard, reader, offset); err != nil {
+		_ = reader.Close()
+		return nil, fmt.Errorf("positioning media reader at byte %d: %w", offset, err)
+	}
+	return reader, nil
 }
 
 func (s *Service) openThumbnailFromSettings(ctx context.Context, settings map[string]interface{}) (*models.MediaAttachment, io.ReadCloser, error) {

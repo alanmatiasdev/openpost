@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/openpost/backend/internal/models"
+	"github.com/openpost/backend/internal/services/publicationauth"
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect"
@@ -189,7 +190,19 @@ func TestLegacyAuthoringMigrationPreservesThreadVariantsScheduleAndJobs(t *testi
 	var payload map[string]interface{}
 	require.NoError(t, json.Unmarshal([]byte(pendingJob.Payload), &payload))
 	require.Equal(t, publicationID, payload["publication_id"])
+	authorizationBatchID, ok := payload["authorization_batch_id"].(string)
+	require.True(t, ok)
+	require.NotEmpty(t, authorizationBatchID)
+	require.Equal(t, scheduledAt.Format(time.RFC3339Nano), payload["authorization_scheduled_at"])
 	require.WithinDuration(t, scheduledAt, pendingJob.RunAt, time.Second)
+	var authorization models.PublicationAuthorization
+	require.NoError(t, db.NewSelect().Model(&authorization).
+		Where("batch_id = ? AND job_id = ?", authorizationBatchID, pendingJob.ID).
+		Scan(ctx))
+	require.Equal(t, publicationauth.OriginLegacy, authorization.ActorOrigin)
+	require.Equal(t, "user-1", authorization.ActorUserID)
+	require.Equal(t, publicationauth.PolicyLegacyScheduled, authorization.PolicyMode)
+	require.Equal(t, rendition.ID, authorization.RenditionID)
 
 	var historyJob models.Job
 	require.NoError(t, db.NewSelect().Model(&historyJob).Where("id = ?", "job-history").Scan(ctx))
@@ -256,6 +269,18 @@ func TestLegacyAuthoringMigrationPreservesThreadVariantsScheduleAndJobs(t *testi
 	require.NoError(t, err)
 
 	require.NoError(t, RefreshLegacyPublicationAuthoring(ctx, db, "legacy-root"))
+	require.NoError(t, db.NewSelect().Model(&pendingJob).Where("id = ?", "job-pending").Scan(ctx))
+	var replacementPayload map[string]any
+	require.NoError(t, json.Unmarshal([]byte(pendingJob.Payload), &replacementPayload))
+	replacementBatchID, ok := replacementPayload["authorization_batch_id"].(string)
+	require.True(t, ok)
+	require.NotEqual(t, authorizationBatchID, replacementBatchID)
+	var originalReceiptCount int
+	require.NoError(t, db.QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM publication_authorizations WHERE batch_id = ?",
+		authorizationBatchID,
+	).Scan(&originalReceiptCount))
+	require.Equal(t, 1, originalReceiptCount, "refresh must append rather than mutate the prior receipt")
 
 	require.NoError(t, db.NewSelect().Model(&rendition).Where("publication_id = ?", publicationID).Scan(ctx))
 	require.NotEqual(t, "canonical-rendition-random", rendition.ID)

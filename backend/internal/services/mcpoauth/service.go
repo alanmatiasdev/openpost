@@ -246,6 +246,7 @@ func (s *Service) ExchangeCode(ctx context.Context, input TokenRequest) (*TokenR
 		IdentityProviderID: code.IdentityProviderID,
 		AssuredAt:          code.AssuredAt,
 		Audience:           code.Resource,
+		ClientID:           code.ClientID,
 	})
 	if err != nil {
 		return nil, err

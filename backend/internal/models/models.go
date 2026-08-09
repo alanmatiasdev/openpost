@@ -409,6 +409,7 @@ type APIToken struct {
 	ID                 string    `bun:",pk" json:"id"`
 	UserID             string    `bun:",notnull" json:"user_id"`
 	Name               string    `bun:",notnull" json:"name"`
+	ClientID           string    `bun:"client_id,notnull,default:''" json:"client_id,omitempty"`
 	TokenHash          string    `bun:",unique,notnull" json:"-"`
 	TokenPrefix        string    `bun:",notnull" json:"token_prefix"`
 	Scope              string    `bun:",notnull,default:'cli:full'" json:"scope"`
@@ -685,6 +686,43 @@ type InstanceSetting struct {
 	UpdatedAt      time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"updated_at"`
 }
 
+// OAuthGrant is one provider authorization. Destination accounts reference a
+// grant instead of owning credential copies so token rotation and revocation
+// have one atomic consistency boundary.
+type OAuthGrant struct {
+	bun.BaseModel `bun:"table:oauth_grants"`
+
+	ID                    string    `bun:",pk" json:"id"`
+	WorkspaceID           string    `bun:",notnull" json:"workspace_id"`
+	Provider              string    `bun:",notnull" json:"provider"`
+	ProviderProjectID     string    `bun:"provider_project_id,notnull,default:''" json:"provider_project_id,omitempty"`
+	ProviderSubject       string    `bun:"provider_subject,notnull,default:''" json:"provider_subject,omitempty"`
+	InstanceURL           string    `bun:"instance_url,notnull,default:''" json:"instance_url,omitempty"`
+	AccessTokenEnc        []byte    `bun:"access_token_encrypted,notnull" json:"-"`
+	RefreshTokenEnc       []byte    `bun:"refresh_token_encrypted" json:"-"`
+	AccessTokenExpiresAt  time.Time `bun:"access_token_expires_at,nullzero" json:"access_token_expires_at,omitempty"`
+	RefreshTokenExpiresAt time.Time `bun:"refresh_token_expires_at,nullzero" json:"refresh_token_expires_at,omitempty"`
+	GrantedScopes         string    `bun:"granted_scopes,notnull,default:''" json:"granted_scopes,omitempty"`
+	TokenType             string    `bun:"token_type,notnull,default:''" json:"token_type,omitempty"`
+	TokenVersion          int64     `bun:"token_version,notnull,default:1" json:"token_version"`
+	ExecutionMode         string    `bun:"execution_mode,notnull,default:'user_oauth'" json:"execution_mode"`
+	AuthorizationEvidence string    `bun:"authorization_evidence_json,notnull,default:'{}'" json:"-"`
+	ConsentedByID         string    `bun:"consented_by_id,notnull,default:''" json:"consented_by_id,omitempty"`
+	ConsentedAt           time.Time `bun:"consented_at,nullzero" json:"consented_at,omitempty"`
+	ValidatedAt           time.Time `bun:"validated_at,nullzero" json:"validated_at,omitempty"`
+	ValidationStatus      string    `bun:"validation_status,notnull,default:'valid'" json:"validation_status"`
+	RefreshLeaseOwner     string    `bun:"refresh_lease_owner,notnull,default:''" json:"-"`
+	RefreshLeaseExpiresAt time.Time `bun:"refresh_lease_expires_at,nullzero" json:"-"`
+	LastRefreshStartedAt  time.Time `bun:"last_refresh_started_at,nullzero" json:"-"`
+	LastRefreshFinishedAt time.Time `bun:"last_refresh_finished_at,nullzero" json:"-"`
+	LastRefreshError      string    `bun:"last_refresh_error,notnull,default:''" json:"-"`
+	RevokedByID           string    `bun:"revoked_by_id,notnull,default:''" json:"revoked_by_id,omitempty"`
+	RevocationReason      string    `bun:"revocation_reason,notnull,default:''" json:"revocation_reason,omitempty"`
+	RevokedAt             time.Time `bun:"revoked_at,nullzero" json:"revoked_at,omitempty"`
+	CreatedAt             time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
+	UpdatedAt             time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"updated_at"`
+}
+
 type SocialAccount struct {
 	bun.BaseModel `bun:"table:social_accounts"`
 
@@ -696,7 +734,10 @@ type SocialAccount struct {
 	AccountUsername  string `json:"account_username"`
 	AccountAvatarURL string `json:"account_avatar_url"`
 	InstanceURL      string `json:"instance_url"` // Used for Mastodon domains and Bluesky PDS
+	OAuthGrantID     string `bun:"oauth_grant_id,notnull,default:''" json:"oauth_grant_id,omitempty"`
 
+	// Deprecated credential mirrors remain only for rolling migration and old
+	// test fixtures. Runtime credential reads and writes use OAuthGrant.
 	AccessTokenEnc      []byte    `bun:"access_token_encrypted,notnull" json:"-"`
 	RefreshTokenEnc     []byte    `bun:"refresh_token_encrypted" json:"-"`
 	TokenExpiresAt      time.Time `json:"token_expires_at"`
@@ -1211,6 +1252,38 @@ type PublicationLifecycleEvent struct {
 	CreatedAt      time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
 }
 
+// PublicationAuthorization is an append-only proof of the exact publication
+// revision and destination payload that an actor allowed OpenPost to send. The
+// three hashes deliberately replace content, media metadata, and provider
+// settings; plaintext payloads and credentials must never be stored here.
+type PublicationAuthorization struct {
+	bun.BaseModel `bun:"table:publication_authorizations"`
+
+	ID                  string    `bun:",pk" json:"id"`
+	BatchID             string    `bun:"batch_id,notnull" json:"batch_id"`
+	JobID               string    `bun:"job_id,notnull,default:''" json:"job_id,omitempty"`
+	WorkspaceID         string    `bun:"workspace_id,notnull" json:"workspace_id"`
+	PublicationID       string    `bun:"publication_id,notnull" json:"publication_id"`
+	RenditionID         string    `bun:"rendition_id,notnull" json:"rendition_id"`
+	Action              string    `bun:",notnull" json:"action"`
+	ActorOrigin         string    `bun:"actor_origin,notnull" json:"actor_origin"`
+	ActorUserID         string    `bun:"actor_user_id,notnull,default:''" json:"-"`
+	ActorSessionID      string    `bun:"actor_session_id,notnull,default:''" json:"-"`
+	ActorTokenID        string    `bun:"actor_token_id,notnull,default:''" json:"-"`
+	ActorClientID       string    `bun:"actor_client_id,notnull,default:''" json:"-"`
+	ActorClientName     string    `bun:"actor_client_name,notnull,default:''" json:"-"`
+	PublicationRevision int       `bun:"publication_revision,notnull" json:"publication_revision"`
+	SocialAccountID     string    `bun:"social_account_id,notnull" json:"social_account_id"`
+	TargetKey           string    `bun:"target_key,notnull" json:"target_key"`
+	ScheduledAt         time.Time `bun:"scheduled_at,notnull" json:"scheduled_at"`
+	ContentHash         string    `bun:"content_hash,notnull" json:"-"`
+	MediaHash           string    `bun:"media_hash,notnull" json:"-"`
+	SettingsHash        string    `bun:"settings_hash,notnull" json:"-"`
+	PolicyMode          string    `bun:"policy_mode,notnull" json:"policy_mode"`
+	ConfirmedAt         time.Time `bun:"confirmed_at,notnull" json:"confirmed_at"`
+	CreatedAt           time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
+}
+
 type Post struct {
 	bun.BaseModel `bun:"table:posts"`
 
@@ -1587,19 +1660,60 @@ type PostMedia struct {
 	DisplayOrder int    `json:"display_order"`
 }
 
-type ProviderMediaState struct {
-	bun.BaseModel `bun:"table:provider_media_states"`
+// PostMediaDelivery is the legacy text-and-thread publishing cache. It is
+// deliberately separate from rendition delivery state so both owner types can
+// retain real foreign keys instead of sharing a polymorphic identifier.
+type PostMediaDelivery struct {
+	bun.BaseModel `bun:"table:post_media_deliveries"`
 
-	PostID          string    `bun:",pk" json:"post_id"`
-	RenditionID     string    `bun:"rendition_id,notnull,default:''" json:"rendition_id"`
-	SocialAccountID string    `bun:",pk" json:"social_account_id"`
-	MediaID         string    `bun:",pk" json:"media_id"`
+	WorkspaceID     string    `bun:"workspace_id,notnull" json:"workspace_id"`
+	PostID          string    `bun:"post_id,pk" json:"post_id"`
+	SocialAccountID string    `bun:"social_account_id,pk" json:"social_account_id"`
+	MediaID         string    `bun:"media_id,pk" json:"media_id"`
 	Platform        string    `bun:",notnull" json:"platform"`
-	PlatformMediaID string    `bun:",notnull" json:"platform_media_id"`
+	ProviderMediaID string    `bun:"provider_media_id,notnull,default:''" json:"provider_media_id"`
 	Status          string    `bun:",notnull,default:'ready'" json:"status"`
-	ErrorMessage    string    `json:"error_message"`
+	ErrorMessage    string    `bun:"error_message,notnull,default:''" json:"error_message"`
 	CreatedAt       time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
 	UpdatedAt       time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"updated_at"`
+}
+
+// RenditionMediaDelivery owns one provider-side upload for one exact
+// rendition/media pair. SessionStateEnc may contain a bearer-style resumable
+// upload URL, so it is encrypted with the same application key as credentials.
+type RenditionMediaDelivery struct {
+	bun.BaseModel `bun:"table:rendition_media_deliveries"`
+
+	WorkspaceID         string    `bun:"workspace_id,notnull" json:"workspace_id"`
+	PublicationID       string    `bun:"publication_id,notnull" json:"publication_id"`
+	RenditionID         string    `bun:"rendition_id,pk" json:"rendition_id"`
+	SocialAccountID     string    `bun:"social_account_id,notnull" json:"social_account_id"`
+	MediaID             string    `bun:"media_id,pk" json:"media_id"`
+	Platform            string    `bun:",notnull" json:"platform"`
+	ProviderMediaID     string    `bun:"provider_media_id,notnull,default:''" json:"provider_media_id"`
+	Status              string    `bun:",notnull,default:'pending'" json:"status"`
+	SessionStateEnc     []byte    `bun:"session_state_encrypted" json:"-"`
+	UploadedBytes       int64     `bun:"uploaded_bytes,notnull,default:0" json:"uploaded_bytes"`
+	TotalBytes          int64     `bun:"total_bytes,notnull,default:0" json:"total_bytes"`
+	SessionExpiresAt    time.Time `bun:"session_expires_at,nullzero" json:"session_expires_at,omitempty"`
+	LastCheckedAt       time.Time `bun:"last_checked_at,nullzero" json:"last_checked_at,omitempty"`
+	RetryClassification string    `bun:"retry_classification,notnull,default:'safe_resume'" json:"retry_classification"`
+	ErrorMessage        string    `bun:"error_message,notnull,default:''" json:"error_message"`
+	CreatedAt           time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
+	UpdatedAt           time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"updated_at"`
+}
+
+// RenditionMediaDeliveryRelation records an exact workspace-owned auxiliary
+// file used by a provider upload. The migration enforces both its delivery and
+// attachment workspace through composite foreign keys.
+type RenditionMediaDeliveryRelation struct {
+	bun.BaseModel `bun:"table:rendition_media_delivery_relations"`
+
+	WorkspaceID     string `bun:"workspace_id,notnull" json:"workspace_id"`
+	RenditionID     string `bun:"rendition_id,pk" json:"rendition_id"`
+	DeliveryMediaID string `bun:"delivery_media_id,pk" json:"delivery_media_id"`
+	Role            string `bun:"role,pk" json:"role"`
+	RelatedMediaID  string `bun:"related_media_id,notnull" json:"related_media_id"`
 }
 
 type PublicationAsset struct {
@@ -1616,6 +1730,8 @@ type Job struct {
 
 	ID          string    `bun:",pk" json:"id"`
 	Type        string    `bun:",notnull" json:"type"` // 'publish_post', 'refresh_token', 'media_cleanup', 'storage_delete'
+	ScopeID     string    `bun:"scope_id,notnull,default:''" json:"scope_id,omitempty"`
+	DedupeKey   string    `bun:"dedupe_key,notnull,default:''" json:"dedupe_key,omitempty"`
 	Payload     string    `bun:",notnull" json:"payload"`
 	Status      string    `bun:",default:'pending'" json:"status"` // 'pending', 'processing', 'completed', 'failed'
 	RunAt       time.Time `bun:",notnull" json:"run_at"`

@@ -26,6 +26,14 @@ func NewBlueskyAdapter(pdsURL string) *BlueskyAdapter {
 	return &BlueskyAdapter{pdsURL: pdsURL}
 }
 
+func (b *BlueskyAdapter) AuthorizationGrantDescriptor() AuthorizationGrantDescriptor {
+	return AuthorizationGrantDescriptor{
+		ProjectID:     b.pdsURL,
+		ExecutionMode: "app_password",
+		Evidence:      map[string]string{"protocol": "atproto", "exchange": "create_session", "pds_url": b.pdsURL},
+	}
+}
+
 func (b *BlueskyAdapter) GenerateAuthURL(_ string) (string, map[string]string) {
 	return "", nil
 }

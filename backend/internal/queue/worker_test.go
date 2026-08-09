@@ -5,11 +5,13 @@ import (
 	"database/sql"
 	"fmt"
 	"io"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 	_ "github.com/mattn/go-sqlite3"
+	"github.com/openpost/backend/internal/jobregistry"
 	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/platform"
 	"github.com/openpost/backend/internal/services/crypto"
@@ -80,6 +82,7 @@ func createTestDB(t *testing.T) *bun.DB {
 		_, err = db.NewCreateTable().Model(model).IfNotExists().Exec(context.Background())
 		require.NoError(t, err)
 	}
+	require.NoError(t, jobregistry.EnsureActiveDedupeIndex(context.Background(), db))
 
 	return db
 }
@@ -203,4 +206,115 @@ func TestStorageDeletionRejectsTraversal(t *testing.T) {
 	worker := NewWorker(nil, "worker-test", time.Second, nil, nil, &recordingStorage{})
 	err := worker.handleStorageDelete(`{"keys":["../outside"]}`)
 	require.ErrorContains(t, err, "invalid key")
+}
+
+func TestScheduleMediaCleanupUsesExactWorkspaceIdentity(t *testing.T) {
+	t.Parallel()
+
+	db := createTestDB(t)
+	require.NoError(t, ScheduleMediaCleanup(db, "workspace-10", 14))
+	require.NoError(t, ScheduleMediaCleanup(db, "workspace-1", 14))
+
+	count, err := db.NewSelect().Model((*models.Job)(nil)).Where("type = ?", jobTypeMediaCleanup).Count(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, 2, count)
+}
+
+func TestScheduleMediaCleanupIgnoresCompletedHistory(t *testing.T) {
+	t.Parallel()
+
+	db := createTestDB(t)
+	payload := `{"workspace_id":"workspace-1","days":14}`
+	_, err := db.NewInsert().Model(&models.Job{
+		ID: "completed-cleanup", Type: jobTypeMediaCleanup, Payload: payload,
+		Status: jobStatusCompleted, RunAt: time.Now().UTC().Add(-time.Hour),
+	}).Exec(t.Context())
+	require.NoError(t, err)
+
+	require.NoError(t, ScheduleMediaCleanup(db, "workspace-1", 14))
+	active, err := db.NewSelect().Model((*models.Job)(nil)).
+		Where("type = ? AND status IN (?, ?)", jobTypeMediaCleanup, jobStatusPending, jobStatusProcessing).
+		Count(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, 1, active)
+}
+
+func TestCancelMediaCleanupUsesTheExactActiveIdentity(t *testing.T) {
+	t.Parallel()
+
+	db := createTestDB(t)
+	require.NoError(t, ScheduleMediaCleanup(db, "workspace-1", 14))
+	require.NoError(t, ScheduleMediaCleanup(db, "workspace-10", 14))
+	_, err := db.NewInsert().Model(&models.Job{
+		ID: "cleanup-history", Type: jobTypeMediaCleanup,
+		ScopeID: "workspace-1", DedupeKey: "daily",
+		Payload: `{"workspace_id":"workspace-1","days":14}`,
+		Status:  jobStatusCompleted, RunAt: time.Now().UTC().Add(-time.Hour),
+	}).Exec(t.Context())
+	require.NoError(t, err)
+
+	worker := &BackgroundWorker{db: db}
+	require.NoError(t, worker.CancelMediaCleanup(t.Context(), "workspace-1"))
+
+	var rows []models.Job
+	require.NoError(t, db.NewSelect().Model(&rows).Where("type = ?", jobTypeMediaCleanup).Scan(t.Context()))
+	require.Len(t, rows, 2)
+	byScopeAndStatus := make(map[string]models.Job, len(rows))
+	for _, row := range rows {
+		byScopeAndStatus[row.ScopeID+":"+row.Status] = row
+	}
+	require.Equal(t, "cleanup-history", byScopeAndStatus["workspace-1:"+jobStatusCompleted].ID)
+	require.NotEmpty(t, byScopeAndStatus["workspace-10:"+jobStatusPending].ID)
+}
+
+func TestMediaCleanupReschedulesTheSameDurableChain(t *testing.T) {
+	t.Parallel()
+
+	db := createTestDB(t)
+	_, err := db.NewCreateTable().Model((*models.MediaAttachment)(nil)).IfNotExists().Exec(t.Context())
+	require.NoError(t, err)
+	require.NoError(t, ScheduleMediaCleanup(db, "workspace-1", 14))
+	_, err = db.NewUpdate().Model((*models.Job)(nil)).
+		Set("run_at = ?", time.Now().UTC().Add(-time.Second)).
+		Where("type = ?", jobTypeMediaCleanup).Exec(t.Context())
+	require.NoError(t, err)
+
+	worker := NewWorker(db, "worker-test", time.Second, nil, nil, stubStorage{})
+	require.True(t, worker.processNextJobIfAvailable(t.Context()))
+
+	var jobs []models.Job
+	require.NoError(t, db.NewSelect().Model(&jobs).Where("type = ?", jobTypeMediaCleanup).Scan(t.Context()))
+	require.Len(t, jobs, 1)
+	require.Equal(t, jobStatusPending, jobs[0].Status)
+	require.WithinDuration(t, time.Now().UTC().Add(24*time.Hour), jobs[0].RunAt, 5*time.Second)
+}
+
+func TestScheduleMediaCleanupConcurrentEnqueueKeepsOneActiveChain(t *testing.T) {
+	t.Parallel()
+
+	db := createTestDB(t)
+	const callers = 16
+	start := make(chan struct{})
+	errs := make(chan error, callers)
+	var ready sync.WaitGroup
+	ready.Add(callers)
+	for range callers {
+		go func() {
+			ready.Done()
+			<-start
+			errs <- ScheduleMediaCleanup(db, "workspace-1", 14)
+		}()
+	}
+	ready.Wait()
+	close(start)
+	for range callers {
+		require.NoError(t, <-errs)
+	}
+
+	active, err := db.NewSelect().Model((*models.Job)(nil)).
+		Where("type = ? AND scope_id = ?", jobTypeMediaCleanup, "workspace-1").
+		Where("status IN (?, ?)", jobStatusPending, jobStatusProcessing).
+		Count(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, 1, active)
 }

@@ -7,6 +7,8 @@ All notable changes to this project are documented in this file.
 ### Added
 
 - Added automatic, reviewable image alt text when images without alt text are attached in the text-and-thread composer. The optional server-side OpenRouter integration sends a 400px JPEG thumbnail and, when present, up to 1,000 characters of the current relevant post or thread segment as untrusted context for better disambiguation; it never replaces user-written text or blocks media attachment and publishing when unavailable.
+- Added normalized, encrypted provider authorization grants shared by sibling destinations, with atomic rotating-token refresh, revocation state, lossless migration, workspace isolation, and explicit destination-only versus saved-authorization removal; migration 073 adds the grant store.
+- Added immutable, hash-only publication authorization receipts for scheduled, immediate, retry, reply, and compatibility publication writes, with exact actor provenance, revision and destination binding, fail-closed publisher preflight, legacy queue repair, and redacted audit/export behavior; migration 075 adds the receipt store and immutability guards.
 
 ### Changed
 
@@ -18,11 +20,14 @@ All notable changes to this project are documented in this file.
 ### Fixed
 
 - Added the missing OpenPost Studio overview and made the documentation gate validate every configured VitePress navigation target as well as Markdown links.
+- Unified publication creation for REST, MCP, and the CLI's REST client behind one transactional command so every content mode stores the same intent and creation preset, resolves the same destination capabilities, and remains a draft until explicitly scheduled or published.
+- Made recurring media cleanup use exact workspace and dedupe identities, an active-job uniqueness constraint, and one crash-recoverable rescheduled job per workspace; migration 071 safely consolidates older duplicate cleanup chains while preserving completed history.
 - Scoped notification inbox reads and bulk actions to the authorized selected workspace plus the account-wide notices shown there; synchronized the persistent bell and paginated feed through one workspace cache; kept failed reads, deletes, and page loads recoverable without changing unread truth; and added read filters, date groups, event labels, complete time semantics, and explicit row actions.
 - Made the embedded app distinguish generated SPA routes from unknown documents, return a real 404 with an accessible recovery page for unknown routes, and generate the route manifest during production builds; precompiled Paraglide message modules also make production builds deterministic.
 - Invalidated in-flight composer requests before navigation and teardown so canceled account, workspace, capability, destination-option, and scheduling reads cannot report or mutate stale screens.
 - Made Starter, Founder, Pro, Team, and Agency selectable for monthly or annual billing across public pricing cards and comparisons, with plan-specific guidance and verified registration links at desktop and 320 px widths.
 - Made draft navigation reuse prefetched canonical publication and composer data, removed legacy and duplicate capability request waterfalls, bounded publication detail queries across destinations, stopped duplicate shell and Posts page loads, and kept the planner sidebar stable during background autosave refreshes.
+- Split legacy post media cache state from rendition-owned provider deliveries, enforced workspace-safe auxiliary-media relations, encrypted and redacted resumable upload sessions, and resumed interrupted YouTube uploads from provider-confirmed offsets across SQLite and PostgreSQL upgrades; migration 074 adds typed delivery ownership and relations.
 
 ## [3.6.0] - 2026-08-08
 

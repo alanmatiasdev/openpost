@@ -13,6 +13,7 @@ import (
 	"github.com/danielgtaylor/huma/v2/adapters/humaecho"
 	"github.com/labstack/echo/v4"
 	"github.com/openpost/backend/internal/models"
+	"github.com/openpost/backend/internal/services/publicationauth"
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect"
@@ -53,6 +54,8 @@ func TestUpdateScheduledPublicationReschedulesPublishJob(t *testing.T) {
 		UpdatedAt:       now,
 	}).Exec(ctx)
 	require.NoError(t, err)
+	seedHandlerAccount(t, db, "account-1", "x")
+	seedHandlerRendition(t, db, "rendition-1", "publication-1", "account-1", "x", "Initial post text", models.RenditionStatusScheduled)
 
 	jobs := []models.Job{
 		{
@@ -74,6 +77,15 @@ func TestUpdateScheduledPublicationReschedulesPublishJob(t *testing.T) {
 	}
 	_, err = db.NewInsert().Model(&jobs).Exec(ctx)
 	require.NoError(t, err)
+	_, oldReceipts, err := publicationauth.CreateBatch(ctx, db, publicationauth.BatchInput{
+		BatchID: "old-authorization-batch", PublicationID: "publication-1",
+		Actor:  publicationauth.Actor{Origin: publicationauth.OriginLegacy, UserID: "user-1"},
+		Action: publicationauth.ActionPublish, PolicyMode: publicationauth.PolicyScheduled,
+		ConfirmedAt: now, Targets: []publicationauth.JobTarget{{JobID: "old-publication-job", RenditionID: "rendition-1", RunAt: oldRunAt}},
+	})
+	require.NoError(t, err)
+	require.Len(t, oldReceipts, 1)
+	oldReceipt := oldReceipts[0]
 
 	e := echo.New()
 	api := humaecho.NewWithGroup(e, e.Group("/api/v1"), huma.DefaultConfig("Test", "1.0.0"))
@@ -100,7 +112,10 @@ func TestUpdateScheduledPublicationReschedulesPublishJob(t *testing.T) {
 	for index := range remaining {
 		job := &remaining[index]
 		require.NotEqual(t, "old-publication-job", job.ID)
-		if job.Payload == `{"publication_id":"publication-1"}` {
+		payload := publicationJobPayload(t, job.Payload)
+		if payload["publication_id"] == "publication-1" {
+			require.NotEmpty(t, payload["authorization_batch_id"])
+			require.Equal(t, newRunAt.Format(time.RFC3339), payload["authorization_scheduled_at"])
 			rescheduled = job
 		}
 	}
@@ -108,6 +123,19 @@ func TestUpdateScheduledPublicationReschedulesPublishJob(t *testing.T) {
 	require.Equal(t, jobTypePublishPublication, rescheduled.Type)
 	require.True(t, rescheduled.RunAt.Equal(newRunAt), "expected run_at %s, got %s", newRunAt, rescheduled.RunAt)
 	require.Contains(t, jobIDs(remaining), "other-publication-job")
+	var storedOld models.PublicationAuthorization
+	require.NoError(t, db.NewSelect().Model(&storedOld).Where("id = ?", oldReceipt.ID).Scan(ctx))
+	require.Equal(t, oldReceipt, storedOld, "scheduled edits must append a receipt, never mutate the original")
+	var receipts []models.PublicationAuthorization
+	require.NoError(t, db.NewSelect().Model(&receipts).Where("publication_id = ?", "publication-1").Order("confirmed_at ASC", "id ASC").Scan(ctx))
+	require.Len(t, receipts, 2)
+	newReceipt := receipts[0]
+	if newReceipt.ID == oldReceipt.ID {
+		newReceipt = receipts[1]
+	}
+	require.NotEqual(t, oldReceipt.BatchID, newReceipt.BatchID)
+	require.Equal(t, 2, newReceipt.PublicationRevision)
+	require.True(t, newReceipt.ScheduledAt.Equal(newRunAt))
 }
 
 func TestCreatePublicationWithScheduledAtRemainsDraftWithoutJob(t *testing.T) {
@@ -659,7 +687,12 @@ func TestMCPPublicationScheduleSemanticsMatchREST(t *testing.T) {
 		ScheduledAt:    &future,
 	}
 	require.Nil(t, validateMCPCreatePublicationInput(input, now))
-	publication := newMCPPublication(input, "user-1", now)
+	body := CreatePublicationBody{
+		WorkspaceID: input.WorkspaceID, ContentProfile: input.ContentProfile,
+		SourceText: input.SourceText, ScheduledAt: input.ScheduledAt,
+	}
+	normalizePublicationCreateBody(&body)
+	publication := publicationModelFromCreate(body, "user-1", `{"mode":"inherit"}`, now)
 	require.Equal(t, models.PublicationStatusDraft, publication.Status)
 	require.True(t, publication.ScheduledAt.Equal(future))
 
@@ -975,6 +1008,8 @@ func TestPrimaryPublicationQueueUsesCurrentScheduleAtTransactionBoundary(t *test
 		UpdatedAt:       now,
 	}).Exec(ctx)
 	require.NoError(t, err)
+	seedHandlerAccount(t, db, "account-current", "x")
+	seedHandlerRendition(t, db, "rendition-current", "publication-1", "account-current", "x", "Use the current schedule", models.RenditionStatusScheduled)
 	_, err = db.NewInsert().Model(&models.Job{
 		ID:          "stale-job",
 		Type:        jobTypePublishPublication,
@@ -1163,10 +1198,11 @@ func TestPrimaryPublicationQueueReplacementKeepsOnePendingJob(t *testing.T) {
 		UpdatedAt:       now,
 	}).Exec(ctx)
 	require.NoError(t, err)
+	seedHandlerAccount(t, db, "account-queue", "x")
 	_, err = db.NewInsert().Model(&models.Rendition{
 		ID:              "rendition-1",
 		PublicationID:   "publication-1",
-		SocialAccountID: "",
+		SocialAccountID: "account-queue",
 		Platform:        "x",
 		Profile:         models.ContentProfileShortText,
 		Body:            "Queue once",
@@ -1190,7 +1226,10 @@ func TestPrimaryPublicationQueueReplacementKeepsOnePendingJob(t *testing.T) {
 	require.Len(t, jobs, 1)
 	require.Equal(t, secondJobID, jobs[0].ID)
 	require.Equal(t, jobStatusPending, jobs[0].Status)
-	require.Equal(t, `{"publication_id":"publication-1"}`, jobs[0].Payload)
+	payload := publicationJobPayload(t, jobs[0].Payload)
+	require.Equal(t, "publication-1", payload["publication_id"])
+	require.NotEmpty(t, payload["authorization_batch_id"])
+	require.Equal(t, secondRunAt.Format(time.RFC3339), payload["authorization_scheduled_at"])
 	require.True(t, jobs[0].RunAt.Equal(secondRunAt), "expected run_at %s, got %s", secondRunAt, jobs[0].RunAt)
 
 	var publication models.Publication
@@ -1237,16 +1276,18 @@ func TestScheduledPublicationKeepsCompatibilityPostAndRandomDelay(t *testing.T) 
 	}
 	_, err := db.NewInsert().Model(publication).Exec(ctx)
 	require.NoError(t, err)
+	seedHandlerAccount(t, db, "account-classic", "x")
 	_, err = db.NewInsert().Model(&models.Rendition{
-		ID:            "rendition-classic",
-		PublicationID: publication.ID,
-		Platform:      "x",
-		Profile:       models.ContentProfileShortText,
-		Body:          publication.SourceText,
-		SettingsJSON:  "{}",
-		Status:        models.RenditionStatusDraft,
-		CreatedAt:     now,
-		UpdatedAt:     now,
+		ID:              "rendition-classic",
+		PublicationID:   publication.ID,
+		SocialAccountID: "account-classic",
+		Platform:        "x",
+		Profile:         models.ContentProfileShortText,
+		Body:            publication.SourceText,
+		SettingsJSON:    "{}",
+		Status:          models.RenditionStatusDraft,
+		CreatedAt:       now,
+		UpdatedAt:       now,
 	}).Exec(ctx)
 	require.NoError(t, err)
 	_, err = db.NewInsert().Model(&models.Post{
@@ -1302,6 +1343,8 @@ func TestReplaceScheduledPublicationJobUsesRenditionOverrides(t *testing.T) {
 		Revision: 1, MetadataJSON: "{}", ReleasePlanJSON: "{}", RepostOverride: "{}",
 	}).Exec(ctx)
 	require.NoError(t, err)
+	seedHandlerAccount(t, db, "account-1", "x")
+	seedHandlerAccount(t, db, "account-2", "bluesky")
 	renditions := []models.Rendition{
 		{ID: "rendition-default", PublicationID: "publication-overrides", SocialAccountID: "account-1", Platform: "x", Profile: models.ContentProfileShortText, OutputProfile: "x.post", SettingsJSON: "{}", Status: models.RenditionStatusDraft, CreatedAt: now},
 		{ID: "rendition-override", PublicationID: "publication-overrides", SocialAccountID: "account-2", Platform: "bluesky", Profile: models.ContentProfileShortText, OutputProfile: "bluesky.post", ScheduleOverride: overrideRunAt, SettingsJSON: "{}", Status: models.RenditionStatusDraft, CreatedAt: now.Add(time.Second)},
@@ -1320,8 +1363,21 @@ func TestReplaceScheduledPublicationJobUsesRenditionOverrides(t *testing.T) {
 	var jobs []models.Job
 	require.NoError(t, db.NewSelect().Model(&jobs).Order("run_at ASC").Scan(ctx))
 	require.Len(t, jobs, 2)
-	require.JSONEq(t, `{"publication_id":"publication-overrides","rendition_id":"rendition-default"}`, jobs[0].Payload)
+	firstPayload := publicationJobPayload(t, jobs[0].Payload)
+	require.Equal(t, "publication-overrides", firstPayload["publication_id"])
+	require.Equal(t, "rendition-default", firstPayload["rendition_id"])
+	require.NotEmpty(t, firstPayload["authorization_batch_id"])
 	require.True(t, jobs[0].RunAt.Equal(defaultRunAt))
-	require.JSONEq(t, `{"publication_id":"publication-overrides","rendition_id":"rendition-override"}`, jobs[1].Payload)
+	secondPayload := publicationJobPayload(t, jobs[1].Payload)
+	require.Equal(t, "publication-overrides", secondPayload["publication_id"])
+	require.Equal(t, "rendition-override", secondPayload["rendition_id"])
+	require.Equal(t, firstPayload["authorization_batch_id"], secondPayload["authorization_batch_id"])
 	require.True(t, jobs[1].RunAt.Equal(overrideRunAt))
+}
+
+func publicationJobPayload(t *testing.T, payload string) map[string]string {
+	t.Helper()
+	decoded := map[string]string{}
+	require.NoError(t, json.Unmarshal([]byte(payload), &decoded))
+	return decoded
 }

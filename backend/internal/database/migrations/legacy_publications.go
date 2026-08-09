@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/openpost/backend/internal/models"
+	"github.com/openpost/backend/internal/services/publicationauth"
 	"github.com/uptrace/bun"
 )
 
@@ -33,7 +34,7 @@ type legacyThreadVariation struct {
 	MediaIDs []string `json:"mediaIds"`
 }
 
-func migrateLegacyPublicationAuthoring(ctx context.Context, db *bun.DB) error {
+func migrateLegacyPublicationAuthoring(ctx context.Context, db *bun.DB, authorizedPostID string, actor publicationauth.Actor) error {
 	var posts []models.Post
 	if err := db.NewSelect().
 		Model(&posts).
@@ -55,24 +56,64 @@ func migrateLegacyPublicationAuthoring(ctx context.Context, db *bun.DB) error {
 		if !eligible {
 			continue
 		}
-		if err := migrateLegacyPost(ctx, db, post); err != nil {
+		jobActor := publicationauth.Actor{Origin: publicationauth.OriginLegacy, UserID: post.CreatedByID}
+		if post.ID == authorizedPostID {
+			jobActor = actor
+		}
+		if err := migrateLegacyPost(ctx, db, post, jobActor); err != nil {
 			return fmt.Errorf("post %s: %w", post.ID, err)
 		}
 	}
-	return nil
+	return db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
+		return publicationauth.AuthorizeLegacyJobs(txCtx, tx, publicationauth.LegacyJobsInput{})
+	})
 }
 
 // MigrateLegacyPublicationAuthoring translates draft and scheduled legacy
 // posts created through compatibility APIs into canonical publications.
 func MigrateLegacyPublicationAuthoring(ctx context.Context, db *bun.DB) error {
-	return migrateLegacyPublicationAuthoring(ctx, db)
+	return migrateLegacyPublicationAuthoring(ctx, db, "", publicationauth.Actor{})
+}
+
+// MigrateLegacyPublicationAuthoringForActor preserves the exact principal for
+// the compatibility post that the current request just authorized. Any older
+// pending jobs discovered by the same sweep use an explicit legacy origin.
+func MigrateLegacyPublicationAuthoringForActor(
+	ctx context.Context,
+	db *bun.DB,
+	postID string,
+	actor publicationauth.Actor,
+) error {
+	return migrateLegacyPublicationAuthoring(ctx, db, strings.TrimSpace(postID), actor)
 }
 
 // SyncTextPostAuthoring applies a text-and-thread composer mutation to its
 // linked canonical publication.
 func SyncTextPostAuthoring(ctx context.Context, db *bun.DB, postID string) error {
+	return SyncTextPostAuthoringForActor(ctx, db, postID, publicationauth.Actor{})
+}
+
+// SyncTextPostAuthoringForActor refreshes the canonical projection and appends
+// a replacement receipt when a queued compatibility publication changed.
+func SyncTextPostAuthoringForActor(
+	ctx context.Context,
+	db *bun.DB,
+	postID string,
+	actor publicationauth.Actor,
+) error {
 	return db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
-		return SyncTextPostAuthoringTx(txCtx, tx, postID)
+		if err := SyncTextPostAuthoringTx(txCtx, tx, postID); err != nil {
+			return err
+		}
+		var post models.Post
+		if err := tx.NewSelect().Model(&post).Where("id = ?", postID).Scan(txCtx); err != nil {
+			return err
+		}
+		return publicationauth.AuthorizeLegacyJobs(txCtx, tx, publicationauth.LegacyJobsInput{
+			PublicationID: post.PublicationID,
+			Actor:         actor,
+			Force:         true,
+		})
 	})
 }
 
@@ -541,7 +582,7 @@ func legacyPostHasOwners(ctx context.Context, db bun.IDB, post models.Post) (boo
 	return workspaceCount == 1 && userCount == 1, nil
 }
 
-func migrateLegacyPost(ctx context.Context, db *bun.DB, post models.Post) error {
+func migrateLegacyPost(ctx context.Context, db *bun.DB, post models.Post, actor publicationauth.Actor) error {
 	return db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
 		var current models.Post
 		if err := tx.NewSelect().Model(&current).Where("id = ?", post.ID).Scan(txCtx); err != nil {
@@ -604,7 +645,13 @@ func migrateLegacyPost(ctx context.Context, db *bun.DB, post models.Post) error 
 			Exec(txCtx); err != nil {
 			return err
 		}
-		return rewriteLegacyPublicationJobs(txCtx, tx, current.ID, publicationID)
+		if err := rewriteLegacyPublicationJobs(txCtx, tx, current.ID, publicationID); err != nil {
+			return err
+		}
+		return publicationauth.AuthorizeLegacyJobs(txCtx, tx, publicationauth.LegacyJobsInput{
+			PublicationID: publicationID,
+			Actor:         actor,
+		})
 	})
 }
 

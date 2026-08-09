@@ -257,6 +257,24 @@ func (s *S3Storage) Open(id string) (io.ReadCloser, error) {
 	return out.Body, nil
 }
 
+func (s *S3Storage) OpenRange(id string, offset int64) (io.ReadCloser, error) {
+	if offset < 0 {
+		return nil, fmt.Errorf("invalid media offset %d", offset)
+	}
+	input := &s3.GetObjectInput{
+		Bucket: aws.String(s.bucket),
+		Key:    aws.String(cleanObjectKey(id)),
+	}
+	if offset > 0 {
+		input.Range = aws.String(fmt.Sprintf("bytes=%d-", offset))
+	}
+	out, err := s.client.GetObject(context.Background(), input)
+	if err != nil {
+		return nil, err
+	}
+	return out.Body, nil
+}
+
 func (s *S3Storage) CreateDirectUploadSession(ctx context.Context, input DirectUploadInput) (*DirectUploadSession, error) {
 	if s.presignClient == nil {
 		return nil, fmt.Errorf("direct upload presigner is not configured")

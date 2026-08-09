@@ -21,6 +21,11 @@ func createHandlerTestDB(t *testing.T, modelsToCreate ...interface{}) *bun.DB {
 
 	db := bun.NewDB(sqldb, sqlitedialect.New())
 	_, err = db.NewCreateTable().
+		Model((*models.OAuthGrant)(nil)).
+		IfNotExists().
+		Exec(context.Background())
+	require.NoError(t, err)
+	_, err = db.NewCreateTable().
 		Model((*models.DraftRevisionChange)(nil)).
 		IfNotExists().
 		Exec(context.Background())
@@ -36,6 +41,8 @@ func createHandlerTestDB(t *testing.T, modelsToCreate ...interface{}) *bun.DB {
 		(*models.Rendition)(nil),
 		(*models.RenditionSegment)(nil),
 		(*models.RenditionSegmentMedia)(nil),
+		(*models.PublicationLifecycleEvent)(nil),
+		(*models.PublicationAuthorization)(nil),
 	}
 	for _, model := range editorModels {
 		_, err := db.NewCreateTable().Model(model).IfNotExists().Exec(context.Background())
@@ -47,6 +54,31 @@ func createHandlerTestDB(t *testing.T, modelsToCreate ...interface{}) *bun.DB {
 	}
 
 	return db
+}
+
+func seedHandlerAccount(t *testing.T, db *bun.DB, id, platform string) {
+	t.Helper()
+	for _, model := range []any{
+		(*models.SocialAccount)(nil), (*models.MediaAttachment)(nil), (*models.RenditionMedia)(nil),
+	} {
+		_, err := db.NewCreateTable().Model(model).IfNotExists().Exec(t.Context())
+		require.NoError(t, err)
+	}
+	_, err := db.NewInsert().Model(&models.SocialAccount{
+		ID: id, WorkspaceID: "workspace-1", Slug: id, Platform: platform,
+		AccountID: id, AccessTokenEnc: []byte("ciphertext"), IsActive: true,
+	}).Exec(t.Context())
+	require.NoError(t, err)
+}
+
+func seedHandlerRendition(t *testing.T, db *bun.DB, id, publicationID, accountID, platform, body, status string) {
+	t.Helper()
+	_, err := db.NewInsert().Model(&models.Rendition{
+		ID: id, PublicationID: publicationID, SocialAccountID: accountID,
+		Platform: platform, Profile: models.ContentProfileShortText,
+		Body: body, SettingsJSON: "{}", Status: status,
+	}).Exec(t.Context())
+	require.NoError(t, err)
 }
 
 func TestPostHandlerValidateAccountsBelongToWorkspaceRejectsInactiveAccounts(t *testing.T) {

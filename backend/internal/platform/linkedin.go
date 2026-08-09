@@ -48,6 +48,14 @@ func NewLinkedInAdapter(clientID, clientSecret, redirectURI string, disableThrea
 	}
 }
 
+func (l *LinkedInAdapter) AuthorizationGrantDescriptor() AuthorizationGrantDescriptor {
+	return AuthorizationGrantDescriptor{
+		ProjectID:     l.clientID,
+		ExecutionMode: "oauth2",
+		Evidence:      map[string]string{"protocol": "oauth2", "exchange": "authorization_code"},
+	}
+}
+
 func (l *LinkedInAdapter) GenerateAuthURL(state string) (string, map[string]string) {
 	scope := "openid profile w_member_social w_member_social_feed"
 	if l.disableThreadReplies {
@@ -93,11 +101,12 @@ func (l *LinkedInAdapter) ExchangeCode(ctx context.Context, code string, _ map[s
 	}
 
 	return &TokenResult{
-		AccessToken:  tokenResp.AccessToken,
-		RefreshToken: tokenResp.RefreshToken,
-		ExpiresIn:    tokenResp.ExpiresIn,
-		TokenType:    tokenTypeBearer,
-		Extra:        map[string]string{"scope": tokenResp.Scope},
+		AccessToken:      tokenResp.AccessToken,
+		RefreshToken:     tokenResp.RefreshToken,
+		ExpiresIn:        tokenResp.ExpiresIn,
+		RefreshExpiresIn: tokenResp.RefreshTokenExpiresIn,
+		TokenType:        tokenTypeBearer,
+		Extra:            map[string]string{"scope": tokenResp.Scope},
 	}, nil
 }
 
@@ -137,11 +146,12 @@ func (l *LinkedInAdapter) RefreshToken(ctx context.Context, input RefreshTokenIn
 	}
 
 	return &TokenResult{
-		AccessToken:  tokenResp.AccessToken,
-		RefreshToken: tokenResp.RefreshToken,
-		ExpiresIn:    tokenResp.ExpiresIn,
-		TokenType:    tokenTypeBearer,
-		Extra:        map[string]string{"scope": tokenResp.Scope},
+		AccessToken:      tokenResp.AccessToken,
+		RefreshToken:     tokenResp.RefreshToken,
+		ExpiresIn:        tokenResp.ExpiresIn,
+		RefreshExpiresIn: tokenResp.RefreshTokenExpiresIn,
+		TokenType:        tokenTypeBearer,
+		Extra:            map[string]string{"scope": tokenResp.Scope},
 	}, nil
 }
 

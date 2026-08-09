@@ -57,6 +57,15 @@ func ClassifyFailure(err error) Failure {
 	if err == nil {
 		return Failure{}
 	}
+	if retryClass, ok := platform.MediaRetryClassificationForError(err); ok {
+		failure := failureForKind(FailureProviderProcessing, "", 0, 0)
+		if retryClass == platform.MediaRetryTerminal {
+			failure.Message = "The provider rejected or could not process this media. Replace the media before publishing again."
+			failure.Retryable = false
+			failure.Action = FailureActionEdit
+		}
+		return failure
+	}
 	lower := strings.ToLower(err.Error())
 	if strings.Contains(lower, "processing") &&
 		(strings.Contains(lower, "failed") || strings.Contains(lower, "timeout")) {

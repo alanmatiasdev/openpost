@@ -26,6 +26,11 @@ func createTestDB(t *testing.T) *bun.DB {
 	db := bun.NewDB(sqldb, sqlitedialect.New())
 	// Initialize schema
 	_, err = db.NewCreateTable().
+		Model((*models.OAuthGrant)(nil)).
+		IfNotExists().
+		Exec(context.Background())
+	require.NoError(t, err)
+	_, err = db.NewCreateTable().
 		Model((*models.SocialAccount)(nil)).
 		IfNotExists().
 		Exec(context.Background())
@@ -51,6 +56,14 @@ func seedWorkspaceMember(t *testing.T, db *bun.DB, workspaceID, userID string) {
 		Role:        "admin",
 	}).Exec(context.Background())
 	require.NoError(t, err)
+}
+
+func loadAccountGrant(t *testing.T, db *bun.DB, account *models.SocialAccount) models.OAuthGrant {
+	t.Helper()
+	require.NotEmpty(t, account.OAuthGrantID)
+	var grant models.OAuthGrant
+	require.NoError(t, db.NewSelect().Model(&grant).Where("id = ?", account.OAuthGrantID).Scan(context.Background()))
+	return grant
 }
 
 // openInMemorySQLite creates an in-memory SQLite database.
@@ -98,21 +111,24 @@ func TestSaveAccount_X(t *testing.T) {
 	require.NotZero(t, account.ID)
 	require.NotZero(t, account.CreatedAt)
 
-	// Verify tokens are encrypted (not plaintext)
-	require.NotEqual(t, tokenResp.AccessToken, string(account.AccessTokenEnc))
-	require.NotEqual(t, tokenResp.RefreshToken, string(account.RefreshTokenEnc))
+	grant := loadAccountGrant(t, db, account)
+	// Verify tokens are encrypted once on the grant, not copied to the destination.
+	require.Empty(t, account.AccessTokenEnc)
+	require.Empty(t, account.RefreshTokenEnc)
+	require.NotEqual(t, tokenResp.AccessToken, string(grant.AccessTokenEnc))
+	require.NotEqual(t, tokenResp.RefreshToken, string(grant.RefreshTokenEnc))
 
 	// Verify decryption works
-	decryptedAccess, err := crypto.Decrypt(account.AccessTokenEnc)
+	decryptedAccess, err := crypto.Decrypt(grant.AccessTokenEnc)
 	require.NoError(t, err)
 	require.Equal(t, tokenResp.AccessToken, decryptedAccess)
 
-	decryptedRefresh, err := crypto.Decrypt(account.RefreshTokenEnc)
+	decryptedRefresh, err := crypto.Decrypt(grant.RefreshTokenEnc)
 	require.NoError(t, err)
 	require.Equal(t, tokenResp.RefreshToken, decryptedRefresh)
 
 	// Verify expiration is set (within reasonable range)
-	require.WithinDuration(t, time.Now().UTC().Add(2*time.Hour), account.TokenExpiresAt, 10*time.Second)
+	require.WithinDuration(t, time.Now().UTC().Add(2*time.Hour), grant.AccessTokenExpiresAt, 10*time.Second)
 
 	var jobs []models.Job
 	err = db.NewSelect().Model(&jobs).Where("type = ?", "refresh_token").Scan(ctx)
@@ -152,11 +168,70 @@ func TestSaveAccountsFromInputsConnectsLinkedInIdentitiesAtomically(t *testing.T
 	var stored []models.SocialAccount
 	require.NoError(t, db.NewSelect().Model(&stored).Order("created_at ASC").Scan(ctx))
 	require.Len(t, stored, 2)
-	for _, account := range stored {
-		decrypted, decryptErr := encryptor.Decrypt(account.AccessTokenEnc)
-		require.NoError(t, decryptErr)
-		require.Equal(t, "member-token", decrypted)
+	require.Equal(t, stored[0].OAuthGrantID, stored[1].OAuthGrantID)
+	grant := loadAccountGrant(t, db, &stored[0])
+	decrypted, decryptErr := encryptor.Decrypt(grant.AccessTokenEnc)
+	require.NoError(t, decryptErr)
+	require.Equal(t, "member-token", decrypted)
+}
+
+func TestReauthorizingOneDestinationWithDifferentAuthorityPreservesSiblingGrant(t *testing.T) {
+	db := createTestDB(t)
+	encryptor := crypto.NewTokenEncryptor("test-secret-key-for-testing-only")
+	saver := NewAccountSaver(db, encryptor)
+	ctx := context.Background()
+	seedWorkspaceMember(t, db, "workspace-1", "user-1")
+
+	originalToken := &platform.TokenResult{AccessToken: "original-member-token"}
+	originalAuthority := AuthorizationGrantInput{
+		ProviderProjectID: "linkedin-client-a",
+		ProviderSubject:   "member-a",
+		ExecutionMode:     "oauth2",
 	}
+	accounts, err := saver.SaveAccountsFromInputs(ctx, []SaveAccountInput{
+		{
+			UserID: "user-1", WorkspaceID: "workspace-1", PlatformName: "linkedin",
+			AccountID: "urn:li:person:member-a", AccountUsername: "Ada", Token: originalToken,
+			Grant: originalAuthority,
+		},
+		{
+			UserID: "user-1", WorkspaceID: "workspace-1", PlatformName: "linkedin",
+			AccountID: "urn:li:organization:42", AccountUsername: "OpenPost", Token: originalToken,
+			Grant: originalAuthority,
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, accounts[0].OAuthGrantID, accounts[1].OAuthGrantID)
+	originalGrantID := accounts[0].OAuthGrantID
+
+	reauthorized, err := saver.SaveAccountFromInput(ctx, SaveAccountInput{
+		UserID: "user-1", WorkspaceID: "workspace-1", PlatformName: "linkedin",
+		AccountID: "urn:li:person:member-a", AccountUsername: "Ada", Token: &platform.TokenResult{AccessToken: "new-member-token"},
+		Grant: AuthorizationGrantInput{
+			ProviderProjectID: "linkedin-client-b",
+			ProviderSubject:   "member-b",
+			ExecutionMode:     "oauth2",
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, accounts[0].ID, reauthorized.ID)
+	require.NotEqual(t, originalGrantID, reauthorized.OAuthGrantID)
+
+	var sibling models.SocialAccount
+	require.NoError(t, db.NewSelect().Model(&sibling).Where("id = ?", accounts[1].ID).Scan(ctx))
+	require.Equal(t, originalGrantID, sibling.OAuthGrantID)
+
+	originalGrant := loadAccountGrant(t, db, &sibling)
+	originalAccess, err := encryptor.Decrypt(originalGrant.AccessTokenEnc)
+	require.NoError(t, err)
+	require.Equal(t, "original-member-token", originalAccess)
+
+	newGrant := loadAccountGrant(t, db, reauthorized)
+	newAccess, err := encryptor.Decrypt(newGrant.AccessTokenEnc)
+	require.NoError(t, err)
+	require.Equal(t, "new-member-token", newAccess)
+	require.Equal(t, "linkedin-client-b", newGrant.ProviderProjectID)
+	require.Equal(t, "member-b", newGrant.ProviderSubject)
 }
 
 func TestSaveAccountsFromInputsRollsBackEveryIdentity(t *testing.T) {
@@ -215,12 +290,12 @@ func TestSaveAccount_Mastodon(t *testing.T) {
 	require.True(t, account.IsActive)
 	require.Equal(t, "mastodon-mastodonuser", account.Slug)
 
-	// Verify tokens encrypted
-	decryptedAccess, err := crypto.Decrypt(account.AccessTokenEnc)
+	grant := loadAccountGrant(t, db, account)
+	decryptedAccess, err := crypto.Decrypt(grant.AccessTokenEnc)
 	require.NoError(t, err)
 	require.Equal(t, tokenResp.AccessToken, decryptedAccess)
 
-	decryptedRefresh, err := crypto.Decrypt(account.RefreshTokenEnc)
+	decryptedRefresh, err := crypto.Decrypt(grant.RefreshTokenEnc)
 	require.NoError(t, err)
 	require.Equal(t, tokenResp.RefreshToken, decryptedRefresh)
 }
@@ -261,8 +336,8 @@ func TestSaveAccount_Threads(t *testing.T) {
 	require.Equal(t, accountUsername, account.AccountUsername)
 	require.Equal(t, "threads-threadsuser", account.Slug)
 
-	// Verify tokens encrypted
-	decryptedAccess, err := crypto.Decrypt(account.AccessTokenEnc)
+	grant := loadAccountGrant(t, db, account)
+	decryptedAccess, err := crypto.Decrypt(grant.AccessTokenEnc)
 	require.NoError(t, err)
 	require.Equal(t, tokenResp.AccessToken, decryptedAccess)
 }
@@ -372,7 +447,8 @@ func TestReconnectReusesProviderIdentityAndUpdatesCredentials(t *testing.T) {
 	require.True(t, reconnected.IsActive)
 	require.Equal(t, "threads_basic threads_manage_insights", reconnected.GrantedScopes)
 
-	decrypted, err := encryptor.Decrypt(reconnected.AccessTokenEnc)
+	grant := loadAccountGrant(t, db, reconnected)
+	decrypted, err := encryptor.Decrypt(grant.AccessTokenEnc)
 	require.NoError(t, err)
 	require.Equal(t, "new-token", decrypted)
 	count, err := db.NewSelect().
@@ -510,8 +586,9 @@ func TestSaveAccount_EncryptionError(t *testing.T) {
 	acct, err := saver.SaveAccount(ctx, userID, "x", workspaceID, "account", "user", "", tokenResp)
 	require.NoError(t, err)
 	require.NotNil(t, acct)
-	// Ensure tokens are stored encrypted and decryptable
-	dec, derr := crypto.Decrypt(acct.AccessTokenEnc)
+	// Ensure tokens are stored encrypted once on the grant and decryptable.
+	grant := loadAccountGrant(t, db, acct)
+	dec, derr := crypto.Decrypt(grant.AccessTokenEnc)
 	require.NoError(t, derr)
 	require.Equal(t, tokenResp.AccessToken, dec)
 }

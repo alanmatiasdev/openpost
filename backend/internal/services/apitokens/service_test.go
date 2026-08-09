@@ -48,12 +48,14 @@ func TestGenerateTokenStoresHashOnlyAndDefaultExpiry(t *testing.T) {
 	generated, err := service.GenerateTokenWithOptions(ctx, "user-1", "Laptop", "", GenerateOptions{
 		WorkspaceID: "ws-1",
 		Audience:    "https://app.openpost.test/mcp",
+		ClientID:    "desktop-client",
 	})
 	require.NoError(t, err)
 	require.NotEmpty(t, generated.Token)
 	require.NotContains(t, generated.Model.TokenHash, generated.Token)
 	require.Equal(t, DefaultScope, generated.Model.Scope)
 	require.Equal(t, "ws-1", generated.Model.WorkspaceID)
+	require.Equal(t, "desktop-client", generated.Model.ClientID)
 	require.WithinDuration(t, time.Now().UTC().Add(DefaultExpiration), generated.Model.ExpiresAt, 5*time.Second)
 
 	parts := strings.SplitN(generated.Token, "_", 4)
@@ -112,6 +114,7 @@ func TestValidateTokenReturnsPrincipalAndTouchesLastUsed(t *testing.T) {
 	generated, err := service.GenerateTokenWithOptions(ctx, "user-1", "Laptop", "", GenerateOptions{
 		WorkspaceID: "ws-1",
 		Audience:    "https://app.openpost.test/mcp",
+		ClientID:    "desktop-client",
 	})
 	require.NoError(t, err)
 
@@ -123,6 +126,7 @@ func TestValidateTokenReturnsPrincipalAndTouchesLastUsed(t *testing.T) {
 	require.Equal(t, "ws-1", principal.WorkspaceID)
 	require.Equal(t, "https://app.openpost.test/mcp", principal.Audience)
 	require.Equal(t, generated.Model.ID, principal.TokenID)
+	require.Equal(t, "desktop-client", principal.ClientID)
 	require.Equal(t, "Laptop", principal.TokenName)
 	require.Equal(t, generated.Model.TokenPrefix, principal.TokenPrefix)
 

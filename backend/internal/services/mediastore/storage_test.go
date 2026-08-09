@@ -28,6 +28,7 @@ type fakeS3Client struct {
 	deleteKey     string
 	getBucket     string
 	getKey        string
+	getRange      string
 	getBody       string
 	multipartID   string
 	multipartType string
@@ -60,6 +61,7 @@ func (f *fakeS3Client) DeleteObject(_ context.Context, input *s3.DeleteObjectInp
 func (f *fakeS3Client) GetObject(_ context.Context, input *s3.GetObjectInput, _ ...func(*s3.Options)) (*s3.GetObjectOutput, error) {
 	f.getBucket = aws.ToString(input.Bucket)
 	f.getKey = aws.ToString(input.Key)
+	f.getRange = aws.ToString(input.Range)
 	return &s3.GetObjectOutput{Body: io.NopCloser(bytes.NewBufferString(f.getBody))}, nil
 }
 
@@ -150,6 +152,28 @@ func TestLocalStorageCreatesDirectoriesForSafeNestedKeys(t *testing.T) {
 	body, err := io.ReadAll(reader)
 	require.NoError(t, err)
 	require.Equal(t, "image", string(body))
+}
+
+func TestBlobStorageRangeReadersStartAtRequestedOffset(t *testing.T) {
+	local := NewLocalStorage(t.TempDir(), "/media")
+	_, err := local.Save("videos/clip.mp4", bytes.NewBufferString("0123456789"))
+	require.NoError(t, err)
+	localReader, err := local.OpenRange("videos/clip.mp4", 4)
+	require.NoError(t, err)
+	localBody, err := io.ReadAll(localReader)
+	require.NoError(t, err)
+	require.NoError(t, localReader.Close())
+	require.Equal(t, "456789", string(localBody))
+
+	client := &fakeS3Client{getBody: "456789"}
+	remote := newS3StorageWithClient(client, S3Config{Bucket: "openpost-media"})
+	remoteReader, err := remote.OpenRange("videos/clip.mp4", 4)
+	require.NoError(t, err)
+	remoteBody, err := io.ReadAll(remoteReader)
+	require.NoError(t, err)
+	require.NoError(t, remoteReader.Close())
+	require.Equal(t, "bytes=4-", client.getRange)
+	require.Equal(t, "456789", string(remoteBody))
 }
 
 func TestNewStorageRejectsUnsupportedDriver(t *testing.T) {

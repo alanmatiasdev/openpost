@@ -15,6 +15,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/danielgtaylor/huma/v2"
+	"github.com/danielgtaylor/huma/v2/adapters/humaecho"
 	"github.com/labstack/echo/v4"
 	"github.com/openpost/backend/internal/api/middleware"
 	"github.com/openpost/backend/internal/models"
@@ -804,6 +806,120 @@ func TestMCPPublicationLifecycleOperationsStayInParity(t *testing.T) {
 		Model(&destination).
 		Where("post_id = ? AND social_account_id = ?", editor.ID, "account-1").
 		Scan(ctx))
+}
+
+func TestMCPPublicationCreationPersistsCreationPresetForEveryMode(t *testing.T) {
+	t.Parallel()
+	srv := newMCPTestServer(t)
+	ctx := context.Background()
+
+	tests := []struct {
+		name    string
+		profile string
+		preset  string
+	}{
+		{name: "post", profile: models.ContentProfileShortText, preset: models.PublishingIntentPost},
+		{name: "thread", profile: models.ContentProfileThread, preset: models.PublishingIntentThread},
+		{name: "story", profile: models.ContentProfileStory, preset: models.PublishingIntentStory},
+		{name: "short video", profile: models.ContentProfileShortVideo, preset: models.PublishingIntentShortVideo},
+		{name: "video", profile: models.ContentProfileLongVideo, preset: models.PublishingIntentVideo},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			created, rpcErr := srv.handler.createPublication(ctx, "user-1", map[string]any{
+				"workspace_id": "ws-1", "content_profile": test.profile, "source_text": test.name,
+			})
+			require.Nil(t, rpcErr)
+			createdContent := created.(map[string]any)["structuredContent"].(map[string]any)
+			publicationID := createdContent["publication"].(mcpPublicationStatus).ID
+
+			var publication models.Publication
+			require.NoError(t, srv.db.NewSelect().Model(&publication).Where("id = ?", publicationID).Scan(ctx))
+			require.Equal(t, test.preset, publication.Intent)
+			require.Equal(t, test.preset, publication.CreationPreset)
+		})
+	}
+}
+
+func TestPublicationCreationRESTAndMCPPersistTheSameModesAndCapabilities(t *testing.T) {
+	t.Parallel()
+	srv := newMCPTestServer(t)
+	ctx := context.Background()
+
+	additionalAccounts := []models.SocialAccount{
+		{ID: "account-story", WorkspaceID: "ws-1", Platform: "instagram", AccountID: "ig-1", Slug: "instagram-story", AccessTokenEnc: []byte("token"), IsActive: true},
+		{ID: "account-short-video", WorkspaceID: "ws-1", Platform: "tiktok", AccountID: "tt-1", Slug: "tiktok-video", AccessTokenEnc: []byte("token"), IsActive: true},
+		{ID: "account-video", WorkspaceID: "ws-1", Platform: "youtube", AccountID: "yt-1", Slug: "youtube-video", AccessTokenEnc: []byte("token"), IsActive: true},
+	}
+	_, err := srv.db.NewInsert().Model(&additionalAccounts).Exec(ctx)
+	require.NoError(t, err)
+
+	restEcho := echo.New()
+	api := humaecho.NewWithGroup(restEcho, restEcho.Group("/api/v1"), huma.DefaultConfig("Test", "1.0.0"))
+	NewPublicationHandler(srv.db, testAuthenticator{}, nil).RegisterRoutes(api)
+	scheduledAt := time.Now().UTC().Add(2 * time.Hour).Truncate(time.Second)
+
+	tests := []struct {
+		name      string
+		profile   string
+		preset    string
+		accountID string
+	}{
+		{name: "post", profile: models.ContentProfileShortText, preset: models.PublishingIntentPost, accountID: "account-1"},
+		{name: "thread", profile: models.ContentProfileThread, preset: models.PublishingIntentThread, accountID: "account-1"},
+		{name: "story", profile: models.ContentProfileStory, preset: models.PublishingIntentStory, accountID: "account-story"},
+		{name: "short video", profile: models.ContentProfileShortVideo, preset: models.PublishingIntentShortVideo, accountID: "account-short-video"},
+		{name: "video", profile: models.ContentProfileLongVideo, preset: models.PublishingIntentVideo, accountID: "account-video"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			restBody, err := json.Marshal(map[string]any{
+				"workspace_id": "ws-1", "content_profile": test.profile,
+				"title": test.name, "source_text": test.name, "social_account_ids": []string{test.accountID}, "scheduled_at": scheduledAt,
+			})
+			require.NoError(t, err)
+			req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/api/v1/publications", bytes.NewReader(restBody))
+			req.Header.Set("Authorization", "Bearer web-token")
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+			restEcho.ServeHTTP(rec, req)
+			require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+			var restCreated PublicationResponse
+			require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &restCreated))
+
+			mcpCreated, rpcErr := srv.handler.createPublication(ctx, "user-1", map[string]any{
+				"workspace_id": "ws-1", "content_profile": test.profile,
+				"title": test.name, "source_text": test.name, "social_account_ids": []string{test.accountID}, "scheduled_at": scheduledAt,
+			})
+			require.Nil(t, rpcErr)
+			mcpContent := mcpCreated.(map[string]any)["structuredContent"].(map[string]any)
+			mcpID := mcpContent["publication"].(mcpPublicationStatus).ID
+
+			var restPublication, mcpPublication models.Publication
+			require.NoError(t, srv.db.NewSelect().Model(&restPublication).Where("id = ?", restCreated.ID).Scan(ctx))
+			require.NoError(t, srv.db.NewSelect().Model(&mcpPublication).Where("id = ?", mcpID).Scan(ctx))
+			require.Equal(t, test.preset, restPublication.Intent)
+			require.Equal(t, test.preset, restPublication.CreationPreset)
+			require.Equal(t, restPublication.Intent, mcpPublication.Intent)
+			require.Equal(t, restPublication.CreationPreset, mcpPublication.CreationPreset)
+			require.Equal(t, restPublication.ContentProfile, mcpPublication.ContentProfile)
+			require.True(t, restPublication.ScheduledAt.Equal(mcpPublication.ScheduledAt))
+			require.Equal(t, models.PublicationStatusDraft, mcpPublication.Status)
+
+			var restRendition, mcpRendition models.Rendition
+			require.NoError(t, srv.db.NewSelect().Model(&restRendition).Where("publication_id = ?", restCreated.ID).Scan(ctx))
+			require.NoError(t, srv.db.NewSelect().Model(&mcpRendition).Where("publication_id = ?", mcpID).Scan(ctx))
+			require.Equal(t, restRendition.Platform, mcpRendition.Platform)
+			require.Equal(t, restRendition.Profile, mcpRendition.Profile)
+			require.Equal(t, restRendition.OutputProfile, mcpRendition.OutputProfile)
+		})
+	}
+
+	jobCount, err := srv.db.NewSelect().Model((*models.Job)(nil)).Count(ctx)
+	require.NoError(t, err)
+	require.Zero(t, jobCount, "creating a draft, including one with scheduled_at, must not enqueue it")
 }
 
 func TestMCPSearchReturnsRelevantOperationSchemas(t *testing.T) {

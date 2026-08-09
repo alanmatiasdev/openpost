@@ -211,7 +211,9 @@ func RegisterHumaRoutes(api huma.API, deps RouteDeps) {
 	publicationHandler.RegisterRoutes(api)
 	handlers.NewSocialSetHandler(deps.DB, deps.Authenticator).RegisterRoutes(api)
 	handlers.NewRepostHandler(deps.RepostService, deps.Authenticator).RegisterRoutes(api)
-	handlers.NewCommentHandler(deps.DB, deps.Authenticator, deps.Providers, deps.TokenEncryptor).RegisterRoutes(api)
+	commentHandler := handlers.NewCommentHandler(deps.DB, deps.Authenticator, deps.Providers, deps.TokenEncryptor)
+	commentHandler.SetTokenSource(deps.TokenSource)
+	commentHandler.RegisterRoutes(api)
 	handlers.NewAnalyticsHandler(deps.DB, deps.Authenticator, deps.AnalyticsService).RegisterRoutes(api)
 	handlers.NewCommunicationsHandler(deps.DB, deps.Authenticator, deps.CommunicationsService).RegisterRoutes(api)
 	handlers.NewNotificationHandler(deps.DB, deps.Authenticator, deps.NotificationService).RegisterRoutes(api)
@@ -304,6 +306,7 @@ func RegisterHumaRoutes(api huma.API, deps RouteDeps) {
 	oauthHandler.ListAccounts(api)
 	oauthHandler.UpdateAccount(api)
 	oauthHandler.DisconnectAccount(api)
+	oauthHandler.RevokeAccountGrant(api)
 
 	RegisterHealth(api, deps.DB)
 	RegisterVersion(api, BuildInfo{

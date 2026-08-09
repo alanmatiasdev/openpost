@@ -28,6 +28,14 @@ func NewInstagramAdapter(clientID, clientSecret, redirectURI string) *InstagramA
 	}
 }
 
+func (i *InstagramAdapter) AuthorizationGrantDescriptor() AuthorizationGrantDescriptor {
+	return AuthorizationGrantDescriptor{
+		ProjectID:     i.clientID,
+		ExecutionMode: "oauth2",
+		Evidence:      map[string]string{"protocol": "oauth2", "exchange": "authorization_code", "graph_version": i.graphVersion},
+	}
+}
+
 func (i *InstagramAdapter) graphURL(path string) string {
 	return facebookGraphBaseURL + "/" + i.graphVersion + "/" + strings.TrimPrefix(path, "/")
 }

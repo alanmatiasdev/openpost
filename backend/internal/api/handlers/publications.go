@@ -24,6 +24,7 @@ import (
 	"github.com/openpost/backend/internal/services/lifecycle"
 	"github.com/openpost/backend/internal/services/medialifecycle"
 	postservice "github.com/openpost/backend/internal/services/posts"
+	"github.com/openpost/backend/internal/services/publicationauth"
 	"github.com/openpost/backend/internal/services/publicurl"
 	repostservice "github.com/openpost/backend/internal/services/reposts"
 	"github.com/uptrace/bun"
@@ -126,26 +127,28 @@ type RenditionInput struct {
 	Segments         []RenditionSegmentInput `json:"segments,omitempty" doc:"Ordered destination segments"`
 }
 
+type CreatePublicationBody struct {
+	WorkspaceID      string                    `json:"workspace_id" doc:"Workspace ID"`
+	Title            string                    `json:"title" doc:"Internal publication title"`
+	Intent           string                    `json:"intent,omitempty" enum:"post,thread,story,short_video,video" doc:"Deprecated compatibility alias for creation_preset"`
+	CreationPreset   string                    `json:"creation_preset,omitempty" enum:"post,thread,story,short_video,video" doc:"Starter preset; destination renditions own their formats"`
+	SocialSetID      string                    `json:"social_set_id,omitempty" doc:"Social Set used to initialize the snapshotted destinations"`
+	ContentProfile   string                    `json:"content_profile" doc:"Content profile"`
+	SourceText       string                    `json:"source_text" doc:"Canonical source text"`
+	SourceURL        string                    `json:"source_url,omitempty" doc:"Source URL for link shares"`
+	Goal             string                    `json:"goal,omitempty" doc:"Publication goal"`
+	Audience         string                    `json:"audience,omitempty" doc:"Target audience"`
+	ScheduledAt      *time.Time                `json:"scheduled_at,omitempty" doc:"Optional schedule time"`
+	Metadata         map[string]interface{}    `json:"metadata,omitempty" doc:"Publication metadata"`
+	SocialAccountIDs []string                  `json:"social_account_ids,omitempty" doc:"Accounts to create default renditions for"`
+	Media            []PublicationMediaInput   `json:"media,omitempty" doc:"Default ordered media"`
+	Segments         []PublicationSegmentInput `json:"segments,omitempty" doc:"Ordered canonical publication segments"`
+	Renditions       []RenditionInput          `json:"renditions,omitempty" doc:"Explicit platform/account renditions"`
+	RepostOverride   *repostservice.Override   `json:"repost_override,omitempty" doc:"Optional per-publication repost override"`
+}
+
 type CreatePublicationInput struct {
-	Body struct {
-		WorkspaceID      string                    `json:"workspace_id" doc:"Workspace ID"`
-		Title            string                    `json:"title" doc:"Internal publication title"`
-		Intent           string                    `json:"intent,omitempty" enum:"post,thread,story,short_video,video" doc:"Deprecated compatibility alias for creation_preset"`
-		CreationPreset   string                    `json:"creation_preset,omitempty" enum:"post,thread,story,short_video,video" doc:"Starter preset; destination renditions own their formats"`
-		SocialSetID      string                    `json:"social_set_id,omitempty" doc:"Social Set used to initialize the snapshotted destinations"`
-		ContentProfile   string                    `json:"content_profile" doc:"Content profile"`
-		SourceText       string                    `json:"source_text" doc:"Canonical source text"`
-		SourceURL        string                    `json:"source_url,omitempty" doc:"Source URL for link shares"`
-		Goal             string                    `json:"goal,omitempty" doc:"Publication goal"`
-		Audience         string                    `json:"audience,omitempty" doc:"Target audience"`
-		ScheduledAt      *time.Time                `json:"scheduled_at,omitempty" doc:"Optional schedule time"`
-		Metadata         map[string]interface{}    `json:"metadata,omitempty" doc:"Publication metadata"`
-		SocialAccountIDs []string                  `json:"social_account_ids,omitempty" doc:"Accounts to create default renditions for"`
-		Media            []PublicationMediaInput   `json:"media,omitempty" doc:"Default ordered media"`
-		Segments         []PublicationSegmentInput `json:"segments,omitempty" doc:"Ordered canonical publication segments"`
-		Renditions       []RenditionInput          `json:"renditions,omitempty" doc:"Explicit platform/account renditions"`
-		RepostOverride   *repostservice.Override   `json:"repost_override,omitempty" doc:"Optional per-publication repost override"`
-	}
+	Body CreatePublicationBody
 }
 
 type PublicationUpdateBody struct {
@@ -533,117 +536,12 @@ func (h *PublicationHandler) createPublication(api huma.API) {
 		Errors:      []int{400, 403},
 	}, func(ctx context.Context, input *CreatePublicationInput) (*PublicationOutput, error) {
 		userID := middleware.GetUserID(ctx)
-		if input.Body.WorkspaceID == "" {
-			return nil, huma.Error400BadRequest(errWorkspaceIDRequired)
-		}
-		if err := h.checkWorkspaceEditAccess(ctx, input.Body.WorkspaceID, userID); err != nil {
-			return nil, err
-		}
-		var socialSetAccounts []SocialSetAccountInput
-		if input.Body.SocialSetID != "" {
-			var setErr error
-			socialSetAccounts, setErr = loadSocialSetSnapshot(ctx, h.db, input.Body.WorkspaceID, input.Body.SocialSetID)
-			if setErr != nil {
-				return nil, setErr
-			}
-		}
-		if input.Body.CreationPreset == "" {
-			input.Body.CreationPreset = input.Body.Intent
-		}
-		if input.Body.CreationPreset == "" {
-			input.Body.CreationPreset = publishingIntentForProfile(input.Body.ContentProfile)
-		}
-		if input.Body.ContentProfile == "" {
-			input.Body.ContentProfile = compatibilityProfileForIntent(input.Body.CreationPreset)
-		}
-		if input.Body.Intent == "" {
-			input.Body.Intent = input.Body.CreationPreset
-		}
-		if len(input.Body.Segments) == 0 {
-			input.Body.Segments = []PublicationSegmentInput{{
-				Body:  input.Body.SourceText,
-				Title: input.Body.Title,
-				URL:   input.Body.SourceURL,
-				Media: input.Body.Media,
-			}}
-		} else {
-			firstSegment := input.Body.Segments[0]
-			input.Body.SourceText = publicationFirstNonEmpty(input.Body.SourceText, firstSegment.Body)
-			input.Body.SourceURL = publicationFirstNonEmpty(input.Body.SourceURL, firstSegment.URL)
-			input.Body.Title = publicationFirstNonEmpty(input.Body.Title, firstSegment.Title)
-		}
-		if len(input.Body.Renditions) == 0 && len(input.Body.SocialAccountIDs) == 0 && input.Body.SocialSetID != "" {
-			input.Body.Renditions = socialSetRenditionInputs(socialSetAccounts)
-		}
-		if len(input.Body.Renditions) == 0 {
-			input.Body.Renditions = h.defaultRenditionInputs(input.Body.SocialAccountIDs, input.Body.ContentProfile, input.Body.SourceText, input.Body.Title, input.Body.Media)
-		}
-		accountMap, err := h.loadAccounts(ctx, input.Body.WorkspaceID, renditionAccountIDs(input.Body.Renditions))
+		publication, err := h.newCreateCommand().Execute(ctx, userID, input.Body)
 		if err != nil {
-			return nil, err
-		}
-		if err := h.validateMediaBelongsToWorkspace(ctx, input.Body.WorkspaceID, allPublicationMediaIDs(input.Body.Media, input.Body.Segments, input.Body.Renditions)); err != nil {
-			return nil, err
-		}
-		repostOverride := repostservice.Override{Mode: repostservice.ModeInherit}
-		if input.Body.RepostOverride != nil {
-			repostOverride, err = h.validateRepostOverride(ctx, input.Body.WorkspaceID, userID, *input.Body.RepostOverride)
-			if err != nil {
-				return nil, huma.Error400BadRequest(err.Error())
+			var statusErr huma.StatusError
+			if errors.As(err, &statusErr) {
+				return nil, statusErr
 			}
-		}
-		repostOverrideJSON, err := repostservice.EncodeOverride(repostOverride)
-		if err != nil {
-			return nil, huma.Error400BadRequest(err.Error())
-		}
-
-		now := time.Now().UTC()
-		if input.Body.ScheduledAt != nil {
-			if err := validateFuturePublicationSchedule(*input.Body.ScheduledAt, now); err != nil {
-				return nil, huma.Error400BadRequest(err.Error())
-			}
-		}
-		metadataJSON := mustJSON(input.Body.Metadata)
-		publication := &models.Publication{
-			ID:              uuid.New().String(),
-			WorkspaceID:     input.Body.WorkspaceID,
-			CreatedByID:     userID,
-			Title:           publicationFirstNonEmpty(input.Body.Title, firstContentLine(input.Body.SourceText), "Untitled publication"),
-			Intent:          input.Body.Intent,
-			CreationPreset:  input.Body.CreationPreset,
-			SocialSetID:     input.Body.SocialSetID,
-			ContentProfile:  input.Body.ContentProfile,
-			SourceText:      input.Body.SourceText,
-			SourceContent:   input.Body.SourceText,
-			SourceURL:       input.Body.SourceURL,
-			Goal:            input.Body.Goal,
-			Audience:        input.Body.Audience,
-			Status:          models.PublicationStatusDraft,
-			MetadataJSON:    metadataJSON,
-			ReleasePlanJSON: metadataJSON,
-			RepostOverride:  repostOverrideJSON,
-			CreatedAt:       now,
-			UpdatedAt:       now,
-		}
-		if input.Body.ScheduledAt != nil {
-			publication.ScheduledAt = *input.Body.ScheduledAt
-		}
-
-		err = h.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
-			if _, err := tx.NewInsert().Model(publication).Exec(txCtx); err != nil {
-				return err
-			}
-			segments, err := h.insertPublicationSegments(txCtx, tx, publication, input.Body.Segments)
-			if err != nil {
-				return err
-			}
-			if err := h.insertRenditions(txCtx, tx, publication, segments, input.Body.Segments, input.Body.Renditions, input.Body.Media, accountMap); err != nil {
-				return err
-			}
-			_, err = postservice.EnsurePublicationEditorTx(txCtx, tx, publication)
-			return err
-		})
-		if err != nil {
 			return nil, huma.Error500InternalServerError("failed to create publication")
 		}
 
@@ -824,7 +722,7 @@ func (h *PublicationHandler) updatePublication(api huma.API) {
 		Path:        publicationPathByID,
 		Summary:     "Update a publication",
 		Tags:        []string{tagPublications},
-		Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
+		Middlewares: huma.Middlewares{middleware.RequestMetadataMiddleware(), middleware.AuthMiddleware(api, h.auth)},
 	}, func(ctx context.Context, input *UpdatePublicationInput) (*PublicationOutput, error) {
 		if err := drafts.RequireExpectedRevision(input.Body.ExpectedRevision); err != nil {
 			return nil, err
@@ -982,7 +880,9 @@ func applyPublicationScheduleUpdate(
 		return false, false, errPublicationScheduleConflict
 	}
 	if scheduledAtInput == nil && !clearSchedule {
-		return false, false, nil
+		// Any edit increments the publication revision. A queued publication
+		// therefore needs a new job and receipt even when its time is unchanged.
+		return false, publication.Status == models.PublicationStatusScheduled, nil
 	}
 
 	wasScheduled := publication.Status == models.PublicationStatusScheduled
@@ -1395,7 +1295,7 @@ func (h *PublicationHandler) schedulePublication(api huma.API) {
 		Path:        "/publications/{id}/schedule",
 		Summary:     "Schedule a publication",
 		Tags:        []string{tagPublications},
-		Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
+		Middlewares: huma.Middlewares{middleware.RequestMetadataMiddleware(), middleware.AuthMiddleware(api, h.auth)},
 	}, func(ctx context.Context, input *PublicationMutationActionInput) (*ActionOutput, error) {
 		if err := drafts.RequireExpectedRevision(input.Body.ExpectedRevision); err != nil {
 			return nil, err
@@ -1428,7 +1328,7 @@ func (h *PublicationHandler) publishNow(api huma.API) {
 		Path:        "/publications/{id}/publish-now",
 		Summary:     "Publish a publication now",
 		Tags:        []string{tagPublications},
-		Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
+		Middlewares: huma.Middlewares{middleware.RequestMetadataMiddleware(), middleware.AuthMiddleware(api, h.auth)},
 	}, func(ctx context.Context, input *PublicationMutationActionInput) (*ActionOutput, error) {
 		if err := drafts.RequireExpectedRevision(input.Body.ExpectedRevision); err != nil {
 			return nil, err
@@ -1461,7 +1361,7 @@ func (h *PublicationHandler) retryRendition(api huma.API) {
 		Path:        "/publications/{id}/renditions/{account_id}/retry",
 		Summary:     "Retry one failed publication destination",
 		Tags:        []string{tagPublications},
-		Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
+		Middlewares: huma.Middlewares{middleware.RequestMetadataMiddleware(), middleware.AuthMiddleware(api, h.auth)},
 		Errors:      []int{400, 403, 404, 409},
 	}, func(ctx context.Context, input *RetryRenditionInput) (*ActionOutput, error) {
 		publication, err := h.loadPublication(ctx, input.PathID, middleware.GetUserID(ctx))
@@ -1494,10 +1394,13 @@ func (h *PublicationHandler) retryRendition(api huma.API) {
 		}
 
 		jobID := uuid.NewString()
+		batchID := uuid.NewString()
 		now := time.Now().UTC()
 		payload := mustJSON(map[string]string{
-			"publication_id": publication.ID,
-			"rendition_id":   rendition.ID,
+			"publication_id":             publication.ID,
+			"rendition_id":               rendition.ID,
+			"authorization_batch_id":     batchID,
+			"authorization_scheduled_at": now.Format(time.RFC3339Nano),
 		})
 		err = h.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
 			result, err := tx.NewUpdate().
@@ -1541,7 +1444,15 @@ func (h *PublicationHandler) retryRendition(api huma.API) {
 				RunAt:       now,
 				MaxAttempts: 3,
 			}
-			_, err = tx.NewInsert().Model(job).Exec(txCtx)
+			if _, err = tx.NewInsert().Model(job).Exec(txCtx); err != nil {
+				return err
+			}
+			_, _, err = publicationauth.CreateBatch(txCtx, tx, publicationauth.BatchInput{
+				BatchID: batchID, PublicationID: publication.ID,
+				Actor:  publicationAuthorizationActor(txCtx, publication.CreatedByID),
+				Action: publicationauth.ActionPublish, PolicyMode: publicationauth.PolicyRetry, ConfirmedAt: now,
+				Targets: []publicationauth.JobTarget{{JobID: jobID, RenditionID: rendition.ID, RunAt: now}},
+			})
 			return err
 		})
 		if err != nil {
@@ -1551,6 +1462,7 @@ func (h *PublicationHandler) retryRendition(api huma.API) {
 	})
 }
 
+//nolint:gocyclo // Retry selection, state transitions, jobs, receipts, and audit events must commit atomically.
 func (h *PublicationHandler) retryFailedRenditions(api huma.API) {
 	huma.Register(api, huma.Operation{
 		OperationID: "retry-failed-publication-renditions",
@@ -1559,7 +1471,7 @@ func (h *PublicationHandler) retryFailedRenditions(api huma.API) {
 		Summary:     "Retry every retryable failed publication destination",
 		Description: "Queues one publication job. Destinations that already succeeded and failures that require editing or reconnection are left unchanged.",
 		Tags:        []string{tagPublications},
-		Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
+		Middlewares: huma.Middlewares{middleware.RequestMetadataMiddleware(), middleware.AuthMiddleware(api, h.auth)},
 		Errors:      []int{400, 403, 404, 409},
 	}, func(ctx context.Context, input *RetryFailedRenditionsInput) (*ActionOutput, error) {
 		publication, err := h.loadPublication(ctx, input.PathID, middleware.GetUserID(ctx))
@@ -1571,8 +1483,13 @@ func (h *PublicationHandler) retryFailedRenditions(api huma.API) {
 		}
 
 		jobID := uuid.NewString()
+		batchID := uuid.NewString()
 		now := time.Now().UTC()
-		payload := mustJSON(map[string]string{"publication_id": publication.ID})
+		payload := mustJSON(map[string]string{
+			"publication_id":             publication.ID,
+			"authorization_batch_id":     batchID,
+			"authorization_scheduled_at": now.Format(time.RFC3339Nano),
+		})
 		err = h.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
 			if err := lockPublicationMutationTx(txCtx, tx, publication.ID); err != nil {
 				return err
@@ -1584,6 +1501,15 @@ func (h *PublicationHandler) retryFailedRenditions(api huma.API) {
 				return err
 			}
 			if err := h.deletePendingPrimaryPublicationJobsTx(txCtx, tx, publication.ID); err != nil {
+				return err
+			}
+			var retryRenditions []models.Rendition
+			if err := tx.NewSelect().Model(&retryRenditions).
+				Where("publication_id = ?", publication.ID).
+				Where("status = ?", models.RenditionStatusFailed).
+				Where("error_retryable = ?", true).
+				Order("created_at ASC", "id ASC").
+				Scan(txCtx); err != nil {
 				return err
 			}
 			result, err := tx.NewUpdate().
@@ -1628,6 +1554,20 @@ func (h *PublicationHandler) retryFailedRenditions(api huma.API) {
 			}).Exec(txCtx); err != nil {
 				return err
 			}
+			targets := make([]publicationauth.JobTarget, 0, len(retryRenditions))
+			for _, retryRendition := range retryRenditions {
+				targets = append(targets, publicationauth.JobTarget{
+					JobID: jobID, RenditionID: retryRendition.ID, RunAt: now,
+				})
+			}
+			if _, _, err := publicationauth.CreateBatch(txCtx, tx, publicationauth.BatchInput{
+				BatchID: batchID, PublicationID: publication.ID,
+				Actor:  publicationAuthorizationActor(txCtx, publication.CreatedByID),
+				Action: publicationauth.ActionPublish, PolicyMode: publicationauth.PolicyRetry, ConfirmedAt: now,
+				Targets: targets,
+			}); err != nil {
+				return err
+			}
 			event := &models.PublicationLifecycleEvent{
 				ID:             uuid.NewString(),
 				WorkspaceID:    publication.WorkspaceID,
@@ -1656,32 +1596,71 @@ func (h *PublicationHandler) replyToRendition(api huma.API) {
 		Path:        "/renditions/{id}/reply",
 		Summary:     "Queue an explicit provider reply",
 		Tags:        []string{tagPublications},
-		Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
+		Middlewares: huma.Middlewares{middleware.RequestMetadataMiddleware(), middleware.AuthMiddleware(api, h.auth)},
 	}, func(ctx context.Context, input *ReplyInput) (*ActionOutput, error) {
 		rendition, publication, err := h.loadRenditionWithPublicationForEdit(ctx, input.PathID, middleware.GetUserID(ctx))
 		if err != nil {
 			return nil, err
 		}
-		payload := map[string]interface{}{
-			"rendition_id":   rendition.ID,
-			"publication_id": publication.ID,
-			"body":           input.Body.Body,
-			"parent_id":      input.Body.ParentID,
-			"settings":       input.Body.Settings,
-			"media":          input.Body.Media,
-			"action":         "reply",
-		}
-		payloadJSON := mustJSON(payload)
 		runAt := time.Now().UTC()
 		if input.Body.RunAt != nil {
-			runAt = *input.Body.RunAt
+			runAt = input.Body.RunAt.UTC()
 		}
-		job := &models.Job{ID: uuid.New().String(), Type: jobTypePublishPublication, Payload: payloadJSON, Status: "pending", RunAt: runAt, MaxAttempts: 3}
-		if _, err := h.db.NewInsert().Model(job).Exec(ctx); err != nil {
+		jobID, err := h.queueRenditionReply(
+			ctx, rendition, publication, input.Body.Body, input.Body.ParentID,
+			input.Body.Settings, input.Body.Media, runAt,
+		)
+		if err != nil {
 			return nil, huma.Error500InternalServerError("failed to enqueue reply")
 		}
-		return actionMessage("reply queued", job.ID), nil
+		return actionMessage("reply queued", jobID), nil
 	})
+}
+
+func (h *PublicationHandler) queueRenditionReply(
+	ctx context.Context,
+	rendition *models.Rendition,
+	publication *models.Publication,
+	body, parentID string,
+	settings map[string]interface{},
+	media any,
+	runAt time.Time,
+) (string, error) {
+	confirmedAt := time.Now().UTC()
+	runAt = runAt.UTC()
+	if runAt.IsZero() {
+		runAt = confirmedAt
+	}
+	jobID := uuid.NewString()
+	batchID := uuid.NewString()
+	payloadJSON := mustJSON(map[string]interface{}{
+		"rendition_id": rendition.ID, "publication_id": publication.ID,
+		"body": body, "parent_id": parentID, "settings": settings, "media": media,
+		"action": "reply", "authorization_batch_id": batchID,
+		"authorization_scheduled_at": runAt.Format(time.RFC3339Nano),
+	})
+	policyMode := publicationauth.PolicyReplyImmediate
+	if runAt.After(confirmedAt) {
+		policyMode = publicationauth.PolicyReplyScheduled
+	}
+	job := &models.Job{ID: jobID, Type: jobTypePublishPublication, Payload: payloadJSON, Status: jobStatusPending, RunAt: runAt, MaxAttempts: 3}
+	err := h.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
+		if _, err := tx.NewInsert().Model(job).Exec(txCtx); err != nil {
+			return err
+		}
+		_, _, err := publicationauth.CreateExplicit(txCtx, tx, publicationauth.ExplicitInput{
+			BatchInput: publicationauth.BatchInput{
+				BatchID: batchID, PublicationID: publication.ID,
+				Actor:  publicationAuthorizationActor(txCtx, publication.CreatedByID),
+				Action: publicationauth.ActionReply, PolicyMode: policyMode, ConfirmedAt: confirmedAt,
+			},
+			RenditionID: rendition.ID, JobID: jobID, RunAt: runAt,
+			Content: body, Media: media,
+			Settings: map[string]any{"parent_id": parentID, "settings": settings},
+		})
+		return err
+	})
+	return jobID, err
 }
 
 func (h *PublicationHandler) insertPublicationSegments(
@@ -3253,16 +3232,8 @@ func (h *PublicationHandler) validateMediaBelongsToWorkspace(ctx context.Context
 	return nil
 }
 
-func (h *PublicationHandler) defaultRenditionInputs(accountIDs []string, profile, body, title string, media []PublicationMediaInput) []RenditionInput {
-	out := make([]RenditionInput, 0, len(accountIDs))
-	for _, accountID := range uniqueNonEmpty(accountIDs) {
-		out = append(out, RenditionInput{SocialAccountID: accountID, Profile: profile, Body: body, Title: title, Media: media})
-	}
-	return out
-}
-
 func (h *PublicationHandler) queuePublication(ctx context.Context, publicationID string, runAt time.Time) (string, error) {
-	return h.queuePublicationWithRunAt(ctx, publicationID, 0, func(_ *models.Publication, _ time.Time) (time.Time, error) {
+	return h.queuePublicationWithRunAt(ctx, publicationID, 0, publicationauth.PolicyScheduled, func(_ *models.Publication, _ time.Time) (time.Time, error) {
 		return runAt, nil
 	})
 }
@@ -3276,7 +3247,7 @@ func (h *PublicationHandler) queueScheduledPublicationExpected(
 	publicationID string,
 	expectedRevision int,
 ) (string, error) {
-	return h.queuePublicationWithRunAt(ctx, publicationID, expectedRevision, func(publication *models.Publication, now time.Time) (time.Time, error) {
+	return h.queuePublicationWithRunAt(ctx, publicationID, expectedRevision, publicationauth.PolicyScheduled, func(publication *models.Publication, now time.Time) (time.Time, error) {
 		if publication.ScheduledAt.IsZero() {
 			return time.Time{}, errPublicationScheduleRequired
 		}
@@ -3296,7 +3267,7 @@ func (h *PublicationHandler) queuePublicationNowExpected(
 	publicationID string,
 	expectedRevision int,
 ) (string, error) {
-	return h.queuePublicationWithRunAt(ctx, publicationID, expectedRevision, func(_ *models.Publication, now time.Time) (time.Time, error) {
+	return h.queuePublicationWithRunAt(ctx, publicationID, expectedRevision, publicationauth.PolicyImmediate, func(_ *models.Publication, now time.Time) (time.Time, error) {
 		return now, nil
 	})
 }
@@ -3306,6 +3277,7 @@ func (h *PublicationHandler) queuePublicationWithRunAt(
 	ctx context.Context,
 	publicationID string,
 	expectedRevision int,
+	policyMode string,
 	resolveRunAt func(*models.Publication, time.Time) (time.Time, error),
 ) (string, error) {
 	var jobID string
@@ -3351,8 +3323,7 @@ func (h *PublicationHandler) queuePublicationWithRunAt(
 				}
 			}
 		}
-		isScheduledQueue := !publication.ScheduledAt.IsZero() && runAt.Equal(publication.ScheduledAt)
-		if isScheduledQueue {
+		if policyMode == publicationauth.PolicyScheduled {
 			jobID, err = h.replacePublicationJobTx(txCtx, tx, publicationID, runAt)
 		} else {
 			jobID, err = h.replaceImmediatePublicationJobTx(txCtx, tx, publicationID, runAt)
@@ -3369,19 +3340,21 @@ func (h *PublicationHandler) queuePublicationWithRunAt(
 }
 
 func (h *PublicationHandler) replacePublicationJobTx(ctx context.Context, tx bun.Tx, publicationID string, runAt time.Time) (string, error) {
-	return h.replacePublicationJobsTx(ctx, tx, publicationID, runAt, true)
+	return h.replacePublicationJobsTx(ctx, tx, publicationID, runAt, true, publicationauth.PolicyScheduled)
 }
 
 func (h *PublicationHandler) replaceImmediatePublicationJobTx(ctx context.Context, tx bun.Tx, publicationID string, runAt time.Time) (string, error) {
-	return h.replacePublicationJobsTx(ctx, tx, publicationID, runAt, false)
+	return h.replacePublicationJobsTx(ctx, tx, publicationID, runAt, false, publicationauth.PolicyImmediate)
 }
 
+//nolint:gocyclo // Queue replacement, overrides, jobs, receipts, and publication state must commit atomically.
 func (h *PublicationHandler) replacePublicationJobsTx(
 	ctx context.Context,
 	tx bun.Tx,
 	publicationID string,
 	runAt time.Time,
 	useScheduleOverrides bool,
+	policyMode string,
 ) (string, error) {
 	if err := lockPrimaryPublicationQueueTx(ctx, tx, publicationID); err != nil {
 		return "", err
@@ -3395,6 +3368,13 @@ func (h *PublicationHandler) replacePublicationJobsTx(
 	if err := h.deletePendingPrimaryPublicationJobsTx(ctx, tx, publicationID); err != nil {
 		return "", err
 	}
+	var publication models.Publication
+	if err := tx.NewSelect().Model(&publication).Where("id = ?", publicationID).Scan(ctx); err != nil {
+		return "", err
+	}
+	actor := publicationAuthorizationActor(ctx, publication.CreatedByID)
+	batchID := uuid.NewString()
+	targets := make([]publicationauth.JobTarget, 0, 1)
 	if useScheduleOverrides {
 		var renditions []models.Rendition
 		if err := tx.NewSelect().Model(&renditions).
@@ -3416,22 +3396,44 @@ func (h *PublicationHandler) replacePublicationJobsTx(
 				if !renditionRunAt.After(time.Now().UTC()) {
 					return "", errPublicationScheduleFuture
 				}
-				jobID, err := insertPublicationJobTx(ctx, tx, publicationID, rendition.ID, renditionRunAt)
+				jobID, err := insertPublicationJobTx(ctx, tx, publicationID, rendition.ID, batchID, renditionRunAt)
 				if err != nil {
 					return "", err
 				}
+				targets = append(targets, publicationauth.JobTarget{JobID: jobID, RenditionID: rendition.ID, RunAt: renditionRunAt})
 				if firstJobID == "" {
 					firstJobID = jobID
 				}
 			}
+			if _, _, err := publicationauth.CreateBatch(ctx, tx, publicationauth.BatchInput{
+				BatchID: batchID, PublicationID: publicationID, Actor: actor,
+				Action: publicationauth.ActionPublish, PolicyMode: policyMode, ConfirmedAt: time.Now().UTC(), Targets: targets,
+			}); err != nil {
+				return "", err
+			}
 			return firstJobID, nil
 		}
 	}
-	return insertPublicationJobTx(ctx, tx, publicationID, "", runAt)
+	jobID, err := insertPublicationJobTx(ctx, tx, publicationID, "", batchID, runAt)
+	if err != nil {
+		return "", err
+	}
+	if _, _, err := publicationauth.CreateBatch(ctx, tx, publicationauth.BatchInput{
+		BatchID: batchID, PublicationID: publicationID, Actor: actor,
+		Action: publicationauth.ActionPublish, PolicyMode: policyMode, ConfirmedAt: time.Now().UTC(),
+		Targets: []publicationauth.JobTarget{{JobID: jobID, RunAt: runAt}},
+	}); err != nil {
+		return "", err
+	}
+	return jobID, nil
 }
 
-func insertPublicationJobTx(ctx context.Context, tx bun.Tx, publicationID, renditionID string, runAt time.Time) (string, error) {
-	payload := map[string]string{"publication_id": publicationID}
+func insertPublicationJobTx(ctx context.Context, tx bun.Tx, publicationID, renditionID, authorizationBatchID string, runAt time.Time) (string, error) {
+	payload := map[string]string{
+		"publication_id":             publicationID,
+		"authorization_batch_id":     authorizationBatchID,
+		"authorization_scheduled_at": runAt.UTC().Format(time.RFC3339Nano),
+	}
 	if renditionID != "" {
 		payload["rendition_id"] = renditionID
 	}

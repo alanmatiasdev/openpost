@@ -29,6 +29,14 @@ func NewMastodonAdapter(clientID, clientSecret, redirectURI, instanceURL string)
 	}
 }
 
+func (m *MastodonAdapter) AuthorizationGrantDescriptor() AuthorizationGrantDescriptor {
+	return AuthorizationGrantDescriptor{
+		ProjectID:     m.clientID,
+		ExecutionMode: "oauth2",
+		Evidence:      map[string]string{"protocol": "oauth2", "exchange": "authorization_code", "instance_url": m.instanceURL},
+	}
+}
+
 func validateMastodonMedia(media []MediaItem) []MediaValidationIssue {
 	if len(media) == 0 {
 		return nil

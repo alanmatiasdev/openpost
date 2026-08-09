@@ -26,6 +26,9 @@ const (
 	WorkspaceIDKey contextKey = "workspace_id"
 	SessionIDKey   contextKey = "session_id"
 	TokenIDKey     contextKey = "token_id"
+	ClientIDKey    contextKey = "client_id"
+	ClientNameKey  contextKey = "client_name"
+	ScopeKey       contextKey = "scope"
 	UserAgentKey   contextKey = "user_agent"
 	ClientIPKey    contextKey = "client_ip"
 	SecureKey      contextKey = "secure_request"
@@ -137,7 +140,7 @@ func (s *CompositeService) AuthenticateBearer(ctx context.Context, token string)
 		Scope:       apiPrincipal.Scope,
 		WorkspaceID: apiPrincipal.WorkspaceID,
 		Audience:    apiPrincipal.Audience,
-		ClientID:    apiPrincipal.TokenID,
+		ClientID:    firstNonEmpty(apiPrincipal.ClientID, apiPrincipal.TokenID),
 		TokenID:     apiPrincipal.TokenID,
 		ClientName:  apiPrincipal.TokenName,
 		TokenPrefix: apiPrincipal.TokenPrefix,
@@ -177,6 +180,15 @@ func AuthMiddleware(api huma.API, authenticator Authenticator) func(ctx huma.Con
 		if principal.TokenID != "" {
 			ctx = huma.WithValue(ctx, TokenIDKey, principal.TokenID)
 		}
+		if principal.ClientID != "" {
+			ctx = huma.WithValue(ctx, ClientIDKey, principal.ClientID)
+		}
+		if principal.ClientName != "" {
+			ctx = huma.WithValue(ctx, ClientNameKey, principal.ClientName)
+		}
+		if principal.Scope != "" {
+			ctx = huma.WithValue(ctx, ScopeKey, principal.Scope)
+		}
 		next(ctx)
 	}
 }
@@ -212,6 +224,15 @@ func OptionalAuthMiddleware(authenticator Authenticator) func(ctx huma.Context, 
 		}
 		if principal.TokenID != "" {
 			ctx = huma.WithValue(ctx, TokenIDKey, principal.TokenID)
+		}
+		if principal.ClientID != "" {
+			ctx = huma.WithValue(ctx, ClientIDKey, principal.ClientID)
+		}
+		if principal.ClientName != "" {
+			ctx = huma.WithValue(ctx, ClientNameKey, principal.ClientName)
+		}
+		if principal.Scope != "" {
+			ctx = huma.WithValue(ctx, ScopeKey, principal.Scope)
 		}
 		next(ctx)
 	}
@@ -252,6 +273,27 @@ func GetTokenID(ctx context.Context) string {
 	return ""
 }
 
+func GetClientID(ctx context.Context) string {
+	if v, ok := ctx.Value(ClientIDKey).(string); ok {
+		return v
+	}
+	return ""
+}
+
+func GetClientName(ctx context.Context) string {
+	if v, ok := ctx.Value(ClientNameKey).(string); ok {
+		return v
+	}
+	return ""
+}
+
+func GetScope(ctx context.Context) string {
+	if v, ok := ctx.Value(ScopeKey).(string); ok {
+		return v
+	}
+	return ""
+}
+
 func GetUserAgent(ctx context.Context) string {
 	if v, ok := ctx.Value(UserAgentKey).(string); ok {
 		return v
@@ -278,6 +320,15 @@ func RequestMetadataMiddleware() func(ctx huma.Context, next func(huma.Context))
 func IsSecureRequest(ctx context.Context) bool {
 	secure, _ := ctx.Value(SecureKey).(bool)
 	return secure
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }
 
 // WorkspaceAccessMiddleware validates that the user has access to the workspace specified in the request.

@@ -26,14 +26,19 @@ const (
 )
 
 type CommentHandler struct {
-	db        *bun.DB
-	auth      middleware.Authenticator
-	providers map[string]platform.Adapter
-	encryptor *servicecrypto.TokenEncryptor
+	db          *bun.DB
+	auth        middleware.Authenticator
+	providers   map[string]platform.Adapter
+	encryptor   *servicecrypto.TokenEncryptor
+	tokenSource AccessTokenSource
 }
 
 func NewCommentHandler(db *bun.DB, authenticator middleware.Authenticator, providers map[string]platform.Adapter, encryptor *servicecrypto.TokenEncryptor) *CommentHandler {
 	return &CommentHandler{db: db, auth: authenticator, providers: providers, encryptor: encryptor}
+}
+
+func (h *CommentHandler) SetTokenSource(source AccessTokenSource) {
+	h.tokenSource = source
 }
 
 type ListRenditionCommentsInput struct {
@@ -107,7 +112,7 @@ func (h *CommentHandler) listRenditionComments(api huma.API) {
 		if err != nil {
 			return nil, err
 		}
-		commenter, accessToken, err := h.commentAdapter(account)
+		commenter, accessToken, err := h.commentAdapter(ctx, account)
 		if err != nil {
 			return nil, err
 		}
@@ -154,7 +159,7 @@ func (h *CommentHandler) replyToComment(api huma.API) {
 		if err := h.checkWorkspaceEditAccess(ctx, publication.WorkspaceID, middleware.GetUserID(ctx)); err != nil {
 			return nil, err
 		}
-		commenter, accessToken, err := h.commentAdapter(account)
+		commenter, accessToken, err := h.commentAdapter(ctx, account)
 		if err != nil {
 			return nil, err
 		}
@@ -197,7 +202,7 @@ func (h *CommentHandler) hideComment(api huma.API) {
 		if err := h.checkWorkspaceEditAccess(ctx, publication.WorkspaceID, middleware.GetUserID(ctx)); err != nil {
 			return nil, err
 		}
-		commenter, accessToken, err := h.commentAdapter(account)
+		commenter, accessToken, err := h.commentAdapter(ctx, account)
 		if err != nil {
 			return nil, err
 		}
@@ -238,7 +243,7 @@ func (h *CommentHandler) deleteComment(api huma.API) {
 		if err := h.checkWorkspaceEditAccess(ctx, publication.WorkspaceID, middleware.GetUserID(ctx)); err != nil {
 			return nil, err
 		}
-		commenter, accessToken, err := h.commentAdapter(account)
+		commenter, accessToken, err := h.commentAdapter(ctx, account)
 		if err != nil {
 			return nil, err
 		}
@@ -303,11 +308,18 @@ func (h *CommentHandler) recordCommentLifecycleEvent(ctx context.Context, public
 	})
 }
 
-func (h *CommentHandler) commentAdapter(account *models.SocialAccount) (platform.CommentAdapter, string, error) {
+func (h *CommentHandler) commentAdapter(ctx context.Context, account *models.SocialAccount) (platform.CommentAdapter, string, error) {
 	provider := h.providers[account.Platform]
 	commenter, ok := provider.(platform.CommentAdapter)
 	if !ok || commenter == nil {
 		return nil, "", huma.NewError(http.StatusNotImplemented, fmt.Sprintf("comments are not supported for %s", account.Platform))
+	}
+	if h.tokenSource != nil {
+		token, err := h.tokenSource.GetValidAccessToken(ctx, account.ID)
+		if err != nil {
+			return nil, "", huma.Error500InternalServerError("failed to load account token")
+		}
+		return commenter, token, nil
 	}
 	if h.encryptor == nil {
 		return nil, "", huma.Error500InternalServerError("comment provider tokens are unavailable")

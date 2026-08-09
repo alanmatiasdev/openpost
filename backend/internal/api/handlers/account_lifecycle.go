@@ -142,18 +142,41 @@ type AccountExportToken struct {
 	CreatedAt   time.Time `json:"created_at"`
 }
 
+// AccountExportPublicationAuthorization exposes consent/audit facts without
+// exporting raw payloads, fingerprints, or session/token identifiers.
+type AccountExportPublicationAuthorization struct {
+	ID                    string    `json:"id"`
+	BatchID               string    `json:"batch_id"`
+	PublicationID         string    `json:"publication_id"`
+	RenditionID           string    `json:"rendition_id"`
+	Action                string    `json:"action"`
+	ActorOrigin           string    `json:"actor_origin"`
+	ActorClientID         string    `json:"actor_client_id,omitempty"`
+	ActorClientName       string    `json:"actor_client_name,omitempty"`
+	SessionIdentityStored bool      `json:"session_identity_stored"`
+	TokenIdentityStored   bool      `json:"token_identity_stored"`
+	PublicationRevision   int       `json:"publication_revision"`
+	SocialAccountID       string    `json:"social_account_id"`
+	TargetKey             string    `json:"target_key"`
+	ScheduledAt           time.Time `json:"scheduled_at"`
+	PolicyMode            string    `json:"policy_mode"`
+	ConfirmedAt           time.Time `json:"confirmed_at"`
+	FingerprintsRecorded  bool      `json:"fingerprints_recorded"`
+}
+
 type AccountExport struct {
-	FormatVersion                  string                       `json:"format_version"`
-	GeneratedAt                    time.Time                    `json:"generated_at"`
-	User                           AccountExportUser            `json:"user"`
-	Organizations                  []AccountExportOrganization  `json:"organizations"`
-	Workspaces                     []AccountExportWorkspace     `json:"workspaces"`
-	SocialAccounts                 []AccountExportSocialAccount `json:"social_accounts"`
-	Publications                   []AccountExportPublication   `json:"publications"`
-	Posts                          []AccountExportPost          `json:"posts"`
-	Media                          []AccountExportMedia         `json:"media"`
-	APITokens                      []AccountExportToken         `json:"api_tokens"`
-	SharedWorkspaceContentExcluded bool                         `json:"shared_workspace_content_excluded"`
+	FormatVersion                  string                                  `json:"format_version"`
+	GeneratedAt                    time.Time                               `json:"generated_at"`
+	User                           AccountExportUser                       `json:"user"`
+	Organizations                  []AccountExportOrganization             `json:"organizations"`
+	Workspaces                     []AccountExportWorkspace                `json:"workspaces"`
+	SocialAccounts                 []AccountExportSocialAccount            `json:"social_accounts"`
+	Publications                   []AccountExportPublication              `json:"publications"`
+	Posts                          []AccountExportPost                     `json:"posts"`
+	Media                          []AccountExportMedia                    `json:"media"`
+	APITokens                      []AccountExportToken                    `json:"api_tokens"`
+	PublicationAuthorizations      []AccountExportPublicationAuthorization `json:"publication_authorizations"`
+	SharedWorkspaceContentExcluded bool                                    `json:"shared_workspace_content_excluded"`
 }
 
 type AccountExportOutput struct {
@@ -360,20 +383,21 @@ func (h *AccountLifecycleHandler) reauthenticate(
 
 func (h *AccountLifecycleHandler) buildExport(ctx context.Context, user *models.User) (AccountExport, error) {
 	exported := AccountExport{
-		FormatVersion: "1",
+		FormatVersion: "2",
 		GeneratedAt:   time.Now().UTC(),
 		User: AccountExportUser{
 			ID: user.ID, Email: user.Email, DisplayName: user.DisplayName, AvatarURL: user.AvatarURL,
 			IsAdmin: user.IsAdmin, TermsVersion: user.TermsVersion, PrivacyVersion: user.PrivacyVersion,
 			LegalAcceptedAt: user.LegalAcceptedAt, CreatedAt: user.CreatedAt,
 		},
-		Organizations:  []AccountExportOrganization{},
-		Workspaces:     []AccountExportWorkspace{},
-		SocialAccounts: []AccountExportSocialAccount{},
-		Publications:   []AccountExportPublication{},
-		Posts:          []AccountExportPost{},
-		Media:          []AccountExportMedia{},
-		APITokens:      []AccountExportToken{},
+		Organizations:             []AccountExportOrganization{},
+		Workspaces:                []AccountExportWorkspace{},
+		SocialAccounts:            []AccountExportSocialAccount{},
+		Publications:              []AccountExportPublication{},
+		Posts:                     []AccountExportPost{},
+		Media:                     []AccountExportMedia{},
+		APITokens:                 []AccountExportToken{},
+		PublicationAuthorizations: []AccountExportPublicationAuthorization{},
 	}
 	if err := h.loadExportMemberships(ctx, user.ID, &exported); err != nil {
 		return AccountExport{}, err
@@ -448,6 +472,27 @@ func (h *AccountLifecycleHandler) loadExportUserContent(ctx context.Context, use
 		Column("id", "name", "token_prefix", "scope", "workspace_id", "last_used_at", "revoked_at", "created_at").
 		Where("user_id = ?", userID).Order("created_at ASC").Scan(ctx, &exported.APITokens); !isNoRowsOrNil(err) {
 		return err
+	}
+	var authorizations []models.PublicationAuthorization
+	if err := h.db.NewSelect().Model(&authorizations).
+		Where("actor_user_id = ?", userID).
+		Order("confirmed_at ASC", "id ASC").Scan(ctx); !isNoRowsOrNil(err) {
+		return err
+	}
+	for _, authorization := range authorizations {
+		exported.PublicationAuthorizations = append(exported.PublicationAuthorizations, AccountExportPublicationAuthorization{
+			ID: authorization.ID, BatchID: authorization.BatchID,
+			PublicationID: authorization.PublicationID, RenditionID: authorization.RenditionID,
+			Action: authorization.Action, ActorOrigin: authorization.ActorOrigin,
+			ActorClientID: authorization.ActorClientID, ActorClientName: authorization.ActorClientName,
+			SessionIdentityStored: authorization.ActorSessionID != "",
+			TokenIdentityStored:   authorization.ActorTokenID != "",
+			PublicationRevision:   authorization.PublicationRevision,
+			SocialAccountID:       authorization.SocialAccountID, TargetKey: authorization.TargetKey,
+			ScheduledAt: authorization.ScheduledAt, PolicyMode: authorization.PolicyMode,
+			ConfirmedAt:          authorization.ConfirmedAt,
+			FingerprintsRecorded: authorization.ContentHash != "" && authorization.MediaHash != "" && authorization.SettingsHash != "",
+		})
 	}
 	return nil
 }
@@ -931,6 +976,9 @@ func deletePersonalOrganizations(ctx context.Context, tx bun.Tx, organizationIDs
 }
 
 func deleteUserScopedData(ctx context.Context, tx bun.Tx, userID string) error {
+	if _, err := tx.NewDelete().Model((*models.PublicationAuthorization)(nil)).Where("actor_user_id = ?", userID).Exec(ctx); err != nil {
+		return err
+	}
 	for _, invitation := range []any{(*models.OrganizationInvitation)(nil), (*models.WorkspaceInvitation)(nil)} {
 		if _, err := tx.NewDelete().Model(invitation).Where("invited_by_user_id = ?", userID).Exec(ctx); err != nil {
 			return err
@@ -1045,21 +1093,25 @@ func workspaceDeletionPlan(workspaceIDs []string, ids workspaceDeletionIDs) []mo
 		(*models.AnalyticsRenditionSnapshot)(nil),
 		(*models.AnalyticsSyncState)(nil))
 	deletions = appendIDDeletions(deletions, ids.renditions, "rendition_id IN (?)",
+		(*models.RenditionMediaDelivery)(nil),
 		(*models.RenditionMedia)(nil))
 	deletions = appendIDDeletions(deletions, ids.publications, "publication_id IN (?)",
 		(*models.PublicationAsset)(nil),
+		(*models.PublicationAuthorization)(nil),
 		(*models.PublicationLifecycleEvent)(nil),
 		(*models.Rendition)(nil))
 	deletions = appendIDDeletions(deletions, ids.posts, "post_id IN (?)",
-		(*models.ProviderMediaState)(nil),
+		(*models.PostMediaDelivery)(nil),
 		(*models.PostDestination)(nil),
 		(*models.PostMedia)(nil),
 		(*models.PostVariant)(nil),
 		(*models.ThreadDraft)(nil))
 	deletions = appendIDDeletions(deletions, ids.accounts, "social_account_id IN (?)",
-		(*models.ProviderMediaState)(nil))
+		(*models.PostMediaDelivery)(nil),
+		(*models.RenditionMediaDelivery)(nil))
 	deletions = appendIDDeletions(deletions, ids.media, "media_id IN (?)",
-		(*models.ProviderMediaState)(nil),
+		(*models.PostMediaDelivery)(nil),
+		(*models.RenditionMediaDelivery)(nil),
 		(*models.PostMedia)(nil),
 		(*models.PublicationAsset)(nil),
 		(*models.RenditionMedia)(nil))

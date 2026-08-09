@@ -6,6 +6,7 @@ import (
 	"io"
 	"strings"
 	"sync"
+	"time"
 )
 
 // PublishRequest contains everything needed to publish a single post.
@@ -48,6 +49,10 @@ type UploadMediaRequest struct {
 	CaptionFilename   string
 	CaptionSize       int64
 	CaptionReader     io.Reader
+	// OpenReaderAt returns a fresh reader positioned at an exact byte offset.
+	// Resumable adapters use it after a worker restart or an ambiguous network
+	// response; ordinary upload adapters can keep using Reader.
+	OpenReaderAt func(offset int64) (io.ReadCloser, error)
 }
 
 // DirectMediaPublisher is an optional publishing extension for providers, such
@@ -190,11 +195,25 @@ type AccountCapabilityProvider interface {
 
 // TokenResult is a platform-agnostic token response.
 type TokenResult struct {
-	AccessToken  string            `json:"access_token"`
-	RefreshToken string            `json:"refresh_token"`
-	ExpiresIn    int               `json:"expires_in"`
-	TokenType    string            `json:"token_type"`
-	Extra        map[string]string `json:"extra"` // Platform-specific data (e.g., user ID for Threads)
+	AccessToken      string            `json:"access_token"`
+	RefreshToken     string            `json:"refresh_token"`
+	ExpiresIn        int               `json:"expires_in"`
+	RefreshExpiresIn int               `json:"refresh_expires_in"`
+	TokenType        string            `json:"token_type"`
+	Extra            map[string]string `json:"extra"` // Platform-specific data (e.g., user ID for Threads)
+}
+
+// AuthorizationGrantDescriptor identifies the non-secret provider project and
+// authorization mechanism that issued a credential. It is persisted as grant
+// evidence, never used as a substitute for provider-side validation.
+type AuthorizationGrantDescriptor struct {
+	ProjectID     string
+	ExecutionMode string
+	Evidence      map[string]string
+}
+
+type AuthorizationGrantDescriber interface {
+	AuthorizationGrantDescriptor() AuthorizationGrantDescriptor
 }
 
 type RefreshCredentialSource string
@@ -309,6 +328,85 @@ type ContentURLResolver interface {
 // upload endpoint also creates the published object and needs post metadata.
 type MetadataMediaUploader interface {
 	UploadMediaWithMetadata(ctx context.Context, accessToken, accountID string, req UploadMediaRequest) (string, error)
+}
+
+type MediaUploadStatus string
+
+const (
+	MediaUploadPending   MediaUploadStatus = "pending"
+	MediaUploadUploading MediaUploadStatus = "uploading"
+	MediaUploadUploaded  MediaUploadStatus = "uploaded"
+	MediaUploadReady     MediaUploadStatus = "ready"
+	MediaUploadFailed    MediaUploadStatus = "failed"
+)
+
+type MediaRetryClassification string
+
+const (
+	MediaRetryNone       MediaRetryClassification = "none"
+	MediaRetrySafeResume MediaRetryClassification = "safe_resume"
+	MediaRetryReconcile  MediaRetryClassification = "reconcile"
+	MediaRetryTerminal   MediaRetryClassification = "terminal"
+)
+
+// MediaUploadError lets an adapter distinguish a safely resumable or
+// reconcile-only outcome from a definite terminal failure without exposing
+// provider response bodies or session credentials.
+type MediaUploadError struct {
+	RetryClassification MediaRetryClassification
+	Err                 error
+}
+
+func (e *MediaUploadError) Error() string {
+	if e == nil || e.Err == nil {
+		return "provider media upload failed"
+	}
+	return e.Err.Error()
+}
+
+func (e *MediaUploadError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Err
+}
+
+func MediaRetryClassificationForError(err error) (MediaRetryClassification, bool) {
+	var uploadErr *MediaUploadError
+	if !errors.As(err, &uploadErr) || uploadErr.RetryClassification == "" {
+		return "", false
+	}
+	return uploadErr.RetryClassification, true
+}
+
+// ResumableMediaUploadState is the provider-neutral durable checkpoint for an
+// upload. OpaqueState is decrypted only while the adapter is running and may
+// contain a bearer-style session URL; callers must encrypt it at rest.
+type ResumableMediaUploadState struct {
+	ProviderMediaID     string
+	OpaqueState         string
+	UploadedBytes       int64
+	TotalBytes          int64
+	SessionExpiresAt    time.Time
+	LastCheckedAt       time.Time
+	Status              MediaUploadStatus
+	RetryClassification MediaRetryClassification
+}
+
+type MediaUploadCheckpoint func(state ResumableMediaUploadState) error
+
+// ResumableMetadataMediaUploader persists progress through checkpoint before
+// returning control. On every retry it must reconcile the provider session
+// before sending bytes, because the previous request may have succeeded after
+// the worker lost its response.
+type ResumableMetadataMediaUploader interface {
+	UploadMediaResumable(
+		ctx context.Context,
+		accessToken, accountID string,
+		req UploadMediaRequest,
+		state ResumableMediaUploadState,
+		checkpoint MediaUploadCheckpoint,
+	) (string, error)
 }
 
 // AccountSelectionAdapter is implemented by OAuth providers that need a second

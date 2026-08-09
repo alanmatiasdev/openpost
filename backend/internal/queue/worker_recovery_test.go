@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/openpost/backend/internal/jobregistry"
 	"github.com/openpost/backend/internal/models"
 	analyticsservice "github.com/openpost/backend/internal/services/analytics"
 	"github.com/stretchr/testify/require"
@@ -73,6 +74,60 @@ func TestWorkerKeepsRecentProcessingJobsLocked(t *testing.T) {
 	require.Equal(t, jobStatusProcessing, stored.Status)
 	require.False(t, stored.LockedAt.IsZero())
 	require.Equal(t, "active-worker", stored.LockedBy)
+}
+
+func TestWorkerRecoversTheSameMediaCleanupChainAfterCrash(t *testing.T) {
+	t.Parallel()
+
+	db := createTestDB(t)
+	ctx := context.Background()
+	job := &models.Job{
+		ID: "cleanup-chain", Type: jobTypeMediaCleanup,
+		ScopeID: "workspace-1", DedupeKey: "daily",
+		Payload: `{"workspace_id":"workspace-1","days":14}`,
+		Status:  jobregistry.StatusProcessing, RunAt: time.Now().UTC().Add(-time.Hour),
+		LockedAt: time.Now().UTC().Add(-20 * time.Minute), LockedBy: "dead-worker",
+		MaxAttempts: 3,
+	}
+	_, err := db.NewInsert().Model(job).Exec(ctx)
+	require.NoError(t, err)
+
+	worker := &BackgroundWorker{db: db, workerID: "worker-test"}
+	worker.requeueStaleProcessingJobs(ctx)
+
+	var rows []models.Job
+	require.NoError(t, db.NewSelect().Model(&rows).
+		Where("type = ? AND scope_id = ? AND dedupe_key = ?", jobTypeMediaCleanup, "workspace-1", "daily").
+		Scan(ctx))
+	require.Len(t, rows, 1)
+	require.Equal(t, "cleanup-chain", rows[0].ID)
+	require.Equal(t, jobStatusPending, rows[0].Status)
+	require.True(t, rows[0].LockedAt.IsZero())
+}
+
+func TestMediaCleanupChainSurvivesExhaustedOperationalRetries(t *testing.T) {
+	t.Parallel()
+
+	db := createTestDB(t)
+	ctx := context.Background()
+	job := &models.Job{
+		ID: "cleanup-chain", Type: jobTypeMediaCleanup,
+		ScopeID: "workspace-1", DedupeKey: "daily",
+		Payload: `{"workspace_id":"workspace-1","days":14}`,
+		Status:  jobStatusPending, RunAt: time.Now().UTC().Add(-time.Minute), MaxAttempts: 1,
+	}
+	_, err := db.NewInsert().Model(job).Exec(ctx)
+	require.NoError(t, err)
+
+	worker := NewWorker(db, "worker-test", time.Second, nil, nil, stubStorage{})
+	require.True(t, worker.processNextJobIfAvailable(ctx))
+
+	var stored models.Job
+	require.NoError(t, db.NewSelect().Model(&stored).Where("id = ?", job.ID).Scan(ctx))
+	require.Equal(t, jobStatusPending, stored.Status)
+	require.Zero(t, stored.Attempts)
+	require.NotEmpty(t, stored.LastError)
+	require.WithinDuration(t, time.Now().UTC().Add(24*time.Hour), stored.RunAt, 5*time.Second)
 }
 
 func TestWorkerSupersedesStaleAnalyticsSweepWhenSuccessorIsPending(t *testing.T) {

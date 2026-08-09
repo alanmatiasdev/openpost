@@ -13,15 +13,31 @@ import (
 const refreshLeadTime = 5 * time.Minute
 
 type refreshJobPayload struct {
+	GrantID   string `json:"grant_id,omitempty"`
 	AccountID string `json:"account_id"`
 }
 
+type RefreshJobTarget struct {
+	GrantID   string
+	AccountID string
+}
+
+func ScheduleGrantRefreshJob(ctx context.Context, db *bun.DB, grantID string, expiresAt time.Time) error {
+	return scheduleRefreshJob(ctx, db, refreshJobPayload{GrantID: grantID}, expiresAt)
+}
+
+// ScheduleRefreshJob retains compatibility with pre-073 jobs and test
+// fixtures. New runtime scheduling is grant-scoped.
 func ScheduleRefreshJob(ctx context.Context, db *bun.DB, accountID string, expiresAt time.Time) error {
-	if db == nil || accountID == "" || expiresAt.IsZero() {
+	return scheduleRefreshJob(ctx, db, refreshJobPayload{AccountID: accountID}, expiresAt)
+}
+
+func scheduleRefreshJob(ctx context.Context, db *bun.DB, target refreshJobPayload, expiresAt time.Time) error {
+	if db == nil || (target.GrantID == "" && target.AccountID == "") || expiresAt.IsZero() {
 		return nil
 	}
 
-	payloadBytes, err := json.Marshal(refreshJobPayload{AccountID: accountID})
+	payloadBytes, err := json.Marshal(target)
 	if err != nil {
 		return err
 	}
@@ -56,10 +72,24 @@ func ScheduleRefreshJob(ctx context.Context, db *bun.DB, accountID string, expir
 	return err
 }
 
-func ParseRefreshJobPayload(payload string) (string, error) {
+func CancelGrantRefreshJobs(ctx context.Context, db bun.IDB, grantID string) error {
+	if db == nil || grantID == "" {
+		return nil
+	}
+	payloadBytes, err := json.Marshal(refreshJobPayload{GrantID: grantID})
+	if err != nil {
+		return err
+	}
+	_, err = db.NewDelete().Model((*models.Job)(nil)).
+		Where("type = ? AND status = ? AND payload = ?", "refresh_token", "pending", string(payloadBytes)).
+		Exec(ctx)
+	return err
+}
+
+func ParseRefreshJobPayload(payload string) (RefreshJobTarget, error) {
 	var jobPayload refreshJobPayload
 	if err := json.Unmarshal([]byte(payload), &jobPayload); err != nil {
-		return "", err
+		return RefreshJobTarget{}, err
 	}
-	return jobPayload.AccountID, nil
+	return RefreshJobTarget(jobPayload), nil
 }

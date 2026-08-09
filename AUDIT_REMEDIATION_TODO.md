@@ -43,14 +43,14 @@ These do not assert a newly observed production incident. They block Pinterest, 
 
 ### PROV-AUTH-001 — Separate OAuth grants from provider destinations
 
-- [ ] **Problem — Confirmed architecture gate:** multi-destination saves duplicate one credential into each `SocialAccount`, while refresh updates one row. Sibling locations/channels can diverge after rotating-token refresh.
+- [x] **Problem — Confirmed architecture gate:** multi-destination saves duplicate one credential into each `SocialAccount`, while refresh updates one row. Sibling locations/channels can diverge after rotating-token refresh.
 - **Fix:** add `oauth_grants` with provider/project identity, encrypted access and refresh tokens, both expiries, scopes, subject, execution mode/evidence, token version, refresh lease, consent, revocation, and validation timestamps. Let many destination accounts reference one grant; update rotating refresh tokens atomically with a DB lease/lock and compare-and-swap.
 - **Done when:** concurrent refresh cannot split sibling destinations; grant rotation/revocation is atomic; the UI distinguishes “disconnect this destination” from “revoke the grant and disconnect every destination”; SQLite/Postgres race tests pass.
 - **Evidence:** `backend/internal/services/account_saver/account_saver.go:155`, `backend/internal/services/tokenmanager/manager.go:124`.
 
 ### PROV-AUTHZ-001 — Persist an immutable publication authorization receipt
 
-- [ ] **Problem — Confirmed architecture gate:** durable jobs do not carry a complete immutable record of who authorized which revision, targets, content/media/settings, schedule, and provider execution policy.
+- [x] **Problem — Confirmed architecture gate:** durable jobs do not carry a complete immutable record of who authorized which revision, targets, content/media/settings, schedule, and provider execution policy.
 - **Fix:** add `publication_authorizations` with actor/origin (browser, API, MCP, CLI, worker), user/session/token/client identity, publication revision, account and `target_key`, scheduled time, content/media/settings hashes, policy mode, and confirmation time.
 - **Done when:** every external write can be tied to the exact consent, revision, targets, and policy that authorized it; changes after scheduling cannot silently alter the receipt; audit/export tests redact sensitive values.
 
@@ -63,7 +63,7 @@ These do not assert a newly observed production incident. They block Pinterest, 
 
 ### PROV-MEDIA-001 — Repair rendition-owned provider media state
 
-- [ ] **Problem — Reproduced schema gate:** migration 020 makes `provider_media_states.post_id` reference `posts`, while rendition publishing writes a rendition ID into the ownership fields. Upgraded SQLite foreign-key enforcement fails.
+- [x] **Problem — Reproduced schema gate:** migration 020 makes `provider_media_states.post_id` reference `posts`, while rendition publishing writes a rendition ID into the ownership fields. Upgraded SQLite foreign-key enforcement fails.
 - **Fix:** migrate to typed owner/owner ID or a dedicated rendition-media-delivery table containing provider upload ID, resumable session state, progress, expiry, cover/thumbnail relation, last check, and retry classification.
 - **Done when:** populated fresh/upgrade SQLite and Postgres migrations pass, the reproduced FK failure is gone, interrupted uploads resume safely, and no media record can attach to the wrong aggregate. This gates Pinterest video.
 - **Evidence:** `backend/internal/database/migrations/020_provider_media_states.sql`, `backend/internal/services/publisher/publisher.go:1467`.
@@ -86,7 +86,7 @@ These do not assert a newly observed production incident. They block Pinterest, 
 
 ### PUB-001 — Give REST and MCP one publication-creation command
 
-- [ ] **Problem — Baseline audit:** REST persists `CreationPreset`; MCP persists only `Intent`, so Bun can default Thread, Story, and video creations to the `post` preset and resolve the wrong capabilities.
+- [x] **Problem — Baseline audit:** REST persists `CreationPreset`; MCP persists only `Intent`, so Bun can default Thread, Story, and video creations to the `post` preset and resolve the wrong capabilities.
 - **Fix:** immediately write both fields in MCP, then move validation, defaults, persistence, and initial job behavior into a shared application command used by Huma, MCP, and CLI adapters.
 - **Done when:** REST and MCP create identical stored values and resolved capabilities for post, thread, story, and video; parity tests cover every mode.
 - **Evidence:** `backend/internal/api/handlers/publications.go:550`, `backend/internal/api/handlers/mcp.go:3345`, `backend/internal/models/models.go:751`, `backend/internal/capabilities/capabilities.go:595`.
@@ -107,7 +107,7 @@ These do not assert a newly observed production incident. They block Pinterest, 
 
 ### JOB-001 — Make media-cleanup scheduling exactly deduplicated and atomic
 
-- [ ] **Problem — Baseline audit:** cleanup uniqueness uses a substring search over serialized JSON, includes completed jobs, and performs a non-transactional check-then-insert; the recurring successor has no idempotency guard.
+- [x] **Problem — Baseline audit:** cleanup uniqueness uses a substring search over serialized JSON, includes completed jobs, and performs a non-transactional check-then-insert; the recurring successor has no idempotency guard.
 - **Fix:** add exact typed `scope_id`/`dedupe_key` fields, a partial unique constraint for active jobs, and transactional/upsert enqueue through a typed job registry.
 - **Done when:** substring-collision, completed-job, concurrent-enqueue, crash-recovery, and recurring-successor tests prove at most one active cleanup chain per scope.
 - **Evidence:** `backend/internal/queue/worker.go:540`, `backend/internal/queue/worker.go:603`.

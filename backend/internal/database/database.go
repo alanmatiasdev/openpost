@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/openpost/backend/internal/database/migrations"
+	"github.com/openpost/backend/internal/jobregistry"
 	"github.com/openpost/backend/internal/models"
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect/pgdialect"
@@ -126,7 +127,6 @@ func CreateSchema(db *bun.DB) error {
 		(*models.MediaTag)(nil),
 		(*models.MediaTagAssignment)(nil),
 		(*models.PostMedia)(nil),
-		(*models.ProviderMediaState)(nil),
 		(*models.Job)(nil),
 		(*models.PostVariant)(nil),
 		(*models.PostingSchedule)(nil),
@@ -150,6 +150,9 @@ func CreateSchema(db *bun.DB) error {
 		IfNotExists().
 		Exec(ctx); err != nil {
 		return fmt.Errorf("failed to create jobs polling index: %w", err)
+	}
+	if err := jobregistry.EnsureActiveDedupeIndex(ctx, db); err != nil {
+		return fmt.Errorf("failed to create jobs active dedupe index: %w", err)
 	}
 	if _, err := db.NewCreateIndex().
 		Index("analytics_sweep_pending_unique_idx").

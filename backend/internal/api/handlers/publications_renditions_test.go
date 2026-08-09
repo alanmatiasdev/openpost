@@ -39,6 +39,9 @@ func TestRetryFailedPublicationRenditionsQueuesOnlyRetryableFailures(t *testing.
 		Role:        models.WorkspaceRoleAdmin,
 	}).Exec(ctx)
 	require.NoError(t, err)
+	seedHandlerAccount(t, db, "account-1", "x")
+	seedHandlerAccount(t, db, "account-2", "mastodon")
+	seedHandlerAccount(t, db, "account-3", "linkedin")
 	_, err = db.NewInsert().Model(&models.Publication{
 		ID:              "publication-1",
 		WorkspaceID:     "workspace-1",
@@ -124,9 +127,11 @@ func TestRetryFailedPublicationRenditionsQueuesOnlyRetryableFailures(t *testing.
 	require.Contains(t, jobs[0].Payload, `"publication_id":"publication-1"`)
 
 	var events []models.PublicationLifecycleEvent
-	require.NoError(t, db.NewSelect().Model(&events).Scan(ctx))
-	require.Len(t, events, 1)
-	require.Equal(t, "Retry queued for failed destinations", events[0].Message)
+	require.NoError(t, db.NewSelect().Model(&events).Order("created_at ASC").Scan(ctx))
+	require.Len(t, events, 2)
+	require.Equal(t, "authorization_confirmed", events[0].Type)
+	require.NotContains(t, events[0].MetadataJSON, "Launch")
+	require.Equal(t, "Retry queued for failed destinations", events[1].Message)
 
 	retryAgain := httptest.NewRequestWithContext(
 		ctx,
@@ -530,6 +535,8 @@ func TestRetryPublicationRenditionQueuesOnlySafeTransientFailures(t *testing.T) 
 		Role:        models.WorkspaceRoleEditor,
 	}).Exec(ctx)
 	require.NoError(t, err)
+	seedHandlerAccount(t, db, "account-transient", "x")
+	seedHandlerAccount(t, db, "account-permanent", "x")
 	_, err = db.NewInsert().Model(&models.Publication{
 		ID:              "publication-1",
 		WorkspaceID:     "workspace-1",

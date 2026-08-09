@@ -95,6 +95,7 @@ func TestCreateAndExchangeCodeWithClientMetadata(t *testing.T) {
 	require.Equal(t, "https://app.openpost.test/mcp", principal.Audience)
 	require.Equal(t, "ws-1", principal.WorkspaceID)
 	require.Equal(t, "ChatGPT OpenPost", principal.TokenName)
+	require.Equal(t, client.URL+"/client.json", principal.ClientID)
 
 	_, err = service.ExchangeCode(ctx, TokenRequest{
 		GrantType:    "authorization_code",
