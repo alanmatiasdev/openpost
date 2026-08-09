@@ -25,6 +25,13 @@ const (
 	TypeNewMessage            = "new_message"
 	TypeReplyFailed           = "reply_failed"
 	TypeWorkspaceInvite       = "workspace_invite"
+
+	visibleWorkspaceNotifications = "(workspace_id = ? OR workspace_id = '')"
+)
+
+var (
+	ErrInvalidCursor          = errors.New("invalid notification cursor")
+	errWorkspaceScopeRequired = errors.New("notification workspace scope is required")
 )
 
 var criticalInApp = map[string]bool{
@@ -251,19 +258,14 @@ func (s *Service) List(ctx context.Context, userID, workspaceID, cursor string, 
 		Order("created_at DESC", "id DESC").
 		Limit(limit + 1)
 	if workspaceID != "" {
-		query = query.Where("(workspace_id = ? OR workspace_id = '')", workspaceID)
+		query = query.Where(visibleWorkspaceNotifications, workspaceID)
 	}
 	if cursor != "" {
-		var createdAt time.Time
-		var id string
-		if decoded, err := time.Parse(time.RFC3339Nano, strings.SplitN(cursor, "|", 2)[0]); err == nil {
-			createdAt = decoded
-			parts := strings.SplitN(cursor, "|", 2)
-			if len(parts) == 2 {
-				id = parts[1]
-			}
-			query = query.Where("(created_at < ? OR (created_at = ? AND id < ?))", createdAt, createdAt, id)
+		createdAt, id, err := parseCursor(cursor)
+		if err != nil {
+			return NotificationPage{}, err
 		}
+		query = query.Where("(created_at < ? OR (created_at = ? AND id < ?))", createdAt, createdAt, id)
 	}
 	if err := query.Scan(ctx); err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return NotificationPage{}, err
@@ -280,7 +282,7 @@ func (s *Service) List(ctx context.Context, userID, workspaceID, cursor string, 
 	unreadQuery := s.db.NewSelect().Model((*models.UserNotification)(nil)).
 		Where("user_id = ? AND read_at IS NULL", userID)
 	if workspaceID != "" {
-		unreadQuery = unreadQuery.Where("(workspace_id = ? OR workspace_id = '')", workspaceID)
+		unreadQuery = unreadQuery.Where(visibleWorkspaceNotifications, workspaceID)
 	}
 	count, err := unreadQuery.Count(ctx)
 	if err != nil {
@@ -290,10 +292,27 @@ func (s *Service) List(ctx context.Context, userID, workspaceID, cursor string, 
 	return page, nil
 }
 
-func (s *Service) MarkRead(ctx context.Context, userID string, ids []string, all bool) error {
+func parseCursor(cursor string) (time.Time, string, error) {
+	parts := strings.Split(cursor, "|")
+	if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" || strings.TrimSpace(parts[1]) == "" {
+		return time.Time{}, "", ErrInvalidCursor
+	}
+	createdAt, err := time.Parse(time.RFC3339Nano, parts[0])
+	if err != nil {
+		return time.Time{}, "", ErrInvalidCursor
+	}
+	return createdAt, parts[1], nil
+}
+
+func (s *Service) MarkRead(ctx context.Context, userID, workspaceID string, ids []string, all bool) error {
+	workspaceID = strings.TrimSpace(workspaceID)
+	if workspaceID == "" {
+		return errWorkspaceScopeRequired
+	}
 	query := s.db.NewUpdate().Model((*models.UserNotification)(nil)).
 		Set("read_at = ?", s.now()).
-		Where("user_id = ? AND read_at IS NULL", userID)
+		Where("user_id = ? AND read_at IS NULL", userID).
+		Where(visibleWorkspaceNotifications, workspaceID)
 	if !all {
 		if len(ids) == 0 {
 			return nil
@@ -304,8 +323,14 @@ func (s *Service) MarkRead(ctx context.Context, userID string, ids []string, all
 	return err
 }
 
-func (s *Service) Delete(ctx context.Context, userID string, ids []string, all bool) error {
-	query := s.db.NewDelete().Model((*models.UserNotification)(nil)).Where("user_id = ?", userID)
+func (s *Service) Delete(ctx context.Context, userID, workspaceID string, ids []string, all bool) error {
+	workspaceID = strings.TrimSpace(workspaceID)
+	if workspaceID == "" {
+		return errWorkspaceScopeRequired
+	}
+	query := s.db.NewDelete().Model((*models.UserNotification)(nil)).
+		Where("user_id = ?", userID).
+		Where(visibleWorkspaceNotifications, workspaceID)
 	if !all {
 		if len(ids) == 0 {
 			return nil

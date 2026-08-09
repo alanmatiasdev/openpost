@@ -2131,7 +2131,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Delete one or all notifications */
+        /** Delete notifications from a workspace inbox */
         post: operations["delete-notifications"];
         delete?: never;
         options?: never;
@@ -2166,7 +2166,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Mark one or all notifications read */
+        /** Mark notifications in a workspace inbox read */
         post: operations["mark-notifications-read"];
         delete?: never;
         options?: never;
@@ -4071,10 +4071,12 @@ export interface components {
              * @example https://example.com/schemas/ChangeNotificationsInputBody.json
              */
             readonly $schema?: string;
-            /** @description Apply to every notification for this user */
+            /** @description Apply to every workspace and account-wide notification visible in this inbox */
             all?: boolean;
-            /** @description Notification IDs */
+            /** @description Notification IDs within the workspace inbox */
             ids?: string[] | null;
+            /** @description Workspace whose inbox should be changed */
+            workspace_id: string;
         };
         ChangePasswordInputBody: {
             /**
@@ -17376,9 +17378,9 @@ export interface operations {
     };
     "list-notifications": {
         parameters: {
-            query?: {
-                /** @description Current workspace ID */
-                workspace_id?: string;
+            query: {
+                /** @description Workspace whose inbox should be listed */
+                workspace_id: string;
                 /** @description Opaque pagination cursor */
                 cursor?: string;
                 limit?: number;
@@ -17396,6 +17398,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NotificationPage"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
                 };
             };
             /** @description Forbidden */
@@ -17447,8 +17458,35 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Error */
-            default: {
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -17542,8 +17580,35 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Error */
-            default: {
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };

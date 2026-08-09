@@ -121,7 +121,7 @@ These do not assert a newly observed production incident. They block Pinterest, 
 
 ### NOTIF-001 — Scope notification bulk actions to the visible workspace
 
-- [ ] **Problem — Current source:** `/notifications` lists one workspace, but “Mark all read” sends only `{all:true}` and the service updates every unread notification for the user. A click can silently mark unseen alerts in other workspaces as read. Delete-all has the same global backend scope and needs explicit product wording if that is intentional.
+- [x] **Problem — Current source:** `/notifications` lists one workspace, but “Mark all read” sends only `{all:true}` and the service updates every unread notification for the user. A click can silently mark unseen alerts in other workspaces as read. Delete-all has the same global backend scope and needs explicit product wording if that is intentional.
 - **Fix:** include and authorize `workspace_id` for workspace-local bulk mutations and apply the same selected-workspace-plus-deliberate-global-item rule as the list, or change the list and copy to an intentionally global inbox. Give delete-all its own clearly stated scope and confirmation.
 - **Done when:** multi-workspace tests prove a workspace action cannot mutate another workspace; the UI states whether an action is workspace or account wide.
 - **Evidence:** `frontend/src/routes/notifications/+page.svelte:49`, `frontend/src/routes/notifications/+page.svelte:62`, `backend/internal/api/handlers/notifications.go:34`, `backend/internal/services/notifications/service.go:244`, `backend/internal/services/notifications/service.go:293`.
@@ -607,28 +607,28 @@ Maintenance contract for this lane: a new social provider requires no n8n packag
 
 ### NOTIF-002 — Keep the persistent unread badge synchronized
 
-- [ ] **Problem — Current source:** the sidebar bell fetches on mount/workspace change, while the notifications page mutates only local state. The persistent shell badge stays stale after opening or marking notifications read until reload or workspace switch.
+- [x] **Problem — Current source:** the sidebar bell fetches on mount/workspace change, while the notifications page mutates only local state. The persistent shell badge stays stale after opening or marking notifications read until reload or workspace switch.
 - **Fix:** use one workspace-scoped notification store/query cache; invalidate it after successful mutations; optionally add bounded polling or realtime events with reconnect behavior.
 - **Done when:** bell, list, count, and workspace switch agree immediately after read/delete/bulk actions and after server-side arrivals; tests cover a mounted root layout across navigation.
 - **Evidence:** `frontend/src/lib/components/notification-bell.svelte:15`, `frontend/src/routes/notifications/+page.svelte:62`.
 
 ### NOTIF-003 — Do not show a notification as read when the write failed
 
-- [ ] **Problem — Current source:** opening an unread notification ignores the POST error, then unconditionally sets local `read_at` and decrements the count.
+- [x] **Problem — Current source:** opening an unread notification ignores the POST error, then unconditionally sets local `read_at` and decrements the count.
 - **Fix:** update local/shared state only after confirmed success, or use an optimistic update with rollback and an actionable toast; preserve navigation without lying about server state.
 - **Done when:** a forced 500 leaves the notification unread and count unchanged or rolls them back visibly; retry succeeds once without double-decrement.
 - **Evidence:** `frontend/src/routes/notifications/+page.svelte:87`.
 
 ### NOTIF-004 — Paginate the notification feed and make errors recoverable
 
-- [ ] **Problem — Current source:** the page requests 100 items and ignores `next_cursor`, so older alerts are unreachable. Initial load error has no retry.
+- [x] **Problem — Current source:** the page requests 100 items and ignores `next_cursor`, so older alerts are unreachable. Initial load error has no retry.
 - **Fix:** implement cursor pagination or “Load more” with stable chronological grouping; preserve filters/workspace; add a retryable error state distinct from an empty feed.
 - **Done when:** a fixture with more than 100 notifications can reach every item without duplicates; zero, no-results, and error states are distinct; cursor failures can retry.
 - **Evidence:** `frontend/src/routes/notifications/+page.svelte:49`, `backend/internal/services/notifications/service.go:274`.
 
 ### NOTIF-005 — Improve notification semantics and scanability
 
-- [ ] **Problem — Current source audit:** the feed has basic chronological/read state, but type, action, timestamp detail, date grouping, and assistive semantics are inconsistent or thin.
+- [x] **Problem — Current source audit:** the feed has basic chronological/read state, but type, action, timestamp detail, date grouping, and assistive semantics are inconsistent or thin.
 - **Fix:** group by Today/Yesterday/earlier; include text labels with type icons; use relative times for recent items and complete date/time for older items; expose unread state programmatically; make row actions explicit instead of turning every surface into an ambiguous link.
 - **Done when:** color is never the only unread/type signal; screen readers announce type, unread state, time, and action; mark-all-read has a correct disabled state and live confirmation.
 - **Evidence:** `frontend/src/routes/notifications/+page.svelte` and `frontend/src/lib/components/notification-bell.svelte`.

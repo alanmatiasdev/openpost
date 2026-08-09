@@ -44,6 +44,8 @@ Open **Settings → Notifications** to choose in-app and email delivery for each
 
 Email alerts use the same SMTP, Resend, or Cloudflare Email provider as account messages. OpenPost queues each alert in the database with the event, retries temporary delivery failures, and checks your current preference again before sending. If an administrator has not configured email delivery, the settings page shows email as unavailable.
 
-Workspace invites for an existing user do not store the raw invite token in the alert. Each user can mark alerts as read, delete them, or change alert settings.
+Workspace invites for an existing user do not store the raw invite token in the alert. The Notifications page shows alerts for the selected workspace plus account-wide notices such as workspace invitations. Marking the inbox read or deleting its history changes the workspace alerts in that inbox and its account-wide notices; alerts tied to other workspaces stay unchanged. Because account-wide notices appear in every workspace, reading or deleting one applies everywhere it appears. Deletion is permanent.
+
+The sidebar bell and Notifications page share the same selected-workspace inbox. Successful read and delete actions update both immediately; failed actions keep the prior unread state so you can try again. While the app is open, it checks for new alerts on a bounded timer and when the window regains focus. The feed loads older alerts in pages, keeps the same read-status filter while loading, and offers a separate retry for the first page and for an older-page failure. Alerts are grouped under Today, Yesterday, or their full date, and each row names its event type, read state, time, and available actions.
 
 Alert settings do not control inbox collection. Turn inbox collection on or off from the social account.

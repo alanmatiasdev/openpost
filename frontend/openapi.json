@@ -1816,17 +1816,22 @@
 						"type": "string"
 					},
 					"all": {
-						"description": "Apply to every notification for this user",
+						"description": "Apply to every workspace and account-wide notification visible in this inbox",
 						"type": "boolean"
 					},
 					"ids": {
-						"description": "Notification IDs",
+						"description": "Notification IDs within the workspace inbox",
 						"items": {
 							"type": "string"
 						},
 						"type": ["array", "null"]
+					},
+					"workspace_id": {
+						"description": "Workspace whose inbox should be changed",
+						"type": "string"
 					}
 				},
+				"required": ["workspace_id"],
 				"type": "object"
 			},
 			"ChangePasswordInputBody": {
@@ -24608,12 +24613,13 @@
 				"operationId": "list-notifications",
 				"parameters": [
 					{
-						"description": "Current workspace ID",
+						"description": "Workspace whose inbox should be listed",
 						"explode": false,
 						"in": "query",
 						"name": "workspace_id",
+						"required": true,
 						"schema": {
-							"description": "Current workspace ID",
+							"description": "Workspace whose inbox should be listed",
 							"type": "string"
 						}
 					},
@@ -24650,6 +24656,16 @@
 							}
 						},
 						"description": "OK"
+					},
+					"400": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Bad Request"
 					},
 					"403": {
 						"content": {
@@ -24703,7 +24719,7 @@
 					"204": {
 						"description": "No Content"
 					},
-					"default": {
+					"400": {
 						"content": {
 							"application/problem+json": {
 								"schema": {
@@ -24711,10 +24727,40 @@
 								}
 							}
 						},
-						"description": "Error"
+						"description": "Bad Request"
+					},
+					"403": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Forbidden"
+					},
+					"422": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Unprocessable Entity"
+					},
+					"500": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Internal Server Error"
 					}
 				},
-				"summary": "Delete one or all notifications",
+				"summary": "Delete notifications from a workspace inbox",
 				"tags": ["Notifications"]
 			}
 		},
@@ -24804,7 +24850,7 @@
 					"204": {
 						"description": "No Content"
 					},
-					"default": {
+					"400": {
 						"content": {
 							"application/problem+json": {
 								"schema": {
@@ -24812,10 +24858,40 @@
 								}
 							}
 						},
-						"description": "Error"
+						"description": "Bad Request"
+					},
+					"403": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Forbidden"
+					},
+					"422": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Unprocessable Entity"
+					},
+					"500": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Internal Server Error"
 					}
 				},
-				"summary": "Mark one or all notifications read",
+				"summary": "Mark notifications in a workspace inbox read",
 				"tags": ["Notifications"]
 			}
 		},

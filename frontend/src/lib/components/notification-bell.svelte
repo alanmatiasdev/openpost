@@ -1,32 +1,21 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
-	import { client } from '$lib/api/client';
+	import { notificationInbox } from '$lib/stores/notifications.svelte';
 	import { workspaceCtx } from '$lib/stores/workspace.svelte';
 	import { m } from '$lib/paraglide/messages';
 	import * as Sidebar from '$lib/components/ui/sidebar';
 	import BellIcon from 'lucide-svelte/icons/bell';
 
 	let { compact = false }: { compact?: boolean } = $props();
-	let unreadCount = $state(0);
-	let loadedWorkspace = '';
 	const workspaceId = $derived(workspaceCtx.currentWorkspace?.id ?? '');
-
-	async function loadUnread(requestedWorkspace: string) {
-		const { data } = await client.GET('/notifications', {
-			params: { query: { workspace_id: requestedWorkspace, limit: 1 } }
-		});
-		if (workspaceId === requestedWorkspace) unreadCount = data?.unread_count ?? 0;
-	}
+	const inbox = $derived(notificationInbox.snapshot(workspaceId));
+	const unreadCount = $derived(inbox.unreadCount);
 
 	$effect(() => {
 		const currentWorkspace = workspaceId;
-		if (!currentWorkspace) {
-			loadedWorkspace = '';
-			unreadCount = 0;
-		} else if (currentWorkspace !== loadedWorkspace) {
-			loadedWorkspace = currentWorkspace;
-			void loadUnread(currentWorkspace);
-		}
+		if (!currentWorkspace) return;
+		void notificationInbox.ensureLoaded(currentWorkspace);
+		return notificationInbox.startAutoRefresh(currentWorkspace);
 	});
 </script>
 
@@ -34,7 +23,7 @@
 	<a
 		href={resolve('/notifications' as '/')}
 		class="relative inline-flex size-8 items-center justify-center rounded-md text-sidebar-foreground/62 hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:outline-none"
-		aria-label={m.notifications_heading()}
+		aria-label={m.notifications_bell_label({ count: unreadCount })}
 		title={m.notifications_heading()}
 		data-testid="sidebar-notifications"
 	>
@@ -49,9 +38,16 @@
 	</a>
 {:else}
 	<Sidebar.MenuItem>
-		<Sidebar.MenuButton class="relative h-10 text-sm" tooltipContent={m.notifications_heading()}>
+		<Sidebar.MenuButton
+			class="relative h-10 text-sm"
+			tooltipContent={m.notifications_bell_label({ count: unreadCount })}
+		>
 			{#snippet child({ props })}
-				<a {...props} href={resolve('/notifications' as '/')}>
+				<a
+					{...props}
+					href={resolve('/notifications' as '/')}
+					aria-label={m.notifications_bell_label({ count: unreadCount })}
+				>
 					<BellIcon class="size-4" />
 					<span>{m.notifications_heading()}</span>
 					{#if unreadCount > 0}

@@ -3,6 +3,7 @@ import { writable } from 'svelte/store';
 import { client, setToken, recreateClient, type User } from '$lib/api/client';
 import { getPasskeyAssertion } from '$lib/auth/webauthn';
 import { IS_CAPACITOR } from '$lib/env';
+import { notificationInbox } from '$lib/stores/notifications.svelte';
 
 interface AuthState {
 	user: User | null;
@@ -38,6 +39,22 @@ function createAuthStore() {
 		isLoading: true,
 		isAuthenticated: false
 	});
+	let activeUserID: string | null = null;
+	const clearAccountState = () => {
+		activeUserID = null;
+		notificationInbox.clear();
+		setToken(null);
+		set({ user: null, isLoading: false, isAuthenticated: false });
+	};
+	const setAuthenticatedUser = (user: User | null) => {
+		if (!user) {
+			clearAccountState();
+			return;
+		}
+		if (activeUserID !== user.id) notificationInbox.clear();
+		activeUserID = user.id;
+		set({ user, isLoading: false, isAuthenticated: true });
+	};
 
 	return {
 		subscribe,
@@ -51,19 +68,17 @@ function createAuthStore() {
 				if (options.optional) {
 					const { data, error } = await client.GET('/auth/session-state');
 					if (error || !data?.authenticated || !data.user) {
-						setToken(null);
-						set({ user: null, isLoading: false, isAuthenticated: false });
+						clearAccountState();
 						return;
 					}
-					set({ user: data.user, isLoading: false, isAuthenticated: true });
+					setAuthenticatedUser(data.user);
 					return;
 				}
 				const { data, error } = await client.GET('/auth/me');
 				if (error || !data) throw new Error('Failed to fetch user');
-				set({ user: data, isLoading: false, isAuthenticated: true });
+				setAuthenticatedUser(data);
 			} catch {
-				setToken(null);
-				set({ user: null, isLoading: false, isAuthenticated: false });
+				clearAccountState();
 			}
 		},
 		async login(email: string, password: string): Promise<AuthActionResult> {
@@ -73,7 +88,7 @@ function createAuthStore() {
 				});
 				if (error || !data) throw new Error(error?.detail ?? 'Login failed');
 				if (data.requires_mfa) {
-					set({ user: null, isLoading: false, isAuthenticated: false });
+					clearAccountState();
 					return {
 						success: false,
 						requiresMfa: true,
@@ -82,11 +97,11 @@ function createAuthStore() {
 					};
 				}
 				if (data.requires_email_verification) {
-					set({ user: null, isLoading: false, isAuthenticated: false });
+					clearAccountState();
 					return emailVerificationResult(data);
 				}
 				setToken(IS_CAPACITOR ? data.token : null);
-				set({ user: data.user ?? null, isLoading: false, isAuthenticated: true });
+				setAuthenticatedUser(data.user ?? null);
 				return { success: true };
 			} catch (e) {
 				return { success: false, error: (e as Error).message };
@@ -99,11 +114,11 @@ function createAuthStore() {
 				});
 				if (error || !data) throw new Error(error?.detail || 'Registration failed');
 				if (data.requires_email_verification) {
-					set({ user: null, isLoading: false, isAuthenticated: false });
+					clearAccountState();
 					return emailVerificationResult(data);
 				}
 				setToken(IS_CAPACITOR ? data.token : null);
-				set({ user: data.user ?? null, isLoading: false, isAuthenticated: true });
+				setAuthenticatedUser(data.user ?? null);
 				return { success: true };
 			} catch (e) {
 				return { success: false, error: (e as Error).message };
@@ -116,7 +131,7 @@ function createAuthStore() {
 				});
 				if (error || !data?.user) throw new Error(error?.detail ?? 'Email verification failed');
 				setToken(IS_CAPACITOR ? data.token : null);
-				set({ user: data.user, isLoading: false, isAuthenticated: true });
+				setAuthenticatedUser(data.user);
 				return { success: true };
 			} catch (e) {
 				return { success: false, error: (e as Error).message };
@@ -170,7 +185,7 @@ function createAuthStore() {
 				if (error || !data) throw new Error(error?.detail ?? 'Passkey verification failed');
 
 				setToken(IS_CAPACITOR ? data.token : null);
-				set({ user: data.user ?? null, isLoading: false, isAuthenticated: true });
+				setAuthenticatedUser(data.user ?? null);
 				return { success: true };
 			} catch (e) {
 				return { success: false, error: (e as Error).message };
@@ -187,7 +202,7 @@ function createAuthStore() {
 				if (data.purpose === 'login') {
 					if (!data.token || !data.user) throw new Error('Single sign-on response is incomplete');
 					setToken(data.token);
-					set({ user: data.user, isLoading: false, isAuthenticated: true });
+					setAuthenticatedUser(data.user);
 				}
 				return {
 					success: true,
@@ -208,15 +223,14 @@ function createAuthStore() {
 			this.clearLocal();
 		},
 		clearLocal() {
-			setToken(null);
-			set({ user: null, isLoading: false, isAuthenticated: false });
+			clearAccountState();
 		},
 		setUser(user: User | null) {
-			update((state) => ({
-				...state,
-				user,
-				isAuthenticated: Boolean(user)
-			}));
+			if (user?.id === activeUserID) {
+				update((state) => ({ ...state, user, isAuthenticated: true }));
+				return;
+			}
+			setAuthenticatedUser(user);
 		}
 	};
 }

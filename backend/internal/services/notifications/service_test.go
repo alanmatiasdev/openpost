@@ -182,7 +182,7 @@ func TestNotificationCanDeliverEmailWithoutCreatingOptionalInAppItem(t *testing.
 	require.Equal(t, 1, jobs)
 }
 
-func TestNotificationListScopesMarksAndDeletesByUser(t *testing.T) {
+func TestNotificationListAndChangesUseVisibleWorkspaceScope(t *testing.T) {
 	db := notificationsTestDB(t)
 	ctx := context.Background()
 	_, err := db.NewInsert().Model(&models.User{ID: "user-2", Email: "two@example.com", PasswordHash: "hash"}).Exec(ctx)
@@ -201,16 +201,91 @@ func TestNotificationListScopesMarksAndDeletesByUser(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, page.Items, 2)
 	require.Equal(t, 2, page.UnreadCount)
-	require.NoError(t, service.MarkRead(ctx, "user-1", []string{page.Items[0].ID}, false))
+
+	var workspaceTwoID string
+	require.NoError(t, db.NewSelect().Model((*models.UserNotification)(nil)).
+		Column("id").Where("user_id = ? AND workspace_id = ?", "user-1", "workspace-2").
+		Scan(ctx, &workspaceTwoID))
+	require.NoError(t, service.MarkRead(ctx, "user-1", "workspace-1", []string{workspaceTwoID}, false))
+
+	otherWorkspace, err := service.List(ctx, "user-1", "workspace-2", "", 30)
+	require.NoError(t, err)
+	require.Equal(t, 2, otherWorkspace.UnreadCount, "an ID from another workspace must not bypass the visible-workspace scope")
+	require.NoError(t, service.MarkRead(ctx, "user-1", "workspace-1", nil, true))
 
 	page, err = service.List(ctx, "user-1", "workspace-1", "", 30)
 	require.NoError(t, err)
-	require.Equal(t, 1, page.UnreadCount)
-	require.NoError(t, service.Delete(ctx, "user-1", nil, true))
+	require.Zero(t, page.UnreadCount)
+
+	otherWorkspace, err = service.List(ctx, "user-1", "workspace-2", "", 30)
+	require.NoError(t, err)
+	require.Equal(t, 1, otherWorkspace.UnreadCount, "a workspace-one bulk action must not mark workspace-two notifications read")
+
+	require.NoError(t, service.Delete(ctx, "user-1", "workspace-1", []string{workspaceTwoID}, false))
+	require.NoError(t, service.Delete(ctx, "user-1", "workspace-1", nil, true))
+
+	otherWorkspace, err = service.List(ctx, "user-1", "workspace-2", "", 30)
+	require.NoError(t, err)
+	require.Len(t, otherWorkspace.Items, 1)
+	require.Equal(t, "Workspace two", otherWorkspace.Items[0].Title)
+	require.Equal(t, 1, otherWorkspace.UnreadCount)
+
+	require.ErrorIs(t, service.MarkRead(ctx, "user-1", "", nil, true), errWorkspaceScopeRequired)
+	require.ErrorIs(t, service.Delete(ctx, "user-1", "", nil, true), errWorkspaceScopeRequired)
+	otherWorkspace, err = service.List(ctx, "user-1", "workspace-2", "", 30)
+	require.NoError(t, err)
+	require.Len(t, otherWorkspace.Items, 1)
+	require.Equal(t, 1, otherWorkspace.UnreadCount)
 
 	other, err := service.List(ctx, "user-2", "workspace-1", "", 30)
 	require.NoError(t, err)
 	require.Len(t, other.Items, 1)
+}
+
+func TestNotificationListCursorReachesEveryItemWithoutDuplicates(t *testing.T) {
+	db := notificationsTestDB(t)
+	service := NewService(db)
+	ctx := context.Background()
+	base := time.Date(2026, 8, 9, 12, 0, 0, 0, time.UTC)
+	items := make([]models.UserNotification, 0, 125)
+	for index := range 125 {
+		items = append(items, models.UserNotification{
+			ID:          fmt.Sprintf("notification-%03d", index),
+			UserID:      "user-1",
+			WorkspaceID: "workspace-1",
+			Type:        TypePostPublished,
+			Title:       fmt.Sprintf("Notification %03d", index),
+			CreatedAt:   base.Add(-time.Duration(index/2) * time.Minute),
+		})
+	}
+	_, err := db.NewInsert().Model(&items).Exec(ctx)
+	require.NoError(t, err)
+
+	seen := make(map[string]bool, len(items))
+	cursor := ""
+	pageCount := 0
+	for {
+		page, err := service.List(ctx, "user-1", "workspace-1", cursor, 30)
+		require.NoError(t, err)
+		require.Equal(t, len(items), page.UnreadCount)
+		for _, item := range page.Items {
+			require.False(t, seen[item.ID], "notification %s appeared on more than one page", item.ID)
+			seen[item.ID] = true
+		}
+		pageCount++
+		if page.NextCursor == "" {
+			break
+		}
+		require.NotEqual(t, cursor, page.NextCursor)
+		cursor = page.NextCursor
+	}
+	require.Equal(t, 5, pageCount)
+	require.Len(t, seen, len(items))
+
+	_, err = service.List(ctx, "user-1", "workspace-1", "not-a-cursor", 30)
+	require.ErrorIs(t, err, ErrInvalidCursor)
+	_, err = service.List(ctx, "user-1", "workspace-1", base.Format(time.RFC3339Nano)+"|", 30)
+	require.ErrorIs(t, err, ErrInvalidCursor)
 }
 
 func TestNotificationActionsKeepOnlySafeLocalOperations(t *testing.T) {
