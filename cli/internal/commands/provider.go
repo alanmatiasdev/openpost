@@ -1,9 +1,11 @@
 package commands
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 
+	"github.com/openpost/cli/internal/api"
 	"github.com/spf13/cobra"
 )
 
@@ -90,17 +92,36 @@ func newProviderReadinessCmd() *cobra.Command {
 			for _, provider := range providers {
 				rows = append(rows, []string{
 					provider.Provider,
+					provider.State,
 					provider.ConfiguredAppState,
 					strconv.Itoa(provider.ConnectedAccounts),
-					provider.PublicMediaHealth.Status,
 					emptyDash(strings.Join(provider.BlockingIssues, ", ")),
-					emptyDash(strings.Join(provider.NextActions, "; ")),
+					emptyDash(strings.Join(providerReadinessActions(provider), "; ")),
 				})
 			}
-			p.Table([]string{"PROVIDER", "APP", "ACCOUNTS", "MEDIA", "BLOCKERS", "NEXT ACTIONS"}, rows)
+			p.Table([]string{"PROVIDER", "STATE", "APP", "ACCOUNTS", "BLOCKERS", "NEXT ACTION"}, rows)
 			return nil
 		},
 	}
+}
+
+func providerReadinessActions(provider api.ProviderReadiness) []string {
+	actions := make([]string, 0, 2)
+	if provider.ConfiguredAppState == "missing" || slices.Contains(provider.BlockingIssues, "missing_configuration") {
+		actions = append(actions, "Configure provider credentials for "+provider.Provider)
+	}
+	if slices.Contains(provider.BlockingIssues, "reconnect_required") ||
+		slices.Contains(provider.BlockingIssues, "authorization_expired") ||
+		slices.Contains(provider.BlockingIssues, "missing_scope") {
+		actions = append(actions, "Reconnect the affected "+provider.Provider+" account")
+	}
+	if slices.Contains(provider.BlockingIssues, "disabled") {
+		actions = append(actions, "Ask an instance administrator to re-enable "+provider.Provider)
+	}
+	if slices.Contains(provider.BlockingIssues, "readiness_evidence_unavailable") {
+		actions = append(actions, "Retry after readiness evidence is available")
+	}
+	return actions
 }
 
 func newProviderCapabilitiesCmd() *cobra.Command {

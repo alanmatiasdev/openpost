@@ -7,7 +7,7 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 -->
 <script lang="ts">
 	import { resolve } from '$app/paths';
-	import { ArrowRight, CalendarRange, Layers3, LockKeyhole } from 'lucide-svelte';
+	import { ArrowRight, CalendarRange, Layers3, LockKeyhole } from '@lucide/svelte';
 	import { Button } from '$lib/components/ui/button';
 	import CreatorStories from './_components/CreatorStories.svelte';
 	import DestinationComposerDemo from './_components/DestinationComposerDemo.svelte';
@@ -114,7 +114,7 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 				{/each}
 			</div>
 		</div>
-		<div class="supported-marks" aria-label="Supported social platforms">
+		<div class="supported-marks" aria-label="Implemented social platform adapters">
 			{#each platforms as platform (platform.slug)}
 				<a href={resolve(`/platforms/${platform.slug}`)} aria-label={`${platform.name} guide`}>
 					<PostizSocialLogo platform={platform.slug} />

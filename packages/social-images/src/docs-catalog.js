@@ -211,7 +211,7 @@ export const docsPageCatalog = Object.freeze([
   },
   {
     "page": "providers/launch-matrix.md",
-    "title": "Launch Verification Matrix"
+    "title": "Provider Readiness and Launch Gate"
   },
   {
     "page": "providers/linkedin.md",
@@ -227,7 +227,7 @@ export const docsPageCatalog = Object.freeze([
   },
   {
     "page": "providers/platform-limits.md",
-    "title": "Supported Platforms & Limitations"
+    "title": "Platform Implementations & Limitations"
   },
   {
     "page": "providers/roadmap.md",

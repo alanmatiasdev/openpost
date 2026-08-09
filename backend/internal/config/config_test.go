@@ -768,6 +768,14 @@ func TestLoadBuildsProviderAppRegistryFromLegacyEnv(t *testing.T) {
 	require.Equal(t, "https://app.openpost.social/api/v1/accounts/threads/callback", cfg.ProviderApps[5].RedirectURI)
 }
 
+func TestLoadParsesProviderEnvironmentKillSwitches(t *testing.T) {
+	t.Setenv("OPENPOST_DISABLED_PROVIDERS", "youtube, tiktok\nthreads")
+
+	cfg := Load()
+
+	require.Equal(t, []string{"youtube", "tiktok", "threads"}, cfg.DisabledProviders)
+}
+
 func TestLoadMergesStructuredProviderApps(t *testing.T) {
 	t.Setenv("OPENPOST_APP_URL", "https://app.openpost.social")
 	t.Setenv("X_CLIENT_ID", "legacy-x-client")

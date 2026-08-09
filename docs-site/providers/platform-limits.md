@@ -1,25 +1,33 @@
-# Supported Platforms & Limitations
+# Platform Implementations & Limitations
 
-OpenPost can publish to X, Mastodon, Bluesky, Threads, LinkedIn, Facebook Pages, Instagram Professional accounts, TikTok, YouTube, and Discord webhooks. Some platforms still require app review, the right account type, public media links, or a live test.
+OpenPost includes publishing implementations for X, Mastodon, Bluesky, Threads, LinkedIn, Facebook Pages, Instagram Professional accounts, TikTok, YouTube, and Discord webhooks. An implementation is not a managed-service certification claim. App review, the right account type, public media links, runtime controls, and current local and live tests remain separate gates.
 
-A social network may offer a feature that OpenPost does not yet support. The table shows what OpenPost supports now and where an app review, server setting, or live account test still matters.
+A social network may offer a feature that OpenPost has not implemented. The table describes current code paths and where an app review, server setting, or live account test still matters.
 
 Limits reviewed against official provider documentation on 2026-08-03. Connected-account or instance limits override these safe defaults where OpenPost can resolve them.
 
-## Current Platform Support
+## Managed certification projection
 
-| Provider         | Text                                                  | Images                                            | Video                                                                                                                | Threading                                                | Scheduling | Variants  |
-| ---------------- | ----------------------------------------------------- | ------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- | ---------- | --------- |
-| X                | 280 standard or 25,000 subscribed weighted characters | Up to 4 images                                    | One video; 140 seconds/512 MiB standard or 4 hours/16 GiB subscribed; real-account verification still required       | Replies                                                  | Supported  | Supported |
-| Mastodon         | Supported                                             | Up to 4 attachments                               | MP4, MOV, or WebM under a safe 99 MiB default; connected instances can advertise their actual formats and size limit | Replies                                                  | Supported  | Supported |
-| Bluesky          | Supported                                             | Up to 4 images                                    | Implemented for one MP4 video via `app.bsky.video.*`, real-account verification still required                       | AT Protocol reply refs                                   | Supported  | Supported |
-| LinkedIn         | Supported                                             | One JPG/PNG/GIF image, 2-20 images, or a document | One MP4, 3 seconds to 30 minutes and up to 500 MiB; live-account verification is still recommended                   | Thread children are posted as comments                   | Supported  | Supported |
-| Threads          | Supported                                             | One image or a 2-20 item carousel                 | One video or mixed carousel with public HTTPS media                                                                  | `reply_to_id`                                            | Supported  | Supported |
-| Facebook         | Supported                                             | One image or a 2-10 image multi-photo post        | One public HTTPS video URL; Story publishing accepts exactly one image or video                                      | Comment replies                                          | Supported  | Supported |
-| Instagram        | No                                                    | Single image and carousel paths                   | Reels for Business and Creator accounts; live-account verification is still recommended                              | Comment replies/story paths exist for supported settings | Supported  | Supported |
-| TikTok           | No                                                    | 1-35 JPEG/WebP photos, up to 20 MB each           | One MP4 or MOV up to 10 minutes and 4 GB through Direct Post or inbox/upload; app review still applies               | No                                                       | Supported  | Supported |
-| YouTube          | No                                                    | Thumbnail only                                    | Short and Video uploads with privacy, category, title, description, and resumable upload                             | Comment replies and moderation                           | Supported  | Supported |
-| Discord Webhooks | Supported                                             | Up to 10 file attachments                         | MP4, MOV, or WebM; OpenPost uses Discord's safe 10 MiB default because the actual limit can vary                     | Reply references between segments                        | Supported  | Supported |
+<!-- provider-certification:begin -->
+The checked-in public certification manifest contains **0 exact provider-format claims**.
+
+No managed provider-format certification claim is current. Implementation descriptions do not assert managed availability.
+<!-- provider-certification:end -->
+
+## Current implementations
+
+| Provider         | Text implementation                                  | Image implementation                              | Video implementation                                                                                                 | Threading implementation                                   | Scheduling | Variants    |
+| ---------------- | ---------------------------------------------------- | ------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- | ---------- | ----------- |
+| X                | 280 standard or 25,000 subscribed weighted characters | Up to 4 images                                    | One video; 140 seconds/512 MiB standard or 4 hours/16 GiB subscribed; real-account verification still required       | Replies                                                    | Implemented | Implemented |
+| Mastodon         | Implemented                                          | Up to 4 attachments                               | MP4, MOV, or WebM under a safe 99 MiB default; connected instances can advertise their actual formats and size limit | Replies                                                    | Implemented | Implemented |
+| Bluesky          | Implemented                                          | Up to 4 images                                    | One MP4 video via `app.bsky.video.*`; real-account verification still required                                      | AT Protocol reply refs                                     | Implemented | Implemented |
+| LinkedIn         | Implemented                                          | One JPG/PNG/GIF image, 2-20 images, or a document | One MP4, 3 seconds to 30 minutes and up to 500 MiB; live-account verification is still recommended                   | Thread children are posted as comments                     | Implemented | Implemented |
+| Threads          | Implemented                                          | One image or a 2-20 item carousel                 | One video or mixed carousel with public HTTPS media                                                                  | `reply_to_id`                                              | Implemented | Implemented |
+| Facebook         | Implemented                                          | One image or a 2-10 image multi-photo post        | One public HTTPS video URL; Story publishing accepts exactly one image or video                                      | Comment replies                                            | Implemented | Implemented |
+| Instagram        | No text-only path                                    | Single image and carousel paths                   | Reels for Business and Creator accounts; live-account verification is still recommended                              | Comment replies and Story paths for implemented settings   | Implemented | Implemented |
+| TikTok           | No text-only path                                    | 1-35 JPEG/WebP photos, up to 20 MB each           | One MP4 or MOV up to 10 minutes and 4 GB through Direct Post or inbox/upload; app review still applies               | No threading path                                          | Implemented | Implemented |
+| YouTube          | No text-only path                                    | Thumbnail only                                    | Short and Video uploads with privacy, category, title, description, and resumable upload                             | Comment replies and moderation                             | Implemented | Implemented |
+| Discord Webhooks | Implemented                                          | Up to 10 file attachments                         | MP4, MOV, or WebM; OpenPost uses Discord's safe 10 MiB default because the actual limit can vary                     | Reply references between segments                          | Implemented | Implemented |
 
 ## Planned Platform Adapters
 
@@ -37,7 +45,7 @@ No planned provider adapter is exposed as connectable today. Future provider roa
 
 ## Reading this table correctly
 
-- A platform can support a feature while OpenPost still marks it unsupported or untested.
+- A platform can offer a feature while OpenPost still marks its implementation missing or untested.
 - "Implemented" means the code path exists in OpenPost.
 - "Verified" means the implementation has been confirmed against a live provider account recently.
 - Deployment details still matter. Threads, Facebook, Instagram, and TikTok direct-post flows depend on public media URLs, and LinkedIn depends heavily on granted app permissions.

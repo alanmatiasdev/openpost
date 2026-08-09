@@ -1,7 +1,31 @@
 import { expect, test } from "@playwright/test";
 import { authenticatePage, createWorkspace, registerUser } from "./helpers";
 
-test("accounts page shows configured and unavailable providers", async ({
+function connectionReadiness(
+  state: string,
+  connectable: boolean,
+  blocker?: string,
+) {
+  return {
+    state,
+    executable: connectable,
+    connectable,
+    publishable: false,
+    advertisable: false,
+    facts: {
+      configuration: state === "needs_configuration" ? "missing" : "configured",
+      local_test: "unknown",
+      live_certification: "unknown",
+      approval: "unknown",
+      authorization: "unknown",
+      control: "enabled",
+      policy: "allowed",
+    },
+    blockers: blocker ? [{ code: blocker }] : [],
+  };
+}
+
+test("accounts page keeps healthy providers quiet and explains blocked providers", async ({
   page,
   request,
 }) => {
@@ -22,6 +46,7 @@ test("accounts page shows configured and unavailable providers", async ({
           auth_mode: "app_password",
           configured: true,
           status: "available",
+          readiness: connectionReadiness("healthy", true),
           description: "Handle and app-password connection.",
           capabilities: [
             "Text posts",
@@ -36,6 +61,11 @@ test("accounts page shows configured and unavailable providers", async ({
           auth_mode: "oauth",
           configured: false,
           status: "needs_configuration",
+          readiness: connectionReadiness(
+            "needs_configuration",
+            false,
+            "missing_configuration",
+          ),
           description: "Requires an X provider app.",
         },
         {
@@ -44,6 +74,11 @@ test("accounts page shows configured and unavailable providers", async ({
           auth_mode: "oauth_oob",
           configured: false,
           status: "needs_configuration",
+          readiness: connectionReadiness(
+            "needs_configuration",
+            false,
+            "missing_configuration",
+          ),
           description: "Configure Mastodon instances first.",
         },
         {
@@ -52,6 +87,11 @@ test("accounts page shows configured and unavailable providers", async ({
           auth_mode: "oauth",
           configured: false,
           status: "needs_configuration",
+          readiness: connectionReadiness(
+            "needs_configuration",
+            false,
+            "missing_configuration",
+          ),
           description: "Requires a LinkedIn provider app.",
         },
         {
@@ -60,6 +100,11 @@ test("accounts page shows configured and unavailable providers", async ({
           auth_mode: "oauth",
           configured: false,
           status: "needs_configuration",
+          readiness: connectionReadiness(
+            "needs_configuration",
+            false,
+            "missing_configuration",
+          ),
           description: "Requires a Meta provider app.",
         },
         {
@@ -68,6 +113,11 @@ test("accounts page shows configured and unavailable providers", async ({
           auth_mode: "oauth",
           configured: false,
           status: "needs_configuration",
+          readiness: connectionReadiness(
+            "needs_configuration",
+            false,
+            "missing_configuration",
+          ),
           description: "Requires a Meta provider app.",
           capabilities: ["Images", "Reels", "Scheduling", "MCP workflows"],
         },
@@ -77,6 +127,11 @@ test("accounts page shows configured and unavailable providers", async ({
           auth_mode: "oauth",
           configured: false,
           status: "needs_configuration",
+          readiness: connectionReadiness(
+            "needs_configuration",
+            false,
+            "missing_configuration",
+          ),
           description: "Requires a Meta provider app.",
           capabilities: ["Page posts", "Media posts", "Scheduling"],
         },
@@ -86,6 +141,11 @@ test("accounts page shows configured and unavailable providers", async ({
           auth_mode: "oauth",
           configured: false,
           status: "needs_configuration",
+          readiness: connectionReadiness(
+            "needs_configuration",
+            false,
+            "missing_configuration",
+          ),
           description: "Requires a Google OAuth provider app.",
           capabilities: [
             "Shorts",
@@ -100,6 +160,11 @@ test("accounts page shows configured and unavailable providers", async ({
           auth_mode: "oauth",
           configured: false,
           status: "needs_configuration",
+          readiness: connectionReadiness(
+            "needs_configuration",
+            false,
+            "missing_configuration",
+          ),
           description: "Requires a TikTok provider app.",
           capabilities: ["Short videos", "Scheduling", "MCP workflows"],
         },
@@ -120,6 +185,10 @@ test("accounts page shows configured and unavailable providers", async ({
   await expect(page.getByTestId("provider-card-bluesky")).not.toContainText(
     "MCP workflows",
   );
+  await expect(page.getByTestId("provider-card-bluesky")).not.toContainText(
+    "Available",
+  );
+  await expect(page.getByTestId("provider-readiness-bluesky")).toHaveCount(0);
   await expect(
     page
       .getByTestId("provider-card-bluesky")
@@ -137,8 +206,11 @@ test("accounts page shows configured and unavailable providers", async ({
     "tiktok",
   ]) {
     await expect(page.getByTestId(`provider-card-${platform}`)).toContainText(
-      "Admin setup required",
+      "Setup required",
     );
+    await expect(
+      page.getByTestId(`provider-readiness-${platform}`),
+    ).toContainText("must configure");
     await expect(
       page
         .getByTestId(`provider-card-${platform}`)
@@ -177,8 +249,9 @@ test("accounts page starts custom Mastodon instance connection", async ({
           platform: "mastodon",
           display_name: "Mastodon",
           auth_mode: "oauth_oob",
-          configured: true,
-          status: "available",
+          configured: false,
+          status: "needs_configuration",
+          readiness: connectionReadiness("healthy", true),
           description: "Connect any public Mastodon instance.",
           name: "Custom instance",
         },
@@ -226,4 +299,54 @@ test("accounts page starts custom Mastodon instance connection", async ({
   expect(authURLRequest?.workspaceId).toBeTruthy();
   expect(authURLRequest?.instanceURL).toBe("mastodon.social");
   expect(authURLRequest?.serverName).toBeNull();
+});
+
+test("accounts page fails closed and retries an unavailable readiness lookup", async ({
+  page,
+  request,
+}) => {
+  const unique = Date.now().toString(36);
+  const auth = await registerUser(
+    request,
+    `accounts-readiness-retry-${unique}@example.com`,
+  );
+  await createWorkspace(request, auth.token, "Provider Readiness Retry E2E");
+  await authenticatePage(page, auth.token);
+
+  let requestCount = 0;
+  await page.route("**/api/v1/accounts/providers", async (route) => {
+    requestCount += 1;
+    const healthy = requestCount > 1;
+    await route.fulfill({
+      contentType: "application/json",
+      json: [
+        {
+          platform: "bluesky",
+          display_name: "Bluesky",
+          auth_mode: "app_password",
+          configured: true,
+          status: "available",
+          readiness: healthy
+            ? connectionReadiness("healthy", true)
+            : connectionReadiness(
+                "degraded",
+                false,
+                "readiness_evidence_unavailable",
+              ),
+        },
+      ],
+    });
+  });
+
+  await page.goto("/accounts");
+  const card = page.getByTestId("provider-card-bluesky");
+  await expect(page.getByTestId("provider-readiness-bluesky")).toContainText(
+    "could not verify",
+  );
+  const retry = card.getByRole("button", { name: "Retry check" });
+  await expect(retry).toBeEnabled();
+  await retry.click();
+  await expect(card.getByRole("button", { name: "Connect" })).toBeEnabled();
+  await expect(page.getByTestId("provider-readiness-bluesky")).toHaveCount(0);
+  expect(requestCount).toBe(2);
 });

@@ -11,17 +11,24 @@ import (
 	"github.com/openpost/backend/internal/capabilities"
 	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/platform"
+	"github.com/openpost/backend/internal/services/providerreadiness"
 	"github.com/uptrace/bun"
 )
 
 type ProviderReadinessHandler struct {
 	db        *bun.DB
 	auth      middleware.Authenticator
+	readiness *providerreadiness.Service
 	providers map[string]platform.Adapter
 }
 
-func NewProviderReadinessHandler(db *bun.DB, auth middleware.Authenticator, providers ...map[string]platform.Adapter) *ProviderReadinessHandler {
-	handler := &ProviderReadinessHandler{db: db, auth: auth}
+func NewProviderReadinessHandler(
+	db *bun.DB,
+	auth middleware.Authenticator,
+	readiness *providerreadiness.Service,
+	providers ...map[string]platform.Adapter,
+) *ProviderReadinessHandler {
+	handler := &ProviderReadinessHandler{db: db, auth: auth, readiness: readiness}
 	if len(providers) > 0 {
 		handler.providers = providers[0]
 	}
@@ -32,29 +39,23 @@ type ProviderReadinessInput struct {
 	WorkspaceID string `query:"workspace_id" required:"true" doc:"Workspace ID"`
 }
 
-type PublicMediaHealth struct {
-	Status         string `json:"status"`
-	CheckedCount   int    `json:"checked_count"`
-	FailingCount   int    `json:"failing_count"`
-	LastCheckedAt  string `json:"last_checked_at,omitempty"`
-	LastFailure    string `json:"last_failure,omitempty"`
-	LastStatusCode int    `json:"last_status_code,omitempty"`
+type ProviderReadinessItem struct {
+	Provider           string                     `json:"provider"`
+	State              string                     `json:"state"`
+	Connectable        bool                       `json:"connectable"`
+	Advertisable       bool                       `json:"advertisable"`
+	Facts              providerreadiness.Facts    `json:"facts"`
+	Profiles           []ProviderReadinessProfile `json:"profiles,omitempty"`
+	ConfiguredAppState string                     `json:"configured_app_state"`
+	ConnectedAccounts  int                        `json:"connected_accounts"`
+	BlockingIssues     []string                   `json:"blocking_issues,omitempty"`
 }
 
-type ProviderReadinessItem struct {
-	Provider           string            `json:"provider"`
-	ConfiguredAppState string            `json:"configured_app_state"`
-	ConnectedAccounts  int               `json:"connected_accounts"`
-	RequiredScopes     []string          `json:"required_scopes"`
-	GrantedScopes      []string          `json:"granted_scopes,omitempty"`
-	AccountTypes       []string          `json:"account_types,omitempty"`
-	AppReviewWarnings  []string          `json:"app_review_warnings,omitempty"`
-	PublicMediaHealth  PublicMediaHealth `json:"public_media_health"`
-	QuotaCaveats       []string          `json:"quota_caveats,omitempty"`
-	BlockingIssues     []string          `json:"blocking_issues,omitempty"`
-	NextActions        []string          `json:"next_actions,omitempty"`
-	SupportedProfiles  []string          `json:"supported_profiles"`
-	CapabilityCaveats  []string          `json:"capability_caveats,omitempty"`
+type ProviderReadinessProfile struct {
+	SocialAccountID string                     `json:"social_account_id"`
+	OutputProfile   string                     `json:"output_profile"`
+	Immediate       providerreadiness.Decision `json:"immediate"`
+	Scheduled       providerreadiness.Decision `json:"scheduled"`
 }
 
 type ProviderReadinessOutput struct {
@@ -81,56 +82,92 @@ func (h *ProviderReadinessHandler) RegisterRoutes(api huma.API) {
 			return nil, err
 		}
 
-		apps, err := h.loadProviderApps(ctx)
-		if err != nil {
-			return nil, err
-		}
 		accounts, err := h.loadReadinessAccounts(ctx, input.WorkspaceID)
 		if err != nil {
 			return nil, err
 		}
-		mediaHealth, err := h.publicMediaHealth(ctx, input.WorkspaceID)
-		if err != nil {
-			return nil, err
-		}
-
 		resp := &ProviderReadinessOutput{}
 		for _, provider := range readinessProviders() {
-			resp.Body.Providers = append(resp.Body.Providers, buildProviderReadiness(provider, apps[provider], accounts[provider], mediaHealth))
+			resp.Body.Providers = append(resp.Body.Providers, h.buildProviderReadiness(ctx, provider, accounts[provider]))
 		}
 		return resp, nil
 	})
 }
 
-func (h *ProviderReadinessHandler) loadProviderApps(ctx context.Context) (map[string]bool, error) {
-	var apps []models.ProviderApp
-	if err := h.db.NewSelect().Model(&apps).Where("is_active = ?", true).Scan(ctx); err != nil {
-		return nil, huma.Error500InternalServerError("failed to load provider app configuration")
+func (h *ProviderReadinessHandler) buildProviderReadiness(
+	ctx context.Context,
+	provider string,
+	accounts []models.SocialAccount,
+) ProviderReadinessItem {
+	if h.readiness == nil {
+		decision := providerreadiness.UnavailableDecision(providerreadiness.OperationConnect)
+		item := buildProviderReadiness(provider, false, accounts)
+		item.State = string(decision.State)
+		item.Facts = decision.Facts
+		item.BlockingIssues = readinessBlockerCodes(decision.Blockers)
+		return item
 	}
-	out := h.configuredProviderAdapters()
-	for _, app := range apps {
-		out[app.Provider] = app.ClientID != "" || app.Provider == capabilities.ProviderMastodon
+	connection := h.readiness.DecideConnection(ctx, provider, "", providerreadiness.ExecutionIntentProduction)
+	configuration := h.readiness.Configuration(provider, "")
+	item := buildProviderReadiness(
+		provider,
+		configuration.Evidence.State == providerreadiness.ConfigurationStateConfigured,
+		accounts,
+	)
+	item.ConfiguredAppState = string(configuration.Evidence.State)
+	if configuration.Evidence.State == providerreadiness.ConfigurationStateConfigured &&
+		configuration.Evidence.Source == providerreadiness.ConfigurationSourceBuiltIn {
+		item.ConfiguredAppState = "built_in"
 	}
-	return out, nil
+	item.State = string(connection.State)
+	item.Connectable = connection.Connectable
+	decisions := []providerreadiness.Decision{connection}
+	item.Facts = connection.Facts
+	item.BlockingIssues = append(item.BlockingIssues, readinessBlockerCodes(connection.Blockers)...)
+	for _, account := range accounts {
+		for _, capability := range capabilities.All() {
+			if capability.Provider != provider {
+				continue
+			}
+			profile := ProviderReadinessProfile{
+				SocialAccountID: account.ID,
+				OutputProfile:   capability.OutputProfile,
+				Immediate: h.readiness.DecideAccountPublication(
+					ctx, account, capability, providerreadiness.OperationPublishImmediate,
+					providerreadiness.ExecutionIntentProduction,
+					providerreadiness.PublicationPolicyMode(account, capability, nil),
+				),
+				Scheduled: h.readiness.DecideAccountPublication(
+					ctx, account, capability, providerreadiness.OperationPublishScheduled,
+					providerreadiness.ExecutionIntentProduction,
+					providerreadiness.PublicationPolicyMode(account, capability, nil),
+				),
+			}
+			item.Profiles = append(item.Profiles, profile)
+			decisions = append(decisions, profile.Immediate, profile.Scheduled)
+			item.Advertisable = item.Advertisable || profile.Immediate.Advertisable || profile.Scheduled.Advertisable
+			item.BlockingIssues = append(item.BlockingIssues, readinessBlockerCodes(profile.Immediate.Blockers)...)
+			item.BlockingIssues = append(item.BlockingIssues, readinessBlockerCodes(profile.Scheduled.Blockers)...)
+		}
+	}
+	worst := providerreadiness.MostRestrictive(decisions...)
+	item.State = string(worst.State)
+	item.Facts = worst.Facts
+	item.BlockingIssues = uniqueSortedStrings(item.BlockingIssues)
+	return item
 }
 
-func (h *ProviderReadinessHandler) configuredProviderAdapters() map[string]bool {
-	out := map[string]bool{}
-	for key, adapter := range h.providers {
-		if adapter == nil {
-			continue
-		}
-		provider := strings.SplitN(key, ":", 2)[0]
-		if provider != "" {
-			out[provider] = true
-		}
+func readinessBlockerCodes(blockers []providerreadiness.Blocker) []string {
+	codes := make([]string, 0, len(blockers))
+	for _, blocker := range blockers {
+		codes = append(codes, string(blocker.Code))
 	}
-	return out
+	return codes
 }
 
 func (h *ProviderReadinessHandler) loadReadinessAccounts(ctx context.Context, workspaceID string) (map[string][]models.SocialAccount, error) {
 	var accounts []models.SocialAccount
-	if err := h.db.NewSelect().Model(&accounts).Where("workspace_id = ? AND is_active = ?", workspaceID, true).Scan(ctx); err != nil {
+	if err := h.db.NewSelect().Model(&accounts).Where("workspace_id = ?", workspaceID).Scan(ctx); err != nil {
 		return nil, huma.Error500InternalServerError("failed to load connected accounts")
 	}
 	out := map[string][]models.SocialAccount{}
@@ -140,93 +177,23 @@ func (h *ProviderReadinessHandler) loadReadinessAccounts(ctx context.Context, wo
 	return out, nil
 }
 
-func (h *ProviderReadinessHandler) publicMediaHealth(ctx context.Context, workspaceID string) (PublicMediaHealth, error) {
-	var media []models.MediaAttachment
-	if err := h.db.NewSelect().
-		Model(&media).
-		Where("workspace_id = ?", workspaceID).
-		Where("dominant_type = ? OR mime_type LIKE ?", "video", "video/%").
-		Scan(ctx); err != nil {
-		return PublicMediaHealth{}, huma.Error500InternalServerError("failed to load media health")
-	}
-	health := PublicMediaHealth{Status: "unknown"}
-	for _, item := range media {
-		if !item.PublicURLCheckedAt.IsZero() {
-			health.CheckedCount++
-			if health.LastCheckedAt == "" || item.PublicURLCheckedAt.Format(timeSortFormat) > health.LastCheckedAt {
-				health.LastCheckedAt = item.PublicURLCheckedAt.UTC().Format(timeSortFormat)
-			}
-		}
-		if item.PublicURLError != "" || item.PublicURLStatus >= 400 {
-			health.FailingCount++
-			health.LastFailure = item.PublicURLError
-			health.LastStatusCode = item.PublicURLStatus
-		}
-	}
-	switch {
-	case len(media) == 0:
-		health.Status = "unknown"
-	case health.FailingCount > 0:
-		health.Status = "degraded"
-	default:
-		health.Status = "healthy"
-	}
-	return health, nil
-}
-
-func buildProviderReadiness(provider string, configured bool, accounts []models.SocialAccount, mediaHealth PublicMediaHealth) ProviderReadinessItem {
+func buildProviderReadiness(provider string, configured bool, accounts []models.SocialAccount) ProviderReadinessItem {
 	item := ProviderReadinessItem{
 		Provider:           provider,
 		ConfiguredAppState: configuredState(provider, configured),
-		ConnectedAccounts:  len(accounts),
-		RequiredScopes:     requiredScopes(provider),
-		GrantedScopes:      grantedScopes(accounts),
-		PublicMediaHealth:  mediaHealth,
-		SupportedProfiles:  supportedProfiles(provider),
+		ConnectedAccounts:  activeAccountCount(accounts),
 	}
-	if item.ConfiguredAppState == "missing" {
-		item.BlockingIssues = append(item.BlockingIssues, "provider_app_missing")
-		item.NextActions = append(item.NextActions, "Configure provider OAuth credentials for "+provider)
-	}
-	if item.ConnectedAccounts == 0 {
-		item.NextActions = append(item.NextActions, "Connect at least one "+provider+" account")
-	}
-	if providerRequiresPublicMedia(provider) && mediaHealth.Status == "degraded" {
-		item.BlockingIssues = append(item.BlockingIssues, "public_url_unreachable")
-		item.NextActions = append(item.NextActions, "Fix public HTTPS media delivery before publishing")
-	}
-	if len(item.GrantedScopes) > 0 && len(missingScopes(item.RequiredScopes, item.GrantedScopes)) > 0 {
-		item.BlockingIssues = append(item.BlockingIssues, "missing_scope")
-		item.NextActions = append(item.NextActions, "Reconnect "+provider+" with the required publishing scopes")
-	}
-	item.AppReviewWarnings = appReviewWarnings(provider)
-	item.CapabilityCaveats = capabilityCaveats(provider)
-	item.QuotaCaveats = quotaCaveats(provider)
-	item.AccountTypes = accountTypes(provider)
-	sort.Strings(item.BlockingIssues)
 	return item
 }
 
-func grantedScopes(accounts []models.SocialAccount) []string {
-	scopes := make([]string, 0, len(accounts))
+func activeAccountCount(accounts []models.SocialAccount) int {
+	count := 0
 	for _, account := range accounts {
-		scopes = append(scopes, splitScopes(account.GrantedScopes)...)
-	}
-	return uniqueSortedStrings(scopes)
-}
-
-func missingScopes(required, granted []string) []string {
-	grantedSet := map[string]struct{}{}
-	for _, scope := range granted {
-		grantedSet[scope] = struct{}{}
-	}
-	missing := []string{}
-	for _, scope := range required {
-		if _, ok := grantedSet[scope]; !ok {
-			missing = append(missing, scope)
+		if account.IsActive {
+			count++
 		}
 	}
-	return missing
+	return count
 }
 
 func providerReadinessWorkspaceAccess(ctx context.Context, db *bun.DB, workspaceID, userID string) error {
@@ -254,12 +221,13 @@ func readinessProviders() []string {
 		capabilities.ProviderMastodon,
 		capabilities.ProviderThreads,
 		capabilities.ProviderLinkedIn,
+		capabilities.ProviderDiscord,
 	}
 }
 
 func configuredState(provider string, configured bool) string {
 	switch provider {
-	case capabilities.ProviderBluesky, capabilities.ProviderMastodon:
+	case capabilities.ProviderBluesky:
 		return "built_in"
 	default:
 		if configured {
@@ -269,89 +237,18 @@ func configuredState(provider string, configured bool) string {
 	}
 }
 
-func supportedProfiles(provider string) []string {
-	profiles := []string{}
-	for _, capability := range capabilities.All() {
-		if capability.Provider == provider {
-			profiles = append(profiles, capability.Profile)
+func missingScopes(required, granted []string) []string {
+	grantedSet := make(map[string]struct{}, len(granted))
+	for _, scope := range granted {
+		grantedSet[scope] = struct{}{}
+	}
+	missing := make([]string, 0)
+	for _, scope := range required {
+		if _, ok := grantedSet[scope]; !ok {
+			missing = append(missing, scope)
 		}
 	}
-	return profiles
-}
-
-func requiredScopes(provider string) []string {
-	switch provider {
-	case capabilities.ProviderFacebook:
-		return []string{"pages_manage_posts", "pages_read_engagement"}
-	case capabilities.ProviderInstagram:
-		return []string{"instagram_content_publish", "instagram_basic"}
-	case capabilities.ProviderYouTube:
-		return []string{"https://www.googleapis.com/auth/youtube", "https://www.googleapis.com/auth/youtube.upload"}
-	case capabilities.ProviderTikTok:
-		return []string{"user.info.basic", "video.publish", "video.upload"}
-	case capabilities.ProviderLinkedIn:
-		return []string{"w_member_social"}
-	case capabilities.ProviderThreads:
-		return []string{"threads_basic", "threads_content_publish"}
-	default:
-		return nil
-	}
-}
-
-func appReviewWarnings(provider string) []string {
-	switch provider {
-	case capabilities.ProviderYouTube:
-		return []string{"Unaudited Google projects can force uploads private."}
-	case capabilities.ProviderTikTok:
-		return []string{"Direct Post requires TikTok app audit approval."}
-	case capabilities.ProviderFacebook, capabilities.ProviderInstagram, capabilities.ProviderThreads:
-		return []string{"Meta app review can block publishing and story/comment permissions."}
-	default:
-		return nil
-	}
-}
-
-func capabilityCaveats(provider string) []string {
-	caveats := []string{}
-	for _, capability := range capabilities.All() {
-		if capability.Provider == provider {
-			caveats = append(caveats, capability.Caveats...)
-		}
-	}
-	return uniqueStrings(caveats)
-}
-
-func quotaCaveats(provider string) []string {
-	switch provider {
-	case capabilities.ProviderX:
-		return []string{"X API tier limits can block media and posting operations."}
-	case capabilities.ProviderYouTube:
-		return []string{"YouTube quota cost depends on upload, thumbnail, playlist, and status calls."}
-	default:
-		return nil
-	}
-}
-
-func accountTypes(provider string) []string {
-	switch provider {
-	case capabilities.ProviderFacebook:
-		return []string{"Page"}
-	case capabilities.ProviderInstagram:
-		return []string{"Business", "Creator"}
-	case capabilities.ProviderLinkedIn:
-		return []string{"Person", "Organization"}
-	default:
-		return nil
-	}
-}
-
-func providerRequiresPublicMedia(provider string) bool {
-	for _, capability := range capabilities.All() {
-		if capability.Provider == provider && capability.RequiresPublicMedia {
-			return true
-		}
-	}
-	return false
+	return missing
 }
 
 func uniqueStrings(values []string) []string {
@@ -388,5 +285,3 @@ func splitScopes(raw string) []string {
 	}
 	return scopes
 }
-
-const timeSortFormat = "2006-01-02T15:04:05Z07:00"

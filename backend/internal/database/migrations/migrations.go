@@ -122,6 +122,11 @@ func finalizeMigrations(ctx context.Context, db *bun.DB, appliedSet map[int64]bo
 			return fmt.Errorf("provider write attempt migration failed: %w", err)
 		}
 	}
+	if appliedSet[77] {
+		if err := ensureProviderReadinessSchema(ctx, db); err != nil {
+			return fmt.Errorf("provider readiness certification migration failed: %w", err)
+		}
+	}
 	if err := MigrateLegacyPublicationAuthoring(ctx, db); err != nil {
 		return fmt.Errorf("legacy publication authoring migration failed: %w", err)
 	}
@@ -271,7 +276,7 @@ func prepareMigration(ctx context.Context, db *bun.DB, migration migration) erro
 	case 61:
 		description = "repost override"
 		err = ensurePublicationRepostOverride(ctx, db)
-	case 62, 63, 64, 66, 71, 73, 74, 75, 76:
+	case 62, 63, 64, 66, 71, 73, 74, 75, 76, 77:
 		return prepareRecentMigration(ctx, db, migration)
 	}
 	if err != nil {
@@ -461,9 +466,61 @@ func prepareRecentMigration(ctx context.Context, db *bun.DB, migration migration
 	case 76:
 		description = "durable provider write attempts"
 		err = ensureProviderWriteAttemptPrerequisites(ctx, db)
+	case 77:
+		description = "provider readiness certification"
+		err = prepareProviderReadinessMigration(ctx, db)
 	}
 	if err != nil {
 		return fmt.Errorf("migration %s %s preparation failed: %w", migration.name, description, err)
+	}
+	return nil
+}
+
+func prepareProviderReadinessMigration(ctx context.Context, db *bun.DB) error {
+	exists, err := migrationTableExists(ctx, db, "publication_authorizations")
+	if err != nil {
+		return err
+	}
+	if exists {
+		columns := []struct {
+			name      string
+			statement string
+		}{
+			{name: "provider_policy_mode", statement: `ALTER TABLE publication_authorizations ADD COLUMN provider_policy_mode TEXT NOT NULL DEFAULT 'provider.unspecified' CHECK (provider_policy_mode <> '')`},
+			{name: "execution_intent", statement: `ALTER TABLE publication_authorizations ADD COLUMN execution_intent TEXT NOT NULL DEFAULT 'production' CHECK (execution_intent IN ('production', 'certification_test'))`},
+		}
+		for _, column := range columns {
+			present, columnErr := migrationColumnExists(ctx, db, "publication_authorizations", column.name)
+			if columnErr != nil {
+				return columnErr
+			}
+			if present {
+				continue
+			}
+			if _, execErr := db.ExecContext(ctx, column.statement); execErr != nil {
+				return execErr
+			}
+		}
+	}
+
+	for _, table := range []string{"x_oauth_request_tokens", "oauth_account_selections"} {
+		tableExists, tableErr := migrationTableExists(ctx, db, table)
+		if tableErr != nil {
+			return tableErr
+		}
+		if !tableExists {
+			continue
+		}
+		present, columnErr := migrationColumnExists(ctx, db, table, "execution_intent")
+		if columnErr != nil {
+			return columnErr
+		}
+		if present {
+			continue
+		}
+		if _, execErr := db.ExecContext(ctx, "ALTER TABLE "+table+" ADD COLUMN execution_intent TEXT NOT NULL DEFAULT ''"); execErr != nil {
+			return execErr
+		}
 	}
 	return nil
 }
@@ -609,6 +666,133 @@ func ensurePublicationAuthorizationSchema(ctx context.Context, db *bun.DB) error
 	for _, statement := range statements {
 		if _, err := db.ExecContext(ctx, statement); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+var providerReadinessLedgerTables = []string{
+	"provider_approval_reviews",
+	"provider_certification_runs",
+	"provider_certification_checks",
+	"provider_runtime_control_events",
+}
+
+func ensureProviderReadinessSchema(ctx context.Context, db *bun.DB) error {
+	if err := prepareProviderReadinessMigration(ctx, db); err != nil {
+		return err
+	}
+	if err := ensureProviderReadinessLedgerTables(ctx, db); err != nil {
+		return err
+	}
+	if err := ensureProviderReadinessIntegrationColumns(ctx, db); err != nil {
+		return err
+	}
+	switch db.Dialect().Name() {
+	case dialect.SQLite:
+		return ensureSQLiteProviderReadinessImmutability(ctx, db)
+	case dialect.PG:
+		return ensurePostgresProviderReadinessImmutability(ctx, db)
+	default:
+		return fmt.Errorf("unsupported database dialect %s", db.Dialect().Name())
+	}
+}
+
+func ensureProviderReadinessLedgerTables(ctx context.Context, db *bun.DB) error {
+	for _, table := range providerReadinessLedgerTables {
+		exists, err := migrationTableExists(ctx, db, table)
+		if err != nil {
+			return err
+		}
+		if !exists {
+			return fmt.Errorf("%s is missing after migration 077", table)
+		}
+	}
+	if _, err := db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS provider_certification_runs_live_account_idx
+		ON provider_certification_runs (
+			provider, app_fingerprint, deployment_environment,
+			provider_environment, instance_fingerprint, account_kind,
+			output_profile, operation, policy_mode, evidence_kind,
+			account_reference_hash, tested_at, created_at
+		)`); err != nil {
+		return err
+	}
+	return nil
+}
+
+func ensureProviderReadinessIntegrationColumns(ctx context.Context, db *bun.DB) error {
+	publicationAuthorizationsExist, err := migrationTableExists(ctx, db, "publication_authorizations")
+	if err != nil {
+		return err
+	}
+	if publicationAuthorizationsExist {
+		for _, column := range []string{"provider_policy_mode", "execution_intent"} {
+			present, columnErr := migrationColumnExists(ctx, db, "publication_authorizations", column)
+			if columnErr != nil {
+				return columnErr
+			}
+			if !present {
+				return fmt.Errorf("publication_authorizations.%s is missing after migration 077", column)
+			}
+		}
+	}
+	for _, table := range []string{"x_oauth_request_tokens", "oauth_account_selections"} {
+		tableExists, tableErr := migrationTableExists(ctx, db, table)
+		if tableErr != nil {
+			return tableErr
+		}
+		if !tableExists {
+			continue
+		}
+		present, columnErr := migrationColumnExists(ctx, db, table, "execution_intent")
+		if columnErr != nil {
+			return columnErr
+		}
+		if !present {
+			return fmt.Errorf("%s.execution_intent is missing after migration 077", table)
+		}
+	}
+	return nil
+}
+
+func ensureSQLiteProviderReadinessImmutability(ctx context.Context, db *bun.DB) error {
+	for _, table := range providerReadinessLedgerTables {
+		for _, operation := range []string{"UPDATE", "DELETE"} {
+			name := table + "_append_only_" + strings.ToLower(operation)
+			statement := fmt.Sprintf(`CREATE TRIGGER IF NOT EXISTS %s
+				BEFORE %s ON %s
+				BEGIN
+					SELECT RAISE(ABORT, 'provider readiness ledger is append-only');
+				END`, name, operation, table)
+			if _, err := db.ExecContext(ctx, statement); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func ensurePostgresProviderReadinessImmutability(ctx context.Context, db *bun.DB) error {
+	if _, err := db.ExecContext(ctx, `CREATE OR REPLACE FUNCTION openpost_prevent_provider_readiness_mutation()
+		RETURNS trigger AS $$
+		BEGIN
+			RAISE EXCEPTION 'provider readiness ledger is append-only';
+		END;
+		$$ LANGUAGE plpgsql`); err != nil {
+		return err
+	}
+	for _, table := range providerReadinessLedgerTables {
+		for _, operation := range []string{"UPDATE", "DELETE"} {
+			name := table + "_append_only_" + strings.ToLower(operation)
+			if _, err := db.ExecContext(ctx, fmt.Sprintf("DROP TRIGGER IF EXISTS %s ON %s", name, table)); err != nil {
+				return err
+			}
+			statement := fmt.Sprintf(`CREATE TRIGGER %s
+				BEFORE %s ON %s
+				FOR EACH ROW EXECUTE FUNCTION openpost_prevent_provider_readiness_mutation()`, name, operation, table)
+			if _, err := db.ExecContext(ctx, statement); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

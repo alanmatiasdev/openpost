@@ -70,7 +70,7 @@ These do not assert a newly observed production incident. They block Pinterest, 
 
 ### PROV-READY-001 — Make provider readiness evidence-based
 
-- [ ] **Problem — Confirmed product/release gate:** an adapter’s registration is too easily treated as readiness even when approval tier, scopes, account/format live proof, policy mode, refresh/revocation, or test freshness is missing.
+- [x] **Problem — Confirmed product/release gate:** an adapter’s registration is too easily treated as readiness even when approval tier, scopes, account/format live proof, policy mode, refresh/revocation, or test freshness is missing.
 - **Fix:** create a certification ledger with provider app/environment, approval, scopes, account/format, policy mode, exact SHA/test date, immediate/scheduled result, safe external result reference, refresh/revocation result, operator, and retest expiry.
 - **Done when:** no provider/format is advertised because an adapter merely exists; healthy state stays quiet; only approval-required, reconnect-required, trial-only, policy-restricted, degraded, or expired-proof states surface.
 - **Evidence:** `backend/internal/api/handlers/provider_readiness.go:44`, `docs-site/providers/launch-matrix.md:3`.

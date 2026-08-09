@@ -30,7 +30,7 @@ func TestProviderReadinessUsesActiveWorkspace(t *testing.T) {
 			if got := r.URL.Query().Get("workspace_id"); got != "ws-1" {
 				t.Fatalf("workspace_id = %q, want ws-1", got)
 			}
-			_, _ = w.Write([]byte(`{"providers":[{"provider":"threads","configured_app_state":"missing","connected_accounts":0,"required_scopes":[],"public_media_health":{"status":"unknown","checked_count":0,"failing_count":0},"blocking_issues":["provider_app_missing"],"next_actions":["Configure provider OAuth credentials for threads"],"supported_profiles":["short_text"]}]}`))
+			_, _ = w.Write([]byte(`{"providers":[{"provider":"threads","state":"needs_configuration","configured_app_state":"missing","connected_accounts":0,"blocking_issues":["missing_configuration"]}]}`))
 		default:
 			http.NotFound(w, r)
 		}
@@ -47,7 +47,7 @@ func TestProviderReadinessUsesActiveWorkspace(t *testing.T) {
 	if err != nil {
 		t.Fatalf("provider readiness returned error: %v", err)
 	}
-	for _, value := range []string{"threads", "provider_app_missing", "Configure provider OAuth credentials"} {
+	for _, value := range []string{"threads", "needs_configuration", "missing_configuration", "Configure provider credentials for threads"} {
 		if !strings.Contains(out, value) {
 			t.Fatalf("output %q missing %q", out, value)
 		}

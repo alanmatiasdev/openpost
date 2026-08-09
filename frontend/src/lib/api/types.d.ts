@@ -305,6 +305,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/provider-readiness/approval-reviews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Append a provider approval review */
+        post: operations["append-provider-approval-review"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/provider-readiness/certifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Append normalized provider certification evidence */
+        post: operations["append-provider-certification"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/provider-readiness/runtime-controls": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Append a provider runtime control */
+        post: operations["append-provider-runtime-control"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/update-status": {
         parameters: {
             query?: never;
@@ -3815,6 +3866,70 @@ export interface components {
             /** Format: int64 */
             revision?: number;
         };
+        AppendProviderApprovalReviewInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/AppendProviderApprovalReviewInputBody.json
+             */
+            readonly $schema?: string;
+            app_fingerprint: string;
+            /** Format: date-time */
+            expires_at: string;
+            instance_fingerprint?: string;
+            provider: string;
+            /** @enum {string} */
+            provider_environment: "development" | "sandbox" | "production";
+            /** Format: date-time */
+            reviewed_at: string;
+            /** Format: uri */
+            source_url: string;
+            /** @enum {string} */
+            state: "unknown" | "not_required" | "pending" | "trial" | "approved" | "restricted" | "revoked";
+            tier: string;
+        };
+        AppendProviderCertificationInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/AppendProviderCertificationInputBody.json
+             */
+            readonly $schema?: string;
+            approval_review_id: string;
+            checks: components["schemas"]["CheckResult"][] | null;
+            /** Format: date-time */
+            expires_at: string;
+            /** @enum {string} */
+            kind: "local" | "live";
+            /** @enum {string} */
+            operation: "publish_immediate" | "publish_scheduled";
+            output_profile: string;
+            /** @description Optional asserted normalized policy mode; the server derives and verifies it */
+            policy_mode?: string;
+            policy_settings?: {
+                [key: string]: unknown;
+            };
+            social_account_id: string;
+            /** Format: date-time */
+            tested_at: string;
+            workspace_id: string;
+        };
+        AppendProviderRuntimeControlInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/AppendProviderRuntimeControlInputBody.json
+             */
+            readonly $schema?: string;
+            /** Format: date-time */
+            expires_at?: string;
+            reason_code: string;
+            selector: components["schemas"]["RuntimeControlSelector"];
+            /** Format: date-time */
+            starts_at: string;
+            /** @enum {string} */
+            state: "enabled" | "degraded" | "disabled";
+        };
         ApproveCLIAuthInputBody: {
             /**
              * Format: uri
@@ -4060,6 +4175,10 @@ export interface components {
             /** @description OpenPost checkout URL or short-lived Paddle customer portal URL */
             url?: string;
         };
+        Blocker: {
+            code: string;
+            detail?: string;
+        };
         BlueskyLoginInputBody: {
             /**
              * Format: uri
@@ -4071,6 +4190,11 @@ export interface components {
             app_password: string;
             /** @description Bluesky handle (e.g. user.bsky.social) */
             handle: string;
+            /**
+             * @description Typed execution intent; certification_test requires an unscoped instance administrator
+             * @enum {string}
+             */
+            intent?: "production" | "certification_test";
             /** @description Workspace ID */
             workspace_id: string;
         };
@@ -4227,6 +4351,15 @@ export interface components {
         ChannelPreference: {
             email: boolean;
             in_app: boolean;
+        };
+        CheckResult: {
+            /** Format: date-time */
+            completed_at: string;
+            error_class?: string;
+            external_ref_hash?: string;
+            kind: string;
+            not_applicable_reason?: string;
+            outcome: string;
         };
         ClientError: {
             message: string;
@@ -5060,6 +5193,16 @@ export interface components {
             /** Format: double */
             y: number;
         };
+        Decision: {
+            advertisable: boolean;
+            blockers?: components["schemas"]["Blocker"][] | null;
+            connectable: boolean;
+            contract_digest?: string;
+            executable: boolean;
+            facts: components["schemas"]["Facts"];
+            publishable: boolean;
+            state: string;
+        };
         DeleteAccountInputBody: {
             /**
              * Format: uri
@@ -5302,6 +5445,11 @@ export interface components {
              * @example https://example.com/schemas/DiscordWebhookLoginInputBody.json
              */
             readonly $schema?: string;
+            /**
+             * @description Typed execution intent; certification_test requires an unscoped instance administrator
+             * @enum {string}
+             */
+            intent?: "production" | "certification_test";
             /** @description Discord incoming webhook URL */
             webhook_url: string;
             /** @description Workspace ID */
@@ -5473,6 +5621,11 @@ export interface components {
             code: string;
             /** @description Mastodon instance URL to dynamically register */
             instance_url: string;
+            /**
+             * @description Typed execution intent; certification_test requires an unscoped instance administrator
+             * @enum {string}
+             */
+            intent?: "production" | "certification_test";
             /** @description Mastodon server name from config */
             server_name: string;
             /** @description Workspace ID */
@@ -5498,6 +5651,15 @@ export interface components {
             denominator: number;
             /** Format: int64 */
             numerator: number;
+        };
+        Facts: {
+            approval: string;
+            authorization: string;
+            configuration: string;
+            control: string;
+            live_certification: string;
+            local_test: string;
+            policy: string;
         };
         FailedAPIRequest: {
             /** Format: int64 */
@@ -7676,24 +7838,30 @@ export interface components {
             name?: string;
             /** @description Provider key */
             platform: string;
+            readiness: components["schemas"]["Decision"];
             /** @description Provider launch status: available, needs_configuration, or planned */
             status?: string;
         };
         ProviderReadinessItem: {
-            account_types?: string[] | null;
-            app_review_warnings?: string[] | null;
+            advertisable: boolean;
             blocking_issues?: string[] | null;
-            capability_caveats?: string[] | null;
             configured_app_state: string;
+            connectable: boolean;
             /** Format: int64 */
             connected_accounts: number;
-            granted_scopes?: string[] | null;
-            next_actions?: string[] | null;
+            facts: components["schemas"]["Facts"];
+            profiles?: components["schemas"]["ProviderReadinessProfile"][] | null;
             provider: string;
-            public_media_health: components["schemas"]["PublicMediaHealth"];
-            quota_caveats?: string[] | null;
-            required_scopes: string[] | null;
-            supported_profiles: string[] | null;
+            state: string;
+        };
+        ProviderReadinessLedgerAppendOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ProviderReadinessLedgerAppendOutputBody.json
+             */
+            readonly $schema?: string;
+            id: string;
         };
         ProviderReadinessOutputBody: {
             /**
@@ -7703,6 +7871,12 @@ export interface components {
              */
             readonly $schema?: string;
             providers: components["schemas"]["ProviderReadinessItem"][] | null;
+        };
+        ProviderReadinessProfile: {
+            immediate: components["schemas"]["Decision"];
+            output_profile: string;
+            scheduled: components["schemas"]["Decision"];
+            social_account_id: string;
         };
         PublicConfig: {
             /**
@@ -7720,17 +7894,6 @@ export interface components {
             max_screenshot_bytes: number;
             recipient?: string;
             support_url?: string;
-        };
-        PublicMediaHealth: {
-            /** Format: int64 */
-            checked_count: number;
-            /** Format: int64 */
-            failing_count: number;
-            last_checked_at?: string;
-            last_failure?: string;
-            /** Format: int64 */
-            last_status_code?: number;
-            status: string;
         };
         PublicProfileActivityDay: {
             /**
@@ -7823,6 +7986,11 @@ export interface components {
              * @example https://example.com/schemas/PublicationMutationActionInputBody.json
              */
             readonly $schema?: string;
+            /**
+             * @description Typed readiness intent; certification_test requires an unscoped instance administrator
+             * @enum {string}
+             */
+            execution_intent?: "production" | "certification_test";
             /**
              * Format: int64
              * @description Revision saved immediately before this action
@@ -8431,6 +8599,7 @@ export interface components {
             };
             expires_at?: string;
             format_selection_required: boolean;
+            immediate_readiness: components["schemas"]["Decision"];
             intents: string[] | null;
             issues: components["schemas"]["ValidationIssue"][] | null;
             label: string;
@@ -8446,6 +8615,7 @@ export interface components {
             provider: string;
             requires_app_review: boolean;
             requires_public_media: boolean;
+            scheduled_readiness: components["schemas"]["Decision"];
             /** @enum {string} */
             segment_strategy: "preserve" | "join";
             setting_groups: components["schemas"]["ResolvedSettingGroup"][] | null;
@@ -8604,6 +8774,17 @@ export interface components {
              * @enum {string}
              */
             threshold_mode: "all" | "any";
+        };
+        RuntimeControlSelector: {
+            account_kind?: string;
+            app_fingerprint?: string;
+            deployment_environment?: string;
+            instance_fingerprint?: string;
+            operation?: string;
+            output_profile?: string;
+            policy_mode?: string;
+            provider: string;
+            provider_environment?: string;
         };
         SaveInstanceSettingsInputBody: {
             /**
@@ -10826,6 +11007,8 @@ export interface operations {
                 server_name?: string;
                 /** @description Mastodon instance URL to dynamically register */
                 instance_url?: string;
+                /** @description Typed execution intent; certification_test requires an unscoped instance administrator */
+                intent?: "production" | "certification_test";
             };
             header?: never;
             path: {
@@ -10856,6 +11039,15 @@ export interface operations {
             };
             /** @description Forbidden */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -11077,6 +11269,240 @@ export interface operations {
             };
             /** @description Error */
             default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "append-provider-approval-review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AppendProviderApprovalReviewInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderReadinessLedgerAppendOutputBody"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "append-provider-certification": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AppendProviderCertificationInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderReadinessLedgerAppendOutputBody"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "append-provider-runtime-control": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AppendProviderRuntimeControlInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProviderReadinessLedgerAppendOutputBody"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };

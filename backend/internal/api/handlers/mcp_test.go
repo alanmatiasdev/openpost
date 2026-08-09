@@ -25,6 +25,7 @@ import (
 	"github.com/openpost/backend/internal/services/entitlements"
 	"github.com/openpost/backend/internal/services/lifecycle"
 	"github.com/openpost/backend/internal/services/mediastore"
+	"github.com/openpost/backend/internal/services/providerreadiness"
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun"
 )
@@ -142,6 +143,8 @@ func newMCPTestServerWithEntitlement(t *testing.T, entitlement entitlements.Serv
 
 	e := echo.New()
 	handler := NewMCPHandler(db, testAuthenticator{}, entitlement)
+	ensurePermissiveProviderReadinessFixture(t, db)
+	handler.SetProviderReadiness(mcpProviderReadiness(t))
 	handler.SetMediaStorage(mediastore.NewLocalStorage(t.TempDir(), "/media"))
 	handler.SetPublicURL("https://app.openpost.test")
 	handler.RegisterRoutes(e)
@@ -756,6 +759,68 @@ func TestMCPPostCreationSchemasAdvertiseRenditionsOnlyWhereSupported(t *testing.
 
 	require.Contains(t, propertiesFor(mcpToolSchedulePost), "renditions")
 	require.NotContains(t, propertiesFor(mcpToolCreateDraft), "renditions")
+}
+
+func TestMCPPublicationExecutionIntentExistsOnlyOnEnqueueActions(t *testing.T) {
+	t.Parallel()
+
+	propertiesFor := func(name string) map[string]any {
+		t.Helper()
+		for _, operation := range mcpOperationCatalog() {
+			if operation.Descriptor["name"] != name {
+				continue
+			}
+			input := operation.Descriptor["inputSchema"].(map[string]any)
+			return input["properties"].(map[string]any)
+		}
+		t.Fatalf("operation %s not found", name)
+		return nil
+	}
+
+	for _, name := range []string{mcpToolUpdatePub, mcpToolPubRenditions} {
+		require.NotContains(t, propertiesFor(name), "execution_intent", name)
+	}
+	for _, name := range []string{mcpToolSchedulePub, mcpToolPublishPubNow} {
+		property, ok := propertiesFor(name)["execution_intent"].(map[string]any)
+		require.True(t, ok, name)
+		require.Equal(t, []string{"production", "certification_test"}, property["enum"], name)
+	}
+}
+
+func TestMCPPublicationExecutionIntentDefaultsAndRequiresInstanceAdmin(t *testing.T) {
+	srv := newMCPTestServer(t)
+	ctx := context.WithValue(context.Background(), middleware.UserIDKey, "user-1")
+	created, rpcErr := srv.handler.createPublication(ctx, "user-1", map[string]any{
+		"workspace_id": "ws-1", "content_profile": "short_text", "source_text": "Certification test",
+		"social_account_ids": []string{"account-1"},
+	})
+	require.Nil(t, rpcErr)
+	publicationID := created.(map[string]any)["structuredContent"].(map[string]any)["publication"].(mcpPublicationStatus).ID
+
+	_, _, intent, rpcErr := srv.handler.loadMCPPublicationForAction(ctx, "user-1", map[string]any{
+		"publication_id": publicationID, "expected_revision": 1,
+	}, "invalid")
+	require.Nil(t, rpcErr)
+	require.Equal(t, providerreadiness.ExecutionIntentProduction, intent)
+
+	rejectedPublication, rejectedRevision, rejectedIntent, rpcErr := srv.handler.loadMCPPublicationForAction(ctx, "user-1", map[string]any{
+		"publication_id": publicationID, "expected_revision": 1,
+		"execution_intent": "certification_test",
+	}, "invalid")
+	require.NotNil(t, rpcErr)
+	require.Empty(t, rejectedPublication.ID)
+	require.Zero(t, rejectedRevision)
+	require.Empty(t, rejectedIntent)
+	require.Contains(t, rpcErr.Message, "instance admin role required")
+
+	_, err := srv.db.NewUpdate().Model((*models.User)(nil)).Set("is_admin = ?", true).Where("id = ?", "user-1").Exec(ctx)
+	require.NoError(t, err)
+	_, _, intent, rpcErr = srv.handler.loadMCPPublicationForAction(ctx, "user-1", map[string]any{
+		"publication_id": publicationID, "expected_revision": 1,
+		"execution_intent": "certification_test",
+	}, "invalid")
+	require.Nil(t, rpcErr)
+	require.Equal(t, providerreadiness.ExecutionIntentCertificationTest, intent)
 }
 
 func TestMCPPublicationLifecycleOperationsStayInParity(t *testing.T) {
@@ -1726,14 +1791,16 @@ func TestMCPCallProviderReadiness(t *testing.T) {
 	result := out["result"].(map[string]any)
 	structured := result["structuredContent"].(map[string]any)
 	providers := structured["providers"].([]any)
-	require.Len(t, providers, 9)
+	require.Len(t, providers, 10)
 	byProvider := map[string]map[string]any{}
 	for _, provider := range providers {
 		item := provider.(map[string]any)
 		byProvider[item["provider"].(string)] = item
 	}
 	require.Equal(t, float64(1), byProvider["x"]["connected_accounts"])
-	require.Contains(t, byProvider["x"]["granted_scopes"], "tweet.write")
+	require.NotContains(t, byProvider["x"], "granted_scopes")
+	require.NotContains(t, byProvider["x"], "public_media_health")
+	require.NotEmpty(t, byProvider["x"]["profiles"])
 }
 
 func TestMCPCallValidatePublication(t *testing.T) {

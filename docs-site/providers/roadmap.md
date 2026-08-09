@@ -2,13 +2,16 @@
 
 OpenPost connects to social networks through the web app, CLI, HTTP API, MCP, and ChatGPT-style clients. This page explains when a new platform may appear as connectable.
 
-The platform list API returns current and planned platforms so each client can show the same connection choices.
+The platform list API returns implementation metadata and an evidence-based readiness decision so each client can show the same connection choices without treating configuration as proof.
 
-| Status                | Meaning                                                                |
-| --------------------- | ---------------------------------------------------------------------- |
-| `available`           | The platform is set up on this server, so users can connect accounts.  |
-| `needs_configuration` | The code is ready, but the operator has not set the social app keys.   |
-| `planned`             | The platform is planned. The server will not start a real sign-in yet. |
+| State                   | Meaning                                                                                         |
+| ----------------------- | ----------------------------------------------------------------------------------------------- |
+| `needs_configuration`   | The adapter exists, but the exact provider app or instance configuration is missing.            |
+| `approval_required`     | Configuration exists, but current provider approval evidence is missing.                        |
+| `reconnect_required`    | The exact account grant is inactive, expired, revoked, or missing a required scope.              |
+| `degraded` / `disabled` | A failed evidence lookup or runtime control blocks connection or publishing.                    |
+| `ready`                 | Every fact required for this exact operation is current; healthy state stays quiet in the app.  |
+| `planned`               | The platform is planned. The server will not start a real sign-in.                               |
 
 ## Planned platforms
 
@@ -16,7 +19,7 @@ No planned platform appears as connectable now. Keep a new platform in `planned`
 
 ## Platforms that need app review or live tests
 
-| Platform  | Current support                                                                                                                             |
+| Platform  | Current implementation                                                                                                                      |
 | --------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | Facebook  | Selected Page publishing for text, links, one image, 2–10 images, video, Reel, or Story; comments and opt-in inbox.                         |
 | Instagram | Selected Business or Creator account publishing for image, carousel, Reel, or Story; comments and opt-in inbox.                             |

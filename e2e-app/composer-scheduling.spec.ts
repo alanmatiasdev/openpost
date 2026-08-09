@@ -17,7 +17,31 @@ type PostPayload = {
   [key: string]: unknown;
 };
 
-test("composer quick-schedules a publication from the selected time", async ({
+function publicationReadiness(
+  state: string,
+  publishable: boolean,
+  blocker?: string,
+) {
+  return {
+    state,
+    executable: publishable,
+    connectable: false,
+    publishable,
+    advertisable: false,
+    facts: {
+      configuration: "configured",
+      local_test: "passed",
+      live_certification: "passed",
+      approval: "approved",
+      authorization: "authorized",
+      control: "enabled",
+      policy: state === "policy_restricted" ? "restricted" : "allowed",
+    },
+    blockers: blocker ? [{ code: blocker }] : [],
+  };
+}
+
+test("composer uses the exact immediate and scheduled readiness decisions", async ({
   page,
   request,
 }) => {
@@ -125,6 +149,12 @@ test("composer quick-schedules a publication from the selected time", async ({
             issues: [],
             capability_revision: "test-v1",
             dynamic_options: {},
+            immediate_readiness: publicationReadiness(
+              "policy_restricted",
+              false,
+              "policy_restricted",
+            ),
+            scheduled_readiness: publicationReadiness("healthy", true),
           },
         ],
       },
@@ -280,6 +310,12 @@ test("composer quick-schedules a publication from the selected time", async ({
     page.getByRole("button", { name: "Need inspiration?" }),
   ).toBeVisible();
   await page.getByLabel("Post text").fill(postContent);
+  await expect(page.getByRole("button", { name: "Publish now" })).toBeDisabled();
+  await page.getByTestId("composer-account-control").click();
+  await expect(page.getByTestId("composer-account-row")).toContainText(
+    "Publish now: The selected Bluesky account, format, or publishing policy is blocked.",
+  );
+  await page.keyboard.press("Escape");
   await expect(
     page.getByRole("button", { name: "Need inspiration?" }),
   ).toHaveCount(0);

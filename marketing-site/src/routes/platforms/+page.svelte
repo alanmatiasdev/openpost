@@ -1,21 +1,21 @@
 <script lang="ts">
-  import { ArrowRight, ShieldAlert } from "lucide-svelte";
+  import { ArrowRight, ShieldAlert } from "@lucide/svelte";
   import { Button } from "$lib/components/ui/button";
   import PlatformIcon from "$lib/components/platform-icon.svelte";
   import { managedSignupUrl, platforms, siteUrl } from "../_marketing";
 
   const approvalPlatforms = new Set<string>(
     platforms
-      .filter((platform) => platform.status === "Supported")
+      .filter((platform) => platform.requiresProviderApproval)
       .map((platform) => platform.slug),
   );
 </script>
 
 <svelte:head>
-  <title>Social platforms supported by OpenPost</title>
+  <title>Social platform implementation and certification - OpenPost</title>
   <meta
     name="description"
-    content="See the post formats, account needs, limits, and app review needs for every social platform in OpenPost."
+    content="See OpenPost adapter implementations, exact managed certification claims, account needs, limits, and app review requirements."
   />
   <link rel="canonical" href={`${siteUrl}/platforms`} />
 </svelte:head>
@@ -61,7 +61,8 @@
         Social platforms
       </h2>
       <p class="text-sm leading-6 text-muted-foreground">
-        OpenPost only shows a notice when a platform needs setup or app review.
+        An implemented adapter is not a managed certification claim. Each row
+        reports the current claim state from the release manifest.
       </p>
     </div>
 
@@ -84,14 +85,23 @@
             >{platform.description}</span
           >
           <span class="flex items-center justify-between gap-4">
-            {#if approvalPlatforms.has(platform.slug)}
+            <span class="flex flex-wrap items-center justify-end gap-2">
               <span
-                class="inline-flex items-center gap-2 rounded-md bg-amber-500/10 px-2.5 py-1.5 text-xs font-medium text-amber-700 dark:text-amber-300"
+                class="inline-flex items-center rounded-md bg-muted px-2.5 py-1.5 text-xs font-medium text-muted-foreground"
               >
-                <ShieldAlert class="size-3.5" aria-hidden="true" />
-                App review
+                {platform.managedCertificationState === "exact_claims_current"
+                  ? `${platform.certifiedOutputProfiles.length} exact certified format${platform.certifiedOutputProfiles.length === 1 ? "" : "s"}`
+                  : "No current managed claim"}
               </span>
-            {/if}
+              {#if approvalPlatforms.has(platform.slug)}
+                <span
+                  class="inline-flex items-center gap-2 rounded-md bg-amber-500/10 px-2.5 py-1.5 text-xs font-medium text-amber-700 dark:text-amber-300"
+                >
+                  <ShieldAlert class="size-3.5" aria-hidden="true" />
+                  App review
+                </span>
+              {/if}
+            </span>
             <ArrowRight
               class="size-4 text-muted-foreground transition-transform group-hover:translate-x-1 group-hover:text-foreground"
               aria-hidden="true"

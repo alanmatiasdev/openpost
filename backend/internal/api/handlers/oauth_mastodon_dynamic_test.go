@@ -16,6 +16,7 @@ import (
 	"github.com/openpost/backend/internal/platform"
 	"github.com/openpost/backend/internal/services/crypto"
 	"github.com/openpost/backend/internal/services/mastodonapps"
+	"github.com/openpost/backend/internal/services/providerreadiness"
 	"github.com/stretchr/testify/require"
 )
 
@@ -53,6 +54,11 @@ func TestGetAuthURLRegistersDynamicMastodonInstance(t *testing.T) {
 	encryptor := crypto.NewTokenEncryptor("0123456789abcdef0123456789abcdef")
 	providerCatalog := map[string]platform.Adapter{}
 	handler := NewOAuthHandler(db, encryptor, providerCatalog, testAuthenticator{}, false, "https://app.openpost.test")
+	handler.SetProviderReadiness(oauthDynamicRegistrationReadiness(
+		t,
+		&oauthReadinessLedger{control: providerreadiness.RuntimeControlStateEnabled},
+		mastodonProvider,
+	))
 	registeredProviders := map[string]platform.Adapter{}
 	handler.SetProviderRegistrars(func(key string, adapter platform.Adapter) {
 		registeredProviders[key] = adapter

@@ -86,6 +86,7 @@ func newPublisherMediaStateTestServer(t *testing.T, platformName string, adapter
 	service.SetStorage(storage)
 	service.SetMediaStateEncryptor(encryptor)
 	service.SetPublicMediaURL("https://media.openpost.test/media")
+	enableSelfHostedPublisherReadiness(t, db, service, platformName, "account-1")
 
 	return &publisherMediaStateTestServer{db: db, service: service, storage: storage, adapter: adapter, encryptor: encryptor}
 }

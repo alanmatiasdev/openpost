@@ -6,6 +6,7 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+- Added an evidence-based provider-readiness ledger and runtime controls that bind approval, account authorization, policy mode, output profile, app identity, environment, contract digest, and expiring live proof; REST, MCP, CLI, composer, worker, release, and public-claim surfaces now fail closed from the same projection, with migration 077 preserving immutable evidence.
 - Added a machine-checked managed-data retention schedule, complete first-party browser-storage inventory, dated legal-policy history, and reviewed security responsibility and incident-disclosure boundaries without implying independent assurance that has not occurred.
 - Added automatic, reviewable image alt text when images without alt text are attached in the text-and-thread composer. The optional server-side OpenRouter integration sends a 400px JPEG thumbnail and, when present, up to 1,000 characters of the current relevant post or thread segment as untrusted context for better disambiguation; it never replaces user-written text or blocks media attachment and publishing when unavailable.
 - Added durable provider-write fencing with immutable logical payload fingerprints, structured acceptance and reconciliation state, provider idempotency support, stale-worker ambiguity recovery, and no-replay crash protection across publishing, comments, messages, reposts, and media delivery; migration 076 adds the attempt ledger.

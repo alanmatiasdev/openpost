@@ -13,6 +13,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/openpost/backend/internal/platform"
 	"github.com/openpost/backend/internal/services/mastodonapps"
+	"github.com/openpost/backend/internal/services/providerreadiness"
 	"github.com/stretchr/testify/require"
 )
 
@@ -68,6 +69,14 @@ func TestListProvidersReportsConfiguredProviders(t *testing.T) {
 			"mastodon:Personal":         mastodonAdapter,
 		},
 	}
+	handler.readiness = oauthConnectionReadiness(
+		t,
+		&oauthReadinessLedger{control: providerreadiness.RuntimeControlStateEnabled},
+		platform.AppConfig{Provider: "bluesky", ClientID: "bluesky-app"},
+		platform.AppConfig{Provider: "discord", ClientID: "discord-app"},
+		platform.AppConfig{Provider: "x", ClientID: "x-app"},
+		platform.AppConfig{Provider: mastodonProvider, ClientID: "mastodon-app", InstanceURL: "https://masto.pt"},
+	)
 	handler.ListProviders(api)
 
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/accounts/providers", nil)
@@ -89,17 +98,16 @@ func TestListProvidersReportsConfiguredProviders(t *testing.T) {
 	require.Equal(t, "x", out[2].Platform)
 	require.Equal(t, providerStatusAvailable, out[2].Status)
 	require.True(t, out[2].Configured)
-	require.Equal(t, ProviderInfo{
-		Platform:     "mastodon",
-		DisplayName:  "Mastodon",
-		AuthMode:     "oauth_oob",
-		Configured:   true,
-		Status:       providerStatusAvailable,
-		Description:  "Connect this configured Mastodon instance.",
-		Capabilities: coreProviderCapabilities,
-		Name:         "Personal",
-		InstanceURL:  "https://masto.pt",
-	}, out[3])
+	require.Equal(t, "mastodon", out[3].Platform)
+	require.Equal(t, "Mastodon", out[3].DisplayName)
+	require.Equal(t, "oauth_oob", out[3].AuthMode)
+	require.True(t, out[3].Configured)
+	require.Equal(t, providerStatusAvailable, out[3].Status)
+	require.Equal(t, "Connect this configured Mastodon instance.", out[3].Description)
+	require.Equal(t, coreProviderCapabilities, out[3].Capabilities)
+	require.Equal(t, "Personal", out[3].Name)
+	require.Equal(t, "https://masto.pt", out[3].InstanceURL)
+	require.True(t, out[3].Readiness.Connectable)
 	require.Equal(t, "linkedin", out[4].Platform)
 	require.Equal(t, providerStatusNeedsConfiguration, out[4].Status)
 	require.False(t, out[4].Configured)
@@ -125,18 +133,20 @@ func TestListProvidersReportsConfiguredProviders(t *testing.T) {
 func TestListProvidersIncludesUnavailableMastodonPlaceholder(t *testing.T) {
 	t.Parallel()
 
-	handler := &OAuthHandler{providers: map[string]platform.Adapter{}}
+	handler := &OAuthHandler{
+		providers: map[string]platform.Adapter{},
+		readiness: oauthConnectionReadiness(
+			t,
+			&oauthReadinessLedger{control: providerreadiness.RuntimeControlStateEnabled},
+		),
+	}
 	out := handler.providerAvailability()
 
 	require.Len(t, out, 10)
-	require.Equal(t, ProviderInfo{
-		Platform:    "mastodon",
-		DisplayName: "Mastodon",
-		AuthMode:    "oauth_oob",
-		Configured:  false,
-		Status:      providerStatusNeedsConfiguration,
-		Description: "Configure Mastodon servers or dynamic instance registration before connecting.",
-	}, out[3])
+	require.Equal(t, "mastodon", out[3].Platform)
+	require.False(t, out[3].Configured)
+	require.Equal(t, providerStatusNeedsConfiguration, out[3].Status)
+	require.Equal(t, providerreadiness.EffectiveStateNeedsConfiguration, out[3].Readiness.State)
 }
 
 func TestListProvidersReportsDynamicMastodonAvailable(t *testing.T) {
@@ -145,18 +155,18 @@ func TestListProvidersReportsDynamicMastodonAvailable(t *testing.T) {
 	handler := &OAuthHandler{
 		providers:    map[string]platform.Adapter{},
 		mastodonApps: mastodonapps.NewService(nil, nil, mastodonapps.Options{}),
+		readiness: oauthDynamicRegistrationReadiness(
+			t,
+			&oauthReadinessLedger{control: providerreadiness.RuntimeControlStateEnabled},
+			mastodonProvider,
+		),
 	}
 	out := handler.providerAvailability()
 
 	require.Len(t, out, 10)
-	require.Equal(t, ProviderInfo{
-		Platform:     "mastodon",
-		DisplayName:  "Mastodon",
-		AuthMode:     "oauth_oob",
-		Configured:   true,
-		Status:       providerStatusAvailable,
-		Description:  "Connect any public Mastodon instance.",
-		Capabilities: coreProviderCapabilities,
-		Name:         "Custom instance",
-	}, out[3])
+	require.Equal(t, "mastodon", out[3].Platform)
+	require.True(t, out[3].Configured)
+	require.Equal(t, providerStatusAvailable, out[3].Status)
+	require.Equal(t, "Custom instance", out[3].Name)
+	require.True(t, out[3].Readiness.Connectable)
 }

@@ -20,11 +20,11 @@
 	import InlineNotice from '$lib/components/inline-notice.svelte';
 	import AppToast from '$lib/components/app-toast.svelte';
 	import DestructiveConfirmDialog from '$lib/components/destructive-confirm-dialog.svelte';
-	import MoreHorizontalIcon from 'lucide-svelte/icons/ellipsis';
+	import MoreHorizontalIcon from '@lucide/svelte/icons/ellipsis';
 	import { formatAccountHandle, getPlatformName, getPlatformColor } from '$lib/utils';
 	import PlatformIcon from '$lib/components/platform-icon.svelte';
-	import LoaderIcon from 'lucide-svelte/icons/loader-2';
-	import UsersIcon from 'lucide-svelte/icons/users';
+	import LoaderIcon from '@lucide/svelte/icons/loader-2';
+	import UsersIcon from '@lucide/svelte/icons/users';
 	import { m } from '$lib/paraglide/messages';
 	import { getOptionalUnsavedChanges } from '$lib/unsaved-changes.svelte';
 	import {
@@ -32,6 +32,13 @@
 		grantDestinationCount,
 		type AccountRemovalKind
 	} from './account-removal';
+	import {
+		presentProviderReadiness,
+		type ProviderReadinessDecision,
+		type ProviderReadinessPresentation
+	} from '$lib/provider-readiness';
+
+	type ProviderEntry = ProviderInfo & { readiness?: ProviderReadinessDecision };
 
 	type AccountRemovalAction = {
 		kind: AccountRemovalKind;
@@ -51,7 +58,7 @@
 	let accountsLoadError = $state('');
 	let accountsRequestSequence = 0;
 
-	let providerEntries = $state.raw<ProviderInfo[]>([]);
+	let providerEntries = $state.raw<ProviderEntry[]>([]);
 	let providersLoading = $state(false);
 	let providersLoadError = $state('');
 	let mastodonModalOpen = $state(false);
@@ -87,7 +94,7 @@
 	let discordLoading = $state(false);
 	let discordError = $state('');
 	let oauthConfirmOpen = $state(false);
-	let oauthConfirmProvider = $state.raw<ProviderInfo | null>(null);
+	let oauthConfirmProvider = $state.raw<ProviderEntry | null>(null);
 
 	let editAccountDialogOpen = $state(false);
 	let editingAccount = $state<SocialAccount | null>(null);
@@ -188,7 +195,7 @@
 		try {
 			const { data, error: err } = await client.GET('/accounts/providers');
 			if (err) throw new Error(err.detail ?? m.accounts_providers_load_failed());
-			providerEntries = data ?? [];
+			providerEntries = (data ?? []) as ProviderEntry[];
 		} catch (e) {
 			console.error('Failed to load account providers:', e);
 			providersLoadError =
@@ -559,16 +566,15 @@
 	const connectInstagram = () => connectOAuthProvider('instagram');
 	const connectYouTube = () => connectOAuthProvider('youtube');
 
-	function providerKey(provider: ProviderInfo): string {
+	function providerKey(provider: ProviderEntry): string {
 		return provider.platform;
 	}
 
-	function providerTitle(provider: ProviderInfo): string {
+	function providerTitle(provider: ProviderEntry): string {
 		return provider.display_name || getPlatformName(provider.platform);
 	}
 
-	function providerDescription(provider: ProviderInfo): string {
-		if (!provider.configured) return m.accounts_provider_admin_enable();
+	function providerDescription(provider: ProviderEntry): string {
 		if (provider.platform === 'mastodon') {
 			return m.accounts_provider_custom_mastodon();
 		}
@@ -596,50 +602,116 @@
 		}
 	}
 
-	function providerStatus(provider: ProviderInfo): string {
-		if (provider.status) return provider.status;
-		return provider.configured ? 'available' : 'needs_configuration';
+	function providerReadiness(provider: ProviderEntry): ProviderReadinessPresentation {
+		return presentProviderReadiness(provider.readiness, 'connect');
 	}
 
-	function providerStatusLabel(provider: ProviderInfo): string {
-		switch (providerStatus(provider)) {
-			case 'available':
-				return m.accounts_provider_available();
-			case 'planned':
-				return m.accounts_provider_planned();
+	function providerStatusLabel(provider: ProviderEntry): string {
+		if (provider.status === 'planned') return m.accounts_provider_planned();
+		switch (providerReadiness(provider).state) {
+			case 'unsupported':
+				return m.provider_readiness_label_unsupported();
+			case 'disabled':
+				return m.provider_readiness_label_disabled();
 			case 'needs_configuration':
-				return m.accounts_provider_admin_required();
+				return m.provider_readiness_label_needs_configuration();
+			case 'reconnect_required':
+				return m.provider_readiness_label_reconnect_required();
+			case 'degraded':
+				return m.provider_readiness_label_degraded();
+			case 'approval_required':
+				return m.provider_readiness_label_approval_required();
+			case 'trial_only':
+				return m.provider_readiness_label_trial_only();
+			case 'policy_restricted':
+				return m.provider_readiness_label_policy_restricted();
+			case 'certification_required':
+				return m.provider_readiness_label_certification_required();
+			case 'expired_proof':
+				return m.provider_readiness_label_expired_proof();
+			case 'healthy':
 			default:
-				return provider.configured
-					? m.accounts_provider_available()
-					: m.accounts_provider_unavailable();
+				return '';
 		}
 	}
 
-	function providerStatusClass(provider: ProviderInfo): string {
-		switch (providerStatus(provider)) {
-			case 'available':
-				return 'border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300';
-			case 'planned':
-				return 'border-blue-500/20 bg-blue-500/10 text-blue-700 dark:text-blue-300';
-			case 'needs_configuration':
+	function providerStatusClass(provider: ProviderEntry): string {
+		if (provider.status === 'planned') {
+			return 'border-blue-500/20 bg-blue-500/10 text-blue-700 dark:text-blue-300';
+		}
+		switch (providerReadiness(provider).tone) {
+			case 'warning':
 				return 'border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-300';
+			case 'error':
+				return 'border-destructive/20 bg-destructive/10 text-destructive';
+			case 'neutral':
 			default:
-				return 'border-muted bg-muted text-muted-foreground';
+				return 'border-blue-500/20 bg-blue-500/10 text-blue-700 dark:text-blue-300';
 		}
 	}
 
-	function providerCanConnect(provider: ProviderInfo): boolean {
-		return provider.configured && providerStatus(provider) !== 'planned';
+	function providerReadinessMessage(provider: ProviderEntry): string {
+		const platform = providerTitle(provider);
+		switch (providerReadiness(provider).state) {
+			case 'unsupported':
+				return m.provider_readiness_unsupported({ platform });
+			case 'disabled':
+				return m.provider_readiness_disabled({ platform });
+			case 'needs_configuration':
+				return m.provider_readiness_needs_configuration({ platform });
+			case 'reconnect_required':
+				return m.provider_readiness_reconnect_required({ platform });
+			case 'degraded':
+				return m.provider_readiness_degraded({ platform });
+			case 'approval_required':
+				return m.provider_readiness_approval_required({ platform });
+			case 'trial_only':
+				return m.provider_readiness_trial_only({ platform });
+			case 'policy_restricted':
+				return m.provider_readiness_policy_restricted({ platform });
+			case 'certification_required':
+				return m.provider_readiness_certification_required({ platform });
+			case 'expired_proof':
+				return m.provider_readiness_expired_proof({ platform });
+			case 'healthy':
+			default:
+				return '';
+		}
 	}
 
-	function providerActionLabel(provider: ProviderInfo): string {
-		if (providerStatus(provider) === 'planned') return m.accounts_provider_planned();
-		return provider.configured ? m.common_connect() : m.accounts_provider_ask_admin();
+	function providerCanConnect(provider: ProviderEntry): boolean {
+		return provider.status !== 'planned' && providerReadiness(provider).canProceed;
 	}
 
-	function isCustomMastodonProvider(provider: ProviderInfo): boolean {
-		return provider.platform === 'mastodon' && provider.configured && !provider.instance_url;
+	function providerActionEnabled(provider: ProviderEntry): boolean {
+		return providerCanConnect(provider) || providerReadiness(provider).action === 'retry';
+	}
+
+	function providerActionLabel(provider: ProviderEntry): string {
+		if (provider.status === 'planned') return m.accounts_provider_planned();
+		if (providerCanConnect(provider)) return m.common_connect();
+		switch (providerReadiness(provider).action) {
+			case 'retry':
+				return m.accounts_provider_retry_readiness();
+			case 'reconnect':
+				return m.activity_reconnect_account();
+			case 'configure':
+			case 'contact_admin':
+			default:
+				return m.accounts_provider_ask_admin();
+		}
+	}
+
+	function handleProviderAction(provider: ProviderEntry) {
+		if (providerCanConnect(provider)) {
+			connectProvider(provider);
+			return;
+		}
+		if (providerReadiness(provider).action === 'retry') void loadProviders();
+	}
+
+	function isCustomMastodonProvider(provider: ProviderEntry): boolean {
+		return provider.platform === 'mastodon' && providerCanConnect(provider) && !provider.instance_url;
 	}
 
 	function mastodonHost(value: string): string {
@@ -732,7 +804,7 @@
 		goto(resolve('/accounts/mastodon/callback'));
 	}
 
-	function providerUsesOAuth(provider: ProviderInfo): boolean {
+	function providerUsesOAuth(provider: ProviderEntry): boolean {
 		return [
 			'x',
 			'mastodon',
@@ -745,7 +817,7 @@
 		].includes(provider.platform);
 	}
 
-	function connectProvider(provider: ProviderInfo) {
+	function connectProvider(provider: ProviderEntry) {
 		if (!providerCanConnect(provider)) return;
 		if (providerUsesOAuth(provider)) {
 			oauthConfirmProvider = provider;
@@ -762,7 +834,7 @@
 		beginProviderConnection(provider);
 	}
 
-	function beginProviderConnection(provider: ProviderInfo) {
+	function beginProviderConnection(provider: ProviderEntry) {
 		switch (provider.platform) {
 			case 'x':
 				connectTwitter();
@@ -1054,7 +1126,7 @@
 										<div class="min-w-0 flex-1">
 											<div class="flex flex-wrap items-center gap-2">
 												<h3 class="text-sm font-medium">{providerTitle(provider)}</h3>
-												{#if providerStatus(provider) !== 'available'}
+												{#if provider.status === 'planned' || !providerReadiness(provider).quiet}
 													<span
 														class="inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium {providerStatusClass(
 															provider
@@ -1067,13 +1139,21 @@
 											<p class="truncate text-sm text-muted-foreground">
 												{providerDescription(provider)}
 											</p>
+											{#if provider.status !== 'planned' && !providerReadiness(provider).quiet}
+												<p
+													data-testid={`provider-readiness-${provider.platform}`}
+													class="mt-1 text-xs leading-5 text-muted-foreground"
+												>
+													{providerReadinessMessage(provider)}
+												</p>
+											{/if}
 										</div>
 									</div>
 									<Button
 										class="mt-3 min-h-11 self-end sm:min-h-9"
-										onclick={() => connectProvider(provider)}
+										onclick={() => handleProviderAction(provider)}
 										size="sm"
-										disabled={!providerCanConnect(provider)}
+										disabled={!providerActionEnabled(provider)}
 									>
 										{providerActionLabel(provider)}
 									</Button>

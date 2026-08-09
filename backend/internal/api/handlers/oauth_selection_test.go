@@ -17,11 +17,16 @@ import (
 	"github.com/openpost/backend/internal/platform"
 	"github.com/openpost/backend/internal/services/crypto"
 	"github.com/openpost/backend/internal/services/entitlements"
+	"github.com/openpost/backend/internal/services/providerreadiness"
 	"github.com/stretchr/testify/require"
 )
 
 type selectionTestAdapter struct {
-	profileCalls int
+	exchangeCalls int
+	profileCalls  int
+	listCalls     int
+	selectCalls   int
+	onSelect      func()
 }
 
 func (a *selectionTestAdapter) GenerateAuthURL(state string) (string, map[string]string) {
@@ -29,6 +34,7 @@ func (a *selectionTestAdapter) GenerateAuthURL(state string) (string, map[string
 }
 
 func (a *selectionTestAdapter) ExchangeCode(context.Context, string, map[string]string) (*platform.TokenResult, error) {
+	a.exchangeCalls++
 	return &platform.TokenResult{
 		AccessToken:  "user-access-token",
 		RefreshToken: "user-refresh-token",
@@ -62,6 +68,7 @@ func (a *selectionTestAdapter) Publish(context.Context, string, string, *platfor
 }
 
 func (a *selectionTestAdapter) ListAccountSelections(_ context.Context, token *platform.TokenResult) ([]platform.AccountSelectionOption, error) {
+	a.listCalls++
 	if token.AccessToken != "user-access-token" {
 		return nil, nil
 	}
@@ -72,6 +79,10 @@ func (a *selectionTestAdapter) ListAccountSelections(_ context.Context, token *p
 }
 
 func (a *selectionTestAdapter) SelectAccount(_ context.Context, token *platform.TokenResult, selectionID string) (*platform.SelectedAccount, error) {
+	a.selectCalls++
+	if a.onSelect != nil {
+		a.onSelect()
+	}
 	if token.AccessToken != "user-access-token" || selectionID != "page-2" {
 		return nil, nil
 	}
@@ -113,14 +124,19 @@ func TestOAuthCallbackCreatesAndCompletesAccountSelection(t *testing.T) {
 	encryptor := crypto.NewTokenEncryptor("0123456789abcdef0123456789abcdef")
 	adapter := &selectionTestAdapter{}
 	handler := NewOAuthHandler(db, encryptor, map[string]platform.Adapter{
-		"selectable": adapter,
+		"facebook": adapter,
 	}, testAuthenticator{}, false, "https://app.openpost.test")
+	handler.SetProviderReadiness(oauthConnectionReadiness(
+		t,
+		&oauthReadinessLedger{control: providerreadiness.RuntimeControlStateEnabled},
+		platform.AppConfig{Provider: "facebook", ClientID: "facebook-app"},
+	))
 	handler.GetAuthURL(api)
 	handler.Callback(api)
 	handler.GetAccountSelection(api)
 	handler.CompleteAccountSelection(api)
 
-	authURLResp := oauthSelectionRequest(t, e, http.MethodGet, "/api/v1/accounts/selectable/auth-url?workspace_id=ws-1", nil, true)
+	authURLResp := oauthSelectionRequest(t, e, http.MethodGet, "/api/v1/accounts/facebook/auth-url?workspace_id=ws-1", nil, true)
 	require.Equal(t, http.StatusOK, authURLResp.Code, authURLResp.Body.String())
 	var authURLBody struct {
 		URL string `json:"url"`
@@ -131,13 +147,13 @@ func TestOAuthCallbackCreatesAndCompletesAccountSelection(t *testing.T) {
 	state := parsedAuthURL.Query().Get("state")
 	require.NotEmpty(t, state)
 
-	callbackResp := oauthSelectionRequest(t, e, http.MethodGet, "/api/v1/accounts/selectable/callback?code=provider-code&state="+url.QueryEscape(state), nil, false)
+	callbackResp := oauthSelectionRequest(t, e, http.MethodGet, "/api/v1/accounts/facebook/callback?code=provider-code&state="+url.QueryEscape(state), nil, false)
 	callbackResult := callbackResp.Result()
 	t.Cleanup(func() { _ = callbackResult.Body.Close() })
 	require.Equal(t, http.StatusTemporaryRedirect, callbackResult.StatusCode, callbackResp.Body.String())
 	location := callbackResult.Header.Get("Location")
 	require.Contains(t, location, "status=selection_required")
-	require.Contains(t, location, "platform=selectable")
+	require.Contains(t, location, "platform=facebook")
 	callbackURL, err := url.Parse(location)
 	require.NoError(t, err)
 	connectionID := callbackURL.Query().Get("connection_id")
@@ -150,7 +166,7 @@ func TestOAuthCallbackCreatesAndCompletesAccountSelection(t *testing.T) {
 	require.NotContains(t, selectionResp.Body.String(), "user-refresh-token")
 	var selectionBody AccountSelectionResponse
 	require.NoError(t, json.Unmarshal(selectionResp.Body.Bytes(), &selectionBody))
-	require.Equal(t, "selectable", selectionBody.Platform)
+	require.Equal(t, "facebook", selectionBody.Platform)
 	require.Equal(t, "ws-1", selectionBody.WorkspaceID)
 	require.Len(t, selectionBody.Options, 2)
 	require.Equal(t, "OpenPost Image Editor Page", selectionBody.Options[1].DisplayName)
@@ -161,7 +177,7 @@ func TestOAuthCallbackCreatesAndCompletesAccountSelection(t *testing.T) {
 	require.Equal(t, http.StatusOK, completeResp.Code, completeResp.Body.String())
 	var accountBody AccountResponse
 	require.NoError(t, json.Unmarshal(completeResp.Body.Bytes(), &accountBody))
-	require.Equal(t, "selectable", accountBody.Platform)
+	require.Equal(t, "facebook", accountBody.Platform)
 	require.Equal(t, "page-2", accountBody.AccountID)
 	require.Equal(t, "studio", accountBody.AccountUsername)
 	require.Equal(t, "https://cdn.example/image-editor.png", accountBody.AccountAvatarURL)
@@ -200,6 +216,7 @@ func TestPendingAccountSelectionPreservesRefreshTokenExpiry(t *testing.T) {
 		"linkedin",
 		"workspace-1",
 		"",
+		"production",
 		&platform.TokenResult{
 			AccessToken:      "access-token",
 			RefreshToken:     "refresh-token",

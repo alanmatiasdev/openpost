@@ -79,11 +79,19 @@ OpenPost does not include a CRM, ad manager, social listening, or large-company 
   </tr>
 </table>
 
-## Supported platforms
+## Provider implementations
 
-OpenPost supports X, Mastodon, Bluesky, LinkedIn profiles and Organization Pages, Threads, Facebook Pages, Instagram Business and Creator accounts, TikTok, YouTube, and Discord webhooks.
+OpenPost includes adapters for X, Mastodon, Bluesky, LinkedIn profiles and Organization Pages, Threads, Facebook Pages, Instagram Business and Creator accounts, TikTok, YouTube, and Discord webhooks.
 
-App review, setup, account access, API limits, public media links, or a failed live test can still block an account or format. Check the [platform table](https://docs.openpost.social/providers/platform-limits) for current formats, media limits, and setup notes.
+An adapter is implementation evidence, not proof that a managed provider or format is ready. App review, effective setup, exact account access and scopes, API limits, policy mode, public media, runtime controls, and current local/live certification are separate gates.
+
+<!-- provider-certification:begin -->
+The checked-in public certification manifest contains **0 exact provider-format claims**.
+
+No managed provider-format certification claim is current. Implementation descriptions do not assert managed availability.
+<!-- provider-certification:end -->
+
+See the [readiness and launch gate](https://docs.openpost.social/providers/launch-matrix) and [implementation table](https://docs.openpost.social/providers/platform-limits).
 
 ## Self-host in a few minutes
 

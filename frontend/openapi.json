@@ -1005,6 +1005,168 @@
 				"required": ["message"],
 				"type": "object"
 			},
+			"AppendProviderApprovalReviewInputBody": {
+				"additionalProperties": false,
+				"properties": {
+					"$schema": {
+						"description": "A URL to the JSON Schema for this object.",
+						"examples": ["https://example.com/schemas/AppendProviderApprovalReviewInputBody.json"],
+						"format": "uri",
+						"readOnly": true,
+						"type": "string"
+					},
+					"app_fingerprint": {
+						"type": "string"
+					},
+					"expires_at": {
+						"format": "date-time",
+						"type": "string"
+					},
+					"instance_fingerprint": {
+						"type": "string"
+					},
+					"provider": {
+						"type": "string"
+					},
+					"provider_environment": {
+						"enum": ["development", "sandbox", "production"],
+						"type": "string"
+					},
+					"reviewed_at": {
+						"format": "date-time",
+						"type": "string"
+					},
+					"source_url": {
+						"format": "uri",
+						"type": "string"
+					},
+					"state": {
+						"enum": [
+							"unknown",
+							"not_required",
+							"pending",
+							"trial",
+							"approved",
+							"restricted",
+							"revoked"
+						],
+						"type": "string"
+					},
+					"tier": {
+						"type": "string"
+					}
+				},
+				"required": [
+					"provider",
+					"app_fingerprint",
+					"provider_environment",
+					"state",
+					"tier",
+					"source_url",
+					"reviewed_at",
+					"expires_at"
+				],
+				"type": "object"
+			},
+			"AppendProviderCertificationInputBody": {
+				"additionalProperties": false,
+				"properties": {
+					"$schema": {
+						"description": "A URL to the JSON Schema for this object.",
+						"examples": ["https://example.com/schemas/AppendProviderCertificationInputBody.json"],
+						"format": "uri",
+						"readOnly": true,
+						"type": "string"
+					},
+					"approval_review_id": {
+						"type": "string"
+					},
+					"checks": {
+						"items": {
+							"$ref": "#/components/schemas/CheckResult"
+						},
+						"minItems": 1,
+						"type": ["array", "null"]
+					},
+					"expires_at": {
+						"format": "date-time",
+						"type": "string"
+					},
+					"kind": {
+						"enum": ["local", "live"],
+						"type": "string"
+					},
+					"operation": {
+						"enum": ["publish_immediate", "publish_scheduled"],
+						"type": "string"
+					},
+					"output_profile": {
+						"type": "string"
+					},
+					"policy_mode": {
+						"description": "Optional asserted normalized policy mode; the server derives and verifies it",
+						"type": "string"
+					},
+					"policy_settings": {
+						"additionalProperties": {},
+						"type": "object"
+					},
+					"social_account_id": {
+						"type": "string"
+					},
+					"tested_at": {
+						"format": "date-time",
+						"type": "string"
+					},
+					"workspace_id": {
+						"type": "string"
+					}
+				},
+				"required": [
+					"approval_review_id",
+					"workspace_id",
+					"social_account_id",
+					"output_profile",
+					"operation",
+					"kind",
+					"tested_at",
+					"expires_at",
+					"checks"
+				],
+				"type": "object"
+			},
+			"AppendProviderRuntimeControlInputBody": {
+				"additionalProperties": false,
+				"properties": {
+					"$schema": {
+						"description": "A URL to the JSON Schema for this object.",
+						"examples": ["https://example.com/schemas/AppendProviderRuntimeControlInputBody.json"],
+						"format": "uri",
+						"readOnly": true,
+						"type": "string"
+					},
+					"expires_at": {
+						"format": "date-time",
+						"type": "string"
+					},
+					"reason_code": {
+						"type": "string"
+					},
+					"selector": {
+						"$ref": "#/components/schemas/RuntimeControlSelector"
+					},
+					"starts_at": {
+						"format": "date-time",
+						"type": "string"
+					},
+					"state": {
+						"enum": ["enabled", "degraded", "disabled"],
+						"type": "string"
+					}
+				},
+				"required": ["selector", "state", "reason_code", "starts_at"],
+				"type": "object"
+			},
 			"ApproveCLIAuthInputBody": {
 				"additionalProperties": false,
 				"properties": {
@@ -1566,6 +1728,19 @@
 				},
 				"type": "object"
 			},
+			"Blocker": {
+				"additionalProperties": false,
+				"properties": {
+					"code": {
+						"type": "string"
+					},
+					"detail": {
+						"type": "string"
+					}
+				},
+				"required": ["code"],
+				"type": "object"
+			},
 			"BlueskyLoginInputBody": {
 				"additionalProperties": false,
 				"properties": {
@@ -1582,6 +1757,11 @@
 					},
 					"handle": {
 						"description": "Bluesky handle (e.g. user.bsky.social)",
+						"type": "string"
+					},
+					"intent": {
+						"description": "Typed execution intent; certification_test requires an unscoped instance administrator",
+						"enum": ["production", "certification_test"],
 						"type": "string"
 					},
 					"workspace_id": {
@@ -2011,6 +2191,32 @@
 					}
 				},
 				"required": ["in_app", "email"],
+				"type": "object"
+			},
+			"CheckResult": {
+				"additionalProperties": false,
+				"properties": {
+					"completed_at": {
+						"format": "date-time",
+						"type": "string"
+					},
+					"error_class": {
+						"type": "string"
+					},
+					"external_ref_hash": {
+						"type": "string"
+					},
+					"kind": {
+						"type": "string"
+					},
+					"not_applicable_reason": {
+						"type": "string"
+					},
+					"outcome": {
+						"type": "string"
+					}
+				},
+				"required": ["kind", "outcome", "completed_at"],
 				"type": "object"
 			},
 			"ClientError": {
@@ -3731,6 +3937,40 @@
 				"required": ["x", "y", "width", "height"],
 				"type": "object"
 			},
+			"Decision": {
+				"additionalProperties": false,
+				"properties": {
+					"advertisable": {
+						"type": "boolean"
+					},
+					"blockers": {
+						"items": {
+							"$ref": "#/components/schemas/Blocker"
+						},
+						"type": ["array", "null"]
+					},
+					"connectable": {
+						"type": "boolean"
+					},
+					"contract_digest": {
+						"type": "string"
+					},
+					"executable": {
+						"type": "boolean"
+					},
+					"facts": {
+						"$ref": "#/components/schemas/Facts"
+					},
+					"publishable": {
+						"type": "boolean"
+					},
+					"state": {
+						"type": "string"
+					}
+				},
+				"required": ["state", "executable", "connectable", "publishable", "advertisable", "facts"],
+				"type": "object"
+			},
 			"DeleteAccountInputBody": {
 				"additionalProperties": false,
 				"properties": {
@@ -4263,6 +4503,11 @@
 						"readOnly": true,
 						"type": "string"
 					},
+					"intent": {
+						"description": "Typed execution intent; certification_test requires an unscoped instance administrator",
+						"enum": ["production", "certification_test"],
+						"type": "string"
+					},
 					"webhook_url": {
 						"description": "Discord incoming webhook URL",
 						"type": "string"
@@ -4709,6 +4954,11 @@
 						"description": "Mastodon instance URL to dynamically register",
 						"type": "string"
 					},
+					"intent": {
+						"description": "Typed execution intent; certification_test requires an unscoped instance administrator",
+						"enum": ["production", "certification_test"],
+						"type": "string"
+					},
 					"server_name": {
 						"description": "Mastodon server name from config",
 						"type": "string"
@@ -4782,6 +5032,42 @@
 					}
 				},
 				"required": ["numerator", "denominator"],
+				"type": "object"
+			},
+			"Facts": {
+				"additionalProperties": false,
+				"properties": {
+					"approval": {
+						"type": "string"
+					},
+					"authorization": {
+						"type": "string"
+					},
+					"configuration": {
+						"type": "string"
+					},
+					"control": {
+						"type": "string"
+					},
+					"live_certification": {
+						"type": "string"
+					},
+					"local_test": {
+						"type": "string"
+					},
+					"policy": {
+						"type": "string"
+					}
+				},
+				"required": [
+					"configuration",
+					"local_test",
+					"live_certification",
+					"approval",
+					"authorization",
+					"control",
+					"policy"
+				],
 				"type": "object"
 			},
 			"FailedAPIRequest": {
@@ -9755,36 +10041,24 @@
 						"description": "Provider key",
 						"type": "string"
 					},
+					"readiness": {
+						"$ref": "#/components/schemas/Decision"
+					},
 					"status": {
 						"description": "Provider launch status: available, needs_configuration, or planned",
 						"type": "string"
 					}
 				},
-				"required": ["platform", "display_name", "auth_mode", "configured"],
+				"required": ["platform", "display_name", "auth_mode", "configured", "readiness"],
 				"type": "object"
 			},
 			"ProviderReadinessItem": {
 				"additionalProperties": false,
 				"properties": {
-					"account_types": {
-						"items": {
-							"type": "string"
-						},
-						"type": ["array", "null"]
-					},
-					"app_review_warnings": {
-						"items": {
-							"type": "string"
-						},
-						"type": ["array", "null"]
+					"advertisable": {
+						"type": "boolean"
 					},
 					"blocking_issues": {
-						"items": {
-							"type": "string"
-						},
-						"type": ["array", "null"]
-					},
-					"capability_caveats": {
 						"items": {
 							"type": "string"
 						},
@@ -9793,55 +10067,57 @@
 					"configured_app_state": {
 						"type": "string"
 					},
+					"connectable": {
+						"type": "boolean"
+					},
 					"connected_accounts": {
 						"format": "int64",
 						"type": "integer"
 					},
-					"granted_scopes": {
-						"items": {
-							"type": "string"
-						},
-						"type": ["array", "null"]
+					"facts": {
+						"$ref": "#/components/schemas/Facts"
 					},
-					"next_actions": {
+					"profiles": {
 						"items": {
-							"type": "string"
+							"$ref": "#/components/schemas/ProviderReadinessProfile"
 						},
 						"type": ["array", "null"]
 					},
 					"provider": {
 						"type": "string"
 					},
-					"public_media_health": {
-						"$ref": "#/components/schemas/PublicMediaHealth"
-					},
-					"quota_caveats": {
-						"items": {
-							"type": "string"
-						},
-						"type": ["array", "null"]
-					},
-					"required_scopes": {
-						"items": {
-							"type": "string"
-						},
-						"type": ["array", "null"]
-					},
-					"supported_profiles": {
-						"items": {
-							"type": "string"
-						},
-						"type": ["array", "null"]
+					"state": {
+						"type": "string"
 					}
 				},
 				"required": [
 					"provider",
+					"state",
+					"connectable",
+					"advertisable",
+					"facts",
 					"configured_app_state",
-					"connected_accounts",
-					"required_scopes",
-					"public_media_health",
-					"supported_profiles"
+					"connected_accounts"
 				],
+				"type": "object"
+			},
+			"ProviderReadinessLedgerAppendOutputBody": {
+				"additionalProperties": false,
+				"properties": {
+					"$schema": {
+						"description": "A URL to the JSON Schema for this object.",
+						"examples": [
+							"https://example.com/schemas/ProviderReadinessLedgerAppendOutputBody.json"
+						],
+						"format": "uri",
+						"readOnly": true,
+						"type": "string"
+					},
+					"id": {
+						"type": "string"
+					}
+				},
+				"required": ["id"],
 				"type": "object"
 			},
 			"ProviderReadinessOutputBody": {
@@ -9862,6 +10138,25 @@
 					}
 				},
 				"required": ["providers"],
+				"type": "object"
+			},
+			"ProviderReadinessProfile": {
+				"additionalProperties": false,
+				"properties": {
+					"immediate": {
+						"$ref": "#/components/schemas/Decision"
+					},
+					"output_profile": {
+						"type": "string"
+					},
+					"scheduled": {
+						"$ref": "#/components/schemas/Decision"
+					},
+					"social_account_id": {
+						"type": "string"
+					}
+				},
+				"required": ["social_account_id", "output_profile", "immediate", "scheduled"],
 				"type": "object"
 			},
 			"PublicConfig": {
@@ -9908,34 +10203,6 @@
 					"max_screenshot_bytes",
 					"diagnostic_categories"
 				],
-				"type": "object"
-			},
-			"PublicMediaHealth": {
-				"additionalProperties": false,
-				"properties": {
-					"checked_count": {
-						"format": "int64",
-						"type": "integer"
-					},
-					"failing_count": {
-						"format": "int64",
-						"type": "integer"
-					},
-					"last_checked_at": {
-						"type": "string"
-					},
-					"last_failure": {
-						"type": "string"
-					},
-					"last_status_code": {
-						"format": "int64",
-						"type": "integer"
-					},
-					"status": {
-						"type": "string"
-					}
-				},
-				"required": ["status", "checked_count", "failing_count"],
 				"type": "object"
 			},
 			"PublicProfileActivityDay": {
@@ -10145,6 +10412,11 @@
 						"examples": ["https://example.com/schemas/PublicationMutationActionInputBody.json"],
 						"format": "uri",
 						"readOnly": true,
+						"type": "string"
+					},
+					"execution_intent": {
+						"description": "Typed readiness intent; certification_test requires an unscoped instance administrator",
+						"enum": ["production", "certification_test"],
 						"type": "string"
 					},
 					"expected_revision": {
@@ -11488,6 +11760,9 @@
 					"format_selection_required": {
 						"type": "boolean"
 					},
+					"immediate_readiness": {
+						"$ref": "#/components/schemas/Decision"
+					},
 					"intents": {
 						"items": {
 							"type": "string"
@@ -11539,6 +11814,9 @@
 					"requires_public_media": {
 						"type": "boolean"
 					},
+					"scheduled_readiness": {
+						"$ref": "#/components/schemas/Decision"
+					},
 					"segment_strategy": {
 						"enum": ["preserve", "join"],
 						"type": "string"
@@ -11574,6 +11852,8 @@
 				},
 				"required": [
 					"account_id",
+					"immediate_readiness",
+					"scheduled_readiness",
 					"compatible",
 					"format_selection_required",
 					"segment_strategy",
@@ -11905,6 +12185,40 @@
 					"require_plateau",
 					"plateau_checks"
 				],
+				"type": "object"
+			},
+			"RuntimeControlSelector": {
+				"additionalProperties": false,
+				"properties": {
+					"account_kind": {
+						"type": "string"
+					},
+					"app_fingerprint": {
+						"type": "string"
+					},
+					"deployment_environment": {
+						"type": "string"
+					},
+					"instance_fingerprint": {
+						"type": "string"
+					},
+					"operation": {
+						"type": "string"
+					},
+					"output_profile": {
+						"type": "string"
+					},
+					"policy_mode": {
+						"type": "string"
+					},
+					"provider": {
+						"type": "string"
+					},
+					"provider_environment": {
+						"type": "string"
+					}
+				},
+				"required": ["provider"],
 				"type": "object"
 			},
 			"SaveInstanceSettingsInputBody": {
@@ -16376,6 +16690,18 @@
 							"description": "Mastodon instance URL to dynamically register",
 							"type": "string"
 						}
+					},
+					{
+						"description": "Typed execution intent; certification_test requires an unscoped instance administrator",
+						"explode": false,
+						"in": "query",
+						"name": "intent",
+						"schema": {
+							"default": "production",
+							"description": "Typed execution intent; certification_test requires an unscoped instance administrator",
+							"enum": ["production", "certification_test"],
+							"type": "string"
+						}
 					}
 				],
 				"responses": {
@@ -16408,6 +16734,16 @@
 							}
 						},
 						"description": "Forbidden"
+					},
+					"409": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Conflict"
 					},
 					"422": {
 						"content": {
@@ -16660,6 +16996,273 @@
 				},
 				"summary": "Delete a provider app",
 				"tags": ["Admin"]
+			}
+		},
+		"/admin/provider-readiness/approval-reviews": {
+			"post": {
+				"operationId": "append-provider-approval-review",
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/AppendProviderApprovalReviewInputBody"
+							}
+						}
+					},
+					"required": true
+				},
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProviderReadinessLedgerAppendOutputBody"
+								}
+							}
+						},
+						"description": "OK"
+					},
+					"400": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Bad Request"
+					},
+					"401": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Unauthorized"
+					},
+					"403": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Forbidden"
+					},
+					"409": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Conflict"
+					},
+					"422": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Unprocessable Entity"
+					},
+					"500": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Internal Server Error"
+					}
+				},
+				"summary": "Append a provider approval review",
+				"tags": ["Provider Readiness"]
+			}
+		},
+		"/admin/provider-readiness/certifications": {
+			"post": {
+				"operationId": "append-provider-certification",
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/AppendProviderCertificationInputBody"
+							}
+						}
+					},
+					"required": true
+				},
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProviderReadinessLedgerAppendOutputBody"
+								}
+							}
+						},
+						"description": "OK"
+					},
+					"400": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Bad Request"
+					},
+					"401": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Unauthorized"
+					},
+					"403": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Forbidden"
+					},
+					"409": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Conflict"
+					},
+					"422": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Unprocessable Entity"
+					},
+					"500": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Internal Server Error"
+					}
+				},
+				"summary": "Append normalized provider certification evidence",
+				"tags": ["Provider Readiness"]
+			}
+		},
+		"/admin/provider-readiness/runtime-controls": {
+			"post": {
+				"operationId": "append-provider-runtime-control",
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/AppendProviderRuntimeControlInputBody"
+							}
+						}
+					},
+					"required": true
+				},
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProviderReadinessLedgerAppendOutputBody"
+								}
+							}
+						},
+						"description": "OK"
+					},
+					"400": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Bad Request"
+					},
+					"401": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Unauthorized"
+					},
+					"403": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Forbidden"
+					},
+					"409": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Conflict"
+					},
+					"422": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Unprocessable Entity"
+					},
+					"500": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Internal Server Error"
+					}
+				},
+				"summary": "Append a provider runtime control",
+				"tags": ["Provider Readiness"]
 			}
 		},
 		"/admin/update-status": {

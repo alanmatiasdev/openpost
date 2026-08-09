@@ -6,18 +6,18 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humaecho"
 	"github.com/labstack/echo/v4"
 	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/platform"
+	"github.com/openpost/backend/internal/services/providerreadiness"
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun"
 )
 
-func TestProviderReadinessReportsConfigurationAccountsAndMediaHealth(t *testing.T) {
+func TestProviderReadinessReportsOnlyAuthoritativePerSubjectDecisions(t *testing.T) {
 	srv := newProviderReadinessTestServer(t)
 
 	resp := srv.get(t, "/api/v1/provider-readiness?workspace_id=ws-1")
@@ -32,21 +32,27 @@ func TestProviderReadinessReportsConfigurationAccountsAndMediaHealth(t *testing.
 	instagram := findReadinessProvider(t, out.Providers, "instagram")
 	require.Equal(t, "configured", instagram.ConfiguredAppState)
 	require.Equal(t, 1, instagram.ConnectedAccounts)
-	require.Equal(t, "degraded", instagram.PublicMediaHealth.Status)
-	require.Contains(t, instagram.BlockingIssues, "public_url_unreachable")
+	require.NotEmpty(t, instagram.Profiles)
 
 	youtube := findReadinessProvider(t, out.Providers, "youtube")
 	require.Equal(t, "missing", youtube.ConfiguredAppState)
-	require.Contains(t, youtube.BlockingIssues, "provider_app_missing")
-	require.Contains(t, youtube.AppReviewWarnings, "Unaudited Google projects can force uploads private.")
+	require.Contains(t, youtube.BlockingIssues, "missing_configuration")
 
 	x := findReadinessProvider(t, out.Providers, "x")
 	require.Equal(t, "configured", x.ConfiguredAppState)
-	require.NotContains(t, x.BlockingIssues, "provider_app_missing")
+	require.Equal(t, 1, x.ConnectedAccounts, "retained inactive destinations stay visible for reconnect")
+	require.NotEmpty(t, x.Profiles)
+	require.Equal(t, providerreadiness.EffectiveStateReconnectRequired, x.Profiles[0].Immediate.State)
 
-	tiktok := findReadinessProvider(t, out.Providers, "tiktok")
-	require.Equal(t, []string{"user.info.basic", "video.upload"}, tiktok.GrantedScopes)
-	require.Contains(t, tiktok.BlockingIssues, "missing_scope")
+	var raw map[string]any
+	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &raw))
+	providers := raw["providers"].([]any)
+	first := providers[0].(map[string]any)
+	require.NotContains(t, first, "granted_scopes")
+	require.NotContains(t, first, "public_media_health")
+	require.NotContains(t, first, "supported_profiles")
+	require.NotContains(t, first, "next_actions")
+	require.NotContains(t, first, "app_review_warnings")
 }
 
 type providerReadinessTestServer struct {
@@ -62,39 +68,39 @@ func newProviderReadinessTestServer(t *testing.T) *providerReadinessTestServer {
 		(*models.Workspace)(nil),
 		(*models.WorkspaceMember)(nil),
 		(*models.SocialAccount)(nil),
-		(*models.ProviderApp)(nil),
-		(*models.MediaAttachment)(nil),
+		(*models.OAuthGrant)(nil),
+		(*models.ProviderApprovalReview)(nil),
+		(*models.ProviderCertificationRun)(nil),
+		(*models.ProviderCertificationCheck)(nil),
+		(*models.ProviderRuntimeControlEvent)(nil),
 	)
 	ctx := context.Background()
 	_, err := db.NewInsert().Model(&models.Workspace{ID: "ws-1", Name: "Readiness"}).Exec(ctx)
 	require.NoError(t, err)
 	_, err = db.NewInsert().Model(&models.WorkspaceMember{WorkspaceID: "ws-1", UserID: "user-1", Role: models.WorkspaceRoleAdmin}).Exec(ctx)
 	require.NoError(t, err)
-	_, err = db.NewInsert().Model(&models.ProviderApp{ID: "instagram-app", Provider: "instagram", Name: "Instagram", ClientID: "client", IsActive: true}).Exec(ctx)
-	require.NoError(t, err)
 	_, err = db.NewInsert().Model(&models.SocialAccount{ID: "ig-1", WorkspaceID: "ws-1", Slug: "ig", Platform: "instagram", AccountID: "ig", AccessTokenEnc: []byte("token"), IsActive: true}).Exec(ctx)
 	require.NoError(t, err)
 	_, err = db.NewInsert().Model(&models.SocialAccount{ID: "tt-1", WorkspaceID: "ws-1", Slug: "tt", Platform: "tiktok", AccountID: "tt", AccessTokenEnc: []byte("token"), GrantedScopes: "video.upload user.info.basic", IsActive: true}).Exec(ctx)
 	require.NoError(t, err)
-	checkedAt := time.Now().UTC()
-	_, err = db.NewInsert().Model(&models.MediaAttachment{
-		ID:                 "video-1",
-		WorkspaceID:        "ws-1",
-		FilePath:           "video.mp4",
-		MimeType:           "video/mp4",
-		Size:               1024,
-		OriginalFilename:   "video.mp4",
-		FileHash:           "hash-video-1",
-		PublicURLReady:     false,
-		PublicURLCheckedAt: checkedAt,
-		PublicURLStatus:    403,
-		PublicURLError:     "403 forbidden",
+	_, err = db.NewInsert().Model(&models.SocialAccount{
+		ID: "x-inactive", WorkspaceID: "ws-1", Slug: "x-inactive", Platform: "x",
+		AccountID: "x-inactive", AccessTokenEnc: []byte("token"), IsActive: false,
 	}).Exec(ctx)
 	require.NoError(t, err)
+	catalog, err := providerreadiness.NewConfigurationCatalog(providerreadiness.RuntimeApps([]platform.AppConfig{
+		{Provider: "instagram", ClientID: "instagram-client", RedirectURI: "https://openpost.test/instagram/callback"},
+		{Provider: "x", ClientID: "x-client", RedirectURI: "https://openpost.test/x/callback"},
+	}, providerreadiness.ConfigurationSourceEnvironment, providerreadiness.ProviderEnvironmentDevelopment))
+	require.NoError(t, err)
+	service := providerreadiness.NewService(providerreadiness.NewRepository(db), providerreadiness.ServiceOptions{
+		Configurations: catalog, DefaultControl: providerreadiness.RuntimeControlStateEnabled,
+		DynamicRegistrationProviders: []string{"mastodon"},
+	})
 
 	e := echo.New()
 	api := humaecho.NewWithGroup(e, e.Group("/api/v1"), huma.DefaultConfig("Test", "1.0.0"))
-	NewProviderReadinessHandler(db, testAuthenticator{}, map[string]platform.Adapter{
+	NewProviderReadinessHandler(db, testAuthenticator{}, service, map[string]platform.Adapter{
 		"x": providerAvailabilityAdapter{},
 	}).RegisterRoutes(api)
 	return &providerReadinessTestServer{echo: e, db: db}

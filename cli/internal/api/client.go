@@ -489,40 +489,61 @@ type SocialAccount struct {
 }
 
 type ProviderInfo struct {
-	Platform     string   `json:"platform"`
-	DisplayName  string   `json:"display_name"`
-	AuthMode     string   `json:"auth_mode"`
-	Name         string   `json:"name,omitempty"`
-	InstanceURL  string   `json:"instance_url,omitempty"`
-	Configured   bool     `json:"configured"`
-	Status       string   `json:"status,omitempty"`
-	Description  string   `json:"description,omitempty"`
-	Capabilities []string `json:"capabilities,omitempty"`
+	Platform     string                    `json:"platform"`
+	DisplayName  string                    `json:"display_name"`
+	AuthMode     string                    `json:"auth_mode"`
+	Name         string                    `json:"name,omitempty"`
+	InstanceURL  string                    `json:"instance_url,omitempty"`
+	Configured   bool                      `json:"configured"`
+	Status       string                    `json:"status,omitempty"`
+	Description  string                    `json:"description,omitempty"`
+	Capabilities []string                  `json:"capabilities,omitempty"`
+	Readiness    ProviderReadinessDecision `json:"readiness"`
 }
 
-type PublicMediaHealth struct {
-	Status         string `json:"status"`
-	CheckedCount   int    `json:"checked_count"`
-	FailingCount   int    `json:"failing_count"`
-	LastCheckedAt  string `json:"last_checked_at,omitempty"`
-	LastFailure    string `json:"last_failure,omitempty"`
-	LastStatusCode int    `json:"last_status_code,omitempty"`
+type ProviderReadinessFacts struct {
+	Configuration     string `json:"configuration"`
+	LocalTest         string `json:"local_test"`
+	LiveCertification string `json:"live_certification"`
+	Approval          string `json:"approval"`
+	Authorization     string `json:"authorization"`
+	Control           string `json:"control"`
+	Policy            string `json:"policy"`
+}
+
+type ProviderReadinessBlocker struct {
+	Code   string `json:"code"`
+	Detail string `json:"detail,omitempty"`
+}
+
+type ProviderReadinessDecision struct {
+	State          string                     `json:"state"`
+	ContractDigest string                     `json:"contract_digest,omitempty"`
+	Executable     bool                       `json:"executable"`
+	Connectable    bool                       `json:"connectable"`
+	Publishable    bool                       `json:"publishable"`
+	Advertisable   bool                       `json:"advertisable"`
+	Facts          ProviderReadinessFacts     `json:"facts"`
+	Blockers       []ProviderReadinessBlocker `json:"blockers,omitempty"`
+}
+
+type ProviderReadinessProfile struct {
+	SocialAccountID string                    `json:"social_account_id"`
+	OutputProfile   string                    `json:"output_profile"`
+	Immediate       ProviderReadinessDecision `json:"immediate"`
+	Scheduled       ProviderReadinessDecision `json:"scheduled"`
 }
 
 type ProviderReadiness struct {
-	Provider           string            `json:"provider"`
-	ConfiguredAppState string            `json:"configured_app_state"`
-	ConnectedAccounts  int               `json:"connected_accounts"`
-	RequiredScopes     []string          `json:"required_scopes"`
-	GrantedScopes      []string          `json:"granted_scopes,omitempty"`
-	AccountTypes       []string          `json:"account_types,omitempty"`
-	AppReviewWarnings  []string          `json:"app_review_warnings,omitempty"`
-	PublicMediaHealth  PublicMediaHealth `json:"public_media_health"`
-	QuotaCaveats       []string          `json:"quota_caveats,omitempty"`
-	BlockingIssues     []string          `json:"blocking_issues,omitempty"`
-	NextActions        []string          `json:"next_actions,omitempty"`
-	SupportedProfiles  []string          `json:"supported_profiles"`
-	CapabilityCaveats  []string          `json:"capability_caveats,omitempty"`
+	Provider           string                     `json:"provider"`
+	State              string                     `json:"state"`
+	Connectable        bool                       `json:"connectable"`
+	Advertisable       bool                       `json:"advertisable"`
+	Facts              ProviderReadinessFacts     `json:"facts"`
+	Profiles           []ProviderReadinessProfile `json:"profiles,omitempty"`
+	ConfiguredAppState string                     `json:"configured_app_state"`
+	ConnectedAccounts  int                        `json:"connected_accounts"`
+	BlockingIssues     []string                   `json:"blocking_issues,omitempty"`
 }
 
 type CapabilityProfile struct {

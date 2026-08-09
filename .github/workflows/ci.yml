@@ -45,6 +45,7 @@ jobs:
           bun run check:release-version
           bun run check:app-routes
           bun run check:legal-policy
+          bun run check:provider-certification
           bun run check:changelog
           bun run check:social-images
           bun run check:ui-consistency
@@ -227,6 +228,7 @@ jobs:
         run: |
           latest_tag="$(git for-each-ref --count=1 --sort=-version:refname --format='%(refname:short)' 'refs/tags/v*')"
           [[ -n "$latest_tag" ]]
+          bun run check:provider-certification
           bun scripts/release-manifest.mjs create \
             --changelog CHANGELOG.md \
             --latest-tag "$latest_tag" \

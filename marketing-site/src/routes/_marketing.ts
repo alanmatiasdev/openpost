@@ -7,8 +7,16 @@ import {
   Images,
   MessageSquareText,
   PanelTop,
-} from "lucide-svelte";
+} from "@lucide/svelte";
 import { PLATFORM_LIMITS } from "$lib/platform-limits";
+import publicClaimManifest from "../../../provider-certification/public-claims.json";
+
+type PublicProviderClaim = {
+  subject: {
+    provider: string;
+    output_profile: string;
+  };
+};
 
 export const appUrl = "https://app.openpost.social";
 export const managedSignupUrl = `${appUrl}/register?plan=founder`;
@@ -149,14 +157,14 @@ export const plans = [
   },
 ] as const;
 
-export const platforms = [
+const platformImplementations = [
   {
     slug: "x",
     name: "X",
     short: "x",
     tag: "Posts, threads, media",
-    status: "Available",
-    statusDetail: "Publishing is built in",
+    requiresProviderApproval: false,
+    implementationDetail: "Publishing is implemented",
     description:
       "Draft, preview, and schedule X posts, links, media, and reply threads. OpenPost checks the limit for each connected account.",
     heroTitle: "Build an X reply chain with the right limit for each account.",
@@ -213,8 +221,8 @@ export const platforms = [
     name: "Mastodon",
     short: "mastodon",
     tag: "Custom servers, posts, threads",
-    status: "Available",
-    statusDetail: "Publishing is built in",
+    requiresProviderApproval: false,
+    implementationDetail: "Publishing is implemented",
     description:
       "Connect a public Mastodon server, then schedule posts, media, links, and reply threads.",
     heroTitle: "Publish to the Mastodon server your community already uses.",
@@ -265,8 +273,8 @@ export const platforms = [
     name: "Bluesky",
     short: "bluesky",
     tag: "Posts, threads, images, video",
-    status: "Available",
-    statusDetail: "Publishing is built in",
+    requiresProviderApproval: false,
+    implementationDetail: "Publishing is implemented",
     description:
       "Connect with a handle and app password, then schedule posts, links, media, and reply threads.",
     heroTitle:
@@ -322,8 +330,8 @@ export const platforms = [
     name: "LinkedIn",
     short: "linkedin",
     tag: "Posts, documents, video",
-    status: "Available",
-    statusDetail: "Publishing is built in",
+    requiresProviderApproval: false,
+    implementationDetail: "Publishing is implemented",
     description:
       "Schedule LinkedIn posts, links, images, documents, videos, and comment-style thread continuations.",
     heroTitle: "Turn a LinkedIn update into a document post or comment thread.",
@@ -379,8 +387,8 @@ export const platforms = [
     name: "Threads",
     short: "threads",
     tag: "Posts, replies, carousels",
-    status: "Available",
-    statusDetail: "Publishing is built in",
+    requiresProviderApproval: false,
+    implementationDetail: "Publishing is implemented",
     description:
       "Schedule text, image, video, carousel, and reply-thread posts for connected Threads accounts.",
     heroTitle: "Arrange a Threads carousel and the replies that follow it.",
@@ -436,8 +444,8 @@ export const platforms = [
     name: "Facebook Pages",
     short: "facebook",
     tag: "Pages, media, Stories",
-    status: "Supported",
-    statusDetail: "Meta review and Page permissions still apply",
+    requiresProviderApproval: true,
+    implementationDetail: "Meta review and Page permissions still apply",
     description:
       "OpenPost publishes text, photos, video, and Stories to selected Facebook Pages.",
     heroTitle: "Prepare a Facebook Page post and its media together.",
@@ -493,8 +501,8 @@ export const platforms = [
     name: "Instagram",
     short: "instagram",
     tag: "Feed, carousel, Story, Reel",
-    status: "Supported",
-    statusDetail: "Business or Creator account and Meta review required",
+    requiresProviderApproval: true,
+    implementationDetail: "Business or Creator account and Meta review required",
     description:
       "OpenPost publishes Instagram feed images, carousels, Stories, and Reels.",
     heroTitle: "Choose the Instagram post type before you write the caption.",
@@ -551,8 +559,8 @@ export const platforms = [
     name: "TikTok",
     short: "tiktok",
     tag: "Video and photo posts",
-    status: "Supported",
-    statusDetail: "App review and live test required",
+    requiresProviderApproval: true,
+    implementationDetail: "App review and live test required",
     description:
       "OpenPost supports TikTok video and photo posts, each with its own caption limit.",
     heroTitle:
@@ -605,8 +613,8 @@ export const platforms = [
     name: "YouTube",
     short: "youtube",
     tag: "Shorts and long video",
-    status: "Supported",
-    statusDetail: "App review required",
+    requiresProviderApproval: true,
+    implementationDetail: "App review required",
     description:
       "OpenPost uploads Shorts and videos to a selected YouTube channel.",
     heroTitle:
@@ -658,8 +666,8 @@ export const platforms = [
     name: "Discord",
     short: "discord",
     tag: "Messages and files",
-    status: "Available",
-    statusDetail: "Built-in webhook connection",
+    requiresProviderApproval: false,
+    implementationDetail: "Built-in webhook connection",
     description:
       "Connect a Discord channel webhook, then schedule text and up to 10 file attachments.",
     heroTitle: "Schedule a message and its files for a Discord channel.",
@@ -706,6 +714,28 @@ export const platforms = [
     docsUrl: `${siteUrl.replace("openpost.social", "docs.openpost.social")}/providers/discord/`,
   },
 ] as const;
+
+const publicProviderClaims = publicClaimManifest.claims as PublicProviderClaim[];
+
+export const platforms = platformImplementations.map((platform) => {
+  const certifiedOutputProfiles = publicProviderClaims
+    .filter((claim) => claim.subject.provider === platform.slug)
+    .map((claim) => claim.subject.output_profile)
+    .sort();
+  return {
+    ...platform,
+    implementationState: "implemented" as const,
+    certifiedOutputProfiles,
+    managedCertificationState:
+      certifiedOutputProfiles.length > 0
+        ? ("exact_claims_current" as const)
+        : ("no_current_claim" as const),
+    managedCertificationDetail:
+      certifiedOutputProfiles.length > 0
+        ? `${certifiedOutputProfiles.length} exact provider-format certification claim${certifiedOutputProfiles.length === 1 ? " is" : "s are"} current.`
+        : "No managed provider-format certification claim is current.",
+  };
+});
 
 export const tools = [
   {

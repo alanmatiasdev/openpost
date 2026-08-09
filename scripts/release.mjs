@@ -110,6 +110,7 @@ async function check() {
   await requireLocalReleaseHost();
   run(["devenv", "shell", "--", "doctor"]);
   run(["devenv", "shell", "--", "bun", "install", "--frozen-lockfile"]);
+  run(["bun", "run", "check:provider-certification"]);
   const fingerprint = await worktreeFingerprint();
   const stampDir = path.join(root, ".devenv", "state", "release-check");
   const stampPath = path.join(stampDir, `${fingerprint}.json`);

@@ -105,7 +105,8 @@ type Config struct {
 	ThreadsClientSecret string
 	ThreadsRedirectURI  string
 
-	ProviderApps []platform.AppConfig
+	ProviderApps      []platform.AppConfig
+	DisabledProviders []string
 
 	StorageDriver     string
 	MediaPath         string
@@ -265,6 +266,7 @@ func Load() *Config {
 		ThreadsClientID:     getEnvWithFallbacks("THREADS_CLIENT_ID", ""),
 		ThreadsClientSecret: getEnvWithFallbacks("THREADS_CLIENT_SECRET", ""),
 		ThreadsRedirectURI:  oauthRedirectFromFrontend("THREADS_REDIRECT_URI", "", frontendURL, "/api/v1/accounts/threads/callback"),
+		DisabledProviders:   parseStringList(getEnvDefault("OPENPOST_DISABLED_PROVIDERS", "")),
 
 		StorageDriver:     getEnvEnum("OPENPOST_STORAGE_DRIVER", StorageDriverLocal, StorageDriverLocal, StorageDriverS3),
 		MediaPath:         getEnvDefault("OPENPOST_MEDIA_PATH", "./media"),

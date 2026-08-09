@@ -10,11 +10,14 @@ import (
 
 	"github.com/google/uuid"
 	_ "github.com/mattn/go-sqlite3"
+	"github.com/openpost/backend/internal/capabilities"
 	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/platform"
 	"github.com/openpost/backend/internal/services/crypto"
 	"github.com/openpost/backend/internal/services/entitlements"
+	"github.com/openpost/backend/internal/services/providerreadiness"
 	"github.com/openpost/backend/internal/services/providerwrite"
+	"github.com/openpost/backend/internal/services/publicationauth"
 	"github.com/openpost/backend/internal/services/tokenmanager"
 	"github.com/openpost/backend/internal/services/usage"
 	"github.com/stretchr/testify/require"
@@ -83,6 +86,7 @@ func newPublisherUsageTestServer(t *testing.T, adapter *fakePublisherAdapter) *p
 	service := NewService(db, manager)
 	service.SetProvider("x", adapter)
 	service.SetUsage(usageSvc)
+	enableSelfHostedPublisherReadiness(t, db, service, "x", "account-1")
 
 	return &publisherUsageTestServer{db: db, service: service, usage: usageSvc, adapter: adapter}
 }
@@ -282,12 +286,12 @@ func TestPublisherPricesXURLFromRenderedSettings(t *testing.T) {
 		usage.ProviderX,
 		"rendition-setting-url",
 		"publish",
-		legacyWriteScope(context.Background(), "ws-1", "account-1", "x", "rendition-setting-url", "publish"),
+		legacyWriteScope(context.Background(), "ws-1", "account-1", "x", "rendition-setting-url"),
 		adapter,
 		"access-token",
 		"x-account",
 		&platform.PublishRequest{
-			Content:  "Launch update",
+			Content: "Launch update", Profile: models.ContentProfileShortText, OutputProfile: "x.post",
 			Settings: map[string]interface{}{"url": "https://openpost.social/launch"},
 		},
 		nil,
@@ -307,8 +311,10 @@ func TestPublisherAcceptedFenceSurvivesLocalCommitFailureWithoutReplay(t *testin
 	srv := newPublisherUsageTestServer(t, adapter)
 	lockedAt := time.Date(2026, 8, 9, 12, 0, 0, 0, time.UTC)
 	ctx := WithJobExecution(context.Background(), "job-provider-once", 1, lockedAt)
-	scope := legacyWriteScope(ctx, "ws-1", "account-1", "x", "destination-once", "publish")
-	request := &platform.PublishRequest{Content: "Persist me once"}
+	scope := legacyWriteScope(ctx, "ws-1", "account-1", "x", "destination-once")
+	request := &platform.PublishRequest{
+		Content: "Persist me once", Profile: models.ContentProfileShortText, OutputProfile: "x.post",
+	}
 
 	first, err := srv.service.publishProviderWithUsage(
 		ctx, "ws-1", usage.ProviderX, "destination-once", "publish",
@@ -344,12 +350,21 @@ func TestPublisherAuthorizationFingerprintIgnoresTransientMediaSignatures(t *tes
 		socialAccountID: "account-1", targetKey: "x", operation: "publish",
 		contentHash: "sha256:content", mediaHash: "sha256:media", settingsHash: "sha256:settings",
 	}
+	_, err := srv.db.NewInsert().Model(&models.PublicationAuthorization{
+		ID: "receipt-1", WorkspaceID: "ws-1", PublicationID: "publication-1",
+		RenditionID: "rendition-1", SocialAccountID: "account-1", TargetKey: "x",
+		Action: publicationauth.ActionPublish, PolicyMode: publicationauth.PolicyImmediate,
+		ProviderPolicyMode: "x.standard", ExecutionIntent: publicationauth.ExecutionIntentProduction,
+		ContentHash: scope.contentHash, MediaHash: scope.mediaHash, SettingsHash: scope.settingsHash,
+	}).Exec(t.Context())
+	require.NoError(t, err)
 	media := []models.MediaAttachment{{
 		ID: "media-1", FileHash: "sha256:file", MimeType: "image/png", Size: 42,
 	}}
 	request := func(signature string) *platform.PublishRequest {
 		return &platform.PublishRequest{
-			Content: "Authorized content", SettingsJSON: `{"cover_media_id":"media-1"}`,
+			Content: "Authorized content", Profile: models.ContentProfileImagePost, OutputProfile: "x.post",
+			SettingsJSON:     `{"cover_media_id":"media-1"}`,
 			Settings:         map[string]interface{}{"cover_url": "https://app.example/media/media-1?exp=1&sig=" + signature},
 			PlatformMediaIDs: []string{"https://app.example/media/media-1?exp=1&sig=" + signature},
 		}
@@ -457,4 +472,68 @@ func TestPublisherHostedXBudgetStopsRequestButDisabledPolicyDoesNot(t *testing.T
 	srv.seedPost(t, "post-selfhost")
 	require.NoError(t, srv.publishPost(t, "post-selfhost"))
 	require.Equal(t, 1, adapter.publishCalls)
+}
+
+func TestPublisherRechecksRuntimeControlImmediatelyBeforeProviderCall(t *testing.T) {
+	adapter := &fakePublisherAdapter{externalID: "external-readiness"}
+	srv := newPublisherUsageTestServer(t, adapter)
+	for _, model := range []interface{}{
+		(*models.OAuthGrant)(nil),
+		(*models.ProviderApprovalReview)(nil),
+		(*models.ProviderCertificationRun)(nil),
+		(*models.ProviderCertificationCheck)(nil),
+		(*models.ProviderRuntimeControlEvent)(nil),
+	} {
+		_, err := srv.db.NewCreateTable().Model(model).IfNotExists().Exec(t.Context())
+		require.NoError(t, err)
+	}
+	now := time.Now().UTC()
+	_, err := srv.db.NewInsert().Model(&models.OAuthGrant{
+		ID: "grant-readiness", WorkspaceID: "ws-1", Provider: capabilities.ProviderX,
+		AccessTokenEnc: []byte("encrypted"), ValidationStatus: "valid", ValidatedAt: now.Add(-time.Minute),
+	}).Exec(t.Context())
+	require.NoError(t, err)
+	_, err = srv.db.NewUpdate().Model((*models.SocialAccount)(nil)).
+		Set("oauth_grant_id = ?", "grant-readiness").
+		Where("id = ?", "account-1").Exec(t.Context())
+	require.NoError(t, err)
+
+	catalog, err := providerreadiness.NewConfigurationCatalog(providerreadiness.OperatorRuntimeApps(
+		[]platform.AppConfig{{Provider: capabilities.ProviderX, ClientID: "x-client"}},
+		providerreadiness.ProviderEnvironmentDevelopment,
+	))
+	require.NoError(t, err)
+	repository := providerreadiness.NewRepository(srv.db)
+	readiness := providerreadiness.NewService(repository, providerreadiness.ServiceOptions{
+		Configurations: catalog, DefaultControl: providerreadiness.RuntimeControlStateEnabled,
+	})
+	srv.service.SetProviderReadiness(readiness)
+	capability, found := capabilities.Find(capabilities.ProviderX, models.ContentProfileShortText)
+	require.True(t, found)
+	request := &platform.PublishRequest{
+		Content: "Readiness", Profile: capability.Profile, OutputProfile: capability.OutputProfile,
+	}
+
+	firstScope := legacyWriteScope(t.Context(), "ws-1", "account-1", "x", "readiness-first")
+	_, err = srv.service.publishProviderWithUsage(
+		t.Context(), "ws-1", capabilities.ProviderX, "readiness-first", "publish",
+		firstScope, adapter, "token", "x-account", request, nil,
+	)
+	require.NoError(t, err)
+	require.Equal(t, 1, adapter.publishCalls)
+
+	require.NoError(t, repository.AppendRuntimeControl(t.Context(), providerreadiness.RuntimeControlEvent{
+		ID: "control-disable-x", Selector: providerreadiness.RuntimeControlSelector{Provider: capabilities.ProviderX},
+		Control:  providerreadiness.RuntimeControl{State: providerreadiness.RuntimeControlStateDisabled, ReasonCode: "operator_kill_switch"},
+		StartsAt: now.Add(-time.Second), OperatorRef: "operator:sha256:test", CreatedAt: now,
+	}))
+	secondScope := legacyWriteScope(t.Context(), "ws-1", "account-1", "x", "readiness-second")
+	_, err = srv.service.publishProviderWithUsage(
+		t.Context(), "ws-1", capabilities.ProviderX, "readiness-second", "publish",
+		secondScope, adapter, "token", "x-account", request, nil,
+	)
+	var notReady *providerreadiness.NotReadyError
+	require.ErrorAs(t, err, &notReady)
+	require.Equal(t, providerreadiness.EffectiveStateDisabled, notReady.Decision.State)
+	require.Equal(t, 1, adapter.publishCalls, "disabled queued work reached the provider")
 }

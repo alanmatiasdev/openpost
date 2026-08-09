@@ -3,7 +3,27 @@ import type { components } from '$lib/api/types';
 import { accountCapabilityNeedsAttention } from './account-attention';
 
 type ResolvedAccountCapability = components['schemas']['ResolvedAccountCapability'];
+type ProviderReadinessDecision = components['schemas']['Decision'];
 type ValidationIssue = components['schemas']['ValidationIssue'];
+
+function healthyReadiness(): ProviderReadinessDecision {
+	return {
+		advertisable: true,
+		connectable: true,
+		executable: true,
+		facts: {
+			approval: 'approved',
+			authorization: 'authorized',
+			configuration: 'configured',
+			control: 'enabled',
+			live_certification: 'passed',
+			local_test: 'passed',
+			policy: 'allowed'
+		},
+		publishable: true,
+		state: 'healthy'
+	};
+}
 
 function issue(code: string, severity: 'error' | 'warning' = 'warning'): ValidationIssue {
 	return {
@@ -23,6 +43,7 @@ function capability(issues: ValidationIssue[], compatible = true): ResolvedAccou
 		capability_revision: 'test',
 		compatible,
 		format_selection_required: false,
+		immediate_readiness: healthyReadiness(),
 		intents: ['post'],
 		issues,
 		label: 'X post',
@@ -44,6 +65,7 @@ function capability(issues: ValidationIssue[], compatible = true): ResolvedAccou
 		provider: 'x',
 		requires_app_review: false,
 		requires_public_media: false,
+		scheduled_readiness: healthyReadiness(),
 		setting_groups: [],
 		text_limit: 280,
 		title_required: false,

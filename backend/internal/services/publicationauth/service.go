@@ -25,6 +25,9 @@ const (
 	PolicyReplyImmediate  = "reply_immediate"
 	PolicyReplyScheduled  = "reply_scheduled"
 	PolicyLegacyScheduled = "legacy_scheduled"
+
+	ExecutionIntentProduction        = "production"
+	ExecutionIntentCertificationTest = "certification_test"
 )
 
 var (
@@ -43,13 +46,14 @@ type JobTarget struct {
 }
 
 type BatchInput struct {
-	BatchID       string
-	PublicationID string
-	Actor         Actor
-	Action        string
-	PolicyMode    string
-	ConfirmedAt   time.Time
-	Targets       []JobTarget
+	BatchID         string
+	PublicationID   string
+	Actor           Actor
+	Action          string
+	PolicyMode      string
+	ExecutionIntent string
+	ConfirmedAt     time.Time
+	Targets         []JobTarget
 }
 
 type ExplicitInput struct {
@@ -63,16 +67,17 @@ type ExplicitInput struct {
 }
 
 type ValidateInput struct {
-	BatchID       string
-	PublicationID string
-	RenditionID   string
-	JobID         string
-	Action        string
-	Content       any
-	Media         any
-	Settings      any
-	Explicit      bool
-	ScheduledAt   time.Time
+	BatchID         string
+	PublicationID   string
+	RenditionID     string
+	JobID           string
+	Action          string
+	Content         any
+	Media           any
+	Settings        any
+	Explicit        bool
+	ScheduledAt     time.Time
+	ExecutionIntent string
 }
 
 func CreateBatch(ctx context.Context, db bun.IDB, input BatchInput) (string, []models.PublicationAuthorization, error) {
@@ -83,7 +88,9 @@ func CreateBatch(ctx context.Context, db bun.IDB, input BatchInput) (string, []m
 	input.PublicationID = strings.TrimSpace(input.PublicationID)
 	input.Action = strings.TrimSpace(input.Action)
 	input.PolicyMode = strings.TrimSpace(input.PolicyMode)
-	if input.PublicationID == "" || !validAction(input.Action) || !validPolicyMode(input.PolicyMode) || len(input.Targets) == 0 {
+	input.ExecutionIntent = normalizedExecutionIntent(input.ExecutionIntent)
+	if input.PublicationID == "" || !validAction(input.Action) || !validPolicyMode(input.PolicyMode) ||
+		input.ExecutionIntent == "" || len(input.Targets) == 0 {
 		return "", nil, fmt.Errorf("invalid publication authorization batch")
 	}
 	if input.BatchID == "" {
@@ -150,9 +157,10 @@ func normalizeExplicitInput(input ExplicitInput) (ExplicitInput, error) {
 	input.RenditionID = strings.TrimSpace(input.RenditionID)
 	input.Action = strings.TrimSpace(input.Action)
 	input.PolicyMode = strings.TrimSpace(input.PolicyMode)
+	input.ExecutionIntent = normalizedExecutionIntent(input.ExecutionIntent)
 	input.JobID = strings.TrimSpace(input.JobID)
 	if input.PublicationID == "" || input.RenditionID == "" || input.JobID == "" ||
-		!validAction(input.Action) || !validPolicyMode(input.PolicyMode) || input.RunAt.IsZero() {
+		!validAction(input.Action) || !validPolicyMode(input.PolicyMode) || input.ExecutionIntent == "" || input.RunAt.IsZero() {
 		return ExplicitInput{}, fmt.Errorf("invalid explicit publication authorization")
 	}
 	if input.BatchID == "" {
@@ -190,6 +198,7 @@ func ValidateBatch(ctx context.Context, db bun.IDB, input ValidateInput) ([]mode
 	input.RenditionID = strings.TrimSpace(input.RenditionID)
 	input.JobID = strings.TrimSpace(input.JobID)
 	input.Action = strings.TrimSpace(input.Action)
+	input.ExecutionIntent = normalizedExecutionIntent(input.ExecutionIntent)
 	input.ScheduledAt = input.ScheduledAt.UTC()
 	if input.BatchID == "" || input.PublicationID == "" || !validAction(input.Action) {
 		return nil, ErrReceiptRequired
@@ -199,6 +208,9 @@ func ValidateBatch(ctx context.Context, db bun.IDB, input ValidateInput) ([]mode
 		return nil, err
 	}
 	for _, receipt := range receipts {
+		if receipt.ExecutionIntent != input.ExecutionIntent {
+			return nil, ErrReceiptMismatch
+		}
 		if err := validateReceipt(ctx, db, input, receipt); err != nil {
 			return nil, err
 		}
@@ -247,7 +259,7 @@ func validateReceipt(ctx context.Context, db bun.IDB, input ValidateInput, recei
 	}
 	if current.PublicationRevision != receipt.PublicationRevision ||
 		current.ContentHash != receipt.ContentHash || current.MediaHash != receipt.MediaHash ||
-		current.SettingsHash != receipt.SettingsHash {
+		current.SettingsHash != receipt.SettingsHash || current.ProviderPolicyMode != receipt.ProviderPolicyMode {
 		return ErrReceiptMismatch
 	}
 	return nil
@@ -268,7 +280,8 @@ func receiptFromSnapshot(input BatchInput, target JobTarget, snapshot Snapshot) 
 		PublicationRevision: snapshot.PublicationRevision, SocialAccountID: snapshot.SocialAccountID,
 		TargetKey: snapshot.TargetKey, ScheduledAt: target.RunAt.UTC(),
 		ContentHash: snapshot.ContentHash, MediaHash: snapshot.MediaHash, SettingsHash: snapshot.SettingsHash,
-		PolicyMode: input.PolicyMode, ConfirmedAt: confirmedAt, CreatedAt: confirmedAt,
+		PolicyMode: input.PolicyMode, ProviderPolicyMode: snapshot.ProviderPolicyMode,
+		ExecutionIntent: input.ExecutionIntent, ConfirmedAt: confirmedAt, CreatedAt: confirmedAt,
 	}
 }
 
@@ -329,6 +342,17 @@ func validPolicyMode(policyMode string) bool {
 		return true
 	default:
 		return false
+	}
+}
+
+func normalizedExecutionIntent(intent string) string {
+	switch strings.TrimSpace(intent) {
+	case "", ExecutionIntentProduction:
+		return ExecutionIntentProduction
+	case ExecutionIntentCertificationTest:
+		return ExecutionIntentCertificationTest
+	default:
+		return ""
 	}
 }
 

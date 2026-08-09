@@ -7,12 +7,21 @@ import { pathToFileURL } from "node:url";
 
 import { parseChangelog } from "../packages/changelog/src/index.js";
 import { compareVersions, resolveNextTag } from "./next-release-version.mjs";
+import {
+  publicClaimManifestPath,
+  readPublicClaimManifestBinding,
+} from "./provider-certification-manifest.mjs";
 
-export const releaseManifestSchemaVersion = 1;
+export const releaseManifestSchemaVersion = 2;
 
 const stableVersionPattern = /^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 const gitRevisionPattern = /^[0-9a-f]{40}$/;
-const manifestKeys = ["revision", "schema_version", "version"];
+const manifestKeys = [
+  "provider_claims",
+  "revision",
+  "schema_version",
+  "version",
+];
 
 export function candidateVersionFromChangelog(markdown) {
   const sections = parseChangelog(markdown);
@@ -50,11 +59,12 @@ export function resolveCandidateVersion({
   return changelogVersion;
 }
 
-export function createReleaseManifest({ version, revision }) {
+export function createReleaseManifest({ version, revision, providerClaims }) {
   const manifest = {
     schema_version: releaseManifestSchemaVersion,
     version: String(version ?? "").trim(),
     revision: String(revision ?? "").trim(),
+    provider_claims: providerClaims,
   };
   validateReleaseManifest(manifest);
   return manifest;
@@ -62,7 +72,7 @@ export function createReleaseManifest({ version, revision }) {
 
 export function validateReleaseManifest(
   manifest,
-  { expectedVersion, expectedRevision } = {},
+  { expectedVersion, expectedRevision, expectedProviderClaims } = {},
 ) {
   if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) {
     throw new Error("release manifest must be a JSON object");
@@ -91,6 +101,7 @@ export function validateReleaseManifest(
       `release manifest revision must be a full lowercase Git SHA, received ${JSON.stringify(manifest.revision)}`,
     );
   }
+  validateProviderClaimBinding(manifest.provider_claims);
   if (expectedVersion && manifest.version !== expectedVersion) {
     throw new Error(
       `release manifest version ${manifest.version} does not match ${expectedVersion}`,
@@ -101,7 +112,41 @@ export function validateReleaseManifest(
       `release manifest revision ${manifest.revision} does not match ${expectedRevision}`,
     );
   }
+  if (
+    expectedProviderClaims &&
+    JSON.stringify(manifest.provider_claims) !==
+      JSON.stringify(expectedProviderClaims)
+  ) {
+    throw new Error(
+      "release manifest provider claim binding does not match the checked-in certification manifest",
+    );
+  }
   return manifest;
+}
+
+function validateProviderClaimBinding(binding) {
+  if (!binding || typeof binding !== "object" || Array.isArray(binding)) {
+    throw new Error("release manifest provider_claims must be an object");
+  }
+  const keys = Object.keys(binding).sort();
+  const expected = ["claim_count", "manifest_sha256", "schema_version"];
+  if (
+    keys.length !== expected.length ||
+    keys.some((key, index) => key !== expected[index])
+  ) {
+    throw new Error(
+      `release manifest provider_claims must contain exactly ${expected.join(", ")}`,
+    );
+  }
+  if (binding.schema_version !== 1) {
+    throw new Error("release manifest provider claim schema must be 1");
+  }
+  if (!/^sha256:[0-9a-f]{64}$/u.test(binding.manifest_sha256)) {
+    throw new Error("release manifest provider claim digest must be sha256");
+  }
+  if (!Number.isSafeInteger(binding.claim_count) || binding.claim_count < 0) {
+    throw new Error("release manifest provider claim count must be a non-negative integer");
+  }
 }
 
 export function serializeReleaseManifest(manifest) {
@@ -156,6 +201,7 @@ async function main() {
       "range",
       "revision",
       "version",
+      "provider-claims",
     ]);
     if (options.version && (options.changelog || options["latest-tag"])) {
       throw new Error("--version cannot be combined with changelog derivation");
@@ -188,27 +234,36 @@ async function main() {
         version = changelogVersion;
       }
     }
-    const manifest = createReleaseManifest({ version, revision });
+    const providerClaims = await readPublicClaimManifestBinding(
+      path.resolve(options["provider-claims"] ?? publicClaimManifestPath),
+      { currentRevision: revision },
+    );
+    const manifest = createReleaseManifest({ version, revision, providerClaims });
     const output = path.resolve(options.output ?? "release-manifest.json");
     await writeFile(output, serializeReleaseManifest(manifest));
     process.stdout.write(`${output}\n`);
     return;
   }
   if (command === "verify") {
-    requireOnlyOptions(options, ["manifest", "revision", "version"]);
+    requireOnlyOptions(options, ["manifest", "provider-claims", "revision", "version"]);
     const manifestPath = path.resolve(
       options.manifest ?? "release-manifest.json",
+    );
+    const expectedProviderClaims = await readPublicClaimManifestBinding(
+      path.resolve(options["provider-claims"] ?? publicClaimManifestPath),
+      { currentRevision: options.revision },
     );
     const manifest = await readReleaseManifest(manifestPath, {
       expectedVersion: options.version,
       expectedRevision: options.revision,
+      expectedProviderClaims,
     });
     process.stdout.write(`${manifest.version} ${manifest.revision}\n`);
     return;
   }
   throw new Error(
-    "usage: release-manifest.mjs create [--changelog FILE [--latest-tag vX.Y.Z] | --version vX.Y.Z] --revision SHA [--output FILE]\n" +
-      "   or: release-manifest.mjs verify --manifest FILE [--version vX.Y.Z] [--revision SHA]",
+    "usage: release-manifest.mjs create [--changelog FILE [--latest-tag vX.Y.Z] | --version vX.Y.Z] --revision SHA [--provider-claims FILE] [--output FILE]\n" +
+      "   or: release-manifest.mjs verify --manifest FILE [--provider-claims FILE] [--version vX.Y.Z] [--revision SHA]",
   );
 }
 

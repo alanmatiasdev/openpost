@@ -23,7 +23,9 @@ import (
 	"github.com/openpost/backend/internal/services/mediasigner"
 	"github.com/openpost/backend/internal/services/mediastore"
 	"github.com/openpost/backend/internal/services/notifications"
+	"github.com/openpost/backend/internal/services/providerreadiness"
 	"github.com/openpost/backend/internal/services/providerwrite"
+	"github.com/openpost/backend/internal/services/publicationauth"
 	"github.com/openpost/backend/internal/services/publicurl"
 	"github.com/openpost/backend/internal/services/tokenmanager"
 	"github.com/openpost/backend/internal/services/usage"
@@ -51,6 +53,7 @@ type Service struct {
 	quota                        entitlements.Service
 	notifications                *notifications.Service
 	reposts                      RepostScheduler
+	readiness                    *providerreadiness.Service
 }
 
 type RepostScheduler interface {
@@ -105,6 +108,10 @@ func (s *Service) SetNotificationService(service *notifications.Service) {
 
 func (s *Service) SetRepostScheduler(service RepostScheduler) {
 	s.reposts = service
+}
+
+func (s *Service) SetProviderReadiness(service *providerreadiness.Service) {
+	s.readiness = service
 }
 
 func (s *Service) SetProvider(platformName string, adapter platform.Adapter) {
@@ -260,6 +267,7 @@ func (s *Service) HandlePublishPublicationJob(ctx context.Context, jobPayload st
 		Media                    []map[string]interface{} `json:"media"`
 		AuthorizationBatchID     string                   `json:"authorization_batch_id"`
 		AuthorizationScheduledAt string                   `json:"authorization_scheduled_at"`
+		ReadinessIntent          string                   `json:"readiness_intent"`
 	}
 	if err := json.Unmarshal([]byte(jobPayload), &payload); err != nil {
 		return err
@@ -270,7 +278,7 @@ func (s *Service) HandlePublishPublicationJob(ctx context.Context, jobPayload st
 		ScheduledAt: payload.AuthorizationScheduledAt,
 		Content:     payload.Body, Media: payload.Media,
 		Settings: map[string]any{"parent_id": payload.ParentID, "settings": payload.Settings},
-		Explicit: payload.Action == "reply",
+		Explicit: payload.Action == "reply", ReadinessIntent: payload.ReadinessIntent,
 	})
 	if err != nil {
 		return err
@@ -341,6 +349,7 @@ func (s *Service) HandlePublishPublicationJob(ctx context.Context, jobPayload st
 	}
 	var retryFailure *RetryableError
 	var terminalWriteFailure error
+	readinessIntent := publisherReadinessIntent(receipts[0].ExecutionIntent)
 	for i := range renditions {
 		rendition := renditions[i]
 		wasRetry := rendition.Status == models.RenditionStatusFailed
@@ -363,7 +372,7 @@ func (s *Service) HandlePublishPublicationJob(ctx context.Context, jobPayload st
 			Exec(ctx); err != nil {
 			log.Printf("[Publisher] Failed to mark rendition %s as publishing: %v", rendition.ID, err)
 		}
-		if err := s.publishRendition(ctx, publication, &rendition, receiptByRendition[rendition.ID]); err != nil {
+		if err := s.publishRendition(ctx, publication, &rendition, receiptByRendition[rendition.ID], readinessIntent); err != nil {
 			if providerwrite.IsAmbiguous(err) {
 				terminalWriteFailure = err
 			}
@@ -443,6 +452,7 @@ func (s *Service) publishRendition(
 	publication *models.Publication,
 	rendition *models.Rendition,
 	authorization *models.PublicationAuthorization,
+	readinessIntent providerreadiness.ExecutionIntent,
 ) error {
 	var segments []models.RenditionSegment
 	if err := s.db.NewSelect().
@@ -450,7 +460,7 @@ func (s *Service) publishRendition(
 		Where("rendition_id = ?", rendition.ID).
 		Order("position ASC").
 		Scan(ctx); err == nil && len(segments) > 0 {
-		return s.publishRenditionSegments(ctx, publication, rendition, segments, authorization)
+		return s.publishRenditionSegments(ctx, publication, rendition, segments, authorization, readinessIntent)
 	} else if err != nil && !isMissingNormalizedSegmentTable(err) {
 		return fmt.Errorf("loading rendition segments: %w", err)
 	}
@@ -458,6 +468,9 @@ func (s *Service) publishRendition(
 	account := new(models.SocialAccount)
 	if err := s.db.NewSelect().Model(account).Where("id = ?", rendition.SocialAccountID).Scan(ctx); err != nil {
 		return fmt.Errorf("account not found: %v", err)
+	}
+	if err := s.requireRenditionReadiness(ctx, account, rendition, authorization, readinessIntent); err != nil {
+		return err
 	}
 	provider, providerKey, err := s.providerForAccount(account)
 	if err != nil {
@@ -517,7 +530,7 @@ func (s *Service) publishRendition(
 		"platform":     rendition.Platform,
 		"provider_key": providerKey,
 	})
-	writeScope := publicationWriteScope(authorization, rendition.ID, "publish")
+	writeScope := publicationWriteScope(authorization, rendition.ID, "publish", readinessIntent)
 	publishResult, err := s.publishProviderWithUsage(
 		ctx,
 		publication.WorkspaceID,
@@ -595,10 +608,14 @@ func (s *Service) publishRenditionSegments(
 	rendition *models.Rendition,
 	segments []models.RenditionSegment,
 	authorization *models.PublicationAuthorization,
+	readinessIntent providerreadiness.ExecutionIntent,
 ) error {
 	account := new(models.SocialAccount)
 	if err := s.db.NewSelect().Model(account).Where("id = ?", rendition.SocialAccountID).Scan(ctx); err != nil {
 		return fmt.Errorf("account not found: %v", err)
+	}
+	if err := s.requireRenditionReadiness(ctx, account, rendition, authorization, readinessIntent); err != nil {
+		return err
 	}
 	provider, providerKey, err := s.providerForAccount(account)
 	if err != nil {
@@ -699,7 +716,7 @@ func (s *Service) publishRenditionSegments(
 			"segment_id":   segment.ID,
 			"position":     segment.Position,
 		})
-		writeScope := publicationWriteScope(authorization, segment.ID, "publish")
+		writeScope := publicationWriteScope(authorization, segment.ID, "publish", readinessIntent)
 		publishResult, publishErr := s.publishProviderWithUsage(
 			ctx,
 			publication.WorkspaceID,
@@ -1260,8 +1277,11 @@ func (s *Service) publishToDestination(ctx context.Context, post *models.Post, d
 		Media:            mediaItems,
 		ReplyToID:        replyToID,
 	}
+	resolved := capabilities.Resolve(account.Platform, legacyPostResolveInput(post, mediaAttachments, publishContent))
+	req.Profile = resolved.Profile
+	req.OutputProfile = resolved.OutputProfile
 
-	writeScope := legacyWriteScope(ctx, post.WorkspaceID, account.ID, providerKey, dest.ID, "publish")
+	writeScope := legacyWriteScope(ctx, post.WorkspaceID, account.ID, providerKey, dest.ID)
 	publishResult, err := s.publishProviderWithUsage(
 		ctx,
 		post.WorkspaceID,
@@ -1314,6 +1334,33 @@ func (s *Service) publishToDestination(ctx context.Context, post *models.Post, d
 	}
 
 	return nil
+}
+
+func legacyPostResolveInput(post *models.Post, media []models.MediaAttachment, content string) capabilities.ResolveInput {
+	intent := capabilities.IntentPost
+	if post.ThreadSequence > 0 || post.ParentPostID != "" {
+		intent = capabilities.IntentThread
+	} else {
+		for _, item := range media {
+			if strings.HasPrefix(item.MimeType, "video/") {
+				intent = capabilities.IntentShortVideo
+				break
+			}
+		}
+	}
+	items := make([]capabilities.MediaItem, 0, len(media))
+	for _, item := range media {
+		items = append(items, capabilities.MediaItem{
+			ID: item.ID, MimeType: item.MimeType, Size: item.Size,
+			Width: item.Width, Height: item.Height, DurationMS: item.DurationMS,
+			AnalysisStatus: item.AnalysisStatus, AnalysisError: item.AnalysisError,
+			PublicURLReady: true,
+		})
+	}
+	return capabilities.ResolveInput{
+		Intent: intent, CreationPreset: intent,
+		Segments: []capabilities.ResolveSegment{{ID: post.ID, Body: content, Media: items}},
+	}
 }
 
 func (s *Service) markDestinationsFailed(ctx context.Context, dests []models.PostDestination, cause error) {
@@ -1948,6 +1995,53 @@ func renditionMediaRelationRows(workspaceID, renditionID, mediaID string, relati
 	return rows
 }
 
+func (s *Service) requireRenditionReadiness(
+	ctx context.Context,
+	account *models.SocialAccount,
+	rendition *models.Rendition,
+	authorization *models.PublicationAuthorization,
+	intent providerreadiness.ExecutionIntent,
+) error {
+	if s == nil || s.readiness == nil {
+		return &providerreadiness.NotReadyError{
+			Decision: providerreadiness.UnavailableDecision(providerreadiness.OperationPublishImmediate),
+		}
+	}
+	capability, found := capabilities.FindOutput(account.Platform, rendition.OutputProfile)
+	if !found {
+		capability, found = capabilities.Find(account.Platform, rendition.Profile)
+	}
+	if !found {
+		capability = capabilities.Capability{
+			Provider: account.Platform, Profile: rendition.Profile, OutputProfile: rendition.OutputProfile,
+		}
+	}
+	settings := map[string]any{}
+	if err := json.Unmarshal([]byte(rendition.SettingsJSON), &settings); err != nil {
+		return fmt.Errorf("decode rendition provider policy settings: %w", err)
+	}
+	providerPolicyMode := providerreadiness.PublicationPolicyMode(*account, capability, settings)
+	if authorization != nil && authorization.ProviderPolicyMode != providerPolicyMode {
+		return fmt.Errorf("publication authorization validation failed: provider policy mode changed")
+	}
+	operation := providerreadiness.OperationPublishImmediate
+	if authorization != nil && authorization.PolicyMode == publicationauth.PolicyScheduled {
+		operation = providerreadiness.OperationPublishScheduled
+	}
+	decision := s.readiness.DecideAccountPublication(
+		ctx,
+		*account,
+		capability,
+		operation,
+		publisherReadinessIntent(string(intent)),
+		providerPolicyMode,
+	)
+	if !decision.Publishable {
+		return &providerreadiness.NotReadyError{Decision: decision}
+	}
+	return nil
+}
+
 func (s *Service) publishProvider(
 	ctx context.Context,
 	provider platform.Adapter,
@@ -1999,14 +2093,20 @@ type providerWriteScope struct {
 	contentHash     string
 	mediaHash       string
 	settingsHash    string
+	readinessIntent providerreadiness.ExecutionIntent
 }
 
 func publicationWriteScope(
 	authorization *models.PublicationAuthorization,
 	subject, operation string,
+	intents ...providerreadiness.ExecutionIntent,
 ) providerWriteScope {
+	intent := providerreadiness.ExecutionIntentProduction
+	if len(intents) > 0 {
+		intent = publisherReadinessIntent(string(intents[0]))
+	}
 	if authorization == nil {
-		return providerWriteScope{operation: operation}
+		return providerWriteScope{operation: operation, readinessIntent: intent}
 	}
 	return providerWriteScope{
 		operationID:     strings.Join([]string{"authorization", authorization.ID, subject, operation}, ":"),
@@ -2019,12 +2119,13 @@ func publicationWriteScope(
 		contentHash:     authorization.ContentHash,
 		mediaHash:       authorization.MediaHash,
 		settingsHash:    authorization.SettingsHash,
+		readinessIntent: intent,
 	}
 }
 
 func legacyWriteScope(
 	ctx context.Context,
-	workspaceID, socialAccountID, targetKey, subject, operation string,
+	workspaceID, socialAccountID, targetKey, subject string,
 ) providerWriteScope {
 	execution, _ := providerwrite.JobExecutionFromContext(ctx)
 	owner := execution.ID
@@ -2032,10 +2133,10 @@ func legacyWriteScope(
 		owner = workspaceID
 	}
 	return providerWriteScope{
-		operationID:     strings.Join([]string{"legacy", owner, subject, operation}, ":"),
+		operationID:     strings.Join([]string{"legacy", owner, subject, "publish"}, ":"),
 		socialAccountID: socialAccountID,
 		targetKey:       targetKey,
-		operation:       operation,
+		operation:       "publish",
 	}
 }
 
@@ -2065,6 +2166,9 @@ func (s *Service) publishProviderWithUsage(
 		PayloadFingerprint: fingerprint,
 	}
 	send := func(sendCtx context.Context, control *providerwrite.Control) (platform.PublishResult, error) {
+		if readinessErr := s.requireProviderWriteReadiness(sendCtx, workspaceID, providerName, writeScope, req); readinessErr != nil {
+			return platform.PublishResult{}, readinessErr
+		}
 		if quotaErr := s.checkMonthlyQuota(sendCtx, workspaceID, entitlements.LimitProviderWriteCallsMonthly); quotaErr != nil {
 			return platform.PublishResult{}, quotaErr
 		}
@@ -2086,6 +2190,54 @@ func (s *Service) publishProviderWithUsage(
 		}
 	}
 	return providerwrite.New(s.db).Execute(ctx, input, send, reconcile)
+}
+
+func (s *Service) requireProviderWriteReadiness(
+	ctx context.Context,
+	workspaceID, providerName string,
+	writeScope providerWriteScope,
+	req *platform.PublishRequest,
+) error {
+	if s == nil || s.readiness == nil {
+		return &providerreadiness.NotReadyError{
+			Decision: providerreadiness.UnavailableDecision(providerreadiness.OperationPublishImmediate),
+		}
+	}
+	var account models.SocialAccount
+	if err := s.db.NewSelect().Model(&account).
+		Where("id = ?", writeScope.socialAccountID).
+		Where("workspace_id = ?", workspaceID).
+		Where("platform = ?", providerName).
+		Scan(ctx); err != nil {
+		return fmt.Errorf("loading provider readiness account: %w", err)
+	}
+	var authorization *models.PublicationAuthorization
+	if writeScope.authorizationID != "" {
+		var row models.PublicationAuthorization
+		if err := s.db.NewSelect().Model(&row).
+			Where("id = ?", writeScope.authorizationID).
+			Where("workspace_id = ?", workspaceID).
+			Where("social_account_id = ?", account.ID).
+			Scan(ctx); err != nil {
+			return fmt.Errorf("loading provider readiness authorization: %w", err)
+		}
+		authorization = &row
+	}
+	settingsJSON, err := json.Marshal(req.Settings)
+	if err != nil {
+		return fmt.Errorf("encode provider readiness settings: %w", err)
+	}
+	rendition := &models.Rendition{
+		Profile: req.Profile, OutputProfile: req.OutputProfile, SettingsJSON: string(settingsJSON),
+	}
+	return s.requireRenditionReadiness(ctx, &account, rendition, authorization, writeScope.readinessIntent)
+}
+
+func publisherReadinessIntent(raw string) providerreadiness.ExecutionIntent {
+	if providerreadiness.ExecutionIntent(strings.TrimSpace(raw)) == providerreadiness.ExecutionIntentCertificationTest {
+		return providerreadiness.ExecutionIntentCertificationTest
+	}
+	return providerreadiness.ExecutionIntentProduction
 }
 
 type providerPublishLogicalPayload struct {

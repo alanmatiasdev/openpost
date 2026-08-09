@@ -15,10 +15,10 @@
 	import * as Popover from '$lib/components/ui/popover';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
-	import ChevronDownIcon from 'lucide-svelte/icons/chevron-down';
-	import CheckIcon from 'lucide-svelte/icons/check';
-	import PencilIcon from 'lucide-svelte/icons/pencil';
-	import Trash2Icon from 'lucide-svelte/icons/trash-2';
+	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
+	import CheckIcon from '@lucide/svelte/icons/check';
+	import PencilIcon from '@lucide/svelte/icons/pencil';
+	import Trash2Icon from '@lucide/svelte/icons/trash-2';
 	import { getPlatformName } from '$lib/utils';
 	import { m } from '$lib/paraglide/messages';
 
@@ -336,18 +336,26 @@
 
 			<div class="border-t py-1" role="group" aria-label={m.social_set_accounts()}>
 				{#each accounts as account (account.id)}
+					{@const issues = accountIssues[account.id] ?? []}
 					<label
 						class="flex min-h-12 cursor-pointer items-center gap-2.5 rounded-md px-2 py-1.5 text-sm hover:bg-accent"
 						data-testid="composer-account-row"
 					>
 						<PlatformIcon platform={account.platform} class="size-5" />
-						<span class="min-w-0 flex-1">
+						<div class="min-w-0 flex-1">
 							<span class="block truncate font-medium">{accountLabel(account)}</span>
 							<span class="block truncate text-xs text-muted-foreground"
-								>{getPlatformName(account.platform)}{#if accountIssues[account.id]?.length}
+								>{getPlatformName(account.platform)}{#if issues.length}
 									· {m.compose_needs_attention()}{/if}</span
 							>
-						</span>
+							{#if issues.length}
+								<ul class="mt-1 space-y-0.5 text-xs leading-snug text-destructive">
+									{#each issues as issue (issue)}
+										<li>{issue}</li>
+									{/each}
+								</ul>
+							{/if}
+						</div>
 						{#if customAccountIds.includes(account.id)}<PencilIcon
 								class="size-3.5 text-primary"
 								aria-label={m.compose_custom_state()}

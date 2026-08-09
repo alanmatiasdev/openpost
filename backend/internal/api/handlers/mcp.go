@@ -33,6 +33,7 @@ import (
 	"github.com/openpost/backend/internal/services/lifecycle"
 	"github.com/openpost/backend/internal/services/mediastore"
 	postservice "github.com/openpost/backend/internal/services/posts"
+	"github.com/openpost/backend/internal/services/providerreadiness"
 	"github.com/openpost/backend/internal/services/publicationauth"
 	"github.com/openpost/backend/internal/services/usage"
 	"github.com/uptrace/bun"
@@ -103,6 +104,7 @@ type MCPHandler struct {
 	dynamicMastodon   bool
 	tokenEncryptor    *servicecrypto.TokenEncryptor
 	tokenSource       AccessTokenSource
+	readiness         *providerreadiness.Service
 	serverVersion     string
 }
 
@@ -165,6 +167,14 @@ func (h *MCPHandler) SetTokenEncryptor(encryptor *servicecrypto.TokenEncryptor) 
 
 func (h *MCPHandler) SetTokenSource(source AccessTokenSource) {
 	h.tokenSource = source
+}
+
+func (h *MCPHandler) SetProviderReadiness(service *providerreadiness.Service) {
+	h.readiness = service
+}
+
+func (h *MCPHandler) publicationHandler() *PublicationHandler {
+	return &PublicationHandler{db: h.db, readiness: h.readiness}
 }
 
 func (h *MCPHandler) RegisterRoutes(e *echo.Echo) {
@@ -1591,6 +1601,10 @@ func mcpSchedulePublicationTool() mcpOperationDefinition {
 					"minimum":     1,
 					"description": "Revision returned by get_publication after the schedule time was saved.",
 				},
+				"execution_intent": map[string]any{
+					"type": "string", "enum": []string{"production", "certification_test"},
+					"description": "Optional typed readiness intent for this enqueue action. certification_test is restricted to an unscoped instance administrator.",
+				},
 			},
 			"required":             []string{"publication_id", "expected_revision"},
 			"additionalProperties": false,
@@ -1611,6 +1625,10 @@ func mcpPublishPublicationNowTool() mcpOperationDefinition {
 					"type":        "integer",
 					"minimum":     1,
 					"description": "Revision returned by get_publication immediately before publishing.",
+				},
+				"execution_intent": map[string]any{
+					"type": "string", "enum": []string{"production", "certification_test"},
+					"description": "Optional typed readiness intent for this enqueue action. certification_test is restricted to an unscoped instance administrator.",
 				},
 			},
 			"required":             []string{"publication_id", "expected_revision"},
@@ -2904,7 +2922,7 @@ func (h *MCPHandler) callReadOnlyGlobalTool(ctx context.Context, userID, toolNam
 	case mcpToolWorkspaces:
 		return h.listWorkspaces(ctx, userID)
 	case mcpToolProviders:
-		return h.listProviderCatalog(), nil
+		return h.listProviderCatalog(ctx), nil
 	default:
 		return nil, &mcpError{Code: -32602, Message: "unknown tool"}
 	}
@@ -3116,8 +3134,12 @@ func (h *MCPHandler) listWorkspaces(ctx context.Context, userID string) (any, *m
 	}, nil
 }
 
-func (h *MCPHandler) listProviderCatalog() any {
-	providers := providerAvailability(h.providers, h.dynamicMastodon)
+func (h *MCPHandler) listProviderCatalog(ctx context.Context) any {
+	providers := applyProviderAvailabilityReadiness(
+		ctx,
+		h.readiness,
+		providerAvailability(h.providers, h.dynamicMastodon),
+	)
 	available := make([]string, 0)
 	needsConfiguration := make([]string, 0)
 	planned := make([]string, 0)
@@ -3129,6 +3151,8 @@ func (h *MCPHandler) listProviderCatalog() any {
 			needsConfiguration = append(needsConfiguration, provider.DisplayName)
 		case providerStatusPlanned:
 			planned = append(planned, provider.DisplayName)
+		default:
+			needsConfiguration = append(needsConfiguration, provider.DisplayName+" ("+provider.Status+")")
 		}
 	}
 	parts := []string{}
@@ -3556,6 +3580,7 @@ func mcpMetadataValue(metadata *map[string]interface{}) map[string]interface{} {
 }
 
 func publicationMutationMCPError(err error, fallback string) *mcpError {
+	var notReady *providerreadiness.NotReadyError
 	switch {
 	case isDraftRevisionConflict(err):
 		return &mcpError{Code: -32602, Message: err.Error()}
@@ -3566,6 +3591,8 @@ func publicationMutationMCPError(err error, fallback string) *mcpError {
 		errors.Is(err, errPublicationScheduleFuture),
 		errors.Is(err, errPublicationValidationBlocked),
 		errors.Is(err, errPublicationScheduleRequired):
+		return &mcpError{Code: -32602, Message: err.Error()}
+	case errors.As(err, &notReady):
 		return &mcpError{Code: -32602, Message: err.Error()}
 	default:
 		return &mcpError{Code: -32603, Message: fallback}
@@ -3774,12 +3801,12 @@ func (h *MCPHandler) validatePublication(ctx context.Context, userID string, arg
 }
 
 func (h *MCPHandler) schedulePublication(ctx context.Context, userID string, args map[string]any) (any, *mcpError) {
-	publication, expectedRevision, rpcErr := h.loadMCPPublicationForAction(ctx, userID, args, "invalid schedule_publication arguments")
+	publication, expectedRevision, intent, rpcErr := h.loadMCPPublicationForAction(ctx, userID, args, "invalid schedule_publication arguments")
 	if rpcErr != nil {
 		return nil, rpcErr
 	}
-	handler := &PublicationHandler{db: h.db}
-	jobID, err := handler.queueScheduledPublicationExpected(ctx, publication.ID, expectedRevision)
+	handler := h.publicationHandler()
+	jobID, err := handler.queueScheduledPublicationExpected(ctx, publication.ID, expectedRevision, intent)
 	if err != nil {
 		return nil, publicationMutationMCPError(err, "failed to schedule publication")
 	}
@@ -3791,12 +3818,12 @@ func (h *MCPHandler) schedulePublication(ctx context.Context, userID string, arg
 }
 
 func (h *MCPHandler) publishPublicationNow(ctx context.Context, userID string, args map[string]any) (any, *mcpError) {
-	publication, expectedRevision, rpcErr := h.loadMCPPublicationForAction(ctx, userID, args, "invalid publish_publication_now arguments")
+	publication, expectedRevision, intent, rpcErr := h.loadMCPPublicationForAction(ctx, userID, args, "invalid publish_publication_now arguments")
 	if rpcErr != nil {
 		return nil, rpcErr
 	}
-	handler := &PublicationHandler{db: h.db}
-	jobID, err := handler.queuePublicationNowExpected(ctx, publication.ID, expectedRevision)
+	handler := h.publicationHandler()
+	jobID, err := handler.queuePublicationNowExpected(ctx, publication.ID, expectedRevision, intent)
 	if err != nil {
 		return nil, publicationMutationMCPError(err, "failed to queue publication")
 	}
@@ -3807,29 +3834,34 @@ func (h *MCPHandler) publishPublicationNow(ctx context.Context, userID string, a
 	return mcpPublicationActionResult("Publication queued: "+publication.ID, jobID, status), nil
 }
 
-func (h *MCPHandler) loadMCPPublicationForAction(ctx context.Context, userID string, args map[string]any, invalidMessage string) (models.Publication, int, *mcpError) {
+func (h *MCPHandler) loadMCPPublicationForAction(ctx context.Context, userID string, args map[string]any, invalidMessage string) (models.Publication, int, providerreadiness.ExecutionIntent, *mcpError) {
 	var input struct {
 		PublicationID    string `json:"publication_id"`
 		ExpectedRevision int    `json:"expected_revision"`
+		ExecutionIntent  string `json:"execution_intent"`
 	}
 	if err := decodeMCPArguments(args, &input); err != nil {
-		return models.Publication{}, 0, &mcpError{Code: -32602, Message: invalidMessage}
+		return models.Publication{}, 0, "", &mcpError{Code: -32602, Message: invalidMessage}
 	}
 	input.PublicationID = strings.TrimSpace(input.PublicationID)
 	if input.PublicationID == "" || input.ExpectedRevision < 1 {
-		return models.Publication{}, 0, &mcpError{Code: -32602, Message: "publication_id and expected_revision are required"}
+		return models.Publication{}, 0, "", &mcpError{Code: -32602, Message: "publication_id and expected_revision are required"}
 	}
 	var publication models.Publication
 	if err := h.db.NewSelect().Model(&publication).Where("id = ?", input.PublicationID).Scan(ctx); err != nil {
-		return models.Publication{}, 0, &mcpError{Code: -32602, Message: "publication not found"}
+		return models.Publication{}, 0, "", &mcpError{Code: -32602, Message: "publication not found"}
 	}
 	if rpcErr := h.ensureWorkspaceEditAccess(ctx, userID, publication.WorkspaceID); rpcErr != nil {
-		return models.Publication{}, 0, rpcErr
+		return models.Publication{}, 0, "", rpcErr
 	}
 	if !isPublicationEditable(publication.Status) {
-		return models.Publication{}, 0, &mcpError{Code: -32602, Message: errPublicationNotEditable.Error()}
+		return models.Publication{}, 0, "", &mcpError{Code: -32602, Message: errPublicationNotEditable.Error()}
 	}
-	return publication, input.ExpectedRevision, nil
+	intent, err := providerReadinessExecutionIntent(ctx, h.db, input.ExecutionIntent)
+	if err != nil {
+		return models.Publication{}, 0, "", &mcpError{Code: -32602, Message: err.Error()}
+	}
+	return publication, input.ExpectedRevision, intent, nil
 }
 
 func mcpPublicationActionResult(message, jobID string, status mcpPublicationStatus) map[string]any {
@@ -5375,22 +5407,14 @@ func (h *MCPHandler) providerReadiness(ctx context.Context, userID string, args 
 	if rpcErr := h.ensureWorkspaceAccess(ctx, userID, input.WorkspaceID); rpcErr != nil {
 		return nil, rpcErr
 	}
-	handler := &ProviderReadinessHandler{db: h.db, providers: h.providers}
-	apps, err := handler.loadProviderApps(ctx)
-	if err != nil {
-		return nil, &mcpError{Code: -32603, Message: "failed to load provider app configuration"}
-	}
+	handler := &ProviderReadinessHandler{db: h.db, providers: h.providers, readiness: h.readiness}
 	accounts, err := handler.loadReadinessAccounts(ctx, input.WorkspaceID)
 	if err != nil {
 		return nil, &mcpError{Code: -32603, Message: "failed to load connected accounts"}
 	}
-	mediaHealth, err := handler.publicMediaHealth(ctx, input.WorkspaceID)
-	if err != nil {
-		return nil, &mcpError{Code: -32603, Message: "failed to load public media health"}
-	}
 	providers := make([]ProviderReadinessItem, 0, len(readinessProviders()))
 	for _, provider := range readinessProviders() {
-		providers = append(providers, buildProviderReadiness(provider, apps[provider], accounts[provider], mediaHealth))
+		providers = append(providers, handler.buildProviderReadiness(ctx, provider, accounts[provider]))
 	}
 	return map[string]any{
 		"content": []mcpContent{{Type: "text", Text: fmt.Sprintf("Loaded provider readiness for %d providers.", len(providers))}},

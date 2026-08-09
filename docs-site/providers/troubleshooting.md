@@ -15,7 +15,7 @@ The report checks server health, setup, tokens, and the current workspace. It al
 
 ## First Checks
 
-1. Confirm the provider appears as `available` in **Accounts** or through `GET /api/v1/accounts/providers`.
+1. Inspect the provider's exact state in **Accounts**, with `openpost provider readiness`, or through `GET /api/v1/provider-readiness`.
 2. Compare the callback URL in the provider console with the OpenPost callback URL exactly.
 3. Confirm `OPENPOST_APP_URL` is the public HTTPS app origin.
 4. For media providers that fetch files server-side, confirm `OPENPOST_MEDIA_URL` or `OPENPOST_S3_PUBLIC_BASE_URL` is public HTTPS.
@@ -26,7 +26,7 @@ The report checks server health, setup, tokens, and the current workspace. It al
 
 | Symptom                                | Likely cause                                                            | Fix                                                                                                                             |
 | -------------------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| Provider is unavailable on Accounts    | Missing provider app config                                             | Add provider env vars, `OPENPOST_PROVIDER_APPS`, or save credentials through the instance-admin provider app API, then restart. |
+| Provider shows `needs_configuration`   | Missing provider app config                                             | Add provider env vars, `OPENPOST_PROVIDER_APPS`, or save credentials through the instance-admin provider app API, then restart. |
 | OAuth redirects to the wrong host      | `OPENPOST_APP_URL` or provider callback mismatch                        | Set one public HTTPS origin and update the provider console.                                                                    |
 | OAuth succeeds but no account is saved | Provider returned no usable profile, page, channel, or business account | Confirm scopes, account ownership, and provider app review state.                                                               |
 | Text publishes but media fails         | Media URL is private, local, or not HTTPS                               | Use public `OPENPOST_MEDIA_URL` or S3/R2 public media URLs.                                                                     |

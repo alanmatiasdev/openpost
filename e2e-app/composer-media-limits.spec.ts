@@ -31,6 +31,26 @@ function account(provider: string) {
   };
 }
 
+function healthyPublicationReadiness() {
+  return {
+    state: "healthy",
+    executable: true,
+    connectable: false,
+    publishable: true,
+    advertisable: false,
+    facts: {
+      configuration: "configured",
+      local_test: "passed",
+      live_certification: "passed",
+      approval: "approved",
+      authorization: "authorized",
+      control: "enabled",
+      policy: "allowed",
+    },
+    blockers: [],
+  };
+}
+
 function resolvedCapability(provider: string) {
   return {
     account_id: `${provider}-main`,
@@ -55,6 +75,8 @@ function resolvedCapability(provider: string) {
     issues: [],
     capability_revision: "composer-media-test-v1",
     dynamic_options: {},
+    immediate_readiness: healthyPublicationReadiness(),
+    scheduled_readiness: healthyPublicationReadiness(),
   };
 }
 

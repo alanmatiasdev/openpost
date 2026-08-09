@@ -13,6 +13,7 @@ import (
 	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/platform"
 	"github.com/openpost/backend/internal/services/crypto"
+	"github.com/openpost/backend/internal/services/providerreadiness"
 	"github.com/stretchr/testify/require"
 )
 
@@ -79,6 +80,11 @@ func newOAuthCallbackRedirectTestServer(t *testing.T, providerName string, adapt
 	handler := NewOAuthHandler(db, crypto.NewTokenEncryptor("0123456789abcdef0123456789abcdef"), map[string]platform.Adapter{
 		providerName: adapter,
 	}, testAuthenticator{}, false, frontendURL)
+	handler.SetProviderReadiness(oauthConnectionReadiness(
+		t,
+		&oauthReadinessLedger{control: providerreadiness.RuntimeControlStateEnabled},
+		platform.AppConfig{Provider: providerName, ClientID: providerName + "-app"},
+	))
 	handler.GetAuthURL(api)
 	handler.Callback(api)
 

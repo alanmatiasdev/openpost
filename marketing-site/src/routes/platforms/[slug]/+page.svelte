@@ -7,7 +7,7 @@
     ExternalLink,
     Info,
     ShieldAlert,
-  } from "lucide-svelte";
+  } from "@lucide/svelte";
   import { Button } from "$lib/components/ui/button";
   import PlatformIcon from "$lib/components/platform-icon.svelte";
   import PlatformPreview from "../_components/PlatformPreview.svelte";
@@ -19,11 +19,13 @@
     if (!found) error(404, "Platform not found");
     return found;
   });
-  const requiresProviderApproval = $derived(platform.status === "Supported");
+  const requiresProviderApproval = $derived(
+    platform.requiresProviderApproval,
+  );
 </script>
 
 <svelte:head>
-  <title>{platform.name} publishing support - OpenPost</title>
+  <title>{platform.name} implementation and certification - OpenPost</title>
   <meta
     name="description"
     content={`${platform.description} See formats, setup needs, limits, and live-test notes.`}
@@ -57,6 +59,24 @@
           {platform.heroTitle}
         </h1>
         <p class="marketing-copy mt-5">{platform.description}</p>
+        <div class="mt-5 grid gap-2 text-sm text-muted-foreground">
+          <p class="inline-flex items-start gap-2">
+            <Info class="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+            <span>
+              <strong class="font-medium text-foreground">Implemented:</strong>
+              {platform.implementationDetail}
+            </span>
+          </p>
+          <p class="inline-flex items-start gap-2">
+            <Info class="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+            <span>
+              <strong class="font-medium text-foreground"
+                >Managed certification:</strong
+              >
+              {platform.managedCertificationDetail}
+            </span>
+          </p>
+        </div>
         {#if requiresProviderApproval}
           <p
             class="mt-5 inline-flex items-center gap-2 rounded-md bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-200"

@@ -89,7 +89,7 @@ func TestUpdateScheduledPublicationReschedulesPublishJob(t *testing.T) {
 
 	e := echo.New()
 	api := humaecho.NewWithGroup(e, e.Group("/api/v1"), huma.DefaultConfig("Test", "1.0.0"))
-	NewPublicationHandler(db, testAuthenticator{}, nil).RegisterRoutes(api)
+	newReadyPublicationHandler(t, db, testAuthenticator{}).RegisterRoutes(api)
 
 	body := bytes.NewBufferString(`{"expected_revision":1,"scheduled_at":"` + newRunAt.Format(time.RFC3339) + `"}`)
 	req := httptest.NewRequestWithContext(ctx, http.MethodPut, "/api/v1/publications/publication-1", body)
@@ -157,7 +157,7 @@ func TestCreatePublicationWithScheduledAtRemainsDraftWithoutJob(t *testing.T) {
 
 	e := echo.New()
 	api := humaecho.NewWithGroup(e, e.Group("/api/v1"), huma.DefaultConfig("Test", "1.0.0"))
-	NewPublicationHandler(db, testAuthenticator{}, nil).RegisterRoutes(api)
+	newReadyPublicationHandler(t, db, testAuthenticator{}).RegisterRoutes(api)
 
 	body := bytes.NewBufferString(`{
 		"workspace_id":"workspace-1",
@@ -282,7 +282,7 @@ func TestClearScheduledPublicationCancelsJobAndReturnsToDraft(t *testing.T) {
 
 	e := echo.New()
 	api := humaecho.NewWithGroup(e, e.Group("/api/v1"), huma.DefaultConfig("Test", "1.0.0"))
-	NewPublicationHandler(db, testAuthenticator{}, nil).RegisterRoutes(api)
+	newReadyPublicationHandler(t, db, testAuthenticator{}).RegisterRoutes(api)
 
 	req := httptest.NewRequestWithContext(
 		ctx,
@@ -411,7 +411,7 @@ func TestProcessingPrimaryJobBlocksClearAndEditsAcrossRESTAndMCP(t *testing.T) {
 
 	e := echo.New()
 	api := humaecho.NewWithGroup(e, e.Group("/api/v1"), huma.DefaultConfig("Test", "1.0.0"))
-	NewPublicationHandler(db, testAuthenticator{}, nil).RegisterRoutes(api)
+	newReadyPublicationHandler(t, db, testAuthenticator{}).RegisterRoutes(api)
 	requireHTTPConflict := func(path, body string) {
 		t.Helper()
 		req := httptest.NewRequestWithContext(ctx, http.MethodPut, path, bytes.NewBufferString(body))
@@ -491,7 +491,7 @@ func TestSchedulePublicationRejectsNonFutureTime(t *testing.T) {
 
 	e := echo.New()
 	api := humaecho.NewWithGroup(e, e.Group("/api/v1"), huma.DefaultConfig("Test", "1.0.0"))
-	NewPublicationHandler(db, testAuthenticator{}, nil).RegisterRoutes(api)
+	newReadyPublicationHandler(t, db, testAuthenticator{}).RegisterRoutes(api)
 	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/api/v1/publications/publication-past/schedule", bytes.NewBufferString(`{"expected_revision":1}`))
 	req.Header.Set("Authorization", "Bearer web-token")
 	req.Header.Set("Content-Type", "application/json")
@@ -548,7 +548,7 @@ func TestReschedulePublicationRejectsNonFutureTimeWithoutReplacingJob(t *testing
 
 	e := echo.New()
 	api := humaecho.NewWithGroup(e, e.Group("/api/v1"), huma.DefaultConfig("Test", "1.0.0"))
-	NewPublicationHandler(db, testAuthenticator{}, nil).RegisterRoutes(api)
+	newReadyPublicationHandler(t, db, testAuthenticator{}).RegisterRoutes(api)
 	body := bytes.NewBufferString(`{"expected_revision":1,"scheduled_at":"` + now.Add(-time.Minute).Format(time.RFC3339) + `"}`)
 	req := httptest.NewRequestWithContext(ctx, http.MethodPut, "/api/v1/publications/publication-1", body)
 	req.Header.Set("Authorization", "Bearer web-token")
@@ -585,8 +585,9 @@ func TestClearScheduleCancelsOrphanPendingJobWhenPublicationStatusDrifted(t *tes
 		ScheduledAt: now.Add(time.Hour), MetadataJSON: "{}", ReleasePlanJSON: "{}", CreatedAt: now, UpdatedAt: now,
 	}).Exec(ctx)
 	require.NoError(t, err)
+	seedHandlerAccount(t, db, "account-1", "x")
 	_, err = db.NewInsert().Model(&models.Rendition{
-		ID: "rendition-1", PublicationID: "publication-1", SocialAccountID: "", Platform: "x",
+		ID: "rendition-1", PublicationID: "publication-1", SocialAccountID: "account-1", Platform: "x",
 		Profile: models.ContentProfileShortText, Body: "Draft", Title: "Drifted draft", SettingsJSON: "{}",
 		Status: models.RenditionStatusScheduled, CreatedAt: now, UpdatedAt: now,
 	}).Exec(ctx)
@@ -600,7 +601,7 @@ func TestClearScheduleCancelsOrphanPendingJobWhenPublicationStatusDrifted(t *tes
 
 	e := echo.New()
 	api := humaecho.NewWithGroup(e, e.Group("/api/v1"), huma.DefaultConfig("Test", "1.0.0"))
-	NewPublicationHandler(db, testAuthenticator{}, nil).RegisterRoutes(api)
+	newReadyPublicationHandler(t, db, testAuthenticator{}).RegisterRoutes(api)
 	req := httptest.NewRequestWithContext(ctx, http.MethodPut, "/api/v1/publications/publication-1", bytes.NewBufferString(`{"expected_revision":1,"clear_schedule":true}`))
 	req.Header.Set("Authorization", "Bearer web-token")
 	req.Header.Set("Content-Type", "application/json")
@@ -639,8 +640,9 @@ func TestSchedulePublicationRollsBackJobAndStatesTogether(t *testing.T) {
 		ScheduledAt: now.Add(time.Hour), MetadataJSON: "{}", ReleasePlanJSON: "{}", CreatedAt: now, UpdatedAt: now,
 	}).Exec(ctx)
 	require.NoError(t, err)
+	seedHandlerAccount(t, db, "account-atomic", "x")
 	_, err = db.NewInsert().Model(&models.Rendition{
-		ID: "rendition-1", PublicationID: "publication-1", SocialAccountID: "", Platform: "x",
+		ID: "rendition-1", PublicationID: "publication-1", SocialAccountID: "account-atomic", Platform: "x",
 		Profile: models.ContentProfileShortText, Body: "Schedule atomically", Title: "Atomic schedule", SettingsJSON: "{}",
 		Status: models.RenditionStatusDraft, CreatedAt: now, UpdatedAt: now,
 	}).Exec(ctx)
@@ -657,7 +659,7 @@ func TestSchedulePublicationRollsBackJobAndStatesTogether(t *testing.T) {
 
 	e := echo.New()
 	api := humaecho.NewWithGroup(e, e.Group("/api/v1"), huma.DefaultConfig("Test", "1.0.0"))
-	NewPublicationHandler(db, testAuthenticator{}, nil).RegisterRoutes(api)
+	newReadyPublicationHandler(t, db, testAuthenticator{}).RegisterRoutes(api)
 	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/api/v1/publications/publication-1/schedule", bytes.NewBufferString(`{"expected_revision":1}`))
 	req.Header.Set("Authorization", "Bearer web-token")
 	req.Header.Set("Content-Type", "application/json")
@@ -793,7 +795,7 @@ func TestPublishedPublicationMutationEndpointsPreserveDeliveryState(t *testing.T
 
 	e := echo.New()
 	api := humaecho.NewWithGroup(e, e.Group("/api/v1"), huma.DefaultConfig("Test", "1.0.0"))
-	NewPublicationHandler(db, testAuthenticator{}, nil).RegisterRoutes(api)
+	newReadyPublicationHandler(t, db, testAuthenticator{}).RegisterRoutes(api)
 
 	for _, request := range requests {
 		req := httptest.NewRequestWithContext(ctx, request.method, request.path, bytes.NewBufferString(request.body))
@@ -959,7 +961,7 @@ func TestPublicationActionsRejectProcessingPrimaryJobAcrossRESTAndMCP(t *testing
 
 	e := echo.New()
 	api := humaecho.NewWithGroup(e, e.Group("/api/v1"), huma.DefaultConfig("Test", "1.0.0"))
-	NewPublicationHandler(db, testAuthenticator{}, nil).RegisterRoutes(api)
+	newReadyPublicationHandler(t, db, testAuthenticator{}).RegisterRoutes(api)
 	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/api/v1/publications/publication-1/schedule", bytes.NewBufferString(`{"expected_revision":1}`))
 	req.Header.Set("Authorization", "Bearer web-token")
 	req.Header.Set("Content-Type", "application/json")
@@ -1026,7 +1028,7 @@ func TestPrimaryPublicationQueueUsesCurrentScheduleAtTransactionBoundary(t *test
 		Exec(ctx)
 	require.NoError(t, err)
 
-	handler := &PublicationHandler{db: db}
+	handler := newReadyPublicationHandler(t, db, testAuthenticator{})
 	jobID, err := handler.queueScheduledPublication(ctx, "publication-1")
 	require.NoError(t, err)
 	var job models.Job
@@ -1214,7 +1216,7 @@ func TestPrimaryPublicationQueueReplacementKeepsOnePendingJob(t *testing.T) {
 	}).Exec(ctx)
 	require.NoError(t, err)
 
-	handler := &PublicationHandler{db: db}
+	handler := newReadyPublicationHandler(t, db, testAuthenticator{})
 	firstJobID, err := handler.queuePublication(ctx, "publication-1", firstRunAt)
 	require.NoError(t, err)
 	secondJobID, err := handler.queuePublication(ctx, "publication-1", secondRunAt)
@@ -1302,7 +1304,7 @@ func TestScheduledPublicationKeepsCompatibilityPostAndRandomDelay(t *testing.T) 
 	}).Exec(ctx)
 	require.NoError(t, err)
 
-	jobID, err := (&PublicationHandler{db: db}).queueScheduledPublication(ctx, publication.ID)
+	jobID, err := newReadyPublicationHandler(t, db, testAuthenticator{}).queueScheduledPublication(ctx, publication.ID)
 	require.NoError(t, err)
 
 	var job models.Job

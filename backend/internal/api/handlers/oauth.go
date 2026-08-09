@@ -26,6 +26,7 @@ import (
 	"github.com/openpost/backend/internal/services/entitlements"
 	"github.com/openpost/backend/internal/services/mastodonapps"
 	"github.com/openpost/backend/internal/services/oauthstate"
+	"github.com/openpost/backend/internal/services/providerreadiness"
 	"github.com/openpost/backend/internal/services/tokenmanager"
 	"github.com/uptrace/bun"
 )
@@ -50,6 +51,7 @@ type OAuthHandler struct {
 	accountSaver                 *account_saver.AccountSaver
 	mastodonApps                 *mastodonapps.Service
 	oauthStates                  *oauthstate.Store
+	readiness                    *providerreadiness.Service
 	// frontendURL is the absolute base URL the SPA is served from
 	// (e.g. "https://openpost.example.com"). OAuth callback redirects go
 	// here so they work behind reverse proxies and subpath mounts.
@@ -134,6 +136,10 @@ func (h *OAuthHandler) SetMastodonAppService(service *mastodonapps.Service) {
 	h.mastodonApps = service
 }
 
+func (h *OAuthHandler) SetProviderReadiness(service *providerreadiness.Service) {
+	h.readiness = service
+}
+
 func (h *OAuthHandler) SetProviderRegistrars(registrars ...func(string, platform.Adapter)) {
 	h.providerRegistrars = registrars
 }
@@ -144,15 +150,16 @@ type MastodonServerInfo struct {
 }
 
 type ProviderInfo struct {
-	Platform     string   `json:"platform" doc:"Provider key"`
-	DisplayName  string   `json:"display_name" doc:"Human-readable provider name"`
-	AuthMode     string   `json:"auth_mode" doc:"Connection method: oauth, app_password, or oauth_oob"`
-	Configured   bool     `json:"configured" doc:"Whether this provider can currently be connected"`
-	Status       string   `json:"status,omitempty" doc:"Provider launch status: available, needs_configuration, or planned"`
-	Description  string   `json:"description,omitempty" doc:"Short connection or launch note for this provider"`
-	Capabilities []string `json:"capabilities,omitempty" doc:"High-level OpenPost capabilities available or planned for this provider"`
-	Name         string   `json:"name,omitempty" doc:"Provider app or server display name"`
-	InstanceURL  string   `json:"instance_url,omitempty" doc:"Federated server URL, when applicable"`
+	Platform     string                     `json:"platform" doc:"Provider key"`
+	DisplayName  string                     `json:"display_name" doc:"Human-readable provider name"`
+	AuthMode     string                     `json:"auth_mode" doc:"Connection method: oauth, app_password, or oauth_oob"`
+	Configured   bool                       `json:"configured" doc:"Whether this provider can currently be connected"`
+	Status       string                     `json:"status,omitempty" doc:"Provider launch status: available, needs_configuration, or planned"`
+	Description  string                     `json:"description,omitempty" doc:"Short connection or launch note for this provider"`
+	Capabilities []string                   `json:"capabilities,omitempty" doc:"High-level OpenPost capabilities available or planned for this provider"`
+	Name         string                     `json:"name,omitempty" doc:"Provider app or server display name"`
+	InstanceURL  string                     `json:"instance_url,omitempty" doc:"Federated server URL, when applicable"`
+	Readiness    providerreadiness.Decision `json:"readiness"`
 }
 
 type ListProvidersOutput struct {
@@ -168,6 +175,7 @@ type GetAuthURLInput struct {
 	WorkspaceID string `query:"workspace_id" required:"true" doc:"Workspace ID to link account to"`
 	ServerName  string `query:"server_name" doc:"Mastodon server name from config (required for mastodon)"`
 	InstanceURL string `query:"instance_url" doc:"Mastodon instance URL to dynamically register"`
+	Intent      string `query:"intent" enum:"production,certification_test" default:"production" doc:"Typed execution intent; certification_test requires an unscoped instance administrator"`
 }
 
 type GetAuthURLOutput struct {
@@ -193,6 +201,7 @@ type ExchangeCodeInput struct {
 		ServerName  string `json:"server_name" doc:"Mastodon server name from config"`
 		InstanceURL string `json:"instance_url" doc:"Mastodon instance URL to dynamically register"`
 		Code        string `json:"code" doc:"Authorization code from OAuth flow"`
+		Intent      string `json:"intent,omitempty" enum:"production,certification_test" doc:"Typed execution intent; certification_test requires an unscoped instance administrator"`
 	}
 }
 
@@ -392,6 +401,25 @@ func (h *OAuthHandler) getDynamicMastodonProvider(ctx context.Context, instanceU
 		h.providers = map[string]platform.Adapter{}
 	}
 	h.registerProvider("mastodon:"+canonicalURL, adapter)
+	if h.readiness != nil {
+		configs, listErr := h.mastodonApps.ListActiveAppConfigs(ctx)
+		if listErr != nil {
+			return nil, "", fmt.Errorf("load dynamic mastodon readiness configuration: %w", listErr)
+		}
+		for _, config := range configs {
+			if strings.TrimRight(config.InstanceURL, "/") != canonicalURL {
+				continue
+			}
+			if registerErr := h.readiness.RegisterRuntimeApp(providerreadiness.RuntimeApp{
+				Config:              config,
+				Source:              providerreadiness.ConfigurationSourceDynamic,
+				ProviderEnvironment: h.readiness.ProviderEnvironment(),
+			}); registerErr != nil {
+				return nil, "", fmt.Errorf("register dynamic mastodon readiness configuration: %w", registerErr)
+			}
+			break
+		}
+	}
 	return adapter, canonicalURL, nil
 }
 
@@ -428,13 +456,48 @@ func (h *OAuthHandler) ListProviders(api huma.API) {
 		Summary:     "List configured account providers",
 		Tags:        []string{tagAccounts},
 		Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
-	}, func(_ context.Context, _ *struct{}) (*ListProvidersOutput, error) {
-		return &ListProvidersOutput{Body: h.providerAvailability()}, nil
+	}, func(ctx context.Context, _ *struct{}) (*ListProvidersOutput, error) {
+		return &ListProvidersOutput{Body: h.providerAvailability(ctx)}, nil
 	})
 }
 
-func (h *OAuthHandler) providerAvailability() []ProviderInfo {
-	return providerAvailability(h.providers, h.isDynamicMastodonConfigured())
+func (h *OAuthHandler) providerAvailability(contexts ...context.Context) []ProviderInfo {
+	infos := providerAvailability(h.providers, h.isDynamicMastodonConfigured())
+	ctx := context.Background()
+	if len(contexts) > 0 && contexts[0] != nil {
+		ctx = contexts[0]
+	}
+	return applyProviderAvailabilityReadiness(ctx, h.readiness, infos)
+}
+
+func applyProviderAvailabilityReadiness(
+	ctx context.Context,
+	readiness *providerreadiness.Service,
+	infos []ProviderInfo,
+) []ProviderInfo {
+	if readiness == nil {
+		for index := range infos {
+			infos[index].Readiness = providerreadiness.UnavailableDecision(providerreadiness.OperationConnect)
+			infos[index].Configured = false
+			infos[index].Status = string(providerreadiness.EffectiveStateDegraded)
+		}
+		return infos
+	}
+	for index := range infos {
+		decision := readiness.DecideConnection(
+			ctx,
+			infos[index].Platform,
+			infos[index].InstanceURL,
+			providerreadiness.ExecutionIntentProduction,
+		)
+		infos[index].Readiness = decision
+		infos[index].Configured = decision.Connectable
+		infos[index].Status = string(decision.State)
+		if decision.Connectable {
+			infos[index].Status = providerStatusAvailable
+		}
+	}
+	return infos
 }
 
 func providerAvailability(providers map[string]platform.Adapter, dynamicMastodonConfigured bool) []ProviderInfo {
@@ -568,6 +631,77 @@ func (h *OAuthHandler) ensureCanStartAccountConnection(ctx context.Context, work
 	return nil
 }
 
+func (h *OAuthHandler) connectionIntent(ctx context.Context, raw string) (providerreadiness.ExecutionIntent, error) {
+	switch providerreadiness.ExecutionIntent(strings.TrimSpace(raw)) {
+	case "", providerreadiness.ExecutionIntentProduction:
+		return providerreadiness.ExecutionIntentProduction, nil
+	case providerreadiness.ExecutionIntentCertificationTest:
+		if err := requireUnscopedInstanceAdmin(ctx, h.db); err != nil {
+			return "", err
+		}
+		return providerreadiness.ExecutionIntentCertificationTest, nil
+	default:
+		return "", huma.Error400BadRequest("invalid provider readiness execution intent")
+	}
+}
+
+func (h *OAuthHandler) persistedConnectionIntent(
+	ctx context.Context,
+	raw, userID string,
+) (providerreadiness.ExecutionIntent, error) {
+	intent := providerreadiness.ExecutionIntent(strings.TrimSpace(raw))
+	switch intent {
+	case providerreadiness.ExecutionIntentProduction:
+		return intent, nil
+	case providerreadiness.ExecutionIntentCertificationTest:
+		if strings.TrimSpace(userID) == "" {
+			return "", huma.Error403Forbidden("provider certification initiator is unavailable")
+		}
+		var isAdmin bool
+		if err := h.db.NewSelect().
+			Model((*models.User)(nil)).
+			Column("is_admin").
+			Where("id = ?", userID).
+			Scan(ctx, &isAdmin); err != nil {
+			return "", huma.Error403Forbidden("provider certification initiator is unavailable")
+		}
+		if !isAdmin {
+			return "", huma.Error403Forbidden("provider certification requires a current instance administrator")
+		}
+		return intent, nil
+	default:
+		return "", huma.Error409Conflict("invalid or expired provider readiness execution intent")
+	}
+}
+
+func (h *OAuthHandler) requireProviderConnectionCompletion(
+	ctx context.Context,
+	provider, instanceURL, rawIntent, userID string,
+) error {
+	intent, err := h.persistedConnectionIntent(ctx, rawIntent, userID)
+	if err != nil {
+		return err
+	}
+	return h.requireProviderConnection(ctx, provider, instanceURL, intent)
+}
+
+func (h *OAuthHandler) requireProviderConnection(
+	ctx context.Context,
+	provider, instanceURL string,
+	intent providerreadiness.ExecutionIntent,
+) error {
+	if h.readiness == nil {
+		return huma.Error409Conflict((&providerreadiness.NotReadyError{
+			Decision: providerreadiness.UnavailableDecision(providerreadiness.OperationConnect),
+		}).Error())
+	}
+	decision := h.readiness.DecideConnection(ctx, provider, instanceURL, intent)
+	if decision.Connectable {
+		return nil
+	}
+	return huma.Error409Conflict((&providerreadiness.NotReadyError{Decision: decision}).Error())
+}
+
 func (h *OAuthHandler) GetAuthURL(api huma.API) {
 	huma.Register(api, huma.Operation{
 		OperationID: "get-auth-url",
@@ -576,7 +710,7 @@ func (h *OAuthHandler) GetAuthURL(api huma.API) {
 		Summary:     "Get OAuth authorization URL for a platform",
 		Tags:        []string{tagAccounts},
 		Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
-		Errors:      []int{400, 403},
+		Errors:      []int{400, 403, 409},
 	}, func(ctx context.Context, input *GetAuthURLInput) (*GetAuthURLOutput, error) {
 		if input.Platform == "bluesky" {
 			return nil, huma.Error400BadRequest("bluesky uses app passwords, not OAuth redirect")
@@ -586,65 +720,91 @@ func (h *OAuthHandler) GetAuthURL(api huma.API) {
 		}
 
 		userID := middleware.GetUserID(ctx)
+		intent, err := h.connectionIntent(ctx, input.Intent)
+		if err != nil {
+			return nil, err
+		}
 		if err := h.ensureCanStartAccountConnection(ctx, input.WorkspaceID, userID); err != nil {
 			return nil, err
 		}
 
-		if input.Platform == mastodonProvider && input.ServerName == "" && input.InstanceURL == "" {
-			return nil, huma.Error400BadRequest("server_name or instance_url required for mastodon")
-		}
-
-		var (
-			adapter            platform.Adapter
-			serverNameForState string
-			err                error
-		)
-		if input.Platform == mastodonProvider {
-			adapter, serverNameForState, err = h.getMastodonProvider(ctx, input.ServerName, input.InstanceURL)
-			if err != nil {
-				return nil, huma.Error400BadRequest(err.Error())
-			}
-		} else {
-			adapter, err = h.getProvider(input.Platform, input.ServerName)
-			if err != nil {
-				return nil, huma.Error400BadRequest(err.Error())
-			}
-		}
-
-		if input.Platform == "x" {
-			xAdapter, ok := adapter.(*platform.XAdapter)
-			if !ok {
-				return nil, huma.Error500InternalServerError("x adapter type mismatch")
-			}
-			authURL, err := xAdapter.GenerateAuthURLWithError(userID, input.WorkspaceID)
-			if err != nil {
-				log.Printf("[X OAuth] auth url generation failed: %v", err)
-				return nil, huma.Error400BadRequest(fmt.Sprintf("x auth url generation failed: %s", err.Error()))
-			}
-			resp := &GetAuthURLOutput{}
-			resp.Body.URL = authURL
-			return resp, nil
-		}
-
-		state, err := h.oauthStates.Create(ctx, oauthstate.Payload{
-			UserID:      userID,
-			WorkspaceID: input.WorkspaceID,
-			Platform:    input.Platform,
-			ServerName:  firstNonEmpty(serverNameForState, input.ServerName),
-		})
+		adapter, serverNameForState, err := h.authURLProvider(ctx, input)
 		if err != nil {
-			return nil, huma.Error500InternalServerError("failed to create oauth state")
+			return nil, err
 		}
-
-		authURL, _ := adapter.GenerateAuthURL(state)
-		if authURL == "" {
-			return nil, huma.Error400BadRequest(fmt.Sprintf("%s does not support OAuth redirect", input.Platform))
+		if err := h.requireProviderConnection(ctx, input.Platform, serverNameForState, intent); err != nil {
+			return nil, err
 		}
-
-		resp := &GetAuthURLOutput{}
-		resp.Body.URL = authURL
-		return resp, nil
+		return h.generateProviderAuthURL(ctx, input, userID, adapter, serverNameForState, intent)
 	})
+}
+
+func (h *OAuthHandler) authURLProvider(
+	ctx context.Context,
+	input *GetAuthURLInput,
+) (platform.Adapter, string, error) {
+	if input.Platform == mastodonProvider {
+		if input.ServerName == "" && input.InstanceURL == "" {
+			return nil, "", huma.Error400BadRequest("server_name or instance_url required for mastodon")
+		}
+		adapter, instanceURL, err := h.getMastodonProvider(ctx, input.ServerName, input.InstanceURL)
+		if err != nil {
+			return nil, "", huma.Error400BadRequest(err.Error())
+		}
+		return adapter, instanceURL, nil
+	}
+	adapter, err := h.getProvider(input.Platform, input.ServerName)
+	if err != nil {
+		return nil, "", huma.Error400BadRequest(err.Error())
+	}
+	return adapter, "", nil
+}
+
+func (h *OAuthHandler) generateProviderAuthURL(
+	ctx context.Context,
+	input *GetAuthURLInput,
+	userID string,
+	adapter platform.Adapter,
+	serverNameForState string,
+	intent providerreadiness.ExecutionIntent,
+) (*GetAuthURLOutput, error) {
+	if input.Platform == "x" {
+		return generateXAuthURL(input, userID, adapter, intent)
+	}
+	state, err := h.oauthStates.Create(ctx, oauthstate.Payload{
+		UserID: userID, WorkspaceID: input.WorkspaceID, Platform: input.Platform,
+		ServerName: firstNonEmpty(serverNameForState, input.ServerName), ExecutionIntent: string(intent),
+	})
+	if err != nil {
+		return nil, huma.Error500InternalServerError("failed to create oauth state")
+	}
+	authURL, _ := adapter.GenerateAuthURL(state)
+	if authURL == "" {
+		return nil, huma.Error400BadRequest(fmt.Sprintf("%s does not support OAuth redirect", input.Platform))
+	}
+	resp := &GetAuthURLOutput{}
+	resp.Body.URL = authURL
+	return resp, nil
+}
+
+func generateXAuthURL(
+	input *GetAuthURLInput,
+	userID string,
+	adapter platform.Adapter,
+	intent providerreadiness.ExecutionIntent,
+) (*GetAuthURLOutput, error) {
+	xAdapter, ok := adapter.(*platform.XAdapter)
+	if !ok {
+		return nil, huma.Error500InternalServerError("x adapter type mismatch")
+	}
+	authURL, err := xAdapter.GenerateAuthURLWithIntent(userID, input.WorkspaceID, string(intent))
+	if err != nil {
+		log.Printf("[X OAuth] auth url generation failed: %v", err)
+		return nil, huma.Error400BadRequest(fmt.Sprintf("x auth url generation failed: %s", err.Error()))
+	}
+	resp := &GetAuthURLOutput{}
+	resp.Body.URL = authURL
+	return resp, nil
 }
 
 //nolint:gocyclo
@@ -673,6 +833,8 @@ func (h *OAuthHandler) Callback(api huma.API) {
 
 		workspaceID := ""
 		userID := ""
+		executionIntent := ""
+		instanceRef := ""
 		var adapter platform.Adapter
 
 		extra := make(map[string]string)
@@ -691,11 +853,13 @@ func (h *OAuthHandler) Callback(api huma.API) {
 			if !ok {
 				return h.redirectWithError("x adapter type mismatch")
 			}
-			ws, ok := xAdapter.GetWorkspaceIDForRequestToken(input.OAuthToken)
+			requestMeta, ok := xAdapter.GetRequestMetaForRequestToken(input.OAuthToken)
 			if !ok {
 				return h.redirectWithError("invalid or expired oauth request token")
 			}
-			workspaceID = ws
+			workspaceID = requestMeta.WorkspaceID
+			userID = requestMeta.UserID
+			executionIntent = requestMeta.ExecutionIntent
 		} else {
 			statePayload, err := h.oauthStates.Consume(ctx, input.State)
 			if err != nil {
@@ -706,15 +870,31 @@ func (h *OAuthHandler) Callback(api huma.API) {
 			}
 			userID = statePayload.UserID
 			workspaceID = statePayload.WorkspaceID
+			executionIntent = statePayload.ExecutionIntent
 			if input.Platform == mastodonProvider {
 				input.ServerName = statePayload.ServerName
+				instanceRef = statePayload.ServerName
 			}
+		}
 
+		if err := h.checkWorkspaceEditAccess(ctx, workspaceID, userID); err != nil {
+			log.Printf("[Callback] Workspace access check failed: %v", err)
+			return h.redirectWithError("workspace access denied")
+		}
+		if err := h.requireProviderConnectionCompletion(
+			ctx, input.Platform, instanceRef, executionIntent, userID,
+		); err != nil {
+			return h.redirectWithError(err.Error())
+		}
+
+		if input.Platform != "x" {
+			var err error
 			if input.Platform == mastodonProvider {
 				adapter, _, err = h.getMastodonProvider(ctx, input.ServerName, "")
 				if err != nil {
 					return h.redirectWithError(err.Error())
 				}
+				instanceRef = mastodonInstanceURL(adapter)
 			} else {
 				adapter, err = h.getProvider(input.Platform, input.ServerName)
 				if err != nil {
@@ -722,25 +902,21 @@ func (h *OAuthHandler) Callback(api huma.API) {
 				}
 			}
 		}
+		if err := h.requireProviderConnectionCompletion(
+			ctx, input.Platform, instanceRef, executionIntent, userID,
+		); err != nil {
+			return h.redirectWithError(err.Error())
+		}
 
 		tokenResp, err := adapter.ExchangeCode(ctx, input.Code, extra)
 		if err != nil {
 			return h.redirectWithError(fmt.Sprintf("token exchange failed: %s", err.Error()))
 		}
 
-		if ws, ok := extra["_workspace_id"]; ok {
-			workspaceID = ws
-		}
-		if uid, ok := extra["_user_id"]; ok {
-			userID = uid
-		}
-		if tokenResp.Extra != nil {
-			if ws, ok := tokenResp.Extra["_workspace_id"]; ok && ws != "" {
-				workspaceID = ws
-			}
-			if uid, ok := tokenResp.Extra["_user_id"]; ok && uid != "" {
-				userID = uid
-			}
+		if err := h.requireProviderConnectionCompletion(
+			ctx, input.Platform, instanceRef, executionIntent, userID,
+		); err != nil {
+			return h.redirectWithError(err.Error())
 		}
 
 		if selector, ok := adapter.(platform.AccountSelectionAdapter); ok {
@@ -750,7 +926,10 @@ func (h *OAuthHandler) Callback(api huma.API) {
 				}
 				tokenResp.Extra["_grant_subject"] = profile.ID
 			}
-			return h.saveAccountSelectionAndRedirect(ctx, userID, input.Platform, workspaceID, mastodonInstanceURL(adapter), tokenResp, selector)
+			return h.saveAccountSelectionAndRedirect(
+				ctx, userID, input.Platform, workspaceID, instanceRef,
+				executionIntent, tokenResp, selector,
+			)
 		}
 
 		profile, err := adapter.GetProfile(ctx, tokenResp.AccessToken)
@@ -762,17 +941,10 @@ func (h *OAuthHandler) Callback(api huma.API) {
 			}
 		}
 
-		instanceRef := ""
-		if input.Platform == mastodonProvider {
-			instanceRef = mastodonInstanceURL(adapter)
-		}
-
-		if err := h.checkWorkspaceEditAccess(ctx, workspaceID, userID); err != nil {
-			log.Printf("[Callback] Workspace access check failed: %v", err)
-			return h.redirectWithError("workspace access denied")
-		}
-
-		return h.saveAccountAndRedirect(ctx, userID, input.Platform, workspaceID, profile.ID, profile.Username, instanceRef, profile.CapabilityState, tokenResp, adapter)
+		return h.saveAccountAndRedirect(
+			ctx, userID, input.Platform, workspaceID, profile.ID, profile.Username,
+			instanceRef, executionIntent, profile.CapabilityState, tokenResp, adapter,
+		)
 	})
 }
 
@@ -800,10 +972,20 @@ func (h *OAuthHandler) redirectWithAccountSelection(platformName, connectionID s
 	}, nil
 }
 
-func (h *OAuthHandler) saveAccountSelectionAndRedirect(ctx context.Context, userID, platformName, workspaceID, instanceURL string, tokenResp *platform.TokenResult, selector platform.AccountSelectionAdapter) (*huma.StreamResponse, error) {
+func (h *OAuthHandler) saveAccountSelectionAndRedirect(
+	ctx context.Context,
+	userID, platformName, workspaceID, instanceURL, executionIntent string,
+	tokenResp *platform.TokenResult,
+	selector platform.AccountSelectionAdapter,
+) (*huma.StreamResponse, error) {
 	if err := h.checkWorkspaceEditAccess(ctx, workspaceID, userID); err != nil {
 		log.Printf("[Callback] Workspace access check failed: %v", err)
 		return h.redirectWithError("workspace access denied")
+	}
+	if err := h.requireProviderConnectionCompletion(
+		ctx, platformName, instanceURL, executionIntent, userID,
+	); err != nil {
+		return h.redirectWithError(err.Error())
 	}
 
 	options, err := selector.ListAccountSelections(ctx, tokenResp)
@@ -813,8 +995,16 @@ func (h *OAuthHandler) saveAccountSelectionAndRedirect(ctx context.Context, user
 	if len(options) == 0 {
 		return h.redirectWithError("no selectable accounts found for this provider")
 	}
+	if err := h.requireProviderConnectionCompletion(
+		ctx, platformName, instanceURL, executionIntent, userID,
+	); err != nil {
+		return h.redirectWithError(err.Error())
+	}
 
-	pending, err := h.createPendingAccountSelection(ctx, userID, platformName, workspaceID, instanceURL, tokenResp, options)
+	pending, err := h.createPendingAccountSelection(
+		ctx, userID, platformName, workspaceID, instanceURL,
+		executionIntent, tokenResp, options,
+	)
 	if err != nil {
 		log.Printf("[Callback] Failed to save pending account selection: %v", err)
 		return h.redirectWithError("failed to save pending account selection")
@@ -824,7 +1014,12 @@ func (h *OAuthHandler) saveAccountSelectionAndRedirect(ctx context.Context, user
 	return h.redirectWithAccountSelection(platformName, pending.ID)
 }
 
-func (h *OAuthHandler) createPendingAccountSelection(ctx context.Context, userID, platformName, workspaceID, instanceURL string, tokenResp *platform.TokenResult, options []platform.AccountSelectionOption) (*models.OAuthAccountSelection, error) {
+func (h *OAuthHandler) createPendingAccountSelection(
+	ctx context.Context,
+	userID, platformName, workspaceID, instanceURL, executionIntent string,
+	tokenResp *platform.TokenResult,
+	options []platform.AccountSelectionOption,
+) (*models.OAuthAccountSelection, error) {
 	if h.crypto == nil {
 		return nil, fmt.Errorf("token encryptor is not configured")
 	}
@@ -874,6 +1069,7 @@ func (h *OAuthHandler) createPendingAccountSelection(ctx context.Context, userID
 		WorkspaceID:     workspaceID,
 		Platform:        platformName,
 		InstanceURL:     instanceURL,
+		ExecutionIntent: executionIntent,
 		AccessTokenEnc:  encAccess,
 		RefreshTokenEnc: encRefresh,
 		TokenType:       tokenResp.TokenType,
@@ -889,12 +1085,23 @@ func (h *OAuthHandler) createPendingAccountSelection(ctx context.Context, userID
 	return pending, nil
 }
 
-func (h *OAuthHandler) saveAccountAndRedirect(ctx context.Context, userID, platformName, workspaceID, accountID, accountUsername, instanceURL string, capabilityState map[string]string, tokenResp *platform.TokenResult, adapter platform.Adapter) (*huma.StreamResponse, error) {
+func (h *OAuthHandler) saveAccountAndRedirect(
+	ctx context.Context,
+	userID, platformName, workspaceID, accountID, accountUsername, instanceURL, executionIntent string,
+	capabilityState map[string]string,
+	tokenResp *platform.TokenResult,
+	adapter platform.Adapter,
+) (*huma.StreamResponse, error) {
 	// For Threads, the account ID comes from the token response extra
 	if tokenResp.Extra != nil {
 		if uid, ok := tokenResp.Extra["user_id"]; ok && uid != "" {
 			accountID = uid
 		}
+	}
+	if err := h.requireProviderConnectionCompletion(
+		ctx, platformName, instanceURL, executionIntent, userID,
+	); err != nil {
+		return h.redirectWithError(err.Error())
 	}
 
 	account, err := h.accountSaver.SaveAccountFromInput(ctx, account_saver.SaveAccountInput{
@@ -990,7 +1197,17 @@ func (h *OAuthHandler) ExchangeCode(api huma.API) {
 		Errors:      []int{400},
 	}, func(ctx context.Context, input *ExchangeCodeInput) (*struct{}, error) {
 		userID := middleware.GetUserID(ctx)
+		intent, err := h.connectionIntent(ctx, input.Body.Intent)
+		if err != nil {
+			return nil, err
+		}
 		if err := h.ensureCanStartAccountConnection(ctx, input.Body.WorkspaceID, userID); err != nil {
+			return nil, err
+		}
+		requestedInstance := strings.TrimRight(strings.TrimSpace(firstNonEmpty(
+			input.Body.InstanceURL, input.Body.ServerName,
+		)), "/")
+		if err := h.requireProviderConnection(ctx, mastodonProvider, requestedInstance, intent); err != nil {
 			return nil, err
 		}
 
@@ -998,10 +1215,21 @@ func (h *OAuthHandler) ExchangeCode(api huma.API) {
 		if err != nil {
 			return nil, huma.Error400BadRequest(err.Error())
 		}
+		instanceURL := mastodonInstanceURL(adapter)
+		if err := h.requireProviderConnectionCompletion(
+			ctx, mastodonProvider, instanceURL, string(intent), userID,
+		); err != nil {
+			return nil, err
+		}
 
 		tokenResp, err := adapter.ExchangeCode(ctx, input.Body.Code, nil)
 		if err != nil {
 			return nil, huma.Error500InternalServerError(fmt.Sprintf("mastodon exchange failed: %s", err.Error()))
+		}
+		if err := h.requireProviderConnectionCompletion(
+			ctx, mastodonProvider, instanceURL, string(intent), userID,
+		); err != nil {
+			return nil, err
 		}
 
 		profile, err := adapter.GetProfile(ctx, tokenResp.AccessToken)
@@ -1009,7 +1237,11 @@ func (h *OAuthHandler) ExchangeCode(api huma.API) {
 			profile = &platform.UserProfile{ID: "mastodon-user", Username: ""}
 		}
 
-		instanceURL := mastodonInstanceURL(adapter)
+		if err := h.requireProviderConnectionCompletion(
+			ctx, mastodonProvider, instanceURL, string(intent), userID,
+		); err != nil {
+			return nil, err
+		}
 
 		if _, err := h.accountSaver.SaveAccountFromInput(ctx, account_saver.SaveAccountInput{
 			UserID:          userID,
@@ -1036,6 +1268,7 @@ type BlueskyLoginInput struct {
 		WorkspaceID string `json:"workspace_id" doc:"Workspace ID"`
 		Handle      string `json:"handle" doc:"Bluesky handle (e.g. user.bsky.social)"`
 		AppPassword string `json:"app_password" doc:"Bluesky app password (Settings > App Passwords)"`
+		Intent      string `json:"intent,omitempty" enum:"production,certification_test" doc:"Typed execution intent; certification_test requires an unscoped instance administrator"`
 	}
 }
 
@@ -1050,6 +1283,10 @@ func (h *OAuthHandler) BlueskyLogin(api huma.API) {
 		Errors:      []int{400, 403},
 	}, func(ctx context.Context, input *BlueskyLoginInput) (*struct{}, error) {
 		userID := middleware.GetUserID(ctx)
+		intent, err := h.connectionIntent(ctx, input.Body.Intent)
+		if err != nil {
+			return nil, err
+		}
 		if err := h.ensureCanStartAccountConnection(ctx, input.Body.WorkspaceID, userID); err != nil {
 			return nil, err
 		}
@@ -1057,6 +1294,9 @@ func (h *OAuthHandler) BlueskyLogin(api huma.API) {
 		adapter, ok := h.providers["bluesky"]
 		if !ok {
 			return nil, huma.Error400BadRequest("bluesky not configured")
+		}
+		if err := h.requireProviderConnection(ctx, "bluesky", "", intent); err != nil {
+			return nil, err
 		}
 
 		blueskyAdapter, ok := adapter.(*platform.BlueskyAdapter)
@@ -1067,6 +1307,11 @@ func (h *OAuthHandler) BlueskyLogin(api huma.API) {
 		did, accessToken, refreshToken, expiresIn, err := blueskyAdapter.CreateSession(ctx, input.Body.Handle, input.Body.AppPassword)
 		if err != nil {
 			return nil, huma.Error500InternalServerError(fmt.Sprintf("bluesky login failed: %s", err.Error()))
+		}
+		if err := h.requireProviderConnectionCompletion(
+			ctx, "bluesky", "", string(intent), userID,
+		); err != nil {
+			return nil, err
 		}
 
 		// Build a TokenResult for Bluesky and delegate saving to AccountSaver so encryption and DB insert are centralized
@@ -1099,6 +1344,7 @@ type DiscordWebhookLoginInput struct {
 	Body struct {
 		WorkspaceID string `json:"workspace_id" doc:"Workspace ID"`
 		WebhookURL  string `json:"webhook_url" doc:"Discord incoming webhook URL"`
+		Intent      string `json:"intent,omitempty" enum:"production,certification_test" doc:"Typed execution intent; certification_test requires an unscoped instance administrator"`
 	}
 }
 
@@ -1113,6 +1359,10 @@ func (h *OAuthHandler) DiscordWebhookLogin(api huma.API) {
 		Errors:      []int{400, 403},
 	}, func(ctx context.Context, input *DiscordWebhookLoginInput) (*struct{}, error) {
 		userID := middleware.GetUserID(ctx)
+		intent, err := h.connectionIntent(ctx, input.Body.Intent)
+		if err != nil {
+			return nil, err
+		}
 		if err := h.ensureCanStartAccountConnection(ctx, input.Body.WorkspaceID, userID); err != nil {
 			return nil, err
 		}
@@ -1120,10 +1370,18 @@ func (h *OAuthHandler) DiscordWebhookLogin(api huma.API) {
 		if !ok {
 			return nil, huma.Error400BadRequest("discord webhooks are not configured")
 		}
+		if err := h.requireProviderConnection(ctx, "discord", "", intent); err != nil {
+			return nil, err
+		}
 		webhookURL := strings.TrimSpace(input.Body.WebhookURL)
 		profile, err := adapter.GetProfile(ctx, webhookURL)
 		if err != nil {
 			return nil, huma.Error400BadRequest(err.Error())
+		}
+		if err := h.requireProviderConnectionCompletion(
+			ctx, "discord", "", string(intent), userID,
+		); err != nil {
+			return nil, err
 		}
 		token := &platform.TokenResult{
 			AccessToken: webhookURL,
@@ -1213,6 +1471,11 @@ func (h *OAuthHandler) CompleteAccountSelection(api huma.API) {
 		if err != nil {
 			return nil, err
 		}
+		if err := h.requireProviderConnectionCompletion(
+			ctx, pending.Platform, pending.InstanceURL, pending.ExecutionIntent, userID,
+		); err != nil {
+			return nil, err
+		}
 
 		adapter, err := h.getProvider(pending.Platform, "")
 		if err != nil {
@@ -1233,6 +1496,11 @@ func (h *OAuthHandler) CompleteAccountSelection(api huma.API) {
 		}
 		saveInputs := make([]account_saver.SaveAccountInput, 0, len(normalizedSelections))
 		for _, selectionID := range normalizedSelections {
+			if err := h.requireProviderConnectionCompletion(
+				ctx, pending.Platform, pending.InstanceURL, pending.ExecutionIntent, userID,
+			); err != nil {
+				return nil, err
+			}
 			selected, err := selector.SelectAccount(ctx, tokenResp, selectionID)
 			if err != nil {
 				return nil, huma.Error400BadRequest(err.Error())
@@ -1260,6 +1528,11 @@ func (h *OAuthHandler) CompleteAccountSelection(api huma.API) {
 		saver := h.accountSaver
 		if saver == nil {
 			saver = account_saver.NewAccountSaver(h.db, h.crypto)
+		}
+		if err := h.requireProviderConnectionCompletion(
+			ctx, pending.Platform, pending.InstanceURL, pending.ExecutionIntent, userID,
+		); err != nil {
+			return nil, err
 		}
 		accounts, err := saver.SaveAccountsFromInputs(ctx, saveInputs)
 		if err != nil {

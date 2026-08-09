@@ -14,6 +14,7 @@ import (
 	"github.com/openpost/backend/internal/platform"
 	"github.com/openpost/backend/internal/services/crypto"
 	"github.com/openpost/backend/internal/services/lifecycle"
+	"github.com/openpost/backend/internal/services/providerreadiness"
 	"github.com/openpost/backend/internal/services/publicationauth"
 	"github.com/openpost/backend/internal/services/tokenmanager"
 	"github.com/stretchr/testify/require"
@@ -305,6 +306,10 @@ func newPublisherLifecycleTestServer(t *testing.T, adapter *fakePublisherAdapter
 		(*models.MediaAttachment)(nil),
 		(*models.PublicationLifecycleEvent)(nil),
 		(*models.PublicationAuthorization)(nil),
+		(*models.ProviderApprovalReview)(nil),
+		(*models.ProviderCertificationRun)(nil),
+		(*models.ProviderCertificationCheck)(nil),
+		(*models.ProviderRuntimeControlEvent)(nil),
 		(*models.ProviderWriteAttempt)(nil),
 		(*models.UsageCounter)(nil),
 		(*models.Post)(nil),
@@ -312,6 +317,9 @@ func newPublisherLifecycleTestServer(t *testing.T, adapter *fakePublisherAdapter
 		(*models.PostMedia)(nil),
 		(*models.PostVariant)(nil),
 		(*models.Job)(nil),
+		(*models.OAuthGrant)(nil),
+		(*models.User)(nil),
+		(*models.APIToken)(nil),
 	} {
 		_, err = db.NewCreateTable().Model(model).IfNotExists().Exec(context.Background())
 		require.NoError(t, err)
@@ -327,6 +335,15 @@ func newPublisherLifecycleTestServer(t *testing.T, adapter *fakePublisherAdapter
 	ctx := context.Background()
 	_, err = db.NewInsert().Model(&models.Workspace{ID: "ws-1", Name: "Launch"}).Exec(ctx)
 	require.NoError(t, err)
+	_, err = db.NewInsert().Model(&models.User{
+		ID: "user-1", Email: "admin@example.test", Username: "admin", IsAdmin: true,
+	}).Exec(ctx)
+	require.NoError(t, err)
+	_, err = db.NewInsert().Model(&models.OAuthGrant{
+		ID: "grant-1", WorkspaceID: "ws-1", Provider: "x", AccessTokenEnc: encAccess,
+		ValidationStatus: "valid", ValidatedAt: time.Now().UTC().Add(-time.Minute),
+	}).Exec(ctx)
+	require.NoError(t, err)
 	_, err = db.NewInsert().Model(&models.SocialAccount{
 		ID:             "account-1",
 		WorkspaceID:    "ws-1",
@@ -334,6 +351,7 @@ func newPublisherLifecycleTestServer(t *testing.T, adapter *fakePublisherAdapter
 		AccountID:      "x-account",
 		Slug:           "x-account",
 		AccessTokenEnc: encAccess,
+		OAuthGrantID:   "grant-1",
 		IsActive:       true,
 		CreatedAt:      time.Now().UTC(),
 	}).Exec(ctx)
@@ -380,6 +398,21 @@ func newPublisherLifecycleTestServer(t *testing.T, adapter *fakePublisherAdapter
 	manager.SetProvider("x", adapter)
 	service := NewService(db, manager)
 	service.SetProvider("x", adapter)
+	catalog, err := providerreadiness.NewConfigurationCatalog(providerreadiness.RuntimeApps(
+		[]platform.AppConfig{{
+			Provider: "x", ClientID: "x-client",
+			RedirectURI: "https://openpost.test/api/v1/accounts/x/callback",
+		}},
+		providerreadiness.ConfigurationSourceEnvironment,
+		providerreadiness.ProviderEnvironmentDevelopment,
+	))
+	require.NoError(t, err)
+	service.SetProviderReadiness(providerreadiness.NewService(
+		providerreadiness.NewRepository(db),
+		providerreadiness.ServiceOptions{
+			Configurations: catalog, DefaultControl: providerreadiness.RuntimeControlStateEnabled,
+		},
+	))
 
 	return &publisherLifecycleTestServer{
 		db: db, service: service, jobID: uuid.NewString(), batchID: uuid.NewString(),
@@ -394,6 +427,17 @@ func (s *publisherLifecycleTestServer) publishPublication(t *testing.T) error {
 }
 
 func (s *publisherLifecycleTestServer) authorizedPublicationJob(t *testing.T, targets []publicationauth.JobTarget) (context.Context, string) {
+	return s.authorizedPublicationJobWithIntent(t, targets, providerreadiness.ExecutionIntentProduction, publicationauth.Actor{
+		Origin: publicationauth.OriginLegacy, UserID: "user-1",
+	})
+}
+
+func (s *publisherLifecycleTestServer) authorizedPublicationJobWithIntent(
+	t *testing.T,
+	targets []publicationauth.JobTarget,
+	intent providerreadiness.ExecutionIntent,
+	actor publicationauth.Actor,
+) (context.Context, string) {
 	t.Helper()
 	ctx := t.Context()
 	count, err := s.db.NewSelect().Model((*models.PublicationAuthorization)(nil)).
@@ -405,18 +449,62 @@ func (s *publisherLifecycleTestServer) authorizedPublicationJob(t *testing.T, ta
 		}
 		_, _, err = publicationauth.CreateBatch(ctx, s.db, publicationauth.BatchInput{
 			BatchID: s.batchID, PublicationID: "publication-1",
-			Actor:  publicationauth.Actor{Origin: publicationauth.OriginLegacy, UserID: "user-1"},
+			Actor:  actor,
 			Action: publicationauth.ActionPublish, PolicyMode: publicationauth.PolicyScheduled,
-			Targets: targets,
+			ExecutionIntent: string(intent), Targets: targets,
 		})
 		require.NoError(t, err)
 	}
 	payload, err := json.Marshal(map[string]string{
 		"publication_id": "publication-1", "authorization_batch_id": s.batchID,
 		"authorization_scheduled_at": s.runAt.Format(time.RFC3339Nano),
+		"readiness_intent":           string(intent),
 	})
 	require.NoError(t, err)
 	return WithJobExecution(ctx, s.jobID, 1, time.Now().UTC()), string(payload)
+}
+
+func TestCertificationIntentJobPayloadCannotEscalateProductionReceipt(t *testing.T) {
+	adapter := &fakePublisherAdapter{externalID: "must-not-publish"}
+	srv := newPublisherLifecycleTestServer(t, adapter)
+	ctx, payload := srv.authorizedPublicationJob(t, nil)
+	var body map[string]string
+	require.NoError(t, json.Unmarshal([]byte(payload), &body))
+	body["readiness_intent"] = string(providerreadiness.ExecutionIntentCertificationTest)
+	tampered, err := json.Marshal(body)
+	require.NoError(t, err)
+
+	err = srv.service.HandlePublishPublicationJob(ctx, string(tampered))
+	require.Error(t, err)
+	require.Zero(t, adapter.publishCalls)
+}
+
+func TestCertificationIntentRechecksAdministratorAtWorkerTime(t *testing.T) {
+	adapter := &fakePublisherAdapter{externalID: "must-not-publish"}
+	srv := newPublisherLifecycleTestServer(t, adapter)
+	ctx, payload := srv.authorizedPublicationJobWithIntent(
+		t, nil, providerreadiness.ExecutionIntentCertificationTest,
+		publicationauth.Actor{Origin: publicationauth.OriginBrowser, UserID: "user-1", SessionID: "session-1"},
+	)
+	_, err := srv.db.NewUpdate().Model((*models.User)(nil)).Set("is_admin = ?", false).Where("id = ?", "user-1").Exec(t.Context())
+	require.NoError(t, err)
+
+	err = srv.service.HandlePublishPublicationJob(ctx, payload)
+	require.ErrorContains(t, err, "no longer authorized")
+	require.Zero(t, adapter.publishCalls)
+}
+
+func TestCertificationIntentRejectsLegacyActorReceipt(t *testing.T) {
+	adapter := &fakePublisherAdapter{externalID: "must-not-publish"}
+	srv := newPublisherLifecycleTestServer(t, adapter)
+	ctx, payload := srv.authorizedPublicationJobWithIntent(
+		t, nil, providerreadiness.ExecutionIntentCertificationTest,
+		publicationauth.Actor{Origin: publicationauth.OriginLegacy, UserID: "user-1"},
+	)
+
+	err := srv.service.HandlePublishPublicationJob(ctx, payload)
+	require.ErrorContains(t, err, "actor origin is not privileged")
+	require.Zero(t, adapter.publishCalls)
 }
 
 func (s *publisherLifecycleTestServer) lifecycleEvents(t *testing.T) []models.PublicationLifecycleEvent {

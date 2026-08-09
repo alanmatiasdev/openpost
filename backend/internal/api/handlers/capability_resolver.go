@@ -13,6 +13,7 @@ import (
 	"github.com/openpost/backend/internal/capabilities"
 	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/platform"
+	"github.com/openpost/backend/internal/services/providerreadiness"
 	"github.com/openpost/backend/internal/services/publicurl"
 	"github.com/uptrace/bun"
 )
@@ -23,6 +24,7 @@ type CapabilityResolverHandler struct {
 	providers   map[string]platform.Adapter
 	tokenSource AccessTokenSource
 	publicMedia *publicurl.MediaVerifier
+	readiness   *providerreadiness.Service
 	cacheMu     sync.Mutex
 	cache       map[string]accountCapabilityCacheEntry
 }
@@ -49,6 +51,10 @@ func NewCapabilityResolverHandler(
 
 func (h *CapabilityResolverHandler) SetPublicMediaVerifier(verifier *publicurl.MediaVerifier) {
 	h.publicMedia = verifier
+}
+
+func (h *CapabilityResolverHandler) SetProviderReadiness(service *providerreadiness.Service) {
+	h.readiness = service
 }
 
 type ResolveCapabilityMediaInput struct {
@@ -79,7 +85,9 @@ type ResolveCapabilitiesInput struct {
 }
 
 type ResolvedAccountCapability struct {
-	AccountID string `json:"account_id"`
+	AccountID          string                     `json:"account_id"`
+	ImmediateReadiness providerreadiness.Decision `json:"immediate_readiness"`
+	ScheduledReadiness providerreadiness.Decision `json:"scheduled_readiness"`
 	capabilities.ResolvedCapability
 }
 
@@ -135,11 +143,33 @@ func (h *CapabilityResolverHandler) RegisterRoutes(api huma.API) {
 			satisfyCanonicalURLRequirement(&resolved, input.Body.SourceURL, segments)
 			output.Body.Accounts = append(output.Body.Accounts, ResolvedAccountCapability{
 				AccountID:          account.ID,
+				ImmediateReadiness: h.publicationReadiness(ctx, account, resolved.Capability, providerreadiness.OperationPublishImmediate, input.Body.Settings[account.ID]),
+				ScheduledReadiness: h.publicationReadiness(ctx, account, resolved.Capability, providerreadiness.OperationPublishScheduled, input.Body.Settings[account.ID]),
 				ResolvedCapability: resolved,
 			})
 		}
 		return output, nil
 	})
+}
+
+func (h *CapabilityResolverHandler) publicationReadiness(
+	ctx context.Context,
+	account models.SocialAccount,
+	capability capabilities.Capability,
+	operation providerreadiness.Operation,
+	settings map[string]any,
+) providerreadiness.Decision {
+	if h.readiness == nil {
+		return providerreadiness.Decision{State: providerreadiness.EffectiveStateDegraded}
+	}
+	return h.readiness.DecideAccountPublication(
+		ctx,
+		account,
+		capability,
+		operation,
+		providerreadiness.ExecutionIntentProduction,
+		providerreadiness.PublicationPolicyMode(account, capability, settings),
+	)
 }
 
 func segmentsWithDestinationFields(segments []capabilities.ResolveSegment, settings map[string]any) []capabilities.ResolveSegment {

@@ -41,21 +41,29 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     cd backend && go mod download
 
 COPY backend/ ./backend/
+COPY provider-certification/public-claims.json ./provider-certification/public-claims.json
 # Package the frontend-owned build output at the backend embed boundary.
 COPY --from=frontend-builder /app/frontend/build ./backend/cmd/openpost/public
 
-RUN if [ -n "${RELEASE_MANIFEST_B64}" ]; then \
+RUN provider_claims_sha256="$(sha256sum provider-certification/public-claims.json | cut -d ' ' -f1)" && \
+    provider_claim_count="$(jq -er '.claims | length' provider-certification/public-claims.json)" && \
+    if [ -n "${RELEASE_MANIFEST_B64}" ]; then \
       printf '%s' "${RELEASE_MANIFEST_B64}" | base64 -d > release-manifest.json; \
       printf '%s  %s\n' "${RELEASE_MANIFEST_SHA256}" release-manifest.json | sha256sum -c -; \
     else \
       jq -n \
         --arg version "${VERSION}" \
         --arg revision "${COMMIT}" \
-        '{schema_version: 1, version: $version, revision: $revision}' > release-manifest.json; \
+        --arg provider_claims_sha256 "sha256:${provider_claims_sha256}" \
+        --argjson provider_claim_count "${provider_claim_count}" \
+        '{schema_version: 2, version: $version, revision: $revision, provider_claims: {schema_version: 1, manifest_sha256: $provider_claims_sha256, claim_count: $provider_claim_count}}' > release-manifest.json; \
     fi && \
-    test "$(jq -er '.schema_version' release-manifest.json)" = 1 && \
+    test "$(jq -er '.schema_version' release-manifest.json)" = 2 && \
     test "$(jq -er '.version' release-manifest.json)" = "${VERSION}" && \
-    test "$(jq -er '.revision' release-manifest.json)" = "${COMMIT}"
+    test "$(jq -er '.revision' release-manifest.json)" = "${COMMIT}" && \
+    test "$(jq -er '.provider_claims.schema_version' release-manifest.json)" = 1 && \
+    test "$(jq -er '.provider_claims.manifest_sha256' release-manifest.json)" = "sha256:${provider_claims_sha256}" && \
+    test "$(jq -er '.provider_claims.claim_count' release-manifest.json)" = "${provider_claim_count}"
 
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \

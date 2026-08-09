@@ -50,15 +50,16 @@ const (
 )
 
 type XRequestStore interface {
-	Save(requestToken, requestSecret, workspaceID, userID string, createdAt time.Time) error
+	Save(requestToken, requestSecret, workspaceID, userID, executionIntent string, createdAt time.Time) error
 	Consume(requestToken string, maxAge time.Duration) (XRequestMeta, bool, error)
 }
 
 type XRequestMeta struct {
-	Secret      string
-	WorkspaceID string
-	UserID      string
-	CreatedAt   time.Time
+	Secret          string
+	WorkspaceID     string
+	UserID          string
+	ExecutionIntent string
+	CreatedAt       time.Time
 }
 
 func NewXAdapter(clientID, clientSecret, redirectURI string) *XAdapter {
@@ -124,6 +125,10 @@ func (x *XAdapter) GenerateAuthURL(state string) (string, map[string]string) {
 }
 
 func (x *XAdapter) GenerateAuthURLWithError(userID, workspaceID string) (string, error) {
+	return x.GenerateAuthURLWithIntent(userID, workspaceID, "production")
+}
+
+func (x *XAdapter) GenerateAuthURLWithIntent(userID, workspaceID, executionIntent string) (string, error) {
 	callback := x.redirectURI
 
 	config := oauth1.Config{
@@ -142,13 +147,14 @@ func (x *XAdapter) GenerateAuthURLWithError(userID, workspaceID string) (string,
 		return "", fmt.Errorf("x oauth1 request token failed: %w", err)
 	}
 	meta := XRequestMeta{
-		Secret:      requestSecret,
-		WorkspaceID: workspaceID,
-		UserID:      userID,
-		CreatedAt:   time.Now().UTC(),
+		Secret:          requestSecret,
+		WorkspaceID:     workspaceID,
+		UserID:          userID,
+		ExecutionIntent: executionIntent,
+		CreatedAt:       time.Now().UTC(),
 	}
 	if x.requestStore != nil {
-		if saveErr := x.requestStore.Save(requestToken, meta.Secret, meta.WorkspaceID, meta.UserID, meta.CreatedAt); saveErr != nil {
+		if saveErr := x.requestStore.Save(requestToken, meta.Secret, meta.WorkspaceID, meta.UserID, meta.ExecutionIntent, meta.CreatedAt); saveErr != nil {
 			return "", fmt.Errorf("x oauth1 request token persist failed: %w", saveErr)
 		}
 	} else {
@@ -164,22 +170,27 @@ func (x *XAdapter) GenerateAuthURLWithError(userID, workspaceID string) (string,
 }
 
 func (x *XAdapter) GetWorkspaceIDForRequestToken(requestToken string) (string, bool) {
+	meta, ok := x.GetRequestMetaForRequestToken(requestToken)
+	return meta.WorkspaceID, ok
+}
+
+func (x *XAdapter) GetRequestMetaForRequestToken(requestToken string) (XRequestMeta, bool) {
 	if x.requestStore != nil {
 		meta, ok, err := x.requestStore.Consume(requestToken, 10*time.Minute)
 		if err != nil || !ok {
-			return "", false
+			return XRequestMeta{}, false
 		}
 		// Re-store for subsequent token exchange call in same request path.
 		x.requestMeta.Store(requestToken, meta)
-		return meta.WorkspaceID, true
+		return meta, true
 	}
 
 	metaRaw, ok := x.requestMeta.Load(requestToken)
 	if !ok {
-		return "", false
+		return XRequestMeta{}, false
 	}
 	meta := metaRaw.(XRequestMeta)
-	return meta.WorkspaceID, true
+	return meta, true
 }
 
 func (x *XAdapter) ExchangeCode(_ context.Context, _ string, extra map[string]string) (*TokenResult, error) {

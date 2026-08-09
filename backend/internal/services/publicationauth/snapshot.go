@@ -13,7 +13,9 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/openpost/backend/internal/capabilities"
 	"github.com/openpost/backend/internal/models"
+	"github.com/openpost/backend/internal/providerpolicy"
 	"github.com/uptrace/bun"
 )
 
@@ -27,6 +29,7 @@ type Snapshot struct {
 	ContentHash         string
 	MediaHash           string
 	SettingsHash        string
+	ProviderPolicyMode  string
 }
 
 type contentFingerprint struct {
@@ -122,6 +125,19 @@ func SnapshotForRendition(ctx context.Context, db bun.IDB, publicationID, rendit
 	if err != nil {
 		return Snapshot{}, err
 	}
+	capability, found := capabilities.FindOutput(account.Platform, rendition.OutputProfile)
+	if !found {
+		capability, found = capabilities.Find(account.Platform, rendition.Profile)
+	}
+	if !found {
+		capability = capabilities.Capability{
+			Provider: account.Platform, Profile: rendition.Profile, OutputProfile: rendition.OutputProfile,
+		}
+	}
+	settingsMap := map[string]any{}
+	if err := json.Unmarshal([]byte(rendition.SettingsJSON), &settingsMap); err != nil {
+		return Snapshot{}, fmt.Errorf("decode provider policy settings: %w", err)
+	}
 	return Snapshot{
 		WorkspaceID:         publication.WorkspaceID,
 		PublicationRevision: publication.Revision,
@@ -130,6 +146,7 @@ func SnapshotForRendition(ctx context.Context, db bun.IDB, publicationID, rendit
 		ContentHash:         contentHash,
 		MediaHash:           mediaHash,
 		SettingsHash:        settingsHash,
+		ProviderPolicyMode:  providerpolicy.Mode(account, capability, settingsMap),
 	}, nil
 }
 

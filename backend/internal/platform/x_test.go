@@ -18,7 +18,7 @@ type consumeOnceXRequestStore struct {
 	consumed bool
 }
 
-func (s *consumeOnceXRequestStore) Save(_, _, _, _ string, _ time.Time) error {
+func (s *consumeOnceXRequestStore) Save(_, _, _, _, _ string, _ time.Time) error {
 	return nil
 }
 
@@ -36,10 +36,11 @@ func TestXWorkspaceLookupRetainsRequestMetaForTokenExchange(t *testing.T) {
 	close(adapter.cleanupDone)
 
 	store := &consumeOnceXRequestStore{meta: XRequestMeta{
-		Secret:      "request-secret",
-		WorkspaceID: "workspace-1",
-		UserID:      "user-1",
-		CreatedAt:   time.Now().UTC(),
+		Secret:          "request-secret",
+		WorkspaceID:     "workspace-1",
+		UserID:          "user-1",
+		ExecutionIntent: "certification_test",
+		CreatedAt:       time.Now().UTC(),
 	}}
 	adapter.SetRequestStore(store)
 
@@ -56,7 +57,7 @@ func TestXWorkspaceLookupRetainsRequestMetaForTokenExchange(t *testing.T) {
 		t.Fatal("expected consumed request token metadata to be retained for exchange")
 	}
 	meta := metaRaw.(XRequestMeta)
-	if meta.Secret != "request-secret" || meta.UserID != "user-1" {
+	if meta.Secret != "request-secret" || meta.UserID != "user-1" || meta.ExecutionIntent != "certification_test" {
 		t.Fatalf("unexpected retained metadata: %#v", meta)
 	}
 }

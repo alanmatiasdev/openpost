@@ -4,7 +4,7 @@ OAuth and social app setup cause many connection errors. Use this guide as you t
 
 ## Current social network connections
 
-OpenPost supports these connections now. The Accounts page reads `GET /api/v1/accounts/providers` and shows which ones are ready on the current server.
+The table below is an implementation and setup inventory. It is not a managed-service readiness claim. The Accounts page reads `GET /api/v1/accounts/providers`, which now uses the same evidence-based projection as scheduling and the publisher instead of treating adapter registration as availability.
 
 | Network   | Sign-in method         | Server setup                                    | Status       | Notes                                                                      |
 | --------- | ---------------------- | ----------------------------------------------- | ------------ | -------------------------------------------------------------------------- |
@@ -19,9 +19,15 @@ OpenPost supports these connections now. The Accounts page reads `GET /api/v1/ac
 | YouTube   | Google OAuth           | Provider app registry                           | Configurable | One-video upload with configurable privacy; live verification recommended. |
 | Discord   | Incoming webhook       | None                                            | Built-in     | Users connect a webhook URL; text and streamed attachments are supported.  |
 
-Start with one network. Check that its callback works before you add another.
+Start with one network. Check that its callback works before you add another. A configured app may still need approval, a valid account grant, current local and live proof, an allowed policy mode, and an enabled runtime control.
 
-Working code and app keys do not prove that a real account can publish each post type. Use the [Launch Verification Matrix](/providers/launch-matrix) to record code, server setup, and live tests on their own.
+Working code and app keys do not prove that a real account can publish each post type. Use the [Provider Readiness and Launch Gate](/providers/launch-matrix) to inspect the mechanically enforced evidence model.
+
+<!-- provider-certification:begin -->
+The checked-in public certification manifest contains **0 exact provider-format claims**.
+
+No managed provider-format certification claim is current. Implementation descriptions do not assert managed availability.
+<!-- provider-certification:end -->
 
 Social app keys can come from older environment variables, `OPENPOST_PROVIDER_APPS` JSON, or encrypted rows managed in **Settings → Instance → Configuration → Provider apps**. Environment-defined apps are read-only in the interface and win over matching database rows. Matching database fallbacks remain visible and can be deleted while the environment app stays active.
 
@@ -33,7 +39,7 @@ If connection or publishing fails, use [Provider Troubleshooting](/providers/tro
 
 ## Support matrix
 
-This matrix reflects current OpenPost support, not the full theoretical capability of each provider API.
+This matrix reflects implemented OpenPost code paths, not the full theoretical capability of each provider API and not current managed-service certification.
 
 | Platform  | Text posts | Image posts | Threads / replies           | Scheduled posts | Video posts                                                     | Account versions | Analytics                                            |
 | --------- | ---------- | ----------- | --------------------------- | --------------- | --------------------------------------------------------------- | ---------------- | ---------------------------------------------------- |

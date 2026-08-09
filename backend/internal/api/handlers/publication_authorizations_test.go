@@ -48,7 +48,8 @@ func TestRESTPublicationAuthorizationCapturesBrowserAPIAndCLIActors(t *testing.T
 			seedPublicationAuthorizationHandlerFixture(t, db)
 			e := echo.New()
 			api := humaecho.NewWithGroup(e, e.Group("/api/v1"), huma.DefaultConfig("Test", "1.0.0"))
-			NewPublicationHandler(db, publicationAuthorizationAuthenticator{test.token: test.principal}, nil).RegisterRoutes(api)
+			handler := newReadyPublicationHandler(t, db, publicationAuthorizationAuthenticator{test.token: test.principal})
+			handler.RegisterRoutes(api)
 			req := httptest.NewRequestWithContext(t.Context(), http.MethodPost,
 				"/api/v1/publications/publication-1/publish-now", bytes.NewBufferString(`{"expected_revision":1}`))
 			req.Header.Set("Authorization", "Bearer "+test.token)
@@ -87,7 +88,10 @@ func TestMCPPublicationAuthorizationRetainsTokenAndClientIdentity(t *testing.T) 
 		"arguments": map[string]any{"publication_id": "publication-1", "expected_revision": 1},
 	})
 	require.NoError(t, err)
-	result, rpcErr := (&MCPHandler{db: db}).callTool(t.Context(), principal, raw)
+	handler := &MCPHandler{db: db}
+	ensurePermissiveProviderReadinessFixture(t, db)
+	handler.SetProviderReadiness(permissiveProviderReadiness(t))
+	result, rpcErr := handler.callTool(t.Context(), principal, raw)
 	require.Nil(t, rpcErr)
 	require.NotNil(t, result)
 

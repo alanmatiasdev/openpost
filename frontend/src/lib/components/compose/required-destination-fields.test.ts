@@ -6,7 +6,27 @@ import {
 } from './required-destination-fields';
 
 type ResolvedAccountCapability = components['schemas']['ResolvedAccountCapability'];
+type ProviderReadinessDecision = components['schemas']['Decision'];
 type SettingDefinition = components['schemas']['SettingDefinition'];
+
+function healthyReadiness(): ProviderReadinessDecision {
+	return {
+		advertisable: true,
+		connectable: true,
+		executable: true,
+		facts: {
+			approval: 'approved',
+			authorization: 'authorized',
+			configuration: 'configured',
+			control: 'enabled',
+			live_certification: 'passed',
+			local_test: 'passed',
+			policy: 'allowed'
+		},
+		publishable: true,
+		state: 'healthy'
+	};
+}
 
 function capability(settings: SettingDefinition[]): ResolvedAccountCapability {
 	return {
@@ -16,6 +36,7 @@ function capability(settings: SettingDefinition[]): ResolvedAccountCapability {
 		capability_revision: 'test',
 		compatible: false,
 		format_selection_required: false,
+		immediate_readiness: healthyReadiness(),
 		intents: [],
 		issues: [],
 		label: 'YouTube video',
@@ -34,6 +55,7 @@ function capability(settings: SettingDefinition[]): ResolvedAccountCapability {
 		provider: 'youtube',
 		requires_app_review: false,
 		requires_public_media: false,
+		scheduled_readiness: healthyReadiness(),
 		segment_strategy: 'join',
 		setting_groups: [{ key: 'content', settings }]
 	};

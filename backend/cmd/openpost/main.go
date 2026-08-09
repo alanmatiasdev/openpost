@@ -23,6 +23,7 @@ import (
 	apiroutes "github.com/openpost/backend/internal/api"
 	"github.com/openpost/backend/internal/api/handlers"
 	apimiddleware "github.com/openpost/backend/internal/api/middleware"
+	"github.com/openpost/backend/internal/capabilities"
 	"github.com/openpost/backend/internal/config"
 	"github.com/openpost/backend/internal/database"
 	"github.com/openpost/backend/internal/platform"
@@ -49,6 +50,7 @@ import (
 	"github.com/openpost/backend/internal/services/notifications"
 	"github.com/openpost/backend/internal/services/passwordmail"
 	"github.com/openpost/backend/internal/services/providerapps"
+	"github.com/openpost/backend/internal/services/providerreadiness"
 	"github.com/openpost/backend/internal/services/publicurl"
 	"github.com/openpost/backend/internal/services/publisher"
 	repostservice "github.com/openpost/backend/internal/services/reposts"
@@ -276,6 +278,32 @@ func main() {
 	// Direct and file-backed environment values are the operator-owned layer
 	// and remain authoritative over administrator-managed database fallbacks.
 	providerAppConfigs = platform.MergeAppConfigs(providerAppConfigs, cfg.ProviderApps...)
+	providerEnvironment := providerreadiness.ProviderEnvironmentDevelopment
+	defaultProviderControl := providerreadiness.RuntimeControlStateEnabled
+	managedProviderProduction := cfg.Edition == config.EditionCloud
+	if managedProviderProduction {
+		providerEnvironment = providerreadiness.ProviderEnvironmentProduction
+		defaultProviderControl = providerreadiness.RuntimeControlStateUnknown
+	}
+	providerConfigurationCatalog, err := providerreadiness.NewConfigurationCatalog(
+		providerreadiness.RuntimeApps(dynamicMastodonApps, providerreadiness.ConfigurationSourceDynamic, providerEnvironment),
+		providerreadiness.RuntimeApps(dbProviderApps, providerreadiness.ConfigurationSourceDatabase, providerEnvironment),
+		providerreadiness.OperatorRuntimeApps(cfg.ProviderApps, providerEnvironment),
+	)
+	if err != nil {
+		log.Fatalf("failed to build provider readiness configuration: %v", err)
+	}
+	providerReadinessService := providerreadiness.NewService(
+		providerreadiness.NewRepository(db),
+		providerreadiness.ServiceOptions{
+			Configurations:               providerConfigurationCatalog,
+			ManagedProduction:            managedProviderProduction,
+			CurrentRevision:              runningBuildRevision(),
+			DisabledProviders:            cfg.DisabledProviders,
+			DynamicRegistrationProviders: []string{capabilities.ProviderMastodon},
+			DefaultControl:               defaultProviderControl,
+		},
+	)
 	providers, providerEntries, err := platform.BuildAdapterRegistry(providerAppConfigs, platform.RegistryOptions{
 		DisableLinkedInThreadReplies: cfg.DisableLinkedInThreadReplies,
 		EnableLinkedInOrganizations:  cfg.EnableLinkedInOrganizations,
@@ -313,6 +341,7 @@ func main() {
 	for _, entry := range providerEntries {
 		log.Printf("Registered provider adapter: %s", entry.Key)
 	}
+	publishSvc.SetProviderReadiness(providerReadinessService)
 
 	analyticsService := analyticsservice.NewService(db, tokenManager)
 	repostService := repostservice.NewService(db, tokenManager)
@@ -454,6 +483,7 @@ func main() {
 	mcpHandler.SetPublicURL(cfg.PublicURL)
 	mcpHandler.SetAllowedOrigins(cfg.CORSOrigins)
 	mcpHandler.SetProviderCatalog(providers, mastodonAppService != nil)
+	mcpHandler.SetProviderReadiness(providerReadinessService)
 	mcpHandler.SetTokenEncryptor(tokenEncryptor)
 	mcpHandler.SetTokenSource(tokenManager)
 	mcpHandler.RegisterRoutes(e)
@@ -500,8 +530,9 @@ func main() {
 			PrivacyVersion: cfg.PrivacyVersion,
 			SupportEmail:   cfg.SupportEmail,
 		},
-		Providers:    providers,
-		ProviderApps: cfg.ProviderApps,
+		Providers:                providers,
+		ProviderApps:             cfg.ProviderApps,
+		ProviderReadinessService: providerReadinessService,
 		ProviderRegistrars: []func(string, platform.Adapter){
 			tokenManager.SetProvider,
 			publishSvc.SetProvider,

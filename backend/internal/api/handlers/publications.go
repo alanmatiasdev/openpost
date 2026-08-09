@@ -24,6 +24,7 @@ import (
 	"github.com/openpost/backend/internal/services/lifecycle"
 	"github.com/openpost/backend/internal/services/medialifecycle"
 	postservice "github.com/openpost/backend/internal/services/posts"
+	"github.com/openpost/backend/internal/services/providerreadiness"
 	"github.com/openpost/backend/internal/services/publicationauth"
 	"github.com/openpost/backend/internal/services/publicurl"
 	repostservice "github.com/openpost/backend/internal/services/reposts"
@@ -56,6 +57,10 @@ type PublicationHandler struct {
 	tokenSource AccessTokenSource
 	publicMedia *publicurl.MediaVerifier
 	reposts     *repostservice.Service
+	readiness   *providerreadiness.Service
+	// beforeQueueTransaction is a deterministic concurrency seam for tests.
+	// Production constructors leave it nil.
+	beforeQueueTransaction func(context.Context) error
 }
 
 func (h *PublicationHandler) SetCapabilityDependencies(providers map[string]platform.Adapter, tokenSource AccessTokenSource) {
@@ -69,6 +74,10 @@ func (h *PublicationHandler) SetPublicMediaVerifier(verifier *publicurl.MediaVer
 
 func (h *PublicationHandler) SetRepostService(service *repostservice.Service) {
 	h.reposts = service
+}
+
+func (h *PublicationHandler) SetProviderReadiness(service *providerreadiness.Service) {
+	h.readiness = service
 }
 
 func NewPublicationHandler(db *bun.DB, authenticator middleware.Authenticator, entitlement entitlements.Service) *PublicationHandler {
@@ -228,7 +237,8 @@ type RetryFailedRenditionsInput struct {
 type PublicationMutationActionInput struct {
 	PathID string `path:"id" doc:"Publication ID"`
 	Body   struct {
-		ExpectedRevision int `json:"expected_revision" minimum:"1" doc:"Revision saved immediately before this action"`
+		ExpectedRevision int    `json:"expected_revision" minimum:"1" doc:"Revision saved immediately before this action"`
+		ExecutionIntent  string `json:"execution_intent,omitempty" enum:"production,certification_test" doc:"Typed readiness intent; certification_test requires an unscoped instance administrator"`
 	}
 }
 
@@ -1306,10 +1316,12 @@ func (h *PublicationHandler) schedulePublication(api huma.API) {
 		} else if hasBlockingIssues(issues) {
 			return nil, publicationMutationHTTPError(errPublicationValidationBlocked, "publication capability validation failed")
 		}
+		intent, err := providerReadinessExecutionIntent(ctx, h.db, input.Body.ExecutionIntent)
+		if err != nil {
+			return nil, err
+		}
 		jobID, err := h.queueScheduledPublicationExpected(
-			ctx,
-			publication.ID,
-			input.Body.ExpectedRevision,
+			ctx, publication.ID, input.Body.ExpectedRevision, intent,
 		)
 		if err != nil {
 			return nil, publicationMutationHTTPError(err, "failed to enqueue publication")
@@ -1339,10 +1351,12 @@ func (h *PublicationHandler) publishNow(api huma.API) {
 		} else if hasBlockingIssues(issues) {
 			return nil, publicationMutationHTTPError(errPublicationValidationBlocked, "publication capability validation failed")
 		}
+		intent, err := providerReadinessExecutionIntent(ctx, h.db, input.Body.ExecutionIntent)
+		if err != nil {
+			return nil, err
+		}
 		jobID, err := h.queuePublicationNowExpected(
-			ctx,
-			publication.ID,
-			input.Body.ExpectedRevision,
+			ctx, publication.ID, input.Body.ExpectedRevision, intent,
 		)
 		if err != nil {
 			return nil, publicationMutationHTTPError(err, "failed to enqueue publication")
@@ -2609,6 +2623,8 @@ func publicationMutationHTTPError(err error, fallback string) error {
 		return statusErr
 	}
 	switch {
+	case errors.As(err, new(*providerreadiness.NotReadyError)):
+		return huma.Error409Conflict(err.Error())
 	case errors.Is(err, errPublicationNotFound):
 		return huma.Error404NotFound(errPublicationNotFound.Error())
 	case errors.Is(err, errPublicationAlreadyProcessing):
@@ -2622,6 +2638,31 @@ func publicationMutationHTTPError(err error, fallback string) error {
 	default:
 		return huma.Error500InternalServerError(fallback)
 	}
+}
+
+func providerReadinessExecutionIntent(
+	ctx context.Context,
+	db *bun.DB,
+	raw string,
+) (providerreadiness.ExecutionIntent, error) {
+	switch providerreadiness.ExecutionIntent(strings.TrimSpace(raw)) {
+	case "", providerreadiness.ExecutionIntentProduction:
+		return providerreadiness.ExecutionIntentProduction, nil
+	case providerreadiness.ExecutionIntentCertificationTest:
+		if err := requireUnscopedInstanceAdmin(ctx, db); err != nil {
+			return "", err
+		}
+		return providerreadiness.ExecutionIntentCertificationTest, nil
+	default:
+		return "", huma.Error400BadRequest("invalid provider readiness execution intent")
+	}
+}
+
+func normalizedReadinessIntent(intents []providerreadiness.ExecutionIntent) providerreadiness.ExecutionIntent {
+	if len(intents) > 0 && intents[0] == providerreadiness.ExecutionIntentCertificationTest {
+		return providerreadiness.ExecutionIntentCertificationTest
+	}
+	return providerreadiness.ExecutionIntentProduction
 }
 
 func isPublicationEditable(status string) bool {
@@ -3128,10 +3169,27 @@ func (h *PublicationHandler) loadValidationAccountsWithDB(ctx context.Context, d
 
 func renditionScopeIssues(rendition models.Rendition, account models.SocialAccount) []capabilities.ValidationIssue {
 	granted := splitScopes(account.GrantedScopes)
-	if len(granted) == 0 {
+	capability, found := capabilities.FindOutput(account.Platform, rendition.OutputProfile)
+	if !found {
+		capability, found = capabilities.Find(account.Platform, rendition.Profile)
+	}
+	if !found {
 		return nil
 	}
-	missing := missingScopes(requiredScopes(rendition.Platform), granted)
+	settings := map[string]any{}
+	if err := json.Unmarshal([]byte(rendition.SettingsJSON), &settings); err != nil {
+		return []capabilities.ValidationIssue{{
+			Severity: "error", Code: "provider_policy_invalid",
+			Message:  "Destination provider policy settings are invalid.",
+			Provider: rendition.Platform, Profile: rendition.Profile, Field: "settings",
+		}}
+	}
+	policyMode := providerreadiness.PublicationPolicyMode(account, capability, settings)
+	missing := missingScopes(providerreadiness.RequiredScopesForSubject(providerreadiness.Subject{
+		Provider: account.Platform, AccountKind: providerreadiness.AccountKind(account),
+		OutputProfile: capability.OutputProfile, Operation: providerreadiness.OperationPublishImmediate,
+		PolicyMode: policyMode,
+	}), granted)
 	if len(missing) == 0 {
 		return nil
 	}
@@ -3230,7 +3288,7 @@ func (h *PublicationHandler) validateMediaBelongsToWorkspace(ctx context.Context
 }
 
 func (h *PublicationHandler) queuePublication(ctx context.Context, publicationID string, runAt time.Time) (string, error) {
-	return h.queuePublicationWithRunAt(ctx, publicationID, 0, publicationauth.PolicyScheduled, func(_ *models.Publication, _ time.Time) (time.Time, error) {
+	return h.queuePublicationWithRunAt(ctx, publicationID, 0, publicationauth.PolicyScheduled, providerreadiness.ExecutionIntentProduction, func(_ *models.Publication, _ time.Time) (time.Time, error) {
 		return runAt, nil
 	})
 }
@@ -3243,8 +3301,9 @@ func (h *PublicationHandler) queueScheduledPublicationExpected(
 	ctx context.Context,
 	publicationID string,
 	expectedRevision int,
+	intents ...providerreadiness.ExecutionIntent,
 ) (string, error) {
-	return h.queuePublicationWithRunAt(ctx, publicationID, expectedRevision, publicationauth.PolicyScheduled, func(publication *models.Publication, now time.Time) (time.Time, error) {
+	return h.queuePublicationWithRunAt(ctx, publicationID, expectedRevision, publicationauth.PolicyScheduled, normalizedReadinessIntent(intents), func(publication *models.Publication, now time.Time) (time.Time, error) {
 		if publication.ScheduledAt.IsZero() {
 			return time.Time{}, errPublicationScheduleRequired
 		}
@@ -3263,8 +3322,9 @@ func (h *PublicationHandler) queuePublicationNowExpected(
 	ctx context.Context,
 	publicationID string,
 	expectedRevision int,
+	intents ...providerreadiness.ExecutionIntent,
 ) (string, error) {
-	return h.queuePublicationWithRunAt(ctx, publicationID, expectedRevision, publicationauth.PolicyImmediate, func(_ *models.Publication, now time.Time) (time.Time, error) {
+	return h.queuePublicationWithRunAt(ctx, publicationID, expectedRevision, publicationauth.PolicyImmediate, normalizedReadinessIntent(intents), func(_ *models.Publication, now time.Time) (time.Time, error) {
 		return now, nil
 	})
 }
@@ -3275,8 +3335,18 @@ func (h *PublicationHandler) queuePublicationWithRunAt(
 	publicationID string,
 	expectedRevision int,
 	policyMode string,
+	intent providerreadiness.ExecutionIntent,
 	resolveRunAt func(*models.Publication, time.Time) (time.Time, error),
 ) (string, error) {
+	operation := providerreadiness.OperationPublishImmediate
+	if policyMode == publicationauth.PolicyScheduled {
+		operation = providerreadiness.OperationPublishScheduled
+	}
+	if h.beforeQueueTransaction != nil {
+		if err := h.beforeQueueTransaction(ctx); err != nil {
+			return "", err
+		}
+	}
 	var jobID string
 	err := h.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
 		publication, err := h.loadEditablePublicationTx(txCtx, tx, publicationID)
@@ -3292,6 +3362,11 @@ func (h *PublicationHandler) queuePublicationWithRunAt(
 		}
 		if hasBlockingIssues(issues) {
 			return errPublicationValidationBlocked
+		}
+		if err := h.requirePublicationReadinessWithDB(
+			txCtx, tx, publication, operation, intent, true,
+		); err != nil {
+			return err
 		}
 		now := time.Now().UTC()
 		runAt, err := resolveRunAt(publication, now)
@@ -3321,9 +3396,9 @@ func (h *PublicationHandler) queuePublicationWithRunAt(
 			}
 		}
 		if policyMode == publicationauth.PolicyScheduled {
-			jobID, err = h.replacePublicationJobTx(txCtx, tx, publicationID, runAt)
+			jobID, err = h.replacePublicationJobWithIntentTx(txCtx, tx, publicationID, runAt, intent)
 		} else {
-			jobID, err = h.replaceImmediatePublicationJobTx(txCtx, tx, publicationID, runAt)
+			jobID, err = h.replaceImmediatePublicationJobWithIntentTx(txCtx, tx, publicationID, runAt, intent)
 		}
 		if err != nil {
 			return err
@@ -3336,12 +3411,136 @@ func (h *PublicationHandler) queuePublicationWithRunAt(
 	return jobID, nil
 }
 
-func (h *PublicationHandler) replacePublicationJobTx(ctx context.Context, tx bun.Tx, publicationID string, runAt time.Time) (string, error) {
-	return h.replacePublicationJobsTx(ctx, tx, publicationID, runAt, true, publicationauth.PolicyScheduled)
+func (h *PublicationHandler) requirePublicationReadiness(
+	ctx context.Context,
+	publicationID string,
+	operation providerreadiness.Operation,
+	intent providerreadiness.ExecutionIntent,
+) error {
+	if h == nil || h.readiness == nil {
+		return &providerreadiness.NotReadyError{Decision: providerreadiness.UnavailableDecision(operation)}
+	}
+	var publication models.Publication
+	if err := h.db.NewSelect().Model(&publication).Where("id = ?", publicationID).Scan(ctx); err != nil {
+		return err
+	}
+	return h.requirePublicationReadinessWithDB(ctx, h.db, &publication, operation, intent, false)
 }
 
-func (h *PublicationHandler) replaceImmediatePublicationJobTx(ctx context.Context, tx bun.Tx, publicationID string, runAt time.Time) (string, error) {
-	return h.replacePublicationJobsTx(ctx, tx, publicationID, runAt, false, publicationauth.PolicyImmediate)
+func (h *PublicationHandler) requirePublicationReadinessWithDB(
+	ctx context.Context,
+	db bun.IDB,
+	publication *models.Publication,
+	operation providerreadiness.Operation,
+	intent providerreadiness.ExecutionIntent,
+	lock bool,
+) error {
+	if h == nil || h.readiness == nil || db == nil || publication == nil {
+		return &providerreadiness.NotReadyError{Decision: providerreadiness.UnavailableDecision(operation)}
+	}
+	var renditions []models.Rendition
+	renditionsQuery := db.NewSelect().Model(&renditions).
+		Where("publication_id = ?", publication.ID).
+		OrderExpr("id ASC")
+	if lock && primaryPublicationQueueUsesRowLock(db.Dialect().Name()) {
+		renditionsQuery = renditionsQuery.For("UPDATE")
+	}
+	if err := renditionsQuery.Scan(ctx); err != nil {
+		return err
+	}
+	accountIDs := make([]string, 0, len(renditions))
+	for _, rendition := range renditions {
+		accountIDs = append(accountIDs, rendition.SocialAccountID)
+	}
+	accounts, err := loadReadinessAccountsWithDB(ctx, db, publication.WorkspaceID, accountIDs, lock)
+	if err != nil {
+		return err
+	}
+	readiness := h.readiness.WithLedger(providerreadiness.NewRepository(db))
+	for _, rendition := range renditions {
+		account := accounts[rendition.SocialAccountID]
+		capability, found := capabilities.FindOutput(account.Platform, rendition.OutputProfile)
+		if !found {
+			capability, found = capabilities.Find(account.Platform, rendition.Profile)
+		}
+		if !found {
+			capability = capabilities.Capability{
+				Provider: account.Platform, Profile: rendition.Profile, OutputProfile: rendition.OutputProfile,
+			}
+		}
+		settings := map[string]any{}
+		if err := json.Unmarshal([]byte(rendition.SettingsJSON), &settings); err != nil {
+			return fmt.Errorf("decode rendition provider policy settings: %w", err)
+		}
+		decision := readiness.DecideAccountPublication(
+			ctx,
+			account,
+			capability,
+			operation,
+			intent,
+			providerreadiness.PublicationPolicyMode(account, capability, settings),
+		)
+		if !decision.Publishable {
+			return &providerreadiness.NotReadyError{Decision: decision}
+		}
+	}
+	return nil
+}
+
+func loadReadinessAccountsWithDB(
+	ctx context.Context,
+	db bun.IDB,
+	workspaceID string,
+	accountIDs []string,
+	lock bool,
+) (map[string]models.SocialAccount, error) {
+	uniqueIDs := uniqueNonEmpty(accountIDs)
+	if len(uniqueIDs) == 0 {
+		return map[string]models.SocialAccount{}, nil
+	}
+	var accounts []models.SocialAccount
+	query := db.NewSelect().Model(&accounts).
+		Where("workspace_id = ?", workspaceID).
+		Where("is_active = ?", true).
+		Where("id IN (?)", bun.List(uniqueIDs))
+	if lock && primaryPublicationQueueUsesRowLock(db.Dialect().Name()) {
+		query = query.For("UPDATE")
+	}
+	if err := query.Scan(ctx); err != nil {
+		return nil, huma.Error500InternalServerError("failed to validate social accounts")
+	}
+	if len(accounts) != len(uniqueIDs) {
+		return nil, huma.Error400BadRequest("one or more social accounts are invalid, disconnected, or outside this workspace")
+	}
+	result := make(map[string]models.SocialAccount, len(accounts))
+	for _, account := range accounts {
+		result[account.ID] = account
+	}
+	return result, nil
+}
+
+func (h *PublicationHandler) replacePublicationJobTx(ctx context.Context, tx bun.Tx, publicationID string, runAt time.Time) (string, error) {
+	return h.replacePublicationJobWithIntentTx(ctx, tx, publicationID, runAt, providerreadiness.ExecutionIntentProduction)
+}
+
+func (h *PublicationHandler) replacePublicationJobWithIntentTx(
+	ctx context.Context,
+	tx bun.Tx,
+	publicationID string,
+	runAt time.Time,
+	intent providerreadiness.ExecutionIntent,
+) (string, error) {
+	return h.replacePublicationJobsTx(ctx, tx, publicationID, runAt, true, publicationauth.PolicyScheduled, intent)
+}
+
+func (h *PublicationHandler) replaceImmediatePublicationJobWithIntentTx(
+	ctx context.Context,
+	tx bun.Tx,
+	publicationID string,
+	runAt time.Time,
+	intent providerreadiness.ExecutionIntent,
+) (string, error) {
+	return h.replacePublicationJobsTx(ctx, tx, publicationID, runAt, false, publicationauth.PolicyImmediate, intent)
 }
 
 //nolint:gocyclo // Queue replacement, overrides, jobs, receipts, and publication state must commit atomically.
@@ -3352,6 +3551,7 @@ func (h *PublicationHandler) replacePublicationJobsTx(
 	runAt time.Time,
 	useScheduleOverrides bool,
 	policyMode string,
+	intent providerreadiness.ExecutionIntent,
 ) (string, error) {
 	if err := lockPrimaryPublicationQueueTx(ctx, tx, publicationID); err != nil {
 		return "", err
@@ -3393,7 +3593,7 @@ func (h *PublicationHandler) replacePublicationJobsTx(
 				if !renditionRunAt.After(time.Now().UTC()) {
 					return "", errPublicationScheduleFuture
 				}
-				jobID, err := insertPublicationJobTx(ctx, tx, publicationID, rendition.ID, batchID, renditionRunAt)
+				jobID, err := insertPublicationJobTx(ctx, tx, publicationID, rendition.ID, batchID, renditionRunAt, intent)
 				if err != nil {
 					return "", err
 				}
@@ -3404,20 +3604,22 @@ func (h *PublicationHandler) replacePublicationJobsTx(
 			}
 			if _, _, err := publicationauth.CreateBatch(ctx, tx, publicationauth.BatchInput{
 				BatchID: batchID, PublicationID: publicationID, Actor: actor,
-				Action: publicationauth.ActionPublish, PolicyMode: policyMode, ConfirmedAt: time.Now().UTC(), Targets: targets,
+				Action: publicationauth.ActionPublish, PolicyMode: policyMode,
+				ExecutionIntent: string(intent), ConfirmedAt: time.Now().UTC(), Targets: targets,
 			}); err != nil {
 				return "", err
 			}
 			return firstJobID, nil
 		}
 	}
-	jobID, err := insertPublicationJobTx(ctx, tx, publicationID, "", batchID, runAt)
+	jobID, err := insertPublicationJobTx(ctx, tx, publicationID, "", batchID, runAt, intent)
 	if err != nil {
 		return "", err
 	}
 	if _, _, err := publicationauth.CreateBatch(ctx, tx, publicationauth.BatchInput{
 		BatchID: batchID, PublicationID: publicationID, Actor: actor,
-		Action: publicationauth.ActionPublish, PolicyMode: policyMode, ConfirmedAt: time.Now().UTC(),
+		Action: publicationauth.ActionPublish, PolicyMode: policyMode,
+		ExecutionIntent: string(intent), ConfirmedAt: time.Now().UTC(),
 		Targets: []publicationauth.JobTarget{{JobID: jobID, RunAt: runAt}},
 	}); err != nil {
 		return "", err
@@ -3425,11 +3627,18 @@ func (h *PublicationHandler) replacePublicationJobsTx(
 	return jobID, nil
 }
 
-func insertPublicationJobTx(ctx context.Context, tx bun.Tx, publicationID, renditionID, authorizationBatchID string, runAt time.Time) (string, error) {
+func insertPublicationJobTx(
+	ctx context.Context,
+	tx bun.Tx,
+	publicationID, renditionID, authorizationBatchID string,
+	runAt time.Time,
+	intent providerreadiness.ExecutionIntent,
+) (string, error) {
 	payload := map[string]string{
 		"publication_id":             publicationID,
 		"authorization_batch_id":     authorizationBatchID,
 		"authorization_scheduled_at": runAt.UTC().Format(time.RFC3339Nano),
+		"readiness_intent":           string(normalizedReadinessIntent([]providerreadiness.ExecutionIntent{intent})),
 	}
 	if renditionID != "" {
 		payload["rendition_id"] = renditionID

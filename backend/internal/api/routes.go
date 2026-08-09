@@ -29,6 +29,7 @@ import (
 	"github.com/openpost/backend/internal/services/notifications"
 	"github.com/openpost/backend/internal/services/passwordmail"
 	"github.com/openpost/backend/internal/services/providerapps"
+	"github.com/openpost/backend/internal/services/providerreadiness"
 	"github.com/openpost/backend/internal/services/publicurl"
 	repostservice "github.com/openpost/backend/internal/services/reposts"
 	"github.com/openpost/backend/internal/services/sessions"
@@ -80,6 +81,7 @@ type RouteDeps struct {
 	RepostService                *repostservice.Service
 	NotificationService          *notifications.Service
 	UpdateStatusService          *updatestatus.Service
+	ProviderReadinessService     *providerreadiness.Service
 	AppVersion                   string
 	AppRevision                  string
 	Edition                      string
@@ -206,13 +208,16 @@ func RegisterHumaRoutes(api huma.API, deps RouteDeps) {
 	handlers.NewCapabilityHandler().RegisterRoutes(api)
 	capabilityResolverHandler := handlers.NewCapabilityResolverHandler(deps.DB, deps.Authenticator, deps.Providers, deps.TokenSource)
 	capabilityResolverHandler.SetPublicMediaVerifier(deps.PublicMediaVerifier)
+	capabilityResolverHandler.SetProviderReadiness(deps.ProviderReadinessService)
 	capabilityResolverHandler.RegisterRoutes(api)
-	handlers.NewProviderReadinessHandler(deps.DB, deps.Authenticator, deps.Providers).RegisterRoutes(api)
+	handlers.NewProviderReadinessHandler(deps.DB, deps.Authenticator, deps.ProviderReadinessService, deps.Providers).RegisterRoutes(api)
+	handlers.NewProviderReadinessAdminHandler(deps.DB, deps.Authenticator, deps.ProviderReadinessService).RegisterRoutes(api)
 	handlers.NewDestinationOptionsHandler(deps.DB, deps.Authenticator, deps.Providers, deps.TokenSource).RegisterRoutes(api)
 	publicationHandler := handlers.NewPublicationHandler(deps.DB, deps.Authenticator, deps.Entitlement)
 	publicationHandler.SetCapabilityDependencies(deps.Providers, deps.TokenSource)
 	publicationHandler.SetPublicMediaVerifier(deps.PublicMediaVerifier)
 	publicationHandler.SetRepostService(deps.RepostService)
+	publicationHandler.SetProviderReadiness(deps.ProviderReadinessService)
 	publicationHandler.RegisterRoutes(api)
 	handlers.NewSocialSetHandler(deps.DB, deps.Authenticator).RegisterRoutes(api)
 	handlers.NewRepostHandler(deps.RepostService, deps.Authenticator).RegisterRoutes(api)
@@ -298,6 +303,7 @@ func RegisterHumaRoutes(api huma.API, deps RouteDeps) {
 	)
 	oauthHandler.SetEntitlement(deps.Entitlement)
 	oauthHandler.SetMastodonAppService(deps.MastodonAppService)
+	oauthHandler.SetProviderReadiness(deps.ProviderReadinessService)
 	oauthHandler.SetProviderRegistrars(deps.ProviderRegistrars...)
 	oauthHandler.ListProviders(api)
 	oauthHandler.ListMastodonServers(api)

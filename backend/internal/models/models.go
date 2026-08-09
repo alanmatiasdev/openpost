@@ -687,6 +687,97 @@ type ProviderApp struct {
 	UpdatedAt       time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"updated_at"`
 }
 
+// ProviderApprovalReview is an append-only operator review of the approval
+// boundary for one effective provider application. App and instance values are
+// one-way fingerprints so credentials and provider URLs never enter the
+// readiness ledger.
+type ProviderApprovalReview struct {
+	bun.BaseModel `bun:"table:provider_approval_reviews"`
+
+	ID                  string    `bun:",pk" json:"id"`
+	Provider            string    `bun:",notnull" json:"provider"`
+	AppFingerprint      string    `bun:"app_fingerprint,notnull" json:"app_fingerprint"`
+	ProviderEnvironment string    `bun:"provider_environment,notnull" json:"provider_environment"`
+	InstanceFingerprint string    `bun:"instance_fingerprint,notnull,default:''" json:"instance_fingerprint,omitempty"`
+	ApprovalState       string    `bun:"approval_state,notnull" json:"approval_state"`
+	ApprovalTier        string    `bun:"approval_tier,notnull" json:"approval_tier"`
+	SourceURL           string    `bun:"source_url,notnull" json:"source_url"`
+	ReviewedAt          time.Time `bun:"reviewed_at,notnull" json:"reviewed_at"`
+	ExpiresAt           time.Time `bun:"expires_at,notnull" json:"expires_at"`
+	OperatorRef         string    `bun:"operator_ref,notnull" json:"-"`
+	CreatedAt           time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
+}
+
+// ProviderCertificationRun is one immutable local or live execution proof for
+// an exact provider subject and certification contract. The related check rows
+// contain only normalized results and one-way external references.
+type ProviderCertificationRun struct {
+	bun.BaseModel `bun:"table:provider_certification_runs"`
+
+	ID                    string    `bun:",pk" json:"id"`
+	ApprovalReviewID      string    `bun:"approval_review_id,notnull" json:"approval_review_id"`
+	EvidenceKind          string    `bun:"evidence_kind,notnull" json:"evidence_kind"`
+	SubjectDigest         string    `bun:"subject_digest,notnull" json:"subject_digest"`
+	Provider              string    `bun:",notnull" json:"provider"`
+	AppFingerprint        string    `bun:"app_fingerprint,notnull" json:"app_fingerprint"`
+	DeploymentEnvironment string    `bun:"deployment_environment,notnull" json:"deployment_environment"`
+	ProviderEnvironment   string    `bun:"provider_environment,notnull" json:"provider_environment"`
+	InstanceFingerprint   string    `bun:"instance_fingerprint,notnull,default:''" json:"instance_fingerprint,omitempty"`
+	AccountKind           string    `bun:"account_kind,notnull,default:''" json:"account_kind,omitempty"`
+	AccountReferenceHash  string    `bun:"account_reference_hash,notnull,default:''" json:"-"`
+	OutputProfile         string    `bun:"output_profile,notnull,default:''" json:"output_profile,omitempty"`
+	Operation             string    `bun:",notnull" json:"operation"`
+	PolicyMode            string    `bun:"policy_mode,notnull" json:"policy_mode"`
+	TestedRevision        string    `bun:"tested_revision,notnull" json:"tested_revision"`
+	ContractDigest        string    `bun:"contract_digest,notnull" json:"contract_digest"`
+	ApprovalStateAtTest   string    `bun:"approval_state_at_test,notnull" json:"approval_state_at_test"`
+	ApprovalTierAtTest    string    `bun:"approval_tier_at_test,notnull" json:"approval_tier_at_test"`
+	RequiredScopesJSON    string    `bun:"required_scopes_json,notnull" json:"-"`
+	GrantedScopesJSON     string    `bun:"granted_scopes_json,notnull" json:"-"`
+	OperatorRef           string    `bun:"operator_ref,notnull" json:"-"`
+	TestedAt              time.Time `bun:"tested_at,notnull" json:"tested_at"`
+	ExpiresAt             time.Time `bun:"expires_at,notnull" json:"expires_at"`
+	CreatedAt             time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
+}
+
+type ProviderCertificationCheck struct {
+	bun.BaseModel `bun:"table:provider_certification_checks"`
+
+	ID                    string    `bun:",pk" json:"id"`
+	CertificationRunID    string    `bun:"certification_run_id,notnull" json:"certification_run_id"`
+	Kind                  string    `bun:",notnull" json:"kind"`
+	Outcome               string    `bun:",notnull" json:"outcome"`
+	ErrorClass            string    `bun:"error_class,notnull,default:''" json:"error_class,omitempty"`
+	NotApplicableReason   string    `bun:"not_applicable_reason,notnull,default:''" json:"not_applicable_reason,omitempty"`
+	ExternalReferenceHash string    `bun:"external_reference_hash,notnull,default:''" json:"-"`
+	CompletedAt           time.Time `bun:"completed_at,notnull" json:"completed_at"`
+	CreatedAt             time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
+}
+
+// ProviderRuntimeControlEvent is an append-only kill-switch event. Empty
+// selector fields are deliberate wildcards; the readiness service resolves all
+// matching scopes and applies the most restrictive current state.
+type ProviderRuntimeControlEvent struct {
+	bun.BaseModel `bun:"table:provider_runtime_control_events"`
+
+	ID                    string    `bun:",pk" json:"id"`
+	Provider              string    `bun:",notnull" json:"provider"`
+	AppFingerprint        string    `bun:"app_fingerprint,notnull,default:''" json:"app_fingerprint,omitempty"`
+	DeploymentEnvironment string    `bun:"deployment_environment,notnull,default:''" json:"deployment_environment,omitempty"`
+	ProviderEnvironment   string    `bun:"provider_environment,notnull,default:''" json:"provider_environment,omitempty"`
+	InstanceFingerprint   string    `bun:"instance_fingerprint,notnull,default:''" json:"instance_fingerprint,omitempty"`
+	AccountKind           string    `bun:"account_kind,notnull,default:''" json:"account_kind,omitempty"`
+	OutputProfile         string    `bun:"output_profile,notnull,default:''" json:"output_profile,omitempty"`
+	Operation             string    `bun:",notnull,default:''" json:"operation,omitempty"`
+	PolicyMode            string    `bun:"policy_mode,notnull,default:''" json:"policy_mode,omitempty"`
+	State                 string    `bun:",notnull" json:"state"`
+	ReasonCode            string    `bun:"reason_code,notnull" json:"reason_code"`
+	StartsAt              time.Time `bun:"starts_at,notnull" json:"starts_at"`
+	ExpiresAt             time.Time `bun:"expires_at,nullzero" json:"expires_at,omitempty"`
+	OperatorRef           string    `bun:"operator_ref,notnull" json:"-"`
+	CreatedAt             time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
+}
+
 // InstanceSetting stores an administrator-managed override for an optional
 // runtime setting. Values are encrypted even when they are not secrets so the
 // table never becomes a second plaintext environment file.
@@ -767,11 +858,12 @@ type SocialAccount struct {
 type XOAuthRequestToken struct {
 	bun.BaseModel `bun:"table:x_oauth_request_tokens"`
 
-	RequestToken  string    `bun:",pk" json:"request_token"`
-	RequestSecret string    `bun:",notnull" json:"-"`
-	WorkspaceID   string    `bun:",notnull" json:"workspace_id"`
-	UserID        string    `bun:",notnull" json:"user_id"`
-	CreatedAt     time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
+	RequestToken    string    `bun:",pk" json:"request_token"`
+	RequestSecret   string    `bun:",notnull" json:"-"`
+	WorkspaceID     string    `bun:",notnull" json:"workspace_id"`
+	UserID          string    `bun:",notnull" json:"user_id"`
+	ExecutionIntent string    `bun:"execution_intent,notnull,default:''" json:"-"`
+	CreatedAt       time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
 }
 
 type OAuthAccountSelection struct {
@@ -782,6 +874,7 @@ type OAuthAccountSelection struct {
 	WorkspaceID     string    `bun:",notnull" json:"workspace_id"`
 	Platform        string    `bun:",notnull" json:"platform"`
 	InstanceURL     string    `json:"instance_url"`
+	ExecutionIntent string    `bun:"execution_intent,notnull,default:''" json:"-"`
 	AccessTokenEnc  []byte    `bun:"access_token_encrypted,notnull" json:"-"`
 	RefreshTokenEnc []byte    `bun:"refresh_token_encrypted" json:"-"`
 	TokenType       string    `json:"token_type"`
@@ -1294,6 +1387,8 @@ type PublicationAuthorization struct {
 	MediaHash           string    `bun:"media_hash,notnull" json:"-"`
 	SettingsHash        string    `bun:"settings_hash,notnull" json:"-"`
 	PolicyMode          string    `bun:"policy_mode,notnull" json:"policy_mode"`
+	ProviderPolicyMode  string    `bun:"provider_policy_mode,notnull,default:'provider.unspecified'" json:"provider_policy_mode"`
+	ExecutionIntent     string    `bun:"execution_intent,notnull,default:'production'" json:"execution_intent"`
 	ConfirmedAt         time.Time `bun:"confirmed_at,notnull" json:"confirmed_at"`
 	CreatedAt           time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
 }

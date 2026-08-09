@@ -142,6 +142,8 @@ Successful responses are cached for 24 hours. Failed checks retry after 15 minut
 
 OpenPost builds provider adapters at startup from active encrypted `provider_apps` database rows, legacy provider env vars, and optional `OPENPOST_PROVIDER_APPS` JSON. Environment-defined apps are authoritative over matching database rows.
 
+`OPENPOST_DISABLED_PROVIDERS` is an emergency comma-, space-, or newline-separated deny-list of provider keys. It has priority over database runtime-control events and fails closed across connection, capability and schedule decisions, and queued worker writes after restart. Use append-only runtime-control events for normal operator changes and the environment list when the database control plane must not be trusted.
+
 Database rows are intended for administrator-managed installs. They store `client_secret_encrypted` with the same `OPENPOST_ENCRYPTION_KEY` used for account tokens and act as fallbacks when no matching environment app exists. They require a server restart after changes. Matching is by provider, except Mastodon uses provider plus `instance_url`.
 
 Instance admins can manage encrypted database rows through `GET /api/v1/admin/provider-apps`, `POST /api/v1/admin/provider-apps`, and `DELETE /api/v1/admin/provider-apps/{id}`. API responses never return client secrets; send `client_secret` only when creating a row or rotating the existing secret.

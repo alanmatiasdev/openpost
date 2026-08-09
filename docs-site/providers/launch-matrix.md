@@ -1,64 +1,119 @@
-# Launch Verification Matrix
+# Provider Readiness and Launch Gate
 
-Use this page before a public demo or campaign. Check these three facts separately:
+OpenPost keeps provider implementation, setup, evidence, approval, and runtime
+control as separate facts. An adapter in the binary proves only that code
+exists. It does not make a provider or format ready, connectable, publishable,
+or safe to advertise.
 
-1. **Implemented:** the adapter and OpenPost code path exist.
-2. **Set up:** the current OpenPost server has the required social app, account, access, public media link, and API limit.
-3. **Live-tested:** the exact account and format published in a recent test, and someone saved the result.
+## Effective readiness
 
-Finished code does not prove that a server is set up. A set-up server does not prove that a post went live. This page does not mark any platform as live-tested because the repository has no current test proof.
+Every decision is for one exact subject: provider app, deployment and provider
+environment, optional Mastodon instance, account kind, output profile,
+immediate or scheduled operation, and policy mode. The server projects these
+facts through one readiness service:
 
-## Current evidence levels
+| Fact | Meaning |
+| --- | --- |
+| Configuration | The effective built-in, environment, database, or dynamic app is present. |
+| Local test | A current normalized local run matches the exact certification contract. |
+| Live certification | A current real-provider run matches the same contract and subject. |
+| Approval | The provider app's reviewed tier is current and permits this operation. |
+| Authorization | The exact connected account grant is valid and has every required scope. |
+| Policy | The server permits the selected account, format, and policy mode. |
+| Runtime control | The most restrictive current environment or ledger control is enabled. |
 
-| Platform               | Code status   | Server setup to confirm                                                                       | Live test recorded here | Public demo default                                                  |
-| ---------------------- | ------------- | --------------------------------------------------------------------------------------------- | ----------------------- | -------------------------------------------------------------------- |
-| X                      | Ready in code | OAuth 1.0a app, callback, account tier, API limit, and connected account                      | None                    | Exclude until the exact account and format pass a live test          |
-| Mastodon               | Ready in code | Server app or dynamic registration, connected account, and server limits                      | None                    | Exclude until the exact server, account, and format pass a live test |
-| Bluesky                | Ready in code | Connected handle and app password; no server social app required                              | None                    | Exclude until the exact account and format pass a live test          |
-| LinkedIn               | Ready in code | OAuth app, approved permissions, connected account, and LinkedIn access                       | None                    | Exclude until the exact account and format pass a live test          |
-| Threads                | Ready in code | Meta app, approved permissions, connected account, and public HTTPS media when needed         | None                    | Exclude until the exact account and format pass a live test          |
-| Facebook Pages         | Ready in code | Meta app review, Page permissions, connected Page, and public HTTPS media                     | None                    | Exclude until the exact Page and format pass a live test             |
-| Instagram Professional | Ready in code | Meta app review, Page-backed Business or Creator account, permissions, and public HTTPS media | None                    | Exclude until the exact account and format pass a live test          |
-| TikTok                 | Ready in code | Content Posting API access, Direct Post app review, connected account, and public HTTPS media | None                    | Exclude until the exact account and format pass a live test          |
-| YouTube                | Ready in code | Google app, channel access, API limit, upload privacy, and connected account                  | None                    | Exclude until the exact channel and format pass a live test          |
-| Discord Webhooks       | Ready in code | Tested channel webhook and its server upload limit                                            | None                    | Exclude until the exact webhook and files pass a live test           |
+The effective state is fail-closed. Actionable states include
+`approval_required`, `reconnect_required`, `trial_only`, `policy_restricted`,
+`degraded`, and `expired_proof`. An explicit disable always wins. Missing
+configuration or certification is reported directly. A healthy state adds no
+warning or badge.
 
-Check the running server for its current setup. Open **Accounts**, call `GET /api/v1/accounts/providers`, or use MCP `get_provider_readiness`. A platform shown as available or set up still needs a live test for the account and format.
+Inspect the running server with:
 
-## Posting paths that still need a live test
+```sh
+openpost provider readiness
+openpost provider readiness --json
+```
 
-| Platform               | Current OpenPost paths                                                                        | What to check before a public claim                                           |
-| ---------------------- | --------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| X                      | Tier-aware text, links, up to four images, one video, replies, scheduling                     | Video, API limits, and account tier need an exact live test                   |
-| Mastodon               | Text, links, up to four attachments, replies, scheduling                                      | Limits vary by instance; verify media processing and reply behavior           |
-| Bluesky                | Text, links, up to four images, one MP4 video, AT Protocol replies, scheduling                | Verify video and reply refs against the target account                        |
-| LinkedIn               | Text, links, image, document, video, comment-based child posts, scheduling                    | Permissions, app review, and video behavior can block the path                |
-| Threads                | Text, image, video, 2–20 item mixed carousels, replies, scheduling                            | Media must be publicly reachable and Meta access must be approved             |
-| Facebook Pages         | Text, links, image, 2–10 image multi-photo, Story, video, comments, scheduling                | Permissions, review, Page identity, and public media apply                    |
-| Instagram Professional | Image, carousel, Story, Reel, comments, scheduling                                            | No text-only posts; Business or Creator account and public media are required |
-| TikTok                 | One video or 1–35 JPEG/WebP photo posts, scheduling                                           | Direct Post audit approval and public media apply                             |
-| YouTube                | One Short or long video with title, description, thumbnail, playlist, privacy, and scheduling | Unaudited projects can force private uploads, and API limits apply            |
-| Discord Webhooks       | Text, up to 10 streamed attachments, reply references, scheduling, and deletion               | The webhook URL is a credential; Discord controls upload byte limits          |
+The same projection is returned by `GET /api/v1/provider-readiness`, the
+account provider catalogue, capability resolution, and the MCP
+`get_provider_readiness` operation. Capability metadata describes implemented
+formats; the attached readiness decision says whether the exact operation may
+run now.
 
-See [Supported Platforms & Limitations](/providers/platform-limits) for detailed limits and [Provider Troubleshooting](/providers/troubleshooting) for diagnostics.
+## Current managed-service claims
 
-## Live test log
+The canonical
+[`provider-certification/public-claims.json`](https://github.com/rodrgds/openpost/blob/main/provider-certification/public-claims.json)
+is the only source for public provider-format certification claims.
 
-Add one row for every account and format in the campaign. A text post test does not prove that video, carousel, Story, reply, or thread posting works.
+<!-- provider-certification:begin -->
+The checked-in public certification manifest contains **0 exact provider-format claims**.
 
-| Platform     | Account ID or name | Format | Connect result | Media result | Schedule result | Final platform result | Published URL or error ID | Tested at | Tested by |
-| ------------ | ------------------ | ------ | -------------- | ------------ | --------------- | --------------------- | ------------------------- | --------- | --------- |
-| _Not tested_ |                    |        |                |              |                 |                       |                           |           |           |
+No managed provider-format certification claim is current. Implementation descriptions do not assert managed availability.
+<!-- provider-certification:end -->
 
-## Launch gate
+The release manifest binds that file's exact SHA-256 digest, schema version,
+and claim count. A build, adapter, configured credential, mocked test, or manual
+checklist cannot add a claim.
 
-Include an account in the main demo only when:
+The provider pages document implemented OpenPost code paths and configuration
+requirements. They are not evidence that a particular managed deployment,
+provider app, account, format, or policy mode is currently live-certified.
 
-- the server reports the platform set up;
-- the intended account is connected and active;
-- the exact text, media, thread/reply, and scheduling path needed by the campaign passed;
-- OpenPost recorded the final provider outcome;
-- the result has a date, account, format, and proof link;
-- someone reviewed the account version after the final AI edit.
+## Recording certification evidence
 
-The repository's [platform test log](https://github.com/rodrgds/openpost/blob/main/launch-kit/provider-verification-log.md) is a reusable copy of this list.
+Migration 077 creates immutable approval-review, certification-run,
+certification-check, and runtime-control ledgers. The database rejects updates
+and deletes on SQLite and PostgreSQL. Records contain normalized outcomes and
+one-way fingerprints only; never store a token, raw provider response, provider
+URL, account ID, or operator identity in this ledger.
+
+Only an unscoped instance administrator may append facts through:
+
+- `POST /api/v1/admin/provider-readiness/approval-reviews`
+- `POST /api/v1/admin/provider-readiness/runtime-controls`
+- `POST /api/v1/admin/provider-readiness/certifications`
+
+The first test cannot require proof that the test already happened. The
+privileged `certification_test` execution intent therefore bypasses prior local
+and live evidence only. It still requires effective configuration, current
+approval or explicit trial permission, the exact account authorization and
+scopes, allowed policy, and enabled runtime controls. Queued work preserves the
+intent and the worker rechecks readiness immediately before each provider call.
+The intent never makes a result publicly claimable.
+
+For each immediate and scheduled subject, record:
+
+- connect and exact account-authorization results;
+- the immediate or scheduled provider result;
+- the final reconciled provider outcome;
+- refresh and revoke results, or an explicitly permitted not-applicable reason;
+- a safe hashed external-result reference;
+- tested Git revision, contract digest, operator reference, test time, and
+  retest expiry.
+
+A later failed run supersedes older passing proof. Changing an app identity,
+instance, account kind, output profile, operation, policy mode, capability, or
+contract requirement cannot reuse another subject's evidence.
+
+## Release gate
+
+A provider/format may enter the public claim manifest only when all of these
+are true for the exact production subject:
+
+- the production provider app is effectively configured;
+- approval is current and approved or explicitly not required;
+- required and granted scope snapshots match the current account grant;
+- local and live runs are current, complete, and share the current contract
+  digest;
+- policy is allowed and the effective runtime control is enabled;
+- each required check passed, with only contract-approved refresh/revoke
+  not-applicable results allowed;
+- the sanitized projection contains no account, operator, credential, URL, or
+  raw external-result data.
+
+Run `bun run check:provider-certification` before release work. The checked-in
+zero-claim gate refuses a non-empty manifest unless a trusted ledger projection
+supplies the current contract digests. This prevents a documentation or adapter
+change from silently becoming a public readiness claim.
