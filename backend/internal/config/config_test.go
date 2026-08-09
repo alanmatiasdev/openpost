@@ -46,6 +46,10 @@ var configTestEnvKeys = []string{
 	"OPENPOST_IMAGE_CAPTION_MODEL",
 	"OPENPOST_IMAGE_CAPTION_PROVIDER",
 	"OPENPOST_IMAGE_CAPTION_REQUIRE_ZDR",
+	"OPENPOST_MEME_GENERATOR_ENABLED",
+	"OPENPOST_MEMEGEN_URL",
+	"OPENPOST_MEMEGEN_API_KEY",
+	"OPENPOST_MEME_GENERATION_MODEL",
 	"OPENPOST_IMAGE_EDITOR_ENABLED",
 	"OPENPOST_IMAGE_EDITOR_MODEL_BASE_URL",
 	"OPENPOST_STUDIO_ENABLED",
@@ -154,6 +158,10 @@ func TestLoadProductionPrimitiveDefaults(t *testing.T) {
 	require.Equal(t, "openai/gpt-5.6-luna", cfg.ImageCaptionModel)
 	require.Empty(t, cfg.ImageCaptionProvider)
 	require.False(t, cfg.ImageCaptionRequireZDR)
+	require.False(t, cfg.MemeGeneratorEnabled)
+	require.Equal(t, "https://api.memegen.link", cfg.MemegenBaseURL)
+	require.Empty(t, cfg.MemegenAPIKey)
+	require.Equal(t, "openai/gpt-5.6-luna", cfg.MemeGenerationModel)
 	require.True(t, cfg.ImageEditorEnabled)
 	require.Equal(t, "/image-editor-models", cfg.ImageEditorModelBaseURL)
 	require.Equal(t, "/video-editor-models", cfg.VideoModelBaseURL)
@@ -184,6 +192,20 @@ func TestLoadImageCaptionConfigurationSupportsFileBackedSecret(t *testing.T) {
 	require.Equal(t, "openai/gpt-5.6-luna-20260709", cfg.ImageCaptionModel)
 	require.Equal(t, "azure/eu", cfg.ImageCaptionProvider)
 	require.True(t, cfg.ImageCaptionRequireZDR)
+}
+
+func TestLoadMemeGeneratorConfiguration(t *testing.T) {
+	t.Setenv("OPENPOST_MEME_GENERATOR_ENABLED", "true")
+	t.Setenv("OPENPOST_MEMEGEN_URL", " https://memegen.internal.example/api/ ")
+	t.Setenv("OPENPOST_MEMEGEN_API_KEY_FILE", writeEnvFile(t, "memegen-api-key", " sponsor-key\n"))
+	t.Setenv("OPENPOST_MEME_GENERATION_MODEL", " openai/gpt-5.6-luna-20260709 ")
+
+	cfg := Load()
+
+	require.True(t, cfg.MemeGeneratorEnabled)
+	require.Equal(t, "https://memegen.internal.example/api", cfg.MemegenBaseURL)
+	require.Equal(t, "sponsor-key", cfg.MemegenAPIKey)
+	require.Equal(t, "openai/gpt-5.6-luna-20260709", cfg.MemeGenerationModel)
 }
 
 func TestLoadResolvesRelativeMediaURLAgainstCanonicalPublicURL(t *testing.T) {
