@@ -51,6 +51,7 @@ All notable changes to this project are documented in this file.
 
 ### Fixed
 
+- Made PostgreSQL migration preparation normalize multiline `ALTER TABLE ... ADD COLUMN` statements idempotently, preventing fresh-schema bootstrap from aborting when the Bun bootstrap already created a newer column.
 - Prevented text-and-thread drafts, media, and schedules from crossing workspace boundaries by requiring save, stay, or discard decisions with origin-scoped race guards; scheduling and publishing failures now retain exact destination, segment, and field targets, focus the affected control, and remain retryable after authoritative revalidation.
 - Unified marketing route errors and the static-host 404 around one branded recovery source with product, documentation, email, and community paths that remain usable without application assets.
 - Clarified that screen recordings remain local to the current browser until the user explicitly saves them to cloud storage, Media, or a post handoff.

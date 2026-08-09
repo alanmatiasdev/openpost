@@ -1759,7 +1759,7 @@ var (
 	postgresBooleanDefaultTrue   = regexp.MustCompile(`(?i)\bBOOLEAN\b(\s+NOT\s+NULL)?\s+DEFAULT\s+1\b`)
 	postgresBooleanIsActiveFalse = regexp.MustCompile(`\bis_active\s*=\s*0\b`)
 	postgresBooleanIsActiveTrue  = regexp.MustCompile(`\bis_active\s*=\s*1\b`)
-	postgresAddColumnExpr        = regexp.MustCompile(`(?i)\bADD\s+COLUMN\s+`)
+	postgresAddColumnExpr        = regexp.MustCompile(`(?is)(\bALTER\s+TABLE\b[^;]*?\bADD\s+COLUMN)(?:\s+IF\s+NOT\s+EXISTS)?\s+`)
 )
 
 func normalizeMigrationSQL(name dialect.Name, raw string) string {
@@ -1778,21 +1778,7 @@ func normalizeMigrationSQL(name dialect.Name, raw string) string {
 }
 
 func postgresAddColumnIfNotExists(raw string) string {
-	var out strings.Builder
-	lines := strings.Split(raw, "\n")
-	for i, line := range lines {
-		upper := strings.ToUpper(line)
-		if strings.Contains(upper, "ALTER TABLE") &&
-			strings.Contains(upper, " ADD COLUMN") &&
-			!strings.Contains(upper, " ADD COLUMN IF NOT EXISTS") {
-			line = postgresAddColumnExpr.ReplaceAllString(line, "ADD COLUMN IF NOT EXISTS ")
-		}
-		if i > 0 {
-			out.WriteByte('\n')
-		}
-		out.WriteString(line)
-	}
-	return out.String()
+	return postgresAddColumnExpr.ReplaceAllString(raw, "${1} IF NOT EXISTS ")
 }
 
 type migration struct {
