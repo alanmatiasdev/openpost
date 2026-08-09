@@ -2311,67 +2311,14 @@ func (h *PublicationHandler) loadPublicationResponse(ctx context.Context, public
 	if err != nil {
 		return PublicationResponse{}, err
 	}
-	segments, segmentInputs, err := h.loadCanonicalSegmentInputsWithDB(ctx, h.db, publication.ID)
+	responses, err := h.loadPublicationResponses(ctx, []models.Publication{*publication})
 	if err != nil {
 		return PublicationResponse{}, err
 	}
-	segmentMedia, err := h.loadPublicationSegmentMediaResponsesWithDB(ctx, h.db, publication.ID)
-	if err != nil {
-		return PublicationResponse{}, err
+	if len(responses) != 1 {
+		return PublicationResponse{}, huma.Error500InternalServerError("failed to load publication")
 	}
-	var renditions []models.Rendition
-	if err := h.db.NewSelect().Model(&renditions).Where("publication_id = ?", publication.ID).Order("created_at ASC").Scan(ctx); err != nil {
-		return PublicationResponse{}, huma.Error500InternalServerError("failed to load renditions")
-	}
-	mediaByRendition, publicationMedia, err := h.loadRenditionMedia(ctx, renditionIDs(renditions))
-	if err != nil {
-		return PublicationResponse{}, err
-	}
-	response := publicationResponse(publication, publicationMedia)
-	response.TextPostID, err = linkedTextPostID(ctx, h.db, publication.ID)
-	if err != nil {
-		return PublicationResponse{}, huma.Error500InternalServerError("failed to load linked text post")
-	}
-	response.Segments = make([]PublicationSegmentResponse, 0, len(segments))
-	for index, segment := range segments {
-		settings := map[string]interface{}{}
-		_ = json.Unmarshal([]byte(segment.SettingsJSON), &settings)
-		response.Segments = append(response.Segments, PublicationSegmentResponse{
-			ID:          segment.ID,
-			Position:    segment.Position,
-			Body:        segment.Body,
-			Title:       segment.Title,
-			Description: segment.Description,
-			URL:         segment.URL,
-			Settings:    settings,
-			Media:       segmentMedia[segment.ID],
-		})
-		if index == 0 && len(response.Media) == 0 {
-			response.Media = segmentMedia[segment.ID]
-		}
-	}
-	if len(response.Segments) == 0 {
-		response.Segments = []PublicationSegmentResponse{{
-			ID:       "legacy:" + publication.ID,
-			Position: 0,
-			Body:     publication.SourceText,
-			Title:    publication.Title,
-			URL:      publication.SourceURL,
-			Settings: map[string]interface{}{},
-			Media:    response.Media,
-		}}
-	}
-	_ = segmentInputs
-	response.Renditions = make([]RenditionResponse, 0, len(renditions))
-	for _, rendition := range renditions {
-		renditionOutput := renditionResponse(rendition, mediaByRendition[rendition.ID])
-		renditionOutput.Segments, err = h.loadRenditionSegmentResponsesWithDB(ctx, h.db, rendition)
-		if err != nil {
-			return PublicationResponse{}, err
-		}
-		response.Renditions = append(response.Renditions, renditionOutput)
-	}
-	return response, nil
+	return responses[0], nil
 }
 
 func linkedTextPostID(ctx context.Context, db bun.IDB, publicationID string) (string, error) {
@@ -2450,40 +2397,6 @@ func (h *PublicationHandler) loadCanonicalSegmentInputsWithDB(
 		})
 	}
 	return segments, inputs, nil
-}
-
-func (h *PublicationHandler) loadPublicationSegmentMediaResponsesWithDB(
-	ctx context.Context,
-	db bun.IDB,
-	publicationID string,
-) (map[string][]MediaSummary, error) {
-	var rows []struct {
-		SegmentID    string `bun:"segment_id"`
-		DisplayOrder int    `bun:"display_order"`
-		SettingsJSON string `bun:"settings_json"`
-		models.MediaAttachment
-	}
-	if err := db.NewSelect().
-		TableExpr("publication_segment_media AS psm").
-		ColumnExpr("psm.segment_id, psm.display_order, psm.settings_json").
-		ColumnExpr("m.*").
-		Join("JOIN publication_segments AS ps ON ps.id = psm.segment_id").
-		Join("JOIN media_attachments AS m ON m.id = psm.media_id").
-		Where("ps.publication_id = ?", publicationID).
-		Order("ps.position ASC", "psm.display_order ASC").
-		Scan(ctx, &rows); err != nil {
-		if isMissingPublicationSegmentTable(err) {
-			return map[string][]MediaSummary{}, nil
-		}
-		return nil, huma.Error500InternalServerError("failed to load publication segment media")
-	}
-	out := map[string][]MediaSummary{}
-	for _, row := range rows {
-		item := mediaSummary(row.MediaAttachment, "attachment", row.DisplayOrder, "", 0)
-		_ = json.Unmarshal([]byte(row.SettingsJSON), &item.Settings)
-		out[row.SegmentID] = append(out[row.SegmentID], item)
-	}
-	return out, nil
 }
 
 func (h *PublicationHandler) loadRenditionSegmentResponsesWithDB(
@@ -2760,10 +2673,6 @@ func (h *PublicationHandler) loadRenditionWithPublicationForEdit(ctx context.Con
 		return nil, nil, err
 	}
 	return rendition, publication, nil
-}
-
-func (h *PublicationHandler) loadRenditionMedia(ctx context.Context, ids []string) (map[string][]MediaSummary, []MediaSummary, error) {
-	return h.loadRenditionMediaWithDB(ctx, h.db, ids)
 }
 
 func (h *PublicationHandler) loadRenditionMediaWithDB(ctx context.Context, db bun.IDB, ids []string) (map[string][]MediaSummary, []MediaSummary, error) {

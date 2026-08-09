@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import { resolve } from '$app/paths';
 	import { client } from '$lib/api/client';
 	import { workspaceCtx } from '$lib/stores/workspace.svelte';
@@ -9,27 +8,24 @@
 
 	let { compact = false }: { compact?: boolean } = $props();
 	let unreadCount = $state(0);
-	let loadedWorkspace = $state('');
+	let loadedWorkspace = '';
 	const workspaceId = $derived(workspaceCtx.currentWorkspace?.id ?? '');
 
-	async function loadUnread() {
-		if (!workspaceId) {
-			unreadCount = 0;
-			return;
-		}
-		const requestedWorkspace = workspaceId;
+	async function loadUnread(requestedWorkspace: string) {
 		const { data } = await client.GET('/notifications', {
 			params: { query: { workspace_id: requestedWorkspace, limit: 1 } }
 		});
 		if (workspaceId === requestedWorkspace) unreadCount = data?.unread_count ?? 0;
 	}
 
-	onMount(() => void loadUnread());
-
 	$effect(() => {
-		if (workspaceId && workspaceId !== loadedWorkspace) {
-			loadedWorkspace = workspaceId;
-			void loadUnread();
+		const currentWorkspace = workspaceId;
+		if (!currentWorkspace) {
+			loadedWorkspace = '';
+			unreadCount = 0;
+		} else if (currentWorkspace !== loadedWorkspace) {
+			loadedWorkspace = currentWorkspace;
+			void loadUnread(currentWorkspace);
 		}
 	});
 </script>

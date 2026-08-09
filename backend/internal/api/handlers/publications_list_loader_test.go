@@ -36,6 +36,7 @@ func TestLoadPublicationResponsesUsesFixedQueryCount(t *testing.T) {
 		(*models.RenditionSegmentMedia)(nil),
 		(*models.MediaAttachment)(nil),
 		(*models.Post)(nil),
+		(*models.WorkspaceMember)(nil),
 	)
 	ctx := context.Background()
 	now := time.Date(2026, time.July, 27, 12, 0, 0, 0, time.UTC)
@@ -56,6 +57,12 @@ func TestLoadPublicationResponsesUsesFixedQueryCount(t *testing.T) {
 		},
 	}
 	_, err := db.NewInsert().Model(&publications).Exec(ctx)
+	require.NoError(t, err)
+	_, err = db.NewInsert().Model(&models.WorkspaceMember{
+		WorkspaceID: "workspace-1",
+		UserID:      "user-1",
+		Role:        models.WorkspaceRoleAdmin,
+	}).Exec(ctx)
 	require.NoError(t, err)
 
 	media := []models.MediaAttachment{
@@ -156,4 +163,11 @@ func TestLoadPublicationResponsesUsesFixedQueryCount(t *testing.T) {
 	require.Equal(t, "media-1", responses[0].Renditions[0].Segments[0].Media[0].ID)
 	require.Equal(t, "post-2", responses[1].TextPostID)
 	require.Equal(t, "media-2", responses[1].Media[0].ID)
+
+	counter.count.Store(0)
+	detail, err := (&PublicationHandler{db: db}).loadPublicationResponse(ctx, "publication-1", "user-1")
+	require.NoError(t, err)
+	require.Equal(t, int64(9), counter.count.Load())
+	require.Equal(t, "publication-1", detail.ID)
+	require.Equal(t, "rendition-segment-1", detail.Renditions[0].Segments[0].ID)
 }

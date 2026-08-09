@@ -38,9 +38,9 @@ type renditionSegmentMediaListRow struct {
 	models.MediaAttachment
 }
 
-// loadPublicationResponses loads a complete list page with a fixed number of
-// queries. Keep this separate from the single-publication loader, whose access
-// check and edit-focused fallbacks are appropriate for detail requests.
+// loadPublicationResponses loads complete publication shapes with a fixed
+// number of queries. The detail loader performs its access check first, then
+// reuses this batch path with one publication to avoid per-rendition queries.
 func (h *PublicationHandler) loadPublicationResponses(
 	ctx context.Context,
 	publications []models.Publication,

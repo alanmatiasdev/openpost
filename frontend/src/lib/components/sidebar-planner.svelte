@@ -1,10 +1,12 @@
 <script lang="ts">
 	import { ContextMenu } from 'bits-ui';
 	import { page } from '$app/state';
+	import { resolve } from '$app/paths';
 	import type { CalendarDate } from '@internationalized/date';
-	import { tick } from 'svelte';
+	import { tick, untrack } from 'svelte';
 	import { SvelteMap } from 'svelte/reactivity';
 	import { client } from '$lib/api/client';
+	import { prefetchDraftComposerData } from '$lib/api/performance-cache';
 	import type { components } from '$lib/api/types';
 	import {
 		workspaceClock,
@@ -47,6 +49,8 @@
 	let draftDeleteError = $state('');
 	let overviewRequest = 0;
 	let draftsRequest = 0;
+	let overviewWorkspaceId = '';
+	let draftsWorkspaceId = '';
 	let renderedWeekCount = $state(12);
 	let focusedDayKey = $state('');
 	let visibleCalendarDayKey = $state('');
@@ -76,21 +80,26 @@
 		const currentWorkspaceId = workspaceId;
 		const refresh = ui.refreshCounter;
 		void refresh;
-		void loadOverview(currentWorkspaceId);
+		untrack(() => void loadOverview(currentWorkspaceId));
 	});
 
 	$effect(() => {
 		const currentWorkspaceId = workspaceId;
 		const refresh = ui.refreshCounter;
 		void refresh;
-		void loadDrafts(currentWorkspaceId);
+		untrack(() => void loadDrafts(currentWorkspaceId));
 	});
 
 	async function loadOverview(currentWorkspaceId: string) {
 		const request = ++overviewRequest;
 		if (!currentWorkspaceId) {
 			dayCounts = new SvelteMap();
+			overviewWorkspaceId = '';
 			return;
+		}
+		if (overviewWorkspaceId !== currentWorkspaceId) {
+			dayCounts = new SvelteMap();
+			overviewWorkspaceId = currentWorkspaceId;
 		}
 		try {
 			const publications: Publication[] = [];
@@ -123,18 +132,24 @@
 			}
 			dayCounts = nextCounts;
 		} catch {
-			if (request === overviewRequest) dayCounts = new SvelteMap();
+			// Keep the last successful planner state visible during a background refresh.
 		}
 	}
 
 	async function loadDrafts(currentWorkspaceId: string) {
 		const request = ++draftsRequest;
-		loadingDrafts = true;
 		if (!currentWorkspaceId) {
 			drafts = [];
+			draftsWorkspaceId = '';
 			loadingDrafts = false;
 			return;
 		}
+		const workspaceChanged = draftsWorkspaceId !== currentWorkspaceId;
+		if (workspaceChanged) {
+			drafts = [];
+			draftsWorkspaceId = currentWorkspaceId;
+		}
+		loadingDrafts = workspaceChanged || drafts.length === 0;
 
 		try {
 			const publicationResult = await client.GET('/publications', {
@@ -154,7 +169,7 @@
 				.sort((left, right) => right.createdAt.localeCompare(left.createdAt))
 				.slice(0, 3);
 		} catch {
-			if (request === draftsRequest) drafts = [];
+			// A refresh failure must not replace useful drafts with an empty state.
 		} finally {
 			if (request === draftsRequest) loadingDrafts = false;
 		}
@@ -446,11 +461,14 @@
 						<ContextMenu.Root>
 							<ContextMenu.Trigger>
 								{#snippet child({ props })}
-									<button
+									<a
 										{...props}
-										type="button"
+										href={resolve(draft.href as '/')}
+										data-sveltekit-preload-code="eager"
 										class="group/draft flex min-h-10 w-full items-center gap-2 rounded-md px-2 py-1 text-left hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:outline-none"
-										onclick={() => onNavigate(draft.href)}
+										onpointerenter={() => prefetchDraftComposerData(draft.id, workspaceId)}
+										onpointerdown={() => prefetchDraftComposerData(draft.id, workspaceId)}
+										onfocus={() => prefetchDraftComposerData(draft.id, workspaceId)}
 										aria-label={m.sidebar_resume_draft({ title: draft.title })}
 									>
 										<span class="min-w-0 flex-1">
@@ -473,7 +491,7 @@
 												aria-label={m.sidebar_has_media()}
 											/>
 										{/if}
-									</button>
+									</a>
 								{/snippet}
 							</ContextMenu.Trigger>
 							<ContextMenu.Portal>

@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
-	import { page } from '$app/stores';
-	import { client } from '$lib/api/client';
+	import { page } from '$app/state';
+	import { loadPublicationDetail } from '$lib/api/performance-cache';
 	import type { components } from '$lib/api/types';
 	import { Button } from '$lib/components/ui/button';
 	import PageLoading from '$lib/components/page-loading.svelte';
@@ -18,20 +18,13 @@
 	import ExternalLinkIcon from 'lucide-svelte/icons/external-link';
 
 	type Publication = components['schemas']['PublicationResponse'];
-	type PostDetailResponse = components['schemas']['PostDetailResponse'];
-	type PostDetail = Omit<PostDetailResponse, 'media' | 'destinations'> & {
-		media: NonNullable<PostDetailResponse['media']>;
-		destinations: NonNullable<PostDetailResponse['destinations']>;
-	};
-
-	let publication = $state<Publication | null>(null);
-	let textPost = $state<PostDetail | null>(null);
+	let publication = $state.raw<Publication | null>(null);
 	let hasLoaded = $state(false);
 	let error = $state('');
 	let requestedPublicationId = $state('');
 	let publicationRequestSequence = 0;
 
-	const publicationId = $derived($page.params.id);
+	const publicationId = $derived(page.params.id);
 	const readOnlyPublication = $derived(
 		publication?.status === 'published' || publication?.status === 'publishing'
 	);
@@ -55,29 +48,9 @@
 		const requestSequence = ++publicationRequestSequence;
 		hasLoaded = false;
 		error = '';
-		textPost = null;
 		try {
-			const { data, error: err } = await client.GET('/publications/{id}', {
-				params: { path: { id } }
-			});
-			if (err) throw new Error((err as any)?.detail || m.publication_edit_load_failed());
+			const data = await loadPublicationDetail(id);
 			if (requestSequence !== publicationRequestSequence || publicationId !== id) return;
-			if (data.text_post_id) {
-				const { data: postData, error: postError } = await client.GET('/posts/{id}', {
-					params: { path: { id: data.text_post_id } }
-				});
-				if (postError) {
-					throw new Error(postError.detail || m.post_edit_load_failed());
-				}
-				if (requestSequence !== publicationRequestSequence || publicationId !== id) return;
-				textPost = postData
-					? {
-							...postData,
-							media: postData.media ?? [],
-							destinations: postData.destinations ?? []
-						}
-					: null;
-			}
 			publication = data;
 		} catch (err) {
 			if (requestSequence !== publicationRequestSequence || publicationId !== id) return;
@@ -204,7 +177,6 @@
 {:else if publication}
 	<div class="flex flex-1 flex-col overflow-hidden">
 		<ComposeTextPost
-			initialPost={textPost ?? undefined}
 			initialPublication={publication}
 			onSuccess={handleSuccess}
 			onDeleted={handleSuccess}

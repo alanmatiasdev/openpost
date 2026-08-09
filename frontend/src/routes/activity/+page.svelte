@@ -2,6 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
+	import { untrack } from 'svelte';
 	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 	import { client, type SocialAccount } from '$lib/api/client';
 	import type { components } from '$lib/api/types';
@@ -133,7 +134,7 @@
 
 	$effect(() => {
 		const workspaceID = workspaceCtx.currentWorkspace?.id ?? '';
-		if (workspaceID) void loadData(workspaceID);
+		if (workspaceID) untrack(() => void loadData(workspaceID));
 	});
 
 	async function loadData(requestedWorkspaceID = workspaceCtx.currentWorkspace?.id ?? '') {

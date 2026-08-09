@@ -1,6 +1,10 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { client, type SocialAccount } from '$lib/api/client';
+	import {
+		invalidateWorkspaceSocialSets,
+		loadWorkspaceSocialSets
+	} from '$lib/api/performance-cache';
 	import type { components } from '$lib/api/types';
 	import DestructiveConfirmDialog from './destructive-confirm-dialog.svelte';
 	import InlineNotice from './inline-notice.svelte';
@@ -86,22 +90,22 @@
 		if (workspaceId && workspaceId !== loadedWorkspaceId) void loadSets();
 	});
 
-	async function loadSets() {
+	async function loadSets(force = false) {
 		const requestedWorkspace = workspaceId;
 		if (!requestedWorkspace) return;
 		loadedWorkspaceId = requestedWorkspace;
 		loading = true;
 		error = '';
-		const { data, error: loadError } = await client.GET('/social-sets', {
-			params: { query: { workspace_id: requestedWorkspace } }
-		});
-		if (workspaceId !== requestedWorkspace) return;
-		loading = false;
-		if (loadError) {
-			error = loadError.detail || m.social_set_load_failed();
+		try {
+			sets = await loadWorkspaceSocialSets(requestedWorkspace, force);
+		} catch (cause) {
+			if (workspaceId !== requestedWorkspace) return;
+			error = cause instanceof Error && cause.message ? cause.message : m.social_set_load_failed();
 			return;
+		} finally {
+			if (workspaceId === requestedWorkspace) loading = false;
 		}
-		sets = data ?? [];
+		if (workspaceId !== requestedWorkspace) return;
 		if (selectedSetId) {
 			// The publication already owns a destination snapshot. Loading the
 			// reusable set must never replace that snapshot with current membership.
@@ -175,7 +179,8 @@
 				editorId = data.id;
 				selectedSetId = data.id;
 			}
-			await loadSets();
+			invalidateWorkspaceSocialSets(workspaceId);
+			await loadSets(true);
 			const saved = sets.find((set) => set.id === editorId) ?? null;
 			if (creating && saved) onApply(saved);
 		} catch (cause) {
@@ -200,7 +205,8 @@
 			}
 			deleteOpen = false;
 			startNewSet();
-			await loadSets();
+			invalidateWorkspaceSocialSets(workspaceId);
+			await loadSets(true);
 		} catch (cause) {
 			error = cause instanceof Error ? cause.message : m.social_set_delete_failed();
 		} finally {
@@ -255,20 +261,22 @@
 					disabled={disabled || loading}
 					data-testid="composer-account-control"
 				>
-					<span class="flex shrink-0 items-center -space-x-1" aria-hidden="true">
+					<span class="isolate flex shrink-0 items-center -space-x-1" aria-hidden="true">
 						{#each selectedAccounts.slice(0, 3) as account (account.id)}
 							<span
-								class="flex size-5 items-center justify-center rounded-full bg-background ring-2 ring-background"
+								class="flex size-5 items-center justify-center rounded-full border border-border bg-background ring-1 ring-background"
 								data-testid="composer-account-icon"
 							>
 								<PlatformIcon platform={account.platform} class="size-4" />
 							</span>
 						{/each}
+						{#if selectedAccounts.length > 3}
+							<span class="z-10 ml-2 text-xs font-medium text-muted-foreground"
+								>+{selectedAccounts.length - 3}</span
+							>
+						{/if}
 					</span>
 					<span class="min-w-0 truncate">{destinationLabel}</span>
-					{#if selectedAccounts.length > 3}<span class="text-xs text-muted-foreground"
-							>+{selectedAccounts.length - 3}</span
-						>{/if}
 					<ChevronDownIcon class="size-3.5 shrink-0 text-muted-foreground" />
 				</Button>
 			{/snippet}
@@ -301,13 +309,24 @@
 							onclick={() => selectSet(set.id)}
 						>
 							<span class="min-w-0 flex-1 truncate">{set.name}</span>
-							<span class="flex items-center -space-x-1" aria-hidden="true">
+							<span class="isolate flex shrink-0 items-center -space-x-1" aria-hidden="true">
 								{#each (set.accounts ?? []).slice(0, 4) as membership (membership.social_account_id)}
 									{@const account = accounts.find(
 										(candidate) => candidate.id === membership.social_account_id
 									)}
-									{#if account}<PlatformIcon platform={account.platform} class="size-4" />{/if}
+									{#if account}
+										<span
+											class="flex size-6 items-center justify-center rounded-full border border-border bg-popover ring-1 ring-popover"
+										>
+											<PlatformIcon platform={account.platform} class="size-4" />
+										</span>
+									{/if}
 								{/each}
+								{#if (set.accounts ?? []).length > 4}
+									<span class="z-10 ml-2 text-xs font-medium text-muted-foreground"
+										>+{(set.accounts ?? []).length - 4}</span
+									>
+								{/if}
 							</span>
 							{#if selectedSetId === set.id}<CheckIcon class="size-4" />{/if}
 						</button>
