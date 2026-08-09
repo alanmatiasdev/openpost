@@ -5634,6 +5634,7 @@
 	maxSelection={composerMediaLimit}
 	multiple={composerMediaLimit > 1}
 	purpose={isThread ? 'thread_segment' : 'post_media'}
+	enableMeme
 	initialMode="upload"
 	initialFiles={mediaPickerInitialFiles}
 	onInitialFilesConsumed={() => (mediaPickerInitialFiles = [])}
