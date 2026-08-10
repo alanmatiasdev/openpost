@@ -243,10 +243,20 @@ func TestMediaCleanupReschedulesTheSameDurableChain(t *testing.T) {
 	t.Parallel()
 
 	db := createTestDB(t)
-	_, err := db.NewCreateTable().Model((*models.MediaAttachment)(nil)).IfNotExists().Exec(t.Context())
-	require.NoError(t, err)
+	for _, model := range []any{
+		(*models.MediaAttachment)(nil),
+		(*models.DesignDocument)(nil),
+		(*models.DesignRevision)(nil),
+		(*models.DesignRevisionMediaIndexState)(nil),
+		(*models.VideoProject)(nil),
+		(*models.VideoProjectRevision)(nil),
+		(*models.VideoRevisionMediaIndexState)(nil),
+	} {
+		_, err := db.NewCreateTable().Model(model).IfNotExists().Exec(t.Context())
+		require.NoError(t, err)
+	}
 	require.NoError(t, ScheduleMediaCleanup(db, "workspace-1"))
-	_, err = db.NewUpdate().Model((*models.Job)(nil)).
+	_, err := db.NewUpdate().Model((*models.Job)(nil)).
 		Set("run_at = ?", time.Now().UTC().Add(-time.Second)).
 		Where("type = ?", jobTypeMediaCleanup).Exec(t.Context())
 	require.NoError(t, err)
@@ -258,6 +268,8 @@ func TestMediaCleanupReschedulesTheSameDurableChain(t *testing.T) {
 	require.NoError(t, db.NewSelect().Model(&jobs).Where("type = ?", jobTypeMediaCleanup).Scan(t.Context()))
 	require.Len(t, jobs, 1)
 	require.Equal(t, jobStatusPending, jobs[0].Status)
+	require.Zero(t, jobs[0].Attempts)
+	require.Empty(t, jobs[0].LastError)
 	require.WithinDuration(t, time.Now().UTC().Add(24*time.Hour), jobs[0].RunAt, 5*time.Second)
 }
 
