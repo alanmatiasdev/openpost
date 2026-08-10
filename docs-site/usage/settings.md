@@ -23,6 +23,9 @@ The media lifecycle information is not a workspace control. Temporary post-speci
 Account settings follow your user login across every workspace.
 
 - Display name and profile picture
+- Appearance, language, and interface sounds saved in the current browser
+- Optional public-profile fields and privacy preview
+- Sign-in email and its verified change flow
 - Password, two-factor authentication, and passkeys
 - Linked Google and organization sign-in identities
 - Active browser sessions
@@ -32,6 +35,8 @@ Account settings follow your user login across every workspace.
 Use an `mcp:read` token limited to one workspace when an AI tool only needs to read OpenPost. Use `mcp:full` only when it must create or change drafts and account versions, upload media, schedule, publish, cancel, reply, or moderate. You can remove either token. Check recent activity and remove access when the tool no longer needs it.
 
 Use this tab when the setting is about you, not a workspace.
+
+Settings labels each boundary. Profile and security follow your account. Appearance, language, and sounds are saved in the current browser and apply to any workspace opened there; they do not sync to another browser or device. Timezone, week start, scheduling, and workspace identity stay with the selected workspace.
 
 Authenticator setup does not finish until you save and acknowledge the one-time recovery codes. The codes are shown once and each works for one sign-in. Viewing the remaining count, replacing the set, and disabling the authenticator require a recent password, passkey, or linked-identity check. See [Account Security](/usage/account-security) for the complete setup and recovery flow.
 

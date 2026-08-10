@@ -21,6 +21,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/openpost/backend/internal/models"
+	"github.com/openpost/backend/internal/publicprofiles"
 	"github.com/openpost/backend/internal/usernames"
 	"github.com/uptrace/bun"
 )
@@ -31,6 +32,7 @@ func registerSpaRoutesFromFS(
 	db *bun.DB,
 	publicURL string,
 	managedEdition bool,
+	publicProfilesEnabled bool,
 ) {
 	// Keep package tests independent of generated frontend output while still
 	// failing immediately when the application starts without frontend assets.
@@ -44,11 +46,11 @@ func registerSpaRoutesFromFS(
 		panic("openpost: frontend application route manifest is missing or invalid. " +
 			"Run the frontend build first: `bun run frontend:build` (or use `devenv shell -- build`): " + err.Error())
 	}
-	registerSpaRoutesWithProfileMetadataAndMatcher(e, webFS, db, publicURL, managedEdition, routes)
+	registerSpaRoutesWithProfileMetadataAndMatcher(e, webFS, db, publicURL, managedEdition, publicProfilesEnabled, routes)
 }
 
 func registerSpaRoutes(e *echo.Echo, webFS fs.FS) {
-	registerSpaRoutesWithProfileMetadata(e, webFS, nil, "", false)
+	registerSpaRoutesWithProfileMetadata(e, webFS, nil, "", false, true)
 }
 
 const spaRouteManifestPath = "app-routes.json"
@@ -218,9 +220,10 @@ func registerSpaRoutesWithProfileMetadata(
 	db *bun.DB,
 	publicURL string,
 	managedEdition bool,
+	publicProfilesEnabled bool,
 ) {
 	routes, _ := loadSpaRouteManifest(webFS)
-	registerSpaRoutesWithProfileMetadataAndMatcher(e, webFS, db, publicURL, managedEdition, routes)
+	registerSpaRoutesWithProfileMetadataAndMatcher(e, webFS, db, publicURL, managedEdition, publicProfilesEnabled, routes)
 }
 
 func registerSpaRoutesWithProfileMetadataAndMatcher(
@@ -229,22 +232,26 @@ func registerSpaRoutesWithProfileMetadataAndMatcher(
 	db *bun.DB,
 	publicURL string,
 	managedEdition bool,
+	publicProfilesEnabled bool,
 	routes spaRouteMatcher,
 ) {
-	writeHTML := func(c echo.Context, data []byte) error {
-		return writeHTMLResponse(c, data, managedEdition)
+	writeHTML := func(c echo.Context, data []byte, status int) error {
+		return writeHTMLStatusResponse(c, data, managedEdition, status)
 	}
 
 	publicProfileHandler := func(c echo.Context) error {
 		indexData, _ := fs.ReadFile(webFS, "index.html")
+		if !publicProfilesEnabled {
+			return writeHTML(c, renderPublicProfileHTML(indexData, nil, publicURL), http.StatusNotFound)
+		}
 		metadata, found, err := loadPublicProfilePageMetadata(c.Request().Context(), db, c.Param("username"))
 		if err != nil {
-			return echo.NewHTTPError(http.StatusInternalServerError, "failed to load public profile")
+			return writeHTML(c, renderPublicProfileHTML(indexData, nil, publicURL), http.StatusServiceUnavailable)
 		}
 		if !found {
-			return writeHTML(c, renderPublicProfileHTML(indexData, nil, publicURL))
+			return writeHTML(c, renderPublicProfileHTML(indexData, nil, publicURL), http.StatusNotFound)
 		}
-		return writeHTML(c, renderPublicProfileHTML(indexData, &metadata, publicURL))
+		return writeHTML(c, renderPublicProfileHTML(indexData, &metadata, publicURL), http.StatusOK)
 	}
 	e.Match([]string{http.MethodGet, http.MethodHead}, "/u/:username", publicProfileHandler)
 
@@ -443,7 +450,7 @@ func loadPublicProfilePageMetadata(ctx context.Context, db *bun.DB, requestedUse
 	}
 	var user models.User
 	if err := db.NewSelect().Model(&user).
-		Column("username", "display_name", "avatar_url").
+		Column("username", "display_name", "avatar_url", "public_profile_visibility_json").
 		Where("LOWER(username) = ?", username).
 		Where("public_profile_enabled = ?", true).
 		Scan(ctx); err != nil {
@@ -452,11 +459,17 @@ func loadPublicProfilePageMetadata(ctx context.Context, db *bun.DB, requestedUse
 		}
 		return publicProfilePageMetadata{}, false, err
 	}
-	return publicProfilePageMetadata{
-		Username:    user.Username,
-		DisplayName: strings.TrimSpace(user.DisplayName),
-		AvatarURL:   strings.TrimSpace(user.AvatarURL),
-	}, true, nil
+	visibility := publicprofiles.Parse(user.PublicProfileVisibilityJSON)
+	metadata := publicProfilePageMetadata{
+		Username: user.Username,
+	}
+	if visibility.Has(publicprofiles.FieldDisplayName) {
+		metadata.DisplayName = strings.TrimSpace(user.DisplayName)
+	}
+	if visibility.Has(publicprofiles.FieldAvatar) {
+		metadata.AvatarURL = strings.TrimSpace(user.AvatarURL)
+	}
+	return metadata, true, nil
 }
 
 func renderPublicProfileHTML(indexData []byte, metadata *publicProfilePageMetadata, publicURL string) []byte {

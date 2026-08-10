@@ -584,9 +584,9 @@ Maintenance contract for this lane: a new social provider requires no n8n packag
 
 ### ACCT-002 — Clarify editable profile identity and visibility
 
-- [ ] **Problem — Current source audit:** avatar/display name support exists, but the boundary between private account data, public display data, and workspace role/title is not consistently explained. Public visibility is coarse and some profile availability/error behavior is tied to managed-cloud assumptions.
+- [x] **Problem — Current source audit:** avatar/display name support exists, but the boundary between private account data, public display data, and workspace role/title is not consistently explained. Public visibility is coarse and some profile availability/error behavior is tied to managed-cloud assumptions.
 - **Fix:** label public-facing fields at edit time; provide initials/avatar fallback; show a privacy preview; let users choose supported visible fields; make public-profile capability come from instance configuration rather than a hard-coded cloud check.
-- **Done when:** public pages expose only opted-in fields; disabled/private/not-found/loading-error states are distinct; initials fallback and responsive profile layout are tested.
+- **Done when:** public pages expose only opted-in fields; disabled, private-or-missing, loading, and transient-error states are distinct; initials fallback and responsive profile layout are tested.
 - **Evidence:** profile section in `frontend/src/routes/settings/+page.svelte`, `frontend/src/routes/u/[username]/+page.svelte`, `backend/cmd/openpost/web.go` public-profile handling.
 
 ### ACCT-003 — Treat connected sign-in identities as an account-security surface
@@ -598,7 +598,7 @@ Maintenance contract for this lane: a new social provider requires no n8n packag
 
 ### PUBLIC-001 — Make public-profile errors public-safe and diagnosable
 
-- [ ] **Problem — Current source audit:** every load failure can collapse into “private or does not exist,” while not-found, disabled, and backend failure need distinct public states. Enabling the profile publishes activity, top workspaces/platforms, joined date, and plan under coarse visibility, and some links/availability assume the managed cloud.
+- [x] **Problem — Current source audit:** every load failure can collapse into “private or does not exist,” while not-found, disabled, and backend failure need distinct public states. Enabling the profile publishes activity, top workspaces/platforms, joined date, and plan under coarse visibility, and some links/availability assume the managed cloud.
 - **Fix:** define explicit public-profile capability and field-visibility contracts; render branded 404/disabled/error states without leaking private data; add a retry only for transient failures; use configured instance/public URLs; explain any plan/instance restriction before enablement.
 - **Done when:** private and disabled profiles never leak, true failures never masquerade as an empty profile, direct requests return appropriate status, and public routes work without an authenticated shell.
 - **Evidence:** `frontend/src/routes/u/[username]/+page.svelte`, public-profile handlers in `backend/cmd/openpost/web.go`.
@@ -739,14 +739,14 @@ Maintenance contract for this lane: a new social provider requires no n8n packag
 
 ### APIKEY-001 — Make one-time token creation safe to complete
 
-- [ ] **Problem — Current source audit:** the full token is correctly revealed once, but the success panel has no prominent copy action. The UI neither lets a user choose expiry nor shows expiry/revoked state in the list, and there is no direct API/MCP/CLI documentation link.
+- [x] **Problem — Current source audit:** the full token is correctly revealed once, but the success panel has no prominent copy action. The UI neither lets a user choose expiry nor shows expiry/revoked state in the list, and there is no direct API/MCP/CLI documentation link.
 - **Fix:** require a useful name; offer safe preset/custom expiry; show the full secret once with copy and accessible confirmation; display created/last-used/expires/status/scope/workspace; link directly to getting-started docs; preserve confirmation before instant irreversible revocation.
 - **Done when:** copy is one action and announced, expiration is deliberate and visible, an expired/revoked token cannot look active, secret values never reappear in list/logs, and create/copy/revoke/browser tests pass.
 - **Evidence:** `backend/internal/api/handlers/api_tokens.go:29`, `backend/internal/api/handlers/api_tokens.go:47`, `frontend/src/routes/settings/+page.svelte:928`, `frontend/src/routes/settings/+page.svelte:3191`.
 
 ### APIKEY-002 — Resolve token-expiry contract drift
 
-- [ ] **Problem — Current source audit:** handler documentation says `null` expiry means “never,” while the service defaults an omitted expiry to 90 days. This makes API clients and the settings UI reason from the wrong contract.
+- [x] **Problem — Current source audit:** handler documentation says `null` expiry means “never,” while the service defaults an omitted expiry to 90 days. This makes API clients and the settings UI reason from the wrong contract.
 - **Fix:** choose a policy, align request schema/docs/service/default/UI, regenerate OpenAPI/types, and migrate or clearly label existing tokens. Prefer finite least-privilege defaults; make “never” explicit and permission-gated if retained.
 - **Done when:** generated documentation and observed expiry match for omitted, preset, custom, and explicit no-expiry cases; contract tests fail on future drift.
 - **Evidence:** `backend/internal/api/handlers/api_tokens.go:47`, `backend/internal/services/apitokens/service.go:20`, `backend/internal/services/apitokens/service.go:76`.
@@ -760,7 +760,7 @@ Maintenance contract for this lane: a new social provider requires no n8n packag
 
 ### VERSION-001 — Make version restore inspectable and unsurprising
 
-- [ ] **Problem — Current source audit:** Image and Video editors have real checkpoints/autosaves and restore, but restore runs immediately from the list with no read-only preview, diff/change summary, actor attribution, or confirmation.
+- [x] **Problem — Current source audit:** Image and Video editors have real checkpoints/autosaves and restore, but restore runs immediately from the list with no read-only preview, diff/change summary, actor attribution, or confirmation.
 - **Fix:** add version preview, document-model-appropriate change summary, named versions, actor/time for cloud revisions, and confirmation that explains how the current head is preserved. Keep the autosave indicator visible but quiet.
 - **Done when:** a user can inspect before restore, current state remains recoverable after restore, conflicts are handled, and confirmation/browser tests cover both editors.
 - **Evidence:** `frontend/src/lib/image-editor/components/image-editor-shell.svelte:3587`, `frontend/src/routes/video-editor/[id]/+page.svelte:2933`, `frontend/src/routes/video-editor/[id]/+page.svelte:5592`.
@@ -1179,7 +1179,7 @@ These tasks are deliberately lower priority. Remove only code proven unreachable
 
 ### IA-001 — Clarify account versus workspace preferences
 
-- [ ] **Problem — Current source audit:** appearance, language, and sound live in a transient account menu, while timezone/week start are workspace settings; “Profile & security” does not clearly expose all personal preferences.
+- [x] **Problem — Current source audit:** appearance, language, and sound live in a transient account menu, while timezone/week start are workspace settings; “Profile & security” does not clearly expose all personal preferences.
 - **Fix:** label scope explicitly and add a discoverable personal-preferences destination or cross-links without duplicating state.
 - **Done when:** users can predict whether a setting follows them or a workspace and can reach appearance, language, sound, profile, and security from Settings.
 - **Evidence:** `frontend/src/lib/components/account-preferences-menu.svelte:211`, `frontend/src/routes/settings/+page.svelte:3332`.

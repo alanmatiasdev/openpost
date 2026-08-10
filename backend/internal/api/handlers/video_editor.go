@@ -25,9 +25,16 @@ import (
 	"github.com/openpost/backend/internal/services/medialifecycle"
 	"github.com/openpost/backend/internal/videoproject"
 	"github.com/uptrace/bun"
+	"github.com/uptrace/bun/dialect"
 )
 
-const videoProjectRevisionTTL = 30 * 24 * time.Hour
+const (
+	videoProjectRevisionTTL     = 30 * 24 * time.Hour
+	videoProjectSnapshotVersion = 1
+	videoProjectAssetSource     = "source"
+	videoProjectAssetCover      = "cover"
+	videoProjectAssetWriteChunk = 200
+)
 
 var errVideoProjectRevisionConflict = errors.New("video project revision conflict")
 
@@ -111,6 +118,12 @@ type VideoProjectResponse struct {
 	Document            videoproject.Document `json:"document"`
 }
 
+type videoProjectRevisionSnapshot struct {
+	SnapshotVersion     int                   `json:"snapshot_version"`
+	Document            videoproject.Document `json:"document"`
+	CoverPreviewMediaID string                `json:"cover_preview_media_id,omitempty"`
+}
+
 type VideoProjectSummary struct {
 	ID                  string `json:"id"`
 	Title               string `json:"title"`
@@ -183,27 +196,47 @@ type DeleteVideoProjectOutput struct {
 
 type ListVideoProjectRevisionsInput struct {
 	PathID string `path:"id"`
+	Cursor string `query:"cursor" maxLength:"1024"`
+	Limit  int    `query:"limit" minimum:"1" maximum:"100"`
 }
 
 type VideoProjectRevisionSummary struct {
-	ID        string `json:"id"`
-	Revision  int    `json:"revision"`
-	Kind      string `json:"kind"`
-	Name      string `json:"name,omitempty"`
-	CreatedAt string `json:"created_at"`
-	ExpiresAt string `json:"expires_at,omitempty"`
+	ID        string              `json:"id"`
+	Revision  int                 `json:"revision"`
+	Kind      string              `json:"kind"`
+	Name      string              `json:"name,omitempty"`
+	CreatedAt string              `json:"created_at"`
+	ExpiresAt string              `json:"expires_at,omitempty"`
+	Actor     EditorRevisionActor `json:"actor"`
 }
 
 type ListVideoProjectRevisionsOutput struct {
 	Body struct {
-		Revisions []VideoProjectRevisionSummary `json:"revisions"`
+		Revisions  []VideoProjectRevisionSummary `json:"revisions"`
+		NextCursor string                        `json:"next_cursor,omitempty"`
 	}
+}
+
+type GetVideoProjectRevisionInput struct {
+	PathID     string `path:"id"`
+	RevisionID string `path:"revision_id"`
+}
+
+type VideoProjectRevisionResponse struct {
+	Summary             VideoProjectRevisionSummary `json:"summary"`
+	CoverPreviewMediaID string                      `json:"cover_preview_media_id,omitempty"`
+	Document            videoproject.Document       `json:"document"`
+}
+
+type GetVideoProjectRevisionOutput struct {
+	Body VideoProjectRevisionResponse
 }
 
 type CreateVideoProjectCheckpointInput struct {
 	PathID string `path:"id"`
 	Body   struct {
-		Name string `json:"name" minLength:"1" maxLength:"100"`
+		Name             string `json:"name" minLength:"1" maxLength:"100"`
+		ExpectedRevision int    `json:"expected_revision" minimum:"1"`
 	}
 }
 
@@ -481,12 +514,17 @@ func (h *VideoEditorHandler) RegisterRoutes(api huma.API) {
 	huma.Register(api, huma.Operation{
 		OperationID: "list-video-editor-project-revisions", Method: http.MethodGet,
 		Path: "/video-editor/projects/{id}/revisions", Summary: "List OpenPost Video Editor recovery revisions and checkpoints",
-		Tags: []string{tagVideoEditor}, Middlewares: auth, Errors: []int{403, 404},
+		Tags: []string{tagVideoEditor}, Middlewares: auth, Errors: []int{400, 403, 404},
 	}, h.listRevisions)
+	huma.Register(api, huma.Operation{
+		OperationID: "get-video-editor-project-revision", Method: http.MethodGet,
+		Path: "/video-editor/projects/{id}/revisions/{revision_id}", Summary: "Inspect an OpenPost Video Editor project revision",
+		Tags: []string{tagVideoEditor}, Middlewares: auth, Errors: []int{400, 403, 404},
+	}, h.getRevision)
 	huma.Register(api, huma.Operation{
 		OperationID: "create-video-editor-project-checkpoint", Method: http.MethodPost,
 		Path: "/video-editor/projects/{id}/checkpoints", Summary: "Create a named OpenPost Video Editor checkpoint",
-		Tags: []string{tagVideoEditor}, Middlewares: auth, Errors: []int{400, 403, 404},
+		Tags: []string{tagVideoEditor}, Middlewares: auth, Errors: []int{400, 403, 404, 409},
 	}, h.createCheckpoint)
 	huma.Register(api, huma.Operation{
 		OperationID: "restore-video-editor-project-revision", Method: http.MethodPost,
@@ -672,10 +710,26 @@ func (h *VideoEditorHandler) createProject(
 		if _, err := tx.NewInsert().Model(project).Exec(txCtx); err != nil {
 			return err
 		}
-		if err := replaceVideoProjectAssets(txCtx, tx, project.ID, input.Body.Document); err != nil {
+		if err := replaceVideoProjectAssets(
+			txCtx,
+			tx,
+			project.ID,
+			input.Body.Document,
+			project.CoverPreviewMediaID,
+		); err != nil {
 			return err
 		}
-		return storeVideoProjectRevision(txCtx, tx, project, input.Body.Document, "autosave", "", now)
+		return storeVideoProjectRevision(
+			txCtx,
+			tx,
+			project,
+			input.Body.Document,
+			project.CoverPreviewMediaID,
+			"autosave",
+			"",
+			userID,
+			now,
+		)
 	})
 	if err != nil {
 		if existing, responseErr := h.projectResponse(ctx, projectID); responseErr == nil {
@@ -740,7 +794,14 @@ func (h *VideoEditorHandler) updateProject(
 	project.DurationMS = videoproject.DurationUS(input.Body.Document) / 1_000
 	project.CoverPreviewMediaID = strings.TrimSpace(input.Body.CoverPreviewMediaID)
 	project.UpdatedAt = now
-	err = h.persistProjectUpdate(ctx, project, input.Body.ExpectedRevision, input.Body.Document, now)
+	err = h.persistProjectUpdate(
+		ctx,
+		project,
+		input.Body.ExpectedRevision,
+		input.Body.Document,
+		middleware.GetUserID(ctx),
+		now,
+	)
 	if errors.Is(err, errVideoProjectRevisionConflict) {
 		latest, loadErr := h.loadProject(ctx, project.ID)
 		if loadErr == nil {
@@ -764,6 +825,7 @@ func (h *VideoEditorHandler) persistProjectUpdate(
 	project *models.VideoProject,
 	expectedRevision int,
 	document videoproject.Document,
+	actorID string,
 	now time.Time,
 ) error {
 	return h.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
@@ -779,10 +841,26 @@ func (h *VideoEditorHandler) persistProjectUpdate(
 		if affected != 1 {
 			return errVideoProjectRevisionConflict
 		}
-		if err := replaceVideoProjectAssets(txCtx, tx, project.ID, document); err != nil {
+		if err := replaceVideoProjectAssets(
+			txCtx,
+			tx,
+			project.ID,
+			document,
+			project.CoverPreviewMediaID,
+		); err != nil {
 			return err
 		}
-		if err := storeVideoProjectRevision(txCtx, tx, project, document, "autosave", "", now); err != nil {
+		if err := storeVideoProjectRevision(
+			txCtx,
+			tx,
+			project,
+			document,
+			project.CoverPreviewMediaID,
+			"autosave",
+			"",
+			actorID,
+			now,
+		); err != nil {
 			return err
 		}
 		return pruneVideoProjectRevisions(txCtx, tx, project.ID, now)
@@ -835,17 +913,107 @@ func (h *VideoEditorHandler) listRevisions(
 		return nil, err
 	}
 	var revisions []models.VideoProjectRevision
-	if err := h.db.NewSelect().Model(&revisions).
+	cursor, err := decodeEditorRevisionCursor(input.Cursor)
+	if err != nil {
+		return nil, huma.Error400BadRequest("invalid OpenPost Video Editor revision cursor")
+	}
+	limit := editorRevisionLimit(input.Limit)
+	query := h.db.NewSelect().Model(&revisions).
 		Where("video_project_id = ?", project.ID).
-		OrderExpr("created_at DESC").Limit(100).Scan(ctx); err != nil {
+		OrderExpr("created_at DESC, id DESC").
+		Limit(limit + 1)
+	if !cursor.CreatedAt.IsZero() {
+		query = query.Where(
+			"(created_at < ?) OR (created_at = ? AND id < ?)",
+			cursor.CreatedAt,
+			cursor.CreatedAt,
+			cursor.ID,
+		)
+	}
+	if err := query.Scan(ctx); err != nil {
 		return nil, huma.Error500InternalServerError("failed to list OpenPost Video Editor revisions")
 	}
+	nextCursor := ""
+	if len(revisions) > limit {
+		next := revisions[limit-1]
+		nextCursor = encodeEditorRevisionCursor(next.CreatedAt, next.ID)
+		revisions = revisions[:limit]
+	}
+	actorIDs := make([]string, 0, len(revisions))
+	for _, revision := range revisions {
+		actorIDs = append(actorIDs, revision.CreatedByID)
+	}
+	currentUserID := middleware.GetUserID(ctx)
+	actors, err := loadEditorRevisionActors(ctx, h.db, actorIDs, currentUserID)
+	if err != nil {
+		return nil, huma.Error500InternalServerError("failed to load OpenPost Video Editor revision actors")
+	}
 	out := &ListVideoProjectRevisionsOutput{}
+	out.Body.NextCursor = nextCursor
 	out.Body.Revisions = make([]VideoProjectRevisionSummary, 0, len(revisions))
 	for _, revision := range revisions {
-		out.Body.Revisions = append(out.Body.Revisions, videoRevisionSummary(revision))
+		out.Body.Revisions = append(out.Body.Revisions, videoRevisionSummary(
+			revision,
+			editorRevisionActor(actors, revision.CreatedByID, currentUserID),
+		))
 	}
 	return out, nil
+}
+
+func (h *VideoEditorHandler) getRevision(
+	ctx context.Context,
+	input *GetVideoProjectRevisionInput,
+) (*GetVideoProjectRevisionOutput, error) {
+	project, err := h.loadProject(ctx, input.PathID)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := h.requireAccess(ctx, project.WorkspaceID, false); err != nil {
+		return nil, err
+	}
+	revision, snapshot, err := h.loadVideoProjectRevisionSnapshot(ctx, h.db, project.ID, input.RevisionID)
+	if err != nil {
+		return nil, err
+	}
+	if err := videoproject.Validate(snapshot.Document, true); err != nil {
+		return nil, huma.Error400BadRequest("OpenPost Video Editor revision is invalid")
+	}
+	currentUserID := middleware.GetUserID(ctx)
+	actors, err := loadEditorRevisionActors(ctx, h.db, []string{revision.CreatedByID}, currentUserID)
+	if err != nil {
+		return nil, huma.Error500InternalServerError("failed to load OpenPost Video Editor revision actor")
+	}
+	return &GetVideoProjectRevisionOutput{Body: VideoProjectRevisionResponse{
+		Summary: videoRevisionSummary(
+			*revision,
+			editorRevisionActor(actors, revision.CreatedByID, currentUserID),
+		),
+		CoverPreviewMediaID: snapshot.CoverPreviewMediaID,
+		Document:            snapshot.Document,
+	}}, nil
+}
+
+func (h *VideoEditorHandler) loadVideoProjectRevisionSnapshot(
+	ctx context.Context,
+	db bun.IDB,
+	projectID string,
+	revisionID string,
+) (*models.VideoProjectRevision, videoProjectRevisionSnapshot, error) {
+	var revision models.VideoProjectRevision
+	err := db.NewSelect().Model(&revision).
+		Where("id = ? AND video_project_id = ?", revisionID, projectID).
+		Scan(ctx)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, videoProjectRevisionSnapshot{}, huma.Error404NotFound("OpenPost Video Editor revision not found")
+	}
+	if err != nil {
+		return nil, videoProjectRevisionSnapshot{}, huma.Error500InternalServerError("failed to load OpenPost Video Editor revision")
+	}
+	snapshot, err := decompressVideoProjectSnapshot(revision.Snapshot)
+	if err != nil {
+		return nil, videoProjectRevisionSnapshot{}, huma.Error400BadRequest("OpenPost Video Editor revision is corrupt")
+	}
+	return &revision, snapshot, nil
 }
 
 func (h *VideoEditorHandler) createCheckpoint(
@@ -863,20 +1031,69 @@ func (h *VideoEditorHandler) createCheckpoint(
 	if name == "" {
 		return nil, huma.Error400BadRequest("checkpoint name is required")
 	}
-	document, err := decodeVideoProjectDocument(project.DocumentJSON)
-	if err != nil {
-		return nil, huma.Error500InternalServerError("OpenPost Video Editor project is corrupt")
-	}
 	now := time.Now().UTC()
-	revision, err := newVideoProjectRevision(project, document, "checkpoint", name, now)
+	currentUserID := middleware.GetUserID(ctx)
+	var revision *models.VideoProjectRevision
+	err = h.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
+		var current models.VideoProject
+		query := tx.NewSelect().Model(&current).
+			Where("id = ? AND deleted_at IS NULL", project.ID)
+		if tx.Dialect().Name() == dialect.PG {
+			query = query.For("UPDATE")
+		}
+		if err := query.Scan(txCtx); err != nil {
+			return err
+		}
+		if current.Revision != input.Body.ExpectedRevision {
+			return errVideoProjectRevisionConflict
+		}
+		document, err := decodeVideoProjectDocument(current.DocumentJSON)
+		if err != nil {
+			return err
+		}
+		revision, err = newVideoProjectRevision(
+			&current,
+			document,
+			current.CoverPreviewMediaID,
+			"checkpoint",
+			name,
+			currentUserID,
+			now,
+		)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.NewInsert().Model(revision).Exec(txCtx); err != nil {
+			return err
+		}
+		return storeVideoProjectRevisionAssets(
+			txCtx,
+			tx,
+			current.ID,
+			revision.ID,
+			document,
+			current.CoverPreviewMediaID,
+			now,
+		)
+	})
+	if errors.Is(err, errVideoProjectRevisionConflict) {
+		latest, loadErr := h.loadProject(ctx, project.ID)
+		if loadErr == nil {
+			return nil, videoProjectConflict(latest.Revision)
+		}
+		return nil, videoProjectConflict(input.Body.ExpectedRevision)
+	}
+	if err != nil || revision == nil {
+		return nil, huma.Error500InternalServerError("failed to create OpenPost Video Editor checkpoint")
+	}
+	actors, err := loadEditorRevisionActors(ctx, h.db, []string{currentUserID}, currentUserID)
 	if err != nil {
-		return nil, huma.Error500InternalServerError("failed to create OpenPost Video Editor checkpoint")
+		return nil, huma.Error500InternalServerError("failed to load OpenPost Video Editor revision actor")
 	}
-	revision.CreatedByID = middleware.GetUserID(ctx)
-	if _, err := h.db.NewInsert().Model(revision).Exec(ctx); err != nil {
-		return nil, huma.Error500InternalServerError("failed to create OpenPost Video Editor checkpoint")
-	}
-	return &CreateVideoProjectCheckpointOutput{Body: videoRevisionSummary(*revision)}, nil
+	return &CreateVideoProjectCheckpointOutput{Body: videoRevisionSummary(
+		*revision,
+		editorRevisionActor(actors, currentUserID, currentUserID),
+	)}, nil
 }
 
 func (h *VideoEditorHandler) restoreRevision(
@@ -890,31 +1107,207 @@ func (h *VideoEditorHandler) restoreRevision(
 	if _, err := h.requireAccess(ctx, project.WorkspaceID, true); err != nil {
 		return nil, err
 	}
-	if project.Revision != input.Body.ExpectedRevision {
-		return nil, videoProjectConflict(project.Revision)
-	}
-	var revision models.VideoProjectRevision
-	err = h.db.NewSelect().Model(&revision).
-		Where("id = ? AND video_project_id = ?", input.RevisionID, project.ID).Scan(ctx)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, huma.Error404NotFound("OpenPost Video Editor revision not found")
+	now := time.Now().UTC()
+	actorID := middleware.GetUserID(ctx)
+	err = h.restoreVideoProjectRevisionInTx(
+		ctx,
+		project.ID,
+		input.RevisionID,
+		input.Body.ExpectedRevision,
+		actorID,
+		now,
+	)
+	if errors.Is(err, errVideoProjectRevisionConflict) {
+		latest, loadErr := h.loadProject(ctx, project.ID)
+		if loadErr == nil {
+			return nil, videoProjectConflict(latest.Revision)
+		}
+		return nil, videoProjectConflict(input.Body.ExpectedRevision)
 	}
 	if err != nil {
-		return nil, huma.Error500InternalServerError("failed to load OpenPost Video Editor revision")
+		var statusError huma.StatusError
+		if errors.As(err, &statusError) {
+			return nil, err
+		}
+		log.Printf("failed to restore OpenPost Video Editor project %s: %v", project.ID, err)
+		return nil, huma.Error500InternalServerError("failed to restore OpenPost Video Editor revision")
 	}
-	document, err := decompressVideoProjectSnapshot(revision.Snapshot)
-	if err != nil || videoproject.Validate(document, true) != nil {
-		return nil, huma.Error400BadRequest("OpenPost Video Editor revision is invalid")
-	}
-	update := &UpdateVideoProjectInput{PathID: project.ID}
-	update.Body.ExpectedRevision = project.Revision
-	update.Body.CoverPreviewMediaID = project.CoverPreviewMediaID
-	update.Body.Document = document
-	result, err := h.updateProject(ctx, update)
+	response, err := h.projectResponse(ctx, project.ID)
 	if err != nil {
 		return nil, err
 	}
-	return &RestoreVideoProjectRevisionOutput{Body: result.Body}, nil
+	return &RestoreVideoProjectRevisionOutput{Body: *response}, nil
+}
+
+func (h *VideoEditorHandler) restoreVideoProjectRevisionInTx(
+	ctx context.Context,
+	projectID string,
+	revisionID string,
+	expectedRevision int,
+	actorID string,
+	now time.Time,
+) error {
+	return h.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
+		current, target, err := h.prepareVideoProjectRevisionRestore(
+			txCtx,
+			tx,
+			projectID,
+			revisionID,
+			expectedRevision,
+			now,
+		)
+		if err != nil {
+			return err
+		}
+		if err := storeVideoProjectRestorePoint(
+			txCtx,
+			tx,
+			&current,
+			actorID,
+			now,
+		); err != nil {
+			return err
+		}
+		return applyVideoProjectRevisionRestore(
+			txCtx,
+			tx,
+			&current,
+			target,
+			expectedRevision,
+			now,
+		)
+	})
+}
+
+func (h *VideoEditorHandler) prepareVideoProjectRevisionRestore(
+	ctx context.Context,
+	tx bun.Tx,
+	projectID string,
+	revisionID string,
+	expectedRevision int,
+	now time.Time,
+) (models.VideoProject, videoProjectRevisionSnapshot, error) {
+	var current models.VideoProject
+	if err := tx.NewSelect().Model(&current).
+		Where("id = ? AND deleted_at IS NULL", projectID).
+		Scan(ctx); err != nil {
+		return current, videoProjectRevisionSnapshot{}, err
+	}
+	if current.Revision != expectedRevision {
+		return current, videoProjectRevisionSnapshot{}, errVideoProjectRevisionConflict
+	}
+	_, target, err := h.loadVideoProjectRevisionSnapshot(ctx, tx, current.ID, revisionID)
+	if err != nil {
+		return current, target, err
+	}
+	if err := videoproject.Validate(target.Document, true); err != nil {
+		return current, target, huma.Error400BadRequest("OpenPost Video Editor revision is invalid")
+	}
+	if err := validateVideoProjectMediaReferences(
+		ctx,
+		tx,
+		current.WorkspaceID,
+		target.Document,
+		target.CoverPreviewMediaID,
+	); err != nil {
+		return current, target, err
+	}
+	mediaSources := videoProjectCloudMediaSources(target.Document)
+	targetMediaIDs := make([]string, 0, len(mediaSources)+1)
+	for _, mediaID := range mediaSources {
+		targetMediaIDs = append(targetMediaIDs, mediaID)
+	}
+	targetMediaIDs = append(targetMediaIDs, target.CoverPreviewMediaID)
+	if err := reviveEditorMediaReferences(
+		ctx,
+		tx,
+		current.WorkspaceID,
+		targetMediaIDs,
+		now,
+	); err != nil {
+		return current, target, err
+	}
+	return current, target, nil
+}
+
+func storeVideoProjectRestorePoint(
+	ctx context.Context,
+	tx bun.Tx,
+	current *models.VideoProject,
+	actorID string,
+	now time.Time,
+) error {
+	document, err := decodeVideoProjectDocument(current.DocumentJSON)
+	if err != nil {
+		return errors.New("current OpenPost Video Editor project is corrupt")
+	}
+	restorePoint, err := newVideoProjectRevision(
+		current,
+		document,
+		current.CoverPreviewMediaID,
+		"restore_point",
+		"",
+		actorID,
+		now,
+	)
+	if err != nil {
+		return err
+	}
+	if _, err := tx.NewInsert().Model(restorePoint).Exec(ctx); err != nil {
+		return err
+	}
+	return storeVideoProjectRevisionAssets(
+		ctx,
+		tx,
+		current.ID,
+		restorePoint.ID,
+		document,
+		current.CoverPreviewMediaID,
+		now,
+	)
+}
+
+func applyVideoProjectRevisionRestore(
+	ctx context.Context,
+	tx bun.Tx,
+	current *models.VideoProject,
+	target videoProjectRevisionSnapshot,
+	expectedRevision int,
+	now time.Time,
+) error {
+	encoded, err := json.Marshal(target.Document)
+	if err != nil {
+		return err
+	}
+	current.Title = target.Document.Title
+	current.SchemaVersion = target.Document.SchemaVersion
+	current.Revision++
+	current.DocumentJSON = string(encoded)
+	current.DurationMS = videoproject.DurationUS(target.Document) / 1_000
+	current.CoverPreviewMediaID = strings.TrimSpace(target.CoverPreviewMediaID)
+	current.UpdatedAt = now
+	result, err := tx.NewUpdate().Model(current).
+		Column("title", "schema_version", "revision", "document_json", "duration_ms", "cover_preview_media_id", "updated_at").
+		WherePK().
+		Where("revision = ?", expectedRevision).
+		Exec(ctx)
+	if err != nil {
+		return err
+	}
+	affected, _ := result.RowsAffected()
+	if affected != 1 {
+		return errVideoProjectRevisionConflict
+	}
+	if err := replaceVideoProjectAssets(
+		ctx,
+		tx,
+		current.ID,
+		target.Document,
+		target.CoverPreviewMediaID,
+	); err != nil {
+		return err
+	}
+	return pruneVideoProjectRevisions(ctx, tx, current.ID, now)
 }
 
 func (h *VideoEditorHandler) createReturnToken(
@@ -1199,7 +1592,36 @@ func (h *VideoEditorHandler) validateMediaReferences(
 	document videoproject.Document,
 	coverPreviewMediaID string,
 ) error {
-	references := videoproject.MediaReferences(document)
+	return validateVideoProjectMediaReferences(
+		ctx,
+		h.db,
+		workspaceID,
+		document,
+		coverPreviewMediaID,
+	)
+}
+
+func videoProjectCloudMediaSources(document videoproject.Document) map[string]string {
+	references := make(map[string]string, len(document.Sources))
+	for sourceID, source := range document.Sources {
+		if source.Locator.Type != "openpost-media" {
+			continue
+		}
+		if mediaID := strings.TrimSpace(source.Locator.MediaID); mediaID != "" {
+			references[sourceID] = mediaID
+		}
+	}
+	return references
+}
+
+func validateVideoProjectMediaReferences(
+	ctx context.Context,
+	db bun.IDB,
+	workspaceID string,
+	document videoproject.Document,
+	coverPreviewMediaID string,
+) error {
+	references := videoProjectCloudMediaSources(document)
 	ids := make([]string, 0, len(references)+1)
 	for _, mediaID := range references {
 		ids = append(ids, mediaID)
@@ -1210,13 +1632,17 @@ func (h *VideoEditorHandler) validateMediaReferences(
 	if len(ids) == 0 {
 		return nil
 	}
-	count, err := h.db.NewSelect().Model((*models.MediaAttachment)(nil)).
-		Where("workspace_id = ? AND processing_status = ? AND id IN (?)", workspaceID, mediaReadyStatus, bun.List(ids)).
-		Count(ctx)
+	valid, err := allEditorMediaBelongToWorkspace(
+		ctx,
+		db,
+		workspaceID,
+		ids,
+		mediaReadyStatus,
+	)
 	if err != nil {
 		return huma.Error500InternalServerError("failed to validate OpenPost Video Editor media")
 	}
-	if count != len(stringSet(ids)) {
+	if !valid {
 		return huma.Error400BadRequest("every OpenPost Video Editor source must be ready and belong to the workspace")
 	}
 	return nil
@@ -1227,34 +1653,55 @@ func replaceVideoProjectAssets(
 	tx bun.Tx,
 	projectID string,
 	document videoproject.Document,
+	coverPreviewMediaID string,
 ) error {
 	var previousMediaIDs []string
 	if err := tx.NewSelect().
 		Model((*models.VideoProjectAsset)(nil)).
 		Column("media_id").
-		Where("video_project_id = ?", projectID).
+		Where("video_project_id = ? AND usage IN (?)", projectID, bun.List([]string{
+			videoProjectAssetSource,
+			videoProjectAssetCover,
+		})).
 		Scan(ctx, &previousMediaIDs); err != nil {
 		return err
 	}
 	if _, err := tx.NewDelete().Model((*models.VideoProjectAsset)(nil)).
-		Where("video_project_id = ?", projectID).Exec(ctx); err != nil {
+		Where("video_project_id = ? AND usage IN (?)", projectID, bun.List([]string{
+			videoProjectAssetSource,
+			videoProjectAssetCover,
+		})).Exec(ctx); err != nil {
 		return err
 	}
-	references := videoproject.MediaReferences(document)
-	if len(references) == 0 {
-		return medialifecycle.TouchWithDB(ctx, tx, previousMediaIDs, time.Now().UTC())
-	}
-	assets := make([]models.VideoProjectAsset, 0, len(references))
+	references := videoProjectCloudMediaSources(document)
+	assets := make([]models.VideoProjectAsset, 0, len(references)+1)
 	now := time.Now().UTC()
 	for sourceID, mediaID := range references {
 		assets = append(assets, models.VideoProjectAsset{
-			VideoProjectID: projectID, SourceID: sourceID, MediaID: mediaID,
-			Usage: "source", CreatedAt: now,
+			VideoProjectID: projectID,
+			SourceID:       "current:source:" + sourceID,
+			MediaID:        mediaID,
+			Usage:          videoProjectAssetSource,
+			CreatedAt:      now,
 		})
 	}
-	_, err := tx.NewInsert().Model(&assets).Exec(ctx)
-	if err != nil {
-		return err
+	if coverID := strings.TrimSpace(coverPreviewMediaID); coverID != "" {
+		assets = append(assets, models.VideoProjectAsset{
+			VideoProjectID: projectID,
+			SourceID:       "current:cover",
+			MediaID:        coverID,
+			Usage:          videoProjectAssetCover,
+			CreatedAt:      now,
+		})
+	}
+	if len(assets) > 0 {
+		for start := 0; start < len(assets); start += videoProjectAssetWriteChunk {
+			end := min(start+videoProjectAssetWriteChunk, len(assets))
+			chunk := assets[start:end]
+			if _, err := tx.NewInsert().Model(&chunk).Exec(ctx); err != nil {
+				return err
+			}
+		}
 	}
 	for sourceID, mediaID := range references {
 		provenance := document.Sources[sourceID].Provenance
@@ -1280,6 +1727,9 @@ func replaceVideoProjectAssets(
 	for _, mediaID := range references {
 		mediaIDs = append(mediaIDs, mediaID)
 	}
+	if coverID := strings.TrimSpace(coverPreviewMediaID); coverID != "" {
+		mediaIDs = append(mediaIDs, coverID)
+	}
 	return medialifecycle.TouchWithDB(ctx, tx, mediaIDs, now)
 }
 
@@ -1288,38 +1738,122 @@ func storeVideoProjectRevision(
 	tx bun.Tx,
 	project *models.VideoProject,
 	document videoproject.Document,
+	coverPreviewMediaID string,
 	kind string,
 	name string,
+	actorID string,
 	now time.Time,
 ) error {
-	revision, err := newVideoProjectRevision(project, document, kind, name, now)
+	revision, err := newVideoProjectRevision(
+		project,
+		document,
+		coverPreviewMediaID,
+		kind,
+		name,
+		actorID,
+		now,
+	)
 	if err != nil {
 		return err
 	}
-	_, err = tx.NewInsert().Model(revision).Exec(ctx)
-	return err
+	if _, err := tx.NewInsert().Model(revision).Exec(ctx); err != nil {
+		return err
+	}
+	return storeVideoProjectRevisionAssets(
+		ctx,
+		tx,
+		project.ID,
+		revision.ID,
+		document,
+		coverPreviewMediaID,
+		now,
+	)
 }
 
 func newVideoProjectRevision(
 	project *models.VideoProject,
 	document videoproject.Document,
+	coverPreviewMediaID string,
 	kind string,
 	name string,
+	actorID string,
 	now time.Time,
 ) (*models.VideoProjectRevision, error) {
-	snapshot, err := compressVideoProjectSnapshot(document)
+	snapshot, err := compressVideoProjectSnapshot(videoProjectRevisionSnapshot{
+		SnapshotVersion:     videoProjectSnapshotVersion,
+		Document:            document,
+		CoverPreviewMediaID: strings.TrimSpace(coverPreviewMediaID),
+	})
 	if err != nil {
 		return nil, err
 	}
 	revision := &models.VideoProjectRevision{
 		ID: uuid.NewString(), VideoProjectID: project.ID, Revision: project.Revision,
 		Kind: kind, Name: strings.TrimSpace(name), Snapshot: snapshot,
-		CreatedByID: project.CreatedByID, CreatedAt: now,
+		CreatedByID: actorID, CreatedAt: now,
 	}
 	if kind == "autosave" {
 		revision.ExpiresAt = now.Add(videoProjectRevisionTTL)
 	}
 	return revision, nil
+}
+
+func storeVideoProjectRevisionAssets(
+	ctx context.Context,
+	tx bun.Tx,
+	projectID string,
+	revisionID string,
+	document videoproject.Document,
+	coverPreviewMediaID string,
+	now time.Time,
+) error {
+	references := videoProjectCloudMediaSources(document)
+	assets := make([]models.VideoProjectAsset, 0, len(references)+1)
+	usage := "revision:" + revisionID
+	for sourceID, mediaID := range references {
+		assets = append(assets, models.VideoProjectAsset{
+			VideoProjectID: projectID,
+			SourceID:       usage + ":source:" + sourceID,
+			RevisionID:     revisionID,
+			MediaID:        mediaID,
+			Usage:          usage,
+			CreatedAt:      now,
+		})
+	}
+	if coverID := strings.TrimSpace(coverPreviewMediaID); coverID != "" {
+		assets = append(assets, models.VideoProjectAsset{
+			VideoProjectID: projectID,
+			SourceID:       usage + ":cover",
+			RevisionID:     revisionID,
+			MediaID:        coverID,
+			Usage:          usage,
+			CreatedAt:      now,
+		})
+	}
+	if len(assets) > 0 {
+		for start := 0; start < len(assets); start += videoProjectAssetWriteChunk {
+			end := min(start+videoProjectAssetWriteChunk, len(assets))
+			chunk := assets[start:end]
+			if _, err := tx.NewInsert().Model(&chunk).Exec(ctx); err != nil {
+				return err
+			}
+		}
+	}
+	mediaIDs := make([]string, 0, len(references)+1)
+	for _, mediaID := range references {
+		mediaIDs = append(mediaIDs, mediaID)
+	}
+	if coverID := strings.TrimSpace(coverPreviewMediaID); coverID != "" {
+		mediaIDs = append(mediaIDs, coverID)
+	}
+	state := &models.VideoRevisionMediaIndexState{
+		RevisionID:  revisionID,
+		MediaCount:  len(stringSet(mediaIDs)),
+		Status:      "complete",
+		ProcessedAt: now,
+	}
+	_, err := tx.NewInsert().Model(state).Exec(ctx)
+	return err
 }
 
 func pruneVideoProjectRevisions(
@@ -1328,9 +1862,13 @@ func pruneVideoProjectRevisions(
 	projectID string,
 	now time.Time,
 ) error {
-	if _, err := tx.NewDelete().Model((*models.VideoProjectRevision)(nil)).
+	var expiredIDs []string
+	if err := tx.NewSelect().Model((*models.VideoProjectRevision)(nil)).
+		Column("id").
 		Where("video_project_id = ? AND kind = ? AND expires_at < ?", projectID, "autosave", now).
-		Exec(ctx); err != nil {
+		OrderExpr("expires_at ASC, id ASC").
+		Limit(1_000).
+		Scan(ctx, &expiredIDs); err != nil {
 		return err
 	}
 	var stale []models.VideoProjectRevision
@@ -1339,22 +1877,35 @@ func pruneVideoProjectRevisions(
 		OrderExpr("created_at DESC").Offset(20).Limit(1_000).Scan(ctx); err != nil {
 		return err
 	}
-	if len(stale) == 0 {
-		return nil
-	}
-	ids := make([]string, 0, len(stale))
+	ids := append([]string(nil), expiredIDs...)
 	for _, revision := range stale {
 		ids = append(ids, revision.ID)
 	}
+	ids = uniqueVideoProjectStringsInOrder(ids)
+	if len(ids) == 0 {
+		return nil
+	}
+	usages := make([]string, 0, len(ids))
+	for _, id := range ids {
+		usages = append(usages, "revision:"+id)
+	}
+	if _, err := tx.NewDelete().Model((*models.VideoProjectAsset)(nil)).
+		Where("video_project_id = ? AND usage IN (?)", projectID, bun.List(usages)).
+		Exec(ctx); err != nil {
+		return err
+	}
 	_, err := tx.NewDelete().Model((*models.VideoProjectRevision)(nil)).
-		Where("id IN (?)", bun.List(ids)).Exec(ctx)
+		Where("video_project_id = ? AND id IN (?)", projectID, bun.List(ids)).Exec(ctx)
 	return err
 }
 
-func videoRevisionSummary(revision models.VideoProjectRevision) VideoProjectRevisionSummary {
+func videoRevisionSummary(
+	revision models.VideoProjectRevision,
+	actor EditorRevisionActor,
+) VideoProjectRevisionSummary {
 	summary := VideoProjectRevisionSummary{
 		ID: revision.ID, Revision: revision.Revision, Kind: revision.Kind, Name: revision.Name,
-		CreatedAt: revision.CreatedAt.UTC().Format(time.RFC3339),
+		CreatedAt: revision.CreatedAt.UTC().Format(time.RFC3339), Actor: actor,
 	}
 	if !revision.ExpiresAt.IsZero() {
 		summary.ExpiresAt = revision.ExpiresAt.UTC().Format(time.RFC3339)
@@ -1362,8 +1913,8 @@ func videoRevisionSummary(revision models.VideoProjectRevision) VideoProjectRevi
 	return summary
 }
 
-func compressVideoProjectSnapshot(document videoproject.Document) ([]byte, error) {
-	data, err := json.Marshal(document)
+func compressVideoProjectSnapshot(snapshot videoProjectRevisionSnapshot) ([]byte, error) {
+	data, err := json.Marshal(snapshot)
 	if err != nil {
 		return nil, err
 	}
@@ -1378,17 +1929,48 @@ func compressVideoProjectSnapshot(document videoproject.Document) ([]byte, error
 	return buffer.Bytes(), nil
 }
 
-func decompressVideoProjectSnapshot(snapshot []byte) (videoproject.Document, error) {
-	reader, err := gzip.NewReader(bytes.NewReader(snapshot))
+func decompressVideoProjectSnapshot(compressed []byte) (videoProjectRevisionSnapshot, error) {
+	var snapshot videoProjectRevisionSnapshot
+	reader, err := gzip.NewReader(bytes.NewReader(compressed))
 	if err != nil {
-		return videoproject.Document{}, err
+		return snapshot, err
 	}
 	defer reader.Close() //nolint:errcheck
-	data, err := io.ReadAll(io.LimitReader(reader, videoproject.MaxDocumentBytes+1))
-	if err != nil || len(data) > videoproject.MaxDocumentBytes {
-		return videoproject.Document{}, errors.New("snapshot is too large")
+	const envelopeAllowance = 64 << 10
+	data, err := io.ReadAll(io.LimitReader(reader, videoproject.MaxDocumentBytes+envelopeAllowance+1))
+	if err != nil || len(data) > videoproject.MaxDocumentBytes+envelopeAllowance {
+		return snapshot, errors.New("snapshot is too large")
 	}
-	return decodeVideoProjectDocument(string(data))
+	var probe struct {
+		SnapshotVersion int `json:"snapshot_version"`
+	}
+	if err := json.Unmarshal(data, &probe); err != nil {
+		return snapshot, err
+	}
+	if probe.SnapshotVersion == 0 {
+		document, err := decodeVideoProjectDocument(string(data))
+		snapshot.Document = document
+		return snapshot, err
+	}
+	if probe.SnapshotVersion != videoProjectSnapshotVersion {
+		return snapshot, fmt.Errorf("unsupported OpenPost Video Editor snapshot version %d", probe.SnapshotVersion)
+	}
+	var envelope struct {
+		SnapshotVersion     int             `json:"snapshot_version"`
+		Document            json.RawMessage `json:"document"`
+		CoverPreviewMediaID string          `json:"cover_preview_media_id,omitempty"`
+	}
+	if err := json.Unmarshal(data, &envelope); err != nil {
+		return snapshot, err
+	}
+	document, err := decodeVideoProjectDocument(string(envelope.Document))
+	if err != nil {
+		return snapshot, err
+	}
+	snapshot.SnapshotVersion = envelope.SnapshotVersion
+	snapshot.Document = document
+	snapshot.CoverPreviewMediaID = envelope.CoverPreviewMediaID
+	return snapshot, nil
 }
 
 func decodeVideoProjectDocument(encoded string) (videoproject.Document, error) {
@@ -1432,6 +2014,22 @@ func stringSet(values []string) map[string]struct{} {
 		}
 	}
 	return result
+}
+
+func uniqueVideoProjectStringsInOrder(values []string) []string {
+	seen := make(map[string]struct{}, len(values))
+	unique := make([]string, 0, len(values))
+	for _, value := range values {
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		unique = append(unique, value)
+	}
+	return unique
 }
 
 func validVideoVariant(value string) bool {

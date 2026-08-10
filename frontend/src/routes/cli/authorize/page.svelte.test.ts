@@ -45,6 +45,15 @@ const mocks = vi.hoisted(() => {
 vi.mock('$app/stores', () => ({ page: mocks.pageStore }));
 vi.mock('$app/navigation', () => ({ goto: mocks.goto }));
 vi.mock('$lib/stores/auth', () => ({ auth: mocks.authStore }));
+vi.mock('$lib/stores/workspace.svelte', () => ({
+	workspaceCtx: {
+		currentWorkspace: { id: 'workspace-a', name: 'Launch' },
+		workspaces: [
+			{ id: 'workspace-a', name: 'Launch' },
+			{ id: 'workspace-b', name: 'Support' }
+		]
+	}
+}));
 vi.mock('$lib/api/client', () => ({
 	client: {
 		GET: mocks.get,
@@ -88,7 +97,7 @@ describe('CLI authorization request identity', () => {
 
 		await screen.getByRole('button', { name: 'Approve' }).click();
 		expect(mocks.post).toHaveBeenCalledWith('/cli/auth/approve', {
-			body: { user_code: 'CODE-B', name: 'OpenPost CLI' }
+			body: { user_code: 'CODE-B', name: 'OpenPost CLI', workspace_id: 'workspace-a' }
 		});
 	});
 

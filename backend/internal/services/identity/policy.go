@@ -98,6 +98,10 @@ func policyFromModel(row models.OrganizationSSOPolicy) (Policy, error) {
 }
 
 func PolicyForOrganization(ctx context.Context, db *bun.DB, organizationID string) (Policy, error) {
+	return policyForOrganization(ctx, db, organizationID)
+}
+
+func policyForOrganization(ctx context.Context, db bun.IDB, organizationID string) (Policy, error) {
 	organizationID = strings.TrimSpace(organizationID)
 	fallback := DefaultPolicy(organizationID)
 	if organizationID == "" {
@@ -513,6 +517,10 @@ func (s *Service) AuthorizeTokenCreation(
 }
 
 func PasswordCredentialAllowed(ctx context.Context, db *bun.DB, userID string) (bool, error) {
+	return passwordCredentialAllowed(ctx, db, userID)
+}
+
+func passwordCredentialAllowed(ctx context.Context, db bun.IDB, userID string) (bool, error) {
 	var user models.User
 	if err := db.NewSelect().Model(&user).Column("id", "is_break_glass").
 		Where("id = ?", userID).Scan(ctx); err != nil {
@@ -533,7 +541,7 @@ func PasswordCredentialAllowed(ctx context.Context, db *bun.DB, userID string) (
 		return true, nil
 	}
 	for _, organizationID := range organizationIDs {
-		policy, err := PolicyForOrganization(ctx, db, organizationID)
+		policy, err := policyForOrganization(ctx, db, organizationID)
 		if err != nil {
 			return false, err
 		}

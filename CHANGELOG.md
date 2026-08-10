@@ -6,6 +6,8 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+- Added account settings for verification-code email changes, linked sign-in identity details with last-credential safeguards, finite scoped API-token creation, per-field public-profile visibility, and browser-scoped personal preferences. Migration 081 adds email-change challenges, linked-identity display names, and per-field public-profile visibility.
+- Added inspect-before-restore version history to Image and Video Editor projects, including lazy previews, change summaries, actor attribution, named checkpoints, exact pre-restore recovery points, conflict handling, cover preservation, and revision-owned media. Migration 082 adds revision-media ownership tables and bounded backfill state.
 - Added a machine-checked API and schema compatibility retirement registry with exact ownership, introduction history, replacement and migration decisions, normalized consumer evidence, a 90-day and two-stable-release sunset floor, and fail-closed OpenAPI removal gates.
 - Added final-image SPDX SBOM and full vulnerability-report artifacts to candidate and release workflows, a separately enforced pinned-scanner gate for fixable high and critical findings, and digest evidence that binds each report to the exact promoted image.
 - Added continuous Go and TypeScript reachability, documentation-graph, provider-fact, canonical public-route, and release-surface ownership checks with explicit roots and narrow exceptions.
@@ -51,6 +53,7 @@ All notable changes to this project are documented in this file.
 
 ### Fixed
 
+- Gave local, Capacitor, Turbo, and Docker frontend builds one repository-owned Node heap contract so large Vite builds no longer inherit conflicting 4 GiB limits.
 - Made PostgreSQL migration preparation normalize multiline `ALTER TABLE ... ADD COLUMN` statements idempotently, preventing fresh-schema bootstrap from aborting when the Bun bootstrap already created a newer column.
 - Prevented text-and-thread drafts, media, and schedules from crossing workspace boundaries by requiring save, stay, or discard decisions with origin-scoped race guards; scheduling and publishing failures now retain exact destination, segment, and field targets, focus the affected control, and remain retryable after authoritative revalidation.
 - Unified marketing route errors and the static-host 404 around one branded recovery source with product, documentation, email, and community paths that remain usable without application assets.

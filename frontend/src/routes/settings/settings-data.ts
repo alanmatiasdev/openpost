@@ -68,7 +68,66 @@ export const timezones = [
 
 export const inviteRoleOptions = ['editor', 'viewer', 'admin'] as const;
 
-export const apiTokenScopeOptions = ['mcp:read', 'mcp:full', 'cli:full'] as const;
+export type APITokenScope = NonNullable<components['schemas']['CreateAPITokenInputBody']['scope']>;
+
+export const apiTokenScopeOptions = [
+	'api:read',
+	'api:write',
+	'mcp:read',
+	'mcp:full',
+	'cli:full'
+] as const satisfies readonly APITokenScope[];
+
+export function isAPITokenScope(value: string): value is APITokenScope {
+	return (apiTokenScopeOptions as readonly string[]).includes(value);
+}
+
+export type APITokenExpiryPreset = '30' | '90' | '365' | 'custom';
+
+const dayMilliseconds = 24 * 60 * 60 * 1000;
+
+export function apiTokenCustomExpiryMin(now = new Date()) {
+	return new Date(now.getTime() + dayMilliseconds).toISOString().slice(0, 10);
+}
+
+export function apiTokenCustomExpiryMax(now = new Date()) {
+	// Custom dates are submitted at the end of the selected UTC day. Keeping
+	// the picker one day inside the server's 365-day limit makes its last
+	// selectable date valid at every time of day. The exact 365-day preset
+	// remains available separately.
+	return new Date(now.getTime() + 364 * dayMilliseconds).toISOString().slice(0, 10);
+}
+
+export function apiTokenExpiresAt(
+	preset: APITokenExpiryPreset,
+	customExpiry: string,
+	now = new Date()
+) {
+	if (preset === 'custom') {
+		if (!customExpiry) return '';
+		return new Date(`${customExpiry}T23:59:59.000Z`).toISOString();
+	}
+	return new Date(now.getTime() + Number(preset) * dayMilliseconds).toISOString();
+}
+
+export function buildProfileUpdateBody(input: {
+	displayName: string;
+	username: string;
+	publicProfilesAvailable: boolean | null;
+	publicProfileEnabled: boolean;
+	publicProfileVisibleFields: string[];
+}) {
+	return {
+		display_name: input.displayName,
+		username: input.username,
+		...(input.publicProfilesAvailable === true
+			? {
+					public_profile_enabled: input.publicProfileEnabled,
+					public_profile_visible_fields: input.publicProfileVisibleFields
+				}
+			: {})
+	};
+}
 
 export const billingPlans = [
 	{
@@ -128,38 +187,21 @@ export const billingPlans = [
 	}
 ] as const;
 
-export interface PasskeySummary {
-	id: string;
-	name: string;
-	created_at: string;
-	last_used_at: string;
-}
-
-export interface SecurityStatus {
-	user: {
-		id: string;
-		email: string;
-		username: string;
-		display_name?: string;
-		avatar_url?: string;
-		public_profile_enabled: boolean;
-		has_password: boolean;
-		is_managed: boolean;
-		managed_organization_name?: string;
-		created_at: string;
-	};
-	totp_enabled: boolean;
-	passkeys: PasskeySummary[] | null;
-	methods: string[] | null;
-}
+export type SecurityStatus = components['schemas']['SecurityStatusOutputBody'];
 
 export interface OIDCIdentitySummary {
 	id: string;
 	provider_id: string;
 	provider_name: string;
 	linked_email?: string;
+	linked_name?: string;
+	active: boolean;
 	created_at: string;
 	last_login_at?: string;
+}
+
+export function activeReauthProviderID(identities: OIDCIdentitySummary[]): string {
+	return identities.find((identity) => identity.active)?.provider_id ?? '';
 }
 
 export interface OIDCProviderSummary {
@@ -181,6 +223,13 @@ export interface AuthSessionSummary {
 	created_at: string;
 }
 
+export interface EmailChangeSummary {
+	id: string;
+	new_email: string;
+	expires_at: string;
+	sent_at?: string;
+}
+
 export interface APITokenSummary {
 	id: string;
 	name: string;
@@ -191,6 +240,7 @@ export interface APITokenSummary {
 	last_used_at?: string | null;
 	revoked_at?: string | null;
 	created_at: string;
+	status: 'active' | 'expired' | 'revoked';
 }
 
 export interface MCPActivityItem {

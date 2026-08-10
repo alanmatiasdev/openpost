@@ -22,6 +22,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/netguard"
+	"github.com/openpost/backend/internal/services/credentialguard"
 	servicecrypto "github.com/openpost/backend/internal/services/crypto"
 	"github.com/openpost/backend/internal/usernames"
 	"github.com/uptrace/bun"
@@ -60,6 +61,9 @@ var (
 	ErrDomainVerification     = errors.New("identity provider domain verification failed")
 	ErrOrganizationPermission = errors.New("organization administrator access required")
 	ErrRegistrationsClosed    = errors.New("registrations are disabled")
+	ErrIdentityNotFound       = errors.New("linked identity not found")
+	ErrPasskeyNotFound        = errors.New("passkey not found")
+	ErrFinalCredential        = errors.New("credential is the final usable sign-in method")
 )
 
 type EnvironmentProviderConfig struct {
@@ -614,6 +618,8 @@ func (s *Service) resolveIdentity(
 		}
 		if _, err := s.db.NewUpdate().
 			Model((*models.UserIdentity)(nil)).
+			Set("linked_email = ?", verified.Email).
+			Set("linked_name = ?", strings.TrimSpace(verified.Name)).
 			Set("last_login_at = ?", s.now()).
 			Where("id = ?", linked.ID).
 			Exec(ctx); err != nil {
@@ -659,6 +665,7 @@ func (s *Service) linkIdentity(
 		Subject:     verified.Subject,
 		UserID:      userID,
 		LinkedEmail: verified.Email,
+		LinkedName:  strings.TrimSpace(verified.Name),
 		CreatedAt:   now,
 		LastLoginAt: now,
 	}
@@ -743,10 +750,216 @@ func (s *Service) newJITIdentity(
 		Subject:     verified.Subject,
 		UserID:      user.ID,
 		LinkedEmail: verified.Email,
+		LinkedName:  strings.TrimSpace(verified.Name),
 		CreatedAt:   now,
 		LastLoginAt: now,
 	}
 	return user, linkedIdentity, nil
+}
+
+// UnlinkIdentity removes one sign-in identity while serializing credential
+// inspection and deletion on the user row. This prevents two concurrent
+// disconnects from each observing the other identity as a safe fallback.
+func (s *Service) UnlinkIdentity(ctx context.Context, userID, identityID string) error {
+	userID = strings.TrimSpace(userID)
+	identityID = strings.TrimSpace(identityID)
+	if userID == "" || identityID == "" {
+		return ErrIdentityNotFound
+	}
+
+	return s.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
+		return s.unlinkIdentityInTx(txCtx, tx, userID, identityID)
+	})
+}
+
+func (s *Service) unlinkIdentityInTx(ctx context.Context, tx bun.Tx, userID, identityID string) error {
+	user, err := lockCredentialUser(ctx, tx, userID, ErrIdentityNotFound)
+	if err != nil {
+		return err
+	}
+	linked, err := loadLinkedIdentity(ctx, tx, userID, identityID)
+	if err != nil {
+		return err
+	}
+	providerActive, err := identityProviderActive(ctx, tx, linked.ProviderID)
+	if err != nil {
+		return err
+	}
+	fallbacks, err := inspectCredentialFallbacks(ctx, tx, user, identityID)
+	if err != nil {
+		return err
+	}
+	if providerActive && fallbacks.identityCount == 0 && !fallbacks.passwordUsable && fallbacks.passkeyCount == 0 {
+		return ErrFinalCredential
+	}
+	if err := deleteLinkedIdentity(ctx, tx, userID, identityID); err != nil {
+		return err
+	}
+	return insertAudit(ctx, tx, AuditInput{
+		ProviderID:    linked.ProviderID,
+		ActorUserID:   userID,
+		SubjectUserID: userID,
+		Action:        "identity.unlinked",
+	}, s.now())
+}
+
+// RemovePasskey removes a passkey within the same serialized credential
+// mutation boundary used by UnlinkIdentity. Concurrent removals therefore
+// cannot each count the other credential as a fallback and leave the account
+// without a sign-in method.
+func (s *Service) RemovePasskey(ctx context.Context, userID, passkeyID string) error {
+	userID = strings.TrimSpace(userID)
+	passkeyID = strings.TrimSpace(passkeyID)
+	if userID == "" || passkeyID == "" {
+		return ErrPasskeyNotFound
+	}
+
+	return s.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
+		return s.removePasskeyInTx(txCtx, tx, userID, passkeyID)
+	})
+}
+
+func (s *Service) removePasskeyInTx(ctx context.Context, tx bun.Tx, userID, passkeyID string) error {
+	user, err := lockCredentialUser(ctx, tx, userID, ErrPasskeyNotFound)
+	if err != nil {
+		return err
+	}
+	exists, err := userPasskeyExists(ctx, tx, userID, passkeyID)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return ErrPasskeyNotFound
+	}
+	fallbacks, err := inspectCredentialFallbacks(ctx, tx, user, "")
+	if err != nil {
+		return err
+	}
+	if fallbacks.passkeyCount <= 1 && !fallbacks.passwordUsable && fallbacks.identityCount == 0 {
+		return ErrFinalCredential
+	}
+	if err := deleteUserPasskey(ctx, tx, userID, passkeyID); err != nil {
+		return err
+	}
+	if fallbacks.passkeyCount == 1 {
+		_, err = tx.NewUpdate().Model((*models.User)(nil)).
+			Set("passkey_enabled_at = NULL").
+			Where("id = ?", userID).
+			Exec(ctx)
+	}
+	return err
+}
+
+type credentialFallbacks struct {
+	identityCount  int
+	passkeyCount   int
+	passwordUsable bool
+}
+
+func lockCredentialUser(ctx context.Context, tx bun.Tx, userID string, notFound error) (*models.User, error) {
+	user, err := credentialguard.LockUserMutation(ctx, tx, userID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, notFound
+	}
+	return user, err
+}
+
+func loadLinkedIdentity(ctx context.Context, tx bun.Tx, userID, identityID string) (*models.UserIdentity, error) {
+	var linked models.UserIdentity
+	err := tx.NewSelect().Model(&linked).
+		Where("id = ? AND user_id = ?", identityID, userID).
+		Scan(ctx)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrIdentityNotFound
+	}
+	return &linked, err
+}
+
+func identityProviderActive(ctx context.Context, tx bun.Tx, providerID string) (bool, error) {
+	return tx.NewSelect().Model((*models.IdentityProvider)(nil)).
+		Where("id = ? AND is_active = ?", providerID, true).
+		Exists(ctx)
+}
+
+func inspectCredentialFallbacks(
+	ctx context.Context,
+	tx bun.Tx,
+	user *models.User,
+	excludedIdentityID string,
+) (credentialFallbacks, error) {
+	state := credentialFallbacks{}
+	var err error
+	state.identityCount, err = activeIdentityCount(ctx, tx, user.ID, excludedIdentityID)
+	if err != nil {
+		return state, err
+	}
+	state.passkeyCount, err = tx.NewSelect().Model((*models.UserPasskey)(nil)).
+		Where("user_id = ?", user.ID).
+		Count(ctx)
+	if err != nil {
+		return state, err
+	}
+	state.passwordUsable, err = usablePasswordCredential(ctx, tx, user)
+	return state, err
+}
+
+func deleteLinkedIdentity(ctx context.Context, tx bun.Tx, userID, identityID string) error {
+	result, err := tx.NewDelete().Model((*models.UserIdentity)(nil)).
+		Where("id = ? AND user_id = ?", identityID, userID).
+		Exec(ctx)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected != 1 {
+		return ErrIdentityNotFound
+	}
+	return nil
+}
+
+func userPasskeyExists(ctx context.Context, tx bun.Tx, userID, passkeyID string) (bool, error) {
+	return tx.NewSelect().Model((*models.UserPasskey)(nil)).
+		Where("id = ? AND user_id = ?", passkeyID, userID).
+		Exists(ctx)
+}
+
+func deleteUserPasskey(ctx context.Context, tx bun.Tx, userID, passkeyID string) error {
+	result, err := tx.NewDelete().Model((*models.UserPasskey)(nil)).
+		Where("id = ? AND user_id = ?", passkeyID, userID).
+		Exec(ctx)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected != 1 {
+		return ErrPasskeyNotFound
+	}
+	return nil
+}
+
+func activeIdentityCount(ctx context.Context, db bun.IDB, userID, excludedIdentityID string) (int, error) {
+	query := db.NewSelect().
+		TableExpr("user_identities AS identity").
+		Join("JOIN identity_providers AS provider ON provider.id = identity.provider_id").
+		Where("identity.user_id = ?", strings.TrimSpace(userID)).
+		Where("provider.is_active = ?", true)
+	if excludedIdentityID = strings.TrimSpace(excludedIdentityID); excludedIdentityID != "" {
+		query = query.Where("identity.id <> ?", excludedIdentityID)
+	}
+	return query.Count(ctx)
+}
+
+func usablePasswordCredential(ctx context.Context, db bun.IDB, user *models.User) (bool, error) {
+	if user == nil || strings.TrimSpace(user.PasswordHash) == "" {
+		return false, nil
+	}
+	return passwordCredentialAllowed(ctx, db, user.ID)
 }
 
 func (s *Service) insertJITUser(

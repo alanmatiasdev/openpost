@@ -38,6 +38,7 @@ type APITokenResponse struct {
 	LastUsedAt         *string `json:"last_used_at,omitempty" doc:"Last successful use time"`
 	RevokedAt          *string `json:"revoked_at,omitempty" doc:"Revocation time"`
 	CreatedAt          string  `json:"created_at" doc:"Creation time"`
+	Status             string  `json:"status" enum:"active,expired,revoked" doc:"Current token status"`
 }
 
 type ListAPITokensOutput struct {
@@ -46,10 +47,10 @@ type ListAPITokensOutput struct {
 
 type CreateAPITokenInput struct {
 	Body struct {
-		Name        string     `json:"name" doc:"User-visible token name"`
-		Scope       string     `json:"scope,omitempty" doc:"Token scope. Supported values: cli:full, mcp:read, mcp:full. Defaults to cli:full."`
+		Name        string     `json:"name" minLength:"1" maxLength:"120" doc:"Required user-visible token name"`
+		Scope       string     `json:"scope,omitempty" enum:"cli:full,mcp:read,mcp:full,api:read,api:write" doc:"Token scope. Defaults to cli:full."`
 		WorkspaceID string     `json:"workspace_id,omitempty" doc:"Optional workspace ID this token is limited to"`
-		ExpiresAt   *time.Time `json:"expires_at,omitempty" doc:"Explicit expiry. Null means never expires."`
+		ExpiresAt   *time.Time `json:"expires_at,omitempty" nullable:"true" doc:"Expiry time. Omitted or null defaults to 90 days; the maximum lifetime is one year."`
 	}
 }
 
@@ -104,74 +105,110 @@ func (h *APITokenHandler) registerCreateRoute(api huma.API) {
 		Middlewares:   huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
 		Errors:        []int{400, 403},
 	}, func(ctx context.Context, input *CreateAPITokenInput) (*CreateAPITokenOutput, error) {
-		userID := middleware.GetUserID(ctx)
-		workspaceID := strings.TrimSpace(input.Body.WorkspaceID)
-		if workspaceID == "" {
-			workspaceID = middleware.GetWorkspaceID(ctx)
-		}
-		if workspaceID != "" {
-			if h.db == nil {
-				return nil, huma.Error500InternalServerError("failed to check workspace access")
-			}
-			ok, err := middleware.CheckWorkspaceAccess(ctx, h.db, workspaceID, userID)
-			if err != nil {
-				return nil, huma.Error500InternalServerError("failed to check workspace access")
-			}
-			if !ok {
-				return nil, huma.Error403Forbidden("workspace not accessible")
-			}
-		}
-		var requestedExpiry time.Time
-		if input.Body.ExpiresAt != nil {
-			requestedExpiry = input.Body.ExpiresAt.UTC()
-		}
-		policyDecision, err := identity.AuthorizeTokenCreation(
-			ctx,
-			h.db,
-			userID,
-			middleware.GetSessionID(ctx),
-			workspaceID,
-			requestedExpiry,
-		)
-		if errors.Is(err, identity.ErrTokenPolicyDenied) {
-			return nil, huma.Error403Forbidden("organization policy does not allow API tokens")
-		}
-		if errors.Is(err, identity.ErrReauthRequired) || errors.Is(err, identity.ErrSSOAssuranceRequired) {
-			return nil, huma.Error403Forbidden("sign in with the organization identity provider before creating this token")
-		}
-		if err != nil {
-			return nil, huma.Error500InternalServerError("failed to evaluate API token policy")
-		}
-		expiresAt := input.Body.ExpiresAt
-		if !policyDecision.ExpiresAt.IsZero() {
-			expiresAt = &policyDecision.ExpiresAt
-		}
-
-		generated, err := h.tokens.GenerateTokenWithOptions(
-			ctx,
-			userID,
-			input.Body.Name,
-			input.Body.Scope,
-			apitokens.GenerateOptions{
-				ExpiresAt:          expiresAt,
-				WorkspaceID:        workspaceID,
-				OrganizationID:     policyDecision.OrganizationID,
-				IdentityProviderID: policyDecision.ProviderID,
-				AssuredAt:          policyDecision.AssuredAt,
-			},
-		)
-		if err != nil {
-			if errors.Is(err, apitokens.ErrInvalidScope) {
-				return nil, huma.Error400BadRequest("invalid api token scope")
-			}
-			return nil, huma.Error500InternalServerError("failed to create api token")
-		}
-
-		output := &CreateAPITokenOutput{}
-		output.Body.Token = generated.Token
-		output.Body.Item = apiTokenResponse(*generated.Model)
-		return output, nil
+		return h.createToken(ctx, input)
 	})
+}
+
+func (h *APITokenHandler) createToken(ctx context.Context, input *CreateAPITokenInput) (*CreateAPITokenOutput, error) {
+	userID := middleware.GetUserID(ctx)
+	workspaceID, err := h.resolveTokenWorkspace(ctx, userID, input.Body.WorkspaceID)
+	if err != nil {
+		return nil, err
+	}
+	policyDecision, err := h.authorizeTokenCreation(ctx, userID, workspaceID, input.Body.ExpiresAt)
+	if err != nil {
+		return nil, err
+	}
+
+	expiresAt := input.Body.ExpiresAt
+	if !policyDecision.ExpiresAt.IsZero() {
+		expiresAt = &policyDecision.ExpiresAt
+	}
+	generated, err := h.tokens.GenerateTokenWithOptions(
+		ctx,
+		userID,
+		input.Body.Name,
+		input.Body.Scope,
+		apitokens.GenerateOptions{
+			ExpiresAt:          expiresAt,
+			WorkspaceID:        workspaceID,
+			OrganizationID:     policyDecision.OrganizationID,
+			IdentityProviderID: policyDecision.ProviderID,
+			AssuredAt:          policyDecision.AssuredAt,
+		},
+	)
+	if err != nil {
+		return nil, apiTokenCreationError(err)
+	}
+
+	output := &CreateAPITokenOutput{}
+	output.Body.Token = generated.Token
+	output.Body.Item = apiTokenResponse(*generated.Model)
+	return output, nil
+}
+
+func (h *APITokenHandler) resolveTokenWorkspace(ctx context.Context, userID, requestedWorkspaceID string) (string, error) {
+	workspaceID := strings.TrimSpace(requestedWorkspaceID)
+	if workspaceID == "" {
+		workspaceID = middleware.GetWorkspaceID(ctx)
+	}
+	if workspaceID == "" {
+		return "", nil
+	}
+	if h.db == nil {
+		return "", huma.Error500InternalServerError("failed to check workspace access")
+	}
+	ok, err := middleware.CheckWorkspaceAccess(ctx, h.db, workspaceID, userID)
+	if err != nil {
+		return "", huma.Error500InternalServerError("failed to check workspace access")
+	}
+	if !ok {
+		return "", huma.Error403Forbidden("workspace not accessible")
+	}
+	return workspaceID, nil
+}
+
+func (h *APITokenHandler) authorizeTokenCreation(
+	ctx context.Context,
+	userID,
+	workspaceID string,
+	expiresAt *time.Time,
+) (identity.TokenPolicyDecision, error) {
+	var requestedExpiry time.Time
+	if expiresAt != nil {
+		requestedExpiry = expiresAt.UTC()
+	}
+	decision, err := identity.AuthorizeTokenCreation(
+		ctx,
+		h.db,
+		userID,
+		middleware.GetSessionID(ctx),
+		workspaceID,
+		requestedExpiry,
+	)
+	switch {
+	case errors.Is(err, identity.ErrTokenPolicyDenied):
+		return decision, huma.Error403Forbidden("organization policy does not allow API tokens")
+	case errors.Is(err, identity.ErrReauthRequired), errors.Is(err, identity.ErrSSOAssuranceRequired):
+		return decision, huma.Error403Forbidden("sign in with the organization identity provider before creating this token")
+	case err != nil:
+		return decision, huma.Error500InternalServerError("failed to evaluate API token policy")
+	default:
+		return decision, nil
+	}
+}
+
+func apiTokenCreationError(err error) error {
+	switch {
+	case errors.Is(err, apitokens.ErrInvalidScope):
+		return huma.Error400BadRequest("invalid api token scope")
+	case errors.Is(err, apitokens.ErrInvalidName):
+		return huma.Error400BadRequest("api token name is required and must be at most 120 characters")
+	case errors.Is(err, apitokens.ErrInvalidExpiry):
+		return huma.Error400BadRequest("api token expiration must be in the future and no more than one year away")
+	default:
+		return huma.Error500InternalServerError("failed to create api token")
+	}
 }
 
 func (h *APITokenHandler) registerRevokeRoute(api huma.API) {
@@ -206,6 +243,12 @@ func apiTokenResponses(tokens []models.APIToken) []APITokenResponse {
 }
 
 func apiTokenResponse(token models.APIToken) APITokenResponse {
+	status := "active"
+	if !token.RevokedAt.IsZero() {
+		status = "revoked"
+	} else if !token.ExpiresAt.IsZero() && !token.ExpiresAt.After(time.Now().UTC()) {
+		status = "expired"
+	}
 	return APITokenResponse{
 		ID:                 token.ID,
 		Name:               token.Name,
@@ -218,6 +261,7 @@ func apiTokenResponse(token models.APIToken) APITokenResponse {
 		LastUsedAt:         optionalTime(token.LastUsedAt),
 		RevokedAt:          optionalTime(token.RevokedAt),
 		CreatedAt:          token.CreatedAt.UTC().Format(time.RFC3339),
+		Status:             status,
 	}
 }
 

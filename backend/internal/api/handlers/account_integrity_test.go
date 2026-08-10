@@ -4,8 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"testing"
 
+	"github.com/google/uuid"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/openpost/backend/internal/models"
 	"github.com/stretchr/testify/require"
@@ -16,7 +18,9 @@ import (
 func createHandlerTestDB(t *testing.T, modelsToCreate ...interface{}) *bun.DB {
 	t.Helper()
 
-	sqldb, err := sql.Open("sqlite3", fmt.Sprintf("file:%s?mode=memory&cache=shared", t.Name()))
+	testName := strings.NewReplacer("/", "_", " ", "_").Replace(t.Name())
+	dsn := fmt.Sprintf("file:%s_%s?mode=memory&cache=shared", testName, uuid.NewString())
+	sqldb, err := sql.Open("sqlite3", dsn)
 	require.NoError(t, err)
 
 	db := bun.NewDB(sqldb, sqlitedialect.New())

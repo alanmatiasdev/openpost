@@ -43,6 +43,7 @@ FORM: Operate surface extending the OpenPost Video Editor start screen; no water
 	} from '@openpost/video-project';
 	import {
 		createBlankLocalVideoProject,
+		cloudVideoSourceIDForMedia,
 		createLocalVideoProjectFromFiles,
 		formatBytes
 	} from '$lib/video-editor/project';
@@ -214,6 +215,11 @@ FORM: Operate surface extending the OpenPost Video Editor start screen; no water
 				...created,
 				cloud_project_id: response.id,
 				cloud_revision: response.revision,
+				cover_source_id: cloudVideoSourceIDForMedia(
+					response.document as unknown as VideoProjectDocumentV1,
+					response.cover_preview_media_id
+				),
+				cloud_cover_preview_media_id: response.cover_preview_media_id || undefined,
 				state: 'cloud'
 			});
 			await goto(resolve(`/video-editor/${mirrored.id}` as '/'));

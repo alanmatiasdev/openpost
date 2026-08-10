@@ -155,6 +155,7 @@ const developmentSidebar = [
 			{ text: 'Setup', link: '/development/setup' },
 			{ text: 'Architecture', link: '/development/architecture' },
 			{ text: 'API Reference', link: '/development/api-reference' },
+			{ text: 'API Tokens', link: '/development/api-tokens' },
 			{ text: 'API Compatibility', link: '/development/compatibility-policy' },
 			{ text: 'Frontend', link: '/development/frontend' },
 			{ text: 'Image Editor Completeness', link: '/development/image-editor-completeness' },

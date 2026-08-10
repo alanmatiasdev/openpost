@@ -16,6 +16,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/openpost/backend/internal/api/middleware"
 	"github.com/openpost/backend/internal/models"
+	"github.com/openpost/backend/internal/publicprofiles"
 	"github.com/openpost/backend/internal/services/auth"
 	"github.com/openpost/backend/internal/services/crypto"
 	"github.com/openpost/backend/internal/services/emailverification"
@@ -59,6 +60,7 @@ type AuthHandler struct {
 	mfa                       *mfa.Service
 	mfaRecovery               *mfarecovery.Service
 	registrationsDisabled     bool
+	publicProfilesEnabled     bool
 	limiter                   *ratelimit.Limiter
 	passwordResetSender       passwordmail.Sender
 	emailVerification         *emailverification.Service
@@ -88,8 +90,13 @@ func NewAuthHandler(
 		mfa:                   mfaService,
 		mfaRecovery:           mfarecovery.NewService(db),
 		registrationsDisabled: registrationsDisabled,
+		publicProfilesEnabled: true,
 		limiter:               ratelimit.New(),
 	}
+}
+
+func (h *AuthHandler) SetPublicProfilesEnabled(enabled bool) {
+	h.publicProfilesEnabled = enabled
 }
 
 func (h *AuthHandler) SetSessionService(sessionService *sessions.Service) {
@@ -241,31 +248,34 @@ type RemovePasskeyInput struct {
 }
 
 type UserProfile struct {
-	ID                      string    `json:"id" doc:"User ID"`
-	Email                   string    `json:"email" doc:"User email address"`
-	Username                string    `json:"username" doc:"Unique public username"`
-	DisplayName             string    `json:"display_name" doc:"User display name"`
-	AvatarURL               string    `json:"avatar_url" doc:"Profile avatar URL"`
-	PublicProfileEnabled    bool      `json:"public_profile_enabled" doc:"Whether the public activity profile is visible"`
-	ComposerExperience      string    `json:"composer_experience" enum:"specialized,unified" doc:"Preferred composer experience"`
-	IsAdmin                 bool      `json:"is_admin" doc:"Whether this user can manage instance-level settings"`
-	TermsVersion            string    `json:"terms_version,omitempty" doc:"Terms version accepted by the user"`
-	PrivacyVersion          string    `json:"privacy_version,omitempty" doc:"Privacy version acknowledged by the user"`
-	LegalAcceptedAt         time.Time `json:"legal_accepted_at,omitempty" doc:"When the current account policy was accepted"`
-	LegalAcceptanceRequired bool      `json:"legal_acceptance_required" doc:"Whether the current hosted policy still needs acceptance"`
-	CreatedAt               time.Time `json:"created_at" doc:"Account creation time"`
-	EmailVerified           bool      `json:"email_verified" doc:"Whether the account email address is verified"`
-	HasPassword             bool      `json:"has_password" doc:"Whether this account has a local password credential"`
-	IsManaged               bool      `json:"is_managed" doc:"Whether this account was provisioned by an organization identity provider"`
-	ManagedOrganizationName string    `json:"managed_organization_name,omitempty" doc:"Organization managing this account"`
+	ID                         string    `json:"id" doc:"User ID"`
+	Email                      string    `json:"email" doc:"User email address"`
+	Username                   string    `json:"username" doc:"Unique public username"`
+	DisplayName                string    `json:"display_name" doc:"User display name"`
+	AvatarURL                  string    `json:"avatar_url" doc:"Profile avatar URL"`
+	PublicProfileEnabled       bool      `json:"public_profile_enabled" doc:"Whether the public activity profile is visible"`
+	PublicProfileVisibleFields []string  `json:"public_profile_visible_fields" doc:"Optional account fields visible while the public profile is enabled"`
+	ComposerExperience         string    `json:"composer_experience" enum:"specialized,unified" doc:"Preferred composer experience"`
+	IsAdmin                    bool      `json:"is_admin" doc:"Whether this user can manage instance-level settings"`
+	TermsVersion               string    `json:"terms_version,omitempty" doc:"Terms version accepted by the user"`
+	PrivacyVersion             string    `json:"privacy_version,omitempty" doc:"Privacy version acknowledged by the user"`
+	LegalAcceptedAt            time.Time `json:"legal_accepted_at,omitempty" doc:"When the current account policy was accepted"`
+	LegalAcceptanceRequired    bool      `json:"legal_acceptance_required" doc:"Whether the current hosted policy still needs acceptance"`
+	CreatedAt                  time.Time `json:"created_at" doc:"Account creation time"`
+	EmailVerified              bool      `json:"email_verified" doc:"Whether the account email address is verified"`
+	HasPassword                bool      `json:"has_password" doc:"Whether this account has a local password credential"`
+	PasswordUsable             bool      `json:"password_usable" doc:"Whether the local password can currently be used for sign-in and sensitive-action reauthentication"`
+	IsManaged                  bool      `json:"is_managed" doc:"Whether this account was provisioned by an organization identity provider"`
+	ManagedOrganizationName    string    `json:"managed_organization_name,omitempty" doc:"Organization managing this account"`
 }
 
 type UpdateProfileInputBody struct {
-	Username             *string `json:"username,omitempty" minLength:"3" maxLength:"30" doc:"Unique public username"`
-	DisplayName          *string `json:"display_name,omitempty" maxLength:"120" doc:"User display name"`
-	AvatarURL            *string `json:"avatar_url,omitempty" maxLength:"1000" doc:"Profile avatar URL"`
-	PublicProfileEnabled *bool   `json:"public_profile_enabled,omitempty" doc:"Whether the public activity profile is visible"`
-	ComposerExperience   *string `json:"composer_experience,omitempty" enum:"specialized,unified" doc:"Preferred composer experience"`
+	Username                   *string   `json:"username,omitempty" minLength:"3" maxLength:"30" doc:"Unique public username"`
+	DisplayName                *string   `json:"display_name,omitempty" maxLength:"120" doc:"User display name"`
+	AvatarURL                  *string   `json:"avatar_url,omitempty" maxLength:"1000" doc:"Profile avatar URL"`
+	PublicProfileEnabled       *bool     `json:"public_profile_enabled,omitempty" doc:"Whether the public activity profile is visible"`
+	PublicProfileVisibleFields *[]string `json:"public_profile_visible_fields,omitempty" doc:"Optional public-profile fields: display_name, avatar, joined_at, activity, platforms, workspaces, plan"`
+	ComposerExperience         *string   `json:"composer_experience,omitempty" enum:"specialized,unified" doc:"Preferred composer experience"`
 }
 
 type UpdateProfileInput struct {
@@ -1088,7 +1098,17 @@ func (h *AuthHandler) updateUserProfile(ctx context.Context, userID string, body
 		func() (bool, error) { return applyDisplayNameUpdate(update, body.DisplayName) },
 		func() (bool, error) { return applyAvatarURLUpdate(update, body.AvatarURL) },
 		func() (bool, error) {
-			return h.applyPublicProfileUpdate(ctx, update, userID, body.Username, body.PublicProfileEnabled)
+			return h.applyPublicProfileUpdate(
+				ctx,
+				update,
+				userID,
+				body.Username,
+				body.PublicProfileEnabled,
+				body.PublicProfileVisibleFields,
+			)
+		},
+		func() (bool, error) {
+			return applyPublicProfileVisibilityUpdate(update, body.PublicProfileVisibleFields)
 		},
 		func() (bool, error) { return applyComposerExperienceUpdate(update, body.ComposerExperience) },
 	} {
@@ -1196,11 +1216,15 @@ func (h *AuthHandler) applyPublicProfileUpdate(
 	userID string,
 	requestedUsername *string,
 	enabled *bool,
+	visibleFields *[]string,
 ) (bool, error) {
 	if enabled == nil {
 		return false, nil
 	}
 	if *enabled {
+		if !h.publicProfilesEnabled {
+			return false, huma.Error403Forbidden("public profiles are disabled for this instance")
+		}
 		username, err := h.profileUsername(ctx, userID, requestedUsername)
 		if err != nil {
 			return false, err
@@ -1208,8 +1232,36 @@ func (h *AuthHandler) applyPublicProfileUpdate(
 		if username == "" {
 			return false, huma.Error400BadRequest("set a username before making the profile public")
 		}
+		if visibleFields == nil {
+			var currentlyPublic bool
+			if err := h.db.NewSelect().
+				Model((*models.User)(nil)).
+				Column("public_profile_enabled").
+				Where("id = ?", userID).
+				Scan(ctx, &currentlyPublic); err != nil {
+				return false, huma.Error500InternalServerError("failed to load public profile settings")
+			}
+			if !currentlyPublic {
+				return false, huma.Error400BadRequest("choose which profile fields to show before making the profile public")
+			}
+		}
 	}
 	update.Set("public_profile_enabled = ?", *enabled)
+	return true, nil
+}
+
+func applyPublicProfileVisibilityUpdate(update *bun.UpdateQuery, requested *[]string) (bool, error) {
+	if requested == nil {
+		return false, nil
+	}
+	raw, _, err := publicprofiles.Normalize(*requested)
+	if errors.Is(err, publicprofiles.ErrUnsupportedField) {
+		return false, huma.Error400BadRequest("unsupported public profile field")
+	}
+	if err != nil {
+		return false, huma.Error500InternalServerError("failed to update public profile visibility")
+	}
+	update.Set("public_profile_visibility_json = ?", raw)
 	return true, nil
 }
 
@@ -1837,7 +1889,7 @@ func (h *AuthHandler) RemovePasskey(api huma.API) {
 		Summary:     "Remove a passkey from the current user",
 		Tags:        []string{tagAuth},
 		Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.authenticator)},
-		Errors:      []int{400, 401, 404, 429},
+		Errors:      []int{400, 401, 404, 429, 500},
 	}, func(ctx context.Context, input *RemovePasskeyInput) (*SecurityStatusOutput, error) {
 		userID := middleware.GetUserID(ctx)
 		user, err := h.getUserByID(ctx, userID)
@@ -1854,26 +1906,18 @@ func (h *AuthHandler) RemovePasskey(api huma.API) {
 			return nil, err
 		}
 
-		result, err := h.db.NewDelete().Model((*models.UserPasskey)(nil)).
-			Where("id = ? AND user_id = ?", input.PasskeyID, userID).
-			Exec(ctx)
-		if err != nil {
-			return nil, huma.Error500InternalServerError("failed to remove passkey")
+		if h.identity == nil {
+			return nil, huma.Error500InternalServerError("identity service is unavailable")
 		}
-		affected, _ := result.RowsAffected()
-		if affected == 0 {
-			return nil, huma.Error404NotFound("passkey not found")
-		}
-
-		var remaining int
-		remaining, err = h.db.NewSelect().Model((*models.UserPasskey)(nil)).
-			Where("user_id = ?", userID).
-			Count(ctx)
-		if err == nil && remaining == 0 {
-			_, _ = h.db.NewUpdate().Model((*models.User)(nil)).
-				Set("passkey_enabled_at = NULL").
-				Where("id = ?", userID).
-				Exec(ctx)
+		if err := h.identity.RemovePasskey(ctx, userID, input.PasskeyID); err != nil {
+			switch {
+			case errors.Is(err, identity.ErrFinalCredential):
+				return nil, huma.Error400BadRequest("add another sign-in method before removing this passkey")
+			case errors.Is(err, identity.ErrPasskeyNotFound):
+				return nil, huma.Error404NotFound("passkey not found")
+			default:
+				return nil, huma.Error500InternalServerError("failed to remove passkey")
+			}
 		}
 
 		return h.securityStatusResponse(ctx, userID)
@@ -2146,20 +2190,23 @@ func (h *AuthHandler) securityStatusResponse(ctx context.Context, userID string)
 }
 
 func (h *AuthHandler) toUserProfile(user *models.User) *UserProfile {
+	hasPassword := strings.TrimSpace(user.PasswordHash) != ""
 	return &UserProfile{
-		ID:                   user.ID,
-		Email:                user.Email,
-		Username:             user.Username,
-		DisplayName:          user.DisplayName,
-		AvatarURL:            user.AvatarURL,
-		PublicProfileEnabled: user.PublicProfile,
-		ComposerExperience:   normalizedComposerExperience(user.ComposerExperience),
-		IsAdmin:              user.IsAdmin,
-		HasPassword:          strings.TrimSpace(user.PasswordHash) != "",
-		TermsVersion:         user.TermsVersion,
-		PrivacyVersion:       user.PrivacyVersion,
-		LegalAcceptedAt:      user.LegalAcceptedAt,
-		EmailVerified:        !user.EmailVerifiedAt.IsZero(),
+		ID:                         user.ID,
+		Email:                      user.Email,
+		Username:                   user.Username,
+		DisplayName:                user.DisplayName,
+		AvatarURL:                  user.AvatarURL,
+		PublicProfileEnabled:       user.PublicProfile,
+		PublicProfileVisibleFields: publicprofiles.Parse(user.PublicProfileVisibilityJSON).Fields(),
+		ComposerExperience:         normalizedComposerExperience(user.ComposerExperience),
+		IsAdmin:                    user.IsAdmin,
+		HasPassword:                hasPassword,
+		PasswordUsable:             hasPassword,
+		TermsVersion:               user.TermsVersion,
+		PrivacyVersion:             user.PrivacyVersion,
+		LegalAcceptedAt:            user.LegalAcceptedAt,
+		EmailVerified:              !user.EmailVerifiedAt.IsZero(),
 		LegalAcceptanceRequired: h.accountPolicy.Required &&
 			(user.LegalAcceptedAt.IsZero() ||
 				user.TermsVersion != h.accountPolicy.TermsVersion ||
@@ -2179,6 +2226,12 @@ func (h *AuthHandler) profileForUser(ctx context.Context, user *models.User) *Us
 	profile := h.toUserProfile(user)
 	if h.identity == nil {
 		return profile
+	}
+	passwordAllowed, err := h.identity.PasswordCredentialAllowed(ctx, user.ID)
+	if err != nil {
+		profile.PasswordUsable = false
+	} else {
+		profile.PasswordUsable = profile.HasPassword && passwordAllowed
 	}
 	managed, organizationName, err := h.identity.ManagedUserState(ctx, user.ID)
 	if err == nil {

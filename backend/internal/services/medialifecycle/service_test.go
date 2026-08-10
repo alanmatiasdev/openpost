@@ -1,6 +1,8 @@
 package medialifecycle
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"database/sql"
 	"errors"
@@ -13,6 +15,7 @@ import (
 
 	"github.com/google/uuid"
 	_ "github.com/mattn/go-sqlite3"
+	"github.com/openpost/backend/internal/database/migrations"
 	"github.com/openpost/backend/internal/models"
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun"
@@ -257,7 +260,7 @@ func TestSweepProtectsEveryBatchReferenceClass(t *testing.T) {
 	db := newMediaLifecycleTestDB(t)
 	now := time.Now().UTC()
 	protected := []string{
-		"favorite", "tagged", "collection", "brand-font", "design-reference", "design-cover",
+		"favorite", "tagged", "collection", "brand-font", "design-reference", "design-revision-reference", "design-cover",
 		"design-page-preview", "design-page-export", "template-reference", "template-preview",
 		"video-reference", "video-cover", "parent-reference", "post-media", "post-variant",
 		"thread-root", "thread-variant", "publication-asset", "segment-media",
@@ -284,6 +287,9 @@ func TestSweepProtectsEveryBatchReferenceClass(t *testing.T) {
 		`INSERT INTO brand_fonts (brand_kit_id, media_id) VALUES ('brand-1', 'brand-font')`,
 		`INSERT INTO design_documents (id, workspace_id, cover_preview_media_id) VALUES ('design-1', 'workspace-1', 'design-cover')`,
 		`INSERT INTO design_media_references (design_document_id, media_id) VALUES ('design-1', 'design-reference')`,
+		`INSERT INTO design_revisions (id, design_document_id) VALUES ('design-revision-1', 'design-1')`,
+		`INSERT INTO design_revision_media_references (revision_id, media_id) VALUES ('design-revision-1', 'design-revision-reference')`,
+		`INSERT INTO design_revision_media_index_state (revision_id) VALUES ('design-revision-1')`,
 		`INSERT INTO design_pages (design_document_id, preview_media_id, latest_export_media_id) VALUES ('design-1', 'design-page-preview', 'design-page-export')`,
 		`INSERT INTO design_templates (id, workspace_id, preview_media_id) VALUES ('template-1', 'workspace-1', 'template-preview')`,
 		`INSERT INTO design_template_media_references (design_template_id, media_id) VALUES ('template-1', 'template-reference')`,
@@ -322,6 +328,220 @@ func TestSweepProtectsEveryBatchReferenceClass(t *testing.T) {
 	require.False(t, unreferenced.TrashedAt.IsZero())
 	require.NoError(t, db.NewSelect().Model(&trashedActive).Where("id = ?", "trashed-active").Scan(t.Context()))
 	require.False(t, trashedActive.TrashedAt.IsZero(), "an active reference must block a due purge")
+}
+
+func TestSweepReleasesSoftDeletedEditorOwnershipBeforePurge(t *testing.T) {
+	t.Parallel()
+
+	db := newMediaLifecycleTestDB(t)
+	now := time.Now().UTC()
+	for _, mediaID := range []string{"deleted-design", "deleted-video", "active-design"} {
+		insertLifecycleMedia(
+			t,
+			db,
+			mediaID,
+			RetentionLibrary,
+			now.Add(-30*24*time.Hour),
+			now.Add(-8*24*time.Hour),
+			now.Add(-time.Hour),
+		)
+	}
+
+	statements := []string{
+		`INSERT INTO design_documents (id, workspace_id, deleted_at) VALUES ('deleted-design-document', 'workspace-1', current_timestamp)`,
+		`INSERT INTO design_revisions (id, design_document_id, kind) VALUES ('deleted-design-revision', 'deleted-design-document', 'checkpoint')`,
+		`INSERT INTO design_revision_media_references (revision_id, media_id) VALUES ('deleted-design-revision', 'deleted-design')`,
+		`INSERT INTO design_revision_media_index_state (revision_id) VALUES ('deleted-design-revision')`,
+		`INSERT INTO design_media_references (design_document_id, media_id) VALUES ('deleted-design-document', 'deleted-design')`,
+		`INSERT INTO video_projects (id, workspace_id, deleted_at) VALUES ('deleted-video-project', 'workspace-1', current_timestamp)`,
+		`INSERT INTO video_project_revisions (id, video_project_id, kind) VALUES ('deleted-video-revision', 'deleted-video-project', 'checkpoint')`,
+		`INSERT INTO video_project_assets (video_project_id, source_id, revision_id, media_id, usage) VALUES ('deleted-video-project', 'deleted-source', 'deleted-video-revision', 'deleted-video', 'revision:deleted-video-revision')`,
+		`INSERT INTO video_revision_media_index_state (revision_id) VALUES ('deleted-video-revision')`,
+		`INSERT INTO design_documents (id, workspace_id) VALUES ('active-design-document', 'workspace-1')`,
+		`INSERT INTO design_revisions (id, design_document_id, kind) VALUES ('active-design-revision', 'active-design-document', 'checkpoint')`,
+		`INSERT INTO design_revision_media_references (revision_id, media_id) VALUES ('active-design-revision', 'active-design')`,
+		`INSERT INTO design_revision_media_index_state (revision_id) VALUES ('active-design-revision')`,
+	}
+	for _, statement := range statements {
+		_, err := db.Exec(statement)
+		require.NoError(t, err, statement)
+	}
+
+	require.NoError(t, NewService(db, nil).Sweep(t.Context(), "workspace-1", now))
+
+	for _, mediaID := range []string{"deleted-design", "deleted-video"} {
+		count, err := db.NewSelect().Model((*models.MediaAttachment)(nil)).
+			Where("id = ?", mediaID).
+			Count(t.Context())
+		require.NoError(t, err)
+		require.Zero(t, count, "%s must be purged after its deleted owner releases it", mediaID)
+	}
+	activeCount, err := db.NewSelect().Model((*models.MediaAttachment)(nil)).
+		Where("id = ?", "active-design").
+		Count(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, 1, activeCount, "an active revision must keep its media protected")
+}
+
+func TestSweepPrunesExpiredEditorAutosavesWithoutLaterEditorWrite(t *testing.T) {
+	t.Parallel()
+
+	db := newMediaLifecycleTestDB(t)
+	now := time.Now().UTC()
+	for _, mediaID := range []string{"expired-design-media", "expired-video-media"} {
+		insertLifecycleMedia(
+			t,
+			db,
+			mediaID,
+			RetentionLibrary,
+			now.Add(-30*24*time.Hour),
+			now.Add(-8*24*time.Hour),
+			now.Add(-time.Hour),
+		)
+	}
+
+	statements := []string{
+		`INSERT INTO design_documents (id, workspace_id) VALUES ('expiring-design', 'workspace-1')`,
+		`INSERT INTO design_revisions (id, design_document_id, kind, expires_at) VALUES ('expired-design-revision', 'expiring-design', 'autosave', datetime('now', '-1 hour'))`,
+		`INSERT INTO design_revision_media_references (revision_id, media_id) VALUES ('expired-design-revision', 'expired-design-media')`,
+		`INSERT INTO design_revision_media_index_state (revision_id) VALUES ('expired-design-revision')`,
+		`INSERT INTO video_projects (id, workspace_id) VALUES ('expiring-video', 'workspace-1')`,
+		`INSERT INTO video_project_revisions (id, video_project_id, kind, expires_at) VALUES ('expired-video-revision', 'expiring-video', 'autosave', datetime('now', '-1 hour'))`,
+		`INSERT INTO video_project_assets (video_project_id, source_id, revision_id, media_id, usage) VALUES ('expiring-video', 'expired-video-source', 'expired-video-revision', 'expired-video-media', 'revision:expired-video-revision')`,
+		`INSERT INTO video_revision_media_index_state (revision_id) VALUES ('expired-video-revision')`,
+	}
+	for _, statement := range statements {
+		_, err := db.Exec(statement)
+		require.NoError(t, err, statement)
+	}
+
+	require.NoError(t, NewService(db, nil).Sweep(t.Context(), "workspace-1", now))
+
+	for _, tableAndID := range []struct {
+		table string
+		id    string
+	}{
+		{table: "design_revisions", id: "expired-design-revision"},
+		{table: "video_project_revisions", id: "expired-video-revision"},
+		{table: "media_attachments", id: "expired-design-media"},
+		{table: "media_attachments", id: "expired-video-media"},
+	} {
+		count, err := db.NewSelect().Table(tableAndID.table).
+			Where("id = ?", tableAndID.id).
+			Count(t.Context())
+		require.NoError(t, err)
+		require.Zero(t, count, "%s %s must be removed by the lifecycle sweep", tableAndID.table, tableAndID.id)
+	}
+}
+
+func TestSweepAdvancesDeferredRevisionIndexWithoutRestartAndFailsClosed(t *testing.T) {
+	t.Parallel()
+
+	db := newMediaLifecycleTestDB(t)
+	now := time.Now().UTC()
+	insertLifecycleMedia(
+		t,
+		db,
+		"deferred-cleanup",
+		RetentionLibrary,
+		now.Add(-30*24*time.Hour),
+		now.Add(-8*24*time.Hour),
+		now.Add(-time.Hour),
+	)
+	_, err := db.Exec("INSERT INTO design_documents (id, workspace_id) VALUES ('backfill-design', 'workspace-1')")
+	require.NoError(t, err)
+	snapshot := gzipLifecycleSnapshot(t, []byte(`{"pages":[]}`))
+	for index := range 101 {
+		_, err = db.Exec(
+			"INSERT INTO design_revisions (id, design_document_id, kind, snapshot) VALUES (?, 'backfill-design', 'checkpoint', ?)",
+			fmt.Sprintf("backfill-revision-%03d", index),
+			snapshot,
+		)
+		require.NoError(t, err)
+	}
+
+	service := NewService(db, nil)
+	err = service.Sweep(t.Context(), "workspace-1", now)
+	require.ErrorContains(t, err, "editor revision media indexing is still in progress")
+	markerCount, countErr := db.NewSelect().Table("design_revision_media_index_state").Count(t.Context())
+	require.NoError(t, countErr)
+	require.Equal(t, 100, markerCount, "one sweep must advance only one bounded backfill batch")
+	mediaCount, countErr := db.NewSelect().Model((*models.MediaAttachment)(nil)).
+		Where("id = ?", "deferred-cleanup").
+		Count(t.Context())
+	require.NoError(t, countErr)
+	require.Equal(t, 1, mediaCount, "cleanup must fail closed while any revision remains unindexed")
+
+	require.NoError(t, service.Sweep(t.Context(), "workspace-1", now))
+	markerCount, countErr = db.NewSelect().Table("design_revision_media_index_state").Count(t.Context())
+	require.NoError(t, countErr)
+	require.Equal(t, 101, markerCount, "a later in-process sweep must finish the deferred work without a restart")
+	mediaCount, countErr = db.NewSelect().Model((*models.MediaAttachment)(nil)).
+		Where("id = ?", "deferred-cleanup").
+		Count(t.Context())
+	require.NoError(t, countErr)
+	require.Zero(t, mediaCount, "cleanup must resume once indexing is complete")
+}
+
+func TestSweepScopesDeferredRevisionIndexToWorkspace(t *testing.T) {
+	t.Parallel()
+
+	db := newMediaLifecycleTestDB(t)
+	now := time.Now().UTC()
+	_, err := db.Exec(
+		`INSERT INTO media_attachments
+		 (id, workspace_id, file_path, retention_class, created_at, last_used_at, trashed_at, purge_after)
+		 VALUES ('workspace-b-cleanup', 'workspace-b', 'workspace-b-cleanup', ?, ?, ?, ?, ?)`,
+		RetentionLibrary,
+		now.Add(-30*24*time.Hour),
+		now.Add(-30*24*time.Hour),
+		now.Add(-8*24*time.Hour),
+		now.Add(-time.Hour),
+	)
+	require.NoError(t, err)
+	_, err = db.Exec(`INSERT INTO design_documents (id, workspace_id) VALUES
+		('workspace-a-design', 'workspace-a'),
+		('workspace-b-design', 'workspace-b')`)
+	require.NoError(t, err)
+	snapshot := gzipLifecycleSnapshot(t, []byte(`{"pages":[]}`))
+	for index := range 101 {
+		_, err = db.Exec(
+			"INSERT INTO design_revisions (id, design_document_id, kind, snapshot) VALUES (?, 'workspace-a-design', 'checkpoint', ?)",
+			fmt.Sprintf("a-revision-%03d", index),
+			snapshot,
+		)
+		require.NoError(t, err)
+	}
+	_, err = db.Exec(
+		"INSERT INTO design_revisions (id, design_document_id, kind, snapshot) VALUES ('z-workspace-b-revision', 'workspace-b-design', 'checkpoint', ?)",
+		snapshot,
+	)
+	require.NoError(t, err)
+
+	require.NoError(t, NewService(db, nil).Sweep(t.Context(), "workspace-b", now))
+
+	pendingA, err := migrations.WorkspaceEditorRevisionMediaBackfillPending(
+		t.Context(),
+		db,
+		"workspace-a",
+	)
+	require.NoError(t, err)
+	require.True(t, pendingA, "workspace A must remain pending after workspace B advances independently")
+	pendingB, err := migrations.WorkspaceEditorRevisionMediaBackfillPending(
+		t.Context(),
+		db,
+		"workspace-b",
+	)
+	require.NoError(t, err)
+	require.False(t, pendingB)
+	markerCount, err := db.NewSelect().Table("design_revision_media_index_state").Count(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, 1, markerCount, "workspace B's single revision must be the only row advanced")
+	mediaCount, err := db.NewSelect().Model((*models.MediaAttachment)(nil)).
+		Where("id = ?", "workspace-b-cleanup").
+		Count(t.Context())
+	require.NoError(t, err)
+	require.Zero(t, mediaCount, "workspace B cleanup must not wait behind workspace A's backlog")
 }
 
 func TestSweepFailsClosedOnUndecodableWorkspaceReferences(t *testing.T) {
@@ -491,8 +711,8 @@ func TestSweepQueryBudgetDoesNotScaleWithCandidateCount(t *testing.T) {
 	)
 	require.Equal(t, trashSingle, trashVolume, "trash query volume must be constant within one lifecycle batch")
 	require.Equal(t, purgeSingle, purgeVolume, "purge query volume must be constant within one lifecycle batch")
-	require.LessOrEqual(t, trashVolume, int64(12))
-	require.LessOrEqual(t, purgeVolume, int64(15))
+	require.LessOrEqual(t, trashVolume, int64(14))
+	require.LessOrEqual(t, purgeVolume, int64(22))
 }
 
 func measureSweepQueryCount(t *testing.T, candidates int, purge bool) int64 {
@@ -543,6 +763,16 @@ func nullableLifecycleTime(value time.Time) any {
 	return value
 }
 
+func gzipLifecycleSnapshot(t *testing.T, data []byte) []byte {
+	t.Helper()
+	var compressed bytes.Buffer
+	writer := gzip.NewWriter(&compressed)
+	_, err := writer.Write(data)
+	require.NoError(t, err)
+	require.NoError(t, writer.Close())
+	return compressed.Bytes()
+}
+
 func assertSweepCommitsBeforeDeletingStorageObjects(t *testing.T, db *bun.DB) {
 	t.Helper()
 	now := time.Now().UTC()
@@ -589,6 +819,8 @@ func newMediaLifecycleTestDB(t *testing.T) *bun.DB {
 	require.NoError(t, err)
 	sqldb.SetMaxOpenConns(1)
 	db := bun.NewDB(sqldb, sqlitedialect.New())
+	_, err = db.Exec("PRAGMA foreign_keys=ON")
+	require.NoError(t, err)
 	createMediaLifecycleTestTables(t, db)
 	t.Cleanup(func() { require.NoError(t, db.Close()) })
 	return db
@@ -605,13 +837,64 @@ func createMediaLifecycleTestTables(t *testing.T, db *bun.DB) {
 		`CREATE TABLE media_collection_items (collection_id TEXT, media_id TEXT)`,
 		`CREATE TABLE brand_kits (id TEXT PRIMARY KEY, workspace_id TEXT)`,
 		`CREATE TABLE brand_fonts (brand_kit_id TEXT, media_id TEXT)`,
-		`CREATE TABLE design_media_references (design_document_id TEXT, media_id TEXT)`,
-		`CREATE TABLE design_template_media_references (design_template_id TEXT, media_id TEXT)`,
-		`CREATE TABLE video_project_assets (video_project_id TEXT, media_id TEXT)`,
 		`CREATE TABLE design_documents (id TEXT PRIMARY KEY, workspace_id TEXT, cover_preview_media_id TEXT, deleted_at TIMESTAMP NULL)`,
+		`CREATE TABLE design_media_references (
+			design_document_id TEXT NOT NULL, design_page_id TEXT NOT NULL DEFAULT '',
+			media_id TEXT NOT NULL, usage TEXT NOT NULL DEFAULT 'layer',
+			created_at TIMESTAMP NOT NULL DEFAULT current_timestamp,
+			PRIMARY KEY (design_document_id, design_page_id, media_id),
+			FOREIGN KEY (design_document_id) REFERENCES design_documents(id) ON DELETE CASCADE,
+			FOREIGN KEY (media_id) REFERENCES media_attachments(id) ON DELETE RESTRICT
+		)`,
+		`CREATE TABLE design_revisions (
+			id TEXT PRIMARY KEY, design_document_id TEXT, snapshot BLOB,
+			kind TEXT NOT NULL DEFAULT 'autosave', expires_at TIMESTAMP,
+			FOREIGN KEY (design_document_id) REFERENCES design_documents(id) ON DELETE CASCADE
+		)`,
+		`CREATE TABLE design_revision_media_references (
+			revision_id TEXT NOT NULL, media_id TEXT NOT NULL,
+			usage TEXT NOT NULL DEFAULT 'snapshot',
+			created_at TIMESTAMP NOT NULL DEFAULT current_timestamp,
+			PRIMARY KEY (revision_id, media_id),
+			FOREIGN KEY (revision_id) REFERENCES design_revisions(id) ON DELETE CASCADE,
+			FOREIGN KEY (media_id) REFERENCES media_attachments(id) ON DELETE RESTRICT
+		)`,
+		`CREATE TABLE design_revision_media_index_state (
+			revision_id TEXT PRIMARY KEY,
+			media_count INTEGER NOT NULL DEFAULT 0,
+			missing_media_count INTEGER NOT NULL DEFAULT 0,
+			status TEXT NOT NULL DEFAULT 'complete',
+			failure_code TEXT NOT NULL DEFAULT '',
+			processed_at TIMESTAMP NOT NULL DEFAULT current_timestamp,
+			FOREIGN KEY (revision_id) REFERENCES design_revisions(id) ON DELETE CASCADE
+		)`,
+		`CREATE TABLE design_template_media_references (design_template_id TEXT, media_id TEXT)`,
+		`CREATE TABLE video_projects (id TEXT PRIMARY KEY, workspace_id TEXT, cover_preview_media_id TEXT, deleted_at TIMESTAMP NULL)`,
+		`CREATE TABLE video_project_revisions (
+			id TEXT PRIMARY KEY, video_project_id TEXT, snapshot BLOB,
+			kind TEXT NOT NULL DEFAULT 'autosave', expires_at TIMESTAMP,
+			FOREIGN KEY (video_project_id) REFERENCES video_projects(id) ON DELETE CASCADE
+		)`,
+		`CREATE TABLE video_project_assets (
+			video_project_id TEXT NOT NULL, source_id TEXT NOT NULL DEFAULT '', revision_id TEXT,
+			media_id TEXT NOT NULL, usage TEXT NOT NULL DEFAULT 'source',
+			created_at TIMESTAMP NOT NULL DEFAULT current_timestamp,
+			PRIMARY KEY (video_project_id, source_id),
+			FOREIGN KEY (video_project_id) REFERENCES video_projects(id) ON DELETE CASCADE,
+			FOREIGN KEY (revision_id) REFERENCES video_project_revisions(id) ON DELETE CASCADE,
+			FOREIGN KEY (media_id) REFERENCES media_attachments(id) ON DELETE RESTRICT
+		)`,
+		`CREATE TABLE video_revision_media_index_state (
+			revision_id TEXT PRIMARY KEY,
+			media_count INTEGER NOT NULL DEFAULT 0,
+			missing_media_count INTEGER NOT NULL DEFAULT 0,
+			status TEXT NOT NULL DEFAULT 'complete',
+			failure_code TEXT NOT NULL DEFAULT '',
+			processed_at TIMESTAMP NOT NULL DEFAULT current_timestamp,
+			FOREIGN KEY (revision_id) REFERENCES video_project_revisions(id) ON DELETE CASCADE
+		)`,
 		`CREATE TABLE design_pages (design_document_id TEXT, preview_media_id TEXT, latest_export_media_id TEXT)`,
 		`CREATE TABLE design_templates (id TEXT PRIMARY KEY, workspace_id TEXT, preview_media_id TEXT)`,
-		`CREATE TABLE video_projects (id TEXT PRIMARY KEY, workspace_id TEXT, cover_preview_media_id TEXT, deleted_at TIMESTAMP NULL)`,
 		`CREATE TABLE posts (id TEXT PRIMARY KEY, workspace_id TEXT, status TEXT, content TEXT NOT NULL DEFAULT '')`,
 		`CREATE TABLE post_media (post_id TEXT, media_id TEXT)`,
 		`CREATE TABLE post_variants (id TEXT, post_id TEXT, media_ids TEXT)`,

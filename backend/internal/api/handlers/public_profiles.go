@@ -10,6 +10,7 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/openpost/backend/internal/models"
+	"github.com/openpost/backend/internal/publicprofiles"
 	"github.com/openpost/backend/internal/usernames"
 	"github.com/uptrace/bun"
 )
@@ -17,11 +18,16 @@ import (
 const publicProfileActivityDays = 365
 
 type PublicProfileHandler struct {
-	db *bun.DB
+	db      *bun.DB
+	enabled bool
 }
 
-func NewPublicProfileHandler(db *bun.DB) *PublicProfileHandler {
-	return &PublicProfileHandler{db: db}
+func NewPublicProfileHandler(db *bun.DB, enabled ...bool) *PublicProfileHandler {
+	publicProfilesEnabled := true
+	if len(enabled) > 0 {
+		publicProfilesEnabled = enabled[0]
+	}
+	return &PublicProfileHandler{db: db, enabled: publicProfilesEnabled}
 }
 
 type GetPublicProfileInput struct {
@@ -43,18 +49,19 @@ type PublicProfileRanking struct {
 type PublicProfileOutput struct {
 	Body struct {
 		Username      string                     `json:"username"`
-		DisplayName   string                     `json:"display_name"`
-		AvatarURL     string                     `json:"avatar_url"`
+		VisibleFields []string                   `json:"visible_fields" doc:"Optional account fields this profile owner chose to disclose"`
+		DisplayName   string                     `json:"display_name,omitempty"`
+		AvatarURL     string                     `json:"avatar_url,omitempty"`
 		PlanID        string                     `json:"plan_id,omitempty" doc:"Highest active OpenPost plan available to the profile owner"`
-		JoinedAt      time.Time                  `json:"joined_at"`
-		LifetimePosts int                        `json:"lifetime_posts"`
-		PeakPosts     int                        `json:"peak_posts"`
-		CurrentStreak int                        `json:"current_streak"`
-		LongestStreak int                        `json:"longest_streak"`
-		ActiveDays    int                        `json:"active_days"`
-		Activity      []PublicProfileActivityDay `json:"activity"`
-		TopPlatforms  []PublicProfileRanking     `json:"top_platforms"`
-		TopWorkspaces []PublicProfileRanking     `json:"top_workspaces"`
+		JoinedAt      *time.Time                 `json:"joined_at,omitempty"`
+		LifetimePosts *int                       `json:"lifetime_posts,omitempty"`
+		PeakPosts     *int                       `json:"peak_posts,omitempty"`
+		CurrentStreak *int                       `json:"current_streak,omitempty"`
+		LongestStreak *int                       `json:"longest_streak,omitempty"`
+		ActiveDays    *int                       `json:"active_days,omitempty"`
+		Activity      []PublicProfileActivityDay `json:"activity,omitempty"`
+		TopPlatforms  []PublicProfileRanking     `json:"top_platforms,omitempty"`
+		TopWorkspaces []PublicProfileRanking     `json:"top_workspaces,omitempty"`
 	}
 }
 
@@ -77,61 +84,150 @@ func (h *PublicProfileHandler) RegisterRoutes(api huma.API) {
 		Path:        "/public/profiles/{username}",
 		Summary:     "Get an opt-in public publishing profile",
 		Tags:        []string{tagProfiles},
-		Errors:      []int{404, 500},
+		Errors:      []int{403, 404, 500},
 	}, func(ctx context.Context, input *GetPublicProfileInput) (*PublicProfileOutput, error) {
-		username := usernames.Normalize(input.Username)
-		if usernames.Validate(username) != nil {
-			return nil, huma.Error404NotFound("public profile not found")
-		}
+		return h.getPublicProfile(ctx, input)
+	})
+}
 
-		var user models.User
-		if err := h.db.NewSelect().Model(&user).
-			Where("LOWER(username) = ?", username).
-			Where("public_profile_enabled = ?", true).
-			Scan(ctx); err != nil {
-			if err == sql.ErrNoRows {
-				return nil, huma.Error404NotFound("public profile not found")
-			}
-			return nil, huma.Error500InternalServerError("failed to load public profile")
-		}
+func (h *PublicProfileHandler) getPublicProfile(ctx context.Context, input *GetPublicProfileInput) (*PublicProfileOutput, error) {
+	if !h.enabled {
+		return nil, huma.Error403Forbidden("public profiles are disabled")
+	}
+	username := usernames.Normalize(input.Username)
+	if usernames.Validate(username) != nil {
+		return nil, huma.Error404NotFound("public profile not found")
+	}
+	user, err := h.loadPublicProfileUser(ctx, username)
+	if err != nil {
+		return nil, err
+	}
 
-		publications, err := h.loadPublishedProfilePublications(ctx, user.ID)
-		if err != nil {
-			return nil, huma.Error500InternalServerError("failed to load public profile activity")
-		}
-		topPlatforms, err := h.loadTopProfilePlatforms(ctx, user.ID)
-		if err != nil {
-			return nil, huma.Error500InternalServerError("failed to load public profile platforms")
-		}
-		topWorkspaces, err := h.loadTopProfileWorkspaces(ctx, user.ID)
-		if err != nil {
-			return nil, huma.Error500InternalServerError("failed to load public profile workspaces")
-		}
-		planID, err := h.loadPublicProfilePlan(ctx, user.ID)
-		if err != nil {
-			return nil, huma.Error500InternalServerError("failed to load public profile plan")
-		}
+	visibility := publicprofiles.Parse(user.PublicProfileVisibilityJSON)
+	out := newPublicProfileOutput(user, visibility)
+	if err := h.populatePublicProfileActivity(ctx, user, visibility, out); err != nil {
+		return nil, err
+	}
+	if err := h.populatePublicProfilePlatforms(ctx, user, visibility, out); err != nil {
+		return nil, err
+	}
+	if err := h.populatePublicProfileWorkspaces(ctx, user, visibility, out); err != nil {
+		return nil, err
+	}
+	if err := h.populatePublicProfilePlan(ctx, user, visibility, out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
 
-		activity, peak, currentStreak, longestStreak, activeDays := publicProfileActivity(publications, time.Now().UTC())
-		out := &PublicProfileOutput{}
-		out.Body.Username = user.Username
+func (h *PublicProfileHandler) loadPublicProfileUser(ctx context.Context, username string) (*models.User, error) {
+	var user models.User
+	err := h.db.NewSelect().Model(&user).
+		Where("LOWER(username) = ?", username).
+		Where("public_profile_enabled = ?", true).
+		Scan(ctx)
+	if err == sql.ErrNoRows {
+		return nil, huma.Error404NotFound("public profile not found")
+	}
+	if err != nil {
+		return nil, huma.Error500InternalServerError("failed to load public profile")
+	}
+	return &user, nil
+}
+
+func newPublicProfileOutput(user *models.User, visibility publicprofiles.Visibility) *PublicProfileOutput {
+	out := &PublicProfileOutput{}
+	out.Body.Username = user.Username
+	out.Body.VisibleFields = visibility.Fields()
+	if visibility.Has(publicprofiles.FieldDisplayName) {
 		out.Body.DisplayName = strings.TrimSpace(user.DisplayName)
 		if out.Body.DisplayName == "" {
 			out.Body.DisplayName = "@" + user.Username
 		}
+	}
+	if visibility.Has(publicprofiles.FieldAvatar) {
 		out.Body.AvatarURL = user.AvatarURL
-		out.Body.PlanID = planID
-		out.Body.JoinedAt = user.CreatedAt
-		out.Body.LifetimePosts = len(publications)
-		out.Body.PeakPosts = peak
-		out.Body.CurrentStreak = currentStreak
-		out.Body.LongestStreak = longestStreak
-		out.Body.ActiveDays = activeDays
-		out.Body.Activity = activity
-		out.Body.TopPlatforms = profileRankings(topPlatforms)
-		out.Body.TopWorkspaces = profileRankings(topWorkspaces)
-		return out, nil
-	})
+	}
+	if visibility.Has(publicprofiles.FieldJoinedAt) {
+		joinedAt := user.CreatedAt
+		out.Body.JoinedAt = &joinedAt
+	}
+	return out
+}
+
+func (h *PublicProfileHandler) populatePublicProfileActivity(
+	ctx context.Context,
+	user *models.User,
+	visibility publicprofiles.Visibility,
+	out *PublicProfileOutput,
+) error {
+	if !visibility.Has(publicprofiles.FieldActivity) {
+		return nil
+	}
+	publications, err := h.loadPublishedProfilePublications(ctx, user.ID)
+	if err != nil {
+		return huma.Error500InternalServerError("failed to load public profile activity")
+	}
+	activity, peak, currentStreak, longestStreak, activeDays := publicProfileActivity(publications, time.Now().UTC())
+	lifetimePosts := len(publications)
+	out.Body.LifetimePosts = &lifetimePosts
+	out.Body.PeakPosts = &peak
+	out.Body.CurrentStreak = &currentStreak
+	out.Body.LongestStreak = &longestStreak
+	out.Body.ActiveDays = &activeDays
+	out.Body.Activity = activity
+	return nil
+}
+
+func (h *PublicProfileHandler) populatePublicProfilePlatforms(
+	ctx context.Context,
+	user *models.User,
+	visibility publicprofiles.Visibility,
+	out *PublicProfileOutput,
+) error {
+	if !visibility.Has(publicprofiles.FieldPlatforms) {
+		return nil
+	}
+	topPlatforms, err := h.loadTopProfilePlatforms(ctx, user.ID)
+	if err != nil {
+		return huma.Error500InternalServerError("failed to load public profile platforms")
+	}
+	out.Body.TopPlatforms = profileRankings(topPlatforms)
+	return nil
+}
+
+func (h *PublicProfileHandler) populatePublicProfileWorkspaces(
+	ctx context.Context,
+	user *models.User,
+	visibility publicprofiles.Visibility,
+	out *PublicProfileOutput,
+) error {
+	if !visibility.Has(publicprofiles.FieldWorkspaces) {
+		return nil
+	}
+	topWorkspaces, err := h.loadTopProfileWorkspaces(ctx, user.ID)
+	if err != nil {
+		return huma.Error500InternalServerError("failed to load public profile workspaces")
+	}
+	out.Body.TopWorkspaces = profileRankings(topWorkspaces)
+	return nil
+}
+
+func (h *PublicProfileHandler) populatePublicProfilePlan(
+	ctx context.Context,
+	user *models.User,
+	visibility publicprofiles.Visibility,
+	out *PublicProfileOutput,
+) error {
+	if !visibility.Has(publicprofiles.FieldPlan) {
+		return nil
+	}
+	planID, err := h.loadPublicProfilePlan(ctx, user.ID)
+	if err != nil {
+		return huma.Error500InternalServerError("failed to load public profile plan")
+	}
+	out.Body.PlanID = planID
+	return nil
 }
 
 func (h *PublicProfileHandler) loadPublicProfilePlan(ctx context.Context, userID string) (string, error) {
@@ -207,7 +303,7 @@ func (h *PublicProfileHandler) loadTopProfileWorkspaces(ctx context.Context, use
 		ColumnExpr("w.name AS name").
 		ColumnExpr("COUNT(*) AS count").
 		Join("JOIN workspaces AS w ON w.id = p.workspace_id").
-		Join("JOIN workspace_members AS wm ON wm.workspace_id = p.workspace_id AND wm.user_id = ?", userID).
+		Join("JOIN workspace_members AS wm ON wm.workspace_id = p.workspace_id AND wm.user_id = ? AND wm.status = ?", userID, models.WorkspaceMemberStatusActive).
 		Where("p.created_by = ?", userID).
 		Where("p.status = ?", models.PublicationStatusPublished).
 		Group("p.workspace_id", "w.name").

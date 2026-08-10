@@ -38,10 +38,10 @@ func NewCLIAuthHandler(auth *cliauth.Service, authenticator middleware.Authentic
 
 type StartCLIAuthInput struct {
 	Body struct {
-		ClientName      string `json:"client_name" doc:"CLI client name"`
+		ClientName      string `json:"client_name" maxLength:"120" doc:"CLI client name"`
 		ClientVersion   string `json:"client_version" doc:"CLI client version"`
 		ClientOS        string `json:"client_os" doc:"CLI host operating system"`
-		RequestedScopes string `json:"requested_scopes" doc:"Requested API token scopes"`
+		RequestedScopes string `json:"requested_scopes,omitempty" doc:"Requested API token scope; omitted or cli:full"`
 	}
 }
 
@@ -76,8 +76,8 @@ type ApproveCLIAuthInput struct {
 	Body struct {
 		DeviceCode  string `json:"device_code,omitempty"`
 		UserCode    string `json:"user_code,omitempty"`
-		Scopes      string `json:"scopes,omitempty"`
-		Name        string `json:"name,omitempty"`
+		Scopes      string `json:"scopes,omitempty" doc:"Compatibility field; when present it must match the displayed requested scope"`
+		Name        string `json:"name,omitempty" maxLength:"120" doc:"Name for the resulting API token"`
 		WorkspaceID string `json:"workspace_id,omitempty" doc:"Workspace the resulting token is limited to"`
 	}
 }
@@ -129,6 +129,12 @@ func (h *CLIAuthHandler) RegisterRoutes(api huma.API) {
 			RequestedScopes: input.Body.RequestedScopes,
 		})
 		if err != nil {
+			if errors.Is(err, apitokens.ErrInvalidName) {
+				return nil, huma.Error400BadRequest("cli client name must be at most 120 characters")
+			}
+			if errors.Is(err, apitokens.ErrInvalidScope) {
+				return nil, huma.Error400BadRequest("requested_scopes must be cli:full")
+			}
 			return nil, huma.Error500InternalServerError("failed to start cli authorization")
 		}
 		out := &StartCLIAuthOutput{}
@@ -185,7 +191,7 @@ func (h *CLIAuthHandler) RegisterRoutes(api huma.API) {
 		Summary:     "Approve CLI device authorization",
 		Tags:        []string{tagAuth},
 		Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.authenticator)},
-		Errors:      []int{400, 404, 409},
+		Errors:      []int{400, 403, 404, 409},
 	}, func(ctx context.Context, input *ApproveCLIAuthInput) (*CLIAuthDecisionOutput, error) {
 		options := cliauth.ApprovalOptions{WorkspaceID: strings.TrimSpace(input.Body.WorkspaceID)}
 		if h.identity != nil && options.WorkspaceID != "" {
@@ -302,6 +308,14 @@ func cliAuthError(err error) error {
 		return huma.Error400BadRequest("access_denied")
 	case errors.Is(err, cliauth.ErrAlreadyUsed):
 		return huma.Error409Conflict("cli auth session already completed")
+	case errors.Is(err, cliauth.ErrWorkspaceAccess):
+		return huma.Error403Forbidden("workspace not accessible")
+	case errors.Is(err, apitokens.ErrInvalidName):
+		return huma.Error400BadRequest("api token name is required and must be at most 120 characters")
+	case errors.Is(err, apitokens.ErrInvalidScope):
+		return huma.Error400BadRequest("approval scope must be one supported scope")
+	case errors.Is(err, cliauth.ErrScopeMismatch):
+		return huma.Error400BadRequest("approval scope must match the scope shown for this request")
 	case err == nil:
 		return nil
 	default:

@@ -656,7 +656,7 @@ func (h *WorkspaceHandler) AcceptWorkspaceInvitation(api huma.API) {
 		if err != nil {
 			return nil, workspaceTeamHTTPError(err, "failed to fetch workspace invitation")
 		}
-		return h.acceptWorkspaceInvitation(ctx, invitation, middleware.GetUserID(ctx), middleware.GetUserEmail(ctx))
+		return h.acceptWorkspaceInvitation(ctx, invitation, middleware.GetUserID(ctx))
 	})
 
 	huma.Register(api, huma.Operation{
@@ -674,12 +674,7 @@ func (h *WorkspaceHandler) AcceptWorkspaceInvitation(api huma.API) {
 		if err != nil {
 			return nil, workspaceTeamHTTPError(err, "failed to fetch workspace invitation")
 		}
-		return h.acceptWorkspaceInvitation(
-			ctx,
-			invitation,
-			middleware.GetUserID(ctx),
-			middleware.GetUserEmail(ctx),
-		)
+		return h.acceptWorkspaceInvitation(ctx, invitation, middleware.GetUserID(ctx))
 	})
 }
 
@@ -687,12 +682,11 @@ func (h *WorkspaceHandler) acceptWorkspaceInvitation(
 	ctx context.Context,
 	invitation models.WorkspaceInvitation,
 	userID string,
-	userEmail string,
 ) (*AcceptWorkspaceInvitationOutput, error) {
 	if !middleware.WorkspaceScopeAllows(ctx, invitation.WorkspaceID) {
 		return nil, huma.Error403Forbidden("token is not scoped to this workspace")
 	}
-	if err := h.team.AcceptInvitation(ctx, invitation, userID, userEmail); err != nil {
+	if err := h.team.AcceptInvitation(ctx, invitation, userID); err != nil {
 		return nil, workspaceTeamHTTPError(err, "failed to accept workspace invitation")
 	}
 

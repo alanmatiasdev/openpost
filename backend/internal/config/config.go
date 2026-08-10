@@ -31,6 +31,7 @@ type Config struct {
 	JWTSecret               string
 	EncryptionKey           string
 	DisableRegistrations    bool
+	PublicProfilesEnabled   bool
 	FrontendURL             string
 	PublicURL               string
 	CORSOrigins             []string
@@ -182,6 +183,7 @@ func Load() *Config {
 		JWTSecret:               getEnvWithFallbacks("OPENPOST_JWT_SECRET", "", "JWT_SECRET"),
 		EncryptionKey:           getEnvWithFallbacks("OPENPOST_ENCRYPTION_KEY", "", "ENCRYPTION_KEY"),
 		DisableRegistrations:    getEnvBoolWithAliases(false, "OPENPOST_DISABLE_REGISTRATIONS"),
+		PublicProfilesEnabled:   getEnvBoolWithAliases(true, "OPENPOST_PUBLIC_PROFILES_ENABLED"),
 		FrontendURL:             frontendURL,
 		PublicURL:               getEnvWithFallbacks("OPENPOST_PUBLIC_URL", "", "OPENPOST_APP_URL", "OPENPOST_FRONTEND_URL"),
 		LegalAcceptanceRequired: getEnvBoolWithAliases(legalRequired, "OPENPOST_LEGAL_ACCEPTANCE_REQUIRED"),

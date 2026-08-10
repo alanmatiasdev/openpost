@@ -350,9 +350,9 @@ func TestAcceptWorkspaceInvitationAddsWorkspaceMember(t *testing.T) {
 
 	authenticator := workspaceTestAuthenticator{
 		"admin-token":  {UserID: "admin-1", Email: "admin@example.com"},
-		"invite-token": {UserID: "user-1", Email: "teammate@example.com"},
+		"invite-token": {UserID: "user-1", Email: "former-address@example.com"},
 		"scoped-token": {
-			UserID: "user-1", Email: "teammate@example.com", WorkspaceID: "ws-2",
+			UserID: "user-1", Email: "former-address@example.com", WorkspaceID: "ws-2",
 		},
 	}
 	srv := newWorkspaceTestServerWithAuthenticator(t, entitlements.NewSelfHostedService(), authenticator)
@@ -377,6 +377,23 @@ func TestAcceptWorkspaceInvitationAddsWorkspaceMember(t *testing.T) {
 		CreatedAt:       time.Now().UTC(),
 	}).Exec(ctx)
 	require.NoError(t, err)
+	oldAddressInviteToken := "op_inv_old_address"
+	_, err = srv.db.NewInsert().Model(&models.WorkspaceInvitation{
+		ID:              "invite-old-address",
+		WorkspaceID:     "ws-1",
+		Email:           "former-address@example.com",
+		Role:            models.WorkspaceRoleViewer,
+		InvitedByUserID: "admin-1",
+		TokenHash:       hashWorkspaceInvitationToken(oldAddressInviteToken),
+		ExpiresAt:       time.Now().UTC().Add(24 * time.Hour),
+		CreatedAt:       time.Now().UTC(),
+	}).Exec(ctx)
+	require.NoError(t, err)
+
+	oldAddressResp := srv.postJSON(t, "/api/v1/workspace-invitations/accept", map[string]string{
+		"token": oldAddressInviteToken,
+	}, "invite-token")
+	require.Equal(t, http.StatusForbidden, oldAddressResp.Code, oldAddressResp.Body.String())
 
 	scopedResp := srv.postJSON(t, "/api/v1/workspace-invitations/accept", map[string]string{
 		"token": rawInviteToken,

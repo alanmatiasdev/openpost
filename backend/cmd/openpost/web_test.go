@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -15,7 +16,11 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
+	_ "github.com/mattn/go-sqlite3"
+	"github.com/openpost/backend/internal/models"
 	"github.com/stretchr/testify/require"
+	"github.com/uptrace/bun"
+	"github.com/uptrace/bun/dialect/sqlitedialect"
 )
 
 func withAppRoutes(webFS fstest.MapFS, routes ...string) fstest.MapFS {
@@ -238,7 +243,7 @@ func TestSpaStartupRejectsMissingOrMalformedRouteManifest(t *testing.T) {
 				defer func() {
 					recovered = recover()
 				}()
-				registerSpaRoutesFromFS(echo.New(), test.files, nil, "", false)
+				registerSpaRoutesFromFS(echo.New(), test.files, nil, "", false, true)
 			}()
 			require.NotNil(t, recovered)
 			require.Contains(t, fmt.Sprint(recovered), "route manifest is missing or invalid")
@@ -277,6 +282,7 @@ func TestManagedSpaRootExposesProductPricingAndPoliciesWithoutJavaScript(t *test
 		webFS,
 		nil,
 		"https://app.openpost.social",
+		true,
 		true,
 	)
 
@@ -329,6 +335,7 @@ func TestManagedSpaHeadMatchesGetHeadersWithoutBody(t *testing.T) {
 		webFS,
 		nil,
 		"https://app.openpost.social",
+		true,
 		true,
 	)
 
@@ -438,4 +445,58 @@ func TestRenderUnavailablePublicProfileHTMLIsNotIndexed(t *testing.T) {
 
 	rendered := renderPublicProfileHTML([]byte("<html><head></head><body>app</body></html>"), nil, "")
 	require.Contains(t, string(rendered), `name="robots" content="noindex"`)
+}
+
+func TestDirectPublicProfileRoutesUseSafeDistinctStatusClasses(t *testing.T) {
+	webFS := fstest.MapFS{
+		"index.html": {Data: []byte("<html><head></head><body>app</body></html>")},
+	}
+
+	t.Run("disabled", func(t *testing.T) {
+		e := echo.New()
+		registerSpaRoutesWithProfileMetadata(e, webFS, nil, "", false, false)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/u/person", nil))
+		require.Equal(t, http.StatusNotFound, rec.Code)
+		require.Contains(t, rec.Body.String(), `name="robots" content="noindex"`)
+	})
+
+	t.Run("private or missing", func(t *testing.T) {
+		e := echo.New()
+		registerSpaRoutesWithProfileMetadata(e, webFS, nil, "", false, true)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/u/person", nil))
+		require.Equal(t, http.StatusNotFound, rec.Code)
+	})
+
+	t.Run("backend failure", func(t *testing.T) {
+		sqldb, err := sql.Open("sqlite3", "file:public-profile-failure?mode=memory&cache=private")
+		require.NoError(t, err)
+		db := bun.NewDB(sqldb, sqlitedialect.New())
+		t.Cleanup(func() { require.NoError(t, db.Close()) })
+		e := echo.New()
+		registerSpaRoutesWithProfileMetadata(e, webFS, db, "", false, true)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/u/person", nil))
+		require.Equal(t, http.StatusServiceUnavailable, rec.Code)
+	})
+
+	t.Run("public", func(t *testing.T) {
+		sqldb, err := sql.Open("sqlite3", "file:public-profile-success?mode=memory&cache=private")
+		require.NoError(t, err)
+		db := bun.NewDB(sqldb, sqlitedialect.New())
+		t.Cleanup(func() { require.NoError(t, db.Close()) })
+		_, err = db.NewCreateTable().Model((*models.User)(nil)).Exec(t.Context())
+		require.NoError(t, err)
+		_, err = db.NewInsert().Model(&models.User{
+			ID: "user-1", Email: "person@example.test", Username: "person", PublicProfile: true,
+		}).Exec(t.Context())
+		require.NoError(t, err)
+		e := echo.New()
+		registerSpaRoutesWithProfileMetadata(e, webFS, db, "https://openpost.example", false, true)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/u/person", nil))
+		require.Equal(t, http.StatusOK, rec.Code)
+		require.Contains(t, rec.Body.String(), `name="robots" content="index, follow"`)
+	})
 }

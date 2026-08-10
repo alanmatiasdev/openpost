@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/openpost/backend/internal/models"
+	"github.com/openpost/backend/internal/services/credentialguard"
 	"github.com/openpost/backend/internal/services/entitlements"
 	"github.com/openpost/backend/internal/services/notifications"
 	"github.com/uptrace/bun"
@@ -125,57 +126,15 @@ func (s *Service) List(ctx context.Context, workspaceID, userID string, filters 
 		return Team{}, err
 	}
 	filters = normalizeFilters(filters)
-
-	members := []Member{}
-	if filters.Status == "" || filters.Status == "all" || filters.Status == models.WorkspaceMemberStatusActive || filters.Status == models.WorkspaceMemberStatusInactive {
-		query := s.db.NewSelect().
-			Model(&members).
-			ModelTableExpr("workspace_members AS workspace_member").
-			ColumnExpr("workspace_member.*").
-			ColumnExpr("u.email").
-			Join("JOIN users AS u ON u.id = workspace_member.user_id").
-			Where("workspace_member.workspace_id = ?", workspaceID)
-		if filters.Status == models.WorkspaceMemberStatusActive || filters.Status == models.WorkspaceMemberStatusInactive {
-			query = query.Where("workspace_member.status = ?", filters.Status)
-		}
-		if filters.Role != "" && filters.Role != "all" {
-			query = query.Where("workspace_member.role = ?", filters.Role)
-		}
-		if filters.Query != "" {
-			query = query.Where("LOWER(u.email) LIKE ?", "%"+filters.Query+"%")
-		}
-		if err := query.OrderExpr("CASE WHEN workspace_member.status = 'active' THEN 0 ELSE 1 END, LOWER(u.email) ASC").Scan(ctx); err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return Team{}, fmt.Errorf("list workspace members: %w", err)
-		}
+	members, err := s.listMembers(ctx, workspaceID, filters)
+	if err != nil {
+		return Team{}, err
 	}
 
 	now := s.now()
-	invitations := []models.WorkspaceInvitation{}
-	if filters.Status == "" || filters.Status == "all" || filters.Status == "pending" || filters.Status == "expired" {
-		query := s.db.NewSelect().Model(&invitations).
-			Where("workspace_id = ? AND accepted_at IS NULL AND revoked_at IS NULL", workspaceID)
-		if filters.Status == "pending" {
-			query = query.Where("expires_at > ?", now)
-		} else if filters.Status == "expired" {
-			query = query.Where("expires_at <= ?", now)
-		}
-		if filters.Role != "" && filters.Role != "all" {
-			query = query.Where("role = ?", filters.Role)
-		}
-		if filters.Query != "" {
-			query = query.Where("LOWER(email) LIKE ?", "%"+filters.Query+"%")
-		}
-		if err := query.OrderExpr("created_at DESC").Scan(ctx); err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return Team{}, fmt.Errorf("list workspace invitations: %w", err)
-		}
-	}
-	inviteRows := make([]Invitation, 0, len(invitations))
-	for _, invitation := range invitations {
-		status := "pending"
-		if !invitation.ExpiresAt.After(now) {
-			status = "expired"
-		}
-		inviteRows = append(inviteRows, Invitation{WorkspaceInvitation: invitation, Status: status})
+	invitations, err := s.listInvitations(ctx, workspaceID, filters, now)
+	if err != nil {
+		return Team{}, err
 	}
 
 	currentSeats, err := s.currentSeats(ctx, s.db, workspaceID, now)
@@ -183,24 +142,96 @@ func (s *Service) List(ctx context.Context, workspaceID, userID string, filters 
 		return Team{}, fmt.Errorf("count workspace seats: %w", err)
 	}
 	return Team{
-		Members: members, Invitations: inviteRows, CurrentSeats: currentSeats,
+		Members: members, Invitations: invitations, CurrentSeats: currentSeats,
 		CanManage: member.Role == models.WorkspaceRoleAdmin,
 	}, nil
 }
 
+func (s *Service) listMembers(ctx context.Context, workspaceID string, filters Filters) ([]Member, error) {
+	members := []Member{}
+	if !statusIncludesMembers(filters.Status) {
+		return members, nil
+	}
+
+	query := s.db.NewSelect().
+		Model(&members).
+		ModelTableExpr("workspace_members AS workspace_member").
+		ColumnExpr("workspace_member.*").
+		ColumnExpr("u.email").
+		Join("JOIN users AS u ON u.id = workspace_member.user_id").
+		Where("workspace_member.workspace_id = ?", workspaceID)
+	if filters.Status == models.WorkspaceMemberStatusActive || filters.Status == models.WorkspaceMemberStatusInactive {
+		query = query.Where("workspace_member.status = ?", filters.Status)
+	}
+	if filters.Role != "" && filters.Role != "all" {
+		query = query.Where("workspace_member.role = ?", filters.Role)
+	}
+	if filters.Query != "" {
+		query = query.Where("LOWER(u.email) LIKE ?", "%"+filters.Query+"%")
+	}
+	if err := query.OrderExpr("CASE WHEN workspace_member.status = 'active' THEN 0 ELSE 1 END, LOWER(u.email) ASC").Scan(ctx); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("list workspace members: %w", err)
+	}
+	return members, nil
+}
+
+func (s *Service) listInvitations(ctx context.Context, workspaceID string, filters Filters, now time.Time) ([]Invitation, error) {
+	rows := []models.WorkspaceInvitation{}
+	if !statusIncludesInvitations(filters.Status) {
+		return []Invitation{}, nil
+	}
+
+	query := s.db.NewSelect().Model(&rows).
+		Where("workspace_id = ? AND accepted_at IS NULL AND revoked_at IS NULL", workspaceID)
+	switch filters.Status {
+	case "pending":
+		query = query.Where("expires_at > ?", now)
+	case "expired":
+		query = query.Where("expires_at <= ?", now)
+	}
+	if filters.Role != "" && filters.Role != "all" {
+		query = query.Where("role = ?", filters.Role)
+	}
+	if filters.Query != "" {
+		query = query.Where("LOWER(email) LIKE ?", "%"+filters.Query+"%")
+	}
+	if err := query.OrderExpr("created_at DESC").Scan(ctx); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("list workspace invitations: %w", err)
+	}
+
+	invitations := make([]Invitation, 0, len(rows))
+	for _, row := range rows {
+		status := "pending"
+		if !row.ExpiresAt.After(now) {
+			status = "expired"
+		}
+		invitations = append(invitations, Invitation{WorkspaceInvitation: row, Status: status})
+	}
+	return invitations, nil
+}
+
+func statusIncludesMembers(status string) bool {
+	switch status {
+	case "", "all", models.WorkspaceMemberStatusActive, models.WorkspaceMemberStatusInactive:
+		return true
+	default:
+		return false
+	}
+}
+
+func statusIncludesInvitations(status string) bool {
+	switch status {
+	case "", "all", "pending", "expired":
+		return true
+	default:
+		return false
+	}
+}
+
 func (s *Service) Invite(ctx context.Context, input InviteInput) (models.WorkspaceInvitation, string, error) {
-	input.WorkspaceID = strings.TrimSpace(input.WorkspaceID)
-	input.ActorUserID = strings.TrimSpace(input.ActorUserID)
-	input.Email = NormalizeEmail(input.Email)
-	input.Role = strings.TrimSpace(input.Role)
-	if input.Email == "" {
-		return models.WorkspaceInvitation{}, "", lifecycleError(ErrorInvalid, "email is required")
-	}
-	if input.Role == "" {
-		input.Role = models.WorkspaceRoleEditor
-	}
-	if !ValidRole(input.Role) {
-		return models.WorkspaceInvitation{}, "", lifecycleError(ErrorInvalid, "invalid workspace role")
+	input, err := normalizeInviteInput(input)
+	if err != nil {
+		return models.WorkspaceInvitation{}, "", err
 	}
 	seatDecision, err := s.seatDecision(ctx, input.WorkspaceID)
 	if err != nil {
@@ -220,56 +251,97 @@ func (s *Service) Invite(ctx context.Context, input InviteInput) (models.Workspa
 		ExpiresAt: now.Add(InvitationLifetime), LastSentAt: now, CreatedAt: now,
 	}
 	err = s.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
-		if err := s.lockWorkspaceAndRequireAdmin(txCtx, tx, input.WorkspaceID, input.ActorUserID); err != nil {
-			return err
-		}
-		if _, err := tx.NewUpdate().Model((*models.WorkspaceInvitation)(nil)).
-			Set("revoked_at = ?", now).
-			Where("workspace_id = ? AND email = ? AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at <= ?", input.WorkspaceID, input.Email, now).
-			Exec(txCtx); err != nil {
-			return err
-		}
-		var memberCount int
-		if err := tx.NewSelect().ColumnExpr("COUNT(*)").Model((*models.WorkspaceMember)(nil)).
-			Where("workspace_id = ? AND user_id IN (SELECT id FROM users WHERE LOWER(email) = ?)", input.WorkspaceID, input.Email).
-			Scan(txCtx, &memberCount); err != nil {
-			return err
-		}
-		if memberCount > 0 {
-			return lifecycleError(ErrorConflict, "user is already a workspace member")
-		}
-		var pendingCount int
-		if err := tx.NewSelect().ColumnExpr("COUNT(*)").Model((*models.WorkspaceInvitation)(nil)).
-			Where("workspace_id = ? AND email = ? AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at > ?", input.WorkspaceID, input.Email, now).
-			Scan(txCtx, &pendingCount); err != nil {
-			return err
-		}
-		if pendingCount > 0 {
-			return lifecycleError(ErrorConflict, "workspace invitation already pending")
-		}
-		currentSeats, err := s.currentSeats(txCtx, tx, input.WorkspaceID, now)
-		if err != nil {
-			return err
-		}
-		if !seatAllowed(seatDecision, currentSeats) {
-			return lifecycleError(ErrorPayment, seatDecisionReason(seatDecision, currentSeats))
-		}
-		if _, err := tx.NewInsert().Model(&invitation).Exec(txCtx); err != nil {
-			return err
-		}
-		if err := insertAudit(txCtx, tx, models.WorkspaceAccessAuditEvent{
-			WorkspaceID: input.WorkspaceID, ActorUserID: input.ActorUserID,
-			InvitationID: invitation.ID, SubjectEmail: input.Email,
-			Action: ActionInvitationCreated, Role: input.Role, Status: "pending", CreatedAt: now,
-		}); err != nil {
-			return err
-		}
-		return s.notifyInvitation(txCtx, tx, invitation, false)
+		return s.createInvitation(txCtx, tx, input, invitation, seatDecision, now)
 	})
 	if err != nil {
 		return models.WorkspaceInvitation{}, "", err
 	}
 	return invitation, rawToken, nil
+}
+
+func normalizeInviteInput(input InviteInput) (InviteInput, error) {
+	input.WorkspaceID = strings.TrimSpace(input.WorkspaceID)
+	input.ActorUserID = strings.TrimSpace(input.ActorUserID)
+	input.Email = NormalizeEmail(input.Email)
+	input.Role = strings.TrimSpace(input.Role)
+	if input.Email == "" {
+		return InviteInput{}, lifecycleError(ErrorInvalid, "email is required")
+	}
+	if input.Role == "" {
+		input.Role = models.WorkspaceRoleEditor
+	}
+	if !ValidRole(input.Role) {
+		return InviteInput{}, lifecycleError(ErrorInvalid, "invalid workspace role")
+	}
+	return input, nil
+}
+
+func (s *Service) createInvitation(
+	ctx context.Context,
+	tx bun.Tx,
+	input InviteInput,
+	invitation models.WorkspaceInvitation,
+	seatDecision entitlements.Decision,
+	now time.Time,
+) error {
+	if err := s.lockWorkspaceAndRequireAdmin(ctx, tx, input.WorkspaceID, input.ActorUserID); err != nil {
+		return err
+	}
+	if err := revokeExpiredInvitations(ctx, tx, input.WorkspaceID, input.Email, now); err != nil {
+		return err
+	}
+	if err := ensureInvitationAvailable(ctx, tx, input.WorkspaceID, input.Email, now); err != nil {
+		return err
+	}
+	currentSeats, err := s.currentSeats(ctx, tx, input.WorkspaceID, now)
+	if err != nil {
+		return err
+	}
+	if !seatAllowed(seatDecision, currentSeats) {
+		return lifecycleError(ErrorPayment, seatDecisionReason(seatDecision, currentSeats))
+	}
+	if _, err := tx.NewInsert().Model(&invitation).Exec(ctx); err != nil {
+		return err
+	}
+	if err := insertAudit(ctx, tx, models.WorkspaceAccessAuditEvent{
+		WorkspaceID: input.WorkspaceID, ActorUserID: input.ActorUserID,
+		InvitationID: invitation.ID, SubjectEmail: input.Email,
+		Action: ActionInvitationCreated, Role: input.Role, Status: "pending", CreatedAt: now,
+	}); err != nil {
+		return err
+	}
+	return s.notifyInvitation(ctx, tx, invitation, false)
+}
+
+func revokeExpiredInvitations(ctx context.Context, tx bun.Tx, workspaceID, email string, now time.Time) error {
+	_, err := tx.NewUpdate().Model((*models.WorkspaceInvitation)(nil)).
+		Set("revoked_at = ?", now).
+		Where("workspace_id = ? AND email = ? AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at <= ?", workspaceID, email, now).
+		Exec(ctx)
+	return err
+}
+
+func ensureInvitationAvailable(ctx context.Context, db bun.IDB, workspaceID, email string, now time.Time) error {
+	memberCount, err := db.NewSelect().Model((*models.WorkspaceMember)(nil)).
+		Where("workspace_id = ? AND user_id IN (SELECT id FROM users WHERE LOWER(email) = ?)", workspaceID, email).
+		Count(ctx)
+	if err != nil {
+		return err
+	}
+	if memberCount > 0 {
+		return lifecycleError(ErrorConflict, "user is already a workspace member")
+	}
+
+	pendingCount, err := db.NewSelect().Model((*models.WorkspaceInvitation)(nil)).
+		Where("workspace_id = ? AND email = ? AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at > ?", workspaceID, email, now).
+		Count(ctx)
+	if err != nil {
+		return err
+	}
+	if pendingCount > 0 {
+		return lifecycleError(ErrorConflict, "workspace invitation already pending")
+	}
+	return nil
 }
 
 func (s *Service) ResendInvitation(ctx context.Context, workspaceID, invitationID, actorUserID string) (models.WorkspaceInvitation, string, error) {
@@ -385,202 +457,338 @@ func (s *Service) FindInvitationByID(ctx context.Context, invitationID string) (
 	return invitation, err
 }
 
-func (s *Service) AcceptInvitation(ctx context.Context, invitation models.WorkspaceInvitation, userID, userEmail string) error {
+func (s *Service) AcceptInvitation(ctx context.Context, invitation models.WorkspaceInvitation, userID string) error {
 	userID = strings.TrimSpace(userID)
-	userEmail = NormalizeEmail(userEmail)
 	now := s.now()
 	return s.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
-		if err := lockWorkspace(txCtx, tx, invitation.WorkspaceID); err != nil {
-			return err
-		}
-		if err := tx.NewSelect().Model(&invitation).Where("id = ?", invitation.ID).Scan(txCtx); errors.Is(err, sql.ErrNoRows) {
-			return lifecycleError(ErrorNotFound, "workspace invitation not found")
-		} else if err != nil {
-			return err
-		}
-		if !invitation.AcceptedAt.IsZero() {
-			return lifecycleError(ErrorConflict, "workspace invitation already accepted")
-		}
-		if !invitation.RevokedAt.IsZero() {
-			return lifecycleError(ErrorConflict, "workspace invitation was revoked")
-		}
-		if !invitation.ExpiresAt.After(now) {
-			return lifecycleError(ErrorConflict, "workspace invitation expired")
-		}
-		if invitation.Email != userEmail {
-			return lifecycleError(ErrorForbidden, "workspace invitation belongs to a different email address")
-		}
-		var existing int
-		if err := tx.NewSelect().ColumnExpr("COUNT(*)").Model((*models.WorkspaceMember)(nil)).
-			Where("workspace_id = ? AND user_id = ?", invitation.WorkspaceID, userID).Scan(txCtx, &existing); err != nil {
-			return err
-		}
-		if existing > 0 {
-			return lifecycleError(ErrorConflict, "user is already a workspace member")
-		}
-		member := &models.WorkspaceMember{
-			WorkspaceID: invitation.WorkspaceID, UserID: userID, Role: invitation.Role,
-			Status: models.WorkspaceMemberStatusActive, CreatedAt: now, UpdatedAt: now,
-		}
-		if _, err := tx.NewInsert().Model(member).Exec(txCtx); err != nil {
-			return err
-		}
-		var workspace models.Workspace
-		if err := tx.NewSelect().Model(&workspace).Column("id", "organization_id").Where("id = ?", invitation.WorkspaceID).Scan(txCtx); err != nil {
-			return err
-		}
-		organizationMember := &models.OrganizationMember{
-			OrganizationID: workspace.OrganizationID, UserID: userID,
-			Role: models.OrganizationRoleMember, CreatedAt: now,
-		}
-		if _, err := tx.NewInsert().Model(organizationMember).On("CONFLICT (organization_id, user_id) DO NOTHING").Exec(txCtx); err != nil {
-			return err
-		}
-		result, err := tx.NewUpdate().Model((*models.WorkspaceInvitation)(nil)).
-			Set("accepted_by_user_id = ?", userID).Set("accepted_at = ?", now).
-			Where("id = ? AND accepted_at IS NULL AND revoked_at IS NULL", invitation.ID).Exec(txCtx)
-		if err != nil {
-			return err
-		}
-		affected, err := result.RowsAffected()
-		if err != nil {
-			return err
-		}
-		if affected == 0 {
-			return lifecycleError(ErrorConflict, "workspace invitation is no longer pending")
-		}
-		return insertAudit(txCtx, tx, models.WorkspaceAccessAuditEvent{
-			WorkspaceID: invitation.WorkspaceID, ActorUserID: userID, SubjectUserID: userID,
-			InvitationID: invitation.ID, SubjectEmail: invitation.Email,
-			Action: ActionInvitationAccepted, Role: invitation.Role,
-			PreviousStatus: "pending", Status: models.WorkspaceMemberStatusActive, CreatedAt: now,
-		})
+		return s.acceptInvitation(txCtx, tx, invitation, userID, now)
 	})
 }
 
+func (s *Service) acceptInvitation(ctx context.Context, tx bun.Tx, invitation models.WorkspaceInvitation, userID string, now time.Time) error {
+	if err := lockWorkspace(ctx, tx, invitation.WorkspaceID); err != nil {
+		return err
+	}
+	user, err := credentialguard.LockUserMutation(ctx, tx, userID)
+	if err != nil {
+		return err
+	}
+	if err := reloadInvitation(ctx, tx, &invitation); err != nil {
+		return err
+	}
+	if err := validateInvitationAcceptance(invitation, NormalizeEmail(user.Email), now); err != nil {
+		return err
+	}
+	if err := ensureNotWorkspaceMember(ctx, tx, invitation.WorkspaceID, userID); err != nil {
+		return err
+	}
+	if err := createAcceptedMemberships(ctx, tx, invitation, userID, now); err != nil {
+		return err
+	}
+	if err := markInvitationAccepted(ctx, tx, invitation.ID, userID, now); err != nil {
+		return err
+	}
+	return insertAudit(ctx, tx, models.WorkspaceAccessAuditEvent{
+		WorkspaceID: invitation.WorkspaceID, ActorUserID: userID, SubjectUserID: userID,
+		InvitationID: invitation.ID, SubjectEmail: invitation.Email,
+		Action: ActionInvitationAccepted, Role: invitation.Role,
+		PreviousStatus: "pending", Status: models.WorkspaceMemberStatusActive, CreatedAt: now,
+	})
+}
+
+func reloadInvitation(ctx context.Context, db bun.IDB, invitation *models.WorkspaceInvitation) error {
+	err := db.NewSelect().Model(invitation).Where("id = ?", invitation.ID).Scan(ctx)
+	if errors.Is(err, sql.ErrNoRows) {
+		return lifecycleError(ErrorNotFound, "workspace invitation not found")
+	}
+	return err
+}
+
+func validateInvitationAcceptance(invitation models.WorkspaceInvitation, userEmail string, now time.Time) error {
+	if !invitation.AcceptedAt.IsZero() {
+		return lifecycleError(ErrorConflict, "workspace invitation already accepted")
+	}
+	if !invitation.RevokedAt.IsZero() {
+		return lifecycleError(ErrorConflict, "workspace invitation was revoked")
+	}
+	if !invitation.ExpiresAt.After(now) {
+		return lifecycleError(ErrorConflict, "workspace invitation expired")
+	}
+	if invitation.Email != userEmail {
+		return lifecycleError(ErrorForbidden, "workspace invitation belongs to a different email address")
+	}
+	return nil
+}
+
+func ensureNotWorkspaceMember(ctx context.Context, db bun.IDB, workspaceID, userID string) error {
+	existing, err := db.NewSelect().Model((*models.WorkspaceMember)(nil)).
+		Where("workspace_id = ? AND user_id = ?", workspaceID, userID).
+		Count(ctx)
+	if err != nil {
+		return err
+	}
+	if existing > 0 {
+		return lifecycleError(ErrorConflict, "user is already a workspace member")
+	}
+	return nil
+}
+
+func createAcceptedMemberships(ctx context.Context, tx bun.Tx, invitation models.WorkspaceInvitation, userID string, now time.Time) error {
+	member := &models.WorkspaceMember{
+		WorkspaceID: invitation.WorkspaceID, UserID: userID, Role: invitation.Role,
+		Status: models.WorkspaceMemberStatusActive, CreatedAt: now, UpdatedAt: now,
+	}
+	if _, err := tx.NewInsert().Model(member).Exec(ctx); err != nil {
+		return err
+	}
+
+	var workspace models.Workspace
+	if err := tx.NewSelect().Model(&workspace).Column("id", "organization_id").Where("id = ?", invitation.WorkspaceID).Scan(ctx); err != nil {
+		return err
+	}
+	organizationMember := &models.OrganizationMember{
+		OrganizationID: workspace.OrganizationID, UserID: userID,
+		Role: models.OrganizationRoleMember, CreatedAt: now,
+	}
+	_, err := tx.NewInsert().Model(organizationMember).On("CONFLICT (organization_id, user_id) DO NOTHING").Exec(ctx)
+	return err
+}
+
+func markInvitationAccepted(ctx context.Context, tx bun.Tx, invitationID, userID string, now time.Time) error {
+	result, err := tx.NewUpdate().Model((*models.WorkspaceInvitation)(nil)).
+		Set("accepted_by_user_id = ?", userID).Set("accepted_at = ?", now).
+		Where("id = ? AND accepted_at IS NULL AND revoked_at IS NULL", invitationID).Exec(ctx)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return lifecycleError(ErrorConflict, "workspace invitation is no longer pending")
+	}
+	return nil
+}
+
 func (s *Service) UpdateMember(ctx context.Context, input UpdateMemberInput) (Member, error) {
+	input, err := normalizeUpdateMemberInput(input)
+	if err != nil {
+		return Member{}, err
+	}
+	seatDecision, err := s.memberActivationDecision(ctx, input)
+	if err != nil {
+		return Member{}, err
+	}
+	now := s.now()
+	var updated Member
+	err = s.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
+		var updateErr error
+		updated, updateErr = s.updateMember(txCtx, tx, input, seatDecision, now)
+		return updateErr
+	})
+	return updated, err
+}
+
+func normalizeUpdateMemberInput(input UpdateMemberInput) (UpdateMemberInput, error) {
 	input.WorkspaceID = strings.TrimSpace(input.WorkspaceID)
 	input.ActorUserID = strings.TrimSpace(input.ActorUserID)
 	input.SubjectUserID = strings.TrimSpace(input.SubjectUserID)
 	input.Role = strings.TrimSpace(input.Role)
 	input.Status = strings.TrimSpace(input.Status)
 	if input.Role == "" && input.Status == "" {
-		return Member{}, lifecycleError(ErrorInvalid, "role or status is required")
+		return UpdateMemberInput{}, lifecycleError(ErrorInvalid, "role or status is required")
 	}
 	if input.Role != "" && !ValidRole(input.Role) {
-		return Member{}, lifecycleError(ErrorInvalid, "invalid workspace role")
+		return UpdateMemberInput{}, lifecycleError(ErrorInvalid, "invalid workspace role")
 	}
 	if input.Status != "" && input.Status != models.WorkspaceMemberStatusActive && input.Status != models.WorkspaceMemberStatusInactive {
-		return Member{}, lifecycleError(ErrorInvalid, "invalid workspace member status")
+		return UpdateMemberInput{}, lifecycleError(ErrorInvalid, "invalid workspace member status")
 	}
-	var seatDecision entitlements.Decision
-	var err error
-	if input.Status == models.WorkspaceMemberStatusActive {
-		seatDecision, err = s.seatDecision(ctx, input.WorkspaceID)
-		if err != nil {
-			return Member{}, err
-		}
-		if !seatDecision.Allowed {
-			return Member{}, lifecycleError(ErrorPayment, decisionReason(seatDecision))
+	return input, nil
+}
+
+func (s *Service) memberActivationDecision(ctx context.Context, input UpdateMemberInput) (entitlements.Decision, error) {
+	if input.Status != models.WorkspaceMemberStatusActive {
+		return entitlements.Decision{}, nil
+	}
+	decision, err := s.seatDecision(ctx, input.WorkspaceID)
+	if err != nil {
+		return entitlements.Decision{}, err
+	}
+	if !decision.Allowed {
+		return entitlements.Decision{}, lifecycleError(ErrorPayment, decisionReason(decision))
+	}
+	return decision, nil
+}
+
+func (s *Service) updateMember(
+	ctx context.Context,
+	tx bun.Tx,
+	input UpdateMemberInput,
+	seatDecision entitlements.Decision,
+	now time.Time,
+) (Member, error) {
+	if err := s.lockWorkspaceAndRequireAdmin(ctx, tx, input.WorkspaceID, input.ActorUserID); err != nil {
+		return Member{}, err
+	}
+	member, err := s.memberForUpdate(ctx, tx, input)
+	if err != nil {
+		return Member{}, err
+	}
+	userEmail, err := memberEmail(ctx, tx, input.SubjectUserID)
+	if err != nil {
+		return Member{}, err
+	}
+	newRole, newStatus := requestedMemberState(member, input)
+	if err := s.validateMemberStateChange(ctx, tx, input, member, newRole, newStatus, seatDecision, now); err != nil {
+		return Member{}, err
+	}
+	if newRole == member.Role && newStatus == member.Status {
+		return Member{WorkspaceMember: member, Email: userEmail}, nil
+	}
+	deactivatedAt := updatedDeactivatedAt(member, newStatus, now)
+	if err := persistMemberState(ctx, tx, input, member, newRole, newStatus, deactivatedAt, now); err != nil {
+		return Member{}, err
+	}
+	if err := auditMemberStateChanges(ctx, tx, input, member, userEmail, newRole, newStatus, now); err != nil {
+		return Member{}, err
+	}
+	member.Role = newRole
+	member.Status = newStatus
+	member.UpdatedAt = now
+	member.DeactivatedAt = deactivatedAt
+	return Member{WorkspaceMember: member, Email: userEmail}, nil
+}
+
+func (s *Service) memberForUpdate(ctx context.Context, db bun.IDB, input UpdateMemberInput) (models.WorkspaceMember, error) {
+	member, err := s.member(ctx, db, input.WorkspaceID, input.SubjectUserID, false)
+	if ErrorKindOf(err) == ErrorForbidden {
+		return models.WorkspaceMember{}, lifecycleError(ErrorNotFound, "workspace member not found")
+	}
+	return member, err
+}
+
+func memberEmail(ctx context.Context, db bun.IDB, userID string) (string, error) {
+	var user models.User
+	if err := db.NewSelect().Model(&user).Column("id", "email").Where("id = ?", userID).Scan(ctx); err != nil {
+		return "", err
+	}
+	return user.Email, nil
+}
+
+func requestedMemberState(member models.WorkspaceMember, input UpdateMemberInput) (string, string) {
+	role := member.Role
+	if input.Role != "" {
+		role = input.Role
+	}
+	status := member.Status
+	if input.Status != "" {
+		status = input.Status
+	}
+	return role, status
+}
+
+func (s *Service) validateMemberStateChange(
+	ctx context.Context,
+	tx bun.Tx,
+	input UpdateMemberInput,
+	member models.WorkspaceMember,
+	newRole string,
+	newStatus string,
+	seatDecision entitlements.Decision,
+	now time.Time,
+) error {
+	removesActiveAdmin := member.Role == models.WorkspaceRoleAdmin &&
+		member.Status == models.WorkspaceMemberStatusActive &&
+		(newRole != models.WorkspaceRoleAdmin || newStatus != models.WorkspaceMemberStatusActive)
+	if removesActiveAdmin {
+		if err := s.requireAnotherActiveAdmin(ctx, tx, input.WorkspaceID, input.SubjectUserID); err != nil {
+			return err
 		}
 	}
-	now := s.now()
-	var updated Member
-	err = s.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
-		if err := s.lockWorkspaceAndRequireAdmin(txCtx, tx, input.WorkspaceID, input.ActorUserID); err != nil {
-			return err
-		}
-		member, err := s.member(txCtx, tx, input.WorkspaceID, input.SubjectUserID, false)
-		if err != nil {
-			if ErrorKindOf(err) == ErrorForbidden {
-				return lifecycleError(ErrorNotFound, "workspace member not found")
-			}
-			return err
-		}
-		var user models.User
-		if err := tx.NewSelect().Model(&user).Column("id", "email").Where("id = ?", input.SubjectUserID).Scan(txCtx); err != nil {
-			return err
-		}
-		newRole := member.Role
-		if input.Role != "" {
-			newRole = input.Role
-		}
-		newStatus := member.Status
-		if input.Status != "" {
-			newStatus = input.Status
-		}
-		if member.Role == models.WorkspaceRoleAdmin && member.Status == models.WorkspaceMemberStatusActive &&
-			(newRole != models.WorkspaceRoleAdmin || newStatus != models.WorkspaceMemberStatusActive) {
-			if err := s.requireAnotherActiveAdmin(txCtx, tx, input.WorkspaceID, input.SubjectUserID); err != nil {
-				return err
-			}
-		}
-		if member.Status == models.WorkspaceMemberStatusInactive && newStatus == models.WorkspaceMemberStatusActive {
-			currentSeats, err := s.currentSeats(txCtx, tx, input.WorkspaceID, now)
-			if err != nil {
-				return err
-			}
-			if !seatAllowed(seatDecision, currentSeats) {
-				return lifecycleError(ErrorPayment, seatDecisionReason(seatDecision, currentSeats))
-			}
-		}
-		if newRole == member.Role && newStatus == member.Status {
-			updated = Member{WorkspaceMember: member, Email: user.Email}
-			return nil
-		}
-		deactivatedAt := member.DeactivatedAt
-		if member.Status != newStatus {
-			if newStatus == models.WorkspaceMemberStatusInactive {
-				deactivatedAt = now
-			} else {
-				deactivatedAt = time.Time{}
-			}
-		}
-		result, err := tx.NewUpdate().Model((*models.WorkspaceMember)(nil)).
-			Set("role = ?", newRole).Set("status = ?", newStatus).Set("updated_at = ?", now).
-			Set("deactivated_at = ?", nullTime(deactivatedAt)).
-			Where("workspace_id = ? AND user_id = ? AND role = ? AND status = ?", input.WorkspaceID, input.SubjectUserID, member.Role, member.Status).
-			Exec(txCtx)
-		if err != nil {
-			return err
-		}
-		affected, err := result.RowsAffected()
-		if err != nil {
-			return err
-		}
-		if affected == 0 {
-			return lifecycleError(ErrorConflict, "workspace member changed; reload and try again")
-		}
-		if member.Role != newRole {
-			if err := insertAudit(txCtx, tx, models.WorkspaceAccessAuditEvent{
-				WorkspaceID: input.WorkspaceID, ActorUserID: input.ActorUserID, SubjectUserID: input.SubjectUserID,
-				SubjectEmail: user.Email, Action: ActionMemberRoleChanged,
-				PreviousRole: member.Role, Role: newRole, Status: newStatus, CreatedAt: now,
-			}); err != nil {
-				return err
-			}
-		}
-		if member.Status != newStatus {
-			action := ActionMemberDeactivated
-			if newStatus == models.WorkspaceMemberStatusActive {
-				action = ActionMemberReactivated
-			}
-			if err := insertAudit(txCtx, tx, models.WorkspaceAccessAuditEvent{
-				WorkspaceID: input.WorkspaceID, ActorUserID: input.ActorUserID, SubjectUserID: input.SubjectUserID,
-				SubjectEmail: user.Email, Action: action, Role: newRole,
-				PreviousStatus: member.Status, Status: newStatus, CreatedAt: now,
-			}); err != nil {
-				return err
-			}
-		}
-		member.Role = newRole
-		member.Status = newStatus
-		member.UpdatedAt = now
-		member.DeactivatedAt = deactivatedAt
-		updated = Member{WorkspaceMember: member, Email: user.Email}
+	if member.Status != models.WorkspaceMemberStatusInactive || newStatus != models.WorkspaceMemberStatusActive {
 		return nil
+	}
+	currentSeats, err := s.currentSeats(ctx, tx, input.WorkspaceID, now)
+	if err != nil {
+		return err
+	}
+	if !seatAllowed(seatDecision, currentSeats) {
+		return lifecycleError(ErrorPayment, seatDecisionReason(seatDecision, currentSeats))
+	}
+	return nil
+}
+
+func updatedDeactivatedAt(member models.WorkspaceMember, newStatus string, now time.Time) time.Time {
+	if member.Status == newStatus {
+		return member.DeactivatedAt
+	}
+	if newStatus == models.WorkspaceMemberStatusInactive {
+		return now
+	}
+	return time.Time{}
+}
+
+func persistMemberState(
+	ctx context.Context,
+	tx bun.Tx,
+	input UpdateMemberInput,
+	member models.WorkspaceMember,
+	newRole string,
+	newStatus string,
+	deactivatedAt time.Time,
+	now time.Time,
+) error {
+	result, err := tx.NewUpdate().Model((*models.WorkspaceMember)(nil)).
+		Set("role = ?", newRole).Set("status = ?", newStatus).Set("updated_at = ?", now).
+		Set("deactivated_at = ?", nullTime(deactivatedAt)).
+		Where("workspace_id = ? AND user_id = ? AND role = ? AND status = ?", input.WorkspaceID, input.SubjectUserID, member.Role, member.Status).
+		Exec(ctx)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return lifecycleError(ErrorConflict, "workspace member changed; reload and try again")
+	}
+	return nil
+}
+
+func auditMemberStateChanges(
+	ctx context.Context,
+	db bun.IDB,
+	input UpdateMemberInput,
+	member models.WorkspaceMember,
+	userEmail string,
+	newRole string,
+	newStatus string,
+	now time.Time,
+) error {
+	if member.Role != newRole {
+		if err := insertAudit(ctx, db, models.WorkspaceAccessAuditEvent{
+			WorkspaceID: input.WorkspaceID, ActorUserID: input.ActorUserID, SubjectUserID: input.SubjectUserID,
+			SubjectEmail: userEmail, Action: ActionMemberRoleChanged,
+			PreviousRole: member.Role, Role: newRole, Status: newStatus, CreatedAt: now,
+		}); err != nil {
+			return err
+		}
+	}
+	if member.Status == newStatus {
+		return nil
+	}
+	action := ActionMemberDeactivated
+	if newStatus == models.WorkspaceMemberStatusActive {
+		action = ActionMemberReactivated
+	}
+	return insertAudit(ctx, db, models.WorkspaceAccessAuditEvent{
+		WorkspaceID: input.WorkspaceID, ActorUserID: input.ActorUserID, SubjectUserID: input.SubjectUserID,
+		SubjectEmail: userEmail, Action: action, Role: newRole,
+		PreviousStatus: member.Status, Status: newStatus, CreatedAt: now,
 	})
-	return updated, err
 }
 
 func (s *Service) RemoveMember(ctx context.Context, workspaceID, subjectUserID, actorUserID string) error {

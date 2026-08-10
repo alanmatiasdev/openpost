@@ -26,10 +26,13 @@ import (
 	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/services/medialifecycle"
 	"github.com/uptrace/bun"
+	"github.com/uptrace/bun/dialect"
 )
 
 const (
 	imageEditorSchemaVersion       = 1
+	imageEditorSnapshotVersion     = 1
+	imageEditorPageStorageVersion  = 1
 	imageEditorMaxPages            = 35
 	imageEditorMaxLayersPerPage    = 500
 	imageEditorMaxDocumentBytes    = 10 << 20
@@ -37,6 +40,7 @@ const (
 	imageEditorMaxDimension        = 4096
 	imageEditorMaxPixels           = 25_000_000
 	imageEditorRecoveryRevisionTTL = 30 * 24 * time.Hour
+	imageEditorMediaWriteChunkSize = 200
 )
 
 type ImageEditorPreset struct {
@@ -265,6 +269,12 @@ type ImageEditorPageGuides struct {
 	Vertical   []float64 `json:"vertical"`
 }
 
+type imageEditorStoredPageState struct {
+	StorageVersion int                        `json:"storage_version"`
+	Background     *ImageEditorPageBackground `json:"background"`
+	Guides         *ImageEditorPageGuides     `json:"guides,omitempty"`
+}
+
 func (page ImageEditorPagePayload) BackgroundMediaID() string {
 	if page.Background == nil || page.Background.Type != "image" || page.Background.Image == nil {
 		return ""
@@ -288,6 +298,12 @@ type ImageEditorDocumentPayload struct {
 	BrandKitRevision int                       `json:"brand_kit_revision"`
 	ExportDefaults   ImageEditorExportDefaults `json:"export_defaults"`
 	Pages            []ImageEditorPagePayload  `json:"pages"`
+}
+
+type imageEditorRevisionSnapshot struct {
+	SnapshotVersion     int                        `json:"snapshot_version"`
+	Document            ImageEditorDocumentPayload `json:"document"`
+	CoverPreviewMediaID string                     `json:"cover_preview_media_id,omitempty"`
 }
 
 type ImageEditorDocumentResponse struct {
@@ -424,27 +440,47 @@ type DuplicateImageEditorDesignOutput struct {
 
 type ListImageEditorRevisionsInput struct {
 	PathID string `path:"id"`
+	Cursor string `query:"cursor" maxLength:"1024"`
+	Limit  int    `query:"limit" minimum:"1" maximum:"100"`
 }
 
 type ImageEditorRevisionSummary struct {
-	ID        string `json:"id"`
-	Revision  int    `json:"revision"`
-	Kind      string `json:"kind"`
-	Name      string `json:"name,omitempty"`
-	CreatedAt string `json:"created_at"`
-	ExpiresAt string `json:"expires_at,omitempty"`
+	ID        string              `json:"id"`
+	Revision  int                 `json:"revision"`
+	Kind      string              `json:"kind"`
+	Name      string              `json:"name,omitempty"`
+	CreatedAt string              `json:"created_at"`
+	ExpiresAt string              `json:"expires_at,omitempty"`
+	Actor     EditorRevisionActor `json:"actor"`
 }
 
 type ListImageEditorRevisionsOutput struct {
 	Body struct {
-		Revisions []ImageEditorRevisionSummary `json:"revisions"`
+		Revisions  []ImageEditorRevisionSummary `json:"revisions"`
+		NextCursor string                       `json:"next_cursor,omitempty"`
 	}
+}
+
+type GetImageEditorRevisionInput struct {
+	PathID     string `path:"id"`
+	RevisionID string `path:"revision_id"`
+}
+
+type ImageEditorRevisionResponse struct {
+	Summary             ImageEditorRevisionSummary `json:"summary"`
+	CoverPreviewMediaID string                     `json:"cover_preview_media_id,omitempty"`
+	Document            ImageEditorDocumentPayload `json:"document"`
+}
+
+type GetImageEditorRevisionOutput struct {
+	Body ImageEditorRevisionResponse
 }
 
 type CreateImageEditorCheckpointInput struct {
 	PathID string `path:"id"`
 	Body   struct {
-		Name string `json:"name" minLength:"1" maxLength:"100"`
+		Name             string `json:"name" minLength:"1" maxLength:"100"`
+		ExpectedRevision int    `json:"expected_revision" minimum:"1"`
 	}
 }
 
@@ -649,8 +685,18 @@ func (h *ImageEditorHandler) registerRevisions(api huma.API) {
 		Summary:     "List OpenPost Image Editor design recovery revisions and checkpoints",
 		Tags:        []string{tagImageEditor},
 		Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
-		Errors:      []int{403, 404},
+		Errors:      []int{400, 403, 404},
 	}, h.listRevisions)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "get-image-editor-design-revision",
+		Method:      http.MethodGet,
+		Path:        "/image-editor/designs/{id}/revisions/{revision_id}",
+		Summary:     "Inspect an OpenPost Image Editor design revision",
+		Tags:        []string{tagImageEditor},
+		Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
+		Errors:      []int{400, 403, 404},
+	}, h.getRevision)
 
 	huma.Register(api, huma.Operation{
 		OperationID: "create-image-editor-design-checkpoint",
@@ -659,7 +705,7 @@ func (h *ImageEditorHandler) registerRevisions(api huma.API) {
 		Summary:     "Create a named OpenPost Image Editor design checkpoint",
 		Tags:        []string{tagImageEditor},
 		Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
-		Errors:      []int{400, 403, 404},
+		Errors:      []int{400, 403, 404, 409},
 	}, h.createCheckpoint)
 
 	huma.Register(api, huma.Operation{
@@ -1146,6 +1192,9 @@ func (h *ImageEditorHandler) duplicateDesign(ctx context.Context, input *Duplica
 }
 
 func (h *ImageEditorHandler) listRevisions(ctx context.Context, input *ListImageEditorRevisionsInput) (*ListImageEditorRevisionsOutput, error) {
+	if err := h.ensureEnabled(); err != nil {
+		return nil, err
+	}
 	document, err := h.loadDocument(ctx, input.PathID)
 	if err != nil {
 		return nil, err
@@ -1154,92 +1203,407 @@ func (h *ImageEditorHandler) listRevisions(ctx context.Context, input *ListImage
 		return nil, err
 	}
 	var revisions []models.DesignRevision
-	if err := h.db.NewSelect().Model(&revisions).
+	cursor, err := decodeEditorRevisionCursor(input.Cursor)
+	if err != nil {
+		return nil, huma.Error400BadRequest("invalid OpenPost Image Editor revision cursor")
+	}
+	limit := editorRevisionLimit(input.Limit)
+	query := h.db.NewSelect().Model(&revisions).
 		Where("design_document_id = ?", document.ID).
-		OrderExpr("created_at DESC").
-		Limit(100).
-		Scan(ctx); err != nil {
+		OrderExpr("created_at DESC, id DESC").
+		Limit(limit + 1)
+	if !cursor.CreatedAt.IsZero() {
+		query = query.Where(
+			"(created_at < ?) OR (created_at = ? AND id < ?)",
+			cursor.CreatedAt,
+			cursor.CreatedAt,
+			cursor.ID,
+		)
+	}
+	if err := query.Scan(ctx); err != nil {
 		return nil, huma.Error500InternalServerError("failed to list OpenPost Image Editor revisions")
 	}
+	nextCursor := ""
+	if len(revisions) > limit {
+		next := revisions[limit-1]
+		nextCursor = encodeEditorRevisionCursor(next.CreatedAt, next.ID)
+		revisions = revisions[:limit]
+	}
+	actorIDs := make([]string, 0, len(revisions))
+	for _, revision := range revisions {
+		actorIDs = append(actorIDs, revision.CreatedByID)
+	}
+	currentUserID := middleware.GetUserID(ctx)
+	actors, err := loadEditorRevisionActors(ctx, h.db, actorIDs, currentUserID)
+	if err != nil {
+		return nil, huma.Error500InternalServerError("failed to load OpenPost Image Editor revision actors")
+	}
 	out := &ListImageEditorRevisionsOutput{}
+	out.Body.NextCursor = nextCursor
 	out.Body.Revisions = make([]ImageEditorRevisionSummary, 0, len(revisions))
 	for _, revision := range revisions {
-		out.Body.Revisions = append(out.Body.Revisions, revisionSummary(revision))
+		out.Body.Revisions = append(out.Body.Revisions, imageRevisionSummary(
+			revision,
+			editorRevisionActor(actors, revision.CreatedByID, currentUserID),
+		))
 	}
 	return out, nil
 }
 
+func (h *ImageEditorHandler) getRevision(
+	ctx context.Context,
+	input *GetImageEditorRevisionInput,
+) (*GetImageEditorRevisionOutput, error) {
+	if err := h.ensureEnabled(); err != nil {
+		return nil, err
+	}
+	document, err := h.loadDocument(ctx, input.PathID)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := h.requireAccess(ctx, document.WorkspaceID, false); err != nil {
+		return nil, err
+	}
+	revision, snapshot, err := h.loadImageEditorRevisionSnapshot(ctx, h.db, document.ID, input.RevisionID)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateImageEditorPayload(snapshot.Document); err != nil {
+		return nil, huma.Error400BadRequest("OpenPost Image Editor revision is invalid")
+	}
+	currentUserID := middleware.GetUserID(ctx)
+	actors, err := loadEditorRevisionActors(ctx, h.db, []string{revision.CreatedByID}, currentUserID)
+	if err != nil {
+		return nil, huma.Error500InternalServerError("failed to load OpenPost Image Editor revision actor")
+	}
+	return &GetImageEditorRevisionOutput{Body: ImageEditorRevisionResponse{
+		Summary: imageRevisionSummary(
+			*revision,
+			editorRevisionActor(actors, revision.CreatedByID, currentUserID),
+		),
+		CoverPreviewMediaID: snapshot.CoverPreviewMediaID,
+		Document:            snapshot.Document,
+	}}, nil
+}
+
+func (h *ImageEditorHandler) loadImageEditorRevisionSnapshot(
+	ctx context.Context,
+	db bun.IDB,
+	documentID string,
+	revisionID string,
+) (*models.DesignRevision, imageEditorRevisionSnapshot, error) {
+	var revision models.DesignRevision
+	err := db.NewSelect().Model(&revision).
+		Where("id = ? AND design_document_id = ?", revisionID, documentID).
+		Scan(ctx)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, imageEditorRevisionSnapshot{}, huma.Error404NotFound("OpenPost Image Editor revision not found")
+	}
+	if err != nil {
+		return nil, imageEditorRevisionSnapshot{}, huma.Error500InternalServerError("failed to load OpenPost Image Editor revision")
+	}
+	snapshot, err := decompressImageEditorSnapshot(revision.Snapshot)
+	if err != nil {
+		return nil, imageEditorRevisionSnapshot{}, huma.Error400BadRequest("OpenPost Image Editor revision is corrupt")
+	}
+	return &revision, snapshot, nil
+}
+
 func (h *ImageEditorHandler) createCheckpoint(ctx context.Context, input *CreateImageEditorCheckpointInput) (*CreateImageEditorCheckpointOutput, error) {
+	if err := h.ensureEnabled(); err != nil {
+		return nil, err
+	}
 	document, err := h.loadDocument(ctx, input.PathID)
 	if err != nil {
 		return nil, err
 	}
 	if _, err := h.requireAccess(ctx, document.WorkspaceID, true); err != nil {
 		return nil, err
+	}
+	name := strings.TrimSpace(input.Body.Name)
+	if name == "" {
+		return nil, huma.Error400BadRequest("checkpoint name is required")
+	}
+	actorID := middleware.GetUserID(ctx)
+	createdAt := time.Now().UTC()
+	var revision *models.DesignRevision
+	err = h.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
+		var current models.DesignDocument
+		query := tx.NewSelect().Model(&current).
+			Where("id = ? AND deleted_at IS NULL", document.ID)
+		if tx.Dialect().Name() == dialect.PG {
+			query = query.For("UPDATE")
+		}
+		if err := query.Scan(txCtx); err != nil {
+			return err
+		}
+		if current.Revision != input.Body.ExpectedRevision {
+			return errImageEditorRevisionConflict
+		}
+		payload, err := imageEditorDocumentPayload(txCtx, tx, &current)
+		if err != nil {
+			return err
+		}
+		snapshot, err := compressImageEditorSnapshot(imageEditorRevisionSnapshot{
+			SnapshotVersion:     imageEditorSnapshotVersion,
+			Document:            payload,
+			CoverPreviewMediaID: current.CoverPreviewMediaID,
+		})
+		if err != nil {
+			return err
+		}
+		revision = &models.DesignRevision{
+			ID:               uuid.NewString(),
+			DesignDocumentID: current.ID,
+			Revision:         current.Revision,
+			Kind:             "checkpoint",
+			Name:             name,
+			Snapshot:         snapshot,
+			CreatedByID:      actorID,
+			CreatedAt:        createdAt,
+		}
+		if _, err := tx.NewInsert().Model(revision).Exec(txCtx); err != nil {
+			return err
+		}
+		return storeImageEditorRevisionMediaReferences(
+			txCtx,
+			tx,
+			revision.ID,
+			payload,
+			current.CoverPreviewMediaID,
+			createdAt,
+		)
+	})
+	if errors.Is(err, errImageEditorRevisionConflict) {
+		return nil, huma.NewError(http.StatusConflict, "OpenPost Image Editor design changed elsewhere; reload before creating a checkpoint")
+	}
+	if err != nil || revision == nil {
+		return nil, huma.Error500InternalServerError("failed to create OpenPost Image Editor checkpoint")
+	}
+	currentUserID := middleware.GetUserID(ctx)
+	actors, err := loadEditorRevisionActors(ctx, h.db, []string{currentUserID}, currentUserID)
+	if err != nil {
+		return nil, huma.Error500InternalServerError("failed to load OpenPost Image Editor revision actor")
+	}
+	return &CreateImageEditorCheckpointOutput{Body: imageRevisionSummary(
+		*revision,
+		editorRevisionActor(actors, currentUserID, currentUserID),
+	)}, nil
+}
+
+func (h *ImageEditorHandler) restoreRevision(ctx context.Context, input *RestoreImageEditorRevisionInput) (*RestoreImageEditorRevisionOutput, error) {
+	if err := h.ensureEnabled(); err != nil {
+		return nil, err
+	}
+	document, err := h.loadDocument(ctx, input.PathID)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := h.requireAccess(ctx, document.WorkspaceID, true); err != nil {
+		return nil, err
+	}
+	now := time.Now().UTC()
+	actorID := middleware.GetUserID(ctx)
+	err = h.restoreImageEditorRevisionInTx(
+		ctx,
+		document.ID,
+		input.RevisionID,
+		input.Body.ExpectedRevision,
+		actorID,
+		now,
+	)
+	if errors.Is(err, errImageEditorRevisionConflict) {
+		return nil, huma.NewError(http.StatusConflict, "OpenPost Image Editor design changed elsewhere; reload before restoring")
+	}
+	if err != nil {
+		var statusError huma.StatusError
+		if errors.As(err, &statusError) {
+			return nil, err
+		}
+		log.Printf("failed to restore OpenPost Image Editor design %s: %v", document.ID, err)
+		return nil, huma.Error500InternalServerError("failed to restore OpenPost Image Editor revision")
 	}
 	response, err := h.documentResponse(ctx, document.ID)
 	if err != nil {
 		return nil, err
 	}
-	snapshot, err := compressImageEditorSnapshot(response.Document)
-	if err != nil {
-		return nil, huma.Error500InternalServerError("failed to create OpenPost Image Editor checkpoint")
-	}
-	revision := &models.DesignRevision{
-		ID:               uuid.NewString(),
-		DesignDocumentID: document.ID,
-		Revision:         document.Revision,
-		Kind:             "checkpoint",
-		Name:             strings.TrimSpace(input.Body.Name),
-		Snapshot:         snapshot,
-		CreatedByID:      middleware.GetUserID(ctx),
-		CreatedAt:        time.Now().UTC(),
-	}
-	if revision.Name == "" {
-		return nil, huma.Error400BadRequest("checkpoint name is required")
-	}
-	if _, err := h.db.NewInsert().Model(revision).Exec(ctx); err != nil {
-		return nil, huma.Error500InternalServerError("failed to create OpenPost Image Editor checkpoint")
-	}
-	return &CreateImageEditorCheckpointOutput{Body: revisionSummary(*revision)}, nil
+	return &RestoreImageEditorRevisionOutput{Body: *response}, nil
 }
 
-func (h *ImageEditorHandler) restoreRevision(ctx context.Context, input *RestoreImageEditorRevisionInput) (*RestoreImageEditorRevisionOutput, error) {
-	document, err := h.loadDocument(ctx, input.PathID)
+func (h *ImageEditorHandler) restoreImageEditorRevisionInTx(
+	ctx context.Context,
+	documentID string,
+	revisionID string,
+	expectedRevision int,
+	actorID string,
+	now time.Time,
+) error {
+	return h.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
+		current, target, err := h.prepareImageEditorRevisionRestore(
+			txCtx,
+			tx,
+			documentID,
+			revisionID,
+			expectedRevision,
+			now,
+		)
+		if err != nil {
+			return err
+		}
+		currentPayload, err := imageEditorDocumentPayload(txCtx, tx, &current)
+		if err != nil {
+			return err
+		}
+		if err := storeImageEditorRestorePoint(
+			txCtx,
+			tx,
+			&current,
+			currentPayload,
+			actorID,
+			now,
+		); err != nil {
+			return err
+		}
+		return applyImageEditorRevisionRestore(
+			txCtx,
+			tx,
+			&current,
+			target,
+			expectedRevision,
+			now,
+		)
+	})
+}
+
+func (h *ImageEditorHandler) prepareImageEditorRevisionRestore(
+	ctx context.Context,
+	tx bun.Tx,
+	documentID string,
+	revisionID string,
+	expectedRevision int,
+	now time.Time,
+) (models.DesignDocument, imageEditorRevisionSnapshot, error) {
+	var current models.DesignDocument
+	if err := tx.NewSelect().Model(&current).
+		Where("id = ? AND deleted_at IS NULL", documentID).
+		Scan(ctx); err != nil {
+		return current, imageEditorRevisionSnapshot{}, err
+	}
+	if current.Revision != expectedRevision {
+		return current, imageEditorRevisionSnapshot{}, errImageEditorRevisionConflict
+	}
+	_, target, err := h.loadImageEditorRevisionSnapshot(ctx, tx, current.ID, revisionID)
 	if err != nil {
-		return nil, err
+		return current, target, err
 	}
-	if _, err := h.requireAccess(ctx, document.WorkspaceID, true); err != nil {
-		return nil, err
+	if err := validateImageEditorPayload(target.Document); err != nil {
+		return current, target, huma.Error400BadRequest("OpenPost Image Editor revision is invalid")
 	}
-	if document.Revision != input.Body.ExpectedRevision {
-		return nil, huma.NewError(http.StatusConflict, "OpenPost Image Editor design changed elsewhere; reload before restoring")
+	if err := validateImageEditorMediaReferences(
+		ctx,
+		tx,
+		current.WorkspaceID,
+		target.Document.Pages,
+		target.CoverPreviewMediaID,
+	); err != nil {
+		return current, target, err
 	}
-	var revision models.DesignRevision
-	err = h.db.NewSelect().Model(&revision).
-		Where("id = ? AND design_document_id = ?", input.RevisionID, document.ID).
-		Scan(ctx)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, huma.Error404NotFound("OpenPost Image Editor revision not found")
+	targetMediaIDs := append(
+		imageEditorMediaIDs(target.Document.Pages),
+		target.CoverPreviewMediaID,
+	)
+	if err := reviveEditorMediaReferences(
+		ctx,
+		tx,
+		current.WorkspaceID,
+		targetMediaIDs,
+		now,
+	); err != nil {
+		return current, target, err
 	}
+	return current, target, nil
+}
+
+func storeImageEditorRestorePoint(
+	ctx context.Context,
+	tx bun.Tx,
+	current *models.DesignDocument,
+	currentPayload ImageEditorDocumentPayload,
+	actorID string,
+	now time.Time,
+) error {
+	snapshot, err := compressImageEditorSnapshot(imageEditorRevisionSnapshot{
+		SnapshotVersion:     imageEditorSnapshotVersion,
+		Document:            currentPayload,
+		CoverPreviewMediaID: current.CoverPreviewMediaID,
+	})
 	if err != nil {
-		return nil, huma.Error500InternalServerError("failed to load OpenPost Image Editor revision")
+		return err
 	}
-	payload, err := decompressImageEditorSnapshot(revision.Snapshot)
+	restorePoint := &models.DesignRevision{
+		ID:               uuid.NewString(),
+		DesignDocumentID: current.ID,
+		Revision:         current.Revision,
+		Kind:             "restore_point",
+		Snapshot:         snapshot,
+		CreatedByID:      actorID,
+		CreatedAt:        now,
+	}
+	if _, err := tx.NewInsert().Model(restorePoint).Exec(ctx); err != nil {
+		return err
+	}
+	return storeImageEditorRevisionMediaReferences(
+		ctx,
+		tx,
+		restorePoint.ID,
+		currentPayload,
+		current.CoverPreviewMediaID,
+		now,
+	)
+}
+
+func applyImageEditorRevisionRestore(
+	ctx context.Context,
+	tx bun.Tx,
+	current *models.DesignDocument,
+	target imageEditorRevisionSnapshot,
+	expectedRevision int,
+	now time.Time,
+) error {
+	current.Title = strings.TrimSpace(target.Document.Title)
+	current.SchemaVersion = target.Document.SchemaVersion
+	current.Revision++
+	current.PresetKey = target.Document.PresetKey
+	current.WidthPX = target.Document.WidthPX
+	current.HeightPX = target.Document.HeightPX
+	current.BrandKitID = target.Document.BrandKitID
+	current.BrandKitRevision = target.Document.BrandKitRevision
+	current.ExportFormat = target.Document.ExportDefaults.Format
+	current.ExportQuality = target.Document.ExportDefaults.Quality
+	current.ExportMatteColor = defaultImageEditorBackground(target.Document.ExportDefaults.MatteColor)
+	current.CoverPreviewMediaID = strings.TrimSpace(target.CoverPreviewMediaID)
+	current.UpdatedAt = now
+	result, err := tx.NewUpdate().Model(current).
+		Column("title", "schema_version", "revision", "preset_key", "width_px", "height_px", "brand_kit_id", "brand_kit_revision", "export_format", "export_quality", "export_matte_color", "cover_preview_media_id", "updated_at").
+		WherePK().
+		Where("revision = ?", expectedRevision).
+		Exec(ctx)
 	if err != nil {
-		return nil, huma.Error400BadRequest("OpenPost Image Editor revision is corrupt")
+		return err
 	}
-	if err := validateImageEditorPayload(payload); err != nil {
-		return nil, huma.Error400BadRequest("OpenPost Image Editor revision is invalid")
+	affected, _ := result.RowsAffected()
+	if affected != 1 {
+		return errImageEditorRevisionConflict
 	}
-	update := &UpdateImageEditorDesignInput{PathID: document.ID}
-	update.Body.ExpectedRevision = document.Revision
-	update.Body.Document = payload
-	result, err := h.updateDesign(ctx, update)
-	if err != nil {
-		return nil, err
+	if _, err := tx.NewDelete().Model((*models.DesignPage)(nil)).
+		Where("design_document_id = ?", current.ID).
+		Exec(ctx); err != nil {
+		return err
 	}
-	return &RestoreImageEditorRevisionOutput{Body: result.Body}, nil
+	if err := insertImageEditorPages(ctx, tx, current.ID, target.Document.Pages, now); err != nil {
+		return err
+	}
+	return replaceImageEditorMediaReferences(ctx, tx, current, target.Document.Pages)
 }
 
 func (h *ImageEditorHandler) createReturnToken(ctx context.Context, input *CreateImageEditorReturnTokenInput) (*CreateImageEditorReturnTokenOutput, error) {
@@ -1503,50 +1867,9 @@ func (h *ImageEditorHandler) documentResponse(ctx context.Context, id string) (*
 	if err != nil {
 		return nil, err
 	}
-	var pages []models.DesignPage
-	if err := h.db.NewSelect().Model(&pages).
-		Where("design_document_id = ?", document.ID).
-		OrderExpr("display_order ASC").
-		Scan(ctx); err != nil {
-		return nil, huma.Error500InternalServerError("failed to load OpenPost Image Editor pages")
-	}
-	payload := ImageEditorDocumentPayload{
-		SchemaVersion:    document.SchemaVersion,
-		Title:            document.Title,
-		PresetKey:        document.PresetKey,
-		WidthPX:          document.WidthPX,
-		HeightPX:         document.HeightPX,
-		BrandKitID:       document.BrandKitID,
-		BrandKitRevision: document.BrandKitRevision,
-		ExportDefaults: ImageEditorExportDefaults{
-			Format:     document.ExportFormat,
-			Quality:    document.ExportQuality,
-			MatteColor: defaultImageEditorBackground(document.ExportMatteColor),
-		},
-		Pages: make([]ImageEditorPagePayload, 0, len(pages)),
-	}
-	for _, page := range pages {
-		var layers []ImageEditorLayer
-		if err := json.Unmarshal([]byte(page.SceneJSON), &layers); err != nil {
-			return nil, huma.Error500InternalServerError("OpenPost Image Editor design contains an invalid page")
-		}
-		background := defaultImageEditorPageBackground(page.BackgroundColor)
-		if encoded := strings.TrimSpace(page.BackgroundJSON); encoded != "" && encoded != "{}" {
-			var stored ImageEditorPageBackground
-			if err := json.Unmarshal([]byte(encoded), &stored); err != nil {
-				return nil, huma.Error500InternalServerError("OpenPost Image Editor design contains an invalid page background")
-			}
-			background = normalizeImageEditorPageBackground(&stored, page.BackgroundColor)
-		}
-		payload.Pages = append(payload.Pages, ImageEditorPagePayload{
-			ID:                  page.ID,
-			Name:                page.Name,
-			BackgroundColor:     page.BackgroundColor,
-			Background:          background,
-			Layers:              layers,
-			PreviewMediaID:      page.PreviewMediaID,
-			LatestExportMediaID: page.LatestExportMediaID,
-		})
+	payload, err := imageEditorDocumentPayload(ctx, h.db, document)
+	if err != nil {
+		return nil, huma.Error500InternalServerError(err.Error())
 	}
 	return &ImageEditorDocumentResponse{
 		ID:                  document.ID,
@@ -1561,8 +1884,74 @@ func (h *ImageEditorHandler) documentResponse(ctx context.Context, id string) (*
 	}, nil
 }
 
+func imageEditorDocumentPayload(
+	ctx context.Context,
+	db bun.IDB,
+	document *models.DesignDocument,
+) (ImageEditorDocumentPayload, error) {
+	payload := ImageEditorDocumentPayload{
+		SchemaVersion:    document.SchemaVersion,
+		Title:            document.Title,
+		PresetKey:        document.PresetKey,
+		WidthPX:          document.WidthPX,
+		HeightPX:         document.HeightPX,
+		BrandKitID:       document.BrandKitID,
+		BrandKitRevision: document.BrandKitRevision,
+		ExportDefaults: ImageEditorExportDefaults{
+			Format:     document.ExportFormat,
+			Quality:    document.ExportQuality,
+			MatteColor: defaultImageEditorBackground(document.ExportMatteColor),
+		},
+	}
+	var pages []models.DesignPage
+	if err := db.NewSelect().Model(&pages).
+		Where("design_document_id = ?", document.ID).
+		OrderExpr("display_order ASC").
+		Scan(ctx); err != nil {
+		return payload, errors.New("failed to load OpenPost Image Editor pages")
+	}
+	payload.Pages = make([]ImageEditorPagePayload, 0, len(pages))
+	for _, page := range pages {
+		var layers []ImageEditorLayer
+		if err := json.Unmarshal([]byte(page.SceneJSON), &layers); err != nil {
+			return payload, errors.New("OpenPost Image Editor design contains an invalid page")
+		}
+		background := defaultImageEditorPageBackground(page.BackgroundColor)
+		var guides *ImageEditorPageGuides
+		if encoded := strings.TrimSpace(page.BackgroundJSON); encoded != "" && encoded != "{}" {
+			storedBackground, storedGuides, err := decodeImageEditorPageState(encoded, page.BackgroundColor)
+			if err != nil {
+				return payload, errors.New("OpenPost Image Editor design contains an invalid page background")
+			}
+			background = storedBackground
+			guides = storedGuides
+		}
+		payload.Pages = append(payload.Pages, ImageEditorPagePayload{
+			ID:                  page.ID,
+			Name:                page.Name,
+			BackgroundColor:     page.BackgroundColor,
+			Background:          background,
+			Guides:              guides,
+			Layers:              layers,
+			PreviewMediaID:      page.PreviewMediaID,
+			LatestExportMediaID: page.LatestExportMediaID,
+		})
+	}
+	return payload, nil
+}
+
 func (h *ImageEditorHandler) validateMediaReferences(
 	ctx context.Context,
+	workspaceID string,
+	pages []ImageEditorPagePayload,
+	extraIDs ...string,
+) error {
+	return validateImageEditorMediaReferences(ctx, h.db, workspaceID, pages, extraIDs...)
+}
+
+func validateImageEditorMediaReferences(
+	ctx context.Context,
+	db bun.IDB,
 	workspaceID string,
 	pages []ImageEditorPagePayload,
 	extraIDs ...string,
@@ -1584,13 +1973,11 @@ func (h *ImageEditorHandler) validateMediaReferences(
 	if len(ids) == 0 {
 		return nil
 	}
-	count, err := h.db.NewSelect().Model((*models.MediaAttachment)(nil)).
-		Where("workspace_id = ? AND id IN (?)", workspaceID, bun.List(ids)).
-		Count(ctx)
+	valid, err := allEditorMediaBelongToWorkspace(ctx, db, workspaceID, ids, "")
 	if err != nil {
 		return huma.Error500InternalServerError("failed to validate OpenPost Image Editor media")
 	}
-	if count != len(ids) {
+	if !valid {
 		return huma.Error400BadRequest("every OpenPost Image Editor media reference must belong to the workspace")
 	}
 	return nil
@@ -2096,7 +2483,11 @@ func insertImageEditorPages(ctx context.Context, tx bun.Tx, documentID string, p
 			return err
 		}
 		background := normalizeImageEditorPageBackground(page.Background, page.BackgroundColor)
-		backgroundJSON, err := json.Marshal(background)
+		backgroundJSON, err := json.Marshal(imageEditorStoredPageState{
+			StorageVersion: imageEditorPageStorageVersion,
+			Background:     background,
+			Guides:         page.Guides,
+		})
 		if err != nil {
 			return err
 		}
@@ -2119,6 +2510,33 @@ func insertImageEditorPages(ctx context.Context, tx bun.Tx, documentID string, p
 	}
 	_, err := tx.NewInsert().Model(&rows).Exec(ctx)
 	return err
+}
+
+func decodeImageEditorPageState(
+	encoded string,
+	fallbackColor string,
+) (*ImageEditorPageBackground, *ImageEditorPageGuides, error) {
+	var versionProbe struct {
+		StorageVersion int `json:"storage_version"`
+	}
+	if err := json.Unmarshal([]byte(encoded), &versionProbe); err != nil {
+		return nil, nil, err
+	}
+	if versionProbe.StorageVersion == 0 {
+		var legacy ImageEditorPageBackground
+		if err := json.Unmarshal([]byte(encoded), &legacy); err != nil {
+			return nil, nil, err
+		}
+		return normalizeImageEditorPageBackground(&legacy, fallbackColor), nil, nil
+	}
+	if versionProbe.StorageVersion != imageEditorPageStorageVersion {
+		return nil, nil, fmt.Errorf("unsupported image editor page storage version %d", versionProbe.StorageVersion)
+	}
+	var state imageEditorStoredPageState
+	if err := json.Unmarshal([]byte(encoded), &state); err != nil {
+		return nil, nil, err
+	}
+	return normalizeImageEditorPageBackground(state.Background, fallbackColor), state.Guides, nil
 }
 
 func replaceImageEditorMediaReferences(ctx context.Context, tx bun.Tx, document *models.DesignDocument, pages []ImageEditorPagePayload) error {
@@ -2177,8 +2595,12 @@ func replaceImageEditorMediaReferences(ctx context.Context, tx bun.Tx, document 
 		}
 	}
 	if len(refs) > 0 {
-		if _, err := tx.NewInsert().Model(&refs).Exec(ctx); err != nil {
-			return err
+		for start := 0; start < len(refs); start += imageEditorMediaWriteChunkSize {
+			end := min(start+imageEditorMediaWriteChunkSize, len(refs))
+			chunk := refs[start:end]
+			if _, err := tx.NewInsert().Model(&chunk).Exec(ctx); err != nil {
+				return err
+			}
 		}
 	}
 	mediaIDs := make([]string, 0, len(previousMediaIDs)+len(refs))
@@ -2204,10 +2626,15 @@ func (h *ImageEditorHandler) maybeStoreRecoveryRevision(
 	if !force && !latest.IsZero() && time.Since(latest) < 5*time.Minute {
 		return nil
 	}
-	snapshot, err := compressImageEditorSnapshot(payload)
+	snapshot, err := compressImageEditorSnapshot(imageEditorRevisionSnapshot{
+		SnapshotVersion:     imageEditorSnapshotVersion,
+		Document:            payload,
+		CoverPreviewMediaID: document.CoverPreviewMediaID,
+	})
 	if err != nil {
 		return err
 	}
+	now := time.Now().UTC()
 	revision := &models.DesignRevision{
 		ID:               uuid.NewString(),
 		DesignDocumentID: document.ID,
@@ -2215,10 +2642,29 @@ func (h *ImageEditorHandler) maybeStoreRecoveryRevision(
 		Kind:             "autosave",
 		Snapshot:         snapshot,
 		CreatedByID:      middleware.GetUserID(ctx),
-		CreatedAt:        time.Now().UTC(),
-		ExpiresAt:        time.Now().UTC().Add(imageEditorRecoveryRevisionTTL),
+		CreatedAt:        now,
+		ExpiresAt:        now.Add(imageEditorRecoveryRevisionTTL),
 	}
 	if _, err := tx.NewInsert().Model(revision).Exec(ctx); err != nil {
+		return err
+	}
+	if err := storeImageEditorRevisionMediaReferences(
+		ctx,
+		tx,
+		revision.ID,
+		payload,
+		document.CoverPreviewMediaID,
+		revision.CreatedAt,
+	); err != nil {
+		return err
+	}
+	var expiredIDs []string
+	if err := tx.NewSelect().Model((*models.DesignRevision)(nil)).
+		Column("id").
+		Where("design_document_id = ? AND kind = ? AND expires_at IS NOT NULL AND expires_at <= ?", document.ID, "autosave", now).
+		OrderExpr("expires_at ASC, id ASC").
+		Limit(1_000).
+		Scan(ctx, &expiredIDs); err != nil {
 		return err
 	}
 	var stale []models.DesignRevision
@@ -2230,11 +2676,12 @@ func (h *ImageEditorHandler) maybeStoreRecoveryRevision(
 		Scan(ctx); err != nil {
 		return err
 	}
-	if len(stale) > 0 {
-		ids := make([]string, 0, len(stale))
-		for _, item := range stale {
-			ids = append(ids, item.ID)
-		}
+	ids := append([]string(nil), expiredIDs...)
+	for _, item := range stale {
+		ids = append(ids, item.ID)
+	}
+	ids = uniqueImageEditorStringsInOrder(ids)
+	if len(ids) > 0 {
 		if _, err := tx.NewDelete().Model((*models.DesignRevision)(nil)).Where("id IN (?)", bun.List(ids)).Exec(ctx); err != nil {
 			return err
 		}
@@ -2242,8 +2689,8 @@ func (h *ImageEditorHandler) maybeStoreRecoveryRevision(
 	return nil
 }
 
-func compressImageEditorSnapshot(payload ImageEditorDocumentPayload) ([]byte, error) {
-	data, err := json.Marshal(payload)
+func compressImageEditorSnapshot(snapshot imageEditorRevisionSnapshot) ([]byte, error) {
+	data, err := json.Marshal(snapshot)
 	if err != nil {
 		return nil, err
 	}
@@ -2258,21 +2705,76 @@ func compressImageEditorSnapshot(payload ImageEditorDocumentPayload) ([]byte, er
 	return buffer.Bytes(), nil
 }
 
-func decompressImageEditorSnapshot(snapshot []byte) (ImageEditorDocumentPayload, error) {
-	var payload ImageEditorDocumentPayload
-	reader, err := gzip.NewReader(bytes.NewReader(snapshot))
+func decompressImageEditorSnapshot(compressed []byte) (imageEditorRevisionSnapshot, error) {
+	var snapshot imageEditorRevisionSnapshot
+	reader, err := gzip.NewReader(bytes.NewReader(compressed))
 	if err != nil {
-		return payload, err
+		return snapshot, err
 	}
 	defer reader.Close()
-	data, err := io.ReadAll(io.LimitReader(reader, imageEditorMaxDocumentBytes+1))
-	if err != nil || len(data) > imageEditorMaxDocumentBytes {
-		return payload, fmt.Errorf("invalid OpenPost Image Editor snapshot")
+	const envelopeAllowance = 64 << 10
+	data, err := io.ReadAll(io.LimitReader(reader, imageEditorMaxDocumentBytes+envelopeAllowance+1))
+	if err != nil || len(data) > imageEditorMaxDocumentBytes+envelopeAllowance {
+		return snapshot, fmt.Errorf("invalid OpenPost Image Editor snapshot")
 	}
-	if err := json.Unmarshal(data, &payload); err != nil {
-		return payload, err
+	var probe struct {
+		SnapshotVersion int `json:"snapshot_version"`
 	}
-	return payload, nil
+	if err := json.Unmarshal(data, &probe); err != nil {
+		return snapshot, err
+	}
+	if probe.SnapshotVersion == 0 {
+		if err := json.Unmarshal(data, &snapshot.Document); err != nil {
+			return snapshot, err
+		}
+		return snapshot, nil
+	}
+	if probe.SnapshotVersion != imageEditorSnapshotVersion {
+		return snapshot, fmt.Errorf("unsupported OpenPost Image Editor snapshot version %d", probe.SnapshotVersion)
+	}
+	if err := json.Unmarshal(data, &snapshot); err != nil {
+		return snapshot, err
+	}
+	return snapshot, nil
+}
+
+func storeImageEditorRevisionMediaReferences(
+	ctx context.Context,
+	tx bun.Tx,
+	revisionID string,
+	payload ImageEditorDocumentPayload,
+	coverPreviewMediaID string,
+	createdAt time.Time,
+) error {
+	mediaIDs := imageEditorMediaIDs(payload.Pages)
+	mediaIDs = append(mediaIDs, coverPreviewMediaID)
+	mediaIDs = uniqueImageEditorStringsInOrder(mediaIDs)
+	if len(mediaIDs) > 0 {
+		refs := make([]models.DesignRevisionMediaReference, 0, len(mediaIDs))
+		for _, mediaID := range mediaIDs {
+			refs = append(refs, models.DesignRevisionMediaReference{
+				RevisionID: revisionID,
+				MediaID:    mediaID,
+				Usage:      "snapshot",
+				CreatedAt:  createdAt,
+			})
+		}
+		for start := 0; start < len(refs); start += imageEditorMediaWriteChunkSize {
+			end := min(start+imageEditorMediaWriteChunkSize, len(refs))
+			chunk := refs[start:end]
+			if _, err := tx.NewInsert().Model(&chunk).Exec(ctx); err != nil {
+				return err
+			}
+		}
+	}
+	state := &models.DesignRevisionMediaIndexState{
+		RevisionID:  revisionID,
+		MediaCount:  len(mediaIDs),
+		Status:      "complete",
+		ProcessedAt: createdAt,
+	}
+	_, err := tx.NewInsert().Model(state).Exec(ctx)
+	return err
 }
 
 func imageEditorMediaIDs(pages []ImageEditorPagePayload) []string {
@@ -2377,13 +2879,17 @@ func designSummary(document models.DesignDocument, pageCount int) ImageEditorDes
 	}
 }
 
-func revisionSummary(revision models.DesignRevision) ImageEditorRevisionSummary {
+func imageRevisionSummary(
+	revision models.DesignRevision,
+	actor EditorRevisionActor,
+) ImageEditorRevisionSummary {
 	summary := ImageEditorRevisionSummary{
 		ID:        revision.ID,
 		Revision:  revision.Revision,
 		Kind:      revision.Kind,
 		Name:      revision.Name,
 		CreatedAt: revision.CreatedAt.UTC().Format(time.RFC3339),
+		Actor:     actor,
 	}
 	if !revision.ExpiresAt.IsZero() {
 		summary.ExpiresAt = revision.ExpiresAt.UTC().Format(time.RFC3339)

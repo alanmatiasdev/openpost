@@ -577,6 +577,7 @@ func (h *MediaHandler) RegisterRoutes(api huma.API) {
 				group = group.Where(`id IN (SELECT media_id FROM post_media)
 					OR id IN (SELECT media_id FROM rendition_media)
 					OR id IN (SELECT r.media_id FROM design_media_references r JOIN design_documents d ON d.id = r.design_document_id WHERE d.deleted_at IS NULL)
+					OR id IN (SELECT r.media_id FROM design_revision_media_references r JOIN design_revisions v ON v.id = r.revision_id JOIN design_documents d ON d.id = v.design_document_id WHERE d.deleted_at IS NULL)
 					OR id IN (SELECT media_id FROM design_template_media_references)
 					OR id IN (SELECT a.media_id FROM video_project_assets a JOIN video_projects p ON p.id = a.video_project_id WHERE p.deleted_at IS NULL)
 					OR id IN (SELECT media_id FROM brand_fonts)
@@ -593,6 +594,7 @@ func (h *MediaHandler) RegisterRoutes(api huma.API) {
 			query = query.Where(`id NOT IN (SELECT media_id FROM post_media)
 				AND id NOT IN (SELECT media_id FROM rendition_media)
 				AND id NOT IN (SELECT r.media_id FROM design_media_references r JOIN design_documents d ON d.id = r.design_document_id WHERE d.deleted_at IS NULL)
+				AND id NOT IN (SELECT r.media_id FROM design_revision_media_references r JOIN design_revisions v ON v.id = r.revision_id JOIN design_documents d ON d.id = v.design_document_id WHERE d.deleted_at IS NULL)
 				AND id NOT IN (SELECT media_id FROM design_template_media_references)
 				AND id NOT IN (SELECT a.media_id FROM video_project_assets a JOIN video_projects p ON p.id = a.video_project_id WHERE p.deleted_at IS NULL)
 				AND id NOT IN (SELECT media_id FROM brand_fonts)
@@ -628,6 +630,11 @@ func (h *MediaHandler) RegisterRoutes(api huma.API) {
 				 FROM design_media_references design_reference
 				 JOIN design_documents document ON document.id = design_reference.design_document_id
 				 WHERE design_reference.media_id = media_attachments.id),
+				(SELECT MAX(revision.created_at)
+				 FROM design_revision_media_references revision_reference
+				 JOIN design_revisions revision ON revision.id = revision_reference.revision_id
+				 JOIN design_documents document ON document.id = revision.design_document_id
+				 WHERE revision_reference.media_id = media_attachments.id AND document.deleted_at IS NULL),
 				media_attachments.created_at
 			) DESC`)
 		default:
@@ -2276,6 +2283,12 @@ func (h *MediaHandler) mediaUsageSummaries(ctx context.Context, workspaceID stri
 			WHERE r.media_id IN (?) AND d.deleted_at IS NULL
 			GROUP BY r.media_id`,
 		`SELECT r.media_id, COUNT(*) AS usage_count
+			FROM design_revision_media_references r
+			JOIN design_revisions v ON v.id = r.revision_id
+			JOIN design_documents d ON d.id = v.design_document_id
+			WHERE r.media_id IN (?) AND d.deleted_at IS NULL
+			GROUP BY r.media_id`,
+		`SELECT r.media_id, COUNT(*) AS usage_count
 			FROM design_template_media_references r
 			WHERE r.media_id IN (?) GROUP BY r.media_id`,
 		`SELECT a.media_id, COUNT(*) AS usage_count
@@ -2517,6 +2530,25 @@ func (h *MediaHandler) nonPostMediaUsage(ctx context.Context, workspaceID, media
 	}
 	for _, design := range designs {
 		usage = append(usage, MediaUsageItem{Kind: "design", ID: design.ID, Label: design.Title, Status: "editable"})
+	}
+	var versionDesigns []struct {
+		ID    string `bun:"id"`
+		Title string `bun:"title"`
+	}
+	if err := h.db.NewSelect().
+		TableExpr("design_revision_media_references AS reference").
+		ColumnExpr("DISTINCT document.id").
+		ColumnExpr("document.title").
+		Join("JOIN design_revisions AS revision ON revision.id = reference.revision_id").
+		Join("JOIN design_documents AS document ON document.id = revision.design_document_id").
+		Where("reference.media_id = ? AND document.workspace_id = ? AND document.deleted_at IS NULL", mediaID, workspaceID).
+		Scan(ctx, &versionDesigns); err != nil {
+		return nil, err
+	}
+	for _, design := range versionDesigns {
+		usage = append(usage, MediaUsageItem{
+			Kind: "design_version", ID: design.ID, Label: design.Title, Status: "recovery version",
+		})
 	}
 	var previewDesigns []struct {
 		ID    string `bun:"id"`

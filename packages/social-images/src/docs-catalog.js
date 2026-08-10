@@ -66,6 +66,10 @@ export const docsPageCatalog = Object.freeze([
     "title": "API Reference"
   },
   {
+    "page": "development/api-tokens.md",
+    "title": "API Tokens"
+  },
+  {
     "page": "development/architecture.md",
     "title": "Architecture"
   },

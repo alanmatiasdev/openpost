@@ -127,13 +127,41 @@ func finalizeMigrations(ctx context.Context, db *bun.DB, appliedSet map[int64]bo
 			return fmt.Errorf("provider readiness certification migration failed: %w", err)
 		}
 	}
+	if err := finalizeRecentMigrations(ctx, db, appliedSet); err != nil {
+		return err
+	}
+	if err := MigrateLegacyPublicationAuthoring(ctx, db); err != nil {
+		return fmt.Errorf("legacy publication authoring migration failed: %w", err)
+	}
+	return nil
+}
+
+func finalizeRecentMigrations(
+	ctx context.Context,
+	db *bun.DB,
+	appliedSet map[int64]bool,
+) error {
 	if appliedSet[80] {
 		if err := ensureWorkspaceAccessLifecycleSchema(ctx, db); err != nil {
 			return fmt.Errorf("workspace access lifecycle migration failed: %w", err)
 		}
 	}
-	if err := MigrateLegacyPublicationAuthoring(ctx, db); err != nil {
-		return fmt.Errorf("legacy publication authoring migration failed: %w", err)
+	if appliedSet[81] {
+		if err := ensureAccountIdentityPublicProfileSchema(ctx, db); err != nil {
+			return fmt.Errorf("account identity and public profile migration failed: %w", err)
+		}
+	}
+	if !appliedSet[82] {
+		return nil
+	}
+	if err := ensureDesignRevisionMediaReferenceSchema(ctx, db); err != nil {
+		return fmt.Errorf("design revision media reference schema migration failed: %w", err)
+	}
+	if err := backfillDesignRevisionMediaReferences(ctx, db); err != nil {
+		return fmt.Errorf("design revision media reference migration failed: %w", err)
+	}
+	if err := backfillVideoRevisionMediaReferences(ctx, db); err != nil {
+		return fmt.Errorf("video revision media reference migration failed: %w", err)
 	}
 	return nil
 }
@@ -281,7 +309,7 @@ func prepareMigration(ctx context.Context, db *bun.DB, migration migration) erro
 	case 61:
 		description = "repost override"
 		err = ensurePublicationRepostOverride(ctx, db)
-	case 62, 63, 64, 66, 71, 73, 74, 75, 76, 77, 78, 80:
+	case 62, 63, 64, 66, 71, 73, 74, 75, 76, 77, 78, 80, 81, 82:
 		return prepareRecentMigration(ctx, db, migration)
 	}
 	if err != nil {
@@ -480,6 +508,12 @@ func prepareRecentMigration(ctx context.Context, db *bun.DB, migration migration
 	case 80:
 		description = "workspace access lifecycle"
 		err = ensureWorkspaceAccessLifecycleSchema(ctx, db)
+	case 81, 82:
+		description, err = prepareAccountAndEditorRevisionMigration(
+			ctx,
+			db,
+			migration.version,
+		)
 	}
 	if err != nil {
 		return fmt.Errorf("migration %s %s preparation failed: %w", migration.name, description, err)
@@ -487,78 +521,211 @@ func prepareRecentMigration(ctx context.Context, db *bun.DB, migration migration
 	return nil
 }
 
-func ensureWorkspaceAccessLifecycleSchema(ctx context.Context, db *bun.DB) error {
-	membersExist, err := migrationTableExists(ctx, db, "workspace_members")
-	if err != nil {
-		return err
+func prepareAccountAndEditorRevisionMigration(
+	ctx context.Context,
+	db *bun.DB,
+	version int64,
+) (string, error) {
+	switch version {
+	case 81:
+		return "account identity and public profiles", prepareAccountIdentityPublicProfileSchema(ctx, db)
+	case 82:
+		return "design revision media references", ensureDesignRevisionMediaReferenceSchema(ctx, db)
+	default:
+		return "", nil
 	}
-	if membersExist {
-		for _, column := range []struct {
-			name       string
-			definition string
-		}{
-			{name: "status", definition: "TEXT NOT NULL DEFAULT 'active'"},
-			{name: "created_at", definition: "TIMESTAMP"},
-			{name: "updated_at", definition: "TIMESTAMP"},
-			{name: "deactivated_at", definition: "TIMESTAMP"},
-		} {
-			present, columnErr := migrationColumnExists(ctx, db, "workspace_members", column.name)
-			if columnErr != nil {
-				return columnErr
-			}
-			if !present {
-				if _, columnErr = db.ExecContext(ctx, "ALTER TABLE workspace_members ADD COLUMN "+column.name+" "+column.definition); columnErr != nil {
-					return columnErr
-				}
-			}
-		}
-		if _, err = db.ExecContext(ctx, `UPDATE workspace_members SET created_at = current_timestamp WHERE created_at IS NULL`); err != nil {
-			return err
-		}
-		if _, err = db.ExecContext(ctx, `UPDATE workspace_members SET updated_at = COALESCE(created_at, current_timestamp) WHERE updated_at IS NULL`); err != nil {
-			return err
-		}
-		for _, statement := range []string{
-			`CREATE INDEX IF NOT EXISTS workspace_members_workspace_status_idx ON workspace_members (workspace_id, status, role)`,
-			`CREATE INDEX IF NOT EXISTS workspace_members_user_status_idx ON workspace_members (user_id, status, workspace_id)`,
-		} {
-			if _, err = db.ExecContext(ctx, statement); err != nil {
-				return err
-			}
-		}
-	}
+}
 
-	invitationsExist, err := migrationTableExists(ctx, db, "workspace_invitations")
-	if err != nil {
-		return err
-	}
-	if invitationsExist {
-		present, columnErr := migrationColumnExists(ctx, db, "workspace_invitations", "last_sent_at")
-		if columnErr != nil {
-			return columnErr
-		}
-		if !present {
-			if _, columnErr = db.ExecContext(ctx, `ALTER TABLE workspace_invitations ADD COLUMN last_sent_at TIMESTAMP`); columnErr != nil {
-				return columnErr
-			}
-		}
-		if _, err = db.ExecContext(ctx, `UPDATE workspace_invitations SET last_sent_at = created_at WHERE last_sent_at IS NULL`); err != nil {
-			return err
-		}
-	}
+func ensureAccountIdentityPublicProfileSchema(ctx context.Context, db *bun.DB) error {
+	return ensureAccountIdentityPublicProfileSchemaWithLegacyBackfill(ctx, db, false)
+}
 
-	workspacesExist, err := migrationTableExists(ctx, db, "workspaces")
-	if err != nil {
-		return err
-	}
+func prepareAccountIdentityPublicProfileSchema(ctx context.Context, db *bun.DB) error {
+	return ensureAccountIdentityPublicProfileSchemaWithLegacyBackfill(ctx, db, true)
+}
+
+func ensureAccountIdentityPublicProfileSchemaWithLegacyBackfill(
+	ctx context.Context,
+	db *bun.DB,
+	backfillLegacyVisibility bool,
+) error {
 	usersExist, err := migrationTableExists(ctx, db, "users")
+	if err != nil || !usersExist {
+		return err
+	}
+	if err := ensurePublicProfileVisibilityColumn(ctx, db); err != nil {
+		return err
+	}
+	if backfillLegacyVisibility {
+		if err := backfillLegacyPublicProfileVisibility(ctx, db); err != nil {
+			return err
+		}
+	}
+	if err := ensureUserIdentityLinkedNameColumn(ctx, db); err != nil {
+		return err
+	}
+	return ensureEmailChangeChallengeSchema(ctx, db)
+}
+
+func ensurePublicProfileVisibilityColumn(ctx context.Context, db *bun.DB) error {
+	present, err := migrationColumnExists(ctx, db, "users", "public_profile_visibility_json")
+	if err != nil || present {
+		return err
+	}
+	_, err = db.ExecContext(ctx, `ALTER TABLE users ADD COLUMN public_profile_visibility_json TEXT NOT NULL DEFAULT '["username"]'`)
+	return err
+}
+
+func backfillLegacyPublicProfileVisibility(ctx context.Context, db *bun.DB) error {
+	present, err := migrationColumnExists(ctx, db, "users", "public_profile_enabled")
+	if err != nil || !present {
+		return err
+	}
+	// Preserve the original all-fields behavior only while 081 is still
+	// pending and only for the exact default written by this preparation.
+	// Retrying after a crash between ALTER and UPDATE is therefore safe,
+	// while the post-migration repair path never overwrites an intentional
+	// username-only choice. Some historical fixtures predate
+	// public_profile_enabled entirely.
+	_, err = db.ExecContext(ctx, `UPDATE users
+		SET public_profile_visibility_json = '["display_name","avatar","joined_at","activity","platforms","workspaces","plan"]'
+		WHERE public_profile_enabled = true
+		  AND public_profile_visibility_json = '["username"]'`)
+	return err
+}
+
+func ensureUserIdentityLinkedNameColumn(ctx context.Context, db *bun.DB) error {
+	exists, err := migrationTableExists(ctx, db, "user_identities")
+	if err != nil || !exists {
+		return err
+	}
+	present, err := migrationColumnExists(ctx, db, "user_identities", "linked_name")
+	if err != nil || present {
+		return err
+	}
+	_, err = db.ExecContext(ctx, `ALTER TABLE user_identities ADD COLUMN linked_name TEXT NOT NULL DEFAULT ''`)
+	return err
+}
+
+func ensureEmailChangeChallengeSchema(ctx context.Context, db *bun.DB) error {
+	if _, err := db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS email_change_challenges (
+		id TEXT PRIMARY KEY,
+		user_id TEXT NOT NULL,
+		old_email TEXT NOT NULL,
+		new_email TEXT NOT NULL,
+		code_hash TEXT NOT NULL,
+		attempts INTEGER NOT NULL DEFAULT 0,
+		expires_at TIMESTAMP NOT NULL,
+		sent_at TIMESTAMP,
+		consumed_at TIMESTAMP,
+		canceled_at TIMESTAMP,
+		created_at TIMESTAMP NOT NULL DEFAULT current_timestamp,
+		FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+	)`); err != nil {
+		return err
+	}
+	for _, statement := range []string{
+		`CREATE INDEX IF NOT EXISTS email_change_challenges_user_created_idx ON email_change_challenges (user_id, created_at)`,
+		`CREATE INDEX IF NOT EXISTS email_change_challenges_expiry_idx ON email_change_challenges (expires_at, consumed_at, canceled_at)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS email_change_challenges_active_user_idx ON email_change_challenges (user_id) WHERE consumed_at IS NULL AND canceled_at IS NULL`,
+	} {
+		if _, err := db.ExecContext(ctx, statement); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func ensureWorkspaceAccessLifecycleSchema(ctx context.Context, db *bun.DB) error {
+	membersExist, err := ensureWorkspaceMemberLifecycleSchema(ctx, db)
 	if err != nil {
 		return err
 	}
-	if !membersExist || !invitationsExist || !workspacesExist || !usersExist {
+	invitationsExist, err := ensureWorkspaceInvitationLifecycleSchema(ctx, db)
+	if err != nil {
+		return err
+	}
+	accessPrerequisitesExist, err := workspaceAccessAuditPrerequisitesExist(ctx, db)
+	if err != nil {
+		return err
+	}
+	if !membersExist || !invitationsExist || !accessPrerequisitesExist {
 		return nil
 	}
-	if _, err = db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS workspace_access_audit_events (
+	return ensureWorkspaceAccessAuditSchema(ctx, db)
+}
+
+func ensureWorkspaceMemberLifecycleSchema(ctx context.Context, db *bun.DB) (bool, error) {
+	exists, err := migrationTableExists(ctx, db, "workspace_members")
+	if err != nil || !exists {
+		return exists, err
+	}
+	for _, column := range []struct {
+		name       string
+		definition string
+	}{
+		{name: "status", definition: "TEXT NOT NULL DEFAULT 'active'"},
+		{name: "created_at", definition: "TIMESTAMP"},
+		{name: "updated_at", definition: "TIMESTAMP"},
+		{name: "deactivated_at", definition: "TIMESTAMP"},
+	} {
+		present, columnErr := migrationColumnExists(ctx, db, "workspace_members", column.name)
+		if columnErr != nil {
+			return false, columnErr
+		}
+		if !present {
+			if _, columnErr = db.ExecContext(ctx, "ALTER TABLE workspace_members ADD COLUMN "+column.name+" "+column.definition); columnErr != nil {
+				return false, columnErr
+			}
+		}
+	}
+	for _, statement := range []string{
+		`UPDATE workspace_members SET created_at = current_timestamp WHERE created_at IS NULL`,
+		`UPDATE workspace_members SET updated_at = COALESCE(created_at, current_timestamp) WHERE updated_at IS NULL`,
+		`CREATE INDEX IF NOT EXISTS workspace_members_workspace_status_idx ON workspace_members (workspace_id, status, role)`,
+		`CREATE INDEX IF NOT EXISTS workspace_members_user_status_idx ON workspace_members (user_id, status, workspace_id)`,
+	} {
+		if _, err = db.ExecContext(ctx, statement); err != nil {
+			return false, err
+		}
+	}
+	return true, nil
+}
+
+func ensureWorkspaceInvitationLifecycleSchema(ctx context.Context, db *bun.DB) (bool, error) {
+	exists, err := migrationTableExists(ctx, db, "workspace_invitations")
+	if err != nil || !exists {
+		return exists, err
+	}
+	present, err := migrationColumnExists(ctx, db, "workspace_invitations", "last_sent_at")
+	if err != nil {
+		return false, err
+	}
+	if !present {
+		if _, err = db.ExecContext(ctx, `ALTER TABLE workspace_invitations ADD COLUMN last_sent_at TIMESTAMP`); err != nil {
+			return false, err
+		}
+	}
+	if _, err = db.ExecContext(ctx, `UPDATE workspace_invitations SET last_sent_at = created_at WHERE last_sent_at IS NULL`); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func workspaceAccessAuditPrerequisitesExist(ctx context.Context, db *bun.DB) (bool, error) {
+	allExist := true
+	for _, table := range []string{"workspaces", "users"} {
+		exists, err := migrationTableExists(ctx, db, table)
+		if err != nil {
+			return false, err
+		}
+		allExist = allExist && exists
+	}
+	return allExist, nil
+}
+
+func ensureWorkspaceAccessAuditSchema(ctx context.Context, db *bun.DB) error {
+	if _, err := db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS workspace_access_audit_events (
 		id TEXT PRIMARY KEY,
 		workspace_id TEXT NOT NULL,
 		actor_user_id TEXT,
@@ -582,7 +749,7 @@ func ensureWorkspaceAccessLifecycleSchema(ctx context.Context, db *bun.DB) error
 		`CREATE INDEX IF NOT EXISTS workspace_access_audit_workspace_created_idx ON workspace_access_audit_events (workspace_id, created_at DESC, id DESC)`,
 		`CREATE INDEX IF NOT EXISTS workspace_access_audit_subject_idx ON workspace_access_audit_events (workspace_id, subject_user_id, created_at DESC)`,
 	} {
-		if _, err = db.ExecContext(ctx, statement); err != nil {
+		if _, err := db.ExecContext(ctx, statement); err != nil {
 			return err
 		}
 	}

@@ -26,7 +26,16 @@ export async function syncVideoProjectToOpenPost(
 ): Promise<LocalVideoProject> {
 	const cloudDocument = projectWithReferencedSourcesOnly(local.document);
 	const localDocument = cloneVideoProject(local.document);
-	const referencedIDs = referencedSourceIDs(cloudDocument);
+	const coverSourceID =
+		local.cover_source_id && local.document.sources[local.cover_source_id]
+			? local.cover_source_id
+			: undefined;
+	if (coverSourceID && !cloudDocument.sources[coverSourceID]) {
+		cloudDocument.sources[coverSourceID] = structuredClone(local.document.sources[coverSourceID]!);
+	}
+	const referencedIDs = Array.from(
+		new Set([...referencedSourceIDs(cloudDocument), ...(coverSourceID ? [coverSourceID] : [])])
+	).sort();
 	const localSources = referencedIDs
 		.map((sourceID) => cloudDocument.sources[sourceID])
 		.filter(
@@ -147,6 +156,17 @@ export async function syncVideoProjectToOpenPost(
 			locator: { type: 'openpost-media', media_id: mediaID }
 		};
 	}
+	let cloudCoverPreviewMediaID = local.cloud_cover_preview_media_id?.trim() ?? '';
+	if (coverSourceID) {
+		const coverSource = cloudDocument.sources[coverSourceID];
+		cloudCoverPreviewMediaID =
+			coverSource?.locator.type === 'openpost-media'
+				? coverSource.locator.media_id
+				: (cloudSourceMap[coverSourceID] ?? '');
+		if (!cloudCoverPreviewMediaID) {
+			throw new Error('The project cover has not been synchronized to OpenPost.');
+		}
+	}
 	onProgress?.({
 		stage: 'saving',
 		completed_bytes: totalBytes,
@@ -157,14 +177,16 @@ export async function syncVideoProjectToOpenPost(
 		? await updateCloudVideoProject(
 				local.cloud_project_id,
 				local.cloud_revision ?? 1,
-				cloudDocument
+				cloudDocument,
+				cloudCoverPreviewMediaID
 			)
-		: await createCloudVideoProject(workspaceID, cloudDocument);
+		: await createCloudVideoProject(workspaceID, cloudDocument, cloudCoverPreviewMediaID);
 	return await saveLocalVideoProject({
 		...local,
 		document: localDocument,
 		cloud_project_id: response.id,
 		cloud_revision: response.revision,
+		cloud_cover_preview_media_id: response.cover_preview_media_id || undefined,
 		cloud_source_map: cloudSourceMap,
 		unsynced_source_ids: referencedSourceIDs(localDocument).filter((sourceID) => {
 			const source = localDocument.sources[sourceID];

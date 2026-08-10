@@ -21,6 +21,7 @@
 	import LayerTree from './layer-tree.svelte';
 	import PropertiesPanel from './properties-panel.svelte';
 	import PageStrip from './page-strip.svelte';
+	import TemplatePreview from './template-preview.svelte';
 	import ImageEditorColorPicker from './image-editor-color-picker.svelte';
 	import { provideImageEditor, ImageEditorController } from '../editor.svelte';
 	import {
@@ -28,6 +29,7 @@
 		createImageEditorDesign,
 		createImageEditorCheckpoint,
 		createImageEditorTemplate,
+		getImageEditorRevision,
 		loadImageEditorDesign,
 		listImageEditorRevisions,
 		listImageEditorTemplates,
@@ -35,6 +37,11 @@
 		saveImageEditorDesign,
 		updateImageEditorTemplate
 	} from '../api';
+	import {
+		imageEditorRevisionHasChanges,
+		summarizeImageEditorRevision,
+		type ImageEditorRevisionChanges
+	} from '../revision-summary';
 	import {
 		clearLocalImageEditorRecovery,
 		loadLocalImageEditorRecovery,
@@ -73,6 +80,7 @@
 		ImageEditorBrandKit,
 		ImageEditorDocumentResponse,
 		ImageEditorLayer,
+		ImageEditorRevisionResponse,
 		ImageEditorRevisionSummary,
 		ImageEditorTemplate,
 		ImageEditorTool
@@ -187,8 +195,6 @@
 	const INITIAL_SAVE_RETRY_DELAY = 2_000;
 	const MAXIMUM_SAVE_RETRY_DELAY = 30_000;
 	let saveTimer: ReturnType<typeof setTimeout> | undefined;
-	let savedIndicatorTimer: ReturnType<typeof setTimeout> | undefined;
-	let savedIndicatorVisible = $state(false);
 	let pendingSave: SaveRequest | null = null;
 	let saveDrain: Promise<boolean> | null = null;
 	let saveRetryDelay = INITIAL_SAVE_RETRY_DELAY;
@@ -293,7 +299,23 @@
 	let suppressSavedAnnouncementUntil = 0;
 	let revisions = $state<ImageEditorRevisionSummary[]>([]);
 	let historyBusy = $state(false);
+	let historyPageBusy = $state(false);
 	let historyError = $state('');
+	let revisionNextCursor = $state('');
+	let revisionPreview = $state.raw<ImageEditorRevisionResponse | null>(null);
+	let revisionPreviewBusy = $state(false);
+	let revisionPreviewPage = $state(0);
+	let restoreConfirmOpen = $state(false);
+	let revisionPreviewRequest = 0;
+	let revisionPreviewController: AbortController | null = null;
+	let revisionChanges = $derived.by<ImageEditorRevisionChanges | null>(() =>
+		editor.document && revisionPreview
+			? summarizeImageEditorRevision(editor.document, revisionPreview.document, {
+					currentCoverPreviewMediaID: coverPreviewMediaID,
+					targetCoverPreviewMediaID: revisionPreview.cover_preview_media_id
+				})
+			: null
+	);
 	let checkpointName = $state('');
 	let templateName = $state('');
 	let templateCategory = $state<string>(m.image_editor_workspace_category());
@@ -658,21 +680,12 @@
 		return () => {
 			unsubscribe();
 			clearTimeout(saveTimer);
-			clearTimeout(savedIndicatorTimer);
 			clearTimeout(previewTimer);
 			backgroundRemoval.dispose();
 			designChannel?.close();
 			window.removeEventListener('beforeunload', beforeUnload);
 		};
 	});
-
-	function showSavedIndicator(): void {
-		clearTimeout(savedIndicatorTimer);
-		savedIndicatorVisible = true;
-		savedIndicatorTimer = setTimeout(() => {
-			savedIndicatorVisible = false;
-		}, 1_600);
-	}
 
 	function dismissFirstEditHint(): void {
 		firstEditHintVisible = false;
@@ -949,6 +962,22 @@
 		saveTimer = setTimeout(() => void saveNow(), delay);
 	}
 
+	function openConflictRecovery(): void {
+		conflictServerRevision = null;
+		conflictError = '';
+		editor.saveState = 'conflict';
+		editor.saveMessage = m.image_editor_save_conflict();
+		conflictDialogOpen = true;
+		statusAnnouncement = m.image_editor_conflict_title();
+		void loadImageEditorDesign(editor.id)
+			.then((latest) => {
+				if (conflictDialogOpen && latest.revision > editor.revision) {
+					conflictServerRevision = latest.revision;
+				}
+			})
+			.catch(() => undefined);
+	}
+
 	async function performSave(request: SaveRequest): Promise<SaveAttemptResult> {
 		if (!editor.document || !editor.canEdit) return 'saved';
 		const submittedDocument = editor.document;
@@ -985,7 +1014,6 @@
 				editor.saveMessage = guestMode
 					? m.image_editor_public_saved_device()
 					: m.image_editor_saved();
-				showSavedIndicator();
 				if (!guestMode) await clearLocalImageEditorRecovery(editor.id);
 				if (Date.now() >= suppressSavedAnnouncementUntil) {
 					statusAnnouncement = guestMode
@@ -1002,19 +1030,7 @@
 			const status = (cause as Error & { status?: number }).status;
 			const retryable = !navigator.onLine || !status || status === 429 || status >= 500;
 			if (status === 409) {
-				conflictServerRevision = null;
-				conflictError = '';
-				editor.saveState = 'conflict';
-				editor.saveMessage = m.image_editor_save_conflict();
-				conflictDialogOpen = true;
-				statusAnnouncement = m.image_editor_conflict_title();
-				void loadImageEditorDesign(editor.id)
-					.then((latest) => {
-						if (conflictDialogOpen && latest.revision > editor.revision) {
-							conflictServerRevision = latest.revision;
-						}
-					})
-					.catch(() => undefined);
+				openConflictRecovery();
 			} else if (!navigator.onLine) {
 				editor.saveState = 'offline';
 				editor.saveMessage = m.image_editor_saved_locally();
@@ -1357,15 +1373,78 @@
 
 	async function openHistory(): Promise<void> {
 		if (guestMode) return;
-		historyDialogOpen = true;
+		setHistoryDialogOpen(true);
+		invalidateRevisionPreview();
 		historyBusy = true;
 		historyError = '';
+		revisionPreview = null;
+		revisionPreviewPage = 0;
+		restoreConfirmOpen = false;
+		revisionNextCursor = '';
 		try {
-			revisions = await listImageEditorRevisions(editor.id);
+			if (!(await saveNow())) throw new Error(m.image_editor_checkpoint_save_first());
+			const page = await listImageEditorRevisions(editor.id);
+			revisions = page.revisions;
+			revisionNextCursor = page.nextCursor ?? '';
 		} catch (cause) {
 			historyError = cause instanceof Error ? cause.message : m.image_editor_history_load_failed();
 		} finally {
 			historyBusy = false;
+		}
+	}
+
+	async function loadMoreRevisions(): Promise<void> {
+		if (!revisionNextCursor || historyPageBusy) return;
+		historyPageBusy = true;
+		historyError = '';
+		try {
+			const page = await listImageEditorRevisions(editor.id, revisionNextCursor);
+			const known = new Set(revisions.map((revision) => revision.id));
+			revisions = [...revisions, ...page.revisions.filter((revision) => !known.has(revision.id))];
+			revisionNextCursor = page.nextCursor ?? '';
+		} catch (cause) {
+			historyError = cause instanceof Error ? cause.message : m.image_editor_history_load_failed();
+		} finally {
+			historyPageBusy = false;
+		}
+	}
+
+	function invalidateRevisionPreview(): void {
+		revisionPreviewRequest += 1;
+		revisionPreviewController?.abort();
+		revisionPreviewController = null;
+		revisionPreviewBusy = false;
+		revisionPreview = null;
+	}
+
+	function setHistoryDialogOpen(open: boolean): void {
+		if (historyDialogOpen === open) return;
+		historyDialogOpen = open;
+		invalidateRevisionPreview();
+		if (!open) restoreConfirmOpen = false;
+	}
+
+	async function inspectRevision(revision: ImageEditorRevisionSummary): Promise<void> {
+		revisionPreviewController?.abort();
+		const controller = new AbortController();
+		revisionPreviewController = controller;
+		const request = ++revisionPreviewRequest;
+		revisionPreviewBusy = true;
+		historyError = '';
+		revisionPreviewPage = 0;
+		try {
+			const preview = await getImageEditorRevision(editor.id, revision.id, controller.signal);
+			if (request === revisionPreviewRequest) revisionPreview = preview;
+		} catch (cause) {
+			if (request === revisionPreviewRequest) {
+				historyError =
+					cause instanceof Error ? cause.message : m.image_editor_history_load_failed();
+			}
+		} finally {
+			if (request === revisionPreviewRequest) {
+				revisionPreviewBusy = false;
+				revisionPreviewController = null;
+			}
 		}
 	}
 
@@ -1375,32 +1454,62 @@
 		historyError = '';
 		try {
 			if (!(await saveNow())) throw new Error(m.image_editor_checkpoint_save_first());
-			await createImageEditorCheckpoint(editor.id, checkpointName.trim());
+			await createImageEditorCheckpoint(editor.id, checkpointName.trim(), editor.revision);
 			checkpointName = '';
 			checkpointDialogOpen = false;
 			await openHistory();
 			statusAnnouncement = m.image_editor_checkpoint_created();
 		} catch (cause) {
-			historyError = cause instanceof Error ? cause.message : m.image_editor_checkpoint_failed();
+			if ((cause as Error & { status?: number }).status === 409) {
+				checkpointDialogOpen = false;
+				setHistoryDialogOpen(false);
+				openConflictRecovery();
+			} else {
+				historyError = cause instanceof Error ? cause.message : m.image_editor_checkpoint_failed();
+			}
 		} finally {
 			historyBusy = false;
 		}
 	}
 
-	async function restoreRevision(revision: ImageEditorRevisionSummary): Promise<void> {
+	async function restoreRevision(): Promise<void> {
+		if (!revisionPreview || !revisionChanges || !imageEditorRevisionHasChanges(revisionChanges)) {
+			return;
+		}
 		historyBusy = true;
 		historyError = '';
 		try {
-			const response = await restoreImageEditorRevision(editor.id, revision.id, editor.revision);
+			if (!(await saveNow())) throw new Error(m.image_editor_checkpoint_save_first());
+			const response = await restoreImageEditorRevision(
+				editor.id,
+				revisionPreview.summary.id,
+				editor.revision
+			);
 			editor.load(response);
+			coverPreviewMediaID = response.cover_preview_media_id ?? '';
 			await clearLocalImageEditorRecovery(editor.id);
-			historyDialogOpen = false;
+			restoreConfirmOpen = false;
+			setHistoryDialogOpen(false);
 			statusAnnouncement = m.image_editor_version_restored();
 		} catch (cause) {
-			historyError = cause instanceof Error ? cause.message : m.image_editor_restore_failed();
+			if ((cause as Error & { status?: number }).status === 409) {
+				restoreConfirmOpen = false;
+				setHistoryDialogOpen(false);
+				openConflictRecovery();
+			} else {
+				historyError = cause instanceof Error ? cause.message : m.image_editor_restore_failed();
+			}
 		} finally {
 			historyBusy = false;
 		}
+	}
+
+	function revisionLabel(revision: ImageEditorRevisionSummary): string {
+		if (revision.kind === 'checkpoint') return revision.name || m.image_editor_checkpoint();
+		if (revision.kind === 'restore_point') {
+			return m.version_restore_point_label({ revision: revision.revision });
+		}
+		return m.image_editor_autosave_revision({ revision: revision.revision });
 	}
 
 	async function saveAsTemplate(): Promise<void> {
@@ -2559,7 +2668,7 @@
 		</Menubar.Root>
 		<SaveIndicator
 			saving={editor.saveState === 'saving'}
-			saved={savedIndicatorVisible && editor.saveState === 'saved'}
+			saved={editor.saveState === 'saved'}
 			savingLabel={m.common_saving()}
 			savedLabel={guestMode ? m.image_editor_public_saved_device() : m.image_editor_saved()}
 			testId="image-editor-save-indicator"
@@ -3592,67 +3701,210 @@
 	</Dialog.Content>
 </Dialog.Root>
 
-<Dialog.Root bind:open={historyDialogOpen}>
-	<Dialog.Content class="max-h-[85dvh] overflow-hidden sm:max-w-xl">
+<Dialog.Root open={historyDialogOpen} onOpenChange={setHistoryDialogOpen}>
+	<Dialog.Content class="max-h-[90dvh] overflow-hidden sm:max-w-4xl">
 		<Dialog.Header>
 			<Dialog.Title>{m.image_editor_version_history()}</Dialog.Title>
 			<Dialog.Description>{m.image_editor_history_body()}</Dialog.Description>
 		</Dialog.Header>
-		<div class="max-h-[55dvh] space-y-2 overflow-y-auto pr-1">
-			{#if historyBusy}
-				<div class="flex min-h-32 items-center justify-center text-sm text-muted-foreground">
-					<LoaderIcon class="mr-2 size-4 animate-spin" />
-					{m.image_editor_loading_history()}
-				</div>
-			{:else if revisions.length === 0}
-				<p class="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-					{m.image_editor_no_history()}
-				</p>
-			{:else}
-				{#each revisions as revision (revision.id)}
-					<div class="flex min-h-14 items-center gap-3 rounded-lg border p-3">
-						<div class="min-w-0 flex-1">
-							<p class="truncate text-sm font-medium">
-								{revision.kind === 'checkpoint'
-									? revision.name || m.image_editor_checkpoint()
-									: m.image_editor_autosave_revision({ revision: revision.revision })}
-							</p>
-							<p class="text-xs text-muted-foreground">
-								{new Date(revision.created_at).toLocaleString()}
-								{#if revision.expires_at}
-									·
-									{m.image_editor_expires({
-										date: new Date(revision.expires_at).toLocaleDateString()
-									})}
-								{/if}
-							</p>
-						</div>
+		<div
+			class="grid max-h-[65dvh] min-h-72 gap-4 overflow-hidden sm:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]"
+		>
+			<div class="space-y-2 overflow-y-auto pr-1">
+				{#if historyBusy}
+					<div class="flex min-h-32 items-center justify-center text-sm text-muted-foreground">
+						<LoaderIcon class="mr-2 size-4 animate-spin" />
+						{m.image_editor_loading_history()}
+					</div>
+				{:else if revisions.length === 0}
+					<p class="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+						{m.image_editor_no_history()}
+					</p>
+				{:else}
+					{#each revisions as revision (revision.id)}
+						<Button
+							variant={revisionPreview?.summary.id === revision.id ? 'secondary' : 'outline'}
+							class="h-auto min-h-16 w-full justify-start p-3 text-left whitespace-normal"
+							disabled={revisionPreviewBusy}
+							onclick={() => void inspectRevision(revision)}
+						>
+							<div class="min-w-0 flex-1">
+								<p class="truncate text-sm font-medium">
+									{revisionLabel(revision)}
+								</p>
+								<p class="mt-0.5 text-xs font-normal text-muted-foreground">
+									{new Date(revision.created_at).toLocaleString()}
+									{#if revision.expires_at}
+										·
+										{m.image_editor_expires({
+											date: new Date(revision.expires_at).toLocaleDateString()
+										})}
+									{/if}
+								</p>
+								<p class="mt-0.5 truncate text-xs font-normal text-muted-foreground">
+									{revision.actor.is_current_user
+										? m.version_saved_by_you({ actor: revision.actor.name })
+										: m.version_saved_by({ actor: revision.actor.name })}
+								</p>
+							</div>
+						</Button>
+					{/each}
+					{#if revisionNextCursor}
 						<Button
 							variant="outline"
-							size="sm"
-							disabled={!editor.canEdit || historyBusy}
-							onclick={() => restoreRevision(revision)}>{m.image_editor_restore()}</Button
+							class="w-full"
+							disabled={historyPageBusy}
+							onclick={() => void loadMoreRevisions()}
+						>
+							{#if historyPageBusy}<LoaderIcon class="mr-2 size-4 animate-spin" />{/if}
+							{m.notifications_load_more()}
+						</Button>
+					{/if}
+				{/if}
+				{#if historyError}
+					<p class="rounded-md bg-destructive/10 p-3 text-sm text-destructive" role="alert">
+						{historyError}
+					</p>
+				{/if}
+			</div>
+			<section class="min-h-0 overflow-y-auto rounded-lg border bg-muted/20 p-3" aria-live="polite">
+				{#if revisionPreviewBusy}
+					<div class="flex min-h-56 items-center justify-center text-sm text-muted-foreground">
+						<LoaderIcon class="mr-2 size-4 animate-spin" />
+						{m.version_preview_loading()}
+					</div>
+				{:else if !revisionPreview}
+					<div
+						class="grid min-h-56 place-items-center px-4 text-center text-sm text-muted-foreground"
+					>
+						{m.version_preview_select()}
+					</div>
+				{:else}
+					<div class="space-y-3">
+						<div class="h-52 overflow-hidden rounded-md border bg-neutral-900">
+							<TemplatePreview
+								document={revisionPreview.document}
+								page={revisionPreview.document.pages[revisionPreviewPage]}
+								label={revisionLabel(revisionPreview.summary)}
+							/>
+						</div>
+						{#if revisionPreview.document.pages.length > 1}
+							<div class="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+								<Button
+									variant="outline"
+									size="sm"
+									disabled={revisionPreviewPage === 0}
+									onclick={() => (revisionPreviewPage = Math.max(0, revisionPreviewPage - 1))}
+									>{m.media_previous_page()}</Button
+								>
+								<span>
+									{m.version_preview_page({
+										current: revisionPreviewPage + 1,
+										total: revisionPreview.document.pages.length
+									})}
+								</span>
+								<Button
+									variant="outline"
+									size="sm"
+									disabled={revisionPreviewPage >= revisionPreview.document.pages.length - 1}
+									onclick={() =>
+										(revisionPreviewPage = Math.min(
+											revisionPreview!.document.pages.length - 1,
+											revisionPreviewPage + 1
+										))}>{m.media_next_page()}</Button
+								>
+							</div>
+						{/if}
+						<div>
+							<h3 class="text-sm font-medium">{m.version_changes()}</h3>
+							{#if revisionChanges && imageEditorRevisionHasChanges(revisionChanges)}
+								<ul class="mt-1 grid gap-1 text-xs text-muted-foreground">
+									{#if revisionChanges.titleChanged}<li>{m.version_change_title()}</li>{/if}
+									{#if revisionChanges.coverChanged}<li>{m.version_change_cover()}</li>{/if}
+									{#if revisionChanges.canvasChanged}<li>{m.version_change_canvas()}</li>{/if}
+									{#if revisionChanges.exportSettingsChanged}<li>
+											{m.version_change_export()}
+										</li>{/if}
+									{#if revisionChanges.brandKitChanged}<li>{m.version_change_brand_kit()}</li>{/if}
+									{#if revisionChanges.pagesAdded}<li>
+											{m.version_change_pages_added({ count: revisionChanges.pagesAdded })}
+										</li>{/if}
+									{#if revisionChanges.pagesRemoved}<li>
+											{m.version_change_pages_removed({ count: revisionChanges.pagesRemoved })}
+										</li>{/if}
+									{#if revisionChanges.pagesChanged}<li>
+											{m.version_change_pages_changed({ count: revisionChanges.pagesChanged })}
+										</li>{/if}
+									{#if revisionChanges.layersAdded}<li>
+											{m.version_change_layers_added({ count: revisionChanges.layersAdded })}
+										</li>{/if}
+									{#if revisionChanges.layersRemoved}<li>
+											{m.version_change_layers_removed({ count: revisionChanges.layersRemoved })}
+										</li>{/if}
+									{#if revisionChanges.layersChanged}<li>
+											{m.version_change_layers_changed({ count: revisionChanges.layersChanged })}
+										</li>{/if}
+									{#if revisionChanges.guidePagesChanged}<li>
+											{m.version_change_guides({ count: revisionChanges.guidePagesChanged })}
+										</li>{/if}
+								</ul>
+							{:else}
+								<p class="mt-1 text-xs text-muted-foreground">{m.version_no_changes()}</p>
+							{/if}
+						</div>
+						<Button
+							class="w-full"
+							disabled={!editor.canEdit ||
+								!revisionChanges ||
+								!imageEditorRevisionHasChanges(revisionChanges)}
+							onclick={() => (restoreConfirmOpen = true)}>{m.version_restore_version()}</Button
 						>
 					</div>
-				{/each}
-			{/if}
-			{#if historyError}
-				<p class="rounded-md bg-destructive/10 p-3 text-sm text-destructive" role="alert">
-					{historyError}
-				</p>
-			{/if}
+				{/if}
+			</section>
 		</div>
 		<Dialog.Footer>
-			<Button variant="outline" onclick={() => (historyDialogOpen = false)}
+			<Button variant="outline" onclick={() => setHistoryDialogOpen(false)}
 				>{m.common_close()}</Button
 			>
 			<Button
 				onclick={() => {
-					historyDialogOpen = false;
+					setHistoryDialogOpen(false);
 					checkpointDialogOpen = true;
 				}}
 				disabled={!editor.canEdit}>{m.image_editor_create_checkpoint()}</Button
 			>
+		</Dialog.Footer>
+	</Dialog.Content>
+</Dialog.Root>
+
+<Dialog.Root bind:open={restoreConfirmOpen}>
+	<Dialog.Content class="sm:max-w-md">
+		<Dialog.Header>
+			<Dialog.Title>{m.version_restore_confirm_title()}</Dialog.Title>
+			<Dialog.Description>{m.version_restore_confirm_body()}</Dialog.Description>
+		</Dialog.Header>
+		{#if revisionPreview}
+			<div class="rounded-md border bg-muted/30 p-3 text-sm">
+				<p class="font-medium">{revisionLabel(revisionPreview.summary)}</p>
+				<p class="mt-1 text-xs text-muted-foreground">
+					{new Date(revisionPreview.summary.created_at).toLocaleString()}
+				</p>
+			</div>
+		{/if}
+		<Dialog.Footer>
+			<Button variant="outline" onclick={() => (restoreConfirmOpen = false)}>
+				{m.common_cancel()}
+			</Button>
+			<Button
+				disabled={historyBusy ||
+					!revisionChanges ||
+					!imageEditorRevisionHasChanges(revisionChanges)}
+				onclick={() => void restoreRevision()}
+			>
+				{#if historyBusy}<LoaderIcon class="animate-spin" />{/if}
+				{m.version_restore_confirm()}
+			</Button>
 		</Dialog.Footer>
 	</Dialog.Content>
 </Dialog.Root>

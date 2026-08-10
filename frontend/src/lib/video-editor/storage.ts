@@ -13,6 +13,7 @@ import {
 	VIDEO_EDITOR_STORES,
 	type LocalAssetIndex,
 	type LocalProjectRevision,
+	type LocalProjectRevisionSnapshotV1,
 	type LocalVideoProject,
 	type AnalysisResult,
 	type ModelCacheMetadata,
@@ -34,6 +35,32 @@ const IDLE_CLEANUP_MAX_ASSETS = 24;
 const IDLE_CLEANUP_MAX_BYTES = 256 * 1_024 * 1_024;
 const PRESSURE_CLEANUP_MAX_ASSETS = 64;
 const PRESSURE_CLEANUP_MAX_BYTES = 2 * 1_024 * 1_024 * 1_024;
+
+export class LocalVideoProjectRevisionConflict extends Error {
+	readonly expectedRevision: number;
+	readonly latestRevision?: number;
+
+	constructor(expectedRevision: number, latestRevision?: number) {
+		super(
+			latestRevision === undefined
+				? 'This local project is no longer available.'
+				: `This local project changed in another tab. Revision ${latestRevision} is now current.`
+		);
+		this.name = 'LocalVideoProjectRevisionConflict';
+		this.expectedRevision = expectedRevision;
+		this.latestRevision = latestRevision;
+	}
+}
+
+export interface ApplyLocalVideoProjectRestoreOptions {
+	cloudRevision?: number;
+	expectedCloudProjectID?: string;
+	state?: LocalVideoProject['state'];
+	coverSourceID?: string;
+	coverSourceCaptured?: boolean;
+	cloudCoverPreviewMediaID?: string;
+	cloudCoverPreviewMediaIDCaptured?: boolean;
+}
 
 export type LocalAssetIndexInput = Omit<LocalAssetIndex, 'last_accessed_at'> &
 	Partial<Pick<LocalAssetIndex, 'last_accessed_at'>>;
@@ -177,35 +204,7 @@ export async function listLocalVideoProjects(limit = 30): Promise<LocalVideoProj
 }
 
 export async function loadLocalVideoProject(id: string): Promise<LocalVideoProject> {
-	const project = await getOne<LocalVideoProject>('projects', id);
-	if (!project)
-		throw new Error('This local OpenPost Video Editor project is missing or was removed.');
-	const migration = migrateVideoProjectDocument(project.document);
-	project.cloud_source_map ??= {};
-	project.unsynced_source_ids ??= referencedLocalSourceIDs(
-		migration.document,
-		project.cloud_source_map
-	);
-	if (migration.migrated) {
-		const now = new Date().toISOString();
-		const backup: LocalProjectRevision = {
-			id: `${project.id}:migration-backup:${now}`,
-			project_id: project.id,
-			revision: project.revision,
-			kind: 'migration-backup',
-			name: `Before local schema ${migration.sourceVersion} normalization`,
-			created_at: now,
-			raw_document: structuredClone(project.document)
-		};
-		project.document = migration.document;
-		project.updated_at = now;
-		await transaction(['projects', 'project-revisions'], 'readwrite', (stores) => {
-			stores.projects.put(project);
-			stores['project-revisions'].put(backup);
-		});
-	}
-	project.last_opened_at = new Date().toISOString();
-	await putOne('projects', project);
+	const project = await loadAndTouchLocalVideoProject(id);
 	scheduleDisposableVideoCacheCleanup({ protectedProjectIDs: [id] });
 	return cloneLocalProject(project);
 }
@@ -248,23 +247,23 @@ export async function saveLocalVideoProject(
 		kind: options.checkpointName ? 'checkpoint' : 'autosave',
 		name: options.checkpointName ?? options.autosaveName,
 		created_at: now,
-		document: cloneVideoProject(saved.document)
+		snapshot: localProjectRevisionSnapshot(
+			saved.document,
+			saved.cover_source_id,
+			saved.cloud_cover_preview_media_id
+		)
 	};
-	await transaction(['projects', 'project-revisions'], 'readwrite', (stores) => {
-		stores.projects.put(saved);
-		stores['project-revisions'].put(revision);
-		if (options.operation) {
-			const journal: LocalProjectRevision = {
+	const journal: LocalProjectRevision | undefined = options.operation
+		? {
 				id: `${saved.id}:journal:${options.operation.id}`,
 				project_id: saved.id,
 				revision: saved.revision,
 				kind: 'journal',
 				created_at: options.operation.at,
 				operations: [options.operation]
-			};
-			stores['project-revisions'].put(journal);
-		}
-	});
+			}
+		: undefined;
+	await persistLocalVideoProjectCAS(project.revision, saved, revision, journal);
 	await pruneAutomaticRevisions(saved.id);
 	return cloneLocalProject(saved);
 }
@@ -297,7 +296,11 @@ export async function createLocalVideoProject(
 		revision: 1,
 		kind: 'autosave',
 		created_at: now,
-		document: cloneVideoProject(document)
+		snapshot: localProjectRevisionSnapshot(
+			document,
+			project.cover_source_id,
+			project.cloud_cover_preview_media_id
+		)
 	};
 	await transaction(['projects', 'project-revisions'], 'readwrite', (stores) => {
 		stores.projects.add(project);
@@ -334,22 +337,135 @@ export async function deleteLocalVideoProject(id: string): Promise<void> {
 export async function listProjectRevisions(projectID: string): Promise<LocalProjectRevision[]> {
 	return (await getAll<LocalProjectRevision>('project-revisions'))
 		.filter((revision) => revision.project_id === projectID && revision.kind !== 'journal')
+		.map(normalizeLocalProjectRevision)
+		.filter((revision): revision is LocalProjectRevision => revision !== undefined)
 		.sort((left, right) => right.revision - left.revision);
 }
 
 export async function restoreLocalRevision(
 	projectID: string,
-	revisionID: string
+	revisionID: string,
+	expectedRevision: number
 ): Promise<LocalVideoProject> {
-	const revision = await getOne<LocalProjectRevision>('project-revisions', revisionID);
+	const stored = await getOne<LocalProjectRevision>('project-revisions', revisionID);
+	const revision = stored ? normalizeLocalProjectRevision(stored) : undefined;
 	if (!revision?.document || revision.project_id !== projectID) {
 		throw new Error('That local recovery point is no longer available.');
 	}
-	const project = await loadLocalVideoProject(projectID);
-	project.document = cloneVideoProject(revision.document);
-	return await saveLocalVideoProject(project, {
-		checkpointName: `Restored revision ${revision.revision}`
+	return await applyRestoredLocalVideoProjectHead(projectID, expectedRevision, revision.document, {
+		coverSourceID: revision.snapshot?.cover_source_id,
+		coverSourceCaptured: revision.snapshot?.snapshot_version === 1,
+		cloudCoverPreviewMediaID: revision.snapshot?.cloud_cover_preview_media_id,
+		cloudCoverPreviewMediaIDCaptured: Boolean(
+			revision.snapshot && Object.hasOwn(revision.snapshot, 'cloud_cover_preview_media_id')
+		)
 	});
+}
+
+export async function applyRestoredLocalVideoProjectHead(
+	projectID: string,
+	expectedRevision: number,
+	document: VideoProjectDocumentV1,
+	options: ApplyLocalVideoProjectRestoreOptions = {}
+): Promise<LocalVideoProject> {
+	const validation = validateVideoProject(document);
+	if (!validation.valid || !validation.document) {
+		throw new Error(
+			validation.issues[0]?.message ?? 'The OpenPost Video Editor recovery point is invalid.'
+		);
+	}
+	const target = cloneVideoProject(validation.document);
+	const now = new Date().toISOString();
+	const database = await openVideoEditorDatabase();
+	let restored: LocalVideoProject | undefined;
+	let failure: Error | undefined;
+	try {
+		await new Promise<void>((resolve, reject) => {
+			const tx = database.transaction(['projects', 'project-revisions'], 'readwrite');
+			const projects = tx.objectStore('projects');
+			const revisions = tx.objectStore('project-revisions');
+			const request = projects.get(projectID);
+			request.onsuccess = () => {
+				const current = request.result as LocalVideoProject | undefined;
+				if (
+					!current ||
+					current.revision !== expectedRevision ||
+					(options.expectedCloudProjectID !== undefined &&
+						current.cloud_project_id !== options.expectedCloudProjectID)
+				) {
+					failure = new LocalVideoProjectRevisionConflict(expectedRevision, current?.revision);
+					tx.abort();
+					return;
+				}
+				const restorePoint: LocalProjectRevision = {
+					id: `${projectID}:restore-point:${crypto.randomUUID()}`,
+					project_id: projectID,
+					revision: current.revision,
+					kind: 'restore_point',
+					created_at: now,
+					snapshot: localProjectRevisionSnapshot(
+						current.document,
+						current.cover_source_id,
+						current.cloud_cover_preview_media_id
+					)
+				};
+				const cloudSourceMap = Object.fromEntries(
+					Object.entries(current.cloud_source_map ?? {}).filter(([sourceID]) =>
+						Object.hasOwn(target.sources, sourceID)
+					)
+				);
+				restored = {
+					...current,
+					revision: current.revision + 1,
+					updated_at: now,
+					last_opened_at: now,
+					cloud_revision: options.cloudRevision ?? current.cloud_revision,
+					state: options.state ?? (current.cloud_project_id ? 'local' : current.state),
+					cloud_source_map: cloudSourceMap,
+					unsynced_source_ids: referencedLocalSourceIDs(target, cloudSourceMap),
+					cover_source_id: options.coverSourceCaptured
+						? options.coverSourceID && Object.hasOwn(target.sources, options.coverSourceID)
+							? options.coverSourceID
+							: undefined
+						: current.cover_source_id && Object.hasOwn(target.sources, current.cover_source_id)
+							? current.cover_source_id
+							: undefined,
+					cloud_cover_preview_media_id: options.cloudCoverPreviewMediaIDCaptured
+						? options.cloudCoverPreviewMediaID?.trim() || undefined
+						: current.cloud_cover_preview_media_id,
+					document: cloneVideoProject(target)
+				};
+				const newHead: LocalProjectRevision = {
+					id: `${projectID}:${restored.revision}`,
+					project_id: projectID,
+					revision: restored.revision,
+					kind: 'autosave',
+					created_at: now,
+					snapshot: localProjectRevisionSnapshot(
+						target,
+						restored.cover_source_id,
+						restored.cloud_cover_preview_media_id
+					)
+				};
+				revisions.put(restorePoint);
+				revisions.put(newHead);
+				projects.put(restored);
+			};
+			request.onerror = () => {
+				failure = request.error ?? new Error('The local project could not be restored.');
+				tx.abort();
+			};
+			tx.oncomplete = () => resolve();
+			tx.onerror = () => reject(failure ?? tx.error);
+			tx.onabort = () =>
+				reject(failure ?? tx.error ?? new Error('The local project restore was interrupted.'));
+		});
+	} finally {
+		database.close();
+	}
+	if (!restored) throw new Error('The local project could not be restored.');
+	await pruneAutomaticRevisions(projectID);
+	return cloneLocalProject(restored);
 }
 
 export async function writeProjectFile(
@@ -1078,6 +1194,47 @@ function referencedLocalSourceIDs(
 		.sort();
 }
 
+function localProjectRevisionSnapshot(
+	document: VideoProjectDocumentV1,
+	coverSourceID?: string,
+	cloudCoverPreviewMediaID?: string,
+	cloudCoverCaptured = true
+): LocalProjectRevisionSnapshotV1 {
+	return {
+		snapshot_version: 1,
+		document: cloneVideoProject(document),
+		...(coverSourceID ? { cover_source_id: coverSourceID } : {}),
+		...(cloudCoverCaptured
+			? { cloud_cover_preview_media_id: cloudCoverPreviewMediaID?.trim() ?? '' }
+			: {})
+	};
+}
+
+function normalizeLocalProjectRevision(
+	revision: LocalProjectRevision
+): LocalProjectRevision | undefined {
+	const snapshot = revision.snapshot;
+	if (snapshot && Number(snapshot.snapshot_version) !== 1) return undefined;
+	const document = snapshot?.document ?? revision.document;
+	if (!document) return undefined;
+	const validation = validateVideoProject(document);
+	if (!validation.valid || !validation.document) return undefined;
+	return {
+		...revision,
+		document: cloneVideoProject(validation.document),
+		...(snapshot
+			? {
+					snapshot: localProjectRevisionSnapshot(
+						validation.document,
+						snapshot.cover_source_id,
+						snapshot.cloud_cover_preview_media_id,
+						Object.hasOwn(snapshot, 'cloud_cover_preview_media_id')
+					)
+				}
+			: {})
+	};
+}
+
 async function pruneAutomaticRevisions(projectID: string): Promise<void> {
 	const automatic = (await getAll<LocalProjectRevision>('project-revisions'))
 		.filter((revision) => revision.project_id === projectID && revision.kind === 'autosave')
@@ -1087,6 +1244,106 @@ async function pruneAutomaticRevisions(projectID: string): Promise<void> {
 			.slice(AUTOMATIC_REVISION_LIMIT)
 			.map((revision) => deleteOne('project-revisions', revision.id))
 	);
+}
+
+async function loadAndTouchLocalVideoProject(id: string): Promise<LocalVideoProject> {
+	const database = await openVideoEditorDatabase();
+	let loaded: LocalVideoProject | undefined;
+	let failure: Error | undefined;
+	try {
+		await new Promise<void>((resolve, reject) => {
+			const tx = database.transaction(['projects', 'project-revisions'], 'readwrite');
+			const projects = tx.objectStore('projects');
+			const revisions = tx.objectStore('project-revisions');
+			const request = projects.get(id);
+			request.onsuccess = () => {
+				const stored = request.result as LocalVideoProject | undefined;
+				if (!stored) {
+					failure = new Error(
+						'This local OpenPost Video Editor project is missing or was removed.'
+					);
+					tx.abort();
+					return;
+				}
+				const project = cloneLocalProject(stored);
+				const migration = migrateVideoProjectDocument(project.document);
+				project.cloud_source_map ??= {};
+				project.unsynced_source_ids ??= referencedLocalSourceIDs(
+					migration.document,
+					project.cloud_source_map
+				);
+				const now = new Date().toISOString();
+				if (migration.migrated) {
+					const backup: LocalProjectRevision = {
+						id: `${project.id}:migration-backup:${now}`,
+						project_id: project.id,
+						revision: project.revision,
+						kind: 'migration-backup',
+						name: `Before local schema ${migration.sourceVersion} normalization`,
+						created_at: now,
+						raw_document: structuredClone(project.document)
+					};
+					project.document = migration.document;
+					project.updated_at = now;
+					revisions.put(backup);
+				}
+				project.last_opened_at = now;
+				projects.put(project);
+				loaded = project;
+			};
+			request.onerror = () => {
+				failure = request.error ?? new Error('The local project could not be opened.');
+				tx.abort();
+			};
+			tx.oncomplete = () => resolve();
+			tx.onerror = () => reject(failure ?? tx.error);
+			tx.onabort = () =>
+				reject(failure ?? tx.error ?? new Error('The local project open was interrupted.'));
+		});
+	} finally {
+		database.close();
+	}
+	if (!loaded) throw new Error('The local project could not be opened.');
+	return loaded;
+}
+
+async function persistLocalVideoProjectCAS(
+	expectedRevision: number,
+	project: LocalVideoProject,
+	revision: LocalProjectRevision,
+	journal?: LocalProjectRevision
+): Promise<void> {
+	const database = await openVideoEditorDatabase();
+	let failure: Error | undefined;
+	try {
+		await new Promise<void>((resolve, reject) => {
+			const tx = database.transaction(['projects', 'project-revisions'], 'readwrite');
+			const projects = tx.objectStore('projects');
+			const revisions = tx.objectStore('project-revisions');
+			const request = projects.get(project.id);
+			request.onsuccess = () => {
+				const current = request.result as LocalVideoProject | undefined;
+				if (!current || current.revision !== expectedRevision) {
+					failure = new LocalVideoProjectRevisionConflict(expectedRevision, current?.revision);
+					tx.abort();
+					return;
+				}
+				projects.put(project);
+				revisions.put(revision);
+				if (journal) revisions.put(journal);
+			};
+			request.onerror = () => {
+				failure = request.error ?? new Error('The local project could not be saved.');
+				tx.abort();
+			};
+			tx.oncomplete = () => resolve();
+			tx.onerror = () => reject(failure ?? tx.error);
+			tx.onabort = () =>
+				reject(failure ?? tx.error ?? new Error('The local project save was interrupted.'));
+		});
+	} finally {
+		database.close();
+	}
 }
 
 async function getAll<T>(storeName: VideoEditorStore): Promise<T[]> {

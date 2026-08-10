@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/openpost/backend/internal/database/migrations"
 	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/services/mediastore"
 	"github.com/uptrace/bun"
@@ -30,9 +31,10 @@ const (
 	TemporaryIdleAge  = TemporaryIdleDays * 24 * time.Hour
 	TrashRetentionAge = 7 * 24 * time.Hour
 
-	lifecycleBatchSize  = 250
-	jsonUpdateBatchSize = 150
-	threadDraftPrefix   = "__openpost_thread__:"
+	lifecycleBatchSize           = 250
+	jsonUpdateBatchSize          = 150
+	editorRevisionPruneBatchSize = 250
+	threadDraftPrefix            = "__openpost_thread__:"
 )
 
 var settingMediaKeys = map[string]struct{}{
@@ -328,6 +330,15 @@ func (s *Service) Sweep(ctx context.Context, workspaceID string, now time.Time) 
 	if workspaceID == "" {
 		return errors.New("workspace_id is required for media cleanup")
 	}
+	pending, err := migrations.WorkspaceEditorRevisionMediaBackfillPending(ctx, s.db, workspaceID)
+	if err != nil {
+		return fmt.Errorf("check editor revision media indexing: %w", err)
+	}
+	if pending {
+		if err := migrations.AdvanceWorkspaceEditorRevisionMediaBackfill(ctx, s.db, workspaceID); err != nil {
+			return fmt.Errorf("advance editor revision media indexing: %w", err)
+		}
+	}
 	now = now.UTC()
 	cursor := ""
 	for {
@@ -361,6 +372,20 @@ func sweepLifecycleBatch(
 	now time.Time,
 	cursor string,
 ) (lifecycleBatchResult, error) {
+	if err := pruneExpiredEditorRevisions(ctx, tx, workspaceID, now); err != nil {
+		return lifecycleBatchResult{}, fmt.Errorf("prune expired editor revisions: %w", err)
+	}
+	pending, err := migrations.WorkspaceEditorRevisionMediaBackfillPending(
+		ctx,
+		tx,
+		workspaceID,
+	)
+	if err != nil {
+		return lifecycleBatchResult{}, fmt.Errorf("check editor revision media indexing: %w", err)
+	}
+	if pending {
+		return lifecycleBatchResult{}, errors.New("editor revision media indexing is still in progress")
+	}
 	var media []models.MediaAttachment
 	query := tx.NewSelect().Model(&media).
 		Where("workspace_id = ?", workspaceID).
@@ -406,6 +431,60 @@ func sweepLifecycleBatch(
 	}
 	result.purged = toPurge
 	return result, nil
+}
+
+func pruneExpiredEditorRevisions(
+	ctx context.Context,
+	tx bun.Tx,
+	workspaceID string,
+	now time.Time,
+) error {
+	var designRevisionIDs []string
+	if err := tx.NewSelect().
+		TableExpr("design_revisions AS revision").
+		ColumnExpr("revision.id").
+		Join("JOIN design_documents AS document ON document.id = revision.design_document_id").
+		Where("document.workspace_id = ?", workspaceID).
+		Where("revision.kind = ? AND revision.expires_at IS NOT NULL AND revision.expires_at <= ?", "autosave", now).
+		OrderExpr("revision.expires_at ASC, revision.id ASC").
+		Limit(editorRevisionPruneBatchSize).
+		Scan(ctx, &designRevisionIDs); err != nil {
+		return err
+	}
+	if len(designRevisionIDs) > 0 {
+		if _, err := tx.NewDelete().Model((*models.DesignRevision)(nil)).
+			Where("id IN (?)", bun.List(designRevisionIDs)).Exec(ctx); err != nil {
+			return err
+		}
+	}
+
+	var videoRevisionIDs []string
+	if err := tx.NewSelect().
+		TableExpr("video_project_revisions AS revision").
+		ColumnExpr("revision.id").
+		Join("JOIN video_projects AS project ON project.id = revision.video_project_id").
+		Where("project.workspace_id = ?", workspaceID).
+		Where("revision.kind = ? AND revision.expires_at IS NOT NULL AND revision.expires_at <= ?", "autosave", now).
+		OrderExpr("revision.expires_at ASC, revision.id ASC").
+		Limit(editorRevisionPruneBatchSize).
+		Scan(ctx, &videoRevisionIDs); err != nil {
+		return err
+	}
+	if len(videoRevisionIDs) == 0 {
+		return nil
+	}
+	usages := make([]string, 0, len(videoRevisionIDs))
+	for _, revisionID := range videoRevisionIDs {
+		usages = append(usages, "revision:"+revisionID)
+	}
+	if _, err := tx.NewDelete().Model((*models.VideoProjectAsset)(nil)).
+		Where("revision_id IN (?) OR usage IN (?)", bun.List(videoRevisionIDs), bun.List(usages)).
+		Exec(ctx); err != nil {
+		return err
+	}
+	_, err := tx.NewDelete().Model((*models.VideoProjectRevision)(nil)).
+		Where("id IN (?)", bun.List(videoRevisionIDs)).Exec(ctx)
+	return err
 }
 
 func partitionLifecycleBatch(
@@ -509,6 +588,13 @@ func (snapshot *protectionSnapshot) loadNormalized(
 			SELECT 'reference', reference.media_id
 			FROM design_media_references reference
 			JOIN design_documents document ON document.id = reference.design_document_id
+			JOIN candidate_media candidate ON candidate.media_id = reference.media_id
+			WHERE document.workspace_id = (SELECT workspace_id FROM batch_scope) AND document.deleted_at IS NULL
+			UNION
+			SELECT 'reference', reference.media_id
+			FROM design_revision_media_references reference
+			JOIN design_revisions revision ON revision.id = reference.revision_id
+			JOIN design_documents document ON document.id = revision.design_document_id
 			JOIN candidate_media candidate ON candidate.media_id = reference.media_id
 			WHERE document.workspace_id = (SELECT workspace_id FROM batch_scope) AND document.deleted_at IS NULL
 			UNION
@@ -883,6 +969,9 @@ func purgeMediaBatch(
 		ids = append(ids, item.ID)
 		remove[item.ID] = struct{}{}
 	}
+	if err := releaseDeletedEditorMediaOwnership(ctx, tx, ids); err != nil {
+		return err
+	}
 	if err := rewriteHistoricalJSONReferences(ctx, tx, snapshot.legacyJSON, remove); err != nil {
 		return err
 	}
@@ -909,6 +998,41 @@ func purgeMediaBatch(
 	}
 	if deleted != int64(len(ids)) {
 		return fmt.Errorf("purge media batch deleted %d of %d locked rows", deleted, len(ids))
+	}
+	return nil
+}
+
+func releaseDeletedEditorMediaOwnership(
+	ctx context.Context,
+	tx bun.Tx,
+	mediaIDs []string,
+) error {
+	if len(mediaIDs) == 0 {
+		return nil
+	}
+	if _, err := tx.NewDelete().Model((*models.DesignRevisionMediaReference)(nil)).
+		Where("media_id IN (?)", bun.List(mediaIDs)).
+		Where(`revision_id IN (
+			SELECT revision.id
+			FROM design_revisions revision
+			JOIN design_documents document ON document.id = revision.design_document_id
+			WHERE document.deleted_at IS NOT NULL
+		)`).Exec(ctx); err != nil {
+		return err
+	}
+	if _, err := tx.NewDelete().Model((*models.DesignMediaReference)(nil)).
+		Where("media_id IN (?)", bun.List(mediaIDs)).
+		Where(`design_document_id IN (
+			SELECT id FROM design_documents WHERE deleted_at IS NOT NULL
+		)`).Exec(ctx); err != nil {
+		return err
+	}
+	if _, err := tx.NewDelete().Model((*models.VideoProjectAsset)(nil)).
+		Where("media_id IN (?)", bun.List(mediaIDs)).
+		Where(`video_project_id IN (
+			SELECT id FROM video_projects WHERE deleted_at IS NOT NULL
+		)`).Exec(ctx); err != nil {
+		return err
 	}
 	return nil
 }

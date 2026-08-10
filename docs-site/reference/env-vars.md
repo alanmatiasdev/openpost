@@ -60,6 +60,7 @@ Most variables loaded through the main backend config loader can also be loaded 
 | `OPENPOST_PUBLIC_URL`                           | Canonical browser origin used for WebAuthn/passkeys                                               |
 | `OPENPOST_EXTRA_CORS_ORIGINS`                   | Extra CORS allowlist                                                                              |
 | `OPENPOST_DISABLE_REGISTRATIONS`                | Disable new signups after bootstrap                                                               |
+| `OPENPOST_PUBLIC_PROFILES_ENABLED`              | Enable opt-in public profiles and their public routes                                             |
 | `OPENPOST_EMAIL_VERIFICATION_REQUIRED`          | Require six-digit email confirmation before email-and-password signup completes                   |
 | `OPENPOST_EMAIL_PROVIDER`                       | Mail transport: `smtp`, `resend`, or `cloudflare`                                                 |
 | `OPENPOST_EMAIL_FROM`                           | Verified sender for confirmation and password-reset mail                                          |
@@ -118,7 +119,7 @@ Most variables loaded through the main backend config loader can also be loaded 
 | `OPENPOST_X_POST_CREATE_WITH_URL_COST_MICROUSD` | Estimated X post-create price with a URL                                                          |
 | `OPENPOST_PROVIDER_USAGE_RETENTION_DAYS`        | Immutable provider-cost event retention                                                           |
 | `OPENPOST_PROVIDER_APPS`                        | Structured provider app registry JSON; entries override matching encrypted database rows          |
-| `OPENPOST_DISABLED_PROVIDERS`                   | Emergency provider deny-list; overrides readiness-ledger controls after restart                    |
+| `OPENPOST_DISABLED_PROVIDERS`                   | Emergency provider deny-list; overrides readiness-ledger controls after restart                   |
 | `X_CLIENT_ID`                                   | X client ID                                                                                       |
 | `X_CLIENT_SECRET`                               | X client secret                                                                                   |
 | `X_REDIRECT_URI`                                | X callback override                                                                               |

@@ -35,6 +35,7 @@ import (
 	cliauth "github.com/openpost/backend/internal/services/cli_auth"
 	communicationsservice "github.com/openpost/backend/internal/services/communications"
 	"github.com/openpost/backend/internal/services/crypto"
+	"github.com/openpost/backend/internal/services/emailchange"
 	"github.com/openpost/backend/internal/services/emailverification"
 	"github.com/openpost/backend/internal/services/entitlements"
 	"github.com/openpost/backend/internal/services/feedback"
@@ -247,6 +248,7 @@ func main() {
 		PromoteFirstVerified:  true,
 		RegistrationsDisabled: cfg.DisableRegistrations,
 	})
+	emailChangeService := emailchange.NewService(db, emailchange.Config{Secret: cfg.JWTSecret})
 	tokenManager := tokenmanager.NewTokenManager(db, tokenEncryptor)
 	usageService := usage.NewService(db)
 	publishSvc := publisher.NewService(db, tokenManager)
@@ -526,7 +528,9 @@ func main() {
 		MFAService:                mfaService,
 		PasswordResetSender:       authMailSender,
 		EmailVerificationService:  emailVerificationService,
+		EmailChangeService:        emailChangeService,
 		EmailVerificationRequired: cfg.EmailVerificationRequired,
+		PublicProfilesEnabled:     cfg.PublicProfilesEnabled,
 		AccountPolicy: handlers.AccountPolicy{
 			Required:       cfg.LegalAcceptanceRequired,
 			TermsURL:       cfg.TermsURL,
@@ -575,7 +579,7 @@ func main() {
 		MCPOAuthHandler:              mcpOAuthHandler,
 	})
 
-	RegisterSpaRoutes(e, db, cfg.PublicURL, cfg.Edition == config.EditionCloud)
+	RegisterSpaRoutes(e, db, cfg.PublicURL, cfg.Edition == config.EditionCloud, cfg.PublicProfilesEnabled)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

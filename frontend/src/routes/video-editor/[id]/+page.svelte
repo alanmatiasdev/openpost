@@ -72,6 +72,7 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 	import {
 		createCloudVideoProjectCheckpoint,
 		completeVideoReturnToken,
+		getCloudVideoProjectRevision,
 		getCloudVideoProject,
 		listCloudVideoProjectRevisions,
 		loadVideoEditorConfig,
@@ -96,6 +97,7 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 	import {
 		addFileToProject,
 		addRecordingToProject,
+		cloudVideoSourceIDForMedia,
 		formatBytes,
 		recordingCameraPresentation
 	} from '$lib/video-editor/project';
@@ -109,6 +111,7 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 	import {
 		deleteRecording,
 		deleteRecordingManifest,
+		createLocalVideoProject,
 		indexProjectAsset,
 		listProjectRevisions,
 		listProjectAssets,
@@ -118,10 +121,17 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 		recoverVideoStorageBudget,
 		registerActiveVideoProject,
 		requestPersistentVideoStorage,
+		applyRestoredLocalVideoProjectHead,
+		LocalVideoProjectRevisionConflict,
 		restoreLocalRevision,
 		saveLocalVideoProject,
 		writeProjectFile
 	} from '$lib/video-editor/storage';
+	import {
+		summarizeVideoEditorRevision,
+		videoEditorRevisionHasChanges,
+		type VideoEditorRevisionChanges
+	} from '$lib/video-editor/revision-summary';
 	import { VideoRecordingSession, type RecordingSessionState } from '$lib/video-editor/recorder';
 	import {
 		cancelSourceArtifactGeneration,
@@ -335,6 +345,22 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 		step: number;
 	}>;
 
+	type SelectedVideoProjectRevision =
+		| {
+				scope: 'local';
+				summary: LocalProjectRevision;
+				document: VideoProjectDocumentV1;
+				coverSourceID?: string;
+				coverReferenceID?: string;
+		  }
+		| {
+				scope: 'cloud';
+				summary: CloudVideoProjectRevision;
+				document: VideoProjectDocumentV1;
+				coverSourceID?: string;
+				coverReferenceID?: string;
+		  };
+
 	let localProject = $state.raw<LocalVideoProject | null>(null);
 	let loading = $state(true);
 	let error = $state('');
@@ -373,11 +399,34 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 	let cloudBusy = $state(false);
 	let cloudProgress = $state<CloudSyncProgress | null>(null);
 	let cloudConflictOpen = $state(false);
+	let localConflictOpen = $state(false);
+	let cloudRestoreLocalRecoveryOpen = $state(false);
 	let revisionOpen = $state(false);
 	let revisionBusy = $state(false);
+	let revisionPreviewBusy = $state(false);
+	let selectedRevision = $state.raw<SelectedVideoProjectRevision | null>(null);
+	let revisionPreviewPlayheadUS = $state(0);
+	let revisionRestoreConfirmOpen = $state(false);
+	let revisionPreviewRequest = 0;
 	let checkpointName = $state('');
-	let localRevisions = $state<LocalProjectRevision[]>([]);
+	let localRevisions = $state.raw<LocalProjectRevision[]>([]);
 	let cloudRevisions = $state<CloudVideoProjectRevision[]>([]);
+	let cloudRevisionNextCursor = $state('');
+	let cloudRevisionPageBusy = $state(false);
+	let revisionChanges = $derived.by<VideoEditorRevisionChanges | null>(() =>
+		localProject && selectedRevision
+			? summarizeVideoEditorRevision(localProject.document, selectedRevision.document, {
+					currentCoverSourceID:
+						selectedRevision.scope === 'cloud'
+							? localProject.cloud_cover_preview_media_id
+							: localProject.cover_source_id,
+					targetCoverSourceID: selectedRevision.coverReferenceID
+				})
+			: null
+	);
+	let revisionPreviewDurationUS = $derived(
+		selectedRevision ? projectDurationUS(selectedRevision.document) : 0
+	);
 	let exportBusy = $state(false);
 	let exportPickerOpen = $state(false);
 	let fastExportBusy = $state(false);
@@ -448,8 +497,7 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 	let playbackFrame = 0;
 	let playbackStartedAt = 0;
 	let playbackStartUS = 0;
-	let saveInFlight = false;
-	let saveQueued = false;
+	let autosaveRun: Promise<void> | undefined;
 	const history = new VideoProjectHistory(200);
 	let unsubscribeArtifacts: (() => void) | undefined;
 
@@ -647,7 +695,7 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 		}
 		if (recordingSession) void recordingSession.cancel();
 		revokeExportURLs();
-		if (saveState !== 'saved') void flushAutosave();
+		if (saveState !== 'saved') void flushAutosave().catch(() => undefined);
 	});
 
 	function revokeExportURLs(): void {
@@ -971,45 +1019,49 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 	function scheduleAutosave(): void {
 		saveState = 'saving';
 		if (autosaveTimer) clearTimeout(autosaveTimer);
-		autosaveTimer = setTimeout(() => void flushAutosave(), 2_000);
+		autosaveTimer = setTimeout(() => void flushAutosave().catch(() => undefined), 2_000);
 	}
 
 	async function flushAutosave(): Promise<void> {
 		if (!localProject) return;
-		if (saveInFlight) {
-			saveQueued = true;
-			return;
-		}
 		if (autosaveTimer) clearTimeout(autosaveTimer);
 		autosaveTimer = undefined;
-		saveInFlight = true;
-		saveState = 'saving';
-		const startVersion = mutationVersion;
-		const snapshot = { ...localProject, document: cloneVideoProject(localProject.document) };
+		if (autosaveRun) return await autosaveRun;
+		const run = drainAutosave();
+		autosaveRun = run;
 		try {
-			const autosaveName = pendingAutosaveName;
-			const saved = await saveLocalVideoProject(snapshot, { autosaveName });
-			if (localProject?.id === saved.id) {
-				localProject =
-					startVersion === mutationVersion
-						? saved
-						: {
-								...localProject,
-								revision: saved.revision,
-								updated_at: saved.updated_at,
-								last_opened_at: saved.last_opened_at
-							};
-			}
-			if (startVersion === mutationVersion) pendingAutosaveName = '';
-			saveState = startVersion === mutationVersion ? 'saved' : 'saving';
-		} catch (cause) {
-			saveState = 'failed';
-			error = cause instanceof Error ? cause.message : m.video_editor_save_failed();
+			await run;
 		} finally {
-			saveInFlight = false;
-			if (saveQueued || startVersion !== mutationVersion) {
-				saveQueued = false;
-				scheduleAutosave();
+			if (autosaveRun === run) autosaveRun = undefined;
+		}
+	}
+
+	async function drainAutosave(): Promise<void> {
+		while (localProject && saveState !== 'saved') {
+			saveState = 'saving';
+			const startVersion = mutationVersion;
+			const snapshot = { ...localProject, document: cloneVideoProject(localProject.document) };
+			try {
+				const autosaveName = pendingAutosaveName;
+				const saved = await saveLocalVideoProject(snapshot, { autosaveName });
+				if (localProject?.id === saved.id) {
+					localProject =
+						startVersion === mutationVersion
+							? saved
+							: {
+									...localProject,
+									revision: saved.revision,
+									updated_at: saved.updated_at,
+									last_opened_at: saved.last_opened_at
+								};
+				}
+				if (startVersion === mutationVersion) pendingAutosaveName = '';
+				saveState = startVersion === mutationVersion ? 'saved' : 'saving';
+			} catch (cause) {
+				saveState = 'failed';
+				error = cause instanceof Error ? cause.message : m.video_editor_save_failed();
+				if (cause instanceof LocalVideoProjectRevisionConflict) localConflictOpen = true;
+				throw cause;
 			}
 		}
 	}
@@ -2894,15 +2946,99 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 		revisionOpen = true;
 		revisionBusy = true;
 		error = '';
+		selectedRevision = null;
+		revisionPreviewPlayheadUS = 0;
+		revisionRestoreConfirmOpen = false;
+		revisionPreviewRequest += 1;
 		try {
+			await flushAutosave();
 			localRevisions = await listProjectRevisions(localProject.id);
-			cloudRevisions = localProject.cloud_project_id
-				? await listCloudVideoProjectRevisions(localProject.cloud_project_id)
-				: [];
+			if (localProject.cloud_project_id) {
+				const page = await listCloudVideoProjectRevisions(localProject.cloud_project_id);
+				cloudRevisions = page.revisions;
+				cloudRevisionNextCursor = page.nextCursor ?? '';
+			} else {
+				cloudRevisions = [];
+				cloudRevisionNextCursor = '';
+			}
 		} catch (cause) {
 			error = cause instanceof Error ? cause.message : m.video_editor_history_failed();
 		} finally {
 			revisionBusy = false;
+		}
+	}
+
+	async function loadMoreCloudRevisions(): Promise<void> {
+		if (!localProject?.cloud_project_id || !cloudRevisionNextCursor || cloudRevisionPageBusy)
+			return;
+		cloudRevisionPageBusy = true;
+		error = '';
+		try {
+			const page = await listCloudVideoProjectRevisions(
+				localProject.cloud_project_id,
+				cloudRevisionNextCursor
+			);
+			const known = new Set(cloudRevisions.map((revision) => revision.id));
+			cloudRevisions = [
+				...cloudRevisions,
+				...page.revisions.filter((revision) => !known.has(revision.id))
+			];
+			cloudRevisionNextCursor = page.nextCursor ?? '';
+		} catch (cause) {
+			error = cause instanceof Error ? cause.message : m.video_editor_history_failed();
+		} finally {
+			cloudRevisionPageBusy = false;
+		}
+	}
+
+	function inspectLocalRevision(revision: LocalProjectRevision): void {
+		if (!revision.document) return;
+		revisionPreviewRequest += 1;
+		revisionPreviewBusy = false;
+		revisionPreviewPlayheadUS = 0;
+		selectedRevision = {
+			scope: 'local',
+			summary: revision,
+			document: cloneVideoProject(revision.document),
+			coverSourceID: revision.snapshot
+				? revision.snapshot.cover_source_id
+				: localProject?.cover_source_id,
+			coverReferenceID: revision.snapshot
+				? revision.snapshot.cover_source_id
+				: localProject?.cover_source_id
+		};
+	}
+
+	async function inspectCloudRevision(revision: CloudVideoProjectRevision): Promise<void> {
+		if (!localProject?.cloud_project_id) return;
+		const request = ++revisionPreviewRequest;
+		revisionPreviewBusy = true;
+		error = '';
+		revisionPreviewPlayheadUS = 0;
+		try {
+			const preview = await getCloudVideoProjectRevision(
+				localProject.cloud_project_id,
+				revision.id
+			);
+			if (request !== revisionPreviewRequest) return;
+			const document = localDocumentFromCloudResponse(preview.document);
+			selectedRevision = {
+				scope: 'cloud',
+				summary: preview.summary,
+				document,
+				coverSourceID: cloudVideoSourceIDForMedia(
+					document,
+					preview.cover_preview_media_id,
+					localProject.cloud_source_map
+				),
+				coverReferenceID: preview.cover_preview_media_id
+			};
+		} catch (cause) {
+			if (request === revisionPreviewRequest) {
+				error = cause instanceof Error ? cause.message : m.video_editor_history_failed();
+			}
+		} finally {
+			if (request === revisionPreviewRequest) revisionPreviewBusy = false;
 		}
 	}
 
@@ -2912,25 +3048,40 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 		revisionBusy = true;
 		error = '';
 		try {
+			await flushAutosave();
 			let saved = await saveLocalVideoProject(localProject, { checkpointName: name });
+			localProject = saved;
+			checkpointName = '';
+			localRevisions = await listProjectRevisions(saved.id);
 			if (saved.cloud_project_id && workspaceCtx.currentWorkspace?.id) {
 				saved = await syncVideoProjectToOpenPost(
 					saved,
 					workspaceCtx.currentWorkspace.id,
 					undefined
 				);
-				await createCloudVideoProjectCheckpoint(saved.cloud_project_id!, name);
+				localProject = saved;
+				localRevisions = await listProjectRevisions(saved.id);
+				await createCloudVideoProjectCheckpoint(
+					saved.cloud_project_id!,
+					name,
+					saved.cloud_revision!
+				);
 			}
-			localProject = saved;
-			checkpointName = '';
-			localRevisions = await listProjectRevisions(saved.id);
-			cloudRevisions = saved.cloud_project_id
-				? await listCloudVideoProjectRevisions(saved.cloud_project_id)
-				: [];
+			if (saved.cloud_project_id) {
+				const page = await listCloudVideoProjectRevisions(saved.cloud_project_id);
+				cloudRevisions = page.revisions;
+				cloudRevisionNextCursor = page.nextCursor ?? '';
+			} else {
+				cloudRevisions = [];
+				cloudRevisionNextCursor = '';
+			}
 		} catch (cause) {
 			if (cause instanceof VideoProjectRevisionConflict) {
 				revisionOpen = false;
 				cloudConflictOpen = true;
+			} else if (cause instanceof LocalVideoProjectRevisionConflict) {
+				revisionOpen = false;
+				localConflictOpen = true;
 			} else {
 				error = cause instanceof Error ? cause.message : m.video_editor_checkpoint_failed();
 			}
@@ -2939,44 +3090,71 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 		}
 	}
 
-	async function restoreLocalProjectRevision(revisionID: string): Promise<void> {
-		if (!localProject || revisionBusy) return;
-		revisionBusy = true;
-		try {
-			localProject = await restoreLocalRevision(localProject.id, revisionID);
-			history.clear();
-			historyVersion += 1;
-			revisionOpen = false;
-		} catch (cause) {
-			error = cause instanceof Error ? cause.message : m.video_editor_restore_failed();
-		} finally {
-			revisionBusy = false;
+	async function restoreSelectedRevision(): Promise<void> {
+		if (
+			!localProject ||
+			!selectedRevision ||
+			!revisionChanges ||
+			!videoEditorRevisionHasChanges(revisionChanges) ||
+			revisionBusy
+		) {
+			return;
 		}
-	}
-
-	async function restoreCloudRevision(revisionID: string): Promise<void> {
-		if (!localProject?.cloud_project_id || !localProject.cloud_revision || revisionBusy) return;
 		revisionBusy = true;
+		let cloudRestoreCompleted = false;
 		try {
-			const response = await restoreCloudVideoProjectRevision(
-				localProject.cloud_project_id,
-				revisionID,
-				localProject.cloud_revision
-			);
-			const restored = localDocumentFromCloudResponse(response.document);
-			localProject = await saveLocalVideoProject({
-				...localProject,
-				document: restored,
-				cloud_revision: response.revision,
-				state: 'cloud'
-			});
+			await flushAutosave();
+			if (selectedRevision.scope === 'local') {
+				localProject = await restoreLocalRevision(
+					localProject.id,
+					selectedRevision.summary.id,
+					localProject.revision
+				);
+			} else {
+				if (!localProject.cloud_project_id || !localProject.cloud_revision) return;
+				const response = await restoreCloudVideoProjectRevision(
+					localProject.cloud_project_id,
+					selectedRevision.summary.id,
+					localProject.cloud_revision
+				);
+				cloudRestoreCompleted = true;
+				const restoredDocument = localDocumentFromCloudResponse(response.document);
+				localProject = await applyRestoredLocalVideoProjectHead(
+					localProject.id,
+					localProject.revision,
+					restoredDocument,
+					{
+						cloudRevision: response.revision,
+						state: 'cloud',
+						coverSourceID: cloudVideoSourceIDForMedia(
+							restoredDocument,
+							response.cover_preview_media_id,
+							localProject.cloud_source_map
+						),
+						coverSourceCaptured: true,
+						cloudCoverPreviewMediaID: response.cover_preview_media_id,
+						cloudCoverPreviewMediaIDCaptured: true
+					}
+				);
+			}
 			history.clear();
 			historyVersion += 1;
+			revisionRestoreConfirmOpen = false;
 			revisionOpen = false;
 		} catch (cause) {
-			if (cause instanceof VideoProjectRevisionConflict) {
+			if (cloudRestoreCompleted) {
+				revisionRestoreConfirmOpen = false;
+				revisionOpen = false;
+				cloudRestoreLocalRecoveryOpen = true;
+				error = m.version_cloud_restored_local_reload();
+			} else if (cause instanceof VideoProjectRevisionConflict) {
+				revisionRestoreConfirmOpen = false;
 				revisionOpen = false;
 				cloudConflictOpen = true;
+			} else if (cause instanceof LocalVideoProjectRevisionConflict) {
+				revisionRestoreConfirmOpen = false;
+				revisionOpen = false;
+				localConflictOpen = true;
 			} else {
 				error = cause instanceof Error ? cause.message : m.video_editor_restore_failed();
 			}
@@ -2985,24 +3163,118 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 		}
 	}
 
+	function videoRevisionLabel(revision: LocalProjectRevision | CloudVideoProjectRevision): string {
+		if (revision.kind === 'checkpoint') return revision.name || m.video_editor_checkpoint_create();
+		if (revision.kind === 'restore_point') {
+			return m.version_restore_point_label({ revision: revision.revision });
+		}
+		return revision.name || m.video_editor_history_autosave({ revision: revision.revision });
+	}
+
 	async function reloadCloudProject(): Promise<void> {
 		if (!localProject?.cloud_project_id || cloudBusy) return;
 		cloudBusy = true;
 		try {
-			const response = await getCloudVideoProject(localProject.cloud_project_id);
-			localProject = await saveLocalVideoProject({
-				...localProject,
-				document: localDocumentFromCloudResponse(response.document),
-				cloud_revision: response.revision,
-				state: 'cloud'
-			});
-			history.clear();
-			historyVersion += 1;
+			localProject = await loadLatestCloudProjectIntoLocalHead(localProject);
+			acceptRecoveredLocalProject();
 			cloudConflictOpen = false;
 		} catch (cause) {
 			error = cause instanceof Error ? cause.message : m.video_editor_save_failed();
 		} finally {
 			cloudBusy = false;
+		}
+	}
+
+	async function recoverLocalProjectAfterCommittedCloudRestore(): Promise<void> {
+		if (!localProject?.cloud_project_id || revisionBusy) return;
+		revisionBusy = true;
+		try {
+			localProject = await loadLatestCloudProjectIntoLocalHead(localProject);
+			acceptRecoveredLocalProject();
+			cloudRestoreLocalRecoveryOpen = false;
+		} catch (cause) {
+			error =
+				cause instanceof LocalVideoProjectRevisionConflict
+					? m.version_cloud_restored_local_reload()
+					: cause instanceof Error
+						? cause.message
+						: m.video_editor_save_failed();
+		} finally {
+			revisionBusy = false;
+		}
+	}
+
+	async function loadLatestCloudProjectIntoLocalHead(
+		staleProject: LocalVideoProject
+	): Promise<LocalVideoProject> {
+		const cloudProjectID = staleProject.cloud_project_id;
+		if (!cloudProjectID) throw new Error(m.video_editor_cloud_workspace_required());
+		const latestLocal = await loadLocalVideoProject(staleProject.id);
+		if (latestLocal.cloud_project_id !== cloudProjectID) {
+			throw new LocalVideoProjectRevisionConflict(staleProject.revision, latestLocal.revision);
+		}
+		const response = await getCloudVideoProject(cloudProjectID);
+		const restoredDocument = localDocumentFromCloudResponse(response.document, latestLocal);
+		return await applyRestoredLocalVideoProjectHead(
+			latestLocal.id,
+			latestLocal.revision,
+			restoredDocument,
+			{
+				cloudRevision: response.revision,
+				expectedCloudProjectID: cloudProjectID,
+				state: 'cloud',
+				coverSourceID: cloudVideoSourceIDForMedia(
+					restoredDocument,
+					response.cover_preview_media_id,
+					latestLocal.cloud_source_map
+				),
+				coverSourceCaptured: true,
+				cloudCoverPreviewMediaID: response.cover_preview_media_id,
+				cloudCoverPreviewMediaIDCaptured: true
+			}
+		);
+	}
+
+	function acceptRecoveredLocalProject(): void {
+		history.clear();
+		historyVersion += 1;
+		mutationVersion += 1;
+		pendingAutosaveName = '';
+		saveState = 'saved';
+		error = '';
+	}
+
+	async function reloadLocalProjectAfterConflict(): Promise<void> {
+		if (!localProject || revisionBusy) return;
+		revisionBusy = true;
+		try {
+			localProject = await loadLocalVideoProject(localProject.id);
+			history.clear();
+			historyVersion += 1;
+			saveState = 'saved';
+			localConflictOpen = false;
+		} catch (cause) {
+			error = cause instanceof Error ? cause.message : m.video_editor_project_missing();
+		} finally {
+			revisionBusy = false;
+		}
+	}
+
+	async function saveLocalConflictAsCopy(): Promise<void> {
+		if (!localProject || revisionBusy) return;
+		revisionBusy = true;
+		try {
+			const copy = await createLocalVideoProject(
+				crypto.randomUUID(),
+				cloneVideoProject(localProject.document)
+			);
+			localConflictOpen = false;
+			cloudRestoreLocalRecoveryOpen = false;
+			await goto(resolve(`/video-editor/${copy.id}` as '/'));
+		} catch (cause) {
+			error = cause instanceof Error ? cause.message : m.video_editor_save_failed();
+		} finally {
+			revisionBusy = false;
 		}
 	}
 
@@ -3029,15 +3301,18 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 		}
 	}
 
-	function localDocumentFromCloudResponse(value: unknown): VideoProjectDocumentV1 {
+	function localDocumentFromCloudResponse(
+		value: unknown,
+		sourceProject: LocalVideoProject | null = localProject
+	): VideoProjectDocumentV1 {
 		const validation = validateVideoProject(value);
 		if (!validation.valid || !validation.document) {
 			throw new Error(validation.issues[0]?.message ?? m.video_editor_project_invalid());
 		}
 		const restored = cloneVideoProject(validation.document);
-		if (!localProject) return restored;
+		if (!sourceProject) return restored;
 		for (const [sourceID, source] of Object.entries(restored.sources)) {
-			const localSource = localProject.document.sources[sourceID];
+			const localSource = sourceProject.document.sources[sourceID];
 			if (localSource?.locator.type === 'local-opfs') {
 				restored.sources[sourceID] = {
 					...source,
@@ -3487,21 +3762,21 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 					aria-label={m.video_editor_project_name()}
 				/>
 				<div
-					class="hidden items-center gap-1.5 text-[11px] leading-none text-zinc-500 sm:flex"
+					class="flex items-center gap-1.5 text-[11px] leading-none text-zinc-500"
 					aria-live="polite"
 				>
 					{#if saveState === 'saving'}
 						<LoaderIcon class="size-3 animate-spin" />
-						{m.video_editor_saving()}
+						<span class="max-sm:sr-only">{m.video_editor_saving()}</span>
 					{:else if saveState === 'failed'}
 						<CircleDotIcon class="size-3 text-destructive" />
-						{m.video_editor_save_failed()}
+						<span class="max-sm:sr-only">{m.video_editor_save_failed()}</span>
 					{:else}
 						<CheckIcon class="size-3" />
-						{m.video_editor_autosaved()}
+						<span class="max-sm:sr-only">{m.video_editor_autosaved()}</span>
 					{/if}
-					<span aria-hidden="true">·</span>
-					<span
+					<span class="max-sm:hidden" aria-hidden="true">·</span>
+					<span class="max-sm:sr-only"
 						>{localProject.state === 'cloud'
 							? m.video_editor_cloud_saved()
 							: m.video_editor_local_only()}</span
@@ -5558,7 +5833,7 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 	</div>
 
 	<Dialog.Root bind:open={revisionOpen}>
-		<Dialog.Content class="max-h-[85dvh] overflow-y-auto sm:max-w-xl">
+		<Dialog.Content class="max-h-[90dvh] overflow-hidden sm:max-w-5xl">
 			<Dialog.Header>
 				<Dialog.Title>{m.video_editor_history()}</Dialog.Title>
 				<Dialog.Description>{m.video_editor_history_description()}</Dialog.Description>
@@ -5583,82 +5858,251 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 					{m.video_editor_checkpoint_create()}
 				</Button>
 			</form>
-			{#if revisionBusy}
-				<div class="flex min-h-24 items-center justify-center text-sm text-muted-foreground">
-					<LoaderIcon class="mr-2 size-4 animate-spin" />
-					{m.common_loading()}
-				</div>
-			{:else}
-				<div class="grid gap-4">
-					<section class="grid gap-2" aria-labelledby="local-history-title">
-						<h3 id="local-history-title" class="text-sm font-medium">
-							{m.video_editor_history_local()}
-						</h3>
-						{#if localRevisions.length === 0}
-							<p class="text-sm text-muted-foreground">{m.video_editor_history_empty()}</p>
-						{:else}
-							<div class="grid gap-1">
-								{#each localRevisions as revision (revision.id)}
-									<div class="flex min-h-11 items-center gap-3 rounded-md border px-3">
-										<span class="min-w-0 flex-1">
-											<span class="block truncate text-sm font-medium">
-												{revision.name ||
-													m.video_editor_history_autosave({ revision: revision.revision })}
-											</span>
-											<span class="block text-xs text-muted-foreground">
-												{revisionDate(revision.created_at)}
-											</span>
-										</span>
-										<Button
-											variant="ghost"
-											size="sm"
-											onclick={() => void restoreLocalProjectRevision(revision.id)}
-										>
-											{m.video_editor_restore()}
-										</Button>
-									</div>
-								{/each}
-							</div>
-						{/if}
-					</section>
-					{#if localProject.cloud_project_id}
-						<section class="grid gap-2 border-t pt-4" aria-labelledby="cloud-history-title">
-							<h3 id="cloud-history-title" class="text-sm font-medium">
-								{m.video_editor_history_cloud()}
+			<div
+				class="grid max-h-[62dvh] min-h-80 gap-4 overflow-hidden sm:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]"
+			>
+				<div class="space-y-4 overflow-y-auto pr-1">
+					{#if revisionBusy}
+						<div class="flex min-h-32 items-center justify-center text-sm text-muted-foreground">
+							<LoaderIcon class="mr-2 size-4 animate-spin" />
+							{m.common_loading()}
+						</div>
+					{:else}
+						<section class="grid gap-2" aria-labelledby="local-history-title">
+							<h3 id="local-history-title" class="text-sm font-medium">
+								{m.video_editor_history_local()}
 							</h3>
-							{#if cloudRevisions.length === 0}
+							{#if localRevisions.length === 0}
 								<p class="text-sm text-muted-foreground">{m.video_editor_history_empty()}</p>
 							{:else}
 								<div class="grid gap-1">
-									{#each cloudRevisions as revision (revision.id)}
-										<div class="flex min-h-11 items-center gap-3 rounded-md border px-3">
+									{#each localRevisions as revision (revision.id)}
+										<Button
+											variant={selectedRevision?.scope === 'local' &&
+											selectedRevision.summary.id === revision.id
+												? 'secondary'
+												: 'outline'}
+											class="h-auto min-h-14 w-full justify-start px-3 py-2 text-left whitespace-normal"
+											onclick={() => inspectLocalRevision(revision)}
+										>
 											<span class="min-w-0 flex-1">
 												<span class="block truncate text-sm font-medium">
-													{revision.name ||
-														m.video_editor_history_autosave({ revision: revision.revision })}
+													{videoRevisionLabel(revision)}
 												</span>
-												<span class="block text-xs text-muted-foreground">
+												<span class="block text-xs font-normal text-muted-foreground">
 													{revisionDate(revision.created_at)}
 												</span>
+												<span class="block text-xs font-normal text-muted-foreground">
+													{m.version_saved_in_browser()}
+												</span>
 											</span>
-											<Button
-												variant="ghost"
-												size="sm"
-												onclick={() => void restoreCloudRevision(revision.id)}
-											>
-												{m.video_editor_restore()}
-											</Button>
-										</div>
+										</Button>
 									{/each}
 								</div>
 							{/if}
 						</section>
+						{#if localProject.cloud_project_id}
+							<section class="grid gap-2 border-t pt-4" aria-labelledby="cloud-history-title">
+								<h3 id="cloud-history-title" class="text-sm font-medium">
+									{m.video_editor_history_cloud()}
+								</h3>
+								{#if cloudRevisions.length === 0}
+									<p class="text-sm text-muted-foreground">{m.video_editor_history_empty()}</p>
+								{:else}
+									<div class="grid gap-1">
+										{#each cloudRevisions as revision (revision.id)}
+											<Button
+												variant={selectedRevision?.scope === 'cloud' &&
+												selectedRevision.summary.id === revision.id
+													? 'secondary'
+													: 'outline'}
+												class="h-auto min-h-14 w-full justify-start px-3 py-2 text-left whitespace-normal"
+												disabled={revisionPreviewBusy}
+												onclick={() => void inspectCloudRevision(revision)}
+											>
+												<span class="min-w-0 flex-1">
+													<span class="block truncate text-sm font-medium">
+														{videoRevisionLabel(revision)}
+													</span>
+													<span class="block text-xs font-normal text-muted-foreground">
+														{revisionDate(revision.created_at)}
+													</span>
+													<span class="block truncate text-xs font-normal text-muted-foreground">
+														{revision.actor.is_current_user
+															? m.version_saved_by_you({ actor: revision.actor.name })
+															: m.version_saved_by({ actor: revision.actor.name })}
+													</span>
+												</span>
+											</Button>
+										{/each}
+										{#if cloudRevisionNextCursor}
+											<Button
+												variant="outline"
+												class="w-full"
+												disabled={cloudRevisionPageBusy || revisionPreviewBusy}
+												onclick={() => void loadMoreCloudRevisions()}
+											>
+												{#if cloudRevisionPageBusy}<LoaderIcon
+														class="mr-2 size-4 animate-spin"
+													/>{/if}
+												{m.notifications_load_more()}
+											</Button>
+										{/if}
+									</div>
+								{/if}
+							</section>
+						{/if}
 					{/if}
 				</div>
-			{/if}
+				<section
+					class="min-h-0 overflow-y-auto rounded-lg border bg-muted/20 p-3"
+					aria-live="polite"
+				>
+					{#if revisionPreviewBusy}
+						<div class="flex min-h-64 items-center justify-center text-sm text-muted-foreground">
+							<LoaderIcon class="mr-2 size-4 animate-spin" />
+							{m.version_preview_loading()}
+						</div>
+					{:else if !selectedRevision}
+						<div
+							class="grid min-h-64 place-items-center px-4 text-center text-sm text-muted-foreground"
+						>
+							{m.version_preview_select()}
+						</div>
+					{:else}
+						<div class="space-y-3">
+							<div class="pointer-events-none h-56 overflow-hidden rounded-md border bg-black">
+								<VideoPreview
+									project={selectedRevision.document}
+									projectID={localProject.id}
+									{variantID}
+									playheadUS={revisionPreviewPlayheadUS}
+									playing={false}
+								/>
+							</div>
+							<label class="grid gap-1.5 text-xs text-muted-foreground">
+								<span>{m.version_preview_scrub()}</span>
+								<Slider
+									value={revisionPreviewPlayheadUS}
+									min={0}
+									max={Math.max(1, revisionPreviewDurationUS)}
+									step={1_000}
+									onValueChange={(value) => (revisionPreviewPlayheadUS = value)}
+									ariaLabel={m.version_preview_scrub()}
+								/>
+								<span class="font-mono tabular-nums">
+									{formatTime(revisionPreviewPlayheadUS)} / {formatTime(revisionPreviewDurationUS)}
+								</span>
+							</label>
+							<div>
+								<h3 class="text-sm font-medium">{m.version_changes()}</h3>
+								{#if revisionChanges && videoEditorRevisionHasChanges(revisionChanges)}
+									<ul class="mt-1 grid gap-1 text-xs text-muted-foreground">
+										{#if revisionChanges.titleChanged}<li>{m.version_change_title()}</li>{/if}
+										{#if revisionChanges.coverChanged}<li>{m.version_change_cover()}</li>{/if}
+										{#if revisionChanges.editingModeChanged}<li>
+												{m.version_change_editing_mode()}
+											</li>{/if}
+										{#if revisionChanges.durationChanged}<li>{m.version_change_duration()}</li>{/if}
+										{#if revisionChanges.exportSettingsChanged}<li>
+												{m.version_change_export()}
+											</li>{/if}
+										{#if revisionChanges.variantsChanged}<li>
+												{m.version_change_variants({ count: revisionChanges.variantsChanged })}
+											</li>{/if}
+										{#if revisionChanges.sourcesAdded || revisionChanges.sourcesRemoved || revisionChanges.sourcesChanged}<li
+											>
+												{m.version_change_sources({
+													added: revisionChanges.sourcesAdded,
+													removed: revisionChanges.sourcesRemoved,
+													changed: revisionChanges.sourcesChanged
+												})}
+											</li>{/if}
+										{#if revisionChanges.primaryItemsAdded || revisionChanges.primaryItemsRemoved || revisionChanges.primaryItemsChanged}<li
+											>
+												{m.version_change_timeline({
+													added: revisionChanges.primaryItemsAdded,
+													removed: revisionChanges.primaryItemsRemoved,
+													changed: revisionChanges.primaryItemsChanged
+												})}
+											</li>{/if}
+										{#if revisionChanges.visualItemsAdded || revisionChanges.visualItemsRemoved || revisionChanges.visualItemsChanged}<li
+											>
+												{m.version_change_overlays({
+													added: revisionChanges.visualItemsAdded,
+													removed: revisionChanges.visualItemsRemoved,
+													changed: revisionChanges.visualItemsChanged
+												})}
+											</li>{/if}
+										{#if revisionChanges.audioItemsAdded || revisionChanges.audioItemsRemoved || revisionChanges.audioItemsChanged}<li
+											>
+												{m.version_change_audio({
+													added: revisionChanges.audioItemsAdded,
+													removed: revisionChanges.audioItemsRemoved,
+													changed: revisionChanges.audioItemsChanged
+												})}
+											</li>{/if}
+										{#if revisionChanges.captionCuesAdded || revisionChanges.captionCuesRemoved || revisionChanges.captionCuesChanged}<li
+											>
+												{m.version_change_captions({
+													added: revisionChanges.captionCuesAdded,
+													removed: revisionChanges.captionCuesRemoved,
+													changed: revisionChanges.captionCuesChanged
+												})}
+											</li>{/if}
+									</ul>
+								{:else}
+									<p class="mt-1 text-xs text-muted-foreground">{m.version_no_changes()}</p>
+								{/if}
+							</div>
+							<Button
+								class="w-full"
+								disabled={!revisionChanges || !videoEditorRevisionHasChanges(revisionChanges)}
+								onclick={() => (revisionRestoreConfirmOpen = true)}
+								>{m.version_restore_version()}</Button
+							>
+						</div>
+					{/if}
+				</section>
+			</div>
 			<Dialog.Footer>
 				<Button variant="outline" onclick={() => (revisionOpen = false)}>
 					{m.common_close()}
+				</Button>
+			</Dialog.Footer>
+		</Dialog.Content>
+	</Dialog.Root>
+
+	<Dialog.Root bind:open={revisionRestoreConfirmOpen}>
+		<Dialog.Content class="sm:max-w-md">
+			<Dialog.Header>
+				<Dialog.Title>{m.version_restore_confirm_title()}</Dialog.Title>
+				<Dialog.Description>
+					{selectedRevision?.scope === 'cloud'
+						? m.version_restore_confirm_cloud_body()
+						: m.version_restore_confirm_local_body()}
+				</Dialog.Description>
+			</Dialog.Header>
+			{#if selectedRevision}
+				<div class="rounded-md border bg-muted/30 p-3 text-sm">
+					<p class="font-medium">{videoRevisionLabel(selectedRevision.summary)}</p>
+					<p class="mt-1 text-xs text-muted-foreground">
+						{revisionDate(selectedRevision.summary.created_at)}
+					</p>
+				</div>
+			{/if}
+			<Dialog.Footer>
+				<Button variant="outline" onclick={() => (revisionRestoreConfirmOpen = false)}>
+					{m.common_cancel()}
+				</Button>
+				<Button
+					disabled={revisionBusy ||
+						!revisionChanges ||
+						!videoEditorRevisionHasChanges(revisionChanges)}
+					onclick={() => void restoreSelectedRevision()}
+				>
+					{#if revisionBusy}<LoaderIcon class="animate-spin" />{/if}
+					{m.version_restore_confirm()}
 				</Button>
 			</Dialog.Footer>
 		</Dialog.Content>
@@ -5681,6 +6125,55 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 				</Button>
 				<Button disabled={cloudBusy} onclick={() => void reloadCloudProject()}>
 					{#if cloudBusy}<LoaderIcon class="size-4 animate-spin" />{/if}
+					{m.video_editor_conflict_reload()}
+				</Button>
+			</Dialog.Footer>
+		</Dialog.Content>
+	</Dialog.Root>
+
+	<Dialog.Root bind:open={localConflictOpen}>
+		<Dialog.Content class="sm:max-w-lg">
+			<Dialog.Header>
+				<Dialog.Title>{m.version_local_conflict_title()}</Dialog.Title>
+				<Dialog.Description>{m.version_local_conflict_body()}</Dialog.Description>
+			</Dialog.Header>
+			<InlineNotice tone="warning" message={m.version_local_conflict_preserved()} />
+			<Dialog.Footer>
+				<Button
+					variant="outline"
+					disabled={revisionBusy}
+					onclick={() => void saveLocalConflictAsCopy()}
+				>
+					{m.video_editor_conflict_save_copy()}
+				</Button>
+				<Button disabled={revisionBusy} onclick={() => void reloadLocalProjectAfterConflict()}>
+					{#if revisionBusy}<LoaderIcon class="size-4 animate-spin" />{/if}
+					{m.version_local_conflict_reload()}
+				</Button>
+			</Dialog.Footer>
+		</Dialog.Content>
+	</Dialog.Root>
+
+	<Dialog.Root bind:open={cloudRestoreLocalRecoveryOpen}>
+		<Dialog.Content class="sm:max-w-lg">
+			<Dialog.Header>
+				<Dialog.Title>{m.video_editor_conflict_title()}</Dialog.Title>
+				<Dialog.Description>{m.version_cloud_restored_local_reload()}</Dialog.Description>
+			</Dialog.Header>
+			<InlineNotice tone="warning" message={m.version_local_conflict_preserved()} />
+			<Dialog.Footer>
+				<Button
+					variant="outline"
+					disabled={revisionBusy}
+					onclick={() => void saveLocalConflictAsCopy()}
+				>
+					{m.video_editor_conflict_save_copy()}
+				</Button>
+				<Button
+					disabled={revisionBusy}
+					onclick={() => void recoverLocalProjectAfterCommittedCloudRestore()}
+				>
+					{#if revisionBusy}<LoaderIcon class="size-4 animate-spin" />{/if}
 					{m.video_editor_conflict_reload()}
 				</Button>
 			</Dialog.Footer>

@@ -45,6 +45,7 @@ type ManagedSettingDefinition struct {
 
 var managedSettingDefinitions = []ManagedSettingDefinition{
 	{Key: "OPENPOST_DISABLE_REGISTRATIONS", Group: "accounts", Label: "Disable new registrations", Description: "Stop new password and identity-provider registrations without affecting existing users.", Kind: ManagedSettingBoolean, EnvVars: []string{"OPENPOST_DISABLE_REGISTRATIONS"}},
+	{Key: "OPENPOST_PUBLIC_PROFILES_ENABLED", Group: "accounts", Label: "Public profiles", Description: "Allow users to publish username-based profiles with per-field visibility controls.", Kind: ManagedSettingBoolean, EnvVars: []string{"OPENPOST_PUBLIC_PROFILES_ENABLED"}},
 	{Key: "OPENPOST_LEGAL_ACCEPTANCE_REQUIRED", Group: "accounts", Label: "Require legal acceptance", Description: "Require users to accept the configured terms and privacy policy versions.", Kind: ManagedSettingBoolean, EnvVars: []string{"OPENPOST_LEGAL_ACCEPTANCE_REQUIRED"}},
 	{Key: "OPENPOST_TERMS_URL", Group: "accounts", Label: "Terms URL", Description: "Public URL for the terms of service.", Kind: ManagedSettingURL, Optional: true, EnvVars: []string{"OPENPOST_TERMS_URL"}},
 	{Key: "OPENPOST_PRIVACY_URL", Group: "accounts", Label: "Privacy URL", Description: "Public URL for the privacy policy.", Kind: ManagedSettingURL, Optional: true, EnvVars: []string{"OPENPOST_PRIVACY_URL"}},
@@ -190,6 +191,7 @@ func listBinding(field func(*Config) *[]string) managedSettingBinding {
 
 var managedSettingBindings = map[string]managedSettingBinding{
 	"OPENPOST_DISABLE_REGISTRATIONS":                boolBinding(func(c *Config) *bool { return &c.DisableRegistrations }),
+	"OPENPOST_PUBLIC_PROFILES_ENABLED":              boolBinding(func(c *Config) *bool { return &c.PublicProfilesEnabled }),
 	"OPENPOST_LEGAL_ACCEPTANCE_REQUIRED":            boolBinding(func(c *Config) *bool { return &c.LegalAcceptanceRequired }),
 	"OPENPOST_TERMS_URL":                            stringBinding(func(c *Config) *string { return &c.TermsURL }),
 	"OPENPOST_PRIVACY_URL":                          stringBinding(func(c *Config) *string { return &c.PrivacyURL }),

@@ -15,6 +15,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/openpost/backend/internal/api/middleware"
 	"github.com/openpost/backend/internal/models"
+	"github.com/openpost/backend/internal/publicprofiles"
 	"github.com/openpost/backend/internal/services/auth"
 	"github.com/openpost/backend/internal/services/crypto"
 	"github.com/openpost/backend/internal/services/sessions"
@@ -150,6 +151,86 @@ func TestUpdateUserProfileRejectsUnknownComposerExperience(t *testing.T) {
 		ComposerExperience: &unknown,
 	})
 	require.ErrorContains(t, err, "composer experience must be specialized or unified")
+}
+
+func TestUpdateUserProfilePersistsExplicitPublicVisibility(t *testing.T) {
+	t.Parallel()
+
+	db := createHandlerTestDB(t, (*models.User)(nil))
+	handler := NewAuthHandler(db, auth.NewService("test-secret"), nil, nil, nil, false)
+	ctx := context.Background()
+	user := &models.User{ID: "user-1", Email: "user@example.com", Username: "user-one"}
+	_, err := db.NewInsert().Model(user).Exec(ctx)
+	require.NoError(t, err)
+
+	visible := []string{publicprofiles.FieldAvatar, publicprofiles.FieldActivity}
+	err = handler.updateUserProfile(ctx, user.ID, UpdateProfileInputBody{PublicProfileVisibleFields: &visible})
+	require.NoError(t, err)
+
+	updated, err := handler.getUserByID(ctx, user.ID)
+	require.NoError(t, err)
+	require.Equal(t, `["username","avatar","activity"]`, updated.PublicProfileVisibilityJSON)
+	require.Equal(t, visible, handler.toUserProfile(updated).PublicProfileVisibleFields)
+
+	empty := []string{}
+	err = handler.updateUserProfile(ctx, user.ID, UpdateProfileInputBody{PublicProfileVisibleFields: &empty})
+	require.NoError(t, err)
+	updated, err = handler.getUserByID(ctx, user.ID)
+	require.NoError(t, err)
+	require.Equal(t, `["username"]`, updated.PublicProfileVisibilityJSON)
+	require.Empty(t, handler.toUserProfile(updated).PublicProfileVisibleFields)
+}
+
+func TestUpdateUserProfileRejectsUnknownPublicVisibilityField(t *testing.T) {
+	t.Parallel()
+
+	db := createHandlerTestDB(t, (*models.User)(nil))
+	handler := NewAuthHandler(db, auth.NewService("test-secret"), nil, nil, nil, false)
+	_, err := db.NewInsert().Model(&models.User{ID: "user-1", Email: "user@example.com"}).Exec(context.Background())
+	require.NoError(t, err)
+	visible := []string{"email"}
+	err = handler.updateUserProfile(context.Background(), "user-1", UpdateProfileInputBody{PublicProfileVisibleFields: &visible})
+	require.ErrorContains(t, err, "unsupported public profile field")
+}
+
+func TestUpdateUserProfileCannotEnableDisabledPublicCapability(t *testing.T) {
+	t.Parallel()
+
+	db := createHandlerTestDB(t, (*models.User)(nil))
+	handler := NewAuthHandler(db, auth.NewService("test-secret"), nil, nil, nil, false)
+	handler.SetPublicProfilesEnabled(false)
+	_, err := db.NewInsert().Model(&models.User{ID: "user-1", Email: "user@example.com", Username: "user-one"}).Exec(context.Background())
+	require.NoError(t, err)
+	enabled := true
+	err = handler.updateUserProfile(context.Background(), "user-1", UpdateProfileInputBody{PublicProfileEnabled: &enabled})
+	require.ErrorContains(t, err, "public profiles are disabled")
+}
+
+func TestUpdateUserProfileRequiresExplicitVisibilityWhenFirstEnabled(t *testing.T) {
+	t.Parallel()
+
+	db := createHandlerTestDB(t, (*models.User)(nil))
+	handler := NewAuthHandler(db, auth.NewService("test-secret"), nil, nil, nil, false)
+	ctx := context.Background()
+	_, err := db.NewInsert().Model(&models.User{
+		ID: "user-1", Email: "user@example.com", Username: "user-one",
+	}).Exec(ctx)
+	require.NoError(t, err)
+
+	enabled := true
+	err = handler.updateUserProfile(ctx, "user-1", UpdateProfileInputBody{PublicProfileEnabled: &enabled})
+	require.ErrorContains(t, err, "choose which profile fields to show")
+
+	visible := []string{}
+	err = handler.updateUserProfile(ctx, "user-1", UpdateProfileInputBody{
+		PublicProfileEnabled:       &enabled,
+		PublicProfileVisibleFields: &visible,
+	})
+	require.NoError(t, err)
+	updated, err := handler.getUserByID(ctx, "user-1")
+	require.NoError(t, err)
+	require.True(t, updated.PublicProfile)
+	require.JSONEq(t, `["username"]`, updated.PublicProfileVisibilityJSON)
 }
 
 func TestUserProfileDefaultsUnknownComposerExperienceToSpecialized(t *testing.T) {

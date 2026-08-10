@@ -15,6 +15,7 @@ import (
 	cliauth "github.com/openpost/backend/internal/services/cli_auth"
 	communicationsservice "github.com/openpost/backend/internal/services/communications"
 	servicecrypto "github.com/openpost/backend/internal/services/crypto"
+	"github.com/openpost/backend/internal/services/emailchange"
 	"github.com/openpost/backend/internal/services/emailverification"
 	"github.com/openpost/backend/internal/services/entitlements"
 	"github.com/openpost/backend/internal/services/feedback"
@@ -56,7 +57,9 @@ type RouteDeps struct {
 	MFAService                   *mfa.Service
 	PasswordResetSender          passwordmail.Sender
 	EmailVerificationService     *emailverification.Service
+	EmailChangeService           *emailchange.Service
 	EmailVerificationRequired    bool
+	PublicProfilesEnabled        bool
 	AccountPolicy                handlers.AccountPolicy
 	Providers                    map[string]platform.Adapter
 	ProviderApps                 []platform.AppConfig
@@ -147,6 +150,7 @@ func RegisterHumaRoutes(api huma.API, deps RouteDeps) {
 	authHandler.SetSessionService(deps.SessionService)
 	authHandler.SetPasswordResetSender(deps.PasswordResetSender, deps.PublicURL)
 	authHandler.SetEmailVerification(deps.EmailVerificationService, deps.PasswordResetSender, deps.EmailVerificationRequired)
+	authHandler.SetPublicProfilesEnabled(deps.PublicProfilesEnabled)
 	authHandler.SetAccountPolicy(deps.AccountPolicy)
 	authHandler.SetIdentityService(deps.IdentityService)
 	authHandler.Configuration(api)
@@ -181,8 +185,15 @@ func RegisterHumaRoutes(api huma.API, deps RouteDeps) {
 	authHandler.BeginPasskeyRegistration(api)
 	authHandler.FinishPasskeyRegistration(api)
 	authHandler.RemovePasskey(api)
+	handlers.NewEmailChangeHandler(
+		deps.EmailChangeService,
+		deps.IdentityService,
+		deps.PasswordResetSender,
+		deps.Authenticator,
+		deps.PublicURL,
+	).RegisterRoutes(api)
 	handlers.NewOIDCHandler(deps.IdentityService, authHandler, deps.Authenticator).RegisterRoutes(api)
-	handlers.NewPublicProfileHandler(deps.DB).RegisterRoutes(api)
+	handlers.NewPublicProfileHandler(deps.DB, deps.PublicProfilesEnabled).RegisterRoutes(api)
 
 	accountLifecycleHandler := handlers.NewAccountLifecycleHandler(
 		deps.DB,

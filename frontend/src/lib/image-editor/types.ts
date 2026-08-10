@@ -301,10 +301,20 @@ export interface ImageEditorDesignSummary {
 export interface ImageEditorRevisionSummary {
 	id: string;
 	revision: number;
-	kind: 'autosave' | 'checkpoint' | string;
+	kind: 'autosave' | 'checkpoint' | 'restore_point' | string;
 	name?: string;
 	created_at: string;
 	expires_at?: string;
+	actor: {
+		name: string;
+		is_current_user: boolean;
+	};
+}
+
+export interface ImageEditorRevisionResponse {
+	summary: ImageEditorRevisionSummary;
+	cover_preview_media_id?: string;
+	document: ImageEditorDocument;
 }
 
 export interface ImageEditorTemplate {

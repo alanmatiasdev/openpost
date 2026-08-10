@@ -553,6 +553,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/email-change": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get the pending sign-in email change */
+        get: operations["get-email-change"];
+        put?: never;
+        /** Send a verification code to a new sign-in email */
+        post: operations["begin-email-change"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/email-change/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Cancel a pending sign-in email change */
+        delete: operations["cancel-email-change"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/email-change/{id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm and apply a sign-in email change */
+        post: operations["confirm-email-change"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/email-change/{id}/resend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Send a new email-change verification code */
+        post: operations["resend-email-change"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/email-verification/confirm": {
         parameters: {
             query?: never;
@@ -1734,6 +1803,23 @@ export interface paths {
         put?: never;
         /** Create a named OpenPost Image Editor design checkpoint */
         post: operations["create-image-editor-design-checkpoint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/image-editor/designs/{id}/revisions/{revision_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Inspect an OpenPost Image Editor design revision */
+        get: operations["get-image-editor-design-revision"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3284,6 +3370,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/video-editor/projects/{id}/revisions/{revision_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Inspect an OpenPost Video Editor project revision */
+        get: operations["get-video-editor-project-revision"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/video-editor/projects/{id}/revisions/{revision_id}/restore": {
         parameters: {
             query?: never;
@@ -3600,6 +3703,11 @@ export interface components {
             revoked_at?: string;
             /** @description Token scope */
             scope: string;
+            /**
+             * @description Current token status
+             * @enum {string}
+             */
+            status: "active" | "expired" | "revoked";
             /** @description First 8 hex characters of the token secret hash */
             token_prefix: string;
             /** @description Optional workspace ID this token is limited to */
@@ -4028,7 +4136,9 @@ export interface components {
              */
             readonly $schema?: string;
             device_code?: string;
+            /** @description Name for the resulting API token */
             name?: string;
+            /** @description Compatibility field; when present it must match the displayed requested scope */
             scopes?: string;
             user_code?: string;
             /** @description Workspace the resulting token is limited to */
@@ -4096,6 +4206,7 @@ export interface components {
             password_reset_enabled: boolean;
             privacy_url?: string;
             privacy_version?: string;
+            public_profiles_enabled: boolean;
             registration_enabled: boolean;
             support_email?: string;
             terms_url?: string;
@@ -4164,6 +4275,21 @@ export interface components {
             deleted: number;
             /** @description IDs that could not be deleted (in use) */
             failed_ids: string[] | null;
+        };
+        BeginEmailChangeInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/BeginEmailChangeInputBody.json
+             */
+            readonly $schema?: string;
+            /**
+             * Format: email
+             * @description New sign-in email address
+             */
+            new_email: string;
+            /** @description One-time grant for identity.email.change */
+            reauth_grant: string;
         };
         BeginPasskeyLoginInputBody: {
             /**
@@ -4302,6 +4428,15 @@ export interface components {
              */
             readonly $schema?: string;
             ok: boolean;
+        };
+        CancelEmailChangeOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/CancelEmailChangeOutputBody.json
+             */
+            readonly $schema?: string;
+            canceled: boolean;
         };
         CapabilitiesOutputBody: {
             /**
@@ -4566,6 +4701,31 @@ export interface components {
             readonly $schema?: string;
             return_url: string;
         };
+        ConfirmEmailChangeInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ConfirmEmailChangeInputBody.json
+             */
+            readonly $schema?: string;
+            /** @description Six-digit code sent to the new address */
+            code: string;
+        };
+        ConfirmEmailChangeOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ConfirmEmailChangeOutputBody.json
+             */
+            readonly $schema?: string;
+            /** @description Confirmed sign-in email address */
+            email: string;
+            /**
+             * Format: int64
+             * @description Other sessions revoked after the identity change
+             */
+            revoked_sessions: number;
+        };
         ConfirmEmailVerificationInputBody: {
             /**
              * Format: uri
@@ -4713,13 +4873,16 @@ export interface components {
             readonly $schema?: string;
             /**
              * Format: date-time
-             * @description Explicit expiry. Null means never expires.
+             * @description Expiry time. Omitted or null defaults to 90 days; the maximum lifetime is one year.
              */
-            expires_at?: string;
-            /** @description User-visible token name */
+            expires_at?: string | null;
+            /** @description Required user-visible token name */
             name: string;
-            /** @description Token scope. Supported values: cli:full, mcp:read, mcp:full. Defaults to cli:full. */
-            scope?: string;
+            /**
+             * @description Token scope. Defaults to cli:full.
+             * @enum {string}
+             */
+            scope?: "cli:full" | "mcp:read" | "mcp:full" | "api:read" | "api:write";
             /** @description Optional workspace ID this token is limited to */
             workspace_id?: string;
         };
@@ -4779,6 +4942,8 @@ export interface components {
              * @example https://example.com/schemas/CreateImageEditorCheckpointInputBody.json
              */
             readonly $schema?: string;
+            /** Format: int64 */
+            expected_revision: number;
             name: string;
         };
         CreateImageEditorDesignInputBody: {
@@ -5205,6 +5370,8 @@ export interface components {
              * @example https://example.com/schemas/CreateVideoProjectCheckpointInputBody.json
              */
             readonly $schema?: string;
+            /** Format: int64 */
+            expected_revision: number;
             name: string;
         };
         CreateVideoProjectInputBody: {
@@ -5574,6 +5741,41 @@ export interface components {
             title: string;
             variants: components["schemas"]["VideoVariant"][] | null;
             visual_tracks: components["schemas"]["VisualTrack"][] | null;
+        };
+        EditorRevisionActor: {
+            is_current_user: boolean;
+            name: string;
+        };
+        EmailChangeStatusOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/EmailChangeStatusOutputBody.json
+             */
+            readonly $schema?: string;
+            pending?: components["schemas"]["EmailChangeSummary"];
+        };
+        EmailChangeSummary: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/EmailChangeSummary.json
+             */
+            readonly $schema?: string;
+            /**
+             * Format: date-time
+             * @description Challenge expiration time
+             */
+            expires_at: string;
+            /** @description Email-change challenge ID */
+            id: string;
+            /** @description Address awaiting confirmation */
+            new_email: string;
+            /**
+             * Format: date-time
+             * @description When the latest code was sent
+             */
+            sent_at?: string;
         };
         EngagementActionInputBody: {
             /**
@@ -6325,6 +6527,17 @@ export interface components {
             /** Format: int64 */
             schema_version: number;
         };
+        ImageEditorRevisionResponse: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ImageEditorRevisionResponse.json
+             */
+            readonly $schema?: string;
+            cover_preview_media_id?: string;
+            document: components["schemas"]["ImageEditorDocumentPayload"];
+            summary: components["schemas"]["ImageEditorRevisionSummary"];
+        };
         ImageEditorRevisionSummary: {
             /**
              * Format: uri
@@ -6332,6 +6545,7 @@ export interface components {
              * @example https://example.com/schemas/ImageEditorRevisionSummary.json
              */
             readonly $schema?: string;
+            actor: components["schemas"]["EditorRevisionActor"];
             created_at: string;
             expires_at?: string;
             id: string;
@@ -6685,6 +6899,7 @@ export interface components {
              * @example https://example.com/schemas/ListImageEditorRevisionsOutputBody.json
              */
             readonly $schema?: string;
+            next_cursor?: string;
             revisions: components["schemas"]["ImageEditorRevisionSummary"][] | null;
         };
         ListImageEditorTemplatesOutputBody: {
@@ -6748,6 +6963,7 @@ export interface components {
              * @example https://example.com/schemas/ListVideoProjectRevisionsOutputBody.json
              */
             readonly $schema?: string;
+            next_cursor?: string;
             revisions: components["schemas"]["VideoProjectRevisionSummary"][] | null;
         };
         ListVideoProjectsOutputBody: {
@@ -7219,12 +7435,15 @@ export interface components {
             verified: boolean;
         };
         OIDCIdentitySummary: {
+            /** @description Whether this identity provider can currently be used for sign-in and reauthentication */
+            active: boolean;
             /** Format: date-time */
             created_at: string;
             id: string;
             /** Format: date-time */
             last_login_at?: string;
             linked_email?: string;
+            linked_name?: string;
             provider_id: string;
             provider_name: string;
         };
@@ -8027,25 +8246,27 @@ export interface components {
              */
             readonly $schema?: string;
             /** Format: int64 */
-            active_days: number;
-            activity: components["schemas"]["PublicProfileActivityDay"][] | null;
-            avatar_url: string;
+            active_days?: number;
+            activity?: components["schemas"]["PublicProfileActivityDay"][] | null;
+            avatar_url?: string;
             /** Format: int64 */
-            current_streak: number;
-            display_name: string;
+            current_streak?: number;
+            display_name?: string;
             /** Format: date-time */
-            joined_at: string;
+            joined_at?: string;
             /** Format: int64 */
-            lifetime_posts: number;
+            lifetime_posts?: number;
             /** Format: int64 */
-            longest_streak: number;
+            longest_streak?: number;
             /** Format: int64 */
-            peak_posts: number;
+            peak_posts?: number;
             /** @description Highest active OpenPost plan available to the profile owner */
             plan_id?: string;
-            top_platforms: components["schemas"]["PublicProfileRanking"][] | null;
-            top_workspaces: components["schemas"]["PublicProfileRanking"][] | null;
+            top_platforms?: components["schemas"]["PublicProfileRanking"][] | null;
+            top_workspaces?: components["schemas"]["PublicProfileRanking"][] | null;
             username: string;
+            /** @description Optional account fields this profile owner chose to disclose */
+            visible_fields: string[] | null;
         };
         PublicProfileRanking: {
             /**
@@ -9340,8 +9561,8 @@ export interface components {
             client_os: string;
             /** @description CLI client version */
             client_version: string;
-            /** @description Requested API token scopes */
-            requested_scopes: string;
+            /** @description Requested API token scope; omitted or cli:full */
+            requested_scopes?: string;
         };
         StartCLIAuthOutputBody: {
             /**
@@ -9708,6 +9929,8 @@ export interface components {
             display_name?: string;
             /** @description Whether the public activity profile is visible */
             public_profile_enabled?: boolean;
+            /** @description Optional public-profile fields: display_name, avatar, joined_at, activity, platforms, workspaces, plan */
+            public_profile_visible_fields?: string[];
             /** @description Unique public username */
             username?: string;
         };
@@ -9949,10 +10172,14 @@ export interface components {
             legal_accepted_at?: string;
             /** @description Organization managing this account */
             managed_organization_name?: string;
+            /** @description Whether the local password can currently be used for sign-in and sensitive-action reauthentication */
+            password_usable: boolean;
             /** @description Privacy version acknowledged by the user */
             privacy_version?: string;
             /** @description Whether the public activity profile is visible */
             public_profile_enabled: boolean;
+            /** @description Optional account fields visible while the public profile is enabled */
+            public_profile_visible_fields: string[] | null;
             /** @description Terms version accepted by the user */
             terms_version?: string;
             /** @description Unique public username */
@@ -10206,6 +10433,17 @@ export interface components {
             updated_at: string;
             workspace_id: string;
         };
+        VideoProjectRevisionResponse: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/VideoProjectRevisionResponse.json
+             */
+            readonly $schema?: string;
+            cover_preview_media_id?: string;
+            document: components["schemas"]["Document"];
+            summary: components["schemas"]["VideoProjectRevisionSummary"];
+        };
         VideoProjectRevisionSummary: {
             /**
              * Format: uri
@@ -10213,6 +10451,7 @@ export interface components {
              * @example https://example.com/schemas/VideoProjectRevisionSummary.json
              */
             readonly $schema?: string;
+            actor: components["schemas"]["EditorRevisionActor"];
             created_at: string;
             expires_at?: string;
             id: string;
@@ -12362,6 +12601,339 @@ export interface operations {
             };
             /** @description Error */
             default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-email-change": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmailChangeStatusOutputBody"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "begin-email-change": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BeginEmailChangeInputBody"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmailChangeSummary"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "cancel-email-change": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Email-change challenge ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CancelEmailChangeOutputBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "confirm-email-change": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Email-change challenge ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConfirmEmailChangeInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfirmEmailChangeOutputBody"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "resend-email-change": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Email-change challenge ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EmailChangeSummary"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -15218,6 +15790,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ErrorModel"];
                 };
             };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
             /** @description Not Found */
             404: {
                 headers: {
@@ -16572,7 +17153,10 @@ export interface operations {
     };
     "list-image-editor-design-revisions": {
         parameters: {
-            query?: never;
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path: {
                 id: string;
@@ -16588,6 +17172,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ListImageEditorRevisionsOutputBody"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
                 };
             };
             /** @description Forbidden */
@@ -16650,6 +17243,83 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ImageEditorRevisionSummary"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-image-editor-design-revision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                revision_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageEditorRevisionResponse"];
                 };
             };
             /** @description Bad Request */
@@ -21034,6 +21704,15 @@ export interface operations {
                     "application/json": components["schemas"]["PublicProfileOutputBody"];
                 };
             };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
             /** @description Not Found */
             404: {
                 headers: {
@@ -23063,6 +23742,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ErrorModel"];
                 };
             };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
             /** @description Unprocessable Entity */
             422: {
                 headers: {
@@ -23085,7 +23773,10 @@ export interface operations {
     };
     "list-video-editor-project-revisions": {
         parameters: {
-            query?: never;
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
             header?: never;
             path: {
                 id: string;
@@ -23101,6 +23792,83 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ListVideoProjectRevisionsOutputBody"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-video-editor-project-revision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                revision_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VideoProjectRevisionResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
                 };
             };
             /** @description Forbidden */

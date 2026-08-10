@@ -7,24 +7,25 @@ FORM: Public activity ledger, adapted from contribution charts without gamified 
 -->
 <script lang="ts">
 	import { page } from '$app/state';
-	import { onMount } from 'svelte';
+	import { resolve } from '$app/paths';
 	import type { Attachment } from 'svelte/attachments';
 	import { ArrowRight } from '@lucide/svelte';
 	import Logo from '$lib/components/Logo.svelte';
 	import PlatformIcon from '$lib/components/platform-icon.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { client, type PublicProfile } from '$lib/api/client';
+	import { m } from '$lib/paraglide/messages';
 	import { getPlatformName } from '$lib/utils';
 
 	type ActivityCell = NonNullable<PublicProfile['activity']>[number] | null;
 
 	let profile = $state.raw<PublicProfile | null>(null);
-	let loading = $state(true);
-	let notFound = $state(false);
+	let loadState = $state<'loading' | 'ready' | 'disabled' | 'not-found' | 'error'>('loading');
+	let activeLoadController: AbortController | null = null;
+	let loadGeneration = 0;
 	const username = $derived(page.params.username ?? '');
-	const title = $derived(
-		profile ? `${profile.display_name} (@${profile.username})` : 'Public profile'
-	);
+	const profileName = $derived(profile?.display_name || profile?.username || 'OpenPost');
+	const title = $derived(profile ? `${profileName} (@${profile.username})` : 'Public profile');
 	const activityCells = $derived.by<ActivityCell[]>(() => {
 		const days = profile?.activity ?? [];
 		if (days.length === 0) return [];
@@ -50,6 +51,10 @@ FORM: Public activity ledger, adapted from contribution charts without gamified 
 	});
 	const topPlatforms = $derived(profile?.top_platforms ?? []);
 	const topWorkspaces = $derived(profile?.top_workspaces ?? []);
+	const visibleFields = $derived(profile?.visible_fields ?? []);
+	const showsActivity = $derived(visibleFields.includes('activity'));
+	const showsPlatforms = $derived(visibleFields.includes('platforms'));
+	const showsWorkspaces = $derived(visibleFields.includes('workspaces'));
 	const initials = $derived.by(() => {
 		const source = profile?.display_name || profile?.username || 'OP';
 		return source
@@ -66,18 +71,56 @@ FORM: Public activity ledger, adapted from contribution charts without gamified 
 		return () => cancelAnimationFrame(frame);
 	};
 
-	onMount(async () => {
-		loading = true;
-		const { data, error } = await client.GET('/public/profiles/{username}', {
-			params: { path: { username } }
-		});
-		if (error || !data) {
-			notFound = true;
-		} else {
-			profile = data;
-		}
-		loading = false;
+	$effect(() => {
+		const requestedUsername = username;
+		const controller = startProfileLoad(requestedUsername);
+		return () => {
+			controller.abort();
+			activeLoadController?.abort();
+			activeLoadController = null;
+		};
 	});
+
+	function startProfileLoad(requestedUsername: string): AbortController {
+		activeLoadController?.abort();
+		const controller = new AbortController();
+		activeLoadController = controller;
+		loadGeneration += 1;
+		void loadProfile(requestedUsername, controller.signal, loadGeneration);
+		return controller;
+	}
+
+	async function loadProfile(requestedUsername: string, signal: AbortSignal, generation: number) {
+		loadState = 'loading';
+		profile = null;
+		try {
+			const [configuration, result] = await Promise.all([
+				client.GET('/auth/config', { signal }),
+				client.GET('/public/profiles/{username}', {
+					params: { path: { username: requestedUsername } },
+					signal
+				})
+			]);
+			if (signal.aborted || generation !== loadGeneration) return;
+			if (configuration.data?.public_profiles_enabled !== true) {
+				loadState = configuration.data?.public_profiles_enabled === false ? 'disabled' : 'error';
+				return;
+			}
+			if (result.response.status === 403) {
+				loadState = 'disabled';
+				return;
+			}
+			if (result.data) {
+				profile = result.data;
+				loadState = 'ready';
+				return;
+			}
+			loadState = result.response.status === 404 ? 'not-found' : 'error';
+		} catch {
+			if (signal.aborted || generation !== loadGeneration) return;
+			loadState = 'error';
+		}
+	}
 
 	function formatNumber(value: number): string {
 		return new Intl.NumberFormat(undefined, {
@@ -103,7 +146,7 @@ FORM: Public activity ledger, adapted from contribution charts without gamified 
 	<meta
 		name="description"
 		content={profile
-			? `See ${profile.display_name}'s public publishing activity on OpenPost.`
+			? `See ${profileName}'s public publishing profile on OpenPost.`
 			: 'Public OpenPost publishing profile.'}
 	/>
 	<meta name="robots" content={profile ? 'index, follow' : 'noindex'} />
@@ -113,7 +156,7 @@ FORM: Public activity ledger, adapted from contribution charts without gamified 
 	<header class="border-b border-border/70">
 		<div class="profile-shell flex min-h-14 items-center justify-between gap-4">
 			<a
-				href="https://openpost.social"
+				href={resolve('/' as const)}
 				class="focus-ring inline-flex min-h-11 items-center gap-2 rounded-md"
 			>
 				<Logo width={34} height={27} decorative />
@@ -121,7 +164,7 @@ FORM: Public activity ledger, adapted from contribution charts without gamified 
 					>OpenPost</span
 				>
 			</a>
-			<Button href="/register" variant="outline" size="sm">
+			<Button href={resolve('/register' as const)} variant="outline" size="sm">
 				Create your profile
 				<ArrowRight data-icon="inline-end" />
 			</Button>
@@ -129,7 +172,7 @@ FORM: Public activity ledger, adapted from contribution charts without gamified 
 	</header>
 
 	<main class="profile-shell py-6 sm:py-8">
-		{#if loading}
+		{#if loadState === 'loading'}
 			<div class="grid min-h-[55vh] place-items-center" aria-live="polite">
 				<div class="activity-loader" aria-label="Loading public profile">
 					{#each Array(16) as _, index (index)}
@@ -137,20 +180,37 @@ FORM: Public activity ledger, adapted from contribution charts without gamified 
 					{/each}
 				</div>
 			</div>
-		{:else if notFound || !profile}
+		{:else if loadState === 'disabled'}
 			<div class="mx-auto grid min-h-[55vh] max-w-xl place-items-center text-center">
 				<div>
-					<p class="text-sm font-medium text-primary">Profile unavailable</p>
+					<p class="text-sm font-medium text-primary">{m.public_profile_disabled_title()}</p>
 					<h1 class="mt-4 text-4xl font-semibold tracking-[-0.035em] text-balance sm:text-5xl">
-						This profile is private or does not exist.
+						{m.public_profile_disabled_body()}
 					</h1>
-					<p class="mt-5 text-muted-foreground">
-						Check the username or ask the owner to enable their public profile.
-					</p>
-					<Button href="https://openpost.social" class="mt-8">Visit OpenPost</Button>
 				</div>
 			</div>
-		{:else}
+		{:else if loadState === 'not-found'}
+			<div class="mx-auto grid min-h-[55vh] max-w-xl place-items-center text-center">
+				<div>
+					<p class="text-sm font-medium text-primary">{m.public_profile_unavailable_title()}</p>
+					<h1 class="mt-4 text-4xl font-semibold tracking-[-0.035em] text-balance sm:text-5xl">
+						{m.public_profile_unavailable_body()}
+					</h1>
+					<Button href={resolve('/' as const)} class="mt-8">Visit OpenPost</Button>
+				</div>
+			</div>
+		{:else if loadState === 'error'}
+			<div class="mx-auto grid min-h-[55vh] max-w-xl place-items-center text-center">
+				<div>
+					<p class="text-sm font-medium text-primary">{m.public_profile_error_title()}</p>
+					<h1 class="mt-4 text-4xl font-semibold tracking-[-0.035em] text-balance sm:text-5xl">
+						{m.public_profile_error_body()}
+					</h1>
+					<Button class="mt-8" onclick={() => startProfileLoad(username)}>{m.common_retry()}</Button
+					>
+				</div>
+			</div>
+		{:else if profile}
 			<section class="profile-intro text-center" aria-labelledby="profile-name">
 				<div class="mx-auto size-20 overflow-hidden rounded-2xl border bg-muted">
 					{#if profile.avatar_url}
@@ -164,7 +224,7 @@ FORM: Public activity ledger, adapted from contribution charts without gamified 
 					{/if}
 				</div>
 				<h1 id="profile-name" class="mt-4 text-3xl font-medium tracking-[-0.03em]">
-					{profile.display_name}
+					{profileName}
 				</h1>
 				<div class="mt-2 flex items-center justify-center gap-2 text-sm text-muted-foreground">
 					<span>@{profile.username}</span>
@@ -175,113 +235,133 @@ FORM: Public activity ledger, adapted from contribution charts without gamified 
 				</div>
 			</section>
 
-			<section class="mt-6 overflow-hidden rounded-xl border" aria-label="Publishing statistics">
-				<dl class="profile-stats grid grid-cols-2 sm:grid-cols-5">
-					<div>
-						<dt>Lifetime posts</dt>
-						<dd>{formatNumber(profile.lifetime_posts)}</dd>
-					</div>
-					<div>
-						<dt>Peak posts</dt>
-						<dd>{plural(profile.peak_posts, 'post')}</dd>
-					</div>
-					<div>
-						<dt>Active days</dt>
-						<dd>{formatNumber(profile.active_days)}</dd>
-					</div>
-					<div>
-						<dt>Current streak</dt>
-						<dd>{plural(profile.current_streak, 'day')}</dd>
-					</div>
-					<div>
-						<dt>Longest streak</dt>
-						<dd>{plural(profile.longest_streak, 'day')}</dd>
-					</div>
-				</dl>
-			</section>
-
-			<section class="mt-8" aria-labelledby="activity-title">
-				<div class="flex items-center justify-between gap-4">
-					<h2 id="activity-title" class="text-lg font-semibold tracking-[-0.02em]">
-						Publishing activity
-					</h2>
-					<p class="text-xs text-muted-foreground">
-						Joined {new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric' }).format(
-							new Date(profile.joined_at)
-						)}
-					</p>
-				</div>
-				<p class="sr-only">One square per day. Darker orange means more publications.</p>
-				<div class="activity-scroll mt-4 overflow-x-auto pb-2" {@attach showRecentActivity}>
-					<div class="activity-field">
-						<div class="activity-months" aria-hidden="true">
-							{#each monthLabels as month (`${month.label}-${month.column}`)}
-								<span style:grid-column={month.column}>{month.label}</span>
-							{/each}
+			{#if showsActivity}
+				<section class="mt-6 overflow-hidden rounded-xl border" aria-label="Publishing statistics">
+					<dl class="profile-stats grid grid-cols-2 sm:grid-cols-5">
+						<div>
+							<dt>Lifetime posts</dt>
+							<dd>{formatNumber(profile.lifetime_posts ?? 0)}</dd>
 						</div>
-						<div
-							class="activity-grid"
-							role="img"
-							aria-label={`${profile.active_days} active publishing days in the last year`}
-						>
-							{#each activityCells as day, index (`${day?.date ?? 'pad'}-${index}`)}
-								<i
-									aria-hidden="true"
-									class:pad={!day}
-									class:level-1={day?.level === 1}
-									class:level-2={day?.level === 2}
-									class:level-3={day?.level === 3}
-									class:level-4={day?.level === 4}
-									style:--cell-delay={`${Math.min(index, 90) * 7}ms`}
-									title={day ? `${day.date}: ${plural(day.count, 'publication')}` : undefined}
-								></i>
-							{/each}
+						<div>
+							<dt>Peak posts</dt>
+							<dd>{plural(profile.peak_posts ?? 0, 'post')}</dd>
+						</div>
+						<div>
+							<dt>Active days</dt>
+							<dd>{formatNumber(profile.active_days ?? 0)}</dd>
+						</div>
+						<div>
+							<dt>Current streak</dt>
+							<dd>{plural(profile.current_streak ?? 0, 'day')}</dd>
+						</div>
+						<div>
+							<dt>Longest streak</dt>
+							<dd>{plural(profile.longest_streak ?? 0, 'day')}</dd>
+						</div>
+					</dl>
+				</section>
+
+				<section class="mt-8" aria-labelledby="activity-title">
+					<div class="flex items-center justify-between gap-4">
+						<h2 id="activity-title" class="text-lg font-semibold tracking-[-0.02em]">
+							Publishing activity
+						</h2>
+						{#if profile.joined_at}
+							<p class="text-xs text-muted-foreground">
+								Joined {new Intl.DateTimeFormat(undefined, {
+									month: 'long',
+									year: 'numeric'
+								}).format(new Date(profile.joined_at))}
+							</p>
+						{/if}
+					</div>
+					<p class="sr-only">One square per day. Darker orange means more publications.</p>
+					<div class="activity-scroll mt-4 overflow-x-auto pb-2" {@attach showRecentActivity}>
+						<div class="activity-field">
+							<div class="activity-months" aria-hidden="true">
+								{#each monthLabels as month (`${month.label}-${month.column}`)}
+									<span style:grid-column={month.column}>{month.label}</span>
+								{/each}
+							</div>
+							<div
+								class="activity-grid"
+								role="img"
+								aria-label={`${profile.active_days ?? 0} active publishing days in the last year`}
+							>
+								{#each activityCells as day, index (`${day?.date ?? 'pad'}-${index}`)}
+									<i
+										aria-hidden="true"
+										class:pad={!day}
+										class:level-1={day?.level === 1}
+										class:level-2={day?.level === 2}
+										class:level-3={day?.level === 3}
+										class:level-4={day?.level === 4}
+										style:--cell-delay={`${Math.min(index, 90) * 7}ms`}
+										title={day ? `${day.date}: ${plural(day.count, 'publication')}` : undefined}
+									></i>
+								{/each}
+							</div>
 						</div>
 					</div>
-				</div>
-			</section>
+				</section>
+			{:else if profile.joined_at}
+				<p class="mt-6 text-center text-sm text-muted-foreground">
+					Joined {new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric' }).format(
+						new Date(profile.joined_at)
+					)}
+				</p>
+			{/if}
 
-			<section
-				class="mt-8 grid gap-8 border-t pt-6 md:grid-cols-2"
-				aria-label="Publishing insights"
-			>
-				<div>
-					<h2 class="text-base font-semibold">Most used platforms</h2>
-					{#if topPlatforms.length}
-						<ul class="mt-2">
-							{#each topPlatforms as platform (platform.key)}
-								<li class="rank-row">
-									<span class="flex min-w-0 items-center gap-3 font-medium">
-										<PlatformIcon platform={platform.key} class="size-5" />
-										<span class="truncate">{getPlatformName(platform.key)}</span>
-									</span>
-									<span class="text-sm text-muted-foreground">{plural(platform.count, 'post')}</span
-									>
-								</li>
-							{/each}
-						</ul>
-					{:else}
-						<p class="mt-5 text-sm text-muted-foreground">No published platform activity yet.</p>
+			{#if showsPlatforms || showsWorkspaces}
+				<section
+					class="mt-8 grid gap-8 border-t pt-6 md:grid-cols-2"
+					aria-label="Publishing insights"
+				>
+					{#if showsPlatforms}
+						<div>
+							<h2 class="text-base font-semibold">Most used platforms</h2>
+							{#if topPlatforms.length}
+								<ul class="mt-2">
+									{#each topPlatforms as platform (platform.key)}
+										<li class="rank-row">
+											<span class="flex min-w-0 items-center gap-3 font-medium">
+												<PlatformIcon platform={platform.key} class="size-5" />
+												<span class="truncate">{getPlatformName(platform.key)}</span>
+											</span>
+											<span class="text-sm text-muted-foreground"
+												>{plural(platform.count, 'post')}</span
+											>
+										</li>
+									{/each}
+								</ul>
+							{:else}
+								<p class="mt-5 text-sm text-muted-foreground">
+									No published platform activity yet.
+								</p>
+							{/if}
+						</div>
 					{/if}
-				</div>
-				<div>
-					<h2 class="text-base font-semibold">Most active workspaces</h2>
-					{#if topWorkspaces.length}
-						<ul class="mt-2">
-							{#each topWorkspaces as workspace (workspace.key)}
-								<li class="rank-row">
-									<span class="min-w-0 truncate font-medium">{workspace.name}</span>
-									<span class="text-sm text-muted-foreground"
-										>{plural(workspace.count, 'post')}</span
-									>
-								</li>
-							{/each}
-						</ul>
-					{:else}
-						<p class="mt-5 text-sm text-muted-foreground">No public workspace activity yet.</p>
+					{#if showsWorkspaces}
+						<div>
+							<h2 class="text-base font-semibold">Most active workspaces</h2>
+							{#if topWorkspaces.length}
+								<ul class="mt-2">
+									{#each topWorkspaces as workspace (workspace.key)}
+										<li class="rank-row">
+											<span class="min-w-0 truncate font-medium">{workspace.name}</span>
+											<span class="text-sm text-muted-foreground"
+												>{plural(workspace.count, 'post')}</span
+											>
+										</li>
+									{/each}
+								</ul>
+							{:else}
+								<p class="mt-5 text-sm text-muted-foreground">No public workspace activity yet.</p>
+							{/if}
+						</div>
 					{/if}
-				</div>
-			</section>
+				</section>
+			{/if}
 		{/if}
 	</main>
 </div>

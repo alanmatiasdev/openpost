@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/netip"
 	"net/url"
+	"sort"
 	"strings"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -58,16 +59,101 @@ type Authenticator interface {
 	AuthenticateBearer(ctx context.Context, token string) (*Principal, error)
 }
 
-func principalCanAccessREST(principal *Principal) bool {
+func principalCanAccessREST(principal *Principal, operationID ...string) bool {
 	if principal == nil || strings.TrimSpace(principal.Audience) != "" {
 		return false
 	}
 	switch strings.TrimSpace(principal.Scope) {
 	case "", apitokens.ScopeCLI:
 		return true
+	case apitokens.ScopeAPIRead:
+		return operationAllowed(operationID, restReadOperations)
+	case apitokens.ScopeAPIWrite:
+		return operationAllowed(operationID, restReadOperations) || operationAllowed(operationID, restWriteOperations)
 	default:
 		return false
 	}
+}
+
+func operationAllowed(operationIDs []string, allowed map[string]struct{}) bool {
+	if len(operationIDs) != 1 {
+		return false
+	}
+	_, ok := allowed[strings.TrimSpace(operationIDs[0])]
+	return ok
+}
+
+var restReadOperations = operationSet(
+	"list-workspaces",
+	"get-workspace-settings",
+	"list-accounts",
+	"list-account-providers",
+	"get-account-destination-options",
+	"search-account-publishing-options",
+	"resolve-publishing-capabilities",
+	"list-social-sets",
+	"get-social-set",
+	"list-media",
+	"get-media-storage",
+	"get-media-usage",
+	"list-publications",
+	"get-publication",
+	"list-publication-events",
+	"validate-publication",
+	"list-posting-schedules",
+	"get-next-available-slot",
+)
+
+var restWriteOperations = operationSet(
+	"create-publication",
+	"update-publication",
+	"delete-publication",
+	"upsert-publication-renditions",
+	"delete-publication-rendition",
+	"schedule-publication",
+	"publish-publication-now",
+	"retry-publication-rendition",
+	"retry-failed-publication-renditions",
+	"create-media-upload-session",
+	"complete-media-upload-session",
+	"update-media",
+	"delete-media",
+	"batch-delete-media",
+	"restore-media",
+	"update-media-favorite",
+	"retry-media-analysis",
+	"create-social-set",
+	"update-social-set",
+	"delete-social-set",
+	"create-posting-schedule",
+	"update-posting-schedule",
+	"delete-posting-schedule",
+)
+
+// RESTScopeOperationCatalog returns stable snapshots of the curated REST
+// operation allowlists. Keeping enumeration beside the authorization lookup
+// lets contract tests compare every entry with the registered Huma surface.
+func RESTScopeOperationCatalog() (read []string, write []string) {
+	read = operationIDs(restReadOperations)
+	write = operationIDs(restWriteOperations)
+	return read, write
+}
+
+func operationIDs(operations map[string]struct{}) []string {
+	ids := make([]string, 0, len(operations))
+	for operationID := range operations {
+		ids = append(ids, operationID)
+	}
+	sort.Strings(ids)
+	return ids
+}
+
+func operationSet(operationIDs ...string) map[string]struct{} {
+	set := make(map[string]struct{}, len(operationIDs))
+	for _, operationID := range operationIDs {
+		set[operationID] = struct{}{}
+	}
+	return set
 }
 
 type SessionValidator interface {
@@ -159,7 +245,7 @@ func AuthMiddleware(api huma.API, authenticator Authenticator) func(ctx huma.Con
 			_ = huma.WriteErr(api, ctx, http.StatusUnauthorized, "invalid or expired token")
 			return
 		}
-		if !principalCanAccessREST(principal) {
+		if !principalCanAccessREST(principal, contextOperationID(ctx)) {
 			_ = huma.WriteErr(api, ctx, http.StatusForbidden, "token is not authorized for this API resource")
 			return
 		}
@@ -204,7 +290,7 @@ func OptionalAuthMiddleware(authenticator Authenticator) func(ctx huma.Context, 
 			return
 		}
 		principal, err := authenticator.AuthenticateBearer(ctx.Context(), token)
-		if err != nil || !principalCanAccessREST(principal) {
+		if err != nil || !principalCanAccessREST(principal, contextOperationID(ctx)) {
 			next(ctx)
 			return
 		}
@@ -233,15 +319,15 @@ func OptionalAuthMiddleware(authenticator Authenticator) func(ctx huma.Context, 
 	}
 }
 
-func GetUserID(ctx context.Context) string {
-	if v, ok := ctx.Value(UserIDKey).(string); ok {
-		return v
+func contextOperationID(ctx huma.Context) string {
+	if operation := ctx.Operation(); operation != nil {
+		return operation.OperationID
 	}
 	return ""
 }
 
-func GetUserEmail(ctx context.Context) string {
-	if v, ok := ctx.Value(EmailKey).(string); ok {
+func GetUserID(ctx context.Context) string {
+	if v, ok := ctx.Value(UserIDKey).(string); ok {
 		return v
 	}
 	return ""

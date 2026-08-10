@@ -129,6 +129,20 @@ func TestPrincipalCanAccessREST(t *testing.T) {
 	require.True(t, principalCanAccessREST(&Principal{}))
 	require.False(t, principalCanAccessREST(&Principal{Scope: apitokens.ScopeMCP}))
 	require.False(t, principalCanAccessREST(&Principal{Scope: apitokens.ScopeCLI, Audience: "https://example.test/mcp"}))
+	require.True(t, principalCanAccessREST(&Principal{Scope: apitokens.ScopeAPIRead}, "list-publications"))
+	require.False(t, principalCanAccessREST(&Principal{Scope: apitokens.ScopeAPIRead}, "create-publication"))
+	require.True(t, principalCanAccessREST(&Principal{Scope: apitokens.ScopeAPIWrite}, "list-publications"))
+	require.True(t, principalCanAccessREST(&Principal{Scope: apitokens.ScopeAPIWrite}, "publish-publication-now"))
+	for _, operationID := range []string{
+		"batch-delete-media",
+		"restore-media",
+		"update-media-favorite",
+		"retry-media-analysis",
+	} {
+		require.True(t, principalCanAccessREST(&Principal{Scope: apitokens.ScopeAPIWrite}, operationID), operationID)
+	}
+	require.False(t, principalCanAccessREST(&Principal{Scope: apitokens.ScopeAPIWrite}, "create-api-token"))
+	require.False(t, principalCanAccessREST(&Principal{Scope: apitokens.ScopeAPIRead}))
 }
 
 func TestRequestAuthTokenAcceptsSessionCookie(t *testing.T) {

@@ -11,6 +11,7 @@ import (
 	"errors"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/openpost/backend/internal/models"
@@ -22,18 +23,24 @@ const (
 	ScopeCLI          = "cli:full"
 	ScopeMCPRead      = "mcp:read"
 	ScopeMCP          = "mcp:full"
+	ScopeAPIRead      = "api:read"
+	ScopeAPIWrite     = "api:write"
 	DefaultScope      = ScopeCLI
 	DefaultExpiration = 90 * 24 * time.Hour
+	MaximumExpiration = 365 * 24 * time.Hour
+	MaximumNameLength = 120
 	secretBytes       = 32
 	hashHexLength     = 64
 	prefixHexLength   = 8
 )
 
 var (
-	ErrInvalidToken = errors.New("invalid api token")
-	ErrExpiredToken = errors.New("expired api token")
-	ErrInvalidScope = errors.New("invalid api token scope")
-	ErrRevokedToken = errors.New("revoked api token")
+	ErrInvalidToken  = errors.New("invalid api token")
+	ErrExpiredToken  = errors.New("expired api token")
+	ErrInvalidScope  = errors.New("invalid api token scope")
+	ErrInvalidName   = errors.New("invalid api token name")
+	ErrInvalidExpiry = errors.New("invalid api token expiration")
+	ErrRevokedToken  = errors.New("revoked api token")
 )
 
 type Service struct {
@@ -76,13 +83,36 @@ func (s *Service) GenerateToken(ctx context.Context, userID, name, scope string,
 }
 
 func (s *Service) GenerateTokenWithOptions(ctx context.Context, userID, name, scope string, options GenerateOptions) (*GeneratedToken, error) {
+	return s.generateTokenWithOptions(ctx, s.db, userID, name, scope, options)
+}
+
+// GenerateTokenWithOptionsInTx inserts a token as part of the caller's
+// transaction. This keeps one-time authorization grants and their resulting
+// token secret on a single commit boundary.
+func (s *Service) GenerateTokenWithOptionsInTx(
+	ctx context.Context,
+	tx bun.Tx,
+	userID, name, scope string,
+	options GenerateOptions,
+) (*GeneratedToken, error) {
+	return s.generateTokenWithOptions(ctx, tx, userID, name, scope, options)
+}
+
+func (s *Service) generateTokenWithOptions(
+	ctx context.Context,
+	db bun.IDB,
+	userID, name, scope string,
+	options GenerateOptions,
+) (*GeneratedToken, error) {
 	scope, err := NormalizeScope(scope)
 	if err != nil {
 		return nil, err
 	}
-	if name == "" {
-		name = "CLI token"
+	name, err = NormalizeName(name)
+	if err != nil {
+		return nil, ErrInvalidName
 	}
+	now := time.Now().UTC()
 
 	secret, err := generateSecret()
 	if err != nil {
@@ -95,7 +125,10 @@ func (s *Service) GenerateTokenWithOptions(ctx context.Context, userID, name, sc
 	if options.ExpiresAt != nil {
 		expiry = options.ExpiresAt.UTC()
 	} else {
-		expiry = time.Now().UTC().Add(DefaultExpiration)
+		expiry = now.Add(DefaultExpiration)
+	}
+	if !expiry.After(now) || expiry.After(now.Add(MaximumExpiration)) {
+		return nil, ErrInvalidExpiry
 	}
 
 	model := &models.APIToken{
@@ -112,10 +145,10 @@ func (s *Service) GenerateTokenWithOptions(ctx context.Context, userID, name, sc
 		AssuredAt:          options.AssuredAt.UTC(),
 		Audience:           strings.TrimSpace(options.Audience),
 		ExpiresAt:          expiry,
-		CreatedAt:          time.Now().UTC(),
+		CreatedAt:          now,
 	}
 
-	if _, err := s.db.NewInsert().Model(model).Exec(ctx); err != nil {
+	if _, err := db.NewInsert().Model(model).Exec(ctx); err != nil {
 		return nil, err
 	}
 
@@ -128,11 +161,19 @@ func NormalizeScope(scope string) (string, error) {
 		return DefaultScope, nil
 	}
 	switch scope {
-	case ScopeCLI, ScopeMCPRead, ScopeMCP:
+	case ScopeCLI, ScopeMCPRead, ScopeMCP, ScopeAPIRead, ScopeAPIWrite:
 		return scope, nil
 	default:
 		return "", ErrInvalidScope
 	}
+}
+
+func NormalizeName(name string) (string, error) {
+	name = strings.TrimSpace(name)
+	if name == "" || utf8.RuneCountInString(name) > MaximumNameLength {
+		return "", ErrInvalidName
+	}
+	return name, nil
 }
 
 func HashToken(secret string) (string, string) {
@@ -196,12 +237,24 @@ func (s *Service) RevokeToken(ctx context.Context, userID, tokenID string) error
 }
 
 func (s *Service) TouchLastUsedAt(ctx context.Context, tokenID string) error {
-	_, err := s.db.NewUpdate().
+	now := time.Now().UTC()
+	result, err := s.db.NewUpdate().
 		Model((*models.APIToken)(nil)).
-		Set("last_used_at = ?", time.Now().UTC()).
-		Where("id = ?", tokenID).
+		Set("last_used_at = ?", now).
+		Where("id = ? AND revoked_at IS NULL", tokenID).
+		Where("expires_at IS NULL OR expires_at > ?", now).
 		Exec(ctx)
-	return err
+	if err != nil {
+		return err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows != 1 {
+		return ErrInvalidToken
+	}
+	return nil
 }
 
 func (s *Service) validateMatchedToken(ctx context.Context, token *models.APIToken) (*Principal, error) {

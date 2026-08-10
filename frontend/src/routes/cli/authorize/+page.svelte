@@ -4,12 +4,14 @@
 	import { page } from '$app/stores';
 	import { Button } from '$lib/components/ui/button';
 	import { Badge } from '$lib/components/ui/badge';
+	import * as Select from '$lib/components/ui/select';
 	import { Label } from '$lib/components/ui/label';
 	import { Input } from '$lib/components/ui/input';
 	import InlineNotice from '$lib/components/inline-notice.svelte';
 	import StandaloneShell from '$lib/components/standalone-shell.svelte';
 	import { client } from '$lib/api/client';
 	import { auth } from '$lib/stores/auth';
+	import { workspaceCtx } from '$lib/stores/workspace.svelte';
 	import { m } from '$lib/paraglide/messages';
 	import LoaderIcon from '@lucide/svelte/icons/loader-2';
 	import TerminalIcon from '@lucide/svelte/icons/terminal';
@@ -28,6 +30,7 @@
 	let userCode = $derived($page.url.searchParams.get('user_code') ?? '');
 	let session = $state<CLIAuthSession | null>(null);
 	let tokenName = $state('OpenPost CLI');
+	let selectedWorkspaceID = $state<string | null>(null);
 	let error = $state('');
 	let sessionLoadFailed = $state(false);
 	let loading = $state(false);
@@ -40,6 +43,12 @@
 	let sessionRequestSequence = 0;
 	let decisionRequestSequence = 0;
 	const sessionPending = $derived(loading || (!session && !error && !completed));
+	const selectedWorkspaceLabel = $derived(
+		selectedWorkspaceID
+			? (workspaceCtx.workspaces.find((workspace) => workspace.id === selectedWorkspaceID)?.name ??
+					m.cli_authorize_current_workspace())
+			: m.cli_authorize_all_workspaces()
+	);
 
 	let scopes = $derived(
 		(session?.requested_scopes ?? '')
@@ -59,6 +68,7 @@
 		decisionRequestSequence += 1;
 		session = null;
 		tokenName = 'OpenPost CLI';
+		selectedWorkspaceID = null;
 		error = '';
 		sessionLoadFailed = false;
 		loading = false;
@@ -142,7 +152,11 @@
 			const path = decision === 'approved' ? '/cli/auth/approve' : '/cli/auth/deny';
 			const body =
 				decision === 'approved'
-					? { user_code: code, name: tokenName || 'OpenPost CLI' }
+					? {
+							user_code: code,
+							name: tokenName || 'OpenPost CLI',
+							workspace_id: selectedWorkspaceID ?? ''
+						}
 					: { user_code: code };
 			const { error: apiError } = await client.POST(path, { body });
 
@@ -174,6 +188,12 @@
 			}
 		}
 	}
+
+	$effect(() => {
+		if (selectedWorkspaceID === null && workspaceCtx.currentWorkspace?.id) {
+			selectedWorkspaceID = workspaceCtx.currentWorkspace.id;
+		}
+	});
 
 	$effect(() => {
 		const code = userCode;
@@ -265,11 +285,42 @@
 
 			<div class="space-y-2">
 				<Label for="token-name">{m.cli_authorize_token_name()}</Label>
-				<Input id="token-name" bind:value={tokenName} autocomplete="off" />
+				<Input id="token-name" bind:value={tokenName} autocomplete="off" maxlength={120} />
 			</div>
 
+			<div class="space-y-2">
+				<Label for="cli-workspace-scope">{m.cli_authorize_access_boundary()}</Label>
+				<Select.Root
+					type="single"
+					value={selectedWorkspaceID || '__all__'}
+					onValueChange={(value) => (selectedWorkspaceID = value === '__all__' ? '' : value)}
+				>
+					<Select.Trigger id="cli-workspace-scope" class="w-full">
+						{selectedWorkspaceLabel}
+					</Select.Trigger>
+					<Select.Content>
+						{#each workspaceCtx.workspaces as workspace (workspace.id)}
+							<Select.Item value={workspace.id}>{workspace.name}</Select.Item>
+						{/each}
+						<Select.Item value="__all__">{m.cli_authorize_all_workspaces()}</Select.Item>
+					</Select.Content>
+				</Select.Root>
+				<p class="text-sm leading-6 text-muted-foreground">
+					{selectedWorkspaceID
+						? m.cli_authorize_current_workspace_description()
+						: m.cli_authorize_all_workspaces_description()}
+				</p>
+			</div>
+			{#if selectedWorkspaceID === ''}
+				<InlineNotice tone="warning" message={m.cli_authorize_all_workspaces_warning()} />
+			{/if}
+
 			<div class="flex flex-col gap-2 sm:flex-row">
-				<Button class="w-full gap-2" onclick={approve} disabled={submitting}>
+				<Button
+					class="w-full gap-2"
+					onclick={approve}
+					disabled={submitting || selectedWorkspaceID === null}
+				>
 					{#if pendingDecision === 'approved'}
 						<LoaderIcon class="size-4 animate-spin" />
 					{:else}

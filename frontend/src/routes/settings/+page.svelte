@@ -21,6 +21,7 @@
 	import OrganizationSSOSettings from '$lib/components/organization-sso-settings.svelte';
 	import SettingsFormFooter from '$lib/components/settings-form-footer.svelte';
 	import WorkspaceTeamSettings from '$lib/components/workspace-team-settings.svelte';
+	import LanguageSwitcher from '$lib/components/language-switcher.svelte';
 	import MediaPicker from '$lib/components/media-picker.svelte';
 	import BrandKitEditor from '$lib/image-editor/components/brand-kit-editor.svelte';
 	import ImageEditorColorPicker from '$lib/image-editor/components/image-editor-color-picker.svelte';
@@ -70,14 +71,25 @@
 	} from '$lib/billing-recovery';
 	import { m } from '$lib/paraglide/messages';
 	import { getOptionalUnsavedChanges } from '$lib/unsaved-changes.svelte';
+	import { soundPreferences } from '$lib/stores/sound-preferences.svelte';
+	import { setMode, userPrefersMode } from 'mode-watcher';
 	import {
+		apiTokenCustomExpiryMax,
+		apiTokenCustomExpiryMin,
+		apiTokenExpiresAt,
 		apiTokenScopeOptions as apiTokenScopes,
+		activeReauthProviderID,
 		billingPlans as billingPlanDefinitions,
+		buildProfileUpdateBody,
 		getTimezoneLabel,
+		isAPITokenScope,
 		timezones,
+		type APITokenScope,
 		type APITokenSummary,
+		type APITokenExpiryPreset,
 		type AuthSessionSummary,
 		type BillingStatus,
+		type EmailChangeSummary,
 		type MCPActivityItem,
 		type OIDCIdentitySummary,
 		type OIDCProviderSummary,
@@ -91,10 +103,22 @@
 	type SettingsDestructiveAction =
 		| { kind: 'session'; session: AuthSessionSummary }
 		| { kind: 'api-token'; tokenID: string }
+		| { kind: 'identity'; identity: OIDCIdentitySummary }
 		| { kind: 'time-row'; row: ScheduleRow }
 		| { kind: 'totp' }
 		| { kind: 'workspace' };
 	type RecoveryCodeFlow = 'setup' | 'regenerate';
+	type AppearanceMode = 'system' | 'light' | 'dark';
+
+	const publicProfileFieldIDs = [
+		'display_name',
+		'avatar',
+		'joined_at',
+		'activity',
+		'platforms',
+		'workspaces',
+		'plan'
+	] as const;
 
 	const groupedTimezones = $derived.by(() => {
 		const groups: Record<string, typeof timezones> = {};
@@ -110,6 +134,9 @@
 	let profileDisplayName = $state('');
 	let profileUsername = $state('');
 	let profilePublic = $state(false);
+	let profileVisibleFields = $state.raw<string[]>([]);
+	let publicProfilesAvailable = $state<boolean | null>(null);
+	let publicProfilesError = $state('');
 	let profileBusy = $state(false);
 	let profileError = $state('');
 	let avatarUploaderOpen = $state(false);
@@ -140,6 +167,12 @@
 	let linkableProviders = $state.raw<OIDCProviderSummary[]>([]);
 	let identityPassword = $state('');
 	let identityBusy = $state('');
+	let emailChangePending = $state.raw<EmailChangeSummary | null>(null);
+	let emailChangeNewEmail = $state('');
+	let emailChangeCode = $state('');
+	let emailChangePassword = $state('');
+	let emailChangeBusy = $state(false);
+	let emailChangeError = $state('');
 	let apiTokens = $state<APITokenSummary[]>([]);
 	let apiTokensLoading = $state(true);
 	let apiTokensLoadError = $state('');
@@ -149,12 +182,21 @@
 	let mcpActivityError = $state('');
 	let apiTokenBusy = $state(false);
 	let apiTokenName = $state('OpenPost MCP');
-	let apiTokenScope = $state('mcp:read');
+	let apiTokenScope = $state<APITokenScope>('mcp:read');
 	let apiTokenWorkspaceScope = $state('current');
+	let apiTokenExpiryPreset = $state<APITokenExpiryPreset>('90');
+	let apiTokenCustomExpiry = $state('');
 	let savedAPITokenDraft = $state(
-		JSON.stringify({ name: 'OpenPost MCP', scope: 'mcp:read', workspace: 'current' })
+		JSON.stringify({
+			name: 'OpenPost MCP',
+			scope: 'mcp:read',
+			workspace: 'current',
+			expiry: '90',
+			customExpiry: ''
+		})
 	);
 	let createdAPIToken = $state('');
+	let apiTokenCopyState = $state<'idle' | 'copied' | 'failed'>('idle');
 	let billingBusyPlan = $state('');
 	let billingPortalBusy = $state(false);
 	let billingError = $state('');
@@ -200,6 +242,7 @@
 				: m.settings_revoke_session_title();
 		}
 		if (destructiveAction?.kind === 'api-token') return m.settings_revoke_token_title();
+		if (destructiveAction?.kind === 'identity') return m.settings_unlink_identity_title();
 		if (destructiveAction?.kind === 'time-row') {
 			return m.settings_remove_time_title({
 				time: formatTime(destructiveAction.row.local_hour, destructiveAction.row.local_minute)
@@ -217,6 +260,7 @@
 				: m.settings_revoke_session_body();
 		}
 		if (destructiveAction?.kind === 'api-token') return m.settings_revoke_token_body();
+		if (destructiveAction?.kind === 'identity') return m.settings_unlink_identity_body();
 		if (destructiveAction?.kind === 'time-row') return m.settings_remove_time_body();
 		if (destructiveAction?.kind === 'totp') return m.settings_disable_authenticator_body();
 		if (destructiveAction?.kind === 'workspace') return m.workspace_delete_description();
@@ -229,6 +273,7 @@
 		}
 		if (destructiveAction?.kind === 'time-row') return m.settings_remove();
 		if (destructiveAction?.kind === 'totp') return m.settings_disable_authenticator();
+		if (destructiveAction?.kind === 'identity') return m.settings_unlink_identity();
 		if (destructiveAction?.kind === 'workspace') return m.workspace_delete_confirm();
 		return m.settings_revoke();
 	}
@@ -242,6 +287,10 @@
 		}
 		if (action.kind === 'api-token') {
 			await revokeAPIToken(action.tokenID);
+			return;
+		}
+		if (action.kind === 'identity') {
+			await unlinkIdentity(action.identity.id);
 			return;
 		}
 		if (action.kind === 'time-row') {
@@ -294,6 +343,8 @@
 	}
 
 	function apiTokenScopeLabel(value: string) {
+		if (value === 'api:read') return m.settings_token_scope_api_read();
+		if (value === 'api:write') return m.settings_token_scope_api_write();
 		if (value === 'mcp:read') return m.settings_token_scope_mcp_read();
 		if (value === 'mcp:full') return m.settings_token_scope_mcp();
 		if (value === 'cli:full') return m.settings_token_scope_cli();
@@ -301,10 +352,52 @@
 	}
 
 	function apiTokenScopeDescription(value: string) {
+		if (value === 'api:read') return m.settings_token_scope_api_read_description();
+		if (value === 'api:write') return m.settings_token_scope_api_write_description();
 		if (value === 'mcp:read') return m.settings_token_scope_mcp_read_description();
 		if (value === 'mcp:full') return m.settings_token_scope_mcp_description();
 		if (value === 'cli:full') return m.settings_token_scope_cli_description();
 		return '';
+	}
+
+	function publicProfileFieldLabel(field: string) {
+		if (field === 'display_name') return m.settings_public_field_display_name();
+		if (field === 'avatar') return m.settings_public_field_avatar();
+		if (field === 'joined_at') return m.settings_public_field_joined_at();
+		if (field === 'activity') return m.settings_public_field_activity();
+		if (field === 'platforms') return m.settings_public_field_platforms();
+		if (field === 'workspaces') return m.settings_public_field_workspaces();
+		if (field === 'plan') return m.settings_public_field_plan();
+		return field;
+	}
+
+	function appearanceLabel(mode: AppearanceMode) {
+		if (mode === 'light') return m.sidebar_appearance_light();
+		if (mode === 'dark') return m.sidebar_appearance_dark();
+		return m.sidebar_appearance_system();
+	}
+
+	function apiTokenStatusLabel(status: APITokenSummary['status']) {
+		if (status === 'expired') return m.settings_token_status_expired();
+		if (status === 'revoked') return m.settings_token_status_revoked();
+		return m.settings_token_status_active();
+	}
+
+	function sortedValues(values: readonly string[] | undefined) {
+		return [...(values ?? [])].sort().join('\u0000');
+	}
+
+	function togglePublicProfileField(field: string, checked: boolean) {
+		profileVisibleFields = checked
+			? [...new Set([...profileVisibleFields, field])]
+			: profileVisibleFields.filter((value) => value !== field);
+	}
+
+	function apiTokenExpiryLabel() {
+		if (apiTokenExpiryPreset === '30') return m.settings_token_expiry_30_days();
+		if (apiTokenExpiryPreset === '365') return m.settings_token_expiry_one_year();
+		if (apiTokenExpiryPreset === 'custom') return m.settings_token_expiry_custom();
+		return m.settings_token_expiry_90_days();
 	}
 
 	function billingPlanName(planID: string) {
@@ -466,15 +559,15 @@
 		new Intl.DateTimeFormat(getLocaleTag(), { weekday: 'long', timeZone: 'UTC' })
 	);
 	const passkeyCount = $derived((securityStatus?.passkeys ?? []).length);
-	const hasPasswordCredential = $derived(securityStatus?.user.has_password ?? true);
-	const reauthProviderID = $derived(linkedIdentities[0]?.provider_id ?? '');
+	const passwordReauthUsable = $derived(securityStatus?.user.password_usable ?? false);
+	const reauthProviderID = $derived(activeReauthProviderID(linkedIdentities));
 	const unlinkedProviders = $derived(
 		linkableProviders.filter(
 			(provider) => !linkedIdentities.some((identity) => identity.provider_id === provider.id)
 		)
 	);
 	const hasStepUpMethod = $derived(
-		hasPasswordCredential || passkeyCount > 0 || Boolean(reauthProviderID)
+		passwordReauthUsable || passkeyCount > 0 || Boolean(reauthProviderID)
 	);
 	const apiTokenScopeOptions = $derived(
 		apiTokenScopes.map((value) => ({
@@ -563,7 +656,13 @@
 	const profileDirty = $derived(
 		profileDisplayName !== (authState.user?.display_name ?? '') ||
 			profileUsername !== (authState.user?.username ?? '') ||
-			profilePublic !== Boolean(authState.user?.public_profile_enabled)
+			(publicProfilesAvailable === true &&
+				(profilePublic !== Boolean(authState.user?.public_profile_enabled) ||
+					sortedValues(profileVisibleFields) !==
+						sortedValues(authState.user?.public_profile_visible_fields ?? publicProfileFieldIDs)))
+	);
+	const selectedPublicProfileFields = $derived(
+		publicProfileFieldIDs.filter((field) => profileVisibleFields.includes(field))
 	);
 	const securityDraftDirty = $derived(Boolean(identityPassword || otherSecurityDraftDirty()));
 	const securityDraftMessage = $derived(
@@ -575,6 +674,17 @@
 	const profileAvatarURL = $derived(authState.user?.avatar_url ?? '');
 	const profileInitials = $derived.by(() => {
 		const source = profileDisplayName || profileEmail || 'OP';
+		const parts = source
+			.replace(/@.*/, '')
+			.split(/[\s._-]+/)
+			.filter(Boolean);
+		return (parts[0]?.[0] ?? 'O').toUpperCase() + (parts[1]?.[0] ?? '').toUpperCase();
+	});
+	const publicProfilePreviewInitials = $derived.by(() => {
+		const source =
+			(profileVisibleFields.includes('display_name') ? profileDisplayName : '') ||
+			profileUsername ||
+			'OP';
 		const parts = source
 			.replace(/@.*/, '')
 			.split(/[\s._-]+/)
@@ -668,22 +778,41 @@
 		profileError = '';
 		try {
 			const { data, error: err } = await client.PATCH('/auth/profile', {
-				body: {
-					display_name: profileDisplayName,
+				body: buildProfileUpdateBody({
+					displayName: profileDisplayName,
 					username: profileUsername,
-					public_profile_enabled: profilePublic
-				}
+					publicProfilesAvailable,
+					publicProfileEnabled: profilePublic,
+					publicProfileVisibleFields: profileVisibleFields
+				})
 			});
 			if (err || !data) throw new Error(err?.detail || m.settings_action_failed());
 			auth.setUser(data);
 			profileDisplayName = data.display_name ?? '';
 			profileUsername = data.username ?? '';
 			profilePublic = Boolean(data.public_profile_enabled);
+			profileVisibleFields = [...(data.public_profile_visible_fields ?? publicProfileFieldIDs)];
 			notify(m.settings_profile_updated());
 		} catch (e) {
 			profileError = (e as Error).message;
 		} finally {
 			profileBusy = false;
+		}
+	}
+
+	async function loadPublicProfileCapability() {
+		publicProfilesError = '';
+		publicProfilesAvailable = null;
+		try {
+			const { data, error } = await client.GET('/auth/config');
+			if (error || !data) throw new Error(error?.detail || m.settings_action_failed());
+			if (typeof data.public_profiles_enabled !== 'boolean') {
+				throw new Error(m.settings_action_failed());
+			}
+			publicProfilesAvailable = data.public_profiles_enabled;
+		} catch (error) {
+			publicProfilesAvailable = null;
+			publicProfilesError = (error as Error).message || m.settings_action_failed();
 		}
 	}
 
@@ -716,11 +845,14 @@
 		loadingSecurity = true;
 		securityError = '';
 		try {
-			const [securityResult, identityResult, providerResult] = await Promise.all([
-				client.GET('/auth/security'),
-				client.GET('/auth/oidc/identities'),
-				client.GET('/auth/oidc/link-providers')
-			]);
+			const [securityResult, identityResult, providerResult, emailChangeResult] = await Promise.all(
+				[
+					client.GET('/auth/security'),
+					client.GET('/auth/oidc/identities'),
+					client.GET('/auth/oidc/link-providers'),
+					client.GET('/auth/email-change')
+				]
+			);
 			if (securityResult.error || !securityResult.data) {
 				throw new Error(securityResult.error?.detail || m.settings_action_failed());
 			}
@@ -730,13 +862,115 @@
 			if (providerResult.error) {
 				throw new Error(providerResult.error.detail || m.settings_action_failed());
 			}
+			if (emailChangeResult.error) {
+				throw new Error(emailChangeResult.error.detail || m.settings_action_failed());
+			}
 			securityStatus = securityResult.data;
 			linkedIdentities = (identityResult.data ?? []) as OIDCIdentitySummary[];
 			linkableProviders = (providerResult.data ?? []) as OIDCProviderSummary[];
+			emailChangePending = (emailChangeResult.data?.pending ?? null) as EmailChangeSummary | null;
 		} catch (e) {
 			securityError = (e as Error).message;
 		} finally {
 			loadingSecurity = false;
+		}
+	}
+
+	async function beginEmailChange() {
+		if (!emailChangeNewEmail.trim()) return;
+		emailChangeBusy = true;
+		emailChangeError = '';
+		try {
+			const grant = await acquireReauthGrant('identity.email.change', {
+				password: passwordReauthUsable ? emailChangePassword : '',
+				providerID: reauthProviderID,
+				hasPasskey: passkeyCount > 0
+			});
+			if (grant === null) return;
+			const result = await client.POST('/auth/email-change', {
+				body: { new_email: emailChangeNewEmail.trim(), reauth_grant: grant }
+			});
+			if (result.error || !result.data) {
+				if (result.response.status === 409) throw new Error(m.settings_email_change_conflict());
+				if (result.response.status === 503) {
+					throw new Error(m.settings_email_change_delivery_failed());
+				}
+				throw new Error(result.error?.detail || m.settings_email_change_failed());
+			}
+			emailChangePending = result.data as EmailChangeSummary;
+			emailChangeNewEmail = '';
+			emailChangePassword = '';
+			notify(m.settings_email_change_sent());
+		} catch (error) {
+			emailChangeError = (error as Error).message || m.settings_email_change_failed();
+		} finally {
+			emailChangeBusy = false;
+		}
+	}
+
+	async function resendEmailChange() {
+		if (!emailChangePending) return;
+		emailChangeBusy = true;
+		emailChangeError = '';
+		try {
+			const { data, error } = await client.POST('/auth/email-change/{id}/resend', {
+				params: { path: { id: emailChangePending.id } }
+			});
+			if (error || !data) throw new Error(error?.detail || m.settings_email_change_failed());
+			emailChangePending = data as EmailChangeSummary;
+			notify(m.settings_email_change_sent());
+		} catch (error) {
+			emailChangeError = (error as Error).message || m.settings_email_change_failed();
+		} finally {
+			emailChangeBusy = false;
+		}
+	}
+
+	async function confirmEmailChange() {
+		if (!emailChangePending || emailChangeCode.length !== 6) return;
+		emailChangeBusy = true;
+		emailChangeError = '';
+		try {
+			const { data, error } = await client.POST('/auth/email-change/{id}/confirm', {
+				params: { path: { id: emailChangePending.id } },
+				body: { code: emailChangeCode }
+			});
+			if (error || !data) throw new Error(error?.detail || m.settings_email_change_failed());
+			if (authState.user) auth.setUser({ ...authState.user, email: data.email });
+			emailChangePending = null;
+			emailChangeCode = '';
+			securityStatus = securityStatus
+				? { ...securityStatus, user: { ...securityStatus.user, email: data.email } }
+				: securityStatus;
+			notify(
+				data.revoked_sessions === 1
+					? m.settings_email_change_completed_one()
+					: m.settings_email_change_completed({ count: data.revoked_sessions })
+			);
+			await loadAuthSessions();
+		} catch (error) {
+			emailChangeError = (error as Error).message || m.settings_email_change_failed();
+		} finally {
+			emailChangeBusy = false;
+		}
+	}
+
+	async function cancelEmailChange() {
+		if (!emailChangePending) return;
+		emailChangeBusy = true;
+		emailChangeError = '';
+		try {
+			const { error } = await client.DELETE('/auth/email-change/{id}', {
+				params: { path: { id: emailChangePending.id } }
+			});
+			if (error) throw new Error(error.detail || m.settings_email_change_failed());
+			emailChangePending = null;
+			emailChangeCode = '';
+			notify(m.settings_email_change_canceled());
+		} catch (error) {
+			emailChangeError = (error as Error).message || m.settings_email_change_failed();
+		} finally {
+			emailChangeBusy = false;
 		}
 	}
 
@@ -745,7 +979,7 @@
 		securityError = '';
 		try {
 			const grant = await acquireReauthGrant('identity.link', {
-				password: hasPasswordCredential ? identityPassword : '',
+				password: passwordReauthUsable ? identityPassword : '',
 				providerID: reauthProviderID,
 				hasPasskey: passkeyCount > 0
 			});
@@ -763,21 +997,26 @@
 		securityError = '';
 		try {
 			const grant = await acquireReauthGrant('identity.unlink', {
-				password: hasPasswordCredential ? identityPassword : '',
+				password: passwordReauthUsable ? identityPassword : '',
 				providerID: reauthProviderID,
 				hasPasskey: passkeyCount > 0
 			});
 			if (grant === null) return;
-			const { error } = await client.DELETE('/auth/oidc/identities/{identity_id}', {
+			const result = await client.DELETE('/auth/oidc/identities/{identity_id}', {
 				params: { path: { identity_id: identityID } },
 				body: { reauth_grant: grant }
 			});
-			if (error) throw new Error(error.detail || m.settings_action_failed());
+			if (result.error) {
+				if (result.response.status === 400) {
+					throw new Error(m.settings_identity_final_credential());
+				}
+				throw new Error(result.error.detail || m.settings_identity_unlink_failed());
+			}
 			identityPassword = '';
 			await loadSecurityStatus();
 			notify(m.settings_identity_unlinked());
 		} catch (e) {
-			securityError = (e as Error).message;
+			securityError = (e as Error).message || m.settings_identity_unlink_failed();
 		} finally {
 			identityBusy = '';
 		}
@@ -844,20 +1083,33 @@
 		apiTokenBusy = true;
 		apiTokenError = '';
 		createdAPIToken = '';
-		const fallbackName = apiTokenScope.startsWith('mcp:') ? 'OpenPost MCP' : 'OpenPost CLI';
+		apiTokenCopyState = 'idle';
+		const name = apiTokenName.trim();
+		if (!name) {
+			apiTokenError = m.settings_token_name_required();
+			apiTokenBusy = false;
+			return;
+		}
 		const workspaceID =
 			apiTokenWorkspaceScope === 'current' ? (workspaceCtx.currentWorkspace?.id ?? '') : '';
+		const expiresAt = apiTokenExpiresAt(apiTokenExpiryPreset, apiTokenCustomExpiry);
+		if (!expiresAt) {
+			apiTokenError = m.settings_token_expiry_description();
+			apiTokenBusy = false;
+			return;
+		}
 		try {
 			const { data, error: err } = await client.POST('/api-tokens', {
 				body: {
-					name: apiTokenName.trim() || fallbackName,
+					name,
 					scope: apiTokenScope,
-					...(workspaceID ? { workspace_id: workspaceID } : {})
+					workspace_id: workspaceID,
+					expires_at: expiresAt
 				}
 			});
 			if (err || !data) throw new Error(err?.detail || m.settings_action_failed());
 			createdAPIToken = data.token;
-			apiTokenName = fallbackName;
+			apiTokenName = '';
 			savedAPITokenDraft = apiTokenDraftSnapshot();
 			await loadAPITokens();
 		} catch (e) {
@@ -871,8 +1123,21 @@
 		return JSON.stringify({
 			name: apiTokenName,
 			scope: apiTokenScope,
-			workspace: apiTokenWorkspaceScope
+			workspace: apiTokenWorkspaceScope,
+			expiry: apiTokenExpiryPreset,
+			customExpiry: apiTokenCustomExpiry
 		});
+	}
+
+	async function copyCreatedAPIToken() {
+		try {
+			await navigator.clipboard.writeText(createdAPIToken);
+			apiTokenCopyState = 'copied';
+			notify(m.settings_token_copy_success());
+		} catch {
+			apiTokenCopyState = 'failed';
+			apiTokenError = m.settings_token_copy_failed();
+		}
 	}
 
 	async function revokeAuthSession(session: AuthSessionSummary) {
@@ -1023,7 +1288,7 @@
 		securityError = '';
 		totpSetupError = '';
 		try {
-			const grant = hasPasswordCredential
+			const grant = passwordReauthUsable
 				? ''
 				: await acquireReauthGrant('security.totp.setup', {
 						providerID: reauthProviderID,
@@ -1205,7 +1470,7 @@
 		securityBusy = true;
 		securityError = '';
 		try {
-			const grant = hasPasswordCredential
+			const grant = passwordReauthUsable
 				? ''
 				: await acquireReauthGrant('security.totp.recovery.inspect', {
 						providerID: reauthProviderID,
@@ -1232,7 +1497,7 @@
 		securityBusy = true;
 		securityError = '';
 		try {
-			const grant = hasPasswordCredential
+			const grant = passwordReauthUsable
 				? ''
 				: await acquireReauthGrant('security.totp.recovery.regenerate', {
 						providerID: reauthProviderID,
@@ -1268,7 +1533,7 @@
 		securityBusy = true;
 		securityError = '';
 		try {
-			const grant = hasPasswordCredential
+			const grant = passwordReauthUsable
 				? ''
 				: await acquireReauthGrant('security.totp.disable', {
 						providerID: reauthProviderID,
@@ -1298,7 +1563,7 @@
 		securityBusy = true;
 		securityError = '';
 		try {
-			const grant = hasPasswordCredential
+			const grant = passwordReauthUsable
 				? ''
 				: await acquireReauthGrant('security.passkey.add', {
 						providerID: reauthProviderID,
@@ -1343,7 +1608,7 @@
 		securityBusy = true;
 		securityError = '';
 		try {
-			const grant = hasPasswordCredential
+			const grant = passwordReauthUsable
 				? ''
 				: await acquireReauthGrant('security.passkey.remove', {
 						providerID: reauthProviderID,
@@ -1426,6 +1691,9 @@
 			passkeyCurrentPassword ||
 			totpCode ||
 			newPasskeyName ||
+			emailChangeNewEmail ||
+			emailChangeCode ||
+			emailChangePassword ||
 			totpSetupChallengeId ||
 			recoveryCodeChallengeId ||
 			recoveryCodes.length > 0
@@ -1809,6 +2077,8 @@
 			profileDisplayName = user.display_name || '';
 			profileUsername = user.username || '';
 			profilePublic = Boolean(user.public_profile_enabled);
+			profileVisibleFields = [...(user.public_profile_visible_fields ?? publicProfileFieldIDs)];
+			void loadPublicProfileCapability();
 		}
 	});
 
@@ -2110,35 +2380,146 @@
 							</div>
 						</div>
 
-						<div class="flex items-start gap-3 rounded-xl border bg-muted/25 p-4">
-							<Checkbox
-								id="profile-public"
-								bind:checked={profilePublic}
-								aria-describedby="profile-public-description"
-							/>
-							<div class="min-w-0 flex-1">
-								<Label for="profile-public" class="font-medium">
-									{m.settings_public_profile()}
-								</Label>
-								<p
-									id="profile-public-description"
-									class="mt-1 text-sm leading-6 text-muted-foreground"
-								>
-									{m.settings_public_profile_description()}
-								</p>
-								{#if authState.user?.public_profile_enabled && authState.user.username}
-									<a
-										href={resolve(`/u/${authState.user.username}` as '/')}
-										target="_blank"
-										rel="noreferrer"
-										class="mt-2 inline-flex min-h-11 items-center gap-2 text-sm font-medium text-primary hover:underline"
-									>
-										{m.settings_view_public_profile()}
-										<ExternalLinkIcon class="size-4" aria-hidden="true" />
-									</a>
-								{/if}
+						<div class="rounded-xl border bg-muted/20 p-4">
+							<div class="mb-1 flex items-center justify-between gap-3">
+								<p class="font-medium">{m.settings_private_account_details()}</p>
+								<span class="rounded-full border px-2 py-0.5 text-xs text-muted-foreground">
+									{m.settings_account_scope()}
+								</span>
 							</div>
+							<p class="text-sm leading-6 text-muted-foreground">
+								{m.settings_private_account_details_description()}
+							</p>
+							<p class="mt-3 text-sm font-medium break-all">{profileEmail}</p>
 						</div>
+
+						{#if publicProfilesAvailable === false}
+							<InlineNotice tone="info" message={m.settings_public_profile_unavailable()} />
+						{:else if publicProfilesAvailable === true}
+							<div class="space-y-5 rounded-xl border bg-muted/25 p-4">
+								<div class="flex items-start gap-3">
+									<Checkbox
+										id="profile-public"
+										bind:checked={profilePublic}
+										aria-describedby="profile-public-description"
+									/>
+									<div class="min-w-0 flex-1">
+										<Label for="profile-public" class="font-medium">
+											{m.settings_public_profile()}
+										</Label>
+										<p
+											id="profile-public-description"
+											class="mt-1 text-sm leading-6 text-muted-foreground"
+										>
+											{m.settings_public_profile_description()}
+										</p>
+										{#if authState.user?.public_profile_enabled && authState.user.username}
+											<a
+												href={resolve(`/u/${authState.user.username}` as '/')}
+												target="_blank"
+												rel="noreferrer"
+												class="mt-2 inline-flex min-h-11 items-center gap-2 text-sm font-medium text-primary hover:underline"
+											>
+												{m.settings_view_public_profile()}
+												<ExternalLinkIcon class="size-4" aria-hidden="true" />
+											</a>
+										{/if}
+									</div>
+								</div>
+
+								<div class="space-y-3 border-t pt-4">
+									<div>
+										<p class="text-sm font-medium">{m.settings_public_profile_fields()}</p>
+										<p class="mt-1 text-sm leading-6 text-muted-foreground">
+											{m.settings_public_profile_fields_description()}
+										</p>
+									</div>
+									<div class="grid gap-2 sm:grid-cols-2">
+										{#each publicProfileFieldIDs as field (field)}
+											<div
+												class="flex min-h-11 items-center gap-3 rounded-md border bg-background px-3 py-2"
+											>
+												<Checkbox
+													id={`public-profile-field-${field}`}
+													checked={profileVisibleFields.includes(field)}
+													onCheckedChange={(checked) => togglePublicProfileField(field, checked)}
+												/>
+												<Label for={`public-profile-field-${field}`} class="font-normal">
+													{publicProfileFieldLabel(field)}
+												</Label>
+											</div>
+										{/each}
+									</div>
+									{#if profileVisibleFields.includes('workspaces')}
+										<InlineNotice
+											tone="warning"
+											message={m.settings_public_profile_workspace_warning()}
+										/>
+									{/if}
+								</div>
+
+								<div
+									class="rounded-lg border bg-background p-4"
+									data-testid="public-profile-preview"
+								>
+									<p class="mb-3 text-sm font-medium">{m.settings_public_profile_preview()}</p>
+									<div class="flex items-center gap-3">
+										{#if profileAvatarURL && profileVisibleFields.includes('avatar')}
+											<img
+												src={profileAvatarURL}
+												alt=""
+												class="size-12 rounded-full border bg-muted object-cover"
+											/>
+										{:else}
+											<div
+												class="flex size-12 items-center justify-center rounded-full border bg-muted font-semibold"
+											>
+												{publicProfilePreviewInitials}
+											</div>
+										{/if}
+										<div class="min-w-0">
+											{#if profileVisibleFields.includes('display_name') && profileDisplayName}
+												<p class="truncate font-medium">{profileDisplayName}</p>
+											{/if}
+											<p class="truncate text-sm text-muted-foreground">@{profileUsername}</p>
+										</div>
+									</div>
+									{#if !profilePublic}
+										<p class="mt-3 text-sm text-muted-foreground">
+											{m.settings_public_profile_preview_private()}
+										</p>
+									{:else if selectedPublicProfileFields.length}
+										<div class="mt-3 flex flex-wrap gap-2">
+											{#each selectedPublicProfileFields as field (field)}
+												<span class="rounded-full border px-2 py-1 text-xs text-muted-foreground">
+													{publicProfileFieldLabel(field)}
+												</span>
+											{/each}
+										</div>
+									{/if}
+								</div>
+							</div>
+						{:else if publicProfilesError}
+							<InlineNotice tone="error" message={publicProfilesError}>
+								{#snippet actions()}
+									<Button
+										type="button"
+										variant="outline"
+										size="sm"
+										onclick={() => void loadPublicProfileCapability()}
+									>
+										{m.common_retry()}
+									</Button>
+								{/snippet}
+							</InlineNotice>
+						{:else}
+							<p
+								class="rounded-xl border bg-muted/20 p-4 text-sm text-muted-foreground"
+								aria-live="polite"
+							>
+								{m.common_loading()}
+							</p>
+						{/if}
 
 						{#if profileError}
 							<InlineNotice tone="error" message={profileError} />
@@ -2152,6 +2533,61 @@
 							type="submit"
 						/>
 					</form>
+
+					<div class="mt-8 border-t pt-6">
+						<SectionHeader
+							title={m.settings_personal_preferences()}
+							description={m.settings_personal_preferences_description()}
+							icon={PaletteIcon}
+							class="mb-4"
+						>
+							{#snippet actions()}
+								<span class="rounded-full border px-2 py-1 text-xs text-muted-foreground">
+									{m.settings_browser_scope()}
+								</span>
+							{/snippet}
+						</SectionHeader>
+						<div class="grid gap-4 rounded-xl border p-4 sm:grid-cols-3">
+							<div class="space-y-2">
+								<Label for="personal-appearance">{m.settings_appearance()}</Label>
+								<Select.Root
+									type="single"
+									value={userPrefersMode.current}
+									onValueChange={(value) => value && setMode(value as AppearanceMode)}
+								>
+									<Select.Trigger id="personal-appearance" class="w-full">
+										{appearanceLabel(userPrefersMode.current as AppearanceMode)}
+									</Select.Trigger>
+									<Select.Content>
+										{#each ['system', 'light', 'dark'] as appearance (appearance)}
+											<Select.Item value={appearance}>
+												{appearanceLabel(appearance as AppearanceMode)}
+											</Select.Item>
+										{/each}
+									</Select.Content>
+								</Select.Root>
+							</div>
+							<div class="space-y-2">
+								<Label>{m.settings_language()}</Label>
+								<div class="flex min-h-10 items-center"><LanguageSwitcher /></div>
+							</div>
+							<div
+								class="flex items-start gap-3 rounded-md border bg-muted/20 p-3 sm:border-0 sm:bg-transparent sm:p-0 sm:pt-7"
+							>
+								<Checkbox
+									id="personal-interface-sounds"
+									checked={soundPreferences.enabled}
+									onCheckedChange={(checked) => soundPreferences.setEnabled(checked)}
+								/>
+								<div>
+									<Label for="personal-interface-sounds">{m.settings_interface_sounds()}</Label>
+									<p class="mt-1 text-xs text-muted-foreground">
+										{m.settings_interface_sounds_description()}
+									</p>
+								</div>
+							</div>
+						</div>
+					</div>
 				</section>
 
 				<section
@@ -2889,6 +3325,115 @@
 								{/if}
 							</div>
 
+							<div class="rounded-lg border p-4" data-testid="email-change-card">
+								<div class="mb-4">
+									<h3 class="font-medium">{m.settings_change_email()}</h3>
+									<p class="mt-1 text-sm leading-6 text-muted-foreground">
+										{m.settings_change_email_description()}
+									</p>
+								</div>
+								<div class="mb-4 rounded-md border bg-muted/20 px-3 py-2">
+									<p class="text-xs text-muted-foreground">{m.settings_email_address()}</p>
+									<p class="mt-1 text-sm font-medium break-all">
+										{securityStatus?.user.email ?? profileEmail}
+									</p>
+								</div>
+
+								{#if emailChangePending}
+									<div class="space-y-4">
+										<InlineNotice
+											tone="info"
+											message={m.settings_email_change_pending({
+												email: emailChangePending.new_email
+											})}
+										/>
+										<div class="max-w-sm space-y-2">
+											<Label for="email-change-code">{m.settings_email_change_code()}</Label>
+											<Input
+												id="email-change-code"
+												bind:value={emailChangeCode}
+												inputmode="numeric"
+												pattern="[0-9]{6}"
+												maxlength={6}
+												autocomplete="one-time-code"
+												aria-describedby="email-change-code-help"
+											/>
+											<p
+												id="email-change-code-help"
+												class="text-xs leading-5 text-muted-foreground"
+											>
+												{m.settings_email_change_code_help()}
+											</p>
+										</div>
+										<div class="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+											<Button
+												type="button"
+												onclick={() => void confirmEmailChange()}
+												disabled={emailChangeBusy || emailChangeCode.length !== 6}
+											>
+												{m.settings_confirm_email_change()}
+											</Button>
+											<Button
+												type="button"
+												variant="outline"
+												onclick={() => void resendEmailChange()}
+												disabled={emailChangeBusy}
+											>
+												{m.settings_resend_email_change()}
+											</Button>
+											<Button
+												type="button"
+												variant="ghost"
+												onclick={() => void cancelEmailChange()}
+												disabled={emailChangeBusy}
+											>
+												{m.settings_cancel_email_change()}
+											</Button>
+										</div>
+									</div>
+								{:else}
+									<div class="grid gap-4 sm:grid-cols-2">
+										<div class="space-y-2">
+											<Label for="email-change-new">{m.settings_new_email()}</Label>
+											<Input
+												id="email-change-new"
+												type="email"
+												bind:value={emailChangeNewEmail}
+												autocomplete="email"
+											/>
+										</div>
+										{#if passwordReauthUsable}
+											<div class="space-y-2">
+												<Label for="email-change-password">{m.settings_current_password()}</Label>
+												<Input
+													id="email-change-password"
+													type="password"
+													bind:value={emailChangePassword}
+													autocomplete="current-password"
+												/>
+											</div>
+										{:else}
+											<InlineNotice tone="info" message={m.settings_step_up_body()} />
+										{/if}
+									</div>
+									<Button
+										class="mt-4"
+										type="button"
+										onclick={() => void beginEmailChange()}
+										disabled={emailChangeBusy ||
+											!emailChangeNewEmail.trim() ||
+											(passwordReauthUsable ? !emailChangePassword : !hasStepUpMethod)}
+									>
+										{#if emailChangeBusy}<LoaderIcon class="mr-2 size-4 animate-spin" />{/if}
+										{m.settings_start_email_change()}
+									</Button>
+								{/if}
+
+								{#if emailChangeError}
+									<InlineNotice tone="error" message={emailChangeError} class="mt-4" />
+								{/if}
+							</div>
+
 							<div class="rounded-lg border p-4">
 								<div class="mb-4">
 									<h3 class="flex items-center gap-2 font-medium">
@@ -2899,8 +3444,13 @@
 										{m.settings_linked_identities_body()}
 									</p>
 								</div>
+								<InlineNotice
+									tone="info"
+									message={m.settings_linked_identities_boundary()}
+									class="mb-4"
+								/>
 
-								{#if hasPasswordCredential && (linkedIdentities.length || unlinkedProviders.length)}
+								{#if passwordReauthUsable && (linkedIdentities.length || unlinkedProviders.length)}
 									<div class="mb-3 max-w-sm space-y-2">
 										<Label for="identity-link-password">{m.settings_current_password()}</Label>
 										<Input
@@ -2910,7 +3460,7 @@
 											autocomplete="current-password"
 										/>
 									</div>
-								{:else if !hasPasswordCredential && (linkedIdentities.length || unlinkedProviders.length)}
+								{:else if !passwordReauthUsable && (linkedIdentities.length || unlinkedProviders.length)}
 									<p class="mb-3 text-sm text-muted-foreground">{m.settings_step_up_body()}</p>
 								{/if}
 
@@ -2920,9 +3470,20 @@
 											class="flex flex-col gap-3 rounded-md border px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
 										>
 											<div class="min-w-0">
-												<p class="text-sm font-medium">{identity.provider_name}</p>
+												<p class="text-sm font-medium">
+													{identity.linked_name || identity.provider_name}
+												</p>
 												<p class="truncate text-xs text-muted-foreground">
-													{identity.linked_email ?? securityStatus?.user.email}
+													{identity.provider_name} · {identity.linked_email ??
+														securityStatus?.user.email}
+												</p>
+												<p class="mt-1 text-xs text-muted-foreground">
+													{m.settings_identity_linked_on({ date: formatDate(identity.created_at) })}
+													{#if identity.last_login_at}
+														· {m.settings_identity_last_used({
+															date: formatDateTime(identity.last_login_at)
+														})}
+													{/if}
 												</p>
 											</div>
 											<Button
@@ -2931,8 +3492,8 @@
 												size="sm"
 												class="self-start text-destructive hover:text-destructive sm:self-auto"
 												disabled={Boolean(identityBusy) ||
-													(hasPasswordCredential ? !identityPassword.trim() : !hasStepUpMethod)}
-												onclick={() => void unlinkIdentity(identity.id)}
+													(passwordReauthUsable ? !identityPassword.trim() : !hasStepUpMethod)}
+												onclick={() => requestDestructiveAction({ kind: 'identity', identity })}
 											>
 												{m.settings_unlink_identity()}
 											</Button>
@@ -2947,7 +3508,7 @@
 												type="button"
 												variant="outline"
 												disabled={Boolean(identityBusy) ||
-													(hasPasswordCredential ? !identityPassword.trim() : !hasStepUpMethod)}
+													(passwordReauthUsable ? !identityPassword.trim() : !hasStepUpMethod)}
 												onclick={() => void linkIdentity(provider.id)}
 											>
 												{m.settings_link_identity({ provider: provider.name })}
@@ -2981,7 +3542,7 @@
 												<p class="text-sm leading-6 text-muted-foreground">
 													{m.settings_recovery_codes_management_body()}
 												</p>
-												{#if hasPasswordCredential}
+												{#if passwordReauthUsable}
 													<div class="space-y-2">
 														<Label for="totp-management-password">
 															{m.settings_current_password()}
@@ -3013,7 +3574,7 @@
 														variant="outline"
 														onclick={() => void checkRecoveryCodeStatus()}
 														disabled={securityBusy ||
-															(hasPasswordCredential
+															(passwordReauthUsable
 																? totpCurrentPassword.length === 0
 																: !hasStepUpMethod)}
 													>
@@ -3024,7 +3585,7 @@
 														variant="outline"
 														onclick={() => void regenerateRecoveryCodes()}
 														disabled={securityBusy ||
-															(hasPasswordCredential
+															(passwordReauthUsable
 																? totpCurrentPassword.length === 0
 																: !hasStepUpMethod)}
 													>
@@ -3036,7 +3597,7 @@
 														class="text-destructive hover:text-destructive"
 														onclick={() => requestDestructiveAction({ kind: 'totp' })}
 														disabled={securityBusy ||
-															(hasPasswordCredential
+															(passwordReauthUsable
 																? totpCurrentPassword.length === 0
 																: !hasStepUpMethod)}
 													>
@@ -3169,7 +3730,7 @@
 														</Button>
 													</div>
 												</div>
-											{:else if hasPasswordCredential}
+											{:else if passwordReauthUsable}
 												<div class="space-y-2">
 													<Label for="totp-password">{m.settings_current_password()}</Label>
 													<Input
@@ -3190,7 +3751,7 @@
 													type="button"
 													onclick={() => void startTOTPSetup()}
 													disabled={securityBusy ||
-														(hasPasswordCredential
+														(passwordReauthUsable
 															? totpCurrentPassword.length === 0
 															: !hasStepUpMethod)}
 												>
@@ -3211,7 +3772,7 @@
 									</p>
 
 									<div class="space-y-3">
-										{#if hasPasswordCredential}
+										{#if passwordReauthUsable}
 											<div class="space-y-2">
 												<Label for="passkey-password">{m.settings_current_password()}</Label>
 												<Input
@@ -3238,7 +3799,7 @@
 										<Button
 											onclick={addPasskey}
 											disabled={securityBusy ||
-												(hasPasswordCredential
+												(passwordReauthUsable
 													? passkeyCurrentPassword.length === 0
 													: !hasStepUpMethod)}
 										>
@@ -3270,7 +3831,7 @@
 														class="text-destructive hover:text-destructive"
 														onclick={() => removePasskey(passkey.id)}
 														disabled={securityBusy ||
-															(hasPasswordCredential
+															(passwordReauthUsable
 																? passkeyCurrentPassword.length === 0
 																: !hasStepUpMethod)}
 													>
@@ -3287,7 +3848,7 @@
 
 							<AccountDataCard
 								email={securityStatus?.user.email ?? profileEmail}
-								hasPassword={hasPasswordCredential}
+								hasPassword={passwordReauthUsable}
 								{reauthProviderID}
 								hasPasskey={passkeyCount > 0}
 							/>
@@ -3307,7 +3868,19 @@
 						class="mb-4"
 					/>
 
-					{#if apiTokenScope === 'mcp:read'}
+					{#if apiTokenScope === 'api:read'}
+						<InlineNotice
+							tone="info"
+							message={m.settings_token_scope_api_read_boundary()}
+							class="mb-4"
+						/>
+					{:else if apiTokenScope === 'api:write'}
+						<InlineNotice
+							tone="warning"
+							message={m.settings_token_scope_api_write_boundary()}
+							class="mb-4"
+						/>
+					{:else if apiTokenScope === 'mcp:read'}
 						<InlineNotice
 							tone="info"
 							message={m.settings_token_scope_mcp_read_boundary()}
@@ -3341,13 +3914,16 @@
 						<InlineNotice tone="error" message={apiTokenError} class="mb-4" />
 					{/if}
 
-					<div class="mb-4 grid gap-3 lg:grid-cols-[1fr_240px_240px_auto]">
+					<div
+						class="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_220px_220px_190px_auto]"
+					>
 						<div class="space-y-2">
 							<Label for="api-token-name">{m.settings_token_name()}</Label>
 							<Input
 								id="api-token-name"
 								bind:value={apiTokenName}
 								placeholder={m.settings_token_name_placeholder()}
+								maxlength={120}
 							/>
 						</div>
 						<div class="space-y-2">
@@ -3355,7 +3931,9 @@
 							<Select.Root
 								type="single"
 								value={apiTokenScope}
-								onValueChange={(value) => value && (apiTokenScope = value)}
+								onValueChange={(value) => {
+									if (value && isAPITokenScope(value)) apiTokenScope = value;
+								}}
 							>
 								<Select.Trigger id="api-token-scope" data-testid="api-token-scope" class="w-full">
 									{selectedAPITokenScope.label}
@@ -3394,10 +3972,31 @@
 								</Select.Content>
 							</Select.Root>
 						</div>
+						<div class="space-y-2">
+							<Label for="api-token-expiry">{m.settings_token_expiry()}</Label>
+							<Select.Root
+								type="single"
+								value={apiTokenExpiryPreset}
+								onValueChange={(value) =>
+									value && (apiTokenExpiryPreset = value as APITokenExpiryPreset)}
+							>
+								<Select.Trigger id="api-token-expiry" class="w-full">
+									{apiTokenExpiryLabel()}
+								</Select.Trigger>
+								<Select.Content>
+									<Select.Item value="30">{m.settings_token_expiry_30_days()}</Select.Item>
+									<Select.Item value="90">{m.settings_token_expiry_90_days()}</Select.Item>
+									<Select.Item value="365">{m.settings_token_expiry_one_year()}</Select.Item>
+									<Select.Item value="custom">{m.settings_token_expiry_custom()}</Select.Item>
+								</Select.Content>
+							</Select.Root>
+						</div>
 						<div class="flex items-end">
 							<Button
 								onclick={createAPIToken}
 								disabled={apiTokenBusy ||
+									!apiTokenName.trim() ||
+									(apiTokenExpiryPreset === 'custom' && !apiTokenCustomExpiry) ||
 									(apiTokenWorkspaceScope === 'current' && !workspaceCtx.currentWorkspace)}
 							>
 								{#if apiTokenBusy}
@@ -3407,6 +4006,21 @@
 							</Button>
 						</div>
 					</div>
+					{#if apiTokenExpiryPreset === 'custom'}
+						<div class="mb-4 max-w-xs space-y-2">
+							<Label for="api-token-custom-expiry">{m.settings_token_custom_expiry()}</Label>
+							<Input
+								id="api-token-custom-expiry"
+								type="date"
+								bind:value={apiTokenCustomExpiry}
+								min={apiTokenCustomExpiryMin()}
+								max={apiTokenCustomExpiryMax()}
+							/>
+							<p class="text-xs leading-5 text-muted-foreground">
+								{m.settings_token_expiry_description()}
+							</p>
+						</div>
+					{/if}
 
 					{#if createdAPIToken}
 						<div
@@ -3414,7 +4028,28 @@
 							data-feedback-redact
 						>
 							<p class="font-medium">{m.settings_copy_token_now()}</p>
-							<p class="mt-2 font-mono text-xs break-all">{createdAPIToken}</p>
+							<p
+								class="mt-2 font-mono text-xs break-all"
+								aria-label={m.settings_token_secret_label()}
+							>
+								{createdAPIToken}
+							</p>
+							<Button
+								type="button"
+								variant="outline"
+								class="mt-3 gap-2 border-amber-700/30 bg-white/80 text-amber-950 hover:bg-white"
+								onclick={() => void copyCreatedAPIToken()}
+							>
+								<CopyIcon class="size-4" />
+								{m.common_copy()}
+							</Button>
+							<p class="sr-only" aria-live="polite">
+								{apiTokenCopyState === 'copied'
+									? m.settings_token_copy_success()
+									: apiTokenCopyState === 'failed'
+										? m.settings_token_copy_failed()
+										: ''}
+							</p>
 						</div>
 					{/if}
 
@@ -3430,8 +4065,20 @@
 								<div
 									class="flex flex-col gap-3 rounded-md border px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
 								>
-									<div>
-										<p class="text-sm font-medium">{token.name}</p>
+									<div class="min-w-0">
+										<div class="flex flex-wrap items-center gap-2">
+											<p class="text-sm font-medium">{token.name}</p>
+											<span
+												class={[
+													'rounded-full border px-2 py-0.5 text-xs font-medium',
+													token.status === 'active'
+														? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700'
+														: 'border-muted-foreground/30 bg-muted text-muted-foreground'
+												]}
+											>
+												{apiTokenStatusLabel(token.status)}
+											</span>
+										</div>
 										<p class="text-xs text-muted-foreground">
 											{m.settings_token_prefix()}
 											<span class="font-mono">{token.token_prefix}</span> ·
@@ -3443,11 +4090,13 @@
 											{:else}
 												· {m.settings_all_workspaces()}
 											{/if}
-											{#if token.last_used_at}
-												· {m.settings_token_last_used({
-													date: formatDateTime(token.last_used_at)
-												})}
-											{/if}
+										</p>
+										<p class="mt-1 text-xs text-muted-foreground">
+											{m.settings_expires()}
+											{token.expires_at ? formatDateTime(token.expires_at) : m.settings_never()}
+											· {token.last_used_at
+												? m.settings_token_last_used({ date: formatDateTime(token.last_used_at) })
+												: m.settings_token_never_used()}
 										</p>
 									</div>
 									<Button
@@ -3456,7 +4105,7 @@
 										class="text-destructive hover:text-destructive"
 										onclick={() =>
 											requestDestructiveAction({ kind: 'api-token', tokenID: token.id })}
-										disabled={apiTokenBusy}
+										disabled={apiTokenBusy || token.status === 'revoked'}
 									>
 										{m.settings_revoke()}
 									</Button>
@@ -3464,6 +4113,16 @@
 							{/each}
 						</div>
 					{/if}
+
+					<a
+						href="https://docs.openpost.social/development/api-tokens"
+						target="_blank"
+						rel="noreferrer"
+						class="mt-4 inline-flex min-h-11 items-center gap-2 text-sm font-medium text-primary hover:underline"
+					>
+						{m.settings_token_docs()}
+						<ExternalLinkIcon class="size-4" aria-hidden="true" />
+					</a>
 
 					<div class="mt-6 border-t pt-6">
 						<div class="mb-4 flex items-center justify-between gap-3">
@@ -3554,7 +4213,13 @@
 					class:hidden={activeSettingsTab !== 'general'}
 					class="scroll-mt-24 space-y-4"
 				>
-					<SectionHeader title={m.settings_date_time()} icon={ClockIcon} class="mb-4" />
+					<SectionHeader title={m.settings_date_time()} icon={ClockIcon} class="mb-4">
+						{#snippet actions()}
+							<span class="rounded-full border px-2 py-1 text-xs text-muted-foreground">
+								{m.settings_workspace_scope()}
+							</span>
+						{/snippet}
+					</SectionHeader>
 					<div class="grid gap-4 sm:grid-cols-2">
 						<div class="space-y-2">
 							<label class="text-sm font-medium" for="timezone-select"

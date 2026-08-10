@@ -5,7 +5,27 @@ import type { components } from '$lib/api/types';
 export type VideoEditorConfig = components['schemas']['VideoEditorConfigOutputBody'];
 export type CloudVideoProjectSummary = components['schemas']['VideoProjectSummary'];
 export type CloudVideoProjectResponse = components['schemas']['VideoProjectResponse'];
-export type CloudVideoProjectRevision = components['schemas']['VideoProjectRevisionSummary'];
+export interface CloudVideoProjectRevision {
+	id: string;
+	revision: number;
+	kind: string;
+	name?: string;
+	created_at: string;
+	expires_at?: string;
+	actor: {
+		name: string;
+		is_current_user: boolean;
+	};
+}
+export interface CloudVideoProjectRevisionResponse {
+	summary: CloudVideoProjectRevision;
+	cover_preview_media_id?: string;
+	document: components['schemas']['Document'];
+}
+export interface CloudVideoProjectRevisionPage {
+	revisions: CloudVideoProjectRevision[];
+	nextCursor?: string;
+}
 export type StockProvider = components['schemas']['StockProviderResponse'];
 export type StockSearchPage = components['schemas']['SearchPage'];
 export type StockAsset = components['schemas']['Asset'];
@@ -60,12 +80,14 @@ export async function deleteCloudVideoProject(projectID: string): Promise<void> 
 export async function createCloudVideoProject(
 	workspaceID: string,
 	document: VideoProjectDocumentV1,
+	coverPreviewMediaID = '',
 	clientRequestID = crypto.randomUUID()
 ): Promise<CloudVideoProjectResponse> {
 	const { data, error } = await client.POST('/video-editor/projects', {
 		body: {
 			workspace_id: workspaceID,
 			client_request_id: clientRequestID,
+			cover_preview_media_id: coverPreviewMediaID,
 			document: document as unknown as components['schemas']['Document']
 		}
 	});
@@ -118,24 +140,45 @@ export async function planVideoEditorSync(
 }
 
 export async function listCloudVideoProjectRevisions(
-	projectID: string
-): Promise<CloudVideoProjectRevision[]> {
+	projectID: string,
+	cursor = '',
+	limit = 50
+): Promise<CloudVideoProjectRevisionPage> {
 	const { data, error } = await client.GET('/video-editor/projects/{id}/revisions', {
-		params: { path: { id: projectID } }
+		params: { path: { id: projectID }, query: { cursor, limit } }
 	});
 	if (error || !data) throw new Error(error?.detail ?? 'Project history could not load.');
-	return data.revisions ?? [];
+	return {
+		revisions: (data.revisions ?? []) as unknown as CloudVideoProjectRevision[],
+		nextCursor: data.next_cursor || undefined
+	};
+}
+
+export async function getCloudVideoProjectRevision(
+	projectID: string,
+	revisionID: string
+): Promise<CloudVideoProjectRevisionResponse> {
+	const { data, error } = await client.GET('/video-editor/projects/{id}/revisions/{revision_id}', {
+		params: { path: { id: projectID, revision_id: revisionID } }
+	});
+	if (error || !data) throw new Error(error?.detail ?? 'Project version details could not load.');
+	return data as unknown as CloudVideoProjectRevisionResponse;
 }
 
 export async function createCloudVideoProjectCheckpoint(
 	projectID: string,
-	name: string
+	name: string,
+	expectedRevision: number
 ): Promise<CloudVideoProjectRevision> {
-	const { data, error } = await client.POST('/video-editor/projects/{id}/checkpoints', {
+	const { data, error, response } = await client.POST('/video-editor/projects/{id}/checkpoints', {
 		params: { path: { id: projectID } },
-		body: { name }
+		body: { name, expected_revision: expectedRevision }
 	});
-	if (error || !data) throw new Error(error?.detail ?? 'The checkpoint could not be created.');
+	if (error || !data) {
+		const detail = error?.detail ?? 'The checkpoint could not be created.';
+		if (response.status === 409) throw new VideoProjectRevisionConflict(detail);
+		throw new Error(detail);
+	}
 	return data;
 }
 

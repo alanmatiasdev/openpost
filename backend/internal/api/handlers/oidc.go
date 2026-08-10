@@ -131,6 +131,8 @@ type OIDCIdentitySummary struct {
 	ProviderID   string    `json:"provider_id"`
 	ProviderName string    `json:"provider_name"`
 	LinkedEmail  string    `json:"linked_email,omitempty"`
+	LinkedName   string    `json:"linked_name,omitempty"`
+	Active       bool      `json:"active" doc:"Whether this identity provider can currently be used for sign-in and reauthentication"`
 	CreatedAt    time.Time `json:"created_at"`
 	LastLoginAt  time.Time `json:"last_login_at,omitempty"`
 }
@@ -413,13 +415,20 @@ func (h *OIDCHandler) registerReauthenticationRoutes(api huma.API) {
 		Summary:     "Create an action-bound reauthentication grant with a password",
 		Tags:        []string{tagAuth},
 		Middlewares: huma.Middlewares{middleware.RequestMetadataMiddleware(), authMiddleware},
-		Errors:      []int{400, 401},
+		Errors:      []int{400, 401, 500},
 	}, func(ctx context.Context, input *PasswordReauthInput) (*ReauthGrantOutput, error) {
 		if middleware.GetSessionID(ctx) == "" {
 			return nil, huma.Error401Unauthorized("a web session is required")
 		}
 		user, err := h.auth.getUserByID(ctx, middleware.GetUserID(ctx))
-		if err != nil || user.PasswordHash == "" || !h.auth.auth.CheckPassword(input.Body.Password, user.PasswordHash) {
+		if err != nil || user.PasswordHash == "" {
+			return nil, huma.Error401Unauthorized("password reauthentication failed")
+		}
+		passwordAllowed, err := h.identity.PasswordCredentialAllowed(ctx, user.ID)
+		if err != nil {
+			return nil, huma.Error500InternalServerError("failed to evaluate reauthentication policy")
+		}
+		if !passwordAllowed || !h.auth.auth.CheckPassword(input.Body.Password, user.PasswordHash) {
 			return nil, huma.Error401Unauthorized("password reauthentication failed")
 		}
 		grant, err := h.identity.CreateReauthGrant(
@@ -455,12 +464,14 @@ func (h *OIDCHandler) registerIdentityManagementRoutes(api huma.API) {
 			ProviderID   string    `bun:"provider_id"`
 			ProviderName string    `bun:"provider_name"`
 			LinkedEmail  string    `bun:"linked_email"`
+			LinkedName   string    `bun:"linked_name"`
+			Active       bool      `bun:"active"`
 			CreatedAt    time.Time `bun:"created_at"`
 			LastLoginAt  time.Time `bun:"last_login_at"`
 		}
 		err := h.auth.db.NewSelect().
 			TableExpr("user_identities AS ui").
-			ColumnExpr("ui.id, ui.provider_id, ip.name AS provider_name, ui.linked_email, ui.created_at, ui.last_login_at").
+			ColumnExpr("ui.id, ui.provider_id, ip.name AS provider_name, ui.linked_email, ui.linked_name, ip.is_active AS active, ui.created_at, ui.last_login_at").
 			Join("JOIN identity_providers AS ip ON ip.id = ui.provider_id").
 			Where("ui.user_id = ?", middleware.GetUserID(ctx)).
 			Order("ip.name ASC").
@@ -472,7 +483,8 @@ func (h *OIDCHandler) registerIdentityManagementRoutes(api huma.API) {
 		for _, row := range rows {
 			out.Body = append(out.Body, OIDCIdentitySummary{
 				ID: row.ID, ProviderID: row.ProviderID, ProviderName: row.ProviderName,
-				LinkedEmail: row.LinkedEmail, CreatedAt: row.CreatedAt, LastLoginAt: row.LastLoginAt,
+				LinkedEmail: row.LinkedEmail, LinkedName: row.LinkedName, Active: row.Active,
+				CreatedAt: row.CreatedAt, LastLoginAt: row.LastLoginAt,
 			})
 		}
 		return out, nil
@@ -497,31 +509,12 @@ func (h *OIDCHandler) registerIdentityManagementRoutes(api huma.API) {
 		); err != nil {
 			return nil, huma.Error401Unauthorized("recent reauthentication is required")
 		}
-		user, err := h.auth.getUserByID(ctx, userID)
-		if err != nil {
-			return nil, huma.Error404NotFound("account not found")
-		}
-		identityCount, err := h.auth.db.NewSelect().Model((*models.UserIdentity)(nil)).
-			Where("user_id = ?", userID).Count(ctx)
-		if err != nil {
-			return nil, huma.Error500InternalServerError("failed to inspect linked identities")
-		}
-		passkeyCount, err := h.auth.db.NewSelect().Model((*models.UserPasskey)(nil)).
-			Where("user_id = ?", userID).Count(ctx)
-		if err != nil {
-			return nil, huma.Error500InternalServerError("failed to inspect account credentials")
-		}
-		if identityCount <= 1 && user.PasswordHash == "" && passkeyCount == 0 {
+		if err := h.identity.UnlinkIdentity(ctx, userID, input.IdentityID); errors.Is(err, identity.ErrFinalCredential) {
 			return nil, huma.Error400BadRequest("add another sign-in method before unlinking this identity")
-		}
-		result, err := h.auth.db.NewDelete().Model((*models.UserIdentity)(nil)).
-			Where("id = ? AND user_id = ?", input.IdentityID, userID).Exec(ctx)
-		if err != nil {
-			return nil, huma.Error500InternalServerError("failed to unlink identity")
-		}
-		affected, _ := result.RowsAffected()
-		if affected == 0 {
+		} else if errors.Is(err, identity.ErrIdentityNotFound) {
 			return nil, huma.Error404NotFound("linked identity not found")
+		} else if err != nil {
+			return nil, huma.Error500InternalServerError("failed to unlink identity")
 		}
 		out := &MessageOutput{}
 		out.Body.Message = "Identity unlinked."

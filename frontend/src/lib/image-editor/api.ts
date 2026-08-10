@@ -6,6 +6,7 @@ import type {
 	ImageEditorDocumentResponse,
 	ImageEditorMediaItem,
 	ImageEditorPreset,
+	ImageEditorRevisionResponse,
 	ImageEditorRevisionSummary,
 	ImageEditorTemplate
 } from './types';
@@ -262,23 +263,57 @@ export async function listImageEditorMedia(
 	return (data.media ?? []) as unknown as ImageEditorMediaItem[];
 }
 
-export async function listImageEditorRevisions(id: string): Promise<ImageEditorRevisionSummary[]> {
+export interface ImageEditorRevisionPage {
+	revisions: ImageEditorRevisionSummary[];
+	nextCursor?: string;
+}
+
+export async function listImageEditorRevisions(
+	id: string,
+	cursor = '',
+	limit = 50
+): Promise<ImageEditorRevisionPage> {
 	const { data, error } = await client.GET('/image-editor/designs/{id}/revisions', {
-		params: { path: { id } }
+		params: { path: { id }, query: { cursor, limit } }
 	});
 	if (error || !data) throw new Error(problemMessage(error, 'Could not load design history.'));
-	return (data.revisions ?? []) as ImageEditorRevisionSummary[];
+	return {
+		revisions: (data.revisions ?? []) as ImageEditorRevisionSummary[],
+		nextCursor: data.next_cursor || undefined
+	};
+}
+
+export async function getImageEditorRevision(
+	id: string,
+	revisionID: string,
+	signal?: AbortSignal
+): Promise<ImageEditorRevisionResponse> {
+	const { data, error } = await client.GET('/image-editor/designs/{id}/revisions/{revision_id}', {
+		params: { path: { id, revision_id: revisionID } },
+		signal
+	});
+	if (error || !data) throw new Error(problemMessage(error, 'Could not inspect this version.'));
+	return data as unknown as ImageEditorRevisionResponse;
 }
 
 export async function createImageEditorCheckpoint(
 	id: string,
-	name: string
+	name: string,
+	expectedRevision: number
 ): Promise<ImageEditorRevisionSummary> {
-	const { data, error } = await client.POST('/image-editor/designs/{id}/revisions', {
+	const { data, error, response } = await client.POST('/image-editor/designs/{id}/revisions', {
 		params: { path: { id } },
-		body: { name }
+		body: { name, expected_revision: expectedRevision }
 	});
-	if (error || !data) throw new Error(problemMessage(error, 'Could not create the checkpoint.'));
+	if (error || !data) {
+		const failure = new Error(
+			problemMessage(error, 'Could not create the checkpoint.')
+		) as Error & {
+			status?: number;
+		};
+		failure.status = response.status;
+		throw failure;
+	}
 	return data as ImageEditorRevisionSummary;
 }
 
@@ -287,14 +322,20 @@ export async function restoreImageEditorRevision(
 	revisionID: string,
 	expectedRevision: number
 ): Promise<ImageEditorDocumentResponse> {
-	const { data, error } = await client.POST(
+	const { data, error, response } = await client.POST(
 		'/image-editor/designs/{id}/revisions/{revision_id}/restore',
 		{
 			params: { path: { id, revision_id: revisionID } },
 			body: { expected_revision: expectedRevision }
 		}
 	);
-	if (error || !data) throw new Error(problemMessage(error, 'Could not restore this version.'));
+	if (error || !data) {
+		const failure = new Error(problemMessage(error, 'Could not restore this version.')) as Error & {
+			status?: number;
+		};
+		failure.status = response.status;
+		throw failure;
+	}
 	return data as unknown as ImageEditorDocumentResponse;
 }
 

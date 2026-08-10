@@ -18,7 +18,11 @@ OpenPost Image Editor saves soon after you stop editing. Public designs stay on 
 
 ## Versions and templates
 
-Open **File → Version history** to restore an earlier version or save a named version. OpenPost keeps recovery versions for up to 30 days. Named versions stay until you remove them. Restoring does not delete older versions.
+Open **File → Version history** to inspect an earlier workspace version or save a named version. The list shows when each version was saved and who saved it. Select a version to load its preview and a summary of material page, layer, guide, title, size, export, and cover changes. OpenPost does not fetch the full version until you select it. Choose **Load more** to reach older named versions when the design has more history than the first page.
+
+OpenPost keeps at most 20 automatic recovery versions for up to 30 days. Named versions and restore points do not expire automatically; they remain with the design. Before restoring, OpenPost confirms that it will save the exact current design as a restore point. The target pages and cover then replace the current head in one revision-checked transaction. Media referenced only by the target version is recovered from workspace trash as part of that transaction. If target media is missing or belongs to another workspace, the restore stops before changing the design. You can restore the automatic **Before restore** version to return to the prior head.
+
+If the design changes in another browser before the transaction commits, the restore stops without changing the design or its trashed media. Reload the current OpenPost version before trying again, or preserve the browser's unsaved work as a separate design. Restoring one version does not delete the other named versions or restore points.
 
 You can save a design as a new workspace template or replace a template. A design made from a template is its own copy. Later changes to the template or brand kit do not change that design.
 

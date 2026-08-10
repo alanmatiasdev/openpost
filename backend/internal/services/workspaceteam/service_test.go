@@ -44,7 +44,7 @@ func newTeamTestService(t *testing.T, seatLimit int64) (*Service, *bun.DB) {
 	require.NoError(t, err)
 	_, err = db.NewInsert().Model(&models.Workspace{ID: "workspace-1", OrganizationID: "org-1", Name: "Team", CreatedAt: now}).Exec(t.Context())
 	require.NoError(t, err)
-	seedTeamMember(t, db, "admin-1", models.WorkspaceRoleAdmin, models.WorkspaceMemberStatusActive, now)
+	seedTeamMember(t, db, "admin-1", models.WorkspaceRoleAdmin, now)
 	return service, db
 }
 
@@ -54,10 +54,10 @@ func seedTeamUser(t *testing.T, db *bun.DB, id, email string) {
 	require.NoError(t, err)
 }
 
-func seedTeamMember(t *testing.T, db *bun.DB, userID, role, status string, now time.Time) {
+func seedTeamMember(t *testing.T, db *bun.DB, userID, role string, now time.Time) {
 	t.Helper()
 	_, err := db.NewInsert().Model(&models.WorkspaceMember{
-		WorkspaceID: "workspace-1", UserID: userID, Role: role, Status: status,
+		WorkspaceID: "workspace-1", UserID: userID, Role: role, Status: models.WorkspaceMemberStatusActive,
 		CreatedAt: now, UpdatedAt: now,
 	}).Exec(t.Context())
 	require.NoError(t, err)
@@ -67,7 +67,7 @@ func TestMemberLifecycleAuditsEveryAccessChange(t *testing.T) {
 	service, db := newTeamTestService(t, 10)
 	now := service.now()
 	seedTeamUser(t, db, "member-1", "member@example.com")
-	seedTeamMember(t, db, "member-1", models.WorkspaceRoleViewer, models.WorkspaceMemberStatusActive, now)
+	seedTeamMember(t, db, "member-1", models.WorkspaceRoleViewer, now)
 
 	member, err := service.UpdateMember(t.Context(), UpdateMemberInput{
 		WorkspaceID: "workspace-1", ActorUserID: "admin-1", SubjectUserID: "member-1",
@@ -111,7 +111,7 @@ func TestMemberLifecycleAuditsEveryAccessChange(t *testing.T) {
 func TestLastAdminAndUnauthorizedMutationSafeguards(t *testing.T) {
 	service, db := newTeamTestService(t, 10)
 	seedTeamUser(t, db, "viewer-1", "viewer@example.com")
-	seedTeamMember(t, db, "viewer-1", models.WorkspaceRoleViewer, models.WorkspaceMemberStatusActive, service.now())
+	seedTeamMember(t, db, "viewer-1", models.WorkspaceRoleViewer, service.now())
 
 	_, err := service.UpdateMember(t.Context(), UpdateMemberInput{
 		WorkspaceID: "workspace-1", ActorUserID: "viewer-1", SubjectUserID: "admin-1",
@@ -131,7 +131,7 @@ func TestLastAdminAndUnauthorizedMutationSafeguards(t *testing.T) {
 	require.Equal(t, ErrorConflict, ErrorKindOf(err))
 
 	seedTeamUser(t, db, "admin-2", "admin2@example.com")
-	seedTeamMember(t, db, "admin-2", models.WorkspaceRoleAdmin, models.WorkspaceMemberStatusActive, service.now())
+	seedTeamMember(t, db, "admin-2", models.WorkspaceRoleAdmin, service.now())
 	require.NoError(t, service.RemoveMember(t.Context(), "workspace-1", "admin-1", "admin-1"), "self-removal is safe when another active admin remains")
 	_, err = service.List(t.Context(), "workspace-1", "admin-1", Filters{})
 	require.Equal(t, ErrorForbidden, ErrorKindOf(err))
@@ -160,7 +160,7 @@ func TestInvitationResendRevocationAcceptanceAndSearch(t *testing.T) {
 	require.Equal(t, int64(2), team.CurrentSeats)
 
 	require.NoError(t, service.RevokeInvitation(t.Context(), "workspace-1", invitation.ID, "admin-1"))
-	err = service.AcceptInvitation(t.Context(), resent, "invitee-1", "invitee@example.com")
+	err = service.AcceptInvitation(t.Context(), resent, "invitee-1")
 	require.Equal(t, ErrorConflict, ErrorKindOf(err))
 	require.Contains(t, err.Error(), "revoked")
 
@@ -168,7 +168,7 @@ func TestInvitationResendRevocationAcceptanceAndSearch(t *testing.T) {
 		WorkspaceID: "workspace-1", ActorUserID: "admin-1", Email: "invitee@example.com", Role: models.WorkspaceRoleViewer,
 	})
 	require.NoError(t, err)
-	require.NoError(t, service.AcceptInvitation(t.Context(), second, "invitee-1", "invitee@example.com"))
+	require.NoError(t, service.AcceptInvitation(t.Context(), second, "invitee-1"))
 	team, err = service.List(t.Context(), "workspace-1", "admin-1", Filters{Status: "active", Role: models.WorkspaceRoleViewer})
 	require.NoError(t, err)
 	require.Len(t, team.Members, 1)

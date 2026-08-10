@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -304,6 +305,8 @@ func TestOIDCLoginUsesPKCEAndStableIdentity(t *testing.T) {
 		Where("provider_id = ? AND subject = ?", EnvironmentProviderID, "subject-1").
 		Scan(context.Background()))
 	require.Equal(t, completion.User.ID, linked.UserID)
+	require.Equal(t, "OIDC Person", linked.LinkedName)
+	require.Equal(t, fake.email, linked.LinkedEmail)
 
 	_, err = service.Complete(
 		context.Background(),
@@ -313,6 +316,299 @@ func TestOIDCLoginUsesPKCEAndStableIdentity(t *testing.T) {
 		result.BrowserBinding,
 	)
 	require.ErrorIs(t, err, ErrInvalidAuthRequest)
+}
+
+func TestUnlinkIdentityPreservesFinalCredential(t *testing.T) {
+	fake := newFakeOIDCIssuer(t)
+	service, db := newIdentityTestService(t, fake)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	user := &models.User{ID: "unlink-user", Email: "unlink@example.com", CreatedAt: now}
+	linked := &models.UserIdentity{
+		ID: "identity-1", ProviderID: EnvironmentProviderID, Subject: "unlink-subject",
+		UserID: user.ID, LinkedEmail: user.Email, LinkedName: "Linked Person", CreatedAt: now,
+	}
+	require.NoError(t, insertIdentityRows(ctx, db, user, linked))
+
+	err := service.UnlinkIdentity(ctx, user.ID, linked.ID)
+	require.ErrorIs(t, err, ErrFinalCredential)
+	exists, err := db.NewSelect().Model((*models.UserIdentity)(nil)).Where("id = ?", linked.ID).Exists(ctx)
+	require.NoError(t, err)
+	require.True(t, exists)
+
+	_, err = db.NewUpdate().Model((*models.User)(nil)).Set("password_hash = ?", "password-hash").Where("id = ?", user.ID).Exec(ctx)
+	require.NoError(t, err)
+	require.NoError(t, service.UnlinkIdentity(ctx, user.ID, linked.ID))
+	exists, err = db.NewSelect().Model((*models.UserIdentity)(nil)).Where("id = ?", linked.ID).Exists(ctx)
+	require.NoError(t, err)
+	require.False(t, exists)
+
+	var audit models.IdentityAuditEvent
+	require.NoError(t, db.NewSelect().Model(&audit).
+		Where("subject_user_id = ? AND action = ?", user.ID, "identity.unlinked").
+		Scan(ctx))
+	require.Equal(t, EnvironmentProviderID, audit.ProviderID)
+}
+
+func TestRemovePasskeyPreservesFinalCredential(t *testing.T) {
+	fake := newFakeOIDCIssuer(t)
+	service, db := newIdentityTestService(t, fake)
+	ctx := context.Background()
+	now := time.Now().UTC()
+
+	t.Run("passkey-only account", func(t *testing.T) {
+		user := &models.User{
+			ID: "passkey-only-user", Email: "passkey-only@example.com",
+			PasskeyEnabledAt: now, CreatedAt: now,
+		}
+		passkey := testPasskey("passkey-only", user.ID, now)
+		require.NoError(t, insertIdentityRows(ctx, db, user, passkey))
+
+		err := service.RemovePasskey(ctx, user.ID, passkey.ID)
+		require.ErrorIs(t, err, ErrFinalCredential)
+		exists, err := db.NewSelect().Model((*models.UserPasskey)(nil)).
+			Where("id = ?", passkey.ID).
+			Exists(ctx)
+		require.NoError(t, err)
+		require.True(t, exists)
+	})
+
+	t.Run("password remains a fallback", func(t *testing.T) {
+		user := &models.User{
+			ID: "password-fallback-user", Email: "password-fallback@example.com",
+			PasswordHash: "password-hash", PasskeyEnabledAt: now, CreatedAt: now,
+		}
+		passkey := testPasskey("password-fallback", user.ID, now)
+		require.NoError(t, insertIdentityRows(ctx, db, user, passkey))
+
+		require.NoError(t, service.RemovePasskey(ctx, user.ID, passkey.ID))
+		exists, err := db.NewSelect().Model((*models.UserPasskey)(nil)).
+			Where("id = ?", passkey.ID).
+			Exists(ctx)
+		require.NoError(t, err)
+		require.False(t, exists)
+		var updated models.User
+		require.NoError(t, db.NewSelect().Model(&updated).Where("id = ?", user.ID).Scan(ctx))
+		require.True(t, updated.PasskeyEnabledAt.IsZero())
+	})
+
+	t.Run("linked identity remains a fallback", func(t *testing.T) {
+		user := &models.User{
+			ID: "identity-fallback-user", Email: "identity-fallback@example.com",
+			PasskeyEnabledAt: now, CreatedAt: now,
+		}
+		identity := &models.UserIdentity{
+			ID: "identity-fallback", ProviderID: EnvironmentProviderID, Subject: "identity-fallback-subject",
+			UserID: user.ID, LinkedEmail: user.Email, CreatedAt: now,
+		}
+		passkey := testPasskey("identity-fallback", user.ID, now)
+		require.NoError(t, insertIdentityRows(ctx, db, user, identity, passkey))
+
+		require.NoError(t, service.RemovePasskey(ctx, user.ID, passkey.ID))
+		exists, err := db.NewSelect().Model((*models.UserIdentity)(nil)).
+			Where("id = ?", identity.ID).
+			Exists(ctx)
+		require.NoError(t, err)
+		require.True(t, exists)
+	})
+
+	t.Run("disabled identity is not a usable fallback", func(t *testing.T) {
+		user := &models.User{
+			ID: "disabled-identity-user", Email: "disabled-identity@example.com",
+			PasskeyEnabledAt: now, CreatedAt: now,
+		}
+		identity := &models.UserIdentity{
+			ID: "disabled-identity", ProviderID: EnvironmentProviderID, Subject: "disabled-identity-subject",
+			UserID: user.ID, LinkedEmail: user.Email, CreatedAt: now,
+		}
+		passkey := testPasskey("disabled-identity-passkey", user.ID, now)
+		require.NoError(t, insertIdentityRows(ctx, db, user, identity, passkey))
+		_, err := db.NewUpdate().Model((*models.IdentityProvider)(nil)).
+			Set("is_active = ?", false).
+			Where("id = ?", EnvironmentProviderID).
+			Exec(ctx)
+		require.NoError(t, err)
+
+		err = service.RemovePasskey(ctx, user.ID, passkey.ID)
+		require.ErrorIs(t, err, ErrFinalCredential)
+		exists, err := db.NewSelect().Model((*models.UserPasskey)(nil)).
+			Where("id = ?", passkey.ID).
+			Exists(ctx)
+		require.NoError(t, err)
+		require.True(t, exists)
+
+		_, err = db.NewUpdate().Model((*models.IdentityProvider)(nil)).
+			Set("is_active = ?", true).
+			Where("id = ?", EnvironmentProviderID).
+			Exec(ctx)
+		require.NoError(t, err)
+	})
+}
+
+func TestUnlinkIdentityIgnoresDisabledIdentityAsFallback(t *testing.T) {
+	fake := newFakeOIDCIssuer(t)
+	service, db := newIdentityTestService(t, fake)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	user := &models.User{ID: "active-and-disabled-user", Email: "active-and-disabled@example.com", CreatedAt: now}
+	active := &models.UserIdentity{
+		ID: "active-identity", ProviderID: EnvironmentProviderID, Subject: "active-subject",
+		UserID: user.ID, LinkedEmail: user.Email, CreatedAt: now,
+	}
+	disabledProvider := &models.IdentityProvider{
+		ID: "disabled-provider", Issuer: "https://disabled.example", Name: "Disabled",
+		ClientID: "disabled-client", IsActive: false, CreatedAt: now, UpdatedAt: now,
+	}
+	disabled := &models.UserIdentity{
+		ID: "disabled-identity", ProviderID: disabledProvider.ID, Subject: "disabled-subject",
+		UserID: user.ID, LinkedEmail: user.Email, CreatedAt: now,
+	}
+	require.NoError(t, insertIdentityRows(ctx, db, user, disabledProvider, active, disabled))
+
+	err := service.UnlinkIdentity(ctx, user.ID, active.ID)
+	require.ErrorIs(t, err, ErrFinalCredential)
+	activeExists, err := db.NewSelect().Model((*models.UserIdentity)(nil)).
+		Where("id = ?", active.ID).
+		Exists(ctx)
+	require.NoError(t, err)
+	require.True(t, activeExists)
+}
+
+func TestCredentialRemovalIgnoresPasswordDisabledByRequiredSSO(t *testing.T) {
+	fake := newFakeOIDCIssuer(t)
+	service, db := newIdentityTestService(t, fake)
+	ctx := context.Background()
+	now := time.Now().UTC()
+
+	t.Run("linked identity", func(t *testing.T) {
+		user := &models.User{
+			ID: "sso-identity-user", Email: "sso-identity@example.com",
+			PasswordHash: "password-hash", CreatedAt: now,
+		}
+		linked := &models.UserIdentity{
+			ID: "sso-only-identity", ProviderID: EnvironmentProviderID, Subject: "sso-only-subject",
+			UserID: user.ID, LinkedEmail: user.Email, CreatedAt: now,
+		}
+		require.NoError(t, insertIdentityRows(ctx, db, user, linked))
+		seedRequiredSSOPasswordPolicy(t, db, user.ID, "identity")
+
+		err := service.UnlinkIdentity(ctx, user.ID, linked.ID)
+		require.ErrorIs(t, err, ErrFinalCredential)
+	})
+
+	t.Run("passkey", func(t *testing.T) {
+		user := &models.User{
+			ID: "sso-passkey-user", Email: "sso-passkey@example.com",
+			PasswordHash: "password-hash", PasskeyEnabledAt: now, CreatedAt: now,
+		}
+		passkey := testPasskey("sso-only-passkey", user.ID, now)
+		require.NoError(t, insertIdentityRows(ctx, db, user, passkey))
+		seedRequiredSSOPasswordPolicy(t, db, user.ID, "passkey")
+
+		err := service.RemovePasskey(ctx, user.ID, passkey.ID)
+		require.ErrorIs(t, err, ErrFinalCredential)
+	})
+}
+
+func TestConcurrentIdentityAndPasskeyRemovalPreservesOneCredential(t *testing.T) {
+	fake := newFakeOIDCIssuer(t)
+	service, db := newIdentityTestService(t, fake)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	user := &models.User{
+		ID: "concurrent-credential-user", Email: "concurrent-credential@example.com",
+		PasswordHash: "password-hash", PasskeyEnabledAt: now, CreatedAt: now,
+	}
+	identity := &models.UserIdentity{
+		ID: "concurrent-identity", ProviderID: EnvironmentProviderID, Subject: "concurrent-subject",
+		UserID: user.ID, LinkedEmail: user.Email, CreatedAt: now,
+	}
+	passkey := testPasskey("concurrent-passkey", user.ID, now)
+	require.NoError(t, insertIdentityRows(ctx, db, user, identity, passkey))
+	seedRequiredSSOPasswordPolicy(t, db, user.ID, "concurrent")
+
+	start := make(chan struct{})
+	results := make(chan error, 2)
+	var ready sync.WaitGroup
+	ready.Add(2)
+	go func() {
+		ready.Done()
+		<-start
+		results <- service.UnlinkIdentity(ctx, user.ID, identity.ID)
+	}()
+	go func() {
+		ready.Done()
+		<-start
+		results <- service.RemovePasskey(ctx, user.ID, passkey.ID)
+	}()
+	ready.Wait()
+	close(start)
+
+	errs := []error{<-results, <-results}
+	successes := 0
+	finalCredentialErrors := 0
+	for _, err := range errs {
+		switch {
+		case err == nil:
+			successes++
+		case errors.Is(err, ErrFinalCredential):
+			finalCredentialErrors++
+		default:
+			require.NoError(t, err)
+		}
+	}
+	require.Equal(t, 1, successes)
+	require.Equal(t, 1, finalCredentialErrors)
+
+	identityCount, err := db.NewSelect().Model((*models.UserIdentity)(nil)).
+		Where("user_id = ?", user.ID).
+		Count(ctx)
+	require.NoError(t, err)
+	passkeyCount, err := db.NewSelect().Model((*models.UserPasskey)(nil)).
+		Where("user_id = ?", user.ID).
+		Count(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, identityCount+passkeyCount)
+}
+
+func testPasskey(id, userID string, createdAt time.Time) *models.UserPasskey {
+	return &models.UserPasskey{
+		ID: id, UserID: userID, Name: id,
+		CredentialID: []byte("credential-" + id), CredentialJSON: "{}", CreatedAt: createdAt,
+	}
+}
+
+func insertIdentityRows(ctx context.Context, db *bun.DB, rows ...any) error {
+	for _, row := range rows {
+		if _, err := db.NewInsert().Model(row).Exec(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func seedRequiredSSOPasswordPolicy(t *testing.T, db *bun.DB, userID, suffix string) {
+	t.Helper()
+	now := time.Now().UTC()
+	organizationID := "required-sso-" + suffix
+	rows := []any{
+		&models.Organization{
+			ID: organizationID, Name: "Required SSO", CreatedByID: userID,
+			CreatedAt: now, UpdatedAt: now,
+		},
+		&models.OrganizationMember{
+			OrganizationID: organizationID, UserID: userID,
+			Role: models.OrganizationRoleOwner, CreatedAt: now,
+		},
+		&models.OrganizationSSOPolicy{
+			OrganizationID: organizationID, Mode: models.OrganizationSSOModeRequired,
+			ProviderIDs: `["instance"]`, AssuranceMaxAgeSeconds: 3600,
+			PasswordLoginAllowed: false, APITokenMode: models.OrganizationSSOTokensScoped,
+			MaxTokenLifetimeSeconds: 3600, RequireTokenReauth: true,
+			CreatedAt: now, UpdatedAt: now,
+		},
+	}
+	require.NoError(t, insertIdentityRows(t.Context(), db, rows...))
 }
 
 func TestOIDCRejectsBrowserBindingAndNonceFailures(t *testing.T) {

@@ -4,6 +4,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import sharp from "sharp";
+import { authenticatePage, createWorkspace, registerUser } from "./helpers";
 
 test("legacy Video Studio URLs redirect to the OpenPost Video Editor", async ({
   page,
@@ -64,6 +65,56 @@ async function syntheticVideo(page: Page): Promise<Buffer> {
     );
   });
   return Buffer.from(bytes);
+}
+
+async function readLocalVideoProject(
+  page: Page,
+  projectID: string,
+): Promise<Record<string, unknown>> {
+  return await page.evaluate(async (id) => {
+    return await new Promise<Record<string, unknown>>((resolve, reject) => {
+      const open = indexedDB.open("openpost-video-editor");
+      open.onerror = () => reject(open.error);
+      open.onsuccess = () => {
+        const database = open.result;
+        const tx = database.transaction("projects");
+        const get = tx.objectStore("projects").get(id);
+        get.onerror = () => reject(get.error);
+        get.onsuccess = () =>
+          resolve(structuredClone(get.result) as Record<string, unknown>);
+        tx.oncomplete = () => database.close();
+        tx.onerror = () => reject(tx.error);
+        tx.onabort = () => reject(tx.error);
+      };
+    });
+  }, projectID);
+}
+
+async function readLocalVideoProjectRevisions(
+  page: Page,
+  projectID: string,
+): Promise<Record<string, unknown>[]> {
+  return await page.evaluate(async (id) => {
+    return await new Promise<Record<string, unknown>[]>((resolve, reject) => {
+      const open = indexedDB.open("openpost-video-editor");
+      open.onerror = () => reject(open.error);
+      open.onsuccess = () => {
+        const database = open.result;
+        const tx = database.transaction("project-revisions");
+        const getAll = tx.objectStore("project-revisions").getAll();
+        getAll.onerror = () => reject(getAll.error);
+        getAll.onsuccess = () =>
+          resolve(
+            getAll.result
+              .filter((revision) => revision.project_id === id)
+              .map((revision) => structuredClone(revision)),
+          );
+        tx.oncomplete = () => database.close();
+        tx.onerror = () => reject(tx.error);
+        tx.onabort = () => reject(tx.error);
+      };
+    });
+  }, projectID);
 }
 
 function syntheticVideoWithAudio(): Buffer {
@@ -669,6 +720,960 @@ test("guest imports, edits, autosaves, restores, and exports a local video", asy
 
   expect(unexpectedWrites).toEqual([]);
   expect(browserErrors).toEqual([]);
+});
+
+test("local version history restores both directions and survives reload", async ({
+  page,
+}) => {
+  test.setTimeout(90_000);
+  await page.goto("/video-editor");
+  await page.locator("#video-editor-import").setInputFiles({
+    name: "version-history.webm",
+    mimeType: "video/webm",
+    buffer: await syntheticVideo(page),
+  });
+  await expect(page).toHaveURL(/\/video-editor\/local_video_/);
+
+  const projectName = page.getByRole("textbox", { name: "Project name" });
+  await projectName.fill("Checkpoint title");
+  await expect(page.getByText("Saved locally", { exact: true })).toBeVisible({
+    timeout: 15_000,
+  });
+
+  await page.getByRole("button", { name: "Version history" }).click();
+  await page
+    .getByRole("textbox", { name: "Checkpoint name" })
+    .fill("Before title rewrite");
+  await page.getByRole("button", { name: "Create checkpoint" }).click();
+  await expect(
+    page.getByRole("button", { name: /Before title rewrite/ }),
+  ).toBeVisible();
+  await page
+    .getByRole("dialog", { name: "Version history" })
+    .locator('[data-slot="dialog-footer"]')
+    .getByRole("button", { name: "Close", exact: true })
+    .click();
+
+  await projectName.fill("Current title");
+  await expect(page.getByText("Saved locally", { exact: true })).toBeVisible({
+    timeout: 15_000,
+  });
+
+  await page.getByRole("button", { name: "Version history" }).click();
+  await expect(page.getByText("Saved in this browser").first()).toBeVisible();
+  await page.getByRole("button", { name: /Before title rewrite/ }).click();
+  await expect(page.getByText("Title changed", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Restore this version" }).click();
+  const confirmation = page
+    .getByRole("dialog")
+    .filter({ hasText: "Restore this version?" });
+  await expect(confirmation).toContainText(
+    "save your exact current browser version as a local restore point",
+  );
+  await confirmation.getByRole("button", { name: "Restore version" }).click();
+  await expect(projectName).toHaveValue("Checkpoint title");
+
+  await page.getByRole("button", { name: "Version history" }).click();
+  const restorePoint = page.getByRole("button", { name: /Before restore/ });
+  await expect(restorePoint).toBeVisible();
+  await restorePoint.click();
+  await expect(page.getByText("Title changed", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Restore this version" }).click();
+  await page
+    .getByRole("dialog")
+    .filter({ hasText: "Restore this version?" })
+    .getByRole("button", { name: "Restore version" })
+    .click();
+  await expect(projectName).toHaveValue("Current title");
+
+  await page.reload();
+  await expect(projectName).toHaveValue("Current title");
+});
+
+test("reorder-only local video versions stay previewable and restore both orders", async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+  const video = await syntheticVideo(page);
+  await page.goto("/video-editor");
+  await page.locator("#video-editor-import").setInputFiles([
+    { name: "order-one.webm", mimeType: "video/webm", buffer: video },
+    { name: "order-two.webm", mimeType: "video/webm", buffer: video },
+  ]);
+  await expect(page).toHaveURL(/\/video-editor\/local_video_/);
+  await expect(page.getByText("Saved locally", { exact: true })).toBeVisible({
+    timeout: 15_000,
+  });
+  const projectID = page.url().split("/").at(-1)!;
+
+  await page.getByRole("button", { name: "Version history" }).click();
+  const history = page.getByRole("dialog", { name: "Version history" });
+  await history
+    .getByRole("textbox", { name: "Checkpoint name" })
+    .fill("Original timeline order");
+  await history.getByRole("button", { name: "Create checkpoint" }).click();
+  await expect(
+    history.getByRole("button", { name: /Original timeline order/ }),
+  ).toBeVisible();
+  await history
+    .locator('[data-slot="dialog-footer"]')
+    .getByRole("button", { name: "Close", exact: true })
+    .click();
+
+  const orders = await page.evaluate(async (id) => {
+    return await new Promise<{ original: string[]; reordered: string[] }>(
+      (resolve, reject) => {
+        const open = indexedDB.open("openpost-video-editor");
+        open.onerror = () => reject(open.error);
+        open.onsuccess = () => {
+          const database = open.result;
+          let result: { original: string[]; reordered: string[] } | undefined;
+          const tx = database.transaction(
+            ["projects", "project-revisions"],
+            "readwrite",
+          );
+          const projects = tx.objectStore("projects");
+          const revisions = tx.objectStore("project-revisions");
+          const get = projects.get(id);
+          get.onerror = () => reject(get.error);
+          get.onsuccess = () => {
+            const project = get.result;
+            const original = project.document.primary_sequence.map(
+              (item: { id: string }) => item.id,
+            );
+            project.document.primary_sequence.reverse();
+            project.revision += 1;
+            project.updated_at = new Date().toISOString();
+            project.last_opened_at = project.updated_at;
+            projects.put(project);
+            revisions.put({
+              id: `${id}:${project.revision}`,
+              project_id: id,
+              revision: project.revision,
+              kind: "autosave",
+              created_at: project.updated_at,
+              snapshot: {
+                snapshot_version: 1,
+                document: structuredClone(project.document),
+                cover_source_id: project.cover_source_id,
+                cloud_cover_preview_media_id:
+                  project.cloud_cover_preview_media_id ?? "",
+              },
+            });
+            result = {
+              original,
+              reordered: project.document.primary_sequence.map(
+                (item: { id: string }) => item.id,
+              ),
+            };
+          };
+          tx.oncomplete = () => {
+            database.close();
+            if (result) resolve(result);
+            else
+              reject(new Error("The reordered local project was not written."));
+          };
+          tx.onerror = () => reject(tx.error);
+          tx.onabort = () => reject(tx.error);
+        };
+      },
+    );
+  }, projectID);
+  expect(orders.original).toHaveLength(2);
+  expect(orders.reordered).toEqual([...orders.original].reverse());
+  await page.reload();
+
+  await page.getByRole("button", { name: "Version history" }).click();
+  await page.getByRole("button", { name: /Original timeline order/ }).click();
+  await expect(
+    page.getByText(/Main timeline: 0 added, 0 removed, 2 changed/),
+  ).toBeVisible();
+  const restore = page.getByRole("button", { name: "Restore this version" });
+  await expect(restore).toBeEnabled();
+  await restore.click();
+  await page
+    .getByRole("dialog")
+    .filter({ hasText: "Restore this version?" })
+    .getByRole("button", { name: "Restore version" })
+    .click();
+  await expect(history).not.toBeVisible();
+  expect(
+    await page.evaluate(async (id) => {
+      return await new Promise<string[]>((resolve, reject) => {
+        const open = indexedDB.open("openpost-video-editor");
+        open.onerror = () => reject(open.error);
+        open.onsuccess = () => {
+          const get = open.result
+            .transaction("projects")
+            .objectStore("projects")
+            .get(id);
+          get.onerror = () => reject(get.error);
+          get.onsuccess = () =>
+            resolve(
+              get.result.document.primary_sequence.map(
+                (item: { id: string }) => item.id,
+              ),
+            );
+        };
+      });
+    }, projectID),
+  ).toEqual(orders.original);
+
+  await page.getByRole("button", { name: "Version history" }).click();
+  await page
+    .getByRole("button", { name: /Before restore/ })
+    .first()
+    .click();
+  await expect(
+    page.getByText(/Main timeline: 0 added, 0 removed, 2 changed/),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Restore this version" }).click();
+  await page
+    .getByRole("dialog")
+    .filter({ hasText: "Restore this version?" })
+    .getByRole("button", { name: "Restore version" })
+    .click();
+  await expect(history).not.toBeVisible();
+  expect(
+    await page.evaluate(async (id) => {
+      return await new Promise<string[]>((resolve, reject) => {
+        const open = indexedDB.open("openpost-video-editor");
+        open.onerror = () => reject(open.error);
+        open.onsuccess = () => {
+          const get = open.result
+            .transaction("projects")
+            .objectStore("projects")
+            .get(id);
+          get.onerror = () => reject(get.error);
+          get.onsuccess = () =>
+            resolve(
+              get.result.document.primary_sequence.map(
+                (item: { id: string }) => item.id,
+              ),
+            );
+        };
+      });
+    }, projectID),
+  ).toEqual(orders.reordered);
+});
+
+test("local autosave conflict preserves stale-tab work as a copy", async ({
+  page,
+}) => {
+  test.setTimeout(90_000);
+  await page.goto("/video-editor");
+  await page.locator("#video-editor-import").setInputFiles({
+    name: "version-conflict.webm",
+    mimeType: "video/webm",
+    buffer: await syntheticVideo(page),
+  });
+  await expect(page).toHaveURL(/\/video-editor\/local_video_/);
+  const originalURL = page.url();
+  const otherTab = await page.context().newPage();
+  await otherTab.goto(originalURL);
+  const otherName = otherTab.getByRole("textbox", { name: "Project name" });
+  await otherName.fill("Newer tab title");
+  await expect(otherTab.getByText("Saving", { exact: true })).toBeVisible();
+  await expect(
+    otherTab.getByText("Saved locally", { exact: true }),
+  ).toBeVisible({
+    timeout: 15_000,
+  });
+
+  const staleName = page.getByRole("textbox", { name: "Project name" });
+  await staleName.fill("Preserve this stale tab");
+  await expect(
+    page.getByRole("heading", {
+      name: "This project changed in another tab",
+    }),
+  ).toBeVisible({ timeout: 15_000 });
+  const conflict = page
+    .getByRole("dialog")
+    .filter({ hasText: "This project changed in another tab" });
+  await expect(conflict).toContainText(
+    "Your unsaved work remains in this tab until you choose an option.",
+  );
+  await expect(
+    conflict.getByRole("button", { name: "Reload latest browser version" }),
+  ).toBeVisible();
+  await conflict
+    .getByRole("button", { name: "Save local edit as a copy" })
+    .click();
+  await expect(page).not.toHaveURL(originalURL);
+  await expect(page.getByRole("textbox", { name: "Project name" })).toHaveValue(
+    "Preserve this stale tab",
+  );
+  await otherTab.close();
+});
+
+test("checkpoint partial failures preserve the committed local head and surface later local CAS races", async ({
+  page,
+  request,
+}) => {
+  test.setTimeout(90_000);
+  const unique = Date.now().toString(36);
+  const auth = await registerUser(
+    request,
+    `video-checkpoint-partial-${unique}@example.com`,
+  );
+  const workspace = (await createWorkspace(
+    request,
+    auth.token,
+    "Video checkpoint partial failure",
+  )) as { id: string; name: string };
+  await authenticatePage(page, auth.token);
+  await page.addInitScript((selectedWorkspace) => {
+    localStorage.setItem(
+      "openpost_current_workspace",
+      JSON.stringify(selectedWorkspace),
+    );
+  }, workspace);
+
+  await page.goto("/video-editor");
+  await page.locator("#video-editor-import").setInputFiles({
+    name: "checkpoint-partial.webm",
+    mimeType: "video/webm",
+    buffer: await syntheticVideo(page),
+  });
+  await expect(page).toHaveURL(/\/video-editor\/local_video_/);
+  const projectID = page.url().split("/").at(-1)!;
+  await expect(page.getByText("Saved locally", { exact: true })).toBeVisible({
+    timeout: 15_000,
+  });
+
+  await page.evaluate(async (id) => {
+    await new Promise<void>((resolve, reject) => {
+      const open = indexedDB.open("openpost-video-editor");
+      open.onerror = () => reject(open.error);
+      open.onsuccess = () => {
+        const database = open.result;
+        const tx = database.transaction("projects", "readwrite");
+        const store = tx.objectStore("projects");
+        const get = store.get(id);
+        get.onerror = () => reject(get.error);
+        get.onsuccess = () => {
+          const project = get.result;
+          project.cloud_project_id = "cloud-checkpoint-partial-e2e";
+          project.cloud_revision = 4;
+          project.cloud_source_map = Object.fromEntries(
+            Object.keys(project.document.sources).map((sourceID) => [
+              sourceID,
+              `cloud-media-${sourceID}`,
+            ]),
+          );
+          project.state = "cloud";
+          store.put(project);
+        };
+        tx.oncomplete = () => {
+          database.close();
+          resolve();
+        };
+        tx.onerror = () => reject(tx.error);
+        tx.onabort = () => reject(tx.error);
+      };
+    });
+  }, projectID);
+
+  await page.route("**/api/v1/video-editor/sync-plan", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        reused: [],
+        missing_source_ids: [],
+        additional_bytes: 0,
+        storage: {
+          used_bytes: 0,
+          limit_bytes: null,
+          remaining_bytes: null,
+        },
+        allowed: true,
+        reason: null,
+      }),
+    });
+  });
+  await page.route(
+    "**/api/v1/video-editor/projects/cloud-checkpoint-partial-e2e/revisions**",
+    async (route) => {
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({ revisions: [], next_cursor: "" }),
+      });
+    },
+  );
+  await page.route(
+    "**/api/v1/video-editor/projects/cloud-checkpoint-partial-e2e",
+    async (route) => {
+      await route.fulfill({
+        status: 500,
+        contentType: "application/problem+json",
+        body: JSON.stringify({
+          title: "Internal Server Error",
+          status: 500,
+          detail: "Cloud sync failed after local checkpoint.",
+        }),
+      });
+    },
+  );
+  await page.reload();
+
+  await page.getByRole("button", { name: "Version history" }).click();
+  const history = page.getByRole("dialog", { name: "Version history" });
+  await history
+    .getByRole("textbox", { name: "Checkpoint name" })
+    .fill("Committed before cloud failure");
+  await history.getByRole("button", { name: "Create checkpoint" }).click();
+  await expect(
+    page.getByText("Cloud sync failed after local checkpoint.", {
+      exact: true,
+    }),
+  ).toBeVisible();
+
+  const projectAfterCheckpoint = await readLocalVideoProject(page, projectID);
+  const revisions = await readLocalVideoProjectRevisions(page, projectID);
+  const checkpoint = revisions.find(
+    (revision) =>
+      revision.kind === "checkpoint" &&
+      revision.name === "Committed before cloud failure",
+  );
+  expect(checkpoint).toBeTruthy();
+  expect(projectAfterCheckpoint.revision).toBe(checkpoint?.revision);
+
+  await history.getByRole("button", { name: "Close" }).click();
+  await page
+    .getByRole("textbox", { name: "Project name" })
+    .fill("Local edit after cloud failure");
+  await expect
+    .poll(async () => {
+      const project = await readLocalVideoProject(page, projectID);
+      return {
+        revision: project.revision,
+        title: (project.document as { title?: string }).title,
+      };
+    })
+    .toEqual({
+      revision: Number(projectAfterCheckpoint.revision) + 1,
+      title: "Local edit after cloud failure",
+    });
+
+  await page.evaluate(async (id) => {
+    await new Promise<void>((resolve, reject) => {
+      const open = indexedDB.open("openpost-video-editor");
+      open.onerror = () => reject(open.error);
+      open.onsuccess = () => {
+        const database = open.result;
+        const tx = database.transaction("projects", "readwrite");
+        const store = tx.objectStore("projects");
+        const get = store.get(id);
+        get.onerror = () => reject(get.error);
+        get.onsuccess = () => {
+          const project = get.result;
+          project.revision += 1;
+          project.updated_at = new Date().toISOString();
+          store.put(project);
+        };
+        tx.oncomplete = () => {
+          database.close();
+          resolve();
+        };
+        tx.onerror = () => reject(tx.error);
+        tx.onabort = () => reject(tx.error);
+      };
+    });
+  }, projectID);
+
+  await page.getByRole("button", { name: "Version history" }).click();
+  await history
+    .getByRole("textbox", { name: "Checkpoint name" })
+    .fill("Stale local checkpoint");
+  await history.getByRole("button", { name: "Create checkpoint" }).click();
+  await expect(
+    page.getByRole("heading", {
+      name: "This project changed in another tab",
+    }),
+  ).toBeVisible();
+});
+
+test("cloud covers survive sync, rename, reopen, and a cover-only restore", async ({
+  page,
+  request,
+}) => {
+  test.setTimeout(120_000);
+  const unique = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  const auth = await registerUser(request, `video-cover-${unique}@example.com`);
+  const workspace = (await createWorkspace(
+    request,
+    auth.token,
+    "Video Cover E2E",
+  )) as { id: string; name: string };
+  await authenticatePage(page, auth.token);
+  await page.addInitScript((selectedWorkspace) => {
+    localStorage.setItem(
+      "openpost_current_workspace",
+      JSON.stringify(selectedWorkspace),
+    );
+  }, workspace);
+
+  await page.goto("/video-editor");
+  await page.locator("#video-editor-import").setInputFiles({
+    name: "cloud-cover.webm",
+    mimeType: "video/webm",
+    buffer: syntheticVideoWithAudio(),
+  });
+  await expect(page).toHaveURL(/\/video-editor\/local_video_/);
+  const firstLocalProjectID = page.url().split("/").at(-1)!;
+  await expect(page.getByText("Saved locally", { exact: true })).toBeVisible({
+    timeout: 15_000,
+  });
+
+  const saveToOpenPost = page.getByRole("button", {
+    name: "Save to OpenPost",
+  });
+  await saveToOpenPost.click();
+  const cloudDialog = page.getByRole("dialog", {
+    name: "Save project to OpenPost",
+  });
+  await cloudDialog.getByRole("button", { name: "Sync and save" }).click();
+  await expect(cloudDialog).not.toBeVisible({ timeout: 30_000 });
+
+  await expect
+    .poll(
+      async () =>
+        String(
+          (await readLocalVideoProject(page, firstLocalProjectID))
+            .cloud_cover_preview_media_id ?? "",
+        ),
+      { timeout: 30_000 },
+    )
+    .not.toBe("");
+  const firstLocalProject = await readLocalVideoProject(
+    page,
+    firstLocalProjectID,
+  );
+  const cloudProjectID = String(firstLocalProject.cloud_project_id);
+  const canonicalCoverMediaID = String(
+    firstLocalProject.cloud_cover_preview_media_id,
+  );
+  expect(cloudProjectID).not.toBe("");
+  expect(canonicalCoverMediaID).not.toBe("");
+
+  const projectName = page.getByRole("textbox", { name: "Project name" });
+  await projectName.fill("Synced cover project");
+  await expect(page.getByText("Saved locally", { exact: true })).toBeVisible({
+    timeout: 15_000,
+  });
+  await saveToOpenPost.click();
+  await cloudDialog.getByRole("button", { name: "Sync and save" }).click();
+  await expect(cloudDialog).not.toBeVisible({ timeout: 30_000 });
+
+  await page.goto("/editors");
+  const projectCard = page.locator(
+    `a[href="/video-editor?cloud=${cloudProjectID}"]`,
+  );
+  await expect(projectCard).toContainText("Synced cover project");
+  await projectCard.click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Rename", exact: true }).click();
+  const renameDialog = page.getByRole("dialog", {
+    name: "Rename video project",
+  });
+  await renameDialog
+    .getByRole("textbox", { name: "Project name" })
+    .fill("Renamed cover project");
+  await renameDialog.getByRole("button", { name: "Save" }).click();
+  await expect(renameDialog).not.toBeVisible();
+
+  const getCloudProject = async () => {
+    const response = await request.get(
+      `/api/v1/video-editor/projects/${cloudProjectID}`,
+      { headers: { Authorization: `Bearer ${auth.token}` } },
+    );
+    if (!response.ok()) {
+      throw new Error(
+        `cloud project request failed with ${response.status()}: ${await response.text()}`,
+      );
+    }
+    return (await response.json()) as {
+      id: string;
+      revision: number;
+      cover_preview_media_id?: string;
+      document: Record<string, unknown>;
+    };
+  };
+  const renamed = await getCloudProject();
+  expect(renamed.document.title).toBe("Renamed cover project");
+  expect(renamed.cover_preview_media_id).toBe(canonicalCoverMediaID);
+
+  const checkpoint = await request.post(
+    `/api/v1/video-editor/projects/${cloudProjectID}/checkpoints`,
+    {
+      headers: { Authorization: `Bearer ${auth.token}` },
+      data: {
+        name: "Covered cloud version",
+        expected_revision: renamed.revision,
+      },
+    },
+  );
+  expect(checkpoint.ok(), await checkpoint.text()).toBe(true);
+  const clearCover = await request.patch(
+    `/api/v1/video-editor/projects/${cloudProjectID}`,
+    {
+      headers: { Authorization: `Bearer ${auth.token}` },
+      data: {
+        expected_revision: renamed.revision,
+        cover_preview_media_id: "",
+        document: renamed.document,
+      },
+    },
+  );
+  expect(clearCover.ok(), await clearCover.text()).toBe(true);
+
+  await page.goto(`/video-editor?cloud=${cloudProjectID}`);
+  await expect(page).toHaveURL(/\/video-editor\/local_video_/, {
+    timeout: 30_000,
+  });
+  const reopenedLocalProjectID = page.url().split("/").at(-1)!;
+  expect(
+    (await readLocalVideoProject(page, reopenedLocalProjectID))
+      .cloud_cover_preview_media_id,
+  ).toBeUndefined();
+
+  await page.getByRole("button", { name: "Version history" }).click();
+  await page.getByRole("button", { name: /Covered cloud version/ }).click();
+  await expect(
+    page.getByText("Cover preview changed", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText("Title changed", { exact: true })).toHaveCount(0);
+  const restore = page.getByRole("button", { name: "Restore this version" });
+  await expect(restore).toBeEnabled();
+  await restore.click();
+  await page
+    .getByRole("dialog")
+    .filter({ hasText: "Restore this version?" })
+    .getByRole("button", { name: "Restore version" })
+    .click();
+  await expect(
+    page.getByRole("dialog", { name: "Version history" }),
+  ).not.toBeVisible();
+
+  await expect
+    .poll(async () => (await getCloudProject()).cover_preview_media_id)
+    .toBe(canonicalCoverMediaID);
+  expect(
+    (await readLocalVideoProject(page, reopenedLocalProjectID))
+      .cloud_cover_preview_media_id,
+  ).toBe(canonicalCoverMediaID);
+});
+
+test("cloud restore recovers from local CAS races without retrying the server restore", async ({
+  page,
+}) => {
+  test.setTimeout(90_000);
+  await page.goto("/video-editor");
+  await page.locator("#video-editor-import").setInputFiles({
+    name: "cloud-version.webm",
+    mimeType: "video/webm",
+    buffer: await syntheticVideo(page),
+  });
+  await expect(page).toHaveURL(/\/video-editor\/local_video_/);
+  const projectID = page.url().split("/").at(-1)!;
+  await expect(page.getByText("Saved locally", { exact: true })).toBeVisible({
+    timeout: 15_000,
+  });
+  const currentDocument = await page.evaluate(async (id) => {
+    return await new Promise<Record<string, unknown>>((resolve, reject) => {
+      const open = indexedDB.open("openpost-video-editor");
+      open.onerror = () => reject(open.error);
+      open.onsuccess = () => {
+        const database = open.result;
+        const tx = database.transaction("projects", "readwrite");
+        const store = tx.objectStore("projects");
+        const get = store.get(id);
+        get.onerror = () => reject(get.error);
+        get.onsuccess = () => {
+          const project = get.result;
+          project.cloud_project_id = "cloud-version-e2e";
+          project.cloud_revision = 5;
+          project.cloud_cover_preview_media_id = "cloud-current-cover";
+          project.state = "cloud";
+          store.put(project);
+          resolve(structuredClone(project.document));
+        };
+        tx.oncomplete = () => database.close();
+      };
+    });
+  }, projectID);
+  await page.reload();
+
+  const advanceBrowserHead = async (title: string): Promise<void> => {
+    await page.evaluate(
+      async ({ id, nextTitle }) => {
+        await new Promise<void>((resolve, reject) => {
+          const open = indexedDB.open("openpost-video-editor");
+          open.onerror = () => reject(open.error);
+          open.onsuccess = () => {
+            const database = open.result;
+            const tx = database.transaction("projects", "readwrite");
+            const store = tx.objectStore("projects");
+            const get = store.get(id);
+            get.onerror = () => reject(get.error);
+            get.onsuccess = () => {
+              const project = get.result;
+              project.revision += 1;
+              project.document.title = nextTitle;
+              project.updated_at = new Date().toISOString();
+              store.put(project);
+            };
+            tx.oncomplete = () => {
+              database.close();
+              resolve();
+            };
+            tx.onerror = () => reject(tx.error);
+            tx.onabort = () => reject(tx.error);
+          };
+        });
+      },
+      { id: projectID, nextTitle: title },
+    );
+  };
+
+  let successfulRestore = false;
+  let previewRequests = 0;
+  let restoreRequests = 0;
+  let cloudHeadRequests = 0;
+  await page.route(
+    "**/api/v1/video-editor/projects/cloud-version-e2e",
+    async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.abort();
+        return;
+      }
+      cloudHeadRequests += 1;
+      if (cloudHeadRequests === 1) {
+        await advanceBrowserHead("Browser head raced again");
+      }
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          id: "cloud-version-e2e",
+          workspace_id: "workspace-e2e",
+          created_by_id: "user-e2e",
+          revision: 6,
+          can_edit: true,
+          duration_ms: 1200,
+          created_at: "2026-08-09T11:00:00Z",
+          updated_at: "2026-08-09T12:05:00Z",
+          cover_preview_media_id: "cloud-checkpoint-cover",
+          document: { ...currentDocument, title: "Cloud checkpoint title" },
+        }),
+      });
+    },
+  );
+  await page.route(
+    "**/api/v1/video-editor/projects/cloud-version-e2e/revisions**",
+    async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      const path = url.pathname;
+      if (request.method() === "GET" && path.endsWith("/revisions")) {
+        const cursor = url.searchParams.get("cursor") ?? "";
+        await route.fulfill({
+          contentType: "application/json",
+          body: JSON.stringify({
+            revisions: cursor
+              ? [
+                  {
+                    id: "cloud-older-checkpoint",
+                    revision: 1,
+                    kind: "checkpoint",
+                    name: "Oldest named cloud version",
+                    created_at: "2026-08-01T12:00:00Z",
+                    actor: { name: "Teammate", is_current_user: false },
+                  },
+                ]
+              : [
+                  {
+                    id: "cloud-checkpoint",
+                    revision: successfulRestore ? 6 : 4,
+                    kind: "checkpoint",
+                    name: "Cloud checkpoint",
+                    created_at: "2026-08-09T12:00:00Z",
+                    actor: { name: "Teammate", is_current_user: false },
+                  },
+                ],
+            next_cursor: cursor ? "" : "older-cloud-page",
+          }),
+        });
+        return;
+      }
+      if (
+        request.method() === "GET" &&
+        path.endsWith("/revisions/cloud-checkpoint")
+      ) {
+        previewRequests += 1;
+        await route.fulfill({
+          contentType: "application/json",
+          body: JSON.stringify({
+            summary: {
+              id: "cloud-checkpoint",
+              revision: successfulRestore ? 6 : 4,
+              kind: "checkpoint",
+              name: "Cloud checkpoint",
+              created_at: "2026-08-09T12:00:00Z",
+              actor: { name: "Teammate", is_current_user: false },
+            },
+            cover_preview_media_id: "cloud-checkpoint-cover",
+            document: {
+              ...currentDocument,
+              title: successfulRestore
+                ? "Newer cloud title"
+                : "Cloud checkpoint title",
+            },
+          }),
+        });
+        return;
+      }
+      if (
+        request.method() === "POST" &&
+        path.endsWith("/revisions/cloud-checkpoint/restore")
+      ) {
+        restoreRequests += 1;
+        if (successfulRestore) {
+          await route.fulfill({
+            status: 409,
+            contentType: "application/problem+json",
+            body: JSON.stringify({
+              detail: "The cloud project changed elsewhere.",
+            }),
+          });
+          return;
+        }
+        successfulRestore = true;
+        await advanceBrowserHead("Browser head after cloud restore");
+        await route.fulfill({
+          contentType: "application/json",
+          body: JSON.stringify({
+            id: "cloud-version-e2e",
+            workspace_id: "workspace-e2e",
+            created_by_id: "user-e2e",
+            revision: 6,
+            can_edit: true,
+            duration_ms: 1200,
+            created_at: "2026-08-09T11:00:00Z",
+            updated_at: "2026-08-09T12:05:00Z",
+            cover_preview_media_id: "cloud-checkpoint-cover",
+            document: { ...currentDocument, title: "Cloud checkpoint title" },
+          }),
+        });
+        return;
+      }
+      await route.abort();
+    },
+  );
+
+  await page.getByRole("button", { name: "Version history" }).click();
+  expect(previewRequests).toBe(0);
+  await expect(
+    page.getByText("Saved by Teammate", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: /Oldest named cloud version/ }),
+  ).toHaveCount(0);
+  await page.getByRole("button", { name: "Load more" }).click();
+  await expect(
+    page.getByRole("button", { name: /Oldest named cloud version/ }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: /Cloud checkpoint/ }).click();
+  await expect.poll(() => previewRequests).toBe(1);
+  await expect(page.getByText("Title changed", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Restore this version" }).click();
+  const confirmation = page
+    .getByRole("dialog")
+    .filter({ hasText: "Restore this version?" });
+  await expect(confirmation).toContainText(
+    "save the exact current cloud and browser versions as restore points",
+  );
+  await confirmation.getByRole("button", { name: "Restore version" }).click();
+
+  const localRecovery = page
+    .getByRole("dialog")
+    .filter({ hasText: "The cloud version was restored" });
+  await expect(localRecovery).toContainText("do not retry the restore");
+  await expect(
+    localRecovery.getByRole("button", { name: "Save local edit as a copy" }),
+  ).toBeVisible();
+  await localRecovery
+    .getByRole("button", { name: "Load OpenPost version" })
+    .click();
+  await expect.poll(() => cloudHeadRequests).toBe(1);
+  await expect(localRecovery).toBeVisible();
+  await expect(
+    localRecovery.getByRole("button", { name: "Load OpenPost version" }),
+  ).toBeEnabled();
+  await localRecovery
+    .getByRole("button", { name: "Load OpenPost version" })
+    .click();
+  await expect.poll(() => cloudHeadRequests).toBe(2);
+  await expect(localRecovery).not.toBeVisible();
+  expect(restoreRequests).toBe(1);
+  await expect(page.getByRole("textbox", { name: "Project name" })).toHaveValue(
+    "Cloud checkpoint title",
+  );
+
+  const recoverySnapshot = await page.evaluate(async (id) => {
+    return await new Promise<
+      { title?: string; cloudCoverPreviewMediaID?: string } | undefined
+    >((resolve, reject) => {
+      const open = indexedDB.open("openpost-video-editor");
+      open.onerror = () => reject(open.error);
+      open.onsuccess = () => {
+        const database = open.result;
+        const tx = database.transaction("project-revisions");
+        const getAll = tx.objectStore("project-revisions").getAll();
+        getAll.onerror = () => reject(getAll.error);
+        getAll.onsuccess = () => {
+          const restorePoint = getAll.result.find(
+            (revision) =>
+              revision.project_id === id && revision.kind === "restore_point",
+          );
+          resolve(
+            restorePoint
+              ? {
+                  title: restorePoint.snapshot?.document?.title,
+                  cloudCoverPreviewMediaID:
+                    restorePoint.snapshot?.cloud_cover_preview_media_id,
+                }
+              : undefined,
+          );
+        };
+        tx.oncomplete = () => database.close();
+      };
+    });
+  }, projectID);
+  expect(recoverySnapshot).toEqual({
+    title: "Browser head raced again",
+    cloudCoverPreviewMediaID: "cloud-current-cover",
+  });
+  expect(
+    (await readLocalVideoProject(page, projectID)).cloud_cover_preview_media_id,
+  ).toBe("cloud-checkpoint-cover");
+
+  await page.getByRole("button", { name: "Version history" }).click();
+  await expect(
+    page.getByRole("button", { name: /Before restore/ }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: /Cloud checkpoint/ }).click();
+  await expect(page.getByText("Title changed", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Restore this version" }).click();
+  await page
+    .getByRole("dialog")
+    .filter({ hasText: "Restore this version?" })
+    .getByRole("button", { name: "Restore version" })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "This project changed elsewhere" }),
+  ).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Project name" })).toHaveValue(
+    "Cloud checkpoint title",
+  );
 });
 
 test("text is visible in both the preview and the exported frame", async ({

@@ -158,25 +158,26 @@ type Workspace struct {
 type User struct {
 	bun.BaseModel `bun:"table:users"`
 
-	ID                 string    `bun:",pk" json:"id"`
-	Email              string    `bun:",unique,notnull" json:"email"`
-	Username           string    `bun:",notnull,default:''" json:"username"`
-	DisplayName        string    `json:"display_name"`
-	AvatarURL          string    `json:"avatar_url"`
-	AvatarObjectKey    string    `json:"-"`
-	PublicProfile      bool      `bun:"public_profile_enabled,notnull,default:false" json:"public_profile_enabled"`
-	ComposerExperience string    `bun:"composer_experience,notnull,default:'specialized'" json:"composer_experience"`
-	PasswordHash       string    `bun:",nullzero" json:"-"`
-	IsAdmin            bool      `bun:",notnull,default:false" json:"is_admin"`
-	IsBreakGlass       bool      `bun:"is_break_glass,notnull,default:false" json:"is_break_glass"`
-	TOTPSecretEnc      []byte    `bun:"totp_secret_encrypted" json:"-"`
-	TOTPEnabledAt      time.Time `bun:",nullzero" json:"totp_enabled_at"`
-	PasskeyEnabledAt   time.Time `bun:",nullzero" json:"passkey_enabled_at"`
-	TermsVersion       string    `bun:"terms_version,notnull,default:''" json:"terms_version"`
-	PrivacyVersion     string    `bun:"privacy_version,notnull,default:''" json:"privacy_version"`
-	LegalAcceptedAt    time.Time `bun:"legal_accepted_at,nullzero" json:"legal_accepted_at"`
-	EmailVerifiedAt    time.Time `bun:"email_verified_at,nullzero" json:"email_verified_at"`
-	CreatedAt          time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
+	ID                          string    `bun:",pk" json:"id"`
+	Email                       string    `bun:",unique,notnull" json:"email"`
+	Username                    string    `bun:",notnull,default:''" json:"username"`
+	DisplayName                 string    `json:"display_name"`
+	AvatarURL                   string    `json:"avatar_url"`
+	AvatarObjectKey             string    `json:"-"`
+	PublicProfile               bool      `bun:"public_profile_enabled,notnull,default:false" json:"public_profile_enabled"`
+	PublicProfileVisibilityJSON string    `bun:"public_profile_visibility_json,notnull,default:'null'" json:"-"`
+	ComposerExperience          string    `bun:"composer_experience,notnull,default:'specialized'" json:"composer_experience"`
+	PasswordHash                string    `bun:",nullzero" json:"-"`
+	IsAdmin                     bool      `bun:",notnull,default:false" json:"is_admin"`
+	IsBreakGlass                bool      `bun:"is_break_glass,notnull,default:false" json:"is_break_glass"`
+	TOTPSecretEnc               []byte    `bun:"totp_secret_encrypted" json:"-"`
+	TOTPEnabledAt               time.Time `bun:",nullzero" json:"totp_enabled_at"`
+	PasskeyEnabledAt            time.Time `bun:",nullzero" json:"passkey_enabled_at"`
+	TermsVersion                string    `bun:"terms_version,notnull,default:''" json:"terms_version"`
+	PrivacyVersion              string    `bun:"privacy_version,notnull,default:''" json:"privacy_version"`
+	LegalAcceptedAt             time.Time `bun:"legal_accepted_at,nullzero" json:"legal_accepted_at"`
+	EmailVerifiedAt             time.Time `bun:"email_verified_at,nullzero" json:"email_verified_at"`
+	CreatedAt                   time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
 }
 
 type EmailVerificationChallenge struct {
@@ -189,6 +190,25 @@ type EmailVerificationChallenge struct {
 	ExpiresAt  time.Time `bun:"expires_at,notnull" json:"expires_at"`
 	SentAt     time.Time `bun:"sent_at,nullzero" json:"sent_at"`
 	ConsumedAt time.Time `bun:"consumed_at,nullzero" json:"consumed_at"`
+	CreatedAt  time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
+}
+
+// EmailChangeChallenge keeps the current address authoritative until a
+// replacement address has been verified. Only a keyed code digest is stored;
+// raw verification codes are returned to the delivery boundary once.
+type EmailChangeChallenge struct {
+	bun.BaseModel `bun:"table:email_change_challenges"`
+
+	ID         string    `bun:",pk" json:"id"`
+	UserID     string    `bun:"user_id,notnull" json:"user_id"`
+	OldEmail   string    `bun:"old_email,notnull" json:"old_email"`
+	NewEmail   string    `bun:"new_email,notnull" json:"new_email"`
+	CodeHash   string    `bun:"code_hash,notnull" json:"-"`
+	Attempts   int       `bun:",notnull,default:0" json:"attempts"`
+	ExpiresAt  time.Time `bun:"expires_at,notnull" json:"expires_at"`
+	SentAt     time.Time `bun:"sent_at,nullzero" json:"sent_at"`
+	ConsumedAt time.Time `bun:"consumed_at,nullzero" json:"consumed_at"`
+	CanceledAt time.Time `bun:"canceled_at,nullzero" json:"canceled_at"`
 	CreatedAt  time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
 }
 
@@ -292,6 +312,7 @@ type UserIdentity struct {
 	Subject     string    `bun:",notnull" json:"subject"`
 	UserID      string    `bun:"user_id,notnull" json:"user_id"`
 	LinkedEmail string    `bun:"linked_email,notnull,default:''" json:"linked_email,omitempty"`
+	LinkedName  string    `bun:"linked_name,notnull,default:''" json:"linked_name,omitempty"`
 	CreatedAt   time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
 	LastLoginAt time.Time `bun:"last_login_at,nullzero" json:"last_login_at,omitempty"`
 }
@@ -1624,6 +1645,26 @@ type DesignRevision struct {
 	ExpiresAt        time.Time `bun:",nullzero" json:"expires_at,omitempty"`
 }
 
+type DesignRevisionMediaReference struct {
+	bun.BaseModel `bun:"table:design_revision_media_references"`
+
+	RevisionID string    `bun:"revision_id,pk" json:"revision_id"`
+	MediaID    string    `bun:"media_id,pk" json:"media_id"`
+	Usage      string    `bun:",notnull,default:'snapshot'" json:"usage"`
+	CreatedAt  time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
+}
+
+type DesignRevisionMediaIndexState struct {
+	bun.BaseModel `bun:"table:design_revision_media_index_state"`
+
+	RevisionID        string    `bun:"revision_id,pk" json:"revision_id"`
+	MediaCount        int       `bun:"media_count,notnull,default:0" json:"media_count"`
+	MissingMediaCount int       `bun:"missing_media_count,notnull,default:0" json:"missing_media_count"`
+	Status            string    `bun:",notnull,default:'complete'" json:"status"`
+	FailureCode       string    `bun:"failure_code,notnull,default:''" json:"failure_code,omitempty"`
+	ProcessedAt       time.Time `bun:"processed_at,nullzero,notnull,default:current_timestamp" json:"processed_at"`
+}
+
 type DesignMediaReference struct {
 	bun.BaseModel `bun:"table:design_media_references"`
 
@@ -1678,6 +1719,7 @@ type VideoProjectAsset struct {
 
 	VideoProjectID string    `bun:"video_project_id,pk" json:"video_project_id"`
 	SourceID       string    `bun:"source_id,pk" json:"source_id"`
+	RevisionID     string    `bun:"revision_id,nullzero" json:"revision_id,omitempty"`
 	MediaID        string    `bun:"media_id,notnull" json:"media_id"`
 	Usage          string    `bun:",notnull,default:'source'" json:"usage"`
 	CreatedAt      time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
@@ -1695,6 +1737,17 @@ type VideoProjectRevision struct {
 	CreatedByID    string    `bun:"created_by_id,notnull" json:"created_by_id"`
 	CreatedAt      time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
 	ExpiresAt      time.Time `bun:",nullzero" json:"expires_at,omitempty"`
+}
+
+type VideoRevisionMediaIndexState struct {
+	bun.BaseModel `bun:"table:video_revision_media_index_state"`
+
+	RevisionID        string    `bun:"revision_id,pk" json:"revision_id"`
+	MediaCount        int       `bun:"media_count,notnull,default:0" json:"media_count"`
+	MissingMediaCount int       `bun:"missing_media_count,notnull,default:0" json:"missing_media_count"`
+	Status            string    `bun:",notnull,default:'complete'" json:"status"`
+	FailureCode       string    `bun:"failure_code,notnull,default:''" json:"failure_code,omitempty"`
+	ProcessedAt       time.Time `bun:"processed_at,nullzero,notnull,default:current_timestamp" json:"processed_at"`
 }
 
 type VideoReturnToken struct {

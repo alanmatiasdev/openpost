@@ -29,6 +29,7 @@ export interface LocalVideoProject {
 	unsynced_source_ids: string[];
 	state: LocalProjectState;
 	cover_source_id?: string;
+	cloud_cover_preview_media_id?: string;
 	document: VideoProjectDocumentV1;
 }
 
@@ -36,12 +37,22 @@ export interface LocalProjectRevision {
 	id: string;
 	project_id: string;
 	revision: number;
-	kind: 'autosave' | 'checkpoint' | 'journal' | 'migration-backup';
+	kind: 'autosave' | 'checkpoint' | 'restore_point' | 'journal' | 'migration-backup';
 	name?: string;
 	created_at: string;
+	snapshot?: LocalProjectRevisionSnapshotV1;
+	/** Legacy development revisions stored the document directly. */
 	document?: VideoProjectDocumentV1;
 	raw_document?: unknown;
 	operations?: VideoProjectOperation[];
+}
+
+export interface LocalProjectRevisionSnapshotV1 {
+	snapshot_version: 1;
+	document: VideoProjectDocumentV1;
+	cover_source_id?: string;
+	/** Added compatibly after the V1 envelope shipped; legacy V1 rows omit it. */
+	cloud_cover_preview_media_id?: string;
 }
 
 export interface VideoProjectOperation {

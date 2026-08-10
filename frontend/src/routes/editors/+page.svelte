@@ -526,10 +526,15 @@
 				};
 			} else {
 				const current = await getCloudVideoProject(target.item.id);
-				const updated = await updateCloudVideoProject(current.id, current.revision, {
-					...current.document,
-					title
-				} as unknown as VideoProjectDocumentV1);
+				const updated = await updateCloudVideoProject(
+					current.id,
+					current.revision,
+					{
+						...current.document,
+						title
+					} as unknown as VideoProjectDocumentV1,
+					current.cover_preview_media_id
+				);
 				catalogCache.invalidateWorkspace(target.workspaceID);
 				if (workspaceID !== target.workspaceID || activeCatalogKey !== target.key) return;
 				catalog = {

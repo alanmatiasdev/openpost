@@ -1,4 +1,4 @@
-import { expect, test, type Locator } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { authenticatePage, createWorkspace, registerUser } from "./helpers";
 
 const tinyPNG = Buffer.from(
@@ -45,6 +45,16 @@ function meanPixelDifference(left: number[], right: number[]): number {
       0,
     ) / left.length
   );
+}
+
+async function openImageVersionHistory(page: Page): Promise<void> {
+  const menus = page.getByRole("menubar", {
+    name: "OpenPost Image Editor menus",
+  });
+  await menus.getByText("File", { exact: true }).click();
+  await page
+    .getByRole("menuitem", { name: "Version history", exact: true })
+    .click();
 }
 
 test.beforeEach(({ page }) => {
@@ -667,6 +677,244 @@ test("revision-conflict reload preserves local work as a separate cloud design",
   expect(preservedDesign.document.pages[0].layers).toHaveLength(
     initialLayerCount + 1,
   );
+});
+
+test("version history previews lazily and restores both directions with an exact restore point", async ({
+  page,
+  request,
+}) => {
+  test.setTimeout(90_000);
+  const unique = Date.now().toString(36);
+  const auth = await registerUser(
+    request,
+    `image-versions-${unique}@example.com`,
+  );
+  const workspace = await createWorkspace(
+    request,
+    auth.token,
+    "Image version history",
+  );
+  await authenticatePage(page, auth.token);
+  await page.goto(`/image-editor/new?workspace=${workspace.id}`);
+  await page
+    .getByRole("region", { name: "Starter templates" })
+    .getByRole("button", { name: /Quick announcement/ })
+    .click();
+
+  const title = page.getByRole("textbox", { name: "Design title" });
+  const saved = page.getByTestId("image-editor-save-indicator");
+  await title.fill("Approved image version");
+  await expect(saved).toHaveAttribute("data-state", "saved", {
+    timeout: 15_000,
+  });
+
+  await openImageVersionHistory(page);
+  const history = page.getByRole("dialog", { name: "Version history" });
+  await expect(history).toBeVisible();
+  await history.getByRole("button", { name: "Create checkpoint" }).click();
+  const checkpoint = page.getByRole("dialog", { name: "Create checkpoint" });
+  await checkpoint
+    .getByRole("textbox", { name: "Checkpoint name" })
+    .fill("Approved");
+  await checkpoint.getByRole("button", { name: "Create checkpoint" }).click();
+  await expect(history).toBeVisible();
+  await history
+    .locator('[data-slot="dialog-footer"]')
+    .getByRole("button", { name: "Close", exact: true })
+    .click();
+
+  await title.fill("Current image head");
+  await expect(saved).toHaveAttribute("data-state", "saved", {
+    timeout: 15_000,
+  });
+
+  let previewRequests = 0;
+  page.on("request", (outgoing) => {
+    if (
+      outgoing.method() === "GET" &&
+      /\/api\/v1\/image-editor\/designs\/[^/]+\/revisions\/[^/]+$/.test(
+        new URL(outgoing.url()).pathname,
+      )
+    ) {
+      previewRequests += 1;
+    }
+  });
+  await openImageVersionHistory(page);
+  await expect(
+    history.getByText(
+      "Select a version to preview it and inspect its changes.",
+    ),
+  ).toBeVisible();
+  expect(previewRequests).toBe(0);
+  const approvedRevision = history.getByRole("button", { name: /Approved/ });
+  await approvedRevision.click();
+  await expect(history.getByText("Title changed")).toBeVisible();
+  await expect(approvedRevision.getByText(/Saved by .+ \(you\)/)).toBeVisible();
+  expect(previewRequests).toBe(1);
+  await history.getByRole("button", { name: "Restore this version" }).click();
+
+  const confirm = page.getByRole("dialog", { name: "Restore this version?" });
+  await expect(confirm).toContainText(
+    "exact current design as a restore point",
+  );
+  await confirm.getByRole("button", { name: "Restore version" }).click();
+  await expect(title).toHaveValue("Approved image version");
+
+  await openImageVersionHistory(page);
+  const restorePoint = history
+    .getByRole("button", { name: /Before restore/ })
+    .first();
+  await expect(restorePoint).toBeVisible();
+  await restorePoint.click();
+  await expect(history.getByText("Title changed")).toBeVisible();
+  await history.getByRole("button", { name: "Restore this version" }).click();
+  await confirm.getByRole("button", { name: "Restore version" }).click();
+  await expect(title).toHaveValue("Current image head");
+});
+
+test("older named image versions load on demand and reorder-only previews cannot leak across dialog sessions", async ({
+  page,
+  request,
+}) => {
+  test.setTimeout(120_000);
+  const unique = Date.now().toString(36);
+  const auth = await registerUser(
+    request,
+    `image-reorder-${unique}@example.com`,
+  );
+  const workspace = await createWorkspace(
+    request,
+    auth.token,
+    "Image reorder history",
+  );
+  const headers = {
+    Authorization: `Bearer ${auth.token}`,
+    "Content-Type": "application/json",
+  };
+  await authenticatePage(page, auth.token);
+  await page.goto(`/image-editor/new?workspace=${workspace.id}`);
+  await page
+    .getByRole("region", { name: "Starter templates" })
+    .getByRole("button", { name: /Quick announcement/ })
+    .click();
+  await expect(page.getByTestId("image-editor-save-indicator")).toHaveAttribute(
+    "data-state",
+    "saved",
+    { timeout: 15_000 },
+  );
+
+  const designID = page.url().split("/").at(-1)!;
+  const loaded = await request.get(`/api/v1/image-editor/designs/${designID}`, {
+    headers,
+  });
+  expect(loaded.ok()).toBeTruthy();
+  const original = await loaded.json();
+  const originalLayerIDs = original.document.pages[0].layers.map(
+    (layer: { id: string }) => layer.id,
+  );
+  expect(originalLayerIDs.length).toBeGreaterThan(1);
+
+  for (let index = 0; index < 55; index += 1) {
+    const checkpoint = await request.post(
+      `/api/v1/image-editor/designs/${designID}/revisions`,
+      {
+        headers,
+        data: {
+          name:
+            index === 0
+              ? "Original layer order"
+              : `Later named version ${String(index).padStart(2, "0")}`,
+          expected_revision: original.revision,
+        },
+      },
+    );
+    expect(checkpoint.ok()).toBeTruthy();
+  }
+
+  const reorderedDocument = structuredClone(original.document);
+  reorderedDocument.pages[0].layers.reverse();
+  const reordered = await request.patch(
+    `/api/v1/image-editor/designs/${designID}`,
+    {
+      headers,
+      data: {
+        expected_revision: original.revision,
+        document: reorderedDocument,
+        cover_preview_media_id: original.cover_preview_media_id ?? "",
+        recovery_reason: "idle",
+      },
+    },
+  );
+  expect(reordered.ok()).toBeTruthy();
+  await page.reload();
+
+  let previewStarted!: () => void;
+  let releasePreview!: () => void;
+  const started = new Promise<void>((resolve) => (previewStarted = resolve));
+  const release = new Promise<void>((resolve) => (releasePreview = resolve));
+  let delayNextPreview = true;
+  await page.route(
+    `**/api/v1/image-editor/designs/${designID}/revisions/*`,
+    async (route) => {
+      if (route.request().method() !== "GET" || !delayNextPreview) {
+        await route.continue();
+        return;
+      }
+      delayNextPreview = false;
+      const response = await route.fetch();
+      previewStarted();
+      await release;
+      await route.fulfill({ response }).catch(() => undefined);
+    },
+  );
+
+  await openImageVersionHistory(page);
+  const history = page.getByRole("dialog", { name: "Version history" });
+  await expect(
+    history.getByRole("button", { name: "Original layer order" }),
+  ).toHaveCount(0);
+  await history.getByRole("button", { name: "Load more" }).click();
+  const originalVersion = history.getByRole("button", {
+    name: "Original layer order",
+  });
+  await expect(originalVersion).toBeVisible();
+  await originalVersion.click();
+  await started;
+  await history
+    .locator('[data-slot="dialog-footer"]')
+    .getByRole("button", { name: "Close", exact: true })
+    .click();
+
+  await openImageVersionHistory(page);
+  releasePreview();
+  await expect(
+    history.getByText(
+      "Select a version to preview it and inspect its changes.",
+    ),
+  ).toBeVisible();
+  await history.getByRole("button", { name: "Load more" }).click();
+  await history.getByRole("button", { name: "Original layer order" }).click();
+  await expect(history.getByText(/Layers changed: [2-9]/)).toBeVisible();
+  await expect(
+    history.getByRole("button", { name: "Restore this version" }),
+  ).toBeEnabled();
+  await history.getByRole("button", { name: "Restore this version" }).click();
+  await page
+    .getByRole("dialog", { name: "Restore this version?" })
+    .getByRole("button", { name: "Restore version" })
+    .click();
+  await expect(history).not.toBeVisible();
+
+  const restored = await request.get(
+    `/api/v1/image-editor/designs/${designID}`,
+    { headers },
+  );
+  expect(restored.ok()).toBeTruthy();
+  expect(
+    (await restored.json()).document.pages[0].layers.map(
+      (layer: { id: string }) => layer.id,
+    ),
+  ).toEqual(originalLayerIDs);
 });
 
 test("public Image Editor keeps zoom, touch, stylus, and Portuguese chrome usable", async ({

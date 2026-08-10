@@ -4,6 +4,7 @@ import {
 	defaultVideoPresentation,
 	type PrimarySequenceClip,
 	type StockMediaProvenance,
+	type VideoProjectDocumentV1,
 	type VideoSource,
 	type VideoSourceKind
 } from '@openpost/video-project';
@@ -131,6 +132,24 @@ export async function addFileToProject(
 			.catch(() => undefined);
 	}
 	return source;
+}
+
+export function cloudVideoSourceIDForMedia(
+	document: VideoProjectDocumentV1,
+	mediaID: string | undefined,
+	cloudSourceMap: Record<string, string> = {}
+): string | undefined {
+	const target = mediaID?.trim();
+	if (!target) return undefined;
+	for (const source of Object.values(document.sources)) {
+		if (source.locator.type === 'openpost-media' && source.locator.media_id === target) {
+			return source.id;
+		}
+	}
+	return Object.entries(cloudSourceMap).find(
+		([sourceID, mappedMediaID]) =>
+			mappedMediaID === target && Object.hasOwn(document.sources, sourceID)
+	)?.[0];
 }
 
 export async function addRecordingToProject(

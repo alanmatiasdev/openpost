@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/services/apitokens"
+	"github.com/openpost/backend/internal/services/workspaceaccess"
 	"github.com/uptrace/bun"
 )
 
@@ -38,6 +39,8 @@ var (
 	ErrAuthorizationPending = errors.New("cli auth authorization pending")
 	ErrSlowDown             = errors.New("cli auth polling too quickly")
 	ErrAlreadyUsed          = errors.New("cli auth session already used")
+	ErrWorkspaceAccess      = errors.New("cli auth workspace is not accessible")
+	ErrScopeMismatch        = errors.New("cli auth approval scope does not match the requested scope")
 )
 
 type Service struct {
@@ -97,9 +100,14 @@ func (s *Service) StartSession(ctx context.Context, input StartInput) (*StartedS
 	if clientName == "" {
 		clientName = "OpenPost CLI"
 	}
+	clientName, err := apitokens.NormalizeName(clientName)
+	if err != nil {
+		return nil, err
+	}
 	scopes := strings.TrimSpace(input.RequestedScopes)
-	if scopes == "" {
-		scopes = DefaultScope
+	scopes, err = apitokens.NormalizeScope(scopes)
+	if err != nil || scopes != DefaultScope {
+		return nil, apitokens.ErrInvalidScope
 	}
 
 	deviceCode, err := generateDeviceCode()
@@ -200,33 +208,99 @@ func (s *Service) ApproveSessionWithOptions(
 		return err
 	}
 	if session.Status != statusPending {
-		if session.Status == statusDenied {
-			return ErrDenied
-		}
 		return ErrAlreadyUsed
 	}
-	if strings.TrimSpace(scopes) == "" {
-		scopes = session.RequestedScopes
+	approvedScope, err := normalizeApprovalScope(session.RequestedScopes, scopes)
+	if err != nil {
+		return err
 	}
-	if strings.TrimSpace(tokenName) == "" {
-		tokenName = session.ClientName
+	tokenName, err = normalizeApprovalTokenName(session.ClientName, tokenName)
+	if err != nil {
+		return err
 	}
+	workspaceID, err := s.approvalWorkspace(ctx, userID, options.WorkspaceID)
+	if err != nil {
+		return err
+	}
+	return s.approveSession(ctx, session.ID, userID, approvedScope, tokenName, workspaceID, options, now)
+}
 
-	_, err = s.db.NewUpdate().
+func normalizeApprovalScope(requestedScope, approvalScope string) (string, error) {
+	requestedScope, err := apitokens.NormalizeScope(requestedScope)
+	if err != nil {
+		return "", err
+	}
+	approvalScope = strings.TrimSpace(approvalScope)
+	if approvalScope == "" {
+		return requestedScope, nil
+	}
+	approvalScope, err = apitokens.NormalizeScope(approvalScope)
+	if err != nil {
+		return "", err
+	}
+	if approvalScope != requestedScope {
+		return "", ErrScopeMismatch
+	}
+	return requestedScope, nil
+}
+
+func normalizeApprovalTokenName(clientName, tokenName string) (string, error) {
+	if strings.TrimSpace(tokenName) == "" {
+		tokenName = clientName
+	}
+	return apitokens.NormalizeName(tokenName)
+}
+
+func (s *Service) approvalWorkspace(ctx context.Context, userID, workspaceID string) (string, error) {
+	workspaceID = strings.TrimSpace(workspaceID)
+	if workspaceID == "" {
+		return "", nil
+	}
+	allowed, err := workspaceaccess.Allows(ctx, s.db, workspaceID, userID)
+	if err != nil {
+		return "", err
+	}
+	if !allowed {
+		return "", ErrWorkspaceAccess
+	}
+	return workspaceID, nil
+}
+
+func (s *Service) approveSession(
+	ctx context.Context,
+	sessionID,
+	userID,
+	scopes,
+	tokenName,
+	workspaceID string,
+	options ApprovalOptions,
+	now time.Time,
+) error {
+	result, err := s.db.NewUpdate().
 		Model((*models.CLIAuthSession)(nil)).
 		Set("user_id = ?", userID).
 		Set("requested_scopes = ?", scopes).
 		Set("client_name = ?", tokenName).
-		Set("workspace_id = ?", strings.TrimSpace(options.WorkspaceID)).
+		Set("workspace_id = ?", workspaceID).
 		Set("organization_id = ?", strings.TrimSpace(options.OrganizationID)).
 		Set("identity_provider_id = ?", strings.TrimSpace(options.IdentityProviderID)).
 		Set("assured_at = ?", nullTime(options.AssuredAt)).
 		Set("token_expires_at = ?", nullTime(options.TokenExpiresAt)).
 		Set("status = ?", statusApproved).
 		Set("approved_at = ?", now).
-		Where("id = ? AND status = ?", session.ID, statusPending).
+		Where("id = ? AND status = ?", sessionID, statusPending).
 		Exec(ctx)
-	return err
+	if err != nil {
+		return err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows != 1 {
+		return ErrAlreadyUsed
+	}
+	return nil
 }
 
 func (s *Service) DenySession(ctx context.Context, code string) error {
@@ -245,13 +319,30 @@ func (s *Service) DenySession(ctx context.Context, code string) error {
 		return ErrAlreadyUsed
 	}
 
-	_, err = s.db.NewUpdate().
+	result, err := s.db.NewUpdate().
 		Model((*models.CLIAuthSession)(nil)).
 		Set("status = ?", statusDenied).
 		Set("denied_at = ?", now).
 		Where("id = ? AND status = ?", session.ID, statusPending).
 		Exec(ctx)
-	return err
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 1 {
+		return nil
+	}
+	status, err := s.sessionStatus(ctx, session.ID)
+	if err != nil {
+		return err
+	}
+	if status == statusDenied {
+		return nil
+	}
+	return ErrAlreadyUsed
 }
 
 func (s *Service) cleanupExpired(ctx context.Context, now time.Time) error {
@@ -274,16 +365,124 @@ func (s *Service) GetPendingByUserCode(ctx context.Context, userCode string) (*m
 	return session, nil
 }
 
+type approvedSessionConsumption struct {
+	session     models.CLIAuthSession
+	generated   *apitokens.GeneratedToken
+	terminalErr error
+}
+
 func (s *Service) consumeApprovedSession(ctx context.Context, session *models.CLIAuthSession, now time.Time) (*PollResult, error) {
-	if session.UserID == "" {
-		return nil, ErrNotFound
+	consumption := &approvedSessionConsumption{}
+	err := s.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
+		return s.consumeApprovedSessionInTx(txCtx, tx, session.ID, now, consumption)
+	})
+	if err != nil {
+		return nil, err
 	}
+	if consumption.terminalErr != nil {
+		return nil, consumption.terminalErr
+	}
+	if consumption.generated == nil {
+		return nil, ErrAlreadyUsed
+	}
+
+	result := pollResult(&consumption.session, now)
+	result.Status = statusApproved
+	result.Token = consumption.generated.Token
+	result.TokenPrefix = consumption.generated.Model.TokenPrefix
+	return result, nil
+}
+
+func (s *Service) consumeApprovedSessionInTx(
+	ctx context.Context,
+	tx bun.Tx,
+	sessionID string,
+	now time.Time,
+	consumption *approvedSessionConsumption,
+) error {
+	if err := lockApprovedSession(ctx, tx, sessionID); err != nil {
+		return err
+	}
+	if err := tx.NewSelect().Model(&consumption.session).Where("id = ?", sessionID).Scan(ctx); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		}
+		return err
+	}
+	terminalErr, err := approvedSessionTerminalError(ctx, tx, &consumption.session, now)
+	if err != nil {
+		return err
+	}
+	if terminalErr != nil {
+		consumption.terminalErr = terminalErr
+		return expireApprovedSession(ctx, tx, consumption.session.ID)
+	}
+	consumption.generated, err = s.generateApprovedSessionToken(ctx, tx, &consumption.session, now)
+	if err != nil {
+		return err
+	}
+	return expireApprovedSession(ctx, tx, consumption.session.ID)
+}
+
+func lockApprovedSession(ctx context.Context, tx bun.Tx, sessionID string) error {
+	// The conditional no-op update acquires a row lock and rejects every poll
+	// after the first consumer has committed the terminal transition.
+	result, err := tx.NewUpdate().Model((*models.CLIAuthSession)(nil)).
+		Set("status = status").
+		Where("id = ? AND status = ?", sessionID, statusApproved).
+		Exec(ctx)
+	if err != nil {
+		return err
+	}
+	locked, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if locked != 1 {
+		return ErrAlreadyUsed
+	}
+	return nil
+}
+
+func approvedSessionTerminalError(
+	ctx context.Context,
+	tx bun.Tx,
+	session *models.CLIAuthSession,
+	now time.Time,
+) (error, error) {
+	if strings.TrimSpace(session.UserID) == "" {
+		return ErrNotFound, nil
+	}
+	if !session.ExpiresAt.After(now) ||
+		(!session.TokenExpiresAt.IsZero() && !session.TokenExpiresAt.After(now)) {
+		return ErrExpired, nil
+	}
+	if session.WorkspaceID == "" {
+		return nil, nil
+	}
+	allowed, err := workspaceaccess.Allows(ctx, tx, session.WorkspaceID, session.UserID)
+	if err != nil {
+		return nil, err
+	}
+	if !allowed {
+		return ErrWorkspaceAccess, nil
+	}
+	return nil, nil
+}
+
+func (s *Service) generateApprovedSessionToken(
+	ctx context.Context,
+	tx bun.Tx,
+	session *models.CLIAuthSession,
+	now time.Time,
+) (*apitokens.GeneratedToken, error) {
 	expiresAt := session.TokenExpiresAt
 	if expiresAt.IsZero() {
 		expiresAt = now.Add(apitokens.DefaultExpiration)
 	}
-	generated, err := s.tokens.GenerateTokenWithOptions(
+	return s.tokens.GenerateTokenWithOptionsInTx(
 		ctx,
+		tx,
 		session.UserID,
 		session.ClientName,
 		session.RequestedScopes,
@@ -296,22 +495,24 @@ func (s *Service) consumeApprovedSession(ctx context.Context, session *models.CL
 			ClientID:           ClientID,
 		},
 	)
-	if err != nil {
-		return nil, err
-	}
-	if _, err := s.db.NewUpdate().
-		Model((*models.CLIAuthSession)(nil)).
-		Set("status = ?", statusExpired).
-		Where("id = ? AND status = ?", session.ID, statusApproved).
-		Exec(ctx); err != nil {
-		return nil, err
-	}
+}
 
-	result := pollResult(session, now)
-	result.Status = statusApproved
-	result.Token = generated.Token
-	result.TokenPrefix = generated.Model.TokenPrefix
-	return result, nil
+func expireApprovedSession(ctx context.Context, tx bun.Tx, sessionID string) error {
+	result, err := tx.NewUpdate().Model((*models.CLIAuthSession)(nil)).
+		Set("status = ?", statusExpired).
+		Where("id = ? AND status = ?", sessionID, statusApproved).
+		Exec(ctx)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected != 1 {
+		return ErrAlreadyUsed
+	}
+	return nil
 }
 
 func nullTime(value time.Time) any {
@@ -323,7 +524,7 @@ func nullTime(value time.Time) any {
 
 func (s *Service) expireIfNeeded(ctx context.Context, session *models.CLIAuthSession, now time.Time) error {
 	if session.Status == statusPending && !session.ExpiresAt.After(now) {
-		_, err := s.db.NewUpdate().
+		result, err := s.db.NewUpdate().
 			Model((*models.CLIAuthSession)(nil)).
 			Set("status = ?", statusExpired).
 			Where("id = ? AND status = ?", session.ID, statusPending).
@@ -331,10 +532,39 @@ func (s *Service) expireIfNeeded(ctx context.Context, session *models.CLIAuthSes
 		if err != nil {
 			return err
 		}
-		session.Status = statusExpired
-		return ErrExpired
+		affected, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if affected == 1 {
+			session.Status = statusExpired
+			return ErrExpired
+		}
+		status, err := s.sessionStatus(ctx, session.ID)
+		if err != nil {
+			return err
+		}
+		session.Status = status
+		if status == statusExpired {
+			return ErrExpired
+		}
+		return ErrAlreadyUsed
 	}
 	return nil
+}
+
+func (s *Service) sessionStatus(ctx context.Context, sessionID string) (string, error) {
+	var status string
+	if err := s.db.NewSelect().Model((*models.CLIAuthSession)(nil)).
+		Column("status").
+		Where("id = ?", strings.TrimSpace(sessionID)).
+		Scan(ctx, &status); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", ErrNotFound
+		}
+		return "", err
+	}
+	return status, nil
 }
 
 func (s *Service) sessionByDeviceCode(ctx context.Context, deviceCode string) (*models.CLIAuthSession, error) {
