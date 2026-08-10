@@ -29,7 +29,7 @@ test("settings shows billing plan controls for an authenticated workspace", asyn
   await expect(page.getByText("No active plan")).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Customer Portal" }),
-  ).toBeVisible();
+  ).toHaveCount(0);
   await expect(page.getByRole("button", { name: /^Choose / })).toHaveCount(5);
   await expect(page.getByRole("heading", { name: "Starter" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Founder" })).toBeVisible();

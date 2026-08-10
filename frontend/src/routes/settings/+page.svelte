@@ -701,6 +701,7 @@
 			['active', 'trialing'].includes((billingStatus.status ?? '').toLowerCase())
 		)
 	);
+	const hasBillingSubscription = $derived(Boolean(billingStatus?.plan_id));
 	const billingRecoveryRequired = $derived(requiresBillingRecovery(billingStatus));
 	const activeSettingsTitle = $derived.by(() => {
 		if (activeSettingsTab === 'profile') return m.settings_profile();
@@ -1248,7 +1249,7 @@
 		const workspaceID = workspaceCtx.currentWorkspace?.id;
 		const organizationID =
 			billingStatus?.organization_id ?? workspaceCtx.currentWorkspace?.organization_id ?? '';
-		if (!workspaceID || !billingStatus?.can_manage_billing) return;
+		if (!workspaceID || !billingStatus?.can_manage_billing || !billingStatus?.plan_id) return;
 		billingPortalBusy = true;
 		billingError = '';
 		try {
@@ -2919,7 +2920,7 @@
 						class="mb-4"
 					>
 						{#snippet actions()}
-							{#if billingStatus?.can_manage_billing}
+							{#if billingStatus?.can_manage_billing && hasBillingSubscription}
 								<Button
 									variant="outline"
 									onclick={() => void openBillingPortal()}
