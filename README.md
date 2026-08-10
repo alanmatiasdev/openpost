@@ -168,11 +168,8 @@ For setup questions, ideas, and general discussion, join the [OpenPost Discord c
 
 If OpenPost is useful to you, **star the repository**. It helps other self-hosters find the project and tells us which work is worth continuing.
 
-<p align="center">
-  <a href="https://github.com/rodrgds/openpost">
-    <img src="https://img.shields.io/github/stars/rodrgds/openpost?style=for-the-badge&logo=github&label=Star%20OpenPost&color=c9612f" alt="Star OpenPost on GitHub">
-  </a>
-</p>
+<!-- star-history:start -->
+<!-- star-history:end -->
 
 ## License and security
 
