@@ -184,10 +184,10 @@ These do not assert a newly observed production incident. They block Pinterest, 
 
 ### LEGAL-003 — Correct the camera-recording disclosure
 
-- [ ] **Problem — Current source:** Privacy says camera video is not recorded, but the Video Editor can record an enabled camera stream locally through `MediaRecorder`. The policy later says recording runs in-browser, leaving a direct contradiction.
+- [x] **Problem — Current source:** Privacy says camera video is not recorded, but the Video Editor can record an enabled camera stream locally through `MediaRecorder`. The policy later says recording runs in-browser, leaving a direct contradiction.
 - **Fix:** state plainly that camera recording is optional and local to the browser until the user chooses cloud save, Media save, or post handoff; distinguish still-photo capture, live preview, local project data, export, and upload.
 - **Done when:** Privacy/Legal approves consistent wording across Privacy, tool pages, permission prompts, and editor UX; browser behavior matches each disclosed transition.
-- **Evidence:** `marketing-site/src/routes/privacy/+page.svelte:117`, `marketing-site/src/routes/privacy/+page.svelte:247`, `frontend/src/lib/video-editor/recorder.ts:85`, `frontend/src/lib/video-editor/recorder.ts:217`, `frontend/src/lib/video-editor/recorder.ts:246`.
+- **Evidence:** `marketing-site/src/routes/privacy/+page.svelte:117`, `marketing-site/src/routes/privacy/+page.svelte:247`, `frontend/src/lib/video-editor/recorder.ts:85`, `frontend/src/lib/video-editor/recorder.ts:217`, `frontend/src/lib/video-editor/recorder.ts:246`. Resolved in the legal inventories commit `c4584d1e`, which states camera recording is optional and local to the browser until an explicit cloud save, Media save, or post handoff; the Video Editor docs and tool pages state the same boundary.
 
 ### Shared provider kernel — required before new provider delivery
 
@@ -658,14 +658,14 @@ Maintenance contract for this lane: a new social provider requires no n8n packag
 
 ### BILL-004 — Hide or explain the portal action when no subscription exists
 
-- [ ] **Problem — Current source audit:** the customer-portal button is shown even when the user has no subscription/customer context, which can produce a dead or confusing action.
+- [x] **Problem — Current source audit:** the customer-portal button is shown even when the user has no subscription/customer context, which can produce a dead or confusing action.
 - **Fix:** gate the action on a valid portal-capable customer/subscription, or label the destination accurately for customers who only have transaction history; provide plan selection as the primary no-subscription action.
 - **Done when:** none/trial/active/past-due/canceled states each expose a valid next action and portal failures show recovery guidance.
 - **Evidence:** `frontend/src/routes/settings/+page.svelte:2448`.
 
 ### BILL-005 — Reconcile checkout consent copy with the actual control
 
-- [ ] **Problem — In-flight release risk:** the inline frame can load automatically while copy still says “By continuing,” even when no continue action exists.
+- [x] **Problem — In-flight release risk:** the inline frame can load automatically while copy still says “By continuing,” even when no continue action exists.
 - **Fix:** either restore an explicit continuation action or rewrite the disclosure to name the actual payment/submit action; obtain legal review.
 - **Done when:** the consent sentence points to a real user action, is shown before that action, and tests cover the final checkout state.
 - **Evidence:** `frontend/messages/en.json:3514`, `frontend/src/routes/checkout/+page.svelte:561`.
@@ -753,7 +753,7 @@ Maintenance contract for this lane: a new social provider requires no n8n packag
 
 ### APIKEY-003 — Add scopes from real use cases and align CLI workspace binding
 
-- [ ] **Problem — Partial/security hardening:** scopes are coarse (`cli:full`, `mcp:read`, `mcp:full`). CLI device approval submits no workspace even though backend tokens can be bound, while some runtime policy expects bound tokens.
+- [x] **Problem — Partial/security hardening:** scopes are coarse (`cli:full`, `mcp:read`, `mcp:full`). CLI device approval submits no workspace even though backend tokens can be bound, while some runtime policy expects bound tokens.
 - **Fix:** design resource/action scopes from actual integrations; default to least privilege; let the approval flow choose/confirm workspace scope; enforce one matrix in HTTP, MCP, and CLI; preserve existing token semantics through a documented migration.
 - **Done when:** read-only and publishing-only automation do not require full access, every operation enforces identical scopes, and bound/unbound CLI behavior is explicit and tested.
 - **Evidence:** `frontend/src/routes/settings/+page.svelte:3134`, `frontend/src/routes/cli/authorize/+page.svelte:141`, token authorization services.
