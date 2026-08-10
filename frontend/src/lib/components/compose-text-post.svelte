@@ -440,8 +440,8 @@
 	);
 	const composerWorkspaceStateDirty = $derived(
 		hasPendingPasteMediaUploads ||
-		((hasContent || Boolean(lastSavedSnapshot)) && getSaveSnapshot() !== lastSavedSnapshot) ||
-		Boolean(draftConflict)
+			((hasContent || Boolean(lastSavedSnapshot)) && getSaveSnapshot() !== lastSavedSnapshot) ||
+			Boolean(draftConflict)
 	);
 	const selectedAccounts = $derived(
 		selectedAccountIds
@@ -487,8 +487,8 @@
 	);
 	const capabilityReadinessCurrent = $derived(
 		!capabilityResolveLoading &&
-		lastResolvedCapabilityInputSnapshot === capabilityInputSnapshot &&
-		selectedAccountIds.every((accountID) => Boolean(resolvedCapabilities[accountID]))
+			lastResolvedCapabilityInputSnapshot === capabilityInputSnapshot &&
+			selectedAccountIds.every((accountID) => Boolean(resolvedCapabilities[accountID]))
 	);
 	const localBlockers = $derived(globalFormBlockers());
 	const validationDestinations = $derived(
@@ -513,12 +513,7 @@
 		)
 	);
 	const globalIssues = $derived(
-		composerIssues(
-			localBlockers,
-			validationIssues,
-			validationDestinations,
-			targetedRuntimeIssues
-		)
+		composerIssues(localBlockers, validationIssues, validationDestinations, targetedRuntimeIssues)
 	);
 	const visibleGlobalIssues = $derived(hasContent ? globalIssues : []);
 	const accountIssues = $derived.by(() =>
@@ -547,21 +542,16 @@
 	);
 	const canPublishNow = $derived(
 		canSubmitPublication &&
-		capabilityReadinessCurrent &&
-		selectedAccounts.every((account) =>
-			accountReadiness(account, 'publish_immediate').canProceed
-		)
+			capabilityReadinessCurrent &&
+			selectedAccounts.every((account) => accountReadiness(account, 'publish_immediate').canProceed)
 	);
 	const canSchedulePublication = $derived(
 		canSubmitPublication &&
-		capabilityReadinessCurrent &&
-		selectedAccounts.every((account) =>
-			accountReadiness(account, 'publish_scheduled').canProceed
-		)
+			capabilityReadinessCurrent &&
+			selectedAccounts.every((account) => accountReadiness(account, 'publish_scheduled').canProceed)
 	);
 	const canSaveEditedPost = $derived(
-		canSubmitPublication &&
-		(!(selectedDate && selectedTime) || canSchedulePublication)
+		canSubmitPublication && (!(selectedDate && selectedTime) || canSchedulePublication)
 	);
 	const activeVariantAccount = $derived(
 		activeVariantAccountId ? (accounts.find((a) => a.id === activeVariantAccountId) ?? null) : null
@@ -1602,14 +1592,10 @@
 			if (
 				resolvedAccounts.some(
 					(capability) =>
-						presentProviderReadiness(
-							capability.immediate_readiness,
-							'publish_immediate'
-						).action === 'retry' ||
-						presentProviderReadiness(
-							capability.scheduled_readiness,
-							'publish_scheduled'
-						).action === 'retry'
+						presentProviderReadiness(capability.immediate_readiness, 'publish_immediate').action ===
+							'retry' ||
+						presentProviderReadiness(capability.scheduled_readiness, 'publish_scheduled').action ===
+							'retry'
 				)
 			) {
 				capabilityResolveError = m.compose_load_readiness_failed();
@@ -2552,9 +2538,7 @@
 		}
 		workspaceSwitchAction = 'save';
 		workspaceSwitchError = '';
-		const saved = autoSavesDraft
-			? await flushPendingTextDraft()
-			: await saveEditedPost(false);
+		const saved = autoSavesDraft ? await flushPendingTextDraft() : await saveEditedPost(false);
 		if (!saved) {
 			workspaceSwitchAction = '';
 			workspaceSwitchError = error || m.compose_workspace_switch_save_failed();
@@ -3624,9 +3608,7 @@
 				await resolveCapabilities();
 				const readinessFailure = capabilityResolveError
 					? ''
-					: operationReadinessBlocker(
-							publishNow ? 'publish_immediate' : 'publish_scheduled'
-						);
+					: operationReadinessBlocker(publishNow ? 'publish_immediate' : 'publish_scheduled');
 				if (readinessFailure) {
 					issueToFocusAfterSubmit =
 						globalIssues.find((candidate) => candidate.severity === 'error') ?? null;
@@ -3640,7 +3622,7 @@
 							? m.compose_fix_before_publishing()
 							: m.compose_fix_before_scheduling()
 						: actionError.detail ||
-							(publishNow ? m.compose_publish_failed() : m.compose_schedule_failed())
+								(publishNow ? m.compose_publish_failed() : m.compose_schedule_failed())
 				);
 			}
 
@@ -4527,10 +4509,7 @@
 					/>
 				{/if}
 				{#if accounts.length > 0}
-					<ComposerValidationMenu
-						issues={visibleGlobalIssues}
-						onSelect={focusComposerIssue}
-					/>
+					<ComposerValidationMenu issues={visibleGlobalIssues} onSelect={focusComposerIssue} />
 				{/if}
 				{#if showInspirationControl}
 					<div transition:fade={{ duration: 160 }}>

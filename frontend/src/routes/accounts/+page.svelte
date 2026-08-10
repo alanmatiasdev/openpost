@@ -711,7 +711,9 @@
 	}
 
 	function isCustomMastodonProvider(provider: ProviderEntry): boolean {
-		return provider.platform === 'mastodon' && providerCanConnect(provider) && !provider.instance_url;
+		return (
+			provider.platform === 'mastodon' && providerCanConnect(provider) && !provider.instance_url
+		);
 	}
 
 	function mastodonHost(value: string): string {

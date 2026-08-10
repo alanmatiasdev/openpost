@@ -3,9 +3,7 @@ import { presentProviderReadiness } from './provider-readiness';
 
 describe('presentProviderReadiness', () => {
 	it('keeps a healthy decision quiet', () => {
-		expect(
-			presentProviderReadiness({ state: 'healthy', connectable: true }, 'connect')
-		).toEqual({
+		expect(presentProviderReadiness({ state: 'healthy', connectable: true }, 'connect')).toEqual({
 			state: 'healthy',
 			quiet: true,
 			canProceed: true,
