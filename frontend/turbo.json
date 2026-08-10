@@ -9,11 +9,12 @@
 				"$TURBO_ROOT$/scripts/asset-surfaces.mjs",
 				"$TURBO_ROOT$/scripts/asset-surfaces.ts",
 				"$TURBO_ROOT$/scripts/sync-assets.mjs",
+				"$TURBO_ROOT$/scripts/frontend-vite-build.mjs",
 				"$TURBO_ROOT$/scripts/generate-app-route-manifest.mjs",
 				"$TURBO_ROOT$/scripts/precompress-static.mjs"
 			],
 			"outputs": ["build/**"],
-			"env": ["VITE_APP_MODE"]
+			"env": ["NODE_OPTIONS", "VITE_APP_MODE"]
 		}
 	}
 }

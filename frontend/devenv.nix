@@ -71,10 +71,6 @@ let
       pkgs.bun
     ];
     text = ''
-      # OpenPost Video Editor adds the Transformers.js and ONNX worker graphs to the
-      # production build. Keep the V8 heap bounded while leaving enough room
-      # for Vite to transform those lazy chunks and adapter-static to finish.
-      export NODE_OPTIONS="--max-old-space-size=4096"
       cd "${config.git.root}"
       bun run frontend:build
     '';

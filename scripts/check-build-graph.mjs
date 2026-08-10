@@ -84,11 +84,16 @@ for (const [relativePath, expectedOutputs] of packageTurboPaths) {
 }
 
 const frontendTurbo = await readJSON("frontend/turbo.json");
+requireCondition(
+  frontendTurbo.tasks.build.env.includes("NODE_OPTIONS"),
+  "frontend build must pass and hash user NODE_OPTIONS",
+);
 for (const input of [
   "$TURBO_ROOT$/assets/**",
   "$TURBO_ROOT$/scripts/asset-surfaces.mjs",
   "$TURBO_ROOT$/scripts/asset-surfaces.ts",
   "$TURBO_ROOT$/scripts/sync-assets.mjs",
+  "$TURBO_ROOT$/scripts/frontend-vite-build.mjs",
   "$TURBO_ROOT$/scripts/generate-app-route-manifest.mjs",
   "$TURBO_ROOT$/scripts/precompress-static.mjs",
 ]) {
@@ -166,6 +171,20 @@ requireIncludes(
   dockerfile,
   "bun run --filter @openpost/web build",
   "production image frontend build",
+);
+requireIncludes(
+  dockerfile,
+  "scripts/frontend-vite-build.mjs",
+  "production image frontend build memory contract",
+);
+requireCondition(
+  !dockerfile.includes("ENV NODE_OPTIONS="),
+  "production image must use the package-owned frontend build memory contract",
+);
+requireIncludes(
+  frontendPackage.scripts.build,
+  "node ../scripts/frontend-vite-build.mjs",
+  "frontend build memory contract",
 );
 requireIncludes(devenv, "bun run docs:build", "Devenv docs build");
 requireIncludes(

@@ -21,7 +21,7 @@
     "dev": "turbo run dev --parallel",
     "build": "bun run prepare:docs && turbo run build && bun run package:frontend",
     "check": "bun run check:build-graph && bun run check:assets && bun run check:image-policy && bun run check:mcp-registry && bun run check:docs && bun run check:release-version && bun run check:app-routes && bun run check:public-routes && bun run check:legal-policy && bun run check:provider-certification && bun run check:provider-facts && bun run check:changelog && bun run check:social-images && bun run check:reachability && bun run check:compatibility && bun run check:ui-consistency && turbo run check",
-    "check:build-graph": "bun test scripts/build-graph.test.mjs scripts/package-frontend.test.mjs scripts/precompress-static.test.mjs && bun scripts/check-build-graph.mjs",
+    "check:build-graph": "bun test scripts/build-graph.test.mjs scripts/frontend-vite-build.test.mjs scripts/package-frontend.test.mjs scripts/precompress-static.test.mjs && bun scripts/check-build-graph.mjs",
     "check:assets": "bun test scripts/asset-surfaces.test.mjs && bun scripts/asset-surfaces.mjs",
     "check:image-policy": "bun test scripts/check-image-policy.test.mjs scripts/image-evidence.test.mjs && bun scripts/check-image-policy.mjs",
     "check:mcp-registry": "bun test scripts/check-mcp-registry.test.mjs && bun scripts/check-mcp-registry.mjs",

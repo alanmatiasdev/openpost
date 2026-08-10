@@ -29,8 +29,7 @@ COPY frontend/ ./frontend/
 COPY packages/social-preview/ ./packages/social-preview/
 COPY packages/video-project/ ./packages/video-project/
 COPY assets/ ./assets/
-COPY scripts/asset-surfaces.mjs scripts/asset-surfaces.ts scripts/sync-assets.mjs scripts/generate-app-route-manifest.mjs scripts/precompress-static.mjs ./scripts/
-ENV NODE_OPTIONS=--max-old-space-size=4096
+COPY scripts/asset-surfaces.mjs scripts/asset-surfaces.ts scripts/sync-assets.mjs scripts/frontend-vite-build.mjs scripts/generate-app-route-manifest.mjs scripts/precompress-static.mjs ./scripts/
 RUN bun run --filter @openpost/web build
 
 # Build stage for backend
