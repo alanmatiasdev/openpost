@@ -105,6 +105,25 @@ test("sidebar and full calendar use the same canonical publication inventory", a
   await page.route("**/api/v1/accounts?**", async (route) => {
     await route.fulfill({ contentType: "application/json", json: [] });
   });
+  await page.route("**/api/v1/posts/schedule-overview?**", async (route) => {
+    const month = new URL(route.request().url()).searchParams.get("month") ?? "";
+    await route.fulfill({
+      contentType: "application/json",
+      json: {
+        month,
+        selected_workspace_id: workspace.id,
+        days: month === "2030-06"
+          ? [
+              { date: "2030-06-13", count: 1 },
+              { date: "2030-06-14", count: 1 },
+              { date: "2030-06-15", count: 1 },
+            ]
+          : [],
+        platforms: [],
+        workspaces: [],
+      },
+    });
+  });
 
   await page.setViewportSize({ width: 1280, height: 820 });
   await page.goto(`/calendar?workspace=${workspace.id}`);

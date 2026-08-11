@@ -49,7 +49,11 @@ type ScheduledPublication = {
   created_at: string;
   updated_at: string;
   metadata: Record<string, never>;
-  renditions: never[];
+  renditions: Array<{
+    platform: string;
+    social_account_id: string;
+    status: string;
+  }>;
   segments: Array<{
     id: string;
     position: number;
@@ -171,7 +175,7 @@ async function mockCalendarData(
           created_at: post.created_at,
           updated_at: post.created_at,
           metadata: {},
-          renditions: [],
+          renditions: post.destinations,
           segments: threadPosts.map((threadPost, position) => ({
             id: `segment-${threadPost.id}`,
             position,
@@ -652,7 +656,7 @@ test("the day drawer keeps scheduled posts compact and icon-led", async ({
   await expect(
     drawer.getByRole("heading", { name: "Thu, Jun 20" }),
   ).toBeVisible();
-  await expect(drawer.getByText("Scheduled: 1", { exact: true })).toBeVisible();
+  await expect(drawer.getByText("1 posts", { exact: true })).toBeVisible();
   await expect(
     drawer.getByRole("button", { name: "New post", exact: true }),
   ).toBeVisible();

@@ -55,6 +55,7 @@ All notable changes to this project are documented in this file.
 
 ### Fixed
 
+- Restored release-gate browser fixtures for provider readiness and canonical publication summaries, and fixed documentation-link and production-image manifest script checks.
 - Pinned every external action used by the Star History workflow to a reviewed full commit so the workflow satisfies the repository supply-chain policy.
 - Migration 084 retires required-SSO organization-wide app tokens, normalizes existing `allow` policies to workspace-scoped access, and limits the policy API and settings UI to one assured workspace or denial. Existing unbound tokens are not assigned to a workspace and can no longer access required-SSO resources; revoke them and issue one assured token per workspace.
 - Aligned scoped automation across Huma and the authenticated upload-session content route, kept OpenPost credentials off presigned storage hosts, enforced required-SSO and workspace boundaries across REST, MCP, and CLI access paths, and made `cli:full` account and organization behavior explicit.

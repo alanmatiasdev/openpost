@@ -212,6 +212,13 @@ test("analytics keeps provider metrics distinct across desktop and phone layouts
       },
     });
   });
+  await page.route("**/api/v1/publications/*/events?**", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      headers: { "X-Has-More": "false", "X-Total-Count": "0" },
+      json: [],
+    });
+  });
   await page.route("**/api/v1/publications/publication-1", async (route) => {
     await route.fulfill({
       contentType: "application/json",

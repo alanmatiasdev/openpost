@@ -8,7 +8,7 @@
 >
 > The checkout was already dirty. This file does not claim that current uncommitted work is shipped. A user-supplied live observation is labeled as such; attachment findings should be rechecked against the implementation immediately before work starts.
 
-The older [launch checklist](TODO.md) remains useful for clean-install and provider verification. It is not duplicated here unless the newer audits found a concrete defect or incomplete experience.
+The older launch checklist remains useful for clean-install and provider verification. It is not duplicated here unless the newer audits found a concrete defect or incomplete experience.
 
 Inventory: **5 P0 expansion gates**, **26 P1**, **121 P2**, and **11 P3** task headings, plus explicit product decisions, preservation guardrails, and an external-verification queue. Some P2 entries are deliberate decision gates rather than assumed feature commitments.
 
@@ -1256,7 +1256,7 @@ These cannot be closed from repository source alone:
 - [ ] Decide whether independent pentest/audit work is funded; publish scope and date only after completion. Do not add SOC 2, ISO, GDPR, or pentest badges without proof.
 - [ ] Reverify Pinterest, GBP, and Reddit access tiers, policies, limits, deadlines, quotas, permitted origins, retention, and approval evidence immediately before implementation and every certification renewal.
 - [ ] Reverify n8n’s current MIT/verification/tooling/Node requirements, npm name availability, supported-version matrix, provenance support, and Creator Portal status before N8N-001/002/015 closure.
-- [ ] Re-run clean Docker Compose and binary install, provider publishing, billing, MFA/recovery, and production browser checks from the older `TODO.md` where still open.
+- [ ] Re-run clean Docker Compose and binary install, provider publishing, billing, MFA/recovery, and production browser checks from the older launch checklist where still open.
 
 ## Suggested delivery order
 

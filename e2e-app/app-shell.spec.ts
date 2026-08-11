@@ -338,10 +338,14 @@ test("desktop planning sidebar resumes drafts and stays out of mobile navigation
   await authenticatePage(page, auth.token);
   await page.setViewportSize({ width: 1280, height: 720 });
   const publicationListRequests: URL[] = [];
+  const scheduleOverviewRequests: URL[] = [];
   page.on("request", (request) => {
     const url = new URL(request.url());
     if (url.pathname === "/api/v1/publications") {
       publicationListRequests.push(url);
+    }
+    if (url.pathname === "/api/v1/posts/schedule-overview") {
+      scheduleOverviewRequests.push(url);
     }
   });
   await page.goto("/");
@@ -438,10 +442,11 @@ test("desktop planning sidebar resumes drafts and stays out of mobile navigation
   const draftList = page.getByTestId("sidebar-draft-list");
   await expect(draftList.locator("li")).toHaveCount(3);
   await page.waitForTimeout(250);
-  expect(publicationListRequests).toHaveLength(2);
+  expect(publicationListRequests).toHaveLength(1);
   expect(
     publicationListRequests.map((url) => url.searchParams.get("status")),
-  ).toEqual(expect.arrayContaining([null, "draft"]));
+  ).toEqual(["draft"]);
+  expect(scheduleOverviewRequests.length).toBeGreaterThan(0);
   const draftListMetrics = await draftList.evaluate((element) => ({
     clientHeight: element.clientHeight,
     scrollHeight: element.scrollHeight,

@@ -353,7 +353,9 @@ test("profile saves private fields when public-profile capability loading fails"
 
   capabilityAvailable = true;
   await page.getByRole("button", { name: "Try again" }).click();
-  await expect(page.getByText("Public publishing profile")).toBeVisible();
+  await expect(
+    page.getByText("Public publishing profile", { exact: true }),
+  ).toBeVisible();
   expect(capabilityAttempts).toBeGreaterThanOrEqual(2);
 
   await page

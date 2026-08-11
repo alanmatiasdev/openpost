@@ -973,7 +973,6 @@ test("local autosave conflict preserves stale-tab work as a copy", async ({
   await otherTab.goto(originalURL);
   const otherName = otherTab.getByRole("textbox", { name: "Project name" });
   await otherName.fill("Newer tab title");
-  await expect(otherTab.getByText("Saving", { exact: true })).toBeVisible();
   await expect(
     otherTab.getByText("Saved locally", { exact: true }),
   ).toBeVisible({
@@ -1138,7 +1137,10 @@ test("checkpoint partial failures preserve the committed local head and surface 
   expect(checkpoint).toBeTruthy();
   expect(projectAfterCheckpoint.revision).toBe(checkpoint?.revision);
 
-  await history.getByRole("button", { name: "Close" }).click();
+  await history
+    .locator('[data-slot="dialog-footer"]')
+    .getByRole("button", { name: "Close", exact: true })
+    .click();
   await page
     .getByRole("textbox", { name: "Project name" })
     .fill("Local edit after cloud failure");

@@ -36,6 +36,8 @@ function resolvedBlueskyCapability(accountID: string) {
     issues: [],
     capability_revision: "test-v1",
     dynamic_options: {},
+    immediate_readiness: { state: "healthy", publishable: true },
+    scheduled_readiness: { state: "healthy", publishable: true },
   };
 }
 
@@ -563,6 +565,10 @@ test("an in-flight autosave cannot attach an old-workspace draft after switching
     .first();
   await workspaceButton.click();
   await page.getByRole("menuitem", { name: new RegExp(second.name) }).click();
+  await page
+    .getByTestId("composer-workspace-switch-dialog")
+    .getByRole("button", { name: "Discard and switch", exact: true })
+    .click();
   await expect(page.getByText(/Workspace changed/)).toBeVisible();
 
   releaseFirstSave();

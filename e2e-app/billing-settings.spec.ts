@@ -535,7 +535,7 @@ test("settings creates read-only MCP API tokens by default", async ({
 
   await expect(page.getByText("Copy this token now")).toBeVisible();
   await expect(page.getByText(/op_cli_[a-f0-9]{8}_/)).toBeVisible();
-  const createdToken = page.getByText("ChatGPT App E2E").locator("..");
+  const createdToken = page.getByText("ChatGPT App E2E").locator("../..");
   await expect(createdToken).toBeVisible();
   await expect(createdToken).toContainText("MCP / read only");
 });

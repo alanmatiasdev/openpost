@@ -134,6 +134,7 @@ test("failed delivery details stay secondary to post status", async ({
   await page.route("**/api/v1/jobs**", async (route) => {
     await route.fulfill({
       contentType: "application/json",
+      headers: { "X-Total-Count": "2" },
       json: [
         {
           id: "job-1",
@@ -169,9 +170,15 @@ test("failed delivery details stay secondary to post status", async ({
       ),
     )
     .toBe(true);
-  const scheduledTab = page.getByRole("tab", { name: /Scheduled 1/ });
+  const scheduledTab = page.getByRole("tab", {
+    name: "Scheduled",
+    exact: true,
+  });
   await expect(scheduledTab).toBeVisible();
-  const scheduledPanel = page.getByRole("tabpanel", { name: /Scheduled 1/ });
+  const scheduledPanel = page.getByRole("tabpanel", {
+    name: "Scheduled",
+    exact: true,
+  });
   await expect(
     scheduledPanel.getByText("Scheduled thread parent · 2 posts", {
       exact: true,
@@ -180,8 +187,13 @@ test("failed delivery details stay secondary to post status", async ({
   await expect(
     scheduledPanel.getByText("Scheduled thread child", { exact: true }),
   ).toHaveCount(0);
-  await page.getByRole("tab", { name: /Published 1/ }).click();
-  const publishedPanel = page.getByRole("tabpanel", { name: /Published 1/ });
+  await page
+    .getByRole("tab", { name: "Published", exact: true })
+    .click();
+  const publishedPanel = page.getByRole("tabpanel", {
+    name: "Published",
+    exact: true,
+  });
   await expect(
     publishedPanel.getByText("Published thread parent · 2 posts", {
       exact: true,
@@ -191,7 +203,7 @@ test("failed delivery details stay secondary to post status", async ({
     publishedPanel.getByText("Published thread child", { exact: true }),
   ).toHaveCount(0);
   await expect(page.getByRole("tab", { name: "Jobs" })).toHaveCount(0);
-  await page.getByRole("tab", { name: /Failed 2/ }).click();
+  await page.getByRole("tab", { name: "Failed", exact: true }).click();
 
   const details = page.getByText("Technical job records (2)");
   await expect(details).toBeVisible();

@@ -94,6 +94,8 @@ test("mobile shell and composer expose touch-first controls without overflow", a
             issues: [],
             capability_revision: "test-v1",
             dynamic_options: {},
+            immediate_readiness: { state: "healthy", publishable: true },
+            scheduled_readiness: { state: "healthy", publishable: true },
           },
         ],
       },
