@@ -98,8 +98,17 @@ function assertFailureAtomicReleaseWorkflow(workflow) {
   );
 
   assertJobNeeds(prepare, ["verify-candidate"]);
-  assert.match(prepare, /case "\$status" in[\s\S]*200\) ;;[\s\S]*404\)/u);
+  assert.match(
+    prepare,
+    /gh release view "\$GITHUB_REF_NAME"[\s\S]*--json databaseId/u,
+  );
+  assert.match(prepare, /if ! fetch_release; then/u);
+  assert.match(
+    prepare,
+    /gh api "repos\/\$\{GITHUB_REPOSITORY\}\/releases\/\$\{release_id\}"/u,
+  );
   assert.match(prepare, /gh release create[\s\S]*--draft\s/u);
+  assert.doesNotMatch(workflow, /releases\/tags\/\$\{GITHUB_REF_NAME\}/u);
   const prepareValidation = prepare.indexOf("release-assets.mjs verify");
   const evidenceUpload = prepare.indexOf("gh release upload");
   assert.ok(prepareValidation >= 0 && prepareValidation < evidenceUpload);

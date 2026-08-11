@@ -140,38 +140,25 @@ jobs:
             --vulnerability-report candidate-release/openpost-image-trivy.json)"
           [[ "$verified_digest" == "$CANDIDATE_DIGEST" ]]
           bun scripts/release-notes.mjs "$GITHUB_REF_NAME" > release-notes.md
-          release_url="https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/${GITHUB_REF_NAME}"
           fetch_release() {
-            curl --silent --show-error \
-              --connect-timeout 10 \
-              --max-time 30 \
-              --output draft-release.json \
-              --write-out '%{http_code}' \
-              -H 'Accept: application/vnd.github+json' \
-              -H "Authorization: Bearer ${GH_TOKEN}" \
-              -H 'X-GitHub-Api-Version: 2022-11-28' \
-              "$release_url"
+            release_id="$(gh release view "$GITHUB_REF_NAME" \
+              --repo "$GITHUB_REPOSITORY" \
+              --json databaseId \
+              --jq '.databaseId' 2>/dev/null || true)"
+            [[ "$release_id" =~ ^[0-9]+$ ]] || return 1
+            gh api "repos/${GITHUB_REPOSITORY}/releases/${release_id}" > draft-release.json
           }
-          status="$(fetch_release)"
-          case "$status" in
-            200) ;;
-            404)
-              if ! gh release create "$GITHUB_REF_NAME" \
-                --repo "$GITHUB_REPOSITORY" \
-                --draft \
-                --verify-tag \
-                --title "$GITHUB_REF_NAME" \
-                --notes-file release-notes.md; then
-                echo "Draft creation raced with another attempt; validating the resulting release." >&2
-              fi
-              status="$(fetch_release)"
-              [[ "$status" == 200 ]]
-              ;;
-            *)
-              echo "Could not determine release state for $GITHUB_REF_NAME (HTTP $status)." >&2
-              exit 1
-              ;;
-          esac
+          if ! fetch_release; then
+            if ! gh release create "$GITHUB_REF_NAME" \
+              --repo "$GITHUB_REPOSITORY" \
+              --draft \
+              --verify-tag \
+              --title "$GITHUB_REF_NAME" \
+              --notes-file release-notes.md; then
+              echo "Draft creation raced with another attempt; validating the resulting release." >&2
+            fi
+            fetch_release
+          fi
           bun scripts/release-assets.mjs verify \
             --release-json draft-release.json \
             --tag "$GITHUB_REF_NAME" \
@@ -183,8 +170,7 @@ jobs:
             candidate-release/openpost-image-evidence.json \
             candidate-release/openpost-image.spdx.json \
             candidate-release/openpost-image-trivy.json
-          status="$(fetch_release)"
-          [[ "$status" == 200 ]]
+          fetch_release
           bun scripts/release-assets.mjs verify \
             --release-json draft-release.json \
             --tag "$GITHUB_REF_NAME" \
@@ -229,7 +215,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
-          release_state="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${GITHUB_REF_NAME}" --jq '[.draft, .prerelease, .tag_name] | @tsv')"
+          release_state="$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json isDraft,isPrerelease,tagName --jq '[.isDraft, .isPrerelease, .tagName] | @tsv')"
           expected_state=$'true\tfalse\t'"$GITHUB_REF_NAME"
           [[ "$release_state" == "$expected_state" ]]
           gh release upload "$GITHUB_REF_NAME" \
@@ -267,7 +253,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
-          release_state="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${GITHUB_REF_NAME}" --jq '[.draft, .prerelease, .tag_name] | @tsv')"
+          release_state="$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json isDraft,isPrerelease,tagName --jq '[.isDraft, .isPrerelease, .tagName] | @tsv')"
           expected_state=$'true\tfalse\t'"$GITHUB_REF_NAME"
           [[ "$release_state" == "$expected_state" ]]
           gh release upload "$GITHUB_REF_NAME" \
@@ -334,7 +320,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
-          release_state="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${GITHUB_REF_NAME}" --jq '[.draft, .prerelease, .tag_name] | @tsv')"
+          release_state="$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json isDraft,isPrerelease,tagName --jq '[.isDraft, .isPrerelease, .tagName] | @tsv')"
           expected_state=$'true\tfalse\t'"$GITHUB_REF_NAME"
           [[ "$release_state" == "$expected_state" ]]
           gh release upload "$GITHUB_REF_NAME" \
@@ -370,7 +356,9 @@ jobs:
         run: |
           set -euo pipefail
           bun scripts/release-notes.mjs "$GITHUB_REF_NAME" > release-notes.md
-          gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${GITHUB_REF_NAME}" > draft-release.json
+          release_id="$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json databaseId --jq '.databaseId')"
+          [[ "$release_id" =~ ^[0-9]+$ ]]
+          gh api "repos/${GITHUB_REPOSITORY}/releases/${release_id}" > draft-release.json
           bun scripts/release-assets.mjs verify \
             --release-json draft-release.json \
             --tag "$GITHUB_REF_NAME" \
@@ -468,7 +456,8 @@ jobs:
         run: |
           set -euo pipefail
           bun scripts/release-notes.mjs "$GITHUB_REF_NAME" > release-notes.md
-          release_url="https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/${GITHUB_REF_NAME}"
+          release_id="$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json databaseId --jq '.databaseId')"
+          [[ "$release_id" =~ ^[0-9]+$ ]]
           fetch_release() {
             curl --fail --silent --show-error \
               --connect-timeout 10 \
@@ -477,7 +466,7 @@ jobs:
               -H 'Accept: application/vnd.github+json' \
               -H "Authorization: Bearer ${GH_TOKEN}" \
               -H 'X-GitHub-Api-Version: 2022-11-28' \
-              "$release_url"
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/${release_id}"
           }
           fetch_release
           bun scripts/release-assets.mjs verify \

@@ -4,6 +4,10 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- Made the release workflow retrieve draft releases by their database ID because GitHub's tag endpoint does not return drafts, allowing failed tag workflows to fix forward without retagging.
+
 ## [3.7.0] - 2026-08-11
 
 ### Added
