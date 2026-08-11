@@ -147,8 +147,16 @@
 
 	function navigate(href: string) {
 		sidebar.setOpenMobile(false);
-		if (href === '/') ui.startNewPost();
+		if (href === '/') {
+			if (!ui.startNewPost()) return;
+			if (currentPath === '/') return;
+		}
 		goto(resolve(href as '/'));
+	}
+
+	function handleNewPostClick(event: MouseEvent) {
+		sidebar.setOpenMobile(false);
+		if (!ui.startNewPost() || currentPath === '/') event.preventDefault();
 	}
 
 	function isSidebarNavigationItemActive(item: PrimaryNavigationItem) {
@@ -217,7 +225,7 @@
 			class="h-10 w-full gap-2 group-data-[collapsible=icon]:px-0"
 			aria-label={m.sidebar_new_post()}
 			data-testid="sidebar-new-post"
-			onclick={() => ui.startNewPost()}
+			onclick={handleNewPostClick}
 		>
 			<ComposeIcon class="size-4" />
 			{#if sidebar.state !== 'collapsed'}<span>{m.sidebar_new_post()}</span>{/if}

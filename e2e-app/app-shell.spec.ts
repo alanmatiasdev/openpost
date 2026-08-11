@@ -88,7 +88,11 @@ test("first autosave establishes the draft URL and keeps draft actions in one co
   const content = `Keep this draft attached to its own URL: ${link}`;
 
   const auth = await registerUser(request, email);
-  await createWorkspace(request, auth.token, "Draft URL E2E");
+  const workspace = (await createWorkspace(
+    request,
+    auth.token,
+    "Draft URL E2E",
+  )) as { id: string };
   await authenticatePage(page, auth.token);
   await page.goto("/");
 
@@ -98,6 +102,7 @@ test("first autosave establishes the draft URL and keeps draft actions in one co
 
   await expect(page.getByTestId("sidebar-home-brand")).toBeVisible();
   await expect(page.getByTestId("sidebar-new-post")).toBeVisible();
+  await expect(page.getByTestId("composer-account-loading")).toHaveCount(0);
   await expect(homeBrand).toBeVisible();
   await expect(newPostAction).toBeVisible();
   await expect(page.getByTestId("sidebar-notifications")).toBeVisible();
@@ -125,8 +130,34 @@ test("first autosave establishes the draft URL and keeps draft actions in one co
     page.getByRole("button", { name: "Save changes", exact: true }),
   ).toHaveCount(0);
   await expect(page.getByText("Editing draft post")).toHaveCount(0);
+
+  const publicationId = new URL(page.url()).pathname.split("/").pop();
+  expect(publicationId).toBeTruthy();
+  await page.route("**/api/v1/accounts?**", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      json: [
+        {
+          id: "draft-navigation-account",
+          workspace_id: workspace.id,
+          platform: "bluesky",
+          account_id: "did:plc:draft-navigation-account",
+          account_username: "draft_navigation",
+          is_active: true,
+        },
+      ],
+    });
+  });
+  await page.route("**/api/v1/capabilities/resolve", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      json: { accounts: [] },
+    });
+  });
   await page.reload();
   await expect(page.getByLabel("Post text")).toHaveValue(content);
+  await expect(page.getByTestId("composer-account-control")).toBeVisible();
+  await expect(page.getByTestId("composer-account-loading")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Link URL" })).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: "Save changes", exact: true }),
@@ -135,8 +166,12 @@ test("first autosave establishes the draft URL and keeps draft actions in one co
     page.getByRole("button", { name: "Schedule", exact: true }).first(),
   ).toBeVisible();
 
-  const publicationId = new URL(page.url()).pathname.split("/").pop();
-  expect(publicationId).toBeTruthy();
+  await newPostAction.click();
+  await expect(page).toHaveURL(/\/$/);
+  await newPostAction.click();
+  await expect(page.getByTestId("composer-account-control")).toBeVisible();
+  await expect(page.getByTestId("composer-account-loading")).toHaveCount(0);
+
   const publicationDetail = await request.get(
     `/api/v1/publications/${publicationId}`,
     {

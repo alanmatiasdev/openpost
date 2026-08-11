@@ -62,6 +62,14 @@
 			pathname === '/settings' ||
 			pathname.startsWith('/settings/')
 	);
+
+	function navigate(item: (typeof items)[number]) {
+		if (item.id === 'new') {
+			if (!ui.startNewPost()) return;
+			if (pathname === '/') return;
+		}
+		goto(resolve(item.href as '/'));
+	}
 </script>
 
 <nav
@@ -86,10 +94,7 @@
 								? 'bg-accent text-foreground'
 								: 'text-muted-foreground'
 					]}
-					onclick={() => {
-						if (item.id === 'new') ui.startNewPost();
-						goto(resolve(item.href as '/'));
-					}}
+					onclick={() => navigate(item)}
 					aria-current={active ? 'page' : undefined}
 				>
 					<span

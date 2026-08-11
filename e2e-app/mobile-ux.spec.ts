@@ -167,6 +167,14 @@ test("mobile shell and composer expose touch-first controls without overflow", a
   expect(Math.max(...overflow.childRightEdges)).toBeLessThanOrEqual(390);
 
   await expect(page.getByTestId("composer-account-control")).toHaveCount(1);
+  const newPostAction = page.getByRole("button", {
+    name: "New",
+    exact: true,
+  });
+  await newPostAction.click();
+  await newPostAction.click();
+  await expect(page.getByTestId("composer-account-control")).toHaveCount(1);
+  await expect(page.getByTestId("composer-account-loading")).toHaveCount(0);
   const actions = controls.getByTestId("composer-action-controls");
   await expect(actions).toBeVisible();
   await expect(
