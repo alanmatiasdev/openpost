@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { captureTelemetryEvent } from '@openpost/telemetry';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
@@ -115,6 +116,7 @@
 				);
 			}
 			createdWorkspaceID = data.id;
+			captureTelemetryEvent('workspace created');
 			await loadOnboardingState(data.id);
 		} catch (e) {
 			createError = (e as Error).message;

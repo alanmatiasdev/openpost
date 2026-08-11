@@ -7,6 +7,7 @@ FORM: Operate surface; no template carousel, hidden permissions, automatic uploa
 -->
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
+	import { captureTelemetryEvent } from '@openpost/telemetry';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
 	import { resolve } from '$app/paths';
@@ -155,6 +156,7 @@ FORM: Operate surface; no template carousel, hidden permissions, automatic uploa
 			const saved = await saveLocalVideoProject(project);
 			await removeProjectFile(stored.path);
 			temporaryPath = '';
+			captureTelemetryEvent('video project created', { source: 'openpost_media' });
 			await openProject(saved.id);
 		} catch (cause) {
 			if (temporaryPath) await removeProjectFile(temporaryPath).catch(() => undefined);
@@ -192,6 +194,11 @@ FORM: Operate surface; no template carousel, hidden permissions, automatic uploa
 				undefined,
 				editingMode
 			);
+			captureTelemetryEvent('video project created', {
+				source: 'files',
+				editing_mode: editingMode,
+				file_count: files.length
+			});
 			await openProject(project.id);
 		} catch (cause) {
 			error = cause instanceof Error ? cause.message : m.video_editor_create_failed();
@@ -212,6 +219,10 @@ FORM: Operate surface; no template carousel, hidden permissions, automatic uploa
 		error = '';
 		try {
 			const project = await createBlankLocalVideoProject();
+			captureTelemetryEvent('video project created', {
+				source: 'blank',
+				editing_mode: editingMode
+			});
 			await openProject(project.id);
 		} catch (cause) {
 			error = cause instanceof Error ? cause.message : m.video_editor_create_failed();
@@ -285,6 +296,10 @@ FORM: Operate surface; no template carousel, hidden permissions, automatic uploa
 			await addRecordingToProject(recordingProject, manifest, { cameraLayout });
 			const saved = await saveLocalVideoProject(recordingProject);
 			await deleteRecordingManifest(manifest.id);
+			captureTelemetryEvent('video project created', {
+				source: 'recording',
+				editing_mode: editingMode
+			});
 			await openProject(saved.id);
 		} catch (cause) {
 			error = cause instanceof Error ? cause.message : m.video_editor_create_failed();
@@ -329,6 +344,10 @@ FORM: Operate surface; no template carousel, hidden permissions, automatic uploa
 				}
 			});
 			const saved = await saveLocalVideoProject(project);
+			captureTelemetryEvent('video project created', {
+				source: 'stock',
+				editing_mode: editingMode
+			});
 			await openProject(saved.id);
 		} catch (cause) {
 			await deleteLocalVideoProject(project.id);

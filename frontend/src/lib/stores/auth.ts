@@ -1,4 +1,5 @@
 import { browser } from '$app/environment';
+import { identifyTelemetryUser, resetTelemetryIdentity } from '@openpost/telemetry';
 import { writable } from 'svelte/store';
 import { client, setToken, recreateClient, type User } from '$lib/api/client';
 import { getPasskeyAssertion } from '$lib/auth/webauthn';
@@ -41,6 +42,7 @@ function createAuthStore() {
 	});
 	let activeUserID: string | null = null;
 	const clearAccountState = () => {
+		resetTelemetryIdentity();
 		activeUserID = null;
 		notificationInbox.clear();
 		setToken(null);
@@ -54,6 +56,7 @@ function createAuthStore() {
 		if (activeUserID !== user.id) notificationInbox.clear();
 		activeUserID = user.id;
 		set({ user, isLoading: false, isAuthenticated: true });
+		identifyTelemetryUser(user.id);
 	};
 
 	return {

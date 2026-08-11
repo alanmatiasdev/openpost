@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { captureTelemetryEvent } from '@openpost/telemetry';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
@@ -245,6 +246,10 @@
 					'width: 100%; min-width: 312px; background-color: #ffffff; color-scheme: light; border: none;',
 				successUrl: data.return_url
 			}
+		});
+		captureTelemetryEvent('billing checkout opened', {
+			billing_period: billingPeriod,
+			plan_id: selectedPlanID
 		});
 	}
 

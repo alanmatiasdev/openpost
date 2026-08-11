@@ -5,6 +5,7 @@ import tailwindcss from '@tailwindcss/vite';
 import { sveltekit } from '@sveltejs/kit/vite';
 import { VitePWA } from 'vite-plugin-pwa';
 import type { PluginOption } from 'vite';
+import { postHogSourceMaps } from '../scripts/posthog-source-maps';
 
 const paraglidePlugin = paraglideVitePlugin({
 	project: './project.inlang',
@@ -12,6 +13,7 @@ const paraglidePlugin = paraglideVitePlugin({
 }) as unknown as PluginOption;
 const usesPrecompiledParaglide = process.env.OPENPOST_PARAGLIDE_PRECOMPILED === '1';
 const chromiumExecutablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
+const sourceMaps = postHogSourceMaps('app');
 
 export default defineConfig({
 	define: {
@@ -84,8 +86,12 @@ export default defineConfig({
 					}
 				]
 			}
-		})
+		}),
+		...sourceMaps.plugins
 	],
+	build: {
+		sourcemap: sourceMaps.enabled ? 'hidden' : false
+	},
 	optimizeDeps: {
 		include: [
 			'@lucide/svelte/icons/align-left',
