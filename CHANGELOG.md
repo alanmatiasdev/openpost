@@ -6,6 +6,7 @@ All notable changes to this project are documented in this file.
 
 ### Changed
 
+- Split Profile, Security, Developer, Billing, Schedule, Brand, Instance, and workspace preferences into tab-owned Settings modules that each keep loading, mutation, dirty-state, and rendering behavior local while the route owns only navigation and composition.
 - Added an executable release lifecycle that shares Conventional Commit and workflow-run decisions with local preparation and verifies the identity-preserving complete-draft-to-published transition in hosted delivery.
 - Made one Publication application boundary own access checks, creation, updates, validation, scheduling, immediate publishing, and retry orchestration across REST, MCP, CLI, and retained Post compatibility adapters.
 - Centralized all durable job kinds, construction defaults, execution dispatch, retry classification, recurrence, stale-worker recovery, and ambiguous provider-write fencing in the job registry so producers, migrations, and workers share one policy.
