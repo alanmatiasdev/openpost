@@ -4,6 +4,8 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [3.7.0] - 2026-08-11
+
 ### Added
 
 - Added account settings for verification-code email changes, linked sign-in identity details with last-credential safeguards, finite scoped API-token creation, per-field public-profile visibility, and browser-scoped personal preferences. Migration 081 adds email-change challenges, linked-identity display names, and per-field public-profile visibility.
