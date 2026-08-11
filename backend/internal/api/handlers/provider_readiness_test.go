@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humaecho"
@@ -40,9 +41,13 @@ func TestProviderReadinessReportsOnlyAuthoritativePerSubjectDecisions(t *testing
 
 	x := findReadinessProvider(t, out.Providers, "x")
 	require.Equal(t, "configured", x.ConfiguredAppState)
-	require.Equal(t, 1, x.ConnectedAccounts, "retained inactive destinations stay visible for reconnect")
+	require.Equal(t, 1, x.ConnectedAccounts)
 	require.NotEmpty(t, x.Profiles)
-	require.Equal(t, providerreadiness.EffectiveStateReconnectRequired, x.Profiles[0].Immediate.State)
+	for _, profile := range x.Profiles {
+		require.Equal(t, "x-active", profile.SocialAccountID)
+		require.Equal(t, providerreadiness.EffectiveStateHealthy, profile.Immediate.State)
+		require.Equal(t, providerreadiness.EffectiveStateHealthy, profile.Scheduled.State)
+	}
 
 	var raw map[string]any
 	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &raw))
@@ -86,6 +91,22 @@ func newProviderReadinessTestServer(t *testing.T) *providerReadinessTestServer {
 	_, err = db.NewInsert().Model(&models.SocialAccount{
 		ID: "x-inactive", WorkspaceID: "ws-1", Slug: "x-inactive", Platform: "x",
 		AccountID: "x-inactive", AccessTokenEnc: []byte("token"), IsActive: false,
+	}).Exec(ctx)
+	require.NoError(t, err)
+	_, err = db.NewUpdate().Model((*models.SocialAccount)(nil)).
+		Set("is_active = ?", false).
+		Where("id = ?", "x-inactive").
+		Exec(ctx)
+	require.NoError(t, err)
+	now := time.Now().UTC()
+	_, err = db.NewInsert().Model(&models.OAuthGrant{
+		ID: "x-grant", WorkspaceID: "ws-1", Provider: "x", AccessTokenEnc: []byte("token"),
+		ValidationStatus: "valid", ValidatedAt: now, AccessTokenExpiresAt: now.Add(time.Hour),
+	}).Exec(ctx)
+	require.NoError(t, err)
+	_, err = db.NewInsert().Model(&models.SocialAccount{
+		ID: "x-active", WorkspaceID: "ws-1", Slug: "x-active", Platform: "x",
+		AccountID: "x-active", AccessTokenEnc: []byte("token"), OAuthGrantID: "x-grant", IsActive: true,
 	}).Exec(ctx)
 	require.NoError(t, err)
 	catalog, err := providerreadiness.NewConfigurationCatalog(providerreadiness.RuntimeApps([]platform.AppConfig{

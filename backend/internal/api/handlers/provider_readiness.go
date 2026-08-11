@@ -167,7 +167,10 @@ func readinessBlockerCodes(blockers []providerreadiness.Blocker) []string {
 
 func (h *ProviderReadinessHandler) loadReadinessAccounts(ctx context.Context, workspaceID string) (map[string][]models.SocialAccount, error) {
 	var accounts []models.SocialAccount
-	if err := h.db.NewSelect().Model(&accounts).Where("workspace_id = ?", workspaceID).Scan(ctx); err != nil {
+	if err := h.db.NewSelect().Model(&accounts).
+		Where("workspace_id = ?", workspaceID).
+		Where("is_active = ?", true).
+		Scan(ctx); err != nil {
 		return nil, huma.Error500InternalServerError("failed to load connected accounts")
 	}
 	out := map[string][]models.SocialAccount{}

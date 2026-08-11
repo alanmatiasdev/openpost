@@ -18,6 +18,7 @@ All notable changes to this project are documented in this file.
 
 ### Fixed
 
+- Kept disconnected historical account rows out of workspace provider-readiness decisions so an active verified X or Mastodon connection is not marked for reconnection by an older inactive destination.
 - Kept AI meme suggestion previews recoverable when hosted rendering is slow or interrupted, retried one safe transient image download, and stopped canceled requests from appearing as expired sessions.
 
 ## [3.7.3] - 2026-08-11
