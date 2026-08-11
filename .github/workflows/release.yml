@@ -233,12 +233,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
-          release_state="$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json isDraft,isPrerelease,tagName --jq '[.isDraft, .isPrerelease, .tagName] | @tsv')"
-          expected_state=$'true\tfalse\t'"$GITHUB_REF_NAME"
-          [[ "$release_state" == "$expected_state" ]]
-          gh release upload "$GITHUB_REF_NAME" \
-            --repo "$GITHUB_REPOSITORY" \
-            --clobber \
+          scripts/release-asset-upload.sh \
             "openpost-server-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.ext }}"
 
   build-cli:
@@ -271,12 +266,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
-          release_state="$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json isDraft,isPrerelease,tagName --jq '[.isDraft, .isPrerelease, .tagName] | @tsv')"
-          expected_state=$'true\tfalse\t'"$GITHUB_REF_NAME"
-          [[ "$release_state" == "$expected_state" ]]
-          gh release upload "$GITHUB_REF_NAME" \
-            --repo "$GITHUB_REPOSITORY" \
-            --clobber \
+          scripts/release-asset-upload.sh \
             "openpost-cli-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.ext }}" \
             "openpost-mcp-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.ext }}"
 
@@ -338,13 +328,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
-          release_state="$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json isDraft,isPrerelease,tagName --jq '[.isDraft, .isPrerelease, .tagName] | @tsv')"
-          expected_state=$'true\tfalse\t'"$GITHUB_REF_NAME"
-          [[ "$release_state" == "$expected_state" ]]
-          gh release upload "$GITHUB_REF_NAME" \
-            --repo "$GITHUB_REPOSITORY" \
-            --clobber \
-            openpost-app-android.apk
+          scripts/release-asset-upload.sh openpost-app-android.apk
 
   promote-image:
     name: Promote tested image

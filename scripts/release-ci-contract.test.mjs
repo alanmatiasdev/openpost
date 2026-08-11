@@ -10,6 +10,10 @@ const dockerfile = readFileSync("docker/Dockerfile", "utf8");
 const imageEvidence = readFileSync("scripts/image-evidence.mjs", "utf8");
 const localRelease = readFileSync("scripts/release.mjs", "utf8");
 const smoke = readFileSync("scripts/smoke-production-image.sh", "utf8");
+const releaseAssetUpload = readFileSync(
+  "scripts/release-asset-upload.sh",
+  "utf8",
+);
 const dependabot = readFileSync(".github/dependabot.yml", "utf8");
 const workflows = readdirSync(".github/workflows", { withFileTypes: true })
   .filter((entry) => entry.isFile() && /\.(?:ya?ml)$/u.test(entry.name))
@@ -116,11 +120,14 @@ function assertFailureAtomicReleaseWorkflow(workflow) {
 
   for (const job of [binaries, cli, android]) {
     assertJobNeeds(job, ["verify-candidate", "prepare-draft"]);
-    const draftCheck = job.indexOf("release_state=");
-    const upload = job.indexOf("gh release upload");
-    assert.ok(draftCheck >= 0 && draftCheck < upload);
-    assert.match(job, /expected_state=\$'true\\tfalse\\t'/u);
+    assert.match(job, /scripts\/release-asset-upload\.sh/u);
   }
+
+  assert.match(releaseAssetUpload, /for attempt in \$\(seq 1 20\)/u);
+  assert.match(releaseAssetUpload, /gh release view/u);
+  assert.match(releaseAssetUpload, /expected_state=\$'true\\tfalse\\t'/u);
+  assert.match(releaseAssetUpload, /for attempt in \$\(seq 1 5\)/u);
+  assert.match(releaseAssetUpload, /gh release upload/u);
 
   assertJobNeeds(promote, [
     "verify-candidate",
