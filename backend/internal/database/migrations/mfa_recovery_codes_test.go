@@ -15,7 +15,7 @@ func TestRunMigrationsCreatesMFARecoveryCodesWithCascadeAndActiveUniqueness(t *t
 	db := newMigrationsTestDB(t)
 	ctx := context.Background()
 	seedMigrationUser(ctx, t, db)
-	require.NoError(t, RunMigrations(db))
+	require.NoError(t, runTestMigrations(t, db))
 
 	row := db.QueryRowContext(ctx, "SELECT sql FROM sqlite_master WHERE name = 'user_mfa_recovery_codes'")
 	var schema string

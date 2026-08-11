@@ -11,7 +11,7 @@ func TestRunMigrationsCreatesAnalyticsSchema(t *testing.T) {
 	t.Parallel()
 
 	db := newMigrationsTestDB(t)
-	require.NoError(t, RunMigrations(db))
+	require.NoError(t, runTestMigrations(t, db))
 
 	ctx := context.Background()
 	for _, table := range []string{

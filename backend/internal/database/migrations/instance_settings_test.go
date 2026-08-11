@@ -12,7 +12,7 @@ func TestRunMigrationsCreatesEncryptedInstanceSettingsSchema(t *testing.T) {
 
 	db := newMigrationsTestDB(t)
 	ctx := context.Background()
-	require.NoError(t, RunMigrations(db))
+	require.NoError(t, runTestMigrations(t, db))
 
 	row := db.QueryRowContext(ctx, "SELECT sql FROM sqlite_master WHERE name = 'instance_settings'")
 	var schema string

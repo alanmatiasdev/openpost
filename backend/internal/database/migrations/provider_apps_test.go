@@ -14,7 +14,7 @@ func TestRunMigrationsCreatesProviderAppsSchema(t *testing.T) {
 	db := newMigrationsTestDB(t)
 	ctx := context.Background()
 
-	require.NoError(t, RunMigrations(db))
+	require.NoError(t, runTestMigrations(t, db))
 
 	row := db.QueryRowContext(ctx, "SELECT sql FROM sqlite_master WHERE name = 'provider_apps'")
 	var schema string
@@ -39,7 +39,7 @@ func TestRunMigrationsProviderAppsEnforcesOneAppPerProviderInstance(t *testing.T
 	db := newMigrationsTestDB(t)
 	ctx := context.Background()
 
-	require.NoError(t, RunMigrations(db))
+	require.NoError(t, runTestMigrations(t, db))
 
 	_, err := db.ExecContext(ctx, `
 		INSERT INTO provider_apps (id, provider, client_id)

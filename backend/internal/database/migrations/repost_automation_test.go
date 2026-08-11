@@ -12,7 +12,7 @@ func TestRunMigrationsCreatesRepostAutomationSchema(t *testing.T) {
 	db := newMigrationsTestDB(t)
 	ctx := context.Background()
 	seedMigrationUser(ctx, t, db)
-	require.NoError(t, RunMigrations(db))
+	require.NoError(t, runTestMigrations(t, db))
 
 	for table, foreignKeys := range map[string]int{
 		"repost_policies":        3,
@@ -30,5 +30,5 @@ func TestRunMigrationsCreatesRepostAutomationSchema(t *testing.T) {
 	var publicationSchema string
 	require.NoError(t, db.QueryRowContext(ctx, "SELECT sql FROM sqlite_master WHERE name = 'publications'").Scan(&publicationSchema))
 	require.Contains(t, publicationSchema, "repost_override_json")
-	require.NoError(t, RunMigrations(db))
+	require.NoError(t, runTestMigrations(t, db))
 }

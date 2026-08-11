@@ -38,7 +38,7 @@ func TestEmailVerificationMigrationBackfillsExistingUsersAndCreatesChallenges(t 
 		require.NoError(t, err)
 	}
 
-	require.NoError(t, RunMigrations(db))
+	require.NoError(t, runTestMigrations(t, db))
 
 	var verifiedAt sql.NullTime
 	require.NoError(t, db.NewSelect().Table("users").Column("email_verified_at").

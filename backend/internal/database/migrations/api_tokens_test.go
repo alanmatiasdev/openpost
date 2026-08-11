@@ -17,7 +17,7 @@ func TestRunMigrationsCreatesAPITokensSchema(t *testing.T) {
 	ctx := context.Background()
 	seedMigrationUser(ctx, t, db)
 
-	require.NoError(t, RunMigrations(db))
+	require.NoError(t, runTestMigrations(t, db))
 
 	row := db.QueryRowContext(ctx, "SELECT sql FROM sqlite_master WHERE name = 'api_tokens'")
 	var schema string
@@ -42,8 +42,8 @@ func TestRunMigrationsAPITokensIdempotent(t *testing.T) {
 	ctx := context.Background()
 	seedMigrationUser(ctx, t, db)
 
-	require.NoError(t, RunMigrations(db))
-	require.NoError(t, RunMigrations(db))
+	require.NoError(t, runTestMigrations(t, db))
+	require.NoError(t, runTestMigrations(t, db))
 
 	_, err := db.ExecContext(ctx, `
 		INSERT INTO api_tokens (id, user_id, name, token_hash, token_prefix)
@@ -62,7 +62,7 @@ func TestRunMigrationsAPITokensForeignKeyCascade(t *testing.T) {
 	db := newMigrationsTestDB(t)
 	ctx := context.Background()
 	seedMigrationUser(ctx, t, db)
-	require.NoError(t, RunMigrations(db))
+	require.NoError(t, runTestMigrations(t, db))
 
 	_, err := db.ExecContext(ctx, `
 		INSERT INTO api_tokens (id, user_id, name, token_hash, token_prefix)
@@ -84,7 +84,7 @@ func TestRunMigrationsAPITokensPrefixLookupAndHashUniqueness(t *testing.T) {
 	db := newMigrationsTestDB(t)
 	ctx := context.Background()
 	seedMigrationUser(ctx, t, db)
-	require.NoError(t, RunMigrations(db))
+	require.NoError(t, runTestMigrations(t, db))
 
 	_, err := db.ExecContext(ctx, `
 		INSERT INTO api_tokens (id, user_id, name, token_hash, token_prefix)

@@ -72,7 +72,7 @@ func TestRunMigrationsMovesThreadDraftBlobsToThreadDraftsTable(t *testing.T) {
 	_, err := db.NewInsert().Model(&posts).Exec(ctx)
 	require.NoError(t, err)
 
-	require.NoError(t, RunMigrations(db))
+	require.NoError(t, runTestMigrations(t, db))
 
 	// Both thread parents must now have a thread_drafts row carrying the blob.
 	var drafts []models.ThreadDraft
@@ -109,9 +109,9 @@ func TestRunMigrationsIsIdempotentForThreadDrafts(t *testing.T) {
 	_, err := db.NewInsert().Model(&posts).Exec(ctx)
 	require.NoError(t, err)
 
-	require.NoError(t, RunMigrations(db))
-	require.NoError(t, RunMigrations(db))
-	require.NoError(t, RunMigrations(db))
+	require.NoError(t, runTestMigrations(t, db))
+	require.NoError(t, runTestMigrations(t, db))
+	require.NoError(t, runTestMigrations(t, db))
 
 	// Re-running the migration must not duplicate thread_drafts rows, and
 	// must not change posts.content (which is now empty, and should stay empty).
@@ -133,7 +133,7 @@ func TestRunMigrationsHandlesEmptyPostsTable(t *testing.T) {
 	db := newMigrationsTestDB(t)
 	ctx := context.Background()
 
-	require.NoError(t, RunMigrations(db))
+	require.NoError(t, runTestMigrations(t, db))
 
 	var count int
 	require.NoError(t, db.NewSelect().ColumnExpr("COUNT(*)").TableExpr("thread_drafts").Scan(ctx, &count))
@@ -152,7 +152,7 @@ func TestRunMigrationsThreadDraftsForeignKeyOnDeleteCascade(t *testing.T) {
 	_, err := db.NewInsert().Model(&posts).Exec(ctx)
 	require.NoError(t, err)
 
-	require.NoError(t, RunMigrations(db))
+	require.NoError(t, runTestMigrations(t, db))
 
 	// Verify the FK constraint actually exists in the schema. If it
 	// doesn't, the cascade is a no-op and the test passes by accident.

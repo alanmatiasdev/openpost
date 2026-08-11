@@ -15,7 +15,7 @@ func TestRunMigrationsCreatesUserImpersonationGrantSchema(t *testing.T) {
 	ctx := context.Background()
 	seedMigrationUser(ctx, t, db)
 
-	require.NoError(t, RunMigrations(db))
+	require.NoError(t, runTestMigrations(t, db))
 
 	var schema string
 	require.NoError(t, db.QueryRowContext(
@@ -45,7 +45,7 @@ func TestRunMigrationsImpersonationGrantForeignKeysCascade(t *testing.T) {
 	db := newMigrationsTestDB(t)
 	ctx := context.Background()
 	seedMigrationUser(ctx, t, db)
-	require.NoError(t, RunMigrations(db))
+	require.NoError(t, runTestMigrations(t, db))
 
 	_, err := db.ExecContext(ctx, `
 		INSERT INTO users (id, email, password_hash, created_at)

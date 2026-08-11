@@ -29,7 +29,7 @@ func TestRunMigrationsAddsPromptExampleColumnToLegacyTable(t *testing.T) {
 		VALUES ('builtin-001', 'share a take', 'Bold & Provoking', true)`)
 	require.NoError(t, err)
 
-	require.NoError(t, RunMigrations(db))
+	require.NoError(t, runTestMigrations(t, db))
 
 	present, err := migrationColumnExists(ctx, db, "prompts", "example")
 	require.NoError(t, err)
@@ -41,7 +41,7 @@ func TestRunMigrationsAddsPromptExampleColumnToLegacyTable(t *testing.T) {
 	require.Equal(t, "", example, "legacy rows default to an empty example")
 
 	// Re-running the migration must stay idempotent.
-	require.NoError(t, RunMigrations(db))
+	require.NoError(t, runTestMigrations(t, db))
 }
 
 func TestRunMigrationsCreatesPromptsTableWithExampleColumn(t *testing.T) {
@@ -52,7 +52,7 @@ func TestRunMigrationsCreatesPromptsTableWithExampleColumn(t *testing.T) {
 	db := newMigrationsTestDB(t)
 	ctx := context.Background()
 
-	require.NoError(t, RunMigrations(db))
+	require.NoError(t, runTestMigrations(t, db))
 
 	present, err := migrationColumnExists(ctx, db, "prompts", "example")
 	require.NoError(t, err)

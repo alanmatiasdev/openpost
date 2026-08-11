@@ -17,7 +17,7 @@ func TestRunMigrationsCreatesCLIAuthSessionsSchema(t *testing.T) {
 	ctx := context.Background()
 	seedMigrationUser(ctx, t, db)
 
-	require.NoError(t, RunMigrations(db))
+	require.NoError(t, runTestMigrations(t, db))
 
 	row := db.QueryRowContext(ctx, "SELECT sql FROM sqlite_master WHERE name = 'cli_auth_sessions'")
 	var schema string
@@ -41,8 +41,8 @@ func TestRunMigrationsCLIAuthSessionsIdempotent(t *testing.T) {
 
 	db := newMigrationsTestDB(t)
 	ctx := context.Background()
-	require.NoError(t, RunMigrations(db))
-	require.NoError(t, RunMigrations(db))
+	require.NoError(t, runTestMigrations(t, db))
+	require.NoError(t, runTestMigrations(t, db))
 
 	_, err := db.ExecContext(ctx, `
 		INSERT INTO cli_auth_sessions (
@@ -59,7 +59,7 @@ func TestRunMigrationsCLIAuthSessionsUserCodeUniqueness(t *testing.T) {
 
 	db := newMigrationsTestDB(t)
 	ctx := context.Background()
-	require.NoError(t, RunMigrations(db))
+	require.NoError(t, runTestMigrations(t, db))
 
 	insertSession(ctx, t, db, "session-1", "device-hash-1", "user-hash-1", "pending", time.Now().Add(time.Hour))
 	_, err := db.ExecContext(ctx, `
@@ -78,7 +78,7 @@ func TestRunMigrationsCLIAuthSessionsStatusEnum(t *testing.T) {
 
 	db := newMigrationsTestDB(t)
 	ctx := context.Background()
-	require.NoError(t, RunMigrations(db))
+	require.NoError(t, runTestMigrations(t, db))
 
 	insertSession(ctx, t, db, "session-1", "device-hash-1", "user-hash-1", "approved", time.Now().Add(time.Hour))
 	_, err := db.ExecContext(ctx, `
@@ -97,7 +97,7 @@ func TestRunMigrationsCLIAuthSessionsExpiryCleanupQuery(t *testing.T) {
 
 	db := newMigrationsTestDB(t)
 	ctx := context.Background()
-	require.NoError(t, RunMigrations(db))
+	require.NoError(t, runTestMigrations(t, db))
 
 	now := time.Now().UTC()
 	insertSession(ctx, t, db, "expired-1", "device-hash-1", "user-hash-1", "pending", now.Add(-time.Hour))

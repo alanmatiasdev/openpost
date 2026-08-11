@@ -84,7 +84,7 @@ func TestRunMigrationsReplacesLegacySocialSetsAndPromotesSchedules(t *testing.T)
 	}).Exec(ctx)
 	require.NoError(t, err)
 
-	err = RunMigrations(db)
+	err = runTestMigrations(t, db)
 	require.NoError(t, err)
 
 	var schedule models.PostingSchedule
@@ -145,7 +145,7 @@ func TestRunMigrationsPromotesSingleExistingUserToInstanceAdmin(t *testing.T) {
 	_, err = db.Exec(`INSERT INTO users (id, email, password_hash) VALUES ('user-1', 'admin@example.com', 'hash')`)
 	require.NoError(t, err)
 
-	err = RunMigrations(db)
+	err = runTestMigrations(t, db)
 	require.NoError(t, err)
 
 	var user models.User
@@ -285,7 +285,7 @@ func TestOIDCSSOMigrationAllowsPasswordlessUsersAndBackfillsOrganizationMembers(
 	_, err = db.NewInsert().Model(&applied).Exec(ctx)
 	require.NoError(t, err)
 
-	require.NoError(t, RunMigrations(db))
+	require.NoError(t, runTestMigrations(t, db))
 
 	_, err = db.ExecContext(ctx, `
 		INSERT INTO users (id, email, password_hash)

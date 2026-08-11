@@ -16,7 +16,7 @@ func TestRunMigrationsCreatesOAuthAccountSelectionsSchema(t *testing.T) {
 	ctx := context.Background()
 	seedMigrationUser(ctx, t, db)
 
-	require.NoError(t, RunMigrations(db))
+	require.NoError(t, runTestMigrations(t, db))
 
 	row := db.QueryRowContext(ctx, "SELECT sql FROM sqlite_master WHERE name = 'oauth_account_selections'")
 	var schema string
@@ -41,7 +41,7 @@ func TestRunMigrationsOAuthAccountSelectionsUsable(t *testing.T) {
 	db := newMigrationsTestDB(t)
 	ctx := context.Background()
 	seedMigrationUser(ctx, t, db)
-	require.NoError(t, RunMigrations(db))
+	require.NoError(t, runTestMigrations(t, db))
 
 	_, err := db.NewInsert().Model(&models.Workspace{ID: "ws-selection", Name: "Selection"}).Exec(ctx)
 	require.NoError(t, err)

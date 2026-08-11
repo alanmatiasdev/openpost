@@ -13,8 +13,8 @@ func TestImageEditorPageBackgroundMigration(t *testing.T) {
 	db := newPostVariantsTestDB(t)
 	ctx := context.Background()
 
-	require.NoError(t, RunMigrations(db))
-	require.NoError(t, RunMigrations(db))
+	require.NoError(t, runTestMigrations(t, db))
+	require.NoError(t, runTestMigrations(t, db))
 
 	exists, err := migrationColumnExists(ctx, db, "design_pages", "background_json")
 	require.NoError(t, err)

@@ -15,7 +15,7 @@ func TestRunMigrationsAddsSocialAccountCapabilityState(t *testing.T) {
 	ctx := context.Background()
 	seedMigrationUser(ctx, t, db)
 
-	require.NoError(t, RunMigrations(db))
+	require.NoError(t, runTestMigrations(t, db))
 
 	var socialAccountSchema string
 	require.NoError(t, db.QueryRowContext(ctx, "SELECT sql FROM sqlite_master WHERE name = 'social_accounts'").Scan(&socialAccountSchema))

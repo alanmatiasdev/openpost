@@ -13,8 +13,8 @@ func TestRunMigrationsAddsImageEditorExportDefaults(t *testing.T) {
 	db := newPostVariantsTestDB(t)
 	ctx := context.Background()
 
-	require.NoError(t, RunMigrations(db))
-	require.NoError(t, RunMigrations(db))
+	require.NoError(t, runTestMigrations(t, db))
+	require.NoError(t, runTestMigrations(t, db))
 
 	for _, column := range []string{"export_format", "export_quality"} {
 		exists, err := migrationColumnExists(ctx, db, "design_documents", column)

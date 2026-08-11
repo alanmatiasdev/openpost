@@ -14,7 +14,7 @@ func TestVideoRevisionMediaReferencesBackfillProtectsHistoricalSnapshotMedia(t *
 	db := newMigrationsTestDB(t)
 	ctx := context.Background()
 	seedMigrationUser(ctx, t, db)
-	require.NoError(t, RunMigrations(db))
+	require.NoError(t, runTestMigrations(t, db))
 	_, err := db.NewInsert().Model(&models.Workspace{ID: "video-workspace-1", Name: "Workspace"}).Exec(ctx)
 	require.NoError(t, err)
 	_, err = db.NewInsert().Model(&models.Workspace{ID: "video-workspace-2", Name: "Other workspace"}).Exec(ctx)

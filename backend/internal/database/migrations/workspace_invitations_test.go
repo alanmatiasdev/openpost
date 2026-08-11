@@ -16,7 +16,7 @@ func TestRunMigrationsCreatesWorkspaceInvitationsSchema(t *testing.T) {
 	ctx := context.Background()
 	seedMigrationUser(ctx, t, db)
 
-	require.NoError(t, RunMigrations(db))
+	require.NoError(t, runTestMigrations(t, db))
 
 	row := db.QueryRowContext(ctx, "SELECT sql FROM sqlite_master WHERE name = 'workspace_invitations'")
 	var schema string
@@ -44,7 +44,7 @@ func TestRunMigrationsWorkspaceInvitationsCascadeWithWorkspace(t *testing.T) {
 	db := newMigrationsTestDB(t)
 	ctx := context.Background()
 	seedMigrationUser(ctx, t, db)
-	require.NoError(t, RunMigrations(db))
+	require.NoError(t, runTestMigrations(t, db))
 
 	_, err := db.NewInsert().Model(&models.Workspace{ID: "ws-invite", Name: "Invites"}).Exec(ctx)
 	require.NoError(t, err)

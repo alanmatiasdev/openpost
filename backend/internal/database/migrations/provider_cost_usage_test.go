@@ -14,7 +14,7 @@ func TestRunMigrationsCreatesProviderCostUsageSchema(t *testing.T) {
 	ctx := context.Background()
 	seedMigrationUser(ctx, t, db)
 
-	require.NoError(t, RunMigrations(db))
+	require.NoError(t, runTestMigrations(t, db))
 
 	var eventSchema string
 	require.NoError(t, db.QueryRowContext(
@@ -50,7 +50,7 @@ func TestProviderCostUsageCascadesWithWorkspace(t *testing.T) {
 	db := newMigrationsTestDB(t)
 	ctx := context.Background()
 	seedMigrationUser(ctx, t, db)
-	require.NoError(t, RunMigrations(db))
+	require.NoError(t, runTestMigrations(t, db))
 	_, err := db.NewInsert().Model(&models.Workspace{ID: "ws-cost", Name: "Cost"}).Exec(ctx)
 	require.NoError(t, err)
 	_, err = db.ExecContext(ctx, `

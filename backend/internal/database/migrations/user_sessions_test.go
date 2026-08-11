@@ -15,7 +15,7 @@ func TestRunMigrationsCreatesUserSessionsSchema(t *testing.T) {
 	ctx := context.Background()
 	seedMigrationUser(ctx, t, db)
 
-	require.NoError(t, RunMigrations(db))
+	require.NoError(t, runTestMigrations(t, db))
 
 	row := db.QueryRowContext(ctx, "SELECT sql FROM sqlite_master WHERE name = 'user_sessions'")
 	var schema string
@@ -39,7 +39,7 @@ func TestRunMigrationsUserSessionsForeignKeyCascade(t *testing.T) {
 	db := newMigrationsTestDB(t)
 	ctx := context.Background()
 	seedMigrationUser(ctx, t, db)
-	require.NoError(t, RunMigrations(db))
+	require.NoError(t, runTestMigrations(t, db))
 
 	_, err := db.ExecContext(ctx, `
 		INSERT INTO user_sessions (id, user_id, expires_at, created_at)

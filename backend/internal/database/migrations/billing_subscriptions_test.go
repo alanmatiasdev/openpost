@@ -15,7 +15,7 @@ func TestRunMigrationsCreatesBillingSubscriptionSchema(t *testing.T) {
 	ctx := context.Background()
 	seedMigrationUser(ctx, t, db)
 
-	require.NoError(t, RunMigrations(db))
+	require.NoError(t, runTestMigrations(t, db))
 
 	row := db.QueryRowContext(ctx, "SELECT sql FROM sqlite_master WHERE name = 'billing_subscriptions'")
 	var schema string
@@ -65,8 +65,8 @@ func TestRunMigrationsBillingSubscriptionsIdempotent(t *testing.T) {
 	ctx := context.Background()
 	seedMigrationUser(ctx, t, db)
 
-	require.NoError(t, RunMigrations(db))
-	require.NoError(t, RunMigrations(db))
+	require.NoError(t, runTestMigrations(t, db))
+	require.NoError(t, runTestMigrations(t, db))
 
 	_, err := db.NewInsert().Model(&models.Organization{ID: "org-billing", Name: "Billing", CreatedByID: "user-1"}).Exec(ctx)
 	require.NoError(t, err)
@@ -90,7 +90,7 @@ func TestRunMigrationsBillingSubscriptionsCascadeWithOrganization(t *testing.T) 
 	db := newMigrationsTestDB(t)
 	ctx := context.Background()
 	seedMigrationUser(ctx, t, db)
-	require.NoError(t, RunMigrations(db))
+	require.NoError(t, runTestMigrations(t, db))
 
 	_, err := db.NewInsert().Model(&models.Organization{ID: "org-billing", Name: "Billing", CreatedByID: "user-1"}).Exec(ctx)
 	require.NoError(t, err)
@@ -119,7 +119,7 @@ func TestRunMigrationsBillingWebhookEventsDeduplicate(t *testing.T) {
 
 	db := newMigrationsTestDB(t)
 	ctx := context.Background()
-	require.NoError(t, RunMigrations(db))
+	require.NoError(t, runTestMigrations(t, db))
 
 	_, err := db.NewInsert().Model(&models.BillingWebhookEvent{
 		EventID:   "evt-1",

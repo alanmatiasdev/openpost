@@ -57,8 +57,8 @@ func TestPublicationTextEditorMigrationBackfillsExistingDrafts(t *testing.T) {
 	}).Exec(ctx)
 	require.NoError(t, err)
 
-	require.NoError(t, RunMigrations(db))
-	require.NoError(t, RunMigrations(db))
+	require.NoError(t, runTestMigrations(t, db))
+	require.NoError(t, runTestMigrations(t, db))
 
 	var editors []models.Post
 	require.NoError(t, db.NewSelect().

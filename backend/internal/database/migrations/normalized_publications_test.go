@@ -70,8 +70,8 @@ func TestNormalizedPublicationMigrationBackfillsOneSegmentAndCascades(t *testing
 	)
 	require.NoError(t, err)
 
-	require.NoError(t, RunMigrations(db))
-	require.NoError(t, RunMigrations(db))
+	require.NoError(t, runTestMigrations(t, db))
+	require.NoError(t, runTestMigrations(t, db))
 
 	var intent, outputProfile string
 	require.NoError(t, db.QueryRowContext(ctx, "SELECT intent FROM publications WHERE id = ?", "publication-normalized").Scan(&intent))
@@ -110,7 +110,7 @@ func TestLegacyAuthoringMigrationPreservesThreadVariantsScheduleAndJobs(t *testi
 		require.NoError(t, err)
 	}
 	seedMigrationUser(ctx, t, db)
-	require.NoError(t, RunMigrations(db))
+	require.NoError(t, runTestMigrations(t, db))
 
 	_, err := db.NewInsert().Model(&models.Workspace{ID: "ws-legacy-authoring", Name: "Legacy"}).Exec(ctx)
 	require.NoError(t, err)
@@ -156,8 +156,8 @@ func TestLegacyAuthoringMigrationPreservesThreadVariantsScheduleAndJobs(t *testi
 	_, err = db.NewInsert().Model(&jobs).Exec(ctx)
 	require.NoError(t, err)
 
-	require.NoError(t, RunMigrations(db))
-	require.NoError(t, RunMigrations(db))
+	require.NoError(t, runTestMigrations(t, db))
+	require.NoError(t, runTestMigrations(t, db))
 
 	publicationID := "legacy-publication:legacy-root"
 	var publication models.Publication
@@ -324,7 +324,7 @@ func TestLegacyAuthoringMigrationFollowsSequentialReplyChains(t *testing.T) {
 		require.NoError(t, err)
 	}
 	seedMigrationUser(ctx, t, db)
-	require.NoError(t, RunMigrations(db))
+	require.NoError(t, runTestMigrations(t, db))
 	_, err := db.NewInsert().Model(&models.Workspace{ID: "ws-chain", Name: "Chain"}).Exec(ctx)
 	require.NoError(t, err)
 	createdAt := time.Now().UTC().Add(-time.Hour)

@@ -27,7 +27,7 @@ func TestRunMigrationsBackfillsSocialAccountSlugs(t *testing.T) {
 	}).Exec(ctx)
 	require.NoError(t, err)
 
-	require.NoError(t, RunMigrations(db))
+	require.NoError(t, runTestMigrations(t, db))
 
 	var account models.SocialAccount
 	require.NoError(t, db.NewSelect().Model(&account).Where("id = ?", "account-123456789").Scan(ctx))
@@ -40,7 +40,7 @@ func TestRunMigrationsSocialAccountSlugUniquePerActiveWorkspace(t *testing.T) {
 	db := newMigrationsTestDB(t)
 	ctx := context.Background()
 	seedMigrationUser(ctx, t, db)
-	require.NoError(t, RunMigrations(db))
+	require.NoError(t, runTestMigrations(t, db))
 
 	accounts := []models.SocialAccount{
 		{ID: "acc-1", WorkspaceID: "ws-1", Slug: "main-x", Platform: "x", AccountID: "1", AccessTokenEnc: []byte("token"), IsActive: true},

@@ -11,7 +11,7 @@ func TestRunMigrationsCreatesCommunicationsSchema(t *testing.T) {
 	t.Parallel()
 
 	db := newMigrationsTestDB(t)
-	require.NoError(t, RunMigrations(db))
+	require.NoError(t, runTestMigrations(t, db))
 	ctx := context.Background()
 	for table, expectedForeignKeys := range map[string]int{
 		"engagement_items":              2,

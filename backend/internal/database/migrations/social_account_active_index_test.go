@@ -20,7 +20,7 @@ func TestRunMigrationsDropsLegacySocialAccountActiveIndex(t *testing.T) {
 	_, err = db.ExecContext(ctx, "CREATE UNIQUE INDEX social_accounts_active_idx ON social_accounts (workspace_id) WHERE is_active = 1")
 	require.NoError(t, err)
 
-	require.NoError(t, RunMigrations(db))
+	require.NoError(t, runTestMigrations(t, db))
 
 	var legacyIndexCount int
 	require.NoError(t, db.NewSelect().

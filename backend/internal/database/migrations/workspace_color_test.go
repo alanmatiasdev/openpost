@@ -33,8 +33,8 @@ func TestRunMigrationsAddsWorkspaceColor(t *testing.T) {
 	_, err = db.ExecContext(ctx, `INSERT INTO workspaces (id, name) VALUES ('ws-1', 'Launch')`)
 	require.NoError(t, err)
 
-	require.NoError(t, RunMigrations(db))
-	require.NoError(t, RunMigrations(db))
+	require.NoError(t, runTestMigrations(t, db))
+	require.NoError(t, runTestMigrations(t, db))
 
 	var color string
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT color FROM workspaces WHERE id = 'ws-1'`).Scan(&color))

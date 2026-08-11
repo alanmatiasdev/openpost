@@ -14,7 +14,7 @@ func TestRunMigrationsAddsAccountLifecycleSchema(t *testing.T) {
 
 	_, err := db.NewCreateTable().Model((*models.User)(nil)).IfNotExists().Exec(ctx)
 	require.NoError(t, err)
-	require.NoError(t, RunMigrations(db))
+	require.NoError(t, runTestMigrations(t, db))
 
 	var userSchema string
 	require.NoError(t, db.QueryRowContext(ctx, "SELECT sql FROM sqlite_master WHERE name = 'users'").Scan(&userSchema))

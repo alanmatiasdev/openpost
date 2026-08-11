@@ -17,8 +17,8 @@ func TestAttentionUXMigrationIsIdempotentAndEnforcesConstraints(t *testing.T) {
 	ctx := context.Background()
 	seedMigrationUser(ctx, t, db)
 
-	require.NoError(t, RunMigrations(db))
-	require.NoError(t, RunMigrations(db))
+	require.NoError(t, runTestMigrations(t, db))
+	require.NoError(t, runTestMigrations(t, db))
 
 	for _, column := range []string{
 		"attachments_json", "edited_at", "deleted_at", "can_like", "can_unlike", "liked",

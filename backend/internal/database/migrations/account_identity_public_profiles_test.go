@@ -16,7 +16,7 @@ func TestAccountIdentityPublicProfileMigrationPreservesPrivacyContracts(t *testi
 	db := newMigrationsTestDB(t)
 	ctx := context.Background()
 	seedMigrationUser(ctx, t, db)
-	require.NoError(t, RunMigrations(db))
+	require.NoError(t, runTestMigrations(t, db))
 
 	var visibility string
 	require.NoError(t, db.NewSelect().
@@ -166,7 +166,7 @@ func TestEmailChangeChallengesAllowOnlyOneActiveRequestAndCascade(t *testing.T) 
 	db := newMigrationsTestDB(t)
 	ctx := context.Background()
 	seedMigrationUser(ctx, t, db)
-	require.NoError(t, RunMigrations(db))
+	require.NoError(t, runTestMigrations(t, db))
 
 	now := time.Now().UTC()
 	challenge := &models.EmailChangeChallenge{

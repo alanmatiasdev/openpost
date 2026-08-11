@@ -16,7 +16,7 @@ func TestRunMigrationsCreatesPublicationSchema(t *testing.T) {
 	ctx := context.Background()
 	seedMigrationUser(ctx, t, db)
 
-	require.NoError(t, RunMigrations(db))
+	require.NoError(t, runTestMigrations(t, db))
 
 	row := db.QueryRowContext(ctx, "SELECT sql FROM sqlite_master WHERE name = 'publications'")
 	var publicationSchema string
@@ -70,7 +70,7 @@ func TestRunMigrationsCreatesPublicationSchema(t *testing.T) {
 		ChangedDomains: `["media"]`,
 	}).Exec(ctx)
 	require.Error(t, err)
-	require.NoError(t, RunMigrations(db))
+	require.NoError(t, runTestMigrations(t, db))
 }
 
 func TestDraftRevisionMigrationUpgradesPopulatedSQLitePosts(t *testing.T) {
@@ -116,7 +116,7 @@ func TestDraftRevisionMigrationUpgradesPopulatedSQLitePosts(t *testing.T) {
 	_, err = db.ExecContext(ctx, "PRAGMA foreign_keys=ON")
 	require.NoError(t, err)
 
-	require.NoError(t, RunMigrations(db))
+	require.NoError(t, runTestMigrations(t, db))
 
 	var revision int
 	var updatedAt string
@@ -147,7 +147,7 @@ func TestDraftRevisionMigrationUpgradesPopulatedSQLitePosts(t *testing.T) {
 		"SELECT updated_at FROM posts WHERE id = 'new-post'",
 	).Scan(&defaultedUpdatedAt))
 	require.NotEmpty(t, defaultedUpdatedAt)
-	require.NoError(t, RunMigrations(db))
+	require.NoError(t, runTestMigrations(t, db))
 
 	_, err = db.ExecContext(ctx, "DELETE FROM posts WHERE id = 'legacy-post'")
 	require.NoError(t, err)
@@ -164,7 +164,7 @@ func TestRunMigrationsPublicationsAreInsertable(t *testing.T) {
 	db := newMigrationsTestDB(t)
 	ctx := context.Background()
 	seedMigrationUser(ctx, t, db)
-	require.NoError(t, RunMigrations(db))
+	require.NoError(t, runTestMigrations(t, db))
 
 	_, err := db.NewInsert().Model(&models.Workspace{ID: "ws-publication", Name: "Publication"}).Exec(ctx)
 	require.NoError(t, err)
@@ -218,7 +218,7 @@ func TestRunMigrationsPublicationAssetsCascadeWithPublication(t *testing.T) {
 	db := newMigrationsTestDB(t)
 	ctx := context.Background()
 	seedMigrationUser(ctx, t, db)
-	require.NoError(t, RunMigrations(db))
+	require.NoError(t, runTestMigrations(t, db))
 
 	_, err := db.NewInsert().Model(&models.Workspace{ID: "ws-cascade", Name: "Cascade"}).Exec(ctx)
 	require.NoError(t, err)
