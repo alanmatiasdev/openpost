@@ -4,6 +4,8 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [3.7.3] - 2026-08-11
+
 ### Fixed
 
 - Kept configured cloud providers and active migrated accounts usable while certification evidence is being populated, without making uncertified providers publicly claimable. Migration 085 validates only linked, active, non-revoked legacy grants with stored encrypted access credentials. Cloud operators can opt into strict operational evidence enforcement with `OPENPOST_PROVIDER_CERTIFICATION_ENFORCED=true` after the required runtime controls, approvals, tests, and scope evidence exist.
