@@ -34,7 +34,7 @@
 	interface Props {
 		showDestinations?: boolean;
 		showEditors?: boolean;
-		showAdministration?: boolean;
+		showSettings?: boolean;
 		onNavigate?: () => void;
 		onCreateWorkspace?: () => void;
 	}
@@ -42,7 +42,7 @@
 	let {
 		showDestinations = false,
 		showEditors = showDestinations,
-		showAdministration = showDestinations,
+		showSettings = showDestinations,
 		onNavigate,
 		onCreateWorkspace
 	}: Props = $props();
@@ -160,51 +160,50 @@
 	<DropdownMenu.Separator />
 {/if}
 
-{#if showEditors}
-	<DropdownMenu.Item>
-		{#snippet child({ props })}
-			<a
-				{...props}
-				class={[props.class, menuItemClass, 'gap-3']}
-				href={resolve('/editors' as '/')}
-				onclick={onNavigate}
-			>
-				<EditorsIcon class="size-4 text-muted-foreground" />
-				{m.editors_title()}
-			</a>
-		{/snippet}
-	</DropdownMenu.Item>
-	<DropdownMenu.Separator />
-{/if}
-
-{#if showAdministration}
-	<DropdownMenu.Label>{m.sidebar_administration()}</DropdownMenu.Label>
-	<DropdownMenu.Item>
-		{#snippet child({ props })}
-			<a
-				{...props}
-				class={[props.class, 'min-h-11 gap-3']}
-				href={resolve('/settings?tab=accounts' as '/')}
-				onclick={onNavigate}
-			>
-				<AccountsIcon class="size-4 text-muted-foreground" />
-				{m.sidebar_accounts()}
-			</a>
-		{/snippet}
-	</DropdownMenu.Item>
-	<DropdownMenu.Item>
-		{#snippet child({ props })}
-			<a
-				{...props}
-				class={[props.class, 'min-h-11 gap-3']}
-				href={resolve('/settings' as '/')}
-				onclick={onNavigate}
-			>
-				<SettingsIcon class="size-4 text-muted-foreground" />
-				{m.sidebar_settings()}
-			</a>
-		{/snippet}
-	</DropdownMenu.Item>
+{#if showEditors || showSettings}
+	{#if showEditors}
+		<DropdownMenu.Item>
+			{#snippet child({ props })}
+				<a
+					{...props}
+					class={[props.class, menuItemClass, 'gap-3']}
+					href={resolve('/editors' as '/')}
+					onclick={onNavigate}
+				>
+					<EditorsIcon class="size-4 text-muted-foreground" />
+					{m.editors_title()}
+				</a>
+			{/snippet}
+		</DropdownMenu.Item>
+	{/if}
+	{#if showSettings}
+		<DropdownMenu.Item>
+			{#snippet child({ props })}
+				<a
+					{...props}
+					class={[props.class, menuItemClass, 'gap-3']}
+					href={resolve('/settings?tab=accounts' as '/')}
+					onclick={onNavigate}
+				>
+					<AccountsIcon class="size-4 text-muted-foreground" />
+					{m.sidebar_accounts()}
+				</a>
+			{/snippet}
+		</DropdownMenu.Item>
+		<DropdownMenu.Item>
+			{#snippet child({ props })}
+				<a
+					{...props}
+					class={[props.class, menuItemClass, 'gap-3']}
+					href={resolve('/settings' as '/')}
+					onclick={onNavigate}
+				>
+					<SettingsIcon class="size-4 text-muted-foreground" />
+					{m.sidebar_settings()}
+				</a>
+			{/snippet}
+		</DropdownMenu.Item>
+	{/if}
 	<DropdownMenu.Separator />
 {/if}
 

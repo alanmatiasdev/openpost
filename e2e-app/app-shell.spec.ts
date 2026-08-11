@@ -322,7 +322,7 @@ test("desktop planning sidebar resumes drafts and stays out of mobile navigation
     id: string;
     publication_id: string;
   };
-  for (let index = 2; index <= 3; index += 1) {
+  for (let index = 2; index <= 6; index += 1) {
     const extraDraft = await request.post("/api/v1/posts", {
       headers: { Authorization: `Bearer ${auth.token}` },
       data: {
@@ -434,18 +434,35 @@ test("desktop planning sidebar resumes drafts and stays out of mobile navigation
       exact: true,
     }),
   ).toHaveCount(0);
+  const navigationToggle = page.getByRole("button", {
+    name: "Collapse workspace navigation",
+  });
+  await navigationToggle.click();
+  await expect(workspaceNavigation).toHaveAttribute("aria-hidden", "true");
+  await expect(workspaceNavigation.getByRole("button")).toHaveCount(0);
+  await page
+    .getByRole("button", { name: "Expand workspace navigation" })
+    .click();
+  await expect(workspaceNavigation).toHaveAttribute("aria-hidden", "false");
+  await expect(workspaceNavigation.getByRole("button")).toHaveCount(5);
   await page.getByTestId("profile-menu-trigger").click();
   await expect(page.getByRole("menuitem", { name: "Editors" })).toBeVisible();
   await expect(page.getByRole("menuitem", { name: "Accounts" })).toBeVisible();
   await expect(page.getByRole("menuitem", { name: "Settings" })).toBeVisible();
+  await expect(page.getByText("Administration", { exact: true })).toHaveCount(
+    0,
+  );
   await page.keyboard.press("Escape");
   const draftList = page.getByTestId("sidebar-draft-list");
-  await expect(draftList.locator("li")).toHaveCount(3);
+  await expect(draftList.locator("li")).toHaveCount(6);
   await page.waitForTimeout(250);
   expect(publicationListRequests).toHaveLength(1);
   expect(
     publicationListRequests.map((url) => url.searchParams.get("status")),
   ).toEqual(["draft"]);
+  expect(
+    publicationListRequests.map((url) => url.searchParams.get("limit")),
+  ).toEqual(["50"]);
   expect(scheduleOverviewRequests.length).toBeGreaterThan(0);
   const draftListMetrics = await draftList.evaluate((element) => ({
     clientHeight: element.clientHeight,
@@ -487,7 +504,7 @@ test("desktop planning sidebar resumes drafts and stays out of mobile navigation
     page.getByText("Delete this draft?", { exact: true }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Delete", exact: true }).click();
-  await expect(draftList.locator("li")).toHaveCount(2);
+  await expect(draftList.locator("li")).toHaveCount(5);
 
   await page
     .getByRole("link", {

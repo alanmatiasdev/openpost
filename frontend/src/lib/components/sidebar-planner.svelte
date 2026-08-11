@@ -198,7 +198,7 @@
 					query: {
 						workspace_id: currentWorkspaceId,
 						status: 'draft',
-						limit: 3,
+						limit: 50,
 						offset: 0
 					}
 				}
@@ -207,8 +207,7 @@
 			const publications = publicationResult.error ? [] : (publicationResult.data ?? []);
 			drafts = publications
 				.map(publicationDraft)
-				.sort((left, right) => right.createdAt.localeCompare(left.createdAt))
-				.slice(0, 3);
+				.sort((left, right) => right.createdAt.localeCompare(left.createdAt));
 		} catch {
 			// A refresh failure must not replace useful drafts with an empty state.
 		} finally {
@@ -503,7 +502,10 @@
 				>
 			</button>
 		{:else}
-			<ul class="min-h-0 flex-1 space-y-0.5" data-testid="sidebar-draft-list">
+			<ul
+				class="sidebar-planner-scrollbar min-h-0 flex-1 space-y-0.5 overflow-y-auto overscroll-contain pr-1"
+				data-testid="sidebar-draft-list"
+			>
 				{#each drafts as draft (draft.id)}
 					<li>
 						<ContextMenu.Root>
@@ -589,31 +591,37 @@
 {/if}
 
 <style>
-	.sidebar-calendar-scrollbar {
+	.sidebar-calendar-scrollbar,
+	.sidebar-planner-scrollbar {
 		scrollbar-width: thin;
 		scrollbar-color: color-mix(in oklch, var(--sidebar-foreground) 22%, transparent) transparent;
 	}
 
-	.sidebar-calendar-scrollbar::-webkit-scrollbar {
+	.sidebar-calendar-scrollbar::-webkit-scrollbar,
+	.sidebar-planner-scrollbar::-webkit-scrollbar {
 		width: 6px;
 	}
 
-	.sidebar-calendar-scrollbar::-webkit-scrollbar-track {
+	.sidebar-calendar-scrollbar::-webkit-scrollbar-track,
+	.sidebar-planner-scrollbar::-webkit-scrollbar-track {
 		background: transparent;
 	}
 
-	.sidebar-calendar-scrollbar::-webkit-scrollbar-button {
+	.sidebar-calendar-scrollbar::-webkit-scrollbar-button,
+	.sidebar-planner-scrollbar::-webkit-scrollbar-button {
 		display: none;
 		width: 0;
 		height: 0;
 	}
 
-	.sidebar-calendar-scrollbar::-webkit-scrollbar-thumb {
+	.sidebar-calendar-scrollbar::-webkit-scrollbar-thumb,
+	.sidebar-planner-scrollbar::-webkit-scrollbar-thumb {
 		border-radius: 999px;
 		background-color: color-mix(in oklch, var(--sidebar-foreground) 22%, transparent);
 	}
 
-	.sidebar-calendar-scrollbar::-webkit-scrollbar-thumb:hover {
+	.sidebar-calendar-scrollbar::-webkit-scrollbar-thumb:hover,
+	.sidebar-planner-scrollbar::-webkit-scrollbar-thumb:hover {
 		background-color: color-mix(in oklch, var(--sidebar-foreground) 34%, transparent);
 	}
 </style>

@@ -30,12 +30,14 @@
 	import AccountsIcon from '@lucide/svelte/icons/users';
 	import SettingsIcon from '@lucide/svelte/icons/settings';
 	import MoreHorizontalIcon from '@lucide/svelte/icons/ellipsis';
+	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
 	import type { Workspace } from '$lib/api/client';
 	import NotificationBell from './notification-bell.svelte';
 	import { Button } from '$lib/components/ui/button';
 
 	let authState = $derived($auth);
 	let createWorkspaceOpen = $state(false);
+	let workspaceNavigationExpanded = $state(true);
 	const sidebar = Sidebar.useSidebar();
 	const currentPath = $derived(page.url.pathname);
 	const currentWorkspaceName = $derived(
@@ -66,6 +68,11 @@
 		)
 	]);
 	const showDesktopPlanner = $derived(!sidebar.isMobile && sidebar.state === 'expanded');
+	const workspaceNavigationToggleLabel = $derived(
+		workspaceNavigationExpanded
+			? m.sidebar_collapse_workspace_navigation()
+			: m.sidebar_expand_workspace_navigation()
+	);
 
 	function navigationIcon(id: PrimaryNavigationItem['id']) {
 		switch (id) {
@@ -245,26 +252,57 @@
 
 	<Sidebar.Footer class="border-t border-sidebar-border p-2" data-testid="sidebar-workspace-footer">
 		{#if showDesktopPlanner}
-			<div class="pb-2">
-				<Sidebar.Menu class="gap-0.5" data-testid="sidebar-workspace-navigation">
-					{#each workspaceNavigationItems as item (item.id)}
-						<Sidebar.MenuItem>
-							<Sidebar.MenuButton
-								isActive={isSidebarNavigationItemActive(item)}
-								class="h-8 gap-2 px-2 text-xs"
-								tooltipContent={item.label}
-								onclick={() => navigate(item.href)}
-							>
-								<item.icon class="size-3.5" />
-								<span>{item.label}</span>
-							</Sidebar.MenuButton>
-						</Sidebar.MenuItem>
-					{/each}
-				</Sidebar.Menu>
+			<div class="pb-1">
+				<div class="flex items-center justify-center">
+					<button
+						type="button"
+						class="inline-flex size-6 items-center justify-center rounded-md text-sidebar-foreground/48 hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:outline-none"
+						aria-expanded={workspaceNavigationExpanded}
+						aria-controls="sidebar-workspace-navigation"
+						aria-label={workspaceNavigationToggleLabel}
+						title={workspaceNavigationToggleLabel}
+						onclick={() => (workspaceNavigationExpanded = !workspaceNavigationExpanded)}
+					>
+						<ChevronDownIcon
+							class={[
+								'size-3.5 transition-transform duration-200 ease-[cubic-bezier(0.25,1,0.5,1)] motion-reduce:transition-none',
+								!workspaceNavigationExpanded && '-rotate-180'
+							]}
+						/>
+					</button>
+				</div>
+				<div
+					id="sidebar-workspace-navigation"
+					data-testid="sidebar-workspace-navigation"
+					class={[
+						'workspace-navigation-collapse',
+						workspaceNavigationExpanded && 'workspace-navigation-expanded'
+					]}
+					aria-hidden={!workspaceNavigationExpanded}
+					inert={!workspaceNavigationExpanded}
+				>
+					<div>
+						<Sidebar.Menu class="gap-0.5">
+							{#each workspaceNavigationItems as item (item.id)}
+								<Sidebar.MenuItem>
+									<Sidebar.MenuButton
+										isActive={isSidebarNavigationItemActive(item)}
+										class="h-8 gap-2 px-2 text-xs"
+										tooltipContent={item.label}
+										onclick={() => navigate(item.href)}
+									>
+										<item.icon class="size-3.5" />
+										<span>{item.label}</span>
+									</Sidebar.MenuButton>
+								</Sidebar.MenuItem>
+							{/each}
+						</Sidebar.Menu>
+					</div>
+				</div>
 			</div>
 		{/if}
 		<Sidebar.Menu
-			class={showDesktopPlanner ? 'border-t border-sidebar-border pt-2' : ''}
+			class={showDesktopPlanner ? 'border-t border-sidebar-border pt-1' : ''}
 			data-testid="sidebar-secondary-navigation"
 		>
 			{#if !showDesktopPlanner}
@@ -321,7 +359,7 @@
 						<AccountPreferencesMenu
 							showDestinations={sidebar.state === 'collapsed'}
 							showEditors={showDesktopPlanner}
-							showAdministration
+							showSettings
 							onCreateWorkspace={openCreateWorkspace}
 							onNavigate={() => sidebar.setOpenMobile(false)}
 						/>
@@ -334,3 +372,24 @@
 </Sidebar.Root>
 
 <CreateWorkspaceDialog bind:open={createWorkspaceOpen} />
+
+<style>
+	.workspace-navigation-collapse {
+		display: grid;
+		grid-template-rows: 0fr;
+		opacity: 0;
+		transition:
+			grid-template-rows 220ms cubic-bezier(0.25, 1, 0.5, 1),
+			opacity 140ms ease-out;
+	}
+
+	.workspace-navigation-collapse > div {
+		min-height: 0;
+		overflow: hidden;
+	}
+
+	.workspace-navigation-expanded {
+		grid-template-rows: 1fr;
+		opacity: 1;
+	}
+</style>
