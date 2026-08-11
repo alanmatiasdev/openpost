@@ -4,6 +4,20 @@ This document serves as a guideline for autonomous AI agents (like Copilot, Curs
 
 Treat this as a living file: add concise repo learnings when they would save future agents time, and trim entries that become stale or too obvious.
 
+## Agent skills
+
+### Issue tracker
+
+Issues and specs are tracked in this repository’s GitHub Issues using the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Triage uses the default five-role label vocabulary. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Domain documentation uses the single-context layout. See `docs/agents/domain.md`.
+
 ## 1. Core Architecture & Tech Stack
 
 **Frontend:**
