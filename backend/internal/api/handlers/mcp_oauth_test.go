@@ -38,7 +38,11 @@ type mcpOAuthTestAuthenticator struct {
 
 func (a mcpOAuthTestAuthenticator) AuthenticateBearer(ctx context.Context, token string) (*middleware.Principal, error) {
 	if token == "web-token" {
-		return &middleware.Principal{UserID: "user-1", Email: "user@example.com"}, nil
+		return &middleware.Principal{
+			UserID:    "user-1",
+			Email:     "user@example.com",
+			SessionID: "session-1",
+		}, nil
 	}
 	principal, err := a.tokens.ValidateToken(ctx, token)
 	if err != nil {
@@ -53,6 +57,7 @@ func (a mcpOAuthTestAuthenticator) AuthenticateBearer(ctx context.Context, token
 		ClientID:    principal.TokenID,
 		ClientName:  principal.TokenName,
 		TokenPrefix: principal.TokenPrefix,
+		TokenID:     principal.TokenID,
 	}, nil
 }
 
@@ -201,6 +206,32 @@ func TestMCPOAuthDenyReturnsAccessDeniedRedirect(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "access_denied", redirect.Query().Get("error"))
 	require.Equal(t, "state-deny", redirect.Query().Get("state"))
+}
+
+func TestMCPOAuthAuthorizationRejectsAPITokenPrincipal(t *testing.T) {
+	t.Parallel()
+
+	srv := newMCPOAuthTestServer(t)
+	generated, err := srv.apiTokens.GenerateTokenWithOptions(
+		t.Context(),
+		"user-1",
+		"Bound CLI",
+		apitokens.ScopeCLI,
+		apitokens.GenerateOptions{WorkspaceID: "ws-1"},
+	)
+	require.NoError(t, err)
+
+	for _, approved := range []bool{false, true} {
+		resp := srv.request(t, http.MethodPost, "/api/v1/mcp/oauth/authorize", map[string]any{
+			"approved":      approved,
+			"response_type": "code",
+			"client_id":     "chatgpt",
+			"redirect_uri":  "https://chatgpt.com/connector/oauth/callback/openpost",
+			"workspace_id":  "",
+			"resource":      "https://app.openpost.test/mcp",
+		}, generated.Token)
+		require.Equal(t, http.StatusForbidden, resp.Code, resp.Body.String())
+	}
 }
 
 func (s *mcpOAuthTestServer) request(t *testing.T, method, path string, body any, token string) *httptest.ResponseRecorder {

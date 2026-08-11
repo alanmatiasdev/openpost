@@ -8,7 +8,6 @@ import (
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/openpost/backend/internal/api/middleware"
-	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/services/instancesettings"
 	"github.com/openpost/backend/internal/services/updatestatus"
 	"github.com/uptrace/bun"
@@ -106,22 +105,7 @@ func (h *UpdateStatusHandler) getStatus(ctx context.Context, _ *struct{}) (*Upda
 }
 
 func (h *UpdateStatusHandler) requireInstanceAdmin(ctx context.Context) error {
-	userID := middleware.GetUserID(ctx)
-	if userID == "" {
-		return huma.Error401Unauthorized("unauthorized")
-	}
-	if middleware.GetWorkspaceID(ctx) != "" {
-		return huma.Error403Forbidden("instance admin API requires unscoped credentials")
-	}
-
-	var user models.User
-	if err := h.db.NewSelect().Model(&user).Column("is_admin").Where("id = ?", userID).Scan(ctx); err != nil {
-		return huma.Error500InternalServerError("failed to load user")
-	}
-	if !user.IsAdmin {
-		return huma.Error403Forbidden("instance admin role required")
-	}
-	return nil
+	return requireBrowserSessionInstanceAdmin(ctx, h.db)
 }
 
 func formatUpdateStatusTime(value time.Time) string {

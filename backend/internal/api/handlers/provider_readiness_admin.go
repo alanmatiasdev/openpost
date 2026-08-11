@@ -204,7 +204,7 @@ func (h *ProviderReadinessAdminHandler) requireAdmin(ctx context.Context) error 
 	if h == nil || h.readiness == nil {
 		return huma.Error500InternalServerError("provider readiness service is unavailable")
 	}
-	return requireUnscopedInstanceAdmin(ctx, h.db)
+	return requireBrowserSessionInstanceAdmin(ctx, h.db)
 }
 
 func providerReadinessAppendResult(id string, err error) (*ProviderReadinessLedgerAppendOutput, error) {

@@ -27,6 +27,37 @@ type cliAuthTestServer struct {
 	db   *bun.DB
 }
 
+type cliAuthBrowserAuthenticator struct{}
+
+func (cliAuthBrowserAuthenticator) AuthenticateBearer(
+	_ context.Context,
+	token string,
+) (*middleware.Principal, error) {
+	if token != "web-token" {
+		return nil, apitokens.ErrInvalidToken
+	}
+	return &middleware.Principal{
+		UserID:    "user-1",
+		Email:     "user@example.com",
+		SessionID: "session-1",
+	}, nil
+}
+
+type cliAuthTokenAuthenticator struct{}
+
+func (cliAuthTokenAuthenticator) AuthenticateBearer(
+	_ context.Context,
+	_ string,
+) (*middleware.Principal, error) {
+	return &middleware.Principal{
+		UserID:      "user-1",
+		Email:       "user@example.com",
+		Scope:       apitokens.ScopeCLI,
+		WorkspaceID: "workspace-1",
+		TokenID:     "bound-cli-token",
+	}, nil
+}
+
 type testAuthenticator struct{}
 
 func (testAuthenticator) AuthenticateBearer(_ context.Context, token string) (*middleware.Principal, error) {
@@ -37,6 +68,13 @@ func (testAuthenticator) AuthenticateBearer(_ context.Context, token string) (*m
 }
 
 func newCLIAuthTestServer(t *testing.T) *cliAuthTestServer {
+	return newCLIAuthTestServerWithAuthenticator(t, cliAuthBrowserAuthenticator{})
+}
+
+func newCLIAuthTestServerWithAuthenticator(
+	t *testing.T,
+	authenticator middleware.Authenticator,
+) *cliAuthTestServer {
 	t.Helper()
 
 	db := createHandlerTestDB(t,
@@ -64,10 +102,38 @@ func newCLIAuthTestServer(t *testing.T) *cliAuthTestServer {
 	e := echo.New()
 	api := humaecho.NewWithGroup(e, e.Group("/api/v1"), huma.DefaultConfig("Test", "1.0.0"))
 	tokenService := apitokens.NewService(db)
-	handler := NewCLIAuthHandler(cliauth.NewService(db, tokenService), testAuthenticator{}, "https://openpost.test")
+	handler := NewCLIAuthHandler(cliauth.NewService(db, tokenService), authenticator, "https://openpost.test")
 	handler.RegisterRoutes(api)
 
 	return &cliAuthTestServer{echo: e, db: db}
+}
+
+func TestCLIAuthDecisionRejectsAPITokenPrincipal(t *testing.T) {
+	t.Parallel()
+
+	srv := newCLIAuthTestServerWithAuthenticator(t, cliAuthTokenAuthenticator{})
+	start := srv.startCLIAuth(t)
+
+	details := srv.request(
+		t,
+		http.MethodGet,
+		"/api/v1/cli/auth/session?user_code="+start.UserCode,
+		nil,
+		"web-token",
+	)
+	require.Equal(t, http.StatusForbidden, details.Code, details.Body.String())
+
+	for _, path := range []string{"/api/v1/cli/auth/approve", "/api/v1/cli/auth/deny"} {
+		decision := srv.request(t, http.MethodPost, path, map[string]string{
+			"user_code": start.UserCode,
+		}, "web-token")
+		require.Equal(t, http.StatusForbidden, decision.Code, decision.Body.String())
+	}
+
+	var sessions []models.CLIAuthSession
+	require.NoError(t, srv.db.NewSelect().Model(&sessions).Order("created_at ASC").Scan(t.Context()))
+	require.Len(t, sessions, 1)
+	require.Equal(t, "pending", sessions[0].Status)
 }
 
 func TestCLIAuthApprovalBindsChosenWorkspaceAndRejectsInaccessibleWorkspace(t *testing.T) {
@@ -90,6 +156,24 @@ func TestCLIAuthApprovalBindsChosenWorkspaceAndRejectsInaccessibleWorkspace(t *t
 		"user_code": second.UserCode, "workspace_id": "workspace-other",
 	}, "web-token")
 	require.Equal(t, http.StatusForbidden, rejected.Code, rejected.Body.String())
+}
+
+func TestCLIAuthApprovalWithoutWorkspaceCreatesAllWorkspaceToken(t *testing.T) {
+	t.Parallel()
+
+	srv := newCLIAuthTestServer(t)
+	start := srv.startCLIAuth(t)
+	approve := srv.request(t, http.MethodPost, "/api/v1/cli/auth/approve", map[string]string{
+		"user_code": start.UserCode,
+	}, "web-token")
+	require.Equal(t, http.StatusOK, approve.Code, approve.Body.String())
+	poll := srv.pollCLIAuth(t, start.DeviceCode)
+	require.NotEmpty(t, poll.Token)
+
+	var token models.APIToken
+	require.NoError(t, srv.db.NewSelect().Model(&token).Where("user_id = ?", "user-1").Scan(t.Context()))
+	require.Empty(t, token.WorkspaceID)
+	require.Empty(t, token.OrganizationID)
 }
 
 func TestCLIAuthRechecksWorkspaceAccessBeforeMintingToken(t *testing.T) {

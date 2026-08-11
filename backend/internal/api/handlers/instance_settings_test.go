@@ -12,6 +12,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humaecho"
 	"github.com/labstack/echo/v4"
+	"github.com/openpost/backend/internal/api/middleware"
 	"github.com/openpost/backend/internal/config"
 	"github.com/openpost/backend/internal/models"
 	servicecrypto "github.com/openpost/backend/internal/services/crypto"
@@ -20,6 +21,14 @@ import (
 )
 
 func newInstanceSettingsTestServer(t *testing.T, isAdmin bool) *echo.Echo {
+	return newInstanceSettingsTestServerWithAuthenticator(t, isAdmin, browserSessionTestAuthenticator())
+}
+
+func newInstanceSettingsTestServerWithAuthenticator(
+	t *testing.T,
+	isAdmin bool,
+	authenticator middleware.Authenticator,
+) *echo.Echo {
 	t.Helper()
 	db := createHandlerTestDB(t, (*models.User)(nil), (*models.InstanceSetting)(nil))
 	_, err := db.NewInsert().Model(&models.User{
@@ -33,8 +42,15 @@ func newInstanceSettingsTestServer(t *testing.T, isAdmin bool) *echo.Echo {
 	)
 	e := echo.New()
 	api := humaecho.NewWithGroup(e, e.Group("/api/v1"), huma.DefaultConfig("Test", "1.0.0"))
-	NewInstanceSettingsHandler(service, db, testAuthenticator{}).RegisterRoutes(api)
+	NewInstanceSettingsHandler(service, db, authenticator).RegisterRoutes(api)
 	return e
+}
+
+func TestInstanceSettingsAdminRejectsBearerAdminToken(t *testing.T) {
+	e := newInstanceSettingsTestServerWithAuthenticator(t, true, unboundCLIFullTestAuthenticator())
+	response := requestInstanceSettings(t, e, http.MethodGet, nil)
+	require.Equal(t, http.StatusForbidden, response.Code, response.Body.String())
+	require.Contains(t, response.Body.String(), "browser session")
 }
 
 func requestInstanceSettings(t *testing.T, e *echo.Echo, method string, body any) *httptest.ResponseRecorder {

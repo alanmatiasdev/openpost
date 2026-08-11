@@ -12,6 +12,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humaecho"
 	"github.com/labstack/echo/v4"
+	"github.com/openpost/backend/internal/api/middleware"
 	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/platform"
 	"github.com/openpost/backend/internal/services/crypto"
@@ -27,6 +28,15 @@ type providerAppAdminTestServer struct {
 }
 
 func newProviderAppAdminTestServer(t *testing.T, isAdmin bool, options ...ProviderAppHandlerOption) *providerAppAdminTestServer {
+	return newProviderAppAdminTestServerWithAuthenticator(t, isAdmin, browserSessionTestAuthenticator(), options...)
+}
+
+func newProviderAppAdminTestServerWithAuthenticator(
+	t *testing.T,
+	isAdmin bool,
+	authenticator middleware.Authenticator,
+	options ...ProviderAppHandlerOption,
+) *providerAppAdminTestServer {
 	t.Helper()
 
 	db := createHandlerTestDB(t, (*models.User)(nil), (*models.ProviderApp)(nil))
@@ -43,8 +53,28 @@ func newProviderAppAdminTestServer(t *testing.T, isAdmin bool, options ...Provid
 	e := echo.New()
 	api := humaecho.NewWithGroup(e, e.Group("/api/v1"), huma.DefaultConfig("Test", "1.0.0"))
 	encryptor := crypto.NewTokenEncryptor("0123456789abcdef0123456789abcdef")
-	NewProviderAppHandler(providerapps.NewService(db, encryptor), db, testAuthenticator{}, options...).RegisterRoutes(api)
+	NewProviderAppHandler(providerapps.NewService(db, encryptor), db, authenticator, options...).RegisterRoutes(api)
 	return &providerAppAdminTestServer{echo: e, db: db, encryptor: encryptor}
+}
+
+func TestProviderAppAdminRejectsBearerAdminTokens(t *testing.T) {
+	t.Parallel()
+
+	srv := newProviderAppAdminTestServerWithAuthenticator(t, true, unboundCLIFullTestAuthenticator())
+	requests := []struct {
+		method string
+		path   string
+		body   any
+	}{
+		{method: http.MethodGet, path: "/api/v1/admin/provider-apps"},
+		{method: http.MethodPost, path: "/api/v1/admin/provider-apps", body: map[string]any{"provider": "x", "client_id": "x-client"}},
+		{method: http.MethodDelete, path: "/api/v1/admin/provider-apps/missing"},
+	}
+	for _, request := range requests {
+		response := srv.requestJSON(t, request.method, request.path, request.body)
+		require.Equal(t, http.StatusForbidden, response.Code, response.Body.String())
+		require.Contains(t, response.Body.String(), "browser session")
+	}
 }
 
 func (s *providerAppAdminTestServer) requestJSON(t *testing.T, method, path string, body any) *httptest.ResponseRecorder {
@@ -206,7 +236,9 @@ func TestProviderAppAdminRejectsWorkspaceScopedTokens(t *testing.T) {
 	api := humaecho.NewWithGroup(e, e.Group("/api/v1"), huma.DefaultConfig("Test", "1.0.0"))
 	encryptor := crypto.NewTokenEncryptor("0123456789abcdef0123456789abcdef")
 	NewProviderAppHandler(providerapps.NewService(db, encryptor), db, workspaceTestAuthenticator{
-		"scoped-token": {UserID: "user-1", Email: "user@example.com", WorkspaceID: "ws-1"},
+		"scoped-token": {
+			UserID: "user-1", Email: "user@example.com", WorkspaceID: "ws-1", SessionID: "browser-session",
+		},
 	}).RegisterRoutes(api)
 
 	requests := []struct {

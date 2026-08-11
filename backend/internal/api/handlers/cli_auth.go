@@ -169,8 +169,11 @@ func (h *CLIAuthHandler) RegisterRoutes(api huma.API) {
 		Summary:     "Get pending CLI authorization details",
 		Tags:        []string{tagAuth},
 		Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.authenticator)},
-		Errors:      []int{404},
+		Errors:      []int{403, 404},
 	}, func(ctx context.Context, input *GetCLIAuthSessionInput) (*GetCLIAuthSessionOutput, error) {
+		if err := requireCLIAuthBrowserSession(ctx); err != nil {
+			return nil, err
+		}
 		session, err := h.auth.GetPendingByUserCode(ctx, input.UserCode)
 		if err != nil {
 			return nil, cliAuthError(err)
@@ -193,6 +196,9 @@ func (h *CLIAuthHandler) RegisterRoutes(api huma.API) {
 		Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.authenticator)},
 		Errors:      []int{400, 403, 404, 409},
 	}, func(ctx context.Context, input *ApproveCLIAuthInput) (*CLIAuthDecisionOutput, error) {
+		if err := requireCLIAuthBrowserSession(ctx); err != nil {
+			return nil, err
+		}
 		options := cliauth.ApprovalOptions{WorkspaceID: strings.TrimSpace(input.Body.WorkspaceID)}
 		if h.identity != nil && options.WorkspaceID != "" {
 			requestedExpiry := time.Now().UTC().Add(apitokens.DefaultExpiration)
@@ -231,13 +237,23 @@ func (h *CLIAuthHandler) RegisterRoutes(api huma.API) {
 		Summary:     "Deny CLI device authorization",
 		Tags:        []string{tagAuth},
 		Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.authenticator)},
-		Errors:      []int{400, 404, 409},
+		Errors:      []int{400, 403, 404, 409},
 	}, func(ctx context.Context, input *DenyCLIAuthInput) (*CLIAuthDecisionOutput, error) {
+		if err := requireCLIAuthBrowserSession(ctx); err != nil {
+			return nil, err
+		}
 		if err := h.auth.DenySession(ctx, decisionCode(input.Body.DeviceCode, input.Body.UserCode)); err != nil {
 			return nil, cliAuthError(err)
 		}
 		return decisionOutput(true), nil
 	})
+}
+
+func requireCLIAuthBrowserSession(ctx context.Context) error {
+	if strings.TrimSpace(middleware.GetSessionID(ctx)) == "" {
+		return huma.Error403Forbidden("a signed-in browser session is required to review CLI access")
+	}
+	return nil
 }
 
 func cliTokenPolicyError(err error) error {

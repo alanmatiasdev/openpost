@@ -191,7 +191,7 @@ func (h *InstanceAdminHandler) RegisterRoutes(api huma.API) {
 }
 
 func (h *InstanceAdminHandler) getOverview(ctx context.Context, _ *struct{}) (*GetInstanceOverviewOutput, error) {
-	if err := requireUnscopedInstanceAdmin(ctx, h.db); err != nil {
+	if err := requireBrowserSessionInstanceAdmin(ctx, h.db); err != nil {
 		return nil, err
 	}
 
@@ -243,7 +243,7 @@ func (h *InstanceAdminHandler) getOverview(ctx context.Context, _ *struct{}) (*G
 }
 
 func (h *InstanceAdminHandler) listUsers(ctx context.Context, input *ListInstanceUsersInput) (*ListInstanceUsersOutput, error) {
-	if err := requireUnscopedInstanceAdmin(ctx, h.db); err != nil {
+	if err := requireBrowserSessionInstanceAdmin(ctx, h.db); err != nil {
 		return nil, err
 	}
 
@@ -426,13 +426,10 @@ func (h *InstanceAdminHandler) createImpersonationLink(
 	ctx context.Context,
 	input *CreateUserImpersonationLinkInput,
 ) (*CreateUserImpersonationLinkOutput, error) {
-	if err := requireUnscopedInstanceAdmin(ctx, h.db); err != nil {
+	if err := requireBrowserSessionInstanceAdmin(ctx, h.db); err != nil {
 		return nil, err
 	}
 	adminUserID := middleware.GetUserID(ctx)
-	if middleware.GetSessionID(ctx) == "" {
-		return nil, huma.Error403Forbidden("a browser session is required to impersonate a user")
-	}
 	if input.UserID == adminUserID {
 		return nil, huma.Error409Conflict("instance administrators cannot impersonate themselves")
 	}
@@ -612,6 +609,13 @@ func requireUnscopedInstanceAdmin(ctx context.Context, db *bun.DB) error {
 		return huma.Error403Forbidden("instance admin role required")
 	}
 	return nil
+}
+
+func requireBrowserSessionInstanceAdmin(ctx context.Context, db *bun.DB) error {
+	if strings.TrimSpace(middleware.GetSessionID(ctx)) == "" {
+		return huma.Error403Forbidden("instance admin API requires a browser session")
+	}
+	return requireUnscopedInstanceAdmin(ctx, db)
 }
 
 func instanceDailyMetrics(start time.Time, values []time.Time) []InstanceDailyMetric {

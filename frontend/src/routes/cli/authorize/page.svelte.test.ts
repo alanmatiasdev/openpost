@@ -116,4 +116,26 @@ describe('CLI authorization request identity', () => {
 			params: { query: { user_code: 'CODE-A' } }
 		});
 	});
+
+	it('submits an explicit all-workspace boundary when selected', async () => {
+		mocks.get.mockResolvedValue({ data: { client_name: 'Automation client' }, error: null });
+		const screen = await render(AuthorizePage);
+
+		await expect.element(screen.getByText('Automation client')).toBeVisible();
+		await expect
+			.element(screen.getByText(/cli:full token can still use account-level commands, but not/))
+			.toBeVisible();
+		await screen.getByText('Launch', { exact: true }).click();
+		await screen.getByText('All workspaces', { exact: true }).click();
+		await expect
+			.element(
+				screen.getByText(/cli:full token can also use account- and organization-level commands/)
+			)
+			.toBeVisible();
+		await screen.getByRole('button', { name: 'Approve' }).click();
+
+		expect(mocks.post).toHaveBeenCalledWith('/cli/auth/approve', {
+			body: { user_code: 'CODE-A', name: 'OpenPost CLI', workspace_id: '' }
+		});
+	});
 });

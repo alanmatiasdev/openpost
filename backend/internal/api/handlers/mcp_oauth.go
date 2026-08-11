@@ -75,6 +75,9 @@ func (h *MCPOAuthHandler) RegisterAPIRoutes(api huma.API) {
 		Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.authenticator), middleware.RequestMetadataMiddleware()},
 		Errors:      []int{400, 401, 403},
 	}, func(ctx context.Context, input *CreateMCPOAuthAuthorizationInput) (*CreateMCPOAuthAuthorizationOutput, error) {
+		if strings.TrimSpace(middleware.GetSessionID(ctx)) == "" {
+			return nil, huma.Error403Forbidden("a signed-in browser session is required to review MCP access")
+		}
 		request := mcpoauth.AuthorizationRequest{
 			UserID:              middleware.GetUserID(ctx),
 			WorkspaceID:         input.Body.WorkspaceID,

@@ -15,6 +15,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/openpost/backend/internal/api/middleware"
 	"github.com/openpost/backend/internal/models"
+	"github.com/openpost/backend/internal/services/apitokens"
 	"github.com/openpost/backend/internal/services/auth"
 	"github.com/openpost/backend/internal/services/sessions"
 	"github.com/stretchr/testify/require"
@@ -26,6 +27,22 @@ type instanceAdminTestServer struct {
 	db          *bun.DB
 	authService *auth.Service
 	handler     *InstanceAdminHandler
+}
+
+func browserSessionTestAuthenticator() middleware.Authenticator {
+	return workspaceTestAuthenticator{
+		"web-token": {
+			UserID: "user-1", Email: "user@example.com", SessionID: "browser-session",
+		},
+	}
+}
+
+func unboundCLIFullTestAuthenticator() middleware.Authenticator {
+	return workspaceTestAuthenticator{
+		"web-token": {
+			UserID: "user-1", Email: "user@example.com", Scope: apitokens.ScopeCLI, TokenID: "cli-token",
+		},
+	}
 }
 
 func newInstanceAdminTestServer(
@@ -183,7 +200,7 @@ func (s *instanceAdminTestServer) post(
 func TestInstanceAdminOverviewReturnsThirtyDayActivity(t *testing.T) {
 	t.Parallel()
 
-	srv := newInstanceAdminTestServer(t, true, testAuthenticator{})
+	srv := newInstanceAdminTestServer(t, true, browserSessionTestAuthenticator())
 	resp := srv.get(t, "/api/v1/admin/overview", "web-token")
 
 	require.Equal(t, http.StatusOK, resp.Code, resp.Body.String())
@@ -204,7 +221,7 @@ func TestInstanceAdminOverviewReturnsThirtyDayActivity(t *testing.T) {
 func TestInstanceAdminUsersArePaginatedNewestFirst(t *testing.T) {
 	t.Parallel()
 
-	srv := newInstanceAdminTestServer(t, true, testAuthenticator{})
+	srv := newInstanceAdminTestServer(t, true, browserSessionTestAuthenticator())
 	defaultResp := srv.get(t, "/api/v1/admin/users", "web-token")
 	require.Equal(t, http.StatusOK, defaultResp.Code, defaultResp.Body.String())
 	var defaultPage InstanceUserPage
@@ -246,7 +263,7 @@ func TestInstanceAdminUsersArePaginatedNewestFirst(t *testing.T) {
 func TestInstanceAdminUsersSupportSearchAndSort(t *testing.T) {
 	t.Parallel()
 
-	srv := newInstanceAdminTestServer(t, true, testAuthenticator{})
+	srv := newInstanceAdminTestServer(t, true, browserSessionTestAuthenticator())
 	resp := srv.get(
 		t,
 		"/api/v1/admin/users?search=second%40example.com&sort=email&direction=asc",
@@ -329,7 +346,7 @@ func TestInstanceAdminImpersonationRequiresBrowserSessionAndNonAdminTarget(t *te
 
 	srv := newInstanceAdminTestServer(t, true, workspaceTestAuthenticator{
 		"api-token": {
-			UserID: "user-1", Email: "admin@example.com",
+			UserID: "user-1", Email: "admin@example.com", Scope: apitokens.ScopeCLI, TokenID: "cli-token",
 		},
 		"admin-session-token": {
 			UserID: "user-1", Email: "admin@example.com", SessionID: "admin-session",
@@ -351,6 +368,17 @@ func TestInstanceAdminImpersonationRequiresBrowserSessionAndNonAdminTarget(t *te
 		"admin-session-token",
 	)
 	require.Equal(t, http.StatusConflict, adminTarget.Code, adminTarget.Body.String())
+}
+
+func TestInstanceAdminOverviewAndUsersRejectBearerAdminToken(t *testing.T) {
+	t.Parallel()
+
+	srv := newInstanceAdminTestServer(t, true, unboundCLIFullTestAuthenticator())
+	for _, path := range []string{"/api/v1/admin/overview", "/api/v1/admin/users"} {
+		response := srv.get(t, path, "web-token")
+		require.Equal(t, http.StatusForbidden, response.Code, response.Body.String())
+		require.Contains(t, response.Body.String(), "browser session")
+	}
 }
 
 func TestInstanceAdminImpersonationConsumptionRejectsSignedInBrowser(t *testing.T) {
@@ -375,7 +403,7 @@ func TestInstanceAdminImpersonationConsumptionRejectsSignedInBrowser(t *testing.
 func TestInstanceAdminRoutesRejectNonAdmin(t *testing.T) {
 	t.Parallel()
 
-	nonAdmin := newInstanceAdminTestServer(t, false, testAuthenticator{})
+	nonAdmin := newInstanceAdminTestServer(t, false, browserSessionTestAuthenticator())
 	nonAdminResp := nonAdmin.get(t, "/api/v1/admin/users", "web-token")
 	require.Equal(t, http.StatusForbidden, nonAdminResp.Code, nonAdminResp.Body.String())
 	require.Contains(t, nonAdminResp.Body.String(), "instance admin role required")
@@ -385,7 +413,9 @@ func TestInstanceAdminRoutesRejectScopedCredentials(t *testing.T) {
 	t.Parallel()
 
 	scoped := newInstanceAdminTestServer(t, true, workspaceTestAuthenticator{
-		"scoped-token": {UserID: "user-1", Email: "admin@example.com", WorkspaceID: "workspace-1"},
+		"scoped-token": {
+			UserID: "user-1", Email: "admin@example.com", WorkspaceID: "workspace-1", SessionID: "browser-session",
+		},
 	})
 	scopedResp := scoped.get(t, "/api/v1/admin/overview", "scoped-token")
 	require.Equal(t, http.StatusForbidden, scopedResp.Code, scopedResp.Body.String())
