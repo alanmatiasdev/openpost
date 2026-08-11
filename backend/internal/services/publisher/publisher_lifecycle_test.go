@@ -203,7 +203,8 @@ func TestLegacyPublicationJobAuthorizationRunsThroughPublisherPreflight(t *testi
 	srv := newPublisherLifecycleTestServer(t, adapter)
 	job := models.Job{
 		ID: srv.jobID, Type: "publish_publication",
-		Payload: `{"publication_id":"publication-1"}`, Status: "pending", RunAt: srv.runAt,
+		ScopeID: "publication-1", Payload: `{"publication_id":"publication-1"}`,
+		Status: "pending", RunAt: srv.runAt,
 	}
 	_, err := srv.db.NewInsert().Model(&job).Exec(t.Context())
 	require.NoError(t, err)

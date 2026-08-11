@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	databasemigrations "github.com/openpost/backend/internal/database/migrations"
 	"github.com/openpost/backend/internal/jobregistry"
 	"github.com/openpost/backend/internal/models"
 	analyticsservice "github.com/openpost/backend/internal/services/analytics"
@@ -127,7 +128,11 @@ func (w *BackgroundWorker) Stop() {
 }
 
 func (w *BackgroundWorker) processDueJobs(ctx context.Context) {
-	w.requeueStaleProcessingJobs(ctx)
+	requeuedPublicationJobIDs := w.requeueStaleProcessingJobs(ctx)
+	if err := databasemigrations.ReconcileActiveLegacyPublicationJobs(ctx, w.db, requeuedPublicationJobIDs); err != nil {
+		log.Printf("[Worker %s] failed to reconcile requeued publication jobs: %v\n", w.workerID, err)
+		return
+	}
 	for {
 		if !w.processNextJobIfAvailable(ctx) {
 			return
@@ -136,12 +141,12 @@ func (w *BackgroundWorker) processDueJobs(ctx context.Context) {
 }
 
 //nolint:gocyclo
-func (w *BackgroundWorker) requeueStaleProcessingJobs(ctx context.Context) {
+func (w *BackgroundWorker) requeueStaleProcessingJobs(ctx context.Context) []string {
 	cutoff := time.Now().UTC().Add(-staleProcessingJobAge)
 	protected, err := providerwrite.New(w.db).MarkStaleJobAttempts(ctx, cutoff)
 	if err != nil {
 		log.Printf("[Worker %s] failed to fence stale provider writes: %v\n", w.workerID, err)
-		return
+		return nil
 	}
 	if protected > 0 {
 		log.Printf("[Worker %s] marked %d stale provider write attempt(s) ambiguous before recovery\n", w.workerID, protected)
@@ -173,7 +178,7 @@ func (w *BackgroundWorker) requeueStaleProcessingJobs(ctx context.Context) {
 		Exec(ctx)
 	if err != nil {
 		log.Printf("[Worker %s] failed to supersede stale analytics sweep: %v\n", w.workerID, err)
-		return
+		return nil
 	}
 	if rows, rowsErr := superseded.RowsAffected(); rowsErr == nil && rows > 0 {
 		log.Printf("[Worker %s] superseded %d stale analytics sweep job(s)\n", w.workerID, rows)
@@ -191,7 +196,7 @@ func (w *BackgroundWorker) requeueStaleProcessingJobs(ctx context.Context) {
 		Exec(ctx)
 	if err != nil {
 		log.Printf("[Worker %s] failed to supersede stale communications sweep: %v\n", w.workerID, err)
-		return
+		return nil
 	}
 	if rows, rowsErr := communicationsSuperseded.RowsAffected(); rowsErr == nil && rows > 0 {
 		log.Printf("[Worker %s] superseded %d stale communications sweep job(s)\n", w.workerID, rows)
@@ -209,10 +214,23 @@ func (w *BackgroundWorker) requeueStaleProcessingJobs(ctx context.Context) {
 		Exec(ctx)
 	if err != nil {
 		log.Printf("[Worker %s] failed to supersede stale repost sweep: %v\n", w.workerID, err)
-		return
+		return nil
 	}
 	if rows, rowsErr := repostSuperseded.RowsAffected(); rowsErr == nil && rows > 0 {
 		log.Printf("[Worker %s] superseded %d stale repost sweep job(s)\n", w.workerID, rows)
+	}
+
+	var requeuedPublicationJobIDs []string
+	if err := w.db.NewSelect().Model((*models.Job)(nil)).
+		Column("id").
+		Where("type IN (?)", bun.List([]string{jobTypePublishPost, jobTypePublishPublication})).
+		Where("status = ?", jobStatusProcessing).
+		Where("locked_at IS NOT NULL").
+		Where("locked_at <= ?", cutoff).
+		Order("id ASC").
+		Scan(ctx, &requeuedPublicationJobIDs); err != nil {
+		log.Printf("[Worker %s] failed to identify stale publication jobs: %v\n", w.workerID, err)
+		return nil
 	}
 
 	result, err := w.db.NewUpdate().
@@ -220,18 +238,20 @@ func (w *BackgroundWorker) requeueStaleProcessingJobs(ctx context.Context) {
 		Set("status = ?", jobStatusPending).
 		Set("locked_at = NULL").
 		Set("locked_by = ''").
+		Where("type NOT IN (?)", bun.List([]string{jobTypePublishPost, jobTypePublishPublication})).
 		Where("status = ?", jobStatusProcessing).
 		Where("locked_at IS NOT NULL").
 		Where("locked_at <= ?", cutoff).
 		Exec(ctx)
 	if err != nil {
 		log.Printf("[Worker %s] failed to requeue stale processing jobs: %v\n", w.workerID, err)
-		return
+		return nil
 	}
 	rows, err := result.RowsAffected()
 	if err == nil && rows > 0 {
 		log.Printf("[Worker %s] requeued %d stale processing job(s)\n", w.workerID, rows)
 	}
+	return requeuedPublicationJobIDs
 }
 
 func (w *BackgroundWorker) processNextJobIfAvailable(ctx context.Context) bool {

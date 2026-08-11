@@ -33,7 +33,7 @@ func createJobsTestDB(t *testing.T) *bun.DB {
 // `WHERE payload LIKE '%<post.ID>%'`, which would match any job payload
 // that contained the post ID as a substring (e.g. a media_cleanup job
 // that referenced the post in a free-text `note` field). The fix is to
-// filter on `type = 'publish_post'` AND the JSON `post_id` key so only
+// filter on `type = 'publish_post'` and the indexed scope identity so only
 // the publish_post job for the target post is
 // cancelled, no matter what other job types exist or what fields they
 // put in their payloads.
@@ -45,22 +45,46 @@ func TestCancelJobsForPostOnlyAffectsPublishPost(t *testing.T) {
 	postID := "550e8400-e29b-41d4-a716-446655440000"
 	otherPostID := "11111111-2222-3333-4444-555555555555"
 
-	// The job that SHOULD be cancelled: a publish_post job whose payload
-	// has a top-level "post_id" key matching postID.
+	// The job that SHOULD be cancelled: a publish_post job with the exact
+	// target post scope.
 	targetJob := &models.Job{
 		ID:       uuid.NewString(),
 		Type:     jobTypePublishPost,
+		ScopeID:  postID,
 		Payload:  fmt.Sprintf(`{"post_id":%q}`, postID),
 		Status:   "pending",
 		RunAt:    time.Now().Add(time.Hour),
 		Attempts: 0,
+	}
+	completedHistory := &models.Job{
+		ID: uuid.NewString(), Type: jobTypePublishPost, ScopeID: postID,
+		Payload: fmt.Sprintf(`{"post_id":%q}`, postID), Status: "completed",
+		RunAt: time.Now().Add(-time.Hour), Attempts: 1,
+	}
+	failedHistory := &models.Job{
+		ID: uuid.NewString(), Type: jobTypePublishPost, ScopeID: postID,
+		Payload: fmt.Sprintf(`{"post_id":%q}`, postID), Status: "failed",
+		RunAt: time.Now().Add(-time.Hour), Attempts: 1,
 	}
 
 	// A publish_post job for a different post — must NOT be cancelled.
 	otherPostJob := &models.Job{
 		ID:       uuid.NewString(),
 		Type:     jobTypePublishPost,
+		ScopeID:  otherPostID,
 		Payload:  fmt.Sprintf(`{"post_id":%q}`, otherPostID),
+		Status:   "pending",
+		RunAt:    time.Now().Add(time.Hour),
+		Attempts: 0,
+	}
+
+	// A repaired queue identity is authoritative even if an old payload is
+	// stale or misleading.
+	decoyStalePayload := &models.Job{
+		ID:       uuid.NewString(),
+		Type:     jobTypePublishPost,
+		ScopeID:  otherPostID,
+		Payload:  fmt.Sprintf(`{"post_id":%q}`, postID),
 		Status:   "pending",
 		RunAt:    time.Now().Add(time.Hour),
 		Attempts: 0,
@@ -80,11 +104,12 @@ func TestCancelJobsForPostOnlyAffectsPublishPost(t *testing.T) {
 
 	// A decoy job that is a publish_post for a different post whose ID
 	// happens to start with the same 8 characters as postID. The old
-	// LIKE-based query would have matched (substring match); the new
-	// JSON-key query must not.
+	// LIKE-based query would have matched (substring match); the exact
+	// scope query must not.
 	decoySimilarPost := &models.Job{
 		ID:       uuid.NewString(),
 		Type:     jobTypePublishPost,
+		ScopeID:  postID[:8] + "-extra",
 		Payload:  fmt.Sprintf(`{"post_id":"%s-extra"}`, postID[:8]),
 		Status:   "pending",
 		RunAt:    time.Now().Add(time.Hour),
@@ -92,9 +117,8 @@ func TestCancelJobsForPostOnlyAffectsPublishPost(t *testing.T) {
 	}
 
 	// A hypothetical future job type that does include a `post_id` field
-	// in its payload. Even with the JSON-key fix, this would still be
-	// matched by the JSON-key condition alone — but the `type = ?` filter
-	// explicitly excludes it, which is the contract we want to pin.
+	// in its payload. A payload condition could still match this, but the
+	// exact type and scope identity excludes it.
 	decoyNonPublishWithPostID := &models.Job{
 		ID:       uuid.NewString(),
 		Type:     "refresh_token",
@@ -104,17 +128,18 @@ func TestCancelJobsForPostOnlyAffectsPublishPost(t *testing.T) {
 		Attempts: 0,
 	}
 
-	for _, j := range []*models.Job{targetJob, otherPostJob, decoyWithSubstring, decoySimilarPost, decoyNonPublishWithPostID} {
+	for _, j := range []*models.Job{targetJob, completedHistory, failedHistory, otherPostJob, decoyStalePayload, decoyWithSubstring, decoySimilarPost, decoyNonPublishWithPostID} {
 		_, err := db.NewInsert().Model(j).Exec(ctx)
 		require.NoError(t, err)
 	}
 
-	// This is the EXACT query used in posts.go. If the production code
+	// This is the exact query used in posts.go. If the production code
 	// drifts from this string, the test stops being a regression test;
 	// keep them in sync deliberately.
 	res, err := db.NewDelete().
 		Model(&models.Job{}).
 		Where(publishPostJobPostIDWhere(db), jobTypePublishPost, postID).
+		Where("status = ?", jobStatusPending).
 		Exec(ctx)
 	require.NoError(t, err)
 	rowsAffected, err := res.RowsAffected()
@@ -124,15 +149,18 @@ func TestCancelJobsForPostOnlyAffectsPublishPost(t *testing.T) {
 	var remaining []models.Job
 	err = db.NewSelect().Model(&remaining).OrderExpr("id ASC").Scan(ctx)
 	require.NoError(t, err)
-	require.Len(t, remaining, 4)
+	require.Len(t, remaining, 7)
 
 	ids := map[string]bool{}
 	for _, j := range remaining {
 		ids[j.ID] = true
 	}
 	require.False(t, ids[targetJob.ID], "target job should have been deleted")
+	require.True(t, ids[completedHistory.ID], "completed publication history must remain")
+	require.True(t, ids[failedHistory.ID], "failed publication history must remain")
 	require.True(t, ids[otherPostJob.ID], "unrelated publish_post job must remain")
+	require.True(t, ids[decoyStalePayload.ID], "the exact scope must override a stale payload identity")
 	require.True(t, ids[decoyWithSubstring.ID], "media_cleanup job with post_id substring in `note` field must remain (was the LIKE bug)")
 	require.True(t, ids[decoySimilarPost.ID], "publish_post job for a different post whose ID shares a prefix must remain (was the LIKE bug)")
-	require.True(t, ids[decoyNonPublishWithPostID.ID], "non-publish job that happens to include a post_id field must remain (defence-in-depth)")
+	require.True(t, ids[decoyNonPublishWithPostID.ID], "non-publish job that happens to include a post_id field must remain (defense in depth)")
 }

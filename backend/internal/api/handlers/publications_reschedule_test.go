@@ -61,6 +61,7 @@ func TestUpdateScheduledPublicationReschedulesPublishJob(t *testing.T) {
 		{
 			ID:          "old-publication-job",
 			Type:        jobTypePublishPublication,
+			ScopeID:     "publication-1",
 			Payload:     `{"publication_id":"publication-1"}`,
 			Status:      "pending",
 			RunAt:       oldRunAt,
@@ -69,6 +70,7 @@ func TestUpdateScheduledPublicationReschedulesPublishJob(t *testing.T) {
 		{
 			ID:          "other-publication-job",
 			Type:        jobTypePublishPublication,
+			ScopeID:     "publication-2",
 			Payload:     `{"publication_id":"publication-2"}`,
 			Status:      "pending",
 			RunAt:       oldRunAt,
@@ -247,6 +249,7 @@ func TestClearScheduledPublicationCancelsJobAndReturnsToDraft(t *testing.T) {
 		{
 			ID:          "publication-job",
 			Type:        jobTypePublishPublication,
+			ScopeID:     "publication-1",
 			Payload:     `{"publication_id":"publication-1"}`,
 			Status:      "pending",
 			RunAt:       runAt,
@@ -255,6 +258,7 @@ func TestClearScheduledPublicationCancelsJobAndReturnsToDraft(t *testing.T) {
 		{
 			ID:          "other-publication-job",
 			Type:        jobTypePublishPublication,
+			ScopeID:     "publication-2",
 			Payload:     `{"publication_id":"publication-2"}`,
 			Status:      "pending",
 			RunAt:       runAt,
@@ -263,6 +267,7 @@ func TestClearScheduledPublicationCancelsJobAndReturnsToDraft(t *testing.T) {
 		{
 			ID:          "publication-reply-job",
 			Type:        jobTypePublishPublication,
+			ScopeID:     "publication-1",
 			Payload:     `{"publication_id":"publication-1","rendition_id":"rendition-1","action":"reply"}`,
 			Status:      jobStatusPending,
 			RunAt:       runAt,
@@ -271,6 +276,7 @@ func TestClearScheduledPublicationCancelsJobAndReturnsToDraft(t *testing.T) {
 		{
 			ID:          "completed-publication-job",
 			Type:        jobTypePublishPublication,
+			ScopeID:     "publication-1",
 			Payload:     `{"publication_id":"publication-1"}`,
 			Status:      "completed",
 			RunAt:       runAt,
@@ -372,6 +378,7 @@ func TestProcessingPrimaryJobBlocksClearAndEditsAcrossRESTAndMCP(t *testing.T) {
 		{
 			ID:          "pending-job",
 			Type:        jobTypePublishPublication,
+			ScopeID:     "publication-1",
 			Payload:     `{"publication_id":"publication-1"}`,
 			Status:      jobStatusPending,
 			RunAt:       runAt,
@@ -380,6 +387,7 @@ func TestProcessingPrimaryJobBlocksClearAndEditsAcrossRESTAndMCP(t *testing.T) {
 		{
 			ID:          "processing-job",
 			Type:        jobTypePublishPublication,
+			ScopeID:     "publication-1",
 			Payload:     `{"publication_id":"publication-1"}`,
 			Status:      jobStatusProcessing,
 			RunAt:       now,
@@ -539,6 +547,7 @@ func TestReschedulePublicationRejectsNonFutureTimeWithoutReplacingJob(t *testing
 	_, err = db.NewInsert().Model(&models.Job{
 		ID:          "original-job",
 		Type:        jobTypePublishPublication,
+		ScopeID:     "publication-1",
 		Payload:     `{"publication_id":"publication-1"}`,
 		Status:      jobStatusPending,
 		RunAt:       future,
@@ -593,8 +602,8 @@ func TestClearScheduleCancelsOrphanPendingJobWhenPublicationStatusDrifted(t *tes
 	}).Exec(ctx)
 	require.NoError(t, err)
 	jobs := []models.Job{
-		{ID: "orphan-primary", Type: jobTypePublishPublication, Payload: `{"publication_id":"publication-1"}`, Status: jobStatusPending, RunAt: now.Add(time.Hour), MaxAttempts: 3},
-		{ID: "reply", Type: jobTypePublishPublication, Payload: `{"publication_id":"publication-1","action":"reply"}`, Status: jobStatusPending, RunAt: now.Add(time.Hour), MaxAttempts: 3},
+		{ID: "orphan-primary", Type: jobTypePublishPublication, ScopeID: "publication-1", Payload: `{"publication_id":"publication-1"}`, Status: jobStatusPending, RunAt: now.Add(time.Hour), MaxAttempts: 3},
+		{ID: "reply", Type: jobTypePublishPublication, ScopeID: "publication-1", Payload: `{"publication_id":"publication-1","action":"reply"}`, Status: jobStatusPending, RunAt: now.Add(time.Hour), MaxAttempts: 3},
 	}
 	_, err = db.NewInsert().Model(&jobs).Exec(ctx)
 	require.NoError(t, err)
@@ -959,6 +968,7 @@ func TestPublicationActionsRejectProcessingPrimaryJobAcrossRESTAndMCP(t *testing
 	_, err = db.NewInsert().Model(&models.Job{
 		ID:          "processing-job",
 		Type:        jobTypePublishPublication,
+		ScopeID:     "publication-1",
 		Payload:     `{"publication_id":"publication-1"}`,
 		Status:      jobStatusProcessing,
 		RunAt:       now,
@@ -1022,6 +1032,7 @@ func TestPrimaryPublicationQueueUsesCurrentScheduleAtTransactionBoundary(t *test
 	_, err = db.NewInsert().Model(&models.Job{
 		ID:          "stale-job",
 		Type:        jobTypePublishPublication,
+		ScopeID:     "publication-1",
 		Payload:     `{"publication_id":"publication-1"}`,
 		Status:      jobStatusPending,
 		RunAt:       staleRunAt,
@@ -1146,6 +1157,7 @@ func TestPrimaryPublicationQueueRejectsProcessingJobWithoutMutation(t *testing.T
 		{
 			ID:          "pending-job",
 			Type:        jobTypePublishPublication,
+			ScopeID:     "publication-1",
 			Payload:     `{"publication_id":"publication-1"}`,
 			Status:      jobStatusPending,
 			RunAt:       runAt,
@@ -1154,6 +1166,7 @@ func TestPrimaryPublicationQueueRejectsProcessingJobWithoutMutation(t *testing.T
 		{
 			ID:          "processing-job",
 			Type:        jobTypePublishPublication,
+			ScopeID:     "publication-1",
 			Payload:     `{"publication_id":"publication-1"}`,
 			Status:      jobStatusProcessing,
 			RunAt:       now,

@@ -40,11 +40,23 @@ func NewService(db *bun.DB) *Service {
 }
 
 func (s *Service) ValidateScheduledProviderMedia(ctx context.Context, workspaceID string, accountIDs []string, mediaIDs []string) error {
+	return validateScheduledProviderMedia(ctx, s.db, workspaceID, accountIDs, mediaIDs)
+}
+
+// ValidateScheduledProviderMediaTx performs scheduled-provider validation on
+// the caller's transaction. Mutation handlers must use this form after they
+// lock and reload an aggregate so SQLite does not need a second connection and
+// the validation sees the same snapshot that will be committed.
+func (s *Service) ValidateScheduledProviderMediaTx(ctx context.Context, tx bun.IDB, workspaceID string, accountIDs []string, mediaIDs []string) error {
+	return validateScheduledProviderMedia(ctx, tx, workspaceID, accountIDs, mediaIDs)
+}
+
+func validateScheduledProviderMedia(ctx context.Context, db bun.IDB, workspaceID string, accountIDs []string, mediaIDs []string) error {
 	if len(accountIDs) == 0 {
 		return nil
 	}
 
-	accounts, err := s.activeAccounts(ctx, workspaceID, accountIDs)
+	accounts, err := activeAccounts(ctx, db, workspaceID, accountIDs)
 	if err != nil {
 		return err
 	}
@@ -52,7 +64,7 @@ func (s *Service) ValidateScheduledProviderMedia(ctx context.Context, workspaceI
 		return nil
 	}
 
-	mediaItems, err := s.mediaItemsForIDs(ctx, workspaceID, mediaIDs)
+	mediaItems, err := mediaItemsForIDs(ctx, db, workspaceID, mediaIDs)
 	if err != nil {
 		return err
 	}
@@ -114,13 +126,13 @@ func storedAccountTextLimit(account models.SocialAccount, now time.Time) (int, b
 	return capabilities.ProviderTextLimit(account.Platform)
 }
 
-func (s *Service) activeAccounts(ctx context.Context, workspaceID string, accountIDs []string) ([]models.SocialAccount, error) {
+func activeAccounts(ctx context.Context, db bun.IDB, workspaceID string, accountIDs []string) ([]models.SocialAccount, error) {
 	uniqueIDs := uniqueNonEmptyStrings(accountIDs)
 	if len(uniqueIDs) == 0 {
 		return nil, nil
 	}
 	var accounts []models.SocialAccount
-	if err := s.db.NewSelect().
+	if err := db.NewSelect().
 		Model(&accounts).
 		Column("id", "platform", "capability_state_json", "capability_checked_at").
 		Where("workspace_id = ?", workspaceID).
@@ -324,14 +336,14 @@ func ProviderMediaIssueMessage(issue platform.MediaValidationIssue) string {
 	return fmt.Sprintf("%s: %s", issue.Provider, message)
 }
 
-func (s *Service) mediaItemsForIDs(ctx context.Context, workspaceID string, mediaIDs []string) ([]platform.MediaItem, error) {
+func mediaItemsForIDs(ctx context.Context, db bun.IDB, workspaceID string, mediaIDs []string) ([]platform.MediaItem, error) {
 	uniqueIDs := uniqueNonEmptyStrings(mediaIDs)
 	if len(uniqueIDs) == 0 {
 		return nil, nil
 	}
 
 	var media []models.MediaAttachment
-	if err := s.db.NewSelect().
+	if err := db.NewSelect().
 		Model(&media).
 		Column("id", "mime_type", "size", "duration_ms", "original_filename").
 		Where("workspace_id = ?", workspaceID).

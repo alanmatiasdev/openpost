@@ -302,58 +302,76 @@ func (commands publicationCommands) RetryRendition(
 		"authorization_scheduled_at": now.Format(time.RFC3339Nano),
 	})
 	err := commands.handler.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
-		result, err := tx.NewUpdate().
-			Model((*models.Rendition)(nil)).
-			Set("status = ?", models.RenditionStatusScheduled).
-			Set("error_retry_at = NULL").
-			Set("updated_at = ?", now).
-			Where("id = ?", rendition.ID).
-			Where("status = ?", models.RenditionStatusFailed).
-			Where("error_retryable = ?", true).
-			Exec(txCtx)
-		if err != nil {
-			return err
-		}
-		if affected, _ := result.RowsAffected(); affected == 0 {
-			return errPublicationAlreadyProcessing
-		}
-		if _, err := tx.NewUpdate().
-			Model((*models.Publication)(nil)).
-			Set("status = ?", models.PublicationStatusScheduled).
-			Set("updated_at = ?", now).
-			Where("id = ?", publication.ID).
-			Where("status = ?", models.PublicationStatusFailed).
-			Exec(txCtx); err != nil {
-			return err
-		}
-		if _, err := tx.NewUpdate().
-			Model((*models.Post)(nil)).
-			Set("status = ?", models.PostStatusScheduled).
-			Where("publication_id = ?", publication.ID).
-			Where("status = ?", models.PostStatusFailed).
-			Exec(txCtx); err != nil && !isMissingLegacyPostsTable(err) {
-			return err
-		}
-		job := &models.Job{
-			ID:          jobID,
-			Type:        jobTypePublishPublication,
-			Payload:     payload,
-			Status:      jobStatusPending,
-			RunAt:       now,
-			MaxAttempts: 3,
-		}
-		if _, err = tx.NewInsert().Model(job).Exec(txCtx); err != nil {
-			return err
-		}
-		_, _, err = publicationauth.CreateBatch(txCtx, tx, publicationauth.BatchInput{
-			BatchID: batchID, PublicationID: publication.ID,
-			Actor:  publicationAuthorizationActor(txCtx, publication.CreatedByID),
-			Action: publicationauth.ActionPublish, PolicyMode: publicationauth.PolicyRetry, ConfirmedAt: now,
-			Targets: []publicationauth.JobTarget{{JobID: jobID, RenditionID: rendition.ID, RunAt: now}},
-		})
-		return err
+		return commands.retryRenditionTx(txCtx, tx, publication, &rendition, jobID, batchID, payload, now)
 	})
 	return jobID, err
+}
+
+func (commands publicationCommands) retryRenditionTx(
+	ctx context.Context,
+	tx bun.Tx,
+	publication *models.Publication,
+	rendition *models.Rendition,
+	jobID,
+	batchID,
+	payload string,
+	now time.Time,
+) error {
+	if err := lockPublicationMutationTx(ctx, tx, publication.ID); err != nil {
+		return err
+	}
+	if err := commands.handler.lockActivePrimaryPublicationJobsTx(ctx, tx, publication.ID); err != nil {
+		return err
+	}
+	if err := commands.handler.rejectProcessingPrimaryPublicationJobTx(ctx, tx, publication.ID); err != nil {
+		return err
+	}
+	if err := commands.handler.rejectPendingPrimaryPublicationJobTx(ctx, tx, publication.ID); err != nil {
+		return err
+	}
+	if err := commands.handler.rejectUnresolvedPublicationTargetsTx(ctx, tx, publication.ID, []string{rendition.ID}); err != nil {
+		return err
+	}
+	result, err := tx.NewUpdate().Model((*models.Rendition)(nil)).
+		Set("status = ?", models.RenditionStatusScheduled).
+		Set("error_retry_at = NULL").Set("updated_at = ?", now).
+		Where("id = ?", rendition.ID).Where("status = ?", models.RenditionStatusFailed).
+		Where("error_retryable = ?", true).Exec(ctx)
+	if err != nil {
+		return err
+	}
+	if affected, _ := result.RowsAffected(); affected == 0 {
+		return errPublicationAlreadyProcessing
+	}
+	if err := commands.markRetryRenditionScheduledTx(ctx, tx, publication.ID, now); err != nil {
+		return err
+	}
+	job := &models.Job{ID: jobID, Type: jobTypePublishPublication, ScopeID: publication.ID, Payload: payload, Status: jobStatusPending, RunAt: now, MaxAttempts: 3}
+	if _, err = tx.NewInsert().Model(job).Exec(ctx); err != nil {
+		return err
+	}
+	_, _, err = publicationauth.CreateBatch(ctx, tx, publicationauth.BatchInput{
+		BatchID: batchID, PublicationID: publication.ID,
+		Actor: publicationAuthorizationActor(ctx, publication.CreatedByID), Action: publicationauth.ActionPublish,
+		PolicyMode: publicationauth.PolicyRetry, ConfirmedAt: now,
+		Targets: []publicationauth.JobTarget{{JobID: jobID, RenditionID: rendition.ID, RunAt: now}},
+	})
+	return err
+}
+
+func (commands publicationCommands) markRetryRenditionScheduledTx(ctx context.Context, tx bun.Tx, publicationID string, now time.Time) error {
+	if _, err := tx.NewUpdate().Model((*models.Publication)(nil)).
+		Set("status = ?", models.PublicationStatusScheduled).Set("updated_at = ?", now).
+		Where("id = ?", publicationID).Where("status = ?", models.PublicationStatusFailed).Exec(ctx); err != nil {
+		return err
+	}
+	_, err := tx.NewUpdate().Model((*models.Post)(nil)).
+		Set("status = ?", models.PostStatusScheduled).
+		Where("publication_id = ?", publicationID).Where("status = ?", models.PostStatusFailed).Exec(ctx)
+	if err != nil && isMissingLegacyPostsTable(err) {
+		return nil
+	}
+	return err
 }
 
 // RetryFailedRenditions atomically replaces any pending primary publication
@@ -385,9 +403,6 @@ func (commands publicationCommands) RetryFailedRenditions(
 		if err := commands.handler.rejectProcessingPrimaryPublicationJobTx(txCtx, tx, publication.ID); err != nil {
 			return err
 		}
-		if err := commands.handler.deletePendingPrimaryPublicationJobsTx(txCtx, tx, publication.ID); err != nil {
-			return err
-		}
 		var retryRenditions []models.Rendition
 		if err := tx.NewSelect().Model(&retryRenditions).
 			Where("publication_id = ?", publication.ID).
@@ -395,6 +410,16 @@ func (commands publicationCommands) RetryFailedRenditions(
 			Where("error_retryable = ?", true).
 			Order("created_at ASC", "id ASC").
 			Scan(txCtx); err != nil {
+			return err
+		}
+		retryRenditionIDs := make([]string, 0, len(retryRenditions))
+		for index := range retryRenditions {
+			retryRenditionIDs = append(retryRenditionIDs, retryRenditions[index].ID)
+		}
+		if err := commands.handler.rejectUnresolvedPublicationTargetsTx(txCtx, tx, publication.ID, retryRenditionIDs); err != nil {
+			return err
+		}
+		if err := commands.handler.deletePendingPrimaryPublicationJobsTx(txCtx, tx, publication.ID); err != nil {
 			return err
 		}
 		result, err := tx.NewUpdate().
@@ -432,6 +457,7 @@ func (commands publicationCommands) RetryFailedRenditions(
 		if _, err := tx.NewInsert().Model(&models.Job{
 			ID:          jobID,
 			Type:        jobTypePublishPublication,
+			ScopeID:     publication.ID,
 			Payload:     payload,
 			Status:      jobStatusPending,
 			RunAt:       now,

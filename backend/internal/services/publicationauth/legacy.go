@@ -12,10 +12,11 @@ import (
 )
 
 // LegacyJobsInput reconciles pending compatibility jobs with the immutable
-// authorization contract. PublicationID scopes an exact live mutation; an
-// empty value is reserved for the startup upgrade sweep. Force appends a new
-// receipt after an already-scheduled publication changes.
+// authorization contract. Callers must provide either an exact job or
+// publication scope. Force appends a new receipt after an already-scheduled
+// publication changes.
 type LegacyJobsInput struct {
+	JobID         string
 	PublicationID string
 	Actor         Actor
 	ConfirmedAt   time.Time
@@ -27,7 +28,11 @@ type LegacyJobsInput struct {
 // Callers that also mutate publication/job state should pass their transaction
 // so the receipt and queue identity commit together.
 func AuthorizeLegacyJobs(ctx context.Context, db bun.IDB, input LegacyJobsInput) error {
+	input.JobID = strings.TrimSpace(input.JobID)
 	input.PublicationID = strings.TrimSpace(input.PublicationID)
+	if input.JobID == "" && input.PublicationID == "" {
+		return fmt.Errorf("legacy publication authorization requires a job or publication scope")
+	}
 	input.Actor = input.Actor.normalized()
 	if input.ConfirmedAt.IsZero() {
 		input.ConfirmedAt = time.Now().UTC()
@@ -36,10 +41,15 @@ func AuthorizeLegacyJobs(ctx context.Context, db bun.IDB, input LegacyJobsInput)
 	}
 
 	var jobs []models.Job
-	if err := db.NewSelect().Model(&jobs).
+	query := db.NewSelect().Model(&jobs).
 		Where("type = ? AND status = ?", "publish_publication", "pending").
-		Order("run_at ASC", "id ASC").
-		Scan(ctx); err != nil {
+		Order("run_at ASC", "id ASC")
+	if input.JobID != "" {
+		query = query.Where("id = ?", input.JobID)
+	} else if input.PublicationID != "" {
+		query = query.Where("scope_id = ?", input.PublicationID)
+	}
+	if err := query.Scan(ctx); err != nil {
 		return fmt.Errorf("load legacy publication jobs: %w", err)
 	}
 	for index := range jobs {
@@ -73,19 +83,17 @@ func authorizeLegacyJob(ctx context.Context, db bun.IDB, job *models.Job, input 
 		return nil
 	}
 
-	var publication models.Publication
-	if err := db.NewSelect().Model(&publication).Where("id = ?", publicationID).Scan(ctx); err != nil {
-		return fmt.Errorf("load legacy authorization publication %s: %w", publicationID, err)
-	}
-	actor := input.Actor
-	if !actor.valid() {
-		actor = Actor{Origin: OriginLegacy, UserID: publication.CreatedByID}
-	}
 	action, err := legacyJobAction(job.ID, payload)
 	if err != nil {
 		return err
 	}
-	eligible, err := legacyJobHasDestination(ctx, db, job.ID, publicationID, action, payload)
+	// A compatibility content mutation may rotate the primary publication
+	// receipt, but it must never change an independently authorized reply
+	// operation. Exact JobID recovery can still bind a missing reply receipt.
+	if input.Force && input.JobID == "" && action == ActionReply {
+		return nil
+	}
+	actor, eligible, err := legacyJobAuthorizationActor(ctx, db, job.ID, publicationID, action, payload, input.Actor)
 	if err != nil || !eligible {
 		return err
 	}
@@ -94,6 +102,26 @@ func authorizeLegacyJob(ctx context.Context, db bun.IDB, job *models.Job, input 
 		return err
 	}
 	return bindLegacyJobAuthorization(ctx, db, job, payload, batchID)
+}
+
+func legacyJobAuthorizationActor(
+	ctx context.Context,
+	db bun.IDB,
+	jobID,
+	publicationID,
+	action string,
+	payload map[string]any,
+	actor Actor,
+) (Actor, bool, error) {
+	var publication models.Publication
+	if err := db.NewSelect().Model(&publication).Where("id = ?", publicationID).Scan(ctx); err != nil {
+		return Actor{}, false, fmt.Errorf("load legacy authorization publication %s: %w", publicationID, err)
+	}
+	if !actor.valid() {
+		actor = Actor{Origin: OriginLegacy, UserID: publication.CreatedByID}
+	}
+	eligible, err := legacyJobHasDestination(ctx, db, jobID, publicationID, action, payload)
+	return actor, eligible, err
 }
 
 func decodeLegacyJobPayload(job *models.Job) (map[string]any, error) {

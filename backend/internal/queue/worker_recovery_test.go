@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	databasemigrations "github.com/openpost/backend/internal/database/migrations"
 	"github.com/openpost/backend/internal/jobregistry"
 	"github.com/openpost/backend/internal/models"
 	analyticsservice "github.com/openpost/backend/internal/services/analytics"
@@ -20,7 +21,7 @@ func TestWorkerRequeuesStaleProcessingJobs(t *testing.T) {
 	jobID := uuid.NewString()
 	job := &models.Job{
 		ID:          jobID,
-		Type:        jobTypePublishPost,
+		Type:        jobTypeMediaCleanup,
 		Payload:     "{}",
 		Status:      jobStatusProcessing,
 		RunAt:       time.Now().UTC().Add(-time.Hour),
@@ -42,6 +43,97 @@ func TestWorkerRequeuesStaleProcessingJobs(t *testing.T) {
 	require.True(t, stored.LockedAt.IsZero())
 	require.Empty(t, stored.LockedBy)
 	require.Equal(t, 1, stored.Attempts)
+}
+
+func TestWorkerReconcilesStalePublicationJobsBeforeDispatch(t *testing.T) {
+	db := createTestDB(t)
+	ctx := t.Context()
+	for _, model := range []any{
+		(*models.Workspace)(nil),
+		(*models.User)(nil),
+		(*models.MediaAttachment)(nil),
+		(*models.Post)(nil),
+		(*models.PostDestination)(nil),
+		(*models.PostMedia)(nil),
+		(*models.PostVariant)(nil),
+		(*models.ThreadDraft)(nil),
+		(*models.Publication)(nil),
+		(*models.PublicationSegment)(nil),
+		(*models.PublicationSegmentMedia)(nil),
+		(*models.Rendition)(nil),
+		(*models.RenditionSegment)(nil),
+		(*models.RenditionSegmentMedia)(nil),
+		(*models.RenditionMedia)(nil),
+		(*models.PublicationLifecycleEvent)(nil),
+		(*models.PublicationAuthorization)(nil),
+	} {
+		_, err := db.NewCreateTable().Model(model).IfNotExists().Exec(ctx)
+		require.NoError(t, err)
+	}
+	now := time.Now().UTC().Truncate(time.Second)
+	_, err := db.NewInsert().Model(&models.User{ID: "user-recovery", Email: "recovery@example.com", PasswordHash: "hash"}).Exec(ctx)
+	require.NoError(t, err)
+	_, err = db.NewInsert().Model(&models.Workspace{ID: "workspace-recovery", Name: "Recovery"}).Exec(ctx)
+	require.NoError(t, err)
+	_, err = db.NewInsert().Model(&models.SocialAccount{
+		ID: "account-recovery", WorkspaceID: "workspace-recovery", Platform: "x",
+		AccountID: "x-recovery", AccessTokenEnc: []byte("ciphertext"), IsActive: true,
+	}).Exec(ctx)
+	require.NoError(t, err)
+	legacyPost := &models.Post{
+		ID: "post-worker-recovery", WorkspaceID: "workspace-recovery", CreatedByID: "user-recovery",
+		Content: "Legacy recovery", Status: models.PostStatusScheduled,
+		ScheduledAt: now.Add(time.Hour), ActualRunAt: now.Add(time.Hour), CreatedAt: now,
+	}
+	_, err = db.NewInsert().Model(legacyPost).Exec(ctx)
+	require.NoError(t, err)
+	_, err = db.NewInsert().Model(&models.PostDestination{
+		ID: "destination-worker-recovery", PostID: legacyPost.ID,
+		SocialAccountID: "account-recovery", Status: "pending",
+	}).Exec(ctx)
+	require.NoError(t, err)
+	canonical := &models.Publication{
+		ID: "publication-worker-recovery", WorkspaceID: "workspace-recovery", CreatedByID: "user-recovery",
+		Title: "Canonical recovery", SourceText: "Canonical recovery", SourceContent: "Canonical recovery",
+		Status: models.PublicationStatusScheduled, ScheduledAt: now.Add(time.Hour), CreatedAt: now, UpdatedAt: now,
+	}
+	_, err = db.NewInsert().Model(canonical).Exec(ctx)
+	require.NoError(t, err)
+	_, err = db.NewInsert().Model(&models.Rendition{
+		ID: "rendition-worker-recovery", PublicationID: canonical.ID, SocialAccountID: "account-recovery",
+		Platform: "x", Profile: models.ContentProfileShortText, Body: "Canonical recovery",
+		Status: models.RenditionStatusScheduled, CreatedAt: now, UpdatedAt: now,
+	}).Exec(ctx)
+	require.NoError(t, err)
+	lockedAt := now.Add(-staleProcessingJobAge - time.Minute)
+	jobs := []models.Job{
+		{ID: "job-legacy-worker-recovery", Type: jobTypePublishPost, Payload: `{"post_id":"post-worker-recovery"}`, Status: jobStatusProcessing, RunAt: now.Add(time.Hour), LockedAt: lockedAt, LockedBy: "dead-worker"},
+		{ID: "job-canonical-worker-recovery", Type: jobTypePublishPublication, ScopeID: canonical.ID, Payload: `{"publication_id":"publication-worker-recovery"}`, Status: jobStatusProcessing, RunAt: now.Add(time.Hour), LockedAt: lockedAt, LockedBy: "dead-worker"},
+	}
+	_, err = db.NewInsert().Model(&jobs).Exec(ctx)
+	require.NoError(t, err)
+
+	worker := &BackgroundWorker{db: db, workerID: "worker-recovery"}
+	requeuedPublicationJobIDs := worker.requeueStaleProcessingJobs(ctx)
+	require.ElementsMatch(t, []string{jobs[0].ID, jobs[1].ID}, requeuedPublicationJobIDs)
+	var prematurelyClaimed models.Job
+	err = db.NewRaw(`UPDATE jobs SET status = ? WHERE id = ? AND status = ? RETURNING *`,
+		jobStatusProcessing, jobs[0].ID, jobStatusPending).Scan(ctx, &prematurelyClaimed)
+	require.Error(t, err, "stale publication jobs must remain unclaimable before reconciliation commits")
+	require.NoError(t, databasemigrations.ReconcileActiveLegacyPublicationJobs(ctx, db, requeuedPublicationJobIDs))
+
+	for index := range jobs {
+		require.NoError(t, db.NewSelect().Model(&jobs[index]).Where("id = ?", jobs[index].ID).Scan(ctx))
+		require.Equal(t, jobStatusPending, jobs[index].Status)
+		require.Equal(t, jobTypePublishPublication, jobs[index].Type)
+		require.Contains(t, jobs[index].Payload, "authorization_batch_id")
+		receiptCount, countErr := db.NewSelect().Model((*models.PublicationAuthorization)(nil)).
+			Where("job_id = ?", jobs[index].ID).Count(ctx)
+		require.NoError(t, countErr)
+		require.Positive(t, receiptCount)
+	}
+	require.NoError(t, db.NewSelect().Model(legacyPost).Where("id = ?", legacyPost.ID).Scan(ctx))
+	require.Equal(t, "legacy-publication:"+legacyPost.ID, legacyPost.PublicationID)
 }
 
 func TestWorkerMarksStaleProviderWriteAmbiguousBeforeRequeue(t *testing.T) {
@@ -72,10 +164,11 @@ func TestWorkerMarksStaleProviderWriteAmbiguousBeforeRequeue(t *testing.T) {
 	}())
 
 	worker := &BackgroundWorker{db: db, workerID: "worker-test"}
-	worker.requeueStaleProcessingJobs(ctx)
+	requeuedPublicationJobIDs := worker.requeueStaleProcessingJobs(ctx)
+	require.Equal(t, []string{job.ID}, requeuedPublicationJobIDs)
 
 	require.NoError(t, db.NewSelect().Model(job).WherePK().Scan(ctx))
-	require.Equal(t, jobStatusPending, job.Status)
+	require.Equal(t, jobStatusProcessing, job.Status, "publication work remains unclaimable until exact reconciliation commits")
 	require.NoError(t, db.NewSelect().Model(attempt).WherePK().Scan(ctx))
 	require.Equal(t, "ambiguous", attempt.Status)
 	require.Equal(t, "unknown", attempt.SubmissionState)

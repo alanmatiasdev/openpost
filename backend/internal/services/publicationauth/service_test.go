@@ -143,10 +143,14 @@ func TestAuthorizeLegacyJobsBindsQueueAndAppendsAfterMutation(t *testing.T) {
 	ctx := t.Context()
 	runAt := time.Now().UTC().Add(time.Hour).Truncate(time.Microsecond)
 	job := models.Job{
-		ID: "legacy-job-1", Type: "publish_publication",
+		ID: "legacy-job-1", Type: "publish_publication", ScopeID: "publication-1",
 		Payload: `{"publication_id":"publication-1"}`, Status: "pending", RunAt: runAt,
 	}
-	_, err := db.NewInsert().Model(&job).Exec(ctx)
+	stalePayloadJob := models.Job{
+		ID: "legacy-job-stale-payload", Type: "publish_publication", ScopeID: "publication-other",
+		Payload: `{"publication_id":"publication-1"}`, Status: "pending", RunAt: runAt,
+	}
+	_, err := db.NewInsert().Model(&[]models.Job{job, stalePayloadJob}).Exec(ctx)
 	require.NoError(t, err)
 
 	require.NoError(t, AuthorizeLegacyJobs(ctx, db, LegacyJobsInput{
@@ -167,6 +171,8 @@ func TestAuthorizeLegacyJobsBindsQueueAndAppendsAfterMutation(t *testing.T) {
 	require.Len(t, firstReceipts, 1)
 	require.Equal(t, OriginCLI, firstReceipts[0].ActorOrigin)
 	require.Equal(t, PolicyLegacyScheduled, firstReceipts[0].PolicyMode)
+	require.NoError(t, db.NewSelect().Model(&stalePayloadJob).Where("id = ?", stalePayloadJob.ID).Scan(ctx))
+	require.JSONEq(t, `{"publication_id":"publication-1"}`, stalePayloadJob.Payload)
 
 	_, err = db.NewUpdate().Model((*models.Publication)(nil)).
 		Set("revision = ?", 5).Where("id = ?", "publication-1").Exec(ctx)
@@ -195,6 +201,11 @@ func TestAuthorizeLegacyJobsBindsQueueAndAppendsAfterMutation(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 5, replacementReceipts[0].PublicationRevision)
 	require.Equal(t, OriginMCP, replacementReceipts[0].ActorOrigin)
+}
+
+func TestAuthorizeLegacyJobsRequiresExactScope(t *testing.T) {
+	db := newPublicationAuthorizationTestDB(t)
+	require.ErrorContains(t, AuthorizeLegacyJobs(t.Context(), db, LegacyJobsInput{}), "requires a job or publication scope")
 }
 
 func newPublicationAuthorizationTestDB(t *testing.T) *bun.DB {

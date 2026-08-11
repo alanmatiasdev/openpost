@@ -171,6 +171,7 @@ func TestCreatePostIncrementsScheduledUsage(t *testing.T) {
 	require.Equal(t, int64(1), current)
 	var job models.Job
 	require.NoError(t, srv.db.NewSelect().Model(&job).Where("type = ?", "publish_publication").Scan(t.Context()))
+	require.NotEmpty(t, job.ScopeID)
 	var payload map[string]any
 	require.NoError(t, json.Unmarshal([]byte(job.Payload), &payload))
 	batchID, ok := payload["authorization_batch_id"].(string)

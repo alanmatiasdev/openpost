@@ -167,7 +167,8 @@ func TestLoadPublicationResponsesUsesFixedQueryCount(t *testing.T) {
 	counter.count.Store(0)
 	detail, err := (&PublicationHandler{db: db}).loadPublicationResponse(ctx, "publication-1", "user-1")
 	require.NoError(t, err)
-	require.Equal(t, int64(9), counter.count.Load())
+	// Workspace authorization includes one constant identity-policy lookup.
+	require.Equal(t, int64(10), counter.count.Load())
 	require.Equal(t, "publication-1", detail.ID)
 	require.Equal(t, "rendition-segment-1", detail.Renditions[0].Segments[0].ID)
 }

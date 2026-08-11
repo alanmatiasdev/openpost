@@ -127,13 +127,7 @@ func finalizeMigrations(ctx context.Context, db *bun.DB, appliedSet map[int64]bo
 			return fmt.Errorf("provider readiness certification migration failed: %w", err)
 		}
 	}
-	if err := finalizeRecentMigrations(ctx, db, appliedSet); err != nil {
-		return err
-	}
-	if err := MigrateLegacyPublicationAuthoring(ctx, db); err != nil {
-		return fmt.Errorf("legacy publication authoring migration failed: %w", err)
-	}
-	return nil
+	return finalizeRecentMigrations(ctx, db, appliedSet)
 }
 
 func finalizeRecentMigrations(
@@ -162,6 +156,11 @@ func finalizeRecentMigrations(
 	}
 	if err := backfillVideoRevisionMediaReferences(ctx, db); err != nil {
 		return fmt.Errorf("video revision media reference migration failed: %w", err)
+	}
+	if appliedSet[83] {
+		if err := resumeLegacyPublicationAuthoringBackfill(ctx, db); err != nil {
+			return fmt.Errorf("legacy publication authoring migration failed: %w", err)
+		}
 	}
 	return nil
 }
@@ -309,7 +308,7 @@ func prepareMigration(ctx context.Context, db *bun.DB, migration migration) erro
 	case 61:
 		description = "repost override"
 		err = ensurePublicationRepostOverride(ctx, db)
-	case 62, 63, 64, 66, 71, 73, 74, 75, 76, 77, 78, 80, 81, 82:
+	case 62, 63, 64, 66, 71, 73, 74, 75, 76, 77, 78, 80, 81, 82, 83:
 		return prepareRecentMigration(ctx, db, migration)
 	}
 	if err != nil {
@@ -467,58 +466,56 @@ func rebuildSQLitePostsWithUpdatedAt(ctx context.Context, db *bun.DB) error {
 }
 
 func prepareRecentMigration(ctx context.Context, db *bun.DB, migration migration) error {
-	var (
-		err         error
-		description string
-	)
-	switch migration.version {
-	case 62:
-		description = "media collections to tags"
-		err = ensureMediaTagMigration(ctx, db)
-	case 63:
-		description = "editor names"
-		err = ensureEditorNameMigration(ctx, db)
-	case 64:
-		description = "Social Sets and rendition inheritance"
-		err = ensureSocialSetsAndRenditionInheritance(ctx, db)
-	case 66:
-		description = "composer experience"
-		err = ensureComposerExperienceUserField(ctx, db)
-	case 71:
-		description = "job dedupe identity"
-		err = ensureJobsTable(ctx, db)
-	case 73:
-		description = "normalized OAuth grants"
-		err = prepareOAuthGrantMigration(ctx, db)
-	case 74:
-		description = "rendition media deliveries"
-		err = ensureProviderMediaDeliveryPrerequisites(ctx, db)
-	case 75:
-		description = "publication authorizations"
-		err = preparePublicationAuthorizationMigration(ctx, db)
-	case 76:
-		description = "durable provider write attempts"
-		err = ensureProviderWriteAttemptPrerequisites(ctx, db)
-	case 77:
-		description = "provider readiness certification"
-		err = prepareProviderReadinessMigration(ctx, db)
-	case 78:
-		description = "media reference indexes"
-		err = ensureMediaReferenceIndexPrerequisites(ctx, db)
-	case 80:
-		description = "workspace access lifecycle"
-		err = ensureWorkspaceAccessLifecycleSchema(ctx, db)
-	case 81, 82:
-		description, err = prepareAccountAndEditorRevisionMigration(
-			ctx,
-			db,
-			migration.version,
-		)
+	description, err := prepareEarlierRecentMigration(ctx, db, migration.version)
+	if description == "" && err == nil {
+		description, err = prepareLaterRecentMigration(ctx, db, migration.version)
 	}
 	if err != nil {
 		return fmt.Errorf("migration %s %s preparation failed: %w", migration.name, description, err)
 	}
 	return nil
+}
+
+func prepareEarlierRecentMigration(ctx context.Context, db *bun.DB, version int64) (string, error) {
+	switch version {
+	case 62:
+		return "media collections to tags", ensureMediaTagMigration(ctx, db)
+	case 63:
+		return "editor names", ensureEditorNameMigration(ctx, db)
+	case 64:
+		return "Social Sets and rendition inheritance", ensureSocialSetsAndRenditionInheritance(ctx, db)
+	case 66:
+		return "composer experience", ensureComposerExperienceUserField(ctx, db)
+	case 71:
+		return "job dedupe identity", ensureJobsTable(ctx, db)
+	case 73:
+		return "normalized OAuth grants", prepareOAuthGrantMigration(ctx, db)
+	case 74:
+		return "rendition media deliveries", ensureProviderMediaDeliveryPrerequisites(ctx, db)
+	case 75:
+		return "publication authorizations", preparePublicationAuthorizationMigration(ctx, db)
+	case 76:
+		return "durable provider write attempts", ensureProviderWriteAttemptPrerequisites(ctx, db)
+	case 77:
+		return "provider readiness certification", prepareProviderReadinessMigration(ctx, db)
+	default:
+		return "", nil
+	}
+}
+
+func prepareLaterRecentMigration(ctx context.Context, db *bun.DB, version int64) (string, error) {
+	switch version {
+	case 78:
+		return "media reference indexes", ensureMediaReferenceIndexPrerequisites(ctx, db)
+	case 80:
+		return "workspace access lifecycle", ensureWorkspaceAccessLifecycleSchema(ctx, db)
+	case 81, 82:
+		return prepareAccountAndEditorRevisionMigration(ctx, db, version)
+	case 83:
+		return "legacy publication authoring backfill", nil
+	default:
+		return "", nil
+	}
 }
 
 func prepareAccountAndEditorRevisionMigration(

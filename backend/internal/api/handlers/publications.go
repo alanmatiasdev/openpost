@@ -24,6 +24,7 @@ import (
 	"github.com/openpost/backend/internal/services/medialifecycle"
 	postservice "github.com/openpost/backend/internal/services/posts"
 	"github.com/openpost/backend/internal/services/providerreadiness"
+	"github.com/openpost/backend/internal/services/providerwrite"
 	"github.com/openpost/backend/internal/services/publicationauth"
 	"github.com/openpost/backend/internal/services/publicurl"
 	repostservice "github.com/openpost/backend/internal/services/reposts"
@@ -486,69 +487,9 @@ func (h *PublicationHandler) deleteRendition(api huma.API) {
 		}
 		var deleted bool
 		err = h.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
-			current, err := h.loadEditablePublicationTx(txCtx, tx, publication.ID)
-			if err != nil {
-				return err
-			}
-			if current.Revision != input.ExpectedRevision {
-				return h.publicationRevisionConflict(txCtx, tx, current, input.ExpectedRevision)
-			}
-			editor, err := postservice.EnsurePublicationEditorTx(txCtx, tx, current)
-			if err != nil {
-				return err
-			}
-			result, err := tx.NewDelete().
-				Model((*models.Rendition)(nil)).
-				Where("publication_id = ? AND social_account_id = ?", publication.ID, input.AccountID).
-				Exec(txCtx)
-			if err != nil {
-				return err
-			}
-			count, err := result.RowsAffected()
-			if err != nil {
-				return err
-			}
-			deleted = count > 0
-			if !deleted {
-				return nil
-			}
-			now := time.Now().UTC()
-			nextRevision := current.Revision + 1
-			if _, err := tx.NewUpdate().
-				Model((*models.Publication)(nil)).
-				Set("revision = ?", nextRevision).
-				Set("updated_at = ?", now).
-				Where("id = ? AND revision = ?", current.ID, current.Revision).
-				Exec(txCtx); err != nil {
-				return err
-			}
-			current.Revision = nextRevision
-			current.UpdatedAt = now
-			if err := postservice.SyncPublicationEditorTx(txCtx, tx, current, editor); err != nil {
-				return err
-			}
-			if err := h.syncTextPostRevisionsTx(
-				txCtx,
-				tx,
-				current.ID,
-				input.ExpectedRevision,
-				nextRevision,
-				[]string{"destinations", "destination overrides", "media"},
-				userID,
-				now,
-			); err != nil {
-				return err
-			}
-			return drafts.RecordChange(
-				txCtx,
-				tx,
-				drafts.AggregatePublication,
-				current.ID,
-				nextRevision,
-				[]string{"destinations", "destination overrides", "media"},
-				userID,
-				now,
-			)
+			var txErr error
+			deleted, txErr = h.deleteRenditionTx(txCtx, tx, publication.ID, input, userID)
+			return txErr
 		})
 		if err != nil {
 			return nil, publicationMutationHTTPError(err, "failed to delete publication destination")
@@ -560,6 +501,74 @@ func (h *PublicationHandler) deleteRendition(api huma.API) {
 		output.Body.Revision = publication.Revision + 1
 		return output, nil
 	})
+}
+
+func (h *PublicationHandler) deleteRenditionTx(
+	ctx context.Context,
+	tx bun.Tx,
+	publicationID string,
+	input *DeletePublicationRenditionInput,
+	userID string,
+) (bool, error) {
+	current, err := h.loadEditablePublicationTx(ctx, tx, publicationID)
+	if err != nil {
+		return false, err
+	}
+	if current.Revision != input.ExpectedRevision {
+		return false, h.publicationRevisionConflict(ctx, tx, current, input.ExpectedRevision)
+	}
+	editor, err := postservice.EnsurePublicationEditorTx(ctx, tx, current)
+	if err != nil {
+		return false, err
+	}
+	var renditionIDs []string
+	if err := tx.NewSelect().Model((*models.Rendition)(nil)).Column("id").
+		Where("publication_id = ? AND social_account_id = ?", publicationID, input.AccountID).
+		Scan(ctx, &renditionIDs); err != nil {
+		return false, err
+	}
+	if len(renditionIDs) == 0 {
+		return false, nil
+	}
+	if err := h.cancelPendingReplyJobsForDeletedTargetsTx(ctx, tx, publicationID, renditionIDs); err != nil {
+		return false, err
+	}
+	result, err := tx.NewDelete().Model((*models.Rendition)(nil)).Where("id IN (?)", bun.List(renditionIDs)).Exec(ctx)
+	if err != nil {
+		return false, err
+	}
+	count, err := result.RowsAffected()
+	if err != nil || count == 0 {
+		return false, err
+	}
+	return true, h.recordRenditionDeletionTx(ctx, tx, current, editor, input.ExpectedRevision, userID)
+}
+
+func (h *PublicationHandler) recordRenditionDeletionTx(
+	ctx context.Context,
+	tx bun.Tx,
+	current *models.Publication,
+	editor *models.Post,
+	expectedRevision int,
+	userID string,
+) error {
+	now := time.Now().UTC()
+	nextRevision := current.Revision + 1
+	if _, err := tx.NewUpdate().Model((*models.Publication)(nil)).
+		Set("revision = ?", nextRevision).Set("updated_at = ?", now).
+		Where("id = ? AND revision = ?", current.ID, current.Revision).Exec(ctx); err != nil {
+		return err
+	}
+	current.Revision = nextRevision
+	current.UpdatedAt = now
+	if err := postservice.SyncPublicationEditorTx(ctx, tx, current, editor); err != nil {
+		return err
+	}
+	fields := []string{"destinations", "destination overrides", "media"}
+	if err := h.syncTextPostRevisionsTx(ctx, tx, current.ID, expectedRevision, nextRevision, fields, userID, now); err != nil {
+		return err
+	}
+	return drafts.RecordChange(ctx, tx, drafts.AggregatePublication, current.ID, nextRevision, fields, userID, now)
 }
 
 //nolint:gocyclo
@@ -654,6 +663,9 @@ func (h *PublicationHandler) deletePublication(api huma.API) {
 			}
 			if current.Revision != input.ExpectedRevision {
 				return h.publicationRevisionConflict(txCtx, tx, current, input.ExpectedRevision)
+			}
+			if err := h.cancelPendingReplyJobsForDeletedTargetsTx(txCtx, tx, current.ID, nil); err != nil {
+				return err
 			}
 			if _, err := tx.NewDelete().
 				Model((*models.Job)(nil)).
@@ -988,6 +1000,9 @@ func (h *PublicationHandler) replaceAllPublicationRenditions(
 		Scan(ctx, &renditionIDs); err != nil {
 		return err
 	}
+	if err := h.rejectReplyJobsForReplacedTargetsTx(ctx, tx, publication.ID, renditionIDs); err != nil {
+		return err
+	}
 	if len(renditionIDs) > 0 {
 		if _, err := tx.NewDelete().
 			Model((*models.RenditionMedia)(nil)).
@@ -1060,6 +1075,9 @@ func (h *PublicationHandler) upsertRenditions(api huma.API) {
 				Where("publication_id = ?", publication.ID).
 				Where("social_account_id IN (?)", bun.List(uniqueNonEmpty(accountIDs))).
 				Scan(txCtx, &existingIDs); err != nil {
+				return err
+			}
+			if err := h.rejectReplyJobsForReplacedTargetsTx(txCtx, tx, publication.ID, existingIDs); err != nil {
 				return err
 			}
 			if len(existingIDs) > 0 {
@@ -1290,6 +1308,7 @@ func (h *PublicationHandler) replyToRendition(api huma.API) {
 		Summary:     "Queue an explicit provider reply",
 		Tags:        []string{tagPublications},
 		Middlewares: huma.Middlewares{middleware.RequestMetadataMiddleware(), middleware.AuthMiddleware(api, h.auth)},
+		Errors:      []int{403, 404, 409},
 	}, func(ctx context.Context, input *ReplyInput) (*ActionOutput, error) {
 		rendition, publication, err := h.loadRenditionWithPublicationForEdit(ctx, input.PathID, middleware.GetUserID(ctx))
 		if err != nil {
@@ -1304,7 +1323,7 @@ func (h *PublicationHandler) replyToRendition(api huma.API) {
 			input.Body.Settings, input.Body.Media, runAt,
 		)
 		if err != nil {
-			return nil, huma.Error500InternalServerError("failed to enqueue reply")
+			return nil, publicationMutationHTTPError(err, "failed to enqueue reply")
 		}
 		return actionMessage("reply queued", jobID), nil
 	})
@@ -1336,8 +1355,28 @@ func (h *PublicationHandler) queueRenditionReply(
 	if runAt.After(confirmedAt) {
 		policyMode = publicationauth.PolicyReplyScheduled
 	}
-	job := &models.Job{ID: jobID, Type: jobTypePublishPublication, Payload: payloadJSON, Status: jobStatusPending, RunAt: runAt, MaxAttempts: 3}
+	job := &models.Job{ID: jobID, Type: jobTypePublishPublication, ScopeID: publication.ID, Payload: payloadJSON, Status: jobStatusPending, RunAt: runAt, MaxAttempts: 3}
+	if h.beforeQueueTransaction != nil {
+		if err := h.beforeQueueTransaction(ctx); err != nil {
+			return "", err
+		}
+	}
 	err := h.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
+		if err := lockPublicationMutationTx(txCtx, tx, publication.ID); err != nil {
+			return err
+		}
+		var currentRendition models.Rendition
+		query := tx.NewSelect().Model(&currentRendition).
+			Where("id = ? AND publication_id = ?", rendition.ID, publication.ID)
+		if primaryPublicationQueueUsesRowLock(tx.Dialect().Name()) {
+			query = query.For("UPDATE")
+		}
+		if err := query.Scan(txCtx); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return huma.Error404NotFound("rendition not found")
+			}
+			return err
+		}
 		if _, err := tx.NewInsert().Model(job).Exec(txCtx); err != nil {
 			return err
 		}
@@ -1354,6 +1393,122 @@ func (h *PublicationHandler) queueRenditionReply(
 		return err
 	})
 	return jobID, err
+}
+
+func (h *PublicationHandler) activePublicationReplyJobsTx(
+	ctx context.Context,
+	tx bun.Tx,
+	publicationID string,
+	renditionIDs []string,
+) ([]models.Job, error) {
+	if renditionIDs != nil && len(renditionIDs) == 0 {
+		return nil, nil
+	}
+	var jobs []models.Job
+	query := tx.NewSelect().Model(&jobs).
+		Where(replyPublishPublicationJobWhere(h.db), jobTypePublishPublication, publicationID).
+		Where("status IN (?)", bun.List([]string{jobStatusPending, jobStatusProcessing, "failed"})).
+		Order("id ASC")
+	if renditionIDs != nil {
+		query = query.Where(jobPayloadTextExpr(h.db, "rendition_id")+" IN (?)", bun.List(renditionIDs))
+	}
+	if primaryPublicationQueueUsesRowLock(tx.Dialect().Name()) {
+		query = query.For("UPDATE")
+	}
+	if err := query.Scan(ctx); err != nil {
+		return nil, err
+	}
+	return jobs, nil
+}
+
+func protectedPublicationReplyJobIDs(jobs []models.Job) []string {
+	jobIDs := make([]string, 0, len(jobs))
+	for _, job := range jobs {
+		if job.Status == jobStatusPending || job.Status == "failed" {
+			jobIDs = append(jobIDs, job.ID)
+		}
+	}
+	return jobIDs
+}
+
+func (h *PublicationHandler) rejectUnsafePublicationReplyJobsTx(
+	ctx context.Context,
+	tx bun.Tx,
+	jobs []models.Job,
+	rejectPending bool,
+) error {
+	for _, job := range jobs {
+		if job.Status == jobStatusProcessing || (rejectPending && job.Status == jobStatusPending) {
+			return errPublicationAlreadyProcessing
+		}
+	}
+	jobIDs := protectedPublicationReplyJobIDs(jobs)
+	if len(jobIDs) == 0 {
+		return nil
+	}
+	count, err := tx.NewSelect().Model((*models.ProviderWriteAttempt)(nil)).
+		Where("job_id IN (?)", bun.List(jobIDs)).
+		Where("status IN (?)", bun.List([]string{
+			providerwrite.StatusSending,
+			providerwrite.StatusAmbiguous,
+			providerwrite.StatusAccepted,
+		})).
+		Count(ctx)
+	if err != nil {
+		return err
+	}
+	if count > 0 {
+		return errPublicationAlreadyProcessing
+	}
+	return nil
+}
+
+// cancelPendingReplyJobsForDeletedTargetsTx makes explicit target deletion
+// also cancel replies that have not started. Processing work and uncertain or
+// accepted provider attempts retain their operation identity and block delete.
+func (h *PublicationHandler) cancelPendingReplyJobsForDeletedTargetsTx(
+	ctx context.Context,
+	tx bun.Tx,
+	publicationID string,
+	renditionIDs []string,
+) error {
+	jobs, err := h.activePublicationReplyJobsTx(ctx, tx, publicationID, renditionIDs)
+	if err != nil {
+		return err
+	}
+	if err := h.rejectUnsafePublicationReplyJobsTx(ctx, tx, jobs, false); err != nil {
+		return err
+	}
+	pendingIDs := make([]string, 0, len(jobs))
+	for _, job := range jobs {
+		if job.Status == jobStatusPending {
+			pendingIDs = append(pendingIDs, job.ID)
+		}
+	}
+	if len(pendingIDs) == 0 {
+		return nil
+	}
+	_, err = tx.NewDelete().Model((*models.Job)(nil)).
+		Where("id IN (?)", bun.List(pendingIDs)).
+		Where("status = ?", jobStatusPending).
+		Exec(ctx)
+	return err
+}
+
+// rejectReplyJobsForReplacedTargetsTx keeps a pending reply bound to the
+// rendition identity the user authorized instead of silently orphaning it
+// when a destination is deleted and recreated.
+func (h *PublicationHandler) rejectReplyJobsForReplacedTargetsTx(
+	ctx context.Context,
+	tx bun.Tx,
+	publicationID string,
+	renditionIDs []string,
+) error {
+	jobs, err := h.activePublicationReplyJobsTx(ctx, tx, publicationID, renditionIDs)
+	if err != nil {
+		return err
+	}
+	return h.rejectUnsafePublicationReplyJobsTx(ctx, tx, jobs, true)
 }
 
 func (h *PublicationHandler) insertPublicationSegments(
@@ -2257,6 +2412,9 @@ func (h *PublicationHandler) loadEditablePublicationTx(ctx context.Context, tx b
 		return nil, err
 	}
 	if err := h.rejectProcessingPrimaryPublicationJobTx(ctx, tx, publicationID); err != nil {
+		return nil, err
+	}
+	if err := h.rejectProtectedPrimaryPublicationJobTx(ctx, tx, publicationID); err != nil {
 		return nil, err
 	}
 	return &publication, nil
@@ -3235,13 +3393,16 @@ func (h *PublicationHandler) replacePublicationJobsTx(
 	policyMode string,
 	intent providerreadiness.ExecutionIntent,
 ) (string, error) {
-	if err := lockPrimaryPublicationQueueTx(ctx, tx, publicationID); err != nil {
+	if err := lockPublicationMutationTx(ctx, tx, publicationID); err != nil {
 		return "", err
 	}
 	if err := h.lockActivePrimaryPublicationJobsTx(ctx, tx, publicationID); err != nil {
 		return "", err
 	}
 	if err := h.rejectProcessingPrimaryPublicationJobTx(ctx, tx, publicationID); err != nil {
+		return "", err
+	}
+	if err := h.rejectProtectedPrimaryPublicationJobTx(ctx, tx, publicationID); err != nil {
 		return "", err
 	}
 	if err := h.deletePendingPrimaryPublicationJobsTx(ctx, tx, publicationID); err != nil {
@@ -3326,7 +3487,7 @@ func insertPublicationJobTx(
 		payload["rendition_id"] = renditionID
 	}
 	job := &models.Job{
-		ID: uuid.New().String(), Type: jobTypePublishPublication, Payload: mustJSON(payload),
+		ID: uuid.New().String(), Type: jobTypePublishPublication, ScopeID: publicationID, Payload: mustJSON(payload),
 		Status: jobStatusPending, RunAt: runAt, MaxAttempts: 3,
 	}
 	if _, err := tx.NewInsert().Model(job).Exec(ctx); err != nil {
@@ -3364,7 +3525,7 @@ func (h *PublicationHandler) lockActivePrimaryPublicationJobsTx(ctx context.Cont
 		Model((*models.Job)(nil)).
 		Column("id").
 		Where(primaryPublishPublicationJobWhere(h.db), jobTypePublishPublication, publicationID).
-		Where("status IN (?)", bun.List([]string{jobStatusPending, jobStatusProcessing})).
+		Where("status IN (?)", bun.List([]string{jobStatusPending, jobStatusProcessing, "failed"})).
 		For("UPDATE").
 		Scan(ctx, &jobIDs)
 }
@@ -3393,6 +3554,142 @@ func (h *PublicationHandler) rejectProcessingPrimaryPublicationJobTx(ctx context
 	return nil
 }
 
+func (h *PublicationHandler) rejectPendingPrimaryPublicationJobTx(ctx context.Context, tx bun.Tx, publicationID string) error {
+	count, err := tx.NewSelect().
+		Model((*models.Job)(nil)).
+		Where(primaryPublishPublicationJobWhere(h.db), jobTypePublishPublication, publicationID).
+		Where("status = ?", jobStatusPending).
+		Count(ctx)
+	if err != nil {
+		return err
+	}
+	if count > 0 {
+		return errPublicationAlreadyProcessing
+	}
+	return nil
+}
+
+func (h *PublicationHandler) rejectUnresolvedPublicationTargetsTx(
+	ctx context.Context,
+	tx bun.Tx,
+	publicationID string,
+	renditionIDs []string,
+) error {
+	if len(renditionIDs) == 0 {
+		return nil
+	}
+	count, err := tx.NewSelect().Model((*models.ProviderWriteAttempt)(nil)).
+		Where("publication_id = ?", publicationID).
+		Where("rendition_id IN (?)", bun.List(renditionIDs)).
+		Where("status IN (?)", bun.List([]string{
+			providerwrite.StatusSending,
+			providerwrite.StatusAmbiguous,
+		})).
+		Count(ctx)
+	if err != nil {
+		return err
+	}
+	if count > 0 {
+		return errPublicationAlreadyProcessing
+	}
+
+	// Provider acceptance is durable before the local published status. A
+	// failed local status can therefore describe an external write that already
+	// succeeded. Block a new operation only when that exact accepted subject is
+	// still unpublished; accepted earlier segments in a partially published
+	// thread are expected and must not prevent retrying a later failed segment.
+	var acceptedAttempts []models.ProviderWriteAttempt
+	if err := tx.NewSelect().Model(&acceptedAttempts).
+		Where("publication_id = ?", publicationID).
+		Where("rendition_id IN (?)", bun.List(renditionIDs)).
+		Where("status = ?", providerwrite.StatusAccepted).
+		Where("operation = ?", "publish").
+		Scan(ctx); err != nil {
+		return err
+	}
+	if len(acceptedAttempts) == 0 {
+		return nil
+	}
+
+	var renditions []models.Rendition
+	if err := tx.NewSelect().Model(&renditions).Column("id", "status").
+		Where("id IN (?)", bun.List(renditionIDs)).
+		Scan(ctx); err != nil {
+		return err
+	}
+	renditionStatus := make(map[string]string, len(renditions))
+	for _, rendition := range renditions {
+		renditionStatus[rendition.ID] = rendition.Status
+	}
+	var segments []models.RenditionSegment
+	if err := tx.NewSelect().Model(&segments).Column("id", "rendition_id", "status").
+		Where("rendition_id IN (?)", bun.List(renditionIDs)).
+		Scan(ctx); err != nil {
+		return err
+	}
+	segmentsByRendition := make(map[string][]models.RenditionSegment, len(renditionIDs))
+	for _, segment := range segments {
+		segmentsByRendition[segment.RenditionID] = append(segmentsByRendition[segment.RenditionID], segment)
+	}
+	for _, attempt := range acceptedAttempts {
+		if acceptedPublicationAttemptSubjectPublished(attempt, renditionStatus, segmentsByRendition) {
+			continue
+		}
+		return errPublicationAlreadyProcessing
+	}
+	return nil
+}
+
+func acceptedPublicationAttemptSubjectPublished(
+	attempt models.ProviderWriteAttempt,
+	renditionStatus map[string]string,
+	segmentsByRendition map[string][]models.RenditionSegment,
+) bool {
+	status, renditionExists := renditionStatus[attempt.RenditionID]
+	authorizationID := strings.TrimSpace(attempt.AuthorizationID)
+	if authorizationID == "" {
+		// Pre-receipt attempts do not encode a target we can safely distinguish.
+		// Only a fully persisted rendition proves that replay is unnecessary.
+		return renditionExists && status == models.RenditionStatusPublished
+	}
+	if attempt.OperationID == strings.Join([]string{
+		"authorization", authorizationID, attempt.RenditionID, "publish",
+	}, ":") {
+		return renditionExists && status == models.RenditionStatusPublished
+	}
+	for _, segment := range segmentsByRendition[attempt.RenditionID] {
+		if attempt.OperationID != strings.Join([]string{
+			"authorization", authorizationID, segment.ID, "publish",
+		}, ":") {
+			continue
+		}
+		return segment.Status == models.RenditionStatusPublished
+	}
+	// A canonical accepted publish with an unknown subject cannot safely mint a
+	// new authorization identity.
+	return false
+}
+
+func (h *PublicationHandler) rejectProtectedPrimaryPublicationJobTx(ctx context.Context, tx bun.Tx, publicationID string) error {
+	count, err := tx.NewSelect().TableExpr("jobs AS protected_job").
+		Join("JOIN provider_write_attempts AS protected_attempt ON protected_attempt.job_id = protected_job.id").
+		Where(primaryPublishPublicationJobWhere(h.db), jobTypePublishPublication, publicationID).
+		Where("protected_job.status IN (?)", bun.List([]string{jobStatusPending, "failed"})).
+		Where("protected_attempt.status IN (?)", bun.List([]string{
+			providerwrite.StatusSending,
+			providerwrite.StatusAmbiguous,
+			providerwrite.StatusAccepted,
+		})).
+		Count(ctx)
+	if err != nil {
+		return err
+	}
+	if count > 0 {
+		return errPublicationAlreadyProcessing
+	}
+	return nil
+}
+
 func (h *PublicationHandler) clearPublicationScheduleTx(ctx context.Context, tx bun.Tx, publicationID string, updatedAt time.Time) error {
 	if err := lockPublicationMutationTx(ctx, tx, publicationID); err != nil {
 		return err
@@ -3401,6 +3698,9 @@ func (h *PublicationHandler) clearPublicationScheduleTx(ctx context.Context, tx 
 		return err
 	}
 	if err := h.rejectProcessingPrimaryPublicationJobTx(ctx, tx, publicationID); err != nil {
+		return err
+	}
+	if err := h.rejectProtectedPrimaryPublicationJobTx(ctx, tx, publicationID); err != nil {
 		return err
 	}
 	if err := h.deletePendingPrimaryPublicationJobsTx(ctx, tx, publicationID); err != nil {

@@ -21,6 +21,7 @@ import (
 	"github.com/openpost/backend/internal/services/entitlements"
 	"github.com/openpost/backend/internal/services/medialifecycle"
 	postservice "github.com/openpost/backend/internal/services/posts"
+	"github.com/openpost/backend/internal/services/publicationauth"
 	repostservice "github.com/openpost/backend/internal/services/reposts"
 	"github.com/openpost/backend/internal/services/usage"
 	"github.com/uptrace/bun"
@@ -46,6 +47,9 @@ type PostHandler struct {
 	reposts     *repostservice.Service
 	providers   map[string]platform.Adapter
 	tokenSource AccessTokenSource
+	// beforeLegacyMutationTransaction is a deterministic worker-completion
+	// seam for compatibility endpoint tests. Production constructors leave it nil.
+	beforeLegacyMutationTransaction func(context.Context) error
 }
 
 func (h *PostHandler) SetCapabilityDependencies(providers map[string]platform.Adapter, tokenSource AccessTokenSource) {
@@ -383,12 +387,51 @@ func postServiceError(err error, fallback string) error {
 	return huma.Error500InternalServerError(fallback)
 }
 
-func (h *PostHandler) translateLegacyPostMutation(ctx context.Context, postID string) error {
-	actor := publicationAuthorizationActor(ctx, middleware.GetUserID(ctx))
-	if err := databasemigrations.MigrateLegacyPublicationAuthoringForActor(ctx, h.db, postID, actor); err != nil {
-		return err
+func (h *PostHandler) prepareLegacyPostMutationTx(ctx context.Context, tx bun.Tx, postID string) error {
+	return databasemigrations.MigrateLegacyPublicationAuthoringForActorTx(
+		ctx,
+		tx,
+		postID,
+		publicationAuthorizationActor(ctx, middleware.GetUserID(ctx)),
+	)
+}
+
+func (h *PostHandler) prepareEditableLegacyPostMutationTx(
+	ctx context.Context,
+	tx bun.Tx,
+	postID string,
+) (*models.Post, error) {
+	if err := h.prepareLegacyPostMutationTx(ctx, tx, postID); err != nil {
+		return nil, err
 	}
-	return databasemigrations.SyncTextPostAuthoringForActor(ctx, h.db, postID, actor)
+	post, err := h.lockTextPostTx(ctx, tx, postID)
+	if err != nil {
+		return nil, err
+	}
+	if !isTextPostEditable(post.Status) {
+		return nil, errPublicationNotEditable
+	}
+	if strings.TrimSpace(post.PublicationID) == "" {
+		return post, nil
+	}
+	var publication models.Publication
+	if err := tx.NewSelect().Model(&publication).Where("id = ?", post.PublicationID).Scan(ctx); err != nil {
+		return nil, err
+	}
+	if publication.Status == models.PublicationStatusPublishing ||
+		publication.Status == models.PublicationStatusPublished {
+		return nil, errPublicationNotEditable
+	}
+	return post, nil
+}
+
+func (h *PostHandler) finishLegacyPostMutationTx(ctx context.Context, tx bun.Tx, postID string) error {
+	return databasemigrations.SyncTextPostAuthoringForActorTx(
+		ctx,
+		tx,
+		postID,
+		publicationAuthorizationActor(ctx, middleware.GetUserID(ctx)),
+	)
 }
 
 //nolint:gocyclo
@@ -500,6 +543,7 @@ func (h *PostHandler) CreatePost(api huma.API) {
 				job := &models.Job{
 					ID:      uuid.New().String(),
 					Type:    jobTypePublishPost,
+					ScopeID: post.ID,
 					Payload: string(payload),
 					RunAt:   jobRunAt,
 				}
@@ -513,18 +557,18 @@ func (h *PostHandler) CreatePost(api huma.API) {
 			}
 			// Persist the thread_drafts row if the request carried a
 			// thread draft. The migration has ensured the table exists.
-			return postservice.UpsertThreadDraftTx(txCtx, tx, post.ID, draftJSON)
+			if err := postservice.UpsertThreadDraftTx(txCtx, tx, post.ID, draftJSON); err != nil {
+				return err
+			}
+			return databasemigrations.MigrateLegacyPublicationAuthoringForActorTx(
+				txCtx,
+				tx,
+				post.ID,
+				publicationAuthorizationActor(txCtx, userID),
+			)
 		})
 		if err != nil {
 			return nil, huma.Error500InternalServerError("failed to create post")
-		}
-		if err := databasemigrations.MigrateLegacyPublicationAuthoringForActor(
-			ctx,
-			h.db,
-			post.ID,
-			publicationAuthorizationActor(ctx, userID),
-		); err != nil {
-			return nil, huma.Error500InternalServerError("failed to translate post into a publication")
 		}
 		if err := h.db.NewSelect().
 			Model(post).
@@ -703,7 +747,7 @@ func (h *PostHandler) listPostWorkspaceIDs(ctx context.Context, requestedWorkspa
 	var workspaceMembers []models.WorkspaceMember
 	err := h.db.NewSelect().
 		Model(&workspaceMembers).
-		Where("user_id = ?", userID).
+		Where("user_id = ? AND status = ?", userID, models.WorkspaceMemberStatusActive).
 		Scan(ctx)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return nil, huma.Error500InternalServerError("failed to fetch workspaces")
@@ -711,7 +755,13 @@ func (h *PostHandler) listPostWorkspaceIDs(ctx context.Context, requestedWorkspa
 
 	workspaceIDs := make([]string, 0, len(workspaceMembers))
 	for _, wm := range workspaceMembers {
-		workspaceIDs = append(workspaceIDs, wm.WorkspaceID)
+		allowed, accessErr := middleware.CheckWorkspaceAccess(ctx, h.db, wm.WorkspaceID, userID)
+		if accessErr != nil {
+			return nil, huma.Error500InternalServerError("failed to check workspace access")
+		}
+		if allowed {
+			workspaceIDs = append(workspaceIDs, wm.WorkspaceID)
+		}
 	}
 	return workspaceIDs, nil
 }
@@ -894,6 +944,17 @@ func (h *PostHandler) GetScheduleOverview(api huma.API) {
 		if err != nil {
 			return nil, huma.Error500InternalServerError("failed to fetch workspaces")
 		}
+		accessibleWorkspaces := make([]models.Workspace, 0, len(workspaces))
+		for _, workspace := range workspaces {
+			allowed, accessErr := middleware.CheckWorkspaceAccess(ctx, h.db, workspace.ID, userID)
+			if accessErr != nil {
+				return nil, huma.Error500InternalServerError("failed to check workspace access")
+			}
+			if allowed {
+				accessibleWorkspaces = append(accessibleWorkspaces, workspace)
+			}
+		}
+		workspaces = accessibleWorkspaces
 
 		selectedWorkspaceID := input.WorkspaceID
 		if selectedWorkspaceID == "" && len(workspaces) > 0 {
@@ -1328,6 +1389,7 @@ func (h *PostHandler) CreateThread(api huma.API) {
 				job := &models.Job{
 					ID:      uuid.New().String(),
 					Type:    jobTypePublishPost,
+					ScopeID: posts[0].ID,
 					Payload: string(payload),
 					RunAt:   jobRunAt,
 				}
@@ -1341,18 +1403,15 @@ func (h *PostHandler) CreateThread(api huma.API) {
 					}
 				}
 			}
-			return nil
+			return databasemigrations.MigrateLegacyPublicationAuthoringForActorTx(
+				txCtx,
+				tx,
+				posts[0].ID,
+				publicationAuthorizationActor(txCtx, userID),
+			)
 		})
 		if err != nil {
 			return nil, huma.Error500InternalServerError("failed to create thread")
-		}
-		if err := databasemigrations.MigrateLegacyPublicationAuthoringForActor(
-			ctx,
-			h.db,
-			posts[0].ID,
-			publicationAuthorizationActor(ctx, userID),
-		); err != nil {
-			return nil, huma.Error500InternalServerError("failed to translate thread into a publication")
 		}
 		if status == statusScheduled {
 			if err := h.recordScheduledPostUsage(ctx, input.Body.WorkspaceID, int64(len(posts)), *input.Body.ScheduledAt); err != nil {
@@ -1821,10 +1880,6 @@ func (h *PostHandler) SaveTextPostDraft(api huma.API) {
 		if err := drafts.RequireExpectedRevision(input.Body.ExpectedRevision); err != nil {
 			return nil, err
 		}
-		if err := databasemigrations.MigrateLegacyPublicationAuthoring(ctx, h.db); err != nil {
-			return nil, huma.Error500InternalServerError("failed to prepare text post authoring")
-		}
-
 		userID := middleware.GetUserID(ctx)
 		var post models.Post
 		if err := h.db.NewSelect().Model(&post).Where("id = ?", input.PathID).Scan(ctx); err != nil {
@@ -1839,6 +1894,23 @@ func (h *PostHandler) SaveTextPostDraft(api huma.API) {
 		if !isTextPostEditable(post.Status) {
 			return nil, huma.Error400BadRequest("published or publishing posts cannot be edited")
 		}
+		if err := databasemigrations.MigrateLegacyPublicationAuthoringForActor(
+			ctx,
+			h.db,
+			post.ID,
+			publicationAuthorizationActor(ctx, userID),
+		); err != nil {
+			return nil, huma.Error500InternalServerError("failed to prepare text post authoring")
+		}
+		var publicationID string
+		if err := h.db.NewSelect().
+			Model((*models.Post)(nil)).
+			Column("publication_id").
+			Where("id = ?", post.ID).
+			Scan(ctx, &publicationID); err != nil {
+			return nil, huma.Error500InternalServerError("failed to load canonical text post authoring")
+		}
+		post.PublicationID = publicationID
 		if err := h.validateAccountsBelongToWorkspace(ctx, post.WorkspaceID, input.Body.SocialAccountIDs); err != nil {
 			return nil, err
 		}
@@ -1921,6 +1993,9 @@ func (h *PostHandler) SaveTextPostDraft(api huma.API) {
 		now := time.Now().UTC()
 		nextRevision := input.Body.ExpectedRevision + 1
 		err = h.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
+			if err := h.prepareLegacyPostMutationTx(txCtx, tx, post.ID); err != nil {
+				return err
+			}
 			current, err := h.lockTextPostTx(txCtx, tx, input.PathID)
 			if err != nil {
 				return err
@@ -2076,6 +2151,15 @@ func (h *PostHandler) SaveTextPostDraft(api huma.API) {
 					publication.ID,
 					publication.ScheduledAt,
 				); err != nil {
+					return err
+				}
+			}
+			if !rescheduleQueuedJob {
+				if err := publicationauth.AuthorizeLegacyJobs(txCtx, tx, publicationauth.LegacyJobsInput{
+					PublicationID: publication.ID,
+					Actor:         publicationAuthorizationActor(txCtx, userID),
+					Force:         true,
+				}); err != nil {
 					return err
 				}
 			}
@@ -2418,59 +2502,72 @@ func (h *PostHandler) UpdatePost(api huma.API) {
 		}
 
 		scheduledAtText := ""
-		willBeScheduled := post.Status == statusScheduled
 		if input.Body.ScheduledAt != nil {
 			scheduledAtText = strings.TrimSpace(*input.Body.ScheduledAt)
-			willBeScheduled = scheduledAtText != ""
-		}
-		if willBeScheduled {
-			accountIDs := input.Body.SocialAccountIDs
-			if accountIDs == nil {
-				var err error
-				accountIDs, err = h.posts.DestinationAccountIDs(ctx, post.ID)
-				if err != nil {
-					return nil, postServiceError(err, "failed to load post destinations")
-				}
-			}
-			mediaIDs := input.Body.MediaIDs
-			if mediaIDs == nil {
-				var err error
-				mediaIDs, err = h.posts.MediaIDs(ctx, post.ID)
-				if err != nil {
-					return nil, postServiceError(err, "failed to load post media")
-				}
-			}
-			if err := h.posts.ValidateScheduledProviderMedia(ctx, post.WorkspaceID, accountIDs, mediaIDs); err != nil {
-				return nil, postServiceError(err, "failed to validate provider media")
-			}
 		}
 
 		var nextScheduledAt time.Time
 		var nextJobRunAt time.Time
-		if input.Body.ScheduledAt != nil && scheduledAtText != "" {
-			parsed, parseErr := time.Parse(time.RFC3339, scheduledAtText)
-			if parseErr != nil {
-				return nil, huma.Error400BadRequest("scheduled_at must be an RFC3339 timestamp")
-			}
-			randomDelayMinutes := post.RandomDelayMinutes
-			if input.Body.RandomDelayMinutes != nil {
-				randomDelayMinutes = *input.Body.RandomDelayMinutes
-			}
-			var scheduleErr error
-			nextJobRunAt, scheduleErr = resolveFuturePostRunAt(parsed, randomDelayMinutes, time.Now().UTC())
-			if scheduleErr != nil {
-				return nil, huma.Error400BadRequest(scheduleErr.Error())
-			}
-			nextScheduledAt = parsed
-		} else if input.Body.ScheduledAt == nil && input.Body.RandomDelayMinutes != nil && post.Status == statusScheduled {
-			var scheduleErr error
-			nextJobRunAt, scheduleErr = resolveFuturePostRunAt(post.ScheduledAt, *input.Body.RandomDelayMinutes, time.Now().UTC())
-			if scheduleErr != nil {
-				return nil, huma.Error400BadRequest(scheduleErr.Error())
+
+		if h.beforeLegacyMutationTransaction != nil {
+			if err := h.beforeLegacyMutationTransaction(ctx); err != nil {
+				return nil, huma.Error500InternalServerError("failed to begin post update")
 			}
 		}
-
 		err = h.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
+			current, err := h.prepareEditableLegacyPostMutationTx(txCtx, tx, post.ID)
+			if err != nil {
+				return err
+			}
+			post = *current
+
+			willBeScheduled := post.Status == statusScheduled
+			if input.Body.ScheduledAt != nil {
+				willBeScheduled = scheduledAtText != ""
+			}
+			if willBeScheduled {
+				accountIDs := input.Body.SocialAccountIDs
+				if accountIDs == nil {
+					if err := tx.NewSelect().Model((*models.PostDestination)(nil)).
+						Column("social_account_id").Where("post_id = ?", post.ID).
+						Scan(txCtx, &accountIDs); err != nil {
+						return postServiceError(err, "failed to load post destinations")
+					}
+				}
+				mediaIDs := input.Body.MediaIDs
+				if mediaIDs == nil {
+					if err := tx.NewSelect().Model((*models.PostMedia)(nil)).
+						Column("media_id").Where("post_id = ?", post.ID).
+						Order("display_order ASC").Scan(txCtx, &mediaIDs); err != nil {
+						return postServiceError(err, "failed to load post media")
+					}
+				}
+				if err := h.posts.ValidateScheduledProviderMediaTx(txCtx, tx, post.WorkspaceID, accountIDs, mediaIDs); err != nil {
+					return postServiceError(err, "failed to validate provider media")
+				}
+			}
+			if input.Body.ScheduledAt != nil && scheduledAtText != "" {
+				parsed, parseErr := time.Parse(time.RFC3339, scheduledAtText)
+				if parseErr != nil {
+					return huma.Error400BadRequest("scheduled_at must be an RFC3339 timestamp")
+				}
+				randomDelayMinutes := post.RandomDelayMinutes
+				if input.Body.RandomDelayMinutes != nil {
+					randomDelayMinutes = *input.Body.RandomDelayMinutes
+				}
+				var scheduleErr error
+				nextJobRunAt, scheduleErr = resolveFuturePostRunAt(parsed, randomDelayMinutes, time.Now().UTC())
+				if scheduleErr != nil {
+					return huma.Error400BadRequest(scheduleErr.Error())
+				}
+				nextScheduledAt = parsed
+			} else if input.Body.ScheduledAt == nil && input.Body.RandomDelayMinutes != nil && post.Status == statusScheduled {
+				var scheduleErr error
+				nextJobRunAt, scheduleErr = resolveFuturePostRunAt(post.ScheduledAt, *input.Body.RandomDelayMinutes, time.Now().UTC())
+				if scheduleErr != nil {
+					return huma.Error400BadRequest(scheduleErr.Error())
+				}
+			}
 			// Compute the new content and the thread_drafts row, if any.
 			// resolveThreadDraftInput prefers the explicit field and
 			// falls back to detecting the legacy blob in `content`.
@@ -2507,12 +2604,12 @@ func (h *PostHandler) UpdatePost(api huma.API) {
 					if _, err := tx.NewUpdate().Model(&post).Column("content", "status", "scheduled_at", "random_delay_minutes", "actual_run_at").Where("id = ?", post.ID).Exec(txCtx); err != nil {
 						return fmt.Errorf("failed to unschedule post: %w", err)
 					}
-					// Cancel any queued publish_post job for this post. We filter on
-					// job type AND the JSON `post_id` key, so unrelated jobs (and any
-					// future job type that happens to embed a post_id field in its
-					// payload) cannot be cancelled by accident. The previous LIKE-based
-					// version of this query was strictly less safe.
-					if _, err := tx.NewDelete().Model(&models.Job{}).Where(publishPostJobPostIDWhere(h.db), jobTypePublishPost, post.ID).Exec(txCtx); err != nil {
+					// Cancel only the indexed publish_post scope for this aggregate;
+					// unrelated jobs cannot be removed by matching payload text.
+					if _, err := tx.NewDelete().Model(&models.Job{}).
+						Where(publishPostJobPostIDWhere(h.db), jobTypePublishPost, post.ID).
+						Where("status = ?", jobStatusPending).
+						Exec(txCtx); err != nil {
 						return fmt.Errorf("failed to cancel job: %w", err)
 					}
 				} else {
@@ -2528,7 +2625,10 @@ func (h *PostHandler) UpdatePost(api huma.API) {
 						return fmt.Errorf("failed to update post: %w", err)
 					}
 					if !oldScheduledAt.IsZero() {
-						if _, err := tx.NewDelete().Model(&models.Job{}).Where(publishPostJobPostIDWhere(h.db), jobTypePublishPost, post.ID).Exec(txCtx); err != nil {
+						if _, err := tx.NewDelete().Model(&models.Job{}).
+							Where(publishPostJobPostIDWhere(h.db), jobTypePublishPost, post.ID).
+							Where("status = ?", jobStatusPending).
+							Exec(txCtx); err != nil {
 							return fmt.Errorf("failed to cancel old job: %w", err)
 						}
 					}
@@ -2536,6 +2636,7 @@ func (h *PostHandler) UpdatePost(api huma.API) {
 					job := &models.Job{
 						ID:      uuid.New().String(),
 						Type:    jobTypePublishPost,
+						ScopeID: post.ID,
 						Payload: string(payload),
 						RunAt:   nextJobRunAt,
 					}
@@ -2553,13 +2654,17 @@ func (h *PostHandler) UpdatePost(api huma.API) {
 					if _, err := tx.NewUpdate().Model(&post).Column("random_delay_minutes", "actual_run_at").Where("id = ?", post.ID).Exec(txCtx); err != nil {
 						return fmt.Errorf("failed to update random delay: %w", err)
 					}
-					if _, err := tx.NewDelete().Model(&models.Job{}).Where(publishPostJobPostIDWhere(h.db), jobTypePublishPost, post.ID).Exec(txCtx); err != nil {
+					if _, err := tx.NewDelete().Model(&models.Job{}).
+						Where(publishPostJobPostIDWhere(h.db), jobTypePublishPost, post.ID).
+						Where("status = ?", jobStatusPending).
+						Exec(txCtx); err != nil {
 						return fmt.Errorf("failed to cancel old job: %w", err)
 					}
 					payload, _ := json.Marshal(map[string]string{postIDKey: post.ID})
 					job := &models.Job{
 						ID:      uuid.New().String(),
 						Type:    jobTypePublishPost,
+						ScopeID: post.ID,
 						Payload: string(payload),
 						RunAt:   nextJobRunAt,
 					}
@@ -2638,13 +2743,10 @@ func (h *PostHandler) UpdatePost(api huma.API) {
 				}
 			}
 
-			return nil
+			return h.finishLegacyPostMutationTx(txCtx, tx, post.ID)
 		})
 		if err != nil {
-			return nil, huma.Error500InternalServerError(err.Error())
-		}
-		if err := h.translateLegacyPostMutation(ctx, post.ID); err != nil {
-			return nil, huma.Error500InternalServerError("failed to translate post update into the publication")
+			return nil, publicationMutationHTTPError(err, "failed to update post")
 		}
 
 		var respPost models.Post
@@ -2759,66 +2861,83 @@ func (h *PostHandler) DeletePost(api huma.API) {
 		Tags:        []string{tagPosts},
 		Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
 		Errors:      []int{400, 403, 404},
-	}, func(ctx context.Context, input *DeletePostInput) (*DeletePostOutput, error) {
-		userID := middleware.GetUserID(ctx)
+	}, h.deletePost)
+}
 
-		var post models.Post
-		err := h.db.NewSelect().
-			Model(&post).
-			Where("id = ?", input.PathID).
-			Scan(ctx)
-		if err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return nil, huma.Error404NotFound("post not found")
-			}
-			return nil, huma.Error500InternalServerError("failed to fetch post")
+func (h *PostHandler) deletePost(ctx context.Context, input *DeletePostInput) (*DeletePostOutput, error) {
+	userID := middleware.GetUserID(ctx)
+	var post models.Post
+	err := h.db.NewSelect().Model(&post).Where("id = ?", input.PathID).Scan(ctx)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, huma.Error404NotFound("post not found")
+	}
+	if err != nil {
+		return nil, huma.Error500InternalServerError("failed to fetch post")
+	}
+	if err := h.checkWorkspaceEditAccess(ctx, post.WorkspaceID, userID); err != nil {
+		return nil, err
+	}
+	if post.Status == models.PostStatusPublished || post.Status == models.PostStatusPublishing {
+		return nil, huma.Error400BadRequest("cannot delete a post that is published or being published")
+	}
+	if h.beforeLegacyMutationTransaction != nil {
+		if err := h.beforeLegacyMutationTransaction(ctx); err != nil {
+			return nil, huma.Error500InternalServerError("failed to begin post deletion")
 		}
-
-		if err := h.checkWorkspaceEditAccess(ctx, post.WorkspaceID, userID); err != nil {
-			return nil, err
-		}
-
-		if post.Status == models.PostStatusPublished || post.Status == models.PostStatusPublishing {
-			return nil, huma.Error400BadRequest("cannot delete a post that is published or being published")
-		}
-
-		err = h.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
-			allIDs, err := postservice.GetThreadPostIDsTx(txCtx, tx, post.ID, true)
-			if err != nil {
-				return err
-			}
-			if _, err := tx.NewDelete().Model(&models.Job{}).Where(publishPostJobPostIDWhere(h.db), jobTypePublishPost, post.ID).Exec(txCtx); err != nil {
-				return fmt.Errorf("failed to delete jobs: %w", err)
-			}
-			if post.PublicationID != "" {
-				if _, err := tx.NewDelete().
-					Model(&models.Job{}).
-					Where(publishPublicationJobPublicationIDWhere(h.db), jobTypePublishPublication, post.PublicationID).
-					Exec(txCtx); err != nil {
-					return fmt.Errorf("failed to delete publication jobs: %w", err)
-				}
-			}
-			if err := postservice.DeletePostsCascadeTx(txCtx, tx, allIDs); err != nil {
-				return err
-			}
-			if post.PublicationID != "" {
-				if _, err := tx.NewDelete().
-					Model((*models.Publication)(nil)).
-					Where("id = ?", post.PublicationID).
-					Exec(txCtx); err != nil {
-					return fmt.Errorf("failed to delete translated publication: %w", err)
-				}
-			}
-			return nil
-		})
-		if err != nil {
-			return nil, huma.Error500InternalServerError(err.Error())
-		}
-
-		return &DeletePostOutput{Body: struct {
-			Message string `json:"message" doc:"Success message"`
-		}{Message: "post deleted successfully"}}, nil
+	}
+	err = h.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
+		return h.deletePostTx(txCtx, tx, post.ID)
 	})
+	if err != nil {
+		return nil, publicationMutationHTTPError(err, "failed to delete post")
+	}
+	return &DeletePostOutput{Body: struct {
+		Message string `json:"message" doc:"Success message"`
+	}{Message: "post deleted successfully"}}, nil
+}
+
+func (h *PostHandler) deletePostTx(ctx context.Context, tx bun.Tx, postID string) error {
+	current, err := h.prepareEditableLegacyPostMutationTx(ctx, tx, postID)
+	if err != nil {
+		return err
+	}
+	allIDs, err := postservice.GetThreadPostIDsTx(ctx, tx, current.ID, true)
+	if err != nil {
+		return err
+	}
+	if _, err := tx.NewDelete().Model(&models.Job{}).
+		Where(publishPostJobPostIDWhere(h.db), jobTypePublishPost, current.ID).
+		Where("status = ?", "pending").Exec(ctx); err != nil {
+		return fmt.Errorf("failed to delete jobs: %w", err)
+	}
+	if err := h.deletePendingPublicationJobTx(ctx, tx, current.PublicationID); err != nil {
+		return err
+	}
+	if err := postservice.DeletePostsCascadeTx(ctx, tx, allIDs); err != nil {
+		return err
+	}
+	if current.PublicationID == "" {
+		return nil
+	}
+	_, err = tx.NewDelete().Model((*models.Publication)(nil)).
+		Where("id = ?", current.PublicationID).Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to delete translated publication: %w", err)
+	}
+	return nil
+}
+
+func (h *PostHandler) deletePendingPublicationJobTx(ctx context.Context, tx bun.Tx, publicationID string) error {
+	if publicationID == "" {
+		return nil
+	}
+	_, err := tx.NewDelete().Model(&models.Job{}).
+		Where(publishPublicationJobPublicationIDWhere(h.db), jobTypePublishPublication, publicationID).
+		Where("status = ?", "pending").Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to delete publication jobs: %w", err)
+	}
+	return nil
 }
 
 func (h *PostHandler) checkWorkspaceAccess(ctx context.Context, workspaceID, userID string) error {
@@ -2921,7 +3040,17 @@ func (h *PostHandler) UpsertVariants(api huma.API) {
 			return nil, err
 		}
 
+		if h.beforeLegacyMutationTransaction != nil {
+			if err := h.beforeLegacyMutationTransaction(ctx); err != nil {
+				return nil, huma.Error500InternalServerError("failed to begin variant update")
+			}
+		}
 		err = h.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
+			current, err := h.prepareEditableLegacyPostMutationTx(txCtx, tx, post.ID)
+			if err != nil {
+				return err
+			}
+			post = *current
 			for _, v := range input.Body.Variants {
 				var existing models.PostVariant
 				err := tx.NewSelect().
@@ -2970,13 +3099,10 @@ func (h *PostHandler) UpsertVariants(api huma.API) {
 					}
 				}
 			}
-			return nil
+			return h.finishLegacyPostMutationTx(txCtx, tx, post.ID)
 		})
 		if err != nil {
-			return nil, huma.Error500InternalServerError("failed to upsert variants")
-		}
-		if err := h.translateLegacyPostMutation(ctx, post.ID); err != nil {
-			return nil, huma.Error500InternalServerError("failed to translate post variants into the publication")
+			return nil, publicationMutationHTTPError(err, "failed to upsert variants")
 		}
 
 		var variants []models.PostVariant
@@ -3091,7 +3217,7 @@ func (h *PostHandler) DeleteVariants(api huma.API) {
 		Summary:     "Delete all variants for a post (reset to unified content)",
 		Tags:        []string{tagPosts},
 		Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
-		Errors:      []int{403, 404},
+		Errors:      []int{400, 403, 404},
 	}, func(ctx context.Context, input *DeleteVariantsInput) (*DeleteVariantsOutput, error) {
 		userID := middleware.GetUserID(ctx)
 
@@ -3111,15 +3237,27 @@ func (h *PostHandler) DeleteVariants(api huma.API) {
 			return nil, err
 		}
 
-		_, err = h.db.NewDelete().
-			Model(&models.PostVariant{}).
-			Where("post_id = ?", input.PathID).
-			Exec(ctx)
-		if err != nil {
-			return nil, huma.Error500InternalServerError("failed to delete variants")
+		if h.beforeLegacyMutationTransaction != nil {
+			if err := h.beforeLegacyMutationTransaction(ctx); err != nil {
+				return nil, huma.Error500InternalServerError("failed to begin variant deletion")
+			}
 		}
-		if err := h.translateLegacyPostMutation(ctx, post.ID); err != nil {
-			return nil, huma.Error500InternalServerError("failed to reset publication destination overrides")
+		err = h.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
+			current, err := h.prepareEditableLegacyPostMutationTx(txCtx, tx, post.ID)
+			if err != nil {
+				return err
+			}
+			post = *current
+			if _, err := tx.NewDelete().
+				Model(&models.PostVariant{}).
+				Where("post_id = ?", input.PathID).
+				Exec(txCtx); err != nil {
+				return err
+			}
+			return h.finishLegacyPostMutationTx(txCtx, tx, post.ID)
+		})
+		if err != nil {
+			return nil, publicationMutationHTTPError(err, "failed to delete variants")
 		}
 
 		return &DeleteVariantsOutput{Body: struct {

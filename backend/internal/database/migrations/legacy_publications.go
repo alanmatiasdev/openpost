@@ -12,11 +12,15 @@ import (
 	"time"
 
 	"github.com/openpost/backend/internal/models"
+	"github.com/openpost/backend/internal/services/providerwrite"
 	"github.com/openpost/backend/internal/services/publicationauth"
 	"github.com/uptrace/bun"
+	"github.com/uptrace/bun/dialect"
 )
 
 const legacyThreadDraftPrefix = "__openpost_thread__:"
+
+var errLegacyPublicationProviderRecovery = errors.New("legacy publication write is pending provider recovery")
 
 type legacyThreadDraft struct {
 	Posts    []legacyThreadPost                          `json:"p"`
@@ -34,57 +38,115 @@ type legacyThreadVariation struct {
 	MediaIDs []string `json:"mediaIds"`
 }
 
-func migrateLegacyPublicationAuthoring(ctx context.Context, db *bun.DB, authorizedPostID string, actor publicationauth.Actor) error {
-	var posts []models.Post
-	if err := db.NewSelect().
-		Model(&posts).
-		Where("status IN (?)", bun.List([]string{models.PostStatusDraft, models.PostStatusScheduled})).
-		Where("COALESCE(publication_id, '') = ''").
-		Order("created_at ASC", "id ASC").
-		Scan(ctx); err != nil {
-		if isMissingLegacyAuthoringTable(err) {
-			return nil
-		}
-		return err
-	}
-	for index := range posts {
-		post := posts[index]
-		eligible, err := legacyPostHasOwners(ctx, db, post)
-		if err != nil {
-			return err
-		}
-		if !eligible {
-			continue
-		}
-		jobActor := publicationauth.Actor{Origin: publicationauth.OriginLegacy, UserID: post.CreatedByID}
-		if post.ID == authorizedPostID {
-			jobActor = actor
-		}
-		if err := migrateLegacyPost(ctx, db, post, jobActor); err != nil {
-			return fmt.Errorf("post %s: %w", post.ID, err)
-		}
-	}
-	return db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
-		return publicationauth.AuthorizeLegacyJobs(txCtx, tx, publicationauth.LegacyJobsInput{})
-	})
-}
-
 // MigrateLegacyPublicationAuthoring translates draft and scheduled legacy
-// posts created through compatibility APIs into canonical publications.
+// posts created through compatibility APIs into canonical publications. The
+// maintenance pass uses persisted keyset progress, so every query and
+// transaction remains bounded and an interrupted pass can resume safely.
 func MigrateLegacyPublicationAuthoring(ctx context.Context, db *bun.DB) error {
-	return migrateLegacyPublicationAuthoring(ctx, db, "", publicationauth.Actor{})
+	return restartLegacyPublicationAuthoringBackfill(ctx, db)
 }
 
-// MigrateLegacyPublicationAuthoringForActor preserves the exact principal for
-// the compatibility post that the current request just authorized. Any older
-// pending jobs discovered by the same sweep use an explicit legacy origin.
+// MigrateLegacyPublicationAuthoringForActor translates only the changed text
+// post aggregate. It preserves the exact request principal without allowing a
+// current write to scan or mutate unrelated historical rows.
 func MigrateLegacyPublicationAuthoringForActor(
 	ctx context.Context,
 	db *bun.DB,
 	postID string,
 	actor publicationauth.Actor,
 ) error {
-	return migrateLegacyPublicationAuthoring(ctx, db, strings.TrimSpace(postID), actor)
+	return db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
+		return MigrateLegacyPublicationAuthoringForActorTx(txCtx, tx, postID, actor)
+	})
+}
+
+// MigrateLegacyPublicationAuthoringForActorTx prepares one compatibility post
+// aggregate inside its caller's mutation transaction. Active job rows are
+// locked and rechecked before any caller mutation can change the aggregate.
+func MigrateLegacyPublicationAuthoringForActorTx(
+	ctx context.Context,
+	tx bun.Tx,
+	postID string,
+	actor publicationauth.Actor,
+) error {
+	postID = strings.TrimSpace(postID)
+	if postID == "" {
+		return nil
+	}
+	post, err := loadLegacyAggregateRoot(ctx, tx, postID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) || isMissingLegacyAuthoringTable(err) {
+			return nil
+		}
+		return err
+	}
+	if err := lockLegacyPublicationAggregateForMutation(ctx, tx, post.ID); err != nil {
+		return err
+	}
+	post, err = loadLegacyAggregateRoot(ctx, tx, post.ID)
+	if err != nil {
+		return err
+	}
+	if post.PublicationID != "" {
+		return migrateLinkedLegacyPublicationJobs(ctx, tx, post, actor)
+	}
+	if post.Status != models.PostStatusDraft && post.Status != models.PostStatusScheduled {
+		return nil
+	}
+	eligible, err := legacyPostHasOwners(ctx, tx, post)
+	if err != nil || !eligible {
+		return err
+	}
+	if err := migrateLegacyPostTx(ctx, tx, post, actor); err != nil {
+		return fmt.Errorf("post %s: %w", post.ID, err)
+	}
+	return nil
+}
+
+func migrateLinkedLegacyPublicationJobs(
+	ctx context.Context,
+	tx bun.Tx,
+	post models.Post,
+	actor publicationauth.Actor,
+) error {
+	if err := rewriteLegacyPublicationJobs(ctx, tx, post.ID, post.PublicationID); err != nil {
+		return err
+	}
+	if err := ensureLegacyPublicationAggregateJobsRewritten(ctx, tx, post.ID); err != nil {
+		return err
+	}
+	discarded, err := discardPendingLegacyPublicationJobsWithoutDestinations(ctx, tx, post.PublicationID)
+	if err != nil || discarded {
+		return err
+	}
+	return publicationauth.AuthorizeLegacyJobs(ctx, tx, publicationauth.LegacyJobsInput{
+		PublicationID: post.PublicationID,
+		Actor:         actor,
+	})
+}
+
+func loadLegacyAggregateRoot(ctx context.Context, db bun.IDB, postID string) (models.Post, error) {
+	var current models.Post
+	if err := db.NewSelect().Model(&current).Where("id = ?", postID).Scan(ctx); err != nil {
+		return models.Post{}, err
+	}
+	seen := map[string]bool{current.ID: true}
+	for strings.TrimSpace(current.ParentPostID) != "" {
+		var parent models.Post
+		if err := db.NewSelect().Model(&parent).Where("id = ?", current.ParentPostID).Scan(ctx); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				break
+			}
+			return models.Post{}, err
+		}
+		if seen[parent.ID] || parent.WorkspaceID != current.WorkspaceID || parent.PublicationID != "" ||
+			(parent.Status != models.PostStatusDraft && parent.Status != models.PostStatusScheduled) {
+			break
+		}
+		seen[parent.ID] = true
+		current = parent
+	}
+	return current, nil
 }
 
 // SyncTextPostAuthoring applies a text-and-thread composer mutation to its
@@ -102,19 +164,81 @@ func SyncTextPostAuthoringForActor(
 	actor publicationauth.Actor,
 ) error {
 	return db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
-		if err := SyncTextPostAuthoringTx(txCtx, tx, postID); err != nil {
-			return err
-		}
-		var post models.Post
-		if err := tx.NewSelect().Model(&post).Where("id = ?", postID).Scan(txCtx); err != nil {
-			return err
-		}
-		return publicationauth.AuthorizeLegacyJobs(txCtx, tx, publicationauth.LegacyJobsInput{
-			PublicationID: post.PublicationID,
-			Actor:         actor,
-			Force:         true,
-		})
+		return SyncTextPostAuthoringForActorTx(txCtx, tx, postID, actor)
 	})
+}
+
+// SyncTextPostAuthoringForActorTx refreshes and authorizes the compatibility
+// projection without leaving the caller's mutation transaction.
+func SyncTextPostAuthoringForActorTx(
+	ctx context.Context,
+	tx bun.Tx,
+	postID string,
+	actor publicationauth.Actor,
+) error {
+	if err := SyncTextPostAuthoringTx(ctx, tx, postID); err != nil {
+		return err
+	}
+	var post models.Post
+	if err := tx.NewSelect().Model(&post).Where("id = ?", postID).Scan(ctx); err != nil {
+		return err
+	}
+	return publicationauth.AuthorizeLegacyJobs(ctx, tx, publicationauth.LegacyJobsInput{
+		PublicationID: post.PublicationID,
+		Actor:         actor,
+		Force:         true,
+	})
+}
+
+func legacyPublicationAggregateHasProtectedWrite(ctx context.Context, db bun.IDB, postID string) (bool, error) {
+	root, err := loadLegacyAggregateRoot(ctx, db, postID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) || isMissingLegacyAuthoringTable(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	posts, err := legacyThreadPosts(ctx, db, root)
+	if err != nil {
+		return false, err
+	}
+	postIDs := make([]string, 0, len(posts))
+	for _, post := range posts {
+		postIDs = append(postIDs, post.ID)
+	}
+	query := db.NewSelect().TableExpr("jobs AS protected_job").
+		WhereGroup(" AND ", func(query *bun.SelectQuery) *bun.SelectQuery {
+			query = query.WhereOr(
+				"protected_job.type = ? AND protected_job.scope_id IN (?)",
+				"publish_post",
+				bun.List(postIDs),
+			)
+			if root.PublicationID != "" {
+				query = query.WhereOr(
+					"protected_job.type = ? AND protected_job.scope_id = ?",
+					"publish_publication",
+					root.PublicationID,
+				)
+			}
+			return query
+		}).
+		WhereGroup(" AND ", func(query *bun.SelectQuery) *bun.SelectQuery {
+			return query.
+				WhereOr("protected_job.status = ?", "processing").
+				WhereOr(`protected_job.status IN (?, ?) AND EXISTS (
+					SELECT 1 FROM provider_write_attempts AS protected_attempt
+					WHERE protected_attempt.job_id = protected_job.id
+					AND protected_attempt.status IN (?, ?, ?)
+				)`, "pending", "failed", providerwrite.StatusSending, providerwrite.StatusAmbiguous, providerwrite.StatusAccepted)
+		})
+	count, err := query.Count(ctx)
+	if err != nil {
+		if isMissingLegacyAuthoringTable(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return count > 0, nil
 }
 
 // RefreshLegacyPublicationAuthoring is retained as a source-compatible alias
@@ -128,6 +252,9 @@ func RefreshLegacyPublicationAuthoring(ctx context.Context, db *bun.DB, postID s
 //
 //nolint:gocyclo
 func SyncTextPostAuthoringTx(ctx context.Context, tx bun.Tx, postID string) error {
+	if err := lockLegacyPublicationAggregateForMutation(ctx, tx, postID); err != nil {
+		return err
+	}
 	var changed models.Post
 	if err := tx.NewSelect().Model(&changed).Where("id = ?", postID).Scan(ctx); err != nil {
 		if errors.Is(err, sql.ErrNoRows) || isMissingLegacyAuthoringTable(err) {
@@ -227,7 +354,284 @@ func SyncTextPostAuthoringTx(ctx context.Context, tx bun.Tx, postID string) erro
 	if err := rewriteLegacyPublicationJobs(ctx, tx, root.ID, publication.ID); err != nil {
 		return err
 	}
+	if err := ensureLegacyPublicationAggregateJobsRewritten(ctx, tx, root.ID); err != nil {
+		return err
+	}
 	return syncLegacyPublicationJobs(ctx, tx, root, publication.ID)
+}
+
+func lockLegacyPublicationAggregateForMutation(ctx context.Context, tx bun.Tx, postID string) error {
+	root, err := loadLegacyAggregateRoot(ctx, tx, postID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) || isMissingLegacyAuthoringTable(err) {
+			return nil
+		}
+		return err
+	}
+	root, postIDs, err := lockLegacyPublicationTopology(ctx, tx, postID, root)
+	if err != nil {
+		return err
+	}
+	initialPublicationID := root.PublicationID
+	initialPostIDs := append([]string(nil), postIDs...)
+	jobs, err := loadLegacyPublicationMutationJobs(ctx, tx, root, postIDs)
+	if err != nil {
+		return err
+	}
+	if tx.Dialect().Name() != dialect.SQLite {
+		if err := lockLegacyPostRowsForMutation(ctx, tx, postIDs); err != nil {
+			return err
+		}
+	}
+	return validateLegacyPublicationMutationLocks(ctx, tx, postID, initialPublicationID, initialPostIDs, jobs)
+}
+
+func lockLegacyPublicationTopology(
+	ctx context.Context,
+	tx bun.Tx,
+	postID string,
+	root models.Post,
+) (models.Post, []string, error) {
+	if tx.Dialect().Name() == dialect.PG {
+		if err := lockLegacyPublicationAggregateAdvisory(ctx, tx, postID); err != nil {
+			return models.Post{}, nil, err
+		}
+		var err error
+		root, err = loadLegacyAggregateRoot(ctx, tx, postID)
+		if err != nil {
+			return models.Post{}, nil, err
+		}
+	}
+	posts, err := legacyThreadPosts(ctx, tx, root)
+	if err != nil {
+		return models.Post{}, nil, err
+	}
+	postIDs := legacyPostIDs(posts)
+	if err := lockLegacyPublicationRow(ctx, tx, root.PublicationID); err != nil {
+		return models.Post{}, nil, err
+	}
+	// SQLite has no row-level SELECT FOR UPDATE. Acquire its database writer
+	// lock before inspecting jobs so no worker can claim between the check and
+	// the first caller mutation.
+	if tx.Dialect().Name() == dialect.SQLite {
+		if err := lockLegacyPostRowsForMutation(ctx, tx, postIDs); err != nil {
+			return models.Post{}, nil, err
+		}
+	}
+	return root, postIDs, nil
+}
+
+func loadLegacyPublicationMutationJobs(
+	ctx context.Context,
+	tx bun.Tx,
+	root models.Post,
+	postIDs []string,
+) ([]models.Job, error) {
+	var jobs []models.Job
+	query := tx.NewSelect().Model(&jobs).
+		WhereGroup(" AND ", func(query *bun.SelectQuery) *bun.SelectQuery {
+			query = query.WhereOr("type = ? AND scope_id IN (?)", "publish_post", bun.List(postIDs))
+			if root.PublicationID != "" {
+				query = query.WhereOr("type = ? AND scope_id = ?", "publish_publication", root.PublicationID)
+			}
+			return query
+		}).
+		Where("status IN (?)", bun.List([]string{"pending", "processing", "failed"})).Order("id ASC")
+	if tx.Dialect().Name() == dialect.PG {
+		query = query.For("UPDATE")
+	}
+	if err := query.Scan(ctx); err != nil {
+		if isMissingLegacyAuthoringTable(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return jobs, nil
+}
+
+func validateLegacyPublicationMutationLocks(
+	ctx context.Context,
+	tx bun.Tx,
+	postID,
+	initialPublicationID string,
+	initialPostIDs []string,
+	jobs []models.Job,
+) error {
+	// Re-read topology after all aggregate locks. A changed linkage would need
+	// a different lock order, so abort and let the caller retry from fresh state.
+	lockedRoot, err := loadLegacyAggregateRoot(ctx, tx, postID)
+	if err != nil {
+		return err
+	}
+	lockedPosts, err := legacyThreadPosts(ctx, tx, lockedRoot)
+	if err != nil {
+		return err
+	}
+	if lockedRoot.PublicationID != initialPublicationID || !sameLegacyPostIDs(initialPostIDs, legacyPostIDs(lockedPosts)) {
+		return errLegacyPublicationProviderRecovery
+	}
+	for index := range jobs {
+		if jobs[index].Status == "processing" {
+			return errLegacyPublicationProviderRecovery
+		}
+		if jobs[index].Status == "pending" && legacyPublicationJobAction(&jobs[index]) == publicationauth.ActionReply {
+			return errLegacyPublicationProviderRecovery
+		}
+		protected, err := legacyPublicationJobHasProtectedAttempt(ctx, tx, jobs[index].ID)
+		if err != nil {
+			return err
+		}
+		if protected {
+			return errLegacyPublicationProviderRecovery
+		}
+	}
+	return nil
+}
+
+func lockLegacyPublicationRow(ctx context.Context, tx bun.Tx, publicationID string) error {
+	if strings.TrimSpace(publicationID) == "" {
+		return nil
+	}
+	if tx.Dialect().Name() == dialect.SQLite {
+		_, err := tx.NewUpdate().Model((*models.Publication)(nil)).
+			Set("id = id").Where("id = ?", publicationID).Exec(ctx)
+		return err
+	}
+	if tx.Dialect().Name() == dialect.PG {
+		var lockedPublicationID string
+		return tx.NewSelect().Model((*models.Publication)(nil)).Column("id").
+			Where("id = ?", publicationID).For("UPDATE").Scan(ctx, &lockedPublicationID)
+	}
+	return nil
+}
+
+func legacyPublicationJobAction(job *models.Job) string {
+	if job == nil {
+		return ""
+	}
+	payload := map[string]any{}
+	if err := json.Unmarshal([]byte(job.Payload), &payload); err != nil {
+		return ""
+	}
+	action, _ := payload["action"].(string)
+	return strings.ToLower(strings.TrimSpace(action))
+}
+
+// lockLegacyPublicationAggregateAdvisory serializes Postgres compatibility
+// mutations and stale legacy-job recovery for one text/thread aggregate. It
+// must be acquired before publication or job row locks.
+func lockLegacyPublicationAggregateAdvisory(ctx context.Context, tx bun.Tx, postID string) error {
+	if tx.Dialect().Name() != dialect.PG {
+		return nil
+	}
+	advisoryRootID, err := legacyThreadTopPostID(ctx, tx, postID)
+	if err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(
+		ctx,
+		"SELECT pg_advisory_xact_lock(hashtextextended(?, 0))",
+		"openpost-legacy-authoring:"+advisoryRootID,
+	)
+	return err
+}
+
+func legacyThreadTopPostID(ctx context.Context, db bun.IDB, postID string) (string, error) {
+	var current models.Post
+	if err := db.NewSelect().Model(&current).Where("id = ?", postID).Scan(ctx); err != nil {
+		return "", err
+	}
+	seen := map[string]struct{}{current.ID: {}}
+	for strings.TrimSpace(current.ParentPostID) != "" {
+		var parent models.Post
+		if err := db.NewSelect().Model(&parent).Where("id = ?", current.ParentPostID).Scan(ctx); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				break
+			}
+			return "", err
+		}
+		if parent.WorkspaceID != current.WorkspaceID {
+			break
+		}
+		if _, duplicate := seen[parent.ID]; duplicate {
+			break
+		}
+		seen[parent.ID] = struct{}{}
+		current = parent
+	}
+	return current.ID, nil
+}
+
+func sameLegacyPostIDs(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	leftSet := make(map[string]struct{}, len(left))
+	for _, id := range left {
+		leftSet[id] = struct{}{}
+	}
+	for _, id := range right {
+		if _, ok := leftSet[id]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+func legacyPostIDs(posts []models.Post) []string {
+	postIDs := make([]string, 0, len(posts))
+	for _, post := range posts {
+		postIDs = append(postIDs, post.ID)
+	}
+	return postIDs
+}
+
+func lockLegacyPostRowsForMutation(ctx context.Context, tx bun.Tx, postIDs []string) error {
+	if len(postIDs) == 0 {
+		return nil
+	}
+	if tx.Dialect().Name() == dialect.SQLite {
+		_, err := tx.NewUpdate().Model((*models.Post)(nil)).
+			Set("id = id").
+			Where("id IN (?)", bun.List(postIDs)).
+			Exec(ctx)
+		return err
+	}
+	var lockedIDs []string
+	query := tx.NewSelect().Model((*models.Post)(nil)).Column("id").
+		Where("id IN (?)", bun.List(postIDs)).
+		Order("id ASC")
+	if tx.Dialect().Name() == dialect.PG {
+		query = query.For("UPDATE")
+	}
+	return query.Scan(ctx, &lockedIDs)
+}
+
+func ensureLegacyPublicationAggregateJobsRewritten(ctx context.Context, db bun.IDB, postID string) error {
+	root, err := loadLegacyAggregateRoot(ctx, db, postID)
+	if err != nil {
+		return err
+	}
+	posts, err := legacyThreadPosts(ctx, db, root)
+	if err != nil {
+		return err
+	}
+	postIDs := make([]string, 0, len(posts))
+	for _, post := range posts {
+		postIDs = append(postIDs, post.ID)
+	}
+	count, err := db.NewSelect().Model((*models.Job)(nil)).
+		Where("type = ?", "publish_post").
+		Where("scope_id IN (?)", bun.List(postIDs)).
+		Where("status IN (?)", bun.List([]string{"pending", "processing"})).
+		Count(ctx)
+	if err != nil {
+		return err
+	}
+	if count != 0 {
+		return errLegacyPublicationProviderRecovery
+	}
+	return nil
 }
 
 type legacyRenditionSettings struct {
@@ -584,75 +988,109 @@ func legacyPostHasOwners(ctx context.Context, db bun.IDB, post models.Post) (boo
 
 func migrateLegacyPost(ctx context.Context, db *bun.DB, post models.Post, actor publicationauth.Actor) error {
 	return db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
-		var current models.Post
-		if err := tx.NewSelect().Model(&current).Where("id = ?", post.ID).Scan(txCtx); err != nil {
-			return err
-		}
-		if current.PublicationID != "" {
-			return nil
-		}
-		segments, threadDraft, err := legacySegments(txCtx, tx, current)
-		if err != nil {
-			return err
-		}
-		publicationID := "legacy-publication:" + current.ID
-		intent := models.PublishingIntentPost
-		profile := models.ContentProfileShortText
-		if len(segments) > 1 || threadDraft != nil {
-			intent = models.PublishingIntentThread
-			profile = models.ContentProfileThread
-		}
-		now := time.Now().UTC()
-		publication := models.Publication{
-			ID:              publicationID,
-			WorkspaceID:     current.WorkspaceID,
-			CreatedByID:     current.CreatedByID,
-			Title:           legacyPublicationTitle(segments, intent),
-			Intent:          intent,
-			ContentProfile:  profile,
-			SourceText:      firstLegacySegmentBody(segments),
-			SourceContent:   firstLegacySegmentBody(segments),
-			Status:          legacyPublicationStatus(current.Status),
-			ScheduledAt:     current.ScheduledAt,
-			ActualRunAt:     current.ActualRunAt,
-			MetadataJSON:    `{"migrated_from":"posts"}`,
-			ReleasePlanJSON: `{"migrated_from":"posts"}`,
-			CreatedAt:       current.CreatedAt,
-			UpdatedAt:       now,
-		}
-		if _, err := tx.NewInsert().Model(&publication).Ignore().Exec(txCtx); err != nil {
-			return err
-		}
-		segmentModels, err := insertLegacyPublicationSegments(txCtx, tx, publication, segments)
-		if err != nil {
-			return err
-		}
-		if err := insertLegacyRenditions(txCtx, tx, publication, current, segmentModels, segments, threadDraft); err != nil {
-			return err
-		}
-		threadPosts, err := legacyThreadPosts(txCtx, tx, current)
-		if err != nil {
-			return err
-		}
-		postIDs := make([]string, 0, len(threadPosts))
-		for _, threadPost := range threadPosts {
-			postIDs = append(postIDs, threadPost.ID)
-		}
-		if _, err := tx.NewUpdate().
-			Model((*models.Post)(nil)).
-			Set("publication_id = ?", publicationID).
-			Where("id IN (?)", bun.List(postIDs)).
-			Exec(txCtx); err != nil {
-			return err
-		}
-		if err := rewriteLegacyPublicationJobs(txCtx, tx, current.ID, publicationID); err != nil {
-			return err
-		}
-		return publicationauth.AuthorizeLegacyJobs(txCtx, tx, publicationauth.LegacyJobsInput{
-			PublicationID: publicationID,
-			Actor:         actor,
-		})
+		return migrateLegacyPostTx(txCtx, tx, post, actor)
 	})
+}
+
+func migrateLegacyPostTx(ctx context.Context, tx bun.Tx, post models.Post, actor publicationauth.Actor) error {
+	var current models.Post
+	if err := tx.NewSelect().Model(&current).Where("id = ?", post.ID).Scan(ctx); err != nil {
+		return err
+	}
+	if current.PublicationID != "" {
+		return nil
+	}
+	if err := lockLegacyPublicationAggregateForMutation(ctx, tx, current.ID); err != nil {
+		return err
+	}
+	lockedCurrent, err := loadLegacyAggregateRoot(ctx, tx, current.ID)
+	if err != nil {
+		return err
+	}
+	current = lockedCurrent
+	if current.PublicationID != "" ||
+		(current.Status != models.PostStatusDraft && current.Status != models.PostStatusScheduled) {
+		return nil
+	}
+	segments, threadDraft, err := legacySegments(ctx, tx, current)
+	if err != nil {
+		return err
+	}
+	return migrateLegacyPostProjectionTx(ctx, tx, current, segments, threadDraft, actor)
+}
+
+func migrateLegacyPostProjectionTx(
+	ctx context.Context,
+	tx bun.Tx,
+	current models.Post,
+	segments []legacyThreadPost,
+	threadDraft *legacyThreadDraft,
+	actor publicationauth.Actor,
+) error {
+	publication := newLegacyPublication(current, segments, threadDraft)
+	if _, err := tx.NewInsert().Model(&publication).Ignore().Exec(ctx); err != nil {
+		return err
+	}
+	segmentModels, err := insertLegacyPublicationSegments(ctx, tx, publication, segments)
+	if err != nil {
+		return err
+	}
+	if err := insertLegacyRenditions(ctx, tx, publication, current, segmentModels, segments, threadDraft); err != nil {
+		return err
+	}
+	threadPosts, err := legacyThreadPosts(ctx, tx, current)
+	if err != nil {
+		return err
+	}
+	if err := linkLegacyThreadPosts(ctx, tx, threadPosts, publication.ID); err != nil {
+		return err
+	}
+	if err := rewriteLegacyPublicationJobs(ctx, tx, current.ID, publication.ID); err != nil {
+		return err
+	}
+	if err := ensureLegacyPublicationAggregateJobsRewritten(ctx, tx, current.ID); err != nil {
+		return err
+	}
+	discarded, err := discardPendingLegacyPublicationJobsWithoutDestinations(ctx, tx, publication.ID)
+	if err != nil || discarded {
+		return err
+	}
+	return publicationauth.AuthorizeLegacyJobs(ctx, tx, publicationauth.LegacyJobsInput{
+		PublicationID: publication.ID,
+		Actor:         actor,
+	})
+}
+
+func newLegacyPublication(
+	post models.Post,
+	segments []legacyThreadPost,
+	threadDraft *legacyThreadDraft,
+) models.Publication {
+	intent := models.PublishingIntentPost
+	profile := models.ContentProfileShortText
+	if len(segments) > 1 || threadDraft != nil {
+		intent = models.PublishingIntentThread
+		profile = models.ContentProfileThread
+	}
+	now := time.Now().UTC()
+	return models.Publication{
+		ID: "legacy-publication:" + post.ID, WorkspaceID: post.WorkspaceID, CreatedByID: post.CreatedByID,
+		Title: legacyPublicationTitle(segments, intent), Intent: intent, ContentProfile: profile,
+		SourceText: firstLegacySegmentBody(segments), SourceContent: firstLegacySegmentBody(segments),
+		Status: legacyPublicationStatus(post.Status), ScheduledAt: post.ScheduledAt, ActualRunAt: post.ActualRunAt,
+		MetadataJSON: `{"migrated_from":"posts"}`, ReleasePlanJSON: `{"migrated_from":"posts"}`,
+		CreatedAt: post.CreatedAt, UpdatedAt: now,
+	}
+}
+
+func linkLegacyThreadPosts(ctx context.Context, tx bun.Tx, posts []models.Post, publicationID string) error {
+	postIDs := make([]string, 0, len(posts))
+	for _, post := range posts {
+		postIDs = append(postIDs, post.ID)
+	}
+	_, err := tx.NewUpdate().Model((*models.Post)(nil)).Set("publication_id = ?", publicationID).
+		Where("id IN (?)", bun.List(postIDs)).Exec(ctx)
+	return err
 }
 
 func legacySegments(ctx context.Context, db bun.IDB, post models.Post) ([]legacyThreadPost, *legacyThreadDraft, error) {
@@ -689,36 +1127,30 @@ func legacySegments(ctx context.Context, db bun.IDB, post models.Post) ([]legacy
 }
 
 func legacyThreadPosts(ctx context.Context, db bun.IDB, root models.Post) ([]models.Post, error) {
-	var candidates []models.Post
-	if err := db.NewSelect().
-		Model(&candidates).
-		Where("workspace_id = ?", root.WorkspaceID).
-		Order("thread_sequence ASC", "created_at ASC", "id ASC").
-		Scan(ctx); err != nil {
-		return nil, err
-	}
-	byParent := map[string][]models.Post{}
-	for _, candidate := range candidates {
-		byParent[candidate.ParentPostID] = append(byParent[candidate.ParentPostID], candidate)
-	}
 	out := []models.Post{root}
 	seen := map[string]bool{root.ID: true}
-	currentID := root.ID
 	for {
-		children := byParent[currentID]
-		next := models.Post{}
-		for _, child := range children {
-			if !seen[child.ID] {
-				next = child
+		var children []models.Post
+		if err := db.NewSelect().
+			Model(&children).
+			Where("workspace_id = ? AND parent_post_id = ?", root.WorkspaceID, out[len(out)-1].ID).
+			Order("thread_sequence ASC", "created_at ASC", "id ASC").
+			Limit(2).
+			Scan(ctx); err != nil {
+			return nil, err
+		}
+		var next *models.Post
+		for index := range children {
+			if !seen[children[index].ID] {
+				next = &children[index]
 				break
 			}
 		}
-		if next.ID == "" {
+		if next == nil {
 			break
 		}
-		out = append(out, next)
+		out = append(out, *next)
 		seen[next.ID] = true
-		currentID = next.ID
 	}
 	return out, nil
 }
@@ -961,33 +1393,18 @@ func rewriteLegacyPublicationJobs(ctx context.Context, db bun.IDB, postID, publi
 	if err := db.NewSelect().
 		Model(&jobs).
 		Where("type = ? AND status = ?", "publish_post", "pending").
+		Where("scope_id IN (?)", bun.List(mapKeys(postIDs))).
+		Order("run_at ASC", "id ASC").
 		Scan(ctx); err != nil {
 		if isMissingLegacyAuthoringTable(err) {
 			return nil
 		}
 		return err
 	}
-	candidates := make([]models.Job, 0, len(jobs))
-	for _, job := range jobs {
-		payload := map[string]interface{}{}
-		if json.Unmarshal([]byte(job.Payload), &payload) != nil {
-			continue
-		}
-		if _, ok := postIDs[strings.TrimSpace(fmt.Sprint(payload["post_id"]))]; !ok {
-			continue
-		}
-		candidates = append(candidates, job)
-	}
-	if len(candidates) == 0 {
+	if len(jobs) == 0 {
 		return nil
 	}
-	sort.Slice(candidates, func(i, j int) bool {
-		if candidates[i].RunAt.Equal(candidates[j].RunAt) {
-			return candidates[i].ID < candidates[j].ID
-		}
-		return candidates[i].RunAt.Before(candidates[j].RunAt)
-	})
-	for index, job := range candidates {
+	for index, job := range jobs {
 		if index > 0 {
 			if _, err := db.NewDelete().Model(&job).Where("id = ?", job.ID).Exec(ctx); err != nil {
 				return err
@@ -1005,6 +1422,7 @@ func rewriteLegacyPublicationJobs(ctx context.Context, db bun.IDB, postID, publi
 		if _, err := db.NewUpdate().
 			Model(&job).
 			Set("type = ?", "publish_publication").
+			Set("scope_id = ?", publicationID).
 			Set("payload = ?", string(encoded)).
 			Where("id = ?", job.ID).
 			Exec(ctx); err != nil {
@@ -1015,31 +1433,16 @@ func rewriteLegacyPublicationJobs(ctx context.Context, db bun.IDB, postID, publi
 }
 
 func syncLegacyPublicationJobs(ctx context.Context, db bun.IDB, root models.Post, publicationID string) error {
-	var jobs []models.Job
-	if err := db.NewSelect().
-		Model(&jobs).
-		Where("type = ? AND status = ?", "publish_publication", "pending").
-		Scan(ctx); err != nil {
-		if isMissingLegacyAuthoringTable(err) {
-			return nil
-		}
+	discarded, err := discardPendingLegacyPublicationJobsWithoutDestinations(ctx, db, publicationID)
+	if err != nil || discarded {
 		return err
 	}
-	matching := make([]models.Job, 0, len(jobs))
-	for _, job := range jobs {
-		payload := map[string]interface{}{}
-		if json.Unmarshal([]byte(job.Payload), &payload) == nil &&
-			strings.TrimSpace(fmt.Sprint(payload["publication_id"])) == publicationID {
-			matching = append(matching, job)
-		}
+	matching, err := pendingPrimaryLegacyPublicationJobs(ctx, db, publicationID)
+	if err != nil {
+		return err
 	}
 	if root.Status != models.PostStatusScheduled {
-		for _, job := range matching {
-			if _, err := db.NewDelete().Model(&job).Where("id = ?", job.ID).Exec(ctx); err != nil {
-				return err
-			}
-		}
-		return nil
+		return deleteLegacyPublicationJobs(ctx, db, matching)
 	}
 	runAt := root.ActualRunAt
 	if runAt.IsZero() {
@@ -1053,6 +1456,7 @@ func syncLegacyPublicationJobs(ctx context.Context, db bun.IDB, root models.Post
 		job := models.Job{
 			ID:          fmt.Sprintf("legacy-publication-job:%s", root.ID),
 			Type:        "publish_publication",
+			ScopeID:     publicationID,
 			Payload:     string(payload),
 			Status:      "pending",
 			RunAt:       runAt,
@@ -1075,6 +1479,74 @@ func syncLegacyPublicationJobs(ctx context.Context, db bun.IDB, root models.Post
 		}
 	}
 	return nil
+}
+
+func pendingPrimaryLegacyPublicationJobs(ctx context.Context, db bun.IDB, publicationID string) ([]models.Job, error) {
+	var jobs []models.Job
+	if err := db.NewSelect().Model(&jobs).
+		Where("type = ? AND status = ?", "publish_publication", "pending").
+		Where("scope_id = ?", publicationID).Order("run_at ASC", "id ASC").Scan(ctx); err != nil {
+		if isMissingLegacyAuthoringTable(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	matching := make([]models.Job, 0, len(jobs))
+	for _, job := range jobs {
+		payload := map[string]interface{}{}
+		if json.Unmarshal([]byte(job.Payload), &payload) != nil {
+			continue
+		}
+		action, _ := payload["action"].(string)
+		if strings.TrimSpace(action) == "" {
+			matching = append(matching, job)
+		}
+	}
+	return matching, nil
+}
+
+func deleteLegacyPublicationJobs(ctx context.Context, db bun.IDB, jobs []models.Job) error {
+	for index := range jobs {
+		if _, err := db.NewDelete().Model(&jobs[index]).Where("id = ?", jobs[index].ID).Exec(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// discardPendingLegacyPublicationJobsWithoutDestinations removes work that
+// cannot make an external write. The compatibility post and publication stay
+// intact, so the user can add a destination, edit, or clear the schedule
+// without an unbound queue row consuming worker retries.
+func discardPendingLegacyPublicationJobsWithoutDestinations(
+	ctx context.Context,
+	db bun.IDB,
+	publicationID string,
+) (bool, error) {
+	count, err := db.NewSelect().Model((*models.Rendition)(nil)).
+		Where("publication_id = ?", publicationID).
+		Count(ctx)
+	if err != nil {
+		return false, fmt.Errorf("count legacy publication destinations: %w", err)
+	}
+	if count > 0 {
+		return false, nil
+	}
+	if _, err := db.NewDelete().Model((*models.Job)(nil)).
+		Where("type = ? AND status = ? AND scope_id = ?", "publish_publication", "pending", publicationID).
+		Exec(ctx); err != nil {
+		return false, fmt.Errorf("remove non-executable legacy publication jobs: %w", err)
+	}
+	return true, nil
+}
+
+func mapKeys(values map[string]struct{}) []string {
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 func legacyPublicationTitle(segments []legacyThreadPost, intent string) string {

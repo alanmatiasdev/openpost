@@ -47,6 +47,7 @@ func createHandlerTestDB(t *testing.T, modelsToCreate ...interface{}) *bun.DB {
 		(*models.RenditionSegmentMedia)(nil),
 		(*models.PublicationLifecycleEvent)(nil),
 		(*models.PublicationAuthorization)(nil),
+		(*models.ProviderWriteAttempt)(nil),
 	}
 	for _, model := range editorModels {
 		_, err := db.NewCreateTable().Model(model).IfNotExists().Exec(context.Background())
