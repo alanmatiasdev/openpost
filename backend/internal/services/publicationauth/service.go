@@ -166,7 +166,7 @@ func normalizeExplicitInput(input ExplicitInput) (ExplicitInput, error) {
 	if input.BatchID == "" {
 		input.BatchID = uuid.NewString()
 	}
-	input.RunAt = input.RunAt.UTC()
+	input.RunAt = normalizeScheduledTime(input.RunAt)
 	if input.ConfirmedAt.IsZero() {
 		input.ConfirmedAt = time.Now().UTC()
 	} else {
@@ -199,7 +199,7 @@ func ValidateBatch(ctx context.Context, db bun.IDB, input ValidateInput) ([]mode
 	input.JobID = strings.TrimSpace(input.JobID)
 	input.Action = strings.TrimSpace(input.Action)
 	input.ExecutionIntent = normalizedExecutionIntent(input.ExecutionIntent)
-	input.ScheduledAt = input.ScheduledAt.UTC()
+	input.ScheduledAt = normalizeScheduledTime(input.ScheduledAt)
 	if input.BatchID == "" || input.PublicationID == "" || !validAction(input.Action) {
 		return nil, ErrReceiptRequired
 	}
@@ -241,7 +241,7 @@ func validateReceipt(ctx context.Context, db bun.IDB, input ValidateInput, recei
 	if input.JobID != "" && receipt.JobID != input.JobID {
 		return ErrReceiptJobMismatch
 	}
-	if !input.ScheduledAt.IsZero() && !receipt.ScheduledAt.Equal(input.ScheduledAt) {
+	if !input.ScheduledAt.IsZero() && !normalizeScheduledTime(receipt.ScheduledAt).Equal(input.ScheduledAt) {
 		return ErrReceiptTimeMismatch
 	}
 	current, err := SnapshotForRendition(ctx, db, input.PublicationID, receipt.RenditionID)
@@ -278,7 +278,7 @@ func receiptFromSnapshot(input BatchInput, target JobTarget, snapshot Snapshot) 
 		ActorSessionID: input.Actor.SessionID, ActorTokenID: input.Actor.TokenID,
 		ActorClientID: input.Actor.ClientID, ActorClientName: input.Actor.ClientName,
 		PublicationRevision: snapshot.PublicationRevision, SocialAccountID: snapshot.SocialAccountID,
-		TargetKey: snapshot.TargetKey, ScheduledAt: target.RunAt.UTC(),
+		TargetKey: snapshot.TargetKey, ScheduledAt: normalizeScheduledTime(target.RunAt),
 		ContentHash: snapshot.ContentHash, MediaHash: snapshot.MediaHash, SettingsHash: snapshot.SettingsHash,
 		PolicyMode: input.PolicyMode, ProviderPolicyMode: snapshot.ProviderPolicyMode,
 		ExecutionIntent: input.ExecutionIntent, ConfirmedAt: confirmedAt, CreatedAt: confirmedAt,
@@ -295,7 +295,7 @@ func resolveBatchTargets(ctx context.Context, db bun.IDB, publicationID string, 
 	for _, target := range targets {
 		target.JobID = strings.TrimSpace(target.JobID)
 		target.RenditionID = strings.TrimSpace(target.RenditionID)
-		target.RunAt = target.RunAt.UTC()
+		target.RunAt = normalizeScheduledTime(target.RunAt)
 		if target.RunAt.IsZero() {
 			return nil, fmt.Errorf("authorization scheduled time is required")
 		}
@@ -325,6 +325,13 @@ func resolveBatchTargets(ctx context.Context, db bun.IDB, publicationID string, 
 		}
 	}
 	return resolved, nil
+}
+
+func normalizeScheduledTime(value time.Time) time.Time {
+	if value.IsZero() {
+		return value
+	}
+	return value.UTC().Truncate(time.Microsecond)
 }
 
 func validAction(action string) bool {

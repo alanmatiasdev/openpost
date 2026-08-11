@@ -4,6 +4,13 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- Normalized publication authorization times to database precision so immediate publishes cannot fail before reaching a provider, and surfaced terminal preflight failures as failed instead of leaving them scheduled and pending.
+- Scoped the Posts page totals and pagination to the selected Scheduled, Published, Failed, or Drafts tab instead of showing whole-history counts beside a filtered tab.
+- Removed the three-item cap from the desktop draft planner, made long draft lists scroll, grouped Editors, Accounts, and Settings consistently, and added a compact animated collapse control for the lower workspace navigation.
+- Kept replies authored by a connected social account out of its own Engagement feed and hid self-authored rows collected by earlier versions.
+
 ## [3.8.0] - 2026-08-11
 
 ### Added

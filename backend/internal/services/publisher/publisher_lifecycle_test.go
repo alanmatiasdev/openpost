@@ -172,6 +172,43 @@ func TestPublicationAuthorizationPreflightRejectsChangedContentBeforeProviderCal
 	require.Equal(t, models.PublicationStatusReady, publication.Status, "preflight must run before publishing state changes")
 }
 
+func TestPublicationAuthorizationPreflightFailureDoesNotLeaveScheduledPublicationPending(t *testing.T) {
+	adapter := &fakePublisherAdapter{externalID: "must-not-publish"}
+	srv := newPublisherLifecycleTestServer(t, adapter)
+	ctx, payload := srv.authorizedPublicationJob(t, nil)
+	_, err := srv.db.NewUpdate().Model((*models.Publication)(nil)).
+		Set("status = ?", models.PublicationStatusScheduled).
+		Where("id = ?", "publication-1").Exec(t.Context())
+	require.NoError(t, err)
+	_, err = srv.db.NewUpdate().Model((*models.Rendition)(nil)).
+		Set("status = ?", models.RenditionStatusScheduled).
+		Where("id = ?", "rendition-1").Exec(t.Context())
+	require.NoError(t, err)
+
+	var body map[string]string
+	require.NoError(t, json.Unmarshal([]byte(payload), &body))
+	body["authorization_scheduled_at"] = srv.runAt.Add(time.Second).Format(time.RFC3339Nano)
+	tampered, err := json.Marshal(body)
+	require.NoError(t, err)
+
+	err = srv.service.HandlePublishPublicationJob(ctx, string(tampered))
+
+	require.ErrorContains(t, err, "scheduled time mismatch")
+	require.Zero(t, adapter.publishCalls)
+	var publication models.Publication
+	require.NoError(t, srv.db.NewSelect().Model(&publication).Where("id = ?", "publication-1").Scan(t.Context()))
+	require.Equal(t, models.PublicationStatusFailed, publication.Status)
+	var rendition models.Rendition
+	require.NoError(t, srv.db.NewSelect().Model(&rendition).Where("id = ?", "rendition-1").Scan(t.Context()))
+	require.Equal(t, models.RenditionStatusFailed, rendition.Status)
+	require.Equal(t, FailureValidation, rendition.ErrorKind)
+	require.Equal(t, FailureActionEdit, rendition.ErrorAction)
+	var post models.Post
+	require.NoError(t, srv.db.NewSelect().Model(&post).Where("id = ?", "post-1").Scan(t.Context()))
+	require.Equal(t, models.PostStatusFailed, post.Status)
+	requireLifecycleTypes(t, srv.lifecycleEvents(t), lifecycle.EventFailed)
+}
+
 func TestPublicationAuthorizationPreflightUsesReceiptDestinationAllowlist(t *testing.T) {
 	adapter := &fakePublisherAdapter{externalIDs: []string{"external-1"}}
 	srv := newPublisherLifecycleTestServer(t, adapter)

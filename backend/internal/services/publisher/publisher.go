@@ -282,6 +282,16 @@ func (s *Service) HandlePublishPublicationJob(ctx context.Context, jobPayload st
 		Explicit: payload.Action == "reply", ReadinessIntent: payload.ReadinessIntent,
 	})
 	if err != nil {
+		if failure := ClassifyFailure(err); !failure.Retryable {
+			if stateErr := s.persistTerminalPreflightFailure(
+				ctx,
+				payload.PublicationID,
+				payload.RenditionID,
+				failure,
+			); stateErr != nil {
+				log.Printf("[Publisher] Failed to persist terminal preflight failure: %v", stateErr)
+			}
+		}
 		return err
 	}
 	if payload.Action == "reply" {
@@ -411,6 +421,91 @@ func (s *Service) HandlePublishPublicationJob(ctx context.Context, jobPayload st
 	if terminalWriteFailure != nil {
 		return terminalWriteFailure
 	}
+	return nil
+}
+
+// persistTerminalPreflightFailure keeps an authorized queued publication from
+// remaining visibly scheduled after a terminal failure before any provider
+// call. The immutable receipt-to-job link scopes the affected destinations;
+// unauthenticated or tampered payload IDs cannot fail another publication.
+func (s *Service) persistTerminalPreflightFailure(
+	ctx context.Context,
+	publicationID,
+	renditionID string,
+	failure Failure,
+) error {
+	execution, ok := jobExecutionFromContext(ctx)
+	publicationID = strings.TrimSpace(publicationID)
+	renditionID = strings.TrimSpace(renditionID)
+	if !ok || execution.ID == "" || publicationID == "" {
+		return nil
+	}
+
+	var publication models.Publication
+	if err := s.db.NewSelect().Model(&publication).
+		Where("id = ? AND status = ?", publicationID, models.PublicationStatusScheduled).
+		Scan(ctx); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		return err
+	}
+
+	var receipts []models.PublicationAuthorization
+	query := s.db.NewSelect().Model(&receipts).
+		Where("job_id = ? AND publication_id = ?", execution.ID, publication.ID)
+	if renditionID != "" {
+		query = query.Where("rendition_id = ?", renditionID)
+	}
+	if err := query.Order("rendition_id ASC").Scan(ctx); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		return err
+	}
+
+	failed := make([]models.PublicationAuthorization, 0, len(receipts))
+	for _, receipt := range receipts {
+		result, err := s.db.NewUpdate().Model((*models.Rendition)(nil)).
+			Set("status = ?", models.RenditionStatusFailed).
+			Set("error_message = ?", failure.Message).
+			Set("error_kind = ?", failure.Kind).
+			Set("error_code = ?", failure.Code).
+			Set("error_http_status = ?", failure.HTTPStatus).
+			Set("error_retryable = ?", false).
+			Set("error_retry_at = NULL").
+			Set("error_action = ?", failure.Action).
+			Set("updated_at = ?", time.Now().UTC()).
+			Where("id = ? AND publication_id = ? AND status = ?", receipt.RenditionID, publication.ID, models.RenditionStatusScheduled).
+			Exec(ctx)
+		if err != nil {
+			return err
+		}
+		if affected, _ := result.RowsAffected(); affected > 0 {
+			failed = append(failed, receipt)
+		}
+	}
+	if len(failed) == 0 {
+		return nil
+	}
+
+	for _, receipt := range failed {
+		s.recordPublicationLifecycleEvent(
+			ctx,
+			publication.WorkspaceID,
+			publication.ID,
+			receipt.RenditionID,
+			lifecycle.EventFailed,
+			lifecycle.StatusFailed,
+			"publication authorization preflight failed",
+			map[string]any{
+				"error_kind": failure.Kind,
+				"error_code": failure.Code,
+				"retryable":  false,
+			},
+		)
+	}
+	s.finalizePublication(ctx, &publication)
 	return nil
 }
 

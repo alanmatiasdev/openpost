@@ -137,6 +137,36 @@ func TestCreateBatchRejectsUntrustedActorPolicyAndCrossPublicationRendition(t *t
 	require.Error(t, err)
 }
 
+func TestValidateBatchAcceptsDatabasePrecisionForScheduledTime(t *testing.T) {
+	db := newPublicationAuthorizationTestDB(t)
+	seedPublicationAuthorizationFixture(t, db)
+	ctx := t.Context()
+	runAt := time.Date(2026, time.August, 11, 15, 52, 28, 436566847, time.UTC)
+	batchID, receipts, err := CreateBatch(ctx, db, BatchInput{
+		PublicationID: "publication-1",
+		Actor:         Actor{Origin: OriginAPI, UserID: "user-1", TokenID: "token-1"},
+		Action:        ActionPublish,
+		PolicyMode:    PolicyImmediate,
+		Targets:       []JobTarget{{JobID: "job-1", RenditionID: "rendition-1", RunAt: runAt}},
+	})
+	require.NoError(t, err)
+	require.Len(t, receipts, 1)
+
+	// PostgreSQL stores timestamps at microsecond precision. Reproduce the
+	// production round-trip before validating the nanosecond-bearing payload.
+	_, err = db.NewUpdate().Model((*models.PublicationAuthorization)(nil)).
+		Set("scheduled_at = ?", runAt.Truncate(time.Microsecond)).
+		Where("id = ?", receipts[0].ID).
+		Exec(ctx)
+	require.NoError(t, err)
+
+	_, err = ValidateBatch(ctx, db, ValidateInput{
+		BatchID: batchID, PublicationID: "publication-1", RenditionID: "rendition-1",
+		JobID: "job-1", Action: ActionPublish, ScheduledAt: runAt,
+	})
+	require.NoError(t, err)
+}
+
 func TestAuthorizeLegacyJobsBindsQueueAndAppendsAfterMutation(t *testing.T) {
 	db := newPublicationAuthorizationTestDB(t)
 	seedPublicationAuthorizationFixture(t, db)
