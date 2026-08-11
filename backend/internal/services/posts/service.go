@@ -170,24 +170,6 @@ func validateStoredXMediaLimits(account models.SocialAccount, media []platform.M
 	return nil
 }
 
-func (s *Service) DestinationAccountIDs(ctx context.Context, postID string) ([]string, error) {
-	var destinations []models.PostDestination
-	if err := s.db.NewSelect().
-		Model(&destinations).
-		Column("social_account_id").
-		Where("post_id = ?", postID).
-		Order("id ASC").
-		Scan(ctx); err != nil {
-		return nil, fmt.Errorf("failed to load post destinations: %w", err)
-	}
-
-	accountIDs := make([]string, 0, len(destinations))
-	for _, destination := range destinations {
-		accountIDs = append(accountIDs, destination.SocialAccountID)
-	}
-	return accountIDs, nil
-}
-
 func (s *Service) MediaIDs(ctx context.Context, postID string) ([]string, error) {
 	var media []models.PostMedia
 	if err := s.db.NewSelect().
