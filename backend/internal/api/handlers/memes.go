@@ -328,18 +328,6 @@ func NewMemeHandler(
 	return handler
 }
 
-func (h *MemeHandler) SetMediaURLResolver(resolver MemeMediaURLResolver) {
-	if resolver != nil {
-		h.mediaURLs = resolver
-	}
-}
-
-func (h *MemeHandler) SetMediaImporter(importer MemeMediaImporter) {
-	if importer != nil {
-		h.importer = importer
-	}
-}
-
 type ListMemeTemplatesInput struct {
 	WorkspaceID string `query:"workspace_id" required:"true" doc:"Workspace ID"`
 	Query       string `query:"q" maxLength:"120" doc:"Template name, keyword, or example text"`
