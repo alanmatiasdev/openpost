@@ -656,6 +656,87 @@ func TestEngagementPersistenceTracksEditsDeletionAttachmentsAndLocalReadState(t 
 	require.False(t, item.DeletedAt.IsZero())
 }
 
+func TestEngagementPersistenceIgnoresRepliesFromConnectedAccount(t *testing.T) {
+	db := communicationsTestDB(t)
+	ctx := context.Background()
+	now := time.Date(2026, 8, 11, 13, 21, 0, 0, time.UTC)
+	account := models.SocialAccount{
+		ID: "account-1", WorkspaceID: "workspace-1", Platform: "mastodon",
+		AccountID: "remote-account", AccessTokenEnc: []byte("encrypted"), IsActive: true,
+	}
+	require.NoError(t, func() error {
+		_, err := db.NewInsert().Model(&account).Exec(ctx)
+		return err
+	}())
+	publication := models.Publication{
+		ID: "publication-1", WorkspaceID: account.WorkspaceID, CreatedByID: "user-1",
+		Title: "VPN ad differences", SourceText: "The difference in ads is insane.",
+		Status: models.PublicationStatusPublished, CreatedAt: now, UpdatedAt: now,
+	}
+	require.NoError(t, func() error {
+		_, err := db.NewInsert().Model(&publication).Exec(ctx)
+		return err
+	}())
+	rendition := models.Rendition{
+		ID: "rendition-1", PublicationID: publication.ID, SocialAccountID: account.ID,
+		Platform: account.Platform, Status: models.RenditionStatusPublished,
+		ExternalID: "status-1", CreatedAt: now, UpdatedAt: now,
+	}
+	require.NoError(t, func() error {
+		_, err := db.NewInsert().Model(&rendition).Exec(ctx)
+		return err
+	}())
+	_, err := db.NewInsert().Model(&models.EngagementItem{
+		ID: "previously-stored-own-reply", WorkspaceID: account.WorkspaceID, RenditionID: rendition.ID,
+		SocialAccountID: account.ID, Platform: account.Platform, RemoteID: "reply-by-connected-account",
+		AuthorRemoteID: account.AccountID, Body: "Previously stored own reply", IsOurs: true,
+		LastSeenAt: now, CreatedAt: now, UpdatedAt: now,
+	}).Exec(ctx)
+	require.NoError(t, err)
+	service := NewService(db, staticTokenSource{}, nil)
+
+	newItems, err := service.persistEngagementComments(
+		ctx,
+		rendition,
+		account,
+		publication,
+		[]platform.Comment{
+			{
+				ID: "reply-by-connected-account", AuthorID: account.AccountID,
+				AuthorName: "Rodrigo Dias", AuthorHandle: "@rgo",
+				Text: "@PJFDF Yeah haha", CreatedAt: now.Format(time.RFC3339), IsOurs: true,
+			},
+			{
+				ID: "reply-by-someone-else", AuthorID: "remote-reader",
+				AuthorName: "A reader", AuthorHandle: "@reader",
+				Text: "Same here", CreatedAt: now.Add(time.Minute).Format(time.RFC3339),
+			},
+		},
+		now,
+	)
+	require.NoError(t, err)
+	require.Len(t, newItems, 1)
+	require.Equal(t, "reply-by-someone-else", newItems[0].RemoteID)
+
+	count, err := db.NewSelect().Model((*models.EngagementItem)(nil)).Count(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, count, "replies from the connected account must not be stored as engagement")
+
+	_, err = db.NewInsert().Model(&models.EngagementItem{
+		ID: "legacy-own-reply", WorkspaceID: account.WorkspaceID, RenditionID: rendition.ID,
+		SocialAccountID: account.ID, Platform: account.Platform, RemoteID: "legacy-own-reply",
+		AuthorRemoteID: account.AccountID, Body: "An own reply stored before the fix", IsOurs: true,
+		LastSeenAt: now, CreatedAt: now, UpdatedAt: now,
+	}).Exec(ctx)
+	require.NoError(t, err)
+
+	items, total, err := service.ListEngagement(ctx, account.WorkspaceID, "", "", "", false, false, 50, 0)
+	require.NoError(t, err)
+	require.Equal(t, 1, total, "previously stored own replies must be hidden from Engagement")
+	require.Len(t, items, 1)
+	require.Equal(t, "reply-by-someone-else", items[0].RemoteID)
+}
+
 func TestEngagementReactionUpdatesAvailableInverseAction(t *testing.T) {
 	db := communicationsTestDB(t)
 	ctx := context.Background()

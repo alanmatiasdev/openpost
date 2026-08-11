@@ -330,6 +330,12 @@ func persistEngagementComment(
 	if strings.TrimSpace(comment.ID) == "" {
 		return models.EngagementItem{}, false, nil
 	}
+	if comment.IsOurs {
+		_, err := tx.NewDelete().Model((*models.EngagementItem)(nil)).
+			Where("social_account_id = ? AND remote_id = ?", account.ID, comment.ID).
+			Exec(ctx)
+		return models.EngagementItem{}, false, err
+	}
 	var existing models.EngagementItem
 	existingErr := tx.NewSelect().Model(&existing).
 		Where("social_account_id = ? AND remote_id = ?", account.ID, comment.ID).
@@ -1511,6 +1517,7 @@ func isSafeProviderPostURL(value string) bool {
 }
 
 func engagementFilters(query *bun.SelectQuery, platformName, accountID, publicationID string, unreadOnly, archived bool) *bun.SelectQuery {
+	query = query.Where("is_ours = ?", false)
 	if platformName != "" {
 		query = query.Where("platform = ?", platformName)
 	}
