@@ -4,6 +4,8 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [3.9.2] - 2026-08-11
+
 ### Fixed
 
 - Retry draft-release discovery and asset uploads so GitHub's eventual consistency cannot cancel a release matrix immediately after the draft is created.
