@@ -243,7 +243,7 @@ in
     ]
     ++ lib.optionals isCloud [
       "d /var/lib/openpost/postgres 0700 70 70 -"
-      "d /var/backup/openpost 0750 root root -"
+      "d /var/backup/openpost 0700 root root -"
     ]
     ++ lib.optionals (!isCloud) [
       "d /var/lib/openpost/data 0755 1000 1000 -"
@@ -360,8 +360,8 @@ in
             OPENPOST_LEGAL_ACCEPTANCE_REQUIRED=true
             OPENPOST_TERMS_URL=https://openpost.social/terms
             OPENPOST_PRIVACY_URL=https://openpost.social/privacy
-            OPENPOST_TERMS_VERSION=2026-08-04
-            OPENPOST_PRIVACY_VERSION=2026-08-04
+            OPENPOST_TERMS_VERSION=2026-08-05
+            OPENPOST_PRIVACY_VERSION=2026-08-09
             OPENPOST_SUPPORT_EMAIL=hello@openpost.social
             OPENPOST_EMAIL_VERIFICATION_REQUIRED=true
             OPENPOST_EMAIL_PROVIDER=smtp
@@ -372,6 +372,8 @@ in
             OPENPOST_SMTP_FROM=hello@openpost.social
             OPENPOST_SMTP_TLS_MODE=tls
             OPENPOST_SMTP_SERVER_NAME=smtp.purelymail.com
+            OPENPOST_IMAGE_CAPTION_PROVIDER=azure/eu
+            OPENPOST_IMAGE_CAPTION_REQUIRE_ZDR=true
             OPENPOST_PADDLE_API_KEY=${config.sops.placeholder.openpost_paddle_api_key}
             OPENPOST_PADDLE_ENVIRONMENT=production
             OPENPOST_PADDLE_CLIENT_TOKEN=${config.sops.placeholder.openpost_paddle_client_token}
@@ -408,15 +410,26 @@ in
       description = "Backup OpenPost Postgres database";
       serviceConfig = {
         Type = "oneshot";
+        UMask = "0077";
         ExecStart = pkgs.writeShellScript "openpost-postgres-backup" ''
           set -euo pipefail
           timestamp=$(${pkgs.coreutils}/bin/date +%Y%m%d_%H%M%S)
           backup_dir=/var/backup/openpost
           ${pkgs.coreutils}/bin/mkdir -p "$backup_dir"
+          backup_path="$backup_dir/openpost_$timestamp.sql.gz"
+          backup_tmp=$(${pkgs.coreutils}/bin/mktemp "$backup_dir/.openpost_$timestamp.sql.gz.XXXXXX")
+          cleanup() {
+            ${pkgs.coreutils}/bin/rm -f -- "$backup_tmp"
+          }
+          trap cleanup EXIT
 
           ${pkgs.podman}/bin/podman exec openpost-postgres pg_dump \
             -U ${openpostPostgresUser} \
-            -d ${openpostPostgresDatabase} | ${pkgs.gzip}/bin/gzip > "$backup_dir/openpost_$timestamp.sql.gz"
+            -d ${openpostPostgresDatabase} | ${pkgs.gzip}/bin/gzip > "$backup_tmp"
+          ${pkgs.gzip}/bin/gzip -t "$backup_tmp"
+          ${pkgs.coreutils}/bin/chmod 0600 "$backup_tmp"
+          ${pkgs.coreutils}/bin/mv "$backup_tmp" "$backup_path"
+          trap - EXIT
 
           ${pkgs.findutils}/bin/find "$backup_dir" -name 'openpost_*.sql.gz' -mtime +14 -delete
         '';
@@ -436,6 +449,7 @@ in
       description = "Backup OpenPost S3 media with retained changed and deleted objects";
       serviceConfig = {
         Type = "oneshot";
+        UMask = "0077";
         EnvironmentFile = config.sops.templates."openpost-backup-env".path;
         ExecStart = pkgs.writeShellScript "openpost-media-backup" ''
           set -euo pipefail
@@ -481,6 +495,7 @@ in
       requires = [ "podman-openpost-postgres.service" ];
       serviceConfig = {
         Type = "oneshot";
+        UMask = "0077";
         ExecStart = pkgs.writeShellScript "openpost-restore-drill" ''
           set -euo pipefail
           backup_root=/var/backup/openpost
@@ -548,7 +563,7 @@ in
             printf '  "media_files": %s\n' "$media_file_count"
             printf '}\n'
           } > "$evidence_tmp"
-          ${pkgs.coreutils}/bin/chmod 0640 "$evidence_tmp"
+          ${pkgs.coreutils}/bin/chmod 0600 "$evidence_tmp"
           ${pkgs.coreutils}/bin/mv "$evidence_tmp" "$backup_root/restore-drill-latest.json"
         '';
       };
