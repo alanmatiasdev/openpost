@@ -20,6 +20,12 @@ Linked Google or organization identities are login methods. They are separate fr
 
 OpenPost always revokes its own session when an authenticated provider logout is requested. If the provider advertises an OIDC end-session endpoint, OpenPost also returns that provider logout URL; otherwise logout ends at OpenPost. Configured providers can also send standards-based back-channel logout to the provider-specific URL shown in SSO settings. Support depends on the provider exposing and correctly configuring those endpoints; OpenPost does not claim that every provider performs remote logout.
 
+## Required organization SSO and app tokens
+
+When an organization requires SSO, its administrator can either deny API, CLI, and MCP tokens or limit each token to one workspace. A token for an SSO-protected workspace must inherit a current assurance from an approved identity provider. It cannot access another workspace or organization-level resources, and it stops working when that assurance exceeds the organization's maximum age.
+
+Migration 084 changes the retired whole-organization token setting to workspace-scoped access. It does not guess a workspace for an existing unbound token, so that token can no longer access required-SSO resources. Revoke it and issue one assured token per required workspace, or choose the deny policy.
+
 ## Set up an authenticator app
 
 1. Choose **Authenticator app** as your two-factor sign-in method.

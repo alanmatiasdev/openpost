@@ -75,7 +75,9 @@ Paddle controls retry timing and whether an unrecovered subscription is canceled
 The **Single sign-on** tab is available for organization administration. Add an
 exact OIDC issuer, copy the callback and back-channel logout URLs into the
 provider, then test optional login before requiring SSO. Required mode checks
-workspace access, password recovery, and API, CLI, and MCP credentials. Keep an
+workspace access, password recovery, and API, CLI, and MCP credentials. App
+tokens can be denied or limited to one workspace with current SSO assurance;
+required SSO does not support organization-wide app tokens. Keep an
 MFA-protected local instance administrator in
 `OPENPOST_SSO_BREAK_GLASS_EMAILS` before enforcing SSO.
 

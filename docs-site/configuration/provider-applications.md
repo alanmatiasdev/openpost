@@ -25,7 +25,7 @@ An instance administrator can open **Settings → Instance → Configuration →
 | `POST`   | `/api/v1/admin/provider-apps`      | Creates or updates one encrypted database row. Omitting `client_secret` on update preserves the stored secret. |
 | `DELETE` | `/api/v1/admin/provider-apps/{id}` | Deletes a database row. It cannot delete an environment entry.                                                 |
 
-All three routes require an authenticated, unscoped instance administrator. A workspace role, including workspace administrator, does not grant instance administration, and a workspace-scoped API token is rejected even when it belongs to an instance administrator. The Settings navigation hides the page from other users, but the backend authorization check is the security boundary.
+All three routes require a signed-in browser session for an unscoped instance administrator. API, CLI, and MCP bearer tokens are rejected, including tokens owned by an instance administrator. A workspace role, including workspace administrator, does not grant instance administration. The Settings navigation hides the page from other users, but the backend authorization check is the security boundary.
 
 The database identity is the provider key for every listed provider except Mastodon. Mastodon uses the provider key plus its normalized `instance_url`, which permits one configured app per server. The API rejects `instance_url` for other providers.
 

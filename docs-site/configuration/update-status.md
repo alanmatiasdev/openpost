@@ -26,4 +26,4 @@ Successful checks are cached for 24 hours. Failures retry after 15 minutes. If a
 OPENPOST_UPDATE_CHECK_ENABLED=false
 ```
 
-Cloud mode disables release checks regardless of this setting because hosted deployments use their operator-managed release process. The API requires an unscoped authenticated instance-admin credential.
+Cloud mode disables release checks regardless of this setting because hosted deployments use their operator-managed release process. The API requires a signed-in browser session for an unscoped instance administrator. API, CLI, and MCP bearer tokens are rejected.

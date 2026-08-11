@@ -99,7 +99,7 @@ Save the rule as `cors.json`, apply it with `wrangler r2 bucket cors set <bucket
 Streaming upload flow:
 
 1. Call `POST /api/v1/media/upload-session` with `workspace_id`, `filename`, `mime_type`, and `size`.
-2. Upload the file to the returned `PUT` target with the returned headers.
+2. Upload the file to the returned `PUT` target with the returned headers. For a relative OpenPost target, use the same OpenPost bearer credential or browser session. For an absolute presigned bucket target, send only the returned upload headers; never send the OpenPost bearer token or session cookie to the storage host.
 3. Call `POST /api/v1/media/upload-session/{media_id}/complete` with the same `workspace_id`.
 
 S3-compatible storage returns a presigned browser-to-bucket target for files within the provider's single-request limit. Larger files use an authenticated OpenPost target and are written to the bucket as 8 MiB multipart parts. Local storage uses the same authenticated streaming target and writes directly to disk. Configure the reverse proxy in front of OpenPost to accept the largest video size you intend to support; X subscribed accounts can upload videos as large as 16 GiB.

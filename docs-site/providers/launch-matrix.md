@@ -69,7 +69,7 @@ and deletes on SQLite and PostgreSQL. Records contain normalized outcomes and
 one-way fingerprints only; never store a token, raw provider response, provider
 URL, account ID, or operator identity in this ledger.
 
-Only an unscoped instance administrator may append facts through:
+Only an unscoped instance administrator using a signed-in browser session may append facts through these routes. API, CLI, and MCP bearer tokens are rejected:
 
 - `POST /api/v1/admin/provider-readiness/approval-reviews`
 - `POST /api/v1/admin/provider-readiness/runtime-controls`
