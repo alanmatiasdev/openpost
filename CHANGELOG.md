@@ -57,6 +57,7 @@ All notable changes to this project are documented in this file.
 
 ### Fixed
 
+- Updated OpenTelemetry Go to 1.41.0 to fix CVE-2026-29181 in crafted multi-value baggage-header handling.
 - Made the provider-catalog fact check resolve shared platform limits in a clean checkout before SvelteKit generates its aliases, preserved the dead-code check's executable mode for clean CI runners, and removed the final unreachable post-service helper it exposed.
 - Restored release-gate browser fixtures for provider readiness and canonical publication summaries, and fixed documentation-link and production-image manifest script checks.
 - Pinned every external action used by the Star History workflow to a reviewed full commit so the workflow satisfies the repository supply-chain policy.
