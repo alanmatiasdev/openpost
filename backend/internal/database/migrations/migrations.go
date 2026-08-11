@@ -139,7 +139,7 @@ func repairMigrationHistoryCollisions(
 	}
 
 	// A short-lived development build assigned 074 to media generation recipes.
-	// Current releases use 074 for rendition media deliveries and 077 for the
+	// Current releases use 074 for rendition media deliveries and 086 for the
 	// recipe table. Remove only the colliding history row so the normal,
 	// transactional migration loop replays the real 074 while preserving the
 	// already-created recipe table and its data.

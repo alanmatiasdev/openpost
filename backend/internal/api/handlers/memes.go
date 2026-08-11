@@ -270,16 +270,15 @@ func (i mediaHandlerMemeImporter) ImportMeme(ctx context.Context, input MemeMedi
 }
 
 func (i mediaHandlerMemeImporter) RollbackMeme(ctx context.Context, media models.MediaAttachment) error {
-	if i.handler == nil {
+	if i.handler == nil || i.handler.db == nil {
 		return errors.New("media handler is unavailable")
 	}
-	if err := i.handler.deleteMedia(ctx, &media); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return i.handler.deleteMediaFiles(&media)
-		}
+	if _, err := i.handler.db.NewDelete().Model((*models.MediaAttachment)(nil)).
+		Where("id = ? AND workspace_id = ?", media.ID, media.WorkspaceID).
+		Exec(ctx); err != nil {
 		return err
 	}
-	return nil
+	return i.handler.deleteMediaFiles(&media)
 }
 
 type MemeHandler struct {

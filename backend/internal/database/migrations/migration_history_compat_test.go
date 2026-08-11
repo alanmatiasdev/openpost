@@ -163,7 +163,7 @@ func seedMisrecordedMediaRecipeMigration074(ctx context.Context, t *testing.T, d
 
 	_, err := db.NewCreateTable().Model((*SchemaMigration)(nil)).IfNotExists().Exec(ctx)
 	require.NoError(t, err)
-	recipeSQL, err := migrationFiles.ReadFile("077_media_generation_recipes.sql")
+	recipeSQL, err := migrationFiles.ReadFile("086_media_generation_recipes.sql")
 	require.NoError(t, err)
 	require.NoError(t, runMigration(ctx, db, migration{
 		version: 74,

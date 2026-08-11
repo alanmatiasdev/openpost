@@ -30,11 +30,11 @@ func TestMediaGenerationRecipesMigrationKeepsRecipeWithMediaAndWorkspace(t *test
 	}).Exec(ctx)
 	require.NoError(t, err)
 
-	sqlBytes, err := migrationFiles.ReadFile("077_media_generation_recipes.sql")
+	sqlBytes, err := migrationFiles.ReadFile("086_media_generation_recipes.sql")
 	require.NoError(t, err)
 	require.NoError(t, runMigration(ctx, db, migration{
-		version: 77,
-		name:    "077_media_generation_recipes.sql",
+		version: 86,
+		name:    "086_media_generation_recipes.sql",
 		sql:     string(sqlBytes),
 	}))
 

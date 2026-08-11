@@ -17,16 +17,16 @@ FORM: Operate-mode extension of the established composer, using a responsive wor
 	import AppSelect from '$lib/components/app-select.svelte';
 	import EmptyState from '$lib/components/empty-state.svelte';
 	import InlineNotice from '$lib/components/inline-notice.svelte';
-	import CheckIcon from 'lucide-svelte/icons/check';
-	import ImageIcon from 'lucide-svelte/icons/image';
-	import ImagePlusIcon from 'lucide-svelte/icons/image-plus';
-	import LoaderIcon from 'lucide-svelte/icons/loader-2';
-	import RefreshIcon from 'lucide-svelte/icons/refresh-cw';
-	import SearchIcon from 'lucide-svelte/icons/search';
-	import SearchXIcon from 'lucide-svelte/icons/search-x';
-	import SparklesIcon from 'lucide-svelte/icons/sparkles';
-	import WandIcon from 'lucide-svelte/icons/wand-sparkles';
-	import ExternalLinkIcon from 'lucide-svelte/icons/external-link';
+	import CheckIcon from '@lucide/svelte/icons/check';
+	import ImageIcon from '@lucide/svelte/icons/image';
+	import ImagePlusIcon from '@lucide/svelte/icons/image-plus';
+	import LoaderIcon from '@lucide/svelte/icons/loader-2';
+	import RefreshIcon from '@lucide/svelte/icons/refresh-cw';
+	import SearchIcon from '@lucide/svelte/icons/search';
+	import SearchXIcon from '@lucide/svelte/icons/search-x';
+	import SparklesIcon from '@lucide/svelte/icons/sparkles';
+	import WandIcon from '@lucide/svelte/icons/wand-sparkles';
+	import ExternalLinkIcon from '@lucide/svelte/icons/external-link';
 	import { m } from '$lib/paraglide/messages';
 	import { memeGeneratorAPI, memePreviewDataURL } from '$lib/meme-generator/api';
 	import type {
