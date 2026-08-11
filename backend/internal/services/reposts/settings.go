@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/platform"
+	"github.com/openpost/backend/internal/services/identity"
 	"github.com/openpost/backend/internal/services/workspaceaccess"
 	"github.com/uptrace/bun"
 )
@@ -23,8 +24,33 @@ var (
 	ErrGrantNotFound   = errors.New("repost account grant not found")
 )
 
-func (s *Service) Settings(ctx context.Context, workspaceID, userID string) (SettingsResponse, error) {
+type RequestCredential struct {
+	SessionID   string
+	TokenID     string
+	WorkspaceID string
+}
+
+type credentialWorkspaceFilter struct {
+	service    *Service
+	userID     string
+	credential RequestCredential
+	decisions  map[string]bool
+}
+
+func (s *Service) Settings(ctx context.Context, workspaceID, userID string, credential RequestCredential) (SettingsResponse, error) {
 	member, err := s.workspaceMember(ctx, workspaceID, userID)
+	if err != nil {
+		return SettingsResponse{}, err
+	}
+	access := s.newCredentialWorkspaceFilter(userID, credential)
+	allowed, err := access.Allows(ctx, workspaceID)
+	if err != nil {
+		return SettingsResponse{}, err
+	}
+	if !allowed {
+		return SettingsResponse{}, ErrWorkspaceAccess
+	}
+	accounts, err := s.listAvailableAccounts(ctx, workspaceID, userID, member.Role == models.WorkspaceRoleAdmin, access)
 	if err != nil {
 		return SettingsResponse{}, err
 	}
@@ -32,10 +58,7 @@ func (s *Service) Settings(ctx context.Context, workspaceID, userID string) (Set
 	if err != nil {
 		return SettingsResponse{}, err
 	}
-	accounts, err := s.listAvailableAccounts(ctx, workspaceID, userID, member.Role == models.WorkspaceRoleAdmin)
-	if err != nil {
-		return SettingsResponse{}, err
-	}
+	policies = filterRepostPolicyAccounts(policies, availableRepostAccountIDs(accounts))
 	grants, err := s.listGrants(ctx, workspaceID)
 	if err != nil {
 		return SettingsResponse{}, err
@@ -51,9 +74,23 @@ func (s *Service) Settings(ctx context.Context, workspaceID, userID string) (Set
 }
 
 //nolint:gocyclo
-func (s *Service) ReplacePolicies(ctx context.Context, workspaceID, userID string, inputs []PolicyInput) (SettingsResponse, error) {
+func (s *Service) ReplacePolicies(
+	ctx context.Context,
+	workspaceID,
+	userID string,
+	inputs []PolicyInput,
+	credential RequestCredential,
+) (SettingsResponse, error) {
 	if err := s.requireWorkspaceAdmin(ctx, workspaceID, userID); err != nil {
 		return SettingsResponse{}, err
+	}
+	access := s.newCredentialWorkspaceFilter(userID, credential)
+	allowed, err := access.Allows(ctx, workspaceID)
+	if err != nil {
+		return SettingsResponse{}, err
+	}
+	if !allowed {
+		return SettingsResponse{}, ErrWorkspaceAccess
 	}
 	if len(inputs) > 50 {
 		return SettingsResponse{}, invalidInputf("a workspace supports at most 50 repost rules")
@@ -102,7 +139,7 @@ func (s *Service) ReplacePolicies(ctx context.Context, workspaceID, userID strin
 		return SettingsResponse{}, err
 	}
 	for _, input := range normalized {
-		if err := s.validatePolicyAccounts(ctx, workspaceID, userID, input, accounts); err != nil {
+		if err := s.validatePolicyAccounts(ctx, workspaceID, userID, input, accounts, access); err != nil {
 			return SettingsResponse{}, err
 		}
 	}
@@ -143,7 +180,7 @@ func (s *Service) ReplacePolicies(ctx context.Context, workspaceID, userID strin
 	if err != nil {
 		return SettingsResponse{}, err
 	}
-	return s.Settings(ctx, workspaceID, userID)
+	return s.Settings(ctx, workspaceID, userID, credential)
 }
 
 func (s *Service) ValidateOverride(ctx context.Context, workspaceID, userID string, input Override) (Override, error) {
@@ -291,8 +328,40 @@ func (s *Service) listPolicies(ctx context.Context, workspaceID string) ([]Polic
 	return result, nil
 }
 
+func availableRepostAccountIDs(accounts []AccountOption) map[string]bool {
+	result := make(map[string]bool, len(accounts))
+	for _, account := range accounts {
+		result[account.ID] = true
+	}
+	return result
+}
+
+func filterRepostPolicyAccounts(policies []PolicyResponse, availableAccountIDs map[string]bool) []PolicyResponse {
+	for index := range policies {
+		policies[index].SourceAccountIDs = filterRepostAccountIDs(policies[index].SourceAccountIDs, availableAccountIDs)
+		policies[index].TargetAccountIDs = filterRepostAccountIDs(policies[index].TargetAccountIDs, availableAccountIDs)
+	}
+	return policies
+}
+
+func filterRepostAccountIDs(accountIDs []string, availableAccountIDs map[string]bool) []string {
+	result := make([]string, 0, len(accountIDs))
+	for _, accountID := range accountIDs {
+		if availableAccountIDs[accountID] {
+			result = append(result, accountID)
+		}
+	}
+	return result
+}
+
 //nolint:gocyclo
-func (s *Service) listAvailableAccounts(ctx context.Context, workspaceID, userID string, includeAdminCandidates bool) ([]AccountOption, error) {
+func (s *Service) listAvailableAccounts(
+	ctx context.Context,
+	workspaceID,
+	userID string,
+	includeAdminCandidates bool,
+	access *credentialWorkspaceFilter,
+) ([]AccountOption, error) {
 	accountByID := make(map[string]models.SocialAccount)
 	var own []models.SocialAccount
 	if err := s.db.NewSelect().Model(&own).Where("workspace_id = ? AND is_active = ?", workspaceID, true).Scan(ctx); err != nil && !errors.Is(err, sql.ErrNoRows) {
@@ -324,15 +393,22 @@ func (s *Service) listAvailableAccounts(ctx context.Context, workspaceID, userID
 		}
 	}
 
-	adminWorkspaceIDs := make(map[string]bool)
 	if includeAdminCandidates {
 		var memberships []models.WorkspaceMember
-		if err := s.db.NewSelect().Model(&memberships).Where("user_id = ? AND role = ?", userID, models.WorkspaceRoleAdmin).Scan(ctx); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		if err := s.db.NewSelect().Model(&memberships).
+			Where("user_id = ? AND role = ? AND status = ?", userID, models.WorkspaceRoleAdmin, models.WorkspaceMemberStatusActive).
+			Scan(ctx); err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return nil, err
 		}
 		ids := make([]string, 0, len(memberships))
 		for _, membership := range memberships {
-			adminWorkspaceIDs[membership.WorkspaceID] = true
+			allowed, allowErr := access.Allows(ctx, membership.WorkspaceID)
+			if allowErr != nil {
+				return nil, allowErr
+			}
+			if !allowed {
+				continue
+			}
 			ids = append(ids, membership.WorkspaceID)
 		}
 		if len(ids) > 0 {
@@ -412,7 +488,10 @@ func (s *Service) listGrants(ctx context.Context, workspaceID string) ([]GrantRe
 	}
 	result := make([]GrantResponse, 0, len(grants))
 	for _, grant := range grants {
-		account := accounts[grant.TargetAccountID]
+		account, available := accounts[grant.TargetAccountID]
+		if !available {
+			continue
+		}
 		direction := "outbound"
 		if grant.TargetWorkspaceID == workspaceID {
 			direction = "inbound"
@@ -434,7 +513,14 @@ func (s *Service) listGrants(ctx context.Context, workspaceID string) ([]GrantRe
 }
 
 //nolint:gocyclo
-func (s *Service) validatePolicyAccounts(ctx context.Context, workspaceID, userID string, input PolicyInput, accounts map[string]models.SocialAccount) error {
+func (s *Service) validatePolicyAccounts(
+	ctx context.Context,
+	workspaceID,
+	userID string,
+	input PolicyInput,
+	accounts map[string]models.SocialAccount,
+	access *credentialWorkspaceFilter,
+) error {
 	sourcePlatforms := make(map[string]bool)
 	if len(input.SourceAccountIDs) == 0 {
 		var sources []models.SocialAccount
@@ -469,6 +555,13 @@ func (s *Service) validatePolicyAccounts(ctx context.Context, workspaceID, userI
 				return err
 			}
 			if !granted {
+				allowed, allowErr := access.Allows(ctx, account.WorkspaceID)
+				if allowErr != nil {
+					return allowErr
+				}
+				if !allowed {
+					return ErrWorkspaceAccess
+				}
 				if err := s.requireWorkspaceAdmin(ctx, account.WorkspaceID, userID); err != nil {
 					return invalidInputf("target @%s requires admin access to its workspace", firstNonEmpty(account.AccountUsername, account.Slug))
 				}
@@ -476,6 +569,43 @@ func (s *Service) validatePolicyAccounts(ctx context.Context, workspaceID, userI
 		}
 	}
 	return nil
+}
+
+func (s *Service) newCredentialWorkspaceFilter(userID string, credential RequestCredential) *credentialWorkspaceFilter {
+	return &credentialWorkspaceFilter{
+		service:    s,
+		userID:     strings.TrimSpace(userID),
+		credential: credential,
+		decisions:  make(map[string]bool),
+	}
+}
+
+func (f *credentialWorkspaceFilter) Allows(ctx context.Context, workspaceID string) (bool, error) {
+	workspaceID = strings.TrimSpace(workspaceID)
+	if workspaceID == "" {
+		return false, nil
+	}
+	if allowed, ok := f.decisions[workspaceID]; ok {
+		return allowed, nil
+	}
+	boundWorkspaceID := strings.TrimSpace(f.credential.WorkspaceID)
+	if boundWorkspaceID != "" && boundWorkspaceID != workspaceID {
+		f.decisions[workspaceID] = false
+		return false, nil
+	}
+	decision, err := identity.EvaluateWorkspaceAccess(
+		ctx,
+		f.service.db,
+		workspaceID,
+		f.userID,
+		strings.TrimSpace(f.credential.SessionID),
+		strings.TrimSpace(f.credential.TokenID),
+	)
+	if err != nil {
+		return false, err
+	}
+	f.decisions[workspaceID] = decision.Allowed
+	return decision.Allowed, nil
 }
 
 func (s *Service) loadActiveAccounts(ctx context.Context, ids []string) (map[string]models.SocialAccount, error) {

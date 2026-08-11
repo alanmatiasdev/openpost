@@ -125,24 +125,41 @@ func TestBearerMiddlewareRejectsMCPResourceToken(t *testing.T) {
 }
 
 func TestPrincipalCanAccessREST(t *testing.T) {
-	require.True(t, principalCanAccessREST(&Principal{Scope: apitokens.ScopeCLI}))
-	require.True(t, principalCanAccessREST(&Principal{}))
-	require.False(t, principalCanAccessREST(&Principal{Scope: apitokens.ScopeMCP}))
-	require.False(t, principalCanAccessREST(&Principal{Scope: apitokens.ScopeCLI, Audience: "https://example.test/mcp"}))
-	require.True(t, principalCanAccessREST(&Principal{Scope: apitokens.ScopeAPIRead}, "list-publications"))
-	require.False(t, principalCanAccessREST(&Principal{Scope: apitokens.ScopeAPIRead}, "create-publication"))
-	require.True(t, principalCanAccessREST(&Principal{Scope: apitokens.ScopeAPIWrite}, "list-publications"))
-	require.True(t, principalCanAccessREST(&Principal{Scope: apitokens.ScopeAPIWrite}, "publish-publication-now"))
+	require.True(t, PrincipalCanAccessREST(&Principal{Scope: apitokens.ScopeCLI}))
+	require.True(t, PrincipalCanAccessREST(&Principal{}))
+	require.False(t, PrincipalCanAccessREST(&Principal{Scope: apitokens.ScopeMCP}))
+	require.False(t, PrincipalCanAccessREST(&Principal{Scope: apitokens.ScopeCLI, Audience: "https://example.test/mcp"}))
+	require.True(t, PrincipalCanAccessREST(&Principal{Scope: apitokens.ScopeAPIRead}, "list-publications"))
+	require.True(t, PrincipalCanAccessREST(&Principal{Scope: apitokens.ScopeAPIRead}, "get-provider-readiness"))
+	require.False(t, PrincipalCanAccessREST(&Principal{Scope: apitokens.ScopeAPIRead}, "create-publication"))
+	require.True(t, PrincipalCanAccessREST(&Principal{Scope: apitokens.ScopeAPIWrite}, "list-publications"))
+	require.True(t, PrincipalCanAccessREST(&Principal{Scope: apitokens.ScopeAPIWrite}, "publish-publication-now"))
+	require.False(t, PrincipalCanAccessREST(&Principal{Scope: apitokens.ScopeAPIWrite}, "delete-publication"))
+	require.False(t, PrincipalCanAccessREST(&Principal{Scope: apitokens.ScopeAPIWrite}, "delete-publication-rendition"))
+	require.True(t, PrincipalCanAccessREST(
+		&Principal{Scope: apitokens.ScopeAPIWrite},
+		RESTOperationUploadMediaSessionContent,
+	))
+	require.False(t, PrincipalCanAccessREST(
+		&Principal{Scope: apitokens.ScopeAPIRead},
+		RESTOperationUploadMediaSessionContent,
+	))
 	for _, operationID := range []string{
 		"batch-delete-media",
 		"restore-media",
 		"update-media-favorite",
 		"retry-media-analysis",
 	} {
-		require.True(t, principalCanAccessREST(&Principal{Scope: apitokens.ScopeAPIWrite}, operationID), operationID)
+		require.True(t, PrincipalCanAccessREST(&Principal{Scope: apitokens.ScopeAPIWrite}, operationID), operationID)
 	}
-	require.False(t, principalCanAccessREST(&Principal{Scope: apitokens.ScopeAPIWrite}, "create-api-token"))
-	require.False(t, principalCanAccessREST(&Principal{Scope: apitokens.ScopeAPIRead}))
+	require.False(t, PrincipalCanAccessREST(&Principal{Scope: apitokens.ScopeAPIWrite}, "create-api-token"))
+	require.False(t, PrincipalCanAccessREST(&Principal{Scope: apitokens.ScopeAPIRead}))
+}
+
+func TestLegacyRESTScopeCatalogIsExplicit(t *testing.T) {
+	read, write := LegacyRESTScopeOperationCatalog()
+	require.Empty(t, read)
+	require.Equal(t, []string{RESTOperationUploadMediaSessionContent}, write)
 }
 
 func TestRequestAuthTokenAcceptsSessionCookie(t *testing.T) {
@@ -365,4 +382,108 @@ func TestCheckWorkspaceAccessHonorsTokenWorkspaceScope(t *testing.T) {
 	if ok {
 		t.Fatal("expected workspace scope to reject editor access outside ws-1")
 	}
+}
+
+func TestWorkspaceAccessEnforcesRequiredSSOTokenBinding(t *testing.T) {
+	ctx := context.Background()
+	sqldb, err := sql.Open("sqlite3", fmt.Sprintf("file:%s?mode=memory&cache=private", strings.ReplaceAll(t.Name(), "/", "_")))
+	require.NoError(t, err)
+	sqldb.SetMaxOpenConns(1)
+	db := bun.NewDB(sqldb, sqlitedialect.New())
+	t.Cleanup(func() { require.NoError(t, db.Close()) })
+
+	for _, model := range []any{
+		(*models.User)(nil),
+		(*models.Organization)(nil),
+		(*models.Workspace)(nil),
+		(*models.WorkspaceMember)(nil),
+		(*models.IdentityProvider)(nil),
+		(*models.OrganizationSSOPolicy)(nil),
+		(*models.APIToken)(nil),
+	} {
+		_, err := db.NewCreateTable().Model(model).IfNotExists().Exec(ctx)
+		require.NoError(t, err)
+	}
+	now := time.Now().UTC()
+	require.NoError(t, insertWorkspaceSSOTokenFixture(ctx, db, now))
+
+	unboundContext := context.WithValue(ctx, TokenIDKey, "unbound-token")
+	for _, check := range []func(context.Context, *bun.DB, string, string) (bool, error){
+		CheckWorkspaceAccess,
+		CheckWorkspaceEditAccess,
+		CheckWorkspaceAdminAccess,
+	} {
+		allowed, err := check(unboundContext, db, "sso-workspace", "user-1")
+		require.NoError(t, err)
+		require.False(t, allowed, "an all-workspace token must not bypass required SSO")
+	}
+
+	boundContext := context.WithValue(ctx, TokenIDKey, "bound-token")
+	boundContext = context.WithValue(boundContext, WorkspaceIDKey, "sso-workspace")
+	for _, check := range []func(context.Context, *bun.DB, string, string) (bool, error){
+		CheckWorkspaceAccess,
+		CheckWorkspaceEditAccess,
+		CheckWorkspaceAdminAccess,
+	} {
+		allowed, err := check(boundContext, db, "sso-workspace", "user-1")
+		require.NoError(t, err)
+		require.True(t, allowed, "the assured organization-bound token should retain access")
+	}
+}
+
+func insertWorkspaceSSOTokenFixture(ctx context.Context, db *bun.DB, now time.Time) error {
+	modelsToInsert := []any{
+		&models.User{ID: "user-1", Email: "user@example.com", PasswordHash: "hash"},
+		&models.Organization{ID: "organization-1", Name: "Example", CreatedByID: "user-1"},
+		&models.Workspace{ID: "sso-workspace", Name: "SSO", OrganizationID: "organization-1"},
+		&models.WorkspaceMember{
+			WorkspaceID: "sso-workspace",
+			UserID:      "user-1",
+			Role:        models.WorkspaceRoleAdmin,
+		},
+		&models.IdentityProvider{
+			ID:             "provider-1",
+			OrganizationID: "organization-1",
+			Issuer:         "https://idp.example.test",
+			Name:           "Example SSO",
+			ClientID:       "client-1",
+			IsActive:       true,
+		},
+		&models.OrganizationSSOPolicy{
+			OrganizationID:          "organization-1",
+			Mode:                    models.OrganizationSSOModeRequired,
+			ProviderIDs:             `["provider-1"]`,
+			AssuranceMaxAgeSeconds:  int((12 * time.Hour).Seconds()),
+			APITokenMode:            models.OrganizationSSOTokensScoped,
+			MaxTokenLifetimeSeconds: int((30 * 24 * time.Hour).Seconds()),
+		},
+		&models.APIToken{
+			ID:          "unbound-token",
+			UserID:      "user-1",
+			Name:        "All workspaces",
+			TokenHash:   "unbound-hash",
+			TokenPrefix: "unbound",
+			Scope:       apitokens.ScopeAPIWrite,
+			ExpiresAt:   now.Add(24 * time.Hour),
+		},
+		&models.APIToken{
+			ID:                 "bound-token",
+			UserID:             "user-1",
+			Name:               "SSO workspace",
+			TokenHash:          "bound-hash",
+			TokenPrefix:        "bound",
+			Scope:              apitokens.ScopeAPIWrite,
+			WorkspaceID:        "sso-workspace",
+			OrganizationID:     "organization-1",
+			IdentityProviderID: "provider-1",
+			AssuredAt:          now,
+			ExpiresAt:          now.Add(24 * time.Hour),
+		},
+	}
+	for _, model := range modelsToInsert {
+		if _, err := db.NewInsert().Model(model).Exec(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
 }

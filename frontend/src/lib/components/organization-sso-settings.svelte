@@ -15,6 +15,10 @@
 	import ShieldCheckIcon from '@lucide/svelte/icons/shield-check';
 	import { m } from '$lib/paraglide/messages';
 	import { getOptionalUnsavedChanges } from '$lib/unsaved-changes.svelte';
+	import {
+		normalizeOrganizationAPITokenMode,
+		type OrganizationAPITokenMode
+	} from '$lib/components/organization-sso-policy';
 
 	type Provider = components['schemas']['OIDCProviderAdminResponse'];
 	type Policy = components['schemas']['Policy'];
@@ -55,7 +59,7 @@
 	let acceptedProviderIDs = $state<string[]>([]);
 	let assuranceHours = $state(12);
 	let passwordLoginAllowed = $state(true);
-	let apiTokenMode = $state<'allow' | 'scoped' | 'deny'>('scoped');
+	let apiTokenMode = $state<OrganizationAPITokenMode>('scoped');
 	let maxTokenDays = $state(30);
 	let requireTokenReauth = $state(true);
 
@@ -140,7 +144,7 @@
 			acceptedProviderIDs = policy.provider_ids ?? [];
 			assuranceHours = Math.max(1, Math.round(policy.assurance_max_age_seconds / 3600));
 			passwordLoginAllowed = policy.password_login_allowed;
-			apiTokenMode = policy.api_token_mode as typeof apiTokenMode;
+			apiTokenMode = normalizeOrganizationAPITokenMode(policy.api_token_mode);
 			maxTokenDays = Math.max(1, Math.round(policy.max_token_lifetime_seconds / 86400));
 			requireTokenReauth = policy.require_token_reauth;
 		}
@@ -519,7 +523,6 @@
 							id="sso-token-mode"
 							value={apiTokenMode}
 							options={[
-								{ value: 'allow', label: m.settings_sso_tokens_allow() },
 								{ value: 'scoped', label: m.settings_sso_tokens_scoped() },
 								{ value: 'deny', label: m.settings_sso_tokens_deny() }
 							]}

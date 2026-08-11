@@ -278,6 +278,7 @@ func (h *WorkspaceHandler) CreateWorkspace(api huma.API) {
 		Tags:          []string{tagWorkspaces},
 		DefaultStatus: http.StatusOK,
 		Middlewares:   huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
+		Errors:        []int{402, 403, 500},
 	}, func(ctx context.Context, input *CreateWorkspaceInput) (*CreateWorkspaceOutput, error) {
 		userID := middleware.GetUserID(ctx)
 		if middleware.GetWorkspaceID(ctx) != "" {
@@ -285,15 +286,16 @@ func (h *WorkspaceHandler) CreateWorkspace(api huma.API) {
 		}
 
 		organizationID := strings.TrimSpace(input.Body.OrganizationID)
-		if organizationID != "" {
-			if err := h.requireOrganizationAdmin(ctx, organizationID, userID); err != nil {
-				return nil, err
-			}
-		} else {
+		if organizationID == "" {
 			var resolveErr error
 			organizationID, resolveErr = h.preferredOrganizationForNewWorkspace(ctx, userID)
 			if resolveErr != nil {
 				return nil, huma.Error500InternalServerError("failed to resolve workspace organization")
+			}
+		}
+		if organizationID != "" {
+			if err := h.requireOrganizationAdmin(ctx, organizationID, userID); err != nil {
+				return nil, err
 			}
 		}
 		if err := h.checkCreateWorkspaceEntitlement(ctx, organizationID, userID); err != nil {
@@ -403,8 +405,8 @@ func (h *WorkspaceHandler) ListWorkspaceTeam(api huma.API) {
 		Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
 		Errors:      []int{403, 404},
 	}, func(ctx context.Context, input *WorkspaceTeamInput) (*WorkspaceTeamOutput, error) {
-		if !middleware.WorkspaceScopeAllows(ctx, input.PathID) {
-			return nil, huma.Error403Forbidden(errWorkspaceAccessDenied)
+		if err := h.requireWorkspaceAccess(ctx, input.PathID, middleware.GetUserID(ctx)); err != nil {
+			return nil, err
 		}
 		team, err := h.team.List(ctx, input.PathID, middleware.GetUserID(ctx), workspaceteam.Filters{
 			Query: input.Query, Role: input.Role, Status: input.Status,
@@ -430,7 +432,11 @@ func (h *WorkspaceHandler) ListOrganizations(api huma.API) {
 		Summary:     "List organizations for the current user",
 		Tags:        []string{tagWorkspaces},
 		Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
+		Errors:      []int{403, 500},
 	}, func(ctx context.Context, _ *struct{}) (*ListOrganizationsOutput, error) {
+		if err := requireUnscopedOrganizationCredential(ctx); err != nil {
+			return nil, err
+		}
 		userID := middleware.GetUserID(ctx)
 		var rows []struct {
 			ID        string    `bun:"id"`
@@ -450,6 +456,22 @@ func (h *WorkspaceHandler) ListOrganizations(api huma.API) {
 		}
 		resp := &ListOrganizationsOutput{Body: []OrganizationResponse{}}
 		for _, row := range rows {
+			if tokenID := middleware.GetTokenID(ctx); tokenID != "" {
+				decision, err := identity.EvaluateOrganizationAccess(
+					ctx,
+					h.db,
+					row.ID,
+					userID,
+					middleware.GetSessionID(ctx),
+					tokenID,
+				)
+				if err != nil {
+					return nil, huma.Error500InternalServerError("failed to validate organization access")
+				}
+				if !decision.Allowed {
+					continue
+				}
+			}
 			resp.Body = append(resp.Body, OrganizationResponse{
 				ID:        row.ID,
 				Name:      row.Name,
@@ -496,8 +518,8 @@ func (h *WorkspaceHandler) CreateWorkspaceInvitation(api huma.API) {
 		Middlewares:   huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
 		Errors:        []int{400, 402, 403, 404, 409},
 	}, func(ctx context.Context, input *CreateWorkspaceInvitationInput) (*CreateWorkspaceInvitationOutput, error) {
-		if !middleware.WorkspaceScopeAllows(ctx, input.PathID) {
-			return nil, huma.Error403Forbidden(errWorkspaceAccessDenied)
+		if err := h.requireWorkspaceAdmin(ctx, input.PathID, middleware.GetUserID(ctx)); err != nil {
+			return nil, err
 		}
 		invitation, token, err := h.team.Invite(ctx, workspaceteam.InviteInput{
 			WorkspaceID: input.PathID, ActorUserID: middleware.GetUserID(ctx),
@@ -523,8 +545,8 @@ func (h *WorkspaceHandler) RevokeWorkspaceInvitation(api huma.API) {
 		Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
 		Errors:      []int{403, 404, 409},
 	}, func(ctx context.Context, input *RevokeWorkspaceInvitationInput) (*RevokeWorkspaceInvitationOutput, error) {
-		if !middleware.WorkspaceScopeAllows(ctx, input.PathID) {
-			return nil, huma.Error403Forbidden(errWorkspaceAccessDenied)
+		if err := h.requireWorkspaceAdmin(ctx, input.PathID, middleware.GetUserID(ctx)); err != nil {
+			return nil, err
 		}
 		if err := h.team.RevokeInvitation(ctx, input.PathID, input.InvitationID, middleware.GetUserID(ctx)); err != nil {
 			return nil, workspaceTeamHTTPError(err, "failed to revoke workspace invitation")
@@ -547,8 +569,8 @@ func (h *WorkspaceHandler) ResendWorkspaceInvitation(api huma.API) {
 		Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
 		Errors:      []int{403, 404, 409},
 	}, func(ctx context.Context, input *ResendWorkspaceInvitationInput) (*ResendWorkspaceInvitationOutput, error) {
-		if !middleware.WorkspaceScopeAllows(ctx, input.PathID) {
-			return nil, huma.Error403Forbidden(errWorkspaceAccessDenied)
+		if err := h.requireWorkspaceAdmin(ctx, input.PathID, middleware.GetUserID(ctx)); err != nil {
+			return nil, err
 		}
 		invitation, token, err := h.team.ResendInvitation(ctx, input.PathID, input.InvitationID, middleware.GetUserID(ctx))
 		if err != nil {
@@ -571,8 +593,8 @@ func (h *WorkspaceHandler) UpdateWorkspaceMember(api huma.API) {
 		Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
 		Errors:      []int{400, 402, 403, 404, 409},
 	}, func(ctx context.Context, input *UpdateWorkspaceMemberInput) (*UpdateWorkspaceMemberOutput, error) {
-		if !middleware.WorkspaceScopeAllows(ctx, input.PathID) {
-			return nil, huma.Error403Forbidden(errWorkspaceAccessDenied)
+		if err := h.requireWorkspaceAdmin(ctx, input.PathID, middleware.GetUserID(ctx)); err != nil {
+			return nil, err
 		}
 		member, err := h.team.UpdateMember(ctx, workspaceteam.UpdateMemberInput{
 			WorkspaceID: input.PathID, ActorUserID: middleware.GetUserID(ctx),
@@ -596,8 +618,8 @@ func (h *WorkspaceHandler) RemoveWorkspaceMember(api huma.API) {
 		Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
 		Errors:      []int{403, 404, 409},
 	}, func(ctx context.Context, input *RemoveWorkspaceMemberInput) (*RemoveWorkspaceMemberOutput, error) {
-		if !middleware.WorkspaceScopeAllows(ctx, input.PathID) {
-			return nil, huma.Error403Forbidden(errWorkspaceAccessDenied)
+		if err := h.requireWorkspaceAdmin(ctx, input.PathID, middleware.GetUserID(ctx)); err != nil {
+			return nil, err
 		}
 		if err := h.team.RemoveMember(ctx, input.PathID, input.UserID, middleware.GetUserID(ctx)); err != nil {
 			return nil, workspaceTeamHTTPError(err, "failed to remove workspace member")
@@ -619,8 +641,8 @@ func (h *WorkspaceHandler) ListWorkspaceAccessAudit(api huma.API) {
 		Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
 		Errors:      []int{403, 404},
 	}, func(ctx context.Context, input *WorkspaceAccessAuditInput) (*WorkspaceAccessAuditOutput, error) {
-		if !middleware.WorkspaceScopeAllows(ctx, input.PathID) {
-			return nil, huma.Error403Forbidden(errWorkspaceAccessDenied)
+		if err := h.requireWorkspaceAdmin(ctx, input.PathID, middleware.GetUserID(ctx)); err != nil {
+			return nil, err
 		}
 		events, err := h.team.ListAudit(ctx, input.PathID, middleware.GetUserID(ctx), input.Limit)
 		if err != nil {
@@ -686,6 +708,20 @@ func (h *WorkspaceHandler) acceptWorkspaceInvitation(
 	if !middleware.WorkspaceScopeAllows(ctx, invitation.WorkspaceID) {
 		return nil, huma.Error403Forbidden("token is not scoped to this workspace")
 	}
+	decision, err := identity.EvaluateWorkspaceAccess(
+		ctx,
+		h.db,
+		invitation.WorkspaceID,
+		userID,
+		middleware.GetSessionID(ctx),
+		middleware.GetTokenID(ctx),
+	)
+	if err != nil {
+		return nil, huma.Error500InternalServerError("failed to evaluate workspace SSO policy")
+	}
+	if !decision.Allowed {
+		return nil, huma.Error403Forbidden("workspace SSO authentication is required")
+	}
 	if err := h.team.AcceptInvitation(ctx, invitation, userID); err != nil {
 		return nil, workspaceTeamHTTPError(err, "failed to accept workspace invitation")
 	}
@@ -741,26 +777,31 @@ func (h *WorkspaceHandler) checkCreateWorkspaceEntitlement(ctx context.Context, 
 	return nil
 }
 
-func (h *WorkspaceHandler) requireWorkspaceMember(ctx context.Context, workspaceID, userID string) (*models.WorkspaceMember, error) {
-	role, ok, err := middleware.WorkspaceRole(ctx, h.db, workspaceID, userID)
+func (h *WorkspaceHandler) requireWorkspaceAccess(ctx context.Context, workspaceID, userID string) error {
+	allowed, err := middleware.CheckWorkspaceAccess(ctx, h.db, workspaceID, userID)
 	if err != nil {
-		return nil, huma.Error500InternalServerError(errValidateWorkspaceAccess)
+		return huma.Error500InternalServerError(errValidateWorkspaceAccess)
 	}
-	if !ok {
-		return nil, huma.Error403Forbidden(errWorkspaceAccessDenied)
+	if !allowed {
+		return huma.Error403Forbidden(errWorkspaceAccessDenied)
 	}
-	return &models.WorkspaceMember{
-		WorkspaceID: workspaceID, UserID: userID, Role: role, Status: models.WorkspaceMemberStatusActive,
-	}, nil
+	return nil
 }
 
 func (h *WorkspaceHandler) requireWorkspaceAdmin(ctx context.Context, workspaceID, userID string) error {
-	member, err := h.requireWorkspaceMember(ctx, workspaceID, userID)
+	allowed, err := middleware.CheckWorkspaceAdminAccess(ctx, h.db, workspaceID, userID)
 	if err != nil {
-		return err
+		return huma.Error500InternalServerError(errValidateWorkspaceAccess)
 	}
-	if member.Role != models.WorkspaceRoleAdmin {
+	if !allowed {
 		return huma.Error403Forbidden("workspace admin role required")
+	}
+	return nil
+}
+
+func requireUnscopedOrganizationCredential(ctx context.Context) error {
+	if strings.TrimSpace(middleware.GetWorkspaceID(ctx)) != "" {
+		return huma.Error403Forbidden("workspace-bound tokens cannot access organization-level resources")
 	}
 	return nil
 }
@@ -865,6 +906,9 @@ func (h *WorkspaceHandler) ListWorkspaces(api huma.API) {
 			)
 			if err != nil {
 				return nil, huma.Error500InternalServerError("failed to evaluate workspace SSO policy")
+			}
+			if middleware.GetTokenID(ctx) != "" && !decision.Allowed {
+				continue
 			}
 			identityLinked := true
 			if decision.SSORequired && decision.ProviderID != "" {

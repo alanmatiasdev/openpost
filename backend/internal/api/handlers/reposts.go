@@ -8,15 +8,17 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/openpost/backend/internal/api/middleware"
 	repostservice "github.com/openpost/backend/internal/services/reposts"
+	"github.com/uptrace/bun"
 )
 
 type RepostHandler struct {
 	service *repostservice.Service
+	db      *bun.DB
 	auth    middleware.Authenticator
 }
 
-func NewRepostHandler(service *repostservice.Service, auth middleware.Authenticator) *RepostHandler {
-	return &RepostHandler{service: service, auth: auth}
+func NewRepostHandler(db *bun.DB, service *repostservice.Service, auth middleware.Authenticator) *RepostHandler {
+	return &RepostHandler{db: db, service: service, auth: auth}
 }
 
 type GetRepostSettingsInput struct {
@@ -55,7 +57,11 @@ func (h *RepostHandler) RegisterRoutes(api huma.API) {
 		Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
 		Errors:      []int{403},
 	}, func(ctx context.Context, input *GetRepostSettingsInput) (*RepostSettingsOutput, error) {
-		settings, err := h.service.Settings(ctx, input.WorkspaceID, middleware.GetUserID(ctx))
+		userID := middleware.GetUserID(ctx)
+		if err := h.checkWorkspaceAccess(ctx, input.WorkspaceID, userID); err != nil {
+			return nil, err
+		}
+		settings, err := h.service.Settings(ctx, input.WorkspaceID, userID, repostRequestCredential(ctx))
 		if err != nil {
 			return nil, repostHTTPError(err)
 		}
@@ -71,7 +77,17 @@ func (h *RepostHandler) RegisterRoutes(api huma.API) {
 		Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
 		Errors:      []int{400, 403},
 	}, func(ctx context.Context, input *SaveRepostSettingsInput) (*RepostSettingsOutput, error) {
-		settings, err := h.service.ReplacePolicies(ctx, input.Body.WorkspaceID, middleware.GetUserID(ctx), input.Body.Policies)
+		userID := middleware.GetUserID(ctx)
+		if err := h.checkWorkspaceAdminAccess(ctx, input.Body.WorkspaceID, userID); err != nil {
+			return nil, err
+		}
+		settings, err := h.service.ReplacePolicies(
+			ctx,
+			input.Body.WorkspaceID,
+			userID,
+			input.Body.Policies,
+			repostRequestCredential(ctx),
+		)
 		if err != nil {
 			return nil, repostHTTPError(err)
 		}
@@ -87,13 +103,47 @@ func (h *RepostHandler) RegisterRoutes(api huma.API) {
 		Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
 		Errors:      []int{403, 404},
 	}, func(ctx context.Context, input *RevokeRepostGrantInput) (*RepostGrantOutput, error) {
-		if err := h.service.RevokeGrant(ctx, input.GrantID, input.WorkspaceID, middleware.GetUserID(ctx)); err != nil {
+		userID := middleware.GetUserID(ctx)
+		if err := h.checkWorkspaceAdminAccess(ctx, input.WorkspaceID, userID); err != nil {
+			return nil, err
+		}
+		if err := h.service.RevokeGrant(ctx, input.GrantID, input.WorkspaceID, userID); err != nil {
 			return nil, repostHTTPError(err)
 		}
 		output := &RepostGrantOutput{}
 		output.Body.Message = "Repost account grant revoked"
 		return output, nil
 	})
+}
+
+func repostRequestCredential(ctx context.Context) repostservice.RequestCredential {
+	return repostservice.RequestCredential{
+		SessionID:   middleware.GetSessionID(ctx),
+		TokenID:     middleware.GetTokenID(ctx),
+		WorkspaceID: middleware.GetWorkspaceID(ctx),
+	}
+}
+
+func (h *RepostHandler) checkWorkspaceAccess(ctx context.Context, workspaceID, userID string) error {
+	allowed, err := middleware.CheckWorkspaceAccess(ctx, h.db, workspaceID, userID)
+	if err != nil {
+		return huma.Error500InternalServerError(errValidateWorkspaceAccess)
+	}
+	if !allowed {
+		return huma.Error403Forbidden(errWorkspaceAccessDenied)
+	}
+	return nil
+}
+
+func (h *RepostHandler) checkWorkspaceAdminAccess(ctx context.Context, workspaceID, userID string) error {
+	allowed, err := middleware.CheckWorkspaceAdminAccess(ctx, h.db, workspaceID, userID)
+	if err != nil {
+		return huma.Error500InternalServerError(errValidateWorkspaceAccess)
+	}
+	if !allowed {
+		return huma.Error403Forbidden("workspace admin role required")
+	}
+	return nil
 }
 
 func repostHTTPError(err error) error {

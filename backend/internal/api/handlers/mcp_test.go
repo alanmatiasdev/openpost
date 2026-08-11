@@ -26,6 +26,7 @@ import (
 	"github.com/openpost/backend/internal/services/lifecycle"
 	"github.com/openpost/backend/internal/services/mediastore"
 	"github.com/openpost/backend/internal/services/providerreadiness"
+	"github.com/openpost/backend/internal/services/publicationauth"
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun"
 )
@@ -379,6 +380,8 @@ func TestMCPAuthenticatesSupportedTokenScopes(t *testing.T) {
 		"read-token":  {UserID: "user-1", Email: "user@example.com", Scope: "mcp:read"},
 		"mcp-token":   {UserID: "user-1", Email: "user@example.com", Scope: "mcp:full"},
 		"cli-token":   {UserID: "user-1", Email: "user@example.com", Scope: "cli:full"},
+		"api-read":    {UserID: "user-1", Email: "user@example.com", Scope: "api:read"},
+		"api-write":   {UserID: "user-1", Email: "user@example.com", Scope: "api:write"},
 		"media-token": {UserID: "user-1", Email: "user@example.com", Scope: "media:read"},
 	}
 
@@ -391,14 +394,16 @@ func TestMCPAuthenticatesSupportedTokenScopes(t *testing.T) {
 		require.Equal(t, http.StatusOK, resp.Code, token)
 	}
 
-	resp := srv.request(t, "media-token", map[string]any{
-		"jsonrpc": "2.0",
-		"id":      "bad-scope",
-		"method":  "tools/list",
-	})
-	require.Equal(t, http.StatusForbidden, resp.Code)
-	require.Contains(t, resp.Header().Get("WWW-Authenticate"), `scope="mcp:full"`)
-	require.Contains(t, resp.Header().Get("WWW-Authenticate"), `error="insufficient_scope"`)
+	for _, token := range []string{"api-read", "api-write", "media-token"} {
+		resp := srv.request(t, token, map[string]any{
+			"jsonrpc": "2.0",
+			"id":      "bad-scope-" + token,
+			"method":  "tools/list",
+		})
+		require.Equal(t, http.StatusForbidden, resp.Code, token)
+		require.Contains(t, resp.Header().Get("WWW-Authenticate"), `scope="mcp:full"`, token)
+		require.Contains(t, resp.Header().Get("WWW-Authenticate"), `error="insufficient_scope"`, token)
+	}
 }
 
 func TestMCPReadOnlyScopeHidesAndRejectsMutations(t *testing.T) {
@@ -2074,6 +2079,115 @@ func TestMCPCallListAccounts(t *testing.T) {
 	require.Equal(t, "x", accounts[0].(map[string]any)["platform"])
 }
 
+func TestMCPRequiredSSOTokenBinding(t *testing.T) {
+	t.Parallel()
+
+	srv := newMCPTestServer(t)
+	ctx := context.Background()
+	for _, model := range []any{
+		(*models.Organization)(nil),
+		(*models.IdentityProvider)(nil),
+		(*models.OrganizationSSOPolicy)(nil),
+		(*models.APIToken)(nil),
+	} {
+		_, err := srv.db.NewCreateTable().Model(model).IfNotExists().Exec(ctx)
+		require.NoError(t, err)
+	}
+	now := time.Now().UTC()
+	for _, model := range []any{
+		&models.Organization{ID: "mcp-organization", Name: "MCP organization", CreatedByID: "user-1"},
+		&models.IdentityProvider{
+			ID:             "mcp-provider",
+			OrganizationID: "mcp-organization",
+			Issuer:         "https://idp.mcp.example.test",
+			Name:           "MCP SSO",
+			ClientID:       "mcp-client",
+			IsActive:       true,
+		},
+		&models.OrganizationSSOPolicy{
+			OrganizationID:          "mcp-organization",
+			Mode:                    models.OrganizationSSOModeRequired,
+			ProviderIDs:             `["mcp-provider"]`,
+			AssuranceMaxAgeSeconds:  int((12 * time.Hour).Seconds()),
+			APITokenMode:            models.OrganizationSSOTokensScoped,
+			MaxTokenLifetimeSeconds: int((30 * 24 * time.Hour).Seconds()),
+		},
+		&models.APIToken{
+			ID:          "mcp-unbound-token-id",
+			UserID:      "user-1",
+			Name:        "Unbound MCP",
+			TokenHash:   "mcp-unbound-hash",
+			TokenPrefix: "unbound",
+			Scope:       "mcp:full",
+			ExpiresAt:   now.Add(24 * time.Hour),
+		},
+		&models.APIToken{
+			ID:                 "mcp-bound-token-id",
+			UserID:             "user-1",
+			Name:               "Bound MCP",
+			TokenHash:          "mcp-bound-hash",
+			TokenPrefix:        "bound",
+			Scope:              "mcp:full",
+			WorkspaceID:        "ws-1",
+			OrganizationID:     "mcp-organization",
+			IdentityProviderID: "mcp-provider",
+			AssuredAt:          now,
+			ExpiresAt:          now.Add(24 * time.Hour),
+		},
+	} {
+		_, err := srv.db.NewInsert().Model(model).Exec(ctx)
+		require.NoError(t, err)
+	}
+	_, err := srv.db.NewUpdate().
+		Model((*models.Workspace)(nil)).
+		Set("organization_id = ?", "mcp-organization").
+		Where("id = ?", "ws-1").
+		Exec(ctx)
+	require.NoError(t, err)
+
+	srv.handler.auth = mcpScopeAuthenticator{
+		"bound-mcp-token": {
+			UserID: "user-1", Email: "user@example.com", Scope: "mcp:full",
+			WorkspaceID: "ws-1", TokenID: "mcp-bound-token-id",
+		},
+		"unbound-mcp-token": {
+			UserID: "user-1", Email: "user@example.com", Scope: "mcp:full",
+			TokenID: "mcp-unbound-token-id",
+		},
+	}
+	request := func(token, toolName string, arguments map[string]any) map[string]any {
+		resp := srv.request(t, token, map[string]any{
+			"jsonrpc": "2.0",
+			"id":      token,
+			"method":  "tools/call",
+			"params": map[string]any{
+				"name":      toolName,
+				"arguments": arguments,
+			},
+		})
+		require.Equal(t, http.StatusOK, resp.Code)
+		var out map[string]any
+		require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &out))
+		return out
+	}
+
+	bound := request("bound-mcp-token", "list_accounts", map[string]any{"workspace_id": "ws-1"})
+	require.NotContains(t, bound, "error")
+	unbound := request("unbound-mcp-token", "list_accounts", map[string]any{"workspace_id": "ws-1"})
+	require.Contains(t, unbound["error"].(map[string]any)["message"], "workspace not accessible")
+
+	boundWorkspaces := request("bound-mcp-token", "list_workspaces", map[string]any{})
+	require.NotContains(t, boundWorkspaces, "error")
+	boundRows := boundWorkspaces["result"].(map[string]any)["structuredContent"].(map[string]any)["workspaces"].([]any)
+	require.Len(t, boundRows, 1)
+	require.Equal(t, "ws-1", boundRows[0].(map[string]any)["id"])
+	unboundWorkspaces := request("unbound-mcp-token", "list_workspaces", map[string]any{})
+	require.NotContains(t, unboundWorkspaces, "error")
+	unboundRows := unboundWorkspaces["result"].(map[string]any)["structuredContent"].(map[string]any)["workspaces"].([]any)
+	require.Len(t, unboundRows, 1)
+	require.Equal(t, "ws-2", unboundRows[0].(map[string]any)["id"])
+}
+
 func TestMCPCallListMedia(t *testing.T) {
 	t.Parallel()
 
@@ -2848,6 +2962,12 @@ func TestMCPCallSchedulePostCreatesPublishJob(t *testing.T) {
 	t.Parallel()
 
 	srv := newMCPTestServer(t)
+	srv.handler.auth = mcpScopeAuthenticator{
+		"mcp-token": {
+			UserID: "user-1", Email: "user@example.com", Scope: "mcp:full",
+			TokenID: "token-mcp-schedule", ClientID: "mcp-client", ClientName: "Assistant",
+		},
+	}
 	insertMCPTestMedia(t, srv, models.MediaAttachment{
 		ID:               "media-schedule",
 		OriginalFilename: "schedule.png",
@@ -2855,7 +2975,7 @@ func TestMCPCallSchedulePostCreatesPublishJob(t *testing.T) {
 	})
 	insertMCPTestMedia(t, srv, models.MediaAttachment{ID: "media-rendition", OriginalFilename: "x.png"})
 	scheduledAt := "2026-07-01T12:00:00Z"
-	resp := srv.request(t, "web-token", map[string]any{
+	resp := srv.request(t, "mcp-token", map[string]any{
 		"jsonrpc": "2.0",
 		"id":      "call-schedule",
 		"method":  "tools/call",
@@ -2905,10 +3025,16 @@ func TestMCPCallSchedulePostCreatesPublishJob(t *testing.T) {
 	var job models.Job
 	require.NoError(t, srv.db.NewSelect().Model(&job).Where("type = ?", jobTypePublishPublication).Scan(context.Background()))
 	require.Equal(t, "pending", job.Status)
+	require.Equal(t, storedPost.PublicationID, job.ScopeID)
 	require.Equal(t, storedPost.ScheduledAt, job.RunAt)
 	var payload map[string]string
 	require.NoError(t, json.Unmarshal([]byte(job.Payload), &payload))
 	require.Equal(t, storedPost.PublicationID, payload["publication_id"])
+	var receipt models.PublicationAuthorization
+	require.NoError(t, srv.db.NewSelect().Model(&receipt).Where("job_id = ?", job.ID).Scan(context.Background()))
+	require.Equal(t, publicationauth.OriginMCP, receipt.ActorOrigin)
+	require.Equal(t, "token-mcp-schedule", receipt.ActorTokenID)
+	require.Equal(t, "mcp-client", receipt.ActorClientID)
 	var postMedia models.PostMedia
 	require.NoError(t, srv.db.NewSelect().Model(&postMedia).Where("post_id = ?", postID).Scan(context.Background()))
 	require.Equal(t, "media-schedule", postMedia.MediaID)
@@ -3299,6 +3425,7 @@ func TestMCPCallCancelPostRemovesQueuedJobAndReturnsDraft(t *testing.T) {
 	_, err = srv.db.NewInsert().Model(&models.Job{
 		ID:      "job-cancel",
 		Type:    jobTypePublishPost,
+		ScopeID: postID,
 		Payload: string(payload),
 		Status:  "pending",
 		RunAt:   scheduledAt,

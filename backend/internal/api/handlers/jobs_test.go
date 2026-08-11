@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -171,10 +172,23 @@ func TestListJobsIncludesCanonicalPublicationJobsInWorkspaceScope(t *testing.T) 
 		Status: models.PublicationStatusFailed,
 	}).Exec(ctx)
 	require.NoError(t, err)
-	_, err = srv.db.NewInsert().Model(&models.Job{
-		ID: "publication-job", Type: "publish_publication", Payload: `{"publication_id":"publication-1"}`,
-		Status: "failed", RunAt: time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC), MaxAttempts: 3,
+	_, err = srv.db.NewInsert().Model(&models.Publication{
+		ID: "publication-2", WorkspaceID: "ws-2", CreatedByID: "user-2", Title: "Other",
+		ContentProfile: models.ContentProfileShortText, SourceText: "Other", SourceContent: "Other",
+		Status: models.PublicationStatusFailed,
 	}).Exec(ctx)
+	require.NoError(t, err)
+	jobRows := []models.Job{
+		{
+			ID: "publication-job", Type: "publish_publication", ScopeID: "publication-1", Payload: `{"publication_id":"publication-1"}`,
+			Status: "failed", RunAt: time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC), MaxAttempts: 3,
+		},
+		{
+			ID: "publication-job-stale-payload", Type: "publish_publication", ScopeID: "publication-2", Payload: `{"publication_id":"publication-1"}`,
+			Status: "failed", RunAt: time.Date(2026, 7, 1, 13, 0, 0, 0, time.UTC), MaxAttempts: 3,
+		},
+	}
+	_, err = srv.db.NewInsert().Model(&jobRows).Exec(ctx)
 	require.NoError(t, err)
 
 	response := srv.getJSON(t, "/api/v1/jobs?workspace_id=ws-1&status=failed")
@@ -187,16 +201,73 @@ func TestListJobsIncludesCanonicalPublicationJobsInWorkspaceScope(t *testing.T) 
 	require.Empty(t, jobs[0].Payload)
 }
 
+func TestListJobsKeepsBlankScopeLegacyHistoryVisibleBeyondStartupBackfillCap(t *testing.T) {
+	srv := newJobsTestServer(t)
+	ctx := t.Context()
+	now := time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC)
+	_, err := srv.db.NewInsert().Model(&models.Publication{
+		ID: "publication-history", WorkspaceID: "ws-1", CreatedByID: "user-1", Title: "History",
+		ContentProfile: models.ContentProfileShortText, SourceText: "History", SourceContent: "History",
+		Status: models.PublicationStatusPublished,
+	}).Exec(ctx)
+	require.NoError(t, err)
+
+	// One more than the 8 x 64 capped historical startup pass proves the reader
+	// does not depend on that pass reaching this record first.
+	const legacyHistoryCount = 8*64 + 1
+	jobs := make([]models.Job, 0, legacyHistoryCount+3)
+	for index := range legacyHistoryCount {
+		jobs = append(jobs, models.Job{
+			ID: fmt.Sprintf("legacy-history-%04d", index), Type: jobTypePublishPost,
+			Payload: `{"post_id":"post-1"}`, Status: "completed",
+			RunAt: now.Add(time.Duration(index) * time.Second), MaxAttempts: 3,
+		})
+	}
+	jobs = append(jobs,
+		models.Job{
+			ID: "legacy-publication-history", Type: jobTypePublishPublication,
+			Payload: `{"publication_id":"publication-history"}`, Status: "completed",
+			RunAt: now.Add(legacyHistoryCount * time.Second), MaxAttempts: 3,
+		},
+		models.Job{
+			ID: "legacy-foreign-history", Type: jobTypePublishPost,
+			Payload: `{"post_id":"post-foreign"}`, Status: "completed",
+			RunAt: now.Add((legacyHistoryCount + 1) * time.Second), MaxAttempts: 3,
+		},
+		models.Job{
+			ID: "legacy-malformed-history", Type: jobTypePublishPost,
+			Payload: `{"post_id":"post-1"} broken`, Status: "completed",
+			RunAt: now.Add((legacyHistoryCount + 2) * time.Second), MaxAttempts: 3,
+		},
+		models.Job{
+			ID: "legacy-nested-history", Type: jobTypePublishPost,
+			Payload: `{"nested":{"post_id":"post-1"}}`, Status: "completed",
+			RunAt: now.Add((legacyHistoryCount + 3) * time.Second), MaxAttempts: 3,
+		},
+	)
+	_, err = srv.db.NewInsert().Model(&jobs).Exec(ctx)
+	require.NoError(t, err)
+
+	response := srv.getJSON(t, "/api/v1/jobs?workspace_id=ws-1&status=completed&limit=1")
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	require.Equal(t, fmt.Sprintf("%d", legacyHistoryCount+1), response.Header().Get("X-Total-Count"))
+	var page []JobResponse
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &page))
+	require.Len(t, page, 1)
+	require.Equal(t, "legacy-publication-history", page[0].ID)
+	require.Equal(t, "publication-history", page[0].PublicationID)
+}
+
 func (s *jobsTestServer) seedJobs(t *testing.T) {
 	t.Helper()
 
 	now := time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC)
 	jobs := []models.Job{
-		{ID: "job-1", Type: "publish_post", Payload: `{"post_id":"post-1"}`, Status: "pending", RunAt: now.Add(time.Minute), MaxAttempts: 3},
-		{ID: "job-2", Type: "publish_post", Payload: `{"post_id":"post-2"}`, Status: "completed", RunAt: now.Add(2 * time.Minute), MaxAttempts: 3},
-		{ID: "job-3", Type: "publish_post", Payload: `{"post_id":"post-3"}`, Status: "pending", RunAt: now.Add(3 * time.Minute), MaxAttempts: 3},
-		{ID: "job-4", Type: "publish_post", Payload: `{"post_id":"post-4"}`, Status: "failed", RunAt: now.Add(4 * time.Minute), MaxAttempts: 3},
-		{ID: "job-foreign", Type: "publish_post", Payload: `{"post_id":"post-foreign"}`, Status: "pending", RunAt: now.Add(5 * time.Minute), MaxAttempts: 3},
+		{ID: "job-1", Type: "publish_post", ScopeID: "post-1", Payload: `{"post_id":"post-1"}`, Status: "pending", RunAt: now.Add(time.Minute), MaxAttempts: 3},
+		{ID: "job-2", Type: "publish_post", ScopeID: "post-2", Payload: `{"post_id":"post-2"}`, Status: "completed", RunAt: now.Add(2 * time.Minute), MaxAttempts: 3},
+		{ID: "job-3", Type: "publish_post", ScopeID: "post-3", Payload: `{"post_id":"post-3"}`, Status: "pending", RunAt: now.Add(3 * time.Minute), MaxAttempts: 3},
+		{ID: "job-4", Type: "publish_post", ScopeID: "post-4", Payload: `{"post_id":"post-4"}`, Status: "failed", RunAt: now.Add(4 * time.Minute), MaxAttempts: 3},
+		{ID: "job-foreign", Type: "publish_post", ScopeID: "post-foreign", Payload: `{"post_id":"post-foreign"}`, Status: "pending", RunAt: now.Add(5 * time.Minute), MaxAttempts: 3},
 	}
 	_, err := s.db.NewInsert().Model(&jobs).Exec(context.Background())
 	require.NoError(t, err)

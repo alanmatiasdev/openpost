@@ -313,8 +313,8 @@ func (s *Service) SavePolicy(ctx context.Context, input Policy, actorUserID stri
 	if err := RequireOrganizationAdmin(ctx, s.db, input.OrganizationID, actorUserID); err != nil {
 		return Policy{}, err
 	}
-	input.ProviderIDs = uniqueStrings(input.ProviderIDs)
-	if err := ValidatePolicy(input); err != nil {
+	input, err := NormalizePolicyInput(input)
+	if err != nil {
 		return Policy{}, err
 	}
 	if len(input.ProviderIDs) > 0 {
@@ -397,6 +397,14 @@ func (s *Service) SavePolicy(ctx context.Context, input Policy, actorUserID stri
 		Action:         "policy.updated",
 		Detail:         input.Mode,
 	}); err != nil {
+		return Policy{}, err
+	}
+	return input, nil
+}
+
+func NormalizePolicyInput(input Policy) (Policy, error) {
+	input.ProviderIDs = uniqueStrings(input.ProviderIDs)
+	if err := ValidatePolicy(input); err != nil {
 		return Policy{}, err
 	}
 	return input, nil

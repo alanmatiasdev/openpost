@@ -94,7 +94,7 @@ type OIDCPolicyInput struct {
 		ProviderIDs             []string `json:"provider_ids"`
 		AssuranceMaxAgeSeconds  int      `json:"assurance_max_age_seconds" minimum:"300"`
 		PasswordLoginAllowed    bool     `json:"password_login_allowed"`
-		APITokenMode            string   `json:"api_token_mode" enum:"allow,scoped,deny"`
+		APITokenMode            string   `json:"api_token_mode" enum:"scoped,deny"`
 		MaxTokenLifetimeSeconds int      `json:"max_token_lifetime_seconds" minimum:"300"`
 		RequireTokenReauth      bool     `json:"require_token_reauth"`
 	}

@@ -198,7 +198,27 @@ func TestAuthorizeTokenCreationRequiresAndInheritsSSOAssurance(t *testing.T) {
 	require.ErrorIs(t, err, ErrTokenPolicyDenied)
 }
 
-func TestEvaluateOrganizationAccessUsesTheSameSessionAndTokenAssuranceBoundary(t *testing.T) {
+func TestEvaluateOrganizationAccessRejectsWorkspaceBoundTokens(t *testing.T) {
+	f := newPolicyTestFixture(t)
+	ctx := context.Background()
+
+	f.insertToken(t, "workspace-bound-token", "", "", f.workspace.ID, time.Time{})
+	decision, err := EvaluateOrganizationAccess(
+		ctx, f.db, f.workspace.OrganizationID, f.user.ID, "", "workspace-bound-token",
+	)
+	require.NoError(t, err)
+	require.False(t, decision.Allowed)
+	require.Contains(t, decision.Reason, "Workspace-bound")
+
+	f.insertToken(t, "all-workspace-token", "", "", "", time.Time{})
+	decision, err = EvaluateOrganizationAccess(
+		ctx, f.db, f.workspace.OrganizationID, f.user.ID, "", "all-workspace-token",
+	)
+	require.NoError(t, err)
+	require.True(t, decision.Allowed)
+}
+
+func TestEvaluateOrganizationAccessRequiresBrowserSSOAssurance(t *testing.T) {
 	f := newPolicyTestFixture(t)
 	f.setPolicy(t, models.OrganizationSSOTokensScoped)
 	ctx := context.Background()
@@ -223,8 +243,8 @@ func TestEvaluateOrganizationAccessUsesTheSameSessionAndTokenAssuranceBoundary(t
 		ctx, f.db, f.workspace.OrganizationID, f.user.ID, "", "organization-token",
 	)
 	require.NoError(t, err)
-	require.True(t, decision.Allowed)
-	require.Equal(t, f.provider.ID, decision.ProviderID)
+	require.False(t, decision.Allowed)
+	require.Contains(t, decision.Reason, "Workspace-bound")
 
 	f.insertToken(t, "personal-token", "", "", "", time.Time{})
 	decision, err = EvaluateOrganizationAccess(
@@ -279,6 +299,42 @@ func TestValidatePolicyRequiresProviderForEnforcement(t *testing.T) {
 	require.Error(t, ValidatePolicy(policy))
 
 	policy.ProviderIDs = []string{"provider"}
+	require.NoError(t, ValidatePolicy(policy))
+}
+
+func TestPolicyFromModelNormalizesStoredAPITokenModes(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		stored   string
+		expected string
+	}{
+		{name: "retired allow", stored: "allow", expected: models.OrganizationSSOTokensScoped},
+		{name: "scoped", stored: models.OrganizationSSOTokensScoped, expected: models.OrganizationSSOTokensScoped},
+		{name: "deny", stored: models.OrganizationSSOTokensDeny, expected: models.OrganizationSSOTokensDeny},
+		{name: "unknown fails closed", stored: "unexpected", expected: models.OrganizationSSOTokensDeny},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			policy, err := policyFromModel(models.OrganizationSSOPolicy{
+				OrganizationID: "org",
+				ProviderIDs:    "[]",
+				APITokenMode:   test.stored,
+			})
+			require.NoError(t, err)
+			require.Equal(t, test.expected, policy.APITokenMode)
+		})
+	}
+}
+
+func TestValidatePolicyRejectsRetiredOrganizationWideTokenMode(t *testing.T) {
+	policy := DefaultPolicy("org")
+	policy.APITokenMode = "allow"
+
+	_, err := NormalizePolicyInput(policy)
+	require.ErrorContains(t, err, "invalid api token mode")
+
+	policy.APITokenMode = models.OrganizationSSOTokensScoped
+	require.NoError(t, ValidatePolicy(policy))
+	policy.APITokenMode = models.OrganizationSSOTokensDeny
 	require.NoError(t, ValidatePolicy(policy))
 }
 

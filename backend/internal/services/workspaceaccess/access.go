@@ -33,14 +33,6 @@ func Allows(ctx context.Context, db bun.IDB, workspaceID, userID string) (bool, 
 	return ok, err
 }
 
-func CanEdit(ctx context.Context, db bun.IDB, workspaceID, userID string) (bool, error) {
-	member, ok, err := Member(ctx, db, workspaceID, userID)
-	if err != nil || !ok {
-		return false, err
-	}
-	return member.Role == models.WorkspaceRoleAdmin || member.Role == models.WorkspaceRoleEditor, nil
-}
-
 func IsAdmin(ctx context.Context, db bun.IDB, workspaceID, userID string) (bool, error) {
 	member, ok, err := Member(ctx, db, workspaceID, userID)
 	if err != nil || !ok {

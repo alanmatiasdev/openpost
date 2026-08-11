@@ -222,6 +222,43 @@ func TestAPITokenHandlerScopedCallerCannotMintUnscopedToken(t *testing.T) {
 	require.Contains(t, resp.Body.String(), "not authorized for this API resource")
 }
 
+func TestWorkspaceBoundCLITokenRetainsAccountLevelTokenManagement(t *testing.T) {
+	t.Parallel()
+
+	db := createHandlerTestDB(t, (*models.User)(nil), (*models.APIToken)(nil))
+	_, err := db.NewInsert().Model(&models.User{
+		ID: "user-1", Email: "user@example.com", PasswordHash: "hash", CreatedAt: time.Now().UTC(),
+	}).Exec(t.Context())
+	require.NoError(t, err)
+	_, err = db.NewInsert().Model(&models.APIToken{
+		ID: "target-token", UserID: "user-1", Name: "Target", TokenHash: "target-hash",
+		TokenPrefix: "target", Scope: apitokens.ScopeAPIRead, ExpiresAt: time.Now().UTC().Add(time.Hour),
+	}).Exec(t.Context())
+	require.NoError(t, err)
+
+	e := echo.New()
+	api := humaecho.NewWithGroup(e, e.Group("/api/v1"), huma.DefaultConfig("Test", "1.0.0"))
+	NewAPITokenHandler(apitokens.NewService(db), mcpScopeAuthenticator{
+		"bound-cli-token": {
+			UserID: "user-1", Email: "user@example.com", Scope: apitokens.ScopeCLI,
+			WorkspaceID: "ws-1", TokenID: "caller-token",
+		},
+	}, db).RegisterRoutes(api)
+
+	list := apiTokenMethodRequest(t, e, http.MethodGet, "/api/v1/api-tokens", "bound-cli-token")
+	require.Equal(t, http.StatusOK, list.Code, list.Body.String())
+	require.Contains(t, list.Body.String(), "target-token")
+
+	revoke := apiTokenMethodRequest(
+		t, e, http.MethodDelete, "/api/v1/api-tokens/target-token", "bound-cli-token",
+	)
+	require.Equal(t, http.StatusOK, revoke.Code, revoke.Body.String())
+
+	var stored models.APIToken
+	require.NoError(t, db.NewSelect().Model(&stored).Where("id = ?", "target-token").Scan(t.Context()))
+	require.False(t, stored.RevokedAt.IsZero())
+}
+
 func apiTokenRequest(t *testing.T, e *echo.Echo, body map[string]any) *httptest.ResponseRecorder {
 	return apiTokenRequestWithToken(t, e, "web-token", body)
 }
@@ -233,6 +270,21 @@ func apiTokenRequestWithToken(t *testing.T, e *echo.Echo, token string, body map
 	require.NoError(t, json.NewEncoder(&payload).Encode(body))
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/v1/api-tokens", &payload)
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+	return rec
+}
+
+func apiTokenMethodRequest(
+	t *testing.T,
+	e *echo.Echo,
+	method,
+	path,
+	token string,
+) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequestWithContext(t.Context(), method, path, nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)

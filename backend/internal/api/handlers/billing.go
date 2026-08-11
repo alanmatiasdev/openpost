@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -178,6 +179,11 @@ func (h *BillingHandler) getStatus(ctx context.Context, input *GetBillingStatusI
 	organizationID, workspaceID, err := h.resolveBillingScope(ctx, input.OrganizationID, input.WorkspaceID, userID)
 	if err != nil {
 		return nil, err
+	}
+	if strings.TrimSpace(input.OrganizationID) == "" {
+		if err := h.checkOrganizationCredentialAccess(ctx, organizationID, userID); err != nil {
+			return nil, err
+		}
 	}
 	return h.billingStatusForOrganization(ctx, organizationID, workspaceID, userID)
 }
@@ -555,6 +561,11 @@ func (h *BillingHandler) resolveBillingScope(ctx context.Context, organizationID
 		if err := h.checkOrganizationAccess(ctx, organizationID, userID, false); err != nil {
 			return "", "", err
 		}
+		if workspaceID != "" {
+			if err := h.checkBillingWorkspaceOrganization(ctx, workspaceID, organizationID); err != nil {
+				return "", "", err
+			}
+		}
 		return organizationID, workspaceID, nil
 	}
 	if workspaceID == "" {
@@ -563,6 +574,14 @@ func (h *BillingHandler) resolveBillingScope(ctx context.Context, organizationID
 	if err := h.checkWorkspaceAccess(ctx, workspaceID, userID); err != nil {
 		return "", "", err
 	}
+	return h.resolveWorkspaceBillingScope(ctx, workspaceID, userID)
+}
+
+func (h *BillingHandler) resolveWorkspaceBillingScope(
+	ctx context.Context,
+	workspaceID,
+	userID string,
+) (string, string, error) {
 	var workspace models.Workspace
 	err := h.db.NewSelect().
 		Model(&workspace).
@@ -623,6 +642,25 @@ func (h *BillingHandler) resolveBillingScope(ctx context.Context, organizationID
 	return resolvedOrganizationID, workspaceID, nil
 }
 
+func (h *BillingHandler) checkBillingWorkspaceOrganization(ctx context.Context, workspaceID, organizationID string) error {
+	var workspaceOrganizationID string
+	err := h.db.NewSelect().
+		Table("workspaces").
+		Column("organization_id").
+		Where("id = ?", workspaceID).
+		Scan(ctx, &workspaceOrganizationID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return huma.Error403Forbidden("workspace not accessible")
+		}
+		return huma.Error500InternalServerError("failed to resolve billing workspace")
+	}
+	if strings.TrimSpace(workspaceOrganizationID) != organizationID {
+		return huma.Error403Forbidden("workspace not accessible")
+	}
+	return nil
+}
+
 func (h *BillingHandler) checkOrganizationAccess(ctx context.Context, organizationID, userID string, requireAdmin bool) error {
 	decision, err := identity.EvaluateOrganizationAccess(
 		ctx,
@@ -653,6 +691,24 @@ func (h *BillingHandler) checkOrganizationAccess(ctx context.Context, organizati
 			return huma.Error403Forbidden("organization admin role required")
 		}
 		return huma.Error403Forbidden("organization not accessible")
+	}
+	return nil
+}
+
+func (h *BillingHandler) checkOrganizationCredentialAccess(ctx context.Context, organizationID, userID string) error {
+	decision, err := identity.EvaluateOrganizationAccess(
+		ctx,
+		h.db,
+		organizationID,
+		userID,
+		middleware.GetSessionID(ctx),
+		middleware.GetTokenID(ctx),
+	)
+	if err != nil {
+		return huma.Error500InternalServerError("failed to check organization SSO access")
+	}
+	if !decision.Allowed {
+		return huma.Error403Forbidden("organization SSO authentication is required")
 	}
 	return nil
 }

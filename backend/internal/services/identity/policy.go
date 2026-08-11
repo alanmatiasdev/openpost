@@ -14,13 +14,15 @@ import (
 	"github.com/uptrace/bun"
 )
 
+const legacyOrganizationSSOTokensAllow = "allow"
+
 type Policy struct {
 	OrganizationID          string   `json:"organization_id"`
 	Mode                    string   `json:"mode"`
 	ProviderIDs             []string `json:"provider_ids"`
 	AssuranceMaxAgeSeconds  int      `json:"assurance_max_age_seconds"`
 	PasswordLoginAllowed    bool     `json:"password_login_allowed"`
-	APITokenMode            string   `json:"api_token_mode"`
+	APITokenMode            string   `json:"api_token_mode" enum:"scoped,deny"`
 	MaxTokenLifetimeSeconds int      `json:"max_token_lifetime_seconds"`
 	RequireTokenReauth      bool     `json:"require_token_reauth"`
 }
@@ -91,10 +93,23 @@ func policyFromModel(row models.OrganizationSSOPolicy) (Policy, error) {
 		ProviderIDs:             providers,
 		AssuranceMaxAgeSeconds:  row.AssuranceMaxAgeSeconds,
 		PasswordLoginAllowed:    row.PasswordLoginAllowed,
-		APITokenMode:            row.APITokenMode,
+		APITokenMode:            normalizeStoredAPITokenMode(row.APITokenMode),
 		MaxTokenLifetimeSeconds: row.MaxTokenLifetimeSeconds,
 		RequireTokenReauth:      row.RequireTokenReauth,
 	}, nil
+}
+
+// Treat the retired organization-wide mode as workspace-scoped while a rolling
+// upgrade can still read a row written before migration 084 completed.
+func normalizeStoredAPITokenMode(mode string) string {
+	switch mode {
+	case legacyOrganizationSSOTokensAllow, models.OrganizationSSOTokensScoped:
+		return models.OrganizationSSOTokensScoped
+	case models.OrganizationSSOTokensDeny:
+		return models.OrganizationSSOTokensDeny
+	default:
+		return models.OrganizationSSOTokensDeny
+	}
 }
 
 func PolicyForOrganization(ctx context.Context, db *bun.DB, organizationID string) (Policy, error) {
@@ -257,6 +272,20 @@ func EvaluateOrganizationAccess(
 	tokenID string,
 ) (OrganizationAccessDecision, error) {
 	decision := OrganizationAccessDecision{Allowed: true}
+	// Workspace binding is an authorization boundary as well as SSO
+	// assurance. Enforce it before the organization policy so a bound token
+	// cannot administer its parent organization when SSO is optional.
+	if strings.TrimSpace(tokenID) != "" {
+		allowed, err := organizationTokenScopeAllows(ctx, db, tokenID, userID)
+		if err != nil {
+			return OrganizationAccessDecision{}, err
+		}
+		if !allowed {
+			decision.Allowed = false
+			decision.Reason = "Workspace-bound tokens cannot access organization-level resources."
+			return decision, nil
+		}
+	}
 	policy, err := PolicyForOrganization(ctx, db, organizationID)
 	if err != nil {
 		return OrganizationAccessDecision{}, err
@@ -302,6 +331,26 @@ func EvaluateOrganizationAccess(
 	}
 	decision.Reason = "This credential does not satisfy the organization's SSO policy."
 	return decision, nil
+}
+
+func organizationTokenScopeAllows(
+	ctx context.Context,
+	db *bun.DB,
+	tokenID,
+	userID string,
+) (bool, error) {
+	var token models.APIToken
+	if err := db.NewSelect().
+		Model(&token).
+		Column("workspace_id").
+		Where("id = ? AND user_id = ?", strings.TrimSpace(tokenID), strings.TrimSpace(userID)).
+		Scan(ctx); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, nil
+		}
+		return false, err
+	}
+	return strings.TrimSpace(token.WorkspaceID) == "", nil
 }
 
 func validSessionAssurance(
@@ -565,7 +614,6 @@ func ValidatePolicy(input Policy) error {
 		return fmt.Errorf("invalid sso mode")
 	}
 	if !slices.Contains([]string{
-		models.OrganizationSSOTokensAllow,
 		models.OrganizationSSOTokensScoped,
 		models.OrganizationSSOTokensDeny,
 	}, input.APITokenMode) {

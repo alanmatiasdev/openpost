@@ -75,17 +75,23 @@ func (h *MCPActivityHandler) RegisterRoutes(api huma.API) {
 				return nil, err
 			}
 		}
-
+		workspaceIDs, err := h.accessibleWorkspaceIDs(ctx, userID, input.WorkspaceID)
+		if err != nil {
+			return nil, err
+		}
 		var calls []models.MCPToolCall
 		query := h.db.NewSelect().
 			Model(&calls).
 			Where("user_id = ?", userID).
 			Order("created_at DESC").
 			Limit(limit)
-		if input.WorkspaceID != "" {
-			query.Where("workspace_id = ?", input.WorkspaceID)
-		} else if workspaceID := middleware.GetWorkspaceID(ctx); workspaceID != "" {
-			query.Where("workspace_id = ?", workspaceID)
+		switch {
+		case input.WorkspaceID != "":
+			query = query.Where("workspace_id = ?", input.WorkspaceID)
+		case len(workspaceIDs) > 0:
+			query = query.Where("(COALESCE(workspace_id, '') = '' OR workspace_id IN (?))", bun.List(workspaceIDs))
+		default:
+			query = query.Where("COALESCE(workspace_id, '') = ''")
 		}
 		if err := query.Scan(ctx); err != nil {
 			return nil, huma.Error500InternalServerError("failed to list mcp activity")
@@ -93,6 +99,39 @@ func (h *MCPActivityHandler) RegisterRoutes(api huma.API) {
 
 		return &ListMCPActivityOutput{Body: mcpActivityItems(calls)}, nil
 	})
+}
+
+func (h *MCPActivityHandler) accessibleWorkspaceIDs(
+	ctx context.Context,
+	userID,
+	requestedWorkspaceID string,
+) ([]string, error) {
+	if requestedWorkspaceID != "" {
+		return []string{requestedWorkspaceID}, nil
+	}
+
+	var members []models.WorkspaceMember
+	query := h.db.NewSelect().
+		Model(&members).
+		Where("user_id = ? AND status = ?", userID, models.WorkspaceMemberStatusActive)
+	if workspaceID := middleware.GetWorkspaceID(ctx); workspaceID != "" {
+		query = query.Where("workspace_id = ?", workspaceID)
+	}
+	if err := query.Scan(ctx); err != nil {
+		return nil, huma.Error500InternalServerError("failed to list workspace access")
+	}
+
+	workspaceIDs := make([]string, 0, len(members))
+	for _, member := range members {
+		allowed, err := middleware.CheckWorkspaceAccess(ctx, h.db, member.WorkspaceID, userID)
+		if err != nil {
+			return nil, huma.Error500InternalServerError("failed to check workspace access")
+		}
+		if allowed {
+			workspaceIDs = append(workspaceIDs, member.WorkspaceID)
+		}
+	}
+	return workspaceIDs, nil
 }
 
 func (h *MCPActivityHandler) checkWorkspaceAccess(ctx context.Context, workspaceID, userID string) error {

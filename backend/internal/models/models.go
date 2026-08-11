@@ -85,7 +85,6 @@ const (
 // Organization API-token policies stored in
 // organization_sso_policies.api_token_mode.
 const (
-	OrganizationSSOTokensAllow  = "allow"
 	OrganizationSSOTokensScoped = "scoped"
 	OrganizationSSOTokensDeny   = "deny"
 )

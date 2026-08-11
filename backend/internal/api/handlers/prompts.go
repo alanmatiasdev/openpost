@@ -211,6 +211,39 @@ func (h *PromptHandler) checkWorkspaceEditAccess(ctx context.Context, workspaceI
 	return nil
 }
 
+func (h *PromptHandler) promptReadScope(
+	ctx context.Context,
+	userID,
+	requestedWorkspaceID string,
+) (string, bool, error) {
+	if requestedWorkspaceID != "" {
+		if err := h.checkWorkspaceAccess(ctx, requestedWorkspaceID, userID); err != nil {
+			return "", false, err
+		}
+		return requestedWorkspaceID, false, nil
+	}
+	scopedWorkspaceID := middleware.GetWorkspaceID(ctx)
+	if scopedWorkspaceID != "" {
+		if err := h.checkWorkspaceAccess(ctx, scopedWorkspaceID, userID); err != nil {
+			return "", false, err
+		}
+		return scopedWorkspaceID, false, nil
+	}
+	return "", true, nil
+}
+
+func promptReadQuery(
+	query *bun.SelectQuery,
+	workspaceID string,
+	includePersonal bool,
+	userID string,
+) *bun.SelectQuery {
+	if includePersonal {
+		return query.Where("(is_built_in = ? OR (COALESCE(workspace_id, '') = '' AND user_id = ?))", true, userID)
+	}
+	return query.Where("(is_built_in = ? OR workspace_id = ?)", true, workspaceID)
+}
+
 type PromptResponse struct {
 	ID          string `json:"id" doc:"Prompt ID"`
 	WorkspaceID string `json:"workspace_id,omitempty" doc:"Workspace ID (if custom)"`
@@ -239,6 +272,7 @@ func (h *PromptHandler) ListPrompts(api huma.API) {
 		Summary:     "List writing prompts",
 		Tags:        []string{tagPrompts},
 		Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
+		Errors:      []int{403, 500},
 	}, func(ctx context.Context, input *ListPromptsInput) (*ListPromptsOutput, error) {
 		userID := middleware.GetUserID(ctx)
 
@@ -250,19 +284,11 @@ func (h *PromptHandler) ListPrompts(api huma.API) {
 		var prompts []models.Prompt
 		query := h.db.NewSelect().Model(&prompts)
 
-		// Get built-in prompts plus user/workspace custom prompts
-		if input.WorkspaceID != "" {
-			if err := h.checkWorkspaceAccess(ctx, input.WorkspaceID, userID); err != nil {
-				return nil, err
-			}
-
-			query = query.Where("is_built_in = ? OR workspace_id = ?", true, input.WorkspaceID)
-		} else if workspaceID := middleware.GetWorkspaceID(ctx); workspaceID != "" {
-			query = query.Where("is_built_in = ? OR workspace_id = ?", true, workspaceID)
-		} else {
-			// Get built-in prompts plus user's custom prompts
-			query = query.Where("is_built_in = ? OR user_id = ?", true, userID)
+		workspaceID, includePersonal, err := h.promptReadScope(ctx, userID, input.WorkspaceID)
+		if err != nil {
+			return nil, err
 		}
+		query = promptReadQuery(query, workspaceID, includePersonal, userID)
 
 		if input.Category != "" {
 			query = query.Where("category = ?", input.Category)
@@ -441,6 +467,7 @@ func (h *PromptHandler) GetRandomPrompt(api huma.API) {
 		Summary:     "Get a random writing prompt",
 		Tags:        []string{tagPrompts},
 		Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
+		Errors:      []int{403, 500},
 	}, func(ctx context.Context, input *GetRandomPromptInput) (*GetRandomPromptOutput, error) {
 		userID := middleware.GetUserID(ctx)
 
@@ -454,18 +481,11 @@ func (h *PromptHandler) GetRandomPrompt(api huma.API) {
 			Model(&prompt).
 			OrderExpr("RANDOM()")
 
-		// Get built-in prompts plus user/workspace custom prompts
-		if input.WorkspaceID != "" {
-			if err := h.checkWorkspaceAccess(ctx, input.WorkspaceID, userID); err != nil {
-				return nil, err
-			}
-
-			query = query.Where("is_built_in = ? OR workspace_id = ?", true, input.WorkspaceID)
-		} else if workspaceID := middleware.GetWorkspaceID(ctx); workspaceID != "" {
-			query = query.Where("is_built_in = ? OR workspace_id = ?", true, workspaceID)
-		} else {
-			query = query.Where("is_built_in = ? OR user_id = ?", true, userID)
+		workspaceID, includePersonal, err := h.promptReadScope(ctx, userID, input.WorkspaceID)
+		if err != nil {
+			return nil, err
 		}
+		query = promptReadQuery(query, workspaceID, includePersonal, userID)
 
 		if input.Category != "" {
 			query = query.Where("category = ?", input.Category)

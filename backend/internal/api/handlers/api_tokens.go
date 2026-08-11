@@ -35,7 +35,7 @@ type APITokenResponse struct {
 	OrganizationID     string  `json:"organization_id,omitempty" doc:"Organization this token is bound to by SSO policy"`
 	IdentityProviderID string  `json:"identity_provider_id,omitempty" doc:"Identity provider assurance bound to this token"`
 	ExpiresAt          *string `json:"expires_at,omitempty" doc:"Token expiry time"`
-	LastUsedAt         *string `json:"last_used_at,omitempty" doc:"Last successful use time"`
+	LastUsedAt         *string `json:"last_used_at,omitempty" doc:"Last successful authentication time"`
 	RevokedAt          *string `json:"revoked_at,omitempty" doc:"Revocation time"`
 	CreatedAt          string  `json:"created_at" doc:"Creation time"`
 	Status             string  `json:"status" enum:"active,expired,revoked" doc:"Current token status"`

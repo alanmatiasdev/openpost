@@ -42,6 +42,10 @@ func newWorkspaceTestServerWithAuthenticator(t *testing.T, entitlement entitleme
 		(*models.WorkspaceMember)(nil),
 		(*models.WorkspaceInvitation)(nil),
 		(*models.WorkspaceAccessAuditEvent)(nil),
+		(*models.IdentityProvider)(nil),
+		(*models.OrganizationSSOPolicy)(nil),
+		(*models.SessionIdentityAssurance)(nil),
+		(*models.APIToken)(nil),
 	)
 	e := echo.New()
 	api := humaecho.NewWithGroup(e, e.Group("/api/v1"), huma.DefaultConfig("Test", "1.0.0"))

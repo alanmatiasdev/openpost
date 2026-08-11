@@ -473,6 +473,33 @@ func mcpInstructions(scope string) string {
 
 type mcpWorkspaceScopeContextKey struct{}
 
+func contextWithMCPPrincipal(ctx context.Context, principal *middleware.Principal) context.Context {
+	if principal == nil {
+		return ctx
+	}
+	ctx = context.WithValue(ctx, middleware.UserIDKey, principal.UserID)
+	ctx = context.WithValue(ctx, middleware.EmailKey, principal.Email)
+	if principal.WorkspaceID != "" {
+		ctx = context.WithValue(ctx, middleware.WorkspaceIDKey, principal.WorkspaceID)
+	}
+	if principal.SessionID != "" {
+		ctx = context.WithValue(ctx, middleware.SessionIDKey, principal.SessionID)
+	}
+	if principal.TokenID != "" {
+		ctx = context.WithValue(ctx, middleware.TokenIDKey, principal.TokenID)
+	}
+	if principal.ClientID != "" {
+		ctx = context.WithValue(ctx, middleware.ClientIDKey, principal.ClientID)
+	}
+	if principal.ClientName != "" {
+		ctx = context.WithValue(ctx, middleware.ClientNameKey, principal.ClientName)
+	}
+	if principal.Scope != "" {
+		ctx = context.WithValue(ctx, middleware.ScopeKey, principal.Scope)
+	}
+	return ctx
+}
+
 func contextWithMCPWorkspaceScope(ctx context.Context, workspaceID string) context.Context {
 	workspaceID = strings.TrimSpace(workspaceID)
 	if workspaceID == "" {
@@ -508,6 +535,7 @@ func (h *MCPHandler) acceptNotification(req mcpRequest) *mcpError {
 }
 
 func (h *MCPHandler) dispatch(ctx context.Context, principal *middleware.Principal, req mcpRequest, protocolVersion string) (any, *mcpError) {
+	ctx = contextWithMCPPrincipal(ctx, principal)
 	ctx = contextWithMCPWorkspaceScope(ctx, principal.WorkspaceID)
 	switch req.Method {
 	case "initialize":
@@ -3112,6 +3140,13 @@ func (h *MCPHandler) listWorkspaces(ctx context.Context, userID string) (any, *m
 	workspaces := make([]mcpWorkspace, 0, len(rows))
 	names := make([]string, 0, len(rows))
 	for _, row := range rows {
+		allowed, accessErr := middleware.CheckWorkspaceAccess(ctx, h.db, row.ID, userID)
+		if accessErr != nil {
+			return nil, &mcpError{Code: -32603, Message: "failed to check workspace access"}
+		}
+		if !allowed {
+			continue
+		}
 		workspaces = append(workspaces, mcpWorkspace{
 			ID:        row.ID,
 			Name:      row.Name,
@@ -3938,6 +3973,7 @@ func (h *MCPHandler) createDraft(ctx context.Context, userID string, args map[st
 		})
 	}
 
+	actor, _ := publicationauth.ActorFromContext(ctx)
 	err := h.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
 		if _, err := tx.NewInsert().Model(post).Exec(txCtx); err != nil {
 			return err
@@ -3947,16 +3983,14 @@ func (h *MCPHandler) createDraft(ctx context.Context, userID string, args map[st
 				return err
 			}
 		}
-		return insertMCPPostMedia(txCtx, tx, post.ID, mediaIDs)
+		if err := insertMCPPostMedia(txCtx, tx, post.ID, mediaIDs); err != nil {
+			return err
+		}
+		return databasemigrations.MigrateLegacyPublicationAuthoringForActorTx(txCtx, tx, post.ID, actor)
 	})
 	if err != nil {
 		return nil, &mcpError{Code: -32603, Message: "failed to create draft"}
 	}
-	actor, _ := publicationauth.ActorFromContext(ctx)
-	if err := databasemigrations.MigrateLegacyPublicationAuthoringForActor(ctx, h.db, post.ID, actor); err != nil {
-		return nil, &mcpError{Code: -32603, Message: "failed to prepare canonical post authoring"}
-	}
-
 	postStatus, rpcErr := h.loadMCPPostStatus(ctx, post.ID)
 	if rpcErr != nil {
 		return nil, rpcErr
@@ -4032,7 +4066,7 @@ func (h *MCPHandler) updateDraft(ctx context.Context, userID string, args map[st
 	if rpcErr != nil {
 		return nil, rpcErr
 	}
-	if rpcErr := h.ensureMCPPostAuthoring(ctx); rpcErr != nil {
+	if rpcErr := h.ensureMCPPostAuthoring(ctx, post.ID); rpcErr != nil {
 		return nil, rpcErr
 	}
 
@@ -4168,7 +4202,7 @@ func (h *MCPHandler) setPostRenditions(ctx context.Context, userID string, args 
 	if rpcErr != nil {
 		return nil, rpcErr
 	}
-	if rpcErr := h.ensureMCPPostAuthoring(ctx); rpcErr != nil {
+	if rpcErr := h.ensureMCPPostAuthoring(ctx, post.ID); rpcErr != nil {
 		return nil, rpcErr
 	}
 
@@ -4622,11 +4656,13 @@ func (h *MCPHandler) schedulePost(ctx context.Context, userID string, args map[s
 	job := &models.Job{
 		ID:      newUUID(),
 		Type:    jobTypePublishPost,
+		ScopeID: post.ID,
 		Payload: string(payload),
 		Status:  "pending",
 		RunAt:   scheduledAt,
 	}
 
+	actor, _ := publicationauth.ActorFromContext(ctx)
 	err = h.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
 		if _, err := tx.NewInsert().Model(post).Exec(txCtx); err != nil {
 			return err
@@ -4645,14 +4681,10 @@ func (h *MCPHandler) schedulePost(ctx context.Context, userID string, args map[s
 		if _, err := tx.NewInsert().Model(job).Exec(txCtx); err != nil {
 			return err
 		}
-		return nil
+		return databasemigrations.MigrateLegacyPublicationAuthoringForActorTx(txCtx, tx, post.ID, actor)
 	})
 	if err != nil {
 		return nil, &mcpError{Code: -32603, Message: "failed to schedule post"}
-	}
-	actor, _ := publicationauth.ActorFromContext(ctx)
-	if err := databasemigrations.MigrateLegacyPublicationAuthoringForActor(ctx, h.db, post.ID, actor); err != nil {
-		return nil, &mcpError{Code: -32603, Message: "failed to prepare canonical post authoring"}
 	}
 	if rpcErr := h.recordScheduledPostUsage(ctx, input.WorkspaceID, 1, scheduledAt); rpcErr != nil {
 		return nil, rpcErr
@@ -4681,7 +4713,7 @@ func (h *MCPHandler) scheduleDraft(ctx context.Context, userID string, args map[
 	if rpcErr != nil {
 		return nil, rpcErr
 	}
-	if rpcErr := h.ensureMCPPostAuthoring(ctx); rpcErr != nil {
+	if rpcErr := h.ensureMCPPostAuthoring(ctx, post.ID); rpcErr != nil {
 		return nil, rpcErr
 	}
 
@@ -4692,6 +4724,7 @@ func (h *MCPHandler) scheduleDraft(ctx context.Context, userID string, args map[
 	job := &models.Job{
 		ID:      newUUID(),
 		Type:    jobTypePublishPost,
+		ScopeID: post.ID,
 		Payload: string(payload),
 		Status:  "pending",
 		RunAt:   jobRunAt,
@@ -4722,6 +4755,7 @@ func (h *MCPHandler) scheduleDraft(ctx context.Context, userID string, args map[
 		if _, err := tx.NewDelete().
 			Model(&models.Job{}).
 			Where(publishPostJobPostIDWhere(h.db), jobTypePublishPost, post.ID).
+			Where("status = ?", jobStatusPending).
 			Exec(txCtx); err != nil {
 			return err
 		}
@@ -4955,7 +4989,7 @@ func (h *MCPHandler) cancelPost(ctx context.Context, userID string, args map[str
 	if rpcErr := h.ensureWorkspaceEditAccess(ctx, userID, post.WorkspaceID); rpcErr != nil {
 		return nil, rpcErr
 	}
-	if rpcErr := h.ensureMCPPostAuthoring(ctx); rpcErr != nil {
+	if rpcErr := h.ensureMCPPostAuthoring(ctx, post.ID); rpcErr != nil {
 		return nil, rpcErr
 	}
 	if post.Status == models.PostStatusPublished || post.Status == models.PostStatusPublishing {
@@ -4974,6 +5008,7 @@ func (h *MCPHandler) cancelPost(ctx context.Context, userID string, args map[str
 		if _, err := tx.NewDelete().
 			Model(&models.Job{}).
 			Where(publishPostJobPostIDWhere(h.db), jobTypePublishPost, post.ID).
+			Where("status = ?", jobStatusPending).
 			Exec(txCtx); err != nil {
 			return err
 		}
@@ -5446,8 +5481,9 @@ type mcpTextPostMutation struct {
 	UpdatedAt        time.Time
 }
 
-func (h *MCPHandler) ensureMCPPostAuthoring(ctx context.Context) *mcpError {
-	if err := databasemigrations.MigrateLegacyPublicationAuthoring(ctx, h.db); err != nil {
+func (h *MCPHandler) ensureMCPPostAuthoring(ctx context.Context, postID string) *mcpError {
+	actor, _ := publicationauth.ActorFromContext(ctx)
+	if err := databasemigrations.MigrateLegacyPublicationAuthoringForActor(ctx, h.db, postID, actor); err != nil {
 		return &mcpError{Code: -32603, Message: "failed to prepare canonical post authoring"}
 	}
 	return nil
@@ -5459,6 +5495,10 @@ func (h *MCPHandler) lockMCPTextPostMutation(
 	postID string,
 	expectedRevision int,
 ) (mcpTextPostMutation, error) {
+	actor, _ := publicationauth.ActorFromContext(ctx)
+	if err := databasemigrations.MigrateLegacyPublicationAuthoringForActorTx(ctx, tx, postID, actor); err != nil {
+		return mcpTextPostMutation{}, err
+	}
 	postHandler := &PostHandler{db: h.db}
 	post, err := postHandler.lockTextPostTx(ctx, tx, postID)
 	if err != nil {

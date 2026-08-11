@@ -141,3 +141,24 @@ func TestLinkedIdentitiesExposeProviderActivityWithoutHidingDisabledLinks(t *tes
 	require.Equal(t, "active-provider", identities[1].ProviderID)
 	require.True(t, identities[1].Active)
 }
+
+func TestOIDCPolicyContractOnlyAdvertisesSupportedAPITokenModes(t *testing.T) {
+	t.Parallel()
+
+	db := createHandlerTestDB(t)
+	authService := auth.NewService("oidc-policy-openapi-test-secret")
+	authenticator := passwordReauthTestAuthenticator{}
+	authHandler := NewAuthHandler(db, authService, authenticator, nil, nil, false)
+	identityService := identity.NewService(db, nil, identity.Config{})
+	e := echo.New()
+	api := humaecho.NewWithGroup(e, e.Group("/api/v1"), huma.DefaultConfig("Test", "1.0.0"))
+	NewOIDCHandler(identityService, authHandler, authenticator).registerAdministrationRoutes(api)
+
+	for _, schemaName := range []string{"OIDCPolicyInputBody", "Policy"} {
+		schema := api.OpenAPI().Components.Schemas.Map()[schemaName]
+		require.NotNil(t, schema, schemaName)
+		apiTokenMode := schema.Properties["api_token_mode"]
+		require.NotNil(t, apiTokenMode, schemaName)
+		require.Equal(t, []any{"scoped", "deny"}, apiTokenMode.Enum, schemaName)
+	}
+}

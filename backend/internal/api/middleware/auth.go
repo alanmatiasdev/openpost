@@ -14,6 +14,7 @@ import (
 	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/services/apitokens"
 	"github.com/openpost/backend/internal/services/auth"
+	"github.com/openpost/backend/internal/services/identity"
 	"github.com/openpost/backend/internal/services/workspaceaccess"
 	"github.com/uptrace/bun"
 )
@@ -59,7 +60,12 @@ type Authenticator interface {
 	AuthenticateBearer(ctx context.Context, token string) (*Principal, error)
 }
 
-func principalCanAccessREST(principal *Principal, operationID ...string) bool {
+const RESTOperationUploadMediaSessionContent = "upload-media-session-content"
+
+// PrincipalCanAccessREST applies the same scope and audience contract used by
+// Huma and legacy Echo authentication. A legacy route with no operation ID is
+// available only to browser sessions and cli:full credentials.
+func PrincipalCanAccessREST(principal *Principal, operationID ...string) bool {
 	if principal == nil || strings.TrimSpace(principal.Audience) != "" {
 		return false
 	}
@@ -67,9 +73,13 @@ func principalCanAccessREST(principal *Principal, operationID ...string) bool {
 	case "", apitokens.ScopeCLI:
 		return true
 	case apitokens.ScopeAPIRead:
-		return operationAllowed(operationID, restReadOperations)
+		return operationAllowed(operationID, restReadOperations) ||
+			operationAllowed(operationID, legacyRESTReadOperations)
 	case apitokens.ScopeAPIWrite:
-		return operationAllowed(operationID, restReadOperations) || operationAllowed(operationID, restWriteOperations)
+		return operationAllowed(operationID, restReadOperations) ||
+			operationAllowed(operationID, restWriteOperations) ||
+			operationAllowed(operationID, legacyRESTReadOperations) ||
+			operationAllowed(operationID, legacyRESTWriteOperations)
 	default:
 		return false
 	}
@@ -90,6 +100,7 @@ var restReadOperations = operationSet(
 	"list-account-providers",
 	"get-account-destination-options",
 	"search-account-publishing-options",
+	"get-provider-readiness",
 	"resolve-publishing-capabilities",
 	"list-social-sets",
 	"get-social-set",
@@ -107,9 +118,7 @@ var restReadOperations = operationSet(
 var restWriteOperations = operationSet(
 	"create-publication",
 	"update-publication",
-	"delete-publication",
 	"upsert-publication-renditions",
-	"delete-publication-rendition",
 	"schedule-publication",
 	"publish-publication-now",
 	"retry-publication-rendition",
@@ -130,12 +139,31 @@ var restWriteOperations = operationSet(
 	"delete-posting-schedule",
 )
 
+// Legacy Echo routes remain denied to scoped REST tokens unless they are
+// named here and register the same operation ID with BearerMiddleware. The
+// instance-hosted upload content step is the one intentional exception because
+// it is part of the Huma create -> content -> complete upload-session contract.
+var legacyRESTReadOperations = operationSet()
+
+var legacyRESTWriteOperations = operationSet(
+	RESTOperationUploadMediaSessionContent,
+)
+
 // RESTScopeOperationCatalog returns stable snapshots of the curated REST
 // operation allowlists. Keeping enumeration beside the authorization lookup
 // lets contract tests compare every entry with the registered Huma surface.
 func RESTScopeOperationCatalog() (read []string, write []string) {
 	read = operationIDs(restReadOperations)
 	write = operationIDs(restWriteOperations)
+	return read, write
+}
+
+// LegacyRESTScopeOperationCatalog returns the explicitly curated Echo-route
+// operations. These IDs are kept separate from the registered Huma catalog so
+// an unnamed legacy route cannot inherit api:read or api:write accidentally.
+func LegacyRESTScopeOperationCatalog() (read []string, write []string) {
+	read = operationIDs(legacyRESTReadOperations)
+	write = operationIDs(legacyRESTWriteOperations)
 	return read, write
 }
 
@@ -245,7 +273,7 @@ func AuthMiddleware(api huma.API, authenticator Authenticator) func(ctx huma.Con
 			_ = huma.WriteErr(api, ctx, http.StatusUnauthorized, "invalid or expired token")
 			return
 		}
-		if !principalCanAccessREST(principal, contextOperationID(ctx)) {
+		if !PrincipalCanAccessREST(principal, contextOperationID(ctx)) {
 			_ = huma.WriteErr(api, ctx, http.StatusForbidden, "token is not authorized for this API resource")
 			return
 		}
@@ -290,7 +318,7 @@ func OptionalAuthMiddleware(authenticator Authenticator) func(ctx huma.Context, 
 			return
 		}
 		principal, err := authenticator.AuthenticateBearer(ctx.Context(), token)
-		if err != nil || !principalCanAccessREST(principal, contextOperationID(ctx)) {
+		if err != nil || !PrincipalCanAccessREST(principal, contextOperationID(ctx)) {
 			next(ctx)
 			return
 		}
@@ -421,25 +449,38 @@ func WorkspaceRole(ctx context.Context, db *bun.DB, workspaceID, userID string) 
 	if err != nil || !ok {
 		return "", false, err
 	}
+	decision, err := identity.EvaluateWorkspaceAccess(
+		ctx,
+		db,
+		workspaceID,
+		userID,
+		GetSessionID(ctx),
+		GetTokenID(ctx),
+	)
+	if err != nil || !decision.Allowed {
+		return "", false, err
+	}
 	return member.Role, ok, nil
 }
 
 // CheckWorkspaceEditAccess permits workspace administrators and editors to
 // mutate editorial content. Viewers remain read-only.
 func CheckWorkspaceEditAccess(ctx context.Context, db *bun.DB, workspaceID, userID string) (bool, error) {
-	if !WorkspaceScopeAllows(ctx, workspaceID) {
-		return false, nil
+	role, ok, err := WorkspaceRole(ctx, db, workspaceID, userID)
+	if err != nil || !ok {
+		return false, err
 	}
-	return workspaceaccess.CanEdit(ctx, db, workspaceID, userID)
+	return role == models.WorkspaceRoleAdmin || role == models.WorkspaceRoleEditor, nil
 }
 
 // CheckWorkspaceAdminAccess restricts workspace configuration and team
 // administration to workspace administrators.
 func CheckWorkspaceAdminAccess(ctx context.Context, db *bun.DB, workspaceID, userID string) (bool, error) {
-	if !WorkspaceScopeAllows(ctx, workspaceID) {
-		return false, nil
+	role, ok, err := WorkspaceRole(ctx, db, workspaceID, userID)
+	if err != nil || !ok {
+		return false, err
 	}
-	return workspaceaccess.IsAdmin(ctx, db, workspaceID, userID)
+	return role == models.WorkspaceRoleAdmin, nil
 }
 
 func WorkspaceScopeAllows(ctx context.Context, workspaceID string) bool {
@@ -484,7 +525,7 @@ func JWTMiddleware(authService *auth.Service) echo.MiddlewareFunc {
 // the unified Authenticator, and exposes the resolved principal on the
 // Echo context. Use it on legacy Echo routes (e.g. /api/v1/media/upload)
 // that need to support CLI tokens but cannot be expressed as Huma ops.
-func BearerMiddleware(authenticator Authenticator) echo.MiddlewareFunc {
+func BearerMiddleware(authenticator Authenticator, operationID ...string) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			authHeader := c.Request().Header.Get("Authorization")
@@ -500,31 +541,40 @@ func BearerMiddleware(authenticator Authenticator) echo.MiddlewareFunc {
 			if err != nil {
 				return c.JSON(http.StatusUnauthorized, map[string]string{string(errorKey): "invalid or expired token"})
 			}
-			if !principalCanAccessREST(principal) {
+			if !PrincipalCanAccessREST(principal, operationID...) {
 				return c.JSON(http.StatusForbidden, map[string]string{string(errorKey): "token is not authorized for this API resource"})
 			}
 
-			c.Set(string(UserIDKey), principal.UserID)
-			c.Set(string(EmailKey), principal.Email)
-			requestCtx := context.WithValue(c.Request().Context(), UserIDKey, principal.UserID)
-			requestCtx = context.WithValue(requestCtx, EmailKey, principal.Email)
-			if principal.WorkspaceID != "" {
-				c.Set(string(WorkspaceIDKey), principal.WorkspaceID)
-				requestCtx = context.WithValue(requestCtx, WorkspaceIDKey, principal.WorkspaceID)
-			}
-			if principal.SessionID != "" {
-				c.Set(string(SessionIDKey), principal.SessionID)
-				requestCtx = context.WithValue(requestCtx, SessionIDKey, principal.SessionID)
-			}
-			if principal.TokenID != "" {
-				c.Set(string(TokenIDKey), principal.TokenID)
-				requestCtx = context.WithValue(requestCtx, TokenIDKey, principal.TokenID)
-			}
-			c.SetRequest(c.Request().WithContext(requestCtx))
+			AttachPrincipal(c, principal)
 
 			return next(c)
 		}
 	}
+}
+
+// AttachPrincipal makes a resolved credential available to Echo handlers and
+// to policy checks reached through the request context.
+func AttachPrincipal(c echo.Context, principal *Principal) {
+	if c == nil || principal == nil {
+		return
+	}
+	c.Set(string(UserIDKey), principal.UserID)
+	c.Set(string(EmailKey), principal.Email)
+	requestCtx := context.WithValue(c.Request().Context(), UserIDKey, principal.UserID)
+	requestCtx = context.WithValue(requestCtx, EmailKey, principal.Email)
+	if principal.WorkspaceID != "" {
+		c.Set(string(WorkspaceIDKey), principal.WorkspaceID)
+		requestCtx = context.WithValue(requestCtx, WorkspaceIDKey, principal.WorkspaceID)
+	}
+	if principal.SessionID != "" {
+		c.Set(string(SessionIDKey), principal.SessionID)
+		requestCtx = context.WithValue(requestCtx, SessionIDKey, principal.SessionID)
+	}
+	if principal.TokenID != "" {
+		c.Set(string(TokenIDKey), principal.TokenID)
+		requestCtx = context.WithValue(requestCtx, TokenIDKey, principal.TokenID)
+	}
+	c.SetRequest(c.Request().WithContext(requestCtx))
 }
 
 func requestAuthToken(authHeader, cookieHeader string) (string, bool) {

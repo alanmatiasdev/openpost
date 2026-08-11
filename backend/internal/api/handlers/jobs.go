@@ -74,6 +74,7 @@ func (h *JobHandler) listJobs(ctx context.Context, input *ListJobsInput) (*ListJ
 	if err != nil {
 		return nil, huma.Error500InternalServerError("failed to load user")
 	}
+	browserAdmin := isBrowserSessionInstanceAdmin(ctx, isAdmin)
 
 	limit, err := listJobsLimit(input)
 	if err != nil {
@@ -84,7 +85,7 @@ func (h *JobHandler) listJobs(ctx context.Context, input *ListJobsInput) (*ListJ
 	if err != nil {
 		return nil, listJobsScopeError(err)
 	}
-	if !hasListJobsWorkspaceScope(input, allowedWorkspaces, isAdmin) {
+	if !hasListJobsWorkspaceScope(input, allowedWorkspaces, browserAdmin) {
 		return listJobsOutput([]JobResponse{}, 0, limit, input.Offset), nil
 	}
 	pageCursor, runFrom, runBefore, err := validateListJobsPage(input)
@@ -92,13 +93,13 @@ func (h *JobHandler) listJobs(ctx context.Context, input *ListJobsInput) (*ListJ
 		return nil, err
 	}
 
-	total, err := h.listJobsQuery((*models.Job)(nil), input, allowedWorkspaces, isAdmin, runFrom, runBefore).Count(ctx)
+	total, err := h.listJobsQuery((*models.Job)(nil), input, allowedWorkspaces, browserAdmin, runFrom, runBefore).Count(ctx)
 	if err != nil {
 		return nil, huma.Error500InternalServerError("failed to count jobs")
 	}
 
 	var jobs []models.Job
-	query := h.listJobsQuery(&jobs, input, allowedWorkspaces, isAdmin, runFrom, runBefore).
+	query := h.listJobsQuery(&jobs, input, allowedWorkspaces, browserAdmin, runFrom, runBefore).
 		ColumnExpr("job.*").
 		Order("job.run_at DESC", "job.id DESC")
 	if pageCursor != nil {
@@ -123,7 +124,7 @@ func (h *JobHandler) listJobs(ctx context.Context, input *ListJobsInput) (*ListJ
 	if cursorHasMore {
 		jobs = jobs[:limit]
 	}
-	output := listJobsOutput(jobResponses(jobs, isAdmin), total, limit, input.Offset)
+	output := listJobsOutput(jobResponses(jobs, browserAdmin), total, limit, input.Offset)
 	if pageCursor != nil {
 		output.HasMore = cursorHasMore
 	}
@@ -192,7 +193,7 @@ func jobResponses(jobs []models.Job, includePayload bool) []JobResponse {
 			Attempts:      j.Attempts,
 			MaxAttempts:   j.MaxAttempts,
 			LastError:     j.LastError,
-			PublicationID: jobPublicationID(j.Payload),
+			PublicationID: jobPublicationID(j),
 		}
 		if !j.LockedAt.IsZero() {
 			item.LockedAt = j.LockedAt.Format(time.RFC3339)
@@ -205,11 +206,14 @@ func jobResponses(jobs []models.Job, includePayload bool) []JobResponse {
 	return resp
 }
 
-func jobPublicationID(payload string) string {
+func jobPublicationID(job models.Job) string {
+	if job.Type == jobTypePublishPublication && strings.TrimSpace(job.ScopeID) != "" {
+		return strings.TrimSpace(job.ScopeID)
+	}
 	var subject struct {
 		PublicationID string `json:"publication_id"`
 	}
-	if err := json.Unmarshal([]byte(payload), &subject); err != nil {
+	if err := json.Unmarshal([]byte(job.Payload), &subject); err != nil {
 		return ""
 	}
 	return strings.TrimSpace(subject.PublicationID)
@@ -223,12 +227,16 @@ func (h *JobHandler) listJobsQuery(
 	runFrom time.Time,
 	runBefore time.Time,
 ) *bun.SelectQuery {
+	postScopeExpr := "COALESCE(NULLIF(TRIM(job.scope_id), ''), " +
+		safeAliasedJobPayloadTextExpr(h.db, "job", "post_id") + ")"
+	publicationScopeExpr := "COALESCE(NULLIF(TRIM(job.scope_id), ''), " +
+		safeAliasedJobPayloadTextExpr(h.db, "job", "publication_id") + ")"
 	query := h.db.NewSelect().
 		Model(model).
 		ModelTableExpr("jobs AS job").
-		Join("LEFT JOIN posts AS p ON p.id = " + aliasedJobPayloadTextExpr(h.db, "job", postIDKey)).
-		Join("LEFT JOIN publications AS publication ON publication.id = " + aliasedJobPayloadTextExpr(h.db, "job", "publication_id")).
-		Join("LEFT JOIN social_accounts AS sa ON sa.id = " + aliasedJobPayloadTextExpr(h.db, "job", "account_id"))
+		Join("LEFT JOIN posts AS p ON job.type = ? AND p.id = "+postScopeExpr, jobTypePublishPost).
+		Join("LEFT JOIN publications AS publication ON job.type = ? AND publication.id = "+publicationScopeExpr, jobTypePublishPublication).
+		Join("LEFT JOIN social_accounts AS sa ON sa.id = " + safeAliasedJobPayloadTextExpr(h.db, "job", "account_id"))
 
 	if input.Status != "" {
 		query = query.Where("job.status = ?", input.Status)
@@ -276,13 +284,18 @@ func (h *JobHandler) isInstanceAdmin(ctx context.Context, userID string) (bool, 
 	return user.IsAdmin, nil
 }
 
+func isBrowserSessionInstanceAdmin(ctx context.Context, isAdmin bool) bool {
+	return isAdmin && strings.TrimSpace(middleware.GetSessionID(ctx)) != ""
+}
+
 func (h *JobHandler) allowedWorkspaces(ctx context.Context, userID string, isAdmin bool, requestedWorkspaceID string) (map[string]bool, error) {
+	browserAdmin := isBrowserSessionInstanceAdmin(ctx, isAdmin)
 	scopedWorkspaceID := middleware.GetWorkspaceID(ctx)
 	if requestedWorkspaceID != "" {
 		if scopedWorkspaceID != "" && scopedWorkspaceID != requestedWorkspaceID {
 			return nil, huma.Error403Forbidden("workspace not accessible")
 		}
-		if isAdmin {
+		if browserAdmin {
 			return map[string]bool{requestedWorkspaceID: true}, nil
 		}
 
@@ -297,7 +310,7 @@ func (h *JobHandler) allowedWorkspaces(ctx context.Context, userID string, isAdm
 	}
 
 	if scopedWorkspaceID != "" {
-		if !isAdmin {
+		if !browserAdmin {
 			allowed, err := middleware.CheckWorkspaceAccess(ctx, h.db, scopedWorkspaceID, userID)
 			if err != nil {
 				return nil, err
@@ -309,7 +322,9 @@ func (h *JobHandler) allowedWorkspaces(ctx context.Context, userID string, isAdm
 		return map[string]bool{scopedWorkspaceID: true}, nil
 	}
 
-	if isAdmin {
+	if browserAdmin {
+		// An unscoped instance-administrator browser session intentionally
+		// retains the global operational queue view.
 		return nil, nil
 	}
 
@@ -321,9 +336,23 @@ func (h *JobHandler) allowedWorkspaces(ctx context.Context, userID string, isAdm
 		return nil, err
 	}
 
+	return h.filterAccessibleMemberWorkspaces(ctx, userID, members)
+}
+
+func (h *JobHandler) filterAccessibleMemberWorkspaces(
+	ctx context.Context,
+	userID string,
+	members []models.WorkspaceMember,
+) (map[string]bool, error) {
 	allowed := make(map[string]bool, len(members))
 	for _, member := range members {
-		allowed[member.WorkspaceID] = true
+		workspaceAllowed, err := middleware.CheckWorkspaceAccess(ctx, h.db, member.WorkspaceID, userID)
+		if err != nil {
+			return nil, err
+		}
+		if workspaceAllowed {
+			allowed[member.WorkspaceID] = true
+		}
 	}
 	return allowed, nil
 }
