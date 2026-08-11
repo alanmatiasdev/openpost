@@ -13,7 +13,7 @@ import {
   PanelTop,
   UsersRound,
 } from "@lucide/svelte";
-import { PLATFORM_LIMITS } from "$lib/platform-limits";
+import { PLATFORM_LIMITS } from "../../../frontend/src/lib/platform-limits";
 import publicClaimManifest from "../../../provider-certification/public-claims.json";
 import { attachComparisonEvidence } from "./_comparison-evidence";
 
