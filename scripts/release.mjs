@@ -6,6 +6,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { checkMCPRegistryOwnership } from "./check-mcp-registry.mjs";
+import { resolveRunArtifact } from "./ci-artifacts.mjs";
 import {
   requireConventionalCommitMessage,
   selectWorkflowRun,
@@ -469,13 +470,27 @@ async function verifyCandidateManifest(ciRun, version, revision) {
     path.join(os.tmpdir(), "openpost-release-candidate-"),
   );
   try {
+    const repository = runCapture([
+      "gh",
+      "repo",
+      "view",
+      "--json",
+      "nameWithOwner",
+      "--jq",
+      ".nameWithOwner",
+    ]).trim();
+    const artifact = resolveRunArtifact({
+      repository,
+      runId: ciRun.id,
+      prefix: `release-manifest-${revision}-`,
+    });
     run([
       "gh",
       "run",
       "download",
       ciRun.id,
       "--name",
-      `release-manifest-${revision}-${ciRun.attempt}`,
+      artifact,
       "--dir",
       directory,
     ]);

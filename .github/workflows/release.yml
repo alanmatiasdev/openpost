@@ -22,7 +22,8 @@ jobs:
       packages: read
     outputs:
       ci_run_id: ${{ steps.candidate.outputs.run_id }}
-      ci_run_attempt: ${{ steps.candidate.outputs.run_attempt }}
+      candidate_artifact: ${{ steps.artifacts.outputs.candidate }}
+      frontend_artifact: ${{ steps.artifacts.outputs.frontend }}
       digest: ${{ steps.image.outputs.digest }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -41,25 +42,40 @@ jobs:
             --commit "$GITHUB_SHA" \
             --event push \
             --limit 20 \
-            --json databaseId,attempt,conclusion \
-            --jq '[.[] | select(.conclusion == "success")][0] | if . then [.databaseId, .attempt] | @tsv else empty end')"
+            --json databaseId,conclusion \
+            --jq '[.[] | select(.conclusion == "success")][0].databaseId // empty')"
           [[ -n "$candidate" ]] || {
             echo "No successful CI run exists for tagged SHA $GITHUB_SHA." >&2
             exit 1
           }
-          IFS=$'\t' read -r run_id run_attempt <<<"$candidate"
-          [[ "$run_id" =~ ^[0-9]+$ && "$run_attempt" =~ ^[1-9][0-9]*$ ]]
-          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
-          echo "run_attempt=$run_attempt" >> "$GITHUB_OUTPUT"
+          [[ "$candidate" =~ ^[0-9]+$ ]]
+          echo "run_id=$candidate" >> "$GITHUB_OUTPUT"
+      - name: Resolve artifacts from their successful CI attempts
+        id: artifacts
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CI_RUN_ID: ${{ steps.candidate.outputs.run_id }}
+        shell: bash
+        run: |
+          candidate="$(bun scripts/ci-artifacts.mjs resolve \
+            --repository "$GITHUB_REPOSITORY" \
+            --run-id "$CI_RUN_ID" \
+            --prefix "release-manifest-${GITHUB_SHA}-")"
+          frontend="$(bun scripts/ci-artifacts.mjs resolve \
+            --repository "$GITHUB_REPOSITORY" \
+            --run-id "$CI_RUN_ID" \
+            --prefix "frontend-public-${GITHUB_SHA}-")"
+          echo "candidate=$candidate" >> "$GITHUB_OUTPUT"
+          echo "frontend=$frontend" >> "$GITHUB_OUTPUT"
       - name: Download the candidate release manifest
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CI_RUN_ID: ${{ steps.candidate.outputs.run_id }}
-          CI_RUN_ATTEMPT: ${{ steps.candidate.outputs.run_attempt }}
+          CANDIDATE_ARTIFACT: ${{ steps.artifacts.outputs.candidate }}
         run: |
           gh run download "$CI_RUN_ID" \
             --repo "$GITHUB_REPOSITORY" \
-            --name "release-manifest-${GITHUB_SHA}-${CI_RUN_ATTEMPT}" \
+            --name "$CANDIDATE_ARTIFACT" \
             --dir candidate-release
           bun scripts/release-manifest.mjs verify \
             --manifest candidate-release/release-manifest.json \
@@ -116,11 +132,11 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CI_RUN_ID: ${{ needs.verify-candidate.outputs.ci_run_id }}
-          CI_RUN_ATTEMPT: ${{ needs.verify-candidate.outputs.ci_run_attempt }}
+          CANDIDATE_ARTIFACT: ${{ needs.verify-candidate.outputs.candidate_artifact }}
         run: |
           gh run download "$CI_RUN_ID" \
             --repo "$GITHUB_REPOSITORY" \
-            --name "release-manifest-${GITHUB_SHA}-${CI_RUN_ATTEMPT}" \
+            --name "$CANDIDATE_ARTIFACT" \
             --dir candidate-release
       - name: Create or verify the draft and upload candidate evidence
         env:
@@ -201,8 +217,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CI_RUN_ID: ${{ needs.verify-candidate.outputs.ci_run_id }}
-          CI_RUN_ATTEMPT: ${{ needs.verify-candidate.outputs.ci_run_attempt }}
-        run: gh run download "$CI_RUN_ID" --repo "$GITHUB_REPOSITORY" --name "frontend-public-${GITHUB_SHA}-${CI_RUN_ATTEMPT}" --dir backend/cmd/openpost/public
+          FRONTEND_ARTIFACT: ${{ needs.verify-candidate.outputs.frontend_artifact }}
+        run: gh run download "$CI_RUN_ID" --repo "$GITHUB_REPOSITORY" --name "$FRONTEND_ARTIFACT" --dir backend/cmd/openpost/public
       - name: Build binary
         shell: bash
         run: |

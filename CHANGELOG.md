@@ -4,6 +4,10 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- Resolved release artifacts from the attempt that produced each successful artifact, so a partial CI rerun can reuse the tested image manifest while consuming newly rebuilt frontend assets.
+
 ## [3.9.0] - 2026-08-11
 
 ### Added

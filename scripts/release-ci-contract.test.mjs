@@ -255,17 +255,17 @@ test("candidate CI embeds one stable version and exact-revision manifest", () =>
     ci,
     /name: frontend-public-\$\{\{ github\.sha \}\}-\$\{\{ github\.run_attempt \}\}/,
   );
+  assert.match(release, /candidate_artifact:[\s\S]*frontend_artifact:/);
   assert.match(
     release,
-    /ci_run_attempt:[\s\S]*release-manifest-\$\{GITHUB_SHA\}-\$\{CI_RUN_ATTEMPT\}/,
+    /ci-artifacts\.mjs resolve[\s\S]*--prefix "release-manifest-\$\{GITHUB_SHA\}-"[\s\S]*ci-artifacts\.mjs resolve[\s\S]*--prefix "frontend-public-\$\{GITHUB_SHA\}-"/,
   );
-  assert.match(
-    release,
-    /frontend-public-\$\{GITHUB_SHA\}-\$\{CI_RUN_ATTEMPT\}/,
-  );
+  assert.match(release, /--name "\$CANDIDATE_ARTIFACT"/);
+  assert.match(release, /--name "\$FRONTEND_ARTIFACT"/);
+  assert.doesNotMatch(release, /CI_RUN_ATTEMPT|ci_run_attempt/);
   assert.match(
     localRelease,
-    /release-manifest-\$\{revision\}-\$\{ciRun\.attempt\}/,
+    /resolveRunArtifact\([\s\S]*prefix: `release-manifest-\$\{revision\}-`/,
   );
   assert.doesNotMatch(ci, /overwrite: true/);
 });
