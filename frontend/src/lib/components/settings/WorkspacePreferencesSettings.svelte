@@ -160,7 +160,7 @@
 			<p class="text-sm font-medium">{m.settings_connected_channels()}</p>
 			<p class="text-sm text-muted-foreground">{m.settings_connected_channels_body()}</p>
 		</div>
-		<Button variant="outline" onclick={() => goto(resolve('/settings?tab=accounts'))}>
+		<Button variant="outline" onclick={() => goto(resolve('/settings?tab=accounts' as '/'))}>
 			{m.settings_manage_accounts()}
 		</Button>
 	</div>

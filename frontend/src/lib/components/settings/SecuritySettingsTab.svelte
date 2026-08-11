@@ -364,7 +364,7 @@
 			if (err) throw new Error(err.detail || m.settings_action_failed());
 			if (data?.revoked_current || session.current) {
 				await auth.logout();
-				await goto(resolve('/login'));
+				await goto(resolve('/login' as '/'));
 				return;
 			}
 			await loadAuthSessions();
