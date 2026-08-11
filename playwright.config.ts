@@ -5,10 +5,14 @@ const host = "127.0.0.1";
 const baseURL = `http://${host}:${port}`;
 const reuseExistingServer =
   process.env.OPENPOST_MARKETING_E2E_REUSE_SERVER === "1";
+const usePrebuiltArtifact = process.env.OPENPOST_E2E_PREBUILT === "1";
 const chromiumExecutablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
 const chromiumUse = chromiumExecutablePath
   ? { launchOptions: { executablePath: chromiumExecutablePath } }
   : {};
+const webServerCommand = usePrebuiltArtifact
+  ? `cd marketing-site && bunx wrangler pages dev dist --ip ${host} --port ${port} --compatibility-date 2026-08-06`
+  : `bun run marketing:build && bun run --filter @openpost/site preview --host ${host} --port ${port}`;
 
 export default defineConfig({
   testDir: "./e2e",
@@ -21,7 +25,7 @@ export default defineConfig({
     trace: "on-first-retry",
   },
   webServer: {
-    command: `bun run marketing:build && bun run --filter @openpost/site preview --host ${host} --port ${port}`,
+    command: webServerCommand,
     url: baseURL,
     reuseExistingServer,
     timeout: 120_000,
