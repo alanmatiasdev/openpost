@@ -3693,7 +3693,7 @@ export interface components {
             id: string;
             /** @description Identity provider assurance bound to this token */
             identity_provider_id?: string;
-            /** @description Last successful use time */
+            /** @description Last successful authentication time */
             last_used_at?: string;
             /** @description User-visible token name */
             name: string;
@@ -7496,7 +7496,7 @@ export interface components {
              */
             readonly $schema?: string;
             /** @enum {string} */
-            api_token_mode: "allow" | "scoped" | "deny";
+            api_token_mode: "scoped" | "deny";
             /** Format: int64 */
             assurance_max_age_seconds: number;
             /** Format: int64 */
@@ -7729,7 +7729,8 @@ export interface components {
              * @example https://example.com/schemas/Policy.json
              */
             readonly $schema?: string;
-            api_token_mode: string;
+            /** @enum {string} */
+            api_token_mode: "scoped" | "deny";
             /** Format: int64 */
             assurance_max_age_seconds: number;
             /** Format: int64 */
@@ -15868,6 +15869,15 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ErrorModel"];
                 };
             };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
             /** @description Not Found */
             404: {
                 headers: {
@@ -15994,6 +16004,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GetCLIAuthSessionOutputBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
                 };
             };
             /** @description Not Found */
@@ -19596,8 +19615,17 @@ export interface operations {
                     "application/json": components["schemas"]["OrganizationResponse"][] | null;
                 };
             };
-            /** @description Error */
-            default: {
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -21361,6 +21389,15 @@ export interface operations {
                     "application/json": components["schemas"]["DeleteVariantsOutputBody"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
             /** @description Forbidden */
             403: {
                 headers: {
@@ -21422,8 +21459,26 @@ export interface operations {
                     "application/json": components["schemas"]["PromptResponse"][] | null;
                 };
             };
-            /** @description Error */
-            default: {
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -21545,8 +21600,26 @@ export interface operations {
                     "application/json": components["schemas"]["PromptResponse"];
                 };
             };
-            /** @description Error */
-            default: {
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -22603,8 +22676,44 @@ export interface operations {
                     "application/json": components["schemas"]["ActionOutputBody"];
                 };
             };
-            /** @description Error */
-            default: {
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -24475,8 +24584,35 @@ export interface operations {
                     "application/json": components["schemas"]["CreateWorkspaceOutputBody"];
                 };
             };
-            /** @description Error */
-            default: {
+            /** @description Payment Required */
+            402: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };
