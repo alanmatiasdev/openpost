@@ -37,13 +37,17 @@ func TestRESTScopeCatalogMatchesRegisteredHumaOperations(t *testing.T) {
 	}
 
 	read, write := middleware.RESTScopeOperationCatalog()
+	legacyRead, legacyWrite := middleware.LegacyRESTScopeOperationCatalog()
 	readSet := make(map[string]struct{}, len(read))
+	humaSet := make(map[string]struct{}, len(read)+len(write))
 	for _, operationID := range read {
 		readSet[operationID] = struct{}{}
+		humaSet[operationID] = struct{}{}
 	}
 	for _, operationID := range write {
 		_, overlapsRead := readSet[operationID]
 		require.False(t, overlapsRead, "%s must have one curated access classification", operationID)
+		humaSet[operationID] = struct{}{}
 	}
 
 	protectedTags := map[string]struct{}{"Admin": {}, "Auth": {}, "Billing": {}}
@@ -54,5 +58,19 @@ func TestRESTScopeCatalogMatchesRegisteredHumaOperations(t *testing.T) {
 			_, protected := protectedTags[tag]
 			require.False(t, protected, "curated REST operation %q must not expose protected %s APIs", operationID, tag)
 		}
+	}
+	legacyReadSet := make(map[string]struct{}, len(legacyRead))
+	for _, operationID := range legacyRead {
+		legacyReadSet[operationID] = struct{}{}
+	}
+	for _, operationID := range legacyWrite {
+		_, overlapsRead := legacyReadSet[operationID]
+		require.False(t, overlapsRead, "%s must have one curated legacy access classification", operationID)
+	}
+	for _, operationID := range append(legacyRead, legacyWrite...) {
+		_, exists := registered[operationID]
+		require.False(t, exists, "legacy Echo operation %q must not collide with a registered Huma operation", operationID)
+		_, overlapsHuma := humaSet[operationID]
+		require.False(t, overlapsHuma, "%s must have one curated transport classification", operationID)
 	}
 }

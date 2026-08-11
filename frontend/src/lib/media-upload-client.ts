@@ -159,6 +159,25 @@ export function directUploadHeadersForBrowser(headers: Record<string, string>): 
 	return directHeaders;
 }
 
+export function directUploadRequestPolicy(
+	uploadURL: string,
+	returnedHeaders: Record<string, string>,
+	openPostHeaders: Headers
+): { headers: Headers; isExternal: boolean; withCredentials: boolean } {
+	const headers = directUploadHeadersForBrowser(returnedHeaders);
+	const isExternal = !uploadURL.startsWith('/') || uploadURL.startsWith('//');
+	if (isExternal) {
+		for (const sensitiveHeader of ['Authorization', 'Cookie', 'Proxy-Authorization']) {
+			headers.delete(sensitiveHeader);
+		}
+	} else {
+		for (const [key, value] of openPostHeaders) {
+			if (!headers.has(key)) headers.set(key, value);
+		}
+	}
+	return { headers, isExternal, withCredentials: !isExternal };
+}
+
 export function normalizedUploadErrorMessage(
 	body: string,
 	contentType: string | null,
@@ -268,22 +287,21 @@ async function uploadViaDirectSession(
 			...(metadata.videoProjectId ? { video_project_id: metadata.videoProjectId } : {})
 		};
 	}
-	const uploadHeaders = directUploadHeadersForBrowser(session.upload.headers ?? {});
-	const isExternalUpload = /^https?:\/\//i.test(session.upload.url);
-	if (!isExternalUpload) {
-		for (const [key, value] of apiHeaders(false)) {
-			if (!uploadHeaders.has(key)) uploadHeaders.set(key, value);
-		}
-	}
+	const uploadRequest = directUploadRequestPolicy(
+		session.upload.url,
+		session.upload.headers ?? {},
+		apiHeaders(false)
+	);
+	const uploadHeaders = uploadRequest.headers;
 	if (!uploadHeaders.has('Content-Type') && file.type) {
 		uploadHeaders.set('Content-Type', file.type);
 	}
 	await putBlobWithProgress(
-		isExternalUpload ? session.upload.url : apiURL(session.upload.url),
+		uploadRequest.isExternal ? session.upload.url : apiURL(session.upload.url),
 		session.upload.method || 'PUT',
 		uploadHeaders,
 		file,
-		isExternalUpload,
+		uploadRequest.withCredentials,
 		(fraction) => onProgress?.({ stage: 'uploading', fraction, message: 'Uploading video' }),
 		signal
 	);
@@ -489,7 +507,7 @@ function putBlobWithProgress(
 	method: string,
 	headers: Headers,
 	body: Blob,
-	isExternal: boolean,
+	withCredentials: boolean,
 	onProgress: (fraction: number) => void,
 	signal?: AbortSignal
 ): Promise<void> {
@@ -500,7 +518,7 @@ function putBlobWithProgress(
 		}
 		const xhr = new XMLHttpRequest();
 		xhr.open(method, url);
-		xhr.withCredentials = !isExternal;
+		xhr.withCredentials = withCredentials;
 		headers.forEach((value, key) => xhr.setRequestHeader(key, value));
 		const abort = () => xhr.abort();
 		signal?.addEventListener('abort', abort, { once: true });

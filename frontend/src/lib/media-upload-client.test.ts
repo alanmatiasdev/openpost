@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	directUploadSupportedFromStorageResponse,
 	directUploadHeadersForBrowser,
+	directUploadRequestPolicy,
 	normalizedUploadErrorMessage,
 	shouldUseMultipartFallback,
 	UploadRequestError
@@ -20,6 +21,43 @@ describe('media-upload-client', () => {
 		expect(headers.has('Content-Length')).toBe(false);
 		expect(headers.get('Content-Type')).toBe('image/png');
 		expect(headers.get('x-amz-meta-workspace')).toBe('ws-1');
+	});
+
+	it('sends OpenPost credentials only to instance-hosted upload targets', () => {
+		const openPostHeaders = new Headers({ Authorization: 'Bearer op_cli_secret' });
+		const internal = directUploadRequestPolicy(
+			'/api/v1/media/upload-session/media-1/content',
+			{ 'Content-Type': 'video/mp4' },
+			openPostHeaders
+		);
+		expect(internal.isExternal).toBe(false);
+		expect(internal.withCredentials).toBe(true);
+		expect(internal.headers.get('Authorization')).toBe('Bearer op_cli_secret');
+
+		const external = directUploadRequestPolicy(
+			'https://bucket.example/media-1',
+			{
+				Authorization: 'Bearer must-not-leak',
+				Cookie: 'openpost_session=must-not-leak',
+				'Content-Type': 'video/mp4',
+				'x-amz-meta-workspace': 'ws-1'
+			},
+			openPostHeaders
+		);
+		expect(external.isExternal).toBe(true);
+		expect(external.withCredentials).toBe(false);
+		expect(external.headers.has('Authorization')).toBe(false);
+		expect(external.headers.has('Cookie')).toBe(false);
+		expect(external.headers.get('Content-Type')).toBe('video/mp4');
+		expect(external.headers.get('x-amz-meta-workspace')).toBe('ws-1');
+
+		const protocolRelative = directUploadRequestPolicy(
+			'//bucket.example/media-1',
+			{},
+			openPostHeaders
+		);
+		expect(protocolRelative.isExternal).toBe(true);
+		expect(protocolRelative.headers.has('Authorization')).toBe(false);
 	});
 
 	it('uses multipart uploads only when the storage capability explicitly disables upload sessions', () => {

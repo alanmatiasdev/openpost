@@ -2762,9 +2762,18 @@ func (h *MediaHandler) RegisterLegacyRoutes(e *echo.Echo) {
 	// credentials via the unified Authenticator. AuthMiddleware cannot
 	// be used here because these are raw Echo handlers, not Huma ops.
 	uploadAuth := middleware.BearerMiddleware(h.authn)
+	uploadSessionContentAuth := middleware.BearerMiddleware(
+		h.authn,
+		middleware.RESTOperationUploadMediaSessionContent,
+	)
 	e.POST("/api/v1/media/upload", h.uploadMedia, echoMiddleware.BodyLimit(singleUploadLimit), uploadAuth)
 	e.POST("/api/v1/media/batch-upload", h.batchUploadMedia, echoMiddleware.BodyLimit(batchUploadLimit), uploadAuth)
-	e.PUT("/api/v1/media/upload-session/:id/content", h.uploadMediaSessionContent, echoMiddleware.BodyLimit(singleUploadLimit), uploadAuth)
+	e.PUT(
+		"/api/v1/media/upload-session/:id/content",
+		h.uploadMediaSessionContent,
+		echoMiddleware.BodyLimit(singleUploadLimit),
+		uploadSessionContentAuth,
+	)
 	e.GET("/api/v1/media/metadata", h.mediaMetadata, uploadAuth)
 	e.GET("/media/:id", h.serveMedia, h.optionalMediaAuth())
 	e.HEAD("/media/:id", h.serveMedia, h.optionalMediaAuth())
@@ -3444,8 +3453,6 @@ func (h *MediaHandler) serveMedia(c echo.Context) error {
 	defer file.Close()
 
 	c.Response().Header().Set("Content-Type", media.MimeType)
-	c.Response().Header().Set("Cache-Control", "public, max-age=86400")
-
 	if f, ok := file.(*os.File); ok {
 		if stat, err := f.Stat(); err == nil {
 			http.ServeContent(c.Response(), c.Request(), stat.Name(), stat.ModTime(), f)
@@ -3512,8 +3519,6 @@ func (h *MediaHandler) serveThumbnailSize(c echo.Context) error {
 	}
 
 	c.Response().Header().Set("Content-Type", "image/jpeg")
-	c.Response().Header().Set("Cache-Control", "public, max-age=86400")
-
 	return c.Stream(http.StatusOK, "image/jpeg", file)
 }
 
@@ -3541,7 +3546,6 @@ func (h *MediaHandler) serveVideoPoster(c echo.Context) error {
 	}
 	defer file.Close()
 	c.Response().Header().Set("Content-Type", "image/jpeg")
-	c.Response().Header().Set("Cache-Control", "private, max-age=86400")
 	if f, ok := file.(*os.File); ok {
 		if stat, statErr := f.Stat(); statErr == nil {
 			http.ServeContent(c.Response(), c.Request(), stat.Name(), stat.ModTime(), f)
@@ -3580,16 +3584,23 @@ func (h *MediaHandler) authorizeMediaAccess(c echo.Context, media *models.MediaA
 		if !allowed {
 			return c.JSON(http.StatusForbidden, map[string]string{fieldError: errWorkspaceAccessDenied})
 		}
+		setCredentialMediaCache(c)
 		return nil
 	}
 
 	if token := c.QueryParam("token"); token != "" {
-		if userID := h.userIDFromQueryToken(c.Request().Context(), token); userID != "" {
-			allowed, err := h.userCanAccessWorkspace(c.Request().Context(), media.WorkspaceID, userID)
-			if err != nil {
+		principal, err := h.principalFromQueryToken(c.Request().Context(), token)
+		if errors.Is(err, errMediaQueryTokenScope) {
+			return c.JSON(http.StatusForbidden, map[string]string{fieldError: "token is not authorized for media access"})
+		}
+		if err == nil && principal != nil {
+			middleware.AttachPrincipal(c, principal)
+			allowed, accessErr := h.userCanAccessWorkspace(c.Request().Context(), media.WorkspaceID, principal.UserID)
+			if accessErr != nil {
 				return c.JSON(http.StatusInternalServerError, map[string]string{fieldError: errValidateWorkspaceAccess})
 			}
 			if allowed {
+				setCredentialMediaCache(c)
 				return nil
 			}
 			return c.JSON(http.StatusForbidden, map[string]string{fieldError: errWorkspaceAccessDenied})
@@ -3602,24 +3613,81 @@ func (h *MediaHandler) authorizeMediaAccess(c echo.Context, media *models.MediaA
 		return c.JSON(http.StatusUnauthorized, map[string]string{fieldError: "authentication required"})
 	}
 
+	remainingSeconds := expiresAtUnix - time.Now().UTC().Unix()
+	if remainingSeconds < 0 {
+		remainingSeconds = 0
+	}
+	c.Response().Header().Set("Cache-Control", "public, max-age="+strconv.FormatInt(remainingSeconds, 10))
 	return nil
 }
 
-func (h *MediaHandler) userIDFromQueryToken(ctx context.Context, token string) string {
+var errMediaQueryTokenScope = errors.New("query token scope cannot access media")
+
+func (h *MediaHandler) principalFromQueryToken(ctx context.Context, token string) (*middleware.Principal, error) {
 	if h.authn != nil {
 		principal, err := h.authn.AuthenticateBearer(ctx, token)
-		if err == nil && principal != nil {
-			return principal.UserID
+		if err != nil || principal == nil {
+			return nil, err
 		}
-		return ""
+		if !middleware.PrincipalCanAccessREST(principal) {
+			return nil, errMediaQueryTokenScope
+		}
+		return principal, nil
 	}
 	if h.auth != nil {
 		claims, err := h.auth.ValidateToken(token)
 		if err == nil && claims != nil {
-			return claims.UserID
+			return &middleware.Principal{
+				UserID: claims.UserID, Email: claims.Email, SessionID: claims.SessionID,
+			}, nil
+		}
+		return nil, err
+	}
+	return nil, errors.New("media authentication is unavailable")
+}
+
+func setCredentialMediaCache(c echo.Context) {
+	header := c.Response().Header()
+	header.Set("Cache-Control", "private, max-age=86400")
+	appendVaryHeaders(header, echo.HeaderAuthorization, echo.HeaderCookie)
+}
+
+func appendVaryHeaders(header http.Header, fields ...string) {
+	existingValues := header.Values(echo.HeaderVary)
+	capacity := len(existingValues) + len(fields)
+	values := make([]string, 0, capacity)
+	seen := make(map[string]struct{}, capacity)
+	appendValue := func(value string) bool {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			return false
+		}
+		key := strings.ToLower(value)
+		if _, ok := seen[key]; ok {
+			return false
+		}
+		seen[key] = struct{}{}
+		values = append(values, value)
+		return value == "*"
+	}
+
+	for _, existing := range existingValues {
+		for _, value := range strings.Split(existing, ",") {
+			if appendValue(value) {
+				header.Set(echo.HeaderVary, "*")
+				return
+			}
 		}
 	}
-	return ""
+	for _, field := range fields {
+		if appendValue(field) {
+			header.Set(echo.HeaderVary, "*")
+			return
+		}
+	}
+	if len(values) > 0 {
+		header.Set(echo.HeaderVary, strings.Join(values, ", "))
+	}
 }
 
 func (h *MediaHandler) userCanAccessWorkspace(ctx context.Context, workspaceID, userID string) (bool, error) {

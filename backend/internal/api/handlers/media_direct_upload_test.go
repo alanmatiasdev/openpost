@@ -15,7 +15,9 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humaecho"
 	"github.com/labstack/echo/v4"
+	"github.com/openpost/backend/internal/api/middleware"
 	"github.com/openpost/backend/internal/models"
+	"github.com/openpost/backend/internal/services/apitokens"
 	"github.com/openpost/backend/internal/services/entitlements"
 	"github.com/openpost/backend/internal/services/mediastore"
 	"github.com/openpost/backend/internal/services/usage"
@@ -91,6 +93,15 @@ func (errMediaNotFoundForTest) Error() string {
 }
 
 func newMediaDirectUploadTestServer(t *testing.T, storage mediastore.BlobStorage, entitlement entitlements.Service) *mediaDirectUploadTestServer {
+	return newMediaDirectUploadTestServerWithAuthenticator(t, storage, entitlement, testAuthenticator{})
+}
+
+func newMediaDirectUploadTestServerWithAuthenticator(
+	t *testing.T,
+	storage mediastore.BlobStorage,
+	entitlement entitlements.Service,
+	authenticator middleware.Authenticator,
+) *mediaDirectUploadTestServer {
 	t.Helper()
 
 	db := createHandlerTestDB(
@@ -113,7 +124,7 @@ func newMediaDirectUploadTestServer(t *testing.T, storage mediastore.BlobStorage
 	e := echo.New()
 	api := humaecho.NewWithGroup(e, e.Group("/api/v1"), huma.DefaultConfig("Test", "1.0.0"))
 	usageSvc := usage.NewService(db)
-	handler := NewMediaHandler(db, storage, nil, testAuthenticator{}, nil)
+	handler := NewMediaHandler(db, storage, nil, authenticator, nil)
 	handler.SetUsage(usageSvc)
 	handler.SetEntitlement(entitlement)
 	handler.RegisterRoutes(api)
@@ -121,6 +132,24 @@ func newMediaDirectUploadTestServer(t *testing.T, storage mediastore.BlobStorage
 
 	fakeStorage, _ := storage.(*fakeDirectUploadStorage)
 	return &mediaDirectUploadTestServer{echo: e, db: db, storage: fakeStorage, usage: usageSvc}
+}
+
+type mutableMediaScopeAuthenticator struct {
+	scope       string
+	workspaceID string
+}
+
+func (a *mutableMediaScopeAuthenticator) AuthenticateBearer(
+	_ context.Context,
+	_ string,
+) (*middleware.Principal, error) {
+	return &middleware.Principal{
+		UserID:      "user-1",
+		Email:       "user@example.com",
+		Scope:       a.scope,
+		WorkspaceID: a.workspaceID,
+		TokenID:     "scoped-token",
+	}, nil
 }
 
 func (s *mediaDirectUploadTestServer) postJSON(t *testing.T, path string, body any) *httptest.ResponseRecorder {
@@ -208,6 +237,88 @@ func TestLocalMediaUploadSessionStreamsVideoPastBufferedLimit(t *testing.T) {
 	require.Equal(t, size, media.Size)
 	require.Equal(t, "video/mp4", media.MimeType)
 	require.FileExists(t, media.FilePath)
+}
+
+func TestAPIWriteScopeCompletesBoundLocalMediaUploadSession(t *testing.T) {
+	content := []byte("scoped upload")
+	authenticator := &mutableMediaScopeAuthenticator{
+		scope:       apitokens.ScopeAPIWrite,
+		workspaceID: "ws-1",
+	}
+	srv := newMediaDirectUploadTestServerWithAuthenticator(
+		t,
+		mediastore.NewLocalStorage(t.TempDir(), "/media"),
+		entitlements.NewSelfHostedService(),
+		authenticator,
+	)
+
+	createResp := srv.postJSON(t, "/api/v1/media/upload-session", map[string]any{
+		"workspace_id": "ws-1",
+		"filename":     "scoped.txt",
+		"mime_type":    "text/plain",
+		"size":         len(content),
+	})
+	require.Equal(t, http.StatusOK, createResp.Code, createResp.Body.String())
+	var created map[string]any
+	require.NoError(t, json.Unmarshal(createResp.Body.Bytes(), &created))
+	mediaID := created["media_id"].(string)
+	uploadPath := created["upload"].(map[string]any)["url"].(string)
+
+	upload := func() *httptest.ResponseRecorder {
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPut, uploadPath, bytes.NewReader(content))
+		req.Header.Set("Content-Type", "text/plain")
+		req.Header.Set("Authorization", "Bearer scoped-token")
+		rec := httptest.NewRecorder()
+		srv.echo.ServeHTTP(rec, req)
+		return rec
+	}
+
+	authenticator.scope = apitokens.ScopeAPIRead
+	require.Equal(t, http.StatusForbidden, upload().Code)
+
+	authenticator.scope = apitokens.ScopeAPIWrite
+	authenticator.workspaceID = "ws-2"
+	require.Equal(t, http.StatusForbidden, upload().Code)
+
+	authenticator.workspaceID = "ws-1"
+	require.Equal(t, http.StatusNoContent, upload().Code)
+
+	completeResp := srv.postJSON(t, "/api/v1/media/upload-session/"+mediaID+"/complete", map[string]any{
+		"workspace_id": "ws-1",
+	})
+	require.Equal(t, http.StatusOK, completeResp.Code, completeResp.Body.String())
+	var completed MediaUploadResult
+	require.NoError(t, json.Unmarshal(completeResp.Body.Bytes(), &completed))
+	require.Equal(t, mediaID, completed.ID)
+	require.Equal(t, int64(len(content)), completed.Size)
+}
+
+func TestAPIWriteScopeRejectsUncataloguedLegacyMediaRoutes(t *testing.T) {
+	authenticator := &mutableMediaScopeAuthenticator{
+		scope:       apitokens.ScopeAPIWrite,
+		workspaceID: "ws-1",
+	}
+	srv := newMediaDirectUploadTestServerWithAuthenticator(
+		t,
+		mediastore.NewLocalStorage(t.TempDir(), "/media"),
+		entitlements.NewSelfHostedService(),
+		authenticator,
+	)
+
+	for _, request := range []struct {
+		method string
+		path   string
+	}{
+		{method: http.MethodPost, path: "/api/v1/media/upload"},
+		{method: http.MethodPost, path: "/api/v1/media/batch-upload"},
+		{method: http.MethodGet, path: "/api/v1/media/metadata"},
+	} {
+		req := httptest.NewRequestWithContext(t.Context(), request.method, request.path, nil)
+		req.Header.Set("Authorization", "Bearer scoped-token")
+		rec := httptest.NewRecorder()
+		srv.echo.ServeHTTP(rec, req)
+		require.Equal(t, http.StatusForbidden, rec.Code, "%s %s", request.method, request.path)
+	}
 }
 
 func TestValidateBrandFontContent(t *testing.T) {
