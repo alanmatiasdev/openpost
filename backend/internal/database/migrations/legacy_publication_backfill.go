@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/openpost/backend/internal/jobregistry"
 	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/services/providerwrite"
 	"github.com/openpost/backend/internal/services/publicationauth"
@@ -339,7 +340,7 @@ func runLegacyJobScopeBackfillBatch(
 	var jobs []models.Job
 	if err := db.NewSelect().Model(&jobs).
 		Where("id IN (?)", bun.List(windowIDs)).
-		Where("type IN (?)", bun.List([]string{"publish_post", "publish_publication"})).
+		Where("type IN (?)", bun.List([]string{jobregistry.TypePublishPost, jobregistry.TypePublishPublication})).
 		Where("scope_id = ''").
 		Scan(ctx); err != nil {
 		return false, fmt.Errorf("filter legacy publication job scope window: %w", err)
@@ -365,7 +366,7 @@ func repairPendingLegacyPublicationJobScopes(ctx context.Context, db *bun.DB) er
 		if err := db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
 			var jobs []models.Job
 			if err := tx.NewSelect().Model(&jobs).
-				Where("type IN (?)", bun.List([]string{"publish_post", "publish_publication"})).
+				Where("type IN (?)", bun.List([]string{jobregistry.TypePublishPost, jobregistry.TypePublishPublication})).
 				Where("status IN (?, ?)", "pending", "processing").
 				Where("scope_id = ''").
 				Order("type ASC", "scope_id ASC", "status ASC", "run_at ASC", "id ASC").
@@ -487,7 +488,7 @@ func repairProtectedLegacyPublicationJobs(ctx context.Context, tx bun.Tx, attemp
 	}
 	var jobs []models.Job
 	if err := tx.NewSelect().Model(&jobs).Where("id IN (?)", bun.List(uniqueLegacyPublicationJobIDs(jobIDs))).
-		Where("type IN (?)", bun.List([]string{"publish_post", "publish_publication"})).
+		Where("type IN (?)", bun.List([]string{jobregistry.TypePublishPost, jobregistry.TypePublishPublication})).
 		Where("status = ?", "failed").Where("scope_id = ''").Scan(ctx); err != nil {
 		return fmt.Errorf("filter protected failed publication attempt window: %w", err)
 	}
@@ -537,7 +538,7 @@ func requeueStaleLegacyPublicationJobs(ctx context.Context, db *bun.DB) error {
 	}
 	var jobIDs []string
 	if err := db.NewSelect().Model((*models.Job)(nil)).Column("id").
-		Where("type IN (?)", bun.List([]string{"publish_post", "publish_publication"})).
+		Where("type IN (?)", bun.List([]string{jobregistry.TypePublishPost, jobregistry.TypePublishPublication})).
 		Where("status = ?", "processing").
 		Where("locked_at IS NOT NULL AND locked_at <= ?", cutoff).
 		Order("id ASC").
@@ -558,7 +559,7 @@ func migratePendingLegacyPublishPostJobs(ctx context.Context, db *bun.DB) error 
 	return processPendingLegacyPublicationJobs(
 		ctx,
 		db,
-		"publish_post",
+		jobregistry.TypePublishPost,
 		"load pending legacy publish_post jobs",
 		migratePendingLegacyPublishPostJob,
 	)
@@ -600,7 +601,7 @@ func processPendingLegacyPublicationJobs(
 func migratePendingLegacyPublishPostJob(ctx context.Context, db *bun.DB, jobID string) error {
 	var current models.Job
 	err := db.NewSelect().Model(&current).
-		Where("id = ? AND type = ? AND status = ?", jobID, "publish_post", "pending").
+		Where("id = ? AND type = ? AND status = ?", jobID, jobregistry.TypePublishPost, jobregistry.StatusPending).
 		Scan(ctx)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
@@ -636,7 +637,7 @@ func migratePendingLegacyPublishPostJob(ctx context.Context, db *bun.DB, jobID s
 		return fmt.Errorf("migrate pending legacy publish_post job %s: %w", current.ID, err)
 	}
 	remaining, err := db.NewSelect().Model((*models.Job)(nil)).
-		Where("id = ? AND type = ? AND status = ?", current.ID, "publish_post", "pending").
+		Where("id = ? AND type = ? AND status = ?", current.ID, jobregistry.TypePublishPost, jobregistry.StatusPending).
 		Count(ctx)
 	if err != nil {
 		return fmt.Errorf("verify pending legacy publish_post job %s migration: %w", current.ID, err)
@@ -657,7 +658,7 @@ func authorizePendingLegacyPublicationJobs(ctx context.Context, db *bun.DB) erro
 	return processPendingLegacyPublicationJobs(
 		ctx,
 		db,
-		"publish_publication",
+		jobregistry.TypePublishPublication,
 		"load pending legacy publication authorization jobs",
 		authorizePendingLegacyPublicationJob,
 	)
@@ -705,7 +706,7 @@ func lockPendingLegacyPublicationAuthorizationJob(ctx context.Context, tx bun.Tx
 	if tx.Dialect().Name() == dialect.SQLite {
 		result, err := tx.NewUpdate().Model((*models.Job)(nil)).
 			Set("id = id").
-			Where("id = ? AND type = ? AND status = ?", jobID, "publish_publication", "pending").
+			Where("id = ? AND type = ? AND status = ?", jobID, jobregistry.TypePublishPublication, jobregistry.StatusPending).
 			Exec(ctx)
 		if err != nil {
 			return false, err
@@ -715,7 +716,7 @@ func lockPendingLegacyPublicationAuthorizationJob(ctx context.Context, tx bun.Tx
 	}
 	var lockedID string
 	query := tx.NewSelect().Model((*models.Job)(nil)).Column("id").
-		Where("id = ? AND type = ? AND status = ?", jobID, "publish_publication", "pending")
+		Where("id = ? AND type = ? AND status = ?", jobID, jobregistry.TypePublishPublication, jobregistry.StatusPending)
 	if tx.Dialect().Name() == dialect.PG {
 		query = query.For("UPDATE")
 	}
@@ -793,7 +794,7 @@ func lockStaleLegacyPublicationJob(
 	var job models.Job
 	query := tx.NewSelect().Model(&job).
 		Where("id = ?", jobID).
-		Where("type IN (?)", bun.List([]string{"publish_post", "publish_publication"})).
+		Where("type IN (?)", bun.List([]string{jobregistry.TypePublishPost, jobregistry.TypePublishPublication})).
 		Where("status = ?", "processing").
 		Where("locked_at IS NOT NULL AND locked_at <= ?", cutoff)
 	if tx.Dialect().Name() == dialect.PG {
@@ -831,7 +832,7 @@ func reconcileStaleLegacyPublicationJobTx(
 	if strings.TrimSpace(job.ScopeID) == "" {
 		return errors.New("stale legacy publication job aggregate scope is missing")
 	}
-	if job.Type == "publish_post" {
+	if job.Type == jobregistry.TypePublishPost {
 		return reconcileStaleLegacyPublishPostJobTx(ctx, tx, job, cutoff)
 	}
 	return reconcileStaleCanonicalPublicationJobTx(ctx, tx, job, cutoff)
@@ -841,10 +842,10 @@ func lockStaleLegacyPublicationAggregate(ctx context.Context, tx bun.Tx, candida
 	if strings.TrimSpace(candidate.ScopeID) == "" {
 		return nil
 	}
-	if candidate.Type == "publish_publication" {
+	if candidate.Type == jobregistry.TypePublishPublication {
 		return lockLegacyPublicationRow(ctx, tx, candidate.ScopeID)
 	}
-	if candidate.Type != "publish_post" {
+	if candidate.Type != jobregistry.TypePublishPost {
 		return nil
 	}
 	// Match compatibility request lock order: aggregate advisory, linked
@@ -1195,7 +1196,7 @@ func lockRecoverableLegacyPublishPostJobs(
 ) ([]models.Job, error) {
 	var jobs []models.Job
 	query := tx.NewSelect().Model(&jobs).
-		Where("type = ?", "publish_post").
+		Where("type = ?", jobregistry.TypePublishPost).
 		Where("scope_id IN (?)", bun.List(postIDs)).
 		WhereGroup(" AND ", func(query *bun.SelectQuery) *bun.SelectQuery {
 			return query.
@@ -1260,7 +1261,7 @@ func quarantineConflictingPendingLegacyPublishPostJob(ctx context.Context, db bu
 		Set("last_error = ?", "Another delivery for this post may still be active. OpenPost preserved that operation and did not start this duplicate job.").
 		Set("locked_at = NULL").
 		Set("locked_by = ''").
-		Where("id = ? AND type = ? AND status = ?", jobID, "publish_post", "pending").
+		Where("id = ? AND type = ? AND status = ?", jobID, jobregistry.TypePublishPost, jobregistry.StatusPending).
 		Exec(ctx)
 	if err != nil {
 		return err
@@ -1322,7 +1323,7 @@ func legacyPublicationJobHasProtectedAttempt(ctx context.Context, db bun.IDB, jo
 func verifyPendingLegacyPublicationJobAuthorization(ctx context.Context, db bun.IDB, jobID string) error {
 	var job models.Job
 	if err := db.NewSelect().Model(&job).
-		Where("id = ? AND type = ? AND status = ?", jobID, "publish_publication", "pending").
+		Where("id = ? AND type = ? AND status = ?", jobID, jobregistry.TypePublishPublication, jobregistry.StatusPending).
 		Scan(ctx); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil
@@ -1397,7 +1398,7 @@ func legacyPublicationJobPayloadScope(job *models.Job) string {
 		return ""
 	}
 	key := "publication_id"
-	if job.Type == "publish_post" {
+	if job.Type == jobregistry.TypePublishPost {
 		key = "post_id"
 	}
 	scopeID, _ := payload[key].(string)
@@ -1490,7 +1491,7 @@ func runLegacyAuthorizationBackfillBatch(
 	var jobs []models.Job
 	if err := db.NewSelect().Model(&jobs).
 		Where("id IN (?)", bun.List(windowIDs)).
-		Where("type = ? AND status = ?", "publish_publication", "pending").
+		Where("type = ? AND status = ?", jobregistry.TypePublishPublication, jobregistry.StatusPending).
 		Where("scope_id <> ''").
 		Scan(ctx); err != nil {
 		return false, fmt.Errorf("filter legacy publication authorization window: %w", err)

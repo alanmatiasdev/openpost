@@ -16,6 +16,43 @@ import (
 	"github.com/uptrace/bun/dialect/sqlitedialect"
 )
 
+func TestDefinitionsCoverEveryExecutableJobKind(t *testing.T) {
+	t.Parallel()
+
+	expected := []string{
+		TypePublishPost, TypePublishPublication, TypeRefreshToken, TypeMediaCleanup,
+		TypeStorageDelete, TypeFeedbackDelivery, TypeAnalyticsSweep, TypeAnalyticsAccount,
+		TypeAnalyticsRendition, TypeBillingWebhook, TypeCommunicationsSweep, TypeEngagementSync,
+		TypeMessagesSync, TypeEngagementAction, TypeMessageSend, TypeNotificationEmail,
+		TypeRepostSweep, TypeRepostEvaluate, TypeRepostExecute, TypeMediaAnalyze,
+	}
+	definitions := Definitions()
+	actual := make([]string, 0, len(definitions))
+	for _, definition := range definitions {
+		actual = append(actual, definition.Type)
+		require.NotEmpty(t, definition.Execution, definition.Type)
+		require.NotEmpty(t, definition.Failure, definition.Type)
+		require.NotEmpty(t, definition.Recovery, definition.Type)
+		require.Positive(t, definition.DefaultMaxAttempts, definition.Type)
+	}
+	require.ElementsMatch(t, expected, actual)
+}
+
+func TestNewJobUsesRegisteredDurablePolicy(t *testing.T) {
+	t.Parallel()
+
+	runAt := time.Date(2026, time.August, 11, 12, 0, 0, 0, time.UTC)
+	job, err := NewJob(TypeMessageSend, `{"message_id":"message-1"}`, runAt)
+	require.NoError(t, err)
+	require.Equal(t, TypeMessageSend, job.Type)
+	require.Equal(t, StatusPending, job.Status)
+	require.Equal(t, 1, job.MaxAttempts)
+	require.Equal(t, runAt, job.RunAt)
+
+	_, err = NewJob("unknown", `{}`, runAt)
+	require.ErrorContains(t, err, "not registered")
+}
+
 func TestMediaCleanupPayloadRetiresClientSuppliedDays(t *testing.T) {
 	t.Parallel()
 

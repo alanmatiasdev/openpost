@@ -1,5 +1,7 @@
 package handlers
 
+import "github.com/openpost/backend/internal/jobregistry"
+
 const (
 	tagAuth              = "Auth"
 	tagAccounts          = "Accounts"
@@ -29,11 +31,11 @@ const (
 	errMediaNotFound            = "media not found"
 	mediaSortSize               = "size"
 	postStatusPending           = "pending"
-	jobStatusPending            = "pending"
-	jobStatusProcessing         = "processing"
+	jobStatusPending            = jobregistry.StatusPending
+	jobStatusProcessing         = jobregistry.StatusProcessing
 	postIDKey                   = "post_id"
-	jobTypePublishPost          = "publish_post"
-	jobTypePublishPublication   = "publish_publication"
+	jobTypePublishPost          = jobregistry.TypePublishPost
+	jobTypePublishPublication   = jobregistry.TypePublishPublication
 	postPathByID                = "/posts/{id}"
 	postPathVariants            = "/posts/{id}/variants"
 	postingLabelEarlyMorning    = "Early Morning"

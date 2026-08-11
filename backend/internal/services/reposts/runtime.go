@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/openpost/backend/internal/jobregistry"
 	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/platform"
 	"github.com/openpost/backend/internal/services/lifecycle"
@@ -28,7 +29,7 @@ func (s *Service) ScheduleSweep(ctx context.Context, runAt time.Time) error {
 	if err != nil {
 		return fmt.Errorf("encode repost sweep: %w", err)
 	}
-	err = s.enqueue(ctx, JobTypeSweep, string(payload), runAt, 3)
+	err = s.enqueue(ctx, JobTypeSweep, string(payload), runAt)
 	return err
 }
 
@@ -190,12 +191,10 @@ func (s *Service) handleSweep(ctx context.Context) error {
 	}
 	for _, execution := range due {
 		jobType := JobTypeEvaluate
-		maxAttempts := 3
 		if execution.Status == StatusReady {
 			jobType = JobTypeExecute
-			maxAttempts = 1
 		}
-		if err := s.enqueueExecution(ctx, execution.ID, jobType, now, maxAttempts); err != nil {
+		if err := s.enqueueExecution(ctx, execution.ID, jobType, now); err != nil {
 			combined = errors.Join(combined, err)
 		}
 	}
@@ -253,7 +252,7 @@ func (s *Service) createExecution(
 	if inserted == 0 {
 		return nil
 	}
-	if err := s.enqueueExecution(ctx, execution.ID, JobTypeEvaluate, execution.NextCheckAt, 3); err != nil {
+	if err := s.enqueueExecution(ctx, execution.ID, JobTypeEvaluate, execution.NextCheckAt); err != nil {
 		return err
 	}
 	s.recordEvent(ctx, *execution, lifecycle.StatusStarted, "repost scheduled", map[string]any{
@@ -303,7 +302,7 @@ func (s *Service) evaluate(ctx context.Context, executionID string) error {
 		if _, err := s.db.NewUpdate().Model(execution).Column("status", "next_check_at", "check_count", "last_metrics_json", "updated_at").Where("id = ? AND status = ?", execution.ID, StatusPending).Exec(ctx); err != nil {
 			return err
 		}
-		return s.enqueueExecution(ctx, execution.ID, JobTypeExecute, now, 1)
+		return s.enqueueExecution(ctx, execution.ID, JobTypeExecute, now)
 	}
 	if !now.Before(execution.DeadlineAt) {
 		return s.finishExecution(ctx, execution, "threshold_not_met", "Engagement did not meet the repost rule before its evaluation window ended.")
@@ -485,7 +484,7 @@ func (s *Service) rescheduleEvaluation(ctx context.Context, execution *models.Re
 	if _, err := s.db.NewUpdate().Model(execution).Column("next_check_at", "updated_at").Where("id = ? AND status = ?", execution.ID, StatusPending).Exec(ctx); err != nil {
 		return err
 	}
-	return s.enqueueExecution(ctx, execution.ID, JobTypeEvaluate, runAt, 3)
+	return s.enqueueExecution(ctx, execution.ID, JobTypeEvaluate, runAt)
 }
 
 func (s *Service) rescheduleEvaluationWithMetrics(ctx context.Context, execution *models.RepostExecution, runAt time.Time) error {
@@ -495,7 +494,7 @@ func (s *Service) rescheduleEvaluationWithMetrics(ctx context.Context, execution
 		Where("id = ? AND status = ?", execution.ID, StatusPending).Exec(ctx); err != nil {
 		return err
 	}
-	return s.enqueueExecution(ctx, execution.ID, JobTypeEvaluate, runAt, 3)
+	return s.enqueueExecution(ctx, execution.ID, JobTypeEvaluate, runAt)
 }
 
 func (s *Service) finishExecution(ctx context.Context, execution *models.RepostExecution, code, message string) error {
@@ -537,26 +536,27 @@ func (s *Service) markExecutionFailed(ctx context.Context, execution *models.Rep
 	})
 }
 
-func (s *Service) enqueueExecution(ctx context.Context, executionID, jobType string, runAt time.Time, maxAttempts int) error {
+func (s *Service) enqueueExecution(ctx context.Context, executionID, jobType string, runAt time.Time) error {
 	payload, err := json.Marshal(struct {
 		ExecutionID string `json:"execution_id"`
 	}{ExecutionID: executionID})
 	if err != nil {
 		return err
 	}
-	err = s.enqueue(ctx, jobType, string(payload), runAt, maxAttempts)
+	err = s.enqueue(ctx, jobType, string(payload), runAt)
 	return err
 }
 
-func (s *Service) enqueue(ctx context.Context, jobType, payload string, runAt time.Time, maxAttempts int) error {
+func (s *Service) enqueue(ctx context.Context, jobType, payload string, runAt time.Time) error {
 	exists, err := s.db.NewSelect().Model((*models.Job)(nil)).
 		Where("type = ? AND payload = ? AND status IN (?, ?)", jobType, payload, "pending", "processing").
 		Exists(ctx)
 	if err != nil || exists {
 		return err
 	}
-	job := &models.Job{
-		ID: uuid.NewString(), Type: jobType, Payload: payload, Status: "pending", RunAt: runAt.UTC(), MaxAttempts: maxAttempts,
+	job, err := jobregistry.NewJob(jobType, payload, runAt)
+	if err != nil {
+		return err
 	}
 	if _, err := s.db.NewInsert().Model(job).On("CONFLICT DO NOTHING").Exec(ctx); err != nil {
 		return fmt.Errorf("enqueue %s: %w", jobType, err)

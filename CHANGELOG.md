@@ -6,6 +6,7 @@ All notable changes to this project are documented in this file.
 
 ### Changed
 
+- Centralized all durable job kinds, construction defaults, execution dispatch, retry classification, recurrence, stale-worker recovery, and ambiguous provider-write fencing in the job registry so producers, migrations, and workers share one policy.
 - Added repository-owned engineering workflow skills and documented the GitHub issue tracker, triage labels, and single-context domain-document conventions used by agents.
 
 ## [3.7.3] - 2026-08-11

@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/openpost/backend/internal/jobregistry"
 	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/services/mediaanalysis"
 	"github.com/openpost/backend/internal/services/mediastore"
@@ -20,7 +21,7 @@ import (
 )
 
 const (
-	JobTypeAnalyze = "media_analyze"
+	JobTypeAnalyze = jobregistry.TypeMediaAnalyze
 
 	statusPending    = "pending"
 	statusProcessing = "processing"
@@ -59,14 +60,11 @@ func (s *Service) EnqueueAnalysis(ctx context.Context, mediaID string) error {
 	err = s.db.NewSelect().Model(&existing).Where("id = ?", jobID).Scan(ctx)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
-		job := &models.Job{
-			ID:          jobID,
-			Type:        JobTypeAnalyze,
-			Payload:     string(payload),
-			Status:      statusPending,
-			RunAt:       time.Now().UTC(),
-			MaxAttempts: 3,
+		job, newJobErr := jobregistry.NewJob(JobTypeAnalyze, string(payload), time.Now().UTC())
+		if newJobErr != nil {
+			return newJobErr
 		}
+		job.ID = jobID
 		_, err = s.db.NewInsert().Model(job).Ignore().Exec(ctx)
 		return err
 	case err != nil:

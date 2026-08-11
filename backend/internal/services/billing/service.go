@@ -14,6 +14,7 @@ import (
 
 	"github.com/PaddleHQ/paddle-go-sdk/v5"
 	"github.com/google/uuid"
+	"github.com/openpost/backend/internal/jobregistry"
 	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/services/entitlements"
 	"github.com/uptrace/bun"
@@ -22,7 +23,7 @@ import (
 
 const (
 	ProviderPaddle = models.BillingProviderPaddle
-	JobTypeWebhook = "billing_paddle_webhook"
+	JobTypeWebhook = jobregistry.TypeBillingWebhook
 	TrialDays      = 14
 )
 
@@ -511,20 +512,20 @@ func (s *Service) AcceptPaddleWebhook(ctx context.Context, body []byte, signatur
 		if !eventNeedsReconciliation(event.EventType) {
 			return nil
 		}
-		job := &models.Job{
-			ID:          uuid.NewString(),
-			Type:        JobTypeWebhook,
-			Payload:     string(body),
-			Status:      "pending",
-			RunAt:       s.now().UTC(),
-			MaxAttempts: 8,
-		}
-		if _, err := tx.NewInsert().Model(job).Exec(txCtx); err != nil {
-			return fmt.Errorf("queueing Paddle webhook: %w", err)
-		}
-		return nil
+		return enqueueWebhookJob(txCtx, tx, body, s.now().UTC())
 	})
 	return result, err
+}
+
+func enqueueWebhookJob(ctx context.Context, db bun.IDB, body []byte, runAt time.Time) error {
+	job, err := jobregistry.NewJob(JobTypeWebhook, string(body), runAt)
+	if err != nil {
+		return err
+	}
+	if _, err := db.NewInsert().Model(job).Exec(ctx); err != nil {
+		return fmt.Errorf("queueing Paddle webhook: %w", err)
+	}
+	return nil
 }
 
 func eventNeedsReconciliation(eventType string) bool {

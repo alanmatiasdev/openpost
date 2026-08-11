@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/openpost/backend/internal/jobregistry"
 	"github.com/openpost/backend/internal/models"
 	"github.com/uptrace/bun"
 )
@@ -42,7 +43,7 @@ func AuthorizeLegacyJobs(ctx context.Context, db bun.IDB, input LegacyJobsInput)
 
 	var jobs []models.Job
 	query := db.NewSelect().Model(&jobs).
-		Where("type = ? AND status = ?", "publish_publication", "pending").
+		Where("type = ? AND status = ?", jobregistry.TypePublishPublication, jobregistry.StatusPending).
 		Order("run_at ASC", "id ASC")
 	if input.JobID != "" {
 		query = query.Where("id = ?", input.JobID)
@@ -233,7 +234,7 @@ func bindLegacyJobAuthorization(
 	}
 	result, err := db.NewUpdate().Model((*models.Job)(nil)).
 		Set("payload = ?", string(encoded)).
-		Where("id = ? AND type = ? AND status = ?", job.ID, "publish_publication", "pending").
+		Where("id = ? AND type = ? AND status = ?", job.ID, jobregistry.TypePublishPublication, jobregistry.StatusPending).
 		Exec(ctx)
 	if err != nil {
 		return fmt.Errorf("bind legacy publication job %s to authorization: %w", job.ID, err)

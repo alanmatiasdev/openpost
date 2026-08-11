@@ -7,12 +7,14 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/openpost/backend/internal/jobregistry"
 )
 
 const (
-	JobTypeSweep    = "repost_sweep"
-	JobTypeEvaluate = "repost_evaluate"
-	JobTypeExecute  = "repost_execute"
+	JobTypeSweep    = jobregistry.TypeRepostSweep
+	JobTypeEvaluate = jobregistry.TypeRepostEvaluate
+	JobTypeExecute  = jobregistry.TypeRepostExecute
 
 	ModeInherit = "inherit"
 	ModeOff     = "off"

@@ -11,13 +11,14 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/openpost/backend/internal/jobregistry"
 	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/services/passwordmail"
 	"github.com/uptrace/bun"
 )
 
 const (
-	JobTypeEmailDelivery      = "notification_email"
+	JobTypeEmailDelivery      = jobregistry.TypeNotificationEmail
 	TypePostPublished         = "post_published"
 	TypePublishFailed         = "publish_failed"
 	TypeAccountNeedsAttention = "account_needs_attention"
@@ -195,10 +196,11 @@ func (s *Service) enqueueEmailWithDB(ctx context.Context, db bun.IDB, input Crea
 	if err != nil {
 		return fmt.Errorf("encode notification email job: %w", err)
 	}
-	job := &models.Job{
-		ID: jobID, Type: JobTypeEmailDelivery, Payload: string(payload), Status: "pending",
-		RunAt: s.now(), MaxAttempts: 5,
+	job, err := jobregistry.NewJob(JobTypeEmailDelivery, string(payload), s.now())
+	if err != nil {
+		return err
 	}
+	job.ID = jobID
 	_, err = db.NewInsert().Model(job).On("CONFLICT DO NOTHING").Exec(ctx)
 	return err
 }

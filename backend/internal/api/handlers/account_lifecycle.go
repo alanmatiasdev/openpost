@@ -14,8 +14,8 @@ import (
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
-	"github.com/google/uuid"
 	"github.com/openpost/backend/internal/api/middleware"
+	"github.com/openpost/backend/internal/jobregistry"
 	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/queue"
 	"github.com/openpost/backend/internal/services/auth"
@@ -894,14 +894,14 @@ func enqueueStorageCleanup(ctx context.Context, tx bun.Tx, objectKeys []string) 
 		if err != nil {
 			return nil, err
 		}
-		jobID := uuid.NewString()
-		if _, err := tx.NewInsert().Model(&models.Job{
-			ID: jobID, Type: "storage_delete", Payload: string(payload),
-			Status: "pending", RunAt: time.Now().UTC(), MaxAttempts: 10,
-		}).Exec(ctx); err != nil {
+		job, err := jobregistry.NewJob(jobregistry.TypeStorageDelete, string(payload), time.Now().UTC())
+		if err != nil {
 			return nil, err
 		}
-		jobIDs = append(jobIDs, jobID)
+		if _, err := tx.NewInsert().Model(job).Exec(ctx); err != nil {
+			return nil, err
+		}
+		jobIDs = append(jobIDs, job.ID)
 	}
 	return jobIDs, nil
 }

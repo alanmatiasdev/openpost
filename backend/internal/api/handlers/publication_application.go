@@ -9,6 +9,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
 	"github.com/openpost/backend/internal/capabilities"
+	"github.com/openpost/backend/internal/jobregistry"
 	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/services/drafts"
 	"github.com/openpost/backend/internal/services/lifecycle"
@@ -346,7 +347,12 @@ func (commands publicationCommands) retryRenditionTx(
 	if err := commands.markRetryRenditionScheduledTx(ctx, tx, publication.ID, now); err != nil {
 		return err
 	}
-	job := &models.Job{ID: jobID, Type: jobTypePublishPublication, ScopeID: publication.ID, Payload: payload, Status: jobStatusPending, RunAt: now, MaxAttempts: 3}
+	job, err := jobregistry.NewJob(jobTypePublishPublication, payload, now)
+	if err != nil {
+		return err
+	}
+	job.ID = jobID
+	job.ScopeID = publication.ID
 	if _, err = tx.NewInsert().Model(job).Exec(ctx); err != nil {
 		return err
 	}
@@ -454,15 +460,13 @@ func (commands publicationCommands) RetryFailedRenditions(
 			Exec(txCtx); err != nil && !isMissingLegacyPostsTable(err) {
 			return err
 		}
-		if _, err := tx.NewInsert().Model(&models.Job{
-			ID:          jobID,
-			Type:        jobTypePublishPublication,
-			ScopeID:     publication.ID,
-			Payload:     payload,
-			Status:      jobStatusPending,
-			RunAt:       now,
-			MaxAttempts: 3,
-		}).Exec(txCtx); err != nil {
+		job, err := jobregistry.NewJob(jobTypePublishPublication, payload, now)
+		if err != nil {
+			return err
+		}
+		job.ID = jobID
+		job.ScopeID = publication.ID
+		if _, err := tx.NewInsert().Model(job).Exec(txCtx); err != nil {
 			return err
 		}
 		targets := make([]publicationauth.JobTarget, 0, len(retryRenditions))

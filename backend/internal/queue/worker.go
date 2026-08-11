@@ -31,12 +31,12 @@ import (
 const (
 	// StorageDeleteMaxKeys is the largest storage deletion payload the worker accepts.
 	StorageDeleteMaxKeys      = 10_000
-	jobTypePublishPost        = "publish_post"
-	jobTypePublishPublication = "publish_publication"
-	jobStatusPending          = jobregistry.StatusPending
+	jobTypePublishPost        = jobregistry.TypePublishPost
+	jobTypePublishPublication = jobregistry.TypePublishPublication
 	jobTypeMediaCleanup       = jobregistry.TypeMediaCleanup
-	jobTypeStorageDelete      = "storage_delete"
-	jobTypeRefreshToken       = "refresh_token"
+	jobTypeStorageDelete      = jobregistry.TypeStorageDelete
+	jobTypeRefreshToken       = jobregistry.TypeRefreshToken
+	jobStatusPending          = jobregistry.StatusPending
 	jobStatusProcessing       = jobregistry.StatusProcessing
 	jobStatusFailed           = jobregistry.StatusFailed
 	jobStatusCompleted        = jobregistry.StatusCompleted
@@ -59,47 +59,115 @@ type BackgroundWorker struct {
 	notifications  *notifications.Service
 	reposts        *repostservice.Service
 	video          *videoprocessing.Service
+	executors      map[jobregistry.ExecutionKind]jobExecutor
 	done           chan struct{}
 }
 
+type jobExecutor func(context.Context, *models.Job) error
+
 func (w *BackgroundWorker) SetFeedbackService(service *feedback.Service) {
 	w.feedback = service
+	w.executors[jobregistry.ExecuteFeedback] = func(ctx context.Context, job *models.Job) error {
+		if w.feedback == nil {
+			return fmt.Errorf("feedback delivery is not configured")
+		}
+		return w.feedback.HandleDeliveryJob(ctx, job.Payload)
+	}
 }
 
 func (w *BackgroundWorker) SetAnalyticsService(service *analyticsservice.Service) {
 	w.analytics = service
+	w.executors[jobregistry.ExecuteAnalytics] = func(ctx context.Context, job *models.Job) error {
+		if w.analytics == nil {
+			return fmt.Errorf("analytics collection is not configured")
+		}
+		return w.analytics.HandleJob(ctx, job.Type, job.Payload)
+	}
 }
 
 func (w *BackgroundWorker) SetBillingService(service *billingservice.Service) {
 	w.billing = service
+	w.executors[jobregistry.ExecuteBilling] = func(ctx context.Context, job *models.Job) error {
+		if w.billing == nil {
+			return fmt.Errorf("billing reconciliation is not configured")
+		}
+		return w.billing.HandleJob(ctx, job.Type, job.Payload)
+	}
 }
 
 func (w *BackgroundWorker) SetCommunicationsService(service *communicationsservice.Service) {
 	w.communications = service
+	w.executors[jobregistry.ExecuteCommunications] = func(ctx context.Context, job *models.Job) error {
+		if w.communications == nil {
+			return fmt.Errorf("communications collection is not configured")
+		}
+		return w.communications.HandleJob(ctx, job.Type, job.Payload)
+	}
 }
 
 func (w *BackgroundWorker) SetNotificationService(service *notifications.Service) {
 	w.notifications = service
+	w.executors[jobregistry.ExecuteNotification] = func(ctx context.Context, job *models.Job) error {
+		if w.notifications == nil {
+			return fmt.Errorf("notification delivery is not configured")
+		}
+		return w.notifications.HandleJob(ctx, job.Type, job.Payload)
+	}
 }
 
 func (w *BackgroundWorker) SetRepostService(service *repostservice.Service) {
 	w.reposts = service
+	w.executors[jobregistry.ExecuteRepost] = func(ctx context.Context, job *models.Job) error {
+		if w.reposts == nil {
+			return fmt.Errorf("repost automation is not configured")
+		}
+		return w.reposts.HandleJob(ctx, job.Type, job.Payload)
+	}
 }
 
 func (w *BackgroundWorker) SetVideoProcessingService(service *videoprocessing.Service) {
 	w.video = service
+	w.executors[jobregistry.ExecuteVideo] = func(ctx context.Context, job *models.Job) error {
+		if w.video == nil {
+			return fmt.Errorf("video processing is not configured")
+		}
+		return w.video.HandleJob(ctx, job.Type, job.Payload)
+	}
 }
 
 func NewWorker(db *bun.DB, id string, interval time.Duration, pub *publisher.Service, tokens *tokenmanager.TokenManager, storage mediastore.BlobStorage) *BackgroundWorker {
-	return &BackgroundWorker{
+	w := &BackgroundWorker{
 		db:        db,
 		workerID:  id,
 		interval:  interval,
 		publisher: pub,
 		tokens:    tokens,
 		storage:   storage,
+		executors: map[jobregistry.ExecutionKind]jobExecutor{},
 		done:      make(chan struct{}),
 	}
+	w.executors[jobregistry.ExecutePublishPost] = func(ctx context.Context, job *models.Job) error {
+		if w.publisher == nil {
+			return fmt.Errorf("publishing is not configured")
+		}
+		return w.publisher.HandlePublishJob(ctx, job.Payload)
+	}
+	w.executors[jobregistry.ExecutePublishPublication] = func(ctx context.Context, job *models.Job) error {
+		if w.publisher == nil {
+			return fmt.Errorf("publishing is not configured")
+		}
+		return w.publisher.HandlePublishPublicationJob(ctx, job.Payload)
+	}
+	w.executors[jobregistry.ExecuteRefreshToken] = func(ctx context.Context, job *models.Job) error {
+		return w.handleRefreshTokenJob(ctx, job.Payload)
+	}
+	w.executors[jobregistry.ExecuteMediaCleanup] = func(ctx context.Context, job *models.Job) error {
+		return w.handleMediaCleanup(ctx, job.Payload)
+	}
+	w.executors[jobregistry.ExecuteStorageDelete] = func(_ context.Context, job *models.Job) error {
+		return w.handleStorageDelete(job.Payload)
+	}
+	return w
 }
 
 func (w *BackgroundWorker) Start(ctx context.Context) {
@@ -140,7 +208,6 @@ func (w *BackgroundWorker) processDueJobs(ctx context.Context) {
 	}
 }
 
-//nolint:gocyclo
 func (w *BackgroundWorker) requeueStaleProcessingJobs(ctx context.Context) []string {
 	cutoff := time.Now().UTC().Add(-staleProcessingJobAge)
 	protected, err := providerwrite.New(w.db).MarkStaleJobAttempts(ctx, cutoff)
@@ -151,79 +218,35 @@ func (w *BackgroundWorker) requeueStaleProcessingJobs(ctx context.Context) []str
 	if protected > 0 {
 		log.Printf("[Worker %s] marked %d stale provider write attempt(s) ambiguous before recovery\n", w.workerID, protected)
 	}
-	if w.reposts != nil {
-		var ambiguousWrites []models.Job
-		if err := w.db.NewSelect().Model(&ambiguousWrites).
-			Where("type = ? AND status = ? AND locked_at IS NOT NULL AND locked_at <= ?", repostservice.JobTypeExecute, jobStatusProcessing, cutoff).
-			Scan(ctx); err == nil {
-			for _, job := range ambiguousWrites {
-				w.reposts.MarkAmbiguousWrite(ctx, job.Payload)
-				_, _ = w.db.NewUpdate().Model((*models.Job)(nil)).
-					Set("status = ?", jobStatusFailed).
-					Set("last_error = ?", "The worker stopped during a provider repost. OpenPost did not retry because the provider result may be ambiguous.").
-					Set("locked_at = NULL").Set("locked_by = ''").Where("id = ?", job.ID).Exec(ctx)
-			}
+	if err := w.failAmbiguousStaleJobs(ctx, cutoff); err != nil {
+		log.Printf("[Worker %s] failed to fence ambiguous stale jobs: %v\n", w.workerID, err)
+		return nil
+	}
+	for _, jobType := range jobregistry.TypesByRecovery(jobregistry.RecoverySupersedeSweep) {
+		definition, _ := jobregistry.Lookup(jobType)
+		result, supersedeErr := w.db.NewUpdate().
+			Model((*models.Job)(nil)).
+			Set("status = ?", jobStatusCompleted).
+			Set("last_error = ?", definition.RecoveryMessage).
+			Set("locked_at = NULL").
+			Set("locked_by = ''").
+			Where("type = ? AND status = ?", jobType, jobStatusProcessing).
+			Where("locked_at IS NOT NULL AND locked_at <= ?", cutoff).
+			Where("EXISTS (SELECT 1 FROM jobs AS queued_sweep WHERE queued_sweep.type = ? AND queued_sweep.status = ?)", jobType, jobStatusPending).
+			Exec(ctx)
+		if supersedeErr != nil {
+			log.Printf("[Worker %s] failed to supersede stale %s job: %v\n", w.workerID, jobType, supersedeErr)
+			return nil
 		}
-	}
-	superseded, err := w.db.NewUpdate().
-		Model((*models.Job)(nil)).
-		Set("status = ?", jobStatusCompleted).
-		Set("last_error = ?", "A later analytics sweep was already queued after worker recovery.").
-		Set("locked_at = NULL").
-		Set("locked_by = ''").
-		Where("type = ? AND status = ?", analyticsservice.JobTypeSweep, jobStatusProcessing).
-		Where("locked_at IS NOT NULL").
-		Where("locked_at <= ?", cutoff).
-		Where("EXISTS (SELECT 1 FROM jobs AS queued_sweep WHERE queued_sweep.type = ? AND queued_sweep.status = ?)", analyticsservice.JobTypeSweep, jobStatusPending).
-		Exec(ctx)
-	if err != nil {
-		log.Printf("[Worker %s] failed to supersede stale analytics sweep: %v\n", w.workerID, err)
-		return nil
-	}
-	if rows, rowsErr := superseded.RowsAffected(); rowsErr == nil && rows > 0 {
-		log.Printf("[Worker %s] superseded %d stale analytics sweep job(s)\n", w.workerID, rows)
-	}
-	communicationsSuperseded, err := w.db.NewUpdate().
-		Model((*models.Job)(nil)).
-		Set("status = ?", jobStatusCompleted).
-		Set("last_error = ?", "A later communications sweep was already queued after worker recovery.").
-		Set("locked_at = NULL").
-		Set("locked_by = ''").
-		Where("type = ? AND status = ?", communicationsservice.JobTypeSweep, jobStatusProcessing).
-		Where("locked_at IS NOT NULL").
-		Where("locked_at <= ?", cutoff).
-		Where("EXISTS (SELECT 1 FROM jobs AS queued_sweep WHERE queued_sweep.type = ? AND queued_sweep.status = ?)", communicationsservice.JobTypeSweep, jobStatusPending).
-		Exec(ctx)
-	if err != nil {
-		log.Printf("[Worker %s] failed to supersede stale communications sweep: %v\n", w.workerID, err)
-		return nil
-	}
-	if rows, rowsErr := communicationsSuperseded.RowsAffected(); rowsErr == nil && rows > 0 {
-		log.Printf("[Worker %s] superseded %d stale communications sweep job(s)\n", w.workerID, rows)
-	}
-	repostSuperseded, err := w.db.NewUpdate().
-		Model((*models.Job)(nil)).
-		Set("status = ?", jobStatusCompleted).
-		Set("last_error = ?", "A later repost sweep was already queued after worker recovery.").
-		Set("locked_at = NULL").
-		Set("locked_by = ''").
-		Where("type = ? AND status = ?", repostservice.JobTypeSweep, jobStatusProcessing).
-		Where("locked_at IS NOT NULL").
-		Where("locked_at <= ?", cutoff).
-		Where("EXISTS (SELECT 1 FROM jobs AS queued_sweep WHERE queued_sweep.type = ? AND queued_sweep.status = ?)", repostservice.JobTypeSweep, jobStatusPending).
-		Exec(ctx)
-	if err != nil {
-		log.Printf("[Worker %s] failed to supersede stale repost sweep: %v\n", w.workerID, err)
-		return nil
-	}
-	if rows, rowsErr := repostSuperseded.RowsAffected(); rowsErr == nil && rows > 0 {
-		log.Printf("[Worker %s] superseded %d stale repost sweep job(s)\n", w.workerID, rows)
+		if rows, rowsErr := result.RowsAffected(); rowsErr == nil && rows > 0 {
+			log.Printf("[Worker %s] superseded %d stale %s job(s)\n", w.workerID, rows, jobType)
+		}
 	}
 
 	var requeuedPublicationJobIDs []string
 	if err := w.db.NewSelect().Model((*models.Job)(nil)).
 		Column("id").
-		Where("type IN (?)", bun.List([]string{jobTypePublishPost, jobTypePublishPublication})).
+		Where("type IN (?)", bun.List(jobregistry.TypesByRecovery(jobregistry.RecoveryReconcilePublication))).
 		Where("status = ?", jobStatusProcessing).
 		Where("locked_at IS NOT NULL").
 		Where("locked_at <= ?", cutoff).
@@ -238,7 +261,10 @@ func (w *BackgroundWorker) requeueStaleProcessingJobs(ctx context.Context) []str
 		Set("status = ?", jobStatusPending).
 		Set("locked_at = NULL").
 		Set("locked_by = ''").
-		Where("type NOT IN (?)", bun.List([]string{jobTypePublishPost, jobTypePublishPublication})).
+		Where("type NOT IN (?)", bun.List(append(
+			jobregistry.TypesByRecovery(jobregistry.RecoveryReconcilePublication),
+			jobregistry.TypesByRecovery(jobregistry.RecoveryFailAmbiguous)...,
+		))).
 		Where("status = ?", jobStatusProcessing).
 		Where("locked_at IS NOT NULL").
 		Where("locked_at <= ?", cutoff).
@@ -252,6 +278,33 @@ func (w *BackgroundWorker) requeueStaleProcessingJobs(ctx context.Context) []str
 		log.Printf("[Worker %s] requeued %d stale processing job(s)\n", w.workerID, rows)
 	}
 	return requeuedPublicationJobIDs
+}
+
+func (w *BackgroundWorker) failAmbiguousStaleJobs(ctx context.Context, cutoff time.Time) error {
+	for _, jobType := range jobregistry.TypesByRecovery(jobregistry.RecoveryFailAmbiguous) {
+		definition, _ := jobregistry.Lookup(jobType)
+		var jobs []models.Job
+		if err := w.db.NewSelect().Model(&jobs).
+			Where("type = ? AND status = ? AND locked_at IS NOT NULL AND locked_at <= ?", jobType, jobStatusProcessing, cutoff).
+			Scan(ctx); err != nil {
+			return err
+		}
+		for _, job := range jobs {
+			if definition.Execution == jobregistry.ExecuteRepost && w.reposts != nil {
+				w.reposts.MarkAmbiguousWrite(ctx, job.Payload)
+			}
+			if _, err := w.db.NewUpdate().Model((*models.Job)(nil)).
+				Set("status = ?", jobStatusFailed).
+				Set("last_error = ?", definition.RecoveryMessage).
+				Set("locked_at = NULL").
+				Set("locked_by = ''").
+				Where("id = ? AND status = ?", job.ID, jobStatusProcessing).
+				Exec(ctx); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func (w *BackgroundWorker) processNextJobIfAvailable(ctx context.Context) bool {
@@ -280,7 +333,6 @@ func (w *BackgroundWorker) processNextJobIfAvailable(ctx context.Context) bool {
 	return true
 }
 
-//nolint:gocyclo // Centralizes lock heartbeat, typed failure policy, retries, and terminal job state.
 func (w *BackgroundWorker) handleLockedJob(ctx context.Context, job *models.Job) {
 	log.Printf("[Worker %s] processing job: %s (Type: %s)\n", w.workerID, job.ID, job.Type)
 
@@ -295,98 +347,7 @@ func (w *BackgroundWorker) handleLockedJob(ctx context.Context, job *models.Job)
 	<-heartbeatDone
 
 	if processErr != nil {
-		log.Printf("[Worker %s] job %s failed\n", w.workerID, job.ID)
-		job.Attempts++
-		retryable := true
-		retryAfter := time.Duration(0)
-		lastError := processErr.Error()
-		switch job.Type {
-		case jobTypePublishPost, jobTypePublishPublication:
-			failure := publisher.ClassifyFailure(processErr)
-			retryable = failure.Retryable
-			retryAfter = failure.RetryAfter
-			lastError = failure.Message
-			var directed *publisher.RetryableError
-			if errors.As(processErr, &directed) {
-				retryable = true
-				retryAfter = directed.Failure.RetryAfter
-				lastError = directed.Failure.Message
-			}
-		case analyticsservice.JobTypeSweep,
-			analyticsservice.JobTypeAccountSync,
-			analyticsservice.JobTypeRenditionSync:
-			failure := publisher.ClassifyFailure(processErr)
-			retryable = failure.Retryable || failure.Kind == publisher.FailureUnknown
-			retryAfter = failure.RetryAfter
-			lastError = "Analytics collection failed. OpenPost will retry when the failure is temporary."
-			if job.Type == analyticsservice.JobTypeSweep && w.hasPendingAnalyticsSweep(ctx, job.ID) {
-				retryable = false
-				lastError = "Analytics sweep finished with an error; the next sweep remains queued."
-			}
-		case communicationsservice.JobTypeSweep,
-			communicationsservice.JobTypeEngagementSync,
-			communicationsservice.JobTypeMessagesSync:
-			failure := publisher.ClassifyFailure(processErr)
-			retryable = failure.Retryable || failure.Kind == publisher.FailureUnknown
-			retryAfter = failure.RetryAfter
-			lastError = "Communications collection failed. OpenPost will retry when the failure is temporary."
-			if job.Type == communicationsservice.JobTypeSweep && w.hasPendingCommunicationsSweep(ctx, job.ID) {
-				retryable = false
-				lastError = "Communications sweep finished with an error; the next sweep remains queued."
-			}
-		case communicationsservice.JobTypeEngagementAct, communicationsservice.JobTypeMessageSend:
-			retryable = false
-			lastError = "The provider write failed. OpenPost did not retry because the provider result may be ambiguous."
-		case jobTypeMediaCleanup:
-			if jobregistry.IsInvalidPayload(processErr) {
-				retryable = false
-				lastError = processErr.Error()
-			}
-		case repostservice.JobTypeSweep, repostservice.JobTypeEvaluate:
-			failure := publisher.ClassifyFailure(processErr)
-			retryable = failure.Retryable || failure.Kind == publisher.FailureUnknown
-			retryAfter = failure.RetryAfter
-			lastError = "Repost evaluation failed. OpenPost will retry when the failure is temporary."
-			if job.Type == repostservice.JobTypeSweep && w.hasPendingRepostSweep(ctx, job.ID) {
-				retryable = false
-				lastError = "Repost sweep finished with an error; the next sweep remains queued."
-			}
-		case repostservice.JobTypeExecute:
-			retryable = false
-			lastError = "The provider repost failed. OpenPost did not retry because the provider result may be ambiguous."
-		}
-		definition, recurring := jobregistry.Lookup(job.Type)
-		switch {
-		case recurring && definition.Recurrence > 0 && retryable && job.Attempts >= job.MaxAttempts:
-			job.Status = jobStatusPending
-			job.Attempts = 0
-			job.RunAt = time.Now().UTC().Add(definition.Recurrence)
-		case !retryable || job.Attempts >= job.MaxAttempts:
-			job.Status = jobStatusFailed
-		default:
-			job.Status = jobStatusPending
-			jitter := float64((time.Now().UnixNano()%401)-200) / 1000
-			backoff := publisher.RetryDelay(job.Attempts, retryAfter, jitter)
-			job.RunAt = time.Now().Add(backoff).UTC()
-			if job.Type == jobTypePublishPost || job.Type == jobTypePublishPublication {
-				if retryErr := w.publisher.UpdateJobRetryAt(ctx, job.Type, job.Payload, job.RunAt); retryErr != nil {
-					log.Printf("[Worker %s] failed to align publish retry time for job %s: %v\n", w.workerID, job.ID, retryErr)
-				}
-			}
-		}
-		job.LastError = lastError
-
-		if _, dbErr := w.db.NewUpdate().Model((*models.Job)(nil)).
-			Set("status = ?", job.Status).
-			Set("attempts = ?", job.Attempts).
-			Set("last_error = ?", job.LastError).
-			Set("run_at = ?", job.RunAt).
-			Set("locked_at = NULL").
-			Set("locked_by = ''").
-			Where("id = ?", job.ID).
-			Exec(ctx); dbErr != nil {
-			log.Printf("[Worker %s] failed to update job %s status: %v\n", w.workerID, job.ID, dbErr)
-		}
+		w.finishFailedJob(ctx, job, processErr)
 		return
 	}
 	if definition, ok := jobregistry.Lookup(job.Type); ok && definition.Recurrence > 0 {
@@ -418,37 +379,93 @@ func (w *BackgroundWorker) handleLockedJob(ctx context.Context, job *models.Job)
 	log.Printf("[Worker %s] job %s completed successfully\n", w.workerID, job.ID)
 }
 
-func (w *BackgroundWorker) hasPendingAnalyticsSweep(ctx context.Context, excludeID string) bool {
-	exists, err := w.db.NewSelect().
-		Model((*models.Job)(nil)).
-		Where("type = ? AND status = ? AND id != ?", analyticsservice.JobTypeSweep, jobStatusPending, excludeID).
-		Exists(ctx)
-	if err != nil {
-		log.Printf("[Worker %s] failed to inspect queued analytics sweep: %v\n", w.workerID, err)
-		return false
+func (w *BackgroundWorker) finishFailedJob(ctx context.Context, job *models.Job, processErr error) {
+	log.Printf("[Worker %s] job %s failed\n", w.workerID, job.ID)
+	job.Attempts++
+	failure := w.classifyJobFailure(ctx, job, processErr)
+	definition, registered := jobregistry.Lookup(job.Type)
+	switch {
+	case registered && definition.Recurrence > 0 && failure.retryable && job.Attempts >= job.MaxAttempts:
+		job.Status = jobStatusPending
+		job.Attempts = 0
+		job.RunAt = time.Now().UTC().Add(definition.Recurrence)
+	case !failure.retryable || job.Attempts >= job.MaxAttempts:
+		job.Status = jobStatusFailed
+	default:
+		job.Status = jobStatusPending
+		jitter := float64((time.Now().UnixNano()%401)-200) / 1000
+		backoff := publisher.RetryDelay(job.Attempts, failure.retryAfter, jitter)
+		job.RunAt = time.Now().Add(backoff).UTC()
+		if registered && definition.Failure == jobregistry.FailurePublish && w.publisher != nil {
+			if retryErr := w.publisher.UpdateJobRetryAt(ctx, job.Type, job.Payload, job.RunAt); retryErr != nil {
+				log.Printf("[Worker %s] failed to align publish retry time for job %s: %v\n", w.workerID, job.ID, retryErr)
+			}
+		}
 	}
-	return exists
+	job.LastError = failure.message
+
+	if _, dbErr := w.db.NewUpdate().Model((*models.Job)(nil)).
+		Set("status = ?", job.Status).
+		Set("attempts = ?", job.Attempts).
+		Set("last_error = ?", job.LastError).
+		Set("run_at = ?", job.RunAt).
+		Set("locked_at = NULL").
+		Set("locked_by = ''").
+		Where("id = ?", job.ID).
+		Exec(ctx); dbErr != nil {
+		log.Printf("[Worker %s] failed to update job %s status: %v\n", w.workerID, job.ID, dbErr)
+	}
 }
 
-func (w *BackgroundWorker) hasPendingCommunicationsSweep(ctx context.Context, excludeID string) bool {
-	exists, err := w.db.NewSelect().
-		Model((*models.Job)(nil)).
-		Where("type = ? AND status = ? AND id != ?", communicationsservice.JobTypeSweep, jobStatusPending, excludeID).
-		Exists(ctx)
-	if err != nil {
-		log.Printf("[Worker %s] failed to inspect queued communications sweep: %v\n", w.workerID, err)
-		return false
-	}
-	return exists
+type classifiedJobFailure struct {
+	retryable  bool
+	retryAfter time.Duration
+	message    string
 }
 
-func (w *BackgroundWorker) hasPendingRepostSweep(ctx context.Context, excludeID string) bool {
+func (w *BackgroundWorker) classifyJobFailure(ctx context.Context, job *models.Job, processErr error) classifiedJobFailure {
+	result := classifiedJobFailure{retryable: true, message: processErr.Error()}
+	definition, ok := jobregistry.Lookup(job.Type)
+	if !ok {
+		return result
+	}
+	switch definition.Failure {
+	case jobregistry.FailurePublish:
+		failure := publisher.ClassifyFailure(processErr)
+		result.retryable = failure.Retryable
+		result.retryAfter = failure.RetryAfter
+		result.message = failure.Message
+		var directed *publisher.RetryableError
+		if errors.As(processErr, &directed) {
+			result.retryable = true
+			result.retryAfter = directed.Failure.RetryAfter
+			result.message = directed.Failure.Message
+		}
+	case jobregistry.FailureProviderRead:
+		failure := publisher.ClassifyFailure(processErr)
+		result.retryable = failure.Retryable || failure.Kind == publisher.FailureUnknown
+		result.retryAfter = failure.RetryAfter
+		result.message = definition.FailureMessage
+		if definition.Recovery == jobregistry.RecoverySupersedeSweep && w.hasPendingSuccessor(ctx, job.Type, job.ID) {
+			result.retryable = false
+			result.message = definition.RecoveryMessage
+		}
+	case jobregistry.FailureProviderWrite:
+		result.retryable = false
+		result.message = definition.FailureMessage
+	case jobregistry.FailureMediaCleanup:
+		result.retryable = !jobregistry.IsInvalidPayload(processErr)
+	}
+	return result
+}
+
+func (w *BackgroundWorker) hasPendingSuccessor(ctx context.Context, jobType, excludeID string) bool {
 	exists, err := w.db.NewSelect().
 		Model((*models.Job)(nil)).
-		Where("type = ? AND status = ? AND id != ?", repostservice.JobTypeSweep, jobStatusPending, excludeID).
+		Where("type = ? AND status = ? AND id != ?", jobType, jobStatusPending, excludeID).
 		Exists(ctx)
 	if err != nil {
-		log.Printf("[Worker %s] failed to inspect queued repost sweep: %v\n", w.workerID, err)
+		log.Printf("[Worker %s] failed to inspect queued %s successor: %v\n", w.workerID, jobType, err)
 		return false
 	}
 	return exists
@@ -473,67 +490,17 @@ func (w *BackgroundWorker) heartbeatJobLock(ctx context.Context, jobID string) {
 	}
 }
 
-//nolint:gocyclo
 func (w *BackgroundWorker) executeJob(ctx context.Context, job *models.Job) error {
 	ctx = publisher.WithJobExecution(ctx, job.ID, job.Attempts, job.LockedAt)
-	// Job handlers will be injected or called from here based on Type
-	switch job.Type {
-	case jobTypePublishPost:
-		return w.publisher.HandlePublishJob(ctx, job.Payload)
-	case jobTypePublishPublication:
-		return w.publisher.HandlePublishPublicationJob(ctx, job.Payload)
-	case jobTypeRefreshToken:
-		return w.handleRefreshTokenJob(ctx, job.Payload)
-	case jobTypeMediaCleanup:
-		return w.handleMediaCleanup(ctx, job.Payload)
-	case jobTypeStorageDelete:
-		return w.handleStorageDelete(job.Payload)
-	case feedback.JobType:
-		if w.feedback == nil {
-			return fmt.Errorf("feedback delivery is not configured")
-		}
-		return w.feedback.HandleDeliveryJob(ctx, job.Payload)
-	case analyticsservice.JobTypeSweep, analyticsservice.JobTypeAccountSync, analyticsservice.JobTypeRenditionSync:
-		if w.analytics == nil {
-			return fmt.Errorf("analytics collection is not configured")
-		}
-		return w.analytics.HandleJob(ctx, job.Type, job.Payload)
-	case billingservice.JobTypeWebhook:
-		return w.handleBillingJob(ctx, job)
-	case communicationsservice.JobTypeSweep,
-		communicationsservice.JobTypeEngagementSync,
-		communicationsservice.JobTypeMessagesSync,
-		communicationsservice.JobTypeEngagementAct,
-		communicationsservice.JobTypeMessageSend:
-		if w.communications == nil {
-			return fmt.Errorf("communications collection is not configured")
-		}
-		return w.communications.HandleJob(ctx, job.Type, job.Payload)
-	case notifications.JobTypeEmailDelivery:
-		if w.notifications == nil {
-			return fmt.Errorf("notification delivery is not configured")
-		}
-		return w.notifications.HandleJob(ctx, job.Type, job.Payload)
-	case repostservice.JobTypeSweep, repostservice.JobTypeEvaluate, repostservice.JobTypeExecute:
-		if w.reposts == nil {
-			return fmt.Errorf("repost automation is not configured")
-		}
-		return w.reposts.HandleJob(ctx, job.Type, job.Payload)
-	case videoprocessing.JobTypeAnalyze:
-		if w.video == nil {
-			return fmt.Errorf("video processing is not configured")
-		}
-		return w.video.HandleJob(ctx, job.Type, job.Payload)
-	default:
+	definition, ok := jobregistry.Lookup(job.Type)
+	if !ok {
 		return fmt.Errorf("unsupported job type %q", job.Type)
 	}
-}
-
-func (w *BackgroundWorker) handleBillingJob(ctx context.Context, job *models.Job) error {
-	if w.billing == nil {
-		return fmt.Errorf("billing reconciliation is not configured")
+	executor := w.executors[definition.Execution]
+	if executor == nil {
+		return fmt.Errorf("job type %q has no configured executor", job.Type)
 	}
-	return w.billing.HandleJob(ctx, job.Type, job.Payload)
+	return executor(ctx, job)
 }
 
 func (w *BackgroundWorker) handleStorageDelete(payload string) error {

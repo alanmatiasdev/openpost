@@ -21,18 +21,8 @@ const (
 	StatusCompleted  = "completed"
 	StatusFailed     = "failed"
 
-	TypeMediaCleanup = "media_cleanup"
-
 	mediaCleanupDedupeKey = "daily"
 )
-
-// Definition describes queue policy that must not be reimplemented by callers.
-type Definition struct {
-	Type               string
-	DefaultMaxAttempts int
-	Recurrence         time.Duration
-	identity           func(string) (Identity, error)
-}
 
 // Identity is the exact database key used to deduplicate active jobs.
 type Identity struct {
@@ -59,18 +49,30 @@ func IsInvalidPayload(err error) bool {
 	return errors.As(err, &invalid)
 }
 
-var definitions = map[string]Definition{
-	TypeMediaCleanup: {
-		Type:               TypeMediaCleanup,
-		DefaultMaxAttempts: 3,
-		Recurrence:         24 * time.Hour,
-		identity:           mediaCleanupIdentity,
-	},
-}
-
 func Lookup(jobType string) (Definition, bool) {
 	definition, ok := definitions[jobType]
 	return definition, ok
+}
+
+// NewJob creates a pending Job from the registered defaults. Callers may add
+// a scope or dedupe identity before insertion, but cannot choose retry policy
+// independently from the Job kind.
+func NewJob(jobType, payload string, runAt time.Time) (*models.Job, error) {
+	definition, ok := Lookup(jobType)
+	if !ok {
+		return nil, fmt.Errorf("job type %q is not registered", jobType)
+	}
+	if runAt.IsZero() {
+		runAt = time.Now().UTC()
+	}
+	return &models.Job{
+		ID:          uuid.NewString(),
+		Type:        definition.Type,
+		Payload:     payload,
+		Status:      StatusPending,
+		RunAt:       runAt.UTC(),
+		MaxAttempts: definition.DefaultMaxAttempts,
+	}, nil
 }
 
 // IdentityForPayload decodes the registered payload instead of inspecting its
@@ -129,16 +131,12 @@ func EnqueueMediaCleanup(ctx context.Context, db bun.IDB, workspaceID string, ru
 	if err != nil {
 		return "", false, err
 	}
-	job := &models.Job{
-		ID:          uuid.NewString(),
-		Type:        TypeMediaCleanup,
-		ScopeID:     identity.ScopeID,
-		DedupeKey:   identity.DedupeKey,
-		Payload:     string(payload),
-		Status:      StatusPending,
-		RunAt:       runAt.UTC(),
-		MaxAttempts: definitions[TypeMediaCleanup].DefaultMaxAttempts,
+	job, err := NewJob(TypeMediaCleanup, string(payload), runAt)
+	if err != nil {
+		return "", false, err
 	}
+	job.ScopeID = identity.ScopeID
+	job.DedupeKey = identity.DedupeKey
 	for attempt := 0; ; attempt++ {
 		id, created, err := enqueueMediaCleanupOnce(ctx, db, job)
 		if err == nil {

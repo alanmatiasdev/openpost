@@ -540,12 +540,9 @@ func (h *PostHandler) CreatePost(api huma.API) {
 					return fmt.Errorf("failed to marshal job payload: %w", err)
 				}
 				post.ActualRunAt = jobRunAt
-				job := &models.Job{
-					ID:      uuid.New().String(),
-					Type:    jobTypePublishPost,
-					ScopeID: post.ID,
-					Payload: string(payload),
-					RunAt:   jobRunAt,
+				job, err := newPublishPostJob(string(payload), jobRunAt, post.ID, "")
+				if err != nil {
+					return err
 				}
 				if _, err := tx.NewInsert().Model(job).Exec(txCtx); err != nil {
 					return err
@@ -1386,12 +1383,9 @@ func (h *PostHandler) CreateThread(api huma.API) {
 				for _, post := range posts {
 					post.ActualRunAt = jobRunAt
 				}
-				job := &models.Job{
-					ID:      uuid.New().String(),
-					Type:    jobTypePublishPost,
-					ScopeID: posts[0].ID,
-					Payload: string(payload),
-					RunAt:   jobRunAt,
+				job, err := newPublishPostJob(string(payload), jobRunAt, posts[0].ID, "")
+				if err != nil {
+					return err
 				}
 				if _, err := tx.NewInsert().Model(job).Exec(txCtx); err != nil {
 					return err
@@ -2633,12 +2627,9 @@ func (h *PostHandler) UpdatePost(api huma.API) {
 						}
 					}
 					payload, _ := json.Marshal(map[string]string{postIDKey: post.ID})
-					job := &models.Job{
-						ID:      uuid.New().String(),
-						Type:    jobTypePublishPost,
-						ScopeID: post.ID,
-						Payload: string(payload),
-						RunAt:   nextJobRunAt,
+					job, err := newPublishPostJob(string(payload), nextJobRunAt, post.ID, "")
+					if err != nil {
+						return err
 					}
 					if _, err := tx.NewInsert().Model(job).Exec(txCtx); err != nil {
 						return fmt.Errorf("failed to create job: %w", err)
@@ -2661,12 +2652,9 @@ func (h *PostHandler) UpdatePost(api huma.API) {
 						return fmt.Errorf("failed to cancel old job: %w", err)
 					}
 					payload, _ := json.Marshal(map[string]string{postIDKey: post.ID})
-					job := &models.Job{
-						ID:      uuid.New().String(),
-						Type:    jobTypePublishPost,
-						ScopeID: post.ID,
-						Payload: string(payload),
-						RunAt:   nextJobRunAt,
+					job, err := newPublishPostJob(string(payload), nextJobRunAt, post.ID, "")
+					if err != nil {
+						return err
 					}
 					if _, err := tx.NewInsert().Model(job).Exec(txCtx); err != nil {
 						return fmt.Errorf("failed to create job: %w", err)

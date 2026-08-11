@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/google/uuid"
+	"github.com/openpost/backend/internal/jobregistry"
 	"github.com/openpost/backend/internal/models"
 	"github.com/uptrace/bun"
 )
@@ -45,7 +45,7 @@ func scheduleRefreshJob(ctx context.Context, db *bun.DB, target refreshJobPayloa
 
 	if _, err := db.NewDelete().
 		Model((*models.Job)(nil)).
-		Where("type = ?", "refresh_token").
+		Where("type = ?", jobregistry.TypeRefreshToken).
 		Where("status = ?", "pending").
 		Where("payload = ?", payload).
 		Exec(ctx); err != nil {
@@ -58,14 +58,9 @@ func scheduleRefreshJob(ctx context.Context, db *bun.DB, target refreshJobPayloa
 		runAt = now
 	}
 
-	job := &models.Job{
-		ID:          uuid.New().String(),
-		Type:        "refresh_token",
-		Payload:     payload,
-		Status:      "pending",
-		RunAt:       runAt,
-		Attempts:    0,
-		MaxAttempts: 5,
+	job, err := jobregistry.NewJob(jobregistry.TypeRefreshToken, payload, runAt)
+	if err != nil {
+		return err
 	}
 
 	_, err = db.NewInsert().Model(job).Exec(ctx)
@@ -81,7 +76,7 @@ func CancelGrantRefreshJobs(ctx context.Context, db bun.IDB, grantID string) err
 		return err
 	}
 	_, err = db.NewDelete().Model((*models.Job)(nil)).
-		Where("type = ? AND status = ? AND payload = ?", "refresh_token", "pending", string(payloadBytes)).
+		Where("type = ? AND status = ? AND payload = ?", jobregistry.TypeRefreshToken, jobregistry.StatusPending, string(payloadBytes)).
 		Exec(ctx)
 	return err
 }

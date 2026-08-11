@@ -175,6 +175,28 @@ func TestWorkerMarksStaleProviderWriteAmbiguousBeforeRequeue(t *testing.T) {
 	require.Equal(t, "worker_interrupted", attempt.SafeErrorClass)
 }
 
+func TestWorkerNeverRequeuesAmbiguousCommunicationsWrites(t *testing.T) {
+	t.Parallel()
+
+	db := createTestDB(t)
+	ctx := t.Context()
+	now := time.Now().UTC()
+	job, err := jobregistry.NewJob(jobregistry.TypeMessageSend, `{"id":"message-1"}`, now.Add(-time.Hour))
+	require.NoError(t, err)
+	job.Status = jobStatusProcessing
+	job.LockedAt = now.Add(-20 * time.Minute)
+	job.LockedBy = "dead-worker"
+	_, err = db.NewInsert().Model(job).Exec(ctx)
+	require.NoError(t, err)
+
+	worker := &BackgroundWorker{db: db, workerID: "worker-test"}
+	worker.requeueStaleProcessingJobs(ctx)
+
+	require.NoError(t, db.NewSelect().Model(job).WherePK().Scan(ctx))
+	require.Equal(t, jobStatusFailed, job.Status)
+	require.Contains(t, job.LastError, "did not retry")
+}
+
 func TestWorkerKeepsRecentProcessingJobsLocked(t *testing.T) {
 	t.Parallel()
 

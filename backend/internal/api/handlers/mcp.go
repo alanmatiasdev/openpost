@@ -4653,13 +4653,9 @@ func (h *MCPHandler) schedulePost(ctx context.Context, userID string, args map[s
 	if err != nil {
 		return nil, &mcpError{Code: -32603, Message: "failed to create publish job payload"}
 	}
-	job := &models.Job{
-		ID:      newUUID(),
-		Type:    jobTypePublishPost,
-		ScopeID: post.ID,
-		Payload: string(payload),
-		Status:  "pending",
-		RunAt:   scheduledAt,
+	job, err := newPublishPostJob(string(payload), scheduledAt, post.ID, newUUID())
+	if err != nil {
+		return nil, &mcpError{Code: -32603, Message: "failed to create publish job"}
 	}
 
 	actor, _ := publicationauth.ActorFromContext(ctx)
@@ -4721,13 +4717,9 @@ func (h *MCPHandler) scheduleDraft(ctx context.Context, userID string, args map[
 	if err != nil {
 		return nil, &mcpError{Code: -32603, Message: "failed to create publish job payload"}
 	}
-	job := &models.Job{
-		ID:      newUUID(),
-		Type:    jobTypePublishPost,
-		ScopeID: post.ID,
-		Payload: string(payload),
-		Status:  "pending",
-		RunAt:   jobRunAt,
+	job, err := newPublishPostJob(string(payload), jobRunAt, post.ID, newUUID())
+	if err != nil {
+		return nil, &mcpError{Code: -32603, Message: "failed to create publish job"}
 	}
 
 	err = h.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {

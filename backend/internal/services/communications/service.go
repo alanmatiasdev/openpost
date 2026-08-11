@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/openpost/backend/internal/jobregistry"
 	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/platform"
 	"github.com/openpost/backend/internal/services/lifecycle"
@@ -21,11 +22,11 @@ import (
 )
 
 const (
-	JobTypeSweep          = "communications_sweep"
-	JobTypeEngagementSync = "engagement_sync"
-	JobTypeMessagesSync   = "messages_sync"
-	JobTypeEngagementAct  = "engagement_action"
-	JobTypeMessageSend    = "message_send"
+	JobTypeSweep          = jobregistry.TypeCommunicationsSweep
+	JobTypeEngagementSync = jobregistry.TypeEngagementSync
+	JobTypeMessagesSync   = jobregistry.TypeMessagesSync
+	JobTypeEngagementAct  = jobregistry.TypeEngagementAction
+	JobTypeMessageSend    = jobregistry.TypeMessageSend
 
 	capabilityEngagement = "engagement"
 	capabilityMessages   = "messages"
@@ -769,14 +770,20 @@ func QueueProviderCommentAction(ctx context.Context, db bun.IDB, input ProviderC
 	if err != nil {
 		return "", fmt.Errorf("encode provider comment action: %w", err)
 	}
-	job := &models.Job{
-		ID: jobID, Type: JobTypeEngagementAct, Payload: string(payload),
-		Status: "pending", RunAt: time.Now().UTC(), MaxAttempts: 1,
-	}
-	if _, err := db.NewInsert().Model(job).Exec(ctx); err != nil {
+	if err := enqueueProviderCommentJob(ctx, db, jobID, string(payload)); err != nil {
 		return "", fmt.Errorf("queue provider comment action: %w", err)
 	}
 	return jobID, nil
+}
+
+func enqueueProviderCommentJob(ctx context.Context, db bun.IDB, jobID, payload string) error {
+	job, err := jobregistry.NewJob(JobTypeEngagementAct, payload, time.Now().UTC())
+	if err != nil {
+		return err
+	}
+	job.ID = jobID
+	_, err = db.NewInsert().Model(job).Exec(ctx)
+	return err
 }
 
 func (s *Service) performEngagementAction(ctx context.Context, input engagementActionJob) error {
@@ -1161,9 +1168,9 @@ func (s *Service) QueueMessage(ctx context.Context, conversationID, body string)
 		UpdatedAt:       now,
 	}
 	payload, _ := json.Marshal(subjectJob{ID: message.ID})
-	job := &models.Job{
-		ID: uuid.NewString(), Type: JobTypeMessageSend, Payload: string(payload),
-		Status: "pending", RunAt: now, MaxAttempts: 1,
+	job, err := jobregistry.NewJob(JobTypeMessageSend, string(payload), now)
+	if err != nil {
+		return nil, err
 	}
 	if err := s.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
 		if _, err := tx.NewInsert().Model(message).Exec(txCtx); err != nil {
@@ -1711,14 +1718,10 @@ func (s *Service) recordState(ctx context.Context, capability, subjectType, subj
 }
 
 func (s *Service) enqueue(ctx context.Context, jobType, payload string, runAt time.Time) (bool, error) {
-	maxAttempts := 5
-	// Provider writes do not have a portable idempotency key. A timeout after
-	// provider acceptance is ambiguous, so automatic retries could duplicate a
-	// reply or DM. Keep the durable failure record and let the user retry.
-	if jobType == JobTypeEngagementAct || jobType == JobTypeMessageSend {
-		maxAttempts = 1
+	job, err := jobregistry.NewJob(jobType, payload, runAt)
+	if err != nil {
+		return false, err
 	}
-	job := &models.Job{ID: uuid.NewString(), Type: jobType, Payload: payload, Status: "pending", RunAt: runAt.UTC(), MaxAttempts: maxAttempts}
 	result, err := s.db.NewInsert().Model(job).On("CONFLICT DO NOTHING").Exec(ctx)
 	if err != nil {
 		return false, err

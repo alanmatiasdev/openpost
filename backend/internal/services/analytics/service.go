@@ -12,15 +12,16 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/openpost/backend/internal/jobregistry"
 	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/platform"
 	"github.com/uptrace/bun"
 )
 
 const (
-	JobTypeSweep         = "analytics_sweep"
-	JobTypeAccountSync   = "analytics_account_sync"
-	JobTypeRenditionSync = "analytics_rendition_sync"
+	JobTypeSweep         = jobregistry.TypeAnalyticsSweep
+	JobTypeAccountSync   = jobregistry.TypeAnalyticsAccount
+	JobTypeRenditionSync = jobregistry.TypeAnalyticsRendition
 
 	subjectAccount   = "account"
 	subjectRendition = "rendition"
@@ -648,13 +649,9 @@ func (s *Service) loadState(ctx context.Context, subjectType, subjectID string) 
 }
 
 func (s *Service) enqueue(ctx context.Context, jobType, payload string, runAt time.Time) (bool, error) {
-	job := &models.Job{
-		ID:          uuid.NewString(),
-		Type:        jobType,
-		Payload:     payload,
-		Status:      "pending",
-		RunAt:       runAt.UTC(),
-		MaxAttempts: 3,
+	job, err := jobregistry.NewJob(jobType, payload, runAt)
+	if err != nil {
+		return false, err
 	}
 	result, err := s.db.NewInsert().Model(job).On("CONFLICT DO NOTHING").Exec(ctx)
 	if err != nil {

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/openpost/backend/internal/capabilities"
+	"github.com/openpost/backend/internal/jobregistry"
 	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/platform"
 	servicecrypto "github.com/openpost/backend/internal/services/crypto"
@@ -199,7 +200,7 @@ func (s *Service) HandlePublishJob(ctx context.Context, jobPayload string) error
 func (s *Service) UpdateJobRetryAt(ctx context.Context, jobType, jobPayload string, retryAt time.Time) error {
 	retryAt = retryAt.UTC()
 	switch jobType {
-	case "publish_publication":
+	case jobregistry.TypePublishPublication:
 		var payload struct {
 			PublicationID string `json:"publication_id"`
 			RenditionID   string `json:"rendition_id"`
@@ -235,7 +236,7 @@ func (s *Service) UpdateJobRetryAt(ctx context.Context, jobType, jobPayload stri
 			Where("status = ? AND error_retryable = ?", "failed", true).
 			Exec(ctx)
 		return err
-	case "publish_post":
+	case jobregistry.TypePublishPost:
 		var payload struct {
 			PostID string `json:"post_id"`
 		}

@@ -18,13 +18,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
-	"github.com/openpost/backend/internal/models"
+	"github.com/openpost/backend/internal/jobregistry"
 	"github.com/uptrace/bun"
 )
 
 const (
-	JobType                   = "deliver_feedback"
+	JobType                   = jobregistry.TypeFeedbackDelivery
 	maxMessageRunes           = 4000
 	maxScreenshotBytes        = 1 << 20
 	maxScreenshotDimension    = 4096
@@ -227,13 +226,9 @@ func (s *Service) Enqueue(ctx context.Context, report Report) (string, error) {
 	if err != nil {
 		return "", errors.New("failed to encode feedback report")
 	}
-	job := &models.Job{
-		ID:          uuid.NewString(),
-		Type:        JobType,
-		Payload:     string(payload),
-		Status:      "pending",
-		RunAt:       time.Now().UTC(),
-		MaxAttempts: 3,
+	job, err := jobregistry.NewJob(JobType, string(payload), time.Now().UTC())
+	if err != nil {
+		return "", errors.New("failed to queue feedback report")
 	}
 	if _, err := s.db.NewInsert().Model(job).Exec(ctx); err != nil {
 		return "", errors.New("failed to queue feedback report")

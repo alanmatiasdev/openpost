@@ -17,6 +17,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/openpost/backend/internal/api/middleware"
 	"github.com/openpost/backend/internal/capabilities"
+	"github.com/openpost/backend/internal/jobregistry"
 	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/platform"
 	"github.com/openpost/backend/internal/services/drafts"
@@ -1355,13 +1356,18 @@ func (h *PublicationHandler) queueRenditionReply(
 	if runAt.After(confirmedAt) {
 		policyMode = publicationauth.PolicyReplyScheduled
 	}
-	job := &models.Job{ID: jobID, Type: jobTypePublishPublication, ScopeID: publication.ID, Payload: payloadJSON, Status: jobStatusPending, RunAt: runAt, MaxAttempts: 3}
+	job, err := jobregistry.NewJob(jobTypePublishPublication, payloadJSON, runAt)
+	if err != nil {
+		return "", err
+	}
+	job.ID = jobID
+	job.ScopeID = publication.ID
 	if h.beforeQueueTransaction != nil {
 		if err := h.beforeQueueTransaction(ctx); err != nil {
 			return "", err
 		}
 	}
-	err := h.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
+	err = h.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
 		if err := lockPublicationMutationTx(txCtx, tx, publication.ID); err != nil {
 			return err
 		}
@@ -3486,10 +3492,11 @@ func insertPublicationJobTx(
 	if renditionID != "" {
 		payload["rendition_id"] = renditionID
 	}
-	job := &models.Job{
-		ID: uuid.New().String(), Type: jobTypePublishPublication, ScopeID: publicationID, Payload: mustJSON(payload),
-		Status: jobStatusPending, RunAt: runAt, MaxAttempts: 3,
+	job, err := jobregistry.NewJob(jobTypePublishPublication, mustJSON(payload), runAt)
+	if err != nil {
+		return "", err
 	}
+	job.ScopeID = publicationID
 	if _, err := tx.NewInsert().Model(job).Exec(ctx); err != nil {
 		return "", err
 	}
