@@ -4,6 +4,8 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [3.9.0] - 2026-08-11
+
 ### Added
 
 - Added one privacy-limited PostHog telemetry layer across the app, backend, marketing site, and documentation, with explicit browser intent events, authoritative server outcomes, background-job and request error capture, opaque identity, runtime self-host configuration, and release-linked source maps.
