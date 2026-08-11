@@ -14,14 +14,6 @@ import (
 	"github.com/uptrace/bun"
 )
 
-// publicationCreateCommand is the application boundary for every publication
-// creation transport. REST/Huma, MCP, and the CLI's REST adapter only decode
-// transport input, supply the authenticated identity, and map the result.
-type publicationCreateCommand struct {
-	handler *PublicationHandler
-	now     func() time.Time
-}
-
 type preparedPublicationCreate struct {
 	input              CreatePublicationBody
 	accounts           map[string]models.SocialAccount
@@ -29,27 +21,7 @@ type preparedPublicationCreate struct {
 	now                time.Time
 }
 
-func (h *PublicationHandler) newCreateCommand() publicationCreateCommand {
-	return publicationCreateCommand{handler: h, now: func() time.Time { return time.Now().UTC() }}
-}
-
-func (command publicationCreateCommand) Execute(
-	ctx context.Context,
-	userID string,
-	input CreatePublicationBody,
-) (*models.Publication, error) {
-	prepared, err := command.prepare(ctx, userID, input)
-	if err != nil {
-		return nil, err
-	}
-	publication := publicationModelFromCreate(prepared.input, userID, prepared.repostOverrideJSON, prepared.now)
-	if err := command.persist(ctx, publication, prepared); err != nil {
-		return nil, fmt.Errorf("persist publication creation: %w", err)
-	}
-	return publication, nil
-}
-
-func (command publicationCreateCommand) prepare(
+func (command publicationApplication) prepareCreate(
 	ctx context.Context,
 	userID string,
 	input CreatePublicationBody,
@@ -109,7 +81,7 @@ func (command publicationCreateCommand) prepare(
 	}, nil
 }
 
-func (command publicationCreateCommand) persist(
+func (command publicationApplication) persistCreate(
 	ctx context.Context,
 	publication *models.Publication,
 	prepared preparedPublicationCreate,

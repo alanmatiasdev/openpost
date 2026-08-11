@@ -584,7 +584,7 @@ func (h *PublicationHandler) createPublication(api huma.API) {
 		Errors:      []int{400, 403},
 	}, func(ctx context.Context, input *CreatePublicationInput) (*PublicationOutput, error) {
 		userID := middleware.GetUserID(ctx)
-		publication, err := h.publicationCommands().Create(ctx, userID, input.Body)
+		publication, err := h.publicationApplication().Create(ctx, userID, input.Body)
 		if err != nil {
 			var statusErr huma.StatusError
 			if errors.As(err, &statusErr) {
@@ -746,11 +746,7 @@ func (h *PublicationHandler) updatePublication(api huma.API) {
 			return nil, err
 		}
 		userID := middleware.GetUserID(ctx)
-		existing, err := h.loadPublicationForEdit(ctx, input.PathID, userID)
-		if err != nil {
-			return nil, err
-		}
-		if err := h.publicationCommands().Update(ctx, userID, existing, input.Body); err != nil {
+		if err := h.publicationApplication().Update(ctx, userID, input.PathID, input.Body); err != nil {
 			return nil, publicationMutationHTTPError(err, "failed to update publication")
 		}
 		resp, err := h.loadPublicationResponse(ctx, input.PathID, userID)
@@ -1170,11 +1166,7 @@ func (h *PublicationHandler) validatePublication(api huma.API) {
 		Tags:        []string{tagPublications},
 		Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
 	}, func(ctx context.Context, input *PublicationActionInput) (*PublicationValidationOutput, error) {
-		publication, err := h.loadPublication(ctx, input.PathID, middleware.GetUserID(ctx))
-		if err != nil {
-			return nil, err
-		}
-		issues, err := h.publicationQueries().Validate(ctx, publication.ID)
+		issues, err := h.publicationApplication().Validate(ctx, middleware.GetUserID(ctx), input.PathID)
 		if err != nil {
 			return nil, err
 		}
@@ -1197,16 +1189,13 @@ func (h *PublicationHandler) schedulePublication(api huma.API) {
 		if err := drafts.RequireExpectedRevision(input.Body.ExpectedRevision); err != nil {
 			return nil, err
 		}
-		publication, err := h.loadPublicationForEdit(ctx, input.PathID, middleware.GetUserID(ctx))
-		if err != nil {
-			return nil, err
-		}
+		userID := middleware.GetUserID(ctx)
 		intent, err := providerReadinessExecutionIntent(ctx, h.db, input.Body.ExecutionIntent)
 		if err != nil {
 			return nil, err
 		}
-		jobID, err := h.publicationCommands().Schedule(
-			ctx, publication.ID, input.Body.ExpectedRevision, intent,
+		jobID, err := h.publicationApplication().Schedule(
+			ctx, userID, input.PathID, input.Body.ExpectedRevision, intent,
 		)
 		if err != nil {
 			return nil, publicationMutationHTTPError(err, "failed to enqueue publication")
@@ -1227,16 +1216,13 @@ func (h *PublicationHandler) publishNow(api huma.API) {
 		if err := drafts.RequireExpectedRevision(input.Body.ExpectedRevision); err != nil {
 			return nil, err
 		}
-		publication, err := h.loadPublicationForEdit(ctx, input.PathID, middleware.GetUserID(ctx))
-		if err != nil {
-			return nil, err
-		}
+		userID := middleware.GetUserID(ctx)
 		intent, err := providerReadinessExecutionIntent(ctx, h.db, input.Body.ExecutionIntent)
 		if err != nil {
 			return nil, err
 		}
-		jobID, err := h.publicationCommands().PublishNow(
-			ctx, publication.ID, input.Body.ExpectedRevision, intent,
+		jobID, err := h.publicationApplication().PublishNow(
+			ctx, userID, input.PathID, input.Body.ExpectedRevision, intent,
 		)
 		if err != nil {
 			return nil, publicationMutationHTTPError(err, "failed to enqueue publication")
@@ -1255,18 +1241,7 @@ func (h *PublicationHandler) retryRendition(api huma.API) {
 		Middlewares: huma.Middlewares{middleware.RequestMetadataMiddleware(), middleware.AuthMiddleware(api, h.auth)},
 		Errors:      []int{400, 403, 404, 409},
 	}, func(ctx context.Context, input *RetryRenditionInput) (*ActionOutput, error) {
-		publication, err := h.loadPublication(ctx, input.PathID, middleware.GetUserID(ctx))
-		if err != nil {
-			return nil, err
-		}
-		if err := h.checkWorkspaceEditAccess(
-			ctx,
-			publication.WorkspaceID,
-			middleware.GetUserID(ctx),
-		); err != nil {
-			return nil, err
-		}
-		jobID, err := h.publicationCommands().RetryRendition(ctx, publication, input.AccountID)
+		jobID, err := h.publicationApplication().RetryRendition(ctx, middleware.GetUserID(ctx), input.PathID, input.AccountID)
 		if err != nil {
 			return nil, publicationMutationHTTPError(err, "failed to queue destination retry")
 		}
@@ -1285,15 +1260,7 @@ func (h *PublicationHandler) retryFailedRenditions(api huma.API) {
 		Middlewares: huma.Middlewares{middleware.RequestMetadataMiddleware(), middleware.AuthMiddleware(api, h.auth)},
 		Errors:      []int{400, 403, 404, 409},
 	}, func(ctx context.Context, input *RetryFailedRenditionsInput) (*ActionOutput, error) {
-		publication, err := h.loadPublication(ctx, input.PathID, middleware.GetUserID(ctx))
-		if err != nil {
-			return nil, err
-		}
-		if err := h.checkWorkspaceEditAccess(ctx, publication.WorkspaceID, middleware.GetUserID(ctx)); err != nil {
-			return nil, err
-		}
-
-		jobID, err := h.publicationCommands().RetryFailedRenditions(ctx, publication)
+		jobID, err := h.publicationApplication().RetryFailedRenditions(ctx, middleware.GetUserID(ctx), input.PathID)
 		if err != nil {
 			return nil, publicationMutationHTTPError(err, "failed to queue destination retries")
 		}

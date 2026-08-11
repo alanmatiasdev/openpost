@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -19,57 +20,53 @@ import (
 	"github.com/uptrace/bun"
 )
 
-// publicationCommands is the transport-independent application boundary for
-// publication mutations. Transports authenticate, decode their public schema,
-// and load an authorized publication before invoking these commands.
-type publicationCommands struct {
+// publicationApplication is the shared lifecycle boundary for REST, MCP, CLI,
+// and retained Post compatibility adapters. It owns publication access checks,
+// aggregate mutation, validation, scheduling, publishing, and retries.
+type publicationApplication struct {
 	handler *PublicationHandler
 	now     func() time.Time
 	newID   func() string
 }
 
-// publicationQueries is the transport-independent application boundary for
-// publication queries that involve domain computation rather than response
-// mapping.
-type publicationQueries struct {
-	handler *PublicationHandler
-}
-
-func (h *PublicationHandler) publicationCommands() publicationCommands {
-	return publicationCommands{
+func (h *PublicationHandler) publicationApplication() publicationApplication {
+	return publicationApplication{
 		handler: h,
 		now:     func() time.Time { return time.Now().UTC() },
 		newID:   uuid.NewString,
 	}
 }
 
-func (h *PublicationHandler) publicationQueries() publicationQueries {
-	return publicationQueries{handler: h}
-}
-
-func (commands publicationCommands) Create(
+func (commands publicationApplication) Create(
 	ctx context.Context,
 	userID string,
 	input CreatePublicationBody,
 ) (*models.Publication, error) {
-	command := commands.handler.newCreateCommand()
-	command.now = commands.now
-	return command.Execute(ctx, userID, input)
+	prepared, err := commands.prepareCreate(ctx, userID, input)
+	if err != nil {
+		return nil, err
+	}
+	publication := publicationModelFromCreate(prepared.input, userID, prepared.repostOverrideJSON, prepared.now)
+	if err := commands.persistCreate(ctx, publication, prepared); err != nil {
+		return nil, fmt.Errorf("persist publication creation: %w", err)
+	}
+	return publication, nil
 }
 
 // Update commits the aggregate, canonical segments, destination renditions,
 // schedule job, linked text editor, and revision audit as one transaction.
-// The supplied publication must already have passed transport authorization.
+// The application boundary loads and authorizes the aggregate before mutation.
 //
 //nolint:gocyclo // Aggregate replacement and revision tracking must remain atomic.
-func (commands publicationCommands) Update(
+func (commands publicationApplication) Update(
 	ctx context.Context,
 	userID string,
-	existing *models.Publication,
+	publicationID string,
 	input PublicationUpdateBody,
 ) error {
-	if existing == nil {
-		return errPublicationNotFound
+	existing, err := commands.handler.loadPublicationForEdit(ctx, publicationID, userID)
+	if err != nil {
+		return err
 	}
 	if input.SocialSetID != nil &&
 		*input.SocialSetID != "" &&
@@ -225,39 +222,54 @@ func (commands publicationCommands) Update(
 	})
 }
 
-func (queries publicationQueries) Validate(
+func (commands publicationApplication) Validate(
 	ctx context.Context,
+	userID string,
 	publicationID string,
 ) ([]capabilities.ValidationIssue, error) {
-	return queries.handler.validatePublicationByID(ctx, publicationID)
+	publication, err := commands.handler.loadPublication(ctx, publicationID, userID)
+	if err != nil {
+		return nil, err
+	}
+	return commands.handler.validatePublicationByID(ctx, publication.ID)
 }
 
-func (commands publicationCommands) Schedule(
+func (commands publicationApplication) Schedule(
 	ctx context.Context,
+	userID string,
 	publicationID string,
 	expectedRevision int,
 	intent providerreadiness.ExecutionIntent,
 ) (string, error) {
-	if err := commands.validateForEnqueue(ctx, publicationID); err != nil {
+	publication, err := commands.handler.loadPublicationForEdit(ctx, publicationID, userID)
+	if err != nil {
 		return "", err
 	}
-	return commands.handler.queueScheduledPublicationExpected(ctx, publicationID, expectedRevision, intent)
+	if err := commands.validateForEnqueue(ctx, userID, publication.ID); err != nil {
+		return "", err
+	}
+	return commands.handler.queueScheduledPublicationExpected(ctx, publication.ID, expectedRevision, intent)
 }
 
-func (commands publicationCommands) PublishNow(
+func (commands publicationApplication) PublishNow(
 	ctx context.Context,
+	userID string,
 	publicationID string,
 	expectedRevision int,
 	intent providerreadiness.ExecutionIntent,
 ) (string, error) {
-	if err := commands.validateForEnqueue(ctx, publicationID); err != nil {
+	publication, err := commands.handler.loadPublicationForEdit(ctx, publicationID, userID)
+	if err != nil {
 		return "", err
 	}
-	return commands.handler.queuePublicationNowExpected(ctx, publicationID, expectedRevision, intent)
+	if err := commands.validateForEnqueue(ctx, userID, publication.ID); err != nil {
+		return "", err
+	}
+	return commands.handler.queuePublicationNowExpected(ctx, publication.ID, expectedRevision, intent)
 }
 
-func (commands publicationCommands) validateForEnqueue(ctx context.Context, publicationID string) error {
-	issues, err := commands.handler.publicationQueries().Validate(ctx, publicationID)
+func (commands publicationApplication) validateForEnqueue(ctx context.Context, userID, publicationID string) error {
+	issues, err := commands.Validate(ctx, userID, publicationID)
 	if err != nil {
 		return err
 	}
@@ -267,13 +279,18 @@ func (commands publicationCommands) validateForEnqueue(ctx context.Context, publ
 	return nil
 }
 
-func (commands publicationCommands) RetryRendition(
+func (commands publicationApplication) RetryRendition(
 	ctx context.Context,
-	publication *models.Publication,
+	userID,
+	publicationID,
 	accountID string,
 ) (string, error) {
-	if publication == nil {
-		return "", errPublicationNotFound
+	publication, err := commands.handler.loadPublication(ctx, publicationID, userID)
+	if err != nil {
+		return "", err
+	}
+	if err := commands.handler.checkWorkspaceEditAccess(ctx, publication.WorkspaceID, userID); err != nil {
+		return "", err
 	}
 	var rendition models.Rendition
 	if err := commands.handler.db.NewSelect().
@@ -302,13 +319,13 @@ func (commands publicationCommands) RetryRendition(
 		"authorization_batch_id":     batchID,
 		"authorization_scheduled_at": now.Format(time.RFC3339Nano),
 	})
-	err := commands.handler.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
+	err = commands.handler.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
 		return commands.retryRenditionTx(txCtx, tx, publication, &rendition, jobID, batchID, payload, now)
 	})
 	return jobID, err
 }
 
-func (commands publicationCommands) retryRenditionTx(
+func (commands publicationApplication) retryRenditionTx(
 	ctx context.Context,
 	tx bun.Tx,
 	publication *models.Publication,
@@ -365,7 +382,7 @@ func (commands publicationCommands) retryRenditionTx(
 	return err
 }
 
-func (commands publicationCommands) markRetryRenditionScheduledTx(ctx context.Context, tx bun.Tx, publicationID string, now time.Time) error {
+func (commands publicationApplication) markRetryRenditionScheduledTx(ctx context.Context, tx bun.Tx, publicationID string, now time.Time) error {
 	if _, err := tx.NewUpdate().Model((*models.Publication)(nil)).
 		Set("status = ?", models.PublicationStatusScheduled).Set("updated_at = ?", now).
 		Where("id = ?", publicationID).Where("status = ?", models.PublicationStatusFailed).Exec(ctx); err != nil {
@@ -384,12 +401,17 @@ func (commands publicationCommands) markRetryRenditionScheduledTx(ctx context.Co
 // job with one retry batch for the remaining transient destination failures.
 //
 //nolint:gocyclo // Retry selection, jobs, receipts, and audit must commit together.
-func (commands publicationCommands) RetryFailedRenditions(
+func (commands publicationApplication) RetryFailedRenditions(
 	ctx context.Context,
-	publication *models.Publication,
+	userID,
+	publicationID string,
 ) (string, error) {
-	if publication == nil {
-		return "", errPublicationNotFound
+	publication, err := commands.handler.loadPublication(ctx, publicationID, userID)
+	if err != nil {
+		return "", err
+	}
+	if err := commands.handler.checkWorkspaceEditAccess(ctx, publication.WorkspaceID, userID); err != nil {
+		return "", err
 	}
 	jobID := commands.newID()
 	batchID := commands.newID()
@@ -399,7 +421,7 @@ func (commands publicationCommands) RetryFailedRenditions(
 		"authorization_batch_id":     batchID,
 		"authorization_scheduled_at": now.Format(time.RFC3339Nano),
 	})
-	err := commands.handler.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
+	err = commands.handler.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
 		if err := lockPublicationMutationTx(txCtx, tx, publication.ID); err != nil {
 			return err
 		}

@@ -26,7 +26,7 @@ func TestPublicationApplicationKeepsRESTAndMCPUpdateParity(t *testing.T) {
 
 	create := func(title string) *models.Publication {
 		t.Helper()
-		publication, err := handler.publicationCommands().Create(ctx, "user-1", CreatePublicationBody{
+		publication, err := handler.publicationApplication().Create(ctx, "user-1", CreatePublicationBody{
 			WorkspaceID:      "ws-1",
 			Title:            title,
 			ContentProfile:   models.ContentProfileShortText,
@@ -98,15 +98,15 @@ func TestPublicationApplicationKeepsRESTAndMCPUpdateParity(t *testing.T) {
 	require.JSONEq(t, restRenditionsStored[0].SettingsJSON, mcpRenditionsStored[0].SettingsJSON)
 }
 
-func TestPublicationCommandsUseOneMutationTimestamp(t *testing.T) {
+func TestPublicationApplicationUsesOneMutationTimestamp(t *testing.T) {
 	t.Parallel()
 	srv := newMCPTestServer(t)
 	ctx := context.Background()
 	handler := srv.handler.publicationHandler()
-	commands := handler.publicationCommands()
+	application := handler.publicationApplication()
 	createdAt := time.Date(2026, time.August, 9, 8, 0, 0, 0, time.UTC)
-	commands.now = func() time.Time { return createdAt }
-	publication, err := commands.Create(ctx, "user-1", CreatePublicationBody{
+	application.now = func() time.Time { return createdAt }
+	publication, err := application.Create(ctx, "user-1", CreatePublicationBody{
 		WorkspaceID:      "ws-1",
 		ContentProfile:   models.ContentProfileShortText,
 		SourceText:       "Initial copy",
@@ -115,9 +115,9 @@ func TestPublicationCommandsUseOneMutationTimestamp(t *testing.T) {
 	require.NoError(t, err)
 
 	updatedAt := createdAt.Add(time.Hour)
-	commands.now = func() time.Time { return updatedAt }
+	application.now = func() time.Time { return updatedAt }
 	updatedCopy := "Updated once"
-	require.NoError(t, commands.Update(ctx, "user-1", publication, PublicationUpdateBody{
+	require.NoError(t, application.Update(ctx, "user-1", publication.ID, PublicationUpdateBody{
 		ExpectedRevision: 1,
 		SourceText:       &updatedCopy,
 	}))
@@ -133,12 +133,12 @@ func TestPublicationCommandsUseOneMutationTimestamp(t *testing.T) {
 	require.True(t, editor.UpdatedAt.Equal(updatedAt))
 }
 
-func TestPublicationCommandsValidateBeforeQueueMutation(t *testing.T) {
+func TestPublicationApplicationValidatesBeforeQueueMutation(t *testing.T) {
 	t.Parallel()
 	srv := newMCPTestServer(t)
 	ctx := context.Background()
 	handler := srv.handler.publicationHandler()
-	publication, err := handler.publicationCommands().Create(ctx, "user-1", CreatePublicationBody{
+	publication, err := handler.publicationApplication().Create(ctx, "user-1", CreatePublicationBody{
 		WorkspaceID:      "ws-1",
 		ContentProfile:   models.ContentProfileShortText,
 		SourceText:       strings.Repeat("x", 281),
@@ -149,13 +149,13 @@ func TestPublicationCommandsValidateBeforeQueueMutation(t *testing.T) {
 	_, err = srv.db.NewUpdate().Model(publication).Column("scheduled_at").WherePK().Exec(ctx)
 	require.NoError(t, err)
 
-	commands := handler.publicationCommands()
+	commands := handler.publicationApplication()
 	for _, run := range []func() (string, error){
 		func() (string, error) {
-			return commands.Schedule(ctx, publication.ID, 1, providerreadiness.ExecutionIntentProduction)
+			return commands.Schedule(ctx, "user-1", publication.ID, 1, providerreadiness.ExecutionIntentProduction)
 		},
 		func() (string, error) {
-			return commands.PublishNow(ctx, publication.ID, 1, providerreadiness.ExecutionIntentProduction)
+			return commands.PublishNow(ctx, "user-1", publication.ID, 1, providerreadiness.ExecutionIntentProduction)
 		},
 	} {
 		jobID, runErr := run()

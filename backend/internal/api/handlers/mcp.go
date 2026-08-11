@@ -3326,7 +3326,7 @@ func (h *MCPHandler) createPublication(ctx context.Context, userID string, args 
 	if rpcErr != nil {
 		return nil, rpcErr
 	}
-	publication, err := h.publicationHandler().publicationCommands().Create(ctx, userID, CreatePublicationBody{
+	publication, err := h.publicationHandler().publicationApplication().Create(ctx, userID, CreatePublicationBody{
 		WorkspaceID:      input.WorkspaceID,
 		Title:            input.Title,
 		ContentProfile:   input.ContentProfile,
@@ -3468,17 +3468,7 @@ func (h *MCPHandler) updatePublication(ctx context.Context, userID string, args 
 		input.ExpectedRevision < 1 {
 		return nil, &mcpError{Code: -32602, Message: "invalid update_publication arguments"}
 	}
-	var publication models.Publication
-	if err := h.db.NewSelect().Model(&publication).Where("id = ?", input.PublicationID).Scan(ctx); err != nil {
-		return nil, &mcpError{Code: -32602, Message: "publication not found"}
-	}
-	if rpcErr := h.ensureWorkspaceEditAccess(ctx, userID, publication.WorkspaceID); rpcErr != nil {
-		return nil, rpcErr
-	}
-	if !isPublicationEditable(publication.Status) {
-		return nil, &mcpError{Code: -32602, Message: errPublicationNotEditable.Error()}
-	}
-	if err := h.publicationHandler().publicationCommands().Update(ctx, userID, &publication, PublicationUpdateBody{
+	if err := h.publicationHandler().publicationApplication().Update(ctx, userID, input.PublicationID, PublicationUpdateBody{
 		ExpectedRevision: input.ExpectedRevision,
 		Title:            input.Title,
 		ContentProfile:   input.ContentProfile,
@@ -3492,7 +3482,7 @@ func (h *MCPHandler) updatePublication(ctx context.Context, userID string, args 
 	}); err != nil {
 		return nil, publicationMutationMCPError(err, "failed to update publication")
 	}
-	return h.getPublication(ctx, userID, map[string]any{"publication_id": publication.ID})
+	return h.getPublication(ctx, userID, map[string]any{"publication_id": input.PublicationID})
 }
 
 func mcpMetadataValue(metadata *map[string]interface{}) map[string]interface{} {
@@ -3545,23 +3535,13 @@ func (h *MCPHandler) setPublicationRenditions(ctx context.Context, userID string
 		len(input.Renditions) == 0 {
 		return nil, &mcpError{Code: -32602, Message: "invalid set_publication_renditions arguments"}
 	}
-	var publication models.Publication
-	if err := h.db.NewSelect().Model(&publication).Where("id = ?", input.PublicationID).Scan(ctx); err != nil {
-		return nil, &mcpError{Code: -32602, Message: "publication not found"}
-	}
-	if rpcErr := h.ensureWorkspaceEditAccess(ctx, userID, publication.WorkspaceID); rpcErr != nil {
-		return nil, rpcErr
-	}
-	if !isPublicationEditable(publication.Status) {
-		return nil, &mcpError{Code: -32602, Message: errPublicationNotEditable.Error()}
-	}
-	if err := h.publicationHandler().publicationCommands().Update(ctx, userID, &publication, PublicationUpdateBody{
+	if err := h.publicationHandler().publicationApplication().Update(ctx, userID, input.PublicationID, PublicationUpdateBody{
 		ExpectedRevision: input.ExpectedRevision,
 		Renditions:       input.Renditions,
 	}); err != nil {
 		return nil, publicationMutationMCPError(err, "failed to update publication renditions")
 	}
-	return h.getPublication(ctx, userID, map[string]any{"publication_id": publication.ID})
+	return h.getPublication(ctx, userID, map[string]any{"publication_id": input.PublicationID})
 }
 
 func (h *MCPHandler) replyToRendition(ctx context.Context, userID string, args map[string]any) (any, *mcpError) {
@@ -3621,14 +3601,7 @@ func (h *MCPHandler) validatePublication(ctx context.Context, userID string, arg
 	if input.PublicationID == "" {
 		return nil, &mcpError{Code: -32602, Message: "publication_id is required"}
 	}
-	var publication models.Publication
-	if err := h.db.NewSelect().Model(&publication).Where("id = ?", input.PublicationID).Scan(ctx); err != nil {
-		return nil, &mcpError{Code: -32602, Message: "publication not found"}
-	}
-	if rpcErr := h.ensureWorkspaceAccess(ctx, userID, publication.WorkspaceID); rpcErr != nil {
-		return nil, rpcErr
-	}
-	issues, err := h.publicationHandler().publicationQueries().Validate(ctx, publication.ID)
+	issues, err := h.publicationHandler().publicationApplication().Validate(ctx, userID, input.PublicationID)
 	if err != nil {
 		return nil, &mcpError{Code: -32603, Message: "failed to validate publication"}
 	}
@@ -3643,67 +3616,57 @@ func (h *MCPHandler) validatePublication(ctx context.Context, userID string, arg
 }
 
 func (h *MCPHandler) schedulePublication(ctx context.Context, userID string, args map[string]any) (any, *mcpError) {
-	publication, expectedRevision, intent, rpcErr := h.loadMCPPublicationForAction(ctx, userID, args, "invalid schedule_publication arguments")
+	publicationID, expectedRevision, intent, rpcErr := h.loadMCPPublicationAction(ctx, args, "invalid schedule_publication arguments")
 	if rpcErr != nil {
 		return nil, rpcErr
 	}
 	handler := h.publicationHandler()
-	jobID, err := handler.publicationCommands().Schedule(ctx, publication.ID, expectedRevision, intent)
+	jobID, err := handler.publicationApplication().Schedule(ctx, userID, publicationID, expectedRevision, intent)
 	if err != nil {
 		return nil, publicationMutationMCPError(err, "failed to schedule publication")
 	}
-	status, rpcErr := h.loadMCPPublicationStatus(ctx, publication.ID)
+	status, rpcErr := h.loadMCPPublicationStatus(ctx, publicationID)
 	if rpcErr != nil {
 		return nil, rpcErr
 	}
-	return mcpPublicationActionResult("Publication scheduled: "+publication.ID, jobID, status), nil
+	return mcpPublicationActionResult("Publication scheduled: "+publicationID, jobID, status), nil
 }
 
 func (h *MCPHandler) publishPublicationNow(ctx context.Context, userID string, args map[string]any) (any, *mcpError) {
-	publication, expectedRevision, intent, rpcErr := h.loadMCPPublicationForAction(ctx, userID, args, "invalid publish_publication_now arguments")
+	publicationID, expectedRevision, intent, rpcErr := h.loadMCPPublicationAction(ctx, args, "invalid publish_publication_now arguments")
 	if rpcErr != nil {
 		return nil, rpcErr
 	}
 	handler := h.publicationHandler()
-	jobID, err := handler.publicationCommands().PublishNow(ctx, publication.ID, expectedRevision, intent)
+	jobID, err := handler.publicationApplication().PublishNow(ctx, userID, publicationID, expectedRevision, intent)
 	if err != nil {
 		return nil, publicationMutationMCPError(err, "failed to queue publication")
 	}
-	status, rpcErr := h.loadMCPPublicationStatus(ctx, publication.ID)
+	status, rpcErr := h.loadMCPPublicationStatus(ctx, publicationID)
 	if rpcErr != nil {
 		return nil, rpcErr
 	}
-	return mcpPublicationActionResult("Publication queued: "+publication.ID, jobID, status), nil
+	return mcpPublicationActionResult("Publication queued: "+publicationID, jobID, status), nil
 }
 
-func (h *MCPHandler) loadMCPPublicationForAction(ctx context.Context, userID string, args map[string]any, invalidMessage string) (models.Publication, int, providerreadiness.ExecutionIntent, *mcpError) {
+func (h *MCPHandler) loadMCPPublicationAction(ctx context.Context, args map[string]any, invalidMessage string) (string, int, providerreadiness.ExecutionIntent, *mcpError) {
 	var input struct {
 		PublicationID    string `json:"publication_id"`
 		ExpectedRevision int    `json:"expected_revision"`
 		ExecutionIntent  string `json:"execution_intent"`
 	}
 	if err := decodeMCPArguments(args, &input); err != nil {
-		return models.Publication{}, 0, "", &mcpError{Code: -32602, Message: invalidMessage}
+		return "", 0, "", &mcpError{Code: -32602, Message: invalidMessage}
 	}
 	input.PublicationID = strings.TrimSpace(input.PublicationID)
 	if input.PublicationID == "" || input.ExpectedRevision < 1 {
-		return models.Publication{}, 0, "", &mcpError{Code: -32602, Message: "publication_id and expected_revision are required"}
-	}
-	var publication models.Publication
-	if err := h.db.NewSelect().Model(&publication).Where("id = ?", input.PublicationID).Scan(ctx); err != nil {
-		return models.Publication{}, 0, "", &mcpError{Code: -32602, Message: "publication not found"}
-	}
-	if rpcErr := h.ensureWorkspaceEditAccess(ctx, userID, publication.WorkspaceID); rpcErr != nil {
-		return models.Publication{}, 0, "", rpcErr
-	}
-	if !isPublicationEditable(publication.Status) {
-		return models.Publication{}, 0, "", &mcpError{Code: -32602, Message: errPublicationNotEditable.Error()}
+		return "", 0, "", &mcpError{Code: -32602, Message: "publication_id and expected_revision are required"}
 	}
 	intent, err := providerReadinessExecutionIntent(ctx, h.db, input.ExecutionIntent)
 	if err != nil {
-		return models.Publication{}, 0, "", &mcpError{Code: -32602, Message: err.Error()}
+		return "", 0, "", &mcpError{Code: -32602, Message: err.Error()}
 	}
-	return publication, input.ExpectedRevision, intent, nil
+	return input.PublicationID, input.ExpectedRevision, intent, nil
 }
 
 func mcpPublicationActionResult(message, jobID string, status mcpPublicationStatus) map[string]any {

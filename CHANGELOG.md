@@ -6,6 +6,7 @@ All notable changes to this project are documented in this file.
 
 ### Changed
 
+- Made one Publication application boundary own access checks, creation, updates, validation, scheduling, immediate publishing, and retry orchestration across REST, MCP, CLI, and retained Post compatibility adapters.
 - Centralized all durable job kinds, construction defaults, execution dispatch, retry classification, recurrence, stale-worker recovery, and ambiguous provider-write fencing in the job registry so producers, migrations, and workers share one policy.
 - Added repository-owned engineering workflow skills and documented the GitHub issue tracker, triage labels, and single-context domain-document conventions used by agents.
 

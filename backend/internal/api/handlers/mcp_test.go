@@ -802,25 +802,25 @@ func TestMCPPublicationExecutionIntentDefaultsAndRequiresInstanceAdmin(t *testin
 	require.Nil(t, rpcErr)
 	publicationID := created.(map[string]any)["structuredContent"].(map[string]any)["publication"].(mcpPublicationStatus).ID
 
-	_, _, intent, rpcErr := srv.handler.loadMCPPublicationForAction(ctx, "user-1", map[string]any{
+	_, _, intent, rpcErr := srv.handler.loadMCPPublicationAction(ctx, map[string]any{
 		"publication_id": publicationID, "expected_revision": 1,
 	}, "invalid")
 	require.Nil(t, rpcErr)
 	require.Equal(t, providerreadiness.ExecutionIntentProduction, intent)
 
-	rejectedPublication, rejectedRevision, rejectedIntent, rpcErr := srv.handler.loadMCPPublicationForAction(ctx, "user-1", map[string]any{
+	rejectedPublicationID, rejectedRevision, rejectedIntent, rpcErr := srv.handler.loadMCPPublicationAction(ctx, map[string]any{
 		"publication_id": publicationID, "expected_revision": 1,
 		"execution_intent": "certification_test",
 	}, "invalid")
 	require.NotNil(t, rpcErr)
-	require.Empty(t, rejectedPublication.ID)
+	require.Empty(t, rejectedPublicationID)
 	require.Zero(t, rejectedRevision)
 	require.Empty(t, rejectedIntent)
 	require.Contains(t, rpcErr.Message, "instance admin role required")
 
 	_, err := srv.db.NewUpdate().Model((*models.User)(nil)).Set("is_admin = ?", true).Where("id = ?", "user-1").Exec(ctx)
 	require.NoError(t, err)
-	_, _, intent, rpcErr = srv.handler.loadMCPPublicationForAction(ctx, "user-1", map[string]any{
+	_, _, intent, rpcErr = srv.handler.loadMCPPublicationAction(ctx, map[string]any{
 		"publication_id": publicationID, "expected_revision": 1,
 		"execution_intent": "certification_test",
 	}, "invalid")
