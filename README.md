@@ -169,6 +169,10 @@ For setup questions, ideas, and general discussion, join the [OpenPost Discord c
 If OpenPost is useful to you, **star the repository**. It helps other self-hosters find the project and tells us which work is worth continuing.
 
 <!-- star-history:start -->
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/star-history/star-history-dark.svg">
+  <img alt="Star history" src="assets/star-history/star-history-light.svg">
+</picture>
 <!-- star-history:end -->
 
 ## License and security
