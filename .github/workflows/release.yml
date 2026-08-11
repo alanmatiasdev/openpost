@@ -233,7 +233,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
-          scripts/release-asset-upload.sh \
+          bash scripts/release-asset-upload.sh \
             "openpost-server-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.ext }}"
 
   build-cli:
@@ -266,7 +266,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
-          scripts/release-asset-upload.sh \
+          bash scripts/release-asset-upload.sh \
             "openpost-cli-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.ext }}" \
             "openpost-mcp-${{ matrix.os }}-${{ matrix.arch }}${{ matrix.ext }}"
 
@@ -328,7 +328,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
-          scripts/release-asset-upload.sh openpost-app-android.apk
+          bash scripts/release-asset-upload.sh openpost-app-android.apk
 
   promote-image:
     name: Promote tested image

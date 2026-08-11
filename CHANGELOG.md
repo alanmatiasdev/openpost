@@ -4,6 +4,10 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- Invoked the draft-asset upload helper through Bash and recorded its executable mode so release runners cannot reject it before its bounded retries run.
+
 ## [3.9.2] - 2026-08-11
 
 ### Fixed

@@ -120,7 +120,7 @@ function assertFailureAtomicReleaseWorkflow(workflow) {
 
   for (const job of [binaries, cli, android]) {
     assertJobNeeds(job, ["verify-candidate", "prepare-draft"]);
-    assert.match(job, /scripts\/release-asset-upload\.sh/u);
+    assert.match(job, /bash scripts\/release-asset-upload\.sh/u);
   }
 
   assert.match(releaseAssetUpload, /for attempt in \$\(seq 1 20\)/u);
