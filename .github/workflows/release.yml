@@ -159,10 +159,11 @@ jobs:
             fi
             fetch_release
           fi
-          bun scripts/release-assets.mjs verify \
+          bun scripts/release-lifecycle.mjs verify \
             --release-json draft-release.json \
             --tag "$GITHUB_REF_NAME" \
-            --notes-file release-notes.md
+            --notes-file release-notes.md \
+            --phase draft
           gh release upload "$GITHUB_REF_NAME" \
             --repo "$GITHUB_REPOSITORY" \
             --clobber \
@@ -171,10 +172,11 @@ jobs:
             candidate-release/openpost-image.spdx.json \
             candidate-release/openpost-image-trivy.json
           fetch_release
-          bun scripts/release-assets.mjs verify \
+          bun scripts/release-lifecycle.mjs verify \
             --release-json draft-release.json \
             --tag "$GITHUB_REF_NAME" \
-            --notes-file release-notes.md
+            --notes-file release-notes.md \
+            --phase draft
 
   build-binaries:
     name: Build server (${{ matrix.os }}-${{ matrix.arch }})
@@ -359,11 +361,11 @@ jobs:
           release_id="$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json databaseId --jq '.databaseId')"
           [[ "$release_id" =~ ^[0-9]+$ ]]
           gh api "repos/${GITHUB_REPOSITORY}/releases/${release_id}" > draft-release.json
-          bun scripts/release-assets.mjs verify \
+          bun scripts/release-lifecycle.mjs verify \
             --release-json draft-release.json \
             --tag "$GITHUB_REF_NAME" \
             --notes-file release-notes.md \
-            --complete
+            --phase complete-draft
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
       - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
@@ -469,20 +471,22 @@ jobs:
               "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/${release_id}"
           }
           fetch_release
-          bun scripts/release-assets.mjs verify \
+          bun scripts/release-lifecycle.mjs verify \
             --release-json release.json \
             --tag "$GITHUB_REF_NAME" \
             --notes-file release-notes.md \
-            --complete
+            --phase complete-draft
+          cp release.json release-before.json
           gh release edit "$GITHUB_REF_NAME" \
             --repo "$GITHUB_REPOSITORY" \
             --draft=false \
             --latest \
             --verify-tag
           fetch_release
-          bun scripts/release-assets.mjs verify \
-            --release-json release.json \
+          bun scripts/release-lifecycle.mjs transition \
+            --before-json release-before.json \
+            --after-json release.json \
             --tag "$GITHUB_REF_NAME" \
             --notes-file release-notes.md \
-            --complete \
-            --published
+            --from complete-draft \
+            --to published

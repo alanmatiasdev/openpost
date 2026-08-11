@@ -15,3 +15,7 @@ _Avoid_: Post record, campaign
 **Rendition**:
 One destination-specific form of a Publication, bound to a connected social account and output profile.
 _Avoid_: Variant, cross-post
+
+**Release candidate**:
+One exact revision that passed candidate CI and carries a matching release manifest. It may advance through draft, complete draft, deployed, and published evidence without being rebuilt.
+_Avoid_: Build, latest image

@@ -6,6 +6,10 @@ import os from "node:os";
 import path from "node:path";
 
 import { checkMCPRegistryOwnership } from "./check-mcp-registry.mjs";
+import {
+  requireConventionalCommitMessage,
+  selectWorkflowRun,
+} from "./release-lifecycle.mjs";
 import { readReleaseManifest } from "./release-manifest.mjs";
 import {
   changedReleasePaths,
@@ -213,7 +217,7 @@ async function prepare(commitMessage) {
   const branch = git(["branch", "--show-current"]);
   if (branch !== "main")
     throw new Error(`refusing to release from ${JSON.stringify(branch)}`);
-  if (isDirty()) requireConventionalCommit(commitMessage);
+  if (isDirty()) requireConventionalCommitMessage(commitMessage);
 
   verifyGitHubReleaseAccess();
   await verifyProductionReady();
@@ -431,17 +435,9 @@ async function waitForWorkflow(workflow, branch, revision) {
     ]);
     if (result.ok) {
       const runs = JSON.parse(result.stdout || "[]");
-      const match = runs.find((run) => run.headBranch === branch);
+      const match = selectWorkflowRun(runs, { workflow, branch, revision });
       if (match) {
-        if (match.status === "completed" && match.conclusion !== "success") {
-          throw new Error(
-            `${workflow} failed for ${revision}: ${match.conclusion}`,
-          );
-        }
-        return {
-          id: String(match.databaseId),
-          attempt: Number(match.attempt),
-        };
+        return match;
       }
     }
     await Bun.sleep(5_000);
@@ -544,16 +540,6 @@ function verifyGitHubReleaseAccess() {
   }
   run(["gh", "workflow", "view", "CI"]);
   run(["gh", "workflow", "view", "Build and Release"]);
-}
-
-function requireConventionalCommit(message) {
-  const header =
-    String(message ?? "")
-      .trim()
-      .split(/\r?\n/, 1)[0] ?? "";
-  if (!/^[a-z][a-z0-9-]*(?:\([^)\r\n]+\))?!?:\s+\S/i.test(header)) {
-    throw new Error("uncommitted work requires a Conventional Commit message");
-  }
 }
 
 function releaseDiskStatus() {

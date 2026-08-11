@@ -109,7 +109,7 @@ function assertFailureAtomicReleaseWorkflow(workflow) {
   );
   assert.match(prepare, /gh release create[\s\S]*--draft\s/u);
   assert.doesNotMatch(workflow, /releases\/tags\/\$\{GITHUB_REF_NAME\}/u);
-  const prepareValidation = prepare.indexOf("release-assets.mjs verify");
+  const prepareValidation = prepare.indexOf("release-lifecycle.mjs verify");
   const evidenceUpload = prepare.indexOf("gh release upload");
   assert.ok(prepareValidation >= 0 && prepareValidation < evidenceUpload);
   assert.doesNotMatch(prepare, /--draft=false/u);
@@ -130,7 +130,7 @@ function assertFailureAtomicReleaseWorkflow(workflow) {
     "build-android",
   ]);
   assert.match(promote, /permissions:\s+contents: write\s+packages: write/u);
-  const completeDraft = promote.indexOf("--complete");
+  const completeDraft = promote.indexOf("--phase complete-draft");
   const registryWrite = promote.indexOf("docker buildx imagetools create");
   assert.ok(completeDraft >= 0 && completeDraft < registryWrite);
 
@@ -146,15 +146,19 @@ function assertFailureAtomicReleaseWorkflow(workflow) {
     "promote-image",
     "deploy-production",
   ]);
-  const exactAssetCheck = publish.indexOf("--complete");
+  const exactAssetCheck = publish.indexOf("--phase complete-draft");
   const publicEdit = publish.indexOf("gh release edit");
-  const publishedCheck = publish.indexOf("--published");
+  const publishedCheck = publish.indexOf("--to published");
   assert.ok(
     exactAssetCheck >= 0 &&
       exactAssetCheck < publicEdit &&
       publicEdit < publishedCheck,
   );
   assert.match(publish, /--draft=false/u);
+  assert.match(
+    publish,
+    /release-lifecycle\.mjs transition[\s\S]*--from complete-draft[\s\S]*--to published/u,
+  );
 
   const outsidePublish = workflow.replace(publish, "");
   assert.doesNotMatch(outsidePublish, /--draft=false|gh release edit/u);
