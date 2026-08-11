@@ -340,7 +340,7 @@ jobs:
         build-android,
       ]
     permissions:
-      contents: read
+      contents: write
       packages: write
     outputs:
       digest: ${{ steps.promote.outputs.digest }}

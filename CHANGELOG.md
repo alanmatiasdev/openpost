@@ -4,6 +4,10 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- Allowed the image-promotion job to read the private draft release with its GitHub token before verifying the complete asset set.
+
 ## [3.7.1] - 2026-08-11
 
 ### Fixed

@@ -129,6 +129,7 @@ function assertFailureAtomicReleaseWorkflow(workflow) {
     "build-cli",
     "build-android",
   ]);
+  assert.match(promote, /permissions:\s+contents: write\s+packages: write/u);
   const completeDraft = promote.indexOf("--complete");
   const registryWrite = promote.indexOf("docker buildx imagetools create");
   assert.ok(completeDraft >= 0 && completeDraft < registryWrite);
