@@ -4,6 +4,8 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [3.8.0] - 2026-08-11
+
 ### Added
 
 - Added an optional Memegen-backed meme maker to the shared media picker with cached template search, editable captions and image slots, validated AI suggestions, bounded previews, Media-library imports, source metadata, and durable generation recipes.
