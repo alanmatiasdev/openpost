@@ -18,7 +18,7 @@ facts through one readiness service:
 | Local test | A current normalized local run matches the exact certification contract. |
 | Live certification | A current real-provider run matches the same contract and subject. |
 | Approval | The provider app's reviewed tier is current and permits this operation. |
-| Authorization | The exact connected account grant is valid and has every required scope. |
+| Authorization | The exact connected account grant is valid. Strict certification also requires every recorded scope. |
 | Policy | The server permits the selected account, format, and policy mode. |
 | Runtime control | The most restrictive current environment or ledger control is enabled. |
 
@@ -27,6 +27,8 @@ The effective state is fail-closed. Actionable states include
 `degraded`, and `expired_proof`. An explicit disable always wins. Missing
 configuration or certification is reported directly. A healthy state adds no
 warning or badge.
+
+Cloud deployments keep production provider identity and public-claim rules at all times. They enforce missing approval, runtime-control, local-test, live-test, and recorded OAuth-scope evidence as operational blockers only when `OPENPOST_PROVIDER_CERTIFICATION_ENFORCED=true`. The flag defaults to `false` so an evidence rollout cannot disable configured providers or migrated active accounts. Explicit provider disables, missing configuration, revoked or invalid grants, and provider policy restrictions still block operations.
 
 Inspect the running server with:
 

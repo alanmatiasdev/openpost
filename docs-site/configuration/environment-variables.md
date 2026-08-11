@@ -145,6 +145,8 @@ OpenPost builds provider adapters at startup from active encrypted `provider_app
 
 `OPENPOST_DISABLED_PROVIDERS` is an emergency comma-, space-, or newline-separated deny-list of provider keys. It has priority over database runtime-control events and fails closed across connection, capability and schedule decisions, and queued worker writes after restart. Use append-only runtime-control events for normal operator changes and the environment list when the database control plane must not be trusted.
 
+`OPENPOST_PROVIDER_CERTIFICATION_ENFORCED` is a cloud-only strict evidence gate and defaults to `false`. Enable it only after every enabled production subject has current runtime-control, approval, local-test, live-test, and OAuth-scope evidence. Production identity and public certification claims remain production-scoped when this flag is off; the flag only controls whether missing certification evidence blocks connection and publishing.
+
 Database rows are intended for administrator-managed installs. They store `client_secret_encrypted` with the same `OPENPOST_ENCRYPTION_KEY` used for account tokens and act as fallbacks when no matching environment app exists. They require a server restart after changes. Matching is by provider, except Mastodon uses provider plus `instance_url`.
 
 Instance admins can manage encrypted database rows through `GET /api/v1/admin/provider-apps`, `POST /api/v1/admin/provider-apps`, and `DELETE /api/v1/admin/provider-apps/{id}`. API responses never return client secrets; send `client_secret` only when creating a row or rotating the existing secret.
@@ -156,6 +158,7 @@ The backend exposes this registry through the instance-admin API and **Settings 
 | Variable                 |  Required | Default                         | Description                                                                                                        |
 | ------------------------ | --------: | ------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
 | `OPENPOST_PROVIDER_APPS` |        No | empty                           | Structured JSON provider app registry. Entries override matching legacy env providers and encrypted database rows. |
+| `OPENPOST_PROVIDER_CERTIFICATION_ENFORCED` | No | `false` | In cloud mode, require complete certification evidence before connection or publishing. |
 | `X_CLIENT_ID`            | Yes for X | empty                           | X OAuth client ID. Leave empty to disable X.                                                                       |
 | `X_CLIENT_SECRET`        | Yes for X | empty                           | X OAuth client secret.                                                                                             |
 | `X_REDIRECT_URI`         |        No | derived from `OPENPOST_APP_URL` | X OAuth callback URL override.                                                                                     |

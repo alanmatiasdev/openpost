@@ -80,6 +80,73 @@ func TestServiceEnvironmentDisableHasPriorityAndSkipsLedger(t *testing.T) {
 	}
 }
 
+func TestManagedProductionKeepsUncertifiedOperationsUsableButNotAdvertisable(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, time.August, 11, 12, 0, 0, 0, time.UTC)
+	xApp := platform.AppConfig{
+		Provider: capabilities.ProviderX, ClientID: "provider-app-1",
+		RedirectURI: "https://app.openpost.test/api/v1/accounts/x/callback",
+	}
+	linkedinApp := platform.AppConfig{
+		Provider: capabilities.ProviderLinkedIn, ClientID: "provider-app-2",
+		RedirectURI: "https://app.openpost.test/api/v1/accounts/linkedin/callback",
+	}
+	catalog, err := NewConfigurationCatalog(RuntimeApps(
+		[]platform.AppConfig{xApp, linkedinApp}, ConfigurationSourceEnvironment, ProviderEnvironmentProduction,
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ledger := &fakeLedger{
+		approvalErr: ErrLedgerFactNotFound, controlErr: ErrLedgerFactNotFound,
+		localErr: ErrLedgerFactNotFound, liveErr: ErrLedgerFactNotFound,
+	}
+	service := NewService(ledger, ServiceOptions{
+		Now: func() time.Time { return now }, Configurations: catalog,
+		ManagedProduction: true, DefaultControl: RuntimeControlStateEnabled,
+	})
+
+	connection := service.DecideConnection(t.Context(), capabilities.ProviderX, "", ExecutionIntentProduction)
+	if connection.State != EffectiveStateHealthy || !connection.Connectable {
+		t.Fatalf("uncertified production connection was blocked: %#v", connection)
+	}
+
+	capability, ok := capabilities.FindOutput(capabilities.ProviderX, "x.post")
+	if !ok {
+		t.Fatal("X post capability is missing")
+	}
+	publication := service.DecidePublication(t.Context(), PublicationDecisionInput{
+		Provider: capabilities.ProviderX, AccountKind: "standard", Capability: capability,
+		Operation: OperationPublishImmediate, Intent: ExecutionIntentProduction, PolicyMode: "x.standard",
+		CurrentAccountReferenceHash: "sha256:" + strings.Repeat("f", 64),
+		Authorization: AuthorizationEvidence{
+			State: AuthorizationStateValid, ValidatedAt: now.Add(-time.Hour),
+		},
+	})
+	if publication.State != EffectiveStateHealthy || !publication.Publishable {
+		t.Fatalf("uncertified production publication was blocked: %#v", publication)
+	}
+	if publication.Advertisable {
+		t.Fatalf("uncertified production publication became advertisable: %#v", publication)
+	}
+
+	linkedinCapability, ok := capabilities.FindOutput(capabilities.ProviderLinkedIn, "linkedin.post")
+	if !ok {
+		t.Fatal("LinkedIn post capability is missing")
+	}
+	linkedinPublication := service.DecidePublication(t.Context(), PublicationDecisionInput{
+		Provider: capabilities.ProviderLinkedIn, AccountKind: "person", Capability: linkedinCapability,
+		Operation: OperationPublishImmediate, Intent: ExecutionIntentProduction, PolicyMode: "linkedin.person",
+		CurrentAccountReferenceHash: "sha256:" + strings.Repeat("e", 64),
+		Authorization: AuthorizationEvidence{
+			State: AuthorizationStateValid, ValidatedAt: now.Add(-time.Hour),
+		},
+	})
+	if linkedinPublication.State != EffectiveStateHealthy || !linkedinPublication.Publishable {
+		t.Fatalf("legacy LinkedIn authorization without recorded scopes was blocked: %#v", linkedinPublication)
+	}
+}
+
 func TestServiceKeepsImplementationSeparateFromConfiguration(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, time.August, 9, 12, 0, 0, 0, time.UTC)
@@ -196,7 +263,7 @@ func TestServiceAppendsOnlyEvidenceForTheCurrentRuntimeContract(t *testing.T) {
 	}
 	ledger := &fakeLedger{}
 	service := NewService(ledger, ServiceOptions{
-		Configurations: catalog, ManagedProduction: true,
+		Configurations: catalog, ManagedProduction: true, EnforceCertification: true,
 		CurrentRevision: strings.Repeat("a", 40),
 	})
 	evidence := CertificationEvidence{

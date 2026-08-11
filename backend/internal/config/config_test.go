@@ -107,6 +107,7 @@ var configTestEnvKeys = []string{
 	"THREADS_CLIENT_SECRET",
 	"THREADS_REDIRECT_URI",
 	"OPENPOST_PROVIDER_APPS",
+	"OPENPOST_PROVIDER_CERTIFICATION_ENFORCED",
 	"OPENPOST_STORAGE_DRIVER",
 	"OPENPOST_MEDIA_PATH",
 	"OPENPOST_MEDIA_URL",
@@ -771,10 +772,16 @@ func TestLoadBuildsProviderAppRegistryFromLegacyEnv(t *testing.T) {
 
 func TestLoadParsesProviderEnvironmentKillSwitches(t *testing.T) {
 	t.Setenv("OPENPOST_DISABLED_PROVIDERS", "youtube, tiktok\nthreads")
+	t.Setenv("OPENPOST_PROVIDER_CERTIFICATION_ENFORCED", "true")
 
 	cfg := Load()
 
 	require.Equal(t, []string{"youtube", "tiktok", "threads"}, cfg.DisabledProviders)
+	require.True(t, cfg.ProviderCertificationEnforced)
+}
+
+func TestLoadDoesNotEnforceProviderCertificationByDefault(t *testing.T) {
+	require.False(t, Load().ProviderCertificationEnforced)
 }
 
 func TestLoadMergesStructuredProviderApps(t *testing.T) {

@@ -288,8 +288,11 @@ func main() {
 	providerEnvironment := providerreadiness.ProviderEnvironmentDevelopment
 	defaultProviderControl := providerreadiness.RuntimeControlStateEnabled
 	managedProviderProduction := cfg.Edition == config.EditionCloud
+	enforceProviderCertification := managedProviderProduction && cfg.ProviderCertificationEnforced
 	if managedProviderProduction {
 		providerEnvironment = providerreadiness.ProviderEnvironmentProduction
+	}
+	if enforceProviderCertification {
 		defaultProviderControl = providerreadiness.RuntimeControlStateUnknown
 	}
 	providerConfigurationCatalog, err := providerreadiness.NewConfigurationCatalog(
@@ -305,6 +308,7 @@ func main() {
 		providerreadiness.ServiceOptions{
 			Configurations:               providerConfigurationCatalog,
 			ManagedProduction:            managedProviderProduction,
+			EnforceCertification:         enforceProviderCertification,
 			CurrentRevision:              runningBuildRevision(),
 			DisabledProviders:            cfg.DisabledProviders,
 			DynamicRegistrationProviders: []string{capabilities.ProviderMastodon},

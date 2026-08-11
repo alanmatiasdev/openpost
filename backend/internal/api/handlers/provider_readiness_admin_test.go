@@ -84,7 +84,7 @@ func newProviderReadinessAdminTestServer(
 	service := providerreadiness.NewService(
 		providerreadiness.NewRepository(db),
 		providerreadiness.ServiceOptions{
-			Configurations: catalog, ManagedProduction: true,
+			Configurations: catalog, ManagedProduction: true, EnforceCertification: true,
 			CurrentRevision: strings.Repeat("a", 40),
 		},
 	)

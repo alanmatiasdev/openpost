@@ -19,22 +19,24 @@ type ServiceOptions struct {
 	DefaultControl               RuntimeControlState
 	Configurations               *ConfigurationCatalog
 	ManagedProduction            bool
+	EnforceCertification         bool
 	CurrentRevision              string
 }
 
 type Service struct {
-	ledger              Ledger
-	authorizations      AuthorizationSource
-	now                 func() time.Time
-	disabledProviders   map[string]struct{}
-	implemented         map[string]struct{}
-	dynamicRegistration map[string]struct{}
-	defaultControl      RuntimeControlState
-	configurations      *ConfigurationCatalog
-	managedProduction   bool
-	currentRevision     string
-	deployment          DeploymentEnvironment
-	providerEnv         ProviderEnvironment
+	ledger               Ledger
+	authorizations       AuthorizationSource
+	now                  func() time.Time
+	disabledProviders    map[string]struct{}
+	implemented          map[string]struct{}
+	dynamicRegistration  map[string]struct{}
+	defaultControl       RuntimeControlState
+	configurations       *ConfigurationCatalog
+	managedProduction    bool
+	enforceCertification bool
+	currentRevision      string
+	deployment           DeploymentEnvironment
+	providerEnv          ProviderEnvironment
 }
 
 func NewService(ledger Ledger, options ServiceOptions) *Service {
@@ -70,17 +72,18 @@ func NewService(ledger Ledger, options ServiceOptions) *Service {
 		providerEnv = ProviderEnvironmentProduction
 	}
 	service := &Service{
-		ledger:              ledger,
-		now:                 now,
-		disabledProviders:   disabled,
-		implemented:         implemented,
-		dynamicRegistration: dynamicRegistration,
-		defaultControl:      defaultControl,
-		configurations:      options.Configurations,
-		managedProduction:   options.ManagedProduction,
-		currentRevision:     strings.TrimSpace(options.CurrentRevision),
-		deployment:          deployment,
-		providerEnv:         providerEnv,
+		ledger:               ledger,
+		now:                  now,
+		disabledProviders:    disabled,
+		implemented:          implemented,
+		dynamicRegistration:  dynamicRegistration,
+		defaultControl:       defaultControl,
+		configurations:       options.Configurations,
+		managedProduction:    options.ManagedProduction,
+		enforceCertification: options.EnforceCertification,
+		currentRevision:      strings.TrimSpace(options.CurrentRevision),
+		deployment:           deployment,
+		providerEnv:          providerEnv,
 	}
 	service.authorizations, _ = ledger.(AuthorizationSource)
 	return service
@@ -188,7 +191,7 @@ func (s *Service) CurrentRevision() string {
 
 func (s *Service) DecideConnection(ctx context.Context, provider, instanceURL string, intent ExecutionIntent) Decision {
 	configuration := s.resolveConnectionConfiguration(provider, instanceURL)
-	contract, _ := ConnectionContract(provider, s != nil && s.managedProduction)
+	contract, _ := ConnectionContract(provider, s != nil && s.enforceCertification)
 	return s.Decide(ctx, DecisionRequest{
 		Implemented:     s.isImplemented(provider),
 		Subject:         s.subject(configuration, "", "", OperationConnect, "default"),
@@ -248,7 +251,7 @@ func (s *Service) decidePublication(ctx context.Context, input PublicationDecisi
 	contract, _ := PublicationContract(
 		input.Capability,
 		input.Operation,
-		s != nil && s.managedProduction,
+		s != nil && s.enforceCertification,
 		accountKind,
 		policyMode,
 	)

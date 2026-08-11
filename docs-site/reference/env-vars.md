@@ -120,6 +120,7 @@ Most variables loaded through the main backend config loader can also be loaded 
 | `OPENPOST_PROVIDER_USAGE_RETENTION_DAYS`        | Immutable provider-cost event retention                                                           |
 | `OPENPOST_PROVIDER_APPS`                        | Structured provider app registry JSON; entries override matching encrypted database rows          |
 | `OPENPOST_DISABLED_PROVIDERS`                   | Emergency provider deny-list; overrides readiness-ledger controls after restart                   |
+| `OPENPOST_PROVIDER_CERTIFICATION_ENFORCED`      | Cloud-only strict provider evidence gate; defaults to `false`                                      |
 | `X_CLIENT_ID`                                   | X client ID                                                                                       |
 | `X_CLIENT_SECRET`                               | X client secret                                                                                   |
 | `X_REDIRECT_URI`                                | X callback override                                                                               |

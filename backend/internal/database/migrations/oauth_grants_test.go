@@ -41,15 +41,15 @@ type legacySocialAccount073 struct {
 	CreatedAt           time.Time `bun:"created_at,nullzero,notnull,default:current_timestamp"`
 }
 
-func TestOAuthGrantMigrationPreservesLegacyCredentialsSQLite(t *testing.T) {
+func TestOAuthGrantMigrationsPreserveLegacyCredentialsSQLite(t *testing.T) {
 	sqlDB, err := sql.Open("sqlite3", fmt.Sprintf("file:%s?mode=memory&cache=shared", uuid.NewString()))
 	require.NoError(t, err)
 	db := bun.NewDB(sqlDB, sqlitedialect.New())
 	t.Cleanup(func() { require.NoError(t, db.Close()) })
-	exerciseOAuthGrantMigration(t, db)
+	exerciseOAuthGrantMigrations(t, db)
 }
 
-func TestOAuthGrantMigrationPreservesLegacyCredentialsPostgres(t *testing.T) {
+func TestOAuthGrantMigrationsPreserveLegacyCredentialsPostgres(t *testing.T) {
 	dsn := os.Getenv("OPENPOST_TEST_POSTGRES_URL")
 	if dsn == "" {
 		t.Skip("OPENPOST_TEST_POSTGRES_URL is not configured")
@@ -68,10 +68,10 @@ func TestOAuthGrantMigrationPreservesLegacyCredentialsPostgres(t *testing.T) {
 	})
 	_, err = db.ExecContext(t.Context(), `SET search_path TO "`+schema+`"`)
 	require.NoError(t, err)
-	exerciseOAuthGrantMigration(t, db)
+	exerciseOAuthGrantMigrations(t, db)
 }
 
-func exerciseOAuthGrantMigration(t *testing.T, db *bun.DB) {
+func exerciseOAuthGrantMigrations(t *testing.T, db *bun.DB) {
 	t.Helper()
 	ctx := t.Context()
 	_, err := db.ExecContext(ctx, "CREATE TABLE workspaces (id TEXT PRIMARY KEY)")
@@ -101,6 +101,26 @@ func exerciseOAuthGrantMigration(t *testing.T, db *bun.DB) {
 		CreatedAt:           createdAt,
 	}
 	_, err = db.NewInsert().Model(legacy).Exec(ctx)
+	require.NoError(t, err)
+	inactive := *legacy
+	inactive.ID = "inactive-account"
+	inactive.Slug = "inactive-linkedin"
+	inactive.AccountID = "urn:li:person:inactive"
+	inactive.IsActive = false
+	_, err = db.NewInsert().Model(&inactive).Exec(ctx)
+	require.NoError(t, err)
+	missingCredentials := *legacy
+	missingCredentials.ID = "missing-credentials-account"
+	missingCredentials.Slug = "missing-credentials-linkedin"
+	missingCredentials.AccountID = "urn:li:person:missing-credentials"
+	missingCredentials.AccessTokenEnc = []byte{}
+	_, err = db.NewInsert().Model(&missingCredentials).Exec(ctx)
+	require.NoError(t, err)
+	revoked := *legacy
+	revoked.ID = "revoked-account"
+	revoked.Slug = "revoked-linkedin"
+	revoked.AccountID = "urn:li:person:revoked"
+	_, err = db.NewInsert().Model(&revoked).Exec(ctx)
 	require.NoError(t, err)
 
 	content, err := migrationFiles.ReadFile("073_oauth_grants.sql")
@@ -134,6 +154,31 @@ func exerciseOAuthGrantMigration(t *testing.T, db *bun.DB) {
 	}, evidence)
 	require.Equal(t, "legacy_unverified", grant.ValidationStatus)
 	require.EqualValues(t, 1, grant.TokenVersion)
+	_, err = db.NewUpdate().Model((*models.OAuthGrant)(nil)).
+		Set("revoked_at = ?", createdAt.Add(time.Hour)).
+		Where("id = ?", "legacy:"+revoked.ID).
+		Exec(ctx)
+	require.NoError(t, err)
+	_, err = db.NewUpdate().Model((*models.SocialAccount)(nil)).
+		Set("is_active = ?", false).
+		Where("id = ?", inactive.ID).
+		Exec(ctx)
+	require.NoError(t, err)
+
+	content, err = migrationFiles.ReadFile("085_validate_migrated_active_oauth_grants.sql")
+	require.NoError(t, err)
+	item = migration{version: 85, name: "085_validate_migrated_active_oauth_grants.sql", sql: normalizeMigrationSQL(db.Dialect().Name(), string(content))}
+	require.NoError(t, runMigration(ctx, db, item))
+
+	require.NoError(t, db.NewSelect().Model(&grant).Where("id = ?", account.OAuthGrantID).Scan(ctx))
+	require.Equal(t, "valid", grant.ValidationStatus)
+	require.WithinDuration(t, createdAt, grant.ValidatedAt, time.Second)
+	for _, accountID := range []string{inactive.ID, missingCredentials.ID, revoked.ID} {
+		var protected models.OAuthGrant
+		require.NoError(t, db.NewSelect().Model(&protected).Where("id = ?", "legacy:"+accountID).Scan(ctx))
+		require.Equal(t, "legacy_unverified", protected.ValidationStatus, accountID)
+		require.True(t, protected.ValidatedAt.IsZero(), accountID)
+	}
 }
 
 func TestOAuthGrantMigrationAllowsPartialFixtureWithoutSocialAccounts(t *testing.T) {

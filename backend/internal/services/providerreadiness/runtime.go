@@ -217,7 +217,7 @@ func digestJSON(value any) (string, error) {
 func PublicationContract(
 	capability capabilities.Capability,
 	operation Operation,
-	managedProduction bool,
+	enforceCertification bool,
 	accountKind string,
 	policyMode string,
 ) (CertificationContract, error) {
@@ -241,16 +241,16 @@ func PublicationContract(
 	}
 	requirements := Requirements{
 		RequireConfiguration:         true,
-		RequireProductionDeployment:  managedProduction,
-		RequireProductionProviderApp: managedProduction,
-		RequireApproval:              managedProduction,
+		RequireProductionDeployment:  enforceCertification,
+		RequireProductionProviderApp: enforceCertification,
+		RequireApproval:              enforceCertification,
 		RequireAuthorization:         true,
-		RequireLocalEvidence:         managedProduction,
-		RequireLiveEvidence:          managedProduction,
-		AllowTrialExecution:          managedProduction,
-		RequiredScopes:               scopes,
+		RequireLocalEvidence:         enforceCertification,
+		RequireLiveEvidence:          enforceCertification,
+		AllowTrialExecution:          enforceCertification,
 	}
-	if managedProduction {
+	if enforceCertification {
+		requirements.RequiredScopes = scopes
 		checks := publicationCheckRequirements(operation)
 		requirements.RequiredLocalChecks = append([]CheckRequirement(nil), checks...)
 		requirements.RequiredLiveChecks = append([]CheckRequirement(nil), checks...)
@@ -263,7 +263,7 @@ func PublicationContract(
 	}, nil
 }
 
-func ConnectionContract(provider string, managedProduction bool) (CertificationContract, error) {
+func ConnectionContract(provider string, enforceCertification bool) (CertificationContract, error) {
 	provider = strings.TrimSpace(provider)
 	capabilityDigest, err := digestJSON(struct {
 		SchemaVersion int    `json:"schema_version"`
@@ -283,10 +283,10 @@ func ConnectionContract(provider string, managedProduction bool) (CertificationC
 		PolicyDigest:     policyDigest,
 		Requirements: Requirements{
 			RequireConfiguration:         true,
-			RequireProductionDeployment:  managedProduction,
-			RequireProductionProviderApp: managedProduction,
-			RequireApproval:              managedProduction,
-			AllowTrialExecution:          managedProduction,
+			RequireProductionDeployment:  enforceCertification,
+			RequireProductionProviderApp: enforceCertification,
+			RequireApproval:              enforceCertification,
+			AllowTrialExecution:          enforceCertification,
 		},
 	}, nil
 }

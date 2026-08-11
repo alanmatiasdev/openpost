@@ -106,8 +106,9 @@ type Config struct {
 	ThreadsClientSecret string
 	ThreadsRedirectURI  string
 
-	ProviderApps      []platform.AppConfig
-	DisabledProviders []string
+	ProviderApps                  []platform.AppConfig
+	DisabledProviders             []string
+	ProviderCertificationEnforced bool
 
 	StorageDriver     string
 	MediaPath         string
@@ -265,10 +266,11 @@ func Load() *Config {
 		DisableLinkedInThreadReplies: getEnvBoolWithAliases(false, "OPENPOST_DISABLE_LINKEDIN_THREAD_REPLIES", "LINKEDIN_DISABLE_THREAD_REPLIES"),
 		EnableLinkedInOrganizations:  getEnvBoolWithAliases(false, "OPENPOST_LINKEDIN_ORGANIZATIONS_ENABLED"),
 
-		ThreadsClientID:     getEnvWithFallbacks("THREADS_CLIENT_ID", ""),
-		ThreadsClientSecret: getEnvWithFallbacks("THREADS_CLIENT_SECRET", ""),
-		ThreadsRedirectURI:  oauthRedirectFromFrontend("THREADS_REDIRECT_URI", "", frontendURL, "/api/v1/accounts/threads/callback"),
-		DisabledProviders:   parseStringList(getEnvDefault("OPENPOST_DISABLED_PROVIDERS", "")),
+		ThreadsClientID:               getEnvWithFallbacks("THREADS_CLIENT_ID", ""),
+		ThreadsClientSecret:           getEnvWithFallbacks("THREADS_CLIENT_SECRET", ""),
+		ThreadsRedirectURI:            oauthRedirectFromFrontend("THREADS_REDIRECT_URI", "", frontendURL, "/api/v1/accounts/threads/callback"),
+		DisabledProviders:             parseStringList(getEnvDefault("OPENPOST_DISABLED_PROVIDERS", "")),
+		ProviderCertificationEnforced: getEnvBoolWithAliases(false, "OPENPOST_PROVIDER_CERTIFICATION_ENFORCED"),
 
 		StorageDriver:     getEnvEnum("OPENPOST_STORAGE_DRIVER", StorageDriverLocal, StorageDriverLocal, StorageDriverS3),
 		MediaPath:         getEnvDefault("OPENPOST_MEDIA_PATH", "./media"),
