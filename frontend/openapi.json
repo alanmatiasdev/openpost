@@ -31404,6 +31404,17 @@
 						}
 					},
 					{
+						"description": "Optional Posts activity bucket filter",
+						"explode": false,
+						"in": "query",
+						"name": "activity_bucket",
+						"schema": {
+							"description": "Optional Posts activity bucket filter",
+							"enum": ["scheduled", "published", "failed", "draft"],
+							"type": "string"
+						}
+					},
+					{
 						"description": "Optional content profile filter",
 						"explode": false,
 						"in": "query",

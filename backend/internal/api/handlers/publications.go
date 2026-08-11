@@ -196,6 +196,7 @@ type UpsertRenditionsInput struct {
 type ListPublicationsInput struct {
 	WorkspaceID    string `query:"workspace_id" required:"true" doc:"Workspace ID"`
 	Status         string `query:"status" doc:"Optional status filter"`
+	ActivityBucket string `query:"activity_bucket" enum:"scheduled,published,failed,draft" doc:"Optional Posts activity bucket filter"`
 	ContentProfile string `query:"content_profile" doc:"Optional content profile filter"`
 	Cursor         string `query:"cursor" doc:"Opaque cursor for stable newest-first pagination"`
 	CreatedFrom    string `query:"created_from" doc:"Include publications created at or after this RFC3339 timestamp"`

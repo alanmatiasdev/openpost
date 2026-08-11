@@ -93,6 +93,9 @@ func validatePublicationListInput(input *ListPublicationsInput) (int, *timestamp
 	if input.Offset < 0 {
 		return 0, nil, publicationListRange{}, huma.Error400BadRequest("offset must be greater than or equal to 0")
 	}
+	if input.Status != "" && input.ActivityBucket != "" {
+		return 0, nil, publicationListRange{}, huma.Error400BadRequest("status and activity_bucket cannot be used together")
+	}
 	cursorValue := strings.TrimSpace(input.Cursor)
 	if cursorValue != "" && input.Offset != 0 {
 		return 0, nil, publicationListRange{}, huma.Error400BadRequest("cursor and offset cannot be used together")
@@ -177,7 +180,9 @@ func publicationListQuery(
 		Model(model).
 		ModelTableExpr("publications AS publication").
 		Where("publication.workspace_id = ?", input.WorkspaceID)
-	if input.Status != "" {
+	if input.ActivityBucket != "" {
+		query = publicationActivityBucketQuery(query, input.ActivityBucket)
+	} else if input.Status != "" {
 		query = query.Where("publication.status = ?", input.Status)
 	}
 	if input.ContentProfile != "" {
@@ -200,4 +205,30 @@ func publicationListQuery(
 			Where(publicationCalendarOccurrenceSQL+" < ?", ranges.calendarBefore)
 	}
 	return query
+}
+
+func publicationActivityBucketQuery(query *bun.SelectQuery, bucket string) *bun.SelectQuery {
+	switch bucket {
+	case "scheduled":
+		return query.Where(
+			"(publication.status IN (?) OR (publication.status = ? AND publication.scheduled_at IS NOT NULL))",
+			bun.List([]string{models.PublicationStatusScheduled, models.PublicationStatusPublishing}),
+			models.PublicationStatusReady,
+		)
+	case "published":
+		return query.Where("publication.status = ?", models.PublicationStatusPublished)
+	case "failed":
+		return query.Where("publication.status = ?", models.PublicationStatusFailed)
+	case "draft":
+		return query.
+			Where("publication.status NOT IN (?)", bun.List([]string{
+				models.PublicationStatusScheduled,
+				models.PublicationStatusPublishing,
+				models.PublicationStatusPublished,
+				models.PublicationStatusFailed,
+			})).
+			Where("(publication.status <> ? OR publication.scheduled_at IS NULL)", models.PublicationStatusReady)
+	default:
+		return query.Where("1 = 0")
+	}
 }

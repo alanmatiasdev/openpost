@@ -77,6 +77,57 @@ func TestValidatePublicationListInputAcceptsStableCursorAndRejectsMixedPaginatio
 	require.Equal(t, publicationListRange{}, invalidRanges)
 }
 
+func TestPublicationListActivityBucketsMatchPostsTabs(t *testing.T) {
+	db := createHandlerTestDB(t, (*models.Publication)(nil))
+	ctx := context.Background()
+	now := time.Date(2026, time.August, 11, 12, 0, 0, 0, time.UTC)
+	publications := []models.Publication{
+		{ID: "scheduled", Status: models.PublicationStatusScheduled, ScheduledAt: now.Add(time.Hour)},
+		{ID: "publishing", Status: models.PublicationStatusPublishing, ScheduledAt: now},
+		{ID: "ready-scheduled", Status: models.PublicationStatusReady, ScheduledAt: now.Add(2 * time.Hour)},
+		{ID: "ready-draft", Status: models.PublicationStatusReady},
+		{ID: "draft", Status: models.PublicationStatusDraft},
+		{ID: "published", Status: models.PublicationStatusPublished},
+		{ID: "failed", Status: models.PublicationStatusFailed},
+	}
+	for index := range publications {
+		publications[index].WorkspaceID = "workspace-1"
+		publications[index].CreatedByID = "user-1"
+		publications[index].Title = publications[index].ID
+		publications[index].SourceContent = publications[index].ID
+		publications[index].CreatedAt = now.Add(time.Duration(index) * time.Minute)
+		publications[index].UpdatedAt = publications[index].CreatedAt
+	}
+	_, err := db.NewInsert().Model(&publications).Exec(ctx)
+	require.NoError(t, err)
+
+	for bucket, expected := range map[string][]string{
+		"scheduled": {"publishing", "ready-scheduled", "scheduled"},
+		"published": {"published"},
+		"failed":    {"failed"},
+		"draft":     {"draft", "ready-draft"},
+	} {
+		var rows []models.Publication
+		input := &ListPublicationsInput{WorkspaceID: "workspace-1", ActivityBucket: bucket}
+		_, _, ranges, validateErr := validatePublicationListInput(input)
+		require.NoError(t, validateErr)
+		require.NoError(t, publicationListQuery(db, &rows, input, ranges).Order("publication.id ASC").Scan(ctx))
+		ids := make([]string, 0, len(rows))
+		for _, row := range rows {
+			ids = append(ids, row.ID)
+		}
+		require.ElementsMatch(t, expected, ids, bucket)
+	}
+
+	invalidLimit, invalidCursor, invalidRanges, err := validatePublicationListInput(&ListPublicationsInput{
+		Status: models.PublicationStatusScheduled, ActivityBucket: "scheduled",
+	})
+	require.ErrorContains(t, err, "status and activity_bucket cannot be used together")
+	require.Zero(t, invalidLimit)
+	require.Nil(t, invalidCursor)
+	require.Equal(t, publicationListRange{}, invalidRanges)
+}
+
 func TestPublicationListCursorReachesOlderRecordsWithoutDuplicates(t *testing.T) {
 	t.Parallel()
 

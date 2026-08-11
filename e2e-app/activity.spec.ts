@@ -122,13 +122,23 @@ test("failed delivery details stay secondary to post status", async ({
     },
   ];
   await page.route("**/api/v1/publications?**", async (route) => {
-    const status = new URL(route.request().url()).searchParams.get("status");
+    const bucket = new URL(route.request().url()).searchParams.get(
+      "activity_bucket",
+    );
+    const filtered = bucket
+      ? publications.filter((publication) =>
+          bucket === "draft"
+            ? publication.status === "draft"
+            : publication.status === bucket,
+        )
+      : publications;
     await route.fulfill({
       contentType: "application/json",
-      headers: { "X-Has-More": "false" },
-      json: status
-        ? publications.filter((publication) => publication.status === status)
-        : publications,
+      headers: {
+        "X-Has-More": "false",
+        "X-Total-Count": String(filtered.length),
+      },
+      json: filtered,
     });
   });
   await page.route("**/api/v1/jobs**", async (route) => {
@@ -187,9 +197,7 @@ test("failed delivery details stay secondary to post status", async ({
   await expect(
     scheduledPanel.getByText("Scheduled thread child", { exact: true }),
   ).toHaveCount(0);
-  await page
-    .getByRole("tab", { name: "Published", exact: true })
-    .click();
+  await page.getByRole("tab", { name: "Published", exact: true }).click();
   const publishedPanel = page.getByRole("tabpanel", {
     name: "Published",
     exact: true,
@@ -210,4 +218,116 @@ test("failed delivery details stay secondary to post status", async ({
   await details.click();
   await expect(page.getByText("Provider rejected the post")).toBeVisible();
   await expect(page.getByText("Account authorization expired")).toBeVisible();
+});
+
+test("scheduled pagination counts only scheduled publications", async ({
+  page,
+}) => {
+  await page.route("**/api/v1/auth/me", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      json: {
+        id: "user-1",
+        email: "activity-count@example.com",
+        is_admin: false,
+        created_at: "2026-08-01T00:00:00Z",
+      },
+    });
+  });
+  await page.route("**/api/v1/workspaces", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      json: [
+        {
+          id: "ws-1",
+          name: "Posts Count E2E",
+          created_at: "2026-08-01T00:00:00Z",
+        },
+      ],
+    });
+  });
+  await page.route("**/api/v1/workspaces/ws-1/settings", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      json: { timezone: "UTC", week_start: 1 },
+    });
+  });
+  await page.route("**/api/v1/accounts?**", async (route) => {
+    await route.fulfill({ contentType: "application/json", json: [] });
+  });
+  await page.route("**/api/v1/jobs**", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      headers: { "X-Total-Count": "0" },
+      json: [],
+    });
+  });
+
+  const publication = (id: string, status: "scheduled" | "draft") => ({
+    id,
+    text_post_id: `${id}-post`,
+    workspace_id: "ws-1",
+    created_by: "user-1",
+    title: id,
+    intent: "post",
+    content_profile: "post",
+    source_text: id,
+    source_url: "",
+    goal: "",
+    audience: "",
+    status,
+    revision: 1,
+    scheduled_at: status === "scheduled" ? "2026-08-21T12:00:00Z" : "",
+    actual_run_at: "",
+    created_at: "2026-08-20T10:00:00Z",
+    updated_at: "2026-08-20T10:00:00Z",
+    metadata: {},
+    renditions: [],
+    segments: [],
+    media: [],
+  });
+  const scheduled = publication("Only scheduled post", "scheduled");
+  const unscopedPage = [
+    scheduled,
+    ...Array.from({ length: 39 }, (_, index) =>
+      publication(`Draft ${index + 1}`, "draft"),
+    ),
+  ];
+  const publicationRequests: URL[] = [];
+  await page.route("**/api/v1/publications?**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.searchParams.get("status") !== "draft") {
+      publicationRequests.push(url);
+    }
+    const scheduledOnly =
+      url.searchParams.get("activity_bucket") === "scheduled";
+    await route.fulfill({
+      contentType: "application/json",
+      headers: scheduledOnly
+        ? { "X-Total-Count": "1", "X-Has-More": "false" }
+        : {
+            "X-Total-Count": "41",
+            "X-Has-More": "true",
+            "X-Next-Cursor": "older-publications",
+          },
+      json: scheduledOnly ? [scheduled] : unscopedPage,
+    });
+  });
+
+  await page.goto("/activity");
+
+  const scheduledPanel = page.getByRole("tabpanel", {
+    name: "Scheduled",
+    exact: true,
+  });
+  await expect(
+    scheduledPanel.getByText("Only scheduled post", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText("Showing 1 of 1 results")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Load more", exact: true }),
+  ).toHaveCount(0);
+  expect(
+    publicationRequests.map((url) => url.searchParams.get("activity_bucket")),
+  ).toEqual(["scheduled"]);
 });
