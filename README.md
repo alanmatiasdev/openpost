@@ -87,6 +87,7 @@ OpenPost includes adapters for X, Mastodon, Bluesky, LinkedIn profiles and Organ
 An adapter is implementation evidence, not proof that a managed provider or format is ready. App review, effective setup, exact account access and scopes, API limits, policy mode, public media, runtime controls, and current local/live certification are separate gates.
 
 <!-- provider-certification:begin -->
+
 The checked-in public certification manifest contains **0 exact provider-format claims**.
 
 No managed provider-format certification claim is current. Implementation descriptions do not assert managed availability.
