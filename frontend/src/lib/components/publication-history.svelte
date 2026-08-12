@@ -44,8 +44,11 @@
 		created_at: string;
 	};
 
-	let { publicationId, headingLevel = 2 }: { publicationId: string; headingLevel?: 2 | 3 } =
-		$props();
+	let {
+		publicationId,
+		headingLevel = 2,
+		showHeading = true
+	}: { publicationId: string; headingLevel?: 2 | 3; showHeading?: boolean } = $props();
 	let events = $state.raw<PublicationHistoryEvent[]>([]);
 	let nextCursor = $state('');
 	let loading = $state(true);
@@ -146,19 +149,24 @@
 	}
 </script>
 
-<section aria-labelledby={`publication-history-${publicationId}`}>
-	<div class="mb-3 flex items-center gap-2">
-		<HistoryIcon class="size-4 text-muted-foreground" />
-		{#if headingLevel === 3}
-			<h3 id={`publication-history-${publicationId}`} class="text-base font-semibold">
-				{m.image_editor_version_history()}
-			</h3>
-		{:else}
-			<h2 id={`publication-history-${publicationId}`} class="text-base font-semibold">
-				{m.image_editor_version_history()}
-			</h2>
-		{/if}
-	</div>
+<section
+	aria-labelledby={showHeading ? `publication-history-${publicationId}` : undefined}
+	aria-label={!showHeading ? m.image_editor_version_history() : undefined}
+>
+	{#if showHeading}
+		<div class="mb-3 flex items-center gap-2">
+			<HistoryIcon class="size-4 text-muted-foreground" />
+			{#if headingLevel === 3}
+				<h3 id={`publication-history-${publicationId}`} class="text-base font-semibold">
+					{m.image_editor_version_history()}
+				</h3>
+			{:else}
+				<h2 id={`publication-history-${publicationId}`} class="text-base font-semibold">
+					{m.image_editor_version_history()}
+				</h2>
+			{/if}
+		</div>
+	{/if}
 
 	{#if loading}
 		<PageLoading layout="list" label={m.common_loading()} items={3} />

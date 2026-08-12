@@ -207,19 +207,51 @@ func TestMemegenCatalogUsesStaleCacheAndBacksOffAfterRefreshFailure(t *testing.T
 	require.NoError(t, err)
 	require.True(t, stale.Stale)
 	require.Len(t, stale.Templates, 1)
-	require.EqualValues(t, 2, requests.Load())
+	require.EqualValues(t, 3, requests.Load())
 
 	// A failed refresh has a short cooldown so concurrent traffic does not
 	// stampede an unavailable provider.
 	again, err := provider.Templates(context.Background())
 	require.NoError(t, err)
 	require.True(t, again.Stale)
-	require.EqualValues(t, 2, requests.Load())
+	require.EqualValues(t, 3, requests.Load())
 
 	now = now.Add(23 * time.Hour)
 	_, err = provider.Templates(context.Background())
 	require.ErrorIs(t, err, ErrUnavailable)
-	require.EqualValues(t, 3, requests.Load())
+	require.EqualValues(t, 5, requests.Load())
+}
+
+func TestMemegenCatalogRetriesTransientInitialFailure(t *testing.T) {
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		if requests.Add(1) == 1 {
+			writer.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		writeAAGCatalog(writer)
+	}))
+	t.Cleanup(server.Close)
+	provider := mustMemegenProvider(t, MemegenConfig{BaseURL: server.URL})
+
+	catalog, err := provider.Templates(context.Background())
+	require.NoError(t, err)
+	require.Len(t, catalog.Templates, 1)
+	require.EqualValues(t, 2, requests.Load())
+}
+
+func TestMemegenCatalogDoesNotRetryTerminalFailure(t *testing.T) {
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		writer.WriteHeader(http.StatusUnauthorized)
+	}))
+	t.Cleanup(server.Close)
+	provider := mustMemegenProvider(t, MemegenConfig{BaseURL: server.URL})
+
+	_, err := provider.Templates(context.Background())
+	require.ErrorIs(t, err, ErrUnauthorized)
+	require.EqualValues(t, 1, requests.Load())
 }
 
 func TestMemegenCatalogRefreshOutlivesCallerCancellationWithoutPoisoningCache(t *testing.T) {

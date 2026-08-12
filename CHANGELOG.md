@@ -4,9 +4,16 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [3.11.0] - 2026-08-12
+
 ### Added
 
 - Added one canonical hosted-plan catalogue and an expiring signed purchase choice that keeps exact pricing and trial terms through password signup, email verification, refresh, and identity-provider signup without defaulting invalid selections to Founder.
+
+### Fixed
+
+- Kept thread remove controls above their textareas, tightened publication-history and meme-picker overlays to their content, highlighted the active sidebar draft, removed the redundant AI alt-text review note, and retried one safe transient Memegen catalog read.
+- Restored release gating after the hosted purchase-flow merge by accepting formatter-safe provider-catalog sources and checking marketing links and trial copy against the canonical purchase terms.
 
 ## [3.10.1] - 2026-08-12
 

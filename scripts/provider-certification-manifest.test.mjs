@@ -36,6 +36,12 @@ test("public provider claims are derived from the manifest on every claim surfac
   assert.doesNotThrow(() =>
     validatePublicClaimSurfaceSources(manifest, sources),
   );
+  assert.doesNotThrow(() =>
+    validatePublicClaimSurfaceSources(manifest, {
+      ...sources,
+      marketingCatalog: sources.marketingCatalog.replaceAll('"', "'"),
+    }),
+  );
 
   assert.throws(
     () =>
@@ -334,8 +340,7 @@ function validPublicClaimSurfaces(projection) {
     ].join("\n"),
     marketingIndex: "implementation and exact certification facts",
     marketingDetail: "implementation and exact certification facts",
-    marketingLanding:
-      '<div aria-label="Implemented social platform adapters">',
+    marketingLanding: '<div aria-label="Implemented social platform adapters">',
     providerLimits: projection,
     providerOverview: projection,
     launchMatrix: projection,

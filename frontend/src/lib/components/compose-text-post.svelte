@@ -357,7 +357,6 @@
 		maxConcurrentUploads: 3
 	});
 	const captioningMediaIds = new SvelteSet<string>();
-	const generatedCaptionMediaIds = new SvelteSet<string>();
 	const failedCaptionMediaIds = new SvelteSet<string>();
 	const suppressedCaptionMediaIds = new SvelteSet<string>();
 	const captionRequests = new SvelteMap<string, AbortController>();
@@ -2896,7 +2895,6 @@
 				const nextAltTexts = new SvelteMap(mediaAltTexts);
 				nextAltTexts.set(mediaId, result.alt_text);
 				mediaAltTexts = nextAltTexts;
-				if (result.generated) generatedCaptionMediaIds.add(mediaId);
 				scheduleAutoSave();
 			}
 		} catch (cause) {
@@ -4007,7 +4005,6 @@
 			captionRequests.get(mediaId)?.abort();
 			captionRequests.delete(mediaId);
 			captioningMediaIds.delete(mediaId);
-			generatedCaptionMediaIds.delete(mediaId);
 			failedCaptionMediaIds.delete(mediaId);
 			suppressedCaptionMediaIds.delete(mediaId);
 			captionPostContexts.delete(mediaId);
@@ -4061,7 +4058,6 @@
 	function setMediaAltText(mediaId: string, alt: string) {
 		captionRequests.get(mediaId)?.abort();
 		suppressedCaptionMediaIds.add(mediaId);
-		generatedCaptionMediaIds.delete(mediaId);
 		failedCaptionMediaIds.delete(mediaId);
 		const newAlts = new SvelteMap(mediaAltTexts);
 		if (alt.trim()) {
@@ -5378,10 +5374,6 @@
 																	<p class="mt-1 text-xs text-white/80" aria-live="polite">
 																		{m.compose_alt_text_generating()}
 																	</p>
-																{:else if generatedCaptionMediaIds.has(mediaId)}
-																	<p class="mt-1 text-xs text-white/80">
-																		{m.compose_alt_text_ai_generated()}
-																	</p>
 																{/if}
 																<div class="mt-1 flex justify-end gap-1">
 																	<button
@@ -5613,7 +5605,7 @@
 										{#if isThread}
 											<button
 												type="button"
-												class="absolute top-1 right-0 flex size-10 items-center justify-center rounded-md text-muted-foreground opacity-70 transition-opacity hover:bg-muted hover:text-destructive md:top-3 md:size-7 md:opacity-0 md:group-hover/post:opacity-100"
+												class="absolute top-1 right-0 z-20 flex size-10 items-center justify-center rounded-md text-muted-foreground opacity-70 transition-opacity hover:bg-muted hover:text-destructive md:top-3 md:size-7 md:opacity-0 md:group-hover/post:opacity-100"
 												onclick={() => removePost(i)}
 												title={m.compose_remove_post()}
 												aria-label={m.compose_remove_post()}

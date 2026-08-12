@@ -507,6 +507,7 @@
 				data-testid="sidebar-draft-list"
 			>
 				{#each drafts as draft (draft.id)}
+					{@const activeDraft = page.url.pathname === draft.href}
 					<li>
 						<ContextMenu.Root>
 							<ContextMenu.Trigger>
@@ -515,11 +516,15 @@
 										{...props}
 										href={resolve(draft.href as '/')}
 										data-sveltekit-preload-code="eager"
-										class="group/draft flex min-h-10 w-full items-center gap-2 rounded-md px-2 py-1 text-left hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:outline-none"
+										class={[
+											'group/draft flex min-h-10 w-full items-center gap-2 rounded-md px-2 py-1 text-left hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:outline-none',
+											activeDraft && 'bg-sidebar-accent/60'
+										]}
 										onpointerenter={() => prefetchDraftComposerData(draft.id, workspaceId)}
 										onpointerdown={() => prefetchDraftComposerData(draft.id, workspaceId)}
 										onfocus={() => prefetchDraftComposerData(draft.id, workspaceId)}
 										aria-label={m.sidebar_resume_draft({ title: draft.title })}
+										aria-current={activeDraft ? 'page' : undefined}
 									>
 										<span class="min-w-0 flex-1">
 											<span class="block truncate text-xs font-medium text-sidebar-foreground/88"

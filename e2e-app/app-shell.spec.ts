@@ -166,6 +166,38 @@ test("first autosave establishes the draft URL and keeps draft actions in one co
     page.getByRole("button", { name: "Schedule", exact: true }).first(),
   ).toBeVisible();
 
+  await page
+    .getByRole("button", { name: "Version history", exact: true })
+    .click();
+  const historyDrawer = page.getByTestId("publication-history-drawer");
+  const historyScroll = page.getByTestId("publication-history-scroll");
+  await expect(historyDrawer).toBeVisible();
+  await expect(
+    historyDrawer.getByRole("heading", {
+      name: "Version history",
+      exact: true,
+    }),
+  ).toBeVisible();
+  const historySpacing = await historyScroll.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      paddingTop: style.paddingTop,
+      paddingRight: style.paddingRight,
+      paddingBottom: style.paddingBottom,
+      paddingLeft: style.paddingLeft,
+      overflowY: style.overflowY,
+    };
+  });
+  expect(historySpacing).toEqual({
+    paddingTop: "16px",
+    paddingRight: "16px",
+    paddingBottom: "16px",
+    paddingLeft: "16px",
+    overflowY: "auto",
+  });
+  await historyDrawer.getByRole("button", { name: "Close" }).click();
+  await expect(historyDrawer).toBeHidden();
+
   await newPostAction.click();
   await expect(page).toHaveURL(/\/$/);
   await newPostAction.click();
@@ -307,6 +339,28 @@ test("text-and-thread editor keeps its canvas-owned field treatment", async ({
       editorMetrics.scrollHeight,
     );
   }
+});
+
+test("thread remove buttons stay above the textareas and delete the selected segment", async ({
+  page,
+  request,
+}) => {
+  const unique = Date.now().toString(36);
+  const auth = await registerUser(request, `thread-remove-${unique}@example.com`);
+  await createWorkspace(request, auth.token, "Thread Remove E2E");
+  await authenticatePage(page, auth.token);
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "Add post", exact: true }).click();
+  const removeButtons = page.getByRole("button", {
+    name: "Remove post",
+    exact: true,
+  });
+  await expect(removeButtons).toHaveCount(2);
+  await removeButtons.last().click();
+
+  await expect(page.getByLabel("Post text")).toHaveCount(1);
+  await expect(removeButtons).toHaveCount(0);
 });
 
 test("collapsed sidebar keeps the OpenPost mark without overflowing text", async ({
@@ -551,6 +605,18 @@ test("desktop planning sidebar resumes drafts and stays out of mobile navigation
       `/publications/${encodeURIComponent(draftBody.publication_id)}$`,
     ),
   );
+  const activeDraft = page.getByRole("link", {
+    name: "Resume draft: Resume the launch announcement",
+  });
+  await expect(activeDraft).toHaveAttribute("aria-current", "page");
+  const [activeDraftBackground, inactiveDraftBackground] = await Promise.all([
+    activeDraft.evaluate((element) => getComputedStyle(element).backgroundColor),
+    page
+      .getByRole("link", { name: "Resume draft: Sidebar draft 3" })
+      .evaluate((element) => getComputedStyle(element).backgroundColor),
+  ]);
+  expect(activeDraftBackground).not.toBe("rgba(0, 0, 0, 0)");
+  expect(activeDraftBackground).not.toBe(inactiveDraftBackground);
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");

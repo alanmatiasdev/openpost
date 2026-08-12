@@ -31,6 +31,8 @@ const (
 	defaultMemegenImageBytes     = 20 << 20
 	defaultMemegenMaxRedirects   = 3
 	memegenRefreshRetryDelay     = 30 * time.Second
+	memegenCatalogRetryDelay     = 150 * time.Millisecond
+	memegenCatalogAttempts       = 2
 	memegenDownloadRetryDelay    = 150 * time.Millisecond
 	memegenDownloadAttempts      = 2
 	maxMemegenCaptionRunes       = 200
@@ -393,6 +395,46 @@ func (p *MemegenProvider) Search(ctx context.Context, query string, limit int) (
 }
 
 func (p *MemegenProvider) fetchTemplates(ctx context.Context) ([]Template, error) {
+	var lastErr error
+	for attempt := 0; attempt < memegenCatalogAttempts; attempt++ {
+		templates, err := p.fetchTemplatesOnce(ctx)
+		if err == nil {
+			return templates, nil
+		}
+		lastErr = err
+		if attempt+1 >= memegenCatalogAttempts || !retryableMemegenCatalog(err) {
+			break
+		}
+		timer := time.NewTimer(memegenCatalogRetryDelay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return nil, providerError(ErrorKindUnavailable, "catalog", 0, 0, ctx.Err())
+		case <-timer.C:
+		}
+	}
+	return nil, lastErr
+}
+
+func retryableMemegenCatalog(err error) bool {
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+	var providerErr *ProviderError
+	if !errors.As(err, &providerErr) || providerErr.Operation != "catalog" || providerErr.Kind != ErrorKindUnavailable {
+		return false
+	}
+	switch providerErr.StatusCode {
+	case 0, http.StatusRequestTimeout, http.StatusTooEarly,
+		http.StatusInternalServerError, http.StatusBadGateway,
+		http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+		return true
+	default:
+		return false
+	}
+}
+
+func (p *MemegenProvider) fetchTemplatesOnce(ctx context.Context) ([]Template, error) {
 	requestCtx, cancel := context.WithTimeout(ctx, p.requestTimeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(requestCtx, http.MethodGet, p.endpoint("templates"), nil)

@@ -221,6 +221,23 @@ describe('MediaPicker meme source', () => {
 		}
 	});
 
+	it('fits the desktop Meme dialog to its content instead of leaving a blank scroll region', async () => {
+		await page.viewport(1280, 900);
+		const screen = await renderPicker(true);
+
+		await screen.getByRole('tab', { name: 'Meme' }).click();
+		await expect.element(screen.getByRole('heading', { name: 'Make a meme' })).toBeVisible();
+		const dialog = requireHTMLElement(screen.getByRole('dialog').element());
+		const generator = dialog.querySelector<HTMLElement>('.meme-generator');
+		if (!generator) throw new Error('Expected the Meme generator in the media picker.');
+		const dialogBox = dialog.getBoundingClientRect();
+		const generatorBox = generator.getBoundingClientRect();
+
+		expect(dialog.className).toContain('sm:h-auto');
+		expect(dialog.className).not.toContain('sm:h-[min(760px');
+		expect(Math.round(dialogBox.bottom - generatorBox.bottom)).toBeLessThanOrEqual(64);
+	});
+
 	it('keeps a degraded Meme path usable and recovers an overlay picker at 320px', async () => {
 		await page.viewport(320, 780);
 		const releaseWidth = constrainDialogsDuringTest(320);

@@ -7,6 +7,16 @@ import {
   managedService,
 } from "../packages/legal-policy/src/index.js";
 
+const purchaseTerms = JSON.parse(
+  readFileSync(
+    new URL("../packages/plan-catalog/src/catalog.json", import.meta.url),
+    "utf8",
+  ),
+).purchase_terms as {
+  trial_days: number;
+  card_required: boolean;
+};
+
 test("marketing index links to the app and documentation @desktop", async ({
   page,
 }) => {
@@ -30,7 +40,7 @@ test("marketing index links to the app and documentation @desktop", async ({
     page.getByRole("link", { name: "Hop on", exact: true }).first(),
   ).toHaveAttribute(
     "href",
-    "https://app.openpost.social/register?plan=founder",
+    "https://app.openpost.social/register?plan=founder&billing_period=monthly",
   );
   const resultPreviews = page.getByRole("group", {
     name: "Social publishing result previews",
@@ -138,6 +148,9 @@ test("marketing index links to the app and documentation @desktop", async ({
 test("pricing makes every plan selectable for monthly and annual billing", async ({
   page,
 }) => {
+  const cardRequirement = purchaseTerms.card_required
+    ? "A card is required"
+    : "No card is required";
   const planCases = [
     { id: "starter", name: "Starter", monthly: "$15", annual: "$150" },
     { id: "founder", name: "Founder", monthly: "$25", annual: "$250" },
@@ -184,7 +197,7 @@ test("pricing makes every plan selectable for monthly and annual billing", async
       `https://app.openpost.social/register?plan=${plan.id}&billing_period=monthly`,
     );
     await expect(card).toContainText(
-      `Card required. After 14 days: ${plan.monthly} per month until canceled.`,
+      `${cardRequirement}. After ${purchaseTerms.trial_days} days: ${plan.monthly} per month until canceled.`,
     );
   }
 
@@ -207,7 +220,7 @@ test("pricing makes every plan selectable for monthly and annual billing", async
       `https://app.openpost.social/register?plan=${plan.id}&billing_period=annual`,
     );
     await expect(card).toContainText(
-      `Card required. After 14 days: ${plan.annual} per year until canceled.`,
+      `${cardRequirement}. After ${purchaseTerms.trial_days} days: ${plan.annual} per year until canceled.`,
     );
   }
 

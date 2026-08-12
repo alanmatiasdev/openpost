@@ -144,8 +144,8 @@ export function renderPublicClaimProjection(manifest) {
 export function validatePublicClaimSurfaceSources(manifest, sources) {
   const marketingCatalog = sources.marketingCatalog ?? "";
   if (
-    !marketingCatalog.includes(
-      'import publicClaimManifest from "../../../provider-certification/public-claims.json";',
+    !/import\s+publicClaimManifest\s+from\s+["']\.\.\/\.\.\/\.\.\/provider-certification\/public-claims\.json["'];/u.test(
+      marketingCatalog,
     ) ||
     !marketingCatalog.includes(
       "const publicProviderClaims = publicClaimManifest.claims",
@@ -173,7 +173,11 @@ export function validatePublicClaimSurfaceSources(manifest, sources) {
       "marketing provider pages must use implementation and exact certification facts",
     );
   }
-  if (/aria-label=["']Supported social platforms["']/u.test(sources.marketingLanding ?? "")) {
+  if (
+    /aria-label=["']Supported social platforms["']/u.test(
+      sources.marketingLanding ?? "",
+    )
+  ) {
     throw new Error(
       "marketing landing provider marks must be labelled as implementations",
     );
@@ -206,7 +210,9 @@ export async function assertPublicClaimSurfaces(
     readFile(path.join(repositoryRoot, relativePath), "utf8");
   validatePublicClaimSurfaceSources(manifest, {
     marketingCatalog: await read("marketing-site/src/routes/_marketing.ts"),
-    marketingIndex: await read("marketing-site/src/routes/platforms/+page.svelte"),
+    marketingIndex: await read(
+      "marketing-site/src/routes/platforms/+page.svelte",
+    ),
     marketingDetail: await read(
       "marketing-site/src/routes/platforms/[slug]/+page.svelte",
     ),
@@ -226,13 +232,18 @@ function extractPublicClaimProjection(source, label) {
     throw new Error(`${label} is missing the public certification projection`);
   }
   if (
-    source.indexOf(publicProjectionStart, start + publicProjectionStart.length) >=
-      0 ||
+    source.indexOf(
+      publicProjectionStart,
+      start + publicProjectionStart.length,
+    ) >= 0 ||
     source.indexOf(publicProjectionEnd, end + publicProjectionEnd.length) >= 0
   ) {
     throw new Error(`${label} has multiple public certification projections`);
   }
-  return source.slice(start, end + publicProjectionEnd.length);
+  const projection = source
+    .slice(start + publicProjectionStart.length, end)
+    .trim();
+  return `${publicProjectionStart}\n${projection}\n${publicProjectionEnd}`;
 }
 
 function validateClaim(claim, label, now, options) {

@@ -218,11 +218,20 @@
 			onDeleted={handleSuccess}
 		/>
 		<Sheet.Root bind:open={historyOpen}>
-			<Sheet.Content side="right" class="w-full! overflow-y-auto sm:max-w-lg!">
-				<Sheet.Header class="sr-only">
+			<Sheet.Content
+				side="right"
+				class="w-full! gap-0 overflow-hidden p-0 sm:max-w-lg!"
+				data-testid="publication-history-drawer"
+			>
+				<Sheet.Header class="shrink-0 border-b px-4 py-3 pr-14 text-left">
 					<Sheet.Title>{m.image_editor_version_history()}</Sheet.Title>
 				</Sheet.Header>
-				<PublicationHistory publicationId={publication.id} headingLevel={3} />
+				<div
+					class="min-h-0 flex-1 overflow-y-auto px-4 py-4"
+					data-testid="publication-history-scroll"
+				>
+					<PublicationHistory publicationId={publication.id} headingLevel={3} showHeading={false} />
+				</div>
 			</Sheet.Content>
 		</Sheet.Root>
 	</div>
