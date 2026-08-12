@@ -40,11 +40,14 @@ test("marketing index links to the app and documentation @desktop", async ({
   await expect(
     resultPreviews.getByRole("button", { name: "Show Audience growth" }),
   ).toBeVisible();
-  await expect(page.getByLabel("Companies using OpenPost")).toContainText(
-    "The Actual World",
-  );
-  await expect(page.getByAltText("ENF. logo")).toBeVisible();
-  await expect(page.getByAltText("Ark logo")).toBeVisible();
+  await expect(
+    page.getByRole("heading", {
+      name: "Built around common publishing work.",
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(/These fictional examples show how launches/),
+  ).toBeVisible();
   await expect(
     page.getByRole("heading", {
       name: "See OpenPost in four minutes.",
@@ -93,15 +96,12 @@ test("marketing index links to the app and documentation @desktop", async ({
   ).toHaveAttribute("src", "/assets/screenshots/accounts-dark.png");
   await expect(
     page.getByRole("heading", {
-      name: "Built around real publishing work.",
+      name: "Built around common publishing work.",
     }),
   ).toBeVisible();
-  await expect(page.getByText("Illustrative creator stories")).toHaveCount(0);
-  await expect(page.getByText("Example workflows using OpenPost")).toHaveCount(
-    0,
-  );
+  await expect(page.getByText("Illustrative workflows")).toBeVisible();
   const creatorMosaic = page.getByRole("region", {
-    name: "Built around real publishing work.",
+    name: "Built around common publishing work.",
   });
   await expect(
     creatorMosaic.getByRole("button", { name: "Show more stories" }),
@@ -426,12 +426,7 @@ test("marketing decision routes remain console-clean", async ({ page }) => {
   });
   page.on("pageerror", (error) => errors.push(error.message));
 
-  for (const route of [
-    "/features",
-    "/faq",
-    "/pricing",
-    "/compare/buffer",
-  ]) {
+  for (const route of ["/features", "/faq", "/pricing", "/compare/buffer"]) {
     await page.goto(route);
     await page.waitForLoadState("networkidle");
   }
@@ -794,7 +789,9 @@ test("legal and trust pages expose current managed-service facts @desktop", asyn
     }),
   ).toBeVisible();
   await expect(
-    page.getByText(formatLegalDate(managedService.reviewed_on), { exact: true }),
+    page.getByText(formatLegalDate(managedService.reviewed_on), {
+      exact: true,
+    }),
   ).toBeVisible();
   await expect(
     page.getByText(formatLegalDate(managedService.next_review_on), {

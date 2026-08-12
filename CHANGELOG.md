@@ -12,6 +12,7 @@ All notable changes to this project are documented in this file.
 
 ### Fixed
 
+- Updated the marketing browser contract to verify the fictional workflow disclosure after removal of the unproved customer-logo rail.
 - Made the changed-file pre-push formatter load the Svelte parser explicitly so marketing component changes are checked instead of blocking every push.
 - Removed unproved customer-logo usage claims, labeled generated personas and workflows as fictional examples, and added a dated register that validates proof-claim owners, evidence, review dates, and expiry.
 - Kept failed conversation read-state writes visible and retryable instead of clearing unread state locally, and made Android releases fail closed rather than publishing an unsigned APK under the installable asset name.
