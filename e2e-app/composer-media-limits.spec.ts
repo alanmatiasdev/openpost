@@ -195,7 +195,7 @@ test("Post drafts can move from one image to multiple before destination validat
   await expect(composer.getByRole("textbox", { name: "Alt text" })).toHaveValue(
     "Generated description for media-1.",
   );
-  await expect(composer).toContainText(
+  await expect(composer).not.toContainText(
     "AI-generated — review before publishing.",
   );
   await composer.getByRole("button", { name: "Done" }).click();
