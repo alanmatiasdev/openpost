@@ -306,22 +306,43 @@ test("registration rejects missing invalid expired and mismatched choices", asyn
   ).toBeVisible();
 });
 
-test("registration routes first-time users through onboarding", async ({
+test("registration routes first-time users to explicit Workspace confirmation", async ({
   page,
   request,
 }) => {
   const unique = Date.now().toString(36);
   const email = `auth-onboarding-${unique}@example.com`;
   await routeBrowserRegistration(page, email);
-  await page.goto("/register");
+  await page.route("**/api/v1/billing/purchase-choice", (route) =>
+    route.fulfill({
+      json: {
+        token: "choice-founder-monthly",
+        plan_id: "founder",
+        plan_name: "Founder",
+        billing_period: "monthly",
+        list_price_usd: 25,
+        trial_days: 14,
+        card_required: true,
+        due_today_usd: 0,
+        catalog_version: "2026-08-12",
+        expires_at: "2026-08-13T10:00:00Z",
+      },
+    }),
+  );
+  await page.goto("/register?plan=founder&billing_period=monthly");
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password", { exact: true }).fill(password);
   await page.getByLabel("Confirm Password").fill(password);
   await page.getByRole("button", { name: "Create Account" }).click();
 
-  await expect(page).toHaveURL(
-    /\/checkout\?plan=founder&billing_period=monthly$/,
-  );
+  await expect(page).toHaveURL(/\/onboarding\?/);
+  await expect(
+    page.getByRole("heading", { name: "Confirm your Workspace and plan" }),
+  ).toBeVisible();
+  await expect(page.getByLabel("Workspace name")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Create Workspace and continue" }),
+  ).toBeDisabled();
 
   expect(
     await page.evaluate(() => window.localStorage.getItem("token")),
@@ -330,9 +351,7 @@ test("registration routes first-time users through onboarding", async ({
   const workspaces = await page.context().request.get("/api/v1/workspaces");
   expect(workspaces.ok()).toBeTruthy();
   const workspaceBody = await workspaces.json();
-  expect(workspaceBody).toEqual(
-    expect.arrayContaining([expect.objectContaining({ name: "My workspace" })]),
-  );
+  expect(workspaceBody).toEqual([]);
 });
 
 test("login honors same-origin redirects for existing workspaces", async ({

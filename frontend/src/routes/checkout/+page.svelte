@@ -53,6 +53,7 @@
 	let paddlePromise: Promise<Paddle | undefined> | null = null;
 	let paddleConfiguration = '';
 	let paymentFrameLoaded = $state(false);
+	let boundAttemptID = $state('');
 
 	let selectedPlan = $derived(hostedPlanByID(selectedPlanID)!);
 	let selectedPrice = $derived(localizedPrices[selectedPlanID] ?? '');
@@ -217,6 +218,41 @@
 		}
 	}
 
+	async function loadBoundCheckout(attemptID: string) {
+		const sequence = ++requestSequence;
+		checkoutState = 'loading';
+		error = '';
+		try {
+			const { data, error: apiError } = await client.GET('/billing/checkout/{attempt_id}', {
+				params: { path: { attempt_id: attemptID } }
+			});
+			if (sequence !== requestSequence || stopped) return;
+			if (
+				apiError ||
+				!data?.id ||
+				!data.provider_price_id ||
+				!data.return_url ||
+				!data.customer_email ||
+				!data.plan_id ||
+				!data.billing_period
+			) {
+				throw new Error(apiError?.detail || m.checkout_load_failed());
+			}
+			selectedPlanID = data.plan_id as HostedPlanID;
+			billingPeriod = data.billing_period as BillingPeriod;
+			const instance = await initializePaddleForCheckout(data);
+			const nextPrices = await loadLocalizedPrices(instance, data);
+			if (sequence !== requestSequence || stopped) return;
+			localizedPrices = nextPrices;
+			checkout = data;
+			await openPaddleCheckout(instance, data);
+		} catch (caught) {
+			if (sequence !== requestSequence || stopped) return;
+			checkoutState = 'error';
+			error = caught instanceof Error && caught.message ? caught.message : m.checkout_load_failed();
+		}
+	}
+
 	async function openPaddleCheckout(instance: Paddle, data: BillingURL) {
 		if (!data.id || !data.provider_price_id || !data.customer_email || !data.return_url) {
 			error = m.checkout_load_failed();
@@ -297,6 +333,7 @@
 	onMount(() => {
 		selectedPlanID = hostedPlanFromSearchParams(page.url.searchParams) || 'founder';
 		billingPeriod = billingPeriodFromSearchParams(page.url.searchParams) || 'monthly';
+		boundAttemptID = page.url.searchParams.get('attempt')?.trim() ?? '';
 		const workspaceReady = workspaceCtx.currentWorkspace?.id
 			? Promise.resolve()
 			: workspaceCtx.initialize();
@@ -310,6 +347,10 @@
 			}
 			if (page.url.searchParams.get('status') === 'success') {
 				void confirmSubscription();
+				return;
+			}
+			if (boundAttemptID) {
+				void loadBoundCheckout(boundAttemptID);
 				return;
 			}
 			void createCheckout();
@@ -416,6 +457,7 @@
 								variant={billingPeriod === 'monthly' ? 'default' : 'ghost'}
 								size="sm"
 								aria-pressed={billingPeriod === 'monthly'}
+								disabled={Boolean(boundAttemptID)}
 								onclick={() => void choosePeriod('monthly')}
 							>
 								{m.checkout_monthly()}
@@ -424,6 +466,7 @@
 								variant={billingPeriod === 'annual' ? 'default' : 'ghost'}
 								size="sm"
 								aria-pressed={billingPeriod === 'annual'}
+								disabled={Boolean(boundAttemptID)}
 								onclick={() => void choosePeriod('annual')}
 							>
 								{m.checkout_annual()}
@@ -435,6 +478,7 @@
 							value={selectedPlanID}
 							name="checkout_plan"
 							class="grid gap-1.5"
+							disabled={Boolean(boundAttemptID)}
 							onValueChange={(value) => void choosePlan(value as HostedPlanID)}
 						>
 							{#each hostedPlans as plan (plan.id)}

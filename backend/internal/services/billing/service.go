@@ -147,13 +147,14 @@ func (s *Service) SetPaddleClientForTest(client PaddleAPI) {
 }
 
 type CreateCheckoutInput struct {
-	OrganizationID string
-	WorkspaceID    string
-	UserID         string
-	CustomerEmail  string
-	PlanID         string
-	BillingPeriod  string
-	ReturnPath     string
+	OrganizationID  string
+	WorkspaceID     string
+	UserID          string
+	CustomerEmail   string
+	PlanID          string
+	BillingPeriod   string
+	ReturnPath      string
+	ConfirmationKey string
 }
 
 type CheckoutResult struct {
@@ -168,15 +169,20 @@ type CheckoutResult struct {
 	ClientToken     string
 	Environment     string
 	CustomerEmail   string
+	WorkspaceID     string
 }
 
 func (s *Service) CreateCheckout(ctx context.Context, input CreateCheckoutInput) (CheckoutResult, error) {
+	return s.CreateCheckoutWithDB(ctx, s.db, input)
+}
+
+func (s *Service) CreateCheckoutWithDB(ctx context.Context, db bun.IDB, input CreateCheckoutInput) (CheckoutResult, error) {
 	period := normalizeBillingPeriod(input.BillingPeriod)
 	returnPath, err := normalizeCheckoutReturnPath(input.ReturnPath)
 	if err != nil {
 		return CheckoutResult{}, err
 	}
-	_, providerPriceID, _, err := s.planFor(input.PlanID, period)
+	providerPriceID, err := s.planFor(input.PlanID, period)
 	if err != nil {
 		return CheckoutResult{}, err
 	}
@@ -202,7 +208,7 @@ func (s *Service) CreateCheckout(ctx context.Context, input CreateCheckoutInput)
 
 	now := s.now().UTC()
 	attemptID := "chkat_" + strings.ReplaceAll(uuid.NewString(), "-", "")
-	if s.db != nil {
+	if db != nil {
 		attempt := &models.BillingCheckoutAttempt{
 			CheckoutAttemptID: attemptID,
 			OrganizationID:    organizationID,
@@ -212,12 +218,13 @@ func (s *Service) CreateCheckout(ctx context.Context, input CreateCheckoutInput)
 			ProviderPriceID:   providerPriceID,
 			PlanID:            strings.ToLower(strings.TrimSpace(input.PlanID)),
 			BillingPeriod:     period,
+			ConfirmationKey:   strings.TrimSpace(input.ConfirmationKey),
 			ReturnPath:        returnPath,
 			Status:            "created",
 			CreatedAt:         now,
 			UpdatedAt:         now,
 		}
-		if _, err := s.db.NewInsert().Model(attempt).Exec(ctx); err != nil {
+		if _, err := db.NewInsert().Model(attempt).Exec(ctx); err != nil {
 			return CheckoutResult{}, fmt.Errorf("recording checkout attempt: %w", err)
 		}
 	}
@@ -234,7 +241,48 @@ func (s *Service) CreateCheckout(ctx context.Context, input CreateCheckoutInput)
 		ClientToken:     clientToken,
 		Environment:     environment,
 		CustomerEmail:   email,
+		WorkspaceID:     strings.TrimSpace(input.WorkspaceID),
 	}, nil
+}
+
+func (s *Service) ResumeCheckout(ctx context.Context, db bun.IDB, attemptID, userID, customerEmail string) (CheckoutResult, models.BillingCheckoutAttempt, error) {
+	var attempt models.BillingCheckoutAttempt
+	if db == nil || strings.TrimSpace(attemptID) == "" || strings.TrimSpace(userID) == "" {
+		return CheckoutResult{}, attempt, sql.ErrNoRows
+	}
+	if err := db.NewSelect().Model(&attempt).
+		Where("checkout_attempt_id = ?", strings.TrimSpace(attemptID)).
+		Where("user_id = ?", strings.TrimSpace(userID)).
+		Where("provider = ?", ProviderPaddle).
+		Scan(ctx); err != nil {
+		return CheckoutResult{}, attempt, err
+	}
+	providerPriceID, err := s.planFor(attempt.PlanID, attempt.BillingPeriod)
+	if err != nil || providerPriceID != attempt.ProviderPriceID {
+		return CheckoutResult{}, attempt, ErrPurchaseChoiceMismatch
+	}
+	environment := strings.ToLower(strings.TrimSpace(s.paddle.Environment))
+	clientToken := strings.TrimSpace(s.paddle.ClientToken)
+	if environment != "sandbox" && environment != "production" {
+		return CheckoutResult{}, attempt, configurationError("OPENPOST_PADDLE_ENVIRONMENT must be explicitly set to sandbox or production")
+	}
+	if clientToken == "" {
+		return CheckoutResult{}, attempt, configurationError("OPENPOST_PADDLE_CLIENT_TOKEN is required")
+	}
+	return CheckoutResult{
+		URL:             s.checkoutURL(attempt.PlanID, attempt.BillingPeriod),
+		ID:              attempt.CheckoutAttemptID,
+		ProviderPriceID: attempt.ProviderPriceID,
+		PriceIDs:        s.priceIDsForPeriod(attempt.BillingPeriod),
+		PlanID:          attempt.PlanID,
+		BillingPeriod:   attempt.BillingPeriod,
+		TrialEndsAt:     attempt.CreatedAt.UTC().AddDate(0, 0, TrialDays),
+		ReturnURL:       s.returnURL(attempt.CheckoutAttemptID),
+		ClientToken:     clientToken,
+		Environment:     environment,
+		CustomerEmail:   strings.TrimSpace(customerEmail),
+		WorkspaceID:     attempt.WorkspaceID,
+	}, attempt, nil
 }
 
 func (s *Service) checkoutURL(planID, period string) string {
@@ -370,26 +418,24 @@ func (s *Service) ensureAPI() error {
 	return nil
 }
 
-func (s *Service) planFor(planID, billingPeriod string) (PlanConfig, string, int, error) {
+func (s *Service) planFor(planID, billingPeriod string) (string, error) {
 	planID = strings.ToLower(strings.TrimSpace(planID))
 	if planID == "" {
-		return PlanConfig{}, "", 0, fmt.Errorf("plan id is required")
+		return "", fmt.Errorf("plan id is required")
 	}
 	plan, ok := s.paddle.Plans[planID]
 	if !ok {
-		return PlanConfig{}, "", 0, fmt.Errorf("unknown billing plan %q", planID)
+		return "", fmt.Errorf("unknown billing plan %q", planID)
 	}
 	period := normalizeBillingPeriod(billingPeriod)
 	providerPriceID := plan.PaddlePriceIDs.Monthly
-	priceUSD := plan.MonthlyPriceUSD
 	if period == "annual" {
 		providerPriceID = plan.PaddlePriceIDs.Annual
-		priceUSD = plan.AnnualPriceUSD
 	}
 	if strings.TrimSpace(providerPriceID) == "" {
-		return PlanConfig{}, "", 0, configurationError("%s is required for billing plan %q", paddlePriceEnvVar(planID, period), planID)
+		return "", configurationError("%s is required for billing plan %q", paddlePriceEnvVar(planID, period), planID)
 	}
-	return plan, providerPriceID, priceUSD, nil
+	return providerPriceID, nil
 }
 
 func normalizeBillingPeriod(value string) string {
