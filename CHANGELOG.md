@@ -10,6 +10,7 @@ All notable changes to this project are documented in this file.
 
 ### Fixed
 
+- Made the changed-file pre-push formatter load the Svelte parser explicitly so marketing component changes are checked instead of blocking every push.
 - Removed unproved customer-logo usage claims, labeled generated personas and workflows as fictional examples, and added a dated register that validates proof-claim owners, evidence, review dates, and expiry.
 - Kept failed conversation read-state writes visible and retryable instead of clearing unread state locally, and made Android releases fail closed rather than publishing an unsigned APK under the installable asset name.
 - Bound hosted checkout completion to its opaque billing attempt, persisted a validated same-origin return path with the selected plan and period, and made that path one-time so unrelated subscriptions, refreshes, and replay cannot redirect a user.

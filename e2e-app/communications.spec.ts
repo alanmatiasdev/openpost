@@ -390,7 +390,8 @@ test("communications and notifications stay usable across desktop and phone layo
   expect({
     consoleErrors: consoleErrors.filter(
       (message) =>
-        message !== expectedConversationFailure && message !== expectedMarkReadFailure,
+        message !== expectedConversationFailure &&
+        message !== expectedMarkReadFailure,
     ),
     unauthorizedResponses,
   }).toEqual({

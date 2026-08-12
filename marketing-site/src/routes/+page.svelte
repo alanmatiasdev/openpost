@@ -48,7 +48,6 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 	] as const;
 
 	const shortFaqs = faqs.slice(0, 4);
-
 </script>
 
 <svelte:head>
@@ -236,14 +235,25 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 	.hero {
 		position: relative;
 		background:
-			radial-gradient(circle at 50% 42%, color-mix(in oklch, var(--primary) 16%, transparent), transparent 31rem),
-			linear-gradient(to bottom, color-mix(in oklch, var(--card) 72%, var(--background)), var(--background));
+			radial-gradient(
+				circle at 50% 42%,
+				color-mix(in oklch, var(--primary) 16%, transparent),
+				transparent 31rem
+			),
+			linear-gradient(
+				to bottom,
+				color-mix(in oklch, var(--card) 72%, var(--background)),
+				var(--background)
+			);
 	}
 
 	.hero::before {
 		position: absolute;
 		inset: 0;
-		background-image: radial-gradient(color-mix(in oklch, var(--foreground) 14%, transparent) 0.6px, transparent 0.6px);
+		background-image: radial-gradient(
+			color-mix(in oklch, var(--foreground) 14%, transparent) 0.6px,
+			transparent 0.6px
+		);
 		background-size: 1.7rem 1.7rem;
 		mask-image: linear-gradient(to bottom, black, transparent 74%);
 		opacity: 0.22;
@@ -394,7 +404,6 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 		object-fit: contain;
 		object-position: top;
 	}
-
 
 	:global(.dark) .hero {
 		background:

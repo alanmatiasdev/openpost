@@ -58,7 +58,8 @@
 			name: 'Founder',
 			role: 'Performance review',
 			platform: 'x',
-			content: 'See what published, what failed, and what earned attention while the work is still fresh.'
+			content:
+				'See what published, what failed, and what earned attention while the work is still fresh.'
 		},
 		{
 			id: 'media',
@@ -73,7 +74,8 @@
 			name: 'Writer',
 			role: 'Long-form ideas',
 			platform: 'threads',
-			content: 'Split one longer idea into a clear thread, then review every reply before it goes live.'
+			content:
+				'Split one longer idea into a clear thread, then review every reply before it goes live.'
 		},
 		{
 			id: 'automation',
@@ -105,8 +107,8 @@
 			<p class="section-label">Illustrative workflows</p>
 			<h2 id="stories-title">Built around common publishing work.</h2>
 			<p>
-				These fictional examples show how launches, weekly planning, media, replies, and results
-				can stay in the same workspace.
+				These fictional examples show how launches, weekly planning, media, replies, and results can
+				stay in the same workspace.
 			</p>
 		</header>
 
@@ -132,7 +134,9 @@
 								<PlatformIcon platform={story.platform} />
 							</span>
 						</header>
-						<p class={`proof-copy ${expanded ? '' : clampClasses[index]}`}>{story.content}</p>
+						<p class={`proof-copy ${expanded ? '' : clampClasses[index]}`}>
+							{story.content}
+						</p>
 					</article>
 				{/each}
 			</div>

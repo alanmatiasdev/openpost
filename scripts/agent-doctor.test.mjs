@@ -21,20 +21,34 @@ describe("agent doctor local checks", () => {
     const root = await mkdtemp(join(tmpdir(), "openpost-agent-doctor-"));
     await mkdir(join(root, "docs"), { recursive: true });
     await writeFile(join(root, "CONTEXT.md"), "fixture");
-    expect(findMissingArtifacts(root, ["CONTEXT.md", "docs/map.md"])).toEqual(["docs/map.md"]);
+    expect(findMissingArtifacts(root, ["CONTEXT.md", "docs/map.md"])).toEqual([
+      "docs/map.md",
+    ]);
   });
 
   test("parses deterministic label configuration rows", () => {
     expect(parseTriageLabels(table)).toEqual([
-      { role: "needs-triage", name: "triage", description: "Needs review", color: "fbca04" },
-      { role: "wontfix", name: "wontfix", description: "Will not be actioned", color: "ffffff" },
+      {
+        role: "needs-triage",
+        name: "triage",
+        description: "Needs review",
+        color: "fbca04",
+      },
+      {
+        role: "wontfix",
+        name: "wontfix",
+        description: "Will not be actioned",
+        color: "ffffff",
+      },
     ]);
   });
 });
 
 describe("agent doctor live label diagnostics", () => {
   test("parses gh JSON without contacting GitHub", () => {
-    expect(parseLiveLabels('[{"name":"wontfix"},{"name":"triage"}]')).toEqual(new Set(["wontfix", "triage"]));
+    expect(parseLiveLabels('[{"name":"wontfix"},{"name":"triage"}]')).toEqual(
+      new Set(["wontfix", "triage"]),
+    );
   });
 
   test("returns exact safe create commands for missing labels", () => {
@@ -45,7 +59,8 @@ describe("agent doctor live label diagnostics", () => {
         name: "triage",
         description: "Needs review",
         color: "fbca04",
-        command: "gh label create 'triage' --description 'Needs review' --color 'fbca04'",
+        command:
+          "gh label create 'triage' --description 'Needs review' --color 'fbca04'",
       },
     ]);
   });

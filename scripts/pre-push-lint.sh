@@ -63,7 +63,7 @@ denv_lint() {
   local local_ref="" local_sha="" remote_ref="" remote_sha=""
   local zero="0000000000000000000000000000000000000000"
   local range="" file=""
-  local -a changed=() go_files=() prettier_files=()
+  local -a changed=() go_files=() root_prettier_files=() frontend_prettier_files=() marketing_prettier_files=()
 
   while IFS=" " read -r local_ref local_sha remote_ref remote_sha || [ -n "$local_ref$local_sha$remote_ref$remote_sha" ]; do
     [ -n "$local_ref$local_sha$remote_ref$remote_sha" ] || continue
@@ -85,7 +85,23 @@ denv_lint() {
       backend/*.go|backend/**/*.go|cli/*.go|cli/**/*.go) go_files+=("$file") ;;
     esac
     case "$file" in
-      *.js|*.mjs|*.cjs|*.ts|*.svelte|*.json|*.css|*.md|*.yml|*.yaml) prettier_files+=("$file") ;;
+      frontend/*)
+        case "$file" in
+          *.js|*.mjs|*.cjs|*.ts|*.svelte|*.json|*.css|*.md|*.yml|*.yaml)
+            frontend_prettier_files+=("${file#frontend/}")
+            ;;
+        esac
+        ;;
+      marketing-site/*)
+        case "$file" in
+          *.js|*.mjs|*.cjs|*.ts|*.svelte|*.json|*.css|*.md|*.yml|*.yaml)
+            marketing_prettier_files+=("../$file")
+            ;;
+        esac
+        ;;
+      *.js|*.mjs|*.cjs|*.ts|*.svelte|*.json|*.css|*.md|*.yml|*.yaml)
+        root_prettier_files+=("$file")
+        ;;
     esac
   done
 
@@ -94,8 +110,14 @@ denv_lint() {
     unformatted="$(gofmt -l "${go_files[@]}")"
     [ -z "$unformatted" ] || { printf '%s\n' "$unformatted"; return 1; }
   fi
-  if [ -n "${prettier_files[*]-}" ]; then
-    bunx prettier --check "${prettier_files[@]}"
+  if [ -n "${root_prettier_files[*]-}" ]; then
+    bunx prettier --check "${root_prettier_files[@]}"
+  fi
+  if [ -n "${frontend_prettier_files[*]-}" ]; then
+    (cd frontend && bunx prettier --check "${frontend_prettier_files[@]}")
+  fi
+  if [ -n "${marketing_prettier_files[*]-}" ]; then
+    (cd frontend && bunx prettier --config .prettierrc --check "${marketing_prettier_files[@]}")
   fi
 }
 
