@@ -4,6 +4,8 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [3.10.1] - 2026-08-12
+
 ### Fixed
 
 - Qualified PostgreSQL provider-delivery upserts so the durable write fence reaches the provider instead of failing before every publication request.
