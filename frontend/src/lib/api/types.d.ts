@@ -1410,6 +1410,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/billing/purchase-choice": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create or validate a hosted plan purchase choice
+         * @description Returns canonical plan, price, trial, payment, and expiry facts in an integrity-protected continuation token.
+         */
+        post: operations["create-purchase-choice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/billing/status": {
         parameters: {
             query?: never;
@@ -4349,6 +4369,7 @@ export interface components {
             privacy_url?: string;
             privacy_version?: string;
             public_profiles_enabled: boolean;
+            purchase_choice_required: boolean;
             registration_enabled: boolean;
             support_email?: string;
             terms_url?: string;
@@ -5460,6 +5481,23 @@ export interface components {
             title: string;
             /** @description Workspace ID */
             workspace_id: string;
+        };
+        CreatePurchaseChoiceInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/CreatePurchaseChoiceInputBody.json
+             */
+            readonly $schema?: string;
+            /**
+             * @description Canonical billing period
+             * @enum {string}
+             */
+            billing_period: "monthly" | "annual";
+            /** @description Canonical hosted plan ID: starter, founder, pro, team, or agency */
+            plan_id: string;
+            /** @description Existing integrity-protected choice to validate against the supplied plan and period */
+            purchase_choice_token?: string;
         };
         CreateSocialSetInputBody: {
             /**
@@ -8895,6 +8933,49 @@ export interface components {
             next_cursor?: string;
             options: components["schemas"]["DestinationOption"][] | null;
         };
+        PurchaseChoiceResponse: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/PurchaseChoiceResponse.json
+             */
+            readonly $schema?: string;
+            /**
+             * @description Canonical billing period
+             * @enum {string}
+             */
+            billing_period: "monthly" | "annual";
+            /** @description Whether checkout requires a payment card for the trial */
+            card_required: boolean;
+            /** @description Canonical plan catalogue revision bound to the choice */
+            catalog_version: string;
+            /**
+             * Format: int64
+             * @description Canonical USD amount due when the trial starts
+             */
+            due_today_usd: number;
+            /**
+             * Format: date-time
+             * @description When this purchase choice must be replaced
+             */
+            expires_at: string;
+            /**
+             * Format: int64
+             * @description Full-period canonical USD list price
+             */
+            list_price_usd: number;
+            /** @description Canonical hosted plan ID */
+            plan_id: string;
+            /** @description Canonical hosted plan name */
+            plan_name: string;
+            /** @description Integrity-protected purchase choice continuation token */
+            token: string;
+            /**
+             * Format: int64
+             * @description Trial length in calendar days
+             */
+            trial_days: number;
+        };
         "Readiness-checkResponse": {
             /**
              * Format: uri
@@ -9011,6 +9092,8 @@ export interface components {
             email: string;
             /** @description User password (min 12 characters) */
             password: string;
+            /** @description Integrity-protected hosted plan and billing-period choice; required for hosted registration */
+            purchase_choice_token?: string;
             /** @description Optional unique public username; OpenPost creates one from the email when omitted */
             username?: string;
         };
@@ -16070,6 +16153,66 @@ export interface operations {
             };
             /** @description Forbidden */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "create-purchase-choice": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreatePurchaseChoiceInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurchaseChoiceResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -748,6 +748,34 @@ func TestJITBootstrapAllowlistOnlyAppliesToEnvironmentProvider(t *testing.T) {
 	require.True(t, environmentUser.IsAdmin)
 }
 
+func TestHostedJITRequiresTheExplicitSignupIntent(t *testing.T) {
+	fake := newFakeOIDCIssuer(t)
+	service, _ := newIdentityTestService(t, fake)
+	service.config.RequireExplicitSignup = true
+	provider, err := service.GetProvider(context.Background(), EnvironmentProviderID)
+	require.NoError(t, err)
+	verified := VerifiedIdentity{
+		Subject: "explicit-signup-subject", Email: "explicit-signup@example.com", EmailVerified: true,
+	}
+
+	_, err = service.resolveIdentity(context.Background(), *provider, models.OIDCAuthRequest{
+		Intent: models.OIDCIntentLogin,
+	}, verified)
+	require.ErrorIs(t, err, ErrExplicitSignupRequired)
+
+	created, err := service.resolveIdentity(context.Background(), *provider, models.OIDCAuthRequest{
+		Intent: models.OIDCIntentSignup,
+	}, verified)
+	require.NoError(t, err)
+	require.Equal(t, verified.Email, created.Email)
+
+	existing, err := service.resolveIdentity(context.Background(), *provider, models.OIDCAuthRequest{
+		Intent: models.OIDCIntentLogin,
+	}, verified)
+	require.NoError(t, err)
+	require.Equal(t, created.ID, existing.ID)
+}
+
 func TestFirstPartyJITDoesNotBypassReservedClosedRegistrationBootstrap(t *testing.T) {
 	t.Parallel()
 

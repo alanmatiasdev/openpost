@@ -51,6 +51,7 @@ type AuthConfigurationOutput struct {
 		EmailVerificationRequired bool   `json:"email_verification_required"`
 		PublicProfilesEnabled     bool   `json:"public_profiles_enabled"`
 		LegalAcceptanceRequired   bool   `json:"legal_acceptance_required"`
+		PurchaseChoiceRequired    bool   `json:"purchase_choice_required"`
 		TermsURL                  string `json:"terms_url,omitempty"`
 		PrivacyURL                string `json:"privacy_url,omitempty"`
 		TermsVersion              string `json:"terms_version,omitempty"`
@@ -120,6 +121,7 @@ func (h *AuthHandler) Configuration(api huma.API) {
 		out.Body.EmailVerificationRequired = h.emailVerificationRequired
 		out.Body.PublicProfilesEnabled = h.publicProfilesEnabled
 		out.Body.LegalAcceptanceRequired = h.accountPolicy.Required
+		out.Body.PurchaseChoiceRequired = h.purchaseChoiceRequired
 		out.Body.TermsURL = h.accountPolicy.TermsURL
 		out.Body.PrivacyURL = h.accountPolicy.PrivacyURL
 		out.Body.TermsVersion = h.accountPolicy.TermsVersion

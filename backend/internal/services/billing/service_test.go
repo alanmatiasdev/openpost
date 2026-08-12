@@ -102,6 +102,79 @@ func TestDefaultPlanCatalogUsesUSDPricesAndMonotonicSeatLimits(t *testing.T) {
 	require.Equal(t, int64(5), catalog["agency"].Limits[entitlements.LimitTeamMembers])
 }
 
+func TestPurchaseChoiceCoversEveryCanonicalPlanAndBillingPeriod(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 8, 12, 10, 0, 0, 0, time.UTC)
+	service := NewService(nil, "", PaddleConfig{
+		Plans:                testCatalog(),
+		PurchaseChoiceSecret: "purchase-choice-secret-with-at-least-32-characters",
+	})
+	service.SetNowForTest(func() time.Time { return now })
+
+	expectedPrices := map[string]map[string]int{
+		"starter": {"monthly": 15, "annual": 150},
+		"founder": {"monthly": 25, "annual": 250},
+		"pro":     {"monthly": 49, "annual": 490},
+		"team":    {"monthly": 99, "annual": 990},
+		"agency":  {"monthly": 199, "annual": 1990},
+	}
+	for planID, periods := range expectedPrices {
+		for period, expectedPrice := range periods {
+			planID, period, expectedPrice := planID, period, expectedPrice
+			t.Run(planID+"/"+period, func(t *testing.T) {
+				t.Parallel()
+				choice, err := service.CreatePurchaseChoice(planID, period)
+				require.NoError(t, err)
+				require.NotEmpty(t, choice.Token)
+				require.Equal(t, planID, choice.PlanID)
+				require.Equal(t, period, choice.BillingPeriod)
+				require.Equal(t, expectedPrice, choice.ListPriceUSD)
+				require.Equal(t, TrialDays, choice.TrialDays)
+				require.True(t, choice.CardRequired)
+				require.Equal(t, now.Add(PurchaseChoiceTTL), choice.ExpiresAt)
+
+				resolved, err := service.ResolvePurchaseChoice(choice.Token, planID, period)
+				require.NoError(t, err)
+				require.Equal(t, choice, resolved)
+			})
+		}
+	}
+}
+
+func TestPurchaseChoiceRejectsMissingInvalidExpiredAndMismatchedValues(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 8, 12, 10, 0, 0, 0, time.UTC)
+	service := NewService(nil, "", PaddleConfig{
+		Plans:                testCatalog(),
+		PurchaseChoiceSecret: "purchase-choice-secret-with-at-least-32-characters",
+	})
+	service.SetNowForTest(func() time.Time { return now })
+
+	_, err := service.CreatePurchaseChoice("", "monthly")
+	require.ErrorIs(t, err, ErrPurchaseChoiceMissing)
+	_, err = service.CreatePurchaseChoice("founder", "")
+	require.ErrorIs(t, err, ErrPurchaseChoiceMissing)
+	_, err = service.CreatePurchaseChoice("enterprise", "monthly")
+	require.ErrorIs(t, err, ErrPurchaseChoiceInvalid)
+	_, err = service.CreatePurchaseChoice("founder", "quarterly")
+	require.ErrorIs(t, err, ErrPurchaseChoiceInvalid)
+	_, err = service.ResolvePurchaseChoice("", "founder", "monthly")
+	require.ErrorIs(t, err, ErrPurchaseChoiceMissing)
+
+	choice, err := service.CreatePurchaseChoice("founder", "annual")
+	require.NoError(t, err)
+	_, err = service.ResolvePurchaseChoice(choice.Token+"tampered", "founder", "annual")
+	require.ErrorIs(t, err, ErrPurchaseChoiceInvalid)
+	_, err = service.ResolvePurchaseChoice(choice.Token, "starter", "annual")
+	require.ErrorIs(t, err, ErrPurchaseChoiceMismatch)
+	_, err = service.ResolvePurchaseChoice(choice.Token, "founder", "monthly")
+	require.ErrorIs(t, err, ErrPurchaseChoiceMismatch)
+
+	service.SetNowForTest(func() time.Time { return choice.ExpiresAt.Add(time.Second) })
+	_, err = service.ResolvePurchaseChoice(choice.Token, "founder", "annual")
+	require.ErrorIs(t, err, ErrPurchaseChoiceExpired)
+}
+
 func TestCreateCheckoutRecordsOpaquePaddleAttempt(t *testing.T) {
 	t.Parallel()
 	db := newBillingTestDB(t)

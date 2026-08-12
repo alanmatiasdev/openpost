@@ -197,7 +197,7 @@
 	async function startCheckout(planID: string) {
 		if (billingStatus && !billingStatus.can_manage_billing) return;
 		billingBusyPlan = planID;
-		await goto(resolve(checkoutPathForPlan(planID) as '/'));
+		await goto(resolve(checkoutPathForPlan(planID, 'monthly') as '/'));
 		billingBusyPlan = '';
 	}
 

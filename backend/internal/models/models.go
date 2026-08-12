@@ -92,6 +92,7 @@ const (
 // OIDC authorization request intents.
 const (
 	OIDCIntentLogin  = "login"
+	OIDCIntentSignup = "signup"
 	OIDCIntentLink   = "link"
 	OIDCIntentReauth = "reauth"
 )

@@ -18,6 +18,7 @@ import (
 	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/publicprofiles"
 	"github.com/openpost/backend/internal/services/auth"
+	"github.com/openpost/backend/internal/services/billing"
 	"github.com/openpost/backend/internal/services/crypto"
 	"github.com/openpost/backend/internal/services/emailverification"
 	"github.com/openpost/backend/internal/services/identity"
@@ -69,6 +70,8 @@ type AuthHandler struct {
 	publicURL                 string
 	accountPolicy             AccountPolicy
 	identity                  *identity.Service
+	purchaseChoices           *billing.Service
+	purchaseChoiceRequired    bool
 }
 
 func NewAuthHandler(
@@ -126,6 +129,11 @@ func (h *AuthHandler) SetIdentityService(service *identity.Service) {
 	h.identity = service
 }
 
+func (h *AuthHandler) SetPurchaseChoices(service *billing.Service, required bool) {
+	h.purchaseChoices = service
+	h.purchaseChoiceRequired = required
+}
+
 var (
 	errEmailAlreadyRegistered    = errors.New("email already registered")
 	errUsernameAlreadyRegistered = errors.New("username already registered")
@@ -134,10 +142,11 @@ var (
 
 type RegisterInput struct {
 	Body struct {
-		Email         string `json:"email" format:"email" doc:"User email address"`
-		Username      string `json:"username,omitempty" minLength:"3" maxLength:"30" pattern:"^[A-Za-z0-9](?:[A-Za-z0-9_-]*[A-Za-z0-9])?$" doc:"Optional unique public username; OpenPost creates one from the email when omitted"`
-		Password      string `json:"password" minLength:"12" maxLength:"1024" doc:"User password (min 12 characters)"`
-		AcceptedLegal *bool  `json:"accepted_legal,omitempty" doc:"Whether the user accepted the current terms and privacy policy"`
+		Email               string `json:"email" format:"email" doc:"User email address"`
+		Username            string `json:"username,omitempty" minLength:"3" maxLength:"30" pattern:"^[A-Za-z0-9](?:[A-Za-z0-9_-]*[A-Za-z0-9])?$" doc:"Optional unique public username; OpenPost creates one from the email when omitted"`
+		Password            string `json:"password" minLength:"12" maxLength:"1024" doc:"User password (min 12 characters)"`
+		AcceptedLegal       *bool  `json:"accepted_legal,omitempty" doc:"Whether the user accepted the current terms and privacy policy"`
+		PurchaseChoiceToken string `json:"purchase_choice_token,omitempty" doc:"Integrity-protected hosted plan and billing-period choice; required for hosted registration"`
 	}
 }
 
@@ -444,6 +453,9 @@ func (h *AuthHandler) handleRegister(ctx context.Context, input *RegisterInput) 
 }
 
 func (h *AuthHandler) validateRegistrationRequest(ctx context.Context, input *RegisterInput) (bool, error) {
+	if _, err := h.resolvePurchaseChoice(input.Body.PurchaseChoiceToken, "", ""); err != nil {
+		return false, err
+	}
 	if h.emailVerificationRequired && (h.emailVerification == nil || h.emailSender == nil) {
 		return false, huma.Error503ServiceUnavailable("email verification is not configured for this instance")
 	}
@@ -467,6 +479,20 @@ func (h *AuthHandler) validateRegistrationRequest(ctx context.Context, input *Re
 		return false, huma.Error429TooManyRequests("too many registration attempts")
 	}
 	return acceptedLegal, nil
+}
+
+func (h *AuthHandler) resolvePurchaseChoice(token, expectedPlanID, expectedBillingPeriod string) (billing.PurchaseChoice, error) {
+	if !h.purchaseChoiceRequired {
+		return billing.PurchaseChoice{}, nil
+	}
+	if h.purchaseChoices == nil {
+		return billing.PurchaseChoice{}, huma.Error503ServiceUnavailable("purchase choices are not configured for this instance")
+	}
+	choice, err := h.purchaseChoices.ResolvePurchaseChoice(token, expectedPlanID, expectedBillingPeriod)
+	if err != nil {
+		return billing.PurchaseChoice{}, purchaseChoiceAPIError(err)
+	}
+	return choice, nil
 }
 
 func registrationHTTPError(err error) error {

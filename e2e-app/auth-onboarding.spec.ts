@@ -12,6 +12,7 @@ test("email signup confirms a six-digit code before onboarding", async ({
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const email = "verify-person@example.com";
+  const purchaseChoiceToken = "choice-team-annual";
   const user = {
     id: "user-verified",
     email,
@@ -35,14 +36,39 @@ test("email signup confirms a six-digit code before onboarding", async ({
         password_reset_enabled: true,
         email_verification_required: true,
         legal_acceptance_required: false,
+        purchase_choice_required: true,
       },
     }),
   );
   await page.route("**/api/v1/auth/oidc/providers", (route) =>
     route.fulfill({ json: [] }),
   );
+  await page.route("**/api/v1/billing/purchase-choice", async (route) => {
+    const body = route.request().postDataJSON();
+    expect(body).toMatchObject({
+      plan_id: "team",
+      billing_period: "annual",
+    });
+    await route.fulfill({
+      json: {
+        token: purchaseChoiceToken,
+        plan_id: "team",
+        plan_name: "Team",
+        billing_period: "annual",
+        list_price_usd: 990,
+        trial_days: 14,
+        card_required: true,
+        due_today_usd: 0,
+        catalog_version: "2026-08-12",
+        expires_at: "2026-08-13T10:00:00Z",
+      },
+    });
+  });
   await page.route("**/api/v1/auth/register", async (route) => {
-    expect(route.request().postDataJSON()).toMatchObject({ email });
+    expect(route.request().postDataJSON()).toMatchObject({
+      email,
+      purchase_choice_token: purchaseChoiceToken,
+    });
     await route.fulfill({
       json: {
         requires_email_verification: true,
@@ -86,19 +112,37 @@ test("email signup confirms a six-digit code before onboarding", async ({
     route.fulfill({ json: [] }),
   );
 
-  await page.goto("/register");
+  await page.goto("/register?plan=team&billing_period=annual");
+  await expect(page.getByText("OpenPost Team")).toBeVisible();
+  await expect(page.getByText("$990/year", { exact: true })).toBeVisible();
+  await expect(page.getByText("14-day free trial")).toBeVisible();
+  await expect(
+    page.getByText("$0 due today. A card is required at checkout."),
+  ).toBeVisible();
+  await expect(
+    page.getByText("After the trial, $990/year until canceled."),
+  ).toBeVisible();
+  await page.reload();
+  expect(new URL(page.url()).searchParams.get("purchase_choice")).toBe(
+    purchaseChoiceToken,
+  );
+  await expect(page.getByText("OpenPost Team")).toBeVisible();
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password", { exact: true }).fill(password);
   await page.getByLabel("Confirm Password").fill(password);
   await page.getByRole("button", { name: "Create Account" }).click();
 
   await expect(page).toHaveURL(/\/verify-email\?/);
+  expect(new URL(page.url()).searchParams.get("purchase_choice")).toBe(
+    purchaseChoiceToken,
+  );
   await expect(
     page.getByRole("heading", { name: "Check your email" }),
   ).toBeVisible();
   await expect(
     page.getByText(`Enter the 6-digit code sent to ${email}.`),
   ).toBeVisible();
+  await expect(page.getByText("OpenPost Team")).toBeVisible();
   await expect(
     page.getByRole("button", { name: /Send a new code in/ }),
   ).toBeDisabled();
@@ -121,6 +165,145 @@ test("email signup confirms a six-digit code before onboarding", async ({
   await page.getByRole("button", { name: "Verify email" }).click();
   await expect(page).toHaveURL(/\/onboarding/);
   expect(confirmationAttempts).toBe(2);
+});
+
+test("registration presents every canonical plan and billing period without a fallback", async ({
+  page,
+}) => {
+  const prices = {
+    starter: { monthly: 15, annual: 150, name: "Starter" },
+    founder: { monthly: 25, annual: 250, name: "Founder" },
+    pro: { monthly: 49, annual: 490, name: "Pro" },
+    team: { monthly: 99, annual: 990, name: "Team" },
+    agency: { monthly: 199, annual: 1990, name: "Agency" },
+  } as const;
+  await page.route("**/api/v1/auth/config", (route) =>
+    route.fulfill({
+      json: {
+        registration_enabled: true,
+        password_reset_enabled: true,
+        email_verification_required: true,
+        legal_acceptance_required: false,
+        purchase_choice_required: true,
+      },
+    }),
+  );
+  await page.route("**/api/v1/auth/oidc/providers", (route) =>
+    route.fulfill({ json: [] }),
+  );
+  await page.route("**/api/v1/billing/purchase-choice", async (route) => {
+    const body = route.request().postDataJSON() as {
+      plan_id: keyof typeof prices;
+      billing_period: "monthly" | "annual";
+    };
+    const plan = prices[body.plan_id];
+    await route.fulfill({
+      json: {
+        token: `choice-${body.plan_id}-${body.billing_period}`,
+        plan_id: body.plan_id,
+        plan_name: plan.name,
+        billing_period: body.billing_period,
+        list_price_usd: plan[body.billing_period],
+        trial_days: 14,
+        card_required: true,
+        due_today_usd: 0,
+        catalog_version: "2026-08-12",
+        expires_at: "2026-08-13T10:00:00Z",
+      },
+    });
+  });
+
+  for (const [planID, plan] of Object.entries(prices)) {
+    for (const period of ["monthly", "annual"] as const) {
+      await page.goto(`/register?plan=${planID}&billing_period=${period}`);
+      await expect(page.getByText(`OpenPost ${plan.name}`)).toBeVisible();
+      const periodLabel = period === "annual" ? "/year" : "/month";
+      await expect(
+        page.getByText(
+          `$${plan[period].toLocaleString("en-US")}${periodLabel}`,
+          { exact: true },
+        ),
+      ).toBeVisible();
+      await expect(
+        page.getByText(
+          `After the trial, $${plan[period].toLocaleString("en-US")}${periodLabel} until canceled.`,
+        ),
+      ).toBeVisible();
+    }
+  }
+});
+
+test("registration rejects missing invalid expired and mismatched choices", async ({
+  page,
+}) => {
+  await page.route("**/api/v1/auth/config", (route) =>
+    route.fulfill({
+      json: {
+        registration_enabled: true,
+        password_reset_enabled: true,
+        email_verification_required: true,
+        legal_acceptance_required: false,
+        purchase_choice_required: true,
+      },
+    }),
+  );
+  await page.route("**/api/v1/auth/oidc/providers", (route) =>
+    route.fulfill({ json: [] }),
+  );
+  await page.route("**/api/v1/billing/purchase-choice", async (route) => {
+    const token = route.request().postDataJSON().purchase_choice_token;
+    const code = token === "expired" ? "expired" : "mismatch";
+    const detail =
+      code === "expired"
+        ? "purchase choice has expired"
+        : "purchase choice does not match the selected plan and billing period";
+    await route.fulfill({
+      status: 400,
+      contentType: "application/problem+json",
+      json: {
+        type: `urn:openpost:problem:purchase-choice:${code}`,
+        status: 400,
+        title: "Invalid purchase choice",
+        detail,
+      },
+    });
+  });
+
+  await page.goto("/register");
+  await expect(
+    page.getByText(
+      "Choose a plan and billing period before creating your account.",
+    ),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Choose a plan again" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Create Account" }),
+  ).toBeDisabled();
+
+  await page.goto("/register?plan=enterprise&billing_period=monthly");
+  await expect(
+    page.getByText("This plan choice is not valid. Choose a plan again."),
+  ).toBeVisible();
+
+  await page.goto(
+    "/register?plan=founder&billing_period=monthly&purchase_choice=expired",
+  );
+  await expect(
+    page.getByText(
+      "This plan choice expired. Choose a plan again to continue.",
+    ),
+  ).toBeVisible();
+
+  await page.goto(
+    "/register?plan=founder&billing_period=monthly&purchase_choice=mismatched",
+  );
+  await expect(
+    page.getByText(
+      "The plan details changed during signup. Choose the plan again to continue.",
+    ),
+  ).toBeVisible();
 });
 
 test("registration routes first-time users through onboarding", async ({
@@ -216,6 +399,7 @@ test("password controls expose the real rules without losing entered values", as
         password_reset_enabled: true,
         email_verification_required: false,
         legal_acceptance_required: false,
+        purchase_choice_required: false,
       },
     }),
   );
@@ -295,6 +479,7 @@ test("Google signup lets existing accounts resume without onboarding checkout", 
         password_reset_enabled: true,
         email_verification_required: false,
         legal_acceptance_required: false,
+        purchase_choice_required: true,
       },
     }),
   );
@@ -310,6 +495,22 @@ test("Google signup lets existing accounts resume without onboarding checkout", 
       ],
     }),
   );
+  await page.route("**/api/v1/billing/purchase-choice", (route) =>
+    route.fulfill({
+      json: {
+        token: "choice-founder-annual",
+        plan_id: "founder",
+        plan_name: "Founder",
+        billing_period: "annual",
+        list_price_usd: 250,
+        trial_days: 14,
+        card_required: true,
+        due_today_usd: 0,
+        catalog_version: "2026-08-12",
+        expires_at: "2026-08-13T10:00:00Z",
+      },
+    }),
+  );
 
   const destination = "/settings?tab=accounts";
   await page.goto(
@@ -321,8 +522,14 @@ test("Google signup lets existing accounts resume without onboarding checkout", 
   );
   await page.getByRole("button", { name: "Continue with Google" }).click();
   const startURL = new URL((await startRequestPromise).url());
+  expect(startURL.searchParams.get("signup")).toBe("true");
+  expect(startURL.searchParams.get("plan_id")).toBe("founder");
+  expect(startURL.searchParams.get("billing_period")).toBe("annual");
+  expect(startURL.searchParams.get("purchase_choice_token")).toBe(
+    "choice-founder-annual",
+  );
   expect(startURL.searchParams.get("return_path")).toBe(
-    `/onboarding?plan=founder&billing_period=annual&redirect=${encodeURIComponent(destination)}&source=signup`,
+    `/onboarding?plan=founder&billing_period=annual&purchase_choice=choice-founder-annual&redirect=${encodeURIComponent(destination)}&source=signup`,
   );
 
   await authenticatePage(page, auth.token);

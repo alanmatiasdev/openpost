@@ -104,6 +104,58 @@ func newBillingAPITestServer(t *testing.T) *billingTestServer {
 	})
 }
 
+func TestPurchaseChoiceEndpointCreatesAndRevalidatesCanonicalChoice(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 8, 12, 10, 0, 0, 0, time.UTC)
+	service := billing.NewService(nil, "", billing.PaddleConfig{
+		Plans: billing.DefaultPlanCatalog(
+			billing.PaddlePriceIDs{}, billing.PaddlePriceIDs{}, billing.PaddlePriceIDs{},
+			billing.PaddlePriceIDs{}, billing.PaddlePriceIDs{},
+		),
+		PurchaseChoiceSecret: "purchase-choice-secret-with-at-least-32-characters",
+	})
+	service.SetNowForTest(func() time.Time { return now })
+	e := echo.New()
+	api := humaecho.NewWithGroup(e, e.Group("/api/v1"), huma.DefaultConfig("Test", "1.0.0"))
+	NewBillingHandler(service).RegisterAPIRoutes(api)
+
+	created := jsonRequest(t, e, http.MethodPost, "/api/v1/billing/purchase-choice", map[string]any{
+		"plan_id":        "team",
+		"billing_period": "annual",
+	}, "")
+	require.Equal(t, http.StatusOK, created.Code, created.Body.String())
+	var choice PurchaseChoiceResponse
+	require.NoError(t, json.Unmarshal(created.Body.Bytes(), &choice))
+	require.NotEmpty(t, choice.Token)
+	require.Equal(t, "team", choice.PlanID)
+	require.Equal(t, "Team", choice.PlanName)
+	require.Equal(t, "annual", choice.BillingPeriod)
+	require.Equal(t, 990, choice.ListPriceUSD)
+	require.Equal(t, 14, choice.TrialDays)
+	require.True(t, choice.CardRequired)
+	require.Zero(t, choice.DueTodayUSD)
+	require.Equal(t, billing.PlanCatalogVersion, choice.CatalogVersion)
+
+	validated := jsonRequest(t, e, http.MethodPost, "/api/v1/billing/purchase-choice", map[string]any{
+		"plan_id":               "team",
+		"billing_period":        "annual",
+		"purchase_choice_token": choice.Token,
+	}, "")
+	require.Equal(t, http.StatusOK, validated.Code, validated.Body.String())
+	require.JSONEq(t, created.Body.String(), validated.Body.String())
+
+	mismatched := jsonRequest(t, e, http.MethodPost, "/api/v1/billing/purchase-choice", map[string]any{
+		"plan_id":               "founder",
+		"billing_period":        "annual",
+		"purchase_choice_token": choice.Token,
+	}, "")
+	require.Equal(t, http.StatusBadRequest, mismatched.Code, mismatched.Body.String())
+	require.Contains(t, mismatched.Body.String(), "does not match")
+	var problem huma.ErrorModel
+	require.NoError(t, json.Unmarshal(mismatched.Body.Bytes(), &problem))
+	require.Equal(t, purchaseChoiceMismatchProblem, problem.Type)
+}
+
 func newBillingAPITestServerWithPaddleConfig(t *testing.T, client *billingPaddleClient, cfg billing.PaddleConfig) *billingTestServer {
 	t.Helper()
 

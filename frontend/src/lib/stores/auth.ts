@@ -32,6 +32,7 @@ interface RegisterInput {
 	username?: string;
 	password: string;
 	acceptedLegal: boolean;
+	purchaseChoiceToken?: string;
 }
 
 function createAuthStore() {
@@ -110,10 +111,22 @@ function createAuthStore() {
 				return { success: false, error: (e as Error).message };
 			}
 		},
-		async register({ email, username, password, acceptedLegal }: RegisterInput) {
+		async register({
+			email,
+			username,
+			password,
+			acceptedLegal,
+			purchaseChoiceToken
+		}: RegisterInput) {
 			try {
 				const { data, error } = await client.POST('/auth/register', {
-					body: { email, username: username || undefined, password, accepted_legal: acceptedLegal }
+					body: {
+						email,
+						username: username || undefined,
+						password,
+						accepted_legal: acceptedLegal,
+						purchase_choice_token: purchaseChoiceToken
+					}
 				});
 				if (error || !data) throw new Error(error?.detail || 'Registration failed');
 				if (data.requires_email_verification) {

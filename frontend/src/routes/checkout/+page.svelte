@@ -54,7 +54,7 @@
 	let paddleConfiguration = '';
 	let paymentFrameLoaded = $state(false);
 
-	let selectedPlan = $derived(hostedPlanByID(selectedPlanID));
+	let selectedPlan = $derived(hostedPlanByID(selectedPlanID)!);
 	let selectedPrice = $derived(localizedPrices[selectedPlanID] ?? '');
 	let userEmail = $derived($auth.user?.email ?? '');
 
@@ -296,14 +296,13 @@
 
 	onMount(() => {
 		selectedPlanID = hostedPlanFromSearchParams(page.url.searchParams) || 'founder';
-		billingPeriod = billingPeriodFromSearchParams(page.url.searchParams);
+		billingPeriod = billingPeriodFromSearchParams(page.url.searchParams) || 'monthly';
 		const workspaceReady = workspaceCtx.currentWorkspace?.id
 			? Promise.resolve()
 			: workspaceCtx.initialize();
 		void workspaceReady.then(async () => {
 			if (!workspaceCtx.currentWorkspace?.id) {
-				const target = new URL(onboardingPathForPlan(selectedPlanID), page.url);
-				target.searchParams.set('billing_period', billingPeriod);
+				const target = new URL(onboardingPathForPlan(selectedPlanID, billingPeriod), page.url);
 				const redirect = safeSameOriginRedirect(page.url, '');
 				if (redirect) target.searchParams.set('redirect', redirect);
 				await goto(resolve(`${target.pathname}${target.search}` as '/'));

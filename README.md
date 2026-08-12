@@ -30,7 +30,7 @@
 </p>
 
 <p align="center">
-  <a href="https://app.openpost.social/register?plan=founder"><strong>Start a 14-day trial</strong></a>
+  <a href="https://app.openpost.social/register?plan=founder&billing_period=monthly"><strong>Start a 14-day trial</strong></a>
   ·
   <a href="https://youtu.be/_mZf3HzQaN8"><strong>Watch the demo</strong></a>
   ·

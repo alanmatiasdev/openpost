@@ -63,7 +63,11 @@ FORM: A concise public verification page inside the established OpenPost world, 
 			</a>
 			<div class="flex items-center gap-1.5">
 				<Button href="/login" variant="ghost" size="sm">{m.landing_sign_in()}</Button>
-				<Button href="/register?plan=founder" size="sm" class="hidden sm:inline-flex">
+				<Button
+					href="/register?plan=founder&billing_period=monthly"
+					size="sm"
+					class="hidden sm:inline-flex"
+				>
 					{m.public_home_start_trial()}
 					<ArrowRight data-icon="inline-end" />
 				</Button>
@@ -89,7 +93,7 @@ FORM: A concise public verification page inside the established OpenPost world, 
 						{m.public_home_description()}
 					</p>
 					<div class="mt-8 flex flex-wrap gap-3">
-						<Button href="/register?plan=founder" size="lg">
+						<Button href="/register?plan=founder&billing_period=monthly" size="lg">
 							{m.public_home_start_trial()}
 							<ArrowRight data-icon="inline-end" />
 						</Button>

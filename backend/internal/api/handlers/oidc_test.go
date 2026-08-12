@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"testing"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/openpost/backend/internal/api/middleware"
 	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/services/auth"
+	"github.com/openpost/backend/internal/services/billing"
 	"github.com/openpost/backend/internal/services/identity"
 	"github.com/stretchr/testify/require"
 )
@@ -28,6 +30,96 @@ func (passwordReauthTestAuthenticator) AuthenticateBearer(
 		Email:     "user@example.com",
 		SessionID: "session-1",
 	}, nil
+}
+
+func TestOIDCSignupRequiresTheHostedPurchaseChoiceBeforeRedirecting(t *testing.T) {
+	t.Parallel()
+	choiceService := billing.NewService(nil, "", billing.PaddleConfig{
+		Plans: billing.DefaultPlanCatalog(
+			billing.PaddlePriceIDs{}, billing.PaddlePriceIDs{}, billing.PaddlePriceIDs{},
+			billing.PaddlePriceIDs{}, billing.PaddlePriceIDs{},
+		),
+		PurchaseChoiceSecret: "purchase-choice-secret-with-at-least-32-characters",
+	})
+	authHandler := NewAuthHandler(nil, auth.NewService("oidc-choice-secret"), nil, nil, nil, false)
+	authHandler.SetPurchaseChoices(choiceService, true)
+	e := echo.New()
+	api := humaecho.NewWithGroup(e, e.Group("/api/v1"), huma.DefaultConfig("Test", "1.0.0"))
+	NewOIDCHandler(nil, authHandler, nil).registerPublicRoutes(api)
+
+	missing := jsonRequest(
+		t,
+		e,
+		http.MethodGet,
+		"/api/v1/auth/oidc/google/start?signup=true&return_path=%2Fonboarding%3Fplan%3Dfounder%26billing_period%3Dmonthly",
+		nil,
+		"",
+	)
+	require.Equal(t, http.StatusBadRequest, missing.Code, missing.Body.String())
+	require.Contains(t, missing.Body.String(), "purchase choice is required")
+
+	invalid := jsonRequest(
+		t,
+		e,
+		http.MethodGet,
+		"/api/v1/auth/oidc/google/start?signup=true&plan_id=founder&billing_period=monthly&purchase_choice_token=invalid&return_path=%2Fonboarding%3Fplan%3Dfounder%26billing_period%3Dmonthly",
+		nil,
+		"",
+	)
+	require.Equal(t, http.StatusBadRequest, invalid.Code, invalid.Body.String())
+	require.Contains(t, invalid.Body.String(), "purchase choice is invalid")
+
+	choice, err := choiceService.CreatePurchaseChoice("team", "annual")
+	require.NoError(t, err)
+	missingSelection := jsonRequest(
+		t,
+		e,
+		http.MethodGet,
+		"/api/v1/auth/oidc/google/start?signup=true&purchase_choice_token="+choice.Token,
+		nil,
+		"",
+	)
+	require.Equal(t, http.StatusBadRequest, missingSelection.Code, missingSelection.Body.String())
+	require.Contains(t, missingSelection.Body.String(), "purchase choice is required")
+
+	mismatched := jsonRequest(
+		t,
+		e,
+		http.MethodGet,
+		"/api/v1/auth/oidc/google/start?signup=true&plan_id=founder&billing_period=monthly&purchase_choice_token="+choice.Token,
+		nil,
+		"",
+	)
+	require.Equal(t, http.StatusBadRequest, mismatched.Code, mismatched.Body.String())
+	require.Contains(t, mismatched.Body.String(), "does not match")
+}
+
+func TestPurchaseChoiceReturnPathUsesTheVerifiedChoice(t *testing.T) {
+	t.Parallel()
+	choice := billing.PurchaseChoice{
+		Token:         "verified-token",
+		PlanID:        "team",
+		BillingPeriod: "annual",
+	}
+
+	returnPath := purchaseChoiceReturnPath(
+		"/onboarding?plan=founder&billing_period=monthly&purchase_choice=other&redirect=%2Fcalendar&source=signup",
+		choice,
+	)
+	parsed, err := url.Parse(returnPath)
+	require.NoError(t, err)
+	require.Equal(t, "/onboarding", parsed.Path)
+	require.Equal(t, "team", parsed.Query().Get("plan"))
+	require.Equal(t, "annual", parsed.Query().Get("billing_period"))
+	require.Equal(t, "verified-token", parsed.Query().Get("purchase_choice"))
+	require.Equal(t, "/calendar", parsed.Query().Get("redirect"))
+	require.Equal(t, "signup", parsed.Query().Get("source"))
+
+	external := purchaseChoiceReturnPath("https://attacker.example/steal", choice)
+	externalURL, err := url.Parse(external)
+	require.NoError(t, err)
+	require.Equal(t, "/onboarding", externalURL.Path)
+	require.Equal(t, "team", externalURL.Query().Get("plan"))
 }
 
 func TestPasswordReauthenticationRejectsPasswordDisabledByRequiredSSO(t *testing.T) {

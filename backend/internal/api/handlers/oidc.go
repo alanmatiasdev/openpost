@@ -12,6 +12,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/openpost/backend/internal/api/middleware"
 	"github.com/openpost/backend/internal/models"
+	"github.com/openpost/backend/internal/services/billing"
 	"github.com/openpost/backend/internal/services/identity"
 )
 
@@ -52,10 +53,14 @@ type OIDCProvidersOutput struct {
 }
 
 type OIDCStartInput struct {
-	ProviderID string `path:"provider_id"`
-	ReturnPath string `query:"return_path"`
-	Native     bool   `query:"native"`
-	Cookie     string `header:"Cookie"`
+	ProviderID          string `path:"provider_id"`
+	ReturnPath          string `query:"return_path"`
+	Native              bool   `query:"native"`
+	Signup              bool   `query:"signup" doc:"Whether this login was started from the explicit hosted signup flow"`
+	PlanID              string `query:"plan_id" doc:"Canonical hosted plan selected for signup"`
+	BillingPeriod       string `query:"billing_period" doc:"Canonical hosted billing period selected for signup"`
+	PurchaseChoiceToken string `query:"purchase_choice_token" doc:"Integrity-protected hosted plan choice required for signup"`
+	Cookie              string `header:"Cookie"`
 }
 
 type OIDCCallbackInput struct {
@@ -228,19 +233,7 @@ func (h *OIDCHandler) registerPublicRoutes(api huma.API) {
 		Tags:        []string{tagAuth},
 		Hidden:      true,
 		Middlewares: huma.Middlewares{middleware.RequestMetadataMiddleware()},
-	}, func(ctx context.Context, input *OIDCStartInput) (*huma.StreamResponse, error) {
-		result, err := h.identity.Begin(ctx, identity.BeginInput{
-			ProviderID:     input.ProviderID,
-			Intent:         models.OIDCIntentLogin,
-			ReturnPath:     input.ReturnPath,
-			BrowserBinding: oidcBindingCookieValue(input.Cookie),
-			Native:         input.Native,
-		})
-		if err != nil {
-			return h.loginErrorRedirect(err)
-		}
-		return oidcRedirect(result.AuthorizationURL, oidcBindingCookie(result.BrowserBinding, result.ExpiresAt, middleware.IsSecureRequest(ctx))), nil
-	})
+	}, h.start)
 
 	huma.Register(api, huma.Operation{
 		OperationID: "complete-oidc-login",
@@ -307,6 +300,53 @@ func (h *OIDCHandler) registerPublicRoutes(api huma.API) {
 			OK bool `json:"ok"`
 		}{OK: true}}, nil
 	})
+}
+
+func (h *OIDCHandler) start(ctx context.Context, input *OIDCStartInput) (*huma.StreamResponse, error) {
+	intent := models.OIDCIntentLogin
+	returnPath := input.ReturnPath
+	if input.Signup {
+		if h.auth.purchaseChoiceRequired &&
+			(strings.TrimSpace(input.PlanID) == "" || strings.TrimSpace(input.BillingPeriod) == "") {
+			return nil, purchaseChoiceAPIError(billing.ErrPurchaseChoiceMissing)
+		}
+		choice, err := h.auth.resolvePurchaseChoice(input.PurchaseChoiceToken, input.PlanID, input.BillingPeriod)
+		if err != nil {
+			return nil, err
+		}
+		if choice.Token != "" {
+			returnPath = purchaseChoiceReturnPath(returnPath, choice)
+		}
+		intent = models.OIDCIntentSignup
+	}
+	result, err := h.identity.Begin(ctx, identity.BeginInput{
+		ProviderID:     input.ProviderID,
+		Intent:         intent,
+		ReturnPath:     returnPath,
+		BrowserBinding: oidcBindingCookieValue(input.Cookie),
+		Native:         input.Native,
+	})
+	if err != nil {
+		return h.loginErrorRedirect(err)
+	}
+	return oidcRedirect(result.AuthorizationURL, oidcBindingCookie(result.BrowserBinding, result.ExpiresAt, middleware.IsSecureRequest(ctx))), nil
+}
+
+func purchaseChoiceReturnPath(raw string, choice billing.PurchaseChoice) string {
+	safe := identity.SafeReturnPath(raw)
+	if safe == "/" {
+		safe = "/onboarding"
+	}
+	target, err := url.Parse(safe)
+	if err != nil {
+		target = &url.URL{Path: "/onboarding"}
+	}
+	query := target.Query()
+	query.Set("plan", choice.PlanID)
+	query.Set("billing_period", choice.BillingPeriod)
+	query.Set("purchase_choice", choice.Token)
+	target.RawQuery = query.Encode()
+	return target.String()
 }
 
 func (h *OIDCHandler) registerAuthenticatedRoutes(api huma.API) {
@@ -574,7 +614,7 @@ func (h *OIDCHandler) callback(ctx context.Context, input *OIDCCallbackInput) (*
 		return h.completeLinkCallback(ctx, completion, expiredBinding)
 	case models.OIDCIntentReauth:
 		return h.completeReauthCallback(ctx, completion, expiredBinding)
-	case models.OIDCIntentLogin:
+	case models.OIDCIntentLogin, models.OIDCIntentSignup:
 		return h.completeLoginCallback(ctx, completion, expiredBinding)
 	default:
 		return h.loginErrorRedirect(identity.ErrInvalidAuthRequest)
@@ -760,6 +800,8 @@ func oidcPublicError(err error) string {
 		return "An account already uses this email. Sign in to that account, then link this provider."
 	case errors.Is(err, identity.ErrJITDisabled):
 		return "This identity is not assigned to an OpenPost account."
+	case errors.Is(err, identity.ErrExplicitSignupRequired):
+		return "Choose a plan before creating a new OpenPost account."
 	case errors.Is(err, identity.ErrVerifiedEmailRequired):
 		return "The identity provider did not return a verified email."
 	case errors.Is(err, identity.ErrIdentityCollision):

@@ -32,6 +32,13 @@ type BillingHandler struct {
 	telemetry telemetry.Recorder
 }
 
+const (
+	purchaseChoiceMissingProblem  = "urn:openpost:problem:purchase-choice:missing"
+	purchaseChoiceInvalidProblem  = "urn:openpost:problem:purchase-choice:invalid"
+	purchaseChoiceExpiredProblem  = "urn:openpost:problem:purchase-choice:expired"
+	purchaseChoiceMismatchProblem = "urn:openpost:problem:purchase-choice:mismatch"
+)
+
 func NewBillingHandler(billingService *billing.Service, deps ...any) *BillingHandler {
 	handler := &BillingHandler{billing: billingService}
 	if len(deps) > 0 {
@@ -70,6 +77,16 @@ func (h *BillingHandler) RegisterRoutes(e *echo.Echo) {
 }
 
 func (h *BillingHandler) RegisterAPIRoutes(api huma.API) {
+	huma.Register(api, huma.Operation{
+		OperationID: "create-purchase-choice",
+		Method:      http.MethodPost,
+		Path:        "/billing/purchase-choice",
+		Summary:     "Create or validate a hosted plan purchase choice",
+		Description: "Returns canonical plan, price, trial, payment, and expiry facts in an integrity-protected continuation token.",
+		Tags:        []string{"Billing"},
+		Errors:      []int{400, 503},
+	}, h.createPurchaseChoice)
+
 	huma.Register(api, huma.Operation{
 		OperationID: "get-billing-status",
 		Method:      http.MethodGet,
@@ -139,6 +156,87 @@ func (h *BillingHandler) RegisterAPIRoutes(api huma.API) {
 		Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
 		Errors:      []int{400, 403, 503},
 	}, h.createOrganizationPortalSession)
+}
+
+type CreatePurchaseChoiceInput struct {
+	Body struct {
+		PlanID              string `json:"plan_id" doc:"Canonical hosted plan ID: starter, founder, pro, team, or agency"`
+		BillingPeriod       string `json:"billing_period" enum:"monthly,annual" doc:"Canonical billing period"`
+		PurchaseChoiceToken string `json:"purchase_choice_token,omitempty" doc:"Existing integrity-protected choice to validate against the supplied plan and period"`
+	}
+}
+
+type PurchaseChoiceResponse struct {
+	Token          string `json:"token" doc:"Integrity-protected purchase choice continuation token"`
+	PlanID         string `json:"plan_id" doc:"Canonical hosted plan ID"`
+	PlanName       string `json:"plan_name" doc:"Canonical hosted plan name"`
+	BillingPeriod  string `json:"billing_period" enum:"monthly,annual" doc:"Canonical billing period"`
+	ListPriceUSD   int    `json:"list_price_usd" doc:"Full-period canonical USD list price"`
+	TrialDays      int    `json:"trial_days" doc:"Trial length in calendar days"`
+	CardRequired   bool   `json:"card_required" doc:"Whether checkout requires a payment card for the trial"`
+	DueTodayUSD    int    `json:"due_today_usd" doc:"Canonical USD amount due when the trial starts"`
+	CatalogVersion string `json:"catalog_version" doc:"Canonical plan catalogue revision bound to the choice"`
+	ExpiresAt      string `json:"expires_at" format:"date-time" doc:"When this purchase choice must be replaced"`
+}
+
+type PurchaseChoiceOutput struct {
+	Body PurchaseChoiceResponse
+}
+
+func (h *BillingHandler) createPurchaseChoice(_ context.Context, input *CreatePurchaseChoiceInput) (*PurchaseChoiceOutput, error) {
+	if h.billing == nil {
+		return nil, huma.Error503ServiceUnavailable("purchase choices are not configured for this instance")
+	}
+	var (
+		choice billing.PurchaseChoice
+		err    error
+	)
+	if strings.TrimSpace(input.Body.PurchaseChoiceToken) == "" {
+		choice, err = h.billing.CreatePurchaseChoice(input.Body.PlanID, input.Body.BillingPeriod)
+	} else {
+		choice, err = h.billing.ResolvePurchaseChoice(
+			input.Body.PurchaseChoiceToken,
+			input.Body.PlanID,
+			input.Body.BillingPeriod,
+		)
+	}
+	if err != nil {
+		return nil, purchaseChoiceAPIError(err)
+	}
+	return &PurchaseChoiceOutput{Body: purchaseChoiceResponse(choice)}, nil
+}
+
+func purchaseChoiceAPIError(err error) error {
+	problemType := purchaseChoiceInvalidProblem
+	switch {
+	case errors.Is(err, billing.ErrPurchaseChoiceMissing):
+		problemType = purchaseChoiceMissingProblem
+	case errors.Is(err, billing.ErrPurchaseChoiceExpired):
+		problemType = purchaseChoiceExpiredProblem
+	case errors.Is(err, billing.ErrPurchaseChoiceMismatch):
+		problemType = purchaseChoiceMismatchProblem
+	}
+	return &huma.ErrorModel{
+		Type:   problemType,
+		Title:  "Invalid purchase choice",
+		Status: http.StatusBadRequest,
+		Detail: err.Error(),
+	}
+}
+
+func purchaseChoiceResponse(choice billing.PurchaseChoice) PurchaseChoiceResponse {
+	return PurchaseChoiceResponse{
+		Token:          choice.Token,
+		PlanID:         choice.PlanID,
+		PlanName:       choice.PlanName,
+		BillingPeriod:  choice.BillingPeriod,
+		ListPriceUSD:   choice.ListPriceUSD,
+		TrialDays:      choice.TrialDays,
+		CardRequired:   choice.CardRequired,
+		DueTodayUSD:    choice.DueTodayUSD,
+		CatalogVersion: choice.CatalogVersion,
+		ExpiresAt:      choice.ExpiresAt.Format(time.RFC3339),
+	}
 }
 
 func (h *BillingHandler) handlePaddleWebhook(c echo.Context) error {

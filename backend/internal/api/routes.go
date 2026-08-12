@@ -64,6 +64,7 @@ type RouteDeps struct {
 	EmailVerificationService     *emailverification.Service
 	EmailChangeService           *emailchange.Service
 	EmailVerificationRequired    bool
+	PurchaseChoiceRequired       bool
 	PublicProfilesEnabled        bool
 	AccountPolicy                handlers.AccountPolicy
 	Providers                    map[string]platform.Adapter
@@ -167,6 +168,7 @@ func RegisterHumaRoutes(api huma.API, deps RouteDeps) {
 	authHandler.SetPublicProfilesEnabled(deps.PublicProfilesEnabled)
 	authHandler.SetAccountPolicy(deps.AccountPolicy)
 	authHandler.SetIdentityService(deps.IdentityService)
+	authHandler.SetPurchaseChoices(deps.BillingService, deps.PurchaseChoiceRequired)
 	authHandler.Configuration(api)
 	authHandler.AcceptAccountPolicy(api)
 	authHandler.Register(api)

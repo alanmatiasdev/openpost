@@ -137,9 +137,11 @@
 	}
 
 	function onboardingTarget() {
-		const target = new URL(onboardingPathForPlan($page.url.searchParams.get('plan')), $page.url);
 		const billingPeriod = $page.url.searchParams.get('billing_period');
-		if (billingPeriod) target.searchParams.set('billing_period', billingPeriod);
+		const onboardingPath = onboardingPathForPlan($page.url.searchParams.get('plan'), billingPeriod);
+		const target = new URL(onboardingPath || '/onboarding', $page.url);
+		const purchaseChoice = $page.url.searchParams.get('purchase_choice');
+		if (purchaseChoice) target.searchParams.set('purchase_choice', purchaseChoice);
 
 		const redirect = safeSameOriginRedirect($page.url, '');
 		if (redirect) target.searchParams.set('redirect', redirect);

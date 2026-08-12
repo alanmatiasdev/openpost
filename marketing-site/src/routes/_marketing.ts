@@ -13,6 +13,7 @@ import {
   PanelTop,
   UsersRound,
 } from "@lucide/svelte";
+import { planCatalog, purchaseTerms } from "@openpost/plan-catalog";
 import { PLATFORM_LIMITS } from "../../../frontend/src/lib/platform-limits";
 import publicClaimManifest from "../../../provider-certification/public-claims.json";
 import { attachComparisonEvidence } from "./_comparison-evidence";
@@ -25,7 +26,7 @@ type PublicProviderClaim = {
 };
 
 export const appUrl = "https://app.openpost.social";
-export const managedSignupUrl = `${appUrl}/register?plan=founder`;
+export const managedSignupUrl = `${appUrl}/register?plan=founder&billing_period=monthly`;
 export const billingSettingsUrl = `${appUrl}/settings?tab=billing#billing`;
 export const userDocsUrl = "https://docs.openpost.social/usage/";
 export const selfHostingDocsUrl = "https://docs.openpost.social/self-hosting/";
@@ -57,8 +58,14 @@ export const resourceItems = [
   { label: "Developers", href: developerDocsUrl },
 ] as const;
 
-export const managedAccessSummary =
-  "Start with a 14-day free trial. A card is required, and you can cancel before the first charge.";
+const dueToday = `$${purchaseTerms.due_today_usd.toLocaleString("en-US")}`;
+export const managedCardRequirement = purchaseTerms.card_required
+  ? "A card is required"
+  : "No card is required";
+export const managedPaymentExpectation = purchaseTerms.card_required
+  ? `${dueToday} is due today. A card is required at checkout.`
+  : `${dueToday} is due today. No card is required at checkout.`;
+export const managedAccessSummary = `Start with a ${purchaseTerms.trial_days}-day free trial. ${managedCardRequirement}, and you can cancel before the first charge.`;
 
 export const publicProviderCertification = {
   currentClaimCount: publicClaimManifest.claims.length,
@@ -68,113 +75,36 @@ export const publicProviderCertification = {
       : `${publicClaimManifest.claims.length} exact managed provider-format certification claim${publicClaimManifest.claims.length === 1 ? " is" : "s are"} current.`,
 } as const;
 
-export const plans = [
-  {
-    id: "starter",
-    name: "Starter",
-    price: "$15",
-    annualPrice: "$150",
-    description: "Start a repeatable content habit for one company.",
-    bestFor: "Your first content system",
-    workspaces: "1",
-    accounts: "3",
-    posts: "100",
-    storage: "1 GB",
-    seats: "1",
-    limits: [
-      "1 workspace",
-      "3 social accounts",
-      "100 scheduled posts/month",
-      "1 GB media",
-      "1 seat",
-    ],
-    featured: false,
-  },
-  {
-    id: "founder",
-    name: "Founder",
-    price: "$25",
-    annualPrice: "$250",
-    description: "Run your company’s content across more channels.",
-    bestFor: "Solo founders publishing consistently",
-    workspaces: "3",
-    accounts: "6",
-    posts: "500",
-    storage: "5 GB",
-    seats: "1",
-    limits: [
-      "3 workspaces",
-      "6 social accounts",
-      "500 scheduled posts/month",
-      "5 GB media",
-      "1 seat",
-    ],
-    featured: true,
-  },
-  {
-    id: "pro",
-    name: "Pro",
-    price: "$49",
-    annualPrice: "$490",
-    description: "A complete content operation for one founder.",
-    bestFor: "Founder-led companies with high output",
-    workspaces: "10",
-    accounts: "15",
-    posts: "2,500",
-    storage: "25 GB",
-    seats: "1",
-    limits: [
-      "10 workspaces",
-      "15 social accounts",
-      "2,500 scheduled posts/month",
-      "25 GB media",
-      "1 seat",
-    ],
-    featured: false,
-  },
-  {
-    id: "team",
-    name: "Team",
-    price: "$99",
-    annualPrice: "$990",
-    description: "Shared planning and publishing for a small team.",
-    bestFor: "Growing marketing teams",
-    workspaces: "10",
-    accounts: "25",
-    posts: "5,000",
-    storage: "50 GB",
-    seats: "3",
-    limits: [
-      "10 workspaces",
-      "25 social accounts",
-      "5,000 scheduled posts/month",
-      "50 GB media",
-      "3 included seats",
-    ],
-    featured: false,
-  },
-  {
-    id: "agency",
-    name: "Agency",
-    price: "$199",
-    annualPrice: "$1,990",
-    description: "Many clients, workspaces, and campaigns.",
-    bestFor: "Agencies and multi-brand operators",
-    workspaces: "50",
-    accounts: "150",
-    posts: "25,000",
-    storage: "250 GB",
-    seats: "5",
-    limits: [
-      "50 workspaces",
-      "150 social accounts",
-      "25,000 scheduled posts/month",
-      "250 GB media",
-      "5 included seats",
-    ],
-    featured: false,
-  },
-] as const;
+const formatUSD = (value: number) => `$${value.toLocaleString("en-US")}`;
+const formatLimit = (
+  count: number,
+  singular: string,
+  plural = `${singular}s`,
+) => `${count.toLocaleString("en-US")} ${count === 1 ? singular : plural}`;
+
+export const plans = planCatalog.plans.map((plan) => ({
+  id: plan.id,
+  name: plan.name,
+  price: formatUSD(plan.monthly_price_usd),
+  annualPrice: formatUSD(plan.annual_price_usd),
+  description: plan.description,
+  bestFor: plan.best_for,
+  workspaces: plan.limits.workspaces.toLocaleString("en-US"),
+  accounts: plan.limits.social_accounts.toLocaleString("en-US"),
+  posts: plan.limits.scheduled_posts_monthly.toLocaleString("en-US"),
+  storage: `${plan.limits.media_bytes_stored / 1_000_000_000} GB`,
+  seats: plan.limits.team_members.toLocaleString("en-US"),
+  limits: [
+    formatLimit(plan.limits.workspaces, "workspace"),
+    formatLimit(plan.limits.social_accounts, "social account"),
+    `${plan.limits.scheduled_posts_monthly.toLocaleString("en-US")} scheduled posts/month`,
+    `${plan.limits.media_bytes_stored / 1_000_000_000} GB media`,
+    plan.limits.team_members === 1
+      ? "1 seat"
+      : `${plan.limits.team_members.toLocaleString("en-US")} included seats`,
+  ],
+  featured: plan.featured,
+}));
 
 export const featureGroups = [
   {
@@ -658,7 +588,8 @@ const platformImplementations = [
     short: "instagram",
     tag: "Feed, carousel, Story, Reel",
     requiresProviderApproval: true,
-    implementationDetail: "Business or Creator account and Meta review required",
+    implementationDetail:
+      "Business or Creator account and Meta review required",
     description:
       "OpenPost publishes Instagram feed images, carousels, Stories, and Reels.",
     heroTitle: "Choose the Instagram post type before you write the caption.",
@@ -871,7 +802,8 @@ const platformImplementations = [
   },
 ] as const;
 
-const publicProviderClaims = publicClaimManifest.claims as PublicProviderClaim[];
+const publicProviderClaims =
+  publicClaimManifest.claims as PublicProviderClaim[];
 
 export const platforms = platformImplementations.map((platform) => {
   const certifiedOutputProfiles = publicProviderClaims

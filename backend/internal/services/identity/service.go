@@ -61,6 +61,7 @@ var (
 	ErrDomainVerification     = errors.New("identity provider domain verification failed")
 	ErrOrganizationPermission = errors.New("organization administrator access required")
 	ErrRegistrationsClosed    = errors.New("registrations are disabled")
+	ErrExplicitSignupRequired = errors.New("new accounts must start from the signup flow")
 	ErrIdentityNotFound       = errors.New("linked identity not found")
 	ErrPasskeyNotFound        = errors.New("passkey not found")
 	ErrFinalCredential        = errors.New("credential is the final usable sign-in method")
@@ -84,6 +85,7 @@ type Config struct {
 	Environment           EnvironmentProviderConfig
 	FirstParty            []EnvironmentProviderConfig
 	RegistrationsDisabled bool
+	RequireExplicitSignup bool
 	DefaultAssuranceAge   time.Duration
 }
 
@@ -360,10 +362,10 @@ func (s *Service) Begin(ctx context.Context, input BeginInput) (*BeginResult, er
 
 func validateBeginInput(input BeginInput) (string, error) {
 	intent := strings.TrimSpace(input.Intent)
-	if !slices.Contains([]string{models.OIDCIntentLogin, models.OIDCIntentLink, models.OIDCIntentReauth}, intent) {
+	if !slices.Contains([]string{models.OIDCIntentLogin, models.OIDCIntentSignup, models.OIDCIntentLink, models.OIDCIntentReauth}, intent) {
 		return "", ErrInvalidAuthRequest
 	}
-	if intent != models.OIDCIntentLogin &&
+	if intent != models.OIDCIntentLogin && intent != models.OIDCIntentSignup &&
 		(strings.TrimSpace(input.UserID) == "" || strings.TrimSpace(input.SessionID) == "") {
 		return "", ErrInvalidAuthRequest
 	}
@@ -631,6 +633,15 @@ func (s *Service) resolveIdentity(
 		return nil, err
 	}
 
+	return s.resolveUnlinkedIdentity(ctx, provider, request, verified)
+}
+
+func (s *Service) resolveUnlinkedIdentity(
+	ctx context.Context,
+	provider models.IdentityProvider,
+	request models.OIDCAuthRequest,
+	verified VerifiedIdentity,
+) (*models.User, error) {
 	switch request.Intent {
 	case models.OIDCIntentLink:
 		if request.UserID == "" {
@@ -643,6 +654,14 @@ func (s *Service) resolveIdentity(
 	case models.OIDCIntentReauth:
 		return nil, ErrIdentityCollision
 	case models.OIDCIntentLogin:
+		if s.config.RequireExplicitSignup {
+			return nil, ErrExplicitSignupRequired
+		}
+		if !provider.JITEnabled {
+			return nil, ErrJITDisabled
+		}
+		return s.createJITUser(ctx, provider, verified)
+	case models.OIDCIntentSignup:
 		if !provider.JITEnabled {
 			return nil, ErrJITDisabled
 		}

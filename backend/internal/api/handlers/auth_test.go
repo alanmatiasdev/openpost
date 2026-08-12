@@ -17,6 +17,7 @@ import (
 	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/publicprofiles"
 	"github.com/openpost/backend/internal/services/auth"
+	"github.com/openpost/backend/internal/services/billing"
 	"github.com/openpost/backend/internal/services/crypto"
 	"github.com/openpost/backend/internal/services/sessions"
 	"github.com/stretchr/testify/require"
@@ -31,6 +32,44 @@ func TestRegisterUserMakesFirstUserAdminEvenWhenRegistrationsDisabled(t *testing
 	user, err := handler.registerUserWithPolicy(context.Background(), "admin@example.com", "admin-user", "password123", false)
 	require.NoError(t, err)
 	require.True(t, user.IsAdmin)
+}
+
+func TestHostedRegistrationRequiresAValidPurchaseChoice(t *testing.T) {
+	t.Parallel()
+	db := createHandlerTestDB(t, (*models.User)(nil), (*models.UserSession)(nil))
+	authService := auth.NewService("test-secret")
+	handler := NewAuthHandler(db, authService, nil, nil, nil, false)
+	handler.SetSessionService(sessions.NewService(db))
+	choiceService := billing.NewService(nil, "", billing.PaddleConfig{
+		Plans: billing.DefaultPlanCatalog(
+			billing.PaddlePriceIDs{}, billing.PaddlePriceIDs{}, billing.PaddlePriceIDs{},
+			billing.PaddlePriceIDs{}, billing.PaddlePriceIDs{},
+		),
+		PurchaseChoiceSecret: "purchase-choice-secret-with-at-least-32-characters",
+	})
+	handler.SetPurchaseChoices(choiceService, true)
+	e := echo.New()
+	api := humaecho.NewWithGroup(e, e.Group("/api/v1"), huma.DefaultConfig("Test", "1.0.0"))
+	handler.Register(api)
+
+	missing := jsonRequest(t, e, http.MethodPost, "/api/v1/auth/register", map[string]any{
+		"email": "missing@example.com", "password": "password1234",
+	}, "")
+	require.Equal(t, http.StatusBadRequest, missing.Code, missing.Body.String())
+	require.Contains(t, missing.Body.String(), "purchase choice is required")
+
+	invalid := jsonRequest(t, e, http.MethodPost, "/api/v1/auth/register", map[string]any{
+		"email": "invalid@example.com", "password": "password1234", "purchase_choice_token": "invalid",
+	}, "")
+	require.Equal(t, http.StatusBadRequest, invalid.Code, invalid.Body.String())
+	require.Contains(t, invalid.Body.String(), "purchase choice is invalid")
+
+	choice, err := choiceService.CreatePurchaseChoice("agency", "monthly")
+	require.NoError(t, err)
+	valid := jsonRequest(t, e, http.MethodPost, "/api/v1/auth/register", map[string]any{
+		"email": "valid@example.com", "password": "password1234", "purchase_choice_token": choice.Token,
+	}, "")
+	require.Equal(t, http.StatusOK, valid.Code, valid.Body.String())
 }
 
 func TestRegisterUserRejectsAdditionalUsersWhenRegistrationsDisabled(t *testing.T) {
