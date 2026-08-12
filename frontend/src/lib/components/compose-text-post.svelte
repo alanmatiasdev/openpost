@@ -86,7 +86,11 @@
 		type ComposerIssue,
 		type TargetedComposerIssue
 	} from './compose/validation';
-	import { loadableDestinationOptionSources } from './compose/destination-options';
+	import {
+		invalidateDependentDestinationSettings,
+		loadableDestinationOptionSources,
+		mergeDestinationOptions
+	} from './compose/destination-options';
 	import {
 		workspaceClock,
 		workspaceDateKeyFromISO,
@@ -373,6 +377,8 @@
 	let settingsDialogOpen = $state(false);
 	let settingsAccountId = $state('');
 	let destinationOptionsByAccount = $state<Record<string, Record<string, DestinationOption[]>>>({});
+	let destinationOptionCursorsByAccount = $state<Record<string, Record<string, string>>>({});
+	let destinationOptionSearchByAccount = $state<Record<string, Record<string, string>>>({});
 	let destinationOptionsErrors = $state<Record<string, string>>({});
 	let destinationOptionsLoadingAccountId = $state('');
 	let capabilityResolveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -983,24 +989,49 @@
 		if (definition?.scope === 'segment') {
 			const post = activePost;
 			if (!post) return;
+			const invalidated = invalidateDependentDestinationSettings(
+				visibleSettings(account).filter((field) => field.scope === 'segment'),
+				segmentSettingsByPost[post.key]?.[account.id] ?? {},
+				key,
+				value
+			);
 			segmentSettingsByPost = {
 				...segmentSettingsByPost,
 				[post.key]: {
 					...(segmentSettingsByPost[post.key] ?? {}),
-					[account.id]: {
-						...(segmentSettingsByPost[post.key]?.[account.id] ?? {}),
-						[key]: value
-					}
+					[account.id]: invalidated.values
 				}
 			};
 		} else {
+			const invalidated = invalidateDependentDestinationSettings(
+				visibleSettings(account).filter((field) => field.scope === 'destination'),
+				settingsForAccount(account),
+				key,
+				value
+			);
 			settingsByAccount = {
 				...settingsByAccount,
-				[account.id]: {
-					...settingsForAccount(account),
-					[key]: value
-				}
+				[account.id]: invalidated.values
 			};
+			if (invalidated.optionSources.length > 0) {
+				const invalidSources = new Set(invalidated.optionSources);
+				destinationOptionsByAccount = {
+					...destinationOptionsByAccount,
+					[account.id]: Object.fromEntries(
+						Object.entries(destinationOptionsByAccount[account.id] ?? {}).filter(
+							([source]) => !invalidSources.has(source)
+						)
+					)
+				};
+				destinationOptionCursorsByAccount = {
+					...destinationOptionCursorsByAccount,
+					[account.id]: Object.fromEntries(
+						Object.entries(destinationOptionCursorsByAccount[account.id] ?? {}).filter(
+							([source]) => !invalidSources.has(source)
+						)
+					)
+				};
+			}
 		}
 		validationIssues = [];
 		scheduleAutoSave();
@@ -1583,7 +1614,10 @@
 						id: post.key,
 						content: post.content,
 						url: post === posts[0] ? linkUrl : '',
-						media: post.mediaIds.map((mediaID) => ({ media_id: mediaID }))
+						media: post.mediaIds.map((mediaID) => ({
+							media_id: mediaID,
+							alt_text: mediaAltTexts.get(mediaID) ?? ''
+						}))
 					}))
 				}
 			});
@@ -1669,7 +1703,8 @@
 		account: SocialAccount,
 		force = false,
 		onlySource = '',
-		search = ''
+		search = '',
+		append = false
 	) {
 		let sources = loadableDestinationOptionSources(visibleSettings(account), onlySource);
 		if (!force && !search) {
@@ -1682,6 +1717,14 @@
 		destinationOptionsLoadingAccountId = account.id;
 		destinationOptionsErrors = { ...destinationOptionsErrors, [account.id]: '' };
 		const [, region = 'US'] = getLocaleTag().split('-');
+		const accountSearches = destinationOptionSearchByAccount[account.id] ?? {};
+		const effectiveSearch = onlySource && append ? (accountSearches[onlySource] ?? '') : search;
+		if (onlySource && !append) {
+			destinationOptionSearchByAccount = {
+				...destinationOptionSearchByAccount,
+				[account.id]: { ...accountSearches, [onlySource]: search }
+			};
+		}
 		try {
 			const results = await Promise.all(
 				sources.map(async (source) => {
@@ -1693,8 +1736,12 @@
 								query: {
 									region,
 									locale: getLocaleTag(),
-									limit: 100,
-									search
+									limit: 25,
+									search: effectiveSearch,
+									cursor: append
+										? (destinationOptionCursorsByAccount[account.id]?.[source] ?? '')
+										: '',
+									context: JSON.stringify(settingsForAccount(account))
 								}
 							}
 						}
@@ -1702,7 +1749,7 @@
 					if (optionsError) {
 						throw new Error(optionsError.detail || m.compose_load_provider_options_failed());
 					}
-					return [source, data?.options ?? []] as const;
+					return [source, data?.options ?? [], data?.next_cursor ?? ''] as const;
 				})
 			);
 			if (requestSequence !== destinationOptionsRequestSequence) return;
@@ -1710,7 +1757,24 @@
 				...destinationOptionsByAccount,
 				[account.id]: {
 					...(destinationOptionsByAccount[account.id] ?? {}),
-					...Object.fromEntries(results)
+					...Object.fromEntries(
+						results.map(([source, options]) => [
+							source,
+							append
+								? mergeDestinationOptions(
+										destinationOptionsByAccount[account.id]?.[source] ?? [],
+										options
+									)
+								: options
+						])
+					)
+				}
+			};
+			destinationOptionCursorsByAccount = {
+				...destinationOptionCursorsByAccount,
+				[account.id]: {
+					...(destinationOptionCursorsByAccount[account.id] ?? {}),
+					...Object.fromEntries(results.map(([source, , cursor]) => [source, cursor]))
 				}
 			};
 		} catch (optionsError) {
@@ -2969,6 +3033,8 @@
 		settingsDialogOpen = false;
 		settingsAccountId = '';
 		destinationOptionsByAccount = {};
+		destinationOptionCursorsByAccount = {};
+		destinationOptionSearchByAccount = {};
 		destinationOptionsErrors = {};
 		selectedWorkspaceId = value;
 		accounts = [];
@@ -5678,6 +5744,9 @@
 	mediaItems={settingsDialogMedia}
 	mediaValues={settingsDialogMediaValues}
 	optionGroups={settingsAccount ? (destinationOptionsByAccount[settingsAccount.id] ?? {}) : {}}
+	optionNextCursors={settingsAccount
+		? (destinationOptionCursorsByAccount[settingsAccount.id] ?? {})
+		: {}}
 	optionsLoading={settingsAccount?.id === destinationOptionsLoadingAccountId}
 	optionsError={settingsAccount ? (destinationOptionsErrors[settingsAccount.id] ?? '') : ''}
 	scopeLabel={isThread ? m.compose_thread_post({ number: activePostIndex + 1 }) : ''}
@@ -5704,6 +5773,11 @@
 	onOptionSearch={(setting, search) => {
 		if (settingsAccount && setting.options_source) {
 			void loadDestinationOptions(settingsAccount, true, setting.options_source, search);
+		}
+	}}
+	onOptionLoadMore={(setting) => {
+		if (settingsAccount && setting.options_source) {
+			void loadDestinationOptions(settingsAccount, true, setting.options_source, '', true);
 		}
 	}}
 	onRetry={() => {

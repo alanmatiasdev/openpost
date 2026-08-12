@@ -2,6 +2,7 @@ package analytics
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -11,6 +12,78 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun"
 )
+
+func TestOverviewPaginationKeepsAllResultsReachableInStableOrder(t *testing.T) {
+	publications := make([]PublicationOverview, 0, 121)
+	for index := 0; index < 121; index++ {
+		publications = append(publications, PublicationOverview{
+			PublicationID: fmt.Sprintf("publication-%03d", index),
+			PublishedAt:   time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC).Add(-time.Duration(index) * time.Minute),
+			Engagement:    int64(index % 7),
+			Metrics:       platform.AnalyticsValues{platform.MetricViews: int64(index % 11)},
+		})
+	}
+	options := normalizeOverviewOptions(OverviewOptions{Sort: "newest", Limit: 50})
+	sortPublicationOverviews(publications, options.Sort)
+	first, cursor, err := paginatePublicationOverviews(publications, options, 30)
+	require.NoError(t, err)
+	require.Len(t, first, 50)
+	require.NotEmpty(t, cursor)
+	options.Cursor = cursor
+	second, cursor, err := paginatePublicationOverviews(publications, options, 30)
+	require.NoError(t, err)
+	require.Len(t, second, 50)
+	require.NotEqual(t, first[len(first)-1].PublicationID, second[0].PublicationID)
+	options.Cursor = cursor
+	third, cursor, err := paginatePublicationOverviews(publications, options, 30)
+	require.NoError(t, err)
+	require.Len(t, third, 21)
+	require.Empty(t, cursor)
+
+	seen := map[string]bool{}
+	for _, page := range [][]PublicationOverview{first, second, third} {
+		for _, publication := range page {
+			require.False(t, seen[publication.PublicationID])
+			seen[publication.PublicationID] = true
+		}
+	}
+	require.Len(t, seen, 121)
+}
+
+func TestOverviewCursorCannotCrossAccountOrSortScope(t *testing.T) {
+	publications := []PublicationOverview{{PublicationID: "one"}, {PublicationID: "two"}}
+	options := normalizeOverviewOptions(OverviewOptions{AccountID: "account-a", Sort: "newest", Limit: 1})
+	_, cursor, err := paginatePublicationOverviews(publications, options, 30)
+	require.NoError(t, err)
+	options.AccountID = "account-b"
+	options.Cursor = cursor
+	_, _, err = paginatePublicationOverviews(publications, options, 30)
+	require.ErrorIs(t, err, ErrInvalidOverviewCursor)
+}
+
+func TestSelectedAccountSummaryUsesCompleteUnpagedContent(t *testing.T) {
+	content := make([]ContentOverview, 0, 75)
+	for index := 0; index < 75; index++ {
+		content = append(content, ContentOverview{
+			PublicationID: fmt.Sprintf("publication-%03d", index),
+			AccountID:     "account-a",
+			Metrics: platform.AnalyticsValues{
+				platform.MetricLikes: 1,
+				platform.MetricViews: 2,
+			},
+			Engagement: 1,
+		})
+	}
+	delta := int64(5)
+	summary := summarizeAnalyticsContent(content, []AccountOverview{{
+		ID: "account-a", Metrics: platform.AnalyticsValues{platform.MetricFollowers: 100}, FollowerDelta: &delta,
+	}}, "account-a")
+	require.Equal(t, 75, summary.Published)
+	require.Equal(t, int64(75), summary.Engagement.Value)
+	require.Equal(t, int64(150), summary.Views.Value)
+	require.Equal(t, int64(100), summary.Followers.Value)
+	require.Equal(t, 75, summary.Views.Measured)
+}
 
 type staticTokenSource struct{}
 

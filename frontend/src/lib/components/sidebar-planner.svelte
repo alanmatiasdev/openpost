@@ -462,7 +462,7 @@
 		</div>
 	</section>
 
-	<section class="flex min-h-0 flex-1 flex-col px-2 py-2">
+	<section class="flex min-h-0 flex-1 flex-col px-2 pt-2">
 		<div class="mb-1 flex h-7 shrink-0 items-center justify-between px-2">
 			<div class="flex items-center gap-1.5">
 				<span class="text-xs font-medium tracking-[0.1em] text-sidebar-foreground/52 uppercase"

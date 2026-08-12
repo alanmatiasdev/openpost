@@ -365,22 +365,27 @@ test("analytics keeps provider metrics distinct across desktop and phone layouts
   await page.goBack();
   await expect(page.getByRole("heading", { name: "Analytics" })).toBeVisible();
 
-  await page.setViewportSize({ width: 390, height: 844 });
-  await expect
-    .poll(() =>
-      page.evaluate(
-        () =>
-          document.documentElement.scrollWidth <=
-          document.documentElement.clientWidth,
-      ),
-    )
-    .toBe(true);
-  await expect(
-    page.getByRole("link", { name: /Product walkthrough/ }),
-  ).toBeVisible();
-  await expect(
-    page.locator('section[aria-labelledby="analytics-content-heading"] table'),
-  ).toBeHidden();
+  for (const viewport of [
+    { width: 390, height: 844 },
+    { width: 320, height: 720 },
+  ]) {
+    await page.setViewportSize(viewport);
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            document.documentElement.scrollWidth <=
+            document.documentElement.clientWidth,
+        ),
+      )
+      .toBe(true);
+    await expect(
+      page.getByRole("link", { name: /Product walkthrough/ }),
+    ).toBeVisible();
+    await expect(
+      page.locator('section[aria-labelledby="analytics-content-heading"] table'),
+    ).toBeHidden();
+  }
   await page.getByRole("button", { name: "More" }).click();
   await expect(
     page.getByRole("menuitem", { name: "Analytics", exact: true }),

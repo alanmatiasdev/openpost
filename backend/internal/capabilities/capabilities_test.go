@@ -749,6 +749,42 @@ func TestTikTokDefaultsToDirectPost(t *testing.T) {
 	require.Fail(t, "TikTok posting method setting not found")
 }
 
+func TestCapabilityValidatesStructuredTextMediaAndLocalTimeRules(t *testing.T) {
+	capability := Capability{
+		Provider: ProviderYouTube,
+		Profile:  models.ContentProfileLongVideo,
+		Label:    "Video",
+		Content: ContentConstraint{
+			Body:        TextConstraint{MaxLength: 10, RecommendedMaxLength: 5},
+			Title:       TextConstraint{Required: true, MinLength: 3},
+			Description: TextConstraint{RecommendedMaxLength: 4},
+			AltText:     TextConstraint{Required: true, MaxLength: 20},
+		},
+		Media: MediaConstraint{
+			MinCount: 1, MaxCount: 1, AllowedMIMEs: []string{"video/mp4"},
+			MinWidth: 720, MaxWidth: 1920, MinHeight: 720, MaxHeight: 1920,
+			AllowedVideoCodecs: []string{"h264"}, AllowedAudioCodecs: []string{"aac"},
+			MaxFrameRate: 30, AudioPolicy: "required",
+		},
+		Settings: []SettingDefinition{{
+			Key: "publish_at", Label: "Publish at", Type: "datetime-local", Scope: SettingScopeDestination,
+			Constraints: SettingConstraint{LocalDateTime: true},
+		}},
+	}
+	issues := validateCapability(capability, "12345678901", "x", "12345", []MediaItem{{
+		ID: "video", MimeType: "video/mp4", Width: 640, Height: 2160,
+		VideoCodec: "vp9", AudioCodec: "opus", FrameRate: 60,
+	}}, map[string]any{"publish_at": "2026-08-12T12:00Z"})
+
+	for _, code := range []string{
+		"body_too_long", "title_too_short", "description_recommended_length", "alt_text_required",
+		"media_width_min", "media_height_max", "media_video_codec", "media_audio_codec",
+		"media_frame_rate", "media_audio_required", "setting_local_datetime_invalid",
+	} {
+		requireIssueCode(t, issues, code)
+	}
+}
+
 func requireIssueCode(t *testing.T, issues []ValidationIssue, code string) {
 	t.Helper()
 	for _, issue := range issues {

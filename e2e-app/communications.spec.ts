@@ -27,6 +27,7 @@ test("communications and notifications stay usable across desktop and phone layo
   await authenticatePage(page, auth.token);
   let engagementArchived = false;
   let conversationMessageLoads = 0;
+  let conversationMarkReadAttempts = 0;
 
   await page.route("**/api/v1/engagement**", async (route) => {
     const url = new URL(route.request().url());
@@ -103,6 +104,22 @@ test("communications and notifications stay usable across desktop and phone layo
   await page.route("**/api/v1/messages**", async (route) => {
     const url = new URL(route.request().url());
     if (route.request().method() !== "GET") {
+      const body = route.request().postDataJSON() as { read?: boolean };
+      if (url.pathname.endsWith("/state") && body.read) {
+        conversationMarkReadAttempts += 1;
+        if (conversationMarkReadAttempts === 1) {
+          await route.fulfill({
+            status: 503,
+            contentType: "application/problem+json",
+            json: {
+              status: 503,
+              title: "Service Unavailable",
+              detail: "Could not persist conversation state",
+            },
+          });
+          return;
+        }
+      }
       await route.fulfill({ status: 204 });
       return;
     }
@@ -310,7 +327,14 @@ test("communications and notifications stay usable across desktop and phone layo
   await page.getByText("Archived", { exact: true }).click();
   await expect(page.getByRole("button", { name: /Ada/ })).toBeVisible();
   await page.getByText("Archived", { exact: true }).click();
-  await page.getByRole("button", { name: /Ada/ }).click();
+  const conversationButton = page.getByRole("button", { name: /Ada/ });
+  await conversationButton.click();
+  await expect(conversationButton).toHaveAttribute("data-unread", "true");
+  await expect(
+    page.getByText(
+      "OpenPost could not mark this conversation as read. Select it again to retry.",
+    ),
+  ).toBeVisible();
   await expect(page.getByText("Failed to load conversation")).toBeVisible();
   await expect(
     page.getByText("Request reference: messages-e2e-reference"),
@@ -322,6 +346,8 @@ test("communications and notifications stay usable across desktop and phone layo
   ).toBeVisible();
   await expect(page.getByPlaceholder("Write a message…")).toBeVisible();
   await expect(page.getByTestId("conversation-reply-composer")).toBeVisible();
+  await conversationButton.click();
+  await expect(conversationButton).toHaveAttribute("data-unread", "false");
 
   await page.goto(`/notifications?workspace=${workspace.id}`);
   await expect(
@@ -336,26 +362,35 @@ test("communications and notifications stay usable across desktop and phone layo
     page.getByRole("heading", { name: "Delivery by event" }),
   ).toBeVisible();
 
-  await page.setViewportSize({ width: 390, height: 844 });
-  for (const path of ["/engagement", "/messages", "/notifications"]) {
-    await page.goto(`${path}?workspace=${workspace.id}`);
-    await expect
-      .poll(() =>
-        page.evaluate(
-          () =>
-            document.documentElement.scrollWidth <=
-            document.documentElement.clientWidth,
-        ),
-      )
-      .toBe(true);
+  for (const viewport of [
+    { width: 390, height: 844 },
+    { width: 320, height: 720 },
+  ]) {
+    await page.setViewportSize(viewport);
+    for (const path of ["/engagement", "/messages", "/notifications"]) {
+      await page.goto(`${path}?workspace=${workspace.id}`);
+      await expect
+        .poll(() =>
+          page.evaluate(
+            () =>
+              document.documentElement.scrollWidth <=
+              document.documentElement.clientWidth,
+          ),
+        )
+        .toBe(true);
+    }
   }
 
   const expectedConversationFailure =
     "Failed to load resource: the server responded with a status of 500 (Internal Server Error)";
+  const expectedMarkReadFailure =
+    "Failed to load resource: the server responded with a status of 503 (Service Unavailable)";
   expect(consoleErrors).toContain(expectedConversationFailure);
+  expect(consoleErrors).toContain(expectedMarkReadFailure);
   expect({
     consoleErrors: consoleErrors.filter(
-      (message) => message !== expectedConversationFailure,
+      (message) =>
+        message !== expectedConversationFailure && message !== expectedMarkReadFailure,
     ),
     unauthorizedResponses,
   }).toEqual({

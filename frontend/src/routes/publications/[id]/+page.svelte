@@ -41,6 +41,18 @@
 		return m.activity_status_draft();
 	}
 
+	function deliveryStatusLabel(state: string) {
+		if (state === 'queued') return m.publication_delivery_queued();
+		if (state === 'submitted') return m.publication_delivery_submitted();
+		if (state === 'processing') return m.publication_delivery_processing();
+		if (state === 'provider_scheduled') return m.publication_delivery_provider_scheduled();
+		if (state === 'live') return m.publication_delivery_live();
+		if (state === 'rejected') return m.publication_delivery_rejected();
+		if (state === 'ambiguous') return m.publication_delivery_ambiguous();
+		if (state === 'manual_resolution') return m.publication_delivery_manual_resolution();
+		return statusLabel(state);
+	}
+
 	function formatDateTime(value: string) {
 		return new Intl.DateTimeFormat(getLocaleTag(), {
 			dateStyle: 'medium',
@@ -147,20 +159,32 @@
 				</h2>
 				<div class="grid gap-3 sm:grid-cols-2">
 					{#each publication.renditions ?? [] as rendition (rendition.id)}
+						{@const externalURL = rendition.delivery?.external_url || rendition.external_url}
 						<div class="flex min-w-0 items-start gap-3 rounded-xl border bg-card p-4">
 							<PlatformIcon platform={rendition.platform} class="mt-0.5 size-5 shrink-0" />
 							<div class="min-w-0 flex-1">
 								<p class="font-medium">{getPlatformName(rendition.platform)}</p>
 								<p class="mt-0.5 text-sm text-muted-foreground">
-									{statusLabel(rendition.status)}
+									{rendition.delivery
+										? deliveryStatusLabel(rendition.delivery.state)
+										: statusLabel(rendition.status)}
 								</p>
+								{#if rendition.target_key}
+									<p class="mt-1 font-mono text-xs break-all text-muted-foreground">
+										{m.publication_delivery_target({ target: rendition.target_key })}
+									</p>
+								{/if}
 								{#if rendition.error_message}
 									<p class="mt-2 text-sm text-destructive">{rendition.error_message}</p>
+								{:else if rendition.delivery?.terminal_reason}
+									<p class="mt-2 text-sm text-destructive">
+										{rendition.delivery.terminal_reason}
+									</p>
 								{/if}
 							</div>
-							{#if rendition.external_url}
+							{#if externalURL}
 								<Button
-									href={rendition.external_url}
+									href={externalURL}
 									target="_blank"
 									rel="noreferrer"
 									variant="ghost"

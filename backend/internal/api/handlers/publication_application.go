@@ -3,8 +3,8 @@ package handlers
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -283,7 +283,8 @@ func (commands publicationApplication) RetryRendition(
 	ctx context.Context,
 	userID,
 	publicationID,
-	accountID string,
+	accountID,
+	targetKey string,
 ) (string, error) {
 	publication, err := commands.handler.loadPublication(ctx, publicationID, userID)
 	if err != nil {
@@ -292,17 +293,25 @@ func (commands publicationApplication) RetryRendition(
 	if err := commands.handler.checkWorkspaceEditAccess(ctx, publication.WorkspaceID, userID); err != nil {
 		return "", err
 	}
-	var rendition models.Rendition
-	if err := commands.handler.db.NewSelect().
-		Model(&rendition).
+	var renditions []models.Rendition
+	query := commands.handler.db.NewSelect().
+		Model(&renditions).
 		Where("publication_id = ?", publication.ID).
 		Where("social_account_id = ?", accountID).
-		Scan(ctx); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return "", huma.Error404NotFound("rendition not found")
-		}
+		Order("id ASC")
+	if targetKey != "" {
+		query = query.Where("target_key = ?", strings.TrimSpace(targetKey))
+	}
+	if err := query.Scan(ctx); err != nil {
 		return "", huma.Error500InternalServerError("failed to load rendition")
 	}
+	if len(renditions) == 0 {
+		return "", huma.Error404NotFound("rendition not found")
+	}
+	if len(renditions) > 1 {
+		return "", huma.Error409Conflict("target_key is required when an account has multiple publication destinations")
+	}
+	rendition := renditions[0]
 	if rendition.Status != models.RenditionStatusFailed {
 		return "", huma.Error409Conflict("only a failed destination can be retried")
 	}

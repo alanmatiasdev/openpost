@@ -4,6 +4,24 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- Added a repository map, an agent workflow router, and a read-only doctor for local workflow artifacts and configured GitHub triage labels.
+
+### Fixed
+
+- Removed unproved customer-logo usage claims, labeled generated personas and workflows as fictional examples, and added a dated claim register that fails checks on unregistered or expired public proof.
+- Kept failed conversation read-state writes visible and retryable instead of clearing unread state locally, and made Android releases fail closed rather than publishing an unsigned APK under the installable asset name.
+- Bound hosted checkout completion to its opaque billing attempt, persisted a validated same-origin return path with the selected plan and period, and made that path one-time so unrelated subscriptions, refreshes, and replay cannot redirect a user.
+- Moved analytics account filtering, ordering, exact totals, and cursor paging to the stored-data API so workspaces with more than 50 post results keep complete newest/history views and account summaries.
+- Made remote destination pickers page through provider options, deduplicate appended results, bind requests to current setting context, and clear incompatible child selections when a parent changes.
+- Scrubbed engagement author and attachment metadata when a provider reports deletion or a provider-side delete succeeds, instead of retaining those fields after the body was removed.
+- Bound account capability caches to the full settings and target context, output profile, intent, media shape, locale, and region so one community, location, or policy mode cannot reuse another target's provider rules.
+- Extended the shared capability contract with hard and recommended title, body, description, alt-text, dimension, codec, frame-rate, audio, and local-time rules so every transport validates the same provider payload.
+- Made provider subdestinations first-class rendition targets, including exact authorization, retry, delete, uniqueness, and legacy Mastodon backfill behavior.
+- Added a canonical provider-delivery projection with queued, submitted, processing, provider-scheduled, live, rejected, ambiguous, and manual-resolution states, exact reconciliation timing, and a stale-attempt fence, and exposed it on publication destinations.
+- Removed the redundant gap between the desktop sidebar's draft list and workspace-navigation divider.
+
 ## [3.9.6] - 2026-08-12
 
 ### Fixed

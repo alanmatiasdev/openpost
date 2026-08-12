@@ -286,6 +286,14 @@ test("candidate CI embeds one stable version and exact-revision manifest", () =>
     /sha256sum --check openpost-app-android-unsigned\.sha256/,
   );
   assert.match(android, /apksigner[\s\S]*sign[\s\S]*apksigner[\s\S]*verify/);
+  assert.match(
+    android,
+    /Refuse to publish an unsigned Android application[\s\S]*exit 1/,
+  );
+  assert.doesNotMatch(
+    android,
+    /cp candidate-android\/openpost-app-android-unsigned\.apk openpost-app-android\.apk/,
+  );
   assert.doesNotMatch(android, /build:capacitor|assembleRelease|gradlew/);
   assert.doesNotMatch(release, /CI_RUN_ATTEMPT|ci_run_attempt/);
   assert.match(

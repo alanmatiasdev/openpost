@@ -17,7 +17,7 @@
         "packages/social-preview/",
         "social-assets/"
       ],
-      "paths": ["playwright.config.ts"]
+      "paths": ["marketing-claims.json", "playwright.config.ts"]
     },
     "documentation": {
       "description": "Product, operator, contributor, policy, and generated documentation",

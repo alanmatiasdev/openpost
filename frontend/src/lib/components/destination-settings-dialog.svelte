@@ -40,6 +40,7 @@
 		mediaItems?: DestinationMediaItem[];
 		mediaValues?: Record<string, Record<string, unknown>>;
 		optionGroups?: Record<string, DestinationOption[]>;
+		optionNextCursors?: Record<string, string>;
 		optionsLoading?: boolean;
 		optionsError?: string;
 		scopeLabel?: string;
@@ -50,6 +51,7 @@
 		onFormatChange?: (value: string) => void;
 		onMediaChange?: (mediaId: string, key: string, value: unknown) => void;
 		onOptionSearch?: (setting: SettingDefinition, search: string) => void;
+		onOptionLoadMore?: (setting: SettingDefinition) => void;
 		onRetry?: () => void;
 		onFileChange?: (
 			setting: SettingDefinition,
@@ -67,6 +69,7 @@
 		mediaItems = [],
 		mediaValues = {},
 		optionGroups = {},
+		optionNextCursors = {},
 		optionsLoading = false,
 		optionsError = '',
 		scopeLabel = '',
@@ -77,6 +80,7 @@
 		onFormatChange,
 		onMediaChange,
 		onOptionSearch,
+		onOptionLoadMore,
 		onRetry,
 		onFileChange,
 		onRemove
@@ -373,6 +377,16 @@
 												]}
 												class="w-full"
 											/>
+											{#if setting.options_source && optionNextCursors[setting.options_source]}
+												<Button
+													class="mt-2 min-h-11 w-full"
+													variant="outline"
+													disabled={optionsLoading}
+													onclick={() => onOptionLoadMore?.(setting)}
+												>
+													{m.compose_load_more_provider_options()}
+												</Button>
+											{/if}
 										</div>
 									{:else if setting.type === 'select'}
 										<AppSelect

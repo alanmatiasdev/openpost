@@ -39,7 +39,6 @@
 	import SparklesIcon from '@lucide/svelte/icons/sparkles';
 
 	type BillingURL = components['schemas']['BillingURLResponse'];
-	type BillingStatus = components['schemas']['BillingStatusResponse'];
 	type CheckoutState = 'loading' | 'ready' | 'opening' | 'confirming' | 'success' | 'error';
 
 	let selectedPlanID = $state<HostedPlanID>('founder');
@@ -191,7 +190,8 @@
 				body: {
 					workspace_id: workspaceID,
 					plan_id: selectedPlanID,
-					billing_period: billingPeriod
+					billing_period: billingPeriod,
+					return_path: safeSameOriginRedirect(page.url, '')
 				}
 			});
 			if (sequence !== requestSequence || stopped) return;
@@ -253,11 +253,9 @@
 		});
 	}
 
-	async function loadBillingStatus(): Promise<BillingStatus | null> {
-		const workspaceID = workspaceCtx.currentWorkspace?.id ?? '';
-		if (!workspaceID) return null;
-		const { data, error: apiError } = await client.GET('/billing/status', {
-			params: { query: { workspace_id: workspaceID } }
+	async function loadCheckoutReturn(attemptID: string) {
+		const { data, error: apiError } = await client.GET('/billing/checkout/{attempt_id}/return', {
+			params: { path: { attempt_id: attemptID } }
 		});
 		if (apiError || !data) return null;
 		return data;
@@ -266,10 +264,22 @@
 	async function confirmSubscription() {
 		checkoutState = 'confirming';
 		error = '';
+		const attemptID = checkout?.id || page.url.searchParams.get('attempt') || '';
+		if (!attemptID) {
+			checkoutState = 'error';
+			error = m.checkout_confirmation_delayed();
+			return;
+		}
 		for (let attempt = 0; attempt < 30 && !stopped; attempt += 1) {
-			const status = await loadBillingStatus();
-			if (status && ['active', 'trialing'].includes(status.status.toLowerCase())) {
+			const result = await loadCheckoutReturn(attemptID);
+			if (result?.status === 'failed') {
+				checkoutState = 'error';
+				error = m.checkout_confirmation_delayed();
+				return;
+			}
+			if (result?.status === 'success') {
 				checkoutState = 'success';
+				if (result.return_path) await goto(resolve(result.return_path as '/'));
 				return;
 			}
 			await new Promise((resolvePromise) => window.setTimeout(resolvePromise, 1000));
@@ -282,11 +292,6 @@
 
 	function continueToAccounts() {
 		void goto(resolve('/settings?tab=accounts&onboarding=1'));
-	}
-
-	function continueToOriginalTask() {
-		const target = safeSameOriginRedirect(page.url, '');
-		if (target) void goto(resolve(target as '/'));
 	}
 
 	onMount(() => {
@@ -360,11 +365,6 @@
 					</div>
 					<div class="flex w-full flex-col gap-2 sm:flex-row sm:justify-center">
 						<Button size="lg" onclick={continueToAccounts}>{m.checkout_connect_account()}</Button>
-						{#if safeSameOriginRedirect(page.url, '')}
-							<Button size="lg" variant="outline" onclick={continueToOriginalTask}>
-								{m.checkout_continue_original()}
-							</Button>
-						{/if}
 					</div>
 				</CardContent>
 			</Card>

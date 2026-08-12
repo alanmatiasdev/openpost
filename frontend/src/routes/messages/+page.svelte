@@ -149,10 +149,16 @@
 
 	async function markConversationRead(conversation: Conversation) {
 		if (!workspaceId || conversation.unread_count === 0) return;
-		await client.POST('/messages/{conversation_id}/state', {
+		const requestedWorkspace = workspaceId;
+		const { error: apiError } = await client.POST('/messages/{conversation_id}/state', {
 			params: { path: { conversation_id: conversation.id } },
-			body: { workspace_id: workspaceId, read: true }
+			body: { workspace_id: requestedWorkspace, read: true }
 		});
+		if (requestedWorkspace !== workspaceId) return;
+		if (apiError) {
+			showToast(m.messages_mark_read_failed(), 'error');
+			return;
+		}
 		conversations = conversations.map((item) =>
 			item.id === conversation.id ? { ...item, unread_count: 0 } : item
 		);
@@ -340,6 +346,7 @@
 						{#each conversations as conversation (conversation.id)}
 							<button
 								type="button"
+								data-unread={conversation.unread_count > 0}
 								class={[
 									'flex min-h-20 w-full gap-3 p-3 text-left transition-colors hover:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none focus-visible:ring-inset',
 									selectedId === conversation.id && 'bg-muted/60'

@@ -18,6 +18,10 @@ Triage uses the default five-role label vocabulary. See `docs/agents/triage-labe
 
 Domain documentation uses the single-context layout. See `docs/agents/domain.md`.
 
+### Agent workflow
+
+For substantial, ambiguous, or multi-ticket work, follow `.agents/skills/agent-workflow/SKILL.md`; use `docs/agents/repository-map.md` to pull only the relevant module context. Tiny well-scoped fixes do not require the full workflow.
+
 ## 1. Core Architecture & Tech Stack
 
 **Frontend:**

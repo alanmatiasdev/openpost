@@ -4,19 +4,35 @@
 >
 > Repository baseline: `50513cef3e1cd5e16efaf06d26a913beac686520`
 >
+> Last reconciled: 2026-08-12 against `2a28899ebc50f8adb770ddfb5f5748f70169311e`; managed PostHog deployment verified at `v3.9.6` / `2a28899ebc50f8adb770ddfb5f5748f70169311e`.
+>
 > Scope: the application-checklist audit, the deep source/dead-code audit, the follow-up marketing/pricing/privacy/legal/billing review, the shared provider-kernel plan for Pinterest/Google Business Profile/Reddit, the approved operator-connector design for #32, and the installable `n8n-nodes-openpost` package plan. This is a remediation backlog, not a claim that every optional checklist pattern belongs in OpenPost.
 >
-> The checkout was already dirty. This file does not claim that current uncommitted work is shipped. A user-supplied live observation is labeled as such; attachment findings should be rechecked against the implementation immediately before work starts.
+> This reconciliation excludes unrelated worktree changes and does not treat uncommitted code as shipped. A user-supplied live observation is labeled as such; current-source findings should still be rechecked immediately before implementation.
 
 The older launch checklist remains useful for clean-install and provider verification. It is not duplicated here unless the newer audits found a concrete defect or incomplete experience.
 
-Inventory: **5 P0 expansion gates**, **26 P1**, **121 P2**, and **11 P3** task headings, plus explicit product decisions, preservation guardrails, and an external-verification queue. Some P2 entries are deliberate decision gates rather than assumed feature commitments.
+Inventory: **6 P0**, **32 P1**, **118 P2**, and **11 P3** task headings. By each heading’s primary checkbox, **94 are complete and 73 are open**. The open set is **10 P0/P1 correctness or prerequisite tasks**, **14 P2 Pinterest/GBP/provider-delivery tasks**, **20 other active P2 improvements**, and **29 explicitly deferred Reddit/Connector/n8n tasks**. Nested implementation/certification checkboxes, product decisions, preservation guardrails, and the external-verification queue are not separate task headings.
+
+## Reconciled state and next work
+
+PostHog is implemented and deployed. The live managed configuration reports EU ingestion; Privacy uses policy version `2026-08-11`, and the Trust register was reviewed on `2026-08-11`. It is no longer an implementation blocker. Do not remove the shared Umami service solely for OpenPost because other deployed products can still consume it.
+
+The remaining backlog is not one equally urgent queue:
+
+1. **Close the active privacy mismatch:** meme generation remains enabled by operator decision, so complete PRIV-001's processor, policy, retention, and disclosure evidence without treating runtime disablement as the remediation.
+2. **Make Pinterest and GBP the primary feature stream:** start their independent access/policy gates, finish only the shared-kernel gaps each slice needs, and add the first-party registration path. Build Pinterest under Trial, obtain Standard before public production, then deliver GBP under its approved execution mode. Reddit, Connector Protocol, and n8n are deferred lanes and do not block this work.
+3. **Finish the remaining acceptance and operator work:** MOBILE-001 still needs exact signed-artifact and device proof, OPS-004 needs an off-host recovery design and drill, and TRUST-001 needs operator evidence. Keep the completed BILL-002, COMM-002, ANALYTICS-001, and CLAIM-001 regression coverage green.
+4. **Then improve the daily product:** ONB-001/SIGNUP-001, TEAM-002, COMM-001, BILL-003, STATE-001, and the remaining provider hardening.
+5. **Batch structural work deliberately:** ARCH-002/004/005, DATA-001–005, and BUILD-002 are valid debt, but should not interrupt the first safe Pinterest/GBP slice unless a dependency says otherwise.
+
+About, global search, a generic wizard, and an integration marketplace are recorded product decisions, not assumed missing features. Unchecked operator rows still require evidence outside this repository.
 
 ## How to use this backlog
 
 Priority means:
 
-- **P0:** active security/privacy/data-integrity emergency, or a non-negotiable safety gate before enabling a new external-write path. The original audits found no active P0 incident; the later provider plan adds five P0 expansion gates.
+- **P0:** active security/privacy/data-integrity emergency, or a non-negotiable safety gate before enabling a new external-write path. The five original P0 provider safety foundations are shipped; PRIV-001 is the current open P0 because managed external processing is enabled ahead of the matching disclosure/register boundary.
 - **P1:** fix before the next broad release or paid-growth push. These affect correctness, account recovery, legal/trust accuracy, billing continuity, access control, or a core user journey.
 - **P2:** planned product or engineering work. The feature exists but is incomplete, misleading, inefficient, or hard to maintain.
 - **P3:** polish, cleanup, or preventive maintenance. Batch these only after behavior is covered.
@@ -37,43 +53,51 @@ For every code or copy item, completion also means:
 - update generated contracts, docs, public claims, and `CHANGELOG.md` when behavior changes;
 - distinguish local validation from deployed verification.
 
-## P0 — integration expansion safety gates
+## P0 — active privacy and integration-expansion safety gates
 
-These do not assert a newly observed production incident. They block Pinterest, GBP, Reddit, protocol connectors, and any new automated external-write path until their invariants are proven.
+PRIV-001 is an active managed-service disclosure/configuration mismatch. The other entries are the shipped safety foundations that must remain green for Pinterest, GBP, Reddit, protocol connectors, and any new automated external-write path.
+
+### PRIV-001 — Disclose and govern managed meme processing
+
+- [ ] **Problem — Active/operator evidence required:** managed configuration keeps `OPENPOST_MEME_GENERATOR_ENABLED=true` by operator decision. The production Memegen/OpenRouter processor, legal, routing, retention, ZDR, media-lease, and disclosure evidence is incomplete, so runtime availability currently leads the reviewed policy boundary.
+- **Required remediation:** keep the feature's enabled state explicit; verify the configured services and data paths; complete minimization, expiry, no-secret-log, processor, transfer, and acceptance evidence; align Privacy, Trust, the operator register, and deployed behavior. Runtime disablement is not the selected remediation.
+- **Done when:** managed configuration resolves to a reviewed private service or a fully disclosed processor; captions, ideas, recipes, and media leases have tested minimization/expiry/no-secret-log behavior; provider-side terms and OpenRouter routing/ZDR evidence are recorded; public policies, the operator register, acceptance metadata, and deployed behavior agree with the enabled feature.
+- **Evidence:** `/Users/rgo/.config/home/hosts/rgo-vps/default.nix`, `docs-site/configuration/environment-variables.md`, and `docs-site/configuration/production-checklist.md`. Declarative configuration resolves the managed value to `true`; processor and disclosure verification remains open.
 
 ### PROV-AUTH-001 — Separate OAuth grants from provider destinations
 
-- [x] **Problem — Confirmed architecture gate:** multi-destination saves duplicate one credential into each `SocialAccount`, while refresh updates one row. Sibling locations/channels can diverge after rotating-token refresh.
-- **Fix:** add `oauth_grants` with provider/project identity, encrypted access and refresh tokens, both expiries, scopes, subject, execution mode/evidence, token version, refresh lease, consent, revocation, and validation timestamps. Let many destination accounts reference one grant; update rotating refresh tokens atomically with a DB lease/lock and compare-and-swap.
-- **Done when:** concurrent refresh cannot split sibling destinations; grant rotation/revocation is atomic; the UI distinguishes “disconnect this destination” from “revoke the grant and disconnect every destination”; SQLite/Postgres race tests pass.
-- **Evidence:** `backend/internal/services/account_saver/account_saver.go:155`, `backend/internal/services/tokenmanager/manager.go:124`.
+- [x] **Problem — Resolved:** provider destinations previously duplicated credentials and could diverge after a rotating-token refresh.
+- **Fix delivered:** migration 073 adds shared `oauth_grants` with provider/project/subject identity, encrypted credentials and expiries, scopes, execution evidence, versioned refresh leasing, consent, validation, and revocation. Destination accounts now reference the shared grant and rotation uses one atomic boundary.
+- **Done when:** concurrent refresh cannot split sibling destinations; grant rotation/revocation is atomic; the UI distinguishes destination disconnect from whole-grant revocation; SQLite/Postgres race tests remain green.
+- **Evidence:** `backend/internal/database/migrations/073_oauth_grants.sql`, `backend/internal/models/models.go:845`, `backend/internal/services/account_saver/account_saver.go`, `backend/internal/services/tokenmanager/manager.go`.
 
 ### PROV-AUTHZ-001 — Persist an immutable publication authorization receipt
 
-- [x] **Problem — Confirmed architecture gate:** durable jobs do not carry a complete immutable record of who authorized which revision, targets, content/media/settings, schedule, and provider execution policy.
-- **Fix:** add `publication_authorizations` with actor/origin (browser, API, MCP, CLI, worker), user/session/token/client identity, publication revision, account and `target_key`, scheduled time, content/media/settings hashes, policy mode, and confirmation time.
-- **Done when:** every external write can be tied to the exact consent, revision, targets, and policy that authorized it; changes after scheduling cannot silently alter the receipt; audit/export tests redact sensitive values.
+- [x] **Problem — Resolved:** durable jobs previously lacked a complete immutable receipt for the actor, exact revision, target, content/media/settings, schedule, and provider execution policy.
+- **Fix delivered:** migration 075 adds append-only `publication_authorizations` with actor/origin identity, publication revision, rendition/account/`target_key`, scheduled time, one-way payload hashes, policy mode, and confirmation time; payloads and credentials are intentionally excluded.
+- **Done when:** every external write remains tied to the exact consent, revision, targets, and policy that authorized it; later changes cannot alter the receipt; audit/export tests redact sensitive values.
+- **Evidence:** `backend/internal/database/migrations/075_publication_authorizations.sql`, `backend/internal/models/models.go:1413`, publication application/authorization tests.
 
 ### PROV-WRITE-001 — Fence ambiguous external writes durably
 
-- [x] **Problem — Confirmed architecture gate:** `Adapter.Publish` returns only an external ID and normal publishing flattens acceptance into `published`; stale sending jobs can be retried even when a provider accepted the write but OpenPost lost the response.
-- **Fix:** add `provider_write_attempts` (`prepared → sending → accepted | definite_failure | ambiguous`) and structured `PublishResult` fields for external ID/URL, submission/provider state, retry safety, and reconciliation delay. Persist payload fingerprint and safe error class, never raw response/token. A stale `sending` attempt becomes reconcile-only `ambiguous`.
-- **Done when:** crash tests before send, during send, after acceptance, and before DB commit prove an unknown outcome cannot be recreated automatically; only definitely pre-send, definitely rejected, or provider-idempotent work retries.
-- **Evidence:** `backend/internal/platform/adapter.go:223`, `backend/internal/services/publisher/publisher.go:295`, `backend/internal/queue/worker.go:209`.
+- [x] **Problem — Resolved:** publishing previously flattened a provider response into an external ID and could replay a stale job after the provider accepted a write but OpenPost lost the result.
+- **Fix delivered:** migration 076, structured `PublishResult`, and the provider-write service persist prepared/sending/accepted/definite-failure/ambiguous state, one-way payload identity, retry safety, and reconciliation hints without raw responses or tokens. Worker recovery fences stale sending attempts as reconcile-only ambiguity.
+- **Done when:** crash tests before send, during send, after acceptance, and before DB commit continue to prove an unknown outcome cannot be recreated automatically; only definitely pre-send, definitely rejected, or provider-idempotent work retries.
+- **Evidence:** `backend/internal/database/migrations/076_provider_write_attempts.sql`, `backend/internal/platform/adapter.go:45`, `backend/internal/models/models.go:1447`, `backend/internal/queue/worker.go:225`, `backend/internal/queue/worker_recovery_test.go:173`.
 
 ### PROV-MEDIA-001 — Repair rendition-owned provider media state
 
-- [x] **Problem — Reproduced schema gate:** migration 020 makes `provider_media_states.post_id` reference `posts`, while rendition publishing writes a rendition ID into the ownership fields. Upgraded SQLite foreign-key enforcement fails.
-- **Fix:** migrate to typed owner/owner ID or a dedicated rendition-media-delivery table containing provider upload ID, resumable session state, progress, expiry, cover/thumbnail relation, last check, and retry classification.
-- **Done when:** populated fresh/upgrade SQLite and Postgres migrations pass, the reproduced FK failure is gone, interrupted uploads resume safely, and no media record can attach to the wrong aggregate. This gates Pinterest video.
-- **Evidence:** `backend/internal/database/migrations/020_provider_media_states.sql`, `backend/internal/services/publisher/publisher.go:1467`.
+- [x] **Problem — Resolved:** legacy `provider_media_states` was post-owned while rendition publishing wrote rendition identity into its ownership fields, violating upgraded SQLite foreign keys.
+- **Fix delivered:** migration 074 splits post and rendition media delivery tables with enforceable aggregate/account/media ownership and stores resumable session progress, expiry, check time, and retry classification for renditions.
+- **Done when:** populated fresh/upgrade SQLite and Postgres migrations remain green, interrupted uploads resume safely, and no media record can attach to the wrong aggregate. Pinterest video consumes this boundary rather than reopening the schema defect.
+- **Evidence:** `backend/internal/database/migrations/074_rendition_media_deliveries.sql`, rendition media delivery models, `backend/internal/services/publisher/publisher_provider_media_state_test.go`.
 
 ### PROV-READY-001 — Make provider readiness evidence-based
 
-- [x] **Problem — Confirmed product/release gate:** an adapter’s registration is too easily treated as readiness even when approval tier, scopes, account/format live proof, policy mode, refresh/revocation, or test freshness is missing.
-- **Fix:** create a certification ledger with provider app/environment, approval, scopes, account/format, policy mode, exact SHA/test date, immediate/scheduled result, safe external result reference, refresh/revocation result, operator, and retest expiry.
+- [x] **Problem — Resolved:** adapter registration previously risked being mistaken for production readiness without approval tier, scopes, account/format proof, policy mode, refresh/revocation, or test freshness.
+- **Fix delivered:** migration 077 and the readiness service add dated approval reviews and provider-scoped certification runs bound to app/environment, account/format/operation, policy, exact revision/contract, scopes, operator, and expiry.
 - **Done when:** no provider/format is advertised because an adapter merely exists; healthy state stays quiet; only approval-required, reconnect-required, trial-only, policy-restricted, degraded, or expired-proof states surface.
-- **Evidence:** `backend/internal/api/handlers/provider_readiness.go:44`, `docs-site/providers/launch-matrix.md:3`.
+- **Evidence:** `backend/internal/database/migrations/077_provider_readiness_certification.sql`, `backend/internal/api/handlers/provider_readiness.go:44`, `backend/internal/services/providerreadiness`, `docs-site/providers/launch-matrix.md:3`.
 
 ## P1 — release, correctness, recovery, billing, and trust
 
@@ -110,7 +134,7 @@ These do not assert a newly observed production incident. They block Pinterest, 
 - [x] **Problem — Baseline audit:** cleanup uniqueness uses a substring search over serialized JSON, includes completed jobs, and performs a non-transactional check-then-insert; the recurring successor has no idempotency guard.
 - **Fix:** add exact typed `scope_id`/`dedupe_key` fields, a partial unique constraint for active jobs, and transactional/upsert enqueue through a typed job registry.
 - **Done when:** substring-collision, completed-job, concurrent-enqueue, crash-recovery, and recurring-successor tests prove at most one active cleanup chain per scope.
-- **Evidence:** `backend/internal/queue/worker.go:540`, `backend/internal/queue/worker.go:603`.
+- **Evidence:** `backend/internal/jobregistry/definitions.go:8`, `backend/internal/jobregistry/registry_test.go:19`, `backend/internal/queue/worker.go:518`. The delivered generalized registry owns typed execution, failure, recovery, and default-attempt policy for every executable durable job kind; media cleanup additionally owns registry recurrence and identity policy. No separate open “job registry” heading is needed.
 
 ### SEC-001 — Add MFA recovery codes and prove recovery before enabling TOTP
 
@@ -138,14 +162,14 @@ These do not assert a newly observed production incident. They block Pinterest, 
 - [x] **Problem — Current source audit:** workspace invites, roles at invite time, pending revoke, and seat limits exist, but admins cannot change an accepted member’s role, deactivate/remove a member, resend an invite, or quickly search/filter the team. Non-admins can see an invite form that the API correctly rejects.
 - **Fix:** add authorized role change, temporary deactivation, permanent removal, resend, revoke, search/filter, and optional bulk invite; hide or disable admin actions for non-admins; preserve last-owner/admin safeguards and audit every access change.
 - **Done when:** admin/member/viewer permissions are enforced server-side and reflected in UI; pending and accepted users have complete state transitions; seat counts update atomically; tests cover self-removal, last-admin, revoked invite, and unauthorized mutations.
-- **Evidence:** team/invitation section in `frontend/src/routes/settings/+page.svelte` and workspace invitation handlers/services.
+- **Evidence:** `frontend/src/lib/components/workspace-team-settings.svelte:190`, `backend/internal/services/workspaceteam/service.go`.
 
 ### BILL-001 — Give past-due accounts an explicit recovery path
 
 - [x] **Problem — Current source audit:** `past_due` is rendered as a status label only. There is no prominent explanation, deadline/access impact, or direct payment-update recovery action.
 - **Fix:** add an account-wide past-due notice and billing-page recovery card with the failed state, what may happen, the safe next action, and a Paddle portal deep link or native update flow. Keep access gating and retry state consistent with webhook truth.
 - **Done when:** simulated failed-payment/webhook states surface recovery everywhere relevant; the user can reach payment update in one action; successful recovery clears the warning; tests cover stale and repeated webhooks.
-- **Evidence:** `frontend/src/routes/settings/+page.svelte:354`, `frontend/src/routes/settings/+page.svelte:2440`.
+- **Evidence:** `frontend/src/lib/components/settings/BillingSettingsTab.svelte:385`, `frontend/src/lib/components/settings/BillingSettingsTab.svelte:397`.
 
 ### PRICE-001 — Make all five public plans selectable
 
@@ -156,10 +180,10 @@ These do not assert a newly observed production incident. They block Pinterest, 
 
 ### LEGAL-001 — Align the encrypted-backup claim with controlled-cloud reality
 
-- [ ] **Problem — Current source plus operator configuration:** Privacy says “Encrypted database backups,” while the controlled cloud job pipes `pg_dump` through gzip into `/var/backup/openpost` with no encryption step shown. This proves a disclosure/evidence gap, not that every underlying storage layer is unencrypted.
-- **Fix:** either encrypt each backup artifact with managed, rotated keys and prove restore/key recovery, or document and evidence the exact storage-layer encryption boundary and revise the policy to match. Cover database and media backups, access, retention, deletion, monitoring, and restore drills.
-- **Done when:** the policy names the verified encryption boundary accurately; a restore drill from the encrypted artifact succeeds; key loss/rotation and operator access are documented without exposing secrets.
-- **Evidence:** `marketing-site/src/routes/privacy/+page.svelte:218`, `/Users/rgo/.config/home/modules/services/openpost/default.nix:396`.
+- [x] **Problem — Resolved:** the hosted policy no longer calls each backup artifact encrypted. It states that OpenPost adds no separate application-level encryption layer per artifact, while the managed register names the actual root-owned host boundary, 14-day routine retention, and weekly restore drill.
+- **Fix delivered:** canonical legal inventories now describe the deployed boundary; operator configuration creates daily database/media recovery copies and performs a real weekly database restore plus media-inventory check. The operator guide explicitly forbids the old unsupported wording.
+- **Done when:** policy, managed register, operator documentation, and restore evidence continue to name the same protection boundary. Failure-domain separation remains separate OPS-004 work.
+- **Evidence:** `marketing-site/src/routes/privacy/+page.svelte:319`, `packages/legal-policy/src/managed-service.json:18`, `docs-site/operations/backups.md:7`, `/Users/rgo/.config/home/modules/services/openpost/default.nix:404`.
 
 ### LEGAL-002 — Use one canonical legal-policy version everywhere
 
@@ -170,10 +194,17 @@ These do not assert a newly observed production incident. They block Pinterest, 
 
 ### TRUST-001 — Publish managed-cloud residency, subprocessors, and human-access facts
 
-- [ ] **Problem — Operator facts required:** the managed service does not disclose hosting/data residency, a complete subprocessor list, international-transfer basis, or the policy for human production access. This is a procurement and trust blocker, not evidence of insecure handling.
-- **Fix:** obtain operator/legal-approved facts; publish a dated subprocessor/residency page and change-notification process; document role-based/support access, approval, logging, emergency access, review, and revocation at an appropriate level.
-- **Done when:** every managed data store/provider and transfer is accounted for; customers can see region, purpose, data category, and update date; internal access procedure and audit evidence exist; no unsupported certification or GDPR logo is added.
-- **Evidence:** `marketing-site/src/routes/privacy/+page.svelte`, `marketing-site/src/routes/security/+page.svelte`.
+- [ ] **Problem — Partial/operator evidence required:** a dated managed-service register and public Trust page cover the recorded providers, residency, data categories, transfer statements, human-access boundary, change notice, and review dates. Managed Memegen remains enabled and must be covered by PRIV-001's evidence and disclosures. The Purelymail transfer mechanism and operational access approval, logging, review, and revocation evidence remain unproved.
+- **Fix:** obtain and record the remaining Purelymail transfer/legal basis; verify role approval, access logging, emergency access, review, and revocation evidence; keep the register current before any new managed processor receives data.
+- **Done when:** every current managed store/provider has a reviewed transfer entry and date; internal access evidence matches the public boundary; no unsupported certification, GDPR, or audit badge is added.
+- **Evidence:** `marketing-site/src/routes/trust/+page.svelte`, `packages/legal-policy/src/managed-service.json:92`, `packages/legal-policy/src/security-assurance.json`.
+
+### CLAIM-001 — Establish provenance for customer and proof claims
+
+- [x] **Problem — Resolved:** the homepage used an unproved customer-logo rail, and generated persona cards were not plainly identified as fictional examples.
+- **Fix delivered:** removed the logo usage claim and its deployed asset entries; labeled the personas and workflows as illustrative and fictional; added a dated `marketing-claims.json` register plus a required validation/test gate that rejects missing evidence, owners, review dates, expired claims, and unregistered generated-persona presentation.
+- **Done when:** every logo, testimonial, count, “used by,” team, milestone, backer, origin, or persona claim has current provenance and an update owner; expired or unproved claims are removed automatically or during a required review.
+- **Evidence:** `marketing-claims.json`, `scripts/marketing-claims.mjs`, `scripts/marketing-claims.test.mjs`, `marketing-site/src/routes/+page.svelte`, `marketing-site/src/routes/_components/CreatorStories.svelte`; marketing content/type checks pass.
 
 ### APP-001 — Return a real, recoverable app 404 instead of a blank HTTP 200
 
@@ -189,75 +220,113 @@ These do not assert a newly observed production incident. They block Pinterest, 
 - **Done when:** Privacy/Legal approves consistent wording across Privacy, tool pages, permission prompts, and editor UX; browser behavior matches each disclosed transition.
 - **Evidence:** `marketing-site/src/routes/privacy/+page.svelte:117`, `marketing-site/src/routes/privacy/+page.svelte:247`, `frontend/src/lib/video-editor/recorder.ts:85`, `frontend/src/lib/video-editor/recorder.ts:217`, `frontend/src/lib/video-editor/recorder.ts:246`. Resolved in the legal inventories commit `c4584d1e`, which states camera recording is optional and local to the browser until an explicit cloud save, Media save, or post handoff; the Video Editor docs and tool pages state the same boundary.
 
+### BILL-002 — Preserve the original task through hosted checkout
+
+- [x] **Problem — Resolved:** checkout completion previously trusted general subscription state and did not bind the original same-origin task to the exact hosted checkout attempt.
+- **Fix delivered:** migration 087 stores the validated return path on the attempt; Paddle returns with the opaque attempt ID; the authenticated return endpoint scopes by user/provider/attempt, waits for that attempt to reconcile, and atomically exposes the path once. Pending, canceled, mismatched-user, duplicate, replay, and cross-origin cases fail safely.
+- **Done when:** registration/onboarding → Paddle → success resumes the exact original path/query for the matching attempt; a different subscription or replay cannot unlock a redirect; tests cover cancellation, delayed webhook, refresh, duplicate callback, and malicious URLs.
+- **Evidence:** `backend/internal/database/migrations/087_billing_checkout_returns.sql`, `backend/internal/services/billing/service.go`, `backend/internal/services/billing/service_test.go`, `backend/internal/api/handlers/billing.go`, `frontend/src/routes/checkout/+page.svelte`; focused billing tests, generated-contract checks, frontend checks, and checkout browser coverage pass.
+
+### COMM-002 — Keep conversation unread state truthful
+
+- [x] **Problem — Resolved:** Messages cleared unread state even when the server rejected the mark-read write.
+- **Fix delivered:** unread state changes only after confirmed success; failure keeps the badge and shows a retry instruction; workspace/request guards prevent stale responses from mutating another conversation.
+- **Done when:** a forced failure keeps or restores the unread count and offers retry; success clears it exactly once; navigation, rapid conversation changes, and stale responses cannot mutate the wrong conversation.
+- **Evidence:** `frontend/src/routes/messages/+page.svelte`, `e2e-app/communications.spec.ts`; a forced 503 preserves unread state, retry clears it once, and desktop/390 px/320 px browser checks pass.
+
+### ANALYTICS-001 — Make post-result history and account totals complete
+
+- [x] **Problem — Resolved:** analytics history and selected-account totals were derived from an engagement-sorted 50-row slice.
+- **Fix delivered:** the stored-data API now owns account filtering, stable engagement/views/newest ordering, opaque cursor paging, full result counts, and summaries computed independently from the current page. The browser renders the server contract and appends subsequent pages.
+- **Done when:** fixtures above 50 rows prove exact account totals, true newest ordering, stable paging without duplicates, and unchanged last-successful counters through provider failures.
+- **Evidence:** `backend/internal/services/analytics/overview.go`, `backend/internal/services/analytics/service_test.go`, `backend/internal/api/handlers/analytics.go`, `frontend/src/routes/analytics/+page.svelte`; 121-row multi-page, exact 75-row account-summary, cursor-scope, provider-failure, desktop/390 px/320 px tests pass.
+
+### MOBILE-001 — Publish and prove an installable Android candidate
+
+- [ ] **Problem — Partial/release acceptance required:** the workflow now fails instead of publishing an unsigned APK as the installable asset. Placeholder tests were replaced with the `com.openpost.app` package contract and an OIDC deep-link resolution instrumentation test, and the JVM contract compiles and passes. The exact published signed APK still needs install/certificate/version/revision and native lifecycle/permission/restore proof in candidate/release automation and on the bounded device matrix.
+- **Fix delivered locally:** enforce signing-secret availability before the public Android asset is produced; enable the generated BuildConfig contract; replace template package tests; align installation docs and release-contract tests. Complete exact-byte emulator/device acceptance in the release lane before checking this item off.
+- **Done when:** the release matrix installs the exact published signed artifact, asserts its certificate/package/version/revision, and fails or omits Android publication when signing is unavailable; native navigation, permission, deep-link, or restore regressions fail without rebuilding different application bytes.
+- **Evidence:** `frontend/android/app/src/androidTest/java/com/getcapacitor/myapp/ExampleInstrumentedTest.java:1`, `frontend/capacitor.config.ts:3`, `.github/workflows/release.yml:329`, `docs-site/installation/android.md:5`.
+
+### OPS-004 — Put recovery copies in a separate failure domain
+
+- [ ] **Problem — Current source plus operator configuration:** daily PostgreSQL dumps, the synchronized media recovery copy, and the restore drill all use `/var/backup/openpost` on the same FSN1 application host. The R2 media primary is separate, but loss of the application host/disk/account/location can remove the database primary and its only evidenced recovery copy together. Existing provider snapshots, if any, are not recorded.
+- **Fix:** first inventory and evidence any independent provider snapshot. Otherwise send database recovery artifacts to an off-host, failure-domain-separated destination using client-side artifact encryption and separately controlled recovery keys, or document an equally strong evidenced boundary. Define retention/deletion, monitoring, failed-copy alerts, access review, and key rotation.
+- **Done when:** a restore drill starts from the off-host copy and succeeds without the original host; recovery-point/restore objectives and failure alerts are evidenced; Privacy/Trust name the real provider, region, encryption/key, access, and retention boundary without exposing secrets.
+- **Evidence:** `/Users/rgo/.config/home/modules/services/openpost/default.nix:404`, `/Users/rgo/.config/home/modules/services/openpost/default.nix:443`, `/Users/rgo/.config/home/modules/services/openpost/default.nix:487`, `packages/legal-policy/src/managed-service.json:18`.
+
 ### Shared provider kernel — required before new provider delivery
 
 ### PROV-SELECT-001 — Normalize asynchronous destination discovery
 
-- [ ] **Problem — Confirmed architecture gap:** OAuth callback discovery is eager, stores a whole selection list in one expiring JSON blob, and hard-codes multi-select to LinkedIn. It cannot safely serve large GBP agencies or thousands of Pinterest boards.
+- [ ] **Problem — Current source/missing:** OAuth callback discovery is still eager, stores the whole list in one expiring `OAuthAccountSelection` JSON blob, and exposes `AccountSelectionAdapter` as an all-at-once slice. It has no normalized paging, background progress, resumable cursor, or generic completion transaction for large GBP account/location sets.
 - **Fix:** add normalized selection-session/options tables with state, progress, cursor, totals, errors, policy mode, selection/entitlement limit, expiry, consumed/version fields, safe display values, encrypted internal references, eligibility/reason, and provenance. Discover in background; finish with one CAS transaction that enforces entitlement, creates accounts, and consumes the session.
-- **Done when:** large sets page/search/resume safely, direct/expired/canceled returns are clear, concurrent completion cannot create duplicate identities or seats, and DB uniqueness covers workspace/provider/installation/external identity.
-- **Evidence:** `backend/internal/api/handlers/oauth.go:763`, `backend/internal/api/handlers/oauth.go:1168`, `frontend/src/routes/accounts/callback/+page.svelte:41`.
+- **Done when:** large sets page/search/resume safely, direct/expired/canceled returns are clear, concurrent completion cannot create duplicate identities or seats, and DB uniqueness covers workspace/provider/effective built-in app-project-instance identity/external identity. Deferred connector installation IDs may later occupy the same typed identity slot; this task does not depend on CONNECT-002.
+- **Evidence:** `backend/internal/models/models.go:920`, `backend/internal/platform/adapter.go:536`, `backend/internal/api/handlers/oauth.go`, `frontend/src/routes/accounts/callback/+page.svelte`.
 
 ### PROV-TARGET-001 — Give every provider subdestination its own rendition
 
-- [ ] **Problem — Confirmed model gap:** one rendition per publication/account cannot represent independent Pinterest board/section or Reddit community results.
-- **Fix:** add normalized `target_key`; use a uniqueness boundary of publication + social account + target. GBP stays one location per account; Pinterest uses board/section; Reddit uses community.
+- [x] **Problem — Resolved:** provider subdestinations are first-class rendition identities rather than a hidden loop behind one account result.
+- **Fix delivered:** migration 088 adds and backfills normalized `target_key`, replaces account-only uniqueness with publication + account + target, carries the target through REST/generated contracts, snapshots exact authorization identity, and makes upsert/retry/delete target-aware. Legacy Mastodon renditions retain their instance-qualified target.
 - **Done when:** each target has its own authorization, external ID, delivery state, retry/manual-resolution, and partial-failure outcome; no hidden loop publishes to several boards/communities inside one rendition.
-- **Evidence:** `backend/internal/database/migrations/027_format_first_publications.sql:16`.
+- **Evidence:** `backend/internal/database/migrations/088_rendition_targets.sql`, `backend/internal/database/migrations/rendition_targets_test.go`, `backend/internal/api/handlers/publications.go`, `backend/internal/services/publicationauth/snapshot.go`, `backend/internal/api/handlers/publications_renditions_test.go`; focused SQLite/handler/authorization tests and generated contracts pass, with the Postgres migration regression enabled when its test URL is configured.
 
 ### PROV-DELIVERY-001 — Model provider delivery and reconciliation
 
-- [ ] **Problem — Confirmed lifecycle gap:** provider processing, native scheduling, rejection, and outcome-unknown states are flattened into `published`/`failed`.
-- **Fix:** add `provider_deliveries` with external ID/URL, provider state, terminal reason, current attempt, last/next reconciliation, plus an optional status/reconciliation capability.
+- [x] **Problem — Resolved:** each exact rendition target now has one canonical delivery projection backed by the durable write-attempt history.
+- **Fix delivered:** migration 089 adds queued, submitted, processing, provider-scheduled, live, rejected, ambiguous, and manual-resolution states with safe terminal reason, current attempt, external identity, and reconciliation times. Attempt creation and every state transition update the projection atomically; attempt creation time plus ID fence late updates from an older operation. Publication responses and detail UI expose the exact target outcome, and retries preserve target identity.
 - **Done when:** queued, submitted, processing, provider-scheduled, live, rejected, ambiguous, and manual-resolution are distinct; PUB-003 and COMPOSE-002 render the exact target outcome; reconciliation cannot mutate another attempt.
+- **Evidence:** `backend/internal/database/migrations/089_provider_deliveries.sql`, `backend/internal/services/providerwrite/service.go`, `backend/internal/services/providerwrite/service_test.go`, `backend/internal/api/handlers/publications_list_loader.go`, `frontend/src/routes/publications/[id]/+page.svelte`, `e2e-app/provider-delivery.spec.ts`; projection, stale-attempt, migration, loader, generated-contract, Svelte autofixer, and frontend checks pass, plus exact-target browser proof at desktop, 390 px, and 320 px.
 
 ### PROV-CAP-001 — Expand capability and cross-field validation contracts
 
-- [ ] **Problem — Confirmed model gap:** capabilities cover many maxima but not separate title/body/description/alt limits, hard vs recommended rules, media minimums, dimensions/codecs/frame rate/audio, local date/time intervals, timezone/language, dependencies, exclusions, or target-specific validation.
-- **Fix:** expand the schema and add a provider validator registry; key caches by every account/target input that affects behavior.
+- [x] **Problem — Resolved:** the shared capability schema and validator now cover structured content/media constraints, and cached provider rules cannot cross target-setting boundaries.
+- **Fix delivered:** added required/min/max/recommended title, body, description, and alt-text rules; hard dimension, codec, frame-rate, and audio rules; local date/time semantics; and media analysis inputs. The resolver cache identity includes account, target settings, profile, intent, media shape, locale, and region using canonical JSON hashing, and the composer sends destination alt text through the same contract.
 - **Done when:** backend, browser, REST, MCP, and CLI reject the same invalid payload; community/location/account rules cannot leak from a stale cache; unsupported schema combinations fail closed.
-- **Evidence:** `backend/internal/capabilities/capabilities.go:76`, `backend/internal/api/handlers/capability_resolver.go:280`.
+- **Evidence:** `backend/internal/capabilities/capabilities.go`, `backend/internal/capabilities/capabilities_test.go`, `backend/internal/api/handlers/capability_resolver.go`, `backend/internal/api/handlers/capability_resolver_test.go`, `frontend/src/lib/components/compose-text-post.svelte`; focused backend tests, generated contracts, Svelte autofixer, and frontend checks pass.
 
 ### PROV-PICKER-001 — Build one paged remote-option picker
 
-- [ ] **Problem — Confirmed UX gap:** the backend can return option cursors, but the composer requests a fixed 100 options and ignores cursor/context.
-- **Fix:** add append/deduplication, search, dependency context/invalidation, disabled reasons, progress/error/resume, keyboard navigation, touch-safe phone/320 px layouts, and stale-request protection.
+- [x] **Problem — Resolved:** the composer requested a fixed first page, ignored provider cursors, and retained hidden child values after a dependency changed.
+- **Fix delivered:** the shared picker requests 25-row pages with current setting context, exposes a touch-safe continuation, appends by cursor with value-based deduplication, preserves search context, fences stale responses, and clears child values plus cached pages when a parent invalidates them. Existing unavailable reasons, loading, error, retry, search, and keyboard behavior remain shared.
 - **Done when:** large boards, locations, communities, and existing provider options are all reachable without eager loading; a parent-field change clears incompatible child choices.
-- **Evidence:** `frontend/src/lib/components/compose-text-post.svelte:1313`.
+- **Evidence:** `frontend/src/lib/components/compose-text-post.svelte`, `frontend/src/lib/components/compose/destination-options.ts`, `frontend/src/lib/components/destination-options.test.ts`, `frontend/src/lib/components/destination-settings-dialog.svelte`, `frontend/src/lib/components/destination-settings-dialog.svelte.test.ts`, and backend destination-option paging tests; focused tests and frontend checks pass at 320 px.
 
 ### PROV-POLICY-001 — Enforce provider execution mode at enqueue and execution
 
-- [ ] **Problem — Policy gate:** hiding UI/API controls cannot enforce restrictions that may change between authorization and delivery.
-- **Fix:** persist and enforce `disabled`, `interactive_only`, `authorized_delayed`, `owner_project_full`, or `written_provider_approval` on the grant/authorization. Check once when enqueueing and again before the external write.
+- [ ] **Problem — Partial/policy gate:** authorizations persist policy fields and readiness is rechecked, but there is no complete execution-mode vocabulary bound to the OAuth grant, authorization origin, enqueue decision, and worker execution. Hiding UI/API controls cannot enforce a provider restriction that changes before delivery.
+- **Fix:** extend the existing readiness/authorization policy with enforceable execution modes such as `disabled`, `interactive_only`, `authorized_delayed`, and `owner_project_full`; keep written approval, reviewed operations/origins, owner, and expiry as evidence that selects an allowed mode rather than treating evidence as a runtime mode. Check the allowed operation/origin at authorization/enqueue and immediately before the external write instead of creating a second policy subsystem.
 - **Done when:** a policy change after scheduling blocks delivery safely, records an actionable audit event, and applies equally to browser, REST, MCP, CLI, repost, and worker origins.
+- **Evidence:** `backend/internal/models/models.go:1440`, `backend/internal/services/providerreadiness`.
 
 ### PROV-RETENTION-001 — Enforce provider-aware provenance, expiry, and deletion
 
-- [ ] **Problem — Confirmed policy/data gap:** provider-returned data lacks a universal provenance/expiry contract, and long-lived analytics/communications storage can conflict with short retention or deletion rules. Deleted engagement scrubbing can retain author/attachment details after body removal.
+- [ ] **Problem — Partial:** provider-deleted engagement now scrubs body, author identifiers/profile fields, attachment metadata, and write capabilities for both sync-reported and locally completed deletion. A universal provenance/expiry/allowed-use/purge contract and expiry/revoke/disconnect enforcement across analytics, communications, and future discovery data are still missing.
 - **Fix:** attach `fetched_at`, `expires_at`, provider/source, allowed use, and purge policy; keep restricted data out of immutable/aggregated stores; scrub body, author, and attachment fields on provider deletion.
 - **Done when:** expiry, revoke, disconnect, and provider-deletion cascade tests prove timely removal and no forbidden aggregation; legal/public retention copy can cite implementation evidence.
-- **Evidence:** `backend/internal/services/communications/service.go:349`.
+- **Evidence:** `backend/internal/services/communications/service.go`, `backend/internal/services/communications/service_test.go`; provider-deletion regression coverage and the full backend suite pass. Provenance/expiry work remains open.
 
 ### PROV-LEASE-001 — Issue stable, scoped provider media leases
 
-- [ ] **Problem — Confirmed delivery gap:** current public media URLs expire after 15 minutes and readiness often relies on HEAD, which is not a dependable contract for delayed provider fetch/processing.
+- [ ] **Problem — Current source/missing:** public media URLs still expire after 15 minutes and readiness relies largely on HEAD. There is no provider/object/operation scope, delayed-GET/range proof, or terminal revocation. Pinterest video covers and GBP `sourceUrl` images depend on this.
 - **Fix:** create provider/object/operation-scoped leases long enough for the certified processing window, revocable at terminal state or retention expiry; verify delayed GET, redirects, MIME, length, dimensions, and range support.
 - **Done when:** delayed-fetch live tests pass for every claimed provider/media workflow and a connector/provider cannot access unrelated library media.
 - **Evidence:** `backend/internal/services/publicurl/media.go:16`.
 
 ### PROV-META-001 — Generate one provider metadata and certification catalogue
 
-- [ ] **Problem — Confirmed drift gap:** provider names, icons, availability, readiness, docs, and public claim lists are repeated across surfaces.
-- **Fix:** generate a canonical catalogue containing stable identity, supported/approved formats, approval tier, execution policy, certification age, and actionable degraded state; keep healthy state quiet.
-- **Done when:** app, docs, marketing, readiness, CLI/MCP, and release checks cannot disagree and no custom provider ID is inferred by splitting its string.
+- [ ] **Problem — Partial:** provider identity, applications, capabilities, readiness, icons, docs, and public claim lists remain separate/static sources. Existing checks compare some duplicated sets but do not generate one canonical provider/certification catalogue.
+- **Fix:** make this the canonical generated public/certification fact catalogue containing stable identity, supported/approved formats, approval tier, execution policy, certification age, and actionable degraded state; keep healthy state quiet. PROV-FIRSTPARTY supplies built-in registration input, while deferred PROVIDER-001 consumes that same identity input into its runtime installation snapshot rather than defining parallel facts.
+- **Done when:** app, docs, marketing, readiness, CLI/MCP, and release checks cannot disagree; no second catalogue/registry owns conflicting provider facts; no custom provider ID is inferred by splitting its string.
 
-### PROV-SCHEDULE-001 — Make native-provider scheduling a real execution path
+### PROV-FIRSTPARTY-001 — Add one complete first-party provider registration path
 
-- [ ] **Problem — Confirmed product gap:** native scheduling exists as catalogue metadata but not as a complete creation/edit/reschedule/cancel/reconciliation lifecycle.
-- **Fix:** define immediate creation of a provider-native scheduled resource, durable external identity, ambiguity rules, policy enforcement, edit/reschedule/cancel, and status reconciliation.
-- **Done when:** “native scheduled” describes provider state rather than a label; user and audit history distinguish it from a future OpenPost worker job.
+- [ ] **Problem — Current architecture gap:** adding Pinterest or GBP still requires coordinated edits across provider constants/builders, provider-app administration, OAuth routing, capabilities/readiness, account presentation, docs, public catalogues, i18n, generated contracts, and release proof. The connector-oriented PROVIDER-001 does not supply this built-in onboarding path.
+- **Fix:** adopt the canonical typed descriptor defined by PROV-META and add one first-party registration workflow consumed by those surfaces, while keeping secret-bearing implementations internal. Use it for Pinterest and require GBP to follow it; preserve provider-specific OAuth, validation, policy, and publishing code inside `internal/platform` and the appropriate services.
+- **Done when:** one built-in can register end to end through the reviewed boundary and every later first-party provider is required to adopt it; missing app credentials or certification stay quiet/actionable rather than appearing available; contracts, app UI, docs, marketing, privacy, and release checks cannot omit a newly enabled provider. This is the built-in registration input to PROV-META and, later, PROVIDER-001—not a parallel runtime registry or public catalogue.
+- **Dependencies:** PROV-META-001 and the relevant policy/capability/selection tasks; this does not depend on Connector Protocol or n8n.
 
-## P2 — ordered provider, connector, and n8n delivery program
+## P2 — first-party provider priority and deferred extension lanes
 
 These are three distinct products sharing foundations:
 
@@ -267,21 +336,36 @@ These are three distinct products sharing foundations:
 
 Implementation order:
 
-1. Run external access/license/tool feasibility gates in parallel.
-2. Complete the P0 and shared-provider P1 kernel above.
-3. Open the provider registry/connector protocol and OpenAPI automation contract as independent lanes.
-4. Ship the operator API reference connector and n8n action-node alpha.
-5. Add Pinterest, then restricted GBP, then Reddit only after transport approval.
-6. Add n8n upload/triggers, isolated Playwright connector, later provider depth, and existing-provider hardening only after the core paths are proven.
+1. Start PIN-GATE-001 and GBP-GATE-001 independently; access work can run while the shared code foundations are built. Pinterest Trial approval enables implementation, while Standard approval is a later public-production gate.
+2. Complete PRIV-001 and keep the shipped P0 foundations green, then build the minimum shared P1 set for the slice: PROV-FIRSTPARTY plus TARGET/DELIVERY/CAP/PICKER/POLICY/RETENTION/LEASE/META. SELECT is required before large GBP discovery; SCHEDULE is required before GBP native scheduling, not before immediate publishing.
+3. Ship Pinterest: OAuth/boards/sections and image Pins, then the durable video pipeline, then certification and later depth.
+4. Ship GBP: approved hosted/owner-project policy, account/location discovery, immediate Standard/Event/Offer image posts, then native one-off/recurring schedules only after policy approval and PROV-SCHEDULE.
+5. Apply PROV-HARDEN/QA and enable public claims only from current live evidence.
+6. Treat Reddit, Connector Protocol, and n8n as deferred independent lanes. They remain valid plans but do not block Pinterest or GBP.
+
+The section order below keeps each existing specification readable; it is not the execution priority. Do not start connector/n8n implementation merely because those sections appear before the first-party provider sections.
 
 ### Phase 0 — access, policy, license, and feasibility gates
 
-### PROV-GATE-001 — Resolve Pinterest, GBP, and Reddit access before public work
+### PIN-GATE-001 — Stage Pinterest Trial development and Standard production approval
 
-- [ ] Pinterest: obtain Standard access plus written confirmation of permitted operational storage for board, section, Pin, upload, and reconciliation identifiers.
-- [ ] GBP: create a dedicated Organization-owned project separate from YouTube; secure API approval/quota and OAuth verification; request only `business.manage`; obtain written answers for hosted native scheduling, delayed automation/reconciliation, token refresh, API/MCP/CLI use, and self-hosted project tenancy.
-- [ ] Reddit: register before the stated deadline; obtain written decisions on commercial/delayed user-attributed publishing, Data API vs Devvit, media, community rules/flair, engagement, retention, and API/MCP/CLI/repost origins.
-- **Done when:** each decision has owner, evidence, date, expiry/review date, and enforceable PROV-POLICY-001 mode. Do not advertise any provider during this phase; recheck all current vendor policies at implementation time.
+- [ ] Obtain Trial access and current storage/use permission before implementation; record the business account/app owner, approved scopes/use case, quota/rate-limit evidence, and certification renewal owner. Build and certify the Trial integration needed for Pinterest’s demo/review without presenting Trial entities as production support.
+- [ ] After the Trial implementation can demonstrate OAuth and the intended Pin flows, apply for and obtain Standard access before public production, public claims, or non-Trial customer use.
+- [ ] Obtain and record current permission for the operational board, section, Pin, upload, reconciliation, and analytics identifiers OpenPost must store; define revocation/deletion handling and the PROV-POLICY-001 mode.
+- **Done when:** the dated Trial and Standard evidence has an owner and review/expiry date, Trial-only entities cannot be advertised as public, and Pinterest production can proceed without waiting for GBP or Reddit.
+- **External references reviewed 2026-08-12:** [access tiers](https://developers.pinterest.com/docs/key-concepts/access-tiers/), [OAuth and token refresh](https://developers.pinterest.com/docs/getting-started/set-up-authentication-and-authorization/), [organic Pin guide](https://developers.pinterest.com/docs/work-with-organic-content-and-users/create-boards-and-pins/), and Pinterest’s [official current OpenAPI](https://github.com/pinterest/api-description/blob/main/v5/openapi.json) for request variants and success responses.
+
+### GBP-GATE-001 — Obtain GBP access and a written execution-policy decision
+
+- [ ] Create a dedicated Organization-owned project separate from YouTube; satisfy the verified active-profile/website prerequisites; secure Business Profile API approval/quota and OAuth verification; request only `business.manage`; record that Google provides no sandbox.
+- [ ] Obtain written clarification for the hosted human-present publish-now and native schedule flows, delayed automation/reconciliation, token refresh, API/MCP/CLI origins, and owner-project/self-hosted tenancy. Map each approved origin to PROV-POLICY-001 rather than inferring permission from API reachability.
+- **Done when:** approval, scopes, execution modes, retention obligations, owner, date, and review/expiry are recorded, and the GBP lane can proceed without waiting for Pinterest or Reddit.
+- **External references reviewed 2026-08-12:** [prerequisites](https://developers.google.com/my-business/content/prereqs), [third-party/retention policy](https://developers.google.com/my-business/content/policies), [Local Posts resource](https://developers.google.com/my-business/reference/rest/v4/accounts.locations.localPosts), [2026 scheduling changes](https://developers.google.com/my-business/content/change-log), [Q&A discontinuation](https://developers.google.com/my-business/content/qanda/change-log).
+
+### REDDIT-GATE-001 — Defer Reddit until its transport is approved
+
+- [ ] When Reddit becomes a priority, obtain written decisions on commercial/delayed user-attributed publishing, Data API versus Devvit, media, community rules/flair, engagement, retention, and API/MCP/CLI/repost origins. Never use cookies, passwords, or browser-session authentication.
+- **Done when:** the transport and policy have dated owner/evidence and an enforceable PROV-POLICY-001 mode. This deferred gate does not block Pinterest or GBP.
 
 ### N8N-001 — Approve the n8n package license and distribution boundary
 
@@ -305,12 +389,12 @@ Implementation order:
 - [ ] Use `application/problem+json` with machine-readable `kind`, `provider_code`, `retry_after`, `action`, and `outcome`; never expose internal Go structs as the ABI.
 - **Done when:** valid/adversarial fixtures validate deterministically, version/operation/schema conflicts fail closed, and the threat model covers SSRF, credential crossover, malicious manifests, duplicate writes, and removal.
 
-### Phase 2A — operator-installed connector platform
+### Deferred lane 2A — operator-installed connector platform
 
 ### PROVIDER-001 — Centralize provider identity and optional capabilities
 
 - [ ] Split mandatory `platform.Adapter` responsibilities into small optional capabilities so API/webhook connectors do not fake OAuth/profile/media methods.
-- [ ] Create one immutable `ProviderRegistry` snapshot containing opaque stable provider ID, built-in family/installation identity, sanitized display metadata, availability/health, connection modes, optional operations, publishing capabilities/revision, and internal capability implementations.
+- [ ] Create one immutable runtime `ProviderRegistry` snapshot containing opaque stable provider ID, built-in family/installation identity, sanitized display metadata, availability/health, connection modes, optional operations, publishing capabilities/revision, and internal capability implementations. Consume built-in identity/certification inputs from PROV-FIRSTPARTY/PROV-META; do not create a competing public fact catalogue.
 - [ ] Route discovery, connection, publishing, token management, readiness, capability resolution, analytics, communications, and reposts through the registry; preserve built-ins with compatibility wrappers.
 - **Done when:** copied startup maps and hard-coded catalogue disagreement are gone, built-in identities/behavior are unchanged, optional invalid connectors are quarantined, and only explicitly required connectors affect readiness.
 - **Evidence:** `backend/internal/platform/registry.go:92`, `backend/cmd/openpost/main.go:324`, `backend/internal/api/handlers/oauth.go:242`.
@@ -372,7 +456,7 @@ Implementation order:
 - [ ] Add analytics, comments, inbox, deletion, reposting, hot reload, executable transport, gRPC, WASI, or a read-only JS/TS runner only as separately advertised/versioned extensions after Protocol v1 stabilizes.
 - **Done when:** demand, security model, compatibility, lifecycle, and conformance coverage exist for each extension. Do not broaden this into a hosted endpoint marketplace.
 
-### Phase 2B — generated nodes installed and used inside n8n
+### Deferred lane 2B — generated nodes installed and used inside n8n
 
 Maintenance contract for this lane: a new social provider requires no n8n package change; a normal optional API field requires regeneration/review; a newly exposed operation requires one automation annotation plus a small presentation entry; a breaking selected contract fails CI and requires a compatibility/typeVersion decision; MCP presentation changes have no n8n impact.
 
@@ -455,15 +539,15 @@ Maintenance contract for this lane: a new social provider requires no n8n packag
 
 ### PIN-001 — Connect Pinterest and discover boards/sections at scale
 
-- [ ] Use the shared grant with minimum approved scopes, both token expiries, atomic rotation, full board cursor pagination (including very large accounts), lazy section loading, search, and one board/optional section per targeted rendition.
+- [ ] Use the shared grant with minimum approved scopes, the current 30-day access-token and 60-day continuously refreshable refresh-token expiries, atomic rotation, full board cursor pagination (including very large accounts), lazy section loading, search, and one board/optional section per targeted rendition.
 - [ ] Cache only provider-permitted operational data with provenance/expiry and revoke/disconnect cleanup.
-- **Done when:** Trial and Standard selection is certified, large-board accounts do not eager-load, and a board/section cannot be confused with another target.
+- **Done when:** Trial and Standard OAuth/refresh/revocation and selection are certified, creator-only Trial entities cannot be presented as production proof, large-board accounts do not eager-load, and a board/section cannot be confused with another target.
 
-### PIN-002 — Ship the conservative complete Pin publishing scope
+### PIN-002 — Ship image and multi-image Pins before video depth
 
-- [ ] Support single image, 2–5 images, video, board/optional section, title, description, destination link, alt text, available AI-content disclosure, neutral vertical preview, and explicit per-Pin authorization.
-- [ ] Accept documented successful `200` and `201`; take title/description/alt/link/media rules from the approved organic contract and live tests, never advertising-only limits or an assumed 2 GiB video limit.
-- **Done when:** server/client/API/MCP/CLI validation agrees and Trial/Standard live evidence covers every advertised format without imitating Pinterest UI.
+- [ ] Support one image or the current 2–5-image `multiple_image_base64`/`multiple_image_urls` schema, board/optional section, title, description, destination link, alt text, the current AI-content disclosure field, a neutral vertical preview, and explicit per-Pin authorization. Confirm how per-item alt text and media ownership behave before advertising multi-image depth.
+- [ ] Accept the current documented `200` or `201` success response only with a valid Pin ID; take title/description/alt/link/media rules from the approved organic contract, Pinterest’s current OpenAPI, and live tests. Do not import carousel labels or limits from advertising/catalog endpoints.
+- **Done when:** server/client/API/MCP/CLI validation agrees and Trial plus Standard live evidence covers every advertised single- or multi-image format without imitating Pinterest UI.
 
 ### PIN-003 — Build a durable Pinterest video pipeline
 
@@ -480,33 +564,40 @@ Maintenance contract for this lane: a new social provider requires no n8n packag
 
 ### GBP-001 — Separate hosted-interactive and owner-project execution modes
 
-- [ ] Hosted default is `interactive_only`: connect/discover and browser-initiated publish-now. Create a Google-native scheduled post while the user is present only after written approval; no delayed OpenPost worker, MCP/CLI, repost, blind refresh/retry, or automatic reconciliation without approval.
+- [ ] Keep hosted execution `disabled` until a dated policy decision is recorded. If written clarification permits the intended human-present flow, enable only `interactive_only`: manual sign-in, connect/discover, and browser-initiated publish-now. Permit a Google-native scheduled/recurring post while the user is present only when that exact flow is approved; no delayed OpenPost worker, MCP/CLI, repost, blind refresh/retry, or automatic reconciliation by inference.
 - [ ] An independently approved operator-owned project may use `owner_project_full`; do not launch hosted BYO project tenancy without policy clarification.
 - **Done when:** PROV-POLICY-001 enforces the approved mode server-side and UX/docs accurately state what each deployment can do.
 
 ### GBP-002 — Discover and select eligible locations asynchronously
 
-- [ ] Page Google accounts/locations, deduplicate a bare location reached through several parents, check local-post eligibility, closure/duplicate state, access, and voice-of-merchant; show only safe title/address/store code/parent label plus disabled reason.
-- **Done when:** progress/cancel/resume/search/paging/net-new entitlement counting work at desktop/phone/320 px and concurrent completion cannot duplicate a location.
+- [ ] Use Account Management v1 and Business Information v1 to page accounts and locations; retain canonical full resource names and parent context, deduplicate a bare location reached through several parents, and check local-post eligibility, closure/duplicate state, access, and voice-of-merchant. Show only safe title/address/store code/parent label plus disabled reason.
+- [ ] Apply PROV-RETENTION-001 before storing Google-returned content: no more than 30 calendar days, secure storage, no prohibited manipulation or aggregation, and prompt disconnect/revocation cleanup.
+- **Done when:** progress/cancel/resume/search/paging/net-new entitlement counting work at desktop/phone/320 px, concurrent completion cannot duplicate a location, and expiry tests remove restricted data without losing OpenPost-owned publication history.
 
 ### GBP-003 — Implement a conservative post/validation surface
 
-- [ ] Support Standard, Event, and Offer; one image first; language; Book/Order/Shop/Learn More/Sign Up/Call CTAs; local/all-day intervals; offer coupon/redemption URL/terms.
-- [ ] Enforce complete Event/Offer intervals, Call without URL, Offer-specific semantics, prohibited body phone numbers, and fail-closed lodging restrictions when classification is known. Treat 1,500 characters as guidance until live certification; do not invent a 4,096-byte rule.
+- [ ] Support Standard, Event, and Offer; one leased HTTPS `sourceUrl` image first; language; Book/Order/Shop/Learn More/Sign Up/Call CTAs; local/all-day intervals; offer coupon/redemption URL/terms.
+- [ ] Enforce complete Event/Offer intervals, Call without URL, Offer-specific semantics, prohibited body phone numbers, and any current location/category restrictions confirmed by the approved contract and live tests. Treat 1,500 characters as guidance until live certification; do not invent a 4,096-byte rule or encode an unverified lodging exception.
 - **Done when:** the provider validator registry and every client surface agree on all cross-field rules.
+
+### PROV-SCHEDULE-001 — Make native-provider scheduling a real execution path
+
+- [ ] **Problem — Current source/missing, later GBP depth:** native scheduling exists only as catalogue metadata. There is no creation/edit/reschedule/cancel/reconciliation lifecycle. GBP now exposes `scheduledTime` and recurring posts, but this work is not required for the immediate-only Pinterest/GBP slices and becomes a gate only before advertising native scheduling.
+- **Fix:** define immediate creation of a provider-native scheduled resource, durable external identity, ambiguity rules, policy enforcement, edit/reschedule/cancel, and status reconciliation.
+- **Done when:** “native scheduled” describes provider state rather than a label; user and audit history distinguish it from a future OpenPost worker job; GBP-004 cannot ship or be advertised before this passes.
 
 ### GBP-004 — Preserve Google delivery, ambiguity, and native schedule state
 
-- [ ] Distinguish queued, submitted, provider-scheduled, processing/review, live, rejected, and outcome unknown. A complete `429` is definite quota; timeout/EOF/crash/malformed success/missing resource name is ambiguous.
-- [ ] Never auto-bind a guessed list match, recreate, or show generic Retry for ambiguity; offer bounded possible matches for manual resolution. Add schedule/edit/reschedule/cancel only after approval.
-- **Done when:** harmless owned-location live tests prove image delayed fetch, status transitions, schedule lifecycle, cleanup, and manual ambiguity resolution.
+- [ ] Distinguish queued/submitted OpenPost state from Google `PROCESSING`, `SCHEDULED`, `RECURRING`, `LIVE`, `REJECTED`, and outcome unknown. A complete `429` is definite quota; timeout/EOF/crash/malformed success/missing resource name is ambiguous.
+- [ ] Never auto-bind a guessed list match, recreate, or show generic Retry for ambiguity; offer bounded possible matches for manual resolution. After policy approval and PROV-SCHEDULE-001, support top-level `scheduledTime`; compatible Event/Offer shapes may use recurrence nested under `event`. Include edit/reschedule, cancel/delete, and reconciliation as provider-native resources.
+- **Done when:** harmless owned-location live tests prove delayed image fetch, exact state transitions, one-off and recurring schedule lifecycles, cleanup, and manual ambiguity resolution.
 
-### GBP-005 — Add retention-aware GBP depth separately
+### GBP-005 — Add approved GBP depth separately
 
-- [ ] Purge Google-returned data within the applicable policy window and keep previews neutral. Later, separately approve/certify one-attempt review reply/delete, local-post insights, nonaggregating retention-aware Performance analytics, and a real `mediaFormat=VIDEO` experiment.
-- **Done when:** each later capability has approval, retention/lifecycle implementation, and live evidence. Do not add a GBP Q&A roadmap; that API surface is discontinued.
+- [ ] After the core retention contract is already enforced, separately approve/certify one-attempt review-reply update/delete, local-post insights, nonaggregating retention-aware Performance analytics, and a real `mediaFormat=VIDEO` experiment. This manages the business owner’s reply; it never deletes a customer review.
+- **Done when:** each later capability has specific consent/policy approval, retention/lifecycle implementation, and live evidence. Do not add a GBP Q&A roadmap; Google discontinued that API on 2025-11-03.
 
-### Phase 5 — Reddit, conditional on transport approval
+### Deferred lane 5 — Reddit, conditional on transport approval
 
 ### REDDIT-001 — Approve and isolate the Reddit transport
 
@@ -530,18 +621,18 @@ Maintenance contract for this lane: a new social provider requires no n8n packag
 
 ### PROV-HARDEN-001 — Apply the shared kernel to all current providers
 
-- [ ] X: tier/format certification and ambiguity; Mastodon: representative versions/dynamic per-instance limits; Bluesky: media/replies/app-password failure; LinkedIn: shared grants, no multi-account special case, organization/media certification.
+- [ ] X: tier/format certification and ambiguity; Mastodon: representative versions/dynamic per-instance limits; Bluesky: media/replies/app-password failure; LinkedIn: certify shared-grant multi-destination refresh/revocation plus organization/media behavior without restoring provider-specific account special cases.
 - [ ] Threads: stable media/processing/reply deletion/inbox; Facebook: review/video/multi-photo semantics; Instagram: container/rejection/public-media/Pages discovery; TikTok: Direct vs Inbox/approval/disclosure/reconciliation.
-- [ ] YouTube: durable thumbnail/playlist/caption child operations, processing/copyright/rejection, shared channel grants; Discord: readiness inclusion, webhook-secret rotation, probing, explicit send-only limits.
+- [ ] YouTube: durable thumbnail/playlist/caption child operations, processing/copyright/rejection, and shared-channel grant certification; Discord: webhook-secret rotation, probing, explicit send-only limits, and webhook/server/channel-specific live certification through the existing readiness path.
 - **Done when:** every public provider/format claim maps to current PROV-READY-001 evidence and the same delivery/policy/retention model.
 
 ### PROV-QA-001 — Make provider certification a release gate
 
 - [ ] Automated: exact endpoints/scopes/payloads/parsing, all validation, safe errors, pagination/quota, SQLite/Postgres migration, refresh/selection concurrency, every crash boundary, no replay of ambiguity, retention/revoke cascades.
 - [ ] Browser: OAuth progress/resume/expiry, paged pickers/dependencies, all lifecycle states, target errors, desktop/phone/320 px, keyboard/touch/overflow/console.
-- [ ] Opt-in live: Pinterest Trial/Standard, verified owned GBP, approved Reddit test community, and maintained claimed-format matrix for existing providers.
+- [ ] Opt-in live: provider-scoped Pinterest Trial/Standard, verified owned GBP, and—only when its deferred lane starts—an approved Reddit test community, plus a maintained claimed-format matrix for existing providers.
 - [ ] Release: approval/policy/live proof/revocation/retention/ambiguity, per-provider kill switches, quota/error monitoring, and agreement across app/contracts/API/MCP/CLI/docs/marketing/privacy/config/i18n/`CHANGELOG.md`.
-- **Done when:** advertising a provider or format is mechanically blocked until required evidence is current.
+- **Done when:** advertising a provider or format is mechanically blocked until that provider’s required evidence is current. The shared machinery and Pinterest evidence can close the Pinterest release gate without GBP or deferred Reddit proof; later providers add their own required certification rows.
 
 ## P2 — application UX and product completeness
 
@@ -577,10 +668,10 @@ Maintenance contract for this lane: a new social provider requires no n8n packag
 
 ### ACCT-001 — Add a verified email-change flow
 
-- [ ] **Problem — Current source audit:** account details expose the existing email but do not offer a safe change flow.
-- **Fix:** require recent re-authentication; verify the new address before replacing the old one; notify the old address; handle conflicts and expiration without account enumeration; revoke or review sessions on completion.
-- **Done when:** the old email remains active until verification, both addresses receive appropriate notices, duplicate/expired token paths are safe, and legal/billing contacts are not silently changed.
-- **Evidence:** profile/account section in `frontend/src/routes/settings/+page.svelte` and auth identity handlers.
+- [x] **Problem — Resolved:** Settings now provides a verified email-change flow with action-bound recent re-authentication; the old email remains active until the new-address code is verified.
+- **Fix delivered:** the dedicated service/handler handles conflicts, expiry, both-address notices, completion, and session revocation without changing separate legal/billing contacts implicitly.
+- **Done when:** focused service/handler/browser tests continue to cover old-address retention, both notices, conflict/expiry, replay, and revoked sessions.
+- **Evidence:** `frontend/src/lib/components/settings/SecuritySettingsTab.svelte:170`, `backend/internal/api/handlers/email_change.go:102`, `backend/internal/services/emailchange`, `e2e-app/account-security-settings.spec.ts:9`.
 
 ### ACCT-002 — Clarify editable profile identity and visibility
 
@@ -591,10 +682,10 @@ Maintenance contract for this lane: a new social provider requires no n8n packag
 
 ### ACCT-003 — Treat connected sign-in identities as an account-security surface
 
-- [ ] **Problem — Partial/conditional:** OIDC/social sign-in exists, but users need a clear view of linked login identities and safe disconnect rules if multiple identities are supported. Provider publishing accounts must not be confused with sign-in identities.
-- **Fix:** show identity provider, linked address/name, added date, and disconnect action; block removal of the final usable credential; require re-authentication; document provider-initiated logout support or deprecation separately.
-- **Done when:** users can distinguish login identities from social publishing connections, cannot lock themselves out, and disconnect/relink/logout tests cover each configured provider.
-- **Evidence:** auth/OIDC handlers and account-security settings.
+- [x] **Problem — Resolved:** Account security now lists linked login identities separately from publishing accounts and supports link/unlink with action-bound recent re-authentication.
+- **Fix delivered:** the service blocks removal of the final usable credential and covers relink/unlink concurrency and provider identity details; provider-initiated logout remains a separate compatibility decision.
+- **Done when:** linked-identity UI and service tests continue to prove users cannot lock themselves out or confuse sign-in with publishing connections.
+- **Evidence:** `frontend/src/lib/components/settings/SecuritySettingsTab.svelte:300`, `backend/internal/api/handlers/oidc.go:480`, `e2e-app/account-security-settings.spec.ts:111`.
 
 ### PUBLIC-001 — Make public-profile errors public-safe and diagnosable
 
@@ -635,33 +726,33 @@ Maintenance contract for this lane: a new social provider requires no n8n packag
 
 ### NOTIF-006 — Add frequency controls and a global mute model
 
-- [ ] **Problem — Current source audit:** notification settings have useful topic/channel controls, but no immediate/digest cadence where appropriate and no temporary global mute. Save feedback must remain explicit when preferences autosave.
-- **Fix:** add only meaningful per-topic channel/frequency combinations; support account- or workspace-scoped mute with an end time and visible banner; preserve mandatory security/critical billing messages where policy requires; announce autosave success/failure.
+- [ ] **Problem — Current source:** notification settings have useful in-app/email topic controls and an explicit Save action, but no immediate/digest cadence or temporary global mute.
+- **Fix:** add digest only after timezone, durable-job, batching, deduplication, and failure rules are defined; support account- or workspace-scoped mute with an end time and visible banner; preserve mandatory security/critical billing messages where policy requires; announce explicit save success/failure.
 - **Done when:** invalid channel/frequency combinations cannot be selected, mute expiry restores prior choices, mandatory alerts are explained, and persistence/race/failure tests pass.
-- **Evidence:** notification-preference section in `frontend/src/routes/settings/+page.svelte` and notification preference service.
+- **Evidence:** `frontend/src/lib/components/notification-preferences.svelte:15` and notification preference service.
+
+### COMM-001 — Make Engagement and Messages history reachable
+
+- [ ] **Problem — Current source:** Engagement silently caps records at 100 and its publication picker at 200; Messages caps conversations at 100 and messages at 200. The UI has no load-older/paging path, and initial Engagement/Messages errors do not provide retry. Some backend lists expose offset/total while messages lacks a complete paging total contract.
+- **Fix:** add stable cursor paging/load-older with append/deduplication and retry for engagement, conversations, and messages; make the publication filter paged and searchable; preserve workspace, account, selection, and scroll position through refreshes.
+- **Done when:** fixtures beyond every current cap can reach all permitted records without duplicates or gaps; initial/page failures retry in place; new arrivals and older-page loads do not reorder or replace the active conversation incorrectly.
+- **Evidence:** `frontend/src/routes/engagement/+page.svelte:150`, `frontend/src/routes/engagement/+page.svelte:576`, `frontend/src/routes/messages/+page.svelte:82`, `frontend/src/routes/messages/+page.svelte:318`, `backend/internal/api/handlers/communications.go:28`.
 
 ### Billing and checkout
 
-### BILL-002 — Preserve the original task through hosted checkout
-
-- [ ] **Problem — Current source:** onboarding carries `redirect` into `/checkout`, but the checkout request and provider success URL do not preserve it, so the success screen cannot continue to the original task.
-- **Fix:** bind a validated same-origin return path to the checkout attempt on the server (or sign it), and restore it only for the matching completion. Never pass through an unchecked raw redirect.
-- **Done when:** onboarding → Paddle → success resumes the original path/query; refresh and replay are safe; external redirect attempts are rejected.
-- **Evidence:** `frontend/src/routes/onboarding/+page.svelte:36`, `frontend/src/routes/checkout/+page.svelte:181`, `backend/internal/api/handlers/billing.go:326`, `backend/internal/services/billing/service.go:386`.
-
 ### BILL-003 — Make the Paddle/native billing boundary explicit and useful
 
-- [ ] **Problem — Current source audit:** native settings show plan, status, period end, limits, usage, and a generic portal button. Payment method, next charge amount/date, invoices/PDFs, charge/tax/VAT history, promo state, billing contact, and cancellation mechanics are provider-hosted or unverified.
-- **Fix:** choose a boundary. Either surface essential read-only facts and deep links natively, or state clearly that Paddle manages payment methods, invoices, discounts, and cancellation. Include last four only, never full card data; expose business invoice identity/VAT where supported.
-- **Done when:** users can identify the next charge and payment route, retrieve invoices/receipts, manage the correct billing email, understand cancellation, and reach the right portal page; live Paddle capability is verified separately.
-- **Evidence:** `frontend/src/routes/settings/+page.svelte:2440`, `frontend/src/lib/api/types.d.ts:3856`.
+- [ ] **Problem — Partial:** OpenPost has already chosen a provider-hosted boundary: Settings shows plan, status, period end, limits, usage, and a generic portal action, while Paddle owns payment methods, invoices/receipts, discounts, tax, and cancellation. The UI does not explain that boundary or deep-link users to the most useful available destination; local-price/tax and billing-contact facts remain unclear.
+- **Fix:** state in Settings what Paddle manages; show the known renewal/end date and localized charge information only when the API proves it, with a tax/localization qualifier; show the billing contact if available; use provider-supported deep links. Do not create local card or invoice storage.
+- **Done when:** users know where to update payment, retrieve invoices/receipts, manage cancellation and billing email, and what OpenPost can display; every shown amount/date is provider-backed and live Paddle capability is verified separately.
+- **Evidence:** `frontend/src/lib/components/settings/BillingSettingsTab.svelte:338`, `docs-site/development/production-readiness.md:27`.
 
 ### BILL-004 — Hide or explain the portal action when no subscription exists
 
 - [x] **Problem — Current source audit:** the customer-portal button is shown even when the user has no subscription/customer context, which can produce a dead or confusing action.
 - **Fix:** gate the action on a valid portal-capable customer/subscription, or label the destination accurately for customers who only have transaction history; provide plan selection as the primary no-subscription action.
 - **Done when:** none/trial/active/past-due/canceled states each expose a valid next action and portal failures show recovery guidance.
-- **Evidence:** `frontend/src/routes/settings/+page.svelte:2448`.
+- **Evidence:** `frontend/src/lib/components/settings/BillingSettingsTab.svelte:296`, `frontend/src/lib/components/settings/BillingSettingsTab.svelte:345`.
 
 ### BILL-005 — Reconcile checkout consent copy with the actual control
 
@@ -674,66 +765,38 @@ Maintenance contract for this lane: a new social provider requires no n8n packag
 
 ### ONB-001 — Replace the automatic generic-workspace checkout jump with a durable onboarding state
 
-- [ ] **Problem — Current source audit:** onboarding auto-creates “My workspace” and immediately redirects managed users to checkout. The only visible step marker appears later and disappears after account connection; there is no durable completion state or first-value handoff. A missing plan is normalized to Founder, so an unselected plan can look like the user’s choice.
-- **Fix:** model 3–5 persisted steps: welcome/goal, minimal identity/workspace, explicit plan if required, connect first destination, create/schedule first publication. Allow safe skip/defer where payment policy permits and preserve progress across refresh/sign-in/provider return.
-- **Done when:** users know step count and purpose, can rename the workspace before it becomes shared context, resume interrupted setup, and receive an explicit completion state leading to the fastest first post.
-- **Evidence:** `frontend/src/routes/onboarding/+page.svelte:71`, `frontend/src/routes/accounts/+page.svelte:747`, `e2e-app/auth-onboarding.spec.ts:126`.
+- [ ] **Problem — Current source:** onboarding auto-creates “My workspace” and immediately redirects managed users to checkout; its visible UI is only loading/error. A missing plan is normalized to Founder, so an unselected plan can appear to be the user’s choice. There is no resumable first-value handoff.
+- **Fix:** keep the flow short: ask for the workspace name, visibly confirm/change the selected plan when payment is required, then guide connection of the first destination and creation/scheduling of the first publication. Derive resumable progress from durable workspace/subscription/account/publication state instead of adding a speculative survey or a second source of truth.
+- **Done when:** users can name the workspace before it becomes shared context, see and change the intended plan, resume after refresh/sign-in/provider return, skip only where policy allows, and reach an explicit first-post completion state.
+- **Evidence:** `frontend/src/routes/onboarding/+page.svelte:72`, `frontend/src/lib/billing.ts:88`, `e2e-app/auth-onboarding.spec.ts:126`.
 
 ### ADMIN-001 — Complete the organization administration surface
 
-- [ ] **Problem — Current source audit:** role-gated admin tabs and a strong searchable instance-user inventory already exist. The broader organization lifecycle is incomplete: usage export, a general consequential-action audit log, ownership transfer, and operator-approved organization/instance deletion are absent or fragmented; organization identity/logo/domains/SSO and seat/billing facts need one clear overview.
-- **Fix:** complete the existing role-gated administration sections rather than replacing them; keep routine member work separate from organization-wide actions; add an append-only audit log for impersonation, role/member, provider/config, billing, and destructive mutations; use typed confirmation and recent re-authentication for irreversible actions.
-- **Done when:** non-admins cannot fetch or render admin data/actions; usage can be exported; ownership transfer and deletion enforce invariants; every role/billing/deletion action has actor/time/result evidence.
-- **Evidence:** settings/admin routes and organization handlers; no complete admin route exists in the audited baseline.
+- [ ] **Problem — Partial:** role-gated Settings/admin overview, user inventory, instance configuration, team access audit, and SSO controls exist. User-directed organization ownership transfer, explicit organization deletion invariants, and one exportable audit trail for consequential organization/instance actions remain absent or fragmented.
+- **Fix:** add only those approved lifecycle operations to the existing role-gated surfaces; keep routine workspace-member work separate; record actor/time/result for ownership, role/member, provider/config, billing, impersonation, and destructive changes; require recent re-authentication and typed confirmation where irreversible.
+- **Done when:** non-admins cannot fetch or render admin data/actions; ownership transfer and organization deletion enforce last-owner, billing, workspace, and scheduled-work invariants; consequential events can be inspected/exported. Do not add speculative custom-domain, logo, or instance-deletion scope without a product decision.
+- **Evidence:** `frontend/src/routes/settings/+page.svelte`, instance-admin handlers, team access-audit handlers, `backend/internal/api/handlers/account_lifecycle.go:817`.
 
-### ADMIN-002 — Make danger zones consistent and informative
+### ADMIN-002 — Harden permanent workspace deletion
 
-- [ ] **Problem — Partial:** account deletion exists, but destructive actions across account, workspace, member, token, connection, publication, and version restore do not share consistent consequence copy, re-authentication, typed confirmation, or separation.
-- **Fix:** use `DestructiveConfirmDialog` with action-specific impact, retention/recovery, ownership/dependency blockers, and typed confirmation only where proportional; keep reversible archive/deactivate distinct from permanent removal.
-- **Done when:** each destructive action states what is lost, what remains, and whether undo exists; accidental primary-action styling is impossible; authorization and confirmation tests cover each scope.
-- **Evidence:** settings danger-zone and destructive actions across detail pages.
+- [ ] **Problem — Partial/nearly complete:** `DestructiveConfirmDialog` is now used across the application and account deletion has typed confirmation plus recent re-authentication. Permanent workspace deletion still uses a generic confirmation without workspace-name typing or recent re-authentication despite removing the workspace and its content; any equivalent high-impact exception needs the same review.
+- **Fix:** harden workspace deletion first with action-specific dependency/retention/recovery copy, name confirmation, recent re-authentication, and server-side invariants. Audit only irreversible owner/data-loss actions for equivalent exceptions; keep reversible archive/deactivate distinct.
+- **Done when:** workspace deletion and every remaining high-impact exception state what is lost/retained and whether undo exists, enforce proportional confirmation and authorization, and restore UI state on failure.
+- **Evidence:** `frontend/src/routes/settings/+page.svelte:135`, `backend/internal/api/handlers/workspaces.go:943`, `e2e-app/settings-workspace.spec.ts:142`.
 
 ### TEAM-002 — Deliver invitations to people who do not yet have an account
 
 - [ ] **Problem — Current source audit:** existing registered recipients can receive in-app and opt-in email notice, but a new recipient can depend on the inviter manually copying the raw invitation link.
-- **Fix:** send a branded, expiring invitation email for unregistered addresses through the configured email provider; keep copy-link as a fallback; add resend with rate limits, revoke, delivery status, and generic failure copy that does not enumerate accounts.
+- **Fix:** send a durable branded, expiring invitation email for unregistered addresses through the configured email provider; keep copy-link as a fallback; add deduplicated/rate-limited resend, revoke, delivery result, and generic failure copy that does not enumerate accounts. Never emit the invitation token in logs or telemetry.
 - **Done when:** new and existing recipients can complete acceptance, revoked/expired links fail safely, resends do not create duplicate active seats/invites, and admin UI shows actionable delivery state.
 - **Evidence:** workspace invitation handlers/services and team settings UI.
 
-### STATE-001 — Add app/public error boundaries and a real maintenance experience
+### STATE-001 — Add a real maintenance, outage, and offline experience
 
-- [ ] **Problem — Current source audit:** the frontend has no route `+error.svelte`/global error page or maintenance surface. Marketing has only a basic static 404, and dynamic public routes fall through generic errors. Scheduled maintenance and unexpected outage have no distinct message, ETA, external status link, or urgent support path.
-- **Fix:** implement branded app and public error boundaries; create maintenance variants for scheduled and unplanned outages; host/link a status page outside the main failure domain; include retry, home/back, docs, and support actions appropriate to state.
-- **Done when:** 404, 403, 500, offline/load failure, scheduled maintenance, and unplanned outage are visually and semantically distinct; correct HTTP status is preserved where possible; 320 px/light/dark/keyboard tests pass.
-- **Evidence:** absence of `frontend/src/routes/+error.svelte`; `marketing-site/static/404.html:1`; dynamic public routes under `marketing-site/src/routes/*/[slug]`.
-
-### STATE-002 — Standardize zero, no-results, load-error, and retry states
-
-- [ ] **Problem — Cross-app checklist gap:** shared empty-state primitives exist and many pages use them well, but several bounded/search/list surfaces still turn load errors into empty-looking states or offer no reset/retry escape route.
-- **Fix:** inventory every data surface; give first-use zero states a contextual action that creates the first item; give no-results states active filter/query summary plus clear/reset; give errors a distinct notice and retry; use contextual icons rather than one generic illustration.
-- **Done when:** automated fixtures cover zero, filtered zero, server error, offline, and success for notifications, users, publications, activity, media, editor catalog, accounts, and integrations.
-- **Evidence:** shared `frontend/src/lib/components/empty-state.svelte`/state primitives and route-specific list errors, including `frontend/src/routes/notifications/+page.svelte:175`.
-
-### FORM-001 — Apply multi-step form conventions where a workflow is genuinely multi-step
-
-- [ ] **Problem — Conditional:** onboarding and checkout span multiple states, but OpenPost does not need a generic wizard for every form. Long future workflows will need progress, step validation, back navigation, save/resume, and review.
-- **Fix:** extract a reusable persisted flow-state pattern only after onboarding proves it; group related fields, validate before advancing, keep back navigation lossless, and provide review/edit links when final submission is consequential.
-- **Done when:** onboarding/checkout meet these rules without duplicate wizard frameworks; ordinary short forms remain single-page.
-- **Evidence:** onboarding and checkout routes.
-
-### SEARCH-001 — Decide whether OpenPost needs global search
-
-- [ ] **Problem — Conditional:** scoped search exists in places, but there is no unified search-results surface with cross-type results, count, filters, snippets, recent searches, and recoverable zero results. This is not automatically required for the current product.
-- **Fix:** first validate a real discovery problem across publications, media, people, and accounts. If warranted, define permission-safe indexing and a typed result contract; otherwise document scoped search as the product decision and focus on missing list filters.
-- **Done when:** either a tested global search meets the checklist without leaking cross-workspace/private data, or the decision is recorded and every high-volume list has adequate scoped search/filter/pagination.
-- **Evidence:** route inventory; no global search-results route in the audited baseline.
-
-### INTEG-001 — Keep approved connectors and n8n nodes separate from a marketplace
-
-- [ ] **Decision:** operator-installed custom publishing connectors (#32) and installable `n8n-nodes-openpost` nodes are approved directions. A generic in-app integration marketplace, category browser, request-an-integration system, and arbitrary non-social endpoints are still not approved.
-- **Fix:** expose installed publishing connectors through the authenticated ProviderRegistry/admin connection UI; publish n8n nodes for use inside n8n; retain ordinary social-provider connection UX. Revisit a generic catalogue only after several real in-app non-social integrations share a lifecycle.
-- **Done when:** users/operators can distinguish built-in providers, installed connector services, and external n8n automation; none is marketed as an open marketplace; disconnect data access/impact and health are explicit.
-- **Evidence:** PROVIDER-001/CONNECT-001–009/N8N-001–015 and `frontend/src/routes/accounts/+page.svelte`.
+- [ ] **Problem — Partial:** branded application and marketing `+error.svelte` boundaries and improved not-found recovery now exist. There is still no dependency-aware scheduled-maintenance/unplanned-outage/offline state with an external status/support path outside the primary failure domain; 403 versus 500 recovery can still be more specific.
+- **Fix:** preserve the existing boundaries; add server/runtime maintenance signals and scheduled/unplanned/offline variants with appropriate retry, home/back, docs, support, ETA/update time, and external status link.
+- **Done when:** 404, 403, 500, offline/load failure, scheduled maintenance, and unplanned outage are meaningfully distinct; the status path remains reachable during a primary outage; correct HTTP status is preserved where possible; 320 px/light/dark/keyboard tests pass.
+- **Evidence:** `frontend/src/routes/+error.svelte`, `marketing-site/src/routes/+error.svelte`, `marketing-site/static/404.html`.
 
 ### API credentials and version history
 
@@ -742,7 +805,7 @@ Maintenance contract for this lane: a new social provider requires no n8n packag
 - [x] **Problem — Current source audit:** the full token is correctly revealed once, but the success panel has no prominent copy action. The UI neither lets a user choose expiry nor shows expiry/revoked state in the list, and there is no direct API/MCP/CLI documentation link.
 - **Fix:** require a useful name; offer safe preset/custom expiry; show the full secret once with copy and accessible confirmation; display created/last-used/expires/status/scope/workspace; link directly to getting-started docs; preserve confirmation before instant irreversible revocation.
 - **Done when:** copy is one action and announced, expiration is deliberate and visible, an expired/revoked token cannot look active, secret values never reappear in list/logs, and create/copy/revoke/browser tests pass.
-- **Evidence:** `backend/internal/api/handlers/api_tokens.go:29`, `backend/internal/api/handlers/api_tokens.go:47`, `frontend/src/routes/settings/+page.svelte:928`, `frontend/src/routes/settings/+page.svelte:3191`.
+- **Evidence:** `backend/internal/api/handlers/api_tokens.go:29`, `backend/internal/api/handlers/api_tokens.go:47`, `frontend/src/lib/components/settings/DeveloperSettingsTab.svelte:174`, `frontend/src/lib/components/settings/DeveloperSettingsTab.svelte:210`.
 
 ### APIKEY-002 — Resolve token-expiry contract drift
 
@@ -753,17 +816,17 @@ Maintenance contract for this lane: a new social provider requires no n8n packag
 
 ### APIKEY-003 — Add scopes from real use cases and align CLI workspace binding
 
-- [x] **Problem — Partial/security hardening:** scopes are coarse (`cli:full`, `mcp:read`, `mcp:full`). CLI device approval submits no workspace even though backend tokens can be bound, while some runtime policy expects bound tokens.
-- **Fix:** design resource/action scopes from actual integrations; default to least privilege; let the approval flow choose/confirm workspace scope; enforce one matrix in HTTP, MCP, and CLI; preserve existing token semantics through a documented migration.
-- **Done when:** read-only and publishing-only automation do not require full access, every operation enforces identical scopes, and bound/unbound CLI behavior is explicit and tested.
-- **Evidence:** `frontend/src/routes/settings/+page.svelte:3134`, `frontend/src/routes/cli/authorize/+page.svelte:141`, token authorization services.
+- [x] **Problem — Resolved for current use cases:** generic `api:read`/`api:write` and MCP read/full choices now complement `cli:full`; workspace binding and required-SSO policy are enforced consistently, while CLI device authorization deliberately requests only its supported full CLI scope.
+- **Fix delivered:** UI/API/runtime share the scope vocabulary and workspace policy; migration 084 retires required-SSO organization-wide `allow` mode to `scoped` without pretending it can infer a workspace for existing unbound credentials.
+- **Done when:** read-only and publishing automation retain least-privilege choices, operation matrices stay aligned, and future scopes are added only from real consumers with compatibility tests.
+- **Evidence:** token authorization services and migration `backend/internal/database/migrations/084_retire_organization_wide_sso_tokens.sql`. Migration 084 retires required-SSO organization-wide `allow` mode to `scoped`; the external queue separately owns review of pre-existing unbound tokens that a migration cannot safely assign to a workspace.
 
 ### VERSION-001 — Make version restore inspectable and unsurprising
 
 - [x] **Problem — Current source audit:** Image and Video editors have real checkpoints/autosaves and restore, but restore runs immediately from the list with no read-only preview, diff/change summary, actor attribution, or confirmation.
 - **Fix:** add version preview, document-model-appropriate change summary, named versions, actor/time for cloud revisions, and confirmation that explains how the current head is preserved. Keep the autosave indicator visible but quiet.
 - **Done when:** a user can inspect before restore, current state remains recoverable after restore, conflicts are handled, and confirmation/browser tests cover both editors.
-- **Evidence:** `frontend/src/lib/image-editor/components/image-editor-shell.svelte:3587`, `frontend/src/routes/video-editor/[id]/+page.svelte:2933`, `frontend/src/routes/video-editor/[id]/+page.svelte:5592`.
+- **Evidence:** `frontend/src/lib/image-editor/components/image-editor-shell.svelte:3587`, `frontend/src/routes/video-editor/[id]/+page.svelte:2933`, `frontend/src/routes/video-editor/[id]/+page.svelte:5592`, and migration 082’s revision-media reference/backfill boundary. No separate open revision-media heading is needed.
 
 ### Content inventory, activity, media, and editor lifecycle
 
@@ -848,66 +911,73 @@ Maintenance contract for this lane: a new social provider requires no n8n packag
 
 ### ARCH-001 — Split Settings into feature-owned, conditionally mounted components
 
-- [ ] **Problem — Baseline audit:** `settings/+page.svelte` is roughly 3,876 lines and owns unrelated profile, workspace, team, identity, billing, security, tokens, brand, scheduling, and instance concerns; hidden sections remain mounted.
-- **Fix:** extract feature components/controllers with typed inputs; mount heavy tabs only when active; keep shared load/save/error patterns and direct tab URLs.
-- **Done when:** each domain can be tested independently, inactive heavy tabs do no work, permissions/saves/deep links remain correct, and the route becomes coordination rather than implementation.
-- **Evidence:** `frontend/src/routes/settings/+page.svelte:1`.
+- [x] **Problem — Resolved:** `settings/+page.svelte` is now a roughly 295-line coordinator with feature-owned tab components and conditional mounting rather than a multi-thousand-line implementation page.
+- **Fix delivered:** profile, workspace, billing, security, tokens, scheduling, brand, team, and instance concerns moved behind typed feature boundaries while direct-tab and permission behavior stayed at the route shell.
+- **Done when:** feature components remain conditionally mounted, active-gated effects do not leak work from hidden tabs, and permissions, saves, OAuth returns, and deep links remain correct; add a focused no-hidden-request regression if this boundary changes.
+- **Evidence:** `frontend/src/routes/settings/+page.svelte:179`, `frontend/src/lib/components/settings`; delivered in `eacb3613` with follow-up hardening.
 
 ### ARCH-002 — Extract route-independent account settings
 
 - [ ] **Problem — Baseline audit:** Settings imports `accounts/+page.svelte`; that route infers whether it is embedded from global URL state and redirects after mount.
 - **Fix:** extract `AccountsSettings`; keep `/accounts` compatibility redirect/loader logic at the route boundary; pass explicit mode/context into the component.
 - **Done when:** no route imports another route component, there is no redirect flash, OAuth/error state survives, and direct/embedded browser tests pass.
-- **Evidence:** `frontend/src/routes/accounts/+page.svelte:274`.
+- **Evidence:** `frontend/src/routes/settings/+page.svelte:17`, `frontend/src/routes/accounts/+page.svelte:48`, `frontend/src/routes/accounts/+page.svelte:369`.
 
 ### ARCH-003 — Remove global compatibility scans from authoring writes
 
-- [ ] **Problem — Baseline audit:** legacy publication compatibility paths synchronously select every unlinked draft/scheduled post on write, making current authoring latency scale with history.
-- **Fix:** translate only the changed aggregate transactionally; move global backfills to a resumable startup/maintenance migration with progress and idempotency.
-- **Done when:** authoring query count is constant with historical rows; backfill can resume after interruption; old records remain accessible.
-- **Evidence:** `backend/internal/database/migrations/legacy_publications.go:36`.
+- [x] **Problem — Resolved:** current authoring translates only the changed aggregate, while migration 083 and its persisted keyset progress move global compatibility work into a bounded resumable backfill.
+- **Fix delivered:** interruption/restart, populated upgrade, and query-count tests cover the new path without losing access to old records.
+- **Done when:** authoring query-count regression tests remain constant as historical rows grow and the backfill remains idempotent/resumable.
+- **Evidence:** `backend/internal/database/migrations/083_legacy_publication_authoring_backfill.sql:1`, `backend/internal/database/migrations/legacy_publications.go:42`, `backend/internal/database/migrations/legacy_publication_backfill.go:20`; delivered in `087c76a2`.
 
 ### ARCH-004 — Finish a shared application command/query boundary
 
-- [ ] **Problem — Baseline audit:** the 6,000+ line MCP handler independently implements publication, schedule, legacy-post, and job behavior, allowing HTTP/MCP/CLI drift such as PUB-001.
-- **Fix:** move each publication, scheduling, media, billing, and communications use case into one command/query service; keep transports responsible only for auth, decoding, schema, and response mapping.
+- [ ] **Problem — Partial:** the MCP handler remains about 6,024 lines. Publication create/update/validate/schedule/publish now delegate through the shared publication application boundary, but legacy posts, media, billing, communications, and several query/persistence paths still live in transport code and can drift across HTTP/MCP/CLI.
+- **Fix:** continue moving those remaining use cases into shared command/query services; keep transports responsible only for auth, decoding, schema, and response mapping.
 - **Done when:** no adapter duplicates persistence/defaulting/job logic; adapter parity tests exercise the same use cases and authorization rules.
-- **Evidence:** `backend/internal/api/handlers/mcp.go:1`.
+- **Evidence:** `backend/internal/api/handlers/mcp.go:1`, `backend/internal/api/handlers/mcp.go:3329`, publication application services.
 
-### DATA-001 — Retire legacy media collections only after deployed-data inventory
+### ARCH-005 — Split the text-and-thread composer into state-owned feature modules
 
-- [ ] **Problem — Baseline audit:** migration 062 moved collections to tags, but collection tables/models remain in fresh bootstrap.
-- **Fix:** inventory production rows, write a forward migration that copies/verifies remaining data, then remove tables/models; keep backup and rollback instructions.
-- **Done when:** supported historical databases migrate without loss, fresh schema omits the tables, row/checksum evidence is recorded, and rollback is rehearsed.
-- **Evidence:** `backend/internal/database/database.go:124`.
+- [ ] **Problem — Current architecture gap:** `compose-text-post.svelte` is roughly 5,789 lines and combines draft lifecycle/conflicts, destinations/capabilities, variants, media/alt text/editor handoffs, scheduling, publishing, and most rendering. Changes to one concern carry a large regression surface and make independent tests difficult.
+- **Fix:** extract cohesive state-owning controllers/components behind one orchestration shell: draft lifecycle, destinations/capabilities, rendition variants, media/editor handoff, schedule/publish, and presentation. Prefer explicit instance-local state and typed callbacks/services; do not replace the monolith with global stores or break multiple simultaneous composers.
+- **Done when:** each domain has focused tests, the shell coordinates rather than implements, multi-instance/workspace isolation remains correct, and browser coverage preserves autosave/conflict recovery, target errors, media handoff, scheduling, and publish behavior.
+- **Evidence:** `frontend/src/lib/components/compose-text-post.svelte:1`.
+
+### DATA-001 — Retire legacy media collections only after protection-path migration
+
+- [ ] **Problem — Current source:** migration 062 moved collections to tags, but collection tables/models remain in fresh bootstrap and media lifecycle cleanup still reads `media_collection_items`/`media_collections` to protect referenced media. They are compatibility state, not unreachable schema.
+- **Fix:** inventory production rows; prove tags or another canonical relation preserve every live collection reference; migrate/remove the cleanup protection branch only after equivalent ownership coverage; then drop tables/models through a forward migration with backup and rollback instructions.
+- **Done when:** supported historical databases migrate without loss, protected media remains protected, fresh schema omits the tables, row/checksum evidence is recorded, and rollback is rehearsed.
+- **Evidence:** `backend/internal/models/models.go:1868`, `backend/internal/database/database.go:125`, `backend/internal/services/medialifecycle/service.go:576`.
 
 ### DATA-002 — Disposition `publication_assets` with zero-loss proof
 
-- [ ] **Problem — Baseline audit:** no current reader/writer remains, but historical releases wrote the table.
-- **Fix:** inventory deployed rows; map any live data to segment media or a documented retained archive; drop only through a forward migration after verification.
-- **Done when:** every row has a disposition, upgrade tests cover populated historical fixtures, and no application path depends on it.
-- **Evidence:** `backend/internal/models/models.go:1605`, `backend/internal/database/database.go:111`.
+- [ ] **Problem — Current source:** no current authoring writer remains, but media lifecycle cleanup still reads and deletes `publication_assets` relations to protect historical media references. It cannot be treated as unreachable schema.
+- **Fix:** inventory deployed rows; map every live relation to canonical segment/rendition media or a documented retained archive; prove equivalent cleanup protection and remove that compatibility branch before dropping the table through a forward migration.
+- **Done when:** every row has a disposition, upgrade tests cover populated historical fixtures, canonical ownership protects the same media, and no application path depends on the table.
+- **Evidence:** `backend/internal/models/models.go:1969`, `backend/internal/database/database.go:112`, `backend/internal/services/medialifecycle/service.go:650`, `backend/internal/services/medialifecycle/service.go:978`.
 
 ### DATA-003 — Remove `posting_schedules.set_id` through a forward migration
 
 - [ ] **Problem — Baseline audit:** the column is explicitly legacy and unused.
 - **Fix:** confirm zero readers/writers, migrate supported databases, remove model/contract remnants, and retain historical migration files.
 - **Done when:** fresh and upgraded schemas agree and migration regression tests pass.
-- **Evidence:** `backend/internal/models/models.go:1648`.
+- **Evidence:** `backend/internal/models/models.go:2014`, `backend/internal/database/database.go:132`.
 
 ### DATA-004 — Stage removal of duplicate publication fields
 
 - [ ] **Problem — Baseline audit:** `SourceContent` mirrors `SourceText`, and `ReleasePlanJSON` mirrors `MetadataJSON`.
 - **Fix:** nominate canonical fields; migrate readers; backfill and compare; stop dual-write; observe for a release window; then drop via forward migration.
 - **Done when:** comparison telemetry shows no divergence, old-version upgrade fixtures survive, and generated contracts no longer expose retired fields.
-- **Evidence:** `backend/internal/models/models.go:755`.
+- **Evidence:** `backend/internal/models/models.go:953`, `backend/internal/models/models.go:962`.
 
 ### DATA-005 — Decide the dormant organization-invitation model
 
 - [ ] **Problem — Current source audit:** `organization_invitations` is created, bootstrapped, and cleaned up, but the active team flow uses workspace invitations and no complete organization-invite product consumes the schema.
 - **Fix:** decide whether organizations need organization-wide membership/invites distinct from workspace access. If yes, implement one coherent lifecycle and permission model; if no, inventory rows and remove the schema through a forward migration.
 - **Done when:** there is no dormant second invitation concept, existing rows have a zero-loss disposition, and workspace/organization membership semantics are documented and tested.
-- **Evidence:** `backend/internal/models/models.go:116`, `backend/internal/database/database.go:77`, `backend/internal/database/migrations/025_organizations_and_profiles.sql:22`.
+- **Evidence:** `backend/internal/models/models.go:118`, `backend/internal/database/database.go:78`, `backend/internal/database/migrations/025_organizations_and_profiles.sql:22`.
 
 ### COMPAT-001 — Create an API/schema compatibility retirement registry
 
@@ -1024,17 +1094,17 @@ Candidate decisions under this registry:
 
 ### LEGAL-004 — Make Privacy and legal change history understandable
 
-- [ ] **Problem — Supplied audit:** the policies are substantive, but lack a plain-language summary, a complete data-category retention schedule, a dedicated cookie/local-storage inventory, a legal-policy changelog, and aligned acceptance metadata. The current cookie section omits at least the app preference cookie.
-- **Fix:** add a non-binding summary linked to full terms; publish a retention table by data category and deletion trigger; inventory cookie/local-storage name, purpose, scope, duration, and necessity; keep a dated material-change log tied to LEGAL-002 versions.
-- **Done when:** every stored browser identifier and managed data category has an owner/purpose/retention entry; legal review confirms the summary does not override the full policy; automated checks flag undocumented first-party cookies where feasible.
-- **Evidence:** `marketing-site/src/routes/privacy/+page.svelte` and legal acceptance configuration.
+- [x] **Problem — Resolved:** Privacy now renders a plain-language summary, data-category retention/deletion schedule, complete browser-storage inventory including preference cookies, and dated legal change history tied to canonical acceptance metadata.
+- **Fix delivered:** the canonical legal-policy package owns the inventories/history and automated checks compare browser storage against the documented contract.
+- **Done when:** new browser identifiers cannot ship without owner/purpose/retention entries, and substantive changes continue to advance policy acceptance correctly. PRIV-001 separately adds the missing fail-closed enabled-processor/config completeness gate.
+- **Evidence:** `packages/legal-policy/src/privacy-inventory.json`, `packages/legal-policy/src/legal-change-history.json`, `marketing-site/src/routes/privacy/+page.svelte:327`, `scripts/check-browser-storage-inventory.mjs:399`.
 
 ### SEC-003 — State the security assurance boundary without unsupported badges
 
-- [ ] **Problem — Supplied audit/operator facts required:** Security accurately describes token encryption, password hashing, MFA/passkeys, session controls, and the absence of SOC 2/ISO/pentest claims. Encryption scope, managed human-access policy, incident-history disclosure, and independently tested assurance remain incomplete.
-- **Fix:** publish a clear control/responsibility matrix for managed and self-hosted deployments; link the residency/subprocessor/access facts from TRUST-001; define incident-history wording; commission independent testing only when ready and publish scope/date/remediation status.
-- **Done when:** every claim has code/operational evidence and review date; no certification, GDPR, audit, or pentest logo/text appears without current proof.
-- **Evidence:** `marketing-site/src/routes/security/+page.svelte:19`.
+- [x] **Problem — Assurance structure delivered:** the canonical assurance inventory and Security page publish managed-versus-self-hosted responsibilities, the encryption and human-access boundary, incident wording, evidence/review dates, and explicit absence of independent certification claims. PRIV-001 records the current enabled-processor/register exception rather than reopening this assurance-page implementation.
+- **Fix delivered:** Security links to the dated Trust facts and does not display SOC 2, ISO, GDPR, audit, or pentest badges. Independent testing remains an optional external program, not a missing implementation claim; the processor register must still be corrected through PRIV-001.
+- **Done when:** every future security claim keeps current code/operational evidence and review date; independent scope/date/remediation is published only after completion.
+- **Evidence:** `packages/legal-policy/src/security-assurance.json`, `marketing-site/src/routes/security/+page.svelte:221`, legal-policy assurance tests.
 
 ### MKT-001 — Create a complete `/features` hub from verified capabilities
 
@@ -1057,12 +1127,6 @@ Candidate decisions under this registry:
 - **Done when:** users can explain price, billing frequency, trial outcome, included seats/limits, and management path before checkout; screen readers receive one useful price-change announcement; all five CTA paths work.
 - **Evidence:** `marketing-site/src/routes/_components/PricingShowcase.svelte`, `marketing-site/src/routes/pricing/+page.svelte`.
 
-### ABOUT-001 — Add an About page only from approved facts
-
-- [ ] **Problem — Operator facts required:** no About route collects product mission, verified origin story, team, milestones, or backers. Inventing these would be worse than the gap.
-- **Fix:** obtain operator-approved names, roles, timeline, funding/backer, company/contact, and imagery permissions; publish only confirmed material with an About CTA in appropriate navigation/footer locations.
-- **Done when:** every personal/company claim has approval and update owner; absent facts are omitted rather than filled with generic copy.
-
 ### FAQ-001 — Expose the full useful FAQ and a contextual contact path
 
 - [x] **Problem — Current source/supplied audit:** seven useful answers exist in source, but the homepage renders only four; Pricing has no purchase FAQ or clear “all questions” route. Search/TOC is unnecessary until the collection grows.
@@ -1077,6 +1141,13 @@ Candidate decisions under this registry:
 - **Done when:** unknown static and dynamic routes have equivalent content/status, no broken app dependency, and responsive/a11y checks pass.
 - **Evidence:** `marketing-site/static/404.html:7`, dynamic routes under `marketing-site/src/routes/*/[slug]`.
 
+### MKT-004 — Give moving marketing content a pause control
+
+- [ ] **Problem — Current accessibility regression:** the restored hero carousel auto-advances every five seconds and the customer-logo rail loops continuously. Reduced-motion is honored and carousel interaction stops autoplay, but users without that OS setting have no visible pause/play control; automatic changes can also create unnecessary announcements.
+- **Fix:** add visible keyboard-accessible pause/play controls, pause on focus/interaction where appropriate, remember the choice for the session, and keep automatic slide changes out of live announcements. Preserve the intentionally restored visual design.
+- **Done when:** carousel and logo motion can be paused at desktop/390 px/320 px, focus never moves automatically, reduced-motion still disables motion, and accessibility/browser tests cover pause persistence and announcements.
+- **Evidence:** `marketing-site/src/routes/_components/HeroResultsCarousel.svelte:34`, `marketing-site/src/routes/_components/HeroResultsCarousel.svelte:55`, `marketing-site/src/routes/+page.svelte:371`.
+
 ### MKT-005 — Increase footer social-link touch targets
 
 - [x] **Problem — Supplied measurement:** social-icon targets are about 16 × 32 px on mobile, below the project’s 44 px coarse-pointer target.
@@ -1086,22 +1157,15 @@ Candidate decisions under this registry:
 
 ### SIGNUP-001 — Show password and purchase expectations before checkout
 
-- [ ] **Problem — Supplied audit:** registration lacks password reveal/rules, and when reached from Pricing it does not keep selected plan, price, billing period, trial length, card timing, and end-of-trial outcome visible enough before checkout.
-- **Fix:** implement AUTH-002; preserve and summarize selected plan/period through registration/onboarding; state when card/payment is requested and what happens after 14 days; allow safe plan change.
+- [ ] **Problem — Partial:** password reveal/rules and plan/billing-period URL propagation through registration → onboarding → checkout are implemented. Registration still shows only generic trial/channel/cancel copy rather than the selected plan, current price/period, when payment is requested, and the end-of-trial charge outcome.
+- **Fix:** show a compact selected-plan/price/period/trial/card/charge summary with a safe change action during registration and ONB-001; keep it sourced from the same catalogue and bound to the eventual checkout attempt rather than duplicating AUTH-002.
 - **Done when:** the selected plan cannot silently default/change, users see trial/charge outcome before payment, and registration → verification → onboarding → checkout retains context.
 - **Evidence:** `frontend/src/routes/register/+page.svelte`, `frontend/src/routes/onboarding/+page.svelte`, `frontend/src/routes/checkout/+page.svelte`.
 
-### CLAIM-001 — Establish provenance for customer/proof claims
-
-- [ ] **Problem — Operator facts required:** customer-count, logo, “Used by builders at,” testimonial, origin, milestone, or backer claims cannot be verified from source alone. Absence of proof is not permission to fabricate it.
-- **Fix:** keep a claim register with exact wording, evidence/permission, owner, scope, and review/expiry date; remove or soften unproved claims; do not make login busier merely to add social proof.
-- **Done when:** every public proof claim has recorded permission/current-use provenance and an expiry/review process.
-- **Evidence:** `marketing-site/src/routes/+page.svelte:101` and public proof components.
-
 ### LEGAL-005 — Revalidate Paddle and managed-service legal assertions
 
-- [ ] **Problem — External verification required:** Merchant-of-Record, tax documents, refund/withdrawal rules, customer portal behavior, controller identity, transfer safeguards, PostHog project configuration, and material-change process cannot be proven from repository source alone.
-- **Fix:** review the live Paddle account/config/contracts, deployed analytics/configuration, and applicable legal advice; record evidence and review date; update Terms/Privacy/Refunds and billing UX together.
+- [ ] **Problem — Partial/external verification required:** managed PostHog configuration, Privacy policy version `2026-08-11`, and Trust review date `2026-08-11` are verified. Merchant-of-Record status, tax/customer documents, refund/withdrawal rules, portal/cancellation behavior, controller identity, and legal review of the material-change process still cannot be proven from repository source alone. TRUST-001 separately owns the Purelymail transfer basis and operational human-access evidence.
+- **Fix:** review the live Paddle account/config/contracts, controller evidence, and applicable legal advice; consume approved TRUST-001 facts where public legal copy depends on them; record owner/evidence/review date; update Terms/Privacy/Refunds, Trust, and billing UX together where facts change.
 - **Done when:** every assertion has current provider/deployment/legal evidence and a named review owner; checkout and portal behavior match the documents.
 - **Evidence:** `marketing-site/src/routes/terms/+page.svelte:161`, `marketing-site/src/routes/refunds/+page.svelte:40`, `marketing-site/src/routes/privacy/+page.svelte:205`.
 
@@ -1182,22 +1246,23 @@ These tasks are deliberately lower priority. Remove only code proven unreachable
 - [x] **Problem — Current source audit:** appearance, language, and sound live in a transient account menu, while timezone/week start are workspace settings; “Profile & security” does not clearly expose all personal preferences.
 - **Fix:** label scope explicitly and add a discoverable personal-preferences destination or cross-links without duplicating state.
 - **Done when:** users can predict whether a setting follows them or a workspace and can reach appearance, language, sound, profile, and security from Settings.
-- **Evidence:** `frontend/src/lib/components/account-preferences-menu.svelte:211`, `frontend/src/routes/settings/+page.svelte:3332`.
+- **Evidence:** `frontend/src/lib/components/account-preferences-menu.svelte:211`, `frontend/src/lib/components/settings/ProfileSettingsTab.svelte:394`.
 
 ## Explicit product decisions and non-actions
 
 These checklist rows are not open defects unless the product decision changes:
 
-- [ ] **Global search:** validate a cross-entity discovery need before building it. If approved, SEARCH-001 defines the minimum safe experience.
-- [ ] **Generic integrations marketplace:** CONNECT approves self-hosted operator-installed publishing connectors and N8N approves nodes used inside n8n. Neither approves a public in-app marketplace, categories, request form, or arbitrary tenant-supplied endpoints.
-- [ ] **Generic save-and-resume wizard:** fix onboarding/checkout first; extract shared infrastructure only when a genuinely long form needs it.
-- [ ] **Remember me:** keep the current fixed persistent-session model or implement real alternative lifetimes; do not add a cosmetic checkbox.
-- [ ] **SMS/email MFA:** TOTP plus passkeys provide strong method choice. Do not add weaker or costly channels just to satisfy a generic checklist; add a method only after threat, deliverability, recovery, and operating-cost review.
-- [ ] **Public-profile contact/follow:** do not add it until OpenPost has a supported messaging/follow model. Never expose email by default.
-- [ ] **Enterprise/contact sales:** add only when there is an operator-owned sales/support process and a real custom plan. Do not relabel Agency as Enterprise without facts.
-- [ ] **Login testimonials/news:** keep login focused. Add proof content only if it is verified, optional, responsive, and does not distract from authentication.
-- [ ] **Phone number/job title:** do not collect extra account fields without a concrete product, support, or legal purpose and retention rule.
-- [ ] **Account deactivation:** add a reversible pause only if it has a defined effect on billing, scheduled publications, shared ownership, and data visibility; the existing permanent-deletion flow should not be weakened to satisfy a generic checklist.
+- **Global search:** keep permission-safe scoped search, filters, and paging. Validate a cross-entity discovery need before building a global index/results surface.
+- **Generic integrations marketplace:** CONNECT approves self-hosted operator-installed publishing connectors and N8N approves nodes used inside n8n. Neither approves a public in-app marketplace, categories, request form, or arbitrary tenant-supplied endpoints.
+- **Generic save-and-resume wizard:** fix ONB-001/checkout first; extract shared infrastructure only when a genuinely long form needs it.
+- **About page:** do not create generic mission/team/backer copy. Add a route only after operator-approved names, roles, timeline, company/contact facts, imagery permissions, and update ownership exist.
+- **Remember me:** keep the current fixed persistent-session model or implement real alternative lifetimes; do not add a cosmetic checkbox.
+- **SMS/email MFA:** TOTP plus passkeys provide strong method choice. Do not add weaker or costly channels just to satisfy a generic checklist; add a method only after threat, deliverability, recovery, and operating-cost review.
+- **Public-profile contact/follow:** do not add it until OpenPost has a supported messaging/follow model. Never expose email by default.
+- **Enterprise/contact sales:** add only when there is an operator-owned sales/support process and a real custom plan. Do not relabel Agency as Enterprise without facts.
+- **Login testimonials/news:** keep login focused. Add proof content only if it is verified, optional, responsive, and does not distract from authentication.
+- **Phone number/job title:** do not collect extra account fields without a concrete product, support, or legal purpose and retention rule.
+- **Account deactivation:** add a reversible pause only if it has a defined effect on billing, scheduled publications, shared ownership, and data visibility; the existing permanent-deletion flow should not be weakened to satisfy a generic checklist.
 
 Do not delete or rewrite these merely because they look old or unused:
 
@@ -1214,10 +1279,10 @@ Do not delete or rewrite these merely because they look old or unused:
 Integration/provider guardrails:
 
 - Never build Pinterest, GBP, or Reddit as isolated one-off systems; they consume the shared grant/authorization/write/delivery/capability/policy/retention kernel.
-- Allocate the next free migration number at implementation time; the proposal’s `054` is stale because the audited checkout already reached `070`.
+- Allocate the next free migration number at implementation time; earlier proposal numbers are stale because this reconciliation already includes migration `084`.
 - Never store raw provider responses or tokens in authorization/delivery/certification records, blindly replay an ambiguous write, auto-bind a guessed GBP result, or hide multi-board/community loops inside one rendition.
 - Keep provider previews neutral and OpenPost-native; do not imitate Pinterest, Google Search/Maps, or Reddit UI.
-- Do not enable hosted GBP delayed automation, video, BYO-project tenancy, or Q&A; Reddit cookie/password/session auth, bulk multi-community publishing, or autonomous reposts; or Pinterest advertising-derived limits without current approval and certification.
+- Do not enable hosted GBP delayed automation, native schedules/recurrence, video, or BYO-project tenancy without the exact approved execution mode; do not add GBP Q&A because Google discontinued it. Never use Reddit cookie/password/session auth, bulk multi-community publishing, or autonomous reposts, or import Pinterest advertising-derived formats/limits into organic publishing without current approval and certification.
 - Do not copy Postiz provider implementations wholesale. Postiz and Shoutrrr remain behavioral references only.
 - Never load Go `.so` plugins, run Playwright inside OpenPost, let hosted tenants register endpoints, put executable code/inline secrets in connector config, let manifests declare arbitrary host pipeline settings, accept connector executable UI/raw SVG, send base64 media, or give broad media-library access.
 - Treat provider IDs as opaque, keep optional connector failures local, preserve history after connector removal, and keep connector transport credentials separate from OpenPost API tokens.
@@ -1228,51 +1293,56 @@ For all public API, MCP, CLI, and schema removals, production telemetry/inventor
 
 ## Preserve these strengths while remediating
 
-- [ ] Keep TOTP disabled until code verification succeeds; keep MFA disable/reset behind password or recent step-up authentication.
-- [ ] Keep passkeys, non-enumerating password reset, URL-fragment reset-token cleanup, PKCE OIDC, safe redirect validation, and server-side session revocation.
-- [ ] Keep avatar initials fallback, opt-in public profiles, profile dirty-state handling, and clear save confirmation.
-- [ ] Keep notification categories, meaningful in-app/email channel controls, explicit save feedback, and mandatory-alert protections. Do not advertise push/SMS until delivery exists.
-- [ ] Keep pending-invite revoke, seat enforcement, server-side role checks, and role-gated admin tabs.
-- [ ] Keep account/workspace destructive confirmation and strengthen it through ADMIN-002 rather than replacing it with ad hoc dialogs.
-- [ ] Keep API secrets one-time-only and hashed at rest; never display an existing full key.
-- [ ] Keep publication detail’s clear identifier, textual status, hierarchy, timestamp, and back action. Add edit/archive/activity only where valid for that state.
-- [ ] Keep shared `EmptyState`, `InlineNotice`, retry, loading, and destructive-dialog primitives; repair inconsistent consumers instead of creating new local variants.
-- [ ] Keep inactive social accounts visible with a text status marker; the earlier “hidden inactive account” concern is resolved in current source (`frontend/src/routes/accounts/+page.svelte:836`).
-- [ ] Keep platform pages’ candid setup/limit/provider caveats and comparison pages’ fair acknowledgement of competitor strengths.
-- [ ] Keep the verified 320 px/390 px/desktop no-overflow behavior, light/dark modes, reduced-motion handling, focus treatment, lazy screenshots, and working product demo.
-- [ ] Keep current plan IDs/prices/limits sourced consistently across marketing, frontend, and backend; the audit found no catalogue mismatch.
+- Keep TOTP disabled until code verification succeeds; keep MFA disable/reset behind password or recent step-up authentication.
+- Keep passkeys, non-enumerating password reset, URL-fragment reset-token cleanup, PKCE OIDC, safe redirect validation, and server-side session revocation.
+- Keep avatar initials fallback, opt-in public profiles, profile dirty-state handling, and clear save confirmation.
+- Keep notification categories, meaningful in-app/email channel controls, explicit save feedback, and mandatory-alert protections. Do not advertise push/SMS until delivery exists.
+- Keep pending-invite revoke, seat enforcement, server-side role checks, and role-gated admin tabs.
+- Keep account/workspace destructive confirmation and strengthen it through ADMIN-002 rather than replacing it with ad hoc dialogs.
+- Keep API secrets one-time-only and hashed at rest; never display an existing full key.
+- Keep publication detail’s clear identifier, textual status, hierarchy, timestamp, and back action. Add edit/archive/activity only where valid for that state.
+- Keep shared `EmptyState`, `InlineNotice`, retry, loading, and destructive-dialog primitives; repair inconsistent consumers instead of creating new local variants.
+- Keep inactive social accounts visible with a text status marker; the earlier “hidden inactive account” concern is resolved in current source (`frontend/src/routes/accounts/+page.svelte:836`).
+- Keep platform pages’ candid setup/limit/provider caveats and comparison pages’ fair acknowledgement of competitor strengths.
+- Keep the verified 320 px/390 px/desktop no-overflow behavior, light/dark modes, reduced-motion handling, focus treatment, lazy screenshots, and working product demo.
+- Keep current plan IDs/prices/limits sourced consistently across marketing, frontend, and backend; the audit found no catalogue mismatch.
 
 ## Operator and external verification queue
 
 These cannot be closed from repository source alone:
 
 - [ ] Verify production `/api/v1/version`, update-check behavior, release tag/SHA/digest, and rollback evidence after REL-001.
-- [ ] Inventory deployed `media_collections`, `publication_assets`, duplicate publication fields, and API/MCP/CLI endpoint usage before migration/removal.
-- [ ] Verify database and media backup encryption boundary, retention, access, deletion, monitoring, off-host resilience, and restore evidence without printing secrets.
+- [ ] Inventory deployed `media_collections`, `publication_assets`, `posting_schedules.set_id`, duplicate publication fields, `organization_invitations`, and API/MCP/CLI endpoint usage before migration/removal.
+- [ ] Complete OPS-004: verify any provider snapshot, off-host failure-domain separation, artifact/key boundary, retention, access, deletion, monitoring, and a restore starting without the application host; do not print secrets.
 - [ ] Verify live Paddle Merchant-of-Record configuration, tax/VAT/customer documents, invoices, portal deep links, discounts, refunds, cancellation, failed-payment recovery, and withdrawal terms.
-- [ ] Verify controller/company identity, residency, every managed subprocessor, transfer basis, support/human access, incident process/history wording, and legal review dates.
-- [ ] Verify the managed PostHog EU project, cookieless hashing, disabled IP capture and replay, 12-month maximum retention, ingestion proxy, and public Privacy claims before enabling production telemetry; then retire the old Umami service and its stored data under the prior policy.
+- [ ] Close the remaining TRUST-001/LEGAL-005 evidence: controller/company identity, Purelymail transfer basis, operational access-review/revocation proof, incident-procedure ownership/evidence, and legal review dates. The public incident and human-access wording itself is shipped.
+- [x] Managed PostHog rollout verified live at `v3.9.6` / `2a28899ebc50f8adb770ddfb5f5748f70169311e`: telemetry is enabled against the EU API/UI hosts, Privacy uses policy version `2026-08-11`, the Trust register was reviewed on `2026-08-11`, and the OpenPost Umami loaders are removed. A first-party ingestion proxy is optional, not a completion requirement; do not retire a shared Umami service still used by another product.
+- [ ] Verify provider-side OpenRouter/Azure configuration for both image descriptions and meme suggestions: exact `azure/eu` route, data collection denied, no fallback, current ZDR classification, and provider review date. Source and Nix fail closed but cannot prove the live provider-side policy.
+- [ ] Complete PRIV-001 provider/legal evidence for the enabled managed Memegen target or move it to a reviewed private deployment.
+- [ ] After migration 084, inventory pre-existing unbound API tokens for required-SSO organizations; revoke or deliberately reissue workspace-bound tokens because the schema migration cannot infer their intended workspace.
 - [ ] Obtain recorded permission and current-use evidence for every customer logo, testimonial, count, “Used by,” team, milestone, backer, or origin claim.
+- [ ] Obtain approved team, mission, timeline, company/contact, funding/backer, and imagery facts before reconsidering an About page; absence is not an implementation defect.
 - [ ] Decide whether independent pentest/audit work is funded; publish scope and date only after completion. Do not add SOC 2, ISO, GDPR, or pentest badges without proof.
-- [ ] Reverify Pinterest, GBP, and Reddit access tiers, policies, limits, deadlines, quotas, permitted origins, retention, and approval evidence immediately before implementation and every certification renewal.
+- [ ] Close PIN-GATE-001 and GBP-GATE-001 independently and reverify their access tiers, policies, limits, quotas, permitted origins, retention, and approval evidence at every certification renewal. Revisit Reddit only when REDDIT-GATE-001 becomes a priority.
 - [ ] Reverify n8n’s current MIT/verification/tooling/Node requirements, npm name availability, supported-version matrix, provenance support, and Creator Portal status before N8N-001/002/015 closure.
 - [ ] Re-run clean Docker Compose and binary install, provider publishing, billing, MFA/recovery, and production browser checks from the older launch checklist where still open.
 
 ## Suggested delivery order
 
-1. **Current trust and correctness first:** LEGAL-001/002/003, REL-001, PUB-001, JOB-001, NOTIF-001, SEC-001, BILL-001, APP-001.
-2. **Run integration go/no-go work in parallel:** PROV-GATE-001, N8N-001/002, CONNECT-001. This creates no public provider/n8n availability claim.
-3. **Before any new external write:** complete PROV-AUTH/AUTHZ/WRITE/MEDIA/READY P0 gates, then PROV-SELECT/TARGET/DELIVERY/CAP/PICKER/POLICY/RETENTION/LEASE/META/SCHEDULE.
-4. **Open two independent extension lanes:** PROVIDER-001 + CONNECT-002–007 for operator-installed publishing connectors; N8N-003–010 for nodes installed and used inside n8n. Both consume shared application/API contracts but n8n does not use Connector Protocol.
-5. **Add first-party providers:** PIN-001–004, then GBP-001–005 under its approved execution mode, then REDDIT-001–003 only after approved transport.
-6. **Harden and expand:** PROV-HARDEN/QA; N8N-011–015; CONNECT-008/009. Keep advanced scopes/extensions behind demonstrated demand and certification.
-7. **Paid-account and daily UX:** BILL-002–005, PRICE-001, TEAM-001/002, AUTH-001, ONB-001, EDIT-001/002, NOTIF-002–006, ACTIVITY-001, PERF-001, PUB-002/003.
-8. **Product completeness and architecture:** account/public profile, API keys, version history, admin, public features/pricing/FAQ/error surfaces, then ARCH/DATA/COMPAT/BUILD/CI/OPS.
-9. **Cleanup:** run P3 cohorts only after the behavior, migration, compatibility, and telemetry gates they depend on.
+1. **Close the live privacy gap now:** keep the managed meme path enabled by operator decision and complete PRIV-001's provider, legal, retention, routing, and disclosure boundary against the deployed configuration.
+2. **Start the two wanted access gates in parallel:** GBP approval/policy work can begin immediately; Pinterest Trial approval precedes implementation and Standard approval follows the working Trial demo before public production. Do not wait for Reddit, connector, or n8n decisions.
+3. **Run a parallel bounded-correctness lane now:** BILL-002, COMM-002, ANALYTICS-001, MOBILE-001, CLAIM-001, and OPS-004 should progress alongside access and provider foundations—not wait for provider certification.
+4. **Finish only the shared provider prerequisites the first slices need:** PROV-FIRSTPARTY plus TARGET/DELIVERY/CAP/PICKER/POLICY/RETENTION/LEASE/META; complete SELECT before large GBP discovery and SCHEDULE before native GBP scheduling. The P0 authorization/write/media/readiness foundations are already shipped and must stay green.
+5. **Deliver Pinterest first:** PIN-001 OAuth/boards/sections → PIN-002 single/multi-image Pins → PIN-003 video → PIN-004 later depth, with Trial implementation evidence and Standard approval before public claims.
+6. **Deliver GBP second:** GBP-001 approved execution mode → GBP-002 accounts/locations and retention → GBP-003 immediate image posts → GBP-004 native one-off/recurring schedules only after approval → GBP-005 later depth.
+7. **Certify and harden provider by provider:** PROV-HARDEN-001 and PROV-QA-001 apply the contracts and mechanically gate each advertised provider/format without making Pinterest wait for GBP or deferred Reddit proof.
+8. **Then improve daily UX and structure:** ONB-001/SIGNUP-001, TEAM-002, COMM-001, BILL-003, STATE-001, NOTIF-006, ADMIN-001/002, then ARCH/DATA/BUILD work according to dependency and capacity.
+9. **Deferred lanes and cleanup:** start Connector Protocol, n8n, or Reddit only after an explicit priority decision; run P3 cohorts after the behavior, migration, compatibility, and telemetry gates they depend on.
 
 ## Audit evidence limits
 
 - The attached deep audit reported green repo lint/check, backend/CLI suites, 379 frontend tests, 25 video-project tests, reachability scans, and selected live route/image checks at the baseline SHA.
 - It did **not** prove external API/MCP consumers, dormant-table production row counts, or a fresh mutation-heavy browser/build pass over the already dirty checkout.
 - The later checklist and public-site review was source-grounded; production-only claims remain labeled user-reported or external verification.
+- The 2026-08-12 reconciliation re-traced the named source paths, analyzed representative Svelte routes/components, checked current Pinterest/GBP primary documentation, and verified the live PostHog version/configuration and public policy surfaces. It did not run the full repository verification matrix because this change updates the backlog rather than product behavior.
 - Checking an item means its specific “Done when” conditions are met, relevant product/docs/contracts are aligned, and deployed behavior is verified when the finding was live.

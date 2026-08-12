@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
@@ -132,6 +133,7 @@ type RenditionSegmentInput struct {
 type RenditionInput struct {
 	ID               string                  `json:"id,omitempty" doc:"Legacy client reference; replacement IDs are server-generated"`
 	SocialAccountID  string                  `json:"social_account_id" doc:"Social account ID"`
+	TargetKey        string                  `json:"target_key,omitempty" doc:"Provider subdestination key; defaults to the account destination"`
 	Profile          string                  `json:"profile,omitempty" doc:"Content profile override"`
 	OutputProfile    string                  `json:"output_profile,omitempty" doc:"Resolved provider-qualified output profile"`
 	FormatLocked     bool                    `json:"format_locked,omitempty" doc:"Preserve an explicitly selected format when source content changes"`
@@ -237,6 +239,7 @@ type PublicationActionInput struct {
 type RetryRenditionInput struct {
 	PathID    string `path:"id" doc:"Publication ID"`
 	AccountID string `path:"account_id" doc:"Connected account ID"`
+	TargetKey string `query:"target_key" doc:"Exact provider subdestination key; required when the account has multiple targets"`
 }
 
 type RetryFailedRenditionsInput struct {
@@ -254,6 +257,7 @@ type PublicationMutationActionInput struct {
 type DeletePublicationRenditionInput struct {
 	PathID           string `path:"id" doc:"Publication ID"`
 	AccountID        string `path:"account_id" doc:"Connected account ID"`
+	TargetKey        string `query:"target_key" doc:"Exact provider subdestination key; required when the account has multiple targets"`
 	Confirm          bool   `query:"confirm" doc:"Explicit confirmation that saved destination settings may be deleted"`
 	ExpectedRevision int    `query:"expected_revision" minimum:"1" doc:"Revision loaded by the editor"`
 }
@@ -346,6 +350,7 @@ type RenditionResponse struct {
 	ID               string                     `json:"id"`
 	PublicationID    string                     `json:"publication_id"`
 	SocialAccountID  string                     `json:"social_account_id"`
+	TargetKey        string                     `json:"target_key"`
 	Platform         string                     `json:"platform"`
 	Profile          string                     `json:"profile"`
 	OutputProfile    string                     `json:"output_profile"`
@@ -365,8 +370,22 @@ type RenditionResponse struct {
 	ErrorRetryable   bool                       `json:"error_retryable"`
 	ErrorRetryAt     string                     `json:"error_retry_at,omitempty"`
 	ErrorAction      string                     `json:"error_action,omitempty"`
+	Delivery         *ProviderDeliveryResponse  `json:"delivery,omitempty"`
 	Segments         []RenditionSegmentResponse `json:"segments"`
 	Media            []MediaSummary             `json:"media"`
+}
+
+type ProviderDeliveryResponse struct {
+	TargetKey               string `json:"target_key"`
+	State                   string `json:"state"`
+	TerminalReason          string `json:"terminal_reason,omitempty"`
+	CurrentAttemptID        string `json:"current_attempt_id"`
+	CurrentAttemptNumber    int    `json:"current_attempt_number"`
+	CurrentAttemptCreatedAt string `json:"current_attempt_created_at"`
+	ExternalID              string `json:"external_id,omitempty"`
+	ExternalURL             string `json:"external_url,omitempty"`
+	LastReconciledAt        string `json:"last_reconciled_at,omitempty"`
+	NextReconciliationAt    string `json:"next_reconciliation_at,omitempty"`
 }
 
 type RenditionSegmentResponse struct {
@@ -530,15 +549,23 @@ func (h *PublicationHandler) deleteRenditionTx(
 	if err != nil {
 		return false, err
 	}
-	var renditionIDs []string
-	if err := tx.NewSelect().Model((*models.Rendition)(nil)).Column("id").
+	var renditions []models.Rendition
+	query := tx.NewSelect().Model(&renditions).
 		Where("publication_id = ? AND social_account_id = ?", publicationID, input.AccountID).
-		Scan(ctx, &renditionIDs); err != nil {
+		Order("id ASC")
+	if input.TargetKey != "" {
+		query = query.Where("target_key = ?", strings.TrimSpace(input.TargetKey))
+	}
+	if err := query.Scan(ctx); err != nil {
 		return false, err
 	}
-	if len(renditionIDs) == 0 {
+	if len(renditions) == 0 {
 		return false, nil
 	}
+	if len(renditions) > 1 {
+		return false, huma.Error409Conflict("target_key is required when an account has multiple publication destinations")
+	}
+	renditionIDs := []string{renditions[0].ID}
 	if err := h.cancelPendingReplyJobsForDeletedTargetsTx(ctx, tx, publicationID, renditionIDs); err != nil {
 		return false, err
 	}
@@ -1073,14 +1100,30 @@ func (h *PublicationHandler) upsertRenditions(api huma.API) {
 				return nil
 			}
 			accountIDs := renditionAccountIDs(input.Body.Renditions)
-			var existingIDs []string
+			targets := make(map[string]struct{}, len(input.Body.Renditions))
+			for _, renditionInput := range input.Body.Renditions {
+				account := accountMap[renditionInput.SocialAccountID]
+				targetKey, targetErr := normalizeRenditionTargetKey(account, renditionInput.TargetKey)
+				if targetErr != nil {
+					return huma.Error400BadRequest(targetErr.Error())
+				}
+				targets[renditionInput.SocialAccountID+"\x00"+targetKey] = struct{}{}
+			}
+			var existing []models.Rendition
 			if err := tx.NewSelect().
-				Model((*models.Rendition)(nil)).
-				Column("id").
+				Model(&existing).
 				Where("publication_id = ?", publication.ID).
 				Where("social_account_id IN (?)", bun.List(uniqueNonEmpty(accountIDs))).
-				Scan(txCtx, &existingIDs); err != nil {
+				Scan(txCtx); err != nil {
 				return err
+			}
+			existingIDs := make([]string, 0, len(existing))
+			for _, rendition := range existing {
+				account := accountMap[rendition.SocialAccountID]
+				key := rendition.SocialAccountID + "\x00" + publicationauth.RenditionTargetKey(rendition, account)
+				if _, replace := targets[key]; replace {
+					existingIDs = append(existingIDs, rendition.ID)
+				}
 			}
 			if err := h.rejectReplyJobsForReplacedTargetsTx(txCtx, tx, publication.ID, existingIDs); err != nil {
 				return err
@@ -1094,8 +1137,7 @@ func (h *PublicationHandler) upsertRenditions(api huma.API) {
 				}
 				if _, err := tx.NewDelete().
 					Model((*models.Rendition)(nil)).
-					Where("publication_id = ?", publication.ID).
-					Where("social_account_id IN (?)", bun.List(uniqueNonEmpty(accountIDs))).
+					Where("id IN (?)", bun.List(existingIDs)).
 					Exec(txCtx); err != nil {
 					return err
 				}
@@ -1293,7 +1335,7 @@ func (h *PublicationHandler) retryRendition(api huma.API) {
 		Middlewares: huma.Middlewares{middleware.RequestMetadataMiddleware(), middleware.AuthMiddleware(api, h.auth)},
 		Errors:      []int{400, 403, 404, 409},
 	}, func(ctx context.Context, input *RetryRenditionInput) (*ActionOutput, error) {
-		jobID, err := h.publicationApplication().RetryRendition(ctx, middleware.GetUserID(ctx), input.PathID, input.AccountID)
+		jobID, err := h.publicationApplication().RetryRendition(ctx, middleware.GetUserID(ctx), input.PathID, input.AccountID, input.TargetKey)
 		if err != nil {
 			return nil, publicationMutationHTTPError(err, "failed to queue destination retry")
 		}
@@ -1767,11 +1809,21 @@ func (h *PublicationHandler) insertRenditions(
 			Media: defaultMedia,
 		}}
 	}
+	seenTargets := make(map[string]struct{}, len(inputs))
 	for _, input := range inputs {
 		account, ok := accounts[input.SocialAccountID]
 		if !ok {
 			return huma.Error400BadRequest("one or more social accounts are invalid, disconnected, or outside this workspace")
 		}
+		targetKey, err := normalizeRenditionTargetKey(account, input.TargetKey)
+		if err != nil {
+			return huma.Error400BadRequest(err.Error())
+		}
+		identity := input.SocialAccountID + "\x00" + targetKey
+		if _, duplicate := seenTargets[identity]; duplicate {
+			return huma.Error400BadRequest("each social account target may appear only once")
+		}
+		seenTargets[identity] = struct{}{}
 		resolved := h.resolveRenditionCapability(ctx, tx, publication, account, input, canonicalInputs)
 		// Unlocked formats follow the current source shape. Requested output profiles
 		// are preserved by the resolver, including when their source becomes invalid.
@@ -1795,6 +1847,7 @@ func (h *PublicationHandler) insertRenditions(
 			ID:              uuid.New().String(),
 			PublicationID:   publication.ID,
 			SocialAccountID: input.SocialAccountID,
+			TargetKey:       targetKey,
 			Platform:        account.Platform,
 			Profile:         profile,
 			OutputProfile:   outputProfile,
@@ -3842,6 +3895,7 @@ func renditionResponse(rendition models.Rendition, media []MediaSummary) Renditi
 		ID:               rendition.ID,
 		PublicationID:    rendition.PublicationID,
 		SocialAccountID:  rendition.SocialAccountID,
+		TargetKey:        rendition.TargetKey,
 		Platform:         rendition.Platform,
 		Profile:          rendition.Profile,
 		OutputProfile:    publicationFirstNonEmpty(rendition.OutputProfile, rendition.Platform+".post"),
@@ -3862,6 +3916,21 @@ func renditionResponse(rendition models.Rendition, media []MediaSummary) Renditi
 		ErrorRetryAt:     formatOptionalTime(rendition.ErrorRetryAt),
 		ErrorAction:      rendition.ErrorAction,
 		Media:            media,
+	}
+}
+
+func providerDeliveryResponse(delivery models.ProviderDelivery) *ProviderDeliveryResponse {
+	return &ProviderDeliveryResponse{
+		TargetKey:               delivery.TargetKey,
+		State:                   delivery.State,
+		TerminalReason:          delivery.TerminalReason,
+		CurrentAttemptID:        delivery.CurrentAttemptID,
+		CurrentAttemptNumber:    delivery.CurrentAttemptNumber,
+		CurrentAttemptCreatedAt: delivery.CurrentAttemptCreatedAt.UTC().Format(time.RFC3339Nano),
+		ExternalID:              delivery.ExternalID,
+		ExternalURL:             delivery.ExternalURL,
+		LastReconciledAt:        formatOptionalTime(delivery.LastReconciledAt),
+		NextReconciliationAt:    formatOptionalTime(delivery.NextReconciliationAt),
 	}
 }
 
@@ -3908,6 +3977,26 @@ func renditionAccountIDs(renditions []RenditionInput) []string {
 		out = append(out, rendition.SocialAccountID)
 	}
 	return out
+}
+
+func normalizeRenditionTargetKey(account models.SocialAccount, requested string) (string, error) {
+	base := publicationauth.TargetKey(account)
+	target := strings.TrimSpace(requested)
+	if target == "" {
+		return base, nil
+	}
+	if len(target) > 255 {
+		return "", errors.New("target_key must be at most 255 bytes")
+	}
+	for _, char := range target {
+		if unicode.IsControl(char) || unicode.IsSpace(char) {
+			return "", errors.New("target_key cannot contain whitespace or control characters")
+		}
+	}
+	if target != base && !strings.HasPrefix(target, base+":") {
+		return "", errors.New("target_key must belong to the selected social account provider")
+	}
+	return target, nil
 }
 
 func allPublicationMediaIDs(

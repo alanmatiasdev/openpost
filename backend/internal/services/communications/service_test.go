@@ -594,7 +594,9 @@ func TestEngagementPersistenceTracksEditsDeletionAttachmentsAndLocalReadState(t 
 	service := NewService(db, staticTokenSource{}, nil)
 
 	initial := platform.Comment{
-		ID: "comment-1", Text: "First", CreatedAt: now.Format(time.RFC3339),
+		ID: "comment-1", AuthorID: "reader-1", AuthorName: "Reader",
+		AuthorHandle: "@reader", AuthorAvatarURL: "https://cdn.example/avatar.png",
+		Text: "First", CreatedAt: now.Format(time.RFC3339),
 		CanReply: true, CanLike: true, LikeStateKnown: true,
 		Attachments: []platform.CommentAttachment{
 			{Type: "image", URL: "https://cdn.example/image.png", AltText: "Preview"},
@@ -653,6 +655,13 @@ func TestEngagementPersistenceTracksEditsDeletionAttachmentsAndLocalReadState(t 
 	require.NoError(t, err)
 	require.NoError(t, db.NewSelect().Model(&item).Where("remote_id = ?", initial.ID).Scan(ctx))
 	require.Empty(t, item.Body)
+	require.JSONEq(t, `[]`, item.AttachmentsJSON)
+	require.Empty(t, item.AuthorRemoteID)
+	require.Empty(t, item.AuthorName)
+	require.Empty(t, item.AuthorHandle)
+	require.Empty(t, item.AuthorAvatarURL)
+	require.False(t, item.CanReply)
+	require.False(t, item.CanLike)
 	require.False(t, item.DeletedAt.IsZero())
 }
 

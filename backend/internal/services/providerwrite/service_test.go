@@ -3,6 +3,7 @@ package providerwrite
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"sync/atomic"
 	"testing"
@@ -277,6 +278,86 @@ func TestStaleWorkerAttemptBecomesAmbiguousBeforeJobRecovery(t *testing.T) {
 	require.Equal(t, "worker_interrupted", stored.SafeErrorClass)
 }
 
+func TestDeliveryProjectionTracksProcessingReconciliationAndLiveState(t *testing.T) {
+	db := newProviderDeliveryTestDB(t)
+	service := New(db)
+	fixedNow := time.Date(2026, 8, 12, 10, 0, 0, 0, time.UTC)
+	service.now = func() time.Time { return fixedNow }
+	input := providerWriteTestInput(t, "delivery-processing")
+	input.PublicationID = "publication-1"
+	input.RenditionID = "rendition-1"
+
+	_, err := service.Execute(t.Context(), input, func(_ context.Context, control *Control) (platform.PublishResult, error) {
+		require.NoError(t, control.Begin(platform.PublishResult{ProviderState: "submit", RetrySafety: platform.PublishRetryNever}))
+		return platform.PublishResult{
+			SubmissionState: platform.PublishSubmissionPending,
+			ProviderState:   "processing", ProviderReference: "operation-1",
+			RetrySafety: platform.PublishRetryReconcileOnly,
+		}, nil
+	}, nil)
+	_, pending := IsPending(err)
+	require.True(t, pending)
+
+	delivery := loadProviderDelivery(t, db, "rendition-1")
+	require.Equal(t, DeliveryProcessing, delivery.State)
+	require.Equal(t, "x", delivery.TargetKey)
+	require.Empty(t, delivery.LastReconciledAt)
+
+	fixedNow = fixedNow.Add(2 * time.Minute)
+	result, err := service.Execute(t.Context(), input, nilSafeSend, func(_ context.Context, reference string) (platform.PublishResult, error) {
+		require.Equal(t, "operation-1", reference)
+		return platform.AcceptedPublishResult("external-1"), nil
+	})
+	require.NoError(t, err)
+	require.Equal(t, "external-1", result.ExternalID)
+	delivery = loadProviderDelivery(t, db, "rendition-1")
+	require.Equal(t, DeliveryLive, delivery.State)
+	require.Equal(t, "external-1", delivery.ExternalID)
+	require.Equal(t, fixedNow, delivery.LastReconciledAt)
+}
+
+func TestOlderAttemptCannotOverwriteNewerDeliveryProjection(t *testing.T) {
+	db := newProviderDeliveryTestDB(t)
+	service := New(db)
+	base := time.Date(2026, 8, 12, 10, 0, 0, 0, time.UTC)
+	attempts := []models.ProviderWriteAttempt{
+		{
+			ID: "attempt-old", OperationID: "old-operation", AttemptNumber: 4,
+			WorkspaceID: "workspace-1", PublicationID: "publication-1", RenditionID: "rendition-1",
+			SocialAccountID: "account-1", TargetKey: "x", Provider: "x", Operation: "publish",
+			PayloadFingerprint: "sha256:old", Status: StatusAmbiguous,
+			SubmissionState: string(platform.PublishSubmissionUnknown), RetrySafety: string(platform.PublishRetryNever),
+			ExternalID: "external-old", CreatedAt: base, UpdatedAt: base,
+		},
+		{
+			ID: "attempt-new", OperationID: "new-operation", AttemptNumber: 1,
+			WorkspaceID: "workspace-1", PublicationID: "publication-1", RenditionID: "rendition-1",
+			SocialAccountID: "account-1", TargetKey: "x", Provider: "x", Operation: "publish",
+			PayloadFingerprint: "sha256:new", Status: StatusAccepted,
+			SubmissionState: string(platform.PublishSubmissionAccepted), RetrySafety: string(platform.PublishRetryNever),
+			ExternalID: "external-new", CreatedAt: base.Add(time.Minute), UpdatedAt: base.Add(time.Minute),
+		},
+	}
+	_, err := db.NewInsert().Model(&attempts).Exec(t.Context())
+	require.NoError(t, err)
+	require.NoError(t, db.RunInTx(t.Context(), &sql.TxOptions{}, func(ctx context.Context, tx bun.Tx) error {
+		return service.syncDeliveryTx(ctx, tx, "attempt-new", false)
+	}))
+	require.NoError(t, db.RunInTx(t.Context(), &sql.TxOptions{}, func(ctx context.Context, tx bun.Tx) error {
+		return service.syncDeliveryTx(ctx, tx, "attempt-old", false)
+	}))
+
+	delivery := loadProviderDelivery(t, db, "rendition-1")
+	require.Equal(t, "attempt-new", delivery.CurrentAttemptID)
+	require.Equal(t, 1, delivery.CurrentAttemptNumber, "attempt numbers are operation-local and cannot fence across operations")
+	require.Equal(t, DeliveryLive, delivery.State)
+	require.Equal(t, "external-new", delivery.ExternalID)
+}
+
+func nilSafeSend(context.Context, *Control) (platform.PublishResult, error) {
+	return platform.PublishResult{}, errors.New("send must not be called during reconciliation")
+}
+
 func newProviderWriteTestDB(t *testing.T) *bun.DB {
 	t.Helper()
 	sqlDB, err := sql.Open("sqlite3", fmt.Sprintf("file:%s?mode=memory&cache=shared&_busy_timeout=5000", uuid.NewString()))
@@ -289,6 +370,25 @@ func newProviderWriteTestDB(t *testing.T) *bun.DB {
 	}
 	t.Cleanup(func() { require.NoError(t, db.Close()) })
 	return db
+}
+
+func newProviderDeliveryTestDB(t *testing.T) *bun.DB {
+	t.Helper()
+	db := newProviderWriteTestDB(t)
+	_, err := db.NewCreateTable().Model((*models.ProviderDelivery)(nil)).IfNotExists().Exec(t.Context())
+	require.NoError(t, err)
+	_, err = db.NewCreateIndex().Model((*models.ProviderDelivery)(nil)).
+		Index("provider_deliveries_rendition_target_test_idx").
+		Unique().Column("rendition_id", "target_key").Exec(t.Context())
+	require.NoError(t, err)
+	return db
+}
+
+func loadProviderDelivery(t *testing.T, db *bun.DB, renditionID string) models.ProviderDelivery {
+	t.Helper()
+	var delivery models.ProviderDelivery
+	require.NoError(t, db.NewSelect().Model(&delivery).Where("rendition_id = ?", renditionID).Scan(t.Context()))
+	return delivery
 }
 
 func providerWriteTestInput(t *testing.T, operationID string) Input {

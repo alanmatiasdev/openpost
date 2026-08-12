@@ -102,9 +102,12 @@
 <section class="stories" aria-labelledby="stories-title">
 	<div class="marketing-shell">
 		<header class="stories-heading">
-			<p class="section-label">Creator workflows</p>
-			<h2 id="stories-title">Built around real publishing work.</h2>
-			<p>Launches, weekly planning, media, replies, and results stay in the same workspace.</p>
+			<p class="section-label">Illustrative workflows</p>
+			<h2 id="stories-title">Built around common publishing work.</h2>
+			<p>
+				These fictional examples show how launches, weekly planning, media, replies, and results
+				can stay in the same workspace.
+			</p>
 		</header>
 
 		<div class="proof-wrap">

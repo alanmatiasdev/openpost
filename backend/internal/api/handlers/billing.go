@@ -91,6 +91,16 @@ func (h *BillingHandler) RegisterAPIRoutes(api huma.API) {
 	}, h.createCheckout)
 
 	huma.Register(api, huma.Operation{
+		OperationID: "consume-billing-checkout-return",
+		Method:      http.MethodGet,
+		Path:        "/billing/checkout/{attempt_id}/return",
+		Summary:     "Confirm and consume a billing checkout return",
+		Tags:        []string{"Billing"},
+		Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
+		Errors:      []int{404, 500},
+	}, h.consumeCheckoutReturn)
+
+	huma.Register(api, huma.Operation{
 		OperationID: "create-billing-portal-session",
 		Method:      http.MethodPost,
 		Path:        "/billing/portal",
@@ -359,6 +369,7 @@ type CreateBillingCheckoutInput struct {
 		OrganizationID string `json:"organization_id,omitempty" doc:"Organization ID"`
 		PlanID         string `json:"plan_id" doc:"Plan ID: starter, founder, pro, team, or agency"`
 		BillingPeriod  string `json:"billing_period,omitempty" doc:"Billing period: monthly or annual" enum:"monthly,annual" default:"monthly"`
+		ReturnPath     string `json:"return_path,omitempty" maxLength:"2048" doc:"Validated same-origin route to resume once this exact checkout succeeds"`
 	}
 }
 
@@ -413,12 +424,43 @@ func (h *BillingHandler) createCheckout(ctx context.Context, input *CreateBillin
 		CustomerEmail:  email,
 		PlanID:         input.Body.PlanID,
 		BillingPeriod:  input.Body.BillingPeriod,
+		ReturnPath:     input.Body.ReturnPath,
 	})
 	if err != nil {
 		return nil, billingAPIError(err)
 	}
 	h.captureCheckoutCreated(ctx, userID, organizationID, workspaceID, result)
 	return &BillingURLOutput{Body: checkoutResponse(result)}, nil
+}
+
+type ConsumeBillingCheckoutReturnInput struct {
+	AttemptID string `path:"attempt_id" doc:"Opaque OpenPost checkout attempt ID"`
+}
+
+type ConsumeBillingCheckoutReturnOutput struct {
+	Body struct {
+		Status     string `json:"status" enum:"pending,success,failed"`
+		ReturnPath string `json:"return_path,omitempty"`
+		Consumed   bool   `json:"consumed"`
+	}
+}
+
+func (h *BillingHandler) consumeCheckoutReturn(ctx context.Context, input *ConsumeBillingCheckoutReturnInput) (*ConsumeBillingCheckoutReturnOutput, error) {
+	if err := h.ensureReady(); err != nil {
+		return nil, err
+	}
+	result, err := h.billing.ConsumeCheckoutReturn(ctx, input.AttemptID, middleware.GetUserID(ctx))
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, huma.Error404NotFound("checkout attempt not found")
+	}
+	if err != nil {
+		return nil, huma.Error500InternalServerError("failed to confirm checkout")
+	}
+	output := &ConsumeBillingCheckoutReturnOutput{}
+	output.Body.Status = result.Status
+	output.Body.ReturnPath = result.ReturnPath
+	output.Body.Consumed = result.Consumed
+	return output, nil
 }
 
 type CreateBillingPortalInput struct {
@@ -466,6 +508,7 @@ type CreateOrganizationBillingCheckoutInput struct {
 	Body   struct {
 		PlanID        string `json:"plan_id" doc:"Plan ID: starter, founder, pro, team, or agency"`
 		BillingPeriod string `json:"billing_period,omitempty" doc:"Billing period: monthly or annual" enum:"monthly,annual" default:"monthly"`
+		ReturnPath    string `json:"return_path,omitempty" maxLength:"2048" doc:"Validated same-origin route to resume once this exact checkout succeeds"`
 	}
 }
 
@@ -487,6 +530,7 @@ func (h *BillingHandler) createOrganizationCheckout(ctx context.Context, input *
 		CustomerEmail:  email,
 		PlanID:         input.Body.PlanID,
 		BillingPeriod:  input.Body.BillingPeriod,
+		ReturnPath:     input.Body.ReturnPath,
 	})
 	if err != nil {
 		return nil, billingAPIError(err)

@@ -326,9 +326,11 @@ jobs:
             --out openpost-app-android.apk \
             candidate-android/openpost-app-android-unsigned.apk
           "$apksigner" verify --verbose --print-certs openpost-app-android.apk
-      - name: Preserve the verified unsigned APK when signing is not configured
+      - name: Refuse to publish an unsigned Android application
         if: steps.signing.outputs.has_keystore != 'true'
-        run: cp candidate-android/openpost-app-android-unsigned.apk openpost-app-android.apk
+        run: |
+          echo "Android release signing credentials are required for the installable release asset." >&2
+          exit 1
       - name: Upload the Android APK to the draft release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

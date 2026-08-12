@@ -514,7 +514,7 @@ test("desktop planning sidebar resumes drafts and stays out of mobile navigation
   expect(workspaceFooterBox).not.toBeNull();
   expect(
     workspaceFooterBox!.y - (draftListBox!.y + draftListBox!.height),
-  ).toBeLessThanOrEqual(32);
+  ).toBeLessThanOrEqual(1);
   await draftList.locator("li").last().scrollIntoViewIfNeeded();
   await expect(draftList.locator("li").last()).toBeVisible();
 

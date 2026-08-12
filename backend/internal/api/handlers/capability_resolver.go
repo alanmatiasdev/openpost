@@ -2,6 +2,9 @@ package handlers
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -59,6 +62,7 @@ func (h *CapabilityResolverHandler) SetProviderReadiness(service *providerreadin
 
 type ResolveCapabilityMediaInput struct {
 	MediaID string `json:"media_id" doc:"Media attachment ID"`
+	AltText string `json:"alt_text,omitempty" doc:"Destination alt-text override"`
 }
 
 type ResolveCapabilitySegmentInput struct {
@@ -276,6 +280,11 @@ func (h *CapabilityResolverHandler) resolveSegments(
 				Width:           media.Width,
 				Height:          media.Height,
 				DurationMS:      media.DurationMS,
+				FrameRate:       media.FrameRate,
+				VideoCodec:      strings.ToLower(media.VideoCodec),
+				AudioCodec:      strings.ToLower(media.AudioCodec),
+				AudioChannels:   media.AudioChannels,
+				AltText:         publicationFirstNonEmpty(mediaInput.AltText, media.AltText),
 				AnalysisStatus:  media.AnalysisStatus,
 				AnalysisError:   media.AnalysisError,
 				PublicURLReady:  media.PublicURLReady,
@@ -307,7 +316,15 @@ func (h *CapabilityResolverHandler) mergeAccountCapability(
 	if !ok || h.tokenSource == nil {
 		return
 	}
-	cacheKey := account.ID + "|" + resolved.OutputProfile + "|" + accountCapabilitySettingsKey(settings)
+	cacheKey := strings.Join([]string{
+		account.ID,
+		resolved.OutputProfile,
+		firstResolvedIntent(*resolved),
+		firstResolvedMediaShape(*resolved),
+		strings.ToLower(strings.TrimSpace(locale)),
+		strings.ToUpper(strings.TrimSpace(region)),
+		accountCapabilitySettingsKey(settings),
+	}, "|")
 	result, expiresAt, ok := h.cachedAccountCapability(cacheKey)
 	if !ok {
 		accessToken, err := h.tokenSource.GetValidAccessToken(ctx, account.ID)
@@ -513,11 +530,12 @@ func (h *CapabilityResolverHandler) addDynamicCapabilityFailure(resolved *capabi
 }
 
 func accountCapabilitySettingsKey(settings map[string]any) string {
-	method := strings.ToUpper(strings.TrimSpace(fmt.Sprint(settings["content_posting_method"])))
-	if method == "UPLOAD" || method == "MEDIA_UPLOAD" {
-		return "upload"
+	payload, err := json.Marshal(settings)
+	if err != nil {
+		return "invalid"
 	}
-	return "direct"
+	digest := sha256.Sum256(payload)
+	return hex.EncodeToString(digest[:])
 }
 
 //nolint:gocyclo

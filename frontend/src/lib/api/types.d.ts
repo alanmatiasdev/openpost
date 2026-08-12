@@ -1376,6 +1376,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/billing/checkout/{attempt_id}/return": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Confirm and consume a billing checkout return */
+        get: operations["consume-billing-checkout-return"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/billing/portal": {
         parameters: {
             query?: never;
@@ -4602,6 +4619,7 @@ export interface components {
         Capability: {
             capability_revision: string;
             caveats?: string[] | null;
+            content: components["schemas"]["ContentConstraint"];
             description_required?: boolean;
             expires_at?: string;
             intents: string[] | null;
@@ -4899,6 +4917,18 @@ export interface components {
             /** @description Six digit authenticator code */
             code: string;
         };
+        ConsumeBillingCheckoutReturnOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ConsumeBillingCheckoutReturnOutputBody.json
+             */
+            readonly $schema?: string;
+            consumed: boolean;
+            return_path?: string;
+            /** @enum {string} */
+            status: "pending" | "success" | "failed";
+        };
         ConsumeImageEditorReturnTokenOutputBody: {
             /**
              * Format: uri
@@ -4948,6 +4978,12 @@ export interface components {
             result: components["schemas"]["VideoReturnResult"];
             return_url: string;
             workspace_id: string;
+        };
+        ContentConstraint: {
+            alt_text: components["schemas"]["TextConstraint"];
+            body: components["schemas"]["TextConstraint"];
+            description: components["schemas"]["TextConstraint"];
+            title: components["schemas"]["TextConstraint"];
         };
         ContentOverview: {
             account_id: string;
@@ -5063,6 +5099,8 @@ export interface components {
             organization_id?: string;
             /** @description Plan ID: starter, founder, pro, team, or agency */
             plan_id: string;
+            /** @description Validated same-origin route to resume once this exact checkout succeeds */
+            return_path?: string;
             /** @description Workspace ID */
             workspace_id?: string;
         };
@@ -5281,6 +5319,8 @@ export interface components {
             billing_period: "monthly" | "annual";
             /** @description Plan ID: starter, founder, pro, team, or agency */
             plan_id: string;
+            /** @description Validated same-origin route to resume once this exact checkout succeeds */
+            return_path?: string;
         };
         CreatePostInputBody: {
             /**
@@ -7247,16 +7287,30 @@ export interface components {
             name: string;
         };
         MediaConstraint: {
+            allowed_audio_codecs?: string[] | null;
             allowed_mimes: string[] | null;
+            allowed_video_codecs?: string[] | null;
             aspect_ratios?: string[] | null;
+            /** @enum {string} */
+            audio_policy?: "optional" | "required" | "forbidden";
             /** Format: int64 */
             max_count: number;
             /** Format: int64 */
             max_duration_seconds?: number;
+            /** Format: double */
+            max_frame_rate?: number;
+            /** Format: int64 */
+            max_height?: number;
             /** Format: int64 */
             max_size_bytes?: number;
             /** Format: int64 */
+            max_width?: number;
+            /** Format: int64 */
             min_count: number;
+            /** Format: int64 */
+            min_height?: number;
+            /** Format: int64 */
+            min_width?: number;
             requires_https_fetchable: boolean;
             requires_public_url: boolean;
         };
@@ -7930,11 +7984,16 @@ export interface components {
             readonly $schema?: string;
             accounts: components["schemas"]["AccountOverview"][] | null;
             content: components["schemas"]["ContentOverview"][] | null;
+            /** Format: int64 */
+            content_total: number;
             follower_series: components["schemas"]["SeriesPoint"][] | null;
             /** Format: date-time */
             generated_at: string;
             /** Format: date-time */
             last_synced_at?: string;
+            publication_next_cursor?: string;
+            /** Format: int64 */
+            publication_total: number;
             publications: components["schemas"]["PublicationOverview"][] | null;
             /** Format: int64 */
             range_days: number;
@@ -8463,6 +8522,19 @@ export interface components {
              * @description Confirmed estimated billed provider operation units
              */
             units: number;
+        };
+        ProviderDeliveryResponse: {
+            current_attempt_created_at: string;
+            current_attempt_id: string;
+            /** Format: int64 */
+            current_attempt_number: number;
+            external_id?: string;
+            external_url?: string;
+            last_reconciled_at?: string;
+            next_reconciliation_at?: string;
+            state: string;
+            target_key: string;
+            terminal_reason?: string;
         };
         ProviderInfo: {
             /** @description Connection method: oauth, app_password, or oauth_oob */
@@ -9037,11 +9109,14 @@ export interface components {
             };
             /** @description Social account ID */
             social_account_id: string;
+            /** @description Provider subdestination key; defaults to the account destination */
+            target_key?: string;
             /** @description Platform-specific title */
             title?: string;
         };
         RenditionResponse: {
             body: string;
+            delivery?: components["schemas"]["ProviderDeliveryResponse"];
             description: string;
             error_action?: string;
             error_code?: string;
@@ -9067,6 +9142,7 @@ export interface components {
             };
             social_account_id: string;
             status: string;
+            target_key: string;
             title: string;
         };
         RenditionSegmentInput: {
@@ -9277,6 +9353,8 @@ export interface components {
             accounts: components["schemas"]["ResolvedAccountCapability"][] | null;
         };
         ResolveCapabilityMediaInput: {
+            /** @description Destination alt-text override */
+            alt_text?: string;
             /** @description Media attachment ID */
             media_id: string;
         };
@@ -9303,6 +9381,7 @@ export interface components {
             capability_revision: string;
             caveats?: string[] | null;
             compatible: boolean;
+            content: components["schemas"]["ContentConstraint"];
             description_required?: boolean;
             dynamic_options?: {
                 [key: string]: components["schemas"]["Option"][] | null;
@@ -9750,6 +9829,7 @@ export interface components {
         };
         SettingConstraint: {
             accept?: string[] | null;
+            local_date_time?: boolean;
             /** Format: int64 */
             max_items?: number;
             /** Format: int64 */
@@ -10034,6 +10114,15 @@ export interface components {
         TemplateExample: {
             text: string[] | null;
             url: string;
+        };
+        TextConstraint: {
+            /** Format: int64 */
+            max_length?: number;
+            /** Format: int64 */
+            min_length?: number;
+            /** Format: int64 */
+            recommended_max_length?: number;
+            required: boolean;
         };
         TextPostPublicationInput: {
             /** @description Target audience */
@@ -12537,6 +12626,14 @@ export interface operations {
                 workspace_id: string;
                 /** @description Reporting window in days (7, 30, or 90) */
                 days?: number;
+                /** @description Optional social account ID used to filter results and totals */
+                account_id?: string;
+                /** @description Stored result ordering */
+                sort?: "engagement" | "views" | "newest";
+                /** @description Opaque publication-page cursor */
+                cursor?: string;
+                /** @description Publication results per page */
+                limit?: number;
             };
             header?: never;
             path?: never;
@@ -15881,6 +15978,56 @@ export interface operations {
             };
             /** @description Service Unavailable */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "consume-billing-checkout-return": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Opaque OpenPost checkout attempt ID */
+                attempt_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConsumeBillingCheckoutReturnOutputBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -23167,6 +23314,8 @@ export interface operations {
     "delete-publication-rendition": {
         parameters: {
             query?: {
+                /** @description Exact provider subdestination key; required when the account has multiple targets */
+                target_key?: string;
                 /** @description Explicit confirmation that saved destination settings may be deleted */
                 confirm?: boolean;
                 /** @description Revision loaded by the editor */
@@ -23250,7 +23399,10 @@ export interface operations {
     };
     "retry-publication-rendition": {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Exact provider subdestination key; required when the account has multiple targets */
+                target_key?: string;
+            };
             header?: never;
             path: {
                 /** @description Publication ID */

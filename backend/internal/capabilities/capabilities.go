@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/openpost/backend/internal/models"
 )
@@ -53,15 +54,30 @@ const (
 )
 
 type SettingConstraint struct {
-	Minimum     *float64 `json:"minimum,omitempty"`
-	Maximum     *float64 `json:"maximum,omitempty"`
-	MinItems    int      `json:"min_items,omitempty"`
-	MaxItems    int      `json:"max_items,omitempty"`
-	MinLength   int      `json:"min_length,omitempty"`
-	MaxLength   int      `json:"max_length,omitempty"`
-	Pattern     string   `json:"pattern,omitempty"`
-	Accept      []string `json:"accept,omitempty"`
-	UniqueItems bool     `json:"unique_items,omitempty"`
+	Minimum       *float64 `json:"minimum,omitempty"`
+	Maximum       *float64 `json:"maximum,omitempty"`
+	MinItems      int      `json:"min_items,omitempty"`
+	MaxItems      int      `json:"max_items,omitempty"`
+	MinLength     int      `json:"min_length,omitempty"`
+	MaxLength     int      `json:"max_length,omitempty"`
+	Pattern       string   `json:"pattern,omitempty"`
+	Accept        []string `json:"accept,omitempty"`
+	UniqueItems   bool     `json:"unique_items,omitempty"`
+	LocalDateTime bool     `json:"local_date_time,omitempty"`
+}
+
+type TextConstraint struct {
+	Required             bool `json:"required"`
+	MinLength            int  `json:"min_length,omitempty"`
+	MaxLength            int  `json:"max_length,omitempty"`
+	RecommendedMaxLength int  `json:"recommended_max_length,omitempty"`
+}
+
+type ContentConstraint struct {
+	Body        TextConstraint `json:"body"`
+	Title       TextConstraint `json:"title"`
+	Description TextConstraint `json:"description"`
+	AltText     TextConstraint `json:"alt_text"`
 }
 
 type SettingCondition struct {
@@ -109,6 +125,14 @@ type MediaConstraint struct {
 	AspectRatios           []string `json:"aspect_ratios,omitempty"`
 	MaxDurationSeconds     int      `json:"max_duration_seconds,omitempty"`
 	MaxSizeBytes           int64    `json:"max_size_bytes,omitempty"`
+	MinWidth               int      `json:"min_width,omitempty"`
+	MaxWidth               int      `json:"max_width,omitempty"`
+	MinHeight              int      `json:"min_height,omitempty"`
+	MaxHeight              int      `json:"max_height,omitempty"`
+	AllowedVideoCodecs     []string `json:"allowed_video_codecs,omitempty"`
+	AllowedAudioCodecs     []string `json:"allowed_audio_codecs,omitempty"`
+	MaxFrameRate           float64  `json:"max_frame_rate,omitempty"`
+	AudioPolicy            string   `json:"audio_policy,omitempty" enum:"optional,required,forbidden"`
 	RequiresPublicURL      bool     `json:"requires_public_url"`
 	RequiresHTTPSFetchable bool     `json:"requires_https_fetchable"`
 }
@@ -129,6 +153,7 @@ type Capability struct {
 	RequiresAppReview    bool                `json:"requires_app_review"`
 	RequiresPublicMedia  bool                `json:"requires_public_media"`
 	Media                MediaConstraint     `json:"media"`
+	Content              ContentConstraint   `json:"content"`
 	Settings             []SettingDefinition `json:"settings,omitempty"`
 	Caveats              []string            `json:"caveats,omitempty"`
 	Metadata             map[string]string   `json:"metadata,omitempty"`
@@ -144,6 +169,11 @@ type MediaItem struct {
 	Width           int
 	Height          int
 	DurationMS      int64
+	FrameRate       float64
+	VideoCodec      string
+	AudioCodec      string
+	AudioChannels   int
+	AltText         string
 	AnalysisStatus  string
 	AnalysisError   string
 	PublicURLReady  bool
@@ -1353,6 +1383,9 @@ func validateCapability(capability Capability, body, title, description string, 
 	if capability.DescriptionRequired && strings.TrimSpace(description) == "" {
 		issues = append(issues, ValidationIssue{Severity: "error", Code: "description_required", Message: "Description is required", Provider: provider, Profile: profile, Field: "description"})
 	}
+	issues = append(issues, validateTextConstraint(capability, "body", body, capability.Content.Body)...)
+	issues = append(issues, validateTextConstraint(capability, "title", title, capability.Content.Title)...)
+	issues = append(issues, validateTextConstraint(capability, "description", description, capability.Content.Description)...)
 	if len(media) < capability.Media.MinCount {
 		issues = append(issues, ValidationIssue{
 			Severity: "error",
@@ -1501,7 +1534,39 @@ func validateSettingDefinition(capability Capability, field SettingDefinition, s
 			issues = append(issues, settingValidationIssue(capability, field, "setting_url_invalid", fmt.Sprintf("%s must be a valid URL", field.Label)))
 		}
 	}
+	if field.Constraints.LocalDateTime {
+		if strings.ContainsAny(value, "Zz+") {
+			issues = append(issues, settingValidationIssue(capability, field, "setting_local_datetime_invalid", fmt.Sprintf("%s must be a local date and time without a timezone", field.Label)))
+		} else if _, err := time.Parse("2006-01-02T15:04", value); err != nil {
+			issues = append(issues, settingValidationIssue(capability, field, "setting_local_datetime_invalid", fmt.Sprintf("%s must use YYYY-MM-DDTHH:MM", field.Label)))
+		}
+	}
 	return issues
+}
+
+func validateTextConstraint(capability Capability, field, value string, constraint TextConstraint) []ValidationIssue {
+	length := TextLength(capability.Provider, value)
+	if constraint.Required && strings.TrimSpace(value) == "" {
+		return []ValidationIssue{{Severity: "error", Code: field + "_required", Message: capabilityFieldLabel(field) + " is required", Provider: capability.Provider, Profile: capability.Profile, Field: field}}
+	}
+	if constraint.MinLength > 0 && length < constraint.MinLength {
+		return []ValidationIssue{{Severity: "error", Code: field + "_too_short", Message: fmt.Sprintf("%s must contain at least %d characters", capabilityFieldLabel(field), constraint.MinLength), Provider: capability.Provider, Profile: capability.Profile, Field: field}}
+	}
+	if constraint.MaxLength > 0 && length > constraint.MaxLength {
+		return []ValidationIssue{{Severity: "error", Code: field + "_too_long", Message: fmt.Sprintf("%s is over the %d character limit", capabilityFieldLabel(field), constraint.MaxLength), Provider: capability.Provider, Profile: capability.Profile, Field: field}}
+	}
+	if constraint.RecommendedMaxLength > 0 && length > constraint.RecommendedMaxLength {
+		return []ValidationIssue{{Severity: "warning", Code: field + "_recommended_length", Message: fmt.Sprintf("Keep %s at %d characters or fewer when possible", field, constraint.RecommendedMaxLength), Provider: capability.Provider, Profile: capability.Profile, Field: field}}
+	}
+	return nil
+}
+
+func capabilityFieldLabel(field string) string {
+	field = strings.ReplaceAll(field, "_", " ")
+	if field == "" {
+		return "Field"
+	}
+	return strings.ToUpper(field[:1]) + field[1:]
 }
 
 func validateMediaTagsSetting(capability Capability, field SettingDefinition, value string) []ValidationIssue {
@@ -1750,6 +1815,36 @@ func validateMediaItem(capability Capability, item MediaItem) []ValidationIssue 
 	if capability.Media.MaxSizeBytes > 0 && item.Size > capability.Media.MaxSizeBytes {
 		issues = append(issues, ValidationIssue{Severity: "error", Code: "media_size", Message: "Media file is too large", Provider: capability.Provider, Profile: capability.Profile, MediaID: item.ID})
 	}
+	for _, boundary := range []struct {
+		invalid bool
+		code    string
+		message string
+	}{
+		{capability.Media.MinWidth > 0 && item.Width < capability.Media.MinWidth, "media_width_min", fmt.Sprintf("Media width must be at least %d pixels", capability.Media.MinWidth)},
+		{capability.Media.MaxWidth > 0 && item.Width > capability.Media.MaxWidth, "media_width_max", fmt.Sprintf("Media width must be at most %d pixels", capability.Media.MaxWidth)},
+		{capability.Media.MinHeight > 0 && item.Height < capability.Media.MinHeight, "media_height_min", fmt.Sprintf("Media height must be at least %d pixels", capability.Media.MinHeight)},
+		{capability.Media.MaxHeight > 0 && item.Height > capability.Media.MaxHeight, "media_height_max", fmt.Sprintf("Media height must be at most %d pixels", capability.Media.MaxHeight)},
+	} {
+		if boundary.invalid {
+			issues = append(issues, ValidationIssue{Severity: "error", Code: boundary.code, Message: boundary.message, Provider: capability.Provider, Profile: capability.Profile, MediaID: item.ID})
+		}
+	}
+	if len(capability.Media.AllowedVideoCodecs) > 0 && !stringSliceContainsFold(capability.Media.AllowedVideoCodecs, item.VideoCodec) {
+		issues = append(issues, ValidationIssue{Severity: "error", Code: "media_video_codec", Message: "Video codec is not supported", Provider: capability.Provider, Profile: capability.Profile, MediaID: item.ID})
+	}
+	if len(capability.Media.AllowedAudioCodecs) > 0 && item.AudioCodec != "" && !stringSliceContainsFold(capability.Media.AllowedAudioCodecs, item.AudioCodec) {
+		issues = append(issues, ValidationIssue{Severity: "error", Code: "media_audio_codec", Message: "Audio codec is not supported", Provider: capability.Provider, Profile: capability.Profile, MediaID: item.ID})
+	}
+	if capability.Media.MaxFrameRate > 0 && item.FrameRate > capability.Media.MaxFrameRate {
+		issues = append(issues, ValidationIssue{Severity: "error", Code: "media_frame_rate", Message: fmt.Sprintf("Video frame rate must be %.2f fps or lower", capability.Media.MaxFrameRate), Provider: capability.Provider, Profile: capability.Profile, MediaID: item.ID})
+	}
+	if capability.Media.AudioPolicy == "required" && item.AudioChannels == 0 {
+		issues = append(issues, ValidationIssue{Severity: "error", Code: "media_audio_required", Message: "Video must include audio", Provider: capability.Provider, Profile: capability.Profile, MediaID: item.ID})
+	}
+	if capability.Media.AudioPolicy == "forbidden" && item.AudioChannels > 0 {
+		issues = append(issues, ValidationIssue{Severity: "error", Code: "media_audio_forbidden", Message: "Video must not include audio", Provider: capability.Provider, Profile: capability.Profile, MediaID: item.ID})
+	}
+	issues = append(issues, validateTextConstraint(capability, "alt_text", item.AltText, capability.Content.AltText)...)
 	if strings.HasPrefix(item.MimeType, "video/") && item.AnalysisStatus != "" && item.AnalysisStatus != "ready" && item.AnalysisStatus != "failed" {
 		issues = append(issues, ValidationIssue{Severity: "error", Code: "media_analysis_pending", Message: "Video analysis must finish before scheduling or publishing", Provider: capability.Provider, Profile: capability.Profile, MediaID: item.ID})
 	}
@@ -1771,6 +1866,15 @@ func validateMediaItem(capability Capability, item MediaItem) []ValidationIssue 
 		}
 	}
 	return issues
+}
+
+func stringSliceContainsFold(values []string, candidate string) bool {
+	for _, value := range values {
+		if strings.EqualFold(strings.TrimSpace(value), strings.TrimSpace(candidate)) {
+			return true
+		}
+	}
+	return false
 }
 
 func validationCategories(c Capability) []string {

@@ -37,6 +37,7 @@ func TestLoadPublicationResponsesUsesFixedQueryCount(t *testing.T) {
 		(*models.MediaAttachment)(nil),
 		(*models.Post)(nil),
 		(*models.WorkspaceMember)(nil),
+		(*models.ProviderDelivery)(nil),
 	)
 	ctx := context.Background()
 	now := time.Date(2026, time.July, 27, 12, 0, 0, 0, time.UTC)
@@ -93,16 +94,23 @@ func TestLoadPublicationResponsesUsesFixedQueryCount(t *testing.T) {
 	renditions := []models.Rendition{
 		{
 			ID: "rendition-1", PublicationID: "publication-1", SocialAccountID: "account-1",
-			Platform: "x", Profile: models.ContentProfileShortText, Body: "First rendition",
+			TargetKey: "x", Platform: "x", Profile: models.ContentProfileShortText, Body: "First rendition",
 			SettingsJSON: "{}", Status: models.RenditionStatusDraft, CreatedAt: now,
 		},
 		{
 			ID: "rendition-2", PublicationID: "publication-2", SocialAccountID: "account-2",
-			Platform: "mastodon", Profile: models.ContentProfileShortText, Body: "Second rendition",
+			TargetKey: "mastodon:https://social.example", Platform: "mastodon", Profile: models.ContentProfileShortText, Body: "Second rendition",
 			SettingsJSON: "{}", Status: models.RenditionStatusDraft, CreatedAt: now,
 		},
 	}
 	_, err = db.NewInsert().Model(&renditions).Exec(ctx)
+	require.NoError(t, err)
+	_, err = db.NewInsert().Model(&models.ProviderDelivery{
+		ID: "delivery-1", WorkspaceID: "workspace-1", PublicationID: "publication-1",
+		RenditionID: "rendition-1", SocialAccountID: "account-1", TargetKey: "x", Provider: "x",
+		State: "processing", CurrentAttemptID: "attempt-1", CurrentAttemptNumber: 1,
+		CurrentAttemptCreatedAt: now, NextReconciliationAt: now.Add(time.Minute), CreatedAt: now, UpdatedAt: now,
+	}).Exec(ctx)
 	require.NoError(t, err)
 	_, err = db.NewInsert().Model(&[]models.RenditionMedia{
 		{RenditionID: "rendition-1", MediaID: "media-1", Role: "attachment"},
@@ -153,12 +161,13 @@ func TestLoadPublicationResponsesUsesFixedQueryCount(t *testing.T) {
 	db.AddQueryHook(counter)
 	responses, err := (&PublicationHandler{db: db}).loadPublicationResponses(ctx, publications)
 	require.NoError(t, err)
-	require.Equal(t, int64(7), counter.count.Load())
+	require.Equal(t, int64(8), counter.count.Load())
 	require.Len(t, responses, 2)
 	require.Equal(t, "post-1", responses[0].TextPostID)
 	require.Equal(t, "segment-1", responses[0].Segments[0].ID)
 	require.Equal(t, "media-1", responses[0].Segments[0].Media[0].ID)
 	require.Equal(t, "rendition-1", responses[0].Renditions[0].ID)
+	require.Equal(t, "processing", responses[0].Renditions[0].Delivery.State)
 	require.Equal(t, "rendition-segment-1", responses[0].Renditions[0].Segments[0].ID)
 	require.Equal(t, "media-1", responses[0].Renditions[0].Segments[0].Media[0].ID)
 	require.Equal(t, "post-2", responses[1].TextPostID)
@@ -168,7 +177,7 @@ func TestLoadPublicationResponsesUsesFixedQueryCount(t *testing.T) {
 	detail, err := (&PublicationHandler{db: db}).loadPublicationResponse(ctx, "publication-1", "user-1")
 	require.NoError(t, err)
 	// Workspace authorization includes one constant identity-policy lookup.
-	require.Equal(t, int64(10), counter.count.Load())
+	require.Equal(t, int64(11), counter.count.Load())
 	require.Equal(t, "publication-1", detail.ID)
 	require.Equal(t, "rendition-segment-1", detail.Renditions[0].Segments[0].ID)
 }

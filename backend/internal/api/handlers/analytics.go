@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"net/http"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -23,6 +24,10 @@ func NewAnalyticsHandler(db *bun.DB, auth middleware.Authenticator, service *ana
 type GetAnalyticsOverviewInput struct {
 	WorkspaceID string `query:"workspace_id" required:"true" doc:"Workspace ID"`
 	Days        int    `query:"days" default:"30" doc:"Reporting window in days (7, 30, or 90)"`
+	AccountID   string `query:"account_id" doc:"Optional social account ID used to filter results and totals"`
+	Sort        string `query:"sort" default:"engagement" enum:"engagement,views,newest" doc:"Stored result ordering"`
+	Cursor      string `query:"cursor" doc:"Opaque publication-page cursor"`
+	Limit       int    `query:"limit" default:"50" minimum:"1" maximum:"100" doc:"Publication results per page"`
 }
 
 type GetAnalyticsOverviewOutput struct {
@@ -58,7 +63,15 @@ func (h *AnalyticsHandler) RegisterRoutes(api huma.API) {
 		if input.Days != 7 && input.Days != 30 && input.Days != 90 {
 			return nil, huma.Error400BadRequest("days must be 7, 30, or 90")
 		}
-		overview, err := h.service.Overview(ctx, input.WorkspaceID, input.Days)
+		overview, err := h.service.OverviewWithOptions(ctx, input.WorkspaceID, input.Days, analyticsservice.OverviewOptions{
+			AccountID: input.AccountID,
+			Sort:      input.Sort,
+			Cursor:    input.Cursor,
+			Limit:     input.Limit,
+		})
+		if errors.Is(err, analyticsservice.ErrInvalidOverviewCursor) {
+			return nil, huma.Error400BadRequest("invalid analytics cursor")
+		}
 		if err != nil {
 			return nil, huma.Error500InternalServerError("failed to load analytics")
 		}

@@ -232,7 +232,7 @@
 		</Button>
 	</Sidebar.Header>
 
-	<Sidebar.Content class={showDesktopPlanner ? 'overflow-hidden py-2' : 'px-2 py-3'}>
+	<Sidebar.Content class={showDesktopPlanner ? 'overflow-hidden pt-2' : 'px-2 py-3'}>
 		{#if showDesktopPlanner}
 			<SidebarPlanner onNavigate={navigate} />
 		{:else}

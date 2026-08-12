@@ -76,8 +76,10 @@ func TestDynamicCapabilityFailureOnlyBlocksRequiredActiveChoice(t *testing.T) {
 	require.Equal(t, "error", direct.Issues[0].Severity)
 	require.Equal(t, "required_dynamic_options_unavailable", direct.Issues[0].Code)
 
-	require.Equal(t, "upload", accountCapabilitySettingsKey(map[string]any{"content_posting_method": "UPLOAD"}))
-	require.Equal(t, "direct", accountCapabilitySettingsKey(map[string]any{"content_posting_method": "DIRECT_POST"}))
+	cacheUpload := accountCapabilitySettingsKey(map[string]any{"content_posting_method": "UPLOAD", "community_id": "one"})
+	require.Equal(t, cacheUpload, accountCapabilitySettingsKey(map[string]any{"community_id": "one", "content_posting_method": "UPLOAD"}))
+	require.NotEqual(t, cacheUpload, accountCapabilitySettingsKey(map[string]any{"content_posting_method": "UPLOAD", "community_id": "two"}))
+	require.NotEqual(t, cacheUpload, accountCapabilitySettingsKey(map[string]any{"content_posting_method": "DIRECT_POST", "community_id": "one"}))
 }
 
 func TestXAccountCapabilityResolutionFailsClosedAndUpgradesVerifiedPremium(t *testing.T) {

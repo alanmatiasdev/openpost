@@ -246,6 +246,7 @@ func TestCreateBillingCheckoutRoute(t *testing.T) {
 		"workspace_id":   "ws-1",
 		"plan_id":        "founder",
 		"billing_period": "annual",
+		"return_path":    "/publications/new?source=calendar",
 	})
 
 	require.Equal(t, http.StatusOK, resp.Code, resp.Body.String())
@@ -258,13 +259,14 @@ func TestCreateBillingCheckoutRoute(t *testing.T) {
 	require.Equal(t, "test_client_token", out["client_token"])
 	require.Equal(t, "sandbox", out["environment"])
 	require.Equal(t, "user@example.com", out["customer_email"])
-	require.Equal(t, "https://app.openpost.test/checkout?status=success", out["return_url"])
+	require.Equal(t, "https://app.openpost.test/checkout?attempt="+out["id"].(string)+"&status=success", out["return_url"])
 
 	var attempt models.BillingCheckoutAttempt
 	require.NoError(t, srv.db.NewSelect().Model(&attempt).Where("checkout_attempt_id = ?", out["id"]).Scan(t.Context()))
 	require.Equal(t, "org_ws-1", attempt.OrganizationID)
 	require.Equal(t, "ws-1", attempt.WorkspaceID)
 	require.Equal(t, "founder", attempt.PlanID)
+	require.Equal(t, "/publications/new?source=calendar", attempt.ReturnPath)
 }
 
 func TestBillingMutationsRequireWorkspaceAdmin(t *testing.T) {

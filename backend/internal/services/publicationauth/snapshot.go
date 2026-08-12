@@ -142,7 +142,7 @@ func SnapshotForRendition(ctx context.Context, db bun.IDB, publicationID, rendit
 		WorkspaceID:         publication.WorkspaceID,
 		PublicationRevision: publication.Revision,
 		SocialAccountID:     rendition.SocialAccountID,
-		TargetKey:           TargetKey(account),
+		TargetKey:           RenditionTargetKey(rendition, account),
 		ContentHash:         contentHash,
 		MediaHash:           mediaHash,
 		SettingsHash:        settingsHash,
@@ -316,6 +316,15 @@ func TargetKey(account models.SocialAccount) string {
 		return "mastodon:" + account.InstanceURL
 	}
 	return account.Platform
+}
+
+// RenditionTargetKey keeps upgraded and fresh renditions exact while retaining
+// a safe fallback for legacy fixtures and databases created before migration 088.
+func RenditionTargetKey(rendition models.Rendition, account models.SocialAccount) string {
+	if target := strings.TrimSpace(rendition.TargetKey); target != "" {
+		return target
+	}
+	return TargetKey(account)
 }
 
 func hashCanonical(domain string, value any) (string, error) {

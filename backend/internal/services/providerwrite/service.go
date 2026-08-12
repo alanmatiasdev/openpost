@@ -73,13 +73,19 @@ func (c *Control) Begin(result platform.PublishResult) error {
 	}
 	durableCtx, cancel := durableContext(c.ctx)
 	defer cancel()
-	updated, err := query.Exec(durableCtx)
+	err := c.service.db.RunInTx(durableCtx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
+		updated, updateErr := query.Conn(tx).Exec(txCtx)
+		if updateErr != nil {
+			return fmt.Errorf("enter provider write fence: %w", updateErr)
+		}
+		rows, _ := updated.RowsAffected()
+		if rows != 1 {
+			return ErrWriteInProgress
+		}
+		return c.service.syncDeliveryTx(txCtx, tx, c.attempt.ID, false)
+	})
 	if err != nil {
-		return fmt.Errorf("enter provider write fence: %w", err)
-	}
-	rows, _ := updated.RowsAffected()
-	if rows != 1 {
-		return ErrWriteInProgress
+		return err
 	}
 	c.attempt.Status = StatusSending
 	c.attempt.SubmissionState = string(platform.PublishSubmissionUnknown)
@@ -102,7 +108,7 @@ func (c *Control) Checkpoint(result platform.PublishResult) error {
 		result.SubmissionState != platform.PublishSubmissionPending {
 		return fmt.Errorf("unsupported provider write checkpoint state %q", result.SubmissionState)
 	}
-	return c.service.persistResult(c.ctx, c.attempt, result, nil)
+	return c.service.persistResult(c.ctx, c.attempt, result, nil, false)
 }
 
 func (s *Service) Execute(
@@ -217,13 +223,13 @@ func (s *Service) sendPrepared(ctx context.Context, attempt *models.ProviderWrit
 		result.SubmissionState = platform.PublishSubmissionAccepted
 	}
 	if result.SubmissionState == platform.PublishSubmissionAccepted && sendErr == nil {
-		if err := s.persistResult(ctx, current, result, sendErr); err != nil {
+		if err := s.persistResult(ctx, current, result, sendErr, false); err != nil {
 			return platform.PublishResult{}, &OutcomeError{Kind: StatusAmbiguous, Err: errors.Join(ErrOutcomeAmbiguous, err)}
 		}
 		return result, nil
 	}
 	if result.SubmissionState == platform.PublishSubmissionPending {
-		if err := s.persistResult(ctx, current, result, sendErr); err != nil {
+		if err := s.persistResult(ctx, current, result, sendErr, false); err != nil {
 			return platform.PublishResult{}, &OutcomeError{Kind: StatusAmbiguous, Err: errors.Join(ErrOutcomeAmbiguous, err)}
 		}
 		return platform.PublishResult{}, pendingError(result)
@@ -239,7 +245,7 @@ func (s *Service) reconcile(ctx context.Context, attempt *models.ProviderWriteAt
 	result = mergeResult(resultFromAttempt(attempt), result)
 	switch result.SubmissionState {
 	case platform.PublishSubmissionAccepted:
-		if err := s.persistResult(ctx, attempt, result, reconcileErr); err != nil {
+		if err := s.persistResult(ctx, attempt, result, reconcileErr, true); err != nil {
 			return platform.PublishResult{}, err
 		}
 		return result, nil
@@ -254,7 +260,7 @@ func (s *Service) reconcile(ctx context.Context, attempt *models.ProviderWriteAt
 	default:
 		result.SubmissionState = platform.PublishSubmissionPending
 		result.RetrySafety = platform.PublishRetryReconcileOnly
-		if err := s.persistResult(ctx, attempt, result, reconcileErr); err != nil {
+		if err := s.persistResult(ctx, attempt, result, reconcileErr, true); err != nil {
 			return platform.PublishResult{}, err
 		}
 		return platform.PublishResult{}, pendingError(result)
@@ -286,7 +292,13 @@ func (s *Service) persistSendFailure(
 	}
 }
 
-func (s *Service) persistResult(ctx context.Context, attempt *models.ProviderWriteAttempt, result platform.PublishResult, resultErr error) error {
+func (s *Service) persistResult(
+	ctx context.Context,
+	attempt *models.ProviderWriteAttempt,
+	result platform.PublishResult,
+	resultErr error,
+	reconciled bool,
+) error {
 	result = normalizeResult(result)
 	now := s.now()
 	status := StatusSending
@@ -302,28 +314,34 @@ func (s *Service) persistResult(ctx context.Context, attempt *models.ProviderWri
 	errorClass, errorCode, httpStatus := safeError(resultErr)
 	durableCtx, cancel := durableContext(ctx)
 	defer cancel()
-	updated, err := s.db.NewUpdate().Model((*models.ProviderWriteAttempt)(nil)).
-		Set("status = ?", status).
-		Set("submission_state = ?", result.SubmissionState).
-		Set("provider_state = ?", result.ProviderState).
-		Set("provider_reference = ?", result.ProviderReference).
-		Set("retry_safety = ?", firstRetrySafety(result.RetrySafety, platform.PublishRetryNever)).
-		Set("external_id = ?", result.ExternalID).
-		Set("external_url = ?", result.ExternalURL).
-		Set("safe_error_class = ?", errorClass).
-		Set("safe_error_code = ?", errorCode).
-		Set("error_http_status = ?", httpStatus).
-		Set("reconcile_after = ?", reconcileAt).
-		Set("completed_at = ?", completedAt).
-		Set("updated_at = ?", now).
-		Where("id = ? AND status IN (?, ?)", attempt.ID, StatusSending, StatusAmbiguous).
-		Exec(durableCtx)
+	err := s.db.RunInTx(durableCtx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
+		updated, updateErr := tx.NewUpdate().Model((*models.ProviderWriteAttempt)(nil)).
+			Set("status = ?", status).
+			Set("submission_state = ?", result.SubmissionState).
+			Set("provider_state = ?", result.ProviderState).
+			Set("provider_reference = ?", result.ProviderReference).
+			Set("retry_safety = ?", firstRetrySafety(result.RetrySafety, platform.PublishRetryNever)).
+			Set("external_id = ?", result.ExternalID).
+			Set("external_url = ?", result.ExternalURL).
+			Set("safe_error_class = ?", errorClass).
+			Set("safe_error_code = ?", errorCode).
+			Set("error_http_status = ?", httpStatus).
+			Set("reconcile_after = ?", reconcileAt).
+			Set("completed_at = ?", completedAt).
+			Set("updated_at = ?", now).
+			Where("id = ? AND status IN (?, ?)", attempt.ID, StatusSending, StatusAmbiguous).
+			Exec(txCtx)
+		if updateErr != nil {
+			return updateErr
+		}
+		rows, _ := updated.RowsAffected()
+		if rows != 1 {
+			return errors.New("attempt is no longer active")
+		}
+		return s.syncDeliveryTx(txCtx, tx, attempt.ID, reconciled)
+	})
 	if err != nil {
 		return fmt.Errorf("persist provider write result: %w", err)
-	}
-	rows, _ := updated.RowsAffected()
-	if rows != 1 {
-		return fmt.Errorf("persist provider write result: attempt is no longer active")
 	}
 	return nil
 }
@@ -339,18 +357,27 @@ func (s *Service) persistDefiniteFailure(
 	errorClass, errorCode, httpStatus := safeError(failure)
 	durableCtx, cancel := durableContext(ctx)
 	defer cancel()
-	_, err := s.db.NewUpdate().Model((*models.ProviderWriteAttempt)(nil)).
-		Set("status = ?", StatusDefiniteFailure).
-		Set("submission_state = ?", submission).
-		Set("retry_safety = ?", retrySafety).
-		Set("safe_error_class = ?", errorClass).
-		Set("safe_error_code = ?", errorCode).
-		Set("error_http_status = ?", httpStatus).
-		Set("completed_at = ?", now).
-		Set("updated_at = ?", now).
-		Where("id = ? AND status IN (?, ?)", attempt.ID, StatusPrepared, StatusSending).
-		Exec(durableCtx)
-	return err
+	return s.db.RunInTx(durableCtx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
+		result, err := tx.NewUpdate().Model((*models.ProviderWriteAttempt)(nil)).
+			Set("status = ?", StatusDefiniteFailure).
+			Set("submission_state = ?", submission).
+			Set("retry_safety = ?", retrySafety).
+			Set("safe_error_class = ?", errorClass).
+			Set("safe_error_code = ?", errorCode).
+			Set("error_http_status = ?", httpStatus).
+			Set("completed_at = ?", now).
+			Set("updated_at = ?", now).
+			Where("id = ? AND status IN (?, ?)", attempt.ID, StatusPrepared, StatusSending).
+			Exec(txCtx)
+		if err != nil {
+			return err
+		}
+		rows, _ := result.RowsAffected()
+		if rows == 0 {
+			return nil
+		}
+		return s.syncDeliveryTx(txCtx, tx, attempt.ID, false)
+	})
 }
 
 func (s *Service) persistAmbiguous(ctx context.Context, attempt *models.ProviderWriteAttempt, result platform.PublishResult, failure error) error {
@@ -359,20 +386,29 @@ func (s *Service) persistAmbiguous(ctx context.Context, attempt *models.Provider
 	retrySafety := firstRetrySafety(result.RetrySafety, platform.PublishRetryNever)
 	durableCtx, cancel := durableContext(ctx)
 	defer cancel()
-	_, err := s.db.NewUpdate().Model((*models.ProviderWriteAttempt)(nil)).
-		Set("status = ?", StatusAmbiguous).
-		Set("submission_state = ?", platform.PublishSubmissionUnknown).
-		Set("provider_state = ?", result.ProviderState).
-		Set("provider_reference = ?", result.ProviderReference).
-		Set("retry_safety = ?", retrySafety).
-		Set("safe_error_class = ?", errorClass).
-		Set("safe_error_code = ?", errorCode).
-		Set("error_http_status = ?", httpStatus).
-		Set("completed_at = ?", now).
-		Set("updated_at = ?", now).
-		Where("id = ? AND status = ?", attempt.ID, StatusSending).
-		Exec(durableCtx)
-	return err
+	return s.db.RunInTx(durableCtx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
+		updated, err := tx.NewUpdate().Model((*models.ProviderWriteAttempt)(nil)).
+			Set("status = ?", StatusAmbiguous).
+			Set("submission_state = ?", platform.PublishSubmissionUnknown).
+			Set("provider_state = ?", result.ProviderState).
+			Set("provider_reference = ?", result.ProviderReference).
+			Set("retry_safety = ?", retrySafety).
+			Set("safe_error_class = ?", errorClass).
+			Set("safe_error_code = ?", errorCode).
+			Set("error_http_status = ?", httpStatus).
+			Set("completed_at = ?", now).
+			Set("updated_at = ?", now).
+			Where("id = ? AND status = ?", attempt.ID, StatusSending).
+			Exec(txCtx)
+		if err != nil {
+			return err
+		}
+		rows, _ := updated.RowsAffected()
+		if rows == 0 {
+			return nil
+		}
+		return s.syncDeliveryTx(txCtx, tx, attempt.ID, false)
+	})
 }
 
 func (s *Service) loadOrCreateAttempt(ctx context.Context, input Input) (*models.ProviderWriteAttempt, error) {
@@ -405,7 +441,13 @@ func (s *Service) createNextAttempt(ctx context.Context, input Input, number int
 		IdempotencyKey:  operationIdempotencyKey(input.OperationID),
 		CreatedAt:       now, UpdatedAt: now,
 	}
-	if _, err := s.db.NewInsert().Model(attempt).Exec(ctx); err != nil {
+	err := s.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
+		if _, insertErr := tx.NewInsert().Model(attempt).Exec(txCtx); insertErr != nil {
+			return insertErr
+		}
+		return s.syncDeliveryTx(txCtx, tx, attempt.ID, false)
+	})
+	if err != nil {
 		var active models.ProviderWriteAttempt
 		loadErr := s.db.NewSelect().Model(&active).
 			Where("operation_id = ?", input.OperationID).
@@ -426,23 +468,159 @@ func (s *Service) loadAttempt(ctx context.Context, id string) (*models.ProviderW
 	return &attempt, nil
 }
 
+func (s *Service) syncDeliveryTx(
+	ctx context.Context,
+	tx bun.Tx,
+	attemptID string,
+	reconciled bool,
+) error {
+	var attempt models.ProviderWriteAttempt
+	if err := tx.NewSelect().Model(&attempt).Where("id = ?", attemptID).Scan(ctx); err != nil {
+		return err
+	}
+	if attempt.PublicationID == "" || attempt.RenditionID == "" {
+		return nil
+	}
+	now := s.now()
+	delivery := &models.ProviderDelivery{
+		ID:                      uuid.NewString(),
+		WorkspaceID:             attempt.WorkspaceID,
+		PublicationID:           attempt.PublicationID,
+		RenditionID:             attempt.RenditionID,
+		SocialAccountID:         attempt.SocialAccountID,
+		TargetKey:               attempt.TargetKey,
+		Provider:                attempt.Provider,
+		State:                   deliveryState(attempt),
+		TerminalReason:          deliveryTerminalReason(attempt),
+		CurrentAttemptID:        attempt.ID,
+		CurrentAttemptNumber:    attempt.AttemptNumber,
+		CurrentAttemptCreatedAt: attempt.CreatedAt,
+		ExternalID:              attempt.ExternalID,
+		ExternalURL:             attempt.ExternalURL,
+		NextReconciliationAt:    attempt.ReconcileAfter,
+		CreatedAt:               now,
+		UpdatedAt:               now,
+	}
+	if reconciled {
+		delivery.LastReconciledAt = now
+	}
+	_, err := tx.NewInsert().Model(delivery).
+		On("CONFLICT (rendition_id, target_key) DO UPDATE").
+		Set("workspace_id = EXCLUDED.workspace_id").
+		Set("publication_id = EXCLUDED.publication_id").
+		Set("social_account_id = EXCLUDED.social_account_id").
+		Set("provider = EXCLUDED.provider").
+		Set("state = EXCLUDED.state").
+		Set("terminal_reason = EXCLUDED.terminal_reason").
+		Set("current_attempt_id = EXCLUDED.current_attempt_id").
+		Set("current_attempt_number = EXCLUDED.current_attempt_number").
+		Set("current_attempt_created_at = EXCLUDED.current_attempt_created_at").
+		Set("external_id = EXCLUDED.external_id").
+		Set("external_url = EXCLUDED.external_url").
+		Set("last_reconciled_at = CASE WHEN EXCLUDED.last_reconciled_at IS NULL THEN last_reconciled_at ELSE EXCLUDED.last_reconciled_at END").
+		Set("next_reconciliation_at = EXCLUDED.next_reconciliation_at").
+		Set("updated_at = EXCLUDED.updated_at").
+		Where("current_attempt_created_at < EXCLUDED.current_attempt_created_at OR (current_attempt_created_at = EXCLUDED.current_attempt_created_at AND current_attempt_id <= EXCLUDED.current_attempt_id)").
+		Exec(ctx)
+	if err != nil && missingProviderDeliveryTable(err) {
+		// Narrow unit fixtures created before migration 089 may intentionally omit
+		// the projection. Production databases fail startup if the migration fails.
+		return nil
+	}
+	return err
+}
+
+func deliveryState(attempt models.ProviderWriteAttempt) string {
+	providerState := strings.ToLower(strings.TrimSpace(attempt.ProviderState))
+	providerScheduled := providerState == "scheduled" || providerState == DeliveryProviderScheduled
+	switch attempt.Status {
+	case StatusPrepared:
+		return DeliveryQueued
+	case StatusAccepted:
+		if providerScheduled {
+			return DeliveryProviderScheduled
+		}
+		return DeliveryLive
+	case StatusDefiniteFailure:
+		return DeliveryRejected
+	case StatusAmbiguous:
+		if attempt.ProviderReference == "" && attempt.RetrySafety == string(platform.PublishRetryNever) {
+			return DeliveryManualResolution
+		}
+		return DeliveryAmbiguous
+	case StatusSending:
+		if attempt.SubmissionState == string(platform.PublishSubmissionPending) {
+			if providerScheduled {
+				return DeliveryProviderScheduled
+			}
+			return DeliveryProcessing
+		}
+		return DeliverySubmitted
+	default:
+		return DeliveryAmbiguous
+	}
+}
+
+func deliveryTerminalReason(attempt models.ProviderWriteAttempt) string {
+	if attempt.Status != StatusDefiniteFailure && attempt.Status != StatusAmbiguous {
+		return ""
+	}
+	if attempt.SafeErrorClass == "" {
+		return attempt.SafeErrorCode
+	}
+	if attempt.SafeErrorCode == "" {
+		return attempt.SafeErrorClass
+	}
+	return attempt.SafeErrorClass + ":" + attempt.SafeErrorCode
+}
+
+func missingProviderDeliveryTable(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "no such table: provider_deliveries") ||
+		(strings.Contains(message, "provider_deliveries") && strings.Contains(message, "does not exist"))
+}
+
 // MarkStaleJobAttempts converts every sending attempt owned by a stale worker
 // lease into an explicit ambiguous outcome before the jobs are requeued.
 func (s *Service) MarkStaleJobAttempts(ctx context.Context, cutoff time.Time) (int64, error) {
-	result, err := s.db.NewUpdate().Model((*models.ProviderWriteAttempt)(nil)).
-		Set("status = ?", StatusAmbiguous).
-		Set("submission_state = CASE WHEN submission_state = ? THEN submission_state ELSE ? END", platform.PublishSubmissionPending, platform.PublishSubmissionUnknown).
-		Set("retry_safety = CASE WHEN submission_state = ? THEN ? ELSE retry_safety END", platform.PublishSubmissionPending, platform.PublishRetryReconcileOnly).
-		Set("safe_error_class = ?", "worker_interrupted").
-		Set("completed_at = ?", s.now()).
-		Set("updated_at = ?", s.now()).
-		Where("status = ?", StatusSending).
-		Where("job_id IN (SELECT id FROM jobs WHERE status = ? AND locked_at IS NOT NULL AND locked_at <= ?)", "processing", cutoff.UTC()).
-		Exec(ctx)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected()
+	var affected int64
+	err := s.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
+		var attemptIDs []string
+		if err := tx.NewSelect().Model((*models.ProviderWriteAttempt)(nil)).Column("id").
+			Where("status = ?", StatusSending).
+			Where("job_id IN (SELECT id FROM jobs WHERE status = ? AND locked_at IS NOT NULL AND locked_at <= ?)", "processing", cutoff.UTC()).
+			Scan(txCtx, &attemptIDs); err != nil {
+			return err
+		}
+		if len(attemptIDs) == 0 {
+			return nil
+		}
+		now := s.now()
+		result, err := tx.NewUpdate().Model((*models.ProviderWriteAttempt)(nil)).
+			Set("status = ?", StatusAmbiguous).
+			Set("submission_state = CASE WHEN submission_state = ? THEN submission_state ELSE ? END", platform.PublishSubmissionPending, platform.PublishSubmissionUnknown).
+			Set("retry_safety = CASE WHEN submission_state = ? THEN ? ELSE retry_safety END", platform.PublishSubmissionPending, platform.PublishRetryReconcileOnly).
+			Set("safe_error_class = ?", "worker_interrupted").
+			Set("completed_at = ?", now).
+			Set("updated_at = ?", now).
+			Where("id IN (?)", bun.List(attemptIDs)).
+			Where("status = ?", StatusSending).
+			Exec(txCtx)
+		if err != nil {
+			return err
+		}
+		affected, _ = result.RowsAffected()
+		for _, attemptID := range attemptIDs {
+			if err := s.syncDeliveryTx(txCtx, tx, attemptID, false); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	return affected, err
 }
 
 func normalizeInput(input Input) Input {

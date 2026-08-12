@@ -383,6 +383,17 @@ func engagementItemFromComment(
 	body := boundedText(comment.Text, 10000)
 	if comment.Deleted {
 		body = ""
+		attachments = "[]"
+		safeAttachments = nil
+		comment.AuthorID = ""
+		comment.AuthorName = ""
+		comment.AuthorHandle = ""
+		comment.AuthorAvatarURL = ""
+		comment.CanReply = false
+		comment.CanHide = false
+		comment.CanDelete = false
+		comment.CanLike = false
+		comment.CanUnlike = false
 	}
 	itemID := existing.ID
 	if itemID == "" {
@@ -1127,6 +1138,10 @@ func (s *Service) markEngagementItemDeleted(
 	_, err := s.db.NewUpdate().Model(item).
 		Set("body = ''").
 		Set("attachments_json = '[]'").
+		Set("author_remote_id = ''").
+		Set("author_name = ''").
+		Set("author_handle = ''").
+		Set("author_avatar_url = ''").
 		Set("deleted_at = ?", now).
 		Set("can_reply = ?", false).
 		Set("can_hide = ?", false).

@@ -200,6 +200,7 @@ type CreateCheckoutInput struct {
 	CustomerEmail  string
 	PlanID         string
 	BillingPeriod  string
+	ReturnPath     string
 }
 
 type CheckoutResult struct {
@@ -218,6 +219,10 @@ type CheckoutResult struct {
 
 func (s *Service) CreateCheckout(ctx context.Context, input CreateCheckoutInput) (CheckoutResult, error) {
 	period := normalizeBillingPeriod(input.BillingPeriod)
+	returnPath, err := normalizeCheckoutReturnPath(input.ReturnPath)
+	if err != nil {
+		return CheckoutResult{}, err
+	}
 	_, providerPriceID, _, err := s.planFor(input.PlanID, period)
 	if err != nil {
 		return CheckoutResult{}, err
@@ -254,6 +259,7 @@ func (s *Service) CreateCheckout(ctx context.Context, input CreateCheckoutInput)
 			ProviderPriceID:   providerPriceID,
 			PlanID:            strings.ToLower(strings.TrimSpace(input.PlanID)),
 			BillingPeriod:     period,
+			ReturnPath:        returnPath,
 			Status:            "created",
 			CreatedAt:         now,
 			UpdatedAt:         now,
@@ -271,7 +277,7 @@ func (s *Service) CreateCheckout(ctx context.Context, input CreateCheckoutInput)
 		PlanID:          strings.ToLower(strings.TrimSpace(input.PlanID)),
 		BillingPeriod:   period,
 		TrialEndsAt:     now.AddDate(0, 0, TrialDays),
-		ReturnURL:       s.returnURL(),
+		ReturnURL:       s.returnURL(attemptID),
 		ClientToken:     clientToken,
 		Environment:     environment,
 		CustomerEmail:   email,
@@ -444,15 +450,94 @@ func paddlePriceEnvVar(planID, period string) string {
 	return "OPENPOST_PADDLE_" + strings.ToUpper(strings.ReplaceAll(planID, "-", "_")) + "_" + strings.ToUpper(normalizeBillingPeriod(period)) + "_PRICE_ID"
 }
 
-func (s *Service) returnURL() string {
-	if value := strings.TrimSpace(s.paddle.ReturnURL); value != "" {
-		return value
+func (s *Service) returnURL(attemptID string) string {
+	value := strings.TrimSpace(s.paddle.ReturnURL)
+	if value == "" {
+		base := strings.TrimRight(strings.TrimSpace(s.paddle.AppURL), "/")
+		if base == "" {
+			return ""
+		}
+		value = base + "/checkout"
 	}
-	base := strings.TrimRight(strings.TrimSpace(s.paddle.AppURL), "/")
-	if base == "" {
+	parsed, err := url.Parse(value)
+	if err != nil {
 		return ""
 	}
-	return base + "/checkout?status=success"
+	query := parsed.Query()
+	query.Set("status", "success")
+	query.Set("attempt", attemptID)
+	parsed.RawQuery = query.Encode()
+	return parsed.String()
+}
+
+func normalizeCheckoutReturnPath(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", nil
+	}
+	if len(value) > 2048 || strings.ContainsAny(value, "\r\n") {
+		return "", fmt.Errorf("checkout return path must be a same-origin OpenPost route")
+	}
+	parsed, err := url.ParseRequestURI(value)
+	if err != nil || parsed.IsAbs() || parsed.Host != "" || !strings.HasPrefix(parsed.Path, "/") || strings.HasPrefix(parsed.Path, "//") {
+		return "", fmt.Errorf("checkout return path must be a same-origin OpenPost route")
+	}
+	return parsed.String(), nil
+}
+
+type CheckoutReturnResult struct {
+	Status     string
+	ReturnPath string
+	Consumed   bool
+}
+
+func (s *Service) ConsumeCheckoutReturn(ctx context.Context, attemptID, userID string) (CheckoutReturnResult, error) {
+	attemptID = strings.TrimSpace(attemptID)
+	userID = strings.TrimSpace(userID)
+	if attemptID == "" || userID == "" || s.db == nil {
+		return CheckoutReturnResult{}, sql.ErrNoRows
+	}
+	var attempt models.BillingCheckoutAttempt
+	if err := s.db.NewSelect().Model(&attempt).
+		Where("checkout_attempt_id = ?", attemptID).
+		Where("user_id = ?", userID).
+		Where("provider = ?", ProviderPaddle).
+		Scan(ctx); err != nil {
+		return CheckoutReturnResult{}, err
+	}
+	status := strings.ToLower(strings.TrimSpace(attempt.Status))
+	result := CheckoutReturnResult{Status: "pending", Consumed: !attempt.ReturnConsumedAt.IsZero()}
+	if status != "active" && status != "trialing" {
+		switch status {
+		case "canceled", "paused", "past_due":
+			result.Status = "failed"
+		}
+		return result, nil
+	}
+	result.Status = "success"
+	if result.Consumed {
+		return result, nil
+	}
+	now := s.now().UTC()
+	update, err := s.db.NewUpdate().Model((*models.BillingCheckoutAttempt)(nil)).
+		Set("return_consumed_at = ?", now).
+		Set("updated_at = ?", now).
+		Where("checkout_attempt_id = ?", attemptID).
+		Where("user_id = ?", userID).
+		Where("return_consumed_at IS NULL").
+		Where("LOWER(status) IN ('active', 'trialing')").
+		Exec(ctx)
+	if err != nil {
+		return CheckoutReturnResult{}, fmt.Errorf("consuming checkout return: %w", err)
+	}
+	rows, _ := update.RowsAffected()
+	if rows == 1 {
+		result.Consumed = true
+		result.ReturnPath = attempt.ReturnPath
+		return result, nil
+	}
+	result.Consumed = true
+	return result, nil
 }
 
 type WebhookResult struct {

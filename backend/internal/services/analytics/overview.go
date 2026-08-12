@@ -3,6 +3,7 @@ package analytics
 import (
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -89,18 +90,35 @@ type PublicationOverview struct {
 }
 
 type Overview struct {
-	GeneratedAt    time.Time             `json:"generated_at"`
-	LastSyncedAt   time.Time             `json:"last_synced_at,omitempty"`
-	RangeDays      int                   `json:"range_days"`
-	Summary        Summary               `json:"summary"`
-	Accounts       []AccountOverview     `json:"accounts"`
-	FollowerSeries []SeriesPoint         `json:"follower_series"`
-	Publications   []PublicationOverview `json:"publications"`
-	Content        []ContentOverview     `json:"content"`
+	GeneratedAt           time.Time             `json:"generated_at"`
+	LastSyncedAt          time.Time             `json:"last_synced_at,omitempty"`
+	RangeDays             int                   `json:"range_days"`
+	Summary               Summary               `json:"summary"`
+	Accounts              []AccountOverview     `json:"accounts"`
+	FollowerSeries        []SeriesPoint         `json:"follower_series"`
+	Publications          []PublicationOverview `json:"publications"`
+	Content               []ContentOverview     `json:"content"`
+	PublicationTotal      int                   `json:"publication_total"`
+	PublicationNextCursor string                `json:"publication_next_cursor,omitempty"`
+	ContentTotal          int                   `json:"content_total"`
 }
 
 func (s *Service) Overview(ctx context.Context, workspaceID string, days int) (Overview, error) {
+	return s.OverviewWithOptions(ctx, workspaceID, days, OverviewOptions{})
+}
+
+type OverviewOptions struct {
+	AccountID string
+	Sort      string
+	Cursor    string
+	Limit     int
+}
+
+var ErrInvalidOverviewCursor = errors.New("invalid analytics overview cursor")
+
+func (s *Service) OverviewWithOptions(ctx context.Context, workspaceID string, days int, options OverviewOptions) (Overview, error) {
 	days = normalizeOverviewDays(days)
+	options = normalizeOverviewOptions(options)
 	now := s.now()
 	start := now.AddDate(0, 0, -days)
 	result := Overview{
@@ -129,11 +147,10 @@ func (s *Service) Overview(ctx context.Context, workspaceID string, days int) (O
 	result.Accounts = s.buildAccountOverviews(activeAccounts, stateByID, history, &result.Summary)
 	result.FollowerSeries = combinedFollowerSeries(result.Accounts)
 
-	publications, publicationByID, publicationIDs, err := s.loadOverviewPublications(ctx, workspaceID, start)
+	_, publicationByID, publicationIDs, err := s.loadOverviewPublications(ctx, workspaceID, start)
 	if err != nil {
 		return Overview{}, err
 	}
-	result.Summary.Published = len(publications)
 	if len(publicationIDs) == 0 {
 		return result, nil
 	}
@@ -141,9 +158,42 @@ func (s *Service) Overview(ctx context.Context, workspaceID string, days int) (O
 	if err != nil {
 		return Overview{}, err
 	}
-	result.Content = buildContentOverviews(renditions, publicationByID, accountByID, stateByID, now, &result.Summary)
-	result.Publications = buildPublicationOverviews(result.Content)
+	allContent := buildContentOverviews(renditions, publicationByID, accountByID, stateByID, now, &result.Summary)
+	filteredContent := filterAnalyticsContent(allContent, options.AccountID)
+	if options.AccountID != "" {
+		result.Summary = summarizeAnalyticsContent(filteredContent, result.Accounts, options.AccountID)
+	} else {
+		result.Summary.Published = countAnalyticsPublications(filteredContent)
+	}
+	allPublicationOverviews := buildPublicationOverviews(filteredContent)
+	sortPublicationOverviews(allPublicationOverviews, options.Sort)
+	page, nextCursor, err := paginatePublicationOverviews(allPublicationOverviews, options, days)
+	if err != nil {
+		return Overview{}, err
+	}
+	result.PublicationTotal = len(allPublicationOverviews)
+	result.PublicationNextCursor = nextCursor
+	result.ContentTotal = len(filteredContent)
+	result.Publications = page
+	result.Content = flattenPublicationContent(page)
 	return result, nil
+}
+
+func normalizeOverviewOptions(options OverviewOptions) OverviewOptions {
+	options.AccountID = strings.TrimSpace(options.AccountID)
+	options.Sort = strings.ToLower(strings.TrimSpace(options.Sort))
+	switch options.Sort {
+	case "views", "newest":
+	default:
+		options.Sort = "engagement"
+	}
+	if options.Limit <= 0 {
+		options.Limit = 50
+	} else if options.Limit > 100 {
+		options.Limit = 100
+	}
+	options.Cursor = strings.TrimSpace(options.Cursor)
+	return options
 }
 
 func normalizeOverviewDays(days int) int {
@@ -476,12 +526,116 @@ func buildPublicationOverviews(content []ContentOverview) []PublicationOverview 
 		if publications[i].Metrics[platform.MetricViews] != publications[j].Metrics[platform.MetricViews] {
 			return publications[i].Metrics[platform.MetricViews] > publications[j].Metrics[platform.MetricViews]
 		}
-		return publications[i].PublishedAt.After(publications[j].PublishedAt)
+		if !publications[i].PublishedAt.Equal(publications[j].PublishedAt) {
+			return publications[i].PublishedAt.After(publications[j].PublishedAt)
+		}
+		return publications[i].PublicationID < publications[j].PublicationID
 	})
-	if len(publications) > 50 {
-		publications = publications[:50]
-	}
 	return publications
+}
+
+func filterAnalyticsContent(content []ContentOverview, accountID string) []ContentOverview {
+	if accountID == "" {
+		return content
+	}
+	filtered := make([]ContentOverview, 0, len(content))
+	for _, item := range content {
+		if item.AccountID == accountID {
+			filtered = append(filtered, item)
+		}
+	}
+	return filtered
+}
+
+func summarizeAnalyticsContent(content []ContentOverview, accounts []AccountOverview, accountID string) Summary {
+	summary := Summary{}
+	for _, account := range accounts {
+		if account.ID != accountID {
+			continue
+		}
+		if followers, ok := account.Metrics[platform.MetricFollowers]; ok {
+			summary.Followers = MetricSummary{Value: followers, Delta: account.FollowerDelta, Measured: 1}
+		}
+		break
+	}
+	for _, item := range content {
+		summary.Engagement.Value += item.Engagement
+		if platform.HasEngagementMetric(item.Metrics) {
+			summary.Engagement.Measured++
+		}
+		addMeasuredSummary(&summary.Views, item.Metrics, platform.MetricViews)
+		addMeasuredSummary(&summary.Impressions, item.Metrics, platform.MetricImpressions)
+		addMeasuredSummary(&summary.Reach, item.Metrics, platform.MetricReach)
+	}
+	summary.Published = countAnalyticsPublications(content)
+	return summary
+}
+
+func countAnalyticsPublications(content []ContentOverview) int {
+	ids := make(map[string]struct{}, len(content))
+	for _, item := range content {
+		ids[item.PublicationID] = struct{}{}
+	}
+	return len(ids)
+}
+
+func sortPublicationOverviews(publications []PublicationOverview, sortMode string) {
+	sort.SliceStable(publications, func(i, j int) bool {
+		left, right := publications[i], publications[j]
+		switch sortMode {
+		case "newest":
+			if !left.PublishedAt.Equal(right.PublishedAt) {
+				return left.PublishedAt.After(right.PublishedAt)
+			}
+		case "views":
+			if left.Metrics[platform.MetricViews] != right.Metrics[platform.MetricViews] {
+				return left.Metrics[platform.MetricViews] > right.Metrics[platform.MetricViews]
+			}
+		default:
+			if left.Engagement != right.Engagement {
+				return left.Engagement > right.Engagement
+			}
+		}
+		return left.PublicationID < right.PublicationID
+	})
+}
+
+type overviewCursor struct {
+	Offset    int    `json:"offset"`
+	AccountID string `json:"account_id"`
+	Sort      string `json:"sort"`
+	Days      int    `json:"days"`
+}
+
+func paginatePublicationOverviews(publications []PublicationOverview, options OverviewOptions, days int) ([]PublicationOverview, string, error) {
+	offset := 0
+	if options.Cursor != "" {
+		decoded, err := base64.RawURLEncoding.DecodeString(options.Cursor)
+		if err != nil {
+			return nil, "", ErrInvalidOverviewCursor
+		}
+		var cursor overviewCursor
+		if json.Unmarshal(decoded, &cursor) != nil || cursor.Offset < 0 || cursor.Offset > len(publications) ||
+			cursor.AccountID != options.AccountID || cursor.Sort != options.Sort || cursor.Days != days {
+			return nil, "", ErrInvalidOverviewCursor
+		}
+		offset = cursor.Offset
+	}
+	end := min(offset+options.Limit, len(publications))
+	page := append([]PublicationOverview(nil), publications[offset:end]...)
+	if end >= len(publications) {
+		return page, "", nil
+	}
+	next, _ := json.Marshal(overviewCursor{Offset: end, AccountID: options.AccountID, Sort: options.Sort, Days: days})
+	return page, base64.RawURLEncoding.EncodeToString(next), nil
+}
+
+func flattenPublicationContent(publications []PublicationOverview) []ContentOverview {
+	var content []ContentOverview
+	for _, publication := range publications {
+		content = append(content, publication.Renditions...)
+	}
+	return content
 }
 
 func combinedFollowerSeries(accounts []AccountOverview) []SeriesPoint {

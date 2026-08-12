@@ -156,6 +156,36 @@ describe('DestinationSettingsDialog', () => {
 		expect(onChange).toHaveBeenCalledWith('playlist_id', 'launches');
 	});
 
+	it('offers a touch-safe continuation for paged remote options', async () => {
+		await page.viewport(320, 720);
+		const onOptionLoadMore = vi.fn();
+		const playlist = setting('playlist_id', 'Playlist', {
+			group: 'distribution',
+			control: 'remote_picker',
+			type: 'select',
+			options_source: 'youtube_playlists'
+		});
+		const screen = await render(DestinationSettingsDialog, {
+			props: {
+				open: true,
+				account: youtubeAccount,
+				settings: [playlist],
+				values: {},
+				optionGroups: { youtube_playlists: [{ value: 'uploads', label: 'Uploads' }] },
+				optionNextCursors: { youtube_playlists: 'page-2' },
+				onChange: vi.fn(),
+				onOptionLoadMore
+			}
+		});
+
+		const continuation = screen.getByRole('button', { name: 'Load more options' });
+		expect(continuation.element()).toHaveClass('min-h-11');
+		await continuation.click();
+		expect(onOptionLoadMore).toHaveBeenCalledWith(playlist);
+		const dialog = screen.getByRole('dialog').element();
+		expect(dialog.scrollWidth).toBeLessThanOrEqual(dialog.clientWidth);
+	});
+
 	it('uploads destination files through the composer callback', async () => {
 		const onFileChange = vi.fn().mockResolvedValue(undefined);
 		const screen = await render(DestinationSettingsDialog, {

@@ -24,6 +24,54 @@ func TestPublicationPathIDDecodesLegacyPublicationIDs(t *testing.T) {
 	require.Equal(t, "publication-1", publicationPathID("publication-1"))
 }
 
+func TestInsertRenditionsPersistsIndependentTargetsForOneAccount(t *testing.T) {
+	db := createHandlerTestDB(t,
+		(*models.Rendition)(nil),
+		(*models.RenditionSegment)(nil),
+		(*models.RenditionMedia)(nil),
+		(*models.RenditionSegmentMedia)(nil),
+	)
+	ctx := t.Context()
+	publication := &models.Publication{
+		ID: "publication-1", WorkspaceID: "workspace-1", Intent: models.PublishingIntentPost,
+		ContentProfile: models.ContentProfileShortText, SourceText: "Launch", Status: models.PublicationStatusDraft,
+	}
+	account := models.SocialAccount{ID: "account-1", WorkspaceID: "workspace-1", Platform: "pinterest"}
+	inputs := []RenditionInput{
+		{SocialAccountID: account.ID, TargetKey: "pinterest:board:alpha", Body: "Alpha"},
+		{SocialAccountID: account.ID, TargetKey: "pinterest:board:beta", Body: "Beta"},
+	}
+	handler := NewPublicationHandler(db, testAuthenticator{}, nil)
+	require.NoError(t, db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
+		return handler.insertRenditions(
+			txCtx,
+			tx,
+			publication,
+			[]models.PublicationSegment{{ID: "segment-1", PublicationID: publication.ID, Body: "Launch"}},
+			[]PublicationSegmentInput{{ID: "segment-1", Body: "Launch"}},
+			inputs,
+			nil,
+			map[string]models.SocialAccount{account.ID: account},
+		)
+	}))
+
+	var renditions []models.Rendition
+	require.NoError(t, db.NewSelect().Model(&renditions).Order("target_key ASC").Scan(ctx))
+	require.Len(t, renditions, 2)
+	require.Equal(t, "pinterest:board:alpha", renditions[0].TargetKey)
+	require.Equal(t, "pinterest:board:beta", renditions[1].TargetKey)
+
+	require.ErrorContains(t, db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
+		return handler.insertRenditions(
+			txCtx, tx, publication, nil, nil,
+			[]RenditionInput{
+				{SocialAccountID: account.ID, TargetKey: "pinterest:board:alpha"},
+				{SocialAccountID: account.ID, TargetKey: "pinterest:board:alpha"},
+			}, nil, map[string]models.SocialAccount{account.ID: account},
+		)
+	}), "each social account target may appear only once")
+}
+
 func TestRetryFailedPublicationRenditionsQueuesOnlyRetryableFailures(t *testing.T) {
 	db := createHandlerTestDB(t,
 		(*models.WorkspaceMember)(nil),

@@ -121,6 +121,7 @@ func TestCreateCheckoutRecordsOpaquePaddleAttempt(t *testing.T) {
 		CustomerEmail:  "user@example.com",
 		PlanID:         "founder",
 		BillingPeriod:  "annual",
+		ReturnPath:     "/publications/new?source=calendar",
 	})
 
 	require.NoError(t, err)
@@ -131,7 +132,7 @@ func TestCreateCheckoutRecordsOpaquePaddleAttempt(t *testing.T) {
 	require.Equal(t, "sandbox", result.Environment)
 	require.Equal(t, "test_client_token", result.ClientToken)
 	require.Equal(t, now.AddDate(0, 0, TrialDays), result.TrialEndsAt)
-	require.Equal(t, "https://app.openpost.test/checkout?status=success", result.ReturnURL)
+	require.Equal(t, "https://app.openpost.test/checkout?attempt="+result.ID+"&status=success", result.ReturnURL)
 
 	var attempt models.BillingCheckoutAttempt
 	require.NoError(t, db.NewSelect().Model(&attempt).Where("checkout_attempt_id = ?", result.ID).Scan(context.Background()))
@@ -139,6 +140,67 @@ func TestCreateCheckoutRecordsOpaquePaddleAttempt(t *testing.T) {
 	require.Equal(t, "org-1", attempt.OrganizationID)
 	require.Equal(t, "founder", attempt.PlanID)
 	require.Equal(t, "annual", attempt.BillingPeriod)
+	require.Equal(t, "/publications/new?source=calendar", attempt.ReturnPath)
+}
+
+func TestCreateCheckoutRejectsCrossOriginReturnPath(t *testing.T) {
+	service := NewService(nil, "", PaddleConfig{Environment: "sandbox", ClientToken: "test", Plans: testCatalog()})
+	_, err := service.CreateCheckout(context.Background(), CreateCheckoutInput{
+		OrganizationID: "org-1", CustomerEmail: "user@example.com", PlanID: "founder", ReturnPath: "https://evil.example/steal",
+	})
+	require.ErrorContains(t, err, "same-origin")
+}
+
+func TestConsumeCheckoutReturnRequiresExactUserAndConsumesPathOnce(t *testing.T) {
+	db := newBillingTestDB(t)
+	now := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
+	_, err := db.NewInsert().Model(&models.BillingCheckoutAttempt{
+		CheckoutAttemptID: "chkat_return", OrganizationID: "org-1", WorkspaceID: "ws-1", UserID: "user-1",
+		Provider: ProviderPaddle, ProviderPriceID: "pri_founder_month", PlanID: "founder", BillingPeriod: "monthly",
+		ReturnPath: "/compose?draft=launch", Status: "trialing", CreatedAt: now, UpdatedAt: now,
+	}).Exec(context.Background())
+	require.NoError(t, err)
+	service := NewService(db, "")
+	service.SetNowForTest(func() time.Time { return now.Add(time.Minute) })
+
+	_, err = service.ConsumeCheckoutReturn(context.Background(), "chkat_return", "other-user")
+	require.ErrorIs(t, err, sql.ErrNoRows)
+	first, err := service.ConsumeCheckoutReturn(context.Background(), "chkat_return", "user-1")
+	require.NoError(t, err)
+	require.Equal(t, CheckoutReturnResult{Status: "success", ReturnPath: "/compose?draft=launch", Consumed: true}, first)
+	second, err := service.ConsumeCheckoutReturn(context.Background(), "chkat_return", "user-1")
+	require.NoError(t, err)
+	require.Equal(t, CheckoutReturnResult{Status: "success", Consumed: true}, second)
+}
+
+func TestConsumeCheckoutReturnWaitsForMatchingWebhookAndNeverConsumesFailure(t *testing.T) {
+	db := newBillingTestDB(t)
+	now := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
+	attempt := &models.BillingCheckoutAttempt{
+		CheckoutAttemptID: "chkat_delayed", OrganizationID: "org-1", WorkspaceID: "ws-1", UserID: "user-1",
+		Provider: ProviderPaddle, ProviderPriceID: "pri_founder_month", PlanID: "founder", BillingPeriod: "monthly",
+		ReturnPath: "/calendar?view=week", Status: "pending", CreatedAt: now, UpdatedAt: now,
+	}
+	_, err := db.NewInsert().Model(attempt).Exec(context.Background())
+	require.NoError(t, err)
+	service := NewService(db, "")
+	service.SetNowForTest(func() time.Time { return now.Add(time.Minute) })
+
+	pending, err := service.ConsumeCheckoutReturn(context.Background(), attempt.CheckoutAttemptID, attempt.UserID)
+	require.NoError(t, err)
+	require.Equal(t, CheckoutReturnResult{Status: "pending"}, pending)
+
+	_, err = db.NewUpdate().Model(attempt).Set("status = 'canceled'").WherePK().Exec(context.Background())
+	require.NoError(t, err)
+	failed, err := service.ConsumeCheckoutReturn(context.Background(), attempt.CheckoutAttemptID, attempt.UserID)
+	require.NoError(t, err)
+	require.Equal(t, CheckoutReturnResult{Status: "failed"}, failed)
+
+	_, err = db.NewUpdate().Model(attempt).Set("status = 'active'").WherePK().Exec(context.Background())
+	require.NoError(t, err)
+	success, err := service.ConsumeCheckoutReturn(context.Background(), attempt.CheckoutAttemptID, attempt.UserID)
+	require.NoError(t, err)
+	require.Equal(t, CheckoutReturnResult{Status: "success", ReturnPath: "/calendar?view=week", Consumed: true}, success)
 }
 
 func TestCreateCheckoutRejectsImplicitEnvironmentAndMissingPrice(t *testing.T) {

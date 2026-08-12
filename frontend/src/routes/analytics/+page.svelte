@@ -25,12 +25,7 @@ FORM: Publications are the primary rows; provider renditions disclose in place w
 	import ExternalLinkIcon from '@lucide/svelte/icons/external-link';
 	import { m } from '$lib/paraglide/messages';
 	import { getLocaleTag } from '$lib/i18n';
-	import {
-		filterAnalyticsPublications,
-		hasEngagementMeasurement,
-		selectedAnalyticsSummary,
-		type AnalyticsSortMode
-	} from '$lib/analytics-overview';
+	import { hasEngagementMeasurement, type AnalyticsSortMode } from '$lib/analytics-overview';
 
 	type AnalyticsOverview = components['schemas']['Overview'];
 	type AnalyticsAccount = components['schemas']['AccountOverview'];
@@ -45,6 +40,7 @@ FORM: Publications are the primary rows; provider renditions disclose in place w
 	let sortMode = $state<AnalyticsSortMode>('engagement');
 	let expandedPublicationID = $state('');
 	let loading = $state(true);
+	let loadingMore = $state(false);
 	let refreshing = $state(false);
 	let error = $state('');
 	let toastMessage = $state('');
@@ -53,7 +49,7 @@ FORM: Publications are the primary rows; provider renditions disclose in place w
 
 	const currentWorkspaceID = $derived(workspaceCtx.currentWorkspace?.id ?? '');
 	const accounts = $derived(overview?.accounts ?? []);
-	const allPublications = $derived(overview?.publications ?? []);
+	const publications = $derived(overview?.publications ?? []);
 	const selectedAccount = $derived(
 		selectedAccountID === 'all'
 			? undefined
@@ -71,23 +67,8 @@ FORM: Publications are the primary rows; provider renditions disclose in place w
 					(account.missing_content_scopes?.length ?? 0) > 0)
 		)
 	);
-	const publications = $derived.by(() => {
-		return filterAnalyticsPublications(allPublications, selectedAccountID, sortMode);
-	});
-	const displayedSummary = $derived.by(() => {
-		if (!overview) return null;
-		return selectedAnalyticsSummary(overview, selectedAccount, publications);
-	});
-	const destinationCount = $derived(
-		publications.reduce(
-			(total, publication) =>
-				total +
-				(publication.renditions?.filter(
-					(rendition) => !selectedAccount || rendition.account_id === selectedAccount.id
-				).length ?? 0),
-			0
-		)
-	);
+	const displayedSummary = $derived(overview?.summary ?? null);
+	const destinationCount = $derived(overview?.content_total ?? 0);
 	const hasMeasurements = $derived(
 		(selectedAccount
 			? Boolean(selectedAccount.last_synced_at)
@@ -186,23 +167,39 @@ FORM: Publications are the primary rows; provider renditions disclose in place w
 	$effect(() => {
 		const workspaceID = currentWorkspaceID;
 		const days = rangeDays;
-		if (workspaceID) void loadAnalytics(workspaceID, days);
+		const accountID = selectedAccountID;
+		const requestedSort = sortMode;
+		if (workspaceID) void loadAnalytics(workspaceID, days, accountID, requestedSort);
 	});
 
 	async function loadAnalytics(
 		requestedWorkspaceID = currentWorkspaceID,
-		requestedDays = rangeDays
+		requestedDays = rangeDays,
+		requestedAccountID = selectedAccountID,
+		requestedSort = sortMode,
+		cursor = '',
+		append = false
 	) {
 		const requestSequence = ++dataRequestSequence;
 		let workspaceID = requestedWorkspaceID;
-		loading = true;
-		error = '';
+		if (append) loadingMore = true;
+		else loading = true;
+		if (!append) error = '';
 		try {
 			if (!workspaceCtx.currentWorkspace) await workspaceCtx.initialize();
 			workspaceID ||= workspaceCtx.currentWorkspace?.id ?? '';
 			if (!workspaceID) throw new Error(m.analytics_failed_load());
 			const response = await client.GET('/analytics', {
-				params: { query: { workspace_id: workspaceID, days: requestedDays } }
+				params: {
+					query: {
+						workspace_id: workspaceID,
+						days: requestedDays,
+						account_id: requestedAccountID === 'all' ? undefined : requestedAccountID,
+						sort: requestedSort,
+						cursor: cursor || undefined,
+						limit: 50
+					}
+				}
 			});
 			if (
 				requestSequence !== dataRequestSequence ||
@@ -211,7 +208,16 @@ FORM: Publications are the primary rows; provider renditions disclose in place w
 				return;
 			}
 			if (response.error || !response.data) throw new Error(m.analytics_failed_load());
-			overview = response.data;
+			overview =
+				append && overview
+					? {
+							...response.data,
+							publications: [
+								...(overview.publications ?? []),
+								...(response.data.publications ?? [])
+							]
+						}
+					: response.data;
 			dataWorkspaceID = workspaceID;
 			if (
 				selectedAccountID !== 'all' &&
@@ -229,10 +235,26 @@ FORM: Publications are the primary rows; provider renditions disclose in place w
 			}
 		} catch (cause) {
 			if (requestSequence !== dataRequestSequence) return;
-			error = cause instanceof Error ? cause.message : m.analytics_failed_load();
+			if (append) toastMessage = m.analytics_load_more_failed();
+			else error = cause instanceof Error ? cause.message : m.analytics_failed_load();
 		} finally {
-			if (requestSequence === dataRequestSequence) loading = false;
+			if (requestSequence === dataRequestSequence) {
+				loading = false;
+				loadingMore = false;
+			}
 		}
+	}
+
+	function loadMorePublications() {
+		if (!overview?.publication_next_cursor || loadingMore) return;
+		void loadAnalytics(
+			currentWorkspaceID,
+			rangeDays,
+			selectedAccountID,
+			sortMode,
+			overview.publication_next_cursor,
+			true
+		);
 	}
 
 	async function refreshAnalytics() {
@@ -837,6 +859,19 @@ FORM: Publications are the primary rows; provider renditions disclose in place w
 								{/if}
 							</article>
 						{/each}
+					</div>
+					<div class="mt-4 flex flex-wrap items-center justify-between gap-3">
+						<p class="text-xs text-muted-foreground">
+							{m.analytics_results_range({
+								shown: publications.length,
+								total: overview?.publication_total ?? publications.length
+							})}
+						</p>
+						{#if overview?.publication_next_cursor}
+							<Button variant="outline" onclick={loadMorePublications} disabled={loadingMore}>
+								{loadingMore ? m.analytics_loading_more() : m.analytics_load_more()}
+							</Button>
+						{/if}
 					</div>
 				{/if}
 			</section>

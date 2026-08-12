@@ -671,7 +671,9 @@ type BillingCheckoutAttempt struct {
 	ProviderSubscriptionID string    `json:"provider_subscription_id,omitempty"`
 	PlanID                 string    `bun:",notnull" json:"plan_id"`
 	BillingPeriod          string    `bun:",notnull" json:"billing_period"`
+	ReturnPath             string    `bun:"return_path,notnull,default:''" json:"-"`
 	Status                 string    `bun:",notnull,default:'created'" json:"status"`
+	ReturnConsumedAt       time.Time `bun:"return_consumed_at,nullzero" json:"-"`
 	CreatedAt              time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
 	UpdatedAt              time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"updated_at"`
 }
@@ -1102,6 +1104,7 @@ type Rendition struct {
 	ID               string    `bun:",pk" json:"id"`
 	PublicationID    string    `bun:"publication_id,notnull" json:"publication_id"`
 	SocialAccountID  string    `bun:"social_account_id,notnull" json:"social_account_id"`
+	TargetKey        string    `bun:"target_key,notnull" json:"target_key"`
 	Platform         string    `bun:",notnull" json:"platform"`
 	Profile          string    `bun:",notnull" json:"profile"`
 	OutputProfile    string    `bun:"output_profile,notnull,default:''" json:"output_profile"`
@@ -1481,6 +1484,32 @@ type ProviderWriteAttempt struct {
 	CompletedAt          time.Time `bun:"completed_at,nullzero" json:"completed_at,omitempty"`
 	CreatedAt            time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
 	UpdatedAt            time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"updated_at"`
+}
+
+// ProviderDelivery is the current projection of one exact provider target.
+// Attempts remain the immutable/fenced history; this row is advanced only by
+// an equal or newer attempt number.
+type ProviderDelivery struct {
+	bun.BaseModel `bun:"table:provider_deliveries"`
+
+	ID                      string    `bun:",pk" json:"id"`
+	WorkspaceID             string    `bun:"workspace_id,notnull" json:"workspace_id"`
+	PublicationID           string    `bun:"publication_id,notnull" json:"publication_id"`
+	RenditionID             string    `bun:"rendition_id,notnull" json:"rendition_id"`
+	SocialAccountID         string    `bun:"social_account_id,notnull" json:"social_account_id"`
+	TargetKey               string    `bun:"target_key,notnull" json:"target_key"`
+	Provider                string    `bun:",notnull" json:"provider"`
+	State                   string    `bun:",notnull" json:"state"`
+	TerminalReason          string    `bun:"terminal_reason,notnull,default:''" json:"terminal_reason,omitempty"`
+	CurrentAttemptID        string    `bun:"current_attempt_id,notnull" json:"current_attempt_id"`
+	CurrentAttemptNumber    int       `bun:"current_attempt_number,notnull" json:"current_attempt_number"`
+	CurrentAttemptCreatedAt time.Time `bun:"current_attempt_created_at,notnull" json:"current_attempt_created_at"`
+	ExternalID              string    `bun:"external_id,notnull,default:''" json:"external_id,omitempty"`
+	ExternalURL             string    `bun:"external_url,notnull,default:''" json:"external_url,omitempty"`
+	LastReconciledAt        time.Time `bun:"last_reconciled_at,nullzero" json:"last_reconciled_at,omitempty"`
+	NextReconciliationAt    time.Time `bun:"next_reconciliation_at,nullzero" json:"next_reconciliation_at,omitempty"`
+	CreatedAt               time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
+	UpdatedAt               time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"updated_at"`
 }
 
 type Post struct {

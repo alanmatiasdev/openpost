@@ -31,6 +31,12 @@ function healthyReadiness(): ProviderReadinessDecision {
 function capability(settings: SettingDefinition[]): ResolvedAccountCapability {
 	return {
 		account_id: 'youtube-1',
+		content: {
+			body: { required: false },
+			title: { required: false },
+			description: { required: false },
+			alt_text: { required: false }
+		},
 		active_constraints: {},
 		available_formats: [],
 		capability_revision: 'test',

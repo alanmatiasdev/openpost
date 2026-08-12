@@ -67,7 +67,7 @@ cd frontend/android
   -PRELEASE_KEY_PASSWORD=...
 ```
 
-The GitHub release workflow uses the same Gradle release path when signing secrets are configured. If signing secrets are not present, it builds an unsigned release APK and still uploads `openpost-app-android.apk`.
+The GitHub release workflow signs and verifies the exact APK retained by candidate CI before uploading `openpost-app-android.apk`. If signing credentials are unavailable, the release fails instead of publishing an unsigned file under the installable asset name.
 
 ## App Configuration
 

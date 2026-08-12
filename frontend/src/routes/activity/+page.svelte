@@ -567,7 +567,7 @@
 			destination.error_retryable &&
 			post.publication_id
 		) {
-			const key = `${post.id}:${destination.social_account_id}`;
+			const key = `${post.id}:${destination.social_account_id}:${destination.target_key}`;
 			retryingDestination = key;
 			error = '';
 			successMessage = '';
@@ -579,6 +579,9 @@
 							path: {
 								id: post.publication_id,
 								account_id: destination.social_account_id
+							},
+							query: {
+								target_key: destination.target_key
 							}
 						}
 					}
@@ -696,7 +699,7 @@
 														size="sm"
 														class="mt-1 h-auto min-h-8 px-0 text-xs"
 														disabled={retryingDestination ===
-															`${post.id}:${destination.social_account_id}`}
+															`${post.id}:${destination.social_account_id}:${destination.target_key}`}
 														onclick={() => runDestinationAction(post, destination)}
 													>
 														{destinationActionLabel(destination)}
@@ -824,7 +827,7 @@
 									size="sm"
 									onclick={() => runDestinationAction(group.samplePost, group.sampleDestination)}
 									disabled={retryingDestination ===
-										`${group.samplePost.id}:${group.sampleDestination.social_account_id}`}
+										`${group.samplePost.id}:${group.sampleDestination.social_account_id}:${group.sampleDestination.target_key}`}
 								>
 									{destinationActionLabel(group.sampleDestination)}
 								</Button>

@@ -19,6 +19,15 @@ const (
 	StatusAccepted        = "accepted"
 	StatusDefiniteFailure = "definite_failure"
 	StatusAmbiguous       = "ambiguous"
+
+	DeliveryQueued            = "queued"
+	DeliverySubmitted         = "submitted"
+	DeliveryProcessing        = "processing"
+	DeliveryProviderScheduled = "provider_scheduled"
+	DeliveryLive              = "live"
+	DeliveryRejected          = "rejected"
+	DeliveryAmbiguous         = "ambiguous"
+	DeliveryManualResolution  = "manual_resolution"
 )
 
 var (

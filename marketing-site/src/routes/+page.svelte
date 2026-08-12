@@ -49,20 +49,6 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 
 	const shortFaqs = faqs.slice(0, 4);
 
-	const customerLogos = [
-		{ name: 'ENF.', src: '/assets/customer-logos/enf.svg', treatment: 'wordmark' },
-		{
-			name: 'The Actual World',
-			src: '/assets/customer-logos/the-actual-world.png',
-			treatment: 'mark'
-		},
-		{ name: "Uni's Easy", src: '/assets/customer-logos/unis-easy.png', treatment: 'mark' },
-		{ name: 'ARC Gym', src: '/assets/customer-logos/arc-gym.png', treatment: 'wordmark' },
-		{ name: 'Ark', src: '/assets/customer-logos/ark.png', treatment: 'mark' },
-		{ name: 'Dias Solutions', src: '/assets/customer-logos/dias-solutions.png', treatment: 'mark' },
-		{ name: 'Montra', src: '/assets/customer-logos/montra.svg', treatment: 'mark' },
-		{ name: 'Unprompted', src: '/assets/customer-logos/unprompted.png', treatment: 'mark' }
-	] as const;
 </script>
 
 <svelte:head>
@@ -99,21 +85,7 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 	</div>
 
 	<div class="customer-proof border-t py-5 sm:py-6">
-		<p>Used by builders at</p>
-		<div class="customer-rail" aria-label="Companies using OpenPost">
-			<div class="customer-track">
-				{#each [...customerLogos, ...customerLogos] as logo, index (`${logo.name}-${index}`)}
-					<span
-						class:customer-wordmark={logo.treatment === 'wordmark'}
-						class="customer-logo"
-						aria-hidden={index >= customerLogos.length ? 'true' : undefined}
-					>
-						<img src={logo.src} alt={index < customerLogos.length ? `${logo.name} logo` : ''} />
-						{#if logo.treatment === 'mark'}<span>{logo.name}</span>{/if}
-					</span>
-				{/each}
-			</div>
-		</div>
+		<p>Built for the networks you use</p>
 		<div class="supported-marks" aria-label="Implemented social platform adapters">
 			{#each platforms as platform (platform.slug)}
 				<a href={resolve(`/platforms/${platform.slug}`)} aria-label={`${platform.name} guide`}>
@@ -361,47 +333,6 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 		text-transform: uppercase;
 	}
 
-	.customer-rail {
-		overflow: hidden;
-		width: min(100% - 2rem, 72rem);
-		margin-inline: auto;
-		mask-image: linear-gradient(to right, transparent, black 12%, black 88%, transparent);
-	}
-
-	.customer-track {
-		display: flex;
-		width: max-content;
-		animation: customer-scroll 30s linear infinite;
-	}
-
-	.customer-logo {
-		display: flex;
-		grid-auto-flow: column;
-		min-width: 12.5rem;
-		place-items: center;
-		align-items: center;
-		justify-content: center;
-		gap: 0.65rem;
-		color: color-mix(in oklch, var(--foreground) 72%, transparent);
-		font-family: 'Manrope Variable', Manrope, sans-serif;
-		font-size: 1rem;
-		font-weight: 650;
-		letter-spacing: -0.02em;
-	}
-
-	.customer-logo img {
-		display: block;
-		width: 2rem;
-		height: 2rem;
-		object-fit: contain;
-		filter: saturate(0.78);
-	}
-
-	.customer-wordmark img {
-		width: 5.5rem;
-		height: 2rem;
-	}
-
 	.supported-marks {
 		display: flex;
 		flex-wrap: wrap;
@@ -437,12 +368,6 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 		width: 2rem;
 		height: 2rem;
 		object-fit: contain;
-	}
-
-	@keyframes customer-scroll {
-		to {
-			transform: translateX(-50%);
-		}
 	}
 
 	.product-story {
@@ -491,14 +416,6 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 
 	:global(.dark) .customer-proof > p {
 		color: rgb(255 255 255 / 0.4);
-	}
-
-	:global(.dark) .customer-logo {
-		color: rgb(255 255 255 / 0.7);
-	}
-
-	:global(.dark) .customer-logo img {
-		filter: saturate(0.78) brightness(1.08);
 	}
 
 	:global(.dark) .supported-marks {
@@ -568,27 +485,6 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 	@media (prefers-reduced-motion: reduce) {
 		.hero-enter {
 			animation: none;
-		}
-
-		.customer-track {
-			animation: none;
-			width: 100%;
-			flex-wrap: wrap;
-			justify-content: center;
-			row-gap: 1rem;
-		}
-
-		.customer-rail {
-			mask-image: none;
-		}
-
-		.customer-logo {
-			min-width: 9rem;
-			flex: 1 0 min(11rem, 50%);
-		}
-
-		.customer-logo:nth-child(n + 9) {
-			display: none;
 		}
 	}
 </style>

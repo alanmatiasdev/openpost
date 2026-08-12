@@ -6,7 +6,7 @@
     "sync:assets": "bun ../scripts/sync-assets.mjs --surface marketing",
     "sync:404": "bun scripts/sync-static-404.mjs",
     "check:404": "bun scripts/sync-static-404.mjs --check",
-    "check:content": "bun scripts/check-comparison-evidence.mjs",
+    "check:content": "bun scripts/check-comparison-evidence.mjs && bun ../scripts/marketing-claims.mjs",
     "dev": "bun run sync:assets && bun run sync:404 && vite dev --host 0.0.0.0 --port 4322",
     "build": "bun run sync:assets && bun run sync:404 && vite build && bun run build:functions && bun scripts/check-routing-output.mjs && bun scripts/check-social-metadata-output.mjs",
     "build:functions": "bun run check:functions && wrangler pages functions build functions --outdir .wrangler/functions --project-directory .",

@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { components } from '$lib/api/types';
-import { loadableDestinationOptionSources } from './destination-options';
+import {
+	invalidateDependentDestinationSettings,
+	loadableDestinationOptionSources,
+	mergeDestinationOptions
+} from './destination-options';
 
 type SettingDefinition = components['schemas']['SettingDefinition'];
 
@@ -54,5 +58,43 @@ describe('loadableDestinationOptionSources', () => {
 			'youtube_playlists'
 		]);
 		expect(loadableDestinationOptionSources(settings, 'x_communities')).toEqual([]);
+	});
+});
+
+describe('paged destination options', () => {
+	it('appends pages by stable provider value without duplicates', () => {
+		expect(
+			mergeDestinationOptions(
+				[
+					{ value: 'board-1', label: 'Board one' },
+					{ value: 'board-2', label: 'Old label' }
+				],
+				[
+					{ value: 'board-2', label: 'Board two' },
+					{ value: 'board-3', label: 'Board three' }
+				]
+			)
+		).toEqual([
+			{ value: 'board-1', label: 'Board one' },
+			{ value: 'board-2', label: 'Board two' },
+			{ value: 'board-3', label: 'Board three' }
+		]);
+	});
+
+	it('clears a child selection and invalidates its option source when a parent changes', () => {
+		const board = setting('board_id', 'pinterest_boards');
+		const section = {
+			...setting('section_id', 'pinterest_sections'),
+			dependencies: [{ key: 'board_id', operator: 'equals' as const, value: 'board-1' }]
+		};
+		const result = invalidateDependentDestinationSettings(
+			[board, section],
+			{ board_id: 'board-1', section_id: 'section-7' },
+			'board_id',
+			'board-2'
+		);
+
+		expect(result.values).toEqual({ board_id: 'board-2' });
+		expect(result.optionSources).toEqual(['pinterest_sections']);
 	});
 });
