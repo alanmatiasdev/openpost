@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [3.9.5] - 2026-08-12
+
+### Fixed
+
+- Aligned the hosted production privacy-policy version with the current application contract so candidate configuration validation and PostHog-enabled deployment use the same managed runtime environment.
+
 ## [3.9.4] - 2026-08-11
 
 ### Changed
