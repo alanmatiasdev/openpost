@@ -609,12 +609,91 @@ test("plan selection from signup starts checkout after onboarding", async ({
 }) => {
   const unique = Date.now().toString(36);
   const email = `plan-signup-${unique}@example.com`;
-  let checkoutBody:
-    | { workspace_id?: string; plan_id?: string; billing_period?: string }
+  let welcomeBody:
+    | {
+        workspace_name?: string;
+        plan_id?: string;
+        billing_period?: string;
+        purchase_choice_token?: string;
+      }
     | undefined;
-  let checkoutURL = "";
+  let welcomeCalls = 0;
+  let resumeCalls = 0;
+  let workspaceCreated = false;
 
   await routeBrowserRegistration(page, email);
+  await page.route("**/api/v1/workspaces", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.continue();
+      return;
+    }
+    await route.fulfill({
+      json: workspaceCreated
+        ? [
+            {
+              id: "ws-welcome",
+              organization_id: "org-welcome",
+              organization_name: "North Star Studio",
+              name: "North Star Studio",
+              avatar_url: "",
+              color: "#f97316",
+              created_at: "2026-08-12T12:00:00Z",
+              role: "admin",
+              can_edit: true,
+              sso_required: false,
+              sso_authenticated: true,
+              sso_identity_linked: false,
+            },
+          ]
+        : [],
+    });
+  });
+  await page.route("**/api/v1/workspaces/ws-welcome/settings", (route) =>
+    route.fulfill({
+      json: {
+        avatar_url: "",
+        color: "#f97316",
+        timezone: "UTC",
+        week_start: 1,
+        random_delay_minutes: 0,
+        draft_gap_minutes: 60,
+        slot_start_hour: 5,
+        slot_end_hour: 23,
+        slot_interval_minutes: 15,
+      },
+    }),
+  );
+  await page.route("**/api/v1/billing/purchase-choice", async (route) => {
+    const body = route.request().postDataJSON() as {
+      plan_id: string;
+      billing_period: "monthly" | "annual";
+    };
+    const prices: Record<
+      string,
+      { monthly: number; annual: number; name: string }
+    > = {
+      starter: { monthly: 15, annual: 150, name: "Starter" },
+      founder: { monthly: 25, annual: 250, name: "Founder" },
+      pro: { monthly: 49, annual: 490, name: "Pro" },
+      team: { monthly: 99, annual: 990, name: "Team" },
+      agency: { monthly: 199, annual: 1990, name: "Agency" },
+    };
+    const plan = prices[body.plan_id];
+    await route.fulfill({
+      json: {
+        token: `choice-${body.plan_id}-${body.billing_period}`,
+        plan_id: body.plan_id,
+        plan_name: plan.name,
+        billing_period: body.billing_period,
+        list_price_usd: plan[body.billing_period],
+        trial_days: 14,
+        card_required: true,
+        due_today_usd: 0,
+        catalog_version: "2026-08-12",
+        expires_at: "2026-08-13T10:00:00Z",
+      },
+    });
+  });
   await page.route(
     "https://cdn.paddle.com/paddle/v2/paddle.js",
     async (route) => {
@@ -668,49 +747,76 @@ test("plan selection from signup starts checkout after onboarding", async ({
       });
     },
   );
-  await page.route("**/api/v1/billing/checkout", async (route) => {
-    checkoutURL = route.request().url();
-    checkoutBody = JSON.parse(route.request().postData() ?? "{}");
-    const annual = checkoutBody?.billing_period === "annual";
-    const suffix = annual ? "annual" : "month";
+  const checkoutResponse = {
+    id: "chkat_e2e",
+    url: "/checkout?plan=founder&billing_period=annual",
+    provider_price_id: "pri_founder_annual",
+    price_ids: {
+      starter: "pri_starter_annual",
+      founder: "pri_founder_annual",
+      pro: "pri_pro_annual",
+      team: "pri_team_annual",
+      agency: "pri_agency_annual",
+    },
+    plan_id: "founder",
+    billing_period: "annual",
+    trial_ends_at: "2026-08-18T12:00:00Z",
+    client_token: "test_client_token",
+    environment: "sandbox",
+    customer_email: email,
+    return_url: "http://127.0.0.1/checkout?attempt=chkat_e2e&status=success",
+  };
+  await page.route("**/api/v1/billing/welcome", async (route) => {
+    welcomeCalls += 1;
+    welcomeBody = route.request().postDataJSON();
+    workspaceCreated = true;
     await route.fulfill({
       contentType: "application/json",
       json: {
-        id: "chkat_e2e",
-        url: `/checkout?plan=founder&billing_period=${annual ? "annual" : "monthly"}`,
-        provider_price_id: `pri_founder_${suffix}`,
-        price_ids: {
-          starter: `pri_starter_${suffix}`,
-          founder: `pri_founder_${suffix}`,
-          pro: `pri_pro_${suffix}`,
-          team: `pri_team_${suffix}`,
-          agency: `pri_agency_${suffix}`,
-        },
-        plan_id: "founder",
-        billing_period: annual ? "annual" : "monthly",
-        trial_ends_at: "2026-08-18T12:00:00Z",
-        client_token: "test_client_token",
-        environment: "sandbox",
-        customer_email: email,
-        return_url: `http://127.0.0.1/checkout?plan=founder&billing_period=${annual ? "annual" : "monthly"}&status=success`,
+        workspace_id: "ws-welcome",
+        organization_id: "org-welcome",
+        workspace_name: "North Star Studio",
+        checkout: { ...checkoutResponse, workspace_id: "ws-welcome" },
       },
     });
   });
+  await page.route("**/api/v1/billing/checkout/chkat_e2e", async (route) => {
+    resumeCalls += 1;
+    await route.fulfill({ json: checkoutResponse });
+  });
 
-  await page.goto("/register?plan=founder");
+  await page.goto("/register?plan=founder&billing_period=monthly");
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password", { exact: true }).fill(password);
   await page.getByLabel("Confirm Password").fill(password);
   await page.getByRole("button", { name: "Create Account" }).click();
 
-  await expect(page).toHaveURL(
-    /\/checkout\?plan=founder&billing_period=monthly$/,
+  await expect(page).toHaveURL(/\/onboarding\?/);
+  await expect(
+    page.getByRole("heading", { name: "Confirm your Workspace and plan" }),
+  ).toBeVisible();
+  await expect(page.getByText("OpenPost Founder")).toBeVisible();
+  const purchaseSummary = page.locator(
+    'section[aria-labelledby="purchase-choice-title"]',
   );
+  await expect(
+    purchaseSummary.getByText("$25/month", { exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: /^Annual/ }).click();
+  await expect(
+    purchaseSummary.getByText("$250/year", { exact: true }),
+  ).toBeVisible();
+  await page.getByLabel("Workspace name").fill("North Star Studio");
+  await page
+    .getByRole("button", { name: "Create Workspace and continue" })
+    .click();
+
+  await expect(page).toHaveURL(/\/checkout\?attempt=chkat_e2e/);
   await expect(
     page.getByRole("heading", { name: "Put your content team to work" }),
   ).toBeVisible();
   await expect(page.getByText("$0 due today")).toBeVisible();
-  await expect(page.getByText("$25.00/month")).toBeVisible();
+  await expect(page.getByText("$250.00/year")).toBeVisible();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(page.getByTestId("paddle-checkout-frame")).toBeVisible();
   const paddleState = await page.evaluate(
@@ -741,7 +847,7 @@ test("plan selection from signup starts checkout after onboarding", async ({
   );
   expect(paddleState?.environment).toBe("sandbox");
   expect(paddleState?.initialize?.token).toBe("test_client_token");
-  expect(paddleState?.checkout?.items?.[0]?.priceId).toBe("pri_founder_month");
+  expect(paddleState?.checkout?.items?.[0]?.priceId).toBe("pri_founder_annual");
   expect(paddleState?.checkout?.customData?.checkout_id).toBe("chkat_e2e");
   expect(paddleState?.checkout?.customer?.email).toBe(email);
   expect(paddleState?.checkout?.settings).toMatchObject({
@@ -753,17 +859,54 @@ test("plan selection from signup starts checkout after onboarding", async ({
     frameStyle:
       "width: 100%; min-width: 312px; background-color: #ffffff; color-scheme: light; border: none;",
     locale: "en",
-    successUrl:
-      "http://127.0.0.1/checkout?plan=founder&billing_period=monthly&status=success",
+    successUrl: "http://127.0.0.1/checkout?attempt=chkat_e2e&status=success",
   });
-  expect(checkoutURL).toContain("/api/v1/billing/checkout");
-  expect(checkoutBody?.plan_id).toBe("founder");
+  expect(welcomeCalls).toBe(1);
+  expect(welcomeBody).toMatchObject({
+    workspace_name: "North Star Studio",
+    plan_id: "founder",
+    billing_period: "annual",
+    purchase_choice_token: "choice-founder-annual",
+  });
+  expect(resumeCalls).toBe(1);
+  await expect(
+    page.getByRole("button", { name: "Monthly", exact: true }),
+  ).toBeDisabled();
 
-  await page.getByRole("button", { name: /^Annual/ }).click();
-  await page.getByRole("button", { name: "Monthly", exact: true }).click();
-  await expect(page.getByText("$25.00/month")).toBeVisible();
-  await page.waitForTimeout(250);
-  await expect(page.getByText("$250.00/year")).toHaveCount(0);
+  await page.evaluate(() => {
+    const state = (
+      window as typeof window & {
+        __openpostPaddleTest?: {
+          initialize?: {
+            eventCallback?: (event: { name: string }) => void;
+          };
+        };
+      }
+    ).__openpostPaddleTest;
+    state?.initialize?.eventCallback?.({ name: "checkout.closed" });
+  });
+  await expect(
+    page.getByText(
+      "Checkout was closed. Your Workspace and purchase choice are saved.",
+    ),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Try again" }).click();
+  await expect.poll(() => resumeCalls).toBe(2);
+  expect(welcomeCalls).toBe(1);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (
+            window as typeof window & {
+              __openpostPaddleTest?: {
+                checkout?: { customData?: { checkout_id?: string } };
+              };
+            }
+          ).__openpostPaddleTest?.checkout?.customData?.checkout_id,
+      ),
+    )
+    .toBe("chkat_e2e");
 
   await page.evaluate(() => {
     localStorage.setItem("mode-watcher-mode", "dark");
@@ -771,6 +914,24 @@ test("plan selection from signup starts checkout after onboarding", async ({
   await page.reload();
   await expect(page.locator("html")).toHaveClass(/dark/);
   await expect(page.getByTestId("paddle-checkout-frame")).toBeVisible();
+  expect(welcomeCalls).toBe(1);
+  await expect.poll(() => resumeCalls).toBe(3);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (
+            window as typeof window & {
+              __openpostPaddleTest?: {
+                checkout?: {
+                  customData?: { checkout_id?: string };
+                };
+              };
+            }
+          ).__openpostPaddleTest?.checkout?.customData?.checkout_id,
+      ),
+    )
+    .toBe("chkat_e2e");
   const paymentSurfaceTheme = await page
     .getByTestId("checkout-payment-surface")
     .evaluate((element) => {

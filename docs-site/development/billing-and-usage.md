@@ -7,11 +7,13 @@ Managed OpenPost billing uses saved plan limits and durable usage counters. The 
 - `packages/plan-catalog/src/catalog.json`: the versioned source for hosted plan names, monthly and annual USD list prices, limits, trial length, card requirement, and amount due when the trial starts. Frontend and marketing code read it directly; `scripts/plan-catalog.mjs` generates the Go projection and checks for drift.
 - `POST /api/v1/billing/purchase-choice`: creates or revalidates a signed 24-hour continuation for one canonical plan and billing period. The response carries the exact catalogue version, list price, trial, card, due-today, and expiry facts shown during signup.
 - Hosted password and explicit identity-provider signup require that purchase choice. Password signup carries it through email verification; identity-provider signup validates it before redirecting and rebuilds the stored onboarding return path from the verified claims. Missing, invalid, expired, or mismatched choices fail closed and require a new pricing selection.
+- `POST /api/v1/billing/welcome`: confirms the first Workspace name and exact signed purchase choice. It creates the Organization, Workspace, Owner memberships, and bound checkout attempt in one transaction. An exact retry returns the same attempt; a replay with different Workspace, plan, period, or return path fails closed.
+- `GET /api/v1/billing/checkout/{attempt_id}`: resumes the browser-safe checkout configuration for the authenticated user who created the attempt. It never creates another Workspace or checkout attempt.
 - `entitlements.Service`: evaluates plan limits and keeps self-hosted defaults unlimited.
 - `usage_counters`: monthly durable counters keyed by workspace, metric, and UTC month.
 - `billing_customers`: Paddle customer mirrors keyed by organization, with no payment-card data.
 - `billing_subscriptions`: current Paddle subscription snapshots keyed by organization, fenced by Paddle's `updated_at` value so an older fetch cannot replace a newer recovery state.
-- `billing_checkout_attempts`: opaque OpenPost checkout attempt mapping, including the selected Paddle price, product plan, and billing period.
+- `billing_checkout_attempts`: opaque OpenPost checkout attempt mapping, including the selected Paddle price, product plan, billing period, and a unique confirmation key for first-Workspace retries.
 - `billing_webhook_events`: webhook event ledger for idempotent Paddle processing, including Paddle's event occurrence time and OpenPost's processing time.
 - `GET /api/v1/organizations/{id}/billing/status`: returns the local subscription snapshot and current-month usage counters for an organization.
 - `POST /api/v1/organizations/{id}/billing/checkout`: records an opaque checkout attempt and returns the Paddle.js environment, browser-safe client token, selected price, period price map, authenticated email, and OpenPost return URL.

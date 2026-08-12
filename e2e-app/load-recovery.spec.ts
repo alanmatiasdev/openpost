@@ -164,6 +164,22 @@ test("onboarding does not offer workspace creation when bootstrap fails", async 
   await authenticatePage(page, auth.token);
 
   let allowWorkspaceLoad = false;
+  await page.route("**/api/v1/billing/purchase-choice", (route) =>
+    route.fulfill({
+      json: {
+        token: "choice-founder-monthly",
+        plan_id: "founder",
+        plan_name: "Founder",
+        billing_period: "monthly",
+        list_price_usd: 25,
+        trial_days: 14,
+        card_required: true,
+        due_today_usd: 0,
+        catalog_version: "2026-08-12",
+        expires_at: "2026-08-13T10:00:00Z",
+      },
+    }),
+  );
   await page.route("**/api/v1/workspaces", async (route) => {
     if (route.request().method() !== "GET") {
       await route.continue();
@@ -180,13 +196,13 @@ test("onboarding does not offer workspace creation when bootstrap fails", async 
     await route.fulfill({ contentType: "application/json", json: [] });
   });
 
-  await page.goto("/onboarding");
+  await page.goto("/onboarding?plan=founder&billing_period=monthly");
 
   const loadError = page.getByTestId("onboarding-load-error");
   await expect(loadError).toContainText("Failed to load workspaces");
   await expect(page.getByLabel("Workspace name")).toHaveCount(0);
   await expect(
-    page.getByRole("button", { name: "Create workspace" }),
+    page.getByRole("button", { name: "Create Workspace and continue" }),
   ).toHaveCount(0);
 
   allowWorkspaceLoad = true;
@@ -194,6 +210,10 @@ test("onboarding does not offer workspace creation when bootstrap fails", async 
 
   await expect(loadError).toHaveCount(0);
   await expect(page).toHaveURL(/\/onboarding/);
+  await expect(page.getByLabel("Workspace name")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Create Workspace and continue" }),
+  ).toBeDisabled();
 });
 
 test("accepted invitations retry workspace refresh without consuming the token again", async ({

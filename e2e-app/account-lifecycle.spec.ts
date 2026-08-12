@@ -28,7 +28,6 @@ test("hosted registration requires current legal acceptance", async ({
   await page.route("**/api/v1/auth/config", (route) =>
     route.fulfill({ json: hostedAuthConfiguration }),
   );
-
   await page.goto("/register");
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password", { exact: true }).fill(password);
@@ -53,9 +52,15 @@ test("hosted registration requires current legal acceptance", async ({
     email,
     accepted_legal: true,
   });
-  await expect(page).toHaveURL(
-    /\/checkout\?plan=founder&billing_period=monthly$/,
-  );
+  await expect(page).toHaveURL(/\/onboarding$/);
+  await expect(
+    page.getByRole("heading", { name: "Confirm your Workspace and plan" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      "Choose a plan and billing period before creating your account.",
+    ),
+  ).toBeVisible();
 });
 
 test("password recovery keeps the token out of browser history and uses generic confirmation", async ({

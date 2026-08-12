@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -101,7 +102,86 @@ func newBillingAPITestServer(t *testing.T) *billingTestServer {
 				},
 			},
 		},
+		PurchaseChoiceSecret: "test-purchase-choice-secret-with-32-bytes",
 	})
+}
+
+func TestConfirmFirstWorkspacePurchaseCreatesAndResumesOneBoundAttempt(t *testing.T) {
+	srv := newBillingAPITestServer(t)
+	ctx := t.Context()
+	_, err := srv.db.NewDelete().Model((*models.WorkspaceMember)(nil)).Where("workspace_id = ?", "ws-1").Exec(ctx)
+	require.NoError(t, err)
+	_, err = srv.db.NewDelete().Model((*models.Workspace)(nil)).Where("id = ?", "ws-1").Exec(ctx)
+	require.NoError(t, err)
+	_, err = srv.db.NewDelete().Model((*models.OrganizationMember)(nil)).Where("organization_id = ?", "org_ws-1").Exec(ctx)
+	require.NoError(t, err)
+	_, err = srv.db.NewDelete().Model((*models.Organization)(nil)).Where("id = ?", "org_ws-1").Exec(ctx)
+	require.NoError(t, err)
+
+	choiceResponse := srv.postJSON(t, "/api/v1/billing/purchase-choice", map[string]any{
+		"plan_id": "founder", "billing_period": "annual",
+	})
+	require.Equal(t, http.StatusOK, choiceResponse.Code, choiceResponse.Body.String())
+	var choice PurchaseChoiceResponse
+	require.NoError(t, json.Unmarshal(choiceResponse.Body.Bytes(), &choice))
+
+	request := map[string]any{
+		"workspace_name":        "North Star Studio",
+		"plan_id":               "founder",
+		"billing_period":        "annual",
+		"purchase_choice_token": choice.Token,
+		"return_path":           "/settings?tab=accounts&onboarding=1",
+	}
+	first := srv.postJSON(t, "/api/v1/billing/welcome", request)
+	require.Equal(t, http.StatusOK, first.Code, first.Body.String())
+	var firstBody map[string]any
+	require.NoError(t, json.Unmarshal(first.Body.Bytes(), &firstBody))
+	require.Equal(t, "North Star Studio", firstBody["workspace_name"])
+	require.NotEmpty(t, firstBody["workspace_id"])
+	checkout := firstBody["checkout"].(map[string]any)
+	require.Equal(t, "founder", checkout["plan_id"])
+	require.Equal(t, "annual", checkout["billing_period"])
+	require.NotEmpty(t, checkout["id"])
+
+	resumed := srv.postJSON(t, "/api/v1/billing/welcome", request)
+	require.Equal(t, http.StatusOK, resumed.Code, resumed.Body.String())
+	var resumedBody map[string]any
+	require.NoError(t, json.Unmarshal(resumed.Body.Bytes(), &resumedBody))
+	require.Equal(t, firstBody["workspace_id"], resumedBody["workspace_id"])
+	require.Equal(t, checkout["id"], resumedBody["checkout"].(map[string]any)["id"])
+	loaded := srv.getJSON(t, "/api/v1/billing/checkout/"+checkout["id"].(string))
+	require.Equal(t, http.StatusOK, loaded.Code, loaded.Body.String())
+	var loadedBody map[string]any
+	require.NoError(t, json.Unmarshal(loaded.Body.Bytes(), &loadedBody))
+	require.Equal(t, checkout["id"], loadedBody["id"])
+	require.Equal(t, firstBody["workspace_id"], loadedBody["workspace_id"])
+
+	var workspaceCount, attemptCount int
+	require.NoError(t, srv.db.NewSelect().ColumnExpr("COUNT(*)").TableExpr("workspaces").Scan(ctx, &workspaceCount))
+	require.NoError(t, srv.db.NewSelect().ColumnExpr("COUNT(*)").TableExpr("billing_checkout_attempts").Scan(ctx, &attemptCount))
+	require.Equal(t, 1, workspaceCount)
+	require.Equal(t, 1, attemptCount)
+
+	mismatch := maps.Clone(request)
+	mismatch["workspace_name"] = "A different workspace"
+	rejected := srv.postJSON(t, "/api/v1/billing/welcome", mismatch)
+	require.Equal(t, http.StatusConflict, rejected.Code, rejected.Body.String())
+	require.Contains(t, rejected.Body.String(), "confirmed welcome details")
+}
+
+func TestResumeBillingCheckoutRequiresExactUser(t *testing.T) {
+	srv := newBillingAPITestServer(t)
+	ctx := t.Context()
+	attempt := &models.BillingCheckoutAttempt{
+		CheckoutAttemptID: "chkat_other_user", OrganizationID: "org_ws-1", WorkspaceID: "ws-1", UserID: "other-user",
+		Provider: billing.ProviderPaddle, ProviderPriceID: "pri_founder_month", PlanID: "founder", BillingPeriod: "monthly",
+		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
+	}
+	_, err := srv.db.NewInsert().Model(attempt).Exec(ctx)
+	require.NoError(t, err)
+
+	response := srv.getJSON(t, "/api/v1/billing/checkout/chkat_other_user")
+	require.Equal(t, http.StatusNotFound, response.Code, response.Body.String())
 }
 
 func TestPurchaseChoiceEndpointCreatesAndRevalidatesCanonicalChoice(t *testing.T) {
@@ -168,6 +248,7 @@ func newBillingAPITestServerWithPaddleConfig(t *testing.T, client *billingPaddle
 		(*models.WorkspaceMember)(nil),
 		(*models.BillingSubscription)(nil),
 		(*models.BillingCheckoutAttempt)(nil),
+		(*models.Job)(nil),
 		(*models.UsageCounter)(nil),
 		(*models.ProviderUsageEvent)(nil),
 		(*models.ProviderUsageReservation)(nil),

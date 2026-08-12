@@ -672,6 +672,7 @@ type BillingCheckoutAttempt struct {
 	ProviderSubscriptionID string    `json:"provider_subscription_id,omitempty"`
 	PlanID                 string    `bun:",notnull" json:"plan_id"`
 	BillingPeriod          string    `bun:",notnull" json:"billing_period"`
+	ConfirmationKey        string    `bun:"confirmation_key,notnull,default:''" json:"-"`
 	ReturnPath             string    `bun:"return_path,notnull,default:''" json:"-"`
 	Status                 string    `bun:",notnull,default:'created'" json:"status"`
 	ReturnConsumedAt       time.Time `bun:"return_consumed_at,nullzero" json:"-"`

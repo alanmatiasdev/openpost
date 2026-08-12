@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -16,6 +17,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/openpost/backend/internal/api/middleware"
 	"github.com/openpost/backend/internal/models"
+	"github.com/openpost/backend/internal/queue"
 	"github.com/openpost/backend/internal/services/billing"
 	"github.com/openpost/backend/internal/services/entitlements"
 	"github.com/openpost/backend/internal/services/identity"
@@ -88,6 +90,17 @@ func (h *BillingHandler) RegisterAPIRoutes(api huma.API) {
 	}, h.createPurchaseChoice)
 
 	huma.Register(api, huma.Operation{
+		OperationID: "confirm-first-workspace-purchase",
+		Method:      http.MethodPost,
+		Path:        "/billing/welcome",
+		Summary:     "Confirm the first workspace and purchase",
+		Description: "Creates the signed-in Owner's first Workspace and one checkout attempt bound to the confirmed purchase choice. Exact retries resume the same attempt.",
+		Tags:        []string{"Billing"},
+		Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
+		Errors:      []int{400, 403, 409, 503},
+	}, h.confirmFirstWorkspacePurchase)
+
+	huma.Register(api, huma.Operation{
 		OperationID: "get-billing-status",
 		Method:      http.MethodGet,
 		Path:        "/billing/status",
@@ -106,6 +119,17 @@ func (h *BillingHandler) RegisterAPIRoutes(api huma.API) {
 		Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
 		Errors:      []int{400, 403, 503},
 	}, h.createCheckout)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "resume-billing-checkout",
+		Method:      http.MethodGet,
+		Path:        "/billing/checkout/{attempt_id}",
+		Summary:     "Resume a billing checkout",
+		Description: "Returns the browser-safe checkout configuration only when the attempt belongs to the signed-in user.",
+		Tags:        []string{"Billing"},
+		Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
+		Errors:      []int{404, 503},
+	}, h.resumeCheckout)
 
 	huma.Register(api, huma.Operation{
 		OperationID: "consume-billing-checkout-return",
@@ -177,6 +201,68 @@ type PurchaseChoiceResponse struct {
 	DueTodayUSD    int    `json:"due_today_usd" doc:"Canonical USD amount due when the trial starts"`
 	CatalogVersion string `json:"catalog_version" doc:"Canonical plan catalogue revision bound to the choice"`
 	ExpiresAt      string `json:"expires_at" format:"date-time" doc:"When this purchase choice must be replaced"`
+}
+
+type ConfirmFirstWorkspacePurchaseInput struct {
+	Body struct {
+		WorkspaceName       string `json:"workspace_name" minLength:"1" maxLength:"100" doc:"Name for the first Workspace"`
+		PlanID              string `json:"plan_id" doc:"Canonical hosted plan ID"`
+		BillingPeriod       string `json:"billing_period" enum:"monthly,annual" doc:"Canonical billing period"`
+		PurchaseChoiceToken string `json:"purchase_choice_token" minLength:"1" doc:"Integrity-protected purchase choice carried through signup"`
+		ReturnPath          string `json:"return_path,omitempty" maxLength:"2048" doc:"Validated same-origin route to resume after checkout"`
+	}
+}
+
+type ConfirmFirstWorkspacePurchaseOutput struct {
+	Body struct {
+		WorkspaceID    string             `json:"workspace_id"`
+		OrganizationID string             `json:"organization_id"`
+		WorkspaceName  string             `json:"workspace_name"`
+		Checkout       BillingURLResponse `json:"checkout"`
+	}
+}
+
+func (h *BillingHandler) confirmFirstWorkspacePurchase(ctx context.Context, input *ConfirmFirstWorkspacePurchaseInput) (*ConfirmFirstWorkspacePurchaseOutput, error) {
+	if err := h.ensureReady(); err != nil {
+		return nil, err
+	}
+	userID := middleware.GetUserID(ctx)
+	workspaceName := strings.TrimSpace(input.Body.WorkspaceName)
+	if workspaceName == "" {
+		return nil, huma.Error400BadRequest("workspace name is required")
+	}
+	choice, err := h.billing.ResolvePurchaseChoice(input.Body.PurchaseChoiceToken, input.Body.PlanID, input.Body.BillingPeriod)
+	if err != nil {
+		return nil, purchaseChoiceAPIError(err)
+	}
+	email, err := h.userEmail(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	confirmationKey := fmt.Sprintf("%x", sha256.Sum256([]byte(userID+"\x00"+choice.Token)))
+	confirmation, err := h.billing.ConfirmFirstWorkspace(ctx, billing.ConfirmFirstWorkspaceInput{
+		UserID: userID, CustomerEmail: email, WorkspaceName: workspaceName,
+		ReturnPath: input.Body.ReturnPath, ConfirmationKey: confirmationKey, Choice: choice,
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, billing.ErrFirstWorkspaceExists), errors.Is(err, billing.ErrWelcomeConfirmationReplay):
+			return nil, huma.Error409Conflict(err.Error())
+		case errors.Is(err, billing.ErrOrganizationMemberExists):
+			return nil, huma.Error403Forbidden(err.Error())
+		}
+		return nil, billingAPIError(err)
+	}
+	if confirmation.Created {
+		_ = queue.ScheduleMediaCleanup(h.db, confirmation.Workspace.ID) //nolint:errcheck
+		h.captureCheckoutCreated(ctx, userID, confirmation.OrganizationID, confirmation.Workspace.ID, confirmation.Checkout)
+	}
+	output := &ConfirmFirstWorkspacePurchaseOutput{}
+	output.Body.WorkspaceID = confirmation.Workspace.ID
+	output.Body.OrganizationID = confirmation.OrganizationID
+	output.Body.WorkspaceName = confirmation.Workspace.Name
+	output.Body.Checkout = checkoutResponse(confirmation.Checkout)
+	return output, nil
 }
 
 type PurchaseChoiceOutput struct {
@@ -483,6 +569,30 @@ type BillingURLResponse struct {
 	ClientToken     string            `json:"client_token,omitempty" doc:"Browser-safe Paddle.js client token"`
 	Environment     string            `json:"environment,omitempty" doc:"Explicit Paddle.js environment: sandbox or production"`
 	CustomerEmail   string            `json:"customer_email,omitempty" doc:"Authenticated customer's checkout email"`
+	WorkspaceID     string            `json:"workspace_id,omitempty" doc:"Workspace bound to this checkout attempt"`
+}
+
+type ResumeBillingCheckoutInput struct {
+	AttemptID string `path:"attempt_id" doc:"Opaque OpenPost checkout attempt ID"`
+}
+
+func (h *BillingHandler) resumeCheckout(ctx context.Context, input *ResumeBillingCheckoutInput) (*BillingURLOutput, error) {
+	if err := h.ensureReady(); err != nil {
+		return nil, err
+	}
+	userID := middleware.GetUserID(ctx)
+	email, err := h.userEmail(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	result, _, err := h.billing.ResumeCheckout(ctx, h.db, input.AttemptID, userID, email)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, huma.Error404NotFound("checkout attempt not found")
+	}
+	if err != nil {
+		return nil, billingAPIError(err)
+	}
+	return &BillingURLOutput{Body: checkoutResponse(result)}, nil
 }
 
 type BillingURLOutput struct {
@@ -675,6 +785,7 @@ func checkoutResponse(result billing.CheckoutResult) BillingURLResponse {
 		ClientToken:     result.ClientToken,
 		Environment:     result.Environment,
 		CustomerEmail:   result.CustomerEmail,
+		WorkspaceID:     result.WorkspaceID,
 	}
 	if !result.TrialEndsAt.IsZero() {
 		response.TrialEndsAt = result.TrialEndsAt.UTC().Format(time.RFC3339)

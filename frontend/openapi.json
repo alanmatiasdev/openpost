@@ -1778,6 +1778,10 @@
 					"url": {
 						"description": "OpenPost checkout URL or short-lived Paddle customer portal URL",
 						"type": "string"
+					},
+					"workspace_id": {
+						"description": "Workspace bound to this checkout attempt",
+						"type": "string"
 					}
 				},
 				"type": "object"
@@ -2669,6 +2673,73 @@
 					}
 				},
 				"required": ["challenge_id", "code"],
+				"type": "object"
+			},
+			"ConfirmFirstWorkspacePurchaseInputBody": {
+				"additionalProperties": false,
+				"properties": {
+					"$schema": {
+						"description": "A URL to the JSON Schema for this object.",
+						"examples": ["https://example.com/schemas/ConfirmFirstWorkspacePurchaseInputBody.json"],
+						"format": "uri",
+						"readOnly": true,
+						"type": "string"
+					},
+					"billing_period": {
+						"description": "Canonical billing period",
+						"enum": ["monthly", "annual"],
+						"type": "string"
+					},
+					"plan_id": {
+						"description": "Canonical hosted plan ID",
+						"type": "string"
+					},
+					"purchase_choice_token": {
+						"description": "Integrity-protected purchase choice carried through signup",
+						"minLength": 1,
+						"type": "string"
+					},
+					"return_path": {
+						"description": "Validated same-origin route to resume after checkout",
+						"maxLength": 2048,
+						"type": "string"
+					},
+					"workspace_name": {
+						"description": "Name for the first Workspace",
+						"maxLength": 100,
+						"minLength": 1,
+						"type": "string"
+					}
+				},
+				"required": ["workspace_name", "plan_id", "billing_period", "purchase_choice_token"],
+				"type": "object"
+			},
+			"ConfirmFirstWorkspacePurchaseOutputBody": {
+				"additionalProperties": false,
+				"properties": {
+					"$schema": {
+						"description": "A URL to the JSON Schema for this object.",
+						"examples": [
+							"https://example.com/schemas/ConfirmFirstWorkspacePurchaseOutputBody.json"
+						],
+						"format": "uri",
+						"readOnly": true,
+						"type": "string"
+					},
+					"checkout": {
+						"$ref": "#/components/schemas/BillingURLResponse"
+					},
+					"organization_id": {
+						"type": "string"
+					},
+					"workspace_id": {
+						"type": "string"
+					},
+					"workspace_name": {
+						"type": "string"
+					}
+				},
+				"required": ["workspace_id", "organization_id", "workspace_name", "checkout"],
 				"type": "object"
 			},
 			"ConfirmTOTPSetupInputBody": {
@@ -22960,6 +23031,78 @@
 				"tags": ["Billing"]
 			}
 		},
+		"/billing/checkout/{attempt_id}": {
+			"get": {
+				"description": "Returns the browser-safe checkout configuration only when the attempt belongs to the signed-in user.",
+				"operationId": "resume-billing-checkout",
+				"parameters": [
+					{
+						"description": "Opaque OpenPost checkout attempt ID",
+						"in": "path",
+						"name": "attempt_id",
+						"required": true,
+						"schema": {
+							"description": "Opaque OpenPost checkout attempt ID",
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/BillingURLResponse"
+								}
+							}
+						},
+						"description": "OK"
+					},
+					"404": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Not Found"
+					},
+					"422": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Unprocessable Entity"
+					},
+					"500": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Internal Server Error"
+					},
+					"503": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Service Unavailable"
+					}
+				},
+				"summary": "Resume a billing checkout",
+				"tags": ["Billing"]
+			}
+		},
 		"/billing/checkout/{attempt_id}/return": {
 			"get": {
 				"operationId": "consume-billing-checkout-return",
@@ -23248,6 +23391,96 @@
 					}
 				},
 				"summary": "Get billing status",
+				"tags": ["Billing"]
+			}
+		},
+		"/billing/welcome": {
+			"post": {
+				"description": "Creates the signed-in Owner's first Workspace and one checkout attempt bound to the confirmed purchase choice. Exact retries resume the same attempt.",
+				"operationId": "confirm-first-workspace-purchase",
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/ConfirmFirstWorkspacePurchaseInputBody"
+							}
+						}
+					},
+					"required": true
+				},
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ConfirmFirstWorkspacePurchaseOutputBody"
+								}
+							}
+						},
+						"description": "OK"
+					},
+					"400": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Bad Request"
+					},
+					"403": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Forbidden"
+					},
+					"409": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Conflict"
+					},
+					"422": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Unprocessable Entity"
+					},
+					"500": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Internal Server Error"
+					},
+					"503": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Service Unavailable"
+					}
+				},
+				"summary": "Confirm the first workspace and purchase",
 				"tags": ["Billing"]
 			}
 		},

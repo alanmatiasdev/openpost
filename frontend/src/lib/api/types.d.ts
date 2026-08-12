@@ -1376,6 +1376,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/billing/checkout/{attempt_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Resume a billing checkout
+         * @description Returns the browser-safe checkout configuration only when the attempt belongs to the signed-in user.
+         */
+        get: operations["resume-billing-checkout"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/billing/checkout/{attempt_id}/return": {
         parameters: {
             query?: never;
@@ -1441,6 +1461,26 @@ export interface paths {
         get: operations["get-billing-status"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/billing/welcome": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm the first workspace and purchase
+         * @description Creates the signed-in Owner's first Workspace and one checkout attempt bound to the confirmed purchase choice. Exact retries resume the same attempt.
+         */
+        post: operations["confirm-first-workspace-purchase"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4559,6 +4599,8 @@ export interface components {
             trial_ends_at?: string;
             /** @description OpenPost checkout URL or short-lived Paddle customer portal URL */
             url?: string;
+            /** @description Workspace bound to this checkout attempt */
+            workspace_id?: string;
         };
         Blocker: {
             code: string;
@@ -4925,6 +4967,39 @@ export interface components {
             challenge_id: string;
             /** @description Six-digit verification code */
             code: string;
+        };
+        ConfirmFirstWorkspacePurchaseInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ConfirmFirstWorkspacePurchaseInputBody.json
+             */
+            readonly $schema?: string;
+            /**
+             * @description Canonical billing period
+             * @enum {string}
+             */
+            billing_period: "monthly" | "annual";
+            /** @description Canonical hosted plan ID */
+            plan_id: string;
+            /** @description Integrity-protected purchase choice carried through signup */
+            purchase_choice_token: string;
+            /** @description Validated same-origin route to resume after checkout */
+            return_path?: string;
+            /** @description Name for the first Workspace */
+            workspace_name: string;
+        };
+        ConfirmFirstWorkspacePurchaseOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/ConfirmFirstWorkspacePurchaseOutputBody.json
+             */
+            readonly $schema?: string;
+            checkout: components["schemas"]["BillingURLResponse"];
+            organization_id: string;
+            workspace_id: string;
+            workspace_name: string;
         };
         ConfirmTOTPSetupInputBody: {
             /**
@@ -16070,6 +16145,65 @@ export interface operations {
             };
         };
     };
+    "resume-billing-checkout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Opaque OpenPost checkout attempt ID */
+                attempt_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingURLResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "consume-billing-checkout-return": {
         parameters: {
             query?: never;
@@ -16301,6 +16435,84 @@ export interface operations {
             };
             /** @description Internal Server Error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "confirm-first-workspace-purchase": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConfirmFirstWorkspacePurchaseInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConfirmFirstWorkspacePurchaseOutputBody"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

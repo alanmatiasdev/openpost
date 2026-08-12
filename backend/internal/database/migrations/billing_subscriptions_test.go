@@ -48,14 +48,15 @@ func TestRunMigrationsCreatesBillingSubscriptionSchema(t *testing.T) {
 	require.Contains(t, checkoutSchema, "provider_price_id TEXT NOT NULL")
 	require.Contains(t, checkoutSchema, "provider_subscription_id TEXT")
 	require.Contains(t, checkoutSchema, "billing_period TEXT NOT NULL")
+	require.Contains(t, checkoutSchema, "confirmation_key TEXT NOT NULL DEFAULT ''")
 
 	var checkoutIndexCount int
 	require.NoError(t, db.NewSelect().
 		ColumnExpr("COUNT(*)").
 		TableExpr("sqlite_master").
-		Where("type = 'index' AND name = 'billing_checkout_attempts_subscription_idx'").
+		Where("type = 'index' AND name IN ('billing_checkout_attempts_subscription_idx', 'billing_checkout_attempts_confirmation_idx')").
 		Scan(ctx, &checkoutIndexCount))
-	require.Equal(t, 1, checkoutIndexCount)
+	require.Equal(t, 2, checkoutIndexCount)
 }
 
 func TestRunMigrationsBillingSubscriptionsIdempotent(t *testing.T) {

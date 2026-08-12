@@ -9,6 +9,7 @@ All notable changes to this project are documented in this file.
 ### Added
 
 - Added one canonical hosted-plan catalogue and an expiring signed purchase choice that keeps exact pricing and trial terms through password signup, email verification, refresh, and identity-provider signup without defaulting invalid selections to Founder.
+- Added an explicit first-Workspace confirmation that shows the selected plan and trial terms, atomically binds the named Workspace to one checkout attempt, and resumes that attempt after refresh without creating duplicates.
 
 ### Fixed
 
