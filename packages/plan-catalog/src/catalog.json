@@ -14,7 +14,14 @@
       "monthly_price_usd": 15,
       "annual_price_usd": 150,
       "featured": false,
-      "limits": { "workspaces": 1, "social_accounts": 3, "scheduled_posts_monthly": 100, "media_bytes_stored": 1000000000, "media_bytes_uploaded_monthly": 1000000000, "team_members": 1 }
+      "limits": {
+        "workspaces": 1,
+        "social_accounts": 3,
+        "scheduled_posts_monthly": 100,
+        "media_bytes_stored": 1000000000,
+        "media_bytes_uploaded_monthly": 1000000000,
+        "team_members": 1
+      }
     },
     {
       "id": "founder",
@@ -24,7 +31,14 @@
       "monthly_price_usd": 25,
       "annual_price_usd": 250,
       "featured": true,
-      "limits": { "workspaces": 3, "social_accounts": 6, "scheduled_posts_monthly": 500, "media_bytes_stored": 5000000000, "media_bytes_uploaded_monthly": 5000000000, "team_members": 1 }
+      "limits": {
+        "workspaces": 3,
+        "social_accounts": 6,
+        "scheduled_posts_monthly": 500,
+        "media_bytes_stored": 5000000000,
+        "media_bytes_uploaded_monthly": 5000000000,
+        "team_members": 1
+      }
     },
     {
       "id": "pro",
@@ -34,7 +48,14 @@
       "monthly_price_usd": 49,
       "annual_price_usd": 490,
       "featured": false,
-      "limits": { "workspaces": 10, "social_accounts": 15, "scheduled_posts_monthly": 2500, "media_bytes_stored": 25000000000, "media_bytes_uploaded_monthly": 25000000000, "team_members": 1 }
+      "limits": {
+        "workspaces": 10,
+        "social_accounts": 15,
+        "scheduled_posts_monthly": 2500,
+        "media_bytes_stored": 25000000000,
+        "media_bytes_uploaded_monthly": 25000000000,
+        "team_members": 1
+      }
     },
     {
       "id": "team",
@@ -44,7 +65,14 @@
       "monthly_price_usd": 99,
       "annual_price_usd": 990,
       "featured": false,
-      "limits": { "workspaces": 10, "social_accounts": 25, "scheduled_posts_monthly": 5000, "media_bytes_stored": 50000000000, "media_bytes_uploaded_monthly": 50000000000, "team_members": 3 }
+      "limits": {
+        "workspaces": 10,
+        "social_accounts": 25,
+        "scheduled_posts_monthly": 5000,
+        "media_bytes_stored": 50000000000,
+        "media_bytes_uploaded_monthly": 50000000000,
+        "team_members": 3
+      }
     },
     {
       "id": "agency",
@@ -54,7 +82,14 @@
       "monthly_price_usd": 199,
       "annual_price_usd": 1990,
       "featured": false,
-      "limits": { "workspaces": 50, "social_accounts": 150, "scheduled_posts_monthly": 25000, "media_bytes_stored": 250000000000, "media_bytes_uploaded_monthly": 250000000000, "team_members": 5 }
+      "limits": {
+        "workspaces": 50,
+        "social_accounts": 150,
+        "scheduled_posts_monthly": 25000,
+        "media_bytes_stored": 250000000000,
+        "media_bytes_uploaded_monthly": 250000000000,
+        "team_members": 5
+      }
     }
   ]
 }
