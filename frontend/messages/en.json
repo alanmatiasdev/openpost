@@ -3923,6 +3923,7 @@
 	"checkout_trial": "14-day free trial",
 	"checkout_card_required": "Card required",
 	"checkout_cancel": "Cancel anytime",
+	"checkout_closed": "Checkout was closed. Your Workspace and purchase choice are saved.",
 	"checkout_loading": "Loading secure checkout",
 	"checkout_load_failed": "OpenPost could not prepare checkout.",
 	"checkout_embed_failed": "The secure payment form could not load.",

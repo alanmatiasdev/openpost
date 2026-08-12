@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
-	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	"github.com/openpost/backend/internal/api/middleware"
 	"github.com/openpost/backend/internal/models"
@@ -223,22 +222,6 @@ type ConfirmFirstWorkspacePurchaseOutput struct {
 	}
 }
 
-type firstWorkspaceConfirmationRequest struct {
-	UserID          string
-	Email           string
-	WorkspaceName   string
-	ReturnPath      string
-	ConfirmationKey string
-	Choice          billing.PurchaseChoice
-}
-
-type firstWorkspaceConfirmation struct {
-	Checkout       billing.CheckoutResult
-	Workspace      models.Workspace
-	OrganizationID string
-	Created        bool
-}
-
 func (h *BillingHandler) confirmFirstWorkspacePurchase(ctx context.Context, input *ConfirmFirstWorkspacePurchaseInput) (*ConfirmFirstWorkspacePurchaseOutput, error) {
 	if err := h.ensureReady(); err != nil {
 		return nil, err
@@ -257,20 +240,16 @@ func (h *BillingHandler) confirmFirstWorkspacePurchase(ctx context.Context, inpu
 		return nil, err
 	}
 	confirmationKey := fmt.Sprintf("%x", sha256.Sum256([]byte(userID+"\x00"+choice.Token)))
-	request := firstWorkspaceConfirmationRequest{
-		UserID: userID, Email: email, WorkspaceName: workspaceName,
+	confirmation, err := h.billing.ConfirmFirstWorkspace(ctx, billing.ConfirmFirstWorkspaceInput{
+		UserID: userID, CustomerEmail: email, WorkspaceName: workspaceName,
 		ReturnPath: input.Body.ReturnPath, ConfirmationKey: confirmationKey, Choice: choice,
-	}
-	var confirmation firstWorkspaceConfirmation
-	err = h.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
-		var txErr error
-		confirmation, txErr = h.confirmFirstWorkspacePurchaseTx(txCtx, tx, request)
-		return txErr
 	})
 	if err != nil {
-		var statusErr *huma.ErrorModel
-		if errors.As(err, &statusErr) {
-			return nil, statusErr
+		switch {
+		case errors.Is(err, billing.ErrFirstWorkspaceExists), errors.Is(err, billing.ErrWelcomeConfirmationReplay):
+			return nil, huma.Error409Conflict(err.Error())
+		case errors.Is(err, billing.ErrOrganizationMemberExists):
+			return nil, huma.Error403Forbidden(err.Error())
 		}
 		return nil, billingAPIError(err)
 	}
@@ -284,78 +263,6 @@ func (h *BillingHandler) confirmFirstWorkspacePurchase(ctx context.Context, inpu
 	output.Body.WorkspaceName = confirmation.Workspace.Name
 	output.Body.Checkout = checkoutResponse(confirmation.Checkout)
 	return output, nil
-}
-
-func (h *BillingHandler) confirmFirstWorkspacePurchaseTx(ctx context.Context, tx bun.Tx, request firstWorkspaceConfirmationRequest) (firstWorkspaceConfirmation, error) {
-	var existing models.BillingCheckoutAttempt
-	err := tx.NewSelect().Model(&existing).
-		Where("user_id = ?", request.UserID).
-		Where("confirmation_key = ?", request.ConfirmationKey).
-		Scan(ctx)
-	if err == nil {
-		return h.resumeFirstWorkspaceConfirmation(ctx, tx, request, existing)
-	}
-	if !errors.Is(err, sql.ErrNoRows) {
-		return firstWorkspaceConfirmation{}, err
-	}
-	if err := ensureFirstWorkspaceEligibility(ctx, tx, request.UserID); err != nil {
-		return firstWorkspaceConfirmation{}, err
-	}
-	return h.createFirstWorkspaceConfirmation(ctx, tx, request)
-}
-
-func (h *BillingHandler) resumeFirstWorkspaceConfirmation(ctx context.Context, tx bun.Tx, request firstWorkspaceConfirmationRequest, existing models.BillingCheckoutAttempt) (firstWorkspaceConfirmation, error) {
-	var workspace models.Workspace
-	if err := tx.NewSelect().Model(&workspace).Where("id = ?", existing.WorkspaceID).Scan(ctx); err != nil {
-		return firstWorkspaceConfirmation{}, err
-	}
-	if workspace.Name != request.WorkspaceName || existing.PlanID != request.Choice.PlanID || existing.BillingPeriod != request.Choice.BillingPeriod || existing.ReturnPath != strings.TrimSpace(request.ReturnPath) {
-		return firstWorkspaceConfirmation{}, huma.Error409Conflict("confirmed welcome details do not match the existing checkout attempt")
-	}
-	checkout, _, err := h.billing.ResumeCheckout(ctx, tx, existing.CheckoutAttemptID, request.UserID, request.Email)
-	return firstWorkspaceConfirmation{Checkout: checkout, Workspace: workspace, OrganizationID: existing.OrganizationID}, err
-}
-
-func ensureFirstWorkspaceEligibility(ctx context.Context, tx bun.Tx, userID string) error {
-	for _, membership := range []struct {
-		table   string
-		failure error
-	}{
-		{table: "workspace_members", failure: huma.Error409Conflict("the first Workspace has already been created")},
-		{table: "organization_members", failure: huma.Error403Forbidden("only an eligible new Organization Owner can confirm a first Workspace purchase")},
-	} {
-		var count int
-		if err := tx.NewSelect().ColumnExpr("COUNT(*)").TableExpr(membership.table).Where("user_id = ?", userID).Scan(ctx, &count); err != nil {
-			return err
-		}
-		if count != 0 {
-			return membership.failure
-		}
-	}
-	return nil
-}
-
-func (h *BillingHandler) createFirstWorkspaceConfirmation(ctx context.Context, tx bun.Tx, request firstWorkspaceConfirmationRequest) (firstWorkspaceConfirmation, error) {
-	now := time.Now().UTC()
-	organizationID := uuid.NewString()
-	workspace := models.Workspace{ID: uuid.NewString(), OrganizationID: organizationID, Name: request.WorkspaceName, WeekStart: 1, CreatedAt: now}
-	modelsToCreate := []any{
-		&models.Organization{ID: organizationID, Name: request.WorkspaceName, CreatedByID: request.UserID, CreatedAt: now, UpdatedAt: now},
-		&models.OrganizationMember{OrganizationID: organizationID, UserID: request.UserID, Role: models.OrganizationRoleOwner, CreatedAt: now},
-		&workspace,
-		&models.WorkspaceMember{WorkspaceID: workspace.ID, UserID: request.UserID, Role: models.WorkspaceRoleAdmin, Status: models.WorkspaceMemberStatusActive, CreatedAt: now, UpdatedAt: now},
-	}
-	for _, model := range modelsToCreate {
-		if _, err := tx.NewInsert().Model(model).Exec(ctx); err != nil {
-			return firstWorkspaceConfirmation{}, err
-		}
-	}
-	checkout, err := h.billing.CreateCheckoutWithDB(ctx, tx, billing.CreateCheckoutInput{
-		OrganizationID: organizationID, WorkspaceID: workspace.ID, UserID: request.UserID,
-		CustomerEmail: request.Email, PlanID: request.Choice.PlanID, BillingPeriod: request.Choice.BillingPeriod,
-		ReturnPath: request.ReturnPath, ConfirmationKey: request.ConfirmationKey,
-	})
-	return firstWorkspaceConfirmation{Checkout: checkout, Workspace: workspace, OrganizationID: organizationID, Created: err == nil}, err
 }
 
 type PurchaseChoiceOutput struct {

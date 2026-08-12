@@ -3923,6 +3923,7 @@
 	"checkout_trial": "Avaliação gratuita de 14 dias",
 	"checkout_card_required": "Cartão obrigatório",
 	"checkout_cancel": "Cancele a qualquer momento",
+	"checkout_closed": "O checkout foi fechado. O seu Workspace e a escolha de compra estão guardados.",
 	"checkout_loading": "A carregar pagamento seguro",
 	"checkout_load_failed": "O OpenPost não conseguiu preparar o pagamento.",
 	"checkout_embed_failed": "Não foi possível carregar o formulário de pagamento seguro.",

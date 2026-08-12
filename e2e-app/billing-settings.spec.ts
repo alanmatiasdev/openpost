@@ -668,7 +668,10 @@ test("plan selection from signup starts checkout after onboarding", async ({
       plan_id: string;
       billing_period: "monthly" | "annual";
     };
-    const prices: Record<string, { monthly: number; annual: number; name: string }> = {
+    const prices: Record<
+      string,
+      { monthly: number; annual: number; name: string }
+    > = {
       starter: { monthly: 15, annual: 150, name: "Starter" },
       founder: { monthly: 25, annual: 250, name: "Founder" },
       pro: { monthly: 49, annual: 490, name: "Pro" },
@@ -866,7 +869,44 @@ test("plan selection from signup starts checkout after onboarding", async ({
     purchase_choice_token: "choice-founder-annual",
   });
   expect(resumeCalls).toBe(1);
-  await expect(page.getByRole("button", { name: "Monthly", exact: true })).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "Monthly", exact: true }),
+  ).toBeDisabled();
+
+  await page.evaluate(() => {
+    const state = (
+      window as typeof window & {
+        __openpostPaddleTest?: {
+          initialize?: {
+            eventCallback?: (event: { name: string }) => void;
+          };
+        };
+      }
+    ).__openpostPaddleTest;
+    state?.initialize?.eventCallback?.({ name: "checkout.closed" });
+  });
+  await expect(
+    page.getByText(
+      "Checkout was closed. Your Workspace and purchase choice are saved.",
+    ),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Try again" }).click();
+  await expect.poll(() => resumeCalls).toBe(2);
+  expect(welcomeCalls).toBe(1);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (
+            window as typeof window & {
+              __openpostPaddleTest?: {
+                checkout?: { customData?: { checkout_id?: string } };
+              };
+            }
+          ).__openpostPaddleTest?.checkout?.customData?.checkout_id,
+      ),
+    )
+    .toBe("chkat_e2e");
 
   await page.evaluate(() => {
     localStorage.setItem("mode-watcher-mode", "dark");
@@ -875,7 +915,7 @@ test("plan selection from signup starts checkout after onboarding", async ({
   await expect(page.locator("html")).toHaveClass(/dark/);
   await expect(page.getByTestId("paddle-checkout-frame")).toBeVisible();
   expect(welcomeCalls).toBe(1);
-  await expect.poll(() => resumeCalls).toBe(2);
+  await expect.poll(() => resumeCalls).toBe(3);
   await expect
     .poll(() =>
       page.evaluate(

@@ -28,6 +28,12 @@ const (
 	TrialDays      = PlanCatalogTrialDays
 )
 
+var (
+	ErrFirstWorkspaceExists      = errors.New("the first Workspace has already been created")
+	ErrOrganizationMemberExists  = errors.New("only an eligible new Organization Owner can confirm a first Workspace purchase")
+	ErrWelcomeConfirmationReplay = errors.New("confirmed welcome details do not match the existing checkout attempt")
+)
+
 var errConfiguration = errors.New("billing provider is not configured")
 
 func IsConfigurationError(err error) bool {
@@ -170,6 +176,93 @@ type CheckoutResult struct {
 	Environment     string
 	CustomerEmail   string
 	WorkspaceID     string
+}
+
+type ConfirmFirstWorkspaceInput struct {
+	UserID, CustomerEmail, WorkspaceName, ReturnPath, ConfirmationKey string
+	Choice                                                            PurchaseChoice
+}
+
+type FirstWorkspaceConfirmation struct {
+	Checkout       CheckoutResult
+	Workspace      models.Workspace
+	OrganizationID string
+	Created        bool
+}
+
+func (s *Service) ConfirmFirstWorkspace(ctx context.Context, input ConfirmFirstWorkspaceInput) (FirstWorkspaceConfirmation, error) {
+	var confirmation FirstWorkspaceConfirmation
+	err := s.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
+		var txErr error
+		confirmation, txErr = s.confirmFirstWorkspaceTx(txCtx, tx, input)
+		return txErr
+	})
+	return confirmation, err
+}
+
+func (s *Service) confirmFirstWorkspaceTx(ctx context.Context, tx bun.Tx, input ConfirmFirstWorkspaceInput) (FirstWorkspaceConfirmation, error) {
+	var existing models.BillingCheckoutAttempt
+	err := tx.NewSelect().Model(&existing).Where("user_id = ?", input.UserID).Where("confirmation_key = ?", input.ConfirmationKey).Scan(ctx)
+	if err == nil {
+		return s.resumeFirstWorkspace(ctx, tx, input, existing)
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return FirstWorkspaceConfirmation{}, err
+	}
+	if err := ensureFirstWorkspaceEligibility(ctx, tx, input.UserID); err != nil {
+		return FirstWorkspaceConfirmation{}, err
+	}
+	return s.createFirstWorkspace(ctx, tx, input)
+}
+
+func (s *Service) resumeFirstWorkspace(ctx context.Context, tx bun.Tx, input ConfirmFirstWorkspaceInput, existing models.BillingCheckoutAttempt) (FirstWorkspaceConfirmation, error) {
+	var workspace models.Workspace
+	if err := tx.NewSelect().Model(&workspace).Where("id = ?", existing.WorkspaceID).Scan(ctx); err != nil {
+		return FirstWorkspaceConfirmation{}, err
+	}
+	if workspace.Name != input.WorkspaceName || existing.PlanID != input.Choice.PlanID || existing.BillingPeriod != input.Choice.BillingPeriod || existing.ReturnPath != strings.TrimSpace(input.ReturnPath) {
+		return FirstWorkspaceConfirmation{}, ErrWelcomeConfirmationReplay
+	}
+	checkout, _, err := s.ResumeCheckout(ctx, tx, existing.CheckoutAttemptID, input.UserID, input.CustomerEmail)
+	return FirstWorkspaceConfirmation{Checkout: checkout, Workspace: workspace, OrganizationID: existing.OrganizationID}, err
+}
+
+func ensureFirstWorkspaceEligibility(ctx context.Context, tx bun.Tx, userID string) error {
+	for _, membership := range []struct {
+		table string
+		err   error
+	}{{"workspace_members", ErrFirstWorkspaceExists}, {"organization_members", ErrOrganizationMemberExists}} {
+		var count int
+		if err := tx.NewSelect().ColumnExpr("COUNT(*)").TableExpr(membership.table).Where("user_id = ?", userID).Scan(ctx, &count); err != nil {
+			return err
+		}
+		if count != 0 {
+			return membership.err
+		}
+	}
+	return nil
+}
+
+func (s *Service) createFirstWorkspace(ctx context.Context, tx bun.Tx, input ConfirmFirstWorkspaceInput) (FirstWorkspaceConfirmation, error) {
+	now := s.now().UTC()
+	organizationID := uuid.NewString()
+	workspace := models.Workspace{ID: uuid.NewString(), OrganizationID: organizationID, Name: input.WorkspaceName, WeekStart: 1, CreatedAt: now}
+	for _, model := range []any{
+		&models.Organization{ID: organizationID, Name: input.WorkspaceName, CreatedByID: input.UserID, CreatedAt: now, UpdatedAt: now},
+		&models.OrganizationMember{OrganizationID: organizationID, UserID: input.UserID, Role: models.OrganizationRoleOwner, CreatedAt: now},
+		&workspace,
+		&models.WorkspaceMember{WorkspaceID: workspace.ID, UserID: input.UserID, Role: models.WorkspaceRoleAdmin, Status: models.WorkspaceMemberStatusActive, CreatedAt: now, UpdatedAt: now},
+	} {
+		if _, err := tx.NewInsert().Model(model).Exec(ctx); err != nil {
+			return FirstWorkspaceConfirmation{}, err
+		}
+	}
+	checkout, err := s.CreateCheckoutWithDB(ctx, tx, CreateCheckoutInput{
+		OrganizationID: organizationID, WorkspaceID: workspace.ID, UserID: input.UserID,
+		CustomerEmail: input.CustomerEmail, PlanID: input.Choice.PlanID, BillingPeriod: input.Choice.BillingPeriod,
+		ReturnPath: input.ReturnPath, ConfirmationKey: input.ConfirmationKey,
+	})
+	return FirstWorkspaceConfirmation{Checkout: checkout, Workspace: workspace, OrganizationID: organizationID, Created: err == nil}, err
 }
 
 func (s *Service) CreateCheckout(ctx context.Context, input CreateCheckoutInput) (CheckoutResult, error) {

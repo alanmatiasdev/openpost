@@ -99,6 +99,8 @@
 		}
 		if (event.name === 'checkout.closed') {
 			paymentFrameLoaded = false;
+			checkoutState = 'error';
+			error = m.checkout_closed();
 			return;
 		}
 		if (event.name === 'checkout.completed' && checkoutState !== 'confirming') {
@@ -110,6 +112,11 @@
 			checkoutState = 'error';
 			error = m.checkout_embed_failed();
 		}
+	}
+
+	function retryCheckout() {
+		if (boundAttemptID) return loadBoundCheckout(boundAttemptID);
+		return createCheckout();
 	}
 
 	function paddleLocale(): 'en' | 'pt' {
@@ -572,7 +579,7 @@
 						{#if checkoutState === 'error'}
 							<div class="space-y-4 px-4 py-8 sm:px-7">
 								<InlineNotice tone="error" message={error} />
-								<Button onclick={() => void createCheckout()}>{m.common_retry()}</Button>
+								<Button onclick={() => void retryCheckout()}>{m.common_retry()}</Button>
 							</div>
 						{:else}
 							<div
