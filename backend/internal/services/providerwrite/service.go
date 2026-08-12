@@ -504,7 +504,10 @@ func (s *Service) syncDeliveryTx(
 	if reconciled {
 		delivery.LastReconciledAt = now
 	}
-	_, err := tx.NewInsert().Model(delivery).
+	// Bun aliases the insert target as provider_delivery. Qualify existing-row
+	// references so Postgres does not confuse them with EXCLUDED columns.
+	const targetAlias = "provider_delivery"
+	query := tx.NewInsert().Model(delivery).
 		On("CONFLICT (rendition_id, target_key) DO UPDATE").
 		Set("workspace_id = EXCLUDED.workspace_id").
 		Set("publication_id = EXCLUDED.publication_id").
@@ -517,11 +520,18 @@ func (s *Service) syncDeliveryTx(
 		Set("current_attempt_created_at = EXCLUDED.current_attempt_created_at").
 		Set("external_id = EXCLUDED.external_id").
 		Set("external_url = EXCLUDED.external_url").
-		Set("last_reconciled_at = CASE WHEN EXCLUDED.last_reconciled_at IS NULL THEN last_reconciled_at ELSE EXCLUDED.last_reconciled_at END").
 		Set("next_reconciliation_at = EXCLUDED.next_reconciliation_at").
 		Set("updated_at = EXCLUDED.updated_at").
-		Where("current_attempt_created_at < EXCLUDED.current_attempt_created_at OR (current_attempt_created_at = EXCLUDED.current_attempt_created_at AND current_attempt_id <= EXCLUDED.current_attempt_id)").
-		Exec(ctx)
+		Where(
+			"? < EXCLUDED.current_attempt_created_at OR (? = EXCLUDED.current_attempt_created_at AND ? <= EXCLUDED.current_attempt_id)",
+			bun.Ident(targetAlias+".current_attempt_created_at"),
+			bun.Ident(targetAlias+".current_attempt_created_at"),
+			bun.Ident(targetAlias+".current_attempt_id"),
+		)
+	if reconciled {
+		query = query.Set("last_reconciled_at = EXCLUDED.last_reconciled_at")
+	}
+	_, err := query.Exec(ctx)
 	if err != nil && missingProviderDeliveryTable(err) {
 		// Narrow unit fixtures created before migration 089 may intentionally omit
 		// the projection. Production databases fail startup if the migration fails.

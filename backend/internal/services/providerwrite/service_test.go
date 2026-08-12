@@ -298,7 +298,7 @@ func TestDeliveryProjectionTracksProcessingReconciliationAndLiveState(t *testing
 	_, pending := IsPending(err)
 	require.True(t, pending)
 
-	delivery := loadProviderDelivery(t, db, "rendition-1")
+	delivery := loadProviderDelivery(t, db, input.RenditionID)
 	require.Equal(t, DeliveryProcessing, delivery.State)
 	require.Equal(t, "x", delivery.TargetKey)
 	require.Empty(t, delivery.LastReconciledAt)
@@ -310,9 +310,18 @@ func TestDeliveryProjectionTracksProcessingReconciliationAndLiveState(t *testing
 	})
 	require.NoError(t, err)
 	require.Equal(t, "external-1", result.ExternalID)
-	delivery = loadProviderDelivery(t, db, "rendition-1")
+	delivery = loadProviderDelivery(t, db, input.RenditionID)
 	require.Equal(t, DeliveryLive, delivery.State)
 	require.Equal(t, "external-1", delivery.ExternalID)
+	require.Equal(t, fixedNow, delivery.LastReconciledAt)
+
+	// A later non-reconciliation projection update must retain the last known
+	// reconciliation time instead of replacing it with NULL.
+	attemptID := latestProviderWriteAttempt(t, db, input.OperationID).ID
+	require.NoError(t, db.RunInTx(t.Context(), &sql.TxOptions{}, func(ctx context.Context, tx bun.Tx) error {
+		return service.syncDeliveryTx(ctx, tx, attemptID, false)
+	}))
+	delivery = loadProviderDelivery(t, db, input.RenditionID)
 	require.Equal(t, fixedNow, delivery.LastReconciledAt)
 }
 
@@ -347,7 +356,7 @@ func TestOlderAttemptCannotOverwriteNewerDeliveryProjection(t *testing.T) {
 		return service.syncDeliveryTx(ctx, tx, "attempt-old", false)
 	}))
 
-	delivery := loadProviderDelivery(t, db, "rendition-1")
+	delivery := loadProviderDelivery(t, db, attempts[0].RenditionID)
 	require.Equal(t, "attempt-new", delivery.CurrentAttemptID)
 	require.Equal(t, 1, delivery.CurrentAttemptNumber, "attempt numbers are operation-local and cannot fence across operations")
 	require.Equal(t, DeliveryLive, delivery.State)
