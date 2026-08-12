@@ -4,6 +4,8 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [3.10.0] - 2026-08-12
+
 ### Changed
 
 - Added a repository map, an agent workflow router, and a read-only doctor for local workflow artifacts and configured GitHub triage labels.
