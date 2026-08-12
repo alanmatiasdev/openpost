@@ -4,7 +4,7 @@
 >
 > Repository baseline: `50513cef3e1cd5e16efaf06d26a913beac686520`
 >
-> Last reconciled: 2026-08-12 against `2a28899ebc50f8adb770ddfb5f5748f70169311e`; managed PostHog deployment verified at `v3.9.6` / `2a28899ebc50f8adb770ddfb5f5748f70169311e`.
+> Last reconciled: 2026-08-12 against released revision `5adc4ae1a21f99668a85796599b22e443ce1c6a8` (`v3.10.0`).
 >
 > Scope: the application-checklist audit, the deep source/dead-code audit, the follow-up marketing/pricing/privacy/legal/billing review, the shared provider-kernel plan for Pinterest/Google Business Profile/Reddit, the approved operator-connector design for #32, and the installable `n8n-nodes-openpost` package plan. This is a remediation backlog, not a claim that every optional checklist pattern belongs in OpenPost.
 >
@@ -12,17 +12,15 @@
 
 The older launch checklist remains useful for clean-install and provider verification. It is not duplicated here unless the newer audits found a concrete defect or incomplete experience.
 
-Inventory: **6 P0**, **32 P1**, **118 P2**, and **11 P3** task headings. By each heading’s primary checkbox, **90 are complete and 77 are open**. The open set is **14 P0/P1 correctness or prerequisite tasks**, **14 P2 Pinterest/GBP/provider-delivery tasks**, **20 other active P2 improvements**, and **29 explicitly deferred Reddit/Connector/n8n tasks**. Nested implementation/certification checkboxes, product decisions, preservation guardrails, and the external-verification queue are not separate task headings.
+Inventory: **74 unfinished task headings**: **1 P0**, **11 P1**, and **62 P2**. The P2 set contains **14 Pinterest/GBP/provider-delivery tasks**, **19 other active improvements**, and **29 explicitly deferred Reddit/Connector/n8n tasks**. Completed and currently out-of-scope task headings have been removed. Nested implementation/certification checkboxes, product decisions, guardrails, and the external-verification queue are not separate task headings.
 
 ## Reconciled state and next work
-
-PostHog is implemented and deployed. The live managed configuration reports EU ingestion; Privacy uses policy version `2026-08-11`, and the Trust register was reviewed on `2026-08-11`. It is no longer an implementation blocker. Do not remove the shared Umami service solely for OpenPost because other deployed products can still consume it.
 
 The remaining backlog is not one equally urgent queue:
 
 1. **Close the active privacy mismatch:** meme generation remains enabled by operator decision, so complete PRIV-001's processor, policy, retention, and disclosure evidence without treating runtime disablement as the remediation.
 2. **Make Pinterest and GBP the primary feature stream:** start their independent access/policy gates, finish only the shared-kernel gaps each slice needs, and add the first-party registration path. Build Pinterest under Trial, obtain Standard before public production, then deliver GBP under its approved execution mode. Reddit, Connector Protocol, and n8n are deferred lanes and do not block this work.
-3. **Finish the remaining acceptance and operator work:** MOBILE-001 still needs exact signed-artifact and device proof, OPS-004 needs an off-host recovery design and drill, and TRUST-001 needs operator evidence. Keep the completed BILL-002, COMM-002, and ANALYTICS-001 regression coverage green, and finish CLAIM-001's cross-site discovery gate.
+3. **Finish the remaining acceptance and operator work:** MOBILE-001 still needs exact signed-artifact and device proof, and TRUST-001 needs operator evidence.
 4. **Then improve the daily product:** ONB-001/SIGNUP-001, TEAM-002, COMM-001, BILL-003, STATE-001, and the remaining provider hardening.
 5. **Batch structural work deliberately:** ARCH-002/004/005, DATA-001–005, and BUILD-002 are valid debt, but should not interrupt the first safe Pinterest/GBP slice unless a dependency says otherwise.
 
@@ -32,10 +30,9 @@ About, global search, a generic wizard, and an integration marketplace are recor
 
 Priority means:
 
-- **P0:** active security/privacy/data-integrity emergency, or a non-negotiable safety gate before enabling a new external-write path. The five original P0 provider safety foundations are shipped; PRIV-001 is the current open P0 because managed external processing is enabled ahead of the matching disclosure/register boundary.
+- **P0:** active security/privacy/data-integrity emergency, or a non-negotiable safety gate before enabling a new external-write path. PRIV-001 is the current P0 because managed external processing is enabled ahead of the matching disclosure/register boundary.
 - **P1:** fix before the next broad release or paid-growth push. These affect correctness, account recovery, legal/trust accuracy, billing continuity, access control, or a core user journey.
 - **P2:** planned product or engineering work. The feature exists but is incomplete, misleading, inefficient, or hard to maintain.
-- **P3:** polish, cleanup, or preventive maintenance. Batch these only after behavior is covered.
 
 Evidence labels mean:
 
@@ -55,7 +52,7 @@ For every code or copy item, completion also means:
 
 ## P0 — active privacy and integration-expansion safety gates
 
-PRIV-001 is an active managed-service disclosure/configuration mismatch. The other entries are the shipped safety foundations that must remain green for Pinterest, GBP, Reddit, protocol connectors, and any new automated external-write path.
+PRIV-001 is an active managed-service disclosure/configuration mismatch.
 
 ### PRIV-001 — Disclose and govern managed meme processing
 
@@ -64,133 +61,7 @@ PRIV-001 is an active managed-service disclosure/configuration mismatch. The oth
 - **Done when:** managed configuration resolves to a reviewed private service or a fully disclosed processor; captions, ideas, recipes, and media leases have tested minimization/expiry/no-secret-log behavior; provider-side terms and OpenRouter routing/ZDR evidence are recorded; public policies, the operator register, acceptance metadata, and deployed behavior agree with the enabled feature.
 - **Evidence:** `/Users/rgo/.config/home/hosts/rgo-vps/default.nix`, `docs-site/configuration/environment-variables.md`, and `docs-site/configuration/production-checklist.md`. Declarative configuration resolves the managed value to `true`; processor and disclosure verification remains open.
 
-### PROV-AUTH-001 — Separate OAuth grants from provider destinations
-
-- [x] **Problem — Resolved:** provider destinations previously duplicated credentials and could diverge after a rotating-token refresh.
-- **Fix delivered:** migration 073 adds shared `oauth_grants` with provider/project/subject identity, encrypted credentials and expiries, scopes, execution evidence, versioned refresh leasing, consent, validation, and revocation. Destination accounts now reference the shared grant and rotation uses one atomic boundary.
-- **Done when:** concurrent refresh cannot split sibling destinations; grant rotation/revocation is atomic; the UI distinguishes destination disconnect from whole-grant revocation; SQLite/Postgres race tests remain green.
-- **Evidence:** `backend/internal/database/migrations/073_oauth_grants.sql`, `backend/internal/models/models.go:845`, `backend/internal/services/account_saver/account_saver.go`, `backend/internal/services/tokenmanager/manager.go`.
-
-### PROV-AUTHZ-001 — Persist an immutable publication authorization receipt
-
-- [x] **Problem — Resolved:** durable jobs previously lacked a complete immutable receipt for the actor, exact revision, target, content/media/settings, schedule, and provider execution policy.
-- **Fix delivered:** migration 075 adds append-only `publication_authorizations` with actor/origin identity, publication revision, rendition/account/`target_key`, scheduled time, one-way payload hashes, policy mode, and confirmation time; payloads and credentials are intentionally excluded.
-- **Done when:** every external write remains tied to the exact consent, revision, targets, and policy that authorized it; later changes cannot alter the receipt; audit/export tests redact sensitive values.
-- **Evidence:** `backend/internal/database/migrations/075_publication_authorizations.sql`, `backend/internal/models/models.go:1413`, publication application/authorization tests.
-
-### PROV-WRITE-001 — Fence ambiguous external writes durably
-
-- [x] **Problem — Resolved:** publishing previously flattened a provider response into an external ID and could replay a stale job after the provider accepted a write but OpenPost lost the result.
-- **Fix delivered:** migration 076, structured `PublishResult`, and the provider-write service persist prepared/sending/accepted/definite-failure/ambiguous state, one-way payload identity, retry safety, and reconciliation hints without raw responses or tokens. Worker recovery fences stale sending attempts as reconcile-only ambiguity.
-- **Done when:** crash tests before send, during send, after acceptance, and before DB commit continue to prove an unknown outcome cannot be recreated automatically; only definitely pre-send, definitely rejected, or provider-idempotent work retries.
-- **Evidence:** `backend/internal/database/migrations/076_provider_write_attempts.sql`, `backend/internal/platform/adapter.go:45`, `backend/internal/models/models.go:1447`, `backend/internal/queue/worker.go:225`, `backend/internal/queue/worker_recovery_test.go:173`.
-
-### PROV-MEDIA-001 — Repair rendition-owned provider media state
-
-- [x] **Problem — Resolved:** legacy `provider_media_states` was post-owned while rendition publishing wrote rendition identity into its ownership fields, violating upgraded SQLite foreign keys.
-- **Fix delivered:** migration 074 splits post and rendition media delivery tables with enforceable aggregate/account/media ownership and stores resumable session progress, expiry, check time, and retry classification for renditions.
-- **Done when:** populated fresh/upgrade SQLite and Postgres migrations remain green, interrupted uploads resume safely, and no media record can attach to the wrong aggregate. Pinterest video consumes this boundary rather than reopening the schema defect.
-- **Evidence:** `backend/internal/database/migrations/074_rendition_media_deliveries.sql`, rendition media delivery models, `backend/internal/services/publisher/publisher_provider_media_state_test.go`.
-
-### PROV-READY-001 — Make provider readiness evidence-based
-
-- [x] **Problem — Resolved:** adapter registration previously risked being mistaken for production readiness without approval tier, scopes, account/format proof, policy mode, refresh/revocation, or test freshness.
-- **Fix delivered:** migration 077 and the readiness service add dated approval reviews and provider-scoped certification runs bound to app/environment, account/format/operation, policy, exact revision/contract, scopes, operator, and expiry.
-- **Done when:** no provider/format is advertised because an adapter merely exists; healthy state stays quiet; only approval-required, reconnect-required, trial-only, policy-restricted, degraded, or expired-proof states surface.
-- **Evidence:** `backend/internal/database/migrations/077_provider_readiness_certification.sql`, `backend/internal/api/handlers/provider_readiness.go:44`, `backend/internal/services/providerreadiness`, `docs-site/providers/launch-matrix.md:3`.
-
 ## P1 — release, correctness, recovery, billing, and trust
-
-### REL-001 — Stamp a stable version into the immutable release candidate
-
-- [x] **Problem — Baseline audit:** CI embeds `candidate-${SHA}` into the image and promotion retags that exact image. Production therefore reports a candidate version, and the update checker treats it as a development build and stops checking releases.
-- **Fix:** generate one release manifest containing SemVer and revision before candidate CI; embed it into the candidate; preserve no-rebuild digest promotion; verify both values before promotion, after deployment, and at `/api/v1/version`.
-- **Done when:** candidate and promoted digest expose the intended stable SemVer plus exact SHA; update checks run on production builds; a mismatch blocks promotion or rolls deployment back.
-- **Evidence:** `.github/workflows/ci.yml:213`, `.github/workflows/release.yml:89`, `.github/workflows/release.yml:124`, `scripts/release.mjs:406`, `backend/internal/services/updatestatus/service.go:119`.
-
-### PUB-001 — Give REST and MCP one publication-creation command
-
-- [x] **Problem — Baseline audit:** REST persists `CreationPreset`; MCP persists only `Intent`, so Bun can default Thread, Story, and video creations to the `post` preset and resolve the wrong capabilities.
-- **Fix:** immediately write both fields in MCP, then move validation, defaults, persistence, and initial job behavior into a shared application command used by Huma, MCP, and CLI adapters.
-- **Done when:** REST and MCP create identical stored values and resolved capabilities for post, thread, story, and video; parity tests cover every mode.
-- **Evidence:** `backend/internal/api/handlers/publications.go:550`, `backend/internal/api/handlers/mcp.go:3345`, `backend/internal/models/models.go:751`, `backend/internal/capabilities/capabilities.go:595`.
-
-### EDIT-001 — Restore the Video Editor ↔ composer round trip
-
-- [x] **Problem — Baseline audit:** the editor can complete a handoff token, but the unified composer no longer creates or consumes the video handoff even though the docs promise it.
-- **Fix:** add an editor-agnostic handoff coordinator shared by Image and Video editors. Preserve the composer draft across launch, cancel, error, and completion; return media plus relevant metadata to the exact originating draft.
-- **Done when:** a user can start editing a selected video from the composer and return it to the same draft without losing text, destinations, schedule, or media; both editor directions have browser tests and accurate docs.
-- **Evidence:** `frontend/src/lib/video-editor/api.ts:206`, `frontend/src/routes/video-editor/[id]/+page.svelte:3245`, `frontend/src/lib/components/compose-text-post.svelte:4391`, `docs-site/usage/video-editor.md:49`.
-
-### DOC-001 — Remove the live Studio docs dead end
-
-- [x] **Problem — Baseline audit:** the docs sidebar links to `/usage/studio`, which has no page; the Markdown-only link check does not inspect configured navigation.
-- **Fix:** point navigation to the Image and Video Editor guides or add an intentional Studio overview; preserve an inbound redirect if old links exist; make CI crawl every configured sidebar/nav target.
-- **Done when:** the deployed route is valid or redirects intentionally, all navigation targets return success, and a config-nav regression test fails on future dead links.
-- **Evidence:** `docs-site/.vitepress/config.ts:34`, `docs-site/usage/index.md:22`, `scripts/check-doc-links.mjs:14`.
-
-### JOB-001 — Make media-cleanup scheduling exactly deduplicated and atomic
-
-- [x] **Problem — Baseline audit:** cleanup uniqueness uses a substring search over serialized JSON, includes completed jobs, and performs a non-transactional check-then-insert; the recurring successor has no idempotency guard.
-- **Fix:** add exact typed `scope_id`/`dedupe_key` fields, a partial unique constraint for active jobs, and transactional/upsert enqueue through a typed job registry.
-- **Done when:** substring-collision, completed-job, concurrent-enqueue, crash-recovery, and recurring-successor tests prove at most one active cleanup chain per scope.
-- **Evidence:** `backend/internal/jobregistry/definitions.go:8`, `backend/internal/jobregistry/registry_test.go:19`, `backend/internal/queue/worker.go:518`. The delivered generalized registry owns typed execution, failure, recovery, and default-attempt policy for every executable durable job kind; media cleanup additionally owns registry recurrence and identity policy. No separate open “job registry” heading is needed.
-
-### SEC-001 — Add MFA recovery codes and prove recovery before enabling TOTP
-
-- [x] **Problem — Current source audit:** TOTP/passkey security is substantial, but TOTP enrollment has no one-time recovery-code set or required save/copy acknowledgement. Loss of the authenticator can become a support-led lockout.
-- **Fix:** generate hashed, single-use recovery codes; show them exactly once; require download/copy acknowledgement before setup completes; expose regeneration and remaining-code count behind recent re-authentication; invalidate old codes on regeneration or MFA reset.
-- **Done when:** setup cannot finish before backup-code acknowledgement; each code works once; regeneration revokes the old set; disabling/resetting MFA requires re-authentication; login and recovery paths are covered end to end.
-- **Evidence:** `frontend/src/routes/settings/+page.svelte` security section and `backend/internal/api/handlers/auth.go` security/MFA handlers.
-
-### NOTIF-001 — Scope notification bulk actions to the visible workspace
-
-- [x] **Problem — Current source:** `/notifications` lists one workspace, but “Mark all read” sends only `{all:true}` and the service updates every unread notification for the user. A click can silently mark unseen alerts in other workspaces as read. Delete-all has the same global backend scope and needs explicit product wording if that is intentional.
-- **Fix:** include and authorize `workspace_id` for workspace-local bulk mutations and apply the same selected-workspace-plus-deliberate-global-item rule as the list, or change the list and copy to an intentionally global inbox. Give delete-all its own clearly stated scope and confirmation.
-- **Done when:** multi-workspace tests prove a workspace action cannot mutate another workspace; the UI states whether an action is workspace or account wide.
-- **Evidence:** `frontend/src/routes/notifications/+page.svelte:49`, `frontend/src/routes/notifications/+page.svelte:62`, `backend/internal/api/handlers/notifications.go:34`, `backend/internal/services/notifications/service.go:244`, `backend/internal/services/notifications/service.go:293`.
-
-### EDIT-002 — Reset editor catalog state on workspace changes
-
-- [x] **Problem — Current source audit:** `/editors` does not react to workspace switches and keeps bounded design/video results from the previous workspace. That is both confusing and a cross-workspace data-separation UX defect.
-- **Fix:** key editor queries, selection, loading, errors, and caches by workspace; cancel/ignore stale requests; clear old results immediately; add real pagination or scoped search beyond the current fixed caps.
-- **Done when:** switching workspaces never shows or opens assets from the prior workspace; race tests cover slow old requests; users can reach more than 100 designs and 50 videos.
-- **Evidence:** `frontend/src/routes/editors/+page.svelte` workspace/query lifecycle.
-
-### TEAM-001 — Complete member access lifecycle, not only invitations
-
-- [x] **Problem — Current source audit:** workspace invites, roles at invite time, pending revoke, and seat limits exist, but admins cannot change an accepted member’s role, deactivate/remove a member, resend an invite, or quickly search/filter the team. Non-admins can see an invite form that the API correctly rejects.
-- **Fix:** add authorized role change, temporary deactivation, permanent removal, resend, revoke, search/filter, and optional bulk invite; hide or disable admin actions for non-admins; preserve last-owner/admin safeguards and audit every access change.
-- **Done when:** admin/member/viewer permissions are enforced server-side and reflected in UI; pending and accepted users have complete state transitions; seat counts update atomically; tests cover self-removal, last-admin, revoked invite, and unauthorized mutations.
-- **Evidence:** `frontend/src/lib/components/workspace-team-settings.svelte:190`, `backend/internal/services/workspaceteam/service.go`.
-
-### BILL-001 — Give past-due accounts an explicit recovery path
-
-- [x] **Problem — Current source audit:** `past_due` is rendered as a status label only. There is no prominent explanation, deadline/access impact, or direct payment-update recovery action.
-- **Fix:** add an account-wide past-due notice and billing-page recovery card with the failed state, what may happen, the safe next action, and a Paddle portal deep link or native update flow. Keep access gating and retry state consistent with webhook truth.
-- **Done when:** simulated failed-payment/webhook states surface recovery everywhere relevant; the user can reach payment update in one action; successful recovery clears the warning; tests cover stale and repeated webhooks.
-- **Evidence:** `frontend/src/lib/components/settings/BillingSettingsTab.svelte:385`, `frontend/src/lib/components/settings/BillingSettingsTab.svelte:397`.
-
-### PRICE-001 — Make all five public plans selectable
-
-- [x] **Problem — User-reported live:** public pricing visibly offers CTAs only for Starter, Founder, and Pro; Team and Agency appear later as limits without a purchase action. The current checkout also contains an in-flight `plans.slice(0, 3)` implementation, so this remains a release blocker even if production is rechecked.
-- **Fix:** present all sellable plans in one coherent decision model with “best for” guidance and an action for every plan; keep monthly/annual state synchronized across cards, mobile details, comparisons, registration, and checkout.
-- **Done when:** all five plans have discoverable monthly and annual CTAs, generated URLs select the right plan/period, mobile and desktop agree, and browser tests cover every plan.
-- **Evidence:** `marketing-site/src/routes/_components/PricingShowcase.svelte:13`, `marketing-site/src/routes/pricing/+page.svelte:74`.
-
-### LEGAL-001 — Align the encrypted-backup claim with controlled-cloud reality
-
-- [x] **Problem — Resolved:** the hosted policy no longer calls each backup artifact encrypted. It states that OpenPost adds no separate application-level encryption layer per artifact, while the managed register names the actual root-owned host boundary, 14-day routine retention, and weekly restore drill.
-- **Fix delivered:** canonical legal inventories now describe the deployed boundary; operator configuration creates daily database/media recovery copies and performs a real weekly database restore plus media-inventory check. The operator guide explicitly forbids the old unsupported wording.
-- **Done when:** policy, managed register, operator documentation, and restore evidence continue to name the same protection boundary. Failure-domain separation remains separate OPS-004 work.
-- **Evidence:** `marketing-site/src/routes/privacy/+page.svelte:319`, `packages/legal-policy/src/managed-service.json:18`, `docs-site/operations/backups.md:7`, `/Users/rgo/.config/home/modules/services/openpost/default.nix:404`.
-
-### LEGAL-002 — Use one canonical legal-policy version everywhere
-
-- [x] **Problem — Current source:** Privacy, Terms, and Refunds say “Effective date: 5 August 2026,” while production acceptance configuration records `2026-08-04`. Re-prompt logic compares exact version strings, so users can be recorded against the wrong version and miss a required re-acceptance.
-- **Fix:** create one canonical policy-version source consumed by public documents, hosted configuration, acceptance records, and release checks; decide whether Refunds requires separate acceptance; migrate or re-prompt affected users deliberately.
-- **Done when:** displayed date/version, API configuration, stored acceptance, and changelog agree; a substantive version bump forces re-acceptance; cosmetic changes follow the documented policy; migration tests cover existing `2026-08-04` records.
-- **Evidence:** `marketing-site/src/routes/privacy/+page.svelte:5`, `marketing-site/src/routes/terms/+page.svelte:5`, `marketing-site/src/routes/refunds/+page.svelte:5`, `/Users/rgo/.config/home/modules/services/openpost/default.nix:352`, `backend/internal/api/handlers/auth.go:1721`.
 
 ### TRUST-001 — Publish managed-cloud residency, subprocessors, and human-access facts
 
@@ -199,62 +70,12 @@ PRIV-001 is an active managed-service disclosure/configuration mismatch. The oth
 - **Done when:** every current managed store/provider has a reviewed transfer entry and date; internal access evidence matches the public boundary; no unsupported certification, GDPR, or audit badge is added.
 - **Evidence:** `marketing-site/src/routes/trust/+page.svelte`, `packages/legal-policy/src/managed-service.json:92`, `packages/legal-policy/src/security-assurance.json`.
 
-### CLAIM-001 — Establish provenance for customer and proof claims
-
-- [ ] **Problem — Partial:** the unproved customer-logo rail is removed and generated persona cards are plainly identified as fictional examples. The dated claim register validates its registered entries, but its source discovery still covers only named files and phrases and therefore cannot yet prove that every differently worded logo, testimonial, count, team, milestone, backer, origin, or persona claim is registered.
-- **Fix delivered:** removed the logo usage claim and its deployed asset entries; labeled the personas and workflows as illustrative and fictional; added `marketing-claims.json` with owner, evidence, review-date, expiry, and generated-persona checks.
-- **Remaining:** inventory all public marketing routes and shared claim-producing components through one maintained discovery boundary, fail closed when a proof-bearing construct lacks a register entry, and add fixtures for differently worded claims outside the homepage.
-- **Done when:** every logo, testimonial, count, “used by,” team, milestone, backer, origin, or persona claim has current provenance and an update owner; expired or unproved claims are removed automatically or during a required review.
-- **Evidence:** `marketing-claims.json`, `scripts/marketing-claims.mjs`, `scripts/marketing-claims.test.mjs`, `marketing-site/src/routes/+page.svelte`, `marketing-site/src/routes/_components/CreatorStories.svelte`; marketing content/type checks pass.
-
-### APP-001 — Return a real, recoverable app 404 instead of a blank HTTP 200
-
-- [x] **Problem — User-reported live/current source:** an unknown app URL falls through the SPA handler, returns `index.html` with HTTP 200, and can render a blank page plus a console “Not found” error. Users have no route home and crawlers receive the wrong status.
-- **Fix:** introduce a route-aware app not-found experience with brand, explanation, back/home, primary product destinations, docs/support, and optional search. Make direct unknown-document requests return a real 404 while preserving adapter-static deep links for known SPA routes.
-- **Done when:** direct and client-side unknown routes show the same recovery UI, return correct status where the server can know it, preserve accessibility/theme/mobile behavior, and produce no console error.
-- **Evidence:** `backend/cmd/openpost/web.go:90`, `frontend/svelte.config.js:6`.
-
-### LEGAL-003 — Correct the camera-recording disclosure
-
-- [x] **Problem — Current source:** Privacy says camera video is not recorded, but the Video Editor can record an enabled camera stream locally through `MediaRecorder`. The policy later says recording runs in-browser, leaving a direct contradiction.
-- **Fix:** state plainly that camera recording is optional and local to the browser until the user chooses cloud save, Media save, or post handoff; distinguish still-photo capture, live preview, local project data, export, and upload.
-- **Done when:** Privacy/Legal approves consistent wording across Privacy, tool pages, permission prompts, and editor UX; browser behavior matches each disclosed transition.
-- **Evidence:** `marketing-site/src/routes/privacy/+page.svelte:117`, `marketing-site/src/routes/privacy/+page.svelte:247`, `frontend/src/lib/video-editor/recorder.ts:85`, `frontend/src/lib/video-editor/recorder.ts:217`, `frontend/src/lib/video-editor/recorder.ts:246`. Resolved in the legal inventories commit `c4584d1e`, which states camera recording is optional and local to the browser until an explicit cloud save, Media save, or post handoff; the Video Editor docs and tool pages state the same boundary.
-
-### BILL-002 — Preserve the original task through hosted checkout
-
-- [x] **Problem — Resolved:** checkout completion previously trusted general subscription state and did not bind the original same-origin task to the exact hosted checkout attempt.
-- **Fix delivered:** migration 087 stores the validated return path on the attempt; Paddle returns with the opaque attempt ID; the authenticated return endpoint scopes by user/provider/attempt, waits for that attempt to reconcile, and atomically exposes the path once. Pending, canceled, mismatched-user, duplicate, replay, and cross-origin cases fail safely.
-- **Done when:** registration/onboarding → Paddle → success resumes the exact original path/query for the matching attempt; a different subscription or replay cannot unlock a redirect; tests cover cancellation, delayed webhook, refresh, duplicate callback, and malicious URLs.
-- **Evidence:** `backend/internal/database/migrations/087_billing_checkout_returns.sql`, `backend/internal/services/billing/service.go`, `backend/internal/services/billing/service_test.go`, `backend/internal/api/handlers/billing.go`, `frontend/src/routes/checkout/+page.svelte`; focused billing tests, generated-contract checks, frontend checks, and checkout browser coverage pass.
-
-### COMM-002 — Keep conversation unread state truthful
-
-- [x] **Problem — Resolved:** Messages cleared unread state even when the server rejected the mark-read write.
-- **Fix delivered:** unread state changes only after confirmed success; failure keeps the badge and shows a retry instruction; workspace/request guards prevent stale responses from mutating another conversation.
-- **Done when:** a forced failure keeps or restores the unread count and offers retry; success clears it exactly once; navigation, rapid conversation changes, and stale responses cannot mutate the wrong conversation.
-- **Evidence:** `frontend/src/routes/messages/+page.svelte`, `e2e-app/communications.spec.ts`; a forced 503 preserves unread state, retry clears it once, and desktop/390 px/320 px browser checks pass.
-
-### ANALYTICS-001 — Make post-result history and account totals complete
-
-- [x] **Problem — Resolved:** analytics history and selected-account totals were derived from an engagement-sorted 50-row slice.
-- **Fix delivered:** the stored-data API now owns account filtering, stable engagement/views/newest ordering, opaque cursor paging, full result counts, and summaries computed independently from the current page. The browser renders the server contract and appends subsequent pages.
-- **Done when:** fixtures above 50 rows prove exact account totals, true newest ordering, stable paging without duplicates, and unchanged last-successful counters through provider failures.
-- **Evidence:** `backend/internal/services/analytics/overview.go`, `backend/internal/services/analytics/service_test.go`, `backend/internal/api/handlers/analytics.go`, `frontend/src/routes/analytics/+page.svelte`; 121-row multi-page, exact 75-row account-summary, cursor-scope, provider-failure, desktop/390 px/320 px tests pass.
-
 ### MOBILE-001 — Publish and prove an installable Android candidate
 
 - [ ] **Problem — Partial/release acceptance required:** the workflow now fails instead of publishing an unsigned APK as the installable asset. Placeholder tests were replaced with the `com.openpost.app` package contract and an OIDC deep-link resolution instrumentation test, and the JVM contract compiles and passes. The exact published signed APK still needs install/certificate/version/revision and native lifecycle/permission/restore proof in candidate/release automation and on the bounded device matrix.
 - **Fix delivered locally:** enforce signing-secret availability before the public Android asset is produced; enable the generated BuildConfig contract; replace template package tests; align installation docs and release-contract tests. Complete exact-byte emulator/device acceptance in the release lane before checking this item off.
 - **Done when:** the release matrix installs the exact published signed artifact, asserts its certificate/package/version/revision, and fails or omits Android publication when signing is unavailable; native navigation, permission, deep-link, or restore regressions fail without rebuilding different application bytes.
 - **Evidence:** `frontend/android/app/src/androidTest/java/com/getcapacitor/myapp/ExampleInstrumentedTest.java:1`, `frontend/capacitor.config.ts:3`, `.github/workflows/release.yml:329`, `docs-site/installation/android.md:5`.
-
-### OPS-004 — Put recovery copies in a separate failure domain
-
-- [ ] **Problem — Current source plus operator configuration:** daily PostgreSQL dumps, the synchronized media recovery copy, and the restore drill all use `/var/backup/openpost` on the same FSN1 application host. The R2 media primary is separate, but loss of the application host/disk/account/location can remove the database primary and its only evidenced recovery copy together. Existing provider snapshots, if any, are not recorded.
-- **Fix:** first inventory and evidence any independent provider snapshot. Otherwise send database recovery artifacts to an off-host, failure-domain-separated destination using client-side artifact encryption and separately controlled recovery keys, or document an equally strong evidenced boundary. Define retention/deletion, monitoring, failed-copy alerts, access review, and key rotation.
-- **Done when:** a restore drill starts from the off-host copy and succeeds without the original host; recovery-point/restore objectives and failure alerts are evidenced; Privacy/Trust name the real provider, region, encryption/key, access, and retention boundary without exposing secrets.
-- **Evidence:** `/Users/rgo/.config/home/modules/services/openpost/default.nix:404`, `/Users/rgo/.config/home/modules/services/openpost/default.nix:443`, `/Users/rgo/.config/home/modules/services/openpost/default.nix:487`, `packages/legal-policy/src/managed-service.json:18`.
 
 ### Shared provider kernel — required before new provider delivery
 
@@ -288,13 +109,6 @@ PRIV-001 is an active managed-service disclosure/configuration mismatch. The oth
 - **Remaining:** populate the applicable constraints from current certified provider contracts and add REST, browser, MCP, and CLI parity tests for representative real providers and cross-field failures.
 - **Done when:** backend, browser, REST, MCP, and CLI reject the same invalid payload; community/location/account rules cannot leak from a stale cache; unsupported schema combinations fail closed.
 - **Evidence:** `backend/internal/capabilities/capabilities.go`, `backend/internal/capabilities/capabilities_test.go`, `backend/internal/api/handlers/capability_resolver.go`, `backend/internal/api/handlers/capability_resolver_test.go`, `frontend/src/lib/components/compose-text-post.svelte`; focused backend tests, generated contracts, Svelte autofixer, and frontend checks pass.
-
-### PROV-PICKER-001 — Build one paged remote-option picker
-
-- [x] **Problem — Resolved:** the composer requested a fixed first page, ignored provider cursors, and retained hidden child values after a dependency changed.
-- **Fix delivered:** the shared picker requests 25-row pages with current setting context, exposes a touch-safe continuation, appends by cursor with value-based deduplication, preserves search context, fences stale responses, and clears child values plus cached pages when a parent invalidates them. Existing unavailable reasons, loading, error, retry, search, and keyboard behavior remain shared.
-- **Done when:** large boards, locations, communities, and existing provider options are all reachable without eager loading; a parent-field change clears incompatible child choices.
-- **Evidence:** `frontend/src/lib/components/compose-text-post.svelte`, `frontend/src/lib/components/compose/destination-options.ts`, `frontend/src/lib/components/destination-options.test.ts`, `frontend/src/lib/components/destination-settings-dialog.svelte`, `frontend/src/lib/components/destination-settings-dialog.svelte.test.ts`, and backend destination-option paging tests; focused tests and frontend checks pass at 320 px.
 
 ### PROV-POLICY-001 — Enforce provider execution mode at enqueue and execution
 
@@ -640,93 +454,7 @@ Maintenance contract for this lane: a new social provider requires no n8n packag
 
 ## P2 — application UX and product completeness
 
-### Security, login, account, and public profile
-
-### SEC-002 — Make TOTP setup instructions and fallback setup key complete
-
-- [x] **Problem — Current source audit:** TOTP enrollment has QR and verification fundamentals, but the flow needs clearer ordered instructions, app-switch guidance, a reliably copyable manual key, recovery expectations, and a stronger final success state. Passkeys are a second strong factor, but are not a substitute for explaining TOTP setup and recovery.
-- **Fix:** use an explicit setup sequence: choose factor, re-authenticate, scan QR or copy setup key, enter code, save recovery codes, confirm enabled. State what disabling/resetting does and require recent re-authentication.
-- **Done when:** a user can complete setup without prior authenticator knowledge, QR is comfortably scannable, manual copy has accessible feedback, failure preserves safe progress, and final status names the enabled factor.
-- **Evidence:** security/MFA section in `frontend/src/routes/settings/+page.svelte`.
-
-### AUTH-001 — Preserve protected deep links through login
-
-- [x] **Problem — Current source:** the root layout sends an unauthenticated protected URL to bare `/login`; login only resumes a destination when a `redirect` query was already supplied.
-- **Fix:** attach the exact same-origin path and query to the login redirect, validate it again after authentication, and keep external or malformed targets rejected.
-- **Done when:** `/calendar?view=week` → login → `/calendar?view=week`; manually supplied external destinations still fall back safely; direct-navigation E2E covers both.
-- **Evidence:** `frontend/src/routes/+layout.svelte:158`, `frontend/src/routes/login/+page.svelte:50`, `e2e-app/auth-onboarding.spec.ts:160`.
-
-### AUTH-002 — Add password visibility and useful password rules
-
-- [x] **Problem — Current source audit:** login and registration have no show/hide control; registration does not expose password rules or a useful strength/readiness cue before submission.
-- **Fix:** add an accessible pressed-state visibility button to password fields; show the actual server rules before entry and update rule satisfaction without pretending a simplistic meter guarantees security.
-- **Done when:** reveal state is keyboard/screen-reader accessible, does not move focus or clear autofill, validation matches the backend, and login preserves the entered email after failure.
-- **Evidence:** `frontend/src/routes/login/+page.svelte`, `frontend/src/routes/register/+page.svelte`.
-
-### AUTH-003 — Decide session persistence explicitly
-
-- [x] **Problem — Conditional:** there is no “Remember me” control, but the current seven-day session is already persistent. Adding a checkbox without multiple session policies would be misleading.
-- **Fix:** either document the fixed session duration and keep login focused, or implement genuinely distinct session-cookie lifetimes and explain the shared-device trade-off.
-- **Done when:** UI copy, cookie behavior, security docs, and tests agree; no cosmetic checkbox is added without server behavior.
-- **Evidence:** `backend/internal/services/auth/auth.go:12`, authentication cookie handlers in `backend/internal/api/handlers/auth.go`.
-
-### ACCT-001 — Add a verified email-change flow
-
-- [x] **Problem — Resolved:** Settings now provides a verified email-change flow with action-bound recent re-authentication; the old email remains active until the new-address code is verified.
-- **Fix delivered:** the dedicated service/handler handles conflicts, expiry, both-address notices, completion, and session revocation without changing separate legal/billing contacts implicitly.
-- **Done when:** focused service/handler/browser tests continue to cover old-address retention, both notices, conflict/expiry, replay, and revoked sessions.
-- **Evidence:** `frontend/src/lib/components/settings/SecuritySettingsTab.svelte:170`, `backend/internal/api/handlers/email_change.go:102`, `backend/internal/services/emailchange`, `e2e-app/account-security-settings.spec.ts:9`.
-
-### ACCT-002 — Clarify editable profile identity and visibility
-
-- [x] **Problem — Current source audit:** avatar/display name support exists, but the boundary between private account data, public display data, and workspace role/title is not consistently explained. Public visibility is coarse and some profile availability/error behavior is tied to managed-cloud assumptions.
-- **Fix:** label public-facing fields at edit time; provide initials/avatar fallback; show a privacy preview; let users choose supported visible fields; make public-profile capability come from instance configuration rather than a hard-coded cloud check.
-- **Done when:** public pages expose only opted-in fields; disabled, private-or-missing, loading, and transient-error states are distinct; initials fallback and responsive profile layout are tested.
-- **Evidence:** profile section in `frontend/src/routes/settings/+page.svelte`, `frontend/src/routes/u/[username]/+page.svelte`, `backend/cmd/openpost/web.go` public-profile handling.
-
-### ACCT-003 — Treat connected sign-in identities as an account-security surface
-
-- [x] **Problem — Resolved:** Account security now lists linked login identities separately from publishing accounts and supports link/unlink with action-bound recent re-authentication.
-- **Fix delivered:** the service blocks removal of the final usable credential and covers relink/unlink concurrency and provider identity details; provider-initiated logout remains a separate compatibility decision.
-- **Done when:** linked-identity UI and service tests continue to prove users cannot lock themselves out or confuse sign-in with publishing connections.
-- **Evidence:** `frontend/src/lib/components/settings/SecuritySettingsTab.svelte:300`, `backend/internal/api/handlers/oidc.go:480`, `e2e-app/account-security-settings.spec.ts:111`.
-
-### PUBLIC-001 — Make public-profile errors public-safe and diagnosable
-
-- [x] **Problem — Current source audit:** every load failure can collapse into “private or does not exist,” while not-found, disabled, and backend failure need distinct public states. Enabling the profile publishes activity, top workspaces/platforms, joined date, and plan under coarse visibility, and some links/availability assume the managed cloud.
-- **Fix:** define explicit public-profile capability and field-visibility contracts; render branded 404/disabled/error states without leaking private data; add a retry only for transient failures; use configured instance/public URLs; explain any plan/instance restriction before enablement.
-- **Done when:** private and disabled profiles never leak, true failures never masquerade as an empty profile, direct requests return appropriate status, and public routes work without an authenticated shell.
-- **Evidence:** `frontend/src/routes/u/[username]/+page.svelte`, public-profile handlers in `backend/cmd/openpost/web.go`.
-
 ### Notifications and notification preferences
-
-### NOTIF-002 — Keep the persistent unread badge synchronized
-
-- [x] **Problem — Current source:** the sidebar bell fetches on mount/workspace change, while the notifications page mutates only local state. The persistent shell badge stays stale after opening or marking notifications read until reload or workspace switch.
-- **Fix:** use one workspace-scoped notification store/query cache; invalidate it after successful mutations; optionally add bounded polling or realtime events with reconnect behavior.
-- **Done when:** bell, list, count, and workspace switch agree immediately after read/delete/bulk actions and after server-side arrivals; tests cover a mounted root layout across navigation.
-- **Evidence:** `frontend/src/lib/components/notification-bell.svelte:15`, `frontend/src/routes/notifications/+page.svelte:62`.
-
-### NOTIF-003 — Do not show a notification as read when the write failed
-
-- [x] **Problem — Current source:** opening an unread notification ignores the POST error, then unconditionally sets local `read_at` and decrements the count.
-- **Fix:** update local/shared state only after confirmed success, or use an optimistic update with rollback and an actionable toast; preserve navigation without lying about server state.
-- **Done when:** a forced 500 leaves the notification unread and count unchanged or rolls them back visibly; retry succeeds once without double-decrement.
-- **Evidence:** `frontend/src/routes/notifications/+page.svelte:87`.
-
-### NOTIF-004 — Paginate the notification feed and make errors recoverable
-
-- [x] **Problem — Current source:** the page requests 100 items and ignores `next_cursor`, so older alerts are unreachable. Initial load error has no retry.
-- **Fix:** implement cursor pagination or “Load more” with stable chronological grouping; preserve filters/workspace; add a retryable error state distinct from an empty feed.
-- **Done when:** a fixture with more than 100 notifications can reach every item without duplicates; zero, no-results, and error states are distinct; cursor failures can retry.
-- **Evidence:** `frontend/src/routes/notifications/+page.svelte:49`, `backend/internal/services/notifications/service.go:274`.
-
-### NOTIF-005 — Improve notification semantics and scanability
-
-- [x] **Problem — Current source audit:** the feed has basic chronological/read state, but type, action, timestamp detail, date grouping, and assistive semantics are inconsistent or thin.
-- **Fix:** group by Today/Yesterday/earlier; include text labels with type icons; use relative times for recent items and complete date/time for older items; expose unread state programmatically; make row actions explicit instead of turning every surface into an ambiguous link.
-- **Done when:** color is never the only unread/type signal; screen readers announce type, unread state, time, and action; mark-all-read has a correct disabled state and live confirmation.
-- **Evidence:** `frontend/src/routes/notifications/+page.svelte` and `frontend/src/lib/components/notification-bell.svelte`.
 
 ### NOTIF-006 — Add frequency controls and a global mute model
 
@@ -750,20 +478,6 @@ Maintenance contract for this lane: a new social provider requires no n8n packag
 - **Fix:** state in Settings what Paddle manages; show the known renewal/end date and localized charge information only when the API proves it, with a tax/localization qualifier; show the billing contact if available; use provider-supported deep links. Do not create local card or invoice storage.
 - **Done when:** users know where to update payment, retrieve invoices/receipts, manage cancellation and billing email, and what OpenPost can display; every shown amount/date is provider-backed and live Paddle capability is verified separately.
 - **Evidence:** `frontend/src/lib/components/settings/BillingSettingsTab.svelte:338`, `docs-site/development/production-readiness.md:27`.
-
-### BILL-004 — Hide or explain the portal action when no subscription exists
-
-- [x] **Problem — Current source audit:** the customer-portal button is shown even when the user has no subscription/customer context, which can produce a dead or confusing action.
-- **Fix:** gate the action on a valid portal-capable customer/subscription, or label the destination accurately for customers who only have transaction history; provide plan selection as the primary no-subscription action.
-- **Done when:** none/trial/active/past-due/canceled states each expose a valid next action and portal failures show recovery guidance.
-- **Evidence:** `frontend/src/lib/components/settings/BillingSettingsTab.svelte:296`, `frontend/src/lib/components/settings/BillingSettingsTab.svelte:345`.
-
-### BILL-005 — Reconcile checkout consent copy with the actual control
-
-- [x] **Problem — In-flight release risk:** the inline frame can load automatically while copy still says “By continuing,” even when no continue action exists.
-- **Fix:** either restore an explicit continuation action or rewrite the disclosure to name the actual payment/submit action; obtain legal review.
-- **Done when:** the consent sentence points to a real user action, is shown before that action, and tests cover the final checkout state.
-- **Evidence:** `frontend/messages/en.json:3514`, `frontend/src/routes/checkout/+page.svelte:561`.
 
 ### Onboarding, settings, administration, and destructive actions
 
@@ -802,123 +516,7 @@ Maintenance contract for this lane: a new social provider requires no n8n packag
 - **Done when:** 404, 403, 500, offline/load failure, scheduled maintenance, and unplanned outage are meaningfully distinct; the status path remains reachable during a primary outage; correct HTTP status is preserved where possible; 320 px/light/dark/keyboard tests pass.
 - **Evidence:** `frontend/src/routes/+error.svelte`, `marketing-site/src/routes/+error.svelte`, `marketing-site/static/404.html`.
 
-### API credentials and version history
-
-### APIKEY-001 — Make one-time token creation safe to complete
-
-- [x] **Problem — Current source audit:** the full token is correctly revealed once, but the success panel has no prominent copy action. The UI neither lets a user choose expiry nor shows expiry/revoked state in the list, and there is no direct API/MCP/CLI documentation link.
-- **Fix:** require a useful name; offer safe preset/custom expiry; show the full secret once with copy and accessible confirmation; display created/last-used/expires/status/scope/workspace; link directly to getting-started docs; preserve confirmation before instant irreversible revocation.
-- **Done when:** copy is one action and announced, expiration is deliberate and visible, an expired/revoked token cannot look active, secret values never reappear in list/logs, and create/copy/revoke/browser tests pass.
-- **Evidence:** `backend/internal/api/handlers/api_tokens.go:29`, `backend/internal/api/handlers/api_tokens.go:47`, `frontend/src/lib/components/settings/DeveloperSettingsTab.svelte:174`, `frontend/src/lib/components/settings/DeveloperSettingsTab.svelte:210`.
-
-### APIKEY-002 — Resolve token-expiry contract drift
-
-- [x] **Problem — Current source audit:** handler documentation says `null` expiry means “never,” while the service defaults an omitted expiry to 90 days. This makes API clients and the settings UI reason from the wrong contract.
-- **Fix:** choose a policy, align request schema/docs/service/default/UI, regenerate OpenAPI/types, and migrate or clearly label existing tokens. Prefer finite least-privilege defaults; make “never” explicit and permission-gated if retained.
-- **Done when:** generated documentation and observed expiry match for omitted, preset, custom, and explicit no-expiry cases; contract tests fail on future drift.
-- **Evidence:** `backend/internal/api/handlers/api_tokens.go:47`, `backend/internal/services/apitokens/service.go:20`, `backend/internal/services/apitokens/service.go:76`.
-
-### APIKEY-003 — Add scopes from real use cases and align CLI workspace binding
-
-- [x] **Problem — Resolved for current use cases:** generic `api:read`/`api:write` and MCP read/full choices now complement `cli:full`; workspace binding and required-SSO policy are enforced consistently, while CLI device authorization deliberately requests only its supported full CLI scope.
-- **Fix delivered:** UI/API/runtime share the scope vocabulary and workspace policy; migration 084 retires required-SSO organization-wide `allow` mode to `scoped` without pretending it can infer a workspace for existing unbound credentials.
-- **Done when:** read-only and publishing automation retain least-privilege choices, operation matrices stay aligned, and future scopes are added only from real consumers with compatibility tests.
-- **Evidence:** token authorization services and migration `backend/internal/database/migrations/084_retire_organization_wide_sso_tokens.sql`. Migration 084 retires required-SSO organization-wide `allow` mode to `scoped`; the external queue separately owns review of pre-existing unbound tokens that a migration cannot safely assign to a workspace.
-
-### VERSION-001 — Make version restore inspectable and unsurprising
-
-- [x] **Problem — Current source audit:** Image and Video editors have real checkpoints/autosaves and restore, but restore runs immediately from the list with no read-only preview, diff/change summary, actor attribution, or confirmation.
-- **Fix:** add version preview, document-model-appropriate change summary, named versions, actor/time for cloud revisions, and confirmation that explains how the current head is preserved. Keep the autosave indicator visible but quiet.
-- **Done when:** a user can inspect before restore, current state remains recoverable after restore, conflicts are handled, and confirmation/browser tests cover both editors.
-- **Evidence:** `frontend/src/lib/image-editor/components/image-editor-shell.svelte:3587`, `frontend/src/routes/video-editor/[id]/+page.svelte:2933`, `frontend/src/routes/video-editor/[id]/+page.svelte:5592`, and migration 082’s revision-media reference/backfill boundary. No separate open revision-media heading is needed.
-
-### Content inventory, activity, media, and editor lifecycle
-
-### PUB-002 — Move the calendar day drawer to canonical publications
-
-- [x] **Problem — Baseline audit:** the calendar/planner use publications, but the day drawer still reads and deletes legacy `/posts`, so focused Story/video modes can be omitted or misrepresented.
-- **Fix:** load publication responses, use publication deletion/archive behavior, and render every supported mode exactly once with the same status vocabulary as the main inventory.
-- **Done when:** fixtures for post, thread, story, short video, and video appear once and open/delete correctly; no new `/posts` dependency is introduced.
-- **Evidence:** `frontend/src/lib/components/day-posts-modal.svelte:83`.
-
-### ACTIVITY-001 — Make bounded activity history honest and navigable
-
-- [x] **Problem — Current source audit:** Activity requests at most 200 publications and 100 failed jobs with no pagination or copy saying this is a recent snapshot.
-- **Fix:** add cursor pagination/date-range filters and a result/range summary, or deliberately label it “Recent activity” and link to a complete filtered history. Load details on demand.
-- **Done when:** older records are reachable or the bounded scope is explicit, failures and publications cannot silently disappear, and large-workspace performance stays bounded.
-- **Evidence:** `frontend/src/routes/activity/+page.svelte:164`.
-
-### PERF-001 — Stop full-history hydration on calendar/planner refreshes
-
-- [x] **Problem — Current source audit:** Calendar paginates all publication history across selected workspaces on view changes. The persistent sidebar planner also paginates the entire workspace, and every successful two-second composer autosave triggers its refresh counter.
-- **Fix:** query only the visible date range/summary; reuse or adapt `/posts/schedule-overview` only after resolving its legacy/publication contract; debounce/coalesce refreshes; invalidate affected dates rather than the full history.
-- **Done when:** composer typing/autosave cannot trigger unbounded history fetches, month/week navigation has bounded request/query volume, and new/updated schedule dots still appear promptly.
-- **Evidence:** `frontend/src/lib/components/compose-text-post.svelte:2331`, `frontend/src/lib/components/compose-text-post.svelte:2495`, `frontend/src/lib/components/sidebar-planner.svelte:75`, `frontend/src/lib/components/sidebar-planner.svelte:89`, `backend/internal/api/handlers/posts.go:861`.
-
-### MEDIA-001 — Retire the zombie `media_cleanup_days` setting
-
-- [x] **Problem — Baseline audit:** policy is intentionally fixed at 14 days, but model/API/frontend still imply that a workspace can configure or disable cleanup; the scheduler ignores the supplied value.
-- **Fix:** remove or explicitly deprecate the setting and job payload through forward-compatible contracts/migration. Keep the fixed policy and explain it in product/operations copy.
-- **Done when:** no UI/API round-trip suggests configurability, old clients receive a defined compatibility response, and cleanup remains fixed at 14 days with tests.
-- **Evidence:** `backend/internal/models/models.go:143`, `backend/internal/queue/worker.go:603`, `frontend/src/routes/settings/settings-data.ts:69`.
-
-### MEDIA-002 — Compute protected media once per lifecycle batch
-
-- [x] **Problem — Baseline audit:** each cleanup candidate can trigger roughly 15 queries plus a workspace-wide JSON decode; purge repeats the work.
-- **Fix:** normalize remaining media references where appropriate and calculate one protected-media set per batch with joins/CTEs; reuse it for dry-run and purge.
-- **Done when:** query count scales with batches, not candidate count; realistic-volume performance tests enforce a budget; safety tests prove referenced media cannot be deleted.
-- **Evidence:** `backend/internal/services/medialifecycle/service.go:240`.
-
-### MEDIA-003 — Expose cloud-video deletion in the editor UI
-
-- [x] **Problem — Current source audit:** a cloud-video delete API exists but users cannot invoke it from the editor/project catalogue, leaving obsolete cloud projects without a complete lifecycle.
-- **Fix:** add a role-appropriate delete/archive action with dependency/consequence copy, shared destructive confirmation, optimistic-state rollback, and refresh of the correct workspace cache.
-- **Done when:** a user can remove an eligible project, failures restore it visibly, referenced/published media are protected according to policy, and unauthorized users cannot see or call the action.
-- **Evidence:** video cloud API and `frontend/src/routes/editors/+page.svelte` project actions.
-
-### PUB-003 — Render publication lifecycle history
-
-- [x] **Problem — Current source audit:** backend publication lifecycle events exist, but the detail/activity UX does not show who or what changed status and when.
-- **Fix:** add a chronological, permission-safe activity section for creation, edits, schedule changes, publish attempts, retries, provider results, archive/delete, and relevant actor/system attribution.
-- **Done when:** users can diagnose a publication without logs, timestamps use exact accessible values, provider-safe errors are shown, and sensitive internal details remain hidden.
-- **Evidence:** publication event backend models/endpoints and `frontend/src/routes/publications/[id]/+page.svelte`.
-
-### COMPOSE-001 — Make workspace switching safe while a draft is dirty
-
-- [x] **Problem — Current source audit:** composer workspace changes can discard or strand unsaved context while feedback is limited to a transient toast.
-- **Fix:** block or confirm the switch when state cannot move safely; offer save draft/stay/discard; key autosave and requests to the originating workspace; make recovery persistent rather than toast-only.
-- **Done when:** rapid workspace switches cannot write a draft/media/schedule into the wrong workspace; cancel preserves all work; discard is explicit; browser races are covered.
-- **Evidence:** workspace effects and draft/autosave handling in `frontend/src/lib/components/compose-text-post.svelte`.
-
-### COMPOSE-002 — Attach scheduling failures to the affected destination
-
-- [x] **Problem — Current source audit:** some scheduling/publishing errors surface only as a global message, which is unclear when destination variants fail differently.
-- **Fix:** map validation and server errors to the publication segment/rendition/destination that caused them; keep a global summary with focus links; preserve successful destinations only when partial behavior is intentional and clear.
-- **Done when:** users can identify and fix the exact failing platform/field; focus moves to the first error; retry semantics are explicit; mixed-success fixtures are covered.
-- **Evidence:** scheduling actions/errors in `frontend/src/lib/components/compose-text-post.svelte` and publication handlers.
-
-### VIDEO-001 — Give video Blob URLs editor-scoped ownership
-
-- [x] **Problem — Baseline audit:** global Blob URL cache entries are never released, concurrent identical loads can leak an untracked URL, and stale async preview results are not generation-guarded.
-- **Fix:** coalesce in-flight loads; use editor-scoped reference ownership; revoke exactly once on replacement/unmount; ignore stale-generation results.
-- **Done when:** tests instrument `URL.createObjectURL`/`revokeObjectURL`, prove no leak across open/replace/close, and prove slow stale loads cannot replace the current preview.
-- **Evidence:** `frontend/src/lib/video-editor/source-url.ts:5`, `frontend/src/lib/video-editor/components/video-preview.svelte:143`.
-
-### VIDEO-002 — Define and run disposable-video-cache cleanup
-
-- [x] **Problem — Baseline audit:** cache cleanup has no caller, and reads do not refresh the timestamp used for age, so frequently used artifacts can expire as if unused.
-- **Fix:** choose creation-age or last-access semantics, store the matching metadata, run bounded cleanup during idle/quota pressure, and protect active/referenced assets.
-- **Done when:** deterministic clock/quota tests cover expiry, recent use, active projects, interrupted cleanup, and storage-pressure recovery.
-- **Evidence:** `frontend/src/lib/video-editor/storage.ts:543`.
-
 ## P2 — architecture, data retirement, build, and operations
-
-### ARCH-001 — Split Settings into feature-owned, conditionally mounted components
-
-- [x] **Problem — Resolved:** `settings/+page.svelte` is now a roughly 295-line coordinator with feature-owned tab components and conditional mounting rather than a multi-thousand-line implementation page.
-- **Fix delivered:** profile, workspace, billing, security, tokens, scheduling, brand, team, and instance concerns moved behind typed feature boundaries while direct-tab and permission behavior stayed at the route shell.
-- **Done when:** feature components remain conditionally mounted, active-gated effects do not leak work from hidden tabs, and permissions, saves, OAuth returns, and deep links remain correct; add a focused no-hidden-request regression if this boundary changes.
-- **Evidence:** `frontend/src/routes/settings/+page.svelte:179`, `frontend/src/lib/components/settings`; delivered in `eacb3613` with follow-up hardening.
 
 ### ARCH-002 — Extract route-independent account settings
 
@@ -926,13 +524,6 @@ Maintenance contract for this lane: a new social provider requires no n8n packag
 - **Fix:** extract `AccountsSettings`; keep `/accounts` compatibility redirect/loader logic at the route boundary; pass explicit mode/context into the component.
 - **Done when:** no route imports another route component, there is no redirect flash, OAuth/error state survives, and direct/embedded browser tests pass.
 - **Evidence:** `frontend/src/routes/settings/+page.svelte:17`, `frontend/src/routes/accounts/+page.svelte:48`, `frontend/src/routes/accounts/+page.svelte:369`.
-
-### ARCH-003 — Remove global compatibility scans from authoring writes
-
-- [x] **Problem — Resolved:** current authoring translates only the changed aggregate, while migration 083 and its persisted keyset progress move global compatibility work into a bounded resumable backfill.
-- **Fix delivered:** interruption/restart, populated upgrade, and query-count tests cover the new path without losing access to old records.
-- **Done when:** authoring query-count regression tests remain constant as historical rows grow and the backfill remains idempotent/resumable.
-- **Evidence:** `backend/internal/database/migrations/083_legacy_publication_authoring_backfill.sql:1`, `backend/internal/database/migrations/legacy_publications.go:42`, `backend/internal/database/migrations/legacy_publication_backfill.go:20`; delivered in `087c76a2`.
 
 ### ARCH-004 — Finish a shared application command/query boundary
 
@@ -983,37 +574,6 @@ Maintenance contract for this lane: a new social provider requires no n8n packag
 - **Done when:** there is no dormant second invitation concept, existing rows have a zero-loss disposition, and workspace/organization membership semantics are documented and tested.
 - **Evidence:** `backend/internal/models/models.go:118`, `backend/internal/database/database.go:78`, `backend/internal/database/migrations/025_organizations_and_profiles.sql:22`.
 
-### COMPAT-001 — Create an API/schema compatibility retirement registry
-
-- [x] **Problem — Baseline audit:** repository non-use cannot prove that public API-token, MCP, or CLI consumers are absent.
-- **Fix:** record owner, consumer telemetry, introduced/deprecated/removal versions, replacement, notice, and migration path for every candidate; define a minimum sunset window.
-- **Done when:** no public endpoint/schema is removed from a source-only reachability result and removal gates require observed usage plus announced policy.
-
-Candidate decisions under this registry:
-
-- [x] `GET /posts/schedule-overview`: reconcile with publications; telemetry; replace stale E2E mock; remove only if no valid bounded-calendar use remains.
-- [x] `GET /accounts/mastodon/servers`: deprecate only after provider-catalog migration proof.
-- [x] `GET /accounts/{id}/destination-options`: n8n v0.1 explicitly consumes this. Retain and stabilize it for automation, or ship a fully equivalent capability endpoint and migrate the node before deprecation.
-- [x] legacy `POST /posts` and `PATCH /posts/{id}`: preserve until API/CLI consumers and sunset requirements are handled.
-- [x] `GET /organizations` and `GET /organizations/{id}/team`: consolidate only after external-consumer review.
-- [x] organization billing status/checkout duplicates: move the live portal to generic `organization_id` endpoints first.
-- [x] OIDC provider logout: integrate RP-initiated logout or explicitly deprecate/document it.
-- [x] `/prompts`: decide hidden advanced page vs retirement; do not remove the prompt/random backend used by the composer.
-
-### DOC-002 — Correct provider-app administration guidance
-
-- [x] **Problem — Baseline audit:** contributor guidance says the provider-app admin UI was removed, while encrypted provider-app management is live.
-- **Fix:** update `AGENTS.md` and operator docs to describe the current scope, authorization, secret handling, and hosted/self-hosted ownership. Do not delete the feature to make stale guidance true.
-- **Done when:** guidance and live API/UI agree and security constraints are tested/documented.
-- **Evidence:** `frontend/src/lib/components/instance-configuration.svelte:124`.
-
-### BUILD-001 — Fix Turbo input/output ownership
-
-- [x] **Problem — Baseline audit:** Turbo declares package-relative outputs while frontend build writes into a sibling backend path, so cache ownership/invalidation is wrong even though canonical release paths currently bypass it.
-- **Fix:** use package-local output plus an explicit packaging task or correct root-relative ownership; declare every frontend/backend embed input.
-- **Done when:** clean and cached builds produce identical artifacts, relevant changes invalidate the right tasks, and release reproducibility is unchanged.
-- **Evidence:** `turbo.json:14`.
-
 ### BUILD-002 — Replace marketing’s frontend-source alias with real packages
 
 - [ ] **Problem — Baseline audit:** marketing aliases all of `frontend/src/lib`, imports frontend CSS, and writes generated Paraglide output into frontend source, bypassing package boundaries and Turbo inputs.
@@ -1021,143 +581,7 @@ Candidate decisions under this registry:
 - **Done when:** no package writes into another package’s source, dependency graphs are explicit, cache invalidation works, and app/marketing UI checks pass.
 - **Evidence:** `marketing-site/svelte.config.js:11`.
 
-### OPS-001 — Use a supported digest-pinned runtime base with image assurance
-
-- [x] **Problem — Baseline audit:** runtime uses Alpine 3.19, now outside normal support. No specific exploitable CVE was established.
-- **Fix:** move to a supported pinned digest; generate an SBOM; scan the final image in CI; document update cadence; smoke readiness and core media dependencies.
-- **Done when:** the exact digest and scan evidence are attached to release checks and the image restart smoke passes. Do not market this as a remediated exploit unless one is proven.
-- **Evidence:** `docker/Dockerfile:52`.
-
-### OPS-002 — Decide and document ARM64 image support
-
-- [x] **Problem — Baseline audit:** public Docker image is amd64-only.
-- **Fix:** either add a tested multi-arch image with CGO/SQLite/FFmpeg and runtime smoke proof, or state amd64-only prominently in install docs/manifests.
-- **Done when:** supported architectures are unambiguous and CI tests every published architecture.
-
-### BUILD-003 — Make root `bun run build` honest about docs
-
-- [x] **Problem — Baseline audit:** root build silently omits the actual docs build because docs expose `docs:build`, not `build`.
-- **Fix:** include docs explicitly or fail with a clear supported-command message; keep Devenv/CI commands canonical.
-- **Done when:** root build contract is documented and CI prevents future task-name gaps.
-
-### CI-001 — Reduce workflow permissions to job scope
-
-- [x] **Problem — Baseline audit:** CI grants `packages: write` globally.
-- **Fix:** default to read-only and grant package write only to the production-image publication job.
-- **Done when:** non-publishing jobs cannot write packages and image publishing still works.
-
-### REL-002 — Define `server.json` version ownership
-
-- [x] **Problem — Baseline audit:** `server.json` has an apparently independent `1.32.1` with no documented relation to app SemVer.
-- **Fix:** document whether it is protocol, catalogue, or app version; derive or validate it in release planning; add a compatibility policy.
-- **Done when:** unexplained divergence fails a check and consumers can reason about upgrades.
-
-### CI-002 — Add continuous reachability and release-surface checks
-
-- [x] **Problem — Baseline audit:** deep manual scans found real dead code and route/config blind spots, but these are not continuous gates.
-- **Fix:** configure Go `deadcode -test`, TypeScript/Knip with generated/dynamic allowlists, config-derived docs-nav crawling, bidirectional route metadata checks, and API-consumer telemetry.
-- **Done when:** gates catch intentional fixtures without recurring false positives and block newly unreachable shipped code/config links.
-
-### OPS-003 — Clarify readiness versus liveness policy
-
-- [x] **Problem — Baseline audit:** Dockerfile/docs use readiness while comments and Compose overrides describe liveness inconsistently.
-- **Fix:** define what each endpoint proves and which orchestrator probe uses it; align comments, Compose, container health, runbooks, and tests.
-- **Done when:** operators can predict restart/traffic behavior during dependency degradation and checks enforce the chosen policy.
-
-### BUILD-004 — Ship assets through per-surface manifests
-
-- [x] **Problem — Baseline audit:** `sync-assets.mjs` copies the full roughly 1.9 MiB shared tree into app, docs, and marketing.
-- **Fix:** declare per-surface assets in one typed manifest; copy only referenced assets; validate missing/extra entries.
-- **Done when:** builds fail on undeclared use and measured shipped size drops without broken assets.
-
-### MKT-OPS-001 — Derive route metadata from one manifest
-
-- [x] **Problem — Baseline audit:** prerender, sitemap, and social-image route sets are duplicated; current checks validate only one direction.
-- **Fix:** derive all three from a typed route manifest or enforce bidirectional set equality with documented exceptions.
-- **Done when:** adding/removing a public route cannot leave stale/missing sitemap or social metadata.
-
-### DOC-003 — Correct stale launch and contributor facts
-
-- [x] **Problem — Baseline audit:** launch-kit/brief retain an old network count, and Copilot instructions retain a superseded design direction.
-- **Fix:** update canonical facts, remove duplicated counts where possible, and validate public/provider totals from one catalogue.
-- **Done when:** README/docs/launch materials/instructions agree with current capability data.
-
-### REL-003 — Complete release-plan path ownership
-
-- [x] **Problem — Baseline audit:** advisory release planning omits root build/config, Compose, `server.json`, skills, launch-kit, and scripts even though the broad release gate still runs.
-- **Fix:** assign every release-relevant path an owner/category or explicit exemption and validate coverage.
-- **Done when:** changed relevant files cannot silently fall outside impact planning.
-
-### BUILD-005 — Standardize the Lucide dependency family
-
-- [x] **Problem — Baseline audit:** both `@lucide/svelte` and `lucide-svelte` are installed and used.
-- **Fix:** choose the supported package, mechanically migrate imports, remove the duplicate dependency, and compare bundle/types.
-- **Done when:** one family remains and application/marketing builds and visual smoke tests pass.
-
 ## P2 — public product, pricing, legal clarity, and proof
-
-### LEGAL-004 — Make Privacy and legal change history understandable
-
-- [x] **Problem — Resolved:** Privacy now renders a plain-language summary, data-category retention/deletion schedule, complete browser-storage inventory including preference cookies, and dated legal change history tied to canonical acceptance metadata.
-- **Fix delivered:** the canonical legal-policy package owns the inventories/history and automated checks compare browser storage against the documented contract.
-- **Done when:** new browser identifiers cannot ship without owner/purpose/retention entries, and substantive changes continue to advance policy acceptance correctly. PRIV-001 separately adds the missing fail-closed enabled-processor/config completeness gate.
-- **Evidence:** `packages/legal-policy/src/privacy-inventory.json`, `packages/legal-policy/src/legal-change-history.json`, `marketing-site/src/routes/privacy/+page.svelte:327`, `scripts/check-browser-storage-inventory.mjs:399`.
-
-### SEC-003 — State the security assurance boundary without unsupported badges
-
-- [x] **Problem — Assurance structure delivered:** the canonical assurance inventory and Security page publish managed-versus-self-hosted responsibilities, the encryption and human-access boundary, incident wording, evidence/review dates, and explicit absence of independent certification claims. PRIV-001 records the current enabled-processor/register exception rather than reopening this assurance-page implementation.
-- **Fix delivered:** Security links to the dated Trust facts and does not display SOC 2, ISO, GDPR, audit, or pentest badges. Independent testing remains an optional external program, not a missing implementation claim; the processor register must still be corrected through PRIV-001.
-- **Done when:** every future security claim keeps current code/operational evidence and review date; independent scope/date/remediation is published only after completion.
-- **Evidence:** `packages/legal-policy/src/security-assurance.json`, `marketing-site/src/routes/security/+page.svelte:221`, legal-policy assurance tests.
-
-### MKT-001 — Create a complete `/features` hub from verified capabilities
-
-- [x] **Problem — Supplied audit:** strong composer demos, screenshots, platform detail pages, tools, and CTAs exist, but scheduling, analytics, inbox, teams, automation, and editing are scattered. Feature benefits, limits, and proof are inconsistent.
-- **Fix:** build a concise hub that links feature-specific pages/sections; state user outcome, supported scope, provider/plan limits, screenshot/demo proof, and next action; derive mutable capability facts from canonical catalogues.
-- **Done when:** every promoted feature has one discoverable canonical explanation, factual proof, relevant caveats, and cross-links to docs/pricing; no unsupported roadmap item is presented as live.
-- **Evidence:** marketing route inventory; no complete `/features` route in the audited baseline.
-
-### MKT-002 — Put claim-level evidence and review dates on comparisons
-
-- [x] **Problem — Supplied audit:** comparison pages are unusually fair and responsive, but factual competitor rows rely on a generic source block. Switcher proof is unverified and pricing comparisons are largely prose.
-- **Fix:** attach source URL, reviewed-on date, region/tier qualifier, and claim owner to each mutable row; distinguish direct evidence from interpretation; add side-by-side pricing/features only where like-for-like facts can be verified.
-- **Done when:** every competitor fact can be audited at row level, stale review dates are visible/fail a content check, strengths remain acknowledged, and any interactive switcher is browser-verified.
-- **Evidence:** `marketing-site/src/routes/compare` and supplied comparison review.
-
-### PRICE-002 — Improve pricing decision support and accessibility
-
-- [x] **Problem — Supplied audit:** plan names, monthly/annual prices, trial terms, Founder recommendation, and limits exist, but “best for” guidance is thin; refunds and Paddle/Merchant-of-Record reassurance appear too far from the choice; the full card grid is one `aria-live` region.
-- **Fix:** add concise audience/outcome guidance per plan; place trial end/charge behavior, cancellation, refund, tax/MoR, and billing-management links near CTAs; limit live announcements to the changed price text and preserve focus when the billing period changes.
-- **Done when:** users can explain price, billing frequency, trial outcome, included seats/limits, and management path before checkout; screen readers receive one useful price-change announcement; all five CTA paths work.
-- **Evidence:** `marketing-site/src/routes/_components/PricingShowcase.svelte`, `marketing-site/src/routes/pricing/+page.svelte`.
-
-### FAQ-001 — Expose the full useful FAQ and a contextual contact path
-
-- [x] **Problem — Current source/supplied audit:** seven useful answers exist in source, but the homepage renders only four; Pricing has no purchase FAQ or clear “all questions” route. Search/TOC is unnecessary until the collection grows.
-- **Fix:** add a dedicated FAQ route or a clearly linked complete section; group by setup, providers, billing, privacy, and self-hosting; put purchase-relevant answers on/near Pricing; end with a support/contact action.
-- **Done when:** all canonical answers are reachable, duplicated answers are sourced from one data set, structured data matches visible content if used, and contact is contextual.
-- **Evidence:** `marketing-site/src/routes/_marketing.ts:1345`, `marketing-site/src/routes/+page.svelte:202`, `marketing-site/src/routes/pricing/+page.svelte`.
-
-### MKT-404-001 — Unify and improve marketing not-found recovery
-
-- [x] **Problem — Supplied/current source:** the static 404 has a title, explanation, and home link, but lacks brand mark, docs/support/search recovery, and personality; static-host and route-level errors differ.
-- **Fix:** create one branded error design that can render as static host fallback and Svelte error boundary; add home, docs, support, and relevant navigation; add search only if MKT-001/FAQ scope justifies it.
-- **Done when:** unknown static and dynamic routes have equivalent content/status, no broken app dependency, and responsive/a11y checks pass.
-- **Evidence:** `marketing-site/static/404.html:7`, dynamic routes under `marketing-site/src/routes/*/[slug]`.
-
-### MKT-004 — Give moving marketing content a pause control
-
-- [ ] **Problem — Current accessibility regression:** the restored hero carousel auto-advances every five seconds and the customer-logo rail loops continuously. Reduced-motion is honored and carousel interaction stops autoplay, but users without that OS setting have no visible pause/play control; automatic changes can also create unnecessary announcements.
-- **Fix:** add visible keyboard-accessible pause/play controls, pause on focus/interaction where appropriate, remember the choice for the session, and keep automatic slide changes out of live announcements. Preserve the intentionally restored visual design.
-- **Done when:** carousel and logo motion can be paused at desktop/390 px/320 px, focus never moves automatically, reduced-motion still disables motion, and accessibility/browser tests cover pause persistence and announcements.
-- **Evidence:** `marketing-site/src/routes/_components/HeroResultsCarousel.svelte:34`, `marketing-site/src/routes/_components/HeroResultsCarousel.svelte:55`, `marketing-site/src/routes/+page.svelte:371`.
-
-### MKT-005 — Increase footer social-link touch targets
-
-- [x] **Problem — Supplied measurement:** social-icon targets are about 16 × 32 px on mobile, below the project’s 44 px coarse-pointer target.
-- **Fix:** expand the interactive box without visually inflating icons; maintain spacing, focus ring, accessible name, and no overflow.
-- **Done when:** computed hit boxes are at least 44 × 44 px under coarse pointer at 320/390 px and keyboard focus is visible.
-- **Evidence:** marketing footer social links.
 
 ### SIGNUP-001 — Show password and purchase expectations before checkout
 
@@ -1172,85 +596,6 @@ Candidate decisions under this registry:
 - **Fix:** review the live Paddle account/config/contracts, controller evidence, and applicable legal advice; consume approved TRUST-001 facts where public legal copy depends on them; record owner/evidence/review date; update Terms/Privacy/Refunds, Trust, and billing UX together where facts change.
 - **Done when:** every assertion has current provider/deployment/legal evidence and a named review owner; checkout and portal behavior match the documents.
 - **Evidence:** `marketing-site/src/routes/terms/+page.svelte:161`, `marketing-site/src/routes/refunds/+page.svelte:40`, `marketing-site/src/routes/privacy/+page.svelte:205`.
-
-### QA-001 — Reconcile the marketing browser suite before release
-
-- [x] **Problem — Supplied validation limit:** marketing type/UI checks passed, but the current local Playwright result was 8 passed / 7 failed. Some assertions appear stale and a direct browser check showed the demo dialog works, so this is a test/release-confidence gap rather than seven confirmed production defects.
-- **Fix:** classify each failure as product regression, fixture/server contamination, or stale assertion; repair the right side; run the isolated marketing suite against the intended build/server and pin current behavior.
-- **Done when:** the suite is green without weakening behavioral coverage, demo/dialog/pricing/navigation checks reflect current UX, and the release candidate runs the same isolated command.
-- **Evidence:** `e2e/marketing.spec.ts` and the supplied audit run summary.
-
-## P3 — cleanup and preventive maintenance
-
-These tasks are deliberately lower priority. Remove only code proven unreachable after moving any valuable behavior assertions. Do not mix schema/API removal into a dead-code cleanup commit.
-
-### CLEAN-GO-001 — Remove tracked root debugging commands
-
-- [x] Delete `backend/debug_import.go` and `backend/test_imports.go` after one final import/build check.
-- **Done when:** the extra root command/package is gone and backend build/test behavior is unchanged.
-
-### CLEAN-GO-002 — Remove confirmed unreachable backend/CLI symbols
-
-- [x] Review then remove or unexport: `MCPHandler.SetUsage`, `MediaHandler.SetAnalyzer`, `PostHandler.SetEntitlement`, `NewCompositeService`, `ForProfile`, `DateExpr`, `ApproveSession`, `EnvironmentConfigured`, `CallbackURL`, `medialifecycle.Service.Touch`, `videoprocessing.SetAnalyzer`, `StableMediaIDs`, and CLI `FormatHuman`.
-- **Done when:** configured `deadcode -test` no longer reports them, no supported external API was accidentally removed, and focused tests pass.
-- **Evidence:** supplied deep audit “Confirmed dead code and low-risk removals.”
-
-### CLEAN-GO-003 — Remove the misleading `WorkspaceAccessMiddleware`
-
-- [x] **Problem:** the unused middleware’s name claims workspace authorization but it only authenticates.
-- **Fix:** delete it rather than risk future use; verify every live workspace route uses the real membership/role guard.
-- **Done when:** authorization tests prove cross-workspace requests fail and no registration/import remains.
-- **Evidence:** `backend/internal/api/middleware/auth.go:283`.
-
-### CLEAN-GO-004 — Retire obsolete implementation-only helpers/tests
-
-- [x] Move useful assertions to current Trash behavior, then remove `removeMediaReferences` and `deleteMedia` plus their implementation-only tests.
-- [x] Move useful scheduling assertions to configured-slot behavior, then remove `findNextOverflowPostingTime` and its implementation-only tests.
-- **Evidence:** `backend/internal/api/handlers/media.go:2622`, `backend/internal/api/handlers/media.go:2807`, `backend/internal/api/handlers/posting_schedules.go:469`.
-
-### CLEAN-CLI-001 — Remove or unexport test-only CLI APIs
-
-- [x] Remove/unexport CLI `CreatePost`, `UpdatePost`, `CreateAPIToken`, and package-internal MCP stdio wrappers after tests use supported helpers.
-- **Done when:** production import graph stays clean and CLI tests exercise supported public behavior.
-- **Evidence:** `cli/internal/api/client.go:885`, `cli/internal/api/client.go:970`, `cli/internal/api/client.go:1413`, `cli/internal/mcpstdio/stdio.go:39`.
-
-### CLEAN-LIFECYCLE-001 — Decide, then wire or remove unreachable lifecycle hooks
-
-- [x] Make new CLI authorization requests expire older pending sessions; remove `CancelMediaCleanup` because transactional workspace deletion already removes exact workspace jobs and deleting a processing row cannot cancel an in-flight worker.
-- **Done when:** each is either called from an explicit tested lifecycle or removed with an approved replacement/non-requirement.
-
-### CLEAN-FE-001 — Remove unused UI primitives and duplicate tombstones
-
-- [x] Remove drawer primitive plus `vaul-svelte`, scroll-area primitive, duplicate sidebar `constants.js`/`constants.ts`, and empty `lib/index.ts`/`types/index.ts` after import checks.
-- **Done when:** no import remains, the lockfile is pruned, and UI consistency/type/build checks pass.
-- **Evidence:** `frontend/src/lib/components/ui/drawer/index.ts`, `frontend/src/lib/components/ui/scroll-area/index.ts`, `frontend/src/lib/components/ui/sidebar/constants.ts`.
-
-### CLEAN-FE-002 — Move preview tests before deleting the dead wrapper
-
-- [x] Move broad behavior tests from production-dead `platform-preview.svelte` into `packages/social-preview`, then delete the wrapper.
-- **Done when:** package-level coverage still proves every supported platform presentation and no shipped import remains.
-- **Evidence:** `frontend/src/lib/components/platform-preview.svelte`.
-
-### CLEAN-FE-003 — Prune confirmed unused frontend exports
-
-- [x] Remove imports/re-exports and then delete: `countTotalChars`, `getPostMediaIdsForSave`, `deleteImageEditorTemplate`, `getInstanceUrl`, `settingsPathForPlan`, `ScheduleOverview`, `AuthResponse`, `cleanupDaysOptions`, `uploadMediaFiles`, `cloneProjectDocument`, `hashVideoSource`, `cloudDocumentForTest`, `EXPORT_MINIMUM_BITRATES`, and `ExportJob`.
-- **Done when:** TypeScript/Knip with appropriate dynamic/generated allowlists is green and public contracts are unchanged.
-
-### CLEAN-MKT-001 — Prune unreachable marketing/package/script assets
-
-- [x] Delete `PublishingActivityField.svelte`.
-- [x] Prune unused `_marketing.ts` exports: `demoVideoThumbnailUrl`, `planIDs`, `platformLimitSummaries`, `launchProviderMatrix`, `illustrativeLaunchRenditions`, `productFeatures`, `workflowBlocks`, `securityItems`, and unused slug types.
-- [x] Delete orphaned `scripts/install-cachix-with-retry.sh`.
-- [x] Unexport unused private-package `AnalysisSuggestion`, `previewFormats`, and `PreviewCapability`.
-- **Done when:** no shipped reference remains and package/marketing tests pass.
-- **Evidence:** `marketing-site/src/routes/_components/PublishingActivityField.svelte`, `marketing-site/src/routes/_marketing.ts:33`, `marketing-site/src/routes/_components/postiz-social-logos.ts`, `scripts/install-cachix-with-retry.sh`.
-
-### IA-001 — Clarify account versus workspace preferences
-
-- [x] **Problem — Current source audit:** appearance, language, and sound live in a transient account menu, while timezone/week start are workspace settings; “Profile & security” does not clearly expose all personal preferences.
-- **Fix:** label scope explicitly and add a discoverable personal-preferences destination or cross-links without duplicating state.
-- **Done when:** users can predict whether a setting follows them or a workspace and can reach appearance, language, sound, profile, and security from Settings.
-- **Evidence:** `frontend/src/lib/components/account-preferences-menu.svelte:211`, `frontend/src/lib/components/settings/ProfileSettingsTab.svelte:394`.
 
 ## Explicit product decisions and non-actions
 
@@ -1295,36 +640,16 @@ Integration/provider guardrails:
 
 For all public API, MCP, CLI, and schema removals, production telemetry/inventory plus a documented deprecation window are prerequisites. Repository-only non-use is insufficient.
 
-## Preserve these strengths while remediating
-
-- Keep TOTP disabled until code verification succeeds; keep MFA disable/reset behind password or recent step-up authentication.
-- Keep passkeys, non-enumerating password reset, URL-fragment reset-token cleanup, PKCE OIDC, safe redirect validation, and server-side session revocation.
-- Keep avatar initials fallback, opt-in public profiles, profile dirty-state handling, and clear save confirmation.
-- Keep notification categories, meaningful in-app/email channel controls, explicit save feedback, and mandatory-alert protections. Do not advertise push/SMS until delivery exists.
-- Keep pending-invite revoke, seat enforcement, server-side role checks, and role-gated admin tabs.
-- Keep account/workspace destructive confirmation and strengthen it through ADMIN-002 rather than replacing it with ad hoc dialogs.
-- Keep API secrets one-time-only and hashed at rest; never display an existing full key.
-- Keep publication detail’s clear identifier, textual status, hierarchy, timestamp, and back action. Add edit/archive/activity only where valid for that state.
-- Keep shared `EmptyState`, `InlineNotice`, retry, loading, and destructive-dialog primitives; repair inconsistent consumers instead of creating new local variants.
-- Keep inactive social accounts visible with a text status marker; the earlier “hidden inactive account” concern is resolved in current source (`frontend/src/routes/accounts/+page.svelte:836`).
-- Keep platform pages’ candid setup/limit/provider caveats and comparison pages’ fair acknowledgement of competitor strengths.
-- Keep the verified 320 px/390 px/desktop no-overflow behavior, light/dark modes, reduced-motion handling, focus treatment, lazy screenshots, and working product demo.
-- Keep current plan IDs/prices/limits sourced consistently across marketing, frontend, and backend; the audit found no catalogue mismatch.
-
 ## Operator and external verification queue
 
 These cannot be closed from repository source alone:
 
-- [ ] Verify production `/api/v1/version`, update-check behavior, release tag/SHA/digest, and rollback evidence after REL-001.
 - [ ] Inventory deployed `media_collections`, `publication_assets`, `posting_schedules.set_id`, duplicate publication fields, `organization_invitations`, and API/MCP/CLI endpoint usage before migration/removal.
-- [ ] Complete OPS-004: verify any provider snapshot, off-host failure-domain separation, artifact/key boundary, retention, access, deletion, monitoring, and a restore starting without the application host; do not print secrets.
 - [ ] Verify live Paddle Merchant-of-Record configuration, tax/VAT/customer documents, invoices, portal deep links, discounts, refunds, cancellation, failed-payment recovery, and withdrawal terms.
 - [ ] Close the remaining TRUST-001/LEGAL-005 evidence: controller/company identity, Purelymail transfer basis, operational access-review/revocation proof, incident-procedure ownership/evidence, and legal review dates. The public incident and human-access wording itself is shipped.
-- [x] Managed PostHog rollout verified live at `v3.9.6` / `2a28899ebc50f8adb770ddfb5f5748f70169311e`: telemetry is enabled against the EU API/UI hosts, Privacy uses policy version `2026-08-11`, the Trust register was reviewed on `2026-08-11`, and the OpenPost Umami loaders are removed. A first-party ingestion proxy is optional, not a completion requirement; do not retire a shared Umami service still used by another product.
 - [ ] Verify provider-side OpenRouter/Azure configuration for both image descriptions and meme suggestions: exact `azure/eu` route, data collection denied, no fallback, current ZDR classification, and provider review date. Source and Nix fail closed but cannot prove the live provider-side policy.
 - [ ] Complete PRIV-001 provider/legal evidence for the enabled managed Memegen target or move it to a reviewed private deployment.
 - [ ] After migration 084, inventory pre-existing unbound API tokens for required-SSO organizations; revoke or deliberately reissue workspace-bound tokens because the schema migration cannot infer their intended workspace.
-- [ ] Obtain recorded permission and current-use evidence for every customer logo, testimonial, count, “Used by,” team, milestone, backer, or origin claim.
 - [ ] Obtain approved team, mission, timeline, company/contact, funding/backer, and imagery facts before reconsidering an About page; absence is not an implementation defect.
 - [ ] Decide whether independent pentest/audit work is funded; publish scope and date only after completion. Do not add SOC 2, ISO, GDPR, or pentest badges without proof.
 - [ ] Close PIN-GATE-001 and GBP-GATE-001 independently and reverify their access tiers, policies, limits, quotas, permitted origins, retention, and approval evidence at every certification renewal. Revisit Reddit only when REDDIT-GATE-001 becomes a priority.
@@ -1335,18 +660,10 @@ These cannot be closed from repository source alone:
 
 1. **Close the live privacy gap now:** keep the managed meme path enabled by operator decision and complete PRIV-001's provider, legal, retention, routing, and disclosure boundary against the deployed configuration.
 2. **Start the two wanted access gates in parallel:** GBP approval/policy work can begin immediately; Pinterest Trial approval precedes implementation and Standard approval follows the working Trial demo before public production. Do not wait for Reddit, connector, or n8n decisions.
-3. **Run a parallel bounded-correctness lane now:** BILL-002, COMM-002, ANALYTICS-001, MOBILE-001, CLAIM-001, and OPS-004 should progress alongside access and provider foundations—not wait for provider certification.
-4. **Finish only the shared provider prerequisites the first slices need:** PROV-FIRSTPARTY plus TARGET/DELIVERY/CAP/PICKER/POLICY/RETENTION/LEASE/META; complete SELECT before large GBP discovery and SCHEDULE before native GBP scheduling. The P0 authorization/write/media/readiness foundations are already shipped and must stay green.
+3. **Run a parallel bounded-correctness lane now:** MOBILE-001 should progress alongside access and provider foundations—not wait for provider certification.
+4. **Finish only the shared provider prerequisites the first slices need:** PROV-FIRSTPARTY plus TARGET/DELIVERY/CAP/POLICY/RETENTION/LEASE/META; complete SELECT before large GBP discovery and SCHEDULE before native GBP scheduling.
 5. **Deliver Pinterest first:** PIN-001 OAuth/boards/sections → PIN-002 single/multi-image Pins → PIN-003 video → PIN-004 later depth, with Trial implementation evidence and Standard approval before public claims.
 6. **Deliver GBP second:** GBP-001 approved execution mode → GBP-002 accounts/locations and retention → GBP-003 immediate image posts → GBP-004 native one-off/recurring schedules only after approval → GBP-005 later depth.
 7. **Certify and harden provider by provider:** PROV-HARDEN-001 and PROV-QA-001 apply the contracts and mechanically gate each advertised provider/format without making Pinterest wait for GBP or deferred Reddit proof.
 8. **Then improve daily UX and structure:** ONB-001/SIGNUP-001, TEAM-002, COMM-001, BILL-003, STATE-001, NOTIF-006, ADMIN-001/002, then ARCH/DATA/BUILD work according to dependency and capacity.
-9. **Deferred lanes and cleanup:** start Connector Protocol, n8n, or Reddit only after an explicit priority decision; run P3 cohorts after the behavior, migration, compatibility, and telemetry gates they depend on.
-
-## Audit evidence limits
-
-- The attached deep audit reported green repo lint/check, backend/CLI suites, 379 frontend tests, 25 video-project tests, reachability scans, and selected live route/image checks at the baseline SHA.
-- It did **not** prove external API/MCP consumers, dormant-table production row counts, or a fresh mutation-heavy browser/build pass over the already dirty checkout.
-- The later checklist and public-site review was source-grounded; production-only claims remain labeled user-reported or external verification.
-- The 2026-08-12 reconciliation re-traced the named source paths, analyzed representative Svelte routes/components, checked current Pinterest/GBP primary documentation, and verified the live PostHog version/configuration and public policy surfaces. It did not run the full repository verification matrix because this change updates the backlog rather than product behavior.
-- Checking an item means its specific “Done when” conditions are met, relevant product/docs/contracts are aligned, and deployed behavior is verified when the finding was live.
+9. **Deferred lanes:** start Connector Protocol, n8n, or Reddit only after an explicit priority decision.

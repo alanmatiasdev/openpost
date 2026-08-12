@@ -10,6 +10,10 @@ All notable changes to this project are documented in this file.
 
 - Qualified PostgreSQL provider-delivery upserts so the durable write fence reaches the provider instead of failing before every publication request.
 
+### Changed
+
+- Pruned completed and currently out-of-scope audit-remediation entries so the backlog contains only active or explicitly deferred work.
+
 ## [3.10.0] - 2026-08-12
 
 ### Changed
