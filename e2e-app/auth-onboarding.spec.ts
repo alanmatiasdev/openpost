@@ -616,6 +616,22 @@ test("Google signup keeps legal acceptance and onboarding in one continuation", 
       },
     });
   });
+  await page.route("**/api/v1/billing/purchase-choice", (route) =>
+    route.fulfill({
+      json: {
+        token: "choice-founder-annual",
+        plan_id: "founder",
+        plan_name: "Founder",
+        billing_period: "annual",
+        list_price_usd: 250,
+        trial_days: 14,
+        card_required: true,
+        due_today_usd: 0,
+        catalog_version: "2026-08-12",
+        expires_at: "2026-08-13T10:00:00Z",
+      },
+    }),
+  );
   await page.route("**/api/v1/workspaces", async (route) => {
     if (route.request().method() === "GET") workspaceLoads += 1;
     await route.continue();
@@ -631,9 +647,11 @@ test("Google signup keeps legal acceptance and onboarding in one continuation", 
   await page.getByRole("checkbox").check();
   await page.getByRole("button", { name: "Accept and continue" }).click();
 
-  await expect(page).toHaveURL(
-    /\/checkout\?plan=founder&billing_period=annual$/,
-  );
+  await expect(page).toHaveURL(/\/onboarding\?/);
+  await expect(
+    page.getByRole("heading", { name: "Confirm your Workspace and plan" }),
+  ).toBeVisible();
+  await expect(page.getByLabel("Workspace name")).toBeVisible();
   expect(workspaceLoads).toBeLessThanOrEqual(2);
 });
 

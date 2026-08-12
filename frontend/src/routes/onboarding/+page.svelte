@@ -93,12 +93,10 @@
 			await workspaceCtx.initialize();
 			if (requestSequence !== onboardingLoadSequence) return;
 			const currentWorkspace = workspaceCtx.currentWorkspace;
-			const continuationToken = page.url.searchParams.get('purchase_choice')?.trim() ?? '';
-			if (currentWorkspace && !continuationToken) {
+			if (currentWorkspace) {
 				await goto(resolve(existingSignupTarget() as '/'));
 				return;
 			}
-			if (currentWorkspace) workspaceName = currentWorkspace.name;
 			if (!managedAccount) await loadPurchaseChoice();
 		} catch (caught) {
 			if (requestSequence !== onboardingLoadSequence) return;
@@ -189,13 +187,15 @@
 
 	<div class="space-y-5">
 		{#if loadError}
-			<InlineNotice tone="error" message={loadError}>
-				{#snippet actions()}
-					<Button variant="outline" size="sm" onclick={() => void loadWelcome()}
-						>{m.common_retry()}</Button
-					>
-				{/snippet}
-			</InlineNotice>
+			<div data-testid="onboarding-load-error">
+				<InlineNotice tone="error" message={loadError}>
+					{#snippet actions()}
+						<Button variant="outline" size="sm" onclick={() => void loadWelcome()}
+							>{m.common_retry()}</Button
+						>
+					{/snippet}
+				</InlineNotice>
+			</div>
 		{:else if managedAccount}
 			<InlineNotice
 				tone="info"
