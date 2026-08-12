@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [3.9.6] - 2026-08-12
+
+### Fixed
+
+- Escaped LinkedIn's reserved commentary characters at the provider boundary so ordinary post text with parentheses or other markup symbols is published in full instead of rendering only the prefix.
+
 ## [3.9.5] - 2026-08-12
 
 ### Fixed

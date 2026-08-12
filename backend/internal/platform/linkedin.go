@@ -599,7 +599,7 @@ func (l *LinkedInAdapter) createPost(ctx context.Context, accessToken, authorURN
 	}
 	payload := map[string]interface{}{
 		"author":     authorURN,
-		"commentary": req.Content,
+		"commentary": encodeLinkedInPlaintext(req.Content),
 		"visibility": visibility,
 		"distribution": map[string]interface{}{
 			"feedDistribution":               "MAIN_FEED",
@@ -675,6 +675,30 @@ func (l *LinkedInAdapter) createPost(ctx context.Context, accessToken, authorURN
 	}
 
 	return postID, nil
+}
+
+var linkedInPlaintextEscaper = strings.NewReplacer(
+	`|`, `\|`,
+	`{`, `\{`,
+	`}`, `\}`,
+	`@`, `\@`,
+	`[`, `\[`,
+	`]`, `\]`,
+	`(`, `\(`,
+	`)`, `\)`,
+	`<`, `\<`,
+	`>`, `\>`,
+	`#`, `\#`,
+	`\`, `\\`,
+	`*`, `\*`,
+	`_`, `\_`,
+	`~`, `\~`,
+)
+
+// encodeLinkedInPlaintext prevents LinkedIn's little text parser from treating
+// ordinary post content as mentions, templates, or other markup.
+func encodeLinkedInPlaintext(content string) string {
+	return linkedInPlaintextEscaper.Replace(content)
 }
 
 func (l *LinkedInAdapter) postComment(ctx context.Context, accessToken, actorURN, activityURN, content string) (string, error) {

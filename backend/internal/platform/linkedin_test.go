@@ -163,6 +163,29 @@ func TestLinkedInCreatePostUsesDocumentTitle(t *testing.T) {
 	}
 }
 
+func TestLinkedInCreatePostEscapesPlaintextCommentary(t *testing.T) {
+	content := "Just started using a US (NYC) VPN for normal day-to-day work and man… the difference in ads is insane. US ads are SO much better than anything I usually get served (Portugal). They're also much more straight forward and direct as well."
+	payload := captureLinkedInCreatePostPayload(t, &PublishRequest{Content: content})
+
+	commentary, ok := payload["commentary"].(string)
+	if !ok {
+		t.Fatalf("expected commentary string, got %#v", payload["commentary"])
+	}
+	want := "Just started using a US \\(NYC\\) VPN for normal day-to-day work and man… the difference in ads is insane. US ads are SO much better than anything I usually get served \\(Portugal\\). They're also much more straight forward and direct as well."
+	if commentary != want {
+		t.Fatalf("commentary was not encoded as LinkedIn plaintext:\n got: %q\nwant: %q", commentary, want)
+	}
+}
+
+func TestEncodeLinkedInPlaintextEscapesEveryReservedCharacter(t *testing.T) {
+	const content = `|{}@[]()<>#\*_~`
+	const want = `\|\{\}\@\[\]\(\)\<\>\#\\\*\_\~`
+
+	if got := encodeLinkedInPlaintext(content); got != want {
+		t.Fatalf("unexpected LinkedIn plaintext encoding:\n got: %q\nwant: %q", got, want)
+	}
+}
+
 func TestLinkedInListCommentsMapsResponse(t *testing.T) {
 	t.Setenv("LINKEDIN_API_VERSION", "202606")
 	originalClient := httpClient
