@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -402,21 +401,24 @@ func TestSelfHostedSpaRootDoesNotAdvertiseManagedPlans(t *testing.T) {
 }
 
 func TestManagedSpaRootPricingMatchesFrontendCatalog(t *testing.T) {
-	catalogSource, err := os.ReadFile("../../../frontend/src/lib/billing.ts")
+	catalogSource, err := os.ReadFile("../../../packages/plan-catalog/src/catalog.json")
 	require.NoError(t, err)
-
-	planPattern := regexp.MustCompile(`(?s)\{\s*id:\s*'[^']+',\s*name:\s*'([^']+)',[^}]*monthlyPriceUSD:\s*(\d+),`)
-	plans := planPattern.FindAllStringSubmatch(string(catalogSource), -1)
-	require.NotEmpty(t, plans)
+	var catalog struct {
+		Plans []struct {
+			Name            string `json:"name"`
+			MonthlyPriceUSD int    `json:"monthly_price_usd"`
+		} `json:"plans"`
+	}
+	require.NoError(t, json.Unmarshal(catalogSource, &catalog))
+	require.NotEmpty(t, catalog.Plans)
 
 	rendered := string(renderManagedPublicHomeHTML(
 		[]byte(`<html><head></head><body><div id="app">app</div></body></html>`),
 		"https://app.openpost.social",
 	))
-	require.Equal(t, len(plans), strings.Count(rendered, `class="oph-plan"`))
-	for _, plan := range plans {
-		name, monthlyPrice := plan[1], plan[2]
-		require.Contains(t, rendered, "<h3>"+name+"</h3><p>$"+monthlyPrice+"<span>/month")
+	require.Equal(t, len(catalog.Plans), strings.Count(rendered, `class="oph-plan"`))
+	for _, plan := range catalog.Plans {
+		require.Contains(t, rendered, "<h3>"+plan.Name+"</h3><p>$"+strconv.Itoa(plan.MonthlyPriceUSD)+"<span>/month")
 	}
 }
 

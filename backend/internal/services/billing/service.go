@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/url"
 	"strings"
@@ -24,7 +25,7 @@ import (
 const (
 	ProviderPaddle = models.BillingProviderPaddle
 	JobTypeWebhook = jobregistry.TypeBillingWebhook
-	TrialDays      = 14
+	TrialDays      = PlanCatalogTrialDays
 )
 
 var errConfiguration = errors.New("billing provider is not configured")
@@ -45,23 +46,25 @@ type PaddleAPI interface {
 }
 
 type Service struct {
-	db            *bun.DB
-	webhookSecret string
-	verifier      *paddle.WebhookVerifier
-	now           func() time.Time
-	paddle        PaddleConfig
-	api           PaddleAPI
-	apiInitErr    error
+	db                   *bun.DB
+	webhookSecret        string
+	purchaseChoiceSecret []byte
+	verifier             *paddle.WebhookVerifier
+	now                  func() time.Time
+	paddle               PaddleConfig
+	api                  PaddleAPI
+	apiInitErr           error
 }
 
 type PaddleConfig struct {
-	APIKey      string
-	APIBaseURL  string
-	Environment string
-	ClientToken string
-	AppURL      string
-	ReturnURL   string
-	Plans       map[string]PlanConfig
+	APIKey               string
+	APIBaseURL           string
+	Environment          string
+	ClientToken          string
+	AppURL               string
+	ReturnURL            string
+	Plans                map[string]PlanConfig
+	PurchaseChoiceSecret string
 }
 
 type PaddlePriceIDs struct {
@@ -70,6 +73,7 @@ type PaddlePriceIDs struct {
 }
 
 type PlanConfig struct {
+	Name            string
 	PaddlePriceIDs  PaddlePriceIDs
 	MonthlyPriceUSD int
 	AnnualPriceUSD  int
@@ -77,73 +81,21 @@ type PlanConfig struct {
 }
 
 func DefaultPlanCatalog(starter, founder, pro, team, agency PaddlePriceIDs) map[string]PlanConfig {
-	return map[string]PlanConfig{
-		"starter": {
-			PaddlePriceIDs:  starter,
-			MonthlyPriceUSD: 15,
-			AnnualPriceUSD:  150,
-			Limits: map[entitlements.LimitKey]int64{
-				entitlements.LimitWorkspaces:                1,
-				entitlements.LimitSocialAccounts:            3,
-				entitlements.LimitScheduledPostsMonthly:     100,
-				entitlements.LimitMediaBytesStored:          1_000_000_000,
-				entitlements.LimitMediaBytesUploadedMonthly: 1_000_000_000,
-				entitlements.LimitTeamMembers:               1,
-			},
-		},
-		"founder": {
-			PaddlePriceIDs:  founder,
-			MonthlyPriceUSD: 25,
-			AnnualPriceUSD:  250,
-			Limits: map[entitlements.LimitKey]int64{
-				entitlements.LimitWorkspaces:                3,
-				entitlements.LimitSocialAccounts:            6,
-				entitlements.LimitScheduledPostsMonthly:     500,
-				entitlements.LimitMediaBytesStored:          5_000_000_000,
-				entitlements.LimitMediaBytesUploadedMonthly: 5_000_000_000,
-				entitlements.LimitTeamMembers:               1,
-			},
-		},
-		"pro": {
-			PaddlePriceIDs:  pro,
-			MonthlyPriceUSD: 49,
-			AnnualPriceUSD:  490,
-			Limits: map[entitlements.LimitKey]int64{
-				entitlements.LimitWorkspaces:                10,
-				entitlements.LimitSocialAccounts:            15,
-				entitlements.LimitScheduledPostsMonthly:     2_500,
-				entitlements.LimitMediaBytesStored:          25_000_000_000,
-				entitlements.LimitMediaBytesUploadedMonthly: 25_000_000_000,
-				entitlements.LimitTeamMembers:               1,
-			},
-		},
-		"team": {
-			PaddlePriceIDs:  team,
-			MonthlyPriceUSD: 99,
-			AnnualPriceUSD:  990,
-			Limits: map[entitlements.LimitKey]int64{
-				entitlements.LimitWorkspaces:                10,
-				entitlements.LimitSocialAccounts:            25,
-				entitlements.LimitScheduledPostsMonthly:     5_000,
-				entitlements.LimitMediaBytesStored:          50_000_000_000,
-				entitlements.LimitMediaBytesUploadedMonthly: 50_000_000_000,
-				entitlements.LimitTeamMembers:               3,
-			},
-		},
-		"agency": {
-			PaddlePriceIDs:  agency,
-			MonthlyPriceUSD: 199,
-			AnnualPriceUSD:  1_990,
-			Limits: map[entitlements.LimitKey]int64{
-				entitlements.LimitWorkspaces:                50,
-				entitlements.LimitSocialAccounts:            150,
-				entitlements.LimitScheduledPostsMonthly:     25_000,
-				entitlements.LimitMediaBytesStored:          250_000_000_000,
-				entitlements.LimitMediaBytesUploadedMonthly: 250_000_000_000,
-				entitlements.LimitTeamMembers:               5,
-			},
-		},
+	priceIDs := map[string]PaddlePriceIDs{
+		"starter": starter,
+		"founder": founder,
+		"pro":     pro,
+		"team":    team,
+		"agency":  agency,
 	}
+	catalog := make(map[string]PlanConfig, len(canonicalPlanCatalog))
+	for _, planID := range canonicalPlanOrder {
+		plan := canonicalPlanCatalog[planID]
+		plan.PaddlePriceIDs = priceIDs[planID]
+		plan.Limits = maps.Clone(plan.Limits)
+		catalog[planID] = plan
+	}
+	return catalog
 }
 
 func NewService(db *bun.DB, webhookSecret string, paddleConfig ...PaddleConfig) *Service {
@@ -152,10 +104,11 @@ func NewService(db *bun.DB, webhookSecret string, paddleConfig ...PaddleConfig) 
 		cfg = paddleConfig[0]
 	}
 	service := &Service{
-		db:            db,
-		webhookSecret: strings.TrimSpace(webhookSecret),
-		now:           func() time.Time { return time.Now().UTC() },
-		paddle:        cfg,
+		db:                   db,
+		webhookSecret:        strings.TrimSpace(webhookSecret),
+		purchaseChoiceSecret: []byte(strings.TrimSpace(cfg.PurchaseChoiceSecret)),
+		now:                  func() time.Time { return time.Now().UTC() },
+		paddle:               cfg,
 	}
 	if service.webhookSecret != "" {
 		service.verifier = paddle.NewWebhookVerifier(service.webhookSecret, paddle.VerifierWithTimestampTolerance(5*time.Minute))

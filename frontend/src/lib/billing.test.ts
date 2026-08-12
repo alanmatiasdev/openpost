@@ -23,25 +23,26 @@ describe('hosted billing catalog', () => {
 		);
 	});
 
-	it('defaults unknown plans to Founder without accepting arbitrary ids', () => {
+	it('rejects unknown plans instead of selecting Founder', () => {
 		expect(normalizeHostedPlanID('AGENCY')).toBe('agency');
 		expect(normalizeHostedPlanID('enterprise')).toBe('');
-		expect(hostedPlanByID('enterprise').id).toBe('founder');
+		expect(hostedPlanByID('enterprise')).toBeUndefined();
 	});
 
-	it('normalizes yearly links to the annual billing period', () => {
-		expect(normalizeBillingPeriod('yearly')).toBe('annual');
+	it('accepts only canonical monthly and annual billing periods', () => {
+		expect(normalizeBillingPeriod('annual')).toBe('annual');
 		expect(billingPeriodFromSearchParams(new URLSearchParams('billing_period=annual'))).toBe(
 			'annual'
 		);
-		expect(normalizeBillingPeriod('quarterly')).toBe('monthly');
+		expect(normalizeBillingPeriod('yearly')).toBe('');
+		expect(normalizeBillingPeriod('quarterly')).toBe('');
+		expect(billingPeriodFromSearchParams(new URLSearchParams())).toBe('');
 	});
 
 	it('builds an internal checkout path with a safe plan and billing period', () => {
 		expect(checkoutPathForPlan('team', 'annual')).toBe('/checkout?plan=team&billing_period=annual');
-		expect(checkoutPathForPlan('unknown', 'yearly')).toBe(
-			'/checkout?plan=founder&billing_period=annual'
-		);
+		expect(checkoutPathForPlan('unknown', 'annual')).toBe('');
+		expect(checkoutPathForPlan('founder', 'yearly')).toBe('');
 	});
 
 	it('preserves every sellable plan across monthly and annual checkout links', () => {
@@ -55,7 +56,7 @@ describe('hosted billing catalog', () => {
 	});
 
 	it('returns the full-period price used by checkout', () => {
-		const founder = hostedPlanByID('founder');
+		const founder = hostedPlanByID('founder')!;
 		expect(planPriceUSD(founder, 'monthly')).toBe(25);
 		expect(planPriceUSD(founder, 'annual')).toBe(250);
 	});

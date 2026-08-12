@@ -4,6 +4,10 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Added one canonical hosted-plan catalogue and an expiring signed purchase choice that keeps exact pricing and trial terms through password signup, email verification, refresh, and identity-provider signup without defaulting invalid selections to Founder.
+
 ## [3.10.1] - 2026-08-12
 
 ### Fixed

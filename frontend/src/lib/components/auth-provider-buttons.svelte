@@ -3,6 +3,7 @@
 	import { getApiBase } from '$lib/stores/instance.svelte';
 	import { IS_CAPACITOR } from '$lib/env';
 	import type { OIDCProvider } from '$lib/api/client';
+	import type { PurchaseSelection } from '$lib/purchase-choice';
 	import { m } from '$lib/paraglide/messages';
 	import BuildingIcon from '@lucide/svelte/icons/building-2';
 	import LoaderIcon from '@lucide/svelte/icons/loader-2';
@@ -11,11 +12,15 @@
 		providers,
 		returnPath,
 		disabled = false,
+		signup = false,
+		purchaseChoice,
 		onerror
 	}: {
 		providers: OIDCProvider[];
 		returnPath: string;
 		disabled?: boolean;
+		signup?: boolean;
+		purchaseChoice?: PurchaseSelection | null;
 		onerror?: (message: string) => void;
 	} = $props();
 
@@ -25,6 +30,14 @@
 		const base = getApiBase().replace(/\/$/, '');
 		const query = new URLSearchParams({
 			return_path: returnPath,
+			...(signup
+				? {
+						signup: 'true',
+						plan_id: purchaseChoice?.plan_id ?? '',
+						billing_period: purchaseChoice?.billing_period ?? '',
+						purchase_choice_token: purchaseChoice?.token ?? ''
+					}
+				: {}),
 			...(IS_CAPACITOR ? { native: 'true' } : {})
 		});
 		return `${base}/auth/oidc/${encodeURIComponent(provider.id)}/start?${query}`;

@@ -4,6 +4,9 @@ Managed OpenPost billing uses saved plan limits and durable usage counters. The 
 
 ## Current pieces
 
+- `packages/plan-catalog/src/catalog.json`: the versioned source for hosted plan names, monthly and annual USD list prices, limits, trial length, card requirement, and amount due when the trial starts. Frontend and marketing code read it directly; `scripts/plan-catalog.mjs` generates the Go projection and checks for drift.
+- `POST /api/v1/billing/purchase-choice`: creates or revalidates a signed 24-hour continuation for one canonical plan and billing period. The response carries the exact catalogue version, list price, trial, card, due-today, and expiry facts shown during signup.
+- Hosted password and explicit identity-provider signup require that purchase choice. Password signup carries it through email verification; identity-provider signup validates it before redirecting and rebuilds the stored onboarding return path from the verified claims. Missing, invalid, expired, or mismatched choices fail closed and require a new pricing selection.
 - `entitlements.Service`: evaluates plan limits and keeps self-hosted defaults unlimited.
 - `usage_counters`: monthly durable counters keyed by workspace, metric, and UTC month.
 - `billing_customers`: Paddle customer mirrors keyed by organization, with no payment-card data.

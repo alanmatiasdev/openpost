@@ -35,11 +35,12 @@
 	}
 
 	function afterOnboardingTarget() {
-		const target = checkoutPathForPlan(
-			selectedPlanID(),
-			billingPeriodFromSearchParams(page.url.searchParams)
-		);
-		const params = new URLSearchParams(target.split('?')[1] ?? '');
+		const planID = selectedPlanID() || 'founder';
+		const billingPeriod = billingPeriodFromSearchParams(page.url.searchParams) || 'monthly';
+		const target = checkoutPathForPlan(planID, billingPeriod);
+		const params = new URLSearchParams(target.split('?')[1]);
+		const purchaseChoice = page.url.searchParams.get('purchase_choice');
+		if (purchaseChoice) params.set('purchase_choice', purchaseChoice);
 		const redirect = safeSameOriginRedirect(page.url, '');
 		if (redirect) params.set('redirect', redirect);
 		return `/checkout?${params}`;

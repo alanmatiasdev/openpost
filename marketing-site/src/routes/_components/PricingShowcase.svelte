@@ -1,8 +1,16 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import Check from '@lucide/svelte/icons/check';
+	import { purchaseTerms } from '@openpost/plan-catalog';
 	import { Button } from '$lib/components/ui/button';
-	import { appUrl, billingSettingsUrl, managedAccessSummary, plans } from '../_marketing';
+	import {
+		appUrl,
+		billingSettingsUrl,
+		managedAccessSummary,
+		managedCardRequirement,
+		managedPaymentExpectation,
+		plans
+	} from '../_marketing';
 	import AnimatedPrice from './AnimatedPrice.svelte';
 
 	interface Props {
@@ -23,9 +31,7 @@
 	}
 
 	function renewalPrice(plan: (typeof plans)[number]) {
-		return billingPeriod === 'annual'
-			? `${plan.annualPrice} per year`
-			: `${plan.price} per month`;
+		return billingPeriod === 'annual' ? `${plan.annualPrice} per year` : `${plan.price} per month`;
 	}
 
 	function externalHref(href: string) {
@@ -42,7 +48,7 @@
 <div class:pricing-compact={compact} class="pricing-showcase">
 	<div class="pricing-toolbar">
 		<div>
-			<p class="font-semibold">14 days free</p>
+			<p class="font-semibold">{purchaseTerms.trial_days} days free</p>
 			<p>{managedAccessSummary}</p>
 		</div>
 		<div class="billing-toggle" aria-label="Billing period">
@@ -68,10 +74,10 @@
 
 	<div class="purchase-summary" aria-label="Managed plan purchase terms">
 		<p>
-			<strong>Before checkout:</strong> a card is required for the 14-day trial. OpenPost shows
-			the renewal date and price before you start. Cancel or change the subscription from
-			<a class="focus-ring" {...externalHref(billingSettingsUrl)}>Billing settings</a> before
-			renewal.
+			<strong>Before checkout:</strong>
+			{managedPaymentExpectation} OpenPost shows the renewal date and price before you start. Cancel or
+			change the subscription from
+			<a class="focus-ring" {...externalHref(billingSettingsUrl)}>Billing settings</a> before renewal.
 		</p>
 		<p>
 			Paddle is the Merchant of Record and calculates applicable taxes at checkout.
@@ -115,7 +121,8 @@
 					Start {plan.name}
 				</Button>
 				<p id={`plan-${plan.id}-purchase-note`} class="purchase-note">
-					Card required. After 14 days: {renewalPrice(plan)} until canceled.
+					{managedCardRequirement}. After {purchaseTerms.trial_days} days: {renewalPrice(plan)} until
+					canceled.
 				</p>
 			</article>
 		{/each}

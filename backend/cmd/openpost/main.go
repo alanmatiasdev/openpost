@@ -189,6 +189,7 @@ func main() {
 		PublicURL:             cfg.PublicURL,
 		NativeCallbackURL:     cfg.OIDCNativeCallbackURL,
 		RegistrationsDisabled: cfg.DisableRegistrations,
+		RequireExplicitSignup: cfg.Edition == config.EditionCloud,
 		Environment: identity.EnvironmentProviderConfig{
 			Issuer:            cfg.OIDCIssuer,
 			ClientID:          cfg.OIDCClientID,
@@ -209,11 +210,12 @@ func main() {
 	apiTokenService := apitokens.NewService(db)
 	sessionService := sessions.NewService(db)
 	billingService := billing.NewService(db, cfg.PaddleWebhookSecret, billing.PaddleConfig{
-		APIKey:      cfg.PaddleAPIKey,
-		Environment: cfg.PaddleEnvironment,
-		ClientToken: cfg.PaddleClientToken,
-		AppURL:      cfg.FrontendURL,
-		ReturnURL:   cfg.PaddleCheckoutReturnURL,
+		APIKey:               cfg.PaddleAPIKey,
+		Environment:          cfg.PaddleEnvironment,
+		ClientToken:          cfg.PaddleClientToken,
+		AppURL:               cfg.FrontendURL,
+		ReturnURL:            cfg.PaddleCheckoutReturnURL,
+		PurchaseChoiceSecret: cfg.JWTSecret,
 		Plans: billing.DefaultPlanCatalog(
 			billing.PaddlePriceIDs{Monthly: cfg.PaddleStarterMonthlyPriceID, Annual: cfg.PaddleStarterAnnualPriceID},
 			billing.PaddlePriceIDs{Monthly: cfg.PaddleFounderMonthlyPriceID, Annual: cfg.PaddleFounderAnnualPriceID},
@@ -586,6 +588,7 @@ func main() {
 		EmailVerificationService:  emailVerificationService,
 		EmailChangeService:        emailChangeService,
 		EmailVerificationRequired: cfg.EmailVerificationRequired,
+		PurchaseChoiceRequired:    cfg.Edition == config.EditionCloud,
 		PublicProfilesEnabled:     cfg.PublicProfilesEnabled,
 		AccountPolicy: handlers.AccountPolicy{
 			Required:       cfg.LegalAcceptanceRequired,

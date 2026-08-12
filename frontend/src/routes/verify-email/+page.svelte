@@ -10,6 +10,15 @@
 	import { m } from '$lib/paraglide/messages';
 	import { safeSameOriginRedirect } from '$lib/redirects';
 	import { auth } from '$lib/stores/auth';
+	import { client } from '$lib/api/client';
+	import PurchaseChoiceSummary from '$lib/components/purchase-choice-summary.svelte';
+	import PurchaseChoiceError from '$lib/components/purchase-choice-error.svelte';
+	import {
+		copyPurchaseChoice,
+		resolvePurchaseChoice,
+		type PurchaseChoice,
+		type PurchaseChoiceErrorCode
+	} from '$lib/purchase-choice';
 	import LoaderIcon from '@lucide/svelte/icons/loader-2';
 	import MailCheckIcon from '@lucide/svelte/icons/mail-check';
 	import { onMount } from 'svelte';
@@ -23,18 +32,45 @@
 	let isVerifying = $state(false);
 	let isResending = $state(false);
 	let resendSeconds = $state(page.url.searchParams.get('delivery') === 'sent' ? 60 : 0);
+	let purchaseChoice = $state.raw<PurchaseChoice | null>(null);
+	let purchaseChoiceRequired = $state(false);
+	let purchaseContextLoading = $state(true);
+	let purchaseChoiceError = $state<PurchaseChoiceErrorCode | ''>('');
 
-	const canVerify = $derived(challengeID.length > 0 && /^\d{6}$/.test(code));
+	const canVerify = $derived(
+		challengeID.length > 0 &&
+			/^\d{6}$/.test(code) &&
+			!purchaseContextLoading &&
+			(!purchaseChoiceRequired || Boolean(purchaseChoice))
+	);
 	const description = $derived(
 		email ? m.auth_verify_email_description({ email }) : m.auth_verify_email_invalid()
 	);
 
 	onMount(() => {
+		void loadPurchaseContext();
 		const timer = window.setInterval(() => {
 			if (resendSeconds > 0) resendSeconds -= 1;
 		}, 1000);
 		return () => window.clearInterval(timer);
 	});
+
+	async function loadPurchaseContext() {
+		purchaseContextLoading = true;
+		const configuration = await client.GET('/auth/config');
+		purchaseChoiceRequired = configuration.data?.purchase_choice_required ?? false;
+		const hasPurchaseParams = ['plan', 'billing_period', 'purchase_choice'].some((key) =>
+			page.url.searchParams.has(key)
+		);
+		if (!purchaseChoiceRequired && !hasPurchaseParams) {
+			purchaseContextLoading = false;
+			return;
+		}
+		const result = await resolvePurchaseChoice(page.url.searchParams);
+		purchaseChoice = result.choice ?? null;
+		purchaseChoiceError = result.choice ? '' : (result.errorCode ?? 'unavailable');
+		purchaseContextLoading = false;
+	}
 
 	async function verify(event: SubmitEvent) {
 		event.preventDefault();
@@ -82,6 +118,7 @@
 			delivery: deliveryStatus,
 			redirect: safeSameOriginRedirect(page.url)
 		});
+		copyPurchaseChoice(page.url.searchParams, query);
 		await goto(resolve(`/verify-email?${query}` as '/'), {
 			replaceState: true,
 			keepFocus: true,
@@ -105,6 +142,21 @@
 			{m.auth_verify_email_back_to_login()}
 		</Button>
 	{:else}
+		{#if purchaseContextLoading}
+			<div
+				class="mb-4 flex items-center justify-center gap-2 rounded-lg border p-4 text-sm text-muted-foreground"
+				role="status"
+			>
+				<LoaderIcon class="size-4 animate-spin" aria-hidden="true" />
+				{m.purchase_choice_loading()}
+			</div>
+		{:else if purchaseChoice}
+			<div class="mb-4">
+				<PurchaseChoiceSummary choice={purchaseChoice} />
+			</div>
+		{:else if purchaseChoiceRequired && purchaseChoiceError}
+			<PurchaseChoiceError code={purchaseChoiceError} className="mb-4" />
+		{/if}
 		{#if deliveryStatus === 'failed'}
 			<InlineNotice tone="warning" message={m.auth_verify_email_delivery_failed()} class="mb-4" />
 		{/if}

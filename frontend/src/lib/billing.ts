@@ -1,8 +1,13 @@
-export const hostedPlanIDs = ['starter', 'founder', 'pro', 'team', 'agency'] as const;
-export const billingPeriods = ['monthly', 'annual'] as const;
+import {
+	billingPeriods,
+	hostedPlanDefinition,
+	hostedPlanIDs,
+	planCatalog,
+	type BillingPeriod,
+	type HostedPlanID
+} from '@openpost/plan-catalog';
 
-export type HostedPlanID = (typeof hostedPlanIDs)[number];
-export type BillingPeriod = (typeof billingPeriods)[number];
+export { billingPeriods, hostedPlanIDs, planCatalog, type BillingPeriod, type HostedPlanID };
 
 export interface HostedPlan {
 	id: HostedPlanID;
@@ -15,98 +20,70 @@ export interface HostedPlan {
 	limits: readonly string[];
 }
 
-export const hostedPlans: readonly HostedPlan[] = [
-	{
-		id: 'starter',
-		name: 'Starter',
-		description: 'Start a repeatable content habit for one company.',
-		monthlyPriceUSD: 15,
-		annualPriceUSD: 150,
-		bestFor: 'Your first content system',
-		limits: ['3 social accounts', '100 scheduled posts / month', '1 GB media']
-	},
-	{
-		id: 'founder',
-		name: 'Founder',
-		description: 'Run your company’s content across more channels.',
-		monthlyPriceUSD: 25,
-		annualPriceUSD: 250,
-		featured: true,
-		bestFor: 'Solo founders publishing consistently',
-		limits: ['6 social accounts', '500 scheduled posts / month', '5 GB media']
-	},
-	{
-		id: 'pro',
-		name: 'Pro',
-		description: 'A complete content operation for one founder.',
-		monthlyPriceUSD: 49,
-		annualPriceUSD: 490,
-		bestFor: 'Founder-led companies with high output',
-		limits: ['15 social accounts', '2,500 scheduled posts / month', '25 GB media']
-	},
-	{
-		id: 'team',
-		name: 'Team',
-		description: 'Shared planning and publishing for a small team.',
-		monthlyPriceUSD: 99,
-		annualPriceUSD: 990,
-		bestFor: 'Growing marketing teams',
-		limits: ['25 social accounts', '5,000 scheduled posts / month', '3 seats']
-	},
-	{
-		id: 'agency',
-		name: 'Agency',
-		description: 'Many clients, workspaces, and campaigns.',
-		monthlyPriceUSD: 199,
-		annualPriceUSD: 1990,
-		bestFor: 'Agencies and multi-brand operators',
-		limits: ['150 social accounts', '25,000 scheduled posts / month', '5 seats']
-	}
-] as const;
+export const hostedPlans: readonly HostedPlan[] = planCatalog.plans.map((plan) => ({
+	id: plan.id,
+	name: plan.name,
+	description: plan.description,
+	monthlyPriceUSD: plan.monthly_price_usd,
+	annualPriceUSD: plan.annual_price_usd,
+	featured: plan.featured,
+	bestFor: plan.best_for,
+	limits: [
+		`${plan.limits.social_accounts} social accounts`,
+		`${plan.limits.scheduled_posts_monthly.toLocaleString('en-US')} scheduled posts / month`,
+		`${plan.limits.media_bytes_stored / 1_000_000_000} GB media`,
+		...(plan.limits.team_members > 1 ? [`${plan.limits.team_members} seats`] : [])
+	]
+}));
 
 const hostedPlanIDSet = new Set<string>(hostedPlanIDs);
 
 export function normalizeHostedPlanID(planID: string | null | undefined): HostedPlanID | '' {
-	const normalized = planID?.toLowerCase() ?? '';
+	const normalized = planID?.trim().toLowerCase() ?? '';
 	return hostedPlanIDSet.has(normalized) ? (normalized as HostedPlanID) : '';
 }
 
-export function normalizeBillingPeriod(period: string | null | undefined): BillingPeriod {
-	return period?.toLowerCase() === 'annual' || period?.toLowerCase() === 'yearly'
-		? 'annual'
-		: 'monthly';
+export function normalizeBillingPeriod(period: string | null | undefined): BillingPeriod | '' {
+	const normalized = period?.trim().toLowerCase() ?? '';
+	return billingPeriods.includes(normalized as BillingPeriod) ? (normalized as BillingPeriod) : '';
 }
 
 export function hostedPlanFromSearchParams(searchParams: URLSearchParams): HostedPlanID | '' {
 	return normalizeHostedPlanID(searchParams.get('plan'));
 }
 
-export function billingPeriodFromSearchParams(searchParams: URLSearchParams): BillingPeriod {
+export function billingPeriodFromSearchParams(searchParams: URLSearchParams): BillingPeriod | '' {
 	return normalizeBillingPeriod(searchParams.get('billing_period'));
 }
 
-export function hostedPlanByID(planID: string | null | undefined): HostedPlan {
-	const normalized = normalizeHostedPlanID(planID) || 'founder';
-	return hostedPlans.find((plan) => plan.id === normalized) ?? hostedPlans[1];
+export function hostedPlanByID(planID: string | null | undefined): HostedPlan | undefined {
+	const normalized = normalizeHostedPlanID(planID);
+	if (!normalized || !hostedPlanDefinition(normalized)) return undefined;
+	return hostedPlans.find((plan) => plan.id === normalized);
 }
 
 export function planPriceUSD(plan: HostedPlan, period: BillingPeriod): number {
 	return period === 'annual' ? plan.annualPriceUSD : plan.monthlyPriceUSD;
 }
 
-export function onboardingPathForPlan(planID: string | null | undefined): string {
-	const normalized = normalizeHostedPlanID(planID);
-	return normalized ? `/onboarding?plan=${encodeURIComponent(normalized)}` : '/onboarding';
+export function onboardingPathForPlan(
+	planID: string | null | undefined,
+	period: string | null | undefined
+): string {
+	const normalizedPlan = normalizeHostedPlanID(planID);
+	const normalizedPeriod = normalizeBillingPeriod(period);
+	if (!normalizedPlan || !normalizedPeriod) return '';
+	const query = new URLSearchParams({ plan: normalizedPlan, billing_period: normalizedPeriod });
+	return `/onboarding?${query}`;
 }
 
 export function checkoutPathForPlan(
 	planID: string | null | undefined,
-	period: string | null | undefined = 'monthly'
+	period: string | null | undefined
 ): string {
-	const plan = normalizeHostedPlanID(planID) || 'founder';
-	const query = new URLSearchParams({
-		plan,
-		billing_period: normalizeBillingPeriod(period)
-	});
+	const normalizedPlan = normalizeHostedPlanID(planID);
+	const normalizedPeriod = normalizeBillingPeriod(period);
+	if (!normalizedPlan || !normalizedPeriod) return '';
+	const query = new URLSearchParams({ plan: normalizedPlan, billing_period: normalizedPeriod });
 	return `/checkout?${query}`;
 }
