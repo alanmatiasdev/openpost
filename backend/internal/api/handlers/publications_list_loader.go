@@ -4,10 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"sort"
-	"strings"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/openpost/backend/internal/models"
+	"github.com/openpost/backend/internal/services/providerwrite"
 	"github.com/uptrace/bun"
 )
 
@@ -64,7 +64,7 @@ func (h *PublicationHandler) loadPublicationResponses(
 	if err != nil {
 		return nil, err
 	}
-	deliveryByRendition, err := h.loadPublicationDeliveries(ctx, publicationIDs)
+	deliveryByRendition, err := providerwrite.LoadCurrentDeliveries(ctx, h.db, publicationIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -108,35 +108,6 @@ func (h *PublicationHandler) loadPublicationResponses(
 		body = append(body, response)
 	}
 	return body, nil
-}
-
-func (h *PublicationHandler) loadPublicationDeliveries(
-	ctx context.Context,
-	publicationIDs []string,
-) (map[string]models.ProviderDelivery, error) {
-	byRendition := make(map[string]models.ProviderDelivery)
-	if len(publicationIDs) == 0 {
-		return byRendition, nil
-	}
-	var deliveries []models.ProviderDelivery
-	err := h.db.NewSelect().Model(&deliveries).
-		Where("publication_id IN (?)", bun.List(publicationIDs)).
-		Order("rendition_id ASC", "current_attempt_number DESC").
-		Scan(ctx)
-	if err != nil {
-		message := strings.ToLower(err.Error())
-		if strings.Contains(message, "no such table: provider_deliveries") ||
-			(strings.Contains(message, "provider_deliveries") && strings.Contains(message, "does not exist")) {
-			return byRendition, nil
-		}
-		return nil, err
-	}
-	for _, delivery := range deliveries {
-		if _, exists := byRendition[delivery.RenditionID]; !exists {
-			byRendition[delivery.RenditionID] = delivery
-		}
-	}
-	return byRendition, nil
 }
 
 func (h *PublicationHandler) loadPublicationListSegments(

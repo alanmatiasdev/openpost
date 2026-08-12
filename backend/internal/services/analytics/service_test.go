@@ -14,34 +14,72 @@ import (
 )
 
 func TestOverviewPaginationKeepsAllResultsReachableInStableOrder(t *testing.T) {
-	publications := make([]PublicationOverview, 0, 121)
+	db := newAnalyticsTestDB(t)
+	ctx := context.Background()
+	account := seedAnalyticsAccount(t, db, "")
+	now := time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC)
+	publications := make([]models.Publication, 0, 121)
+	renditions := make([]models.Rendition, 0, 121)
+	states := make([]models.AnalyticsSyncState, 0, 122)
+	states = append(states, models.AnalyticsSyncState{
+		ID: stateID(subjectAccount, account.ID), WorkspaceID: account.WorkspaceID,
+		SubjectType: subjectAccount, SubjectID: account.ID, SocialAccountID: account.ID,
+		Platform: account.Platform, Status: string(platform.AnalyticsStatusOK),
+		MetricsJSON: `{"followers":100}`, LastSuccessAt: now,
+	})
 	for index := 0; index < 121; index++ {
-		publications = append(publications, PublicationOverview{
-			PublicationID: fmt.Sprintf("publication-%03d", index),
-			PublishedAt:   time.Date(2026, 8, 12, 12, 0, 0, 0, time.UTC).Add(-time.Duration(index) * time.Minute),
-			Engagement:    int64(index % 7),
-			Metrics:       platform.AnalyticsValues{platform.MetricViews: int64(index % 11)},
+		publicationID := fmt.Sprintf("publication-%03d", index)
+		renditionID := fmt.Sprintf("rendition-%03d", index)
+		publishedAt := now.Add(-time.Duration(index) * time.Minute)
+		publications = append(publications, models.Publication{
+			ID: publicationID, WorkspaceID: account.WorkspaceID, CreatedByID: "user-1",
+			Title: publicationID, Intent: "post", ContentProfile: "short_text", SourceContent: publicationID,
+			Status: models.PublicationStatusPublished, ActualRunAt: publishedAt, CreatedAt: publishedAt, UpdatedAt: publishedAt,
+		})
+		renditions = append(renditions, models.Rendition{
+			ID: renditionID, PublicationID: publicationID, SocialAccountID: account.ID,
+			Platform: account.Platform, Profile: "short_text", Status: models.RenditionStatusPublished,
+			ExternalID: renditionID, CreatedAt: publishedAt, UpdatedAt: publishedAt,
+		})
+		states = append(states, models.AnalyticsSyncState{
+			ID: stateID(subjectRendition, renditionID), WorkspaceID: account.WorkspaceID,
+			SubjectType: subjectRendition, SubjectID: renditionID, SocialAccountID: account.ID,
+			Platform: account.Platform, Status: string(platform.AnalyticsStatusOK),
+			MetricsJSON: `{"likes":1,"views":2}`, LastSuccessAt: now,
 		})
 	}
+	_, err := db.NewInsert().Model(&publications).Exec(ctx)
+	require.NoError(t, err)
+	_, err = db.NewInsert().Model(&renditions).Exec(ctx)
+	require.NoError(t, err)
+	_, err = db.NewInsert().Model(&states).Exec(ctx)
+	require.NoError(t, err)
+
+	service := NewService(db, staticTokenSource{})
+	service.now = func() time.Time { return now }
 	options := normalizeOverviewOptions(OverviewOptions{Sort: "newest", Limit: 50})
-	sortPublicationOverviews(publications, options.Sort)
-	first, cursor, err := paginatePublicationOverviews(publications, options, 30)
+	first, err := service.OverviewWithOptions(ctx, account.WorkspaceID, 30, options)
 	require.NoError(t, err)
-	require.Len(t, first, 50)
-	require.NotEmpty(t, cursor)
-	options.Cursor = cursor
-	second, cursor, err := paginatePublicationOverviews(publications, options, 30)
+	require.Len(t, first.Publications, 50)
+	require.Equal(t, 121, first.PublicationTotal)
+	require.Equal(t, 121, first.ContentTotal)
+	require.Equal(t, int64(121), first.Summary.Engagement.Value)
+	require.Equal(t, int64(242), first.Summary.Views.Value)
+	require.Equal(t, int64(100), first.Summary.Followers.Value)
+	require.NotEmpty(t, first.PublicationNextCursor)
+	options.Cursor = first.PublicationNextCursor
+	second, err := service.OverviewWithOptions(ctx, account.WorkspaceID, 30, options)
 	require.NoError(t, err)
-	require.Len(t, second, 50)
-	require.NotEqual(t, first[len(first)-1].PublicationID, second[0].PublicationID)
-	options.Cursor = cursor
-	third, cursor, err := paginatePublicationOverviews(publications, options, 30)
+	require.Len(t, second.Publications, 50)
+	require.NotEqual(t, first.Publications[len(first.Publications)-1].PublicationID, second.Publications[0].PublicationID)
+	options.Cursor = second.PublicationNextCursor
+	third, err := service.OverviewWithOptions(ctx, account.WorkspaceID, 30, options)
 	require.NoError(t, err)
-	require.Len(t, third, 21)
-	require.Empty(t, cursor)
+	require.Len(t, third.Publications, 21)
+	require.Empty(t, third.PublicationNextCursor)
 
 	seen := map[string]bool{}
-	for _, page := range [][]PublicationOverview{first, second, third} {
+	for _, page := range [][]PublicationOverview{first.Publications, second.Publications, third.Publications} {
 		for _, publication := range page {
 			require.False(t, seen[publication.PublicationID])
 			seen[publication.PublicationID] = true
@@ -51,38 +89,12 @@ func TestOverviewPaginationKeepsAllResultsReachableInStableOrder(t *testing.T) {
 }
 
 func TestOverviewCursorCannotCrossAccountOrSortScope(t *testing.T) {
-	publications := []PublicationOverview{{PublicationID: "one"}, {PublicationID: "two"}}
 	options := normalizeOverviewOptions(OverviewOptions{AccountID: "account-a", Sort: "newest", Limit: 1})
-	_, cursor, err := paginatePublicationOverviews(publications, options, 30)
-	require.NoError(t, err)
+	cursor := encodeOverviewNextCursor(0, 1, 2, options, 30)
 	options.AccountID = "account-b"
 	options.Cursor = cursor
-	_, _, err = paginatePublicationOverviews(publications, options, 30)
+	_, err := decodeOverviewOffset(options, 30, 2)
 	require.ErrorIs(t, err, ErrInvalidOverviewCursor)
-}
-
-func TestSelectedAccountSummaryUsesCompleteUnpagedContent(t *testing.T) {
-	content := make([]ContentOverview, 0, 75)
-	for index := 0; index < 75; index++ {
-		content = append(content, ContentOverview{
-			PublicationID: fmt.Sprintf("publication-%03d", index),
-			AccountID:     "account-a",
-			Metrics: platform.AnalyticsValues{
-				platform.MetricLikes: 1,
-				platform.MetricViews: 2,
-			},
-			Engagement: 1,
-		})
-	}
-	delta := int64(5)
-	summary := summarizeAnalyticsContent(content, []AccountOverview{{
-		ID: "account-a", Metrics: platform.AnalyticsValues{platform.MetricFollowers: 100}, FollowerDelta: &delta,
-	}}, "account-a")
-	require.Equal(t, 75, summary.Published)
-	require.Equal(t, int64(75), summary.Engagement.Value)
-	require.Equal(t, int64(150), summary.Views.Value)
-	require.Equal(t, int64(100), summary.Followers.Value)
-	require.Equal(t, 75, summary.Views.Measured)
 }
 
 type staticTokenSource struct{}

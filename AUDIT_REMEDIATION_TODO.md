@@ -12,7 +12,7 @@
 
 The older launch checklist remains useful for clean-install and provider verification. It is not duplicated here unless the newer audits found a concrete defect or incomplete experience.
 
-Inventory: **6 P0**, **32 P1**, **118 P2**, and **11 P3** task headings. By each heading’s primary checkbox, **94 are complete and 73 are open**. The open set is **10 P0/P1 correctness or prerequisite tasks**, **14 P2 Pinterest/GBP/provider-delivery tasks**, **20 other active P2 improvements**, and **29 explicitly deferred Reddit/Connector/n8n tasks**. Nested implementation/certification checkboxes, product decisions, preservation guardrails, and the external-verification queue are not separate task headings.
+Inventory: **6 P0**, **32 P1**, **118 P2**, and **11 P3** task headings. By each heading’s primary checkbox, **90 are complete and 77 are open**. The open set is **14 P0/P1 correctness or prerequisite tasks**, **14 P2 Pinterest/GBP/provider-delivery tasks**, **20 other active P2 improvements**, and **29 explicitly deferred Reddit/Connector/n8n tasks**. Nested implementation/certification checkboxes, product decisions, preservation guardrails, and the external-verification queue are not separate task headings.
 
 ## Reconciled state and next work
 
@@ -22,7 +22,7 @@ The remaining backlog is not one equally urgent queue:
 
 1. **Close the active privacy mismatch:** meme generation remains enabled by operator decision, so complete PRIV-001's processor, policy, retention, and disclosure evidence without treating runtime disablement as the remediation.
 2. **Make Pinterest and GBP the primary feature stream:** start their independent access/policy gates, finish only the shared-kernel gaps each slice needs, and add the first-party registration path. Build Pinterest under Trial, obtain Standard before public production, then deliver GBP under its approved execution mode. Reddit, Connector Protocol, and n8n are deferred lanes and do not block this work.
-3. **Finish the remaining acceptance and operator work:** MOBILE-001 still needs exact signed-artifact and device proof, OPS-004 needs an off-host recovery design and drill, and TRUST-001 needs operator evidence. Keep the completed BILL-002, COMM-002, ANALYTICS-001, and CLAIM-001 regression coverage green.
+3. **Finish the remaining acceptance and operator work:** MOBILE-001 still needs exact signed-artifact and device proof, OPS-004 needs an off-host recovery design and drill, and TRUST-001 needs operator evidence. Keep the completed BILL-002, COMM-002, and ANALYTICS-001 regression coverage green, and finish CLAIM-001's cross-site discovery gate.
 4. **Then improve the daily product:** ONB-001/SIGNUP-001, TEAM-002, COMM-001, BILL-003, STATE-001, and the remaining provider hardening.
 5. **Batch structural work deliberately:** ARCH-002/004/005, DATA-001–005, and BUILD-002 are valid debt, but should not interrupt the first safe Pinterest/GBP slice unless a dependency says otherwise.
 
@@ -201,8 +201,9 @@ PRIV-001 is an active managed-service disclosure/configuration mismatch. The oth
 
 ### CLAIM-001 — Establish provenance for customer and proof claims
 
-- [x] **Problem — Resolved:** the homepage used an unproved customer-logo rail, and generated persona cards were not plainly identified as fictional examples.
-- **Fix delivered:** removed the logo usage claim and its deployed asset entries; labeled the personas and workflows as illustrative and fictional; added a dated `marketing-claims.json` register plus a required validation/test gate that rejects missing evidence, owners, review dates, expired claims, and unregistered generated-persona presentation.
+- [ ] **Problem — Partial:** the unproved customer-logo rail is removed and generated persona cards are plainly identified as fictional examples. The dated claim register validates its registered entries, but its source discovery still covers only named files and phrases and therefore cannot yet prove that every differently worded logo, testimonial, count, team, milestone, backer, origin, or persona claim is registered.
+- **Fix delivered:** removed the logo usage claim and its deployed asset entries; labeled the personas and workflows as illustrative and fictional; added `marketing-claims.json` with owner, evidence, review-date, expiry, and generated-persona checks.
+- **Remaining:** inventory all public marketing routes and shared claim-producing components through one maintained discovery boundary, fail closed when a proof-bearing construct lacks a register entry, and add fixtures for differently worded claims outside the homepage.
 - **Done when:** every logo, testimonial, count, “used by,” team, milestone, backer, origin, or persona claim has current provenance and an update owner; expired or unproved claims are removed automatically or during a required review.
 - **Evidence:** `marketing-claims.json`, `scripts/marketing-claims.mjs`, `scripts/marketing-claims.test.mjs`, `marketing-site/src/routes/+page.svelte`, `marketing-site/src/routes/_components/CreatorStories.svelte`; marketing content/type checks pass.
 
@@ -266,22 +267,25 @@ PRIV-001 is an active managed-service disclosure/configuration mismatch. The oth
 
 ### PROV-TARGET-001 — Give every provider subdestination its own rendition
 
-- [x] **Problem — Resolved:** provider subdestinations are first-class rendition identities rather than a hidden loop behind one account result.
-- **Fix delivered:** migration 088 adds and backfills normalized `target_key`, replaces account-only uniqueness with publication + account + target, carries the target through REST/generated contracts, snapshots exact authorization identity, and makes upsert/retry/delete target-aware. Legacy Mastodon renditions retain their instance-qualified target.
+- [ ] **Problem — Partial:** migration and API work make `target_key` a first-class rendition identity, but a prefixed caller-provided target is not yet derived from or checked against the provider destination setting that controls the external write. Authorization and delivery can therefore name an identity that the adapter has not independently bound to its settings.
+- **Fix delivered:** migration 088 adds and backfills normalized `target_key`, replaces account-only uniqueness with publication + account + target, carries the target through REST/generated contracts, snapshots authorization identity, and makes upsert/retry/delete target-aware. Legacy Mastodon renditions retain their instance-qualified target.
+- **Remaining:** define the canonical target-bearing capability field, derive or validate the target identity from normalized destination settings, and pass the bound identity through adapter execution and reconciliation.
 - **Done when:** each target has its own authorization, external ID, delivery state, retry/manual-resolution, and partial-failure outcome; no hidden loop publishes to several boards/communities inside one rendition.
 - **Evidence:** `backend/internal/database/migrations/088_rendition_targets.sql`, `backend/internal/database/migrations/rendition_targets_test.go`, `backend/internal/api/handlers/publications.go`, `backend/internal/services/publicationauth/snapshot.go`, `backend/internal/api/handlers/publications_renditions_test.go`; focused SQLite/handler/authorization tests and generated contracts pass, with the Postgres migration regression enabled when its test URL is configured.
 
 ### PROV-DELIVERY-001 — Model provider delivery and reconciliation
 
-- [x] **Problem — Resolved:** each exact rendition target now has one canonical delivery projection backed by the durable write-attempt history.
+- [ ] **Problem — Partial:** each stored rendition target now has one canonical delivery projection backed by durable write-attempt history, and publication detail renders it. The composer paths named by PUB-003/COMPOSE-002 do not yet render the exact target outcome, so the full acceptance criterion is not complete.
 - **Fix delivered:** migration 089 adds queued, submitted, processing, provider-scheduled, live, rejected, ambiguous, and manual-resolution states with safe terminal reason, current attempt, external identity, and reconciliation times. Attempt creation and every state transition update the projection atomically; attempt creation time plus ID fence late updates from an older operation. Publication responses and detail UI expose the exact target outcome, and retries preserve target identity.
+- **Remaining:** finish PUB-003 and COMPOSE-002 so authoring, scheduling failure, activity, and publication history all show the same exact-target projection and recovery action.
 - **Done when:** queued, submitted, processing, provider-scheduled, live, rejected, ambiguous, and manual-resolution are distinct; PUB-003 and COMPOSE-002 render the exact target outcome; reconciliation cannot mutate another attempt.
 - **Evidence:** `backend/internal/database/migrations/089_provider_deliveries.sql`, `backend/internal/services/providerwrite/service.go`, `backend/internal/services/providerwrite/service_test.go`, `backend/internal/api/handlers/publications_list_loader.go`, `frontend/src/routes/publications/[id]/+page.svelte`, `e2e-app/provider-delivery.spec.ts`; projection, stale-attempt, migration, loader, generated-contract, Svelte autofixer, and frontend checks pass, plus exact-target browser proof at desktop, 390 px, and 320 px.
 
 ### PROV-CAP-001 — Expand capability and cross-field validation contracts
 
-- [x] **Problem — Resolved:** the shared capability schema and validator now cover structured content/media constraints, and cached provider rules cannot cross target-setting boundaries.
+- [ ] **Problem — Partial:** the shared schema and validator can express structured content/media constraints, and cached rules cannot cross target-setting boundaries. Production provider catalogues do not yet populate the new content, dimension, codec, frame-rate, audio, or local-time constraints, so real provider payloads and every transport have not demonstrated the required parity.
 - **Fix delivered:** added required/min/max/recommended title, body, description, and alt-text rules; hard dimension, codec, frame-rate, and audio rules; local date/time semantics; and media analysis inputs. The resolver cache identity includes account, target settings, profile, intent, media shape, locale, and region using canonical JSON hashing, and the composer sends destination alt text through the same contract.
+- **Remaining:** populate the applicable constraints from current certified provider contracts and add REST, browser, MCP, and CLI parity tests for representative real providers and cross-field failures.
 - **Done when:** backend, browser, REST, MCP, and CLI reject the same invalid payload; community/location/account rules cannot leak from a stale cache; unsupported schema combinations fail closed.
 - **Evidence:** `backend/internal/capabilities/capabilities.go`, `backend/internal/capabilities/capabilities_test.go`, `backend/internal/api/handlers/capability_resolver.go`, `backend/internal/api/handlers/capability_resolver_test.go`, `frontend/src/lib/components/compose-text-post.svelte`; focused backend tests, generated contracts, Svelte autofixer, and frontend checks pass.
 

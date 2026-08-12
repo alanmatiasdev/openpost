@@ -30,6 +30,7 @@ import (
 	"github.com/openpost/backend/internal/services/providerwrite"
 	"github.com/openpost/backend/internal/services/publicationauth"
 	"github.com/openpost/backend/internal/services/publicurl"
+	renditionservice "github.com/openpost/backend/internal/services/renditions"
 	repostservice "github.com/openpost/backend/internal/services/reposts"
 	"github.com/openpost/backend/internal/telemetry"
 	"github.com/uptrace/bun"
@@ -1099,48 +1100,30 @@ func (h *PublicationHandler) upsertRenditions(api huma.API) {
 			if len(input.Body.Renditions) == 0 {
 				return nil
 			}
-			accountIDs := renditionAccountIDs(input.Body.Renditions)
-			targets := make(map[string]struct{}, len(input.Body.Renditions))
+			targets := make(map[renditionservice.TargetIdentity]struct{}, len(input.Body.Renditions))
 			for _, renditionInput := range input.Body.Renditions {
 				account := accountMap[renditionInput.SocialAccountID]
 				targetKey, targetErr := normalizeRenditionTargetKey(account, renditionInput.TargetKey)
 				if targetErr != nil {
 					return huma.Error400BadRequest(targetErr.Error())
 				}
-				targets[renditionInput.SocialAccountID+"\x00"+targetKey] = struct{}{}
+				targets[renditionservice.NewTargetIdentity(renditionInput.SocialAccountID, targetKey)] = struct{}{}
 			}
-			var existing []models.Rendition
-			if err := tx.NewSelect().
-				Model(&existing).
-				Where("publication_id = ?", publication.ID).
-				Where("social_account_id IN (?)", bun.List(uniqueNonEmpty(accountIDs))).
-				Scan(txCtx); err != nil {
+			existingIDs, err := renditionservice.MatchingIDsTx(
+				txCtx,
+				tx,
+				publication.ID,
+				targets,
+				accountMap,
+			)
+			if err != nil {
 				return err
-			}
-			existingIDs := make([]string, 0, len(existing))
-			for _, rendition := range existing {
-				account := accountMap[rendition.SocialAccountID]
-				key := rendition.SocialAccountID + "\x00" + publicationauth.RenditionTargetKey(rendition, account)
-				if _, replace := targets[key]; replace {
-					existingIDs = append(existingIDs, rendition.ID)
-				}
 			}
 			if err := h.rejectReplyJobsForReplacedTargetsTx(txCtx, tx, publication.ID, existingIDs); err != nil {
 				return err
 			}
-			if len(existingIDs) > 0 {
-				if _, err := tx.NewDelete().
-					Model((*models.RenditionMedia)(nil)).
-					Where("rendition_id IN (?)", bun.List(existingIDs)).
-					Exec(txCtx); err != nil {
-					return err
-				}
-				if _, err := tx.NewDelete().
-					Model((*models.Rendition)(nil)).
-					Where("id IN (?)", bun.List(existingIDs)).
-					Exec(txCtx); err != nil {
-					return err
-				}
+			if err := renditionservice.DeleteRowsTx(txCtx, tx, existingIDs); err != nil {
+				return err
 			}
 			segments, segmentInputs, err := h.loadCanonicalSegmentInputsWithDB(txCtx, tx, publication.ID)
 			if err != nil {
@@ -1809,7 +1792,7 @@ func (h *PublicationHandler) insertRenditions(
 			Media: defaultMedia,
 		}}
 	}
-	seenTargets := make(map[string]struct{}, len(inputs))
+	seenTargets := make(map[renditionservice.TargetIdentity]struct{}, len(inputs))
 	for _, input := range inputs {
 		account, ok := accounts[input.SocialAccountID]
 		if !ok {
@@ -1819,7 +1802,7 @@ func (h *PublicationHandler) insertRenditions(
 		if err != nil {
 			return huma.Error400BadRequest(err.Error())
 		}
-		identity := input.SocialAccountID + "\x00" + targetKey
+		identity := renditionservice.NewTargetIdentity(input.SocialAccountID, targetKey)
 		if _, duplicate := seenTargets[identity]; duplicate {
 			return huma.Error400BadRequest("each social account target may appear only once")
 		}

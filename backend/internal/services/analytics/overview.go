@@ -3,7 +3,6 @@ package analytics
 import (
 	"context"
 	"database/sql"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,7 +12,6 @@ import (
 
 	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/platform"
-	"github.com/uptrace/bun"
 )
 
 type MetricSummary struct {
@@ -147,35 +145,43 @@ func (s *Service) OverviewWithOptions(ctx context.Context, workspaceID string, d
 	result.Accounts = s.buildAccountOverviews(activeAccounts, stateByID, history, &result.Summary)
 	result.FollowerSeries = combinedFollowerSeries(result.Accounts)
 
-	_, publicationByID, publicationIDs, err := s.loadOverviewPublications(ctx, workspaceID, start)
+	totals, err := s.loadOverviewContentTotals(ctx, workspaceID, start, options.AccountID)
 	if err != nil {
 		return Overview{}, err
 	}
-	if len(publicationIDs) == 0 {
+	result.PublicationTotal = totals.Publications
+	result.ContentTotal = totals.Content
+	result.Summary = mergeOverviewContentSummary(result.Summary, totals.Summary, result.Accounts, options.AccountID)
+	if totals.Publications == 0 {
 		return result, nil
 	}
-	renditions, err := s.loadOverviewRenditions(ctx, publicationIDs)
+	offset, err := decodeOverviewOffset(options, days, totals.Publications)
 	if err != nil {
 		return Overview{}, err
 	}
-	allContent := buildContentOverviews(renditions, publicationByID, accountByID, stateByID, now, &result.Summary)
-	filteredContent := filterAnalyticsContent(allContent, options.AccountID)
-	if options.AccountID != "" {
-		result.Summary = summarizeAnalyticsContent(filteredContent, result.Accounts, options.AccountID)
-	} else {
-		result.Summary.Published = countAnalyticsPublications(filteredContent)
-	}
-	allPublicationOverviews := buildPublicationOverviews(filteredContent)
-	sortPublicationOverviews(allPublicationOverviews, options.Sort)
-	page, nextCursor, err := paginatePublicationOverviews(allPublicationOverviews, options, days)
+	publicationIDs, err := s.loadOverviewPublicationPageIDs(ctx, workspaceID, start, options, offset)
 	if err != nil {
 		return Overview{}, err
 	}
-	result.PublicationTotal = len(allPublicationOverviews)
-	result.PublicationNextCursor = nextCursor
-	result.ContentTotal = len(filteredContent)
-	result.Publications = page
-	result.Content = flattenPublicationContent(page)
+	publicationByID, err := s.loadOverviewPublicationsByID(ctx, publicationIDs)
+	if err != nil {
+		return Overview{}, err
+	}
+	renditions, err := s.loadOverviewPageRenditions(ctx, publicationIDs, options.AccountID)
+	if err != nil {
+		return Overview{}, err
+	}
+	renditionStates, err := s.loadOverviewRenditionStates(ctx, workspaceID, renditions)
+	if err != nil {
+		return Overview{}, err
+	}
+	unusedSummary := Summary{}
+	content := buildContentOverviews(renditions, publicationByID, accountByID, renditionStates, now, &unusedSummary)
+	publicationOverviews := buildPublicationOverviews(content)
+	orderPublicationOverviews(publicationOverviews, publicationIDs)
+	result.Publications = publicationOverviews
+	result.Content = flattenPublicationContent(publicationOverviews)
+	result.PublicationNextCursor = encodeOverviewNextCursor(offset, len(publicationIDs), totals.Publications, options, days)
 	return result, nil
 }
 
@@ -236,6 +242,7 @@ func (s *Service) loadOverviewStates(
 	if err := s.db.NewSelect().
 		Model(&states).
 		Where("workspace_id = ?", workspaceID).
+		Where("subject_type = ?", subjectAccount).
 		Scan(ctx); err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return nil, time.Time{}, fmt.Errorf("list analytics overview states: %w", err)
 	}
@@ -246,6 +253,19 @@ func (s *Service) loadOverviewStates(
 		if state.LastSuccessAt.After(lastSyncedAt) {
 			lastSyncedAt = state.LastSuccessAt
 		}
+	}
+	var latest models.AnalyticsSyncState
+	if err := s.db.NewSelect().
+		Model(&latest).
+		Where("workspace_id = ?", workspaceID).
+		Where("last_success_at IS NOT NULL").
+		OrderExpr("last_success_at DESC").
+		Limit(1).
+		Scan(ctx); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, time.Time{}, fmt.Errorf("load analytics overview last sync: %w", err)
+	}
+	if latest.LastSuccessAt.After(lastSyncedAt) {
+		lastSyncedAt = latest.LastSuccessAt
 	}
 	return stateByID, lastSyncedAt, nil
 }
@@ -268,41 +288,6 @@ func (s *Service) loadAccountHistory(
 		history[snapshot.SocialAccountID] = append(history[snapshot.SocialAccountID], snapshot)
 	}
 	return history, nil
-}
-
-func (s *Service) loadOverviewPublications(
-	ctx context.Context,
-	workspaceID string,
-	start time.Time,
-) ([]models.Publication, map[string]models.Publication, []string, error) {
-	var publications []models.Publication
-	if err := s.db.NewSelect().
-		Model(&publications).
-		Where("workspace_id = ? AND status = ?", workspaceID, models.PublicationStatusPublished).
-		Where("COALESCE(actual_run_at, updated_at) >= ?", start).
-		OrderExpr("COALESCE(actual_run_at, updated_at) DESC").
-		Scan(ctx); err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return nil, nil, nil, fmt.Errorf("list analytics publications: %w", err)
-	}
-	publicationByID := make(map[string]models.Publication, len(publications))
-	publicationIDs := make([]string, 0, len(publications))
-	for _, publication := range publications {
-		publicationByID[publication.ID] = publication
-		publicationIDs = append(publicationIDs, publication.ID)
-	}
-	return publications, publicationByID, publicationIDs, nil
-}
-
-func (s *Service) loadOverviewRenditions(ctx context.Context, publicationIDs []string) ([]models.Rendition, error) {
-	var renditions []models.Rendition
-	if err := s.db.NewSelect().
-		Model(&renditions).
-		Where("publication_id IN (?)", bun.List(publicationIDs)).
-		Where("status = ?", models.RenditionStatusPublished).
-		Scan(ctx); err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return nil, fmt.Errorf("list analytics content: %w", err)
-	}
-	return renditions, nil
 }
 
 func (s *Service) buildAccountOverviews(
@@ -534,100 +519,11 @@ func buildPublicationOverviews(content []ContentOverview) []PublicationOverview 
 	return publications
 }
 
-func filterAnalyticsContent(content []ContentOverview, accountID string) []ContentOverview {
-	if accountID == "" {
-		return content
-	}
-	filtered := make([]ContentOverview, 0, len(content))
-	for _, item := range content {
-		if item.AccountID == accountID {
-			filtered = append(filtered, item)
-		}
-	}
-	return filtered
-}
-
-func summarizeAnalyticsContent(content []ContentOverview, accounts []AccountOverview, accountID string) Summary {
-	summary := Summary{}
-	for _, account := range accounts {
-		if account.ID != accountID {
-			continue
-		}
-		if followers, ok := account.Metrics[platform.MetricFollowers]; ok {
-			summary.Followers = MetricSummary{Value: followers, Delta: account.FollowerDelta, Measured: 1}
-		}
-		break
-	}
-	for _, item := range content {
-		summary.Engagement.Value += item.Engagement
-		if platform.HasEngagementMetric(item.Metrics) {
-			summary.Engagement.Measured++
-		}
-		addMeasuredSummary(&summary.Views, item.Metrics, platform.MetricViews)
-		addMeasuredSummary(&summary.Impressions, item.Metrics, platform.MetricImpressions)
-		addMeasuredSummary(&summary.Reach, item.Metrics, platform.MetricReach)
-	}
-	summary.Published = countAnalyticsPublications(content)
-	return summary
-}
-
-func countAnalyticsPublications(content []ContentOverview) int {
-	ids := make(map[string]struct{}, len(content))
-	for _, item := range content {
-		ids[item.PublicationID] = struct{}{}
-	}
-	return len(ids)
-}
-
-func sortPublicationOverviews(publications []PublicationOverview, sortMode string) {
-	sort.SliceStable(publications, func(i, j int) bool {
-		left, right := publications[i], publications[j]
-		switch sortMode {
-		case "newest":
-			if !left.PublishedAt.Equal(right.PublishedAt) {
-				return left.PublishedAt.After(right.PublishedAt)
-			}
-		case "views":
-			if left.Metrics[platform.MetricViews] != right.Metrics[platform.MetricViews] {
-				return left.Metrics[platform.MetricViews] > right.Metrics[platform.MetricViews]
-			}
-		default:
-			if left.Engagement != right.Engagement {
-				return left.Engagement > right.Engagement
-			}
-		}
-		return left.PublicationID < right.PublicationID
-	})
-}
-
 type overviewCursor struct {
 	Offset    int    `json:"offset"`
 	AccountID string `json:"account_id"`
 	Sort      string `json:"sort"`
 	Days      int    `json:"days"`
-}
-
-func paginatePublicationOverviews(publications []PublicationOverview, options OverviewOptions, days int) ([]PublicationOverview, string, error) {
-	offset := 0
-	if options.Cursor != "" {
-		decoded, err := base64.RawURLEncoding.DecodeString(options.Cursor)
-		if err != nil {
-			return nil, "", ErrInvalidOverviewCursor
-		}
-		var cursor overviewCursor
-		if json.Unmarshal(decoded, &cursor) != nil || cursor.Offset < 0 || cursor.Offset > len(publications) ||
-			cursor.AccountID != options.AccountID || cursor.Sort != options.Sort || cursor.Days != days {
-			return nil, "", ErrInvalidOverviewCursor
-		}
-		offset = cursor.Offset
-	}
-	end := min(offset+options.Limit, len(publications))
-	page := append([]PublicationOverview(nil), publications[offset:end]...)
-	if end >= len(publications) {
-		return page, "", nil
-	}
-	next, _ := json.Marshal(overviewCursor{Offset: end, AccountID: options.AccountID, Sort: options.Sort, Days: days})
-	return page, base64.RawURLEncoding.EncodeToString(next), nil
 }
 
 func flattenPublicationContent(publications []PublicationOverview) []ContentOverview {

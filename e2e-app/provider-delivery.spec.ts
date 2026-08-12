@@ -4,7 +4,7 @@ import { authenticatePage, createWorkspace, registerUser } from "./helpers";
 test("publication delivery keeps exact provider target state across desktop and phone widths", async ({
   page,
   request,
-}) => {
+}, testInfo) => {
   const consoleErrors: string[] = [];
   page.on("console", (message) => {
     if (message.type() === "error") consoleErrors.push(message.text());
@@ -99,6 +99,10 @@ test("publication delivery keeps exact provider target state across desktop and 
     await page.goto("/publications/provider-delivery-1");
     await expect(page.getByText("Processing at provider")).toBeVisible();
     await expect(page.getByText("Target pinterest:board:launch")).toBeVisible();
+    await page.screenshot({
+      path: testInfo.outputPath(`provider-delivery-${viewport.width}.png`),
+      fullPage: true,
+    });
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth > window.innerWidth,
     );

@@ -4,7 +4,7 @@ import { authenticatePage, createWorkspace, registerUser } from "./helpers";
 test("analytics keeps provider metrics distinct across desktop and phone layouts", async ({
   page,
   request,
-}) => {
+}, testInfo) => {
   const consoleErrors: string[] = [];
   const unauthorizedResponses: string[] = [];
   const requestedRanges: string[] = [];
@@ -343,6 +343,10 @@ test("analytics keeps provider metrics distinct across desktop and phone layouts
   await expect(
     page.getByText("@video: Reconnect this account to grant: user.info.stats."),
   ).toBeVisible();
+  await page.screenshot({
+    path: testInfo.outputPath("analytics-1280.png"),
+    fullPage: true,
+  });
   await page.getByRole("button", { name: /7 days/ }).click();
   await expect.poll(() => requestedRanges.at(-1)).toBe("7");
 
@@ -383,8 +387,14 @@ test("analytics keeps provider metrics distinct across desktop and phone layouts
       page.getByRole("link", { name: /Product walkthrough/ }),
     ).toBeVisible();
     await expect(
-      page.locator('section[aria-labelledby="analytics-content-heading"] table'),
+      page.locator(
+        'section[aria-labelledby="analytics-content-heading"] table',
+      ),
     ).toBeHidden();
+    await page.screenshot({
+      path: testInfo.outputPath(`analytics-${viewport.width}.png`),
+      fullPage: true,
+    });
   }
   await page.getByRole("button", { name: "More" }).click();
   await expect(
