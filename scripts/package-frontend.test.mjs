@@ -1,15 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import {
-  chmod,
-  mkdir,
-  mkdtemp,
-  readFile,
-  readdir,
-  rm,
-  writeFile,
-} from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -55,11 +47,7 @@ async function interruptPackaging({ root, source, destination, phase }) {
 
   await new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
-      reject(
-        new Error(
-          `Timed out waiting for interrupted packager (${stdout}${stderr})`,
-        ),
-      );
+      reject(new Error(`Timed out waiting for interrupted packager (${stdout}${stderr})`));
     }, 10_000);
     const poll = setInterval(() => {
       if (!stdout.includes(`paused:${phase}`)) return;
@@ -70,11 +58,7 @@ async function interruptPackaging({ root, source, destination, phase }) {
     child.once("exit", (code, signal) => {
       clearInterval(poll);
       clearTimeout(timeout);
-      reject(
-        new Error(
-          `Packager exited before its pause point (${code ?? signal}): ${stderr}`,
-        ),
-      );
+      reject(new Error(`Packager exited before its pause point (${code ?? signal}): ${stderr}`));
     });
   });
 
@@ -87,33 +71,23 @@ async function assertNoTransactionDebris(destination) {
   const destinationParent = path.dirname(destination);
   const prefix = `.${path.basename(destination)}-package`;
   assert.deepEqual(
-    (await readdir(destinationParent)).filter((entry) =>
-      entry.startsWith(prefix),
-    ),
+    (await readdir(destinationParent)).filter((entry) => entry.startsWith(prefix)),
     [],
   );
 }
 
 async function fixture() {
-  const root = await mkdtemp(
-    path.join(os.tmpdir(), "openpost-package-frontend-"),
-  );
+  const root = await mkdtemp(path.join(os.tmpdir(), "openpost-package-frontend-"));
   const source = path.join(root, "frontend-build");
   const destination = path.join(root, "backend", "public");
   await mkdir(path.join(source, "assets"), { recursive: true });
   await Promise.all([
-    writeFile(
-      path.join(source, "index.html"),
-      "<!doctype html><h1>OpenPost</h1>\n",
-    ),
+    writeFile(path.join(source, "index.html"), "<!doctype html><h1>OpenPost</h1>\n"),
     writeFile(
       path.join(source, "app-routes.json"),
       `${JSON.stringify({ schema_version: 1, routes: ["/", "/settings"] })}\n`,
     ),
-    writeFile(
-      path.join(source, "assets", "app.js"),
-      "console.log('openpost');\n",
-    ),
+    writeFile(path.join(source, "assets", "app.js"), "console.log('openpost');\n"),
   ]);
   await chmod(path.join(source, "assets", "app.js"), 0o755);
   return { root, source, destination };
@@ -130,10 +104,7 @@ test("atomically mirrors the complete artifact and removes stale files", async (
     destinationDirectory: destination,
   });
 
-  assert.deepEqual(
-    await artifactManifest(destination),
-    await artifactManifest(source),
-  );
+  assert.deepEqual(await artifactManifest(destination), await artifactManifest(source));
   await assert.rejects(readFile(path.join(destination, "stale.js")), /ENOENT/);
   const executable = (await artifactManifest(destination)).find(
     (entry) => entry.path === "assets/app.js",
@@ -182,10 +153,7 @@ test("restores the validated previous artifact after interruption during the swa
     destinationDirectory: destination,
   });
   const previous = await artifactManifest(destination);
-  await writeFile(
-    path.join(source, "assets", "app.js"),
-    "console.log('replacement');\n",
-  );
+  await writeFile(path.join(source, "assets", "app.js"), "console.log('replacement');\n");
 
   await interruptPackaging({
     root,
@@ -213,10 +181,7 @@ test("keeps the validated replacement after interruption following installation"
     sourceDirectory: source,
     destinationDirectory: destination,
   });
-  await writeFile(
-    path.join(source, "assets", "app.js"),
-    "console.log('replacement');\n",
-  );
+  await writeFile(path.join(source, "assets", "app.js"), "console.log('replacement');\n");
   const replacement = await artifactManifest(source);
 
   await interruptPackaging({

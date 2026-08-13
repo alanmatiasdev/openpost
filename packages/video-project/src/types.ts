@@ -59,7 +59,12 @@ export interface VideoSource {
 }
 
 export type EasingName =
-  "hold" | "linear" | "ease-in" | "ease-out" | "ease-in-out" | "focus-spring";
+  | "hold"
+  | "linear"
+  | "ease-in"
+  | "ease-out"
+  | "ease-in-out"
+  | "focus-spring";
 
 export interface NumericKeyframe {
   time_us: number;
@@ -176,10 +181,7 @@ export interface BaseTimelineItem {
   duration_us: number;
   visible: boolean;
   variant_overrides?: Partial<
-    Record<
-      VariantID,
-      { visible?: boolean; presentation?: VideoPresentationOverride }
-    >
+    Record<VariantID, { visible?: boolean; presentation?: VideoPresentationOverride }>
   >;
 }
 
@@ -217,14 +219,7 @@ export interface TextStyle {
 }
 
 export interface ShapeStyle {
-  kind:
-    | "rectangle"
-    | "ellipse"
-    | "arrow"
-    | "highlight"
-    | "click-pulse"
-    | "redaction"
-    | "progress";
+  kind: "rectangle" | "ellipse" | "arrow" | "highlight" | "click-pulse" | "redaction" | "progress";
   fill: string;
   stroke: string;
   stroke_width: number;

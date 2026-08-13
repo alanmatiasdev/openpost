@@ -20,12 +20,12 @@ This page lists the most common core and provider variables. Use [Environment Va
 
 ## Meme generator
 
-| Variable                          | Default                    | Purpose                                                                                           |
-| --------------------------------- | -------------------------- | ------------------------------------------------------------------------------------------------- |
+| Variable                          | Default                    | Purpose                                                                                          |
+| --------------------------------- | -------------------------- | ------------------------------------------------------------------------------------------------ |
 | `OPENPOST_MEME_GENERATOR_ENABLED` | `false`                    | Enable authenticated Memegen template search, previews, rendering, and saved generation recipes. |
-| `OPENPOST_MEMEGEN_URL`            | `https://api.memegen.link` | Hosted or operator-controlled Memegen API base URL.                                               |
-| `OPENPOST_MEMEGEN_API_KEY`        | empty                      | Optional server-only Memegen key; supports `_FILE`.                                               |
-| `OPENPOST_MEME_GENERATION_MODEL`  | `openai/gpt-5.6-luna`      | OpenRouter model used only for optional template and caption suggestions.                         |
+| `OPENPOST_MEMEGEN_URL`            | `https://api.memegen.link` | Hosted or operator-controlled Memegen API base URL.                                              |
+| `OPENPOST_MEMEGEN_API_KEY`        | empty                      | Optional server-only Memegen key; supports `_FILE`.                                              |
+| `OPENPOST_MEME_GENERATION_MODEL`  | `openai/gpt-5.6-luna`      | OpenRouter model used only for optional template and caption suggestions.                        |
 
 ## OpenPost Video Editor and stock media
 
@@ -133,7 +133,7 @@ Most variables loaded through the main backend config loader can also be loaded 
 | `OPENPOST_PROVIDER_USAGE_RETENTION_DAYS`        | Immutable provider-cost event retention                                                           |
 | `OPENPOST_PROVIDER_APPS`                        | Structured provider app registry JSON; entries override matching encrypted database rows          |
 | `OPENPOST_DISABLED_PROVIDERS`                   | Emergency provider deny-list; overrides readiness-ledger controls after restart                   |
-| `OPENPOST_PROVIDER_CERTIFICATION_ENFORCED`      | Cloud-only strict provider evidence gate; defaults to `false`                                      |
+| `OPENPOST_PROVIDER_CERTIFICATION_ENFORCED`      | Cloud-only strict provider evidence gate; defaults to `false`                                     |
 | `X_CLIENT_ID`                                   | X client ID                                                                                       |
 | `X_CLIENT_SECRET`                               | X client secret                                                                                   |
 | `X_REDIRECT_URI`                                | X callback override                                                                               |

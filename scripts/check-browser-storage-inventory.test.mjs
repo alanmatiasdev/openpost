@@ -96,9 +96,7 @@ test("does not treat an unrelated exported literal as a local function binding",
   ];
   const { discoveries } = checkBrowserStorageInventory(sources, []);
   assert.deepEqual(
-    discoveries.map(
-      ({ identifier_kind, identifier }) => `${identifier_kind}:${identifier}`,
-    ),
+    discoveries.map(({ identifier_kind, identifier }) => `${identifier_kind}:${identifier}`),
     ["prefix:openpost:handoff:"],
   );
 });

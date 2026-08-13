@@ -6,9 +6,7 @@ import { prepareReleaseChangelog } from "../packages/changelog/src/index.js";
 const tag = process.argv[2];
 const releaseDate = process.argv[3] || new Date().toISOString().slice(0, 10);
 if (!tag) {
-  process.stderr.write(
-    "usage: bun scripts/prepare-release-changelog.mjs <tag> [YYYY-MM-DD]\n",
-  );
+  process.stderr.write("usage: bun scripts/prepare-release-changelog.mjs <tag> [YYYY-MM-DD]\n");
   process.exit(1);
 }
 

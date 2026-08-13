@@ -10,14 +10,8 @@ async function expectMinimumTouchTarget(locator: Locator, name: string) {
   await expect(locator, `${name} should be visible`).toBeVisible();
   const box = await locator.boundingBox();
   expect(box, `${name} should have a measurable touch target`).not.toBeNull();
-  expect(
-    box!.width,
-    `${name} should be at least 44px wide`,
-  ).toBeGreaterThanOrEqual(44);
-  expect(
-    box!.height,
-    `${name} should be at least 44px tall`,
-  ).toBeGreaterThanOrEqual(44);
+  expect(box!.width, `${name} should be at least 44px wide`).toBeGreaterThanOrEqual(44);
+  expect(box!.height, `${name} should be at least 44px tall`).toBeGreaterThanOrEqual(44);
 }
 
 test("mobile shell and composer expose touch-first controls without overflow", async ({
@@ -26,10 +20,7 @@ test("mobile shell and composer expose touch-first controls without overflow", a
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const unique = Date.now().toString(36);
-  const auth = await registerUser(
-    request,
-    `mobile-shell-${unique}@example.com`,
-  );
+  const auth = await registerUser(request, `mobile-shell-${unique}@example.com`);
   const firstWorkspace = `Mobile UX ${unique}`;
   const secondWorkspace = `Client UX ${unique}`;
   await createWorkspace(request, auth.token, firstWorkspace);
@@ -86,9 +77,7 @@ test("mobile shell and composer expose touch-first controls without overflow", a
             intents: ["post"],
             media_shapes: ["text"],
             settings: [languageSetting],
-            setting_groups: [
-              { key: "distribution", settings: [languageSetting] },
-            ],
+            setting_groups: [{ key: "distribution", settings: [languageSetting] }],
             compatible: true,
             active_constraints: {},
             issues: [],
@@ -105,9 +94,7 @@ test("mobile shell and composer expose touch-first controls without overflow", a
   await page.goto("/");
   await expect(page.getByTestId("text-thread-composer-shell")).toBeVisible();
 
-  await expect(
-    page.getByRole("button", { name: "Toggle Sidebar" }),
-  ).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Toggle Sidebar" })).toHaveCount(0);
   await expect(page.getByText("OpenPost", { exact: true })).toHaveCount(0);
   const more = page
     .getByRole("navigation", { name: "Primary navigation" })
@@ -116,30 +103,25 @@ test("mobile shell and composer expose touch-first controls without overflow", a
   await more.click();
   await expect(page.getByRole("menuitem", { name: "Accounts" })).toBeVisible();
   await expect(page.getByRole("menuitem", { name: "Settings" })).toBeVisible();
-  await expect(
-    page.getByRole("menuitem", { name: "Accounts" }),
-  ).toHaveAttribute("href", "/settings?tab=accounts");
-  await expect(
-    page.getByRole("menuitem", { name: "Settings" }),
-  ).toHaveAttribute("href", "/settings");
-  await expect(
-    page.getByRole("menuitem", { name: /Appearance/ }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("menuitemcheckbox", { name: "Interface sounds" }),
-  ).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Accounts" })).toHaveAttribute(
+    "href",
+    "/settings?tab=accounts",
+  );
+  await expect(page.getByRole("menuitem", { name: "Settings" })).toHaveAttribute(
+    "href",
+    "/settings",
+  );
+  await expect(page.getByRole("menuitem", { name: /Appearance/ })).toBeVisible();
+  await expect(page.getByRole("menuitemcheckbox", { name: "Interface sounds" })).toBeVisible();
   await expect(page.getByRole("menuitem", { name: /Language/ })).toBeVisible();
   const workspaceNames = [firstWorkspace, secondWorkspace];
   const workspaceTrigger = page.getByRole("menuitem", {
     name: new RegExp(`(?:${workspaceNames.join("|")}).*Switch workspace`),
   });
   const workspaceTriggerText = await workspaceTrigger.innerText();
-  const currentWorkspace = workspaceNames.find((name) =>
-    workspaceTriggerText.includes(name),
-  );
+  const currentWorkspace = workspaceNames.find((name) => workspaceTriggerText.includes(name));
   expect(currentWorkspace).toBeTruthy();
-  const nextWorkspace =
-    currentWorkspace === firstWorkspace ? secondWorkspace : firstWorkspace;
+  const nextWorkspace = currentWorkspace === firstWorkspace ? secondWorkspace : firstWorkspace;
   await expect(workspaceTrigger).toHaveAttribute("aria-expanded", "false");
   await workspaceTrigger.click();
   await expect(workspaceTrigger).toHaveAttribute("aria-expanded", "true");
@@ -149,9 +131,9 @@ test("mobile shell and composer expose touch-first controls without overflow", a
     .getByRole("menuitem", { name: new RegExp(nextWorkspace) })
     .click();
   await more.click();
-  await expect(
-    page.getByRole("menuitem", { name: new RegExp(nextWorkspace) }),
-  ).toContainText(nextWorkspace);
+  await expect(page.getByRole("menuitem", { name: new RegExp(nextWorkspace) })).toContainText(
+    nextWorkspace,
+  );
   await page.keyboard.press("Escape");
 
   const controls = page.getByTestId("mobile-composer-controls");
@@ -177,12 +159,8 @@ test("mobile shell and composer expose touch-first controls without overflow", a
   await expect(page.getByTestId("composer-account-loading")).toHaveCount(0);
   const actions = controls.getByTestId("composer-action-controls");
   await expect(actions).toBeVisible();
-  await expect(
-    actions.getByRole("button", { name: "Publish Now", exact: true }),
-  ).toHaveCount(1);
-  await expect(
-    actions.getByRole("button", { name: "Schedule", exact: true }),
-  ).toHaveCount(1);
+  await expect(actions.getByRole("button", { name: "Publish Now", exact: true })).toHaveCount(1);
+  await expect(actions.getByRole("button", { name: "Schedule", exact: true })).toHaveCount(1);
   await expect(
     actions.getByRole("button", {
       name: "Schedule to next free slot",
@@ -194,9 +172,7 @@ test("mobile shell and composer expose touch-first controls without overflow", a
     page.getByRole("button", { name: "Add media" }).first(),
     "media picker button",
   );
-  await expect(
-    controls.getByRole("button", { name: "Save draft", exact: true }),
-  ).toHaveCount(0);
+  await expect(controls.getByRole("button", { name: "Save draft", exact: true })).toHaveCount(0);
   await expectMinimumTouchTarget(
     actions.getByRole("button", { name: "Schedule", exact: true }),
     "schedule button",
@@ -210,16 +186,12 @@ test("mobile shell and composer expose touch-first controls without overflow", a
   );
 
   await expect(
-    page.locator(
-      '[data-testid="mobile-rendition-all"], [data-testid="mobile-rendition-account"]',
-    ),
+    page.locator('[data-testid="mobile-rendition-all"], [data-testid="mobile-rendition-account"]'),
   ).toHaveCount(0);
 
   const accountControl = page.getByTestId("composer-account-control");
   await expectMinimumTouchTarget(accountControl, "account control");
-  await expect(accountControl.getByTestId("composer-account-icon")).toHaveCount(
-    1,
-  );
+  await expect(accountControl.getByTestId("composer-account-icon")).toHaveCount(1);
   await accountControl.click();
   const accountRow = page.getByTestId("composer-account-row");
   await expect(accountRow).toHaveCount(1);
@@ -232,9 +204,7 @@ test("mobile shell and composer expose touch-first controls without overflow", a
   );
   await page.getByRole("button", { name: "Platform settings" }).click();
   const settingsDialog = page.getByRole("dialog");
-  await expect(
-    settingsDialog.getByRole("heading", { name: "Bluesky settings" }),
-  ).toBeVisible();
+  await expect(settingsDialog.getByRole("heading", { name: "Bluesky settings" })).toBeVisible();
   const settingsBox = await settingsDialog.boundingBox();
   expect(settingsBox?.height).toBeGreaterThanOrEqual(800);
   await settingsDialog.getByRole("button", { name: "Done" }).click();
@@ -242,11 +212,7 @@ test("mobile shell and composer expose touch-first controls without overflow", a
   await page.setViewportSize({ width: 320, height: 568 });
   await expect(controls).toBeVisible();
   await expect
-    .poll(() =>
-      page.evaluate(
-        () => document.documentElement.scrollWidth <= window.innerWidth,
-      ),
-    )
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
     .toBe(true);
   const compactOverflow = await controls.evaluate((element) => ({
     clientWidth: element.clientWidth,
@@ -255,9 +221,7 @@ test("mobile shell and composer expose touch-first controls without overflow", a
       (child) => child.getBoundingClientRect().right,
     ),
   }));
-  expect(compactOverflow.scrollWidth).toBeLessThanOrEqual(
-    compactOverflow.clientWidth,
-  );
+  expect(compactOverflow.scrollWidth).toBeLessThanOrEqual(compactOverflow.clientWidth);
   expect(Math.max(...compactOverflow.childRightEdges)).toBeLessThanOrEqual(320);
   await expectMinimumTouchTarget(accountControl, "compact account control");
   await expectMinimumTouchTarget(
@@ -269,16 +233,14 @@ test("mobile shell and composer expose touch-first controls without overflow", a
   const desktopControls = page.getByTestId("desktop-composer-controls");
   await expect(desktopControls).toBeVisible();
   await expect(page.getByTestId("composer-account-control")).toHaveCount(1);
-  const desktopActions = desktopControls.getByTestId(
-    "composer-action-controls",
-  );
+  const desktopActions = desktopControls.getByTestId("composer-action-controls");
   await expect(desktopActions).toBeVisible();
   await expect(
     desktopActions.getByRole("button", { name: "Publish Now", exact: true }),
   ).toHaveCount(1);
-  await expect(
-    desktopActions.getByRole("button", { name: "Schedule", exact: true }),
-  ).toHaveCount(1);
+  await expect(desktopActions.getByRole("button", { name: "Schedule", exact: true })).toHaveCount(
+    1,
+  );
   await expect(
     desktopControls.getByRole("button", {
       name: "Schedule to next free slot",
@@ -292,36 +254,29 @@ test("attached media controls stay touch accessible on mobile and desktop", asyn
   request,
 }) => {
   const unique = Date.now().toString(36);
-  const auth = await registerUser(
-    request,
-    `mobile-media-${unique}@example.com`,
-  );
-  const workspace = (await createWorkspace(
-    request,
-    auth.token,
-    "Mobile Media E2E",
-  )) as { id: string };
+  const auth = await registerUser(request, `mobile-media-${unique}@example.com`);
+  const workspace = (await createWorkspace(request, auth.token, "Mobile Media E2E")) as {
+    id: string;
+  };
   await authenticatePage(page, auth.token);
 
   await page.goto("/media");
   await page.getByRole("button", { name: "Add media" }).first().click();
   const uploadDialog = page.getByRole("dialog", { name: "Upload media" });
-  await uploadDialog.locator('input[type="file"]').first().setInputFiles({
-    name: "mobile-actions.png",
-    mimeType: "image/png",
-    buffer: Buffer.concat([tinyPNG, Buffer.from(unique)]),
-  });
   await uploadDialog
-    .getByRole("button", { name: "Upload 1 file", exact: true })
-    .click();
+    .locator('input[type="file"]')
+    .first()
+    .setInputFiles({
+      name: "mobile-actions.png",
+      mimeType: "image/png",
+      buffer: Buffer.concat([tinyPNG, Buffer.from(unique)]),
+    });
+  await uploadDialog.getByRole("button", { name: "Upload 1 file", exact: true }).click();
   await expect(uploadDialog).toHaveCount(0, { timeout: 15_000 });
 
-  const mediaResponse = await request.get(
-    `/api/v1/media?workspace_id=${workspace.id}`,
-    {
-      headers: { Authorization: `Bearer ${auth.token}` },
-    },
-  );
+  const mediaResponse = await request.get(`/api/v1/media?workspace_id=${workspace.id}`, {
+    headers: { Authorization: `Bearer ${auth.token}` },
+  });
   expect(mediaResponse.ok()).toBeTruthy();
   const media = (await mediaResponse.json()) as {
     media: Array<{ id: string }>;

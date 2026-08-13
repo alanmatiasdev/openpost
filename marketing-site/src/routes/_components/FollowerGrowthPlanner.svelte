@@ -7,7 +7,21 @@
 		{ id: 'consistent', label: 'Consistent', rate: 0.06 },
 		{ id: 'momentum', label: 'Momentum', rate: 0.1 }
 	] as const;
-	const months = ['Now', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug'];
+	const months = [
+		'Now',
+		'Sep',
+		'Oct',
+		'Nov',
+		'Dec',
+		'Jan',
+		'Feb',
+		'Mar',
+		'Apr',
+		'May',
+		'Jun',
+		'Jul',
+		'Aug'
+	];
 	const startFollowers = 1200;
 	let activeScenario = $state<(typeof scenarios)[number]['id']>('consistent');
 	const scenario = $derived(scenarios.find((item) => item.id === activeScenario) ?? scenarios[1]);
@@ -50,7 +64,9 @@
 					</Button>
 				{/each}
 			</div>
-			<p class="model-note">Planning model only. Your results depend on your audience and content.</p>
+			<p class="model-note">
+				Planning model only. Your results depend on your audience and content.
+			</p>
 		</div>
 
 		<div class="chart-card">
@@ -80,7 +96,7 @@
 						<line class="grid-line" x1="70" {y} x2="930" y2={y} />
 					{/each}
 					<polygon class="growth-area" points={areaPoints} />
-					<polyline class="growth-line" points={points} />
+					<polyline class="growth-line" {points} />
 					{#each values as value, index (`${scenario.id}-${index}`)}
 						{@const x = 70 + (index / (values.length - 1)) * 860}
 						{@const y = 330 - (value / maxValue) * 260}
@@ -104,7 +120,11 @@
 		padding-block: clamp(5rem, 9vw, 8.5rem);
 		border-block: 1px solid var(--border);
 		background:
-			radial-gradient(circle at 84% 50%, color-mix(in oklch, var(--primary) 10%, transparent), transparent 30rem),
+			radial-gradient(
+				circle at 84% 50%,
+				color-mix(in oklch, var(--primary) 10%, transparent),
+				transparent 30rem
+			),
 			color-mix(in oklch, var(--muted) 24%, var(--background));
 	}
 

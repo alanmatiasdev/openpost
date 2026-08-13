@@ -40,10 +40,7 @@
       "type": "array",
       "maxItems": 2000,
       "items": {
-        "oneOf": [
-          { "$ref": "#/$defs/primaryClip" },
-          { "$ref": "#/$defs/primaryGap" }
-        ]
+        "oneOf": [{ "$ref": "#/$defs/primaryClip" }, { "$ref": "#/$defs/primaryGap" }]
       }
     },
     "visual_tracks": {
@@ -233,14 +230,7 @@
         "time_us": { "type": "integer", "minimum": 0 },
         "value": { "type": "number", "minimum": -1000000, "maximum": 1000000 },
         "easing": {
-          "enum": [
-            "hold",
-            "linear",
-            "ease-in",
-            "ease-out",
-            "ease-in-out",
-            "focus-spring"
-          ]
+          "enum": ["hold", "linear", "ease-in", "ease-out", "ease-in-out", "focus-spring"]
         }
       }
     },
@@ -352,13 +342,7 @@
     "clipAudio": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "muted",
-        "gain_db",
-        "fade_in_us",
-        "fade_out_us",
-        "duck_others"
-      ],
+      "required": ["muted", "gain_db", "fade_in_us", "fade_out_us", "duck_others"],
       "properties": {
         "muted": { "type": "boolean" },
         "gain_db": { "type": "number", "minimum": -96, "maximum": 24 },
@@ -374,15 +358,7 @@
       "required": ["type", "value"],
       "properties": {
         "type": {
-          "enum": [
-            "exposure",
-            "contrast",
-            "saturation",
-            "temperature",
-            "tint",
-            "blur",
-            "vignette"
-          ]
+          "enum": ["exposure", "contrast", "saturation", "temperature", "tint", "blur", "vignette"]
         },
         "value": { "type": "number", "minimum": -100, "maximum": 100 },
         "keyframes": { "$ref": "#/$defs/keyframeArray" }
@@ -394,26 +370,11 @@
       "required": ["type", "duration_us", "easing"],
       "properties": {
         "type": {
-          "enum": [
-            "cut",
-            "cross-dissolve",
-            "dip-black",
-            "dip-white",
-            "slide",
-            "push",
-            "zoom-blur"
-          ]
+          "enum": ["cut", "cross-dissolve", "dip-black", "dip-white", "slide", "push", "zoom-blur"]
         },
         "duration_us": { "type": "integer", "minimum": 0 },
         "easing": {
-          "enum": [
-            "hold",
-            "linear",
-            "ease-in",
-            "ease-out",
-            "ease-in-out",
-            "focus-spring"
-          ]
+          "enum": ["hold", "linear", "ease-in", "ease-out", "ease-in-out", "focus-spring"]
         }
       }
     },
@@ -491,14 +452,7 @@
     "visualItem": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "id",
-        "type",
-        "timeline_start_us",
-        "duration_us",
-        "visible",
-        "presentation"
-      ],
+      "required": ["id", "type", "timeline_start_us", "duration_us", "visible", "presentation"],
       "properties": {
         "id": { "type": "string", "minLength": 1, "maxLength": 200 },
         "type": { "enum": ["media", "camera", "text", "shape", "annotation"] },
@@ -700,14 +654,7 @@
     "variant": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "id",
-        "name",
-        "width",
-        "height",
-        "safe_area",
-        "background_color"
-      ],
+      "required": ["id", "name", "width", "height", "safe_area", "background_color"],
       "properties": {
         "id": { "enum": ["portrait", "feed-portrait", "square", "landscape"] },
         "name": { "type": "string", "minLength": 1, "maxLength": 200 },

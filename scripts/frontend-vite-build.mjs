@@ -8,8 +8,7 @@ export const frontendBuildHeapMiB = 8192;
 // The editor graph needs more than Node's roughly 4 GiB default. This is an
 // upper bound, not a reservation: retain user flags and larger heap choices,
 // but append the repository minimum after a smaller cap so Node applies it.
-const heapOptionPattern =
-  /(?:^|\s)--max(?:-|_)old(?:-|_)space(?:-|_)size(?:=|\s+)(\d+)(?=\s|$)/g;
+const heapOptionPattern = /(?:^|\s)--max(?:-|_)old(?:-|_)space(?:-|_)size(?:=|\s+)(\d+)(?=\s|$)/g;
 
 export function frontendBuildNodeOptions(nodeOptions = "") {
   const existing = nodeOptions.trim();
@@ -17,9 +16,7 @@ export function frontendBuildNodeOptions(nodeOptions = "") {
   const effectiveHeapMiB = Number(heapOptions.at(-1)?.[1] ?? 0);
   if (effectiveHeapMiB >= frontendBuildHeapMiB) return existing;
 
-  return [existing, `--max-old-space-size=${frontendBuildHeapMiB}`]
-    .filter(Boolean)
-    .join(" ");
+  return [existing, `--max-old-space-size=${frontendBuildHeapMiB}`].filter(Boolean).join(" ");
 }
 
 export function parseFrontendBuildArguments(args) {
@@ -28,19 +25,12 @@ export function parseFrontendBuildArguments(args) {
     return { appMode: "capacitor" };
   }
 
-  throw new Error(
-    `Unsupported frontend build arguments: ${args.join(" ") || "(none)"}`,
-  );
+  throw new Error(`Unsupported frontend build arguments: ${args.join(" ") || "(none)"}`);
 }
 
 export function runFrontendViteBuild({ appMode } = {}) {
-  const repositoryRoot = path.resolve(
-    path.dirname(fileURLToPath(import.meta.url)),
-    "..",
-  );
-  const requireFromFrontend = createRequire(
-    path.join(repositoryRoot, "frontend/package.json"),
-  );
+  const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+  const requireFromFrontend = createRequire(path.join(repositoryRoot, "frontend/package.json"));
   const vitePackage = requireFromFrontend.resolve("vite/package.json");
   const environment = {
     ...process.env,
@@ -66,8 +56,7 @@ export function runFrontendViteBuild({ appMode } = {}) {
 }
 
 const isEntrypoint =
-  process.argv[1] &&
-  pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url;
+  process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url;
 if (isEntrypoint) {
   runFrontendViteBuild(parseFrontendBuildArguments(process.argv.slice(2)));
 }

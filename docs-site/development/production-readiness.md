@@ -74,8 +74,8 @@ Analytics, comments, and inbox reads use optional adapter interfaces. They do no
 ## Verification order
 
 1. Update behavior, generated contracts, tests, and public docs together.
-2. Run `devenv shell -- doctor` before broad or release work.
-3. Run focused checks while editing, then `devenv shell -- verify`.
+2. Run `bun run doctor` before broad or release work.
+3. Run scoped root checks while editing, then `bun run verify`.
 4. For visible changes, run the related app, docs, or marketing browser suite at desktop and phone widths.
 5. Before a public campaign, complete the [Launch Verification Matrix](/providers/launch-matrix) for each account and format.
 6. For a production release, follow [Releases and Versioning](/development/releases) and verify the workflow, release, deployed revision, and public readiness.

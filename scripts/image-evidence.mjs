@@ -50,11 +50,7 @@ function validateImageEvidence(evidence) {
   if (!digestPattern.test(evidence.digest ?? "")) {
     problems.push("digest must be a sha256 registry digest");
   }
-  for (const field of [
-    "release_manifest_sha256",
-    "sbom_sha256",
-    "vulnerability_report_sha256",
-  ]) {
+  for (const field of ["release_manifest_sha256", "sbom_sha256", "vulnerability_report_sha256"]) {
     if (!sha256Pattern.test(evidence[field] ?? "")) {
       problems.push(`${field} must be a sha256 file hash`);
     }
@@ -166,9 +162,6 @@ async function main() {
   throw new Error("usage: image-evidence.mjs <create|verify> [options]");
 }
 
-if (
-  process.argv[1] &&
-  import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href
-) {
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
   await main();
 }

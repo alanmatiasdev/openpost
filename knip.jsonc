@@ -34,10 +34,7 @@
       "vite": false,
     },
     "marketing-site": {
-      "entry": [
-        "src/routes/**/+*.{js,ts,svelte}",
-        "functions/**/*.{js,jsx,ts,tsx}",
-      ],
+      "entry": ["src/routes/**/+*.{js,ts,svelte}", "functions/**/*.{js,jsx,ts,tsx}"],
       "project": [
         "src/**/*.{js,ts,svelte}",
         "functions/**/*.{js,jsx,ts,tsx}",

@@ -1103,7 +1103,7 @@ func TestPrimaryPublicationQueueRevalidatesLifecycleAtTransactionBoundary(t *tes
 		Exec(ctx)
 	require.NoError(t, err)
 
-	_, err = (&PublicationHandler{db: db}).queuePublicationNow(ctx, stalePublication.ID)
+	err = (&PublicationHandler{db: db}).queuePublicationNow(ctx, stalePublication.ID)
 	require.ErrorIs(t, err, errPublicationNotEditable)
 	jobCount, err := db.NewSelect().Model((*models.Job)(nil)).Count(ctx)
 	require.NoError(t, err)
@@ -1176,7 +1176,7 @@ func TestPrimaryPublicationQueueRejectsProcessingJobWithoutMutation(t *testing.T
 	_, err = db.NewInsert().Model(&jobs).Exec(ctx)
 	require.NoError(t, err)
 
-	_, err = (&PublicationHandler{db: db}).queuePublicationNow(ctx, "publication-1")
+	err = (&PublicationHandler{db: db}).queuePublicationNow(ctx, "publication-1")
 	require.ErrorIs(t, err, errPublicationAlreadyProcessing)
 
 	var storedJobs []models.Job

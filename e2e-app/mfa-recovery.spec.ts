@@ -1,11 +1,6 @@
 import { createHmac } from "node:crypto";
 import { expect, test, type Page } from "@playwright/test";
-import {
-  authenticatePage,
-  createWorkspace,
-  password,
-  registerUser,
-} from "./helpers";
+import { authenticatePage, createWorkspace, password, registerUser } from "./helpers";
 
 const base32Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 
@@ -27,9 +22,7 @@ function decodeBase32(value: string): Buffer {
 function currentTOTP(secret: string): string {
   const counter = Buffer.alloc(8);
   counter.writeBigUInt64BE(BigInt(Math.floor(Date.now() / 30_000)));
-  const digest = createHmac("sha1", decodeBase32(secret))
-    .update(counter)
-    .digest();
+  const digest = createHmac("sha1", decodeBase32(secret)).update(counter).digest();
   const offset = digest.at(-1)! & 0x0f;
   const value =
     (((digest[offset]! & 0x7f) << 24) |
@@ -45,9 +38,7 @@ async function beginPasswordMFA(page: Page, email: string) {
   await page.getByLabel("Email", { exact: true }).fill(email);
   await page.getByLabel("Password", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Sign In" }).click();
-  await expect(
-    page.getByRole("heading", { name: "Verify your identity" }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Verify your identity" })).toBeVisible();
 }
 
 async function openRecoveryCodeForm(page: Page) {
@@ -69,10 +60,7 @@ test("recovery codes gate authenticator setup, replace exactly once, and recover
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   const consoleErrors: string[] = [];
   page.on("console", (message) => {
-    if (
-      message.type() === "error" &&
-      !message.text().includes("status of 401")
-    ) {
+    if (message.type() === "error" && !message.text().includes("status of 401")) {
       consoleErrors.push(`${page.url()}: ${message.text()}`);
     }
   });
@@ -94,9 +82,7 @@ test("recovery codes gate authenticator setup, replace exactly once, and recover
     "Save the one-time recovery codes somewhere separate from your authenticator.",
   );
   await authenticator.getByLabel("Current password").fill(password);
-  await authenticator
-    .getByRole("button", { name: "Start authenticator setup" })
-    .click();
+  await authenticator.getByRole("button", { name: "Start authenticator setup" }).click();
 
   await expect(
     authenticator.getByText(
@@ -115,23 +101,16 @@ test("recovery codes gate authenticator setup, replace exactly once, and recover
   await authenticator.getByRole("button", { name: "Copy setup key" }).click();
   await expect(authenticator.getByText("Setup key copied.")).toBeVisible();
   const clipboardMatches = await page.evaluate(
-    async (expectedValue) =>
-      (await navigator.clipboard.readText()) === expectedValue,
+    async (expectedValue) => (await navigator.clipboard.readText()) === expectedValue,
     manualKey,
   );
   expect(clipboardMatches).toBe(true);
 
   const initialCode = currentTOTP(manualKey);
   const rejectedCode = `${initialCode.startsWith("0") ? "1" : "0"}${initialCode.slice(1)}`;
-  await authenticator
-    .getByLabel("Enter the 6-digit code from your app")
-    .fill(rejectedCode);
-  await authenticator
-    .getByRole("button", { name: "Verify authenticator app" })
-    .click();
-  await expect(
-    authenticator.getByText("invalid authenticator code"),
-  ).toBeVisible();
+  await authenticator.getByLabel("Enter the 6-digit code from your app").fill(rejectedCode);
+  await authenticator.getByRole("button", { name: "Verify authenticator app" }).click();
+  await expect(authenticator.getByText("invalid authenticator code")).toBeVisible();
   await expect(qrCode).toBeVisible();
   expect((await manualKeyInput.inputValue()) === manualKey).toBe(true);
   // The deliberately rejected code produces the browser's expected 400 resource log.
@@ -140,9 +119,7 @@ test("recovery codes gate authenticator setup, replace exactly once, and recover
   await authenticator
     .getByLabel("Enter the 6-digit code from your app")
     .fill(currentTOTP(manualKey));
-  await authenticator
-    .getByRole("button", { name: "Verify authenticator app" })
-    .click();
+  await authenticator.getByRole("button", { name: "Verify authenticator app" }).click();
 
   const recoveryPanel = authenticator.getByTestId("recovery-code-panel");
   await expect(recoveryPanel).toBeVisible();
@@ -159,12 +136,8 @@ test("recovery codes gate authenticator setup, replace exactly once, and recover
   });
   await expect(enableAuthenticator).toBeDisabled();
   const download = page.waitForEvent("download");
-  await recoveryPanel
-    .getByRole("button", { name: "Download recovery codes" })
-    .click();
-  expect((await download).suggestedFilename()).toBe(
-    "openpost-recovery-codes.txt",
-  );
+  await recoveryPanel.getByRole("button", { name: "Download recovery codes" }).click();
+  expect((await download).suggestedFilename()).toBe("openpost-recovery-codes.txt");
   await expect(enableAuthenticator).toBeDisabled();
 
   const savedAcknowledgement = recoveryPanel.getByRole("checkbox", {
@@ -176,9 +149,7 @@ test("recovery codes gate authenticator setup, replace exactly once, and recover
   await expect(enableAuthenticator).toBeEnabled();
   await enableAuthenticator.click();
   await expect(recoveryPanel).toHaveCount(0);
-  await expect(
-    authenticator.getByText("Authenticator app is enabled."),
-  ).toBeVisible();
+  await expect(authenticator.getByText("Authenticator app is enabled.")).toBeVisible();
   await expect(
     authenticator.getByText(
       "Your authenticator app is now an enabled sign-in factor. Password sign-ins require its six-digit code or a one-time recovery code.",
@@ -192,21 +163,15 @@ test("recovery codes gate authenticator setup, replace exactly once, and recover
   await expect(checkRemaining).toBeDisabled();
   await managementPassword.fill(password);
   await checkRemaining.click();
-  await expect(
-    authenticator.getByText("10 recovery codes remain."),
-  ).toBeVisible();
+  await expect(authenticator.getByText("10 recovery codes remain.")).toBeVisible();
 
   await managementPassword.fill(password);
-  await authenticator
-    .getByRole("button", { name: "Generate new recovery codes" })
-    .click();
+  await authenticator.getByRole("button", { name: "Generate new recovery codes" }).click();
   const replacementPanel = authenticator.getByTestId("recovery-code-panel");
   await expect(replacementPanel).toContainText(
     "Your existing codes remain valid until you confirm that this new set is saved.",
   );
-  const replacementCodes = await replacementPanel
-    .locator("code")
-    .allInnerTexts();
+  const replacementCodes = await replacementPanel.locator("code").allInnerTexts();
   expect(replacementCodes).toHaveLength(10);
   expect(replacementCodes).not.toEqual(initialCodes);
   await replacementPanel
@@ -214,18 +179,14 @@ test("recovery codes gate authenticator setup, replace exactly once, and recover
       name: "I saved these recovery codes in a safe place.",
     })
     .check();
-  await replacementPanel
-    .getByRole("button", { name: "Replace recovery codes" })
-    .click();
+  await replacementPanel.getByRole("button", { name: "Replace recovery codes" }).click();
   await expect(replacementPanel).toHaveCount(0);
 
   const horizontalOverflow = await page.evaluate(() => ({
     clientWidth: document.documentElement.clientWidth,
     scrollWidth: document.documentElement.scrollWidth,
   }));
-  expect(horizontalOverflow.scrollWidth).toBeLessThanOrEqual(
-    horizontalOverflow.clientWidth,
-  );
+  expect(horizontalOverflow.scrollWidth).toBeLessThanOrEqual(horizontalOverflow.clientWidth);
 
   await clearSession(page);
   await beginPasswordMFA(page, email);
@@ -259,9 +220,7 @@ test("recovery codes gate authenticator setup, replace exactly once, and recover
     name: "Disable the authenticator app?",
   });
   await expect(disableDialog).toBeVisible();
-  await disableDialog
-    .getByRole("button", { name: "Disable authenticator app" })
-    .click();
+  await disableDialog.getByRole("button", { name: "Disable authenticator app" }).click();
   await expect(
     enabledAuthenticator.getByRole("button", {
       name: "Start authenticator setup",
@@ -274,8 +233,6 @@ test("recovery codes gate authenticator setup, replace exactly once, and recover
   await page.getByLabel("Password", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Sign In" }).click();
   await expect(page).toHaveURL(/\/$/u);
-  await expect(
-    page.getByRole("heading", { name: "Verify your identity" }),
-  ).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Verify your identity" })).toHaveCount(0);
   expect(consoleErrors).toEqual([]);
 });

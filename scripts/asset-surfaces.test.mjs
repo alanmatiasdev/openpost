@@ -23,44 +23,25 @@ test("finds deployed asset URLs without treating source imports as copies", () =
     "const docsLogo = `${docsBase}assets/brand/logo-docs.svg`;",
   ].join("\n");
 
-  assert.deepEqual(directAssetReferences(source), [
-    "brand/icon.svg",
-    "brand/logo-docs.svg",
-  ]);
+  assert.deepEqual(directAssetReferences(source), ["brand/icon.svg", "brand/logo-docs.svg"]);
 });
 
-test(
-  "every copied asset exists and has a source reference",
-  { timeout: 15_000 },
-  async () => {
-    assert.deepEqual(await validateAssetSurfaceManifest(), []);
-  },
-);
+test("every copied asset exists and has a source reference", { timeout: 15_000 }, async () => {
+  assert.deepEqual(await validateAssetSurfaceManifest(), []);
+});
 
-test(
-  "an undeclared reference fails the surface check",
-  { timeout: 15_000 },
-  async () => {
-    const manifest = {
-      ...assetSurfaceManifest,
-      frontend: ["brand/logo.svg"],
-    };
-    const problems = await validateAssetSurfaceManifest(
-      manifest,
-      repositoryRoot,
-      ["frontend"],
-    );
-    assert.ok(
-      problems.includes("frontend references undeclared asset: brand/icon.svg"),
-    );
-  },
-);
+test("an undeclared reference fails the surface check", { timeout: 15_000 }, async () => {
+  const manifest = {
+    ...assetSurfaceManifest,
+    frontend: ["brand/logo.svg"],
+  };
+  const problems = await validateAssetSurfaceManifest(manifest, repositoryRoot, ["frontend"]);
+  assert.ok(problems.includes("frontend references undeclared asset: brand/icon.svg"));
+});
 
 test("a package build validates only its selected asset surface", async () => {
   assert.deepEqual(
-    await validateAssetSurfaceManifest(assetSurfaceManifest, repositoryRoot, [
-      "frontend",
-    ]),
+    await validateAssetSurfaceManifest(assetSurfaceManifest, repositoryRoot, ["frontend"]),
     [],
   );
 });
@@ -81,10 +62,7 @@ test("staged outputs reject missing and undeclared files", async () => {
         },
         { verifyContents: false },
       ),
-      [
-        "frontend target is missing missing.svg",
-        "frontend target has undeclared file extra.svg",
-      ],
+      ["frontend target is missing missing.svg", "frontend target has undeclared file extra.svg"],
     );
   } finally {
     await rm(target, { recursive: true, force: true });
@@ -119,10 +97,7 @@ test("asset directory moves fall back safely across filesystems", async () => {
       },
     });
     assert.equal(existsSync(source), false);
-    assert.equal(
-      await readFile(path.join(destination, "asset.txt"), "utf8"),
-      "asset contents",
-    );
+    assert.equal(await readFile(path.join(destination, "asset.txt"), "utf8"), "asset contents");
   } finally {
     await rm(parent, { recursive: true, force: true });
   }

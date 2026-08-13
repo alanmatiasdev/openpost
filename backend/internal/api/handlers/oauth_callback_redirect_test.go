@@ -56,7 +56,7 @@ func TestOAuthCallbackAccountSelectionRedirectsExposeFinalLocationHeader(t *test
 		t.Run(providerName, func(t *testing.T) {
 			t.Parallel()
 
-			e, state, _ := newOAuthCallbackRedirectTestServer(t, providerName, &selectionTestAdapter{}, "https://app.openpost.test")
+			e, state, _ := newOAuthCallbackRedirectTestServer(t, providerName, &selectionTestAdapter{})
 
 			rec := oauthSelectionRequest(t, e, http.MethodGet, "/api/v1/accounts/"+providerName+"/callback?code=provider-code&state="+url.QueryEscape(state), nil, false)
 			result := rec.Result()
@@ -77,7 +77,7 @@ func TestOAuthCallbackAccountSelectionRedirectsExposeFinalLocationHeader(t *test
 func TestOAuthCallbackDirectSuccessRedirectsToScopedComposer(t *testing.T) {
 	t.Parallel()
 
-	e, state, _ := newOAuthCallbackRedirectTestServer(t, "threads", &directOAuthTestAdapter{}, "https://app.openpost.test")
+	e, state, _ := newOAuthCallbackRedirectTestServer(t, "threads", &directOAuthTestAdapter{})
 	rec := oauthSelectionRequest(t, e, http.MethodGet, "/api/v1/accounts/threads/callback?code=provider-code&state="+url.QueryEscape(state), nil, false)
 	result := rec.Result()
 	t.Cleanup(func() { _ = result.Body.Close() })
@@ -96,7 +96,7 @@ func TestOAuthCallbackDirectSuccessRedirectsToScopedComposer(t *testing.T) {
 func TestOAuthCallbackReauthorizationOfInactiveDestinationReturnsToAccounts(t *testing.T) {
 	t.Parallel()
 
-	e, state, db := newOAuthCallbackRedirectTestServer(t, "threads", &directOAuthTestAdapter{}, "https://app.openpost.test")
+	e, state, db := newOAuthCallbackRedirectTestServer(t, "threads", &directOAuthTestAdapter{})
 	_, err := db.NewInsert().Model(&models.SocialAccount{
 		ID:             "inactive-destination",
 		WorkspaceID:    "ws-1",
@@ -141,7 +141,7 @@ func TestOAuthCallbackErrorRedirectExposesFinalLocationHeader(t *testing.T) {
 func TestOAuthCallbackProviderCancellationPreservesWorkspaceScope(t *testing.T) {
 	t.Parallel()
 
-	e, state, _ := newOAuthCallbackRedirectTestServer(t, "threads", &directOAuthTestAdapter{}, "https://app.openpost.test")
+	e, state, _ := newOAuthCallbackRedirectTestServer(t, "threads", &directOAuthTestAdapter{})
 	rec := oauthSelectionRequest(t, e, http.MethodGet, "/api/v1/accounts/threads/callback?error=access_denied&state="+url.QueryEscape(state), nil, false)
 	result := rec.Result()
 	t.Cleanup(func() { _ = result.Body.Close() })
@@ -179,7 +179,7 @@ func TestXOAuthCallbackDenialPreservesWorkspaceScope(t *testing.T) {
 	require.Equal(t, "https://app.openpost.test/settings?oauth_status=cancelled&tab=accounts&workspace_id=ws-1", result.Header.Get("Location"))
 }
 
-func newOAuthCallbackRedirectTestServer(t *testing.T, providerName string, adapter platform.Adapter, frontendURL string) (*echo.Echo, string, *bun.DB) {
+func newOAuthCallbackRedirectTestServer(t *testing.T, providerName string, adapter platform.Adapter) (*echo.Echo, string, *bun.DB) {
 	t.Helper()
 
 	ctx := context.Background()
@@ -201,7 +201,7 @@ func newOAuthCallbackRedirectTestServer(t *testing.T, providerName string, adapt
 	api := humaecho.NewWithGroup(e, e.Group("/api/v1"), huma.DefaultConfig("Test", "1.0.0"))
 	handler := NewOAuthHandler(db, crypto.NewTokenEncryptor("0123456789abcdef0123456789abcdef"), map[string]platform.Adapter{
 		providerName: adapter,
-	}, testAuthenticator{}, false, frontendURL)
+	}, testAuthenticator{}, false, "https://app.openpost.test")
 	handler.SetProviderReadiness(oauthConnectionReadiness(
 		t,
 		&oauthReadinessLedger{control: providerreadiness.RuntimeControlStateEnabled},

@@ -26,9 +26,7 @@ export async function registerUser(request: APIRequestContext, email: string) {
     data: { email, username: registrationUsername(email), password },
   });
   if (!register.ok()) {
-    throw new Error(
-      `registration failed with ${register.status()}: ${await register.text()}`,
-    );
+    throw new Error(`registration failed with ${register.status()}: ${await register.text()}`);
   }
 
   const auth = await register.json();
@@ -36,11 +34,7 @@ export async function registerUser(request: APIRequestContext, email: string) {
   return auth as { token: string };
 }
 
-export async function createWorkspace(
-  request: APIRequestContext,
-  token: string,
-  name: string,
-) {
+export async function createWorkspace(request: APIRequestContext, token: string, name: string) {
   const workspace = await request.post("/api/v1/workspaces", {
     headers: { Authorization: `Bearer ${token}` },
     data: { name },

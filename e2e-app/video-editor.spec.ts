@@ -6,9 +6,7 @@ import { join } from "node:path";
 import sharp from "sharp";
 import { authenticatePage, createWorkspace, registerUser } from "./helpers";
 
-test("legacy Video Studio URLs redirect to the OpenPost Video Editor", async ({
-  page,
-}) => {
+test("legacy Video Studio URLs redirect to the OpenPost Video Editor", async ({ page }) => {
   await page.goto("/video-studio/new?legacy-route=1");
   await expect(page).toHaveURL(/\/video-editor\/new\?legacy-route=1$/);
 });
@@ -21,11 +19,9 @@ async function syntheticVideo(page: Page): Promise<Buffer> {
     const context = canvas.getContext("2d");
     if (!context) throw new Error("Canvas is unavailable");
     const stream = canvas.captureStream(30);
-    const mimeType = [
-      "video/webm;codecs=vp9",
-      "video/webm;codecs=vp8",
-      "video/webm",
-    ].find((candidate) => MediaRecorder.isTypeSupported(candidate));
+    const mimeType = ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"].find(
+      (candidate) => MediaRecorder.isTypeSupported(candidate),
+    );
     if (!mimeType) throw new Error("No WebM recorder is available");
     const chunks: Blob[] = [];
     const recorder = new MediaRecorder(stream, { mimeType });
@@ -37,12 +33,7 @@ async function syntheticVideo(page: Page): Promise<Buffer> {
     await new Promise<void>((resolve) => {
       const draw = (now: number) => {
         const progress = Math.min(1, (now - started) / 1_200);
-        const gradient = context.createLinearGradient(
-          0,
-          0,
-          canvas.width,
-          canvas.height,
-        );
+        const gradient = context.createLinearGradient(0, 0, canvas.width, canvas.height);
         gradient.addColorStop(0, "#fb923c");
         gradient.addColorStop(1, "#7c3aed");
         context.fillStyle = gradient;
@@ -60,9 +51,7 @@ async function syntheticVideo(page: Page): Promise<Buffer> {
       recorder.stop();
     });
     stream.getTracks().forEach((track) => track.stop());
-    return Array.from(
-      new Uint8Array(await new Blob(chunks, { type: mimeType }).arrayBuffer()),
-    );
+    return Array.from(new Uint8Array(await new Blob(chunks, { type: mimeType }).arrayBuffer()));
   });
   return Buffer.from(bytes);
 }
@@ -80,8 +69,7 @@ async function readLocalVideoProject(
         const tx = database.transaction("projects");
         const get = tx.objectStore("projects").get(id);
         get.onerror = () => reject(get.error);
-        get.onsuccess = () =>
-          resolve(structuredClone(get.result) as Record<string, unknown>);
+        get.onsuccess = () => resolve(structuredClone(get.result) as Record<string, unknown>);
         tx.oncomplete = () => database.close();
         tx.onerror = () => reject(tx.error);
         tx.onabort = () => reject(tx.error);
@@ -183,11 +171,7 @@ async function brightPixelCount(image: Buffer): Promise<number> {
     .toBuffer({ resolveWithObject: true });
   let count = 0;
   for (let index = 0; index < data.length; index += info.channels) {
-    if (
-      data[index]! >= 220 &&
-      data[index + 1]! >= 220 &&
-      data[index + 2]! >= 220
-    ) {
+    if (data[index]! >= 220 && data[index + 1]! >= 220 && data[index + 2]! >= 220) {
       count += 1;
     }
   }
@@ -219,9 +203,7 @@ function syntheticAudio(): Buffer {
   }
 }
 
-test("guest chooses Quick Cut and can move into the Full editor", async ({
-  page,
-}) => {
+test("guest chooses Quick Cut and can move into the Full editor", async ({ page }) => {
   test.setTimeout(90_000);
   await page.addInitScript(() => {
     Object.defineProperty(window, "showSaveFilePicker", {
@@ -236,9 +218,7 @@ test("guest chooses Quick Cut and can move into the Full editor", async ({
   });
 
   await page.goto("/video-editor/new");
-  await expect(
-    page.getByRole("heading", { name: "Choose how you want to edit" }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Choose how you want to edit" })).toBeVisible();
   await page.getByRole("button", { name: /Quick cut/ }).click();
   const video = await syntheticVideo(page);
   await page.locator("#video-editor-new-files").setInputFiles({
@@ -248,26 +228,18 @@ test("guest chooses Quick Cut and can move into the Full editor", async ({
   });
 
   await expect(page).toHaveURL(/\/video-editor\/local_video_/);
-  await expect(
-    page.getByRole("heading", { name: "Source timeline" }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Kept sections" }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Source timeline" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Kept sections" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Set in" })).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Fast export" }).last(),
-  ).toBeEnabled({ timeout: 20_000 });
-  await expect(
-    page.getByRole("button", { name: "Fast export section 1" }),
-  ).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Fast export" }).last()).toBeEnabled({
+    timeout: 20_000,
+  });
+  await expect(page.getByRole("button", { name: "Fast export section 1" })).toBeEnabled();
   const [quickCutDownload] = await Promise.all([
     page.waitForEvent("download", { timeout: 60_000 }),
     page.getByRole("button", { name: "Fast export" }).last().click(),
   ]);
-  expect(quickCutDownload.suggestedFilename()).toBe(
-    "quick-cut-e2e-quick-cut.webm",
-  );
+  expect(quickCutDownload.suggestedFilename()).toBe("quick-cut-e2e-quick-cut.webm");
   const quickCutStream = await quickCutDownload.createReadStream();
   const quickCutChunks: Buffer[] = [];
   for await (const chunk of quickCutStream) {
@@ -281,17 +253,13 @@ test("guest chooses Quick Cut and can move into the Full editor", async ({
     name: "Timeline",
     exact: true,
   });
-  for (let step = 0; step < 4; step += 1)
-    await sourceTimeline.press("ArrowRight");
+  for (let step = 0; step < 4; step += 1) await sourceTimeline.press("ArrowRight");
   const sourceClock = page.getByText(/^Source \d{2}:\d{2}:\d{2}:\d{2}$/);
   const chosenSourceFrame = await sourceClock.textContent();
-  if (!chosenSourceFrame)
-    throw new Error("Quick Cut source clock is unavailable");
+  if (!chosenSourceFrame) throw new Error("Quick Cut source clock is unavailable");
   await page.getByRole("button", { name: "Set in" }).click();
   await expect(sourceClock).toHaveText(chosenSourceFrame);
-  await expect(
-    page.getByText(/^00:00:00:00 \/ \d{2}:\d{2}:\d{2}:\d{2}$/),
-  ).toBeVisible();
+  await expect(page.getByText(/^00:00:00:00 \/ \d{2}:\d{2}:\d{2}:\d{2}$/)).toBeVisible();
   await expect(
     page
       .getByRole("complementary", { name: "Kept sections" })
@@ -301,15 +269,11 @@ test("guest chooses Quick Cut and can move into the Full editor", async ({
   ).toBeVisible();
 
   await page.getByRole("button", { name: "Open Full editor" }).click();
-  await expect(
-    page.getByRole("heading", { name: "Timeline", exact: true }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Timeline", exact: true })).toBeVisible();
   expect(browserErrors).toEqual([]);
 });
 
-test("guest imports, edits, autosaves, restores, and exports a local video", async ({
-  page,
-}) => {
+test("guest imports, edits, autosaves, restores, and exports a local video", async ({ page }) => {
   test.setTimeout(180_000);
   await page.addInitScript(() => {
     Object.defineProperty(window, "showSaveFilePicker", {
@@ -319,17 +283,12 @@ test("guest imports, edits, autosaves, restores, and exports a local video", asy
   });
   const browserErrors: string[] = [];
   const unexpectedWrites: string[] = [];
-  page.on("pageerror", (error) =>
-    browserErrors.push(error.stack ?? error.message),
-  );
+  page.on("pageerror", (error) => browserErrors.push(error.stack ?? error.message));
   page.on("console", (message) => {
     if (message.type() === "error") browserErrors.push(message.text());
   });
   page.on("request", (request) => {
-    if (
-      request.method() !== "GET" &&
-      request.url().includes("/api/v1/video-editor/projects")
-    ) {
+    if (request.method() !== "GET" && request.url().includes("/api/v1/video-editor/projects")) {
       unexpectedWrites.push(`${request.method()} ${request.url()}`);
     }
   });
@@ -405,15 +364,11 @@ test("guest imports, edits, autosaves, restores, and exports a local video", asy
   });
 
   await page.goto("/video-editor");
-  await expect(
-    page.getByRole("heading", { name: "Make the social cut here." }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Make the social cut here." })).toBeVisible();
   await expect(page.getByText(/Your edits stay in this browser/)).toBeVisible();
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth,
-    ),
-  ).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
 
   const video = await syntheticVideo(page);
   await page.locator("#video-editor-import").setInputFiles({
@@ -424,83 +379,47 @@ test("guest imports, edits, autosaves, restores, and exports a local video", asy
   await expect(page).toHaveURL(/\/video-editor\/local_video_/);
   await expect(page.getByRole("heading", { name: "Timeline" })).toBeVisible();
   await expect(page.getByText("openpost-e2e.webm").first()).toBeVisible();
-  await expect(
-    page.getByRole("slider", { name: "Timeline", exact: true }),
-  ).toHaveCount(1);
-  const familyTabsBounds = await page
-    .locator("[data-video-editor-family-tabs]")
-    .boundingBox();
-  const subtabsBounds = await page
-    .locator("[data-video-editor-subtabs]")
-    .boundingBox();
-  const toolContentBounds = await page
-    .locator("[data-video-editor-tool-content]")
-    .boundingBox();
+  await expect(page.getByRole("slider", { name: "Timeline", exact: true })).toHaveCount(1);
+  const familyTabsBounds = await page.locator("[data-video-editor-family-tabs]").boundingBox();
+  const subtabsBounds = await page.locator("[data-video-editor-subtabs]").boundingBox();
+  const toolContentBounds = await page.locator("[data-video-editor-tool-content]").boundingBox();
   if (!familyTabsBounds || !subtabsBounds || !toolContentBounds) {
-    throw new Error(
-      "Full editor tool panel did not render its aligned desktop regions",
-    );
+    throw new Error("Full editor tool panel did not render its aligned desktop regions");
   }
   expect(Math.abs(familyTabsBounds.x - subtabsBounds.x)).toBeLessThanOrEqual(1);
-  expect(Math.abs(subtabsBounds.x - toolContentBounds.x)).toBeLessThanOrEqual(
-    1,
-  );
-  expect(subtabsBounds.y - (familyTabsBounds.y + familyTabsBounds.height)).toBe(
-    12,
-  );
-  expect(toolContentBounds.y - (subtabsBounds.y + subtabsBounds.height)).toBe(
-    12,
-  );
+  expect(Math.abs(subtabsBounds.x - toolContentBounds.x)).toBeLessThanOrEqual(1);
+  expect(subtabsBounds.y - (familyTabsBounds.y + familyTabsBounds.height)).toBe(12);
+  expect(toolContentBounds.y - (subtabsBounds.y + subtabsBounds.height)).toBe(12);
   const clipInspector = page.getByRole("complementary", {
     name: "Properties",
   });
-  await expect(
-    clipInspector.getByRole("button", { name: "Video", exact: true }),
-  ).toBeVisible();
-  await expect(
-    clipInspector.getByRole("button", { name: "Audio", exact: true }),
-  ).toBeVisible();
-  await expect(
-    clipInspector.getByRole("button", { name: "Speed", exact: true }),
-  ).toBeVisible();
+  await expect(clipInspector.getByRole("button", { name: "Video", exact: true })).toBeVisible();
+  await expect(clipInspector.getByRole("button", { name: "Audio", exact: true })).toBeVisible();
+  await expect(clipInspector.getByRole("button", { name: "Speed", exact: true })).toBeVisible();
   await expect(
     clipInspector.getByRole("button", { name: "Adjustments", exact: true }),
   ).toBeVisible();
-  await clipInspector
-    .getByRole("button", { name: "Audio", exact: true })
-    .click();
-  await expect(
-    clipInspector.getByRole("slider", { name: "Volume", exact: true }),
-  ).toBeVisible();
+  await clipInspector.getByRole("button", { name: "Audio", exact: true }).click();
+  await expect(clipInspector.getByRole("slider", { name: "Volume", exact: true })).toBeVisible();
   await expect(
     clipInspector.getByRole("slider", {
       name: "Horizontal position",
       exact: true,
     }),
   ).toBeHidden();
-  await clipInspector
-    .getByRole("button", { name: "Video", exact: true })
-    .click();
+  await clipInspector.getByRole("button", { name: "Video", exact: true }).click();
   const previewEngine = page.locator("[data-preview-engine-ready]").first();
-  await expect(previewEngine).toHaveAttribute(
-    "data-preview-engine-ready",
-    "true",
-    { timeout: 15_000 },
-  );
+  await expect(previewEngine).toHaveAttribute("data-preview-engine-ready", "true", {
+    timeout: 15_000,
+  });
   expect(
     Number(await previewEngine.getAttribute("data-preview-peak-decoders")),
   ).toBeLessThanOrEqual(3);
   await page.getByRole("button", { name: "Play" }).first().click();
-  await expect
-    .poll(() => previewEngine.getAttribute("data-preview-quality"))
-    .toBe("adaptive");
+  await expect.poll(() => previewEngine.getAttribute("data-preview-quality")).toBe("adaptive");
   await page.getByRole("button", { name: "Pause" }).first().click();
-  await expect
-    .poll(() => previewEngine.getAttribute("data-preview-quality"))
-    .toBe("full");
-  await page
-    .getByRole("slider", { name: "Timeline", exact: true })
-    .press("Home");
+  await expect.poll(() => previewEngine.getAttribute("data-preview-quality")).toBe("full");
+  await page.getByRole("slider", { name: "Timeline", exact: true }).press("Home");
 
   const positionX = page.getByRole("slider", {
     name: "Horizontal position",
@@ -510,26 +429,15 @@ test("guest imports, edits, autosaves, restores, and exports a local video", asy
   const previewBounds = await previewClip.boundingBox();
   if (!previewBounds) throw new Error("Preview clip has no bounds");
   await page.mouse.click(previewBounds.x + 16, previewBounds.y + 16);
-  await expect(positionX).toHaveAttribute(
-    "aria-valuenow",
-    positionBeforeClick ?? "0.5",
-  );
+  await expect(positionX).toHaveAttribute("aria-valuenow", positionBeforeClick ?? "0.5");
 
-  const clipButton = page
-    .getByRole("button", { name: "openpost-e2e.webm" })
-    .first();
+  const clipButton = page.getByRole("button", { name: "openpost-e2e.webm" }).first();
   const playbackClock = page.getByText(/^0:00:00 of \d+:\d{2}:\d{2}$/).first();
   const timeBeforeTrim = await playbackClock.textContent();
-  await page
-    .getByRole("button", { name: "Trim clip end" })
-    .press("Shift+ArrowLeft");
-  await expect
-    .poll(async () => playbackClock.textContent())
-    .not.toBe(timeBeforeTrim);
+  await page.getByRole("button", { name: "Trim clip end" }).press("Shift+ArrowLeft");
+  await expect.poll(async () => playbackClock.textContent()).not.toBe(timeBeforeTrim);
   await page.keyboard.press("Control+z");
-  await expect
-    .poll(async () => playbackClock.textContent())
-    .toBe(timeBeforeTrim);
+  await expect.poll(async () => playbackClock.textContent()).toBe(timeBeforeTrim);
 
   const playhead = page.getByRole("slider", {
     name: "Timeline",
@@ -555,9 +463,7 @@ test("guest imports, edits, autosaves, restores, and exports a local video", asy
       name: "Gap",
     }),
   ).toBeVisible();
-  await expect(
-    page.getByRole("spinbutton", { name: "Gap duration" }),
-  ).toBeVisible();
+  await expect(page.getByRole("spinbutton", { name: "Gap duration" })).toBeVisible();
   await page.keyboard.press("Control+z");
   await expect(
     page
@@ -570,19 +476,13 @@ test("guest imports, edits, autosaves, restores, and exports a local video", asy
   await markerName.fill("Beat change");
   await markerName.press("Tab");
   await expect(
-    page
-      .getByRole("region", { name: "Timeline" })
-      .getByRole("button", { name: /Beat change/ }),
+    page.getByRole("region", { name: "Timeline" }).getByRole("button", { name: /Beat change/ }),
   ).toBeVisible();
 
   await page.getByRole("button", { name: "Text" }).click();
   await page.getByRole("button", { name: "Add title" }).click();
-  await expect(
-    page.locator('[data-video-editor-track-kind="visual"]'),
-  ).toHaveCount(1);
-  await page
-    .getByRole("textbox", { name: "Text", exact: true })
-    .fill("Launch day");
+  await expect(page.locator('[data-video-editor-track-kind="visual"]')).toHaveCount(1);
+  await page.getByRole("textbox", { name: "Text", exact: true }).fill("Launch day");
   await expect(page.getByText("Launch day").first()).toBeVisible();
   await page.getByRole("button", { name: "Position and size" }).click();
   const overlayDuration = page.getByRole("spinbutton", {
@@ -593,9 +493,7 @@ test("guest imports, edits, autosaves, restores, and exports a local video", asy
     .getByRole("region", { name: "Timeline" })
     .getByRole("button", { name: "Adjust item end" })
     .press("Shift+ArrowLeft");
-  await expect
-    .poll(async () => overlayDuration.inputValue())
-    .not.toBe(overlayDurationBefore);
+  await expect.poll(async () => overlayDuration.inputValue()).not.toBe(overlayDurationBefore);
 
   await page.getByRole("button", { name: "Elements" }).click();
   await page.getByRole("button", { name: "Highlight box" }).click();
@@ -603,8 +501,8 @@ test("guest imports, edits, autosaves, restores, and exports a local video", asy
   await page.getByRole("button", { name: "Ellipse", exact: true }).click();
   await page.getByRole("button", { name: "Arrow", exact: true }).click();
   const visualTimeline = page.getByRole("region", { name: "Timeline" });
-  const layeredItems = ["Launch day", "Highlight box", "Ellipse", "Arrow"].map(
-    (name) => visualTimeline.getByRole("button", { name, exact: true }),
+  const layeredItems = ["Launch day", "Highlight box", "Ellipse", "Arrow"].map((name) =>
+    visualTimeline.getByRole("button", { name, exact: true }),
   );
   for (const item of layeredItems) await expect(item).toBeVisible();
   const layeredBounds = await Promise.all(
@@ -614,13 +512,11 @@ test("guest imports, edits, autosaves, restores, and exports a local video", asy
       return bounds;
     }),
   );
-  expect(
-    new Set(layeredBounds.map((bounds) => Math.round(bounds.y))).size,
-  ).toBe(layeredItems.length);
+  expect(new Set(layeredBounds.map((bounds) => Math.round(bounds.y))).size).toBe(
+    layeredItems.length,
+  );
   await layeredItems[0]!.click();
-  await expect(
-    page.getByRole("textbox", { name: "Text", exact: true }),
-  ).toHaveValue("Launch day");
+  await expect(page.getByRole("textbox", { name: "Text", exact: true })).toHaveValue("Launch day");
   await layeredItems[1]!.click();
   await page.getByRole("button", { name: "Position and size" }).click();
   await page.getByRole("slider", { name: "Rotation" }).press("ArrowRight");
@@ -634,11 +530,7 @@ test("guest imports, edits, autosaves, restores, and exports a local video", asy
   await overlayPosition.press("End");
   await expect(overlayPosition).toHaveAttribute("aria-valuenow", "1");
   await overlayVisibility.uncheck();
-  for (const format of [
-    "Feed portrait · 4:5",
-    "Square · 1:1",
-    "Landscape · 16:9",
-  ]) {
+  for (const format of ["Feed portrait · 4:5", "Square · 1:1", "Landscape · 16:9"]) {
     await page.getByRole("button", { name: "Format", exact: true }).click();
     await page.getByRole("option", { name: format }).click();
     await expect(overlayPosition).toHaveAttribute("aria-valuenow", "0.5");
@@ -652,9 +544,7 @@ test("guest imports, edits, autosaves, restores, and exports a local video", asy
 
   await page.getByRole("button", { name: "Media", exact: true }).click();
   await page.getByRole("button", { name: "Stock", exact: true }).click();
-  await page
-    .getByRole("textbox", { name: "Search stock photos and videos" })
-    .fill("desk");
+  await page.getByRole("textbox", { name: "Search stock photos and videos" }).fill("desk");
   await page.getByRole("button", { name: "Search" }).click();
   await expect(page.getByText("By OpenPost Test")).toBeVisible();
   await page.getByRole("button", { name: "Use this item" }).click();
@@ -662,26 +552,18 @@ test("guest imports, edits, autosaves, restores, and exports a local video", asy
     page.getByLabel("Stock", { exact: true }).getByText("pexels-photo-1.jpg"),
   ).toBeVisible();
   await expect(page.getByText("OpenPost Test on Pexels")).toBeVisible();
-  await expect(
-    page.locator('[data-video-editor-track-kind="visual"]'),
-  ).toHaveCount(2);
+  await expect(page.locator('[data-video-editor-track-kind="visual"]')).toHaveCount(2);
 
   await page.getByRole("button", { name: "Captions" }).click();
   await page.getByRole("button", { name: "Add caption" }).click();
-  await page
-    .getByRole("textbox", { name: "Text", exact: true })
-    .fill("Corrected local caption");
+  await page.getByRole("textbox", { name: "Text", exact: true }).fill("Corrected local caption");
   await expect(page.getByText("Corrected local caption").first()).toBeVisible();
   await page.getByRole("button", { name: "Find silent sections" }).click();
   await expect(
     page.getByRole("heading", { name: "Download a local analysis model?" }),
   ).toBeVisible();
   await expect(page.getByText("Voice activity detection")).toBeVisible();
-  await page
-    .getByRole("dialog")
-    .getByRole("button", { name: "Close" })
-    .first()
-    .click();
+  await page.getByRole("dialog").getByRole("button", { name: "Close" }).first().click();
 
   for (const format of [
     "Portrait · 9:16",
@@ -722,9 +604,7 @@ test("guest imports, edits, autosaves, restores, and exports a local video", asy
   expect(browserErrors).toEqual([]);
 });
 
-test("local version history restores both directions and survives reload", async ({
-  page,
-}) => {
+test("local version history restores both directions and survives reload", async ({ page }) => {
   test.setTimeout(90_000);
   await page.goto("/video-editor");
   await page.locator("#video-editor-import").setInputFiles({
@@ -741,13 +621,9 @@ test("local version history restores both directions and survives reload", async
   });
 
   await page.getByRole("button", { name: "Version history" }).click();
-  await page
-    .getByRole("textbox", { name: "Checkpoint name" })
-    .fill("Before title rewrite");
+  await page.getByRole("textbox", { name: "Checkpoint name" }).fill("Before title rewrite");
   await page.getByRole("button", { name: "Create checkpoint" }).click();
-  await expect(
-    page.getByRole("button", { name: /Before title rewrite/ }),
-  ).toBeVisible();
+  await expect(page.getByRole("button", { name: /Before title rewrite/ })).toBeVisible();
   await page
     .getByRole("dialog", { name: "Version history" })
     .locator('[data-slot="dialog-footer"]')
@@ -764,9 +640,7 @@ test("local version history restores both directions and survives reload", async
   await page.getByRole("button", { name: /Before title rewrite/ }).click();
   await expect(page.getByText("Title changed", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Restore this version" }).click();
-  const confirmation = page
-    .getByRole("dialog")
-    .filter({ hasText: "Restore this version?" });
+  const confirmation = page.getByRole("dialog").filter({ hasText: "Restore this version?" });
   await expect(confirmation).toContainText(
     "save your exact current browser version as a local restore point",
   );
@@ -808,76 +682,61 @@ test("reorder-only local video versions stay previewable and restore both orders
 
   await page.getByRole("button", { name: "Version history" }).click();
   const history = page.getByRole("dialog", { name: "Version history" });
-  await history
-    .getByRole("textbox", { name: "Checkpoint name" })
-    .fill("Original timeline order");
+  await history.getByRole("textbox", { name: "Checkpoint name" }).fill("Original timeline order");
   await history.getByRole("button", { name: "Create checkpoint" }).click();
-  await expect(
-    history.getByRole("button", { name: /Original timeline order/ }),
-  ).toBeVisible();
+  await expect(history.getByRole("button", { name: /Original timeline order/ })).toBeVisible();
   await history
     .locator('[data-slot="dialog-footer"]')
     .getByRole("button", { name: "Close", exact: true })
     .click();
 
   const orders = await page.evaluate(async (id) => {
-    return await new Promise<{ original: string[]; reordered: string[] }>(
-      (resolve, reject) => {
-        const open = indexedDB.open("openpost-video-editor");
-        open.onerror = () => reject(open.error);
-        open.onsuccess = () => {
-          const database = open.result;
-          let result: { original: string[]; reordered: string[] } | undefined;
-          const tx = database.transaction(
-            ["projects", "project-revisions"],
-            "readwrite",
-          );
-          const projects = tx.objectStore("projects");
-          const revisions = tx.objectStore("project-revisions");
-          const get = projects.get(id);
-          get.onerror = () => reject(get.error);
-          get.onsuccess = () => {
-            const project = get.result;
-            const original = project.document.primary_sequence.map(
-              (item: { id: string }) => item.id,
-            );
-            project.document.primary_sequence.reverse();
-            project.revision += 1;
-            project.updated_at = new Date().toISOString();
-            project.last_opened_at = project.updated_at;
-            projects.put(project);
-            revisions.put({
-              id: `${id}:${project.revision}`,
-              project_id: id,
-              revision: project.revision,
-              kind: "autosave",
-              created_at: project.updated_at,
-              snapshot: {
-                snapshot_version: 1,
-                document: structuredClone(project.document),
-                cover_source_id: project.cover_source_id,
-                cloud_cover_preview_media_id:
-                  project.cloud_cover_preview_media_id ?? "",
-              },
-            });
-            result = {
-              original,
-              reordered: project.document.primary_sequence.map(
-                (item: { id: string }) => item.id,
-              ),
-            };
+    return await new Promise<{ original: string[]; reordered: string[] }>((resolve, reject) => {
+      const open = indexedDB.open("openpost-video-editor");
+      open.onerror = () => reject(open.error);
+      open.onsuccess = () => {
+        const database = open.result;
+        let result: { original: string[]; reordered: string[] } | undefined;
+        const tx = database.transaction(["projects", "project-revisions"], "readwrite");
+        const projects = tx.objectStore("projects");
+        const revisions = tx.objectStore("project-revisions");
+        const get = projects.get(id);
+        get.onerror = () => reject(get.error);
+        get.onsuccess = () => {
+          const project = get.result;
+          const original = project.document.primary_sequence.map((item: { id: string }) => item.id);
+          project.document.primary_sequence.reverse();
+          project.revision += 1;
+          project.updated_at = new Date().toISOString();
+          project.last_opened_at = project.updated_at;
+          projects.put(project);
+          revisions.put({
+            id: `${id}:${project.revision}`,
+            project_id: id,
+            revision: project.revision,
+            kind: "autosave",
+            created_at: project.updated_at,
+            snapshot: {
+              snapshot_version: 1,
+              document: structuredClone(project.document),
+              cover_source_id: project.cover_source_id,
+              cloud_cover_preview_media_id: project.cloud_cover_preview_media_id ?? "",
+            },
+          });
+          result = {
+            original,
+            reordered: project.document.primary_sequence.map((item: { id: string }) => item.id),
           };
-          tx.oncomplete = () => {
-            database.close();
-            if (result) resolve(result);
-            else
-              reject(new Error("The reordered local project was not written."));
-          };
-          tx.onerror = () => reject(tx.error);
-          tx.onabort = () => reject(tx.error);
         };
-      },
-    );
+        tx.oncomplete = () => {
+          database.close();
+          if (result) resolve(result);
+          else reject(new Error("The reordered local project was not written."));
+        };
+        tx.onerror = () => reject(tx.error);
+        tx.onabort = () => reject(tx.error);
+      };
+    });
   }, projectID);
   expect(orders.original).toHaveLength(2);
   expect(orders.reordered).toEqual([...orders.original].reverse());
@@ -885,9 +744,7 @@ test("reorder-only local video versions stay previewable and restore both orders
 
   await page.getByRole("button", { name: "Version history" }).click();
   await page.getByRole("button", { name: /Original timeline order/ }).click();
-  await expect(
-    page.getByText(/Main timeline: 0 added, 0 removed, 2 changed/),
-  ).toBeVisible();
+  await expect(page.getByText(/Main timeline: 0 added, 0 removed, 2 changed/)).toBeVisible();
   const restore = page.getByRole("button", { name: "Restore this version" });
   await expect(restore).toBeEnabled();
   await restore.click();
@@ -903,17 +760,10 @@ test("reorder-only local video versions stay previewable and restore both orders
         const open = indexedDB.open("openpost-video-editor");
         open.onerror = () => reject(open.error);
         open.onsuccess = () => {
-          const get = open.result
-            .transaction("projects")
-            .objectStore("projects")
-            .get(id);
+          const get = open.result.transaction("projects").objectStore("projects").get(id);
           get.onerror = () => reject(get.error);
           get.onsuccess = () =>
-            resolve(
-              get.result.document.primary_sequence.map(
-                (item: { id: string }) => item.id,
-              ),
-            );
+            resolve(get.result.document.primary_sequence.map((item: { id: string }) => item.id));
         };
       });
     }, projectID),
@@ -924,9 +774,7 @@ test("reorder-only local video versions stay previewable and restore both orders
     .getByRole("button", { name: /Before restore/ })
     .first()
     .click();
-  await expect(
-    page.getByText(/Main timeline: 0 added, 0 removed, 2 changed/),
-  ).toBeVisible();
+  await expect(page.getByText(/Main timeline: 0 added, 0 removed, 2 changed/)).toBeVisible();
   await page.getByRole("button", { name: "Restore this version" }).click();
   await page
     .getByRole("dialog")
@@ -940,26 +788,17 @@ test("reorder-only local video versions stay previewable and restore both orders
         const open = indexedDB.open("openpost-video-editor");
         open.onerror = () => reject(open.error);
         open.onsuccess = () => {
-          const get = open.result
-            .transaction("projects")
-            .objectStore("projects")
-            .get(id);
+          const get = open.result.transaction("projects").objectStore("projects").get(id);
           get.onerror = () => reject(get.error);
           get.onsuccess = () =>
-            resolve(
-              get.result.document.primary_sequence.map(
-                (item: { id: string }) => item.id,
-              ),
-            );
+            resolve(get.result.document.primary_sequence.map((item: { id: string }) => item.id));
         };
       });
     }, projectID),
   ).toEqual(orders.reordered);
 });
 
-test("local autosave conflict preserves stale-tab work as a copy", async ({
-  page,
-}) => {
+test("local autosave conflict preserves stale-tab work as a copy", async ({ page }) => {
   test.setTimeout(90_000);
   await page.goto("/video-editor");
   await page.locator("#video-editor-import").setInputFiles({
@@ -973,9 +812,7 @@ test("local autosave conflict preserves stale-tab work as a copy", async ({
   await otherTab.goto(originalURL);
   const otherName = otherTab.getByRole("textbox", { name: "Project name" });
   await otherName.fill("Newer tab title");
-  await expect(
-    otherTab.getByText("Saved locally", { exact: true }),
-  ).toBeVisible({
+  await expect(otherTab.getByText("Saved locally", { exact: true })).toBeVisible({
     timeout: 15_000,
   });
 
@@ -995,9 +832,7 @@ test("local autosave conflict preserves stale-tab work as a copy", async ({
   await expect(
     conflict.getByRole("button", { name: "Reload latest browser version" }),
   ).toBeVisible();
-  await conflict
-    .getByRole("button", { name: "Save local edit as a copy" })
-    .click();
+  await conflict.getByRole("button", { name: "Save local edit as a copy" }).click();
   await expect(page).not.toHaveURL(originalURL);
   await expect(page.getByRole("textbox", { name: "Project name" })).toHaveValue(
     "Preserve this stale tab",
@@ -1011,10 +846,7 @@ test("checkpoint partial failures preserve the committed local head and surface 
 }) => {
   test.setTimeout(90_000);
   const unique = Date.now().toString(36);
-  const auth = await registerUser(
-    request,
-    `video-checkpoint-partial-${unique}@example.com`,
-  );
+  const auth = await registerUser(request, `video-checkpoint-partial-${unique}@example.com`);
   const workspace = (await createWorkspace(
     request,
     auth.token,
@@ -1022,10 +854,7 @@ test("checkpoint partial failures preserve the committed local head and surface 
   )) as { id: string; name: string };
   await authenticatePage(page, auth.token);
   await page.addInitScript((selectedWorkspace) => {
-    localStorage.setItem(
-      "openpost_current_workspace",
-      JSON.stringify(selectedWorkspace),
-    );
+    localStorage.setItem("openpost_current_workspace", JSON.stringify(selectedWorkspace));
   }, workspace);
 
   await page.goto("/video-editor");
@@ -1131,8 +960,7 @@ test("checkpoint partial failures preserve the committed local head and surface 
   const revisions = await readLocalVideoProjectRevisions(page, projectID);
   const checkpoint = revisions.find(
     (revision) =>
-      revision.kind === "checkpoint" &&
-      revision.name === "Committed before cloud failure",
+      revision.kind === "checkpoint" && revision.name === "Committed before cloud failure",
   );
   expect(checkpoint).toBeTruthy();
   expect(projectAfterCheckpoint.revision).toBe(checkpoint?.revision);
@@ -1141,9 +969,7 @@ test("checkpoint partial failures preserve the committed local head and surface 
     .locator('[data-slot="dialog-footer"]')
     .getByRole("button", { name: "Close", exact: true })
     .click();
-  await page
-    .getByRole("textbox", { name: "Project name" })
-    .fill("Local edit after cloud failure");
+  await page.getByRole("textbox", { name: "Project name" }).fill("Local edit after cloud failure");
   await expect
     .poll(async () => {
       const project = await readLocalVideoProject(page, projectID);
@@ -1184,9 +1010,7 @@ test("checkpoint partial failures preserve the committed local head and surface 
   }, projectID);
 
   await page.getByRole("button", { name: "Version history" }).click();
-  await history
-    .getByRole("textbox", { name: "Checkpoint name" })
-    .fill("Stale local checkpoint");
+  await history.getByRole("textbox", { name: "Checkpoint name" }).fill("Stale local checkpoint");
   await history.getByRole("button", { name: "Create checkpoint" }).click();
   await expect(
     page.getByRole("heading", {
@@ -1202,17 +1026,13 @@ test("cloud covers survive sync, rename, reopen, and a cover-only restore", asyn
   test.setTimeout(120_000);
   const unique = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
   const auth = await registerUser(request, `video-cover-${unique}@example.com`);
-  const workspace = (await createWorkspace(
-    request,
-    auth.token,
-    "Video Cover E2E",
-  )) as { id: string; name: string };
+  const workspace = (await createWorkspace(request, auth.token, "Video Cover E2E")) as {
+    id: string;
+    name: string;
+  };
   await authenticatePage(page, auth.token);
   await page.addInitScript((selectedWorkspace) => {
-    localStorage.setItem(
-      "openpost_current_workspace",
-      JSON.stringify(selectedWorkspace),
-    );
+    localStorage.setItem("openpost_current_workspace", JSON.stringify(selectedWorkspace));
   }, workspace);
 
   await page.goto("/video-editor");
@@ -1241,20 +1061,15 @@ test("cloud covers survive sync, rename, reopen, and a cover-only restore", asyn
     .poll(
       async () =>
         String(
-          (await readLocalVideoProject(page, firstLocalProjectID))
-            .cloud_cover_preview_media_id ?? "",
+          (await readLocalVideoProject(page, firstLocalProjectID)).cloud_cover_preview_media_id ??
+            "",
         ),
       { timeout: 30_000 },
     )
     .not.toBe("");
-  const firstLocalProject = await readLocalVideoProject(
-    page,
-    firstLocalProjectID,
-  );
+  const firstLocalProject = await readLocalVideoProject(page, firstLocalProjectID);
   const cloudProjectID = String(firstLocalProject.cloud_project_id);
-  const canonicalCoverMediaID = String(
-    firstLocalProject.cloud_cover_preview_media_id,
-  );
+  const canonicalCoverMediaID = String(firstLocalProject.cloud_cover_preview_media_id);
   expect(cloudProjectID).not.toBe("");
   expect(canonicalCoverMediaID).not.toBe("");
 
@@ -1268,26 +1083,21 @@ test("cloud covers survive sync, rename, reopen, and a cover-only restore", asyn
   await expect(cloudDialog).not.toBeVisible({ timeout: 30_000 });
 
   await page.goto("/editors");
-  const projectCard = page.locator(
-    `a[href="/video-editor?cloud=${cloudProjectID}"]`,
-  );
+  const projectCard = page.locator(`a[href="/video-editor?cloud=${cloudProjectID}"]`);
   await expect(projectCard).toContainText("Synced cover project");
   await projectCard.click({ button: "right" });
   await page.getByRole("menuitem", { name: "Rename", exact: true }).click();
   const renameDialog = page.getByRole("dialog", {
     name: "Rename video project",
   });
-  await renameDialog
-    .getByRole("textbox", { name: "Project name" })
-    .fill("Renamed cover project");
+  await renameDialog.getByRole("textbox", { name: "Project name" }).fill("Renamed cover project");
   await renameDialog.getByRole("button", { name: "Save" }).click();
   await expect(renameDialog).not.toBeVisible();
 
   const getCloudProject = async () => {
-    const response = await request.get(
-      `/api/v1/video-editor/projects/${cloudProjectID}`,
-      { headers: { Authorization: `Bearer ${auth.token}` } },
-    );
+    const response = await request.get(`/api/v1/video-editor/projects/${cloudProjectID}`, {
+      headers: { Authorization: `Bearer ${auth.token}` },
+    });
     if (!response.ok()) {
       throw new Error(
         `cloud project request failed with ${response.status()}: ${await response.text()}`,
@@ -1315,17 +1125,14 @@ test("cloud covers survive sync, rename, reopen, and a cover-only restore", asyn
     },
   );
   expect(checkpoint.ok(), await checkpoint.text()).toBe(true);
-  const clearCover = await request.patch(
-    `/api/v1/video-editor/projects/${cloudProjectID}`,
-    {
-      headers: { Authorization: `Bearer ${auth.token}` },
-      data: {
-        expected_revision: renamed.revision,
-        cover_preview_media_id: "",
-        document: renamed.document,
-      },
+  const clearCover = await request.patch(`/api/v1/video-editor/projects/${cloudProjectID}`, {
+    headers: { Authorization: `Bearer ${auth.token}` },
+    data: {
+      expected_revision: renamed.revision,
+      cover_preview_media_id: "",
+      document: renamed.document,
     },
-  );
+  });
   expect(clearCover.ok(), await clearCover.text()).toBe(true);
 
   await page.goto(`/video-editor?cloud=${cloudProjectID}`);
@@ -1334,15 +1141,12 @@ test("cloud covers survive sync, rename, reopen, and a cover-only restore", asyn
   });
   const reopenedLocalProjectID = page.url().split("/").at(-1)!;
   expect(
-    (await readLocalVideoProject(page, reopenedLocalProjectID))
-      .cloud_cover_preview_media_id,
+    (await readLocalVideoProject(page, reopenedLocalProjectID)).cloud_cover_preview_media_id,
   ).toBeUndefined();
 
   await page.getByRole("button", { name: "Version history" }).click();
   await page.getByRole("button", { name: /Covered cloud version/ }).click();
-  await expect(
-    page.getByText("Cover preview changed", { exact: true }),
-  ).toBeVisible();
+  await expect(page.getByText("Cover preview changed", { exact: true })).toBeVisible();
   await expect(page.getByText("Title changed", { exact: true })).toHaveCount(0);
   const restore = page.getByRole("button", { name: "Restore this version" });
   await expect(restore).toBeEnabled();
@@ -1352,16 +1156,13 @@ test("cloud covers survive sync, rename, reopen, and a cover-only restore", asyn
     .filter({ hasText: "Restore this version?" })
     .getByRole("button", { name: "Restore version" })
     .click();
-  await expect(
-    page.getByRole("dialog", { name: "Version history" }),
-  ).not.toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Version history" })).not.toBeVisible();
 
   await expect
     .poll(async () => (await getCloudProject()).cover_preview_media_id)
     .toBe(canonicalCoverMediaID);
   expect(
-    (await readLocalVideoProject(page, reopenedLocalProjectID))
-      .cloud_cover_preview_media_id,
+    (await readLocalVideoProject(page, reopenedLocalProjectID)).cloud_cover_preview_media_id,
   ).toBe(canonicalCoverMediaID);
 });
 
@@ -1441,34 +1242,31 @@ test("cloud restore recovers from local CAS races without retrying the server re
   let previewRequests = 0;
   let restoreRequests = 0;
   let cloudHeadRequests = 0;
-  await page.route(
-    "**/api/v1/video-editor/projects/cloud-version-e2e",
-    async (route) => {
-      if (route.request().method() !== "GET") {
-        await route.abort();
-        return;
-      }
-      cloudHeadRequests += 1;
-      if (cloudHeadRequests === 1) {
-        await advanceBrowserHead("Browser head raced again");
-      }
-      await route.fulfill({
-        contentType: "application/json",
-        body: JSON.stringify({
-          id: "cloud-version-e2e",
-          workspace_id: "workspace-e2e",
-          created_by_id: "user-e2e",
-          revision: 6,
-          can_edit: true,
-          duration_ms: 1200,
-          created_at: "2026-08-09T11:00:00Z",
-          updated_at: "2026-08-09T12:05:00Z",
-          cover_preview_media_id: "cloud-checkpoint-cover",
-          document: { ...currentDocument, title: "Cloud checkpoint title" },
-        }),
-      });
-    },
-  );
+  await page.route("**/api/v1/video-editor/projects/cloud-version-e2e", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.abort();
+      return;
+    }
+    cloudHeadRequests += 1;
+    if (cloudHeadRequests === 1) {
+      await advanceBrowserHead("Browser head raced again");
+    }
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        id: "cloud-version-e2e",
+        workspace_id: "workspace-e2e",
+        created_by_id: "user-e2e",
+        revision: 6,
+        can_edit: true,
+        duration_ms: 1200,
+        created_at: "2026-08-09T11:00:00Z",
+        updated_at: "2026-08-09T12:05:00Z",
+        cover_preview_media_id: "cloud-checkpoint-cover",
+        document: { ...currentDocument, title: "Cloud checkpoint title" },
+      }),
+    });
+  });
   await page.route(
     "**/api/v1/video-editor/projects/cloud-version-e2e/revisions**",
     async (route) => {
@@ -1506,10 +1304,7 @@ test("cloud restore recovers from local CAS races without retrying the server re
         });
         return;
       }
-      if (
-        request.method() === "GET" &&
-        path.endsWith("/revisions/cloud-checkpoint")
-      ) {
+      if (request.method() === "GET" && path.endsWith("/revisions/cloud-checkpoint")) {
         previewRequests += 1;
         await route.fulfill({
           contentType: "application/json",
@@ -1525,18 +1320,13 @@ test("cloud restore recovers from local CAS races without retrying the server re
             cover_preview_media_id: "cloud-checkpoint-cover",
             document: {
               ...currentDocument,
-              title: successfulRestore
-                ? "Newer cloud title"
-                : "Cloud checkpoint title",
+              title: successfulRestore ? "Newer cloud title" : "Cloud checkpoint title",
             },
           }),
         });
         return;
       }
-      if (
-        request.method() === "POST" &&
-        path.endsWith("/revisions/cloud-checkpoint/restore")
-      ) {
+      if (request.method() === "POST" && path.endsWith("/revisions/cloud-checkpoint/restore")) {
         restoreRequests += 1;
         if (successfulRestore) {
           await route.fulfill({
@@ -1573,23 +1363,15 @@ test("cloud restore recovers from local CAS races without retrying the server re
 
   await page.getByRole("button", { name: "Version history" }).click();
   expect(previewRequests).toBe(0);
-  await expect(
-    page.getByText("Saved by Teammate", { exact: true }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: /Oldest named cloud version/ }),
-  ).toHaveCount(0);
+  await expect(page.getByText("Saved by Teammate", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Oldest named cloud version/ })).toHaveCount(0);
   await page.getByRole("button", { name: "Load more" }).click();
-  await expect(
-    page.getByRole("button", { name: /Oldest named cloud version/ }),
-  ).toBeVisible();
+  await expect(page.getByRole("button", { name: /Oldest named cloud version/ })).toBeVisible();
   await page.getByRole("button", { name: /Cloud checkpoint/ }).click();
   await expect.poll(() => previewRequests).toBe(1);
   await expect(page.getByText("Title changed", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Restore this version" }).click();
-  const confirmation = page
-    .getByRole("dialog")
-    .filter({ hasText: "Restore this version?" });
+  const confirmation = page.getByRole("dialog").filter({ hasText: "Restore this version?" });
   await expect(confirmation).toContainText(
     "save the exact current cloud and browser versions as restore points",
   );
@@ -1602,17 +1384,11 @@ test("cloud restore recovers from local CAS races without retrying the server re
   await expect(
     localRecovery.getByRole("button", { name: "Save local edit as a copy" }),
   ).toBeVisible();
-  await localRecovery
-    .getByRole("button", { name: "Load OpenPost version" })
-    .click();
+  await localRecovery.getByRole("button", { name: "Load OpenPost version" }).click();
   await expect.poll(() => cloudHeadRequests).toBe(1);
   await expect(localRecovery).toBeVisible();
-  await expect(
-    localRecovery.getByRole("button", { name: "Load OpenPost version" }),
-  ).toBeEnabled();
-  await localRecovery
-    .getByRole("button", { name: "Load OpenPost version" })
-    .click();
+  await expect(localRecovery.getByRole("button", { name: "Load OpenPost version" })).toBeEnabled();
+  await localRecovery.getByRole("button", { name: "Load OpenPost version" }).click();
   await expect.poll(() => cloudHeadRequests).toBe(2);
   await expect(localRecovery).not.toBeVisible();
   expect(restoreRequests).toBe(1);
@@ -1621,47 +1397,43 @@ test("cloud restore recovers from local CAS races without retrying the server re
   );
 
   const recoverySnapshot = await page.evaluate(async (id) => {
-    return await new Promise<
-      { title?: string; cloudCoverPreviewMediaID?: string } | undefined
-    >((resolve, reject) => {
-      const open = indexedDB.open("openpost-video-editor");
-      open.onerror = () => reject(open.error);
-      open.onsuccess = () => {
-        const database = open.result;
-        const tx = database.transaction("project-revisions");
-        const getAll = tx.objectStore("project-revisions").getAll();
-        getAll.onerror = () => reject(getAll.error);
-        getAll.onsuccess = () => {
-          const restorePoint = getAll.result.find(
-            (revision) =>
-              revision.project_id === id && revision.kind === "restore_point",
-          );
-          resolve(
-            restorePoint
-              ? {
-                  title: restorePoint.snapshot?.document?.title,
-                  cloudCoverPreviewMediaID:
-                    restorePoint.snapshot?.cloud_cover_preview_media_id,
-                }
-              : undefined,
-          );
+    return await new Promise<{ title?: string; cloudCoverPreviewMediaID?: string } | undefined>(
+      (resolve, reject) => {
+        const open = indexedDB.open("openpost-video-editor");
+        open.onerror = () => reject(open.error);
+        open.onsuccess = () => {
+          const database = open.result;
+          const tx = database.transaction("project-revisions");
+          const getAll = tx.objectStore("project-revisions").getAll();
+          getAll.onerror = () => reject(getAll.error);
+          getAll.onsuccess = () => {
+            const restorePoint = getAll.result.find(
+              (revision) => revision.project_id === id && revision.kind === "restore_point",
+            );
+            resolve(
+              restorePoint
+                ? {
+                    title: restorePoint.snapshot?.document?.title,
+                    cloudCoverPreviewMediaID: restorePoint.snapshot?.cloud_cover_preview_media_id,
+                  }
+                : undefined,
+            );
+          };
+          tx.oncomplete = () => database.close();
         };
-        tx.oncomplete = () => database.close();
-      };
-    });
+      },
+    );
   }, projectID);
   expect(recoverySnapshot).toEqual({
     title: "Browser head raced again",
     cloudCoverPreviewMediaID: "cloud-current-cover",
   });
-  expect(
-    (await readLocalVideoProject(page, projectID)).cloud_cover_preview_media_id,
-  ).toBe("cloud-checkpoint-cover");
+  expect((await readLocalVideoProject(page, projectID)).cloud_cover_preview_media_id).toBe(
+    "cloud-checkpoint-cover",
+  );
 
   await page.getByRole("button", { name: "Version history" }).click();
-  await expect(
-    page.getByRole("button", { name: /Before restore/ }),
-  ).toBeVisible();
+  await expect(page.getByRole("button", { name: /Before restore/ })).toBeVisible();
   await page.getByRole("button", { name: /Cloud checkpoint/ }).click();
   await expect(page.getByText("Title changed", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Restore this version" }).click();
@@ -1670,17 +1442,13 @@ test("cloud restore recovers from local CAS races without retrying the server re
     .filter({ hasText: "Restore this version?" })
     .getByRole("button", { name: "Restore version" })
     .click();
-  await expect(
-    page.getByRole("heading", { name: "This project changed elsewhere" }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "This project changed elsewhere" })).toBeVisible();
   await expect(page.getByRole("textbox", { name: "Project name" })).toHaveValue(
     "Cloud checkpoint title",
   );
 });
 
-test("text is visible in both the preview and the exported frame", async ({
-  page,
-}) => {
+test("text is visible in both the preview and the exported frame", async ({ page }) => {
   test.setTimeout(120_000);
   await page.addInitScript(() => {
     Object.defineProperty(window, "showSaveFilePicker", {
@@ -1703,9 +1471,7 @@ test("text is visible in both the preview and the exported frame", async ({
 
   await page.getByRole("button", { name: "Text", exact: true }).click();
   await page.getByRole("button", { name: "Add title" }).click();
-  await page
-    .getByRole("textbox", { name: "Text", exact: true })
-    .fill("PREVIEW EXPORT PARITY");
+  await page.getByRole("textbox", { name: "Text", exact: true }).fill("PREVIEW EXPORT PARITY");
   await page
     .getByRole("region", { name: "Timeline" })
     .getByRole("button", { name: "text-parity.webm" })
@@ -1724,8 +1490,7 @@ test("text is visible in both the preview and the exported frame", async ({
     page.getByRole("button", { name: "Download" }).click(),
   ]);
   const exportedPath = await download.path();
-  if (!exportedPath)
-    throw new Error("Exported video has no local download path");
+  if (!exportedPath) throw new Error("Exported video has no local download path");
   const directory = mkdtempSync(join(tmpdir(), "openpost-export-frame-e2e-"));
   const frame = join(directory, "frame.png");
   try {
@@ -1748,17 +1513,13 @@ test("text is visible in both the preview and the exported frame", async ({
   }
 });
 
-test("exact H.264 preflight blocks MP4 and offers WebM before render", async ({
-  page,
-}) => {
+test("exact H.264 preflight blocks MP4 and offers WebM before render", async ({ page }) => {
   await page.addInitScript(() => {
     const original = VideoEncoder.isConfigSupported.bind(VideoEncoder);
     Object.defineProperty(VideoEncoder, "isConfigSupported", {
       configurable: true,
       value: async (config: VideoEncoderConfig) =>
-        String(config.codec).startsWith("avc1")
-          ? { supported: false, config }
-          : original(config),
+        String(config.codec).startsWith("avc1") ? { supported: false, config } : original(config),
     });
   });
   await page.goto("/video-editor");
@@ -1770,21 +1531,13 @@ test("exact H.264 preflight blocks MP4 and offers WebM before render", async ({
   });
   await expect(page).toHaveURL(/\/video-editor\/local_video_/);
   await page.getByRole("button", { name: "Export" }).click();
-  await expect(
-    page.getByText(/This browser cannot encode H\.264/),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Start export" }),
-  ).toBeDisabled();
+  await expect(page.getByText(/This browser cannot encode H\.264/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Start export" })).toBeDisabled();
 
   await page.getByText("MP4 · H.264/AAC").click();
   await page.getByRole("option", { name: /WebM · VP9 or VP8\/Opus/ }).click();
-  await expect(
-    page.getByText("This device supports the selected export settings."),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Start export" }),
-  ).toBeEnabled();
+  await expect(page.getByText("This device supports the selected export settings.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Start export" })).toBeEnabled();
 });
 
 test("recorded screen tracks remain durable after manifest cleanup and reload", async ({
@@ -1823,13 +1576,11 @@ test("recorded screen tracks remain durable after manifest cleanup and reload", 
   await page.goto("/video-editor/new?mode=record");
   await page.getByRole("checkbox", { name: "Camera" }).uncheck();
   await page.getByRole("checkbox", { name: "Microphone" }).uncheck();
-  await page
-    .getByRole("checkbox", { name: "System audio", exact: true })
-    .uncheck();
+  await page.getByRole("checkbox", { name: "System audio", exact: true }).uncheck();
   await page.getByRole("button", { name: "Start recording" }).click();
-  await expect(
-    page.getByRole("button", { name: "Stop recording" }),
-  ).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByRole("button", { name: "Stop recording" })).toBeVisible({
+    timeout: 10_000,
+  });
   await page.waitForTimeout(1_400);
   await page.getByRole("button", { name: "Stop recording" }).click();
   await expect(page).toHaveURL(/\/video-editor\/local_video_/, {
@@ -1838,9 +1589,7 @@ test("recorded screen tracks remain durable after manifest cleanup and reload", 
   await expect(page.getByText("screen.webm").first()).toBeVisible();
   await page.reload();
   await expect(page.getByText("screen.webm").first()).toBeVisible();
-  await expect(
-    page.getByText(/missing from local project storage/i),
-  ).toHaveCount(0);
+  await expect(page.getByText(/missing from local project storage/i)).toHaveCount(0);
   expect(browserErrors).toEqual([]);
 });
 
@@ -1867,9 +1616,7 @@ test("cancelled screen capture shows a waiting state without creating a project"
   ).toHaveCount(1);
   await page.getByRole("checkbox", { name: "Camera" }).uncheck();
   await page.getByRole("checkbox", { name: "Microphone" }).uncheck();
-  await page
-    .getByRole("checkbox", { name: "System audio", exact: true })
-    .uncheck();
+  await page.getByRole("checkbox", { name: "System audio", exact: true }).uncheck();
   await page.getByRole("button", { name: "Start recording" }).click();
   await expect(
     page.getByText("Choose a screen, window, or tab in the browser picker."),
@@ -1881,9 +1628,7 @@ test("cancelled screen capture shows a waiting state without creating a project"
   });
   await expect(page.getByText("Screen capture was cancelled.")).toBeVisible();
   await page.goto("/video-editor");
-  await expect(page.getByText("Screen recording", { exact: true })).toHaveCount(
-    0,
-  );
+  await expect(page.getByText("Screen recording", { exact: true })).toHaveCount(0);
 });
 
 test("active recordings preserve camera and microphone device switches as segments", async ({
@@ -1910,10 +1655,7 @@ test("active recordings preserve camera and microphone device switches as segmen
       constructor(stream: MediaStream, options?: MediaRecorderOptions) {
         super();
         if (stream.getVideoTracks().length > 0) {
-          return new NativeMediaRecorder(
-            stream,
-            options,
-          ) as unknown as FixtureMediaRecorder;
+          return new NativeMediaRecorder(stream, options) as unknown as FixtureMediaRecorder;
         }
         this.stream = stream;
         this.mimeType = options?.mimeType ?? "audio/webm";
@@ -2031,34 +1773,24 @@ test("active recordings preserve camera and microphone device switches as segmen
   }, microphoneFixture);
 
   await page.goto("/video-editor/new?mode=record");
-  await page
-    .getByRole("checkbox", { name: "System audio", exact: true })
-    .uncheck();
+  await page.getByRole("checkbox", { name: "System audio", exact: true }).uncheck();
   await page.getByRole("button", { name: "Start recording" }).click();
-  await expect(
-    page.getByRole("button", { name: "Stop recording" }),
-  ).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByRole("button", { name: "Stop recording" })).toBeVisible({
+    timeout: 10_000,
+  });
   await page.waitForTimeout(1_100);
 
   await page.getByRole("button", { name: "Switch camera" }).click();
   await page.getByRole("option", { name: "Camera 2" }).click();
   await expect
-    .poll(() =>
-      page.evaluate(
-        () => (window as unknown as { __mediaCalls: number }).__mediaCalls,
-      ),
-    )
+    .poll(() => page.evaluate(() => (window as unknown as { __mediaCalls: number }).__mediaCalls))
     .toBe(2);
   await page.waitForTimeout(1_100);
 
   await page.getByRole("button", { name: "Switch microphone" }).click();
   await page.getByRole("option", { name: "Microphone 2" }).click();
   await expect
-    .poll(() =>
-      page.evaluate(
-        () => (window as unknown as { __mediaCalls: number }).__mediaCalls,
-      ),
-    )
+    .poll(() => page.evaluate(() => (window as unknown as { __mediaCalls: number }).__mediaCalls))
     .toBe(3);
 
   await page.waitForTimeout(1_200);
@@ -2092,17 +1824,13 @@ test("rollout flag blocks every entry route", async ({ page }) => {
 
   await page.goto("/video-editor");
   await expect(
-    page.getByText(
-      "OpenPost Video Editor is disabled on this OpenPost instance.",
-    ),
+    page.getByText("OpenPost Video Editor is disabled on this OpenPost instance."),
   ).toBeVisible();
-  await expect(page.getByRole("link", { name: /Record/ })).toHaveAttribute(
+  await expect(page.getByRole("link", { name: /Record/ })).toHaveAttribute("aria-disabled", "true");
+  await expect(page.getByRole("link", { name: /Browse stock/ })).toHaveAttribute(
     "aria-disabled",
     "true",
   );
-  await expect(
-    page.getByRole("link", { name: /Browse stock/ }),
-  ).toHaveAttribute("aria-disabled", "true");
 
   await page.goto("/video-editor/new?mode=blank");
   await expect(page).toHaveURL(/\/video-editor$/);
@@ -2110,9 +1838,7 @@ test("rollout flag blocks every entry route", async ({ page }) => {
   await expect(page).toHaveURL(/\/video-editor$/);
 });
 
-test("unsupported browser redirects before creating local work", async ({
-  page,
-}) => {
+test("unsupported browser redirects before creating local work", async ({ page }) => {
   await page.addInitScript(() => {
     delete (globalThis as { VideoDecoder?: unknown }).VideoDecoder;
     delete (globalThis as { VideoEncoder?: unknown }).VideoEncoder;
@@ -2126,9 +1852,7 @@ test("unsupported browser redirects before creating local work", async ({
   ).toBeVisible();
 });
 
-test("mobile keeps touch timeline editing, contextual tools, and export", async ({
-  browser,
-}) => {
+test("mobile keeps touch timeline editing, contextual tools, and export", async ({ browser }) => {
   const context = await browser.newContext({
     viewport: { width: 390, height: 844 },
     isMobile: true,
@@ -2143,28 +1867,14 @@ test("mobile keeps touch timeline editing, contextual tools, and export", async 
     buffer: video,
   });
   await expect(page).toHaveURL(/\/video-editor\/local_video_/);
-  await expect(
-    page.getByRole("heading", { name: "Timeline", exact: true }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Timeline", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Export" })).toBeEnabled();
-  const exportBounds = await page
-    .getByRole("button", { name: "Export" })
-    .boundingBox();
+  const exportBounds = await page.getByRole("button", { name: "Export" }).boundingBox();
   if (!exportBounds) throw new Error("Mobile export control has no bounds");
   expect(exportBounds.width).toBeGreaterThanOrEqual(44);
   expect(exportBounds.height).toBeGreaterThanOrEqual(44);
-  for (const tool of [
-    "Media",
-    "Text",
-    "Elements",
-    "Audio",
-    "Captions",
-    "Transitions",
-    "Smart",
-  ]) {
-    await expect(
-      page.getByRole("button", { name: tool, exact: true }),
-    ).toBeInViewport();
+  for (const tool of ["Media", "Text", "Elements", "Audio", "Captions", "Transitions", "Smart"]) {
+    await expect(page.getByRole("button", { name: tool, exact: true })).toBeInViewport();
   }
   await page.getByRole("button", { name: "Text", exact: true }).click();
   const toolSheet = page.getByRole("complementary", { name: "Text" });
@@ -2181,11 +1891,9 @@ test("mobile keeps touch timeline editing, contextual tools, and export", async 
   await inspectorSheet.getByRole("button", { name: "Close" }).click();
   await page.getByRole("button", { name: "Play", exact: true }).click();
   await expect(page.getByRole("button", { name: "Pause" })).toBeVisible();
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth,
-    ),
-  ).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
   await context.close();
 });
 
@@ -2208,9 +1916,7 @@ test("the complete editor stays usable at 320px", async ({ browser }) => {
   await expect(page.getByRole("button", { name: "Export" })).toBeEnabled();
   await expect(page.getByRole("button", { name: "Format" })).toBeVisible();
   await page.getByRole("button", { name: "Quick cut", exact: true }).click();
-  await expect(
-    page.getByRole("heading", { name: "Source timeline" }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Source timeline" })).toBeVisible();
   await page.getByRole("button", { name: "Full editor", exact: true }).click();
   await expect(
     page
@@ -2219,17 +1925,13 @@ test("the complete editor stays usable at 320px", async ({ browser }) => {
   ).toHaveCount(1);
   await page.getByRole("button", { name: "Text", exact: true }).click();
   await expect(page.getByRole("complementary", { name: "Text" })).toBeVisible();
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth,
-    ),
-  ).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
   await context.close();
 });
 
-test("a tablet-width editor keeps creation tools reachable", async ({
-  browser,
-}) => {
+test("a tablet-width editor keeps creation tools reachable", async ({ browser }) => {
   const context = await browser.newContext({
     viewport: { width: 768, height: 900 },
     hasTouch: false,
@@ -2250,17 +1952,13 @@ test("a tablet-width editor keeps creation tools reachable", async ({
   await toolDrawer.getByRole("button", { name: "Close" }).click();
   await expect(toolDrawer).toBeHidden();
   await expect(page.getByRole("button", { name: "Export" })).toBeEnabled();
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth,
-    ),
-  ).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
   await context.close();
 });
 
-test("a narrow fine-pointer desktop keeps the complete editor", async ({
-  browser,
-}) => {
+test("a narrow fine-pointer desktop keeps the complete editor", async ({ browser }) => {
   const context = await browser.newContext({
     viewport: { width: 922, height: 900 },
     hasTouch: false,
@@ -2274,18 +1972,12 @@ test("a narrow fine-pointer desktop keeps the complete editor", async ({
     buffer: video,
   });
   await expect(page).toHaveURL(/\/video-editor\/local_video_/);
-  await expect(
-    page.getByRole("heading", { name: "Timeline", exact: true }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Timeline", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Export" })).toBeEnabled();
-  await expect(
-    page.getByText("Timeline editing needs a desktop Chromium browser"),
-  ).toBeHidden();
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth,
-    ),
-  ).toBe(true);
+  await expect(page.getByText("Timeline editing needs a desktop Chromium browser")).toBeHidden();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
   await context.close();
 });
 
@@ -2305,12 +1997,8 @@ test("a zoom-equivalent fine-pointer viewport uses drawers without losing timeli
     buffer: video,
   });
   await expect(page).toHaveURL(/\/video-editor\/local_video_/);
-  await expect(
-    page.getByRole("heading", { name: "Timeline", exact: true }),
-  ).toBeVisible();
-  await expect(
-    page.getByText("Timeline editing needs a desktop Chromium browser"),
-  ).toBeHidden();
+  await expect(page.getByRole("heading", { name: "Timeline", exact: true })).toBeVisible();
+  await expect(page.getByText("Timeline editing needs a desktop Chromium browser")).toBeHidden();
 
   await page.getByRole("button", { name: "Text" }).click();
   const toolDrawer = page.getByRole("complementary", { name: "Text" });
@@ -2329,17 +2017,13 @@ test("a zoom-equivalent fine-pointer viewport uses drawers without losing timeli
   await inspectorDrawer.getByRole("button", { name: "Close" }).click();
   await expect(inspectorDrawer).toBeHidden();
   await expect(page.getByRole("button", { name: "Export" })).toBeEnabled();
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth,
-    ),
-  ).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
   await context.close();
 });
 
-test("real Silero VAD completes after reaching 100 percent", async ({
-  page,
-}) => {
+test("real Silero VAD completes after reaching 100 percent", async ({ page }) => {
   test.setTimeout(180_000);
   const browserErrors: string[] = [];
   page.on("pageerror", (error) => browserErrors.push(error.message));
@@ -2369,9 +2053,7 @@ test("real Silero VAD completes after reaching 100 percent", async ({
   expect(browserErrors).toEqual([]);
 });
 
-test("real Whisper transcription completes without leaving analysis busy", async ({
-  page,
-}) => {
+test("real Whisper transcription completes without leaving analysis busy", async ({ page }) => {
   test.setTimeout(300_000);
   const browserErrors: string[] = [];
   page.on("pageerror", (error) => browserErrors.push(error.message));
@@ -2396,9 +2078,7 @@ test("real Whisper transcription completes without leaving analysis busy", async
   await expect(consent).toBeVisible();
   const started = Date.now();
   await consent.getByRole("button", { name: "Download and continue" }).click();
-  await expect(
-    page.getByText(/caption section\(s\) ready to review/),
-  ).toBeVisible({
+  await expect(page.getByText(/caption section\(s\) ready to review/)).toBeVisible({
     timeout: 240_000,
   });
   expect(Date.now() - started).toBeLessThan(240_000);

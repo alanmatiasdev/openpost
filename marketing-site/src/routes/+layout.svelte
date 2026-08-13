@@ -25,7 +25,9 @@
 	onMount(() => {
 		soundPreferences.initialize();
 		configureTelemetry({
-			enabled: Boolean(import.meta.env.VITE_POSTHOG_PROJECT_TOKEN && import.meta.env.VITE_POSTHOG_API_HOST),
+			enabled: Boolean(
+				import.meta.env.VITE_POSTHOG_PROJECT_TOKEN && import.meta.env.VITE_POSTHOG_API_HOST
+			),
 			projectToken: import.meta.env.VITE_POSTHOG_PROJECT_TOKEN,
 			apiHost: import.meta.env.VITE_POSTHOG_API_HOST,
 			uiHost: import.meta.env.VITE_POSTHOG_UI_HOST,

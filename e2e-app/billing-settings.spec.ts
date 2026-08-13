@@ -20,41 +20,24 @@ test("settings shows billing plan controls for an authenticated workspace", asyn
   await authenticatePage(page, auth.token);
   await page.goto("/settings?tab=plan");
 
-  await expect(
-    page.getByRole("heading", { name: "Plan & usage" }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Billing", exact: true }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Plan & usage" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Billing", exact: true })).toBeVisible();
   await expect(page.getByText("No active plan")).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Customer Portal" }),
-  ).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Customer Portal" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /^Choose / })).toHaveCount(5);
   await expect(page.getByRole("heading", { name: "Starter" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Founder" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Pro" })).toBeVisible();
-  await expect(
-    page.locator("#billing").getByRole("heading", { name: "Team" }),
-  ).toBeVisible();
-  await expect(
-    page.locator("#billing").getByRole("heading", { name: "Agency" }),
-  ).toBeVisible();
+  await expect(page.locator("#billing").getByRole("heading", { name: "Team" })).toBeVisible();
+  await expect(page.locator("#billing").getByRole("heading", { name: "Agency" })).toBeVisible();
 });
 
-test("settings keeps hosted X costs separate from product usage", async ({
-  page,
-  request,
-}) => {
+test("settings keeps hosted X costs separate from product usage", async ({ page, request }) => {
   const unique = Date.now().toString(36);
   const email = `provider-cost-${unique}@example.com`;
 
   const auth = await registerUser(request, email);
-  const workspace = await createWorkspace(
-    request,
-    auth.token,
-    "Provider Cost E2E",
-  );
+  const workspace = await createWorkspace(request, auth.token, "Provider Cost E2E");
   let billingStatusRequests = 0;
 
   await page.route("**/api/v1/billing/status?**", async (route) => {
@@ -84,8 +67,7 @@ test("settings keeps hosted X costs separate from product usage", async ({
             reserved_units: 1,
             reserved_cost_microusd: 200000,
             budget_microusd: 5000000,
-            pricing_source_url:
-              "https://docs.x.com/x-api/getting-started/pricing",
+            pricing_source_url: "https://docs.x.com/x-api/getting-started/pricing",
             operations: [
               {
                 operation: "post_create",
@@ -133,15 +115,13 @@ test("settings keeps hosted X costs separate from product usage", async ({
   await expect(costs).toContainText("Posts without links");
   await expect(costs).toContainText("Posts with links");
   await expect(costs).toContainText("1 request still being checked");
-  await expect(
-    costs.getByRole("link", { name: "View X pricing" }),
-  ).toHaveAttribute("href", "https://docs.x.com/x-api/getting-started/pricing");
+  await expect(costs.getByRole("link", { name: "View X pricing" })).toHaveAttribute(
+    "href",
+    "https://docs.x.com/x-api/getting-started/pricing",
+  );
 });
 
-test("instance admins can review usage, users, and update status", async ({
-  page,
-  request,
-}) => {
+test("instance admins can review usage, users, and update status", async ({ page, request }) => {
   const unique = Date.now().toString(36);
   const email = `update-status-${unique}@example.com`;
 
@@ -239,19 +219,16 @@ test("instance admins can review usage, users, and update status", async ({
       },
     });
   });
-  await page.route(
-    "**/api/v1/admin/users/*/impersonation-links",
-    async (route) => {
-      impersonationLinkRequests += 1;
-      await route.fulfill({
-        contentType: "application/json",
-        json: {
-          url: "http://127.0.0.1:18180/impersonate#code=one-use-test-code",
-          expires_at: "2026-07-29T12:05:00Z",
-        },
-      });
-    },
-  );
+  await page.route("**/api/v1/admin/users/*/impersonation-links", async (route) => {
+    impersonationLinkRequests += 1;
+    await route.fulfill({
+      contentType: "application/json",
+      json: {
+        url: "http://127.0.0.1:18180/impersonate#code=one-use-test-code",
+        expires_at: "2026-07-29T12:05:00Z",
+      },
+    });
+  });
   await page.route("**/api/v1/admin/update-status", async (route) => {
     updateStatusRequests += 1;
     await route.fulfill({
@@ -275,9 +252,7 @@ test("instance admins can review usage, users, and update status", async ({
   await expect.poll(() => profileRequests).toBeGreaterThan(0);
   await expect.poll(() => overviewRequests).toBeGreaterThan(0);
   await expect.poll(() => updateStatusRequests).toBeGreaterThan(0);
-  await expect(
-    page.getByRole("heading", { name: "Instance", level: 1 }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Instance", level: 1 })).toBeVisible();
 
   const overview = page.getByTestId("instance-admin-overview");
   await expect(overview).toContainText("Total users");
@@ -303,9 +278,7 @@ test("instance admins can review usage, users, and update status", async ({
   await expect(page.locator('[data-settings-tab="profile"]')).toHaveCount(0);
   await page.locator('[data-settings-tab="users"]').click();
   await expect(page).toHaveURL(/settings\?tab=users/);
-  await expect(
-    page.getByRole("heading", { name: "Users", level: 1 }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Users", level: 1 })).toBeVisible();
   await expect.poll(() => requestedUserPages).toContain(1);
 
   const usersPanel = page.getByTestId("instance-admin-users");
@@ -330,9 +303,7 @@ test("instance admins can review usage, users, and update status", async ({
   await directory.getByRole("button", { name: "Sort by User" }).click();
   await expect.poll(() => requestedUserSorts).toContain("display_name:asc");
 
-  await directory
-    .getByRole("button", { name: "Impersonate User 2", exact: true })
-    .click();
+  await directory.getByRole("button", { name: "Impersonate User 2", exact: true }).click();
   await expect.poll(() => impersonationLinkRequests).toBe(1);
   const impersonationDialog = page.getByRole("dialog");
   await expect(impersonationDialog).toContainText("Impersonate User 2");
@@ -341,9 +312,7 @@ test("instance admins can review usage, users, and update status", async ({
       name: "Private sign-in link",
     }),
   ).toHaveValue("http://127.0.0.1:18180/impersonate#code=one-use-test-code");
-  await expect(impersonationDialog).toContainText(
-    "private or incognito window",
-  );
+  await expect(impersonationDialog).toContainText("private or incognito window");
   await impersonationDialog
     .locator("button")
     .filter({ hasText: /^Close$/ })
@@ -362,10 +331,7 @@ test("instance admins can review usage, users, and update status", async ({
   expect(overflow).toBeLessThanOrEqual(1);
 });
 
-test("settings shows recent MCP activity for an authenticated user", async ({
-  page,
-  request,
-}) => {
+test("settings shows recent MCP activity for an authenticated user", async ({ page, request }) => {
   const unique = Date.now().toString(36);
   const email = `mcp-activity-${unique}@example.com`;
 
@@ -391,19 +357,12 @@ test("settings shows recent MCP activity for an authenticated user", async ({
   await authenticatePage(page, auth.token);
   await page.goto("/settings?tab=developer");
 
-  await expect(
-    page.getByRole("heading", { name: "Recent MCP Activity" }),
-  ).toBeVisible();
-  await expect(page.getByTestId("mcp-activity-list")).toContainText(
-    "list_workspaces",
-  );
+  await expect(page.getByRole("heading", { name: "Recent MCP Activity" })).toBeVisible();
+  await expect(page.getByTestId("mcp-activity-list")).toContainText("list_workspaces");
   await expect(page.getByTestId("mcp-activity-list")).toContainText("success");
 });
 
-test("settings account tab updates the user profile", async ({
-  page,
-  request,
-}) => {
+test("settings account tab updates the user profile", async ({ page, request }) => {
   const unique = Date.now().toString(36);
   const email = `profile-${unique}@example.com`;
 
@@ -413,9 +372,7 @@ test("settings account tab updates the user profile", async ({
   await authenticatePage(page, auth.token);
   await page.goto("/settings?tab=profile");
 
-  await expect(
-    page.getByRole("heading", { name: "Profile", level: 1 }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Profile", level: 1 })).toBeVisible();
   await page
     .locator("section#profile")
     .getByRole("textbox", { name: "Display name", exact: true })
@@ -467,10 +424,7 @@ test("settings keeps the active mobile tab visible and exposes dismissible statu
   await expect(savedToast).toHaveCount(0);
 });
 
-test("settings lists and revokes active web sessions", async ({
-  page,
-  request,
-}) => {
+test("settings lists and revokes active web sessions", async ({ page, request }) => {
   const unique = Date.now().toString(36);
   const email = `sessions-${unique}@example.com`;
 
@@ -486,26 +440,17 @@ test("settings lists and revokes active web sessions", async ({
   await authenticatePage(page, auth.token);
   await page.goto("/settings?tab=security");
 
-  await expect(
-    page.getByRole("heading", { name: "Active Sessions" }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Active Sessions" })).toBeVisible();
   await expect(page.getByTestId("auth-session-list")).toContainText("Current");
-  await expect(page.getByTestId("auth-session-list")).toContainText(
-    "Browser on device",
-  );
-  await expect(page.getByTestId("auth-session-list")).not.toContainText(
-    "E2E Other Browser",
-  );
+  await expect(page.getByTestId("auth-session-list")).toContainText("Browser on device");
+  await expect(page.getByTestId("auth-session-list")).not.toContainText("E2E Other Browser");
 
   const otherSession = page.getByTestId("auth-session-row").filter({
     has: page.getByRole("button", { name: "Remove access" }),
   });
   await expect(otherSession).toHaveCount(1);
   await otherSession.getByRole("button", { name: "Remove access" }).click();
-  await page
-    .getByRole("dialog")
-    .getByRole("button", { name: "Remove access" })
-    .click();
+  await page.getByRole("dialog").getByRole("button", { name: "Remove access" }).click();
   await expect(
     page.getByTestId("auth-session-list").getByRole("button", {
       name: "Remove access",
@@ -513,10 +458,7 @@ test("settings lists and revokes active web sessions", async ({
   ).toHaveCount(0);
 });
 
-test("settings creates read-only MCP API tokens by default", async ({
-  page,
-  request,
-}) => {
+test("settings creates read-only MCP API tokens by default", async ({ page, request }) => {
   const unique = Date.now().toString(36);
   const email = `mcp-token-${unique}@example.com`;
 
@@ -526,9 +468,7 @@ test("settings creates read-only MCP API tokens by default", async ({
   await authenticatePage(page, auth.token);
   await page.goto("/settings?tab=developer");
 
-  await expect(page.getByTestId("api-token-scope")).toContainText(
-    "MCP / read only",
-  );
+  await expect(page.getByTestId("api-token-scope")).toContainText("MCP / read only");
   await expect(page.getByText(/Best for read-only work/)).toBeVisible();
   await page.locator("#api-token-name").fill("ChatGPT App E2E");
   await page.getByRole("button", { name: "Create Token" }).click();
@@ -556,28 +496,18 @@ test("settings creates and accepts workspace invitations", async ({
   await authenticatePage(page, adminAuth.token);
   await page.goto("/settings?tab=members");
 
-  await expect(
-    page.locator("#team").getByRole("heading", { name: "Team" }),
-  ).toBeVisible();
+  await expect(page.locator("#team").getByRole("heading", { name: "Team" })).toBeVisible();
 
   await page.getByTestId("team-invite-email").fill(inviteEmail);
   await page.locator("#team-invite-role").click();
   await page.getByRole("option", { name: "Viewer" }).click();
   await page.getByRole("button", { name: "Send Invite" }).click();
 
-  await expect(page.getByTestId("team-invite-link")).toContainText(
-    "/invite?token=op_inv_",
-  );
-  await expect(page.getByTestId("team-invitations-list")).toContainText(
-    inviteEmail,
-  );
+  await expect(page.getByTestId("team-invite-link")).toContainText("/invite?token=op_inv_");
+  await expect(page.getByTestId("team-invitations-list")).toContainText(inviteEmail);
 
-  const inviteLinkText = (await page
-    .getByTestId("team-invite-link")
-    .textContent())!;
-  const inviteURL = inviteLinkText.match(
-    /https?:\/\/\S+\/invite\?token=\S+/,
-  )?.[0];
+  const inviteLinkText = (await page.getByTestId("team-invite-link").textContent())!;
+  const inviteURL = inviteLinkText.match(/https?:\/\/\S+\/invite\?token=\S+/)?.[0];
   expect(inviteURL).toBeTruthy();
 
   const invitedAuth = await registerUser(request, inviteEmail);
@@ -586,13 +516,9 @@ test("settings creates and accepts workspace invitations", async ({
   await authenticatePage(invitedPage, invitedAuth.token);
 
   const parsedInviteURL = new URL(inviteURL!);
-  await invitedPage.goto(
-    `${parsedInviteURL.pathname}${parsedInviteURL.search}`,
-  );
+  await invitedPage.goto(`${parsedInviteURL.pathname}${parsedInviteURL.search}`);
 
-  await expect(
-    invitedPage.getByRole("heading", { name: "Invitation accepted" }),
-  ).toBeVisible();
+  await expect(invitedPage.getByRole("heading", { name: "Invitation accepted" })).toBeVisible();
   await expect(invitedPage.getByText("viewer access")).toBeVisible();
 
   await expect(invitedPage).not.toHaveURL(/\/onboarding|\/checkout/);
@@ -600,27 +526,17 @@ test("settings creates and accepts workspace invitations", async ({
   await invitedPage.getByRole("link", { name: "Open Workspace" }).click();
   await expect(invitedPage).toHaveURL(/\/$/);
   await expect(invitedPage).not.toHaveURL(/\/onboarding|\/checkout/);
-  await expect(
-    invitedPage.getByTestId("workspace-setup-guide-home"),
-  ).toHaveCount(0);
-  await expect(
-    invitedPage.getByTestId("workspace-setup-guide-composer"),
-  ).toHaveCount(0);
+  await expect(invitedPage.getByTestId("workspace-setup-guide-home")).toHaveCount(0);
+  await expect(invitedPage.getByTestId("workspace-setup-guide-composer")).toHaveCount(0);
   await invitedPage.goto("/settings?tab=accounts");
-  await expect(
-    invitedPage.getByRole("button", { name: "Create post" }),
-  ).toHaveCount(0);
+  await expect(invitedPage.getByRole("button", { name: "Create post" })).toHaveCount(0);
   await expect(invitedPage.getByText("Add a channel")).toHaveCount(0);
   await expect(invitedPage.getByText("Connect a destination")).toHaveCount(0);
-  await expect(
-    invitedPage.getByTestId("workspace-setup-guide-accounts"),
-  ).toHaveCount(0);
+  await expect(invitedPage.getByTestId("workspace-setup-guide-accounts")).toHaveCount(0);
   await invitedContext.close();
 });
 
-test("plan selection from signup starts checkout after onboarding", async ({
-  page,
-}) => {
+test("plan selection from signup starts checkout after onboarding", async ({ page }) => {
   const unique = Date.now().toString(36);
   const email = `plan-signup-${unique}@example.com`;
   let welcomeBody:
@@ -682,10 +598,7 @@ test("plan selection from signup starts checkout after onboarding", async ({
       plan_id: string;
       billing_period: "monthly" | "annual";
     };
-    const prices: Record<
-      string,
-      { monthly: number; annual: number; name: string }
-    > = {
+    const prices: Record<string, { monthly: number; annual: number; name: string }> = {
       starter: { monthly: 15, annual: 150, name: "Starter" },
       founder: { monthly: 25, annual: 250, name: "Founder" },
       pro: { monthly: 49, annual: 490, name: "Pro" },
@@ -708,12 +621,10 @@ test("plan selection from signup starts checkout after onboarding", async ({
       },
     });
   });
-  await page.route(
-    "https://cdn.paddle.com/paddle/v2/paddle.js",
-    async (route) => {
-      await route.fulfill({
-        contentType: "application/javascript",
-        body: `(() => {
+  await page.route("https://cdn.paddle.com/paddle/v2/paddle.js", async (route) => {
+    await route.fulfill({
+      contentType: "application/javascript",
+      body: `(() => {
         const prices = {
           pri_starter_month: "$15.00",
           pri_founder_month: "$25.00",
@@ -758,9 +669,8 @@ test("plan selection from signup starts checkout after onboarding", async ({
           }
         };
       })();`,
-      });
-    },
-  );
+    });
+  });
   const checkoutResponse = {
     id: "chkat_e2e",
     url: "/checkout?plan=founder&billing_period=annual",
@@ -810,25 +720,15 @@ test("plan selection from signup starts checkout after onboarding", async ({
     page.getByRole("heading", { name: "Confirm your Workspace and plan" }),
   ).toBeVisible();
   await expect(page.getByText("OpenPost Founder")).toBeVisible();
-  const purchaseSummary = page.locator(
-    'section[aria-labelledby="purchase-choice-title"]',
-  );
-  await expect(
-    purchaseSummary.getByText("$25/month", { exact: true }),
-  ).toBeVisible();
+  const purchaseSummary = page.locator('section[aria-labelledby="purchase-choice-title"]');
+  await expect(purchaseSummary.getByText("$25/month", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: /^Annual/ }).click();
-  await expect(
-    purchaseSummary.getByText("$250/year", { exact: true }),
-  ).toBeVisible();
+  await expect(purchaseSummary.getByText("$250/year", { exact: true })).toBeVisible();
   await page.getByLabel("Workspace name").fill("North Star Studio");
-  await page
-    .getByRole("button", { name: "Create Workspace and continue" })
-    .click();
+  await page.getByRole("button", { name: "Create Workspace and continue" }).click();
 
   await expect(page).toHaveURL(/\/checkout\?attempt=chkat_e2e/);
-  await expect(
-    page.getByRole("heading", { name: "Put your content team to work" }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Put your content team to work" })).toBeVisible();
   await expect(page.getByText("$0 due today")).toBeVisible();
   await expect(page.getByText("$250.00/year")).toBeVisible();
   await expect(page.getByRole("dialog")).toHaveCount(0);
@@ -883,9 +783,7 @@ test("plan selection from signup starts checkout after onboarding", async ({
     purchase_choice_token: "choice-founder-annual",
   });
   expect(resumeCalls).toBe(1);
-  await expect(
-    page.getByRole("button", { name: "Monthly", exact: true }),
-  ).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Monthly", exact: true })).toBeDisabled();
 
   await page.evaluate(() => {
     const state = (
@@ -900,9 +798,7 @@ test("plan selection from signup starts checkout after onboarding", async ({
     state?.initialize?.eventCallback?.({ name: "checkout.closed" });
   });
   await expect(
-    page.getByText(
-      "Checkout was closed. Your Workspace and purchase choice are saved.",
-    ),
+    page.getByText("Checkout was closed. Your Workspace and purchase choice are saved."),
   ).toBeVisible();
   await page.getByRole("button", { name: "Try again" }).click();
   await expect.poll(() => resumeCalls).toBe(2);
@@ -963,20 +859,14 @@ test("plan selection from signup starts checkout after onboarding", async ({
   });
 
   await page.setViewportSize({ width: 320, height: 720 });
-  await expect(
-    page.getByRole("heading", { name: "Put your content team to work" }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Put your content team to work" })).toBeVisible();
   const mobileOverflow = await page.evaluate(
-    () =>
-      document.documentElement.scrollWidth -
-      document.documentElement.clientWidth,
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
   );
   expect(mobileOverflow).toBeLessThanOrEqual(1);
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(page.getByTestId("paddle-checkout-frame")).toBeVisible();
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth,
-    ),
-  ).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
 });

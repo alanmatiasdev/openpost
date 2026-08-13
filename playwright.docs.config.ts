@@ -21,7 +21,7 @@ export default defineConfig({
     trace: "on-first-retry",
   },
   webServer: {
-    command: `${usePrebuiltArtifact ? "" : "bun run docs:build && "}cd docs-site && bunx vitepress preview --host ${host} --port ${port}`,
+    command: `${usePrebuiltArtifact ? "" : "bun run build -- docs && "}bun run --filter @openpost/docs preview --host ${host} --port ${port}`,
     url: baseURL,
     reuseExistingServer,
     timeout: 120_000,

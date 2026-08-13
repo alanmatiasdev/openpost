@@ -51,11 +51,13 @@ export class PublicationInvalidationCoalescer {
 	drain(revision: number): PublicationInvalidationBatch | null {
 		if (this.#pending.size === 0) return null;
 		const entries = [...this.#pending.entries()]
-			.map(([workspaceId, pending]): PublicationInvalidationEntry => ({
-				workspaceId,
-				scopes: [...pending.scopes].sort(),
-				dateKeys: [...pending.dateKeys].sort()
-			}))
+			.map(
+				([workspaceId, pending]): PublicationInvalidationEntry => ({
+					workspaceId,
+					scopes: [...pending.scopes].sort(),
+					dateKeys: [...pending.dateKeys].sort()
+				})
+			)
 			.sort((left, right) => left.workspaceId.localeCompare(right.workspaceId));
 		this.#pending.clear();
 		return { revision, entries };

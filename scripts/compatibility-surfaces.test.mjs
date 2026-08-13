@@ -30,11 +30,7 @@ function makeRemovalEligible(entry, openapi) {
   entry.notice = {
     announced_on: "2026-01-01",
     announced_version: "v3.6.0",
-    locations: [
-      "CHANGELOG.md",
-      "OpenAPI deprecated marker",
-      "migration documentation",
-    ],
+    locations: ["CHANGELOG.md", "OpenAPI deprecated marker", "migration documentation"],
   };
   entry.removal = {
     earliest_on: "2026-04-01",
@@ -54,17 +50,12 @@ function makeRemovalEligible(entry, openapi) {
 test("validates every current compatibility decision against OpenAPI", () => {
   const { registry, openapi } = readCompatibilityInputs();
   assert.deepEqual(validationProblems(registry, openapi), []);
-  assert.deepEqual(
-    registry.entries.map((entry) => entry.id).sort(),
-    requiredCompatibilityEntryIDs,
-  );
+  assert.deepEqual(registry.entries.map((entry) => entry.id).sort(), requiredCompatibilityEntryIDs);
 });
 
 test("refuses to hide a required candidate by deleting its registry entry", () => {
   const { registry, openapi } = readCompatibilityInputs();
-  registry.entries = registry.entries.filter(
-    (entry) => entry.id !== "rest.posts.legacy-write",
-  );
+  registry.entries = registry.entries.filter((entry) => entry.id !== "rest.posts.legacy-write");
   assert.match(
     validationProblems(registry, openapi).join("\n"),
     /missing required compatibility entry rest\.posts\.legacy-write/u,
@@ -95,8 +86,7 @@ test("requires OpenAPI markers on deprecated schema members", () => {
   const { registry, openapi } = readCompatibilityInputs();
   const entry = entryByID(registry, "schema.workspaces.media-cleanup-days");
   const member = entry.schema_members[0];
-  delete openapi.components.schemas[member.schema].properties[member.property]
-    .deprecated;
+  delete openapi.components.schemas[member.schema].properties[member.property].deprecated;
   assert.match(
     validationProblems(registry, openapi).join("\n"),
     /deprecated schema member GetWorkspaceSettingsOutputBody\.media_cleanup_days lacks the OpenAPI deprecated marker/u,
@@ -131,11 +121,7 @@ test("accepts a documented deprecation while its observation remains open", () =
   entry.notice = {
     announced_on: "2026-08-09",
     announced_version: "v3.7.0",
-    locations: [
-      "CHANGELOG.md",
-      "OpenAPI deprecated marker",
-      "migration documentation",
-    ],
+    locations: ["CHANGELOG.md", "OpenAPI deprecated marker", "migration documentation"],
   };
   entry.removal.earliest_on = "2026-11-07";
   entry.telemetry.observation_started_on = "2026-08-09";
@@ -150,11 +136,7 @@ test("blocks removal with known use or an incomplete observation window", () => 
   entry.notice = {
     announced_on: "2026-01-01",
     announced_version: "v3.6.0",
-    locations: [
-      "CHANGELOG.md",
-      "OpenAPI deprecated marker",
-      "migration documentation",
-    ],
+    locations: ["CHANGELOG.md", "OpenAPI deprecated marker", "migration documentation"],
   };
   entry.removal = {
     earliest_on: "2026-03-01",
@@ -181,10 +163,7 @@ test("refuses a removal date that has not arrived", () => {
   const entry = entryByID(registry, "rest.accounts.destination-options");
   makeRemovalEligible(entry, openapi);
   entry.removal.earliest_on = "2027-01-01";
-  assert.match(
-    validationProblems(registry, openapi).join("\n"),
-    /removal date has not arrived/u,
-  );
+  assert.match(validationProblems(registry, openapi).join("\n"), /removal date has not arrived/u);
 });
 
 test("accepts schema removal only after the same complete sunset gate", () => {
@@ -203,12 +182,7 @@ test("accepts schema removal only after the same complete sunset gate", () => {
     consumer.evidence = "No use in the bounded normalized route review.";
   }
   for (const member of entry.schema_members) {
-    delete openapi.components.schemas[member.schema].properties[
-      member.property
-    ];
+    delete openapi.components.schemas[member.schema].properties[member.property];
   }
-  assert.deepEqual(
-    validationProblems(registry, openapi, new Date("2026-11-08T00:00:00Z")),
-    [],
-  );
+  assert.deepEqual(validationProblems(registry, openapi, new Date("2026-11-08T00:00:00Z")), []);
 });

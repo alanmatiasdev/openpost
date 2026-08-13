@@ -15,15 +15,10 @@ test("communications and notifications stay usable across desktop and phone layo
   });
 
   const unique = Date.now().toString(36);
-  const auth = await registerUser(
-    request,
-    `communications-${unique}@example.com`,
-  );
-  const workspace = (await createWorkspace(
-    request,
-    auth.token,
-    "Communications E2E",
-  )) as { id: string };
+  const auth = await registerUser(request, `communications-${unique}@example.com`);
+  const workspace = (await createWorkspace(request, auth.token, "Communications E2E")) as {
+    id: string;
+  };
   await authenticatePage(page, auth.token);
   let engagementArchived = false;
   let conversationMessageLoads = 0;
@@ -59,8 +54,7 @@ test("communications and notifications stay usable across desktop and phone layo
             platform: "youtube",
             status: "failed",
             error_code: "provider_error",
-            error_message:
-              "OpenPost could not collect engagement from this provider.",
+            error_message: "OpenPost could not collect engagement from this provider.",
           },
         ],
         items:
@@ -85,15 +79,12 @@ test("communications and notifications stay usable across desktop and phone layo
                   can_hide: false,
                   can_delete: true,
                   hidden: false,
-                  ...(engagementArchived
-                    ? { archived_at: "2026-07-26T12:05:00Z" }
-                    : {}),
+                  ...(engagementArchived ? { archived_at: "2026-07-26T12:05:00Z" } : {}),
                   remote_created_at: "2026-07-26T11:45:00Z",
                   last_seen_at: "2026-07-26T12:00:00Z",
                   created_at: "2026-07-26T12:00:00Z",
                   updated_at: "2026-07-26T12:00:00Z",
-                  provider_post_url:
-                    "https://www.youtube.com/watch?v=walkthrough-1",
+                  provider_post_url: "https://www.youtube.com/watch?v=walkthrough-1",
                 },
               ]
             : [],
@@ -139,9 +130,7 @@ test("communications and notifications stay usable across desktop and phone layo
       unread_count: 1,
       read_at: "",
       archived_at: "",
-      messaging_window_expires_at: new Date(
-        Date.now() + 24 * 60 * 60 * 1000,
-      ).toISOString(),
+      messaging_window_expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
       created_at: "2026-07-26T11:55:00Z",
       updated_at: "2026-07-26T11:55:00Z",
     };
@@ -249,46 +238,36 @@ test("communications and notifications stay usable across desktop and phone layo
     });
   });
 
-  await page.route(
-    `**/api/v1/workspaces/${workspace.id}/settings`,
-    async (route) => {
-      if (route.request().method() !== "GET") {
-        await route.continue();
-        return;
-      }
-      await route.fulfill({
-        contentType: "application/json",
-        json: {
-          timezone: "UTC",
-          week_start: 1,
-        },
-      });
-    },
-  );
+  await page.route(`**/api/v1/workspaces/${workspace.id}/settings`, async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.continue();
+      return;
+    }
+    await route.fulfill({
+      contentType: "application/json",
+      json: {
+        timezone: "UTC",
+        week_start: 1,
+      },
+    });
+  });
 
   await page.setViewportSize({ width: 1280, height: 820 });
   await page.goto(`/engagement?workspace=${workspace.id}`);
   await expect(page.getByRole("heading", { name: "Engagement" })).toBeVisible();
-  await expect(
-    page.getByText("Could you share the setup guide?"),
-  ).toBeVisible();
+  await expect(page.getByText("Could you share the setup guide?")).toBeVisible();
   await page.getByRole("button", { name: "Collection issues (1)" }).click();
+  await expect(page.getByText("Collection recovery", { exact: true })).toBeVisible();
+  await expect(page.getByRole("paragraph").filter({ hasText: /^YouTube$/ })).toBeVisible();
   await expect(
-    page.getByText("Collection recovery", { exact: true }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("paragraph").filter({ hasText: /^YouTube$/ }),
-  ).toBeVisible();
-  await expect(
-    page.getByText(
-      "OpenPost could not collect new replies. It will try again automatically.",
-    ),
+    page.getByText("OpenPost could not collect new replies. It will try again automatically."),
   ).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("button", { name: "Reply" })).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: "Open post on YouTube" }),
-  ).toHaveAttribute("href", "https://www.youtube.com/watch?v=walkthrough-1");
+  await expect(page.getByRole("link", { name: "Open post on YouTube" })).toHaveAttribute(
+    "href",
+    "https://www.youtube.com/watch?v=walkthrough-1",
+  );
   await expect(page.getByRole("button", { name: "Archive" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Restore" })).toHaveCount(0);
   await expect(
@@ -299,22 +278,14 @@ test("communications and notifications stay usable across desktop and phone layo
   ).toBeVisible();
   await page.getByRole("button", { name: "All platforms" }).click();
   await page.getByRole("option", { name: "YouTube" }).click();
-  await expect(
-    page.getByText("Could you share the setup guide?"),
-  ).toBeVisible();
+  await expect(page.getByText("Could you share the setup guide?")).toBeVisible();
   await page.getByRole("button", { name: "Archive" }).click();
-  await expect(page.getByText("Could you share the setup guide?")).toHaveCount(
-    0,
-  );
+  await expect(page.getByText("Could you share the setup guide?")).toHaveCount(0);
   await expect(page.getByText("Item archived.")).toBeVisible();
   await page.getByText("Archived", { exact: true }).click();
-  await expect(
-    page.getByText("Could you share the setup guide?"),
-  ).toBeVisible();
+  await expect(page.getByText("Could you share the setup guide?")).toBeVisible();
   await page.getByRole("button", { name: "Restore" }).click();
-  await expect(page.getByText("Could you share the setup guide?")).toHaveCount(
-    0,
-  );
+  await expect(page.getByText("Could you share the setup guide?")).toHaveCount(0);
   await expect(page.getByText("Item restored.")).toBeVisible();
 
   await expect(page.getByTestId("sidebar-rolling-calendar")).toBeVisible();
@@ -331,36 +302,24 @@ test("communications and notifications stay usable across desktop and phone layo
   await conversationButton.click();
   await expect(conversationButton).toHaveAttribute("data-unread", "true");
   await expect(
-    page.getByText(
-      "OpenPost could not mark this conversation as read. Select it again to retry.",
-    ),
+    page.getByText("OpenPost could not mark this conversation as read. Select it again to retry."),
   ).toBeVisible();
   await expect(page.getByText("Failed to load conversation")).toBeVisible();
-  await expect(
-    page.getByText("Request reference: messages-e2e-reference"),
-  ).toBeVisible();
+  await expect(page.getByText("Request reference: messages-e2e-reference")).toBeVisible();
   await expect(page.getByTestId("conversation-reply-composer")).toHaveCount(0);
   await page.getByRole("button", { name: "Try again" }).click();
-  await expect(
-    page.getByText("Is this available for teams?").last(),
-  ).toBeVisible();
+  await expect(page.getByText("Is this available for teams?").last()).toBeVisible();
   await expect(page.getByPlaceholder("Write a message…")).toBeVisible();
   await expect(page.getByTestId("conversation-reply-composer")).toBeVisible();
   await conversationButton.click();
   await expect(conversationButton).toHaveAttribute("data-unread", "false");
 
   await page.goto(`/notifications?workspace=${workspace.id}`);
-  await expect(
-    page.getByRole("heading", { name: "Notifications" }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Notifications" })).toBeVisible();
   await expect(page.getByText("New message from Ada")).toBeVisible();
   await page.getByRole("button", { name: "Notification settings" }).click();
-  await expect(
-    page.getByRole("heading", { name: "Notifications" }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Delivery by event" }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Notifications" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Delivery by event" })).toBeVisible();
 
   for (const viewport of [
     { width: 390, height: 844 },
@@ -372,9 +331,7 @@ test("communications and notifications stay usable across desktop and phone layo
       await expect
         .poll(() =>
           page.evaluate(
-            () =>
-              document.documentElement.scrollWidth <=
-              document.documentElement.clientWidth,
+            () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
           ),
         )
         .toBe(true);
@@ -389,9 +346,7 @@ test("communications and notifications stay usable across desktop and phone layo
   expect(consoleErrors).toContain(expectedMarkReadFailure);
   expect({
     consoleErrors: consoleErrors.filter(
-      (message) =>
-        message !== expectedConversationFailure &&
-        message !== expectedMarkReadFailure,
+      (message) => message !== expectedConversationFailure && message !== expectedMarkReadFailure,
     ),
     unauthorizedResponses,
   }).toEqual({

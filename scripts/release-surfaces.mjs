@@ -3,10 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-export const repositoryRoot = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "..",
-);
+export const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 function readGitPaths(args, root) {
   return execFileSync("git", [...args, "-z"], {
@@ -18,9 +15,7 @@ function readGitPaths(args, root) {
 }
 
 export function readReleaseSurfaceManifest(root = repositoryRoot) {
-  return JSON.parse(
-    readFileSync(path.join(root, "release-surfaces.json"), "utf8"),
-  );
+  return JSON.parse(readFileSync(path.join(root, "release-surfaces.json"), "utf8"));
 }
 
 export function classifyReleasePath(file, manifest) {
@@ -35,17 +30,12 @@ export function classifyReleasePath(file, manifest) {
   }
   const exemption = (manifest.exemptions ?? []).find(
     (item) =>
-      item.path === file ||
-      (typeof item.prefix === "string" && file.startsWith(item.prefix)),
+      item.path === file || (typeof item.prefix === "string" && file.startsWith(item.prefix)),
   );
   return { surfaces: surfaces.sort(), exemption };
 }
 
-export function validateReleaseSurfaceManifest(
-  manifest,
-  trackedFiles,
-  root = repositoryRoot,
-) {
+export function validateReleaseSurfaceManifest(manifest, trackedFiles, root = repositoryRoot) {
   const problems = [];
   if (manifest.schema_version !== 1) problems.push("schema_version must be 1");
   if (!manifest.surfaces || Object.keys(manifest.surfaces).length === 0) {
@@ -59,10 +49,7 @@ export function validateReleaseSurfaceManifest(
     if (!String(owner.description ?? "").trim()) {
       problems.push(`${name} is missing a description`);
     }
-    if (
-      (owner.paths?.length ?? 0) === 0 &&
-      (owner.prefixes?.length ?? 0) === 0
-    ) {
+    if ((owner.paths?.length ?? 0) === 0 && (owner.prefixes?.length ?? 0) === 0) {
       problems.push(`${name} does not own any path or prefix`);
     }
     for (const prefix of owner.prefixes ?? []) {
@@ -81,9 +68,7 @@ export function validateReleaseSurfaceManifest(
 
   for (const item of manifest.exemptions ?? []) {
     if (!String(item.reason ?? "").trim()) {
-      problems.push(
-        `exemption ${item.path ?? item.prefix ?? "unknown"} needs a reason`,
-      );
+      problems.push(`exemption ${item.path ?? item.prefix ?? "unknown"} needs a reason`);
     }
     if (item.prefix && !item.prefix.endsWith("/")) {
       problems.push(`exemption prefix ${item.prefix} must end in /`);
@@ -95,11 +80,7 @@ export function validateReleaseSurfaceManifest(
     ) {
       problems.push(`exemption prefix ${item.prefix} does not exist`);
     }
-    if (
-      item.path &&
-      !trackedFiles.includes(item.path) &&
-      !existsSync(path.join(root, item.path))
-    ) {
+    if (item.path && !trackedFiles.includes(item.path) && !existsSync(path.join(root, item.path))) {
       problems.push(`exemption path ${item.path} does not exist`);
     }
   }
@@ -135,12 +116,7 @@ export function changedReleasePaths(base, root = repositoryRoot) {
   // Treat a move as one removed path and one added path. Git's rename
   // detection can otherwise report only the destination and hide the release
   // surface that lost the source file.
-  add(
-    readGitPaths(
-      ["diff", "--name-only", "--no-renames", `${base}...HEAD`],
-      root,
-    ),
-  );
+  add(readGitPaths(["diff", "--name-only", "--no-renames", `${base}...HEAD`], root));
   add(readGitPaths(["diff", "--name-only", "--no-renames"], root));
   add(readGitPaths(["diff", "--cached", "--name-only", "--no-renames"], root));
   add(readGitPaths(["ls-files", "--others", "--exclude-standard"], root));
@@ -156,10 +132,7 @@ export function releaseSurfacePlan(files, manifest) {
 
 function main() {
   const manifest = readReleaseSurfaceManifest();
-  const problems = validateReleaseSurfaceManifest(
-    manifest,
-    maintainedReleasePaths(),
-  );
+  const problems = validateReleaseSurfaceManifest(manifest, maintainedReleasePaths());
   if (problems.length > 0) {
     console.error(
       `Release surface ownership check failed:\n${problems.map((problem) => `- ${problem}`).join("\n")}`,
@@ -171,9 +144,6 @@ function main() {
   );
 }
 
-if (
-  process.argv[1] &&
-  import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href
-) {
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
   main();
 }

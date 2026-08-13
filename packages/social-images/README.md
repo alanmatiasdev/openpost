@@ -6,14 +6,14 @@ The Cloudflare Pages renderer lives in `marketing-site/functions/og.tsx`. It val
 
 When the card design changes, increment `socialRendererVersion` in `src/index.js`. The versioned query string gives every route a new cache key while keeping existing cards immutable.
 
-`scripts/social-images/catalog.mjs` keeps the small docs-page catalog in sync with Markdown headings. Asset synchronization refreshes it automatically; `bun run check:social-images` rejects stale catalog metadata.
+`scripts/social-images/catalog.mjs` keeps the small docs-page catalog in sync with Markdown headings. Asset synchronization refreshes it automatically; `bun run check -- social-images` rejects stale catalog metadata.
 
 Run the focused checks from the repository root:
 
 ```sh
-bun run check:social-images
-bun run marketing:build
-bun run docs:build
+bun run check -- social-images
+bun run build -- marketing
+bun run build -- docs
 ```
 
 For a local runtime check, build the marketing site and run Wrangler from `marketing-site`:

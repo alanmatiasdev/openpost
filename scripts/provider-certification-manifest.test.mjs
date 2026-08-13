@@ -33,9 +33,7 @@ test("public provider claims are derived from the manifest on every claim surfac
   const manifest = { schema_version: 1, claims: [] };
   const projection = renderPublicClaimProjection(manifest);
   const sources = validPublicClaimSurfaces(projection);
-  assert.doesNotThrow(() =>
-    validatePublicClaimSurfaceSources(manifest, sources),
-  );
+  assert.doesNotThrow(() => validatePublicClaimSurfaceSources(manifest, sources));
   assert.doesNotThrow(() =>
     validatePublicClaimSurfaceSources(manifest, {
       ...sources,
@@ -71,12 +69,9 @@ test("root, CI, and release gates invoke provider certification before release u
     readFile(new URL("./release.mjs", import.meta.url), "utf8"),
   ]);
   const packageJSON = JSON.parse(packageSource);
-  assert.match(packageJSON.scripts.check, /check:provider-certification/u);
-  assert.match(ciSource, /bun run check:provider-certification/u);
-  assert.match(
-    releaseSource,
-    /run\(\["bun", "run", "check:provider-certification"\]\);/u,
-  );
+  assert.match(packageJSON.scripts.check, /scripts\/tasks\.mjs check/u);
+  assert.match(ciSource, /bun run check -- policy/u);
+  assert.match(releaseSource, /run\(\["bun", "run", "check", "--", "provider-certification"\]\);/u);
 });
 
 test("a complete production subject with current local and live proof is claimable", () => {
@@ -191,10 +186,9 @@ test("claims fail closed on unsafe, stale, incomplete, or non-production facts",
     {
       name: "missing lifecycle check",
       mutate: (claim) => {
-        claim.live_certification.checks =
-          claim.live_certification.checks.filter(
-            (check) => check.kind !== "revoke",
-          );
+        claim.live_certification.checks = claim.live_certification.checks.filter(
+          (check) => check.kind !== "revoke",
+        );
       },
       pattern: /is missing revoke/u,
     },
@@ -219,18 +213,14 @@ test("claims fail closed on unsafe, stale, incomplete, or non-production facts",
     {
       name: "policy URL with query data",
       mutate: (claim) => {
-        claim.policy_sources = [
-          "https://docs.x.com/x-api/overview?token=secret",
-        ];
+        claim.policy_sources = ["https://docs.x.com/x-api/overview?token=secret"];
       },
       pattern: /unsupported documentation query parameter/u,
     },
     {
       name: "unrelated provider policy source",
       mutate: (claim) => {
-        claim.policy_sources = [
-          "https://docs.discord.com/developers/reference",
-        ];
+        claim.policy_sources = ["https://docs.discord.com/developers/reference"];
       },
       pattern: /is not an official source for x/u,
     },

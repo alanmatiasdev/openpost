@@ -1,11 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { authenticatePage, createWorkspace, registerUser } from "./helpers";
 
-function connectionReadiness(
-  state: string,
-  connectable: boolean,
-  blocker?: string,
-) {
+function connectionReadiness(state: string, connectable: boolean, blocker?: string) {
   return {
     state,
     executable: connectable,
@@ -48,12 +44,7 @@ test("accounts page keeps healthy providers quiet and explains blocked providers
           status: "available",
           readiness: connectionReadiness("healthy", true),
           description: "Handle and app-password connection.",
-          capabilities: [
-            "Text posts",
-            "Media posts",
-            "Scheduling",
-            "MCP workflows",
-          ],
+          capabilities: ["Text posts", "Media posts", "Scheduling", "MCP workflows"],
         },
         {
           platform: "x",
@@ -61,11 +52,7 @@ test("accounts page keeps healthy providers quiet and explains blocked providers
           auth_mode: "oauth",
           configured: false,
           status: "needs_configuration",
-          readiness: connectionReadiness(
-            "needs_configuration",
-            false,
-            "missing_configuration",
-          ),
+          readiness: connectionReadiness("needs_configuration", false, "missing_configuration"),
           description: "Requires an X provider app.",
         },
         {
@@ -74,11 +61,7 @@ test("accounts page keeps healthy providers quiet and explains blocked providers
           auth_mode: "oauth_oob",
           configured: false,
           status: "needs_configuration",
-          readiness: connectionReadiness(
-            "needs_configuration",
-            false,
-            "missing_configuration",
-          ),
+          readiness: connectionReadiness("needs_configuration", false, "missing_configuration"),
           description: "Configure Mastodon instances first.",
         },
         {
@@ -87,11 +70,7 @@ test("accounts page keeps healthy providers quiet and explains blocked providers
           auth_mode: "oauth",
           configured: false,
           status: "needs_configuration",
-          readiness: connectionReadiness(
-            "needs_configuration",
-            false,
-            "missing_configuration",
-          ),
+          readiness: connectionReadiness("needs_configuration", false, "missing_configuration"),
           description: "Requires a LinkedIn provider app.",
         },
         {
@@ -100,11 +79,7 @@ test("accounts page keeps healthy providers quiet and explains blocked providers
           auth_mode: "oauth",
           configured: false,
           status: "needs_configuration",
-          readiness: connectionReadiness(
-            "needs_configuration",
-            false,
-            "missing_configuration",
-          ),
+          readiness: connectionReadiness("needs_configuration", false, "missing_configuration"),
           description: "Requires a Meta provider app.",
         },
         {
@@ -113,11 +88,7 @@ test("accounts page keeps healthy providers quiet and explains blocked providers
           auth_mode: "oauth",
           configured: false,
           status: "needs_configuration",
-          readiness: connectionReadiness(
-            "needs_configuration",
-            false,
-            "missing_configuration",
-          ),
+          readiness: connectionReadiness("needs_configuration", false, "missing_configuration"),
           description: "Requires a Meta provider app.",
           capabilities: ["Images", "Reels", "Scheduling", "MCP workflows"],
         },
@@ -127,11 +98,7 @@ test("accounts page keeps healthy providers quiet and explains blocked providers
           auth_mode: "oauth",
           configured: false,
           status: "needs_configuration",
-          readiness: connectionReadiness(
-            "needs_configuration",
-            false,
-            "missing_configuration",
-          ),
+          readiness: connectionReadiness("needs_configuration", false, "missing_configuration"),
           description: "Requires a Meta provider app.",
           capabilities: ["Page posts", "Media posts", "Scheduling"],
         },
@@ -141,18 +108,9 @@ test("accounts page keeps healthy providers quiet and explains blocked providers
           auth_mode: "oauth",
           configured: false,
           status: "needs_configuration",
-          readiness: connectionReadiness(
-            "needs_configuration",
-            false,
-            "missing_configuration",
-          ),
+          readiness: connectionReadiness("needs_configuration", false, "missing_configuration"),
           description: "Requires a Google OAuth provider app.",
-          capabilities: [
-            "Shorts",
-            "Video uploads",
-            "Scheduling",
-            "MCP workflows",
-          ],
+          capabilities: ["Shorts", "Video uploads", "Scheduling", "MCP workflows"],
         },
         {
           platform: "tiktok",
@@ -160,11 +118,7 @@ test("accounts page keeps healthy providers quiet and explains blocked providers
           auth_mode: "oauth",
           configured: false,
           status: "needs_configuration",
-          readiness: connectionReadiness(
-            "needs_configuration",
-            false,
-            "missing_configuration",
-          ),
+          readiness: connectionReadiness("needs_configuration", false, "missing_configuration"),
           description: "Requires a TikTok provider app.",
           capabilities: ["Short videos", "Scheduling", "MCP workflows"],
         },
@@ -173,26 +127,16 @@ test("accounts page keeps healthy providers quiet and explains blocked providers
   });
   await page.goto("/accounts");
 
-  await expect(
-    page.getByRole("heading", { name: "Add a channel" }),
-  ).toBeVisible();
-  await expect(page.getByTestId("provider-card-bluesky")).toContainText(
-    "Post to Bluesky",
-  );
+  await expect(page.getByRole("heading", { name: "Add a channel" })).toBeVisible();
+  await expect(page.getByTestId("provider-card-bluesky")).toContainText("Post to Bluesky");
   await expect(page.getByTestId("provider-card-bluesky")).not.toContainText(
     "Handle and app-password connection.",
   );
-  await expect(page.getByTestId("provider-card-bluesky")).not.toContainText(
-    "MCP workflows",
-  );
-  await expect(page.getByTestId("provider-card-bluesky")).not.toContainText(
-    "Available",
-  );
+  await expect(page.getByTestId("provider-card-bluesky")).not.toContainText("MCP workflows");
+  await expect(page.getByTestId("provider-card-bluesky")).not.toContainText("Available");
   await expect(page.getByTestId("provider-readiness-bluesky")).toHaveCount(0);
   await expect(
-    page
-      .getByTestId("provider-card-bluesky")
-      .getByRole("button", { name: "Connect" }),
+    page.getByTestId("provider-card-bluesky").getByRole("button", { name: "Connect" }),
   ).toBeEnabled();
 
   for (const platform of [
@@ -205,16 +149,12 @@ test("accounts page keeps healthy providers quiet and explains blocked providers
     "youtube",
     "tiktok",
   ]) {
-    await expect(page.getByTestId(`provider-card-${platform}`)).toContainText(
-      "Setup required",
+    await expect(page.getByTestId(`provider-card-${platform}`)).toContainText("Setup required");
+    await expect(page.getByTestId(`provider-readiness-${platform}`)).toContainText(
+      "must configure",
     );
     await expect(
-      page.getByTestId(`provider-readiness-${platform}`),
-    ).toContainText("must configure");
-    await expect(
-      page
-        .getByTestId(`provider-card-${platform}`)
-        .getByRole("button", { name: "Ask admin" }),
+      page.getByTestId(`provider-card-${platform}`).getByRole("button", { name: "Ask admin" }),
     ).toBeDisabled();
   }
 
@@ -224,16 +164,13 @@ test("accounts page keeps healthy providers quiet and explains blocked providers
     ["youtube", "YouTube"],
     ["tiktok", "TikTok"],
   ] as const) {
-    await expect(
-      page.getByTestId(`provider-card-${platform}`).locator("svg title"),
-    ).toHaveText(title);
+    await expect(page.getByTestId(`provider-card-${platform}`).locator("svg title")).toHaveText(
+      title,
+    );
   }
 });
 
-test("accounts page starts custom Mastodon instance connection", async ({
-  page,
-  request,
-}) => {
+test("accounts page starts custom Mastodon instance connection", async ({ page, request }) => {
   const unique = Date.now().toString(36);
   const email = `mastodon-custom-${unique}@example.com`;
 
@@ -306,10 +243,7 @@ test("accounts page fails closed and retries an unavailable readiness lookup", a
   request,
 }) => {
   const unique = Date.now().toString(36);
-  const auth = await registerUser(
-    request,
-    `accounts-readiness-retry-${unique}@example.com`,
-  );
+  const auth = await registerUser(request, `accounts-readiness-retry-${unique}@example.com`);
   await createWorkspace(request, auth.token, "Provider Readiness Retry E2E");
   await authenticatePage(page, auth.token);
 
@@ -328,11 +262,7 @@ test("accounts page fails closed and retries an unavailable readiness lookup", a
           status: "available",
           readiness: healthy
             ? connectionReadiness("healthy", true)
-            : connectionReadiness(
-                "degraded",
-                false,
-                "readiness_evidence_unavailable",
-              ),
+            : connectionReadiness("degraded", false, "readiness_evidence_unavailable"),
         },
       ],
     });
@@ -340,9 +270,7 @@ test("accounts page fails closed and retries an unavailable readiness lookup", a
 
   await page.goto("/accounts");
   const card = page.getByTestId("provider-card-bluesky");
-  await expect(page.getByTestId("provider-readiness-bluesky")).toContainText(
-    "could not verify",
-  );
+  await expect(page.getByTestId("provider-readiness-bluesky")).toContainText("could not verify");
   const retry = card.getByRole("button", { name: "Retry check" });
   await expect(retry).toBeEnabled();
   await retry.click();

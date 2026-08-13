@@ -1,10 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { authenticatePage, createWorkspace, registerUser } from "./helpers";
 
-test("sidebar footer switches between workspaces", async ({
-  page,
-  request,
-}) => {
+test("sidebar footer switches between workspaces", async ({ page, request }) => {
   const unique = Date.now().toString(36);
   const email = `workspace-switcher-${unique}@example.com`;
   const firstName = `Launch ${unique}`;
@@ -19,14 +16,10 @@ test("sidebar footer switches between workspaces", async ({
 
   const workspaceNames = [firstName, secondName];
   const workspaceNamePattern = new RegExp(workspaceNames.join("|"));
-  const workspaceButton = page
-    .getByRole("button", { name: workspaceNamePattern })
-    .first();
+  const workspaceButton = page.getByRole("button", { name: workspaceNamePattern }).first();
   await expect(workspaceButton).toBeVisible();
   const buttonText = await workspaceButton.innerText();
-  const activeWorkspace = workspaceNames.find((name) =>
-    buttonText.includes(name),
-  );
+  const activeWorkspace = workspaceNames.find((name) => buttonText.includes(name));
   expect(activeWorkspace).toBeTruthy();
   const nextWorkspace = activeWorkspace === firstName ? secondName : firstName;
 
@@ -37,10 +30,7 @@ test("sidebar footer switches between workspaces", async ({
   await expect(workspaceButton).toContainText(nextWorkspace);
 });
 
-test("workspace switcher creates and selects a workspace", async ({
-  page,
-  request,
-}) => {
+test("workspace switcher creates and selects a workspace", async ({ page, request }) => {
   const unique = Date.now().toString(36);
   const email = `workspace-create-${unique}@example.com`;
   const firstName = `Personal ${unique}`;
@@ -61,17 +51,12 @@ test("workspace switcher creates and selects a workspace", async ({
   await page.getByRole("menuitem", { name: "Create workspace" }).click();
 
   const dialog = page.getByRole("dialog");
-  await expect(
-    dialog.getByRole("heading", { name: "Create workspace" }),
-  ).toBeVisible();
+  await expect(dialog.getByRole("heading", { name: "Create workspace" })).toBeVisible();
   await dialog.getByLabel("Workspace name").fill(newName);
 
   const createResponse = page.waitForResponse((response) => {
     const url = new URL(response.url());
-    return (
-      url.pathname === "/api/v1/workspaces" &&
-      response.request().method() === "POST"
-    );
+    return url.pathname === "/api/v1/workspaces" && response.request().method() === "POST";
   });
   await dialog.getByRole("button", { name: "Create workspace" }).click();
   expect((await createResponse).ok()).toBe(true);
@@ -80,9 +65,7 @@ test("workspace switcher creates and selects a workspace", async ({
   await expect(workspaceButton).toContainText(newName);
 
   await workspaceButton.click();
-  await expect(
-    page.getByRole("menuitem", { name: new RegExp(newName) }),
-  ).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: new RegExp(newName) })).toBeVisible();
 });
 
 test("workspace-scoped pages reload when the sidebar workspace changes", async ({
@@ -92,16 +75,14 @@ test("workspace-scoped pages reload when the sidebar workspace changes", async (
   const unique = Date.now().toString(36);
   const email = `workspace-pages-${unique}@example.com`;
   const auth = await registerUser(request, email);
-  const first = (await createWorkspace(
-    request,
-    auth.token,
-    `Editorial ${unique}`,
-  )) as { id: string; name: string };
-  const second = (await createWorkspace(
-    request,
-    auth.token,
-    `Campaign ${unique}`,
-  )) as { id: string; name: string };
+  const first = (await createWorkspace(request, auth.token, `Editorial ${unique}`)) as {
+    id: string;
+    name: string;
+  };
+  const second = (await createWorkspace(request, auth.token, `Campaign ${unique}`)) as {
+    id: string;
+    name: string;
+  };
 
   await authenticatePage(page, auth.token);
   await page.goto("/accounts");
@@ -115,18 +96,13 @@ test("workspace-scoped pages reload when the sidebar workspace changes", async (
   await expect(workspaceButton).toBeVisible();
 
   const activeText = await workspaceButton.innerText();
-  const active = workspaces.find((workspace) =>
-    activeText.includes(workspace.name),
-  );
+  const active = workspaces.find((workspace) => activeText.includes(workspace.name));
   expect(active).toBeTruthy();
   const next = active?.id === first.id ? second : first;
 
   const accountsRequest = page.waitForRequest((candidate) => {
     const url = new URL(candidate.url());
-    return (
-      url.pathname === "/api/v1/accounts" &&
-      url.searchParams.get("workspace_id") === next.id
-    );
+    return url.pathname === "/api/v1/accounts" && url.searchParams.get("workspace_id") === next.id;
   });
   await workspaceButton.click();
   await page.getByRole("menuitem", { name: new RegExp(next.name) }).click();
@@ -154,27 +130,19 @@ test("dirty composer workspace switches can stay, save to the origin, or discard
   request,
 }) => {
   const unique = Date.now().toString(36);
-  const auth = await registerUser(
-    request,
-    `workspace-composer-${unique}@example.com`,
-  );
-  const first = (await createWorkspace(
-    request,
-    auth.token,
-    `Origin ${unique}`,
-  )) as { id: string; name: string };
-  const second = (await createWorkspace(
-    request,
-    auth.token,
-    `Target ${unique}`,
-  )) as { id: string; name: string };
+  const auth = await registerUser(request, `workspace-composer-${unique}@example.com`);
+  const first = (await createWorkspace(request, auth.token, `Origin ${unique}`)) as {
+    id: string;
+    name: string;
+  };
+  const second = (await createWorkspace(request, auth.token, `Target ${unique}`)) as {
+    id: string;
+    name: string;
+  };
 
   await authenticatePage(page, auth.token);
   await page.addInitScript((workspace) => {
-    localStorage.setItem(
-      "openpost_current_workspace",
-      JSON.stringify(workspace),
-    );
+    localStorage.setItem("openpost_current_workspace", JSON.stringify(workspace));
   }, first);
 
   const draftWrites: Array<{ workspace_id?: string; content?: string }> = [];
@@ -241,9 +209,7 @@ test("dirty composer workspace switches can stay, save to the origin, or discard
   await switchDialog.getByRole("button", { name: "Save draft" }).click();
   releaseDraftResponse();
   await expect(switchDialog).toBeVisible();
-  await expect(switchDialog.getByRole("alert")).toContainText(
-    "Temporary save failure",
-  );
+  await expect(switchDialog.getByRole("alert")).toContainText("Temporary save failure");
   await expect(workspaceButton).toContainText(first.name);
   await expect(textarea).toHaveValue("Keep this exact draft after staying");
   await switchDialog.getByRole("button", { name: "Save draft" }).click();
@@ -265,9 +231,7 @@ test("dirty composer workspace switches can stay, save to the origin, or discard
   await workspaceButton.click();
   await page.getByRole("menuitem", { name: new RegExp(first.name) }).click();
   await expect(switchDialog).toBeVisible();
-  await switchDialog
-    .getByRole("button", { name: "Discard and switch" })
-    .click();
+  await switchDialog.getByRole("button", { name: "Discard and switch" }).click();
   await expect(switchDialog).toBeHidden();
   await expect(workspaceButton).toContainText(first.name);
   await expect(textarea).toHaveValue("");
@@ -279,27 +243,19 @@ test("a slow previous-workspace response cannot replace current account data", a
   request,
 }) => {
   const unique = Date.now().toString(36);
-  const auth = await registerUser(
-    request,
-    `workspace-race-${unique}@example.com`,
-  );
-  const first = (await createWorkspace(
-    request,
-    auth.token,
-    `Slow ${unique}`,
-  )) as { id: string; name: string };
-  const second = (await createWorkspace(
-    request,
-    auth.token,
-    `Fast ${unique}`,
-  )) as { id: string; name: string };
+  const auth = await registerUser(request, `workspace-race-${unique}@example.com`);
+  const first = (await createWorkspace(request, auth.token, `Slow ${unique}`)) as {
+    id: string;
+    name: string;
+  };
+  const second = (await createWorkspace(request, auth.token, `Fast ${unique}`)) as {
+    id: string;
+    name: string;
+  };
 
   await authenticatePage(page, auth.token);
   await page.addInitScript((workspace) => {
-    localStorage.setItem(
-      "openpost_current_workspace",
-      JSON.stringify(workspace),
-    );
+    localStorage.setItem("openpost_current_workspace", JSON.stringify(workspace));
   }, first);
   let releaseSlowResponse = () => {};
   const slowResponseGate = new Promise<void>((resolve) => {
@@ -311,9 +267,7 @@ test("a slow previous-workspace response cannot replace current account data", a
     markSlowRequestFinished = resolve;
   });
   await page.route("**/api/v1/accounts?**", async (route) => {
-    const workspaceId = new URL(route.request().url()).searchParams.get(
-      "workspace_id",
-    );
+    const workspaceId = new URL(route.request().url()).searchParams.get("workspace_id");
     if (workspaceId === first.id) {
       slowRequestStarted = true;
       await slowResponseGate;
@@ -336,9 +290,7 @@ test("a slow previous-workspace response cannot replace current account data", a
   });
 
   await page.goto("/accounts");
-  const workspaceButton = page
-    .getByRole("button", { name: new RegExp(first.name) })
-    .first();
+  const workspaceButton = page.getByRole("button", { name: new RegExp(first.name) }).first();
   await expect(workspaceButton).toBeVisible();
   await expect.poll(() => slowRequestStarted).toBe(true);
   await workspaceButton.click();

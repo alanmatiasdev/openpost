@@ -1,16 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import {
-  imagePolicyInputs,
-  validateImagePolicy,
-} from "./check-image-policy.mjs";
+import { imagePolicyInputs, validateImagePolicy } from "./check-image-policy.mjs";
 
 test("the maintained image policy is internally consistent", () => {
-  assert.deepEqual(
-    validateImagePolicy(imagePolicyInputs(), new Date("2026-08-09T00:00:00Z")),
-    [],
-  );
+  assert.deepEqual(validateImagePolicy(imagePolicyInputs(), new Date("2026-08-09T00:00:00Z")), []);
 });
 
 test("probe and architecture drift fail the policy check", () => {
@@ -26,9 +20,7 @@ test("probe and architecture drift fail the policy check", () => {
     new Date("2026-08-09T00:00:00Z"),
   );
   assert.ok(problems.some((problem) => problem.includes("health check")));
-  assert.ok(
-    problems.some((problem) => problem.includes("target architecture")),
-  );
+  assert.ok(problems.some((problem) => problem.includes("target architecture")));
   assert.ok(problems.some((problem) => problem.includes("Compose")));
 });
 
@@ -59,9 +51,7 @@ test("the production image cannot rebuild a second frontend artifact", () => {
     },
     new Date("2026-08-09T00:00:00Z"),
   );
-  assert.ok(
-    problems.some((problem) => problem.includes("canonical frontend artifact")),
-  );
+  assert.ok(problems.some((problem) => problem.includes("canonical frontend artifact")));
   assert.ok(problems.some((problem) => problem.includes("without rebuilding")));
 });
 
@@ -76,16 +66,14 @@ test("smoke and release proof fail when OCI health or public readiness is omitte
     new Date("2026-08-09T00:00:00Z"),
   );
   assert.ok(problems.some((problem) => problem.includes("OCI health")));
-  assert.ok(
-    problems.some((problem) => problem.includes("public database readiness")),
-  );
+  assert.ok(problems.some((problem) => problem.includes("public database readiness")));
 });
 
 test("expired runtime support fails closed", () => {
   const inputs = imagePolicyInputs();
   assert.ok(
-    validateImagePolicy(inputs, new Date("2028-06-01T00:00:00Z")).some(
-      (problem) => problem.includes("support_ends"),
+    validateImagePolicy(inputs, new Date("2028-06-01T00:00:00Z")).some((problem) =>
+      problem.includes("support_ends"),
     ),
   );
 });
@@ -102,9 +90,7 @@ test("candidate publication cannot move ahead of the blocking scan", () => {
     },
     new Date("2026-08-09T00:00:00Z"),
   );
-  assert.ok(
-    problems.some((problem) => problem.includes("before registry publication")),
-  );
+  assert.ok(problems.some((problem) => problem.includes("before registry publication")));
 });
 
 test("each scan step and the only image push are checked in their own scope", () => {
@@ -113,10 +99,7 @@ test("each scan step and the only image push are checked in their own scope", ()
     {
       ...inputs,
       ci: inputs.ci
-        .replace(
-          "severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL",
-          "severity: CRITICAL,HIGH",
-        )
+        .replace("severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL", "severity: CRITICAL,HIGH")
         .replace(
           "          docker buildx build --load",
           '          docker push "$image"\n          docker buildx build --load',

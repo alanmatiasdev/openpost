@@ -44,15 +44,11 @@ for (const source of sources) {
   } catch {
     const response = await fetch(source.url, { redirect: "follow" });
     if (!response.ok || !response.body) {
-      throw new Error(
-        `Model download failed (${response.status}): ${source.url}`,
-      );
+      throw new Error(`Model download failed (${response.status}): ${source.url}`);
     }
     const temporary = `${target}.partial`;
     await rm(temporary, { force: true });
-    await finished(
-      Readable.fromWeb(response.body).pipe(createWriteStream(temporary)),
-    );
+    await finished(Readable.fromWeb(response.body).pipe(createWriteStream(temporary)));
     await rename(temporary, target);
   }
   const bytes = await readFile(target);
@@ -64,17 +60,11 @@ for (const source of sources) {
   });
 }
 
-const whisperEntries = files.filter((file) =>
-  file.path.startsWith(`${whisperDirectory}/`),
-);
+const whisperEntries = files.filter((file) => file.path.startsWith(`${whisperDirectory}/`));
 const whisperFingerprint = createHash("sha256")
-  .update(
-    whisperEntries.map((file) => `${file.path}:${file.sha256}`).join("\n"),
-  )
+  .update(whisperEntries.map((file) => `${file.path}:${file.sha256}`).join("\n"))
   .digest("hex");
-const vad = files.find(
-  (file) => file.path.endsWith(".onnx") && !file.path.includes("/"),
-);
+const vad = files.find((file) => file.path.endsWith(".onnx") && !file.path.includes("/"));
 const manifest = {
   version: 1,
   generated_from_pinned_sources: true,
@@ -84,10 +74,7 @@ const manifest = {
       kind: "transcription",
       version: whisperRevision,
       base_path: whisperDirectory,
-      size_bytes: whisperEntries.reduce(
-        (total, file) => total + file.size_bytes,
-        0,
-      ),
+      size_bytes: whisperEntries.reduce((total, file) => total + file.size_bytes, 0),
       sha256: whisperFingerprint,
       runtime_bytes_wasm: 11133407,
       runtime_bytes_webgpu: 21596019,
@@ -118,10 +105,7 @@ const manifest = {
     },
   ],
 };
-await writeFile(
-  path.join(root, "manifest.json"),
-  `${JSON.stringify(manifest, null, 2)}\n`,
-);
+await writeFile(path.join(root, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
 await writeFile(
   path.join(root, "README.md"),
   `# OpenPost Video Editor local models
@@ -157,9 +141,6 @@ distributed under the MIT License.
 
 console.log(
   `OpenPost Video Editor models ready: ${manifest.models
-    .map(
-      (model) =>
-        `${model.id} ${(model.size_bytes / 1024 / 1024).toFixed(1)} MiB`,
-    )
+    .map((model) => `${model.id} ${(model.size_bytes / 1024 / 1024).toFixed(1)} MiB`)
     .join(", ")}`,
 );

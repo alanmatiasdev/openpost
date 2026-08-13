@@ -21,11 +21,7 @@ const media = {
   requires_https_fetchable: false,
 };
 
-function setting(
-  key: string,
-  label: string,
-  overrides: Record<string, unknown> = {},
-) {
+function setting(key: string, label: string, overrides: Record<string, unknown> = {}) {
   return {
     key,
     message_key: `publishing.setting.${key.replaceAll("_", ".")}`,
@@ -61,12 +57,7 @@ function threadsResolvedCapability() {
       group: "conversation",
       control: "select",
       type: "select",
-      options: [
-        "everyone",
-        "accounts_you_follow",
-        "mentioned_only",
-        "followers_only",
-      ],
+      options: ["everyone", "accounts_you_follow", "mentioned_only", "followers_only"],
     }),
     setting("text_attachment_plaintext", "Text attachment", {
       control: "long_text",
@@ -109,15 +100,10 @@ test("Threads destination options stay scoped and touch accessible on mobile", a
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const unique = Date.now().toString(36);
-  const auth = await registerUser(
-    request,
-    `composer-options-${unique}@example.com`,
-  );
-  const workspace = (await createWorkspace(
-    request,
-    auth.token,
-    "Destination options E2E",
-  )) as { id: string };
+  const auth = await registerUser(request, `composer-options-${unique}@example.com`);
+  const workspace = (await createWorkspace(request, auth.token, "Destination options E2E")) as {
+    id: string;
+  };
   await authenticatePage(page, auth.token);
 
   let publicationPayload: Record<string, unknown> | undefined;
@@ -200,20 +186,17 @@ test("Threads destination options stay scoped and touch accessible on mobile", a
     }
     await route.continue();
   });
-  await page.route(
-    "**/api/v1/publications/publication-1/renditions",
-    async (route) => {
-      if (route.request().method() === "PUT") {
-        publicationPayload = {
-          ...(publicationPayload ?? {}),
-          ...JSON.parse(route.request().postData() ?? "{}"),
-        };
-        await route.fulfill({ contentType: "application/json", json: {} });
-        return;
-      }
-      await route.continue();
-    },
-  );
+  await page.route("**/api/v1/publications/publication-1/renditions", async (route) => {
+    if (route.request().method() === "PUT") {
+      publicationPayload = {
+        ...(publicationPayload ?? {}),
+        ...JSON.parse(route.request().postData() ?? "{}"),
+      };
+      await route.fulfill({ contentType: "application/json", json: {} });
+      return;
+    }
+    await route.continue();
+  });
 
   await page.goto("/");
   await page.getByLabel("Post text").fill("A scoped Threads poll");
@@ -233,18 +216,14 @@ test("Threads destination options stay scoped and touch accessible on mobile", a
   await settingsButton.click();
 
   const dialog = page.getByRole("dialog");
-  await expect(
-    dialog.getByRole("heading", { name: "Threads settings" }),
-  ).toBeVisible();
+  await expect(dialog.getByRole("heading", { name: "Threads settings" })).toBeVisible();
   const dialogBox = await dialog.boundingBox();
   expect(dialogBox?.height).toBeGreaterThanOrEqual(800);
   await dialog.getByRole("button", { name: "Poll", exact: true }).click();
   await dialog.getByPlaceholder("Option 1").fill("Ship now");
   await dialog.getByPlaceholder("Option 2").fill("Review first");
   await dialog.getByRole("button", { name: "Who can reply" }).click();
-  await page
-    .getByRole("option", { name: "followers_only", exact: true })
-    .click();
+  await page.getByRole("option", { name: "followers_only", exact: true }).click();
   await dialog.getByLabel("Text attachment").fill("Long-form context");
   await dialog.getByRole("button", { name: "Done" }).click();
 

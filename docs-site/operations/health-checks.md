@@ -11,7 +11,7 @@ GET /api/v1/health
 Expected response:
 
 ```json
-{"status":"ok"}
+{ "status": "ok" }
 ```
 
 Use this endpoint when you only need to know whether the HTTP process is alive. The published image's OCI health check and the maintained Compose file use it so a database outage does not turn into a container restart loop.
@@ -27,7 +27,7 @@ GET /api/v1/ready
 Expected response:
 
 ```json
-{"status":"ready","database":"ok"}
+{ "status": "ready", "database": "ok" }
 ```
 
 Use this endpoint for load-balancer traffic admission, deploy rollouts, and external uptime probes that should fail when the database is unavailable. It returns `503` when OpenPost cannot run a database probe.

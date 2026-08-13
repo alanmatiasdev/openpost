@@ -22,9 +22,7 @@ test("unregistered customer proof fails closed", () => {
     () =>
       validateMarketingClaims(
         manifest(),
-        new Map([
-          ["marketing-site/src/routes/+page.svelte", "Used by builders at"],
-        ]),
+        new Map([["marketing-site/src/routes/+page.svelte", "Used by builders at"]]),
         now,
       ),
     /unregistered public proof claim/,
@@ -32,8 +30,7 @@ test("unregistered customer proof fails closed", () => {
 });
 
 test("fictional generated personas require a visible illustrative label", () => {
-  const sourcePath =
-    "marketing-site/src/routes/_components/CreatorStories.svelte";
+  const sourcePath = "marketing-site/src/routes/_components/CreatorStories.svelte";
   const source =
     "Illustrative workflows. These fictional examples use /assets/testimonial-portraits/a.webp";
   assert.doesNotThrow(() =>

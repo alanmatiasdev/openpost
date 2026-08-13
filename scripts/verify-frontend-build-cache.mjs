@@ -13,13 +13,8 @@ import {
 } from "./package-frontend.mjs";
 
 const keepOutput = process.argv.includes("--keep-output");
-const cacheDirectory = await mkdtemp(
-  path.join(os.tmpdir(), "openpost-frontend-turbo-cache-"),
-);
-const lockDirectory = path.join(
-  repositoryRoot,
-  ".frontend-build-cache-proof.lock",
-);
+const cacheDirectory = await mkdtemp(path.join(os.tmpdir(), "openpost-frontend-turbo-cache-"));
+const lockDirectory = path.join(repositoryRoot, ".frontend-build-cache-proof.lock");
 const generatedPaths = [
   defaultSourceDirectory,
   defaultDestinationDirectory,
@@ -54,22 +49,16 @@ async function preserveGeneratedPaths() {
 
 async function clearProofOutputs() {
   await Promise.all(
-    generatedPaths.map((pathname) =>
-      rm(pathname, { recursive: true, force: true }),
-    ),
+    generatedPaths.map((pathname) => rm(pathname, { recursive: true, force: true })),
   );
 }
 
 async function restoreGeneratedPaths() {
-  const keep = new Set(
-    keepOutput ? [defaultSourceDirectory, defaultDestinationDirectory] : [],
-  );
+  const keep = new Set(keepOutput ? [defaultSourceDirectory, defaultDestinationDirectory] : []);
   const errors = [];
   for (const pathname of [...generatedPaths].reverse()) {
     try {
-      const record = preserved.find(
-        (candidate) => candidate.pathname === pathname,
-      );
+      const record = preserved.find((candidate) => candidate.pathname === pathname);
       if (keep.has(pathname)) {
         if (record) await rm(record.backup, { recursive: true, force: true });
         continue;
@@ -116,15 +105,7 @@ const common = [
 function dryBuild() {
   return JSON.parse(
     turbo(
-      [
-        "run",
-        "build",
-        "--filter",
-        "@openpost/web",
-        "--cache-dir",
-        cacheDirectory,
-        "--dry=json",
-      ],
+      ["run", "build", "--filter", "@openpost/web", "--cache-dir", cacheDirectory, "--dry=json"],
       { capture: true },
     ),
   );
@@ -138,14 +119,9 @@ function changedTaskInputs(before, after) {
     if (!previous || previous.hash === task.hash) continue;
     const previousInputs = previous.inputs ?? {};
     const currentInputs = task.inputs ?? {};
-    const paths = new Set([
-      ...Object.keys(previousInputs),
-      ...Object.keys(currentInputs),
-    ]);
+    const paths = new Set([...Object.keys(previousInputs), ...Object.keys(currentInputs)]);
     const changed = [...paths]
-      .filter(
-        (pathname) => previousInputs[pathname] !== currentInputs[pathname],
-      )
+      .filter((pathname) => previousInputs[pathname] !== currentInputs[pathname])
       .sort();
     changes.push(
       `${task.taskId} ${previous.hash} -> ${task.hash}: ${changed.join(", ") || "non-file task metadata"}`,
@@ -180,9 +156,7 @@ try {
 
   await clearProofOutputs();
   const dry = dryBuild();
-  const frontendTask = dry.tasks.find(
-    (task) => task.taskId === "@openpost/web#build",
-  );
+  const frontendTask = dry.tasks.find((task) => task.taskId === "@openpost/web#build");
   if (frontendTask?.cache?.status !== "HIT") {
     const changes = changedTaskInputs(pristine, dry);
     throw new Error(
@@ -234,8 +208,5 @@ if (proofError && cleanupErrors.length > 0) {
 }
 if (proofError) throw proofError;
 if (cleanupErrors.length > 0) {
-  throw new AggregateError(
-    cleanupErrors,
-    "Frontend cache proof cleanup was incomplete",
-  );
+  throw new AggregateError(cleanupErrors, "Frontend cache proof cleanup was incomplete");
 }

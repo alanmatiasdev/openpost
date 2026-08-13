@@ -25,9 +25,7 @@ function pageTitle(page, source) {
   return path
     .basename(page, ".md")
     .split("-")
-    .map((word) =>
-      word === "api" ? "API" : `${word[0].toUpperCase()}${word.slice(1)}`,
-    )
+    .map((word) => (word === "api" ? "API" : `${word[0].toUpperCase()}${word.slice(1)}`))
     .join(" ");
 }
 
@@ -52,9 +50,6 @@ export async function generateSocialCatalog({ check = false } = {}) {
   await writeFile(output, contents);
 }
 
-if (
-  process.argv[1] &&
-  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
-) {
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   await generateSocialCatalog({ check: process.argv.includes("--check") });
 }

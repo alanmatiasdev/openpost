@@ -3,7 +3,7 @@ import { sveltekit } from '@sveltejs/kit/vite';
 import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vite';
 import type { PluginOption } from 'vite';
-import { postHogSourceMaps } from '../scripts/posthog-source-maps';
+import { postHogSourceMaps } from '../scripts/posthog-source-maps.ts';
 
 const paraglidePlugin = paraglideVitePlugin({
 	project: '../frontend/project.inlang',

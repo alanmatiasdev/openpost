@@ -1,10 +1,5 @@
 import { expect, test } from "@playwright/test";
-import {
-  authenticatePage,
-  createWorkspace,
-  password,
-  registerUser,
-} from "./helpers";
+import { authenticatePage, createWorkspace, password, registerUser } from "./helpers";
 
 const accounts = [
   {
@@ -42,15 +37,8 @@ test.describe("OAuth composer handoff", () => {
     }) => {
       await page.setViewportSize(viewport);
       const unique = `${viewport.name}-${Date.now().toString(36)}`;
-      const auth = await registerUser(
-        request,
-        `oauth-handoff-${unique}@example.com`,
-      );
-      const workspace = await createWorkspace(
-        request,
-        auth.token,
-        `OAuth ${unique}`,
-      );
+      const auth = await registerUser(request, `oauth-handoff-${unique}@example.com`);
+      const workspace = await createWorkspace(request, auth.token, `OAuth ${unique}`);
       await authenticatePage(page, auth.token);
       const resolvedAccountIDs: string[][] = [];
 
@@ -95,16 +83,10 @@ test.describe("OAuth composer handoff", () => {
       await page.goto(handoff);
 
       await expect(page.getByText(/Composer ready/)).toBeVisible();
-      expect(
-        resolvedAccountIDs.every(
-          (ids) => !ids.includes("existing-destination"),
-        ),
-      ).toBe(true);
+      expect(resolvedAccountIDs.every((ids) => !ids.includes("existing-destination"))).toBe(true);
       await page.getByTestId("composer-account-control").click();
       const rows = page.getByTestId("composer-account-row");
-      await expect(
-        rows.filter({ hasText: "new_destination" }).getByRole("checkbox"),
-      ).toBeChecked();
+      await expect(rows.filter({ hasText: "new_destination" }).getByRole("checkbox")).toBeChecked();
       await expect(
         rows.filter({ hasText: "existing_destination" }).getByRole("checkbox"),
       ).not.toBeChecked();
@@ -113,9 +95,7 @@ test.describe("OAuth composer handoff", () => {
       await page.reload();
       await expect(page.getByText(/Composer ready/)).toBeVisible();
       await page.getByTestId("composer-account-control").click();
-      await expect(
-        rows.filter({ hasText: "new_destination" }).getByRole("checkbox"),
-      ).toBeChecked();
+      await expect(rows.filter({ hasText: "new_destination" }).getByRole("checkbox")).toBeChecked();
       await expect(
         rows.filter({ hasText: "existing_destination" }).getByRole("checkbox"),
       ).not.toBeChecked();
@@ -127,18 +107,12 @@ test.describe("OAuth composer handoff", () => {
       });
       await page.goto(`/login?redirect=${encodeURIComponent(handoff)}`);
       expect(new URL(page.url()).searchParams.get("redirect")).toBe(handoff);
-      await page
-        .getByLabel("Email", { exact: true })
-        .fill(`oauth-handoff-${unique}@example.com`);
+      await page.getByLabel("Email", { exact: true }).fill(`oauth-handoff-${unique}@example.com`);
       await page.getByLabel("Password", { exact: true }).fill(password);
       await page.getByRole("button", { name: "Sign In" }).click();
-      await expect(page).toHaveURL(
-        new RegExp(`${handoff.replace(/[?]/g, "\\?")}$`),
-      );
+      await expect(page).toHaveURL(new RegExp(`${handoff.replace(/[?]/g, "\\?")}$`));
       await page.getByTestId("composer-account-control").click();
-      await expect(
-        rows.filter({ hasText: "new_destination" }).getByRole("checkbox"),
-      ).toBeChecked();
+      await expect(rows.filter({ hasText: "new_destination" }).getByRole("checkbox")).toBeChecked();
     });
   }
 
@@ -152,15 +126,8 @@ test.describe("OAuth composer handoff", () => {
     }) => {
       await page.setViewportSize(viewport);
       const unique = `${viewport.name}-${Date.now().toString(36)}`;
-      const auth = await registerUser(
-        request,
-        `oauth-recovery-${unique}@example.com`,
-      );
-      const workspace = await createWorkspace(
-        request,
-        auth.token,
-        `OAuth recovery ${unique}`,
-      );
+      const auth = await registerUser(request, `oauth-recovery-${unique}@example.com`);
+      const workspace = await createWorkspace(request, auth.token, `OAuth recovery ${unique}`);
       const previousWorkspace = await createWorkspace(
         request,
         auth.token,
@@ -169,50 +136,30 @@ test.describe("OAuth composer handoff", () => {
       await authenticatePage(page, auth.token);
       await page.goto("/");
       await page.evaluate((storedWorkspace) => {
-        localStorage.setItem(
-          "openpost_current_workspace",
-          JSON.stringify(storedWorkspace),
-        );
+        localStorage.setItem("openpost_current_workspace", JSON.stringify(storedWorkspace));
       }, previousWorkspace);
 
-      await page.goto(
-        `/settings?tab=accounts&oauth_status=cancelled&workspace_id=${workspace.id}`,
-      );
+      await page.goto(`/settings?tab=accounts&oauth_status=cancelled&workspace_id=${workspace.id}`);
       await expect(
-        page.getByText(
-          "Connection cancelled. Choose a destination to try again.",
-        ),
+        page.getByText("Connection cancelled. Choose a destination to try again."),
       ).toBeVisible();
-      await expect(
-        page.getByText("Connect a destination", { exact: true }).first(),
-      ).toBeVisible();
+      await expect(page.getByText("Connect a destination", { exact: true }).first()).toBeVisible();
       await expect
         .poll(async () =>
           page.evaluate(
-            () =>
-              JSON.parse(
-                localStorage.getItem("openpost_current_workspace") ?? "{}",
-              ).id,
+            () => JSON.parse(localStorage.getItem("openpost_current_workspace") ?? "{}").id,
           ),
         )
         .toBe(workspace.id);
       await expect(page).not.toHaveURL(/oauth_status|workspace_id/);
 
       await page.reload();
-      await expect(
-        page.getByText("Connect a destination", { exact: true }).first(),
-      ).toBeVisible();
+      await expect(page.getByText("Connect a destination", { exact: true }).first()).toBeVisible();
       await expect(page.getByText(/Connection cancelled/)).not.toBeVisible();
 
-      await page.goto(
-        `/settings?tab=accounts&oauth_status=failed&workspace_id=${workspace.id}`,
-      );
-      await expect(
-        page.getByText(/OpenPost could not connect that destination/),
-      ).toBeVisible();
-      await expect(
-        page.getByText("Connect a destination", { exact: true }).first(),
-      ).toBeVisible();
+      await page.goto(`/settings?tab=accounts&oauth_status=failed&workspace_id=${workspace.id}`);
+      await expect(page.getByText(/OpenPost could not connect that destination/)).toBeVisible();
+      await expect(page.getByText("Connect a destination", { exact: true }).first()).toBeVisible();
       await expect(page).not.toHaveURL(/oauth_status|workspace_id/);
     });
   }

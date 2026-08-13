@@ -227,7 +227,7 @@ func TestConcurrentFirstPublicationsRecordOneWorkspaceActivation(t *testing.T) {
 	)
 	// SQLite serializes writers in production; concurrent requests still race
 	// for the same canonical transition at the application boundary.
-	db.DB.SetMaxOpenConns(1)
+	db.SetMaxOpenConns(1)
 	ctx := context.Background()
 	now := time.Now().UTC()
 	_, err := db.NewInsert().Model(&models.User{ID: "user-1", Email: "concurrent@example.com"}).Exec(ctx)

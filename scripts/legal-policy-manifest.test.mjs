@@ -80,19 +80,10 @@ test("policy documents fail closed on drift and unsupported acceptance", () => {
 
 test("public legal pages render dates and versions from the canonical manifest", async () => {
   for (const name of ["terms", "privacy", "refunds"]) {
-    const source = await readFile(
-      `marketing-site/src/routes/${name}/+page.svelte`,
-      "utf8",
-    );
-    assert.match(source, /from "@openpost\/legal-policy"/u);
-    assert.match(
-      source,
-      new RegExp(`formatPolicyEffectiveDate\\(legalPolicy\\.${name}\\)`, "u"),
-    );
+    const source = await readFile(`marketing-site/src/routes/${name}/+page.svelte`, "utf8");
+    assert.match(source, /from ["']@openpost\/legal-policy["']/u);
+    assert.match(source, new RegExp(`formatPolicyEffectiveDate\\(legalPolicy\\.${name}\\)`, "u"));
     assert.match(source, new RegExp(`legalPolicy\\.${name}\\.version`, "u"));
-    assert.doesNotMatch(
-      source,
-      /const effectiveDate = "\d{1,2} [A-Z][a-z]+ \d{4}"/u,
-    );
+    assert.doesNotMatch(source, /const effectiveDate = "\d{1,2} [A-Z][a-z]+ \d{4}"/u);
   }
 });

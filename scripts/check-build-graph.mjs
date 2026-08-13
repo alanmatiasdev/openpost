@@ -20,13 +20,14 @@ function requireIncludes(value, expected, label) {
   );
 }
 
-const [rootPackage, frontendPackage, docsPackage, marketingPackage, rootTurbo] =
+const [rootPackage, frontendPackage, docsPackage, marketingPackage, rootTurbo, tasksSource] =
   await Promise.all([
     readJSON("package.json"),
     readJSON("frontend/package.json"),
     readJSON("docs-site/package.json"),
     readJSON("marketing-site/package.json"),
     readJSON("turbo.json"),
+    readFile(path.join(root, "scripts/tasks.mjs"), "utf8"),
   ]);
 
 for (const [label, packageJSON] of [
@@ -44,36 +45,15 @@ for (const [label, packageJSON] of [
   );
 }
 
-requireIncludes(
-  rootPackage.scripts?.build,
-  "bun run prepare:docs",
-  "root build",
-);
-requireIncludes(rootPackage.scripts?.build, "turbo run build", "root build");
-requireIncludes(
-  rootPackage.scripts?.build,
-  "bun run package:frontend",
-  "root build",
-);
-requireIncludes(
-  rootPackage.scripts?.["sync:assets"],
-  "generate:social-catalog",
-  "explicit all-surface asset sync",
-);
-requireIncludes(
-  docsPackage.scripts?.["prepare:openapi"],
-  "copy-docs-openapi.mjs",
-  "docs package OpenAPI preparation",
-);
-requireIncludes(
-  docsPackage.scripts?.["docs:build"],
-  "bun run prepare:openapi",
-  "docs package build",
-);
-requireIncludes(
-  docsPackage.scripts?.["docs:dev"],
-  "bun run prepare:openapi",
-  "docs package dev server",
+requireIncludes(rootPackage.scripts?.build, "scripts/tasks.mjs build", "root build");
+requireIncludes(tasksSource, "scripts/sync-docs-external.mjs", "root build registry");
+requireIncludes(tasksSource, '"turbo", "run", "build"', "root build registry");
+requireIncludes(tasksSource, '"@openpost/web", "package"', "root build registry");
+requireIncludes(docsPackage.scripts?.build, "copy-docs-openapi.mjs", "docs package build");
+requireIncludes(docsPackage.scripts?.dev, "copy-docs-openapi.mjs", "docs package dev server");
+requireCondition(
+  rootPackage.scripts?.["sync:assets"] === undefined,
+  "all-surface asset sync must stay internal to the canonical build registry",
 );
 requireCondition(
   rootTurbo.tasks?.build?.outputs?.length === 0,
@@ -88,8 +68,7 @@ const packageTurboPaths = [
 for (const [relativePath, expectedOutputs] of packageTurboPaths) {
   const config = await readJSON(relativePath);
   requireCondition(
-    JSON.stringify(config.tasks?.build?.outputs) ===
-      JSON.stringify(expectedOutputs),
+    JSON.stringify(config.tasks?.build?.outputs) === JSON.stringify(expectedOutputs),
     `${relativePath} must own exactly ${expectedOutputs.join(", ")}`,
   );
   requireCondition(
@@ -99,6 +78,12 @@ for (const [relativePath, expectedOutputs] of packageTurboPaths) {
 }
 
 const frontendTurbo = await readJSON("frontend/turbo.json");
+for (const task of ["check", "test"]) {
+  requireCondition(
+    frontendTurbo.tasks[task].inputs.includes("$TURBO_ROOT$/scripts/posthog-source-maps.ts"),
+    `frontend ${task} hash is missing the shared Vite configuration input`,
+  );
+}
 requireCondition(
   frontendTurbo.tasks.build.env.includes("NODE_OPTIONS"),
   "frontend build must pass and hash user NODE_OPTIONS",
@@ -207,13 +192,15 @@ requireIncludes(
   "node ../scripts/frontend-vite-build.mjs",
   "frontend build memory contract",
 );
-requireIncludes(devenv, "bun run docs:build", "Devenv docs build");
-requireIncludes(
-  frontendDevenv,
-  "bun run frontend:build",
-  "Devenv frontend build",
+requireCondition(
+  !devenv.includes("    build.exec"),
+  "Devenv must not duplicate the root build interface",
 );
-requireIncludes(ci, "bun run check:build-graph", "CI quality contract");
+requireCondition(
+  !frontendDevenv.includes("scripts ="),
+  "frontend Devenv must provide tools without task aliases",
+);
+requireIncludes(ci, "bun run check -- policy", "CI quality contract");
 requireIncludes(ci, 'OPENPOST_E2E_PREBUILT: "1"', "CI browser artifact reuse");
 requireIncludes(
   appPlaywright,
@@ -232,20 +219,11 @@ if (dryRun.status !== 0) {
 }
 const graph = JSON.parse(dryRun.stdout);
 const tasks = new Map(graph.tasks.map((task) => [task.taskId, task]));
-for (const taskID of [
-  "@openpost/web#build",
-  "@openpost/docs#build",
-  "@openpost/site#build",
-]) {
+for (const taskID of ["@openpost/web#build", "@openpost/docs#build", "@openpost/site#build"]) {
   const task = tasks.get(taskID);
+  requireCondition(task?.command, `${taskID} is missing from the root build contract`);
   requireCondition(
-    task?.command,
-    `${taskID} is missing from the root build contract`,
-  );
-  requireCondition(
-    !task.outputs.some((output) =>
-      output.includes("backend/cmd/openpost/public"),
-    ),
+    !task.outputs.some((output) => output.includes("backend/cmd/openpost/public")),
     `${taskID} still claims the backend embed tree as a cached output`,
   );
 }

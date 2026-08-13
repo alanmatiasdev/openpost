@@ -5,9 +5,7 @@ import { fileURLToPath } from "node:url";
 import { authenticatePage, createWorkspace, registerUser } from "./helpers";
 
 const captureEnabled = process.env.OPENPOST_UPDATE_PRODUCT_SCREENSHOTS === "1";
-const screenshotDirectory = fileURLToPath(
-  new URL("../assets/screenshots/", import.meta.url),
-);
+const screenshotDirectory = fileURLToPath(new URL("../assets/screenshots/", import.meta.url));
 const captureViewport = { width: 1440, height: 900 };
 const fixedNow = "2026-07-21T14:30:00.000Z";
 
@@ -235,18 +233,11 @@ test.describe("product screenshot capture", () => {
     timezoneId: "UTC",
   });
 
-  test("captures current product surfaces with synthetic data", async ({
-    page,
-    request,
-  }) => {
+  test("captures current product surfaces with synthetic data", async ({ page, request }) => {
     await mkdir(screenshotDirectory, { recursive: true });
 
     const auth = await registerUser(request, "studio@openpost.example");
-    const workspace = await createWorkspace(
-      request,
-      auth.token,
-      "Northstar Image Editor",
-    );
+    const workspace = await createWorkspace(request, auth.token, "Northstar Image Editor");
     const profile = await request.patch("/api/v1/auth/profile", {
       headers: { Authorization: `Bearer ${auth.token}` },
       data: { display_name: "Northstar Operator" },
@@ -310,12 +301,8 @@ test.describe("product screenshot capture", () => {
         intent?: string;
       };
       const accounts = (body.account_ids ?? [])
-        .map((accountID) =>
-          connectedAccounts.find((account) => account.id === accountID),
-        )
-        .filter((account): account is (typeof connectedAccounts)[number] =>
-          Boolean(account),
-        )
+        .map((accountID) => connectedAccounts.find((account) => account.id === accountID))
+        .filter((account): account is (typeof connectedAccounts)[number] => Boolean(account))
         .map((account) => ({
           account_id: account.id,
           active_constraints: {},
@@ -324,9 +311,8 @@ test.describe("product screenshot capture", () => {
           intents: ["post", "thread"],
           issues: [],
           label:
-            providerFixtures.find(
-              (provider) => provider.platform === account.platform,
-            )?.display_name ?? account.platform,
+            providerFixtures.find((provider) => provider.platform === account.platform)
+              ?.display_name ?? account.platform,
           media: {
             allowed_mimes: ["image/jpeg", "image/png", "video/mp4"],
             max_count: 4,
@@ -367,9 +353,7 @@ test.describe("product screenshot capture", () => {
             height: item.height,
             alt_text: `${item.filename.replace(/\.png$/, "")} marketing artwork`,
             is_favorite: item.favorite,
-            created_at: new Date(
-              Date.parse(fixedNow) - index * 86_400_000,
-            ).toISOString(),
+            created_at: new Date(Date.parse(fixedNow) - index * 86_400_000).toISOString(),
             url: `/marketing-fixtures/${item.artwork}.svg`,
             thumbnail_url: `/marketing-fixtures/${item.artwork}.svg`,
             usage_count: item.usage,
@@ -425,35 +409,25 @@ test.describe("product screenshot capture", () => {
     await page.getByRole("button", { name: "Add post" }).last().click();
     await page
       .locator("#post-textarea-3")
-      .fill(
-        "Schedule it, follow the job state, and know what published—or what needs attention.",
-      );
+      .fill("Schedule it, follow the job state, and know what published—or what needs attention.");
     await capture(page, "main-dark.png");
 
     await page.goto("/accounts");
-    await expect(
-      page.getByRole("heading", { name: "Connected channels" }),
-    ).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Connected channels" })).toBeVisible();
     await expect(page.getByText("@northstar_studio")).toBeVisible();
     await expect(page.getByTestId("provider-card-bluesky")).toBeVisible();
     await capture(page, "accounts-dark.png");
 
     await page.goto("/media");
-    await expect(
-      page.getByRole("heading", { name: "Media", level: 1 }),
-    ).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Media", level: 1 })).toBeVisible();
     await expect(page.getByText("launch-card.png")).toBeVisible();
     await page.waitForFunction(() =>
-      Array.from(document.images).every(
-        (image) => image.complete && image.naturalWidth > 0,
-      ),
+      Array.from(document.images).every((image) => image.complete && image.naturalWidth > 0),
     );
     await capture(page, "media-dark.png");
 
     await page.goto("/settings?tab=general");
-    await expect(
-      page.getByRole("heading", { name: "General", level: 1 }),
-    ).toBeVisible();
+    await expect(page.getByRole("heading", { name: "General", level: 1 })).toBeVisible();
     await expect(page.locator('[data-settings-tab="general"]')).toHaveAttribute(
       "aria-current",
       "page",

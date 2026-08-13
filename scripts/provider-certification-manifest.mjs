@@ -6,10 +6,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-export const publicClaimManifestPath = path.join(
-  root,
-  "provider-certification/public-claims.json",
-);
+export const publicClaimManifestPath = path.join(root, "provider-certification/public-claims.json");
 const publicProjectionStart = "<!-- provider-certification:begin -->";
 const publicProjectionEnd = "<!-- provider-certification:end -->";
 
@@ -19,12 +16,7 @@ const safeSlugPattern = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/u;
 const safeIdentifierPattern = /^[A-Za-z0-9]+(?:[._:-][A-Za-z0-9]+)*$/u;
 const safeDocumentationQueryValuePattern = /^[A-Za-z0-9._-]+$/u;
 const allowedDocumentationQueryKeys = new Set(["hl", "locale", "view"]);
-const configurationSources = new Set([
-  "built_in",
-  "database",
-  "dynamic",
-  "environment",
-]);
+const configurationSources = new Set(["built_in", "database", "dynamic", "environment"]);
 const claimOperations = new Set(["publish_immediate", "publish_scheduled"]);
 const optionalLifecycleChecks = new Set(["refresh", "revoke"]);
 const knownChecks = new Set([
@@ -49,10 +41,7 @@ const providerSourceRules = {
   youtube: [{ host: "developers.google.com", path: "/youtube/" }],
 };
 
-export async function readPublicClaimManifest(
-  manifestPath = publicClaimManifestPath,
-  options,
-) {
+export async function readPublicClaimManifest(manifestPath = publicClaimManifestPath, options) {
   const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
   return validatePublicClaimManifest(manifest, options);
 }
@@ -62,10 +51,7 @@ export async function readPublicClaimManifestBinding(
   options,
 ) {
   const contents = await readFile(manifestPath);
-  const manifest = validatePublicClaimManifest(
-    JSON.parse(contents.toString("utf8")),
-    options,
-  );
+  const manifest = validatePublicClaimManifest(JSON.parse(contents.toString("utf8")), options);
   assertNoUnprojectedPublicClaims(manifest);
   await assertPublicClaimSurfaces(manifest);
   return {
@@ -86,13 +72,8 @@ export function validatePublicClaimManifest(manifest, options = {}) {
 
   const now = parseNow(options.now);
   validateOptionalRevision(options.currentRevision);
-  if (
-    options.requireExactRevision === true &&
-    options.currentRevision === undefined
-  ) {
-    throw new Error(
-      "currentRevision is required when exact revision matching is enabled",
-    );
+  if (options.requireExactRevision === true && options.currentRevision === undefined) {
+    throw new Error("currentRevision is required when exact revision matching is enabled");
   }
   const seenSubjects = new Set();
   for (const [index, claim] of manifest.claims.entries()) {
@@ -147,9 +128,7 @@ export function validatePublicClaimSurfaceSources(manifest, sources) {
     !/import\s+publicClaimManifest\s+from\s+["']\.\.\/\.\.\/\.\.\/provider-certification\/public-claims\.json["'];/u.test(
       marketingCatalog,
     ) ||
-    !marketingCatalog.includes(
-      "const publicProviderClaims = publicClaimManifest.claims",
-    ) ||
+    !marketingCatalog.includes("const publicProviderClaims = publicClaimManifest.claims") ||
     !marketingCatalog.includes("managedCertificationState")
   ) {
     throw new Error(
@@ -173,14 +152,8 @@ export function validatePublicClaimSurfaceSources(manifest, sources) {
       "marketing provider pages must use implementation and exact certification facts",
     );
   }
-  if (
-    /aria-label=["']Supported social platforms["']/u.test(
-      sources.marketingLanding ?? "",
-    )
-  ) {
-    throw new Error(
-      "marketing landing provider marks must be labelled as implementations",
-    );
+  if (/aria-label=["']Supported social platforms["']/u.test(sources.marketingLanding ?? "")) {
+    throw new Error("marketing landing provider marks must be labelled as implementations");
   }
 
   const expectedProjection = renderPublicClaimProjection(manifest);
@@ -202,20 +175,12 @@ export function validatePublicClaimSurfaceSources(manifest, sources) {
   }
 }
 
-export async function assertPublicClaimSurfaces(
-  manifest,
-  repositoryRoot = root,
-) {
-  const read = (relativePath) =>
-    readFile(path.join(repositoryRoot, relativePath), "utf8");
+export async function assertPublicClaimSurfaces(manifest, repositoryRoot = root) {
+  const read = (relativePath) => readFile(path.join(repositoryRoot, relativePath), "utf8");
   validatePublicClaimSurfaceSources(manifest, {
     marketingCatalog: await read("marketing-site/src/routes/_marketing.ts"),
-    marketingIndex: await read(
-      "marketing-site/src/routes/platforms/+page.svelte",
-    ),
-    marketingDetail: await read(
-      "marketing-site/src/routes/platforms/[slug]/+page.svelte",
-    ),
+    marketingIndex: await read("marketing-site/src/routes/platforms/+page.svelte"),
+    marketingDetail: await read("marketing-site/src/routes/platforms/[slug]/+page.svelte"),
     marketingLanding: await read("marketing-site/src/routes/+page.svelte"),
     providerLimits: await read("docs-site/providers/platform-limits.md"),
     providerOverview: await read("docs-site/providers/overview.md"),
@@ -232,17 +197,12 @@ function extractPublicClaimProjection(source, label) {
     throw new Error(`${label} is missing the public certification projection`);
   }
   if (
-    source.indexOf(
-      publicProjectionStart,
-      start + publicProjectionStart.length,
-    ) >= 0 ||
+    source.indexOf(publicProjectionStart, start + publicProjectionStart.length) >= 0 ||
     source.indexOf(publicProjectionEnd, end + publicProjectionEnd.length) >= 0
   ) {
     throw new Error(`${label} has multiple public certification projections`);
   }
-  const projection = source
-    .slice(start + publicProjectionStart.length, end)
-    .trim();
+  const projection = source.slice(start + publicProjectionStart.length, end).trim();
   return `${publicProjectionStart}\n${projection}\n${publicProjectionEnd}`;
 }
 
@@ -282,11 +242,7 @@ function validateClaim(claim, label, now, options) {
       throw new Error(`${label}.granted_scopes is missing ${requiredScope}`);
     }
   }
-  validatePolicySources(
-    claim.policy_sources,
-    `${label}.policy_sources`,
-    claim.subject.provider,
-  );
+  validatePolicySources(claim.policy_sources, `${label}.policy_sources`, claim.subject.provider);
 
   const local = validateCertification(
     claim.local_certification,
@@ -308,20 +264,12 @@ function validateClaim(claim, label, now, options) {
     ["local", local],
     ["live", live],
   ]) {
-    validateCertificationSnapshot(
-      certification.value,
-      claim,
-      `${label}.${kind}_certification`,
-    );
+    validateCertificationSnapshot(certification.value, claim, `${label}.${kind}_certification`);
     if (certification.testedAt < approval.reviewedAt) {
-      throw new Error(
-        `${label}.${kind}_certification predates approval review`,
-      );
+      throw new Error(`${label}.${kind}_certification predates approval review`);
     }
     if (certification.expiresAt > approval.expiresAt) {
-      throw new Error(
-        `${label}.${kind}_certification cannot outlive approval review`,
-      );
+      throw new Error(`${label}.${kind}_certification cannot outlive approval review`);
     }
   }
   if (local.value.contract_digest !== live.value.contract_digest) {
@@ -329,19 +277,12 @@ function validateClaim(claim, label, now, options) {
   }
 
   if (options.contractDigests !== undefined) {
-    const expectedDigest = resolveExpectedDigest(
-      options.contractDigests,
-      claim,
-    );
+    const expectedDigest = resolveExpectedDigest(options.contractDigests, claim);
     if (expectedDigest === undefined) {
-      throw new Error(
-        `contract digest projection is missing ${subjectKey(claim.subject)}`,
-      );
+      throw new Error(`contract digest projection is missing ${subjectKey(claim.subject)}`);
     }
     if (!digestPattern.test(expectedDigest)) {
-      throw new Error(
-        `contract digest projection for ${subjectKey(claim.subject)} is invalid`,
-      );
+      throw new Error(`contract digest projection for ${subjectKey(claim.subject)} is invalid`);
     }
     if (
       local.value.contract_digest !== expectedDigest ||
@@ -379,13 +320,8 @@ function validateSubject(subject, label) {
   if (subject.provider_environment !== "production") {
     throw new Error(`${label}.provider_environment must be production`);
   }
-  if (
-    subject.instance_fingerprint !== null &&
-    !digestPattern.test(subject.instance_fingerprint)
-  ) {
-    throw new Error(
-      `${label}.instance_fingerprint must be null or a sha256 digest`,
-    );
+  if (subject.instance_fingerprint !== null && !digestPattern.test(subject.instance_fingerprint)) {
+    throw new Error(`${label}.instance_fingerprint must be null or a sha256 digest`);
   }
   assertSafeSlug(subject.account_kind, `${label}.account_kind`);
   assertSafeSlug(subject.output_profile, `${label}.output_profile`);
@@ -406,25 +342,16 @@ function validateConfiguration(configuration, label) {
 }
 
 function validateApproval(approval, label, now, provider) {
-  assertExactKeys(
-    approval,
-    ["expires_at", "reviewed_at", "source_url", "state", "tier"],
-    label,
-  );
+  assertExactKeys(approval, ["expires_at", "reviewed_at", "source_url", "state", "tier"], label);
   if (approval.state !== "approved" && approval.state !== "not_required") {
     throw new Error(`${label}.state must be approved or not_required`);
   }
   assertSafeSlug(approval.tier, `${label}.tier`);
   if (approval.state === "not_required" && approval.tier !== "not_required") {
-    throw new Error(
-      `${label}.tier must be not_required when approval is not required`,
-    );
+    throw new Error(`${label}.tier must be not_required when approval is not required`);
   }
   assertOfficialSource(approval.source_url, provider, `${label}.source_url`);
-  const reviewedAt = parseTimestamp(
-    approval.reviewed_at,
-    `${label}.reviewed_at`,
-  );
+  const reviewedAt = parseTimestamp(approval.reviewed_at, `${label}.reviewed_at`);
   const expiresAt = parseTimestamp(approval.expires_at, `${label}.expires_at`);
   if (reviewedAt > now) {
     throw new Error(`${label}.reviewed_at cannot be in the future`);
@@ -442,14 +369,7 @@ function validateRuntimeControl(control, label) {
   }
 }
 
-function validateCertification(
-  certification,
-  expectedKind,
-  operation,
-  label,
-  now,
-  options,
-) {
+function validateCertification(certification, expectedKind, operation, label, now, options) {
   assertExactKeys(
     certification,
     [
@@ -481,19 +401,11 @@ function validateCertification(
     options.requireExactRevision === true &&
     certification.tested_revision !== options.currentRevision
   ) {
-    throw new Error(
-      `${label}.tested_revision does not match the release revision`,
-    );
+    throw new Error(`${label}.tested_revision does not match the release revision`);
   }
   assertDigest(certification.contract_digest, `${label}.contract_digest`);
-  const testedAt = parseTimestamp(
-    certification.tested_at,
-    `${label}.tested_at`,
-  );
-  const expiresAt = parseTimestamp(
-    certification.expires_at,
-    `${label}.expires_at`,
-  );
+  const testedAt = parseTimestamp(certification.tested_at, `${label}.tested_at`);
+  const expiresAt = parseTimestamp(certification.expires_at, `${label}.expires_at`);
   if (testedAt > now) {
     throw new Error(`${label}.tested_at cannot be in the future`);
   }
@@ -520,9 +432,7 @@ function validateCertificationSnapshot(certification, claim, label) {
     throw new Error(`${label}.required_scopes does not match the claim`);
   }
   if (!sameStringSet(certification.granted_scopes, claim.granted_scopes)) {
-    throw new Error(
-      `${label}.granted_scopes does not match current authorization`,
-    );
+    throw new Error(`${label}.granted_scopes does not match current authorization`);
   }
 }
 
@@ -541,11 +451,7 @@ function validateChecks(checks, operation, label) {
   const seen = new Set();
   for (const [index, check] of checks.entries()) {
     const checkLabel = `${label}[${index}]`;
-    assertExactKeys(
-      check,
-      ["kind", "not_applicable_reason", "outcome"],
-      checkLabel,
-    );
+    assertExactKeys(check, ["kind", "not_applicable_reason", "outcome"], checkLabel);
     if (!knownChecks.has(check.kind)) {
       throw new Error(`${checkLabel}.kind is unsupported`);
     }
@@ -559,16 +465,10 @@ function validateChecks(checks, operation, label) {
       }
       continue;
     }
-    if (
-      check.outcome !== "not_applicable" ||
-      !optionalLifecycleChecks.has(check.kind)
-    ) {
+    if (check.outcome !== "not_applicable" || !optionalLifecycleChecks.has(check.kind)) {
       throw new Error(`${checkLabel} must pass`);
     }
-    assertSafeSlug(
-      check.not_applicable_reason,
-      `${checkLabel}.not_applicable_reason`,
-    );
+    assertSafeSlug(check.not_applicable_reason, `${checkLabel}.not_applicable_reason`);
   }
   for (const requiredKind of required) {
     if (!seen.has(requiredKind)) {
@@ -600,9 +500,7 @@ function validateScopes(scopes, label) {
 }
 
 function sameStringSet(left, right) {
-  return (
-    left.length === right.length && left.every((value) => right.includes(value))
-  );
+  return left.length === right.length && left.every((value) => right.includes(value));
 }
 
 function validatePolicySources(sources, label, provider) {
@@ -658,10 +556,7 @@ function assertExactKeys(value, expected, label) {
   }
   const actual = Object.keys(value).sort();
   const wanted = [...expected].sort();
-  if (
-    actual.length !== wanted.length ||
-    actual.some((key, index) => key !== wanted[index])
-  ) {
+  if (actual.length !== wanted.length || actual.some((key, index) => key !== wanted[index])) {
     throw new Error(`${label} must contain exactly ${wanted.join(", ")}`);
   }
 }
@@ -686,18 +581,14 @@ function assertSafeURL(value, label) {
     throw new Error(`${label} must be a valid URL`);
   }
   if (url.protocol !== "https:" || url.username || url.password || url.hash) {
-    throw new Error(
-      `${label} must be an HTTPS URL without credentials or fragment`,
-    );
+    throw new Error(`${label} must be an HTTPS URL without credentials or fragment`);
   }
   for (const [key, value] of url.searchParams) {
     if (
       !allowedDocumentationQueryKeys.has(key) ||
       !safeDocumentationQueryValuePattern.test(value)
     ) {
-      throw new Error(
-        `${label} contains an unsupported documentation query parameter`,
-      );
+      throw new Error(`${label} contains an unsupported documentation query parameter`);
     }
   }
   return url;
@@ -706,12 +597,7 @@ function assertSafeURL(value, label) {
 function assertOfficialSource(value, provider, label) {
   const url = assertSafeURL(value, label);
   const rules = providerSourceRules[provider] ?? [];
-  if (
-    !rules.some(
-      (rule) =>
-        url.hostname === rule.host && url.pathname.startsWith(rule.path),
-    )
-  ) {
+  if (!rules.some((rule) => url.hostname === rule.host && url.pathname.startsWith(rule.path))) {
     throw new Error(`${label} is not an official source for ${provider}`);
   }
 }
@@ -753,25 +639,16 @@ function validateOptionalRevision(revision) {
 async function main() {
   const command = process.argv[2] ?? "check";
   if (command !== "check" || process.argv.length > 4) {
-    throw new Error(
-      "usage: provider-certification-manifest.mjs check [manifest-path]",
-    );
+    throw new Error("usage: provider-certification-manifest.mjs check [manifest-path]");
   }
-  const manifestPath = process.argv[3]
-    ? path.resolve(process.argv[3])
-    : publicClaimManifestPath;
+  const manifestPath = process.argv[3] ? path.resolve(process.argv[3]) : publicClaimManifestPath;
   const manifest = await readPublicClaimManifest(manifestPath);
   assertNoUnprojectedPublicClaims(manifest);
   await assertPublicClaimSurfaces(manifest);
-  console.log(
-    `Validated ${manifest.claims.length} fail-closed public provider claim(s).`,
-  );
+  console.log(`Validated ${manifest.claims.length} fail-closed public provider claim(s).`);
 }
 
-if (
-  process.argv[1] &&
-  import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href
-) {
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
   try {
     await main();
   } catch (error) {

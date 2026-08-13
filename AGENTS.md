@@ -69,7 +69,7 @@ The main user is a solo founder without a content team. The app should remove re
 
 ## Work
 
-- Use repo-owned Devenv tools. Run named commands after direnv loads; otherwise use `devenv shell -- <command>`.
+- Use Devenv to enter or repair the project environment. Run verification, build, and release work through the root `bun run` commands.
 - Preserve unrelated changes. Stay inside the requested scope.
 - Follow the owning code. Edit sources, then regenerate outputs with repo scripts.
 - Reconcile uncertain external writes before retrying.
@@ -77,7 +77,7 @@ The main user is a solo founder without a content team. The app should remove re
 
 ## Verify and deliver
 
-- Run the closest checks first. Before every commit, run `bun run commit-check`; the pre-commit hook enforces the same changed-file gate on staged files. Run `devenv shell -- doctor` before broad, browser, or release work. Use `bun run release:check` before releases and `verify` only for high-risk local build proof.
+- Run the closest root gate first with a surface scope or named policy selector. The commit and push hooks enforce changed-file checks. Run `bun run doctor` before broad, browser, or release work. Use `bun run release -- check` before releases and `bun run verify` only for high-risk local build proof.
 - Broad UI: test desktop and phone, controls, overflow, settled state, and console errors.
 - Commits and branches use Conventional format. Commit, push, release, or deploy only when asked.
 - Release scripts stage the whole tree. Release only a clean, explicit scope.

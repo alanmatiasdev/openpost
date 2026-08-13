@@ -12,7 +12,11 @@ export const IMAGE_EDITOR_LIMITS = {
 
 export type ImageEditorLayerType = 'text' | 'image' | 'shape' | 'paint' | 'group';
 export type ImageEditorSelectionTool =
-	'select' | 'marquee' | 'ellipse_marquee' | 'lasso' | 'magic_wand';
+	| 'select'
+	| 'marquee'
+	| 'ellipse_marquee'
+	| 'lasso'
+	| 'magic_wand';
 export type ImageEditorSelectionMode = 'replace' | 'add' | 'subtract' | 'intersect' | 'toggle';
 export type ImageEditorGradientType = 'linear' | 'radial' | 'angle' | 'reflected' | 'diamond';
 export type ImageEditorTool =
@@ -31,9 +35,18 @@ export type ImageEditorTool =
 	| 'hand'
 	| 'zoom';
 export type ImageEditorSaveState =
-	'idle' | 'saving' | 'saved' | 'local' | 'conflict' | 'offline' | 'error';
+	| 'idle'
+	| 'saving'
+	| 'saved'
+	| 'local'
+	| 'conflict'
+	| 'offline'
+	| 'error';
 export type ImageEditorColorTarget =
-	'foreground' | 'selected_fill' | 'selected_stroke' | 'page_background';
+	| 'foreground'
+	| 'selected_fill'
+	| 'selected_stroke'
+	| 'page_background';
 
 export interface ImageEditorTransform {
 	x: number;
@@ -53,7 +66,12 @@ export interface ImageEditorTextShadow {
 }
 
 export type ImageEditorTextCurveType =
-	'none' | 'arc_up' | 'arc_down' | 'wave' | 'circle' | 'ellipse';
+	| 'none'
+	| 'arc_up'
+	| 'arc_down'
+	| 'wave'
+	| 'circle'
+	| 'ellipse';
 
 export interface ImageEditorTextCurve {
 	type: ImageEditorTextCurveType;
@@ -184,7 +202,13 @@ export interface ImageEditorPaintValue {
 }
 
 export type ImageEditorBlendMode =
-	'normal' | 'multiply' | 'screen' | 'overlay' | 'darken' | 'lighten' | 'soft_light';
+	| 'normal'
+	| 'multiply'
+	| 'screen'
+	| 'overlay'
+	| 'darken'
+	| 'lighten'
+	| 'soft_light';
 
 export interface ImageEditorShadowEffect {
 	color: string;

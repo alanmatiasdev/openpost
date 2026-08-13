@@ -3233,9 +3233,9 @@ func (h *PublicationHandler) queueScheduledPublicationExpected(
 	})
 }
 
-func (h *PublicationHandler) queuePublicationNow(ctx context.Context, publicationID string) (string, error) {
-	result, err := h.queuePublicationNowExpected(ctx, publicationID, 0)
-	return result.JobID, err
+func (h *PublicationHandler) queuePublicationNow(ctx context.Context, publicationID string) error {
+	_, err := h.queuePublicationNowExpected(ctx, publicationID, 0)
+	return err
 }
 
 func (h *PublicationHandler) queuePublicationNowExpected(

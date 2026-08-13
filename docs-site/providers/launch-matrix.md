@@ -12,15 +12,15 @@ environment, optional Mastodon instance, account kind, output profile,
 immediate or scheduled operation, and policy mode. The server projects these
 facts through one readiness service:
 
-| Fact | Meaning |
-| --- | --- |
-| Configuration | The effective built-in, environment, database, or dynamic app is present. |
-| Local test | A current normalized local run matches the exact certification contract. |
-| Live certification | A current real-provider run matches the same contract and subject. |
-| Approval | The provider app's reviewed tier is current and permits this operation. |
-| Authorization | The exact connected account grant is valid. Strict certification also requires every recorded scope. |
-| Policy | The server permits the selected account, format, and policy mode. |
-| Runtime control | The most restrictive current environment or ledger control is enabled. |
+| Fact               | Meaning                                                                                              |
+| ------------------ | ---------------------------------------------------------------------------------------------------- |
+| Configuration      | The effective built-in, environment, database, or dynamic app is present.                            |
+| Local test         | A current normalized local run matches the exact certification contract.                             |
+| Live certification | A current real-provider run matches the same contract and subject.                                   |
+| Approval           | The provider app's reviewed tier is current and permits this operation.                              |
+| Authorization      | The exact connected account grant is valid. Strict certification also requires every recorded scope. |
+| Policy             | The server permits the selected account, format, and policy mode.                                    |
+| Runtime control    | The most restrictive current environment or ledger control is enabled.                               |
 
 The effective state is fail-closed. Actionable states include
 `approval_required`, `reconnect_required`, `trial_only`, `policy_restricted`,
@@ -50,6 +50,7 @@ The canonical
 is the only source for public provider-format certification claims.
 
 <!-- provider-certification:begin -->
+
 The checked-in public certification manifest contains **0 exact provider-format claims**.
 
 No managed provider-format certification claim is current. Implementation descriptions do not assert managed availability.
@@ -115,7 +116,7 @@ are true for the exact production subject:
 - the sanitized projection contains no account, operator, credential, URL, or
   raw external-result data.
 
-Run `bun run check:provider-certification` before release work. The checked-in
+Run `bun run check -- provider-certification` before release work. The checked-in
 zero-claim gate refuses a non-empty manifest unless a trusted ledger projection
 supplies the current contract digests. This prevents a documentation or adapter
 change from silently becoming a public readiness claim.

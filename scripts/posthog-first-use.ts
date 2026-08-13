@@ -63,9 +63,7 @@ export async function ensureFirstUseFunnel(
     `${apiBase}/insights/?${search}`,
     config.personalApiKey,
   );
-  const existing = listed.results.find(
-    (insight) => insight.name === insightName,
-  );
+  const existing = listed.results.find((insight) => insight.name === insightName);
   const insight = existing
     ? await postHogJSON<InsightSummary>(
         fetch,
@@ -73,15 +71,10 @@ export async function ensureFirstUseFunnel(
         config.personalApiKey,
         { method: "PATCH", body: JSON.stringify(insightPayload) },
       )
-    : await postHogJSON<InsightSummary>(
-        fetch,
-        `${apiBase}/insights/`,
-        config.personalApiKey,
-        {
-          method: "POST",
-          body: JSON.stringify(insightPayload),
-        },
-      );
+    : await postHogJSON<InsightSummary>(fetch, `${apiBase}/insights/`, config.personalApiKey, {
+        method: "POST",
+        body: JSON.stringify(insightPayload),
+      });
 
   const capturedAt = now();
   await requestJSON(fetch, `${trimHost(config.ingestionHost)}/batch/`, {
@@ -103,14 +96,7 @@ export async function ensureFirstUseFunnel(
       })),
     }),
   });
-  await waitForSmokeEvent(
-    fetch,
-    apiBase,
-    config.personalApiKey,
-    smokeID,
-    capturedAt,
-    sleep,
-  );
+  await waitForSmokeEvent(fetch, apiBase, config.personalApiKey, smokeID, capturedAt, sleep);
   await waitForSmokeFunnel(
     fetch,
     apiBase,
@@ -141,9 +127,7 @@ async function waitForSmokeFunnel(
   const query = {
     ...source,
     properties: [
-      ...source.properties.filter(
-        (property) => property.key !== "openpost_smoke",
-      ),
+      ...source.properties.filter((property) => property.key !== "openpost_smoke"),
       {
         key: "openpost_smoke",
         value: true,
@@ -181,11 +165,7 @@ function funnelIncludesCompletedJourney(value: unknown): boolean {
   const record = value as Record<string, unknown>;
   const name = record.name ?? record.event ?? record.custom_name;
   const count = record.count ?? record.aggregated_value;
-  if (
-    name === firstUseJourneyEvents.at(-1) &&
-    typeof count === "number" &&
-    count > 0
-  ) {
+  if (name === firstUseJourneyEvents.at(-1) && typeof count === "number" && count > 0) {
     return true;
   }
   return Object.values(record).some(funnelIncludesCompletedJourney);
@@ -250,8 +230,7 @@ async function waitForSmokeEvent(
     }>(fetch, `${apiBase}/events/?${query}`, personalApiKey);
     if (
       events.results.some(
-        (event) =>
-          event.distinct_id === smokeID || event["$distinct_id"] === smokeID,
+        (event) => event.distinct_id === smokeID || event["$distinct_id"] === smokeID,
       )
     ) {
       return;
@@ -287,9 +266,7 @@ async function requestJSON<T>(
   const response = await fetch(url, init);
   if (!response.ok) {
     const detail = (await response.text()).slice(0, 500);
-    throw new Error(
-      `PostHog request failed with ${response.status}: ${detail}`,
-    );
+    throw new Error(`PostHog request failed with ${response.status}: ${detail}`);
   }
   return (await response.json()) as T;
 }
@@ -314,8 +291,7 @@ if (import.meta.main) {
     environment: process.env.POSTHOG_ENVIRONMENT?.trim() || "production",
   });
   const evidencePath = process.env.POSTHOG_EVIDENCE_PATH?.trim();
-  if (evidencePath)
-    await Bun.write(evidencePath, `${JSON.stringify(evidence, null, 2)}\n`);
+  if (evidencePath) await Bun.write(evidencePath, `${JSON.stringify(evidence, null, 2)}\n`);
   process.stdout.write(
     `Verified PostHog first-use funnel ${evidence.insightId} and smoke event ${evidence.smokeID}\n`,
   );

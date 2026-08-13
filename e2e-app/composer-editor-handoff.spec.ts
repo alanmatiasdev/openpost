@@ -30,15 +30,8 @@ test("composer preserves its draft through Image cancel and Video replacement", 
   request,
 }) => {
   const unique = Date.now().toString(36);
-  const auth = await registerUser(
-    request,
-    `composer-editor-handoff-${unique}@example.com`,
-  );
-  const workspace = await createWorkspace(
-    request,
-    auth.token,
-    "Composer editor handoff E2E",
-  );
+  const auth = await registerUser(request, `composer-editor-handoff-${unique}@example.com`);
+  const workspace = await createWorkspace(request, auth.token, "Composer editor handoff E2E");
   await authenticatePage(page, auth.token);
 
   const pageErrors: Error[] = [];
@@ -189,22 +182,19 @@ test("composer preserves its draft through Image cancel and Video replacement", 
       },
     });
   });
-  await page.route(
-    /\/api\/v1\/publications\/publication-handoff(?:\?.*)?$/,
-    async (route) => {
-      if (route.request().method() === "PUT") {
-        await route.fulfill({
-          contentType: "application/json",
-          json: { revision: nextRevision++ },
-        });
-        return;
-      }
+  await page.route(/\/api\/v1\/publications\/publication-handoff(?:\?.*)?$/, async (route) => {
+    if (route.request().method() === "PUT") {
       await route.fulfill({
         contentType: "application/json",
-        json: publication,
+        json: { revision: nextRevision++ },
       });
-    },
-  );
+      return;
+    }
+    await route.fulfill({
+      contentType: "application/json",
+      json: publication,
+    });
+  });
   await page.route("**/api/v1/posts/post-handoff/draft", async (route) => {
     draftWrites.push(route.request().postDataJSON() as Record<string, unknown>);
     await route.fulfill({
@@ -231,9 +221,7 @@ test("composer preserves its draft through Image cancel and Video replacement", 
       await route.fulfill({
         contentType: "application/json",
         json: {
-          media: [originalVideo, returnedVideo].filter((item) =>
-            requestedIDs.includes(item.id),
-          ),
+          media: [originalVideo, returnedVideo].filter((item) => requestedIDs.includes(item.id)),
         },
       });
       return;
@@ -276,9 +264,7 @@ test("composer preserves its draft through Image cancel and Video replacement", 
     });
   });
   await page.route("**/api/v1/video-editor/return-tokens", async (route) => {
-    videoTokenBodies.push(
-      route.request().postDataJSON() as Record<string, unknown>,
-    );
+    videoTokenBodies.push(route.request().postDataJSON() as Record<string, unknown>);
     await route.fulfill({
       contentType: "application/json",
       json: {
@@ -340,16 +326,10 @@ test("composer preserves its draft through Image cancel and Video replacement", 
   await composer.getByRole("button", { name: "Add media" }).click();
   picker = page.getByRole("dialog");
   await picker.getByRole("tab", { name: "Library" }).click();
-  await picker
-    .getByRole("button", { name: "Edit in OpenPost Video Editor" })
-    .click();
+  await picker.getByRole("button", { name: "Edit in OpenPost Video Editor" }).click();
   await expect(page).toHaveURL(/\/video-editor\/new\?/u);
-  expect(new URL(page.url()).searchParams.get("source_media")).toBe(
-    "video-old",
-  );
-  expect(new URL(page.url()).searchParams.get("required_variants")).toBe(
-    "landscape",
-  );
+  expect(new URL(page.url()).searchParams.get("source_media")).toBe("video-old");
+  expect(new URL(page.url()).searchParams.get("required_variants")).toBe("landscape");
   expect(videoTokenBodies).toHaveLength(1);
   expect(videoTokenBodies[0]).toMatchObject({
     workspace_id: workspace.id,
@@ -362,9 +342,7 @@ test("composer preserves its draft through Image cancel and Video replacement", 
     },
   });
 
-  await page.goto(
-    "/publications/publication-handoff?video_editor_return=video-handoff-token",
-  );
+  await page.goto("/publications/publication-handoff?video_editor_return=video-handoff-token");
   await expect(page).toHaveURL(/\/publications\/publication-handoff$/u);
   await expect(page.getByRole("textbox", { name: "Description" })).toHaveValue(
     "Edited launch copy survives both editors.",
@@ -376,8 +354,6 @@ test("composer preserves its draft through Image cancel and Video replacement", 
   expect(draftWrites.at(-1)).toMatchObject({
     social_account_ids: ["youtube-main"],
   });
-  expect(Date.parse(String(draftWrites.at(-1)?.scheduled_at))).toBe(
-    Date.parse(scheduledAt),
-  );
+  expect(Date.parse(String(draftWrites.at(-1)?.scheduled_at))).toBe(Date.parse(scheduledAt));
   expect(pageErrors).toEqual([]);
 });

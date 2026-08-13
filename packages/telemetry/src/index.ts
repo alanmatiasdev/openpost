@@ -46,23 +46,11 @@ export interface TelemetryEventMap {
   };
   "public image editor viewed": Record<string, string | number | boolean>;
   "public image design started": Record<string, string | number | boolean>;
-  "public image editor meaningful edit": Record<
-    string,
-    string | number | boolean
-  >;
+  "public image editor meaningful edit": Record<string, string | number | boolean>;
   "public image export completed": Record<string, string | number | boolean>;
-  "public image editor signup clicked": Record<
-    string,
-    string | number | boolean
-  >;
-  "public image editor signup completed": Record<
-    string,
-    string | number | boolean
-  >;
-  "public image workspace import completed": Record<
-    string,
-    string | number | boolean
-  >;
+  "public image editor signup clicked": Record<string, string | number | boolean>;
+  "public image editor signup completed": Record<string, string | number | boolean>;
+  "public image workspace import completed": Record<string, string | number | boolean>;
   "docs search used": { result_count?: number };
   "docs code copied": { language?: string };
 }
@@ -128,17 +116,12 @@ export class BrowserTelemetry {
 
   constructor(
     private readonly sdk: BrowserSDK,
-    private readonly runtimeAvailable: () => boolean = () =>
-      typeof window !== "undefined",
+    private readonly runtimeAvailable: () => boolean = () => typeof window !== "undefined",
   ) {}
 
   configure(config: BrowserTelemetryConfig): void {
     if (!this.runtimeAvailable()) return;
-    if (
-      !config.enabled ||
-      !config.projectToken?.trim() ||
-      !config.apiHost?.trim()
-    ) {
+    if (!config.enabled || !config.projectToken?.trim() || !config.apiHost?.trim()) {
       this.disabled = true;
       this.pendingEvents = [];
       this.pendingPageViews = [];
@@ -149,9 +132,7 @@ export class BrowserTelemetry {
 
     this.sdk.init(config.projectToken.trim(), {
       api_host: config.apiHost.trim().replace(/\/+$/, ""),
-      ...(config.uiHost?.trim()
-        ? { ui_host: config.uiHost.trim().replace(/\/+$/, "") }
-        : {}),
+      ...(config.uiHost?.trim() ? { ui_host: config.uiHost.trim().replace(/\/+$/, "") } : {}),
       autocapture: false,
       capture_pageview: false,
       capture_pageleave: false,
@@ -199,10 +180,7 @@ export class BrowserTelemetry {
       : [properties: TelemetryEventMap[Name]]
   ): void {
     if (this.disabled) return;
-    const properties = allowlistedEventProperties(
-      name,
-      (args[0] ?? {}) as Record<string, unknown>,
-    );
+    const properties = allowlistedEventProperties(name, (args[0] ?? {}) as Record<string, unknown>);
     if (properties === null) return;
     if (!this.configured) {
       if (this.pendingEvents.length < maxPendingEvents)
@@ -235,8 +213,7 @@ export class BrowserTelemetry {
       return;
     }
     this.pendingUserID = normalized;
-    if (!this.configured || this.disabled || this.activeUserID === normalized)
-      return;
+    if (!this.configured || this.disabled || this.activeUserID === normalized) return;
     if (this.activeUserID !== null) this.sdk.reset();
     this.sdk.identify(normalized);
     this.activeUserID = normalized;
@@ -248,10 +225,7 @@ export class BrowserTelemetry {
     if (this.configured) this.sdk.reset();
   }
 
-  captureException(
-    error: unknown,
-    properties: Record<string, unknown> = {},
-  ): void {
+  captureException(error: unknown, properties: Record<string, unknown> = {}): void {
     if (this.disabled) return;
     if (typeof error === "object" && error !== null) {
       if (this.capturedErrors.has(error)) return;
@@ -297,10 +271,7 @@ export function captureTelemetryEvent<Name extends TelemetryEventName>(
   telemetry.capture(name, ...(args as never));
 }
 
-export function captureTelemetryPageView(
-  pathname: string,
-  title?: string,
-): void {
+export function captureTelemetryPageView(pathname: string, title?: string): void {
   telemetry.capturePageView(pathname, title);
 }
 
@@ -357,9 +328,7 @@ export function installGlobalErrorCapture(): () => void {
   };
 }
 
-function compactProperties(
-  properties: Record<string, unknown>,
-): Record<string, unknown> {
+function compactProperties(properties: Record<string, unknown>): Record<string, unknown> {
   return Object.fromEntries(
     Object.entries(properties)
       .filter(([, value]) => value !== undefined)
@@ -422,9 +391,7 @@ function sanitizeError(value: unknown): Error {
     value instanceof Error
       ? value
       : new Error(typeof value === "string" ? value : "Unknown client error");
-  const result = new Error(
-    scrubPropertyString(source.message || "Unknown client error"),
-  );
+  const result = new Error(scrubPropertyString(source.message || "Unknown client error"));
   result.name = source.name || "Error";
   if (source.stack) result.stack = scrubStack(source.stack);
   return result;
@@ -441,18 +408,13 @@ function sanitizePropertyValue(value: unknown): unknown {
 
 function scrubPropertyString(value: string): string {
   return truncate(
-    scrubSensitiveText(value).replace(
-      /https?:\/\/[^\s)\]}]+/gi,
-      "[redacted-url]",
-    ),
+    scrubSensitiveText(value).replace(/https?:\/\/[^\s)\]}]+/gi, "[redacted-url]"),
     200,
   );
 }
 
 function scrubStack(value: string): string {
-  return scrubSensitiveText(
-    value.replace(/https?:\/\/[^\s)\]}]+/gi, scrubStackURL),
-  );
+  return scrubSensitiveText(value.replace(/https?:\/\/[^\s)\]}]+/gi, scrubStackURL));
 }
 
 function scrubStackURL(value: string): string {
@@ -474,16 +436,11 @@ function scrubStackURL(value: string): string {
 
 function scrubSensitiveText(value: string): string {
   return value
-    .replace(
-      /([?&](?:token|code|secret|key|signature|state)=)[^&\s)]+/gi,
-      "$1[redacted]",
-    )
+    .replace(/([?&](?:token|code|secret|key|signature|state)=)[^&\s)]+/gi, "$1[redacted]")
     .replace(/\bBearer\s+[A-Za-z0-9._~+\/-]+=*/gi, "Bearer [redacted]")
     .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, "[redacted-email]");
 }
 
 function truncate(value: string, maxLength: number): string {
-  return value.length <= maxLength
-    ? value
-    : `${value.slice(0, maxLength - 1)}…`;
+  return value.length <= maxLength ? value : `${value.slice(0, maxLength - 1)}…`;
 }

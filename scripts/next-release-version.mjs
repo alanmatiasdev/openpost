@@ -2,8 +2,7 @@ import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 
 const stableVersionPattern = /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
-const conventionalHeaderPattern =
-  /^[a-z][a-z0-9-]*(?:\([^)\r\n]+\))?(!)?:\s+\S/i;
+const conventionalHeaderPattern = /^[a-z][a-z0-9-]*(?:\([^)\r\n]+\))?(!)?:\s+\S/i;
 const featureHeaderPattern = /^feat(?:\([^)\r\n]+\))?!?:\s+\S/i;
 const breakingFooterPattern = /^BREAKING(?: CHANGE|-CHANGE):\s+\S/im;
 const bumpRank = { patch: 0, minor: 1, major: 2 };
@@ -11,9 +10,7 @@ const bumpRank = { patch: 0, minor: 1, major: 2 };
 export function parseStableVersion(value) {
   const match = stableVersionPattern.exec(String(value).trim());
   if (!match) {
-    throw new Error(
-      `expected a stable version such as v1.2.3, received ${JSON.stringify(value)}`,
-    );
+    throw new Error(`expected a stable version such as v1.2.3, received ${JSON.stringify(value)}`);
   }
   return match.slice(1).map(Number);
 }
@@ -83,14 +80,10 @@ export function resolveNextTag(currentVersion, messages, options = {}) {
   const requiredTag = incrementVersion(currentVersion, requiredBump);
 
   if (exactVersion) {
-    const tag = exactVersion.startsWith("v")
-      ? exactVersion
-      : `v${exactVersion}`;
+    const tag = exactVersion.startsWith("v") ? exactVersion : `v${exactVersion}`;
     parseStableVersion(tag);
     if (compareVersions(tag, currentVersion) <= 0) {
-      throw new Error(
-        `${tag} must be greater than the latest tag ${currentVersion}`,
-      );
+      throw new Error(`${tag} must be greater than the latest tag ${currentVersion}`);
     }
     if (compareVersions(tag, requiredTag) < 0) {
       throw new Error(
@@ -102,12 +95,9 @@ export function resolveNextTag(currentVersion, messages, options = {}) {
 
   if (
     requestedBump &&
-    (!Object.hasOwn(bumpRank, requestedBump) ||
-      bumpRank[requestedBump] < bumpRank[requiredBump])
+    (!Object.hasOwn(bumpRank, requestedBump) || bumpRank[requestedBump] < bumpRank[requiredBump])
   ) {
-    throw new Error(
-      `RELEASE_BUMP=${requestedBump} cannot lower the required ${requiredBump} bump`,
-    );
+    throw new Error(`RELEASE_BUMP=${requestedBump} cannot lower the required ${requiredBump} bump`);
   }
 
   const bump = requestedBump || requiredBump;
@@ -128,9 +118,7 @@ function gitMessages(range) {
 function main() {
   const currentVersion = process.argv[2];
   if (!currentVersion) {
-    throw new Error(
-      "usage: bun scripts/next-release-version.mjs <latest-tag> [git-range]",
-    );
+    throw new Error("usage: bun scripts/next-release-version.mjs <latest-tag> [git-range]");
   }
 
   const range = process.argv[3] || `${currentVersion}..HEAD`;
@@ -145,10 +133,7 @@ function main() {
   process.stdout.write(`${tag}\n`);
 }
 
-if (
-  process.argv[1] &&
-  import.meta.url === pathToFileURL(process.argv[1]).href
-) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
     main();
   } catch (error) {

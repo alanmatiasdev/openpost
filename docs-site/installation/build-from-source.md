@@ -14,7 +14,7 @@ devenv shell -- setup
 ## Build OpenPost
 
 ```bash
-devenv shell -- build
+bun run build
 ```
 
 The build creates the frontend and embeds it in the Go server file.

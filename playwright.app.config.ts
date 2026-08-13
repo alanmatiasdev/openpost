@@ -10,9 +10,7 @@ const workers = Number(process.env.OPENPOST_APP_E2E_WORKERS ?? 2);
 const chromiumExecutablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
 const chromiumUse = {
   launchOptions: {
-    ...(chromiumExecutablePath
-      ? { executablePath: chromiumExecutablePath }
-      : {}),
+    ...(chromiumExecutablePath ? { executablePath: chromiumExecutablePath } : {}),
     args: ["--enable-unsafe-swiftshader", "--use-gl=swiftshader"],
   },
 };
@@ -31,7 +29,7 @@ export default defineConfig({
   webServer: {
     command: [
       `rm -f ${dbPath}`,
-      ...(usePrebuiltArtifact ? [] : ["bun run frontend:build"]),
+      ...(usePrebuiltArtifact ? [] : ["bun run build -- frontend"]),
       [
         "cd backend &&",
         `OPENPOST_PORT=${port}`,

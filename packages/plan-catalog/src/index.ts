@@ -1,12 +1,6 @@
 import rawCatalog from "./catalog.json";
 
-export const hostedPlanIDs = [
-  "starter",
-  "founder",
-  "pro",
-  "team",
-  "agency",
-] as const;
+export const hostedPlanIDs = ["starter", "founder", "pro", "team", "agency"] as const;
 export const billingPeriods = ["monthly", "annual"] as const;
 
 export type HostedPlanID = (typeof hostedPlanIDs)[number];
@@ -47,8 +41,6 @@ export const purchaseTerms = planCatalog.purchase_terms;
 
 const planByID = new Map(planCatalog.plans.map((plan) => [plan.id, plan]));
 
-export function hostedPlanDefinition(
-  planID: string,
-): HostedPlanDefinition | undefined {
+export function hostedPlanDefinition(planID: string): HostedPlanDefinition | undefined {
   return planByID.get(planID as HostedPlanID);
 }

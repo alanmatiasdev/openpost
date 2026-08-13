@@ -39,12 +39,12 @@ func registerSpaRoutesFromFS(
 	data, err := fs.ReadFile(webFS, "index.html")
 	if err != nil || len(data) == 0 {
 		panic("openpost: frontend is missing or empty (backend/cmd/openpost/public/index.html). " +
-			"Run the frontend build first: `bun run frontend:build` (or use `devenv shell -- build`).")
+			"Run the frontend build first: `bun run build -- frontend`.")
 	}
 	routes, err := loadSpaRouteManifest(webFS)
 	if err != nil {
 		panic("openpost: frontend application route manifest is missing or invalid. " +
-			"Run the frontend build first: `bun run frontend:build` (or use `devenv shell -- build`): " + err.Error())
+			"Run the frontend build first: `bun run build -- frontend`: " + err.Error())
 	}
 	registerSpaRoutesWithProfileMetadataAndMatcher(e, webFS, db, publicURL, managedEdition, publicProfilesEnabled, routes)
 }

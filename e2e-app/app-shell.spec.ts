@@ -1,10 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { authenticatePage, createWorkspace, registerUser } from "./helpers";
 
-test("authenticated navigation keeps the app shell mounted", async ({
-  page,
-  request,
-}) => {
+test("authenticated navigation keeps the app shell mounted", async ({ page, request }) => {
   const unique = Date.now().toString(36);
   const email = `app-shell-${unique}@example.com`;
 
@@ -21,27 +18,19 @@ test("authenticated navigation keeps the app shell mounted", async ({
   await page.goto("/");
   await expect(page.getByTestId("app-sidebar")).toBeVisible();
   await page.waitForTimeout(250);
-  expect(
-    shellApiRequests.filter((path) => path === "/api/v1/notifications"),
-  ).toHaveLength(1);
+  expect(shellApiRequests.filter((path) => path === "/api/v1/notifications")).toHaveLength(1);
 
   await page.getByTestId("profile-menu-trigger").click();
-  await expect(
-    page.getByRole("menuitem", { name: "Watch product demo" }),
-  ).toHaveCount(0);
+  await expect(page.getByRole("menuitem", { name: "Watch product demo" })).toHaveCount(0);
   await page.keyboard.press("Escape");
 
   await page.evaluate(() => {
     const shell = document.querySelector('[data-testid="app-sidebar"]');
     if (!shell) throw new Error("App sidebar was not mounted");
-    (
-      window as Window & { __openpostShellRemoved?: boolean }
-    ).__openpostShellRemoved = false;
+    (window as Window & { __openpostShellRemoved?: boolean }).__openpostShellRemoved = false;
     new MutationObserver(() => {
       if (!shell.isConnected) {
-        (
-          window as Window & { __openpostShellRemoved?: boolean }
-        ).__openpostShellRemoved = true;
+        (window as Window & { __openpostShellRemoved?: boolean }).__openpostShellRemoved = true;
       }
     }).observe(document.body, { childList: true, subtree: true });
   });
@@ -54,21 +43,14 @@ test("authenticated navigation keeps the app shell mounted", async ({
   await expect(page.getByTestId("sidebar-new-post")).toBeVisible();
   await page.waitForTimeout(250);
   const activityRequests = shellApiRequests.slice(activityRequestStart);
-  expect(
-    activityRequests.filter((path) => path === "/api/v1/publications"),
-  ).toHaveLength(1);
-  expect(
-    activityRequests.filter((path) => path === "/api/v1/accounts"),
-  ).toHaveLength(1);
-  expect(
-    activityRequests.filter((path) => path === "/api/v1/jobs"),
-  ).toHaveLength(1);
+  expect(activityRequests.filter((path) => path === "/api/v1/publications")).toHaveLength(1);
+  expect(activityRequests.filter((path) => path === "/api/v1/accounts")).toHaveLength(1);
+  expect(activityRequests.filter((path) => path === "/api/v1/jobs")).toHaveLength(1);
   await expect
     .poll(() =>
       page.evaluate(
         () =>
-          (window as Window & { __openpostShellRemoved?: boolean })
-            .__openpostShellRemoved ?? false,
+          (window as Window & { __openpostShellRemoved?: boolean }).__openpostShellRemoved ?? false,
       ),
     )
     .toBe(false);
@@ -88,11 +70,7 @@ test("first autosave establishes the draft URL and keeps draft actions in one co
   const content = `Keep this draft attached to its own URL: ${link}`;
 
   const auth = await registerUser(request, email);
-  const workspace = (await createWorkspace(
-    request,
-    auth.token,
-    "Draft URL E2E",
-  )) as { id: string };
+  const workspace = (await createWorkspace(request, auth.token, "Draft URL E2E")) as { id: string };
   await authenticatePage(page, auth.token);
   await page.goto("/");
 
@@ -112,23 +90,14 @@ test("first autosave establishes the draft URL and keeps draft actions in one co
   await expect(page).toHaveURL(/\/publications\/[a-zA-Z0-9-]+$/, {
     timeout: 10_000,
   });
-  await expect(page.getByTestId("composer-save-indicator")).toHaveAttribute(
-    "data-state",
-    "saved",
-  );
+  await expect(page.getByTestId("composer-save-indicator")).toHaveAttribute("data-state", "saved");
   await expect(page.getByTestId("composer-context-status")).toHaveCount(0);
   await expect(page.getByTestId("sidebar-new-post")).toBeVisible();
   await expect(homeBrand).toBeVisible();
   await expect(newPostAction).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Schedule", exact: true }).first(),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Save draft", exact: true }),
-  ).toHaveCount(0);
-  await expect(
-    page.getByRole("button", { name: "Save changes", exact: true }),
-  ).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Schedule", exact: true }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Save draft", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Save changes", exact: true })).toHaveCount(0);
   await expect(page.getByText("Editing draft post")).toHaveCount(0);
 
   const publicationId = new URL(page.url()).pathname.split("/").pop();
@@ -159,16 +128,10 @@ test("first autosave establishes the draft URL and keeps draft actions in one co
   await expect(page.getByTestId("composer-account-control")).toBeVisible();
   await expect(page.getByTestId("composer-account-loading")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Link URL" })).toHaveCount(0);
-  await expect(
-    page.getByRole("button", { name: "Save changes", exact: true }),
-  ).toHaveCount(0);
-  await expect(
-    page.getByRole("button", { name: "Schedule", exact: true }).first(),
-  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Save changes", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Schedule", exact: true }).first()).toBeVisible();
 
-  await page
-    .getByRole("button", { name: "Version history", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Version history", exact: true }).click();
   const historyDrawer = page.getByTestId("publication-history-drawer");
   const historyScroll = page.getByTestId("publication-history-scroll");
   await expect(historyDrawer).toBeVisible();
@@ -204,12 +167,9 @@ test("first autosave establishes the draft URL and keeps draft actions in one co
   await expect(page.getByTestId("composer-account-control")).toBeVisible();
   await expect(page.getByTestId("composer-account-loading")).toHaveCount(0);
 
-  const publicationDetail = await request.get(
-    `/api/v1/publications/${publicationId}`,
-    {
-      headers: { Authorization: `Bearer ${auth.token}` },
-    },
-  );
+  const publicationDetail = await request.get(`/api/v1/publications/${publicationId}`, {
+    headers: { Authorization: `Bearer ${auth.token}` },
+  });
   expect(publicationDetail.ok()).toBeTruthy();
   const publicationDetailBody = (await publicationDetail.json()) as {
     id: string;
@@ -220,12 +180,9 @@ test("first autosave establishes the draft URL and keeps draft actions in one co
   expect(publicationDetailBody.text_post_id).toBeTruthy();
   expect(publicationDetailBody.source_url).toBe(link);
 
-  const postDetail = await request.get(
-    `/api/v1/posts/${publicationDetailBody.text_post_id}`,
-    {
-      headers: { Authorization: `Bearer ${auth.token}` },
-    },
-  );
+  const postDetail = await request.get(`/api/v1/posts/${publicationDetailBody.text_post_id}`, {
+    headers: { Authorization: `Bearer ${auth.token}` },
+  });
   expect(postDetail.ok()).toBeTruthy();
   const postDetailBody = (await postDetail.json()) as {
     publication_id: string;
@@ -245,34 +202,24 @@ test("first autosave establishes the draft URL and keeps draft actions in one co
   await expect(page.getByTestId("focused-composer")).toHaveCount(0);
   await expect(page.getByTestId("desktop-sidebar-planner")).toBeVisible();
   expect(
-    draftLoadRequests.filter(
-      (path) => path === `/api/v1/publications/${publicationId}`,
-    ),
+    draftLoadRequests.filter((path) => path === `/api/v1/publications/${publicationId}`),
   ).toHaveLength(1);
   expect(
     draftLoadRequests.filter(
       (path) => path === `/api/v1/posts/${publicationDetailBody.text_post_id}`,
     ),
   ).toHaveLength(0);
-  expect(
-    draftLoadRequests.filter((path) => path.endsWith("/variants")),
-  ).toHaveLength(0);
+  expect(draftLoadRequests.filter((path) => path.endsWith("/variants"))).toHaveLength(0);
   await page.goto("/calendar");
-  await expect(
-    page.getByTestId("sidebar-draft-list").locator("li"),
-  ).toHaveCount(1);
+  await expect(page.getByTestId("sidebar-draft-list").locator("li")).toHaveCount(1);
 });
 
-test("text-and-thread editor keeps its canvas-owned field treatment", async ({
-  page,
-  request,
-}) => {
+test("text-and-thread editor keeps its canvas-owned field treatment", async ({ page, request }) => {
   const unique = Date.now().toString(36);
   const email = `composer-chrome-${unique}@example.com`;
   const longContent = Array.from(
     { length: 18 },
-    (_, index) =>
-      `Paragraph ${index + 1} stays visible in the expanding editor.`,
+    (_, index) => `Paragraph ${index + 1} stays visible in the expanding editor.`,
   ).join("\n\n");
 
   const auth = await registerUser(request, email);
@@ -288,9 +235,7 @@ test("text-and-thread editor keeps its canvas-owned field treatment", async ({
 
     const editor = page.getByLabel("Post text").first();
     await expect(editor).toBeVisible();
-    await expect(page.locator("html")).toHaveClass(
-      mode === "dark" ? /dark/ : /^(?!.*\bdark\b)/,
-    );
+    await expect(page.locator("html")).toHaveClass(mode === "dark" ? /dark/ : /^(?!.*\bdark\b)/);
 
     const restingChrome = await editor.evaluate((element) => {
       const style = getComputedStyle(element);
@@ -312,9 +257,7 @@ test("text-and-thread editor keeps its canvas-owned field treatment", async ({
     });
 
     await editor.focus();
-    const focusedShadow = await editor.evaluate(
-      (element) => getComputedStyle(element).boxShadow,
-    );
+    const focusedShadow = await editor.evaluate((element) => getComputedStyle(element).boxShadow);
     expect(focusedShadow).not.toMatch(/\b[1-9]\d*(?:\.\d+)?px\b/);
 
     await editor.fill(longContent);
@@ -335,9 +278,7 @@ test("text-and-thread editor keeps its canvas-owned field treatment", async ({
       clientHeight: element.clientHeight,
       scrollHeight: element.scrollHeight,
     }));
-    expect(editorMetrics.clientHeight).toBeGreaterThanOrEqual(
-      editorMetrics.scrollHeight,
-    );
+    expect(editorMetrics.clientHeight).toBeGreaterThanOrEqual(editorMetrics.scrollHeight);
   }
 });
 
@@ -380,9 +321,7 @@ test("collapsed sidebar keeps the OpenPost mark without overflowing text", async
   await expect(home.locator("svg")).toBeVisible();
   await expect(home.getByText("OpenPost", { exact: true })).toHaveCount(0);
   await expect(page.getByTestId("desktop-sidebar-planner")).toHaveCount(0);
-  await expect(
-    page.getByRole("button", { name: "Posts", exact: true }),
-  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Posts", exact: true })).toBeVisible();
 });
 
 test("desktop planning sidebar resumes drafts and stays out of mobile navigation", async ({
@@ -392,11 +331,9 @@ test("desktop planning sidebar resumes drafts and stays out of mobile navigation
   const unique = Date.now().toString(36);
   const email = `sidebar-planner-${unique}@example.com`;
   const auth = await registerUser(request, email);
-  const workspace = (await createWorkspace(
-    request,
-    auth.token,
-    "Planning Sidebar E2E",
-  )) as { id: string };
+  const workspace = (await createWorkspace(request, auth.token, "Planning Sidebar E2E")) as {
+    id: string;
+  };
   const draft = await request.post("/api/v1/posts", {
     headers: { Authorization: `Bearer ${auth.token}` },
     data: {
@@ -450,22 +387,13 @@ test("desktop planning sidebar resumes drafts and stays out of mobile navigation
   await expect(today).toBeVisible();
   await today.focus();
   await today.press("ArrowRight");
-  await expect(rollingCalendar.locator("button:focus")).not.toHaveAttribute(
-    "aria-current",
-    "date",
-  );
+  await expect(rollingCalendar.locator("button:focus")).not.toHaveAttribute("aria-current", "date");
   const pastDaysInWeek = await today.evaluate((element) => {
     const cell = element.closest('[role="gridcell"]');
-    return cell?.parentElement
-      ? Array.from(cell.parentElement.children).indexOf(cell)
-      : 0;
+    return cell?.parentElement ? Array.from(cell.parentElement.children).indexOf(cell) : 0;
   });
-  await expect(
-    rollingCalendar.getByRole("button", { disabled: true }),
-  ).toHaveCount(pastDaysInWeek);
-  const initialCalendarRows = await rollingCalendar
-    .locator('[role="row"]')
-    .count();
+  await expect(rollingCalendar.getByRole("button", { disabled: true })).toHaveCount(pastDaysInWeek);
+  const initialCalendarRows = await rollingCalendar.locator('[role="row"]').count();
   const initialCalendarMetrics = await rollingCalendar.evaluate((element) => ({
     scrollTop: element.scrollTop,
     clientHeight: element.clientHeight,
@@ -473,9 +401,7 @@ test("desktop planning sidebar resumes drafts and stays out of mobile navigation
     scrollbarWidth: getComputedStyle(element).scrollbarWidth,
   }));
   expect(initialCalendarMetrics.scrollTop).toBe(0);
-  expect(initialCalendarMetrics.scrollHeight).toBeGreaterThan(
-    initialCalendarMetrics.clientHeight,
-  );
+  expect(initialCalendarMetrics.scrollHeight).toBeGreaterThan(initialCalendarMetrics.clientHeight);
   expect(initialCalendarMetrics.scrollbarWidth).toBe("thin");
   await rollingCalendar.evaluate((element) => {
     element.scrollTop = element.scrollHeight;
@@ -483,17 +409,12 @@ test("desktop planning sidebar resumes drafts and stays out of mobile navigation
   await expect
     .poll(() => rollingCalendar.locator('[role="row"]').count())
     .toBeGreaterThan(initialCalendarRows);
-  const weekdayHeader = rollingCalendar.getByTestId(
-    "sidebar-calendar-weekdays",
-  );
-  const [calendarBox, weekdayHeaderBox, weekdayHeaderBackground] =
-    await Promise.all([
-      rollingCalendar.boundingBox(),
-      weekdayHeader.boundingBox(),
-      weekdayHeader.evaluate(
-        (element) => getComputedStyle(element).backgroundColor,
-      ),
-    ]);
+  const weekdayHeader = rollingCalendar.getByTestId("sidebar-calendar-weekdays");
+  const [calendarBox, weekdayHeaderBox, weekdayHeaderBackground] = await Promise.all([
+    rollingCalendar.boundingBox(),
+    weekdayHeader.boundingBox(),
+    weekdayHeader.evaluate((element) => getComputedStyle(element).backgroundColor),
+  ]);
   expect(calendarBox).not.toBeNull();
   expect(weekdayHeaderBox).not.toBeNull();
   expect(weekdayHeaderBox!.y).toBeCloseTo(calendarBox!.y, 0);
@@ -502,13 +423,9 @@ test("desktop planning sidebar resumes drafts and stays out of mobile navigation
   await rollingCalendar.evaluate((element) => {
     element.scrollTop = -100;
   });
-  await expect
-    .poll(() => rollingCalendar.evaluate((element) => element.scrollTop))
-    .toBe(0);
+  await expect.poll(() => rollingCalendar.evaluate((element) => element.scrollTop)).toBe(0);
   await expect(page.getByText("Resume the launch announcement")).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Media", exact: true }),
-  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Media", exact: true })).toBeVisible();
   const workspaceNavigation = page.getByTestId("sidebar-workspace-navigation");
   await expect(workspaceNavigation.getByRole("button")).toHaveCount(5);
   await expect(
@@ -529,46 +446,32 @@ test("desktop planning sidebar resumes drafts and stays out of mobile navigation
   await navigationToggle.click();
   await expect(workspaceNavigation).toHaveAttribute("aria-hidden", "true");
   await expect(workspaceNavigation.getByRole("button")).toHaveCount(0);
-  await page
-    .getByRole("button", { name: "Expand workspace navigation" })
-    .click();
+  await page.getByRole("button", { name: "Expand workspace navigation" }).click();
   await expect(workspaceNavigation).toHaveAttribute("aria-hidden", "false");
   await expect(workspaceNavigation.getByRole("button")).toHaveCount(5);
   await page.getByTestId("profile-menu-trigger").click();
   await expect(page.getByRole("menuitem", { name: "Editors" })).toBeVisible();
   await expect(page.getByRole("menuitem", { name: "Accounts" })).toBeVisible();
   await expect(page.getByRole("menuitem", { name: "Settings" })).toBeVisible();
-  await expect(page.getByText("Administration", { exact: true })).toHaveCount(
-    0,
-  );
+  await expect(page.getByText("Administration", { exact: true })).toHaveCount(0);
   await page.keyboard.press("Escape");
   const draftList = page.getByTestId("sidebar-draft-list");
   await expect(draftList.locator("li")).toHaveCount(6);
   await page.waitForTimeout(250);
   expect(publicationListRequests).toHaveLength(1);
-  expect(
-    publicationListRequests.map((url) => url.searchParams.get("status")),
-  ).toEqual(["draft"]);
-  expect(
-    publicationListRequests.map((url) => url.searchParams.get("limit")),
-  ).toEqual(["50"]);
+  expect(publicationListRequests.map((url) => url.searchParams.get("status"))).toEqual(["draft"]);
+  expect(publicationListRequests.map((url) => url.searchParams.get("limit"))).toEqual(["50"]);
   expect(scheduleOverviewRequests.length).toBeGreaterThan(0);
   const draftListMetrics = await draftList.evaluate((element) => ({
     clientHeight: element.clientHeight,
     scrollHeight: element.scrollHeight,
   }));
-  expect(draftListMetrics.scrollHeight).toBeGreaterThan(
-    draftListMetrics.clientHeight,
-  );
+  expect(draftListMetrics.scrollHeight).toBeGreaterThan(draftListMetrics.clientHeight);
   const draftListBox = await draftList.boundingBox();
-  const workspaceFooterBox = await page
-    .getByTestId("sidebar-workspace-footer")
-    .boundingBox();
+  const workspaceFooterBox = await page.getByTestId("sidebar-workspace-footer").boundingBox();
   expect(draftListBox).not.toBeNull();
   expect(workspaceFooterBox).not.toBeNull();
-  expect(
-    workspaceFooterBox!.y - (draftListBox!.y + draftListBox!.height),
-  ).toBeLessThanOrEqual(1);
+  expect(workspaceFooterBox!.y - (draftListBox!.y + draftListBox!.height)).toBeLessThanOrEqual(1);
   await draftList.locator("li").last().scrollIntoViewIfNeeded();
   await expect(draftList.locator("li").last()).toBeVisible();
 
@@ -577,21 +480,13 @@ test("desktop planning sidebar resumes drafts and stays out of mobile navigation
   });
   await draftToDelete.scrollIntoViewIfNeeded();
   await planner.getByRole("button", { name: "View all" }).hover();
-  await expect(
-    draftList.getByRole("button", { name: /^Delete draft:/ }),
-  ).toHaveCount(0);
+  await expect(draftList.getByRole("button", { name: /^Delete draft:/ })).toHaveCount(0);
 
   await draftToDelete.click({ button: "right" });
-  await expect(
-    page.getByRole("menuitem", { name: "Resume draft", exact: true }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("menuitem", { name: /Resume draft:/ }),
-  ).toHaveCount(0);
+  await expect(page.getByRole("menuitem", { name: "Resume draft", exact: true })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: /Resume draft:/ })).toHaveCount(0);
   await page.getByRole("menuitem", { name: "Delete", exact: true }).click();
-  await expect(
-    page.getByText("Delete this draft?", { exact: true }),
-  ).toBeVisible();
+  await expect(page.getByText("Delete this draft?", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Delete", exact: true }).click();
   await expect(draftList.locator("li")).toHaveCount(5);
 
@@ -601,9 +496,7 @@ test("desktop planning sidebar resumes drafts and stays out of mobile navigation
     })
     .click();
   await expect(page).toHaveURL(
-    new RegExp(
-      `/publications/${encodeURIComponent(draftBody.publication_id)}$`,
-    ),
+    new RegExp(`/publications/${encodeURIComponent(draftBody.publication_id)}$`),
   );
   const activeDraft = page.getByRole("link", {
     name: "Resume draft: Resume the launch announcement",
@@ -621,7 +514,5 @@ test("desktop planning sidebar resumes drafts and stays out of mobile navigation
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
   await expect(planner).toHaveCount(0);
-  await expect(
-    page.getByRole("navigation", { name: "Primary navigation" }),
-  ).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Primary navigation" })).toBeVisible();
 });

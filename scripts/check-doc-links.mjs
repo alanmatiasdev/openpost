@@ -3,10 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-export const repositoryRoot = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "..",
-);
+export const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 const excludedPrefixes = [
   ".agents/",
@@ -52,9 +49,7 @@ export function localDocumentationCandidates(root, sourceFile, rawTarget) {
       ? [
           path.join(root, "docs-site", localTarget),
           path.join(root, "docs-site/public", localTarget),
-          ...(localTarget === "/openapi.json"
-            ? [path.join(root, "frontend/openapi.json")]
-            : []),
+          ...(localTarget === "/openapi.json" ? [path.join(root, "frontend/openapi.json")] : []),
         ]
       : [path.resolve(path.dirname(sourcePath), localTarget)];
   return bases.flatMap((base) => [
@@ -67,23 +62,16 @@ export function localDocumentationCandidates(root, sourceFile, rawTarget) {
 
 export function localDocumentationTargetExists(root, sourceFile, target) {
   const candidates = localDocumentationCandidates(root, sourceFile, target);
-  return (
-    candidates.length === 0 ||
-    candidates.some((candidate) => existsSync(candidate))
-  );
+  return candidates.length === 0 || candidates.some((candidate) => existsSync(candidate));
 }
 
 export function markdownTargets(contents) {
   return [
-    ...[...contents.matchAll(/!?\[[^\]]*\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g)].map(
+    ...[...contents.matchAll(/!?\[[^\]]*\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g)].map((match) => match[1]),
+    ...[...contents.matchAll(/<(?:a|img)\b[^>]*(?:href|src)=["']([^"']+)["']/gi)].map(
       (match) => match[1],
     ),
-    ...[
-      ...contents.matchAll(/<(?:a|img)\b[^>]*(?:href|src)=["']([^"']+)["']/gi),
-    ].map((match) => match[1]),
-    ...[...contents.matchAll(/^\[[^\]]+\]:\s*(\S+)/gm)].map(
-      (match) => match[1],
-    ),
+    ...[...contents.matchAll(/^\[[^\]]+\]:\s*(\S+)/gm)].map((match) => match[1]),
   ];
 }
 
@@ -95,15 +83,8 @@ export function unreachableDocumentationPages(
 ) {
   const pages = new Set(pageFiles);
   const resolvePage = (sourceFile, target) => {
-    for (const candidate of localDocumentationCandidates(
-      root,
-      sourceFile,
-      target,
-    )) {
-      const relativeCandidate = path
-        .relative(root, candidate)
-        .split(path.sep)
-        .join("/");
+    for (const candidate of localDocumentationCandidates(root, sourceFile, target)) {
+      const relativeCandidate = path.relative(root, candidate).split(path.sep).join("/");
       if (pages.has(relativeCandidate)) return relativeCandidate;
     }
     return undefined;
@@ -146,9 +127,7 @@ async function main() {
     .split("\n")
     .filter(Boolean)
     .filter((file) => existsSync(path.join(repositoryRoot, file)))
-    .filter(
-      (file) => !excludedPrefixes.some((prefix) => file.startsWith(prefix)),
-    );
+    .filter((file) => !excludedPrefixes.some((prefix) => file.startsWith(prefix)));
 
   const failures = [];
   for (const file of files) {
@@ -161,9 +140,8 @@ async function main() {
   }
 
   const configFile = "docs-site/.vitepress/config.ts";
-  const docsConfig = (
-    await import(pathToFileURL(path.join(repositoryRoot, configFile)).href)
-  ).default;
+  const docsConfig = (await import(pathToFileURL(path.join(repositoryRoot, configFile)).href))
+    .default;
   const navigationTargets = configuredNavigationTargets(docsConfig);
   for (const target of navigationTargets) {
     if (!localDocumentationTargetExists(repositoryRoot, configFile, target)) {
@@ -172,9 +150,7 @@ async function main() {
   }
 
   const documentationPages = files.filter(
-    (file) =>
-      file.startsWith("docs-site/") &&
-      !file.startsWith("docs-site/.generated/"),
+    (file) => file.startsWith("docs-site/") && !file.startsWith("docs-site/.generated/"),
   );
   const unreachablePages = unreachableDocumentationPages(
     repositoryRoot,
@@ -183,8 +159,7 @@ async function main() {
   );
   failures.push(
     ...unreachablePages.map(
-      (file) =>
-        `${file} is not reachable from the docs home or configured navigation`,
+      (file) => `${file} is not reachable from the docs home or configured navigation`,
     ),
   );
 
@@ -198,9 +173,6 @@ async function main() {
   );
 }
 
-if (
-  process.argv[1] &&
-  import.meta.url === pathToFileURL(process.argv[1]).href
-) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   await main();
 }

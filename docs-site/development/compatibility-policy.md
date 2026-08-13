@@ -41,7 +41,7 @@ No route in the initial registry is deprecated. The `media_cleanup_days` workspa
 Update the registry in the same change as an OpenAPI deprecation or removal. Run:
 
 ```bash
-bun run check:compatibility
+bun run check -- compatibility
 ```
 
 The check fails if a retained operation or schema member disappears from OpenAPI, an operation ID drifts, a candidate vanishes from the registry, a deprecation lacks its marker or notices, or a removal is attempted before its time, release, replacement, and consumer-evidence gates pass.

@@ -7,10 +7,7 @@ import { marketingSocialEntries } from "../packages/social-images/src/index.js";
 import { platforms } from "../marketing-site/src/routes/_marketing.ts";
 import { publishedProviderAssetSlugs } from "./asset-surfaces.ts";
 
-export const repositoryRoot = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "..",
-);
+export const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 const numberWords = [
   "zero",
@@ -42,10 +39,7 @@ const totalCountPatterns = [
   new RegExp(`\\b${countToken} social networks\\b`, "giu"),
   new RegExp(`\\b${countToken} social network limits\\b`, "giu"),
   new RegExp(`\\b${countToken} OpenPost platforms\\b`, "giu"),
-  new RegExp(
-    `\\b(?:compare|preview) ${countToken} (?:limits|platforms)\\b`,
-    "giu",
-  ),
+  new RegExp(`\\b(?:compare|preview) ${countToken} (?:limits|platforms)\\b`, "giu"),
   new RegExp(`\\b${countToken} equivalent providers\\b`, "giu"),
 ];
 
@@ -59,24 +53,18 @@ const nonProviderDocumentationPages = new Set([
 
 export function backendProviderCatalog(source) {
   const start = source.indexOf("var providerCatalog = []ProviderInfo{");
-  if (start < 0)
-    throw new Error("backend providerCatalog declaration is missing");
+  if (start < 0) throw new Error("backend providerCatalog declaration is missing");
   const remainder = source.slice(start);
   const end = remainder.indexOf("\n}\n\nfunc ");
-  if (end < 0)
-    throw new Error("backend providerCatalog boundary is not recognized");
+  if (end < 0) throw new Error("backend providerCatalog boundary is not recognized");
   const block = remainder.slice(0, end);
   const constants = new Map(
-    [
-      ...source.matchAll(
-        /^\s*(?:const\s+)?([A-Za-z][A-Za-z0-9_]*)\s*=\s*"([^"]+)"/gmu,
-      ),
-    ].map((match) => [match[1], match[2]]),
+    [...source.matchAll(/^\s*(?:const\s+)?([A-Za-z][A-Za-z0-9_]*)\s*=\s*"([^"]+)"/gmu)].map(
+      (match) => [match[1], match[2]],
+    ),
   );
   const providers = [];
-  for (const match of block.matchAll(
-    /Platform:\s*(?:"([^"]+)"|([A-Za-z][A-Za-z0-9_]*))/gu,
-  )) {
+  for (const match of block.matchAll(/Platform:\s*(?:"([^"]+)"|([A-Za-z][A-Za-z0-9_]*))/gu)) {
     const provider = match[1] ?? constants.get(match[2]);
     if (!provider) {
       throw new Error(`backend provider constant ${match[2]} is not a string`);
@@ -90,10 +78,7 @@ export function backendProviderCatalog(source) {
 }
 
 export function providerCountCopyProblems(source, expectedCount, label) {
-  const expectedTokens = new Set([
-    String(expectedCount),
-    numberWords[expectedCount],
-  ]);
+  const expectedTokens = new Set([String(expectedCount), numberWords[expectedCount]]);
   const problems = [];
   for (const pattern of totalCountPatterns) {
     for (const match of source.matchAll(pattern)) {
@@ -111,15 +96,12 @@ function sameSetProblems(label, actual, expected) {
   const problems = [];
   const actualSet = new Set(actual);
   const expectedSet = new Set(expected);
-  if (actualSet.size !== actual.length)
-    problems.push(`${label} contains duplicates`);
+  if (actualSet.size !== actual.length) problems.push(`${label} contains duplicates`);
   for (const provider of expectedSet) {
-    if (!actualSet.has(provider))
-      problems.push(`${label} is missing ${provider}`);
+    if (!actualSet.has(provider)) problems.push(`${label} is missing ${provider}`);
   }
   for (const provider of actualSet) {
-    if (!expectedSet.has(provider))
-      problems.push(`${label} has unknown ${provider}`);
+    if (!expectedSet.has(provider)) problems.push(`${label} has unknown ${provider}`);
   }
   return problems;
 }
@@ -137,9 +119,7 @@ async function maintainedCopyFiles(root) {
   const visit = async (relativePath) => {
     const absolutePath = path.join(root, relativePath);
     if (!existsSync(absolutePath)) return;
-    const details = await readdir(absolutePath, { withFileTypes: true }).catch(
-      () => undefined,
-    );
+    const details = await readdir(absolutePath, { withFileTypes: true }).catch(() => undefined);
     if (!details) {
       files.push(relativePath);
       return;
@@ -184,22 +164,14 @@ export async function validateProviderCatalogFacts(root = repositoryRoot) {
         .map((entry) => entry.platform),
       canonical,
     ),
-    ...sameSetProblems(
-      "provider asset catalogue",
-      [...publishedProviderAssetSlugs],
-      canonical,
-    ),
+    ...sameSetProblems("provider asset catalogue", [...publishedProviderAssetSlugs], canonical),
   );
 
-  const documentationPages = (
-    await readdir(path.join(root, "docs-site/providers"))
-  )
+  const documentationPages = (await readdir(path.join(root, "docs-site/providers")))
     .filter((file) => file.endsWith(".md"))
     .map((file) => file.slice(0, -3))
     .filter((slug) => !nonProviderDocumentationPages.has(slug));
-  problems.push(
-    ...sameSetProblems("provider documentation", documentationPages, canonical),
-  );
+  problems.push(...sameSetProblems("provider documentation", documentationPages, canonical));
 
   for (const file of await maintainedCopyFiles(root)) {
     const source = await readFile(path.join(root, file), "utf8");
@@ -225,9 +197,6 @@ async function main() {
   );
 }
 
-if (
-  process.argv[1] &&
-  import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href
-) {
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
   await main();
 }

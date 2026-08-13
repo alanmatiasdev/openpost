@@ -1,15 +1,9 @@
 import { expect, test } from "@playwright/test";
 import { authenticatePage, createWorkspace, registerUser } from "./helpers";
 
-test("feedback capture omits its own blur overlay", async ({
-  page,
-  request,
-}) => {
+test("feedback capture omits its own blur overlay", async ({ page, request }) => {
   const unique = Date.now().toString(36);
-  const auth = await registerUser(
-    request,
-    `feedback-screenshot-${unique}@example.com`,
-  );
+  const auth = await registerUser(request, `feedback-screenshot-${unique}@example.com`);
   await createWorkspace(request, auth.token, "Feedback Screenshot E2E");
   await authenticatePage(page, auth.token);
 
@@ -68,9 +62,7 @@ test("feedback capture omits its own blur overlay", async ({
     let maximum = 0;
     for (let index = 0; index < pixels.length; index += 4) {
       const luminance =
-        pixels[index] * 0.2126 +
-        pixels[index + 1] * 0.7152 +
-        pixels[index + 2] * 0.0722;
+        pixels[index] * 0.2126 + pixels[index + 1] * 0.7152 + pixels[index + 2] * 0.0722;
       minimum = Math.min(minimum, luminance);
       maximum = Math.max(maximum, luminance);
     }

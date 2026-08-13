@@ -8,23 +8,16 @@ import {
 } from "../packages/legal-policy/src/index.js";
 
 const purchaseTerms = JSON.parse(
-  readFileSync(
-    new URL("../packages/plan-catalog/src/catalog.json", import.meta.url),
-    "utf8",
-  ),
+  readFileSync(new URL("../packages/plan-catalog/src/catalog.json", import.meta.url), "utf8"),
 ).purchase_terms as {
   trial_days: number;
   card_required: boolean;
 };
 
-test("marketing index links to the app and documentation @desktop", async ({
-  page,
-}) => {
+test("marketing index links to the app and documentation @desktop", async ({ page }) => {
   await page.goto("/");
 
-  await expect(page).toHaveTitle(
-    "OpenPost - The all-in-one content team for solo founders",
-  );
+  await expect(page).toHaveTitle("OpenPost - The all-in-one content team for solo founders");
   await expect(
     page.getByRole("heading", {
       name: "Your socials, on steroids.",
@@ -36,9 +29,7 @@ test("marketing index links to the app and documentation @desktop", async ({
       { exact: true },
     ),
   ).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: "Hop on", exact: true }).first(),
-  ).toHaveAttribute(
+  await expect(page.getByRole("link", { name: "Hop on", exact: true }).first()).toHaveAttribute(
     "href",
     "https://app.openpost.social/register?plan=founder&billing_period=monthly",
   );
@@ -47,31 +38,21 @@ test("marketing index links to the app and documentation @desktop", async ({
   });
   await expect(resultPreviews).toBeVisible();
   await expect(page.getByText("Illustrative campaign results")).toHaveCount(0);
-  await expect(
-    resultPreviews.getByRole("button", { name: "Show Audience growth" }),
-  ).toBeVisible();
+  await expect(resultPreviews.getByRole("button", { name: "Show Audience growth" })).toBeVisible();
   await expect(
     page.getByRole("heading", {
       name: "Built around common publishing work.",
     }),
   ).toBeVisible();
-  await expect(
-    page.getByText(/These fictional examples show how launches/),
-  ).toBeVisible();
+  await expect(page.getByText(/These fictional examples show how launches/)).toBeVisible();
   await expect(
     page.getByRole("heading", {
       name: "See OpenPost in four minutes.",
     }),
   ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Play the OpenPost product demo" }),
-  ).toBeVisible();
-  await page
-    .getByRole("button", { name: "Play the OpenPost product demo" })
-    .click();
-  await expect(
-    page.getByRole("dialog", { name: "OpenPost product demo" }),
-  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Play the OpenPost product demo" })).toBeVisible();
+  await page.getByRole("button", { name: "Play the OpenPost product demo" }).click();
+  await expect(page.getByRole("dialog", { name: "OpenPost product demo" })).toBeVisible();
   const videoDialog = page.getByRole("dialog", {
     name: "OpenPost product demo",
   });
@@ -98,12 +79,11 @@ test("marketing index links to the app and documentation @desktop", async ({
       name: "Adapt every post.",
     }),
   ).toBeVisible();
-  await expect(page.getByAltText("OpenPost social accounts page")).toHaveCount(
-    0,
+  await expect(page.getByAltText("OpenPost social accounts page")).toHaveCount(0);
+  await expect(page.getByAltText("OpenPost connected social accounts page")).toHaveAttribute(
+    "src",
+    "/assets/screenshots/accounts-dark.png",
   );
-  await expect(
-    page.getByAltText("OpenPost connected social accounts page"),
-  ).toHaveAttribute("src", "/assets/screenshots/accounts-dark.png");
   await expect(
     page.getByRole("heading", {
       name: "Built around common publishing work.",
@@ -113,41 +93,36 @@ test("marketing index links to the app and documentation @desktop", async ({
   const creatorMosaic = page.getByRole("region", {
     name: "Built around common publishing work.",
   });
-  await expect(
-    creatorMosaic.getByRole("button", { name: "Show more stories" }),
-  ).toBeVisible();
-  await creatorMosaic
-    .getByRole("button", { name: "Show more stories" })
-    .click();
-  await expect(
-    creatorMosaic.getByRole("heading", { name: "Developer" }),
-  ).toBeVisible();
+  await expect(creatorMosaic.getByRole("button", { name: "Show more stories" })).toBeVisible();
+  await creatorMosaic.getByRole("button", { name: "Show more stories" }).click();
+  await expect(creatorMosaic.getByRole("heading", { name: "Developer" })).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "See what consistency can build." }),
   ).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: "Self-host", exact: true }),
-  ).toHaveCount(0);
-  await expect(
-    page.getByRole("link", { name: "User docs" }).first(),
-  ).toHaveAttribute("href", "https://docs.openpost.social/usage/");
-  await expect(
-    page.getByRole("link", { name: "Self-hosting" }).first(),
-  ).toHaveAttribute("href", "https://docs.openpost.social/self-hosting/");
-  await expect(
-    page.getByRole("link", { name: "Developer docs" }).first(),
-  ).toHaveAttribute("href", "https://docs.openpost.social/development/");
-  await expect(
-    page.getByRole("link", { name: "GitHub source" }),
-  ).toHaveAttribute("href", "https://github.com/rodrgds/openpost");
-  await expect(
-    page.getByRole("link", { name: "Discord", exact: true }).last(),
-  ).toHaveAttribute("href", "https://discord.gg/u2QwukmY4W");
+  await expect(page.getByRole("link", { name: "Self-host", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "User docs" }).first()).toHaveAttribute(
+    "href",
+    "https://docs.openpost.social/usage/",
+  );
+  await expect(page.getByRole("link", { name: "Self-hosting" }).first()).toHaveAttribute(
+    "href",
+    "https://docs.openpost.social/self-hosting/",
+  );
+  await expect(page.getByRole("link", { name: "Developer docs" }).first()).toHaveAttribute(
+    "href",
+    "https://docs.openpost.social/development/",
+  );
+  await expect(page.getByRole("link", { name: "GitHub source" })).toHaveAttribute(
+    "href",
+    "https://github.com/rodrgds/openpost",
+  );
+  await expect(page.getByRole("link", { name: "Discord", exact: true }).last()).toHaveAttribute(
+    "href",
+    "https://discord.gg/u2QwukmY4W",
+  );
 });
 
-test("pricing makes every plan selectable for monthly and annual billing", async ({
-  page,
-}) => {
+test("pricing makes every plan selectable for monthly and annual billing", async ({ page }) => {
   const cardRequirement = purchaseTerms.card_required
     ? "A card is required"
     : "No card is required";
@@ -165,34 +140,24 @@ test("pricing makes every plan selectable for monthly and annual billing", async
 
   await page.goto("/pricing");
 
-  await expect(
-    page.getByText("Paddle is the Merchant of Record"),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: "Refund policy" }),
-  ).toHaveAttribute("href", "/refunds");
-  await expect(
-    page.getByRole("link", { name: "Billing settings" }),
-  ).toHaveAttribute(
+  await expect(page.getByText("Paddle is the Merchant of Record")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Refund policy" })).toHaveAttribute(
+    "href",
+    "/refunds",
+  );
+  await expect(page.getByRole("link", { name: "Billing settings" })).toHaveAttribute(
     "href",
     "https://app.openpost.social/settings?tab=billing#billing",
   );
-  await expect(page.locator('[role="status"][aria-live="polite"]')).toHaveCount(
-    1,
-  );
+  await expect(page.locator('[role="status"][aria-live="polite"]')).toHaveCount(1);
 
   await expect(page.getByRole("article")).toHaveCount(5);
   for (const plan of planCases) {
     const card = page
       .getByRole("article")
       .filter({ has: page.getByRole("heading", { name: plan.name }) });
-    await expect(card.locator(".animated-price")).toHaveAttribute(
-      "aria-label",
-      plan.monthly,
-    );
-    await expect(
-      card.getByRole("link", { name: `Start ${plan.name}` }),
-    ).toHaveAttribute(
+    await expect(card.locator(".animated-price")).toHaveAttribute("aria-label", plan.monthly);
+    await expect(card.getByRole("link", { name: `Start ${plan.name}` })).toHaveAttribute(
       "href",
       `https://app.openpost.social/register?plan=${plan.id}&billing_period=monthly`,
     );
@@ -205,17 +170,15 @@ test("pricing makes every plan selectable for monthly and annual billing", async
   await yearly.focus();
   await yearly.click();
   await expect(yearly).toBeFocused();
-  await expect(
-    page.locator('[role="status"][aria-live="polite"]'),
-  ).toContainText("Yearly billing selected");
+  await expect(page.locator('[role="status"][aria-live="polite"]')).toContainText(
+    "Yearly billing selected",
+  );
   for (const plan of planCases) {
     const card = page
       .getByRole("article")
       .filter({ has: page.getByRole("heading", { name: plan.name }) });
     await expect(card).toContainText(`Billed ${plan.annual} yearly`);
-    await expect(
-      card.getByRole("link", { name: `Start ${plan.name}` }),
-    ).toHaveAttribute(
+    await expect(card.getByRole("link", { name: `Start ${plan.name}` })).toHaveAttribute(
       "href",
       `https://app.openpost.social/register?plan=${plan.id}&billing_period=annual`,
     );
@@ -227,36 +190,30 @@ test("pricing makes every plan selectable for monthly and annual billing", async
   if ((page.viewportSize()?.width ?? 0) >= 1024) {
     const comparison = page.locator(".desktop-limits");
     for (const plan of planCases) {
-      await expect(
-        comparison.getByRole("columnheader", { name: plan.name }),
-      ).toContainText(`${plan.annual}/year`);
+      await expect(comparison.getByRole("columnheader", { name: plan.name })).toContainText(
+        `${plan.annual}/year`,
+      );
     }
   } else {
     const comparison = page.locator(".mobile-limits");
     for (const plan of planCases) {
-      await expect(
-        comparison.locator(`[data-plan-id="${plan.id}"]`),
-      ).toContainText(`${plan.annual}/year`);
+      await expect(comparison.locator(`[data-plan-id="${plan.id}"]`)).toContainText(
+        `${plan.annual}/year`,
+      );
     }
   }
 
   await page.setViewportSize({ width: 320, height: 720 });
   await expect(page.getByRole("article")).toHaveCount(5);
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth,
-    ),
-  ).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
 });
 
-test("features and FAQ expose complete, qualified product guidance", async ({
-  page,
-}) => {
+test("features and FAQ expose complete, qualified product guidance", async ({ page }) => {
   const initialViewport = page.viewportSize() ?? { width: 1280, height: 720 };
   const reviewViewport =
-    initialViewport.width >= 1024
-      ? initialViewport
-      : { width: 390, height: 844 };
+    initialViewport.width >= 1024 ? initialViewport : { width: 390, height: 844 };
   await page.setViewportSize(reviewViewport);
 
   await page.goto("/features");
@@ -270,28 +227,25 @@ test("features and FAQ expose complete, qualified product guidance", async ({
   await expect(page.getByText("Implemented adapters")).toBeVisible();
   await expect(page.getByText("Current exact managed claims")).toBeVisible();
   await expect(
-    page.getByText(
-      "No exact managed provider-format certification claim is current.",
-    ),
+    page.getByText("No exact managed provider-format certification claim is current."),
   ).toBeVisible();
   await expect(
     page.getByRole("heading", {
       name: "Implementation and current managed availability are different facts.",
     }),
   ).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: "Compare every plan" }),
-  ).toHaveAttribute("href", "/pricing");
+  await expect(page.getByRole("link", { name: "Compare every plan" })).toHaveAttribute(
+    "href",
+    "/pricing",
+  );
 
   await page.setViewportSize({ width: 320, height: 720 });
   const featureJump = page.getByRole("link", { name: "Compose and adapt" });
   await featureJump.focus();
   await expect(featureJump).toBeFocused();
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth,
-    ),
-  ).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
 
   await page.setViewportSize(reviewViewport);
   await page.goto("/faq");
@@ -302,27 +256,19 @@ test("features and FAQ expose complete, qualified product guidance", async ({
     }),
   ).toBeVisible();
   await expect(page.locator("details")).toHaveCount(7);
-  await expect(
-    page.getByText("Setup and publishing", { exact: true }).first(),
-  ).toBeVisible();
-  await expect(
-    page.getByText("Providers and results", { exact: true }).first(),
-  ).toBeVisible();
-  await expect(
-    page.getByText("Plans and billing", { exact: true }).first(),
-  ).toBeVisible();
-  await expect(
-    page.getByText("Privacy and access", { exact: true }).first(),
-  ).toBeVisible();
-  await expect(
-    page.getByText("Self-hosting", { exact: true }).first(),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: "Ask the Discord community" }),
-  ).toHaveAttribute("href", "https://discord.gg/u2QwukmY4W");
-  await expect(
-    page.getByRole("link", { name: /Email openpost@rgo.pt/ }),
-  ).toHaveAttribute("href", "mailto:openpost@rgo.pt");
+  await expect(page.getByText("Setup and publishing", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("Providers and results", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("Plans and billing", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("Privacy and access", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("Self-hosting", { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole("link", { name: "Ask the Discord community" })).toHaveAttribute(
+    "href",
+    "https://discord.gg/u2QwukmY4W",
+  );
+  await expect(page.getByRole("link", { name: /Email openpost@rgo.pt/ })).toHaveAttribute(
+    "href",
+    "mailto:openpost@rgo.pt",
+  );
 
   await page.setViewportSize({ width: 320, height: 720 });
   const firstQuestion = page
@@ -330,24 +276,13 @@ test("features and FAQ expose complete, qualified product guidance", async ({
     .filter({ hasText: "What happens if a post fails?" });
   await firstQuestion.focus();
   await expect(firstQuestion).toBeFocused();
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth,
-    ),
-  ).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
 });
 
-test("comparison rows expose current claim-level evidence", async ({
-  page,
-}) => {
-  const slugs = [
-    "buffer",
-    "hootsuite",
-    "typefully",
-    "postiz",
-    "post-bridge",
-    "mixpost",
-  ] as const;
+test("comparison rows expose current claim-level evidence", async ({ page }) => {
+  const slugs = ["buffer", "hootsuite", "typefully", "postiz", "post-bridge", "mixpost"] as const;
   const isDesktop = (page.viewportSize()?.width ?? 0) >= 1024;
   if (!isDesktop) {
     await page.setViewportSize({ width: 390, height: 844 });
@@ -364,34 +299,23 @@ test("comparison rows expose current claim-level evidence", async ({
       ? tableEvidence
       : page.locator(".lg\\:hidden .claim-evidence");
     await expect(visibleEvidence).toHaveCount(8);
-    await expect(visibleEvidence.first()).toContainText(
-      "Recheck by Nov 9, 2026",
-    );
+    await expect(visibleEvidence.first()).toContainText("Recheck by Nov 9, 2026");
     await expect(visibleEvidence.getByText(/^Owner:/).first()).toBeVisible();
     await expect(
-      visibleEvidence
-        .getByRole("link", { name: /source|pricing|guide|docs/i })
-        .first(),
+      visibleEvidence.getByRole("link", { name: /source|pricing|guide|docs/i }).first(),
     ).toBeVisible();
   }
 
   await page.setViewportSize({ width: 320, height: 720 });
-  const evidenceLink = page
-    .locator(".lg\\:hidden .claim-evidence")
-    .getByRole("link")
-    .first();
+  const evidenceLink = page.locator(".lg\\:hidden .claim-evidence").getByRole("link").first();
   await evidenceLink.focus();
   await expect(evidenceLink).toBeFocused();
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth,
-    ),
-  ).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
 });
 
-test("route and static not-found pages share useful recovery", async ({
-  page,
-}) => {
+test("route and static not-found pages share useful recovery", async ({ page }) => {
   if ((page.viewportSize()?.width ?? 0) < 1024) {
     await page.setViewportSize({ width: 390, height: 844 });
   }
@@ -404,15 +328,15 @@ test("route and static not-found pages share useful recovery", async ({
       level: 1,
     }),
   ).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: "Explore features" }),
-  ).toHaveAttribute("href", "/features");
-  await expect(
-    page.getByRole("link", { name: "Read the FAQ" }),
-  ).toHaveAttribute("href", "/faq");
-  await expect(
-    page.getByRole("link", { name: "Open user docs" }),
-  ).toHaveAttribute("href", "https://docs.openpost.social/usage/");
+  await expect(page.getByRole("link", { name: "Explore features" })).toHaveAttribute(
+    "href",
+    "/features",
+  );
+  await expect(page.getByRole("link", { name: "Read the FAQ" })).toHaveAttribute("href", "/faq");
+  await expect(page.getByRole("link", { name: "Open user docs" })).toHaveAttribute(
+    "href",
+    "https://docs.openpost.social/usage/",
+  );
 
   await page.goto("/404.html");
   await expect(
@@ -421,15 +345,14 @@ test("route and static not-found pages share useful recovery", async ({
       level: 1,
     }),
   ).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: "Explore features" }),
-  ).toHaveAttribute("href", "/features");
+  await expect(page.getByRole("link", { name: "Explore features" })).toHaveAttribute(
+    "href",
+    "/features",
+  );
   await page.setViewportSize({ width: 320, height: 720 });
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth,
-    ),
-  ).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
 });
 
 test("marketing decision routes remain console-clean", async ({ page }) => {
@@ -447,9 +370,7 @@ test("marketing decision routes remain console-clean", async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
-test("security page states AI tool access accurately @desktop", async ({
-  page,
-}) => {
+test("security page states AI tool access accurately @desktop", async ({ page }) => {
   await page.goto("/security");
 
   await expect(
@@ -465,18 +386,14 @@ test("security page states AI tool access accurately @desktop", async ({
   const humanReview = page
     .getByRole("heading", { name: "You choose when to review" })
     .locator("..");
-  await expect(humanReview).toContainText(
-    "OpenPost does not add a separate approval step",
-  );
+  await expect(humanReview).toContainText("OpenPost does not add a separate approval step");
 });
 
 test("marketing index has no horizontal overflow", async ({ page }) => {
   await page.goto("/");
 
   const overflow = await page.evaluate(
-    () =>
-      document.documentElement.scrollWidth -
-      document.documentElement.clientWidth,
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
   );
   expect(overflow).toBeLessThanOrEqual(1);
 });
@@ -486,10 +403,7 @@ test("landing stays responsive and theme-aware", async ({ page }) => {
 
   const viewportWidth = page.viewportSize()?.width ?? 1280;
   await expect(page.locator("[data-floating-mark]")).toHaveCount(12);
-  await expect(page.locator(".hero-title")).toHaveCSS(
-    "color",
-    "oklch(0.2 0.01 50)",
-  );
+  await expect(page.locator(".hero-title")).toHaveCSS("color", "oklch(0.2 0.01 50)");
 
   if (viewportWidth >= 1024) {
     await page.getByRole("button", { name: "Use dark theme" }).click();
@@ -498,22 +412,15 @@ test("landing stays responsive and theme-aware", async ({ page }) => {
     await page.getByRole("button", { name: "Use dark theme" }).click();
   }
   await expect(page.locator("html")).toHaveClass(/dark/);
-  await expect(page.locator(".hero-title")).toHaveCSS(
-    "color",
-    "rgb(255, 255, 255)",
-  );
+  await expect(page.locator(".hero-title")).toHaveCSS("color", "rgb(255, 255, 255)");
 
   const overflow = await page.evaluate(
-    () =>
-      document.documentElement.scrollWidth -
-      document.documentElement.clientWidth,
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
   );
   expect(overflow).toBeLessThanOrEqual(1);
 });
 
-test("hero result views rotate until the visitor chooses one", async ({
-  page,
-}) => {
+test("hero result views rotate until the visitor chooses one", async ({ page }) => {
   await page.goto("/");
 
   const tiktok = page.getByRole("button", { name: "Show Video reach" });
@@ -532,15 +439,11 @@ test("hero result views rotate until the visitor chooses one", async ({
   await expect(x).toHaveAttribute("data-active", "true");
 });
 
-test("hero and footer actions remain usable at 320 pixels", async ({
-  page,
-}) => {
+test("hero and footer actions remain usable at 320 pixels", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 720 });
   await page.goto("/");
 
-  const heroLink = page
-    .locator("section.hero")
-    .getByRole("link", { name: "Hop on", exact: true });
+  const heroLink = page.locator("section.hero").getByRole("link", { name: "Hop on", exact: true });
   await expect(heroLink).toBeVisible();
   await heroLink.focus();
   await expect(heroLink).toBeFocused();
@@ -558,16 +461,12 @@ test("hero and footer actions remain usable at 320 pixels", async ({
   await footerGuides.first().focus();
   await expect(footerGuides.first()).toBeFocused();
 
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth,
-    ),
-  ).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
 });
 
-test("marketing raised buttons synthesize tactile feedback @desktop", async ({
-  page,
-}) => {
+test("marketing raised buttons synthesize tactile feedback @desktop", async ({ page }) => {
   await page.addInitScript(() => {
     const parameter = () => ({
       value: 0,
@@ -580,11 +479,8 @@ test("marketing raised buttons synthesize tactile feedback @desktop", async ({
       },
       disconnect() {},
       start() {
-        (
-          window as Window & { __openpostSoundStarts?: number }
-        ).__openpostSoundStarts =
-          ((window as Window & { __openpostSoundStarts?: number })
-            .__openpostSoundStarts ?? 0) + 1;
+        (window as Window & { __openpostSoundStarts?: number }).__openpostSoundStarts =
+          ((window as Window & { __openpostSoundStarts?: number }).__openpostSoundStarts ?? 0) + 1;
       },
       stop() {},
     });
@@ -636,17 +532,13 @@ test("marketing raised buttons synthesize tactile feedback @desktop", async ({
   await expect
     .poll(() =>
       page.evaluate(
-        () =>
-          (window as Window & { __openpostSoundStarts?: number })
-            .__openpostSoundStarts ?? 0,
+        () => (window as Window & { __openpostSoundStarts?: number }).__openpostSoundStarts ?? 0,
       ),
     )
     .toBeGreaterThan(1);
 });
 
-test("marketing navigation uses the shared responsive menu patterns", async ({
-  page,
-}) => {
+test("marketing navigation uses the shared responsive menu patterns", async ({ page }) => {
   await page.goto("/");
 
   if ((page.viewportSize()?.width ?? 0) >= 1024) {
@@ -655,9 +547,10 @@ test("marketing navigation uses the shared responsive menu patterns", async ({
     });
     await expect(navigation).toHaveAttribute("data-slot", "navigation-menu");
     await navigation.getByRole("button", { name: "Resources" }).click();
-    await expect(
-      navigation.getByRole("link", { name: "Changelog", exact: true }),
-    ).toHaveAttribute("href", "/changelog");
+    await expect(navigation.getByRole("link", { name: "Changelog", exact: true })).toHaveAttribute(
+      "href",
+      "/changelog",
+    );
     await expect(
       navigation.getByRole("link", {
         name: "Discord community",
@@ -673,9 +566,10 @@ test("marketing navigation uses the shared responsive menu patterns", async ({
     name: "Mobile navigation",
   });
   await expect(navigation).toBeVisible();
-  await expect(
-    navigation.getByRole("link", { name: "Changelog", exact: true }),
-  ).toHaveAttribute("href", "/changelog");
+  await expect(navigation.getByRole("link", { name: "Changelog", exact: true })).toHaveAttribute(
+    "href",
+    "/changelog",
+  );
   await expect(
     navigation.getByRole("link", {
       name: "Discord community",
@@ -684,9 +578,7 @@ test("marketing navigation uses the shared responsive menu patterns", async ({
   ).toHaveAttribute("href", "https://discord.gg/u2QwukmY4W");
 });
 
-test("marketing SEO routes expose the current public index @desktop", async ({
-  request,
-}) => {
+test("marketing SEO routes expose the current public index @desktop", async ({ request }) => {
   const robots = await request.get("/robots.txt");
   expect(robots.ok()).toBeTruthy();
   const robotsText = await robots.text();
@@ -707,21 +599,11 @@ test("marketing SEO routes expose the current public index @desktop", async ({
   expect(xml).toContain(
     "<loc>https://openpost.social/tools/multi-platform-character-counter</loc>",
   );
-  expect(xml).toContain(
-    "<loc>https://openpost.social/tools/post-preview-generator</loc>",
-  );
-  expect(xml).toContain(
-    "<loc>https://openpost.social/tools/thread-splitter</loc>",
-  );
-  expect(xml).toContain(
-    "<loc>https://openpost.social/tools/fediverse-handle-checker</loc>",
-  );
-  expect(xml).toContain(
-    "<loc>https://openpost.social/tools/linkedin-text-formatter</loc>",
-  );
-  expect(xml).toContain(
-    "<loc>https://openpost.social/tools/best-time-to-post-calculator</loc>",
-  );
+  expect(xml).toContain("<loc>https://openpost.social/tools/post-preview-generator</loc>");
+  expect(xml).toContain("<loc>https://openpost.social/tools/thread-splitter</loc>");
+  expect(xml).toContain("<loc>https://openpost.social/tools/fediverse-handle-checker</loc>");
+  expect(xml).toContain("<loc>https://openpost.social/tools/linkedin-text-formatter</loc>");
+  expect(xml).toContain("<loc>https://openpost.social/tools/best-time-to-post-calculator</loc>");
   expect(xml).toContain("<loc>https://openpost.social/security</loc>");
   expect(xml).toContain("<loc>https://openpost.social/trust</loc>");
   expect(xml).toContain("<loc>https://openpost.social/privacy</loc>");
@@ -730,9 +612,9 @@ test("marketing SEO routes expose the current public index @desktop", async ({
   expect(xml).not.toContain("<loc>https://openpost.social/blog</loc>");
   expect(xml).not.toContain("<loc>https://openpost.social/tips/");
 
-  const publicPaths = [
-    ...xml.matchAll(/<loc>(https:\/\/openpost\.social[^<]+)<\/loc>/g),
-  ].map(([, url]) => new URL(url).pathname);
+  const publicPaths = [...xml.matchAll(/<loc>(https:\/\/openpost\.social[^<]+)<\/loc>/g)].map(
+    ([, url]) => new URL(url).pathname,
+  );
   expect(publicPaths.length).toBeGreaterThan(20);
   for (const path of publicPaths) {
     const response = await request.get(path);
@@ -740,9 +622,7 @@ test("marketing SEO routes expose the current public index @desktop", async ({
   }
 });
 
-test("legal and trust pages expose current managed-service facts @desktop", async ({
-  page,
-}) => {
+test("legal and trust pages expose current managed-service facts @desktop", async ({ page }) => {
   const pages = [
     {
       path: "/terms",
@@ -763,23 +643,16 @@ test("legal and trust pages expose current managed-service facts @desktop", asyn
 
   for (const legalPage of pages) {
     await page.goto(legalPage.path);
-    await expect(
-      page.getByRole("heading", { name: legalPage.heading, level: 1 }),
-    ).toBeVisible();
+    await expect(page.getByRole("heading", { name: legalPage.heading, level: 1 })).toBeVisible();
     await expect(page.getByText(/Paddle/).first()).toBeVisible();
-    await expect(
-      page.getByText(`Policy version: ${legalPage.version}`),
-    ).toBeVisible();
+    await expect(page.getByText(`Policy version: ${legalPage.version}`)).toBeVisible();
   }
 
   await page.goto("/privacy");
-  await expect(
-    page.getByText(/optionally record a camera track/),
-  ).toBeVisible();
+  await expect(page.getByText(/optionally record a camera track/)).toBeVisible();
   await expect(
     page.locator("p").filter({
-      hasText:
-        "Local project data, recordings, sources, and exports are uploaded only",
+      hasText: "Local project data, recordings, sources, and exports are uploaded only",
     }),
   ).toBeVisible();
   await expect(
@@ -811,71 +684,59 @@ test("legal and trust pages expose current managed-service facts @desktop", asyn
       exact: true,
     }),
   ).toBeVisible();
-  await expect(
-    page.getByText("Falkenstein, Germany (FSN1)").first(),
-  ).toBeVisible();
-  await expect(
-    page.getByText(/Cloudflare automatic placement/).first(),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Add Rabbit LLC (Purelymail)" }),
-  ).toBeVisible();
-  await expect(
-    page.getByText(/open operator and legal review item/),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Microsoft Azure" }),
-  ).toBeVisible();
+  await expect(page.getByText("Falkenstein, Germany (FSN1)").first()).toBeVisible();
+  await expect(page.getByText(/Cloudflare automatic placement/).first()).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Add Rabbit LLC (Purelymail)" })).toBeVisible();
+  await expect(page.getByText(/open operator and legal review item/)).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Microsoft Azure" })).toBeVisible();
   await expect(page.getByText(/azure\/eu/)).toBeVisible();
-  await expect(
-    page.getByText(/There is no two-person approval control/),
-  ).toBeVisible();
+  await expect(page.getByText(/There is no two-person approval control/)).toBeVisible();
   await expect(
     page.getByText(/does not provide a complete command-level audit trail/),
   ).toBeVisible();
   await expect(page.getByText(/SOC 2|ISO 27001|GDPR certified/)).toHaveCount(0);
 
   await page.setViewportSize({ width: 320, height: 720 });
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth,
-    ),
-  ).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
 
   await page.goto("/refunds");
   await expect(
-    page
-      .locator("p")
-      .filter({ hasText: "OpenPost does not record a separate acceptance" }),
+    page.locator("p").filter({ hasText: "OpenPost does not record a separate acceptance" }),
   ).toBeVisible();
 
   await page.goto("/");
-  await expect(
-    page.getByRole("link", { name: "Terms", exact: true }).last(),
-  ).toHaveAttribute("href", "/terms");
-  await expect(
-    page.getByRole("link", { name: "Privacy", exact: true }).last(),
-  ).toHaveAttribute("href", "/privacy");
-  await expect(
-    page.getByRole("link", { name: "Refunds", exact: true }).last(),
-  ).toHaveAttribute("href", "/refunds");
-  await expect(
-    page.getByRole("link", { name: "Trust", exact: true }).last(),
-  ).toHaveAttribute("href", "/trust");
+  await expect(page.getByRole("link", { name: "Terms", exact: true }).last()).toHaveAttribute(
+    "href",
+    "/terms",
+  );
+  await expect(page.getByRole("link", { name: "Privacy", exact: true }).last()).toHaveAttribute(
+    "href",
+    "/privacy",
+  );
+  await expect(page.getByRole("link", { name: "Refunds", exact: true }).last()).toHaveAttribute(
+    "href",
+    "/refunds",
+  );
+  await expect(page.getByRole("link", { name: "Trust", exact: true }).last()).toHaveAttribute(
+    "href",
+    "/trust",
+  );
 });
 
-test("free marketing tools produce useful output @desktop", async ({
-  page,
-}) => {
+test("free marketing tools produce useful output @desktop", async ({ page }) => {
   await page.goto("/tools/multi-platform-character-counter");
   await page.waitForLoadState("networkidle");
   await page.getByRole("textbox", { name: "Post text" }).fill("hello");
-  await expect(
-    page.getByRole("progressbar", { name: "X character use" }),
-  ).toHaveAttribute("aria-valuenow", "5");
-  await expect(
-    page.getByRole("progressbar", { name: "Discord character use" }),
-  ).toHaveAttribute("aria-valuenow", "5");
+  await expect(page.getByRole("progressbar", { name: "X character use" })).toHaveAttribute(
+    "aria-valuenow",
+    "5",
+  );
+  await expect(page.getByRole("progressbar", { name: "Discord character use" })).toHaveAttribute(
+    "aria-valuenow",
+    "5",
+  );
 
   await page.goto("/tools/post-preview-generator");
   await page.waitForLoadState("networkidle");
@@ -888,27 +749,21 @@ test("free marketing tools produce useful output @desktop", async ({
     })
     .click();
   await page.getByLabel("Handle").fill("@alice@hachyderm.io");
-  await expect(
-    page.locator('[aria-label="Mastodon post preview"]'),
-  ).toContainText("@alice@hachyderm.io");
+  await expect(page.locator('[aria-label="Mastodon post preview"]')).toContainText(
+    "@alice@hachyderm.io",
+  );
 
   await page.goto("/tools/thread-splitter");
   await page.waitForLoadState("networkidle");
-  await page
-    .getByRole("textbox", { name: "Text to split into a thread" })
-    .fill("x".repeat(300));
+  await page.getByRole("textbox", { name: "Text to split into a thread" }).fill("x".repeat(300));
   await page.getByRole("button", { name: "Social network" }).click();
   await page.getByRole("option", { name: /Bluesky/ }).click();
   await expect(page.getByRole("button", { name: "Copy part 2" })).toBeVisible();
 
   await page.goto("/tools/fediverse-handle-checker");
   await page.waitForLoadState("networkidle");
-  await page
-    .getByLabel("Fediverse or Bluesky handle")
-    .fill("@alice@hachyderm.io");
-  await expect(
-    page.getByText("@alice@hachyderm.io", { exact: true }),
-  ).toBeVisible();
+  await page.getByLabel("Fediverse or Bluesky handle").fill("@alice@hachyderm.io");
+  await expect(page.getByText("@alice@hachyderm.io", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Check live" })).toBeEnabled();
 
   await page.goto("/tools/linkedin-text-formatter");
@@ -918,20 +773,16 @@ test("free marketing tools produce useful output @desktop", async ({
     .fill("First sentence. Second sentence.");
   await page.getByRole("button", { name: "Paragraph length" }).click();
   await page.getByRole("option", { name: "One sentence" }).click();
-  await page
-    .getByRole("checkbox", { name: "Use the same bullet style" })
-    .click();
-  await expect(
-    page.getByRole("textbox", { name: "Formatted LinkedIn post" }),
-  ).toHaveValue(/First sentence/);
+  await page.getByRole("checkbox", { name: "Use the same bullet style" }).click();
+  await expect(page.getByRole("textbox", { name: "Formatted LinkedIn post" })).toHaveValue(
+    /First sentence/,
+  );
 
   await page.goto("/tools/best-time-to-post-calculator");
   await page.waitForLoadState("networkidle");
   await page.getByLabel("Posts per week").fill("2");
   await expect(
-    page
-      .getByRole("region", { name: "Your local schedule" })
-      .getByRole("listitem"),
+    page.getByRole("region", { name: "Your local schedule" }).getByRole("listitem"),
   ).toHaveCount(2);
 });
 
@@ -941,9 +792,7 @@ test("public changelog is generated from the canonical release record @desktop",
   const canonicalSection = parseChangelog(
     readFileSync(new URL("../CHANGELOG.md", import.meta.url), "utf8"),
   ).find((section) => section.groups.some((group) => group.items.length > 0));
-  const canonicalItem = canonicalSection?.groups.find(
-    (group) => group.items.length > 0,
-  )?.items[0];
+  const canonicalItem = canonicalSection?.groups.find((group) => group.items.length > 0)?.items[0];
   if (!canonicalItem) {
     throw new Error("The canonical changelog has no visible entries");
   }
@@ -958,9 +807,7 @@ test("public changelog is generated from the canonical release record @desktop",
       .first(),
   ).toBeVisible();
   await expect(page.getByText(canonicalItem, { exact: true })).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: "Full changelog" }),
-  ).toHaveAttribute(
+  await expect(page.getByRole("link", { name: "Full changelog" })).toHaveAttribute(
     "href",
     "https://github.com/rodrgds/openpost/blob/main/CHANGELOG.md",
   );

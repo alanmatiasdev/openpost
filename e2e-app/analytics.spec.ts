@@ -18,18 +18,11 @@ test("analytics keeps provider metrics distinct across desktop and phone layouts
   });
   const unique = Date.now().toString(36);
   const auth = await registerUser(request, `analytics-${unique}@example.com`);
-  const workspace = (await createWorkspace(
-    request,
-    auth.token,
-    "Analytics E2E",
-  )) as { id: string };
+  const workspace = (await createWorkspace(request, auth.token, "Analytics E2E")) as { id: string };
   await authenticatePage(page, auth.token);
   await page.route("**/api/v1/analytics**", async (route) => {
     const requestURL = new URL(route.request().url());
-    if (
-      route.request().method() === "POST" &&
-      requestURL.pathname.endsWith("/analytics/refresh")
-    ) {
+    if (route.request().method() === "POST" && requestURL.pathname.endsWith("/analytics/refresh")) {
       refreshRequests += 1;
       await route.fulfill({
         contentType: "application/json",
@@ -270,9 +263,7 @@ test("analytics keeps provider metrics distinct across desktop and phone layouts
   await expect
     .poll(
       async () => ({
-        headingCount: await page
-          .getByRole("heading", { name: "Analytics" })
-          .count(),
+        headingCount: await page.getByRole("heading", { name: "Analytics" }).count(),
         consoleErrors,
         unauthorizedResponses,
         url: page.url(),
@@ -286,19 +277,13 @@ test("analytics keeps provider metrics distinct across desktop and phone layouts
       url: expect.stringContaining("/analytics"),
     });
   const launch = page.getByRole("article").filter({ hasText: "Launch notes" });
-  const walkthrough = page
-    .getByRole("article")
-    .filter({ hasText: "Product walkthrough" });
+  const walkthrough = page.getByRole("article").filter({ hasText: "Product walkthrough" });
   await expect(launch.getByText("8.8K")).toBeVisible();
   await expect(walkthrough.getByText("5.1K")).toBeVisible();
   await expect(walkthrough.getByText("—", { exact: true })).toBeVisible();
-  await walkthrough
-    .getByRole("button", { name: "Show platform details" })
-    .click();
+  await walkthrough.getByRole("button", { name: "Show platform details" }).click();
   await expect(walkthrough.getByText("OpenPost")).toBeVisible();
-  await expect(
-    walkthrough.getByRole("button", { name: "Hide platform details" }),
-  ).toBeVisible();
+  await expect(walkthrough.getByRole("button", { name: "Hide platform details" })).toBeVisible();
   const youtubeNativePost = walkthrough.getByRole("link", {
     name: "Open post on platform",
   });
@@ -309,17 +294,13 @@ test("analytics keeps provider metrics distinct across desktop and phone layouts
   await expect(youtubeNativePost).toHaveAttribute("target", "_blank");
   await expect(youtubeNativePost).toHaveCSS("width", "28px");
   await launch.getByRole("button", { name: "Show platform details" }).click();
-  await expect(
-    launch.getByRole("link", { name: "Open post on platform" }),
-  ).toHaveAttribute("href", "https://x.com/openpost/status/1");
-  await expect(
-    page.getByText("Two measurements are needed to show a trend."),
-  ).toHaveCount(0);
-  await expect(page.locator('[data-slot="chart"]')).toBeVisible();
-  await expect(page.locator('[data-slot="chart"]')).toHaveAttribute(
-    "data-chart",
-    /^chart-/,
+  await expect(launch.getByRole("link", { name: "Open post on platform" })).toHaveAttribute(
+    "href",
+    "https://x.com/openpost/status/1",
   );
+  await expect(page.getByText("Two measurements are needed to show a trend.")).toHaveCount(0);
+  await expect(page.locator('[data-slot="chart"]')).toBeVisible();
+  await expect(page.locator('[data-slot="chart"]')).toHaveAttribute("data-chart", /^chart-/);
   await expect(
     page.getByText(
       "Views are plays or opens reported by the platform. Impressions count how often it showed the post.",
@@ -331,15 +312,12 @@ test("analytics keeps provider metrics distinct across desktop and phone layouts
     .locator('[class*="overflow-y-auto"]');
   await expect(accountList).toBeVisible();
   await expect
-    .poll(() =>
-      accountList.evaluate(
-        (element) => element.scrollHeight > element.clientHeight,
-      ),
-    )
+    .poll(() => accountList.evaluate((element) => element.scrollHeight > element.clientHeight))
     .toBe(true);
-  await expect(
-    page.getByRole("button", { name: /All accounts/ }),
-  ).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: /All accounts/ })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
   await expect(
     page.getByText("@video: Reconnect this account to grant: user.info.stats."),
   ).toBeVisible();
@@ -355,17 +333,13 @@ test("analytics keeps provider metrics distinct across desktop and phone layouts
   expect(refreshRequests).toBe(1);
 
   await launch.getByRole("link", { name: "Launch notes" }).click();
-  await expect(
-    page.getByRole("heading", { name: "Launch notes" }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Launch notes" })).toBeVisible();
   await expect(
     page.getByText(
       "This post has already been sent to its destinations. OpenPost cannot change the copies on social networks.",
     ),
   ).toBeVisible();
-  await expect(page.getByRole("button", { name: "Save changes" })).toHaveCount(
-    0,
-  );
+  await expect(page.getByRole("button", { name: "Save changes" })).toHaveCount(0);
   await page.goBack();
   await expect(page.getByRole("heading", { name: "Analytics" })).toBeVisible();
 
@@ -377,19 +351,13 @@ test("analytics keeps provider metrics distinct across desktop and phone layouts
     await expect
       .poll(() =>
         page.evaluate(
-          () =>
-            document.documentElement.scrollWidth <=
-            document.documentElement.clientWidth,
+          () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
         ),
       )
       .toBe(true);
+    await expect(page.getByRole("link", { name: /Product walkthrough/ })).toBeVisible();
     await expect(
-      page.getByRole("link", { name: /Product walkthrough/ }),
-    ).toBeVisible();
-    await expect(
-      page.locator(
-        'section[aria-labelledby="analytics-content-heading"] table',
-      ),
+      page.locator('section[aria-labelledby="analytics-content-heading"] table'),
     ).toBeHidden();
     await page.screenshot({
       path: testInfo.outputPath(`analytics-${viewport.width}.png`),
@@ -397,9 +365,7 @@ test("analytics keeps provider metrics distinct across desktop and phone layouts
     });
   }
   await page.getByRole("button", { name: "More" }).click();
-  await expect(
-    page.getByRole("menuitem", { name: "Analytics", exact: true }),
-  ).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Analytics", exact: true })).toBeVisible();
   expect({ consoleErrors, unauthorizedResponses }).toEqual({
     consoleErrors: [],
     unauthorizedResponses: [],

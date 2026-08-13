@@ -198,7 +198,13 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 		| 'brand'
 		| 'smart';
 	type ToolFamilyID =
-		'media' | 'audio' | 'text' | 'captions' | 'elements' | 'smart' | 'transitions';
+		| 'media'
+		| 'audio'
+		| 'text'
+		| 'captions'
+		| 'elements'
+		| 'smart'
+		| 'transitions';
 	type InspectorTab =
 		| 'project'
 		| 'video'

@@ -30,11 +30,7 @@ export type ManagedServiceProvider = Readonly<{
     | "independent_controller_and_processor"
     | "independent_service_provider"
     | "user_requested_source";
-  use:
-    | "required"
-    | "purchase_triggered"
-    | "feature_triggered"
-    | "feedback_triggered";
+  use: "required" | "purchase_triggered" | "feature_triggered" | "feedback_triggered";
   purpose: string;
   data: string;
   location: string;

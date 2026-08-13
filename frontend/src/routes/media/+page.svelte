@@ -115,7 +115,8 @@
 	}
 
 	type LibraryDeletionRequest =
-		{ kind: 'single'; media: MediaItem } | { kind: 'batch'; ids: string[] };
+		| { kind: 'single'; media: MediaItem }
+		| { kind: 'batch'; ids: string[] };
 
 	let workspaces = $derived<Workspace[]>(workspaceCtx.workspaces);
 	let selectedWorkspaceId = $derived(workspaceCtx.currentWorkspace?.id ?? '');

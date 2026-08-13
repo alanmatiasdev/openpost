@@ -24,19 +24,14 @@ describe("PostHog first-use funnel", () => {
         return Response.json({ results: [] });
       }
       if (url.endsWith("/insights/")) {
-        return Response.json(
-          { id: 77, short_id: "first-use" },
-          { status: 201 },
-        );
+        return Response.json({ id: 77, short_id: "first-use" }, { status: 201 });
       }
       if (url.endsWith("/batch/")) {
         return Response.json({ status: 1 });
       }
       if (url.includes("/events/?")) {
         return Response.json({
-          results: [
-            { distinct_id: "openpost-smoke-test", event: "signup started" },
-          ],
+          results: [{ distinct_id: "openpost-smoke-test", event: "signup started" }],
         });
       }
       if (url.endsWith("/query/")) {
@@ -56,9 +51,9 @@ describe("PostHog first-use funnel", () => {
 
     const create = requests.find(({ url }) => url.endsWith("/insights/"));
     const insight = JSON.parse(String(create?.init?.body));
-    expect(
-      insight.query.source.series.map((step: { event: string }) => step.event),
-    ).toEqual(firstUseJourneyEvents);
+    expect(insight.query.source.series.map((step: { event: string }) => step.event)).toEqual(
+      firstUseJourneyEvents,
+    );
     const capture = requests.find(({ url }) => url.endsWith("/batch/"));
     const batch = JSON.parse(String(capture?.init?.body));
     expect(batch).toMatchObject({
@@ -75,9 +70,7 @@ describe("PostHog first-use funnel", () => {
       openpost_smoke: true,
       $process_person_profile: false,
     });
-    expect(JSON.stringify(batch)).not.toMatch(
-      /email|token=|secret|https?:\/\//i,
-    );
+    expect(JSON.stringify(batch)).not.toMatch(/email|token=|secret|https?:\/\//i);
     const funnelQuery = requests.find(({ url }) => url.endsWith("/query/"));
     expect(JSON.parse(String(funnelQuery?.init?.body))).toMatchObject({
       query: {

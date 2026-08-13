@@ -32,131 +32,6 @@
   env.BUN_INSTALL_CACHE_DIR = "${config.git.root}/.devenv/state/bun-cache";
 
   scripts = {
-    doctor.exec = ''
-      cd "${config.git.root}"
-      bash scripts/dev-doctor.sh
-    '';
-
-    app.exec = ''
-      cd "${config.git.root}"
-      frontend-dev &
-      FRONTEND_PID=$!
-
-      cleanup() {
-        kill "$FRONTEND_PID" 2>/dev/null || true
-        wait "$FRONTEND_PID" 2>/dev/null || true
-      }
-      trap cleanup EXIT INT TERM
-
-      backend-run
-    '';
-
-    dev.exec = ''
-      app
-    '';
-
-    docs.exec = ''
-      cd "${config.git.root}"
-      bun run docs:dev
-    '';
-
-    build.exec = ''
-      cd "${config.git.root}"
-      frontend-build &&
-      bun run marketing:build &&
-      bun run docs:build &&
-      backend-build &&
-      (cd cli && go build -buildvcs=false ./...)
-    '';
-
-    docs-build.exec = ''
-      cd "${config.git.root}"
-      bun run docs:build
-    '';
-
-    check.exec = ''
-      cd "${config.git.root}"
-      bun run check:build-graph &&
-      bun run check:mcp-registry &&
-      bun run check:docs &&
-      bun run check:release-version &&
-      bun run check:app-routes &&
-      bun run check:legal-policy &&
-      bun run check:changelog &&
-      bun run check:social-images &&
-      bun run check:ui-consistency &&
-      workflow-check &&
-      frontend-check &&
-      bun run --filter @openpost/site check &&
-      bun run check:contracts
-    '';
-
-    lint.exec = ''
-      cd "${config.git.root}"
-      backend-format-check &&
-      backend-lint &&
-      frontend-lint &&
-      (cd cli && golangci-lint run)
-    '';
-
-    test.exec = ''
-      cd "${config.git.root}"
-      backend-test &&
-      frontend-test &&
-      bun run --filter @openpost/video-project test &&
-      (cd cli && go test ./...)
-    '';
-
-    verify.exec = ''
-      cd "${config.git.root}"
-      check && lint && test-all && build
-    '';
-
-    security.exec = ''
-      cd "${config.git.root}"
-      scripts/security-check.sh
-    '';
-
-    workflow-check.exec = ''
-      cd "${config.git.root}"
-      actionlint -color
-    '';
-
-    backend-check.exec = ''
-      backend-format-check && backend-lint
-    '';
-
-    backend-verify.exec = ''
-      backend-check && backend-test && backend-build
-    '';
-
-    backend-security.exec = ''
-      cd "${config.git.root}/backend"
-      go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 -tags dev ./...
-    '';
-
-    cli-security.exec = ''
-      cd "${config.git.root}/cli"
-      go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...
-    '';
-
-    frontend-security.exec = ''
-      cd "${config.git.root}"
-      scripts/bun-audit.sh
-    '';
-
-    frontend-verify.exec = ''
-      frontend-lint && frontend-check && frontend-test && frontend-build
-    '';
-
-    # Compatibility alias for existing local workflows.
-    test-all.exec = ''
-      backend-test &&
-      frontend-test &&
-      bun run --filter @openpost/video-project test &&
-      (cd cli && go test ./...)
-    '';
-
     clean.exec = ''
       cd "${config.git.root}"
       rm -rf backend/openpost frontend/.svelte-kit
@@ -238,7 +113,7 @@
     docker-build.exec = ''
       cd "${config.git.root}"
       image_platform="$(jq -er '.supported_platforms | if length == 1 then .[0] else error("docker-build requires exactly one supported platform") end' docker/image-policy.json)"
-      bun run frontend:build
+      bun run build -- frontend
       docker build --platform "$image_platform" --build-context frontend_artifact=backend/cmd/openpost/public -t openpost:latest -f docker/Dockerfile .
     '';
 
@@ -265,32 +140,23 @@
     echo "  Go:     $(go version 2>/dev/null || echo 'not installed')"
     echo "  Bun:    $(bun --version 2>/dev/null || echo 'not installed')"
     echo ""
-    echo "  Commands:"
-    echo "    doctor       - Check disk, worktrees, Git, browser, and tool readiness"
+    echo "  Root tasks: bun run doctor|dev|format|format:check|lint|check|test|build|verify"
+    echo "  Add -- frontend|backend|cli|marketing|docs to target one surface."
+    echo ""
+    echo "  Environment utilities:"
     echo "    install      - Install locked Bun and Go dependencies"
     echo "    setup        - Frozen install and create backend/.env if missing"
-    echo "    dev          - Start frontend and backend dev servers"
-    echo "    docs         - Start the VitePress docs site"
-    echo "    check        - Run type and generated-contract checks"
-    echo "    lint         - Run backend and frontend lint checks"
-    echo "    test         - Run backend and frontend tests"
-    echo "    build        - Build the frontend and backend binary"
-    echo "    verify       - Run check, lint, test, and build"
-    echo "    security     - Scan Go call paths and production JS dependencies"
     echo "    cache-status - Report project cache and embedded frontend sizes"
     echo "    cache-prune  - Enforce the bounded persistent Go build cache"
     echo "    docker-cache-status - Report Docker image, volume, and build-cache sizes"
     echo "    docker-cache-prune  - Bound unused Docker build cache without deleting volumes"
-    echo "    backend-*    - Targeted backend commands"
-    echo "    frontend-*   - Targeted frontend commands"
     echo ""
 
     # Install tracked fast local gates. Broader verification stays explicit.
     if hooks_dir="$(git rev-parse --git-path hooks 2>/dev/null)"; then
       mkdir -p "$hooks_dir"
+      source="scripts/changed-files-check.sh"
       for hook in pre-commit pre-push; do
-        source="scripts/$hook-check.sh"
-        [ "$hook" = pre-push ] && source="scripts/pre-push-lint.sh"
         [ -f "$source" ] || continue
         dest="$hooks_dir/$hook"
         if [ ! -f "$dest" ] || ! cmp -s "$source" "$dest"; then

@@ -1,10 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  billingPeriods,
-  hostedPlanDefinition,
-  hostedPlanIDs,
-  planCatalog,
-} from "./index";
+import { billingPeriods, hostedPlanDefinition, hostedPlanIDs, planCatalog } from "./index";
 
 describe("plan catalogue", () => {
   it("defines every hosted plan and billing period without an implicit fallback", () => {

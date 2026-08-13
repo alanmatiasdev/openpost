@@ -16,48 +16,32 @@ import {
   type VisualTrackItem,
 } from "./types.js";
 
-export function cloneVideoProject(
-  project: VideoProjectDocumentV1,
-): VideoProjectDocumentV1 {
+export function cloneVideoProject(project: VideoProjectDocumentV1): VideoProjectDocumentV1 {
   return structuredClone(project);
 }
 
 export function clipDurationUS(clip: PrimarySequenceClip): number {
   if (clip.mode === "freeze") return Math.max(0, clip.freeze_duration_us ?? 0);
-  return Math.max(
-    0,
-    Math.round((clip.source_out_us - clip.source_in_us) / clip.speed),
-  );
+  return Math.max(0, Math.round((clip.source_out_us - clip.source_in_us) / clip.speed));
 }
 
-export function isPrimarySequenceGap(
-  item: PrimarySequenceItem,
-): item is PrimarySequenceGap {
+export function isPrimarySequenceGap(item: PrimarySequenceItem): item is PrimarySequenceGap {
   return item.kind === "gap";
 }
 
-export function isPrimarySequenceClip(
-  item: PrimarySequenceItem,
-): item is PrimarySequenceClip {
+export function isPrimarySequenceClip(item: PrimarySequenceItem): item is PrimarySequenceClip {
   return item.kind !== "gap";
 }
 
 export function primaryItemDurationUS(item: PrimarySequenceItem): number {
-  return isPrimarySequenceGap(item)
-    ? Math.max(0, item.duration_us)
-    : clipDurationUS(item);
+  return isPrimarySequenceGap(item) ? Math.max(0, item.duration_us) : clipDurationUS(item);
 }
 
 function transitionOverlapUS(
   previous: PrimarySequenceItem | undefined,
   current: PrimarySequenceItem,
 ): number {
-  if (
-    !previous ||
-    !isPrimarySequenceClip(previous) ||
-    !isPrimarySequenceClip(current)
-  )
-    return 0;
+  if (!previous || !isPrimarySequenceClip(previous) || !isPrimarySequenceClip(current)) return 0;
   const outgoing = previous.transition_out?.duration_us ?? 0;
   const incoming = current.transition_in?.duration_us ?? 0;
   const requested = Math.max(outgoing, incoming);
@@ -76,10 +60,7 @@ export function derivePrimarySequence(
   for (let index = 0; index < project.primary_sequence.length; index++) {
     const clip = project.primary_sequence[index]!;
     const durationUS = primaryItemDurationUS(clip);
-    const overlapUS = transitionOverlapUS(
-      project.primary_sequence[index - 1],
-      clip,
-    );
+    const overlapUS = transitionOverlapUS(project.primary_sequence[index - 1], clip);
     const startUS = Math.max(0, cursorUS - overlapUS);
     const endUS = startUS + durationUS;
     derived.push({
@@ -102,8 +83,7 @@ export function projectDurationUS(
     "primary_sequence" | "visual_tracks" | "audio_tracks" | "caption_tracks"
   >,
 ): number {
-  const primaryEnd =
-    derivePrimarySequence(project).at(-1)?.timeline_end_us ?? 0;
+  const primaryEnd = derivePrimarySequence(project).at(-1)?.timeline_end_us ?? 0;
   const visualEnd = Math.max(
     0,
     ...project.visual_tracks.flatMap((track) =>
@@ -118,9 +98,7 @@ export function projectDurationUS(
   );
   const captionEnd = Math.max(
     0,
-    ...project.caption_tracks.flatMap((track) =>
-      track.cues.map((cue) => cue.end_us),
-    ),
+    ...project.caption_tracks.flatMap((track) => track.cues.map((cue) => cue.end_us)),
   );
   return Math.max(primaryEnd, visualEnd, audioEnd, captionEnd);
 }
@@ -135,8 +113,7 @@ export function splitPrimaryClip(
   const index = next.primary_sequence.findIndex((clip) => clip.id === clipID);
   if (index < 0) throw new Error("The selected clip no longer exists.");
   const clip = next.primary_sequence[index]!;
-  if (isPrimarySequenceGap(clip))
-    throw new Error("Gaps cannot be split. Adjust their duration.");
+  if (isPrimarySequenceGap(clip)) throw new Error("Gaps cannot be split. Adjust their duration.");
   if (clip.mode === "freeze")
     throw new Error("Freeze frames cannot be split. Adjust their duration.");
   const derived = derivePrimarySequence(next)[index]!;
@@ -173,13 +150,11 @@ export function trimPrimaryClip(
   const index = next.primary_sequence.findIndex((clip) => clip.id === clipID);
   if (index < 0) throw new Error("The selected clip no longer exists.");
   const clip = next.primary_sequence[index]!;
-  if (isPrimarySequenceGap(clip))
-    throw new Error("Select a clip before trimming.");
+  if (isPrimarySequenceGap(clip)) throw new Error("Select a clip before trimming.");
   const frameUS = Math.max(
     1,
     Math.round(
-      (VIDEO_TICKS_PER_SECOND * next.timebase.fps_denominator) /
-        next.timebase.fps_numerator,
+      (VIDEO_TICKS_PER_SECOND * next.timebase.fps_denominator) / next.timebase.fps_numerator,
     ),
   );
   const snappedTimelineUS = Math.round(deltaTimelineUS / frameUS) * frameUS;
@@ -189,9 +164,7 @@ export function trimPrimaryClip(
     const current = clip.freeze_duration_us ?? frameUS;
     clip.freeze_duration_us = Math.max(
       frameUS,
-      edge === "start"
-        ? current - snappedTimelineUS
-        : current + snappedTimelineUS,
+      edge === "start" ? current - snappedTimelineUS : current + snappedTimelineUS,
     );
   } else {
     const minimumSourceUS = Math.max(1, Math.round(frameUS * clip.speed));
@@ -199,19 +172,13 @@ export function trimPrimaryClip(
     if (edge === "start") {
       clip.source_in_us = Math.max(
         0,
-        Math.min(
-          clip.source_out_us - minimumSourceUS,
-          clip.source_in_us + sourceDeltaUS,
-        ),
+        Math.min(clip.source_out_us - minimumSourceUS, clip.source_in_us + sourceDeltaUS),
       );
     } else {
       const source = next.sources[clip.source_id];
       clip.source_out_us = Math.max(
         clip.source_in_us + minimumSourceUS,
-        Math.min(
-          source?.duration_us ?? clip.source_out_us,
-          clip.source_out_us + sourceDeltaUS,
-        ),
+        Math.min(source?.duration_us ?? clip.source_out_us, clip.source_out_us + sourceDeltaUS),
       );
     }
   }
@@ -247,22 +214,13 @@ export function setPrimaryClipSourceBoundary(
   }
   const source = next.sources[clip.source_id];
   const boundedTimestampUS = Math.round(
-    Math.max(
-      0,
-      Math.min(source?.duration_us ?? clip.source_out_us, sourceTimestampUS),
-    ),
+    Math.max(0, Math.min(source?.duration_us ?? clip.source_out_us, sourceTimestampUS)),
   );
   const minimumDurationUS = 1;
   if (edge === "start") {
-    clip.source_in_us = Math.min(
-      clip.source_out_us - minimumDurationUS,
-      boundedTimestampUS,
-    );
+    clip.source_in_us = Math.min(clip.source_out_us - minimumDurationUS, boundedTimestampUS);
   } else {
-    clip.source_out_us = Math.max(
-      clip.source_in_us + minimumDurationUS,
-      boundedTimestampUS,
-    );
+    clip.source_out_us = Math.max(clip.source_in_us + minimumDurationUS, boundedTimestampUS);
   }
   clampTransitionBoundary(next.primary_sequence[index - 1], clip);
   clampTransitionBoundary(clip, next.primary_sequence[index + 1]);
@@ -283,16 +241,10 @@ function clampTransitionBoundary(
     return;
   const maximumUS = Math.max(
     0,
-    Math.min(
-      Math.floor(clipDurationUS(left) / 2),
-      Math.floor(clipDurationUS(right) / 2),
-    ),
+    Math.min(Math.floor(clipDurationUS(left) / 2), Math.floor(clipDurationUS(right) / 2)),
   );
   const durationUS = Math.min(
-    Math.max(
-      left.transition_out?.duration_us ?? 0,
-      right.transition_in?.duration_us ?? 0,
-    ),
+    Math.max(left.transition_out?.duration_us ?? 0, right.transition_in?.duration_us ?? 0),
     maximumUS,
   );
   if (left.transition_out) left.transition_out.duration_us = durationUS;
@@ -313,10 +265,7 @@ export function removePrimaryRanges(
     const derived = derivePrimarySequence(next);
     for (let index = derived.length - 1; index >= 0; index--) {
       const item = derived[index]!;
-      if (
-        item.timeline_end_us <= range.start_us ||
-        item.timeline_start_us >= range.end_us
-      )
+      if (item.timeline_end_us <= range.start_us || item.timeline_start_us >= range.end_us)
         continue;
       const clip = next.primary_sequence[index]!;
       if (isPrimarySequenceGap(clip)) {
@@ -328,10 +277,7 @@ export function removePrimaryRanges(
         continue;
       }
       if (clip.mode === "freeze") {
-        if (
-          range.start_us <= item.timeline_start_us &&
-          range.end_us >= item.timeline_end_us
-        ) {
+        if (range.start_us <= item.timeline_start_us && range.end_us >= item.timeline_end_us) {
           next.primary_sequence.splice(index, 1);
         } else {
           const removedUS =
@@ -344,16 +290,9 @@ export function removePrimaryRanges(
       }
 
       const localStartUS = Math.max(0, range.start_us - item.timeline_start_us);
-      const localEndUS = Math.min(
-        item.duration_us,
-        range.end_us - item.timeline_start_us,
-      );
-      const sourceCutStartUS = Math.round(
-        clip.source_in_us + localStartUS * clip.speed,
-      );
-      const sourceCutEndUS = Math.round(
-        clip.source_in_us + localEndUS * clip.speed,
-      );
+      const localEndUS = Math.min(item.duration_us, range.end_us - item.timeline_start_us);
+      const sourceCutStartUS = Math.round(clip.source_in_us + localStartUS * clip.speed);
+      const sourceCutEndUS = Math.round(clip.source_in_us + localEndUS * clip.speed);
 
       if (localStartUS <= 0 && localEndUS >= item.duration_us) {
         next.primary_sequence.splice(index, 1);
@@ -385,9 +324,7 @@ export function rippleDeleteCaptionWords(
   createID: () => string = () => crypto.randomUUID(),
 ): VideoProjectDocumentV1 {
   const selected = new Set(
-    selections.map(
-      (selection) => `${selection.cue_id}:${selection.word_index}`,
-    ),
+    selections.map((selection) => `${selection.cue_id}:${selection.word_index}`),
   );
   const ranges = mergeTimeRanges(
     project.caption_tracks.flatMap((track) =>
@@ -434,13 +371,8 @@ function keptTimelineSegments(
   return segments.filter((segment) => segment.end_us > segment.start_us);
 }
 
-function timestampIsRemoved(
-  timestampUS: number,
-  ranges: TimelineRange[],
-): boolean {
-  return ranges.some(
-    (range) => timestampUS >= range.start_us && timestampUS < range.end_us,
-  );
+function timestampIsRemoved(timestampUS: number, ranges: TimelineRange[]): boolean {
+  return ranges.some((range) => timestampUS >= range.start_us && timestampUS < range.end_us);
 }
 
 function retimeKeyframes(
@@ -460,8 +392,8 @@ function retimeKeyframes(
         time_us: localStartUS,
         value: interpolateKeyframes(keyframes, localStartUS),
         easing:
-          keyframes.find((keyframe) => keyframe.time_us >= localStartUS)
-            ?.easing ?? keyframes.at(-1)!.easing,
+          keyframes.find((keyframe) => keyframe.time_us >= localStartUS)?.easing ??
+          keyframes.at(-1)!.easing,
       },
       ...keyframes.filter(
         (keyframe) =>
@@ -473,28 +405,22 @@ function retimeKeyframes(
         time_us: localEndUS,
         value: interpolateKeyframes(keyframes, localEndUS),
         easing:
-          keyframes.find((keyframe) => keyframe.time_us >= localEndUS)
-            ?.easing ?? keyframes.at(-1)!.easing,
+          keyframes.find((keyframe) => keyframe.time_us >= localEndUS)?.easing ??
+          keyframes.at(-1)!.easing,
       },
     ];
     for (const keyframe of candidates) {
-      const timeUS =
-        retimeAfterRemovedRanges(itemStartUS + keyframe.time_us, ranges) -
-        nextStartUS;
+      const timeUS = retimeAfterRemovedRanges(itemStartUS + keyframe.time_us, ranges) - nextStartUS;
       byTime.set(Math.max(0, timeUS), {
         ...keyframe,
         time_us: Math.max(0, timeUS),
       });
     }
   }
-  return [...byTime.values()].sort(
-    (left, right) => left.time_us - right.time_us,
-  );
+  return [...byTime.values()].sort((left, right) => left.time_us - right.time_us);
 }
 
-function retimePresentationKeyframes<
-  T extends VideoPresentation | VideoPresentationOverride,
->(
+function retimePresentationKeyframes<T extends VideoPresentation | VideoPresentationOverride>(
   presentation: T,
   itemStartUS: number,
   segments: TimelineRange[],
@@ -506,18 +432,7 @@ function retimePresentationKeyframes<
   next.keyframes = Object.fromEntries(
     Object.entries(next.keyframes).flatMap(([property, keyframes]) =>
       keyframes
-        ? [
-            [
-              property,
-              retimeKeyframes(
-                keyframes,
-                itemStartUS,
-                segments,
-                ranges,
-                nextStartUS,
-              ),
-            ],
-          ]
+        ? [[property, retimeKeyframes(keyframes, itemStartUS, segments, ranges, nextStartUS)]]
         : [],
     ),
   ) as T["keyframes"];
@@ -555,19 +470,12 @@ function rippleVisualItem(
   ranges: TimelineRange[],
   createID: () => string,
 ): VisualTrackItem[] {
-  const segments = keptTimelineSegments(
-    item.timeline_start_us,
-    item.duration_us,
-    ranges,
-  );
+  const segments = keptTimelineSegments(item.timeline_start_us, item.duration_us, ranges);
   if (!segments.length) return [];
   const originalStartUS = item.timeline_start_us;
   if (item.type !== "media" && item.type !== "camera") {
     const next = structuredClone(item);
-    next.timeline_start_us = retimeAfterRemovedRanges(
-      segments[0]!.start_us,
-      ranges,
-    );
+    next.timeline_start_us = retimeAfterRemovedRanges(segments[0]!.start_us, ranges);
     next.duration_us = segments.reduce(
       (durationUS, segment) => durationUS + segment.end_us - segment.start_us,
       0,
@@ -595,11 +503,7 @@ function rippleAudioItem(
 ): AudioTrackItem[] {
   const originalStartUS = item.timeline_start_us;
   const originalEndUS = item.timeline_start_us + item.duration_us;
-  const segments = keptTimelineSegments(
-    originalStartUS,
-    item.duration_us,
-    ranges,
-  );
+  const segments = keptTimelineSegments(originalStartUS, item.duration_us, ranges);
   return segments.map((segment, index) => {
     const next = structuredClone(item);
     next.id = index === 0 ? item.id : createID();
@@ -645,15 +549,11 @@ export function rippleDeleteTimelineRanges(
   const next = removePrimaryRanges(project, normalized, createID);
   next.visual_tracks = project.visual_tracks.map((track) => ({
     ...structuredClone(track),
-    items: track.items.flatMap((item) =>
-      rippleVisualItem(item, normalized, createID),
-    ),
+    items: track.items.flatMap((item) => rippleVisualItem(item, normalized, createID)),
   }));
   next.audio_tracks = project.audio_tracks.map((track) => ({
     ...structuredClone(track),
-    items: track.items.flatMap((item) =>
-      rippleAudioItem(item, normalized, createID),
-    ),
+    items: track.items.flatMap((item) => rippleAudioItem(item, normalized, createID)),
   }));
   next.caption_tracks = project.caption_tracks.map((track) => ({
     ...structuredClone(track),
@@ -662,8 +562,7 @@ export function rippleDeleteTimelineRanges(
         .filter(
           (word) =>
             !normalized.some(
-              (range) =>
-                word.end_us > range.start_us && word.start_us < range.end_us,
+              (range) => word.end_us > range.start_us && word.start_us < range.end_us,
             ),
         )
         .map((word) => ({
@@ -686,9 +585,7 @@ export function rippleDeleteTimelineRanges(
       }
       const startUS = retimeAfterRemovedRanges(cue.start_us, normalized);
       const endUS = retimeAfterRemovedRanges(cue.end_us, normalized);
-      return endUS > startUS
-        ? [{ ...structuredClone(cue), start_us: startUS, end_us: endUS }]
-        : [];
+      return endUS > startUS ? [{ ...structuredClone(cue), start_us: startUS, end_us: endUS }] : [];
     }),
   }));
   next.markers = project.markers
@@ -722,10 +619,7 @@ export function reorderPrimaryClip(
   const from = next.primary_sequence.findIndex((clip) => clip.id === clipID);
   if (from < 0) throw new Error("The selected clip no longer exists.");
   const [clip] = next.primary_sequence.splice(from, 1);
-  const bounded = Math.max(
-    0,
-    Math.min(targetIndex, next.primary_sequence.length),
-  );
+  const bounded = Math.max(0, Math.min(targetIndex, next.primary_sequence.length));
   next.primary_sequence.splice(bounded, 0, clip!);
   return next;
 }
@@ -755,21 +649,16 @@ export function deletePrimaryItemLeaveGap(
 ): VideoProjectDocumentV1 {
   const next = cloneVideoProject(project);
   const index = next.primary_sequence.findIndex((item) => item.id === itemID);
-  if (index < 0)
-    throw new Error("The selected timeline item no longer exists.");
+  if (index < 0) throw new Error("The selected timeline item no longer exists.");
   const item = next.primary_sequence[index]!;
   const durationUS = primaryItemDurationUS(item);
-  if (durationUS <= 0)
-    throw new Error("The selected timeline item has no duration.");
+  if (durationUS <= 0) throw new Error("The selected timeline item has no duration.");
   next.primary_sequence.splice(index, 1, {
     id: createID(),
     kind: "gap",
     duration_us: durationUS,
   });
-  clampTransitionBoundary(
-    next.primary_sequence[index - 1],
-    next.primary_sequence[index],
-  );
+  clampTransitionBoundary(next.primary_sequence[index - 1], next.primary_sequence[index]);
   return next;
 }
 
@@ -779,9 +668,7 @@ export function resizePrimaryGap(
   durationUS: number,
 ): VideoProjectDocumentV1 {
   if (!Number.isInteger(durationUS) || durationUS <= 0) {
-    throw new Error(
-      "Gap duration must be a positive integer number of microseconds.",
-    );
+    throw new Error("Gap duration must be a positive integer number of microseconds.");
   }
   const next = cloneVideoProject(project);
   const gap = next.primary_sequence.find((item) => item.id === gapID);
@@ -799,27 +686,19 @@ export function insertFreezeFrame(
   durationUS = 2_000_000,
   createID: () => string = () => crypto.randomUUID(),
 ): VideoProjectDocumentV1 {
-  if (
-    !Number.isInteger(durationUS) ||
-    durationUS < 100_000 ||
-    durationUS > 60_000_000
-  ) {
+  if (!Number.isInteger(durationUS) || durationUS < 100_000 || durationUS > 60_000_000) {
     throw new Error("Freeze duration must be between 0.1 and 60 seconds.");
   }
   const next = cloneVideoProject(project);
   const index = next.primary_sequence.findIndex((clip) => clip.id === clipID);
   if (index < 0) throw new Error("The selected clip no longer exists.");
   const clip = next.primary_sequence[index]!;
-  if (isPrimarySequenceGap(clip))
-    throw new Error("Select a clip before adding a freeze frame.");
-  if (clip.mode === "freeze")
-    throw new Error("The selected item is already a freeze frame.");
+  if (isPrimarySequenceGap(clip)) throw new Error("Select a clip before adding a freeze frame.");
+  if (clip.mode === "freeze") throw new Error("The selected item is already a freeze frame.");
   const timing = derivePrimarySequence(next)[index]!;
   const relativeUS = timelineUS - timing.timeline_start_us;
   if (relativeUS <= 0 || relativeUS >= timing.duration_us) {
-    throw new Error(
-      "Place the playhead inside the clip before adding a freeze frame.",
-    );
+    throw new Error("Place the playhead inside the clip before adding a freeze frame.");
   }
   const sourceUS = Math.round(clip.source_in_us + relativeUS * clip.speed);
   const left: PrimarySequenceClip = {
@@ -859,12 +738,9 @@ export function detachPrimaryClipAudio(
   if (index < 0) throw new Error("The selected clip no longer exists.");
   const clip = next.primary_sequence[index]!;
   if (isPrimarySequenceGap(clip)) throw new Error("Gaps do not contain audio.");
-  if (clip.mode === "freeze")
-    throw new Error("Freeze frames do not contain audio.");
+  if (clip.mode === "freeze") throw new Error("Freeze frames do not contain audio.");
   const timing = derivePrimarySequence(next)[index]!;
-  let track = next.audio_tracks.find(
-    (candidate) => candidate.id === "detached-audio",
-  );
+  let track = next.audio_tracks.find((candidate) => candidate.id === "detached-audio");
   if (!track) {
     if (next.audio_tracks.length >= VIDEO_PROJECT_LIMITS.maxAudioTracks) {
       throw new Error("Remove an audio track before detaching more audio.");
@@ -904,14 +780,10 @@ export function setClipSpeed(
     throw new Error("Clip speed must be between 0.25× and 4×.");
   }
   const next = cloneVideoProject(project);
-  const clip = next.primary_sequence.find(
-    (candidate) => candidate.id === clipID,
-  );
+  const clip = next.primary_sequence.find((candidate) => candidate.id === clipID);
   if (!clip) throw new Error("The selected clip no longer exists.");
-  if (isPrimarySequenceGap(clip))
-    throw new Error("Gaps do not have playback speed.");
-  if (clip.mode === "freeze")
-    throw new Error("Freeze frames do not have playback speed.");
+  if (isPrimarySequenceGap(clip)) throw new Error("Gaps do not have playback speed.");
+  if (clip.mode === "freeze") throw new Error("Freeze frames do not have playback speed.");
   clip.speed = speed;
   return next;
 }
@@ -923,12 +795,9 @@ export function setVariantPresentationOverride(
   override: VideoPresentationOverride,
 ): VideoProjectDocumentV1 {
   const next = cloneVideoProject(project);
-  const clip = next.primary_sequence.find(
-    (candidate) => candidate.id === clipID,
-  );
+  const clip = next.primary_sequence.find((candidate) => candidate.id === clipID);
   if (!clip) throw new Error("The selected clip no longer exists.");
-  if (isPrimarySequenceGap(clip))
-    throw new Error("Gaps do not have presentation properties.");
+  if (isPrimarySequenceGap(clip)) throw new Error("Gaps do not have presentation properties.");
   clip.variant_overrides = {
     ...(clip.variant_overrides ?? {}),
     [variantID]: {
@@ -968,9 +837,7 @@ export function frameToTimestampUS(
   fpsNumerator: number,
   fpsDenominator: number,
 ): number {
-  return Math.round(
-    (frame * VIDEO_TICKS_PER_SECOND * fpsDenominator) / fpsNumerator,
-  );
+  return Math.round((frame * VIDEO_TICKS_PER_SECOND * fpsDenominator) / fpsNumerator);
 }
 
 export function timestampUSToFrame(
@@ -978,31 +845,19 @@ export function timestampUSToFrame(
   fpsNumerator: number,
   fpsDenominator: number,
 ): number {
-  return Math.round(
-    (timestampUS * fpsNumerator) / (VIDEO_TICKS_PER_SECOND * fpsDenominator),
-  );
+  return Math.round((timestampUS * fpsNumerator) / (VIDEO_TICKS_PER_SECOND * fpsDenominator));
 }
 
-export function interpolateKeyframes(
-  keyframes: NumericKeyframe[],
-  timestampUS: number,
-): number {
+export function interpolateKeyframes(keyframes: NumericKeyframe[], timestampUS: number): number {
   if (!keyframes.length) return 0;
-  const sorted = [...keyframes].sort(
-    (left, right) => left.time_us - right.time_us,
-  );
+  const sorted = [...keyframes].sort((left, right) => left.time_us - right.time_us);
   if (timestampUS <= sorted[0]!.time_us) return sorted[0]!.value;
   if (timestampUS >= sorted.at(-1)!.time_us) return sorted.at(-1)!.value;
-  const rightIndex = sorted.findIndex(
-    (keyframe) => keyframe.time_us >= timestampUS,
-  );
+  const rightIndex = sorted.findIndex((keyframe) => keyframe.time_us >= timestampUS);
   const left = sorted[rightIndex - 1]!;
   const right = sorted[rightIndex]!;
-  const progress =
-    (timestampUS - left.time_us) / (right.time_us - left.time_us);
-  return (
-    left.value + (right.value - left.value) * applyEasing(progress, left.easing)
-  );
+  const progress = (timestampUS - left.time_us) / (right.time_us - left.time_us);
+  return left.value + (right.value - left.value) * applyEasing(progress, left.easing);
 }
 
 export function applyEasing(progress: number, easing: EasingName): number {
@@ -1015,9 +870,7 @@ export function applyEasing(progress: number, easing: EasingName): number {
     case "ease-out":
       return 1 - Math.pow(1 - value, 3);
     case "ease-in-out":
-      return value < 0.5
-        ? 4 * value * value * value
-        : 1 - Math.pow(-2 * value + 2, 3) / 2;
+      return value < 0.5 ? 4 * value * value * value : 1 - Math.pow(-2 * value + 2, 3) / 2;
     case "focus-spring": {
       const damped = 1 - Math.exp(-7 * value) * Math.cos(10 * value);
       return Math.max(0, Math.min(1.04, damped));
@@ -1043,23 +896,15 @@ export function buildFocusZoomKeyframes(
   options: FocusZoomOptions,
 ): NonNullable<VideoPresentation["keyframes"]> {
   const clipDuration = Math.max(1, Math.round(clipDurationUS));
-  const duration = Math.max(
-    100_000,
-    Math.min(clipDuration, Math.round(options.duration_us)),
-  );
-  const localTime = Math.max(
-    0,
-    Math.min(clipDuration, Math.round(options.local_time_us)),
-  );
+  const duration = Math.max(100_000, Math.min(clipDuration, Math.round(options.duration_us)));
+  const localTime = Math.max(0, Math.min(clipDuration, Math.round(options.local_time_us)));
   const start = Math.max(
     0,
     Math.min(clipDuration - duration, localTime - Math.round(duration * 0.3)),
   );
   const end = Math.min(clipDuration, start + duration);
   const peak =
-    options.preset === "punch"
-      ? Math.min(end, start + Math.round(duration * 0.38))
-      : end;
+    options.preset === "punch" ? Math.min(end, start + Math.round(duration * 0.38)) : end;
   const baseScale = presentation.scale;
   const focusScale = Math.max(
     0.05,
@@ -1069,17 +914,11 @@ export function buildFocusZoomKeyframes(
   const focusY = Math.max(0, Math.min(1, options.focus_y));
   const focusPositionX = Math.max(
     0,
-    Math.min(
-      1,
-      presentation.position_x + (0.5 - focusX) * (focusScale - baseScale),
-    ),
+    Math.min(1, presentation.position_x + (0.5 - focusX) * (focusScale - baseScale)),
   );
   const focusPositionY = Math.max(
     0,
-    Math.min(
-      1,
-      presentation.position_y + (0.5 - focusY) * (focusScale - baseScale),
-    ),
+    Math.min(1, presentation.position_y + (0.5 - focusY) * (focusScale - baseScale)),
   );
   const pair = (baseValue: number, focusValue: number): NumericKeyframe[] => {
     if (options.preset === "in") {
@@ -1118,10 +957,7 @@ export function reflowCaptionText(
     const current = lines.at(-1);
     if (!current) {
       lines.push(word);
-    } else if (
-      `${current} ${word}`.length <= maxCharacters ||
-      lines.length >= maxLines
-    ) {
+    } else if (`${current} ${word}`.length <= maxCharacters || lines.length >= maxLines) {
       lines[lines.length - 1] = `${current} ${word}`;
     } else {
       lines.push(word);
@@ -1158,16 +994,12 @@ export function setCaptionCueText(cue: CaptionCue, text: string): void {
   cue.words = tokens.map((token, index) => {
     const previous =
       cue.words[
-        Math.min(
-          cue.words.length - 1,
-          Math.floor((index * cue.words.length) / tokens.length),
-        )
+        Math.min(cue.words.length - 1, Math.floor((index * cue.words.length) / tokens.length))
       ];
     return {
       text: token,
       start_us: cue.start_us + Math.floor((durationUS * index) / tokens.length),
-      end_us:
-        cue.start_us + Math.floor((durationUS * (index + 1)) / tokens.length),
+      end_us: cue.start_us + Math.floor((durationUS * (index + 1)) / tokens.length),
       ...(previous?.emphasis ? { emphasis: true } : {}),
     };
   });
@@ -1179,17 +1011,11 @@ export function captionCutRange(
   paddingUS = 120_000,
 ): { start_us: number; end_us: number } | null {
   const words = selectedWordIDs
-    .map(
-      ({ cue_id, word_index }) =>
-        cues.find((cue) => cue.id === cue_id)?.words[word_index],
-    )
+    .map(({ cue_id, word_index }) => cues.find((cue) => cue.id === cue_id)?.words[word_index])
     .filter((word): word is NonNullable<typeof word> => Boolean(word));
   if (!words.length) return null;
   return {
-    start_us: Math.max(
-      0,
-      Math.min(...words.map((word) => word.start_us)) - paddingUS,
-    ),
+    start_us: Math.max(0, Math.min(...words.map((word) => word.start_us)) - paddingUS),
     end_us: Math.min(
       VIDEO_PROJECT_LIMITS.maxDurationUS,
       Math.max(...words.map((word) => word.end_us)) + paddingUS,

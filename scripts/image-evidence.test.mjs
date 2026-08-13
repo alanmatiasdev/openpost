@@ -4,11 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import {
-  createImageEvidence,
-  readImageEvidence,
-  verifyImageEvidence,
-} from "./image-evidence.mjs";
+import { createImageEvidence, readImageEvidence, verifyImageEvidence } from "./image-evidence.mjs";
 
 const revision = "a".repeat(40);
 const digest = `sha256:${"b".repeat(64)}`;
@@ -75,10 +71,7 @@ test("rejects a changed artifact and unexpected evidence fields", () =>
       /sbom_sha256 does not match/u,
     );
 
-    await writeFile(
-      files.evidenceFile,
-      JSON.stringify({ ...evidence, untrusted: true }),
-    );
+    await writeFile(files.evidenceFile, JSON.stringify({ ...evidence, untrusted: true }));
     await assert.rejects(
       readImageEvidence(files.evidenceFile),
       /fields do not match the strict schema/u,

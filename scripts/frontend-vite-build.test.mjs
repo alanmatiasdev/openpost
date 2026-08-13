@@ -9,9 +9,7 @@ import {
 
 describe("frontend Vite build memory", () => {
   test("adds the repository build heap when NODE_OPTIONS is empty", () => {
-    expect(frontendBuildNodeOptions()).toBe(
-      `--max-old-space-size=${frontendBuildHeapMiB}`,
-    );
+    expect(frontendBuildNodeOptions()).toBe(`--max-old-space-size=${frontendBuildHeapMiB}`);
   });
 
   test("preserves unrelated user options", () => {
@@ -29,18 +27,14 @@ describe("frontend Vite build memory", () => {
   });
 
   test("raises a smaller user heap without discarding it or other options", () => {
-    expect(
-      frontendBuildNodeOptions("--max-old-space-size=4096 --trace-warnings"),
-    ).toBe(
+    expect(frontendBuildNodeOptions("--max-old-space-size=4096 --trace-warnings")).toBe(
       `--max-old-space-size=4096 --trace-warnings --max-old-space-size=${frontendBuildHeapMiB}`,
     );
   });
 
   test("uses the last user heap option when enforcing the minimum", () => {
     expect(
-      frontendBuildNodeOptions(
-        "--max-old-space-size=12288 --max-old-space-size=4096",
-      ),
+      frontendBuildNodeOptions("--max-old-space-size=12288 --max-old-space-size=4096"),
     ).toEndWith(`--max-old-space-size=${frontendBuildHeapMiB}`);
   });
 
@@ -61,9 +55,7 @@ describe("frontend Vite build memory", () => {
     );
 
     expect(result.status).toBe(0);
-    expect(Number(result.stdout)).toBeGreaterThanOrEqual(
-      frontendBuildHeapMiB * 1024 * 1024,
-    );
+    expect(Number(result.stdout)).toBeGreaterThanOrEqual(frontendBuildHeapMiB * 1024 * 1024);
   });
 });
 

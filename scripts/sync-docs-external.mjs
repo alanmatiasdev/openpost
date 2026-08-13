@@ -5,12 +5,7 @@ import { fileURLToPath } from "node:url";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(scriptDir, "..");
-const outputPath = path.join(
-  root,
-  "docs-site",
-  ".generated",
-  "openpost-nix-module.md",
-);
+const outputPath = path.join(root, "docs-site", ".generated", "openpost-nix-module.md");
 
 const moduleRawUrl =
   "https://raw.githubusercontent.com/rodrgds/nix-config/refs/heads/main/modules/services/openpost/default.nix";
@@ -48,9 +43,7 @@ try {
   if (localModulePath) {
     const moduleSource = await readFile(localModulePath, "utf8");
     await writeFile(outputPath, renderMarkdown(moduleSource), "utf8");
-    console.log(
-      `Synced local Nix module -> ${path.relative(root, outputPath)}`,
-    );
+    console.log(`Synced local Nix module -> ${path.relative(root, outputPath)}`);
     process.exit(0);
   }
 
@@ -64,19 +57,13 @@ try {
 
   const moduleSource = await response.text();
   await writeFile(outputPath, renderMarkdown(moduleSource), "utf8");
-  console.log(
-    `Synced external docs snippet -> ${path.relative(root, outputPath)}`,
-  );
+  console.log(`Synced external docs snippet -> ${path.relative(root, outputPath)}`);
 } catch (error) {
   if (existsSync(outputPath)) {
-    console.warn(
-      `Failed to refresh external docs snippet, using cached file: ${error.message}`,
-    );
+    console.warn(`Failed to refresh external docs snippet, using cached file: ${error.message}`);
     process.exit(0);
   }
 
   await writeFile(outputPath, renderFallback(error), "utf8");
-  console.warn(
-    `Failed to refresh external docs snippet, wrote fallback file: ${error.message}`,
-  );
+  console.warn(`Failed to refresh external docs snippet, wrote fallback file: ${error.message}`);
 }

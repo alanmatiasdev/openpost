@@ -22,15 +22,8 @@ test("accounts distinguishes destination disconnect from credential revocation",
   request,
 }) => {
   const unique = Date.now().toString(36);
-  const auth = await registerUser(
-    request,
-    `account-grants-${unique}@example.com`,
-  );
-  const workspace = (await createWorkspace(
-    request,
-    auth.token,
-    "Grant Actions E2E",
-  )) as {
+  const auth = await registerUser(request, `account-grants-${unique}@example.com`);
+  const workspace = (await createWorkspace(request, auth.token, "Grant Actions E2E")) as {
     id: string;
   };
   await authenticatePage(page, auth.token);
@@ -52,18 +45,13 @@ test("accounts distinguishes destination disconnect from credential revocation",
     const path = new URL(route.request().url()).pathname;
     deletePaths.push(path);
     const pathParts = path.split("/");
-    const accountID =
-      pathParts.at(-1) === "grant" ? pathParts.at(-2) : pathParts.at(-1);
+    const accountID = pathParts.at(-1) === "grant" ? pathParts.at(-2) : pathParts.at(-1);
     const target = accounts.find((account) => account.id === accountID);
     if (target && path.endsWith("/grant")) {
-      accounts = accounts.filter(
-        (account) => account.grantKey !== target.grantKey,
-      );
+      accounts = accounts.filter((account) => account.grantKey !== target.grantKey);
     } else if (target) {
       accounts = accounts.filter((account) => account.id !== target.id);
-      const remaining = accounts.filter(
-        (account) => account.grantKey === target.grantKey,
-      ).length;
+      const remaining = accounts.filter((account) => account.grantKey === target.grantKey).length;
       accounts = accounts.map((account) =>
         account.grantKey === target.grantKey
           ? {
@@ -90,24 +78,18 @@ test("accounts distinguishes destination disconnect from credential revocation",
 
   await openAccountMenu(page, "shared-a", "@shared_a");
   let menu = page.getByRole("menu");
-  await expect(
-    menu.getByRole("menuitem", { name: "Disconnect this destination" }),
-  ).toBeVisible();
+  await expect(menu.getByRole("menuitem", { name: "Disconnect this destination" })).toBeVisible();
   await expect(
     menu.getByRole("menuitem", {
       name: "Remove saved authorization for 2 destinations",
     }),
   ).toBeVisible();
-  await menu
-    .getByRole("menuitem", { name: "Disconnect this destination" })
-    .click();
+  await menu.getByRole("menuitem", { name: "Disconnect this destination" }).click();
 
   let dialog = page.getByRole("dialog", { name: "Disconnect @shared_a?" });
   await expect(dialog).toContainText("@shared_a is one of 2 destinations");
   await expect(dialog).toContainText("every other destination stays connected");
-  await dialog
-    .getByRole("button", { name: "Disconnect this destination" })
-    .click();
+  await dialog.getByRole("button", { name: "Disconnect this destination" }).click();
   await expect.poll(() => deletePaths).toContain("/api/v1/accounts/shared-a");
   await expect(page.getByTestId("account-card-shared-a")).toHaveCount(0);
   await expect(page.getByTestId("account-card-shared-b")).toBeVisible();
@@ -124,34 +106,20 @@ test("accounts distinguishes destination disconnect from credential revocation",
   });
   await expect(dialog).toContainText("delete its saved provider credentials");
   await expect(dialog).toContainText("disconnect all 2 destinations");
-  await expect(dialog).toContainText(
-    "does not disable the credential at LinkedIn",
-  );
-  await dialog
-    .getByRole("button", { name: "Remove saved authorization" })
-    .click();
-  await expect
-    .poll(() => deletePaths)
-    .toContain("/api/v1/accounts/shared-c/grant");
+  await expect(dialog).toContainText("does not disable the credential at LinkedIn");
+  await dialog.getByRole("button", { name: "Remove saved authorization" }).click();
+  await expect.poll(() => deletePaths).toContain("/api/v1/accounts/shared-c/grant");
   await expect(page.getByTestId("account-card-shared-c")).toHaveCount(0);
   await expect(page.getByTestId("account-card-shared-d")).toHaveCount(0);
 
   await openAccountMenu(page, "solo", "@solo");
   menu = page.getByRole("menu");
-  await expect(
-    menu.getByRole("menuitem", { name: "Remove connection" }),
-  ).toBeVisible();
-  await expect(
-    menu.getByRole("menuitem", { name: "Disconnect this destination" }),
-  ).toHaveCount(0);
+  await expect(menu.getByRole("menuitem", { name: "Remove connection" })).toBeVisible();
+  await expect(menu.getByRole("menuitem", { name: "Disconnect this destination" })).toHaveCount(0);
   await menu.getByRole("menuitem", { name: "Remove connection" }).click();
   dialog = page.getByRole("dialog", { name: "Remove @solo?" });
-  await expect(dialog).toContainText(
-    "delete its saved provider credentials and disconnect @solo",
-  );
-  await expect(dialog).toContainText(
-    "does not disable the credential at LinkedIn",
-  );
+  await expect(dialog).toContainText("delete its saved provider credentials and disconnect @solo");
+  await expect(dialog).toContainText("does not disable the credential at LinkedIn");
   await dialog.getByRole("button", { name: "Remove connection" }).click();
   await expect.poll(() => deletePaths).toContain("/api/v1/accounts/solo/grant");
   await expect(page.getByTestId("account-card-solo")).toHaveCount(0);

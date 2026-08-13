@@ -1,9 +1,4 @@
-import {
-  expect,
-  test,
-  type APIRequestContext,
-  type Page,
-} from "@playwright/test";
+import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 import { authenticatePage, createWorkspace, registerUser } from "./helpers";
 
 type Workspace = {
@@ -102,15 +97,8 @@ function scheduledPost(
   };
 }
 
-async function createAuthenticatedWorkspace(
-  page: Page,
-  request: APIRequestContext,
-  seed: string,
-) {
-  const auth = await registerUser(
-    request,
-    `scheduling-calendar-guard-${seed}@example.com`,
-  );
+async function createAuthenticatedWorkspace(page: Page, request: APIRequestContext, seed: string) {
+  const auth = await registerUser(request, `scheduling-calendar-guard-${seed}@example.com`);
   const workspace = (await createWorkspace(
     request,
     auth.token,
@@ -118,10 +106,7 @@ async function createAuthenticatedWorkspace(
   )) as Workspace;
   await authenticatePage(page, auth.token);
   await page.addInitScript((currentWorkspace) => {
-    localStorage.setItem(
-      "openpost_current_workspace",
-      JSON.stringify(currentWorkspace),
-    );
+    localStorage.setItem("openpost_current_workspace", JSON.stringify(currentWorkspace));
   }, workspace);
   return { auth, workspace };
 }
@@ -150,10 +135,7 @@ async function mockCalendarData(
           post,
           ...(status === "scheduled" ? posts : publishedPosts)
             .filter((candidate) => candidate.parent_post_id === post.id)
-            .sort(
-              (left, right) =>
-                (left.thread_sequence ?? 0) - (right.thread_sequence ?? 0),
-            ),
+            .sort((left, right) => (left.thread_sequence ?? 0) - (right.thread_sequence ?? 0)),
         ];
         const isThread = threadPosts.length > 1;
         return {
@@ -205,26 +187,12 @@ test("a previous workspace next-slot response cannot replace the current schedul
   request,
 }, testInfo) => {
   const seed = `${Date.now().toString(36)}-${testInfo.workerIndex}`;
-  const auth = await registerUser(
-    request,
-    `next-slot-workspace-guard-${seed}@example.com`,
-  );
-  const first = (await createWorkspace(
-    request,
-    auth.token,
-    `Previous ${seed}`,
-  )) as Workspace;
-  const second = (await createWorkspace(
-    request,
-    auth.token,
-    `Current ${seed}`,
-  )) as Workspace;
+  const auth = await registerUser(request, `next-slot-workspace-guard-${seed}@example.com`);
+  const first = (await createWorkspace(request, auth.token, `Previous ${seed}`)) as Workspace;
+  const second = (await createWorkspace(request, auth.token, `Current ${seed}`)) as Workspace;
   await authenticatePage(page, auth.token);
   await page.addInitScript((currentWorkspace) => {
-    localStorage.setItem(
-      "openpost_current_workspace",
-      JSON.stringify(currentWorkspace),
-    );
+    localStorage.setItem("openpost_current_workspace", JSON.stringify(currentWorkspace));
   }, first);
   await page.clock.setFixedTime(new Date("2030-06-15T12:00:00.000Z"));
 
@@ -236,81 +204,60 @@ test("a previous workspace next-slot response cannot replace the current schedul
   const releaseFirst = deferred();
   const firstFinished = deferred();
   const requestedWorkspaceIDs: string[] = [];
-  await page.route(
-    "**/api/v1/posting-schedules/next-slot?**",
-    async (route) => {
-      const workspaceID = new URL(route.request().url()).searchParams.get(
-        "workspace_id",
-      );
-      requestedWorkspaceIDs.push(workspaceID ?? "");
+  await page.route("**/api/v1/posting-schedules/next-slot?**", async (route) => {
+    const workspaceID = new URL(route.request().url()).searchParams.get("workspace_id");
+    requestedWorkspaceIDs.push(workspaceID ?? "");
 
-      if (workspaceID === first.id) {
-        firstStarted.resolve();
-        await releaseFirst.promise;
-        try {
-          await route.fulfill({
-            contentType: "application/json",
-            json: {
-              slot_time: "2030-06-20T09:00:00.000Z",
-              message: "Previous workspace slot",
-            },
-          });
-        } finally {
-          firstFinished.resolve();
-        }
-        return;
+    if (workspaceID === first.id) {
+      firstStarted.resolve();
+      await releaseFirst.promise;
+      try {
+        await route.fulfill({
+          contentType: "application/json",
+          json: {
+            slot_time: "2030-06-20T09:00:00.000Z",
+            message: "Previous workspace slot",
+          },
+        });
+      } finally {
+        firstFinished.resolve();
       }
+      return;
+    }
 
-      expect(workspaceID).toBe(second.id);
-      await route.fulfill({
-        contentType: "application/json",
-        json: {
-          slot_time: "2030-06-25T15:30:00.000Z",
-          message: "Current workspace slot",
-        },
-      });
-    },
-  );
+    expect(workspaceID).toBe(second.id);
+    await route.fulfill({
+      contentType: "application/json",
+      json: {
+        slot_time: "2030-06-25T15:30:00.000Z",
+        message: "Current workspace slot",
+      },
+    });
+  });
 
   await page.goto("/");
-  const scheduleButton = page
-    .getByRole("button", { name: "Schedule", exact: true })
-    .first();
+  const scheduleButton = page.getByRole("button", { name: "Schedule", exact: true }).first();
   await expect(scheduleButton).toBeVisible();
   await scheduleButton.click();
 
   const scheduleDialog = page.getByTestId("schedule-dialog-shell");
   await expect(scheduleDialog).toBeVisible();
-  await expect(
-    scheduleDialog.getByText("June 2030", { exact: true }),
-  ).toBeVisible();
-  await expect(
-    scheduleDialog.getByText("July 2030", { exact: true }),
-  ).toBeVisible();
-  await scheduleDialog
-    .getByRole("button", { name: "Next free slot", exact: true })
-    .click();
+  await expect(scheduleDialog.getByText("June 2030", { exact: true })).toBeVisible();
+  await expect(scheduleDialog.getByText("July 2030", { exact: true })).toBeVisible();
+  await scheduleDialog.getByRole("button", { name: "Next free slot", exact: true }).click();
   await firstStarted.promise;
 
-  await scheduleDialog
-    .getByRole("button", { name: "Cancel", exact: true })
-    .click();
+  await scheduleDialog.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(scheduleDialog).toBeHidden();
 
-  const workspaceButton = page
-    .getByRole("button", { name: new RegExp(first.name) })
-    .first();
+  const workspaceButton = page.getByRole("button", { name: new RegExp(first.name) }).first();
   await workspaceButton.click();
   await page.getByRole("menuitem", { name: new RegExp(second.name) }).click();
-  await expect(
-    page.getByRole("button", { name: new RegExp(second.name) }).first(),
-  ).toBeVisible();
+  await expect(page.getByRole("button", { name: new RegExp(second.name) }).first()).toBeVisible();
 
   await scheduleButton.click();
   await expect(scheduleDialog).toBeVisible();
-  await scheduleDialog
-    .getByRole("button", { name: "Next free slot", exact: true })
-    .click();
+  await scheduleDialog.getByRole("button", { name: "Next free slot", exact: true }).click();
   await expect(scheduleDialog).toContainText("Selected Jun 25 15:30");
 
   releaseFirst.resolve();
@@ -345,42 +292,39 @@ test("portrait calendar and composer reject past creation and rescheduling", asy
   await mockCalendarData(page, [pastPost, futurePost]);
 
   let rescheduleRequests = 0;
-  await page.route(
-    "**/api/v1/publications/publication-future-post",
-    async (route) => {
-      if (route.request().method() !== "PUT") {
-        await route.continue();
-        return;
-      }
-      rescheduleRequests++;
-      await route.fulfill({
-        contentType: "application/json",
-        json: {
-          id: "publication-future-post",
-          text_post_id: futurePost.id,
-          workspace_id: workspace.id,
-          created_by: futurePost.created_by,
-          title: futurePost.content,
-          intent: "post",
-          content_profile: "short_text",
-          source_text: futurePost.content,
-          source_url: "",
-          goal: "",
-          audience: "",
-          status: "scheduled",
-          revision: 2,
-          scheduled_at: futurePost.scheduled_at,
-          actual_run_at: "",
-          created_at: futurePost.created_at,
-          updated_at: futurePost.created_at,
-          metadata: {},
-          renditions: [],
-          segments: [],
-          media: [],
-        },
-      });
-    },
-  );
+  await page.route("**/api/v1/publications/publication-future-post", async (route) => {
+    if (route.request().method() !== "PUT") {
+      await route.continue();
+      return;
+    }
+    rescheduleRequests++;
+    await route.fulfill({
+      contentType: "application/json",
+      json: {
+        id: "publication-future-post",
+        text_post_id: futurePost.id,
+        workspace_id: workspace.id,
+        created_by: futurePost.created_by,
+        title: futurePost.content,
+        intent: "post",
+        content_profile: "short_text",
+        source_text: futurePost.content,
+        source_url: "",
+        goal: "",
+        audience: "",
+        status: "scheduled",
+        revision: 2,
+        scheduled_at: futurePost.scheduled_at,
+        actual_run_at: "",
+        created_at: futurePost.created_at,
+        updated_at: futurePost.created_at,
+        metadata: {},
+        renditions: [],
+        segments: [],
+        media: [],
+      },
+    });
+  });
 
   await page.goto("/calendar");
 
@@ -397,9 +341,7 @@ test("portrait calendar and composer reject past creation and rescheduling", asy
   await expect(page.locator("[data-calendar-item]:visible")).toHaveCount(0);
 
   await page.setViewportSize({ width: 1280, height: 800 });
-  const futureItem = page.locator(
-    '[data-calendar-item][aria-label="Future scheduled post"]',
-  );
+  const futureItem = page.locator('[data-calendar-item][aria-label="Future scheduled post"]');
   const pastDay = page.locator('[role="group"]').filter({
     has: page.getByRole("button", {
       name: "Create post 2030-06-10",
@@ -429,13 +371,9 @@ test("portrait calendar and composer reject past creation and rescheduling", asy
   await pastDay.dispatchEvent("drop", { dataTransfer });
   await dataTransfer.dispose();
 
+  await expect(page.getByText("Choose today or a future date.", { exact: true })).toBeVisible();
   await expect(
-    page.getByText("Choose today or a future date.", { exact: true }),
-  ).toBeVisible();
-  await expect(
-    futureDay.locator(
-      '[data-calendar-item][aria-label="Future scheduled post"]',
-    ),
+    futureDay.locator('[data-calendar-item][aria-label="Future scheduled post"]'),
   ).toBeVisible();
   expect(rescheduleRequests).toBe(0);
 
@@ -450,22 +388,16 @@ test("portrait calendar and composer reject past creation and rescheduling", asy
   await todayDay.dispatchEvent("drop", { dataTransfer: sameDayTransfer });
   await sameDayTransfer.dispose();
 
+  await expect(page.getByText("Choose today or a future date.", { exact: true })).toBeVisible();
   await expect(
-    page.getByText("Choose today or a future date.", { exact: true }),
-  ).toBeVisible();
-  await expect(
-    futureDay.locator(
-      '[data-calendar-item][aria-label="Future scheduled post"]',
-    ),
+    futureDay.locator('[data-calendar-item][aria-label="Future scheduled post"]'),
   ).toBeVisible();
   expect(rescheduleRequests).toBe(0);
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/?date=2030-06-10&workspace_id=${workspace.id}`);
 
-  await expect(
-    page.getByText("Choose a future date and time.", { exact: true }),
-  ).toBeVisible();
+  await expect(page.getByText("Choose a future date and time.", { exact: true })).toBeVisible();
   const mobileScheduleButton = page
     .getByTestId("composer-action-controls")
     .getByRole("button", { name: "Schedule", exact: true });
@@ -503,19 +435,13 @@ test("a scheduled thread renders only its parent as a calendar item", async ({
 
   await page.goto("/calendar");
 
-  await expect(page.getByRole("button", { name: /Thread opener/ })).toHaveCount(
-    1,
-  );
+  await expect(page.getByRole("button", { name: /Thread opener/ })).toHaveCount(1);
   await expect(page.getByText("Thread reply", { exact: true })).toHaveCount(0);
 
   await page.setViewportSize({ width: 1280, height: 800 });
   await expect(page.locator("[data-calendar-item]")).toHaveCount(1);
-  await expect(
-    page.getByRole("button", { name: "Thread opener", exact: true }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Thread reply", exact: true }),
-  ).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Thread opener", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Thread reply", exact: true })).toHaveCount(0);
 });
 
 test("the desktop week grid opens the composer on a 15-minute snapped time", async ({
@@ -527,22 +453,13 @@ test("the desktop week grid opens the composer on a 15-minute snapped time", asy
   await page.clock.setFixedTime(new Date("2030-06-15T12:00:00.000Z"));
   await page.setViewportSize({ width: 1280, height: 800 });
   await mockCalendarData(page, [
-    scheduledPost(
-      "week-post",
-      workspace.id,
-      "Week grid post",
-      "2030-06-15T13:00:00.000Z",
-    ),
+    scheduledPost("week-post", workspace.id, "Week grid post", "2030-06-15T13:00:00.000Z"),
   ]);
 
   await page.goto("/calendar");
   await page.getByRole("button", { name: "Week", exact: true }).click();
-  await expect(
-    page.getByRole("region", { name: "Weekly publishing calendar" }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Week grid post", exact: true }),
-  ).toBeVisible();
+  await expect(page.getByRole("region", { name: "Weekly publishing calendar" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Week grid post", exact: true })).toBeVisible();
 
   const targetHour = page.getByRole("group", {
     name: /Jun 15.*14:00/,
@@ -550,9 +467,7 @@ test("the desktop week grid opens the composer on a 15-minute snapped time", asy
   await expect(targetHour).toBeVisible();
   await targetHour.click({ position: { x: 40, y: 50 } });
   await expect(page).toHaveURL(
-    new RegExp(
-      `\\/?date=2030-06-15&time=14%3A30&workspace_id=${workspace.id}$`,
-    ),
+    new RegExp(`\\/?date=2030-06-15&time=14%3A30&workspace_id=${workspace.id}$`),
   );
 });
 
@@ -575,9 +490,7 @@ test("published posts remain visible in calendar history and cannot move", async
 
   await page.goto("/calendar");
 
-  await expect(
-    page.getByText("0 scheduled / 1 published / UTC", { exact: true }),
-  ).toBeVisible();
+  await expect(page.getByText("0 scheduled / 1 published / UTC", { exact: true })).toBeVisible();
   const publishedItem = page.locator(
     '[data-calendar-item][aria-label="Published calendar history"]',
   );
@@ -653,16 +566,10 @@ test("the day drawer keeps scheduled posts compact and icon-led", async ({
 
   const drawer = page.getByTestId("day-posts-drawer");
   await expect(drawer).toBeVisible();
-  await expect(
-    drawer.getByRole("heading", { name: "Thu, Jun 20" }),
-  ).toBeVisible();
+  await expect(drawer.getByRole("heading", { name: "Thu, Jun 20" })).toBeVisible();
   await expect(drawer.getByText("1 posts", { exact: true })).toBeVisible();
-  await expect(
-    drawer.getByRole("button", { name: "New post", exact: true }),
-  ).toBeVisible();
-  await expect(
-    drawer.getByText(/A deliberately long scheduled post preview/),
-  ).toBeVisible();
+  await expect(drawer.getByRole("button", { name: "New post", exact: true })).toBeVisible();
+  await expect(drawer.getByText(/A deliberately long scheduled post preview/)).toBeVisible();
 
   const destinations = drawer.getByTestId("day-post-destinations");
   await expect(destinations).toHaveAttribute("aria-label", "Accounts: 3");

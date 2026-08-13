@@ -41,6 +41,7 @@ If this is a UI change, add before/after screenshots.
 ## Platform Impact
 
 Does this affect any social platforms?
+
 - [ ] X (Twitter)
 - [ ] Mastodon
 - [ ] Bluesky

@@ -189,18 +189,14 @@ describe("BrowserTelemetry", () => {
     const sdk = new FakeSDK();
     const subject = new BrowserTelemetry(sdk, () => true);
     subject.configure(configuredApp);
-    const error = new Error(
-      "Failed https://example.com/callback?code=secret user@example.com",
-    );
+    const error = new Error("Failed https://example.com/callback?code=secret user@example.com");
     subject.captureException(error);
     subject.captureException(error);
 
     expect(sdk.exceptions).toHaveLength(1);
     expect(sdk.exceptions[0]?.error.message).not.toContain("secret");
     expect(sdk.exceptions[0]?.error.message).not.toContain("user@example.com");
-    expect(sdk.exceptions[0]?.error.message).not.toContain(
-      "https://example.com",
-    );
+    expect(sdk.exceptions[0]?.error.message).not.toContain("https://example.com");
   });
 
   it("redacts raw stack URLs while retaining safe source-map asset paths", () => {
@@ -225,13 +221,10 @@ describe("BrowserTelemetry", () => {
   });
 
   it("applies browser correlation headers to shared request transports", () => {
-    const headers = applyTelemetryRequestHeaders(
-      new Headers({ Authorization: "Bearer token" }),
-      {
-        "X-PostHog-Distinct-ID": "browser-user-1",
-        "X-PostHog-Session-ID": "session-1",
-      },
-    );
+    const headers = applyTelemetryRequestHeaders(new Headers({ Authorization: "Bearer token" }), {
+      "X-PostHog-Distinct-ID": "browser-user-1",
+      "X-PostHog-Session-ID": "session-1",
+    });
 
     expect(headers.get("Authorization")).toBe("Bearer token");
     expect(headers.get("X-PostHog-Distinct-ID")).toBe("browser-user-1");

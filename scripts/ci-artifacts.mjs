@@ -22,13 +22,9 @@ export function selectAttemptArtifact(artifacts, prefix) {
   if (candidates.length === 0) {
     throw new Error(`no current artifact matches ${JSON.stringify(prefix)}`);
   }
-  const latest = candidates.filter(
-    (candidate) => candidate.attempt === candidates[0].attempt,
-  );
+  const latest = candidates.filter((candidate) => candidate.attempt === candidates[0].attempt);
   if (latest.length !== 1) {
-    throw new Error(
-      `artifact attempt ${candidates[0].attempt} is not uniquely identified`,
-    );
+    throw new Error(`artifact attempt ${candidates[0].attempt} is not uniquely identified`);
   }
   return latest[0].name;
 }
@@ -53,9 +49,7 @@ export function resolveRunArtifact({ repository, runId, prefix }) {
     { stdout: "pipe", stderr: "pipe" },
   );
   if (result.exitCode !== 0) {
-    throw new Error(
-      `could not list workflow artifacts: ${result.stderr.toString().trim()}`,
-    );
+    throw new Error(`could not list workflow artifacts: ${result.stderr.toString().trim()}`);
   }
   const artifacts = result.stdout
     .toString()

@@ -11,10 +11,7 @@ import {
 
 test("every tracked path has explicit release ownership", () => {
   const manifest = readReleaseSurfaceManifest();
-  assert.deepEqual(
-    validateReleaseSurfaceManifest(manifest, trackedReleasePaths()),
-    [],
-  );
+  assert.deepEqual(validateReleaseSurfaceManifest(manifest, trackedReleasePaths()), []);
 });
 
 test("untracked maintained paths participate in the ownership gate", () => {

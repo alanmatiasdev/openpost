@@ -19,8 +19,7 @@ export const expectedReleaseAssets = Object.freeze([
   "openpost-image.spdx.json",
   "openpost-image-trivy.json",
   ...serverTargets.map(
-    ([os, architecture, extension]) =>
-      `openpost-server-${os}-${architecture}${extension}`,
+    ([os, architecture, extension]) => `openpost-server-${os}-${architecture}${extension}`,
   ),
   ...cliTargets.flatMap(([os, architecture, extension]) => [
     `openpost-cli-${os}-${architecture}${extension}`,
@@ -49,9 +48,7 @@ export function validateRelease(release, options) {
   }
   if (release.draft !== expectedDraft) {
     problems.push(
-      expectedDraft
-        ? "tag release must remain a draft"
-        : "tag release was not published",
+      expectedDraft ? "tag release must remain a draft" : "tag release was not published",
     );
   }
   if (release.prerelease !== false) {
@@ -76,11 +73,7 @@ export function validateRelease(release, options) {
     if (seen.has(name)) problems.push(`duplicate release asset: ${name}`);
     seen.add(name);
     if (!expected.has(name)) problems.push(`unexpected release asset: ${name}`);
-    if (
-      asset.state !== "uploaded" ||
-      !Number.isInteger(asset.size) ||
-      asset.size <= 0
-    ) {
+    if (asset.state !== "uploaded" || !Number.isInteger(asset.size) || asset.size <= 0) {
       problems.push(`release asset is not completely uploaded: ${name}`);
     }
   }

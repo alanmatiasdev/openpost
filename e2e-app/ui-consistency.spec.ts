@@ -1,9 +1,4 @@
-import {
-  expect,
-  test,
-  type APIRequestContext,
-  type Page,
-} from "@playwright/test";
+import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 import { authenticatePage, createWorkspace, registerUser } from "./helpers";
 
 const tinyPNG = Buffer.from(
@@ -11,14 +6,7 @@ const tinyPNG = Buffer.from(
   "base64",
 );
 
-const coreRoutes = [
-  "/activity",
-  "/accounts",
-  "/media",
-  "/prompts",
-  "/settings",
-  "/calendar",
-];
+const coreRoutes = ["/activity", "/accounts", "/media", "/prompts", "/settings", "/calendar"];
 const viewports = [
   { name: "compact phone portrait", width: 320, height: 568 },
   { name: "phone portrait", width: 390, height: 844 },
@@ -69,15 +57,8 @@ const portuguesePortraitRoutes = [
   },
 ] as const;
 
-async function createAuthenticatedWorkspace(
-  page: Page,
-  request: APIRequestContext,
-  seed: string,
-) {
-  const auth = await registerUser(
-    request,
-    `ui-consistency-${seed}@example.com`,
-  );
+async function createAuthenticatedWorkspace(page: Page, request: APIRequestContext, seed: string) {
+  const auth = await registerUser(request, `ui-consistency-${seed}@example.com`);
   await createWorkspace(request, auth.token, `UI consistency ${seed}`);
   await authenticatePage(page, auth.token);
 }
@@ -86,9 +67,7 @@ async function expectNoDocumentOverflow(page: Page) {
   await expect
     .poll(() =>
       page.evaluate(
-        () =>
-          document.documentElement.scrollWidth <=
-          document.documentElement.clientWidth,
+        () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
       ),
     )
     .toBe(true);
@@ -152,9 +131,7 @@ async function expectConsistentPageFrame(page: Page) {
   await expect(page.getByTestId("page-header")).toBeVisible();
   await expect(page.locator("h1")).toHaveCount(1);
   await expect(page.locator("h1")).toHaveCSS("font-size", "20px");
-  await expect(
-    page.locator('[data-testid="page-loading"]:visible'),
-  ).toHaveCount(0, {
+  await expect(page.locator('[data-testid="page-loading"]:visible')).toHaveCount(0, {
     timeout: 15_000,
   });
   await expectNoDocumentOverflow(page);
@@ -177,18 +154,14 @@ for (const viewport of viewports) {
 
         if (route === "/calendar") {
           const calendarContent = page.locator("[data-calendar-content]");
-          const agenda = calendarContent
-            .locator(":scope > section:not(.month-shell)")
-            .first();
+          const agenda = calendarContent.locator(":scope > section:not(.month-shell)").first();
           const month = page.locator(".month-shell");
 
           await expect(page.locator("main")).toHaveCount(1);
           await expect(month).toHaveCount(1);
           if (viewport.width < 1280) {
             await expect
-              .poll(() =>
-                agenda.evaluate((element) => getComputedStyle(element).display),
-              )
+              .poll(() => agenda.evaluate((element) => getComputedStyle(element).display))
               .not.toBe("none");
             await expect(month).toBeHidden();
           } else {
@@ -201,9 +174,9 @@ for (const viewport of viewports) {
           const settingsNavigation = page.getByTestId("settings-navigation");
           await expect(settingsNavigation).toBeVisible();
           if (viewport.width < 1024) {
-            await expect(
-              settingsNavigation.locator('button[aria-label="Settings"]'),
-            ).toContainText("Social accounts");
+            await expect(settingsNavigation.locator('button[aria-label="Settings"]')).toContainText(
+              "Social accounts",
+            );
           } else {
             await expect(
               settingsNavigation.locator('[data-settings-tab="accounts"]'),
@@ -215,9 +188,7 @@ for (const viewport of viewports) {
 
     await page.goto("/settings");
     await expectConsistentPageFrame(page);
-    const mobileSettingsSelector = page.locator(
-      'aside button[aria-label="Settings"]',
-    );
+    const mobileSettingsSelector = page.locator('aside button[aria-label="Settings"]');
     await expect(mobileSettingsSelector).toHaveCount(1);
 
     if (viewport.width < 1024) {
@@ -230,18 +201,14 @@ for (const viewport of viewports) {
       await page.setViewportSize({ width: viewport.width, height: 320 });
       await expect
         .poll(() =>
-          settingsMenuViewport.evaluate(
-            (element) => element.scrollHeight > element.clientHeight,
-          ),
+          settingsMenuViewport.evaluate((element) => element.scrollHeight > element.clientHeight),
         )
         .toBe(true);
       await settingsMenuViewport.evaluate((element) => {
         element.scrollTop = element.scrollHeight;
       });
       await expect
-        .poll(() =>
-          settingsMenuViewport.evaluate((element) => element.scrollTop),
-        )
+        .poll(() => settingsMenuViewport.evaluate((element) => element.scrollTop))
         .toBeGreaterThan(0);
       await page.getByRole("option", { name: "Posting schedule" }).click();
       await page.setViewportSize(viewport);
@@ -304,9 +271,7 @@ test("Portuguese page chrome stays readable across compact portrait widths", asy
         await expectConsistentPageFrame(page);
 
         if ("heading" in route) {
-          await expect(
-            page.getByRole("heading", { level: 1, name: route.heading }),
-          ).toBeVisible();
+          await expect(page.getByRole("heading", { level: 1, name: route.heading })).toBeVisible();
         } else {
           await expect(page.getByText(route.supportingHeading)).toBeVisible();
         }
@@ -320,9 +285,7 @@ test("Portuguese page chrome stays readable across compact portrait widths", asy
       await page.goto("/settings");
       await expectConsistentPageFrame(page);
 
-      const settingsSelector = page.locator(
-        'aside button[aria-label="Definições"]',
-      );
+      const settingsSelector = page.locator('aside button[aria-label="Definições"]');
       await expect(settingsSelector).toBeVisible();
       await settingsSelector.click();
       await page.getByRole("option", { name: "Horário de publicação" }).click();
@@ -335,9 +298,7 @@ test("Portuguese page chrome stays readable across compact portrait widths", asy
       ).toBeVisible();
       const scheduleSection = page.locator("#posting-schedule");
       await scheduleSection.locator("#new-time").scrollIntoViewIfNeeded();
-      await expect(
-        scheduleSection.getByRole("button", { name: "Adicionar hora" }),
-      ).toBeVisible();
+      await expect(scheduleSection.getByRole("button", { name: "Adicionar hora" })).toBeVisible();
       await expectNoDocumentOverflow(page);
     });
   }
@@ -356,14 +317,15 @@ test("media card actions use a context menu on a portrait screen", async ({
   const filename = `touch-actions-${seed}.png`;
   await page.getByRole("button", { name: "Add media" }).first().click();
   const uploadDialog = page.getByRole("dialog", { name: "Upload media" });
-  await uploadDialog.locator('input[type="file"]').first().setInputFiles({
-    name: filename,
-    mimeType: "image/png",
-    buffer: Buffer.concat([tinyPNG, Buffer.from(seed)]),
-  });
   await uploadDialog
-    .getByRole("button", { name: "Upload 1 file", exact: true })
-    .click();
+    .locator('input[type="file"]')
+    .first()
+    .setInputFiles({
+      name: filename,
+      mimeType: "image/png",
+      buffer: Buffer.concat([tinyPNG, Buffer.from(seed)]),
+    });
+  await uploadDialog.getByRole("button", { name: "Upload 1 file", exact: true }).click();
   await expect(uploadDialog).toHaveCount(0, { timeout: 15_000 });
   await expect(page.getByText(filename)).toBeVisible();
 
@@ -372,9 +334,7 @@ test("media card actions use a context menu on a portrait screen", async ({
   });
   const assetCard = page.locator('[data-library-kind="asset"]');
   await assetCard.click({ button: "right" });
-  await expect(
-    page.getByRole("menuitem", { name: "Media details" }),
-  ).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Media details" })).toBeVisible();
   await expect(page.getByRole("menuitem", { name: "Download" })).toBeVisible();
   await page.keyboard.press("Escape");
 
@@ -408,9 +368,7 @@ test("media load failures stay distinct from a genuine empty library and can ret
   });
 
   await page.goto("/media");
-  await expect(page.getByRole("alert")).toContainText(
-    "Media temporarily unavailable",
-  );
+  await expect(page.getByRole("alert")).toContainText("Media temporarily unavailable");
   await expect(page.getByText("No media found")).toHaveCount(0);
 
   await page.getByRole("button", { name: "Try again" }).click();
@@ -423,10 +381,7 @@ test("invitation acceptance ignores a transient failure and retries in place", a
   request,
 }, testInfo) => {
   const seed = `invite-retry-${Date.now().toString(36)}-${testInfo.workerIndex}`;
-  const auth = await registerUser(
-    request,
-    `ui-consistency-${seed}@example.com`,
-  );
+  const auth = await registerUser(request, `ui-consistency-${seed}@example.com`);
   const workspace = await createWorkspace(request, auth.token, seed);
   await authenticatePage(page, auth.token);
 
@@ -449,13 +404,9 @@ test("invitation acceptance ignores a transient failure and retries in place", a
   });
 
   await page.goto("/invite?token=retry-token");
-  await expect(page.getByRole("alert")).toContainText(
-    "Invitation service unavailable",
-  );
+  await expect(page.getByRole("alert")).toContainText("Invitation service unavailable");
   await page.getByRole("button", { name: "Try again" }).click();
-  await expect(
-    page.getByRole("heading", { level: 1, name: "Invitation accepted" }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Invitation accepted" })).toBeVisible();
   expect(acceptanceRequests).toBe(2);
 });
 
@@ -467,18 +418,14 @@ test("core routes use one bounded content-shaped loading state", async ({
   const seed = `loading-${Date.now().toString(36)}-${testInfo.workerIndex}`;
   await createAuthenticatedWorkspace(page, request, seed);
 
-  const delay = async () =>
-    new Promise<void>((resolveDelay) => setTimeout(resolveDelay, 700));
+  const delay = async () => new Promise<void>((resolveDelay) => setTimeout(resolveDelay, 700));
 
   await page.route("**/api/v1/publications?**", async (route) => {
     await delay();
     await route.continue();
   });
   await page.goto("/activity");
-  await expect(page.getByTestId("page-loading")).toHaveAttribute(
-    "data-layout",
-    "list",
-  );
+  await expect(page.getByTestId("page-loading")).toHaveAttribute("data-layout", "list");
   await expect(page.getByTestId("page-loading")).toHaveCount(1);
   await expect(page.getByTestId("page-loading")).toHaveCount(0, {
     timeout: 15_000,
@@ -490,10 +437,7 @@ test("core routes use one bounded content-shaped loading state", async ({
     await route.continue();
   });
   await page.goto("/media");
-  await expect(page.getByTestId("page-loading")).toHaveAttribute(
-    "data-layout",
-    "gallery",
-  );
+  await expect(page.getByTestId("page-loading")).toHaveAttribute("data-layout", "gallery");
   await expect(page.getByTestId("page-loading")).toHaveCount(1);
   await expect(page.getByTestId("page-loading")).toHaveCount(0, {
     timeout: 15_000,
@@ -505,10 +449,7 @@ test("core routes use one bounded content-shaped loading state", async ({
     await route.continue();
   });
   await page.goto("/calendar");
-  await expect(page.getByTestId("page-loading")).toHaveAttribute(
-    "data-layout",
-    "calendar",
-  );
+  await expect(page.getByTestId("page-loading")).toHaveAttribute("data-layout", "calendar");
   await expect(page.getByTestId("page-loading")).toHaveCount(1);
   await expect(page.locator("main .animate-spin")).toHaveCount(0);
   await expect(page.getByTestId("page-loading")).toHaveCount(0, {

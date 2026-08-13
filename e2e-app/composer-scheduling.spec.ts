@@ -17,11 +17,7 @@ type PostPayload = {
   [key: string]: unknown;
 };
 
-function publicationReadiness(
-  state: string,
-  publishable: boolean,
-  blocker?: string,
-) {
+function publicationReadiness(state: string, publishable: boolean, blocker?: string) {
   return {
     state,
     executable: publishable,
@@ -53,11 +49,7 @@ test("composer uses the exact immediate and scheduled readiness decisions", asyn
   let injectChangedDestinationValidation = true;
 
   const auth = await registerUser(request, email);
-  const workspaceBody = await createWorkspace(
-    request,
-    auth.token,
-    "Composer Scheduling E2E",
-  );
+  const workspaceBody = await createWorkspace(request, auth.token, "Composer Scheduling E2E");
 
   await authenticatePage(page, auth.token);
   await page.route("**/api/v1/capabilities", async (route) => {
@@ -225,9 +217,7 @@ test("composer uses the exact immediate and scheduled readiness decisions", asyn
   });
   await page.route("**/api/v1/publications", async (route) => {
     if (route.request().method() === "POST") {
-      publicationPayload = JSON.parse(
-        route.request().postData() ?? "{}",
-      ) as PostPayload;
+      publicationPayload = JSON.parse(route.request().postData() ?? "{}") as PostPayload;
 
       await route.fulfill({
         contentType: "application/json",
@@ -248,34 +238,28 @@ test("composer uses the exact immediate and scheduled readiness decisions", asyn
 
     await route.continue();
   });
-  await page.route(
-    "**/api/v1/publications/publication-schedule",
-    async (route) => {
-      if (route.request().method() === "PUT") {
-        publicationPayload = {
-          ...(publicationPayload ?? {}),
-          ...(route.request().postDataJSON() as PostPayload),
-        };
-        await route.fulfill({ contentType: "application/json", json: {} });
-        return;
-      }
-      await route.continue();
-    },
-  );
-  await page.route(
-    "**/api/v1/publications/publication-schedule/renditions",
-    async (route) => {
-      if (route.request().method() === "PUT") {
-        publicationPayload = {
-          ...(publicationPayload ?? {}),
-          ...(route.request().postDataJSON() as PostPayload),
-        };
-        await route.fulfill({ contentType: "application/json", json: {} });
-        return;
-      }
-      await route.continue();
-    },
-  );
+  await page.route("**/api/v1/publications/publication-schedule", async (route) => {
+    if (route.request().method() === "PUT") {
+      publicationPayload = {
+        ...(publicationPayload ?? {}),
+        ...(route.request().postDataJSON() as PostPayload),
+      };
+      await route.fulfill({ contentType: "application/json", json: {} });
+      return;
+    }
+    await route.continue();
+  });
+  await page.route("**/api/v1/publications/publication-schedule/renditions", async (route) => {
+    if (route.request().method() === "PUT") {
+      publicationPayload = {
+        ...(publicationPayload ?? {}),
+        ...(route.request().postDataJSON() as PostPayload),
+      };
+      await route.fulfill({ contentType: "application/json", json: {} });
+      return;
+    }
+    await route.continue();
+  });
   await page.route("**/api/v1/publications/*/validate", async (route) => {
     if (route.request().method() === "POST") {
       await route.fulfill({
@@ -290,8 +274,7 @@ test("composer uses the exact immediate and scheduled readiness decisions", asyn
                     field: "body",
                     segment_id: "segment:0",
                     message: "Shorten this Bluesky post before scheduling.",
-                    fallback_message:
-                      "Shorten this Bluesky post before scheduling.",
+                    fallback_message: "Shorten this Bluesky post before scheduling.",
                     severity: "error",
                     provider: "bluesky",
                   },
@@ -336,21 +319,15 @@ test("composer uses the exact immediate and scheduled readiness decisions", asyn
   await expect(page.getByTestId("text-thread-composer-shell")).toBeVisible();
   await expect(page.getByTestId("composer-action-controls")).toBeVisible();
   await expect(page.getByRole("button", { name: "Save draft" })).toHaveCount(0);
-  await expect(
-    page.getByRole("button", { name: "Need inspiration?" }),
-  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Need inspiration?" })).toBeVisible();
   await page.getByLabel("Post text").fill(postContent);
-  await expect(
-    page.getByRole("button", { name: "Publish now" }),
-  ).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Publish now" })).toBeDisabled();
   await page.getByTestId("composer-account-control").click();
   await expect(page.getByTestId("composer-account-row")).toContainText(
     "Publish now: The selected Bluesky account, format, or publishing policy is blocked.",
   );
   await page.keyboard.press("Escape");
-  await expect(
-    page.getByRole("button", { name: "Need inspiration?" }),
-  ).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Need inspiration?" })).toHaveCount(0);
   await page.getByRole("button", { name: "Post settings" }).click();
   await expect(page.getByTestId("composer-settings-sheet")).toBeVisible();
   await page.getByRole("button", { name: "Repost settings" }).click();
@@ -383,9 +360,7 @@ test("composer uses the exact immediate and scheduled readiness decisions", asyn
       }),
     )
     .click();
-  await scheduleDialog
-    .getByRole("button", { name: "10:30", exact: true })
-    .click();
+  await scheduleDialog.getByRole("button", { name: "10:30", exact: true }).click();
   await scheduleDialog.getByRole("button", { name: "Done" }).click();
   await expect(scheduleDialog).toBeHidden();
 
@@ -397,9 +372,7 @@ test("composer uses the exact immediate and scheduled readiness decisions", asyn
   await quickSchedule.click();
 
   await expect(page.getByLabel("Post text")).toBeFocused();
-  await expect(
-    page.getByText("Fix the blocking issues before scheduling."),
-  ).toBeVisible();
+  await expect(page.getByText("Fix the blocking issues before scheduling.")).toBeVisible();
   const validationControl = page.getByTestId("composer-validation-control");
   await validationControl.click();
   await expect(
@@ -413,10 +386,7 @@ test("composer uses the exact immediate and scheduled readiness decisions", asyn
   await quickSchedule.click();
 
   await expect(page.getByText("Scheduled!", { exact: true })).toBeVisible();
-  await expect(page.locator("html")).toHaveAttribute(
-    "data-celebrating-schedule",
-    "true",
-  );
+  await expect(page.locator("html")).toHaveAttribute("data-celebrating-schedule", "true");
   await expect.poll(() => publicationPayload).toBeTruthy();
   await expect.poll(() => scheduleAttempts).toBe(2);
 
@@ -444,7 +414,5 @@ test("composer uses the exact immediate and scheduled readiness decisions", asyn
   });
   expect(publicationPayload?.source_url ?? "").toBe("");
   expect(publicationPayload?.scheduled_at).toBeTruthy();
-  expect(new Date(publicationPayload?.scheduled_at ?? "").toString()).not.toBe(
-    "Invalid Date",
-  );
+  expect(new Date(publicationPayload?.scheduled_at ?? "").toString()).not.toBe("Invalid Date");
 });

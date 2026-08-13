@@ -159,7 +159,7 @@ func TestPublicationSchedulingRechecksReadinessAfterPreTransactionMutation(t *te
 		return updateErr
 	}
 
-	_, err = handler.queuePublicationNow(t.Context(), "publication-readiness-race")
+	err = handler.queuePublicationNow(t.Context(), "publication-readiness-race")
 	var notReady *providerreadiness.NotReadyError
 	require.ErrorAs(t, err, &notReady)
 	require.Equal(t, providerreadiness.EffectiveStateDisabled, notReady.Decision.State)

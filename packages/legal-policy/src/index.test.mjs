@@ -89,15 +89,9 @@ test("managed-service facts have current reviews and safe primary sources", () =
 
   for (const provider of managedService.providers) {
     assert.ok(provider.purpose.length > 20, `${provider.id} needs a purpose`);
-    assert.ok(
-      provider.data.length > 20,
-      `${provider.id} needs data categories`,
-    );
+    assert.ok(provider.data.length > 20, `${provider.id} needs data categories`);
     assert.ok(provider.location.length > 10, `${provider.id} needs a location`);
-    assert.ok(
-      provider.transfer.length > 20,
-      `${provider.id} needs transfer facts`,
-    );
+    assert.ok(provider.transfer.length > 20, `${provider.id} needs transfer facts`);
     assert.ok(provider.source_urls.length > 0, `${provider.id} needs a source`);
     for (const source of provider.source_urls) {
       const url = new URL(source);
@@ -117,9 +111,7 @@ test("managed-service facts have current reviews and safe primary sources", () =
     }
     if (!value || typeof value !== "object") return;
     for (const [key, child] of Object.entries(value)) {
-      if (
-        /^(api_?key|client_?secret|password|token|webhook_?url)$/iu.test(key)
-      ) {
+      if (/^(api_?key|client_?secret|password|token|webhook_?url)$/iu.test(key)) {
         unsafeKeys.push(`${path}.${key}`);
       }
       visit(child, `${path}.${key}`);
@@ -148,10 +140,7 @@ test("managed data has an owned purpose, retention rule, and deletion trigger", 
       "deletion_trigger",
       "exceptions",
     ]) {
-      assert.ok(
-        entry[field].length >= 20,
-        `${entry.id} needs a useful ${field}`,
-      );
+      assert.ok(entry[field].length >= 20, `${entry.id} needs a useful ${field}`);
     }
     assert.ok(entry.evidence.length > 0, `${entry.id} needs source evidence`);
     assertSourcePathsExist(entry.evidence, entry.id);
@@ -186,19 +175,8 @@ test("managed data has an owned purpose, retention rule, and deletion trigger", 
 
 test("browser storage inventory covers every supported storage technology", () => {
   assert.deepEqual(
-    [
-      ...new Set(
-        privacyInventory.browser_storage.map(({ technology }) => technology),
-      ),
-    ].sort(),
-    [
-      "Cache Storage",
-      "IndexedDB",
-      "OPFS",
-      "cookie",
-      "localStorage",
-      "sessionStorage",
-    ],
+    [...new Set(privacyInventory.browser_storage.map(({ technology }) => technology))].sort(),
+    ["Cache Storage", "IndexedDB", "OPFS", "cookie", "localStorage", "sessionStorage"],
   );
 
   const ids = new Set();
@@ -207,23 +185,14 @@ test("browser storage inventory covers every supported storage technology", () =
     assert.ok(!ids.has(entry.id), `duplicate browser-storage row ${entry.id}`);
     ids.add(entry.id);
     const identity = `${entry.technology}:${entry.identifier_kind}:${entry.identifier}`;
-    assert.ok(
-      !identifiers.has(identity),
-      `duplicate browser identifier ${identity}`,
-    );
+    assert.ok(!identifiers.has(identity), `duplicate browser identifier ${identity}`);
     identifiers.add(identity);
     assert.match(entry.identifier_kind, /^(exact|prefix)$/u);
     assert.match(entry.necessity, /^(strictly_necessary|functional)$/u);
     for (const field of ["owner", "purpose", "scope", "duration"]) {
-      assert.ok(
-        entry[field].length >= 15,
-        `${entry.id} needs a useful ${field}`,
-      );
+      assert.ok(entry[field].length >= 15, `${entry.id} needs a useful ${field}`);
     }
-    assert.ok(
-      entry.source_refs.length > 0,
-      `${entry.id} needs source evidence`,
-    );
+    assert.ok(entry.source_refs.length > 0, `${entry.id} needs source evidence`);
     assertSourcePathsExist(entry.source_refs, entry.id);
   }
 
@@ -248,10 +217,7 @@ test("browser storage inventory covers every supported storage technology", () =
     "Cache Storage:exact:transformers-cache",
     "Cache Storage:prefix:workbox-precache-v2-",
   ]) {
-    assert.ok(
-      identifiers.has(required),
-      `missing browser identifier ${required}`,
-    );
+    assert.ok(identifiers.has(required), `missing browser identifier ${required}`);
   }
 });
 
@@ -263,10 +229,7 @@ test("material legal history has a current entry for every canonical policy", ()
   const identities = new Set();
   for (const entry of legalChangeHistory.entries) {
     const identity = `${entry.document}:${entry.version}`;
-    assert.ok(
-      !identities.has(identity),
-      `duplicate legal history entry ${identity}`,
-    );
+    assert.ok(!identities.has(identity), `duplicate legal history entry ${identity}`);
     identities.add(identity);
     assert.ok(Number.isFinite(Date.parse(`${entry.effective_date}T00:00:00Z`)));
     assert.equal(new URL(entry.url).protocol, "https:");
@@ -277,8 +240,7 @@ test("material legal history has a current entry for every canonical policy", ()
   for (const document of ["terms", "privacy", "refunds"]) {
     const policy = legalPolicy[document];
     const current = legalChangeHistory.entries.find(
-      (entry) =>
-        entry.document === document && entry.version === policy.version,
+      (entry) => entry.document === document && entry.version === policy.version,
     );
     assert.ok(current, `missing current ${document} history`);
     assert.equal(current.effective_date, policy.effective_date);
@@ -289,29 +251,14 @@ test("material legal history has a current entry for every canonical policy", ()
 test("security assurance states the evidence and independent-assurance boundary", () => {
   assert.equal(securityAssurance.schema_version, 1);
   assertCurrentReview(securityAssurance, "security assurance");
-  assert.deepEqual(
-    securityAssurance.assurance_boundary.published_certifications,
-    [],
-  );
-  assert.deepEqual(
-    securityAssurance.assurance_boundary.published_independent_reports,
-    [],
-  );
-  assert.match(
-    securityAssurance.assurance_boundary.statement,
-    /does not claim SOC 2/u,
-  );
+  assert.deepEqual(securityAssurance.assurance_boundary.published_certifications, []);
+  assert.deepEqual(securityAssurance.assurance_boundary.published_independent_reports, []);
+  assert.match(securityAssurance.assurance_boundary.statement, /does not claim SOC 2/u);
   assert.match(securityAssurance.assurance_boundary.statement, /ISO 27001/u);
-  assert.match(
-    securityAssurance.assurance_boundary.statement,
-    /penetration-test/u,
-  );
+  assert.match(securityAssurance.assurance_boundary.statement, /penetration-test/u);
   assert.equal(securityAssurance.incident_history.status, "no_public_entries");
   assert.deepEqual(securityAssurance.incident_history.entries, []);
-  assert.match(
-    securityAssurance.incident_history.statement,
-    /not a guarantee/u,
-  );
+  assert.match(securityAssurance.incident_history.statement, /not a guarantee/u);
   assert.match(
     securityAssurance.incident_history.publication_commitment,
     /material managed-service incident/u,
@@ -321,20 +268,14 @@ test("security assurance states the evidence and independent-assurance boundary"
   for (const control of securityAssurance.control_matrix) {
     assert.ok(!ids.has(control.id), `duplicate security control ${control.id}`);
     ids.add(control.id);
-    assert.ok(
-      control.control.length >= 10,
-      `${control.id} needs a useful control`,
-    );
+    assert.ok(control.control.length >= 10, `${control.id} needs a useful control`);
     for (const field of [
       "application",
       "managed_service",
       "self_hosted_operator",
       "customer_or_provider",
     ]) {
-      assert.ok(
-        control[field].length >= 30,
-        `${control.id} needs a useful ${field}`,
-      );
+      assert.ok(control[field].length >= 30, `${control.id} needs a useful ${field}`);
     }
     assert.ok(control.evidence.length > 0, `${control.id} needs evidence`);
     assertSourcePathsExist(control.evidence, control.id);

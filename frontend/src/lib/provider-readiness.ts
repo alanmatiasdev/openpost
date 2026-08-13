@@ -12,7 +12,11 @@ export type ProviderReadinessState =
 	| 'expired_proof';
 
 export type ProviderReadinessAction =
-	'none' | 'configure' | 'reconnect' | 'retry' | 'contact_admin';
+	| 'none'
+	| 'configure'
+	| 'reconnect'
+	| 'retry'
+	| 'contact_admin';
 
 export type ProviderReadinessDecision = {
 	state?: string;

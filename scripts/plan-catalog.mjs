@@ -1,10 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import process from "node:process";
 
-const sourcePath = new URL(
-  "../packages/plan-catalog/src/catalog.json",
-  import.meta.url,
-);
+const sourcePath = new URL("../packages/plan-catalog/src/catalog.json", import.meta.url);
 const outputPath = new URL(
   "../backend/internal/services/billing/catalog_generated.go",
   import.meta.url,
@@ -18,9 +15,7 @@ const limitKeys = [
   ["media_bytes_uploaded_monthly", "LimitMediaBytesUploadedMonthly"],
   ["team_members", "LimitTeamMembers"],
 ];
-const longestGoLimitKey = Math.max(
-  ...limitKeys.map(([, goKey]) => `entitlements.${goKey}`.length),
-);
+const longestGoLimitKey = Math.max(...limitKeys.map(([, goKey]) => `entitlements.${goKey}`.length));
 
 function goString(value) {
   return JSON.stringify(value);
@@ -73,9 +68,7 @@ const generated = renderCatalog(catalog);
 if (process.argv.includes("--check")) {
   const current = await readFile(outputPath, "utf8");
   if (current !== generated) {
-    console.error(
-      "Plan catalogue output is stale. Run: bun scripts/plan-catalog.mjs",
-    );
+    console.error("Plan catalogue output is stale. Run: bun scripts/plan-catalog.mjs");
     process.exit(1);
   }
 } else {

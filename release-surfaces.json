@@ -21,12 +21,7 @@
     },
     "documentation": {
       "description": "Product, operator, contributor, policy, and generated documentation",
-      "prefixes": [
-        "docs-site/",
-        "docs/",
-        "e2e-docs/",
-        "packages/social-images/"
-      ],
+      "prefixes": ["docs-site/", "docs/", "e2e-docs/", "packages/social-images/"],
       "paths": [
         "AGENTS.md",
         "AUDIT_REMEDIATION_TODO.md",
@@ -45,16 +40,12 @@
     },
     "delivery": {
       "description": "Build, test, image, deployment, release, certification, and repository environment contracts",
-      "prefixes": [
-        ".github/",
-        "docker/",
-        "provider-certification/",
-        "scripts/"
-      ],
+      "prefixes": [".github/", "docker/", "provider-certification/", "scripts/"],
       "paths": [
         ".dockerignore",
         ".env.example",
         ".envrc",
+        ".oxfmtrc.json",
         "bun.lock",
         "bunfig.toml",
         "compatibility-surfaces.json",
@@ -75,11 +66,7 @@
     "agent-tools": {
       "description": "Repository-owned agent instructions, skills, hooks, and design-audit tooling",
       "prefixes": [".agents/", ".codex/", ".impeccable/", "skills/"],
-      "paths": [
-        ".github/copilot-instructions.md",
-        "server.json",
-        "skills-lock.json"
-      ]
+      "paths": [".github/copilot-instructions.md", "server.json", "skills-lock.json"]
     },
     "shared-assets": {
       "description": "Canonical assets copied into one or more shipped web surfaces",

@@ -97,10 +97,7 @@
       "data": "Recipient address, sender address, email content, and delivery metadata.",
       "location": "Provider-operated Amazon Web Services infrastructure; OpenPost does not pin a region in its SMTP configuration.",
       "transfer": "A managed-service transfer mechanism has not yet been recorded in this register. This is an open operator and legal review item.",
-      "source_urls": [
-        "https://purelymail.com/privacy",
-        "https://purelymail.com/docs/security"
-      ]
+      "source_urls": ["https://purelymail.com/privacy", "https://purelymail.com/docs/security"]
     },
     {
       "id": "paddle",

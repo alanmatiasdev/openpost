@@ -1,11 +1,5 @@
 import assert from "node:assert/strict";
-import {
-  chmodSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -46,11 +40,7 @@ exit 2
   try {
     const result = spawnSync(
       "bash",
-      [
-        "scripts/release-asset-upload.sh",
-        "openpost-cli-linux-arm64",
-        "openpost-mcp-linux-arm64",
-      ],
+      ["scripts/release-asset-upload.sh", "openpost-cli-linux-arm64", "openpost-mcp-linux-arm64"],
       {
         cwd: process.cwd(),
         encoding: "utf8",

@@ -3,7 +3,11 @@ import { client, type Workspace } from '$lib/api/client';
 import { m } from '$lib/paraglide/messages';
 
 export type WorkspaceContextErrorCode =
-	'load-workspaces' | 'load-settings' | 'settings-not-ready' | 'save-settings' | 'delete-workspace';
+	| 'load-workspaces'
+	| 'load-settings'
+	| 'settings-not-ready'
+	| 'save-settings'
+	| 'delete-workspace';
 
 export class WorkspaceContextError extends Error {
 	constructor(

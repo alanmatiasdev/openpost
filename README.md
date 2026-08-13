@@ -159,7 +159,7 @@ OpenPost uses Go, Svelte 5, SvelteKit, and Bun. The repository includes a Devenv
 ```bash
 direnv allow
 devenv shell -- setup
-devenv shell -- verify
+bun run verify
 ```
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) and the [development docs](https://docs.openpost.social/development/setup) before opening a pull request. Bug reports, focused feature proposals, documentation fixes, and tested provider improvements are welcome.

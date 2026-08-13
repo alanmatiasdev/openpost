@@ -16,20 +16,12 @@ test("the docs package build prepares ignored OpenAPI artifacts", async () => {
     ),
   );
 
-  assert.match(
-    packageJSON.scripts["prepare:openapi"],
-    /copy-docs-openapi\.mjs/,
-  );
-  assert.match(packageJSON.scripts["docs:build"], /bun run prepare:openapi/);
-  assert.match(packageJSON.scripts["docs:dev"], /bun run prepare:openapi/);
-  assert.ok(
-    turboJSON.tasks.build.inputs.includes("$TURBO_ROOT$/frontend/openapi.json"),
-  );
-  assert.ok(
-    turboJSON.tasks.build.inputs.includes(
-      "$TURBO_ROOT$/scripts/copy-docs-openapi.mjs",
-    ),
-  );
+  assert.match(packageJSON.scripts.build, /copy-docs-openapi\.mjs/);
+  assert.match(packageJSON.scripts.dev, /copy-docs-openapi\.mjs/);
+  assert.equal(packageJSON.scripts["prepare:openapi"], undefined);
+  assert.equal(packageJSON.scripts["docs:build"], undefined);
+  assert.ok(turboJSON.tasks.build.inputs.includes("$TURBO_ROOT$/frontend/openapi.json"));
+  assert.ok(turboJSON.tasks.build.inputs.includes("$TURBO_ROOT$/scripts/copy-docs-openapi.mjs"));
 });
 
 function runTurbo(directory, args) {
@@ -42,12 +34,8 @@ function runTurbo(directory, args) {
 }
 
 test("the frontend package cache restores output and invalidates on root assets", async (t) => {
-  const directory = await mkdtemp(
-    path.join(os.tmpdir(), "openpost-build-graph-"),
-  );
-  const cacheDirectory = await mkdtemp(
-    path.join(os.tmpdir(), "openpost-build-graph-cache-"),
-  );
+  const directory = await mkdtemp(path.join(os.tmpdir(), "openpost-build-graph-"));
+  const cacheDirectory = await mkdtemp(path.join(os.tmpdir(), "openpost-build-graph-cache-"));
   const runCountPath = path.join(
     os.tmpdir(),
     `openpost-build-graph-runs-${path.basename(directory)}.txt`,
@@ -59,9 +47,7 @@ test("the frontend package cache restores output and invalidates on root assets"
   });
   await mkdir(path.join(directory, "frontend"), { recursive: true });
   await mkdir(path.join(directory, "assets"), { recursive: true });
-  const rootTurbo = JSON.parse(
-    await readFile(path.join(root, "turbo.json"), "utf8"),
-  );
+  const rootTurbo = JSON.parse(await readFile(path.join(root, "turbo.json"), "utf8"));
   const frontendTurbo = JSON.parse(
     await readFile(path.join(root, "frontend", "turbo.json"), "utf8"),
   );
@@ -88,14 +74,8 @@ test("the frontend package cache restores output and invalidates on root assets"
       })}\n`,
     ),
     writeFile(path.join(directory, ".gitignore"), ".turbo/\n"),
-    writeFile(
-      path.join(directory, "turbo.json"),
-      `${JSON.stringify(rootTurbo)}\n`,
-    ),
-    writeFile(
-      path.join(directory, "frontend", "turbo.json"),
-      `${JSON.stringify(frontendTurbo)}\n`,
-    ),
+    writeFile(path.join(directory, "turbo.json"), `${JSON.stringify(rootTurbo)}\n`),
+    writeFile(path.join(directory, "frontend", "turbo.json"), `${JSON.stringify(frontendTurbo)}\n`),
     writeFile(
       path.join(directory, "frontend", "package.json"),
       `${JSON.stringify({
@@ -131,20 +111,14 @@ test("the frontend package cache restores output and invalidates on root assets"
   ];
   runTurbo(directory, [...common, "--force"]);
   assert.equal(
-    await readFile(
-      path.join(directory, "frontend", "build", "artifact.txt"),
-      "utf8",
-    ),
+    await readFile(path.join(directory, "frontend", "build", "artifact.txt"), "utf8"),
     "alpha\n",
   );
   await rm(path.join(directory, "frontend", "build"), { recursive: true });
 
   runTurbo(directory, common);
   assert.equal(
-    await readFile(
-      path.join(directory, "frontend", "build", "artifact.txt"),
-      "utf8",
-    ),
+    await readFile(path.join(directory, "frontend", "build", "artifact.txt"), "utf8"),
     "alpha\n",
   );
   assert.equal(await readFile(runCountPath, "utf8"), "run\n");
@@ -152,10 +126,7 @@ test("the frontend package cache restores output and invalidates on root assets"
   await writeFile(path.join(directory, "assets", "cache-input.txt"), "beta\n");
   runTurbo(directory, common);
   assert.equal(
-    await readFile(
-      path.join(directory, "frontend", "build", "artifact.txt"),
-      "utf8",
-    ),
+    await readFile(path.join(directory, "frontend", "build", "artifact.txt"), "utf8"),
     "beta\n",
   );
   assert.equal(await readFile(runCountPath, "utf8"), "run\nrun\n");

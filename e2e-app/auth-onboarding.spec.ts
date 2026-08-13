@@ -7,9 +7,7 @@ import {
   routeBrowserRegistration,
 } from "./helpers";
 
-test("email signup confirms a six-digit code before onboarding", async ({
-  page,
-}) => {
+test("email signup confirms a six-digit code before onboarding", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const email = "verify-person@example.com";
   const purchaseChoiceToken = "choice-team-annual";
@@ -40,9 +38,7 @@ test("email signup confirms a six-digit code before onboarding", async ({
       },
     }),
   );
-  await page.route("**/api/v1/auth/oidc/providers", (route) =>
-    route.fulfill({ json: [] }),
-  );
+  await page.route("**/api/v1/auth/oidc/providers", (route) => route.fulfill({ json: [] }));
   await page.route("**/api/v1/billing/purchase-choice", async (route) => {
     const body = route.request().postDataJSON();
     expect(body).toMatchObject({
@@ -80,52 +76,41 @@ test("email signup confirms a six-digit code before onboarding", async ({
     });
   });
   let confirmationAttempts = 0;
-  await page.route(
-    "**/api/v1/auth/email-verification/confirm",
-    async (route) => {
-      confirmationAttempts += 1;
-      const body = route.request().postDataJSON();
-      expect(body.challenge_id).toBe("challenge-1");
-      if (body.code !== "654321") {
-        await route.fulfill({
-          status: 400,
-          contentType: "application/problem+json",
-          json: {
-            status: 400,
-            title: "Bad Request",
-            detail: "verification code is incorrect",
-          },
-        });
-        return;
-      }
+  await page.route("**/api/v1/auth/email-verification/confirm", async (route) => {
+    confirmationAttempts += 1;
+    const body = route.request().postDataJSON();
+    expect(body.challenge_id).toBe("challenge-1");
+    if (body.code !== "654321") {
       await route.fulfill({
+        status: 400,
+        contentType: "application/problem+json",
         json: {
-          requires_email_verification: false,
-          requires_mfa: false,
-          token: "verified-session",
-          user,
+          status: 400,
+          title: "Bad Request",
+          detail: "verification code is incorrect",
         },
       });
-    },
-  );
-  await page.route("**/api/v1/workspaces", (route) =>
-    route.fulfill({ json: [] }),
-  );
+      return;
+    }
+    await route.fulfill({
+      json: {
+        requires_email_verification: false,
+        requires_mfa: false,
+        token: "verified-session",
+        user,
+      },
+    });
+  });
+  await page.route("**/api/v1/workspaces", (route) => route.fulfill({ json: [] }));
 
   await page.goto("/register?plan=team&billing_period=annual");
   await expect(page.getByText("OpenPost Team")).toBeVisible();
   await expect(page.getByText("$990/year", { exact: true })).toBeVisible();
   await expect(page.getByText("14-day free trial")).toBeVisible();
-  await expect(
-    page.getByText("$0 due today. A card is required at checkout."),
-  ).toBeVisible();
-  await expect(
-    page.getByText("After the trial, $990/year until canceled."),
-  ).toBeVisible();
+  await expect(page.getByText("$0 due today. A card is required at checkout.")).toBeVisible();
+  await expect(page.getByText("After the trial, $990/year until canceled.")).toBeVisible();
   await page.reload();
-  expect(new URL(page.url()).searchParams.get("purchase_choice")).toBe(
-    purchaseChoiceToken,
-  );
+  expect(new URL(page.url()).searchParams.get("purchase_choice")).toBe(purchaseChoiceToken);
   await expect(page.getByText("OpenPost Team")).toBeVisible();
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password", { exact: true }).fill(password);
@@ -133,19 +118,11 @@ test("email signup confirms a six-digit code before onboarding", async ({
   await page.getByRole("button", { name: "Create Account" }).click();
 
   await expect(page).toHaveURL(/\/verify-email\?/);
-  expect(new URL(page.url()).searchParams.get("purchase_choice")).toBe(
-    purchaseChoiceToken,
-  );
-  await expect(
-    page.getByRole("heading", { name: "Check your email" }),
-  ).toBeVisible();
-  await expect(
-    page.getByText(`Enter the 6-digit code sent to ${email}.`),
-  ).toBeVisible();
+  expect(new URL(page.url()).searchParams.get("purchase_choice")).toBe(purchaseChoiceToken);
+  await expect(page.getByRole("heading", { name: "Check your email" })).toBeVisible();
+  await expect(page.getByText(`Enter the 6-digit code sent to ${email}.`)).toBeVisible();
   await expect(page.getByText("OpenPost Team")).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: /Send a new code in/ }),
-  ).toBeDisabled();
+  await expect(page.getByRole("button", { name: /Send a new code in/ })).toBeDisabled();
 
   const verificationCode = page.getByLabel("Verification code");
   await verificationCode.fill("111111");
@@ -188,9 +165,7 @@ test("registration presents every canonical plan and billing period without a fa
       },
     }),
   );
-  await page.route("**/api/v1/auth/oidc/providers", (route) =>
-    route.fulfill({ json: [] }),
-  );
+  await page.route("**/api/v1/auth/oidc/providers", (route) => route.fulfill({ json: [] }));
   await page.route("**/api/v1/billing/purchase-choice", async (route) => {
     const body = route.request().postDataJSON() as {
       plan_id: keyof typeof prices;
@@ -219,10 +194,7 @@ test("registration presents every canonical plan and billing period without a fa
       await expect(page.getByText(`OpenPost ${plan.name}`)).toBeVisible();
       const periodLabel = period === "annual" ? "/year" : "/month";
       await expect(
-        page.getByText(
-          `$${plan[period].toLocaleString("en-US")}${periodLabel}`,
-          { exact: true },
-        ),
+        page.getByText(`$${plan[period].toLocaleString("en-US")}${periodLabel}`, { exact: true }),
       ).toBeVisible();
       await expect(
         page.getByText(
@@ -233,9 +205,7 @@ test("registration presents every canonical plan and billing period without a fa
   }
 });
 
-test("registration rejects missing invalid expired and mismatched choices", async ({
-  page,
-}) => {
+test("registration rejects missing invalid expired and mismatched choices", async ({ page }) => {
   await page.route("**/api/v1/auth/config", (route) =>
     route.fulfill({
       json: {
@@ -247,9 +217,7 @@ test("registration rejects missing invalid expired and mismatched choices", asyn
       },
     }),
   );
-  await page.route("**/api/v1/auth/oidc/providers", (route) =>
-    route.fulfill({ json: [] }),
-  );
+  await page.route("**/api/v1/auth/oidc/providers", (route) => route.fulfill({ json: [] }));
   await page.route("**/api/v1/billing/purchase-choice", async (route) => {
     const token = route.request().postDataJSON().purchase_choice_token;
     const code = token === "expired" ? "expired" : "mismatch";
@@ -271,38 +239,22 @@ test("registration rejects missing invalid expired and mismatched choices", asyn
 
   await page.goto("/register");
   await expect(
-    page.getByText(
-      "Choose a plan and billing period before creating your account.",
-    ),
+    page.getByText("Choose a plan and billing period before creating your account."),
   ).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: "Choose a plan again" }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Create Account" }),
-  ).toBeDisabled();
+  await expect(page.getByRole("link", { name: "Choose a plan again" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Create Account" })).toBeDisabled();
 
   await page.goto("/register?plan=enterprise&billing_period=monthly");
+  await expect(page.getByText("This plan choice is not valid. Choose a plan again.")).toBeVisible();
+
+  await page.goto("/register?plan=founder&billing_period=monthly&purchase_choice=expired");
   await expect(
-    page.getByText("This plan choice is not valid. Choose a plan again."),
+    page.getByText("This plan choice expired. Choose a plan again to continue."),
   ).toBeVisible();
 
-  await page.goto(
-    "/register?plan=founder&billing_period=monthly&purchase_choice=expired",
-  );
+  await page.goto("/register?plan=founder&billing_period=monthly&purchase_choice=mismatched");
   await expect(
-    page.getByText(
-      "This plan choice expired. Choose a plan again to continue.",
-    ),
-  ).toBeVisible();
-
-  await page.goto(
-    "/register?plan=founder&billing_period=monthly&purchase_choice=mismatched",
-  );
-  await expect(
-    page.getByText(
-      "The plan details changed during signup. Choose the plan again to continue.",
-    ),
+    page.getByText("The plan details changed during signup. Choose the plan again to continue."),
   ).toBeVisible();
 });
 
@@ -340,13 +292,9 @@ test("registration routes first-time users to explicit Workspace confirmation", 
     page.getByRole("heading", { name: "Confirm your Workspace and plan" }),
   ).toBeVisible();
   await expect(page.getByLabel("Workspace name")).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Create Workspace and continue" }),
-  ).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Create Workspace and continue" })).toBeDisabled();
 
-  expect(
-    await page.evaluate(() => window.localStorage.getItem("token")),
-  ).toBeNull();
+  expect(await page.evaluate(() => window.localStorage.getItem("token"))).toBeNull();
 
   const workspaces = await page.context().request.get("/api/v1/workspaces");
   expect(workspaces.ok()).toBeTruthy();
@@ -354,19 +302,14 @@ test("registration routes first-time users to explicit Workspace confirmation", 
   expect(workspaceBody).toEqual([]);
 });
 
-test("login honors same-origin redirects for existing workspaces", async ({
-  page,
-  request,
-}) => {
+test("login honors same-origin redirects for existing workspaces", async ({ page, request }) => {
   const unique = Date.now().toString(36);
   const email = `auth-login-${unique}@example.com`;
 
   const auth = await registerUser(request, email);
   await createWorkspace(request, auth.token, "Login Redirect E2E");
 
-  await page.goto(
-    `/login?redirect=${encodeURIComponent("/settings?tab=plan")}`,
-  );
+  await page.goto(`/login?redirect=${encodeURIComponent("/settings?tab=plan")}`);
   await page.getByLabel("Email", { exact: true }).fill(email);
   await page.getByLabel("Password", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Sign In" }).click();
@@ -386,9 +329,7 @@ test("protected navigation carries its exact destination through login", async (
 
   await page.goto("/calendar?view=week");
   await expect(page).toHaveURL(/\/login\?redirect=/);
-  expect(new URL(page.url()).searchParams.get("redirect")).toBe(
-    "/calendar?view=week",
-  );
+  expect(new URL(page.url()).searchParams.get("redirect")).toBe("/calendar?view=week");
   await page.getByLabel("Email", { exact: true }).fill(email);
   await page.getByLabel("Password", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Sign In" }).click();
@@ -396,9 +337,7 @@ test("protected navigation carries its exact destination through login", async (
   await expect(page).toHaveURL(/\/calendar\?view=week$/);
 
   await page.context().clearCookies();
-  await page.goto(
-    `/login?redirect=${encodeURIComponent("https://example.com/steal")}`,
-  );
+  await page.goto(`/login?redirect=${encodeURIComponent("https://example.com/steal")}`);
   await expect(page).toHaveURL(/\/login\?redirect=/);
   await page.getByLabel("Email", { exact: true }).fill(email);
   await page.getByLabel("Password", { exact: true }).fill(password);
@@ -407,9 +346,7 @@ test("protected navigation carries its exact destination through login", async (
   expect(new URL(page.url()).origin).not.toBe("https://example.com");
 });
 
-test("password controls expose the real rules without losing entered values", async ({
-  page,
-}) => {
+test("password controls expose the real rules without losing entered values", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 720 });
   await page.route("**/api/v1/auth/config", (route) =>
     route.fulfill({
@@ -422,9 +359,7 @@ test("password controls expose the real rules without losing entered values", as
       },
     }),
   );
-  await page.route("**/api/v1/auth/oidc/providers", (route) =>
-    route.fulfill({ json: [] }),
-  );
+  await page.route("**/api/v1/auth/oidc/providers", (route) => route.fulfill({ json: [] }));
   await page.route("**/api/v1/auth/login", (route) =>
     route.fulfill({
       status: 401,
@@ -447,9 +382,10 @@ test("password controls expose the real rules without losing entered values", as
   await showLoginPassword.focus();
   await expect(showLoginPassword).toBeFocused();
   await page.keyboard.press("Enter");
-  await expect(
-    page.getByRole("button", { name: "Hide password" }),
-  ).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: "Hide password" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
   await expect(loginPassword).toHaveAttribute("type", "text");
   await expect(loginPassword).toHaveValue("entered-password");
 
@@ -466,20 +402,18 @@ test("password controls expose the real rules without losing entered values", as
   const confirmation = page.getByLabel("Confirm Password");
   await registrationPassword.fill(password);
   await confirmation.fill(password);
-  await expect(
-    page.getByText("Both password fields match").locator(".."),
-  ).toContainText("Satisfied:");
+  await expect(page.getByText("Both password fields match").locator("..")).toContainText(
+    "Satisfied:",
+  );
 
   const revealButtons = page.getByRole("button", { name: "Show password" });
   await expect(revealButtons).toHaveCount(2);
   await revealButtons.last().click();
   await expect(confirmation).toHaveAttribute("type", "text");
   await expect(confirmation).toHaveValue(password);
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth,
-    ),
-  ).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
 });
 
 test("Google signup lets existing accounts resume without onboarding checkout", async ({
@@ -536,17 +470,14 @@ test("Google signup lets existing accounts resume without onboarding checkout", 
     `/register?plan=founder&billing_period=annual&redirect=${encodeURIComponent(destination)}`,
   );
   const startRequestPromise = page.waitForRequest(
-    (candidate) =>
-      new URL(candidate.url()).pathname === "/api/v1/auth/oidc/google/start",
+    (candidate) => new URL(candidate.url()).pathname === "/api/v1/auth/oidc/google/start",
   );
   await page.getByRole("button", { name: "Continue with Google" }).click();
   const startURL = new URL((await startRequestPromise).url());
   expect(startURL.searchParams.get("signup")).toBe("true");
   expect(startURL.searchParams.get("plan_id")).toBe("founder");
   expect(startURL.searchParams.get("billing_period")).toBe("annual");
-  expect(startURL.searchParams.get("purchase_choice_token")).toBe(
-    "choice-founder-annual",
-  );
+  expect(startURL.searchParams.get("purchase_choice_token")).toBe("choice-founder-annual");
   expect(startURL.searchParams.get("return_path")).toBe(
     `/onboarding?plan=founder&billing_period=annual&purchase_choice=choice-founder-annual&redirect=${encodeURIComponent(destination)}&source=signup`,
   );
@@ -637,9 +568,7 @@ test("Google signup keeps legal acceptance and onboarding in one continuation", 
     await route.continue();
   });
 
-  await page.goto(
-    "/onboarding?plan=founder&billing_period=annual&source=signup",
-  );
+  await page.goto("/onboarding?plan=founder&billing_period=annual&source=signup");
   await expect(page).toHaveURL(/\/legal-acceptance\?redirect=/);
   expect(new URL(page.url()).searchParams.get("redirect")).toBe(
     "/onboarding?plan=founder&billing_period=annual&source=signup",
@@ -680,13 +609,10 @@ test("signed-in startup never mounts the login form inside the app shell", async
       }
     };
 
-    new MutationObserver(detectLoginShellFlash).observe(
-      document.documentElement,
-      {
-        childList: true,
-        subtree: true,
-      },
-    );
+    new MutationObserver(detectLoginShellFlash).observe(document.documentElement, {
+      childList: true,
+      subtree: true,
+    });
   });
 
   await page.goto("/login");
