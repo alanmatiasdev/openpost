@@ -12,6 +12,7 @@
         "$TURBO_ROOT$/scripts/asset-surfaces.mjs",
         "$TURBO_ROOT$/scripts/asset-surfaces.ts",
         "$TURBO_ROOT$/scripts/copy-docs-openapi.mjs",
+        "$TURBO_ROOT$/scripts/generate-agent-surfaces.mjs",
         "$TURBO_ROOT$/scripts/sync-assets.mjs",
         "$TURBO_ROOT$/scripts/posthog-source-maps.ts"
       ],

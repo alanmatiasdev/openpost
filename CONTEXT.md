@@ -40,6 +40,14 @@ _Avoid_: Managed user, managed account
 An OpenPost instance operated by its user, who owns its infrastructure, configuration, upgrades, backups, and service-provider relationships. It is not a zero-price tier of the Hosted service.
 _Avoid_: Free tier, Free plan
 
+**Public knowledge**:
+Product, usage, provider, and operating information that OpenPost intentionally publishes without Workspace authorization. It excludes private, mutable, or Workspace-scoped application state.
+_Avoid_: Public app data, crawlable app state
+
+**Agent-readable representation**:
+A build-generated Markdown representation of one public page that preserves its useful meaning and factual substance without reproducing its visual or interactive behavior.
+_Avoid_: Markdown mirror, agent page
+
 **Activation**:
 The point when a Workspace has a connected destination and its first Publication has been scheduled or submitted for delivery. A saved draft alone is not activation, and provider-confirmed delivery is not required.
 _Avoid_: Workspace creation, first draft, first live post

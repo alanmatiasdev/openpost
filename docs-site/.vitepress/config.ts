@@ -1,4 +1,4 @@
-import { resolveDocsSocial } from "@openpost/social-images";
+import { docsSiteUrl, resolveDocsSocial } from "@openpost/social-images";
 import { defineConfig } from "vitepress";
 import { postHogSourceMaps } from "../../scripts/posthog-source-maps";
 
@@ -221,8 +221,31 @@ export default defineConfig({
       description: typeof frontmatterDescription === "string" ? frontmatterDescription : undefined,
     });
     const image = social.imageUrl;
+    const agentDiscovery =
+      page === "index.md"
+        ? [
+            [
+              "link",
+              {
+                rel: "alternate",
+                type: "text/markdown",
+                href: `${docsSiteUrl}/index.md`,
+              },
+            ],
+            [
+              "link",
+              {
+                rel: "alternate",
+                type: "text/plain",
+                href: `${docsSiteUrl}/llms.txt`,
+                title: "llms.txt",
+              },
+            ],
+          ]
+        : [];
     return [
       ["link", { rel: "canonical", href: social.canonical }],
+      ...agentDiscovery,
       ["meta", { property: "og:site_name", content: "OpenPost Docs" }],
       ["meta", { property: "og:type", content: "website" }],
       ["meta", { property: "og:title", content: social.socialTitle }],

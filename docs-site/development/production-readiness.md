@@ -71,6 +71,14 @@ Analytics, comments, and inbox reads use optional adapter interfaces. They do no
 - User docs explain the product. Self-hosting docs explain server work. Developer docs explain the code and contracts.
 - Keep claims about access, limits, app review, and live tests with the relevant social network page.
 
+### Agent-readable public content
+
+The marketing and documentation production builds each generate an `index.md` representation of their canonical homepage and a concise `llms.txt`. Canonical HTML advertises both files. Sitemaps continue to list only canonical HTML pages.
+
+`scripts/generate-agent-surfaces.mjs` owns the shared generation and validation contract. Each site invokes only its own projection, and generated files stay in ignored build output. Run the focused contract test with `bun test scripts/generate-agent-surfaces.test.mjs`, then use `bun run build -- marketing` or `bun run build -- docs` to inspect the exact production artifacts.
+
+This content covers public product and operating information only. Do not add authenticated application state, Workspace data, OpenAPI conversions, or MCP protocol conversions to these outputs.
+
 ## Verification order
 
 1. Update behavior, generated contracts, tests, and public docs together.
