@@ -24,6 +24,20 @@ test("the docs package build prepares ignored OpenAPI artifacts", async () => {
   assert.ok(turboJSON.tasks.build.inputs.includes("$TURBO_ROOT$/scripts/copy-docs-openapi.mjs"));
 });
 
+test("the marketing build prepares its shared frontend SvelteKit aliases", async () => {
+  const [marketingPackage, frontendPackage] = await Promise.all(
+    ["marketing-site/package.json", "frontend/package.json"].map(async (file) =>
+      JSON.parse(await readFile(path.join(root, file), "utf8")),
+    ),
+  );
+
+  assert.equal(frontendPackage.scripts.sync, "svelte-kit sync");
+  assert.match(
+    marketingPackage.scripts.build,
+    /^bun run --cwd \.\.\/frontend sync && .*vite build/u,
+  );
+});
+
 function runTurbo(directory, args) {
   const result = spawnSync(turboBinary, args, {
     cwd: directory,
