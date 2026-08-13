@@ -6,10 +6,14 @@ All notable changes to this project are documented in this file.
 
 ### Changed
 
+- Replaced the frontend formatting and general JavaScript lint passes with Oxfmt and Oxlint, retained ESLint for Svelte template rules, upgraded production builds to Vite 8 and Rolldown, cached independent frontend quality tasks with Turbo, parallelized safe repository checks and tests, and reused the shared Go cache for local backend builds.
+- Replaced the overlapping package, Devenv, CI, hook, and release command graphs with one root task registry for formatting, linting, checks, tests, builds, verification, and release subcommands; added consistent surface scopes and policy selectors; removed obsolete aliases; and made CI and local release checks call the same tasks.
+- Updated the transitive Nano ID security pin so the exhaustive release dependency audit passes without the high-severity zero-size custom-generator advisory.
+- Made the documentation preview accept caller-selected host and port arguments so its isolated browser gate starts reliably.
 - Added a server-derived Workspace setup guide that resumes from subscription, destination, and Publication state on the home, Accounts, and composer surfaces without a separate onboarding step index. Organization Owners receive the complete applicable journey, Organization administrators receive authorized billing guidance, Workspace administrators and editors receive only authorized content actions, viewers receive no setup actions, and self-hosted deployments omit Hosted service billing steps.
 - Shift-activating draft deletion now bypasses the confirmation dialog consistently in the composer, planner, and day-post drawers.
 - Reduced the ordinary local release gate to generated and type checks, lint, and unit tests; production builds, race and security checks, browser suites, and Docker image proof remain available through the explicit full rehearsal and candidate CI.
-- Added a changed-file commit check for whitespace, conflict markers, formatting and Svelte parsing, Go formatting, shell syntax, and Nix syntax, and installed it as the repository pre-commit hook.
+- Added one changed-file check for whitespace, conflict markers, formatting and Svelte parsing, Go formatting, shell syntax, and Nix syntax, and installed the same implementation as the pre-commit and pushed-range pre-push hooks.
 
 ### Fixed
 

@@ -14,14 +14,14 @@ The frontend is a SvelteKit app using Svelte 5 runes, TailwindCSS, Paraglide for
 ## Useful commands
 
 ```bash
-bun run --filter @openpost/web dev
-bun run --filter @openpost/web check
-bun run --filter @openpost/web lint
-bun run --filter @openpost/web test
-bun run check:ui-consistency
-bun run frontend:build
+bun run dev -- frontend
+bun run check -- frontend
+bun run lint -- frontend
+bun run test -- frontend
+bun run check -- ui-consistency
+bun run build -- frontend
 ```
 
-The cached frontend task owns `frontend/build`. `bun run frontend:build`
+The cached frontend task owns `frontend/build`. `bun run build -- frontend`
 packages that validated artifact into `backend/cmd/openpost/public` only after
 the build completes, so stale or partial files cannot enter the Go embed tree.

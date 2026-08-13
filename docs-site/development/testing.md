@@ -1,26 +1,33 @@
 # Testing
 
-Use the project-owned Devenv commands so local checks match CI.
+Run the project-owned root commands so local checks match CI.
 
 ```bash
-devenv shell -- check
-devenv shell -- lint
-devenv shell -- test
-devenv shell -- build
+bun run check
+bun run lint
+bun run test
+bun run build
 ```
 
-`devenv shell -- verify` runs all four gates. The check gate also verifies local documentation links, release-version behavior, and generated OpenAPI, TypeScript, CLI, and translation artifacts.
+`bun run verify` runs the format, check, lint, test, and build gates. The check gate also verifies local documentation links, release-version behavior, and generated OpenAPI, TypeScript, CLI, and translation artifacts.
 
-Ordinary pushes use the installed changed-file formatting hook. Before a release, `bun run release:check` runs checks, lint, and unit tests without production builds or browser and Docker suites. `bun run release:check:full` keeps the exhaustive local rehearsal when it is specifically needed.
+The named commands run independent work in parallel. Turbo restores unchanged
+type-check, frontend lint, test, policy, and build tasks by content; Go reuses its
+shared compile cache. Formatting and Go lint still scan their complete requested
+scope. Use `TURBO_FORCE=true bun run check -- frontend` only when diagnosing
+cache behavior, not as the normal feedback loop.
+
+Ordinary pushes use the installed changed-file syntax and formatting hook. Before a release, `bun run release -- check` runs formatting, checks, lint, and non-browser unit tests without production builds, browser suites, security scans, or Docker. `bun run release -- check-full` keeps the exhaustive local rehearsal when it is specifically needed.
 
 Targeted commands are available for faster iteration:
 
 ```bash
-devenv shell -- backend-test
-devenv shell -- frontend-test
-devenv shell -- cli-test
-bun run test:e2e:app -- --workers=1
-bun run test:e2e:docs -- --workers=1
+bun run test -- backend
+bun run test -- frontend
+bun run test -- cli
+bun run test -- e2e
+bun run test -- e2e-app
+bun run test -- e2e-docs
 ```
 
 Use the pinned Playwright Chromium installed by `setup`, and run one browser suite at a time. For visible changes, verify representative desktop and phone widths, keyboard and touch access, overflow, action visibility, and browser console health.

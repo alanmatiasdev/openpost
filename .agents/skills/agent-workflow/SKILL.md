@@ -16,4 +16,4 @@ Use the lightest branch that keeps the work correct. A tiny, explicit fix can go
 7. Review from a fresh context with `code-review`, comparing a fixed point on both Standards and Spec axes. Then exercise the user-visible acceptance path manually or in the browser where applicable; passing tests and type checks are not proof that the integrated flow works. QA findings that are outside the ticket become new tickets with their own scope, surfaces, and blocking edges; keep the current ticket bounded.
 8. Use `handoff` only when another context or human must continue unfinished work. Otherwise close with verified results and remaining tickets.
 
-Tracker labels and live setup are configured in `docs/agents/triage-labels.md`. Run `bun run agents:doctor` before tracker-driven workflow work.
+Tracker labels and live setup are configured in `docs/agents/triage-labels.md`. Run `bun run check -- agents` before tracker-driven workflow work.

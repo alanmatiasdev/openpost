@@ -31,7 +31,15 @@ services:
       - OPENPOST_MEDIA_PATH=/data/media
     # Keep container health on liveness. Gate traffic and rollouts on /api/v1/ready.
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/api/v1/health"]
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://localhost:8080/api/v1/health",
+        ]
       interval: 30s
       timeout: 3s
       retries: 3
@@ -87,7 +95,7 @@ curl http://localhost:8080/api/v1/ready
 Expected response:
 
 ```json
-{"status":"ready","database":"ok"}
+{ "status": "ready", "database": "ok" }
 ```
 
 The container health check uses `/api/v1/health`; this explicit readiness check also proves that the database is available. See [Health Checks](/operations/health-checks).

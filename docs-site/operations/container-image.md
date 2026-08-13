@@ -34,7 +34,7 @@ When the runtime base or scanner changes:
 
 1. Check the upstream lifecycle and release notes.
 2. Update the exact Dockerfile reference and `docker/image-policy.json` together.
-3. Run `bun run check:image-policy` and the normal repository checks.
+3. Run `bun run check -- image-policy` and the normal repository checks.
 4. Build and restart-smoke the production image on the declared platform.
 5. Require candidate CI to generate the SBOM and pass the final-image scan before publishing.
 

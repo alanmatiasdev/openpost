@@ -24,6 +24,7 @@ Start with one network. Check that its callback works before you add another. A 
 Working code and app keys do not prove that a real account can publish each post type. Use the [Provider Readiness and Launch Gate](/providers/launch-matrix) to inspect the mechanically enforced evidence model.
 
 <!-- provider-certification:begin -->
+
 The checked-in public certification manifest contains **0 exact provider-format claims**.
 
 No managed provider-format certification claim is current. Implementation descriptions do not assert managed availability.

@@ -66,14 +66,15 @@ Every persistent editor operation must satisfy all applicable requirements:
 - [~] Add light/dark and 200% browser zoom coverage. The localized 200% zoom
   path is covered; the paired light/dark visual matrix remains.
 - [ ] Add common, minimum, maximum, many-page, and many-layer performance cases.
-- [x] Run `frontend-check`, `check:ui-consistency`, the focused unit suite, the
-      focused browser suite, docs links/build, and the repository's broad gate.
+- [x] Run `bun run check -- frontend`, `bun run check -- ui-consistency`, the
+      focused unit suite, the focused browser suite, docs links/build, and the
+      repository's broad gate.
 
 ### Verification snapshot
 
 The 2026-08-06 baseline working tree passed:
 
-- `devenv shell -- verify`, covering repository checks, formatting and lint,
+- `bun run verify`, covering repository checks, formatting and lint,
   335 frontend tests, backend tests, CLI tests, frontend/marketing/docs builds,
   generated contracts, docs links, and UI consistency.
 - The focused Image Editor unit suite: 111 tests across 19 files.

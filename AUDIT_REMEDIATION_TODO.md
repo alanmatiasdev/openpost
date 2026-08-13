@@ -305,7 +305,7 @@ Maintenance contract for this lane: a new social provider requires no n8n packag
 ### N8N-007 — Build a deterministic selected-contract generator
 
 - [ ] Resolve `$ref`, OpenAPI 3.1 nullable unions, scalar/date/number/boolean/enum/simple-array controls, and omit read-only fields such as generated `$schema`; use validated Advanced JSON for complex provider objects first; fail closed on unsupported constructs.
-- [ ] Generate declarative routing, fields, documentation tables, and selected-contract snapshots into committed clearly marked files; run from `check:contracts` with semantic checks for removal, new required fields, type changes, and enum narrowing.
+- [ ] Generate declarative routing, fields, documentation tables, and selected-contract snapshots into committed clearly marked files; run from `bun run check -- contracts` with semantic checks for removal, new required fields, type changes, and enum narrowing.
 - **Done when:** output is deterministic, stale output fails CI, breaking selected-contract changes require a compatibility/typeVersion decision, and no HTTP method/path/schema is duplicated in the presentation manifest.
 
 ### N8N-008 — Scaffold `packages/n8n-nodes-openpost/`
