@@ -1,7 +1,7 @@
 ---
 version: 1
-slug: 'frontend-src-routes-checkout-page-svelte'
-primary_target: 'frontend/src/routes/checkout/+page.svelte'
+slug: 'src-routes-checkout-page-svelte'
+primary_target: 'src/routes/checkout/+page.svelte'
 related_targets: []
 ---
 

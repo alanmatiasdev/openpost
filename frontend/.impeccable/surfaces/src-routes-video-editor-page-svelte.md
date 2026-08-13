@@ -1,14 +1,14 @@
 ---
 version: 1
-slug: 'src-routes-video-studio-page-svelte'
-primary_target: 'src/routes/video-studio/+page.svelte'
+slug: 'src-routes-video-editor-page-svelte'
+primary_target: 'src/routes/video-editor/+page.svelte'
 related_targets:
-  ['src/routes/video-studio/new/+page.svelte', 'src/routes/video-studio/[id]/+page.svelte']
+  ['src/routes/video-editor/new/+page.svelte', 'src/routes/video-editor/[id]/+page.svelte']
 ---
 
-# OpenPost Video Studio
+# OpenPost Video Editor
 
-- Scope and mode: Operate surface spanning `/video-studio`, `/video-studio/new`, and `/video-studio/[id]`; public local-first workbench with optional signed-in cloud handoff.
+- Scope and mode: Operate surface spanning `/video-editor`, `/video-editor/new`, and `/video-editor/[id]`; public local-first workbench with optional signed-in cloud handoff.
 - Audience and job: Social creators need to import or record short footage, make one clear edit, adapt it to four social formats, export locally, and choose when any file reaches OpenPost.
 - Primary action and proof: Start a local project. A visible autosave state, recoverable local sources, shared timing across variants, and incremental export prove the privacy and reliability claims.
 - Direction: A focused dark pasteboard framed by compact OpenPost controls. One primary sequence leads; contextual tools stay shallow. Orange marks selection or the next action, never decoration.
