@@ -44,4 +44,4 @@ Self-hosting is a good fit when you:
 
 The self-hosted edition has no software fee. Server and social network API costs still apply.
 
-Start with the [self-hosting guide](/self-hosting/) for deployment steps and the [security policy](https://github.com/rodrgds/openpost/blob/main/SECURITY.md) for production guidance.
+Start with the [self-hosting guide](/self-hosting/) for deployment steps and the [security policy](https://github.com/getopenpost/openpost/blob/main/SECURITY.md) for production guidance.

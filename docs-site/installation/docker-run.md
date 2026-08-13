@@ -17,7 +17,7 @@ docker run -d \
   -e OPENPOST_DATABASE_PATH=/data/db/openpost.db \
   -e OPENPOST_MEDIA_PATH=/data/media \
   -e OPENPOST_MEDIA_URL=http://localhost:8080/media \
-  ghcr.io/rodrgds/openpost:latest
+  ghcr.io/getopenpost/openpost:latest
 ```
 
 Use the same `.env` guidance as the Compose setup.

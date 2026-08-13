@@ -8,7 +8,7 @@ reboot; do not install project tools globally.
 ## Enter the project environment
 
 ```bash
-git clone https://github.com/rodrgds/openpost.git
+git clone https://github.com/getopenpost/openpost.git
 cd openpost
 direnv allow
 devenv shell -- setup

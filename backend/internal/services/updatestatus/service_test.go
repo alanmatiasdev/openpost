@@ -61,7 +61,7 @@ func TestCheckReportsAndCachesLatestStableRelease(t *testing.T) {
 			require.Empty(t, req.Header.Get("Authorization"))
 			return releaseResponse(http.StatusOK, `{
 				"tag_name":"v1.3.0",
-				"html_url":"https://github.com/rodrgds/openpost/releases/tag/v1.3.0",
+				"html_url":"https://github.com/getopenpost/openpost/releases/tag/v1.3.0",
 				"published_at":"2026-07-26T10:00:00Z",
 				"draft":false,
 				"prerelease":false
@@ -74,7 +74,7 @@ func TestCheckReportsAndCachesLatestStableRelease(t *testing.T) {
 
 	require.Equal(t, StateUpdateAvailable, first.State)
 	require.Equal(t, "v1.3.0", first.LatestVersion)
-	require.Equal(t, "https://github.com/rodrgds/openpost/releases/tag/v1.3.0", first.ReleaseURL)
+	require.Equal(t, "https://github.com/getopenpost/openpost/releases/tag/v1.3.0", first.ReleaseURL)
 	require.Equal(t, first, second)
 	require.Equal(t, 1, requests)
 }
@@ -93,7 +93,7 @@ func TestCheckUsesETagAndKeepsCachedRelease(t *testing.T) {
 			if requests == 1 {
 				return releaseResponse(http.StatusOK, `{
 					"tag_name":"v1.3.0",
-					"html_url":"https://github.com/rodrgds/openpost/releases/tag/v1.3.0",
+					"html_url":"https://github.com/getopenpost/openpost/releases/tag/v1.3.0",
 					"published_at":"2026-07-26T10:00:00Z"
 				}`, `"etag-1"`), nil
 			}
@@ -126,7 +126,7 @@ func TestCheckReturnsStaleCacheAfterBoundedFailure(t *testing.T) {
 			if requests == 1 {
 				return releaseResponse(http.StatusOK, `{
 					"tag_name":"v1.3.0",
-					"html_url":"https://github.com/rodrgds/openpost/releases/tag/v1.3.0",
+					"html_url":"https://github.com/getopenpost/openpost/releases/tag/v1.3.0",
 					"published_at":"2026-07-26T10:00:00Z"
 				}`, ""), nil
 			}
@@ -172,7 +172,7 @@ func TestCheckRejectsMismatchedReleaseLinks(t *testing.T) {
 		HTTPClient: &http.Client{Transport: roundTripFunc(func(_ *http.Request) (*http.Response, error) {
 			return releaseResponse(http.StatusOK, `{
 				"tag_name":"v1.3.0",
-				"html_url":"https://github.com/rodrgds/openpost/releases/tag/v9.9.9",
+				"html_url":"https://github.com/getopenpost/openpost/releases/tag/v9.9.9",
 				"published_at":"2026-07-26T10:00:00Z"
 			}`, ""), nil
 		})},

@@ -18,7 +18,7 @@ every active row.
 
 | Item | Canonical value |
 | --- | --- |
-| Repository | <https://github.com/rodrgds/openpost> |
+| Repository | <https://github.com/getopenpost/openpost> |
 | Product | <https://openpost.social> |
 | Documentation | <https://docs.openpost.social> |
 | Managed app | <https://app.openpost.social> |
@@ -27,10 +27,10 @@ every active row.
 | Remote MCP endpoint | `https://app.openpost.social/mcp` (Streamable HTTP, OAuth 2.0 with PKCE) |
 | First tagged release | `v0.1.0`, 2026-03-29 22:06 UTC |
 | License | [AGPL-3.0-only](../LICENSE) |
-| Icon | [`assets/brand/icon.svg`](../assets/brand/icon.svg), [raw GitHub](https://raw.githubusercontent.com/rodrgds/openpost/main/assets/brand/icon.svg) |
-| Primary lockup | [`assets/brand/lockup.svg`](../assets/brand/lockup.svg), [raw GitHub](https://raw.githubusercontent.com/rodrgds/openpost/main/assets/brand/lockup.svg) |
-| Symbol | [`assets/brand/logo.svg`](../assets/brand/logo.svg), [raw GitHub](https://raw.githubusercontent.com/rodrgds/openpost/main/assets/brand/logo.svg) |
-| Social card | [`assets/brand/og-image.png`](../assets/brand/og-image.png), [raw GitHub](https://raw.githubusercontent.com/rodrgds/openpost/main/assets/brand/og-image.png) |
+| Icon | [`assets/brand/icon.svg`](../assets/brand/icon.svg), [raw GitHub](https://raw.githubusercontent.com/getopenpost/openpost/main/assets/brand/icon.svg) |
+| Primary lockup | [`assets/brand/lockup.svg`](../assets/brand/lockup.svg), [raw GitHub](https://raw.githubusercontent.com/getopenpost/openpost/main/assets/brand/lockup.svg) |
+| Symbol | [`assets/brand/logo.svg`](../assets/brand/logo.svg), [raw GitHub](https://raw.githubusercontent.com/getopenpost/openpost/main/assets/brand/logo.svg) |
+| Social card | [`assets/brand/og-image.png`](../assets/brand/og-image.png), [raw GitHub](https://raw.githubusercontent.com/getopenpost/openpost/main/assets/brand/og-image.png) |
 
 ## Description variants
 
@@ -88,7 +88,7 @@ is proposed copy, not evidence of submission.
 | [lobstercare/mcp-hub](https://github.com/lobstercare/mcp-hub) | Communication MCP server | submitted | [PR #57](https://github.com/lobstercare/mcp-hub/pull/57) | Open-source social publishing and scheduling with remote Streamable HTTP, OAuth 2.0, local stdio, destination-specific drafts, media reuse, validation, and queue status. | None | 2026-07-26 | One Go, hosted, and self-hosted README entry. |
 | [TensorBlock/awesome-mcp-servers](https://github.com/TensorBlock/awesome-mcp-servers) | Social Media and Content Platforms MCP server | submitted | [PR #1416](https://github.com/TensorBlock/awesome-mcp-servers/pull/1416) | Open-source, self-hosted social publishing and scheduling with an authenticated Streamable HTTP endpoint and local stdio proxy. | None | 2026-07-26 | One source entry with remote endpoint, OAuth 2.0, compact tool surface, and canonical docs; awaiting maintainer approval. |
 | [YuzeHao2023/Awesome-MCP-Servers](https://github.com/YuzeHao2023/Awesome-MCP-Servers) | Social Media MCP server | submitted | [PR #377](https://github.com/YuzeHao2023/Awesome-MCP-Servers/pull/377) | Open-source, self-hosted social publishing and scheduling with authenticated Streamable HTTP and stdio MCP access. | None | 2026-07-26 | One README entry in Social Media. |
-| [Model Context Protocol Registry](https://github.com/modelcontextprotocol/registry) | Official remote MCP registry | listed | [Live registry entry](https://registry.modelcontextprotocol.io/v0/servers?search=io.github.rodrgds/openpost), [merged OpenPost PR #19](https://github.com/rodrgds/openpost/pull/19) | Manage social publishing workflows through OpenPost. | None | 2026-07-26 | Published as `io.github.rodrgds/openpost` version `1.32.1`; registry API reports active and latest. |
+| [Model Context Protocol Registry](https://github.com/modelcontextprotocol/registry) | Official remote MCP registry | listed | [Live registry entry](https://registry.modelcontextprotocol.io/v0/servers?search=io.github.rodrgds/openpost), [merged OpenPost PR #19](https://github.com/getopenpost/openpost/pull/19) | Manage social publishing workflows through OpenPost. | None | 2026-07-26 | Published as `io.github.rodrgds/openpost` version `1.32.1`; registry API reports active and latest. |
 | [pathintegral-institute/mcpm.sh](https://github.com/pathintegral-institute/mcpm.sh) | Professional Apps and Productivity MCP server | submitted | [PR #366](https://github.com/pathintegral-institute/mcpm.sh/pull/366) | Official MCP server for OpenPost. Inspect connected accounts and media, draft and review social content, schedule or publish it, and manage comments where supported. | None | 2026-07-26 | One schema-valid hosted HTTP manifest. Repository manifest validation, lint, and tests pass. |
 | [MobileFirstLLC/social-media-hacker-list](https://github.com/MobileFirstLLC/social-media-hacker-list) | Multi-platform social media tool | submitted | [PR #138](https://github.com/MobileFirstLLC/social-media-hacker-list/pull/138) | Self-hosted scheduling and publishing across multiple social networks. | None | 2026-07-26 | One alphabetically placed table row; the official 185-link checker passes. |
 | [marketingtoolslist/awesome-marketing](https://github.com/marketingtoolslist/awesome-marketing) | Social Media Management | submitted | [PR #150](https://github.com/marketingtoolslist/awesome-marketing/pull/150) | Open-source, self-hosted tool for preparing, scheduling, and publishing posts across multiple social networks. | None | 2026-07-26 | One README entry beside other scheduling tools. |

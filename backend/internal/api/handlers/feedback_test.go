@@ -28,7 +28,7 @@ func TestFeedbackHandlerRequiresAuthenticationAndConfiguredDestination(t *testin
 	group.Use(FeedbackBodyLimitMiddleware)
 	api := humaecho.NewWithGroup(e, group, huma.DefaultConfig("Test", "1.0.0"))
 	NewFeedbackHandler(feedback.NewService(nil, feedback.Config{
-		SupportURL: "https://github.com/rodrgds/openpost/issues/new",
+		SupportURL: "https://github.com/getopenpost/openpost/issues/new",
 	}, nil), testAuthenticator{}).RegisterRoutes(api)
 
 	anonymous := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/v1/feedback/config", nil)

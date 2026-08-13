@@ -6,7 +6,7 @@ The feature is read-only. It does not download files, run commands, change conta
 
 ## Network and privacy boundary
 
-The server makes a `GET` request to the fixed public GitHub endpoint for the latest stable `rodrgds/openpost` release. It sends a generic `openpost-update-checker` user agent and GitHub API headers. It does not send:
+The server makes a `GET` request to the fixed public GitHub endpoint for the latest stable `getopenpost/openpost` release. It sends a generic `openpost-update-checker` user agent and GitHub API headers. It does not send:
 
 - the OpenPost version or build
 - the instance hostname or public URL

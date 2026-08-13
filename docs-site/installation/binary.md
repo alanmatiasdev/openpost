@@ -4,7 +4,7 @@ OpenPost can run as a single Go binary with the frontend embedded into the execu
 
 ## 1. Download a release
 
-Download the binary for your platform from [GitHub Releases](https://github.com/rodrgds/openpost/releases).
+Download the binary for your platform from [GitHub Releases](https://github.com/getopenpost/openpost/releases).
 
 Expected release assets:
 

@@ -3,7 +3,7 @@
 ```yaml
 services:
   openpost:
-    image: ghcr.io/rodrgds/openpost:latest
+    image: ghcr.io/getopenpost/openpost:latest
     platform: linux/amd64
     container_name: openpost
     restart: unless-stopped

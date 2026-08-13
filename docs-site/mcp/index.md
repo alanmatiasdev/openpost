@@ -34,7 +34,7 @@ When you approve OAuth or create a token, limit it to the current workspace unle
 Install and authenticate the OpenPost CLI with the MCP proxy, then run the local stdio proxy:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/rodrgds/openpost/main/scripts/install-cli.sh | sh -s -- --with-mcp
+curl -fsSL https://raw.githubusercontent.com/getopenpost/openpost/main/scripts/install-cli.sh | sh -s -- --with-mcp
 openpost --profile local auth login https://your-openpost-host.example
 openpost-mcp --profile local
 ```
@@ -67,7 +67,7 @@ These tools cover workspaces, social networks, accounts, media, drafts, account 
 
 OpenPost checks workspace access and account ownership before it reads or changes data. Schedules and media uploads use the same plan limits as the web app and CLI.
 
-For a sample brief, prompt, account versions, test log, and review list, see the public [OpenPost Launch Kit](https://github.com/rodrgds/openpost/tree/main/launch-kit). These are examples, not proof of a live publish.
+For a sample brief, prompt, account versions, test log, and review list, see the public [OpenPost Launch Kit](https://github.com/getopenpost/openpost/tree/main/launch-kit). These are examples, not proof of a live publish.
 
 ## What OpenPost protects
 

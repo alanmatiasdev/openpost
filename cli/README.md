@@ -178,7 +178,7 @@ openpost --version
 and log in with `openpost` first, then point the MCP client at:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/rodrgds/openpost/main/scripts/install-cli.sh | sh -s -- --with-mcp
+curl -fsSL https://raw.githubusercontent.com/getopenpost/openpost/main/scripts/install-cli.sh | sh -s -- --with-mcp
 openpost auth login https://your-openpost-host.example
 openpost-mcp --profile local
 ```

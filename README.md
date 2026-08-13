@@ -15,14 +15,14 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/rodrgds/openpost/releases">
-    <img src="https://img.shields.io/github/v/release/rodrgds/openpost?sort=semver&label=release" alt="Latest release">
+  <a href="https://github.com/getopenpost/openpost/releases">
+    <img src="https://img.shields.io/github/v/release/getopenpost/openpost?sort=semver&label=release" alt="Latest release">
   </a>
-  <a href="https://github.com/rodrgds/openpost/actions/workflows/ci.yml">
-    <img src="https://img.shields.io/github/actions/workflow/status/rodrgds/openpost/ci.yml?label=build" alt="Build status">
+  <a href="https://github.com/getopenpost/openpost/actions/workflows/ci.yml">
+    <img src="https://img.shields.io/github/actions/workflow/status/getopenpost/openpost/ci.yml?label=build" alt="Build status">
   </a>
-  <a href="https://github.com/rodrgds/openpost">
-    <img src="https://img.shields.io/github/stars/rodrgds/openpost?style=flat&label=stars" alt="GitHub stars">
+  <a href="https://github.com/getopenpost/openpost">
+    <img src="https://img.shields.io/github/stars/getopenpost/openpost?style=flat&label=stars" alt="GitHub stars">
   </a>
   <a href="LICENSE">
     <img src="https://img.shields.io/badge/license-AGPL--3.0-blue" alt="License: AGPL-3.0-only">
@@ -98,7 +98,7 @@ See the [readiness and launch gate](https://docs.openpost.social/providers/launc
 ## Self-host in a few minutes
 
 ```bash
-git clone https://github.com/rodrgds/openpost.git
+git clone https://github.com/getopenpost/openpost.git
 cd openpost
 cp .env.example .env
 # Set OPENPOST_APP_URL and replace the two example secrets in .env.
@@ -147,7 +147,7 @@ Releases include:
 
 - Linux, macOS, and Windows server binaries;
 - CLI and MCP binaries;
-- the `linux/amd64` container image at `ghcr.io/rodrgds/openpost`;
+- the `linux/amd64` container image at `ghcr.io/getopenpost/openpost`;
 - an Android APK.
 
 The published container image is amd64-only; binary and CLI artifacts have their own architecture matrix. See the [installation docs](https://docs.openpost.social/self-hosting/) for supported artifacts, reverse proxies, storage, backups, upgrades, and the [`image-policy.json`](docker/image-policy.json) assurance contract.

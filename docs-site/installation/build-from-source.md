@@ -5,7 +5,7 @@ Use this path when you want to build OpenPost yourself.
 ## Set up the project
 
 ```bash
-git clone https://github.com/rodrgds/openpost.git
+git clone https://github.com/getopenpost/openpost.git
 cd openpost
 direnv allow
 devenv shell -- setup

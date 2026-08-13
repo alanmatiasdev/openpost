@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-REPO="rodrgds/openpost"
+REPO="getopenpost/openpost"
 BIN_NAME="openpost"
 MCP_BIN_NAME="openpost-mcp"
 INSTALL_MCP="${OPENPOST_INSTALL_MCP:-0}"

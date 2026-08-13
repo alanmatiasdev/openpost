@@ -205,6 +205,8 @@ OpenPost changes the registry version only when it publishes a new registry entr
 
 Every published registry version is immutable. `server.json` and the live-publication record in `launch-kit/listings.md` must therefore keep the same exact version, and the repository check rejects ranges, prereleases, a changed managed endpoint, or unexplained version drift. Application releases that do not publish a new MCP Registry entry leave this number unchanged.
 
+The registry identity remains `io.github.rodrgds/openpost` after the source repository moved to `getopenpost/openpost`. Registry names identify immutable published records; the `repository.url` field points clients to the current organization-owned source.
+
 This policy follows the [Official MCP Registry versioning guidance](https://modelcontextprotocol.io/registry/versioning), reviewed 2026-08-09. Clients should use MCP capability negotiation—not registry SemVer alone—to decide whether a specific operation is available.
 
 ## Current prompts

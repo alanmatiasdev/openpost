@@ -48,7 +48,7 @@ const openPostEvidence = {
 		]
 	),
 	'Hosting and source': evidence('Direct source', 'Current AGPL source and deployment options.', [
-		source('OpenPost source', 'https://github.com/rodrgds/openpost'),
+		source('OpenPost source', 'https://github.com/getopenpost/openpost'),
 		source('OpenPost self-hosting guide', 'https://docs.openpost.social/self-hosting/')
 	]),
 	'Beyond publishing': evidence(
@@ -107,7 +107,7 @@ const openPostEvidence = {
 		'Direct source',
 		'Current AGPL edition and managed or self-hosted deployment choices.',
 		[
-			source('OpenPost source', 'https://github.com/rodrgds/openpost'),
+			source('OpenPost source', 'https://github.com/getopenpost/openpost'),
 			source('OpenPost self-hosting guide', 'https://docs.openpost.social/self-hosting/')
 		]
 	),

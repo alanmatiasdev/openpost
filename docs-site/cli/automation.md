@@ -44,7 +44,7 @@ jobs:
       OPENPOST_OUTPUT_JSON: "true"
     steps:
       - name: Install OpenPost CLI
-        run: curl -fsSL https://raw.githubusercontent.com/rodrgds/openpost/main/scripts/install-cli.sh | sh
+        run: curl -fsSL https://raw.githubusercontent.com/getopenpost/openpost/main/scripts/install-cli.sh | sh
 
       - name: Post summary
         run: |

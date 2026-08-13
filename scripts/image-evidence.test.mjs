@@ -8,7 +8,7 @@ import { createImageEvidence, readImageEvidence, verifyImageEvidence } from "./i
 
 const revision = "a".repeat(40);
 const digest = `sha256:${"b".repeat(64)}`;
-const repository = "ghcr.io/rodrgds/openpost";
+const repository = "ghcr.io/getopenpost/openpost";
 const tag = `sha-${revision}`;
 
 async function withFixture(run) {

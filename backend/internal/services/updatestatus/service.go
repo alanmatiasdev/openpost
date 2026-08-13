@@ -22,8 +22,8 @@ const (
 	StateDisabled        = "disabled"
 	StateDevelopment     = "development"
 
-	latestReleaseURL = "https://api.github.com/repos/rodrgds/openpost/releases/latest"
-	releaseURLPrefix = "/rodrgds/openpost/releases/tag/"
+	latestReleaseURL = "https://api.github.com/repos/getopenpost/openpost/releases/latest"
+	releaseURLPrefix = "/getopenpost/openpost/releases/tag/"
 	maxResponseBytes = 64 << 10
 	checkTimeout     = 3 * time.Second
 	successCacheTTL  = 24 * time.Hour

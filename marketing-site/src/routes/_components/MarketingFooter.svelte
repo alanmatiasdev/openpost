@@ -72,7 +72,7 @@
 			</p>
 			<div class="mt-5 flex flex-wrap gap-x-5">
 				<a
-					href="https://github.com/rodrgds/openpost"
+					href="https://github.com/getopenpost/openpost"
 					target="_blank"
 					rel="noreferrer"
 					class="focus-ring inline-flex min-h-11 items-center gap-2 rounded-md text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"

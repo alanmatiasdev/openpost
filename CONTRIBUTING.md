@@ -3,7 +3,7 @@
 OpenPost uses a project-owned Devenv environment so local and CI commands stay aligned.
 
 ```bash
-git clone https://github.com/rodrgds/openpost.git
+git clone https://github.com/getopenpost/openpost.git
 cd openpost
 direnv allow
 devenv shell -- setup

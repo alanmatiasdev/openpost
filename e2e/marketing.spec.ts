@@ -114,7 +114,7 @@ test("marketing index links to the app and documentation @desktop", async ({ pag
   );
   await expect(page.getByRole("link", { name: "GitHub source" })).toHaveAttribute(
     "href",
-    "https://github.com/rodrgds/openpost",
+    "https://github.com/getopenpost/openpost",
   );
   await expect(page.getByRole("link", { name: "Discord", exact: true }).last()).toHaveAttribute(
     "href",
@@ -809,6 +809,6 @@ test("public changelog is generated from the canonical release record @desktop",
   await expect(page.getByText(canonicalItem, { exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "Full changelog" })).toHaveAttribute(
     "href",
-    "https://github.com/rodrgds/openpost/blob/main/CHANGELOG.md",
+    "https://github.com/getopenpost/openpost/blob/main/CHANGELOG.md",
   );
 });

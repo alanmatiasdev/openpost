@@ -234,7 +234,7 @@ func Load() *Config {
 		FeedbackEnabled:        getEnvBoolWithAliases(false, "OPENPOST_FEEDBACK_ENABLED"),
 		FeedbackDestinationURL: getEnvDefault("OPENPOST_FEEDBACK_DESTINATION_URL", ""),
 		FeedbackRecipient:      getEnvDefault("OPENPOST_FEEDBACK_RECIPIENT", ""),
-		FeedbackSupportURL:     getEnvDefault("OPENPOST_FEEDBACK_SUPPORT_URL", "https://github.com/rodrgds/openpost/issues/new"),
+		FeedbackSupportURL:     getEnvDefault("OPENPOST_FEEDBACK_SUPPORT_URL", "https://github.com/getopenpost/openpost/issues/new"),
 		TelemetryEnabled:       getEnvBoolWithAliases(telemetryEnabledByDefault, "OPENPOST_TELEMETRY_ENABLED"),
 		PostHogProjectToken:    strings.TrimSpace(getEnvDefault("OPENPOST_POSTHOG_PROJECT_TOKEN", "")),
 		PostHogAPIHost:         postHogAPIHost,

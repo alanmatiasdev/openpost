@@ -46,7 +46,7 @@ run now.
 ## Current managed-service claims
 
 The canonical
-[`provider-certification/public-claims.json`](https://github.com/rodrgds/openpost/blob/main/provider-certification/public-claims.json)
+[`provider-certification/public-claims.json`](https://github.com/getopenpost/openpost/blob/main/provider-certification/public-claims.json)
 is the only source for public provider-format certification claims.
 
 <!-- provider-certification:begin -->

@@ -4,7 +4,7 @@
 
 **Audit date:** 24 July 2026
 **Shoutrrr:** `coollabsio/shoutrrr` at `b3c4789` (`v1.3.1`)
-**OpenPost release baseline:** `rodrgds/openpost` at `9515440` (`v1.1.8`)
+**OpenPost release baseline:** `getopenpost/openpost` at `9515440` (`v1.1.8`)
 **OpenPost worktree:** 61 dirty paths. Studio/media work is unreleased and labelled separately.
 
 ## Executive verdict
@@ -363,11 +363,11 @@ Do not use this audit to avoid distribution. Shoutrrr reached 244 stars in six w
 
 ### OpenPost
 
-- <https://github.com/rodrgds/openpost/tree/9515440>
-- <https://github.com/rodrgds/openpost/blob/9515440/backend/internal/capabilities/capabilities.go>
-- <https://github.com/rodrgds/openpost/blob/9515440/backend/internal/services/publisher/publisher.go>
-- <https://github.com/rodrgds/openpost/blob/9515440/backend/internal/queue/worker.go>
-- <https://github.com/rodrgds/openpost/blob/9515440/backend/internal/api/handlers/comments.go>
-- <https://github.com/rodrgds/openpost/blob/9515440/frontend/src/lib/components/compose-focused-publication.svelte>
-- <https://github.com/rodrgds/openpost/blob/9515440/frontend/src/routes/calendar/+page.svelte>
-- <https://github.com/rodrgds/openpost/blob/9515440/frontend/src/routes/activity/+page.svelte>
+- <https://github.com/getopenpost/openpost/tree/9515440>
+- <https://github.com/getopenpost/openpost/blob/9515440/backend/internal/capabilities/capabilities.go>
+- <https://github.com/getopenpost/openpost/blob/9515440/backend/internal/services/publisher/publisher.go>
+- <https://github.com/getopenpost/openpost/blob/9515440/backend/internal/queue/worker.go>
+- <https://github.com/getopenpost/openpost/blob/9515440/backend/internal/api/handlers/comments.go>
+- <https://github.com/getopenpost/openpost/blob/9515440/frontend/src/lib/components/compose-focused-publication.svelte>
+- <https://github.com/getopenpost/openpost/blob/9515440/frontend/src/routes/calendar/+page.svelte>
+- <https://github.com/getopenpost/openpost/blob/9515440/frontend/src/routes/activity/+page.svelte>

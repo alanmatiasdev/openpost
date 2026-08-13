@@ -174,7 +174,7 @@ func TestLoadProductionPrimitiveDefaults(t *testing.T) {
 	require.False(t, cfg.StockMediaEnabled)
 	require.False(t, cfg.FeedbackEnabled)
 	require.Empty(t, cfg.FeedbackDestinationURL)
-	require.Equal(t, "https://github.com/rodrgds/openpost/issues/new", cfg.FeedbackSupportURL)
+	require.Equal(t, "https://github.com/getopenpost/openpost/issues/new", cfg.FeedbackSupportURL)
 	require.True(t, cfg.UpdateCheckEnabled)
 	require.Equal(t, int64(5_000_000), cfg.XMonthlyBudgetMicrousd)
 	require.Equal(t, int64(15_000), cfg.XPostCreateCostMicrousd)

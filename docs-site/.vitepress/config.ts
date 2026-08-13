@@ -277,14 +277,14 @@ export default defineConfig({
       { text: "Community", link: "https://discord.gg/u2QwukmY4W" },
     ],
     socialLinks: [
-      { icon: "github", link: "https://github.com/rodrgds/openpost" },
+      { icon: "github", link: "https://github.com/getopenpost/openpost" },
       { icon: "discord", link: "https://discord.gg/u2QwukmY4W" },
     ],
     search: {
       provider: "local",
     },
     editLink: {
-      pattern: "https://github.com/rodrgds/openpost/edit/main/docs-site/:path",
+      pattern: "https://github.com/getopenpost/openpost/edit/main/docs-site/:path",
       text: "Edit this page on GitHub",
     },
     footer: {

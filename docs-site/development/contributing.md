@@ -12,4 +12,4 @@ Start with the [development setup](/development/setup), then run the smallest re
 - Use the shared Shadcn-svelte form primitives in both the app and marketing site. `bun run check -- ui-consistency` rejects visible native form controls outside the shared implementations.
 - Never commit credentials, provider tokens, local dotenv files, or production data.
 
-Repository-specific architecture and agent guidance live in [`AGENTS.md`](https://github.com/rodrgds/openpost/blob/main/AGENTS.md). The root [contributor guide](https://github.com/rodrgds/openpost/blob/main/CONTRIBUTING.md) contains the short setup and pull-request checklist.
+Repository-specific architecture and agent guidance live in [`AGENTS.md`](https://github.com/getopenpost/openpost/blob/main/AGENTS.md). The root [contributor guide](https://github.com/getopenpost/openpost/blob/main/CONTRIBUTING.md) contains the short setup and pull-request checklist.

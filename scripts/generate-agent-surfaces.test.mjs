@@ -277,7 +277,7 @@ Managed plans start at $15 per month.
 \`\`\`yaml
 services:
   openpost:
-    image: ghcr.io/rodrgds/openpost:latest
+    image: ghcr.io/getopenpost/openpost:latest
 \`\`\`
 `,
   );

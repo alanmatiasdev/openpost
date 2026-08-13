@@ -1,6 +1,6 @@
 # Upgrades
 
-OpenPost uses SemVer. Read the [release notes](https://github.com/rodrgds/openpost/releases/latest) before every upgrade. A major version can require changes to your setup. Minor and patch releases stay compatible.
+OpenPost uses SemVer. Read the [release notes](https://github.com/getopenpost/openpost/releases/latest) before every upgrade. A major version can require changes to your setup. Minor and patch releases stay compatible.
 
 ## Docker Compose
 

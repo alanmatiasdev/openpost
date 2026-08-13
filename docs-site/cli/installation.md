@@ -7,20 +7,20 @@ Install the OpenPost CLI when you want to manage a running OpenPost instance fro
 The install script downloads the latest matching `openpost-cli-*` release asset and installs it as `openpost`:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/rodrgds/openpost/main/scripts/install-cli.sh | sh
+curl -fsSL https://raw.githubusercontent.com/getopenpost/openpost/main/scripts/install-cli.sh | sh
 ```
 
 It supports Linux on `amd64` and `arm64`, and macOS on Apple Silicon (`arm64`). To install the desktop MCP stdio proxy at the same time:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/rodrgds/openpost/main/scripts/install-cli.sh | sh -s -- --with-mcp
+curl -fsSL https://raw.githubusercontent.com/getopenpost/openpost/main/scripts/install-cli.sh | sh -s -- --with-mcp
 ```
 
 That installs the matching `openpost-mcp-*` release asset as `openpost-mcp`.
 
 ## Manual Install
 
-Download the matching CLI binary from [GitHub Releases](https://github.com/rodrgds/openpost/releases/latest), then put it on your `PATH`.
+Download the matching CLI binary from [GitHub Releases](https://github.com/getopenpost/openpost/releases/latest), then put it on your `PATH`.
 
 ```sh
 chmod +x openpost-cli-linux-amd64
