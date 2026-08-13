@@ -6,6 +6,8 @@
 }:
 
 {
+  dotenv.enable = true;
+
   packages = [
     pkgs.git
     pkgs.curl
@@ -283,19 +285,23 @@
     echo "    frontend-*   - Targeted frontend commands"
     echo ""
 
-    # Install the tracked fast pre-push lint gate. Full verification stays
-    # explicit and CI-gated.
-    if [ -d .git ] && [ -f scripts/pre-push-lint.sh ]; then
-      dest=.git/hooks/pre-push
-      mkdir -p .git/hooks
-      if [ ! -f "$dest" ] || ! cmp -s scripts/pre-push-lint.sh "$dest"; then
-        cp scripts/pre-push-lint.sh "$dest" 2>/dev/null ||
-          echo "  Warning: could not refresh $dest; tracked hook remains available"
-      fi
-      if [ -f "$dest" ] && [ ! -x "$dest" ]; then
-        chmod +x "$dest" 2>/dev/null ||
-          echo "  Warning: $dest exists but is not executable"
-      fi
+    # Install tracked fast local gates. Broader verification stays explicit.
+    if hooks_dir="$(git rev-parse --git-path hooks 2>/dev/null)"; then
+      mkdir -p "$hooks_dir"
+      for hook in pre-commit pre-push; do
+        source="scripts/$hook-check.sh"
+        [ "$hook" = pre-push ] && source="scripts/pre-push-lint.sh"
+        [ -f "$source" ] || continue
+        dest="$hooks_dir/$hook"
+        if [ ! -f "$dest" ] || ! cmp -s "$source" "$dest"; then
+          cp "$source" "$dest" 2>/dev/null ||
+            echo "  Warning: could not refresh $dest; tracked hook remains available"
+        fi
+        if [ -f "$dest" ] && [ ! -x "$dest" ]; then
+          chmod +x "$dest" 2>/dev/null ||
+            echo "  Warning: $dest exists but is not executable"
+        fi
+      done
     fi
 
     cache-prune

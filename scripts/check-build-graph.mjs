@@ -60,6 +60,21 @@ requireIncludes(
   "generate:social-catalog",
   "explicit all-surface asset sync",
 );
+requireIncludes(
+  docsPackage.scripts?.["prepare:openapi"],
+  "copy-docs-openapi.mjs",
+  "docs package OpenAPI preparation",
+);
+requireIncludes(
+  docsPackage.scripts?.["docs:build"],
+  "bun run prepare:openapi",
+  "docs package build",
+);
+requireIncludes(
+  docsPackage.scripts?.["docs:dev"],
+  "bun run prepare:openapi",
+  "docs package dev server",
+);
 requireCondition(
   rootTurbo.tasks?.build?.outputs?.length === 0,
   "root Turbo build outputs must be package-owned",
@@ -118,6 +133,17 @@ for (const [label, turboConfig] of [
       `${label} build hash is missing ${input}`,
     );
   }
+}
+
+const docsTurbo = await readJSON("docs-site/turbo.json");
+for (const input of [
+  "$TURBO_ROOT$/frontend/openapi.json",
+  "$TURBO_ROOT$/scripts/copy-docs-openapi.mjs",
+]) {
+  requireCondition(
+    docsTurbo.tasks.build.inputs.includes(input),
+    `docs build hash is missing canonical OpenAPI input ${input}`,
+  );
 }
 
 const marketingTurbo = await readJSON("marketing-site/turbo.json");

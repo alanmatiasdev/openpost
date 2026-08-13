@@ -11,6 +11,8 @@ devenv shell -- build
 
 `devenv shell -- verify` runs all four gates. The check gate also verifies local documentation links, release-version behavior, and generated OpenAPI, TypeScript, CLI, and translation artifacts.
 
+Ordinary pushes use the installed changed-file formatting hook. Before a release, `bun run release:check` runs checks, lint, and unit tests without production builds or browser and Docker suites. `bun run release:check:full` keeps the exhaustive local rehearsal when it is specifically needed.
+
 Targeted commands are available for faster iteration:
 
 ```bash

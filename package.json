@@ -12,6 +12,7 @@
   ],
   "scripts": {
     "doctor": "bash scripts/dev-doctor.sh",
+    "commit-check": "bash scripts/commit-check.sh",
     "agents:doctor": "bun scripts/agent-doctor.mjs",
     "browser:install": "playwright install chromium",
     "sync:assets": "bun run generate:social-catalog && bun scripts/sync-assets.mjs",
@@ -49,6 +50,7 @@
     "release:plan": "devenv shell -- bun scripts/release.mjs plan",
     "release:preflight": "devenv shell -- bun scripts/release.mjs preflight",
     "release:check": "devenv shell -- bun scripts/release.mjs check",
+    "release:check:full": "devenv shell -- bun scripts/release.mjs check-full",
     "release:status": "devenv shell -- bun scripts/release.mjs status",
     "release:prepare": "devenv shell -- bun scripts/release.mjs prepare",
     "release:promote": "devenv shell -- bun scripts/release.mjs promote",

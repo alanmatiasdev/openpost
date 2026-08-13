@@ -4,6 +4,16 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- Shift-activating draft deletion now bypasses the confirmation dialog consistently in the composer, planner, and day-post drawers.
+- Reduced the ordinary local release gate to generated and type checks, lint, and unit tests; production builds, race and security checks, browser suites, and Docker image proof remain available through the explicit full rehearsal and candidate CI.
+- Added a changed-file commit check for whitespace, conflict markers, formatting and Svelte parsing, Go formatting, shell syntax, and Nix syntax, and installed it as the repository pre-commit hook.
+
+### Fixed
+
+- Made direct documentation builds restore their ignored OpenAPI inputs from the tracked canonical spec before VitePress starts, so clean deployment checkouts cannot depend on generated local files.
+
 ## [3.11.0] - 2026-08-12
 
 ### Added

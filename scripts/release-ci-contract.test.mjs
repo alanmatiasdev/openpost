@@ -18,6 +18,7 @@ const frontendCacheProof = readFileSync(
   "scripts/verify-frontend-build-cache.mjs",
   "utf8",
 );
+const localReleaseCheck = readFileSync("scripts/release-check.mjs", "utf8");
 const smoke = readFileSync("scripts/smoke-production-image.sh", "utf8");
 const releaseAssetUpload = readFileSync(
   "scripts/release-asset-upload.sh",
@@ -375,7 +376,23 @@ test("ordinary release preparation delegates exhaustive correctness to candidate
   assert.match(prepare, /checkReleaseContracts\(\)/);
   assert.doesNotMatch(prepare, /await check\(\)|devenv[\s\S]*verify|test:e2e/);
   assert.match(prepare, /await waitForCI\(revision\)/);
-  assert.match(localRelease, /async function check\(\)[\s\S]*test:e2e:app/);
+  assert.match(
+    localRelease,
+    /async function check\(\)[\s\S]*scripts\/release-check\.mjs/,
+  );
+  assert.doesNotMatch(
+    localRelease.slice(
+      localRelease.indexOf("async function check()"),
+      localRelease.indexOf("async function checkFull()"),
+    ),
+    /test:e2e|docker|go test -tags dev -race|security/,
+  );
+  assert.match(localRelease, /async function checkFull\(\)[\s\S]*test:e2e:app/);
+  assert.match(localReleaseCheck, /await run\("checks", \["check"\]\)/);
+  assert.match(
+    localReleaseCheck,
+    /runParallel\(\[[\s\S]*"lint"[\s\S]*"backend-test"[\s\S]*"frontend-unit-test"[\s\S]*"@openpost\/video-project"[\s\S]*"cli-test"/,
+  );
 });
 
 test("promotion verifies metadata before pinning the verified digest", () => {

@@ -61,9 +61,13 @@ On a 16 GiB Mac, set Docker Desktop to 10 GB memory and 4 GB swap before local
 release-image builds; release preflight rejects a macOS Docker VM below the
 verified memory floor.
 
-Entering Devenv installs the tracked fast pre-push lint gate. It does not run
-tests or production builds; run `verify` explicitly before a release or a
-high-risk push.
+Entering Devenv installs tracked pre-commit and pre-push gates. `bun run commit-check`
+checks all current changed files for whitespace, conflict markers, formatting,
+Svelte parse errors, Go formatting, shell syntax, and Nix syntax; the pre-commit
+hook applies the same gate to staged files. These hooks do not run tests or
+production builds. Run `bun run release:check` before a release. Use `devenv shell -- verify`
+for a high-risk change that needs local production builds, or
+`bun run release:check:full` for the complete CI-style rehearsal.
 
 In shells where `test` resolves to the shell builtin, run `test-all` inside
 direnv or `devenv shell -- test` from outside it.

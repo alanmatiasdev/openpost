@@ -56,12 +56,24 @@ let
       ${chromiumEnvironment}
       cd "${config.git.root}"
       # Run tests only if test files exist, otherwise skip silently
-      if find frontend/src \( -name "*.test.ts" -o -name "*.spec.ts" \) 2>/dev/null | grep -q .; then
+      if [ -n "$(find frontend/src \( -name "*.test.ts" -o -name "*.spec.ts" \) -print -quit 2>/dev/null)" ]; then
         bun run --filter @openpost/web test
       else
         echo "No test files found, skipping tests..."
         exit 0
       fi
+    '';
+  };
+  vitest-server-wrapper = pkgs.writeShellApplication {
+    name = "vitest-server-wrapper";
+    runtimeInputs = [
+      pkgs.nodejs_22
+      pkgs.bun
+    ];
+    text = ''
+      export NODE_OPTIONS="--max-old-space-size=1024"
+      cd "${config.git.root}"
+      bun run --filter @openpost/web test:unit:server
     '';
   };
   frontend-build-wrapper = pkgs.writeShellApplication {
@@ -96,6 +108,10 @@ in
 
     frontend-test.exec = ''
       ${lib.getExe vitest-wrapper}
+    '';
+
+    frontend-unit-test.exec = ''
+      ${lib.getExe vitest-server-wrapper}
     '';
 
     frontend-check.exec = ''

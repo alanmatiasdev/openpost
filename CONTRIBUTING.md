@@ -18,7 +18,7 @@ Use [Conventional Commits](https://www.conventionalcommits.org/) because release
 
 Before opening a pull request:
 
-- Run the smallest relevant checks while working, then `devenv shell -- verify`.
+- Run the smallest relevant checks while working. The pre-push hook checks changed-file formatting; use `bun run release:check` for a bounded broad check and reserve `devenv shell -- verify` for high-risk changes that need local production builds.
 - Add notable behavior, migration, and operator changes to the canonical `CHANGELOG.md` under `Unreleased`; the public changelog and release notes are generated from it.
 - Reuse the shared Shadcn-svelte form controls across app and marketing UI. `bun run check:ui-consistency` rejects visible native form controls outside those primitives.
 - Include migration notes for database changes and screenshots for visible UI changes.

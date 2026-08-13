@@ -35,7 +35,7 @@ OpenPost is a social publishing product with a managed service and a self-hosted
    - Keep Docker, binary, CLI, Android, frontend, docs, and marketing release paths reproducible.
    - Confirm release artifacts and docs match the current tag before publishing.
    - Follow SemVer from the latest release tag and base each version change on Conventional Commits.
-   - Continue running `devenv shell -- verify` before release tags.
+   - Keep the bounded `bun run release:check` gate fast enough for every release and reserve exhaustive local rehearsals for explicit risk-based use.
 
 4. **Operator support polish**
    - Keep `.env.example`, provider setup docs, backup/restore docs, production checklist, and CLI diagnostics aligned with runtime behavior.

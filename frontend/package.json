@@ -22,6 +22,7 @@
 		"lint": "prettier --check . && eslint .",
 		"format": "prettier --write .",
 		"test:unit": "vitest",
+		"test:unit:server": "vitest --run --project server",
 		"test": "bun run test:unit -- --run",
 		"generate:types": "openapi-typescript openapi.json -o src/lib/api/types.d.ts"
 	},

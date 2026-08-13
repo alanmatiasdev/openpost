@@ -9,6 +9,29 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const turboBinary = path.join(root, "node_modules", ".bin", "turbo");
 
+test("the docs package build prepares ignored OpenAPI artifacts", async () => {
+  const [packageJSON, turboJSON] = await Promise.all(
+    ["package.json", "turbo.json"].map(async (file) =>
+      JSON.parse(await readFile(path.join(root, "docs-site", file), "utf8")),
+    ),
+  );
+
+  assert.match(
+    packageJSON.scripts["prepare:openapi"],
+    /copy-docs-openapi\.mjs/,
+  );
+  assert.match(packageJSON.scripts["docs:build"], /bun run prepare:openapi/);
+  assert.match(packageJSON.scripts["docs:dev"], /bun run prepare:openapi/);
+  assert.ok(
+    turboJSON.tasks.build.inputs.includes("$TURBO_ROOT$/frontend/openapi.json"),
+  );
+  assert.ok(
+    turboJSON.tasks.build.inputs.includes(
+      "$TURBO_ROOT$/scripts/copy-docs-openapi.mjs",
+    ),
+  );
+});
+
 function runTurbo(directory, args) {
   const result = spawnSync(turboBinary, args, {
     cwd: directory,

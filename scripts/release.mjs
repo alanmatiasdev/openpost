@@ -35,6 +35,9 @@ try {
     case "check":
       await check();
       break;
+    case "check-full":
+      await checkFull();
+      break;
     case "status":
       await status();
       break;
@@ -131,6 +134,13 @@ function checkReleaseContracts() {
 }
 
 async function check() {
+  run(["devenv", "shell", "--", "doctor"]);
+  run(["devenv", "shell", "--", "bun", "install", "--frozen-lockfile"]);
+  run(["devenv", "shell", "--", "bun", "scripts/release-check.mjs"]);
+  console.log("release:check: local checks passed");
+}
+
+async function checkFull() {
   await requireLocalReleaseHost();
   run(["devenv", "shell", "--", "doctor"]);
   run(["devenv", "shell", "--", "bun", "install", "--frozen-lockfile"]);
@@ -145,7 +155,7 @@ async function check() {
     const stamp = await stat(stampPath);
     if (Date.now() - stamp.mtimeMs < 24 * 60 * 60 * 1_000) {
       console.log(
-        `release:check: exact worktree passed in the last 24 hours (${fingerprint.slice(0, 12)})`,
+        `release:check-full: exact worktree passed in the last 24 hours (${fingerprint.slice(0, 12)})`,
       );
       return;
     }
@@ -204,7 +214,7 @@ async function check() {
       2,
     ) + "\n",
   );
-  console.log(`release:check: complete (${fingerprint.slice(0, 12)})`);
+  console.log(`release:check-full: complete (${fingerprint.slice(0, 12)})`);
 }
 
 async function publishedImagePlatform() {
