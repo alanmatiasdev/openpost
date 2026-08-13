@@ -303,9 +303,11 @@ type PublicationEventsOutput struct {
 
 type ActionOutput struct {
 	Body struct {
-		Message  string `json:"message"`
-		JobID    string `json:"job_id,omitempty"`
-		Revision int    `json:"revision,omitempty"`
+		Message                 string `json:"message"`
+		JobID                   string `json:"job_id,omitempty"`
+		Revision                int    `json:"revision,omitempty"`
+		WorkspaceActivated      bool   `json:"workspace_activated,omitempty"`
+		ActivationPublicationID string `json:"activation_publication_id,omitempty"`
 	}
 }
 
@@ -1227,14 +1229,14 @@ func (h *PublicationHandler) schedulePublication(api huma.API) {
 		if err != nil {
 			return nil, err
 		}
-		jobID, err := h.publicationApplication().Schedule(
+		result, err := h.publicationApplication().Schedule(
 			ctx, userID, input.PathID, input.Body.ExpectedRevision, intent,
 		)
 		if err != nil {
 			return nil, publicationMutationHTTPError(err, "failed to enqueue publication")
 		}
-		h.capturePublicationEvent(ctx, telemetry.EventPublicationScheduled, userID, input.PathID, jobID)
-		return actionMessage("publication scheduled", jobID), nil
+		h.capturePublicationEvent(ctx, telemetry.EventPublicationScheduled, userID, input.PathID, result.JobID)
+		return enqueueActionMessage("publication scheduled", result), nil
 	})
 }
 
@@ -1255,15 +1257,29 @@ func (h *PublicationHandler) publishNow(api huma.API) {
 		if err != nil {
 			return nil, err
 		}
-		jobID, err := h.publicationApplication().PublishNow(
+		result, err := h.publicationApplication().PublishNow(
 			ctx, userID, input.PathID, input.Body.ExpectedRevision, intent,
 		)
 		if err != nil {
 			return nil, publicationMutationHTTPError(err, "failed to enqueue publication")
 		}
-		h.capturePublicationEvent(ctx, telemetry.EventPublicationQueued, userID, input.PathID, jobID)
-		return actionMessage("publication queued", jobID), nil
+		h.capturePublicationEvent(ctx, telemetry.EventPublicationQueued, userID, input.PathID, result.JobID)
+		return enqueueActionMessage("publication queued", result), nil
 	})
+}
+
+func (h *PublicationHandler) captureActivationEvent(ctx context.Context, userID, workspaceID string, result publicationEnqueueResult) {
+	if !result.NewlyActivated || h.telemetry == nil {
+		return
+	}
+	if err := h.telemetry.Capture(ctx, telemetry.Event{
+		Name:        telemetry.EventWorkspaceActivated,
+		DistinctID:  userID,
+		WorkspaceID: workspaceID,
+		UUID:        result.ActivationID,
+	}); err != nil {
+		log.Printf("Failed to enqueue Workspace Activation telemetry: %v", err)
+	}
 }
 
 func (h *PublicationHandler) capturePublicationEvent(
@@ -3189,13 +3205,15 @@ func (h *PublicationHandler) validateMediaBelongsToWorkspace(ctx context.Context
 }
 
 func (h *PublicationHandler) queuePublication(ctx context.Context, publicationID string, runAt time.Time) (string, error) {
-	return h.queuePublicationWithRunAt(ctx, publicationID, 0, publicationauth.PolicyScheduled, providerreadiness.ExecutionIntentProduction, func(_ *models.Publication, _ time.Time) (time.Time, error) {
+	result, err := h.queuePublicationWithRunAt(ctx, publicationID, 0, publicationauth.PolicyScheduled, providerreadiness.ExecutionIntentProduction, func(_ *models.Publication, _ time.Time) (time.Time, error) {
 		return runAt, nil
 	})
+	return result.JobID, err
 }
 
 func (h *PublicationHandler) queueScheduledPublication(ctx context.Context, publicationID string) (string, error) {
-	return h.queueScheduledPublicationExpected(ctx, publicationID, 0)
+	result, err := h.queueScheduledPublicationExpected(ctx, publicationID, 0)
+	return result.JobID, err
 }
 
 func (h *PublicationHandler) queueScheduledPublicationExpected(
@@ -3203,7 +3221,7 @@ func (h *PublicationHandler) queueScheduledPublicationExpected(
 	publicationID string,
 	expectedRevision int,
 	intents ...providerreadiness.ExecutionIntent,
-) (string, error) {
+) (publicationEnqueueResult, error) {
 	return h.queuePublicationWithRunAt(ctx, publicationID, expectedRevision, publicationauth.PolicyScheduled, normalizedReadinessIntent(intents), func(publication *models.Publication, now time.Time) (time.Time, error) {
 		if publication.ScheduledAt.IsZero() {
 			return time.Time{}, errPublicationScheduleRequired
@@ -3216,7 +3234,8 @@ func (h *PublicationHandler) queueScheduledPublicationExpected(
 }
 
 func (h *PublicationHandler) queuePublicationNow(ctx context.Context, publicationID string) (string, error) {
-	return h.queuePublicationNowExpected(ctx, publicationID, 0)
+	result, err := h.queuePublicationNowExpected(ctx, publicationID, 0)
+	return result.JobID, err
 }
 
 func (h *PublicationHandler) queuePublicationNowExpected(
@@ -3224,7 +3243,7 @@ func (h *PublicationHandler) queuePublicationNowExpected(
 	publicationID string,
 	expectedRevision int,
 	intents ...providerreadiness.ExecutionIntent,
-) (string, error) {
+) (publicationEnqueueResult, error) {
 	return h.queuePublicationWithRunAt(ctx, publicationID, expectedRevision, publicationauth.PolicyImmediate, normalizedReadinessIntent(intents), func(_ *models.Publication, now time.Time) (time.Time, error) {
 		return now, nil
 	})
@@ -3238,17 +3257,17 @@ func (h *PublicationHandler) queuePublicationWithRunAt(
 	policyMode string,
 	intent providerreadiness.ExecutionIntent,
 	resolveRunAt func(*models.Publication, time.Time) (time.Time, error),
-) (string, error) {
+) (publicationEnqueueResult, error) {
 	operation := providerreadiness.OperationPublishImmediate
 	if policyMode == publicationauth.PolicyScheduled {
 		operation = providerreadiness.OperationPublishScheduled
 	}
 	if h.beforeQueueTransaction != nil {
 		if err := h.beforeQueueTransaction(ctx); err != nil {
-			return "", err
+			return publicationEnqueueResult{}, err
 		}
 	}
-	var jobID string
+	var result publicationEnqueueResult
 	err := h.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
 		publication, err := h.loadEditablePublicationTx(txCtx, tx, publicationID)
 		if err != nil {
@@ -3297,19 +3316,51 @@ func (h *PublicationHandler) queuePublicationWithRunAt(
 			}
 		}
 		if policyMode == publicationauth.PolicyScheduled {
-			jobID, err = h.replacePublicationJobWithIntentTx(txCtx, tx, publicationID, runAt, intent)
+			result.JobID, err = h.replacePublicationJobWithIntentTx(txCtx, tx, publicationID, runAt, intent)
 		} else {
-			jobID, err = h.replaceImmediatePublicationJobWithIntentTx(txCtx, tx, publicationID, runAt, intent)
+			result.JobID, err = h.replaceImmediatePublicationJobWithIntentTx(txCtx, tx, publicationID, runAt, intent)
 		}
 		if err != nil {
 			return err
 		}
-		return h.markPublicationQueuedTx(txCtx, tx, publication, runAt, now)
+		if err := h.markPublicationQueuedTx(txCtx, tx, publication, runAt, now); err != nil {
+			return err
+		}
+		activation := &models.WorkspaceActivation{
+			ID: "activation:" + publication.WorkspaceID, WorkspaceID: publication.WorkspaceID,
+			PublicationID: publication.ID, CreatedAt: now,
+		}
+		insert, err := tx.NewInsert().Model(activation).On("CONFLICT (workspace_id) DO NOTHING").Exec(txCtx)
+		if err != nil {
+			return err
+		}
+		affected, err := insert.RowsAffected()
+		if err != nil {
+			return err
+		}
+		result.NewlyActivated = affected == 1
+		if !result.NewlyActivated {
+			if err := tx.NewSelect().Model(activation).Where("workspace_id = ?", publication.WorkspaceID).Scan(txCtx); err != nil {
+				return err
+			}
+		}
+		result.ActivationID = activation.ID
+		result.ActivationPublicationID = activation.PublicationID
+		if result.NewlyActivated {
+			event := &models.ProductAnalyticsEvent{
+				ID: activation.ID, WorkspaceID: publication.WorkspaceID,
+				Name: telemetry.EventWorkspaceActivated, CreatedAt: now,
+			}
+			if _, err := tx.NewInsert().Model(event).Exec(txCtx); err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 	if err != nil {
-		return "", err
+		return publicationEnqueueResult{}, err
 	}
-	return jobID, nil
+	return result, nil
 }
 
 func (h *PublicationHandler) requirePublicationReadiness(
@@ -4139,5 +4190,14 @@ func actionMessage(message, jobID string) *ActionOutput {
 	resp := &ActionOutput{}
 	resp.Body.Message = message
 	resp.Body.JobID = jobID
+	return resp
+}
+
+func enqueueActionMessage(message string, result publicationEnqueueResult) *ActionOutput {
+	resp := actionMessage(message, result.JobID)
+	resp.Body.WorkspaceActivated = result.NewlyActivated
+	if result.NewlyActivated {
+		resp.Body.ActivationPublicationID = result.ActivationPublicationID
+	}
 	return resp
 }

@@ -39,6 +39,7 @@
 	import ComposerValidationMenu from './composer-validation-menu.svelte';
 	import DestinationSettingsDialog from './destination-settings-dialog.svelte';
 	import WorkspaceSetupGuide from './workspace-setup-guide.svelte';
+	import WorkspaceActivationCompletion from './workspace-activation-completion.svelte';
 	import PlatformIcon from './platform-icon.svelte';
 	import { Badge } from '$lib/components/ui/badge';
 	import { getPlatformKey, getPlatformName } from '$lib/utils';
@@ -285,6 +286,7 @@
 	let showDeleteConfirm = $state(false);
 	let error = $state('');
 	let success = $state('');
+	let activationPublicationID = $state('');
 	let draftConflict = $state<DraftConflictProblem | null>(null);
 	let conflictDialogOpen = $state(false);
 	let linkUrl = $state('');
@@ -3688,7 +3690,7 @@
 				);
 			}
 
-			const { error: actionError } = publishNow
+			const { data: action, error: actionError } = publishNow
 				? await client.POST('/publications/{id}/publish-now', {
 						params: { path: { id: targetPublicationID } },
 						body: { expected_revision: revision }
@@ -3727,6 +3729,9 @@
 								(publishNow ? m.compose_publish_failed() : m.compose_schedule_failed())
 				);
 			}
+			if (action?.workspace_activated && action.activation_publication_id) {
+				activationPublicationID = action.activation_publication_id;
+			}
 
 			if (publishNow) {
 				captureTelemetryEvent('publication publish requested', {
@@ -3752,7 +3757,9 @@
 			);
 			ui.refreshWorkspaceSetup();
 
-			if (isEditMode && onSuccess) {
+			if (activationPublicationID) {
+				// Keep the completion actions available until the author chooses where to go next.
+			} else if (isEditMode && onSuccess) {
 				setTimeout(() => onSuccess(), 800);
 			} else {
 				pasteMediaUploadQueue.reset();
@@ -4978,6 +4985,15 @@
 	<div class="flex flex-1 overflow-hidden">
 		<!-- Compose Column -->
 		<div class="flex flex-1 flex-col overflow-y-auto">
+			{#if activationPublicationID}
+				<WorkspaceActivationCompletion
+					publicationID={activationPublicationID}
+					onCreateAnother={() => {
+						activationPublicationID = '';
+						if (isEditMode) onSuccess?.();
+					}}
+				/>
+			{/if}
 			<div class="mx-auto w-full max-w-2xl px-3 py-4 md:px-6 md:py-6">
 				{#if selectedAccounts.length > 0}
 					<section class="mb-5" aria-label={m.compose_destination_tabs()}>

@@ -102,11 +102,7 @@ func (s *Service) loadState(ctx context.Context, input Input) (state, error) {
 	if err != nil {
 		return state{}, err
 	}
-	result.publicationComplete, err = s.exists(ctx, (*models.Publication)(nil), "workspace_id = ? AND status IN (?)", input.WorkspaceID, bun.List([]string{
-		models.PublicationStatusScheduled,
-		models.PublicationStatusPublishing,
-		models.PublicationStatusPublished,
-	}))
+	result.publicationComplete, err = s.exists(ctx, (*models.WorkspaceActivation)(nil), "workspace_id = ?", input.WorkspaceID)
 	if err != nil {
 		return state{}, err
 	}
@@ -138,11 +134,14 @@ func newProjection(state state, input Input) Projection {
 			projection.CompletedSteps++
 		}
 	}
-	projection.Activated = state.destinationComplete && state.publicationComplete
+	projection.Activated = state.publicationComplete
 	return projection
 }
 
 func (s *Service) withNextAction(ctx context.Context, projection Projection, input Input) (Projection, error) {
+	if projection.Activated {
+		return projection, nil
+	}
 	for _, step := range projection.Steps {
 		if step.Completed {
 			continue

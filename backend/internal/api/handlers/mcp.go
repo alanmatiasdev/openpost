@@ -3621,7 +3621,7 @@ func (h *MCPHandler) schedulePublication(ctx context.Context, userID string, arg
 		return nil, rpcErr
 	}
 	handler := h.publicationHandler()
-	jobID, err := handler.publicationApplication().Schedule(ctx, userID, publicationID, expectedRevision, intent)
+	result, err := handler.publicationApplication().Schedule(ctx, userID, publicationID, expectedRevision, intent)
 	if err != nil {
 		return nil, publicationMutationMCPError(err, "failed to schedule publication")
 	}
@@ -3629,7 +3629,7 @@ func (h *MCPHandler) schedulePublication(ctx context.Context, userID string, arg
 	if rpcErr != nil {
 		return nil, rpcErr
 	}
-	return mcpPublicationActionResult("Publication scheduled: "+publicationID, jobID, status), nil
+	return mcpPublicationActionResult("Publication scheduled: "+publicationID, result.JobID, status), nil
 }
 
 func (h *MCPHandler) publishPublicationNow(ctx context.Context, userID string, args map[string]any) (any, *mcpError) {
@@ -3638,7 +3638,7 @@ func (h *MCPHandler) publishPublicationNow(ctx context.Context, userID string, a
 		return nil, rpcErr
 	}
 	handler := h.publicationHandler()
-	jobID, err := handler.publicationApplication().PublishNow(ctx, userID, publicationID, expectedRevision, intent)
+	result, err := handler.publicationApplication().PublishNow(ctx, userID, publicationID, expectedRevision, intent)
 	if err != nil {
 		return nil, publicationMutationMCPError(err, "failed to queue publication")
 	}
@@ -3646,7 +3646,7 @@ func (h *MCPHandler) publishPublicationNow(ctx context.Context, userID string, a
 	if rpcErr != nil {
 		return nil, rpcErr
 	}
-	return mcpPublicationActionResult("Publication queued: "+publicationID, jobID, status), nil
+	return mcpPublicationActionResult("Publication queued: "+publicationID, result.JobID, status), nil
 }
 
 func (h *MCPHandler) loadMCPPublicationAction(ctx context.Context, args map[string]any, invalidMessage string) (string, int, providerreadiness.ExecutionIntent, *mcpError) {

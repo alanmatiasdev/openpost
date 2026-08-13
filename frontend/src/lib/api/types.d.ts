@@ -4370,10 +4370,12 @@ export interface components {
              * @example https://example.com/schemas/ActionOutputBody.json
              */
             readonly $schema?: string;
+            activation_publication_id?: string;
             job_id?: string;
             message: string;
             /** Format: int64 */
             revision?: number;
+            workspace_activated?: boolean;
         };
         AppendProviderApprovalReviewInputBody: {
             /**

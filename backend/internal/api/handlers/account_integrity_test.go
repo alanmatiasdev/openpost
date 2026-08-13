@@ -40,6 +40,16 @@ func createHandlerTestDB(t *testing.T, modelsToCreate ...interface{}) *bun.DB {
 		Exec(context.Background())
 	require.NoError(t, err)
 	_, err = db.NewCreateTable().
+		Model((*models.WorkspaceActivation)(nil)).
+		IfNotExists().
+		Exec(context.Background())
+	require.NoError(t, err)
+	_, err = db.NewCreateTable().
+		Model((*models.ProductAnalyticsEvent)(nil)).
+		IfNotExists().
+		Exec(context.Background())
+	require.NoError(t, err)
+	_, err = db.NewCreateTable().
 		Model((*models.OAuthAccountSelectionReservation)(nil)).
 		IfNotExists().
 		Exec(context.Background())

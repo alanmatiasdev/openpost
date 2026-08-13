@@ -18,6 +18,7 @@ const (
 	EventRenditionPublished     = "rendition published"
 	EventRenditionFailed        = "rendition failed"
 	EventBillingCheckoutCreated = "billing checkout created"
+	EventWorkspaceActivated     = "workspace activated"
 )
 
 // Config is the complete server and browser-safe telemetry contract. The project

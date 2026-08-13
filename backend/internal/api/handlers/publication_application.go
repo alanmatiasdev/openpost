@@ -29,6 +29,13 @@ type publicationApplication struct {
 	newID   func() string
 }
 
+type publicationEnqueueResult struct {
+	JobID                   string
+	ActivationID            string
+	ActivationPublicationID string
+	NewlyActivated          bool
+}
+
 func (h *PublicationHandler) publicationApplication() publicationApplication {
 	return publicationApplication{
 		handler: h,
@@ -240,15 +247,19 @@ func (commands publicationApplication) Schedule(
 	publicationID string,
 	expectedRevision int,
 	intent providerreadiness.ExecutionIntent,
-) (string, error) {
+) (publicationEnqueueResult, error) {
 	publication, err := commands.handler.loadPublicationForEdit(ctx, publicationID, userID)
 	if err != nil {
-		return "", err
+		return publicationEnqueueResult{}, err
 	}
 	if err := commands.validateForEnqueue(ctx, userID, publication.ID); err != nil {
-		return "", err
+		return publicationEnqueueResult{}, err
 	}
-	return commands.handler.queueScheduledPublicationExpected(ctx, publication.ID, expectedRevision, intent)
+	result, err := commands.handler.queueScheduledPublicationExpected(ctx, publication.ID, expectedRevision, intent)
+	if err == nil {
+		commands.handler.captureActivationEvent(ctx, userID, publication.WorkspaceID, result)
+	}
+	return result, err
 }
 
 func (commands publicationApplication) PublishNow(
@@ -257,15 +268,19 @@ func (commands publicationApplication) PublishNow(
 	publicationID string,
 	expectedRevision int,
 	intent providerreadiness.ExecutionIntent,
-) (string, error) {
+) (publicationEnqueueResult, error) {
 	publication, err := commands.handler.loadPublicationForEdit(ctx, publicationID, userID)
 	if err != nil {
-		return "", err
+		return publicationEnqueueResult{}, err
 	}
 	if err := commands.validateForEnqueue(ctx, userID, publication.ID); err != nil {
-		return "", err
+		return publicationEnqueueResult{}, err
 	}
-	return commands.handler.queuePublicationNowExpected(ctx, publication.ID, expectedRevision, intent)
+	result, err := commands.handler.queuePublicationNowExpected(ctx, publication.ID, expectedRevision, intent)
+	if err == nil {
+		commands.handler.captureActivationEvent(ctx, userID, publication.WorkspaceID, result)
+	}
+	return result, err
 }
 
 func (commands publicationApplication) validateForEnqueue(ctx context.Context, userID, publicationID string) error {

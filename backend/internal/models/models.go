@@ -929,6 +929,24 @@ type WorkspaceFirstComposition struct {
 	CreatedAt   time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
 }
 
+type WorkspaceActivation struct {
+	bun.BaseModel `bun:"table:workspace_activations"`
+
+	ID            string    `bun:",pk" json:"id"`
+	WorkspaceID   string    `bun:",unique,notnull" json:"workspace_id"`
+	PublicationID string    `bun:",notnull" json:"publication_id"`
+	CreatedAt     time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
+}
+
+type ProductAnalyticsEvent struct {
+	bun.BaseModel `bun:"table:product_analytics_events"`
+
+	ID          string    `bun:",pk" json:"id"`
+	WorkspaceID string    `bun:",notnull" json:"workspace_id"`
+	Name        string    `bun:",notnull" json:"name"`
+	CreatedAt   time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
+}
+
 type XOAuthRequestToken struct {
 	bun.BaseModel `bun:"table:x_oauth_request_tokens"`
 

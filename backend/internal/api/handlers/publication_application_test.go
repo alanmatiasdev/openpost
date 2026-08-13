@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/services/providerreadiness"
+	"github.com/openpost/backend/internal/telemetry"
 	"github.com/stretchr/testify/require"
 )
 
@@ -150,16 +152,16 @@ func TestPublicationApplicationValidatesBeforeQueueMutation(t *testing.T) {
 	require.NoError(t, err)
 
 	commands := handler.publicationApplication()
-	for _, run := range []func() (string, error){
-		func() (string, error) {
+	for _, run := range []func() (publicationEnqueueResult, error){
+		func() (publicationEnqueueResult, error) {
 			return commands.Schedule(ctx, "user-1", publication.ID, 1, providerreadiness.ExecutionIntentProduction)
 		},
-		func() (string, error) {
+		func() (publicationEnqueueResult, error) {
 			return commands.PublishNow(ctx, "user-1", publication.ID, 1, providerreadiness.ExecutionIntentProduction)
 		},
 	} {
-		jobID, runErr := run()
-		require.Empty(t, jobID)
+		result, runErr := run()
+		require.Empty(t, result.JobID)
 		require.ErrorIs(t, runErr, errPublicationValidationBlocked)
 	}
 
@@ -169,6 +171,114 @@ func TestPublicationApplicationValidatesBeforeQueueMutation(t *testing.T) {
 	var stored models.Publication
 	require.NoError(t, srv.db.NewSelect().Model(&stored).Where("id = ?", publication.ID).Scan(ctx))
 	require.Equal(t, models.PublicationStatusDraft, stored.Status)
+}
+
+func TestPublicationApplicationActivatesWorkspaceOnceAfterFirstEnqueue(t *testing.T) {
+	t.Parallel()
+	srv := newMCPTestServer(t)
+	ctx := context.Background()
+	handler := srv.handler.publicationHandler()
+	recorder := &telemetry.MemoryRecorder{}
+	handler.SetTelemetry(recorder)
+	publication, err := handler.publicationApplication().Create(ctx, "user-1", CreatePublicationBody{
+		WorkspaceID:      "ws-1",
+		ContentProfile:   models.ContentProfileShortText,
+		SourceText:       "Activation copy",
+		SocialAccountIDs: []string{"account-1"},
+	})
+	require.NoError(t, err)
+
+	activationCount, err := srv.db.NewSelect().Model((*models.WorkspaceActivation)(nil)).Count(ctx)
+	require.NoError(t, err)
+	require.Zero(t, activationCount, "saving a draft must not activate its Workspace")
+
+	publication.ScheduledAt = time.Now().UTC().Add(time.Hour)
+	_, err = srv.db.NewUpdate().Model(publication).Column("scheduled_at").WherePK().Exec(ctx)
+	require.NoError(t, err)
+	commands := handler.publicationApplication()
+	first, err := commands.Schedule(ctx, "user-1", publication.ID, 1, providerreadiness.ExecutionIntentProduction)
+	require.NoError(t, err)
+	require.True(t, first.NewlyActivated)
+	second, err := commands.Schedule(ctx, "user-1", publication.ID, 1, providerreadiness.ExecutionIntentProduction)
+	require.NoError(t, err)
+	require.False(t, second.NewlyActivated)
+	require.Equal(t, publication.ID, first.ActivationPublicationID)
+	require.Equal(t, publication.ID, second.ActivationPublicationID)
+
+	var activations []models.WorkspaceActivation
+	require.NoError(t, srv.db.NewSelect().Model(&activations).Scan(ctx))
+	require.Len(t, activations, 1)
+	require.Equal(t, "ws-1", activations[0].WorkspaceID)
+	require.Equal(t, publication.ID, activations[0].PublicationID)
+	var analyticsEvents []models.ProductAnalyticsEvent
+	require.NoError(t, srv.db.NewSelect().Model(&analyticsEvents).Scan(ctx))
+	require.Len(t, analyticsEvents, 1)
+	require.Equal(t, telemetry.EventWorkspaceActivated, analyticsEvents[0].Name)
+	require.Len(t, recorder.Events, 1)
+	require.Equal(t, telemetry.EventWorkspaceActivated, recorder.Events[0].Name)
+	require.Equal(t, activations[0].ID, recorder.Events[0].UUID)
+}
+
+func TestConcurrentFirstPublicationsRecordOneWorkspaceActivation(t *testing.T) {
+	db := createHandlerTestDB(t,
+		(*models.User)(nil), (*models.Workspace)(nil), (*models.WorkspaceMember)(nil),
+		(*models.SocialAccount)(nil), (*models.Publication)(nil), (*models.Rendition)(nil),
+		(*models.Job)(nil), (*models.WorkspaceActivation)(nil), (*models.ProductAnalyticsEvent)(nil),
+	)
+	// SQLite serializes writers in production; concurrent requests still race
+	// for the same canonical transition at the application boundary.
+	db.DB.SetMaxOpenConns(1)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	_, err := db.NewInsert().Model(&models.User{ID: "user-1", Email: "concurrent@example.com"}).Exec(ctx)
+	require.NoError(t, err)
+	_, err = db.NewInsert().Model(&models.Workspace{ID: "ws-1", Name: "Concurrent"}).Exec(ctx)
+	require.NoError(t, err)
+	_, err = db.NewInsert().Model(&models.WorkspaceMember{WorkspaceID: "ws-1", UserID: "user-1", Role: models.WorkspaceRoleAdmin}).Exec(ctx)
+	require.NoError(t, err)
+	seedHandlerAccount(t, db, "account-1", "x")
+	_, err = db.NewUpdate().Model((*models.SocialAccount)(nil)).Set("workspace_id = ?", "ws-1").Where("id = ?", "account-1").Exec(ctx)
+	require.NoError(t, err)
+	publications := []models.Publication{
+		{ID: "publication-1", WorkspaceID: "ws-1", CreatedByID: "user-1", SourceText: "One", SourceContent: "One", Status: models.PublicationStatusDraft, Revision: 1, MetadataJSON: "{}", ReleasePlanJSON: "{}", ScheduledAt: now.Add(time.Hour)},
+		{ID: "publication-2", WorkspaceID: "ws-1", CreatedByID: "user-1", SourceText: "Two", SourceContent: "Two", Status: models.PublicationStatusDraft, Revision: 1, MetadataJSON: "{}", ReleasePlanJSON: "{}", ScheduledAt: now.Add(2 * time.Hour)},
+	}
+	_, err = db.NewInsert().Model(&publications).Exec(ctx)
+	require.NoError(t, err)
+	for _, publication := range publications {
+		_, err = db.NewInsert().Model(&models.Rendition{
+			ID: "rendition:" + publication.ID, PublicationID: publication.ID, SocialAccountID: "account-1",
+			Platform: "x", Profile: models.ContentProfileShortText, Body: publication.SourceText,
+			SettingsJSON: "{}", Status: models.RenditionStatusDraft,
+		}).Exec(ctx)
+		require.NoError(t, err)
+	}
+	handler := newReadyPublicationHandler(t, db, testAuthenticator{})
+	start := make(chan struct{})
+	errors := make(chan error, len(publications))
+	var wait sync.WaitGroup
+	for _, publication := range publications {
+		wait.Add(1)
+		go func(publicationID string) {
+			defer wait.Done()
+			<-start
+			_, runErr := handler.publicationApplication().Schedule(ctx, "user-1", publicationID, 1, providerreadiness.ExecutionIntentProduction)
+			errors <- runErr
+		}(publication.ID)
+	}
+	close(start)
+	wait.Wait()
+	close(errors)
+	for runErr := range errors {
+		require.NoError(t, runErr)
+	}
+
+	activationCount, err := db.NewSelect().Model((*models.WorkspaceActivation)(nil)).Count(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, activationCount)
+	eventCount, err := db.NewSelect().Model((*models.ProductAnalyticsEvent)(nil)).Count(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, eventCount)
 }
 
 func TestPublicationTransportsRejectViewerMutations(t *testing.T) {

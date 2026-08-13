@@ -1135,6 +1135,9 @@
 						"readOnly": true,
 						"type": "string"
 					},
+					"activation_publication_id": {
+						"type": "string"
+					},
 					"job_id": {
 						"type": "string"
 					},
@@ -1144,6 +1147,9 @@
 					"revision": {
 						"format": "int64",
 						"type": "integer"
+					},
+					"workspace_activated": {
+						"type": "boolean"
 					}
 				},
 				"required": ["message"],

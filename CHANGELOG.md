@@ -6,6 +6,7 @@ All notable changes to this project are documented in this file.
 
 ### Changed
 
+- The first successful Publication schedule or submission now records one server-owned Workspace Activation under retries and concurrency, emits one authoritative analytics event, retires setup guidance, and offers immediate View publication and Create another actions.
 - Workspace setup now recognizes the first meaningful text, media attachment, or thread-mode choice once per Workspace, while focus, destination selection, empty drafts, and repeated composer instances do not count. Its browser event allows only the interaction category and excludes authored content, media, identity, destination, and secret URL data.
 - Successful first-destination OAuth now opens a fresh composer with the new Workspace destination selected, while cancellation and failure return to actionable account management without exposing provider secrets in return parameters.
 - Added a server-derived Workspace setup guide that resumes from subscription, destination, and Publication state on the home, Accounts, and composer surfaces without a separate onboarding step index. Organization Owners receive the complete applicable journey, Organization administrators receive authorized billing guidance, Workspace administrators and editors receive only authorized content actions, viewers receive no setup actions, and self-hosted deployments omit Hosted service billing steps.

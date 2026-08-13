@@ -92,6 +92,8 @@ func CreateSchema(db *bun.DB) error {
 		(*models.SocialAccount)(nil),
 		(*models.WorkspaceFirstConnection)(nil),
 		(*models.WorkspaceFirstComposition)(nil),
+		(*models.WorkspaceActivation)(nil),
+		(*models.ProductAnalyticsEvent)(nil),
 		(*models.SocialSet)(nil),
 		(*models.SocialSetAccount)(nil),
 		(*models.UserPasskey)(nil),

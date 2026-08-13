@@ -48,6 +48,8 @@ func newMCPTestServerWithEntitlement(t *testing.T, entitlement entitlements.Serv
 		t,
 		(*models.User)(nil),
 		(*models.Workspace)(nil),
+		(*models.WorkspaceActivation)(nil),
+		(*models.ProductAnalyticsEvent)(nil),
 		(*models.WorkspaceMember)(nil),
 		(*models.SocialAccount)(nil),
 		(*models.Post)(nil),

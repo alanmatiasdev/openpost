@@ -119,6 +119,10 @@ func TestWorkspaceSetupProjectsOwnerProgressFromProductState(t *testing.T) {
 		SourceContent: "Launch", MetadataJSON: "{}", ReleasePlanJSON: "{}", RepostOverride: "{}",
 	}).Exec(ctx)
 	require.NoError(t, err)
+	_, err = srv.db.NewInsert().Model(&models.WorkspaceActivation{
+		ID: "activation:ws-1", WorkspaceID: "ws-1", PublicationID: "publication-1",
+	}).Exec(ctx)
+	require.NoError(t, err)
 
 	activated := srv.getJSON(t, "/api/v1/workspaces/ws-1/setup", "web-token")
 	require.Equal(t, http.StatusOK, activated.Code, activated.Body.String())
@@ -227,7 +231,6 @@ func TestWorkspaceSetupKeepsPublicationActionAfterFailedDelivery(t *testing.T) {
 		SourceContent: "Launch", MetadataJSON: "{}", ReleasePlanJSON: "{}", RepostOverride: "{}",
 	}).Exec(t.Context())
 	require.NoError(t, err)
-
 	response := srv.getJSON(t, "/api/v1/workspaces/ws-1/setup", "web-token")
 	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
 	var setup WorkspaceSetupResponse
@@ -238,7 +241,7 @@ func TestWorkspaceSetupKeepsPublicationActionAfterFailedDelivery(t *testing.T) {
 	require.Equal(t, "create_publication", setup.NextAction)
 }
 
-func TestWorkspaceSetupKeepsIncompleteOwnerJourneyAfterActivation(t *testing.T) {
+func TestWorkspaceSetupRetiresAfterActivation(t *testing.T) {
 	t.Parallel()
 
 	srv := newWorkspaceTestServer(t, entitlements.NewSelfHostedService())
@@ -248,6 +251,10 @@ func TestWorkspaceSetupKeepsIncompleteOwnerJourneyAfterActivation(t *testing.T) 
 	_, err = srv.db.NewInsert().Model(&models.SocialAccount{
 		ID: "account-1", WorkspaceID: "ws-1", Slug: "main", Platform: "x", AccountID: "1",
 		AccessTokenEnc: []byte("token"), IsActive: true,
+	}).Exec(t.Context())
+	require.NoError(t, err)
+	_, err = srv.db.NewInsert().Model(&models.WorkspaceActivation{
+		ID: "activation:ws-1", WorkspaceID: "ws-1", PublicationID: "publication-1",
 	}).Exec(t.Context())
 	require.NoError(t, err)
 	_, err = srv.db.NewInsert().Model(&models.Publication{
@@ -261,9 +268,9 @@ func TestWorkspaceSetupKeepsIncompleteOwnerJourneyAfterActivation(t *testing.T) 
 	var setup WorkspaceSetupResponse
 	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &setup))
 	require.True(t, setup.Activated)
-	require.True(t, setup.Visible)
-	require.Equal(t, "workspace", setup.NextStep)
-	require.Equal(t, "name_workspace", setup.NextAction)
+	require.False(t, setup.Visible)
+	require.Empty(t, setup.NextStep)
+	require.Empty(t, setup.NextAction)
 }
 
 func TestWorkspaceSetupProjectsHostedSubscriptionAndCheckoutForAnOwner(t *testing.T) {
