@@ -3,6 +3,7 @@
 	import { page } from '$app/state';
 	import { auth } from '$lib/stores/auth';
 	import { workspaceCtx } from '$lib/stores/workspace.svelte';
+	import { ui } from '$lib/stores/ui.svelte';
 	import { client, type Workspace, type SocialAccount, type ProviderInfo } from '$lib/api/client';
 	import { Button } from '$lib/components/ui/button';
 	import { Checkbox } from '$lib/components/ui/checkbox';
@@ -18,6 +19,7 @@
 	import EmptyState from '$lib/components/empty-state.svelte';
 	import SectionHeader from '$lib/components/section-header.svelte';
 	import InlineNotice from '$lib/components/inline-notice.svelte';
+	import WorkspaceSetupGuide from '$lib/components/workspace-setup-guide.svelte';
 	import AppToast from '$lib/components/app-toast.svelte';
 	import DestructiveConfirmDialog from '$lib/components/destructive-confirm-dialog.svelte';
 	import MoreHorizontalIcon from '@lucide/svelte/icons/ellipsis';
@@ -278,6 +280,7 @@
 					: m.accounts_remove_authorization_failed();
 			if (result.error) throw new Error(result.error.detail || fallback);
 			await loadAccounts();
+			ui.refreshWorkspaceSetup();
 			if (action.kind === 'disconnect-destination') {
 				showToast(
 					m.accounts_destination_disconnected_success({ account: accountDisplayName(account) }),
@@ -495,6 +498,7 @@
 			if (err) throw new Error(err.detail || m.accounts_login_failed());
 			blueskyModalOpen = false;
 			await loadAccounts();
+			ui.refreshWorkspaceSetup();
 		} catch (e) {
 			blueskyError = e instanceof Error && e.message ? e.message : m.accounts_login_failed();
 			showConnectError(e, m.accounts_login_failed());
@@ -531,6 +535,7 @@
 			if (err) throw new Error(err.detail || m.accounts_connect_failed());
 			discordModalOpen = false;
 			await loadAccounts();
+			ui.refreshWorkspaceSetup();
 		} catch (requestError) {
 			discordError = connectErrorMessage(requestError, m.accounts_discord_verify_failed());
 		} finally {
@@ -907,36 +912,9 @@
 					variant="muted"
 				/>
 			{:else}
-				{#if page.url.searchParams.get('onboarding') === '1' && accounts.length === 0}
-					<div class="mb-6 rounded-lg border border-primary/20 bg-primary/5 p-5">
-						<p class="text-sm font-medium text-primary">{m.accounts_onboarding_progress()}</p>
-						<h2 class="mt-1 text-lg font-semibold">{m.accounts_onboarding_heading()}</h2>
-						<p class="mt-1 text-sm/6 text-muted-foreground">
-							{m.accounts_onboarding_description()}
-						</p>
-						<ol class="mt-4 grid gap-2 text-sm sm:grid-cols-3">
-							<li class="flex items-center gap-2 text-muted-foreground">
-								<span
-									class="flex size-6 items-center justify-center rounded-full bg-emerald-500/15 text-xs font-semibold text-emerald-700"
-									>✓</span
-								>
-								{m.accounts_onboarding_plan_done()}
-							</li>
-							<li class="flex items-center gap-2 font-medium">
-								<span
-									class="flex size-6 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground"
-									>2</span
-								>
-								{m.accounts_onboarding_connect()}
-							</li>
-							<li class="flex items-center gap-2 text-muted-foreground">
-								<span
-									class="flex size-6 items-center justify-center rounded-full bg-muted text-xs font-semibold"
-									>3</span
-								>
-								{m.accounts_onboarding_post()}
-							</li>
-						</ol>
+				{#if selectedWorkspaceId}
+					<div class="mb-6">
+						<WorkspaceSetupGuide workspaceID={selectedWorkspaceId} context="accounts" />
 					</div>
 				{/if}
 				{#if error}

@@ -16,6 +16,7 @@ export class WorkspaceContextError extends Error {
 }
 
 interface WorkspaceSettings {
+	name: string;
 	avatar_url: string;
 	color: string;
 	timezone: string;
@@ -38,6 +39,7 @@ const STORAGE_KEY = 'openpost_current_workspace';
 
 function defaultWorkspaceSettings(): WorkspaceSettings {
 	return {
+		name: '',
 		avatar_url: '',
 		color: '#f97316',
 		timezone: 'UTC',
@@ -277,6 +279,7 @@ export class WorkspaceContext {
 			}
 
 			const loadedSettings: WorkspaceSettings = {
+				name: data.name || this.currentWorkspace.name || '',
 				avatar_url: data.avatar_url || '',
 				color: data.color || '#f97316',
 				timezone: safeWorkspaceTimezone(data.timezone),
@@ -292,6 +295,7 @@ export class WorkspaceContext {
 			this.settingsWorkspaceID = workspaceID;
 			this.currentWorkspace = {
 				...this.currentWorkspace,
+				name: data.name || this.currentWorkspace.name || '',
 				avatar_url: data.avatar_url || '',
 				color: data.color || '#f97316'
 			} as Workspace;
@@ -342,6 +346,11 @@ export class WorkspaceContext {
 
 			if (updates.timezone !== undefined) {
 				this.settings.timezone = safeWorkspaceTimezone(updates.timezone);
+			}
+			if (updates.name !== undefined && this.currentWorkspace) {
+				this.settings.name = updates.name;
+				this.currentWorkspace = { ...this.currentWorkspace, name: updates.name } as Workspace;
+				if (browser) localStorage.setItem(STORAGE_KEY, JSON.stringify(this.currentWorkspace));
 			}
 			if (updates.avatar_url !== undefined) {
 				this.settings.avatar_url = updates.avatar_url;

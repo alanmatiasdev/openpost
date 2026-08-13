@@ -38,6 +38,7 @@
 	import ComposerRepostControl from './composer-repost-control.svelte';
 	import ComposerValidationMenu from './composer-validation-menu.svelte';
 	import DestinationSettingsDialog from './destination-settings-dialog.svelte';
+	import WorkspaceSetupGuide from './workspace-setup-guide.svelte';
 	import PlatformIcon from './platform-icon.svelte';
 	import { Badge } from '$lib/components/ui/badge';
 	import { getPlatformKey, getPlatformName } from '$lib/utils';
@@ -3722,6 +3723,7 @@
 				},
 				{ immediate: true }
 			);
+			ui.refreshWorkspaceSetup();
 
 			if (isEditMode && onSuccess) {
 				setTimeout(() => onSuccess(), 800);
@@ -4547,6 +4549,11 @@
 <!-- Top Bar -->
 <!-- ====================================================================== -->
 <div class="flex flex-1 flex-col overflow-hidden" data-testid="text-thread-composer-content">
+	{#if selectedWorkspaceId}
+		<div class="border-b px-3 py-3 sm:px-4">
+			<WorkspaceSetupGuide workspaceID={selectedWorkspaceId} context="composer" />
+		</div>
+	{/if}
 	{#if !desktopComposerControls.current}
 		<div
 			class="sticky top-0 z-20 border-b bg-background/94 px-3 py-2 backdrop-blur-md"

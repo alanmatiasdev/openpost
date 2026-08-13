@@ -6,6 +6,7 @@ All notable changes to this project are documented in this file.
 
 ### Changed
 
+- Added a server-derived Workspace setup guide that resumes from subscription, destination, and Publication state on the home, Accounts, and composer surfaces without a separate onboarding step index.
 - Shift-activating draft deletion now bypasses the confirmation dialog consistently in the composer, planner, and day-post drawers.
 - Reduced the ordinary local release gate to generated and type checks, lint, and unit tests; production builds, race and security checks, browser suites, and Docker image proof remain available through the explicit full rehearsal and candidate CI.
 - Added a changed-file commit check for whitespace, conflict markers, formatting and Svelte parsing, Go formatting, shell syntax, and Nix syntax, and installed it as the repository pre-commit hook.

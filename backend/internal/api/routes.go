@@ -288,6 +288,7 @@ func RegisterHumaRoutes(api huma.API, deps RouteDeps) {
 	workspaceHandler.RemoveWorkspaceMember(api)
 	workspaceHandler.ListWorkspaceAccessAudit(api)
 	workspaceHandler.AcceptWorkspaceInvitation(api)
+	workspaceHandler.GetWorkspaceSetup(api)
 	workspaceHandler.GetWorkspaceSettings(api)
 	workspaceHandler.UpdateWorkspaceSettings(api)
 

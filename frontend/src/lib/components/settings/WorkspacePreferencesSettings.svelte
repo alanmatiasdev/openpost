@@ -2,6 +2,7 @@
 	import * as Select from '$lib/components/ui/select';
 	import { Button } from '$lib/components/ui/button';
 	import { Label } from '$lib/components/ui/label';
+	import { Input } from '$lib/components/ui/input';
 	import ImageEditorColorPicker from '$lib/image-editor/components/image-editor-color-picker.svelte';
 	import MediaPicker from '$lib/components/media-picker.svelte';
 	import SectionHeader from '$lib/components/section-header.svelte';
@@ -52,6 +53,7 @@
 		saving = true;
 		try {
 			await workspaceCtx.saveSettings({
+				name: workspaceCtx.settings.name.trim(),
 				avatar_url: workspaceCtx.settings.avatar_url,
 				color: workspaceCtx.settings.color,
 				timezone: workspaceCtx.settings.timezone,
@@ -141,6 +143,15 @@
 				</div>
 			</div>
 		</div>
+	</div>
+	<div id="workspace-name" class="max-w-sm space-y-2">
+		<Label for="workspace-name-input">{m.onboarding_workspace_name()}</Label>
+		<Input
+			id="workspace-name-input"
+			bind:value={workspaceCtx.settings.name}
+			maxlength={100}
+			required
+		/>
 	</div>
 	<div class="mt-4 max-w-sm space-y-2">
 		<Label for="workspace-color">{m.settings_workspace_color()}</Label>

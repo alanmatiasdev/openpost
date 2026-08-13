@@ -3865,6 +3865,26 @@ export interface paths {
         patch: operations["update-workspace-settings"];
         trace?: never;
     };
+    "/workspaces/{id}/setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get workspace setup progress
+         * @description Projects setup progress from the Workspace, subscription, connected-destination, and Publication state without storing a separate onboarding step index.
+         */
+        get: operations["get-workspace-setup"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/workspaces/{id}/team": {
         parameters: {
             query?: never;
@@ -6509,6 +6529,7 @@ export interface components {
              * @enum {integer}
              */
             media_cleanup_days: 14;
+            name: string;
             /** Format: int64 */
             random_delay_minutes: number;
             /** Format: int64 */
@@ -10653,6 +10674,8 @@ export interface components {
              * @description Deprecated and ignored. Temporary media always becomes eligible after 14 unused days.
              */
             media_cleanup_days?: number;
+            /** @description Workspace name */
+            name?: string;
             /** Format: int64 */
             random_delay_minutes?: number;
             /** Format: int64 */
@@ -10684,6 +10707,7 @@ export interface components {
              * @enum {integer}
              */
             media_cleanup_days: 14;
+            name: string;
             /** Format: int64 */
             random_delay_minutes: number;
             /** Format: int64 */
@@ -11287,6 +11311,51 @@ export interface components {
             sso_provider_name?: string;
             /** @description Whether this workspace requires organization SSO */
             sso_required: boolean;
+        };
+        WorkspaceSetupResponse: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/WorkspaceSetupResponse.json
+             */
+            readonly $schema?: string;
+            /** @description Safe same-origin application route for the next setup action */
+            action_href?: string;
+            /** @description Whether the Workspace has a connected destination and a scheduled or submitted Publication */
+            activated: boolean;
+            /**
+             * Format: int64
+             * @description Number of completed setup steps
+             */
+            completed_steps: number;
+            /**
+             * @description Authorized action for the next setup step
+             * @enum {string}
+             */
+            next_action?: "name_workspace" | "resume_checkout" | "connect_destination" | "create_publication";
+            /**
+             * @description First incomplete setup step available to the current user
+             * @enum {string}
+             */
+            next_step?: "workspace" | "subscription" | "destination" | "publication";
+            /** @description Ordered authoritative setup progress */
+            steps: components["schemas"]["WorkspaceSetupStepResponse"][] | null;
+            /**
+             * Format: int64
+             * @description Number of applicable setup steps
+             */
+            total_steps: number;
+            /** @description Whether the current user has an actionable incomplete setup step */
+            visible: boolean;
+        };
+        WorkspaceSetupStepResponse: {
+            /** @description Whether the authoritative product state completes this step */
+            completed: boolean;
+            /**
+             * @description Setup step derived from Workspace state
+             * @enum {string}
+             */
+            id: "workspace" | "subscription" | "destination" | "publication";
         };
         WorkspaceTeamOutputBody: {
             /**
@@ -26707,6 +26776,65 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-workspace-setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Workspace ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceSetupResponse"];
                 };
             };
             /** @description Forbidden */

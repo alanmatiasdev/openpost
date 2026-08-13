@@ -21,6 +21,7 @@ export class UIState {
 	refreshCounter = $state(0);
 	publicationInvalidations = $state.raw<PublicationInvalidationBatch>({ revision: 0, entries: [] });
 	composerResetCounter = $state(0);
+	workspaceSetupRevision = $state(0);
 	activeComposerDraftId = $state<string | null>(null);
 	pendingPrompt = $state<PendingPrompt | null>(null);
 	isFeedbackOpen = $state(false);
@@ -80,6 +81,10 @@ export class UIState {
 		this.activeComposerDraftId = null;
 		this.composerResetCounter++;
 		return true;
+	}
+
+	refreshWorkspaceSetup() {
+		this.workspaceSetupRevision++;
 	}
 
 	invalidatePublications(

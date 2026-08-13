@@ -20,6 +20,7 @@ import (
 	"github.com/openpost/backend/internal/services/identity"
 	"github.com/openpost/backend/internal/services/medialifecycle"
 	"github.com/openpost/backend/internal/services/notifications"
+	"github.com/openpost/backend/internal/services/setupprojection"
 	"github.com/openpost/backend/internal/services/workspaceteam"
 	"github.com/uptrace/bun"
 )
@@ -30,6 +31,8 @@ type WorkspaceHandler struct {
 	entitlement   entitlements.Service
 	notifications *notifications.Service
 	team          *workspaceteam.Service
+	setup         *setupprojection.Service
+	hosted        bool
 	frontendURL   string
 }
 
@@ -38,9 +41,11 @@ func NewWorkspaceHandler(db *bun.DB, authenticator middleware.Authenticator, ent
 	if len(entitlement) > 0 && entitlement[0] != nil {
 		entitlementService = entitlement[0]
 	}
+	_, hosted := entitlementService.(*entitlements.SubscriptionService)
 	return &WorkspaceHandler{
 		db: db, auth: authenticator, entitlement: entitlementService,
-		team: workspaceteam.NewService(db, entitlementService, nil),
+		team:  workspaceteam.NewService(db, entitlementService, nil),
+		setup: setupprojection.NewService(db), hosted: hosted,
 	}
 }
 
@@ -88,6 +93,30 @@ type WorkspaceResponse struct {
 
 type ListWorkspacesOutput struct {
 	Body []WorkspaceResponse
+}
+
+type WorkspaceSetupStepResponse struct {
+	ID        string `json:"id" enum:"workspace,subscription,destination,publication" doc:"Setup step derived from Workspace state"`
+	Completed bool   `json:"completed" doc:"Whether the authoritative product state completes this step"`
+}
+
+type WorkspaceSetupResponse struct {
+	Visible        bool                         `json:"visible" doc:"Whether the current user has an actionable incomplete setup step"`
+	Activated      bool                         `json:"activated" doc:"Whether the Workspace has a connected destination and a scheduled or submitted Publication"`
+	CompletedSteps int                          `json:"completed_steps" doc:"Number of completed setup steps"`
+	TotalSteps     int                          `json:"total_steps" doc:"Number of applicable setup steps"`
+	NextStep       string                       `json:"next_step,omitempty" enum:"workspace,subscription,destination,publication" doc:"First incomplete setup step available to the current user"`
+	NextAction     string                       `json:"next_action,omitempty" enum:"name_workspace,resume_checkout,connect_destination,create_publication" doc:"Authorized action for the next setup step"`
+	ActionHref     string                       `json:"action_href,omitempty" doc:"Safe same-origin application route for the next setup action"`
+	Steps          []WorkspaceSetupStepResponse `json:"steps" doc:"Ordered authoritative setup progress"`
+}
+
+type GetWorkspaceSetupInput struct {
+	PathID string `path:"id" doc:"Workspace ID"`
+}
+
+type GetWorkspaceSetupOutput struct {
+	Body WorkspaceSetupResponse
 }
 
 type DeleteWorkspaceInput struct {
@@ -940,6 +969,54 @@ func (h *WorkspaceHandler) ListWorkspaces(api huma.API) {
 	})
 }
 
+func (h *WorkspaceHandler) GetWorkspaceSetup(api huma.API) {
+	huma.Register(api, huma.Operation{
+		OperationID: "get-workspace-setup",
+		Method:      http.MethodGet,
+		Path:        "/workspaces/{id}/setup",
+		Summary:     "Get workspace setup progress",
+		Description: "Projects setup progress from the Workspace, subscription, connected-destination, and Publication state without storing a separate onboarding step index.",
+		Tags:        []string{tagWorkspaces},
+		Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
+		Errors:      []int{403, 404},
+	}, func(ctx context.Context, input *GetWorkspaceSetupInput) (*GetWorkspaceSetupOutput, error) {
+		userID := middleware.GetUserID(ctx)
+		if !middleware.WorkspaceScopeAllows(ctx, input.PathID) {
+			return nil, huma.Error403Forbidden(errWorkspaceAccessDenied)
+		}
+		if err := h.requireWorkspaceAccess(ctx, input.PathID, userID); err != nil {
+			return nil, err
+		}
+		canEdit, err := middleware.CheckWorkspaceEditAccess(ctx, h.db, input.PathID, userID)
+		if err != nil {
+			return nil, huma.Error500InternalServerError(errValidateWorkspaceAccess)
+		}
+		canManageWorkspace, err := middleware.CheckWorkspaceAdminAccess(ctx, h.db, input.PathID, userID)
+		if err != nil {
+			return nil, huma.Error500InternalServerError(errValidateWorkspaceAccess)
+		}
+		projection, err := h.setup.Project(ctx, setupprojection.Input{
+			WorkspaceID: input.PathID, UserID: userID, CanEdit: canEdit, CanManageWorkspace: canManageWorkspace, Hosted: h.hosted,
+		})
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, huma.Error404NotFound("workspace not found")
+		}
+		if err != nil {
+			return nil, huma.Error500InternalServerError("failed to project workspace setup")
+		}
+		response := WorkspaceSetupResponse{
+			Visible: projection.Visible, Activated: projection.Activated,
+			CompletedSteps: projection.CompletedSteps, TotalSteps: projection.TotalSteps,
+			NextStep: projection.NextStep, NextAction: projection.NextAction, ActionHref: projection.ActionHref,
+			Steps: make([]WorkspaceSetupStepResponse, 0, len(projection.Steps)),
+		}
+		for _, step := range projection.Steps {
+			response.Steps = append(response.Steps, WorkspaceSetupStepResponse{ID: step.ID, Completed: step.Completed})
+		}
+		return &GetWorkspaceSetupOutput{Body: response}, nil
+	})
+}
+
 func (h *WorkspaceHandler) DeleteWorkspace(api huma.API) {
 	huma.Register(api, huma.Operation{
 		OperationID: "delete-workspace",
@@ -1117,6 +1194,7 @@ type GetWorkspaceSettingsInput struct {
 
 type GetWorkspaceSettingsOutput struct {
 	Body struct {
+		Name                string `json:"name"`
 		AvatarURL           string `json:"avatar_url"`
 		Color               string `json:"color"`
 		Timezone            string `json:"timezone"`
@@ -1133,6 +1211,7 @@ type GetWorkspaceSettingsOutput struct {
 type UpdateWorkspaceSettingsInput struct {
 	PathID string `path:"id" doc:"Workspace ID"`
 	Body   struct {
+		Name                *string `json:"name,omitempty" minLength:"1" maxLength:"100" doc:"Workspace name"`
 		AvatarURL           *string `json:"avatar_url,omitempty"`
 		Color               *string `json:"color,omitempty" pattern:"^#[0-9A-Fa-f]{6}$" doc:"Workspace accent color as a six-digit hex value"`
 		Timezone            *string `json:"timezone,omitempty"`
@@ -1148,6 +1227,7 @@ type UpdateWorkspaceSettingsInput struct {
 
 type UpdateWorkspaceSettingsOutput struct {
 	Body struct {
+		Name                string `json:"name"`
 		AvatarURL           string `json:"avatar_url"`
 		Color               string `json:"color"`
 		Timezone            string `json:"timezone"`
@@ -1194,6 +1274,7 @@ func (h *WorkspaceHandler) GetWorkspaceSettings(api huma.API) {
 		}
 
 		return &GetWorkspaceSettingsOutput{Body: struct {
+			Name                string `json:"name"`
 			AvatarURL           string `json:"avatar_url"`
 			Color               string `json:"color"`
 			Timezone            string `json:"timezone"`
@@ -1205,6 +1286,7 @@ func (h *WorkspaceHandler) GetWorkspaceSettings(api huma.API) {
 			SlotEndHour         int    `json:"slot_end_hour"`
 			SlotIntervalMinutes int    `json:"slot_interval_minutes"`
 		}{
+			Name:                workspace.Name,
 			AvatarURL:           workspace.AvatarURL,
 			Color:               normalizedWorkspaceColor(workspace.Color),
 			Timezone:            workspace.Timezone,
@@ -1250,6 +1332,13 @@ func (h *WorkspaceHandler) UpdateWorkspaceSettings(api huma.API) {
 				return nil, huma.Error400BadRequest("timezone must be a valid IANA timezone")
 			}
 			workspace.Timezone = timezone
+		}
+		if input.Body.Name != nil {
+			name := strings.TrimSpace(*input.Body.Name)
+			if name == "" {
+				return nil, huma.Error400BadRequest("workspace name is required")
+			}
+			workspace.Name = name
 		}
 		if input.Body.AvatarURL != nil {
 			avatarURL := strings.TrimSpace(*input.Body.AvatarURL)
@@ -1303,7 +1392,7 @@ func (h *WorkspaceHandler) UpdateWorkspaceSettings(api huma.API) {
 		}
 
 		_, err = h.db.NewUpdate().Model(&workspace).
-			Column("avatar_url", "color", "timezone", "week_start", "random_delay_minutes", "draft_gap_minutes", "slot_start_hour", "slot_end_hour", "slot_interval_minutes").
+			Column("name", "avatar_url", "color", "timezone", "week_start", "random_delay_minutes", "draft_gap_minutes", "slot_start_hour", "slot_end_hour", "slot_interval_minutes").
 			Where("id = ?", input.PathID).
 			Exec(ctx)
 		if err != nil {
@@ -1311,6 +1400,7 @@ func (h *WorkspaceHandler) UpdateWorkspaceSettings(api huma.API) {
 		}
 
 		return &UpdateWorkspaceSettingsOutput{Body: struct {
+			Name                string `json:"name"`
 			AvatarURL           string `json:"avatar_url"`
 			Color               string `json:"color"`
 			Timezone            string `json:"timezone"`
@@ -1322,6 +1412,7 @@ func (h *WorkspaceHandler) UpdateWorkspaceSettings(api huma.API) {
 			SlotEndHour         int    `json:"slot_end_hour"`
 			SlotIntervalMinutes int    `json:"slot_interval_minutes"`
 		}{
+			Name:                workspace.Name,
 			AvatarURL:           workspace.AvatarURL,
 			Color:               normalizedWorkspaceColor(workspace.Color),
 			Timezone:            workspace.Timezone,

@@ -38,8 +38,11 @@ func newWorkspaceTestServerWithAuthenticator(t *testing.T, entitlement entitleme
 		(*models.Organization)(nil),
 		(*models.OrganizationMember)(nil),
 		(*models.BillingSubscription)(nil),
+		(*models.BillingCheckoutAttempt)(nil),
 		(*models.Workspace)(nil),
 		(*models.WorkspaceMember)(nil),
+		(*models.SocialAccount)(nil),
+		(*models.Publication)(nil),
 		(*models.WorkspaceInvitation)(nil),
 		(*models.WorkspaceAccessAuditEvent)(nil),
 		(*models.IdentityProvider)(nil),
@@ -60,8 +63,186 @@ func newWorkspaceTestServerWithAuthenticator(t *testing.T, entitlement entitleme
 	handler.RemoveWorkspaceMember(api)
 	handler.ListWorkspaceAccessAudit(api)
 	handler.AcceptWorkspaceInvitation(api)
+	handler.GetWorkspaceSetup(api)
 
 	return &workspaceTestServer{echo: e, db: db}
+}
+
+func TestWorkspaceSetupProjectsOwnerProgressFromProductState(t *testing.T) {
+	t.Parallel()
+
+	srv := newWorkspaceTestServer(t, entitlements.NewSelfHostedService())
+	ctx := t.Context()
+	seedWorkspaceUserAndMember(t, srv.db, "user-1", "user@example.com", models.WorkspaceRoleAdmin)
+
+	initial := srv.getJSON(t, "/api/v1/workspaces/ws-1/setup", "web-token")
+	require.Equal(t, http.StatusOK, initial.Code, initial.Body.String())
+	var before WorkspaceSetupResponse
+	require.NoError(t, json.Unmarshal(initial.Body.Bytes(), &before))
+	require.True(t, before.Visible)
+	require.Equal(t, 1, before.CompletedSteps)
+	require.Equal(t, "destination", before.NextStep)
+	require.Equal(t, "connect_destination", before.NextAction)
+	require.Equal(t, "/settings?tab=accounts", before.ActionHref)
+
+	_, err := srv.db.NewInsert().Model(&models.SocialAccount{
+		ID: "account-1", WorkspaceID: "ws-1", Slug: "main", Platform: "x", AccountID: "1",
+		AccessTokenEnc: []byte("token"), IsActive: true,
+	}).Exec(ctx)
+	require.NoError(t, err)
+
+	withDestination := srv.getJSON(t, "/api/v1/workspaces/ws-1/setup", "web-token")
+	require.Equal(t, http.StatusOK, withDestination.Code, withDestination.Body.String())
+	var readyToPublish WorkspaceSetupResponse
+	require.NoError(t, json.Unmarshal(withDestination.Body.Bytes(), &readyToPublish))
+	require.Equal(t, 2, readyToPublish.CompletedSteps)
+	require.Equal(t, "publication", readyToPublish.NextStep)
+	require.Equal(t, "create_publication", readyToPublish.NextAction)
+	require.Equal(t, "/", readyToPublish.ActionHref)
+
+	_, err = srv.db.NewInsert().Model(&models.Publication{
+		ID: "publication-1", WorkspaceID: "ws-1", CreatedByID: "user-1", Status: models.PublicationStatusScheduled,
+		SourceContent: "Launch", MetadataJSON: "{}", ReleasePlanJSON: "{}", RepostOverride: "{}",
+	}).Exec(ctx)
+	require.NoError(t, err)
+
+	activated := srv.getJSON(t, "/api/v1/workspaces/ws-1/setup", "web-token")
+	require.Equal(t, http.StatusOK, activated.Code, activated.Body.String())
+	var complete WorkspaceSetupResponse
+	require.NoError(t, json.Unmarshal(activated.Body.Bytes(), &complete))
+	require.False(t, complete.Visible)
+	require.True(t, complete.Activated)
+	require.Equal(t, 3, complete.CompletedSteps)
+}
+
+func TestWorkspaceSetupHidesActionsFromViewersAndRejectsScopedTokens(t *testing.T) {
+	t.Parallel()
+
+	authenticator := workspaceTestAuthenticator{
+		"viewer-token": {UserID: "viewer-1", Email: "viewer@example.com"},
+		"scoped-token": {UserID: "viewer-1", Email: "viewer@example.com", WorkspaceID: "other-workspace"},
+	}
+	srv := newWorkspaceTestServerWithAuthenticator(t, entitlements.NewSelfHostedService(), authenticator)
+	seedWorkspaceUserAndMember(t, srv.db, "viewer-1", "viewer@example.com", models.WorkspaceRoleViewer)
+
+	viewer := srv.getJSON(t, "/api/v1/workspaces/ws-1/setup", "viewer-token")
+	require.Equal(t, http.StatusOK, viewer.Code, viewer.Body.String())
+	var projection WorkspaceSetupResponse
+	require.NoError(t, json.Unmarshal(viewer.Body.Bytes(), &projection))
+	require.False(t, projection.Visible)
+	require.Empty(t, projection.NextAction)
+
+	scoped := srv.getJSON(t, "/api/v1/workspaces/ws-1/setup", "scoped-token")
+	require.Equal(t, http.StatusForbidden, scoped.Code, scoped.Body.String())
+}
+
+func TestWorkspaceSetupDirectsAnOwnerToNameAnUnnamedWorkspace(t *testing.T) {
+	t.Parallel()
+
+	srv := newWorkspaceTestServer(t, entitlements.NewSelfHostedService())
+	seedWorkspaceUserAndMember(t, srv.db, "user-1", "user@example.com", models.WorkspaceRoleAdmin)
+	_, err := srv.db.NewUpdate().Model((*models.Workspace)(nil)).Set("name = ''").Where("id = ?", "ws-1").Exec(t.Context())
+	require.NoError(t, err)
+
+	response := srv.getJSON(t, "/api/v1/workspaces/ws-1/setup", "web-token")
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	var setup WorkspaceSetupResponse
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &setup))
+	require.True(t, setup.Visible)
+	require.Equal(t, "workspace", setup.NextStep)
+	require.Equal(t, "name_workspace", setup.NextAction)
+	require.Equal(t, "/settings?tab=general#workspace-name", setup.ActionHref)
+}
+
+func TestWorkspaceSetupKeepsPublicationActionAfterFailedDelivery(t *testing.T) {
+	t.Parallel()
+
+	srv := newWorkspaceTestServer(t, entitlements.NewSelfHostedService())
+	seedWorkspaceUserAndMember(t, srv.db, "user-1", "user@example.com", models.WorkspaceRoleAdmin)
+	_, err := srv.db.NewInsert().Model(&models.SocialAccount{
+		ID: "account-1", WorkspaceID: "ws-1", Slug: "main", Platform: "x", AccountID: "1",
+		AccessTokenEnc: []byte("token"), IsActive: true,
+	}).Exec(t.Context())
+	require.NoError(t, err)
+	_, err = srv.db.NewInsert().Model(&models.Publication{
+		ID: "publication-1", WorkspaceID: "ws-1", CreatedByID: "user-1", Status: models.PublicationStatusFailed,
+		SourceContent: "Launch", MetadataJSON: "{}", ReleasePlanJSON: "{}", RepostOverride: "{}",
+	}).Exec(t.Context())
+	require.NoError(t, err)
+
+	response := srv.getJSON(t, "/api/v1/workspaces/ws-1/setup", "web-token")
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	var setup WorkspaceSetupResponse
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &setup))
+	require.False(t, setup.Activated)
+	require.True(t, setup.Visible)
+	require.Equal(t, "publication", setup.NextStep)
+	require.Equal(t, "create_publication", setup.NextAction)
+}
+
+func TestWorkspaceSetupProjectsHostedSubscriptionAndCheckoutForAnOwner(t *testing.T) {
+	t.Parallel()
+
+	db := createHandlerTestDB(
+		t,
+		(*models.User)(nil),
+		(*models.Organization)(nil),
+		(*models.OrganizationMember)(nil),
+		(*models.BillingSubscription)(nil),
+		(*models.BillingCheckoutAttempt)(nil),
+		(*models.Workspace)(nil),
+		(*models.WorkspaceMember)(nil),
+		(*models.SocialAccount)(nil),
+		(*models.Publication)(nil),
+	)
+	e := echo.New()
+	api := humaecho.NewWithGroup(e, e.Group("/api/v1"), huma.DefaultConfig("Test", "1.0.0"))
+	handler := NewWorkspaceHandler(
+		db,
+		testAuthenticator{},
+		entitlements.NewSubscriptionService(db, entitlements.NewCloudBootstrapService()),
+	)
+	handler.GetWorkspaceSetup(api)
+	seedWorkspaceUserAndMember(t, db, "user-1", "user@example.com", models.WorkspaceRoleAdmin)
+
+	request := func() *httptest.ResponseRecorder {
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/workspaces/ws-1/setup", nil)
+		req.Header.Set("Authorization", "Bearer web-token")
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+		return rec
+	}
+
+	initial := request()
+	require.Equal(t, http.StatusOK, initial.Code, initial.Body.String())
+	var pending WorkspaceSetupResponse
+	require.NoError(t, json.Unmarshal(initial.Body.Bytes(), &pending))
+	require.Equal(t, 1, pending.CompletedSteps)
+	require.Equal(t, 4, pending.TotalSteps)
+	require.Equal(t, "subscription", pending.NextStep)
+	require.Equal(t, "resume_checkout", pending.NextAction)
+	require.Equal(t, "/settings?tab=billing", pending.ActionHref)
+
+	_, err := db.NewInsert().Model(&models.BillingCheckoutAttempt{
+		CheckoutAttemptID: "checkout-1", OrganizationID: "org-1", WorkspaceID: "ws-1", UserID: "user-1",
+		ProviderPriceID: "price-1", PlanID: "founder", BillingPeriod: "monthly", Status: "created",
+	}).Exec(t.Context())
+	require.NoError(t, err)
+	resumable := request()
+	var checkout WorkspaceSetupResponse
+	require.NoError(t, json.Unmarshal(resumable.Body.Bytes(), &checkout))
+	require.Equal(t, "/checkout?attempt=checkout-1", checkout.ActionHref)
+
+	_, err = db.NewInsert().Model(&models.BillingSubscription{
+		OrganizationID: "org-1", ProviderCustomerID: "customer-1", ProviderSubscriptionID: "subscription-1",
+		Status: "trialing", PlanID: "founder", EntitlementSnapshot: "{}",
+	}).Exec(t.Context())
+	require.NoError(t, err)
+	subscribed := request()
+	var connected WorkspaceSetupResponse
+	require.NoError(t, json.Unmarshal(subscribed.Body.Bytes(), &connected))
+	require.Equal(t, 2, connected.CompletedSteps)
+	require.Equal(t, "destination", connected.NextStep)
 }
 
 func (s *workspaceTestServer) createWorkspace(t *testing.T, name string) *httptest.ResponseRecorder {

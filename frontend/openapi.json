@@ -5920,6 +5920,9 @@
 						"format": "int64",
 						"type": "integer"
 					},
+					"name": {
+						"type": "string"
+					},
 					"random_delay_minutes": {
 						"format": "int64",
 						"type": "integer"
@@ -5945,6 +5948,7 @@
 					}
 				},
 				"required": [
+					"name",
 					"avatar_url",
 					"color",
 					"timezone",
@@ -15525,6 +15529,12 @@
 						"format": "int64",
 						"type": "integer"
 					},
+					"name": {
+						"description": "Workspace name",
+						"maxLength": 100,
+						"minLength": 1,
+						"type": "string"
+					},
 					"random_delay_minutes": {
 						"format": "int64",
 						"type": "integer"
@@ -15579,6 +15589,9 @@
 						"format": "int64",
 						"type": "integer"
 					},
+					"name": {
+						"type": "string"
+					},
 					"random_delay_minutes": {
 						"format": "int64",
 						"type": "integer"
@@ -15604,6 +15617,7 @@
 					}
 				},
 				"required": [
+					"name",
 					"avatar_url",
 					"color",
 					"timezone",
@@ -17088,6 +17102,80 @@
 					"sso_authenticated",
 					"sso_identity_linked"
 				],
+				"type": "object"
+			},
+			"WorkspaceSetupResponse": {
+				"additionalProperties": false,
+				"properties": {
+					"$schema": {
+						"description": "A URL to the JSON Schema for this object.",
+						"examples": ["https://example.com/schemas/WorkspaceSetupResponse.json"],
+						"format": "uri",
+						"readOnly": true,
+						"type": "string"
+					},
+					"action_href": {
+						"description": "Safe same-origin application route for the next setup action",
+						"type": "string"
+					},
+					"activated": {
+						"description": "Whether the Workspace has a connected destination and a scheduled or submitted Publication",
+						"type": "boolean"
+					},
+					"completed_steps": {
+						"description": "Number of completed setup steps",
+						"format": "int64",
+						"type": "integer"
+					},
+					"next_action": {
+						"description": "Authorized action for the next setup step",
+						"enum": [
+							"name_workspace",
+							"resume_checkout",
+							"connect_destination",
+							"create_publication"
+						],
+						"type": "string"
+					},
+					"next_step": {
+						"description": "First incomplete setup step available to the current user",
+						"enum": ["workspace", "subscription", "destination", "publication"],
+						"type": "string"
+					},
+					"steps": {
+						"description": "Ordered authoritative setup progress",
+						"items": {
+							"$ref": "#/components/schemas/WorkspaceSetupStepResponse"
+						},
+						"type": ["array", "null"]
+					},
+					"total_steps": {
+						"description": "Number of applicable setup steps",
+						"format": "int64",
+						"type": "integer"
+					},
+					"visible": {
+						"description": "Whether the current user has an actionable incomplete setup step",
+						"type": "boolean"
+					}
+				},
+				"required": ["visible", "activated", "completed_steps", "total_steps", "steps"],
+				"type": "object"
+			},
+			"WorkspaceSetupStepResponse": {
+				"additionalProperties": false,
+				"properties": {
+					"completed": {
+						"description": "Whether the authoritative product state completes this step",
+						"type": "boolean"
+					},
+					"id": {
+						"description": "Setup step derived from Workspace state",
+						"enum": ["workspace", "subscription", "destination", "publication"],
+						"type": "string"
+					}
+				},
+				"required": ["id", "completed"],
 				"type": "object"
 			},
 			"WorkspaceTeamOutputBody": {
@@ -36772,6 +36860,78 @@
 					}
 				},
 				"summary": "Update workspace settings",
+				"tags": ["Workspaces"]
+			}
+		},
+		"/workspaces/{id}/setup": {
+			"get": {
+				"description": "Projects setup progress from the Workspace, subscription, connected-destination, and Publication state without storing a separate onboarding step index.",
+				"operationId": "get-workspace-setup",
+				"parameters": [
+					{
+						"description": "Workspace ID",
+						"in": "path",
+						"name": "id",
+						"required": true,
+						"schema": {
+							"description": "Workspace ID",
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/WorkspaceSetupResponse"
+								}
+							}
+						},
+						"description": "OK"
+					},
+					"403": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Forbidden"
+					},
+					"404": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Not Found"
+					},
+					"422": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Unprocessable Entity"
+					},
+					"500": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Internal Server Error"
+					}
+				},
+				"summary": "Get workspace setup progress",
 				"tags": ["Workspaces"]
 			}
 		},

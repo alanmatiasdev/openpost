@@ -1,0 +1,202 @@
+package setupprojection
+
+import (
+	"context"
+	"database/sql"
+	"strings"
+
+	"github.com/openpost/backend/internal/models"
+	"github.com/uptrace/bun"
+)
+
+const (
+	StepWorkspace    = "workspace"
+	StepSubscription = "subscription"
+	StepDestination  = "destination"
+	StepPublication  = "publication"
+)
+
+type Step struct {
+	ID        string
+	Completed bool
+}
+
+type Projection struct {
+	Visible        bool
+	Activated      bool
+	CompletedSteps int
+	TotalSteps     int
+	NextStep       string
+	NextAction     string
+	ActionHref     string
+	Steps          []Step
+}
+
+type Input struct {
+	WorkspaceID        string
+	UserID             string
+	CanEdit            bool
+	CanManageWorkspace bool
+	Hosted             bool
+}
+
+type Service struct {
+	db *bun.DB
+}
+
+type state struct {
+	workspace            models.Workspace
+	subscriptionComplete bool
+	destinationComplete  bool
+	publicationComplete  bool
+	canManageBilling     bool
+}
+
+func NewService(db *bun.DB) *Service {
+	return &Service{db: db}
+}
+
+func (s *Service) Project(ctx context.Context, input Input) (Projection, error) {
+	state, err := s.loadState(ctx, input)
+	if err != nil {
+		return Projection{}, err
+	}
+	projection := newProjection(state, input.Hosted)
+	if projection.Activated || !input.CanEdit {
+		return projection, nil
+	}
+	return s.withNextAction(ctx, projection, input, state.canManageBilling)
+}
+
+func (s *Service) loadState(ctx context.Context, input Input) (state, error) {
+	var workspace models.Workspace
+	if err := s.db.NewSelect().Model(&workspace).Where("id = ?", input.WorkspaceID).Scan(ctx); err != nil {
+		return state{}, err
+	}
+
+	result := state{workspace: workspace, subscriptionComplete: !input.Hosted}
+	if input.Hosted {
+		var subscription models.BillingSubscription
+		err := s.db.NewSelect().Model(&subscription).
+			Where("organization_id = ?", workspace.OrganizationID).
+			Where("provider = ?", models.BillingProviderPaddle).
+			Scan(ctx)
+		if err != nil && err != sql.ErrNoRows {
+			return state{}, err
+		}
+		result.subscriptionComplete = err == nil && subscriptionAllowsUsage(subscription.Status)
+		result.canManageBilling, err = s.canManageBilling(ctx, workspace.OrganizationID, input.UserID)
+		if err != nil {
+			return state{}, err
+		}
+	}
+
+	var err error
+	result.destinationComplete, err = s.exists(ctx, (*models.SocialAccount)(nil), "workspace_id = ? AND is_active = ?", input.WorkspaceID, true)
+	if err != nil {
+		return state{}, err
+	}
+	result.publicationComplete, err = s.exists(ctx, (*models.Publication)(nil), "workspace_id = ? AND status IN (?)", input.WorkspaceID, bun.List([]string{
+		models.PublicationStatusScheduled,
+		models.PublicationStatusPublishing,
+		models.PublicationStatusPublished,
+	}))
+	if err != nil {
+		return state{}, err
+	}
+	return result, nil
+}
+
+func newProjection(state state, hosted bool) Projection {
+	steps := []Step{{ID: StepWorkspace, Completed: strings.TrimSpace(state.workspace.Name) != ""}}
+	if hosted {
+		steps = append(steps, Step{ID: StepSubscription, Completed: state.subscriptionComplete})
+	}
+	steps = append(steps,
+		Step{ID: StepDestination, Completed: state.destinationComplete},
+		Step{ID: StepPublication, Completed: state.publicationComplete},
+	)
+
+	projection := Projection{Steps: steps, TotalSteps: len(steps)}
+	for _, step := range projection.Steps {
+		if step.Completed {
+			projection.CompletedSteps++
+		}
+	}
+	projection.Activated = state.destinationComplete && state.publicationComplete
+	return projection
+}
+
+func (s *Service) withNextAction(ctx context.Context, projection Projection, input Input, canManageBilling bool) (Projection, error) {
+	for _, step := range projection.Steps {
+		if step.Completed {
+			continue
+		}
+		projection.NextStep = step.ID
+		switch step.ID {
+		case StepWorkspace:
+			if input.CanManageWorkspace {
+				projection.NextAction = "name_workspace"
+				projection.ActionHref = "/settings?tab=general#workspace-name"
+			}
+		case StepSubscription:
+			if canManageBilling {
+				projection.NextAction = "resume_checkout"
+				var err error
+				projection.ActionHref, err = s.checkoutHref(ctx, input.WorkspaceID, input.UserID)
+				if err != nil {
+					return Projection{}, err
+				}
+			}
+		case StepDestination:
+			projection.NextAction = "connect_destination"
+			projection.ActionHref = "/settings?tab=accounts"
+		case StepPublication:
+			projection.NextAction = "create_publication"
+			projection.ActionHref = "/"
+		}
+		break
+	}
+	projection.Visible = projection.NextAction != ""
+	return projection, nil
+}
+
+func (s *Service) exists(ctx context.Context, model any, where string, values ...any) (bool, error) {
+	return s.db.NewSelect().Model(model).Where(where, values...).Exists(ctx)
+}
+
+func (s *Service) canManageBilling(ctx context.Context, organizationID, userID string) (bool, error) {
+	if strings.TrimSpace(organizationID) == "" {
+		return false, nil
+	}
+	return s.db.NewSelect().Model((*models.OrganizationMember)(nil)).
+		Where("organization_id = ? AND user_id = ?", organizationID, userID).
+		Where("role IN (?)", bun.List([]string{models.OrganizationRoleOwner, models.OrganizationRoleAdmin})).
+		Exists(ctx)
+}
+
+func (s *Service) checkoutHref(ctx context.Context, workspaceID, userID string) (string, error) {
+	var attempt models.BillingCheckoutAttempt
+	err := s.db.NewSelect().Model(&attempt).
+		Where("workspace_id = ? AND user_id = ?", workspaceID, userID).
+		Where("status IN (?)", bun.List([]string{"created", "pending"})).
+		OrderExpr("created_at DESC").
+		Limit(1).
+		Scan(ctx)
+	if err == sql.ErrNoRows {
+		return "/settings?tab=billing", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return "/checkout?attempt=" + attempt.CheckoutAttemptID, nil
+}
+
+func subscriptionAllowsUsage(status string) bool {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "active", "trialing":
+		return true
+	default:
+		return false
+	}
+}
