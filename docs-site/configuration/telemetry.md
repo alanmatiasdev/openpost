@@ -15,6 +15,8 @@ The shared browser client uses cookieless mode and memory-only persistence. Auto
 
 Do not add email addresses, names, usernames, post text, media, request bodies, credentials, query strings, or raw URLs to events or exceptions. Use route templates, stable object IDs, status codes, release identity, and enumerated failure types. A PostHog project token is write-only and may be exposed to the browser; a personal API key must remain in CI secret storage.
 
+`first composition started` is emitted only after the server atomically accepts the first meaningful composition for a Workspace. Its browser property allowlist contains only `signal`, with one of `text`, `media`, or `content_mode`. It excludes authored content, prompts, captions, media URLs, identity data, provider handles, destination identifiers, and secret-bearing URLs. Opening or focusing the composer, selecting a destination, and saving an empty draft do not emit it.
+
 Before enabling telemetry, configure the PostHog project to:
 
 - use cookieless server hashing;

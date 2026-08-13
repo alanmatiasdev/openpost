@@ -96,7 +96,7 @@ type ListWorkspacesOutput struct {
 }
 
 type WorkspaceSetupStepResponse struct {
-	ID        string `json:"id" enum:"workspace,subscription,destination,publication" doc:"Setup step derived from Workspace state"`
+	ID        string `json:"id" enum:"workspace,subscription,destination,composition,publication" doc:"Setup step derived from Workspace state"`
 	Completed bool   `json:"completed" doc:"Whether the authoritative product state completes this step"`
 }
 
@@ -105,7 +105,7 @@ type WorkspaceSetupResponse struct {
 	Activated      bool                         `json:"activated" doc:"Whether the Workspace has a connected destination and a scheduled or submitted Publication"`
 	CompletedSteps int                          `json:"completed_steps" doc:"Number of completed setup steps"`
 	TotalSteps     int                          `json:"total_steps" doc:"Number of applicable setup steps"`
-	NextStep       string                       `json:"next_step,omitempty" enum:"workspace,subscription,destination,publication" doc:"First incomplete setup step available to the current user"`
+	NextStep       string                       `json:"next_step,omitempty" enum:"workspace,subscription,destination,composition,publication" doc:"First incomplete setup step available to the current user"`
 	NextAction     string                       `json:"next_action,omitempty" enum:"name_workspace,resume_checkout,connect_destination,create_publication" doc:"Authorized action for the next setup step"`
 	ActionHref     string                       `json:"action_href,omitempty" doc:"Safe same-origin application route for the next setup action"`
 	Steps          []WorkspaceSetupStepResponse `json:"steps" doc:"Ordered authoritative setup progress applicable to the current user's role and deployment"`
@@ -117,6 +117,22 @@ type GetWorkspaceSetupInput struct {
 
 type GetWorkspaceSetupOutput struct {
 	Body WorkspaceSetupResponse
+}
+
+type StartWorkspaceCompositionInput struct {
+	PathID string `path:"id" doc:"Workspace ID"`
+	Body   struct {
+		Signal    string `json:"signal" enum:"text,media,content_mode" doc:"Meaningful composer interaction category"`
+		OriginKey string `json:"origin_key" minLength:"16" maxLength:"100" doc:"Opaque browser-generated key used to reconcile an uncertain claim response"`
+	}
+}
+
+type StartWorkspaceCompositionResponse struct {
+	Claimed bool `json:"claimed" doc:"Whether this request recorded the Workspace's first meaningful composition"`
+}
+
+type StartWorkspaceCompositionOutput struct {
+	Body StartWorkspaceCompositionResponse
 }
 
 type DeleteWorkspaceInput struct {
@@ -1014,6 +1030,55 @@ func (h *WorkspaceHandler) GetWorkspaceSetup(api huma.API) {
 			response.Steps = append(response.Steps, WorkspaceSetupStepResponse{ID: step.ID, Completed: step.Completed})
 		}
 		return &GetWorkspaceSetupOutput{Body: response}, nil
+	})
+}
+
+func (h *WorkspaceHandler) StartWorkspaceComposition(api huma.API) {
+	huma.Register(api, huma.Operation{
+		OperationID:   "start-workspace-composition",
+		Method:        http.MethodPost,
+		Path:          "/workspaces/{id}/setup/composition",
+		Summary:       "Record the first meaningful Workspace composition",
+		Description:   "Atomically records meaningful text, attached media, or an intentional content-mode choice once per Workspace.",
+		Tags:          []string{tagWorkspaces},
+		DefaultStatus: http.StatusOK,
+		Middlewares:   huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
+		Errors:        []int{403, 404},
+	}, func(ctx context.Context, input *StartWorkspaceCompositionInput) (*StartWorkspaceCompositionOutput, error) {
+		userID := middleware.GetUserID(ctx)
+		if !middleware.WorkspaceScopeAllows(ctx, input.PathID) {
+			return nil, huma.Error403Forbidden(errWorkspaceAccessDenied)
+		}
+		canEdit, err := middleware.CheckWorkspaceEditAccess(ctx, h.db, input.PathID, userID)
+		if err != nil {
+			return nil, huma.Error500InternalServerError(errValidateWorkspaceAccess)
+		}
+		if !canEdit {
+			return nil, huma.Error403Forbidden(errWorkspaceAccessDenied)
+		}
+		claim := &models.WorkspaceFirstComposition{
+			WorkspaceID: input.PathID,
+			Signal:      input.Body.Signal,
+			OriginKey:   input.Body.OriginKey,
+			CreatedAt:   time.Now().UTC(),
+		}
+		result, err := h.db.NewInsert().Model(claim).On("CONFLICT (workspace_id) DO NOTHING").Exec(ctx)
+		if err != nil {
+			return nil, huma.Error500InternalServerError("failed to record Workspace composition")
+		}
+		rows, err := result.RowsAffected()
+		if err != nil {
+			return nil, huma.Error500InternalServerError("failed to inspect Workspace composition")
+		}
+		claimed := rows == 1
+		if !claimed {
+			var stored models.WorkspaceFirstComposition
+			if err := h.db.NewSelect().Model(&stored).Where("workspace_id = ?", input.PathID).Scan(ctx); err != nil {
+				return nil, huma.Error500InternalServerError("failed to reconcile Workspace composition")
+			}
+			claimed = stored.OriginKey == input.Body.OriginKey
+		}
+		return &StartWorkspaceCompositionOutput{Body: StartWorkspaceCompositionResponse{Claimed: claimed}}, nil
 	})
 }
 

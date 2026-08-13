@@ -9,7 +9,7 @@ Connected accounts are the social accounts inside a workspace.
 3. Sign in to that platform and approve access.
 4. Return to OpenPost. A successful first connection opens a fresh composer with the new destination selected.
 
-If you cancel authorization or the provider cannot finish the connection, OpenPost returns to account management with a retry message. Refreshing or signing in again does not create a separate setup state; the Workspace setup guide reads current subscription, destination, and Publication data.
+If you cancel authorization or the provider cannot finish the connection, OpenPost returns to account management with a retry message. Refreshing or signing in again does not create a separate setup state; the Workspace setup guide reads current subscription, destination, first-composition, and Publication data.
 
 ## Notes
 

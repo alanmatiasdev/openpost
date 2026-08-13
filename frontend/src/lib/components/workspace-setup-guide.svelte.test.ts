@@ -28,6 +28,7 @@ vi.mock('$lib/paraglide/messages', () => ({
 		workspace_setup_workspace: () => 'Workspace',
 		workspace_setup_subscription: () => 'Plan',
 		workspace_setup_destination: () => 'Destination',
+		workspace_setup_composition: () => 'Composition',
 		workspace_setup_publication: () => 'Publication'
 	}
 }));
@@ -40,14 +41,15 @@ describe('WorkspaceSetupGuide', () => {
 			data: {
 				visible: true,
 				activated: false,
-				completed_steps: 2,
-				total_steps: 3,
+				completed_steps: 3,
+				total_steps: 4,
 				next_step: 'publication',
 				next_action: 'create_publication',
 				action_href: '/',
 				steps: [
 					{ id: 'workspace', completed: true },
 					{ id: 'destination', completed: true },
+					{ id: 'composition', completed: true },
 					{ id: 'publication', completed: false }
 				]
 			}
@@ -56,7 +58,7 @@ describe('WorkspaceSetupGuide', () => {
 		const screen = await render(WorkspaceSetupGuide, { workspaceID: 'workspace-1' });
 		const guide = screen.getByTestId('workspace-setup-guide-home');
 		await expect.element(guide).toBeVisible();
-		await expect.element(guide).toHaveTextContent('2 of 3 complete');
+		await expect.element(guide).toHaveTextContent('3 of 4 complete');
 		await expect.element(guide).toHaveTextContent('Schedule or submit your first Publication');
 		await expect
 			.element(screen.getByRole('link', { name: 'Create a Publication' }))

@@ -13,6 +13,7 @@ const (
 	StepWorkspace    = "workspace"
 	StepSubscription = "subscription"
 	StepDestination  = "destination"
+	StepComposition  = "composition"
 	StepPublication  = "publication"
 )
 
@@ -48,6 +49,7 @@ type state struct {
 	workspace            models.Workspace
 	subscriptionComplete bool
 	destinationComplete  bool
+	compositionComplete  bool
 	publicationComplete  bool
 	organizationRole     string
 }
@@ -96,6 +98,10 @@ func (s *Service) loadState(ctx context.Context, input Input) (state, error) {
 	if err != nil {
 		return state{}, err
 	}
+	result.compositionComplete, err = s.exists(ctx, (*models.WorkspaceFirstComposition)(nil), "workspace_id = ?", input.WorkspaceID)
+	if err != nil {
+		return state{}, err
+	}
 	result.publicationComplete, err = s.exists(ctx, (*models.Publication)(nil), "workspace_id = ? AND status IN (?)", input.WorkspaceID, bun.List([]string{
 		models.PublicationStatusScheduled,
 		models.PublicationStatusPublishing,
@@ -104,11 +110,14 @@ func (s *Service) loadState(ctx context.Context, input Input) (state, error) {
 	if err != nil {
 		return state{}, err
 	}
+	if result.publicationComplete {
+		result.compositionComplete = true
+	}
 	return result, nil
 }
 
 func newProjection(state state, input Input) Projection {
-	steps := make([]Step, 0, 4)
+	steps := make([]Step, 0, 5)
 	if state.organizationRole == models.OrganizationRoleOwner && input.CanManageWorkspace {
 		steps = append(steps, Step{ID: StepWorkspace, Completed: strings.TrimSpace(state.workspace.Name) != ""})
 	}
@@ -118,6 +127,7 @@ func newProjection(state state, input Input) Projection {
 	if input.CanEdit {
 		steps = append(steps,
 			Step{ID: StepDestination, Completed: state.destinationComplete},
+			Step{ID: StepComposition, Completed: state.compositionComplete},
 			Step{ID: StepPublication, Completed: state.publicationComplete},
 		)
 	}
@@ -154,6 +164,9 @@ func (s *Service) withNextAction(ctx context.Context, projection Projection, inp
 		case StepDestination:
 			projection.NextAction = "connect_destination"
 			projection.ActionHref = "/settings?tab=accounts"
+		case StepComposition:
+			projection.NextAction = "create_publication"
+			projection.ActionHref = "/"
 		case StepPublication:
 			projection.NextAction = "create_publication"
 			projection.ActionHref = "/"

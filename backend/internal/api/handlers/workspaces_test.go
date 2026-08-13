@@ -42,6 +42,7 @@ func newWorkspaceTestServerWithAuthenticator(t *testing.T, entitlement entitleme
 		(*models.Workspace)(nil),
 		(*models.WorkspaceMember)(nil),
 		(*models.SocialAccount)(nil),
+		(*models.WorkspaceFirstComposition)(nil),
 		(*models.Publication)(nil),
 		(*models.WorkspaceInvitation)(nil),
 		(*models.WorkspaceAccessAuditEvent)(nil),
@@ -64,6 +65,7 @@ func newWorkspaceTestServerWithAuthenticator(t *testing.T, entitlement entitleme
 	handler.ListWorkspaceAccessAudit(api)
 	handler.AcceptWorkspaceInvitation(api)
 	handler.GetWorkspaceSetup(api)
+	handler.StartWorkspaceComposition(api)
 
 	return &workspaceTestServer{echo: e, db: db}
 }
@@ -96,9 +98,21 @@ func TestWorkspaceSetupProjectsOwnerProgressFromProductState(t *testing.T) {
 	var readyToPublish WorkspaceSetupResponse
 	require.NoError(t, json.Unmarshal(withDestination.Body.Bytes(), &readyToPublish))
 	require.Equal(t, 2, readyToPublish.CompletedSteps)
-	require.Equal(t, "publication", readyToPublish.NextStep)
+	require.Equal(t, "composition", readyToPublish.NextStep)
 	require.Equal(t, "create_publication", readyToPublish.NextAction)
 	require.Equal(t, "/", readyToPublish.ActionHref)
+
+	started := srv.postJSON(t, "/api/v1/workspaces/ws-1/setup/composition", map[string]any{"signal": "text", "origin_key": "origin-text-0001"}, "web-token")
+	require.Equal(t, http.StatusOK, started.Code, started.Body.String())
+	var claim StartWorkspaceCompositionResponse
+	require.NoError(t, json.Unmarshal(started.Body.Bytes(), &claim))
+	require.True(t, claim.Claimed)
+
+	refreshed := srv.getJSON(t, "/api/v1/workspaces/ws-1/setup", "web-token")
+	var composing WorkspaceSetupResponse
+	require.NoError(t, json.Unmarshal(refreshed.Body.Bytes(), &composing))
+	require.Equal(t, 3, composing.CompletedSteps)
+	require.Equal(t, "publication", composing.NextStep)
 
 	_, err = srv.db.NewInsert().Model(&models.Publication{
 		ID: "publication-1", WorkspaceID: "ws-1", CreatedByID: "user-1", Status: models.PublicationStatusScheduled,
@@ -112,7 +126,47 @@ func TestWorkspaceSetupProjectsOwnerProgressFromProductState(t *testing.T) {
 	require.NoError(t, json.Unmarshal(activated.Body.Bytes(), &complete))
 	require.False(t, complete.Visible)
 	require.True(t, complete.Activated)
-	require.Equal(t, 3, complete.CompletedSteps)
+	require.Equal(t, 4, complete.CompletedSteps)
+}
+
+func TestWorkspaceCompositionStartsOnceForMeaningfulSignals(t *testing.T) {
+	t.Parallel()
+
+	for _, signal := range []string{"text", "media", "content_mode"} {
+		t.Run(signal, func(t *testing.T) {
+			srv := newWorkspaceTestServer(t, entitlements.NewSelfHostedService())
+			seedWorkspaceUserAndMember(t, srv.db, "user-1", "user@example.com", models.WorkspaceRoleAdmin)
+
+			first := srv.postJSON(t, "/api/v1/workspaces/ws-1/setup/composition", map[string]any{"signal": signal, "origin_key": "origin-signal-0001"}, "web-token")
+			require.Equal(t, http.StatusOK, first.Code, first.Body.String())
+			var firstClaim StartWorkspaceCompositionResponse
+			require.NoError(t, json.Unmarshal(first.Body.Bytes(), &firstClaim))
+			require.True(t, firstClaim.Claimed)
+
+			reconciled := srv.postJSON(t, "/api/v1/workspaces/ws-1/setup/composition", map[string]any{"signal": signal, "origin_key": "origin-signal-0001"}, "web-token")
+			require.Equal(t, http.StatusOK, reconciled.Code, reconciled.Body.String())
+			var reconciledClaim StartWorkspaceCompositionResponse
+			require.NoError(t, json.Unmarshal(reconciled.Body.Bytes(), &reconciledClaim))
+			require.True(t, reconciledClaim.Claimed)
+
+			repeat := srv.postJSON(t, "/api/v1/workspaces/ws-1/setup/composition", map[string]any{"signal": signal, "origin_key": "origin-repeat-0001"}, "web-token")
+			require.Equal(t, http.StatusOK, repeat.Code, repeat.Body.String())
+			var repeatClaim StartWorkspaceCompositionResponse
+			require.NoError(t, json.Unmarshal(repeat.Body.Bytes(), &repeatClaim))
+			require.False(t, repeatClaim.Claimed)
+		})
+	}
+}
+
+func TestWorkspaceCompositionRejectsEmptyAndUnknownSignals(t *testing.T) {
+	t.Parallel()
+
+	srv := newWorkspaceTestServer(t, entitlements.NewSelfHostedService())
+	seedWorkspaceUserAndMember(t, srv.db, "user-1", "user@example.com", models.WorkspaceRoleAdmin)
+	for _, signal := range []string{"", "focus", "destination", "draft"} {
+		response := srv.postJSON(t, "/api/v1/workspaces/ws-1/setup/composition", map[string]any{"signal": signal, "origin_key": "origin-invalid-001"}, "web-token")
+		require.Equal(t, http.StatusUnprocessableEntity, response.Code, response.Body.String())
+	}
 }
 
 func TestWorkspaceSetupHidesActionsFromViewersAndRejectsScopedTokens(t *testing.T) {
@@ -162,6 +216,10 @@ func TestWorkspaceSetupKeepsPublicationActionAfterFailedDelivery(t *testing.T) {
 	_, err := srv.db.NewInsert().Model(&models.SocialAccount{
 		ID: "account-1", WorkspaceID: "ws-1", Slug: "main", Platform: "x", AccountID: "1",
 		AccessTokenEnc: []byte("token"), IsActive: true,
+	}).Exec(t.Context())
+	require.NoError(t, err)
+	_, err = srv.db.NewInsert().Model(&models.WorkspaceFirstComposition{
+		WorkspaceID: "ws-1", Signal: "text",
 	}).Exec(t.Context())
 	require.NoError(t, err)
 	_, err = srv.db.NewInsert().Model(&models.Publication{
@@ -221,6 +279,7 @@ func TestWorkspaceSetupProjectsHostedSubscriptionAndCheckoutForAnOwner(t *testin
 		(*models.Workspace)(nil),
 		(*models.WorkspaceMember)(nil),
 		(*models.SocialAccount)(nil),
+		(*models.WorkspaceFirstComposition)(nil),
 		(*models.Publication)(nil),
 	)
 	e := echo.New()
@@ -246,7 +305,7 @@ func TestWorkspaceSetupProjectsHostedSubscriptionAndCheckoutForAnOwner(t *testin
 	var pending WorkspaceSetupResponse
 	require.NoError(t, json.Unmarshal(initial.Body.Bytes(), &pending))
 	require.Equal(t, 1, pending.CompletedSteps)
-	require.Equal(t, 4, pending.TotalSteps)
+	require.Equal(t, 5, pending.TotalSteps)
 	require.Equal(t, "subscription", pending.NextStep)
 	require.Equal(t, "resume_checkout", pending.NextAction)
 	require.Equal(t, "/settings?tab=billing", pending.ActionHref)
@@ -295,10 +354,11 @@ func TestWorkspaceSetupProjectsOnlyHostedEditorActions(t *testing.T) {
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &setup))
 	require.Equal(t, []WorkspaceSetupStepResponse{
 		{ID: "destination", Completed: false},
+		{ID: "composition", Completed: false},
 		{ID: "publication", Completed: false},
 	}, setup.Steps)
 	require.Equal(t, 0, setup.CompletedSteps)
-	require.Equal(t, 2, setup.TotalSteps)
+	require.Equal(t, 3, setup.TotalSteps)
 	require.Equal(t, "destination", setup.NextStep)
 	require.Equal(t, "connect_destination", setup.NextAction)
 	require.Equal(t, "/settings?tab=accounts", setup.ActionHref)
@@ -327,6 +387,7 @@ func TestWorkspaceSetupProjectsOnlyApplicableRoleAndDeploymentSteps(t *testing.T
 				{ID: "workspace", Completed: true},
 				{ID: "subscription", Completed: false},
 				{ID: "destination", Completed: false},
+				{ID: "composition", Completed: false},
 				{ID: "publication", Completed: false},
 			},
 			wantAction: "resume_checkout",
@@ -339,6 +400,7 @@ func TestWorkspaceSetupProjectsOnlyApplicableRoleAndDeploymentSteps(t *testing.T
 			wantSteps: []WorkspaceSetupStepResponse{
 				{ID: "subscription", Completed: false},
 				{ID: "destination", Completed: false},
+				{ID: "composition", Completed: false},
 				{ID: "publication", Completed: false},
 			},
 			wantAction: "resume_checkout",
@@ -350,6 +412,7 @@ func TestWorkspaceSetupProjectsOnlyApplicableRoleAndDeploymentSteps(t *testing.T
 			organizationRole: models.OrganizationRoleMember,
 			wantSteps: []WorkspaceSetupStepResponse{
 				{ID: "destination", Completed: false},
+				{ID: "composition", Completed: false},
 				{ID: "publication", Completed: false},
 			},
 			wantAction:    "connect_destination",
@@ -378,6 +441,7 @@ func TestWorkspaceSetupProjectsOnlyApplicableRoleAndDeploymentSteps(t *testing.T
 			wantSteps: []WorkspaceSetupStepResponse{
 				{ID: "workspace", Completed: true},
 				{ID: "destination", Completed: false},
+				{ID: "composition", Completed: false},
 				{ID: "publication", Completed: false},
 			},
 			wantAction:    "connect_destination",
@@ -450,7 +514,7 @@ func newWorkspaceSetupPolicyDB(t *testing.T) *bun.DB {
 		(*models.User)(nil), (*models.Organization)(nil), (*models.OrganizationMember)(nil),
 		(*models.BillingSubscription)(nil), (*models.BillingCheckoutAttempt)(nil),
 		(*models.Workspace)(nil), (*models.WorkspaceMember)(nil),
-		(*models.SocialAccount)(nil), (*models.Publication)(nil),
+		(*models.SocialAccount)(nil), (*models.WorkspaceFirstComposition)(nil), (*models.Publication)(nil),
 	)
 }
 

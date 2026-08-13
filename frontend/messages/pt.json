@@ -1763,6 +1763,7 @@
 	"workspace_setup_workspace": "Workspace",
 	"workspace_setup_subscription": "Plano",
 	"workspace_setup_destination": "Destino",
+	"workspace_setup_composition": "Composição",
 	"workspace_setup_publication": "Publicação",
 	"compose_need_inspiration": "Precisas de inspiração?",
 	"compose_dismiss_inspiration": "Fechar inspiração",

@@ -1763,6 +1763,7 @@
 	"workspace_setup_workspace": "Workspace",
 	"workspace_setup_subscription": "Plan",
 	"workspace_setup_destination": "Destination",
+	"workspace_setup_composition": "Composition",
 	"workspace_setup_publication": "Publication",
 	"compose_need_inspiration": "Need inspiration?",
 	"compose_dismiss_inspiration": "Dismiss inspiration",

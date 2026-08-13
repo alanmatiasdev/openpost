@@ -3885,6 +3885,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/workspaces/{id}/setup/composition": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record the first meaningful Workspace composition
+         * @description Atomically records meaningful text, attached media, or an intentional content-mode choice once per Workspace.
+         */
+        post: operations["start-workspace-composition"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/workspaces/{id}/team": {
         parameters: {
             query?: never;
@@ -10257,6 +10277,31 @@ export interface components {
             user_code: string;
             verification_url: string;
         };
+        StartWorkspaceCompositionInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/StartWorkspaceCompositionInputBody.json
+             */
+            readonly $schema?: string;
+            /** @description Opaque browser-generated key used to reconcile an uncertain claim response */
+            origin_key: string;
+            /**
+             * @description Meaningful composer interaction category
+             * @enum {string}
+             */
+            signal: "text" | "media" | "content_mode";
+        };
+        StartWorkspaceCompositionResponse: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/StartWorkspaceCompositionResponse.json
+             */
+            readonly $schema?: string;
+            /** @description Whether this request recorded the Workspace's first meaningful composition */
+            claimed: boolean;
+        };
         StockMediaProvenance: {
             attribution_text: string;
             creator_name: string;
@@ -11406,7 +11451,7 @@ export interface components {
              * @description First incomplete setup step available to the current user
              * @enum {string}
              */
-            next_step?: "workspace" | "subscription" | "destination" | "publication";
+            next_step?: "workspace" | "subscription" | "destination" | "composition" | "publication";
             /** @description Ordered authoritative setup progress applicable to the current user's role and deployment */
             steps: components["schemas"]["WorkspaceSetupStepResponse"][] | null;
             /**
@@ -11424,7 +11469,7 @@ export interface components {
              * @description Setup step derived from Workspace state
              * @enum {string}
              */
-            id: "workspace" | "subscription" | "destination" | "publication";
+            id: "workspace" | "subscription" | "destination" | "composition" | "publication";
         };
         WorkspaceTeamOutputBody: {
             /**
@@ -26906,6 +26951,69 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WorkspaceSetupResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "start-workspace-composition": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Workspace ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartWorkspaceCompositionInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StartWorkspaceCompositionResponse"];
                 };
             };
             /** @description Forbidden */

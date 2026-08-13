@@ -1126,6 +1126,7 @@ func workspaceDeletionPlan(workspaceIDs []string, ids workspaceDeletionIDs) []mo
 		(*models.OAuthAccountSelection)(nil),
 		(*models.XOAuthRequestToken)(nil),
 		(*models.WorkspaceFirstConnection)(nil),
+		(*models.WorkspaceFirstComposition)(nil),
 		(*models.WorkspaceInvitation)(nil),
 		(*models.WorkspaceMember)(nil),
 		(*models.UserNotification)(nil),

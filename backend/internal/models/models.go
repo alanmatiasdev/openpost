@@ -920,6 +920,15 @@ type WorkspaceFirstConnection struct {
 	CreatedAt   time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
 }
 
+type WorkspaceFirstComposition struct {
+	bun.BaseModel `bun:"table:workspace_first_compositions"`
+
+	WorkspaceID string    `bun:",pk" json:"workspace_id"`
+	Signal      string    `bun:",notnull" json:"signal"`
+	OriginKey   string    `bun:",notnull,default:''" json:"-"`
+	CreatedAt   time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
+}
+
 type XOAuthRequestToken struct {
 	bun.BaseModel `bun:"table:x_oauth_request_tokens"`
 

@@ -292,6 +292,9 @@
 
 	let workspaces = $state.raw<Workspace[]>([]);
 	let selectedWorkspaceId = $state<string>('');
+	const compositionClaimedWorkspaceIDs = new SvelteSet<string>();
+	const compositionClaimOrigins = new SvelteMap<string, string>();
+	const compositionClaimPendingWorkspaceIDs = new SvelteSet<string>();
 	let accounts = $state.raw<SocialAccount[]>([]);
 	let selectedAccountIds = $state<string[]>([]);
 	let selectedSocialSetId = $state('');
@@ -1960,6 +1963,7 @@
 		const post = posts[postIndex];
 		if (!post) return;
 		const next = mergeMediaIds([], mediaIds);
+		if (next.length > 0) void startFirstComposition('media');
 		if (activeVariantAccountId && activeVariantIsUnsynced) {
 			setVariantMediaIds(activeVariantAccountId, postIndex, next);
 		} else {
@@ -3788,6 +3792,7 @@
 	// Thread management
 	// --------------------------------------------------------------------------
 	function addPost() {
+		void startFirstComposition('content_mode');
 		const newIndex = activePostIndex + 1;
 		posts = [...posts.slice(0, newIndex), makeEmptyPost(), ...posts.slice(newIndex)];
 		variants = normalizeVariantsMap(variants, posts);
@@ -3887,6 +3892,7 @@
 	function setPasteTargetMediaIds(target: PasteMediaUploadTarget, mediaIds: string[]): void {
 		const postIndex = posts.findIndex((post) => post.key === target.postKey);
 		if (postIndex < 0) return;
+		if (mediaIds.length > 0) void startFirstComposition('media');
 		if (target.variantAccountId) {
 			setVariantMediaIds(target.variantAccountId, postIndex, mediaIds);
 		} else {
@@ -4149,6 +4155,7 @@
 			return false;
 		}
 		const content = resolvePromptContent(prompt);
+		if (content.trim()) void startFirstComposition('text');
 		pasteMediaUploadQueue.reset();
 		posts = [{ ...makeEmptyPost(), content }];
 		linkUrl = firstComposerURL(content);
@@ -4556,6 +4563,7 @@
 	}
 
 	function setEditorContent(index: number, value: string) {
+		if (value.trim()) void startFirstComposition('text');
 		if (activeVariantAccountId && activeVariantIsUnsynced) {
 			handleVariantChange(activeVariantAccountId, index, value);
 			return;
@@ -4565,6 +4573,33 @@
 
 	function setActivePost(index: number) {
 		activePostIndex = index;
+	}
+
+	async function startFirstComposition(signal: 'text' | 'media' | 'content_mode') {
+		const workspaceID = selectedWorkspaceId;
+		if (
+			!workspaceID ||
+			compositionClaimedWorkspaceIDs.has(workspaceID) ||
+			compositionClaimPendingWorkspaceIDs.has(workspaceID)
+		) {
+			return;
+		}
+		compositionClaimPendingWorkspaceIDs.add(workspaceID);
+		const originKey = compositionClaimOrigins.get(workspaceID) ?? crypto.randomUUID();
+		compositionClaimOrigins.set(workspaceID, originKey);
+		try {
+			const { data, error: claimError } = await client.POST('/workspaces/{id}/setup/composition', {
+				params: { path: { id: workspaceID } },
+				body: { signal, origin_key: originKey }
+			});
+			if (claimError || !data) return;
+			compositionClaimedWorkspaceIDs.add(workspaceID);
+			compositionClaimOrigins.delete(workspaceID);
+			if (data.claimed) captureTelemetryEvent('first composition started', { signal });
+			if (selectedWorkspaceId === workspaceID) ui.refreshWorkspaceSetup();
+		} finally {
+			compositionClaimPendingWorkspaceIDs.delete(workspaceID);
+		}
 	}
 </script>
 

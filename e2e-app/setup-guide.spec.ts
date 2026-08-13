@@ -14,7 +14,7 @@ test("an incomplete owner sees server-derived setup guidance on home and Account
 
   const homeGuide = page.getByTestId("workspace-setup-guide-home");
   await expect(homeGuide).toBeVisible();
-  await expect(homeGuide).toContainText("1 of 3 complete");
+  await expect(homeGuide).toContainText("1 of 4 complete");
   await expect(homeGuide).toContainText("Connect a destination");
   await expect(homeGuide).not.toContainText("Plan");
   await expect(
@@ -25,7 +25,7 @@ test("an incomplete owner sees server-derived setup guidance on home and Account
   ).toHaveAttribute("href", "/settings?tab=accounts");
   await page.reload();
   await expect(homeGuide).toBeVisible();
-  await expect(homeGuide).toContainText("1 of 3 complete");
+  await expect(homeGuide).toContainText("1 of 4 complete");
   await expect(
     page.getByTestId("workspace-setup-guide-composer"),
   ).toBeVisible();
@@ -34,7 +34,7 @@ test("an incomplete owner sees server-derived setup guidance on home and Account
   ).toContainText("Connect a destination");
 
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
-  await expect(homeGuide).toContainText("1 of 3 complete");
+  await expect(homeGuide).toContainText("1 of 4 complete");
   await page.goto("/settings?tab=accounts");
   const accountsGuide = page.getByTestId("workspace-setup-guide-accounts");
   await expect(accountsGuide).toBeVisible();

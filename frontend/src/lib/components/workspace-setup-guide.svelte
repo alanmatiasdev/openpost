@@ -106,9 +106,11 @@
 						? m.workspace_setup_subscription()
 						: step.id === 'destination'
 							? m.workspace_setup_destination()
-							: step.id === 'publication'
-								? m.workspace_setup_publication()
-								: m.workspace_setup_workspace()}
+							: step.id === 'composition'
+								? m.workspace_setup_composition()
+								: step.id === 'publication'
+									? m.workspace_setup_publication()
+									: m.workspace_setup_workspace()}
 				</li>
 			{/each}
 		</ol>
