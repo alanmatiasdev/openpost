@@ -5,15 +5,15 @@ import { validateMCPRegistryOwnership } from "./check-mcp-registry.mjs";
 
 const manifest = {
   name: "io.github.rodrgds/openpost",
-  version: "1.32.1",
+  version: "1.32.2",
   remotes: [{ type: "streamable-http", url: "https://app.openpost.social/mcp" }],
 };
 const listings =
-  "Published as `io.github.rodrgds/openpost` version `1.32.1`; registry API reports active and latest.";
+  "Published as `io.github.rodrgds/openpost` version `1.32.2`; registry API reports active and latest.";
 const docs = "## Registry listing version and compatibility\n";
 
 test("accepts one documented immutable registry publication", () => {
-  assert.equal(validateMCPRegistryOwnership({ manifest, listings, docs }), "1.32.1");
+  assert.equal(validateMCPRegistryOwnership({ manifest, listings, docs }), "1.32.2");
 });
 
 test("rejects unexplained app/registry version drift", () => {
