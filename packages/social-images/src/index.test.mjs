@@ -6,6 +6,7 @@ import {
   docsImageKey,
   docsRouteFromPage,
   marketingPrerenderEntries,
+  marketingAgentMarkdownUrl,
   marketingRouteManifest,
   marketingSocialEntries,
   resolveDocsSocial,
@@ -29,7 +30,7 @@ test("marketing social entries have unique paths, keys, and complete image metad
     assert.match(entry.canonical, /^https:\/\/openpost\.social(?:\/|$)/);
     assert.match(entry.priority, /^(?:1\.0|0\.[0-9])$/u);
     assert.match(entry.agentRepresentation, /^(?:static|platform|comparison|tool)$/u);
-    assert.match(entry.agentDiscovery, /^(?:primary|optional|unlisted)$/u);
+    assert.match(entry.agentDiscovery.membership, /^(?:primary|optional|unlisted)$/u);
     assert.ok(entry.socialTitle.length <= 72, `${entry.key} social title is too long`);
     assert.ok(entry.description.length <= 160, `${entry.key} description is too long`);
     paths.add(entry.path);
@@ -46,6 +47,22 @@ test("the public route manifest owns social, sitemap, and prerender metadata", (
     ["buffer", "hootsuite", "typefully", "postiz", "post-bridge", "mixpost"],
   );
   assert.equal(marketingPrerenderEntries("/tools").length, 8);
+  assert.equal(
+    marketingAgentMarkdownUrl(resolveMarketingSocial("/")),
+    "https://openpost.social/index.md",
+  );
+  assert.equal(
+    marketingAgentMarkdownUrl(resolveMarketingSocial("/platforms/x")),
+    "https://openpost.social/platforms/x.md",
+  );
+  assert.equal(
+    marketingAgentMarkdownUrl(resolveMarketingSocial("/pricing")),
+    "https://openpost.social/pricing.md",
+  );
+  assert.equal(
+    marketingAgentMarkdownUrl(resolveMarketingSocial("/tools/thread-splitter")),
+    undefined,
+  );
   assert.throws(
     () => marketingPrerenderEntries("/pricing"),
     /Unknown marketing prerender section/u,

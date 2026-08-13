@@ -67,7 +67,7 @@
 					</p>
 				{/if}
 				<div class="mt-7 flex flex-wrap gap-3">
-					<Button href={managedSignupUrl} size="lg">
+					<Button href={managedSignupUrl} size="lg" data-agent-exclude>
 						Try OpenPost
 						<ArrowRight data-icon="inline-end" />
 					</Button>
@@ -83,7 +83,7 @@
 					</Button>
 				</div>
 			</div>
-			<div class="grid place-items-center rounded-2xl bg-muted/25 p-3 sm:p-6">
+			<div data-agent-exclude class="grid place-items-center rounded-2xl bg-muted/25 p-3 sm:p-6">
 				<PlatformPreview {platform} />
 			</div>
 		</div>
@@ -104,7 +104,7 @@
 			</p>
 		</div>
 
-		<div class="mt-10 grid gap-3 md:hidden">
+		<div data-agent-exclude class="mt-10 grid gap-3 md:hidden">
 			{#each platform.formats as format (format.name)}
 				<article class="rounded-xl border bg-card p-5">
 					<h3 class="font-semibold">{format.name}</h3>
@@ -146,6 +146,18 @@
 				</tbody>
 			</table>
 		</div>
+
+		<div class="mt-8 border-t pt-6">
+			<h3 class="text-sm font-semibold">Provider limits and scope</h3>
+			<ul class="mt-4 grid gap-2 text-sm leading-6 text-muted-foreground sm:grid-cols-2">
+				{#each platform.limits as limit (limit)}
+					<li class="flex gap-2">
+						<span aria-hidden="true" class="text-primary">•</span>
+						<span>{limit}</span>
+					</li>
+				{/each}
+			</ul>
+		</div>
 	</div>
 </section>
 
@@ -160,6 +172,7 @@
 				{#each platform.setup as step, index (step)}
 					<li class="grid grid-cols-[2rem_1fr] gap-4 border-b py-5">
 						<span
+							data-agent-exclude
 							class="grid size-8 place-items-center rounded-md bg-primary text-sm font-semibold text-primary-foreground"
 						>
 							{index + 1}
@@ -185,6 +198,16 @@
 					</li>
 				{/each}
 			</ul>
+			<div class="mt-8 grid gap-5 border-t pt-6 text-sm leading-6 text-muted-foreground">
+				<p>
+					<strong class="font-medium text-foreground">Account requirement:</strong>
+					{platform.accountRequirement}
+				</p>
+				<p>
+					<strong class="font-medium text-foreground">Verification:</strong>
+					{platform.verification}
+				</p>
+			</div>
 		</div>
 	</div>
 </section>

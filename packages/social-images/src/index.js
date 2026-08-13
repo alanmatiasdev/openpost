@@ -99,7 +99,7 @@ const staticMarketingEntries = [
     label: "The content team for companies of one",
     kind: "home",
     agentRepresentation: "static",
-    agentDiscovery: "primary",
+    agentDiscovery: { membership: "primary" },
     priority: "1.0",
   },
   {
@@ -112,7 +112,7 @@ const staticMarketingEntries = [
     label: "Product features",
     kind: "workflow",
     agentRepresentation: "static",
-    agentDiscovery: "primary",
+    agentDiscovery: { membership: "primary" },
     priority: "0.9",
   },
   {
@@ -125,7 +125,7 @@ const staticMarketingEntries = [
     label: "Managed plans",
     kind: "workflow",
     agentRepresentation: "static",
-    agentDiscovery: "primary",
+    agentDiscovery: { membership: "primary" },
     priority: "0.9",
   },
   {
@@ -138,7 +138,7 @@ const staticMarketingEntries = [
     label: `${platformNames.length} publishing destinations`,
     kind: "platforms",
     agentRepresentation: "static",
-    agentDiscovery: "primary",
+    agentDiscovery: { membership: "primary" },
     priority: "0.9",
   },
   {
@@ -150,7 +150,7 @@ const staticMarketingEntries = [
     label: "Honest comparisons",
     kind: "compare-index",
     agentRepresentation: "static",
-    agentDiscovery: "optional",
+    agentDiscovery: { membership: "optional" },
     priority: "0.8",
   },
   {
@@ -162,7 +162,7 @@ const staticMarketingEntries = [
     label: "OpenPost free tools",
     kind: "tools-index",
     agentRepresentation: "static",
-    agentDiscovery: "optional",
+    agentDiscovery: { membership: "optional" },
     priority: "0.8",
   },
   {
@@ -175,7 +175,7 @@ const staticMarketingEntries = [
     label: "Frequently asked questions",
     kind: "document",
     agentRepresentation: "static",
-    agentDiscovery: "primary",
+    agentDiscovery: { membership: "primary" },
     priority: "0.7",
   },
   {
@@ -188,7 +188,7 @@ const staticMarketingEntries = [
     label: "Security",
     kind: "security",
     agentRepresentation: "static",
-    agentDiscovery: "primary",
+    agentDiscovery: { membership: "primary" },
     priority: "0.7",
   },
   {
@@ -201,7 +201,7 @@ const staticMarketingEntries = [
     label: "Managed service trust register",
     kind: "security",
     agentRepresentation: "static",
-    agentDiscovery: "primary",
+    agentDiscovery: { membership: "primary" },
     priority: "0.6",
   },
   {
@@ -213,7 +213,7 @@ const staticMarketingEntries = [
     label: "Open source",
     kind: "open-source",
     agentRepresentation: "static",
-    agentDiscovery: "primary",
+    agentDiscovery: { membership: "primary" },
     priority: "0.7",
   },
   {
@@ -226,7 +226,7 @@ const staticMarketingEntries = [
     label: "Changelog",
     kind: "document",
     agentRepresentation: "static",
-    agentDiscovery: "unlisted",
+    agentDiscovery: { membership: "unlisted" },
     priority: "0.6",
   },
   {
@@ -239,7 +239,7 @@ const staticMarketingEntries = [
     label: "Legal",
     kind: "document",
     agentRepresentation: "static",
-    agentDiscovery: "unlisted",
+    agentDiscovery: { membership: "unlisted" },
     priority: "0.4",
   },
   {
@@ -252,7 +252,7 @@ const staticMarketingEntries = [
     label: "Legal",
     kind: "document",
     agentRepresentation: "static",
-    agentDiscovery: "unlisted",
+    agentDiscovery: { membership: "unlisted" },
     priority: "0.4",
   },
   {
@@ -265,7 +265,7 @@ const staticMarketingEntries = [
     label: "Legal",
     kind: "document",
     agentRepresentation: "static",
-    agentDiscovery: "unlisted",
+    agentDiscovery: { membership: "unlisted" },
     priority: "0.4",
   },
 ];
@@ -279,7 +279,7 @@ const platformEntries = platformNames.map(([slug, name]) => ({
   label: "Destination guide",
   kind: "platform",
   agentRepresentation: "platform",
-  agentDiscovery: "optional",
+  agentDiscovery: { membership: "optional", section: "platforms" },
   subject: name,
   platform: slug,
   priority: "0.7",
@@ -295,7 +295,7 @@ const comparisonEntries = comparisonNames.map(([slug, name]) => ({
   label: "Reviewed comparison",
   kind: "comparison",
   agentRepresentation: "comparison",
-  agentDiscovery: "optional",
+  agentDiscovery: { membership: "optional", section: "comparisons" },
   subject: name,
   priority: "0.6",
 }));
@@ -309,7 +309,7 @@ const toolEntries = toolPages.map((tool) => ({
   label: "Free browser tool",
   kind: "tool",
   agentRepresentation: "tool",
-  agentDiscovery: "optional",
+  agentDiscovery: { membership: "optional" },
   subject: tool.name,
   priority: "0.6",
 }));
@@ -358,6 +358,11 @@ export function normalizeMarketingPath(pathname) {
 export function canonicalMarketingUrl(pathname) {
   const path = normalizeMarketingPath(pathname);
   return path === "/" ? marketingSiteUrl : `${marketingSiteUrl}${path}`;
+}
+
+export function marketingAgentMarkdownUrl(entry) {
+  if (!entry.agentDiscovery || entry.agentRepresentation === "tool") return undefined;
+  return entry.path === "/" ? `${marketingSiteUrl}/index.md` : `${entry.canonical}.md`;
 }
 
 export function resolveMarketingSocial(pathname) {

@@ -5,7 +5,12 @@ import { fileURLToPath } from "node:url";
 
 import { load as parseYaml } from "js-yaml";
 import { parse, parseFragment } from "parse5";
-import { marketingRouteManifest } from "../packages/social-images/src/index.js";
+import {
+  docsSocialEntries,
+  marketingAgentMarkdownUrl,
+  marketingRouteManifest,
+  marketingSiteUrl,
+} from "../packages/social-images/src/index.js";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const generatedNotice =
@@ -22,7 +27,6 @@ const productionArtifactURLs = new Set([
 const ignoredMarketingTags = new Set([
   "audio",
   "button",
-  "canvas",
   "form",
   "input",
   "label",
@@ -153,6 +157,7 @@ function renderNode(node, canonical, listDepth = 0) {
   if (!tag) return renderNodes(children(node), canonical, listDepth);
   if (
     attribute(node, "data-agent-exclude") !== undefined ||
+    attribute(node, "hidden") !== undefined ||
     attribute(node, "aria-hidden") === "true"
   )
     return "";
@@ -172,7 +177,9 @@ function renderNode(node, canonical, listDepth = 0) {
   if (tag === "a") {
     const label = renderNodes(children(node), canonical).trim();
     const href = attribute(node, "href");
-    return label && href ? `[${label}](${absoluteUrl(href, canonical)})` : label;
+    const resolved = href ? absoluteUrl(href, canonical) : undefined;
+    if (resolved && privateApplicationOrigins.has(new URL(resolved).origin)) return label;
+    return label && resolved ? `[${label}](${resolved})` : label;
   }
   if (tag === "img") {
     const alt = attribute(node, "alt")?.trim();
@@ -299,7 +306,12 @@ function documentationRepresentation(source, page) {
   if (Array.isArray(hero.actions)) {
     sections.push(
       hero.actions
-        .filter((action) => action?.text && action?.link)
+        .filter(
+          (action) =>
+            action?.text &&
+            action?.link &&
+            !privateApplicationOrigins.has(new URL(action.link, page.canonical).origin),
+        )
         .map((action) => `- [${action.text}](${absoluteUrl(action.link, page.canonical)})`)
         .join("\n"),
     );
@@ -323,18 +335,21 @@ function documentationRepresentation(source, page) {
 }
 
 function discoveryDocument(discovery) {
-  const line = (link) => `- [${link.title}](${link.url}): ${link.description}`;
-  const primary = discovery.links
-    .filter((link) => (link.classification ?? "primary") === "primary")
-    .map(line)
-    .join("\n");
-  const optional = discovery.links
-    .filter((link) => link.classification === "optional")
-    .map(line)
-    .join("\n");
-  const sections = [`# ${discovery.title}`, `> ${discovery.description}`, primary];
-  if (optional) sections.push(`## Optional\n\n${optional}`);
-  return cleanMarkdown(sections.filter(Boolean).join("\n\n"));
+  const renderLinks = (links) =>
+    links.map((link) => `- [${link.title}](${link.url}): ${link.description}`).join("\n");
+  const primary = discovery.links.filter(
+    (link) => (link.classification ?? "primary") === "primary",
+  );
+  const optional = discovery.links.filter((link) => link.classification === "optional");
+  const sections = (discovery.sections ?? [])
+    .map(
+      (section) =>
+        `## ${section.title}\n\n${section.description ? `> ${section.description}\n\n` : ""}${renderLinks(section.links)}`,
+    )
+    .join("\n\n");
+  return cleanMarkdown(
+    `# ${discovery.title}\n\n> ${discovery.description}\n\n${renderLinks(primary)}${optional.length ? `\n\n## Optional\n\n${renderLinks(optional)}` : ""}${sections ? `\n\n${sections}` : ""}`,
+  );
 }
 
 async function requireSource(sourcePath) {
@@ -359,10 +374,16 @@ function validateDiscovery(projection, generatedPages) {
       (page) => new URL(page.outputPath, new URL(page.canonical).origin + "/").href,
     ),
   );
+  const discoveryLinks = [
+    ...projection.discovery.links,
+    ...(projection.discovery.sections ?? []).flatMap((section) => section.links),
+  ];
   for (const link of projection.discovery.links) {
     if (!new Set(["primary", "optional"]).has(link.classification ?? "primary")) {
       throw new Error(`invalid discovery classification for ${link.url}`);
     }
+  }
+  for (const link of discoveryLinks) {
     const url = new URL(link.url);
     if (privateApplicationOrigins.has(url.origin) || privateRoutePattern.test(url.pathname)) {
       throw new Error(`discovery link exposes a private application route: ${link.url}`);
@@ -375,6 +396,55 @@ function validateDiscovery(projection, generatedPages) {
       throw new Error(`discovery link has no generated artifact: ${link.url}`);
     }
   }
+}
+
+function normalizedPublicURL(value) {
+  const url = new URL(value);
+  url.hash = "";
+  url.search = "";
+  if (url.pathname !== "/") url.pathname = url.pathname.replace(/\/$/u, "");
+  return url.href;
+}
+
+function markdownLinks(markdown) {
+  return markdown.matchAll(/!?\[[^\]]*\]\(([^)\s]+)(?:\s+[^)]*)?\)/gu);
+}
+
+function validateRepresentationLinks(
+  markdown,
+  canonical,
+  knownCanonicalURLs = [],
+  knownFragmentsByCanonical = new Map(),
+) {
+  const known = new Set(knownCanonicalURLs.map(normalizedPublicURL));
+  for (const match of markdownLinks(markdown)) {
+    const url = new URL(match[1], canonical);
+    if (privateApplicationOrigins.has(url.origin)) {
+      throw new Error(`${canonical}: generated representation exposes private link ${url.href}`);
+    }
+    if (!publicContentOrigins.has(url.origin)) continue;
+    if (url.pathname.startsWith("/assets/")) continue;
+    if (knownCanonicalURLs.length === 0) continue;
+    if (!known.has(normalizedPublicURL(url.href))) {
+      throw new Error(`${canonical}: broken internal link ${url.href}`);
+    }
+    const targetFragments = knownFragmentsByCanonical.get(normalizedPublicURL(url.href));
+    if (
+      url.hash &&
+      targetFragments &&
+      !targetFragments.has(decodeURIComponent(url.hash.slice(1)))
+    ) {
+      throw new Error(`${canonical}: broken internal fragment ${url.hash}`);
+    }
+  }
+}
+
+function htmlFragments(source) {
+  return new Set(
+    descendants(parse(source))
+      .map((node) => attribute(node, "id"))
+      .filter(Boolean),
+  );
 }
 
 async function verifyWrittenArtifacts(projection, generatedPages) {
@@ -414,6 +484,14 @@ function validateHTMLDiscovery(source, page) {
 
 export async function generateAgentSurface(projection) {
   const generatedPages = [];
+  const knownFragmentsByCanonical = new Map();
+  for (const target of projection.fragmentSources ?? []) {
+    await requireSource(target.sourcePath);
+    knownFragmentsByCanonical.set(
+      normalizedPublicURL(target.canonical),
+      htmlFragments(await readFile(target.sourcePath, "utf8")),
+    );
+  }
   for (const page of projection.pages) {
     await requireSource(page.sourcePath);
     const source = await readFile(page.sourcePath, "utf8");
@@ -434,6 +512,18 @@ export async function generateAgentSurface(projection) {
     } else if (projection.surface === "marketing") {
       validateHTMLDiscovery(source, generated);
     }
+    if (projection.surface === "marketing") {
+      knownFragmentsByCanonical.set(
+        normalizedPublicURL(generated.canonical),
+        htmlFragments(source),
+      );
+    }
+    validateRepresentationLinks(
+      generated.markdown,
+      generated.canonical,
+      projection.knownCanonicalURLs,
+      knownFragmentsByCanonical,
+    );
     generatedPages.push(generated);
   }
   validateDiscovery(projection, generatedPages);
@@ -455,7 +545,7 @@ export const productionProjections = {
     surface: "marketing",
     outputDirectory: path.join(repositoryRoot, "marketing-site/dist"),
     pages: marketingRouteManifest
-      .filter((route) => route.agentRepresentation === "static")
+      .filter((route) => ["static", "platform", "comparison"].includes(route.agentRepresentation))
       .map((route) => ({
         sourcePath: path.join(
           repositoryRoot,
@@ -465,6 +555,18 @@ export const productionProjections = {
         outputPath: marketingMarkdownArtifact(route.path),
         route,
       })),
+    knownCanonicalURLs: [
+      ...marketingRouteManifest.map((entry) => entry.canonical),
+      ...docsSocialEntries.map((entry) => entry.canonical),
+    ],
+    fragmentSources: marketingRouteManifest.map((route) => ({
+      canonical: route.canonical,
+      sourcePath: path.join(
+        repositoryRoot,
+        "marketing-site/dist",
+        marketingHTMLArtifact(route.path),
+      ),
+    })),
     discovery: {
       title: "OpenPost",
       description: "Create, adapt, schedule, and track social content from one workspace.",
@@ -472,16 +574,14 @@ export const productionProjections = {
         ...marketingRouteManifest
           .filter(
             (route) =>
-              route.agentRepresentation === "static" && route.agentDiscovery !== "unlisted",
+              route.agentRepresentation === "static" &&
+              route.agentDiscovery.membership !== "unlisted",
           )
           .map((route) => ({
             title: route.path === "/" ? "OpenPost overview" : route.title,
             description: route.description,
-            url: new URL(
-              marketingMarkdownArtifact(route.path),
-              `${new URL(route.canonical).origin}/`,
-            ).href,
-            classification: route.agentDiscovery,
+            url: new URL(marketingMarkdownArtifact(route.path), `${marketingSiteUrl}/`).href,
+            classification: route.agentDiscovery.membership,
           })),
         {
           title: "OpenPost documentation",
@@ -489,6 +589,30 @@ export const productionProjections = {
             "Read the user, provider, self-hosting, CLI, MCP, and developer documentation.",
           url: "https://docs.openpost.social/index.md",
           classification: "primary",
+        },
+      ],
+      sections: [
+        {
+          title: "Optional platforms",
+          description: "Destination-specific formats, setup needs, limits, and readiness notes.",
+          links: marketingRouteManifest
+            .filter((entry) => entry.agentDiscovery?.section === "platforms")
+            .map((entry) => ({
+              title: entry.title,
+              description: entry.description,
+              url: marketingAgentMarkdownUrl(entry),
+            })),
+        },
+        {
+          title: "Optional comparisons",
+          description: "Reviewed comparisons with evidence, qualifications, and current caveats.",
+          links: marketingRouteManifest
+            .filter((entry) => entry.agentDiscovery?.section === "comparisons")
+            .map((entry) => ({
+              title: entry.title,
+              description: entry.description,
+              url: marketingAgentMarkdownUrl(entry),
+            })),
         },
       ],
     },
@@ -535,7 +659,7 @@ async function main() {
     );
   }
   await generateAgentSurface(productionProjections[surface]);
-  console.log(`Generated ${surface} Agent-readable homepage and llms.txt.`);
+  console.log(`Generated ${surface} Agent-readable pages and llms.txt.`);
 }
 
 if (import.meta.main) await main();

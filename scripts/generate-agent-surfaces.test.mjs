@@ -1,13 +1,14 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
 import { parse } from "parse5";
 import { marketingRouteManifest } from "../packages/social-images/src/index.js";
-
+import { comparisonEvidenceRegister } from "../marketing-site/src/routes/_comparison-evidence.ts";
+import { comparisons, platforms } from "../marketing-site/src/routes/_marketing.ts";
 import { generateAgentSurface, productionProjections } from "./generate-agent-surfaces.mjs";
 
 async function runRootTask(root, ...arguments_) {
@@ -18,6 +19,16 @@ async function runRootTask(root, ...arguments_) {
       code === 0 ? resolve() : reject(new Error(`bun run ${arguments_.join(" ")} exited ${code}`)),
     );
   });
+}
+
+let productionBuildPromise;
+
+function ensureProductionBuilds(root) {
+  productionBuildPromise ??= (async () => {
+    await runRootTask(root, "build", "--", "marketing");
+    await runRootTask(root, "build", "--", "docs");
+  })();
+  return productionBuildPromise;
 }
 
 async function fixtureDirectory() {
@@ -81,6 +92,7 @@ test("marketing production projection emits deterministic homepage Markdown and 
     surface: "marketing",
     outputDirectory: directory,
     pages: [{ sourcePath: htmlPath, outputPath: "index.md" }],
+    knownCanonicalURLs: ["https://openpost.social/", "https://openpost.social/features"],
     discovery: {
       title: "OpenPost",
       description: "Create, adapt, and publish from one workspace.",
@@ -114,21 +126,21 @@ test("marketing production projection emits deterministic homepage Markdown and 
   assert.match(firstDiscovery, /\[OpenPost overview\]\(https:\/\/openpost\.social\/index\.md\)/);
 });
 
-test("marketing production projection covers every static route from canonical metadata", () => {
-  const staticRoutes = marketingRouteManifest.filter(
-    (entry) => entry.agentRepresentation === "static",
+test("marketing production projection covers every eligible route from canonical metadata", () => {
+  const representedRoutes = marketingRouteManifest.filter(
+    (entry) => entry.agentRepresentation !== "tool",
   );
-  assert.ok(staticRoutes.length > 1);
+  assert.ok(representedRoutes.length > 1);
   assert.deepEqual(
     productionProjections.marketing.pages.map((page) => page.route.path),
-    staticRoutes.map((route) => route.path),
+    representedRoutes.map((route) => route.path),
   );
   assert.equal(
     new Set(productionProjections.marketing.pages.map((page) => page.outputPath)).size,
-    staticRoutes.length,
+    representedRoutes.length,
   );
-  for (const route of staticRoutes) {
-    assert.match(route.agentDiscovery, /^(?:primary|optional|unlisted)$/u);
+  for (const route of representedRoutes) {
+    assert.match(route.agentDiscovery.membership, /^(?:primary|optional|unlisted)$/u);
   }
 });
 
@@ -314,6 +326,7 @@ test("projection validation rejects unsafe or incomplete production contracts", 
     surface: "marketing",
     outputDirectory: directory,
     pages: [{ sourcePath: htmlPath, outputPath: "index.md" }],
+    knownCanonicalURLs: ["https://openpost.social/", "https://openpost.social/features"],
     discovery: {
       title: "OpenPost",
       description: "Public product information.",
@@ -380,11 +393,81 @@ test("projection validation rejects unsafe or incomplete production contracts", 
     }),
     /private application route/,
   );
+
+  await writeFile(
+    htmlPath,
+    marketingHTML.replace(
+      '<a href="/features">See the features</a>',
+      '<a href="/missing">Missing page</a>',
+    ),
+  );
+  await assert.rejects(
+    generateAgentSurface(base),
+    /https:\/\/openpost\.social\/: broken internal link.*\/missing/u,
+  );
+
+  await writeFile(
+    htmlPath,
+    marketingHTML.replace(
+      '<a href="/features">See the features</a>',
+      '<a href="https://docs.openpost.social/does-not-exist">Missing docs page</a>',
+    ),
+  );
+  await assert.rejects(
+    generateAgentSurface({
+      ...base,
+      knownCanonicalURLs: [...base.knownCanonicalURLs, "https://docs.openpost.social/usage/"],
+    }),
+    /https:\/\/openpost\.social\/: broken internal link.*docs\.openpost\.social\/does-not-exist/u,
+  );
+
+  await writeFile(
+    htmlPath,
+    marketingHTML.replace(
+      '<a href="/features">See the features</a>',
+      '<a href="#missing-section">Missing section</a>',
+    ),
+  );
+  await assert.rejects(
+    generateAgentSurface(base),
+    /https:\/\/openpost\.social\/: broken internal fragment #missing-section/u,
+  );
+
+  const featuresPath = path.join(directory, "features.html");
+  await writeFile(featuresPath, '<main><h1 id="present">Features</h1></main>');
+  await writeFile(
+    htmlPath,
+    marketingHTML.replace(
+      '<a href="/features">See the features</a>',
+      '<a href="/features#missing-section">Missing feature section</a>',
+    ),
+  );
+  await assert.rejects(
+    generateAgentSurface({
+      ...base,
+      fragmentSources: [
+        { canonical: "https://openpost.social/features", sourcePath: featuresPath },
+      ],
+    }),
+    /https:\/\/openpost\.social\/: broken internal fragment #missing-section/u,
+  );
+
+  await writeFile(
+    htmlPath,
+    marketingHTML.replace(
+      '<a href="/features">See the features</a>',
+      "<canvas>Important chart</canvas>",
+    ),
+  );
+  await assert.rejects(
+    generateAgentSurface(base),
+    /https:\/\/openpost\.social\/: unsupported meaning-bearing <canvas>/u,
+  );
 });
 
 test(
   "both production builds emit canonical homepage artifacts and discovery",
-  { timeout: 120_000 },
+  { timeout: 180_000 },
   async () => {
     const root = path.resolve(import.meta.dirname, "..");
     const marketingPackage = JSON.parse(
@@ -403,7 +486,8 @@ test(
       path.join(root, "marketing-site/src/routes/+layout.svelte"),
       "utf8",
     );
-    assert.match(marketingLayout, /rel="alternate" type="text\/markdown" href=\{markdownHref\}/);
+    assert.match(marketingLayout, /marketingAgentMarkdownUrl/u);
+    assert.match(marketingLayout, /rel="alternate" type="text\/markdown" href=\{agentMarkdown\}/u);
     assert.match(
       marketingLayout,
       /rel="alternate"[\s\S]{0,80}type="text\/plain"[\s\S]{0,80}href="https:\/\/openpost\.social\/llms\.txt"/,
@@ -415,8 +499,7 @@ test(
     assert.match(docsConfig, /type: "text\/plain"/);
     assert.match(docsConfig, /href: `\$\{docsSiteUrl\}\/llms\.txt`/);
 
-    await runRootTask(root, "build", "--", "marketing");
-    await runRootTask(root, "build", "--", "docs");
+    await ensureProductionBuilds(root);
 
     for (const production of [
       {
@@ -466,7 +549,9 @@ test(
     }
 
     const marketingDiscovery = await readFile(path.join(marketingDirectory, "llms.txt"), "utf8");
-    for (const route of staticRoutes.filter((entry) => entry.agentDiscovery === "primary")) {
+    for (const route of staticRoutes.filter(
+      (entry) => entry.agentDiscovery.membership === "primary",
+    )) {
       const output = route.path === "/" ? "index.md" : `${route.path.slice(1)}.md`;
       assert.match(marketingDiscovery, new RegExp(`https://openpost\\.social/${output}`));
     }
@@ -554,6 +639,136 @@ test(
     await generateAgentSurface(productionProjections.marketing);
     for (const [outputPath, first] of firstArtifacts) {
       assert.equal(await readFile(path.join(marketingDirectory, outputPath), "utf8"), first);
+    }
+  },
+);
+
+test(
+  "marketing production artifacts cover every platform and comparison from one manifest",
+  { timeout: 180_000 },
+  async () => {
+    const root = path.resolve(import.meta.dirname, "..");
+    await ensureProductionBuilds(root);
+
+    const outputDirectory = path.join(root, "marketing-site/dist");
+    const sitemap = await readFile(path.join(outputDirectory, "sitemap.xml"), "utf8");
+    const discovery = await readFile(path.join(outputDirectory, "llms.txt"), "utf8");
+    const represented = marketingRouteManifest.filter(
+      (entry) => entry.kind === "platform" || entry.kind === "comparison",
+    );
+
+    assert.equal(represented.length, platforms.length + comparisons.length);
+    assert.match(discovery, /^## Optional platforms$/m);
+    assert.match(discovery, /^## Optional comparisons$/m);
+    assert.deepEqual(
+      [
+        ...(await readdir(path.join(outputDirectory, "platforms")))
+          .filter((name) => name.endsWith(".md"))
+          .map((name) => `platforms/${name}`),
+        ...(await readdir(path.join(outputDirectory, "compare")))
+          .filter((name) => name.endsWith(".md"))
+          .map((name) => `compare/${name}`),
+      ].sort(),
+      represented.map((entry) => `${entry.path.slice(1)}.md`).sort(),
+    );
+
+    for (const entry of represented) {
+      assert.deepEqual(entry.agentDiscovery, {
+        membership: "optional",
+        section: entry.kind === "platform" ? "platforms" : "comparisons",
+      });
+
+      const relativePath = entry.path.slice(1);
+      const html = await readFile(path.join(outputDirectory, `${relativePath}.html`), "utf8");
+      const markdown = await readFile(path.join(outputDirectory, `${relativePath}.md`), "utf8");
+      const markdownURL = `${entry.canonical}.md`;
+
+      assert.equal(
+        (sitemap.match(new RegExp(`<loc>${entry.canonical}</loc>`, "gu")) ?? []).length,
+        1,
+      );
+      assert.match(html, new RegExp(`<title>${entry.title.replaceAll(".", "\\.")}</title>`));
+      assert.match(
+        html,
+        new RegExp(
+          `rel="alternate" type="text/markdown" href="${markdownURL.replaceAll(".", "\\.")}"`,
+        ),
+      );
+      assert.match(markdown, new RegExp(`^Title: ${entry.title.replaceAll(".", "\\.")}$`, "m"));
+      assert.match(
+        markdown,
+        new RegExp(`^Description: ${entry.description.replaceAll(".", "\\.")}$`, "m"),
+      );
+      assert.match(
+        markdown,
+        new RegExp(`^Canonical: ${entry.canonical.replaceAll(".", "\\.")}$`, "m"),
+      );
+      assert.equal((markdown.match(/^# /gm) ?? []).length, 1);
+      assert.doesNotMatch(
+        markdown,
+        /All comparisons|custom reply text for this account|Keep comparing|Navigation noise|Other tools worth checking|Try OpenPost|Try the managed app/u,
+      );
+      assert.match(discovery, new RegExp(`\(${markdownURL.replaceAll(".", "\\.")}\)`));
+
+      if (entry.kind === "platform") {
+        const platform = platforms.find((candidate) => candidate.slug === entry.platform);
+        assert.ok(platform, `${entry.path} must have canonical provider facts`);
+        assert.match(markdown, /\*\*Implemented:\*\*/u);
+        assert.match(markdown, /\*\*Managed certification:\*\*/u);
+        assert.match(markdown, /^## What can still block a post\.$/m);
+        assert.ok(markdown.includes(platform.implementationDetail));
+        assert.ok(markdown.includes(platform.managedCertificationDetail));
+        assert.ok(markdown.includes(platform.accountRequirement));
+        assert.ok(markdown.includes(platform.verification));
+        for (const fact of [...platform.limits, ...platform.limitations]) {
+          assert.ok(markdown.includes(fact), `${entry.path} must preserve ${JSON.stringify(fact)}`);
+        }
+        assert.ok(markdown.includes(platform.docsUrl));
+        assert.doesNotMatch(markdown, /^1\. \d+$/m);
+      } else {
+        const slug = entry.path.slice("/compare/".length);
+        const comparison = comparisons.find((candidate) => candidate.slug === slug);
+        const evidence = comparisonEvidenceRegister[slug];
+        assert.ok(comparison, `${entry.path} must have canonical comparison facts`);
+        assert.ok(evidence, `${entry.path} must have canonical comparison evidence`);
+        assert.ok(markdown.includes(comparison.verdict));
+        assert.ok(markdown.includes(comparison.pricing));
+        assert.ok(markdown.includes(evidence.qualifier));
+        for (const row of comparison.rows) {
+          assert.ok(markdown.includes(row.openpost));
+          assert.ok(markdown.includes(row.competitor));
+          for (const claim of [row.evidence.openpost, row.evidence.competitor]) {
+            assert.ok(markdown.includes(claim.owner));
+            assert.ok(markdown.includes(claim.basis));
+            assert.ok(markdown.includes(claim.qualifier));
+            assert.ok(
+              markdown.includes(
+                new Intl.DateTimeFormat("en", {
+                  day: "numeric",
+                  month: "short",
+                  year: "numeric",
+                  timeZone: "UTC",
+                }).format(new Date(`${claim.reviewedOn}T00:00:00Z`)),
+              ),
+            );
+            assert.ok(
+              markdown.includes(
+                new Intl.DateTimeFormat("en", {
+                  day: "numeric",
+                  month: "short",
+                  year: "numeric",
+                  timeZone: "UTC",
+                }).format(new Date(`${claim.reviewDueOn}T00:00:00Z`)),
+              ),
+            );
+            for (const source of claim.sources) assert.ok(markdown.includes(source.href));
+          }
+        }
+        for (const row of Object.values(evidence.rows)) {
+          assert.ok(markdown.includes(row.qualifier));
+          for (const source of row.sources) assert.ok(markdown.includes(source.href));
+        }
+      }
     }
   },
 );

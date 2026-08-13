@@ -21,7 +21,6 @@
 	const otherComparisons = $derived(
 		comparisons.filter((item) => item.slug !== comparison.slug).slice(0, 3)
 	);
-
 	function formatDate(value: string) {
 		return new Intl.DateTimeFormat('en', {
 			day: 'numeric',
@@ -39,6 +38,7 @@
 <section class="border-b py-16 sm:py-24">
 	<div class="marketing-shell">
 		<a
+			data-agent-exclude
 			href={resolve('/compare')}
 			class="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
 		>
@@ -53,7 +53,7 @@
 				</h1>
 				<p class="marketing-copy mt-6">{comparison.openPostAngle}</p>
 				<div class="mt-8 flex flex-wrap gap-3">
-					<Button href={managedSignupUrl} size="lg">Try the managed app</Button>
+					<Button href={managedSignupUrl} size="lg" data-agent-exclude>Try the managed app</Button>
 					<Button href={selfHostingDocsUrl} variant="outline" size="lg">Self-host OpenPost</Button>
 				</div>
 			</div>
@@ -108,7 +108,7 @@
 			<p class="section-label">Side by side</p>
 			<h2 class="marketing-heading mt-4">Compare the parts that matter to your choice.</h2>
 		</div>
-		<div class="mt-10 divide-y border-y lg:hidden">
+		<div data-agent-exclude class="mt-10 divide-y border-y lg:hidden">
 			{#each comparison.rows as row (row.area)}
 				<article class="py-6">
 					<h3 class="font-semibold">{row.area}</h3>
@@ -213,7 +213,7 @@
 	</div>
 </section>
 
-<section class="section-pad">
+<section data-agent-exclude class="section-pad">
 	<div class="marketing-shell">
 		<div class="flex flex-col justify-between gap-6 sm:flex-row sm:items-end">
 			<div>

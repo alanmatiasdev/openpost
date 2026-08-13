@@ -27,12 +27,19 @@ export interface SocialEntry {
   priority?: string;
   subject?: string;
   platform?: string;
+  agentDiscovery?: {
+    membership: "primary" | "optional" | "unlisted";
+    section?: "platforms" | "comparisons";
+  };
 }
 
 export interface MarketingRouteEntry extends SocialEntry {
   priority: string;
   agentRepresentation: "static" | "platform" | "comparison" | "tool";
-  agentDiscovery: "primary" | "optional" | "unlisted";
+  agentDiscovery: {
+    membership: "primary" | "optional" | "unlisted";
+    section?: "platforms" | "comparisons";
+  };
 }
 
 export const marketingSiteUrl: "https://openpost.social";
@@ -46,6 +53,7 @@ export function socialImageUrl(entry: Pick<SocialEntry, "id">): string;
 export function resolveSocialImageEntry(id: string): SocialEntry;
 export function normalizeMarketingPath(pathname: string): string;
 export function canonicalMarketingUrl(pathname: string): string;
+export function marketingAgentMarkdownUrl(entry: MarketingRouteEntry): string | undefined;
 export function resolveMarketingSocial(pathname: string): MarketingRouteEntry;
 export function marketingPrerenderEntries(
   section: "/platforms" | "/compare" | "/tools",
