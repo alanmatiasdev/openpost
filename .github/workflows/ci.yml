@@ -334,9 +334,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Resolve the newest canonical application artifact
+        id: frontend-artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          artifact_name="$(bun scripts/ci-artifacts.mjs resolve --repository "${GITHUB_REPOSITORY}" --run-id "${GITHUB_RUN_ID}" --prefix "frontend-public-${GITHUB_SHA}-")"
+          echo "name=${artifact_name}" >> "${GITHUB_OUTPUT}"
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          name: frontend-public-${{ github.sha }}-${{ github.run_attempt }}
+          name: ${{ steps.frontend-artifact.outputs.name }}
           path: backend/cmd/openpost/public
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
@@ -360,9 +367,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Resolve the newest canonical marketing artifact
+        id: marketing-artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          artifact_name="$(bun scripts/ci-artifacts.mjs resolve --repository "${GITHUB_REPOSITORY}" --run-id "${GITHUB_RUN_ID}" --prefix "marketing-static-${GITHUB_SHA}-")"
+          echo "name=${artifact_name}" >> "${GITHUB_OUTPUT}"
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          name: marketing-static-${{ github.sha }}-${{ github.run_attempt }}
+          name: ${{ steps.marketing-artifact.outputs.name }}
           path: marketing-site/dist
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
@@ -380,9 +394,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Resolve the newest canonical documentation artifact
+        id: docs-artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          artifact_name="$(bun scripts/ci-artifacts.mjs resolve --repository "${GITHUB_REPOSITORY}" --run-id "${GITHUB_RUN_ID}" --prefix "docs-static-${GITHUB_SHA}-")"
+          echo "name=${artifact_name}" >> "${GITHUB_OUTPUT}"
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          name: docs-static-${{ github.sha }}-${{ github.run_attempt }}
+          name: ${{ steps.docs-artifact.outputs.name }}
           path: docs-site/.vitepress/dist
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
