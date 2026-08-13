@@ -7,8 +7,7 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const env = {
   ...process.env,
-  GOCACHE:
-    process.env.GOCACHE || path.join(root, ".devenv", "state", "go-build"),
+  GOCACHE: process.env.GOCACHE || path.join(root, ".devenv", "state", "go-build"),
 };
 
 // Only compare generated files that are committed. The docs copies are ignored
@@ -23,9 +22,7 @@ const before = await generatedHashes();
 run("bun", ["scripts/sync-docs-openapi.mjs"]);
 run("bun", ["run", "--filter", "@openpost/web", "generate:types"]);
 const after = await generatedHashes();
-const changed = generatedPaths.filter(
-  (file) => before.get(file) !== after.get(file),
-);
+const changed = generatedPaths.filter((file) => before.get(file) !== after.get(file));
 if (changed.length > 0) {
   console.error(`Generated contracts were stale: ${changed.join(", ")}`);
   run("git", ["diff", "--exit-code", "--", ...changed]);

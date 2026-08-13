@@ -1,12 +1,4 @@
-import {
-  cp,
-  mkdir,
-  mkdtemp,
-  readdir,
-  rename,
-  rm,
-  stat,
-} from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readdir, rename, rm, stat } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { setTimeout as delay } from "node:timers/promises";
 import path from "node:path";
@@ -44,9 +36,7 @@ export async function syncAssets({ surface = "all" } = {}) {
   await acquireLock();
   try {
     const selectedTargets =
-      surface === "all"
-        ? [...targets.entries()]
-        : [[surface, targets.get(surface)]];
+      surface === "all" ? [...targets.entries()] : [[surface, targets.get(surface)]];
     const manifestProblems = await validateAssetSurfaceManifest(
       assetSurfaceManifest,
       root,
@@ -71,9 +61,7 @@ export async function syncAssets({ surface = "all" } = {}) {
       }
       await mkdir(capacitorAssetsTarget, { recursive: true });
       await cp(brandIconSource, path.join(capacitorAssetsTarget, "logo.svg"));
-      console.log(
-        "Prepared frontend/assets/logo.svg for Capacitor asset generation",
-      );
+      console.log("Prepared frontend/assets/logo.svg for Capacitor asset generation");
     }
   } finally {
     await rm(lockDir, { recursive: true, force: true });
@@ -88,9 +76,7 @@ async function syncAssetSurface(surface, target) {
   await mkdir(targetParent, { recursive: true });
   await recoverAssetTarget(surface, target, previousTarget);
   await removeStaleAssetStages(target);
-  const stagedTarget = await mkdtemp(
-    path.join(targetParent, `.${path.basename(target)}.staged-`),
-  );
+  const stagedTarget = await mkdtemp(path.join(targetParent, `.${path.basename(target)}.staged-`));
 
   try {
     for (const relativePath of assetSurfaceManifest[surface]) {
@@ -177,10 +163,7 @@ function optionValue(name) {
   return value;
 }
 
-if (
-  process.argv[1] &&
-  import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href
-) {
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
   await syncAssets({ surface: optionValue("--surface") ?? "all" });
 }
 

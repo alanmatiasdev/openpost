@@ -37,15 +37,9 @@ test("derives the prepared candidate version from the canonical changelog", () =
 });
 
 test("rejects changelogs without an adjacent stable release", () => {
+  assert.throws(() => candidateVersionFromChangelog("## [Unreleased]\n"), /stable SemVer release/);
   assert.throws(
-    () => candidateVersionFromChangelog("## [Unreleased]\n"),
-    /stable SemVer release/,
-  );
-  assert.throws(
-    () =>
-      candidateVersionFromChangelog(
-        "## [Current]\n\n## [1.2.3] - 2026-08-09\n",
-      ),
+    () => candidateVersionFromChangelog("## [Current]\n\n## [1.2.3] - 2026-08-09\n"),
     /must begin with \[Unreleased\]/,
   );
 });
@@ -133,9 +127,7 @@ test("fails closed on unstable versions, abbreviated revisions, and extra fields
 });
 
 test("verifies the intended version and exact candidate revision", async () => {
-  const directory = await mkdtemp(
-    path.join(os.tmpdir(), "openpost-release-manifest-"),
-  );
+  const directory = await mkdtemp(path.join(os.tmpdir(), "openpost-release-manifest-"));
   const manifestPath = path.join(directory, "release-manifest.json");
   await writeFile(
     manifestPath,

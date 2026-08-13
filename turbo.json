@@ -8,18 +8,29 @@
       "persistent": true
     },
     "build": {
-      "dependsOn": ["^build"],
+      "dependsOn": ["^check"],
       "outputs": []
     },
     "check": {
       "dependsOn": ["^check"],
+      "outputs": [],
+      "env": ["OPENPOST_CHECK_PREPARED"]
+    },
+    "//#_policy": {
       "outputs": []
     },
-    "lint": {
+    "lint:oxlint": {
+      "outputs": []
+    },
+    "lint:svelte": {
       "outputs": []
     },
     "test": {
-      "dependsOn": ["^build"],
+      "dependsOn": ["^check"],
+      "outputs": []
+    },
+    "test:server": {
+      "dependsOn": ["^check"],
       "outputs": []
     }
   }

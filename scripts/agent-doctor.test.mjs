@@ -21,9 +21,7 @@ describe("agent doctor local checks", () => {
     const root = await mkdtemp(join(tmpdir(), "openpost-agent-doctor-"));
     await mkdir(join(root, "docs"), { recursive: true });
     await writeFile(join(root, "CONTEXT.md"), "fixture");
-    expect(findMissingArtifacts(root, ["CONTEXT.md", "docs/map.md"])).toEqual([
-      "docs/map.md",
-    ]);
+    expect(findMissingArtifacts(root, ["CONTEXT.md", "docs/map.md"])).toEqual(["docs/map.md"]);
   });
 
   test("parses deterministic label configuration rows", () => {
@@ -59,8 +57,7 @@ describe("agent doctor live label diagnostics", () => {
         name: "triage",
         description: "Needs review",
         color: "fbca04",
-        command:
-          "gh label create 'triage' --description 'Needs review' --color 'fbca04'",
+        command: "gh label create 'triage' --description 'Needs review' --color 'fbca04'",
       },
     ]);
   });

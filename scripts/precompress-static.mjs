@@ -7,10 +7,7 @@ import { fileURLToPath } from "node:url";
 const brotli = promisify(brotliCompress);
 const gzipFile = promisify(gzip);
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
-export const defaultPublicDirectory = resolve(
-  scriptDirectory,
-  "../frontend/build",
-);
+export const defaultPublicDirectory = resolve(scriptDirectory, "../frontend/build");
 const compressibleExtensions = new Set([".css", ".js", ".svg", ".webmanifest"]);
 const minimumBytes = 1024;
 
@@ -25,9 +22,7 @@ async function filesBelow(directory) {
   return nested.flat();
 }
 
-export async function precompressDirectory(
-  publicDirectory = defaultPublicDirectory,
-) {
+export async function precompressDirectory(publicDirectory = defaultPublicDirectory) {
   const candidates = [];
   for (const pathname of await filesBelow(publicDirectory)) {
     if (!compressibleExtensions.has(extname(pathname))) continue;
@@ -76,15 +71,10 @@ function optionValue(name) {
   return value;
 }
 
-if (
-  process.argv[1] &&
-  resolve(process.argv[1]) === fileURLToPath(import.meta.url)
-) {
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const requestedDirectory = optionValue("--directory");
   const result = await precompressDirectory(
-    requestedDirectory
-      ? resolve(process.cwd(), requestedDirectory)
-      : defaultPublicDirectory,
+    requestedDirectory ? resolve(process.cwd(), requestedDirectory) : defaultPublicDirectory,
   );
   const formatMiB = (bytes) => `${(bytes / 1024 / 1024).toFixed(2)} MiB`;
   console.log(

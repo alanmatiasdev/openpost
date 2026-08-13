@@ -19,8 +19,7 @@ if (existsSync(androidManifest)) {
       /(\s*)<application\b/,
       '$1<uses-permission android:name="android.permission.CAMERA" />$1<application',
     );
-    if (updated === manifest)
-      throw new Error("Could not add the Android camera permission.");
+    if (updated === manifest) throw new Error("Could not add the Android camera permission.");
     writeFileSync(androidManifest, updated);
   }
 }
@@ -32,8 +31,7 @@ if (existsSync(iosInfoPlist)) {
       "</dict>",
       "\t<key>NSCameraUsageDescription</key>\n\t<string>OpenPost uses the camera when you choose to take a photo for your media library.</string>\n</dict>",
     );
-    if (updated === plist)
-      throw new Error("Could not add the iOS camera usage description.");
+    if (updated === plist) throw new Error("Could not add the iOS camera usage description.");
     writeFileSync(iosInfoPlist, updated);
   }
 }

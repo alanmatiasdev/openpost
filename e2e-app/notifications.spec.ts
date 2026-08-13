@@ -25,11 +25,7 @@ interface NotificationMutation {
   all?: boolean;
 }
 
-async function switchWorkspace(
-  page: Page,
-  from: TestWorkspace,
-  to: TestWorkspace,
-) {
+async function switchWorkspace(page: Page, from: TestWorkspace, to: TestWorkspace) {
   const workspaceButton = page
     .getByRole("button", { name: new RegExp(`${from.name}|${to.name}`) })
     .first();
@@ -43,10 +39,7 @@ test("notification bulk actions stay in the selected workspace and preserve stat
   request,
 }) => {
   const unique = Date.now().toString(36);
-  const auth = await registerUser(
-    request,
-    `notification-scope-${unique}@example.com`,
-  );
+  const auth = await registerUser(request, `notification-scope-${unique}@example.com`);
   const first = (await createWorkspace(
     request,
     auth.token,
@@ -59,10 +52,7 @@ test("notification bulk actions stay in the selected workspace and preserve stat
   )) as TestWorkspace;
   await authenticatePage(page, auth.token);
   await page.addInitScript((workspace) => {
-    localStorage.setItem(
-      "openpost_current_workspace",
-      JSON.stringify(workspace),
-    );
+    localStorage.setItem("openpost_current_workspace", JSON.stringify(workspace));
   }, first);
 
   let notifications: NotificationFixture[] = [
@@ -115,15 +105,13 @@ test("notification bulk actions stay in the selected workspace and preserve stat
       const workspaceId = url.searchParams.get("workspace_id") ?? "";
       const visible = notifications.filter(
         (notification) =>
-          notification.workspace_id === workspaceId ||
-          notification.workspace_id === "",
+          notification.workspace_id === workspaceId || notification.workspace_id === "",
       );
       await route.fulfill({
         contentType: "application/json",
         json: {
           items: visible,
-          unread_count: visible.filter((notification) => !notification.read_at)
-            .length,
+          unread_count: visible.filter((notification) => !notification.read_at).length,
           next_cursor: "",
         },
       });
@@ -131,9 +119,7 @@ test("notification bulk actions stay in the selected workspace and preserve stat
     }
 
     const body = route.request().postDataJSON() as NotificationMutation;
-    const collection = path.endsWith("/notifications/read")
-      ? readRequests
-      : deleteRequests;
+    const collection = path.endsWith("/notifications/read") ? readRequests : deleteRequests;
     collection.push(body);
     const shouldFail = path.endsWith("/notifications/read")
       ? readFailuresRemaining-- > 0
@@ -152,8 +138,7 @@ test("notification bulk actions stay in the selected workspace and preserve stat
     }
 
     const inScope = (notification: NotificationFixture) =>
-      notification.workspace_id === body.workspace_id ||
-      notification.workspace_id === "";
+      notification.workspace_id === body.workspace_id || notification.workspace_id === "";
     const selected = (notification: NotificationFixture) =>
       body.all || body.ids?.includes(notification.id);
     if (path.endsWith("/notifications/read")) {
@@ -173,16 +158,12 @@ test("notification bulk actions stay in the selected workspace and preserve stat
   await page.goto("/notifications");
   const inbox = page.locator("#main-content");
   await expect(
-    page.getByText(
-      `Updates for ${first.name}, including account-wide notices.`,
-    ),
+    page.getByText(`Updates for ${first.name}, including account-wide notices.`),
   ).toBeVisible();
   await expect(page.getByText("Editorial publication finished")).toBeVisible();
   await expect(page.getByText("Account-wide invitation")).toBeVisible();
   await expect(page.getByText("Campaign publication failed")).toHaveCount(0);
-  await expect(
-    page.getByRole("link", { name: "Notifications, 2 unread" }),
-  ).toBeVisible();
+  await expect(page.getByRole("link", { name: "Notifications, 2 unread" })).toBeVisible();
   await expect(
     page.getByText(
       `Bulk actions affect ${first.name} and account-wide notices, not other workspaces.`,
@@ -193,36 +174,24 @@ test("notification bulk actions stay in the selected workspace and preserve stat
     name: "Mark this inbox read",
   });
   await markInboxRead.click();
-  await expect(
-    page.getByText("OpenPost could not mark this inbox as read."),
-  ).toBeVisible();
+  await expect(page.getByText("OpenPost could not mark this inbox as read.")).toBeVisible();
   await expect(inbox.getByText("2 unread notifications")).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: "Notifications, 2 unread" }),
-  ).toBeVisible();
-  expect(
-    notifications.filter((notification) => notification.read_at),
-  ).toHaveLength(0);
+  await expect(page.getByRole("link", { name: "Notifications, 2 unread" })).toBeVisible();
+  expect(notifications.filter((notification) => notification.read_at)).toHaveLength(0);
 
   await markInboxRead.click();
   await expect(inbox.getByText("0 unread notifications")).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: "Notifications, 0 unread" }),
-  ).toBeVisible();
+  await expect(page.getByRole("link", { name: "Notifications, 0 unread" })).toBeVisible();
   expect(
-    notifications.find(
-      (notification) => notification.id === "first-workspace-notification",
-    )?.read_at,
+    notifications.find((notification) => notification.id === "first-workspace-notification")
+      ?.read_at,
   ).toBeTruthy();
   expect(
-    notifications.find(
-      (notification) => notification.id === "account-wide-notification",
-    )?.read_at,
+    notifications.find((notification) => notification.id === "account-wide-notification")?.read_at,
   ).toBeTruthy();
   expect(
-    notifications.find(
-      (notification) => notification.id === "second-workspace-notification",
-    )?.read_at,
+    notifications.find((notification) => notification.id === "second-workspace-notification")
+      ?.read_at,
   ).toBe("");
   expect(readRequests).toEqual([
     { workspace_id: first.id, all: true },
@@ -232,43 +201,26 @@ test("notification bulk actions stay in the selected workspace and preserve stat
   await switchWorkspace(page, first, second);
   await expect(page.getByText("Campaign publication failed")).toBeVisible();
   await expect(inbox.getByText("1 unread notifications")).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: "Notifications, 1 unread" }),
-  ).toBeVisible();
+  await expect(page.getByRole("link", { name: "Notifications, 1 unread" })).toBeVisible();
 
-  await inbox
-    .getByRole("button", { name: "Delete this inbox history" })
-    .click();
+  await inbox.getByRole("button", { name: "Delete this inbox history" }).click();
   const dialog = page.getByRole("dialog");
   await expect(
     dialog.getByText(
       `This permanently deletes notifications for ${second.name} and account-wide notices. Notifications for other workspaces stay in your history.`,
     ),
   ).toBeVisible();
-  await dialog
-    .getByRole("button", { name: "Delete this inbox history" })
-    .click();
-  await expect(
-    page.getByText("OpenPost could not delete this inbox history."),
-  ).toBeVisible();
+  await dialog.getByRole("button", { name: "Delete this inbox history" }).click();
+  await expect(page.getByText("OpenPost could not delete this inbox history.")).toBeVisible();
   await expect(dialog).toBeHidden();
   await expect(page.getByText("Campaign publication failed")).toBeVisible();
   await expect(inbox.getByText("1 unread notifications")).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: "Notifications, 1 unread" }),
-  ).toBeVisible();
+  await expect(page.getByRole("link", { name: "Notifications, 1 unread" })).toBeVisible();
 
-  await inbox
-    .getByRole("button", { name: "Delete this inbox history" })
-    .click();
-  await page
-    .getByRole("dialog")
-    .getByRole("button", { name: "Delete this inbox history" })
-    .click();
+  await inbox.getByRole("button", { name: "Delete this inbox history" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Delete this inbox history" }).click();
   await expect(page.getByText("You're all caught up")).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: "Notifications, 0 unread" }),
-  ).toBeVisible();
+  await expect(page.getByRole("link", { name: "Notifications, 0 unread" })).toBeVisible();
   expect(deleteRequests).toEqual([
     { workspace_id: second.id, all: true },
     { workspace_id: second.id, all: true },
@@ -286,10 +238,7 @@ test("notification feed shares live state, retries failed cursors, and exposes a
   request,
 }) => {
   const unique = Date.now().toString(36);
-  const auth = await registerUser(
-    request,
-    `notification-feed-${unique}@example.com`,
-  );
+  const auth = await registerUser(request, `notification-feed-${unique}@example.com`);
   const workspace = (await createWorkspace(
     request,
     auth.token,
@@ -297,37 +246,24 @@ test("notification feed shares live state, retries failed cursors, and exposes a
   )) as TestWorkspace;
   await authenticatePage(page, auth.token);
   await page.addInitScript((selectedWorkspace) => {
-    localStorage.setItem(
-      "openpost_current_workspace",
-      JSON.stringify(selectedWorkspace),
-    );
+    localStorage.setItem("openpost_current_workspace", JSON.stringify(selectedWorkspace));
   }, workspace);
 
   const now = new Date();
   const localMidday = (daysAgo: number) =>
-    new Date(
-      now.getFullYear(),
-      now.getMonth(),
-      now.getDate() - daysAgo,
-      12,
-      0,
-      0,
-    ).toISOString();
-  let notifications: NotificationFixture[] = Array.from(
-    { length: 125 },
-    (_, index) => ({
-      id: `notification-${index.toString().padStart(3, "0")}`,
-      user_id: "user-1",
-      workspace_id: workspace.id,
-      type: index % 2 === 0 ? "post_published" : "publish_failed",
-      title: `Notification ${index.toString().padStart(3, "0")}`,
-      body: `Complete notification body ${index}`,
-      href: index === 0 ? "/activity" : "/notifications",
-      payload_json: "{}",
-      read_at: "",
-      created_at: localMidday(index === 0 ? 0 : index === 1 ? 1 : index + 2),
-    }),
-  );
+    new Date(now.getFullYear(), now.getMonth(), now.getDate() - daysAgo, 12, 0, 0).toISOString();
+  let notifications: NotificationFixture[] = Array.from({ length: 125 }, (_, index) => ({
+    id: `notification-${index.toString().padStart(3, "0")}`,
+    user_id: "user-1",
+    workspace_id: workspace.id,
+    type: index % 2 === 0 ? "post_published" : "publish_failed",
+    title: `Notification ${index.toString().padStart(3, "0")}`,
+    body: `Complete notification body ${index}`,
+    href: index === 0 ? "/activity" : "/notifications",
+    payload_json: "{}",
+    read_at: "",
+    created_at: localMidday(index === 0 ? 0 : index === 1 ? 1 : index + 2),
+  }));
   let initialFailuresRemaining = 1;
   let cursorFailuresRemaining = 1;
   let openFailuresRemaining = 1;
@@ -369,20 +305,14 @@ test("notification feed shares live state, retries failed cursors, and exposes a
         contentType: "application/json",
         json: {
           items,
-          unread_count: notifications.filter(
-            (notification) => !notification.read_at,
-          ).length,
-          next_cursor:
-            nextOffset < notifications.length ? String(nextOffset) : "",
+          unread_count: notifications.filter((notification) => !notification.read_at).length,
+          next_cursor: nextOffset < notifications.length ? String(nextOffset) : "",
         },
       });
       return;
     }
 
-    if (
-      route.request().method() === "POST" &&
-      path.endsWith("/notifications/read")
-    ) {
+    if (route.request().method() === "POST" && path.endsWith("/notifications/read")) {
       const body = route.request().postDataJSON() as NotificationMutation;
       readRequests.push(body);
       if (!body.all && openFailuresRemaining-- > 0) {
@@ -411,55 +341,37 @@ test("notification feed shares live state, retries failed cursors, and exposes a
 
   await page.goto("/notifications");
   const inbox = page.locator("#main-content");
-  await expect(
-    page.getByText("Forced initial notification failure"),
-  ).toBeVisible();
+  await expect(page.getByText("Forced initial notification failure")).toBeVisible();
   await expect(page.getByText("You're all caught up")).toHaveCount(0);
   await page.getByRole("button", { name: "Try again" }).click();
 
   await expect(inbox.getByRole("heading", { name: "Today" })).toBeVisible();
   await expect(inbox.getByRole("heading", { name: "Yesterday" })).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: "Notifications, 125 unread" }),
-  ).toBeVisible();
-  const firstArticle = inbox.locator(
-    '[data-notification-id="notification-000"]',
-  );
+  await expect(page.getByRole("link", { name: "Notifications, 125 unread" })).toBeVisible();
+  const firstArticle = inbox.locator('[data-notification-id="notification-000"]');
   await expect(firstArticle).toHaveAttribute(
     "aria-label",
     /Post published\. Unread\. Notification 000\..+/,
   );
   await expect(firstArticle.getByText("Post published")).toBeVisible();
   await expect(firstArticle.getByText("Unread", { exact: true })).toBeVisible();
-  await expect(
-    firstArticle.getByRole("button", { name: "Mark as read" }),
-  ).toBeVisible();
-  await expect(
-    firstArticle.getByRole("button", { name: "Open notification" }),
-  ).toBeVisible();
+  await expect(firstArticle.getByRole("button", { name: "Mark as read" })).toBeVisible();
+  await expect(firstArticle.getByRole("button", { name: "Open notification" })).toBeVisible();
 
   await firstArticle.getByRole("button", { name: "Open notification" }).click();
   await expect(page).toHaveURL(/\/activity$/);
-  await expect(
-    page.getByRole("link", { name: "Notifications, 125 unread" }),
-  ).toBeVisible();
+  await expect(page.getByRole("link", { name: "Notifications, 125 unread" })).toBeVisible();
   await page.getByRole("link", { name: "Notifications, 125 unread" }).click();
   await expect(firstArticle).toHaveAttribute("data-unread", "true");
   await expect(inbox.getByText("125 unread notifications")).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: "Notifications, 125 unread" }),
-  ).toBeVisible();
+  await expect(page.getByRole("link", { name: "Notifications, 125 unread" })).toBeVisible();
 
   await firstArticle.getByRole("button", { name: "Open notification" }).click();
   await expect(page).toHaveURL(/\/activity$/);
-  await expect(
-    page.getByRole("link", { name: "Notifications, 124 unread" }),
-  ).toBeVisible();
+  await expect(page.getByRole("link", { name: "Notifications, 124 unread" })).toBeVisible();
   await page.getByRole("link", { name: "Notifications, 124 unread" }).click();
   await expect(inbox.getByText("124 unread notifications")).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: "Notifications, 124 unread" }),
-  ).toBeVisible();
+  await expect(page.getByRole("link", { name: "Notifications, 124 unread" })).toBeVisible();
   expect(readRequests.slice(0, 2)).toEqual([
     { workspace_id: workspace.id, ids: ["notification-000"] },
     { workspace_id: workspace.id, ids: ["notification-000"] },
@@ -476,13 +388,9 @@ test("notification feed shares live state, retries failed cursors, and exposes a
   await expect(page.getByText("Notification 000")).toHaveCount(0);
   await inbox.getByRole("button", { name: "Read", exact: true }).click();
   await inbox.getByRole("button", { name: "Mark this inbox read" }).click();
-  await expect(
-    page.getByText("This inbox is now marked as read."),
-  ).toBeAttached();
+  await expect(page.getByText("This inbox is now marked as read.")).toBeAttached();
   await expect(inbox.getByText("0 unread notifications")).toBeVisible();
-  await expect(
-    inbox.getByRole("button", { name: "Mark this inbox read" }),
-  ).toBeDisabled();
+  await expect(inbox.getByRole("button", { name: "Mark this inbox read" })).toBeDisabled();
 
   await inbox.getByRole("button", { name: "Unread", exact: true }).click();
   await expect(
@@ -526,8 +434,6 @@ test("notification feed shares live state, retries failed cursors, and exposes a
   ];
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
   await expect(page.getByText("A new message arrived")).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: "Notifications, 1 unread" }),
-  ).toBeVisible();
+  await expect(page.getByRole("link", { name: "Notifications, 1 unread" })).toBeVisible();
   await expect(inbox.locator("[data-notification-id]")).toHaveCount(126);
 });

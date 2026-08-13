@@ -1,10 +1,5 @@
 import { expect, test } from "@playwright/test";
-import {
-  authenticatePage,
-  createWorkspace,
-  password,
-  registerUser,
-} from "./helpers";
+import { authenticatePage, createWorkspace, password, registerUser } from "./helpers";
 
 test("email change keeps the old address until confirmation and explains conflict and expiry", async ({
   page,
@@ -45,29 +40,26 @@ test("email change keeps the old address until confirmation and explains conflic
     };
     await route.fulfill({ status: 201, json: pending });
   });
-  await page.route(
-    "**/api/v1/auth/email-change/email-change-e2e/confirm",
-    async (route) => {
-      const { code } = route.request().postDataJSON() as { code: string };
-      if (code === "111111") {
-        await route.fulfill({
-          status: 400,
-          json: { detail: "invalid confirmation code" },
-        });
-        return;
-      }
-      if (code === "999999") {
-        await route.fulfill({
-          status: 400,
-          json: { detail: "confirmation code has expired" },
-        });
-        return;
-      }
-      const email = pending?.new_email ?? confirmedEmail;
-      pending = null;
-      await route.fulfill({ json: { email, revoked_sessions: 1 } });
-    },
-  );
+  await page.route("**/api/v1/auth/email-change/email-change-e2e/confirm", async (route) => {
+    const { code } = route.request().postDataJSON() as { code: string };
+    if (code === "111111") {
+      await route.fulfill({
+        status: 400,
+        json: { detail: "invalid confirmation code" },
+      });
+      return;
+    }
+    if (code === "999999") {
+      await route.fulfill({
+        status: 400,
+        json: { detail: "confirmation code has expired" },
+      });
+      return;
+    }
+    const email = pending?.new_email ?? confirmedEmail;
+    pending = null;
+    await route.fulfill({ json: { email, revoked_sessions: 1 } });
+  });
 
   await page.goto("/settings?tab=security");
   const card = page.getByTestId("email-change-card");
@@ -76,9 +68,7 @@ test("email change keeps the old address until confirmation and explains conflic
   await card.getByLabel("New email address").fill(confirmedEmail);
   await card.getByLabel("Current password").fill(password);
   await card.getByRole("button", { name: "Send confirmation code" }).click();
-  await expect(
-    card.getByText(`Waiting for confirmation of ${confirmedEmail}`),
-  ).toBeVisible();
+  await expect(card.getByText(`Waiting for confirmation of ${confirmedEmail}`)).toBeVisible();
   await expect(card.getByText(oldEmail, { exact: true })).toBeVisible();
 
   await card.getByLabel("Confirmation code").fill("111111");
@@ -91,9 +81,7 @@ test("email change keeps the old address until confirmation and explains conflic
   await expect(card.getByText(confirmedEmail, { exact: true })).toBeVisible();
   await expect(card.getByText(oldEmail, { exact: true })).toHaveCount(0);
 
-  await card
-    .getByLabel("New email address")
-    .fill(`email-conflict-${unique}@example.com`);
+  await card.getByLabel("New email address").fill(`email-conflict-${unique}@example.com`);
   await card.getByLabel("Current password").fill(password);
   await card.getByRole("button", { name: "Send confirmation code" }).click();
   await expect(card.getByText("That address cannot be used.")).toBeVisible();
@@ -108,10 +96,7 @@ test("email change keeps the old address until confirmation and explains conflic
   await expect(card.getByText(confirmedEmail, { exact: true })).toBeVisible();
 });
 
-test("linked identity removal keeps the final sign-in method", async ({
-  page,
-  request,
-}) => {
+test("linked identity removal keeps the final sign-in method", async ({ page, request }) => {
   const unique = Date.now().toString(36);
   const email = `identity-guard-${unique}@example.com`;
   const auth = await registerUser(request, email);
@@ -186,9 +171,7 @@ test("linked identity removal keeps the final sign-in method", async ({
       "Before you continue, sign in with a passkey or a linked external account.",
     ),
   ).toBeVisible();
-  await expect(linkedIdentityCard.getByLabel("Current password")).toHaveCount(
-    0,
-  );
+  await expect(linkedIdentityCard.getByLabel("Current password")).toHaveCount(0);
   await linkedIdentityCard.getByRole("button", { name: "Unlink" }).click();
   const dialog = page.getByRole("dialog");
   await expect(
@@ -199,9 +182,7 @@ test("linked identity removal keeps the final sign-in method", async ({
   await dialog.getByRole("button", { name: "Unlink" }).click();
 
   await expect(
-    page.getByText(
-      "Add another sign-in method before unlinking this identity.",
-    ),
+    page.getByText("Add another sign-in method before unlinking this identity."),
   ).toBeVisible();
   await expect(linkedIdentityCard.getByText("Only Sign-in")).toBeVisible();
 });
@@ -225,17 +206,14 @@ test("API token secret is shown once with explicit expiry and status", async ({
   });
   await expect(createTokenButton).toBeVisible();
   await expect(createTokenButton).toBeInViewport();
-  expect(
-    await page.evaluate(() => document.documentElement.scrollWidth),
-  ).toBeLessThanOrEqual(390);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
 
   await page.getByLabel("New token name").fill(tokenName);
   await page.getByLabel("Expiration").click();
   await page.getByRole("option", { name: "30 days" }).click();
   const createResponsePromise = page.waitForResponse(
     (response) =>
-      response.url().endsWith("/api/v1/api-tokens") &&
-      response.request().method() === "POST",
+      response.url().endsWith("/api/v1/api-tokens") && response.request().method() === "POST",
   );
   await createTokenButton.click();
   const createResponse = await createResponsePromise;
@@ -259,26 +237,20 @@ test("API token secret is shown once with explicit expiry and status", async ({
       .getByRole("region", { name: /^Notifications/ })
       .getByText("API token copied.", { exact: true }),
   ).toBeVisible();
-  await expect(
-    page.locator("#tokens").getByText("API token copied.", { exact: true }),
-  ).toHaveText("API token copied.");
-  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
-    created.token,
+  await expect(page.locator("#tokens").getByText("API token copied.", { exact: true })).toHaveText(
+    "API token copied.",
   );
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(created.token);
 
   const tokenSection = page.locator("#tokens");
-  await expect(
-    tokenSection.getByText(tokenName, { exact: true }),
-  ).toBeVisible();
+  await expect(tokenSection.getByText(tokenName, { exact: true })).toBeVisible();
   await expect(tokenSection.getByText("Active", { exact: true })).toBeVisible();
   await expect(tokenSection).toContainText("Expires");
 
   await page.reload();
   await expect(page.getByLabel("New API token")).toHaveCount(0);
   await expect(page.getByText(created.token, { exact: true })).toHaveCount(0);
-  await expect(
-    tokenSection.getByText(tokenName, { exact: true }),
-  ).toBeVisible();
+  await expect(tokenSection.getByText(tokenName, { exact: true })).toBeVisible();
   const removeAccessButton = tokenSection.getByRole("button", {
     name: "Remove access",
     exact: true,
@@ -288,13 +260,9 @@ test("API token secret is shown once with explicit expiry and status", async ({
     .getByRole("dialog")
     .getByRole("button", { name: "Remove access", exact: true })
     .click();
-  await expect(
-    tokenSection.getByText("Revoked", { exact: true }),
-  ).toBeVisible();
+  await expect(tokenSection.getByText("Revoked", { exact: true })).toBeVisible();
   await expect(removeAccessButton).toBeDisabled();
-  expect(
-    await page.evaluate(() => document.documentElement.scrollWidth),
-  ).toBeLessThanOrEqual(390);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
 });
 
 test("profile saves private fields when public-profile capability loading fails", async ({
@@ -323,9 +291,7 @@ test("profile saves private fields when public-profile capability loading fails"
   });
 
   await page.goto("/settings?tab=profile");
-  await expect(
-    page.getByText("Public-profile capability could not be loaded."),
-  ).toBeVisible();
+  await expect(page.getByText("Public-profile capability could not be loaded.")).toBeVisible();
   await expect(
     page.getByRole("checkbox", {
       name: "Public publishing profile",
@@ -334,18 +300,12 @@ test("profile saves private fields when public-profile capability loading fails"
   ).toHaveCount(0);
   await expect(page.getByTestId("public-profile-preview")).toHaveCount(0);
 
-  await page
-    .getByRole("textbox", { name: "Display name", exact: true })
-    .fill(displayName);
+  await page.getByRole("textbox", { name: "Display name", exact: true }).fill(displayName);
   const updateRequestPromise = page.waitForRequest(
-    (req) =>
-      req.url().endsWith("/api/v1/auth/profile") && req.method() === "PATCH",
+    (req) => req.url().endsWith("/api/v1/auth/profile") && req.method() === "PATCH",
   );
   await page.getByRole("button", { name: "Save profile" }).click();
-  const updateBody = (await updateRequestPromise).postDataJSON() as Record<
-    string,
-    unknown
-  >;
+  const updateBody = (await updateRequestPromise).postDataJSON() as Record<string, unknown>;
   expect(updateBody.display_name).toBe(displayName);
   expect(updateBody).not.toHaveProperty("public_profile_enabled");
   expect(updateBody).not.toHaveProperty("public_profile_visible_fields");
@@ -353,14 +313,10 @@ test("profile saves private fields when public-profile capability loading fails"
 
   capabilityAvailable = true;
   await page.getByRole("button", { name: "Try again" }).click();
-  await expect(
-    page.getByText("Public publishing profile", { exact: true }),
-  ).toBeVisible();
+  await expect(page.getByText("Public publishing profile", { exact: true })).toBeVisible();
   expect(capabilityAttempts).toBeGreaterThanOrEqual(2);
 
-  await page
-    .getByRole("checkbox", { name: "Public publishing profile" })
-    .check();
+  await page.getByRole("checkbox", { name: "Public publishing profile" }).check();
   const onlyAvatarVisible = [
     "Display name",
     "Join date",
@@ -372,22 +328,17 @@ test("profile saves private fields when public-profile capability loading fails"
   for (const field of onlyAvatarVisible) {
     await page.getByRole("checkbox", { name: field, exact: true }).uncheck();
   }
-  await page
-    .getByRole("checkbox", { name: "Profile picture", exact: true })
-    .check();
+  await page.getByRole("checkbox", { name: "Profile picture", exact: true }).check();
 
   const preview = page.getByTestId("public-profile-preview");
   await expect(preview.getByText(displayName, { exact: true })).toHaveCount(0);
-  await expect(
-    preview.getByText("Publishing activity and streaks", { exact: true }),
-  ).toHaveCount(0);
-  await expect(
-    preview.getByText("Profile picture", { exact: true }),
-  ).toBeVisible();
+  await expect(preview.getByText("Publishing activity and streaks", { exact: true })).toHaveCount(
+    0,
+  );
+  await expect(preview.getByText("Profile picture", { exact: true })).toBeVisible();
 
   const publicUpdateRequest = page.waitForRequest(
-    (req) =>
-      req.url().endsWith("/api/v1/auth/profile") && req.method() === "PATCH",
+    (req) => req.url().endsWith("/api/v1/auth/profile") && req.method() === "PATCH",
   );
   await page.getByRole("button", { name: "Save profile" }).click();
   expect((await publicUpdateRequest).postDataJSON()).toMatchObject({

@@ -46,8 +46,7 @@ const toolPages = [
     slug: "social-media-image-editor",
     name: "Social media image editor",
     title: "Free social media image editor - OpenPost Image Editor",
-    description:
-      "Create posts, carousel pages, Story slides, and thumbnails in your browser.",
+    description: "Create posts, carousel pages, Story slides, and thumbnails in your browser.",
   },
   {
     slug: "multi-platform-character-counter",
@@ -59,8 +58,7 @@ const toolPages = [
     slug: "post-preview-generator",
     name: "Post preview generator",
     title: "Free social post preview generator - OpenPost",
-    description:
-      "Preview text, links, media, and supported formats before you publish.",
+    description: "Preview text, links, media, and supported formats before you publish.",
   },
   {
     slug: "thread-splitter",
@@ -73,8 +71,7 @@ const toolPages = [
     slug: "fediverse-handle-checker",
     name: "Fediverse handle checker",
     title: "Fediverse and Bluesky handle checker - OpenPost",
-    description:
-      "Validate a Fediverse or Bluesky handle, then choose whether to run a live check.",
+    description: "Validate a Fediverse or Bluesky handle, then choose whether to run a live check.",
   },
   {
     slug: "linkedin-text-formatter",
@@ -87,8 +84,7 @@ const toolPages = [
     slug: "best-time-to-post-calculator",
     name: "Timezone posting planner",
     title: "Free social posting schedule planner - OpenPost",
-    description:
-      "Turn your audience hours and timezone into a weekly posting plan you can reuse.",
+    description: "Turn your audience hours and timezone into a weekly posting plan you can reuse.",
   },
 ];
 
@@ -97,8 +93,7 @@ const staticMarketingEntries = [
     path: "/",
     key: "home",
     title: "OpenPost - The all-in-one content team for solo founders",
-    socialTitle:
-      "Turn what you’re building into content. Publish it everywhere.",
+    socialTitle: "Turn what you’re building into content. Publish it everywhere.",
     description:
       "OpenPost helps solo founders create, adapt, schedule, and track content from one workspace.",
     label: "The content team for companies of one",
@@ -143,8 +138,7 @@ const staticMarketingEntries = [
     key: "compare",
     title: "Compare OpenPost with social scheduling tools",
     socialTitle: "Choose the content system that fits your work.",
-    description:
-      "Compare OpenPost with established publishing tools using reviewed product facts.",
+    description: "Compare OpenPost with established publishing tools using reviewed product facts.",
     label: "Honest comparisons",
     kind: "compare-index",
     priority: "0.8",
@@ -154,8 +148,7 @@ const staticMarketingEntries = [
     key: "tools",
     title: "Free social media tools - OpenPost",
     socialTitle: "Useful social tools. No account required.",
-    description:
-      "Preview, write, prepare, edit, and plan social content in your browser.",
+    description: "Preview, write, prepare, edit, and plan social content in your browser.",
     label: "OpenPost free tools",
     kind: "tools-index",
     priority: "0.8",
@@ -198,8 +191,7 @@ const staticMarketingEntries = [
     key: "open-source",
     title: "Open source and self-hosting - OpenPost",
     socialTitle: "Use the managed app. Keep the option to self-host.",
-    description:
-      "Run the complete AGPL OpenPost service yourself or use the managed product.",
+    description: "Run the complete AGPL OpenPost service yourself or use the managed product.",
     label: "Open source",
     kind: "open-source",
     priority: "0.7",
@@ -289,20 +281,17 @@ const toolEntries = toolPages.map((tool) => ({
 }));
 
 export const marketingRouteManifest = Object.freeze(
-  [
-    ...staticMarketingEntries,
-    ...platformEntries,
-    ...comparisonEntries,
-    ...toolEntries,
-  ].map((entry) => {
-    const resolved = {
-      ...entry,
-      id: `marketing:${entry.key}`,
-      canonical: canonicalMarketingUrl(entry.path),
-      imageAlt: `${entry.socialTitle} OpenPost social preview.`,
-    };
-    return { ...resolved, imageUrl: socialImageUrl(resolved) };
-  }),
+  [...staticMarketingEntries, ...platformEntries, ...comparisonEntries, ...toolEntries].map(
+    (entry) => {
+      const resolved = {
+        ...entry,
+        id: `marketing:${entry.key}`,
+        canonical: canonicalMarketingUrl(entry.path),
+        imageAlt: `${entry.socialTitle} OpenPost social preview.`,
+      };
+      return { ...resolved, imageUrl: socialImageUrl(resolved) };
+    },
+  ),
 );
 
 export const marketingSocialEntries = marketingRouteManifest;
@@ -322,9 +311,7 @@ export function marketingPrerenderEntries(section) {
   });
 }
 
-const marketingByPath = new Map(
-  marketingSocialEntries.map((entry) => [entry.path, entry]),
-);
+const marketingByPath = new Map(marketingSocialEntries.map((entry) => [entry.path, entry]));
 
 export function normalizeMarketingPath(pathname) {
   if (!pathname || pathname === "/") return "/";
@@ -396,22 +383,17 @@ export function docsDescriptionForPage(page) {
       "Use the OpenPost app to manage drafts, destinations, media, schedules, results, and replies.",
     "Provider guide":
       "Check provider setup, supported formats, limits, permissions, and live-test requirements.",
-    Installation:
-      "Install OpenPost with the deployment path that fits your server or device.",
+    Installation: "Install OpenPost with the deployment path that fits your server or device.",
     Configuration:
       "Configure OpenPost storage, databases, URLs, providers, updates, and production settings.",
     Operations:
       "Operate OpenPost with clear health checks, logs, backups, upgrades, and recovery steps.",
-    "Self-hosting":
-      "Run OpenPost as one Go service with SQLite and local media by default.",
-    "CLI guide":
-      "Use OpenPost from a terminal, script, scheduled job, or CI workflow.",
-    "MCP guide":
-      "Connect AI tools to OpenPost without sharing social account credentials.",
+    "Self-hosting": "Run OpenPost as one Go service with SQLite and local media by default.",
+    "CLI guide": "Use OpenPost from a terminal, script, scheduled job, or CI workflow.",
+    "MCP guide": "Connect AI tools to OpenPost without sharing social account credentials.",
     "Developer docs":
       "Understand the OpenPost architecture, API, tests, adapters, jobs, and release workflow.",
-    Reference:
-      "Look up OpenPost API, CLI, configuration, and deployment details.",
+    Reference: "Look up OpenPost API, CLI, configuration, and deployment details.",
   };
   return descriptions[section];
 }
@@ -442,10 +424,7 @@ export const docsSocialEntries = Object.freeze(
 );
 
 const socialById = new Map(
-  [...marketingSocialEntries, ...docsSocialEntries].map((entry) => [
-    entry.id,
-    entry,
-  ]),
+  [...marketingSocialEntries, ...docsSocialEntries].map((entry) => [entry.id, entry]),
 );
 
 export function resolveSocialImageEntry(id) {

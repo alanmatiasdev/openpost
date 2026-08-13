@@ -1,15 +1,9 @@
 import { expect, test } from "@playwright/test";
 import { authenticatePage, createWorkspace, registerUser } from "./helpers";
 
-test("settings exposes and retries API-token load failures", async ({
-  page,
-  request,
-}) => {
+test("settings exposes and retries API-token load failures", async ({ page, request }) => {
   const unique = Date.now().toString(36);
-  const auth = await registerUser(
-    request,
-    `token-load-recovery-${unique}@example.com`,
-  );
+  const auth = await registerUser(request, `token-load-recovery-${unique}@example.com`);
   await createWorkspace(request, auth.token, "Token Recovery E2E");
   await authenticatePage(page, auth.token);
 
@@ -60,15 +54,10 @@ test("accounts exposes independent recovery for accounts and providers", async (
   request,
 }) => {
   const unique = Date.now().toString(36);
-  const auth = await registerUser(
-    request,
-    `account-load-recovery-${unique}@example.com`,
-  );
-  const workspace = (await createWorkspace(
-    request,
-    auth.token,
-    "Account Recovery E2E",
-  )) as { id: string };
+  const auth = await registerUser(request, `account-load-recovery-${unique}@example.com`);
+  const workspace = (await createWorkspace(request, auth.token, "Account Recovery E2E")) as {
+    id: string;
+  };
   await authenticatePage(page, auth.token);
 
   let accountRequests = 0;
@@ -130,15 +119,9 @@ test("accounts exposes independent recovery for accounts and providers", async (
 
   const accountsError = page.getByTestId("accounts-load-error");
   const providersError = page.getByTestId("providers-load-error");
-  await expect(accountsError).toContainText(
-    "Failed to load connected accounts",
-  );
-  await expect(providersError).toContainText(
-    "Could not load available platforms.",
-  );
-  await expect(
-    page.getByRole("heading", { name: "No accounts connected" }),
-  ).toHaveCount(0);
+  await expect(accountsError).toContainText("Failed to load connected accounts");
+  await expect(providersError).toContainText("Could not load available platforms.");
+  await expect(page.getByRole("heading", { name: "No accounts connected" })).toHaveCount(0);
   await expect(page.locator('[data-testid^="provider-card-"]')).toHaveCount(0);
 
   await accountsError.getByRole("button", { name: "Try again" }).click();
@@ -157,10 +140,7 @@ test("onboarding does not offer workspace creation when bootstrap fails", async 
   request,
 }) => {
   const unique = Date.now().toString(36);
-  const auth = await registerUser(
-    request,
-    `onboarding-load-recovery-${unique}@example.com`,
-  );
+  const auth = await registerUser(request, `onboarding-load-recovery-${unique}@example.com`);
   await authenticatePage(page, auth.token);
 
   let allowWorkspaceLoad = false;
@@ -201,9 +181,7 @@ test("onboarding does not offer workspace creation when bootstrap fails", async 
   const loadError = page.getByTestId("onboarding-load-error");
   await expect(loadError).toContainText("Failed to load workspaces");
   await expect(page.getByLabel("Workspace name")).toHaveCount(0);
-  await expect(
-    page.getByRole("button", { name: "Create Workspace and continue" }),
-  ).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Create Workspace and continue" })).toHaveCount(0);
 
   allowWorkspaceLoad = true;
   await loadError.getByRole("button", { name: "Try again" }).click();
@@ -211,9 +189,7 @@ test("onboarding does not offer workspace creation when bootstrap fails", async 
   await expect(loadError).toHaveCount(0);
   await expect(page).toHaveURL(/\/onboarding/);
   await expect(page.getByLabel("Workspace name")).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Create Workspace and continue" }),
-  ).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Create Workspace and continue" })).toBeDisabled();
 });
 
 test("accepted invitations retry workspace refresh without consuming the token again", async ({
@@ -221,15 +197,10 @@ test("accepted invitations retry workspace refresh without consuming the token a
   request,
 }) => {
   const unique = Date.now().toString(36);
-  const auth = await registerUser(
-    request,
-    `invite-refresh-recovery-${unique}@example.com`,
-  );
-  const workspace = (await createWorkspace(
-    request,
-    auth.token,
-    "Invite Refresh Recovery E2E",
-  )) as { id: string };
+  const auth = await registerUser(request, `invite-refresh-recovery-${unique}@example.com`);
+  const workspace = (await createWorkspace(request, auth.token, "Invite Refresh Recovery E2E")) as {
+    id: string;
+  };
   await authenticatePage(page, auth.token);
 
   let allowWorkspaceRefresh = false;
@@ -256,25 +227,19 @@ test("accepted invitations retry workspace refresh without consuming the token a
 
   await page.goto("/invite?token=consumed-token");
 
-  await expect(
-    page.getByRole("heading", { level: 1, name: "Invitation accepted" }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Invitation accepted" })).toBeVisible();
   await expect(page.getByTestId("invite-error")).toHaveCount(0);
   const refreshError = page.getByTestId("invite-workspace-refresh-error");
   await expect(refreshError).toContainText(
     "You joined the workspace, but OpenPost could not refresh your workspace list.",
   );
-  await expect(page.getByRole("link", { name: "Open Workspace" })).toHaveCount(
-    0,
-  );
+  await expect(page.getByRole("link", { name: "Open Workspace" })).toHaveCount(0);
 
   allowWorkspaceRefresh = true;
   await refreshError.getByRole("button", { name: "Try again" }).click();
 
   await expect(refreshError).toHaveCount(0);
-  await expect(
-    page.getByRole("link", { name: "Open Workspace" }),
-  ).toBeVisible();
+  await expect(page.getByRole("link", { name: "Open Workspace" })).toBeVisible();
   expect(acceptanceRequests).toBe(1);
 });
 
@@ -283,15 +248,10 @@ test("portrait calendar can create on an empty date in a populated month", async
   request,
 }) => {
   const unique = Date.now().toString(36);
-  const auth = await registerUser(
-    request,
-    `calendar-empty-date-${unique}@example.com`,
-  );
-  const workspace = (await createWorkspace(
-    request,
-    auth.token,
-    "Calendar Empty Date E2E",
-  )) as { id: string };
+  const auth = await registerUser(request, `calendar-empty-date-${unique}@example.com`);
+  const workspace = (await createWorkspace(request, auth.token, "Calendar Empty Date E2E")) as {
+    id: string;
+  };
   await authenticatePage(page, auth.token);
   await page.setViewportSize({ width: 390, height: 844 });
   const calendarNow = new Date("2030-06-15T12:00:00.000Z");
@@ -349,23 +309,13 @@ test("portrait calendar can create on an empty date in a populated month", async
 
   const emptyDateCreate = page.getByTestId("calendar-empty-date-create");
   await expect(emptyDateCreate).toBeVisible();
-  await expect(
-    emptyDateCreate.getByRole("button", { name: /Empty date in/ }),
-  ).toBeVisible();
+  await expect(emptyDateCreate.getByRole("button", { name: /Empty date in/ })).toBeVisible();
   await expect
-    .poll(() =>
-      page.evaluate(
-        () => document.documentElement.scrollWidth <= window.innerWidth,
-      ),
-    )
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
     .toBe(true);
 
   await emptyDateCreate.getByRole("button", { name: "Create post" }).click();
 
-  await expect
-    .poll(() => new URL(page.url()).searchParams.get("date"))
-    .toBe("2030-06-15");
-  expect(new URL(page.url()).searchParams.get("workspace_id")).toBe(
-    workspace.id,
-  );
+  await expect.poll(() => new URL(page.url()).searchParams.get("date")).toBe("2030-06-15");
+  expect(new URL(page.url()).searchParams.get("workspace_id")).toBe(workspace.id);
 });

@@ -218,10 +218,7 @@ export default defineConfig({
     const social = resolveDocsSocial({
       page,
       title: pageData.title,
-      description:
-        typeof frontmatterDescription === "string"
-          ? frontmatterDescription
-          : undefined,
+      description: typeof frontmatterDescription === "string" ? frontmatterDescription : undefined,
     });
     const image = social.imageUrl;
     return [

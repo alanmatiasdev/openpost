@@ -13,7 +13,11 @@ export type PurchaseChoice = components['schemas']['PurchaseChoiceResponse'];
 export type PurchaseSelection = Pick<PurchaseChoice, 'plan_id' | 'billing_period' | 'token'>;
 type APIError = components['schemas']['ErrorModel'];
 export type PurchaseChoiceErrorCode =
-	'missing' | 'invalid' | 'expired' | 'mismatch' | 'unavailable';
+	| 'missing'
+	| 'invalid'
+	| 'expired'
+	| 'mismatch'
+	| 'unavailable';
 
 export interface PurchaseChoiceResult {
 	choice?: PurchaseChoice;

@@ -26,49 +26,33 @@ export function requireConventionalCommitMessage(message) {
 }
 
 export function selectWorkflowRun(runs, { workflow, branch, revision }) {
-  if (!Array.isArray(runs))
-    throw new Error(`${workflow} runs must be an array`);
+  if (!Array.isArray(runs)) throw new Error(`${workflow} runs must be an array`);
   const match = runs.find((run) => run?.headBranch === branch);
   if (!match) return undefined;
   if (match.status === "completed" && match.conclusion !== "success") {
     throw new Error(`${workflow} failed for ${revision}: ${match.conclusion}`);
   }
-  if (
-    !Number.isInteger(Number(match.databaseId)) ||
-    Number(match.attempt) < 1
-  ) {
-    throw new Error(
-      `${workflow} returned an invalid run identity for ${revision}`,
-    );
+  if (!Number.isInteger(Number(match.databaseId)) || Number(match.attempt) < 1) {
+    throw new Error(`${workflow} returned an invalid run identity for ${revision}`);
   }
   return { id: String(match.databaseId), attempt: Number(match.attempt) };
 }
 
 export function validateReleasePhase(release, { phase, tag, notes }) {
   const options = phaseOptions[phase];
-  if (!options)
-    throw new Error(`unknown release phase ${JSON.stringify(phase)}`);
+  if (!options) throw new Error(`unknown release phase ${JSON.stringify(phase)}`);
   return validateRelease(release, { tag, notes, ...options });
 }
 
-export function validateReleaseTransition(
-  before,
-  after,
-  { from, to, tag, notes },
-) {
+export function validateReleaseTransition(before, after, { from, to, tag, notes }) {
   const problems = [
     ...validateReleasePhase(before, { phase: from, tag, notes }).map(
       (problem) => `before: ${problem}`,
     ),
-    ...validateReleasePhase(after, { phase: to, tag, notes }).map(
-      (problem) => `after: ${problem}`,
-    ),
+    ...validateReleasePhase(after, { phase: to, tag, notes }).map((problem) => `after: ${problem}`),
   ];
-  if (before?.id !== after?.id)
-    problems.push("release identity changed during transition");
-  const beforeAssets = (before?.assets ?? [])
-    .map((asset) => asset?.name)
-    .sort();
+  if (before?.id !== after?.id) problems.push("release identity changed during transition");
+  const beforeAssets = (before?.assets ?? []).map((asset) => asset?.name).sort();
   const afterAssets = (after?.assets ?? []).map((asset) => asset?.name).sort();
   if (JSON.stringify(beforeAssets) !== JSON.stringify(afterAssets)) {
     problems.push("release assets changed during transition");
@@ -95,8 +79,7 @@ async function main() {
   if (command === "verify") {
     const releaseFile = option("--release-json");
     const phase = option("--phase");
-    if (!releaseFile || !phase)
-      throw new Error("release JSON and phase are required");
+    if (!releaseFile || !phase) throw new Error("release JSON and phase are required");
     problems = validateReleasePhase(await readJSON(releaseFile), {
       phase,
       tag,
@@ -110,16 +93,12 @@ async function main() {
     if (!beforeFile || !afterFile || !from || !to) {
       throw new Error("before, after, from, and to are required");
     }
-    problems = validateReleaseTransition(
-      await readJSON(beforeFile),
-      await readJSON(afterFile),
-      {
-        from,
-        to,
-        tag,
-        notes,
-      },
-    );
+    problems = validateReleaseTransition(await readJSON(beforeFile), await readJSON(afterFile), {
+      from,
+      to,
+      tag,
+      notes,
+    });
   } else {
     throw new Error("usage: release-lifecycle.mjs verify|transition [options]");
   }

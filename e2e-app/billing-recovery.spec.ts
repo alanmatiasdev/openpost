@@ -21,15 +21,8 @@ test("failed-payment recovery stays account-wide, permission-aware, and clears f
   request,
 }) => {
   const unique = Date.now().toString(36);
-  const auth = await registerUser(
-    request,
-    `billing-recovery-${unique}@example.com`,
-  );
-  const workspace = await createWorkspace(
-    request,
-    auth.token,
-    `Billing recovery ${unique}`,
-  );
+  const auth = await registerUser(request, `billing-recovery-${unique}@example.com`);
+  const workspace = await createWorkspace(request, auth.token, `Billing recovery ${unique}`);
   let billingStatus: BillingRecoveryFixture = {
     organization_id: workspace.organization_id,
     workspace_id: workspace.id,
@@ -74,9 +67,7 @@ test("failed-payment recovery stays account-wide, permission-aware, and clears f
   await expect(notice).toContainText("Past due since");
   await expect(notice).toContainText("paid plan access is restricted");
   expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth - window.innerWidth,
-    ),
+    await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth),
   ).toBeLessThanOrEqual(1);
 
   await notice.getByRole("button", { name: "Update payment method" }).click();
@@ -94,9 +85,7 @@ test("failed-payment recovery stays account-wide, permission-aware, and clears f
   await expect(recoveryCard).toContainText(
     "OpenPost restores paid-plan access after Paddle confirms recovery.",
   );
-  await expect(
-    recoveryCard.getByRole("button", { name: "Update payment method" }),
-  ).toBeVisible();
+  await expect(recoveryCard.getByRole("button", { name: "Update payment method" })).toBeVisible();
 
   billingStatus = {
     ...billingStatus,
@@ -121,8 +110,6 @@ test("failed-payment recovery stays account-wide, permission-aware, and clears f
   await expect(memberNotice).toContainText(
     "Ask an organization owner or admin to update the payment method.",
   );
-  await expect(
-    memberNotice.getByRole("button", { name: "Update payment method" }),
-  ).toHaveCount(0);
+  await expect(memberNotice.getByRole("button", { name: "Update payment method" })).toHaveCount(0);
   expect(recoveryRequests).toHaveLength(1);
 });

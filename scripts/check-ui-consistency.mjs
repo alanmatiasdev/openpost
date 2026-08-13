@@ -62,16 +62,11 @@ function main() {
     "ui-consistency: use the shared Shadcn-svelte Input, Textarea, Select/AppSelect, Checkbox, RadioGroup, Slider, or Switch primitive:\n",
   );
   for (const violation of violations) {
-    process.stderr.write(
-      `- ${violation.file}:${violation.line} native <${violation.control}>\n`,
-    );
+    process.stderr.write(`- ${violation.file}:${violation.line} native <${violation.control}>\n`);
   }
   process.exitCode = 1;
 }
 
-if (
-  process.argv[1] &&
-  import.meta.url === pathToFileURL(process.argv[1]).href
-) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main();
 }

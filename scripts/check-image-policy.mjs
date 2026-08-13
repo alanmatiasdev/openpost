@@ -2,10 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-export const repositoryRoot = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "..",
-);
+export const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export function workflowJobSteps(workflow, jobName) {
   const escapedName = jobName.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
@@ -18,12 +15,8 @@ export function workflowJobSteps(workflow, jobName) {
     start,
     nextJob ? start + startMatch[0].length + nextJob.index : workflow.length,
   );
-  const starts = [...job.matchAll(/^      - (?=(?:name|uses):)/gmu)].map(
-    (match) => match.index,
-  );
-  return starts.map((stepStart, index) =>
-    job.slice(stepStart, starts[index + 1] ?? job.length),
-  );
+  const starts = [...job.matchAll(/^      - (?=(?:name|uses):)/gmu)].map((match) => match.index);
+  return starts.map((stepStart, index) => job.slice(stepStart, starts[index + 1] ?? job.length));
 }
 
 function namedWorkflowStep(steps, name) {
@@ -82,11 +75,7 @@ export function validateImagePolicy(inputs, now = new Date()) {
       if (!expectedStages.delete(buildBase.stage)) {
         problems.push(`unexpected or repeated build stage ${buildBase.stage}`);
       }
-      if (
-        !/^[a-z0-9./_-]+:[a-zA-Z0-9._-]+@sha256:[a-f0-9]{64}$/u.test(
-          buildBase.reference ?? "",
-        )
-      ) {
+      if (!/^[a-z0-9./_-]+:[a-zA-Z0-9._-]+@sha256:[a-f0-9]{64}$/u.test(buildBase.reference ?? "")) {
         problems.push(`${buildBase.stage} must use a tag and sha256 digest`);
       }
       if (
@@ -96,55 +85,33 @@ export function validateImagePolicy(inputs, now = new Date()) {
       ) {
         problems.push(`${buildBase.stage} uses the wrong toolchain image`);
       }
-      if (
-        !inputs.dockerfile.includes(
-          `FROM ${buildBase.reference} AS ${buildBase.stage}`,
-        )
-      ) {
-        problems.push(
-          `${buildBase.stage} Dockerfile base does not match policy`,
-        );
+      if (!inputs.dockerfile.includes(`FROM ${buildBase.reference} AS ${buildBase.stage}`)) {
+        problems.push(`${buildBase.stage} Dockerfile base does not match policy`);
       }
     }
     if (expectedStages.size > 0) {
-      problems.push(
-        `missing production build stages: ${[...expectedStages].join(", ")}`,
-      );
+      problems.push(`missing production build stages: ${[...expectedStages].join(", ")}`);
     }
   }
 
   const base = policy.runtime_base ?? {};
-  if (
-    !/^alpine:\d+\.\d+\.\d+@sha256:[a-f0-9]{64}$/.test(base.reference ?? "")
-  ) {
-    problems.push(
-      "runtime base must use an exact Alpine patch and sha256 digest",
-    );
+  if (!/^alpine:\d+\.\d+\.\d+@sha256:[a-f0-9]{64}$/.test(base.reference ?? "")) {
+    problems.push("runtime base must use an exact Alpine patch and sha256 digest");
   }
   const supportEnds = new Date(`${base.support_ends}T00:00:00Z`);
   if (!Number.isFinite(supportEnds.getTime()) || supportEnds <= now) {
     problems.push("runtime base support_ends must be a future date");
   }
   if (base.lifecycle_url !== "https://www.alpinelinux.org/releases/") {
-    problems.push(
-      "runtime base lifecycle must point to Alpine's release policy",
-    );
+    problems.push("runtime base lifecycle must point to Alpine's release policy");
   }
-  const branchFromReference = String(base.reference ?? "").match(
-    /^alpine:(\d+\.\d+)\./,
-  )?.[1];
+  const branchFromReference = String(base.reference ?? "").match(/^alpine:(\d+\.\d+)\./)?.[1];
   if (base.release_branch !== branchFromReference) {
     problems.push("runtime base release_branch must match the pinned patch");
   }
   const reviewedOn = new Date(`${base.reviewed_on}T00:00:00Z`);
-  if (
-    !Number.isFinite(reviewedOn.getTime()) ||
-    reviewedOn > now ||
-    reviewedOn >= supportEnds
-  ) {
-    problems.push(
-      "runtime base reviewed_on must be current and precede support end",
-    );
+  if (!Number.isFinite(reviewedOn.getTime()) || reviewedOn > now || reviewedOn >= supportEnds) {
+    problems.push("runtime base reviewed_on must be current and precede support end");
   }
 
   if (!inputs.dockerfile.includes(`FROM ${base.reference} AS runtime`)) {
@@ -152,38 +119,22 @@ export function validateImagePolicy(inputs, now = new Date()) {
   }
   if (
     !inputs.dockerfile.includes("FROM frontend_artifact AS frontend-builder") ||
-    !inputs.dockerfile.includes(
-      "COPY --from=frontend-builder / ./backend/cmd/openpost/public",
-    )
+    !inputs.dockerfile.includes("COPY --from=frontend-builder / ./backend/cmd/openpost/public")
   ) {
-    problems.push(
-      "Dockerfile must embed the caller-supplied canonical frontend artifact",
-    );
+    problems.push("Dockerfile must embed the caller-supplied canonical frontend artifact");
   }
   if (
-    !inputs.ci.includes(
-      "--build-context frontend_artifact=backend/cmd/openpost/public",
-    ) ||
+    !inputs.ci.includes("--build-context frontend_artifact=backend/cmd/openpost/public") ||
     inputs.dockerfile.includes("bun run --filter @openpost/web build")
   ) {
-    problems.push(
-      "candidate image must consume the CI-built frontend without rebuilding it",
-    );
+    problems.push("candidate image must consume the CI-built frontend without rebuilding it");
   }
   const digest = String(base.reference ?? "").split("@", 2)[1] ?? "";
-  if (
-    !inputs.dockerfile.includes(
-      `org.opencontainers.image.base.digest=\"${digest}\"`,
-    )
-  ) {
-    problems.push(
-      "Dockerfile base digest label does not match the pinned runtime base",
-    );
+  if (!inputs.dockerfile.includes(`org.opencontainers.image.base.digest=\"${digest}\"`)) {
+    problems.push("Dockerfile base digest label does not match the pinned runtime base");
   }
   if (!inputs.dockerfile.includes(`received \${TARGETARCH:-unknown}`)) {
-    problems.push(
-      "Dockerfile must fail closed for an unsupported target architecture",
-    );
+    problems.push("Dockerfile must fail closed for an unsupported target architecture");
   }
 
   const health = policy.probes?.container_health;
@@ -217,35 +168,23 @@ export function validateImagePolicy(inputs, now = new Date()) {
   }
 
   if (!inputs.compose.includes(`platform: ${platform}`)) {
-    problems.push(
-      "root Compose manifest must state the supported image platform",
-    );
+    problems.push("root Compose manifest must state the supported image platform");
   }
   if (!inputs.ci.includes('--platform "$platform"')) {
     problems.push("candidate CI must build the declared platform explicitly");
   }
 
   const assurance = policy.assurance ?? {};
-  if (
-    !/^aquasecurity\/trivy-action@[a-f0-9]{40}$/.test(
-      assurance.scanner_action ?? "",
-    )
-  ) {
+  if (!/^aquasecurity\/trivy-action@[a-f0-9]{40}$/.test(assurance.scanner_action ?? "")) {
     problems.push("the image scanner action must be pinned to a full commit");
   }
   const imageSteps = workflowJobSteps(inputs.ci, "image");
-  const sbomStep = namedWorkflowStep(
-    imageSteps,
-    "Generate the final-image SPDX SBOM",
-  );
+  const sbomStep = namedWorkflowStep(imageSteps, "Generate the final-image SPDX SBOM");
   const reportStep = namedWorkflowStep(
     imageSteps,
     "Record the full final-image vulnerability report",
   );
-  const blockingStep = namedWorkflowStep(
-    imageSteps,
-    "Block fixable high-severity vulnerabilities",
-  );
+  const blockingStep = namedWorkflowStep(imageSteps, "Block fixable high-severity vulnerabilities");
   const scanSteps = [sbomStep, reportStep, blockingStep];
   if (scanSteps.some((step) => !step)) {
     problems.push("candidate CI must keep all three named image scan steps");
@@ -278,20 +217,13 @@ export function validateImagePolicy(inputs, now = new Date()) {
     ? assurance.blocking_severities.join(",")
     : "";
   if (!severities || !blockingStep?.includes(`severity: ${severities}`)) {
-    problems.push(
-      "candidate CI blocking severities do not match image-policy.json",
-    );
+    problems.push("candidate CI blocking severities do not match image-policy.json");
   }
   const reportSeverities = Array.isArray(assurance.report_severities)
     ? assurance.report_severities.join(",")
     : "";
-  if (
-    !reportSeverities ||
-    !reportStep?.includes(`severity: ${reportSeverities}`)
-  ) {
-    problems.push(
-      "candidate CI report severities do not match image-policy.json",
-    );
+  if (!reportSeverities || !reportStep?.includes(`severity: ${reportSeverities}`)) {
+    problems.push("candidate CI report severities do not match image-policy.json");
   }
   if (
     !reportStep?.includes("format: json") ||
@@ -304,32 +236,23 @@ export function validateImagePolicy(inputs, now = new Date()) {
     !blockingStep?.includes("ignore-unfixed: true") ||
     !blockingStep?.includes("exit-code: 1")
   ) {
-    problems.push(
-      "candidate CI must apply the documented unfixed-finding policy",
-    );
+    problems.push("candidate CI must apply the documented unfixed-finding policy");
   }
   if (!blockingStep?.includes("format: table")) {
     problems.push("candidate CI blocking scan must keep a readable log table");
   }
-  const trivySteps = imageSteps.filter((step) =>
-    step.includes("aquasecurity/trivy-action@"),
-  );
+  const trivySteps = imageSteps.filter((step) => step.includes("aquasecurity/trivy-action@"));
   if (trivySteps.length !== 3) {
     problems.push("candidate CI must have exactly three Trivy image steps");
   }
-  const stepIndex = (name) =>
-    imageSteps.findIndex((step) => step.includes(`- name: ${name}\n`));
+  const stepIndex = (name) => imageSteps.findIndex((step) => step.includes(`- name: ${name}\n`));
   const smokeIndex = imageSteps.findIndex((step) =>
     step.includes("scripts/smoke-production-image.sh"),
   );
   const validateIndex = stepIndex("Validate image assurance evidence");
   const diagnosticsIndex = stepIndex("Retain final-image diagnostic evidence");
-  const blockingScanIndex = stepIndex(
-    "Block fixable high-severity vulnerabilities",
-  );
-  const publishIndex = stepIndex(
-    "Publish the validated candidate and record its digest",
-  );
+  const blockingScanIndex = stepIndex("Block fixable high-severity vulnerabilities");
+  const publishIndex = stepIndex("Publish the validated candidate and record its digest");
   if (
     smokeIndex < 0 ||
     validateIndex <= smokeIndex ||
@@ -347,17 +270,10 @@ export function validateImagePolicy(inputs, now = new Date()) {
     "Publish the validated candidate and record its digest",
   );
   if (pushSteps.length !== 1 || pushSteps[0] !== publishStep) {
-    problems.push(
-      "candidate CI must publish only in the post-scan digest step",
-    );
+    problems.push("candidate CI must publish only in the post-scan digest step");
   }
-  if (
-    !reportStep?.includes("ignore-unfixed: false") ||
-    !reportStep?.includes("exit-code: 0")
-  ) {
-    problems.push(
-      "candidate CI must preserve a non-blocking full vulnerability report",
-    );
+  if (!reportStep?.includes("ignore-unfixed: false") || !reportStep?.includes("exit-code: 0")) {
+    problems.push("candidate CI must preserve a non-blocking full vulnerability report");
   }
   for (const evidence of requiredEvidenceFiles) {
     if (!inputs.ci.includes(evidence)) {
@@ -375,17 +291,13 @@ export function validateImagePolicy(inputs, now = new Date()) {
     !inputs.evidence.includes("vulnerability_report_sha256") ||
     !inputs.release.includes("${repository}@${digest}")
   ) {
-    problems.push(
-      "tagged release must promote the digest bound to the exact candidate evidence",
-    );
+    problems.push("tagged release must promote the digest bound to the exact candidate evidence");
   }
   if (
     !inputs.release.includes("gh run download") ||
     !inputs.release.includes("gh release create")
   ) {
-    problems.push(
-      "tagged release must download and publish exact candidate evidence",
-    );
+    problems.push("tagged release must download and publish exact candidate evidence");
   }
   if (
     !inputs.release.includes("/api/v1/ready") ||
@@ -403,14 +315,10 @@ export function validateImagePolicy(inputs, now = new Date()) {
     problems.push("Dependabot must review Docker base updates every week");
   }
   if (!inputs.docs.includes("linux/amd64")) {
-    problems.push(
-      "install documentation must state the published image architecture",
-    );
+    problems.push("install documentation must state the published image architecture");
   }
   if (!inputs.docs.includes("image-policy.json")) {
-    problems.push(
-      "operator documentation must identify the image policy source",
-    );
+    problems.push("operator documentation must identify the image policy source");
   }
   for (const policyStatement of [
     "does not restart a running container solely",
@@ -437,9 +345,6 @@ function main() {
   );
 }
 
-if (
-  process.argv[1] &&
-  import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href
-) {
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
   main();
 }

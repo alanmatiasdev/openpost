@@ -11,84 +11,73 @@ test("publication delivery keeps exact provider target state across desktop and 
   });
 
   const unique = Date.now().toString(36);
-  const auth = await registerUser(
-    request,
-    `provider-delivery-${unique}@example.com`,
-  );
-  const workspace = (await createWorkspace(
-    request,
-    auth.token,
-    "Provider delivery E2E",
-  )) as { id: string };
+  const auth = await registerUser(request, `provider-delivery-${unique}@example.com`);
+  const workspace = (await createWorkspace(request, auth.token, "Provider delivery E2E")) as {
+    id: string;
+  };
   await authenticatePage(page, auth.token);
 
-  await page.route(
-    "**/api/v1/publications/provider-delivery-1",
-    async (route) => {
-      await route.fulfill({
-        contentType: "application/json",
-        json: {
-          id: "provider-delivery-1",
-          workspace_id: workspace.id,
-          created_by: "provider-delivery-user",
-          title: "Launch board update",
-          intent: "post",
-          creation_preset: "post",
-          content_profile: "short_text",
-          source_text: "The launch is ready.",
-          source_url: "",
-          goal: "",
-          audience: "",
-          status: "published",
-          revision: 2,
-          actual_run_at: "2026-08-12T11:00:00Z",
-          metadata: {},
-          created_at: "2026-08-12T10:59:00Z",
-          updated_at: "2026-08-12T11:00:00Z",
-          media: [],
-          segments: [],
-          repost_override: { mode: "inherit" },
-          renditions: [
-            {
-              id: "rendition-board-launch",
-              publication_id: "provider-delivery-1",
-              social_account_id: "pinterest-account",
+  await page.route("**/api/v1/publications/provider-delivery-1", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      json: {
+        id: "provider-delivery-1",
+        workspace_id: workspace.id,
+        created_by: "provider-delivery-user",
+        title: "Launch board update",
+        intent: "post",
+        creation_preset: "post",
+        content_profile: "short_text",
+        source_text: "The launch is ready.",
+        source_url: "",
+        goal: "",
+        audience: "",
+        status: "published",
+        revision: 2,
+        actual_run_at: "2026-08-12T11:00:00Z",
+        metadata: {},
+        created_at: "2026-08-12T10:59:00Z",
+        updated_at: "2026-08-12T11:00:00Z",
+        media: [],
+        segments: [],
+        repost_override: { mode: "inherit" },
+        renditions: [
+          {
+            id: "rendition-board-launch",
+            publication_id: "provider-delivery-1",
+            social_account_id: "pinterest-account",
+            target_key: "pinterest:board:launch",
+            platform: "pinterest",
+            profile: "short_text",
+            output_profile: "pinterest.pin",
+            format_locked: false,
+            body: "The launch is ready.",
+            title: "Launch",
+            description: "",
+            settings: {},
+            status: "publishing",
+            error_retryable: false,
+            media: [],
+            segments: [],
+            delivery: {
               target_key: "pinterest:board:launch",
-              platform: "pinterest",
-              profile: "short_text",
-              output_profile: "pinterest.pin",
-              format_locked: false,
-              body: "The launch is ready.",
-              title: "Launch",
-              description: "",
-              settings: {},
-              status: "publishing",
-              error_retryable: false,
-              media: [],
-              segments: [],
-              delivery: {
-                target_key: "pinterest:board:launch",
-                state: "processing",
-                current_attempt_id: "attempt-1",
-                current_attempt_number: 1,
-                current_attempt_created_at: "2026-08-12T11:00:00Z",
-                next_reconciliation_at: "2026-08-12T11:02:00Z",
-              },
+              state: "processing",
+              current_attempt_id: "attempt-1",
+              current_attempt_number: 1,
+              current_attempt_created_at: "2026-08-12T11:00:00Z",
+              next_reconciliation_at: "2026-08-12T11:02:00Z",
             },
-          ],
-        },
-      });
-    },
-  );
-  await page.route(
-    "**/api/v1/publications/provider-delivery-1/events?**",
-    async (route) => {
-      await route.fulfill({
-        contentType: "application/json",
-        json: { items: [], next_cursor: "" },
-      });
-    },
-  );
+          },
+        ],
+      },
+    });
+  });
+  await page.route("**/api/v1/publications/provider-delivery-1/events?**", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      json: { items: [], next_cursor: "" },
+    });
+  });
 
   for (const viewport of [
     { width: 1280, height: 800 },

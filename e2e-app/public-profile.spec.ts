@@ -67,24 +67,14 @@ test("public publishing profile stays readable at 320px", async ({ page }) => {
 
   await page.goto("/u/rodrgds");
 
-  await expect(
-    page.getByRole("heading", { name: "Rodrigo Dias" }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Rodrigo Dias" })).toBeVisible();
   await expect(page.getByText("@rodrgds")).toBeVisible();
   await expect(page.getByText("Pro", { exact: true })).toBeVisible();
   await expect(page.getByText("327")).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Publishing activity" }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Most used platforms" }),
-  ).toBeVisible();
-  await expect(
-    page.getByText("OpenPost", { exact: true }).last(),
-  ).toBeVisible();
-  expect(
-    await page.evaluate(() => document.documentElement.scrollWidth),
-  ).toBeLessThanOrEqual(320);
+  await expect(page.getByRole("heading", { name: "Publishing activity" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Most used platforms" })).toBeVisible();
+  await expect(page.getByText("OpenPost", { exact: true }).last()).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
   expect(consoleErrors).toEqual([]);
 });
 
@@ -133,29 +123,17 @@ test("public publishing profile fits a desktop viewport", async ({ page }) => {
 
   await page.goto("/u/rodrgds");
 
-  await expect(
-    page.getByRole("heading", { name: "Rodrigo Dias" }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Rodrigo Dias" })).toBeVisible();
   await expect(page.getByText("Pro", { exact: true })).toBeVisible();
-  expect(
-    await page.evaluate(() => document.documentElement.scrollHeight),
-  ).toBeLessThanOrEqual(900);
-  expect(
-    await page.evaluate(() => document.documentElement.scrollWidth),
-  ).toBeLessThanOrEqual(1600);
+  expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBeLessThanOrEqual(900);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(1600);
   const activityWidths = await page.evaluate(() => ({
     field:
-      document
-        .querySelector<HTMLElement>(".activity-field")
-        ?.getBoundingClientRect().width ?? 0,
+      document.querySelector<HTMLElement>(".activity-field")?.getBoundingClientRect().width ?? 0,
     scroll:
-      document
-        .querySelector<HTMLElement>(".activity-scroll")
-        ?.getBoundingClientRect().width ?? 0,
+      document.querySelector<HTMLElement>(".activity-scroll")?.getBoundingClientRect().width ?? 0,
   }));
-  expect(activityWidths.field).toBeGreaterThanOrEqual(
-    activityWidths.scroll - 1,
-  );
+  expect(activityWidths.field).toBeGreaterThanOrEqual(activityWidths.scroll - 1);
   expect(consoleErrors).toEqual([]);
 });
 
@@ -169,9 +147,7 @@ test("public profile distinguishes disabled, private, and transient failure stat
     route.fulfill({ status: 404, json: { detail: "disabled" } }),
   );
   await page.goto("/u/disabled");
-  await expect(
-    page.getByText("Public profiles are not available"),
-  ).toBeVisible();
+  await expect(page.getByText("Public profiles are not available")).toBeVisible();
   await expect(page.getByRole("button", { name: "Try again" })).toHaveCount(0);
 
   await page.unrouteAll({ behavior: "wait" });
@@ -209,9 +185,7 @@ test("public profile distinguishes disabled, private, and transient failure stat
   await expect(page.getByText("Must stay hidden")).toHaveCount(0);
   capabilityAvailable = true;
   await page.getByRole("button", { name: "Try again" }).click();
-  await expect(
-    page.getByRole("heading", { name: "Must stay hidden" }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Must stay hidden" })).toBeVisible();
 
   let attempts = 0;
   await page.route("**/api/v1/public/profiles/recovering", (route) => {
@@ -247,9 +221,7 @@ test("public profile distinguishes disabled, private, and transient failure stat
   expect(offlineAttempts).toBe(2);
 });
 
-test("public profile discards a delayed response after client navigation", async ({
-  page,
-}) => {
+test("public profile discards a delayed response after client navigation", async ({ page }) => {
   await page.route("**/api/v1/auth/config", (route) =>
     route.fulfill({ json: { public_profiles_enabled: true } }),
   );
@@ -289,9 +261,7 @@ test("public profile discards a delayed response after client navigation", async
   });
   await page.getByTestId("next-profile").click();
   await page.waitForURL("**/u/fast");
-  await expect(
-    page.getByRole("heading", { name: "Current profile" }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Current profile" })).toBeVisible();
 
   releaseSlow?.();
   await page.waitForTimeout(100);
@@ -299,9 +269,7 @@ test("public profile discards a delayed response after client navigation", async
   await expect(page.getByText("@fast")).toBeVisible();
 });
 
-test("public profile renders only the declared optional sections", async ({
-  page,
-}) => {
+test("public profile renders only the declared optional sections", async ({ page }) => {
   await page.route("**/api/v1/auth/config", (route) =>
     route.fulfill({ json: { public_profiles_enabled: true } }),
   );
@@ -318,7 +286,5 @@ test("public profile renders only the declared optional sections", async ({
   await page.goto("/u/careful");
   await expect(page.getByRole("heading", { name: "careful" })).toBeVisible();
   await expect(page.getByText("Secret Client")).toHaveCount(0);
-  await expect(
-    page.getByRole("heading", { name: "Publishing activity" }),
-  ).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Publishing activity" })).toHaveCount(0);
 });

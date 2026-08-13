@@ -2,10 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-export const repositoryRoot = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "..",
-);
+export const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export const requiredCompatibilityEntryIDs = [
   "rest.accounts.destination-options",
@@ -36,8 +33,7 @@ const allowedConsumerStatuses = new Set([
 const allowedMethods = new Set(["DELETE", "GET", "PATCH", "POST", "PUT"]);
 
 export function readCompatibilityInputs(root = repositoryRoot) {
-  const readJSON = (file) =>
-    JSON.parse(readFileSync(path.join(root, file), "utf8"));
+  const readJSON = (file) => JSON.parse(readFileSync(path.join(root, file), "utf8"));
   return {
     registry: readJSON("compatibility-surfaces.json"),
     openapi: readJSON("frontend/openapi.json"),
@@ -47,10 +43,7 @@ export function readCompatibilityInputs(root = repositoryRoot) {
 function validDate(value) {
   if (typeof value !== "string" || !datePattern.test(value)) return false;
   const parsed = new Date(`${value}T00:00:00Z`);
-  return (
-    Number.isFinite(parsed.getTime()) &&
-    parsed.toISOString().slice(0, 10) === value
-  );
+  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
 }
 
 function dateAtUTC(value) {
@@ -72,9 +65,7 @@ function operationAt(openapi, operation) {
 }
 
 function schemaPropertyAt(openapi, member) {
-  return openapi.components?.schemas?.[member.schema]?.properties?.[
-    member.property
-  ];
+  return openapi.components?.schemas?.[member.schema]?.properties?.[member.property];
 }
 
 function semverTuple(version) {
@@ -129,9 +120,7 @@ function validateRemovalGate(entry, policy, openapi, now, problems) {
     );
   }
   if (replacement.status !== "available") {
-    problems.push(
-      `${label} cannot deprecate before its replacement is available`,
-    );
+    problems.push(`${label} cannot deprecate before its replacement is available`);
   }
   if (!String(entry.migration_path ?? "").trim()) {
     problems.push(`${label} cannot deprecate without a migration path`);
@@ -146,10 +135,7 @@ function validateRemovalGate(entry, policy, openapi, now, problems) {
   }
   for (const operation of entry.operations ?? []) {
     const openapiOperation = operationAt(openapi, operation);
-    if (
-      entry.status === "deprecated" &&
-      openapiOperation?.deprecated !== true
-    ) {
+    if (entry.status === "deprecated" && openapiOperation?.deprecated !== true) {
       problems.push(
         `${label} deprecated operation ${operation.operation_id} lacks the OpenAPI deprecated marker`,
       );
@@ -167,10 +153,7 @@ function validateRemovalGate(entry, policy, openapi, now, problems) {
   if (!validDate(removal.earliest_on)) {
     problems.push(`${label} needs an ISO earliest removal date`);
   } else if (validDate(notice.announced_on)) {
-    const policyEarliest = addUTCDays(
-      notice.announced_on,
-      policy.minimum_sunset_days,
-    );
+    const policyEarliest = addUTCDays(notice.announced_on, policy.minimum_sunset_days);
     if (dateAtUTC(removal.earliest_on) < policyEarliest) {
       problems.push(
         `${label} removal date is earlier than the ${policy.minimum_sunset_days}-day sunset`,
@@ -196,10 +179,7 @@ function validateRemovalGate(entry, policy, openapi, now, problems) {
   }
   let previousVersion = notice.announced_version;
   for (const version of elapsedReleases) {
-    if (
-      !stableVersionPattern.test(version) ||
-      compareVersions(version, previousVersion) <= 0
-    ) {
+    if (!stableVersionPattern.test(version) || compareVersions(version, previousVersion) <= 0) {
       problems.push(`${label} has an invalid stable release sequence`);
       break;
     }
@@ -215,20 +195,12 @@ function validateRemovalGate(entry, policy, openapi, now, problems) {
   if (validDate(removal.earliest_on) && now < dateAtUTC(removal.earliest_on)) {
     problems.push(`${label} removal date has not arrived`);
   }
-  if (
-    !validDate(telemetry.observation_started_on) ||
-    !validDate(telemetry.observation_ended_on)
-  ) {
+  if (!validDate(telemetry.observation_started_on) || !validDate(telemetry.observation_ended_on)) {
     problems.push(`${label} removal needs a bounded telemetry observation`);
   } else {
-    const minimumEnd = addUTCDays(
-      telemetry.observation_started_on,
-      policy.minimum_sunset_days,
-    );
+    const minimumEnd = addUTCDays(telemetry.observation_started_on, policy.minimum_sunset_days);
     if (dateAtUTC(telemetry.observation_ended_on) < minimumEnd) {
-      problems.push(
-        `${label} telemetry window is shorter than ${policy.minimum_sunset_days} days`,
-      );
+      problems.push(`${label} telemetry window is shorter than ${policy.minimum_sunset_days} days`);
     }
   }
   if ((telemetry.evidence?.length ?? 0) === 0) {
@@ -241,16 +213,12 @@ function validateRemovalGate(entry, policy, openapi, now, problems) {
       !["no-use-observed", "not-applicable"].includes(consumer.status) ||
       !String(consumer.evidence ?? "").trim()
     ) {
-      problems.push(
-        `${label} removal lacks no-use evidence for ${consumerClass}`,
-      );
+      problems.push(`${label} removal lacks no-use evidence for ${consumerClass}`);
     }
   }
   for (const operation of entry.operations ?? []) {
     if (operationAt(openapi, operation)) {
-      problems.push(
-        `${label} is marked removed but ${operation.operation_id} remains in OpenAPI`,
-      );
+      problems.push(`${label} is marked removed but ${operation.operation_id} remains in OpenAPI`);
     }
   }
   for (const member of entry.schema_members ?? []) {
@@ -262,24 +230,14 @@ function validateRemovalGate(entry, policy, openapi, now, problems) {
   }
 }
 
-export function validateCompatibilityRegistry(
-  registry,
-  openapi,
-  now = new Date(),
-) {
+export function validateCompatibilityRegistry(registry, openapi, now = new Date()) {
   const problems = [];
   if (registry.schema_version !== 1) problems.push("schema_version must be 1");
   const policy = registry.policy ?? {};
-  if (
-    !Number.isInteger(policy.minimum_sunset_days) ||
-    policy.minimum_sunset_days < 90
-  ) {
+  if (!Number.isInteger(policy.minimum_sunset_days) || policy.minimum_sunset_days < 90) {
     problems.push("minimum_sunset_days must be at least 90");
   }
-  if (
-    !Number.isInteger(policy.minimum_stable_releases) ||
-    policy.minimum_stable_releases < 2
-  ) {
+  if (!Number.isInteger(policy.minimum_stable_releases) || policy.minimum_stable_releases < 2) {
     problems.push("minimum_stable_releases must be at least 2");
   }
   const requiredConsumers = policy.required_consumer_classes ?? [];
@@ -299,19 +257,15 @@ export function validateCompatibilityRegistry(
     if (!/^[a-z][a-z0-9.-]+$/u.test(label)) {
       problems.push(`invalid compatibility entry id ${JSON.stringify(label)}`);
     }
-    if (entriesByID.has(label))
-      problems.push(`duplicate compatibility entry ${label}`);
+    if (entriesByID.has(label)) problems.push(`duplicate compatibility entry ${label}`);
     entriesByID.set(label, entry);
     if (!allowedEntryKinds.has(entry.kind)) {
       problems.push(`${label} has invalid kind ${JSON.stringify(entry.kind)}`);
     }
     if (!allowedEntryStatuses.has(entry.status)) {
-      problems.push(
-        `${label} has invalid status ${JSON.stringify(entry.status)}`,
-      );
+      problems.push(`${label} has invalid status ${JSON.stringify(entry.status)}`);
     }
-    if (!String(entry.owner ?? "").trim())
-      problems.push(`${label} needs an owner`);
+    if (!String(entry.owner ?? "").trim()) problems.push(`${label} needs an owner`);
     if (!String(entry.decision ?? "").trim()) {
       problems.push(`${label} needs a recorded decision`);
     }
@@ -326,15 +280,13 @@ export function validateCompatibilityRegistry(
     }
     if (
       entry.kind === "rest" &&
-      ((entry.operations?.length ?? 0) === 0 ||
-        (entry.schema_members?.length ?? 0) !== 0)
+      ((entry.operations?.length ?? 0) === 0 || (entry.schema_members?.length ?? 0) !== 0)
     ) {
       problems.push(`${label} needs REST operations and no schema members`);
     }
     if (
       entry.kind === "schema" &&
-      ((entry.schema_members?.length ?? 0) === 0 ||
-        (entry.operations?.length ?? 0) !== 0)
+      ((entry.schema_members?.length ?? 0) === 0 || (entry.operations?.length ?? 0) !== 0)
     ) {
       problems.push(`${label} needs schema members and no REST operations`);
     }
@@ -376,10 +328,7 @@ export function validateCompatibilityRegistry(
     }
     for (const member of entry.schema_members ?? []) {
       const memberID = `${member.schema}.${member.property}`;
-      if (
-        !String(member.schema ?? "").trim() ||
-        !String(member.property ?? "").trim()
-      ) {
+      if (!String(member.schema ?? "").trim() || !String(member.property ?? "").trim()) {
         problems.push(`${label} has an invalid schema member`);
       } else if (schemaMemberIDs.has(memberID)) {
         problems.push(`duplicate schema member ${memberID}`);
@@ -387,20 +336,14 @@ export function validateCompatibilityRegistry(
         schemaMemberIDs.add(memberID);
       }
       if (!stableVersionPattern.test(member.introduced_version ?? "")) {
-        problems.push(
-          `${label} schema member needs a stable introduced version`,
-        );
+        problems.push(`${label} schema member needs a stable introduced version`);
       }
       if (!commitPattern.test(member.introduced_commit ?? "")) {
-        problems.push(
-          `${label} schema member needs an exact introduced commit`,
-        );
+        problems.push(`${label} schema member needs an exact introduced commit`);
       }
       const property = schemaPropertyAt(openapi, member);
       if (entry.status !== "removed" && !property) {
-        problems.push(
-          `${label} retained schema member ${memberID} is absent from OpenAPI`,
-        );
+        problems.push(`${label} retained schema member ${memberID} is absent from OpenAPI`);
       }
     }
     const actualTelemetryPaths = new Set(entry.telemetry?.route_patterns ?? []);
@@ -421,10 +364,7 @@ export function validateCompatibilityRegistry(
       if (!allowedConsumerStatuses.has(consumer.status)) {
         problems.push(`${label} has invalid ${consumerClass} consumer status`);
       }
-      if (
-        consumer.status !== "pending" &&
-        !String(consumer.evidence ?? "").trim()
-      ) {
+      if (consumer.status !== "pending" && !String(consumer.evidence ?? "").trim()) {
         problems.push(`${label} ${consumerClass} review needs evidence`);
       }
     }
@@ -432,8 +372,7 @@ export function validateCompatibilityRegistry(
   }
 
   for (const id of requiredCompatibilityEntryIDs) {
-    if (!entriesByID.has(id))
-      problems.push(`missing required compatibility entry ${id}`);
+    if (!entriesByID.has(id)) problems.push(`missing required compatibility entry ${id}`);
   }
   for (const id of entriesByID.keys()) {
     if (!requiredCompatibilityEntryIDs.includes(id)) {
@@ -458,9 +397,6 @@ function main() {
   );
 }
 
-if (
-  process.argv[1] &&
-  import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href
-) {
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
   main();
 }

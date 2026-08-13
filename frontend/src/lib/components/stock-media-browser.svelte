@@ -167,7 +167,10 @@
 				query: query.trim(),
 				kind,
 				orientation: filterValue('orientation', orientation) as
-					'landscape' | 'portrait' | 'square' | undefined,
+					| 'landscape'
+					| 'portrait'
+					| 'square'
+					| undefined,
 				size: filterValue('size', size) as 'small' | 'medium' | 'large' | undefined,
 				color: filterValue('color', color),
 				locale: filterValue('locale', locale),
@@ -176,7 +179,11 @@
 				collections: filterValue('collections', collections.trim()),
 				category: filterValue('category', category),
 				mediaSubtype: filterValue('media_subtype', mediaSubtype) as
-					'all' | 'photo' | 'illustration' | 'vector' | undefined,
+					| 'all'
+					| 'photo'
+					| 'illustration'
+					| 'vector'
+					| undefined,
 				editorsChoice: availableFilters.has('editors_choice') ? editorsChoice : undefined,
 				minWidth: availableFilters.has('min_dimensions') ? positiveNumber(minWidth) : undefined,
 				minHeight: availableFilters.has('min_dimensions') ? positiveNumber(minHeight) : undefined,

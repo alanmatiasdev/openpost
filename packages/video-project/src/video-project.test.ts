@@ -42,10 +42,7 @@ type ClipProject = VideoProjectDocumentV1 & {
   primary_sequence: PrimarySequenceClip[];
 };
 
-function clipAt(
-  project: VideoProjectDocumentV1,
-  index: number,
-): PrimarySequenceClip {
+function clipAt(project: VideoProjectDocumentV1, index: number): PrimarySequenceClip {
   return project.primary_sequence[index] as PrimarySequenceClip;
 }
 
@@ -63,11 +60,7 @@ function projectWithClips(): ClipProject {
     height: 1080,
     rotation: 0,
   };
-  const clip = (
-    id: string,
-    start: number,
-    end: number,
-  ): PrimarySequenceClip => ({
+  const clip = (id: string, start: number, end: number): PrimarySequenceClip => ({
     id,
     source_id: "source",
     mode: "source",
@@ -78,10 +71,7 @@ function projectWithClips(): ClipProject {
     audio: defaultClipAudio(),
     effects: [],
   });
-  project.primary_sequence = [
-    clip("a", 0, 4_000_000),
-    clip("b", 4_000_000, 10_000_000),
-  ];
+  project.primary_sequence = [clip("a", 0, 4_000_000), clip("b", 4_000_000, 10_000_000)];
   return project as ClipProject;
 }
 
@@ -134,8 +124,7 @@ describe("video project document", () => {
 
   it("rejects unknown nested fields and invalid variant override keys", () => {
     const project = projectWithClips() as VideoProjectDocumentV1;
-    const videoWithUnknown = clipAt(project, 0)
-      .video as PrimarySequenceClip["video"] & {
+    const videoWithUnknown = clipAt(project, 0).video as PrimarySequenceClip["video"] & {
       surprise?: boolean;
     };
     videoWithUnknown.surprise = true;
@@ -186,11 +175,7 @@ describe("derived sequence operations", () => {
   it("splits at the playhead without changing duration", () => {
     const project = projectWithClips();
     const split = splitPrimaryClip(project, "a", 1_500_000, () => "a-right");
-    expect(split.primary_sequence.map((clip) => clip.id)).toEqual([
-      "a",
-      "a-right",
-      "b",
-    ]);
+    expect(split.primary_sequence.map((clip) => clip.id)).toEqual(["a", "a-right", "b"]);
     expect(clipAt(split, 0).source_out_us).toBe(1_500_000);
     expect(clipAt(split, 1).source_in_us).toBe(1_500_000);
     expect(projectDurationUS(split)).toBe(10_000_000);
@@ -199,8 +184,7 @@ describe("derived sequence operations", () => {
   it("trims source and freeze edges on frame boundaries", () => {
     const project = projectWithClips();
     const frameUS = Math.round(
-      (1_000_000 * project.timebase.fps_denominator) /
-        project.timebase.fps_numerator,
+      (1_000_000 * project.timebase.fps_denominator) / project.timebase.fps_numerator,
     );
     const trimmedStart = trimPrimaryClip(project, "a", "start", 1_010_000);
     expect(clipAt(trimmedStart, 0).source_in_us).toBe(frameUS * 30);
@@ -217,20 +201,13 @@ describe("derived sequence operations", () => {
       freeze_duration_us: 2_000_000,
     };
     const shortenedFreeze = trimPrimaryClip(frozen, "a", "start", 500_000);
-    expect(clipAt(shortenedFreeze, 0).freeze_duration_us).toBe(
-      2_000_000 - frameUS * 15,
-    );
+    expect(clipAt(shortenedFreeze, 0).freeze_duration_us).toBe(2_000_000 - frameUS * 15);
   });
 
   it("sets an exact packet boundary without project-frame quantization", () => {
     const project = projectWithClips();
     const exactKeyframeUS = 1_000_123;
-    const trimmed = setPrimaryClipSourceBoundary(
-      project,
-      "a",
-      "start",
-      exactKeyframeUS,
-    );
+    const trimmed = setPrimaryClipSourceBoundary(project, "a", "start", exactKeyframeUS);
     expect(clipAt(trimmed, 0).source_in_us).toBe(exactKeyframeUS);
     expect(projectDurationUS(trimmed)).toBe(10_000_000 - exactKeyframeUS);
   });
@@ -238,8 +215,7 @@ describe("derived sequence operations", () => {
   it("keeps adjoining transition durations valid while trimming", () => {
     const project = projectWithClips();
     const frameUS = Math.round(
-      (1_000_000 * project.timebase.fps_denominator) /
-        project.timebase.fps_numerator,
+      (1_000_000 * project.timebase.fps_denominator) / project.timebase.fps_numerator,
     );
     const transition = {
       type: "cross-dissolve" as const,
@@ -249,12 +225,8 @@ describe("derived sequence operations", () => {
     project.primary_sequence[0]!.transition_out = { ...transition };
     project.primary_sequence[1]!.transition_in = { ...transition };
     const trimmed = trimPrimaryClip(project, "a", "end", -3_000_000);
-    const expectedMaximum = Math.floor(
-      (4_000_000 - Math.round(3_000_000 / frameUS) * frameUS) / 2,
-    );
-    expect(clipAt(trimmed, 0).transition_out?.duration_us).toBe(
-      expectedMaximum,
-    );
+    const expectedMaximum = Math.floor((4_000_000 - Math.round(3_000_000 / frameUS) * frameUS) / 2);
+    expect(clipAt(trimmed, 0).transition_out?.duration_us).toBe(expectedMaximum);
     expect(clipAt(trimmed, 1).transition_in?.duration_us).toBe(expectedMaximum);
   });
 
@@ -273,10 +245,7 @@ describe("derived sequence operations", () => {
   it("reorders clips and updates speed within beta bounds", () => {
     const project = projectWithClips();
     const reordered = reorderPrimaryClip(project, "b", 0);
-    expect(reordered.primary_sequence.map((clip) => clip.id)).toEqual([
-      "b",
-      "a",
-    ]);
+    expect(reordered.primary_sequence.map((clip) => clip.id)).toEqual(["b", "a"]);
     const sped = setClipSpeed(reordered, "b", 2);
     expect(projectDurationUS(sped)).toBe(7_000_000);
     expect(() => setClipSpeed(sped, "b", 5)).toThrow(/0.25/);
@@ -285,26 +254,17 @@ describe("derived sequence operations", () => {
   it("duplicates, freezes, and detaches clip audio without changing the source", () => {
     const project = projectWithClips();
     const duplicated = duplicatePrimaryClip(project, "a", () => "copy");
-    expect(duplicated.primary_sequence.map((clip) => clip.id)).toEqual([
-      "a",
-      "copy",
-      "b",
-    ]);
+    expect(duplicated.primary_sequence.map((clip) => clip.id)).toEqual(["a", "copy", "b"]);
     expect(clipAt(duplicated, 1).source_id).toBe("source");
 
     let id = 0;
-    const frozen = insertFreezeFrame(
-      project,
-      "a",
-      2_000_000,
-      1_500_000,
-      () => `new-${id++}`,
-    );
-    expect(
-      frozen.primary_sequence.map((clip) =>
-        "mode" in clip ? clip.mode : "gap",
-      ),
-    ).toEqual(["source", "freeze", "source", "source"]);
+    const frozen = insertFreezeFrame(project, "a", 2_000_000, 1_500_000, () => `new-${id++}`);
+    expect(frozen.primary_sequence.map((clip) => ("mode" in clip ? clip.mode : "gap"))).toEqual([
+      "source",
+      "freeze",
+      "source",
+      "source",
+    ]);
     expect(clipAt(frozen, 1).freeze_duration_us).toBe(1_500_000);
     expect(projectDurationUS(frozen)).toBe(11_500_000);
 
@@ -354,28 +314,19 @@ describe("time, keyframes, captions, and suggestions", () => {
       { time_us: 1_000_000, value: 10, easing: "hold" as const },
     ];
     expect(interpolateKeyframes(base, 500_000)).toBe(5);
-    expect(
-      interpolateKeyframes(
-        [{ ...base[0]!, easing: "hold" }, base[1]!],
-        500_000,
-      ),
-    ).toBe(0);
+    expect(interpolateKeyframes([{ ...base[0]!, easing: "hold" }, base[1]!], 500_000)).toBe(0);
   });
 
   it("builds a bounded focus zoom with editable timing and focus", () => {
-    const keyframes = buildFocusZoomKeyframes(
-      defaultVideoPresentation(),
-      2_000_000,
-      {
-        preset: "punch",
-        local_time_us: 1_000_000,
-        duration_us: 1_200_000,
-        scale_multiplier: 1.5,
-        focus_x: 0.8,
-        focus_y: 0.2,
-        easing: "focus-spring",
-      },
-    );
+    const keyframes = buildFocusZoomKeyframes(defaultVideoPresentation(), 2_000_000, {
+      preset: "punch",
+      local_time_us: 1_000_000,
+      duration_us: 1_200_000,
+      scale_multiplier: 1.5,
+      focus_x: 0.8,
+      focus_y: 0.2,
+      easing: "focus-spring",
+    });
     expect(keyframes.scale).toHaveLength(3);
     expect(keyframes.scale?.[1]?.value).toBe(1.5);
     expect(keyframes.position_x?.[1]?.value).toBeLessThan(0.5);
@@ -385,11 +336,7 @@ describe("time, keyframes, captions, and suggestions", () => {
 
   it("reflows captions and links timed transcript selection to a padded cut", () => {
     expect(
-      reflowCaptionText(
-        "Make one clear social video without leaving the browser",
-        18,
-        2,
-      ),
+      reflowCaptionText("Make one clear social video without leaving the browser", 18, 2),
     ).toEqual(["Make one clear", "social video without leaving the browser"]);
     const cut = captionCutRange(
       [
@@ -571,9 +518,7 @@ describe("time, keyframes, captions, and suggestions", () => {
         source_in_us: 3_000_000,
       },
     ]);
-    expect(
-      next.visual_tracks[0]!.items[2]!.presentation.keyframes?.opacity,
-    ).toMatchObject([
+    expect(next.visual_tracks[0]!.items[2]!.presentation.keyframes?.opacity).toMatchObject([
       { time_us: 0, value: 0 },
       { time_us: 1_500_000, value: 0.8 },
       { time_us: 2_500_000, value: 1 },
@@ -595,9 +540,7 @@ describe("time, keyframes, captions, and suggestions", () => {
 
   it("ripple deletes explicit ranges through the shared timeline operation", () => {
     const project = projectWithClips();
-    const next = rippleDeleteTimelineRanges(project, [
-      { start_us: 4_000_000, end_us: 5_000_000 },
-    ]);
+    const next = rippleDeleteTimelineRanges(project, [{ start_us: 4_000_000, end_us: 5_000_000 }]);
     expect(projectDurationUS(next)).toBe(9_000_000);
   });
 
@@ -619,11 +562,7 @@ describe("time, keyframes, captions, and suggestions", () => {
     };
     setCaptionCueText(cue, "A corrected caption");
     expect(captionDisplayText(cue)).toBe("A corrected caption");
-    expect(cue.words.map((word) => word.text)).toEqual([
-      "A",
-      "corrected",
-      "caption",
-    ]);
+    expect(cue.words.map((word) => word.text)).toEqual(["A", "corrected", "caption"]);
     expect(cue.words[0]?.start_us).toBe(cue.start_us);
     expect(cue.words.at(-1)?.end_us).toBe(cue.end_us);
 
@@ -641,9 +580,7 @@ describe("time, keyframes, captions, and suggestions", () => {
         words: [],
       },
     ];
-    expect(captionsToSRT(cues)).toBe(
-      "1\n00:00:01,250 --> 00:00:02,500\nLocal captions\n",
-    );
+    expect(captionsToSRT(cues)).toBe("1\n00:00:01,250 --> 00:00:02,500\nLocal captions\n");
     expect(captionsToWebVTT(cues)).toBe(
       "WEBVTT\n\n00:00:01.250 --> 00:00:02.500\nLocal captions\n",
     );

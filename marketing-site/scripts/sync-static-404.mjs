@@ -1,46 +1,43 @@
-import assert from "node:assert/strict";
-import { readFile, writeFile } from "node:fs/promises";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { marketingErrorRecovery as content } from "../src/routes/_error-recovery.ts";
+import assert from 'node:assert/strict';
+import { readFile, writeFile } from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { marketingErrorRecovery as content } from '../src/routes/_error-recovery.ts';
 
-const siteRoot = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "..",
-);
-const output = path.join(siteRoot, "static/404.html");
+const siteRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const output = path.join(siteRoot, 'static/404.html');
 
 function escapeHTML(value) {
-  return String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
+	return String(value)
+		.replaceAll('&', '&amp;')
+		.replaceAll('<', '&lt;')
+		.replaceAll('>', '&gt;')
+		.replaceAll('"', '&quot;')
+		.replaceAll("'", '&#39;');
 }
 
 function externalAttributes(href) {
-  return href.startsWith("https://") ? ' target="_blank" rel="noreferrer"' : "";
+	return href.startsWith('https://') ? ' target="_blank" rel="noreferrer"' : '';
 }
 
 const routes = content.routes
-  .map(
-    (route) => `
+	.map(
+		(route) => `
             <li>
               <a class="route-link" href="${escapeHTML(route.href)}"${externalAttributes(route.href)}>
                 <span><strong>${escapeHTML(route.label)}</strong><small>${escapeHTML(route.description)}</small></span>
-                <span aria-hidden="true">${route.href.startsWith("https://") ? "↗" : "→"}</span>
+                <span aria-hidden="true">${route.href.startsWith('https://') ? '↗' : '→'}</span>
               </a>
-            </li>`,
-  )
-  .join("");
+            </li>`
+	)
+	.join('');
 
 const support = content.support
-  .map(
-    (link) =>
-      `<a href="${escapeHTML(link.href)}"${externalAttributes(link.href)}>${escapeHTML(link.label)}</a>`,
-  )
-  .join("\n              ");
+	.map(
+		(link) =>
+			`<a href="${escapeHTML(link.href)}"${externalAttributes(link.href)}>${escapeHTML(link.label)}</a>`
+	)
+	.join('\n              ');
 
 const html = `<!doctype html>
 <html lang="en">
@@ -113,17 +110,11 @@ const html = `<!doctype html>
 </html>
 `;
 
-if (process.argv.includes("--check")) {
-  const existing = await readFile(output, "utf8");
-  assert.equal(
-    existing,
-    html,
-    "static/404.html is stale; run bun run sync:404",
-  );
-  console.log(
-    "Verified static 404 content matches the shared recovery source.",
-  );
+if (process.argv.includes('--check')) {
+	const existing = await readFile(output, 'utf8');
+	assert.equal(existing, html, 'static/404.html is stale; run bun run sync:404');
+	console.log('Verified static 404 content matches the shared recovery source.');
 } else {
-  await writeFile(output, html);
-  console.log(`Updated ${path.relative(process.cwd(), output)}.`);
+	await writeFile(output, html);
+	console.log(`Updated ${path.relative(process.cwd(), output)}.`);
 }

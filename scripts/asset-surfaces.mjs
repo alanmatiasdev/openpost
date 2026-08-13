@@ -4,15 +4,9 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-import {
-  assetSurfaceManifest,
-  publishedProviderAssetSlugs,
-} from "./asset-surfaces.ts";
+import { assetSurfaceManifest, publishedProviderAssetSlugs } from "./asset-surfaces.ts";
 
-export const repositoryRoot = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "..",
-);
+export const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export const assetSourceDirectory = path.join(repositoryRoot, "assets");
 
@@ -103,25 +97,16 @@ function valuesMatching(source, pattern) {
 
 async function dynamicMarketingReferences(root = repositoryRoot) {
   const postizSource = await readFile(
-    path.join(
-      root,
-      "marketing-site/src/routes/_components/postiz-social-logos.ts",
-    ),
+    path.join(root, "marketing-site/src/routes/_components/postiz-social-logos.ts"),
     "utf8",
   );
-  const functionSource = await readFile(
-    path.join(root, "marketing-site/functions/og.tsx"),
-    "utf8",
-  );
+  const functionSource = await readFile(path.join(root, "marketing-site/functions/og.tsx"), "utf8");
   const references = new Set(
     valuesMatching(postizSource, /:\s*["']([^"']+\.svg)["']/gu).map(
       (file) => `postiz-socials/${file}`,
     ),
   );
-  for (const font of valuesMatching(
-    functionSource,
-    /font\(url\.origin,\s*["']([^"']+)["']\)/gu,
-  )) {
+  for (const font of valuesMatching(functionSource, /font\(url\.origin,\s*["']([^"']+)["']\)/gu)) {
     references.add(`brand/fonts/${font}`);
   }
   if (!functionSource.includes("/assets/logos/${platform}.svg")) {
@@ -202,9 +187,7 @@ export async function validateAssetTarget(
 ) {
   const expected = [...manifest[surface]].sort();
   const actual = (await listFiles(targetDirectory))
-    .map((file) =>
-      path.relative(targetDirectory, file).split(path.sep).join("/"),
-    )
+    .map((file) => path.relative(targetDirectory, file).split(path.sep).join("/"))
     .sort();
   const expectedSet = new Set(expected);
   const actualSet = new Set(actual);
@@ -236,10 +219,7 @@ async function sha256File(file) {
   return hash.digest("hex");
 }
 
-export async function assetSizeReport(
-  manifest = assetSurfaceManifest,
-  root = repositoryRoot,
-) {
+export async function assetSizeReport(manifest = assetSurfaceManifest, root = repositoryRoot) {
   const sourceDirectory = path.join(root, "assets");
   const sourceFiles = await listFiles(sourceDirectory);
   const sourceBytes = (
@@ -249,19 +229,14 @@ export async function assetSizeReport(
   for (const [surface, entries] of Object.entries(manifest)) {
     surfaceBytes[surface] = (
       await Promise.all(
-        entries.map(
-          async (file) => (await stat(path.join(sourceDirectory, file))).size,
-        ),
+        entries.map(async (file) => (await stat(path.join(sourceDirectory, file))).size),
       )
     ).reduce((total, size) => total + size, 0);
   }
   return {
     sourceBytes,
     previousCopiedBytes: sourceBytes * Object.keys(manifest).length,
-    copiedBytes: Object.values(surfaceBytes).reduce(
-      (total, size) => total + size,
-      0,
-    ),
+    copiedBytes: Object.values(surfaceBytes).reduce((total, size) => total + size, 0),
     surfaceBytes,
   };
 }
@@ -285,9 +260,6 @@ async function main() {
   );
 }
 
-if (
-  process.argv[1] &&
-  import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href
-) {
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
   await main();
 }

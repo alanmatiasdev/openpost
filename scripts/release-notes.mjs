@@ -9,6 +9,4 @@ if (!tag) {
   process.exit(1);
 }
 
-process.stdout.write(
-  `${releaseNotesForTag(readFileSync(resolve("CHANGELOG.md"), "utf8"), tag)}\n`,
-);
+process.stdout.write(`${releaseNotesForTag(readFileSync(resolve("CHANGELOG.md"), "utf8"), tag)}\n`);

@@ -3,7 +3,12 @@ import type { components } from '$lib/api/types';
 export type VideoConstraint = components['schemas']['MediaConstraint'];
 
 export type VideoPreparationStage =
-	'inspecting' | 'remuxing' | 'compressing' | 'uploading' | 'finalizing' | 'processing';
+	| 'inspecting'
+	| 'remuxing'
+	| 'compressing'
+	| 'uploading'
+	| 'finalizing'
+	| 'processing';
 
 export interface VideoPreparationProgress {
 	stage: VideoPreparationStage;

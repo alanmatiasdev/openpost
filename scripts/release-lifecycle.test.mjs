@@ -12,11 +12,7 @@ import {
 
 const notes = "Release notes\n";
 
-function release({
-  draft = true,
-  assets = expectedReleaseAssets,
-  id = 42,
-} = {}) {
+function release({ draft = true, assets = expectedReleaseAssets, id = 42 } = {}) {
   return {
     id,
     tag_name: "v4.0.0",
@@ -84,10 +80,7 @@ test("local preparation and workflow selection share lifecycle decisions", () =>
     requireConventionalCommitMessage("feat(release): deepen lifecycle\n\nBody"),
     "feat(release): deepen lifecycle",
   );
-  assert.throws(
-    () => requireConventionalCommitMessage("release work"),
-    /Conventional Commit/u,
-  );
+  assert.throws(() => requireConventionalCommitMessage("release work"), /Conventional Commit/u);
   assert.deepEqual(
     selectWorkflowRun(
       [

@@ -8,10 +8,7 @@ const locales = ["en", "pt"];
 const catalogs = new Map();
 
 for (const locale of locales) {
-  const content = await readFile(
-    path.join(messagesDirectory, `${locale}.json`),
-    "utf8",
-  );
+  const content = await readFile(path.join(messagesDirectory, `${locale}.json`), "utf8");
   catalogs.set(locale, new Set(Object.keys(JSON.parse(content))));
 }
 
@@ -33,6 +30,4 @@ for (const locale of locales.slice(1)) {
 }
 
 if (failed) process.exit(1);
-console.log(
-  `Translation catalogs match (${referenceKeys.size} messages per locale).`,
-);
+console.log(`Translation catalogs match (${referenceKeys.size} messages per locale).`);

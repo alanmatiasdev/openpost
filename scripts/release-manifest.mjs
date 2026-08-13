@@ -16,12 +16,7 @@ export const releaseManifestSchemaVersion = 2;
 
 const stableVersionPattern = /^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 const gitRevisionPattern = /^[0-9a-f]{40}$/;
-const manifestKeys = [
-  "provider_claims",
-  "revision",
-  "schema_version",
-  "version",
-];
+const manifestKeys = ["provider_claims", "revision", "schema_version", "version"];
 
 export function candidateVersionFromChangelog(markdown) {
   const sections = parseChangelog(markdown);
@@ -31,18 +26,12 @@ export function candidateVersionFromChangelog(markdown) {
   const release = sections[1];
   const version = release ? `v${release.label.replace(/^v/u, "")}` : "";
   if (!stableVersionPattern.test(version)) {
-    throw new Error(
-      "CHANGELOG.md must place a stable SemVer release directly after [Unreleased]",
-    );
+    throw new Error("CHANGELOG.md must place a stable SemVer release directly after [Unreleased]");
   }
   return version;
 }
 
-export function resolveCandidateVersion({
-  changelogVersion,
-  latestTag,
-  commitMessages,
-}) {
+export function resolveCandidateVersion({ changelogVersion, latestTag, commitMessages }) {
   const comparison = compareVersions(changelogVersion, latestTag);
   if (comparison < 0) {
     throw new Error(
@@ -82,9 +71,7 @@ export function validateReleaseManifest(
     keys.length !== manifestKeys.length ||
     keys.some((key, index) => key !== manifestKeys[index])
   ) {
-    throw new Error(
-      `release manifest must contain exactly ${manifestKeys.join(", ")}`,
-    );
+    throw new Error(`release manifest must contain exactly ${manifestKeys.join(", ")}`);
   }
   if (manifest.schema_version !== releaseManifestSchemaVersion) {
     throw new Error(
@@ -114,8 +101,7 @@ export function validateReleaseManifest(
   }
   if (
     expectedProviderClaims &&
-    JSON.stringify(manifest.provider_claims) !==
-      JSON.stringify(expectedProviderClaims)
+    JSON.stringify(manifest.provider_claims) !== JSON.stringify(expectedProviderClaims)
   ) {
     throw new Error(
       "release manifest provider claim binding does not match the checked-in certification manifest",
@@ -130,13 +116,8 @@ function validateProviderClaimBinding(binding) {
   }
   const keys = Object.keys(binding).sort();
   const expected = ["claim_count", "manifest_sha256", "schema_version"];
-  if (
-    keys.length !== expected.length ||
-    keys.some((key, index) => key !== expected[index])
-  ) {
-    throw new Error(
-      `release manifest provider_claims must contain exactly ${expected.join(", ")}`,
-    );
+  if (keys.length !== expected.length || keys.some((key, index) => key !== expected[index])) {
+    throw new Error(`release manifest provider_claims must contain exactly ${expected.join(", ")}`);
   }
   if (binding.schema_version !== 1) {
     throw new Error("release manifest provider claim schema must be 1");
@@ -154,17 +135,12 @@ export function serializeReleaseManifest(manifest) {
   return `${JSON.stringify(manifest, null, 2)}\n`;
 }
 
-export async function readReleaseManifest(
-  manifestPath,
-  expectations = undefined,
-) {
+export async function readReleaseManifest(manifestPath, expectations = undefined) {
   let manifest;
   try {
     manifest = JSON.parse(await readFile(manifestPath, "utf8"));
   } catch (error) {
-    throw new Error(
-      `could not read release manifest ${manifestPath}: ${error.message}`,
-    );
+    throw new Error(`could not read release manifest ${manifestPath}: ${error.message}`);
   }
   return validateReleaseManifest(manifest, expectations);
 }
@@ -246,9 +222,7 @@ async function main() {
   }
   if (command === "verify") {
     requireOnlyOptions(options, ["manifest", "provider-claims", "revision", "version"]);
-    const manifestPath = path.resolve(
-      options.manifest ?? "release-manifest.json",
-    );
+    const manifestPath = path.resolve(options.manifest ?? "release-manifest.json");
     const expectedProviderClaims = await readPublicClaimManifestBinding(
       path.resolve(options["provider-claims"] ?? publicClaimManifestPath),
       { currentRevision: options.revision },
@@ -269,16 +243,11 @@ async function main() {
 
 function requireOnlyOptions(options, allowed) {
   const allowedNames = new Set(allowed);
-  const unexpected = Object.keys(options).find(
-    (name) => !allowedNames.has(name),
-  );
+  const unexpected = Object.keys(options).find((name) => !allowedNames.has(name));
   if (unexpected) throw new Error(`unknown option --${unexpected}`);
 }
 
-if (
-  process.argv[1] &&
-  import.meta.url === pathToFileURL(process.argv[1]).href
-) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
     await main();
   } catch (error) {

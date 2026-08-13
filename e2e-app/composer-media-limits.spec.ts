@@ -90,10 +90,7 @@ test("Post drafts can move from one image to multiple before destination validat
   request,
 }) => {
   const unique = Date.now().toString(36);
-  const auth = await registerUser(
-    request,
-    `composer-media-${unique}@example.com`,
-  );
+  const auth = await registerUser(request, `composer-media-${unique}@example.com`);
   await createWorkspace(request, auth.token, "Composer media limits E2E");
   await authenticatePage(page, auth.token);
 
@@ -113,9 +110,7 @@ test("Post drafts can move from one image to multiple before destination validat
   const captionPostContexts = new Map<string, string>();
   await page.route("**/api/v1/media**", async (route) => {
     const url = new URL(route.request().url());
-    const captionMatch = url.pathname.match(
-      /\/media\/([^/]+)\/alt-text\/generate$/,
-    );
+    const captionMatch = url.pathname.match(/\/media\/([^/]+)\/alt-text\/generate$/);
     if (captionMatch) {
       const mediaID = captionMatch[1];
       captionRequests.push(mediaID);
@@ -182,62 +177,44 @@ test("Post drafts can move from one image to multiple before destination validat
     "true",
   );
   await picker.getByRole("tab", { name: "Library" }).click();
-  await picker
-    .getByRole("button", { name: "Select draft-image-1.png" })
-    .click();
+  await picker.getByRole("button", { name: "Select draft-image-1.png" }).click();
   await picker.getByRole("button", { name: "Add media", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Remove media" })).toHaveCount(
-    1,
-  );
+  await expect(page.getByRole("button", { name: "Remove media" })).toHaveCount(1);
   await expect.poll(() => [...captionRequests]).toEqual(["media-1"]);
   expect(captionPostContexts.get("media-1")).toBe(postText);
   await composer.getByRole("button", { name: "Alt text" }).click();
   await expect(composer.getByRole("textbox", { name: "Alt text" })).toHaveValue(
     "Generated description for media-1.",
   );
-  await expect(composer).not.toContainText(
-    "AI-generated — review before publishing.",
-  );
+  await expect(composer).not.toContainText("AI-generated — review before publishing.");
   await composer.getByRole("button", { name: "Done" }).click();
 
   await composer.getByRole("button", { name: "Add media" }).click();
   await expect(picker).toContainText("1 of 35 selected");
   await picker.getByRole("tab", { name: "Library" }).click();
   for (let index = 2; index <= 5; index += 1) {
-    await picker
-      .getByRole("button", { name: `Select draft-image-${index}.png` })
-      .click();
+    await picker.getByRole("button", { name: `Select draft-image-${index}.png` }).click();
   }
   await picker.getByRole("button", { name: "Add media", exact: true }).click();
 
-  await expect(page.getByRole("button", { name: "Remove media" })).toHaveCount(
-    5,
-  );
+  await expect(page.getByRole("button", { name: "Remove media" })).toHaveCount(5);
   await expect
     .poll(() => [...captionRequests].sort())
     .toEqual(mediaItems.map((item) => item.id).sort());
-  expect([...captionPostContexts.values()]).toEqual(
-    mediaItems.map(() => postText),
-  );
+  expect([...captionPostContexts.values()]).toEqual(mediaItems.map(() => postText));
   await page.getByTestId("composer-account-control").click();
   await expect(page.getByTestId("composer-account-row")).toHaveCount(5);
   await expect(
     page.getByTestId("composer-account-row").filter({ hasText: "openpost_x" }),
   ).toContainText("Needs attention");
   await expect(
-    page
-      .getByTestId("composer-account-row")
-      .filter({ hasText: "openpost_bluesky" }),
+    page.getByTestId("composer-account-row").filter({ hasText: "openpost_bluesky" }),
   ).toContainText("Needs attention");
   await expect(
-    page
-      .getByTestId("composer-account-row")
-      .filter({ hasText: "openpost_linkedin" }),
+    page.getByTestId("composer-account-row").filter({ hasText: "openpost_linkedin" }),
   ).not.toContainText("Needs attention");
   await expect(
-    page
-      .getByTestId("composer-account-row")
-      .filter({ hasText: "openpost_threads" }),
+    page.getByTestId("composer-account-row").filter({ hasText: "openpost_threads" }),
   ).not.toContainText("Needs attention");
 });
 
@@ -246,10 +223,7 @@ test("pasted composer images upload in place without opening the media picker", 
   request,
 }) => {
   const unique = Date.now().toString(36);
-  const auth = await registerUser(
-    request,
-    `composer-paste-${unique}@example.com`,
-  );
+  const auth = await registerUser(request, `composer-paste-${unique}@example.com`);
   await createWorkspace(request, auth.token, "Composer paste E2E");
   await authenticatePage(page, auth.token);
 
@@ -358,9 +332,7 @@ test("pasted composer images upload in place without opening the media picker", 
   const pasteImage = async (name: string) =>
     textbox.evaluate(
       (element, { encoded, filename }) => {
-        const bytes = Uint8Array.from(atob(encoded), (value) =>
-          value.charCodeAt(0),
-        );
+        const bytes = Uint8Array.from(atob(encoded), (value) => value.charCodeAt(0));
         const transfer = new DataTransfer();
         transfer.items.add(new File([bytes], filename, { type: "image/png" }));
         const event = new ClipboardEvent("paste", {
@@ -389,22 +361,14 @@ test("pasted composer images upload in place without opening the media picker", 
 
   releaseFirstUpload();
   await expect(transientUpload).toHaveCount(0);
-  await expect(
-    composer.locator('img[src*="/media/pasted-success"]'),
-  ).toHaveCount(1);
+  await expect(composer.locator('img[src*="/media/pasted-success"]')).toHaveCount(1);
 
   expect(await pasteImage("clipboard-retry.png")).toBe(true);
   await expect(transientUpload).toHaveAttribute("data-status", "failed");
-  await expect(transientUpload.getByRole("alert")).toContainText(
-    "Temporary upload failure",
-  );
+  await expect(transientUpload.getByRole("alert")).toContainText("Temporary upload failure");
   await transientUpload.getByRole("button", { name: "Try again" }).click();
 
   await expect(transientUpload).toHaveCount(0);
-  await expect(composer.locator('img[src*="/media/pasted-retry"]')).toHaveCount(
-    1,
-  );
-  await expect(
-    composer.getByRole("button", { name: "Remove media" }),
-  ).toHaveCount(2);
+  await expect(composer.locator('img[src*="/media/pasted-retry"]')).toHaveCount(1);
+  await expect(composer.getByRole("button", { name: "Remove media" })).toHaveCount(2);
 });

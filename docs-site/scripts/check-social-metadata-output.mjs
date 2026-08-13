@@ -12,7 +12,8 @@ async function walkHtml(directory) {
   for (const entry of await readdir(directory, { withFileTypes: true })) {
     const target = path.join(directory, entry.name);
     if (entry.isDirectory()) files.push(...(await walkHtml(target)));
-    else if (entry.isFile() && entry.name.endsWith(".html") && entry.name !== "404.html") files.push(target);
+    else if (entry.isFile() && entry.name.endsWith(".html") && entry.name !== "404.html")
+      files.push(target);
   }
   return files;
 }
@@ -33,7 +34,9 @@ for (const file of files) {
 }
 
 if (problems.length) {
-  console.error(`Docs social metadata check failed:\n${problems.map((item) => `- ${item}`).join("\n")}`);
+  console.error(
+    `Docs social metadata check failed:\n${problems.map((item) => `- ${item}`).join("\n")}`,
+  );
   process.exit(1);
 }
 

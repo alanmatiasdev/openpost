@@ -1,8 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-test("failed delivery details stay secondary to post status", async ({
-  page,
-}) => {
+test("failed delivery details stay secondary to post status", async ({ page }) => {
   await page.route("**/api/v1/auth/me", async (route) => {
     await route.fulfill({
       contentType: "application/json",
@@ -17,9 +15,7 @@ test("failed delivery details stay secondary to post status", async ({
   await page.route("**/api/v1/workspaces", async (route) => {
     await route.fulfill({
       contentType: "application/json",
-      json: [
-        { id: "ws-1", name: "Posts E2E", created_at: "2026-07-01T00:00:00Z" },
-      ],
+      json: [{ id: "ws-1", name: "Posts E2E", created_at: "2026-07-01T00:00:00Z" }],
     });
   });
   await page.route("**/api/v1/workspaces/ws-1/settings", async (route) => {
@@ -122,14 +118,10 @@ test("failed delivery details stay secondary to post status", async ({
     },
   ];
   await page.route("**/api/v1/publications?**", async (route) => {
-    const bucket = new URL(route.request().url()).searchParams.get(
-      "activity_bucket",
-    );
+    const bucket = new URL(route.request().url()).searchParams.get("activity_bucket");
     const filtered = bucket
       ? publications.filter((publication) =>
-          bucket === "draft"
-            ? publication.status === "draft"
-            : publication.status === bucket,
+          bucket === "draft" ? publication.status === "draft" : publication.status === bucket,
         )
       : publications;
     await route.fulfill({
@@ -174,11 +166,7 @@ test("failed delivery details stay secondary to post status", async ({
   const activityTabs = page.getByRole("tablist");
   await expect(activityTabs).toBeVisible();
   await expect
-    .poll(() =>
-      activityTabs.evaluate(
-        (element) => element.scrollHeight <= element.clientHeight,
-      ),
-    )
+    .poll(() => activityTabs.evaluate((element) => element.scrollHeight <= element.clientHeight))
     .toBe(true);
   const scheduledTab = page.getByRole("tab", {
     name: "Scheduled",
@@ -194,9 +182,7 @@ test("failed delivery details stay secondary to post status", async ({
       exact: true,
     }),
   ).toBeVisible();
-  await expect(
-    scheduledPanel.getByText("Scheduled thread child", { exact: true }),
-  ).toHaveCount(0);
+  await expect(scheduledPanel.getByText("Scheduled thread child", { exact: true })).toHaveCount(0);
   await page.getByRole("tab", { name: "Published", exact: true }).click();
   const publishedPanel = page.getByRole("tabpanel", {
     name: "Published",
@@ -207,9 +193,7 @@ test("failed delivery details stay secondary to post status", async ({
       exact: true,
     }),
   ).toBeVisible();
-  await expect(
-    publishedPanel.getByText("Published thread child", { exact: true }),
-  ).toHaveCount(0);
+  await expect(publishedPanel.getByText("Published thread child", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("tab", { name: "Jobs" })).toHaveCount(0);
   await page.getByRole("tab", { name: "Failed", exact: true }).click();
 
@@ -220,9 +204,7 @@ test("failed delivery details stay secondary to post status", async ({
   await expect(page.getByText("Account authorization expired")).toBeVisible();
 });
 
-test("scheduled pagination counts only scheduled publications", async ({
-  page,
-}) => {
+test("scheduled pagination counts only scheduled publications", async ({ page }) => {
   await page.route("**/api/v1/auth/me", async (route) => {
     await route.fulfill({
       contentType: "application/json",
@@ -289,9 +271,7 @@ test("scheduled pagination counts only scheduled publications", async ({
   const scheduled = publication("Only scheduled post", "scheduled");
   const unscopedPage = [
     scheduled,
-    ...Array.from({ length: 39 }, (_, index) =>
-      publication(`Draft ${index + 1}`, "draft"),
-    ),
+    ...Array.from({ length: 39 }, (_, index) => publication(`Draft ${index + 1}`, "draft")),
   ];
   const publicationRequests: URL[] = [];
   await page.route("**/api/v1/publications?**", async (route) => {
@@ -299,8 +279,7 @@ test("scheduled pagination counts only scheduled publications", async ({
     if (url.searchParams.get("status") !== "draft") {
       publicationRequests.push(url);
     }
-    const scheduledOnly =
-      url.searchParams.get("activity_bucket") === "scheduled";
+    const scheduledOnly = url.searchParams.get("activity_bucket") === "scheduled";
     await route.fulfill({
       contentType: "application/json",
       headers: scheduledOnly
@@ -320,14 +299,10 @@ test("scheduled pagination counts only scheduled publications", async ({
     name: "Scheduled",
     exact: true,
   });
-  await expect(
-    scheduledPanel.getByText("Only scheduled post", { exact: true }),
-  ).toBeVisible();
+  await expect(scheduledPanel.getByText("Only scheduled post", { exact: true })).toBeVisible();
   await expect(page.getByText("Showing 1 of 1 results")).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Load more", exact: true }),
-  ).toHaveCount(0);
-  expect(
-    publicationRequests.map((url) => url.searchParams.get("activity_bucket")),
-  ).toEqual(["scheduled"]);
+  await expect(page.getByRole("button", { name: "Load more", exact: true })).toHaveCount(0);
+  expect(publicationRequests.map((url) => url.searchParams.get("activity_bucket"))).toEqual([
+    "scheduled",
+  ]);
 });

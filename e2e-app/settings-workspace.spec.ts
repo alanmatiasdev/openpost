@@ -12,15 +12,8 @@ test("workspace repost rules save thresholds, delays, and cross-workspace target
   page.on("pageerror", (error) => consoleErrors.push(error.message));
 
   const unique = Date.now().toString(36);
-  const auth = await registerUser(
-    request,
-    `repost-settings-${unique}@example.com`,
-  );
-  const workspace = await createWorkspace(
-    request,
-    auth.token,
-    "Repost Settings E2E",
-  );
+  const auth = await registerUser(request, `repost-settings-${unique}@example.com`);
+  const workspace = await createWorkspace(request, auth.token, "Repost Settings E2E");
   await authenticatePage(page, auth.token);
 
   let savedPolicies: Array<Record<string, unknown>> = [];
@@ -87,12 +80,8 @@ test("workspace repost rules save thresholds, delays, and cross-workspace target
 
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(`/settings?tab=reposts&workspace=${workspace.id}`);
-  await expect(
-    page.getByRole("heading", { name: "Auto repost" }),
-  ).toBeVisible();
-  await expect(
-    page.getByText("A post is never copied to a different network."),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Auto repost" })).toBeVisible();
+  await expect(page.getByText("A post is never copied to a different network.")).toBeVisible();
 
   await page.getByRole("button", { name: "Add rule" }).click();
   await page.getByLabel("Rule name").fill("High-signal launch posts");
@@ -116,11 +105,9 @@ test("workspace repost rules save thresholds, delays, and cross-workspace target
 
   await page.setViewportSize({ width: 320, height: 760 });
   await expect(page.getByLabel("Rule name")).toBeVisible();
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth,
-    ),
-  ).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
   expect(consoleErrors).toEqual([]);
 });
 
@@ -144,10 +131,7 @@ test("workspace settings delete the active workspace and keep another", async ({
   request,
 }) => {
   const unique = Date.now().toString(36);
-  const auth = await registerUser(
-    request,
-    `workspace-delete-${unique}@example.com`,
-  );
+  const auth = await registerUser(request, `workspace-delete-${unique}@example.com`);
   const doomed = await createWorkspace(request, auth.token, "Doomed Workspace");
   const keeper = await createWorkspace(request, auth.token, "Keeper Workspace");
   await authenticatePage(page, auth.token);
@@ -156,9 +140,7 @@ test("workspace settings delete the active workspace and keep another", async ({
 
   await page.getByRole("button", { name: "Delete workspace" }).click();
   const dialog = page.getByRole("dialog");
-  await expect(
-    dialog.getByRole("heading", { name: "Delete this workspace?" }),
-  ).toBeVisible();
+  await expect(dialog.getByRole("heading", { name: "Delete this workspace?" })).toBeVisible();
   await dialog.getByRole("button", { name: "Delete workspace" }).click();
 
   await expect(page).toHaveURL(/\/$/);
@@ -168,12 +150,8 @@ test("workspace settings delete the active workspace and keep another", async ({
   });
   expect(workspaces.ok()).toBeTruthy();
   const body = await workspaces.json();
-  expect(body.map((workspace: { id: string }) => workspace.id)).toContain(
-    keeper.id,
-  );
-  expect(body.map((workspace: { id: string }) => workspace.id)).not.toContain(
-    doomed.id,
-  );
+  expect(body.map((workspace: { id: string }) => workspace.id)).toContain(keeper.id);
+  expect(body.map((workspace: { id: string }) => workspace.id)).not.toContain(doomed.id);
 });
 
 test("workspace settings warn before leaving and save the shared workspace color", async ({
@@ -181,15 +159,8 @@ test("workspace settings warn before leaving and save the shared workspace color
   request,
 }) => {
   const unique = Date.now().toString(36);
-  const auth = await registerUser(
-    request,
-    `workspace-settings-${unique}@example.com`,
-  );
-  const workspace = await createWorkspace(
-    request,
-    auth.token,
-    "Workspace Settings E2E",
-  );
+  const auth = await registerUser(request, `workspace-settings-${unique}@example.com`);
+  const workspace = await createWorkspace(request, auth.token, "Workspace Settings E2E");
   await authenticatePage(page, auth.token);
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto(`/settings?tab=general&workspace=${workspace.id}`);
@@ -199,9 +170,7 @@ test("workspace settings warn before leaving and save the shared workspace color
   await page.getByLabel("Hex color").press("Enter");
 
   const warning = page.waitForEvent("dialog");
-  const attemptedNavigation = page
-    .getByRole("button", { name: "Calendar", exact: true })
-    .click();
+  const attemptedNavigation = page.getByRole("button", { name: "Calendar", exact: true }).click();
   const dialog = await warning;
   expect(dialog.message()).toContain("unsaved settings");
   await dialog.dismiss();
@@ -211,10 +180,9 @@ test("workspace settings warn before leaving and save the shared workspace color
   await page.getByRole("button", { name: "Save changes" }).click();
   await expect(page.getByText("Settings saved successfully")).toBeVisible();
 
-  const response = await request.get(
-    `/api/v1/workspaces/${workspace.id}/settings`,
-    { headers: { Authorization: `Bearer ${auth.token}` } },
-  );
+  const response = await request.get(`/api/v1/workspaces/${workspace.id}/settings`, {
+    headers: { Authorization: `Bearer ${auth.token}` },
+  });
   expect(response.ok()).toBeTruthy();
   expect((await response.json()).color).toBe("#2563eb");
 
@@ -233,18 +201,14 @@ test("instance admins configure optional services and provider apps without expo
   page.on("pageerror", (error) => consoleErrors.push(error.message));
 
   const unique = Date.now().toString(36);
-  const auth = await registerUser(
-    request,
-    "instance-configuration-" + unique + "@example.com",
-  );
+  const auth = await registerUser(request, "instance-configuration-" + unique + "@example.com");
   await createWorkspace(request, auth.token, "Instance Configuration E2E");
   const meResponse = await request.get("/api/v1/auth/me", {
     headers: { Authorization: "Bearer " + auth.token },
   });
   expect(meResponse.ok()).toBeTruthy();
   const me = await meResponse.json();
-  let savedSettings: Array<{ key: string; value?: string; unset?: boolean }> =
-    [];
+  let savedSettings: Array<{ key: string; value?: string; unset?: boolean }> = [];
   let failInitialSettingsLoad = true;
   const settings = [
     {
@@ -401,22 +365,14 @@ test("instance admins configure optional services and provider apps without expo
   consoleErrors.length = 0;
   await page.getByRole("button", { name: "Try again" }).click();
 
-  await expect(
-    page.getByRole("heading", { name: "Configuration", level: 1 }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Configuration", level: 1 })).toBeVisible();
   await expect(page.getByLabel("Disable new registrations")).toBeEnabled();
+  await expect(page.getByText("Environment value set", { exact: true })).toBeVisible();
   await expect(
-    page.getByText("Environment value set", { exact: true }),
-  ).toBeVisible();
-  await expect(
-    page.getByText(
-      "OPENPOST_DISABLE_REGISTRATIONS already supplies this setting.",
-    ),
+    page.getByText("OPENPOST_DISABLE_REGISTRATIONS already supplies this setting."),
   ).toBeVisible();
   await page.getByLabel("Disable new registrations").click();
-  await expect(
-    page.getByText("Will override the environment value"),
-  ).toBeVisible();
+  await expect(page.getByText("Will override the environment value")).toBeVisible();
 
   await page.getByRole("button", { name: "Email", exact: true }).click();
   await page.getByLabel("Require email verification").click();
@@ -437,9 +393,7 @@ test("instance admins configure optional services and provider apps without expo
     .getByRole("button", { name: "Accounts", exact: true })
     .click();
   await expect(page.getByText("Admin override saved")).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Use environment value" }),
-  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Use environment value" })).toBeVisible();
   await page.getByRole("button", { name: "Email", exact: true }).click();
   await expect(page.getByLabel("Resend API key")).toHaveValue("");
   await expect(page.getByLabel("Resend API key")).toHaveAttribute(
@@ -447,9 +401,7 @@ test("instance admins configure optional services and provider apps without expo
     "A secret is configured",
   );
 
-  await page
-    .getByRole("button", { name: "Provider apps", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Provider apps", exact: true }).click();
   await expect(page.getByText("public-x-client")).toBeVisible();
   await expect(page.getByText("stored-x-client")).toBeVisible();
   await expect(page.getByText("Stored fallback")).toBeVisible();

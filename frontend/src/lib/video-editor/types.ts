@@ -68,7 +68,14 @@ export interface LocalAssetIndex {
 	source_id: string;
 	path: string;
 	kind:
-		'source' | 'recording' | 'proxy' | 'thumbnail' | 'waveform' | 'analysis' | 'export' | 'temp';
+		| 'source'
+		| 'recording'
+		| 'proxy'
+		| 'thumbnail'
+		| 'waveform'
+		| 'analysis'
+		| 'export'
+		| 'temp';
 	size_bytes: number;
 	content_hash?: string;
 	created_at: string;

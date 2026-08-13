@@ -15,9 +15,7 @@ async function canvasPixelGrid(canvas: Locator): Promise<number[]> {
     const context = sample.getContext("2d", { willReadFrequently: true });
     if (!context) return [];
     context.drawImage(element, 0, 0, sample.width, sample.height);
-    return Array.from(
-      context.getImageData(0, 0, sample.width, sample.height).data,
-    );
+    return Array.from(context.getImageData(0, 0, sample.width, sample.height).data);
   });
 }
 
@@ -30,20 +28,14 @@ async function imagePixelGrid(image: Locator): Promise<number[]> {
     const context = sample.getContext("2d", { willReadFrequently: true });
     if (!context) return [];
     context.drawImage(element, 0, 0, sample.width, sample.height);
-    return Array.from(
-      context.getImageData(0, 0, sample.width, sample.height).data,
-    );
+    return Array.from(context.getImageData(0, 0, sample.width, sample.height).data);
   });
 }
 
 function meanPixelDifference(left: number[], right: number[]): number {
-  if (left.length === 0 || left.length !== right.length)
-    return Number.POSITIVE_INFINITY;
+  if (left.length === 0 || left.length !== right.length) return Number.POSITIVE_INFINITY;
   return (
-    left.reduce(
-      (total, value, index) => total + Math.abs(value - right[index]),
-      0,
-    ) / left.length
+    left.reduce((total, value, index) => total + Math.abs(value - right[index]), 0) / left.length
   );
 }
 
@@ -52,9 +44,7 @@ async function openImageVersionHistory(page: Page): Promise<void> {
     name: "OpenPost Image Editor menus",
   });
   await menus.getByText("File", { exact: true }).click();
-  await page
-    .getByRole("menuitem", { name: "Version history", exact: true })
-    .click();
+  await page.getByRole("menuitem", { name: "Version history", exact: true }).click();
 }
 
 test.beforeEach(({ page }) => {
@@ -68,10 +58,7 @@ test.beforeEach(({ page }) => {
   });
 });
 
-test("legacy Studio URLs redirect to the OpenPost Image Editor", async ({
-  page,
-  request,
-}) => {
+test("legacy Studio URLs redirect to the OpenPost Image Editor", async ({ page, request }) => {
   const auth = await registerUser(
     request,
     `studio-redirect-${Date.now().toString(36)}@example.com`,
@@ -91,13 +78,9 @@ test("public Image Editor drops and crops an image with undo, redo, and reload",
   await expect(stage).toBeVisible();
 
   await stage.evaluate((node, png) => {
-    const bytes = Uint8Array.from(atob(png), (character) =>
-      character.charCodeAt(0),
-    );
+    const bytes = Uint8Array.from(atob(png), (character) => character.charCodeAt(0));
     const transfer = new DataTransfer();
-    transfer.items.add(
-      new File([bytes], "dropped-launch.png", { type: "image/png" }),
-    );
+    transfer.items.add(new File([bytes], "dropped-launch.png", { type: "image/png" }));
     for (const type of ["dragenter", "dragover", "drop"]) {
       node.dispatchEvent(
         new DragEvent(type, {
@@ -136,16 +119,9 @@ test("public Image Editor drops and crops an image with undo, redo, and reload",
   if (!stageBox) throw new Error("Image Editor stage did not render");
   const documentCenter = initialFrame.left + initialFrame.width / 2;
   const documentCenterX = stageBox.x + documentCenter;
-  await page.mouse.move(
-    handleBox.x + handleBox.width / 2,
-    handleBox.y + handleBox.height / 2,
-  );
+  await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2);
   await page.mouse.down();
-  await page.mouse.move(
-    documentCenterX + 3,
-    handleBox.y + handleBox.height / 2,
-    { steps: 6 },
-  );
+  await page.mouse.move(documentCenterX + 3, handleBox.y + handleBox.height / 2, { steps: 6 });
   await page.mouse.up();
   await expect
     .poll(async () => {
@@ -160,16 +136,11 @@ test("public Image Editor drops and crops an image with undo, redo, and reload",
   if (!snappedHandle) throw new Error("Snapped crop handle did not render");
   await page.keyboard.down("Meta");
   const snappedHandleOuterX = snappedHandle.x + snappedHandle.width - 4;
-  await page.mouse.move(
-    snappedHandleOuterX,
-    snappedHandle.y + snappedHandle.height / 2,
-  );
+  await page.mouse.move(snappedHandleOuterX, snappedHandle.y + snappedHandle.height / 2);
   await page.mouse.down();
-  await page.mouse.move(
-    snappedHandleOuterX + 6,
-    snappedHandle.y + snappedHandle.height / 2,
-    { steps: 3 },
-  );
+  await page.mouse.move(snappedHandleOuterX + 6, snappedHandle.y + snappedHandle.height / 2, {
+    steps: 3,
+  });
   await page.mouse.up();
   await page.keyboard.up("Meta");
   await expect
@@ -183,18 +154,14 @@ test("public Image Editor drops and crops an image with undo, redo, and reload",
     .toBeGreaterThan(3);
   await rightHandle.press("Shift+ArrowLeft");
 
-  const frameLeft = await cropFrame.evaluate(
-    (element) => (element as HTMLElement).style.left,
-  );
+  const frameLeft = await cropFrame.evaluate((element) => (element as HTMLElement).style.left);
   await page.getByRole("button", { name: "Image", exact: true }).click();
   await expect(cropFrame).toHaveAttribute("data-mode", "content");
   await page
     .getByRole("button", { name: "Move image within crop frame" })
     .press("Shift+ArrowRight");
   await expect
-    .poll(() =>
-      cropFrame.evaluate((element) => (element as HTMLElement).style.left),
-    )
+    .poll(() => cropFrame.evaluate((element) => (element as HTMLElement).style.left))
     .toBe(frameLeft);
   await page.getByRole("button", { name: "Rotate crop right" }).click();
   await page.getByRole("button", { name: "Flip crop horizontally" }).click();
@@ -207,16 +174,12 @@ test("public Image Editor drops and crops an image with undo, redo, and reload",
   await undo.click();
   await expect(redo).toBeEnabled();
   await redo.click();
-  await expect(
-    page.getByRole("banner").getByText("Saved on this device"),
-  ).toBeVisible();
+  await expect(page.getByRole("banner").getByText("Saved on this device")).toBeVisible();
 
   await page.reload();
   await imageLayer.click();
   await page.getByRole("button", { name: "Crop", exact: true }).last().click();
-  await expect(page.getByRole("spinbutton", { name: "W" })).not.toHaveValue(
-    "100",
-  );
+  await expect(page.getByRole("spinbutton", { name: "W" })).not.toHaveValue("100");
   await desktopTools.getByRole("button", { name: "Crop", exact: true }).click();
   await expect(cropFrame).toHaveCSS("transform", /matrix\(0, 1, -1, 0,/);
 
@@ -228,28 +191,23 @@ test("public Image Editor drops and crops an image with undo, redo, and reload",
 
   await page.keyboard.press("Escape");
   await page.keyboard.press("i");
-  await expect(
-    page.getByTestId("image-editor-eyedropper-options"),
-  ).toBeVisible();
+  await expect(page.getByTestId("image-editor-eyedropper-options")).toBeVisible();
   await page.keyboard.press("ArrowRight");
   await page.keyboard.press("Shift+ArrowDown");
   const magnifier = page.getByTestId("image-editor-eyedropper-magnifier");
   await expect(magnifier).toBeVisible();
   await expect(magnifier.locator(".eyedropper-grid > span")).toHaveCount(81);
   await page.keyboard.press("Enter");
-  await expect(
-    page.getByTestId("image-editor-eyedropper-options"),
-  ).toContainText(/#[0-9A-F]{6} · \d+%/);
-  await page.keyboard.press("Escape");
-  await expect(page.getByTestId("image-editor-eyedropper-options")).toHaveCount(
-    0,
+  await expect(page.getByTestId("image-editor-eyedropper-options")).toContainText(
+    /#[0-9A-F]{6} · \d+%/,
   );
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("image-editor-eyedropper-options")).toHaveCount(0);
 
   await page.keyboard.press("m");
   const selectionSurface = page.getByTestId("image-editor-selection-surface");
   const selectionSurfaceBox = await selectionSurface.boundingBox();
-  if (!selectionSurfaceBox)
-    throw new Error("Pixel selection surface did not render");
+  if (!selectionSurfaceBox) throw new Error("Pixel selection surface did not render");
   await page.mouse.move(
     selectionSurfaceBox.x + selectionSurfaceBox.width * 0.42,
     selectionSurfaceBox.y + selectionSurfaceBox.height * 0.42,
@@ -268,16 +226,10 @@ test("public Image Editor drops and crops an image with undo, redo, and reload",
       if (!(canvas instanceof HTMLCanvasElement)) return -1;
       const context = canvas.getContext("2d", { willReadFrequently: true });
       if (!context) return -1;
-      const pixels = context.getImageData(
-        0,
-        0,
-        canvas.width,
-        canvas.height,
-      ).data;
+      const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
       let minimum = canvas.width;
       for (let index = 3; index < pixels.length; index += 4) {
-        if (pixels[index] > 0)
-          minimum = Math.min(minimum, ((index - 3) / 4) % canvas.width);
+        if (pixels[index] > 0) minimum = Math.min(minimum, ((index - 3) / 4) % canvas.width);
       }
       return minimum;
     });
@@ -292,12 +244,8 @@ test("public Image Editor drops and crops an image with undo, redo, and reload",
   await expect(copiedSelectionLayer).toHaveCount(0);
 
   const selectionOptions = page.getByTestId("image-editor-selection-options");
-  await selectionOptions
-    .getByRole("button", { name: "Cut selected pixels" })
-    .click();
-  await expect(
-    selectionOptions.getByText(/Drag or use arrow keys/),
-  ).toBeVisible();
+  await selectionOptions.getByRole("button", { name: "Cut selected pixels" }).click();
+  await expect(selectionOptions.getByText(/Drag or use arrow keys/)).toBeVisible();
   const originalSelectionX = await selectionX();
   await page.mouse.move(
     selectionSurfaceBox.x + selectionSurfaceBox.width / 2,
@@ -322,9 +270,7 @@ test("public Image Editor drops and crops an image with undo, redo, and reload",
   ).toHaveCount(0);
   await expect(pixelSelection).toHaveAttribute("data-active", "true");
 
-  await selectionOptions
-    .getByRole("button", { name: "Cut selected pixels" })
-    .click();
+  await selectionOptions.getByRole("button", { name: "Cut selected pixels" }).click();
   await page.keyboard.press("Shift+ArrowDown");
   await page.keyboard.press("Enter");
   const movedSelectionLayer = page.getByRole("treeitem", {
@@ -336,9 +282,7 @@ test("public Image Editor drops and crops an image with undo, redo, and reload",
   await expect(movedSelectionLayer).toHaveCount(0);
   await redo.click();
   await expect(movedSelectionLayer).toBeVisible();
-  await expect(
-    page.getByRole("banner").getByText("Saved on this device"),
-  ).toBeVisible();
+  await expect(page.getByRole("banner").getByText("Saved on this device")).toBeVisible();
   await page.reload();
   await expect(movedSelectionLayer).toBeVisible();
 });
@@ -351,9 +295,7 @@ test("public Image Editor isolates invalid files and keeps page-targeted batch i
   await page.getByRole("button", { name: /Instagram square/ }).click();
   const stage = page.getByTestId("image-editor-stage");
   await stage.evaluate((node, png) => {
-    const bytes = Uint8Array.from(atob(png), (character) =>
-      character.charCodeAt(0),
-    );
+    const bytes = Uint8Array.from(atob(png), (character) => character.charCodeAt(0));
     const transfer = new DataTransfer();
     transfer.items.add(new File([bytes], "preview.png", { type: "image/png" }));
     node.dispatchEvent(
@@ -364,13 +306,9 @@ test("public Image Editor isolates invalid files and keeps page-targeted batch i
       }),
     );
   }, tinyPNG.toString("base64"));
-  await expect(
-    page.getByTestId("image-editor-media-drop-target"),
-  ).toBeVisible();
+  await expect(page.getByTestId("image-editor-media-drop-target")).toBeVisible();
   await stage.evaluate((node, png) => {
-    const bytes = Uint8Array.from(atob(png), (character) =>
-      character.charCodeAt(0),
-    );
+    const bytes = Uint8Array.from(atob(png), (character) => character.charCodeAt(0));
     const transfer = new DataTransfer();
     transfer.items.add(new File([bytes], "preview.png", { type: "image/png" }));
     node.dispatchEvent(
@@ -390,9 +328,7 @@ test("public Image Editor isolates invalid files and keeps page-targeted batch i
   await pageOne.click();
 
   await pageTwo.evaluate((node, png) => {
-    const bytes = Uint8Array.from(atob(png), (character) =>
-      character.charCodeAt(0),
-    );
+    const bytes = Uint8Array.from(atob(png), (character) => character.charCodeAt(0));
     const transfer = new DataTransfer();
     transfer.items.add(new File([bytes], "preview.png", { type: "image/png" }));
     node.dispatchEvent(
@@ -406,15 +342,11 @@ test("public Image Editor isolates invalid files and keeps page-targeted batch i
   await expect(pageTwo).toHaveAttribute("data-external-drop", "active");
 
   await pageTwo.evaluate((node, png) => {
-    const bytes = Uint8Array.from(atob(png), (character) =>
-      character.charCodeAt(0),
-    );
+    const bytes = Uint8Array.from(atob(png), (character) => character.charCodeAt(0));
     const transfer = new DataTransfer();
     transfer.items.add(new File([bytes], "first.png", { type: "image/png" }));
     transfer.items.add(new File([bytes], "second.png", { type: "image/png" }));
-    transfer.items.add(
-      new File(["not an image"], "notes.txt", { type: "text/plain" }),
-    );
+    transfer.items.add(new File(["not an image"], "notes.txt", { type: "text/plain" }));
     node.dispatchEvent(
       new DragEvent("drop", {
         bubbles: true,
@@ -443,9 +375,7 @@ test("public Image Editor isolates invalid files and keeps page-targeted batch i
     .click();
   await expect(second).toHaveCount(0);
   await expect(first).toBeVisible();
-  await expect(
-    page.getByRole("banner").getByText("Saved on this device"),
-  ).toBeVisible();
+  await expect(page.getByRole("banner").getByText("Saved on this device")).toBeVisible();
   await page.reload();
   await page.getByRole("button", { name: /Page 2:/ }).click();
   await expect(first).toBeVisible();
@@ -470,17 +400,12 @@ test("public Image Editor round-trips an editable project without overwriting it
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toMatch(/\.openpost-image$/);
   const projectPath = await download.path();
-  if (!projectPath)
-    throw new Error("Editable project download was unavailable");
+  if (!projectPath) throw new Error("Editable project download was unavailable");
 
-  await page
-    .locator('input[type="file"][accept*="openpost-image"]')
-    .setInputFiles(projectPath);
+  await page.locator('input[type="file"][accept*="openpost-image"]').setInputFiles(projectPath);
   await expect(page).not.toHaveURL(sourceURL);
   await expect(page).toHaveURL(/\/image-editor\/local_design_/);
-  await expect(
-    page.getByRole("treeitem", { name: /Rectangle, shape/ }),
-  ).toBeVisible();
+  await expect(page.getByRole("treeitem", { name: /Rectangle, shape/ })).toBeVisible();
 });
 
 test("signed-in project import can cancel and resume without repeating completed work", async ({
@@ -492,13 +417,9 @@ test("signed-in project import can cancel and resume without repeating completed
   await page.getByRole("button", { name: /Instagram square/ }).click();
   const stage = page.getByTestId("image-editor-stage");
   await stage.evaluate((node, png) => {
-    const bytes = Uint8Array.from(atob(png), (character) =>
-      character.charCodeAt(0),
-    );
+    const bytes = Uint8Array.from(atob(png), (character) => character.charCodeAt(0));
     const transfer = new DataTransfer();
-    transfer.items.add(
-      new File([bytes], "portable-source.png", { type: "image/png" }),
-    );
+    transfer.items.add(new File([bytes], "portable-source.png", { type: "image/png" }));
     node.dispatchEvent(
       new DragEvent("drop", {
         bubbles: true,
@@ -509,9 +430,7 @@ test("signed-in project import can cancel and resume without repeating completed
       }),
     );
   }, tinyPNG.toString("base64"));
-  await expect(
-    page.getByRole("treeitem", { name: /portable-source\.png, image/ }),
-  ).toBeVisible();
+  await expect(page.getByRole("treeitem", { name: /portable-source\.png, image/ })).toBeVisible();
   const menus = page.getByRole("menubar", {
     name: "OpenPost Image Editor menus",
   });
@@ -519,19 +438,11 @@ test("signed-in project import can cancel and resume without repeating completed
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("menuitem", { name: "Export editable project" }).click();
   const projectPath = await (await downloadPromise).path();
-  if (!projectPath)
-    throw new Error("Editable project download was unavailable");
+  if (!projectPath) throw new Error("Editable project download was unavailable");
 
   const unique = Date.now().toString(36);
-  const auth = await registerUser(
-    request,
-    `project-resume-${unique}@example.com`,
-  );
-  const workspace = await createWorkspace(
-    request,
-    auth.token,
-    "Image project resume",
-  );
+  const auth = await registerUser(request, `project-resume-${unique}@example.com`);
+  const workspace = await createWorkspace(request, auth.token, "Image project resume");
   await authenticatePage(page, auth.token);
   await page.goto(`/image-editor/new?workspace=${workspace.id}`);
   await page
@@ -549,15 +460,11 @@ test("signed-in project import can cancel and resume without repeating completed
     await new Promise((resolve) => setTimeout(resolve, 10_000));
     await route.abort("timedout").catch(() => undefined);
   });
-  await page
-    .locator('input[type="file"][accept*="openpost-image"]')
-    .setInputFiles(projectPath);
+  await page.locator('input[type="file"][accept*="openpost-image"]').setInputFiles(projectPath);
   await expect(page.getByText(/Importing source 1 of 1/)).toBeVisible();
   await page.getByRole("button", { name: "Cancel" }).click();
   await expect(
-    page
-      .getByRole("alert")
-      .getByText(/Import cancelled.*kept so you can retry/),
+    page.getByRole("alert").getByText(/Import cancelled.*kept so you can retry/),
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
 
@@ -566,9 +473,7 @@ test("signed-in project import can cancel and resume without repeating completed
   await expect(page).toHaveURL(/\/image-editor\/[0-9a-f-]+$/, {
     timeout: 30_000,
   });
-  await expect(
-    page.getByRole("treeitem", { name: /portable-source\.png, image/ }),
-  ).toBeVisible();
+  await expect(page.getByRole("treeitem", { name: /portable-source\.png, image/ })).toBeVisible();
 });
 
 test("revision-conflict reload preserves local work as a separate cloud design", async ({
@@ -577,15 +482,8 @@ test("revision-conflict reload preserves local work as a separate cloud design",
 }) => {
   test.setTimeout(60_000);
   const unique = Date.now().toString(36);
-  const auth = await registerUser(
-    request,
-    `image-conflict-${unique}@example.com`,
-  );
-  const workspace = await createWorkspace(
-    request,
-    auth.token,
-    "Image conflict recovery",
-  );
+  const auth = await registerUser(request, `image-conflict-${unique}@example.com`);
+  const workspace = await createWorkspace(request, auth.token, "Image conflict recovery");
   const headers = { Authorization: `Bearer ${auth.token}` };
   await authenticatePage(page, auth.token);
   await page.goto(`/image-editor/new?workspace=${workspace.id}`);
@@ -600,10 +498,9 @@ test("revision-conflict reload preserves local work as a separate cloud design",
 
   const designID = new URL(page.url()).pathname.split("/").at(-1);
   if (!designID) throw new Error("Conflict test design ID was unavailable");
-  const initialResponse = await request.get(
-    `/api/v1/image-editor/designs/${designID}`,
-    { headers },
-  );
+  const initialResponse = await request.get(`/api/v1/image-editor/designs/${designID}`, {
+    headers,
+  });
   expect(initialResponse.ok()).toBeTruthy();
   const initial = await initialResponse.json();
   const initialLayerCount = initial.document.pages[0].layers.length;
@@ -612,35 +509,27 @@ test("revision-conflict reload preserves local work as a separate cloud design",
   const browserSaveGate = new Promise<void>((resolve) => {
     releaseBrowserSave = resolve;
   });
-  await page.route(
-    `**/api/v1/image-editor/designs/${designID}`,
-    async (route) => {
-      if (route.request().method() === "PATCH") await browserSaveGate;
-      await route.continue();
-    },
-  );
+  await page.route(`**/api/v1/image-editor/designs/${designID}`, async (route) => {
+    if (route.request().method() === "PATCH") await browserSaveGate;
+    await route.continue();
+  });
 
   await page
     .getByRole("navigation", { name: "OpenPost Image Editor tools" })
     .getByRole("button", { name: "Shape", exact: true })
     .click();
-  await expect(
-    page.getByRole("treeitem", { name: /Rectangle, shape/ }),
-  ).toBeVisible();
+  await expect(page.getByRole("treeitem", { name: /Rectangle, shape/ })).toBeVisible();
 
   const serverDocument = structuredClone(initial.document);
   serverDocument.title = "Server campaign";
-  const serverUpdate = await request.patch(
-    `/api/v1/image-editor/designs/${designID}`,
-    {
-      headers,
-      data: {
-        expected_revision: initial.revision,
-        document: serverDocument,
-        recovery_reason: "idle",
-      },
+  const serverUpdate = await request.patch(`/api/v1/image-editor/designs/${designID}`, {
+    headers,
+    data: {
+      expected_revision: initial.revision,
+      document: serverDocument,
+      recovery_reason: "idle",
     },
-  );
+  });
   expect(serverUpdate.ok()).toBeTruthy();
   releaseBrowserSave();
 
@@ -653,9 +542,7 @@ test("revision-conflict reload preserves local work as a separate cloud design",
   );
   await conflict.getByRole("button", { name: "Reload server version" }).click();
   await expect(conflict).toHaveCount(0);
-  await expect(page.getByRole("textbox", { name: "Design title" })).toHaveValue(
-    "Server campaign",
-  );
+  await expect(page.getByRole("textbox", { name: "Design title" })).toHaveValue("Server campaign");
 
   const designsResponse = await request.get(
     `/api/v1/image-editor/designs?workspace_id=${workspace.id}&limit=100&offset=0`,
@@ -668,15 +555,12 @@ test("revision-conflict reload preserves local work as a separate cloud design",
       design.id !== designID && design.title === "Server campaign copy",
   );
   expect(preserved).toBeTruthy();
-  const preservedResponse = await request.get(
-    `/api/v1/image-editor/designs/${preserved.id}`,
-    { headers },
-  );
+  const preservedResponse = await request.get(`/api/v1/image-editor/designs/${preserved.id}`, {
+    headers,
+  });
   expect(preservedResponse.ok()).toBeTruthy();
   const preservedDesign = await preservedResponse.json();
-  expect(preservedDesign.document.pages[0].layers).toHaveLength(
-    initialLayerCount + 1,
-  );
+  expect(preservedDesign.document.pages[0].layers).toHaveLength(initialLayerCount + 1);
 });
 
 test("version history previews lazily and restores both directions with an exact restore point", async ({
@@ -685,15 +569,8 @@ test("version history previews lazily and restores both directions with an exact
 }) => {
   test.setTimeout(90_000);
   const unique = Date.now().toString(36);
-  const auth = await registerUser(
-    request,
-    `image-versions-${unique}@example.com`,
-  );
-  const workspace = await createWorkspace(
-    request,
-    auth.token,
-    "Image version history",
-  );
+  const auth = await registerUser(request, `image-versions-${unique}@example.com`);
+  const workspace = await createWorkspace(request, auth.token, "Image version history");
   await authenticatePage(page, auth.token);
   await page.goto(`/image-editor/new?workspace=${workspace.id}`);
   await page
@@ -713,9 +590,7 @@ test("version history previews lazily and restores both directions with an exact
   await expect(history).toBeVisible();
   await history.getByRole("button", { name: "Create checkpoint" }).click();
   const checkpoint = page.getByRole("dialog", { name: "Create checkpoint" });
-  await checkpoint
-    .getByRole("textbox", { name: "Checkpoint name" })
-    .fill("Approved");
+  await checkpoint.getByRole("textbox", { name: "Checkpoint name" }).fill("Approved");
   await checkpoint.getByRole("button", { name: "Create checkpoint" }).click();
   await expect(history).toBeVisible();
   await history
@@ -741,9 +616,7 @@ test("version history previews lazily and restores both directions with an exact
   });
   await openImageVersionHistory(page);
   await expect(
-    history.getByText(
-      "Select a version to preview it and inspect its changes.",
-    ),
+    history.getByText("Select a version to preview it and inspect its changes."),
   ).toBeVisible();
   expect(previewRequests).toBe(0);
   const approvedRevision = history.getByRole("button", { name: /Approved/ });
@@ -754,16 +627,12 @@ test("version history previews lazily and restores both directions with an exact
   await history.getByRole("button", { name: "Restore this version" }).click();
 
   const confirm = page.getByRole("dialog", { name: "Restore this version?" });
-  await expect(confirm).toContainText(
-    "exact current design as a restore point",
-  );
+  await expect(confirm).toContainText("exact current design as a restore point");
   await confirm.getByRole("button", { name: "Restore version" }).click();
   await expect(title).toHaveValue("Approved image version");
 
   await openImageVersionHistory(page);
-  const restorePoint = history
-    .getByRole("button", { name: /Before restore/ })
-    .first();
+  const restorePoint = history.getByRole("button", { name: /Before restore/ }).first();
   await expect(restorePoint).toBeVisible();
   await restorePoint.click();
   await expect(history.getByText("Title changed")).toBeVisible();
@@ -778,15 +647,8 @@ test("older named image versions load on demand and reorder-only previews cannot
 }) => {
   test.setTimeout(120_000);
   const unique = Date.now().toString(36);
-  const auth = await registerUser(
-    request,
-    `image-reorder-${unique}@example.com`,
-  );
-  const workspace = await createWorkspace(
-    request,
-    auth.token,
-    "Image reorder history",
-  );
+  const auth = await registerUser(request, `image-reorder-${unique}@example.com`);
+  const workspace = await createWorkspace(request, auth.token, "Image reorder history");
   const headers = {
     Authorization: `Bearer ${auth.token}`,
     "Content-Type": "application/json",
@@ -815,36 +677,30 @@ test("older named image versions load on demand and reorder-only previews cannot
   expect(originalLayerIDs.length).toBeGreaterThan(1);
 
   for (let index = 0; index < 55; index += 1) {
-    const checkpoint = await request.post(
-      `/api/v1/image-editor/designs/${designID}/revisions`,
-      {
-        headers,
-        data: {
-          name:
-            index === 0
-              ? "Original layer order"
-              : `Later named version ${String(index).padStart(2, "0")}`,
-          expected_revision: original.revision,
-        },
+    const checkpoint = await request.post(`/api/v1/image-editor/designs/${designID}/revisions`, {
+      headers,
+      data: {
+        name:
+          index === 0
+            ? "Original layer order"
+            : `Later named version ${String(index).padStart(2, "0")}`,
+        expected_revision: original.revision,
       },
-    );
+    });
     expect(checkpoint.ok()).toBeTruthy();
   }
 
   const reorderedDocument = structuredClone(original.document);
   reorderedDocument.pages[0].layers.reverse();
-  const reordered = await request.patch(
-    `/api/v1/image-editor/designs/${designID}`,
-    {
-      headers,
-      data: {
-        expected_revision: original.revision,
-        document: reorderedDocument,
-        cover_preview_media_id: original.cover_preview_media_id ?? "",
-        recovery_reason: "idle",
-      },
+  const reordered = await request.patch(`/api/v1/image-editor/designs/${designID}`, {
+    headers,
+    data: {
+      expected_revision: original.revision,
+      document: reorderedDocument,
+      cover_preview_media_id: original.cover_preview_media_id ?? "",
+      recovery_reason: "idle",
     },
-  );
+  });
   expect(reordered.ok()).toBeTruthy();
   await page.reload();
 
@@ -853,26 +709,21 @@ test("older named image versions load on demand and reorder-only previews cannot
   const started = new Promise<void>((resolve) => (previewStarted = resolve));
   const release = new Promise<void>((resolve) => (releasePreview = resolve));
   let delayNextPreview = true;
-  await page.route(
-    `**/api/v1/image-editor/designs/${designID}/revisions/*`,
-    async (route) => {
-      if (route.request().method() !== "GET" || !delayNextPreview) {
-        await route.continue();
-        return;
-      }
-      delayNextPreview = false;
-      const response = await route.fetch();
-      previewStarted();
-      await release;
-      await route.fulfill({ response }).catch(() => undefined);
-    },
-  );
+  await page.route(`**/api/v1/image-editor/designs/${designID}/revisions/*`, async (route) => {
+    if (route.request().method() !== "GET" || !delayNextPreview) {
+      await route.continue();
+      return;
+    }
+    delayNextPreview = false;
+    const response = await route.fetch();
+    previewStarted();
+    await release;
+    await route.fulfill({ response }).catch(() => undefined);
+  });
 
   await openImageVersionHistory(page);
   const history = page.getByRole("dialog", { name: "Version history" });
-  await expect(
-    history.getByRole("button", { name: "Original layer order" }),
-  ).toHaveCount(0);
+  await expect(history.getByRole("button", { name: "Original layer order" })).toHaveCount(0);
   await history.getByRole("button", { name: "Load more" }).click();
   const originalVersion = history.getByRole("button", {
     name: "Original layer order",
@@ -888,16 +739,12 @@ test("older named image versions load on demand and reorder-only previews cannot
   await openImageVersionHistory(page);
   releasePreview();
   await expect(
-    history.getByText(
-      "Select a version to preview it and inspect its changes.",
-    ),
+    history.getByText("Select a version to preview it and inspect its changes."),
   ).toBeVisible();
   await history.getByRole("button", { name: "Load more" }).click();
   await history.getByRole("button", { name: "Original layer order" }).click();
   await expect(history.getByText(/Layers changed: [2-9]/)).toBeVisible();
-  await expect(
-    history.getByRole("button", { name: "Restore this version" }),
-  ).toBeEnabled();
+  await expect(history.getByRole("button", { name: "Restore this version" })).toBeEnabled();
   await history.getByRole("button", { name: "Restore this version" }).click();
   await page
     .getByRole("dialog", { name: "Restore this version?" })
@@ -905,15 +752,10 @@ test("older named image versions load on demand and reorder-only previews cannot
     .click();
   await expect(history).not.toBeVisible();
 
-  const restored = await request.get(
-    `/api/v1/image-editor/designs/${designID}`,
-    { headers },
-  );
+  const restored = await request.get(`/api/v1/image-editor/designs/${designID}`, { headers });
   expect(restored.ok()).toBeTruthy();
   expect(
-    (await restored.json()).document.pages[0].layers.map(
-      (layer: { id: string }) => layer.id,
-    ),
+    (await restored.json()).document.pages[0].layers.map((layer: { id: string }) => layer.id),
   ).toEqual(originalLayerIDs);
 });
 
@@ -932,27 +774,20 @@ test("public Image Editor keeps zoom, touch, stylus, and Portuguese chrome usabl
     },
   ]);
   await page.goto("/image-editor");
-  await page
-    .getByRole("button")
-    .filter({ hasText: "1080 × 1080" })
-    .first()
-    .click();
+  await page.getByRole("button").filter({ hasText: "1080 × 1080" }).first().click();
   await page.evaluate(() => {
     document.documentElement.style.zoom = "2";
   });
   await expect(page.getByTestId("image-editor-shell")).toBeVisible();
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth,
-    ),
-  ).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
 
   const canvas = page.getByRole("application", { name: "Tela do design" });
   const stage = page.getByTestId("image-editor-stage");
   const beforePinch = await stage.boundingBox();
   const canvasBox = await canvas.boundingBox();
-  if (!beforePinch || !canvasBox)
-    throw new Error("Canvas bounds were unavailable");
+  if (!beforePinch || !canvasBox) throw new Error("Canvas bounds were unavailable");
   const center = {
     x: canvasBox.x + canvasBox.width / 2,
     y: canvasBox.y + canvasBox.height / 2,
@@ -1060,9 +895,7 @@ test("public Image Editor keeps zoom, touch, stylus, and Portuguese chrome usabl
   await expect(page.getByRole("button", { name: "Anular" })).toBeEnabled();
 });
 
-test("public Image Editor completes create-to-export with keyboard commands", async ({
-  page,
-}) => {
+test("public Image Editor completes create-to-export with keyboard commands", async ({ page }) => {
   test.setTimeout(60_000);
   await page.goto("/image-editor");
   const preset = page.getByRole("button", { name: /Instagram square/ });
@@ -1070,17 +903,14 @@ test("public Image Editor completes create-to-export with keyboard commands", as
   await page.keyboard.press("Enter");
   await expect(page.getByTestId("image-editor-shell")).toBeVisible();
   await page.keyboard.press("u");
-  await expect(
-    page.getByRole("treeitem", { name: /Rectangle, shape/ }),
-  ).toBeVisible();
+  await expect(page.getByRole("treeitem", { name: /Rectangle, shape/ })).toBeVisible();
   await page.keyboard.press("Control+Shift+e");
   const exportDialog = page.getByRole("dialog", { name: "Export design" });
   await expect(exportDialog).toBeVisible();
   const downloadButton = exportDialog.getByRole("button", { name: "Download" });
   for (
     let index = 0;
-    index < 12 &&
-    !(await downloadButton.evaluate((node) => node === document.activeElement));
+    index < 12 && !(await downloadButton.evaluate((node) => node === document.activeElement));
     index++
   ) {
     await page.keyboard.press("Tab");
@@ -1098,22 +928,16 @@ test("public Image Editor keeps primary actions usable at 320 px and in short la
   await page.goto("/image-editor");
   await page.getByRole("button", { name: /Instagram square/ }).click();
   await expect(page.getByRole("button", { name: "Export" })).toBeVisible();
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth,
-    ),
-  ).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
 
   await page.setViewportSize({ width: 667, height: 320 });
-  await expect(
-    page.getByRole("application", { name: "Design canvas" }),
-  ).toBeVisible();
+  await expect(page.getByRole("application", { name: "Design canvas" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Export" })).toBeVisible();
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth,
-    ),
-  ).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
 });
 
 test("public OpenPost Image Editor creates and restores a local design without authentication", async ({
@@ -1127,10 +951,7 @@ test("public OpenPost Image Editor creates and restores a local design without a
     if (message.type() === "error") browserErrors.push(message.text());
   });
   page.on("request", (request) => {
-    if (
-      request.method() !== "GET" &&
-      request.url().includes("/api/v1/image-editor/designs")
-    ) {
+    if (request.method() !== "GET" && request.url().includes("/api/v1/image-editor/designs")) {
       workspaceWrites.push(`${request.method()} ${request.url()}`);
     }
   });
@@ -1144,29 +965,20 @@ test("public OpenPost Image Editor creates and restores a local design without a
     });
     window.addEventListener("openpost:public-image-editor-event", (event) => {
       events.push((event as CustomEvent<{ name: string }>).detail.name);
-      sessionStorage.setItem(
-        "public-image-editor-test-events",
-        JSON.stringify(events),
-      );
+      sessionStorage.setItem("public-image-editor-test-events", JSON.stringify(events));
     });
   });
 
   await page.goto("/image-editor");
-  await expect(
-    page.getByRole("heading", { name: "Free social media image editor" }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Free social media image editor" })).toBeVisible();
   await expect(page.getByText("No account or watermark.")).toBeVisible();
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth,
-    ),
-  ).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
   await page.getByRole("button", { name: /Instagram square/ }).click();
 
   await expect(page).toHaveURL(/\/image-editor\/local_design_/);
-  await expect(
-    page.getByRole("application", { name: "Design canvas" }),
-  ).toBeVisible();
+  await expect(page.getByRole("application", { name: "Design canvas" })).toBeVisible();
   const designCanvas = page.getByRole("application", {
     name: "Design canvas",
   });
@@ -1176,9 +988,7 @@ test("public OpenPost Image Editor creates and restores a local design without a
     stage.boundingBox(),
   ]);
   if (!canvasBox || !stageBeforeZoom) {
-    throw new Error(
-      "Public OpenPost Image Editor canvas did not produce measurable bounds",
-    );
+    throw new Error("Public OpenPost Image Editor canvas did not produce measurable bounds");
   }
   const zoomAnchor = {
     x: stageBeforeZoom.x + stageBeforeZoom.width * 0.3,
@@ -1197,9 +1007,7 @@ test("public OpenPost Image Editor creates and restores a local design without a
     .toBeGreaterThan(stageBeforeZoom.width);
   const stageAfterZoom = await stage.boundingBox();
   if (!stageAfterZoom) {
-    throw new Error(
-      "Public OpenPost Image Editor canvas disappeared after zooming",
-    );
+    throw new Error("Public OpenPost Image Editor canvas disappeared after zooming");
   }
   expect(stageAfterZoom.width).toBeGreaterThan(stageBeforeZoom.width);
   expect(stageAfterZoom.width / stageBeforeZoom.width).toBeLessThan(1.08);
@@ -1215,17 +1023,12 @@ test("public OpenPost Image Editor creates and restores a local design without a
   const zoomControl = page.getByRole("button", { name: /^Zoom \d+%$/ });
   const zoomLabelBefore = await zoomControl.getAttribute("aria-label");
   await page.getByRole("button", { name: "Zoom in" }).click();
-  await expect(zoomControl).not.toHaveAttribute(
-    "aria-label",
-    zoomLabelBefore ?? "",
-  );
+  await expect(zoomControl).not.toHaveAttribute("aria-label", zoomLabelBefore ?? "");
 
   await zoomControl.click();
   const fittedStage = await stage.boundingBox();
   if (!fittedStage) {
-    throw new Error(
-      "Public OpenPost Image Editor canvas did not fit on demand",
-    );
+    throw new Error("Public OpenPost Image Editor canvas did not fit on demand");
   }
   expect(fittedStage.width).toBeLessThanOrEqual(canvasBox.width);
   expect(fittedStage.height).toBeLessThanOrEqual(canvasBox.height);
@@ -1247,9 +1050,7 @@ test("public OpenPost Image Editor creates and restores a local design without a
   await zoomControl.click();
 
   await page.keyboard.press("t");
-  await expect(
-    page.getByRole("treeitem", { name: /New text, text/ }),
-  ).toBeVisible();
+  await expect(page.getByRole("treeitem", { name: /New text, text/ })).toBeVisible();
   await expect(page.locator("textarea").last()).toHaveValue("New text");
   await page.keyboard.press("Escape");
 
@@ -1258,9 +1059,7 @@ test("public OpenPost Image Editor creates and restores a local design without a
   });
   await expect(imageEditorMenus).toBeVisible();
   await imageEditorMenus.getByText("File", { exact: true }).click();
-  await expect(
-    page.getByRole("menuitem", { name: /Save.*(?:Ctrl|⌘) S/ }),
-  ).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: /Save.*(?:Ctrl|⌘) S/ })).toBeVisible();
   await page.keyboard.press("Escape");
 
   await page.getByRole("button", { name: "Shape", exact: true }).click({
@@ -1269,8 +1068,7 @@ test("public OpenPost Image Editor creates and restores a local design without a
   const shapeMenu = page.locator("[data-context-menu-content]");
   await expect(shapeMenu.getByText("Rounded", { exact: true })).toBeVisible();
   const shapeMenuBox = await shapeMenu.boundingBox();
-  if (!shapeMenuBox)
-    throw new Error("OpenPost Image Editor shape menu did not render");
+  if (!shapeMenuBox) throw new Error("OpenPost Image Editor shape menu did not render");
   expect(shapeMenuBox.width).toBeLessThanOrEqual(192);
   expect(shapeMenuBox.height).toBeLessThanOrEqual(152);
   await page.keyboard.press("Escape");
@@ -1296,16 +1094,12 @@ test("public OpenPost Image Editor creates and restores a local design without a
   await page.mouse.move(objectSelectionEnd.x, objectSelectionEnd.y, {
     steps: 8,
   });
-  await expect(
-    page.getByTestId("image-editor-object-selection-outline"),
-  ).toBeVisible();
+  await expect(page.getByTestId("image-editor-object-selection-outline")).toBeVisible();
   await page.mouse.up();
   await expect(rectangleLayer).toHaveAttribute("aria-selected", "true");
 
   await page.keyboard.press("m");
-  await expect(
-    page.getByRole("button", { name: "Rectangle select", pressed: true }),
-  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Rectangle select", pressed: true })).toBeVisible();
   const outsideSelectionStart = {
     x: (canvasBox.x + fittedStage.x) / 2,
     y: fittedStage.y + fittedStage.height * 0.25,
@@ -1315,18 +1109,17 @@ test("public OpenPost Image Editor creates and restores a local design without a
     y: fittedStage.y + fittedStage.height * 0.75,
   };
   expect(outsideSelectionStart.x).toBeLessThan(fittedStage.x);
-  expect(outsideSelectionEnd.x).toBeGreaterThan(
-    fittedStage.x + fittedStage.width,
-  );
+  expect(outsideSelectionEnd.x).toBeGreaterThan(fittedStage.x + fittedStage.width);
   await page.mouse.move(outsideSelectionStart.x, outsideSelectionStart.y);
   await page.mouse.down();
   await page.mouse.move(outsideSelectionEnd.x, outsideSelectionEnd.y, {
     steps: 8,
   });
   await page.mouse.up();
-  await expect(
-    page.getByTestId("image-editor-pixel-selection"),
-  ).toHaveAttribute("data-active", "true");
+  await expect(page.getByTestId("image-editor-pixel-selection")).toHaveAttribute(
+    "data-active",
+    "true",
+  );
   await page
     .getByTestId("image-editor-selection-options")
     .getByRole("button", { name: "Deselect" })
@@ -1344,15 +1137,11 @@ test("public OpenPost Image Editor creates and restores a local design without a
   await expect(layerName).toBeFocused();
   await layerName.fill("Sketches");
   await layerName.press("Enter");
-  await expect(
-    layersTree.getByRole("treeitem", { name: /Sketches, paint/ }),
-  ).toBeVisible();
+  await expect(layersTree.getByRole("treeitem", { name: /Sketches, paint/ })).toBeVisible();
 
   const title = page.getByRole("textbox", { name: "Design title" });
   await title.fill("Local launch design");
-  await expect(
-    page.getByRole("banner").getByText("Saved on this device"),
-  ).toBeVisible();
+  await expect(page.getByRole("banner").getByText("Saved on this device")).toBeVisible();
 
   await page.reload();
   await expect(title).toHaveValue("Local launch design");
@@ -1364,39 +1153,30 @@ test("public OpenPost Image Editor creates and restores a local design without a
   await expect(title).toHaveValue("Latest conversion edit");
 
   await page.getByRole("button", { name: "Export" }).click();
-  await expect(
-    page.getByRole("heading", { name: "Export design" }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Export design" })).toBeVisible();
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download" }).click();
   await download;
   await expect(
     page.getByLabel("Notifications alt+T").getByText("Export downloaded."),
   ).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Export complete" }),
-  ).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Export complete" })).toHaveCount(0);
 
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.getByRole("button", { name: "Export" })).toBeVisible();
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth,
-    ),
-  ).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
 
   const trackedEvents = await page.evaluate(
     () =>
-      (window as Window & { __publicImageEditorEvents?: string[] })
-        .__publicImageEditorEvents ?? [],
+      (window as Window & { __publicImageEditorEvents?: string[] }).__publicImageEditorEvents ?? [],
   );
   expect(trackedEvents).toContain("image_editor_design_started");
   expect(trackedEvents).toContain("image_editor_meaningful_edit");
   expect(trackedEvents).toContain("image_editor_export_completed");
   expect(workspaceWrites).toEqual([]);
-  expect(
-    browserErrors.filter((message) => !message.includes("401 (Unauthorized)")),
-  ).toEqual([]);
+  expect(browserErrors.filter((message) => !message.includes("401 (Unauthorized)"))).toEqual([]);
 });
 
 test("public OpenPost Image Editor imports attributed stock photos into durable local media", async ({
@@ -1486,13 +1266,9 @@ test("public OpenPost Image Editor imports attributed stock photos into durable 
   await expect(page).toHaveURL(/\/image-editor\/local_design_/);
   await page.getByRole("button", { name: "Browse stock" }).click();
   await expect(
-    page.getByText(
-      "Search a configured provider to find photos for your design.",
-    ),
+    page.getByText("Search a configured provider to find photos for your design."),
   ).toBeVisible();
-  await page
-    .getByRole("textbox", { name: "Search stock photos and videos" })
-    .fill("desk");
+  await page.getByRole("textbox", { name: "Search stock photos and videos" }).fill("desk");
   await page.getByRole("button", { name: "Search", exact: true }).click();
   await expect(page.getByText("By OpenPost Test")).toBeVisible();
   await page.getByRole("button", { name: "Use this item" }).click();
@@ -1504,15 +1280,11 @@ test("public OpenPost Image Editor imports attributed stock photos into durable 
   await expect(
     page.getByText("pexels-image-editor-photo-1.jpg", { exact: true }).first(),
   ).toBeVisible();
-  await expect(
-    page.getByRole("banner").getByText("Saved on this device"),
-  ).toBeVisible();
+  await expect(page.getByRole("banner").getByText("Saved on this device")).toBeVisible();
 
   await page.reload();
   await expect(stockLayer).toBeVisible();
-  expect(
-    browserErrors.filter((message) => !message.includes("401 (Unauthorized)")),
-  ).toEqual([]);
+  expect(browserErrors.filter((message) => !message.includes("401 (Unauthorized)"))).toEqual([]);
 });
 
 test("OpenPost Image Editor creates from an original template, adapts to mobile, and exports to Media", async ({
@@ -1535,95 +1307,58 @@ test("OpenPost Image Editor creates from an original template, adapts to mobile,
   const unique = Date.now().toString(36);
   const email = `image-editor-${unique}@example.com`;
   const auth = await registerUser(request, email);
-  const workspace = await createWorkspace(
-    request,
-    auth.token,
-    "OpenPost Image Editor E2E",
-  );
+  const workspace = await createWorkspace(request, auth.token, "OpenPost Image Editor E2E");
 
   await authenticatePage(page, auth.token);
   await page.goto(`/image-editor/new?workspace=${workspace.id}`);
 
-  await expect(
-    page.getByRole("heading", { name: "Choose a format" }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("region", { name: "Starter templates" }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Choose a format" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Starter templates" })).toBeVisible();
   const starterTemplates = page.getByRole("region", {
     name: "Starter templates",
   });
   await expect(starterTemplates.getByRole("button")).toHaveCount(15);
-  await expect(
-    starterTemplates.getByRole("button", { name: /Quiet quote/ }),
-  ).toBeVisible();
-  await expect(
-    starterTemplates.getByRole("button", { name: /YouTube list/ }),
-  ).toBeVisible();
+  await expect(starterTemplates.getByRole("button", { name: /Quiet quote/ })).toBeVisible();
+  await expect(starterTemplates.getByRole("button", { name: /YouTube list/ })).toBeVisible();
 
   const quickAnnouncementTemplate = starterTemplates.getByRole("button", {
     name: /Quick announcement/,
   });
   const templatePreviewCanvas = quickAnnouncementTemplate.locator("canvas");
   await expect(templatePreviewCanvas).toBeVisible();
-  await expect
-    .poll(() => canvasPixelGrid(templatePreviewCanvas))
-    .not.toHaveLength(0);
+  await expect.poll(() => canvasPixelGrid(templatePreviewCanvas)).not.toHaveLength(0);
   const templatePixels = await canvasPixelGrid(templatePreviewCanvas);
 
   await quickAnnouncementTemplate.click();
 
   await expect(page).toHaveURL(/\/image-editor\/[0-9a-f-]+$/);
-  await expect(
-    page.getByRole("application", { name: "Design canvas" }),
-  ).toBeVisible();
-  const liveArtworkCanvas = page
-    .getByTestId("image-editor-stage")
-    .locator("canvas.lower-canvas");
+  await expect(page.getByRole("application", { name: "Design canvas" })).toBeVisible();
+  const liveArtworkCanvas = page.getByTestId("image-editor-stage").locator("canvas.lower-canvas");
   await expect(liveArtworkCanvas).toBeVisible();
-  await expect
-    .poll(() => canvasPixelGrid(liveArtworkCanvas))
-    .not.toHaveLength(0);
+  await expect.poll(() => canvasPixelGrid(liveArtworkCanvas)).not.toHaveLength(0);
   expect(
-    meanPixelDifference(
-      templatePixels,
-      await canvasPixelGrid(liveArtworkCanvas),
-    ),
+    meanPixelDifference(templatePixels, await canvasPixelGrid(liveArtworkCanvas)),
   ).toBeLessThan(12);
-  await expect(
-    page.getByRole("treeitem", { name: /A clear update, text/ }),
-  ).toBeVisible();
-  await expect(
-    page.getByText("Upload files to build your media library."),
-  ).toBeVisible();
+  await expect(page.getByRole("treeitem", { name: /A clear update, text/ })).toBeVisible();
+  await expect(page.getByText("Upload files to build your media library.")).toBeVisible();
 
   await page.getByRole("button", { name: "Upload or camera" }).click();
   const mediaSourceDialog = page.getByRole("dialog", {
     name: "Add an image",
   });
   await expect(mediaSourceDialog).toBeVisible();
-  await expect(
-    mediaSourceDialog.getByRole("tab", { name: "Device", exact: true }),
-  ).toBeVisible();
-  await expect(
-    mediaSourceDialog.getByRole("tab", { name: "Camera", exact: true }),
-  ).toBeVisible();
-  await expect(
-    mediaSourceDialog.getByRole("tab", { name: "Browse stock" }),
-  ).toBeVisible();
+  await expect(mediaSourceDialog.getByRole("tab", { name: "Device", exact: true })).toBeVisible();
+  await expect(mediaSourceDialog.getByRole("tab", { name: "Camera", exact: true })).toBeVisible();
+  await expect(mediaSourceDialog.getByRole("tab", { name: "Browse stock" })).toBeVisible();
   await mediaSourceDialog.locator('input[type="file"]').setInputFiles({
     name: "picker-library.png",
     mimeType: "image/png",
     buffer: tinyPNG,
   });
   await expect(mediaSourceDialog.locator('img[src^="blob:"]')).toHaveCount(1);
-  await mediaSourceDialog
-    .getByRole("button", { name: "Upload 1 file", exact: true })
-    .click();
+  await mediaSourceDialog.getByRole("button", { name: "Upload 1 file", exact: true }).click();
   await expect(mediaSourceDialog).toHaveCount(0, { timeout: 15_000 });
-  await expect(
-    page.getByRole("treeitem", { name: /picker-library\.png, image/ }),
-  ).toBeVisible();
+  await expect(page.getByRole("treeitem", { name: /picker-library\.png, image/ })).toBeVisible();
 
   await page.getByRole("button", { name: "Upload or camera" }).click();
   const reopenedPicker = page.getByRole("dialog", { name: "Add an image" });
@@ -1633,9 +1368,7 @@ test("OpenPost Image Editor creates from an original template, adapts to mobile,
   ).toBeVisible();
   await reopenedPicker.getByRole("button", { name: "Cancel" }).click();
   await page.keyboard.press("Delete");
-  await expect(
-    page.getByRole("treeitem", { name: /picker-library\.png, image/ }),
-  ).toHaveCount(0);
+  await expect(page.getByRole("treeitem", { name: /picker-library\.png, image/ })).toHaveCount(0);
 
   const designCanvas = page.getByRole("application", {
     name: "Design canvas",
@@ -1646,27 +1379,22 @@ test("OpenPost Image Editor creates from an original template, adapts to mobile,
     stage.boundingBox(),
   ]);
   if (!canvasBox || !stageBox) {
-    throw new Error(
-      "OpenPost Image Editor canvas did not produce measurable bounds",
-    );
+    throw new Error("OpenPost Image Editor canvas did not produce measurable bounds");
   }
 
   await page.getByRole("treeitem", { name: /A clear update, text/ }).click();
-  await expect(
-    page.getByRole("treeitem", { name: /A clear update, text/ }),
-  ).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("treeitem", { name: /A clear update, text/ })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
   const propertiesLayerName = page.getByRole("textbox", {
     name: "Layer name",
   });
   await propertiesLayerName.fill("A clear update draft");
-  await expect(
-    page.getByRole("treeitem", { name: /A clear update draft, text/ }),
-  ).toBeVisible();
+  await expect(page.getByRole("treeitem", { name: /A clear update draft, text/ })).toBeVisible();
   await propertiesLayerName.fill("A clear update");
   await propertiesLayerName.press("Enter");
-  await expect(
-    page.getByRole("treeitem", { name: /A clear update, text/ }),
-  ).toBeVisible();
+  await expect(page.getByRole("treeitem", { name: /A clear update, text/ })).toBeVisible();
   const fontFamily = page.getByRole("button", { name: "Font family" });
   await fontFamily.click();
   for (const family of [
@@ -1694,13 +1422,9 @@ test("OpenPost Image Editor creates from an original template, adapts to mobile,
   });
   await page.mouse.up();
   await page.keyboard.up("Alt");
-  await expect(
-    page.getByRole("treeitem", { name: /A clear update copy, text/ }),
-  ).toBeVisible();
+  await expect(page.getByRole("treeitem", { name: /A clear update copy, text/ })).toBeVisible();
   await page.keyboard.press("Control+z");
-  await expect(
-    page.getByRole("treeitem", { name: /A clear update copy, text/ }),
-  ).toHaveCount(0);
+  await expect(page.getByRole("treeitem", { name: /A clear update copy, text/ })).toHaveCount(0);
 
   await page.getByRole("treeitem", { name: /A clear update, text/ }).click();
   await page.mouse.click(canvasBox.x + 8, canvasBox.y + canvasBox.height / 2);
@@ -1708,18 +1432,13 @@ test("OpenPost Image Editor creates from an original template, adapts to mobile,
 
   const stagePosition = () =>
     stage.evaluate(
-      (element) =>
-        (element.parentElement as HTMLElement | null)?.style.transform ?? "",
+      (element) => (element.parentElement as HTMLElement | null)?.style.transform ?? "",
     );
   const panBefore = await stagePosition();
   await page.keyboard.down("Space");
   await page.mouse.move(canvasBox.x + 12, canvasBox.y + canvasBox.height / 2);
   await page.mouse.down();
-  await page.mouse.move(
-    canvasBox.x + 72,
-    canvasBox.y + canvasBox.height / 2 + 36,
-    { steps: 5 },
-  );
+  await page.mouse.move(canvasBox.x + 72, canvasBox.y + canvasBox.height / 2 + 36, { steps: 5 });
   await page.mouse.up();
   await page.keyboard.up("Space");
   await expect.poll(stagePosition).not.toBe(panBefore);
@@ -1729,21 +1448,15 @@ test("OpenPost Image Editor creates from an original template, adapts to mobile,
   const curveSelect = page.getByRole("button", { name: "Text curve" });
   await curveSelect.click();
   await page.getByRole("option", { name: "Circle", exact: true }).click();
-  await expect(
-    page.getByRole("spinbutton", { name: "H", exact: true }),
-  ).toHaveValue("886");
+  await expect(page.getByRole("spinbutton", { name: "H", exact: true })).toHaveValue("886");
   await curveSelect.click();
   await page.getByRole("option", { name: "Ellipse", exact: true }).click();
-  await expect(
-    page.getByRole("spinbutton", { name: "H", exact: true }),
-  ).toHaveValue("487");
+  await expect(page.getByRole("spinbutton", { name: "H", exact: true })).toHaveValue("487");
   await curveSelect.click();
   await page.getByRole("option", { name: "Wave", exact: true }).click();
   await page.getByRole("button", { name: /^Effects(?: \d+ active)?$/ }).click();
   await page.getByRole("button", { name: "Add drop shadow" }).click();
-  await expect(
-    page.getByRole("button", { name: "Remove drop shadow" }),
-  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Remove drop shadow" })).toBeVisible();
   const textSaved = page.waitForResponse(
     (response) =>
       response.request().method() === "PATCH" &&
@@ -1758,70 +1471,43 @@ test("OpenPost Image Editor creates from an original template, adapts to mobile,
   await page.getByRole("button", { name: "Mask" }).click();
   await page.getByRole("option", { name: "Diamond", exact: true }).click();
   await page.getByRole("button", { name: "Add border" }).click();
-  await expect(
-    page.getByRole("button", { name: "Remove border" }),
-  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Remove border" })).toBeVisible();
   await page.getByRole("button", { name: "Border position" }).click();
   await page.getByRole("option", { name: "Outside", exact: true }).click();
   await page.getByRole("button", { name: "Add drop shadow" }).click();
-  await expect(
-    page.getByRole("button", { name: "Remove drop shadow" }),
-  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Remove drop shadow" })).toBeVisible();
   await page.getByRole("button", { name: "Add inner shadow" }).click();
-  await expect(
-    page.getByRole("button", { name: "Remove inner shadow" }),
-  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Remove inner shadow" })).toBeVisible();
   const shapeSaved = page.waitForResponse(
     (response) =>
       response.request().method() === "PATCH" &&
       response.url().includes("/api/v1/image-editor/designs/") &&
-      response.request().postData()?.includes('"blend_mode":"multiply"') ===
-        true &&
+      response.request().postData()?.includes('"blend_mode":"multiply"') === true &&
       response.ok(),
   );
   await page.getByRole("button", { name: "Blend mode" }).click();
   await page.getByRole("option", { name: "Multiply", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Blend mode" })).toHaveText(
-    "Multiply",
-  );
+  await expect(page.getByRole("button", { name: "Blend mode" })).toHaveText("Multiply");
   await shapeSaved;
 
   await page.reload();
   await page.getByRole("treeitem", { name: /Accent, shape/ }).click();
   await page.getByRole("button", { name: /^Effects(?: \d+ active)?$/ }).click();
-  await expect(page.getByRole("button", { name: "Mask" })).toHaveText(
-    "Diamond",
-  );
-  await expect(page.getByRole("button", { name: "Blend mode" })).toHaveText(
-    "Multiply",
-  );
-  await expect(
-    page.getByRole("button", { name: "Remove drop shadow" }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Remove inner shadow" }),
-  ).toBeVisible();
-  await expect(page.getByTestId("image-editor-layer-border")).toContainText(
-    "Border",
-  );
-  await expect(
-    page.getByRole("button", { name: "Border position" }),
-  ).toHaveText("Outside");
+  await expect(page.getByRole("button", { name: "Mask" })).toHaveText("Diamond");
+  await expect(page.getByRole("button", { name: "Blend mode" })).toHaveText("Multiply");
+  await expect(page.getByRole("button", { name: "Remove drop shadow" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Remove inner shadow" })).toBeVisible();
+  await expect(page.getByTestId("image-editor-layer-border")).toContainText("Border");
+  await expect(page.getByRole("button", { name: "Border position" })).toHaveText("Outside");
 
   await page.getByRole("treeitem", { name: /A clear update, text/ }).click();
   await page.getByRole("button", { name: /^Effects(?: \d+ active)?$/ }).click();
-  await expect(page.getByRole("button", { name: "Text curve" })).toHaveText(
-    "Wave",
-  );
-  await expect(
-    page.getByRole("button", { name: "Remove drop shadow" }),
-  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Text curve" })).toHaveText("Wave");
+  await expect(page.getByRole("button", { name: "Remove drop shadow" })).toBeVisible();
 
   await page.getByRole("button", { name: "Magic select" }).click();
   await expect(
-    page
-      .getByTestId("image-editor-selection-options")
-      .getByText("Tolerance 32"),
+    page.getByTestId("image-editor-selection-options").getByText("Tolerance 32"),
   ).toBeVisible();
   const selectionSurface = page.getByTestId("image-editor-selection-surface");
   const selectedPixelCount = () =>
@@ -1829,12 +1515,7 @@ test("OpenPost Image Editor creates from an original template, adapts to mobile,
       if (!(canvas instanceof HTMLCanvasElement)) return 0;
       const context = canvas.getContext("2d", { willReadFrequently: true });
       if (!context) return 0;
-      const pixels = context.getImageData(
-        0,
-        0,
-        canvas.width,
-        canvas.height,
-      ).data;
+      const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
       let selected = 0;
       for (let index = 3; index < pixels.length; index += 4) {
         if (pixels[index] > 0) selected++;
@@ -1846,12 +1527,7 @@ test("OpenPost Image Editor creates from an original template, adapts to mobile,
       if (!(canvas instanceof HTMLCanvasElement)) return null;
       const context = canvas.getContext("2d", { willReadFrequently: true });
       if (!context) return null;
-      const pixels = context.getImageData(
-        0,
-        0,
-        canvas.width,
-        canvas.height,
-      ).data;
+      const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
       let minX = canvas.width;
       let minY = canvas.height;
       let maxX = -1;
@@ -1877,9 +1553,7 @@ test("OpenPost Image Editor creates from an original template, adapts to mobile,
     });
   const selectionBox = await selectionSurface.boundingBox();
   if (!selectionBox)
-    throw new Error(
-      "OpenPost Image Editor selection surface did not produce layout bounds",
-    );
+    throw new Error("OpenPost Image Editor selection surface did not produce layout bounds");
   const magicPoint = await selectionSurface.evaluate((surface) => {
     const bounds = surface.getBoundingClientRect();
     const left = Math.max(0, bounds.left);
@@ -1909,52 +1583,51 @@ test("OpenPost Image Editor creates from an original template, adapts to mobile,
       }
     }
     throw new Error(
-      `No unobstructed point was available on the OpenPost Image Editor canvas: ${JSON.stringify(
-        {
-          bounds: { left, right, top, bottom },
-          surface: {
-            pointerEvents: getComputedStyle(surface).pointerEvents,
-            display: getComputedStyle(surface).display,
-            visibility: getComputedStyle(surface).visibility,
-            zIndex: getComputedStyle(surface).zIndex,
-            connected: surface.isConnected,
-          },
-          ancestors: (() => {
-            const values: Array<{
-              tag: string;
-              testid: string | null;
-              pointerEvents: string;
-              classes: string | null;
-            }> = [];
-            let current: Element | null = surface;
-            while (current && values.length < 8) {
-              values.push({
-                tag: current.tagName,
-                testid: current.getAttribute("data-testid"),
-                pointerEvents: getComputedStyle(current).pointerEvents,
-                classes: current.getAttribute("class"),
-              });
-              current = current.parentElement;
-            }
-            return values;
-          })(),
-          stack: document
-            .elementsFromPoint((left + right) / 2, (top + bottom) / 2)
-            .map((element) => ({
-              tag: element.tagName,
-              testid: element.getAttribute("data-testid"),
-              classes: element.getAttribute("class"),
-            }))
-            .slice(0, 8),
-          targets,
+      `No unobstructed point was available on the OpenPost Image Editor canvas: ${JSON.stringify({
+        bounds: { left, right, top, bottom },
+        surface: {
+          pointerEvents: getComputedStyle(surface).pointerEvents,
+          display: getComputedStyle(surface).display,
+          visibility: getComputedStyle(surface).visibility,
+          zIndex: getComputedStyle(surface).zIndex,
+          connected: surface.isConnected,
         },
-      )}`,
+        ancestors: (() => {
+          const values: Array<{
+            tag: string;
+            testid: string | null;
+            pointerEvents: string;
+            classes: string | null;
+          }> = [];
+          let current: Element | null = surface;
+          while (current && values.length < 8) {
+            values.push({
+              tag: current.tagName,
+              testid: current.getAttribute("data-testid"),
+              pointerEvents: getComputedStyle(current).pointerEvents,
+              classes: current.getAttribute("class"),
+            });
+            current = current.parentElement;
+          }
+          return values;
+        })(),
+        stack: document
+          .elementsFromPoint((left + right) / 2, (top + bottom) / 2)
+          .map((element) => ({
+            tag: element.tagName,
+            testid: element.getAttribute("data-testid"),
+            classes: element.getAttribute("class"),
+          }))
+          .slice(0, 8),
+        targets,
+      })}`,
     );
   });
   await page.mouse.click(magicPoint.x, magicPoint.y);
-  await expect(
-    page.getByTestId("image-editor-pixel-selection"),
-  ).toHaveAttribute("data-active", "true");
+  await expect(page.getByTestId("image-editor-pixel-selection")).toHaveAttribute(
+    "data-active",
+    "true",
+  );
   await expect.poll(selectedPixelCount).toBeGreaterThan(0);
   await expect(page.getByRole("treeitem", { selected: true })).toHaveCount(1);
 
@@ -1970,16 +1643,12 @@ test("OpenPost Image Editor creates from an original template, adapts to mobile,
   const marqueeSlot = page.getByRole("button", { name: "Rectangle select" });
   await expect(marqueeSlot).toBeVisible();
   await marqueeSlot.click({ button: "right" });
-  await expect(
-    page.getByRole("menuitem", { name: "Rectangle select" }),
-  ).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Rectangle select" })).toBeVisible();
   await page.getByRole("menuitem", { name: "Ellipse select" }).click();
   const ellipseSlot = page.getByRole("button", { name: "Ellipse select" });
   await ellipseSlot.click();
   await expect(
-    page
-      .getByTestId("image-editor-selection-options")
-      .getByText("Ellipse select"),
+    page.getByTestId("image-editor-selection-options").getByText("Ellipse select"),
   ).toBeVisible();
   await page.keyboard.press("m");
   await page
@@ -1988,9 +1657,7 @@ test("OpenPost Image Editor creates from an original template, adapts to mobile,
     .click();
   const marqueeBounds = await selectionSurface.boundingBox();
   if (!marqueeBounds)
-    throw new Error(
-      "OpenPost Image Editor selection surface did not produce layout bounds",
-    );
+    throw new Error("OpenPost Image Editor selection surface did not produce layout bounds");
   await page.mouse.move(
     marqueeBounds.x + marqueeBounds.width * 0.05,
     marqueeBounds.y + marqueeBounds.height * 0.14,
@@ -2005,8 +1672,7 @@ test("OpenPost Image Editor creates from an original template, adapts to mobile,
   await expect.poll(selectedPixelCount).toBeGreaterThan(0);
   await expect(page.getByRole("treeitem", { selected: true })).toHaveCount(1);
   const selectionBeforeMove = await selectionBounds();
-  if (!selectionBeforeMove)
-    throw new Error("Rectangle selection did not produce pixel bounds");
+  if (!selectionBeforeMove) throw new Error("Rectangle selection did not produce pixel bounds");
   const selectionCanvasSize = await page
     .getByTestId("image-editor-pixel-selection")
     .evaluate((canvas) => ({
@@ -2016,13 +1682,11 @@ test("OpenPost Image Editor creates from an original template, adapts to mobile,
   const selectionStart = {
     x:
       marqueeBounds.x +
-      ((selectionBeforeMove.x + selectionBeforeMove.width / 2) /
-        selectionCanvasSize.width) *
+      ((selectionBeforeMove.x + selectionBeforeMove.width / 2) / selectionCanvasSize.width) *
         marqueeBounds.width,
     y:
       marqueeBounds.y +
-      ((selectionBeforeMove.y + selectionBeforeMove.height / 2) /
-        selectionCanvasSize.height) *
+      ((selectionBeforeMove.y + selectionBeforeMove.height / 2) / selectionCanvasSize.height) *
         marqueeBounds.height,
   };
   await page.mouse.move(selectionStart.x, selectionStart.y);
@@ -2045,9 +1709,7 @@ test("OpenPost Image Editor creates from an original template, adapts to mobile,
     .click();
 
   await page.keyboard.press("Shift+m");
-  await expect(
-    page.getByRole("button", { name: "Ellipse select" }),
-  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Ellipse select" })).toBeVisible();
   await page.keyboard.down("Shift");
   await page.mouse.move(
     marqueeBounds.x + marqueeBounds.width * 0.34,
@@ -2065,19 +1727,15 @@ test("OpenPost Image Editor creates from an original template, adapts to mobile,
     .poll(selectionBounds)
     .toMatchObject({ width: expect.any(Number), height: expect.any(Number) });
   const ellipseBounds = await selectionBounds();
-  expect(
-    Math.abs((ellipseBounds?.width ?? 0) - (ellipseBounds?.height ?? 0)),
-  ).toBeLessThanOrEqual(2);
+  expect(Math.abs((ellipseBounds?.width ?? 0) - (ellipseBounds?.height ?? 0))).toBeLessThanOrEqual(
+    2,
+  );
 
   await page.keyboard.press("l");
-  await expect(
-    page.getByRole("button", { name: "Lasso select", pressed: true }),
-  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Lasso select", pressed: true })).toBeVisible();
   const lassoBounds = await selectionSurface.boundingBox();
   if (!lassoBounds)
-    throw new Error(
-      "OpenPost Image Editor selection surface did not produce layout bounds",
-    );
+    throw new Error("OpenPost Image Editor selection surface did not produce layout bounds");
   const lassoPoints = [
     [0.04, 0.08],
     [0.96, 0.08],
@@ -2108,9 +1766,7 @@ test("OpenPost Image Editor creates from an original template, adapts to mobile,
   const roughness = page.getByRole("slider", { name: "Roughness 0%" });
   await roughness.focus();
   await roughness.press("End");
-  await expect(
-    page.getByRole("slider", { name: "Roughness 100%" }),
-  ).toBeVisible();
+  await expect(page.getByRole("slider", { name: "Roughness 100%" })).toBeVisible();
   await page.mouse.move(
     lassoBounds.x + lassoBounds.width * 0.25,
     lassoBounds.y + lassoBounds.height * 0.3,
@@ -2122,9 +1778,7 @@ test("OpenPost Image Editor creates from an original template, adapts to mobile,
     { steps: 8 },
   );
   await page.mouse.up();
-  await expect(
-    page.getByRole("treeitem", { name: /Pencil, paint/ }),
-  ).toBeVisible();
+  await expect(page.getByRole("treeitem", { name: /Pencil, paint/ })).toBeVisible();
 
   await page.getByRole("treeitem", { name: /Accent, shape/ }).click();
   await page.keyboard.press("g");
@@ -2139,43 +1793,29 @@ test("OpenPost Image Editor creates from an original template, adapts to mobile,
     { steps: 8 },
   );
   await page.mouse.up();
-  await expect(
-    page.getByRole("treeitem", { name: /Gradient, paint/ }),
-  ).toBeVisible();
+  await expect(page.getByRole("treeitem", { name: /Gradient, paint/ })).toBeVisible();
 
   await page.keyboard.press("Shift+g");
   await page.mouse.click(
     lassoBounds.x + lassoBounds.width * 0.5,
     lassoBounds.y + lassoBounds.height * 0.72,
   );
-  await expect(
-    page.getByRole("treeitem", { name: /Paint bucket, paint/ }),
-  ).toBeVisible();
+  await expect(page.getByRole("treeitem", { name: /Paint bucket, paint/ })).toBeVisible();
 
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.getByRole("button", { name: "Export" })).toBeVisible();
   const mobileTools = page.getByRole("navigation", { name: "Tools" });
   await expect(mobileTools.getByRole("button")).toHaveCount(6);
   await expect(mobileTools.getByRole("button", { name: "Add" })).toBeVisible();
-  await expect(
-    mobileTools.getByRole("button", { name: "Select" }),
-  ).toBeVisible();
+  await expect(mobileTools.getByRole("button", { name: "Select" })).toBeVisible();
   await expect(mobileTools.getByRole("button", { name: "Draw" })).toBeVisible();
-  await expect(
-    mobileTools.getByRole("button", { name: "Retouch" }),
-  ).toBeVisible();
+  await expect(mobileTools.getByRole("button", { name: "Retouch" })).toBeVisible();
   await mobileTools.getByRole("button", { name: "Select" }).click();
-  await expect(
-    page.getByRole("menuitem", { name: "Magic select" }),
-  ).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Magic select" })).toBeVisible();
   await page.getByRole("menuitem", { name: "Rectangle select" }).click();
   await mobileTools.getByRole("button", { name: "Select" }).click();
-  await expect(
-    page.getByRole("menuitem", { name: "Rectangle select" }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("menuitem", { name: "Ellipse select" }),
-  ).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Rectangle select" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Ellipse select" })).toBeVisible();
   await page.keyboard.press("Escape");
 
   await mobileTools.getByRole("button", { name: "Draw" }).click();
@@ -2188,17 +1828,9 @@ test("OpenPost Image Editor creates from an original template, adapts to mobile,
   await expect
     .poll(() =>
       page.evaluate(() => {
-        const shell = document.querySelector(
-          '[data-testid="image-editor-shell"]',
-        );
-        const textarea = document.querySelector(
-          'textarea[data-fabric="textarea"]',
-        );
-        if (
-          !(shell instanceof HTMLElement) ||
-          !(textarea instanceof HTMLElement)
-        )
-          return null;
+        const shell = document.querySelector('[data-testid="image-editor-shell"]');
+        const textarea = document.querySelector('textarea[data-fabric="textarea"]');
+        if (!(shell instanceof HTMLElement) || !(textarea instanceof HTMLElement)) return null;
         const shellBounds = shell.getBoundingClientRect();
         const textareaBounds = textarea.getBoundingClientRect();
         return {
@@ -2231,9 +1863,7 @@ test("OpenPost Image Editor creates from an original template, adapts to mobile,
   const pencilRow = layersDialog.getByRole("treeitem", {
     name: /Pencil, paint/,
   });
-  const bucketHandle = paintBucketRow.getByTestId(
-    "image-editor-layer-drag-handle",
-  );
+  const bucketHandle = paintBucketRow.getByTestId("image-editor-layer-drag-handle");
   const [handleBounds, pencilBounds] = await Promise.all([
     bucketHandle.boundingBox(),
     pencilRow.boundingBox(),
@@ -2298,15 +1928,9 @@ test("OpenPost Image Editor creates from an original template, adapts to mobile,
     .poll(async () => {
       const labels = await layersDialog
         .getByRole("treeitem")
-        .evaluateAll((rows) =>
-          rows.map((row) => row.getAttribute("aria-label") ?? ""),
-        );
-      const pencilIndex = labels.findIndex((label) =>
-        label.startsWith("Pencil, paint"),
-      );
-      const bucketIndex = labels.findIndex((label) =>
-        label.startsWith("Paint bucket, paint"),
-      );
+        .evaluateAll((rows) => rows.map((row) => row.getAttribute("aria-label") ?? ""));
+      const pencilIndex = labels.findIndex((label) => label.startsWith("Pencil, paint"));
+      const bucketIndex = labels.findIndex((label) => label.startsWith("Paint bucket, paint"));
       return pencilIndex >= 0 && bucketIndex >= 0 && pencilIndex < bucketIndex;
     })
     .toBe(true);
@@ -2316,23 +1940,17 @@ test("OpenPost Image Editor creates from an original template, adapts to mobile,
   await expect(page.getByRole("button", { name: "Undo" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Redo" })).toBeVisible();
   await expect(mobileTools.getByRole("button")).toHaveCount(6);
-  expect(
-    await mobileTools.evaluate(
-      (element) => element.scrollWidth <= element.clientWidth,
-    ),
-  ).toBe(true);
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth,
-    ),
-  ).toBe(true);
+  expect(await mobileTools.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
+    true,
+  );
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
   await page.setViewportSize({ width: 390, height: 844 });
 
   expect(
     await page.evaluate(
-      () =>
-        document.documentElement.scrollWidth -
-        document.documentElement.clientWidth,
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
     ),
   ).toBeLessThanOrEqual(0);
 
@@ -2346,9 +1964,7 @@ test("OpenPost Image Editor creates from an original template, adapts to mobile,
           return [
             {
               label:
-                button.getAttribute("aria-label") ||
-                button.textContent?.trim() ||
-                "unlabelled",
+                button.getAttribute("aria-label") || button.textContent?.trim() || "unlabelled",
               width: bounds.width,
               height: bounds.height,
             },
@@ -2359,9 +1975,7 @@ test("OpenPost Image Editor creates from an original template, adapts to mobile,
     .toEqual([]);
   expect(
     await page.evaluate(
-      () =>
-        document.documentElement.scrollWidth -
-        document.documentElement.clientWidth,
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
     ),
   ).toBeLessThanOrEqual(0);
   await page.setViewportSize({ width: 390, height: 844 });
@@ -2372,22 +1986,16 @@ test("OpenPost Image Editor creates from an original template, adapts to mobile,
   const exportDialog = page.getByRole("dialog", { name: "Export design" });
   await expect(exportDialog).toBeVisible();
   await exportDialog.getByRole("radio", { name: "Media", exact: true }).click();
-  await exportDialog
-    .getByRole("button", { name: "Export to Media", exact: true })
-    .click();
+  await exportDialog.getByRole("button", { name: "Export to Media", exact: true }).click();
 
   await expect(page.getByText("1 exported page saved to Media.")).toBeVisible({
     timeout: 15_000,
   });
   const designID = new URL(page.url()).pathname.split("/").at(-1);
-  if (!designID)
-    throw new Error("OpenPost Image Editor URL did not contain a design ID");
-  const savedDesign = await request.get(
-    `/api/v1/image-editor/designs/${designID}`,
-    {
-      headers: { Authorization: `Bearer ${auth.token}` },
-    },
-  );
+  if (!designID) throw new Error("OpenPost Image Editor URL did not contain a design ID");
+  const savedDesign = await request.get(`/api/v1/image-editor/designs/${designID}`, {
+    headers: { Authorization: `Bearer ${auth.token}` },
+  });
   expect(savedDesign.ok()).toBeTruthy();
   const savedDocument = await savedDesign.json();
   const paintLayers = savedDocument.document.pages[0].layers.filter(
@@ -2411,21 +2019,16 @@ test("OpenPost Image Editor creates from an original template, adapts to mobile,
   );
   expect(
     paintLayers.every(
-      (layer: { paint?: { spans?: unknown[] } }) =>
-        (layer.paint?.spans?.length ?? 0) > 0,
+      (layer: { paint?: { spans?: unknown[] } }) => (layer.paint?.spans?.length ?? 0) > 0,
     ),
   ).toBeTruthy();
 
   await page.goto("/editors");
-  await expect(
-    page.locator(`a[href="/image-editor/${designID}"]`),
-  ).toBeVisible();
+  await expect(page.locator(`a[href="/image-editor/${designID}"]`)).toBeVisible();
 
   await page.goto("/media");
   const libraryGrid = page.getByTestId("media-library-grid");
-  await expect(libraryGrid.locator('[data-library-kind="asset"]')).toHaveCount(
-    2,
-  );
+  await expect(libraryGrid.locator('[data-library-kind="asset"]')).toHaveCount(2);
 
   await expect(page.getByText("picker-library.png")).toBeVisible();
   await expect(page.getByText("quick-announcement-page-01.png")).toBeVisible();
@@ -2434,9 +2037,9 @@ test("OpenPost Image Editor creates from an original template, adapts to mobile,
   });
   await expect(exportedImage).toBeVisible();
   await expect.poll(() => imagePixelGrid(exportedImage)).not.toHaveLength(0);
-  expect(
-    meanPixelDifference(liveExportPixels, await imagePixelGrid(exportedImage)),
-  ).toBeLessThan(8);
+  expect(meanPixelDifference(liveExportPixels, await imagePixelGrid(exportedImage))).toBeLessThan(
+    8,
+  );
   await expect
     .poll(() =>
       exportedImage.evaluate((image) => {
@@ -2467,12 +2070,8 @@ test("OpenPost Image Editor creates from an original template, adapts to mobile,
   const renameDesignDialog = page.getByRole("dialog", {
     name: "Rename design",
   });
-  await renameDesignDialog
-    .getByLabel("Project name")
-    .fill("Renamed announcement");
-  await renameDesignDialog
-    .getByRole("button", { name: "Save", exact: true })
-    .click();
+  await renameDesignDialog.getByLabel("Project name").fill("Renamed announcement");
+  await renameDesignDialog.getByRole("button", { name: "Save", exact: true }).click();
   await expect(designCard.getByText("Renamed announcement")).toBeVisible();
 
   await designCard.click({ button: "right" });
@@ -2481,9 +2080,7 @@ test("OpenPost Image Editor creates from an original template, adapts to mobile,
     name: "Delete design?",
   });
   await expect(deleteDesignDialog).toBeVisible();
-  await deleteDesignDialog
-    .getByRole("button", { name: "Delete", exact: true })
-    .click();
+  await deleteDesignDialog.getByRole("button", { name: "Delete", exact: true }).click();
   await expect(designCard).toHaveCount(0);
 
   expect({ browserErrors, failedResponses }).toEqual({

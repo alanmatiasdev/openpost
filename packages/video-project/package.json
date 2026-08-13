@@ -10,7 +10,6 @@
     "./schema/v1": "./schema/video-project-v1.schema.json"
   },
   "scripts": {
-    "build": "tsc --noEmit",
     "check": "tsc --noEmit",
     "test": "vitest run"
   },

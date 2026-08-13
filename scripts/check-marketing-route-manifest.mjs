@@ -5,10 +5,7 @@ import { fileURLToPath } from "node:url";
 
 import { marketingRouteManifest } from "../packages/social-images/src/index.js";
 
-export const repositoryRoot = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "..",
-);
+export const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 const routeCatalogBoundaries = Object.freeze({
   platforms: ["const platformImplementations = [", "export const platforms ="],
@@ -31,10 +28,7 @@ async function listPageComponents(directory) {
 }
 
 export function marketingPagePattern(routesDirectory, pageComponent) {
-  const relativeDirectory = path.relative(
-    routesDirectory,
-    path.dirname(pageComponent),
-  );
+  const relativeDirectory = path.relative(routesDirectory, path.dirname(pageComponent));
   if (!relativeDirectory) return "/";
   const segments = relativeDirectory
     .split(path.sep)
@@ -63,9 +57,9 @@ export function catalogSlugs(source, catalog) {
   if (start === -1 || end === -1) {
     throw new Error(`Could not find ${catalog} catalog boundaries`);
   }
-  return [
-    ...source.slice(start, end).matchAll(/\bslug:\s*["']([^"']+)["']/gu),
-  ].map((match) => match[1]);
+  return [...source.slice(start, end).matchAll(/\bslug:\s*["']([^"']+)["']/gu)].map(
+    (match) => match[1],
+  );
 }
 
 function sorted(values) {
@@ -92,9 +86,7 @@ export async function validateMarketingRouteManifest({
   const problems = [];
   const routesDirectory = path.join(root, "marketing-site/src/routes");
   const pageComponents = await listPageComponents(routesDirectory);
-  const patterns = pageComponents.map((page) =>
-    marketingPagePattern(routesDirectory, page),
-  );
+  const patterns = pageComponents.map((page) => marketingPagePattern(routesDirectory, page));
   const manifestPaths = manifest.map((entry) => entry.path);
   const manifestPathSet = new Set(manifestPaths);
 
@@ -114,20 +106,13 @@ export async function validateMarketingRouteManifest({
   }
 
   for (const route of manifestPaths) {
-    const owners = patterns.filter((pattern) =>
-      routePatternRegex(pattern).test(route),
-    );
+    const owners = patterns.filter((pattern) => routePatternRegex(pattern).test(route));
     if (owners.length !== 1) {
-      problems.push(
-        `${route} must resolve to exactly one page pattern; found ${owners.length}`,
-      );
+      problems.push(`${route} must resolve to exactly one page pattern; found ${owners.length}`);
     }
   }
 
-  const marketingSource = await readFile(
-    path.join(routesDirectory, "_marketing.ts"),
-    "utf8",
-  );
+  const marketingSource = await readFile(path.join(routesDirectory, "_marketing.ts"), "utf8");
   for (const [section, catalog] of [
     ["platforms", "platforms"],
     ["compare", "compare"],
@@ -148,14 +133,11 @@ export async function validateMarketingRouteManifest({
       "utf8",
     );
     if (
-      !new RegExp(
-        `marketingPrerenderEntries\\(\\s*["']/${section}["']\\s*\\)`,
-        "u",
-      ).test(entryModule)
+      !new RegExp(`marketingPrerenderEntries\\(\\s*["']/${section}["']\\s*\\)`, "u").test(
+        entryModule,
+      )
     ) {
-      problems.push(
-        `/${section}/[slug] prerender entries must derive from marketingRouteManifest`,
-      );
+      problems.push(`/${section}/[slug] prerender entries must derive from marketingRouteManifest`);
     }
   }
 

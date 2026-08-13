@@ -3,14 +3,7 @@
   "policy": {
     "minimum_sunset_days": 90,
     "minimum_stable_releases": 2,
-    "required_consumer_classes": [
-      "web",
-      "cli",
-      "mcp",
-      "mcp-media",
-      "n8n",
-      "api"
-    ],
+    "required_consumer_classes": ["web", "cli", "mcp", "mcp-media", "n8n", "api"],
     "telemetry_source": "Structured request logs expose the normalized route and a low-cardinality consumer hint; they are operational evidence, not authenticated caller identity.",
     "required_notice_channels": [
       "CHANGELOG.md",
@@ -136,9 +129,7 @@
       ],
       "replacement": {
         "status": "available",
-        "operations": [
-          "GET /accounts/{account_id}/publishing-options/{source}"
-        ],
+        "operations": ["GET /accounts/{account_id}/publishing-options/{source}"],
         "notes": "The paged endpoint is the preferred scalable contract, but the automation node must migrate before deprecation."
       },
       "migration_path": "Update the generated n8n selector to the paged publishing-options route, ship compatibility coverage, then observe both route patterns through a sunset window.",
@@ -155,9 +146,7 @@
         "route_patterns": ["/api/v1/accounts/:account_id/destination-options"],
         "observation_started_on": null,
         "observation_ended_on": null,
-        "evidence": [
-          "N8N-009 reserves this selector for the selected automation contract."
-        ],
+        "evidence": ["N8N-009 reserves this selector for the selected automation contract."],
         "consumers": {
           "web": { "status": "pending", "evidence": null },
           "cli": { "status": "pending", "evidence": null },
@@ -267,10 +256,7 @@
         "removal_version": null
       },
       "telemetry": {
-        "route_patterns": [
-          "/api/v1/organizations",
-          "/api/v1/organizations/:id/team"
-        ],
+        "route_patterns": ["/api/v1/organizations", "/api/v1/organizations/:id/team"],
         "observation_started_on": null,
         "observation_ended_on": null,
         "evidence": [],
@@ -325,9 +311,7 @@
       ],
       "replacement": {
         "status": "candidate",
-        "operations": [
-          "Organization-aware /billing routes with an explicit organization_id"
-        ],
+        "operations": ["Organization-aware /billing routes with an explicit organization_id"],
         "notes": "BILL-003 and BILL-004 must settle portal capabilities and the native/provider boundary before one route family becomes canonical."
       },
       "migration_path": "Add organization_id to the generic typed contract, migrate the app and CLI, document organization authorization, then observe old organization-path and workspace-context routes separately.",
@@ -349,9 +333,7 @@
         ],
         "observation_started_on": null,
         "observation_ended_on": null,
-        "evidence": [
-          "The authenticated app and CLI currently call the generic billing routes."
-        ],
+        "evidence": ["The authenticated app and CLI currently call the generic billing routes."],
         "consumers": {
           "web": {
             "status": "known-use",
@@ -614,20 +596,14 @@
       ],
       "replacement": {
         "status": "available",
-        "operations": [
-          "Use the fixed media lifecycle without a cleanup-days field"
-        ],
+        "operations": ["Use the fixed media lifecycle without a cleanup-days field"],
         "notes": "Temporary media becomes eligible after 14 unused days and Trash after seven days; old writes are ignored and old reads return 14."
       },
       "migration_path": "Stop sending media_cleanup_days and stop treating the compatibility response value as a workspace control. Follow the fixed policy documented in Media storage and Settings.",
       "notice": {
         "announced_on": "2026-08-09",
         "announced_version": "v3.0.0",
-        "locations": [
-          "CHANGELOG.md",
-          "OpenAPI deprecated marker",
-          "migration documentation"
-        ]
+        "locations": ["CHANGELOG.md", "OpenAPI deprecated marker", "migration documentation"]
       },
       "removal": {
         "earliest_on": "2026-11-07",

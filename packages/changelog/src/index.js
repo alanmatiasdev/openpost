@@ -62,9 +62,7 @@ export function validateChangelog(markdown) {
     labels.add(section.label);
     for (const group of section.groups) {
       if (group.items.length === 0) {
-        errors.push(
-          `Changelog section [${section.label}] has an empty ${group.title} group.`,
-        );
+        errors.push(`Changelog section [${section.label}] has an empty ${group.title} group.`);
       }
     }
   }
@@ -74,9 +72,7 @@ export function validateChangelog(markdown) {
 export function prepareReleaseChangelog(markdown, tag, releaseDate) {
   const normalizedTag = String(tag).trim().replace(/^v/u, "");
   if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u.test(normalizedTag)) {
-    throw new Error(
-      `expected a stable release tag, received ${JSON.stringify(tag)}`,
-    );
+    throw new Error(`expected a stable release tag, received ${JSON.stringify(tag)}`);
   }
   if (!/^\d{4}-\d{2}-\d{2}$/u.test(releaseDate)) {
     throw new Error(
@@ -89,15 +85,11 @@ export function prepareReleaseChangelog(markdown, tag, releaseDate) {
   if (start < 0) throw new Error("CHANGELOG.md is missing [Unreleased]");
   const bodyStart = start + startMarker.length;
   const nextSectionOffset = markdown.slice(bodyStart).search(/\n## \[/u);
-  const bodyEnd =
-    nextSectionOffset < 0 ? markdown.length : bodyStart + nextSectionOffset;
+  const bodyEnd = nextSectionOffset < 0 ? markdown.length : bodyStart + nextSectionOffset;
   const unreleasedBody = markdown.slice(bodyStart, bodyEnd).trim();
   const unreleased = parseChangelog(`${startMarker}\n\n${unreleasedBody}\n`)[0];
   const itemCount =
-    unreleased?.groups.reduce(
-      (total, current) => total + current.items.length,
-      0,
-    ) ?? 0;
+    unreleased?.groups.reduce((total, current) => total + current.items.length, 0) ?? 0;
   if (itemCount === 0) {
     throw new Error("CHANGELOG.md [Unreleased] has no entries to release");
   }
@@ -109,9 +101,7 @@ export function prepareReleaseChangelog(markdown, tag, releaseDate) {
 
 export function releaseNotesForTag(markdown, tag) {
   const normalizedTag = String(tag).trim().replace(/^v/u, "");
-  const section = parseChangelog(markdown).find(
-    (candidate) => candidate.label === normalizedTag,
-  );
+  const section = parseChangelog(markdown).find((candidate) => candidate.label === normalizedTag);
   if (!section) {
     throw new Error(`CHANGELOG.md has no [${normalizedTag}] section`);
   }

@@ -7,25 +7,15 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const manifestPath = path.join(root, "packages/legal-policy/src/manifest.json");
-const generatedGoPath = path.join(
-  root,
-  "backend/internal/legalpolicy/manifest_generated.go",
-);
+const generatedGoPath = path.join(root, "backend/internal/legalpolicy/manifest_generated.go");
 const policyNames = ["terms", "privacy", "refunds"];
-const documentKeys = [
-  "effective_date",
-  "requires_acceptance",
-  "url",
-  "version",
-];
+const documentKeys = ["effective_date", "requires_acceptance", "url", "version"];
 const isoDatePattern = /^\d{4}-\d{2}-\d{2}$/u;
 
 function isIsoCalendarDate(value) {
   if (!isoDatePattern.test(value)) return false;
   const date = new Date(`${value}T00:00:00Z`);
-  return (
-    !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value
-  );
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
 }
 
 export async function readLegalPolicyManifest() {
@@ -75,9 +65,7 @@ export function validateLegalPolicyManifest(manifest) {
     throw new Error("the official Privacy Policy requires acknowledgement");
   }
   if (manifest.refunds.requires_acceptance) {
-    throw new Error(
-      "the Refund Policy is incorporated by the Terms, not accepted separately",
-    );
+    throw new Error("the Refund Policy is incorporated by the Terms, not accepted separately");
   }
   return manifest;
 }
@@ -87,10 +75,7 @@ function assertExactKeys(value, expected, label) {
     throw new Error(`${label} must be an object`);
   }
   const actual = Object.keys(value).sort();
-  if (
-    actual.length !== expected.length ||
-    actual.some((key, index) => key !== expected[index])
-  ) {
+  if (actual.length !== expected.length || actual.some((key, index) => key !== expected[index])) {
     throw new Error(`${label} must contain exactly ${expected.join(", ")}`);
   }
 }
@@ -150,9 +135,7 @@ async function main() {
         "generated legal policy constants are stale; run bun scripts/legal-policy-manifest.mjs generate",
       );
     }
-    console.log(
-      "Validated canonical legal policy versions and generated constants.",
-    );
+    console.log("Validated canonical legal policy versions and generated constants.");
     return;
   }
   if (command === "env") {
@@ -162,10 +145,7 @@ async function main() {
   throw new Error("usage: legal-policy-manifest.mjs [check|generate|env]");
 }
 
-if (
-  process.argv[1] &&
-  import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href
-) {
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
   try {
     await main();
   } catch (error) {

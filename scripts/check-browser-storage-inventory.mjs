@@ -3,10 +3,7 @@ import { extname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repositoryRoot = fileURLToPath(new URL("../", import.meta.url));
-const inventoryPath = join(
-  repositoryRoot,
-  "packages/legal-policy/src/privacy-inventory.json",
-);
+const inventoryPath = join(repositoryRoot, "packages/legal-policy/src/privacy-inventory.json");
 const sourceRoots = [
   "frontend/src",
   "marketing-site/src",
@@ -14,18 +11,8 @@ const sourceRoots = [
   "docs-site/.vitepress",
   "backend/internal",
 ];
-const sourceFiles = [
-  "frontend/vite.config.ts",
-  "marketing-site/vite.config.ts",
-];
-const sourceExtensions = new Set([
-  ".go",
-  ".html",
-  ".js",
-  ".mjs",
-  ".svelte",
-  ".ts",
-]);
+const sourceFiles = ["frontend/vite.config.ts", "marketing-site/vite.config.ts"];
+const sourceExtensions = new Set([".go", ".html", ".js", ".mjs", ".svelte", ".ts"]);
 
 function isSourceFile(path) {
   const name = path.split("/").at(-1) ?? "";
@@ -46,8 +33,7 @@ function walk(relativeRoot) {
   for (const entry of readdirSync(absoluteRoot, { withFileTypes: true })) {
     const absolute = join(absoluteRoot, entry.name);
     if (entry.isDirectory()) {
-      if ([".svelte-kit", "build", "dist", "node_modules"].includes(entry.name))
-        continue;
+      if ([".svelte-kit", "build", "dist", "node_modules"].includes(entry.name)) continue;
       results.push(...walk(relative(repositoryRoot, absolute)));
     } else {
       const path = relative(repositoryRoot, absolute);
@@ -81,9 +67,7 @@ function resolveTemplate(body, bindings) {
   for (const match of body.matchAll(interpolation)) {
     identifier += unescapeLiteral(body.slice(cursor, match.index));
     const expression = match[1].trim();
-    const resolved = /^[A-Za-z_$][\w$]*$/u.test(expression)
-      ? bindings.get(expression)
-      : null;
+    const resolved = /^[A-Za-z_$][\w$]*$/u.test(expression) ? bindings.get(expression) : null;
     if (!resolved) {
       dynamic = true;
       break;
@@ -156,16 +140,12 @@ export function collectGlobalBindings(sources) {
   const candidates = new Map();
   for (const { source } of sources) {
     const exportedNames = new Set(
-      [...source.matchAll(/\bexport\s+const\s+([A-Za-z_$][\w$]*)\b/gu)].map(
-        (match) => match[1],
-      ),
+      [...source.matchAll(/\bexport\s+const\s+([A-Za-z_$][\w$]*)\b/gu)].map((match) => match[1]),
     );
     for (const [name, value] of collectLocalBindings(source)) {
       if (!exportedNames.has(name)) continue;
       if (!candidates.has(name)) candidates.set(name, new Map());
-      candidates
-        .get(name)
-        .set(`${value.identifier_kind}:${value.identifier}`, value);
+      candidates.get(name).set(`${value.identifier_kind}:${value.identifier}`, value);
     }
   }
   const globals = new Map();
@@ -182,8 +162,7 @@ function collectImportedBindings(source, exportedBindings) {
     for (const rawSpecifier of match[1].split(",")) {
       const specifier = rawSpecifier.trim();
       if (!specifier || specifier.startsWith("type ")) continue;
-      const binding =
-        /^([A-Za-z_$][\w$]*)(?:\s+as\s+([A-Za-z_$][\w$]*))?$/u.exec(specifier);
+      const binding = /^([A-Za-z_$][\w$]*)(?:\s+as\s+([A-Za-z_$][\w$]*))?$/u.exec(specifier);
       if (!binding) continue;
       const value = exportedBindings.get(binding[1]);
       if (value) imported.set(binding[2] ?? binding[1], value);
@@ -206,8 +185,7 @@ function storageTechnology(receiver, source) {
   if (receiver.endsWith("sessionStorage")) return "sessionStorage";
   const hasLocal = /(?:globalThis\.|window\.)?localStorage/u.test(source);
   const hasSession = /(?:globalThis\.|window\.)?sessionStorage/u.test(source);
-  if (hasLocal !== hasSession)
-    return hasLocal ? "localStorage" : "sessionStorage";
+  if (hasLocal !== hasSession) return hasLocal ? "localStorage" : "sessionStorage";
   return null;
 }
 
@@ -239,18 +217,9 @@ export function extractBrowserStorageIdentifiers(
   }
 
   const typedCalls = [
-    [
-      "IndexedDB",
-      new RegExp(`\\bindexedDB\\s*\\.\\s*open\\s*\\(\\s*${expression}`, "gu"),
-    ],
-    [
-      "IndexedDB",
-      new RegExp(`\\bcreateObjectStore\\s*\\(\\s*${expression}`, "gu"),
-    ],
-    [
-      "Cache Storage",
-      new RegExp(`\\bcaches\\s*\\.\\s*open\\s*\\(\\s*${expression}`, "gu"),
-    ],
+    ["IndexedDB", new RegExp(`\\bindexedDB\\s*\\.\\s*open\\s*\\(\\s*${expression}`, "gu")],
+    ["IndexedDB", new RegExp(`\\bcreateObjectStore\\s*\\(\\s*${expression}`, "gu")],
+    ["Cache Storage", new RegExp(`\\bcaches\\s*\\.\\s*open\\s*\\(\\s*${expression}`, "gu")],
     ["OPFS", new RegExp(`\\bgetDirectoryHandle\\s*\\(\\s*${expression}`, "gu")],
   ];
   for (const [technology, pattern] of typedCalls) {
@@ -276,10 +245,7 @@ export function extractBrowserStorageIdentifiers(
     );
   }
 
-  const cookieAssignment = new RegExp(
-    `\\bdocument\\s*\\.\\s*cookie\\s*=\\s*${expression}`,
-    "gu",
-  );
+  const cookieAssignment = new RegExp(`\\bdocument\\s*\\.\\s*cookie\\s*=\\s*${expression}`, "gu");
   for (const match of source.matchAll(cookieAssignment)) {
     const resolved = resolveExpression(match[1], bindings, functionReturns);
     if (!resolved) continue;
@@ -327,8 +293,7 @@ export function extractBrowserStorageIdentifiers(
     }
   }
 
-  const indexedDBStores =
-    /\b(?:export\s+)?const\s+[A-Z][A-Z0-9_]*_STORES\s*=\s*\[([^\]]+)\]/gsu;
+  const indexedDBStores = /\b(?:export\s+)?const\s+[A-Z][A-Z0-9_]*_STORES\s*=\s*\[([^\]]+)\]/gsu;
   for (const match of source.matchAll(indexedDBStores)) {
     const values = match[1].match(/'(?:\\.|[^'])*'|"(?:\\.|[^"])*"/gu) ?? [];
     for (const value of values) {
@@ -355,18 +320,14 @@ export function extractBrowserStorageIdentifiers(
 function inventoryCovers(discovery, entry) {
   if (entry.technology !== discovery.technology) return false;
   if (entry.identifier_kind === "exact") {
-    return (
-      discovery.identifier_kind === "exact" &&
-      entry.identifier === discovery.identifier
-    );
+    return discovery.identifier_kind === "exact" && entry.identifier === discovery.identifier;
   }
   return discovery.identifier.startsWith(entry.identifier);
 }
 
 export function findUndocumentedIdentifiers(discoveries, inventoryEntries) {
   return discoveries.filter(
-    (discovery) =>
-      !inventoryEntries.some((entry) => inventoryCovers(discovery, entry)),
+    (discovery) => !inventoryEntries.some((entry) => inventoryCovers(discovery, entry)),
   );
 }
 
@@ -384,10 +345,7 @@ export function checkBrowserStorageInventory(sources, inventoryEntries) {
 
 function main() {
   const files = [
-    ...new Set([
-      ...sourceRoots.flatMap(walk),
-      ...sourceFiles.filter(isSourceFile),
-    ]),
+    ...new Set([...sourceRoots.flatMap(walk), ...sourceFiles.filter(isSourceFile)]),
   ].sort();
   const sources = files.map((file) => ({
     file,

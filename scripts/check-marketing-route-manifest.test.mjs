@@ -25,14 +25,8 @@ test("page components map to canonical route patterns", () => {
     ),
     "/tools/[slug]",
   );
-  assert.equal(
-    routePatternRegex("/tools/[slug]").test("/tools/thread-splitter"),
-    true,
-  );
-  assert.equal(
-    routePatternRegex("/tools/[slug]").test("/tools/a/nested"),
-    false,
-  );
+  assert.equal(routePatternRegex("/tools/[slug]").test("/tools/thread-splitter"), true);
+  assert.equal(routePatternRegex("/tools/[slug]").test("/tools/a/nested"), false);
 });
 
 test("catalog parsing stays inside the named ownership boundaries", () => {
@@ -54,14 +48,7 @@ test("the repository route manifest is bidirectionally complete", async () => {
 
 test("stale manifest routes fail the reverse page check", async () => {
   const problems = await validateMarketingRouteManifest({
-    manifest: [
-      ...marketingRouteManifest,
-      { ...marketingRouteManifest[0], path: "/removed-page" },
-    ],
+    manifest: [...marketingRouteManifest, { ...marketingRouteManifest[0], path: "/removed-page" }],
   });
-  assert.ok(
-    problems.includes(
-      "/removed-page must resolve to exactly one page pattern; found 0",
-    ),
-  );
+  assert.ok(problems.includes("/removed-page must resolve to exactly one page pattern; found 0"));
 });

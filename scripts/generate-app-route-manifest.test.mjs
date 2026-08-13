@@ -11,18 +11,13 @@ import {
 } from "./generate-app-route-manifest.mjs";
 
 async function addPage(routesDirectory, route, filename = "+page.svelte") {
-  const directory = path.join(
-    routesDirectory,
-    ...route.split("/").filter(Boolean),
-  );
+  const directory = path.join(routesDirectory, ...route.split("/").filter(Boolean));
   await mkdir(directory, { recursive: true });
   await writeFile(path.join(directory, filename), "<main />\n");
 }
 
 test("collects static, dynamic, rest, and grouped SvelteKit pages", async () => {
-  const directory = await mkdtemp(
-    path.join(os.tmpdir(), "openpost-app-routes-"),
-  );
+  const directory = await mkdtemp(path.join(os.tmpdir(), "openpost-app-routes-"));
   await Promise.all([
     addPage(directory, ""),
     addPage(directory, "calendar"),
@@ -42,13 +37,8 @@ test("collects static, dynamic, rest, and grouped SvelteKit pages", async () => 
 });
 
 test("fails when route groups create duplicate public paths", async () => {
-  const directory = await mkdtemp(
-    path.join(os.tmpdir(), "openpost-app-routes-"),
-  );
-  await Promise.all([
-    addPage(directory, "(one)/settings"),
-    addPage(directory, "(two)/settings"),
-  ]);
+  const directory = await mkdtemp(path.join(os.tmpdir(), "openpost-app-routes-"));
+  await Promise.all([addPage(directory, "(one)/settings"), addPage(directory, "(two)/settings")]);
 
   await assert.rejects(collectAppRoutes(directory), /duplicate public paths/);
 });
@@ -67,9 +57,7 @@ test("serializes a strict, versioned manifest", () => {
 });
 
 test("writes a manifest into an explicit package-owned output", async () => {
-  const directory = await mkdtemp(
-    path.join(os.tmpdir(), "openpost-app-routes-"),
-  );
+  const directory = await mkdtemp(path.join(os.tmpdir(), "openpost-app-routes-"));
   const routesDirectory = path.join(directory, "routes");
   const manifestPath = path.join(directory, "package-build", "app-routes.json");
   await addPage(routesDirectory, "");

@@ -15,10 +15,7 @@ type PostPayload = {
   [key: string]: unknown;
 };
 
-test("composer renders account-specific renditions", async ({
-  page,
-  request,
-}) => {
+test("composer renders account-specific renditions", async ({ page, request }) => {
   const unique = Date.now().toString(36);
   const email = `composer-preview-${unique}@example.com`;
   let publicationPayload: PostPayload | undefined;
@@ -147,9 +144,7 @@ test("composer renders account-specific renditions", async ({
   });
   await page.route("**/api/v1/publications", async (route) => {
     if (route.request().method() === "POST") {
-      publicationPayload = JSON.parse(
-        route.request().postData() ?? "{}",
-      ) as PostPayload;
+      publicationPayload = JSON.parse(route.request().postData() ?? "{}") as PostPayload;
 
       await route.fulfill({
         contentType: "application/json",
@@ -170,45 +165,39 @@ test("composer renders account-specific renditions", async ({
 
     await route.continue();
   });
-  await page.route(
-    /\/api\/v1\/publications\/publication-preview(?:\?.*)?$/,
-    async (route) => {
-      if (route.request().method() === "PUT") {
-        publicationPayload = {
-          ...(publicationPayload ?? {}),
-          ...(route.request().postDataJSON() as PostPayload),
-        };
-        await route.fulfill({
-          contentType: "application/json",
-          json: { revision: 2 },
-        });
-        return;
-      }
-      if (route.request().method() === "DELETE") {
-        deleteRequested = true;
-        await route.fulfill({
-          contentType: "application/json",
-          json: { message: "publication deleted" },
-        });
-        return;
-      }
-      await route.continue();
-    },
-  );
-  await page.route(
-    "**/api/v1/publications/publication-preview/renditions",
-    async (route) => {
-      if (route.request().method() === "PUT") {
-        publicationPayload = {
-          ...(publicationPayload ?? {}),
-          ...(route.request().postDataJSON() as PostPayload),
-        };
-        await route.fulfill({ contentType: "application/json", json: {} });
-        return;
-      }
-      await route.continue();
-    },
-  );
+  await page.route(/\/api\/v1\/publications\/publication-preview(?:\?.*)?$/, async (route) => {
+    if (route.request().method() === "PUT") {
+      publicationPayload = {
+        ...(publicationPayload ?? {}),
+        ...(route.request().postDataJSON() as PostPayload),
+      };
+      await route.fulfill({
+        contentType: "application/json",
+        json: { revision: 2 },
+      });
+      return;
+    }
+    if (route.request().method() === "DELETE") {
+      deleteRequested = true;
+      await route.fulfill({
+        contentType: "application/json",
+        json: { message: "publication deleted" },
+      });
+      return;
+    }
+    await route.continue();
+  });
+  await page.route("**/api/v1/publications/publication-preview/renditions", async (route) => {
+    if (route.request().method() === "PUT") {
+      publicationPayload = {
+        ...(publicationPayload ?? {}),
+        ...(route.request().postDataJSON() as PostPayload),
+      };
+      await route.fulfill({ contentType: "application/json", json: {} });
+      return;
+    }
+    await route.continue();
+  });
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
@@ -216,43 +205,27 @@ test("composer renders account-specific renditions", async ({
   await expect(page.getByTestId("composer-action-controls")).toBeVisible();
   await expect(page.getByRole("button", { name: "Save draft" })).toHaveCount(0);
   await expect
-    .poll(() =>
-      page.evaluate(
-        () => document.documentElement.scrollWidth <= window.innerWidth,
-      ),
-    )
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
     .toBe(true);
   await expect(page.getByLabel("Composer workspace")).toHaveCount(0);
   await page.getByLabel("Post text").fill("Launch update");
 
-  await expect(page.locator('[data-testid="instagram-preview"]')).toHaveCount(
-    0,
-  );
+  await expect(page.locator('[data-testid="instagram-preview"]')).toHaveCount(0);
   await expect(page.getByLabel(/Remove .* from targets/)).toHaveCount(0);
   const accountControl = page.getByTestId("composer-account-control");
-  await expect(accountControl.getByTestId("composer-account-icon")).toHaveCount(
-    2,
-  );
+  await expect(accountControl.getByTestId("composer-account-icon")).toHaveCount(2);
   await accountControl.click();
   await expect(page.getByTestId("composer-account-row")).toHaveCount(2);
   const accountPicker = page.getByRole("group", { name: "Accounts" });
-  await expect(
-    accountPicker.getByText("openpost_main", { exact: true }),
-  ).toBeVisible();
-  await expect(
-    accountPicker.getByText("openpost_studio", { exact: true }),
-  ).toBeVisible();
+  await expect(accountPicker.getByText("openpost_main", { exact: true })).toBeVisible();
+  await expect(accountPicker.getByText("openpost_studio", { exact: true })).toBeVisible();
   const mainAccountRow = page
     .getByTestId("composer-account-row")
     .filter({ hasText: "openpost_main" });
   await mainAccountRow.getByText("openpost_main", { exact: true }).click();
-  await expect(accountControl.getByTestId("composer-account-icon")).toHaveCount(
-    1,
-  );
+  await expect(accountControl.getByTestId("composer-account-icon")).toHaveCount(1);
   await mainAccountRow.getByText("openpost_main", { exact: true }).click();
-  await expect(accountControl.getByTestId("composer-account-icon")).toHaveCount(
-    2,
-  );
+  await expect(accountControl.getByTestId("composer-account-icon")).toHaveCount(2);
   await page.keyboard.press("Escape");
   await expect.poll(() => publicationPayload).toBeTruthy();
   await expect(page.getByTestId("composer-delete")).toBeVisible();
@@ -288,10 +261,7 @@ test("composer renders account-specific renditions", async ({
   await page.keyboard.press("Escape");
 
   await page.getByTestId("composer-delete").click();
-  await page
-    .getByRole("dialog")
-    .getByRole("button", { name: "Delete", exact: true })
-    .click();
+  await page.getByRole("dialog").getByRole("button", { name: "Delete", exact: true }).click();
   await expect.poll(() => deleteRequested).toBe(true);
 });
 
@@ -360,9 +330,7 @@ test("the composer tolerates repeated destination validation identities", async 
       contentType: "application/json",
       json: {
         accounts: payload.account_ids.map((accountID) => {
-          const provider = accountID.startsWith("youtube")
-            ? "youtube"
-            : "linkedin";
+          const provider = accountID.startsWith("youtube") ? "youtube" : "linkedin";
           return {
             account_id: accountID,
             provider,
@@ -438,9 +406,7 @@ test("the composer tolerates repeated destination validation identities", async 
   await expect(page.getByTestId("text-thread-composer-shell")).toBeVisible();
   await expect(page.getByTestId("page-loading")).toHaveCount(0);
   await expect(
-    page
-      .getByTestId("composer-account-control")
-      .getByTestId("composer-account-icon"),
+    page.getByTestId("composer-account-control").getByTestId("composer-account-icon"),
   ).toHaveCount(2);
   await page.getByLabel("Post text").fill("Video description");
 
@@ -461,12 +427,8 @@ test("the composer tolerates repeated destination validation identities", async 
   await expect(youtubeTab).toHaveAttribute("aria-selected", "true");
   const destinationDialog = page.getByRole("dialog");
   await expect(destinationDialog).toBeVisible();
-  await expect(
-    destinationDialog.locator("#destination-setting-title"),
-  ).toBeFocused();
+  await expect(destinationDialog.locator("#destination-setting-title")).toBeFocused();
   await destinationDialog.getByRole("button", { name: "Close" }).click();
 
-  expect(
-    pageErrors.filter((error) => error.message.includes("each_key_duplicate")),
-  ).toEqual([]);
+  expect(pageErrors.filter((error) => error.message.includes("each_key_duplicate"))).toEqual([]);
 });

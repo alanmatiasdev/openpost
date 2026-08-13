@@ -13,10 +13,7 @@ import {
 test("parses stable semantic versions", () => {
   assert.deepEqual(parseStableVersion("v1.27.7"), [1, 27, 7]);
   assert.deepEqual(parseStableVersion("2.0.0"), [2, 0, 0]);
-  assert.throws(
-    () => parseStableVersion("v1.02.3"),
-    /expected a stable version/,
-  );
+  assert.throws(() => parseStableVersion("v1.02.3"), /expected a stable version/);
   assert.throws(() => parseStableVersion("v1.2"), /expected a stable version/);
 });
 
@@ -27,18 +24,9 @@ test("compares versions numerically", () => {
 });
 
 test("uses the highest conventional commit impact", () => {
-  assert.equal(
-    classifyCommitMessages(["docs: simplify README", "fix: repair upload"]),
-    "patch",
-  );
-  assert.equal(
-    classifyCommitMessages(["fix: repair upload", "feat(cli): add command"]),
-    "minor",
-  );
-  assert.equal(
-    classifyCommitMessages(["feat(api)!: replace response shape"]),
-    "major",
-  );
+  assert.equal(classifyCommitMessages(["docs: simplify README", "fix: repair upload"]), "patch");
+  assert.equal(classifyCommitMessages(["fix: repair upload", "feat(cli): add command"]), "minor");
+  assert.equal(classifyCommitMessages(["feat(api)!: replace response shape"]), "major");
   assert.equal(
     classifyCommitMessages([
       "feat(api): replace response shape\n\nBREAKING CHANGE: clients must migrate",
@@ -49,10 +37,10 @@ test("uses the highest conventional commit impact", () => {
 
 test("includes a pending release commit without changing existing messages", () => {
   const existing = ["fix: repair upload"];
-  assert.deepEqual(
-    includePendingCommitMessage(existing, "feat: add publishing mode"),
-    ["fix: repair upload", "feat: add publishing mode"],
-  );
+  assert.deepEqual(includePendingCommitMessage(existing, "feat: add publishing mode"), [
+    "fix: repair upload",
+    "feat: add publishing mode",
+  ]);
   assert.deepEqual(existing, ["fix: repair upload"]);
   assert.deepEqual(includePendingCommitMessage(existing, "  "), existing);
 });

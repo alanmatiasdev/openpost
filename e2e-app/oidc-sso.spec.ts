@@ -36,9 +36,7 @@ async function mockOIDCStart(page: Page) {
   return () => startURL;
 }
 
-test("OIDC login preserves a safe relative redirect at phone width", async ({
-  page,
-}) => {
+test("OIDC login preserves a safe relative redirect at phone width", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const consoleErrors = collectConsoleErrors(page);
   await page.route("**/api/v1/auth/oidc/providers", async (route) => {
@@ -49,9 +47,7 @@ test("OIDC login preserves a safe relative redirect at phone width", async ({
   });
   const getStartURL = await mockOIDCStart(page);
 
-  await page.goto(
-    `/login?redirect=${encodeURIComponent("/settings?tab=security")}`,
-  );
+  await page.goto(`/login?redirect=${encodeURIComponent("/settings?tab=security")}`);
   const providerButton = page.getByRole("button", {
     name: "Continue with Acme SSO",
   });
@@ -64,16 +60,12 @@ test("OIDC login preserves a safe relative redirect at phone width", async ({
   await providerButton.click();
   await expect(page).toHaveURL(/oidc_error=Stubbed\+OIDC\+redirect/);
   const startURL = new URL(getStartURL());
-  expect(startURL.searchParams.get("return_path")).toBe(
-    "/settings?tab=security",
-  );
+  expect(startURL.searchParams.get("return_path")).toBe("/settings?tab=security");
   expect(startURL.searchParams.has("native")).toBe(false);
   expect(consoleErrors).toEqual([]);
 });
 
-test("Google is offered as first-party login and registration", async ({
-  page,
-}) => {
+test("Google is offered as first-party login and registration", async ({ page }) => {
   await page.route("**/api/v1/auth/oidc/providers", async (route) => {
     await route.fulfill({
       contentType: "application/json",
@@ -82,19 +74,13 @@ test("Google is offered as first-party login and registration", async ({
   });
 
   await page.goto("/login");
-  await expect(
-    page.getByRole("button", { name: "Continue with Google" }),
-  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Continue with Google" })).toBeVisible();
 
   await page.goto("/register");
-  await expect(
-    page.getByRole("button", { name: "Continue with Google" }),
-  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Continue with Google" })).toBeVisible();
 });
 
-test("verified-domain discovery selects the organization provider", async ({
-  page,
-}) => {
+test("verified-domain discovery selects the organization provider", async ({ page }) => {
   await page.route("**/api/v1/auth/oidc/providers", async (route) => {
     await route.fulfill({ contentType: "application/json", json: [] });
   });
@@ -121,10 +107,7 @@ test("managed users without workspaces wait for administrator assignment", async
   request,
 }) => {
   const unique = Date.now().toString(36);
-  const auth = await registerUser(
-    request,
-    `managed-onboarding-${unique}@example.com`,
-  );
+  const auth = await registerUser(request, `managed-onboarding-${unique}@example.com`);
   await authenticatePage(page, auth.token);
   await page.route("**/api/v1/auth/me", async (route) => {
     const response = await route.fetch();
@@ -151,9 +134,7 @@ test("managed users without workspaces wait for administrator assignment", async
       "Contact your organization administrator. OpenPost will show your workspace after they assign access.",
     ),
   ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Create workspace" }),
-  ).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Create workspace" })).toHaveCount(0);
   await expect(page.getByText("Choose your plan")).toHaveCount(0);
   await expect(page.getByRole("link", { name: /checkout/i })).toHaveCount(0);
   await expect(page.getByText("Connect a destination")).toHaveCount(0);

@@ -46,51 +46,31 @@ test("composer ignores stale accounts and recovers the current workspace", async
   request,
 }) => {
   const unique = Date.now().toString(36);
-  const auth = await registerUser(
-    request,
-    `composer-recovery-${unique}@example.com`,
-  );
-  const first = (await createWorkspace(
-    request,
-    auth.token,
-    `Slow ${unique}`,
-  )) as {
+  const auth = await registerUser(request, `composer-recovery-${unique}@example.com`);
+  const first = (await createWorkspace(request, auth.token, `Slow ${unique}`)) as {
     id: string;
     name: string;
   };
-  const second = (await createWorkspace(
-    request,
-    auth.token,
-    `Current ${unique}`,
-  )) as {
+  const second = (await createWorkspace(request, auth.token, `Current ${unique}`)) as {
     id: string;
     name: string;
   };
   await authenticatePage(page, auth.token);
   await page.addInitScript((workspace) => {
-    localStorage.setItem(
-      "openpost_current_workspace",
-      JSON.stringify(workspace),
-    );
+    localStorage.setItem("openpost_current_workspace", JSON.stringify(workspace));
   }, first);
 
   let releaseFirst!: () => void;
-  const firstGate = new Promise<void>(
-    (resolveGate) => (releaseFirst = resolveGate),
-  );
+  const firstGate = new Promise<void>((resolveGate) => (releaseFirst = resolveGate));
   let markFirstStarted!: () => void;
-  const firstStarted = new Promise<void>(
-    (resolveStarted) => (markFirstStarted = resolveStarted),
-  );
+  const firstStarted = new Promise<void>((resolveStarted) => (markFirstStarted = resolveStarted));
   let markFirstFinished!: () => void;
   const firstFinished = new Promise<void>(
     (resolveFinished) => (markFirstFinished = resolveFinished),
   );
   let secondRequests = 0;
   await page.route("**/api/v1/accounts?**", async (route) => {
-    const workspaceID = new URL(route.request().url()).searchParams.get(
-      "workspace_id",
-    );
+    const workspaceID = new URL(route.request().url()).searchParams.get("workspace_id");
     if (workspaceID === first.id) {
       markFirstStarted();
       await firstGate;
@@ -130,9 +110,7 @@ test("composer ignores stale accounts and recovers the current workspace", async
   await page.goto("/");
   await firstStarted;
 
-  const workspaceButton = page
-    .getByRole("button", { name: new RegExp(first.name) })
-    .first();
+  const workspaceButton = page.getByRole("button", { name: new RegExp(first.name) }).first();
   await workspaceButton.click();
   await page.getByRole("menuitem", { name: new RegExp(second.name) }).click();
 
@@ -153,9 +131,7 @@ test("composer ignores stale accounts and recovers the current workspace", async
   await expect(page.locator("[data-sonner-toast]")).toHaveCount(0);
   await page.getByTestId("composer-account-control").click();
   await expect(
-    page
-      .getByTestId("composer-account-row")
-      .getByText("current_workspace", { exact: true }),
+    page.getByTestId("composer-account-row").getByText("current_workspace", { exact: true }),
   ).toBeVisible();
   await expect(page.getByText("stale_previous", { exact: true })).toHaveCount(0);
   expect(secondRequests).toBe(2);
@@ -166,38 +142,22 @@ test("activity clears cross-workspace data and preserves a valid view on refresh
   request,
 }) => {
   const unique = Date.now().toString(36);
-  const auth = await registerUser(
-    request,
-    `activity-recovery-${unique}@example.com`,
-  );
-  const first = (await createWorkspace(
-    request,
-    auth.token,
-    `First ${unique}`,
-  )) as {
+  const auth = await registerUser(request, `activity-recovery-${unique}@example.com`);
+  const first = (await createWorkspace(request, auth.token, `First ${unique}`)) as {
     id: string;
     name: string;
   };
-  const second = (await createWorkspace(
-    request,
-    auth.token,
-    `Second ${unique}`,
-  )) as {
+  const second = (await createWorkspace(request, auth.token, `Second ${unique}`)) as {
     id: string;
     name: string;
   };
   await authenticatePage(page, auth.token);
   await page.addInitScript((workspace) => {
-    localStorage.setItem(
-      "openpost_current_workspace",
-      JSON.stringify(workspace),
-    );
+    localStorage.setItem("openpost_current_workspace", JSON.stringify(workspace));
   }, first);
 
   let releaseFirstRefresh!: () => void;
-  const firstRefreshGate = new Promise<void>(
-    (resolveGate) => (releaseFirstRefresh = resolveGate),
-  );
+  const firstRefreshGate = new Promise<void>((resolveGate) => (releaseFirstRefresh = resolveGate));
   let markFirstRefreshStarted!: () => void;
   const firstRefreshStarted = new Promise<void>(
     (resolveStarted) => (markFirstRefreshStarted = resolveStarted),
@@ -245,14 +205,10 @@ test("activity clears cross-workspace data and preserves a valid view on refresh
             text_post_id: isSecond ? "current-post" : "previous-post",
             workspace_id: workspaceID,
             created_by: "activity-recovery-user",
-            title: isSecond
-              ? "Current workspace post"
-              : "Previous workspace post",
+            title: isSecond ? "Current workspace post" : "Previous workspace post",
             intent: "post",
             content_profile: "short_text",
-            source_text: isSecond
-              ? "Current workspace post"
-              : "Previous workspace post",
+            source_text: isSecond ? "Current workspace post" : "Previous workspace post",
             source_url: "",
             goal: "",
             audience: "",
@@ -268,9 +224,7 @@ test("activity clears cross-workspace data and preserves a valid view on refresh
               {
                 id: isSecond ? "current-segment" : "previous-segment",
                 position: 0,
-                body: isSecond
-                  ? "Current workspace post"
-                  : "Previous workspace post",
+                body: isSecond ? "Current workspace post" : "Previous workspace post",
                 title: "",
                 description: "",
                 url: "",
@@ -287,9 +241,7 @@ test("activity clears cross-workspace data and preserves a valid view on refresh
     }
   });
   await page.route("**/api/v1/jobs?**", async (route) => {
-    jobWorkspaceIDs.push(
-      new URL(route.request().url()).searchParams.get("workspace_id") ?? "",
-    );
+    jobWorkspaceIDs.push(new URL(route.request().url()).searchParams.get("workspace_id") ?? "");
     await route.fulfill({ contentType: "application/json", json: [] });
   });
   await page.route("**/api/v1/accounts?**", async (route) => {
@@ -297,38 +249,26 @@ test("activity clears cross-workspace data and preserves a valid view on refresh
   });
 
   await page.goto("/activity?tab=drafts");
-  await expect(
-    page.locator("main").getByText("Previous workspace post"),
-  ).toBeVisible();
+  await expect(page.locator("main").getByText("Previous workspace post")).toBeVisible();
   gateNextFirstRefresh = true;
   await page.getByRole("button", { name: "Refresh" }).click();
   await firstRefreshStarted;
 
-  const workspaceButton = page
-    .getByRole("button", { name: new RegExp(first.name) })
-    .first();
+  const workspaceButton = page.getByRole("button", { name: new RegExp(first.name) }).first();
   await workspaceButton.click();
   await page.getByRole("menuitem", { name: new RegExp(second.name) }).click();
-  await expect(
-    page.locator("main").getByText("Current workspace post"),
-  ).toBeVisible();
+  await expect(page.locator("main").getByText("Current workspace post")).toBeVisible();
   releaseFirstRefresh();
   await expect.poll(() => firstRefreshFinished).toBe(true);
-  await expect(
-    page.locator("main").getByText("Previous workspace post"),
-  ).toHaveCount(0);
-  await expect(
-    page.locator("main").getByText("Current workspace post"),
-  ).toBeVisible();
+  await expect(page.locator("main").getByText("Previous workspace post")).toHaveCount(0);
+  await expect(page.locator("main").getByText("Current workspace post")).toBeVisible();
   await expect.poll(() => jobWorkspaceIDs.includes(first.id)).toBe(true);
   await expect.poll(() => jobWorkspaceIDs.includes(second.id)).toBe(true);
 
   failNextPublicationsRequest = true;
   await page.getByRole("button", { name: "Refresh" }).click();
   await expect(page.getByText("Failed to load posts")).toBeVisible();
-  await expect(
-    page.locator("main").getByText("Current workspace post"),
-  ).toBeVisible();
+  await expect(page.locator("main").getByText("Current workspace post")).toBeVisible();
 });
 
 test("composer sends workspace-local wall time as the exact scheduled instant", async ({
@@ -336,31 +276,21 @@ test("composer sends workspace-local wall time as the exact scheduled instant", 
   request,
 }) => {
   const unique = Date.now().toString(36);
-  const auth = await registerUser(
-    request,
-    `composer-timezone-${unique}@example.com`,
-  );
-  const workspace = (await createWorkspace(
-    request,
-    auth.token,
-    `Timezone ${unique}`,
-  )) as { id: string };
-  const settingsResponse = await request.patch(
-    `/api/v1/workspaces/${workspace.id}/settings`,
-    {
-      headers: { Authorization: `Bearer ${auth.token}` },
-      data: { timezone: "America/New_York" },
-    },
-  );
+  const auth = await registerUser(request, `composer-timezone-${unique}@example.com`);
+  const workspace = (await createWorkspace(request, auth.token, `Timezone ${unique}`)) as {
+    id: string;
+  };
+  const settingsResponse = await request.patch(`/api/v1/workspaces/${workspace.id}/settings`, {
+    headers: { Authorization: `Bearer ${auth.token}` },
+    data: { timezone: "America/New_York" },
+  });
   expect(settingsResponse.ok()).toBeTruthy();
 
   await authenticatePage(page, auth.token);
   await page.route("**/api/v1/accounts?**", async (route) => {
     await route.fulfill({
       contentType: "application/json",
-      json: [
-        socialAccount("timezone-account", workspace.id, "timezone_target"),
-      ],
+      json: [socialAccount("timezone-account", workspace.id, "timezone_target")],
     });
   });
   await page.route("**/api/v1/capabilities/resolve", async (route) => {
@@ -395,20 +325,17 @@ test("composer sends workspace-local wall time as the exact scheduled instant", 
   await page.route("**/api/v1/posts/*/variants", async (route) => {
     await route.fulfill({ contentType: "application/json", json: {} });
   });
-  await page.route(
-    "**/api/v1/publications/scheduled-timezone-publication",
-    async (route) => {
-      if (route.request().method() === "PUT") {
-        const payload = route.request().postDataJSON() as {
-          scheduled_at?: string;
-        };
-        if (payload.scheduled_at) scheduledAt = payload.scheduled_at;
-        await route.fulfill({ contentType: "application/json", json: {} });
-        return;
-      }
-      await route.continue();
-    },
-  );
+  await page.route("**/api/v1/publications/scheduled-timezone-publication", async (route) => {
+    if (route.request().method() === "PUT") {
+      const payload = route.request().postDataJSON() as {
+        scheduled_at?: string;
+      };
+      if (payload.scheduled_at) scheduledAt = payload.scheduled_at;
+      await route.fulfill({ contentType: "application/json", json: {} });
+      return;
+    }
+    await route.continue();
+  });
   await page.route(
     "**/api/v1/publications/scheduled-timezone-publication/renditions",
     async (route) => {
@@ -430,13 +357,8 @@ test("composer sends workspace-local wall time as the exact scheduled instant", 
 
   await page.goto("/");
   await expect(page.getByTestId("composer-account-control")).toBeVisible();
-  await page
-    .getByLabel("Post text")
-    .fill("Schedule in the workspace timezone.");
-  await page
-    .getByRole("button", { name: "Schedule", exact: true })
-    .first()
-    .click();
+  await page.getByLabel("Post text").fill("Schedule in the workspace timezone.");
+  await page.getByRole("button", { name: "Schedule", exact: true }).first().click();
   const dialog = page.getByTestId("schedule-dialog-shell");
   await expect(dialog).toContainText("America/New_York");
   await dialog.getByLabel("Schedule time").fill("2099-07-21T09:00");
@@ -451,32 +373,22 @@ test("an in-flight autosave cannot attach an old-workspace draft after switching
   request,
 }) => {
   const unique = Date.now().toString(36);
-  const auth = await registerUser(
-    request,
-    `composer-autosave-race-${unique}@example.com`,
-  );
-  const first = (await createWorkspace(
-    request,
-    auth.token,
-    `Autosave A ${unique}`,
-  )) as { id: string; name: string };
-  const second = (await createWorkspace(
-    request,
-    auth.token,
-    `Autosave B ${unique}`,
-  )) as { id: string; name: string };
+  const auth = await registerUser(request, `composer-autosave-race-${unique}@example.com`);
+  const first = (await createWorkspace(request, auth.token, `Autosave A ${unique}`)) as {
+    id: string;
+    name: string;
+  };
+  const second = (await createWorkspace(request, auth.token, `Autosave B ${unique}`)) as {
+    id: string;
+    name: string;
+  };
 
   await authenticatePage(page, auth.token);
   await page.addInitScript((workspace) => {
-    localStorage.setItem(
-      "openpost_current_workspace",
-      JSON.stringify(workspace),
-    );
+    localStorage.setItem("openpost_current_workspace", JSON.stringify(workspace));
   }, first);
   await page.route("**/api/v1/accounts?**", async (route) => {
-    const workspaceID = new URL(route.request().url()).searchParams.get(
-      "workspace_id",
-    );
+    const workspaceID = new URL(route.request().url()).searchParams.get("workspace_id");
     await route.fulfill({
       contentType: "application/json",
       json: [
@@ -501,9 +413,7 @@ test("an in-flight autosave cannot attach an old-workspace draft after switching
   });
 
   let releaseFirstSave!: () => void;
-  const firstSaveGate = new Promise<void>(
-    (resolveGate) => (releaseFirstSave = resolveGate),
-  );
+  const firstSaveGate = new Promise<void>((resolveGate) => (releaseFirstSave = resolveGate));
   let markFirstSaveStarted!: () => void;
   const firstSaveStarted = new Promise<void>(
     (resolveStarted) => (markFirstSaveStarted = resolveStarted),
@@ -560,9 +470,7 @@ test("an in-flight autosave cannot attach an old-workspace draft after switching
   await page.getByLabel("Post text").fill("Move this unsaved content safely.");
   await firstSaveStarted;
 
-  const workspaceButton = page
-    .getByRole("button", { name: new RegExp(first.name) })
-    .first();
+  const workspaceButton = page.getByRole("button", { name: new RegExp(first.name) }).first();
   await workspaceButton.click();
   await page.getByRole("menuitem", { name: new RegExp(second.name) }).click();
   await page
@@ -575,9 +483,7 @@ test("an in-flight autosave cannot attach an old-workspace draft after switching
   await firstSaveFinished;
   await expect(page).not.toHaveURL(/draft-workspace-a/);
 
-  await page
-    .getByLabel("Post text")
-    .fill("Move this unsaved content safely to workspace B.");
+  await page.getByLabel("Post text").fill("Move this unsaved content safely to workspace B.");
   await expect(page).toHaveURL(/\/publications\/draft-workspace-b$/, {
     timeout: 10_000,
   });

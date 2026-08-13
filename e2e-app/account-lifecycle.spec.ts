@@ -19,9 +19,7 @@ const hostedAuthConfiguration = {
   support_email: "openpost@rgo.pt",
 };
 
-test("hosted registration requires current legal acceptance", async ({
-  page,
-}) => {
+test("hosted registration requires current legal acceptance", async ({ page }) => {
   const unique = Date.now().toString(36);
   const email = `legal-registration-${unique}@example.com`;
   await routeBrowserRegistration(page, email);
@@ -34,18 +32,18 @@ test("hosted registration requires current legal acceptance", async ({
   await page.getByLabel("Confirm Password").fill(password);
   const submit = page.getByRole("button", { name: "Create Account" });
   await expect(submit).toBeDisabled();
-  await expect(
-    page.getByRole("link", { name: "Terms of Service" }),
-  ).toHaveAttribute("href", hostedAuthConfiguration.terms_url);
-  await expect(
-    page.getByRole("link", { name: "Privacy Policy" }),
-  ).toHaveAttribute("href", hostedAuthConfiguration.privacy_url);
+  await expect(page.getByRole("link", { name: "Terms of Service" })).toHaveAttribute(
+    "href",
+    hostedAuthConfiguration.terms_url,
+  );
+  await expect(page.getByRole("link", { name: "Privacy Policy" })).toHaveAttribute(
+    "href",
+    hostedAuthConfiguration.privacy_url,
+  );
 
   await page.getByRole("checkbox").check();
   const registrationRequest = page.waitForRequest(
-    (request) =>
-      request.url().endsWith("/api/v1/auth/register") &&
-      request.method() === "POST",
+    (request) => request.url().endsWith("/api/v1/auth/register") && request.method() === "POST",
   );
   await submit.click();
   expect((await registrationRequest).postDataJSON()).toMatchObject({
@@ -57,9 +55,7 @@ test("hosted registration requires current legal acceptance", async ({
     page.getByRole("heading", { name: "Confirm your Workspace and plan" }),
   ).toBeVisible();
   await expect(
-    page.getByText(
-      "Choose a plan and billing period before creating your account.",
-    ),
+    page.getByText("Choose a plan and billing period before creating your account."),
   ).toBeVisible();
 });
 
@@ -75,8 +71,7 @@ test("password recovery keeps the token out of browser history and uses generic 
     });
     await route.fulfill({
       json: {
-        message:
-          "If an account exists for that email, a password reset link has been sent.",
+        message: "If an account exists for that email, a password reset link has been sent.",
       },
     });
   });
@@ -84,9 +79,7 @@ test("password recovery keeps the token out of browser history and uses generic 
   await page.goto("/forgot-password");
   await page.getByLabel("Email").fill("person@example.com");
   await page.getByRole("button", { name: "Send reset link" }).click();
-  await expect(
-    page.getByRole("heading", { name: "Check your email" }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Check your email" })).toBeVisible();
 
   const resetToken = "a".repeat(43);
   const replacementPassword = "replacement-password-456";
@@ -99,14 +92,10 @@ test("password recovery keeps the token out of browser history and uses generic 
   });
   await page.goto(`/reset-password#token=${resetToken}`);
   await expect(page).toHaveURL(/\/reset-password$/);
-  await page
-    .getByLabel("New password", { exact: true })
-    .fill(replacementPassword);
+  await page.getByLabel("New password", { exact: true }).fill(replacementPassword);
   await page.getByLabel("Confirm new password").fill(replacementPassword);
   await page.getByRole("button", { name: "Reset password" }).click();
-  await expect(
-    page.getByRole("heading", { name: "Password reset" }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Password reset" })).toBeVisible();
 });
 
 test("users can change passwords, export data, and permanently delete their account", async ({
@@ -121,9 +110,7 @@ test("users can change passwords, export data, and permanently delete their acco
   await authenticatePage(page, auth.token);
   await page.goto("/settings?tab=security");
 
-  await expect(
-    page.getByRole("heading", { name: "Password and account data" }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Password and account data" })).toBeVisible();
   await page
     .getByRole("button", { name: /Change password/ })
     .first()
@@ -148,9 +135,7 @@ test("users can change passwords, export data, and permanently delete their acco
   await expect((await download).suggestedFilename()).toMatch(
     /^openpost-account-export-\d{4}-\d{2}-\d{2}\.json$/,
   );
-  await expect(
-    page.getByText("Your account export was downloaded."),
-  ).toBeVisible();
+  await expect(page.getByText("Your account export was downloaded.")).toBeVisible();
 
   await page.getByRole("button", { name: "Review account deletion" }).click();
   const dialog = page.getByRole("dialog", {
@@ -166,9 +151,7 @@ test("users can change passwords, export data, and permanently delete their acco
   await expect(deleteButton).toBeEnabled();
   await deleteButton.click();
   await expect(page).toHaveURL(/\/account-deleted$/);
-  await expect(
-    page.getByRole("heading", { name: "Your account was deleted" }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Your account was deleted" })).toBeVisible();
 
   const me = await page.context().request.get("/api/v1/auth/me");
   expect(me.status()).toBe(401);

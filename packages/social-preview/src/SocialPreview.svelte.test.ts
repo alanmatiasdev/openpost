@@ -9,10 +9,7 @@ import {
   type PreviewPlatformKey,
 } from "./model";
 
-function previewModel(
-  platform: PreviewPlatformKey,
-  format: PreviewFormat = "post",
-) {
+function previewModel(platform: PreviewPlatformKey, format: PreviewFormat = "post") {
   return createPreviewModel({
     platform,
     format,
@@ -40,37 +37,27 @@ describe("SocialPreview destination presentations", () => {
     ["youtube", "video", "Subscribe"],
     ["tiktok", "video", "@openpost"],
     ["discord", "post", "APP"],
-  ] as const)(
-    "renders the native %s %s presentation",
-    async (platform, format, expectedText) => {
-      const screen = await render(SocialPreview, {
-        model: previewModel(platform, format),
-      });
+  ] as const)("renders the native %s %s presentation", async (platform, format, expectedText) => {
+    const screen = await render(SocialPreview, {
+      model: previewModel(platform, format),
+    });
 
-      await expect
-        .element(
-          screen.getByLabelText(`${platformNames[platform]} ${format} preview`),
-        )
-        .toBeVisible();
-      await expect
-        .element(screen.getByText(expectedText, { exact: true }))
-        .toBeVisible();
-    },
-  );
+    await expect
+      .element(screen.getByLabelText(`${platformNames[platform]} ${format} preview`))
+      .toBeVisible();
+    await expect.element(screen.getByText(expectedText, { exact: true })).toBeVisible();
+  });
 
   it.each([
     ["instagram", "story", "Instagram story player"],
     ["youtube", "short", "YouTube short player"],
-  ] as const)(
-    "renders the %s %s in its vertical player",
-    async (platform, format, playerLabel) => {
-      const screen = await render(SocialPreview, {
-        model: previewModel(platform, format),
-      });
+  ] as const)("renders the %s %s in its vertical player", async (platform, format, playerLabel) => {
+    const screen = await render(SocialPreview, {
+      model: previewModel(platform, format),
+    });
 
-      await expect.element(screen.getByLabelText(playerLabel)).toBeVisible();
-    },
-  );
+    await expect.element(screen.getByLabelText(playerLabel)).toBeVisible();
+  });
 
   it("renders Mastodon content warnings", async () => {
     const model = {
@@ -80,9 +67,7 @@ describe("SocialPreview destination presentations", () => {
     const screen = await render(SocialPreview, { model });
 
     await expect.element(screen.getByText("Content warning")).toBeVisible();
-    await expect
-      .element(screen.getByRole("button", { name: "Show more" }))
-      .toBeVisible();
+    await expect.element(screen.getByRole("button", { name: "Show more" })).toBeVisible();
   });
 
   it("renders LinkedIn document details", async () => {
@@ -101,9 +86,7 @@ describe("SocialPreview destination presentations", () => {
       model: previewModel("discord", "video"),
     });
 
-    await expect
-      .element(screen.getByText("Video preview", { exact: true }))
-      .toBeVisible();
+    await expect.element(screen.getByText("Video preview", { exact: true })).toBeVisible();
   });
 
   it("fails explicitly for an unsupported provider", async () => {
@@ -111,12 +94,8 @@ describe("SocialPreview destination presentations", () => {
       model: previewModel("unsupported"),
     });
 
-    await expect
-      .element(screen.getByRole("status"))
-      .toHaveTextContent("Preview unavailable");
-    await expect
-      .element(screen.getByText("Discord post preview"))
-      .not.toBeInTheDocument();
+    await expect.element(screen.getByRole("status")).toHaveTextContent("Preview unavailable");
+    await expect.element(screen.getByText("Discord post preview")).not.toBeInTheDocument();
   });
 });
 
@@ -138,12 +117,8 @@ describe("SocialPreviewPage destination shells", () => {
     await expect.element(shell).toBeVisible();
     await expect.element(shell).toHaveAttribute("data-preview-shell", "x");
     await expect.element(shell).toHaveTextContent("What’s happening?");
-    await expect
-      .element(screen.getByText("First destination post."))
-      .toBeVisible();
-    await expect
-      .element(screen.getByText("Second destination post."))
-      .toBeVisible();
+    await expect.element(screen.getByText("First destination post.")).toBeVisible();
+    await expect.element(screen.getByText("Second destination post.")).toBeVisible();
   });
 
   it.each([
@@ -169,16 +144,10 @@ describe("SocialPreviewPage destination shells", () => {
         }),
       });
 
-      const shell = screen.getByLabelText(
-        `${platformNames[platform]} page preview`,
-      );
-      await expect
-        .element(shell)
-        .toHaveAttribute("data-preview-shell", platform);
+      const shell = screen.getByLabelText(`${platformNames[platform]} page preview`);
+      await expect.element(shell).toHaveAttribute("data-preview-shell", platform);
       await expect.element(shell).toHaveTextContent(chromeText);
-      await expect
-        .element(shell)
-        .toHaveTextContent(`Authored ${platform} post.`);
+      await expect.element(shell).toHaveTextContent(`Authored ${platform} post.`);
     },
   );
 });

@@ -353,10 +353,7 @@
       "duration": "Managed host journals are size-bounded to 50 MiB of persistent storage and 10 MiB of runtime storage rather than retained for a fixed number of days.",
       "deletion_trigger": "System journal rotation removes older entries as the configured size bounds are reached. The operator can remove logs when incident, reliability, legal, or security needs end.",
       "exceptions": "The host does not provide a complete command-level audit trail. Account deletion does not selectively remove entries already written to shared operational logs.",
-      "evidence": [
-        "docs-site/operations/logs.md",
-        "packages/legal-policy/src/managed-service.json"
-      ]
+      "evidence": ["docs-site/operations/logs.md", "packages/legal-policy/src/managed-service.json"]
     },
     {
       "id": "recovery-copies",
@@ -476,10 +473,7 @@
       "scope": "Documentation origin and current browser profile.",
       "duration": "Until the preference changes or documentation site data is cleared.",
       "necessity": "functional",
-      "source_refs": [
-        "docs-site/.vitepress/config.ts",
-        "docs-site/.vitepress/theme/index.ts"
-      ]
+      "source_refs": ["docs-site/.vitepress/config.ts", "docs-site/.vitepress/theme/index.ts"]
     },
     {
       "id": "local-current-workspace",
@@ -585,9 +579,7 @@
       "scope": "Application origin and public Image Editor on that origin.",
       "duration": "Until preferences are replaced or site data is cleared.",
       "necessity": "functional",
-      "source_refs": [
-        "frontend/src/lib/image-editor/components/image-editor-shell.svelte"
-      ]
+      "source_refs": ["frontend/src/lib/image-editor/components/image-editor-shell.svelte"]
     },
     {
       "id": "local-image-first-edit",
@@ -599,9 +591,7 @@
       "scope": "Application origin and public Image Editor on that origin.",
       "duration": "Until site data is cleared.",
       "necessity": "functional",
-      "source_refs": [
-        "frontend/src/lib/image-editor/components/image-editor-shell.svelte"
-      ]
+      "source_refs": ["frontend/src/lib/image-editor/components/image-editor-shell.svelte"]
     },
     {
       "id": "local-image-colors",
@@ -628,9 +618,7 @@
       "scope": "Application origin and public Image Editor on that origin.",
       "duration": "Until layout values are replaced or site data is cleared.",
       "necessity": "functional",
-      "source_refs": [
-        "frontend/src/lib/image-editor/components/image-editor-shell.svelte"
-      ]
+      "source_refs": ["frontend/src/lib/image-editor/components/image-editor-shell.svelte"]
     },
     {
       "id": "local-image-view",
@@ -642,9 +630,7 @@
       "scope": "Application origin and public Image Editor on that origin.",
       "duration": "Until view values are replaced or site data is cleared.",
       "necessity": "functional",
-      "source_refs": [
-        "frontend/src/lib/image-editor/components/image-editor-shell.svelte"
-      ]
+      "source_refs": ["frontend/src/lib/image-editor/components/image-editor-shell.svelte"]
     },
     {
       "id": "local-video-text-styles",
@@ -740,9 +726,7 @@
       "scope": "Application origin and current tab; suffix contains design ID, export mode, and format.",
       "duration": "Removed after the export is cleared or when the tab session ends or site data is cleared.",
       "necessity": "strictly_necessary",
-      "source_refs": [
-        "frontend/src/lib/image-editor/components/image-editor-shell.svelte"
-      ]
+      "source_refs": ["frontend/src/lib/image-editor/components/image-editor-shell.svelte"]
     },
     {
       "id": "session-marketing-motion",
@@ -754,9 +738,7 @@
       "scope": "Marketing origin and current browser tab session.",
       "duration": "Until the tab session ends or site data is cleared.",
       "necessity": "functional",
-      "source_refs": [
-        "marketing-site/src/routes/_components/HeroResultsCarousel.svelte"
-      ]
+      "source_refs": ["marketing-site/src/routes/_components/HeroResultsCarousel.svelte"]
     },
     {
       "id": "idb-image-editor",

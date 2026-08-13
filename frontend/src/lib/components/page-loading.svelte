@@ -2,7 +2,13 @@
 	import { Skeleton } from '$lib/components/ui/skeleton';
 
 	type LoadingLayout =
-		'list' | 'grid' | 'gallery' | 'sections' | 'settings' | 'composer' | 'calendar';
+		| 'list'
+		| 'grid'
+		| 'gallery'
+		| 'sections'
+		| 'settings'
+		| 'composer'
+		| 'calendar';
 	type LoadingVariant = 'profile' | 'form' | 'cards' | 'list';
 
 	interface Props {

@@ -52,7 +52,13 @@ export type ImageEditorCommandID =
 import type { ImageEditorTool } from './types';
 
 export type ImageEditorCommandCategory =
-	'file' | 'edit' | 'layer' | 'view' | 'select' | 'tools' | 'help';
+	| 'file'
+	| 'edit'
+	| 'layer'
+	| 'view'
+	| 'select'
+	| 'tools'
+	| 'help';
 export type ImageEditorCommandAvailability =
 	| 'always'
 	| 'editable'

@@ -15,61 +15,32 @@ import {
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 export function planCI(files, manifest, { full = false } = {}) {
-  const touched = new Set(
-    files.flatMap((file) => classifyReleasePath(file, manifest).surfaces),
-  );
+  const touched = new Set(files.flatMap((file) => classifyReleasePath(file, manifest).surfaces));
   const delivery = full || touched.has("delivery");
   const matches = (prefixes, paths = []) =>
     full ||
     delivery ||
     files.some(
-      (file) =>
-        paths.includes(file) ||
-        prefixes.some((prefix) => file.startsWith(prefix)),
+      (file) => paths.includes(file) || prefixes.some((prefix) => file.startsWith(prefix)),
     );
 
   return {
-    application:
-      full ||
-      delivery ||
-      touched.has("application") ||
-      touched.has("shared-assets"),
+    application: full || delivery || touched.has("application") || touched.has("shared-assets"),
     backend: matches(["backend/"], ["go.work", "go.work.sum"]),
     frontend: matches(
       ["frontend/", "packages/", "assets/"],
       ["package.json", "bun.lock", "bunfig.toml", "turbo.json"],
     ),
-    marketing:
-      full ||
-      delivery ||
-      touched.has("marketing") ||
-      touched.has("shared-assets"),
-    documentation:
-      full ||
-      delivery ||
-      touched.has("documentation") ||
-      touched.has("shared-assets"),
+    marketing: full || delivery || touched.has("marketing") || touched.has("shared-assets"),
+    documentation: full || delivery || touched.has("documentation") || touched.has("shared-assets"),
     cli: matches(["cli/"], ["go.work", "go.work.sum"]),
     security: matches(
       ["backend/", "cli/", "frontend/", "packages/"],
       ["bun.lock", "package.json", "go.work", "go.work.sum"],
     ),
     image: matches(
-      [
-        "backend/",
-        "frontend/",
-        "packages/",
-        "assets/",
-        "docker/",
-        "provider-certification/",
-      ],
-      [
-        ".dockerignore",
-        "bun.lock",
-        "bunfig.toml",
-        "package.json",
-        "turbo.json",
-      ],
+      ["backend/", "frontend/", "packages/", "assets/", "docker/", "provider-certification/"],
+      [".dockerignore", "bun.lock", "bunfig.toml", "package.json", "turbo.json"],
     ),
     android: matches(
       ["frontend/", "packages/", "assets/"],
@@ -96,11 +67,10 @@ export function planCI(files, manifest, { full = false } = {}) {
 }
 
 function changedFiles(base, head) {
-  return execFileSync(
-    "git",
-    ["diff", "--name-only", "--no-renames", `${base}...${head}`],
-    { cwd: root, encoding: "utf8" },
-  )
+  return execFileSync("git", ["diff", "--name-only", "--no-renames", `${base}...${head}`], {
+    cwd: root,
+    encoding: "utf8",
+  })
     .split("\n")
     .filter(Boolean)
     .sort();
@@ -113,11 +83,7 @@ function option(name) {
 
 function main() {
   const manifest = readReleaseSurfaceManifest(root);
-  const problems = validateReleaseSurfaceManifest(
-    manifest,
-    maintainedReleasePaths(root),
-    root,
-  );
+  const problems = validateReleaseSurfaceManifest(manifest, maintainedReleasePaths(root), root);
   if (problems.length) {
     throw new Error(`release surface ownership failed: ${problems.join("; ")}`);
   }

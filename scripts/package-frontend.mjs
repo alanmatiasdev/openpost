@@ -1,54 +1,25 @@
 import { createHash, randomUUID } from "node:crypto";
-import {
-  cp,
-  lstat,
-  mkdir,
-  readFile,
-  readdir,
-  rename,
-  rm,
-  writeFile,
-} from "node:fs/promises";
+import { cp, lstat, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 export const repositoryRoot = path.resolve(scriptDirectory, "..");
-export const defaultSourceDirectory = path.join(
-  repositoryRoot,
-  "frontend/build",
-);
-export const defaultDestinationDirectory = path.join(
-  repositoryRoot,
-  "backend/cmd/openpost/public",
-);
+export const defaultSourceDirectory = path.join(repositoryRoot, "frontend/build");
+export const defaultDestinationDirectory = path.join(repositoryRoot, "backend/cmd/openpost/public");
 
 const transactionSchemaVersion = 1;
-const transactionPhases = new Set([
-  "claimed",
-  "prepared",
-  "staged",
-  "swapping",
-  "installed",
-]);
+const transactionPhases = new Set(["claimed", "prepared", "staged", "swapping", "installed"]);
 
 function isInside(parent, candidate) {
   const relative = path.relative(parent, candidate);
-  return (
-    relative !== "" &&
-    !relative.startsWith(`..${path.sep}`) &&
-    relative !== ".."
-  );
+  return relative !== "" && !relative.startsWith(`..${path.sep}`) && relative !== "..";
 }
 
 function validateDistinctDirectories(sourceDirectory, destinationDirectory) {
   const source = path.resolve(sourceDirectory);
   const destination = path.resolve(destinationDirectory);
-  if (
-    source === destination ||
-    isInside(source, destination) ||
-    isInside(destination, source)
-  ) {
+  if (source === destination || isInside(source, destination) || isInside(destination, source)) {
     throw new Error(
       `Frontend package source and destination must be disjoint: ${source} -> ${destination}`,
     );
@@ -59,25 +30,19 @@ function validateDistinctDirectories(sourceDirectory, destinationDirectory) {
 async function artifactEntries(root, directory = root) {
   const entries = await readdir(directory, { withFileTypes: true });
   const result = [];
-  for (const entry of entries.sort((left, right) =>
-    left.name.localeCompare(right.name),
-  )) {
+  for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
     const pathname = path.join(directory, entry.name);
     const relative = path.relative(root, pathname).split(path.sep).join("/");
     const metadata = await lstat(pathname);
     if (metadata.isSymbolicLink()) {
-      throw new Error(
-        `Frontend artifact must not contain symbolic links: ${relative}`,
-      );
+      throw new Error(`Frontend artifact must not contain symbolic links: ${relative}`);
     }
     if (metadata.isDirectory()) {
       result.push(...(await artifactEntries(root, pathname)));
       continue;
     }
     if (!metadata.isFile()) {
-      throw new Error(
-        `Frontend artifact contains an unsupported entry: ${relative}`,
-      );
+      throw new Error(`Frontend artifact contains an unsupported entry: ${relative}`);
     }
     const contents = await readFile(pathname);
     result.push({
@@ -112,9 +77,7 @@ async function validateFrontendArtifact(directory) {
       throw new Error(`Frontend artifact is missing ${required}`);
     }
   }
-  const routeManifest = JSON.parse(
-    await readFile(path.join(directory, "app-routes.json"), "utf8"),
-  );
+  const routeManifest = JSON.parse(await readFile(path.join(directory, "app-routes.json"), "utf8"));
   if (
     routeManifest?.schema_version !== 1 ||
     !Array.isArray(routeManifest.routes) ||
@@ -186,10 +149,7 @@ function transactionPaths(destination, transactionId) {
   return {
     stageRoot,
     staged: path.join(stageRoot, "artifact"),
-    backup: path.join(
-      destinationParent,
-      `.${destinationName}-package-backup-${transactionId}`,
-    ),
+    backup: path.join(destinationParent, `.${destinationName}-package-backup-${transactionId}`),
   };
 }
 
@@ -262,15 +222,10 @@ function validateTransaction(transaction, { source, destination }) {
   ) {
     throw new Error("Frontend packaging transaction journal is invalid");
   }
-  const expectedPaths = transactionPaths(
-    destination,
-    transaction.transaction_id,
-  );
+  const expectedPaths = transactionPaths(destination, transaction.transaction_id);
   for (const key of ["stageRoot", "staged", "backup"]) {
     if (transaction[key] !== expectedPaths[key]) {
-      throw new Error(
-        `Frontend packaging transaction contains an invalid ${key} path`,
-      );
+      throw new Error(`Frontend packaging transaction contains an invalid ${key} path`);
     }
   }
   if (transaction.phase !== "claimed") {
@@ -278,8 +233,7 @@ function validateTransaction(transaction, { source, destination }) {
       !isManifestIdentity(transaction.expected) ||
       typeof transaction.previous?.exists !== "boolean" ||
       typeof transaction.previous?.valid !== "boolean" ||
-      (transaction.previous.valid &&
-        !isManifestIdentity(transaction.previous.identity)) ||
+      (transaction.previous.valid && !isManifestIdentity(transaction.previous.identity)) ||
       (!transaction.previous.valid && transaction.previous.identity !== null)
     ) {
       throw new Error("Frontend packaging transaction identities are invalid");
@@ -290,20 +244,14 @@ function validateTransaction(transaction, { source, destination }) {
 
 async function readTransaction(lockDirectory, paths) {
   return validateTransaction(
-    await readJSON(
-      path.join(lockDirectory, "transaction.json"),
-      "frontend packaging transaction",
-    ),
+    await readJSON(path.join(lockDirectory, "transaction.json"), "frontend packaging transaction"),
     paths,
   );
 }
 
 async function updateTransaction(lockDirectory, transaction, updates) {
   Object.assign(transaction, updates);
-  await writeJSONAtomic(
-    path.join(lockDirectory, "transaction.json"),
-    transaction,
-  );
+  await writeJSONAtomic(path.join(lockDirectory, "transaction.json"), transaction);
 }
 
 async function clearDeadRecoveryLock(recoveryLockDirectory) {
@@ -312,10 +260,7 @@ async function clearDeadRecoveryLock(recoveryLockDirectory) {
     path.join(recoveryLockDirectory, "owner.json"),
     "frontend packaging recovery owner",
   );
-  if (
-    owner?.schema_version !== transactionSchemaVersion ||
-    !Number.isSafeInteger(owner.pid)
-  ) {
+  if (owner?.schema_version !== transactionSchemaVersion || !Number.isSafeInteger(owner.pid)) {
     throw new Error("Frontend packaging recovery owner is invalid");
   }
   if (processIsAlive(owner.pid)) {
@@ -325,13 +270,10 @@ async function clearDeadRecoveryLock(recoveryLockDirectory) {
 }
 
 async function settleTransaction(transaction) {
-  const { backup, destination, expected, previous, staged, stageRoot } =
-    transaction;
+  const { backup, destination, expected, previous, staged, stageRoot } = transaction;
   if (["claimed", "prepared", "staged"].includes(transaction.phase)) {
     if (await pathExists(backup)) {
-      throw new Error(
-        "Frontend packaging backup exists before the recorded swap phase",
-      );
+      throw new Error("Frontend packaging backup exists before the recorded swap phase");
     }
     await rm(stageRoot, { recursive: true, force: true });
     return "unchanged";
@@ -358,10 +300,7 @@ async function settleTransaction(transaction) {
     return "unchanged";
   }
 
-  if (
-    previous.valid &&
-    identitiesEqual(backupState.identity, previous.identity)
-  ) {
+  if (previous.valid && identitiesEqual(backupState.identity, previous.identity)) {
     await rm(destination, { recursive: true, force: true });
     await rename(backup, destination);
     const restored = await inspectArtifact(destination);
@@ -384,12 +323,7 @@ async function settleTransaction(transaction) {
     return "installed";
   }
 
-  if (
-    previous.exists &&
-    !previous.valid &&
-    destinationState.exists &&
-    !backupState.exists
-  ) {
+  if (previous.exists && !previous.valid && destinationState.exists && !backupState.exists) {
     await rm(stageRoot, { recursive: true, force: true });
     return "unchanged-invalid";
   }
@@ -408,10 +342,7 @@ async function settleTransaction(transaction) {
 async function acquireTransaction({ source, destination }) {
   const destinationParent = path.dirname(destination);
   const destinationName = path.basename(destination);
-  const lockDirectory = path.join(
-    destinationParent,
-    `.${destinationName}-package.lock`,
-  );
+  const lockDirectory = path.join(destinationParent, `.${destinationName}-package.lock`);
   const recoveryLockDirectory = path.join(
     destinationParent,
     `.${destinationName}-package-recovery.lock`,
@@ -440,22 +371,14 @@ async function acquireTransaction({ source, destination }) {
       destination,
     });
     if (processIsAlive(interrupted.owner.pid)) {
-      throw new Error(
-        `Another frontend packaging operation owns ${lockDirectory}`,
-      );
+      throw new Error(`Another frontend packaging operation owns ${lockDirectory}`);
     }
     const recoveryOwner = {
       schema_version: transactionSchemaVersion,
       pid: process.pid,
       transaction_id: interrupted.transaction_id,
     };
-    if (
-      !(await claimDirectory(
-        recoveryLockDirectory,
-        "owner.json",
-        recoveryOwner,
-      ))
-    ) {
+    if (!(await claimDirectory(recoveryLockDirectory, "owner.json", recoveryOwner))) {
       throw new Error("Another frontend packaging recovery is already running");
     }
     try {
@@ -464,9 +387,7 @@ async function acquireTransaction({ source, destination }) {
         destination,
       });
       if (current.transaction_id !== interrupted.transaction_id) {
-        throw new Error(
-          "Frontend packaging transaction changed during recovery",
-        );
+        throw new Error("Frontend packaging transaction changed during recovery");
       }
       await settleTransaction(current);
       await rm(lockDirectory, { recursive: true, force: true });
@@ -525,9 +446,7 @@ export async function packageFrontend({
     await updateTransaction(lockDirectory, transaction, { phase: "installed" });
     const installedManifest = await validateFrontendArtifact(destination);
     if (JSON.stringify(installedManifest) !== JSON.stringify(sourceManifest)) {
-      throw new Error(
-        "Packaged frontend failed its post-install integrity check",
-      );
+      throw new Error("Packaged frontend failed its post-install integrity check");
     }
   } catch (error) {
     operationError = error;
@@ -557,9 +476,6 @@ export async function packageFrontend({
   return sourceManifest;
 }
 
-if (
-  process.argv[1] &&
-  import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href
-) {
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
   await packageFrontend();
 }

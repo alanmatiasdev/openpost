@@ -29,9 +29,20 @@ const ARTIFACT_EVENT = 'openpost:video-source-artifact';
 
 export type SourceArtifactProfile = 'index' | 'editor';
 export type SourceArtifactPhase =
-	'indexing' | 'thumbnail' | 'waveform' | 'proxy' | 'ready' | 'failed';
+	| 'indexing'
+	| 'thumbnail'
+	| 'waveform'
+	| 'proxy'
+	| 'ready'
+	| 'failed';
 export type ProxyGenerationState =
-	'not-needed' | 'pending' | 'running' | 'ready' | 'blocked-storage' | 'cancelled' | 'failed';
+	| 'not-needed'
+	| 'pending'
+	| 'running'
+	| 'ready'
+	| 'blocked-storage'
+	| 'cancelled'
+	| 'failed';
 
 export interface SourceArtifactIndex {
 	version: number;

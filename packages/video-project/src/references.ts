@@ -1,20 +1,11 @@
-import {
-  type PrimarySequenceItem,
-  type SourceID,
-  type VideoProjectDocumentV1,
-} from "./types.js";
+import { type PrimarySequenceItem, type SourceID, type VideoProjectDocumentV1 } from "./types.js";
 import { isPrimarySequenceClip } from "./timeline.js";
 
-function addPrimarySource(
-  result: Set<SourceID>,
-  item: PrimarySequenceItem,
-): void {
+function addPrimarySource(result: Set<SourceID>, item: PrimarySequenceItem): void {
   if (isPrimarySequenceClip(item)) result.add(item.source_id);
 }
 
-export function referencedSourceIDs(
-  project: VideoProjectDocumentV1,
-): SourceID[] {
+export function referencedSourceIDs(project: VideoProjectDocumentV1): SourceID[] {
   const result = new Set<SourceID>();
   project.primary_sequence.forEach((item) => addPrimarySource(result, item));
   for (const track of project.visual_tracks) {

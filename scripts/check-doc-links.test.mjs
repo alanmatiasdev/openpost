@@ -39,12 +39,9 @@ test("collects nested VitePress nav and sidebar links once", () => {
 
 test("every configured local VitePress navigation target resolves", async () => {
   const configFile = "docs-site/.vitepress/config.ts";
-  const config = (
-    await import(pathToFileURL(path.join(repositoryRoot, configFile)).href)
-  ).default;
+  const config = (await import(pathToFileURL(path.join(repositoryRoot, configFile)).href)).default;
   const missing = configuredNavigationTargets(config).filter(
-    (target) =>
-      !localDocumentationTargetExists(repositoryRoot, configFile, target),
+    (target) => !localDocumentationTargetExists(repositoryRoot, configFile, target),
   );
   assert.deepEqual(missing, []);
 });
