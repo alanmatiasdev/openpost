@@ -11076,6 +11076,18 @@
 						"format": "int64",
 						"type": "integer"
 					},
+					"error_code": {
+						"description": "Safe normalized provider failure code",
+						"type": "string"
+					},
+					"error_http_status": {
+						"format": "int64",
+						"type": "integer"
+					},
+					"error_kind": {
+						"description": "Safe normalized provider failure class",
+						"type": "string"
+					},
 					"external_id": {
 						"type": "string"
 					},
@@ -11086,6 +11098,10 @@
 						"type": "string"
 					},
 					"next_reconciliation_at": {
+						"type": "string"
+					},
+					"recovery_action": {
+						"enum": ["none", "retry", "reconcile", "manual_resolution"],
 						"type": "string"
 					},
 					"state": {
@@ -11103,7 +11119,8 @@
 					"state",
 					"current_attempt_id",
 					"current_attempt_number",
-					"current_attempt_created_at"
+					"current_attempt_created_at",
+					"recovery_action"
 				],
 				"type": "object"
 			},
