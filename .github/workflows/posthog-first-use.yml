@@ -1,0 +1,51 @@
+name: Verify PostHog first-use funnel
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/posthog-first-use.yml"
+      - "scripts/posthog-first-use.ts"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: posthog-first-use-production
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Configure and verify production funnel
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: "1.3.11"
+      - name: Create or update the funnel and verify ingestion
+        env:
+          POSTHOG_PERSONAL_API_KEY: ${{ secrets.POSTHOG_PERSONAL_API_KEY }}
+          POSTHOG_PROJECT_ID: ${{ vars.POSTHOG_PROJECT_ID }}
+          POSTHOG_PROJECT_TOKEN: ${{ vars.POSTHOG_PROJECT_TOKEN }}
+          POSTHOG_UI_HOST: ${{ vars.POSTHOG_UI_HOST }}
+          POSTHOG_BROWSER_HOST: ${{ vars.POSTHOG_BROWSER_HOST }}
+          POSTHOG_ENVIRONMENT: production
+          POSTHOG_EVIDENCE_PATH: posthog-first-use-evidence.json
+        run: bun scripts/posthog-first-use.ts
+      - name: Add verification evidence to the run summary
+        run: |
+          {
+            echo "## PostHog first-use funnel"
+            echo
+            echo "- Insight: $(jq -r '.insightURL' posthog-first-use-evidence.json)"
+            echo "- Verified at: $(jq -r '.verifiedAt' posthog-first-use-evidence.json)"
+            echo "- Smoke event: $(jq -r '.smokeEvent' posthog-first-use-evidence.json)"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0 # v7.0.1
+        with:
+          name: posthog-first-use-evidence-${{ github.sha }}-${{ github.run_attempt }}
+          path: posthog-first-use-evidence.json
+          if-no-files-found: error
+          retention-days: 30

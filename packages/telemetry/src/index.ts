@@ -15,6 +15,7 @@ export interface BrowserTelemetryConfig {
 }
 
 export interface TelemetryEventMap {
+  "signup started": Record<string, never>;
   "publication publish requested": {
     account_count: number;
     is_thread: boolean;
@@ -31,9 +32,7 @@ export interface TelemetryEventMap {
     source: "custom" | "preset" | "template" | "media";
   };
   "image design exported": { mode: string; pages: number };
-  "social account connected": { account_count: number; platform: string };
   "billing checkout opened": { billing_period: string; plan_id: string };
-  "workspace created": Record<string, never>;
   "first composition started": { signal: "text" | "media" | "content_mode" };
   "video project created": {
     source: "openpost_media" | "files" | "blank" | "recording" | "stock";
@@ -91,12 +90,31 @@ type PendingPageView = { pathname: string; title: string };
 type PendingException = { error: Error; properties: Record<string, unknown> };
 
 const maxPendingEvents = 100;
-const eventPropertyAllowlists: Partial<
-  Record<TelemetryEventName, readonly string[]>
-> = {
+const eventPropertyAllowlists: Record<TelemetryEventName, readonly string[]> = {
+  "signup started": [],
+  "publication publish requested": ["account_count", "is_thread"],
+  "publication schedule requested": ["account_count", "is_thread"],
+  "media uploaded": ["count", "source"],
+  "image design created": ["source"],
+  "image design exported": ["mode", "pages"],
+  "billing checkout opened": ["billing_period", "plan_id"],
   "first composition started": ["signal"],
+  "video project created": ["source", "editing_mode", "file_count"],
+  "video export completed": ["format", "variant_count"],
+  "public editor opened": ["editor", "source"],
+  "public image editor viewed": ["returning_guest"],
+  "public image design started": ["entry", "preset", "template"],
+  "public image editor meaningful edit": ["source"],
+  "public image export completed": ["format", "pages"],
+  "public image editor signup clicked": ["source"],
+  "public image editor signup completed": ["source"],
+  "public image workspace import completed": ["source"],
+  "docs search used": ["result_count"],
+  "docs code copied": ["language"],
 };
 const firstCompositionSignals = new Set(["text", "media", "content_mode"]);
+const planIDs = new Set(["starter", "founder", "pro", "team", "agency"]);
+const billingPeriods = new Set(["monthly", "annual"]);
 
 export class BrowserTelemetry {
   private configured = false;
@@ -212,7 +230,7 @@ export class BrowserTelemetry {
 
   identify(userID: string): void {
     const normalized = userID.trim();
-    if (!normalized) {
+    if (!normalized || containsSensitiveValue(normalized)) {
       this.resetIdentity();
       return;
     }
@@ -305,6 +323,10 @@ export function telemetryRequestHeaders(): Record<string, string> {
   return telemetry.requestHeaders();
 }
 
+export function telemetryDistinctID(): string {
+  return telemetry.requestHeaders()["X-PostHog-Distinct-ID"] ?? "";
+}
+
 export function applyTelemetryRequestHeaders(
   headers: Headers,
   requestHeaders: Record<string, string> = telemetryRequestHeaders(),
@@ -349,17 +371,42 @@ function allowlistedEventProperties(
   name: TelemetryEventName,
   properties: Record<string, unknown>,
 ): Record<string, unknown> | null {
+  const allowlist = eventPropertyAllowlists[name];
+  if (!allowlist) return null;
+  if (Object.keys(properties).some((key) => !allowlist.includes(key))) {
+    return null;
+  }
+  if (Object.values(properties).some(containsSensitiveValue)) return null;
   if (
     name === "first composition started" &&
     !firstCompositionSignals.has(String(properties.signal))
   ) {
     return null;
   }
-  const allowlist = eventPropertyAllowlists[name];
-  if (!allowlist) return compactProperties(properties);
-  return compactProperties(
+  if (
+    name === "billing checkout opened" &&
+    (!planIDs.has(String(properties.plan_id)) ||
+      !billingPeriods.has(String(properties.billing_period)))
+  ) {
+    return null;
+  }
+  const result = compactProperties(
     Object.fromEntries(allowlist.map((key) => [key, properties[key]])),
   );
+  return result;
+}
+
+function containsSensitiveValue(value: unknown): boolean {
+  if (typeof value === "string") {
+    return /(?:https?:\/\/|\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b|(?:token|secret|password|authorization)=|^eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$)/iu.test(
+      value,
+    );
+  }
+  if (Array.isArray(value)) return value.some(containsSensitiveValue);
+  if (value && typeof value === "object") {
+    return Object.values(value).some(containsSensitiveValue);
+  }
+  return false;
 }
 
 function cleanPath(pathname: string): string {

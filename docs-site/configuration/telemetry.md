@@ -9,6 +9,19 @@ OpenPost uses both PostHog SDKs because they observe different facts:
 
 Do not record the same outcome in both layers. Browser events describe intent, such as `publication publish requested`; server events describe confirmed outcomes, such as `rendition published`.
 
+The production first-use funnel uses these ordered events:
+
+1. `signup started` — browser submission intent
+2. `signup completed` — server account creation
+3. `plan confirmed` — server purchase confirmation
+4. `workspace created` — server first Workspace creation
+5. `checkout completed` — server confirmation of the consumed successful checkout return
+6. `destination connected` — server claim of the first connected destination
+7. `first composition started` — browser confirmation after the server accepts the first meaningful composition claim
+8. `workspace activated` — server exactly-once Activation transition
+
+The browser must not duplicate authoritative server outcomes. Funnel events accept only the properties declared in the shared browser and backend telemetry catalogues. Unknown event names, unknown properties, email addresses, secret-bearing URLs, and credential-shaped values are rejected before enqueue.
+
 ## Privacy boundary
 
 The shared browser client uses cookieless mode and memory-only persistence. Autocapture, session replay, surveys, console capture, network bodies, heatmaps, and automatic exception capture are disabled. Public marketing and documentation events stay anonymous and personless. The signed-in app identifies a person only with the opaque OpenPost user ID; the backend uses the same ID.
@@ -66,5 +79,11 @@ Production source-map upload is opt-in in CI. Set `POSTHOG_SOURCEMAPS_ENABLED=1`
 ## Shutdown and delivery
 
 OpenPost creates one backend PostHog client at startup and closes it during graceful shutdown so queued events can drain. Event delivery is best-effort and must never decide authorization, billing access, publication state, or job success. Keep business records in the OpenPost database; telemetry is an observation layer, not a source of truth.
+
+## Production funnel verification
+
+The **Verify PostHog first-use funnel** GitHub workflow creates or updates the saved `OpenPost first-use Activation` funnel in the configured production project. It sends a personless, marked sequence of all eight events, then queries a smoke-only copy of the funnel until the final step is counted. The saved production funnel excludes marked smoke events, so verification does not change product metrics. The run stores a 30-day JSON evidence artifact containing only the project ID, insight link, verification time, event name, and smoke ID.
+
+Run the workflow after changing the journey catalogue or production PostHog configuration. It requires the `POSTHOG_PERSONAL_API_KEY` Actions secret and the existing `POSTHOG_PROJECT_ID`, `POSTHOG_PROJECT_TOKEN`, `POSTHOG_UI_HOST`, and `POSTHOG_BROWSER_HOST` repository variables.
 
 See PostHog's [data-collection controls](https://posthog.com/docs/privacy/data-collection), [Go SDK guide](https://posthog.com/docs/libraries/go), [proxy guide](https://posthog.com/docs/advanced/proxy), and [GDPR guidance](https://posthog.com/docs/privacy/gdpr-compliance) for provider-side setup.

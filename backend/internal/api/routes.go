@@ -152,6 +152,7 @@ func RegisterHumaRoutes(api huma.API, deps RouteDeps) {
 	if billingHandler == nil {
 		billingHandler = handlers.NewBillingHandler(deps.BillingService, deps.DB, deps.Authenticator)
 	}
+	billingHandler.SetTelemetry(deps.Telemetry)
 	billingHandler.RegisterAPIRoutes(api)
 
 	authHandler := handlers.NewAuthHandler(
@@ -169,6 +170,7 @@ func RegisterHumaRoutes(api huma.API, deps RouteDeps) {
 	authHandler.SetAccountPolicy(deps.AccountPolicy)
 	authHandler.SetIdentityService(deps.IdentityService)
 	authHandler.SetPurchaseChoices(deps.BillingService, deps.PurchaseChoiceRequired)
+	authHandler.SetTelemetry(deps.Telemetry)
 	authHandler.Configuration(api)
 	authHandler.AcceptAccountPolicy(api)
 	authHandler.Register(api)
@@ -339,6 +341,7 @@ func RegisterHumaRoutes(api huma.API, deps RouteDeps) {
 	oauthHandler.SetMastodonAppService(deps.MastodonAppService)
 	oauthHandler.SetProviderReadiness(deps.ProviderReadinessService)
 	oauthHandler.SetProviderRegistrars(deps.ProviderRegistrars...)
+	oauthHandler.SetTelemetry(deps.Telemetry)
 	oauthHandler.ListProviders(api)
 	oauthHandler.ListMastodonServers(api)
 	oauthHandler.GetAuthURL(api)

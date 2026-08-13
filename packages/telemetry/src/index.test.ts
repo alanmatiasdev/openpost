@@ -68,7 +68,7 @@ describe("BrowserTelemetry", () => {
     const sdk = new FakeSDK();
     const subject = new BrowserTelemetry(sdk, () => true);
     subject.identify("user-1");
-    subject.capture("workspace created");
+    subject.capture("signup started");
     subject.configure(configuredApp);
 
     expect(sdk.initialized[0]?.options).toMatchObject({
@@ -80,7 +80,7 @@ describe("BrowserTelemetry", () => {
       disable_session_recording: true,
     });
     expect(sdk.identified).toEqual(["user-1"]);
-    expect(sdk.events[0]?.event).toBe("workspace created");
+    expect(sdk.events[0]?.event).toBe("signup started");
   });
 
   it("resets before switching identified users and on logout", () => {
@@ -95,17 +95,28 @@ describe("BrowserTelemetry", () => {
     expect(sdk.resetCount).toBe(2);
   });
 
+  it("rejects direct identity values instead of identifying them", () => {
+    const sdk = new FakeSDK();
+    const subject = new BrowserTelemetry(sdk, () => true);
+    subject.configure(configuredApp);
+
+    subject.identify("person@example.com");
+    subject.identify("https://provider.example/users/raw-id");
+
+    expect(sdk.identified).toHaveLength(0);
+  });
+
   it("does not expose credentials or capture events when disabled", () => {
     const sdk = new FakeSDK();
     const subject = new BrowserTelemetry(sdk, () => true);
     subject.configure({ ...configuredApp, enabled: false });
-    subject.capture("workspace created");
+    subject.capture("signup started");
 
     expect(sdk.initialized).toHaveLength(0);
     expect(sdk.events).toHaveLength(0);
   });
 
-  it("allowlists first composition properties at runtime", () => {
+  it("rejects non-allowlisted first composition properties at runtime", () => {
     const sdk = new FakeSDK();
     const subject = new BrowserTelemetry(sdk, () => true);
     subject.configure(configuredApp);
@@ -117,6 +128,9 @@ describe("BrowserTelemetry", () => {
       workspace_id: "ws-secret",
     } as never);
 
+    expect(sdk.events).toHaveLength(0);
+
+    subject.capture("first composition started", { signal: "text" });
     expect(sdk.events).toEqual([
       { event: "first composition started", properties: { signal: "text" } },
     ]);
@@ -125,6 +139,50 @@ describe("BrowserTelemetry", () => {
       signal: "https://example.com/private?token=secret",
     } as never);
     expect(sdk.events).toHaveLength(1);
+  });
+
+  it("rejects unknown events and properties at runtime", () => {
+    const sdk = new FakeSDK();
+    const subject = new BrowserTelemetry(sdk, () => true);
+    subject.configure(configuredApp);
+
+    const captureUnchecked = subject.capture.bind(subject) as (
+      name: string,
+      properties: Record<string, unknown>,
+    ) => void;
+    captureUnchecked("unknown event", {});
+    for (const properties of [
+      { content: "private draft" },
+      { email: "person@example.com" },
+      { access_token: "provider-token" },
+      { return_url: "https://example.test/callback?code=secret" },
+      { provider_account_id: "provider-user-123" },
+    ]) {
+      captureUnchecked("signup started", properties);
+    }
+
+    expect(sdk.events).toHaveLength(0);
+  });
+
+  it("rejects sensitive values even when the property name is allowed", () => {
+    const sdk = new FakeSDK();
+    const subject = new BrowserTelemetry(sdk, () => true);
+    subject.configure(configuredApp);
+
+    subject.capture("billing checkout opened", {
+      billing_period: "monthly",
+      plan_id: "https://example.com/checkout?token=secret",
+    });
+    subject.capture("billing checkout opened", {
+      billing_period: "monthly",
+      plan_id: "private draft",
+    });
+    subject.capture("billing checkout opened", {
+      billing_period: "monthly",
+      plan_id: "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMifQ.signature",
+    });
+
+    expect(sdk.events).toHaveLength(0);
   });
 
   it("scrubs common secrets and captures the same error object once", () => {

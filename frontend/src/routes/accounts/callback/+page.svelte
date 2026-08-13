@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { captureTelemetryEvent } from '@openpost/telemetry';
 	import { resolve } from '$app/paths';
 	import { onMount } from 'svelte';
 	import { client } from '$lib/api/client';
@@ -147,7 +146,6 @@
 				return;
 			}
 
-			captureTelemetryEvent('social account connected', { account_count: selectedCount, platform });
 			viewState = 'loading';
 			if (!data.open_fresh_composer) {
 				await goto(resolve('/settings?tab=accounts'));

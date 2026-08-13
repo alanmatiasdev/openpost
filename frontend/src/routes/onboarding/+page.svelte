@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { captureTelemetryEvent } from '@openpost/telemetry';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
@@ -162,7 +161,6 @@
 				choiceErrorCode = error ? purchaseChoiceErrorCode(error) : null;
 				throw new Error(error?.detail || m.onboarding_create_failed());
 			}
-			captureTelemetryEvent('workspace created');
 			await workspaceCtx.initialize(data.workspace_id);
 			await goto(resolve(checkoutTarget(data.checkout.id, purchaseChoice) as '/'));
 		} catch (caught) {

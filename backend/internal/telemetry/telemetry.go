@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"reflect"
+	"regexp"
 	"strings"
 	"time"
 
@@ -18,8 +19,39 @@ const (
 	EventRenditionPublished     = "rendition published"
 	EventRenditionFailed        = "rendition failed"
 	EventBillingCheckoutCreated = "billing checkout created"
+	EventSignupCompleted        = "signup completed"
+	EventPlanConfirmed          = "plan confirmed"
+	EventWorkspaceCreated       = "workspace created"
+	EventCheckoutCompleted      = "checkout completed"
+	EventDestinationConnected   = "destination connected"
 	EventWorkspaceActivated     = "workspace activated"
 )
+
+var eventPropertyAllowlists = map[string]map[string]struct{}{
+	EventPublicationScheduled:   propertySet("publication_id", "job_id", "intent", "content_profile", "destination_count"),
+	EventPublicationQueued:      propertySet("publication_id", "job_id", "intent", "content_profile", "destination_count"),
+	EventRenditionPublished:     propertySet("publication_id", "rendition_id", "platform", "profile", "output_profile", "intent", "content_profile", "segment_count"),
+	EventRenditionFailed:        propertySet("publication_id", "rendition_id", "platform", "profile", "output_profile", "intent", "content_profile", "error_kind", "error_code", "http_status", "retryable", "retry"),
+	EventBillingCheckoutCreated: propertySet("checkout_id", "organization_id", "plan_id", "billing_period", "provider"),
+	EventSignupCompleted:        propertySet(),
+	EventPlanConfirmed:          propertySet("plan_id", "billing_period"),
+	EventWorkspaceCreated:       propertySet(),
+	EventCheckoutCompleted:      propertySet("plan_id", "billing_period"),
+	EventDestinationConnected:   propertySet("platform", "account_count"),
+	EventWorkspaceActivated:     propertySet(),
+}
+
+var firstUsePropertyValues = map[string]map[string]struct{}{
+	"plan_id":        propertySet("starter", "founder", "pro", "team", "agency"),
+	"billing_period": propertySet("monthly", "annual"),
+	"provider":       propertySet("paddle"),
+	"platform": propertySet(
+		"bluesky", "facebook", "instagram", "linkedin", "mastodon", "pinterest",
+		"reddit", "threads", "tiktok", "x", "youtube",
+	),
+}
+
+var postHogAnonymousID = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
 // Config is the complete server and browser-safe telemetry contract. The project
 // token is intentionally browser-safe; personal and project secret keys never
@@ -70,6 +102,7 @@ type Recorder interface {
 	Enabled() bool
 	PublicConfig() BrowserConfig
 	Capture(context.Context, Event) error
+	Alias(context.Context, string, string) error
 	CaptureException(context.Context, Exception) error
 	WrapHTTP(http.Handler) http.Handler
 	Close() error
@@ -143,8 +176,8 @@ func (r *postHogRecorder) PublicConfig() BrowserConfig { return publicConfig(r.c
 func (r *noopRecorder) PublicConfig() BrowserConfig    { return publicConfig(r.config) }
 
 func (r *postHogRecorder) Capture(ctx context.Context, event Event) error {
-	if strings.TrimSpace(event.Name) == "" {
-		return fmt.Errorf("telemetry event name is required")
+	if err := ValidateEvent(event); err != nil {
+		return err
 	}
 	properties := copyProperties(event.Properties)
 	if event.WorkspaceID != "" {
@@ -159,7 +192,41 @@ func (r *postHogRecorder) Capture(ctx context.Context, event Event) error {
 	})
 }
 
-func (r *noopRecorder) Capture(context.Context, Event) error { return nil }
+func (r *noopRecorder) Capture(_ context.Context, event Event) error { return ValidateEvent(event) }
+
+func (r *postHogRecorder) Alias(ctx context.Context, distinctID, alias string) error {
+	if err := validateAlias(distinctID, alias); err != nil {
+		return err
+	}
+	return posthog.EnqueueWithContext(ctx, r.client, posthog.Alias{
+		DistinctId: strings.TrimSpace(distinctID), Alias: strings.TrimSpace(alias),
+	})
+}
+
+func (r *noopRecorder) Alias(_ context.Context, distinctID, alias string) error {
+	return validateAlias(distinctID, alias)
+}
+
+func BrowserDistinctID(ctx context.Context) string {
+	requestContext, ok := posthog.RequestContextFromContext(ctx)
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(requestContext.DistinctId)
+}
+
+func validateAlias(distinctID, alias string) error {
+	distinctID = strings.TrimSpace(distinctID)
+	alias = strings.TrimSpace(alias)
+	if distinctID == "" || !IsAnonymousDistinctID(alias) || containsSensitiveValue(distinctID) {
+		return fmt.Errorf("telemetry alias requires safe distinct IDs")
+	}
+	return nil
+}
+
+func IsAnonymousDistinctID(value string) bool {
+	return postHogAnonymousID.MatchString(strings.ToLower(strings.TrimSpace(value)))
+}
 
 func (r *postHogRecorder) CaptureException(ctx context.Context, exception Exception) error {
 	message := newExceptionMessage(exception, r.config, time.Now().UTC())
@@ -257,6 +324,95 @@ func copyProperties(properties map[string]any) map[string]any {
 		result[key] = value
 	}
 	return result
+}
+
+func ValidateEvent(event Event) error {
+	allowed, known := eventPropertyAllowlists[event.Name]
+	if !known {
+		return fmt.Errorf("unknown telemetry event %q", event.Name)
+	}
+	for field, value := range map[string]string{
+		"distinct_id": event.DistinctID, "workspace_id": event.WorkspaceID, "uuid": event.UUID,
+	} {
+		if containsSensitiveValue(value) {
+			return fmt.Errorf("telemetry event %q field %q contains a sensitive value", event.Name, field)
+		}
+	}
+	for key, value := range event.Properties {
+		if _, ok := allowed[key]; !ok {
+			return fmt.Errorf("telemetry event %q does not allow property %q", event.Name, key)
+		}
+		if containsSensitiveValue(value) {
+			return fmt.Errorf("telemetry event %q property %q contains a sensitive value", event.Name, key)
+		}
+		if allowedValues, constrained := firstUsePropertyValues[key]; constrained {
+			text, ok := value.(string)
+			if !ok {
+				return fmt.Errorf("telemetry event %q property %q has an invalid type", event.Name, key)
+			}
+			if _, ok := allowedValues[text]; !ok {
+				return fmt.Errorf("telemetry event %q property %q has an invalid value", event.Name, key)
+			}
+		}
+	}
+	return nil
+}
+
+func propertySet(keys ...string) map[string]struct{} {
+	result := make(map[string]struct{}, len(keys))
+	for _, key := range keys {
+		result[key] = struct{}{}
+	}
+	return result
+}
+
+func containsSensitiveValue(value any) bool {
+	switch typed := value.(type) {
+	case string:
+		return containsSensitiveString(typed)
+	case []string:
+		return containsSensitiveStrings(typed)
+	case []any:
+		return containsSensitiveItems(typed)
+	case map[string]any:
+		return containsSensitiveProperties(typed)
+	}
+	return false
+}
+
+func containsSensitiveString(value string) bool {
+	normalized := strings.ToLower(value)
+	return strings.Contains(normalized, "://") || strings.Contains(normalized, "@") ||
+		strings.Contains(normalized, "token=") || strings.Contains(normalized, "secret=") ||
+		strings.Contains(normalized, "password=") || strings.Contains(normalized, "authorization=") ||
+		strings.HasPrefix(value, "eyJ") && strings.Count(value, ".") == 2
+}
+
+func containsSensitiveStrings(values []string) bool {
+	for _, value := range values {
+		if containsSensitiveString(value) {
+			return true
+		}
+	}
+	return false
+}
+
+func containsSensitiveItems(values []any) bool {
+	for _, value := range values {
+		if containsSensitiveValue(value) {
+			return true
+		}
+	}
+	return false
+}
+
+func containsSensitiveProperties(properties map[string]any) bool {
+	for _, value := range properties {
+		if containsSensitiveValue(value) {
+			return true
+		}
+	}
+	return false
 }
 
 func ErrorType(err error) string {

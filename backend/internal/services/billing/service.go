@@ -578,9 +578,8 @@ func normalizeCheckoutReturnPath(value string) (string, error) {
 }
 
 type CheckoutReturnResult struct {
-	Status     string
-	ReturnPath string
-	Consumed   bool
+	Status, ReturnPath, WorkspaceID, PlanID, BillingPeriod string
+	Consumed, NewlyConsumed                                bool
 }
 
 func (s *Service) ConsumeCheckoutReturn(ctx context.Context, attemptID, userID string) (CheckoutReturnResult, error) {
@@ -598,7 +597,10 @@ func (s *Service) ConsumeCheckoutReturn(ctx context.Context, attemptID, userID s
 		return CheckoutReturnResult{}, err
 	}
 	status := strings.ToLower(strings.TrimSpace(attempt.Status))
-	result := CheckoutReturnResult{Status: "pending", Consumed: !attempt.ReturnConsumedAt.IsZero()}
+	result := CheckoutReturnResult{
+		Status: "pending", Consumed: !attempt.ReturnConsumedAt.IsZero(), WorkspaceID: attempt.WorkspaceID,
+		PlanID: attempt.PlanID, BillingPeriod: attempt.BillingPeriod,
+	}
 	if status != "active" && status != "trialing" {
 		switch status {
 		case "canceled", "paused", "past_due":
@@ -625,6 +627,7 @@ func (s *Service) ConsumeCheckoutReturn(ctx context.Context, attemptID, userID s
 	rows, _ := update.RowsAffected()
 	if rows == 1 {
 		result.Consumed = true
+		result.NewlyConsumed = true
 		result.ReturnPath = attempt.ReturnPath
 		return result, nil
 	}

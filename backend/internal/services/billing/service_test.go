@@ -240,10 +240,15 @@ func TestConsumeCheckoutReturnRequiresExactUserAndConsumesPathOnce(t *testing.T)
 	require.ErrorIs(t, err, sql.ErrNoRows)
 	first, err := service.ConsumeCheckoutReturn(context.Background(), "chkat_return", "user-1")
 	require.NoError(t, err)
-	require.Equal(t, CheckoutReturnResult{Status: "success", ReturnPath: "/compose?draft=launch", Consumed: true}, first)
+	require.Equal(t, CheckoutReturnResult{
+		Status: "success", ReturnPath: "/compose?draft=launch", WorkspaceID: "ws-1",
+		PlanID: "founder", BillingPeriod: "monthly", Consumed: true, NewlyConsumed: true,
+	}, first)
 	second, err := service.ConsumeCheckoutReturn(context.Background(), "chkat_return", "user-1")
 	require.NoError(t, err)
-	require.Equal(t, CheckoutReturnResult{Status: "success", Consumed: true}, second)
+	require.Equal(t, CheckoutReturnResult{
+		Status: "success", WorkspaceID: "ws-1", PlanID: "founder", BillingPeriod: "monthly", Consumed: true,
+	}, second)
 }
 
 func TestConsumeCheckoutReturnWaitsForMatchingWebhookAndNeverConsumesFailure(t *testing.T) {
@@ -261,19 +266,26 @@ func TestConsumeCheckoutReturnWaitsForMatchingWebhookAndNeverConsumesFailure(t *
 
 	pending, err := service.ConsumeCheckoutReturn(context.Background(), attempt.CheckoutAttemptID, attempt.UserID)
 	require.NoError(t, err)
-	require.Equal(t, CheckoutReturnResult{Status: "pending"}, pending)
+	require.Equal(t, CheckoutReturnResult{
+		Status: "pending", WorkspaceID: "ws-1", PlanID: "founder", BillingPeriod: "monthly",
+	}, pending)
 
 	_, err = db.NewUpdate().Model(attempt).Set("status = 'canceled'").WherePK().Exec(context.Background())
 	require.NoError(t, err)
 	failed, err := service.ConsumeCheckoutReturn(context.Background(), attempt.CheckoutAttemptID, attempt.UserID)
 	require.NoError(t, err)
-	require.Equal(t, CheckoutReturnResult{Status: "failed"}, failed)
+	require.Equal(t, CheckoutReturnResult{
+		Status: "failed", WorkspaceID: "ws-1", PlanID: "founder", BillingPeriod: "monthly",
+	}, failed)
 
 	_, err = db.NewUpdate().Model(attempt).Set("status = 'active'").WherePK().Exec(context.Background())
 	require.NoError(t, err)
 	success, err := service.ConsumeCheckoutReturn(context.Background(), attempt.CheckoutAttemptID, attempt.UserID)
 	require.NoError(t, err)
-	require.Equal(t, CheckoutReturnResult{Status: "success", ReturnPath: "/calendar?view=week", Consumed: true}, success)
+	require.Equal(t, CheckoutReturnResult{
+		Status: "success", ReturnPath: "/calendar?view=week", WorkspaceID: "ws-1",
+		PlanID: "founder", BillingPeriod: "monthly", Consumed: true, NewlyConsumed: true,
+	}, success)
 }
 
 func TestCreateCheckoutRejectsImplicitEnvironmentAndMissingPrice(t *testing.T) {

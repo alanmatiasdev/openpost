@@ -5,6 +5,7 @@
 	import type { OIDCProvider } from '$lib/api/client';
 	import type { PurchaseSelection } from '$lib/purchase-choice';
 	import { m } from '$lib/paraglide/messages';
+	import { telemetryDistinctID } from '@openpost/telemetry';
 	import BuildingIcon from '@lucide/svelte/icons/building-2';
 	import LoaderIcon from '@lucide/svelte/icons/loader-2';
 
@@ -14,6 +15,7 @@
 		disabled = false,
 		signup = false,
 		purchaseChoice,
+		onstart,
 		onerror
 	}: {
 		providers: OIDCProvider[];
@@ -21,6 +23,7 @@
 		disabled?: boolean;
 		signup?: boolean;
 		purchaseChoice?: PurchaseSelection | null;
+		onstart?: () => void;
 		onerror?: (message: string) => void;
 	} = $props();
 
@@ -35,7 +38,8 @@
 						signup: 'true',
 						plan_id: purchaseChoice?.plan_id ?? '',
 						billing_period: purchaseChoice?.billing_period ?? '',
-						purchase_choice_token: purchaseChoice?.token ?? ''
+						purchase_choice_token: purchaseChoice?.token ?? '',
+						telemetry_id: telemetryDistinctID()
 					}
 				: {}),
 			...(IS_CAPACITOR ? { native: 'true' } : {})
@@ -45,6 +49,7 @@
 
 	async function start(provider: OIDCProvider) {
 		loadingProviderID = provider.id;
+		onstart?.();
 		try {
 			const url = startURL(provider);
 			if (IS_CAPACITOR) {

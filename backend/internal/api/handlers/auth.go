@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"slices"
 	"strings"
@@ -27,6 +28,7 @@ import (
 	"github.com/openpost/backend/internal/services/passwordmail"
 	"github.com/openpost/backend/internal/services/ratelimit"
 	"github.com/openpost/backend/internal/services/sessions"
+	"github.com/openpost/backend/internal/telemetry"
 	"github.com/openpost/backend/internal/usernames"
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect"
@@ -72,6 +74,7 @@ type AuthHandler struct {
 	identity                  *identity.Service
 	purchaseChoices           *billing.Service
 	purchaseChoiceRequired    bool
+	telemetry                 telemetry.Recorder
 }
 
 func NewAuthHandler(
@@ -127,6 +130,10 @@ func (h *AuthHandler) SetAccountPolicy(policy AccountPolicy) {
 
 func (h *AuthHandler) SetIdentityService(service *identity.Service) {
 	h.identity = service
+}
+
+func (h *AuthHandler) SetTelemetry(recorder telemetry.Recorder) {
+	h.telemetry = recorder
 }
 
 func (h *AuthHandler) SetPurchaseChoices(service *billing.Service, required bool) {
@@ -446,10 +453,31 @@ func (h *AuthHandler) handleRegister(ctx context.Context, input *RegisterInput) 
 	if err != nil {
 		return nil, registrationHTTPError(err)
 	}
+	h.captureSignupCompleted(ctx, user.ID)
 	if h.emailVerificationRequired {
 		return h.beginEmailVerification(ctx, user, true)
 	}
 	return h.issueAuthResponse(ctx, user)
+}
+
+func (h *AuthHandler) captureSignupCompleted(ctx context.Context, userID string, explicitAlias ...string) {
+	if h.telemetry == nil {
+		return
+	}
+	alias := telemetry.BrowserDistinctID(ctx)
+	if len(explicitAlias) > 0 && strings.TrimSpace(explicitAlias[0]) != "" {
+		alias = strings.TrimSpace(explicitAlias[0])
+	}
+	if alias != "" && alias != userID {
+		if err := h.telemetry.Alias(ctx, userID, alias); err != nil {
+			log.Printf("Failed to enqueue signup identity alias: %v", err)
+		}
+	}
+	if err := h.telemetry.Capture(ctx, telemetry.Event{
+		Name: telemetry.EventSignupCompleted, DistinctID: userID,
+	}); err != nil {
+		log.Printf("Failed to enqueue signup completion telemetry: %v", err)
+	}
 }
 
 func (h *AuthHandler) validateRegistrationRequest(ctx context.Context, input *RegisterInput) (bool, error) {

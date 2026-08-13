@@ -68,6 +68,65 @@ func TestMemoryRecorderPreservesApplicationEventContract(t *testing.T) {
 	require.Equal(t, "publication-1", recorder.Events[0].Properties["publication_id"])
 }
 
+func TestTelemetryContractRejectsUnknownEventsAndProperties(t *testing.T) {
+	recorder := &MemoryRecorder{}
+	require.Error(t, recorder.Capture(context.Background(), Event{Name: "unknown event"}))
+	for name, properties := range map[string]map[string]any{
+		"authored content":        {"content": "private draft"},
+		"identity":                {"email": "person@example.com"},
+		"token":                   {"access_token": "provider-token"},
+		"secret URL":              {"return_url": "https://example.test/callback?code=secret"},
+		"raw provider identifier": {"provider_account_id": "provider-user-123"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			require.Error(t, recorder.Capture(context.Background(), Event{
+				Name: EventWorkspaceActivated, Properties: properties,
+			}))
+		})
+	}
+	require.Empty(t, recorder.Events)
+}
+
+func TestTelemetryContractRejectsSensitiveAllowedValues(t *testing.T) {
+	recorder := &MemoryRecorder{}
+	require.Error(t, recorder.Capture(context.Background(), Event{
+		Name: EventSignupCompleted, DistinctID: "person@example.com",
+	}))
+	require.Error(t, recorder.Capture(context.Background(), Event{
+		Name: EventBillingCheckoutCreated,
+		Properties: map[string]any{
+			"checkout_id":     "https://billing.example/return?token=secret",
+			"organization_id": "organization-1",
+			"plan_id":         "founder",
+			"billing_period":  "monthly",
+			"provider":        "paddle",
+		},
+	}))
+	for name, event := range map[string]Event{
+		"authored content":        {Name: EventPlanConfirmed, Properties: map[string]any{"plan_id": "private draft", "billing_period": "monthly"}},
+		"identity":                {Name: EventDestinationConnected, Properties: map[string]any{"platform": "person@example.com", "account_count": 1}},
+		"token":                   {Name: EventPlanConfirmed, Properties: map[string]any{"plan_id": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMifQ.signature", "billing_period": "monthly"}},
+		"raw provider identifier": {Name: EventDestinationConnected, Properties: map[string]any{"platform": "provider-user-123", "account_count": 1}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			require.Error(t, recorder.Capture(context.Background(), event))
+		})
+	}
+	require.Empty(t, recorder.Events)
+}
+
+func TestBrowserIdentityCanBeAliasedToTheAuthoritativeUser(t *testing.T) {
+	anonymousID := "0198a123-4567-7abc-8def-0123456789ab"
+	ctx := posthog.WithFreshRequestContext(t.Context(), posthog.RequestContext{DistinctId: anonymousID})
+	require.Equal(t, anonymousID, BrowserDistinctID(ctx))
+	recorder := &MemoryRecorder{}
+	require.NoError(t, recorder.Alias(ctx, "user-1", BrowserDistinctID(ctx)))
+	require.Equal(t, []IdentityAlias{{DistinctID: "user-1", Alias: anonymousID}}, recorder.Aliases)
+	for _, unsafe := range []string{"provider-user-123", "private draft", "opaqueTokenValue123456789", "person@example.com"} {
+		require.Error(t, recorder.Alias(ctx, "user-1", unsafe))
+	}
+}
+
 func TestExceptionMessagePreservesPostHogPayloadAndOpenPostContext(t *testing.T) {
 	timestamp := time.Date(2026, time.August, 11, 17, 0, 0, 0, time.UTC)
 	message := newExceptionMessage(Exception{

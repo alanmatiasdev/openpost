@@ -28,6 +28,7 @@ import (
 	"github.com/openpost/backend/internal/services/oauthstate"
 	"github.com/openpost/backend/internal/services/providerreadiness"
 	"github.com/openpost/backend/internal/services/tokenmanager"
+	"github.com/openpost/backend/internal/telemetry"
 	"github.com/uptrace/bun"
 )
 
@@ -56,6 +57,7 @@ type OAuthHandler struct {
 	// (e.g. "https://openpost.example.com"). OAuth callback redirects go
 	// here so they work behind reverse proxies and subpath mounts.
 	frontendURL string
+	telemetry   telemetry.Recorder
 }
 
 func mastodonInstanceURL(adapter platform.Adapter) string {
@@ -142,6 +144,10 @@ func (h *OAuthHandler) SetProviderReadiness(service *providerreadiness.Service) 
 
 func (h *OAuthHandler) SetProviderRegistrars(registrars ...func(string, platform.Adapter)) {
 	h.providerRegistrars = registrars
+}
+
+func (h *OAuthHandler) SetTelemetry(recorder telemetry.Recorder) {
+	h.telemetry = recorder
 }
 
 type MastodonServerInfo struct {
@@ -1172,6 +1178,7 @@ func (h *OAuthHandler) saveAccountAndRedirect(
 		return h.redirectWithError(accountConnectionErrorMessage(err), workspaceID)
 	}
 	firstConnection := account.ClaimedFirst
+	h.captureDestinationConnected(ctx, userID, workspaceID, platformName, 1, firstConnection)
 
 	log.Printf("[Callback] Account saved successfully: ID=%s", account.ID)
 	if !firstConnection {
@@ -1588,6 +1595,7 @@ func (h *OAuthHandler) CompleteAccountSelection(api huma.API) {
 			accountIDs[index] = account.ID
 		}
 		firstConnection := accounts[0].ClaimedFirst
+		h.captureDestinationConnected(ctx, userID, pending.WorkspaceID, pending.Platform, len(accounts), firstConnection)
 		if err := h.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
 			if _, err := tx.NewUpdate().Model((*models.OAuthAccountSelection)(nil)).
 				Set("consumed_at = ?", time.Now().UTC()).Where("id = ?", pending.ID).Exec(txCtx); err != nil {
@@ -1608,6 +1616,23 @@ func (h *OAuthHandler) CompleteAccountSelection(api huma.API) {
 			OpenFreshComposer: firstConnection,
 		}}, nil
 	})
+}
+
+func (h *OAuthHandler) captureDestinationConnected(
+	ctx context.Context,
+	userID, workspaceID, platformName string,
+	accountCount int,
+	firstConnection bool,
+) {
+	if !firstConnection || h.telemetry == nil {
+		return
+	}
+	if err := h.telemetry.Capture(ctx, telemetry.Event{
+		Name: telemetry.EventDestinationConnected, DistinctID: userID, WorkspaceID: workspaceID,
+		Properties: map[string]any{"platform": platformName, "account_count": accountCount},
+	}); err != nil {
+		log.Printf("Failed to enqueue destination connection telemetry: %v", err)
+	}
 }
 
 func (h *OAuthHandler) reservePendingAccountSelection(ctx context.Context, selectionID string) error {

@@ -149,6 +149,7 @@ type Completion struct {
 	User        *models.User
 	Identity    VerifiedIdentity
 	ReauthGrant string
+	NewUser     bool
 }
 
 type providerMetadata struct {
@@ -443,7 +444,7 @@ func (s *Service) Complete(ctx context.Context, providerID, state, code, browser
 		return nil, err
 	}
 
-	user, err := s.resolveIdentity(ctx, *provider, *request, verified)
+	user, newUser, err := s.resolveIdentity(ctx, *provider, *request, verified)
 	if err != nil {
 		return nil, err
 	}
@@ -452,6 +453,7 @@ func (s *Service) Complete(ctx context.Context, providerID, state, code, browser
 		Provider: *provider,
 		User:     user,
 		Identity: verified,
+		NewUser:  newUser,
 	}
 	if request.Intent == models.OIDCIntentReauth {
 		completion.ReauthGrant, err = s.CreateReauthGrant(
@@ -605,7 +607,7 @@ func (s *Service) resolveIdentity(
 	provider models.IdentityProvider,
 	request models.OIDCAuthRequest,
 	verified VerifiedIdentity,
-) (*models.User, error) {
+) (*models.User, bool, error) {
 	var linked models.UserIdentity
 	err := s.db.NewSelect().
 		Model(&linked).
@@ -613,10 +615,10 @@ func (s *Service) resolveIdentity(
 		Scan(ctx)
 	if err == nil {
 		if request.Intent == models.OIDCIntentLink && linked.UserID != request.UserID {
-			return nil, ErrIdentityCollision
+			return nil, false, ErrIdentityCollision
 		}
 		if request.Intent == models.OIDCIntentReauth && linked.UserID != request.UserID {
-			return nil, ErrIdentityCollision
+			return nil, false, ErrIdentityCollision
 		}
 		if _, err := s.db.NewUpdate().
 			Model((*models.UserIdentity)(nil)).
@@ -625,12 +627,13 @@ func (s *Service) resolveIdentity(
 			Set("last_login_at = ?", s.now()).
 			Where("id = ?", linked.ID).
 			Exec(ctx); err != nil {
-			return nil, err
+			return nil, false, err
 		}
-		return s.userByID(ctx, linked.UserID)
+		user, err := s.userByID(ctx, linked.UserID)
+		return user, false, err
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
-		return nil, err
+		return nil, false, err
 	}
 
 	return s.resolveUnlinkedIdentity(ctx, provider, request, verified)
@@ -641,33 +644,36 @@ func (s *Service) resolveUnlinkedIdentity(
 	provider models.IdentityProvider,
 	request models.OIDCAuthRequest,
 	verified VerifiedIdentity,
-) (*models.User, error) {
+) (*models.User, bool, error) {
 	switch request.Intent {
 	case models.OIDCIntentLink:
 		if request.UserID == "" {
-			return nil, ErrInvalidAuthRequest
+			return nil, false, ErrInvalidAuthRequest
 		}
 		if err := s.linkIdentity(ctx, provider, request.UserID, verified); err != nil {
-			return nil, err
+			return nil, false, err
 		}
-		return s.userByID(ctx, request.UserID)
+		user, err := s.userByID(ctx, request.UserID)
+		return user, false, err
 	case models.OIDCIntentReauth:
-		return nil, ErrIdentityCollision
+		return nil, false, ErrIdentityCollision
 	case models.OIDCIntentLogin:
 		if s.config.RequireExplicitSignup {
-			return nil, ErrExplicitSignupRequired
+			return nil, false, ErrExplicitSignupRequired
 		}
 		if !provider.JITEnabled {
-			return nil, ErrJITDisabled
+			return nil, false, ErrJITDisabled
 		}
-		return s.createJITUser(ctx, provider, verified)
+		user, err := s.createJITUser(ctx, provider, verified)
+		return user, err == nil, err
 	case models.OIDCIntentSignup:
 		if !provider.JITEnabled {
-			return nil, ErrJITDisabled
+			return nil, false, ErrJITDisabled
 		}
-		return s.createJITUser(ctx, provider, verified)
+		user, err := s.createJITUser(ctx, provider, verified)
+		return user, err == nil, err
 	default:
-		return nil, ErrInvalidAuthRequest
+		return nil, false, ErrInvalidAuthRequest
 	}
 }
 

@@ -20,6 +20,7 @@ import (
 	"github.com/openpost/backend/internal/services/billing"
 	"github.com/openpost/backend/internal/services/crypto"
 	"github.com/openpost/backend/internal/services/sessions"
+	"github.com/openpost/backend/internal/telemetry"
 	"github.com/stretchr/testify/require"
 )
 
@@ -48,6 +49,8 @@ func TestHostedRegistrationRequiresAValidPurchaseChoice(t *testing.T) {
 		PurchaseChoiceSecret: "purchase-choice-secret-with-at-least-32-characters",
 	})
 	handler.SetPurchaseChoices(choiceService, true)
+	recorder := &telemetry.MemoryRecorder{}
+	handler.SetTelemetry(recorder)
 	e := echo.New()
 	api := humaecho.NewWithGroup(e, e.Group("/api/v1"), huma.DefaultConfig("Test", "1.0.0"))
 	handler.Register(api)
@@ -70,6 +73,9 @@ func TestHostedRegistrationRequiresAValidPurchaseChoice(t *testing.T) {
 		"email": "valid@example.com", "password": "password1234", "purchase_choice_token": choice.Token,
 	}, "")
 	require.Equal(t, http.StatusOK, valid.Code, valid.Body.String())
+	require.Len(t, recorder.Events, 1)
+	require.Equal(t, telemetry.EventSignupCompleted, recorder.Events[0].Name)
+	require.NotEmpty(t, recorder.Events[0].DistinctID)
 }
 
 func TestRegisterUserRejectsAdditionalUsersWhenRegistrationsDisabled(t *testing.T) {

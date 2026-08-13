@@ -23,6 +23,7 @@
 	} from '$lib/purchase-choice';
 	import { safeSameOriginRedirect } from '$lib/redirects';
 	import { trackPublicImageEditorEvent } from '$lib/image-editor/public-telemetry';
+	import { captureTelemetryEvent } from '@openpost/telemetry';
 	import { onMount } from 'svelte';
 	import { client, type AuthConfiguration } from '$lib/api/client';
 	import type { OIDCProvider } from '$lib/api/client';
@@ -159,6 +160,7 @@
 		}
 
 		isLoading = true;
+		captureTelemetryEvent('signup started');
 
 		const result = await auth.register({
 			email,
@@ -236,6 +238,7 @@
 				(authConfiguration.purchase_choice_required && !purchaseChoice)}
 			signup={true}
 			{purchaseChoice}
+			onstart={() => captureTelemetryEvent('signup started')}
 			onerror={(message) => (error = message)}
 		/>
 		<div class="my-5 flex items-center gap-3" aria-hidden="true">

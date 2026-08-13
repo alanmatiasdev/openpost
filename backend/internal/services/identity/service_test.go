@@ -758,22 +758,24 @@ func TestHostedJITRequiresTheExplicitSignupIntent(t *testing.T) {
 		Subject: "explicit-signup-subject", Email: "explicit-signup@example.com", EmailVerified: true,
 	}
 
-	_, err = service.resolveIdentity(context.Background(), *provider, models.OIDCAuthRequest{
+	_, _, err = service.resolveIdentity(context.Background(), *provider, models.OIDCAuthRequest{
 		Intent: models.OIDCIntentLogin,
 	}, verified)
 	require.ErrorIs(t, err, ErrExplicitSignupRequired)
 
-	created, err := service.resolveIdentity(context.Background(), *provider, models.OIDCAuthRequest{
+	created, createdNow, err := service.resolveIdentity(context.Background(), *provider, models.OIDCAuthRequest{
 		Intent: models.OIDCIntentSignup,
 	}, verified)
 	require.NoError(t, err)
 	require.Equal(t, verified.Email, created.Email)
+	require.True(t, createdNow)
 
-	existing, err := service.resolveIdentity(context.Background(), *provider, models.OIDCAuthRequest{
+	existing, createdAgain, err := service.resolveIdentity(context.Background(), *provider, models.OIDCAuthRequest{
 		Intent: models.OIDCIntentLogin,
 	}, verified)
 	require.NoError(t, err)
 	require.Equal(t, created.ID, existing.ID)
+	require.False(t, createdAgain)
 }
 
 func TestFirstPartyJITDoesNotBypassReservedClosedRegistrationBootstrap(t *testing.T) {

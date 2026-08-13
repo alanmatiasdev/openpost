@@ -18,6 +18,7 @@ import (
 	"github.com/openpost/backend/internal/services/crypto"
 	"github.com/openpost/backend/internal/services/entitlements"
 	"github.com/openpost/backend/internal/services/providerreadiness"
+	"github.com/openpost/backend/internal/telemetry"
 	"github.com/stretchr/testify/require"
 )
 
@@ -126,6 +127,8 @@ func TestOAuthCallbackCreatesAndCompletesAccountSelection(t *testing.T) {
 	handler := NewOAuthHandler(db, encryptor, map[string]platform.Adapter{
 		"facebook": adapter,
 	}, testAuthenticator{}, false, "https://app.openpost.test")
+	recorder := &telemetry.MemoryRecorder{}
+	handler.SetTelemetry(recorder)
 	handler.SetProviderReadiness(oauthConnectionReadiness(
 		t,
 		&oauthReadinessLedger{control: providerreadiness.RuntimeControlStateEnabled},
@@ -184,6 +187,10 @@ func TestOAuthCallbackCreatesAndCompletesAccountSelection(t *testing.T) {
 	require.Equal(t, "ws-1", accountBody.WorkspaceID)
 	require.Equal(t, []string{accountBody.ID}, accountBody.AccountIDs)
 	require.True(t, accountBody.OpenFreshComposer)
+	require.Len(t, recorder.Events, 1)
+	require.Equal(t, telemetry.EventDestinationConnected, recorder.Events[0].Name)
+	require.Equal(t, "facebook", recorder.Events[0].Properties["platform"])
+	require.Equal(t, 1, recorder.Events[0].Properties["account_count"])
 
 	var account models.SocialAccount
 	require.NoError(t, db.NewSelect().Model(&account).Where("id = ?", accountBody.ID).Scan(ctx))

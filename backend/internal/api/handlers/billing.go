@@ -255,6 +255,7 @@ func (h *BillingHandler) confirmFirstWorkspacePurchase(ctx context.Context, inpu
 	}
 	if confirmation.Created {
 		_ = queue.ScheduleMediaCleanup(h.db, confirmation.Workspace.ID) //nolint:errcheck
+		h.captureFirstWorkspaceConfirmed(ctx, userID, confirmation, choice)
 		h.captureCheckoutCreated(ctx, userID, confirmation.OrganizationID, confirmation.Workspace.ID, confirmation.Checkout)
 	}
 	output := &ConfirmFirstWorkspacePurchaseOutput{}
@@ -263,6 +264,27 @@ func (h *BillingHandler) confirmFirstWorkspacePurchase(ctx context.Context, inpu
 	output.Body.WorkspaceName = confirmation.Workspace.Name
 	output.Body.Checkout = checkoutResponse(confirmation.Checkout)
 	return output, nil
+}
+
+func (h *BillingHandler) captureFirstWorkspaceConfirmed(
+	ctx context.Context,
+	userID string,
+	confirmation billing.FirstWorkspaceConfirmation,
+	choice billing.PurchaseChoice,
+) {
+	if h.telemetry == nil {
+		return
+	}
+	for _, event := range []telemetry.Event{
+		{Name: telemetry.EventPlanConfirmed, DistinctID: userID, WorkspaceID: confirmation.Workspace.ID, Properties: map[string]any{
+			"plan_id": choice.PlanID, "billing_period": choice.BillingPeriod,
+		}},
+		{Name: telemetry.EventWorkspaceCreated, DistinctID: userID, WorkspaceID: confirmation.Workspace.ID},
+	} {
+		if err := h.telemetry.Capture(ctx, event); err != nil {
+			log.Printf("Failed to enqueue first Workspace telemetry: %v", err)
+		}
+	}
 }
 
 type PurchaseChoiceOutput struct {
@@ -663,6 +685,14 @@ func (h *BillingHandler) consumeCheckoutReturn(ctx context.Context, input *Consu
 	}
 	if err != nil {
 		return nil, huma.Error500InternalServerError("failed to confirm checkout")
+	}
+	if result.NewlyConsumed && h.telemetry != nil {
+		if err := h.telemetry.Capture(ctx, telemetry.Event{
+			Name: telemetry.EventCheckoutCompleted, DistinctID: middleware.GetUserID(ctx), WorkspaceID: result.WorkspaceID,
+			Properties: map[string]any{"plan_id": result.PlanID, "billing_period": result.BillingPeriod},
+		}); err != nil {
+			log.Printf("Failed to enqueue checkout completion telemetry: %v", err)
+		}
 	}
 	output := &ConsumeBillingCheckoutReturnOutput{}
 	output.Body.Status = result.Status

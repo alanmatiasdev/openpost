@@ -14,6 +14,7 @@ import (
 	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/services/billing"
 	"github.com/openpost/backend/internal/services/identity"
+	"github.com/openpost/backend/internal/telemetry"
 )
 
 const (
@@ -60,6 +61,7 @@ type OIDCStartInput struct {
 	PlanID              string `query:"plan_id" doc:"Canonical hosted plan selected for signup"`
 	BillingPeriod       string `query:"billing_period" doc:"Canonical hosted billing period selected for signup"`
 	PurchaseChoiceToken string `query:"purchase_choice_token" doc:"Integrity-protected hosted plan choice required for signup"`
+	TelemetryID         string `query:"telemetry_id" doc:"Anonymous browser telemetry ID used only to join the signup journey"`
 	Cookie              string `header:"Cookie"`
 }
 
@@ -317,6 +319,7 @@ func (h *OIDCHandler) start(ctx context.Context, input *OIDCStartInput) (*huma.S
 		if choice.Token != "" {
 			returnPath = purchaseChoiceReturnPath(returnPath, choice)
 		}
+		returnPath = signupTelemetryReturnPath(returnPath, input.TelemetryID)
 		intent = models.OIDCIntentSignup
 	}
 	result, err := h.identity.Begin(ctx, identity.BeginInput{
@@ -347,6 +350,37 @@ func purchaseChoiceReturnPath(raw string, choice billing.PurchaseChoice) string 
 	query.Set("purchase_choice", choice.Token)
 	target.RawQuery = query.Encode()
 	return target.String()
+}
+
+const signupTelemetryQueryKey = "_signup_telemetry_id"
+
+func signupTelemetryReturnPath(raw, telemetryID string) string {
+	safe := identity.SafeReturnPath(raw)
+	telemetryID = strings.TrimSpace(telemetryID)
+	if !telemetry.IsAnonymousDistinctID(telemetryID) {
+		return safe
+	}
+	parsed, err := url.Parse(safe)
+	if err != nil {
+		return safe
+	}
+	query := parsed.Query()
+	query.Set(signupTelemetryQueryKey, telemetryID)
+	parsed.RawQuery = query.Encode()
+	return parsed.String()
+}
+
+func takeSignupTelemetryID(raw string) (string, string) {
+	safe := identity.SafeReturnPath(raw)
+	parsed, err := url.Parse(safe)
+	if err != nil {
+		return safe, ""
+	}
+	query := parsed.Query()
+	telemetryID := query.Get(signupTelemetryQueryKey)
+	query.Del(signupTelemetryQueryKey)
+	parsed.RawQuery = query.Encode()
+	return parsed.String(), telemetryID
 }
 
 func (h *OIDCHandler) registerAuthenticatedRoutes(api huma.API) {
@@ -687,6 +721,11 @@ func (h *OIDCHandler) completeLoginCallback(
 	completion *identity.Completion,
 	expiredBinding *http.Cookie,
 ) (*huma.StreamResponse, error) {
+	if completion.NewUser {
+		returnPath, telemetryID := takeSignupTelemetryID(completion.Request.ReturnPath)
+		completion.Request.ReturnPath = returnPath
+		h.auth.captureSignupCompleted(ctx, completion.User.ID, telemetryID)
+	}
 	authResponse, err := h.auth.issueAuthResponse(ctx, completion.User)
 	if err != nil {
 		return nil, err

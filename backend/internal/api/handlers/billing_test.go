@@ -22,15 +22,17 @@ import (
 	"github.com/openpost/backend/internal/services/billing"
 	"github.com/openpost/backend/internal/services/entitlements"
 	usageservice "github.com/openpost/backend/internal/services/usage"
+	"github.com/openpost/backend/internal/telemetry"
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun"
 )
 
 type billingTestServer struct {
-	echo   *echo.Echo
-	db     *bun.DB
-	client *billingPaddleClient
-	usage  *usageservice.Service
+	echo     *echo.Echo
+	db       *bun.DB
+	client   *billingPaddleClient
+	usage    *usageservice.Service
+	recorder *telemetry.MemoryRecorder
 }
 
 type billingPaddleClient struct {
@@ -161,12 +163,34 @@ func TestConfirmFirstWorkspacePurchaseCreatesAndResumesOneBoundAttempt(t *testin
 	require.NoError(t, srv.db.NewSelect().ColumnExpr("COUNT(*)").TableExpr("billing_checkout_attempts").Scan(ctx, &attemptCount))
 	require.Equal(t, 1, workspaceCount)
 	require.Equal(t, 1, attemptCount)
+	require.Equal(t, []string{
+		telemetry.EventPlanConfirmed,
+		telemetry.EventWorkspaceCreated,
+		telemetry.EventBillingCheckoutCreated,
+	}, telemetryEventNames(srv.recorder.Events))
 
 	mismatch := maps.Clone(request)
 	mismatch["workspace_name"] = "A different workspace"
 	rejected := srv.postJSON(t, "/api/v1/billing/welcome", mismatch)
 	require.Equal(t, http.StatusConflict, rejected.Code, rejected.Body.String())
 	require.Contains(t, rejected.Body.String(), "confirmed welcome details")
+}
+
+func TestSuccessfulCheckoutReturnEmitsCompletedOnce(t *testing.T) {
+	srv := newBillingAPITestServer(t)
+	now := time.Now().UTC()
+	_, err := srv.db.NewInsert().Model(&models.BillingCheckoutAttempt{
+		CheckoutAttemptID: "chkat_complete", OrganizationID: "org_ws-1", WorkspaceID: "ws-1", UserID: "user-1",
+		Provider: billing.ProviderPaddle, ProviderPriceID: "pri_founder_month", PlanID: "founder", BillingPeriod: "monthly",
+		Status: "trialing", CreatedAt: now, UpdatedAt: now,
+	}).Exec(t.Context())
+	require.NoError(t, err)
+
+	first := srv.getJSON(t, "/api/v1/billing/checkout/chkat_complete/return")
+	require.Equal(t, http.StatusOK, first.Code, first.Body.String())
+	second := srv.getJSON(t, "/api/v1/billing/checkout/chkat_complete/return")
+	require.Equal(t, http.StatusOK, second.Code, second.Body.String())
+	require.Equal(t, []string{telemetry.EventCheckoutCompleted}, telemetryEventNames(srv.recorder.Events))
 }
 
 func TestResumeBillingCheckoutRequiresExactUser(t *testing.T) {
@@ -284,10 +308,20 @@ func newBillingAPITestServerWithPaddleConfig(t *testing.T, client *billingPaddle
 	e := echo.New()
 	api := humaecho.NewWithGroup(e, e.Group("/api/v1"), huma.DefaultConfig("Test", "1.0.0"))
 	handler := NewBillingHandler(service, db, testAuthenticator{})
+	recorder := &telemetry.MemoryRecorder{}
+	handler.SetTelemetry(recorder)
 	usageService := usageservice.NewService(db)
 	handler.SetUsage(usageService)
 	handler.RegisterAPIRoutes(api)
-	return &billingTestServer{echo: e, db: db, client: client, usage: usageService}
+	return &billingTestServer{echo: e, db: db, client: client, usage: usageService, recorder: recorder}
+}
+
+func telemetryEventNames(events []telemetry.Event) []string {
+	names := make([]string, len(events))
+	for index, event := range events {
+		names[index] = event.Name
+	}
+	return names
 }
 
 func (s *billingTestServer) postWebhook(t *testing.T, body []byte, signature string) *httptest.ResponseRecorder {

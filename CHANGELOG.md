@@ -6,6 +6,7 @@ All notable changes to this project are documented in this file.
 
 ### Changed
 
+- Completed the privacy-limited first-use PostHog journey from signup intent through Workspace Activation, with server-owned lifecycle outcomes, strict browser and backend event allowlists, contract and integration coverage, and an idempotent production funnel smoke workflow.
 - The first successful Publication schedule or submission now records one server-owned Workspace Activation under retries and concurrency, emits one authoritative analytics event, retires setup guidance, and offers immediate View publication and Create another actions.
 - Workspace setup now recognizes the first meaningful text, media attachment, or thread-mode choice once per Workspace, while focus, destination selection, empty drafts, and repeated composer instances do not count. Its browser event allows only the interaction category and excludes authored content, media, identity, destination, and secret URL data.
 - Successful first-destination OAuth now opens a fresh composer with the new Workspace destination selected, while cancellation and failure return to actionable account management without exposing provider secrets in return parameters.
