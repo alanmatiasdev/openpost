@@ -3,7 +3,7 @@
 	import ArrowRight from '@lucide/svelte/icons/arrow-right';
 	import { Button } from '$lib/components/ui/button';
 	import PricingShowcase from '../_components/PricingShowcase.svelte';
-	import { faqs, plans, siteUrl, supportMailUrl } from '../_marketing';
+	import { faqs, plans, supportMailUrl } from '../_marketing';
 
 	let billingPeriod = $state<'monthly' | 'annual'>('monthly');
 	const pricingFaqs = faqs.filter((faq) => faq.category === 'billing');
@@ -39,15 +39,6 @@
 	] as const;
 </script>
 
-<svelte:head>
-	<title>OpenPost pricing</title>
-	<meta
-		name="description"
-		content="OpenPost managed plans start at $15 per month with a 14-day card-required trial."
-	/>
-	<link rel="canonical" href={`${siteUrl}/pricing`} />
-</svelte:head>
-
 <section class="pricing-hero">
 	<div class="marketing-shell text-center">
 		<p class="section-label">Simple pricing</p>
@@ -82,9 +73,12 @@
 			<p class="section-label">Exact limits</p>
 			<h2 id="limits-title">Compare every plan.</h2>
 			<p>Team includes three seats. Agency includes five.</p>
+			<p>
+				Annual prices: {plans.map((plan) => `${plan.name} ${plan.annualPrice}/year`).join(', ')}.
+			</p>
 		</div>
 
-		<div class="mobile-limits">
+		<div class="mobile-limits" data-agent-exclude>
 			{#each plans as plan (plan.id)}
 				<details data-plan-id={plan.id}>
 					<summary class="focus-ring">
