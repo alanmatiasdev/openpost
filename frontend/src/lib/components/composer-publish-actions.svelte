@@ -23,7 +23,7 @@
 		onSchedule: () => void;
 		onQuickSchedule: () => void | Promise<void>;
 		onPublish: () => void | Promise<void>;
-		onDelete?: () => void;
+		onDelete?: (event: MouseEvent) => void | Promise<void>;
 	}
 
 	let {

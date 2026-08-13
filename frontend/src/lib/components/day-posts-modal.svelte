@@ -24,6 +24,7 @@
 	import { resolve } from '$app/paths';
 	import { m } from '$lib/paraglide/messages';
 	import { getLocaleTag } from '$lib/i18n';
+	import { requestDestructiveAction } from '$lib/destructive-action';
 
 	type Publication = components['schemas']['PublicationResponse'];
 
@@ -202,9 +203,13 @@
 		goto(resolve(href as '/'));
 	}
 
-	function requestDelete(post: Publication) {
+	function requestDelete(event: MouseEvent, post: Publication) {
 		postToDelete = post;
-		deleteDialogOpen = true;
+		return requestDestructiveAction(
+			{ shiftKey: event.shiftKey && post.status === 'draft' },
+			() => (deleteDialogOpen = true),
+			handleDelete
+		);
 	}
 
 	async function handleDelete() {
@@ -340,7 +345,9 @@
 									>
 									{#if canDeletePublication(post)}
 										<DropdownMenu.Separator />
-										<DropdownMenu.Item class="text-destructive" onclick={() => requestDelete(post)}
+										<DropdownMenu.Item
+											class="text-destructive"
+											onclick={(event) => requestDelete(event, post)}
 											><TrashIcon
 												class="mr-2 size-4"
 											/>{m.day_posts_delete_action()}</DropdownMenu.Item

@@ -19,6 +19,7 @@
 	import { m } from '$lib/paraglide/messages';
 	import { getLocaleTag } from '$lib/i18n';
 	import { workspaceColor } from '$lib/workspace-color';
+	import { requestDestructiveAction } from '$lib/destructive-action';
 	import FileTextIcon from '@lucide/svelte/icons/file-text';
 	import ImageIcon from '@lucide/svelte/icons/image';
 	import TrashIcon from '@lucide/svelte/icons/trash-2';
@@ -234,10 +235,10 @@
 		};
 	}
 
-	function requestDraftDelete(draft: PlannerDraft) {
+	function requestDraftDelete(event: MouseEvent, draft: PlannerDraft) {
 		draftPendingDelete = draft;
 		draftDeleteError = '';
-		deleteDraftDialogOpen = true;
+		return requestDestructiveAction(event, () => (deleteDraftDialogOpen = true), deleteDraft);
 	}
 
 	async function deleteDraft() {
@@ -564,7 +565,7 @@
 									<ContextMenu.Item
 										class="{draftContextItemClass} text-destructive data-highlighted:text-destructive"
 										disabled={deletingDraftId === draft.id}
-										onclick={() => requestDraftDelete(draft)}
+										onclick={(event) => requestDraftDelete(event, draft)}
 									>
 										<TrashIcon class="size-4" aria-hidden="true" />
 										{m.common_delete()}

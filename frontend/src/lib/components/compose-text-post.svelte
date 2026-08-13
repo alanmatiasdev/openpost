@@ -106,6 +106,7 @@
 	} from './compose/modes';
 	import { soundPreferences } from '$lib/stores/sound-preferences.svelte';
 	import { celebrateSchedule } from '$lib/celebrate-schedule';
+	import { requestDestructiveAction } from '$lib/destructive-action';
 	import AppToast from './app-toast.svelte';
 	import DestructiveConfirmDialog from './destructive-confirm-dialog.svelte';
 	import DraftConflictDialog from './draft-conflict-dialog.svelte';
@@ -3453,6 +3454,10 @@
 		}
 	}
 
+	function requestDraftDelete(event: MouseEvent) {
+		return requestDestructiveAction(event, () => (showDeleteConfirm = true), deleteDraft);
+	}
+
 	async function saveEditedPost(navigateOnSuccess = true): Promise<boolean> {
 		if ((!draftId || (!initialPost && !initialPublication)) && !publicationOnlyEdit) return false;
 		error = '';
@@ -4623,7 +4628,7 @@
 						class="size-11 text-muted-foreground hover:text-destructive md:size-8"
 						aria-label={m.common_delete()}
 						title={m.common_delete()}
-						onclick={() => (showDeleteConfirm = true)}
+						onclick={requestDraftDelete}
 						disabled={isDeleting || isSaving || isSubmitting}
 					>
 						<Trash2Icon class="size-4" />
@@ -4656,7 +4661,7 @@
 						onSchedule={openScheduleDialog}
 						onQuickSchedule={quickSchedule}
 						onPublish={() => publish(true)}
-						onDelete={draftId || publicationOnlyEdit ? () => (showDeleteConfirm = true) : undefined}
+						onDelete={draftId || publicationOnlyEdit ? requestDraftDelete : undefined}
 					/>
 				{/if}
 			</div>
@@ -4771,7 +4776,7 @@
 						class="size-8 text-muted-foreground hover:text-destructive"
 						aria-label={m.common_delete()}
 						title={m.common_delete()}
-						onclick={() => (showDeleteConfirm = true)}
+						onclick={requestDraftDelete}
 						disabled={isDeleting || isSaving || isSubmitting}
 					>
 						<Trash2Icon class="size-4" />
@@ -4803,7 +4808,7 @@
 						onSchedule={openScheduleDialog}
 						onQuickSchedule={quickSchedule}
 						onPublish={() => publish(true)}
-						onDelete={draftId || publicationOnlyEdit ? () => (showDeleteConfirm = true) : undefined}
+						onDelete={draftId || publicationOnlyEdit ? requestDraftDelete : undefined}
 					/>
 				{/if}
 			</div>
@@ -4912,7 +4917,7 @@
 				{#if selectedAccounts.length > 0}
 					<section class="mb-5" aria-label={m.compose_destination_tabs()}>
 						<div
-							class="flex gap-1 overflow-x-auto border-b pb-px"
+							class="destination-tabs-scrollbar flex gap-1 overflow-x-auto border-b pb-px"
 							role="tablist"
 							aria-label={m.compose_destination_tabs()}
 						>
@@ -5853,3 +5858,33 @@
 	onConfirm={confirmApplyPrompt}
 	onCancel={cancelApplyPrompt}
 />
+
+<style>
+	.destination-tabs-scrollbar {
+		scrollbar-width: thin;
+		scrollbar-color: color-mix(in oklch, var(--foreground) 22%, transparent) transparent;
+	}
+
+	.destination-tabs-scrollbar::-webkit-scrollbar {
+		height: 6px;
+	}
+
+	.destination-tabs-scrollbar::-webkit-scrollbar-track {
+		background: transparent;
+	}
+
+	.destination-tabs-scrollbar::-webkit-scrollbar-button {
+		display: none;
+		width: 0;
+		height: 0;
+	}
+
+	.destination-tabs-scrollbar::-webkit-scrollbar-thumb {
+		border-radius: 999px;
+		background-color: color-mix(in oklch, var(--foreground) 22%, transparent);
+	}
+
+	.destination-tabs-scrollbar::-webkit-scrollbar-thumb:hover {
+		background-color: color-mix(in oklch, var(--foreground) 34%, transparent);
+	}
+</style>
