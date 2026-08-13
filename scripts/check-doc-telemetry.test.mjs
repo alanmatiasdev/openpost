@@ -4,7 +4,6 @@ import { readFile } from "node:fs/promises";
 const docsConfigPath = new URL("../docs-site/.vitepress/config.ts", import.meta.url);
 const docsThemePath = new URL("../docs-site/.vitepress/theme/index.ts", import.meta.url);
 const telemetryGuidePath = new URL("../docs-site/configuration/telemetry.md", import.meta.url);
-const firstUseWorkflowPath = new URL("../.github/workflows/posthog-first-use.yml", import.meta.url);
 
 describe("documentation telemetry", () => {
   test("uses the shared PostHog client without a legacy Umami script", async () => {
@@ -19,11 +18,8 @@ describe("documentation telemetry", () => {
     expect(theme).toMatch(/surface:\s*["']docs["']/u);
   });
 
-  test("documents and automates the complete production first-use funnel", async () => {
-    const [guide, workflow] = await Promise.all([
-      readFile(telemetryGuidePath, "utf8"),
-      readFile(firstUseWorkflowPath, "utf8"),
-    ]);
+  test("documents the complete MCP-managed production first-use funnel", async () => {
+    const guide = await readFile(telemetryGuidePath, "utf8");
     const events = [
       "signup started",
       "signup completed",
@@ -40,8 +36,8 @@ describe("documentation telemetry", () => {
       expect(index).toBeGreaterThan(previous);
       previous = index;
     }
-    expect(workflow).toContain("bun scripts/posthog-first-use.ts");
-    expect(workflow).toContain("POSTHOG_PERSONAL_API_KEY: ${{ secrets.POSTHOG_PERSONAL_API_KEY }}");
-    expect(workflow).toContain("posthog-first-use-evidence.json");
+    expect(guide).toContain("PostHog MCP");
+    expect(guide).toContain("excludes marked smoke events");
+    expect(guide).not.toContain("POSTHOG_PERSONAL_API_KEY` Actions secret");
   });
 });
