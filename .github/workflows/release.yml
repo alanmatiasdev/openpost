@@ -341,14 +341,7 @@ jobs:
   promote-image:
     name: Promote tested image
     runs-on: ubuntu-latest
-    needs:
-      [
-        verify-candidate,
-        prepare-draft,
-        build-binaries,
-        build-cli,
-        build-android,
-      ]
+    needs: [verify-candidate, prepare-draft, build-binaries, build-cli, build-android]
     permissions:
       contents: write
       packages: write
@@ -444,14 +437,7 @@ jobs:
     name: Publish complete deployed release
     runs-on: ubuntu-latest
     needs:
-      [
-        prepare-draft,
-        build-binaries,
-        build-cli,
-        build-android,
-        promote-image,
-        deploy-production,
-      ]
+      [prepare-draft, build-binaries, build-cli, build-android, promote-image, deploy-production]
     permissions:
       contents: write
     steps:

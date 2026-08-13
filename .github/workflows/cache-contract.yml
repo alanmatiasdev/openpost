@@ -27,4 +27,4 @@ jobs:
           key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
           restore-keys: bun-${{ runner.os }}-
       - run: bun install --frozen-lockfile
-      - run: bun run verify:frontend-build-cache
+      - run: bun run check -- frontend-build-cache
