@@ -1,6 +1,6 @@
 module github.com/openpost/backend
 
-go 1.26.5
+go 1.26.6
 
 require (
 	github.com/OpenRouterTeam/go-sdk v0.7.31

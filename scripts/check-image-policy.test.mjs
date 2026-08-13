@@ -30,8 +30,8 @@ test("production build stages cannot drift back to mutable tags", () => {
     {
       ...inputs,
       dockerfile: inputs.dockerfile.replace(
-        /golang:1\.26\.5-alpine@sha256:[a-f0-9]{64}/u,
-        "golang:1.26.5-alpine",
+        /golang:1\.26\.6-alpine@sha256:[a-f0-9]{64}/u,
+        "golang:1.26.6-alpine",
       ),
     },
     new Date("2026-08-09T00:00:00Z"),
