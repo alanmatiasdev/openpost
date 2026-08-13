@@ -3966,6 +3966,20 @@ export interface components {
             role: string;
             workspace_id: string;
         };
+        AccountConnectionResponse: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/AccountConnectionResponse.json
+             */
+            readonly $schema?: string;
+            /** @description OpenPost destination account ID */
+            account_id: string;
+            /** @description Whether this is the Workspace's first connected destination */
+            open_fresh_composer: boolean;
+            /** @description Workspace receiving the connected destination */
+            workspace_id: string;
+        };
         AccountDeletionImpact: {
             /**
              * Format: uri
@@ -4229,6 +4243,61 @@ export interface components {
             slug: string;
             /** @description Whether this account supports thread replies in current server config */
             thread_replies_supported: boolean;
+        };
+        AccountSelectionCompletionResponse: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/AccountSelectionCompletionResponse.json
+             */
+            readonly $schema?: string;
+            /** @description Account avatar URL */
+            account_avatar_url: string;
+            /** @description Platform-specific account ID */
+            account_id: string;
+            /** @description OpenPost destination account IDs created by this selection */
+            account_ids: string[] | null;
+            /** @description Normalized identity kind, such as person, organization, creator, or business */
+            account_kind?: string;
+            /** @description Account username */
+            account_username: string;
+            /**
+             * Format: date-time
+             * @description When account-specific publishing limits were last verified
+             */
+            capability_checked_at?: string;
+            /**
+             * Format: int64
+             * @description Number of active destinations using this provider authorization
+             */
+            grant_destination_count: number;
+            /** @description Account ID */
+            id: string;
+            /** @description Instance URL (Mastodon/Bluesky) */
+            instance_url: string;
+            /** @description Whether the account is active */
+            is_active: boolean;
+            /**
+             * @description Account-specific publishing limit profile
+             * @enum {string}
+             */
+            limit_profile?: "standard" | "x-premium";
+            /** @description Whether this account opted in to inbox synchronization */
+            messages_enabled: boolean;
+            /** @description Whether OpenPost has a messaging connector for this provider */
+            messaging_supported: boolean;
+            /** @description Whether these are the Workspace's first connected destinations */
+            open_fresh_composer: boolean;
+            /** @description Platform name */
+            platform: string;
+            /** @description Whether revoking this authorization disconnects other destinations */
+            shared_grant: boolean;
+            /** @description User-editable account slug for CLI selectors */
+            slug: string;
+            /** @description Whether this account supports thread replies in current server config */
+            thread_replies_supported: boolean;
+            /** @description Workspace receiving the connected destinations */
+            workspace_id: string;
         };
         AccountSelectionOption: {
             avatar_url?: string;
@@ -11541,12 +11610,14 @@ export interface operations {
             };
         };
         responses: {
-            /** @description No Content */
-            204: {
+            /** @description OK */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["AccountConnectionResponse"];
+                };
             };
             /** @description Bad Request */
             400: {
@@ -11716,7 +11787,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AccountResponse"];
+                    "application/json": components["schemas"]["AccountSelectionCompletionResponse"];
                 };
             };
             /** @description Bad Request */

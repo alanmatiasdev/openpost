@@ -34,16 +34,17 @@ type AccountSaver struct {
 }
 
 type SaveAccountInput struct {
-	UserID           string
-	PlatformName     string
-	WorkspaceID      string
-	AccountID        string
-	AccountUsername  string
-	AccountAvatarURL string
-	InstanceURL      string
-	Token            *platform.TokenResult
-	CapabilityState  map[string]string
-	Grant            AuthorizationGrantInput
+	UserID                string
+	PlatformName          string
+	WorkspaceID           string
+	AccountID             string
+	AccountUsername       string
+	AccountAvatarURL      string
+	InstanceURL           string
+	Token                 *platform.TokenResult
+	CapabilityState       map[string]string
+	Grant                 AuthorizationGrantInput
+	FirstConnectionOrigin string
 }
 
 type AuthorizationGrantInput struct {
@@ -245,6 +246,28 @@ func (s *AccountSaver) SaveAccountsFromInputs(ctx context.Context, inputs []Save
 				Exec(txCtx); err != nil {
 				return err
 			}
+		}
+		claim := &models.WorkspaceFirstConnection{
+			WorkspaceID: first.WorkspaceID,
+			AccountID:   accounts[0].ID,
+			OriginKey:   first.FirstConnectionOrigin,
+			CreatedAt:   now,
+		}
+		result, err := tx.NewInsert().Model(claim).On("CONFLICT (workspace_id) DO NOTHING").Exec(txCtx)
+		if err != nil {
+			return err
+		}
+		rows, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
+		accounts[0].ClaimedFirst = rows == 1
+		if !accounts[0].ClaimedFirst && first.FirstConnectionOrigin != "" {
+			var stored models.WorkspaceFirstConnection
+			if err := tx.NewSelect().Model(&stored).Where("workspace_id = ?", first.WorkspaceID).Scan(txCtx); err != nil {
+				return err
+			}
+			accounts[0].ClaimedFirst = stored.OriginKey == first.FirstConnectionOrigin
 		}
 		return nil
 	}); err != nil {

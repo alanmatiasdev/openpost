@@ -5,9 +5,14 @@
 	import ComposeTextPost from './compose-text-post.svelte';
 	import { ui } from '$lib/stores/ui.svelte';
 
+	let { onHandoffSelected }: { onHandoffSelected?: () => void } = $props();
+
 	const initialScheduleDate = $derived(page.url.searchParams.get('date'));
 	const initialScheduleTime = $derived(page.url.searchParams.get('time'));
 	const initialWorkspaceId = $derived(page.url.searchParams.get('workspace_id'));
+	const initialAccountIds = $derived(
+		(page.url.searchParams.get('account_ids') ?? '').split(',').filter(Boolean)
+	);
 	const composerResetCounter = $derived(ui.composerResetCounter);
 
 	function handleComposerReset() {
@@ -28,6 +33,8 @@
 				{initialScheduleDate}
 				{initialScheduleTime}
 				{initialWorkspaceId}
+				{initialAccountIds}
+				{onHandoffSelected}
 				onSuccess={handleComposerReset}
 				onDeleted={handleComposerReset}
 				onDraftCreated={handlePublicationDraftCreated}

@@ -6,6 +6,7 @@ All notable changes to this project are documented in this file.
 
 ### Changed
 
+- Successful first-destination OAuth now opens a fresh composer with the new Workspace destination selected, while cancellation and failure return to actionable account management without exposing provider secrets in return parameters.
 - Added a server-derived Workspace setup guide that resumes from subscription, destination, and Publication state on the home, Accounts, and composer surfaces without a separate onboarding step index. Organization Owners receive the complete applicable journey, Organization administrators receive authorized billing guidance, Workspace administrators and editors receive only authorized content actions, viewers receive no setup actions, and self-hosted deployments omit Hosted service billing steps.
 - Shift-activating draft deletion now bypasses the confirmation dialog consistently in the composer, planner, and day-post drawers.
 - Reduced the ordinary local release gate to generated and type checks, lint, and unit tests; production builds, race and security checks, browser suites, and Docker image proof remain available through the explicit full rehearsal and candidate CI.

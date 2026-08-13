@@ -8,7 +8,6 @@
 	import { Label } from '$lib/components/ui/label';
 	import StandaloneShell from '$lib/components/standalone-shell.svelte';
 	import InlineNotice from '$lib/components/inline-notice.svelte';
-	import CheckCircleIcon from '@lucide/svelte/icons/circle-check';
 	import { m } from '$lib/paraglide/messages';
 
 	let code = $state('');
@@ -17,7 +16,6 @@
 	let workspaceId = $state('');
 	let loading = $state(false);
 	let error = $state('');
-	let success = $state(false);
 	let pageLoading = $state(true);
 
 	onMount(() => {
@@ -55,7 +53,7 @@
 		error = '';
 
 		try {
-			const { error: err } = await client.POST('/accounts/mastodon/exchange', {
+			const { data, error: err } = await client.POST('/accounts/mastodon/exchange', {
 				body: {
 					workspace_id: workspaceId,
 					server_name: serverName,
@@ -64,13 +62,29 @@
 				}
 			});
 			if (err) throw new Error(err.detail || m.accounts_mastodon_callback_exchange_failed());
+			if (!data?.workspace_id || !data.account_id) {
+				throw new Error(m.accounts_mastodon_callback_exchange_failed());
+			}
+			pageLoading = true;
+			if (!data.open_fresh_composer) {
+				await goto(resolve('/settings?tab=accounts'));
+				localStorage.removeItem('oauth_workspace_id');
+				localStorage.removeItem('oauth_mastodon_server');
+				localStorage.removeItem('oauth_mastodon_instance_url');
+				return;
+			}
+			const query = new URLSearchParams({
+				workspace_id: data.workspace_id,
+				account_ids: data.account_id
+			});
+			await goto(resolve(`/?${query.toString()}` as '/'));
 			localStorage.removeItem('oauth_workspace_id');
 			localStorage.removeItem('oauth_mastodon_server');
 			localStorage.removeItem('oauth_mastodon_instance_url');
-			success = true;
-			setTimeout(() => goto(resolve('/accounts/callback?status=success&platform=mastodon')), 500);
 		} catch (e) {
-			error = (e as Error).message;
+			const query = new URLSearchParams({ tab: 'accounts', oauth_status: 'failed' });
+			query.set('workspace_id', workspaceId);
+			await goto(resolve(`/settings?${query.toString()}`));
 		} finally {
 			loading = false;
 		}
@@ -82,62 +96,51 @@
 </svelte:head>
 
 <StandaloneShell
-	title={success
-		? m.accounts_mastodon_callback_connected()
-		: m.accounts_mastodon_callback_connect()}
-	description={success
-		? m.accounts_mastodon_callback_preparing()
-		: m.accounts_mastodon_callback_description()}
+	title={m.accounts_mastodon_callback_connect()}
+	description={m.accounts_mastodon_callback_description()}
 	loading={pageLoading}
 	loadingLabel={m.common_loading()}
 >
-	{#if success}
-		<div class="space-y-3 text-center" role="status" aria-live="polite">
-			<CheckCircleIcon class="mx-auto size-10 text-emerald-600" />
-			<p class="text-sm text-muted-foreground">{m.accounts_mastodon_callback_preparing()}</p>
-		</div>
-	{:else}
-		<div class="space-y-4">
-			{#if serverName || instanceURL}
-				<p class="text-sm text-muted-foreground">
-					{m.accounts_mastodon_callback_server({ server: serverName || instanceURL })}
-				</p>
+	<div class="space-y-4">
+		{#if serverName || instanceURL}
+			<p class="text-sm text-muted-foreground">
+				{m.accounts_mastodon_callback_server({ server: serverName || instanceURL })}
+			</p>
+		{/if}
+
+		<form
+			class="space-y-4"
+			onsubmit={(event: SubmitEvent) => {
+				event.preventDefault();
+				void submitCode();
+			}}
+		>
+			<div class="space-y-2">
+				<Label for="code">{m.accounts_mastodon_callback_code()}</Label>
+				<Input
+					type="text"
+					id="code"
+					bind:value={code}
+					placeholder={m.accounts_mastodon_callback_code_placeholder()}
+					class="font-mono"
+					required
+				/>
+			</div>
+
+			{#if error}
+				<InlineNotice tone="error" message={error} />
 			{/if}
 
-			<form
-				class="space-y-4"
-				onsubmit={(event: SubmitEvent) => {
-					event.preventDefault();
-					void submitCode();
-				}}
-			>
-				<div class="space-y-2">
-					<Label for="code">{m.accounts_mastodon_callback_code()}</Label>
-					<Input
-						type="text"
-						id="code"
-						bind:value={code}
-						placeholder={m.accounts_mastodon_callback_code_placeholder()}
-						class="font-mono"
-						required
-					/>
-				</div>
-
-				{#if error}
-					<InlineNotice tone="error" message={error} />
-				{/if}
-
-				<div class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-					<Button href={resolve('/settings?tab=accounts')} variant="outline"
-						>{m.common_cancel()}</Button
-					>
-					<Button type="submit" disabled={loading}>
-						{loading
-							? m.accounts_mastodon_callback_connecting()
-							: m.accounts_mastodon_callback_connect_action()}
-					</Button>
-				</div>
-			</form>
-		</div>
-	{/if}
+			<div class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+				<Button href={resolve('/settings?tab=accounts')} variant="outline"
+					>{m.common_cancel()}</Button
+				>
+				<Button type="submit" disabled={loading}>
+					{loading
+						? m.accounts_mastodon_callback_connecting()
+						: m.accounts_mastodon_callback_connect_action()}
+				</Button>
+			</div>
+		</form>
+	</div>
 </StandaloneShell>

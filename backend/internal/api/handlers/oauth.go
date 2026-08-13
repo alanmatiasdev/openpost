@@ -190,6 +190,7 @@ type OAuthCallbackInput struct {
 	State            string `query:"state" doc:"OAuth state"`
 	OAuthToken       string `query:"oauth_token" doc:"OAuth 1.0a request token (X)" required:"false"`
 	Verifier         string `query:"oauth_verifier" doc:"OAuth 1.0a verifier (X)" required:"false"`
+	Denied           string `query:"denied" doc:"Denied OAuth 1.0a request token (X)" required:"false"`
 	ServerName       string `query:"server_name" doc:"Mastodon server name (required for mastodon)" required:"false"`
 	Error            string `query:"error" doc:"OAuth error" required:"false"`
 	ErrorDescription string `query:"error_description" doc:"OAuth error description" required:"false"`
@@ -203,6 +204,16 @@ type ExchangeCodeInput struct {
 		Code        string `json:"code" doc:"Authorization code from OAuth flow"`
 		Intent      string `json:"intent,omitempty" enum:"production,certification_test" doc:"Typed execution intent; certification_test requires an unscoped instance administrator"`
 	}
+}
+
+type ExchangeCodeOutput struct {
+	Body AccountConnectionResponse
+}
+
+type AccountConnectionResponse struct {
+	WorkspaceID       string `json:"workspace_id" doc:"Workspace receiving the connected destination"`
+	AccountID         string `json:"account_id" doc:"OpenPost destination account ID"`
+	OpenFreshComposer bool   `json:"open_fresh_composer" doc:"Whether this is the Workspace's first connected destination"`
 }
 
 type ListAccountsInput struct {
@@ -257,7 +268,14 @@ type CompleteAccountSelectionInput struct {
 }
 
 type CompleteAccountSelectionOutput struct {
-	Body AccountResponse
+	Body AccountSelectionCompletionResponse
+}
+
+type AccountSelectionCompletionResponse struct {
+	AccountResponse
+	WorkspaceID       string   `json:"workspace_id" doc:"Workspace receiving the connected destinations"`
+	AccountIDs        []string `json:"account_ids" doc:"OpenPost destination account IDs created by this selection"`
+	OpenFreshComposer bool     `json:"open_fresh_composer" doc:"Whether these are the Workspace's first connected destinations"`
 }
 
 type UpdateAccountInput struct {
@@ -818,13 +836,19 @@ func (h *OAuthHandler) Callback(api huma.API) {
 		Errors:      []int{400},
 		Hidden:      true,
 	}, func(ctx context.Context, input *OAuthCallbackInput) (*huma.StreamResponse, error) {
+		if input.Platform == "x" && input.Denied != "" {
+			input.OAuthToken = input.Denied
+			workspaceID := h.callbackErrorWorkspace(ctx, input)
+			return h.redirectWithError("access_denied", workspaceID)
+		}
 		if input.Error != "" {
 			msg := input.Error
 			if input.ErrorDescription != "" {
 				msg = fmt.Sprintf("%s: %s", input.Error, input.ErrorDescription)
 			}
 			log.Printf("[OAuth Callback Error] %s", msg)
-			return h.redirectWithError(msg)
+			workspaceID := h.callbackErrorWorkspace(ctx, input)
+			return h.redirectWithError(input.Error, workspaceID)
 		}
 
 		if input.Code == "" && input.OAuthToken == "" {
@@ -879,12 +903,12 @@ func (h *OAuthHandler) Callback(api huma.API) {
 
 		if err := h.checkWorkspaceEditAccess(ctx, workspaceID, userID); err != nil {
 			log.Printf("[Callback] Workspace access check failed: %v", err)
-			return h.redirectWithError("workspace access denied")
+			return h.redirectWithError("workspace access denied", workspaceID)
 		}
 		if err := h.requireProviderConnectionCompletion(
 			ctx, input.Platform, instanceRef, executionIntent, userID,
 		); err != nil {
-			return h.redirectWithError(err.Error())
+			return h.redirectWithError(err.Error(), workspaceID)
 		}
 
 		if input.Platform != "x" {
@@ -892,31 +916,31 @@ func (h *OAuthHandler) Callback(api huma.API) {
 			if input.Platform == mastodonProvider {
 				adapter, _, err = h.getMastodonProvider(ctx, input.ServerName, "")
 				if err != nil {
-					return h.redirectWithError(err.Error())
+					return h.redirectWithError(err.Error(), workspaceID)
 				}
 				instanceRef = mastodonInstanceURL(adapter)
 			} else {
 				adapter, err = h.getProvider(input.Platform, input.ServerName)
 				if err != nil {
-					return h.redirectWithError(err.Error())
+					return h.redirectWithError(err.Error(), workspaceID)
 				}
 			}
 		}
 		if err := h.requireProviderConnectionCompletion(
 			ctx, input.Platform, instanceRef, executionIntent, userID,
 		); err != nil {
-			return h.redirectWithError(err.Error())
+			return h.redirectWithError(err.Error(), workspaceID)
 		}
 
 		tokenResp, err := adapter.ExchangeCode(ctx, input.Code, extra)
 		if err != nil {
-			return h.redirectWithError(fmt.Sprintf("token exchange failed: %s", err.Error()))
+			return h.redirectWithError(fmt.Sprintf("token exchange failed: %s", err.Error()), workspaceID)
 		}
 
 		if err := h.requireProviderConnectionCompletion(
 			ctx, input.Platform, instanceRef, executionIntent, userID,
 		); err != nil {
-			return h.redirectWithError(err.Error())
+			return h.redirectWithError(err.Error(), workspaceID)
 		}
 
 		if selector, ok := adapter.(platform.AccountSelectionAdapter); ok {
@@ -937,7 +961,7 @@ func (h *OAuthHandler) Callback(api huma.API) {
 			if input.Platform == mastodonProvider {
 				profile = &platform.UserProfile{ID: "mastodon-user", Username: ""}
 			} else {
-				return h.redirectWithError(fmt.Sprintf("failed to get profile: %s", err.Error()))
+				return h.redirectWithError(fmt.Sprintf("failed to get profile: %s", err.Error()), workspaceID)
 			}
 		}
 
@@ -948,12 +972,40 @@ func (h *OAuthHandler) Callback(api huma.API) {
 	})
 }
 
-func (h *OAuthHandler) redirectWithError(msg string) (*huma.StreamResponse, error) {
-	msg = strings.TrimSpace(html.UnescapeString(msg))
-	if msg == "" {
-		msg = "OAuth connection failed"
+func (h *OAuthHandler) callbackErrorWorkspace(ctx context.Context, input *OAuthCallbackInput) string {
+	if input.Platform == "x" {
+		adapter, err := h.getProvider(input.Platform, input.ServerName)
+		if err != nil {
+			return ""
+		}
+		xAdapter, ok := adapter.(*platform.XAdapter)
+		if !ok {
+			return ""
+		}
+		meta, ok := xAdapter.GetRequestMetaForRequestToken(input.OAuthToken)
+		if ok {
+			return meta.WorkspaceID
+		}
+		return ""
 	}
-	location := h.frontendURL + "/settings?tab=accounts&error=" + url.QueryEscape(msg)
+	payload, err := h.oauthStates.Consume(ctx, input.State)
+	if err != nil || payload.Platform != input.Platform {
+		return ""
+	}
+	return payload.WorkspaceID
+}
+
+func (h *OAuthHandler) redirectWithError(msg string, workspaceIDs ...string) (*huma.StreamResponse, error) {
+	msg = strings.TrimSpace(html.UnescapeString(msg))
+	status := "failed"
+	if strings.EqualFold(msg, "access_denied") || strings.EqualFold(msg, "cancelled") {
+		status = "cancelled"
+	}
+	query := url.Values{"tab": {"accounts"}, "oauth_status": {status}}
+	if len(workspaceIDs) > 0 && strings.TrimSpace(workspaceIDs[0]) != "" {
+		query.Set("workspace_id", workspaceIDs[0])
+	}
+	location := h.frontendURL + "/settings?" + query.Encode()
 	return &huma.StreamResponse{
 		Body: func(ctx huma.Context) {
 			ctx.SetHeader("Location", location)
@@ -980,25 +1032,25 @@ func (h *OAuthHandler) saveAccountSelectionAndRedirect(
 ) (*huma.StreamResponse, error) {
 	if err := h.checkWorkspaceEditAccess(ctx, workspaceID, userID); err != nil {
 		log.Printf("[Callback] Workspace access check failed: %v", err)
-		return h.redirectWithError("workspace access denied")
+		return h.redirectWithError("workspace access denied", workspaceID)
 	}
 	if err := h.requireProviderConnectionCompletion(
 		ctx, platformName, instanceURL, executionIntent, userID,
 	); err != nil {
-		return h.redirectWithError(err.Error())
+		return h.redirectWithError(err.Error(), workspaceID)
 	}
 
 	options, err := selector.ListAccountSelections(ctx, tokenResp)
 	if err != nil {
-		return h.redirectWithError(fmt.Sprintf("failed to list selectable accounts: %s", err.Error()))
+		return h.redirectWithError(fmt.Sprintf("failed to list selectable accounts: %s", err.Error()), workspaceID)
 	}
 	if len(options) == 0 {
-		return h.redirectWithError("no selectable accounts found for this provider")
+		return h.redirectWithError("no selectable accounts found for this provider", workspaceID)
 	}
 	if err := h.requireProviderConnectionCompletion(
 		ctx, platformName, instanceURL, executionIntent, userID,
 	); err != nil {
-		return h.redirectWithError(err.Error())
+		return h.redirectWithError(err.Error(), workspaceID)
 	}
 
 	pending, err := h.createPendingAccountSelection(
@@ -1007,7 +1059,7 @@ func (h *OAuthHandler) saveAccountSelectionAndRedirect(
 	)
 	if err != nil {
 		log.Printf("[Callback] Failed to save pending account selection: %v", err)
-		return h.redirectWithError("failed to save pending account selection")
+		return h.redirectWithError("failed to save pending account selection", workspaceID)
 	}
 
 	log.Printf("[Callback] Pending account selection created: ID=%s platform=%s", pending.ID, platformName)
@@ -1101,7 +1153,7 @@ func (h *OAuthHandler) saveAccountAndRedirect(
 	if err := h.requireProviderConnectionCompletion(
 		ctx, platformName, instanceURL, executionIntent, userID,
 	); err != nil {
-		return h.redirectWithError(err.Error())
+		return h.redirectWithError(err.Error(), workspaceID)
 	}
 
 	account, err := h.accountSaver.SaveAccountFromInput(ctx, account_saver.SaveAccountInput{
@@ -1117,59 +1169,31 @@ func (h *OAuthHandler) saveAccountAndRedirect(
 	})
 	if err != nil {
 		log.Printf("[Callback] Failed to save account: %v", err)
-		return h.redirectWithError(accountConnectionErrorMessage(err))
+		return h.redirectWithError(accountConnectionErrorMessage(err), workspaceID)
 	}
+	firstConnection := account.ClaimedFirst
 
-	accountsURL := h.frontendURL + "/settings?tab=accounts"
-	log.Printf("[Callback] Account saved successfully: ID=%s, redirecting to %s", account.ID, accountsURL)
-
-	return h.accountConnectionSuccessPage(platformName, accountsURL), nil
+	log.Printf("[Callback] Account saved successfully: ID=%s", account.ID)
+	if !firstConnection {
+		return redirectResponse(h.frontendURL + "/settings?tab=accounts"), nil
+	}
+	return redirectResponse(h.composerConnectionURL(workspaceID, []string{account.ID})), nil
 }
 
-func (h *OAuthHandler) accountConnectionSuccessPage(platformName, redirectURL string) *huma.StreamResponse {
-	platformLabel := strings.TrimSpace(platformName)
-	if platformLabel == "" {
-		platformLabel = "account"
-	}
-
+func redirectResponse(location string) *huma.StreamResponse {
 	return &huma.StreamResponse{
 		Body: func(ctx huma.Context) {
-			ctx.SetStatus(http.StatusOK)
-			ctx.SetHeader("Content-Type", "text/html; charset=utf-8")
-			_, _ = fmt.Fprintf(ctx.BodyWriter(), `<!doctype html>
-<html lang="en">
-<head>
-	<meta charset="utf-8">
-	<meta name="viewport" content="width=device-width, initial-scale=1">
-	<meta http-equiv="refresh" content="5; url=%s">
-	<title>Account connected - OpenPost</title>
-	<style>
-		:root { color-scheme: light dark; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-		body { min-height: 100vh; margin: 0; display: grid; place-items: center; background: Canvas; color: CanvasText; }
-		main { width: min(92vw, 28rem); text-align: center; padding: 2rem; border: 1px solid color-mix(in srgb, CanvasText 14%%, transparent); border-radius: .75rem; }
-		.mark { width: 4rem; height: 4rem; margin: 0 auto 1rem; display: grid; place-items: center; border-radius: 999px; background: color-mix(in srgb, #10b981 16%%, transparent); color: #059669; font-size: 2rem; }
-		h1 { margin: 0; font-size: 1.5rem; }
-		p { color: color-mix(in srgb, CanvasText 68%%, transparent); line-height: 1.5; }
-		a { display: inline-flex; align-items: center; justify-content: center; min-height: 2.5rem; padding: 0 .9rem; border-radius: .5rem; background: CanvasText; color: Canvas; text-decoration: none; font-weight: 600; }
-	</style>
-</head>
-<body>
-	<main>
-		<div class="mark">✓</div>
-		<h1>Account connected</h1>
-		<p>Your %s connection was saved. You will be sent back to Accounts in 5 seconds.</p>
-		<a href="%s">Go to Accounts</a>
-	</main>
-	<script>setTimeout(function () { window.location.assign(%q); }, 5000);</script>
-</body>
-</html>`,
-				html.EscapeString(redirectURL),
-				html.EscapeString(platformLabel),
-				html.EscapeString(redirectURL),
-				redirectURL,
-			)
+			ctx.SetHeader("Location", location)
+			ctx.SetStatus(http.StatusTemporaryRedirect)
 		},
 	}
+}
+
+func (h *OAuthHandler) composerConnectionURL(workspaceID string, accountIDs []string) string {
+	query := url.Values{}
+	query.Set("workspace_id", workspaceID)
+	query.Set("account_ids", strings.Join(accountIDs, ","))
+	return h.frontendURL + "/?" + query.Encode()
 }
 
 func accountConnectionErrorMessage(err error) string {
@@ -1195,7 +1219,7 @@ func (h *OAuthHandler) ExchangeCode(api huma.API) {
 		Tags:        []string{tagAccounts},
 		Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
 		Errors:      []int{400},
-	}, func(ctx context.Context, input *ExchangeCodeInput) (*struct{}, error) {
+	}, func(ctx context.Context, input *ExchangeCodeInput) (*ExchangeCodeOutput, error) {
 		userID := middleware.GetUserID(ctx)
 		intent, err := h.connectionIntent(ctx, input.Body.Intent)
 		if err != nil {
@@ -1243,7 +1267,7 @@ func (h *OAuthHandler) ExchangeCode(api huma.API) {
 			return nil, err
 		}
 
-		if _, err := h.accountSaver.SaveAccountFromInput(ctx, account_saver.SaveAccountInput{
+		account, err := h.accountSaver.SaveAccountFromInput(ctx, account_saver.SaveAccountInput{
 			UserID:          userID,
 			PlatformName:    mastodonProvider,
 			WorkspaceID:     input.Body.WorkspaceID,
@@ -1252,14 +1276,20 @@ func (h *OAuthHandler) ExchangeCode(api huma.API) {
 			InstanceURL:     instanceURL,
 			Token:           tokenResp,
 			Grant:           authorizationGrantInput(adapter, profile.ID),
-		}); err != nil {
+		})
+		if err != nil {
 			log.Printf("[ExchangeCode] Failed to save account: %v", err)
 			return nil, huma.Error403Forbidden(accountConnectionErrorMessage(err))
 		}
+		firstConnection := account.ClaimedFirst
 
 		log.Printf("[ExchangeCode] Account saved successfully")
 
-		return nil, nil
+		return &ExchangeCodeOutput{Body: AccountConnectionResponse{
+			WorkspaceID:       input.Body.WorkspaceID,
+			AccountID:         account.ID,
+			OpenFreshComposer: firstConnection,
+		}}, nil
 	})
 }
 
@@ -1471,6 +1501,19 @@ func (h *OAuthHandler) CompleteAccountSelection(api huma.API) {
 		if err != nil {
 			return nil, err
 		}
+		if err := h.reservePendingAccountSelection(ctx, pending.ID); err != nil {
+			return nil, err
+		}
+		selectionCompleted := false
+		defer func() {
+			if selectionCompleted {
+				return
+			}
+			if _, releaseErr := h.db.NewDelete().Model((*models.OAuthAccountSelectionReservation)(nil)).
+				Where("selection_id = ?", pending.ID).Exec(context.WithoutCancel(ctx)); releaseErr != nil {
+				log.Printf("[OAuth Selection] Failed to release selection reservation: %v", releaseErr)
+			}
+		}()
 		if err := h.requireProviderConnectionCompletion(
 			ctx, pending.Platform, pending.InstanceURL, pending.ExecutionIntent, userID,
 		); err != nil {
@@ -1512,16 +1555,17 @@ func (h *OAuthHandler) CompleteAccountSelection(api huma.API) {
 				selected.Token = tokenResp
 			}
 			saveInputs = append(saveInputs, account_saver.SaveAccountInput{
-				UserID:           userID,
-				PlatformName:     pending.Platform,
-				WorkspaceID:      pending.WorkspaceID,
-				AccountID:        selected.AccountID,
-				AccountUsername:  selected.AccountUsername,
-				AccountAvatarURL: selected.AccountAvatarURL,
-				InstanceURL:      firstNonEmpty(selected.InstanceURL, pending.InstanceURL),
-				Token:            selected.Token,
-				CapabilityState:  selected.CapabilityState,
-				Grant:            authorizationGrantInput(adapter, firstNonEmptyTokenValue(tokenResp, "_grant_subject", "user_id", "open_id", "sub")),
+				UserID:                userID,
+				PlatformName:          pending.Platform,
+				WorkspaceID:           pending.WorkspaceID,
+				AccountID:             selected.AccountID,
+				AccountUsername:       selected.AccountUsername,
+				AccountAvatarURL:      selected.AccountAvatarURL,
+				InstanceURL:           firstNonEmpty(selected.InstanceURL, pending.InstanceURL),
+				Token:                 selected.Token,
+				CapabilityState:       selected.CapabilityState,
+				Grant:                 authorizationGrantInput(adapter, firstNonEmptyTokenValue(tokenResp, "_grant_subject", "user_id", "open_id", "sub")),
+				FirstConnectionOrigin: pending.ID,
 			})
 		}
 
@@ -1539,18 +1583,55 @@ func (h *OAuthHandler) CompleteAccountSelection(api huma.API) {
 			log.Printf("[OAuth Selection] Failed to save selected accounts: %v", err)
 			return nil, huma.Error403Forbidden(accountConnectionErrorMessage(err))
 		}
-
-		if _, err := h.db.NewUpdate().
-			Model((*models.OAuthAccountSelection)(nil)).
-			Set("consumed_at = ?", time.Now().UTC()).
-			Where("id = ?", pending.ID).
-			Exec(ctx); err != nil {
-			log.Printf("[OAuth Selection] Failed to mark selection consumed: %v", err)
+		accountIDs := make([]string, len(accounts))
+		for index, account := range accounts {
+			accountIDs[index] = account.ID
+		}
+		firstConnection := accounts[0].ClaimedFirst
+		if err := h.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
+			if _, err := tx.NewUpdate().Model((*models.OAuthAccountSelection)(nil)).
+				Set("consumed_at = ?", time.Now().UTC()).Where("id = ?", pending.ID).Exec(txCtx); err != nil {
+				return err
+			}
+			_, err := tx.NewDelete().Model((*models.OAuthAccountSelectionReservation)(nil)).
+				Where("selection_id = ?", pending.ID).Exec(txCtx)
+			return err
+		}); err != nil {
 			return nil, huma.Error500InternalServerError("failed to complete account selection")
 		}
+		selectionCompleted = true
 
-		return &CompleteAccountSelectionOutput{Body: accountResponse(*accounts[0], h.disableLinkedInThreadReplies)}, nil
+		return &CompleteAccountSelectionOutput{Body: AccountSelectionCompletionResponse{
+			AccountResponse:   accountResponse(*accounts[0], h.disableLinkedInThreadReplies),
+			WorkspaceID:       pending.WorkspaceID,
+			AccountIDs:        accountIDs,
+			OpenFreshComposer: firstConnection,
+		}}, nil
 	})
+}
+
+func (h *OAuthHandler) reservePendingAccountSelection(ctx context.Context, selectionID string) error {
+	now := time.Now().UTC()
+	if _, err := h.db.NewDelete().Model((*models.OAuthAccountSelectionReservation)(nil)).
+		Where("selection_id = ?", selectionID).
+		Where("reserved_at < ?", now.Add(-10*time.Minute)).Exec(ctx); err != nil {
+		return huma.Error500InternalServerError("failed to reserve account selection")
+	}
+	result, err := h.db.NewInsert().Model(&models.OAuthAccountSelectionReservation{
+		SelectionID: selectionID,
+		ReservedAt:  now,
+	}).On("CONFLICT (selection_id) DO NOTHING").Exec(ctx)
+	if err != nil {
+		return huma.Error500InternalServerError("failed to reserve account selection")
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return huma.Error500InternalServerError("failed to reserve account selection")
+	}
+	if rows != 1 {
+		return huma.Error404NotFound("account selection not found or expired")
+	}
+	return nil
 }
 
 func (h *OAuthHandler) loadPendingAccountSelection(ctx context.Context, connectionID, userID string) (*models.OAuthAccountSelection, error) {

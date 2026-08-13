@@ -117,6 +117,32 @@
 				"required": ["workspace_id", "role", "accepted"],
 				"type": "object"
 			},
+			"AccountConnectionResponse": {
+				"additionalProperties": false,
+				"properties": {
+					"$schema": {
+						"description": "A URL to the JSON Schema for this object.",
+						"examples": ["https://example.com/schemas/AccountConnectionResponse.json"],
+						"format": "uri",
+						"readOnly": true,
+						"type": "string"
+					},
+					"account_id": {
+						"description": "OpenPost destination account ID",
+						"type": "string"
+					},
+					"open_fresh_composer": {
+						"description": "Whether this is the Workspace's first connected destination",
+						"type": "boolean"
+					},
+					"workspace_id": {
+						"description": "Workspace receiving the connected destination",
+						"type": "string"
+					}
+				},
+				"required": ["workspace_id", "account_id", "open_fresh_composer"],
+				"type": "object"
+			},
 			"AccountDeletionImpact": {
 				"additionalProperties": false,
 				"properties": {
@@ -879,6 +905,119 @@
 					}
 				},
 				"required": [
+					"id",
+					"slug",
+					"platform",
+					"account_id",
+					"account_username",
+					"account_avatar_url",
+					"instance_url",
+					"is_active",
+					"thread_replies_supported",
+					"messaging_supported",
+					"messages_enabled",
+					"grant_destination_count",
+					"shared_grant"
+				],
+				"type": "object"
+			},
+			"AccountSelectionCompletionResponse": {
+				"additionalProperties": false,
+				"properties": {
+					"$schema": {
+						"description": "A URL to the JSON Schema for this object.",
+						"examples": ["https://example.com/schemas/AccountSelectionCompletionResponse.json"],
+						"format": "uri",
+						"readOnly": true,
+						"type": "string"
+					},
+					"account_avatar_url": {
+						"description": "Account avatar URL",
+						"type": "string"
+					},
+					"account_id": {
+						"description": "Platform-specific account ID",
+						"type": "string"
+					},
+					"account_ids": {
+						"description": "OpenPost destination account IDs created by this selection",
+						"items": {
+							"type": "string"
+						},
+						"type": ["array", "null"]
+					},
+					"account_kind": {
+						"description": "Normalized identity kind, such as person, organization, creator, or business",
+						"type": "string"
+					},
+					"account_username": {
+						"description": "Account username",
+						"type": "string"
+					},
+					"capability_checked_at": {
+						"description": "When account-specific publishing limits were last verified",
+						"format": "date-time",
+						"type": "string"
+					},
+					"grant_destination_count": {
+						"description": "Number of active destinations using this provider authorization",
+						"format": "int64",
+						"type": "integer"
+					},
+					"id": {
+						"description": "Account ID",
+						"type": "string"
+					},
+					"instance_url": {
+						"description": "Instance URL (Mastodon/Bluesky)",
+						"type": "string"
+					},
+					"is_active": {
+						"description": "Whether the account is active",
+						"type": "boolean"
+					},
+					"limit_profile": {
+						"description": "Account-specific publishing limit profile",
+						"enum": ["standard", "x-premium"],
+						"type": "string"
+					},
+					"messages_enabled": {
+						"description": "Whether this account opted in to inbox synchronization",
+						"type": "boolean"
+					},
+					"messaging_supported": {
+						"description": "Whether OpenPost has a messaging connector for this provider",
+						"type": "boolean"
+					},
+					"open_fresh_composer": {
+						"description": "Whether these are the Workspace's first connected destinations",
+						"type": "boolean"
+					},
+					"platform": {
+						"description": "Platform name",
+						"type": "string"
+					},
+					"shared_grant": {
+						"description": "Whether revoking this authorization disconnects other destinations",
+						"type": "boolean"
+					},
+					"slug": {
+						"description": "User-editable account slug for CLI selectors",
+						"type": "string"
+					},
+					"thread_replies_supported": {
+						"description": "Whether this account supports thread replies in current server config",
+						"type": "boolean"
+					},
+					"workspace_id": {
+						"description": "Workspace receiving the connected destinations",
+						"type": "string"
+					}
+				},
+				"required": [
+					"workspace_id",
+					"account_ids",
+					"open_fresh_composer",
 					"id",
 					"slug",
 					"platform",
@@ -17403,8 +17542,15 @@
 					"required": true
 				},
 				"responses": {
-					"204": {
-						"description": "No Content"
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/AccountConnectionResponse"
+								}
+							}
+						},
+						"description": "OK"
 					},
 					"400": {
 						"content": {
@@ -17606,7 +17752,7 @@
 						"content": {
 							"application/json": {
 								"schema": {
-									"$ref": "#/components/schemas/AccountResponse"
+									"$ref": "#/components/schemas/AccountSelectionCompletionResponse"
 								}
 							}
 						},

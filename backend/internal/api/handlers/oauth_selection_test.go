@@ -175,12 +175,15 @@ func TestOAuthCallbackCreatesAndCompletesAccountSelection(t *testing.T) {
 		"selection_id": "page-2",
 	}, true)
 	require.Equal(t, http.StatusOK, completeResp.Code, completeResp.Body.String())
-	var accountBody AccountResponse
+	var accountBody AccountSelectionCompletionResponse
 	require.NoError(t, json.Unmarshal(completeResp.Body.Bytes(), &accountBody))
 	require.Equal(t, "facebook", accountBody.Platform)
 	require.Equal(t, "page-2", accountBody.AccountID)
 	require.Equal(t, "studio", accountBody.AccountUsername)
 	require.Equal(t, "https://cdn.example/image-editor.png", accountBody.AccountAvatarURL)
+	require.Equal(t, "ws-1", accountBody.WorkspaceID)
+	require.Equal(t, []string{accountBody.ID}, accountBody.AccountIDs)
+	require.True(t, accountBody.OpenFreshComposer)
 
 	var account models.SocialAccount
 	require.NoError(t, db.NewSelect().Model(&account).Where("id = ?", accountBody.ID).Scan(ctx))

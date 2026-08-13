@@ -219,7 +219,7 @@ func TestOAuthCallbackRechecksReadinessBeforeTokenExchange(t *testing.T) {
 		nil, false,
 	)
 	require.Equal(t, http.StatusTemporaryRedirect, callbackResp.Code, callbackResp.Body.String())
-	require.Contains(t, callbackResp.Header().Get("Location"), "provider+operation+is+not+ready")
+	require.Equal(t, "https://app.openpost.test/settings?oauth_status=failed&tab=accounts&workspace_id=ws-1", callbackResp.Header().Get("Location"))
 	require.Zero(t, adapter.exchangeCalls, "disabled callback must not call the provider token endpoint")
 	count, err := db.NewSelect().Model((*models.SocialAccount)(nil)).Count(t.Context())
 	require.NoError(t, err)
@@ -294,7 +294,7 @@ func TestOAuthCallbackReprovesCertificationInitiatorRole(t *testing.T) {
 		nil, false,
 	)
 	require.Equal(t, http.StatusTemporaryRedirect, callbackResp.Code, callbackResp.Body.String())
-	require.Contains(t, callbackResp.Header().Get("Location"), "current+instance+administrator")
+	require.Equal(t, "https://app.openpost.test/settings?oauth_status=failed&tab=accounts&workspace_id=ws-1", callbackResp.Header().Get("Location"))
 	require.Zero(t, adapter.exchangeCalls)
 }
 

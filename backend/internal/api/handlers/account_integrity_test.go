@@ -34,6 +34,16 @@ func createHandlerTestDB(t *testing.T, modelsToCreate ...interface{}) *bun.DB {
 		IfNotExists().
 		Exec(context.Background())
 	require.NoError(t, err)
+	_, err = db.NewCreateTable().
+		Model((*models.WorkspaceFirstConnection)(nil)).
+		IfNotExists().
+		Exec(context.Background())
+	require.NoError(t, err)
+	_, err = db.NewCreateTable().
+		Model((*models.OAuthAccountSelectionReservation)(nil)).
+		IfNotExists().
+		Exec(context.Background())
+	require.NoError(t, err)
 	editorModels := []interface{}{
 		(*models.Post)(nil),
 		(*models.PostDestination)(nil),

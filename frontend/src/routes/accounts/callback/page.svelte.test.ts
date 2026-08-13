@@ -58,7 +58,15 @@ describe('account OAuth callback selection flow', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		mocks.get.mockResolvedValue({ data: pendingSelection, error: null });
-		mocks.post.mockResolvedValue({ data: { id: 'saved_account' }, error: null });
+		mocks.post.mockResolvedValue({
+			data: {
+				id: 'saved_account',
+				workspace_id: 'workspace_123',
+				account_ids: ['saved_account'],
+				open_fresh_composer: true
+			},
+			error: null
+		});
 	});
 
 	it('does not claim success or redirect while account selection is required', async () => {
@@ -83,7 +91,15 @@ describe('account OAuth callback selection flow', () => {
 	});
 
 	it('posts the chosen selection and only then transitions to success', async () => {
-		const post = deferred<{ data: { id: string }; error: null }>();
+		const post = deferred<{
+			data: {
+				id: string;
+				workspace_id: string;
+				account_ids: string[];
+				open_fresh_composer: boolean;
+			};
+			error: null;
+		}>();
 		mocks.post.mockReturnValue(post.promise);
 		setCallbackUrl('status=selection_required&platform=facebook&connection_id=conn_123');
 
@@ -99,10 +115,77 @@ describe('account OAuth callback selection flow', () => {
 		expect(screen.container.textContent).not.toContain('Account connected');
 		expect(screen.container.textContent).not.toContain('Redirecting you back to accounts');
 
-		post.resolve({ data: { id: 'saved_account' }, error: null });
-		await expect
-			.element(screen.getByRole('heading', { level: 1, name: 'Account connected' }))
-			.toBeVisible();
+		post.resolve({
+			data: {
+				id: 'saved_account',
+				workspace_id: 'workspace_123',
+				account_ids: ['saved_account'],
+				open_fresh_composer: true
+			},
+			error: null
+		});
+		await vi.waitFor(() =>
+			expect(mocks.goto).toHaveBeenCalledWith(
+				'/?workspace_id=workspace_123&account_ids=saved_account'
+			)
+		);
+		expect(screen.container.textContent).not.toContain('Account connected');
+		expect(screen.container.textContent).not.toContain('Create first post');
+	});
+
+	it('opens a fresh composer with every selected LinkedIn destination', async () => {
+		mocks.get.mockResolvedValue({
+			data: {
+				...pendingSelection,
+				platform: 'linkedin',
+				options: [
+					{ id: 'person:member-1', display_name: 'Ada Member', kind: 'Personal profile' },
+					{ id: 'organization:42', display_name: 'OpenPost', kind: 'Organization Page' }
+				]
+			},
+			error: null
+		});
+		mocks.post.mockResolvedValue({
+			data: {
+				id: 'account-1',
+				workspace_id: 'workspace_123',
+				account_ids: ['account-1', 'account-2'],
+				open_fresh_composer: true
+			},
+			error: null
+		});
+		setCallbackUrl('status=selection_required&platform=linkedin&connection_id=conn_123');
+
+		const screen = await render(CallbackPage);
+		await screen.getByRole('checkbox', { name: /Ada Member/ }).click();
+		await screen.getByRole('checkbox', { name: /OpenPost/ }).click();
+		await screen.getByRole('button', { name: 'Connect selected (2)' }).click();
+
+		await vi.waitFor(() =>
+			expect(mocks.goto).toHaveBeenCalledWith(
+				'/?workspace_id=workspace_123&account_ids=account-1%2Caccount-2'
+			)
+		);
+	});
+
+	it('returns re-authorization to account management instead of opening first-use composer', async () => {
+		mocks.post.mockResolvedValue({
+			data: {
+				id: 'saved_account',
+				workspace_id: 'workspace_123',
+				account_ids: ['saved_account'],
+				open_fresh_composer: false
+			},
+			error: null
+		});
+		setCallbackUrl('status=selection_required&platform=facebook&connection_id=conn_123');
+
+		const screen = await render(CallbackPage);
+		await screen.getByRole('radio', { name: /OpenPost Page/ }).click();
+		await screen.getByRole('button', { name: 'Connect selected account' }).click();
+
+		await vi.waitFor(() => expect(mocks.goto).toHaveBeenCalledWith('/settings?tab=accounts'));
+		expect(screen.container.textContent).not.toContain('Account connected');
 	});
 
 	it('connects several LinkedIn identities from one grant', async () => {
@@ -158,12 +241,14 @@ describe('account OAuth callback selection flow', () => {
 		await screen.getByRole('radio', { name: /OpenPost Page/ }).click();
 		await screen.getByRole('button', { name: 'Connect selected account' }).click();
 
-		await expect.element(screen.getByText('That page is no longer available.')).toBeVisible();
-		expect(screen.container.textContent).not.toContain('Redirecting you back to accounts');
-		expect(mocks.goto).not.toHaveBeenCalled();
+		await vi.waitFor(() =>
+			expect(mocks.goto).toHaveBeenCalledWith(
+				'/settings?tab=accounts&oauth_status=failed&workspace_id=workspace_123'
+			)
+		);
 	});
 
-	it('surfaces rejected account-selection completion and allows retrying', async () => {
+	it('returns rejected account-selection completion to scoped account management', async () => {
 		mocks.post.mockRejectedValueOnce(new Error('Connection interrupted.'));
 		setCallbackUrl('status=selection_required&platform=instagram&connection_id=conn_123');
 
@@ -172,14 +257,10 @@ describe('account OAuth callback selection flow', () => {
 		await screen.getByRole('radio', { name: /OpenPost Page/ }).click();
 		await screen.getByRole('button', { name: 'Connect selected account' }).click();
 
-		await expect
-			.element(
-				screen.getByText('OpenPost could not save that account selection. Connection interrupted.')
+		await vi.waitFor(() =>
+			expect(mocks.goto).toHaveBeenCalledWith(
+				'/settings?tab=accounts&oauth_status=failed&workspace_id=workspace_123'
 			)
-			.toBeVisible();
-		await expect
-			.element(screen.getByRole('button', { name: 'Connect selected account' }))
-			.toBeEnabled();
-		expect(screen.container.textContent).not.toContain('Account connected');
+		);
 	});
 });

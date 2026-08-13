@@ -31,6 +31,11 @@ func createTestDB(t *testing.T) *bun.DB {
 		Exec(context.Background())
 	require.NoError(t, err)
 	_, err = db.NewCreateTable().
+		Model((*models.WorkspaceFirstConnection)(nil)).
+		IfNotExists().
+		Exec(context.Background())
+	require.NoError(t, err)
+	_, err = db.NewCreateTable().
 		Model((*models.SocialAccount)(nil)).
 		IfNotExists().
 		Exec(context.Background())

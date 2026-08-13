@@ -370,6 +370,25 @@
 		}
 	}
 
+	async function recoverOAuthStatus(params: URLSearchParams) {
+		const oauthStatus = params.get('oauth_status');
+		if (!oauthStatus) return;
+
+		error = oauthStatus === 'cancelled' ? m.accounts_oauth_cancelled() : m.accounts_oauth_failed();
+		const oauthWorkspaceID = params.get('workspace_id');
+		try {
+			if (oauthWorkspaceID && workspaceCtx.currentWorkspace?.id !== oauthWorkspaceID) {
+				await workspaceCtx.initialize(oauthWorkspaceID);
+				if (workspaceCtx.currentWorkspace?.id !== oauthWorkspaceID) return;
+			}
+			params.delete('oauth_status');
+			params.delete('workspace_id');
+			replaceState(resolve(`/settings?${params.toString()}`), {});
+		} catch (recoveryError) {
+			console.error('Failed to restore OAuth workspace:', recoveryError);
+		}
+	}
+
 	onMount(() => {
 		if (!embedded) {
 			const params = new URLSearchParams(window.location.search);
@@ -388,12 +407,13 @@
 				replaceState(resolve('/settings'), {});
 			}
 		}
-
 		const unsubscribe = auth.subscribe(async (state) => {
 			if (!state.isLoading && !state.isAuthenticated) {
-				goto(resolve('/login'));
+				const redirect = `${window.location.pathname}${window.location.search}`;
+				goto(resolve(`/login?redirect=${encodeURIComponent(redirect)}`));
 			} else if (!state.isLoading && state.isAuthenticated) {
 				try {
+					await recoverOAuthStatus(params);
 					if (workspaceCtx.workspaces.length === 0) {
 						await workspaceCtx.initialize();
 					}

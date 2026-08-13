@@ -908,6 +908,16 @@ type SocialAccount struct {
 	IsActive     bool      `bun:",default:true" json:"is_active"`
 	ErrorMessage string    `json:"error_message"`
 	CreatedAt    time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
+	ClaimedFirst bool      `bun:"-" json:"-"`
+}
+
+type WorkspaceFirstConnection struct {
+	bun.BaseModel `bun:"table:workspace_first_connections"`
+
+	WorkspaceID string    `bun:",pk" json:"workspace_id"`
+	AccountID   string    `bun:",notnull" json:"account_id"`
+	OriginKey   string    `bun:",notnull,default:''" json:"-"`
+	CreatedAt   time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
 }
 
 type XOAuthRequestToken struct {
@@ -939,6 +949,13 @@ type OAuthAccountSelection struct {
 	ExpiresAt       time.Time `bun:",notnull" json:"expires_at"`
 	ConsumedAt      time.Time `bun:",nullzero" json:"consumed_at"`
 	CreatedAt       time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
+}
+
+type OAuthAccountSelectionReservation struct {
+	bun.BaseModel `bun:"table:oauth_account_selection_reservations"`
+
+	SelectionID string    `bun:",pk" json:"selection_id"`
+	ReservedAt  time.Time `bun:",notnull" json:"reserved_at"`
 }
 
 // Publication is the user's canonical unit of intent: one idea, launch,

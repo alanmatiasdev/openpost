@@ -7,7 +7,9 @@ Connected accounts are the social accounts inside a workspace.
 1. Open the accounts screen.
 2. Choose a platform.
 3. Sign in to that platform and approve access.
-4. Return to OpenPost and confirm the account is listed.
+4. Return to OpenPost. A successful first connection opens a fresh composer with the new destination selected.
+
+If you cancel authorization or the provider cannot finish the connection, OpenPost returns to account management with a retry message. Refreshing or signing in again does not create a separate setup state; the Workspace setup guide reads current subscription, destination, and Publication data.
 
 ## Notes
 
@@ -17,5 +19,6 @@ Connected accounts are the social accounts inside a workspace.
 - Removing a saved authorization does not disable the token, app password, or webhook at the provider. Use the provider's connected-app, app-password, or webhook settings when provider-side access must also be revoked.
 - These account actions do not delete the operator's provider app configuration from environment variables, `OPENPOST_PROVIDER_APPS`, or the provider app registry.
 - Each platform has its own callback and permission needs.
+- OAuth return links contain only the generic status, opaque selection reference, and OpenPost Workspace or destination identifiers needed for the next screen. They never include provider tokens, credentials, or secret-bearing provider data.
 - Authenticated clients can call `GET /api/v1/accounts/providers` to discover which provider apps are configured before showing connect actions.
 - Mastodon can use either preconfigured instances or the custom instance field on the Accounts screen. Custom instances must be public HTTPS servers.

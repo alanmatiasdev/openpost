@@ -238,6 +238,8 @@
 		initialScheduleDate?: string | null;
 		initialScheduleTime?: string | null;
 		initialWorkspaceId?: string | null;
+		initialAccountIds?: string[];
+		onHandoffSelected?: () => void;
 		onSuccess?: () => void;
 		onDeleted?: () => void;
 		onDraftCreated?: (id: string) => void;
@@ -258,6 +260,8 @@
 		initialScheduleDate = null,
 		initialScheduleTime = null,
 		initialWorkspaceId = null,
+		initialAccountIds = [],
+		onHandoffSelected,
 		onSuccess,
 		onDeleted,
 		onDraftCreated,
@@ -720,14 +724,15 @@
 	async function applyInitialComposerContext(
 		dateParam: string | null,
 		timeParam: string | null,
-		workspaceParam: string | null
+		workspaceParam: string | null,
+		accountParams: string[]
 	) {
-		if (!dateParam && !timeParam && !workspaceParam) {
+		if (!dateParam && !timeParam && !workspaceParam && accountParams.length === 0) {
 			appliedInitialContextKey = '';
 			return;
 		}
 
-		const contextKey = `${dateParam ?? ''}|${timeParam ?? ''}|${workspaceParam ?? ''}`;
+		const contextKey = `${dateParam ?? ''}|${timeParam ?? ''}|${workspaceParam ?? ''}|${accountParams.join(',')}`;
 		if (contextKey === appliedInitialContextKey) return;
 		appliedInitialContextKey = contextKey;
 
@@ -754,10 +759,20 @@
 				selectedWorkspaceId = nextWorkspaceId;
 				variants = new Map();
 				activeVariantAccountId = null;
-				await loadAccounts(nextWorkspaceId);
+				await loadAccounts(
+					nextWorkspaceId,
+					accountParams.length ? accountParams : undefined,
+					accountParams.length > 0
+				);
 			} else if (accountsWorkspaceId !== nextWorkspaceId) {
-				await loadAccounts(nextWorkspaceId);
+				await loadAccounts(
+					nextWorkspaceId,
+					accountParams.length ? accountParams : undefined,
+					accountParams.length > 0
+				);
 			}
+		} else if (accountParams.length > 0 && selectedWorkspaceId) {
+			await loadAccounts(selectedWorkspaceId, accountParams, true);
 		}
 
 		applyInitialScheduleDate(dateParam, timeParam);
@@ -2392,7 +2407,11 @@
 			if (workspaces.length > 0) {
 				selectedWorkspaceId = workspaceCtx.currentWorkspace?.id ?? workspaces[0].id;
 				await ensureComposerWorkspace(selectedWorkspaceId);
-				await loadAccounts(selectedWorkspaceId);
+				await loadAccounts(
+					selectedWorkspaceId,
+					initialAccountIds.length ? initialAccountIds : undefined,
+					initialAccountIds.length > 0
+				);
 				if (resolveAfter) await resolveCapabilities();
 			}
 			return;
@@ -2728,8 +2747,9 @@
 		const dateParam = initialScheduleDate;
 		const timeParam = initialScheduleTime;
 		const workspaceParam = initialWorkspaceId;
+		const accountParams = initialAccountIds;
 		if (!loadingWorkspaces && !isEditMode) {
-			void applyInitialComposerContext(dateParam, timeParam, workspaceParam);
+			void applyInitialComposerContext(dateParam, timeParam, workspaceParam, accountParams);
 		}
 	});
 
@@ -2968,6 +2988,9 @@
 			if (selectionToPreserve && selectionToPreserve.length > 0) {
 				const validIds = nextCompatibleAccounts.map((account) => account.id);
 				selectedAccountIds = selectionToPreserve.filter((id) => validIds.includes(id));
+				if (force && selectedAccountIds.length === selectionToPreserve.length) {
+					onHandoffSelected?.();
+				}
 			} else {
 				selectedAccountIds = nextCompatibleAccounts.map((account) => account.id);
 			}
