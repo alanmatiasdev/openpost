@@ -1,4 +1,4 @@
-import { getPlatformKey, getPlatformName } from '$lib/utils';
+import { getPlatformKey, getPlatformName } from './utils';
 
 export const DEFAULT_PLATFORM_CHAR_LIMIT = 280;
 export const X_STANDARD_CHAR_LIMIT = 280;

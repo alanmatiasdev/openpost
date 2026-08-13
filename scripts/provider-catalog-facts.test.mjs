@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import test from "node:test";
 
 import {
@@ -34,4 +36,12 @@ test("rejects public total copy that drifts from the catalogue", () => {
 
 test("current public provider identities and totals match", async () => {
   assert.deepEqual(await validateProviderCatalogFacts(), []);
+});
+
+test("shared provider facts do not require generated SvelteKit aliases", async () => {
+  const source = await readFile(
+    path.resolve(import.meta.dirname, "../frontend/src/lib/platform-limits.ts"),
+    "utf8",
+  );
+  assert.doesNotMatch(source, /from ["']\$lib\//u);
 });
