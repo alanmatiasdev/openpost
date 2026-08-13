@@ -269,6 +269,8 @@ test("CI builds web surfaces once and browser jobs consume those artifacts", () 
     [marketingBrowser, "marketing-static-"],
     [docsBrowser, "docs-static-"],
   ]) {
+    assert.ok(job.indexOf("oven-sh/setup-bun@") < job.indexOf("ci-artifacts.mjs resolve"));
+    assert.ok(job.indexOf("ci-artifacts.mjs resolve") < job.indexOf("actions/download-artifact@"));
     assert.match(job, /actions\/download-artifact@/);
     assert.match(job, new RegExp(artifact, "u"));
     assert.match(job, /OPENPOST_E2E_PREBUILT: "1"/);
