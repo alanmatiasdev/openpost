@@ -188,8 +188,8 @@
 			{:else if workspaceRefreshPending}
 				<InlineNotice tone="info" message={m.invite_refreshing_workspaces()} />
 			{:else}
-				<Button class="w-full" href={resolve('/settings?tab=members' as '/settings')}>
-					{m.invite_open_settings()}
+				<Button class="w-full" href={resolve('/')}>
+					{m.invite_open_workspace()}
 				</Button>
 			{/if}
 		</div>

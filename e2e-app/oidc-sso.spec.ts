@@ -154,6 +154,10 @@ test("managed users without workspaces wait for administrator assignment", async
   await expect(
     page.getByRole("button", { name: "Create workspace" }),
   ).toHaveCount(0);
+  await expect(page.getByText("Choose your plan")).toHaveCount(0);
+  await expect(page.getByRole("link", { name: /checkout/i })).toHaveCount(0);
+  await expect(page.getByText("Connect a destination")).toHaveCount(0);
+  await expect(page.getByText("Create a Publication")).toHaveCount(0);
 });
 
 test("required SSO sends an unlinked local account to explicit linking", async ({

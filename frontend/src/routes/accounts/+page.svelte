@@ -52,6 +52,7 @@
 	let workspaces = $derived<Workspace[]>(workspaceCtx.workspaces);
 	let authState = $derived($auth);
 	let selectedWorkspaceId = $derived(workspaceCtx.currentWorkspace?.id ?? '');
+	let canEditWorkspace = $derived(workspaceCtx.currentWorkspace?.can_edit ?? false);
 	let loading = $state(true);
 	let error = $state('');
 
@@ -912,7 +913,7 @@
 					variant="muted"
 				/>
 			{:else}
-				{#if selectedWorkspaceId}
+				{#if selectedWorkspaceId && canEditWorkspace}
 					<div class="mb-6">
 						<WorkspaceSetupGuide workspaceID={selectedWorkspaceId} context="accounts" />
 					</div>
@@ -940,7 +941,9 @@
 						class="mb-4"
 					>
 						{#snippet actions()}
-							<Button href="/" size="sm">{m.accounts_create_post()}</Button>
+							{#if canEditWorkspace}
+								<Button href="/" size="sm">{m.accounts_create_post()}</Button>
+							{/if}
 						{/snippet}
 					</SectionHeader>
 
@@ -1003,36 +1006,36 @@
 												{accountDisplayName(account)}
 											</p>
 										</div>
-										<DropdownMenu.Root>
-											<DropdownMenu.Trigger>
-												{#snippet child({ props })}
-													<Button
-														{...props}
-														variant="ghost"
-														size="icon-sm"
-														aria-label={m.accounts_actions_for({
-															account: accountDisplayName(account)
-														})}
+										{#if canEditWorkspace}<DropdownMenu.Root>
+												<DropdownMenu.Trigger>
+													{#snippet child({ props })}
+														<Button
+															{...props}
+															variant="ghost"
+															size="icon-sm"
+															aria-label={m.accounts_actions_for({
+																account: accountDisplayName(account)
+															})}
+														>
+															<MoreHorizontalIcon class="size-4" />
+														</Button>
+													{/snippet}
+												</DropdownMenu.Trigger>
+												<DropdownMenu.Content align="end" class="w-64">
+													<DropdownMenu.Item onclick={() => openEditAccount(account)}
+														>{m.accounts_details()}</DropdownMenu.Item
 													>
-														<MoreHorizontalIcon class="size-4" />
-													</Button>
-												{/snippet}
-											</DropdownMenu.Trigger>
-											<DropdownMenu.Content align="end" class="w-64">
-												<DropdownMenu.Item onclick={() => openEditAccount(account)}
-													>{m.accounts_details()}</DropdownMenu.Item
-												>
-												<DropdownMenu.Separator />
-												{#each accountRemovalKinds(account) as kind (kind)}
-													<DropdownMenu.Item
-														class="text-destructive"
-														onclick={() => requestAccountRemoval(account, kind)}
-													>
-														{accountRemovalActionLabel(account, kind)}
-													</DropdownMenu.Item>
-												{/each}
-											</DropdownMenu.Content>
-										</DropdownMenu.Root>
+													<DropdownMenu.Separator />
+													{#each accountRemovalKinds(account) as kind (kind)}
+														<DropdownMenu.Item
+															class="text-destructive"
+															onclick={() => requestAccountRemoval(account, kind)}
+														>
+															{accountRemovalActionLabel(account, kind)}
+														</DropdownMenu.Item>
+													{/each}
+												</DropdownMenu.Content>
+											</DropdownMenu.Root>{/if}
 									</div>
 									<div
 										class="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground"
@@ -1059,89 +1062,91 @@
 					{/if}
 				</div>
 
-				<!-- Connect a Platform -->
-				<div>
-					<SectionHeader
-						title={m.accounts_add_channel()}
-						description={m.accounts_add_channel_body()}
-						class="mb-4"
-					/>
+				{#if canEditWorkspace}
+					<!-- Connect a Platform -->
+					<div>
+						<SectionHeader
+							title={m.accounts_add_channel()}
+							description={m.accounts_add_channel_body()}
+							class="mb-4"
+						/>
 
-					{#if providersLoadError}
-						<div data-testid="providers-load-error">
-							<InlineNotice tone="error" message={providersLoadError}>
-								{#snippet actions()}
-									<Button
-										variant="outline"
-										size="sm"
-										onclick={() => void loadProviders()}
-										disabled={providersLoading}
-									>
-										{m.common_retry()}
-									</Button>
-								{/snippet}
-							</InlineNotice>
-						</div>
-					{:else if providersLoading}
-						<PageLoading layout="grid" label={m.common_loading()} items={4} />
-					{:else}
-						<div class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-							{#each connectionProviderEntries as provider (providerKey(provider))}
-								<div
-									data-testid={`provider-card-${provider.platform}`}
-									class="group flex h-full min-h-28 flex-col rounded-lg border bg-card p-4 transition-all hover:shadow-sm {providerCanConnect(
-										provider
-									)
-										? ''
-										: 'bg-muted/20'}"
-								>
-									<div class="flex items-start gap-3">
-										<div
-											class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full {getPlatformColor(
-												provider.platform
-											)}"
+						{#if providersLoadError}
+							<div data-testid="providers-load-error">
+								<InlineNotice tone="error" message={providersLoadError}>
+									{#snippet actions()}
+										<Button
+											variant="outline"
+											size="sm"
+											onclick={() => void loadProviders()}
+											disabled={providersLoading}
 										>
-											<PlatformIcon platform={provider.platform} class="h-4 w-4 text-white" />
-										</div>
-										<div class="min-w-0 flex-1">
-											<div class="flex flex-wrap items-center gap-2">
-												<h3 class="text-sm font-medium">{providerTitle(provider)}</h3>
-												{#if provider.status === 'planned' || !providerReadiness(provider).quiet}
-													<span
-														class="inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium {providerStatusClass(
-															provider
-														)}"
+											{m.common_retry()}
+										</Button>
+									{/snippet}
+								</InlineNotice>
+							</div>
+						{:else if providersLoading}
+							<PageLoading layout="grid" label={m.common_loading()} items={4} />
+						{:else}
+							<div class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+								{#each connectionProviderEntries as provider (providerKey(provider))}
+									<div
+										data-testid={`provider-card-${provider.platform}`}
+										class="group flex h-full min-h-28 flex-col rounded-lg border bg-card p-4 transition-all hover:shadow-sm {providerCanConnect(
+											provider
+										)
+											? ''
+											: 'bg-muted/20'}"
+									>
+										<div class="flex items-start gap-3">
+											<div
+												class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full {getPlatformColor(
+													provider.platform
+												)}"
+											>
+												<PlatformIcon platform={provider.platform} class="h-4 w-4 text-white" />
+											</div>
+											<div class="min-w-0 flex-1">
+												<div class="flex flex-wrap items-center gap-2">
+													<h3 class="text-sm font-medium">{providerTitle(provider)}</h3>
+													{#if provider.status === 'planned' || !providerReadiness(provider).quiet}
+														<span
+															class="inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium {providerStatusClass(
+																provider
+															)}"
+														>
+															{providerStatusLabel(provider)}
+														</span>
+													{/if}
+												</div>
+												<p class="truncate text-sm text-muted-foreground">
+													{providerDescription(provider)}
+												</p>
+												{#if provider.status !== 'planned' && !providerReadiness(provider).quiet}
+													<p
+														data-testid={`provider-readiness-${provider.platform}`}
+														class="mt-1 text-xs leading-5 text-muted-foreground"
 													>
-														{providerStatusLabel(provider)}
-													</span>
+														{providerReadinessMessage(provider)}
+													</p>
 												{/if}
 											</div>
-											<p class="truncate text-sm text-muted-foreground">
-												{providerDescription(provider)}
-											</p>
-											{#if provider.status !== 'planned' && !providerReadiness(provider).quiet}
-												<p
-													data-testid={`provider-readiness-${provider.platform}`}
-													class="mt-1 text-xs leading-5 text-muted-foreground"
-												>
-													{providerReadinessMessage(provider)}
-												</p>
-											{/if}
 										</div>
+										<Button
+											class="mt-3 min-h-11 self-end sm:min-h-9"
+											onclick={() => handleProviderAction(provider)}
+											size="sm"
+											disabled={!providerActionEnabled(provider)}
+										>
+											{providerActionLabel(provider)}
+										</Button>
 									</div>
-									<Button
-										class="mt-3 min-h-11 self-end sm:min-h-9"
-										onclick={() => handleProviderAction(provider)}
-										size="sm"
-										disabled={!providerActionEnabled(provider)}
-									>
-										{providerActionLabel(provider)}
-									</Button>
-								</div>
-							{/each}
-						</div>
-					{/if}
-				</div>
+								{/each}
+							</div>
+						{/if}
+					</div>
+				{/if}
 			{/if}
 		</div>
 	</div>

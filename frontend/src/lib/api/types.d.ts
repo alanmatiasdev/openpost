@@ -3874,7 +3874,7 @@ export interface paths {
         };
         /**
          * Get workspace setup progress
-         * @description Projects setup progress from the Workspace, subscription, connected-destination, and Publication state without storing a separate onboarding step index.
+         * @description Projects role- and deployment-applicable setup progress from the Workspace, subscription, connected-destination, and Publication state without storing a separate onboarding step index.
          */
         get: operations["get-workspace-setup"];
         put?: never;
@@ -11338,14 +11338,14 @@ export interface components {
              * @enum {string}
              */
             next_step?: "workspace" | "subscription" | "destination" | "publication";
-            /** @description Ordered authoritative setup progress */
+            /** @description Ordered authoritative setup progress applicable to the current user's role and deployment */
             steps: components["schemas"]["WorkspaceSetupStepResponse"][] | null;
             /**
              * Format: int64
              * @description Number of applicable setup steps
              */
             total_steps: number;
-            /** @description Whether the current user has an actionable incomplete setup step */
+            /** @description Whether the current user has an applicable, authorized incomplete setup step */
             visible: boolean;
         };
         WorkspaceSetupStepResponse: {

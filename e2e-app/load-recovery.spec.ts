@@ -264,7 +264,7 @@ test("accepted invitations retry workspace refresh without consuming the token a
   await expect(refreshError).toContainText(
     "You joined the workspace, but OpenPost could not refresh your workspace list.",
   );
-  await expect(page.getByRole("link", { name: "Open Settings" })).toHaveCount(
+  await expect(page.getByRole("link", { name: "Open Workspace" })).toHaveCount(
     0,
   );
 
@@ -272,7 +272,9 @@ test("accepted invitations retry workspace refresh without consuming the token a
   await refreshError.getByRole("button", { name: "Try again" }).click();
 
   await expect(refreshError).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "Open Settings" })).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Open Workspace" }),
+  ).toBeVisible();
   expect(acceptanceRequests).toBe(1);
 });
 

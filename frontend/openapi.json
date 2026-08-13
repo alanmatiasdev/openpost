@@ -17143,7 +17143,7 @@
 						"type": "string"
 					},
 					"steps": {
-						"description": "Ordered authoritative setup progress",
+						"description": "Ordered authoritative setup progress applicable to the current user's role and deployment",
 						"items": {
 							"$ref": "#/components/schemas/WorkspaceSetupStepResponse"
 						},
@@ -17155,7 +17155,7 @@
 						"type": "integer"
 					},
 					"visible": {
-						"description": "Whether the current user has an actionable incomplete setup step",
+						"description": "Whether the current user has an applicable, authorized incomplete setup step",
 						"type": "boolean"
 					}
 				},
@@ -36865,7 +36865,7 @@
 		},
 		"/workspaces/{id}/setup": {
 			"get": {
-				"description": "Projects setup progress from the Workspace, subscription, connected-destination, and Publication state without storing a separate onboarding step index.",
+				"description": "Projects role- and deployment-applicable setup progress from the Workspace, subscription, connected-destination, and Publication state without storing a separate onboarding step index.",
 				"operationId": "get-workspace-setup",
 				"parameters": [
 					{

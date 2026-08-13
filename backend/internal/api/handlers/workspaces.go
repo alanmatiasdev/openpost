@@ -101,14 +101,14 @@ type WorkspaceSetupStepResponse struct {
 }
 
 type WorkspaceSetupResponse struct {
-	Visible        bool                         `json:"visible" doc:"Whether the current user has an actionable incomplete setup step"`
+	Visible        bool                         `json:"visible" doc:"Whether the current user has an applicable, authorized incomplete setup step"`
 	Activated      bool                         `json:"activated" doc:"Whether the Workspace has a connected destination and a scheduled or submitted Publication"`
 	CompletedSteps int                          `json:"completed_steps" doc:"Number of completed setup steps"`
 	TotalSteps     int                          `json:"total_steps" doc:"Number of applicable setup steps"`
 	NextStep       string                       `json:"next_step,omitempty" enum:"workspace,subscription,destination,publication" doc:"First incomplete setup step available to the current user"`
 	NextAction     string                       `json:"next_action,omitempty" enum:"name_workspace,resume_checkout,connect_destination,create_publication" doc:"Authorized action for the next setup step"`
 	ActionHref     string                       `json:"action_href,omitempty" doc:"Safe same-origin application route for the next setup action"`
-	Steps          []WorkspaceSetupStepResponse `json:"steps" doc:"Ordered authoritative setup progress"`
+	Steps          []WorkspaceSetupStepResponse `json:"steps" doc:"Ordered authoritative setup progress applicable to the current user's role and deployment"`
 }
 
 type GetWorkspaceSetupInput struct {
@@ -975,7 +975,7 @@ func (h *WorkspaceHandler) GetWorkspaceSetup(api huma.API) {
 		Method:      http.MethodGet,
 		Path:        "/workspaces/{id}/setup",
 		Summary:     "Get workspace setup progress",
-		Description: "Projects setup progress from the Workspace, subscription, connected-destination, and Publication state without storing a separate onboarding step index.",
+		Description: "Projects role- and deployment-applicable setup progress from the Workspace, subscription, connected-destination, and Publication state without storing a separate onboarding step index.",
 		Tags:        []string{tagWorkspaces},
 		Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
 		Errors:      []int{403, 404},

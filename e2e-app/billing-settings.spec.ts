@@ -561,6 +561,8 @@ test("settings creates and accepts workspace invitations", async ({
   ).toBeVisible();
 
   await page.getByTestId("team-invite-email").fill(inviteEmail);
+  await page.locator("#team-invite-role").click();
+  await page.getByRole("option", { name: "Viewer" }).click();
   await page.getByRole("button", { name: "Send Invite" }).click();
 
   await expect(page.getByTestId("team-invite-link")).toContainText(
@@ -591,16 +593,28 @@ test("settings creates and accepts workspace invitations", async ({
   await expect(
     invitedPage.getByRole("heading", { name: "Invitation accepted" }),
   ).toBeVisible();
-  await expect(invitedPage.getByText("editor access")).toBeVisible();
+  await expect(invitedPage.getByText("viewer access")).toBeVisible();
 
-  await invitedPage.getByRole("link", { name: "Open Settings" }).click();
-  await expect(invitedPage).toHaveURL(/\/settings\?tab=members$/);
+  await expect(invitedPage).not.toHaveURL(/\/onboarding|\/checkout/);
+  await expect(invitedPage.getByText("Choose your plan")).toHaveCount(0);
+  await invitedPage.getByRole("link", { name: "Open Workspace" }).click();
+  await expect(invitedPage).toHaveURL(/\/$/);
+  await expect(invitedPage).not.toHaveURL(/\/onboarding|\/checkout/);
   await expect(
-    invitedPage.locator("#team").getByRole("heading", { name: "Team" }),
-  ).toBeVisible();
-  await expect(invitedPage.getByTestId("team-members-list")).toContainText(
-    inviteEmail,
-  );
+    invitedPage.getByTestId("workspace-setup-guide-home"),
+  ).toHaveCount(0);
+  await expect(
+    invitedPage.getByTestId("workspace-setup-guide-composer"),
+  ).toHaveCount(0);
+  await invitedPage.goto("/settings?tab=accounts");
+  await expect(
+    invitedPage.getByRole("button", { name: "Create post" }),
+  ).toHaveCount(0);
+  await expect(invitedPage.getByText("Add a channel")).toHaveCount(0);
+  await expect(invitedPage.getByText("Connect a destination")).toHaveCount(0);
+  await expect(
+    invitedPage.getByTestId("workspace-setup-guide-accounts"),
+  ).toHaveCount(0);
   await invitedContext.close();
 });
 

@@ -38,7 +38,10 @@ pending or expired invitations.
 4. Copy the generated invite link and send it to the collaborator.
 
 The invited user must sign in with the invited email address before accepting
-the link. Accepted invites add the user to the workspace immediately.
+the link. Accepted invites add the user to the workspace immediately and open
+that Workspace without sending existing users through plan selection or checkout.
+Viewers receive invitation orientation without destination-connection or
+publishing setup actions.
 
 Pending invitations count toward team seats until they are accepted, revoked, or
 expire. An admin can resend an invitation to rotate its secret and extend its

@@ -180,6 +180,34 @@ func TestWorkspaceSetupKeepsPublicationActionAfterFailedDelivery(t *testing.T) {
 	require.Equal(t, "create_publication", setup.NextAction)
 }
 
+func TestWorkspaceSetupKeepsIncompleteOwnerJourneyAfterActivation(t *testing.T) {
+	t.Parallel()
+
+	srv := newWorkspaceTestServer(t, entitlements.NewSelfHostedService())
+	seedWorkspaceUserAndMember(t, srv.db, "user-1", "user@example.com", models.WorkspaceRoleAdmin)
+	_, err := srv.db.NewUpdate().Model((*models.Workspace)(nil)).Set("name = ''").Where("id = ?", "ws-1").Exec(t.Context())
+	require.NoError(t, err)
+	_, err = srv.db.NewInsert().Model(&models.SocialAccount{
+		ID: "account-1", WorkspaceID: "ws-1", Slug: "main", Platform: "x", AccountID: "1",
+		AccessTokenEnc: []byte("token"), IsActive: true,
+	}).Exec(t.Context())
+	require.NoError(t, err)
+	_, err = srv.db.NewInsert().Model(&models.Publication{
+		ID: "publication-1", WorkspaceID: "ws-1", CreatedByID: "user-1", Status: models.PublicationStatusPublished,
+		SourceContent: "Launch", MetadataJSON: "{}", ReleasePlanJSON: "{}", RepostOverride: "{}",
+	}).Exec(t.Context())
+	require.NoError(t, err)
+
+	response := srv.getJSON(t, "/api/v1/workspaces/ws-1/setup", "web-token")
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	var setup WorkspaceSetupResponse
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &setup))
+	require.True(t, setup.Activated)
+	require.True(t, setup.Visible)
+	require.Equal(t, "workspace", setup.NextStep)
+	require.Equal(t, "name_workspace", setup.NextAction)
+}
+
 func TestWorkspaceSetupProjectsHostedSubscriptionAndCheckoutForAnOwner(t *testing.T) {
 	t.Parallel()
 
@@ -243,6 +271,199 @@ func TestWorkspaceSetupProjectsHostedSubscriptionAndCheckoutForAnOwner(t *testin
 	require.NoError(t, json.Unmarshal(subscribed.Body.Bytes(), &connected))
 	require.Equal(t, 2, connected.CompletedSteps)
 	require.Equal(t, "destination", connected.NextStep)
+}
+
+func TestWorkspaceSetupProjectsOnlyHostedEditorActions(t *testing.T) {
+	t.Parallel()
+
+	authenticator := workspaceTestAuthenticator{
+		"editor-token": {UserID: "editor-1", Email: "editor@example.com"},
+	}
+	db := newWorkspaceSetupPolicyDB(t)
+	entitlement := entitlements.NewSubscriptionService(db, entitlements.NewCloudBootstrapService())
+	seedWorkspaceUserAndMember(t, db, "editor-1", "editor@example.com", models.WorkspaceRoleEditor)
+	_, err := db.NewUpdate().Model((*models.Workspace)(nil)).Set("name = ''").Where("id = ?", "ws-1").Exec(t.Context())
+	require.NoError(t, err)
+	_, err = db.NewUpdate().Model((*models.OrganizationMember)(nil)).Set("role = ?", models.OrganizationRoleMember).
+		Where("organization_id = ? AND user_id = ?", "org-1", "editor-1").Exec(t.Context())
+	require.NoError(t, err)
+
+	rec := requestWorkspaceSetup(t, db, authenticator, entitlement, "editor-token")
+
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	var setup WorkspaceSetupResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &setup))
+	require.Equal(t, []WorkspaceSetupStepResponse{
+		{ID: "destination", Completed: false},
+		{ID: "publication", Completed: false},
+	}, setup.Steps)
+	require.Equal(t, 0, setup.CompletedSteps)
+	require.Equal(t, 2, setup.TotalSteps)
+	require.Equal(t, "destination", setup.NextStep)
+	require.Equal(t, "connect_destination", setup.NextAction)
+	require.Equal(t, "/settings?tab=accounts", setup.ActionHref)
+	require.NotContains(t, rec.Body.String(), "subscription")
+	require.NotContains(t, rec.Body.String(), "checkout")
+}
+
+func TestWorkspaceSetupProjectsOnlyApplicableRoleAndDeploymentSteps(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name             string
+		entitlement      entitlements.Service
+		workspaceRole    string
+		organizationRole string
+		wantSteps        []WorkspaceSetupStepResponse
+		wantAction       string
+		wantHref         string
+		forbidBilling    bool
+	}{
+		{
+			name:             "hosted organization owner receives the complete journey",
+			workspaceRole:    models.WorkspaceRoleAdmin,
+			organizationRole: models.OrganizationRoleOwner,
+			wantSteps: []WorkspaceSetupStepResponse{
+				{ID: "workspace", Completed: true},
+				{ID: "subscription", Completed: false},
+				{ID: "destination", Completed: false},
+				{ID: "publication", Completed: false},
+			},
+			wantAction: "resume_checkout",
+			wantHref:   "/settings?tab=billing",
+		},
+		{
+			name:             "hosted organization administrator receives authorized billing action",
+			workspaceRole:    models.WorkspaceRoleAdmin,
+			organizationRole: models.OrganizationRoleAdmin,
+			wantSteps: []WorkspaceSetupStepResponse{
+				{ID: "subscription", Completed: false},
+				{ID: "destination", Completed: false},
+				{ID: "publication", Completed: false},
+			},
+			wantAction: "resume_checkout",
+			wantHref:   "/settings?tab=billing",
+		},
+		{
+			name:             "hosted workspace administrator receives content actions",
+			workspaceRole:    models.WorkspaceRoleAdmin,
+			organizationRole: models.OrganizationRoleMember,
+			wantSteps: []WorkspaceSetupStepResponse{
+				{ID: "destination", Completed: false},
+				{ID: "publication", Completed: false},
+			},
+			wantAction:    "connect_destination",
+			wantHref:      "/settings?tab=accounts",
+			forbidBilling: true,
+		},
+		{
+			name:             "hosted viewer receives orientation without setup actions",
+			workspaceRole:    models.WorkspaceRoleViewer,
+			organizationRole: models.OrganizationRoleMember,
+			wantSteps:        []WorkspaceSetupStepResponse{},
+			forbidBilling:    true,
+		},
+		{
+			name:             "hosted organization owner with viewer access receives no setup actions",
+			workspaceRole:    models.WorkspaceRoleViewer,
+			organizationRole: models.OrganizationRoleOwner,
+			wantSteps:        []WorkspaceSetupStepResponse{},
+			forbidBilling:    true,
+		},
+		{
+			name:             "self-hosted owner omits hosted service billing",
+			entitlement:      entitlements.NewSelfHostedService(),
+			workspaceRole:    models.WorkspaceRoleAdmin,
+			organizationRole: models.OrganizationRoleOwner,
+			wantSteps: []WorkspaceSetupStepResponse{
+				{ID: "workspace", Completed: true},
+				{ID: "destination", Completed: false},
+				{ID: "publication", Completed: false},
+			},
+			wantAction:    "connect_destination",
+			wantHref:      "/settings?tab=accounts",
+			forbidBilling: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			authenticator := workspaceTestAuthenticator{
+				"role-token": {UserID: "role-user", Email: "role@example.com"},
+			}
+			entitlement := tt.entitlement
+			if entitlement == nil {
+				db := newWorkspaceSetupPolicyDB(t)
+				entitlement = entitlements.NewSubscriptionService(db, entitlements.NewCloudBootstrapService())
+				runWorkspaceSetupPolicyTest(t, db, authenticator, entitlement, tt.workspaceRole, tt.organizationRole, tt.wantSteps, tt.wantAction, tt.wantHref, tt.forbidBilling)
+				return
+			}
+			srv := newWorkspaceTestServerWithAuthenticator(t, entitlement, authenticator)
+			runWorkspaceSetupPolicyTest(t, srv.db, authenticator, entitlement, tt.workspaceRole, tt.organizationRole, tt.wantSteps, tt.wantAction, tt.wantHref, tt.forbidBilling)
+		})
+	}
+}
+
+func runWorkspaceSetupPolicyTest(
+	t *testing.T,
+	db *bun.DB,
+	authenticator middleware.Authenticator,
+	entitlement entitlements.Service,
+	workspaceRole string,
+	organizationRole string,
+	wantSteps []WorkspaceSetupStepResponse,
+	wantAction string,
+	wantHref string,
+	forbidBilling bool,
+) {
+	t.Helper()
+
+	seedWorkspaceUserAndMember(t, db, "role-user", "role@example.com", workspaceRole)
+	_, err := db.NewUpdate().Model((*models.OrganizationMember)(nil)).Set("role = ?", organizationRole).
+		Where("organization_id = ? AND user_id = ?", "org-1", "role-user").Exec(t.Context())
+	require.NoError(t, err)
+
+	rec := requestWorkspaceSetup(t, db, authenticator, entitlement, "role-token")
+
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	var setup WorkspaceSetupResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &setup))
+	require.Equal(t, wantSteps, setup.Steps)
+	require.Equal(t, wantAction != "", setup.Visible)
+	require.Equal(t, wantAction, setup.NextAction)
+	require.Equal(t, wantHref, setup.ActionHref)
+	if forbidBilling {
+		require.NotContains(t, rec.Body.String(), "subscription")
+		require.NotContains(t, rec.Body.String(), "resume_checkout")
+		require.NotContains(t, rec.Body.String(), "checkout")
+	}
+	if len(wantSteps) == 0 {
+		require.Empty(t, setup.NextStep)
+		require.NotContains(t, rec.Body.String(), "settings")
+	}
+}
+
+func newWorkspaceSetupPolicyDB(t *testing.T) *bun.DB {
+	t.Helper()
+	return createHandlerTestDB(
+		t,
+		(*models.User)(nil), (*models.Organization)(nil), (*models.OrganizationMember)(nil),
+		(*models.BillingSubscription)(nil), (*models.BillingCheckoutAttempt)(nil),
+		(*models.Workspace)(nil), (*models.WorkspaceMember)(nil),
+		(*models.SocialAccount)(nil), (*models.Publication)(nil),
+	)
+}
+
+func requestWorkspaceSetup(t *testing.T, db *bun.DB, authenticator middleware.Authenticator, entitlement entitlements.Service, token string) *httptest.ResponseRecorder {
+	t.Helper()
+	e := echo.New()
+	api := humaecho.NewWithGroup(e, e.Group("/api/v1"), huma.DefaultConfig("Test", "1.0.0"))
+	NewWorkspaceHandler(db, authenticator, entitlement).GetWorkspaceSetup(api)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/workspaces/ws-1/setup", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+	return rec
 }
 
 func (s *workspaceTestServer) createWorkspace(t *testing.T, name string) *httptest.ResponseRecorder {

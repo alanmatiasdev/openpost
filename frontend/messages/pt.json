@@ -1206,7 +1206,7 @@
 	"invite_workspace_joined": "Aderiste ao workspace",
 	"invite_workspace_refresh_failed": "Aderiste ao workspace, mas o OpenPost não conseguiu atualizar a tua lista de workspaces.",
 	"invite_refreshing_workspaces": "A atualizar os teus workspaces...",
-	"invite_open_settings": "Abrir definições",
+	"invite_open_workspace": "Abrir workspace",
 	"oauth_authorize_title": "Autorizar o MCP do OpenPost",
 	"oauth_authorize_heading": "Autorizar o MCP do OpenPost",
 	"oauth_authorize_description": "{client} quer ligar-se às ferramentas de assistente do OpenPost.",

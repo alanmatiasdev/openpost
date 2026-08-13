@@ -16,6 +16,10 @@ test("an incomplete owner sees server-derived setup guidance on home and Account
   await expect(homeGuide).toBeVisible();
   await expect(homeGuide).toContainText("1 of 3 complete");
   await expect(homeGuide).toContainText("Connect a destination");
+  await expect(homeGuide).not.toContainText("Plan");
+  await expect(
+    homeGuide.getByRole("link", { name: "Resume checkout" }),
+  ).toHaveCount(0);
   await expect(
     homeGuide.getByRole("link", { name: "Connect a destination" }),
   ).toHaveAttribute("href", "/settings?tab=accounts");
@@ -35,5 +39,9 @@ test("an incomplete owner sees server-derived setup guidance on home and Account
   const accountsGuide = page.getByTestId("workspace-setup-guide-accounts");
   await expect(accountsGuide).toBeVisible();
   await expect(accountsGuide).toContainText("Connect a destination");
+  await expect(accountsGuide).not.toContainText("Plan");
+  await expect(
+    accountsGuide.getByRole("link", { name: "Resume checkout" }),
+  ).toHaveCount(0);
   await expect(page.getByText("Step 2 of 3")).toHaveCount(0);
 });

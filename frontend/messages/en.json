@@ -1206,7 +1206,7 @@
 	"invite_workspace_joined": "Workspace joined",
 	"invite_workspace_refresh_failed": "You joined the workspace, but OpenPost could not refresh your workspace list.",
 	"invite_refreshing_workspaces": "Refreshing your workspaces...",
-	"invite_open_settings": "Open Settings",
+	"invite_open_workspace": "Open Workspace",
 	"oauth_authorize_title": "Authorize OpenPost MCP",
 	"oauth_authorize_heading": "Authorize OpenPost MCP",
 	"oauth_authorize_description": "{client} wants to connect to your OpenPost assistant tools.",
