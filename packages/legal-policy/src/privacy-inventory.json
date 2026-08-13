@@ -512,6 +512,21 @@
       "source_refs": ["frontend/src/lib/stores/sound-preferences.svelte.ts"]
     },
     {
+      "id": "local-oauth-account-management-mode",
+      "technology": "localStorage",
+      "owner": "OpenPost social-account connection flow",
+      "identifier_kind": "exact",
+      "identifier": "oauth_account_management_mode",
+      "purpose": "Returns a social-account connection to the direct Accounts page or the embedded Settings account manager that started it.",
+      "scope": "Application origin.",
+      "duration": "Removed after the OAuth return is interpreted or account-data cleanup runs; otherwise retained until another connection replaces it or site data is cleared.",
+      "necessity": "strictly_necessary",
+      "source_refs": [
+        "frontend/src/lib/account-management-route.ts",
+        "frontend/src/lib/components/account-data-card.svelte"
+      ]
+    },
+    {
       "id": "local-oauth-workspace",
       "technology": "localStorage",
       "owner": "OpenPost social-account connection flow",
