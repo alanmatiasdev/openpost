@@ -773,7 +773,8 @@ func TestLoadEnablesTelemetryByDefaultForCloudInstances(t *testing.T) {
 	cfg := Load()
 	require.True(t, cfg.TelemetryEnabled)
 	require.Equal(t, "https://eu.i.posthog.com", cfg.PostHogAPIHost)
-	require.Equal(t, cfg.PostHogAPIHost, cfg.PostHogBrowserHost)
+	require.Equal(t, "https://cool.openpost.social", cfg.PostHogBrowserHost)
+	require.Equal(t, "https://eu.posthog.com", cfg.PostHogUIHost)
 	require.Equal(t, "production", cfg.TelemetryEnvironment)
 }
 

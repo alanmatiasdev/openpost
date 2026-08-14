@@ -34,7 +34,7 @@ test("the marketing build prepares its shared frontend SvelteKit aliases", async
   assert.equal(frontendPackage.scripts.sync, "svelte-kit sync");
   assert.match(
     marketingPackage.scripts.build,
-    /^bun run --cwd \.\.\/frontend sync && .*vite build/u,
+    /^bun \.\.\/scripts\/check-public-telemetry-env\.mjs && bun run --cwd \.\.\/frontend sync && .*vite build/u,
   );
 });
 

@@ -148,7 +148,11 @@ type Config struct {
 	PaddleAgencyAnnualPriceID   string
 }
 
-const minSecretLength = 32
+const (
+	minSecretLength              = 32
+	managedPostHogBrowserHostURL = "https://cool.openpost.social"
+	managedPostHogUIHostURL      = "https://eu.posthog.com"
+)
 
 const (
 	EditionSelfHost = "selfhost"
@@ -173,6 +177,7 @@ func Load() *Config {
 	edition := getEnvEnum("OPENPOST_EDITION", EditionSelfHost, EditionSelfHost, EditionCloud)
 	telemetryEnabledByDefault, telemetryEnvironment := telemetryDefaults(edition)
 	postHogAPIHost := strings.TrimRight(strings.TrimSpace(getEnvDefault("OPENPOST_POSTHOG_API_HOST", "")), "/")
+	postHogBrowserHost, postHogUIHost := postHogBrowserDefaults(edition, postHogAPIHost)
 	legalRequired := edition == EditionCloud
 	defaultTermsURL := ""
 	defaultPrivacyURL := ""
@@ -239,9 +244,9 @@ func Load() *Config {
 		PostHogProjectToken:    strings.TrimSpace(getEnvDefault("OPENPOST_POSTHOG_PROJECT_TOKEN", "")),
 		PostHogAPIHost:         postHogAPIHost,
 		PostHogBrowserHost: strings.TrimRight(strings.TrimSpace(
-			getEnvDefault("OPENPOST_POSTHOG_BROWSER_HOST", postHogAPIHost),
+			getEnvDefault("OPENPOST_POSTHOG_BROWSER_HOST", postHogBrowserHost),
 		), "/"),
-		PostHogUIHost:          strings.TrimRight(strings.TrimSpace(getEnvDefault("OPENPOST_POSTHOG_UI_HOST", "")), "/"),
+		PostHogUIHost:          strings.TrimRight(strings.TrimSpace(getEnvDefault("OPENPOST_POSTHOG_UI_HOST", postHogUIHost)), "/"),
 		TelemetryEnvironment:   strings.TrimSpace(getEnvDefault("OPENPOST_TELEMETRY_ENVIRONMENT", telemetryEnvironment)),
 		UpdateCheckEnabled:     getEnvBoolWithAliases(true, "OPENPOST_UPDATE_CHECK_ENABLED"),
 		OIDCIssuer:             strings.TrimSpace(getEnvDefault("OPENPOST_OIDC_ISSUER", "")),
@@ -374,6 +379,13 @@ func Load() *Config {
 	warnOnPlaceholderURL(cfg)
 
 	return cfg
+}
+
+func postHogBrowserDefaults(edition, apiHost string) (string, string) {
+	if edition == EditionCloud {
+		return managedPostHogBrowserHostURL, managedPostHogUIHostURL
+	}
+	return apiHost, ""
 }
 
 func telemetryDefaults(edition string) (bool, string) {

@@ -111,6 +111,7 @@ for (const [label, turboConfig] of [
     "$TURBO_ROOT$/assets/**",
     "$TURBO_ROOT$/scripts/asset-surfaces.mjs",
     "$TURBO_ROOT$/scripts/asset-surfaces.ts",
+    "$TURBO_ROOT$/scripts/check-public-telemetry-env.mjs",
     "$TURBO_ROOT$/scripts/sync-assets.mjs",
   ]) {
     requireCondition(

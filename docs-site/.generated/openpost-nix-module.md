@@ -2,6 +2,8 @@
 
 Source: [`rodrgds/nix-config/modules/services/openpost/default.nix`](https://github.com/rodrgds/nix-config/blob/main/modules/services/openpost/default.nix)
 
+The public example uses the moving `:latest` tag. The linked deployment source may pin a verified image digest.
+
 ```nix
 # OpenPost - Multi-platform social media posting
 # https://github.com/getopenpost/openpost

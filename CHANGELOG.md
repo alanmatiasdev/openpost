@@ -39,6 +39,8 @@ All notable changes to this project are documented in this file.
 
 ### Fixed
 
+- Kept the generated public Nix module example on `ghcr.io/getopenpost/openpost:latest` even when the linked deployment source pins a verified release digest.
+- Restored marketing and documentation page views by requiring their production PostHog build settings, routed hosted browser telemetry through the managed first-party proxy, added matching page-leave events and privacy-limited Core Web Vitals, and kept route templates in SDK-owned URL properties.
 - "Create another" after first Activation now opens a clean composer instead of retaining the published text and draft identity.
 - Made direct documentation builds restore their ignored OpenAPI inputs from the tracked canonical spec before VitePress starts, so clean deployment checkouts cannot depend on generated local files.
 

@@ -76,8 +76,14 @@ type PendingEvent = {
 
 type PendingPageView = { pathname: string; title: string };
 type PendingException = { error: Error; properties: Record<string, unknown> };
+type BrowserCaptureEvent = {
+  event: string;
+  properties?: Record<string, unknown>;
+  [key: string]: unknown;
+};
 
 const maxPendingEvents = 100;
+const maxRememberedRouteTemplates = 100;
 const eventPropertyAllowlists: Record<TelemetryEventName, readonly string[]> = {
   "signup started": [],
   "publication publish requested": ["account_count", "is_thread"],
@@ -113,6 +119,9 @@ export class BrowserTelemetry {
   private pendingPageViews: PendingPageView[] = [];
   private pendingExceptions: PendingException[] = [];
   private capturedErrors = new WeakSet<object>();
+  private currentPagePath: string | null = null;
+  private previousPagePath: string | null = null;
+  private routeTemplates = new Map<string, string>();
 
   constructor(
     private readonly sdk: BrowserSDK,
@@ -135,9 +144,15 @@ export class BrowserTelemetry {
       ...(config.uiHost?.trim() ? { ui_host: config.uiHost.trim().replace(/\/+$/, "") } : {}),
       autocapture: false,
       capture_pageview: false,
-      capture_pageleave: false,
+      capture_pageleave: true,
       capture_heatmaps: false,
-      capture_performance: false,
+      capture_performance: {
+        network_timing: false,
+        web_vitals: true,
+        web_vitals_allowed_metrics: ["CLS", "INP", "LCP"],
+        web_vitals_attribution: false,
+      },
+      before_send: (event: BrowserCaptureEvent | null) => this.sanitizeBrowserEvent(event),
       capture_exceptions: false,
       disable_session_recording: true,
       disable_surveys: true,
@@ -192,18 +207,48 @@ export class BrowserTelemetry {
 
   capturePageView(pathname: string, title = document.title): void {
     if (this.disabled || typeof window === "undefined") return;
+    const path = cleanPath(pathname);
+    this.rememberRouteTemplate(cleanPath(window.location.pathname), path);
     if (!this.configured) {
       if (this.pendingPageViews.length < maxPendingEvents) {
         this.pendingPageViews.push({ pathname, title });
       }
       return;
     }
-    const path = cleanPath(pathname);
+    this.previousPagePath = this.currentPagePath;
+    this.currentPagePath = path;
     this.sdk.capture("$pageview", {
       $current_url: `${window.location.origin}${path}`,
       path,
       title,
     });
+  }
+
+  private sanitizeBrowserEvent(event: BrowserCaptureEvent | null): BrowserCaptureEvent | null {
+    if (!event?.properties) return event;
+    const fallbackPath = this.currentPagePath ?? cleanPath(window.location.pathname);
+    const currentPath = routeTemplateForEvent(event.properties, this.routeTemplates, fallbackPath);
+    const previousPath = event.event === "$pageview" ? this.previousPagePath : this.currentPagePath;
+    return {
+      ...event,
+      properties: sanitizeSDKProperties(
+        event.properties,
+        currentPath,
+        previousPath,
+        this.routeTemplates,
+      ),
+    };
+  }
+
+  private rememberRouteTemplate(rawPath: string, routeTemplate: string): void {
+    this.routeTemplates.delete(rawPath);
+    this.routeTemplates.set(rawPath, routeTemplate);
+    this.routeTemplates.set(routeTemplate, routeTemplate);
+    while (this.routeTemplates.size > maxRememberedRouteTemplates) {
+      const oldest = this.routeTemplates.keys().next().value;
+      if (typeof oldest !== "string") break;
+      this.routeTemplates.delete(oldest);
+    }
   }
 
   identify(userID: string): void {
@@ -383,6 +428,111 @@ function cleanPath(pathname: string): string {
     return new URL(pathname, "https://openpost.invalid").pathname;
   } catch {
     return "/";
+  }
+}
+
+function sanitizeSDKProperties(
+  properties: Record<string, unknown>,
+  currentPath: string,
+  previousPath: string | null,
+  routeTemplates: ReadonlyMap<string, string>,
+): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(properties).map(([key, value]) => {
+      if (
+        key === "$current_url" ||
+        key === "$initial_current_url" ||
+        key === "$session_entry_url" ||
+        key === "navigationURL"
+      ) {
+        return [key, safeCurrentURL(value, currentPath, routeTemplates)];
+      }
+      if (key === "$pathname") return [key, currentPath];
+      if (key === "$initial_pathname" || key === "$session_entry_pathname") {
+        return [key, routeTemplateForPath(value, routeTemplates, currentPath)];
+      }
+      if (key === "$prev_pageview_pathname") {
+        return [key, routeTemplateForPath(value, routeTemplates, previousPath ?? currentPath)];
+      }
+      if (key === "$referrer" || key === "$initial_referrer" || key === "$session_entry_referrer") {
+        return [key, safeReferrerOrigin(value)];
+      }
+      if (Array.isArray(value)) {
+        return [
+          key,
+          value.map((entry) =>
+            entry && typeof entry === "object"
+              ? sanitizeSDKProperties(
+                  entry as Record<string, unknown>,
+                  currentPath,
+                  previousPath,
+                  routeTemplates,
+                )
+              : entry,
+          ),
+        ];
+      }
+      if (value && typeof value === "object") {
+        return [
+          key,
+          sanitizeSDKProperties(
+            value as Record<string, unknown>,
+            currentPath,
+            previousPath,
+            routeTemplates,
+          ),
+        ];
+      }
+      return [key, value];
+    }),
+  );
+}
+
+function routeTemplateForEvent(
+  properties: Record<string, unknown>,
+  routeTemplates: ReadonlyMap<string, string>,
+  fallbackPath: string,
+): string {
+  for (const value of [properties.$current_url, properties.$pathname]) {
+    const routeTemplate = routeTemplateForPath(value, routeTemplates);
+    if (routeTemplate) return routeTemplate;
+  }
+  return fallbackPath;
+}
+
+function routeTemplateForPath(
+  value: unknown,
+  routeTemplates: ReadonlyMap<string, string>,
+  fallbackPath?: string,
+): string {
+  if (typeof value !== "string") return fallbackPath ?? "";
+  const path = cleanPath(value);
+  return routeTemplates.get(path) ?? fallbackPath ?? "";
+}
+
+function safeCurrentURL(
+  value: unknown,
+  fallbackPath: string,
+  routeTemplates: ReadonlyMap<string, string>,
+): string {
+  if (typeof value === "string") {
+    try {
+      const url = new URL(value, window.location.origin);
+      const pathname = routeTemplates.get(url.pathname) ?? fallbackPath;
+      return `${url.origin}${pathname}`;
+    } catch {
+      // Fall through to the current browser origin.
+    }
+  }
+  return `${window.location.origin}${fallbackPath}`;
+}
+
+function safeReferrerOrigin(value: unknown): string {
+  if (typeof value !== "string" || value.length === 0) return "";
+  try {
+    return new URL(value).origin;
+  } catch {
+    return "[redacted-url]";
   }
 }
 

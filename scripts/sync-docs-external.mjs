@@ -12,6 +12,14 @@ const moduleRawUrl =
 const moduleSourceUrl =
   "https://github.com/rodrgds/nix-config/blob/main/modules/services/openpost/default.nix";
 const localModulePath = process.env.OPENPOST_NIX_MODULE_PATH;
+const publicImage = "ghcr.io/getopenpost/openpost:latest";
+
+export function normalizeModuleForDocs(moduleSource) {
+  return moduleSource.replace(
+    /(^\s*default\s*=\s*")ghcr\.io\/(?:getopenpost|rodrgds)\/openpost(?:@sha256:[a-f0-9]{64}|:[^"]+)(";\s*$)/mu,
+    `$1${publicImage}$2`,
+  );
+}
 
 function renderMarkdown(moduleSource) {
   return [
@@ -19,8 +27,10 @@ function renderMarkdown(moduleSource) {
     "",
     `Source: [\`rodrgds/nix-config/modules/services/openpost/default.nix\`](${moduleSourceUrl})`,
     "",
+    "The public example uses the moving `:latest` tag. The linked deployment source may pin a verified image digest.",
+    "",
     "```nix",
-    moduleSource.trimEnd(),
+    normalizeModuleForDocs(moduleSource).trimEnd(),
     "```",
     "",
   ].join("\n");
@@ -37,33 +47,35 @@ function renderFallback(error) {
   ].join("\n");
 }
 
-await mkdir(path.dirname(outputPath), { recursive: true });
+if (import.meta.main) {
+  await mkdir(path.dirname(outputPath), { recursive: true });
 
-try {
-  if (localModulePath) {
-    const moduleSource = await readFile(localModulePath, "utf8");
+  try {
+    if (localModulePath) {
+      const moduleSource = await readFile(localModulePath, "utf8");
+      await writeFile(outputPath, renderMarkdown(moduleSource), "utf8");
+      console.log(`Synced local Nix module -> ${path.relative(root, outputPath)}`);
+      process.exit(0);
+    }
+
+    const response = await fetch(moduleRawUrl, {
+      headers: { "user-agent": "openpost-docs-build" },
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status} when fetching ${moduleRawUrl}`);
+    }
+
+    const moduleSource = await response.text();
     await writeFile(outputPath, renderMarkdown(moduleSource), "utf8");
-    console.log(`Synced local Nix module -> ${path.relative(root, outputPath)}`);
-    process.exit(0);
+    console.log(`Synced external docs snippet -> ${path.relative(root, outputPath)}`);
+  } catch (error) {
+    if (existsSync(outputPath)) {
+      console.warn(`Failed to refresh external docs snippet, using cached file: ${error.message}`);
+      process.exit(0);
+    }
+
+    await writeFile(outputPath, renderFallback(error), "utf8");
+    console.warn(`Failed to refresh external docs snippet, wrote fallback file: ${error.message}`);
   }
-
-  const response = await fetch(moduleRawUrl, {
-    headers: { "user-agent": "openpost-docs-build" },
-  });
-
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status} when fetching ${moduleRawUrl}`);
-  }
-
-  const moduleSource = await response.text();
-  await writeFile(outputPath, renderMarkdown(moduleSource), "utf8");
-  console.log(`Synced external docs snippet -> ${path.relative(root, outputPath)}`);
-} catch (error) {
-  if (existsSync(outputPath)) {
-    console.warn(`Failed to refresh external docs snippet, using cached file: ${error.message}`);
-    process.exit(0);
-  }
-
-  await writeFile(outputPath, renderFallback(error), "utf8");
-  console.warn(`Failed to refresh external docs snippet, wrote fallback file: ${error.message}`);
 }

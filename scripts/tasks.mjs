@@ -35,7 +35,11 @@ const checks = {
     bun("scripts/check-mcp-registry.mjs"),
   ]),
   docs: stage("documentation policy", [
-    bunTest("scripts/check-doc-links.test.mjs", "scripts/check-doc-telemetry.test.mjs"),
+    bunTest(
+      "scripts/check-doc-links.test.mjs",
+      "scripts/check-doc-telemetry.test.mjs",
+      "scripts/sync-docs-external.test.mjs",
+    ),
     bun("scripts/check-doc-links.mjs"),
   ]),
   "release-version": stage("release version", [
@@ -368,7 +372,11 @@ function testPlan(requestedScope, requestedOptions) {
     ),
   ]);
   const docs = stage("documentation tests", [
-    bunTest("scripts/check-doc-links.test.mjs", "scripts/check-doc-telemetry.test.mjs"),
+    bunTest(
+      "scripts/check-doc-links.test.mjs",
+      "scripts/check-doc-telemetry.test.mjs",
+      "scripts/sync-docs-external.test.mjs",
+    ),
   ]);
   const browser = {
     e2e: stage("browser tests", [commandStep("bunx", "playwright", "test")]),

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   applyTelemetryRequestHeaders,
   BrowserTelemetry,
@@ -74,6 +74,14 @@ describe("BrowserTelemetry", () => {
     expect(sdk.initialized[0]?.options).toMatchObject({
       api_host: "https://e.example.com",
       autocapture: false,
+      capture_pageview: false,
+      capture_pageleave: true,
+      capture_performance: {
+        network_timing: false,
+        web_vitals: true,
+        web_vitals_allowed_metrics: ["CLS", "INP", "LCP"],
+        web_vitals_attribution: false,
+      },
       persistence: "memory",
       cookieless_mode: "always",
       person_profiles: "identified_only",
@@ -93,6 +101,67 @@ describe("BrowserTelemetry", () => {
 
     expect(sdk.identified).toEqual(["user-1", "user-2"]);
     expect(sdk.resetCount).toBe(2);
+  });
+
+  it("uses the originating route template for SDK-owned lifecycle and Web Vitals URLs", () => {
+    const location = {
+      origin: "https://app.openpost.social",
+      pathname: "/publications/private-publication-id",
+    };
+    vi.stubGlobal("window", { location });
+    vi.stubGlobal("document", { title: "Publications" });
+    try {
+      const sdk = new FakeSDK();
+      const subject = new BrowserTelemetry(sdk, () => true);
+      subject.configure(configuredApp);
+      subject.capturePageView("/publications/[id]");
+
+      location.pathname = "/settings";
+      subject.capturePageView("/settings");
+
+      const beforeSend = sdk.initialized[0]?.options.before_send as
+        | ((event: {
+            event: string;
+            properties?: Record<string, unknown>;
+          }) => { event: string; properties?: Record<string, unknown> } | null)
+        | undefined;
+      const event = beforeSend?.({
+        event: "$web_vitals",
+        properties: {
+          $current_url:
+            "https://app.openpost.social/publications/private-publication-id?token=secret#private",
+          $pathname: "/publications/private-publication-id",
+          $initial_pathname: "/publications/private-publication-id",
+          $session_entry_pathname: "/publications/private-publication-id",
+          $session_entry_url:
+            "https://app.openpost.social/publications/private-publication-id?token=secret#private",
+          $referrer: "https://search.example/private/path?query=secret",
+          $session_entry_referrer: "https://search.example/private/path?query=secret",
+          $web_vitals_LCP_event: {
+            $current_url:
+              "https://app.openpost.social/publications/private-publication-id?token=secret",
+            navigationURL:
+              "https://app.openpost.social/publications/private-publication-id?token=secret",
+          },
+        },
+      });
+
+      expect(event?.properties).toMatchObject({
+        $current_url: "https://app.openpost.social/publications/[id]",
+        $pathname: "/publications/[id]",
+        $initial_pathname: "/publications/[id]",
+        $session_entry_pathname: "/publications/[id]",
+        $session_entry_url: "https://app.openpost.social/publications/[id]",
+        $referrer: "https://search.example",
+        $session_entry_referrer: "https://search.example",
+        $web_vitals_LCP_event: {
+          $current_url: "https://app.openpost.social/publications/[id]",
+          navigationURL: "https://app.openpost.social/publications/[id]",
+        },
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("rejects direct identity values instead of identifying them", () => {

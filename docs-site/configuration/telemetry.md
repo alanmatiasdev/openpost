@@ -24,7 +24,7 @@ The browser must not duplicate authoritative server outcomes. Funnel events acce
 
 ## Privacy boundary
 
-The shared browser client uses cookieless mode and memory-only persistence. Autocapture, session replay, surveys, console capture, network bodies, heatmaps, and automatic exception capture are disabled. Public marketing and documentation events stay anonymous and personless. The signed-in app identifies a person only with the opaque OpenPost user ID; the backend uses the same ID.
+The shared browser client uses cookieless mode and memory-only persistence. Autocapture, session replay, surveys, console capture, network bodies, heatmaps, and automatic exception capture are disabled. OpenPost records manual page views and matching page leaves. It also records CLS, INP, and LCP without network timing or element attribution. Public marketing and documentation events stay anonymous and personless. The signed-in app identifies a person only with the opaque OpenPost user ID; the backend uses the same ID.
 
 Do not add email addresses, names, usernames, post text, media, request bodies, credentials, query strings, or raw URLs to events or exceptions. Use route templates, stable object IDs, status codes, release identity, and enumerated failure types. A PostHog project token is write-only and may be exposed to the browser; a personal API key must remain in CI secret storage.
 
@@ -48,12 +48,12 @@ Set these values in the process environment or in **Settings → Instance → Co
 OPENPOST_TELEMETRY_ENABLED=true
 OPENPOST_POSTHOG_PROJECT_TOKEN=phc_operator_owned_project_token
 OPENPOST_POSTHOG_API_HOST=https://eu.i.posthog.com
-OPENPOST_POSTHOG_BROWSER_HOST=https://telemetry.example.com
+OPENPOST_POSTHOG_BROWSER_HOST=https://cool.openpost.social
 OPENPOST_POSTHOG_UI_HOST=https://eu.posthog.com
 OPENPOST_TELEMETRY_ENVIRONMENT=production
 ```
 
-`OPENPOST_POSTHOG_API_HOST` is the direct server-side ingestion endpoint. `OPENPOST_POSTHOG_BROWSER_HOST` may be a first-party reverse proxy. A browser proxy must forward PostHog ingestion and static asset paths, support `GET` and `POST`, and allow large session-recording requests even though OpenPost currently disables replay. Keep `OPENPOST_POSTHOG_UI_HOST` set to the real PostHog UI host.
+`OPENPOST_POSTHOG_API_HOST` is the direct server-side ingestion endpoint. `OPENPOST_POSTHOG_BROWSER_HOST` may be a first-party reverse proxy. Cloud mode defaults to the managed `https://cool.openpost.social` proxy; self-hosted deployments fall back to the direct API host unless the operator sets a proxy. A browser proxy must forward PostHog ingestion and static asset paths and support `GET` and `POST`. Keep `OPENPOST_POSTHOG_UI_HOST` set to the real PostHog UI host.
 
 The browser reads its safe runtime configuration from `GET /api/v1/telemetry/config`. This lets one static OpenPost bundle work in the managed service and in self-hosted installations without compiling the managed-service token into every binary.
 
@@ -63,14 +63,16 @@ The marketing and documentation sites are separate static builds. Give both buil
 
 ```dotenv
 VITE_POSTHOG_PROJECT_TOKEN=phc_operator_owned_project_token
-VITE_POSTHOG_API_HOST=https://telemetry.example.com
+VITE_POSTHOG_API_HOST=https://cool.openpost.social
 VITE_POSTHOG_UI_HOST=https://eu.posthog.com
 VITE_OPENPOST_ENVIRONMENT=production
 VITE_OPENPOST_VERSION=3.4.0
 VITE_OPENPOST_REVISION=<git-revision>
 ```
 
-Use one PostHog production project across the app, backend, marketing site, and documentation so acquisition and product adoption can be analyzed together. Use separate projects for development and staging. Every event includes a stable `surface` and environment so queries can still separate them.
+Use one PostHog production project across the app, backend, marketing site, and documentation so acquisition and product adoption can be analyzed together. Use separate projects for development and staging. Every event includes a stable `surface` and environment so queries can still separate them. Production public-site builds stop with an error when the project token, exact managed proxy host, or EU UI host is missing.
+
+The browser rewrites PostHog-owned page lifecycle and Web Vitals URL properties to the route template already captured by OpenPost. It removes query strings, fragments, raw dynamic route values, and referrer paths before delivery.
 
 ## Source maps
 
