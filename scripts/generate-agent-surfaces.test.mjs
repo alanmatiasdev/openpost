@@ -114,6 +114,13 @@ async function assertArtifactSnapshot(directory, snapshot) {
   }
 }
 
+function deterministicAttributes(node) {
+  return (node.attrs ?? [])
+    .filter(({ name }) => name !== "data-svelte-h" && !/^data-v-[0-9a-f]{8}(?:-s)?$/u.test(name))
+    .map(({ name, value }) => [name, value])
+    .toSorted(([left], [right]) => left.localeCompare(right));
+}
+
 function deterministicSemanticHTML(node) {
   if (node.nodeName === "#comment") {
     const comment = node.data.trim();
@@ -141,25 +148,21 @@ function deterministicSemanticHTML(node) {
   )
     return undefined;
   if (node.nodeName === "#text") return { text: node.value };
+  if (
+    node.tagName === "pre" &&
+    (documentAttribute(node, "class") ?? "").split(/\s+/u).includes("shiki")
+  ) {
+    return {
+      node: node.tagName,
+      attributes: deterministicAttributes(node),
+      children: [{ text: documentText(node) }],
+      templateContent: undefined,
+    };
+  }
 
   return {
     node: node.tagName ?? node.nodeName,
-    attributes: (node.attrs ?? [])
-      .filter(
-        ({ name, value }) =>
-          name !== "data-svelte-h" &&
-          !/^data-v-[0-9a-f]{8}(?:-s)?$/u.test(name) &&
-          !(
-            name === "style" &&
-            value
-              .split(";")
-              .map((declaration) => declaration.trim())
-              .filter(Boolean)
-              .every((declaration) => declaration.startsWith("--shiki-"))
-          ),
-      )
-      .map(({ name, value }) => [name, value])
-      .toSorted(([left], [right]) => left.localeCompare(right)),
+    attributes: deterministicAttributes(node),
     children: (node.childNodes ?? [])
       .map(deterministicSemanticHTML)
       .filter((child) => child !== undefined),
@@ -206,13 +209,15 @@ test("semantic HTML determinism retains maintained documents and ignores only fr
   const frameworkBuildA = `${maintained}<link rel="stylesheet" href="/_app/immutable/assets/0.A.css">
     <link rel="modulepreload" href="/assets/chunks/theme.A.js">
     <link rel="modulepreload" href="/assets/cli_posting.md.A.lean.js">
-    <!--12qhfyh--><!--$s1--><!--[0--><p data-v-0394ad82><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">Runtime scoped</span></p>
+    <!--12qhfyh--><!--$s1--><!--[0--><p data-v-0394ad82>Runtime scoped</p>
+    <pre class="shiki vp-code"><code><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">accounts</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: x,linkedin</span></code></pre>
     <script src="/assets/app.A.js"></script>
     <script>window.__VP_HASH_MAP__={"index.md":"A"}</script>`;
   const frameworkBuildB = `${maintained}<link rel="stylesheet" href="/_app/immutable/assets/0.B.css">
     <link rel="modulepreload" href="/assets/chunks/theme.B.js">
     <link rel="modulepreload" href="/assets/cli_posting.md.B.lean.js">
-    <!--1cjcgu2--><!--$s2--><!--[7--><p data-v-a3976bdc><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">Runtime scoped</span></p>
+    <!--1cjcgu2--><!--$s2--><!--[7--><p data-v-a3976bdc>Runtime scoped</p>
+    <pre class="shiki vp-code"><code><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">accounts: x,linkedin</span></code></pre>
     <script src="/assets/app.B.js"></script>
     <script>window.__VP_HASH_MAP__={"index.md":"B"}</script>`;
   assert.deepEqual(normalize(frameworkBuildB), normalize(frameworkBuildA));
