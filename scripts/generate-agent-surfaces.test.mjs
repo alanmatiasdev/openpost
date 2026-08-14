@@ -135,7 +135,7 @@ function deterministicSemanticHTML(node) {
   if (
     node.tagName === "link" &&
     ["modulepreload", "preload", "stylesheet"].includes(documentAttribute(node, "rel")) &&
-    /(?:\/_app\/immutable\/|\/assets\/(?:app|chunks\/theme|style)[.-])/u.test(
+    /(?:\/_app\/immutable\/|\/assets\/(?:app|chunks\/theme|style)[.-]|\/assets\/[^/]+\.lean\.js$)/u.test(
       documentAttribute(node, "href") ?? "",
     )
   )
@@ -145,7 +145,19 @@ function deterministicSemanticHTML(node) {
   return {
     node: node.tagName ?? node.nodeName,
     attributes: (node.attrs ?? [])
-      .filter(({ name }) => name !== "data-svelte-h" && !/^data-v-[0-9a-f]{8}(?:-s)?$/u.test(name))
+      .filter(
+        ({ name, value }) =>
+          name !== "data-svelte-h" &&
+          !/^data-v-[0-9a-f]{8}(?:-s)?$/u.test(name) &&
+          !(
+            name === "style" &&
+            value
+              .split(";")
+              .map((declaration) => declaration.trim())
+              .filter(Boolean)
+              .every((declaration) => declaration.startsWith("--shiki-"))
+          ),
+      )
       .map(({ name, value }) => [name, value])
       .toSorted(([left], [right]) => left.localeCompare(right)),
     children: (node.childNodes ?? [])
@@ -172,10 +184,11 @@ test("semantic HTML determinism retains maintained documents and ignores only fr
     <link rel="stylesheet" href="/maintained.css">
     <style>.notice { color: red; }</style>
     <script type="application/ld+json">{"name":"OpenPost"}</script>
-  </head><body data-v-owner="maintained"><!-- maintained note --><!--license--><!--[owner note]--><template><p>Maintained fallback</p></template></body></html>`;
+  </head><body data-v-owner="maintained"><!-- maintained note --><!--license--><!--[owner note]--><template><p>Maintained fallback</p></template><span style="color: red">Maintained style</span></body></html>`;
   for (const [kind, changed] of [
     ["linked stylesheet", maintained.replace("/maintained.css", "/changed.css")],
     ["inline style", maintained.replace("color: red", "color: blue")],
+    ["inline style attribute", maintained.replace('style="color: red"', 'style="color: blue"')],
     ["JSON-LD", maintained.replace('"OpenPost"', '"Changed"')],
     ["maintained comment", maintained.replace("maintained note", "changed note")],
     ["seven-character comment", maintained.replace("license", "credits")],
@@ -192,12 +205,14 @@ test("semantic HTML determinism retains maintained documents and ignores only fr
 
   const frameworkBuildA = `${maintained}<link rel="stylesheet" href="/_app/immutable/assets/0.A.css">
     <link rel="modulepreload" href="/assets/chunks/theme.A.js">
-    <!--12qhfyh--><!--$s1--><!--[0--><p data-v-0394ad82>Runtime scoped</p>
+    <link rel="modulepreload" href="/assets/cli_posting.md.A.lean.js">
+    <!--12qhfyh--><!--$s1--><!--[0--><p data-v-0394ad82><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">Runtime scoped</span></p>
     <script src="/assets/app.A.js"></script>
     <script>window.__VP_HASH_MAP__={"index.md":"A"}</script>`;
   const frameworkBuildB = `${maintained}<link rel="stylesheet" href="/_app/immutable/assets/0.B.css">
     <link rel="modulepreload" href="/assets/chunks/theme.B.js">
-    <!--1cjcgu2--><!--$s2--><!--[7--><p data-v-a3976bdc>Runtime scoped</p>
+    <link rel="modulepreload" href="/assets/cli_posting.md.B.lean.js">
+    <!--1cjcgu2--><!--$s2--><!--[7--><p data-v-a3976bdc><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">Runtime scoped</span></p>
     <script src="/assets/app.B.js"></script>
     <script>window.__VP_HASH_MAP__={"index.md":"B"}</script>`;
   assert.deepEqual(normalize(frameworkBuildB), normalize(frameworkBuildA));
