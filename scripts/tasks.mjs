@@ -3,6 +3,13 @@
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 
+import {
+  formatPruneResult,
+  pruneTurboCache,
+  turboCacheMaxBytes,
+  withTurboCacheLock,
+} from "./turbo-cache.mjs";
+
 const root = path.resolve(import.meta.dir, "..");
 const [command, rawScope, ...flags] = process.argv.slice(2);
 const scope = rawScope?.startsWith("--") ? undefined : rawScope;
@@ -130,7 +137,11 @@ const checks = {
     bun("scripts/agent-doctor.mjs"),
   ]),
   tasks: stage("task interface", [
-    bunTest("scripts/tasks.test.mjs", "scripts/changed-files-check.test.mjs"),
+    bunTest(
+      "scripts/tasks.test.mjs",
+      "scripts/changed-files-check.test.mjs",
+      "scripts/turbo-cache.test.mjs",
+    ),
   ]),
   "frontend-build-cache": stage("frontend build cache", [
     bun("scripts/verify-frontend-build-cache.mjs"),
@@ -163,7 +174,19 @@ try {
   if (options.has("--plan")) {
     console.log(JSON.stringify(publicPlan(plan), null, 2));
   } else {
-    await execute(plan);
+    const cacheDirectory = path.join(root, ".turbo", "cache");
+    if (process.env.OPENPOST_ROOT_TASK_LOCKED === "1") {
+      await execute(plan, { cacheDirectory, enforceCacheLimit: false });
+    } else if (plan.command === "dev") {
+      await withTurboCacheLock({ directory: cacheDirectory }, () =>
+        enforceTurboCacheLimit(cacheDirectory),
+      );
+      await execute(plan, { cacheDirectory, enforceCacheLimit: false });
+    } else {
+      await withTurboCacheLock({ directory: cacheDirectory }, () =>
+        execute(plan, { cacheDirectory, enforceCacheLimit: true }),
+      );
+    }
   }
 } catch (error) {
   console.error(error.message);
@@ -445,14 +468,29 @@ function buildPlan(requestedScope) {
   ]);
 }
 
-async function execute(taskPlan) {
-  for (const phase of taskPlan.phases) {
-    const controller = new AbortController();
-    const results = await Promise.all(phase.map((item) => runStage(item, controller)));
-    const failed = results.find((result) => result !== 0);
-    if (failed)
-      throw new Error(`${taskPlan.command}${taskPlan.scope ? ` ${taskPlan.scope}` : ""} failed`);
+async function execute(taskPlan, { cacheDirectory, enforceCacheLimit }) {
+  if (enforceCacheLimit) await enforceTurboCacheLimit(cacheDirectory);
+  try {
+    for (const phase of taskPlan.phases) {
+      const controller = new AbortController();
+      const results = await Promise.all(phase.map((item) => runStage(item, controller)));
+      const failed = results.find((result) => result !== 0);
+      if (failed)
+        throw new Error(`${taskPlan.command}${taskPlan.scope ? ` ${taskPlan.scope}` : ""} failed`);
+    }
+  } finally {
+    if (enforceCacheLimit) await enforceTurboCacheLimit(cacheDirectory);
   }
+}
+
+async function enforceTurboCacheLimit(cacheDirectory) {
+  const maximum = turboCacheMaxBytes();
+  const result = await pruneTurboCache({
+    directory: cacheDirectory,
+    maxBytes: maximum,
+  });
+  const message = formatPruneResult(result, maximum);
+  if (message) console.log(message);
 }
 
 async function runStage(taskStage, controller) {
@@ -475,7 +513,7 @@ async function runStep(step, signal) {
   if (step.type === "task") {
     return spawn(
       ["bun", "scripts/tasks.mjs", step.task, ...(step.scope ? [step.scope] : [])],
-      {},
+      { env: { OPENPOST_ROOT_TASK_LOCKED: "1" } },
       signal,
     );
   }

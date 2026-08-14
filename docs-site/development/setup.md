@@ -62,13 +62,20 @@ for browser suites. Focused repository policies use
 The release subcommands are `plan`, `preflight`, `check`, `check-full`, `status`,
 `prepare`, `promote`, and `prod`; see [Releases and Versioning](/development/releases).
 
-Use `cache-status` and `cache-prune` to inspect and enforce the daily 4 GiB
-default cap on the shared Go build cache. Use `docker-cache-status` and
-`docker-cache-prune` to inspect Docker storage and bound unused BuildKit cache
-without deleting images, containers, or volumes. Local backend builds reuse the
-content-addressed Go cache; clean CI runners still compile the release candidate
-from their exact checkout. Development runs, tests, vulnerability scans, and
-lint use the `dev` build tag so embedded frontend assets do not accumulate there.
+Use `cache-status` and `cache-prune` to inspect and enforce the 512 MiB Turbo
+task-cache cap and the daily 4 GiB default cap on the shared Go build cache.
+Finite root tasks enforce the Turbo cap before and after each run, keeping the
+newest complete entries; `dev` enforces it once before starting its persistent
+process. A shared lock prevents root tasks and explicit cache pruning from
+changing the cache at the same time. Set `OPENPOST_TURBO_CACHE_MAX_MIB` to change
+the local limit. CI does not persist Turbo filesystem caches because
+revision-specific web builds would copy prior archives into every new GitHub
+cache. Use `docker-cache-status` and `docker-cache-prune` to inspect Docker
+storage and bound unused BuildKit cache without deleting images, containers, or
+volumes. Local backend builds reuse the content-addressed Go cache; clean CI
+runners still compile the release candidate from their exact checkout.
+Development runs, tests, vulnerability scans, and lint use the `dev` build tag
+so embedded frontend assets do not accumulate there.
 On a 16 GiB Mac, set Docker Desktop to 10 GB memory and 4 GB swap before local
 release-image builds; release preflight rejects a macOS Docker VM below the
 verified memory floor.

@@ -300,6 +300,14 @@ test("cache equivalence is conditional in CI and independently scheduled", () =>
   }
 });
 
+test("CI does not persist cumulative Turbo filesystem caches", () => {
+  for (const jobName of ["frontend-build", "marketing-build", "docs-build"]) {
+    const job = workflowJob(ci, jobName);
+    assert.doesNotMatch(job, /path:\s*\.turbo\/cache/u);
+    assert.doesNotMatch(job, /TURBO_FORCE:/u);
+  }
+});
+
 test("ordinary release preparation delegates exhaustive correctness to candidate CI", () => {
   const prepareStart = localRelease.indexOf("async function prepare(");
   const promoteStart = localRelease.indexOf("async function promote(");

@@ -56,11 +56,17 @@
       echo "Bun package cache: $BUN_INSTALL_CACHE_DIR"
       du -sh "$BUN_INSTALL_CACHE_DIR" 2>/dev/null || true
 
+      echo "Turbo task cache: ${config.git.root}/.turbo/cache"
+      du -sh "${config.git.root}/.turbo/cache" 2>/dev/null || true
+
       echo "Embedded frontend: ${config.git.root}/backend/cmd/openpost/public"
       du -sh "${config.git.root}/backend/cmd/openpost/public" 2>/dev/null || true
     '';
 
     cache-prune.exec = ''
+      cd "${config.git.root}"
+      bun scripts/turbo-cache.mjs prune
+
       max_mib="''${OPENPOST_GO_CACHE_MAX_MIB:-4096}"
       if ! [[ "$max_mib" =~ ^[1-9][0-9]*$ ]]; then
         echo "OPENPOST_GO_CACHE_MAX_MIB must be a positive integer; received: $max_mib" >&2
@@ -147,7 +153,7 @@
     echo "    install      - Install locked Bun and Go dependencies"
     echo "    setup        - Frozen install and create backend/.env if missing"
     echo "    cache-status - Report project cache and embedded frontend sizes"
-    echo "    cache-prune  - Enforce the bounded persistent Go build cache"
+    echo "    cache-prune  - Enforce bounded Turbo and persistent Go build caches"
     echo "    docker-cache-status - Report Docker image, volume, and build-cache sizes"
     echo "    docker-cache-prune  - Bound unused Docker build cache without deleting volumes"
     echo ""
