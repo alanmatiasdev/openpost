@@ -251,7 +251,7 @@ export interface MCPActivityItem {
 	client_scope?: string;
 	client_token_prefix?: string;
 	tool_name: string;
-	status?: string;
+	status: string;
 	error_message?: string;
 	duration_ms: number;
 	created_at: string;
