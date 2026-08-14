@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { isNavigationItemActive, mobileNavigation, primaryNavigation } from './app-navigation';
+import {
+	isNavigationItemActive,
+	isOrganizationOwnershipSettingsRoute,
+	mobileNavigation,
+	primaryNavigation
+} from './app-navigation';
 
 describe('primary application navigation', () => {
 	it('keeps every core destination visible instead of hiding it in account menus', () => {
@@ -26,5 +31,17 @@ describe('primary application navigation', () => {
 
 	it('keeps four content destinations in the mobile bar before the More menu', () => {
 		expect(mobileNavigation.map((item) => item.id)).toEqual(['calendar', 'posts', 'new', 'media']);
+	});
+
+	it('recognizes both supported ownership Settings URLs without a Workspace', () => {
+		expect(
+			isOrganizationOwnershipSettingsRoute(new URL('https://openpost.test/settings?tab=ownership'))
+		).toBe(true);
+		expect(
+			isOrganizationOwnershipSettingsRoute(new URL('https://openpost.test/settings#ownership'))
+		).toBe(true);
+		expect(
+			isOrganizationOwnershipSettingsRoute(new URL('https://openpost.test/settings#plan'))
+		).toBe(false);
 	});
 });

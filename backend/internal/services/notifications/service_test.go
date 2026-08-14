@@ -866,6 +866,40 @@ func TestWorkspaceInvitationEmailReportsProviderUnavailableWithoutQueueing(t *te
 	require.Zero(t, count)
 }
 
+func TestOwnershipTransferEmailBypassesOptionalPreferences(t *testing.T) {
+	db := notificationsTestDB(t)
+	sender := &recordingNotificationSender{}
+	service := NewService(db, Options{Sender: sender, PublicURL: "https://app.openpost.test"})
+	_, err := service.UpdatePreferences(t.Context(), "user-1", Preferences{
+		TypeOwnershipTransfer: {InApp: false, EmailFrequency: EmailFrequencyOff},
+	})
+	require.ErrorIs(t, err, ErrInvalidPreferences)
+
+	require.NoError(t, service.Create(t.Context(), CreateInput{
+		UserID: "user-1", Type: TypeOwnershipTransfer,
+		Href: "/ownership-transfer?id=transfer-one", DedupKey: "ownership-transfer:one",
+		Payload: map[string]any{"kind": OwnershipTransferSemanticKind, "organization_name": "Equipa Açores"},
+		Actions: []models.NotificationAction{{Label: OwnershipTransferReviewAction, Href: "/ownership-transfer?id=transfer-one", Kind: "primary"}},
+	}))
+	var stored models.UserNotification
+	require.NoError(t, db.NewSelect().Model(&stored).Where("type = ?", TypeOwnershipTransfer).Scan(t.Context()))
+	require.Empty(t, stored.Title)
+	require.Empty(t, stored.Body)
+	require.Contains(t, stored.PayloadJSON, `"kind":"organization_ownership_nomination"`)
+	require.Contains(t, stored.PayloadJSON, `"label":"ownership_transfer.review"`)
+	var job models.Job
+	require.NoError(t, db.NewSelect().Model(&job).Where("type = ?", JobTypeEmailDelivery).Scan(t.Context()))
+	require.Contains(t, job.Payload, `"classification":"required_notification"`)
+	require.NoError(t, service.HandleJob(t.Context(), job.Type, job.Payload))
+	require.Len(t, sender.messages, 1)
+	require.Contains(t, sender.messages[0].Title, "Organization ownership")
+	require.Contains(t, sender.messages[0].Title, "Propriedade da Organização")
+	require.Contains(t, sender.messages[0].Body, "Review the ownership nomination for Equipa Açores")
+	require.Contains(t, sender.messages[0].Body, "Reveja a nomeação de propriedade de Equipa Açores")
+	require.Equal(t, "https://app.openpost.test/ownership-transfer?id=transfer-one", sender.messages[0].ActionURL)
+	require.Empty(t, sender.messages[0].PreferencesURL, "Transactional access email must not imply that preferences can suppress it")
+}
+
 func TestWorkspaceInvitationEmailProjectsDurableProviderOutcome(t *testing.T) {
 	db := notificationsTestDB(t)
 	service := NewService(db)

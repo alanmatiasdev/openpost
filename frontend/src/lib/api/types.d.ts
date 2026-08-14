@@ -2689,6 +2689,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/organization-ownership-transfers/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Accept an Organization ownership nomination */
+        post: operations["accept-organization-ownership-transfer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organization-ownership-transfers/decline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Decline an Organization ownership nomination */
+        post: operations["decline-organization-ownership-transfer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organization-ownership-transfers/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Review an Organization ownership nomination */
+        get: operations["resolve-organization-ownership-transfer"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/organizations": {
         parameters: {
             query?: never;
@@ -2806,6 +2857,28 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/organizations/{id}/ownership-transfer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get the pending Organization ownership transfer */
+        get: operations["get-organization-ownership-transfer"];
+        put?: never;
+        /**
+         * Nominate a successor Organization Owner
+         * @description Requires the current Owner, an unscoped browser session, exact Organization-name confirmation, and recent reauthentication. Authority changes only after acceptance.
+         */
+        post: operations["initiate-organization-ownership-transfer"];
+        /** Revoke a pending Organization ownership transfer */
+        delete: operations["revoke-organization-ownership-transfer"];
         options?: never;
         head?: never;
         patch?: never;
@@ -5244,6 +5317,16 @@ export interface components {
             /** @description Workspace ID */
             workspace_id: string;
         };
+        CompleteOwnershipTransferInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/CompleteOwnershipTransferInputBody.json
+             */
+            readonly $schema?: string;
+            /** @description Ownership transfer ID */
+            id: string;
+        };
         CompleteVideoReturnTokenOutputBody: {
             /**
              * Format: uri
@@ -7349,6 +7432,20 @@ export interface components {
             /** Format: double */
             y: number;
         };
+        InitiateOwnershipTransferInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/InitiateOwnershipTransferInputBody.json
+             */
+            readonly $schema?: string;
+            /** @description Exact Organization name as explicit confirmation */
+            confirm_organization_name: string;
+            /** @description Eligible Organization member user ID */
+            nominee_user_id: string;
+            /** @description One-time grant for organization.ownership.transfer */
+            reauth_grant: string;
+        };
         InstanceAuditJSONExport: {
             /**
              * Format: uri
@@ -8537,6 +8634,24 @@ export interface components {
             /** Format: int64 */
             range_days: number;
             summary: components["schemas"]["Summary"];
+        };
+        OwnershipTransferResponse: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/OwnershipTransferResponse.json
+             */
+            readonly $schema?: string;
+            expires_at: string;
+            id: string;
+            nominee_email: string;
+            nominee_user_id: string;
+            organization_id: string;
+            organization_name: string;
+            prior_owner_email: string;
+            prior_owner_user_id: string;
+            /** @enum {string} */
+            status: "pending" | "accepted" | "declined" | "revoked" | "expired";
         };
         PasskeyCeremonyOutputBody: {
             /**
@@ -10121,6 +10236,15 @@ export interface components {
             media_id: string;
             /** @description Current processing status */
             processing_status: string;
+        };
+        "Revoke-organization-ownership-transferResponse": {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/Revoke-organization-ownership-transferResponse.json
+             */
+            readonly $schema?: string;
+            revoked: boolean;
         };
         RevokeAPITokenOutputBody: {
             /**
@@ -12722,7 +12846,7 @@ export interface operations {
                 /** @description Restrict evidence to one exact domain action */
                 action?: string;
                 /** @description Restrict evidence to one resource type */
-                resource_type?: "provider" | "policy" | "domain" | "session" | "identity" | "reauthentication" | "identity_configuration" | "workspace" | "workspace_member" | "workspace_invitation" | "impersonation" | "billing" | "mcp_tool_call" | "publication" | "publication_authorization" | "provider_write";
+                resource_type?: "provider" | "policy" | "domain" | "session" | "identity" | "reauthentication" | "identity_configuration" | "workspace" | "workspace_member" | "workspace_invitation" | "organization_ownership_transfer" | "impersonation" | "billing" | "mcp_tool_call" | "publication" | "publication_authorization" | "provider_write";
                 /** @description Restrict evidence to one result */
                 result?: "succeeded" | "failed" | "pending";
                 /** @description Inclusive RFC 3339 start time */
@@ -12799,7 +12923,7 @@ export interface operations {
                 /** @description Restrict evidence to one exact domain action */
                 action?: string;
                 /** @description Restrict evidence to one resource type */
-                resource_type?: "provider" | "policy" | "domain" | "session" | "identity" | "reauthentication" | "identity_configuration" | "workspace" | "workspace_member" | "workspace_invitation" | "impersonation" | "billing" | "mcp_tool_call" | "publication" | "publication_authorization" | "provider_write";
+                resource_type?: "provider" | "policy" | "domain" | "session" | "identity" | "reauthentication" | "identity_configuration" | "workspace" | "workspace_member" | "workspace_invitation" | "organization_ownership_transfer" | "impersonation" | "billing" | "mcp_tool_call" | "publication" | "publication_authorization" | "provider_write";
                 /** @description Restrict evidence to one result */
                 result?: "succeeded" | "failed" | "pending";
                 /** @description Inclusive RFC 3339 start time */
@@ -12878,7 +13002,7 @@ export interface operations {
                 /** @description Restrict evidence to one exact domain action */
                 action?: string;
                 /** @description Restrict evidence to one resource type */
-                resource_type?: "provider" | "policy" | "domain" | "session" | "identity" | "reauthentication" | "identity_configuration" | "workspace" | "workspace_member" | "workspace_invitation" | "impersonation" | "billing" | "mcp_tool_call" | "publication" | "publication_authorization" | "provider_write";
+                resource_type?: "provider" | "policy" | "domain" | "session" | "identity" | "reauthentication" | "identity_configuration" | "workspace" | "workspace_member" | "workspace_invitation" | "organization_ownership_transfer" | "impersonation" | "billing" | "mcp_tool_call" | "publication" | "publication_authorization" | "provider_write";
                 /** @description Restrict evidence to one result */
                 result?: "succeeded" | "failed" | "pending";
                 /** @description Inclusive RFC 3339 start time */
@@ -21996,6 +22120,239 @@ export interface operations {
             };
         };
     };
+    "accept-organization-ownership-transfer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CompleteOwnershipTransferInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OwnershipTransferResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "decline-organization-ownership-transfer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CompleteOwnershipTransferInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OwnershipTransferResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "resolve-organization-ownership-transfer": {
+        parameters: {
+            query?: {
+                /** @description Ownership transfer ID */
+                id?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OwnershipTransferResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
     "list-organizations": {
         parameters: {
             query?: never;
@@ -22044,7 +22401,7 @@ export interface operations {
                 /** @description Restrict evidence to one exact domain action */
                 action?: string;
                 /** @description Restrict evidence to one resource type */
-                resource_type?: "provider" | "policy" | "domain" | "session" | "identity" | "reauthentication" | "identity_configuration" | "workspace" | "workspace_member" | "workspace_invitation" | "impersonation" | "billing" | "mcp_tool_call" | "publication" | "publication_authorization" | "provider_write";
+                resource_type?: "provider" | "policy" | "domain" | "session" | "identity" | "reauthentication" | "identity_configuration" | "workspace" | "workspace_member" | "workspace_invitation" | "organization_ownership_transfer" | "impersonation" | "billing" | "mcp_tool_call" | "publication" | "publication_authorization" | "provider_write";
                 /** @description Restrict evidence to one result */
                 result?: "succeeded" | "failed" | "pending";
                 /** @description Inclusive RFC 3339 start time */
@@ -22122,7 +22479,7 @@ export interface operations {
                 /** @description Restrict evidence to one exact domain action */
                 action?: string;
                 /** @description Restrict evidence to one resource type */
-                resource_type?: "provider" | "policy" | "domain" | "session" | "identity" | "reauthentication" | "identity_configuration" | "workspace" | "workspace_member" | "workspace_invitation" | "impersonation" | "billing" | "mcp_tool_call" | "publication" | "publication_authorization" | "provider_write";
+                resource_type?: "provider" | "policy" | "domain" | "session" | "identity" | "reauthentication" | "identity_configuration" | "workspace" | "workspace_member" | "workspace_invitation" | "organization_ownership_transfer" | "impersonation" | "billing" | "mcp_tool_call" | "publication" | "publication_authorization" | "provider_write";
                 /** @description Restrict evidence to one result */
                 result?: "succeeded" | "failed" | "pending";
                 /** @description Inclusive RFC 3339 start time */
@@ -22202,7 +22559,7 @@ export interface operations {
                 /** @description Restrict evidence to one exact domain action */
                 action?: string;
                 /** @description Restrict evidence to one resource type */
-                resource_type?: "provider" | "policy" | "domain" | "session" | "identity" | "reauthentication" | "identity_configuration" | "workspace" | "workspace_member" | "workspace_invitation" | "impersonation" | "billing" | "mcp_tool_call" | "publication" | "publication_authorization" | "provider_write";
+                resource_type?: "provider" | "policy" | "domain" | "session" | "identity" | "reauthentication" | "identity_configuration" | "workspace" | "workspace_member" | "workspace_invitation" | "organization_ownership_transfer" | "impersonation" | "billing" | "mcp_tool_call" | "publication" | "publication_authorization" | "provider_write";
                 /** @description Restrict evidence to one result */
                 result?: "succeeded" | "failed" | "pending";
                 /** @description Inclusive RFC 3339 start time */
@@ -22446,6 +22803,232 @@ export interface operations {
             };
             /** @description Forbidden */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "get-organization-ownership-transfer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OwnershipTransferResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "initiate-organization-ownership-transfer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InitiateOwnershipTransferInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OwnershipTransferResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "revoke-organization-ownership-transfer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Revoke-organization-ownership-transferResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

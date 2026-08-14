@@ -9,6 +9,7 @@
 	import { m } from '$lib/paraglide/messages';
 	import { getLocaleTag } from '$lib/i18n';
 	import { notificationTopicIcon, notificationTopicLabel } from '$lib/notification-topics';
+	import { presentNotification } from '$lib/notification-presentation';
 	import PageContainer from '$lib/components/page-container.svelte';
 	import EmptyState from '$lib/components/empty-state.svelte';
 	import InlineNotice from '$lib/components/inline-notice.svelte';
@@ -358,6 +359,7 @@
 								</h2>
 								<div class="divide-y rounded-lg border bg-card">
 									{#each group.items as notification (notification.id)}
+										{@const presentation = presentNotification(notification)}
 										{@const TypeIcon = notificationTopicIcon(notification.type)}
 										{@const typeLabel = notificationTopicLabel(notification.type)}
 										{@const fullTime = fullDateLabel(notification.created_at)}
@@ -371,7 +373,7 @@
 												status: notification.read_at
 													? m.notifications_status_read()
 													: m.notifications_status_unread(),
-												title: notification.title,
+												title: presentation.title,
 												time: fullTime
 											})}
 											data-notification-id={notification.id}
@@ -402,12 +404,12 @@
 														{timestampLabel(notification.created_at)}
 													</time>
 												</div>
-												<h3 class="mt-1 text-sm font-semibold break-words">{notification.title}</h3>
-												{#if notification.body}
+												<h3 class="mt-1 text-sm font-semibold break-words">{presentation.title}</h3>
+												{#if presentation.body}
 													<p
 														class="mt-1 max-w-3xl text-sm leading-5 break-words text-muted-foreground"
 													>
-														{notification.body}
+														{presentation.body}
 													</p>
 												{/if}
 												<div class="mt-3 flex flex-wrap gap-2">
@@ -431,7 +433,7 @@
 															{m.notifications_open_notification()}<ArrowRightIcon class="size-4" />
 														</Button>
 													{/if}
-													{#each notification.actions ?? [] as action (`${action.label}:${action.href}:${action.operation}`)}
+													{#each presentation.actions as action (`${action.label}:${action.href}:${action.operation}`)}
 														<Button
 															variant={action.kind === 'primary' ? 'default' : 'outline'}
 															size="sm"

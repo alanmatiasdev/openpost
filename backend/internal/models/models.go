@@ -133,6 +133,41 @@ type OrganizationInvitation struct {
 	CreatedAt          time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
 }
 
+// OrganizationOwnershipTransfer keeps the current Owner authoritative until
+// the nominated Organization member accepts the single-use action.
+type OrganizationOwnershipTransfer struct {
+	bun.BaseModel `bun:"table:organization_ownership_transfers"`
+
+	ID               string    `bun:",pk" json:"id"`
+	OrganizationID   string    `bun:"organization_id,notnull" json:"organization_id"`
+	PriorOwnerUserID string    `bun:"prior_owner_user_id,notnull" json:"prior_owner_user_id"`
+	NomineeUserID    string    `bun:"nominee_user_id,notnull" json:"nominee_user_id"`
+	Status           string    `bun:",notnull,default:'pending'" json:"status"`
+	ExpiresAt        time.Time `bun:"expires_at,notnull" json:"expires_at"`
+	AcceptedAt       time.Time `bun:"accepted_at,nullzero" json:"accepted_at,omitempty"`
+	DeclinedAt       time.Time `bun:"declined_at,nullzero" json:"declined_at,omitempty"`
+	RevokedAt        time.Time `bun:"revoked_at,nullzero" json:"revoked_at,omitempty"`
+	ExpiredAt        time.Time `bun:"expired_at,nullzero" json:"expired_at,omitempty"`
+	CreatedAt        time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
+	UpdatedAt        time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"updated_at"`
+}
+
+// OrganizationOwnershipAuditEvent is permission-safe, domain-owned evidence
+// for an ownership transfer. Transfer and nominee IDs preserve the affected
+// subject without retaining acceptance tokens, links, or email addresses.
+type OrganizationOwnershipAuditEvent struct {
+	bun.BaseModel `bun:"table:organization_ownership_audit_events"`
+
+	ID             string    `bun:",pk" json:"id"`
+	OrganizationID string    `bun:"organization_id,notnull" json:"organization_id"`
+	TransferID     string    `bun:"transfer_id,notnull" json:"transfer_id"`
+	ActorUserID    string    `bun:"actor_user_id,nullzero" json:"actor_user_id,omitempty"`
+	NomineeUserID  string    `bun:"nominee_user_id,nullzero" json:"nominee_user_id,omitempty"`
+	Action         string    `bun:",notnull" json:"action"`
+	Result         string    `bun:",notnull" json:"result"`
+	CreatedAt      time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
+}
+
 type Workspace struct {
 	bun.BaseModel `bun:"table:workspaces"`
 

@@ -30,6 +30,7 @@
 	import { setUnsavedChanges, UnsavedChangesContext } from '$lib/unsaved-changes.svelte';
 	import PublicHome from './_components/PublicHome.svelte';
 	import { initializeAppTelemetry } from '$lib/telemetry';
+	import { isOrganizationOwnershipSettingsRoute } from '$lib/app-navigation';
 
 	let { children } = $props();
 	const unsavedChanges = setUnsavedChanges(new UnsavedChangesContext());
@@ -88,6 +89,7 @@
 		'/account-deleted',
 		'/connect',
 		'/invite',
+		'/ownership-transfer',
 		'/impersonate',
 		'/cli/authorize',
 		'/oauth/authorize',
@@ -124,8 +126,13 @@
 	let onboardingCheckedPath = $state('');
 	let onboardingCheckInFlightForPath = $state('');
 	let ssoChallengeInFlight = $state(false);
+	let isOrganizationOwnershipRoute = $derived(isOrganizationOwnershipSettingsRoute($page.url));
 	let routeSkipsWorkspaceBootstrap = $derived(
-		currentPath === '/onboarding' || currentPath === '/checkout' || isErrorRoute
+		currentPath === '/onboarding' ||
+			currentPath === '/checkout' ||
+			currentPath === '/ownership-transfer' ||
+			isOrganizationOwnershipRoute ||
+			isErrorRoute
 	);
 
 	function authenticatedPublicTarget() {

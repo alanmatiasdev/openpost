@@ -4,13 +4,13 @@
 	import * as Select from '$lib/components/ui/select';
 	import { Input } from '$lib/components/ui/input';
 	import { m } from '$lib/paraglide/messages';
-	import type { SettingsDestinationID } from '$lib/settings-navigation';
+	import {
+		getSettingsDestinations,
+		type SettingsDestination,
+		type SettingsDestinationID,
+		type SettingsDestinationGroup
+	} from '$lib/settings-navigation';
 	import SearchIcon from '@lucide/svelte/icons/search';
-
-	interface SettingsDestination {
-		id: SettingsDestinationID;
-		label: string;
-	}
 
 	interface Props {
 		active: SettingsDestinationID;
@@ -20,41 +20,11 @@
 	let { active, showInstance = false }: Props = $props();
 	let search = $state('');
 
-	const personalDestinations = $derived<SettingsDestination[]>([
-		{ id: 'profile', label: m.settings_profile() },
-		{ id: 'notifications', label: m.notifications_settings() },
-		{ id: 'security', label: m.settings_security() },
-		{ id: 'developer', label: m.settings_developer() }
-	]);
-	const workspaceDestinations = $derived<SettingsDestination[]>([
-		{ id: 'general', label: m.settings_general() },
-		{ id: 'brand', label: m.media_brand() },
-		{ id: 'accounts', label: m.accounts_heading() },
-		{ id: 'reposts', label: m.settings_reposts() },
-		{ id: 'schedule', label: m.settings_schedule() },
-		{ id: 'members', label: m.settings_members() }
-	]);
-	const organizationDestinations = $derived<SettingsDestination[]>([
-		{ id: 'plan', label: m.settings_plan() },
-		{ id: 'sso', label: m.settings_sso() },
-		{ id: 'audit', label: m.settings_audit_title() }
-	]);
-	const instanceDestinations = $derived<SettingsDestination[]>(
-		showInstance
-			? [
-					{ id: 'instance', label: m.settings_instance() },
-					{ id: 'configuration', label: m.settings_configuration() },
-					{ id: 'users', label: m.settings_instance_users() },
-					{ id: 'instance-audit', label: m.settings_instance_audit_title() }
-				]
-			: []
-	);
-	const allDestinations = $derived([
-		...personalDestinations,
-		...workspaceDestinations,
-		...organizationDestinations,
-		...instanceDestinations
-	]);
+	const allDestinations = $derived(getSettingsDestinations(showInstance));
+	const personalDestinations = $derived(destinationsInGroup('personal'));
+	const workspaceDestinations = $derived(destinationsInGroup('workspace'));
+	const organizationDestinations = $derived(destinationsInGroup('organization'));
+	const instanceDestinations = $derived(destinationsInGroup('instance'));
 	const activeLabel = $derived(
 		allDestinations.find((destination) => destination.id === active)?.label ?? m.settings_general()
 	);
@@ -81,6 +51,10 @@
 
 	function matchesSearch(destination: SettingsDestination) {
 		return !normalizedSearch || destination.label.toLocaleLowerCase().includes(normalizedSearch);
+	}
+
+	function destinationsInGroup(group: SettingsDestinationGroup) {
+		return allDestinations.filter((destination) => destination.group === group);
 	}
 
 	function destinationHref(destination: SettingsDestinationID): string {

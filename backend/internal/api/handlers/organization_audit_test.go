@@ -61,6 +61,18 @@ func TestOrganizationOwnerCanPageFilterAndExportSafeAuditEvidence(t *testing.T) 
 	require.Contains(t, csvExport.Body.String(), "workspace_member")
 	require.NotContains(t, csvExport.Body.String(), "private@example.com")
 
+	_, err := srv.db.NewInsert().Model(&models.OrganizationOwnershipAuditEvent{
+		ID: "ownership-1", OrganizationID: "org-1", TransferID: "transfer-1",
+		ActorUserID: "user-1", NomineeUserID: "user-1", Action: "ownership_transfer.initiated",
+		Result: "succeeded", CreatedAt: now.Add(2 * time.Minute),
+	}).Exec(t.Context())
+	require.NoError(t, err)
+	ownership := srv.getJSON(t, "/api/v1/organizations/org-1/audit-events?resource_type=organization_ownership_transfer", "web-token")
+	require.Equal(t, http.StatusOK, ownership.Code, ownership.Body.String())
+	require.Contains(t, ownership.Body.String(), "ownership-1")
+	require.Contains(t, ownership.Body.String(), `"type":"organization_ownership_transfer"`)
+	require.NotContains(t, ownership.Body.String(), "identity-1")
+
 	for _, row := range []models.BillingCheckoutAttempt{
 		{CheckoutAttemptID: "billing-new", OrganizationID: "org-1", WorkspaceID: "ws-1", ProviderPriceID: "price", PlanID: "pro", BillingPeriod: "monthly", Status: "completed", CreatedAt: now.Add(time.Minute), UpdatedAt: now.Add(time.Minute)},
 		{CheckoutAttemptID: "billing-old", OrganizationID: "org-1", WorkspaceID: "ws-1", ProviderPriceID: "price", PlanID: "pro", BillingPeriod: "monthly", Status: "completed", CreatedAt: now, UpdatedAt: now},

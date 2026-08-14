@@ -87,6 +87,10 @@
 		{ value: 'workspace', label: m.settings_audit_resource_workspace() },
 		{ value: 'workspace_member', label: m.settings_audit_resource_workspace_member() },
 		{ value: 'workspace_invitation', label: m.settings_audit_resource_workspace_invitation() },
+		{
+			value: 'organization_ownership_transfer',
+			label: m.settings_audit_resource_organization_ownership_transfer()
+		},
 		{ value: 'provider', label: m.settings_audit_resource_provider() },
 		{ value: 'policy', label: m.settings_audit_resource_policy() },
 		{ value: 'domain', label: m.settings_audit_resource_domain() },

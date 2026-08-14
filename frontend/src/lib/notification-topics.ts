@@ -75,6 +75,15 @@ const notificationTopics = {
 		immediateEmail: true,
 		transactionalEmail: true
 	},
+	ownership_transfer: {
+		group: 'account',
+		label: m.notifications_event_ownership_transfer,
+		description: m.notifications_event_ownership_transfer_description,
+		icon: UserPlusIcon,
+		criticalInApp: true,
+		immediateEmail: true,
+		transactionalEmail: true
+	},
 	security_action: {
 		group: 'account',
 		label: m.notifications_event_security_action,

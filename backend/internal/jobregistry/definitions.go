@@ -7,26 +7,27 @@ import (
 
 // Type is a durable Job kind stored in jobs.type.
 const (
-	TypePublishPost         = "publish_post"
-	TypePublishPublication  = "publish_publication"
-	TypeRefreshToken        = "refresh_token"
-	TypeMediaCleanup        = "media_cleanup"
-	TypeStorageDelete       = "storage_delete"
-	TypeFeedbackDelivery    = "deliver_feedback"
-	TypeAnalyticsSweep      = "analytics_sweep"
-	TypeAnalyticsAccount    = "analytics_account_sync"
-	TypeAnalyticsRendition  = "analytics_rendition_sync"
-	TypeBillingWebhook      = "billing_paddle_webhook"
-	TypeCommunicationsSweep = "communications_sweep"
-	TypeEngagementSync      = "engagement_sync"
-	TypeMessagesSync        = "messages_sync"
-	TypeEngagementAction    = "engagement_action"
-	TypeMessageSend         = "message_send"
-	TypeNotificationEmail   = "notification_email"
-	TypeRepostSweep         = "repost_sweep"
-	TypeRepostEvaluate      = "repost_evaluate"
-	TypeRepostExecute       = "repost_execute"
-	TypeMediaAnalyze        = "media_analyze"
+	TypePublishPost             = "publish_post"
+	TypePublishPublication      = "publish_publication"
+	TypeRefreshToken            = "refresh_token"
+	TypeMediaCleanup            = "media_cleanup"
+	TypeStorageDelete           = "storage_delete"
+	TypeFeedbackDelivery        = "deliver_feedback"
+	TypeAnalyticsSweep          = "analytics_sweep"
+	TypeAnalyticsAccount        = "analytics_account_sync"
+	TypeAnalyticsRendition      = "analytics_rendition_sync"
+	TypeBillingWebhook          = "billing_paddle_webhook"
+	TypeCommunicationsSweep     = "communications_sweep"
+	TypeEngagementSync          = "engagement_sync"
+	TypeMessagesSync            = "messages_sync"
+	TypeEngagementAction        = "engagement_action"
+	TypeMessageSend             = "message_send"
+	TypeNotificationEmail       = "notification_email"
+	TypeOwnershipTransferExpiry = "organization_ownership_transfer_expiry"
+	TypeRepostSweep             = "repost_sweep"
+	TypeRepostEvaluate          = "repost_evaluate"
+	TypeRepostExecute           = "repost_execute"
+	TypeMediaAnalyze            = "media_analyze"
 )
 
 // ExecutionKind selects the injected implementation for a registered Job.
@@ -35,18 +36,19 @@ const (
 type ExecutionKind string
 
 const (
-	ExecutePublishPost        ExecutionKind = "publish_post"
-	ExecutePublishPublication ExecutionKind = "publish_publication"
-	ExecuteRefreshToken       ExecutionKind = "refresh_token"
-	ExecuteMediaCleanup       ExecutionKind = "media_cleanup"
-	ExecuteStorageDelete      ExecutionKind = "storage_delete"
-	ExecuteFeedback           ExecutionKind = "feedback"
-	ExecuteAnalytics          ExecutionKind = "analytics"
-	ExecuteBilling            ExecutionKind = "billing"
-	ExecuteCommunications     ExecutionKind = "communications"
-	ExecuteNotification       ExecutionKind = "notification"
-	ExecuteRepost             ExecutionKind = "repost"
-	ExecuteVideo              ExecutionKind = "video"
+	ExecutePublishPost           ExecutionKind = "publish_post"
+	ExecutePublishPublication    ExecutionKind = "publish_publication"
+	ExecuteRefreshToken          ExecutionKind = "refresh_token"
+	ExecuteMediaCleanup          ExecutionKind = "media_cleanup"
+	ExecuteStorageDelete         ExecutionKind = "storage_delete"
+	ExecuteFeedback              ExecutionKind = "feedback"
+	ExecuteAnalytics             ExecutionKind = "analytics"
+	ExecuteBilling               ExecutionKind = "billing"
+	ExecuteCommunications        ExecutionKind = "communications"
+	ExecuteNotification          ExecutionKind = "notification"
+	ExecuteOrganizationOwnership ExecutionKind = "organization_ownership"
+	ExecuteRepost                ExecutionKind = "repost"
+	ExecuteVideo                 ExecutionKind = "video"
 )
 
 // FailurePolicy describes how the runtime interprets an execution error.
@@ -115,7 +117,8 @@ var definitions = map[string]Definition{
 		"The provider write failed. OpenPost did not retry because the provider result may be ambiguous."),
 	TypeMessageSend: providerWriteDefinition(TypeMessageSend, ExecuteCommunications,
 		"The provider write failed. OpenPost did not retry because the provider result may be ambiguous."),
-	TypeNotificationEmail: definition(TypeNotificationEmail, 5, ExecuteNotification, FailureDefault, RecoveryRequeue),
+	TypeNotificationEmail:       definition(TypeNotificationEmail, 5, ExecuteNotification, FailureDefault, RecoveryRequeue),
+	TypeOwnershipTransferExpiry: definition(TypeOwnershipTransferExpiry, 5, ExecuteOrganizationOwnership, FailureDefault, RecoveryRequeue),
 	TypeRepostSweep: providerReadDefinition(TypeRepostSweep, 3, ExecuteRepost, RecoverySupersedeSweep,
 		"Repost evaluation failed. OpenPost will retry when the failure is temporary.",
 		"A later repost sweep remains queued; this sweep will not retry."),

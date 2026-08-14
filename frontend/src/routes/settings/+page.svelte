@@ -12,6 +12,7 @@
 	import NotificationPreferences from '$lib/components/notification-preferences.svelte';
 	import OrganizationSSOSettings from '$lib/components/organization-sso-settings.svelte';
 	import OrganizationAuditSettings from '$lib/components/organization-audit-settings.svelte';
+	import OrganizationOwnershipSettings from '$lib/components/organization-ownership-settings.svelte';
 	import WorkspaceTeamSettings from '$lib/components/workspace-team-settings.svelte';
 	import InstanceConfiguration from '$lib/components/instance-configuration.svelte';
 	import InstanceAdminUsers from '$lib/components/instance-admin-users.svelte';
@@ -35,7 +36,7 @@
 	import ScheduleSettingsTab from '$lib/components/settings/ScheduleSettingsTab.svelte';
 	import DeveloperSettingsTab from '$lib/components/settings/DeveloperSettingsTab.svelte';
 	import SecuritySettingsTab from '$lib/components/settings/SecuritySettingsTab.svelte';
-	import type { SettingsTabID } from '$lib/settings-navigation';
+	import { getSettingsDestination, normalizeSettingsTab } from '$lib/settings-navigation';
 	import { showToast } from '$lib/toast';
 	import { m } from '$lib/paraglide/messages';
 	import SettingsIcon from '@lucide/svelte/icons/settings';
@@ -52,117 +53,21 @@
 		mastodonCallbackHref: '/accounts/mastodon/callback'
 	};
 
-	const settingsTabs = $derived<SettingsTabID[]>([
-		'profile',
-		'notifications',
-		'security',
-		'developer',
-		'general',
-		'brand',
-		'accounts',
-		'reposts',
-		'schedule',
-		'members',
-		'sso',
-		'audit',
-		'plan',
-		...(authState.user?.is_admin
-			? (['instance', 'configuration', 'users', 'instance-audit'] as const)
-			: [])
-	]);
-
-	const activeSettingsTab = $derived.by(() => {
-		const requested = normalizeSettingsTab(
-			page.url.searchParams.get('tab') || page.url.hash.replace(/^#/, '') || null
-		);
-		return (requested === 'instance' ||
-			requested === 'configuration' ||
-			requested === 'users' ||
-			requested === 'instance-audit') &&
-			!authState.user?.is_admin
-			? 'general'
-			: requested;
-	});
-
-	const settingsLoadingVariant = $derived.by(() => {
-		if (activeSettingsTab === 'profile') return 'profile' as const;
-		if (
-			['members', 'sso', 'audit', 'plan', 'security', 'notifications'].includes(activeSettingsTab)
-		) {
-			return 'cards' as const;
-		}
-		if (
-			[
-				'developer',
-				'schedule',
-				'accounts',
-				'reposts',
-				'instance',
-				'configuration',
-				'users'
-			].includes(activeSettingsTab)
-		) {
-			return 'list' as const;
-		}
-		return 'form' as const;
-	});
-
-	const activeSettingsTitle = $derived.by(() => {
-		if (activeSettingsTab === 'profile') return m.settings_profile();
-		if (activeSettingsTab === 'notifications') return m.notifications_settings();
-		if (activeSettingsTab === 'security') return m.settings_security();
-		if (activeSettingsTab === 'developer') return m.settings_developer();
-		if (activeSettingsTab === 'instance') return m.settings_instance();
-		if (activeSettingsTab === 'configuration') return m.settings_configuration();
-		if (activeSettingsTab === 'users') return m.settings_instance_users();
-		if (activeSettingsTab === 'instance-audit') return m.settings_instance_audit_title();
-		if (activeSettingsTab === 'members') return m.settings_team_members();
-		if (activeSettingsTab === 'sso') return m.settings_sso();
-		if (activeSettingsTab === 'audit') return m.settings_audit_title();
-		if (activeSettingsTab === 'plan') return m.settings_plan();
-		if (activeSettingsTab === 'schedule') return m.settings_schedule();
-		if (activeSettingsTab === 'brand') return m.media_brand();
-		if (activeSettingsTab === 'accounts') return m.accounts_heading();
-		if (activeSettingsTab === 'reposts') return m.settings_reposts();
-		return m.settings_general();
-	});
-
-	const activeSettingsDescription = $derived.by(() => {
-		if (activeSettingsTab === 'profile') return m.settings_profile_description();
-		if (activeSettingsTab === 'notifications') return m.notifications_settings_description();
-		if (activeSettingsTab === 'security') return m.settings_account_security_body();
-		if (activeSettingsTab === 'developer') return m.settings_developer_description();
-		if (activeSettingsTab === 'instance') return m.settings_instance_description();
-		if (activeSettingsTab === 'configuration') return m.settings_configuration_description();
-		if (activeSettingsTab === 'users') return m.settings_instance_users_page_description();
-		if (activeSettingsTab === 'instance-audit') return m.settings_instance_audit_description();
-		if (activeSettingsTab === 'members') return m.settings_members_description();
-		if (activeSettingsTab === 'sso') return m.settings_sso_description();
-		if (activeSettingsTab === 'audit') return m.settings_audit_description();
-		if (activeSettingsTab === 'plan') return m.settings_plan_description();
-		if (activeSettingsTab === 'schedule') return m.settings_schedule_description();
-		if (activeSettingsTab === 'brand') return m.media_brand_description();
-		if (activeSettingsTab === 'accounts') return m.accounts_description();
-		if (activeSettingsTab === 'reposts') return m.settings_reposts_description();
-		return m.settings_general_description({
-			workspace: workspaceCtx.currentWorkspace?.name || m.settings_workspace()
-		});
-	});
-
-	function isSettingsTab(value: string): value is SettingsTabID {
-		return settingsTabs.includes(value as SettingsTabID);
-	}
-
-	function normalizeSettingsTab(value: string | null): SettingsTabID {
-		if (value === 'billing' || value === 'organization') return 'plan';
-		if (value === 'team') return 'members';
-		if (value === 'tokens' || value === 'account') {
-			return value === 'tokens' ? 'developer' : 'profile';
-		}
-		if (value === 'workspace' || value === 'media') return 'general';
-		if (value === 'social-accounts' || value === 'accounts') return 'accounts';
-		return value && isSettingsTab(value) ? value : 'general';
-	}
+	const activeSettingsTab = $derived(
+		normalizeSettingsTab(
+			page.url.searchParams.get('tab') || page.url.hash.replace(/^#/, '') || null,
+			Boolean(authState.user?.is_admin)
+		)
+	);
+	const activeSettingsDestination = $derived(
+		getSettingsDestination(activeSettingsTab, {
+			workspaceName: workspaceCtx.currentWorkspace?.name
+		})
+	);
+	const settingsLoadingVariant = $derived(activeSettingsDestination.loadingVariant);
+	const activeSettingsTitle = $derived(activeSettingsDestination.title);
+	const activeSettingsDescription = $derived(activeSettingsDestination.description);
+	const workspaceSettingsRequired = $derived(activeSettingsDestination.group === 'workspace');
 
 	$effect(() => {
 		const url = page.url;
@@ -221,14 +126,15 @@
 	title={activeSettingsTitle}
 	description={activeSettingsDescription}
 	icon={SettingsIcon}
-	loading={activeSettingsTab !== 'audit' &&
+	loading={workspaceSettingsRequired &&
+		activeSettingsTab !== 'audit' &&
 		(!workspaceCtx.currentWorkspace || workspaceCtx.settingsLoading)}
 	loadingMessage={m.settings_loading_workspace()}
 	loadingLayout="settings"
 	loadingVariant={settingsLoadingVariant}
 	loadingItems={8}
 >
-	{#if workspaceCtx.settingsError && activeSettingsTab !== 'audit'}
+	{#if workspaceSettingsRequired && workspaceCtx.settingsError && activeSettingsTab !== 'audit'}
 		<InlineNotice tone="error" message={m.settings_workspace_load_failed()}>
 			{#snippet actions()}
 				<Button variant="outline" size="sm" onclick={() => void workspaceCtx.loadSettings()}>
@@ -347,6 +253,20 @@
 						organizationID={workspaceCtx.currentWorkspace?.organization_id ?? ''}
 						active={activeSettingsTab === 'audit'}
 					/>
+				</section>
+
+				<section
+					id="ownership"
+					class:hidden={activeSettingsTab !== 'ownership'}
+					class="scroll-mt-24"
+				>
+					{#if activeSettingsTab === 'ownership'}
+						<OrganizationOwnershipSettings
+							preferredOrganizationID={page.url.searchParams.get('organization') ?? ''}
+							currentUserID={authState.user?.id ?? ''}
+							active
+						/>
+					{/if}
 				</section>
 
 				<section id="billing" class:hidden={activeSettingsTab !== 'plan'} class="scroll-mt-24">

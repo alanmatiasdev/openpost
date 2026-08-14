@@ -55,3 +55,10 @@ export function isNavigationItemActive(item: PrimaryNavigationItem, pathname: st
 		path === '/' ? pathname === '/' : pathname === path || pathname.startsWith(`${path}/`)
 	);
 }
+
+export function isOrganizationOwnershipSettingsRoute(url: URL): boolean {
+	return (
+		url.pathname === '/settings' &&
+		(url.searchParams.get('tab') === 'ownership' || url.hash === '#ownership')
+	);
+}

@@ -25,6 +25,7 @@ func newProjectionTestDB(t *testing.T) *bun.DB {
 		(*models.Organization)(nil), (*models.OrganizationMember)(nil), (*models.Workspace)(nil),
 		(*models.IdentityProvider)(nil),
 		(*models.IdentityAuditEvent)(nil), (*models.WorkspaceAccessAuditEvent)(nil),
+		(*models.OrganizationOwnershipAuditEvent)(nil),
 		(*models.WorkspaceLifecycleAuditEvent)(nil),
 		(*models.UserImpersonationGrant)(nil), (*models.BillingCheckoutAttempt)(nil),
 		(*models.UserImpersonationGrantOrganization)(nil),
@@ -240,4 +241,34 @@ func TestListInstanceProjectsEveryOrganizationWithoutChangingOrganizationScope(t
 	require.NoError(t, err)
 	require.NotContains(t, string(encoded), "private@example.com")
 	require.NotContains(t, string(encoded), "secret")
+}
+
+func TestListProjectsOrganizationOwnershipEvidenceWithSafeSubject(t *testing.T) {
+	db := newProjectionTestDB(t)
+	now := time.Date(2026, time.August, 14, 12, 0, 0, 0, time.UTC)
+	_, err := db.NewInsert().Model(&models.Organization{ID: "org-1", Name: "One", CreatedAt: now}).Exec(t.Context())
+	require.NoError(t, err)
+	rows := []models.OrganizationOwnershipAuditEvent{
+		{ID: "accepted", OrganizationID: "org-1", TransferID: "transfer-1", ActorUserID: "nominee-1", NomineeUserID: "nominee-1", Action: "ownership_transfer.accepted", Result: string(ResultSucceeded), CreatedAt: now},
+		{ID: "failed", OrganizationID: "org-1", TransferID: "transfer-1", ActorUserID: "other-1", NomineeUserID: "nominee-1", Action: "ownership_transfer.failed", Result: string(ResultFailed), CreatedAt: now.Add(-time.Minute)},
+	}
+	_, err = db.NewInsert().Model(&rows).Exec(t.Context())
+	require.NoError(t, err)
+
+	page, err := NewService(db).List(t.Context(), Query{OrganizationID: "org-1", ResourceType: ResourceOrganizationOwnershipTransfer, Limit: 10})
+	require.NoError(t, err)
+	require.Len(t, page.Items, 2)
+	require.Equal(t, SourceOrganizationOwnership, page.Items[0].Source)
+	require.Equal(t, AuditResource{Type: ResourceOrganizationOwnershipTransfer, ID: "transfer-1", OrganizationID: "org-1"}, page.Items[0].Resource)
+	require.Equal(t, ResultSucceeded, page.Items[0].Result)
+	require.Equal(t, []AuditChangedField{{Field: "nominee_user_id", Current: "nominee-1"}}, page.Items[0].ChangedFields)
+	require.Equal(t, ResultFailed, page.Items[1].Result)
+
+	failed, err := NewService(db).List(t.Context(), Query{OrganizationID: "org-1", ResourceType: ResourceOrganizationOwnershipTransfer, Result: ResultFailed, Limit: 10})
+	require.NoError(t, err)
+	require.Equal(t, []string{"failed"}, []string{failed.Items[0].ID})
+	encoded, err := json.Marshal(page.Items)
+	require.NoError(t, err)
+	require.NotContains(t, string(encoded), "@")
+	require.NotContains(t, string(encoded), "token")
 }

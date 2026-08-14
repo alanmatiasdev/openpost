@@ -20,6 +20,7 @@ import (
 	"github.com/openpost/backend/internal/services/medialifecycle"
 	"github.com/openpost/backend/internal/services/mediastore"
 	"github.com/openpost/backend/internal/services/notifications"
+	"github.com/openpost/backend/internal/services/organizationownership"
 	"github.com/openpost/backend/internal/services/providerwrite"
 	"github.com/openpost/backend/internal/services/publisher"
 	repostservice "github.com/openpost/backend/internal/services/reposts"
@@ -47,22 +48,23 @@ const (
 
 // BackgroundWorker polls the configured database for pending jobs.
 type BackgroundWorker struct {
-	db             *bun.DB
-	workerID       string
-	interval       time.Duration
-	publisher      *publisher.Service
-	tokens         *tokenmanager.TokenManager
-	storage        mediastore.BlobStorage
-	feedback       *feedback.Service
-	analytics      *analyticsservice.Service
-	billing        *billingservice.Service
-	communications *communicationsservice.Service
-	notifications  *notifications.Service
-	reposts        *repostservice.Service
-	video          *videoprocessing.Service
-	telemetry      telemetry.Recorder
-	executors      map[jobregistry.ExecutionKind]jobExecutor
-	done           chan struct{}
+	db                    *bun.DB
+	workerID              string
+	interval              time.Duration
+	publisher             *publisher.Service
+	tokens                *tokenmanager.TokenManager
+	storage               mediastore.BlobStorage
+	feedback              *feedback.Service
+	analytics             *analyticsservice.Service
+	billing               *billingservice.Service
+	communications        *communicationsservice.Service
+	notifications         *notifications.Service
+	organizationOwnership *organizationownership.Service
+	reposts               *repostservice.Service
+	video                 *videoprocessing.Service
+	telemetry             telemetry.Recorder
+	executors             map[jobregistry.ExecutionKind]jobExecutor
+	done                  chan struct{}
 }
 
 type jobExecutor func(context.Context, *models.Job) error
@@ -114,6 +116,16 @@ func (w *BackgroundWorker) SetNotificationService(service *notifications.Service
 			return fmt.Errorf("notification delivery is not configured")
 		}
 		return w.notifications.HandleJob(ctx, job.Type, job.Payload)
+	}
+}
+
+func (w *BackgroundWorker) SetOrganizationOwnershipService(service *organizationownership.Service) {
+	w.organizationOwnership = service
+	w.executors[jobregistry.ExecuteOrganizationOwnership] = func(ctx context.Context, job *models.Job) error {
+		if w.organizationOwnership == nil {
+			return fmt.Errorf("organization ownership is not configured")
+		}
+		return w.organizationOwnership.HandleJob(ctx, job.Type, job.Payload)
 	}
 }
 

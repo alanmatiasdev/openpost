@@ -30,6 +30,7 @@ import (
 	"github.com/openpost/backend/internal/services/memegeneration"
 	"github.com/openpost/backend/internal/services/mfa"
 	"github.com/openpost/backend/internal/services/notifications"
+	"github.com/openpost/backend/internal/services/organizationownership"
 	"github.com/openpost/backend/internal/services/passwordmail"
 	"github.com/openpost/backend/internal/services/providerapps"
 	"github.com/openpost/backend/internal/services/providerreadiness"
@@ -89,6 +90,7 @@ type RouteDeps struct {
 	CommunicationsService        *communicationsservice.Service
 	RepostService                *repostservice.Service
 	NotificationService          *notifications.Service
+	OrganizationOwnershipService *organizationownership.Service
 	UpdateStatusService          *updatestatus.Service
 	ProviderReadinessService     *providerreadiness.Service
 	AppVersion                   string
@@ -300,6 +302,11 @@ func RegisterHumaRoutes(api huma.API, deps RouteDeps) {
 	workspaceHandler.StartWorkspaceComposition(api)
 	workspaceHandler.GetWorkspaceSettings(api)
 	workspaceHandler.UpdateWorkspaceSettings(api)
+	ownershipService := deps.OrganizationOwnershipService
+	if ownershipService == nil {
+		ownershipService = organizationownership.NewService(deps.DB, deps.NotificationService, deps.IdentityService)
+	}
+	handlers.NewOrganizationOwnershipHandler(ownershipService, deps.Authenticator).RegisterRoutes(api)
 
 	postHandler := handlers.NewPostHandler(deps.DB, deps.Authenticator, deps.Entitlement)
 	postHandler.SetRepostService(deps.RepostService)

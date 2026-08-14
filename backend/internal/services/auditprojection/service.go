@@ -21,6 +21,7 @@ const (
 	SourceIdentity                 Source = "identity"
 	SourceImpersonation            Source = "impersonation"
 	SourceMCP                      Source = "mcp"
+	SourceOrganizationOwnership    Source = "organization_ownership"
 	SourcePublicationAuthorization Source = "publication_authorization"
 	SourcePublicationLifecycle     Source = "publication_lifecycle"
 	SourceProviderWrite            Source = "provider_write"
@@ -39,22 +40,23 @@ const (
 type ResourceType string
 
 const (
-	ResourceBilling                  ResourceType = "billing"
-	ResourceDomain                   ResourceType = "domain"
-	ResourceIdentity                 ResourceType = "identity"
-	ResourceIdentityConfiguration    ResourceType = "identity_configuration"
-	ResourceImpersonation            ResourceType = "impersonation"
-	ResourceMCPToolCall              ResourceType = "mcp_tool_call"
-	ResourcePolicy                   ResourceType = "policy"
-	ResourceProvider                 ResourceType = "provider"
-	ResourceProviderWrite            ResourceType = "provider_write"
-	ResourcePublication              ResourceType = "publication"
-	ResourcePublicationAuthorization ResourceType = "publication_authorization"
-	ResourceReauthentication         ResourceType = "reauthentication"
-	ResourceSession                  ResourceType = "session"
-	ResourceWorkspaceInvitation      ResourceType = "workspace_invitation"
-	ResourceWorkspaceMember          ResourceType = "workspace_member"
-	ResourceWorkspace                ResourceType = "workspace"
+	ResourceBilling                       ResourceType = "billing"
+	ResourceDomain                        ResourceType = "domain"
+	ResourceIdentity                      ResourceType = "identity"
+	ResourceIdentityConfiguration         ResourceType = "identity_configuration"
+	ResourceImpersonation                 ResourceType = "impersonation"
+	ResourceMCPToolCall                   ResourceType = "mcp_tool_call"
+	ResourceOrganizationOwnershipTransfer ResourceType = "organization_ownership_transfer"
+	ResourcePolicy                        ResourceType = "policy"
+	ResourceProvider                      ResourceType = "provider"
+	ResourceProviderWrite                 ResourceType = "provider_write"
+	ResourcePublication                   ResourceType = "publication"
+	ResourcePublicationAuthorization      ResourceType = "publication_authorization"
+	ResourceReauthentication              ResourceType = "reauthentication"
+	ResourceSession                       ResourceType = "session"
+	ResourceWorkspaceInvitation           ResourceType = "workspace_invitation"
+	ResourceWorkspaceMember               ResourceType = "workspace_member"
+	ResourceWorkspace                     ResourceType = "workspace"
 )
 
 var identityResourcePrefixes = map[ResourceType]string{
@@ -71,6 +73,7 @@ var sourceResourceTypes = map[Source]map[ResourceType]struct{}{
 	SourceIdentity:                 {ResourceProvider: {}, ResourcePolicy: {}, ResourceDomain: {}, ResourceSession: {}, ResourceIdentity: {}, ResourceReauthentication: {}, ResourceIdentityConfiguration: {}},
 	SourceImpersonation:            {ResourceImpersonation: {}},
 	SourceMCP:                      {ResourceMCPToolCall: {}},
+	SourceOrganizationOwnership:    {ResourceOrganizationOwnershipTransfer: {}},
 	SourcePublicationAuthorization: {ResourcePublicationAuthorization: {}},
 	SourcePublicationLifecycle:     {ResourcePublication: {}},
 	SourceProviderWrite:            {ResourceProviderWrite: {}},
@@ -160,6 +163,7 @@ func (s *Service) list(ctx context.Context, input Query) (Page, error) {
 		load   func(context.Context, Query, int) ([]AuditEvent, error)
 	}{
 		{SourceIdentity, s.listIdentity},
+		{SourceOrganizationOwnership, s.listOrganizationOwnership},
 		{SourceWorkspaceAccess, s.listWorkspaceAccess},
 		{SourceWorkspaceLifecycle, s.listWorkspaceLifecycle},
 		{SourceImpersonation, s.listImpersonation},
@@ -191,6 +195,25 @@ func (s *Service) list(ctx context.Context, input Query) (Page, error) {
 		page.NextCursor = &Cursor{OccurredAt: last.OccurredAt, Source: last.Source, ID: last.ID}
 	}
 	return page, nil
+}
+
+func (s *Service) listOrganizationOwnership(ctx context.Context, input Query, limit int) ([]AuditEvent, error) {
+	if input.WorkspaceID != "" {
+		return []AuditEvent{}, nil
+	}
+	var rows []models.OrganizationOwnershipAuditEvent
+	query := s.db.NewSelect().Model(&rows).OrderExpr("created_at DESC, id DESC").Limit(limit)
+	if input.OrganizationID != "" {
+		query = query.Where("organization_id = ?", input.OrganizationID)
+	}
+	query = applyCommonSQLFilters(query, "created_at", "actor_user_id", "action", SourceOrganizationOwnership, input)
+	if input.Result != "" {
+		query = query.Where("result = ?", input.Result)
+	}
+	if err := scan(ctx, query); err != nil {
+		return nil, err
+	}
+	return projectAndFilter(rows, input, projectOrganizationOwnership), nil
 }
 
 func (s *Service) listWorkspaceLifecycle(ctx context.Context, input Query, limit int) ([]AuditEvent, error) {
@@ -568,6 +591,28 @@ func projectWorkspaceAccess(row models.WorkspaceAccessAuditEvent) AuditEvent {
 		{Field: "status", Previous: safeStatus(row.PreviousStatus), Current: safeStatus(row.Status)},
 	})
 	return newEvent(row.ID, SourceWorkspaceAccess, row.ActorUserID, "", row.Action, resourceType, resourceID, row.WorkspaceID, ResultSucceeded, changed, row.CreatedAt)
+}
+
+func projectOrganizationOwnership(row models.OrganizationOwnershipAuditEvent) AuditEvent {
+	result := ResultSucceeded
+	if row.Result == string(ResultFailed) {
+		result = ResultFailed
+	}
+	event := newEvent(
+		row.ID,
+		SourceOrganizationOwnership,
+		row.ActorUserID,
+		"",
+		safeAction(row.Action, "ownership_transfer.unknown"),
+		ResourceOrganizationOwnershipTransfer,
+		row.TransferID,
+		"",
+		result,
+		[]AuditChangedField{{Field: "nominee_user_id", Current: row.NomineeUserID}},
+		row.CreatedAt,
+	)
+	event.Resource.OrganizationID = row.OrganizationID
+	return event
 }
 
 func projectWorkspaceLifecycle(row models.WorkspaceLifecycleAuditEvent) AuditEvent {

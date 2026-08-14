@@ -54,6 +54,7 @@ import (
 	"github.com/openpost/backend/internal/services/memegeneration"
 	"github.com/openpost/backend/internal/services/mfa"
 	"github.com/openpost/backend/internal/services/notifications"
+	"github.com/openpost/backend/internal/services/organizationownership"
 	"github.com/openpost/backend/internal/services/passwordmail"
 	"github.com/openpost/backend/internal/services/providerapps"
 	"github.com/openpost/backend/internal/services/providerreadiness"
@@ -494,6 +495,8 @@ func main() {
 	worker.SetBillingService(billingService)
 	worker.SetCommunicationsService(communicationsService)
 	worker.SetNotificationService(notificationService)
+	organizationOwnershipService := organizationownership.NewService(db, notificationService, identityService)
+	worker.SetOrganizationOwnershipService(organizationOwnershipService)
 	worker.SetRepostService(repostService)
 	worker.SetVideoProcessingService(videoProcessingService)
 	worker.SetTelemetry(telemetryRecorder)
@@ -628,6 +631,7 @@ func main() {
 		CommunicationsService:        communicationsService,
 		RepostService:                repostService,
 		NotificationService:          notificationService,
+		OrganizationOwnershipService: organizationOwnershipService,
 		UpdateStatusService:          updateStatusService,
 		AppVersion:                   version,
 		AppRevision:                  runningBuildRevision(),

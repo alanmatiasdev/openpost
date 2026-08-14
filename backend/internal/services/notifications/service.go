@@ -29,6 +29,7 @@ const (
 	TypeNewMessage                   = "new_message"
 	TypeReplyFailed                  = "reply_failed"
 	TypeWorkspaceInvite              = "workspace_invite"
+	TypeOwnershipTransfer            = "ownership_transfer"
 	TypeSecurityAction               = "security_action"
 	TypeAccessChanged                = "access_changed"
 	TypeCriticalBilling              = "critical_billing"
@@ -41,6 +42,8 @@ const (
 	EmailClassificationTransactional = "transactional"
 	EmailClassificationRequired      = "required_notification"
 	EmailClassificationDailyDigest   = "daily_digest"
+	OwnershipTransferSemanticKind    = "organization_ownership_nomination"
+	OwnershipTransferReviewAction    = "ownership_transfer.review"
 
 	visibleWorkspaceNotifications = "(workspace_id = ? OR workspace_id = '')"
 )
@@ -59,16 +62,18 @@ var criticalInApp = map[string]bool{
 	TypeAccountNeedsAttention: true,
 	TypeReplyFailed:           true,
 	TypeWorkspaceInvite:       true,
+	TypeOwnershipTransfer:     true,
 	TypeSecurityAction:        true,
 	TypeAccessChanged:         true,
 	TypeCriticalBilling:       true,
 }
 
 var transactionalEmail = map[string]bool{
-	TypeWorkspaceInvite: true,
-	TypeSecurityAction:  true,
-	TypeAccessChanged:   true,
-	TypeCriticalBilling: true,
+	TypeWorkspaceInvite:   true,
+	TypeOwnershipTransfer: true,
+	TypeSecurityAction:    true,
+	TypeAccessChanged:     true,
+	TypeCriticalBilling:   true,
 }
 
 type EmailFrequency string
@@ -99,6 +104,7 @@ func DefaultPreferences() Preferences {
 		TypeNewMessage:            {InApp: true, EmailFrequency: EmailFrequencyOff},
 		TypeReplyFailed:           {InApp: true, EmailFrequency: EmailFrequencyImmediate},
 		TypeWorkspaceInvite:       {InApp: true, EmailFrequency: EmailFrequencyImmediate},
+		TypeOwnershipTransfer:     {InApp: true, EmailFrequency: EmailFrequencyImmediate},
 		TypeSecurityAction:        {InApp: true, EmailFrequency: EmailFrequencyImmediate},
 		TypeAccessChanged:         {InApp: true, EmailFrequency: EmailFrequencyImmediate},
 		TypeCriticalBilling:       {InApp: true, EmailFrequency: EmailFrequencyImmediate},
@@ -492,22 +498,23 @@ func (s *Service) storeInAppNotification(ctx context.Context, db bun.IDB, input 
 }
 
 type emailDeliveryJob struct {
-	DeliveryID          string    `json:"delivery_id"`
-	Classification      string    `json:"classification,omitempty"`
-	UserID              string    `json:"user_id,omitempty"`
-	WorkspaceID         string    `json:"workspace_id,omitempty"`
-	WorkspaceScopeKnown bool      `json:"workspace_scope_known,omitempty"`
-	Type                string    `json:"type,omitempty"`
-	Title               string    `json:"title,omitempty"`
-	Body                string    `json:"body,omitempty"`
-	Href                string    `json:"href,omitempty"`
-	Recipient           string    `json:"recipient,omitempty"`
-	WorkspaceName       string    `json:"workspace_name,omitempty"`
-	InviterName         string    `json:"inviter_name,omitempty"`
-	Role                string    `json:"role,omitempty"`
-	AcceptURLEnc        []byte    `json:"accept_url_encrypted,omitempty"`
-	ExpiresAt           time.Time `json:"expires_at,omitempty"`
-	DeliveryWindowAt    time.Time `json:"delivery_window_at,omitempty"`
+	DeliveryID          string            `json:"delivery_id"`
+	Classification      string            `json:"classification,omitempty"`
+	UserID              string            `json:"user_id,omitempty"`
+	WorkspaceID         string            `json:"workspace_id,omitempty"`
+	WorkspaceScopeKnown bool              `json:"workspace_scope_known,omitempty"`
+	Type                string            `json:"type,omitempty"`
+	Title               string            `json:"title,omitempty"`
+	Body                string            `json:"body,omitempty"`
+	SemanticData        map[string]string `json:"semantic_data,omitempty"`
+	Href                string            `json:"href,omitempty"`
+	Recipient           string            `json:"recipient,omitempty"`
+	WorkspaceName       string            `json:"workspace_name,omitempty"`
+	InviterName         string            `json:"inviter_name,omitempty"`
+	Role                string            `json:"role,omitempty"`
+	AcceptURLEnc        []byte            `json:"accept_url_encrypted,omitempty"`
+	ExpiresAt           time.Time         `json:"expires_at,omitempty"`
+	DeliveryWindowAt    time.Time         `json:"delivery_window_at,omitempty"`
 }
 
 func (s *Service) EnqueueWorkspaceInvitation(ctx context.Context, input WorkspaceInvitationEmailInput) (EmailDelivery, error) {
@@ -701,6 +708,7 @@ func (s *Service) enqueueEmailWithDB(ctx context.Context, db bun.IDB, input Crea
 		Type:                input.Type,
 		Title:               strings.TrimSpace(input.Title),
 		Body:                strings.TrimSpace(input.Body),
+		SemanticData:        notificationSemanticData(input),
 		Href:                href,
 	})
 	if err != nil {
@@ -835,17 +843,48 @@ func (s *Service) HandleJob(ctx context.Context, jobType, payload string) error 
 		actionURL = s.publicURL + job.Href
 	}
 	preferencesURL := ""
-	if s.publicURL != "" {
+	if job.Classification != EmailClassificationRequired && s.publicURL != "" {
 		preferencesURL = s.publicURL + "/settings?tab=notifications"
 	}
-	return s.sender.SendNotification(ctx, passwordmail.NotificationMessage{
+	title, body := notificationEmailPresentation(job)
+	err = s.sender.SendNotification(ctx, passwordmail.NotificationMessage{
 		Recipient:      email,
-		Title:          job.Title,
-		Body:           job.Body,
+		Title:          title,
+		Body:           body,
 		ActionURL:      actionURL,
 		PreferencesURL: preferencesURL,
 		IdempotencyKey: "notification-" + job.DeliveryID,
 	})
+	if err != nil && job.Classification == EmailClassificationRequired {
+		// Provider responses may echo action content. Required notifications can
+		// carry sensitive account actions, so worker evidence uses a fixed error.
+		return errors.New("required notification email delivery failed")
+	}
+	return err
+}
+
+func notificationSemanticData(input CreateInput) map[string]string {
+	if input.Type != TypeOwnershipTransfer || input.Payload["kind"] != OwnershipTransferSemanticKind {
+		return nil
+	}
+	organizationName, _ := input.Payload["organization_name"].(string)
+	organizationName = strings.TrimSpace(organizationName)
+	if organizationName == "" {
+		return nil
+	}
+	return map[string]string{"kind": OwnershipTransferSemanticKind, "organization_name": organizationName}
+}
+
+func notificationEmailPresentation(job emailDeliveryJob) (string, string) {
+	if job.Type != TypeOwnershipTransfer || job.SemanticData["kind"] != OwnershipTransferSemanticKind {
+		return job.Title, job.Body
+	}
+	organizationName := strings.TrimSpace(job.SemanticData["organization_name"])
+	if organizationName == "" {
+		return job.Title, job.Body
+	}
+	return "Organization ownership / Propriedade da Organização",
+		fmt.Sprintf("Review the ownership nomination for %s. Accept or decline before it expires.\n\nReveja a nomeação de propriedade de %s. Aceite ou recuse antes de expirar.", organizationName, organizationName)
 }
 
 func (s *Service) shouldDeliverImmediateJob(ctx context.Context, job emailDeliveryJob) (bool, error) {

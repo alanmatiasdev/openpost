@@ -93,6 +93,39 @@ required SSO does not support organization-wide app tokens. Keep an
 MFA-protected local instance administrator in
 `OPENPOST_SSO_BREAK_GLASS_EMAILS` before enforcing SSO.
 
+### Organization ownership
+
+The **Ownership** tab shows the current Organization Owner. Only that Owner can
+nominate another active Organization member. Starting a transfer requires
+recent authentication and the exact Organization name. The nominee receives an
+expiring Transactional action and can accept or decline it. The current Owner
+can revoke a pending transfer. The recipient action remains available to an
+active Organization member who has no Workspace access and does not send them
+through Workspace onboarding.
+
+Ownership is Organization administration, not Workspace access. The tab loads
+the Organizations you own and lets you select one even when you cannot open any
+of its Workspaces. It shows the current Owner's identity before any transfer
+action.
+
+Nomination does not change access. Decline, expiry, and revocation leave the
+current Owner in place. Acceptance changes both roles in one database
+transaction: the nominee becomes the only Owner and the prior Owner becomes an
+Organization Administrator. Creator authority moves to the nominee in the same
+transaction, while the Organization's subscription remains attached to it.
+Initiation and every terminal outcome appear in
+Organization audit evidence without exposing the action link or member email.
+Expiry is recorded by a durable Job, so it does not depend on someone opening
+the page.
+
+The in-app nomination notice follows the active English or Portuguese
+interface. The required email includes both supported languages. If OpenPost
+cannot load the current transfer state, the page reports the failure and hides
+all nomination actions until a successful refresh.
+
+Database upgrades apply migration 097 automatically. It adds ownership transfer
+and audit state; no operator action is required.
+
 ### Organization audit evidence
 
 The **Organization audit** tab is available only to the Organization Owner. It
