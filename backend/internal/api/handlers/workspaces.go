@@ -16,6 +16,7 @@ import (
 	"github.com/openpost/backend/internal/api/middleware"
 	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/queue"
+	"github.com/openpost/backend/internal/services/auditprojection"
 	"github.com/openpost/backend/internal/services/entitlements"
 	"github.com/openpost/backend/internal/services/identity"
 	"github.com/openpost/backend/internal/services/medialifecycle"
@@ -33,6 +34,7 @@ type WorkspaceHandler struct {
 	notifications *notifications.Service
 	team          *workspaceteam.Service
 	setup         *setupprojection.Service
+	audit         *auditprojection.Service
 	hosted        bool
 	frontendURL   string
 	inviteLimiter *ratelimit.Limiter
@@ -51,8 +53,11 @@ func NewWorkspaceHandler(db *bun.DB, authenticator middleware.Authenticator, ent
 	_, hosted := entitlementService.(*entitlements.SubscriptionService)
 	return &WorkspaceHandler{
 		db: db, auth: authenticator, entitlement: entitlementService,
-		team:  workspaceteam.NewService(db, entitlementService, nil),
-		setup: setupprojection.NewService(db), hosted: hosted, inviteLimiter: ratelimit.New(),
+		team:          workspaceteam.NewService(db, entitlementService, nil),
+		setup:         setupprojection.NewService(db),
+		audit:         auditprojection.NewService(db),
+		hosted:        hosted,
+		inviteLimiter: ratelimit.New(),
 	}
 }
 

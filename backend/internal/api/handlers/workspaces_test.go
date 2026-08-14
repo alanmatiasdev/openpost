@@ -25,6 +25,7 @@ import (
 type workspaceTestServer struct {
 	echo *echo.Echo
 	db   *bun.DB
+	api  huma.API
 }
 
 func newWorkspaceTestServer(t *testing.T, entitlement entitlements.Service) *workspaceTestServer {
@@ -48,7 +49,14 @@ func newWorkspaceTestServerWithAuthenticator(t *testing.T, entitlement entitleme
 		(*models.Publication)(nil),
 		(*models.WorkspaceInvitation)(nil),
 		(*models.WorkspaceAccessAuditEvent)(nil),
+		(*models.IdentityAuditEvent)(nil),
 		(*models.IdentityProvider)(nil),
+		(*models.UserImpersonationGrant)(nil),
+		(*models.UserImpersonationGrantOrganization)(nil),
+		(*models.MCPToolCall)(nil),
+		(*models.PublicationLifecycleEvent)(nil),
+		(*models.PublicationAuthorization)(nil),
+		(*models.ProviderWriteAttempt)(nil),
 		(*models.OrganizationSSOPolicy)(nil),
 		(*models.SessionIdentityAssurance)(nil),
 		(*models.APIToken)(nil),
@@ -65,11 +73,13 @@ func newWorkspaceTestServerWithAuthenticator(t *testing.T, entitlement entitleme
 	handler.UpdateWorkspaceMember(api)
 	handler.RemoveWorkspaceMember(api)
 	handler.ListWorkspaceAccessAudit(api)
+	handler.ListOrganizationAudit(api)
+	handler.ExportOrganizationAudit(api)
 	handler.AcceptWorkspaceInvitation(api)
 	handler.GetWorkspaceSetup(api)
 	handler.StartWorkspaceComposition(api)
 
-	return &workspaceTestServer{echo: e, db: db}
+	return &workspaceTestServer{echo: e, db: db, api: api}
 }
 
 func TestWorkspaceSetupProjectsOwnerProgressFromProductState(t *testing.T) {
