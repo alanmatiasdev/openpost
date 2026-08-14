@@ -1,6 +1,8 @@
 <script lang="ts">
 	import ComposeShell from '$lib/components/compose-shell.svelte';
 	import InlineNotice from '$lib/components/inline-notice.svelte';
+	import WorkspaceSetupGuide from '$lib/components/workspace-setup-guide.svelte';
+	import { workspaceCtx } from '$lib/stores/workspace.svelte';
 	import { m } from '$lib/paraglide/messages';
 
 	let handoffSelected = $state(false);
@@ -11,6 +13,11 @@
 </svelte:head>
 
 <div class="flex flex-1 flex-col overflow-hidden">
+	{#if workspaceCtx.currentWorkspace}
+		<div class="mx-auto hidden w-full max-w-6xl px-4 pt-5 md:block lg:px-8">
+			<WorkspaceSetupGuide workspaceID={workspaceCtx.currentWorkspace.id} />
+		</div>
+	{/if}
 	{#if handoffSelected}
 		<div class="mx-auto w-full max-w-6xl px-4 pt-5 sm:px-6 lg:px-8">
 			<InlineNotice

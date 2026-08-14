@@ -4,6 +4,7 @@ import { authenticatePage, createWorkspace, registerUser } from "./helpers";
 interface BillingRecoveryFixture {
   organization_id: string;
   workspace_id: string;
+  provider: "paddle";
   status: "active" | "past_due";
   plan_id: string;
   can_manage_billing: boolean;
@@ -26,6 +27,7 @@ test("failed-payment recovery stays account-wide, permission-aware, and clears f
   let billingStatus: BillingRecoveryFixture = {
     organization_id: workspace.organization_id,
     workspace_id: workspace.id,
+    provider: "paddle",
     status: "past_due",
     plan_id: "pro",
     can_manage_billing: true,

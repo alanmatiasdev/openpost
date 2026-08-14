@@ -93,6 +93,8 @@ test("mobile shell and composer expose touch-first controls without overflow", a
 
   await page.goto("/");
   await expect(page.getByTestId("text-thread-composer-shell")).toBeVisible();
+  await expect(page.getByTestId("workspace-setup-guide-home")).toBeHidden();
+  await expect(page.getByTestId("workspace-setup-guide-composer")).toBeVisible();
 
   await expect(page.getByRole("button", { name: "Toggle Sidebar" })).toHaveCount(0);
   await expect(page.getByText("OpenPost", { exact: true })).toHaveCount(0);
