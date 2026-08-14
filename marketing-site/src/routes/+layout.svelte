@@ -20,7 +20,7 @@
 	const agentMarkdown = $derived(marketingAgentMarkdownUrl(social));
 
 	afterNavigate((navigation) => {
-		captureTelemetryPageView(navigation.to?.url.pathname ?? window.location.pathname);
+		captureTelemetryPageView(navigation.to?.route.id ?? '/unknown');
 	});
 
 	onMount(() => {
@@ -32,7 +32,7 @@
 			projectToken: import.meta.env.VITE_POSTHOG_PROJECT_TOKEN,
 			apiHost: import.meta.env.VITE_POSTHOG_API_HOST,
 			uiHost: import.meta.env.VITE_POSTHOG_UI_HOST,
-			environment: import.meta.env.VITE_OPENPOST_ENVIRONMENT || 'production',
+			environment: import.meta.env.VITE_OPENPOST_ENVIRONMENT || 'development',
 			edition: 'public',
 			version: import.meta.env.VITE_OPENPOST_VERSION,
 			revision: import.meta.env.VITE_OPENPOST_REVISION,

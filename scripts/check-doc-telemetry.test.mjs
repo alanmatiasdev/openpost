@@ -7,6 +7,7 @@ const docsThemePath = new URL("../docs-site/.vitepress/theme/index.ts", import.m
 const telemetryGuidePath = new URL("../docs-site/configuration/telemetry.md", import.meta.url);
 const docsPackagePath = new URL("../docs-site/package.json", import.meta.url);
 const marketingPackagePath = new URL("../marketing-site/package.json", import.meta.url);
+const marketingLayoutPath = new URL("../marketing-site/src/routes/+layout.svelte", import.meta.url);
 const repositoryRoot = new URL("..", import.meta.url);
 
 describe("documentation telemetry", () => {
@@ -89,5 +90,31 @@ describe("documentation telemetry", () => {
 
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain("https://cool.openpost.social");
+  });
+
+  test("keeps local defaults non-production and sends marketing route templates", async () => {
+    const [docsTheme, marketingLayout] = await Promise.all([
+      readFile(docsThemePath, "utf8"),
+      readFile(marketingLayoutPath, "utf8"),
+    ]);
+    expect(docsTheme).toContain('VITE_OPENPOST_ENVIRONMENT || "development"');
+    expect(marketingLayout).toContain("VITE_OPENPOST_ENVIRONMENT || 'development'");
+    expect(marketingLayout).toContain("navigation.to?.route.id ?? '/unknown'");
+    expect(marketingLayout).not.toContain("route.id ?? window.location.pathname");
+
+    const result = spawnSync("bun", ["scripts/check-public-telemetry-env.mjs"], {
+      cwd: repositoryRoot,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        CF_PAGES: "",
+        CF_PAGES_BRANCH: "",
+        VITE_OPENPOST_ENVIRONMENT: "",
+        VITE_POSTHOG_PROJECT_TOKEN: "",
+        VITE_POSTHOG_API_HOST: "",
+        VITE_POSTHOG_UI_HOST: "",
+      },
+    });
+    expect(result.status).toBe(0);
   });
 });

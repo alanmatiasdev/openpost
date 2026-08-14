@@ -119,6 +119,12 @@ for (const [label, turboConfig] of [
       `${label} build hash is missing ${input}`,
     );
   }
+  for (const environmentName of ["CF_PAGES", "CF_PAGES_BRANCH"]) {
+    requireCondition(
+      turboConfig.tasks.build.env?.includes(environmentName),
+      `${label} build must pass ${environmentName} to the production telemetry guard`,
+    );
+  }
 }
 
 const docsTurbo = await readJSON("docs-site/turbo.json");

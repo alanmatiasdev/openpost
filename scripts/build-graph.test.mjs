@@ -38,6 +38,14 @@ test("the marketing build prepares its shared frontend SvelteKit aliases", async
   );
 });
 
+test("public builds pass Cloudflare branch identity to the telemetry guard", async () => {
+  for (const surface of ["docs-site", "marketing-site"]) {
+    const turboJSON = JSON.parse(await readFile(path.join(root, surface, "turbo.json"), "utf8"));
+    assert.ok(turboJSON.tasks.build.env.includes("CF_PAGES"));
+    assert.ok(turboJSON.tasks.build.env.includes("CF_PAGES_BRANCH"));
+  }
+});
+
 function runTurbo(directory, args) {
   const result = spawnSync(turboBinary, args, {
     cwd: directory,

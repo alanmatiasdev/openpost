@@ -74,7 +74,7 @@ type PendingEvent = {
   properties: Record<string, unknown>;
 };
 
-type PendingPageView = { pathname: string; title: string };
+type PendingPageView = { pathname: string };
 type PendingException = { error: Error; properties: Record<string, unknown> };
 type BrowserCaptureEvent = {
   event: string;
@@ -181,7 +181,7 @@ export class BrowserTelemetry {
       this.sdk.capture(event.name, event.properties);
     }
     for (const pageView of this.pendingPageViews.splice(0)) {
-      this.capturePageView(pageView.pathname, pageView.title);
+      this.capturePageView(pageView.pathname);
     }
     for (const exception of this.pendingExceptions.splice(0)) {
       this.sdk.captureException(exception.error, exception.properties);
@@ -205,13 +205,13 @@ export class BrowserTelemetry {
     this.sdk.capture(name, properties);
   }
 
-  capturePageView(pathname: string, title = document.title): void {
+  capturePageView(pathname: string, _title?: string): void {
     if (this.disabled || typeof window === "undefined") return;
     const path = cleanPath(pathname);
     this.rememberRouteTemplate(cleanPath(window.location.pathname), path);
     if (!this.configured) {
       if (this.pendingPageViews.length < maxPendingEvents) {
-        this.pendingPageViews.push({ pathname, title });
+        this.pendingPageViews.push({ pathname });
       }
       return;
     }
@@ -220,7 +220,6 @@ export class BrowserTelemetry {
     this.sdk.capture("$pageview", {
       $current_url: `${window.location.origin}${path}`,
       path,
-      title,
     });
   }
 
@@ -437,55 +436,67 @@ function sanitizeSDKProperties(
   previousPath: string | null,
   routeTemplates: ReadonlyMap<string, string>,
 ): Record<string, unknown> {
-  return Object.fromEntries(
-    Object.entries(properties).map(([key, value]) => {
-      if (
-        key === "$current_url" ||
-        key === "$initial_current_url" ||
-        key === "$session_entry_url" ||
-        key === "navigationURL"
-      ) {
-        return [key, safeCurrentURL(value, currentPath, routeTemplates)];
-      }
-      if (key === "$pathname") return [key, currentPath];
-      if (key === "$initial_pathname" || key === "$session_entry_pathname") {
-        return [key, routeTemplateForPath(value, routeTemplates, currentPath)];
-      }
-      if (key === "$prev_pageview_pathname") {
-        return [key, routeTemplateForPath(value, routeTemplates, previousPath ?? currentPath)];
-      }
-      if (key === "$referrer" || key === "$initial_referrer" || key === "$session_entry_referrer") {
-        return [key, safeReferrerOrigin(value)];
-      }
-      if (Array.isArray(value)) {
-        return [
-          key,
-          value.map((entry) =>
-            entry && typeof entry === "object"
-              ? sanitizeSDKProperties(
-                  entry as Record<string, unknown>,
-                  currentPath,
-                  previousPath,
-                  routeTemplates,
-                )
-              : entry,
-          ),
-        ];
-      }
-      if (value && typeof value === "object") {
-        return [
-          key,
-          sanitizeSDKProperties(
-            value as Record<string, unknown>,
-            currentPath,
-            previousPath,
-            routeTemplates,
-          ),
-        ];
-      }
-      return [key, value];
-    }),
-  );
+  const sanitized: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(properties)) {
+    if (key === "title" || key === "$title" || key === "entries") continue;
+    if (
+      key === "$current_url" ||
+      key === "$initial_current_url" ||
+      key === "$session_entry_url" ||
+      key === "navigationURL"
+    ) {
+      sanitized[key] = safeCurrentURL(value, currentPath, routeTemplates);
+      continue;
+    }
+    if (key === "$pathname") {
+      sanitized[key] = currentPath;
+      continue;
+    }
+    if (key === "$initial_pathname" || key === "$session_entry_pathname") {
+      sanitized[key] = routeTemplateForPath(value, routeTemplates, currentPath);
+      continue;
+    }
+    if (key === "$prev_pageview_pathname") {
+      sanitized[key] = routeTemplateForPath(value, routeTemplates, previousPath ?? currentPath);
+      continue;
+    }
+    if (key === "$referrer" || key === "$initial_referrer" || key === "$session_entry_referrer") {
+      sanitized[key] = safeReferrerOrigin(value);
+      continue;
+    }
+    if (key === "url" && typeof value === "string") continue;
+    if (key === "name" && typeof value === "string" && looksLikeURL(value)) continue;
+    if (Array.isArray(value)) {
+      sanitized[key] = value.map((entry) =>
+        entry && typeof entry === "object"
+          ? sanitizeSDKProperties(
+              entry as Record<string, unknown>,
+              currentPath,
+              previousPath,
+              routeTemplates,
+            )
+          : typeof entry === "string" && looksLikeURL(entry)
+            ? "[redacted-url]"
+            : entry,
+      );
+      continue;
+    }
+    if (value && typeof value === "object") {
+      sanitized[key] = sanitizeSDKProperties(
+        value as Record<string, unknown>,
+        currentPath,
+        previousPath,
+        routeTemplates,
+      );
+      continue;
+    }
+    sanitized[key] = typeof value === "string" && looksLikeURL(value) ? "[redacted-url]" : value;
+  }
+  return sanitized;
+}
+
+function looksLikeURL(value: string): boolean {
+  return /^(?:https?:)?\/\//iu.test(value.trim());
 }
 
 function routeTemplateForEvent(

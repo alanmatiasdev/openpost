@@ -137,11 +137,21 @@ describe("BrowserTelemetry", () => {
             "https://app.openpost.social/publications/private-publication-id?token=secret#private",
           $referrer: "https://search.example/private/path?query=secret",
           $session_entry_referrer: "https://search.example/private/path?query=secret",
+          title: "Private launch artwork",
+          $title: "Private launch artwork",
           $web_vitals_LCP_event: {
+            name: "LCP",
+            value: 123,
             $current_url:
               "https://app.openpost.social/publications/private-publication-id?token=secret",
             navigationURL:
               "https://app.openpost.social/publications/private-publication-id?token=secret",
+            entries: [
+              {
+                name: "https://cdn.example/private-project-name.png?token=secret",
+                url: "https://cdn.example/private-project-name.png?token=secret",
+              },
+            ],
           },
         },
       });
@@ -159,6 +169,10 @@ describe("BrowserTelemetry", () => {
           navigationURL: "https://app.openpost.social/publications/[id]",
         },
       });
+      expect(event?.properties).not.toHaveProperty("title");
+      expect(event?.properties).not.toHaveProperty("$title");
+      expect(event?.properties?.$web_vitals_LCP_event).not.toHaveProperty("entries");
+      expect(JSON.stringify(event)).not.toContain("private-project-name");
     } finally {
       vi.unstubAllGlobals();
     }
