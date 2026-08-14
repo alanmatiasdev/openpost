@@ -1,5 +1,7 @@
 # Invitation delivery callbacks
 
+This page is for operators integrating an email provider's delivery callbacks.
+
 OpenPost separates email provider acceptance from confirmed delivery. A
 successful delivery job marks a Workspace invitation **Sent**. It means the
 provider accepted the request. It does not prove delivery. A verified callback

@@ -255,6 +255,10 @@
     "audience": "This checklist is for contributors reviewing Image Editor completeness.",
     "boundary": "Statuses describe the current working tree, not design intent. Update a status only with source and test evidence."
   },
+  "https://docs.openpost.social/development/invitation-delivery-callbacks": {
+    "audience": "This page is for operators integrating an email provider's delivery callbacks.",
+    "boundary": "A successful delivery job marks a Workspace invitation Sent."
+  },
   "https://docs.openpost.social/development/": {
     "audience": "Use these docs when you are changing OpenPost itself: backend routes, platform adapters, frontend components, generated clients, MCP tools, billing infrastructure, database migrations, tests, or release behavior.",
     "boundary": "Developer docs are separate from user-facing docs and self-hosting docs."

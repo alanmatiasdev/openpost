@@ -439,7 +439,7 @@ export const docsPageCatalog = Object.freeze([
   {
     "page": "development/invitation-delivery-callbacks.md",
     "title": "Invitation delivery callbacks",
-    "description": "OpenPost separates email provider acceptance from confirmed delivery.",
+    "description": "This page is for operators integrating an email provider's delivery callbacks.",
     "route": "/development/invitation-delivery-callbacks",
     "agentRepresentation": {
       "membership": "ordinary"
