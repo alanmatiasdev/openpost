@@ -14,10 +14,12 @@ test("immutable editor assets replace generated copies with shared files", async
   t.after(() => rm(root, { recursive: true, force: true }));
   const source = path.join(root, "static");
   const output = path.join(root, "build");
-  await Promise.all([
-    mkdir(path.join(source, "video-editor-models"), { recursive: true }),
-    mkdir(path.join(output, "video-editor-models"), { recursive: true }),
-  ]);
+  await Promise.all(
+    ["image-editor-models", "video-editor-audio", "video-editor-models"].map((directory) =>
+      mkdir(path.join(source, directory), { recursive: true }),
+    ),
+  );
+  await mkdir(path.join(output, "video-editor-models"), { recursive: true });
   await Promise.all([
     writeFile(path.join(source, "video-editor-models", "model.onnx"), "canonical\n"),
     writeFile(path.join(output, "video-editor-models", "model.onnx"), "copy\n"),
@@ -49,7 +51,7 @@ test("frontend asset materialization targets only generated surface trees", () =
   ]);
 });
 
-test("missing canonical asset directories remove stale generated copies", async (t) => {
+test("missing canonical asset directories fail without changing generated copies", async (t) => {
   const root = await mkdtemp(path.join(os.tmpdir(), "openpost-immutable-assets-missing-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const source = path.join(root, "static");
@@ -58,10 +60,16 @@ test("missing canonical asset directories remove stale generated copies", async 
   await mkdir(path.join(output, "video-editor-models"), { recursive: true });
   await writeFile(path.join(output, "video-editor-models", "removed.onnx"), "stale\n");
 
-  await materializeImmutableFrontendAssets({
-    sourceDirectory: source,
-    outputDirectory: output,
-  });
+  await assert.rejects(
+    materializeImmutableFrontendAssets({
+      sourceDirectory: source,
+      outputDirectory: output,
+    }),
+    /Missing canonical immutable frontend asset directory/u,
+  );
 
-  await assert.rejects(stat(path.join(output, "video-editor-models")), /ENOENT/u);
+  assert.equal(
+    await readFile(path.join(output, "video-editor-models", "removed.onnx"), "utf8"),
+    "stale\n",
+  );
 });

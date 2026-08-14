@@ -24,6 +24,9 @@ bun run check -- ui-consistency
 bun run build -- frontend
 ```
 
-The cached frontend task owns `frontend/build`. `bun run build -- frontend`
-packages that validated artifact into `backend/cmd/openpost/public` only after
-the build completes, so stale or partial files cannot enter the Go embed tree.
+The cached frontend task owns the compiled files in `frontend/build` and omits
+the tracked immutable editor model and audio trees from its cache entry. `bun
+run build -- frontend` restores those trees from `frontend/static` with hard
+links when possible, validates the complete artifact, then replaces
+`backend/cmd/openpost/public` atomically. Missing or partial model and audio
+sources fail packaging, so incomplete files cannot enter the Go embed tree.

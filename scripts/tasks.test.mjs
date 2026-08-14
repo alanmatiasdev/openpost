@@ -44,6 +44,11 @@ test("nested Turbo tasks inherit the root cache lease", () => {
   assert.match(tasksSource, /env: \{ \.\.\.step\.env, OPENPOST_ROOT_TASK_LOCKED: "1" \}/u);
 });
 
+test("development startup skips shared cache maintenance and removes only its legacy cache", () => {
+  assert.match(tasksSource, /removeLegacyTurboCache\(path\.join\(root, "\.turbo", "cache"\)\)/u);
+  assert.match(tasksSource, /plan\.command === "dev"[\s\S]*tryTurboCacheMaintenance/u);
+});
+
 test("workspace manifests keep implementation tasks without old public aliases", () => {
   const frontend = manifest("frontend/package.json");
   assert.deepEqual(Object.keys(frontend.scripts).sort(), [

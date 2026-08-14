@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 import { randomUUID } from "node:crypto";
-import { lstat, mkdir, open, readFile, readdir, unlink } from "node:fs/promises";
+import { lstat, mkdir, open, readFile, readdir, rm, unlink } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -37,6 +37,17 @@ export function withTurboCacheDirectory(argv, cacheDirectory) {
     return argv;
   }
   return [...argv, "--cache-dir", cacheDirectory];
+}
+
+export async function removeLegacyTurboCache(directory) {
+  try {
+    await lstat(directory);
+  } catch (error) {
+    if (error?.code === "ENOENT") return false;
+    throw error;
+  }
+  await rm(directory, { recursive: true, force: true });
+  return true;
 }
 
 export function turboCacheMaxBytes(environment = process.env) {

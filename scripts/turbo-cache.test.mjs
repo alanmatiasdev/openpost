@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -8,6 +8,7 @@ import * as turboCache from "./turbo-cache.mjs";
 import {
   formatPruneResult,
   pruneTurboCache,
+  removeLegacyTurboCache,
   tryTurboCacheMaintenance,
   withTurboCacheLease,
   withTurboCacheLock,
@@ -58,6 +59,18 @@ test("root Turbo commands use the bounded shared cache", () => {
     "test",
     "./...",
   ]);
+});
+
+test("legacy per-worktree Turbo caches are removed once", async (t) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "openpost-turbo-cache-legacy-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const legacy = path.join(directory, ".turbo", "cache");
+  await mkdir(legacy, { recursive: true });
+  await writeFile(path.join(legacy, "entry.tar.zst"), "old", { flush: true });
+
+  assert.equal(await removeLegacyTurboCache(legacy), true);
+  await assert.rejects(stat(legacy), /ENOENT/u);
+  assert.equal(await removeLegacyTurboCache(legacy), false);
 });
 
 function allocatedBytes(file) {

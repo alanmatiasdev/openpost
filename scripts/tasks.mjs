@@ -6,13 +6,13 @@ import path from "node:path";
 import {
   formatPruneResult,
   pruneTurboCache,
+  removeLegacyTurboCache,
   resolveTurboCacheDirectory,
   turboCacheMaxBytes,
   tryTurboCacheMaintenance,
   withTurboCacheDirectory,
   withTurboCacheLease,
   withTurboCacheLock,
-  withTurboCacheMaintenance,
 } from "./turbo-cache.mjs";
 
 const root = path.resolve(import.meta.dir, "..");
@@ -185,14 +185,18 @@ try {
     } else {
       const worktreeLock = path.join(root, ".turbo", "root-task");
       if (plan.command === "dev") {
-        await withTurboCacheMaintenance({ directory: cacheDirectory }, () =>
-          enforceTurboCacheLimit(cacheDirectory),
-        );
+        await withTurboCacheLock({ directory: worktreeLock }, async () => {
+          await removeLegacyTurboCache(path.join(root, ".turbo", "cache"));
+          await tryTurboCacheMaintenance({ directory: cacheDirectory }, () =>
+            enforceTurboCacheLimit(cacheDirectory),
+          );
+        });
         await execute(plan, { cacheDirectory, enforceCacheLimit: false });
       } else {
-        await withTurboCacheLock({ directory: worktreeLock }, () =>
-          executeWithCacheLease(plan, cacheDirectory),
-        );
+        await withTurboCacheLock({ directory: worktreeLock }, async () => {
+          await removeLegacyTurboCache(path.join(root, ".turbo", "cache"));
+          await executeWithCacheLease(plan, cacheDirectory);
+        });
       }
     }
   }

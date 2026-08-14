@@ -7,7 +7,7 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-import { artifactManifest, packageFrontend } from "./package-frontend.mjs";
+import { artifactManifest, packageFrontend, shouldCopyFrontendPath } from "./package-frontend.mjs";
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 
@@ -81,7 +81,11 @@ async function fixture() {
   const source = path.join(root, "frontend-build");
   const destination = path.join(root, "backend", "public");
   await mkdir(path.join(source, "assets"), { recursive: true });
-  await mkdir(path.join(source, "video-editor-models"), { recursive: true });
+  await Promise.all(
+    ["image-editor-models", "video-editor-audio", "video-editor-models"].map((directory) =>
+      mkdir(path.join(source, directory), { recursive: true }),
+    ),
+  );
   await Promise.all([
     writeFile(path.join(source, "index.html"), "<!doctype html><h1>OpenPost</h1>\n"),
     writeFile(
@@ -144,7 +148,11 @@ test("materializes immutable assets omitted from a cached frontend build", async
   const { root, source, destination } = await fixture();
   t.after(() => rm(root, { recursive: true, force: true }));
   const canonical = path.join(root, "frontend-static");
-  await mkdir(path.join(canonical, "video-editor-models"), { recursive: true });
+  await Promise.all(
+    ["image-editor-models", "video-editor-audio", "video-editor-models"].map((directory) =>
+      mkdir(path.join(canonical, directory), { recursive: true }),
+    ),
+  );
   await writeFile(
     path.join(canonical, "video-editor-models", "fixture.onnx"),
     "cached-model-weights\n",
@@ -164,6 +172,17 @@ test("materializes immutable assets omitted from a cached frontend build", async
   ]);
   assert.equal(buildModel.ino, canonicalModel.ino);
   assert.equal(packagedModel.ino, canonicalModel.ino);
+});
+
+test("staging copy omits immutable assets before they are linked", () => {
+  const source = "/work/openpost/frontend/build";
+  assert.equal(shouldCopyFrontendPath(source, source), true);
+  assert.equal(shouldCopyFrontendPath(source, path.join(source, "assets", "app.js")), true);
+  assert.equal(shouldCopyFrontendPath(source, path.join(source, "video-editor-models")), false);
+  assert.equal(
+    shouldCopyFrontendPath(source, path.join(source, "video-editor-models", "model.onnx")),
+    false,
+  );
 });
 
 test("rejects overlapping source and destination paths", async (t) => {

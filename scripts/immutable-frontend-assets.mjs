@@ -53,9 +53,15 @@ export async function materializeImmutableFrontendAssets({ sourceDirectory, outp
 
   for (const directory of immutableFrontendAssetDirectories) {
     const source = path.join(sourceRoot, directory);
+    if (!(await pathExists(source))) {
+      throw new Error(`Missing canonical immutable frontend asset directory: ${source}`);
+    }
+  }
+
+  for (const directory of immutableFrontendAssetDirectories) {
+    const source = path.join(sourceRoot, directory);
     const destination = path.join(outputRoot, directory);
     await rm(destination, { recursive: true, force: true });
-    if (!(await pathExists(source))) continue;
     await linkTree(source, destination);
   }
 }

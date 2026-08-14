@@ -3,7 +3,10 @@ import { cp, lstat, mkdir, readFile, readdir, rename, rm, writeFile } from "node
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-import { materializeImmutableFrontendAssets } from "./immutable-frontend-assets.mjs";
+import {
+  immutableFrontendAssetDirectories,
+  materializeImmutableFrontendAssets,
+} from "./immutable-frontend-assets.mjs";
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 export const repositoryRoot = path.resolve(scriptDirectory, "..");
@@ -13,6 +16,13 @@ export const defaultAssetSourceDirectory = path.join(repositoryRoot, "frontend/s
 
 const transactionSchemaVersion = 1;
 const transactionPhases = new Set(["claimed", "prepared", "staged", "swapping", "installed"]);
+
+export function shouldCopyFrontendPath(sourceDirectory, pathname) {
+  const relative = path.relative(path.resolve(sourceDirectory), path.resolve(pathname));
+  if (!relative || relative.startsWith(`..${path.sep}`) || relative === "..") return true;
+  const [topLevelDirectory] = relative.split(path.sep);
+  return !immutableFrontendAssetDirectories.includes(topLevelDirectory);
+}
 
 function isInside(parent, candidate) {
   const relative = path.relative(parent, candidate);
@@ -442,6 +452,7 @@ export async function packageFrontend({
       recursive: true,
       force: true,
       preserveTimestamps: false,
+      filter: (pathname) => shouldCopyFrontendPath(source, pathname),
     });
     await materializeImmutableFrontendAssets({
       sourceDirectory: source,
