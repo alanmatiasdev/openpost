@@ -278,6 +278,7 @@ test("CI builds web surfaces once and browser jobs consume those artifacts", () 
   assertJobNeeds(image, ["frontend-build"]);
   assert.match(image, /--build-context frontend_artifact=backend\/cmd\/openpost\/public/);
   assert.match(marketingPlaywright, /wrangler pages dev dist/u);
+  assert.match(marketingPlaywright, /workers:\s*process\.env\.CI\s*\?\s*1\s*:\s*undefined/u);
 });
 
 test("CI invokes repository timing helpers portably", () => {

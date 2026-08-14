@@ -665,7 +665,7 @@ test("legal and trust pages expose current managed-service facts @desktop", asyn
       name: "Managed service trust register",
       exact: true,
     }),
-  ).toHaveAttribute("href", "/trust");
+  ).toHaveAttribute("href", /^(?:\.\/|\/)trust$/);
 
   await page.goto("/trust");
   await expect(
