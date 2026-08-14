@@ -494,6 +494,14 @@ test("marketing raised buttons synthesize tactile feedback @desktop", async ({ p
       createGain() {
         return { ...audioNode(), gain: parameter() };
       }
+      createOscillator() {
+        return {
+          ...audioNode(),
+          type: "sine",
+          frequency: parameter(),
+          detune: parameter(),
+        };
+      }
       createBuffer(_channels: number, length: number) {
         return { getChannelData: () => new Float32Array(length) };
       }
@@ -506,6 +514,19 @@ test("marketing raised buttons synthesize tactile feedback @desktop", async ({ p
           type: "bandpass",
           frequency: parameter(),
           Q: parameter(),
+        };
+      }
+      createDelay() {
+        return { ...audioNode(), delayTime: parameter() };
+      }
+      createDynamicsCompressor() {
+        return {
+          ...audioNode(),
+          threshold: parameter(),
+          knee: parameter(),
+          ratio: parameter(),
+          attack: parameter(),
+          release: parameter(),
         };
       }
       resume() {

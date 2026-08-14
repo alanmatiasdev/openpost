@@ -61,11 +61,9 @@ const checks = {
     bun("scripts/generate-app-route-manifest.mjs", "--check"),
   ]),
   "public-routes": stage("public routes", [
-    bunTest(
-      "scripts/cloudflare-edge-plan.test.mjs",
-      "scripts/check-marketing-route-manifest.test.mjs",
-      "scripts/generate-agent-surfaces.test.mjs",
-    ),
+    bunTest("scripts/cloudflare-edge-plan.test.mjs"),
+    bunTest("scripts/check-marketing-route-manifest.test.mjs"),
+    bunTest("scripts/generate-agent-surfaces.test.mjs"),
     bun("scripts/check-marketing-route-manifest.mjs"),
   ]),
   "legal-policy": stage("legal policy", [
