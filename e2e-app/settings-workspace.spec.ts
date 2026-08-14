@@ -111,7 +111,7 @@ test("workspace repost rules save thresholds, delays, and cross-workspace target
   expect(consoleErrors).toEqual([]);
 });
 
-test("legacy account OAuth errors reach the embedded account settings", async ({
+test("legacy account OAuth errors stay on direct account management with bounded feedback", async ({
   page,
   request,
 }) => {
@@ -122,8 +122,12 @@ test("legacy account OAuth errors reach the embedded account settings", async ({
 
   await page.goto("/accounts?error=access_denied%3A+Nope");
 
-  await expect(page).toHaveURL(/\/settings\?tab=accounts$/);
-  await expect(page.getByText("access_denied: Nope")).toBeVisible();
+  await expect(page).toHaveURL(/\/accounts$/);
+  await expect(
+    page.getByText(
+      "OpenPost could not connect that destination. Check the provider setup and try again.",
+    ),
+  ).toBeVisible();
 });
 
 test("workspace settings delete the active workspace and keep another", async ({

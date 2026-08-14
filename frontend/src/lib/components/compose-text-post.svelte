@@ -4672,7 +4672,10 @@
 <!-- ====================================================================== -->
 <!-- Top Bar -->
 <!-- ====================================================================== -->
-<div class="flex flex-1 flex-col overflow-hidden" data-testid="text-thread-composer-content">
+<div
+	class="flex min-h-0 flex-1 flex-col overflow-hidden"
+	data-testid="text-thread-composer-content"
+>
 	{#if selectedWorkspaceId}
 		<div class="border-b px-3 py-3 sm:px-4">
 			<WorkspaceSetupGuide workspaceID={selectedWorkspaceId} context="composer" />
@@ -5041,9 +5044,9 @@
 	<!-- ====================================================================== -->
 	<!-- Main Content Area -->
 	<!-- ====================================================================== -->
-	<div class="flex flex-1 overflow-hidden">
+	<div class="flex min-h-0 flex-1 overflow-hidden">
 		<!-- Compose Column -->
-		<div class="flex flex-1 flex-col overflow-y-auto">
+		<div class="flex min-h-0 flex-1 flex-col overflow-y-auto">
 			{#if activationPublicationID && deliveryFeedback.length === 0}
 				<WorkspaceActivationCompletion
 					publicationID={activationPublicationID}

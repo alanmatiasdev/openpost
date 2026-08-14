@@ -206,6 +206,7 @@
 		if (!workspaceId) return;
 		const requestedWorkspace = workspaceId;
 		const requestID = ++messageRequest;
+		const anchor = prepend ? messageVisibleAnchor() : null;
 		if (prepend) {
 			loadingOlderMessages = true;
 			olderMessageError = '';
@@ -248,7 +249,6 @@
 			}
 		} else {
 			const incoming = data?.items ?? [];
-			const anchor = prepend ? messageVisibleAnchor() : null;
 			messages = prepend ? mergeMessages(incoming, messages) : incoming;
 			messageNextCursor = data?.next_cursor ?? '';
 			await tick();

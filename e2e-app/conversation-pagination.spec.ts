@@ -92,19 +92,22 @@ test("Messages reaches older conversations without losing filters or selection",
   });
   await page.route("**/api/v1/messages/conversation-000?**", (route) =>
     route.fulfill({
-      json: [
-        {
-          id: "message-selected",
-          workspace_id: workspace.id,
-          conversation_id: "conversation-000",
-          direction: "inbound",
-          body: "Selected conversation body",
-          attachments_json: "[]",
-          send_status: "received",
-          created_at: "2026-08-10T12:00:00Z",
-          updated_at: "2026-08-10T12:00:00Z",
-        },
-      ],
+      json: {
+        items: [
+          {
+            id: "message-selected",
+            workspace_id: workspace.id,
+            conversation_id: "conversation-000",
+            direction: "inbound",
+            body: "Selected conversation body",
+            attachments_json: "[]",
+            send_status: "received",
+            created_at: "2026-08-10T12:00:00Z",
+            updated_at: "2026-08-10T12:00:00Z",
+          },
+        ],
+        next_cursor: "",
+      },
     }),
   );
 
