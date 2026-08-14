@@ -6,6 +6,7 @@ All notable changes to this project are documented in this file.
 
 ### Changed
 
+- Updated `golang.org/x/image` to 0.45.0 to fix excessive memory allocation while validating VP8L images.
 - Optional notification email topics now support Off, Immediate, or Daily delivery with a saved local time and IANA timezone. Daily items are durably batched and deduplicated per user and window, use bounded Job retries and one idempotency key, and advance only after a confirmed send; Transactional security, access, invitation, and critical billing email remains immediate.
 - Fixed Cloudflare edge cache variance so parameterized and weighted Markdown requests cannot reuse the exact Markdown representation, and kept HTML fallbacks from being mislabeled when a Markdown artifact is unavailable.
 - Permanent Workspace deletion now shows exact removal, retention, recovery, and lifecycle-blocker facts; requires the Organization Owner, the canonical Workspace name, and recent authentication; rechecks blockers atomically; preserves dialog and data state on failure; and retains Organization-scoped audit evidence after success.
