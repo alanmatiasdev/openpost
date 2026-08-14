@@ -437,6 +437,22 @@ export const docsPageCatalog = Object.freeze([
     }
   },
   {
+    "page": "development/invitation-delivery-callbacks.md",
+    "title": "Invitation delivery callbacks",
+    "description": "OpenPost separates email provider acceptance from confirmed delivery.",
+    "route": "/development/invitation-delivery-callbacks",
+    "agentRepresentation": {
+      "membership": "ordinary"
+    },
+    "agentDiscovery": {
+      "membership": "unlisted"
+    },
+    "agentCorpus": {
+      "membership": "included",
+      "section": "development"
+    }
+  },
+  {
     "page": "development/mcp.md",
     "title": "MCP And ChatGPT App",
     "description": "This page is for MCP implementation and protocol details.",
