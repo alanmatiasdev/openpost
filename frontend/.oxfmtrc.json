@@ -10,6 +10,7 @@
 	},
 	"svelte": {},
 	"ignorePatterns": [
+		".agents/",
 		"package-lock.json",
 		"bun.lock",
 		"yarn.lock",
