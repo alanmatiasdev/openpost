@@ -1,0 +1,5 @@
+# Distribute optional editor assets outside application builds
+
+OpenPost application builds contain no browser model weights, ONNX Runtime WASM, or full built-in editor audio. Browser inference is distributed in separate, versioned Model packs per capability through a configurable Model source, while built-in music and sound effects use a separate Media pack. The Hosted service uses OpenPost's public CDN; a self-hosted deployment can use that source or serve compatible packs itself. Application builds retain only the small manifests, trust material, catalog metadata, and Model adapters needed to select, verify, and use compatible assets.
+
+Model and runtime files use content-addressed browser storage and are removed when no active manifest references them. Admin diagnostics report the effective source, compatibility, integrity, licenses, sizes, browser delivery support, and download failures; per-browser settings report and remove locally downloaded files. Admins may select only models whose manifests declare a supported Model adapter.
