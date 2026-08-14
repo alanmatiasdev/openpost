@@ -308,6 +308,34 @@ test("CI does not persist cumulative Turbo filesystem caches", () => {
   }
 });
 
+test("non-build CI jobs omit immutable editor assets from partial checkouts", () => {
+  for (const jobName of [
+    "plan",
+    "backend-lint",
+    "frontend-quality",
+    "backend",
+    "backend-race",
+    "marketing-build",
+    "docs-build",
+    "browser-app",
+    "browser-marketing",
+    "browser-docs",
+    "security",
+    "cli",
+    "image",
+  ]) {
+    const job = workflowJob(ci, jobName);
+    assert.match(job, /sparse-checkout-cone-mode: false/u, jobName);
+    for (const directory of ["image-editor-models", "video-editor-audio", "video-editor-models"]) {
+      assert.match(job, new RegExp(`!/frontend/static/${directory}/`, "u"), jobName);
+    }
+  }
+
+  for (const jobName of ["policy", "frontend-build", "cache-contract", "android"]) {
+    assert.doesNotMatch(workflowJob(ci, jobName), /!\/frontend\/static\/video-editor-models\//u);
+  }
+});
+
 test("ordinary release preparation delegates exhaustive correctness to candidate CI", () => {
   const prepareStart = localRelease.indexOf("async function prepare(");
   const promoteStart = localRelease.indexOf("async function promote(");

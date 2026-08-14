@@ -13,6 +13,7 @@ const canonicalScripts = [
   "verify",
   "release",
 ];
+const tasksSource = readFileSync("scripts/tasks.mjs", "utf8");
 
 test("the root manifest exposes one canonical verification interface", () => {
   const manifest = JSON.parse(readFileSync("package.json", "utf8"));
@@ -34,6 +35,13 @@ test("the root manifest exposes one canonical verification interface", () => {
     "test",
     "verify",
   ]);
+});
+
+test("nested Turbo tasks inherit the root cache lease", () => {
+  const turbo = manifest("turbo.json");
+  const tasksSource = readFileSync("scripts/tasks.mjs", "utf8");
+  assert.ok(turbo.globalPassThroughEnv.includes("OPENPOST_ROOT_TASK_LOCKED"));
+  assert.match(tasksSource, /env: \{ \.\.\.step\.env, OPENPOST_ROOT_TASK_LOCKED: "1" \}/u);
 });
 
 test("workspace manifests keep implementation tasks without old public aliases", () => {
@@ -64,6 +72,8 @@ test("workspace manifests keep implementation tasks without old public aliases",
   assert.equal(frontend.scripts.test, "vitest run");
   assert.equal(frontend.scripts["test:watch"], "vitest");
   assert.equal(frontend.scripts["test:server"], "vitest run --project server");
+  assert.match(frontend.scripts.build, /immutable-frontend-assets\.mjs web/u);
+  assert.match(frontend.scripts["build:capacitor"], /immutable-frontend-assets\.mjs android/u);
 
   const docs = manifest("docs-site/package.json");
   assert.deepEqual(Object.keys(docs.scripts).sort(), ["build", "dev", "preview"]);

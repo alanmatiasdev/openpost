@@ -56,8 +56,9 @@
       echo "Bun package cache: $BUN_INSTALL_CACHE_DIR"
       du -sh "$BUN_INSTALL_CACHE_DIR" 2>/dev/null || true
 
-      echo "Turbo task cache: ${config.git.root}/.turbo/cache"
-      du -sh "${config.git.root}/.turbo/cache" 2>/dev/null || true
+      turbo_cache_dir="''${OPENPOST_TURBO_CACHE_DIR:-''${XDG_CACHE_HOME:-$HOME/.cache}/openpost/turbo}"
+      echo "Turbo task cache: $turbo_cache_dir"
+      du -sh "$turbo_cache_dir" 2>/dev/null || true
 
       echo "Embedded frontend: ${config.git.root}/backend/cmd/openpost/public"
       du -sh "${config.git.root}/backend/cmd/openpost/public" 2>/dev/null || true

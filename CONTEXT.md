@@ -75,19 +75,3 @@ _Avoid_: Silence, speech pauses
 **Speech pauses**:
 Parts of an audio track where speech detection finds no human speech, even when other audible sound remains.
 _Avoid_: Silence, quiet sections
-
-**Model pack**:
-An optional, versioned distribution of browser inference files for one editor capability, hosted separately from OpenPost application builds.
-_Avoid_: Application build, embedded models, all-model bundle
-
-**Model source**:
-A configurable origin that serves Model pack manifests and files using OpenPost's compatibility and integrity contract.
-_Avoid_: Arbitrary model URL, application asset path
-
-**Model adapter**:
-The versioned OpenPost contract that defines how one compatible model is prepared, executed, and interpreted for an editor capability.
-_Avoid_: Model ID, filename
-
-**Media pack**:
-An optional, versioned distribution of built-in editor music or sound effects hosted separately from OpenPost application builds.
-_Avoid_: User media, embedded audio library

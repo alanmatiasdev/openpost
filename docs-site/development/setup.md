@@ -62,15 +62,26 @@ for browser suites. Focused repository policies use
 The release subcommands are `plan`, `preflight`, `check`, `check-full`, `status`,
 `prepare`, `promote`, and `prod`; see [Releases and Versioning](/development/releases).
 
-Use `cache-status` and `cache-prune` to inspect and enforce the 512 MiB Turbo
+Use `cache-status` and `cache-prune` to inspect and enforce the 2 GiB Turbo
 task-cache cap and the daily 4 GiB default cap on the shared Go build cache.
-Finite root tasks enforce the Turbo cap before and after each run, keeping the
-newest complete entries; `dev` enforces it once before starting its persistent
-process. A shared lock prevents root tasks and explicit cache pruning from
-changing the cache at the same time. Set `OPENPOST_TURBO_CACHE_MAX_MIB` to change
-the local limit. CI does not persist Turbo filesystem caches because
-revision-specific web builds would copy prior archives into every new GitHub
-cache. Use `docker-cache-status` and `docker-cache-prune` to inspect Docker
+Root commands use the OpenPost directory under the operating system's user
+cache, so linked worktrees share entries and one total limit, including inside
+Devenv.
+Finite root tasks enforce the Turbo cap after each run, keeping the newest
+complete entries; `dev` enforces it once before starting its persistent process.
+Different worktrees may use the shared cache concurrently, while maintenance
+waits for active tasks before pruning. One worktree still serializes its finite
+root tasks because they share generated files. Set `OPENPOST_TURBO_CACHE_DIR` to
+choose a different location or `OPENPOST_TURBO_CACHE_MAX_MIB` to change the
+limit.
+
+Frontend Turbo entries omit the immutable editor model and audio trees. A cache
+restore links the current tracked files into the complete frontend artifact
+before Go packaging, and generated SvelteKit, Go embed, and Android trees share
+those files when the filesystem supports hard links. CI keeps its Turbo cache
+ephemeral because exact-run source-map uploads must still execute, and jobs that
+do not build the application omit the large editor trees from their partial
+checkout. Use `docker-cache-status` and `docker-cache-prune` to inspect Docker
 storage and bound unused BuildKit cache without deleting images, containers, or
 volumes. Local backend builds reuse the content-addressed Go cache; clean CI
 runners still compile the release candidate from their exact checkout.

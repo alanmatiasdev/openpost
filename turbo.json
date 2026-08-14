@@ -1,7 +1,7 @@
 {
   "$schema": "https://turbo.build/schema.json",
   "globalDependencies": ["package.json", "bun.lock", "bunfig.toml"],
-  "globalPassThroughEnv": ["PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH"],
+  "globalPassThroughEnv": ["OPENPOST_ROOT_TASK_LOCKED", "PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH"],
   "tasks": {
     "dev": {
       "cache": false,

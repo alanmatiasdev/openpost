@@ -153,3 +153,11 @@ test("the frontend package cache restores output and invalidates on root assets"
   );
   assert.equal(await readFile(runCountPath, "utf8"), "run\nrun\n");
 });
+
+test("the frontend cache stores compiled output without immutable editor assets", async () => {
+  const turboJSON = JSON.parse(await readFile(path.join(root, "frontend", "turbo.json"), "utf8"));
+  for (const directory of ["image-editor-models", "video-editor-audio", "video-editor-models"]) {
+    assert.ok(turboJSON.tasks.build.outputs.includes(`!build/${directory}/**`));
+    assert.ok(turboJSON.tasks.build.inputs.includes(`!static/${directory}/**`));
+  }
+});

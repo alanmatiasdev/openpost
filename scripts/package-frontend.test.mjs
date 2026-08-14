@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { chmod, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -81,6 +81,7 @@ async function fixture() {
   const source = path.join(root, "frontend-build");
   const destination = path.join(root, "backend", "public");
   await mkdir(path.join(source, "assets"), { recursive: true });
+  await mkdir(path.join(source, "video-editor-models"), { recursive: true });
   await Promise.all([
     writeFile(path.join(source, "index.html"), "<!doctype html><h1>OpenPost</h1>\n"),
     writeFile(
@@ -88,6 +89,7 @@ async function fixture() {
       `${JSON.stringify({ schema_version: 1, routes: ["/", "/settings"] })}\n`,
     ),
     writeFile(path.join(source, "assets", "app.js"), "console.log('openpost');\n"),
+    writeFile(path.join(source, "video-editor-models", "fixture.onnx"), "model-weights\n"),
   ]);
   await chmod(path.join(source, "assets", "app.js"), 0o755);
   return { root, source, destination };
@@ -110,6 +112,12 @@ test("atomically mirrors the complete artifact and removes stale files", async (
     (entry) => entry.path === "assets/app.js",
   );
   assert.equal(executable?.mode, 0o755);
+  const [sourceModel, packagedModel] = await Promise.all([
+    stat(path.join(source, "video-editor-models", "fixture.onnx")),
+    stat(path.join(destination, "video-editor-models", "fixture.onnx")),
+  ]);
+  assert.equal(packagedModel.dev, sourceModel.dev);
+  assert.equal(packagedModel.ino, sourceModel.ino);
 });
 
 test("a rejected source leaves the previous embed tree intact", async (t) => {
@@ -130,6 +138,32 @@ test("a rejected source leaves the previous embed tree intact", async (t) => {
     /missing app-routes\.json/,
   );
   assert.deepEqual(await artifactManifest(destination), before);
+});
+
+test("materializes immutable assets omitted from a cached frontend build", async (t) => {
+  const { root, source, destination } = await fixture();
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const canonical = path.join(root, "frontend-static");
+  await mkdir(path.join(canonical, "video-editor-models"), { recursive: true });
+  await writeFile(
+    path.join(canonical, "video-editor-models", "fixture.onnx"),
+    "cached-model-weights\n",
+  );
+  await rm(path.join(source, "video-editor-models"), { recursive: true, force: true });
+
+  await packageFrontend({
+    sourceDirectory: source,
+    destinationDirectory: destination,
+    assetSourceDirectory: canonical,
+  });
+
+  const [canonicalModel, buildModel, packagedModel] = await Promise.all([
+    stat(path.join(canonical, "video-editor-models", "fixture.onnx")),
+    stat(path.join(source, "video-editor-models", "fixture.onnx")),
+    stat(path.join(destination, "video-editor-models", "fixture.onnx")),
+  ]);
+  assert.equal(buildModel.ino, canonicalModel.ino);
+  assert.equal(packagedModel.ino, canonicalModel.ino);
 });
 
 test("rejects overlapping source and destination paths", async (t) => {

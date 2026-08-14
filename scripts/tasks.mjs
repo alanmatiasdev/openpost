@@ -6,8 +6,13 @@ import path from "node:path";
 import {
   formatPruneResult,
   pruneTurboCache,
+  resolveTurboCacheDirectory,
   turboCacheMaxBytes,
+  tryTurboCacheMaintenance,
+  withTurboCacheDirectory,
+  withTurboCacheLease,
   withTurboCacheLock,
+  withTurboCacheMaintenance,
 } from "./turbo-cache.mjs";
 
 const root = path.resolve(import.meta.dir, "..");
@@ -174,18 +179,21 @@ try {
   if (options.has("--plan")) {
     console.log(JSON.stringify(publicPlan(plan), null, 2));
   } else {
-    const cacheDirectory = path.join(root, ".turbo", "cache");
+    const cacheDirectory = resolveTurboCacheDirectory({ repositoryRoot: root });
     if (process.env.OPENPOST_ROOT_TASK_LOCKED === "1") {
       await execute(plan, { cacheDirectory, enforceCacheLimit: false });
-    } else if (plan.command === "dev") {
-      await withTurboCacheLock({ directory: cacheDirectory }, () =>
-        enforceTurboCacheLimit(cacheDirectory),
-      );
-      await execute(plan, { cacheDirectory, enforceCacheLimit: false });
     } else {
-      await withTurboCacheLock({ directory: cacheDirectory }, () =>
-        execute(plan, { cacheDirectory, enforceCacheLimit: true }),
-      );
+      const worktreeLock = path.join(root, ".turbo", "root-task");
+      if (plan.command === "dev") {
+        await withTurboCacheMaintenance({ directory: cacheDirectory }, () =>
+          enforceTurboCacheLimit(cacheDirectory),
+        );
+        await execute(plan, { cacheDirectory, enforceCacheLimit: false });
+      } else {
+        await withTurboCacheLock({ directory: worktreeLock }, () =>
+          executeWithCacheLease(plan, cacheDirectory),
+        );
+      }
     }
   }
 } catch (error) {
@@ -473,7 +481,9 @@ async function execute(taskPlan, { cacheDirectory, enforceCacheLimit }) {
   try {
     for (const phase of taskPlan.phases) {
       const controller = new AbortController();
-      const results = await Promise.all(phase.map((item) => runStage(item, controller)));
+      const results = await Promise.all(
+        phase.map((item) => runStage(item, controller, cacheDirectory)),
+      );
       const failed = results.find((result) => result !== 0);
       if (failed)
         throw new Error(`${taskPlan.command}${taskPlan.scope ? ` ${taskPlan.scope}` : ""} failed`);
@@ -481,6 +491,33 @@ async function execute(taskPlan, { cacheDirectory, enforceCacheLimit }) {
   } finally {
     if (enforceCacheLimit) await enforceTurboCacheLimit(cacheDirectory);
   }
+}
+
+async function executeWithCacheLease(taskPlan, cacheDirectory) {
+  let operationError;
+  try {
+    await withTurboCacheLease({ directory: cacheDirectory }, () =>
+      execute(taskPlan, { cacheDirectory, enforceCacheLimit: false }),
+    );
+  } catch (error) {
+    operationError = error;
+  }
+  let maintenanceError;
+  try {
+    await tryTurboCacheMaintenance({ directory: cacheDirectory }, () =>
+      enforceTurboCacheLimit(cacheDirectory),
+    );
+  } catch (error) {
+    maintenanceError = error;
+  }
+  if (operationError && maintenanceError) {
+    throw new AggregateError(
+      [operationError, maintenanceError],
+      "Root task failed and the shared Turbo cache could not be pruned",
+    );
+  }
+  if (operationError) throw operationError;
+  if (maintenanceError) throw maintenanceError;
 }
 
 async function enforceTurboCacheLimit(cacheDirectory) {
@@ -493,12 +530,12 @@ async function enforceTurboCacheLimit(cacheDirectory) {
   if (message) console.log(message);
 }
 
-async function runStage(taskStage, controller) {
+async function runStage(taskStage, controller, cacheDirectory) {
   const started = performance.now();
   console.log(`\n▶ ${taskStage.label}`);
   for (const step of taskStage.steps) {
     if (controller.signal.aborted) return 1;
-    const status = await runStep(step, controller.signal);
+    const status = await runStep(step, controller.signal, cacheDirectory);
     if (status !== 0) {
       controller.abort();
       console.error(`✗ ${taskStage.label}`);
@@ -509,7 +546,7 @@ async function runStage(taskStage, controller) {
   return 0;
 }
 
-async function runStep(step, signal) {
+async function runStep(step, signal, cacheDirectory) {
   if (step.type === "task") {
     return spawn(
       ["bun", "scripts/tasks.mjs", step.task, ...(step.scope ? [step.scope] : [])],
@@ -524,7 +561,11 @@ async function runStep(step, signal) {
     await mkdir(directory, { recursive: true });
     await Bun.write(path.join(directory, ".gitkeep"), "");
   }
-  return spawn(step.argv, step, signal);
+  return spawn(
+    withTurboCacheDirectory(step.argv, cacheDirectory),
+    { ...step, env: { ...step.env, OPENPOST_ROOT_TASK_LOCKED: "1" } },
+    signal,
+  );
 }
 
 async function runGofmt(step, signal) {

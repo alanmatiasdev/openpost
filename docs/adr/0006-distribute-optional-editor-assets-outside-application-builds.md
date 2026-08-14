@@ -1,5 +1,9 @@
+---
+status: rejected
+---
+
 # Distribute optional editor assets outside application builds
 
-OpenPost application builds contain no browser model weights, ONNX Runtime WASM, or full built-in editor audio. Browser inference is distributed in separate, versioned Model packs per capability through a configurable Model source, while built-in music and sound effects use a separate Media pack. The Hosted service uses OpenPost's public CDN; a self-hosted deployment can use that source or serve compatible packs itself. Application builds retain only the small manifests, trust material, catalog metadata, and Model adapters needed to select, verify, and use compatible assets.
+OpenPost considered distributing browser model weights, ONNX Runtime WASM, and the full built-in editor audio library as separate versioned Model packs and Media packs. That design would have required a configurable Model source, versioned Model adapters, content-addressed browser storage, and new administration controls for compatibility, integrity, licensing, size, and local downloads.
 
-Model and runtime files use content-addressed browser storage and are removed when no active manifest references them. Admin diagnostics report the effective source, compatibility, integrity, licenses, sizes, browser delivery support, and download failures; per-browser settings report and remove locally downloaded files. Admins may select only models whose manifests declare a supported Model adapter.
+OpenPost does not use that release boundary. The tracked immutable editor assets remain part of the complete web, Go embed, and Android application artifacts so one revision stays self-contained and portable. Build caches, generated trees, and CI checkouts may omit or hard-link those files to reduce duplicate storage, but the owning build restores and validates them before packaging. A future separate-distribution design must supersede this decision explicitly and provide the complete trust, compatibility, offline, upgrade, and self-hosting contract first.

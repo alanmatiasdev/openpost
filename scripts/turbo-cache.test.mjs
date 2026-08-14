@@ -4,7 +4,61 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { formatPruneResult, pruneTurboCache, withTurboCacheLock } from "./turbo-cache.mjs";
+import * as turboCache from "./turbo-cache.mjs";
+import {
+  formatPruneResult,
+  pruneTurboCache,
+  tryTurboCacheMaintenance,
+  withTurboCacheLease,
+  withTurboCacheLock,
+  withTurboCacheMaintenance,
+} from "./turbo-cache.mjs";
+
+test("Turbo uses one bounded user cache across repository worktrees", () => {
+  assert.equal(turboCache.defaultTurboCacheMaxMiB, 2048);
+  assert.equal(
+    turboCache.resolveTurboCacheDirectory({
+      environment: { XDG_CACHE_HOME: "/var/cache/alice" },
+      homeDirectory: "/home/alice",
+      platform: "linux",
+      repositoryRoot: "/work/openpost-feature",
+    }),
+    "/var/cache/alice/openpost/turbo",
+  );
+  assert.equal(
+    turboCache.resolveTurboCacheDirectory({
+      environment: { OPENPOST_TURBO_CACHE_DIR: "../shared-turbo" },
+      homeDirectory: "/home/alice",
+      platform: "linux",
+      repositoryRoot: "/work/openpost-feature",
+    }),
+    "/work/shared-turbo",
+  );
+});
+
+test("root Turbo commands use the bounded shared cache", () => {
+  assert.deepEqual(
+    turboCache.withTurboCacheDirectory(
+      ["bunx", "turbo", "run", "build", "--filter", "@openpost/web"],
+      "/var/cache/alice/openpost/turbo",
+    ),
+    [
+      "bunx",
+      "turbo",
+      "run",
+      "build",
+      "--filter",
+      "@openpost/web",
+      "--cache-dir",
+      "/var/cache/alice/openpost/turbo",
+    ],
+  );
+  assert.deepEqual(turboCache.withTurboCacheDirectory(["go", "test", "./..."], "/cache"), [
+    "go",
+    "test",
+    "./...",
+  ]);
+});
 
 function allocatedBytes(file) {
   return Number.isSafeInteger(file.blocks) && file.blocks > 0 ? file.blocks * 512 : file.size;
@@ -152,4 +206,84 @@ test("Turbo cache locking serializes cache maintenance and root task work", asyn
   await Promise.all([first, second]);
 
   assert.deepEqual(order, ["first:start", "first:end", "second:start", "second:end"]);
+});
+
+test("shared Turbo tasks overlap while cache maintenance waits", async (t) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "openpost-turbo-cache-leases-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const cacheDirectory = path.join(directory, "cache");
+  const order = [];
+  let releaseTasks;
+  const holdTasks = new Promise((resolve) => {
+    releaseTasks = resolve;
+  });
+  let markStarted;
+  const bothStarted = new Promise((resolve) => {
+    markStarted = resolve;
+  });
+  let started = 0;
+  const task = (name) =>
+    withTurboCacheLease({ directory: cacheDirectory }, async () => {
+      order.push(`${name}:start`);
+      started += 1;
+      if (started === 2) markStarted();
+      await holdTasks;
+      order.push(`${name}:end`);
+    });
+
+  const first = task("first");
+  const second = task("second");
+  await bothStarted;
+  const maintenance = withTurboCacheMaintenance({ directory: cacheDirectory }, async () => {
+    order.push("maintenance");
+  });
+  await new Promise((resolve) => setTimeout(resolve, 25));
+  assert.deepEqual(order.toSorted(), ["first:start", "second:start"]);
+  releaseTasks();
+  await Promise.all([first, second, maintenance]);
+  assert.equal(order.at(-1), "maintenance");
+  assert.deepEqual(order.slice(0, -1).toSorted(), [
+    "first:end",
+    "first:start",
+    "second:end",
+    "second:start",
+  ]);
+});
+
+test("automatic Turbo cache maintenance skips work while another task is active", async (t) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "openpost-turbo-cache-try-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const cacheDirectory = path.join(directory, "cache");
+  let releaseTask;
+  const holdTask = new Promise((resolve) => {
+    releaseTask = resolve;
+  });
+  let markStarted;
+  const started = new Promise((resolve) => {
+    markStarted = resolve;
+  });
+  const task = withTurboCacheLease({ directory: cacheDirectory }, async () => {
+    markStarted();
+    await holdTask;
+  });
+
+  await started;
+  let maintenanceRuns = 0;
+  assert.equal(
+    await tryTurboCacheMaintenance({ directory: cacheDirectory }, async () => {
+      maintenanceRuns += 1;
+    }),
+    false,
+  );
+  assert.equal(maintenanceRuns, 0);
+
+  releaseTask();
+  await task;
+  assert.equal(
+    await tryTurboCacheMaintenance({ directory: cacheDirectory }, async () => {
+      maintenanceRuns += 1;
+    }),
+    true,
+  );
+  assert.equal(maintenanceRuns, 1);
 });

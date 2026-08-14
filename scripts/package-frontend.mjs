@@ -3,10 +3,13 @@ import { cp, lstat, mkdir, readFile, readdir, rename, rm, writeFile } from "node
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+import { materializeImmutableFrontendAssets } from "./immutable-frontend-assets.mjs";
+
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 export const repositoryRoot = path.resolve(scriptDirectory, "..");
 export const defaultSourceDirectory = path.join(repositoryRoot, "frontend/build");
 export const defaultDestinationDirectory = path.join(repositoryRoot, "backend/cmd/openpost/public");
+export const defaultAssetSourceDirectory = path.join(repositoryRoot, "frontend/static");
 
 const transactionSchemaVersion = 1;
 const transactionPhases = new Set(["claimed", "prepared", "staged", "swapping", "installed"]);
@@ -400,6 +403,7 @@ async function acquireTransaction({ source, destination }) {
 export async function packageFrontend({
   sourceDirectory = defaultSourceDirectory,
   destinationDirectory = defaultDestinationDirectory,
+  assetSourceDirectory,
   onTransactionPhase,
 } = {}) {
   const { source, destination } = validateDistinctDirectories(
@@ -416,6 +420,15 @@ export async function packageFrontend({
   let operationError;
 
   try {
+    const immutableAssetSource =
+      assetSourceDirectory ??
+      (source === defaultSourceDirectory ? defaultAssetSourceDirectory : undefined);
+    if (immutableAssetSource) {
+      await materializeImmutableFrontendAssets({
+        sourceDirectory: immutableAssetSource,
+        outputDirectory: source,
+      });
+    }
     sourceManifest = await validateFrontendArtifact(source);
     const previousState = await inspectArtifact(destination);
     await updateTransaction(lockDirectory, transaction, {
@@ -429,6 +442,10 @@ export async function packageFrontend({
       recursive: true,
       force: true,
       preserveTimestamps: false,
+    });
+    await materializeImmutableFrontendAssets({
+      sourceDirectory: source,
+      outputDirectory: transaction.staged,
     });
     const stagedManifest = await validateFrontendArtifact(transaction.staged);
     if (JSON.stringify(stagedManifest) !== JSON.stringify(sourceManifest)) {

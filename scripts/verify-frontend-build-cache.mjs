@@ -130,6 +130,20 @@ function changedTaskInputs(before, after) {
   return changes;
 }
 
+function manifestDifferences(expected, actual) {
+  const expectedByPath = new Map(expected.map((entry) => [entry.path, entry]));
+  const actualByPath = new Map(actual.map((entry) => [entry.path, entry]));
+  const differences = [];
+  for (const pathname of new Set([...expectedByPath.keys(), ...actualByPath.keys()])) {
+    const left = expectedByPath.get(pathname);
+    const right = actualByPath.get(pathname);
+    if (JSON.stringify(left) === JSON.stringify(right)) continue;
+    differences.push(`${pathname}: ${JSON.stringify(left)} -> ${JSON.stringify(right)}`);
+    if (differences.length === 5) break;
+  }
+  return differences;
+}
+
 try {
   await mkdir(lockDirectory);
 } catch (error) {
@@ -165,15 +179,19 @@ try {
   }
 
   turbo(common);
-  const cachedSource = await artifactManifest(defaultSourceDirectory);
   await packageFrontend();
+  const cachedSource = await artifactManifest(defaultSourceDirectory);
   const cachedPackaged = await artifactManifest(defaultDestinationDirectory);
   if (
     JSON.stringify(cachedSource) !== JSON.stringify(cleanSource) ||
     JSON.stringify(cachedPackaged) !== JSON.stringify(cleanSource)
   ) {
+    const sourceDifferences = manifestDifferences(cleanSource, cachedSource);
+    const packagedDifferences = manifestDifferences(cleanSource, cachedPackaged);
     throw new Error(
-      "Cached frontend artifact differs from the clean build by path, content, or mode",
+      "Cached frontend artifact differs from the clean build by path, content, or mode. " +
+        `Source: ${sourceDifferences.join("; ") || "none"}. ` +
+        `Packaged: ${packagedDifferences.join("; ") || "none"}.`,
     );
   }
   console.log(
