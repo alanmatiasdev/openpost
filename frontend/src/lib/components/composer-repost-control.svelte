@@ -113,8 +113,8 @@
 					onChange?.();
 				}
 			}
-		} catch (error) {
-			loadError = (error as Error).message || m.repost_load_failed();
+		} catch (cause) {
+			loadError = cause instanceof Error ? cause.message : m.repost_load_failed();
 		} finally {
 			if (workspaceID === id) loading = false;
 		}

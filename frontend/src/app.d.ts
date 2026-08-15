@@ -11,8 +11,17 @@ declare global {
 		types: OpenPostFilePickerType[];
 	}
 
+	interface OpenPostEyeDropperResult {
+		sRGBHex: string;
+	}
+
+	interface OpenPostEyeDropper {
+		open(): Promise<OpenPostEyeDropperResult>;
+	}
+
 	interface Window {
 		showSaveFilePicker?(options: OpenPostSaveFilePickerOptions): Promise<FileSystemFileHandle>;
+		EyeDropper?: new () => OpenPostEyeDropper;
 	}
 
 	namespace App {

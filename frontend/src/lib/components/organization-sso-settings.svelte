@@ -69,6 +69,17 @@
 	let savedPolicySnapshot = $state('');
 	let savedProviderSnapshot = $state('');
 	const unsavedChanges = getOptionalUnsavedChanges();
+
+	function organizationPolicyMode(value: string): typeof policyMode {
+		switch (value) {
+			case 'optional':
+				return 'optional';
+			case 'required':
+				return 'required';
+			default:
+				return 'disabled';
+		}
+	}
 	const policySnapshot = $derived(
 		JSON.stringify({
 			policyMode,
@@ -140,7 +151,7 @@
 		auditEvents = auditResult.data ?? [];
 		policy = policyResult.data ?? null;
 		if (policy) {
-			policyMode = policy.mode as typeof policyMode;
+			policyMode = organizationPolicyMode(policy.mode);
 			acceptedProviderIDs = policy.provider_ids ?? [];
 			assuranceHours = Math.max(1, Math.round(policy.assurance_max_age_seconds / 3600));
 			passwordLoginAllowed = policy.password_login_allowed;

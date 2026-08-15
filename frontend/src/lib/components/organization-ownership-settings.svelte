@@ -175,7 +175,7 @@
 			password = '';
 			showToast(m.settings_ownership_initiated());
 		} catch (cause) {
-			error = (cause as Error).message;
+			error = cause instanceof Error ? cause.message : m.settings_ownership_initiate_failed();
 		} finally {
 			busy = false;
 		}

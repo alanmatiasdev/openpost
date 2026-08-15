@@ -78,15 +78,13 @@
 	}
 
 	function numericValue(event: Event): number {
-		return Number((event.currentTarget as HTMLInputElement).value);
+		return event.currentTarget instanceof HTMLInputElement
+			? Number(event.currentTarget.value)
+			: Number.NaN;
 	}
 
 	async function pickFromScreen(): Promise<void> {
-		const EyeDropperConstructor = (
-			window as typeof window & {
-				EyeDropper?: new () => { open(): Promise<{ sRGBHex: string }> };
-			}
-		).EyeDropper;
+		const EyeDropperConstructor = window.EyeDropper;
 		if (!EyeDropperConstructor) return;
 		try {
 			const result = await new EyeDropperConstructor().open();

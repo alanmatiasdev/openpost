@@ -96,8 +96,8 @@
 			settings = data;
 			policies = (data.policies ?? []).map(normalizePolicy);
 			savedSnapshot = policySnapshot(policies);
-		} catch (error) {
-			loadError = (error as Error).message || m.repost_load_failed();
+		} catch (cause) {
+			loadError = cause instanceof Error ? cause.message : m.repost_load_failed();
 		} finally {
 			if (id === workspaceID) loading = false;
 		}
@@ -121,8 +121,8 @@
 			policies = (data.policies ?? []).map(normalizePolicy);
 			savedSnapshot = policySnapshot(policies);
 			showToast(m.repost_saved());
-		} catch (error) {
-			saveError = (error as Error).message || m.repost_save_failed();
+		} catch (cause) {
+			saveError = cause instanceof Error ? cause.message : m.repost_save_failed();
 		} finally {
 			saving = false;
 		}

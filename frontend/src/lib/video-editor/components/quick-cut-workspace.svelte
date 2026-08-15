@@ -125,6 +125,20 @@ FORM: LosslessCut-style focused operate surface; no asset library, effects brows
 	onMount(() => {
 		let stopped = false;
 		let visualGeneration = 0;
+
+		type StoredWaveformValue =
+			| string
+			| number
+			| boolean
+			| null
+			| StoredWaveformValue[]
+			| { [key: string]: StoredWaveformValue };
+
+		function parseWaveformPeaks(source: string): number[] {
+			const value: StoredWaveformValue = JSON.parse(source);
+			if (!Array.isArray(value)) return [];
+			return value.filter(Number.isFinite).map(Number);
+		}
 		const controller = new AbortController();
 		const unsubscribe = subscribeToSourceArtifacts((progress) => {
 			if (progress.project_id !== projectID || progress.source_id !== source?.id || stopped) return;
@@ -171,7 +185,7 @@ FORM: LosslessCut-style focused operate surface; no asset library, effects brows
 				const file = await readProjectFile(waveform.path);
 				const encoded = file ? await file.text() : '';
 				if (encoded && !stopped && generation === visualGeneration) {
-					waveformPeaks = JSON.parse(encoded) as number[];
+					waveformPeaks = parseWaveformPeaks(encoded);
 				}
 			}
 			if (stopped || generation !== visualGeneration) return;
@@ -239,7 +253,8 @@ FORM: LosslessCut-style focused operate surface; no asset library, effects brows
 	}
 
 	function seekSource(event: PointerEvent): void {
-		const target = event.currentTarget as HTMLElement;
+		const target = event.currentTarget;
+		if (!(target instanceof HTMLElement)) return;
 		const rect = target.getBoundingClientRect();
 		const sourceTime = Math.max(
 			0,

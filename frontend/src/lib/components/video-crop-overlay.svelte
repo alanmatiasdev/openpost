@@ -34,7 +34,8 @@
 
 	function beginDrag(event: PointerEvent) {
 		if (event.button !== 0) return;
-		const target = event.currentTarget as HTMLElement;
+		const target = event.currentTarget;
+		if (!(target instanceof HTMLElement)) return;
 		target.setPointerCapture(event.pointerId);
 		start = {
 			pointerX: event.clientX,
@@ -48,7 +49,8 @@
 
 	function moveCrop(event: PointerEvent) {
 		if (!start || !dragging) return;
-		const target = event.currentTarget as HTMLElement;
+		const target = event.currentTarget;
+		if (!(target instanceof HTMLElement)) return;
 		const bounds = target.parentElement?.parentElement?.getBoundingClientRect();
 		if (!bounds?.width || !bounds.height) return;
 		updatePosition(
@@ -58,7 +60,8 @@
 	}
 
 	function endDrag(event: PointerEvent) {
-		const target = event.currentTarget as HTMLElement;
+		const target = event.currentTarget;
+		if (!(target instanceof HTMLElement)) return;
 		if (target.hasPointerCapture(event.pointerId)) target.releasePointerCapture(event.pointerId);
 		dragging = false;
 		start = undefined;

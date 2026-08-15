@@ -68,11 +68,13 @@
 				week_start: workspaceCtx.settings.week_start
 			});
 			showToast(m.settings_saved());
-		} catch (error) {
+		} catch (cause) {
 			showToast(
-				error instanceof WorkspaceContextError
+				cause instanceof WorkspaceContextError
 					? m.settings_action_failed()
-					: (error as Error).message,
+					: cause instanceof Error
+						? cause.message
+						: m.settings_action_failed(),
 				'error'
 			);
 		} finally {

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
+	import { resolveAppPath } from '$lib/app-path';
 	import { untrack } from 'svelte';
 	import { fade } from 'svelte/transition';
 	import * as Dialog from '$lib/components/ui/dialog';
@@ -484,8 +485,8 @@
 				return;
 			}
 			await goto(
-				resolve(
-					`/image-editor/new?workspace=${encodeURIComponent(workspaceId)}&purpose=${encodeURIComponent(purpose)}` as '/'
+				resolveAppPath(
+					`/image-editor/new?workspace=${encodeURIComponent(workspaceId)}&purpose=${encodeURIComponent(purpose)}`
 				)
 			);
 			open = false;

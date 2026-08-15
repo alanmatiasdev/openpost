@@ -23,6 +23,7 @@
 	import PlatformIcon from '$lib/components/platform-icon.svelte';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
+	import { resolveAppPath } from '$lib/app-path';
 	import { m } from '$lib/paraglide/messages';
 	import { getLocaleTag } from '$lib/i18n';
 	import { requestDestructiveAction } from '$lib/destructive-action';
@@ -196,13 +197,13 @@
 		if (workspaceCtx.currentWorkspace?.id)
 			params.set('workspace_id', workspaceCtx.currentWorkspace.id);
 		const target = `/?${params.toString()}`;
-		goto(resolve(target as '/'));
+		goto(resolveAppPath(target));
 	}
 
 	function handleEdit(post: Publication) {
 		ui.closeDayPosts();
 		const href = `/publications/${encodeURIComponent(post.id)}`;
-		goto(resolve(href as '/'));
+		goto(resolveAppPath(href));
 	}
 
 	function requestDelete(event: MouseEvent, post: Publication) {

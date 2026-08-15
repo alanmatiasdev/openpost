@@ -313,7 +313,9 @@
 	}
 
 	async function moveCalendarFocus(event: KeyboardEvent, date: CalendarDate) {
-		const grid = (event.currentTarget as HTMLElement).closest('[role="grid"]');
+		const eventTarget = event.currentTarget;
+		if (!(eventTarget instanceof HTMLElement)) return;
+		const grid = eventTarget.closest('[role="grid"]');
 		const days = rollingWeeks.flat();
 		const currentIndex = days.findIndex((day) => day.key === date.toString());
 		if (currentIndex < 0) return;
@@ -359,7 +361,8 @@
 	}
 
 	function loadMoreWeeks(event: Event) {
-		const calendar = event.currentTarget as HTMLElement;
+		const calendar = event.currentTarget;
+		if (!(calendar instanceof HTMLElement)) return;
 		const visibleWeekIndex = Math.min(
 			rollingWeeks.length - 1,
 			Math.max(0, Math.floor((calendar.scrollTop + calendarWeekHeight / 2) / calendarWeekHeight))

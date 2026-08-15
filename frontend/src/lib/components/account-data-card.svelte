@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
+	import { resolveAppPath } from '$lib/app-path';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
@@ -160,7 +161,7 @@
 	}
 
 	async function deleted() {
-		await goto(resolve('/account-deleted' as '/'));
+		await goto(resolveAppPath('/account-deleted'));
 		auth.clearLocal();
 		workspaceCtx.reset();
 		localStorage.removeItem('oauth_workspace_id');

@@ -7,6 +7,10 @@
 	import InlineNotice from '$lib/components/inline-notice.svelte';
 	import { getApiBase } from '$lib/stores/instance.svelte';
 	import { applyAPIRequestHeaders } from '$lib/api/client';
+	import {
+		parseAvatarUploadErrorDetail,
+		parseAvatarUploadResponse
+	} from '$lib/avatar-upload-response';
 	import { formatBytes } from '$lib/video/constraints';
 	import CameraIcon from '@lucide/svelte/icons/camera';
 	import ImageIcon from '@lucide/svelte/icons/image';
@@ -171,7 +175,7 @@
 				}
 				try {
 					onProgress(1);
-					resolve(JSON.parse(xhr.responseText) as { avatar_url?: string });
+					resolve(parseAvatarUploadResponse(xhr.responseText));
 				} catch {
 					reject(new Error(m.avatar_upload_invalid_response()));
 				}
@@ -191,14 +195,8 @@
 	function avatarUploadResponseError(xhr: XMLHttpRequest): Error {
 		const fallback = m.avatar_upload_http_error({ status: xhr.status || 0 });
 		try {
-			const response = JSON.parse(xhr.responseText) as {
-				detail?: unknown;
-				error?: unknown;
-				title?: unknown;
-			};
-			for (const value of [response.detail, response.error, response.title]) {
-				if (typeof value === 'string' && value.trim()) return new Error(value.trim());
-			}
+			const detail = parseAvatarUploadErrorDetail(xhr.responseText);
+			if (detail) return new Error(detail);
 		} catch {
 			// The translated fallback includes the status without exposing an HTML proxy response.
 		}

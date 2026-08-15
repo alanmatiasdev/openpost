@@ -50,6 +50,19 @@
 		flip_x: imageEditorMixedValue(editor.selectedLayers.map((item) => item.transform.flip_x)),
 		flip_y: imageEditorMixedValue(editor.selectedLayers.map((item) => item.transform.flip_y))
 	});
+	const imageAdjustmentKeys = [
+		'brightness',
+		'contrast',
+		'saturation',
+		'temperature',
+		'tint',
+		'vibrance',
+		'hue',
+		'exposure',
+		'highlights',
+		'shadows',
+		'blur'
+	] satisfies Array<keyof ImageEditorImageAdjustments>;
 	let missingFontAsset = $derived(
 		layer?.text?.font_asset_id &&
 			!brandFonts.some((font) => font.media_id === layer?.text?.font_asset_id)
@@ -74,7 +87,10 @@
 	}
 
 	function numberValue(event: Event, fallback: number): number {
-		const value = Number((event.currentTarget as HTMLInputElement).value);
+		const value =
+			event.currentTarget instanceof HTMLInputElement
+				? Number(event.currentTarget.value)
+				: Number.NaN;
 		return Number.isFinite(value) ? value : fallback;
 	}
 
@@ -245,12 +261,11 @@
 	}
 
 	function lookIsActive(adjustments: Partial<ImageEditorImageAdjustments>): boolean {
-		if (!layer?.image) return false;
+		const image = layer?.image;
+		if (!image) return false;
 		const target = { ...defaultImageAdjustments(), ...adjustments };
-		return Object.entries(target).every(
-			([key, value]) =>
-				Math.abs(layer!.image!.adjustments[key as keyof ImageEditorImageAdjustments] - value) <
-				0.001
+		return imageAdjustmentKeys.every(
+			(key) => Math.abs(image.adjustments[key] - target[key]) < 0.001
 		);
 	}
 </script>
