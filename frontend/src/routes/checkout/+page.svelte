@@ -2,7 +2,6 @@
 	import { onMount } from 'svelte';
 	import { captureTelemetryEvent } from '@openpost/telemetry';
 	import { goto } from '$app/navigation';
-	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import { client } from '$lib/api/client';
 	import type { components } from '$lib/api/types';
@@ -20,23 +19,21 @@
 		hostedPlanByID,
 		hostedPlanFromSearchParams,
 		hostedPlans,
+		normalizeBillingPeriod,
+		normalizeHostedPlanID,
 		type BillingPeriod,
 		type HostedPlanID
 	} from '$lib/billing';
 	import { safeSameOriginRedirect } from '$lib/redirects';
 	import { getLocaleTag } from '$lib/i18n';
 	import { m } from '$lib/paraglide/messages';
-	import {
-		initializePaddle,
-		type Environments,
-		type Paddle,
-		type PaddleEventData
-	} from '@paddle/paddle-js';
+	import { initializePaddle, type Paddle, type PaddleEventData } from '@paddle/paddle-js';
 	import CheckIcon from '@lucide/svelte/icons/check';
 	import CreditCardIcon from '@lucide/svelte/icons/credit-card';
 	import LockIcon from '@lucide/svelte/icons/lock-keyhole';
 	import ShieldCheckIcon from '@lucide/svelte/icons/shield-check';
 	import SparklesIcon from '@lucide/svelte/icons/sparkles';
+	import { resolveAppPath } from '$lib/app-path';
 
 	type BillingURL = components['schemas']['BillingURLResponse'];
 	type CheckoutState = 'loading' | 'ready' | 'opening' | 'confirming' | 'success' | 'error';
@@ -138,7 +135,7 @@
 		if (!paddlePromise) {
 			paddleConfiguration = configuration;
 			paddlePromise = initializePaddle({
-				environment: data.environment as Environments,
+				environment: data.environment,
 				token: data.client_token,
 				eventCallback: handlePaddleEvent
 			});
@@ -245,8 +242,11 @@
 			) {
 				throw new Error(apiError?.detail || m.checkout_load_failed());
 			}
-			selectedPlanID = data.plan_id as HostedPlanID;
-			billingPeriod = data.billing_period as BillingPeriod;
+			const planID = normalizeHostedPlanID(data.plan_id);
+			const period = normalizeBillingPeriod(data.billing_period);
+			if (!planID || !period) throw new Error(m.checkout_load_failed());
+			selectedPlanID = planID;
+			billingPeriod = period;
 			const instance = await initializePaddleForCheckout(data);
 			const nextPrices = await loadLocalizedPrices(instance, data);
 			if (sequence !== requestSequence || stopped) return;
@@ -322,7 +322,7 @@
 			}
 			if (result?.status === 'success') {
 				checkoutState = 'success';
-				if (result.return_path) await goto(resolve(result.return_path as '/'));
+				if (result.return_path) await goto(resolveAppPath(result.return_path));
 				return;
 			}
 			await new Promise((resolvePromise) => window.setTimeout(resolvePromise, 1000));
@@ -334,7 +334,7 @@
 	}
 
 	function continueToAccounts() {
-		void goto(resolve('/settings?tab=accounts&onboarding=1'));
+		void goto(resolveAppPath('/settings?tab=accounts&onboarding=1'));
 	}
 
 	onMount(() => {
@@ -349,7 +349,7 @@
 				const target = new URL(onboardingPathForPlan(selectedPlanID, billingPeriod), page.url);
 				const redirect = safeSameOriginRedirect(page.url, '');
 				if (redirect) target.searchParams.set('redirect', redirect);
-				await goto(resolve(`${target.pathname}${target.search}` as '/'));
+				await goto(resolveAppPath(`${target.pathname}${target.search}`));
 				return;
 			}
 			if (page.url.searchParams.get('status') === 'success') {
@@ -381,7 +381,7 @@
 			class="mx-auto flex min-h-16 w-full max-w-7xl items-center justify-between gap-4 px-4 sm:min-h-20 sm:px-6 lg:px-8"
 		>
 			<a
-				href={resolve('/')}
+				href={resolveAppPath('/')}
 				class="rounded-md focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none"
 				aria-label="OpenPost"
 			>

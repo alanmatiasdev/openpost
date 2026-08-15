@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { resolve } from '$app/paths';
 	import { onMount } from 'svelte';
 	import { client } from '$lib/api/client';
 	import type { components } from '$lib/api/types';
@@ -17,6 +16,7 @@
 		clearAccountManagementContinuation
 	} from '$lib/account-management-route';
 	import AlertTriangleIcon from '@lucide/svelte/icons/triangle-alert';
+	import { resolveAppPath } from '$lib/app-path';
 
 	type Selection = components['schemas']['AccountSelectionResponse'];
 	type SelectionOption = components['schemas']['AccountSelectionOption'];
@@ -117,7 +117,11 @@
 			selectedIds = [];
 			viewState = 'selection';
 		} catch (requestError) {
-			showError(transportErrorMessage(requestError, m.accounts_callback_selection_load_failed()));
+			const message =
+				requestError instanceof Error && requestError.message.trim()
+					? `${m.accounts_callback_selection_load_failed()} ${requestError.message}`
+					: m.accounts_callback_selection_load_failed();
+			showError(message);
 		} finally {
 			loadingSelection = false;
 		}
@@ -152,7 +156,7 @@
 
 			viewState = 'loading';
 			if (!data.open_fresh_composer) {
-				await goto(resolve(accountManagementReturnHref() as '/'));
+				await goto(resolveAppPath(accountManagementReturnHref()));
 				clearAccountManagementContinuation();
 				return;
 			}
@@ -160,7 +164,7 @@
 				workspace_id: data.workspace_id,
 				account_ids: data.account_ids.join(',')
 			});
-			await goto(resolve(`/?${query.toString()}` as '/'));
+			await goto(resolveAppPath(`/?${query.toString()}`));
 		} catch (requestError) {
 			returnToAccounts(selection?.workspace_id ?? '');
 		} finally {
@@ -172,20 +176,13 @@
 		return apiError.detail || apiError.title || fallback;
 	}
 
-	function transportErrorMessage(requestError: unknown, fallback: string) {
-		if (requestError instanceof Error && requestError.message.trim()) {
-			return `${fallback} ${requestError.message}`;
-		}
-		return fallback;
-	}
-
 	function goToAccounts() {
-		goto(resolve(accountManagementReturnHref() as '/'));
+		goto(resolveAppPath(accountManagementReturnHref()));
 		clearAccountManagementContinuation();
 	}
 
 	function returnToAccounts(workspaceID: string) {
-		void goto(resolve(accountManagementReturnHref(undefined, 'failed', workspaceID) as '/'));
+		void goto(resolveAppPath(accountManagementReturnHref(undefined, 'failed', workspaceID)));
 		clearAccountManagementContinuation();
 	}
 

@@ -10,6 +10,10 @@ interface AccountLimitTarget {
 	id?: string;
 	platform: string;
 	limit_profile?: string | null;
+	// Legacy account shapes may still carry these fields. Limit selection intentionally ignores them.
+	capabilities?: string[];
+	metadata?: { x_premium?: boolean };
+	account_username?: string;
 }
 
 type ResolvedAccountLimits = Record<string, { text_limit?: number | null } | null | undefined>;

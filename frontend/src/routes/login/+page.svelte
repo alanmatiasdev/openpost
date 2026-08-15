@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { auth } from '$lib/stores/auth';
 	import { goto } from '$app/navigation';
-	import { resolve } from '$app/paths';
 	import { page } from '$app/stores';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
@@ -21,6 +20,7 @@
 	import { getApiBase } from '$lib/stores/instance.svelte';
 	import { IS_CAPACITOR } from '$lib/env';
 	import BuildingIcon from '@lucide/svelte/icons/building-2';
+	import { resolveAppPath } from '$lib/app-path';
 
 	let email = $state('');
 	let password = $state('');
@@ -67,15 +67,15 @@
 		const result = await auth.login(email, password);
 
 		if (result.success) {
-			goto(resolve(loginTarget() as '/'));
+			goto(resolveAppPath(loginTarget()));
 		} else if (result.requiresEmailVerification && result.emailVerificationID) {
 			goto(
-				resolve(
+				resolveAppPath(
 					emailVerificationPath(
 						result.emailVerificationID,
 						result.emailVerificationEmail ?? email,
 						result.emailDeliveryStatus
-					) as '/'
+					)
 				)
 			);
 			return;
@@ -99,7 +99,7 @@
 
 		const result = await auth.verifyRecoveryCode(mfaToken, recoveryCode);
 		if (result.success) {
-			goto(resolve(loginTarget() as '/'));
+			goto(resolveAppPath(loginTarget()));
 		} else {
 			error = result.error || m.auth_login_recovery_code_failed();
 		}
@@ -128,7 +128,7 @@
 
 		const result = await auth.verifyTOTP(mfaToken, totpCode);
 		if (result.success) {
-			goto(resolve(loginTarget() as '/'));
+			goto(resolveAppPath(loginTarget()));
 		} else {
 			error = result.error || m.auth_login_authenticator_failed();
 		}
@@ -142,7 +142,7 @@
 
 		const result = await auth.verifyPasskey(mfaToken);
 		if (result.success) {
-			goto(resolve(loginTarget() as '/'));
+			goto(resolveAppPath(loginTarget()));
 		} else {
 			error = result.error || m.auth_login_passkey_failed();
 		}
@@ -166,10 +166,8 @@
 
 	function oidcStartURL(provider: OIDCProvider) {
 		const base = getApiBase().replace(/\/$/, '');
-		const query = new URLSearchParams({
-			return_path: loginTarget(),
-			...(IS_CAPACITOR ? { native: 'true' } : {})
-		});
+		const query = new URLSearchParams({ return_path: loginTarget() });
+		if (IS_CAPACITOR) query.set('native', 'true');
 		return `${base}/auth/oidc/${encodeURIComponent(provider.id)}/start?${query}`;
 	}
 
@@ -363,7 +361,7 @@
 			{#if authConfiguration?.password_reset_enabled}
 				<div class="-mt-2 text-right">
 					<a
-						href={resolve('/forgot-password')}
+						href={resolveAppPath('/forgot-password')}
 						class="inline-flex min-h-11 items-center text-sm font-medium text-primary hover:underline"
 						>{m.auth_login_forgot_password()}</a
 					>
@@ -408,7 +406,7 @@
 		<p class="mt-6 text-center text-sm text-muted-foreground">
 			{m.auth_login_no_account()}
 			<a
-				href={resolve(registrationTarget() as '/')}
+				href={resolveAppPath(registrationTarget())}
 				class="inline-flex min-h-11 items-center px-1 font-medium text-primary hover:underline"
 				>{m.auth_login_create_one()}</a
 			>
