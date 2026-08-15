@@ -485,6 +485,22 @@ export const docsPageCatalog = Object.freeze([
     }
   },
   {
+    "page": "development/post-publication-migration.md",
+    "title": "Post to Publication migration",
+    "description": "Legacy Post HTTP routes, older Post links, CLI command names, and post-named MCP tools are now compatibility surfaces.",
+    "route": "/development/post-publication-migration",
+    "agentRepresentation": {
+      "membership": "ordinary"
+    },
+    "agentDiscovery": {
+      "membership": "unlisted"
+    },
+    "agentCorpus": {
+      "membership": "included",
+      "section": "development"
+    }
+  },
+  {
     "page": "development/production-readiness.md",
     "title": "Production Architecture and Checks",
     "description": "OpenPost uses one product core for the Hosted service and self-hosted deployments.",

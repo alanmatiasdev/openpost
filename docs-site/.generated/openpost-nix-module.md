@@ -196,8 +196,9 @@ in
       type = lib.types.str;
       default = "ghcr.io/getopenpost/openpost:latest";
       description = ''
-        OpenPost container image. Pin this to a release tag or digest for
-        reproducible production deploys.
+        OpenPost container image. Keep this aligned with the local tag promoted
+        by the signed deployment hook because the VPS service uses pullPolicy =
+        "never" and must not fetch an unverified registry reference at restart.
       '';
     };
 
