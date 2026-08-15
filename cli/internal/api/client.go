@@ -956,41 +956,12 @@ func (c *Client) GetPost(ctx context.Context, id string) (*Post, error) {
 	return &out, nil
 }
 
-func (c *Client) DeletePost(ctx context.Context, id string) error {
-	return c.DeleteJSON(ctx, "/api/v1/posts/"+url.PathEscape(id), nil)
-}
-
 type PostMedia struct {
 	MediaID      string `json:"media_id"`
 	DisplayOrder int    `json:"display_order"`
 	FilePath     string `json:"file_path"`
 	MimeType     string `json:"mime_type"`
 	AltText      string `json:"alt_text"`
-}
-
-type ThreadPostInput struct {
-	Content  string   `json:"content"`
-	MediaIDs []string `json:"media_ids,omitempty"`
-}
-
-type CreateThreadInput struct {
-	WorkspaceID        string            `json:"workspace_id"`
-	Posts              []ThreadPostInput `json:"posts"`
-	ScheduledAt        *time.Time        `json:"scheduled_at,omitempty"`
-	SocialAccountIDs   []string          `json:"social_account_ids"`
-	RandomDelayMinutes int               `json:"random_delay_minutes,omitempty"`
-}
-
-type CreateThreadOutput struct {
-	PostIDs []string `json:"post_ids"`
-}
-
-func (c *Client) CreateThread(ctx context.Context, in CreateThreadInput) (*CreateThreadOutput, error) {
-	var out CreateThreadOutput
-	if err := c.PostJSON(ctx, "/api/v1/posts/thread", in, &out); err != nil {
-		return nil, err
-	}
-	return &out, nil
 }
 
 // ----- Publications -----
