@@ -72,6 +72,16 @@ func TestViewerCannotModerateComments(t *testing.T) {
 	require.Contains(t, resp.Body.String(), "workspace editor role required")
 }
 
+func TestRESTCommentActionRejectsCredentialBoundToAnotherWorkspace(t *testing.T) {
+	srv := newCommentsTestServer(t, map[string]platform.Adapter{"x": fakeCommentAdapter{}})
+	commentID, err := encodeCommentReference(commentReference{RenditionID: "rendition-1", ProviderCommentID: "provider-comment-1"})
+	require.NoError(t, err)
+
+	resp := srv.requestWithToken(t, http.MethodPost, "/api/v1/comments/"+commentID+"/hide", nil, "other-workspace-token")
+
+	require.Equal(t, http.StatusForbidden, resp.Code, resp.Body.String())
+}
+
 func TestListRenditionCommentsEncodesProviderCommentIDs(t *testing.T) {
 	srv := newCommentsTestServer(t, map[string]platform.Adapter{
 		"x": fakeCommentAdapter{comments: []platform.Comment{{
@@ -188,6 +198,10 @@ func newCommentsTestServer(t *testing.T, providers map[string]platform.Adapter) 
 }
 
 func (s *commentsTestServer) request(t *testing.T, method, path string, body any) *httptest.ResponseRecorder {
+	return s.requestWithToken(t, method, path, body, "web-token")
+}
+
+func (s *commentsTestServer) requestWithToken(t *testing.T, method, path string, body any, token string) *httptest.ResponseRecorder {
 	t.Helper()
 	var payload bytes.Buffer
 	if body != nil {
@@ -195,7 +209,7 @@ func (s *commentsTestServer) request(t *testing.T, method, path string, body any
 	}
 	req := httptest.NewRequestWithContext(t.Context(), method, path, &payload)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer web-token")
+	req.Header.Set("Authorization", "Bearer "+token)
 	rec := httptest.NewRecorder()
 	s.echo.ServeHTTP(rec, req)
 	return rec

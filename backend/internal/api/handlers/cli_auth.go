@@ -219,7 +219,7 @@ func (h *CLIAuthHandler) RegisterRoutes(api huma.API) {
 		}
 		if err := h.auth.ApproveSessionWithOptions(
 			ctx,
-			middleware.GetUserID(ctx),
+			workspaceActor(ctx, middleware.GetUserID(ctx)),
 			decisionCode(input.Body.DeviceCode, input.Body.UserCode),
 			input.Body.Scopes,
 			input.Body.Name,

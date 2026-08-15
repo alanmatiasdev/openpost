@@ -34,6 +34,7 @@ type AccountSaver struct {
 }
 
 type SaveAccountInput struct {
+	Actor                 workspaceaccess.ActorFacts
 	UserID                string
 	PlatformName          string
 	WorkspaceID           string
@@ -85,9 +86,10 @@ func (s *AccountSaver) SetEntitlement(entitlement entitlements.Service) {
 // and inserting into the social_accounts table.
 //
 //nolint:gocyclo
-func (s *AccountSaver) SaveAccount(ctx context.Context, userID, platformName, workspaceID, accountID, accountUsername, instanceURL string, tokenResp *platform.TokenResult) (*models.SocialAccount, error) {
+func (s *AccountSaver) SaveAccount(ctx context.Context, actor workspaceaccess.ActorFacts, platformName, workspaceID, accountID, accountUsername, instanceURL string, tokenResp *platform.TokenResult) (*models.SocialAccount, error) {
 	return s.SaveAccountFromInput(ctx, SaveAccountInput{
-		UserID:          userID,
+		Actor:           actor,
+		UserID:          actor.UserID,
 		PlatformName:    platformName,
 		WorkspaceID:     workspaceID,
 		AccountID:       accountID,
@@ -563,6 +565,9 @@ func (s *AccountSaver) validateSaveAccountInput(ctx context.Context, input SaveA
 	if input.UserID == "" {
 		return fmt.Errorf("user id is required")
 	}
+	if input.Actor.UserID == "" || input.Actor.UserID != input.UserID {
+		return fmt.Errorf("authenticated actor is required")
+	}
 	if input.WorkspaceID == "" {
 		return fmt.Errorf("workspace id is required")
 	}
@@ -570,7 +575,7 @@ func (s *AccountSaver) validateSaveAccountInput(ctx context.Context, input SaveA
 		return fmt.Errorf("token response is required")
 	}
 
-	decision, err := workspaceaccess.NewAuthorizer(s.db).Authorize(ctx, input.WorkspaceID, workspaceaccess.ActorFacts{UserID: input.UserID}, workspaceaccess.LevelEdit)
+	decision, err := workspaceaccess.NewAuthorizer(s.db).Authorize(ctx, input.WorkspaceID, input.Actor, workspaceaccess.LevelEdit)
 	if err != nil {
 		return fmt.Errorf("validating workspace access: %w", err)
 	}

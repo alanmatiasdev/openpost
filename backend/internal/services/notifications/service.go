@@ -119,10 +119,7 @@ type MuteCreate struct {
 	EndsAt      time.Time `json:"ends_at" format:"date-time"`
 }
 
-type MuteActor struct {
-	UserID             string
-	WorkspaceBindingID string
-}
+type MuteActor = workspaceaccess.ActorFacts
 
 type Mute struct {
 	ID            string    `json:"id"`
@@ -236,7 +233,7 @@ func (s *Service) CreateMute(ctx context.Context, actor MuteActor, input MuteCre
 	if err != nil {
 		return Mute{}, err
 	}
-	if err := s.authorizeMuteCreate(ctx, actor, userID, input); err != nil {
+	if err := s.authorizeMuteCreate(ctx, actor, input); err != nil {
 		return Mute{}, err
 	}
 	id := uuid.NewSHA1(uuid.NameSpaceOID, []byte("notification-mute\x00"+userID+"\x00"+string(input.Scope)+"\x00"+input.WorkspaceID)).String()
@@ -273,15 +270,15 @@ func normalizeMuteCreate(actor MuteActor, input MuteCreate, now time.Time) (stri
 	return userID, input, nil
 }
 
-func (s *Service) authorizeMuteCreate(ctx context.Context, actor MuteActor, userID string, input MuteCreate) error {
-	workspaceBindingID := strings.TrimSpace(actor.WorkspaceBindingID)
+func (s *Service) authorizeMuteCreate(ctx context.Context, actor MuteActor, input MuteCreate) error {
+	workspaceBindingID := strings.TrimSpace(actor.CredentialWorkspaceID)
 	if workspaceBindingID != "" && (input.Scope != MuteScopeWorkspace || input.WorkspaceID != workspaceBindingID) {
 		return ErrMuteWorkspaceAccess
 	}
 	if input.Scope != MuteScopeWorkspace {
 		return nil
 	}
-	decision, err := workspaceaccess.NewAuthorizer(s.db).Authorize(ctx, input.WorkspaceID, workspaceaccess.ActorFacts{UserID: userID}, workspaceaccess.LevelRead)
+	decision, err := workspaceaccess.NewAuthorizer(s.db).Authorize(ctx, input.WorkspaceID, actor, workspaceaccess.LevelRead)
 	if err != nil {
 		return err
 	}
@@ -294,7 +291,7 @@ func (s *Service) authorizeMuteCreate(ctx context.Context, actor MuteActor, user
 func (s *Service) EndMute(ctx context.Context, actor MuteActor, muteID string) error {
 	now := s.now().UTC()
 	userID := strings.TrimSpace(actor.UserID)
-	workspaceBindingID := strings.TrimSpace(actor.WorkspaceBindingID)
+	workspaceBindingID := strings.TrimSpace(actor.CredentialWorkspaceID)
 	var mute models.UserNotificationMute
 	if err := s.db.NewSelect().Model(&mute).
 		Where("id = ? AND user_id = ?", strings.TrimSpace(muteID), userID).
@@ -1158,11 +1155,11 @@ func (s *Service) GetPreferenceSettings(ctx context.Context, userID string) (Pre
 
 func (s *Service) GetPreferenceSettingsForActor(ctx context.Context, actor MuteActor) (PreferenceSettings, error) {
 	userID := strings.TrimSpace(actor.UserID)
-	workspaceBindingID := strings.TrimSpace(actor.WorkspaceBindingID)
+	workspaceBindingID := strings.TrimSpace(actor.CredentialWorkspaceID)
 	if workspaceBindingID == "" {
 		return s.getPreferenceSettings(ctx, s.db, userID)
 	}
-	decision, err := workspaceaccess.NewAuthorizer(s.db).Authorize(ctx, workspaceBindingID, workspaceaccess.ActorFacts{UserID: userID}, workspaceaccess.LevelRead)
+	decision, err := workspaceaccess.NewAuthorizer(s.db).Authorize(ctx, workspaceBindingID, actor, workspaceaccess.LevelRead)
 	if err != nil {
 		return PreferenceSettings{}, err
 	}
@@ -1357,7 +1354,7 @@ func (s *Service) UpdatePreferences(ctx context.Context, userID string, preferen
 
 func (s *Service) UpdatePreferenceSettings(ctx context.Context, actor MuteActor, update PreferenceUpdate) (PreferenceSettings, error) {
 	userID := strings.TrimSpace(actor.UserID)
-	if strings.TrimSpace(actor.WorkspaceBindingID) != "" {
+	if strings.TrimSpace(actor.CredentialWorkspaceID) != "" {
 		return PreferenceSettings{}, ErrMuteWorkspaceAccess
 	}
 	allowed := DefaultPreferences()

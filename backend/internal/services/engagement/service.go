@@ -123,6 +123,7 @@ type engagementActionJob struct {
 }
 
 type ProviderCommentActionInput struct {
+	Actor             Actor
 	WorkspaceID       string
 	PublicationID     string
 	RenditionID       string
@@ -130,7 +131,6 @@ type ProviderCommentActionInput struct {
 	ProviderCommentID string
 	Action            string
 	Message           string
-	UserID            string
 }
 
 func (s *Service) handleSweep(ctx context.Context) error {
@@ -543,9 +543,9 @@ func QueueProviderCommentAction(ctx context.Context, db *bun.DB, input ProviderC
 	input.ProviderCommentID = strings.TrimSpace(input.ProviderCommentID)
 	input.Action = strings.ToLower(strings.TrimSpace(input.Action))
 	input.Message = strings.TrimSpace(input.Message)
-	input.UserID = strings.TrimSpace(input.UserID)
+	input.Actor.UserID = strings.TrimSpace(input.Actor.UserID)
 	if input.WorkspaceID == "" || input.PublicationID == "" || input.RenditionID == "" ||
-		input.SocialAccountID == "" || input.ProviderCommentID == "" || input.UserID == "" {
+		input.SocialAccountID == "" || input.ProviderCommentID == "" || input.Actor.UserID == "" {
 		return "", fmt.Errorf("provider comment action ownership is required")
 	}
 	switch input.Action {
@@ -565,7 +565,7 @@ func QueueProviderCommentAction(ctx context.Context, db *bun.DB, input ProviderC
 		JobID: jobID, WorkspaceID: input.WorkspaceID, PublicationID: input.PublicationID,
 		RenditionID: input.RenditionID, SocialAccountID: input.SocialAccountID,
 		ProviderCommentID: input.ProviderCommentID, Action: input.Action,
-		Message: input.Message, UserID: input.UserID,
+		Message: input.Message, UserID: input.Actor.UserID,
 	})
 	if err != nil {
 		return "", fmt.Errorf("encode provider comment action: %w", err)
@@ -574,7 +574,7 @@ func QueueProviderCommentAction(ctx context.Context, db *bun.DB, input ProviderC
 		if err := organizationguard.LockWorkspace(txCtx, tx, input.WorkspaceID); err != nil {
 			return err
 		}
-		decision, err := workspaceaccess.NewAuthorizer(tx).Authorize(txCtx, input.WorkspaceID, Actor{UserID: input.UserID}, workspaceaccess.LevelEdit)
+		decision, err := workspaceaccess.NewAuthorizer(tx).Authorize(txCtx, input.WorkspaceID, input.Actor, workspaceaccess.LevelEdit)
 		if err != nil {
 			return fmt.Errorf("authorize provider comment action: %w", err)
 		}

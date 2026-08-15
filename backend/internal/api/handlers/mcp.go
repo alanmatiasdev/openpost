@@ -3868,10 +3868,11 @@ func (h *MCPHandler) moderateComment(ctx context.Context, userID, operation stri
 		return nil, &mcpError{Code: -32602, Message: "unknown comment action"}
 	}
 	jobID, err := engagementservice.QueueProviderCommentAction(ctx, h.db, engagementservice.ProviderCommentActionInput{
+		Actor:       workspaceActor(ctx, userID),
 		WorkspaceID: publication.WorkspaceID, PublicationID: publication.ID,
 		RenditionID: rendition.ID, SocialAccountID: account.ID,
 		ProviderCommentID: ref.ProviderCommentID, Action: action,
-		Message: input.Body, UserID: userID,
+		Message: input.Body,
 	})
 	if err != nil {
 		return nil, &mcpError{Code: -32603, Message: "failed to queue provider comment action"}

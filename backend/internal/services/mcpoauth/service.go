@@ -57,6 +57,7 @@ type Service struct {
 }
 
 type AuthorizationRequest struct {
+	Actor               workspaceaccess.ActorFacts
 	UserID              string
 	WorkspaceID         string
 	ResponseType        string
@@ -130,7 +131,7 @@ func (s *Service) CreateAuthorizationCode(ctx context.Context, input Authorizati
 	if strings.TrimSpace(input.UserID) == "" {
 		return nil, ErrInvalidRequest
 	}
-	workspaceID, err := s.normalizeWorkspaceScope(ctx, input.UserID, input.WorkspaceID)
+	workspaceID, err := s.normalizeWorkspaceScope(ctx, input.Actor, input.UserID, input.WorkspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -311,12 +312,15 @@ func (s *Service) consumeCode(ctx context.Context, codeID string, consumedAt tim
 	return nil
 }
 
-func (s *Service) normalizeWorkspaceScope(ctx context.Context, userID, workspaceID string) (string, error) {
+func (s *Service) normalizeWorkspaceScope(ctx context.Context, actor workspaceaccess.ActorFacts, userID, workspaceID string) (string, error) {
 	workspaceID = strings.TrimSpace(workspaceID)
 	if workspaceID == "" {
 		return "", nil
 	}
-	decision, err := workspaceaccess.NewAuthorizer(s.db).Authorize(ctx, workspaceID, workspaceaccess.ActorFacts{UserID: strings.TrimSpace(userID)}, workspaceaccess.LevelRead)
+	if actor.UserID == "" || strings.TrimSpace(actor.UserID) != strings.TrimSpace(userID) {
+		return "", ErrWorkspaceNotAllowed
+	}
+	decision, err := workspaceaccess.NewAuthorizer(s.db).Authorize(ctx, workspaceID, actor, workspaceaccess.LevelRead)
 	if err != nil {
 		return "", err
 	}

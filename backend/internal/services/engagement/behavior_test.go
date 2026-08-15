@@ -79,10 +79,11 @@ func TestQueuedProviderCommentActionUsesAcceptedFenceAndIdempotentLifecycle(t *t
 	service.SetProvider("x", commenter)
 
 	jobID, err := QueueProviderCommentAction(t.Context(), db, ProviderCommentActionInput{
+		Actor:       Actor{UserID: "user-1"},
 		WorkspaceID: "workspace-1", PublicationID: "publication-1",
 		RenditionID: "rendition-1", SocialAccountID: "account-1",
 		ProviderCommentID: "comment-1", Action: "reply",
-		Message: "A private reply body", UserID: "user-1",
+		Message: "A private reply body",
 	})
 	require.NoError(t, err)
 	var job models.Job
@@ -106,6 +107,22 @@ func TestQueuedProviderCommentActionUsesAcceptedFenceAndIdempotentLifecycle(t *t
 	require.Len(t, events, 1)
 }
 
+func TestQueuedProviderCommentActionPreservesCredentialWorkspaceBoundary(t *testing.T) {
+	db := engagementBehaviorTestDB(t)
+	seedProviderCommentAction(t, db)
+
+	_, err := QueueProviderCommentAction(t.Context(), db, ProviderCommentActionInput{
+		Actor:       Actor{UserID: "user-1", CredentialWorkspaceID: "another-workspace"},
+		WorkspaceID: "workspace-1", PublicationID: "publication-1",
+		RenditionID: "rendition-1", SocialAccountID: "account-1",
+		ProviderCommentID: "comment-1", Action: "hide",
+	})
+	require.ErrorIs(t, err, ErrAccessDenied)
+	count, countErr := db.NewSelect().Model((*models.Job)(nil)).Where("type = ?", JobTypeEngagementAct).Count(t.Context())
+	require.NoError(t, countErr)
+	require.Zero(t, count)
+}
+
 func TestQueuedProviderCommentActionNeverReplaysAmbiguousWrite(t *testing.T) {
 	db := engagementBehaviorTestDB(t)
 	seedProviderCommentAction(t, db)
@@ -113,9 +130,10 @@ func TestQueuedProviderCommentActionNeverReplaysAmbiguousWrite(t *testing.T) {
 	service := NewService(db, staticTokenSource{}, nil)
 	service.SetProvider("x", commenter)
 	jobID, err := QueueProviderCommentAction(t.Context(), db, ProviderCommentActionInput{
+		Actor:       Actor{UserID: "user-1"},
 		WorkspaceID: "workspace-1", PublicationID: "publication-1",
 		RenditionID: "rendition-1", SocialAccountID: "account-1",
-		ProviderCommentID: "comment-1", Action: "reply", Message: "Thanks", UserID: "user-1",
+		ProviderCommentID: "comment-1", Action: "reply", Message: "Thanks",
 	})
 	require.NoError(t, err)
 	var job models.Job

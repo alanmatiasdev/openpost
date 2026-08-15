@@ -163,10 +163,11 @@ func (h *CommentHandler) replyToComment(api huma.API) {
 			return nil, err
 		}
 		jobID, err := engagementservice.QueueProviderCommentAction(ctx, h.db, engagementservice.ProviderCommentActionInput{
+			Actor:       workspaceActor(ctx, middleware.GetUserID(ctx)),
 			WorkspaceID: publication.WorkspaceID, PublicationID: publication.ID,
 			RenditionID: rendition.ID, SocialAccountID: account.ID,
 			ProviderCommentID: ref.ProviderCommentID, Action: "reply",
-			Message: input.Body.Body, UserID: middleware.GetUserID(ctx),
+			Message: input.Body.Body,
 		})
 		if err != nil {
 			return nil, huma.Error500InternalServerError("failed to queue comment reply")
@@ -200,10 +201,10 @@ func (h *CommentHandler) hideComment(api huma.API) {
 			return nil, err
 		}
 		jobID, err := engagementservice.QueueProviderCommentAction(ctx, h.db, engagementservice.ProviderCommentActionInput{
+			Actor:       workspaceActor(ctx, middleware.GetUserID(ctx)),
 			WorkspaceID: publication.WorkspaceID, PublicationID: publication.ID,
 			RenditionID: rendition.ID, SocialAccountID: account.ID,
 			ProviderCommentID: ref.ProviderCommentID, Action: "hide",
-			UserID: middleware.GetUserID(ctx),
 		})
 		if err != nil {
 			return nil, huma.Error500InternalServerError("failed to queue comment hide")
@@ -237,10 +238,10 @@ func (h *CommentHandler) deleteComment(api huma.API) {
 			return nil, err
 		}
 		jobID, err := engagementservice.QueueProviderCommentAction(ctx, h.db, engagementservice.ProviderCommentActionInput{
+			Actor:       workspaceActor(ctx, middleware.GetUserID(ctx)),
 			WorkspaceID: publication.WorkspaceID, PublicationID: publication.ID,
 			RenditionID: rendition.ID, SocialAccountID: account.ID,
 			ProviderCommentID: ref.ProviderCommentID, Action: "delete",
-			UserID: middleware.GetUserID(ctx),
 		})
 		if err != nil {
 			return nil, huma.Error500InternalServerError("failed to queue comment delete")

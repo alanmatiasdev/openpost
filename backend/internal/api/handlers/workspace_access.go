@@ -13,6 +13,7 @@ func workspaceActor(ctx context.Context, userID string) workspaceaccess.ActorFac
 		UserID:                userID,
 		SessionID:             middleware.GetSessionID(ctx),
 		TokenID:               middleware.GetTokenID(ctx),
+		ClientID:              middleware.GetClientID(ctx),
 		CredentialWorkspaceID: middleware.GetWorkspaceID(ctx),
 	}
 }

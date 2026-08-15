@@ -61,6 +61,9 @@ func (cliAuthTokenAuthenticator) AuthenticateBearer(
 type testAuthenticator struct{}
 
 func (testAuthenticator) AuthenticateBearer(_ context.Context, token string) (*middleware.Principal, error) {
+	if token == "other-workspace-token" {
+		return &middleware.Principal{UserID: "user-1", Email: "user@example.com", WorkspaceID: "ws-2", TokenID: "other-workspace-token", ClientID: "test-client"}, nil
+	}
 	if token != "web-token" {
 		return nil, apitokens.ErrInvalidToken
 	}

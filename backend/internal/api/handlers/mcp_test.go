@@ -2018,6 +2018,25 @@ func TestMCPCommentMutationQueuesOneAttemptProviderJob(t *testing.T) {
 	require.Equal(t, "provider-comment-1", payload["provider_comment_id"])
 }
 
+func TestMCPCommentMutationRejectsCredentialBoundToAnotherWorkspace(t *testing.T) {
+	srv := newMCPTestServer(t)
+	ctx := t.Context()
+	_, err := srv.db.NewInsert().Model(&models.Publication{ID: "publication-comment-boundary", WorkspaceID: "ws-1", CreatedByID: "user-1", Title: "Launch", ContentProfile: models.ContentProfileShortText, SourceText: "Launch", SourceContent: "Launch", Status: models.PublicationStatusPublished, MetadataJSON: "{}", ReleasePlanJSON: "{}"}).Exec(ctx)
+	require.NoError(t, err)
+	_, err = srv.db.NewInsert().Model(&models.Rendition{ID: "rendition-comment-boundary", PublicationID: "publication-comment-boundary", SocialAccountID: "account-1", Platform: "x", Profile: models.ContentProfileShortText, Body: "Launch", SettingsJSON: "{}", Status: models.RenditionStatusPublished, ExternalID: "external-1"}).Exec(ctx)
+	require.NoError(t, err)
+	srv.handler.SetProviderCatalog(map[string]platform.Adapter{"x": fakeCommentAdapter{}}, false)
+	commentID, err := encodeCommentReference(commentReference{RenditionID: "rendition-comment-boundary", ProviderCommentID: "provider-comment-1"})
+	require.NoError(t, err)
+
+	resp := srv.request(t, "other-workspace-token", map[string]any{"jsonrpc": "2.0", "id": "bound-comment", "method": "tools/call", "params": map[string]any{"name": mcpToolExecute, "arguments": map[string]any{"operation": mcpToolHideComment, "arguments": map[string]any{"comment_id": commentID}}}})
+
+	require.Equal(t, http.StatusOK, resp.Code)
+	var out map[string]any
+	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &out))
+	require.NotNil(t, out["error"])
+}
+
 func TestMCPCallRenderSchedulerWidget(t *testing.T) {
 	t.Parallel()
 

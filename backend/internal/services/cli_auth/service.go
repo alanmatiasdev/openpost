@@ -193,12 +193,13 @@ func (s *Service) PollSession(ctx context.Context, deviceCode string) (*PollResu
 
 func (s *Service) ApproveSessionWithOptions(
 	ctx context.Context,
-	userID,
+	actor workspaceaccess.ActorFacts,
 	code,
 	scopes,
 	tokenName string,
 	options ApprovalOptions,
 ) error {
+	userID := strings.TrimSpace(actor.UserID)
 	session, err := s.sessionByCode(ctx, code)
 	if err != nil {
 		return err
@@ -218,7 +219,7 @@ func (s *Service) ApproveSessionWithOptions(
 	if err != nil {
 		return err
 	}
-	workspaceID, err := s.approvalWorkspace(ctx, userID, options.WorkspaceID)
+	workspaceID, err := s.approvalWorkspace(ctx, actor, options.WorkspaceID)
 	if err != nil {
 		return err
 	}
@@ -251,12 +252,12 @@ func normalizeApprovalTokenName(clientName, tokenName string) (string, error) {
 	return apitokens.NormalizeName(tokenName)
 }
 
-func (s *Service) approvalWorkspace(ctx context.Context, userID, workspaceID string) (string, error) {
+func (s *Service) approvalWorkspace(ctx context.Context, actor workspaceaccess.ActorFacts, workspaceID string) (string, error) {
 	workspaceID = strings.TrimSpace(workspaceID)
 	if workspaceID == "" {
 		return "", nil
 	}
-	decision, err := workspaceaccess.NewAuthorizer(s.db).Authorize(ctx, workspaceID, workspaceaccess.ActorFacts{UserID: userID}, workspaceaccess.LevelRead)
+	decision, err := workspaceaccess.NewAuthorizer(s.db).Authorize(ctx, workspaceID, actor, workspaceaccess.LevelRead)
 	if err != nil {
 		return "", err
 	}
@@ -460,7 +461,13 @@ func approvedSessionTerminalError(
 	if session.WorkspaceID == "" {
 		return nil, nil
 	}
-	decision, err := workspaceaccess.NewAuthorizer(tx).Authorize(ctx, session.WorkspaceID, workspaceaccess.ActorFacts{UserID: session.UserID}, workspaceaccess.LevelRead)
+	decision, err := workspaceaccess.NewAuthorizer(tx).AuthorizeStored(ctx, workspaceaccess.StoredAuthority{
+		UserID:             session.UserID,
+		WorkspaceID:        session.WorkspaceID,
+		OrganizationID:     session.OrganizationID,
+		IdentityProviderID: session.IdentityProviderID,
+		AssuredAt:          session.AssuredAt,
+	}, workspaceaccess.LevelRead)
 	if err != nil {
 		return nil, err
 	}

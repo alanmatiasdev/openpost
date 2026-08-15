@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/services/identity"
@@ -25,7 +26,19 @@ type ActorFacts struct {
 	UserID                string
 	SessionID             string
 	TokenID               string
+	ClientID              string
 	CredentialWorkspaceID string
+}
+
+// StoredAuthority is exact authorization evidence persisted by a workflow
+// while an authenticated actor is present. Recovery and token-consumption
+// paths use it instead of fabricating a current actor.
+type StoredAuthority struct {
+	UserID             string
+	WorkspaceID        string
+	OrganizationID     string
+	IdentityProviderID string
+	AssuredAt          time.Time
 }
 
 // Decision separates a safe authorization denial from an operational failure.
@@ -136,6 +149,51 @@ func (a Authorizer) Authorize(ctx context.Context, workspaceID string, actor Act
 	return decision, nil
 }
 
+// AuthorizeStored verifies the exact persisted Workspace scope and current
+// membership level. Identity assurance is the immutable evidence accepted by
+// the initiating flow; this path never represents it as a live session/token.
+func (a Authorizer) AuthorizeStored(ctx context.Context, authority StoredAuthority, level Level) (Decision, error) {
+	authority.UserID = strings.TrimSpace(authority.UserID)
+	authority.WorkspaceID = strings.TrimSpace(authority.WorkspaceID)
+	authority.OrganizationID = strings.TrimSpace(authority.OrganizationID)
+	decision := Decision{Level: normalizeLevel(level)}
+	if authority.UserID == "" || authority.WorkspaceID == "" {
+		decision.Reason = "stored workspace authority is incomplete"
+		return decision, nil
+	}
+	var workspace models.Workspace
+	if err := a.db.NewSelect().Model(&workspace).Column("id", "organization_id").Where("id = ?", authority.WorkspaceID).Scan(ctx); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			decision.Reason = "stored workspace authority is unavailable"
+			return decision, nil
+		}
+		return Decision{}, err
+	}
+	if authority.OrganizationID != "" && authority.OrganizationID != workspace.OrganizationID {
+		decision.Reason = "stored organization scope no longer matches workspace"
+		return decision, nil
+	}
+	var member models.WorkspaceMember
+	if err := a.db.NewSelect().Model(&member).
+		Where("workspace_id = ? AND user_id = ? AND status = ?", authority.WorkspaceID, authority.UserID, models.WorkspaceMemberStatusActive).
+		Scan(ctx); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			decision.Reason = "active workspace membership required"
+			return decision, nil
+		}
+		return Decision{}, err
+	}
+	decision.Role = member.Role
+	if !roleMeetsLevel(member.Role, level) {
+		decision.Reason = "workspace role does not allow this action"
+		return decision, nil
+	}
+	decision.Allowed = true
+	decision.OrganizationID = workspace.OrganizationID
+	decision.ProviderID = strings.TrimSpace(authority.IdentityProviderID)
+	return decision, nil
+}
+
 func applyIdentityDecision(decision *Decision, identityDecision identity.WorkspaceAccessDecision) {
 	decision.SSORequired = identityDecision.SSORequired
 	decision.OrganizationID = identityDecision.OrganizationID
@@ -147,6 +205,7 @@ func normalizeActor(actor ActorFacts) ActorFacts {
 	actor.UserID = strings.TrimSpace(actor.UserID)
 	actor.SessionID = strings.TrimSpace(actor.SessionID)
 	actor.TokenID = strings.TrimSpace(actor.TokenID)
+	actor.ClientID = strings.TrimSpace(actor.ClientID)
 	actor.CredentialWorkspaceID = strings.TrimSpace(actor.CredentialWorkspaceID)
 	return actor
 }

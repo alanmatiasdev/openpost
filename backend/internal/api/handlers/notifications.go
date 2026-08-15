@@ -224,9 +224,7 @@ func (h *NotificationHandler) registerMuteRoutes(api huma.API) {
 }
 
 func notificationMuteActor(ctx context.Context) notifications.MuteActor {
-	return notifications.MuteActor{
-		UserID: middleware.GetUserID(ctx), WorkspaceBindingID: middleware.GetWorkspaceID(ctx),
-	}
+	return workspaceActor(ctx, middleware.GetUserID(ctx))
 }
 
 func (h *NotificationHandler) requireWorkspaceAccess(ctx context.Context, workspaceID string) error {

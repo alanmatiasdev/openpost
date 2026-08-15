@@ -79,6 +79,7 @@ func (h *MCPOAuthHandler) RegisterAPIRoutes(api huma.API) {
 			return nil, huma.Error403Forbidden("a signed-in browser session is required to review MCP access")
 		}
 		request := mcpoauth.AuthorizationRequest{
+			Actor:               workspaceActor(ctx, middleware.GetUserID(ctx)),
 			UserID:              middleware.GetUserID(ctx),
 			WorkspaceID:         input.Body.WorkspaceID,
 			ResponseType:        input.Body.ResponseType,

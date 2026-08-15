@@ -1163,6 +1163,7 @@ func (h *OAuthHandler) saveAccountAndRedirect(
 	}
 
 	account, err := h.accountSaver.SaveAccountFromInput(ctx, account_saver.SaveAccountInput{
+		Actor:           workspaceActor(ctx, userID),
 		UserID:          userID,
 		PlatformName:    platformName,
 		WorkspaceID:     workspaceID,
@@ -1275,6 +1276,7 @@ func (h *OAuthHandler) ExchangeCode(api huma.API) {
 		}
 
 		account, err := h.accountSaver.SaveAccountFromInput(ctx, account_saver.SaveAccountInput{
+			Actor:           workspaceActor(ctx, userID),
 			UserID:          userID,
 			PlatformName:    mastodonProvider,
 			WorkspaceID:     input.Body.WorkspaceID,
@@ -1360,6 +1362,7 @@ func (h *OAuthHandler) BlueskyLogin(api huma.API) {
 		}
 
 		if _, err := h.accountSaver.SaveAccountFromInput(ctx, account_saver.SaveAccountInput{
+			Actor:           workspaceActor(ctx, userID),
 			UserID:          userID,
 			PlatformName:    "bluesky",
 			WorkspaceID:     input.Body.WorkspaceID,
@@ -1425,6 +1428,7 @@ func (h *OAuthHandler) DiscordWebhookLogin(api huma.API) {
 			TokenType:   "Webhook",
 		}
 		_, err = h.accountSaver.SaveAccountFromInput(ctx, account_saver.SaveAccountInput{
+			Actor:           workspaceActor(ctx, userID),
 			UserID:          userID,
 			PlatformName:    "discord",
 			WorkspaceID:     input.Body.WorkspaceID,
@@ -1562,6 +1566,7 @@ func (h *OAuthHandler) CompleteAccountSelection(api huma.API) {
 				selected.Token = tokenResp
 			}
 			saveInputs = append(saveInputs, account_saver.SaveAccountInput{
+				Actor:                 workspaceActor(ctx, userID),
 				UserID:                userID,
 				PlatformName:          pending.Platform,
 				WorkspaceID:           pending.WorkspaceID,

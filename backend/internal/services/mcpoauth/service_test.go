@@ -16,6 +16,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/services/apitokens"
+	"github.com/openpost/backend/internal/services/workspaceaccess"
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect/sqlitedialect"
@@ -47,6 +48,7 @@ func TestCreateAndExchangeCodeWithClientMetadata(t *testing.T) {
 	service := NewService(db, apitokens.NewService(db))
 	service.SetHTTPClient(client.Client())
 	created, err := service.CreateAuthorizationCode(ctx, AuthorizationRequest{
+		Actor:               workspaceaccess.ActorFacts{UserID: "user-1"},
 		UserID:              "user-1",
 		WorkspaceID:         "ws-1",
 		ResponseType:        "code",
@@ -136,6 +138,7 @@ func TestCreateAuthorizationCodeRejectsInaccessibleWorkspaceScope(t *testing.T) 
 	seedMCPOAuthUser(ctx, t, db)
 
 	_, err := NewService(db, apitokens.NewService(db)).CreateAuthorizationCode(ctx, AuthorizationRequest{
+		Actor:               workspaceaccess.ActorFacts{UserID: "user-1"},
 		UserID:              "user-1",
 		WorkspaceID:         "ws-missing",
 		ResponseType:        "code",

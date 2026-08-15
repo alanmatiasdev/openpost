@@ -122,7 +122,7 @@ func TestWorkspaceBoundActorCannotUpdateAccountPreferencesInTheService(t *testin
 	service := NewService(db)
 
 	_, err := service.UpdatePreferenceSettings(t.Context(), MuteActor{
-		UserID: "user-1", WorkspaceBindingID: "workspace-1",
+		UserID: "user-1", CredentialWorkspaceID: "workspace-1",
 	}, PreferenceUpdate{
 		Preferences: Preferences{
 			TypeNewMessage: {InApp: true, EmailFrequency: EmailFrequencyImmediate},
@@ -141,7 +141,7 @@ func TestWorkspaceBoundMuteActorCannotCrossItsCredentialBoundary(t *testing.T) {
 	db := notificationsTestDB(t)
 	service := NewService(db)
 	now := time.Now().UTC()
-	bound := MuteActor{UserID: "user-1", WorkspaceBindingID: "workspace-1"}
+	bound := MuteActor{UserID: "user-1", CredentialWorkspaceID: "workspace-1"}
 
 	_, err := service.CreateMute(t.Context(), bound, MuteCreate{Scope: MuteScopeAccount, EndsAt: now.Add(time.Hour)})
 	require.ErrorIs(t, err, ErrMuteWorkspaceAccess)
@@ -167,6 +167,36 @@ func TestWorkspaceBoundMuteActorCannotCrossItsCredentialBoundary(t *testing.T) {
 	require.Equal(t, workspace.ID, scoped.Mutes[0].ID)
 	require.Equal(t, workspace.WorkspaceID, scoped.Mutes[0].WorkspaceID)
 	require.NoError(t, service.EndMute(t.Context(), bound, workspace.ID))
+}
+
+func TestWorkspaceMuteAuthorizationPreservesSessionIdentityFacts(t *testing.T) {
+	db := notificationsTestDB(t)
+	for _, model := range []any{
+		(*models.OrganizationSSOPolicy)(nil),
+		(*models.IdentityProvider)(nil),
+		(*models.UserSession)(nil),
+		(*models.SessionIdentityAssurance)(nil),
+	} {
+		_, err := db.NewCreateTable().Model(model).IfNotExists().Exec(t.Context())
+		require.NoError(t, err)
+	}
+	now := time.Now().UTC()
+	for _, row := range []any{
+		&models.IdentityProvider{ID: "provider-1", OrganizationID: "organization-1", Source: "database", Issuer: "https://idp.example.test", Name: "Company SSO", ClientID: "client", Scopes: "openid email", EmailClaim: "email", NameClaim: "name", IsActive: true, CreatedAt: now, UpdatedAt: now},
+		&models.OrganizationSSOPolicy{OrganizationID: "organization-1", Mode: models.OrganizationSSOModeRequired, ProviderIDs: `["provider-1"]`, AssuranceMaxAgeSeconds: 3600, PasswordLoginAllowed: false, APITokenMode: models.OrganizationSSOTokensScoped, MaxTokenLifetimeSeconds: 3600, RequireTokenReauth: true, UpdatedByUserID: "user-1", CreatedAt: now, UpdatedAt: now},
+		&models.UserSession{ID: "session-1", UserID: "user-1", ExpiresAt: now.Add(time.Hour), LastUsedAt: now, CreatedAt: now},
+		&models.SessionIdentityAssurance{SessionID: "session-1", ProviderID: "provider-1", UserID: "user-1", AuthTime: now, ExpiresAt: now.Add(time.Hour), AMR: `["mfa"]`, CreatedAt: now},
+	} {
+		_, err := db.NewInsert().Model(row).Exec(t.Context())
+		require.NoError(t, err)
+	}
+	service := NewService(db)
+	input := MuteCreate{Scope: MuteScopeWorkspace, WorkspaceID: "workspace-1", EndsAt: now.Add(time.Hour)}
+
+	_, err := service.CreateMute(t.Context(), MuteActor{UserID: "user-1", CredentialWorkspaceID: "workspace-1"}, input)
+	require.ErrorIs(t, err, ErrMuteWorkspaceAccess)
+	_, err = service.CreateMute(t.Context(), MuteActor{UserID: "user-1", SessionID: "session-1", CredentialWorkspaceID: "workspace-1"}, input)
+	require.NoError(t, err)
 }
 
 func TestNotificationMutesSuppressOptionalEmailButKeepInAppAndTransactionalDelivery(t *testing.T) {

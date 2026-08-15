@@ -13,10 +13,15 @@ import (
 	"github.com/openpost/backend/internal/platform"
 	"github.com/openpost/backend/internal/services/crypto"
 	"github.com/openpost/backend/internal/services/entitlements"
+	"github.com/openpost/backend/internal/services/workspaceaccess"
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect/sqlitedialect"
 )
+
+func accountSaverActor(userID string) workspaceaccess.ActorFacts {
+	return workspaceaccess.ActorFacts{UserID: userID}
+}
 
 // createTestDB creates an in-memory SQLite database for testing.
 func createTestDB(t *testing.T) *bun.DB {
@@ -110,7 +115,7 @@ func TestSaveAccount_X(t *testing.T) {
 	}
 
 	seedWorkspaceMember(t, db, workspaceID, userID)
-	account, err := saver.SaveAccount(ctx, userID, platformName, workspaceID, accountID, accountUsername, instanceURL, tokenResp)
+	account, err := saver.SaveAccount(ctx, accountSaverActor(userID), platformName, workspaceID, accountID, accountUsername, instanceURL, tokenResp)
 	require.NoError(t, err)
 	require.NotNil(t, account)
 
@@ -150,6 +155,46 @@ func TestSaveAccount_X(t *testing.T) {
 	require.Len(t, jobs, 1)
 }
 
+func TestSaveAccountAuthorizationUsesCredentialAndSessionFacts(t *testing.T) {
+	db := createTestDB(t)
+	for _, model := range []any{
+		(*models.User)(nil),
+		(*models.OrganizationSSOPolicy)(nil),
+		(*models.IdentityProvider)(nil),
+		(*models.UserSession)(nil),
+		(*models.SessionIdentityAssurance)(nil),
+	} {
+		_, err := db.NewCreateTable().Model(model).IfNotExists().Exec(t.Context())
+		require.NoError(t, err)
+	}
+	seedWorkspaceMember(t, db, "workspace-actor", "user-actor")
+	now := time.Now().UTC()
+	var workspace models.Workspace
+	require.NoError(t, db.NewSelect().Model(&workspace).Where("id = ?", "workspace-actor").Scan(t.Context()))
+	for _, row := range []any{
+		&models.User{ID: "user-actor", Email: "actor@example.test", PasswordHash: "hash", CreatedAt: now},
+		&models.IdentityProvider{ID: "provider-actor", OrganizationID: workspace.OrganizationID, Source: "database", Issuer: "https://idp.example.test", Name: "Company SSO", ClientID: "client", Scopes: "openid email", EmailClaim: "email", NameClaim: "name", IsActive: true, CreatedAt: now, UpdatedAt: now},
+		&models.OrganizationSSOPolicy{OrganizationID: workspace.OrganizationID, Mode: models.OrganizationSSOModeRequired, ProviderIDs: `["provider-actor"]`, AssuranceMaxAgeSeconds: 3600, PasswordLoginAllowed: false, APITokenMode: models.OrganizationSSOTokensScoped, MaxTokenLifetimeSeconds: 3600, RequireTokenReauth: true, UpdatedByUserID: "user-actor", CreatedAt: now, UpdatedAt: now},
+		&models.UserSession{ID: "session-actor", UserID: "user-actor", ExpiresAt: now.Add(time.Hour), LastUsedAt: now, CreatedAt: now},
+		&models.SessionIdentityAssurance{SessionID: "session-actor", ProviderID: "provider-actor", UserID: "user-actor", AuthTime: now, ExpiresAt: now.Add(time.Hour), AMR: `["mfa"]`, CreatedAt: now},
+	} {
+		_, err := db.NewInsert().Model(row).Exec(t.Context())
+		require.NoError(t, err)
+	}
+	saver := NewAccountSaver(db, crypto.NewTokenEncryptor("test-secret-key-for-testing-only"))
+	input := SaveAccountInput{
+		Actor:  workspaceaccess.ActorFacts{UserID: "user-actor", SessionID: "session-actor", CredentialWorkspaceID: "other-workspace"},
+		UserID: "user-actor", WorkspaceID: "workspace-actor", PlatformName: "x", AccountID: "remote-actor", AccountUsername: "Actor", Token: &platform.TokenResult{AccessToken: "token"},
+	}
+
+	_, err := saver.SaveAccountFromInput(t.Context(), input)
+	require.Error(t, err)
+	input.Actor.CredentialWorkspaceID = "workspace-actor"
+	account, err := saver.SaveAccountFromInput(t.Context(), input)
+	require.NoError(t, err)
+	require.Equal(t, "workspace-actor", account.WorkspaceID)
+}
+
 func TestSaveAccountsFromInputsConnectsLinkedInIdentitiesAtomically(t *testing.T) {
 	db := createTestDB(t)
 	encryptor := crypto.NewTokenEncryptor("test-secret-key-for-testing-only")
@@ -163,12 +208,12 @@ func TestSaveAccountsFromInputsConnectsLinkedInIdentitiesAtomically(t *testing.T
 
 	accounts, err := saver.SaveAccountsFromInputs(ctx, []SaveAccountInput{
 		{
-			UserID: "user-1", WorkspaceID: "workspace-1", PlatformName: "linkedin",
+			Actor: accountSaverActor("user-1"), UserID: "user-1", WorkspaceID: "workspace-1", PlatformName: "linkedin",
 			AccountID: "urn:li:person:member-1", AccountUsername: "Ada", Token: token,
 			CapabilityState: map[string]string{"linkedin_account_type": "person"},
 		},
 		{
-			UserID: "user-1", WorkspaceID: "workspace-1", PlatformName: "linkedin",
+			Actor: accountSaverActor("user-1"), UserID: "user-1", WorkspaceID: "workspace-1", PlatformName: "linkedin",
 			AccountID: "urn:li:organization:42", AccountUsername: "OpenPost", Token: token,
 			CapabilityState: map[string]string{"linkedin_account_type": "organization"},
 		},
@@ -204,12 +249,12 @@ func TestReauthorizingOneDestinationWithDifferentAuthorityPreservesSiblingGrant(
 	}
 	accounts, err := saver.SaveAccountsFromInputs(ctx, []SaveAccountInput{
 		{
-			UserID: "user-1", WorkspaceID: "workspace-1", PlatformName: "linkedin",
+			Actor: accountSaverActor("user-1"), UserID: "user-1", WorkspaceID: "workspace-1", PlatformName: "linkedin",
 			AccountID: "urn:li:person:member-a", AccountUsername: "Ada", Token: originalToken,
 			Grant: originalAuthority,
 		},
 		{
-			UserID: "user-1", WorkspaceID: "workspace-1", PlatformName: "linkedin",
+			Actor: accountSaverActor("user-1"), UserID: "user-1", WorkspaceID: "workspace-1", PlatformName: "linkedin",
 			AccountID: "urn:li:organization:42", AccountUsername: "OpenPost", Token: originalToken,
 			Grant: originalAuthority,
 		},
@@ -219,7 +264,7 @@ func TestReauthorizingOneDestinationWithDifferentAuthorityPreservesSiblingGrant(
 	originalGrantID := accounts[0].OAuthGrantID
 
 	reauthorized, err := saver.SaveAccountFromInput(ctx, SaveAccountInput{
-		UserID: "user-1", WorkspaceID: "workspace-1", PlatformName: "linkedin",
+		Actor: accountSaverActor("user-1"), UserID: "user-1", WorkspaceID: "workspace-1", PlatformName: "linkedin",
 		AccountID: "urn:li:person:member-a", AccountUsername: "Ada", Token: &platform.TokenResult{AccessToken: "new-member-token"},
 		Grant: AuthorizationGrantInput{
 			ProviderProjectID: "linkedin-client-b",
@@ -259,8 +304,8 @@ func TestSaveAccountsFromInputsRollsBackEveryIdentity(t *testing.T) {
 	token := &platform.TokenResult{AccessToken: "member-token"}
 
 	_, err = saver.SaveAccountsFromInputs(ctx, []SaveAccountInput{
-		{UserID: "user-1", WorkspaceID: "workspace-1", PlatformName: "linkedin", AccountID: "duplicate", AccountUsername: "One", Token: token},
-		{UserID: "user-1", WorkspaceID: "workspace-1", PlatformName: "linkedin", AccountID: "duplicate", AccountUsername: "Two", Token: token},
+		{Actor: accountSaverActor("user-1"), UserID: "user-1", WorkspaceID: "workspace-1", PlatformName: "linkedin", AccountID: "duplicate", AccountUsername: "One", Token: token},
+		{Actor: accountSaverActor("user-1"), UserID: "user-1", WorkspaceID: "workspace-1", PlatformName: "linkedin", AccountID: "duplicate", AccountUsername: "Two", Token: token},
 	})
 	require.Error(t, err)
 	count, countErr := db.NewSelect().Model((*models.SocialAccount)(nil)).Count(ctx)
@@ -292,7 +337,7 @@ func TestSaveAccount_Mastodon(t *testing.T) {
 	}
 
 	seedWorkspaceMember(t, db, workspaceID, userID)
-	account, err := saver.SaveAccount(ctx, userID, platformName, workspaceID, accountID, accountUsername, instanceURL, tokenResp)
+	account, err := saver.SaveAccount(ctx, accountSaverActor(userID), platformName, workspaceID, accountID, accountUsername, instanceURL, tokenResp)
 	require.NoError(t, err)
 	require.NotNil(t, account)
 
@@ -341,7 +386,7 @@ func TestSaveAccount_Threads(t *testing.T) {
 	}
 
 	seedWorkspaceMember(t, db, workspaceID, userID)
-	account, err := saver.SaveAccount(ctx, userID, platformName, workspaceID, initialAccountID, accountUsername, instanceURL, tokenResp)
+	account, err := saver.SaveAccount(ctx, accountSaverActor(userID), platformName, workspaceID, initialAccountID, accountUsername, instanceURL, tokenResp)
 	require.NoError(t, err)
 	require.NotNil(t, account)
 
@@ -374,7 +419,7 @@ func TestSaveAccountPersistsGrantedScopesFromTokenExtra(t *testing.T) {
 	}
 
 	seedWorkspaceMember(t, db, workspaceID, userID)
-	account, err := saver.SaveAccount(ctx, userID, "youtube", workspaceID, "channel-1", "Channel", "", tokenResp)
+	account, err := saver.SaveAccount(ctx, accountSaverActor(userID), "youtube", workspaceID, "channel-1", "Channel", "", tokenResp)
 
 	require.NoError(t, err)
 	require.Equal(t, "https://www.googleapis.com/auth/youtube https://www.googleapis.com/auth/youtube.upload", account.GrantedScopes)
@@ -390,6 +435,7 @@ func TestSaveAccountPersistsCapabilityState(t *testing.T) {
 	seedWorkspaceMember(t, db, "workspace-capabilities", "user-capabilities")
 
 	account, err := saver.SaveAccountFromInput(ctx, SaveAccountInput{
+		Actor:           accountSaverActor("user-capabilities"),
 		UserID:          "user-capabilities",
 		PlatformName:    "x",
 		WorkspaceID:     "workspace-capabilities",
@@ -419,7 +465,7 @@ func TestReconnectReusesProviderIdentityAndUpdatesCredentials(t *testing.T) {
 
 	first, err := saver.SaveAccount(
 		ctx,
-		"user-reconnect",
+		accountSaverActor("user-reconnect"),
 		"threads",
 		"workspace-reconnect",
 		"threads-user",
@@ -440,7 +486,7 @@ func TestReconnectReusesProviderIdentityAndUpdatesCredentials(t *testing.T) {
 
 	reconnected, err := saver.SaveAccount(
 		ctx,
-		"user-reconnect",
+		accountSaverActor("user-reconnect"),
 		"threads",
 		"workspace-reconnect",
 		"threads-user",
@@ -486,9 +532,9 @@ func TestSaveAccountGeneratesUniqueSlugs(t *testing.T) {
 	seedWorkspaceMember(t, db, workspaceID, userID)
 	tokenResp := &platform.TokenResult{AccessToken: "token"}
 
-	first, err := saver.SaveAccount(ctx, userID, "x", workspaceID, "1", "Main Account", "", tokenResp)
+	first, err := saver.SaveAccount(ctx, accountSaverActor(userID), "x", workspaceID, "1", "Main Account", "", tokenResp)
 	require.NoError(t, err)
-	second, err := saver.SaveAccount(ctx, userID, "x", workspaceID, "2", "Main Account", "", tokenResp)
+	second, err := saver.SaveAccount(ctx, accountSaverActor(userID), "x", workspaceID, "2", "Main Account", "", tokenResp)
 	require.NoError(t, err)
 
 	require.Equal(t, "x-main-account", first.Slug)
@@ -522,7 +568,7 @@ func TestSaveAccountRejectsSocialAccountQuota(t *testing.T) {
 	}).Exec(ctx)
 	require.NoError(t, err)
 
-	account, err := saver.SaveAccount(ctx, userID, "mastodon", workspaceID, "next", "next", "https://masto.example", &platform.TokenResult{
+	account, err := saver.SaveAccount(ctx, accountSaverActor(userID), "mastodon", workspaceID, "next", "next", "https://masto.example", &platform.TokenResult{
 		AccessToken: "token",
 	})
 
@@ -570,7 +616,7 @@ func TestSaveAccountIgnoresInactiveAccountsForQuota(t *testing.T) {
 		Exec(ctx)
 	require.NoError(t, err)
 
-	account, err := saver.SaveAccount(ctx, userID, "mastodon", workspaceID, "next", "next", "https://masto.example", &platform.TokenResult{
+	account, err := saver.SaveAccount(ctx, accountSaverActor(userID), "mastodon", workspaceID, "next", "next", "https://masto.example", &platform.TokenResult{
 		AccessToken: "token",
 	})
 
@@ -597,7 +643,7 @@ func TestSaveAccount_EncryptionError(t *testing.T) {
 		ExpiresIn:    3600,
 	}
 
-	acct, err := saver.SaveAccount(ctx, userID, "x", workspaceID, "account", "user", "", tokenResp)
+	acct, err := saver.SaveAccount(ctx, accountSaverActor(userID), "x", workspaceID, "account", "user", "", tokenResp)
 	require.NoError(t, err)
 	require.NotNil(t, acct)
 	// Ensure tokens are stored encrypted once on the grant and decryptable.
@@ -622,6 +668,6 @@ func TestSaveAccount_DatabaseError(t *testing.T) {
 		ExpiresIn:    3600,
 	}
 
-	_, err := saver.SaveAccount(ctx, "user", "x", "workspace", "account", "user", "", tokenResp)
+	_, err := saver.SaveAccount(ctx, accountSaverActor("user"), "x", "workspace", "account", "user", "", tokenResp)
 	require.Error(t, err)
 }
