@@ -965,31 +965,52 @@ func (h *PublicationHandler) schedulePublication(api huma.API) {
 	})
 }
 
-func (h *PublicationHandler) checkScheduledPublicationQuota(ctx context.Context, workspaceID string, scheduledAt time.Time) error {
+func (h *PublicationHandler) checkScheduledPublicationQuota(ctx context.Context, workspaceID string, scheduledAt time.Time) (bool, error) {
 	if h.usage == nil || h.entitlement == nil {
-		return publicationservice.NewError(publicationservice.ErrorTemporaryUnavailable, errors.New("scheduled publication usage is unavailable"))
+		return false, publicationservice.NewError(publicationservice.ErrorTemporaryUnavailable, errors.New("scheduled publication usage is unavailable"))
+	}
+	request := entitlements.Request{
+		WorkspaceID: workspaceID,
+		Limit:       entitlements.LimitScheduledPostsMonthly,
+		Amount:      1,
+	}
+	decision, err := h.entitlement.Check(ctx, request)
+	if err != nil {
+		return false, publicationservice.NewError(publicationservice.ErrorTemporaryUnavailable, errors.New("failed to check scheduled publication limit"))
+	}
+	if !decision.Allowed {
+		return false, scheduledPublicationQuotaError(decision)
 	}
 	current, err := h.usage.CurrentMonthly(ctx, workspaceID, entitlements.LimitScheduledPostsMonthly, scheduledAt)
 	if err != nil {
-		return publicationservice.NewError(publicationservice.ErrorTemporaryUnavailable, errors.New("failed to load scheduled publication usage"))
+		if decision.Unlimited {
+			// Unlimited deployments do not depend on quota storage to publish.
+			// Record usage when the counter schema is present, but keep sparse
+			// self-hosted upgrades and application fixtures operational.
+			return false, nil
+		}
+		return false, publicationservice.NewError(publicationservice.ErrorTemporaryUnavailable, errors.New("failed to load scheduled publication usage"))
 	}
-	decision, err := h.entitlement.Check(ctx, entitlements.Request{
-		WorkspaceID: workspaceID,
-		Limit:       entitlements.LimitScheduledPostsMonthly,
-		Current:     current,
-		Amount:      1,
-	})
+	if decision.Unlimited {
+		return true, nil
+	}
+	request.Current = current
+	decision, err = h.entitlement.Check(ctx, request)
 	if err != nil {
-		return publicationservice.NewError(publicationservice.ErrorTemporaryUnavailable, errors.New("failed to check scheduled publication limit"))
+		return false, publicationservice.NewError(publicationservice.ErrorTemporaryUnavailable, errors.New("failed to check scheduled publication limit"))
 	}
 	if !decision.Allowed {
-		reason := strings.TrimSpace(decision.Reason)
-		if reason == "" {
-			reason = "scheduled publication limit exceeded"
-		}
-		return huma.NewError(http.StatusPaymentRequired, reason)
+		return false, scheduledPublicationQuotaError(decision)
 	}
-	return nil
+	return true, nil
+}
+
+func scheduledPublicationQuotaError(decision entitlements.Decision) error {
+	reason := strings.TrimSpace(decision.Reason)
+	if reason == "" {
+		reason = "scheduled publication limit exceeded"
+	}
+	return huma.NewError(http.StatusPaymentRequired, reason)
 }
 
 func (h *PublicationHandler) recordScheduledPublicationUsage(ctx context.Context, workspaceID string, scheduledAt time.Time) error {

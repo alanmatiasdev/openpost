@@ -175,14 +175,14 @@ func (h *MCPHandler) SetProviderReadiness(service *providerreadiness.Service) {
 }
 
 func (h *MCPHandler) publicationHandler() *PublicationHandler {
-	return &PublicationHandler{
-		db:          h.db,
-		entitlement: h.entitlement,
-		usage:       h.usage,
-		providers:   h.providers,
-		tokenSource: h.tokenSource,
-		readiness:   h.readiness,
+	handler := NewPublicationHandler(h.db, nil, h.entitlement)
+	if h.usage != nil {
+		handler.SetUsage(h.usage)
 	}
+	handler.providers = h.providers
+	handler.tokenSource = h.tokenSource
+	handler.readiness = h.readiness
+	return handler
 }
 
 func (h *MCPHandler) RegisterRoutes(e *echo.Echo) {

@@ -75,6 +75,7 @@ All notable changes to this project are documented in this file.
 
 ### Fixed
 
+- Kept unlimited Publication scheduling operational when quota storage is unavailable, while preserving canonical usage accounting whenever counters exist and keeping limited plans fail-closed.
 - Stopped routine autosaves from replaying the Saved animation and from replacing an unchanged Image Editor document, which refreshed page previews after edits.
 - Kept the generated public Nix module example on `ghcr.io/getopenpost/openpost:latest` even when the linked deployment source pins a verified release digest.
 - Restored marketing and documentation page views by requiring their production PostHog build settings, routed hosted browser telemetry through the managed first-party proxy, added matching page-leave events and privacy-limited Core Web Vitals, and kept route templates in SDK-owned URL properties.
