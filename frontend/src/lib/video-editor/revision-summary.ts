@@ -6,6 +6,11 @@ import {
 	type VideoSource,
 	type VisualTrackItem
 } from '@openpost/video-project';
+import {
+	compareRevisionItems as compareItems,
+	sameRevisionValue,
+	type RevisionCollectionChanges
+} from '$lib/revision-comparison';
 
 export interface VideoEditorRevisionChanges {
 	titleChanged: boolean;
@@ -68,8 +73,8 @@ export function summarizeVideoEditorRevision(
 		editingModeChanged: current.editing_mode !== target.editing_mode,
 		durationChanged:
 			projectDurationUS(current) !== projectDurationUS(target) ||
-			!same(current.timebase, target.timebase),
-		exportSettingsChanged: !same(current.export_defaults, target.export_defaults),
+			!sameRevisionValue(current.timebase, target.timebase),
+		exportSettingsChanged: !sameRevisionValue(current.export_defaults, target.export_defaults),
 		variantsChanged: variants.added + variants.removed + variants.changed,
 		sourcesAdded: sources.added,
 		sourcesRemoved: sources.removed,
@@ -92,16 +97,14 @@ export function summarizeVideoEditorRevision(
 	};
 	// Preserve restore reachability when a future valid schema member changes
 	// before the detail summary learns how to name that domain.
-	if (!videoEditorRevisionHasChanges(changes) && !same(current, target)) {
+	if (!videoEditorRevisionHasChanges(changes) && !sameRevisionValue(current, target)) {
 		changes.primaryItemsChanged = 1;
 	}
 	return changes;
 }
 
 export function videoEditorRevisionHasChanges(changes: VideoEditorRevisionChanges): boolean {
-	return Object.values(changes).some(
-		(value) => value === true || (typeof value === 'number' && value > 0)
-	);
+	return Object.values(changes).some((value) => value === true || Number(value) > 0);
 }
 
 function flattenVisualItems(
@@ -131,65 +134,10 @@ function flattenCaptionCues(
 function compareRecords(
 	current: Record<string, VideoSource>,
 	target: Record<string, VideoSource>
-): { added: number; removed: number; changed: number } {
+): RevisionCollectionChanges {
 	const currentItems = Object.entries(current).map(([id, value]) => ({ ...value, id }));
 	const targetItems = Object.entries(target).map(([id, value]) => ({ ...value, id }));
 	return compareItems(currentItems, targetItems);
-}
-
-function compareItems<T extends { id: string }>(
-	current: readonly T[],
-	target: readonly T[]
-): { added: number; removed: number; changed: number } {
-	const currentItems = new Map(current.map((item) => [item.id, item]));
-	const targetItems = new Map(target.map((item) => [item.id, item]));
-	const changedIDs = new Set<string>();
-	for (const [id, targetItem] of targetItems) {
-		const currentItem = currentItems.get(id);
-		if (currentItem && !same(currentItem, targetItem)) changedIDs.add(id);
-	}
-	for (const id of changedOrderIDs(current, target)) {
-		changedIDs.add(id);
-	}
-	return {
-		added: [...targetItems.keys()].filter((id) => !currentItems.has(id)).length,
-		removed: [...currentItems.keys()].filter((id) => !targetItems.has(id)).length,
-		changed: changedIDs.size
-	};
-}
-
-function changedOrderIDs<T extends { id: string }>(
-	current: readonly T[],
-	target: readonly T[]
-): Set<string> {
-	const currentIDs = new Set(current.map((item) => item.id));
-	const targetIDs = new Set(target.map((item) => item.id));
-	const currentCommon = current.map((item) => item.id).filter((id) => targetIDs.has(id));
-	const targetCommon = target.map((item) => item.id).filter((id) => currentIDs.has(id));
-	const changed = new Set<string>();
-	for (let index = 0; index < currentCommon.length; index += 1) {
-		if (currentCommon[index] !== targetCommon[index]) {
-			changed.add(currentCommon[index]!);
-			changed.add(targetCommon[index]!);
-		}
-	}
-	return changed;
-}
-
-function same(left: unknown, right: unknown): boolean {
-	return JSON.stringify(canonicalValue(left)) === JSON.stringify(canonicalValue(right));
-}
-
-function canonicalValue(value: unknown): unknown {
-	if (Array.isArray(value)) return value.map(canonicalValue);
-	if (value !== null && typeof value === 'object') {
-		return Object.fromEntries(
-			Object.entries(value as Record<string, unknown>)
-				.sort(([left], [right]) => left.localeCompare(right))
-				.map(([key, member]) => [key, canonicalValue(member)])
-		);
-	}
-	return value;
 }
 
 function normalizeReference(value: string | undefined): string {

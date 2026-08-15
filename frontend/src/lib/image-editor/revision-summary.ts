@@ -1,4 +1,10 @@
 import type { ImageEditorDocument, ImageEditorLayer, ImageEditorPage } from './types';
+import {
+	changedRevisionOrderIDs,
+	compareRevisionItems,
+	sameRevisionValue,
+	type RevisionCollectionChanges
+} from '$lib/revision-comparison';
 
 export interface ImageEditorRevisionChanges {
 	titleChanged: boolean;
@@ -41,7 +47,7 @@ export function summarizeImageEditorRevision(
 			continue;
 		}
 		if (!samePageProperties(currentPage, targetPage)) changedPageIDs.add(pageID);
-		if (!same(currentPage.guides, targetPage.guides)) guidePagesChanged += 1;
+		if (!sameRevisionValue(currentPage.guides, targetPage.guides)) guidePagesChanged += 1;
 		const layerChanges = compareLayers(currentPage.layers, targetPage.layers);
 		layersAdded += layerChanges.added;
 		layersRemoved += layerChanges.removed;
@@ -52,7 +58,7 @@ export function summarizeImageEditorRevision(
 		layersRemoved += currentPage.layers.length;
 		if (hasGuides(currentPage)) guidePagesChanged += 1;
 	}
-	for (const pageID of changedOrderIDs(current.pages, target.pages)) {
+	for (const pageID of changedRevisionOrderIDs(current.pages, target.pages)) {
 		changedPageIDs.add(pageID);
 	}
 
@@ -65,7 +71,7 @@ export function summarizeImageEditorRevision(
 			current.width_px !== target.width_px ||
 			current.height_px !== target.height_px ||
 			current.preset_key !== target.preset_key,
-		exportSettingsChanged: !same(current.export_defaults, target.export_defaults),
+		exportSettingsChanged: !sameRevisionValue(current.export_defaults, target.export_defaults),
 		brandKitChanged:
 			current.brand_kit_id !== target.brand_kit_id ||
 			current.brand_kit_revision !== target.brand_kit_revision,
@@ -80,59 +86,25 @@ export function summarizeImageEditorRevision(
 	// Fail open for a future valid document member that this focused summary does
 	// not yet classify. A version must never become unrestorable merely because
 	// its semantic change predates a matching detail row in this UI.
-	if (!imageEditorRevisionHasChanges(changes) && !same(current, target)) {
+	if (!imageEditorRevisionHasChanges(changes) && !sameRevisionValue(current, target)) {
 		changes.pagesChanged = 1;
 	}
 	return changes;
 }
 
 export function imageEditorRevisionHasChanges(changes: ImageEditorRevisionChanges): boolean {
-	return Object.values(changes).some(
-		(value) => value === true || (typeof value === 'number' && value > 0)
-	);
+	return Object.values(changes).some((value) => value === true || Number(value) > 0);
 }
 
 function compareLayers(
 	current: ImageEditorLayer[],
 	target: ImageEditorLayer[]
-): { added: number; removed: number; changed: number } {
-	const currentLayers = new Map(current.map((layer) => [layer.id, layer]));
-	const targetLayers = new Map(target.map((layer) => [layer.id, layer]));
-	const changedIDs = new Set<string>();
-	for (const [layerID, targetLayer] of targetLayers) {
-		const currentLayer = currentLayers.get(layerID);
-		if (currentLayer && !same(currentLayer, targetLayer)) changedIDs.add(layerID);
-	}
-	for (const layerID of changedOrderIDs(current, target)) {
-		changedIDs.add(layerID);
-	}
-	return {
-		added: [...targetLayers.keys()].filter((layerID) => !currentLayers.has(layerID)).length,
-		removed: [...currentLayers.keys()].filter((layerID) => !targetLayers.has(layerID)).length,
-		changed: changedIDs.size
-	};
-}
-
-function changedOrderIDs<T extends { id: string }>(
-	current: readonly T[],
-	target: readonly T[]
-): Set<string> {
-	const currentIDs = new Set(current.map((item) => item.id));
-	const targetIDs = new Set(target.map((item) => item.id));
-	const currentCommon = current.map((item) => item.id).filter((id) => targetIDs.has(id));
-	const targetCommon = target.map((item) => item.id).filter((id) => currentIDs.has(id));
-	const changed = new Set<string>();
-	for (let index = 0; index < currentCommon.length; index += 1) {
-		if (currentCommon[index] !== targetCommon[index]) {
-			changed.add(currentCommon[index]!);
-			changed.add(targetCommon[index]!);
-		}
-	}
-	return changed;
+): RevisionCollectionChanges {
+	return compareRevisionItems(current, target);
 }
 
 function samePageProperties(current: ImageEditorPage, target: ImageEditorPage): boolean {
-	return same(
+	return sameRevisionValue(
 		{
 			name: current.name,
 			background_color: current.background_color,
@@ -152,22 +124,6 @@ function samePageProperties(current: ImageEditorPage, target: ImageEditorPage): 
 
 function hasGuides(page: ImageEditorPage): boolean {
 	return Boolean(page.guides?.horizontal.length || page.guides?.vertical.length);
-}
-
-function same(left: unknown, right: unknown): boolean {
-	return JSON.stringify(canonicalValue(left)) === JSON.stringify(canonicalValue(right));
-}
-
-function canonicalValue(value: unknown): unknown {
-	if (Array.isArray(value)) return value.map(canonicalValue);
-	if (value !== null && typeof value === 'object') {
-		return Object.fromEntries(
-			Object.entries(value as Record<string, unknown>)
-				.sort(([left], [right]) => left.localeCompare(right))
-				.map(([key, member]) => [key, canonicalValue(member)])
-		);
-	}
-	return value;
 }
 
 function normalizeReference(value: string | undefined): string {
