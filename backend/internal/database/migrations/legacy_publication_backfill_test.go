@@ -1018,6 +1018,8 @@ func exerciseLegacyPublicationBackfillMigration(t *testing.T, db *bun.DB) {
 		(*models.PublicationLifecycleEvent)(nil),
 		(*models.PublicationAuthorization)(nil),
 		(*models.ProviderWriteAttempt)(nil),
+		(*models.ProviderDelivery)(nil),
+		(*models.PublicationAlias)(nil),
 	} {
 		_, err := db.NewCreateTable().Model(model).IfNotExists().Exec(ctx)
 		require.NoError(t, err)
@@ -1064,8 +1066,10 @@ func exerciseLegacyPublicationBackfillMigration(t *testing.T, db *bun.DB) {
 	}
 	_, err = db.NewInsert().Model(&posts).Exec(ctx)
 	require.NoError(t, err)
-	_, err = db.NewInsert().Model(&models.PostDestination{
-		ID: "destination-migration", PostID: "post-scheduled", SocialAccountID: "account-migration", Status: "pending",
+	_, err = db.NewInsert().Model(&[]models.PostDestination{
+		{ID: "destination-migration", PostID: "post-scheduled", SocialAccountID: "account-migration", Status: "pending"},
+		{ID: "destination-published", PostID: "post-published", SocialAccountID: "account-migration", Status: "success", ExternalID: "x-live-1"},
+		{ID: "destination-failed", PostID: "post-failed", SocialAccountID: "account-migration", Status: "failed", ErrorKind: "provider", ErrorCode: "rate_limited", ErrorHTTPStatus: 429},
 	}).Exec(ctx)
 	require.NoError(t, err)
 	job := models.Job{
@@ -1109,10 +1113,31 @@ func exerciseLegacyPublicationBackfillMigration(t *testing.T, db *bun.DB) {
 	require.NoError(t, err)
 	require.Equal(t, 1, receiptCount)
 
-	for _, postID := range []string{"post-published", "post-failed"} {
+	for _, testCase := range []struct {
+		postID           string
+		publicationState string
+		deliveryState    string
+		externalID       string
+	}{
+		{postID: "post-published", publicationState: models.PublicationStatusPublished, deliveryState: providerwrite.DeliveryLive, externalID: "x-live-1"},
+		{postID: "post-failed", publicationState: models.PublicationStatusFailed, deliveryState: providerwrite.DeliveryRejected},
+	} {
 		var historical models.Post
-		require.NoError(t, db.NewSelect().Model(&historical).Where("id = ?", postID).Scan(ctx))
-		require.Empty(t, historical.PublicationID, "completed compatibility history remains readable from posts")
+		require.NoError(t, db.NewSelect().Model(&historical).Where("id = ?", testCase.postID).Scan(ctx))
+		require.Equal(t, "legacy-publication:"+testCase.postID, historical.PublicationID)
+		var migrated models.Publication
+		require.NoError(t, db.NewSelect().Model(&migrated).Where("id = ?", historical.PublicationID).Scan(ctx))
+		require.Equal(t, testCase.publicationState, migrated.Status)
+		var alias models.PublicationAlias
+		require.NoError(t, db.NewSelect().Model(&alias).
+			Where("alias_type = ? AND alias_id = ?", "legacy_post", testCase.postID).Scan(ctx))
+		require.Equal(t, migrated.ID, alias.PublicationID)
+		require.NotEmpty(t, alias.SegmentID)
+		var delivery models.ProviderDelivery
+		require.NoError(t, db.NewSelect().Model(&delivery).
+			Where("publication_id = ?", migrated.ID).Scan(ctx))
+		require.Equal(t, testCase.deliveryState, delivery.State)
+		require.Equal(t, testCase.externalID, delivery.ExternalID)
 	}
 	publicationCount, err := db.NewSelect().Model((*models.Publication)(nil)).Count(ctx)
 	require.NoError(t, err)

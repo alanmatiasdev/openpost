@@ -1657,6 +1657,16 @@ type PublicationAuthorization struct {
 // provider mutation. It stores only normalized state, provider-issued IDs, and
 // a one-way payload fingerprint. Content, raw provider responses, bearer
 // values, and credential-bearing URLs must never be persisted here.
+type PublicationAlias struct {
+	bun.BaseModel `bun:"table:publication_aliases"`
+
+	AliasType     string    `bun:"alias_type,pk" json:"alias_type"`
+	AliasID       string    `bun:"alias_id,pk" json:"alias_id"`
+	PublicationID string    `bun:"publication_id,notnull" json:"publication_id"`
+	SegmentID     string    `bun:"segment_id,notnull,default:''" json:"segment_id,omitempty"`
+	CreatedAt     time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
+}
+
 type ProviderWriteAttempt struct {
 	bun.BaseModel `bun:"table:provider_write_attempts"`
 

@@ -115,6 +115,7 @@ func CreateSchema(db *bun.DB) error {
 		(*models.RenditionMedia)(nil),
 		(*models.PublicationLifecycleEvent)(nil),
 		(*models.PublicationAsset)(nil),
+		(*models.PublicationAlias)(nil),
 		(*models.Post)(nil),
 		(*models.PostDestination)(nil),
 		(*models.MediaAttachment)(nil),

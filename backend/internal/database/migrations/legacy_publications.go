@@ -13,6 +13,7 @@ import (
 
 	"github.com/openpost/backend/internal/jobregistry"
 	"github.com/openpost/backend/internal/models"
+	"github.com/openpost/backend/internal/platform"
 	"github.com/openpost/backend/internal/services/providerwrite"
 	"github.com/openpost/backend/internal/services/publicationauth"
 	"github.com/uptrace/bun"
@@ -91,7 +92,7 @@ func MigrateLegacyPublicationAuthoringForActorTx(
 	if post.PublicationID != "" {
 		return migrateLinkedLegacyPublicationJobs(ctx, tx, post, actor)
 	}
-	if post.Status != models.PostStatusDraft && post.Status != models.PostStatusScheduled {
+	if !isLegacyPublicationBackfillStatus(post.Status) {
 		return nil
 	}
 	eligible, err := legacyPostHasOwners(ctx, tx, post)
@@ -141,7 +142,7 @@ func loadLegacyAggregateRoot(ctx context.Context, db bun.IDB, postID string) (mo
 			return models.Post{}, err
 		}
 		if seen[parent.ID] || parent.WorkspaceID != current.WorkspaceID || parent.PublicationID != "" ||
-			(parent.Status != models.PostStatusDraft && parent.Status != models.PostStatusScheduled) {
+			!isLegacyPublicationBackfillStatus(parent.Status) {
 			break
 		}
 		seen[parent.ID] = true
@@ -1009,8 +1010,7 @@ func migrateLegacyPostTx(ctx context.Context, tx bun.Tx, post models.Post, actor
 		return err
 	}
 	current = lockedCurrent
-	if current.PublicationID != "" ||
-		(current.Status != models.PostStatusDraft && current.Status != models.PostStatusScheduled) {
+	if current.PublicationID != "" || !isLegacyPublicationBackfillStatus(current.Status) {
 		return nil
 	}
 	segments, threadDraft, err := legacySegments(ctx, tx, current)
@@ -1044,6 +1044,12 @@ func migrateLegacyPostProjectionTx(
 		return err
 	}
 	if err := linkLegacyThreadPosts(ctx, tx, threadPosts, publication.ID); err != nil {
+		return err
+	}
+	if err := insertLegacyPublicationAliases(ctx, tx, publication.ID, threadPosts, segmentModels); err != nil {
+		return err
+	}
+	if err := insertLegacyDeliveryEvidence(ctx, tx, publication, current); err != nil {
 		return err
 	}
 	if err := rewriteLegacyPublicationJobs(ctx, tx, current.ID, publication.ID); err != nil {
@@ -1092,6 +1098,56 @@ func linkLegacyThreadPosts(ctx context.Context, tx bun.Tx, posts []models.Post, 
 	_, err := tx.NewUpdate().Model((*models.Post)(nil)).Set("publication_id = ?", publicationID).
 		Where("id IN (?)", bun.List(postIDs)).Exec(ctx)
 	return err
+}
+
+func insertLegacyPublicationAliases(
+	ctx context.Context,
+	tx bun.Tx,
+	publicationID string,
+	posts []models.Post,
+	segments []models.PublicationSegment,
+) error {
+	now := time.Now().UTC()
+	for index, post := range posts {
+		segmentID := ""
+		if index < len(segments) {
+			segmentID = segments[index].ID
+		}
+		alias := models.PublicationAlias{
+			AliasType: "legacy_post", AliasID: post.ID, PublicationID: publicationID, SegmentID: segmentID, CreatedAt: now,
+		}
+		if _, err := tx.NewInsert().Model(&alias).Ignore().Exec(ctx); err != nil {
+			if isMissingLegacyAuthoringTable(err) {
+				return nil
+			}
+			return err
+		}
+	}
+	var variants []models.PostVariant
+	if err := tx.NewSelect().Model(&variants).
+		Where("post_id IN (?)", bun.List(legacyPostIDs(posts))).
+		Scan(ctx); err != nil {
+		if isMissingLegacyAuthoringTable(err) {
+			return nil
+		}
+		return err
+	}
+	rootSegmentID := ""
+	if len(segments) > 0 {
+		rootSegmentID = segments[0].ID
+	}
+	for _, variant := range variants {
+		alias := models.PublicationAlias{
+			AliasType: "legacy_post_variant", AliasID: variant.ID, PublicationID: publicationID, SegmentID: rootSegmentID, CreatedAt: now,
+		}
+		if _, err := tx.NewInsert().Model(&alias).Ignore().Exec(ctx); err != nil {
+			if isMissingLegacyAuthoringTable(err) {
+				return nil
+			}
+			return err
+		}
+	}
+	return nil
 }
 
 func legacySegments(ctx context.Context, db bun.IDB, post models.Post) ([]legacyThreadPost, *legacyThreadDraft, error) {
@@ -1326,6 +1382,83 @@ func insertLegacyRenditions(
 					return err
 				}
 			}
+		}
+	}
+	return nil
+}
+
+func insertLegacyDeliveryEvidence(ctx context.Context, tx bun.Tx, publication models.Publication, post models.Post) error {
+	var destinations []models.PostDestination
+	if err := tx.NewSelect().Model(&destinations).Where("post_id = ?", post.ID).Scan(ctx); err != nil {
+		if isMissingLegacyAuthoringTable(err) {
+			return nil
+		}
+		return err
+	}
+	accounts := map[string]models.SocialAccount{}
+	for _, destination := range destinations {
+		if _, ok := accounts[destination.SocialAccountID]; ok {
+			continue
+		}
+		var account models.SocialAccount
+		if err := tx.NewSelect().Model(&account).Where("id = ?", destination.SocialAccountID).Scan(ctx); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				continue
+			}
+			return err
+		}
+		accounts[destination.SocialAccountID] = account
+	}
+	for _, destination := range destinations {
+		account, ok := accounts[destination.SocialAccountID]
+		if !ok || (destination.Status != "success" && destination.Status != "failed") {
+			continue
+		}
+		renditionID := "legacy-rendition:" + post.ID + ":" + account.ID
+		status := providerwrite.StatusAccepted
+		submissionState := string(platform.PublishSubmissionAccepted)
+		deliveryState := providerwrite.DeliveryLive
+		retrySafety := string(platform.PublishRetryNever)
+		completedAt := publication.UpdatedAt
+		safeErrorClass := ""
+		safeErrorCode := ""
+		errorHTTPStatus := 0
+		if destination.Status == "failed" {
+			status = providerwrite.StatusDefiniteFailure
+			submissionState = string(platform.PublishSubmissionRejected)
+			deliveryState = providerwrite.DeliveryRejected
+			retrySafety = string(platform.PublishRetrySafe)
+			safeErrorClass = destination.ErrorKind
+			safeErrorCode = destination.ErrorCode
+			errorHTTPStatus = destination.ErrorHTTPStatus
+		}
+		attempt := models.ProviderWriteAttempt{
+			ID: "legacy-attempt:" + destination.ID, OperationID: "legacy-post-destination:" + destination.ID,
+			AttemptNumber: 1, WorkspaceID: post.WorkspaceID, PublicationID: publication.ID, RenditionID: renditionID,
+			SocialAccountID: destination.SocialAccountID, TargetKey: "legacy-post-destination:" + destination.ID,
+			Provider: account.Platform, Operation: "publish", PayloadFingerprint: "legacy:" + destination.ID,
+			Status: status, SubmissionState: submissionState, RetrySafety: retrySafety, ExternalID: destination.ExternalID,
+			SafeErrorClass: safeErrorClass, SafeErrorCode: safeErrorCode, ErrorHTTPStatus: errorHTTPStatus,
+			CompletedAt: completedAt, CreatedAt: publication.CreatedAt, UpdatedAt: publication.UpdatedAt,
+		}
+		if _, err := tx.NewInsert().Model(&attempt).Ignore().Exec(ctx); err != nil {
+			return err
+		}
+		delivery := models.ProviderDelivery{
+			ID: "legacy-delivery:" + destination.ID, WorkspaceID: post.WorkspaceID, PublicationID: publication.ID,
+			RenditionID: renditionID, SocialAccountID: destination.SocialAccountID, TargetKey: attempt.TargetKey,
+			Provider: account.Platform, State: deliveryState, CurrentAttemptID: attempt.ID, CurrentAttemptNumber: 1,
+			CurrentAttemptCreatedAt: attempt.CreatedAt, ExternalID: destination.ExternalID, RetrySafety: retrySafety,
+			SafeErrorClass: safeErrorClass, SafeErrorCode: safeErrorCode, ErrorHTTPStatus: errorHTTPStatus,
+			CreatedAt: publication.CreatedAt, UpdatedAt: publication.UpdatedAt,
+		}
+		if _, err := tx.NewInsert().Model(&delivery).Ignore().Exec(ctx); err != nil {
+			return err
+		}
+		if _, err := tx.NewUpdate().Model((*models.Rendition)(nil)).
+			Set("status = ?", legacyDestinationRenditionStatus(destination.Status)).
+			Where("id = ?", renditionID).Exec(ctx); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -1572,18 +1705,49 @@ func firstLegacySegmentBody(segments []legacyThreadPost) string {
 	return segments[0].Content
 }
 
-func legacyPublicationStatus(status string) string {
-	if status == models.PostStatusScheduled {
-		return models.PublicationStatusScheduled
+func isLegacyPublicationBackfillStatus(status string) bool {
+	switch status {
+	case models.PostStatusDraft, models.PostStatusScheduled, models.PostStatusPublished, models.PostStatusFailed:
+		return true
+	default:
+		return false
 	}
-	return models.PublicationStatusDraft
+}
+
+func legacyPublicationStatus(status string) string {
+	switch status {
+	case models.PostStatusScheduled:
+		return models.PublicationStatusScheduled
+	case models.PostStatusPublished:
+		return models.PublicationStatusPublished
+	case models.PostStatusFailed:
+		return models.PublicationStatusFailed
+	default:
+		return models.PublicationStatusDraft
+	}
 }
 
 func legacyRenditionStatus(status string) string {
-	if status == models.PostStatusScheduled {
+	switch status {
+	case models.PostStatusScheduled:
 		return models.RenditionStatusScheduled
+	case models.PostStatusPublished:
+		return models.RenditionStatusPublished
+	case models.PostStatusFailed:
+		return models.RenditionStatusFailed
+	default:
+		return models.RenditionStatusDraft
 	}
-	return models.RenditionStatusDraft
+}
+
+func legacyDestinationRenditionStatus(status string) string {
+	if status == "success" {
+		return models.RenditionStatusPublished
+	}
+	if status == "failed" {
+		return models.RenditionStatusFailed
+	}
+	return models.RenditionStatusScheduled
 }
 
 func legacyOutputProfile(provider, intent string) string {

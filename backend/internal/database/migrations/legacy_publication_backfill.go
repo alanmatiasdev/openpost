@@ -134,6 +134,9 @@ func ensureLegacyPublicationAuthoringBackfillSchema(ctx context.Context, db *bun
 	if _, err := db.NewCreateTable().Model((*legacyPublicationBackfillState)(nil)).IfNotExists().Exec(ctx); err != nil {
 		return fmt.Errorf("create legacy publication authoring backfill state: %w", err)
 	}
+	if _, err := db.NewCreateTable().Model((*models.PublicationAlias)(nil)).IfNotExists().Exec(ctx); err != nil {
+		return fmt.Errorf("create publication aliases: %w", err)
+	}
 	if db.Dialect().Name() == dialect.PG {
 		if _, err := db.ExecContext(ctx, `CREATE OR REPLACE FUNCTION openpost_safe_json_text(payload_text text, key_text text)
 RETURNS text
@@ -158,6 +161,7 @@ $openpost$`); err != nil {
 		db.NewCreateIndex().Index("jobs_publication_pending_idx").Table("jobs").Column("type", "status", "id").IfNotExists(),
 		db.NewCreateIndex().Index("provider_write_attempts_legacy_scope_scan_idx").Table("provider_write_attempts").Column("status", "id").IfNotExists(),
 		db.NewCreateIndex().Index("provider_write_attempts_publication_target_idx").Table("provider_write_attempts").Column("publication_id", "rendition_id", "status", "operation", "id").IfNotExists(),
+		db.NewCreateIndex().Index("publication_aliases_publication_idx").Table("publication_aliases").Column("publication_id", "segment_id").IfNotExists(),
 	} {
 		if _, err := index.Exec(ctx); err != nil {
 			if isMissingLegacyAuthoringTable(err) {
@@ -1428,7 +1432,9 @@ func runLegacyPostBackfillBatch(
 	var posts []models.Post
 	if err := db.NewSelect().Model(&posts).
 		Where("id IN (?)", bun.List(windowIDs)).
-		Where("status IN (?)", bun.List([]string{models.PostStatusDraft, models.PostStatusScheduled})).
+		Where("status IN (?)", bun.List([]string{
+			models.PostStatusDraft, models.PostStatusScheduled, models.PostStatusPublished, models.PostStatusFailed,
+		})).
 		WhereGroup(" AND ", func(query *bun.SelectQuery) *bun.SelectQuery {
 			return query.WhereOr("publication_id IS NULL").WhereOr("publication_id = ''")
 		}).
