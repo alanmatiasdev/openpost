@@ -13,8 +13,29 @@ export interface VideoHandoffTarget {
 export interface VideoHandoffPlan {
 	primary_variant: VideoVariantID;
 	required_variants: VideoVariantID[];
-	variant_renditions: Record<VideoVariantID, string[]>;
-	variant_accounts: Record<VideoVariantID, string[]>;
+	variant_renditions: VariantAssignments;
+	variant_accounts: VariantAssignments;
+}
+
+export interface VariantAssignments {
+	portrait: string[];
+	'feed-portrait': string[];
+	square: string[];
+	landscape: string[];
+}
+
+export interface VideoReturnConstraintOverrides {
+	thread_segment?: number;
+	replace_media_id?: string;
+}
+
+export interface VideoReturnConstraints extends VideoReturnConstraintOverrides {
+	[key: string]: string | number | string[] | undefined;
+	allowed_mimes: string[];
+	max_duration_ms?: number;
+	max_file_size_bytes?: number;
+	required_variants: VideoVariantID[];
+	rendition_ids: string[];
 }
 
 const variants: Array<{ id: VideoVariantID; ratio: number }> = [
@@ -71,15 +92,14 @@ export function planVideoComposerHandoff(
 	targets: VideoHandoffTarget[],
 	source: { width?: number; height?: number } = {}
 ): VideoHandoffPlan {
-	const sourceRatio =
-		(source.width ?? 0) > 0 && (source.height ?? 0) > 0 ? source.width! / source.height! : 9 / 16;
+	const sourceWidth = source.width ?? 0;
+	const sourceHeight = source.height ?? 0;
+	const sourceRatio = sourceWidth > 0 && sourceHeight > 0 ? sourceWidth / sourceHeight : 9 / 16;
 	const assignments = targets.map((target) => ({
 		target,
 		variant: chooseTargetVariant(target, sourceRatio)
 	}));
-	const required = Array.from(
-		new Set(assignments.map((assignment) => assignment.variant))
-	) as VideoVariantID[];
+	const required = Array.from(new Set(assignments.map((assignment) => assignment.variant)));
 	if (required.length === 0) required.push(closestVariant(sourceRatio));
 	const primary = required.reduce((best, candidate) => {
 		const candidateRatio = variants.find((variant) => variant.id === candidate)?.ratio ?? 1;
@@ -89,24 +109,14 @@ export function planVideoComposerHandoff(
 			? candidate
 			: best;
 	});
-	const variantRenditions = Object.fromEntries(
-		variants.map(({ id }) => [
-			id,
-			assignments
-				.filter((assignment) => assignment.variant === id)
-				.flatMap((assignment) =>
-					assignment.target.rendition_id ? [assignment.target.rendition_id] : []
-				)
-		])
-	) as Record<VideoVariantID, string[]>;
-	const variantAccounts = Object.fromEntries(
-		variants.map(({ id }) => [
-			id,
-			assignments
-				.filter((assignment) => assignment.variant === id)
-				.map((assignment) => assignment.target.account_id)
-		])
-	) as Record<VideoVariantID, string[]>;
+	const variantRenditions = emptyVariantAssignments();
+	const variantAccounts = emptyVariantAssignments();
+	for (const assignment of assignments) {
+		variantAccounts[assignment.variant].push(assignment.target.account_id);
+		if (assignment.target.rendition_id) {
+			variantRenditions[assignment.variant].push(assignment.target.rendition_id);
+		}
+	}
 	return {
 		primary_variant: primary,
 		required_variants: required,
@@ -118,18 +128,29 @@ export function planVideoComposerHandoff(
 export function videoReturnConstraints(
 	constraints: VideoConstraint[],
 	plan: VideoHandoffPlan,
-	extra: Record<string, unknown> = {}
-): Record<string, unknown> {
+	extra: VideoReturnConstraintOverrides = {}
+): VideoReturnConstraints {
 	const effective = effectiveVideoConstraints(constraints);
-	return {
+	const result: VideoReturnConstraints = {
 		allowed_mimes: effective.allowedMIMEs,
-		...(Number.isFinite(effective.maxDurationSeconds)
-			? { max_duration_ms: Math.round(effective.maxDurationSeconds * 1_000) }
-			: {}),
-		...(Number.isFinite(effective.maxBytes) ? { max_file_size_bytes: effective.maxBytes } : {}),
 		required_variants: plan.required_variants,
-		rendition_ids: Object.values(plan.variant_renditions).flat(),
-		...extra
+		rendition_ids: Object.values(plan.variant_renditions).flat()
+	};
+	if (Number.isFinite(effective.maxDurationSeconds)) {
+		result.max_duration_ms = Math.round(effective.maxDurationSeconds * 1_000);
+	}
+	if (Number.isFinite(effective.maxBytes)) result.max_file_size_bytes = effective.maxBytes;
+	if (extra.thread_segment !== undefined) result.thread_segment = extra.thread_segment;
+	if (extra.replace_media_id !== undefined) result.replace_media_id = extra.replace_media_id;
+	return result;
+}
+
+function emptyVariantAssignments(): VariantAssignments {
+	return {
+		portrait: [],
+		'feed-portrait': [],
+		square: [],
+		landscape: []
 	};
 }
 
