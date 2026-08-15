@@ -54,7 +54,12 @@ func (s *Service) syncMessages(ctx context.Context, accountID string) error {
 	}
 	token, err := s.tokens.GetValidAccessToken(ctx, account.ID)
 	if err != nil {
-		return s.states.record(ctx, account, "failed", "authentication", "Reconnect this account to resume messages.", progress.cursor, progress.backfillComplete, time.Hour, progress.emptyStreak, s.now())
+		return s.states.record(ctx, syncStateUpdate{
+			account: account, status: syncStateFailed,
+			failure: syncStateFailure{code: "authentication", message: "Reconnect this account to resume messages."},
+			cursor:  progress.cursor, backfillComplete: progress.backfillComplete,
+			cadence: time.Hour, emptyStreak: progress.emptyStreak, attemptedAt: s.now(),
+		})
 	}
 	collected, err := s.collectMessages(ctx, account, provider, token, progress)
 	if err != nil {
@@ -66,16 +71,28 @@ func (s *Service) syncMessages(ctx context.Context, accountID string) error {
 	} else {
 		progress.emptyStreak = 0
 	}
-	return s.states.record(ctx, account, "ok", "", "", collected.nextCursor, collected.backfillComplete, messageCadence(progress.emptyStreak), progress.emptyStreak, s.now())
+	return s.states.record(ctx, syncStateUpdate{
+		account: account, status: syncStateOK, cursor: collected.nextCursor,
+		backfillComplete: collected.backfillComplete, cadence: messageCadence(progress.emptyStreak),
+		emptyStreak: progress.emptyStreak, attemptedAt: s.now(),
+	})
 }
 
 func (s *Service) syncProvider(ctx context.Context, account models.SocialAccount) (Provider, error) {
 	provider := s.provider(account)
 	if provider == nil || !provider.MessagingSupport().Enabled {
-		return nil, s.states.record(ctx, account, "unsupported", "unsupported", "Messages are not supported for this provider.", "", false, 0, 0, s.now())
+		return nil, s.states.record(ctx, syncStateUpdate{
+			account: account, status: syncStateUnsupported,
+			failure:     syncStateFailure{code: "unsupported", message: "Messages are not supported for this provider."},
+			attemptedAt: s.now(),
+		})
 	}
 	if provider.MessagingSupport().RequiresOptIn && !accountMessagesEnabled(account) {
-		return nil, s.states.record(ctx, account, "disabled", "opt_in_required", "Enable inbox sync for this account to collect messages.", "", false, 0, 0, s.now())
+		return nil, s.states.record(ctx, syncStateUpdate{
+			account: account, status: syncStateDisabled,
+			failure:     syncStateFailure{code: "opt_in_required", message: "Enable inbox sync for this account to collect messages."},
+			attemptedAt: s.now(),
+		})
 	}
 	return provider, nil
 }
@@ -90,7 +107,12 @@ func syncProgress(state *models.MessagingSyncState) messageSyncProgress {
 func (s *Service) collectMessages(ctx context.Context, account models.SocialAccount, provider Provider, token string, progress messageSyncProgress) (collectedMessages, error) {
 	result, err := provider.FetchMessages(ctx, token, platform.FetchMessagesRequest{AccountID: account.AccountID, Limit: 100})
 	if err != nil {
-		return collectedMessages{}, s.states.record(ctx, account, "failed", "provider_error", "OpenPost could not collect messages from this provider.", progress.cursor, progress.backfillComplete, time.Hour, progress.emptyStreak, s.now())
+		return collectedMessages{}, s.states.record(ctx, syncStateUpdate{
+			account: account, status: syncStateFailed,
+			failure: syncStateFailure{code: "provider_error", message: "OpenPost could not collect messages from this provider."},
+			cursor:  progress.cursor, backfillComplete: progress.backfillComplete,
+			cadence: time.Hour, emptyStreak: progress.emptyStreak, attemptedAt: s.now(),
+		})
 	}
 	received, err := s.persistConversations(ctx, account, result.Conversations)
 	if err != nil {
@@ -110,7 +132,11 @@ func (s *Service) collectMessages(ctx context.Context, account models.SocialAcco
 	}
 	older, err := provider.FetchMessages(ctx, token, platform.FetchMessagesRequest{AccountID: account.AccountID, Cursor: progress.cursor, Limit: 100})
 	if err != nil {
-		return collectedMessages{}, s.states.record(ctx, account, "failed", "backfill_failed", "Current messages were collected, but OpenPost could not collect older message history.", progress.cursor, false, time.Hour, progress.emptyStreak, s.now())
+		return collectedMessages{}, s.states.record(ctx, syncStateUpdate{
+			account: account, status: syncStateFailed,
+			failure: syncStateFailure{code: "backfill_failed", message: "Current messages were collected, but OpenPost could not collect older message history."},
+			cursor:  progress.cursor, cadence: time.Hour, emptyStreak: progress.emptyStreak, attemptedAt: s.now(),
+		})
 	}
 	olderReceived, err := s.persistConversations(ctx, account, older.Conversations)
 	if err != nil {

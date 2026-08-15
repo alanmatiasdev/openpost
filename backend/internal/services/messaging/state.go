@@ -13,8 +13,34 @@ import (
 type stateRepository interface {
 	load(context.Context, string) (*models.MessagingSyncState, error)
 	due(context.Context, string, time.Time) bool
-	record(context.Context, models.SocialAccount, string, string, string, string, bool, time.Duration, int, time.Time) error
+	record(context.Context, syncStateUpdate) error
 	list(context.Context, string) ([]models.MessagingSyncState, error)
+}
+
+type syncStateStatus string
+
+const (
+	syncStateOK                 syncStateStatus = "ok"
+	syncStateFailed             syncStateStatus = "failed"
+	syncStateUnsupported        syncStateStatus = "unsupported"
+	syncStateDisabled           syncStateStatus = "disabled"
+	syncStatePermissionRequired syncStateStatus = "permission_required"
+)
+
+type syncStateFailure struct {
+	code    string
+	message string
+}
+
+type syncStateUpdate struct {
+	account          models.SocialAccount
+	status           syncStateStatus
+	failure          syncStateFailure
+	cursor           string
+	backfillComplete bool
+	cadence          time.Duration
+	emptyStreak      int
+	attemptedAt      time.Time
 }
 
 type bunStateRepository struct{ db *bun.DB }
@@ -43,26 +69,19 @@ func (r bunStateRepository) list(ctx context.Context, workspaceID string) ([]mod
 	return states, err
 }
 
-func (r bunStateRepository) record(
-	ctx context.Context,
-	account models.SocialAccount,
-	status, code, message, cursor string,
-	backfillComplete bool,
-	cadence time.Duration,
-	emptyStreak int,
-	now time.Time,
-) error {
+func (r bunStateRepository) record(ctx context.Context, update syncStateUpdate) error {
 	state := &models.MessagingSyncState{
-		ID: stateID(account.ID), WorkspaceID: account.WorkspaceID,
-		SocialAccountID: account.ID, Platform: account.Platform, Status: status,
-		ErrorCode: code, ErrorMessage: message, Cursor: cursor, BackfillComplete: backfillComplete,
-		LastAttemptedAt: now, EmptyStreak: emptyStreak, CreatedAt: now, UpdatedAt: now,
+		ID: stateID(update.account.ID), WorkspaceID: update.account.WorkspaceID,
+		SocialAccountID: update.account.ID, Platform: update.account.Platform, Status: string(update.status),
+		ErrorCode: update.failure.code, ErrorMessage: update.failure.message,
+		Cursor: update.cursor, BackfillComplete: update.backfillComplete,
+		LastAttemptedAt: update.attemptedAt, EmptyStreak: update.emptyStreak, CreatedAt: update.attemptedAt, UpdatedAt: update.attemptedAt,
 	}
-	if status == "ok" {
-		state.LastSuccessAt = now
+	if update.status == syncStateOK {
+		state.LastSuccessAt = update.attemptedAt
 	}
-	if cadence > 0 {
-		state.NextSyncAt = now.Add(cadence)
+	if update.cadence > 0 {
+		state.NextSyncAt = update.attemptedAt.Add(update.cadence)
 	}
 	_, err := r.db.NewInsert().Model(state).
 		On("CONFLICT (id) DO UPDATE").

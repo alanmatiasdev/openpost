@@ -143,11 +143,19 @@ func (s *Service) refreshWorkspace(ctx context.Context, workspaceID string, forc
 		}
 		support := provider.MessagingSupport()
 		if support.RequiresOptIn && !accountMessagesEnabled(account) {
-			_ = s.states.record(ctx, account, "disabled", "opt_in_required", "Enable inbox sync for this account to collect messages.", "", false, 0, 0, now)
+			_ = s.states.record(ctx, syncStateUpdate{
+				account: account, status: syncStateDisabled,
+				failure:     syncStateFailure{code: "opt_in_required", message: "Enable inbox sync for this account to collect messages."},
+				attemptedAt: now,
+			})
 			continue
 		}
 		if missing := platform.MissingAnalyticsScopes(account.GrantedScopes, support.RequiredScopes); len(missing) > 0 {
-			_ = s.states.record(ctx, account, "permission_required", "missing_scope", "Reconnect this account and grant messaging access.", "", false, 24*time.Hour, 0, now)
+			_ = s.states.record(ctx, syncStateUpdate{
+				account: account, status: syncStatePermissionRequired,
+				failure: syncStateFailure{code: "missing_scope", message: "Reconnect this account and grant messaging access."},
+				cadence: 24 * time.Hour, attemptedAt: now,
+			})
 			continue
 		}
 		if !force && !s.states.due(ctx, account.ID, now) {
