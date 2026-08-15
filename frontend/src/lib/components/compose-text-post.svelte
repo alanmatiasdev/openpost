@@ -5,6 +5,7 @@
 	import { page } from '$app/stores';
 	import { beforeNavigate, goto, replaceState } from '$app/navigation';
 	import { resolve } from '$app/paths';
+	import { resolveAppPath } from '$lib/app-path';
 	import { MediaQuery, SvelteMap, SvelteSet } from 'svelte/reactivity';
 	import {
 		applyAPIRequestHeaders,
@@ -103,6 +104,7 @@
 		type ComposerPublicationPayload,
 		type ComposerSettings,
 		type ComposerSettingValue,
+		type PublicationMediaPayload,
 		type PublicationMediaInput,
 		type ResolvedComposerTarget
 	} from './compose/modes';
@@ -128,11 +130,15 @@
 		type EditorHandoffKind
 	} from '$lib/editor-handoff';
 	import {
+		parseComposerHandoffPayload,
+		type ComposerHandoffPayload
+	} from '$lib/composer/handoff-payload';
+	import {
 		planVideoComposerHandoff,
 		replaceOrAppendMediaID,
 		videoReturnConstraints,
 		type VideoHandoffPlan,
-		type VideoVariantID
+		type VideoReturnConstraintOverrides
 	} from '$lib/video-editor/composer-handoff';
 	import type { ImageEditorMediaItem } from '$lib/image-editor/types';
 	import type { VideoConstraint } from '$lib/video/types';
@@ -144,6 +150,7 @@
 		type PublicationDraft
 	} from '$lib/composer/session';
 	import { composerErrorMessage } from '$lib/composer/error-presentation';
+	import { parseComposerMediaMetadata } from '$lib/composer/media-metadata';
 	import { createComposerPublicationClient } from '$lib/composer/publication-client';
 	import { buildComposerPreview } from '$lib/compose-preview';
 	import { openPreviewWindow, type PreviewWindowSession } from '$lib/preview-window';
@@ -188,36 +195,11 @@
 	type DestinationOption = components['schemas']['DestinationOption'];
 	type ValidationIssue = components['schemas']['ValidationIssue'];
 	type DeliveryOutcome = components['schemas']['RenditionActionOutcome'];
-
-	interface ComposerHandoffPayload {
-		posts: PostItem[];
-		variants: Array<[string, Record<string, VariantPost>]>;
-		active_post_index: number;
-		selected_account_ids: string[];
-		selected_social_set_id: string;
-		requested_output_profiles: Record<string, string>;
-		format_locked_by_account: Record<string, boolean>;
-		schedule_overrides_by_account: Record<string, string>;
-		active_variant_account_id: string | null;
-		publication_id: string;
-		link_url: string;
-		settings_by_account: Record<string, Record<string, unknown>>;
-		segment_settings_by_post: Record<string, Record<string, Record<string, unknown>>>;
-		media_settings_by_account: Record<string, Record<string, Record<string, unknown>>>;
-		media_alt_texts: Array<[string, string]>;
-		media_mime_types: Array<[string, string]>;
-		media_sizes: Array<[string, number]>;
-		selected_date?: string;
-		selected_time: string | null;
-		random_delay_override: string;
-		repost_override: components['schemas']['Override'];
-		revision: number;
-		video?: {
-			replace_media_id?: string;
-			scope_account_id?: string;
-			plan: VideoHandoffPlan;
-		};
-	}
+	type ComposerRenditionSegment = NonNullable<
+		NonNullable<ComposerPublicationPayload['renditions']>[number]['segments']
+	>[number];
+	type ProviderSettingValue = SettingDefinition['default'];
+	type ProviderSettings = NonNullable<components['schemas']['RenditionInput']['settings']>;
 
 	interface Props {
 		initialPublication?: Publication | null;
@@ -928,45 +910,22 @@
 		);
 	}
 
-	function parseComposerSettingValue(value: unknown): ComposerSettingValue {
-		if (
-			value === null ||
-			typeof value === 'string' ||
-			typeof value === 'number' ||
-			typeof value === 'boolean'
-		) {
-			return value;
-		}
+	function parseComposerSettingValue(value: ProviderSettingValue): ComposerSettingValue {
+		if (value === null) return null;
+		if (String(value) === value) return String(value);
+		if (Number.isFinite(value)) return Number(value);
+		if (Boolean(value) === value) return Boolean(value);
 		if (Array.isArray(value)) {
-			const strings = value.filter((item): item is string => typeof item === 'string');
-			if (strings.length === value.length) return strings;
-			const numbers = value.filter((item): item is number => typeof item === 'number');
-			if (numbers.length === value.length) return numbers;
-			const booleans = value.filter((item): item is boolean => typeof item === 'boolean');
-			if (booleans.length === value.length) return booleans;
+			if (value.every((item) => String(item) === item)) return value.map(String);
+			if (value.every(Number.isFinite)) return value.map(Number);
+			if (value.every((item) => Boolean(item) === item)) return value.map(Boolean);
 		}
 		return '';
 	}
 
-	function parseComposerSettingsRecord(values: Record<string, unknown>): ComposerSettings {
+	function parseComposerSettingsRecord(values: ProviderSettings): ComposerSettings {
 		return Object.fromEntries(
 			Object.entries(values).map(([key, value]) => [key, parseComposerSettingValue(value)])
-		);
-	}
-
-	function parseNestedComposerSettingsRecord(
-		values: Record<string, Record<string, unknown>>
-	): Record<string, ComposerSettings> {
-		return Object.fromEntries(
-			Object.entries(values).map(([key, value]) => [key, parseComposerSettingsRecord(value)])
-		);
-	}
-
-	function parseDoubleNestedComposerSettingsRecord(
-		values: Record<string, Record<string, Record<string, unknown>>>
-	): Record<string, Record<string, ComposerSettings>> {
-		return Object.fromEntries(
-			Object.entries(values).map(([key, value]) => [key, parseNestedComposerSettingsRecord(value)])
 		);
 	}
 
@@ -992,7 +951,7 @@
 		};
 		if (
 			getPlatformKey(account.platform) === 'youtube' &&
-			(typeof values.description !== 'string' || !values.description.trim())
+			(String(values.description) !== values.description || !String(values.description).trim())
 		) {
 			values.description = posts[0]
 				? (getVariantContent(account.id, posts[0].key) ?? posts[0].content)
@@ -1023,7 +982,7 @@
 		}));
 	}
 
-	function mediaSettingsForDialog(account: SocialAccount): Record<string, Record<string, unknown>> {
+	function mediaSettingsForDialog(account: SocialAccount): Record<string, ComposerSettings> {
 		return Object.fromEntries(
 			settingsDialogMedia.map((item) => [
 				item.id,
@@ -1078,7 +1037,7 @@
 		}
 	});
 
-	function updateAccountSetting(account: SocialAccount, key: string, value: unknown) {
+	function updateAccountSetting(account: SocialAccount, key: string, value: ProviderSettingValue) {
 		const definition = visibleSettings(account).find((field) => field.key === key);
 		if (definition?.scope === 'segment') {
 			const post = activePost;
@@ -1136,7 +1095,7 @@
 		account: SocialAccount,
 		mediaID: string,
 		key: string,
-		value: unknown
+		value: ProviderSettingValue
 	) {
 		mediaSettingsByAccount = {
 			...mediaSettingsByAccount,
@@ -1185,8 +1144,8 @@
 			);
 			if (!definition) continue;
 			const raw = segmentSettingsByPost[post.key]?.[account.id]?.poll_options;
-			if (typeof raw !== 'string' || raw === '') continue;
-			const options = raw.split('\n');
+			if (String(raw) !== raw || raw === '') continue;
+			const options = String(raw).split('\n');
 			const minimum = Math.max(2, definition.constraints?.min_items ?? 2);
 			if (options.length < minimum) return m.compose_poll_minimum({ count: minimum });
 			const emptyIndex = options.findIndex((option) => option.trim() === '');
@@ -1508,25 +1467,27 @@
 				const media = publicationMedia(mediaIds).map((item) => {
 					const accountSettings = item.settingsByAccount?.[rendition.social_account_id] ?? {};
 					const altText =
-						typeof accountSettings.alt_text === 'string'
-							? accountSettings.alt_text.trim()
+						String(accountSettings.alt_text) === accountSettings.alt_text
+							? String(accountSettings.alt_text).trim()
 							: item.altText;
 					const settings = { ...accountSettings };
 					delete settings.alt_text;
-					return {
+					const mediaPayload: PublicationMediaPayload = {
 						media_id: item.id,
-						role: item.role || 'attachment',
-						...(altText ? { alt_text: altText } : {}),
-						...(Object.keys(settings).length > 0 ? { settings } : {})
+						role: item.role || 'attachment'
 					};
+					if (altText) mediaPayload.alt_text = altText;
+					if (Object.keys(settings).length > 0) mediaPayload.settings = settings;
+					return mediaPayload;
 				});
-				return {
+				const renditionSegment: ComposerRenditionSegment = {
 					...segment,
 					body,
-					...(contentInherited ? {} : { body_override: body }),
 					media_inherited: mediaInherited,
 					media: mediaInherited ? segment.media : media
 				};
+				if (!contentInherited) renditionSegment.body_override = body;
+				return renditionSegment;
 			});
 			const first = rendition.segments[0];
 			if (first) {
@@ -1700,7 +1661,7 @@
 				throw new Error(resolveError.detail || m.compose_load_capabilities_failed());
 			}
 			if (requestSequence !== capabilityResolveRequestSequence) return;
-			const resolvedAccounts = (data?.accounts ?? []) as ResolvedAccountCapabilityWithReadiness[];
+			const resolvedAccounts = data?.accounts ?? [];
 			resolvedCapabilities = Object.fromEntries(
 				resolvedAccounts.map((capability) => [capability.account_id, capability])
 			);
@@ -2023,7 +1984,7 @@
 	function composerHandoffReturnURL(): URL {
 		const returnURL = new URL(
 			publicationId
-				? resolve(`/publications/${encodeURIComponent(publicationId)}` as '/')
+				? resolveAppPath(`/publications/${encodeURIComponent(publicationId)}`)
 				: $page.url,
 			$page.url
 		);
@@ -2034,7 +1995,7 @@
 	}
 
 	function composerHandoffPayload(video?: ComposerHandoffPayload['video']): ComposerHandoffPayload {
-		return {
+		const payload: ComposerHandoffPayload = {
 			posts: $state.snapshot(posts),
 			variants: Array.from(variants.entries()),
 			active_post_index: mediaPickerPostIndex,
@@ -2056,16 +2017,18 @@
 			selected_time: selectedTime,
 			random_delay_override: randomDelayOverride,
 			repost_override: $state.snapshot(repostOverride),
-			revision,
-			...(video ? { video } : {})
+			revision
 		};
+		if (video) payload.video = video;
+		return payload;
 	}
 
 	async function restoreComposerHandoff(
 		snapshot: ComposerRecoverySnapshot,
 		returnToken: string
-	): Promise<void> {
-		const payload = snapshot.payload as ComposerHandoffPayload;
+	): Promise<ComposerHandoffPayload> {
+		const payload = parseComposerHandoffPayload(snapshot.payload);
+		if (!payload) throw new ComposerSessionError('session_content_missing');
 		const boundPublicationID = snapshot.publication_id || payload.publication_id;
 		const boundRevision = snapshot.publication_revision ?? payload.revision;
 		if (snapshot.return_token && snapshot.return_token !== returnToken) {
@@ -2101,15 +2064,9 @@
 		publicationId = boundPublicationID;
 		revision = boundRevision;
 		linkUrl = firstComposerURL(payload.posts[0]?.content ?? '') || payload.link_url;
-		settingsByAccount = parseNestedComposerSettingsRecord(
-			structuredClone(payload.settings_by_account ?? {})
-		);
-		segmentSettingsByPost = parseDoubleNestedComposerSettingsRecord(
-			structuredClone(payload.segment_settings_by_post ?? {})
-		);
-		mediaSettingsByAccount = parseDoubleNestedComposerSettingsRecord(
-			structuredClone(payload.media_settings_by_account ?? {})
-		);
+		settingsByAccount = structuredClone(payload.settings_by_account);
+		segmentSettingsByPost = structuredClone(payload.segment_settings_by_post);
+		mediaSettingsByAccount = structuredClone(payload.media_settings_by_account);
 		mediaAltTexts = new SvelteMap(payload.media_alt_texts ?? []);
 		mediaMimeTypes = new SvelteMap(payload.media_mime_types ?? []);
 		mediaSizes = new SvelteMap(payload.media_sizes ?? []);
@@ -2124,6 +2081,7 @@
 		await loadAccounts(selectedWorkspaceId, selectedAccountIds);
 		await resolveCapabilities();
 		lastSavedSnapshot = getSaveSnapshot();
+		return payload;
 	}
 
 	function finishEditorHandoff(token: string, editor: EditorHandoffKind): void {
@@ -2131,7 +2089,7 @@
 		const clean = new URL($page.url);
 		clean.searchParams.delete(editor === 'image' ? 'image_editor_return' : 'video_editor_return');
 		clean.searchParams.delete('editor_handoff_cancelled');
-		replaceState(resolve(`${clean.pathname}${clean.search}${clean.hash}` as '/'), {});
+		replaceState(resolveAppPath(`${clean.pathname}${clean.search}${clean.hash}`), {});
 	}
 
 	async function requireSavedComposerBeforeHandoff(): Promise<void> {
@@ -2173,8 +2131,8 @@
 			payload: composerHandoffPayload()
 		});
 		await goto(
-			resolve(
-				`/image-editor/new?workspace=${encodeURIComponent(selectedWorkspaceId)}&return_token=${encodeURIComponent(token.token)}` as '/'
+			resolveAppPath(
+				`/image-editor/new?workspace=${encodeURIComponent(selectedWorkspaceId)}&return_token=${encodeURIComponent(token.token)}`
 			)
 		);
 	}
@@ -2275,14 +2233,15 @@
 			.filter((constraint): constraint is VideoConstraint => Boolean(constraint));
 		const returnURL = composerHandoffReturnURL();
 		const purpose = isThread ? 'thread_segment' : 'post_media';
+		const constraintOverrides: VideoReturnConstraintOverrides = {
+			thread_segment: mediaPickerPostIndex
+		};
+		if (selectedVideo) constraintOverrides.replace_media_id = selectedVideo.id;
 		const token = await createVideoReturnToken({
 			workspace_id: selectedWorkspaceId,
 			return_url: `${returnURL.pathname}${returnURL.search}`,
 			purpose,
-			constraints: videoReturnConstraints(destinationConstraints, plan, {
-				thread_segment: mediaPickerPostIndex,
-				...(selectedVideo ? { replace_media_id: selectedVideo.id } : {})
-			})
+			constraints: videoReturnConstraints(destinationConstraints, plan, constraintOverrides)
 		});
 		const binding = (await sessionFor(selectedWorkspaceId, publicationId)).bindEditorHandoff(
 			token.token
@@ -2316,13 +2275,13 @@
 				query.set('source_name', selectedVideo.original_filename);
 			}
 		}
-		await goto(resolve(`/video-editor/new?${query.toString()}` as '/'));
+		await goto(resolveAppPath(`/video-editor/new?${query.toString()}`));
 	}
 
 	function applyVideoEditorReturn(
 		payload: ComposerHandoffPayload,
 		result: components['schemas']['VideoReturnResult'],
-		constraints: Record<string, unknown>
+		constraints: components['schemas']['ConsumeVideoReturnTokenOutputBody']['constraints']
 	): string[] {
 		if (!payload.video) {
 			throw new ComposerSessionError('video_editor_return_metadata_missing');
@@ -2337,9 +2296,7 @@
 		const targetPost = posts[targetIndex];
 		if (!targetPost) throw new ComposerSessionError('editor_origin_segment_missing');
 		const exports = result.exports ?? [];
-		const exportByVariant = new Map(
-			exports.map((item) => [item.variant_id as VideoVariantID, item.media_id])
-		);
+		const exportByVariant = new Map(exports.map((item) => [item.variant_id, item.media_id]));
 		const primaryMediaID =
 			exportByVariant.get(payload.video.plan.primary_variant) ?? exports[0]?.media_id;
 		if (!primaryMediaID) {
@@ -2370,8 +2327,9 @@
 					: post
 			);
 		}
-		for (const [variantID, accountIDs] of Object.entries(payload.video.plan.variant_accounts)) {
-			const variantMediaID = exportByVariant.get(variantID as VideoVariantID);
+		for (const variantID of payload.video.plan.required_variants) {
+			const accountIDs = payload.video.plan.variant_accounts[variantID];
+			const variantMediaID = exportByVariant.get(variantID);
 			if (!variantMediaID) continue;
 			for (const accountID of accountIDs) {
 				if (scopeAccountID && accountID !== scopeAccountID) continue;
@@ -2399,7 +2357,7 @@
 		try {
 			const snapshot = loadEditorHandoff(token, 'video');
 			if (!snapshot) throw new ComposerSessionError('video_editor_return_inactive');
-			await restoreComposerHandoff(snapshot, token);
+			const payload = await restoreComposerHandoff(snapshot, token);
 			if ($page.url.searchParams.get('editor_handoff_cancelled') === '1') {
 				finishEditorHandoff(token, 'video');
 				return;
@@ -2408,7 +2366,6 @@
 			if (snapshot.workspace_id !== returned.workspace_id) {
 				throw new ComposerSessionError('video_editor_return_workspace_mismatch');
 			}
-			const payload = snapshot.payload as ComposerHandoffPayload;
 			const mediaIDs = applyVideoEditorReturn(payload, returned.result, returned.constraints);
 			await hydrateMediaMetadata(returned.workspace_id, mediaIDs, true);
 			scheduleAutoSave();
@@ -2601,10 +2558,9 @@
 					const saved = autoSavesDraft
 						? await flushPendingTextDraft()
 						: await saveEditedPost(false);
-					return {
-						ok: Boolean(saved),
-						...(saved ? {} : { error: error || m.compose_workspace_switch_save_failed() })
-					};
+					return saved
+						? { ok: true }
+						: { ok: false, error: error || m.compose_workspace_switch_save_failed() };
 				},
 				discard: () => undefined,
 				invalidate: () => {
@@ -2708,7 +2664,7 @@
 		void flushPendingTextDraft().then((saved) => {
 			if (!saved) return;
 			allowNavigationOnce = true;
-			return goto(resolve(target as '/'));
+			return goto(resolveAppPath(target));
 		});
 	});
 
@@ -2826,19 +2782,19 @@
 			);
 			if (!resp.ok) return;
 
-			const mediaData = await resp.json();
+			const mediaData = parseComposerMediaMetadata(await resp.json());
 			const nextMimeTypes = new SvelteMap(mediaMimeTypes);
 			const nextAltTexts = new SvelteMap(mediaAltTexts);
 			const nextSizes = new SvelteMap(mediaSizes);
-			for (const media of mediaData.media ?? []) {
-				if (media.mime_type) {
-					nextMimeTypes.set(media.id, media.mime_type);
+			for (const media of mediaData) {
+				if (media.mimeType) {
+					nextMimeTypes.set(media.id, media.mimeType);
 				}
-				if (typeof media.size === 'number') {
+				if (media.size !== undefined) {
 					nextSizes.set(media.id, media.size);
 				}
-				if (media.alt_text) {
-					nextAltTexts.set(media.id, media.alt_text);
+				if (media.altText) {
+					nextAltTexts.set(media.id, media.altText);
 				} else {
 					nextAltTexts.delete(media.id);
 				}
@@ -3203,12 +3159,12 @@
 			const { workspace_id: _workspaceID, ...canonicalDraft } = canonical;
 			const publication: PublicationDraft = {
 				...canonicalDraft,
-				...(proposedSchedule ? { scheduled_at: proposedSchedule } : {}),
-				...(proposedSchedule && randomDelayOverride !== 'default'
-					? { random_delay_minutes: effectiveRandomDelayMinutes }
-					: {}),
 				repost_override: $state.snapshot(repostOverride)
 			};
+			if (proposedSchedule) publication.scheduled_at = proposedSchedule;
+			if (proposedSchedule && randomDelayOverride !== 'default') {
+				publication.random_delay_minutes = effectiveRandomDelayMinutes;
+			}
 			const session = await sessionFor(workspaceId, startingPublicationId);
 			if (options.saveAsCopy) session.reset();
 			session.edit(publication);
@@ -3343,9 +3299,12 @@
 				successMessage: m.compose_delete_success(),
 				returnFocus: document.getElementById('post-textarea-0')
 			};
-		} catch (e) {
+		} catch (cause) {
 			soundPreferences.play('error');
-			return { ok: false, message: (e as Error).message || m.compose_delete_post_failed() };
+			return {
+				ok: false,
+				message: cause instanceof Error ? cause.message : m.compose_delete_post_failed()
+			};
 		} finally {
 			isDeleting = false;
 		}
@@ -3444,8 +3403,8 @@
 				setTimeout(() => onSuccess(), 500);
 			}
 			return true;
-		} catch (e) {
-			error = (e as Error).message || m.compose_save_changes_failed();
+		} catch (cause) {
+			error = cause instanceof Error ? cause.message : m.compose_save_changes_failed();
 			soundPreferences.play('error');
 			return false;
 		} finally {
@@ -3607,8 +3566,8 @@
 				onSuccess?.();
 				setTimeout(() => (success = ''), 3000);
 			}
-		} catch (e) {
-			error = (e as Error).message || m.compose_publish_failed();
+		} catch (cause) {
+			error = cause instanceof Error ? cause.message : m.compose_publish_failed();
 			soundPreferences.play('error');
 		} finally {
 			isSubmitting = false;
@@ -4285,7 +4244,7 @@
 			if (err) throw err;
 			if (data?.slot_time) {
 				// Parse date directly from ISO string to avoid timezone conversion issues
-				const iso = data.slot_time as string;
+				const iso = data.slot_time;
 				const [datePart, timePart] = iso.split('T');
 				const [year, month, day] = datePart.split('-').map(Number);
 				const rawHours = parseInt(timePart.split(':')[0], 10);
@@ -4828,10 +4787,10 @@
 							(rendition) => rendition.id === renditionID
 						)?.social_account_id;
 						return goto(
-							resolve(
-								(accountID
+							resolveAppPath(
+								accountID
 									? `/settings?tab=accounts&account_id=${encodeURIComponent(accountID)}`
-									: '/settings?tab=accounts') as '/'
+									: '/settings?tab=accounts'
 							)
 						);
 					}}

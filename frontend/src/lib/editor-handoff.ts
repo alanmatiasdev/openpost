@@ -1,7 +1,7 @@
 export type EditorHandoffKind = 'image' | 'video';
 export type EditorHandoffStatus = 'completed' | 'cancelled';
 
-export interface ComposerRecoverySnapshot<T = unknown> {
+export interface ComposerRecoverySnapshot<T = HandoffJSONValue> {
 	version: 2;
 	editor: EditorHandoffKind;
 	workspace_id: string;
@@ -22,13 +22,13 @@ interface LegacyComposerRecoverySnapshot {
 	purpose: string;
 	created_at: string;
 	expires_at: string;
-	payload: unknown;
+	payload: HandoffJSONValue;
 }
 
 const HANDOFF_PREFIX = 'openpost:editor-handoff:return:';
 const LEGACY_PREFIXES = ['openpost:image-editor:return:', 'openpost:studio:return:'] as const;
 
-type HandoffJSONValue =
+export type HandoffJSONValue =
 	| string
 	| number
 	| boolean
@@ -120,9 +120,9 @@ function parseSnapshot(
 	}
 }
 
-export function storeEditorHandoff(
+export function storeEditorHandoff<T>(
 	token: string,
-	snapshot: ComposerRecoverySnapshot,
+	snapshot: ComposerRecoverySnapshot<T>,
 	storage: Storage | null = browserSessionStorage()
 ): void {
 	if (!storage || !token.trim()) return;
