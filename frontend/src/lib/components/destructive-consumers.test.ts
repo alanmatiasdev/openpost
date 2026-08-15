@@ -39,7 +39,9 @@ describe('destructive consumer completion contract', () => {
 		expect(composerSource).toContain('await onDeleted?.()');
 		expect(composerSource).not.toContain('await onDeleted?.();\n\t\t\tawait tick();');
 		expect(composerSource.match(/onclick={requestDraftDelete}/g)).toHaveLength(2);
-		expect(composerSource.match(/onDelete={draftId \|\| publicationOnlyEdit/g)).toHaveLength(2);
+		expect(
+			composerSource.match(/onDelete={publicationId \? requestDraftDelete : undefined}/g)
+		).toHaveLength(2);
 	});
 
 	it('announces media and editor catalog deletion exactly once through dialog outcomes', () => {

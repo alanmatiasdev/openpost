@@ -67,8 +67,6 @@
 	import {
 		type PostItem,
 		makeEmptyPost,
-		isThreadDraft,
-		decodeThreadDraft,
 		getDraftSnapshot,
 		hasAnyContent,
 		type VariantPost
@@ -158,7 +156,7 @@
 		type ProviderReadinessPresentation
 	} from '$lib/provider-readiness';
 	import {
-		PasteMediaUploadQueue,
+		ComposerSessionMediaQueue,
 		availablePasteMediaSlots,
 		hasUnsettledPasteMediaUploads,
 		pasteMediaTargetKey,
@@ -167,26 +165,11 @@
 		type PasteMediaUploadItem,
 		type PasteMediaUploadTarget,
 		type PastedImageRejectionReason
-	} from './compose/paste-media-upload';
+	} from '$lib/composer/media-queue';
 
 	// --------------------------------------------------------------------------
 	// Types
 	// --------------------------------------------------------------------------
-	interface InitialPost {
-		id: string;
-		publication_id?: string;
-		workspace_id: string;
-		content: string;
-		thread_draft?: string | null;
-		repost_override?: components['schemas']['Override'];
-		status: string;
-		revision: number;
-		scheduled_at: string;
-		random_delay_minutes?: number;
-		media?: Array<{ media_id: string; mime_type?: string; alt_text?: string }> | null;
-		destinations?: Array<{ social_account_id: string; platform: string }> | null;
-	}
-
 	type Publication = components['schemas']['PublicationResponse'];
 	type SocialSet = components['schemas']['SocialSetResponse'];
 	type Capability = components['schemas']['Capability'];
@@ -200,13 +183,6 @@
 	type ValidationIssue = components['schemas']['ValidationIssue'];
 	type DeliveryOutcome = components['schemas']['RenditionActionOutcome'];
 
-	type PersistedVariant = {
-		social_account_id: string;
-		content: string;
-		media_ids: string;
-		is_unsynced: boolean;
-	};
-
 	interface ComposerHandoffPayload {
 		posts: PostItem[];
 		variants: Array<[string, Record<string, VariantPost>]>;
@@ -217,7 +193,6 @@
 		format_locked_by_account: Record<string, boolean>;
 		schedule_overrides_by_account: Record<string, string>;
 		active_variant_account_id: string | null;
-		draft_id: string | null;
 		publication_id: string;
 		link_url: string;
 		settings_by_account: Record<string, Record<string, unknown>>;
@@ -239,7 +214,6 @@
 	}
 
 	interface Props {
-		initialPost?: InitialPost;
 		initialPublication?: Publication | null;
 		initialScheduleDate?: string | null;
 		initialScheduleTime?: string | null;
@@ -261,7 +235,6 @@
 	// Props & core state
 	// --------------------------------------------------------------------------
 	let {
-		initialPost,
 		initialPublication = null,
 		initialScheduleDate = null,
 		initialScheduleTime = null,
@@ -273,17 +246,12 @@
 		onDraftCreated,
 		onThreadStateChange
 	}: Props = $props();
-	let isEditMode = $derived(Boolean(initialPost || initialPublication));
-	let publicationOnlyEdit = $derived(
-		Boolean(initialPublication && !initialPost && !initialPublication.text_post_id)
-	);
+	let isEditMode = $derived(Boolean(initialPublication));
 
 	let posts = $state<PostItem[]>([makeEmptyPost()]);
 	let activePostIndex = $state(0);
-	let draftId = $state<string | null>(null);
 	let publicationId = $state('');
 	let revision = $state(1);
-	let lastInitializedPostId = $state<string | null>(null);
 	let lastInitializedPublicationId = $state<string | null>(null);
 	let isSaving = $state(false);
 	let isSubmitting = $state(false);
@@ -379,7 +347,7 @@
 	let pasteMediaUploads = $state.raw<PasteMediaUploadItem[]>([]);
 	let pasteMediaFeedback = $state.raw<{ targetKey: string; messages: string[] } | null>(null);
 	let pasteMediaAnnouncement = $state('');
-	const pasteMediaUploadQueue = new PasteMediaUploadQueue<MediaUploadResult>({
+	const pasteMediaUploadQueue = new ComposerSessionMediaQueue<MediaUploadResult>({
 		upload: ({ file, target, signal, onProgress }) =>
 			uploadMediaFile({
 				workspaceId: target.workspaceId,
@@ -522,9 +490,7 @@
 	const isThread = $derived(posts.length > 1);
 	const textComposerMode = $derived<ComposerModeKey>(isThread ? 'thread' : 'post');
 	const compatibleAccounts = $derived(accounts);
-	const autoSavesDraft = $derived(
-		!isEditMode || initialPost?.status === 'draft' || initialPublication?.status === 'draft'
-	);
+	const autoSavesDraft = $derived(!isEditMode || initialPublication?.status === 'draft');
 	const composerWorkspaceStateDirty = $derived(
 		hasPendingPasteMediaUploads ||
 			((hasContent || Boolean(lastSavedSnapshot)) && getSaveSnapshot() !== lastSavedSnapshot) ||
@@ -730,11 +696,6 @@
 		if (pct >= 1) return 'text-red-500';
 		if (pct >= 0.8) return 'text-amber-500';
 		return 'text-muted-foreground';
-	}
-
-	function normalizeRandomDelayValue(value: number | null | undefined): string {
-		if (value === undefined || value === null || !Number.isFinite(value)) return 'default';
-		return String(Math.max(0, Math.round(value)));
 	}
 
 	function parseScheduleDateParam(value: string | null): CalendarDate | undefined {
@@ -1130,7 +1091,7 @@
 				...segmentSettingsByPost,
 				[post.key]: {
 					...(segmentSettingsByPost[post.key] ?? {}),
-					[account.id]: parseComposerSettingsRecord(invalidated.values)
+					[account.id]: parseComposerSettingsRecord(invalidated.values ?? {})
 				}
 			};
 		} else {
@@ -1142,7 +1103,7 @@
 			);
 			settingsByAccount = {
 				...settingsByAccount,
-				[account.id]: parseComposerSettingsRecord(invalidated.values)
+				[account.id]: parseComposerSettingsRecord(invalidated.values ?? {})
 			};
 			if (invalidated.optionSources.length > 0) {
 				const invalidSources = new Set(invalidated.optionSources);
@@ -1574,15 +1535,6 @@
 		return payload;
 	}
 
-	async function loadCanonicalPublication(targetPublicationID: string) {
-		if (!targetPublicationID) return;
-		const { data, error: publicationError } = await client.GET('/publications/{id}', {
-			params: { path: { id: targetPublicationID } }
-		});
-		if (publicationError || !data) return;
-		hydrateCanonicalSettings(data);
-	}
-
 	function hydrateCanonicalSettings(publication: Publication) {
 		publicationId = publication.id;
 		revision = publication.revision;
@@ -1590,22 +1542,13 @@
 		selectedSocialSetId = publication.social_set_id ?? '';
 		requestedOutputProfiles = Object.fromEntries(
 			(publication.renditions ?? [])
-				.filter(
-					(rendition) =>
-						rendition.format_locked ||
-						(publicationOnlyEdit &&
-							['instagram', 'facebook', 'tiktok'].includes(getPlatformKey(rendition.platform)))
-				)
+				.filter((rendition) => rendition.format_locked)
 				.map((rendition) => [rendition.social_account_id, rendition.output_profile])
 		);
 		formatLockedByAccount = Object.fromEntries(
 			(publication.renditions ?? []).map((rendition) => [
 				rendition.social_account_id,
-				Boolean(
-					rendition.format_locked ||
-					(publicationOnlyEdit &&
-						['instagram', 'facebook', 'tiktok'].includes(getPlatformKey(rendition.platform)))
-				)
+				Boolean(rendition.format_locked)
 			])
 		);
 		scheduleOverridesByAccount = Object.fromEntries(
@@ -1947,26 +1890,6 @@
 		);
 	}
 
-	function getPersistedVariantPayload(
-		sourceVariants: Map<string, Record<string, VariantPost>>,
-		sourcePosts: PostItem[]
-	): PersistedVariant[] {
-		const firstPost = sourcePosts[0];
-		if (!firstPost) return [];
-		return Array.from(sourceVariants.entries()).map(([accountId, values]) => ({
-			social_account_id: accountId,
-			content: values[firstPost.key]?.contentInherited
-				? firstPost.content
-				: (values[firstPost.key]?.content ?? firstPost.content),
-			media_ids: JSON.stringify(
-				values[firstPost.key]?.mediaInherited
-					? firstPost.mediaIds
-					: (values[firstPost.key]?.mediaIds ?? firstPost.mediaIds)
-			),
-			is_unsynced: true
-		}));
-	}
-
 	function makeVariantRecord(sourcePosts: PostItem[]): Record<string, VariantPost> {
 		return Object.fromEntries(
 			sourcePosts.map((post) => [
@@ -2099,9 +2022,7 @@
 		const returnURL = new URL(
 			publicationId
 				? resolve(`/publications/${encodeURIComponent(publicationId)}` as '/')
-				: draftId
-					? resolve(`/posts/${encodeURIComponent(draftId)}` as '/')
-					: $page.url,
+				: $page.url,
 			$page.url
 		);
 		for (const key of ['image_editor_return', 'video_editor_return', 'editor_handoff_cancelled']) {
@@ -2121,7 +2042,6 @@
 			format_locked_by_account: $state.snapshot(formatLockedByAccount),
 			schedule_overrides_by_account: $state.snapshot(scheduleOverridesByAccount),
 			active_variant_account_id: activeVariantAccountId,
-			draft_id: draftId,
 			publication_id: publicationId,
 			link_url: linkUrl,
 			settings_by_account: $state.snapshot(settingsByAccount),
@@ -2139,10 +2059,30 @@
 		};
 	}
 
-	async function restoreComposerHandoff(snapshot: ComposerRecoverySnapshot): Promise<void> {
+	async function restoreComposerHandoff(
+		snapshot: ComposerRecoverySnapshot,
+		returnToken: string
+	): Promise<void> {
 		const payload = snapshot.payload as ComposerHandoffPayload;
-		await ensureComposerWorkspace(snapshot.workspace_id);
-		selectedWorkspaceId = snapshot.workspace_id;
+		const boundPublicationID = snapshot.publication_id || payload.publication_id;
+		const boundRevision = snapshot.publication_revision ?? payload.revision;
+		if (snapshot.return_token && snapshot.return_token !== returnToken) {
+			throw new Error('This editor return token does not match its Composer session.');
+		}
+		if (snapshot.workspace_id !== selectedWorkspaceId) {
+			throw new Error('This editor return belongs to another Workspace.');
+		}
+		if (!boundPublicationID || boundPublicationID !== publicationId) {
+			throw new Error('This editor return belongs to another Publication.');
+		}
+		const session = await sessionFor(selectedWorkspaceId, boundPublicationID);
+		session.acceptEditorHandoff({
+			workspaceId: snapshot.workspace_id,
+			publicationId: boundPublicationID,
+			revision: boundRevision,
+			returnToken
+		});
+		clearEditorHandoff(returnToken);
 		posts = structuredClone(payload.posts);
 		variants = new SvelteMap(payload.variants ?? []);
 		activePostIndex = Math.max(
@@ -2156,9 +2096,8 @@
 		formatLockedByAccount = structuredClone(payload.format_locked_by_account ?? {});
 		scheduleOverridesByAccount = structuredClone(payload.schedule_overrides_by_account ?? {});
 		activeVariantAccountId = payload.active_variant_account_id ?? null;
-		draftId = payload.draft_id ?? null;
-		publicationId = payload.publication_id ?? '';
-		revision = payload.revision ?? revision;
+		publicationId = boundPublicationID;
+		revision = boundRevision;
 		linkUrl = firstComposerURL(payload.posts[0]?.content ?? '') || payload.link_url;
 		settingsByAccount = parseNestedComposerSettingsRecord(
 			structuredClone(payload.settings_by_account ?? {})
@@ -2194,8 +2133,7 @@
 	}
 
 	async function requireSavedComposerBeforeHandoff(): Promise<void> {
-		if (!hasContent) return;
-		const saved = await saveDraft();
+		const saved = await saveDraft({ allowEmpty: true });
 		if (!saved) throw new Error(error || m.compose_save_draft_failed());
 	}
 
@@ -2216,10 +2154,16 @@
 				thread_segment: mediaPickerPostIndex
 			}
 		});
+		const binding = (await sessionFor(selectedWorkspaceId, publicationId)).bindEditorHandoff(
+			token.token
+		);
 		storeEditorHandoff(token.token, {
 			version: 2,
 			editor: 'image',
-			workspace_id: selectedWorkspaceId,
+			workspace_id: binding.workspaceId,
+			publication_id: binding.publicationId,
+			publication_revision: binding.revision,
+			return_token: binding.returnToken,
 			return_url: `${returnURL.pathname}${returnURL.search}`,
 			purpose,
 			created_at: new Date().toISOString(),
@@ -2240,7 +2184,7 @@
 		try {
 			const snapshot = loadEditorHandoff(token, 'image');
 			if (!snapshot) throw new Error('This OpenPost Image Editor return is no longer active.');
-			await restoreComposerHandoff(snapshot);
+			await restoreComposerHandoff(snapshot, token);
 			if ($page.url.searchParams.get('editor_handoff_cancelled') === '1') {
 				finishEditorHandoff(token, 'image');
 				return;
@@ -2269,6 +2213,7 @@
 			finishEditorHandoff(token, 'image');
 			notifyImageEditorReturn(result.media_ids.length);
 		} catch (cause) {
+			finishEditorHandoff(token, 'image');
 			error =
 				cause instanceof Error
 					? `${cause.message} Your OpenPost Image Editor exports are still available in Media.`
@@ -2337,10 +2282,16 @@
 				...(selectedVideo ? { replace_media_id: selectedVideo.id } : {})
 			})
 		});
+		const binding = (await sessionFor(selectedWorkspaceId, publicationId)).bindEditorHandoff(
+			token.token
+		);
 		storeEditorHandoff(token.token, {
 			version: 2,
 			editor: 'video',
-			workspace_id: selectedWorkspaceId,
+			workspace_id: binding.workspaceId,
+			publication_id: binding.publicationId,
+			publication_revision: binding.revision,
+			return_token: binding.returnToken,
 			return_url: `${returnURL.pathname}${returnURL.search}`,
 			purpose,
 			created_at: new Date().toISOString(),
@@ -2442,7 +2393,7 @@
 		try {
 			const snapshot = loadEditorHandoff(token, 'video');
 			if (!snapshot) throw new Error('This OpenPost Video Editor return is no longer active.');
-			await restoreComposerHandoff(snapshot);
+			await restoreComposerHandoff(snapshot, token);
 			if ($page.url.searchParams.get('editor_handoff_cancelled') === '1') {
 				finishEditorHandoff(token, 'video');
 				return;
@@ -2459,6 +2410,7 @@
 			finishEditorHandoff(token, 'video');
 			notifyVideoEditorReturn(mediaIDs.length);
 		} catch (cause) {
+			finishEditorHandoff(token, 'video');
 			error =
 				cause instanceof Error
 					? `${cause.message} ${m.video_editor_return_recovery()}`
@@ -2494,138 +2446,51 @@
 	// --------------------------------------------------------------------------
 	// Initialization
 	// --------------------------------------------------------------------------
-	async function initializeFromPost(post: InitialPost | undefined, resolveAfter = true) {
+	async function initializeNewComposer(resolveAfter = true) {
 		pasteMediaUploadQueue.reset();
 		clearAutoSaveTimer();
-		if (!post) {
-			draftId = null;
-			publicationId = '';
-			selectedSocialSetId = '';
-			requestedOutputProfiles = {};
-			formatLockedByAccount = {};
-			scheduleOverridesByAccount = {};
-			lastInitializedPostId = null;
-			posts = [makeEmptyPost()];
-			activePostIndex = 0;
-			lastSavedSnapshot = '';
-			lastSavedScheduleAt = '';
-			variants = new Map();
-			activeVariantAccountId = null;
-			selectedAccountIds = [];
-			mediaAltTexts = new Map();
-			mediaMimeTypes = new Map();
-			mediaSizes = new Map();
-			linkUrl = '';
-			settingsByAccount = {};
-			segmentSettingsByPost = {};
-			mediaSettingsByAccount = {};
-			resolvedCapabilities = {};
-			validationIssues = [];
-			selectedDate = undefined;
-			selectedTime = null;
-			randomDelayOverride = 'default';
-			repostOverride = { mode: 'inherit' };
-			if (workspaces.length > 0) {
-				selectedWorkspaceId = workspaceCtx.currentWorkspace?.id ?? workspaces[0].id;
-				await ensureComposerWorkspace(selectedWorkspaceId);
-				await loadAccounts(
-					selectedWorkspaceId,
-					initialAccountIds.length ? initialAccountIds : undefined,
-					initialAccountIds.length > 0
-				);
-				if (resolveAfter) await resolveCapabilities();
-			}
-			return;
-		}
-
-		await ensureComposerWorkspace(post.workspace_id);
-		draftId = post.id;
-		publicationId = post.publication_id ?? '';
-		revision = post.revision;
-		lastInitializedPostId = post.id;
-		selectedWorkspaceId = post.workspace_id;
-		selectedAccountIds = post.destinations?.map((d) => d.social_account_id) ?? [];
-		randomDelayOverride = normalizeRandomDelayValue(post.random_delay_minutes);
-		repostOverride = post.repost_override ?? { mode: 'inherit' };
-
-		// Load alt texts from media
-		const newAlts = new SvelteMap<string, string>();
-		const newMimeTypes = new SvelteMap<string, string>();
-		post.media?.forEach((m) => {
-			if (m.alt_text) newAlts.set(m.media_id, m.alt_text);
-			if (m.mime_type) newMimeTypes.set(m.media_id, m.mime_type);
-		});
-		mediaAltTexts = newAlts;
-		mediaMimeTypes = newMimeTypes;
-		mediaSizes = new Map();
-		if (post.media?.length) {
-			await hydrateMediaMetadata(
-				post.workspace_id,
-				post.media.map((m) => m.media_id).filter(Boolean)
-			);
-		}
-
-		// Read the thread state. Prefer the explicit `thread_draft`
-		// field. Fall back to the pre-migration encoded value inside
-		// `content` so older saved drafts still open safely.
-		const threadSource: string | null = post.thread_draft ?? null;
-		const migratedSource: string | null = isThreadDraft(post.content) ? post.content : null;
-		const source = threadSource ?? migratedSource;
-		if (source) {
-			const threadData = decodeThreadDraft(source);
-			if (threadData && threadData.posts.length > 0) {
-				posts = threadData.posts.map((item) => ({
-					key: item.key,
-					content: item.content,
-					mediaIds: item.mediaIds
-				}));
-				variants = normalizeVariantsMap(new Map(Object.entries(threadData.variants)), posts);
-			} else {
-				posts = [makeEmptyPost()];
-				variants = new Map();
-			}
-		} else {
-			posts = [
-				{
-					key: makeEmptyPost().key,
-					content: post.content,
-					mediaIds: post.media?.map((m) => m.media_id) ?? []
-				}
-			];
-			variants = new Map();
-		}
+		publicationId = '';
+		selectedSocialSetId = '';
+		requestedOutputProfiles = {};
+		formatLockedByAccount = {};
+		scheduleOverridesByAccount = {};
+		posts = [makeEmptyPost()];
 		activePostIndex = 0;
+		lastSavedSnapshot = '';
+		lastSavedScheduleAt = '';
+		variants = new Map();
 		activeVariantAccountId = null;
-
-		if (post.scheduled_at && post.scheduled_at !== '0001-01-01T00:00:00Z') {
-			const schedule = workspaceScheduleFromISO(post.scheduled_at, scheduleTimezoneLabel);
-			selectedDate = schedule?.date;
-			selectedTime = schedule?.time ?? null;
-		} else {
-			selectedDate = undefined;
-			selectedTime = null;
+		selectedAccountIds = [];
+		mediaAltTexts = new Map();
+		mediaMimeTypes = new Map();
+		mediaSizes = new Map();
+		linkUrl = '';
+		settingsByAccount = {};
+		segmentSettingsByPost = {};
+		mediaSettingsByAccount = {};
+		resolvedCapabilities = {};
+		validationIssues = [];
+		selectedDate = undefined;
+		selectedTime = null;
+		randomDelayOverride = 'default';
+		repostOverride = { mode: 'inherit' };
+		if (workspaces.length > 0) {
+			selectedWorkspaceId = workspaceCtx.currentWorkspace?.id ?? workspaces[0].id;
+			await ensureComposerWorkspace(selectedWorkspaceId);
+			await loadAccounts(
+				selectedWorkspaceId,
+				initialAccountIds.length ? initialAccountIds : undefined,
+				initialAccountIds.length > 0
+			);
+			if (resolveAfter) await resolveCapabilities();
 		}
-		lastSavedScheduleAt =
-			post.scheduled_at && post.scheduled_at !== '0001-01-01T00:00:00Z' ? post.scheduled_at : '';
-
-		await loadAccounts(selectedWorkspaceId, selectedAccountIds);
-		if (!source && !publicationId) {
-			await loadVariants(post.id);
-		}
-		if (publicationId) {
-			await loadCanonicalPublication(publicationId);
-		}
-		if (resolveAfter) await resolveCapabilities();
-		lastSavedSnapshot = getSaveSnapshot();
 	}
 
 	async function initializeFromPublication(publication: Publication, resolveAfter = true) {
 		pasteMediaUploadQueue.reset();
 		clearAutoSaveTimer();
-		draftId = publication.text_post_id || null;
 		publicationId = publication.id;
 		revision = publication.revision;
-		lastInitializedPostId = null;
 		lastInitializedPublicationId = publication.id;
 		selectedWorkspaceId = publication.workspace_id;
 		selectedAccountIds = (publication.renditions ?? []).map(
@@ -2696,9 +2561,9 @@
 			workspaces = [...workspaceCtx.workspaces];
 			const [capabilityData] = await Promise.all([
 				loadCapabilityCatalog(),
-				initialPublication && !initialPost
+				initialPublication
 					? initializeFromPublication(initialPublication, false)
-					: initializeFromPost(initialPost, false)
+					: initializeNewComposer(false)
 			]);
 			capabilities = capabilityData.capabilities ?? [];
 			await resolveCapabilities();
@@ -2847,20 +2712,8 @@
 	});
 
 	$effect(() => {
-		const post = initialPost;
-		if (!loadingWorkspaces && post && lastInitializedPostId !== post.id) {
-			initializeFromPost(post);
-		}
-	});
-
-	$effect(() => {
 		const publication = initialPublication;
-		if (
-			!loadingWorkspaces &&
-			!initialPost &&
-			publication &&
-			lastInitializedPublicationId !== publication.id
-		) {
+		if (!loadingWorkspaces && publication && lastInitializedPublicationId !== publication.id) {
 			void initializeFromPublication(publication);
 		}
 	});
@@ -2912,7 +2765,7 @@
 
 	$effect(() => {
 		const prompt = ui.pendingPrompt;
-		if (prompt && !initialPost && !loadingWorkspaces) {
+		if (prompt && !initialPublication && !loadingWorkspaces) {
 			ui.clearPrompt();
 			requestApplyPrompt(prompt);
 		}
@@ -3137,7 +2990,7 @@
 			return;
 		}
 		const resetWorkspaceState = Boolean(
-			draftId ||
+			publicationId ||
 			hasContent ||
 			selectedDate ||
 			selectedTime ||
@@ -3151,7 +3004,6 @@
 		saveGeneration += 1;
 		nextSlotRequestSequence += 1;
 		suggestingSlot = false;
-		draftId = null;
 		publicationId = '';
 		selectedSocialSetId = '';
 		requestedOutputProfiles = {};
@@ -3322,6 +3174,7 @@
 		options: {
 			saveAsCopy?: boolean;
 			scheduledAt?: string | null;
+			allowEmpty?: boolean;
 		} = {}
 	): Promise<string | null> {
 		return saveDraftNow(options);
@@ -3330,8 +3183,9 @@
 	async function saveDraftNow(options: {
 		saveAsCopy?: boolean;
 		scheduledAt?: string | null;
+		allowEmpty?: boolean;
 	}): Promise<string | null> {
-		if (!selectedWorkspaceId || !hasContent) return null;
+		if (!selectedWorkspaceId || (!hasContent && !options.allowEmpty)) return null;
 		const generation = saveGeneration;
 		const workspaceId = selectedWorkspaceId;
 		const startingPublicationId = options.saveAsCopy ? '' : publicationId;
@@ -3364,7 +3218,6 @@
 				return null;
 			}
 			const createdPublication = !startingPublicationId;
-			draftId = null;
 			publicationId = savedPublicationId;
 			revision = saved.revision;
 			draftConflict = null;
@@ -3474,7 +3327,6 @@
 			pasteMediaUploadQueue.reset();
 			posts = [makeEmptyPost()];
 			activePostIndex = 0;
-			draftId = null;
 			publicationId = '';
 			lastSavedSnapshot = '';
 			lastSavedScheduleAt = '';
@@ -3503,7 +3355,7 @@
 	}
 
 	async function saveEditedPost(navigateOnSuccess = true): Promise<boolean> {
-		if (!publicationId || (!initialPost && !initialPublication)) return false;
+		if (!publicationId || !initialPublication) return false;
 		error = '';
 		success = '';
 
@@ -4224,60 +4076,6 @@
 		scheduleAutoSave();
 	}
 
-	async function loadVariants(postId: string) {
-		try {
-			const { data, error: err } = await client.GET('/posts/{id}/variants', {
-				params: { path: { id: postId } }
-			});
-			if (err) throw err;
-			const nextVariants = new SvelteMap<string, Record<string, VariantPost>>();
-			const variantMediaIds = new SvelteSet<string>();
-			for (const variant of data?.variants ?? []) {
-				if (variant.is_unsynced) {
-					let mediaIds = [...(posts[0]?.mediaIds ?? [])];
-					if (typeof variant.media_ids === 'string' && variant.media_ids !== '') {
-						try {
-							const parsed = JSON.parse(variant.media_ids);
-							if (Array.isArray(parsed)) {
-								mediaIds = parsed.map(String);
-							}
-						} catch (e) {
-							console.error('Failed to parse variant media IDs:', e);
-						}
-					}
-					for (const id of mediaIds) {
-						variantMediaIds.add(id);
-					}
-					nextVariants.set(variant.social_account_id, {
-						[posts[0]?.key ?? makeEmptyPost().key]: {
-							content: variant.content,
-							mediaIds,
-							contentInherited: false,
-							mediaInherited: false
-						}
-					});
-				}
-			}
-			variants = nextVariants;
-			activeVariantAccountId = editorAccountIdAfterVariantLoad(
-				activeVariantAccountId,
-				selectedAccountIds,
-				nextVariants.keys()
-			);
-
-			// Fetch metadata for variant-only media IDs not already hydrated.
-			const missingIds = [...variantMediaIds].filter(
-				(id) => !mediaMimeTypes.has(id) || !mediaSizes.has(id)
-			);
-			if (missingIds.length > 0) {
-				await hydrateMediaMetadata(initialPost?.workspace_id ?? '', missingIds);
-			}
-		} catch (e) {
-			console.error('Failed to load variants:', e);
-			variants = new Map();
-		}
-	}
-
 	function activateVariantTab(accountId: string | null) {
 		activeVariantAccountId = accountId;
 	}
@@ -4615,7 +4413,6 @@
 		composerSession?.reset();
 		posts = [makeEmptyPost()];
 		activePostIndex = 0;
-		draftId = null;
 		publicationId = '';
 		lastSavedSnapshot = '';
 		lastSavedScheduleAt = '';
@@ -4660,7 +4457,7 @@
 						{accountIssues}
 						bind:selectedSetId={selectedSocialSetId}
 						disabled={isSaving || isSubmitting}
-						autoApplyDefault={!initialPost && !publicationId}
+						autoApplyDefault={!initialPublication && !publicationId}
 						onApply={applySocialSet}
 						onToggle={(account) => toggleAccount(account.id)}
 						onSelectAll={selectAllAccounts}
@@ -4779,7 +4576,7 @@
 						{accountIssues}
 						bind:selectedSetId={selectedSocialSetId}
 						disabled={isSaving || isSubmitting}
-						autoApplyDefault={!initialPost && !publicationId}
+						autoApplyDefault={!initialPublication && !publicationId}
 						onApply={applySocialSet}
 						onToggle={(account) => toggleAccount(account.id)}
 						onSelectAll={selectAllAccounts}

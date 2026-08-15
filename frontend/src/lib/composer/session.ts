@@ -33,6 +33,13 @@ export interface ComposerPublicationClient {
 	delete(publicationId: string, expectedRevision: number): Promise<void>;
 }
 
+export interface ComposerEditorHandoffBinding {
+	workspaceId: string;
+	publicationId: string;
+	revision: number;
+	returnToken: string;
+}
+
 export type ComposerClientErrorCategory =
 	| 'invalid'
 	| 'access_denied'
@@ -84,6 +91,7 @@ export class ComposerSession {
 	#draftVersion = 0;
 	#saveTail: Promise<void> = Promise.resolve();
 	#pendingSaves = 0;
+	#consumedEditorReturnTokens = new Set<string>();
 	#snapshot: ComposerSessionSnapshot;
 	#listeners = new Set<(snapshot: Readonly<ComposerSessionSnapshot>) => void>();
 
@@ -174,6 +182,38 @@ export class ComposerSession {
 
 	async flush(): Promise<void> {
 		await this.#saveTail;
+	}
+
+	bindEditorHandoff(returnToken: string): ComposerEditorHandoffBinding {
+		if (!returnToken.trim()) throw new Error('The editor return token is required.');
+		if (!this.#snapshot.publicationId || this.#snapshot.revision === null) {
+			throw new Error('Save the Publication before opening an editor.');
+		}
+		return {
+			workspaceId: this.workspaceId,
+			publicationId: this.#snapshot.publicationId,
+			revision: this.#snapshot.revision,
+			returnToken
+		};
+	}
+
+	acceptEditorHandoff(binding: ComposerEditorHandoffBinding): ComposerEditorHandoffBinding {
+		if (!binding.returnToken.trim()) throw new Error('The editor return token is required.');
+		if (this.#consumedEditorReturnTokens.has(binding.returnToken)) {
+			throw new Error('This editor return has already been used.');
+		}
+		if (binding.workspaceId !== this.workspaceId) {
+			throw new Error('This editor return belongs to another Workspace.');
+		}
+		if (!this.#snapshot.publicationId || binding.publicationId !== this.#snapshot.publicationId) {
+			throw new Error('This editor return belongs to another Publication.');
+		}
+		if (!Number.isInteger(binding.revision) || binding.revision < 1) {
+			throw new Error('This editor return has an invalid Publication revision.');
+		}
+		this.#consumedEditorReturnTokens.add(binding.returnToken);
+		this.#patch({ revision: binding.revision, conflict: null, error: null });
+		return { ...binding };
 	}
 
 	async overwriteConflict(): Promise<ComposerPublication> {

@@ -129,7 +129,7 @@ export function selectPastedImageFiles(
 	return { accepted, rejected, hasImageFiles };
 }
 
-export class PasteMediaUploadQueue<Result> {
+export class ComposerSessionMediaQueue<Result> {
 	readonly #options: Required<
 		Pick<PasteMediaUploadQueueOptions<Result>, 'createPreviewURL' | 'revokePreviewURL' | 'createID'>
 	> &

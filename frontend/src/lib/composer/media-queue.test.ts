@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	MAX_PASTED_IMAGE_BYTES,
-	PasteMediaUploadQueue,
+	ComposerSessionMediaQueue,
 	acceptedPastedImageFiles,
 	availablePasteMediaSlots,
 	hasUnsettledPasteMediaUploads,
@@ -9,7 +9,7 @@ import {
 	type ClipboardFileItem,
 	type PasteMediaUploadItem,
 	type PasteMediaUploadTarget
-} from './paste-media-upload';
+} from './media-queue';
 
 const target: PasteMediaUploadTarget = {
 	workspaceId: 'workspace-1',
@@ -140,14 +140,14 @@ describe('acceptedPastedImageFiles', () => {
 	});
 });
 
-describe('PasteMediaUploadQueue', () => {
+describe('ComposerSessionMediaQueue', () => {
 	it('promotes files for one target in original clipboard order', async () => {
 		const attempts: Array<{
 			file: File;
 			request: ReturnType<typeof deferred<{ id: string }>>;
 		}> = [];
 		const completed: string[] = [];
-		const queue = new PasteMediaUploadQueue<{ id: string }>({
+		const queue = new ComposerSessionMediaQueue<{ id: string }>({
 			upload: ({ file }) => {
 				const request = deferred<{ id: string }>();
 				attempts.push({ file, request });
@@ -186,7 +186,7 @@ describe('PasteMediaUploadQueue', () => {
 		let attempt = 0;
 		let latest: PasteMediaUploadItem[] = [];
 		const completed: string[] = [];
-		const queue = new PasteMediaUploadQueue<{ id: string }>({
+		const queue = new ComposerSessionMediaQueue<{ id: string }>({
 			upload: async ({ file }) => {
 				attempt += 1;
 				if (attempt === 1) throw new Error('offline');
@@ -217,7 +217,7 @@ describe('PasteMediaUploadQueue', () => {
 		let uploads = 0;
 		let promotions = 0;
 		let latest: PasteMediaUploadItem[] = [];
-		const queue = new PasteMediaUploadQueue<{ id: string }>({
+		const queue = new ComposerSessionMediaQueue<{ id: string }>({
 			upload: async () => {
 				uploads += 1;
 				return { id: 'media-retained' };
@@ -249,7 +249,7 @@ describe('PasteMediaUploadQueue', () => {
 		}> = [];
 		let active = 0;
 		let peakActive = 0;
-		const queue = new PasteMediaUploadQueue<{ id: string }>({
+		const queue = new ComposerSessionMediaQueue<{ id: string }>({
 			upload: ({ file }) => {
 				active += 1;
 				peakActive = Math.max(peakActive, active);
@@ -299,7 +299,7 @@ describe('PasteMediaUploadQueue', () => {
 		const signals: AbortSignal[] = [];
 		let attempt = 0;
 		const completed: string[] = [];
-		const queue = new PasteMediaUploadQueue<{ id: string }>({
+		const queue = new ComposerSessionMediaQueue<{ id: string }>({
 			upload: ({ signal }) => {
 				attempt += 1;
 				signals.push(signal);
@@ -336,7 +336,7 @@ describe('PasteMediaUploadQueue', () => {
 		const completed: string[] = [];
 		const revoked: string[] = [];
 		let latest: PasteMediaUploadItem[] = [];
-		const queue = new PasteMediaUploadQueue<{ id: string }>({
+		const queue = new ComposerSessionMediaQueue<{ id: string }>({
 			upload: () => request.promise,
 			onComplete: (_, result) => {
 				completed.push(result.id);
@@ -364,7 +364,7 @@ describe('PasteMediaUploadQueue', () => {
 		const revoked: string[] = [];
 		const signals: AbortSignal[] = [];
 		let latest: PasteMediaUploadItem[] = [];
-		const queue = new PasteMediaUploadQueue<{ id: string }>({
+		const queue = new ComposerSessionMediaQueue<{ id: string }>({
 			upload: ({ signal }) => {
 				signals.push(signal);
 				return request.promise;

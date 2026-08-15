@@ -298,7 +298,7 @@ describe('ComposerSession', () => {
 							platform: 'bluesky',
 							social_account_id: accountId,
 							status: 'pending',
-							target_key: targetKey
+							target_key: targetKey ?? ''
 						}
 					]
 				};
@@ -391,5 +391,97 @@ describe('ComposerSession', () => {
 		session.edit(draft('No longer observed'));
 
 		expect(dirtyStates).toEqual([false, true]);
+	});
+
+	it('binds an editor return to its Workspace, Publication, revision, and one-time token', async () => {
+		const session = new ComposerSession({
+			workspaceId: 'workspace-1',
+			client: clientWith({
+				async create(workspaceId) {
+					return { id: 'publication-1', workspace_id: workspaceId, revision: 4, status: 'draft' };
+				}
+			})
+		});
+		session.edit(draft('Open in editor'));
+		await session.save();
+
+		const binding = session.bindEditorHandoff('return-token');
+		expect(binding).toEqual({
+			workspaceId: 'workspace-1',
+			publicationId: 'publication-1',
+			revision: 4,
+			returnToken: 'return-token'
+		});
+		expect(session.acceptEditorHandoff(binding)).toEqual(binding);
+		expect(() => session.acceptEditorHandoff(binding)).toThrow('already been used');
+	});
+
+	it('fails editor returns closed when their Workspace or Publication binding changes', async () => {
+		const session = new ComposerSession({
+			workspaceId: 'workspace-1',
+			client: clientWith({
+				async create(workspaceId) {
+					return { id: 'publication-1', workspace_id: workspaceId, revision: 2, status: 'draft' };
+				}
+			})
+		});
+		session.edit(draft('Bound editor'));
+		await session.save();
+
+		expect(() =>
+			session.acceptEditorHandoff({
+				workspaceId: 'workspace-2',
+				publicationId: 'publication-1',
+				revision: 2,
+				returnToken: 'workspace-token'
+			})
+		).toThrow('another Workspace');
+		expect(() =>
+			session.acceptEditorHandoff({
+				workspaceId: 'workspace-1',
+				publicationId: 'publication-2',
+				revision: 2,
+				returnToken: 'publication-token'
+			})
+		).toThrow('another Publication');
+	});
+
+	it('restores the handoff revision so a stale return uses the normal save conflict path', async () => {
+		let serverRevision = 4;
+		const session = new ComposerSession({
+			workspaceId: 'workspace-1',
+			client: clientWith({
+				async load(id) {
+					return {
+						publication: {
+							id,
+							workspace_id: 'workspace-1',
+							revision: serverRevision,
+							status: 'draft'
+						},
+						draft: draft('Current')
+					};
+				},
+				async update(id, expectedRevision) {
+					if (expectedRevision !== serverRevision) {
+						throw new ComposerClientError('conflict', 'Revision conflict', serverRevision);
+					}
+					serverRevision += 1;
+					return { id, workspace_id: 'workspace-1', revision: serverRevision, status: 'draft' };
+				}
+			})
+		});
+		await session.load('publication-1');
+
+		session.acceptEditorHandoff({
+			workspaceId: 'workspace-1',
+			publicationId: 'publication-1',
+			revision: 3,
+			returnToken: 'stale-token'
+		});
+		session.edit(draft('Returned editor change'));
+
+		await expect(session.save()).rejects.toThrow('Revision conflict');
+		expect(session.snapshot.conflict).toEqual({ expectedRevision: 3, currentRevision: 4 });
 	});
 });

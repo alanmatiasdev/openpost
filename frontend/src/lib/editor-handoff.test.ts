@@ -34,6 +34,9 @@ function snapshot(editor: 'image' | 'video'): ComposerRecoverySnapshot<{ text: s
 		version: 2,
 		editor,
 		workspace_id: 'workspace-1',
+		publication_id: 'publication-1',
+		publication_revision: 4,
+		return_token: `${editor}-token`,
 		return_url: '/publications/publication-1?panel=compose',
 		purpose: 'post_media',
 		created_at: '2099-08-09T10:00:00.000Z',
@@ -49,7 +52,13 @@ describe('editor handoff recovery', () => {
 
 		expect(
 			loadEditorHandoff('video-token', 'video', storage, Date.parse('2099-08-09T11:00:00Z'))
-		).toMatchObject({ editor: 'video', payload: { text: 'still here' } });
+		).toMatchObject({
+			editor: 'video',
+			publication_id: 'publication-1',
+			publication_revision: 4,
+			return_token: 'video-token',
+			payload: { text: 'still here' }
+		});
 		expect(
 			loadEditorHandoff('video-token', 'image', storage, Date.parse('2099-08-09T11:00:00Z'))
 		).toBeNull();

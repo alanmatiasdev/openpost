@@ -5,6 +5,9 @@ export interface ComposerRecoverySnapshot<T = unknown> {
 	version: 2;
 	editor: EditorHandoffKind;
 	workspace_id: string;
+	publication_id?: string;
+	publication_revision?: number;
+	return_token?: string;
 	return_url: string;
 	purpose: string;
 	created_at: string;
@@ -96,7 +99,7 @@ function parseSnapshot(
 			};
 		}
 		if (version !== 2 || (editor !== 'image' && editor !== 'video')) return null;
-		return {
+		const snapshot: ComposerRecoverySnapshot = {
 			version,
 			editor,
 			workspace_id: value.workspace_id,
@@ -106,6 +109,12 @@ function parseSnapshot(
 			expires_at: value.expires_at,
 			payload: value.payload
 		};
+		if (typeof value.publication_id === 'string') snapshot.publication_id = value.publication_id;
+		if (typeof value.publication_revision === 'number') {
+			snapshot.publication_revision = value.publication_revision;
+		}
+		if (typeof value.return_token === 'string') snapshot.return_token = value.return_token;
+		return snapshot;
 	} catch {
 		return null;
 	}
