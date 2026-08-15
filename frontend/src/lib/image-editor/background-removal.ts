@@ -3,6 +3,11 @@ export interface BackgroundRemovalProgress {
 	progress: number;
 }
 
+type BackgroundRemovalWorkerResponse =
+	| { type: 'progress'; key: string; progress: number }
+	| { type: 'complete'; result: Blob }
+	| { type: 'error'; message: string };
+
 export function resolveBackgroundRemovalPublicPath(
 	publicPath: string,
 	currentLocation: string
@@ -12,7 +17,7 @@ export function resolveBackgroundRemovalPublicPath(
 
 export class ImageEditorBackgroundRemoval {
 	private worker: Worker | null = null;
-	private pendingReject: ((reason?: unknown) => void) | null = null;
+	private pendingReject: ((reason?: Error | DOMException) => void) | null = null;
 	private pending = false;
 
 	async remove(
@@ -29,11 +34,8 @@ export class ImageEditorBackgroundRemoval {
 		this.pending = true;
 		return await new Promise<Blob>((resolve, reject) => {
 			this.pendingReject = reject;
-			worker.onmessage = (event) => {
-				const message = event.data as
-					| { type: 'progress'; key: string; progress: number }
-					| { type: 'complete'; result: Blob }
-					| { type: 'error'; message: string };
+			worker.onmessage = (event: MessageEvent<BackgroundRemovalWorkerResponse>) => {
+				const message = event.data;
 				if (message.type === 'progress') {
 					onProgress?.({ stage: message.key, progress: message.progress });
 				}

@@ -3,6 +3,11 @@ import { scanMagicPixels, type MagicPixelScanInput } from './magic-scan-core';
 const WORKER_PIXEL_THRESHOLD = 1_048_576;
 export const MAXIMUM_MAGIC_SCAN_PIXELS = 32_000_000;
 
+type MagicScanWorkerResponse =
+	| { type: 'progress'; id: string; fraction: number }
+	| { type: 'complete'; id: string; mask: Uint8Array }
+	| { type: 'error'; id: string; name: string; message: string };
+
 export class ImageEditorMagicScan {
 	private worker: Worker | null = null;
 	private activeID = '';
@@ -40,16 +45,17 @@ export class ImageEditorMagicScan {
 				complete();
 			};
 			options.signal?.addEventListener('abort', abort, { once: true });
-			worker.onmessage = (event: MessageEvent) => {
-				if (event.data?.id !== id) return;
-				if (event.data.type === 'progress') options.onProgress?.(event.data.fraction);
-				if (event.data.type === 'complete') finish(() => resolve(event.data.mask));
-				if (event.data.type === 'error') {
+			worker.onmessage = (event: MessageEvent<MagicScanWorkerResponse>) => {
+				const message = event.data;
+				if (message.id !== id) return;
+				if (message.type === 'progress') options.onProgress?.(message.fraction);
+				if (message.type === 'complete') finish(() => resolve(message.mask));
+				if (message.type === 'error') {
 					finish(() =>
 						reject(
-							event.data.name === 'AbortError'
-								? new DOMException(event.data.message, 'AbortError')
-								: new Error(event.data.message)
+							message.name === 'AbortError'
+								? new DOMException(message.message, 'AbortError')
+								: new Error(message.message)
 						)
 					);
 				}
@@ -59,7 +65,8 @@ export class ImageEditorMagicScan {
 				finish(() => reject(new DOMException('Pixel scan cancelled.', 'AbortError')));
 				return;
 			}
-			worker.postMessage({ type: 'scan', id, ...input }, [input.data.buffer as ArrayBuffer]);
+			const data = Uint8Array.from(input.data);
+			worker.postMessage({ type: 'scan', id, ...input, data }, [data.buffer]);
 		});
 	}
 

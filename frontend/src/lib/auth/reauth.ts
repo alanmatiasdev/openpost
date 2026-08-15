@@ -12,12 +12,42 @@ interface StoredGrant {
 	expiresAt: number;
 }
 
-type StoredGrants = Record<string, StoredGrant>;
+interface StoredGrants {
+	[action: string]: StoredGrant;
+}
+
+type StoredGrantValue =
+	| string
+	| number
+	| boolean
+	| null
+	| StoredGrantValue[]
+	| { [key: string]: StoredGrantValue };
+
+function grantFields(value: StoredGrantValue): { [key: string]: StoredGrantValue } | null {
+	if (value === null || Array.isArray(value) || Object(value) !== value) return null;
+	// SAFETY: The recursive JSON union and checks above establish a non-array object.
+	return value as { [key: string]: StoredGrantValue };
+}
+
+function parseStoredGrants(value: StoredGrantValue): StoredGrants {
+	const fields = grantFields(value);
+	if (!fields) return {};
+	const grants: StoredGrants = {};
+	for (const [action, entry] of Object.entries(fields)) {
+		const candidate = grantFields(entry);
+		if (!candidate || String(candidate.grant) !== candidate.grant) continue;
+		if (!Number.isFinite(candidate.expiresAt)) continue;
+		grants[action] = { grant: String(candidate.grant), expiresAt: Number(candidate.expiresAt) };
+	}
+	return grants;
+}
 
 function readGrants(): StoredGrants {
 	if (!browser) return {};
 	try {
-		return JSON.parse(sessionStorage.getItem(GRANTS_KEY) ?? '{}') as StoredGrants;
+		const value: StoredGrantValue = JSON.parse(sessionStorage.getItem(GRANTS_KEY) ?? '{}');
+		return parseStoredGrants(value);
 	} catch {
 		return {};
 	}

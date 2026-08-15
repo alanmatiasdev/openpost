@@ -54,9 +54,10 @@ function toAuthenticationOptions(options: any): CredentialRequestOptions {
 }
 
 function serializeCredential(credential: PublicKeyCredential) {
-	const response = credential.response as
-		| AuthenticatorAttestationResponse
-		| AuthenticatorAssertionResponse;
+	const response = credential.response;
+	const attestation = response instanceof AuthenticatorAttestationResponse ? response : undefined;
+	const assertion = response instanceof AuthenticatorAssertionResponse ? response : undefined;
+	if (!attestation && !assertion) throw new Error('The passkey response type is not supported.');
 
 	return {
 		id: credential.id,
@@ -66,12 +67,10 @@ function serializeCredential(credential: PublicKeyCredential) {
 		clientExtensionResults: credential.getClientExtensionResults(),
 		response: {
 			clientDataJSON: encodeBase64URL(response.clientDataJSON),
-			attestationObject:
-				'attestationObject' in response ? encodeBase64URL(response.attestationObject) : null,
-			authenticatorData:
-				'authenticatorData' in response ? encodeBase64URL(response.authenticatorData) : null,
-			signature: 'signature' in response ? encodeBase64URL(response.signature) : null,
-			userHandle: 'userHandle' in response ? encodeBase64URL(response.userHandle) : null
+			attestationObject: encodeBase64URL(attestation?.attestationObject),
+			authenticatorData: encodeBase64URL(assertion?.authenticatorData),
+			signature: encodeBase64URL(assertion?.signature),
+			userHandle: encodeBase64URL(assertion?.userHandle)
 		}
 	};
 }
