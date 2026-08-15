@@ -5,23 +5,9 @@ import type { components } from '$lib/api/types';
 export type VideoEditorConfig = components['schemas']['VideoEditorConfigOutputBody'];
 export type CloudVideoProjectSummary = components['schemas']['VideoProjectSummary'];
 export type CloudVideoProjectResponse = components['schemas']['VideoProjectResponse'];
-export interface CloudVideoProjectRevision {
-	id: string;
-	revision: number;
-	kind: string;
-	name?: string;
-	created_at: string;
-	expires_at?: string;
-	actor: {
-		name: string;
-		is_current_user: boolean;
-	};
-}
-export interface CloudVideoProjectRevisionResponse {
-	summary: CloudVideoProjectRevision;
-	cover_preview_media_id?: string;
-	document: components['schemas']['Document'];
-}
+export type CloudVideoProjectRevision = components['schemas']['VideoProjectRevisionSummary'];
+export type CloudVideoProjectRevisionResponse =
+	components['schemas']['VideoProjectRevisionResponse'];
 export interface CloudVideoProjectRevisionPage {
 	revisions: CloudVideoProjectRevision[];
 	nextCursor?: string;
@@ -31,6 +17,9 @@ export type StockSearchPage = components['schemas']['SearchPage'];
 export type StockAsset = components['schemas']['Asset'];
 export type ResolvedStockAsset = components['schemas']['ResolvedAsset'];
 export type VideoEditorSyncPlan = components['schemas']['PlanVideoEditorSyncOutputBody'];
+type VideoEditorDocument = components['schemas']['Document'];
+type StockProviderID = 'pexels' | 'unsplash' | 'pixabay';
+type CreateVideoReturnTokenInputBody = components['schemas']['CreateVideoReturnTokenInputBody'];
 
 export interface ListCloudVideoProjectsOptions {
 	search?: string;
@@ -88,7 +77,7 @@ export async function createCloudVideoProject(
 			workspace_id: workspaceID,
 			client_request_id: clientRequestID,
 			cover_preview_media_id: coverPreviewMediaID,
-			document: document as unknown as components['schemas']['Document']
+			document: videoProjectDocumentForAPI(document)
 		}
 	});
 	if (error || !data)
@@ -115,7 +104,7 @@ export async function updateCloudVideoProject(
 		body: {
 			expected_revision: expectedRevision,
 			cover_preview_media_id: coverPreviewMediaID,
-			document: document as unknown as components['schemas']['Document']
+			document: videoProjectDocumentForAPI(document)
 		}
 	});
 	if (error || !data) {
@@ -149,7 +138,7 @@ export async function listCloudVideoProjectRevisions(
 	});
 	if (error || !data) throw new Error(error?.detail ?? 'Project history could not load.');
 	return {
-		revisions: (data.revisions ?? []) as unknown as CloudVideoProjectRevision[],
+		revisions: data.revisions ?? [],
 		nextCursor: data.next_cursor || undefined
 	};
 }
@@ -162,7 +151,7 @@ export async function getCloudVideoProjectRevision(
 		params: { path: { id: projectID, revision_id: revisionID } }
 	});
 	if (error || !data) throw new Error(error?.detail ?? 'Project version details could not load.');
-	return data as unknown as CloudVideoProjectRevisionResponse;
+	return data;
 }
 
 export async function createCloudVideoProjectCheckpoint(
@@ -230,7 +219,7 @@ export async function searchStockMedia(input: {
 	const { data, error } = await client.GET('/stock-media/search', {
 		params: {
 			query: {
-				provider: input.provider as 'pexels' | 'unsplash' | 'pixabay',
+				provider: parseStockProviderID(input.provider),
 				query: input.query,
 				kind: input.kind,
 				orientation: input.orientation,
@@ -260,7 +249,7 @@ export async function resolveStockAsset(
 ): Promise<ResolvedStockAsset> {
 	const { data, error } = await client.POST('/stock-media/selections', {
 		body: {
-			provider: provider as 'pexels' | 'unsplash' | 'pixabay',
+			provider: parseStockProviderID(provider),
 			external_id: externalID
 		}
 	});
@@ -268,12 +257,9 @@ export async function resolveStockAsset(
 	return data;
 }
 
-export async function createVideoReturnToken(input: {
-	workspace_id: string;
-	return_url: string;
-	purpose: string;
-	constraints: Record<string, unknown>;
-}): Promise<components['schemas']['CreateVideoReturnTokenOutputBody']> {
+export async function createVideoReturnToken(
+	input: CreateVideoReturnTokenInputBody
+): Promise<components['schemas']['CreateVideoReturnTokenOutputBody']> {
 	const { data, error } = await client.POST('/video-editor/return-tokens', { body: input });
 	if (error || !data)
 		throw new Error(error?.detail ?? 'OpenPost Video Editor could not be opened.');
@@ -302,6 +288,18 @@ export async function consumeVideoReturnToken(
 	if (error || !data)
 		throw new Error(error?.detail ?? 'OpenPost Video Editor exports could not be added.');
 	return data;
+}
+
+function videoProjectDocumentForAPI(document: VideoProjectDocumentV1): VideoEditorDocument {
+	const jsonDocument = JSON.parse(JSON.stringify(document));
+	// SAFETY: VideoProjectDocumentV1 is the editor-owned JSON document sent to the API;
+	// the OpenAPI Document schema is generated from the same persisted document contract.
+	return jsonDocument as VideoEditorDocument;
+}
+
+function parseStockProviderID(provider: string): StockProviderID {
+	if (provider === 'pexels' || provider === 'unsplash' || provider === 'pixabay') return provider;
+	throw new Error('Unsupported stock media provider.');
 }
 
 export class VideoProjectRevisionConflict extends Error {
