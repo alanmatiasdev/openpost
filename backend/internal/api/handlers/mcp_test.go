@@ -76,6 +76,7 @@ func newMCPTestServerWithEntitlement(t *testing.T, entitlement entitlements.Serv
 		(*models.MCPToolCall)(nil),
 		(*models.ProviderApp)(nil),
 		(*models.Publication)(nil),
+		(*models.PublicationAsset)(nil),
 		(*models.PublicationSegment)(nil),
 		(*models.PublicationSegmentMedia)(nil),
 		(*models.Rendition)(nil),
@@ -2233,19 +2234,19 @@ func TestMCPCallListMedia(t *testing.T) {
 		OriginalFilename: "other.png",
 		CreatedAt:        time.Date(2026, 6, 30, 17, 0, 0, 0, time.UTC),
 	})
-	_, err := srv.db.NewInsert().Model(&models.Post{
-		ID:          "post-uses-media",
+	_, err := srv.db.NewInsert().Model(&models.Publication{
+		ID:          "publication-uses-media",
 		WorkspaceID: "ws-1",
 		CreatedByID: "user-1",
-		Content:     "Uses media",
-		Status:      statusDraft,
+		SourceText:  "Uses media",
+		Status:      models.PublicationStatusDraft,
 		CreatedAt:   time.Date(2026, 6, 30, 16, 15, 0, 0, time.UTC),
 	}).Exec(context.Background())
 	require.NoError(t, err)
-	_, err = srv.db.NewInsert().Model(&models.PostMedia{
-		PostID:       "post-uses-media",
-		MediaID:      "media-new",
-		DisplayOrder: 0,
+	_, err = srv.db.NewInsert().Model(&models.PublicationAsset{
+		PublicationID: "publication-uses-media",
+		MediaID:       "media-new",
+		DisplayOrder:  0,
 	}).Exec(context.Background())
 	require.NoError(t, err)
 	resp := srv.request(t, "web-token", map[string]any{
@@ -2264,8 +2265,10 @@ func TestMCPCallListMedia(t *testing.T) {
 	require.Equal(t, http.StatusOK, resp.Code)
 	var out map[string]any
 	require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &out))
-	result := out["result"].(map[string]any)
-	content := result["content"].([]any)
+	result, ok := out["result"].(map[string]any)
+	require.True(t, ok, "MCP response did not contain a result: %#v", out)
+	content, ok := result["content"].([]any)
+	require.True(t, ok, "MCP result did not contain content: %#v", result)
 	require.Contains(t, content[0].(map[string]any)["text"], "Found 2 media items")
 	structured := result["structuredContent"].(map[string]any)
 	media := structured["media"].([]any)
