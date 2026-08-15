@@ -49,18 +49,29 @@ function createApiClient() {
 	return c;
 }
 
+type APIClient = ReturnType<typeof createApiClient>;
+type APIClientMethods = Pick<APIClient, 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'>;
+
 let rawClient = createApiClient();
 
 export function recreateClient() {
 	rawClient = createApiClient();
 }
 
-export const client = new Proxy(rawClient, {
-	get(_target, prop) {
-		const val = Reflect.get(rawClient, prop, rawClient);
-		if (typeof val === 'function') {
-			return val.bind(rawClient);
-		}
-		return val;
+export const client: APIClientMethods = {
+	get GET() {
+		return rawClient.GET.bind(rawClient);
+	},
+	get POST() {
+		return rawClient.POST.bind(rawClient);
+	},
+	get PUT() {
+		return rawClient.PUT.bind(rawClient);
+	},
+	get PATCH() {
+		return rawClient.PATCH.bind(rawClient);
+	},
+	get DELETE() {
+		return rawClient.DELETE.bind(rawClient);
 	}
-});
+};
