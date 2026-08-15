@@ -2,17 +2,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import StockMediaBrowser from './stock-media-browser.svelte';
 
-const mocks = vi.hoisted(() => ({
+const mocks = {
 	listProviders: vi.fn(),
 	search: vi.fn(),
 	resolve: vi.fn()
-}));
-
-vi.mock('$lib/video-editor/api', () => ({
-	listStockProviders: mocks.listProviders,
-	searchStockMedia: mocks.search,
-	resolveStockAsset: mocks.resolve
-}));
+};
 
 describe('StockMediaBrowser', () => {
 	beforeEach(() => {
@@ -46,7 +40,11 @@ describe('StockMediaBrowser', () => {
 	});
 
 	it('shows each provider real media types and only its supported filters', async () => {
-		const screen = await render(StockMediaBrowser, { accept: 'both', onSelect: vi.fn() });
+		const screen = await render(StockMediaBrowser, {
+			accept: 'both',
+			onSelect: vi.fn(),
+			services: mocks
+		});
 
 		const provider = screen.getByRole('button', { name: 'Provider' });
 		await expect.element(provider).toHaveTextContent('Pexels · Photos and videos');

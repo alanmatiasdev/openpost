@@ -1,8 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
 import { requestDestructiveAction, runDestructiveSequence } from './destructive-action';
-import { showToast } from './toast';
-
-vi.mock('./toast', () => ({ showToast: vi.fn() }));
 
 describe('requestDestructiveAction', () => {
 	it('requests confirmation for a normal activation', () => {
@@ -17,27 +14,26 @@ describe('requestDestructiveAction', () => {
 
 	it('executes immediately for a Shift activation', async () => {
 		const confirm = vi.fn();
-		const returnFocus = { focus: vi.fn() } as unknown as HTMLElement;
+		const notify = vi.fn();
 		const execute = vi.fn().mockResolvedValue({
 			ok: true,
-			successMessage: 'Post deleted.',
-			returnFocus
+			successMessage: 'Post deleted.'
 		});
 
-		await requestDestructiveAction({ shiftKey: true }, confirm, execute);
+		await requestDestructiveAction({ shiftKey: true }, confirm, execute, notify);
 
 		expect(execute).toHaveBeenCalledOnce();
 		expect(confirm).not.toHaveBeenCalled();
-		expect(showToast).toHaveBeenCalledWith('Post deleted.', 'success');
-		expect(returnFocus.focus).toHaveBeenCalledOnce();
+		expect(notify).toHaveBeenCalledWith('Post deleted.', 'success');
 	});
 
 	it('announces a Shift-bypassed failure once without running successful completion', async () => {
+		const notify = vi.fn();
 		const execute = vi.fn().mockResolvedValue({ ok: false, message: 'Could not delete post.' });
 
-		await requestDestructiveAction({ shiftKey: true }, vi.fn(), execute);
+		await requestDestructiveAction({ shiftKey: true }, vi.fn(), execute, notify);
 
-		expect(showToast).toHaveBeenCalledWith('Could not delete post.', 'error');
+		expect(notify).toHaveBeenCalledWith('Could not delete post.', 'error');
 	});
 });
 

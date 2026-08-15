@@ -1,23 +1,22 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { client } from '$lib/api/client';
+import { createAuthStore } from './auth';
 
-const apiMocks = vi.hoisted(() => ({
+const apiMocks = {
 	post: vi.fn(),
 	setToken: vi.fn()
-}));
+};
 
-vi.mock('$lib/api/client', () => ({
-	client: { POST: apiMocks.post },
+const auth = createAuthStore({
+	client: { GET: client.GET, POST: apiMocks.post },
 	setToken: apiMocks.setToken,
-	recreateClient: vi.fn()
-}));
-
-vi.mock('$lib/auth/webauthn', () => ({
-	getPasskeyAssertion: vi.fn()
-}));
-
-vi.mock('$lib/env', () => ({ IS_CAPACITOR: false }));
-
-import { auth } from './auth';
+	recreateClient: vi.fn(),
+	getPasskeyAssertion: vi.fn(),
+	isCapacitor: false,
+	notificationInbox: { clear: vi.fn() },
+	identifyTelemetryUser: vi.fn(),
+	resetTelemetryIdentity: vi.fn()
+});
 
 describe('auth recovery-code verification', () => {
 	afterEach(() => {

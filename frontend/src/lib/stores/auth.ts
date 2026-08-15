@@ -35,7 +35,41 @@ interface RegisterInput {
 	purchaseChoiceToken?: string;
 }
 
-function createAuthStore() {
+export interface AuthStoreDependencies {
+	client: Pick<typeof client, 'GET' | 'POST'>;
+	setToken: typeof setToken;
+	recreateClient: typeof recreateClient;
+	getPasskeyAssertion: typeof getPasskeyAssertion;
+	isCapacitor: boolean;
+	notificationInbox: Pick<typeof notificationInbox, 'clear'>;
+	identifyTelemetryUser: typeof identifyTelemetryUser;
+	resetTelemetryIdentity: typeof resetTelemetryIdentity;
+}
+
+const defaultAuthStoreDependencies: AuthStoreDependencies = {
+	client,
+	setToken,
+	recreateClient,
+	getPasskeyAssertion,
+	isCapacitor: IS_CAPACITOR,
+	notificationInbox,
+	identifyTelemetryUser,
+	resetTelemetryIdentity
+};
+
+export function createAuthStore(
+	dependencies: AuthStoreDependencies = defaultAuthStoreDependencies
+) {
+	const {
+		client,
+		setToken,
+		recreateClient,
+		getPasskeyAssertion,
+		notificationInbox,
+		identifyTelemetryUser,
+		resetTelemetryIdentity
+	} = dependencies;
+	const isCapacitor = dependencies.isCapacitor;
 	const { subscribe, set, update } = writable<AuthState>({
 		user: null,
 		isLoading: true,
@@ -104,7 +138,7 @@ function createAuthStore() {
 					clearAccountState();
 					return emailVerificationResult(data);
 				}
-				setToken(IS_CAPACITOR ? data.token : null);
+				setToken(isCapacitor ? data.token : null);
 				setAuthenticatedUser(data.user ?? null);
 				return { success: true };
 			} catch (e) {
@@ -133,7 +167,7 @@ function createAuthStore() {
 					clearAccountState();
 					return emailVerificationResult(data);
 				}
-				setToken(IS_CAPACITOR ? data.token : null);
+				setToken(isCapacitor ? data.token : null);
 				setAuthenticatedUser(data.user ?? null);
 				return { success: true };
 			} catch (e) {
@@ -146,7 +180,7 @@ function createAuthStore() {
 					body: { challenge_id: challengeID, code }
 				});
 				if (error || !data?.user) throw new Error(error?.detail ?? 'Email verification failed');
-				setToken(IS_CAPACITOR ? data.token : null);
+				setToken(isCapacitor ? data.token : null);
 				setAuthenticatedUser(data.user);
 				return { success: true };
 			} catch (e) {
@@ -172,7 +206,7 @@ function createAuthStore() {
 					body: { mfa_token: mfaToken, code }
 				});
 				if (error || !data) throw new Error(error?.detail ?? 'Authenticator verification failed');
-				setToken(IS_CAPACITOR ? data.token : null);
+				setToken(isCapacitor ? data.token : null);
 				setAuthenticatedUser(data.user ?? null);
 				return { success: true };
 			} catch (e) {
@@ -185,7 +219,7 @@ function createAuthStore() {
 					body: { mfa_token: mfaToken, code }
 				});
 				if (error || !data) throw new Error(error?.detail ?? 'Recovery code verification failed');
-				setToken(IS_CAPACITOR ? data.token : null);
+				setToken(isCapacitor ? data.token : null);
 				setAuthenticatedUser(data.user ?? null);
 				return { success: true };
 			} catch (e) {
@@ -213,7 +247,7 @@ function createAuthStore() {
 				});
 				if (error || !data) throw new Error(error?.detail ?? 'Passkey verification failed');
 
-				setToken(IS_CAPACITOR ? data.token : null);
+				setToken(isCapacitor ? data.token : null);
 				setAuthenticatedUser(data.user ?? null);
 				return { success: true };
 			} catch (e) {

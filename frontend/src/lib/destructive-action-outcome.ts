@@ -20,10 +20,11 @@ function safeDocumentFocus(): HTMLElement | null {
 
 export async function completeDestructiveAction(
 	outcome: DestructiveActionOutcome,
-	fallbackFocus: HTMLElement | null = null
+	fallbackFocus: HTMLElement | null = null,
+	notify: typeof showToast = showToast
 ): Promise<void> {
 	if (!outcome.ok) return;
-	if (outcome.successMessage) showToast(outcome.successMessage, 'success');
+	if (outcome.successMessage) notify(outcome.successMessage, 'success');
 	await tick();
 	const focusTarget = outcome.returnFocus ?? fallbackFocus;
 	(focusTarget?.isConnected === false ? null : focusTarget)?.focus();

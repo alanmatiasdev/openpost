@@ -27,6 +27,12 @@
 		accept?: 'photo' | 'video' | 'both';
 		compact?: boolean;
 		onSelect: (file: File, asset: StockAsset) => void | Promise<void>;
+		services?: StockMediaServices;
+	}
+	interface StockMediaServices {
+		listProviders: typeof listStockProviders;
+		search: typeof searchStockMedia;
+		resolve: typeof resolveStockAsset;
 	}
 	type StockOrientation = NonNullable<StockMediaSearchInput['orientation']>;
 	type StockSize = NonNullable<StockMediaSearchInput['size']>;
@@ -34,7 +40,16 @@
 	type StockContentFilter = NonNullable<StockMediaSearchInput['contentFilter']>;
 	type StockMediaSubtype = NonNullable<StockMediaSearchInput['mediaSubtype']>;
 
-	let { accept = 'both', compact = false, onSelect }: Props = $props();
+	let {
+		accept = 'both',
+		compact = false,
+		onSelect,
+		services = {
+			listProviders: listStockProviders,
+			search: searchStockMedia,
+			resolve: resolveStockAsset
+		}
+	}: Props = $props();
 	let providers = $state.raw<StockProvider[]>([]);
 	let provider = $state('');
 	let kind = $state<'photo' | 'video'>('photo');
@@ -117,7 +132,7 @@
 		error = '';
 		try {
 			if (accept === 'video') kind = 'video';
-			providers = await listStockProviders();
+			providers = await services.listProviders();
 			provider = providers.find((item) => supportsKind(item, kind))?.key ?? '';
 		} catch (cause) {
 			error = cause instanceof Error ? cause.message : m.video_editor_stock_unavailable();
@@ -168,7 +183,7 @@
 		searched = true;
 		const requestedPage = reset ? 1 : page + 1;
 		try {
-			const response = await searchStockMedia({
+			const response = await services.search({
 				provider,
 				query: query.trim(),
 				kind,
@@ -226,7 +241,7 @@
 		selecting = asset.external_id;
 		error = '';
 		try {
-			const resolved = await resolveStockAsset(asset.provider, asset.external_id);
+			const resolved = await services.resolve(asset.provider, asset.external_id);
 			const response = await fetch(resolved.download_url, {
 				mode: 'cors',
 				credentials: 'omit',

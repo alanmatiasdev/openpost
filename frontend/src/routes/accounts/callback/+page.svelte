@@ -23,6 +23,8 @@
 	type ErrorModel = components['schemas']['ErrorModel'];
 	type CallbackState = 'loading' | 'selection' | 'error';
 
+	let { navigate = goto }: { navigate?: typeof goto } = $props();
+
 	let platform = $state('');
 	let connectionId = $state('');
 	let viewState = $state<CallbackState>('loading');
@@ -156,7 +158,7 @@
 
 			viewState = 'loading';
 			if (!data.open_fresh_composer) {
-				await goto(resolveAppPath(accountManagementReturnHref()));
+				await navigate(resolveAppPath(accountManagementReturnHref()));
 				clearAccountManagementContinuation();
 				return;
 			}
@@ -164,7 +166,7 @@
 				workspace_id: data.workspace_id,
 				account_ids: data.account_ids.join(',')
 			});
-			await goto(resolveAppPath(`/?${query.toString()}`));
+			await navigate(resolveAppPath(`/?${query.toString()}`));
 		} catch (requestError) {
 			returnToAccounts(selection?.workspace_id ?? '');
 		} finally {
@@ -177,12 +179,12 @@
 	}
 
 	function goToAccounts() {
-		goto(resolveAppPath(accountManagementReturnHref()));
+		navigate(resolveAppPath(accountManagementReturnHref()));
 		clearAccountManagementContinuation();
 	}
 
 	function returnToAccounts(workspaceID: string) {
-		void goto(resolveAppPath(accountManagementReturnHref(undefined, 'failed', workspaceID)));
+		void navigate(resolveAppPath(accountManagementReturnHref(undefined, 'failed', workspaceID)));
 		clearAccountManagementContinuation();
 	}
 

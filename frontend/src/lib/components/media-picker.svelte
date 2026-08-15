@@ -19,8 +19,12 @@
 	import type { ImageEditorMediaItem } from '$lib/image-editor/types';
 	import { listMediaTags, type MediaTag } from '$lib/media-tags';
 	import { getLocaleTag } from '$lib/i18n';
-	import { listMemeTemplates } from '$lib/meme-generator/api';
-	import type { MemeOverlaySelection, MemeRenderResult } from '$lib/meme-generator/types';
+	import { listMemeTemplates, memeGeneratorAPI } from '$lib/meme-generator/api';
+	import type {
+		MemeGeneratorAPI,
+		MemeOverlaySelection,
+		MemeRenderResult
+	} from '$lib/meme-generator/types';
 	import SearchIcon from '@lucide/svelte/icons/search';
 	import UploadIcon from '@lucide/svelte/icons/upload';
 	import CameraIcon from '@lucide/svelte/icons/camera';
@@ -56,7 +60,13 @@
 		onConfirm,
 		onInitialFilesConsumed,
 		onCreate,
-		onCreateVideo
+		onCreateVideo,
+		services = {
+			listMedia: listImageEditorMedia,
+			listTags: listMediaTags,
+			listTemplates: listMemeTemplates,
+			memeAPI: memeGeneratorAPI
+		}
 	}: {
 		open?: boolean;
 		workspaceId: string;
@@ -79,6 +89,12 @@
 		onInitialFilesConsumed?: () => void;
 		onCreate?: () => void | Promise<void>;
 		onCreateVideo?: (media?: MediaPickerVideoSelection) => void | Promise<void>;
+		services?: {
+			listMedia: typeof listImageEditorMedia;
+			listTags: typeof listMediaTags;
+			listTemplates: typeof listMemeTemplates;
+			memeAPI: MemeGeneratorAPI;
+		};
 	} = $props();
 
 	let media = $state<ImageEditorMediaItem[]>([]);
@@ -190,7 +206,7 @@
 		const controller = new AbortController();
 		memeAvailabilityController = controller;
 		try {
-			const result = await listMemeTemplates({
+			const result = await services.listTemplates({
 				workspaceId,
 				limit: 1,
 				signal: controller.signal
@@ -214,7 +230,7 @@
 	async function loadTags(): Promise<void> {
 		if (!workspaceId) return;
 		try {
-			const result = await listMediaTags(workspaceId);
+			const result = await services.listTags(workspaceId);
 			tags = result.tags;
 			const validIDs = new Set(result.tags.map((tag) => tag.id));
 			const nextSelected = selectedTagIDs.filter((id) => validIDs.has(id));
@@ -258,7 +274,7 @@
 								? 'audio'
 								: 'image';
 			media = (
-				await listImageEditorMedia(workspaceId, search, requestedType, {
+				await services.listMedia(workspaceId, search, requestedType, {
 					tagIds: selectedTagIDs,
 					untagged: showUntagged,
 					sort
@@ -415,7 +431,7 @@
 		overlayPickerError = '';
 		try {
 			overlayMedia = (
-				await listImageEditorMedia(workspaceId, '', 'image', {
+				await services.listMedia(workspaceId, '', 'image', {
 					sort: 'recently_used'
 				})
 			).filter((item) => item.processing_status === 'ready' && item.analysis_status !== 'failed');
@@ -779,6 +795,7 @@
 		<div class="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
 			<MemeGenerator
 				{workspaceId}
+				api={services.memeAPI}
 				language={getLocaleTag()}
 				onPickOverlay={pickMemeOverlay}
 				onAttach={handleMemeAttached}

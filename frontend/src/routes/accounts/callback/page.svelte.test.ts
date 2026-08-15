@@ -1,23 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
+import { client } from '$lib/api/client';
 import CallbackPage from './+page.svelte';
 
-const mocks = vi.hoisted(() => ({
+const mocks = {
 	goto: vi.fn(),
 	get: vi.fn(),
 	post: vi.fn()
-}));
-
-vi.mock('$app/navigation', () => ({
-	goto: mocks.goto
-}));
-
-vi.mock('$lib/api/client', () => ({
-	client: {
-		GET: mocks.get,
-		POST: mocks.post
-	}
-}));
+};
+vi.spyOn(client, 'GET').mockImplementation(mocks.get);
+vi.spyOn(client, 'POST').mockImplementation(mocks.post);
 
 const pendingSelection = {
 	id: 'conn_123',
@@ -44,6 +36,10 @@ const pendingSelection = {
 
 function setCallbackUrl(query: string) {
 	History.prototype.pushState.call(window.history, {}, '', `/accounts/callback?${query}`);
+}
+
+function renderCallbackPage() {
+	return render(CallbackPage, { navigate: mocks.goto });
 }
 
 function deferred<T>() {
@@ -73,7 +69,7 @@ describe('account OAuth callback selection flow', () => {
 	it('does not claim success or redirect while account selection is required', async () => {
 		setCallbackUrl('status=selection_required&platform=facebook&connection_id=conn_123');
 
-		const screen = await render(CallbackPage);
+		const screen = await renderCallbackPage();
 
 		await expect
 			.element(
@@ -109,7 +105,7 @@ describe('account OAuth callback selection flow', () => {
 		mocks.post.mockReturnValue(post.promise);
 		setCallbackUrl('status=selection_required&platform=facebook&connection_id=conn_123');
 
-		const screen = await render(CallbackPage);
+		const screen = await renderCallbackPage();
 
 		await screen.getByRole('radio', { name: /OpenPost Page/ }).click();
 		await screen.getByRole('button', { name: 'Connect selected account' }).click();
@@ -170,7 +166,7 @@ describe('account OAuth callback selection flow', () => {
 		});
 		setCallbackUrl('status=selection_required&platform=linkedin&connection_id=conn_123');
 
-		const screen = await render(CallbackPage);
+		const screen = await renderCallbackPage();
 		await screen.getByRole('checkbox', { name: /Ada Member/ }).click();
 		await screen.getByRole('checkbox', { name: /OpenPost/ }).click();
 		await screen.getByRole('button', { name: 'Connect selected (2)' }).click();
@@ -194,7 +190,7 @@ describe('account OAuth callback selection flow', () => {
 		});
 		setCallbackUrl('status=selection_required&platform=facebook&connection_id=conn_123');
 
-		const screen = await render(CallbackPage);
+		const screen = await renderCallbackPage();
 		await screen.getByRole('radio', { name: /OpenPost Page/ }).click();
 		await screen.getByRole('button', { name: 'Connect selected account' }).click();
 
@@ -215,7 +211,7 @@ describe('account OAuth callback selection flow', () => {
 		});
 		setCallbackUrl('status=selection_required&platform=facebook&connection_id=conn_123');
 
-		const screen = await render(CallbackPage);
+		const screen = await renderCallbackPage();
 		await screen.getByRole('radio', { name: /OpenPost Page/ }).click();
 		await screen.getByRole('button', { name: 'Connect selected account' }).click();
 
@@ -244,7 +240,7 @@ describe('account OAuth callback selection flow', () => {
 		});
 		setCallbackUrl('status=selection_required&platform=linkedin&connection_id=conn_123');
 
-		const screen = await render(CallbackPage);
+		const screen = await renderCallbackPage();
 		await screen.getByRole('checkbox', { name: /Ada Member/ }).click();
 		await screen.getByRole('checkbox', { name: /OpenPost/ }).click();
 		await screen.getByRole('button', { name: 'Connect selected (2)' }).click();
@@ -259,7 +255,7 @@ describe('account OAuth callback selection flow', () => {
 		mocks.get.mockRejectedValue(new Error('Network unavailable.'));
 		setCallbackUrl('status=selection_required&platform=facebook&connection_id=conn_123');
 
-		const screen = await render(CallbackPage);
+		const screen = await renderCallbackPage();
 
 		await expect
 			.element(screen.getByText('This account selection could not be loaded. Network unavailable.'))
@@ -278,7 +274,7 @@ describe('account OAuth callback selection flow', () => {
 		});
 		setCallbackUrl('status=selection_required&platform=instagram&connection_id=conn_123');
 
-		const screen = await render(CallbackPage);
+		const screen = await renderCallbackPage();
 
 		await screen.getByRole('radio', { name: /OpenPost Page/ }).click();
 		await screen.getByRole('button', { name: 'Connect selected account' }).click();
@@ -294,7 +290,7 @@ describe('account OAuth callback selection flow', () => {
 		mocks.post.mockRejectedValueOnce(new Error('Connection interrupted.'));
 		setCallbackUrl('status=selection_required&platform=instagram&connection_id=conn_123');
 
-		const screen = await render(CallbackPage);
+		const screen = await renderCallbackPage();
 
 		await screen.getByRole('radio', { name: /OpenPost Page/ }).click();
 		await screen.getByRole('button', { name: 'Connect selected account' }).click();

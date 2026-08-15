@@ -2,15 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { page } from 'vitest/browser';
 import { render } from 'vitest-browser-svelte';
 import type { ImageEditorMediaItem } from '$lib/image-editor/types';
-import type {
-	MemePreviewResult,
-	MemeTemplate,
-	MemeTemplateListResult,
-	MemeThumbnailResult
-} from '$lib/meme-generator/types';
+import type { MemeTemplate, MemeTemplateListResult } from '$lib/meme-generator/types';
 import MediaPicker from './media-picker.svelte';
 
-const mocks = vi.hoisted(() => ({
+const mocks = {
 	listMedia: vi.fn(),
 	listTags: vi.fn(),
 	listTemplates: vi.fn(),
@@ -18,28 +13,20 @@ const mocks = vi.hoisted(() => ({
 	suggest: vi.fn(),
 	preview: vi.fn(),
 	render: vi.fn()
-}));
+};
 
-vi.mock('$lib/image-editor/api', () => ({
-	listImageEditorMedia: mocks.listMedia
-}));
-
-vi.mock('$lib/media-tags', () => ({
-	listMediaTags: mocks.listTags
-}));
-
-vi.mock('$lib/meme-generator/api', () => ({
-	listMemeTemplates: mocks.listTemplates,
-	memeGeneratorAPI: {
+const services = {
+	listMedia: mocks.listMedia,
+	listTags: mocks.listTags,
+	listTemplates: mocks.listTemplates,
+	memeAPI: {
 		listTemplates: mocks.listTemplates,
 		thumbnail: mocks.thumbnail,
 		suggest: mocks.suggest,
 		preview: mocks.preview,
 		render: mocks.render
-	},
-	memePreviewDataURL: (result: MemePreviewResult | MemeThumbnailResult) =>
-		`data:${result.mime_type};base64,${result.data_base64}`
-}));
+	}
+};
 
 const template: MemeTemplate = {
 	id: 'fry',
@@ -112,6 +99,7 @@ function renderPicker(enableMeme: boolean) {
 			multiple: true,
 			showCreate: false,
 			enableMeme,
+			services,
 			onConfirm: vi.fn()
 		}
 	});
