@@ -23,6 +23,13 @@ import type { VideoEditorConfig } from './api';
 import { ensureVideoEditorModel, type ModelDownloadProgress } from './model-manager';
 import { openVideoProjectSource } from './source-access';
 import { listAnalysisResults, saveAnalysisResult } from './storage';
+import type {
+	AnalysisWorkerProgressResponse,
+	AnalysisWorkerRequest,
+	AnalysisWorkerRequestInput,
+	AnalysisWorkerResponse,
+	AnalysisWorkerSuccessResponse
+} from './analysis-protocol';
 
 const SAMPLE_RATE = 16_000;
 const TRANSCRIPTION_WINDOW_SECONDS = 25;
@@ -32,22 +39,6 @@ const VAD_WINDOW_SECONDS = 20;
 interface SourceAudio {
 	input: Input;
 	sink: AudioBufferSink;
-}
-
-interface TranscriptWorkerChunk {
-	text?: string;
-	timestamp?: [number | null, number | null];
-	confidence?: number;
-}
-
-interface TranscriptWorkerOutput {
-	text?: string;
-	chunks?: TranscriptWorkerChunk[];
-}
-
-interface VADWorkerRegion {
-	start_sample: number;
-	end_sample: number;
 }
 
 export interface TranscriptAnalysis {
@@ -141,15 +132,12 @@ export async function transcribeVideoProject(
 					detail: source.original_name
 				});
 				const pcm = await extractMonoPCM(audio.sink, windowStart, windowEnd, options.signal);
-				const response = await worker.request<{
-					output: TranscriptWorkerOutput;
-					fallback?: boolean;
-				}>(
+				const response = await worker.request(
 					{
 						type: 'transcribe',
 						audio: pcm,
 						model_base_url: modelInfo.baseURL,
-						model_path: modelInfo.model.base_path,
+						model_path: modelInfo.model.base_path ?? '',
 						device,
 						language: requestedLanguage
 					},
@@ -193,12 +181,13 @@ export async function transcribeVideoProject(
 					) {
 						continue;
 					}
-					words.push({
+					const word: CaptionWord = {
 						text,
 						start_us: Math.max(derived.timeline_start_us, startUS),
-						end_us: Math.min(derived.timeline_end_us, Math.max(startUS + 1, endUS)),
-						...(Number.isFinite(chunk.confidence) ? { confidence: chunk.confidence } : {})
-					});
+						end_us: Math.min(derived.timeline_end_us, Math.max(startUS + 1, endUS))
+					};
+					if (Number.isFinite(chunk.confidence)) word.confidence = chunk.confidence;
+					words.push(word);
 				}
 			}
 		}
@@ -301,11 +290,7 @@ export async function detectVideoProjectSilence(
 					detail: source.original_name
 				});
 			}
-			const response = await worker.request<{ regions: VADWorkerRegion[] }>(
-				{ type: 'vad-end' },
-				[],
-				options.signal
-			);
+			const response = await worker.request({ type: 'vad-end' }, [], options.signal);
 			for (const region of response.regions) {
 				speech.push({
 					start_us:
@@ -600,7 +585,7 @@ async function cachedAnalysisResult<T>(
 	sourceHash: string,
 	timelineHash: string,
 	algorithmVersion: string,
-	settings: Record<string, unknown>
+	settings: AnalysisCacheSettings
 ): Promise<T | undefined> {
 	const expectedSettings = JSON.stringify(settings);
 	const cached = (await listAnalysisResults(projectID, kind)).find(
@@ -610,20 +595,44 @@ async function cachedAnalysisResult<T>(
 			result.algorithm_version === algorithmVersion &&
 			JSON.stringify(result.settings) === expectedSettings
 	);
+	// SAFETY: This module couples T to the analysis kind and only writes matching results with these hashes.
 	return cached?.result as T | undefined;
 }
+
+type AnalysisCacheSettings = { language: string } | { min_silence_us: number; padding_us: number };
 
 class AnalysisWorker {
 	private readonly worker = new Worker(new URL('./analysis.worker.ts', import.meta.url), {
 		type: 'module'
 	});
 
-	request<T extends Record<string, unknown> = Record<string, unknown>>(
-		message: Record<string, unknown>,
+	request(
+		message: Extract<AnalysisWorkerRequestInput, { type: 'transcribe' }>,
+		transfer: Transferable[],
+		signal: AbortSignal | undefined,
+		onProgress: ((message: AnalysisWorkerProgressResponse) => void) | undefined
+	): Promise<Extract<AnalysisWorkerSuccessResponse, { type: 'transcript' }>>;
+	request(
+		message: Extract<AnalysisWorkerRequestInput, { type: 'vad-start' }>,
+		transfer?: Transferable[],
+		signal?: AbortSignal
+	): Promise<Extract<AnalysisWorkerSuccessResponse, { type: 'vad-ready' }>>;
+	request(
+		message: Extract<AnalysisWorkerRequestInput, { type: 'vad-chunk' }>,
+		transfer?: Transferable[],
+		signal?: AbortSignal
+	): Promise<Extract<AnalysisWorkerSuccessResponse, { type: 'vad-chunk-complete' }>>;
+	request(
+		message: Extract<AnalysisWorkerRequestInput, { type: 'vad-end' }>,
+		transfer?: Transferable[],
+		signal?: AbortSignal
+	): Promise<Extract<AnalysisWorkerSuccessResponse, { type: 'vad-result' }>>;
+	request(
+		message: AnalysisWorkerRequestInput,
 		transfer: Transferable[] = [],
 		signal?: AbortSignal,
-		onProgress?: (message: Record<string, unknown>) => void
-	): Promise<T> {
+		onProgress?: (message: AnalysisWorkerProgressResponse) => void
+	): Promise<AnalysisWorkerSuccessResponse> {
 		const id = crypto.randomUUID();
 		const timeoutMS =
 			message.type === 'transcribe'
@@ -644,7 +653,7 @@ class AnalysisWorker {
 				cleanup();
 				reject(signal?.reason ?? new DOMException('Analysis cancelled.', 'AbortError'));
 			};
-			const receive = (event: MessageEvent<Record<string, unknown>>) => {
+			const receive = (event: MessageEvent<AnalysisWorkerResponse>) => {
 				if (event.data.id !== id) return;
 				if (event.data.type === 'error') {
 					cleanup();
@@ -660,7 +669,7 @@ class AnalysisWorker {
 					return;
 				}
 				cleanup();
-				resolve(event.data as T);
+				resolve(event.data);
 			};
 			const fail = (event: ErrorEvent) => {
 				cleanup();
@@ -680,7 +689,8 @@ class AnalysisWorker {
 			signal?.addEventListener('abort', abort, { once: true });
 			this.worker.addEventListener('message', receive);
 			this.worker.addEventListener('error', fail);
-			this.worker.postMessage({ ...message, id }, transfer);
+			const request: AnalysisWorkerRequest = { ...message, id };
+			this.worker.postMessage(request, transfer);
 		});
 	}
 

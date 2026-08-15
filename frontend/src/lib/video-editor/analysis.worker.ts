@@ -1,41 +1,47 @@
 /// <reference lib="webworker" />
 
-import { env, pipeline } from '@huggingface/transformers';
+import {
+	env,
+	pipeline,
+	type AutomaticSpeechRecognitionOutput,
+	type AutomaticSpeechRecognitionPipelineType
+} from '@huggingface/transformers';
 import * as ort from 'onnxruntime-web';
+import type {
+	AnalysisWorkerRequest,
+	AnalysisWorkerResponse,
+	TranscriptWorkerOutput,
+	VADWorkerRegion
+} from './analysis-protocol';
 
-interface TranscriptChunk {
-	text: string;
-	timestamp: [number | null, number | null];
+interface ASRPipelineOptions {
+	device: 'webgpu' | 'wasm';
+	dtype: 'q4';
+	progress_callback: (progress: { status: string }) => void;
 }
 
-interface TranscriptOutput {
-	text?: string;
-	chunks?: TranscriptChunk[];
-}
+type ASRPipelineFactory = (
+	task: 'automatic-speech-recognition',
+	modelPath: string,
+	options: ASRPipelineOptions
+) => Promise<AutomaticSpeechRecognitionPipelineType>;
 
-type Transcriber = (
-	audio: Float32Array,
-	options: Record<string, unknown>
-) => Promise<TranscriptOutput>;
+// SAFETY: Transformers.js maps this exact task literal to AutomaticSpeechRecognitionPipelineType.
+const createPipeline = pipeline as ASRPipelineFactory;
 
-interface SpeechRegion {
-	start_sample: number;
-	end_sample: number;
-}
-
-let transcriber: Transcriber | undefined;
+let transcriber: AutomaticSpeechRecognitionPipelineType | undefined;
 let transcriberKey = '';
 let vadSession: ort.InferenceSession | undefined;
 let vadModelURL = '';
 let vadState = new ort.Tensor('float32', new Float32Array(2 * 128), [2, 1, 128]);
 let vadSampleOffset = 0;
 let vadSpeechStart: number | undefined;
-let vadRegions: SpeechRegion[] = [];
+let vadRegions: VADWorkerRegion[] = [];
 let vadSilenceSamples = 0;
 
-self.onmessage = (event: MessageEvent<Record<string, unknown>>) => {
+self.onmessage = (event: MessageEvent<AnalysisWorkerRequest>) => {
 	void handleMessage(event.data).catch((cause) => {
-		self.postMessage({
+		postAnalysisMessage({
 			id: event.data.id,
 			type: 'error',
 			message: cause instanceof Error ? cause.message : 'Local analysis failed.'
@@ -43,35 +49,29 @@ self.onmessage = (event: MessageEvent<Record<string, unknown>>) => {
 	});
 };
 
-async function handleMessage(message: Record<string, unknown>): Promise<void> {
-	const id = String(message.id ?? '');
+async function handleMessage(message: AnalysisWorkerRequest): Promise<void> {
+	const id = message.id;
 	switch (message.type) {
 		case 'transcribe': {
 			const audio = message.audio;
-			if (!(audio instanceof Float32Array)) throw new Error('Transcription audio is invalid.');
 			let device: 'webgpu' | 'wasm' = message.device === 'webgpu' ? 'webgpu' : 'wasm';
 			if (device === 'webgpu' && !(await hasWebGPUAdapter())) {
 				device = 'wasm';
-				self.postMessage({ id, type: 'device-fallback', device: 'wasm' });
+				postAnalysisMessage({ id, type: 'device-fallback', device: 'wasm' });
 			}
-			let pipe = await loadTranscriber(
-				String(message.model_base_url ?? ''),
-				String(message.model_path ?? ''),
-				device,
-				id
-			);
+			let pipe = await loadTranscriber(message.model_base_url, message.model_path, device, id);
 			const options = {
 				// The bundled q4 Whisper export does not include the cross-attention
 				// tensors required by Transformers.js word timestamps. Segment
 				// timestamps use the model's time tokens and remain fully local.
 				return_timestamps: true,
-				language: message.language === 'auto' ? undefined : String(message.language ?? ''),
+				language: message.language === 'auto' ? undefined : message.language,
 				task: 'transcribe',
 				// Bound generation for silent, tonal, and corrupt inputs. Without
 				// this cap Whisper can hallucinate until the worker watchdog fires.
 				max_new_tokens: Math.min(256, Math.max(32, Math.ceil((audio.length / 16_000) * 8 + 16)))
 			};
-			let output: TranscriptOutput;
+			let output: AutomaticSpeechRecognitionOutput | AutomaticSpeechRecognitionOutput[];
 			try {
 				output = await pipe(audio, options);
 			} catch (cause) {
@@ -79,7 +79,7 @@ async function handleMessage(message: Record<string, unknown>): Promise<void> {
 				transcriber = undefined;
 				transcriberKey = '';
 				device = 'wasm';
-				self.postMessage({ id, type: 'device-fallback', device: 'wasm' });
+				postAnalysisMessage({ id, type: 'device-fallback', device: 'wasm' });
 				pipe = await loadTranscriber(
 					String(message.model_base_url ?? ''),
 					String(message.model_path ?? ''),
@@ -88,11 +88,11 @@ async function handleMessage(message: Record<string, unknown>): Promise<void> {
 				);
 				output = await pipe(audio, options);
 			}
-			self.postMessage({ id, type: 'transcript', output });
+			postAnalysisMessage({ id, type: 'transcript', output: normalizeTranscriptOutput(output) });
 			break;
 		}
 		case 'vad-start': {
-			const modelURL = String(message.model_url ?? '');
+			const modelURL = message.model_url;
 			if (!vadSession || vadModelURL !== modelURL) {
 				vadSession = await ort.InferenceSession.create(modelURL, {
 					executionProviders: ['wasm'],
@@ -105,33 +105,34 @@ async function handleMessage(message: Record<string, unknown>): Promise<void> {
 			vadSpeechStart = undefined;
 			vadRegions = [];
 			vadSilenceSamples = 0;
-			self.postMessage({ id, type: 'vad-ready' });
+			postAnalysisMessage({ id, type: 'vad-ready' });
 			break;
 		}
 		case 'vad-chunk': {
 			const audio = message.audio;
-			if (!(audio instanceof Float32Array) || !vadSession) {
+			if (!vadSession) {
 				throw new Error('Voice analysis is not ready.');
 			}
 			await runVAD(audio);
-			self.postMessage({ id, type: 'vad-progress', processed_samples: vadSampleOffset });
-			self.postMessage({ id, type: 'vad-chunk-complete', processed_samples: vadSampleOffset });
+			postAnalysisMessage({ id, type: 'vad-progress', processed_samples: vadSampleOffset });
+			postAnalysisMessage({ id, type: 'vad-chunk-complete', processed_samples: vadSampleOffset });
 			break;
 		}
 		case 'vad-end': {
 			if (vadSpeechStart !== undefined) {
 				vadRegions.push({ start_sample: vadSpeechStart, end_sample: vadSampleOffset });
 			}
-			self.postMessage({ id, type: 'vad-result', regions: vadRegions });
+			postAnalysisMessage({ id, type: 'vad-result', regions: vadRegions });
 			break;
 		}
 	}
 }
 
 async function hasWebGPUAdapter(): Promise<boolean> {
+	// SAFETY: WebGPU is an optional browser capability absent from the configured DOM typings.
 	const gpu = (
 		self.navigator as Navigator & {
-			gpu?: { requestAdapter: () => Promise<unknown | null> };
+			gpu?: { requestAdapter: () => Promise<object | null> };
 		}
 	).gpu;
 	if (!gpu) return false;
@@ -147,7 +148,7 @@ async function loadTranscriber(
 	modelPath: string,
 	device: 'webgpu' | 'wasm',
 	requestID: string
-): Promise<Transcriber> {
+): Promise<AutomaticSpeechRecognitionPipelineType> {
 	const key = `${modelBaseURL}:${modelPath}:${device}`;
 	if (transcriber && transcriberKey === key) return transcriber;
 	env.allowLocalModels = true;
@@ -155,24 +156,53 @@ async function loadTranscriber(
 	env.useBrowserCache = true;
 	env.localModelPath = `${modelBaseURL.replace(/\/$/u, '')}/`;
 	try {
-		transcriber = (await pipeline('automatic-speech-recognition', modelPath, {
-			device,
-			dtype: 'q4',
-			progress_callback: (progress: unknown) =>
-				self.postMessage({ id: requestID, type: 'model-progress', progress })
-		})) as unknown as Transcriber;
+		transcriber = await createTranscriber(modelPath, device, requestID);
 	} catch (cause) {
 		if (device !== 'webgpu') throw cause;
-		transcriber = (await pipeline('automatic-speech-recognition', modelPath, {
-			device: 'wasm',
-			dtype: 'q4',
-			progress_callback: (progress: unknown) =>
-				self.postMessage({ id: requestID, type: 'model-progress', progress })
-		})) as unknown as Transcriber;
-		self.postMessage({ id: requestID, type: 'device-fallback', device: 'wasm' });
+		transcriber = await createTranscriber(modelPath, 'wasm', requestID);
+		postAnalysisMessage({ id: requestID, type: 'device-fallback', device: 'wasm' });
 	}
 	transcriberKey = key;
 	return transcriber;
+}
+
+async function createTranscriber(
+	modelPath: string,
+	device: 'webgpu' | 'wasm',
+	requestID: string
+): Promise<AutomaticSpeechRecognitionPipelineType> {
+	const progressCallback = (progress: { status: string }) =>
+		postAnalysisMessage({ id: requestID, type: 'model-progress', status: progress.status });
+	if (device === 'webgpu') {
+		return await createPipeline('automatic-speech-recognition', modelPath, {
+			device: 'webgpu',
+			dtype: 'q4',
+			progress_callback: progressCallback
+		});
+	}
+	return await createPipeline('automatic-speech-recognition', modelPath, {
+		device: 'wasm',
+		dtype: 'q4',
+		progress_callback: progressCallback
+	});
+}
+
+function normalizeTranscriptOutput(
+	output: AutomaticSpeechRecognitionOutput | AutomaticSpeechRecognitionOutput[]
+): TranscriptWorkerOutput {
+	const result = Array.isArray(output) ? output[0] : output;
+	if (!result) return {};
+	return {
+		text: result.text,
+		chunks: result.chunks?.map((chunk) => ({
+			text: chunk.text,
+			timestamp: chunk.timestamp
+		}))
+	};
+}
+
+function postAnalysisMessage(message: AnalysisWorkerResponse): void {
+	self.postMessage(message);
 }
 
 async function runVAD(audio: Float32Array): Promise<void> {
