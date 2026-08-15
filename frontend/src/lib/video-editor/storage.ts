@@ -27,6 +27,24 @@ type StorageManagerWithDirectory = StorageManager & {
 	getDirectory?: () => Promise<FileSystemDirectoryHandle>;
 };
 
+type FileSystemFileHandleWithMove = FileSystemFileHandle & {
+	move?: (destination: FileSystemDirectoryHandle, name: string) => Promise<void>;
+};
+
+type WindowWithIdleCallback = Window & {
+	requestIdleCallback?: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number;
+};
+
+interface VideoEditorStoreRecords {
+	projects: LocalVideoProject;
+	'project-revisions': LocalProjectRevision;
+	'asset-index': LocalAssetIndex;
+	'recording-manifests': RecordingManifest;
+	'analysis-results': AnalysisResult;
+	'model-cache-metadata': ModelCacheMetadata;
+	'export-jobs': never;
+}
+
 const AUTOMATIC_REVISION_LIMIT = 20;
 const TRANSIENT_HEADROOM_RATIO = 0.2;
 const DISPOSABLE_CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1_000;
@@ -104,6 +122,7 @@ export async function openVideoEditorDatabase(): Promise<IDBDatabase> {
 		const request = indexedDB.open(VIDEO_EDITOR_DB_NAME, VIDEO_EDITOR_DB_VERSION);
 		request.onupgradeneeded = (event) => {
 			const database = request.result;
+			// SAFETY: IndexedDB dispatches `upgradeneeded` with IDBVersionChangeEvent by contract.
 			const oldVersion = (event as IDBVersionChangeEvent).oldVersion;
 			for (const storeName of VIDEO_EDITOR_STORES) {
 				if (database.objectStoreNames.contains(storeName)) continue;
@@ -195,7 +214,7 @@ export function calculateStorageBudget(
 }
 
 export async function listLocalVideoProjects(limit = 30): Promise<LocalVideoProject[]> {
-	const projects = await getAll<LocalVideoProject>('projects');
+	const projects = await getAll('projects');
 	scheduleDisposableVideoCacheCleanup();
 	return projects
 		.sort((left, right) => right.last_opened_at.localeCompare(left.last_opened_at))
@@ -312,12 +331,10 @@ export async function createLocalVideoProject(
 }
 
 export async function deleteLocalVideoProject(id: string): Promise<void> {
-	const revisions = (await getAll<LocalProjectRevision>('project-revisions')).filter(
+	const revisions = (await getAll('project-revisions')).filter(
 		(revision) => revision.project_id === id
 	);
-	const assets = (await getAll<LocalAssetIndex>('asset-index')).filter(
-		(asset) => asset.project_id === id
-	);
+	const assets = (await getAll('asset-index')).filter((asset) => asset.project_id === id);
 	await transaction(['projects', 'project-revisions', 'asset-index'], 'readwrite', (stores) => {
 		stores.projects.delete(id);
 		for (const revision of revisions) stores['project-revisions'].delete(revision.id);
@@ -335,7 +352,7 @@ export async function deleteLocalVideoProject(id: string): Promise<void> {
 }
 
 export async function listProjectRevisions(projectID: string): Promise<LocalProjectRevision[]> {
-	return (await getAll<LocalProjectRevision>('project-revisions'))
+	return (await getAll('project-revisions'))
 		.filter((revision) => revision.project_id === projectID && revision.kind !== 'journal')
 		.map(normalizeLocalProjectRevision)
 		.filter((revision): revision is LocalProjectRevision => revision !== undefined)
@@ -347,7 +364,7 @@ export async function restoreLocalRevision(
 	revisionID: string,
 	expectedRevision: number
 ): Promise<LocalVideoProject> {
-	const stored = await getOne<LocalProjectRevision>('project-revisions', revisionID);
+	const stored = await getOne('project-revisions', revisionID);
 	const revision = stored ? normalizeLocalProjectRevision(stored) : undefined;
 	if (!revision?.document || revision.project_id !== projectID) {
 		throw new Error('That local recovery point is no longer available.');
@@ -386,6 +403,7 @@ export async function applyRestoredLocalVideoProjectHead(
 			const revisions = tx.objectStore('project-revisions');
 			const request = projects.get(projectID);
 			request.onsuccess = () => {
+				// SAFETY: This request reads one row from the owned `projects` store.
 				const current = request.result as LocalVideoProject | undefined;
 				if (
 					!current ||
@@ -557,9 +575,8 @@ export async function writeProjectStream(
 		if (options.expectedSHA256 && digest.toLowerCase() !== options.expectedSHA256.toLowerCase()) {
 			throw new Error('The downloaded file failed its SHA-256 integrity check.');
 		}
-		const movable = temporary as FileSystemFileHandle & {
-			move?: (destination: FileSystemDirectoryHandle, name: string) => Promise<void>;
-		};
+		// SAFETY: Chromium may expose the optional OPFS `move` extension missing from the DOM lib.
+		const movable = temporary as FileSystemFileHandleWithMove;
 		if (movable.move) {
 			await movable.move(target, safeName);
 		} else {
@@ -645,6 +662,7 @@ async function touchProjectFileAccess(path: string, now = Date.now()): Promise<v
 		request.onsuccess = () => {
 			const cursor = request.result;
 			if (!cursor) return;
+			// SAFETY: This cursor comes from the owned `asset-index` store.
 			const asset = normalizeLocalAssetIndex(cursor.value as LocalAssetIndex);
 			const refreshed = refreshLocalAssetAccess(asset, now);
 			if (refreshed.last_accessed_at !== asset.last_accessed_at) cursor.update(refreshed);
@@ -657,7 +675,7 @@ export async function listProjectAssets(
 	projectID: string,
 	sourceID?: string
 ): Promise<LocalAssetIndex[]> {
-	return (await getAll<LocalAssetIndex>('asset-index'))
+	return (await getAll('asset-index'))
 		.map(normalizeLocalAssetIndex)
 		.filter(
 			(asset) =>
@@ -674,7 +692,7 @@ export async function removeDisposableProjectAssets(
 	} = {}
 ): Promise<{ removed_count: number; removed_bytes: number }> {
 	const kinds = options.kinds ? new Set(options.kinds) : undefined;
-	const assets = (await getAll<LocalAssetIndex>('asset-index'))
+	const assets = (await getAll('asset-index'))
 		.map(normalizeLocalAssetIndex)
 		.filter(
 			(asset) =>
@@ -697,7 +715,7 @@ export async function saveRecordingManifest(manifest: RecordingManifest): Promis
 }
 
 export async function loadRecordingManifest(id: string): Promise<RecordingManifest | undefined> {
-	const manifest = await getOne<RecordingManifest>('recording-manifests', id);
+	const manifest = await getOne('recording-manifests', id);
 	return manifest ? normalizeRecordingManifest(manifest) : undefined;
 }
 
@@ -711,7 +729,7 @@ export async function deleteRecording(manifest: RecordingManifest): Promise<void
 }
 
 export async function listRecoverableRecordings(): Promise<RecordingManifest[]> {
-	return (await getAll<RecordingManifest>('recording-manifests'))
+	return (await getAll('recording-manifests'))
 		.map(normalizeRecordingManifest)
 		.filter(
 			(manifest) =>
@@ -730,7 +748,7 @@ export async function listAnalysisResults(
 	projectID: string,
 	kind?: AnalysisResult['kind']
 ): Promise<AnalysisResult[]> {
-	return (await getAll<AnalysisResult>('analysis-results'))
+	return (await getAll('analysis-results'))
 		.filter((result) => result.project_id === projectID && (!kind || result.kind === kind))
 		.sort((left, right) => right.created_at.localeCompare(left.created_at));
 }
@@ -740,7 +758,7 @@ export async function saveModelCacheMetadata(metadata: ModelCacheMetadata): Prom
 }
 
 export async function listModelCacheMetadata(): Promise<ModelCacheMetadata[]> {
-	return (await getAll<ModelCacheMetadata>('model-cache-metadata')).sort((left, right) =>
+	return (await getAll('model-cache-metadata')).sort((left, right) =>
 		left.kind.localeCompare(right.kind)
 	);
 }
@@ -843,10 +861,7 @@ export async function executeDisposableAssetCleanup(
 export async function cleanupDisposableVideoAssets(
 	options: DisposableAssetCleanupOptions = {}
 ): Promise<DisposableAssetCleanupResult> {
-	const [assets, projects] = await Promise.all([
-		getAll<LocalAssetIndex>('asset-index'),
-		getAll<LocalVideoProject>('projects')
-	]);
+	const [assets, projects] = await Promise.all([getAll('asset-index'), getAll('projects')]);
 	const protectedProjectIDs = new Set(options.protectedProjectIDs ?? []);
 	for (const projectID of activeProjectReferences.keys()) protectedProjectIDs.add(projectID);
 	const protectedPaths = new Set(options.protectedPaths ?? []);
@@ -923,14 +938,17 @@ export function scheduleDisposableVideoCacheCleanup(
 			protectedProjectIDs: state.protectedProjectIDs
 		}).catch(() => undefined);
 	};
-	const idleWindow = window as Window & {
-		requestIdleCallback?: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number;
-	};
-	if (typeof idleWindow.requestIdleCallback === 'function') {
-		idleWindow.requestIdleCallback(run, { timeout: 5_000 });
+	const idleCallback = resolveIdleCallback(window);
+	if (idleCallback) {
+		idleCallback(run, { timeout: 5_000 });
 	} else {
 		globalThis.setTimeout(run, 1_000);
 	}
+}
+
+function resolveIdleCallback(windowValue: Window): WindowWithIdleCallback['requestIdleCallback'] {
+	// SAFETY: This optional browser capability is checked for presence before it is called.
+	return (windowValue as WindowWithIdleCallback).requestIdleCallback;
 }
 
 export type ProjectArea =
@@ -985,6 +1003,7 @@ async function projectAreaDirectory(
 }
 
 async function videoEditorRoot(create: boolean): Promise<FileSystemDirectoryHandle | null> {
+	// SAFETY: The optional OPFS method is absent from some DOM lib versions and checked before use.
 	const storage = navigator.storage as StorageManagerWithDirectory | undefined;
 	if (!storage?.getDirectory) return null;
 	try {
@@ -1052,6 +1071,7 @@ function migrateAssetIndexToV3(store: IDBObjectStore): void {
 	request.onsuccess = () => {
 		const cursor = request.result;
 		if (!cursor) return;
+		// SAFETY: This migration only reads rows from the owned `asset-index` store.
 		const asset = cursor.value as Partial<LocalAssetIndex>;
 		asset.last_accessed_at ??= asset.updated_at ?? asset.created_at ?? new Date(0).toISOString();
 		cursor.update(asset);
@@ -1064,6 +1084,7 @@ function migrateProjectMetadataToV2(store: IDBObjectStore): void {
 	request.onsuccess = () => {
 		const cursor = request.result;
 		if (!cursor) return;
+		// SAFETY: This migration only reads rows from the owned `projects` store.
 		const project = cursor.value as Partial<LocalVideoProject> & {
 			document?: VideoProjectDocumentV1;
 		};
@@ -1081,6 +1102,7 @@ function migrateRecordingManifestsToV2(store: IDBObjectStore): void {
 	request.onsuccess = () => {
 		const cursor = request.result;
 		if (!cursor) return;
+		// SAFETY: This migration only reads rows from the owned `recording-manifests` store.
 		cursor.update(normalizeRecordingManifest(cursor.value as RecordingManifest));
 		cursor.continue();
 	};
@@ -1090,7 +1112,7 @@ function holdSharedVideoProjectLock(projectID: string): void {
 	let release!: () => void;
 	const held = new Promise<void>((resolve) => (release = resolve));
 	activeProjectLockReleases.set(projectID, release);
-	const locks = typeof navigator === 'undefined' ? undefined : navigator.locks;
+	const locks = globalThis.navigator?.locks;
 	if (!locks) return;
 	void locks
 		.request(videoProjectLockName(projectID), { mode: 'shared' }, async () => await held)
@@ -1102,7 +1124,7 @@ async function withVideoProjectCleanupLock(
 	work: () => Promise<void>
 ): Promise<boolean> {
 	if (activeProjectReferences.has(projectID)) return false;
-	const locks = typeof navigator === 'undefined' ? undefined : navigator.locks;
+	const locks = globalThis.navigator?.locks;
 	if (!locks) {
 		if (activeProjectReferences.has(projectID)) return false;
 		await work();
@@ -1126,7 +1148,7 @@ function videoProjectLockName(projectID: string): string {
 }
 
 export function normalizeRecordingManifest(manifest: RecordingManifest): RecordingManifest {
-	const migrated = structuredClone(manifest) as RecordingManifest;
+	const migrated = structuredClone(manifest);
 	migrated.manifest_version = 2;
 	migrated.session_epoch_ms ??= migrated.session_started_at;
 	migrated.flush_sequence ??= 0;
@@ -1200,14 +1222,15 @@ function localProjectRevisionSnapshot(
 	cloudCoverPreviewMediaID?: string,
 	cloudCoverCaptured = true
 ): LocalProjectRevisionSnapshotV1 {
-	return {
+	const snapshot: LocalProjectRevisionSnapshotV1 = {
 		snapshot_version: 1,
-		document: cloneVideoProject(document),
-		...(coverSourceID ? { cover_source_id: coverSourceID } : {}),
-		...(cloudCoverCaptured
-			? { cloud_cover_preview_media_id: cloudCoverPreviewMediaID?.trim() ?? '' }
-			: {})
+		document: cloneVideoProject(document)
 	};
+	if (coverSourceID) snapshot.cover_source_id = coverSourceID;
+	if (cloudCoverCaptured) {
+		snapshot.cloud_cover_preview_media_id = cloudCoverPreviewMediaID?.trim() ?? '';
+	}
+	return snapshot;
 }
 
 function normalizeLocalProjectRevision(
@@ -1219,24 +1242,23 @@ function normalizeLocalProjectRevision(
 	if (!document) return undefined;
 	const validation = validateVideoProject(document);
 	if (!validation.valid || !validation.document) return undefined;
-	return {
+	const normalized: LocalProjectRevision = {
 		...revision,
-		document: cloneVideoProject(validation.document),
-		...(snapshot
-			? {
-					snapshot: localProjectRevisionSnapshot(
-						validation.document,
-						snapshot.cover_source_id,
-						snapshot.cloud_cover_preview_media_id,
-						Object.hasOwn(snapshot, 'cloud_cover_preview_media_id')
-					)
-				}
-			: {})
+		document: cloneVideoProject(validation.document)
 	};
+	if (snapshot) {
+		normalized.snapshot = localProjectRevisionSnapshot(
+			validation.document,
+			snapshot.cover_source_id,
+			snapshot.cloud_cover_preview_media_id,
+			Object.hasOwn(snapshot, 'cloud_cover_preview_media_id')
+		);
+	}
+	return normalized;
 }
 
 async function pruneAutomaticRevisions(projectID: string): Promise<void> {
-	const automatic = (await getAll<LocalProjectRevision>('project-revisions'))
+	const automatic = (await getAll('project-revisions'))
 		.filter((revision) => revision.project_id === projectID && revision.kind === 'autosave')
 		.sort((left, right) => right.revision - left.revision);
 	await Promise.all(
@@ -1257,6 +1279,7 @@ async function loadAndTouchLocalVideoProject(id: string): Promise<LocalVideoProj
 			const revisions = tx.objectStore('project-revisions');
 			const request = projects.get(id);
 			request.onsuccess = () => {
+				// SAFETY: This request reads one row from the owned `projects` store.
 				const stored = request.result as LocalVideoProject | undefined;
 				if (!stored) {
 					failure = new Error(
@@ -1322,6 +1345,7 @@ async function persistLocalVideoProjectCAS(
 			const revisions = tx.objectStore('project-revisions');
 			const request = projects.get(project.id);
 			request.onsuccess = () => {
+				// SAFETY: This request reads one row from the owned `projects` store.
 				const current = request.result as LocalVideoProject | undefined;
 				if (!current || current.revision !== expectedRevision) {
 					failure = new LocalVideoProjectRevisionConflict(expectedRevision, current?.revision);
@@ -1346,12 +1370,17 @@ async function persistLocalVideoProjectCAS(
 	}
 }
 
-async function getAll<T>(storeName: VideoEditorStore): Promise<T[]> {
+async function getAll<K extends VideoEditorStore>(
+	storeName: K
+): Promise<VideoEditorStoreRecords[K][]> {
 	const database = await openVideoEditorDatabase();
 	try {
-		return await new Promise<T[]>((resolve, reject) => {
+		return await new Promise<VideoEditorStoreRecords[K][]>((resolve, reject) => {
 			const request = database.transaction(storeName).objectStore(storeName).getAll();
-			request.onsuccess = () => resolve((request.result as T[]) ?? []);
+			request.onsuccess = () => {
+				// SAFETY: The store key selects the matching owned record contract.
+				resolve((request.result as VideoEditorStoreRecords[K][]) ?? []);
+			};
 			request.onerror = () => reject(request.error);
 		});
 	} finally {
@@ -1359,12 +1388,18 @@ async function getAll<T>(storeName: VideoEditorStore): Promise<T[]> {
 	}
 }
 
-async function getOne<T>(storeName: VideoEditorStore, key: IDBValidKey): Promise<T | undefined> {
+async function getOne<K extends VideoEditorStore>(
+	storeName: K,
+	key: IDBValidKey
+): Promise<VideoEditorStoreRecords[K] | undefined> {
 	const database = await openVideoEditorDatabase();
 	try {
-		return await new Promise<T | undefined>((resolve, reject) => {
+		return await new Promise<VideoEditorStoreRecords[K] | undefined>((resolve, reject) => {
 			const request = database.transaction(storeName).objectStore(storeName).get(key);
-			request.onsuccess = () => resolve(request.result as T | undefined);
+			request.onsuccess = () => {
+				// SAFETY: The store key selects the matching owned record contract.
+				resolve(request.result as VideoEditorStoreRecords[K] | undefined);
+			};
 			request.onerror = () => reject(request.error);
 		});
 	} finally {
@@ -1372,7 +1407,10 @@ async function getOne<T>(storeName: VideoEditorStore, key: IDBValidKey): Promise
 	}
 }
 
-async function putOne(storeName: VideoEditorStore, value: unknown): Promise<void> {
+async function putOne<K extends VideoEditorStore>(
+	storeName: K,
+	value: VideoEditorStoreRecords[K]
+): Promise<void> {
 	await transaction([storeName], 'readwrite', (stores) => stores[storeName].put(value));
 }
 
@@ -1380,17 +1418,23 @@ async function deleteOne(storeName: VideoEditorStore, key: IDBValidKey): Promise
 	await transaction([storeName], 'readwrite', (stores) => stores[storeName].delete(key));
 }
 
-async function transaction(
-	storeNames: VideoEditorStore[],
+async function transaction<const K extends readonly VideoEditorStore[]>(
+	storeNames: K,
 	mode: IDBTransactionMode,
-	work: (stores: Record<VideoEditorStore, IDBObjectStore>) => void
+	work: (stores: { [Name in K[number]]: IDBObjectStore }) => void
 ): Promise<void> {
 	const database = await openVideoEditorDatabase();
 	try {
 		await new Promise<void>((resolve, reject) => {
 			const tx = database.transaction(storeNames, mode);
-			const stores = {} as Record<VideoEditorStore, IDBObjectStore>;
-			for (const name of storeNames) stores[name] = tx.objectStore(name);
+			// SAFETY: The loop below initializes every store named by K before `work` runs.
+			const stores = {} as { [Name in K[number]]: IDBObjectStore };
+			for (const name of storeNames) {
+				Object.defineProperty(stores, name, {
+					value: tx.objectStore(name),
+					enumerable: true
+				});
+			}
 			work(stores);
 			tx.oncomplete = () => resolve();
 			tx.onerror = () => reject(tx.error);
