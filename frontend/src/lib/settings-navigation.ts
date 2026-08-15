@@ -156,6 +156,7 @@ const settingsDestinationDefinitions = [
 
 export type SettingsTabID = (typeof settingsDestinationDefinitions)[number]['id'];
 export type SettingsDestinationID = SettingsTabID;
+type DeclaredSettingsDestination = (typeof settingsDestinationDefinitions)[number];
 
 export interface SettingsDestination {
 	id: SettingsDestinationID;
@@ -166,9 +167,9 @@ export interface SettingsDestination {
 	loadingVariant: SettingsLoadingVariant;
 }
 
-export const settingsTabIDs = settingsDestinationDefinitions.map(
+export const settingsTabIDs: readonly SettingsTabID[] = settingsDestinationDefinitions.map(
 	(destination) => destination.id
-) as readonly SettingsTabID[];
+);
 
 export function getSettingsDestinations(
 	includeInstance: boolean,
@@ -202,15 +203,15 @@ export function normalizeSettingsTab(
 }
 
 function resolveSettingsDestination(
-	destination: SettingsDestinationDefinition,
+	destination: DeclaredSettingsDestination,
 	context: SettingsDestinationContext
 ): SettingsDestination {
 	const label = destination.label();
 	return {
-		id: destination.id as SettingsDestinationID,
+		id: destination.id,
 		group: destination.group,
 		label,
-		title: destination.title?.() ?? label,
+		title: 'title' in destination ? destination.title() : label,
 		description: destination.description(context),
 		loadingVariant: destination.loadingVariant
 	};

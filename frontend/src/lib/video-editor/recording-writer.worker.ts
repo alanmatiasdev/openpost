@@ -2,10 +2,6 @@
 
 import type { RecordingWriterRequest, RecordingWriterResponse } from './recording-protocol';
 
-type StorageManagerWithDirectory = StorageManager & {
-	getDirectory(): Promise<FileSystemDirectoryHandle>;
-};
-
 interface OpenTrack {
 	writable: FileSystemWritableFileStream;
 	position: number;
@@ -60,8 +56,9 @@ async function initializeTrack(trackID: string, path: string): Promise<void> {
 	) {
 		throw new Error('Invalid recording path.');
 	}
-	const storage: StorageManagerWithDirectory = navigator.storage;
-	const root = await storage.getDirectory();
+	const getDirectory = navigator.storage.getDirectory;
+	if (!getDirectory) throw new Error('Origin-private recording storage is unavailable.');
+	const root = await getDirectory.call(navigator.storage);
 	let directory = root;
 	for (const segment of segments.slice(0, -1)) {
 		directory = await directory.getDirectoryHandle(segment, { create: true });

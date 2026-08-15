@@ -55,7 +55,7 @@
 		onSaveFile: (file: File) => Promise<void>;
 		onCancel: () => void;
 		onReturnToComposer: () => Promise<void>;
-		onStart: () => Promise<unknown>;
+		onStart: () => Promise<void>;
 	} = $props();
 
 	const variantOptions = [

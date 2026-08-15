@@ -609,21 +609,22 @@ export class ComposerSession {
 	}
 
 	#captureClientError(cause: unknown, extra: Partial<ComposerSessionSnapshot> = {}): void {
-		this.#patch({
+		const patch: Partial<ComposerSessionSnapshot> = {
 			...extra,
-			error: errorMessage(cause),
-			...(cause instanceof ComposerClientError &&
+			error: errorMessage(cause)
+		};
+		if (
+			cause instanceof ComposerClientError &&
 			cause.category === 'conflict' &&
 			this.#snapshot.revision !== null &&
-			typeof cause.currentRevision === 'number'
-				? {
-						conflict: {
-							expectedRevision: this.#snapshot.revision,
-							currentRevision: cause.currentRevision
-						}
-					}
-				: {})
-		});
+			cause.currentRevision !== undefined
+		) {
+			patch.conflict = {
+				expectedRevision: this.#snapshot.revision,
+				currentRevision: cause.currentRevision
+			};
+		}
+		this.#patch(patch);
 	}
 
 	#patch(patch: Partial<ComposerSessionSnapshot>): void {

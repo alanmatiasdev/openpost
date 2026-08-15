@@ -24,6 +24,10 @@ declare global {
 		EyeDropper?: new () => OpenPostEyeDropper;
 	}
 
+	interface StorageManager {
+		getDirectory?(): Promise<FileSystemDirectoryHandle>;
+	}
+
 	namespace App {
 		// interface Error {}
 		// interface Locals {}

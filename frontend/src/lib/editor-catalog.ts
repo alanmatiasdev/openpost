@@ -19,13 +19,9 @@ export interface EditorCatalogSnapshot {
 export type EditorCatalogItemKind = 'design' | 'video';
 export type EditorCatalogSurface = 'loading' | 'error' | 'empty' | 'content';
 
-type CatalogItem = ImageEditorDesignSummary | CloudVideoProjectSummary;
-
-interface RemovedItem {
-	key: string;
-	index: number;
-	item: CatalogItem;
-}
+type RemovedItem =
+	| { key: string; index: number; kind: 'design'; item: ImageEditorDesignSummary }
+	| { key: string; index: number; kind: 'video'; item: CloudVideoProjectSummary };
 
 export interface EditorCatalogRollback {
 	kind: EditorCatalogItemKind;
@@ -128,13 +124,13 @@ export class EditorCatalogCache {
 				if (index < 0) continue;
 				const [item] = snapshot.designs.splice(index, 1);
 				snapshot.designTotal = Math.max(0, snapshot.designTotal - 1);
-				items.push({ key, index, item });
+				items.push({ key, index, kind: 'design', item });
 			} else {
 				const index = snapshot.videoProjects.findIndex((item) => item.id === itemID);
 				if (index < 0) continue;
 				const [item] = snapshot.videoProjects.splice(index, 1);
 				snapshot.videoTotal = Math.max(0, snapshot.videoTotal - 1);
-				items.push({ key, index, item });
+				items.push({ key, index, kind: 'video', item });
 			}
 		}
 		return { kind, workspaceID, items };
@@ -144,20 +140,16 @@ export class EditorCatalogCache {
 		for (const removed of rollback.items) {
 			const snapshot = this.entries.get(removed.key);
 			if (!snapshot || snapshot.workspaceID !== rollback.workspaceID) continue;
-			if (rollback.kind === 'design') {
+			if (removed.kind === 'design') {
 				if (snapshot.designs.some((item) => item.id === removed.item.id)) continue;
-				snapshot.designs.splice(
-					Math.min(removed.index, snapshot.designs.length),
-					0,
-					removed.item as ImageEditorDesignSummary
-				);
+				snapshot.designs.splice(Math.min(removed.index, snapshot.designs.length), 0, removed.item);
 				snapshot.designTotal += 1;
 			} else {
 				if (snapshot.videoProjects.some((item) => item.id === removed.item.id)) continue;
 				snapshot.videoProjects.splice(
 					Math.min(removed.index, snapshot.videoProjects.length),
 					0,
-					removed.item as CloudVideoProjectSummary
+					removed.item
 				);
 				snapshot.videoTotal += 1;
 			}

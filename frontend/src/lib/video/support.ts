@@ -1,6 +1,11 @@
 const AVC_PROBE = { codec: 'avc' as const, config: 'avc1.42001f' };
 const cache = new Map<string, Promise<'avc' | null>>();
 
+interface VideoEncodingResources {
+	encoder: VideoEncoder | null;
+	frame: VideoFrame | null;
+}
+
 /**
  * Returns H.264 only after a real frame was encoded at the requested size.
  * Provider uploads need a common codec, so a browser's AV1/VP9 support does not
@@ -36,8 +41,10 @@ async function canEncode(codec: string, width: number, height: number): Promise<
 		bitrate: 1_000_000,
 		framerate: 30
 	};
-	let encoder: VideoEncoder | null = null;
-	let frame: VideoFrame | null = null;
+	const resources: VideoEncodingResources = {
+		encoder: null,
+		frame: null
+	};
 	try {
 		const { supported } = await VideoEncoder.isConfigSupported(config);
 		if (!supported) return false;
@@ -49,18 +56,18 @@ async function canEncode(codec: string, width: number, height: number): Promise<
 				settled = true;
 				resolve(value);
 			};
-			encoder = new VideoEncoder({
+			resources.encoder = new VideoEncoder({
 				output: () => finish(true),
 				error: () => finish(false)
 			});
-			encoder.configure(config);
+			resources.encoder.configure(config);
 			const canvas = document.createElement('canvas');
 			canvas.width = width;
 			canvas.height = height;
 			canvas.getContext('2d')?.fillRect(0, 0, width, height);
-			frame = new VideoFrame(canvas, { timestamp: 0 });
-			encoder.encode(frame, { keyFrame: true });
-			void encoder
+			resources.frame = new VideoFrame(canvas, { timestamp: 0 });
+			resources.encoder.encode(resources.frame, { keyFrame: true });
+			void resources.encoder
 				.flush()
 				.then(() => finish(false))
 				.catch(() => finish(false));
@@ -69,12 +76,12 @@ async function canEncode(codec: string, width: number, height: number): Promise<
 		return false;
 	} finally {
 		try {
-			(frame as VideoFrame | null)?.close();
+			resources.frame?.close();
 		} catch {
 			// The encoder may already own and close the frame.
 		}
 		try {
-			(encoder as VideoEncoder | null)?.close();
+			resources.encoder?.close();
 		} catch {
 			// The encoder may already be closed after an error.
 		}

@@ -16,6 +16,13 @@ export const VIDEO_EDITOR_STORES = [
 
 export type VideoEditorStore = (typeof VIDEO_EDITOR_STORES)[number];
 export type LocalProjectState = 'local' | 'syncing' | 'cloud';
+export type VideoEditorStoredValue =
+	| string
+	| number
+	| boolean
+	| null
+	| VideoEditorStoredValue[]
+	| { [key: string]: VideoEditorStoredValue };
 
 export interface LocalVideoProject {
 	id: string;
@@ -59,7 +66,7 @@ export interface VideoProjectOperation {
 	id: string;
 	at: string;
 	type: string;
-	payload: Record<string, unknown>;
+	payload: Record<string, VideoEditorStoredValue>;
 }
 
 export interface LocalAssetIndex {
@@ -158,7 +165,7 @@ export interface RecordingManifest {
 	events: RecordingSessionEvent[];
 }
 
-export interface AnalysisResult {
+export interface AnalysisResult<Result extends object = object, Settings extends object = object> {
 	id: string;
 	project_id: string;
 	source_id: string;
@@ -166,8 +173,8 @@ export interface AnalysisResult {
 	timeline_fingerprint: string;
 	kind: 'transcript' | 'silence' | 'filler' | 'reframe' | 'focus-zoom';
 	algorithm_version: string;
-	settings: Record<string, unknown>;
-	result: unknown;
+	settings: Settings;
+	result: Result;
 	review_status: 'unreviewed' | 'partly-applied' | 'applied' | 'dismissed';
 	created_at: string;
 }

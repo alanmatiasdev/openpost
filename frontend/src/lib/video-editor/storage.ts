@@ -740,7 +740,9 @@ export async function listRecoverableRecordings(): Promise<RecordingManifest[]> 
 		.sort((left, right) => right.updated_at.localeCompare(left.updated_at));
 }
 
-export async function saveAnalysisResult(result: AnalysisResult): Promise<void> {
+export async function saveAnalysisResult<Result extends object, Settings extends object>(
+	result: AnalysisResult<Result, Settings>
+): Promise<void> {
 	await putOne('analysis-results', structuredClone(result));
 }
 

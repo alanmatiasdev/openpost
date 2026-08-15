@@ -1,18 +1,12 @@
 import { firstPlatformVideoCodec } from '$lib/video/support';
 import type { VideoEditorCapabilities } from './types';
 
-type StorageManagerWithDirectory = StorageManager & {
-	getDirectory?: () => Promise<FileSystemDirectoryHandle>;
-};
-
 export async function detectVideoEditorCapabilities(): Promise<VideoEditorCapabilities> {
 	const browser = typeof window !== 'undefined';
 	const videoDecoder = browser && 'VideoDecoder' in window;
 	const videoEncoder = browser && 'VideoEncoder' in window;
 	const webCodecs = videoDecoder && videoEncoder && typeof VideoFrame !== 'undefined';
-	const opfs = Boolean(
-		(navigator.storage as StorageManagerWithDirectory | undefined)?.getDirectory
-	);
+	const opfs = Boolean(navigator.storage?.getDirectory);
 	const webgl2 = canCreateWebGL2Context();
 	const h264Encoder = videoEncoder ? (await firstPlatformVideoCodec(640, 360)) === 'avc' : false;
 	const aacEncoder = await canEncodeAAC();

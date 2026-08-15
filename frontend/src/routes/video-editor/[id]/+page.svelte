@@ -6343,7 +6343,9 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 		onSaveFile={saveExportFile}
 		onCancel={cancelExport}
 		onReturnToComposer={returnExportsToComposer}
-		onStart={() => startExport(true)}
+		onStart={async () => {
+			await startExport(true);
+		}}
 	/>
 
 	<Dialog.Root bind:open={cloudOpen}>
