@@ -275,6 +275,10 @@
     "audience": "This page is for contributors adding or changing a provider adapter.",
     "boundary": "Keep these interfaces separate. A network can support publishing without supporting every read or moderation action."
   },
+  "https://docs.openpost.social/development/post-publication-migration": {
+    "audience": "Legacy Post HTTP routes, older Post links, CLI command names, and post-named MCP tools are now compatibility surfaces.",
+    "boundary": "OpenPost will keep the retained Post surfaces for at least 90 days and at least two later stable releases."
+  },
   "https://docs.openpost.social/development/production-readiness": {
     "audience": "This page records the current architecture and the checks needed before a release or public campaign.",
     "boundary": "Cloud mode requires Postgres, S3-compatible media storage, and Paddle billing settings."
