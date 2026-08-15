@@ -28,6 +28,26 @@ export interface ListCloudVideoProjectsOptions {
 	signal?: AbortSignal;
 }
 
+export interface StockMediaSearchInput {
+	provider: string;
+	query: string;
+	kind: 'photo' | 'video';
+	orientation?: 'landscape' | 'portrait' | 'square';
+	size?: 'small' | 'medium' | 'large';
+	color?: string;
+	locale?: string;
+	order?: 'relevant' | 'latest' | 'popular';
+	contentFilter?: 'low' | 'high';
+	collections?: string;
+	category?: string;
+	mediaSubtype?: 'all' | 'photo' | 'illustration' | 'vector';
+	editorsChoice?: boolean;
+	minWidth?: number;
+	minHeight?: number;
+	page?: number;
+	perPage?: number;
+}
+
 export async function loadVideoEditorConfig(): Promise<VideoEditorConfig> {
 	const { data, error } = await client.GET('/video-editor/config');
 	if (error || !data)
@@ -197,25 +217,7 @@ export async function listStockProviders(): Promise<StockProvider[]> {
 	return data.providers ?? [];
 }
 
-export async function searchStockMedia(input: {
-	provider: string;
-	query: string;
-	kind: 'photo' | 'video';
-	orientation?: 'landscape' | 'portrait' | 'square';
-	size?: 'small' | 'medium' | 'large';
-	color?: string;
-	locale?: string;
-	order?: 'relevant' | 'latest' | 'popular';
-	contentFilter?: 'low' | 'high';
-	collections?: string;
-	category?: string;
-	mediaSubtype?: 'all' | 'photo' | 'illustration' | 'vector';
-	editorsChoice?: boolean;
-	minWidth?: number;
-	minHeight?: number;
-	page?: number;
-	perPage?: number;
-}): Promise<StockSearchPage> {
+export async function searchStockMedia(input: StockMediaSearchInput): Promise<StockSearchPage> {
 	const { data, error } = await client.GET('/stock-media/search', {
 		params: {
 			query: {

@@ -13,6 +13,7 @@
 		resolveStockAsset,
 		searchStockMedia,
 		type StockAsset,
+		type StockMediaSearchInput,
 		type StockProvider
 	} from '$lib/video-editor/api';
 	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
@@ -27,6 +28,11 @@
 		compact?: boolean;
 		onSelect: (file: File, asset: StockAsset) => void | Promise<void>;
 	}
+	type StockOrientation = NonNullable<StockMediaSearchInput['orientation']>;
+	type StockSize = NonNullable<StockMediaSearchInput['size']>;
+	type StockOrder = NonNullable<StockMediaSearchInput['order']>;
+	type StockContentFilter = NonNullable<StockMediaSearchInput['contentFilter']>;
+	type StockMediaSubtype = NonNullable<StockMediaSearchInput['mediaSubtype']>;
 
 	let { accept = 'both', compact = false, onSelect }: Props = $props();
 	let providers = $state.raw<StockProvider[]>([]);
@@ -40,15 +46,15 @@
 	let error = $state('');
 	let searched = $state(false);
 	let filtersOpen = $state(false);
-	let orientation = $state('');
-	let size = $state('');
+	let orientation = $state<StockOrientation | ''>('');
+	let size = $state<StockSize | ''>('');
 	let color = $state('');
 	let locale = $state('');
-	let order = $state('');
-	let contentFilter = $state('');
+	let order = $state<StockOrder | ''>('');
+	let contentFilter = $state<StockContentFilter | ''>('');
 	let collections = $state('');
 	let category = $state('');
-	let mediaSubtype = $state('');
+	let mediaSubtype = $state<StockMediaSubtype | ''>('');
 	let editorsChoice = $state(false);
 	let minWidth = $state('');
 	let minHeight = $state('');
@@ -146,7 +152,7 @@
 	}
 
 	function changeKind(value: string): void {
-		kind = value as 'photo' | 'video';
+		kind = value === 'video' ? 'video' : 'photo';
 		if (!currentProvider || !supportsKind(currentProvider, kind)) {
 			provider = providers.find((item) => supportsKind(item, kind))?.key ?? '';
 		}
@@ -166,24 +172,15 @@
 				provider,
 				query: query.trim(),
 				kind,
-				orientation: filterValue('orientation', orientation) as
-					| 'landscape'
-					| 'portrait'
-					| 'square'
-					| undefined,
-				size: filterValue('size', size) as 'small' | 'medium' | 'large' | undefined,
+				orientation: filterValue('orientation', orientation),
+				size: filterValue('size', size),
 				color: filterValue('color', color),
 				locale: filterValue('locale', locale),
-				order: filterValue('order', order) as 'relevant' | 'latest' | 'popular' | undefined,
-				contentFilter: filterValue('content_filter', contentFilter) as 'low' | 'high' | undefined,
+				order: filterValue('order', order),
+				contentFilter: filterValue('content_filter', contentFilter),
 				collections: filterValue('collections', collections.trim()),
 				category: filterValue('category', category),
-				mediaSubtype: filterValue('media_subtype', mediaSubtype) as
-					| 'all'
-					| 'photo'
-					| 'illustration'
-					| 'vector'
-					| undefined,
+				mediaSubtype: filterValue('media_subtype', mediaSubtype),
 				editorsChoice: availableFilters.has('editors_choice') ? editorsChoice : undefined,
 				minWidth: availableFilters.has('min_dimensions') ? positiveNumber(minWidth) : undefined,
 				minHeight: availableFilters.has('min_dimensions') ? positiveNumber(minHeight) : undefined,
@@ -200,7 +197,7 @@
 		}
 	}
 
-	function filterValue(filter: string, value: string): string | undefined {
+	function filterValue<Value extends string>(filter: string, value: Value | ''): Value | undefined {
 		return availableFilters.has(filter) && value ? value : undefined;
 	}
 
