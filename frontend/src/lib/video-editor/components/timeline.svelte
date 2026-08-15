@@ -137,6 +137,24 @@
 	);
 	let thumbnailURLs = $state<Record<string, string>>({});
 	let waveformPeaks = $state<Record<string, number[]>>({});
+	interface SnapResult {
+		valueUS: number;
+		snapped: boolean;
+	}
+
+	function parseWaveformPeaks(value: string): number[] | null {
+		const parsed: unknown = JSON.parse(value);
+		if (!Array.isArray(parsed) || !parsed.every(Number.isFinite)) return null;
+		return parsed;
+	}
+
+	function pointerTarget(event: PointerEvent): HTMLElement {
+		const target = event.currentTarget;
+		if (!(target instanceof HTMLElement)) {
+			throw new TypeError('Timeline pointer events must originate from an HTML element');
+		}
+		return target;
+	}
 
 	onMount(() => {
 		let stopped = false;
@@ -156,7 +174,8 @@
 					const file = await readProjectFile(asset.path);
 					if (!file) continue;
 					try {
-						nextWaveforms[asset.source_id] = JSON.parse(await file.text()) as number[];
+						const peaks = parseWaveformPeaks(await file.text());
+						if (peaks) nextWaveforms[asset.source_id] = peaks;
 					} catch {
 						// A stale waveform is disposable and will be regenerated.
 					}
@@ -276,11 +295,7 @@
 		return candidates.filter((candidate) => !candidate.key.startsWith(excludedID));
 	}
 
-	function snappedTime(
-		valueUS: number,
-		excludedID: string,
-		disabled: boolean
-	): { valueUS: number; snapped: boolean } {
+	function snappedTime(valueUS: number, excludedID: string, disabled: boolean): SnapResult {
 		if (disabled) {
 			snapGuideUS = null;
 			snapStatus = '';
@@ -309,7 +324,7 @@
 		event.stopPropagation();
 		onSelectClip(clipID);
 		trimming = { clipID, edge, lastClientX: event.clientX };
-		(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+		pointerTarget(event).setPointerCapture(event.pointerId);
 	}
 
 	function continueTrim(event: PointerEvent): void {
@@ -341,7 +356,7 @@
 		flushTrim();
 		trimming = null;
 		snapGuideUS = null;
-		const target = event.currentTarget as HTMLElement;
+		const target = pointerTarget(event);
 		if (target.hasPointerCapture(event.pointerId)) {
 			target.releasePointerCapture(event.pointerId);
 		}
@@ -363,7 +378,7 @@
 		else if (drag.kind === 'audio') onSelectAudioItem(drag.id);
 		else if (drag.kind === 'caption') onSelectCaptionCue(drag.id);
 		else selectedMarkerID = drag.id;
-		(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+		pointerTarget(event).setPointerCapture(event.pointerId);
 	}
 
 	function applyTiming(
@@ -456,7 +471,7 @@
 		flushTimingDrag();
 		timingDrag = null;
 		snapGuideUS = null;
-		const target = event.currentTarget as HTMLElement;
+		const target = pointerTarget(event);
 		if (target.hasPointerCapture(event.pointerId)) target.releasePointerCapture(event.pointerId);
 	}
 
@@ -493,7 +508,7 @@
 	}
 
 	function seekFromPointer(event: PointerEvent): void {
-		const ruler = event.currentTarget as HTMLElement;
+		const ruler = pointerTarget(event);
 		const bounds = ruler.getBoundingClientRect();
 		const progress = Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width));
 		playheadUS = Math.round(progress * durationUS);
@@ -503,7 +518,7 @@
 		event.preventDefault();
 		seeking = true;
 		seekFromPointer(event);
-		(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+		pointerTarget(event).setPointerCapture(event.pointerId);
 	}
 
 	function continueSeek(event: PointerEvent): void {
@@ -514,7 +529,7 @@
 		if (!seeking) return;
 		seekFromPointer(event);
 		seeking = false;
-		const target = event.currentTarget as HTMLElement;
+		const target = pointerTarget(event);
 		if (target.hasPointerCapture(event.pointerId)) target.releasePointerCapture(event.pointerId);
 	}
 

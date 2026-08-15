@@ -359,6 +359,14 @@
 		return Math.max(0, Math.min(0.8, value * 0.8));
 	}
 
+	function pointerTarget(event: PointerEvent): HTMLElement {
+		const target = event.currentTarget;
+		if (!(target instanceof HTMLElement)) {
+			throw new TypeError('Preview pointer events must originate from an HTML element');
+		}
+		return target;
+	}
+
 	function beginClipDrag(event: PointerEvent, layer: EvaluatedPrimaryLayer): void {
 		onSelectClip?.(layer.clip_id);
 		dragging = {
@@ -370,7 +378,7 @@
 			originY: layer.presentation.position_y,
 			moved: false
 		};
-		(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+		pointerTarget(event).setPointerCapture(event.pointerId);
 	}
 
 	function beginVisualDrag(
@@ -389,12 +397,12 @@
 			originY: presentation.position_y,
 			moved: false
 		};
-		(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+		pointerTarget(event).setPointerCapture(event.pointerId);
 	}
 
 	function continueDrag(event: PointerEvent): void {
 		if (!dragging) return;
-		const target = event.currentTarget as HTMLElement;
+		const target = pointerTarget(event);
 		const canvas = target.parentElement;
 		if (!canvas) return;
 		const bounds = canvas.getBoundingClientRect();
@@ -410,7 +418,7 @@
 
 	function endDrag(event: PointerEvent): void {
 		dragging = null;
-		const target = event.currentTarget as HTMLElement;
+		const target = pointerTarget(event);
 		if (target.hasPointerCapture(event.pointerId)) {
 			target.releasePointerCapture(event.pointerId);
 		}
@@ -474,11 +482,17 @@
 		return item.text.slice(0, Math.max(1, Math.ceil(item.text.length * entrance)));
 	}
 
+	interface TextAnimationValues {
+		opacity: number;
+		rise: number;
+		pop: number;
+	}
+
 	function textAnimationValues(
 		item: Extract<VisualTrackItem, { type: 'text' }>,
 		localTimeUS: number,
 		opacity: number
-	): { opacity: number; rise: number; pop: number } {
+	): TextAnimationValues {
 		const entrance = Math.min(1, localTimeUS / 350_000);
 		const exit = Math.min(1, (item.duration_us - localTimeUS) / 250_000);
 		const visibility = Math.max(0, Math.min(entrance, exit));
