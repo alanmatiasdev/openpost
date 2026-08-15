@@ -14,7 +14,9 @@ func TestCapabilitySyncStateMigrationPreservesRecoveryState(t *testing.T) {
 	t.Parallel()
 	db := newMigrationsTestDB(t)
 	ctx := context.Background()
-	_, err := db.Exec(`
+	_, err := db.Exec("PRAGMA foreign_keys=OFF")
+	require.NoError(t, err)
+	_, err = db.Exec(`
 CREATE TABLE communication_sync_states (
  id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, capability TEXT NOT NULL,
  subject_type TEXT NOT NULL, subject_id TEXT NOT NULL, social_account_id TEXT NOT NULL,
@@ -25,14 +27,12 @@ CREATE TABLE communication_sync_states (
  created_at TIMESTAMP NOT NULL, updated_at TIMESTAMP NOT NULL
 );
 CREATE TABLE renditions (id TEXT PRIMARY KEY);
-CREATE TABLE social_accounts (id TEXT PRIMARY KEY);
-CREATE TABLE jobs (type TEXT, status TEXT, locked_at TIMESTAMP, locked_by TEXT, last_error TEXT);
+CREATE TABLE jobs (type TEXT, payload TEXT, status TEXT, locked_at TIMESTAMP, locked_by TEXT, last_error TEXT);
 INSERT INTO renditions (id) VALUES ('rendition-1');
-INSERT INTO social_accounts (id) VALUES ('account-1'), ('account-2');
 INSERT INTO communication_sync_states VALUES
  ('engagement:rendition:rendition-1', 'workspace-1', 'engagement', 'rendition', 'rendition-1', 'account-1', 'x', 'error', 'rate_limit', 'Try later', 'eng-cursor', 1, '2026-08-15 10:00:00', '2026-08-15 09:00:00', '2026-08-15 11:00:00', 2, '2026-08-15 08:00:00', '2026-08-15 10:00:00'),
- ('messages:account:account-2', 'workspace-1', 'messages', 'account', 'account-2', 'mastodon', 'permission_required', 'authentication', 'Reconnect', 'msg-cursor', 0, '2026-08-15 10:00:00', '2026-08-15 09:00:00', '2026-08-16 10:00:00', 3, '2026-08-15 08:00:00', '2026-08-15 10:00:00');
-INSERT INTO jobs VALUES ('communications_sweep', 'pending', NULL, '', '');
+ ('messages:account:account-2', 'workspace-1', 'messages', 'account', 'account-2', 'account-2', 'mastodon', 'permission_required', 'authentication', 'Reconnect', 'msg-cursor', 0, '2026-08-15 10:00:00', '2026-08-15 09:00:00', '2026-08-16 10:00:00', 3, '2026-08-15 08:00:00', '2026-08-15 10:00:00');
+INSERT INTO jobs VALUES ('communications_sweep', '{}', 'pending', NULL, '', '');
 `)
 	require.NoError(t, err)
 

@@ -1,3 +1,27 @@
+-- Some migration fixtures and early installations reached this version
+-- without the transitional table. Materialize an empty compatible source so
+-- the same copy-and-retire statements remain safe in every upgrade shape.
+CREATE TABLE IF NOT EXISTS communication_sync_states (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  capability TEXT NOT NULL,
+  subject_type TEXT NOT NULL,
+  subject_id TEXT NOT NULL,
+  social_account_id TEXT NOT NULL,
+  platform TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  error_code TEXT NOT NULL DEFAULT '',
+  error_message TEXT NOT NULL DEFAULT '',
+  cursor TEXT NOT NULL DEFAULT '',
+  backfill_complete BOOLEAN NOT NULL DEFAULT FALSE,
+  last_attempted_at TIMESTAMP,
+  last_success_at TIMESTAMP,
+  next_sync_at TIMESTAMP,
+  empty_streak INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS engagement_sync_states (
   id TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL,
