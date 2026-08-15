@@ -6,6 +6,7 @@ All notable changes to this project are documented in this file.
 
 ### Changed
 
+- Unified Workspace access behind one application decision for read, edit, and administer actions across request middleware and transactional callers. The decision now combines credential Workspace binding, Organization identity policy, active Workspace membership, and role level while keeping safe denial separate from operational failure.
 - Proved the complete UX program through one combined browser and integration matrix covering the first-use journey, daily work, collaboration and safety, local recovery, responsive presentations, themes, locales, keyboard and announced state, automated serious and critical accessibility checks, clean console output, and synchronized Self-hosted claims. Reconciled the audit-remediation backlog to remove the completed UX work and retain external status infrastructure as a separate deferred boundary.
 - Split Cloudflare edge changes into a read-only preparation and a separate apply that requires the reviewed forward-plan and prepared-operation digests, so operators can inspect the live snapshot and exact rollback before any production write.
 - Published a dedicated Self-hosted product path with an explicit no-software-fee boundary outside Hosted service plans, complete operator responsibilities, current deployment and source links, responsive no-JavaScript HTML, and an agent-readable Markdown representation.

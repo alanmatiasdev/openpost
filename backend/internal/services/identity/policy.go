@@ -155,7 +155,7 @@ func missingWorkspaceTable(err error) bool {
 
 func EvaluateWorkspaceAccess(
 	ctx context.Context,
-	db *bun.DB,
+	db bun.IDB,
 	workspaceID,
 	userID,
 	sessionID,
@@ -179,7 +179,7 @@ func EvaluateWorkspaceAccess(
 		Allowed:        true,
 		OrganizationID: workspace.OrganizationID,
 	}
-	policy, err := PolicyForOrganization(ctx, db, workspace.OrganizationID)
+	policy, err := policyForOrganization(ctx, db, workspace.OrganizationID)
 	if err != nil {
 		return WorkspaceAccessDecision{}, err
 	}
@@ -213,7 +213,7 @@ func EvaluateWorkspaceAccess(
 
 func evaluateWorkspaceCredentialAccess(
 	ctx context.Context,
-	db *bun.DB,
+	db bun.IDB,
 	workspace models.Workspace,
 	userID,
 	sessionID,
@@ -251,7 +251,7 @@ func evaluateWorkspaceCredentialAccess(
 
 func breakGlassSessionAllowed(
 	ctx context.Context,
-	db *bun.DB,
+	db bun.IDB,
 	userID,
 	sessionID string,
 ) (bool, error) {
@@ -355,7 +355,7 @@ func organizationTokenScopeAllows(
 
 func validSessionAssurance(
 	ctx context.Context,
-	db *bun.DB,
+	db bun.IDB,
 	sessionID,
 	userID string,
 	providerIDs []string,
@@ -386,7 +386,7 @@ func validSessionAssurance(
 
 func validOrganizationToken(
 	ctx context.Context,
-	db *bun.DB,
+	db bun.IDB,
 	tokenID,
 	userID string,
 	workspace models.Workspace,
@@ -456,7 +456,7 @@ func validOrganizationBoundToken(
 
 func validOrganizationTokenRecord(
 	ctx context.Context,
-	db *bun.DB,
+	db bun.IDB,
 	token models.APIToken,
 	policy Policy,
 ) (bool, error) {
@@ -481,7 +481,7 @@ func validOrganizationTokenRecord(
 
 func firstAcceptedProvider(
 	ctx context.Context,
-	db *bun.DB,
+	db bun.IDB,
 	providerIDs []string,
 ) (*models.IdentityProvider, error) {
 	if len(providerIDs) == 0 {
@@ -524,7 +524,7 @@ func AuthorizeTokenCreation(
 		return TokenPolicyDecision{}, err
 	}
 	decision.OrganizationID = workspace.OrganizationID
-	policy, err := PolicyForOrganization(ctx, db, workspace.OrganizationID)
+	policy, err := policyForOrganization(ctx, db, workspace.OrganizationID)
 	if err != nil {
 		return TokenPolicyDecision{}, err
 	}

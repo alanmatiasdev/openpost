@@ -15,7 +15,6 @@ import (
 	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/services/apitokens"
 	"github.com/openpost/backend/internal/services/auth"
-	"github.com/openpost/backend/internal/services/identity"
 	"github.com/openpost/backend/internal/services/workspaceaccess"
 	"github.com/uptrace/bun"
 )
@@ -444,54 +443,45 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
-// CheckWorkspaceAccess is a helper function to verify workspace access.
+// CheckWorkspaceAccess is a helper function to verify workspace read access.
 func CheckWorkspaceAccess(ctx context.Context, db *bun.DB, workspaceID, userID string) (bool, error) {
-	_, ok, err := WorkspaceRole(ctx, db, workspaceID, userID)
-	return ok, err
+	decision, err := WorkspaceAccessDecision(ctx, db, workspaceID, userID, workspaceaccess.LevelRead)
+	return decision.Allowed, err
+}
+
+// WorkspaceAccessDecision evaluates the transport-independent Workspace access
+// decision using the authenticated credential facts attached to the request.
+func WorkspaceAccessDecision(ctx context.Context, db bun.IDB, workspaceID, userID string, level workspaceaccess.Level) (workspaceaccess.Decision, error) {
+	return workspaceaccess.NewAuthorizer(db).Authorize(ctx, workspaceID, workspaceaccess.ActorFacts{
+		UserID:                userID,
+		SessionID:             GetSessionID(ctx),
+		TokenID:               GetTokenID(ctx),
+		CredentialWorkspaceID: GetWorkspaceID(ctx),
+	}, level)
 }
 
 // WorkspaceRole returns the authenticated user's role in a workspace while
 // preserving an API token's optional workspace boundary.
 func WorkspaceRole(ctx context.Context, db *bun.DB, workspaceID, userID string) (string, bool, error) {
-	if !WorkspaceScopeAllows(ctx, workspaceID) {
-		return "", false, nil
-	}
-	member, ok, err := workspaceaccess.Member(ctx, db, workspaceID, userID)
-	if err != nil || !ok {
-		return "", false, err
-	}
-	decision, err := identity.EvaluateWorkspaceAccess(
-		ctx,
-		db,
-		workspaceID,
-		userID,
-		GetSessionID(ctx),
-		GetTokenID(ctx),
-	)
+	decision, err := WorkspaceAccessDecision(ctx, db, workspaceID, userID, workspaceaccess.LevelRead)
 	if err != nil || !decision.Allowed {
 		return "", false, err
 	}
-	return member.Role, ok, nil
+	return decision.Role, true, nil
 }
 
 // CheckWorkspaceEditAccess permits workspace administrators and editors to
 // mutate editorial content. Viewers remain read-only.
 func CheckWorkspaceEditAccess(ctx context.Context, db *bun.DB, workspaceID, userID string) (bool, error) {
-	role, ok, err := WorkspaceRole(ctx, db, workspaceID, userID)
-	if err != nil || !ok {
-		return false, err
-	}
-	return role == models.WorkspaceRoleAdmin || role == models.WorkspaceRoleEditor, nil
+	decision, err := WorkspaceAccessDecision(ctx, db, workspaceID, userID, workspaceaccess.LevelEdit)
+	return decision.Allowed, err
 }
 
 // CheckWorkspaceAdminAccess restricts workspace configuration and team
 // administration to workspace administrators.
 func CheckWorkspaceAdminAccess(ctx context.Context, db *bun.DB, workspaceID, userID string) (bool, error) {
-	role, ok, err := WorkspaceRole(ctx, db, workspaceID, userID)
-	if err != nil || !ok {
-		return false, err
-	}
-	return role == models.WorkspaceRoleAdmin, nil
+	decision, err := WorkspaceAccessDecision(ctx, db, workspaceID, userID, workspaceaccess.LevelAdminister)
+	return decision.Allowed, err
 }
 
 func WorkspaceScopeAllows(ctx context.Context, workspaceID string) bool {
