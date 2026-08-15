@@ -79,18 +79,10 @@ export async function exportQuickCutLosslessly(
 		const videoTrack = videoTracks[0]!;
 		const videoCodec = await videoTrack.getCodec();
 		if (!videoCodec) throw new Error('The source video codec is unknown.');
-		const audioCodecs = await Promise.all(audioTracks.map((track) => track.getCodec()));
-		if (audioCodecs.some((codec) => codec === null)) {
-			throw new Error(
-				'Quick Cut cannot identify every audio track, so it will not silently drop one.'
-			);
-		}
-		const format = selectOutputFormat(
-			videoCodec,
-			audioCodecs as AudioCodec[],
-			source.mime_type,
-			options.format
+		const audioCodecs = requireAudioCodecs(
+			await Promise.all(audioTracks.map((track) => track.getCodec()))
 		);
+		const format = selectOutputFormat(videoCodec, audioCodecs, source.mime_type, options.format);
 		const resolvedSegments = await resolveVideoSegments(videoTrack, compatibility.segments);
 		const [videoPacketStats, ...audioPacketStats] =
 			format instanceof Mp4OutputFormat
@@ -150,12 +142,7 @@ export async function exportQuickCutLosslessly(
 			`${safeFileName(project.title)}-quick-cut${format.fileExtension}`,
 			format.mimeType
 		);
-		await validateLosslessOutput(
-			rendered,
-			videoCodec,
-			audioCodecs as AudioCodec[],
-			projectDurationUS(project)
-		);
+		await validateLosslessOutput(rendered, videoCodec, audioCodecs, projectDurationUS(project));
 		options.onProgress?.(1);
 		// OPFS-backed File objects are snapshots of the bytes, but Chromium can
 		// still read them lazily when a download starts. Keep a successful staging
@@ -168,6 +155,19 @@ export async function exportQuickCutLosslessly(
 		if (!input.disposed) input.dispose();
 		if (!completed) await stream.discard();
 	}
+}
+
+function requireAudioCodecs(codecs: Array<AudioCodec | null>): AudioCodec[] {
+	const resolved: AudioCodec[] = [];
+	for (const codec of codecs) {
+		if (!codec) {
+			throw new Error(
+				'Quick Cut cannot identify every audio track, so it will not silently drop one.'
+			);
+		}
+		resolved.push(codec);
+	}
+	return resolved;
 }
 
 function selectOutputFormat(

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { SvelteSet } from 'svelte/reactivity';
-	import type { VideoProjectDocumentV1 } from '@openpost/video-project';
+	import { migrateVideoProjectDocument } from '@openpost/video-project';
 	import { ContextMenu } from 'bits-ui';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
@@ -536,13 +536,11 @@
 				};
 			} else {
 				const current = await getCloudVideoProject(target.item.id);
+				const document = migrateVideoProjectDocument(current.document).document;
 				const updated = await updateCloudVideoProject(
 					current.id,
 					current.revision,
-					{
-						...current.document,
-						title
-					} as unknown as VideoProjectDocumentV1,
+					{ ...document, title },
 					current.cover_preview_media_id
 				);
 				catalogCache.invalidateWorkspace(target.workspaceID);

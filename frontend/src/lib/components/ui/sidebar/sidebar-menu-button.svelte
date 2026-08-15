@@ -33,6 +33,8 @@
 	import type { HTMLAttributes } from 'svelte/elements';
 	import { useSidebar } from './context.svelte.js';
 
+	type SidebarMenuButtonChildProps = NonNullable<Parameters<typeof mergeProps>[number]>;
+
 	let {
 		ref = $bindable(null),
 		class: className,
@@ -50,7 +52,7 @@
 		size?: SidebarMenuButtonSize;
 		tooltipContent?: Snippet | string;
 		tooltipContentProps?: WithoutChildrenOrChild<ComponentProps<typeof Tooltip.Content>>;
-		child?: Snippet<[{ props: Record<string, unknown> }]>;
+		child?: Snippet<[{ props: SidebarMenuButtonChildProps }]>;
 	} = $props();
 
 	const sidebar = useSidebar();
@@ -66,7 +68,7 @@
 	});
 </script>
 
-{#snippet Button({ props }: { props?: Record<string, unknown> })}
+{#snippet Button({ props }: { props?: SidebarMenuButtonChildProps })}
 	{@const mergedProps = mergeProps(buttonProps, props)}
 	{#if child}
 		{@render child({ props: mergedProps })}

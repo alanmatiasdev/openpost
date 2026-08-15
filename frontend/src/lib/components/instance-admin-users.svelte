@@ -39,8 +39,31 @@
 
 	type InstanceUserPage = components['schemas']['InstanceUserPage'];
 	type InstanceUser = components['schemas']['InstanceUserResponse'];
+	type InstanceUserSort =
+		| 'created_at'
+		| 'email'
+		| 'display_name'
+		| 'last_active_at'
+		| 'workspace_count'
+		| 'publication_count';
+
+	interface InstanceAPIProblem {
+		detail?: string;
+	}
 
 	const USERS_PER_PAGE = 25;
+	const instanceUserSorts = new Set<string>([
+		'created_at',
+		'email',
+		'display_name',
+		'last_active_at',
+		'workspace_count',
+		'publication_count'
+	]);
+
+	function isInstanceUserSort(value: string): value is InstanceUserSort {
+		return instanceUserSorts.has(value);
+	}
 
 	let users = $state.raw<InstanceUserPage | null>(null);
 	let usersLoading = $state(true);
@@ -186,7 +209,7 @@
 		},
 		onSortingChange: handleSortingChange,
 		onColumnVisibilityChange: (updater) => {
-			columnVisibility = typeof updater === 'function' ? updater(columnVisibility) : updater;
+			columnVisibility = updater instanceof Function ? updater(columnVisibility) : updater;
 		},
 		getCoreRowModel: getCoreRowModel(),
 		manualSorting: true
@@ -203,6 +226,7 @@
 	) {
 		const sequence = ++usersRequestSequence;
 		const activeSort = requestedSorting[0] ?? { id: 'created_at', desc: true };
+		const sort = isInstanceUserSort(activeSort.id) ? activeSort.id : 'created_at';
 		usersLoading = true;
 		usersError = '';
 		const { data, error } = await client.GET('/admin/users', {
@@ -211,13 +235,7 @@
 					page: requestedPage,
 					per_page: USERS_PER_PAGE,
 					search: requestedSearch || undefined,
-					sort: activeSort.id as
-						| 'created_at'
-						| 'email'
-						| 'display_name'
-						| 'last_active_at'
-						| 'workspace_count'
-						| 'publication_count',
+					sort,
 					direction: activeSort.desc ? 'desc' : 'asc'
 				}
 			}
@@ -239,7 +257,7 @@
 	}
 
 	function handleSortingChange(updater: Updater<SortingState>) {
-		const next = typeof updater === 'function' ? updater(sorting) : updater;
+		const next = updater instanceof Function ? updater(sorting) : updater;
 		sorting = next.slice(0, 1);
 		userPage = 1;
 		void loadUsers(1, sorting);
@@ -315,12 +333,8 @@
 		}
 	}
 
-	function problemDetail(error: unknown, fallback: string) {
-		if (error && typeof error === 'object' && 'detail' in error) {
-			const detail = error.detail;
-			if (typeof detail === 'string' && detail.trim()) return detail;
-		}
-		return fallback;
+	function problemDetail(error: InstanceAPIProblem | undefined, fallback: string) {
+		return error?.detail?.trim() || fallback;
 	}
 
 	function formatNumber(value: number) {
