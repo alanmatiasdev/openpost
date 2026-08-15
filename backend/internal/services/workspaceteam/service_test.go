@@ -13,7 +13,6 @@ import (
 	servicecrypto "github.com/openpost/backend/internal/services/crypto"
 	"github.com/openpost/backend/internal/services/entitlements"
 	"github.com/openpost/backend/internal/services/notifications"
-	"github.com/openpost/backend/internal/services/passwordmail"
 	"github.com/openpost/backend/internal/services/transactionalmail"
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun"
@@ -25,19 +24,11 @@ type teamInvitationSender struct {
 	messages []transactionalmail.WorkspaceInvitationMessage
 }
 
-func (s *teamInvitationSender) SendPasswordReset(context.Context, passwordmail.ResetMessage) error {
+func (s *teamInvitationSender) DeliverNotificationEmail(context.Context, notifications.EmailMessage) error {
 	return nil
 }
 
-func (s *teamInvitationSender) SendEmailVerification(context.Context, passwordmail.VerificationMessage) error {
-	return nil
-}
-
-func (s *teamInvitationSender) SendNotification(context.Context, passwordmail.NotificationMessage) error {
-	return nil
-}
-
-func (s *teamInvitationSender) SendWorkspaceInvitation(_ context.Context, message transactionalmail.WorkspaceInvitationMessage) error {
+func (s *teamInvitationSender) DeliverWorkspaceInvitationEmail(_ context.Context, message transactionalmail.WorkspaceInvitationMessage) error {
 	s.messages = append(s.messages, message)
 	return nil
 }
@@ -410,7 +401,7 @@ func TestInvitationQueuesTransactionalEmailForUnregisteredRecipient(t *testing.T
 	require.NoError(t, err)
 	sender := &teamInvitationSender{}
 	service.notifications = notifications.NewService(db, notifications.Options{
-		Sender: sender, Encryptor: servicecrypto.NewTokenEncryptor("invitation-test-key"),
+		EmailDelivery: sender, Encryptor: servicecrypto.NewTokenEncryptor("invitation-test-key"),
 		PublicURL: "https://app.openpost.test",
 	})
 
@@ -455,7 +446,7 @@ func TestResendCrashStateAndStaleDeliveryCompletionStayTruthful(t *testing.T) {
 		require.NoError(t, err)
 	}
 	service.notifications = notifications.NewService(db, notifications.Options{
-		Sender: &teamInvitationSender{}, Encryptor: servicecrypto.NewTokenEncryptor("invitation-test-key"),
+		EmailDelivery: &teamInvitationSender{}, Encryptor: servicecrypto.NewTokenEncryptor("invitation-test-key"),
 		PublicURL: "https://app.openpost.test",
 	})
 
@@ -516,7 +507,7 @@ func TestRegisteredInvitationKeepsRawTokenOutOfNotificationAndAuditRecords(t *te
 	seedTeamUser(t, db, "invitee-1", "registered@example.com")
 	sender := &teamInvitationSender{}
 	service.notifications = notifications.NewService(db, notifications.Options{
-		Sender: sender, Encryptor: servicecrypto.NewTokenEncryptor("invitation-test-key"),
+		EmailDelivery: sender, Encryptor: servicecrypto.NewTokenEncryptor("invitation-test-key"),
 		PublicURL: "https://app.openpost.test",
 	})
 	_, err := service.notifications.UpdatePreferences(t.Context(), "invitee-1", notifications.Preferences{
@@ -551,7 +542,7 @@ func TestInvitationEnqueueFailureKeepsOneInvitationAndCopyToken(t *testing.T) {
 	service, db := newTeamTestService(t, 10)
 	sender := &teamInvitationSender{}
 	service.notifications = notifications.NewService(db, notifications.Options{
-		Sender: sender, Encryptor: servicecrypto.NewTokenEncryptor("invitation-test-key"),
+		EmailDelivery: sender, Encryptor: servicecrypto.NewTokenEncryptor("invitation-test-key"),
 		PublicURL: "https://app.openpost.test",
 	})
 

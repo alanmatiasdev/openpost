@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/openpost/backend/internal/services/notifications"
 	"github.com/openpost/backend/internal/services/transactionalmail"
 )
 
@@ -32,7 +33,7 @@ type VerificationMessage struct {
 	IdempotencyKey string
 }
 
-type NotificationMessage struct {
+type IdentityMessage struct {
 	Recipient      string
 	Title          string
 	Body           string
@@ -41,11 +42,41 @@ type NotificationMessage struct {
 	IdempotencyKey string
 }
 
-type Sender interface {
-	SendPasswordReset(context.Context, ResetMessage) error
-	SendEmailVerification(context.Context, VerificationMessage) error
-	SendNotification(context.Context, NotificationMessage) error
+type notificationMessage struct {
+	Recipient      string
+	Title          string
+	Body           string
+	ActionURL      string
+	PreferencesURL string
+	IdempotencyKey string
 }
+
+type PasswordResetSender interface {
+	SendPasswordReset(context.Context, ResetMessage) error
+}
+
+type VerificationSender interface {
+	SendEmailVerification(context.Context, VerificationMessage) error
+}
+
+type IdentitySender interface {
+	SendIdentityEmail(context.Context, IdentityMessage) error
+}
+
+// Sender is the application composition contract implemented by each provider.
+// Consumers depend on its narrower constituent capabilities.
+type Sender interface {
+	PasswordResetSender
+	VerificationSender
+	IdentitySender
+	notifications.EmailDeliveryPort
+}
+
+var (
+	_ Sender = (*SMTPSender)(nil)
+	_ Sender = (*ResendSender)(nil)
+	_ Sender = (*CloudflareSender)(nil)
+)
 
 type SMTPConfig struct {
 	Host       string
@@ -137,16 +168,32 @@ func (s *SMTPSender) SendEmailVerification(ctx context.Context, message Verifica
 	return s.send(ctx, recipient, buildVerificationEmail(s.from, recipient, message))
 }
 
-func (s *SMTPSender) SendNotification(ctx context.Context, message NotificationMessage) error {
+func (s *SMTPSender) SendIdentityEmail(ctx context.Context, message IdentityMessage) error {
 	recipient, err := mail.ParseAddress(strings.TrimSpace(message.Recipient))
 	if err != nil {
 		return fmt.Errorf("invalid notification recipient: %w", err)
 	}
-	content, err := notificationContent(message)
+	content, err := notificationContent(notificationMessage(message))
 	if err != nil {
 		return err
 	}
 	return s.send(ctx, recipient, buildTextEmail(s.from, recipient, content))
+}
+
+func (s *SMTPSender) DeliverNotificationEmail(ctx context.Context, message notifications.EmailMessage) error {
+	recipient, err := mail.ParseAddress(strings.TrimSpace(message.Recipient))
+	if err != nil {
+		return fmt.Errorf("invalid notification recipient: %w", err)
+	}
+	content, err := notificationContent(notificationMessage(message))
+	if err != nil {
+		return err
+	}
+	return s.send(ctx, recipient, buildTextEmail(s.from, recipient, content))
+}
+
+func (s *SMTPSender) DeliverWorkspaceInvitationEmail(ctx context.Context, message transactionalmail.WorkspaceInvitationMessage) error {
+	return s.SendWorkspaceInvitation(ctx, message)
 }
 
 func (s *SMTPSender) SendWorkspaceInvitation(ctx context.Context, message transactionalmail.WorkspaceInvitationMessage) error {

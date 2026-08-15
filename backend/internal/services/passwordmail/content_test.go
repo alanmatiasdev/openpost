@@ -47,7 +47,7 @@ func TestWorkspaceInvitationContentRejectsUnsafeOrIncompleteFacts(t *testing.T) 
 }
 
 func TestNotificationContentEscapesUserVisibleValues(t *testing.T) {
-	content, err := notificationContent(NotificationMessage{
+	content, err := notificationContent(notificationMessage{
 		Title:          "Publish <failed>",
 		Body:           "A destination returned <script>alert(1)</script>.",
 		ActionURL:      "https://app.openpost.test/activity?publication=one&view=failed",
@@ -62,12 +62,12 @@ func TestNotificationContentEscapesUserVisibleValues(t *testing.T) {
 }
 
 func TestNotificationContentRejectsUnsafeURLsAndHeaderInjection(t *testing.T) {
-	_, err := notificationContent(NotificationMessage{
+	_, err := notificationContent(notificationMessage{
 		Title: "Publish failed\r\nBcc: target@example.com", ActionURL: "javascript:alert(1)",
 	})
 	require.Error(t, err)
 
-	content, err := notificationContent(NotificationMessage{Title: "Publish failed\r\nBcc: target@example.com"})
+	content, err := notificationContent(notificationMessage{Title: "Publish failed\r\nBcc: target@example.com"})
 	require.NoError(t, err)
 	require.False(t, strings.ContainsAny(content.Subject, "\r\n"))
 }

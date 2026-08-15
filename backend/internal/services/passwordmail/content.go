@@ -52,7 +52,7 @@ func verificationContent(message VerificationMessage) (messageContent, error) {
 	return messageContent{Subject: "Verify your OpenPost email", Text: text, HTML: htmlBody}, nil
 }
 
-func notificationContent(message NotificationMessage) (messageContent, error) {
+func notificationContent(message notificationMessage) (messageContent, error) {
 	title := strings.Join(strings.Fields(strings.TrimSpace(message.Title)), " ")
 	if title == "" {
 		return messageContent{}, fmt.Errorf("notification title is required")

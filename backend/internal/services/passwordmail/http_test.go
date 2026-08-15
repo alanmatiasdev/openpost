@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/openpost/backend/internal/services/notifications"
 	"github.com/stretchr/testify/require"
 )
 
@@ -38,6 +39,35 @@ func TestResendSenderUsesBearerAuthAndIdempotency(t *testing.T) {
 	}))
 	require.Equal(t, "Verify your OpenPost email", received["subject"])
 	require.Contains(t, received["text"], "123456")
+}
+
+func TestHTTPAdaptersImplementNotificationEmailDelivery(t *testing.T) {
+	for _, provider := range []string{"resend", "cloudflare"} {
+		t.Run(provider, func(t *testing.T) {
+			var received map[string]any
+			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				require.NoError(t, json.NewDecoder(r.Body).Decode(&received))
+				w.WriteHeader(http.StatusOK)
+			}))
+			defer server.Close()
+
+			var delivery notifications.EmailDeliveryPort
+			if provider == "resend" {
+				sender, err := NewResendSender(ResendConfig{APIKey: "secret", From: "OpenPost <hello@example.com>", BaseURL: server.URL, Client: server.Client()})
+				require.NoError(t, err)
+				delivery = sender
+			} else {
+				sender, err := NewCloudflareSender(CloudflareConfig{AccountID: "account-1", APIToken: "secret", From: "OpenPost <hello@example.com>", BaseURL: server.URL, Client: server.Client()})
+				require.NoError(t, err)
+				delivery = sender
+			}
+			require.NoError(t, delivery.DeliverNotificationEmail(t.Context(), notifications.EmailMessage{
+				Recipient: "person@example.com", Title: "Publication failed", Body: "One destination failed.", IdempotencyKey: "delivery-1",
+			}))
+			require.Equal(t, "OpenPost: Publication failed", received["subject"])
+			require.Contains(t, received["text"], "One destination failed.")
+		})
+	}
 }
 
 func TestCloudflareSenderUsesAccountEndpointAndStructuredFrom(t *testing.T) {

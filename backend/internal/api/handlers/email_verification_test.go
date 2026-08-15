@@ -31,14 +31,6 @@ func (s *recordingVerificationSender) SendEmailVerification(
 	return s.err
 }
 
-func (s *recordingVerificationSender) SendPasswordReset(_ context.Context, _ passwordmail.ResetMessage) error {
-	return s.err
-}
-
-func (s *recordingVerificationSender) SendNotification(_ context.Context, _ passwordmail.NotificationMessage) error {
-	return s.err
-}
-
 func TestEmailRegistrationRequiresCodeBeforeIssuingSession(t *testing.T) {
 	t.Parallel()
 

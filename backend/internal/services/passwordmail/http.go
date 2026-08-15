@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/openpost/backend/internal/services/notifications"
 	"github.com/openpost/backend/internal/services/transactionalmail"
 )
 
@@ -71,12 +72,24 @@ func (s *ResendSender) SendEmailVerification(ctx context.Context, message Verifi
 	return s.send(ctx, message.Recipient, message.IdempotencyKey, content)
 }
 
-func (s *ResendSender) SendNotification(ctx context.Context, message NotificationMessage) error {
-	content, err := notificationContent(message)
+func (s *ResendSender) SendIdentityEmail(ctx context.Context, message IdentityMessage) error {
+	content, err := notificationContent(notificationMessage(message))
 	if err != nil {
 		return err
 	}
 	return s.send(ctx, message.Recipient, message.IdempotencyKey, content)
+}
+
+func (s *ResendSender) DeliverNotificationEmail(ctx context.Context, message notifications.EmailMessage) error {
+	content, err := notificationContent(notificationMessage(message))
+	if err != nil {
+		return err
+	}
+	return s.send(ctx, message.Recipient, message.IdempotencyKey, content)
+}
+
+func (s *ResendSender) DeliverWorkspaceInvitationEmail(ctx context.Context, message transactionalmail.WorkspaceInvitationMessage) error {
+	return s.SendWorkspaceInvitation(ctx, message)
 }
 
 func (s *ResendSender) SendWorkspaceInvitation(ctx context.Context, message transactionalmail.WorkspaceInvitationMessage) error {
@@ -161,12 +174,24 @@ func (s *CloudflareSender) SendEmailVerification(ctx context.Context, message Ve
 	return s.send(ctx, message.Recipient, content)
 }
 
-func (s *CloudflareSender) SendNotification(ctx context.Context, message NotificationMessage) error {
-	content, err := notificationContent(message)
+func (s *CloudflareSender) SendIdentityEmail(ctx context.Context, message IdentityMessage) error {
+	content, err := notificationContent(notificationMessage(message))
 	if err != nil {
 		return err
 	}
 	return s.send(ctx, message.Recipient, content)
+}
+
+func (s *CloudflareSender) DeliverNotificationEmail(ctx context.Context, message notifications.EmailMessage) error {
+	content, err := notificationContent(notificationMessage(message))
+	if err != nil {
+		return err
+	}
+	return s.send(ctx, message.Recipient, content)
+}
+
+func (s *CloudflareSender) DeliverWorkspaceInvitationEmail(ctx context.Context, message transactionalmail.WorkspaceInvitationMessage) error {
+	return s.SendWorkspaceInvitation(ctx, message)
 }
 
 func (s *CloudflareSender) SendWorkspaceInvitation(ctx context.Context, message transactionalmail.WorkspaceInvitationMessage) error {

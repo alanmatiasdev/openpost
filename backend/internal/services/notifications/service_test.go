@@ -15,7 +15,6 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/openpost/backend/internal/models"
 	servicecrypto "github.com/openpost/backend/internal/services/crypto"
-	"github.com/openpost/backend/internal/services/passwordmail"
 	"github.com/openpost/backend/internal/services/transactionalmail"
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun"
@@ -65,7 +64,7 @@ func notificationsTestDB(t *testing.T) *bun.DB {
 
 func TestNotificationMutesResolveWorkspaceBeforeAccountAndExpireWithoutChangingPreferences(t *testing.T) {
 	db := notificationsTestDB(t)
-	service := NewService(db, Options{Sender: &recordingNotificationSender{}})
+	service := NewService(db, Options{EmailDelivery: &recordingNotificationSender{}})
 	now := time.Date(2026, 8, 14, 12, 0, 0, 0, time.UTC)
 	service.now = func() time.Time { return now }
 	before, err := service.UpdatePreferenceSettings(t.Context(), MuteActor{UserID: "user-1"}, PreferenceUpdate{
@@ -173,7 +172,7 @@ func TestWorkspaceBoundMuteActorCannotCrossItsCredentialBoundary(t *testing.T) {
 func TestNotificationMutesSuppressOptionalEmailButKeepInAppAndTransactionalDelivery(t *testing.T) {
 	db := notificationsTestDB(t)
 	sender := &recordingNotificationSender{}
-	service := NewService(db, Options{Sender: sender, PublicURL: "https://app.openpost.test"})
+	service := NewService(db, Options{EmailDelivery: sender, PublicURL: "https://app.openpost.test"})
 	now := time.Date(2026, 8, 14, 12, 0, 0, 0, time.UTC)
 	service.now = func() time.Time { return now }
 	_, err := service.UpdatePreferenceSettings(t.Context(), MuteActor{UserID: "user-1"}, PreferenceUpdate{
@@ -184,7 +183,7 @@ func TestNotificationMutesSuppressOptionalEmailButKeepInAppAndTransactionalDeliv
 	_, err = service.CreateMute(t.Context(), MuteActor{UserID: "user-1"}, MuteCreate{Scope: MuteScopeWorkspace, WorkspaceID: "workspace-1", EndsAt: now.Add(time.Hour)})
 	require.NoError(t, err)
 
-	require.NoError(t, service.Create(t.Context(), CreateInput{
+	require.NoError(t, service.create(t.Context(), createInput{
 		UserID: "user-1", WorkspaceID: "workspace-1", Type: TypeNewMessage,
 		Title: "Optional message", DedupKey: "message:muted",
 	}))
@@ -195,7 +194,7 @@ func TestNotificationMutesSuppressOptionalEmailButKeepInAppAndTransactionalDeliv
 	require.NoError(t, err)
 	require.Zero(t, jobs, "optional immediate email is paused")
 
-	require.NoError(t, service.Create(t.Context(), CreateInput{
+	require.NoError(t, service.create(t.Context(), createInput{
 		UserID: "user-1", WorkspaceID: "workspace-1", Type: TypeSecurityAction,
 		Title: "Security action", DedupKey: "security:required",
 	}))
@@ -208,7 +207,7 @@ func TestNotificationMutesSuppressOptionalEmailButKeepInAppAndTransactionalDeliv
 func TestMuteCreatedAfterQueueSuppressesOptionalImmediateDelivery(t *testing.T) {
 	db := notificationsTestDB(t)
 	sender := &recordingNotificationSender{}
-	service := NewService(db, Options{Sender: sender})
+	service := NewService(db, Options{EmailDelivery: sender})
 	now := time.Date(2026, 8, 14, 12, 0, 0, 0, time.UTC)
 	service.now = func() time.Time { return now }
 	_, err := service.UpdatePreferenceSettings(t.Context(), MuteActor{UserID: "user-1"}, PreferenceUpdate{
@@ -216,7 +215,7 @@ func TestMuteCreatedAfterQueueSuppressesOptionalImmediateDelivery(t *testing.T) 
 		DigestTime:  "09:00", DigestTimezone: "UTC",
 	})
 	require.NoError(t, err)
-	require.NoError(t, service.Create(t.Context(), CreateInput{
+	require.NoError(t, service.create(t.Context(), createInput{
 		UserID: "user-1", WorkspaceID: "workspace-1", Type: TypeNewMessage,
 		Title: "Queued before Mute", DedupKey: "message:queued-before-mute",
 	}))
@@ -231,7 +230,7 @@ func TestMuteCreatedAfterQueueSuppressesOptionalImmediateDelivery(t *testing.T) 
 func TestLegacyOptionalEmailWithoutWorkspaceScopeIsConservativelyMuted(t *testing.T) {
 	db := notificationsTestDB(t)
 	sender := &recordingNotificationSender{}
-	service := NewService(db, Options{Sender: sender})
+	service := NewService(db, Options{EmailDelivery: sender})
 	now := time.Date(2026, 8, 14, 12, 0, 0, 0, time.UTC)
 	service.now = func() time.Time { return now }
 	_, err := service.UpdatePreferenceSettings(t.Context(), MuteActor{UserID: "user-1"}, PreferenceUpdate{
@@ -253,7 +252,7 @@ func TestOptionalProducerRechecksMuteWhenCreateReplaceOrEndRacesIt(t *testing.T)
 	for _, action := range []string{"create", "replace", "end"} {
 		t.Run(action, func(t *testing.T) {
 			db := notificationsTestDB(t)
-			service := NewService(db, Options{Sender: &recordingNotificationSender{}})
+			service := NewService(db, Options{EmailDelivery: &recordingNotificationSender{}})
 			now := time.Date(2026, 8, 14, 12, 0, 0, 0, time.UTC)
 			service.now = func() time.Time { return now }
 			_, err := service.UpdatePreferenceSettings(t.Context(), MuteActor{UserID: "user-1"}, PreferenceUpdate{Preferences: Preferences{TypeNewMessage: {InApp: true, EmailFrequency: EmailFrequencyImmediate}}, DigestTime: "09:00", DigestTimezone: "UTC"})
@@ -267,7 +266,7 @@ func TestOptionalProducerRechecksMuteWhenCreateReplaceOrEndRacesIt(t *testing.T)
 			service.beforeOptionalMuteCheck = func() { close(paused); <-resume }
 			result := make(chan error, 1)
 			go func() {
-				result <- service.CreateWithDB(t.Context(), db, CreateInput{UserID: "user-1", WorkspaceID: "workspace-1", Type: TypeNewMessage, Title: action, DedupKey: "race:" + action})
+				result <- service.createWithDB(t.Context(), db, createInput{UserID: "user-1", WorkspaceID: "workspace-1", Type: TypeNewMessage, Title: action, DedupKey: "race:" + action})
 			}()
 			<-paused
 			switch action {
@@ -295,7 +294,7 @@ func TestOptionalProducerRechecksMuteWhenCreateReplaceOrEndRacesIt(t *testing.T)
 func TestWorkspaceMuteSuppressesAnAlreadyQueuedDailyItemAtDelivery(t *testing.T) {
 	db := notificationsTestDB(t)
 	sender := &recordingNotificationSender{}
-	service := NewService(db, Options{Sender: sender})
+	service := NewService(db, Options{EmailDelivery: sender})
 	now := time.Date(2026, 8, 14, 7, 30, 0, 0, time.UTC)
 	service.now = func() time.Time { return now }
 	_, err := service.UpdatePreferenceSettings(t.Context(), MuteActor{UserID: "user-1"}, PreferenceUpdate{
@@ -303,7 +302,7 @@ func TestWorkspaceMuteSuppressesAnAlreadyQueuedDailyItemAtDelivery(t *testing.T)
 		DigestTime:  "09:00", DigestTimezone: "UTC",
 	})
 	require.NoError(t, err)
-	require.NoError(t, service.Create(t.Context(), CreateInput{
+	require.NoError(t, service.create(t.Context(), createInput{
 		UserID: "user-1", WorkspaceID: "workspace-1", Type: TypeNewMessage,
 		Title: "Queued digest item", DedupKey: "message:daily-before-mute",
 	}))
@@ -324,12 +323,12 @@ func TestWorkspaceMuteSuppressesAnAlreadyQueuedDailyItemAtDelivery(t *testing.T)
 func TestLegacyDigestItemWithoutWorkspaceScopeIsConservativelyMuted(t *testing.T) {
 	db := notificationsTestDB(t)
 	sender := &recordingNotificationSender{}
-	service := NewService(db, Options{Sender: sender})
+	service := NewService(db, Options{EmailDelivery: sender})
 	now := time.Date(2026, 8, 14, 7, 30, 0, 0, time.UTC)
 	service.now = func() time.Time { return now }
 	_, err := service.UpdatePreferenceSettings(t.Context(), MuteActor{UserID: "user-1"}, PreferenceUpdate{Preferences: Preferences{TypeNewMessage: {InApp: true, EmailFrequency: EmailFrequencyDaily}}, DigestTime: "09:00", DigestTimezone: "UTC"})
 	require.NoError(t, err)
-	require.NoError(t, service.Create(t.Context(), CreateInput{UserID: "user-1", WorkspaceID: "workspace-1", Type: TypeNewMessage, Title: "Legacy", DedupKey: "legacy:digest"}))
+	require.NoError(t, service.create(t.Context(), createInput{UserID: "user-1", WorkspaceID: "workspace-1", Type: TypeNewMessage, Title: "Legacy", DedupKey: "legacy:digest"}))
 	_, err = db.NewUpdate().Model((*models.UserNotificationDigestItem)(nil)).Set("workspace_id = ''").Set("workspace_scope_known = FALSE").Where("dedup_key = ?", "legacy:digest").Exec(t.Context())
 	require.NoError(t, err)
 	var job models.Job
@@ -445,7 +444,7 @@ func TestConcurrentAndRepeatedEndMuteAreIdempotent(t *testing.T) {
 func TestDailyNotificationEmailBatchesOneUserWindowAndAdvancesAfterConfirmedSend(t *testing.T) {
 	db := notificationsTestDB(t)
 	sender := &recordingNotificationSender{}
-	service := NewService(db, Options{Sender: sender, PublicURL: "https://app.openpost.test"})
+	service := NewService(db, Options{EmailDelivery: sender, PublicURL: "https://app.openpost.test"})
 	now := time.Date(2026, 8, 14, 7, 30, 0, 0, time.UTC)
 	service.now = func() time.Time { return now }
 	_, err := service.UpdatePreferenceSettings(t.Context(), MuteActor{UserID: "user-1"}, PreferenceUpdate{
@@ -457,12 +456,12 @@ func TestDailyNotificationEmailBatchesOneUserWindowAndAdvancesAfterConfirmedSend
 	})
 	require.NoError(t, err)
 
-	for _, input := range []CreateInput{
+	for _, input := range []createInput{
 		{UserID: "user-1", Type: TypePostPublished, Title: "Published <safely>", Body: "Mastodon & Bluesky", DedupKey: "publication:1"},
 		{UserID: "user-1", Type: TypeNewMessage, Title: "New message", Body: "Read it", DedupKey: "message:1"},
 	} {
-		require.NoError(t, service.Create(t.Context(), input))
-		require.NoError(t, service.Create(t.Context(), input), "replayed producers must remain idempotent")
+		require.NoError(t, service.create(t.Context(), input))
+		require.NoError(t, service.create(t.Context(), input), "replayed producers must remain idempotent")
 	}
 
 	var jobs []models.Job
@@ -492,7 +491,7 @@ func TestDailyNotificationEmailBatchesOneUserWindowAndAdvancesAfterConfirmedSend
 
 func TestConcurrentDailyNotificationProducersKeepOneWindowJob(t *testing.T) {
 	db := notificationsTestDB(t)
-	service := NewService(db, Options{Sender: &recordingNotificationSender{}})
+	service := NewService(db, Options{EmailDelivery: &recordingNotificationSender{}})
 	service.now = func() time.Time { return time.Date(2026, 8, 14, 7, 30, 0, 0, time.UTC) }
 	_, err := service.UpdatePreferenceSettings(t.Context(), MuteActor{UserID: "user-1"}, PreferenceUpdate{
 		Preferences: Preferences{TypeNewMessage: {InApp: true, EmailFrequency: EmailFrequencyDaily}},
@@ -507,7 +506,7 @@ func TestConcurrentDailyNotificationProducersKeepOneWindowJob(t *testing.T) {
 		wait.Add(1)
 		go func() {
 			defer wait.Done()
-			errorsByProducer <- service.Create(t.Context(), CreateInput{
+			errorsByProducer <- service.create(t.Context(), createInput{
 				UserID: "user-1", Type: TypeNewMessage, Title: fmt.Sprintf("Message %d", index),
 				DedupKey: fmt.Sprintf("message:%d", index),
 			})
@@ -528,7 +527,7 @@ func TestConcurrentDailyNotificationProducersKeepOneWindowJob(t *testing.T) {
 
 func TestDigestPreferenceChangeMovesUnclaimedItemsToTheNewWindow(t *testing.T) {
 	db := notificationsTestDB(t)
-	service := NewService(db, Options{Sender: &recordingNotificationSender{}})
+	service := NewService(db, Options{EmailDelivery: &recordingNotificationSender{}})
 	now := time.Date(2026, 8, 14, 7, 30, 0, 0, time.UTC)
 	service.now = func() time.Time { return now }
 	daily := Preferences{TypeNewMessage: {InApp: true, EmailFrequency: EmailFrequencyDaily}}
@@ -536,7 +535,7 @@ func TestDigestPreferenceChangeMovesUnclaimedItemsToTheNewWindow(t *testing.T) {
 		Preferences: daily, DigestTime: "09:00", DigestTimezone: "UTC",
 	})
 	require.NoError(t, err)
-	require.NoError(t, service.Create(t.Context(), CreateInput{
+	require.NoError(t, service.create(t.Context(), createInput{
 		UserID: "user-1", Type: TypeNewMessage, Title: "Queued", DedupKey: "message:reschedule",
 	}))
 
@@ -556,7 +555,7 @@ func TestDigestPreferenceChangeMovesUnclaimedItemsToTheNewWindow(t *testing.T) {
 
 func TestDigestProducerRechecksScheduleAfterConcurrentPreferenceChange(t *testing.T) {
 	db := notificationsTestDB(t)
-	service := NewService(db, Options{Sender: &recordingNotificationSender{}})
+	service := NewService(db, Options{EmailDelivery: &recordingNotificationSender{}})
 	now := time.Date(2026, 8, 14, 7, 30, 0, 0, time.UTC)
 	service.now = func() time.Time { return now }
 	daily := Preferences{TypeNewMessage: {InApp: true, EmailFrequency: EmailFrequencyDaily}}
@@ -575,7 +574,7 @@ func TestDigestProducerRechecksScheduleAfterConcurrentPreferenceChange(t *testin
 	go func() {
 		// A caller-owned transaction uses the same row lock in production. Passing
 		// the DB here lets this SQLite test pause the producer after its stale read.
-		producerResult <- service.CreateWithDB(t.Context(), db, CreateInput{
+		producerResult <- service.createWithDB(t.Context(), db, createInput{
 			UserID: "user-1", Type: TypeNewMessage, Title: "Concurrent",
 			DedupKey: "message:concurrent-settings",
 		})
@@ -596,7 +595,7 @@ func TestDigestProducerRechecksScheduleAfterConcurrentPreferenceChange(t *testin
 func TestDigestDeliveryAdvancesOnlyItsClaimedSnapshot(t *testing.T) {
 	db := notificationsTestDB(t)
 	sender := &recordingNotificationSender{}
-	service := NewService(db, Options{Sender: sender})
+	service := NewService(db, Options{EmailDelivery: sender})
 	now := time.Date(2026, 8, 14, 7, 30, 0, 0, time.UTC)
 	service.now = func() time.Time { return now }
 	_, err := service.UpdatePreferenceSettings(t.Context(), MuteActor{UserID: "user-1"}, PreferenceUpdate{
@@ -604,12 +603,12 @@ func TestDigestDeliveryAdvancesOnlyItsClaimedSnapshot(t *testing.T) {
 		DigestTime:  "09:00", DigestTimezone: "UTC",
 	})
 	require.NoError(t, err)
-	require.NoError(t, service.Create(t.Context(), CreateInput{
+	require.NoError(t, service.create(t.Context(), createInput{
 		UserID: "user-1", Type: TypeNewMessage, Title: "Claimed", DedupKey: "message:claimed",
 	}))
 	var job models.Job
 	require.NoError(t, db.NewSelect().Model(&job).Where("type = ?", JobTypeEmailDelivery).Scan(t.Context()))
-	sender.onNotification = func(passwordmail.NotificationMessage) {
+	sender.onNotification = func(EmailMessage) {
 		_, insertErr := db.NewInsert().Model(&models.UserNotificationDigestItem{
 			ID: "late-item", UserID: "user-1", Type: TypeNewMessage, Title: "Too late",
 			DedupKey: "message:late", DeliveryWindowAt: job.RunAt, CreatedAt: now,
@@ -626,14 +625,14 @@ func TestDigestDeliveryAdvancesOnlyItsClaimedSnapshot(t *testing.T) {
 
 func TestTransactionalNotificationClassesRemainImmediate(t *testing.T) {
 	db := notificationsTestDB(t)
-	service := NewService(db, Options{Sender: &recordingNotificationSender{}})
+	service := NewService(db, Options{EmailDelivery: &recordingNotificationSender{}})
 	now := time.Date(2026, 8, 14, 7, 30, 0, 0, time.UTC)
 	service.now = func() time.Time { return now }
 	for _, eventType := range []string{TypeSecurityAction, TypeAccessChanged, TypeWorkspaceInvite, TypeCriticalBilling} {
 		preference := DefaultPreferences()[eventType]
 		require.True(t, preference.InApp, eventType)
 		require.Equal(t, EmailFrequencyImmediate, preference.EmailFrequency, eventType)
-		require.NoError(t, service.Create(t.Context(), CreateInput{
+		require.NoError(t, service.create(t.Context(), createInput{
 			UserID: "user-1", Type: eventType, Title: "Required action", DedupKey: "transactional:" + eventType,
 		}))
 	}
@@ -736,21 +735,13 @@ func TestInvitationDeliveryEvidenceIsRedactedIdempotentAndDoesNotMutateLifecycle
 }
 
 type recordingNotificationSender struct {
-	messages           []passwordmail.NotificationMessage
+	messages           []EmailMessage
 	invitationMessages []transactionalmail.WorkspaceInvitationMessage
 	err                error
-	onNotification     func(passwordmail.NotificationMessage)
+	onNotification     func(EmailMessage)
 }
 
-func (s *recordingNotificationSender) SendPasswordReset(_ context.Context, _ passwordmail.ResetMessage) error {
-	return s.err
-}
-
-func (s *recordingNotificationSender) SendEmailVerification(_ context.Context, _ passwordmail.VerificationMessage) error {
-	return s.err
-}
-
-func (s *recordingNotificationSender) SendNotification(_ context.Context, message passwordmail.NotificationMessage) error {
+func (s *recordingNotificationSender) DeliverNotificationEmail(_ context.Context, message EmailMessage) error {
 	s.messages = append(s.messages, message)
 	if s.onNotification != nil {
 		s.onNotification(message)
@@ -758,7 +749,7 @@ func (s *recordingNotificationSender) SendNotification(_ context.Context, messag
 	return s.err
 }
 
-func (s *recordingNotificationSender) SendWorkspaceInvitation(_ context.Context, message transactionalmail.WorkspaceInvitationMessage) error {
+func (s *recordingNotificationSender) DeliverWorkspaceInvitationEmail(_ context.Context, message transactionalmail.WorkspaceInvitationMessage) error {
 	s.invitationMessages = append(s.invitationMessages, message)
 	return s.err
 }
@@ -767,7 +758,7 @@ func TestWorkspaceInvitationEmailIsTransactionalDurableAndRecipientIndependent(t
 	db := notificationsTestDB(t)
 	sender := &recordingNotificationSender{}
 	service := NewService(db, Options{
-		Sender: sender, Encryptor: servicecrypto.NewTokenEncryptor("invitation-test-key"),
+		EmailDelivery: sender, Encryptor: servicecrypto.NewTokenEncryptor("invitation-test-key"),
 		PublicURL: "https://app.openpost.test/",
 	})
 	now := time.Date(2026, 8, 14, 12, 0, 0, 0, time.UTC)
@@ -836,13 +827,13 @@ func TestWorkspaceInvitationEmailReportsProviderUnavailableWithoutQueueing(t *te
 func TestOwnershipTransferEmailBypassesOptionalPreferences(t *testing.T) {
 	db := notificationsTestDB(t)
 	sender := &recordingNotificationSender{}
-	service := NewService(db, Options{Sender: sender, PublicURL: "https://app.openpost.test"})
+	service := NewService(db, Options{EmailDelivery: sender, PublicURL: "https://app.openpost.test"})
 	_, err := service.UpdatePreferences(t.Context(), "user-1", Preferences{
 		TypeOwnershipTransfer: {InApp: false, EmailFrequency: EmailFrequencyOff},
 	})
 	require.ErrorIs(t, err, ErrInvalidPreferences)
 
-	require.NoError(t, service.Create(t.Context(), CreateInput{
+	require.NoError(t, service.create(t.Context(), createInput{
 		UserID: "user-1", Type: TypeOwnershipTransfer,
 		Href: "/ownership-transfer?id=transfer-one", DedupKey: "ownership-transfer:one",
 		Payload: map[string]any{"kind": OwnershipTransferSemanticKind, "organization_name": "Equipa Açores"},
@@ -896,7 +887,7 @@ func TestWorkspaceInvitationProviderFailureDoesNotExposeAcceptanceSecret(t *test
 	db := notificationsTestDB(t)
 	sender := &recordingNotificationSender{err: errors.New("provider echoed op_inv_private-token")}
 	service := NewService(db, Options{
-		Sender: sender, Encryptor: servicecrypto.NewTokenEncryptor("invitation-test-key"),
+		EmailDelivery: sender, Encryptor: servicecrypto.NewTokenEncryptor("invitation-test-key"),
 		PublicURL: "https://app.openpost.test",
 	})
 	delivery, err := service.EnqueueWorkspaceInvitation(t.Context(), WorkspaceInvitationEmailInput{
@@ -918,12 +909,12 @@ func TestNotificationDedupKeyIsIdempotent(t *testing.T) {
 	db := notificationsTestDB(t)
 	service := NewService(db)
 	ctx := context.Background()
-	input := CreateInput{
+	input := createInput{
 		UserID: "user-1", Type: TypePostPublished, Title: "Published",
 		DedupKey: "publication:one:published",
 	}
-	require.NoError(t, service.Create(ctx, input))
-	require.NoError(t, service.Create(ctx, input))
+	require.NoError(t, service.create(ctx, input))
+	require.NoError(t, service.create(ctx, input))
 	count, err := db.NewSelect().Model((*models.UserNotification)(nil)).Count(ctx)
 	require.NoError(t, err)
 	require.Equal(t, 1, count)
@@ -943,10 +934,10 @@ func TestNotificationPreferencesSuppressOptionalButKeepCritical(t *testing.T) {
 	require.False(t, preferences[TypeNewMessage].InApp)
 	require.True(t, preferences[TypePublishFailed].InApp)
 
-	require.NoError(t, service.Create(ctx, CreateInput{
+	require.NoError(t, service.create(ctx, createInput{
 		UserID: "user-1", Type: TypeNewMessage, Title: "Optional",
 	}))
-	require.NoError(t, service.Create(ctx, CreateInput{
+	require.NoError(t, service.create(ctx, createInput{
 		UserID: "user-1", Type: TypePublishFailed, Title: "Critical",
 	}))
 	page, err := service.List(ctx, "user-1", "", "", 30)
@@ -976,27 +967,27 @@ func TestLegacyNotificationPreferencesAdoptNewEmailDefaults(t *testing.T) {
 func TestNotificationEmailDeliveryIsDurableDeduplicatedAndPreferenceAware(t *testing.T) {
 	db := notificationsTestDB(t)
 	sender := &recordingNotificationSender{}
-	service := NewService(db, Options{Sender: sender, PublicURL: "https://app.openpost.test/"})
+	service := NewService(db, Options{EmailDelivery: sender, PublicURL: "https://app.openpost.test/"})
 	now := time.Date(2026, 8, 4, 12, 0, 0, 0, time.UTC)
 	service.now = func() time.Time { return now }
 	ctx := context.Background()
 
 	require.Equal(t, EmailFrequencyImmediate, DefaultPreferences()[TypePublishFailed].EmailFrequency)
 	require.Equal(t, EmailFrequencyOff, DefaultPreferences()[TypePostPublished].EmailFrequency)
-	input := CreateInput{
+	input := createInput{
 		UserID: "user-1", Type: TypePublishFailed, Title: "Publication failed",
 		Body: "OpenPost could not publish to Mastodon.", Href: "/activity?publication=publication-1",
 		DedupKey: "publication:publication-1:failed",
 	}
-	require.NoError(t, service.Create(ctx, input))
-	require.NoError(t, service.Create(ctx, input))
+	require.NoError(t, service.create(ctx, input))
+	require.NoError(t, service.create(ctx, input))
 
 	var jobs []models.Job
 	require.NoError(t, db.NewSelect().Model(&jobs).Where("type = ?", JobTypeEmailDelivery).Scan(ctx))
 	require.Len(t, jobs, 1)
 	require.Equal(t, "pending", jobs[0].Status)
 	require.NoError(t, service.HandleJob(ctx, jobs[0].Type, jobs[0].Payload))
-	require.Equal(t, []passwordmail.NotificationMessage{{
+	require.Equal(t, []EmailMessage{{
 		Recipient:      "one@example.com",
 		Title:          "Publication failed",
 		Body:           "OpenPost could not publish to Mastodon.",
@@ -1017,14 +1008,14 @@ func TestNotificationEmailDeliveryIsDurableDeduplicatedAndPreferenceAware(t *tes
 func TestNotificationCanDeliverEmailWithoutCreatingOptionalInAppItem(t *testing.T) {
 	db := notificationsTestDB(t)
 	sender := &recordingNotificationSender{}
-	service := NewService(db, Options{Sender: sender, PublicURL: "https://app.openpost.test"})
+	service := NewService(db, Options{EmailDelivery: sender, PublicURL: "https://app.openpost.test"})
 	ctx := context.Background()
 
 	_, err := service.UpdatePreferences(ctx, "user-1", Preferences{
 		TypePostPublished: {InApp: false, EmailFrequency: EmailFrequencyImmediate},
 	})
 	require.NoError(t, err)
-	require.NoError(t, service.Create(ctx, CreateInput{
+	require.NoError(t, service.create(ctx, createInput{
 		UserID: "user-1", Type: TypePostPublished, Title: "Publication completed",
 		DedupKey: "publication:publication-1:published",
 	}))
@@ -1043,13 +1034,13 @@ func TestNotificationListAndChangesUseVisibleWorkspaceScope(t *testing.T) {
 	_, err := db.NewInsert().Model(&models.User{ID: "user-2", Email: "two@example.com", PasswordHash: "hash"}).Exec(ctx)
 	require.NoError(t, err)
 	service := NewService(db)
-	for _, input := range []CreateInput{
+	for _, input := range []createInput{
 		{UserID: "user-1", WorkspaceID: "workspace-1", Type: TypePostPublished, Title: "Workspace one"},
 		{UserID: "user-1", WorkspaceID: "workspace-2", Type: TypePostPublished, Title: "Workspace two"},
 		{UserID: "user-1", Type: TypeWorkspaceInvite, Title: "Global"},
 		{UserID: "user-2", WorkspaceID: "workspace-1", Type: TypePostPublished, Title: "Other user"},
 	} {
-		require.NoError(t, service.Create(ctx, input))
+		require.NoError(t, service.create(ctx, input))
 	}
 
 	page, err := service.List(ctx, "user-1", "workspace-1", "", 30)
@@ -1147,7 +1138,7 @@ func TestNotificationActionsKeepOnlySafeLocalOperations(t *testing.T) {
 	db := notificationsTestDB(t)
 	service := NewService(db)
 	ctx := context.Background()
-	require.NoError(t, service.Create(ctx, CreateInput{
+	require.NoError(t, service.create(ctx, createInput{
 		UserID: "user-1", Type: TypePublishFailed, Title: "Partial failure",
 		Actions: []models.NotificationAction{
 			{Label: "Retry failed", Operation: "retry_failed_publication", TargetID: "publication-1", Kind: "primary"},

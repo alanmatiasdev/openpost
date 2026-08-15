@@ -97,6 +97,20 @@ func TestTypedOutcomeConstructorsExposeOnlySemanticFacts(t *testing.T) {
 	}
 }
 
+func TestNotificationProducerSurfaceIsSealedAndHasNoRawCreateMethod(t *testing.T) {
+	serviceType := reflect.TypeOf((*Service)(nil))
+	_, hasCreate := serviceType.MethodByName("Create")
+	_, hasCreateWithDB := serviceType.MethodByName("CreateWithDB")
+	require.False(t, hasCreate)
+	require.False(t, hasCreateWithDB)
+
+	outcomeType := reflect.TypeOf((*Outcome)(nil)).Elem()
+	require.Equal(t, 1, outcomeType.NumMethod())
+	method := outcomeType.Method(0)
+	require.Equal(t, "notificationOutcome", method.Name)
+	require.NotEmpty(t, method.PkgPath, "the outcome marker must remain unavailable to producers")
+}
+
 func TestSupportedDomainOutcomeConstructorsMaterializeFromTheCatalogue(t *testing.T) {
 	constructors := map[string]func() (Outcome, error){
 		TypePostPublished: func() (Outcome, error) {

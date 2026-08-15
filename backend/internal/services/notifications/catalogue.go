@@ -18,7 +18,7 @@ type TopicDefinition struct {
 
 type topicPolicy struct {
 	definition  TopicDefinition
-	materialize func(semanticOutcome) (CreateInput, error)
+	materialize func(semanticOutcome) (createInput, error)
 }
 
 var topicCatalogue = []topicPolicy{
@@ -35,7 +35,7 @@ var topicCatalogue = []topicPolicy{
 	newTransactionalTopic(TypeCriticalBilling, "account", materializeRequiredAccountOutcome),
 }
 
-func newOptionalTopic(id, group string, critical bool, defaultEmail EmailFrequency, materialize func(semanticOutcome) (CreateInput, error)) topicPolicy {
+func newOptionalTopic(id, group string, critical bool, defaultEmail EmailFrequency, materialize func(semanticOutcome) (createInput, error)) topicPolicy {
 	return topicPolicy{materialize: materialize, definition: TopicDefinition{
 		ID: id, Group: group, PresentationKey: "notifications.event." + id,
 		CriticalInApp: critical, InAppMutable: !critical, EmailMutable: true, MuteApplies: true,
@@ -44,7 +44,7 @@ func newOptionalTopic(id, group string, critical bool, defaultEmail EmailFrequen
 	}}
 }
 
-func newTransactionalTopic(id, group string, materialize func(semanticOutcome) (CreateInput, error)) topicPolicy {
+func newTransactionalTopic(id, group string, materialize func(semanticOutcome) (createInput, error)) topicPolicy {
 	return topicPolicy{materialize: materialize, definition: TopicDefinition{
 		ID: id, Group: group, PresentationKey: "notifications.event." + id,
 		CriticalInApp: true, Transactional: true, InAppMutable: false, EmailMutable: false,

@@ -25,7 +25,7 @@ type EmailChangeReauth interface {
 type EmailChangeHandler struct {
 	service       *emailchange.Service
 	reauth        EmailChangeReauth
-	sender        passwordmail.Sender
+	sender        passwordmail.IdentitySender
 	authenticator middleware.Authenticator
 	limiter       *ratelimit.Limiter
 	publicURL     string
@@ -34,7 +34,7 @@ type EmailChangeHandler struct {
 func NewEmailChangeHandler(
 	service *emailchange.Service,
 	reauth EmailChangeReauth,
-	sender passwordmail.Sender,
+	sender passwordmail.IdentitySender,
 	authenticator middleware.Authenticator,
 	publicURL string,
 ) *EmailChangeHandler {
@@ -269,7 +269,7 @@ func (h *EmailChangeHandler) cancel(ctx context.Context, input *EmailChangeChall
 }
 
 func (h *EmailChangeHandler) sendCode(ctx context.Context, pending *emailchange.Pending) error {
-	return h.sender.SendNotification(ctx, passwordmail.NotificationMessage{
+	return h.sender.SendIdentityEmail(ctx, passwordmail.IdentityMessage{
 		Recipient: pending.Challenge.NewEmail,
 		Title:     "Confirm your OpenPost sign-in email",
 		Body: fmt.Sprintf(
@@ -291,7 +291,7 @@ func (h *EmailChangeHandler) notifyOldAddress(ctx context.Context, oldEmail, new
 		title = "Your OpenPost sign-in email changed"
 		body = "Your OpenPost sign-in email was changed to " + newEmail + ". If you did not make this change, contact your server administrator now."
 	}
-	if err := h.sender.SendNotification(ctx, passwordmail.NotificationMessage{
+	if err := h.sender.SendIdentityEmail(ctx, passwordmail.IdentityMessage{
 		Recipient:      oldEmail,
 		Title:          title,
 		Body:           body,
@@ -306,7 +306,7 @@ func (h *EmailChangeHandler) notifyCompletion(ctx context.Context, newEmail, cha
 	if h.sender == nil {
 		return
 	}
-	if err := h.sender.SendNotification(ctx, passwordmail.NotificationMessage{
+	if err := h.sender.SendIdentityEmail(ctx, passwordmail.IdentityMessage{
 		Recipient:      newEmail,
 		Title:          "Your OpenPost sign-in email changed",
 		Body:           "This address is now your OpenPost sign-in email. Any other active browser sessions were signed out, and unused password-reset links were invalidated.",

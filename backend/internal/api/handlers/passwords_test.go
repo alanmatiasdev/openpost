@@ -43,14 +43,6 @@ func (s *recordingPasswordSender) SendPasswordReset(_ context.Context, message p
 	return s.err
 }
 
-func (s *recordingPasswordSender) SendEmailVerification(_ context.Context, _ passwordmail.VerificationMessage) error {
-	return s.err
-}
-
-func (s *recordingPasswordSender) SendNotification(_ context.Context, _ passwordmail.NotificationMessage) error {
-	return s.err
-}
-
 func TestPasswordResetIsNonEnumeratingSingleUseAndRevokesSessions(t *testing.T) {
 	t.Parallel()
 

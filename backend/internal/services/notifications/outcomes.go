@@ -274,22 +274,22 @@ func (s *Service) RecordWithDB(ctx context.Context, db bun.IDB, outcome Outcome)
 	return s.createWithDB(ctx, db, input)
 }
 
-func materializeOutcome(value semanticOutcome) (CreateInput, error) {
+func materializeOutcome(value semanticOutcome) (createInput, error) {
 	policy, ok := topicPolicyFor(value.topic)
 	if !ok || policy.materialize == nil {
-		return CreateInput{}, ErrInvalidOutcome
+		return createInput{}, ErrInvalidOutcome
 	}
 	return policy.materialize(value)
 }
 
-func baseOutcomeInput(value semanticOutcome) CreateInput {
-	return CreateInput{
+func baseOutcomeInput(value semanticOutcome) createInput {
+	return createInput{
 		UserID: value.recipientID, WorkspaceID: value.workspaceID, Type: value.topic,
 		DedupKey: value.topic + ":" + value.eventID, Payload: value.payload,
 	}
 }
 
-func materializePublicationOutcome(value semanticOutcome) (CreateInput, error) {
+func materializePublicationOutcome(value semanticOutcome) (createInput, error) {
 	input := baseOutcomeInput(value)
 	publicationID, _ := value.payload["publication_id"].(string)
 	input.Href = "/activity?publication=" + url.QueryEscape(publicationID)
@@ -305,7 +305,7 @@ func materializePublicationOutcome(value semanticOutcome) (CreateInput, error) {
 	return input, nil
 }
 
-func materializeAccountAttentionOutcome(value semanticOutcome) (CreateInput, error) {
+func materializeAccountAttentionOutcome(value semanticOutcome) (createInput, error) {
 	input := baseOutcomeInput(value)
 	input.Title = "Connected account needs attention"
 	input.Body = "Publishing is paused until the account is reconnected."
@@ -314,7 +314,7 @@ func materializeAccountAttentionOutcome(value semanticOutcome) (CreateInput, err
 	return input, nil
 }
 
-func materializeEngagementOutcome(value semanticOutcome) (CreateInput, error) {
+func materializeEngagementOutcome(value semanticOutcome) (createInput, error) {
 	input := baseOutcomeInput(value)
 	engagementID, _ := value.payload["engagement_id"].(string)
 	input.Title = "New engagement"
@@ -324,7 +324,7 @@ func materializeEngagementOutcome(value semanticOutcome) (CreateInput, error) {
 	return input, nil
 }
 
-func materializeMessageOutcome(value semanticOutcome) (CreateInput, error) {
+func materializeMessageOutcome(value semanticOutcome) (createInput, error) {
 	input := baseOutcomeInput(value)
 	conversationID, _ := value.payload["conversation_id"].(string)
 	input.Title = "New message"
@@ -334,7 +334,7 @@ func materializeMessageOutcome(value semanticOutcome) (CreateInput, error) {
 	return input, nil
 }
 
-func materializeReplyFailedOutcome(value semanticOutcome) (CreateInput, error) {
+func materializeReplyFailedOutcome(value semanticOutcome) (createInput, error) {
 	input := baseOutcomeInput(value)
 	if conversationID, ok := value.payload["conversation_id"].(string); ok {
 		input.Title = "Message failed"
@@ -351,7 +351,7 @@ func materializeReplyFailedOutcome(value semanticOutcome) (CreateInput, error) {
 	return input, nil
 }
 
-func materializeWorkspaceInvitationOutcome(value semanticOutcome) (CreateInput, error) {
+func materializeWorkspaceInvitationOutcome(value semanticOutcome) (createInput, error) {
 	input := baseOutcomeInput(value)
 	// Workspace team enqueues the encrypted Transactional invitation email.
 	// This outcome adds the account-wide in-app record for registered users.
@@ -364,7 +364,7 @@ func materializeWorkspaceInvitationOutcome(value semanticOutcome) (CreateInput, 
 	return input, nil
 }
 
-func materializeOwnershipTransferOutcome(value semanticOutcome) (CreateInput, error) {
+func materializeOwnershipTransferOutcome(value semanticOutcome) (createInput, error) {
 	input := baseOutcomeInput(value)
 	input.DedupKey = "ownership-transfer:" + value.eventID
 	input.Href = "/ownership-transfer?id=" + value.eventID
@@ -374,7 +374,7 @@ func materializeOwnershipTransferOutcome(value semanticOutcome) (CreateInput, er
 	return input, nil
 }
 
-func materializeRequiredAccountOutcome(value semanticOutcome) (CreateInput, error) {
+func materializeRequiredAccountOutcome(value semanticOutcome) (createInput, error) {
 	input := baseOutcomeInput(value)
 	input.Title = "Account action required"
 	input.Body = "Review this required account action in OpenPost."

@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/openpost/backend/internal/services/notifications"
 	"github.com/stretchr/testify/require"
 )
 
@@ -16,6 +17,14 @@ func TestNewSMTPSenderRejectsUnencryptedRemoteServer(t *testing.T) {
 		TLSMode: "none",
 	})
 	require.ErrorContains(t, err, "loopback")
+}
+
+func TestSMTPAdapterImplementsNotificationEmailDelivery(t *testing.T) {
+	sender, err := NewSMTPSender(SMTPConfig{Host: "127.0.0.1", Port: 2525, From: "OpenPost <support@example.com>", TLSMode: "none"})
+	require.NoError(t, err)
+	var delivery notifications.EmailDeliveryPort = sender
+	err = delivery.DeliverNotificationEmail(t.Context(), notifications.EmailMessage{Recipient: "not an address", Title: "Publication failed"})
+	require.ErrorContains(t, err, "invalid notification recipient")
 }
 
 func TestBuildResetEmailContainsOnlyResetDetails(t *testing.T) {

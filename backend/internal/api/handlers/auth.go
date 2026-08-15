@@ -65,9 +65,9 @@ type AuthHandler struct {
 	registrationsDisabled     bool
 	publicProfilesEnabled     bool
 	limiter                   *ratelimit.Limiter
-	passwordResetSender       passwordmail.Sender
+	passwordResetSender       passwordmail.PasswordResetSender
 	emailVerification         *emailverification.Service
-	emailSender               passwordmail.Sender
+	emailSender               passwordmail.VerificationSender
 	emailVerificationRequired bool
 	publicURL                 string
 	accountPolicy             AccountPolicy
@@ -109,14 +109,14 @@ func (h *AuthHandler) SetSessionService(sessionService *sessions.Service) {
 	h.sessions = sessionService
 }
 
-func (h *AuthHandler) SetPasswordResetSender(sender passwordmail.Sender, publicURL string) {
+func (h *AuthHandler) SetPasswordResetSender(sender passwordmail.PasswordResetSender, publicURL string) {
 	h.passwordResetSender = sender
 	h.publicURL = strings.TrimRight(strings.TrimSpace(publicURL), "/")
 }
 
 func (h *AuthHandler) SetEmailVerification(
 	service *emailverification.Service,
-	sender passwordmail.Sender,
+	sender passwordmail.VerificationSender,
 	required bool,
 ) {
 	h.emailVerification = service

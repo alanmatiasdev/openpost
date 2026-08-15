@@ -62,7 +62,9 @@ type RouteDeps struct {
 	TokenEncryptor               *servicecrypto.TokenEncryptor
 	TokenSource                  handlers.AccessTokenSource
 	MFAService                   *mfa.Service
-	PasswordResetSender          passwordmail.Sender
+	PasswordResetSender          passwordmail.PasswordResetSender
+	EmailVerificationSender      passwordmail.VerificationSender
+	IdentityEmailSender          passwordmail.IdentitySender
 	EmailVerificationService     *emailverification.Service
 	EmailChangeService           *emailchange.Service
 	EmailVerificationRequired    bool
@@ -169,7 +171,7 @@ func RegisterHumaRoutes(api huma.API, deps RouteDeps) {
 	)
 	authHandler.SetSessionService(deps.SessionService)
 	authHandler.SetPasswordResetSender(deps.PasswordResetSender, deps.PublicURL)
-	authHandler.SetEmailVerification(deps.EmailVerificationService, deps.PasswordResetSender, deps.EmailVerificationRequired)
+	authHandler.SetEmailVerification(deps.EmailVerificationService, deps.EmailVerificationSender, deps.EmailVerificationRequired)
 	authHandler.SetPublicProfilesEnabled(deps.PublicProfilesEnabled)
 	authHandler.SetAccountPolicy(deps.AccountPolicy)
 	authHandler.SetIdentityService(deps.IdentityService)
@@ -210,7 +212,7 @@ func RegisterHumaRoutes(api huma.API, deps RouteDeps) {
 	handlers.NewEmailChangeHandler(
 		deps.EmailChangeService,
 		deps.IdentityService,
-		deps.PasswordResetSender,
+		deps.IdentityEmailSender,
 		deps.Authenticator,
 		deps.PublicURL,
 	).RegisterRoutes(api)

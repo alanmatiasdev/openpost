@@ -15,7 +15,6 @@ import (
 	"github.com/openpost/backend/internal/models"
 	servicecrypto "github.com/openpost/backend/internal/services/crypto"
 	"github.com/openpost/backend/internal/services/organizationguard"
-	"github.com/openpost/backend/internal/services/passwordmail"
 	"github.com/openpost/backend/internal/services/transactionalmail"
 	"github.com/openpost/backend/internal/services/workspaceaccess"
 	"github.com/uptrace/bun"
@@ -134,7 +133,7 @@ type Mute struct {
 	EndsAt        time.Time `json:"ends_at"`
 }
 
-type CreateInput struct {
+type createInput struct {
 	UserID        string
 	WorkspaceID   string
 	Type          string
@@ -182,9 +181,27 @@ type NotificationPage struct {
 	UnreadCount int                       `json:"unread_count"`
 }
 
+// EmailMessage is rendered notification content accepted by a delivery
+// adapter. Password reset and identity email use separate capabilities.
+type EmailMessage struct {
+	Recipient      string
+	Title          string
+	Body           string
+	ActionURL      string
+	PreferencesURL string
+	IdempotencyKey string
+}
+
+// EmailDeliveryPort is the complete delivery capability owned by the
+// notification module.
+type EmailDeliveryPort interface {
+	DeliverNotificationEmail(context.Context, EmailMessage) error
+	DeliverWorkspaceInvitationEmail(context.Context, transactionalmail.WorkspaceInvitationMessage) error
+}
+
 type Service struct {
 	db        *bun.DB
-	sender    passwordmail.Sender
+	email     EmailDeliveryPort
 	encryptor *servicecrypto.TokenEncryptor
 	publicURL string
 	now       func() time.Time
@@ -198,15 +215,15 @@ type Service struct {
 }
 
 type Options struct {
-	Sender    passwordmail.Sender
-	Encryptor *servicecrypto.TokenEncryptor
-	PublicURL string
+	EmailDelivery EmailDeliveryPort
+	Encryptor     *servicecrypto.TokenEncryptor
+	PublicURL     string
 }
 
 func NewService(db *bun.DB, options ...Options) *Service {
 	service := &Service{db: db, now: func() time.Time { return time.Now().UTC() }}
 	if len(options) > 0 {
-		service.sender = options[0].Sender
+		service.email = options[0].EmailDelivery
 		service.encryptor = options[0].Encryptor
 		service.publicURL = strings.TrimRight(strings.TrimSpace(options[0].PublicURL), "/")
 	}
@@ -381,21 +398,15 @@ func (s *Service) muteView(ctx context.Context, db bun.IDB, row models.UserNotif
 	return view, err
 }
 
-func (s *Service) Create(ctx context.Context, input CreateInput) error {
+func (s *Service) create(ctx context.Context, input createInput) error {
 	return s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
-		return s.CreateWithDB(ctx, tx, input)
+		return s.createWithDB(ctx, tx, input)
 	})
 }
 
-// CreateWithDB lets callers write an attention notification in the same
-// transaction as the operational state that produced it.
-func (s *Service) CreateWithDB(ctx context.Context, db bun.IDB, input CreateInput) error {
-	return s.createWithDB(ctx, db, input)
-}
-
-// createWithDB is shared by typed outcomes and the temporary raw compatibility
-// seam that the producer-migration ticket removes.
-func (s *Service) createWithDB(ctx context.Context, db bun.IDB, input CreateInput) error {
+// createWithDB is reachable only after notification-owned outcome
+// materialization has selected policy and presentation.
+func (s *Service) createWithDB(ctx context.Context, db bun.IDB, input createInput) error {
 	if err := validateCreateInput(input); err != nil {
 		return err
 	}
@@ -432,7 +443,7 @@ func (s *Service) createWithDB(ctx context.Context, db bun.IDB, input CreateInpu
 	return s.enqueueEmailWithDB(ctx, db, input)
 }
 
-func validateCreateInput(input CreateInput) error {
+func validateCreateInput(input createInput) error {
 	if strings.TrimSpace(input.UserID) == "" || strings.TrimSpace(input.Type) == "" {
 		return fmt.Errorf("notification user and type are required")
 	}
@@ -445,10 +456,10 @@ func validateCreateInput(input CreateInput) error {
 func (s *Service) shouldDeliverOptionalEmail(
 	ctx context.Context,
 	db bun.IDB,
-	input CreateInput,
+	input createInput,
 	preference ChannelPreference,
 ) (bool, error) {
-	if preference.EmailFrequency == EmailFrequencyOff || s.sender == nil || input.SuppressEmail {
+	if preference.EmailFrequency == EmailFrequencyOff || s.email == nil || input.SuppressEmail {
 		return false, nil
 	}
 	policy, knownTopic := topicPolicyFor(input.Type)
@@ -462,7 +473,7 @@ func (s *Service) shouldDeliverOptionalEmail(
 	return !muted, err
 }
 
-func (s *Service) storeInAppNotification(ctx context.Context, db bun.IDB, input CreateInput) error {
+func (s *Service) storeInAppNotification(ctx context.Context, db bun.IDB, input createInput) error {
 	payloadValues := make(map[string]any, len(input.Payload)+1)
 	for key, value := range input.Payload {
 		payloadValues[key] = value
@@ -533,8 +544,7 @@ func (s *Service) EnqueueWorkspaceInvitationTx(ctx context.Context, tx bun.Tx, i
 }
 
 func (s *Service) enqueueWorkspaceInvitation(ctx context.Context, db bun.IDB, input WorkspaceInvitationEmailInput) (EmailDelivery, error) {
-	invitationSender, available := s.sender.(transactionalmail.WorkspaceInvitationSender)
-	if !available || invitationSender == nil || s.encryptor == nil || s.publicURL == "" {
+	if s.email == nil || s.encryptor == nil || s.publicURL == "" {
 		return EmailDelivery{Status: EmailDeliveryUnavailable}, nil
 	}
 	if !workspaceInvitationEmailInputValid(input) {
@@ -651,7 +661,7 @@ func normalizeInvitationDeliveryEvidence(event InvitationDeliveryEvidence) (Invi
 	return event, nil
 }
 
-func (s *Service) enqueueEmailWithDB(ctx context.Context, db bun.IDB, input CreateInput) error {
+func (s *Service) enqueueEmailWithDB(ctx context.Context, db bun.IDB, input createInput) error {
 	jobID := uuid.NewString()
 	if dedupKey := strings.TrimSpace(input.DedupKey); dedupKey != "" {
 		jobID = uuid.NewSHA1(uuid.NameSpaceOID, []byte(input.UserID+"\x00"+dedupKey)).String()
@@ -689,7 +699,7 @@ func (s *Service) enqueueEmailWithDB(ctx context.Context, db bun.IDB, input Crea
 	return err
 }
 
-func (s *Service) enqueueDigestItemWithDB(ctx context.Context, db bun.IDB, input CreateInput) error {
+func (s *Service) enqueueDigestItemWithDB(ctx context.Context, db bun.IDB, input createInput) error {
 	if s.beforeDigestPreferenceLock != nil {
 		s.beforeDigestPreferenceLock()
 	}
@@ -775,7 +785,7 @@ func (s *Service) HandleJob(ctx context.Context, jobType, payload string) error 
 	if jobType != JobTypeEmailDelivery {
 		return fmt.Errorf("unsupported notification job type %q", jobType)
 	}
-	if s.sender == nil {
+	if s.email == nil {
 		return fmt.Errorf("notification email delivery is not configured")
 	}
 	var job emailDeliveryJob
@@ -817,7 +827,7 @@ func (s *Service) handleImmediateEmail(ctx context.Context, job emailDeliveryJob
 		preferencesURL = s.publicURL + "/settings?tab=notifications"
 	}
 	title, body := notificationEmailPresentation(job)
-	err = s.sender.SendNotification(ctx, passwordmail.NotificationMessage{
+	err = s.email.DeliverNotificationEmail(ctx, EmailMessage{
 		Recipient:      email,
 		Title:          title,
 		Body:           body,
@@ -833,7 +843,7 @@ func (s *Service) handleImmediateEmail(ctx context.Context, job emailDeliveryJob
 	return err
 }
 
-func notificationSemanticData(input CreateInput) map[string]string {
+func notificationSemanticData(input createInput) map[string]string {
 	if input.Type != TypeOwnershipTransfer || input.Payload["kind"] != OwnershipTransferSemanticKind {
 		return nil
 	}
@@ -891,7 +901,7 @@ func (s *Service) handleDailyDigestEmail(ctx context.Context, job emailDeliveryJ
 	if s.publicURL != "" {
 		preferencesURL = s.publicURL + "/settings?tab=notifications"
 	}
-	if err := s.sender.SendNotification(ctx, passwordmail.NotificationMessage{
+	if err := s.email.DeliverNotificationEmail(ctx, EmailMessage{
 		Recipient: email, Title: "Your daily OpenPost digest", Body: body,
 		PreferencesURL: preferencesURL, IdempotencyKey: "notification-digest-" + job.DeliveryID,
 	}); err != nil {
@@ -1025,15 +1035,14 @@ func truncateRunes(value string, limit int) string {
 }
 
 func (s *Service) handleWorkspaceInvitationEmail(ctx context.Context, job emailDeliveryJob) error {
-	invitationSender, ok := s.sender.(transactionalmail.WorkspaceInvitationSender)
-	if !ok || s.encryptor == nil {
+	if s.email == nil || s.encryptor == nil {
 		return fmt.Errorf("transactional workspace invitation delivery is not configured")
 	}
 	acceptURL, err := s.encryptor.Decrypt(job.AcceptURLEnc)
 	if err != nil || strings.TrimSpace(acceptURL) == "" {
 		return errors.New("workspace invitation acceptance URL could not be decrypted")
 	}
-	err = invitationSender.SendWorkspaceInvitation(ctx, transactionalmail.WorkspaceInvitationMessage{
+	err = s.email.DeliverWorkspaceInvitationEmail(ctx, transactionalmail.WorkspaceInvitationMessage{
 		Recipient: job.Recipient, WorkspaceName: job.WorkspaceName, InviterName: job.InviterName,
 		Role: job.Role, AcceptURL: acceptURL, ExpiresAt: job.ExpiresAt,
 		IdempotencyKey: "notification-" + job.DeliveryID,
@@ -1199,7 +1208,7 @@ func (s *Service) getPreferenceSettings(ctx context.Context, db bun.IDB, userID 
 		return PreferenceSettings{}, err
 	}
 	return PreferenceSettings{
-		Preferences: preferences, TopicDefinitions: TopicDefinitions(), EmailAvailable: s.sender != nil, EmailAddress: strings.TrimSpace(email),
+		Preferences: preferences, TopicDefinitions: TopicDefinitions(), EmailAvailable: s.email != nil, EmailAddress: strings.TrimSpace(email),
 		DigestTime: digestTime, DigestTimezone: digestTimezone, DigestConfigured: digestConfigured,
 		Mutes: mutes,
 	}, nil

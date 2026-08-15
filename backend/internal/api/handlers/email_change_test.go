@@ -28,19 +28,11 @@ func (emailChangeAuthenticator) AuthenticateBearer(_ context.Context, token stri
 }
 
 type recordingEmailChangeSender struct {
-	notifications []passwordmail.NotificationMessage
+	notifications []passwordmail.IdentityMessage
 	err           error
 }
 
-func (s *recordingEmailChangeSender) SendPasswordReset(_ context.Context, _ passwordmail.ResetMessage) error {
-	return s.err
-}
-
-func (s *recordingEmailChangeSender) SendEmailVerification(_ context.Context, _ passwordmail.VerificationMessage) error {
-	return s.err
-}
-
-func (s *recordingEmailChangeSender) SendNotification(_ context.Context, message passwordmail.NotificationMessage) error {
+func (s *recordingEmailChangeSender) SendIdentityEmail(_ context.Context, message passwordmail.IdentityMessage) error {
 	if s.err != nil {
 		return s.err
 	}
