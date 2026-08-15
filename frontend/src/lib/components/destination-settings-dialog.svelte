@@ -20,11 +20,17 @@
 	import VideoCoverFramePicker, {
 		type GeneratedCoverFrame
 	} from './video-cover-frame-picker.svelte';
+	import type { ComposerSettings, ComposerSettingValue } from '$lib/components/compose/modes';
 
 	type SettingDefinition = components['schemas']['SettingDefinition'];
 	type SettingCondition = components['schemas']['SettingCondition'];
 	type DestinationOption = components['schemas']['DestinationOption'];
 	type SettingGroup = SettingDefinition['group'];
+	type MessageFunction = () => string;
+
+	// SAFETY: Paraglide's generated message module exports callable message functions. Setting
+	// message keys are dynamic server metadata, so TypeScript cannot select a static export.
+	const messageRegistry = m as Record<string, MessageFunction | undefined>;
 
 	interface DestinationMediaItem {
 		id: string;
@@ -36,9 +42,9 @@
 		open?: boolean;
 		account: SocialAccount | null;
 		settings: SettingDefinition[];
-		values: Record<string, unknown>;
+		values: ComposerSettings;
 		mediaItems?: DestinationMediaItem[];
-		mediaValues?: Record<string, Record<string, unknown>>;
+		mediaValues?: Record<string, ComposerSettings>;
 		optionGroups?: Record<string, DestinationOption[]>;
 		optionNextCursors?: Record<string, string>;
 		optionsLoading?: boolean;
@@ -47,9 +53,9 @@
 		formatValue?: string;
 		formatOptions?: Array<{ value: string; label: string }>;
 		formatRequired?: boolean;
-		onChange: (key: string, value: unknown) => void;
+		onChange: (key: string, value: ComposerSettingValue) => void;
 		onFormatChange?: (value: string) => void;
-		onMediaChange?: (mediaId: string, key: string, value: unknown) => void;
+		onMediaChange?: (mediaId: string, key: string, value: ComposerSettingValue) => void;
 		onOptionSearch?: (setting: SettingDefinition, search: string) => void;
 		onOptionLoadMore?: (setting: SettingDefinition) => void;
 		onRetry?: () => void;
@@ -119,7 +125,7 @@
 
 	function valueAsString(key: string, scopedValues = values): string {
 		const value = scopedValues[key];
-		return typeof value === 'string' || typeof value === 'number' ? String(value) : '';
+		return value === undefined || value === null ? '' : String(value);
 	}
 
 	function valueAsBoolean(key: string, scopedValues = values): boolean {
@@ -149,19 +155,13 @@
 		}
 	}
 
-	function dependenciesMet(
-		setting: SettingDefinition,
-		scopedValues: Record<string, unknown>
-	): boolean {
+	function dependenciesMet(setting: SettingDefinition, scopedValues: ComposerSettings): boolean {
 		return (setting.dependencies ?? []).every((condition) =>
 			conditionMatches(condition, scopedValues)
 		);
 	}
 
-	function conditionMatches(
-		condition: SettingCondition,
-		scopedValues: Record<string, unknown>
-	): boolean {
+	function conditionMatches(condition: SettingCondition, scopedValues: ComposerSettings): boolean {
 		const value = scopedValues[condition.key];
 		const present = value !== undefined && value !== null && String(value).trim() !== '';
 		switch (condition.operator) {
@@ -174,7 +174,7 @@
 			case 'not_equals':
 				return value !== condition.value;
 			case 'in':
-				return Array.isArray(condition.value) && condition.value.includes(value);
+				return Array.isArray(condition.value) && condition.value.some((item) => item === value);
 		}
 	}
 
@@ -184,8 +184,7 @@
 
 	function settingLabel(setting: SettingDefinition): string {
 		const messageKey = setting.message_key.replaceAll('.', '_');
-		const message = (m as unknown as Record<string, () => string>)[messageKey];
-		return typeof message === 'function' ? message() : setting.label;
+		return messageRegistry[messageKey]?.() ?? setting.label;
 	}
 
 	function inputType(setting: SettingDefinition): 'number' | 'url' | 'text' {
