@@ -107,7 +107,7 @@
       "evidence": [
         "backend/internal/api/routes.go",
         "backend/internal/services/analytics/service.go",
-        "backend/internal/services/communications/service.go",
+        "backend/internal/api/handlers/communications.go",
         "docs-site/operations/logs.md",
         "packages/legal-policy/src/managed-service.json"
       ]

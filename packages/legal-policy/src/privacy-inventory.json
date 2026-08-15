@@ -248,7 +248,8 @@
       "deletion_trigger": "Notification deletion removes selected notifications. Social-account, workspace, or completed account deletion removes related communication records. Provider synchronization can mark an engagement item deleted without removing its stored row.",
       "exceptions": "Disabling inbox collection stops future reads but does not by itself delete records already stored. Page requests read stored data and do not call provider APIs. Provider copies of comments and messages remain under the provider's controls.",
       "evidence": [
-        "backend/internal/services/communications/service.go",
+        "backend/internal/services/engagement/service.go",
+        "backend/internal/services/messaging/service.go",
         "backend/internal/services/notifications/service.go",
         "backend/internal/models/models.go"
       ]
