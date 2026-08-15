@@ -11,7 +11,11 @@ import {
 import type { SocialAccount } from '$lib/api/client';
 import { getAuthenticatedMediaByID } from '$lib/media-url';
 import { getPlatformName } from '$lib/utils';
-import type { ComposerModeKey } from '$lib/components/compose/modes';
+import type {
+	ComposerModeKey,
+	ComposerSettings,
+	ComposerSettingValue
+} from '$lib/components/compose/modes';
 
 export interface ComposerPreviewMedia {
 	id: string;
@@ -25,7 +29,7 @@ export interface ComposerPreviewSegment {
 	id: string;
 	text: string;
 	media?: ComposerPreviewMedia[];
-	settings?: Record<string, unknown>;
+	settings?: ComposerSettings;
 }
 
 export interface ComposerPreviewInput {
@@ -34,7 +38,7 @@ export interface ComposerPreviewInput {
 	segments: ComposerPreviewSegment[];
 	media?: ComposerPreviewMedia[];
 	outputProfile?: string;
-	destinationSettings?: Record<string, unknown>;
+	destinationSettings?: ComposerSettings;
 	title?: string;
 	subtitle?: string;
 	linkUrl?: string;
@@ -59,15 +63,15 @@ export function buildComposerPreview(input: ComposerPreviewInput): PreviewModel 
 	);
 	const title =
 		input.title ||
-		settingText(mergedSettings, 'title') ||
-		settingText(mergedSettings, 'video_title') ||
-		settingText(mergedSettings, 'article_title') ||
-		settingText(mergedSettings, 'document_title');
+		parseSettingText(mergedSettings, 'title') ||
+		parseSettingText(mergedSettings, 'video_title') ||
+		parseSettingText(mergedSettings, 'article_title') ||
+		parseSettingText(mergedSettings, 'document_title');
 	const subtitle =
 		input.subtitle ||
-		settingText(mergedSettings, 'description') ||
-		settingText(mergedSettings, 'video_description') ||
-		settingText(mergedSettings, 'article_description');
+		parseSettingText(mergedSettings, 'description') ||
+		parseSettingText(mergedSettings, 'video_description') ||
+		parseSettingText(mergedSettings, 'article_description');
 
 	return createPreviewModel({
 		platform,
@@ -82,13 +86,13 @@ export function buildComposerPreview(input: ComposerPreviewInput): PreviewModel 
 		poll: previewPoll(mergedSettings),
 		card: previewCard(mergedSettings, input.linkUrl),
 		contentWarning:
-			settingText(mergedSettings, 'spoiler_text') ||
+			parseSettingText(mergedSettings, 'spoiler_text') ||
 			(settingBoolean(mergedSettings, 'spoiler') ? 'Sensitive media' : undefined),
-		visibility: settingText(mergedSettings, 'visibility') || undefined,
+		visibility: parseSettingText(mergedSettings, 'visibility') || undefined,
 		location:
 			input.location ||
-			settingText(mergedSettings, 'location_name') ||
-			settingText(mergedSettings, 'location'),
+			parseSettingText(mergedSettings, 'location_name') ||
+			parseSettingText(mergedSettings, 'location'),
 		title,
 		subtitle
 	});
@@ -138,13 +142,13 @@ function previewMedia(item: ComposerPreviewMedia): PreviewMedia {
 	};
 }
 
-function previewPoll(settings: Record<string, unknown>): PreviewPoll | undefined {
-	const options = separatedValues(settings.poll_options);
+function previewPoll(settings: ComposerSettings): PreviewPoll | undefined {
+	const options = parseSeparatedValues(settings.poll_options);
 	if (options.length < 2) return undefined;
 	const duration =
-		settingText(settings, 'poll_duration') ||
-		durationLabel(settings.poll_duration_minutes, 'minute') ||
-		durationLabel(settings.poll_expires_in_seconds, 'second');
+		parseSettingText(settings, 'poll_duration') ||
+		parseDurationLabel(settings.poll_duration_minutes, 'minute') ||
+		parseDurationLabel(settings.poll_expires_in_seconds, 'second');
 	return {
 		options,
 		durationLabel: duration || undefined,
@@ -152,11 +156,8 @@ function previewPoll(settings: Record<string, unknown>): PreviewPoll | undefined
 	};
 }
 
-function previewCard(
-	settings: Record<string, unknown>,
-	fallbackURL?: string
-): PreviewCard | undefined {
-	const quoteURL = settingText(settings, 'quote_url');
+function previewCard(settings: ComposerSettings, fallbackURL?: string): PreviewCard | undefined {
+	const quoteURL = parseSettingText(settings, 'quote_url');
 	if (quoteURL) {
 		return {
 			kind: 'quote',
@@ -166,28 +167,33 @@ function previewCard(
 		};
 	}
 	const url =
-		settingText(settings, 'url') || settingText(settings, 'link_url') || fallbackURL?.trim() || '';
+		parseSettingText(settings, 'url') ||
+		parseSettingText(settings, 'link_url') ||
+		fallbackURL?.trim() ||
+		'';
 	if (!url) return undefined;
 	return {
 		kind: 'link',
-		title: settingText(settings, 'link_title') || safeDomain(url) || 'Shared link',
-		description: settingText(settings, 'link_description') || undefined,
+		title: parseSettingText(settings, 'link_title') || safeDomain(url) || 'Shared link',
+		description: parseSettingText(settings, 'link_description') || undefined,
 		domain: safeDomain(url),
 		imageUrl:
-			settingText(settings, 'link_image_url') || settingText(settings, 'thumbnail_url') || undefined
+			parseSettingText(settings, 'link_image_url') ||
+			parseSettingText(settings, 'thumbnail_url') ||
+			undefined
 	};
 }
 
-function settingText(settings: Record<string, unknown>, key: string): string {
+function parseSettingText(settings: ComposerSettings, key: string): string {
 	const value = settings[key];
 	return typeof value === 'string' ? value.trim() : '';
 }
 
-function settingBoolean(settings: Record<string, unknown>, key: string): boolean {
+function settingBoolean(settings: ComposerSettings, key: string): boolean {
 	return settings[key] === true || settings[key] === 'true';
 }
 
-function separatedValues(value: unknown): string[] {
+function parseSeparatedValues(value: ComposerSettingValue | undefined): string[] {
 	if (Array.isArray(value))
 		return value
 			.map(String)
@@ -200,7 +206,10 @@ function separatedValues(value: unknown): string[] {
 		.filter(Boolean);
 }
 
-function durationLabel(value: unknown, unit: 'minute' | 'second'): string {
+function parseDurationLabel(
+	value: ComposerSettingValue | undefined,
+	unit: 'minute' | 'second'
+): string {
 	const amount = typeof value === 'number' ? value : Number(value);
 	if (!Number.isFinite(amount) || amount <= 0) return '';
 	if (unit === 'second' && amount >= 3600 && amount % 3600 === 0) {
