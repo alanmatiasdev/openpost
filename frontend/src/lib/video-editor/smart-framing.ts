@@ -239,11 +239,16 @@ function clamp(value: number, minimum: number, maximum: number): number {
 	return Math.min(maximum, Math.max(minimum, value));
 }
 
+export interface VideoFocusPoint {
+	x: number;
+	y: number;
+}
+
 export function safeFocusPoint(
 	targetAspect: number,
 	focusX: number,
 	focusY: number
-): { x: number; y: number } {
+): VideoFocusPoint {
 	if (targetAspect <= 0.7) {
 		return { x: clamp(focusX, 0.18, 0.82), y: clamp(focusY, 0.16, 0.72) };
 	}

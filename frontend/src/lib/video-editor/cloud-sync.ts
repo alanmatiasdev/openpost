@@ -89,7 +89,7 @@ export async function syncVideoProjectToOpenPost(
 	if (!plan.allowed) {
 		throw new Error(plan.reason || 'This workspace does not have enough cloud storage.');
 	}
-	const cloudSourceMap: Record<string, string> = {
+	const cloudSourceMap = {
 		...(local.cloud_source_map ?? {}),
 		...Object.fromEntries((plan.reused ?? []).map((reuse) => [reuse.source_id, reuse.media_id]))
 	};

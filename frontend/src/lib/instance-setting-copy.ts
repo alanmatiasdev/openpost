@@ -14,7 +14,7 @@ interface SettingCopy {
 // The registry is supplied by the API so operators can add settings without a
 // frontend schema change. Keep the Portuguese copy keyed by the stable setting
 // name and fall back to the server copy for new or English settings.
-const portugueseCopy: Record<string, SettingCopy> = {
+const portugueseCopyDefinitions = {
 	OPENPOST_DISABLE_REGISTRATIONS: {
 		label: 'Desativar novos registos',
 		description:
@@ -274,9 +274,10 @@ const portugueseCopy: Record<string, SettingCopy> = {
 		description:
 			'Dias durante os quais são mantidos os registos de utilização e reserva. Use zero para os manter.'
 	}
-};
+} satisfies Record<string, SettingCopy>;
+const portugueseCopy = new Map(Object.entries(portugueseCopyDefinitions));
 
-const portugueseOptions: Record<string, string> = {
+const portugueseOptionDefinitions = {
 	'OPENPOST_EMAIL_PROVIDER:': 'Não configurado',
 	'OPENPOST_EMAIL_PROVIDER:smtp': 'SMTP',
 	'OPENPOST_EMAIL_PROVIDER:resend': 'Resend',
@@ -284,14 +285,15 @@ const portugueseOptions: Record<string, string> = {
 	'OPENPOST_SMTP_TLS_MODE:starttls': 'STARTTLS',
 	'OPENPOST_SMTP_TLS_MODE:tls': 'TLS',
 	'OPENPOST_SMTP_TLS_MODE:none': 'Nenhum'
-};
+} satisfies Record<string, string>;
+const portugueseOptions = new Map(Object.entries(portugueseOptionDefinitions));
 
 export function instanceSettingCopy(setting: SettingCopyInput): SettingCopy {
 	if (getCurrentLocale() !== 'pt') return setting;
-	return portugueseCopy[setting.key] ?? setting;
+	return portugueseCopy.get(setting.key) ?? setting;
 }
 
 export function instanceSettingOptionLabel(key: string, value: string, fallback: string): string {
 	if (getCurrentLocale() !== 'pt') return fallback;
-	return portugueseOptions[`${key}:${value}`] ?? fallback;
+	return portugueseOptions.get(`${key}:${value}`) ?? fallback;
 }

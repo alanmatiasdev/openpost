@@ -33,7 +33,12 @@ export function defaultLayerMask(): ImageEditorLayerMask {
 	return { shape: 'rectangle', inset: 0, radius: 32 };
 }
 
-export function shadowOffset(effect: ImageEditorShadowEffect): { x: number; y: number } {
+export interface ImageEditorShadowOffset {
+	x: number;
+	y: number;
+}
+
+export function shadowOffset(effect: ImageEditorShadowEffect): ImageEditorShadowOffset {
 	const radians = (effect.angle * Math.PI) / 180;
 	return {
 		x: Math.cos(radians) * effect.distance,

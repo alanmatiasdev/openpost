@@ -26,6 +26,11 @@ const MIN_DIMENSION = 480;
 const SIZE_HEADROOM = 0.88;
 const MAX_ATTEMPTS = 3;
 
+interface FittedVideoDimensions {
+	width: number;
+	height: number;
+}
+
 export async function prepareVideoForUpload(
 	file: File,
 	constraints: VideoConstraint[],
@@ -315,11 +320,7 @@ async function encodeOnce(
 	}
 }
 
-function fitDimensions(
-	width: number,
-	height: number,
-	longestEdge: number
-): { width: number; height: number } {
+function fitDimensions(width: number, height: number, longestEdge: number): FittedVideoDimensions {
 	const longest = Math.max(width, height);
 	const scale = longest > longestEdge ? longestEdge / longest : 1;
 	return {

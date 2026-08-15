@@ -5,51 +5,51 @@ export interface ParsedScheduleInput {
 	time: string;
 }
 
-const WEEKDAY_INDEXES: Record<string, number> = {
-	sunday: 0,
-	sun: 0,
-	monday: 1,
-	mon: 1,
-	tuesday: 2,
-	tue: 2,
-	tues: 2,
-	wednesday: 3,
-	wed: 3,
-	thursday: 4,
-	thu: 4,
-	thurs: 4,
-	friday: 5,
-	fri: 5,
-	saturday: 6,
-	sat: 6
-};
+const WEEKDAY_INDEXES = new Map<string, number>([
+	['sunday', 0],
+	['sun', 0],
+	['monday', 1],
+	['mon', 1],
+	['tuesday', 2],
+	['tue', 2],
+	['tues', 2],
+	['wednesday', 3],
+	['wed', 3],
+	['thursday', 4],
+	['thu', 4],
+	['thurs', 4],
+	['friday', 5],
+	['fri', 5],
+	['saturday', 6],
+	['sat', 6]
+]);
 
-const MONTH_INDEXES: Record<string, number> = {
-	january: 0,
-	jan: 0,
-	february: 1,
-	feb: 1,
-	march: 2,
-	mar: 2,
-	april: 3,
-	apr: 3,
-	may: 4,
-	june: 5,
-	jun: 5,
-	july: 6,
-	jul: 6,
-	august: 7,
-	aug: 7,
-	september: 8,
-	sep: 8,
-	sept: 8,
-	october: 9,
-	oct: 9,
-	november: 10,
-	nov: 10,
-	december: 11,
-	dec: 11
-};
+const MONTH_INDEXES = new Map<string, number>([
+	['january', 0],
+	['jan', 0],
+	['february', 1],
+	['feb', 1],
+	['march', 2],
+	['mar', 2],
+	['april', 3],
+	['apr', 3],
+	['may', 4],
+	['june', 5],
+	['jun', 5],
+	['july', 6],
+	['jul', 6],
+	['august', 7],
+	['aug', 7],
+	['september', 8],
+	['sep', 8],
+	['sept', 8],
+	['october', 9],
+	['oct', 9],
+	['november', 10],
+	['nov', 10],
+	['december', 11],
+	['dec', 11]
+]);
 
 function toCalendarDate(date: Date, useUTC = false): CalendarDate {
 	return new CalendarDate(
@@ -235,7 +235,7 @@ export function parseNaturalScheduleInput(
 		/\b(next\s+)?(sun(?:day)?|mon(?:day)?|tue(?:s|sday)?|wed(?:nesday)?|thu(?:rs|rsday)?|fri(?:day)?|sat(?:urday)?)\b/
 	);
 	if (weekdayMatch) {
-		const weekday = WEEKDAY_INDEXES[weekdayMatch[2]];
+		const weekday = WEEKDAY_INDEXES.get(weekdayMatch[2]);
 		if (weekday !== undefined) {
 			return parsed(
 				nextWeekday(
@@ -280,7 +280,7 @@ export function parseNaturalScheduleInput(
 		/\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t|tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+(\d{1,2})(?:\s+(\d{4}))?\b/
 	);
 	if (monthMatch) {
-		const month = MONTH_INDEXES[monthMatch[1]];
+		const month = MONTH_INDEXES.get(monthMatch[1]);
 		const day = Number.parseInt(monthMatch[2], 10);
 		const explicitYear = monthMatch[3] ? Number.parseInt(monthMatch[3], 10) : null;
 		if (month !== undefined && day >= 1 && day <= 31) {

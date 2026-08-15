@@ -14,13 +14,13 @@ FORM: A concise public verification page inside the established OpenPost world, 
 	import { m } from '$lib/paraglide/messages';
 
 	const productSite = 'https://openpost.social';
-	const planBestFor: Record<HostedPlanID, () => string> = {
+	const planBestFor = {
 		starter: m.public_home_plan_starter_best_for,
 		founder: m.public_home_plan_founder_best_for,
 		pro: m.public_home_plan_pro_best_for,
 		team: m.public_home_plan_team_best_for,
 		agency: m.public_home_plan_agency_best_for
-	};
+	} satisfies Record<HostedPlanID, () => string>;
 	const features = [
 		{
 			icon: PanelsTopLeft,

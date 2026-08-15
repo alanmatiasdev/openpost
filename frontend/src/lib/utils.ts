@@ -69,27 +69,27 @@ export function formatAccountHandle(username: string | null | undefined): string
 }
 
 export function getStatusColor(status: string): string {
-	const colors: Record<string, string> = {
-		draft: 'bg-muted text-muted-foreground',
-		scheduled: 'bg-blue-500/10 text-blue-600 dark:text-blue-400',
-		publishing: 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-400',
-		published: 'bg-green-500/10 text-green-600 dark:text-green-400',
-		failed: 'bg-red-500/10 text-red-600 dark:text-red-400'
-	};
-	return colors[status] || 'bg-muted text-muted-foreground';
+	const colors = new Map([
+		['draft', 'bg-muted text-muted-foreground'],
+		['scheduled', 'bg-blue-500/10 text-blue-600 dark:text-blue-400'],
+		['publishing', 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-400'],
+		['published', 'bg-green-500/10 text-green-600 dark:text-green-400'],
+		['failed', 'bg-red-500/10 text-red-600 dark:text-red-400']
+	]);
+	return colors.get(status) ?? 'bg-muted text-muted-foreground';
 }
 
 export function getPlatformColor(platform: string): string {
-	const colors: Record<string, string> = {
-		x: 'bg-black',
-		mastodon: 'bg-indigo-500',
-		threads: 'bg-orange-500',
-		bluesky: 'bg-sky-500',
-		linkedin: 'bg-blue-600',
-		instagram: 'bg-pink-500',
-		facebook: 'bg-blue-700',
-		youtube: 'bg-red-600',
-		tiktok: 'bg-zinc-900'
-	};
-	return colors[getPlatformKey(platform)] || 'bg-gray-500';
+	const colors = new Map([
+		['x', 'bg-black'],
+		['mastodon', 'bg-indigo-500'],
+		['threads', 'bg-orange-500'],
+		['bluesky', 'bg-sky-500'],
+		['linkedin', 'bg-blue-600'],
+		['instagram', 'bg-pink-500'],
+		['facebook', 'bg-blue-700'],
+		['youtube', 'bg-red-600'],
+		['tiktok', 'bg-zinc-900']
+	]);
+	return colors.get(getPlatformKey(platform)) ?? 'bg-gray-500';
 }

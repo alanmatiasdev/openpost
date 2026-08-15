@@ -18,23 +18,21 @@
 
 	let { platform, class: className = '' }: Props = $props();
 
-	const svgs: Record<string, string> = {
-		x,
-		mastodon,
-		threads,
-		bluesky,
-		discord,
-		linkedin,
-		instagram,
-		facebook,
-		youtube,
-		tiktok
-	};
+	const svgs = new Map<string, string>([
+		['x', x],
+		['mastodon', mastodon],
+		['threads', threads],
+		['bluesky', bluesky],
+		['discord', discord],
+		['linkedin', linkedin],
+		['instagram', instagram],
+		['facebook', facebook],
+		['youtube', youtube],
+		['tiktok', tiktok]
+	]);
 	const platformKey = $derived(getPlatformKey(platform));
 
-	const svg = $derived(
-		svgs[platformKey] ? svgs[platformKey].replace('<svg ', `<svg class="${className}" `) : ''
-	);
+	const svg = $derived(svgs.get(platformKey)?.replace('<svg ', `<svg class="${className}" `) ?? '');
 </script>
 
 {#if svg}

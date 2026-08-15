@@ -16,11 +16,16 @@ export interface TimelineIntervalLayout {
 	placements: Map<string, TimelineIntervalPlacement>;
 }
 
+export interface TimelineItemDurationFit {
+	duration_us: number;
+	trimmed: boolean;
+}
+
 export function fitTimelineItemDuration(
 	sourceDurationUS: number,
 	projectDurationUS: number,
 	timelineStartUS: number
-): { duration_us: number; trimmed: boolean } {
+): TimelineItemDurationFit {
 	const sourceDuration = Math.max(0, sourceDurationUS);
 	const availableDuration = Math.max(0, projectDurationUS - timelineStartUS);
 	const duration =

@@ -30,6 +30,11 @@
 		value: string;
 	}
 
+	interface BrandFontFileMetadata {
+		mimeType: string;
+		format: string;
+	}
+
 	let {
 		kit,
 		onSaved
@@ -151,7 +156,7 @@
 		];
 	}
 
-	function brandFontFileMetadata(filename: string): { mimeType: string; format: string } {
+	function brandFontFileMetadata(filename: string): BrandFontFileMetadata {
 		switch (filename.toLowerCase().split('.').pop()) {
 			case 'ttf':
 				return { mimeType: 'font/ttf', format: 'truetype' };

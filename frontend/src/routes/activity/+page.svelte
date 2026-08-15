@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import { untrack } from 'svelte';
 	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
@@ -27,6 +26,7 @@
 	import CopyIcon from '@lucide/svelte/icons/copy';
 	import { m } from '$lib/paraglide/messages';
 	import { getLocaleTag } from '$lib/i18n';
+	import { resolveAppPath } from '$lib/app-path';
 
 	type Publication = components['schemas']['PublicationResponse'];
 	type ActivityDestination = NonNullable<Publication['renditions']>[number];
@@ -126,15 +126,18 @@
 				groups.set(key, group);
 			}
 		}
-		const priority: Record<string, number> = { manual_resolution: 0, retry: 1 };
+		const priority = new Map([
+			['manual_resolution', 0],
+			['retry', 1]
+		]);
 		return [...groups.values()].toSorted(
 			(left, right) =>
-				(priority[
+				(priority.get(
 					deliveryRecoveryAction(left.sampleDestination.delivery, left.sampleDestination.status)
-				] ?? 2) -
-				(priority[
+				) ?? 2) -
+				(priority.get(
 					deliveryRecoveryAction(right.sampleDestination.delivery, right.sampleDestination.status)
-				] ?? 2)
+				) ?? 2)
 		);
 	});
 	const drafts = $derived(
@@ -578,7 +581,7 @@
 		}
 		if (recovery === 'manual_resolution') {
 			await goto(
-				resolve(`/settings?tab=accounts&account_id=${destination.social_account_id}` as '/')
+				resolveAppPath(`/settings?tab=accounts&account_id=${destination.social_account_id}`)
 			);
 			return;
 		}
@@ -664,7 +667,7 @@
 						variant="ghost"
 						size="sm"
 						class="min-h-10 shrink-0"
-						onclick={() => goto(resolve(post.href as '/'))}
+						onclick={() => goto(resolveAppPath(post.href))}
 						aria-label={post.status === 'published' || post.status === 'publishing'
 							? m.activity_view_post({ title: truncate(postText(post), 40) })
 							: m.activity_edit_post({ title: truncate(postText(post), 40) })}
@@ -700,7 +703,7 @@
 			<RefreshIcon class={`mr-1.5 size-3.5 ${loading ? 'animate-spin' : ''}`} />
 			{m.common_refresh()}
 		</Button>
-		<Button size="sm" onclick={() => goto(resolve('/'))}>
+		<Button size="sm" onclick={() => goto(resolveAppPath('/'))}>
 			<PlusIcon class="mr-1.5 size-3.5" />
 			{m.activity_new_post()}
 		</Button>
@@ -811,7 +814,7 @@
 										<Button
 											variant="ghost"
 											size="sm"
-											onclick={() => goto(resolve(failedJobHref(job) as '/'))}
+											onclick={() => goto(resolveAppPath(failedJobHref(job)))}
 											>{m.activity_open_post()}</Button
 										>
 									{/if}

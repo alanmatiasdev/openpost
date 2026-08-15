@@ -490,7 +490,7 @@
 		return `rgba(${grid.data[offset] ?? 0}, ${grid.data[offset + 1] ?? 0}, ${grid.data[offset + 2] ?? 0}, ${(grid.data[offset + 3] ?? 0) / 255})`;
 	}
 
-	function eyedropperMagnifierOffset(point: SelectionPoint): { x: number; y: number } {
+	function eyedropperMagnifierOffset(point: SelectionPoint): SelectionPoint {
 		const document = editor.document;
 		if (!document) return { x: 14, y: 14 };
 		return {

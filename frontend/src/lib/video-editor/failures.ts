@@ -37,7 +37,7 @@ export interface VideoEditorFailurePresentation {
 	retryable: boolean;
 }
 
-const PRESENTATIONS: Record<VideoEditorFailureCode, VideoEditorFailurePresentation> = {
+const PRESENTATIONS = {
 	'capability.webcodecs': {
 		explanation:
 			'This browser does not provide the video codec engine required by OpenPost Video Editor.',
@@ -221,7 +221,7 @@ const PRESENTATIONS: Record<VideoEditorFailureCode, VideoEditorFailurePresentati
 		recovery: 'Retry the operation and open technical details if it fails again.',
 		retryable: true
 	}
-};
+} satisfies Record<VideoEditorFailureCode, VideoEditorFailurePresentation>;
 
 export interface VideoEditorDiagnostic {
 	at: string;
@@ -233,6 +233,91 @@ export interface VideoEditorDiagnostic {
 	worker_state?: string;
 	engine_version?: string;
 	capabilities?: Record<string, boolean>;
+}
+
+type StoredDiagnosticValue =
+	| string
+	| number
+	| boolean
+	| null
+	| StoredDiagnosticValue[]
+	| { [key: string]: StoredDiagnosticValue };
+
+const FAILURE_CODES = new Set<string>(Object.keys(PRESENTATIONS));
+const DURATION_BUCKETS = new Set<string>(['<1s', '1-10s', '10-60s', '1-5m', '>5m']);
+const SIZE_BUCKETS = new Set<string>(['<1MB', '1-10MB', '10-100MB', '100MB-1GB', '>1GB']);
+
+function storedEntries(
+	value: StoredDiagnosticValue | undefined
+): Map<string, StoredDiagnosticValue> {
+	if (value === null || Array.isArray(value) || !(value instanceof Object)) return new Map();
+	return new Map(Object.entries(value));
+}
+
+function storedString(value: StoredDiagnosticValue | undefined): string | undefined {
+	return String(value) === value ? String(value) : undefined;
+}
+
+function storedNumber(value: StoredDiagnosticValue | undefined): number | undefined {
+	return Number.isFinite(value) ? Number(value) : undefined;
+}
+
+function isFailureCode(value: string): value is VideoEditorFailureCode {
+	return FAILURE_CODES.has(value);
+}
+
+function isDurationBucket(
+	value: string
+): value is NonNullable<VideoEditorDiagnostic['duration_bucket']> {
+	return DURATION_BUCKETS.has(value);
+}
+
+function isSizeBucket(value: string): value is NonNullable<VideoEditorDiagnostic['size_bucket']> {
+	return SIZE_BUCKETS.has(value);
+}
+
+function storedCapabilities(
+	value: StoredDiagnosticValue | undefined
+): Record<string, boolean> | undefined {
+	const capabilities: Array<[string, boolean]> = [];
+	for (const [key, entry] of storedEntries(value)) {
+		if (Boolean(entry) === entry) capabilities.push([key, Boolean(entry)]);
+	}
+	return capabilities.length > 0 ? Object.fromEntries(capabilities) : undefined;
+}
+
+function storedDiagnostic(value: StoredDiagnosticValue): VideoEditorDiagnostic | undefined {
+	const fields = storedEntries(value);
+	const at = storedString(fields.get('at'));
+	const code = storedString(fields.get('code'));
+	const operation = storedString(fields.get('operation'));
+	if (!at || !code || !isFailureCode(code) || !operation) return undefined;
+	const diagnostic: VideoEditorDiagnostic = { at, code, operation };
+	const browserMajor = storedNumber(fields.get('browser_major'));
+	if (browserMajor !== undefined) diagnostic.browser_major = browserMajor;
+	const durationBucket = storedString(fields.get('duration_bucket'));
+	if (durationBucket && isDurationBucket(durationBucket))
+		diagnostic.duration_bucket = durationBucket;
+	const sizeBucket = storedString(fields.get('size_bucket'));
+	if (sizeBucket && isSizeBucket(sizeBucket)) diagnostic.size_bucket = sizeBucket;
+	const workerState = storedString(fields.get('worker_state'));
+	if (workerState) diagnostic.worker_state = workerState;
+	const engineVersion = storedString(fields.get('engine_version'));
+	if (engineVersion) diagnostic.engine_version = engineVersion;
+	const capabilities = storedCapabilities(fields.get('capabilities'));
+	if (capabilities) diagnostic.capabilities = capabilities;
+	return diagnostic;
+}
+
+function storedDiagnostics(source: string): VideoEditorDiagnostic[] {
+	const value: StoredDiagnosticValue = JSON.parse(source);
+	if (!Array.isArray(value)) return [];
+	const diagnostics: VideoEditorDiagnostic[] = [];
+	for (const entry of value) {
+		const diagnostic = storedDiagnostic(entry);
+		if (diagnostic) diagnostics.push(diagnostic);
+	}
+	return diagnostics;
 }
 
 export function failurePresentation(code: VideoEditorFailureCode): VideoEditorFailurePresentation {
@@ -266,7 +351,7 @@ export function recordVideoEditorDiagnostic(
 	const key = 'openpost-video-editor-diagnostics-v1';
 	let entries: VideoEditorDiagnostic[] = [];
 	try {
-		entries = JSON.parse(storage.getItem(key) ?? '[]') as VideoEditorDiagnostic[];
+		entries = storedDiagnostics(storage.getItem(key) ?? '[]');
 	} catch {
 		entries = [];
 	}

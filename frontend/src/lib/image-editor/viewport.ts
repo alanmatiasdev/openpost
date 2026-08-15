@@ -9,6 +9,11 @@ export interface ZoomAnchor {
 	nextAnchorY?: number;
 }
 
+export interface ImageEditorPan {
+	panX: number;
+	panY: number;
+}
+
 export function panForZoomAnchor({
 	panX,
 	panY,
@@ -18,7 +23,7 @@ export function panForZoomAnchor({
 	anchorY,
 	nextAnchorX = anchorX,
 	nextAnchorY = anchorY
-}: ZoomAnchor): { panX: number; panY: number } {
+}: ZoomAnchor): ImageEditorPan {
 	const ratio = nextZoom / Math.max(zoom, 0.01);
 	return {
 		panX: nextAnchorX - (anchorX - panX) * ratio,

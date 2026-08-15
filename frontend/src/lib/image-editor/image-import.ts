@@ -34,16 +34,16 @@ export interface PreparedImageEditorImport {
 	decodedBytes: number;
 }
 
-const MIME_BY_EXTENSION: Readonly<Record<string, string>> = {
-	avif: 'image/avif',
-	gif: 'image/gif',
-	jpeg: 'image/jpeg',
-	jpg: 'image/jpeg',
-	png: 'image/png',
-	svg: 'image/svg+xml',
-	webp: 'image/webp'
-};
-const ALLOWED_MIMES = new Set(Object.values(MIME_BY_EXTENSION));
+const MIME_BY_EXTENSION = new Map([
+	['avif', 'image/avif'],
+	['gif', 'image/gif'],
+	['jpeg', 'image/jpeg'],
+	['jpg', 'image/jpeg'],
+	['png', 'image/png'],
+	['svg', 'image/svg+xml'],
+	['webp', 'image/webp']
+]);
+const ALLOWED_MIMES = new Set(MIME_BY_EXTENSION.values());
 const RASTER_GUEST_MIMES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
 export function imageEditorImportMIME(file: Pick<File, 'name' | 'type'>): string | null {
@@ -51,7 +51,7 @@ export function imageEditorImportMIME(file: Pick<File, 'name' | 'type'>): string
 	if (ALLOWED_MIMES.has(declared)) return declared;
 	if (declared && declared !== 'application/octet-stream') return null;
 	const extension = file.name.split('.').pop()?.toLowerCase() ?? '';
-	return MIME_BY_EXTENSION[extension] ?? null;
+	return MIME_BY_EXTENSION.get(extension) ?? null;
 }
 
 export function availableImageEditorImportSlots(layerCount: number): number {

@@ -27,11 +27,15 @@ export interface QuickCutCompatibility {
 	segments: QuickCutSegment[];
 }
 
-export function quickCutOutputPreference(project: VideoProjectDocumentV1): {
+export interface QuickCutOutputPreference {
 	format: 'mp4' | 'webm';
 	mimeType: 'video/mp4' | 'video/webm';
 	fileName: string;
-} {
+}
+
+export function quickCutOutputPreference(
+	project: VideoProjectDocumentV1
+): QuickCutOutputPreference {
 	const compatibility = quickCutCompatibility(project);
 	const source = project.sources[compatibility.segments[0]?.source_id ?? ''];
 	const webm =
@@ -82,8 +86,9 @@ export function quickCutCompatibility(project: VideoProjectDocumentV1): QuickCut
 	}
 	return {
 		compatible: true,
-		segments: derived.map((item) => {
-			const clip = project.primary_sequence[item.index] as PrimarySequenceClip;
+		segments: derived.flatMap((item) => {
+			const clip = project.primary_sequence[item.index];
+			if (!clip || !isPrimarySequenceClip(clip)) return [];
 			return {
 				clip_id: clip.id,
 				source_id: clip.source_id,

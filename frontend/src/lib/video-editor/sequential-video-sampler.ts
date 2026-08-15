@@ -8,6 +8,13 @@ export interface SequentialVideoSampleSink<Sample extends ClosableVideoSample> {
 	samples(startTimestamp?: number, endTimestamp?: number): AsyncGenerator<Sample, void, unknown>;
 }
 
+export interface SequentialVideoSamplerDiagnostics {
+	request_count: number;
+	discontinuity_count: number;
+	last_timestamp: number | null;
+	retained_sample_count: number;
+}
+
 // A slow first decode can move the UI clock by more than 500 ms before the
 // next request reaches the worker. Keep walking the active GOP for modest
 // forward gaps so playback can recover instead of repeatedly reopening the
@@ -35,12 +42,7 @@ export class SequentialVideoSampler<Sample extends ClosableVideoSample> {
 
 	constructor(private readonly sink: SequentialVideoSampleSink<Sample>) {}
 
-	get diagnostics(): {
-		request_count: number;
-		discontinuity_count: number;
-		last_timestamp: number | null;
-		retained_sample_count: number;
-	} {
+	get diagnostics(): SequentialVideoSamplerDiagnostics {
 		return {
 			request_count: this.requestCount,
 			discontinuity_count: this.discontinuityCount,

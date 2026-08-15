@@ -1,9 +1,9 @@
 import { getLocale, setLocale, type Locale } from '$lib/paraglide/runtime';
 
-export const localeLabels: Record<Locale, string> = {
+export const localeLabels = {
 	en: 'English',
 	pt: 'Português'
-};
+} satisfies Record<Locale, string>;
 
 export function getCurrentLocale(): Locale {
 	return getLocale();

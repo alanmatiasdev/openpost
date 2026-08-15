@@ -14,7 +14,7 @@ export interface AppErrorProjection {
 	presentation: AppErrorPresentation;
 }
 
-const presentations: Record<AppErrorKind, () => AppErrorPresentation> = {
+const presentations = {
 	offline: () => ({
 		title: m.app_offline_title(),
 		description: m.app_offline_description(),
@@ -40,7 +40,7 @@ const presentations: Record<AppErrorKind, () => AppErrorPresentation> = {
 		description: m.app_error_description(),
 		icon: 'server-error'
 	})
-};
+} satisfies Record<AppErrorKind, () => AppErrorPresentation>;
 
 export function resolveAppErrorPresentation(kind: AppErrorKind): AppErrorPresentation {
 	return presentations[kind]();

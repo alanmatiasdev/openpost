@@ -6,6 +6,9 @@ export interface ImageEditorExportResumeEntry {
 }
 
 export type ImageEditorExportResumeLedger = Record<string, ImageEditorExportResumeEntry>;
+export interface ImageEditorReusableExports {
+	[pageID: string]: string;
+}
 
 export function imageEditorPageExportFingerprint(
 	document: ImageEditorDocument,
@@ -29,8 +32,8 @@ export function imageEditorPageExportFingerprint(
 export function reusableImageEditorExports(
 	document: ImageEditorDocument,
 	ledger: ImageEditorExportResumeLedger
-): Record<string, string> {
-	const reusable: Record<string, string> = {};
+): ImageEditorReusableExports {
+	const reusable: ImageEditorReusableExports = {};
 	for (const page of document.pages) {
 		const entry = ledger[page.id];
 		if (entry?.fingerprint === imageEditorPageExportFingerprint(document, page)) {

@@ -8,6 +8,11 @@ import {
 
 const TIME_PATTERN = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
 
+export interface WorkspaceClock {
+	date: CalendarDate;
+	minutes: number;
+}
+
 /** Converts a workspace-local wall time into the absolute instant sent to the API. */
 export function workspaceScheduleToISO(
 	date: DateValue,
@@ -54,10 +59,7 @@ export function workspaceScheduleFromISO(
 	}
 }
 
-export function workspaceClock(
-	timeZone: string,
-	instant = new Date()
-): { date: CalendarDate; minutes: number } {
+export function workspaceClock(timeZone: string, instant = new Date()): WorkspaceClock {
 	let zoned: ReturnType<typeof fromDate>;
 	try {
 		zoned = fromDate(instant, timeZone);

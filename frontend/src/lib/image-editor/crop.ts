@@ -7,6 +7,11 @@ export interface ImageEditorCropWindow {
 	height: number;
 }
 
+export interface ImageEditorCropApplication {
+	transform: ImageEditorTransform;
+	crop: ImageEditorCrop;
+}
+
 const MINIMUM_CROP_FRACTION = 0.005;
 
 export function normalizeImageEditorCropWindow(
@@ -41,7 +46,7 @@ export function applyImageEditorCropWindow(
 	layer: Pick<ImageEditorLayer, 'transform' | 'image'>,
 	window: ImageEditorCropWindow,
 	sourceWindow: ImageEditorCropWindow = window
-): { transform: ImageEditorTransform; crop: ImageEditorCrop } {
+): ImageEditorCropApplication {
 	if (!layer.image) throw new Error('Image crop requires an image layer.');
 	const current = layer.image.crop;
 	const visualX = window.x;
@@ -76,10 +81,9 @@ export function applyImageEditorCropWindow(
 	};
 }
 
-export function resetImageEditorCrop(layer: Pick<ImageEditorLayer, 'transform' | 'image'>): {
-	transform: ImageEditorTransform;
-	crop: ImageEditorCrop;
-} {
+export function resetImageEditorCrop(
+	layer: Pick<ImageEditorLayer, 'transform' | 'image'>
+): ImageEditorCropApplication {
 	if (!layer.image) throw new Error('Image crop requires an image layer.');
 	const current = layer.image.crop;
 	const width = 1 / current.width;
