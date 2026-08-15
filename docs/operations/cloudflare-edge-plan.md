@@ -7,9 +7,10 @@ files and never reads Cloudflare credentials or changes a zone.
 
 ## Repository contract
 
-`cloudflare/edge-plan.json` records the two zones, execution order, credential
-names, and Cloudflare Free limits. `scripts/cloudflare-edge-plan.mjs` derives
-every eligible path from `marketingRouteManifest` and `docsPageCatalog`. Run:
+`cloudflare/edge-plan.json` records the shared public zone, its two host
+surfaces, execution order, credential name, and Cloudflare Free limits.
+`scripts/cloudflare-edge-plan.mjs` derives every eligible path from
+`marketingRouteManifest` and `docsPageCatalog`. Run:
 
 ```sh
 bun scripts/cloudflare-edge-plan.mjs render --output /tmp/openpost-edge-plan.json
@@ -56,15 +57,16 @@ require one. Query strings pass through redirects and path-only rewrites.
 
 ## Credentials
 
-For inspection, create a temporary API token restricted to these two zones with
-only Dynamic URL Redirects Read, Zone Transform Rules Read, and Cache Settings
-Read. For apply or rollback, replace those with the three matching Write
-permissions. Supply the token and exact zone IDs in the operator shell:
+For inspection, create a temporary API token restricted to the
+`openpost.social` zone with only Dynamic URL Redirects Read, Zone Transform
+Rules Read, and Cache Settings Read. The `docs.openpost.social` hostname is part
+of that zone and is not a separately delegated Cloudflare zone. For apply or
+rollback, replace those with the three matching Write permissions. Supply the
+token and exact zone ID in the operator shell:
 
 ```sh
 export OPENPOST_CLOUDFLARE_EDGE_API_TOKEN='...'
-export OPENPOST_CLOUDFLARE_MARKETING_ZONE_ID='...'
-export OPENPOST_CLOUDFLARE_DOCUMENTATION_ZONE_ID='...'
+export OPENPOST_CLOUDFLARE_PUBLIC_ZONE_ID='...'
 ```
 
 For deployment proof, create a separate temporary API token restricted to the
@@ -124,7 +126,7 @@ bun scripts/cloudflare-edge-plan.mjs apply \
 ```
 
 Apply rejects a missing, modified, stale, or incompletely confirmed prepared
-operation before writing. It re-reads all eight phase entry points before the
+operation before writing. It re-reads all four phase entry points before the
 first write and compares each changed phase again immediately before its
 update. Any new rule or version stops the apply. It writes each phase's complete
 mutable description and rule list. Stable rule refs make a newly prepared,

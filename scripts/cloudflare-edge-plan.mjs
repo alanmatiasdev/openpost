@@ -176,36 +176,48 @@ export function buildCloudflareEdgePlan({
   marketingRoutes = marketingRouteManifest.map(({ path: route }) => route),
   documentationRoutes = docsPageCatalog.map(({ route }) => route),
 } = {}) {
-  const routesByZone = {
+  const routesBySurface = {
     marketing: sortedUnique(marketingRoutes),
     documentation: sortedUnique(documentationRoutes),
   };
   const zones = blueprint.zones.map((zone) => {
-    const routes = routesByZone[zone.key];
-    const canonicalRedirects =
-      zone.key === "marketing"
-        ? routes.filter((route) => route !== "/").map((route) => `${route}/`)
-        : routes
-            .filter((route) => route !== "/" && route.endsWith("/"))
-            .map((route) => route.slice(0, -1));
+    const surfaces = zone.surfaces.map((surface) => {
+      const routes = routesBySurface[surface.key];
+      const canonicalRedirects =
+        surface.key === "marketing"
+          ? routes.filter((route) => route !== "/").map((route) => `${route}/`)
+          : routes
+              .filter((route) => route !== "/" && route.endsWith("/"))
+              .map((route) => route.slice(0, -1));
+      return {
+        ...surface,
+        canonical_routes: routes,
+        origin_headers: {
+          canonical_html_paths: routes,
+          markdown_pattern: "/*.md",
+          vary: "Accept",
+          rule_count: routes.length + surface.pages_base_header_rules,
+        },
+        rules: {
+          http_request_dynamic_redirect: redirectRule(
+            surface,
+            canonicalRedirects,
+            surface.key === "marketing" ? "remove" : "add",
+          ),
+          http_request_transform: rewriteRules(surface, routes),
+          ...representationRules(surface, routes),
+        },
+      };
+    });
     return {
       ...zone,
-      canonical_routes: routes,
-      origin_headers: {
-        canonical_html_paths: routes,
-        markdown_pattern: "/*.md",
-        vary: "Accept",
-        rule_count: routes.length + zone.pages_base_header_rules,
-      },
-      rules: {
-        http_request_dynamic_redirect: redirectRule(
-          zone,
-          canonicalRedirects,
-          zone.key === "marketing" ? "remove" : "add",
-        ),
-        http_request_transform: rewriteRules(zone, routes),
-        ...representationRules(zone, routes),
-      },
+      surfaces: surfaces.map(({ rules: _rules, ...surface }) => surface),
+      rules: Object.fromEntries(
+        blueprint.phases.map((phase) => [
+          phase,
+          surfaces.flatMap((surface) => surface.rules[phase]),
+        ]),
+      ),
     };
   });
   const plan = {
@@ -297,9 +309,13 @@ export function validateCloudflarePlan(plan) {
         );
       }
     }
-    const [problem] = capacityProblems(plan, zone.rules, zone.key, zone.origin_headers);
+    const [problem] = capacityProblems(plan, zone.rules, zone.key);
     if (problem) {
       throw new Error(`${zone.hostname} ${problem.reason}`);
+    }
+    for (const surface of zone.surfaces) {
+      const [originProblem] = capacityProblems(plan, {}, surface.key, surface.origin_headers);
+      if (originProblem) throw new Error(`${surface.hostname} ${originProblem.reason}`);
     }
   }
   return plan;
@@ -747,8 +763,7 @@ function operatorClient() {
   return createCloudflareClient({
     token: process.env.OPENPOST_CLOUDFLARE_EDGE_API_TOKEN,
     zoneIds: {
-      marketing: process.env.OPENPOST_CLOUDFLARE_MARKETING_ZONE_ID,
-      documentation: process.env.OPENPOST_CLOUDFLARE_DOCUMENTATION_ZONE_ID,
+      public: process.env.OPENPOST_CLOUDFLARE_PUBLIC_ZONE_ID,
     },
   });
 }
