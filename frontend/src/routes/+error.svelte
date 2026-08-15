@@ -26,10 +26,17 @@
 	function retry() {
 		window.location.reload();
 	}
+
+	const links = {
+		home: resolve('/'),
+		activity: resolve('/activity'),
+		calendar: resolve('/calendar'),
+		media: resolve('/media')
+	};
 </script>
 
 <svelte:head>
 	<title>{page.status} — {title} — OpenPost</title>
 </svelte:head>
 
-<AppErrorState status={page.status} {online} onBack={goBack} onRetry={retry} />
+<AppErrorState status={page.status} {online} onBack={goBack} onRetry={retry} {links} />

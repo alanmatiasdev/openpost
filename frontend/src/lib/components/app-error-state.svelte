@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { tick } from 'svelte';
-	import { resolve } from '$app/paths';
 	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
 	import CircleAlertIcon from '@lucide/svelte/icons/circle-alert';
 	import CalendarIcon from '@lucide/svelte/icons/calendar-days';
@@ -26,6 +25,12 @@
 		onRetry: () => void | Promise<void>;
 		documentationURL?: string;
 		supportURL?: string;
+		links?: {
+			home: string;
+			activity: string;
+			calendar: string;
+			media: string;
+		};
 	}
 
 	let {
@@ -34,7 +39,13 @@
 		onBack,
 		onRetry,
 		documentationURL = 'https://docs.openpost.social/usage/',
-		supportURL = 'mailto:openpost@rgo.pt'
+		supportURL = 'mailto:openpost@rgo.pt',
+		links = {
+			home: '/',
+			activity: '/activity',
+			calendar: '/calendar',
+			media: '/media'
+		}
 	}: Props = $props();
 
 	let root: HTMLDivElement;
@@ -98,7 +109,7 @@
 						{retrying ? m.app_error_retrying() : m.common_retry()}
 					</Button>
 				{:else}
-					<Button href={resolve('/')} class="min-h-11 w-full">
+					<Button href={links.home} class="min-h-11 w-full">
 						<HomeIcon data-icon="inline-start" />
 						{m.app_error_home()}
 					</Button>
@@ -109,31 +120,19 @@
 				<nav aria-label={m.app_error_destinations()}>
 					<p class="mb-2 text-sm font-medium">{m.app_error_destinations()}</p>
 					<div class="grid gap-2 sm:grid-cols-2">
-						<Button href={resolve('/')} variant="outline" class="min-h-11 w-full justify-start">
+						<Button href={links.home} variant="outline" class="min-h-11 w-full justify-start">
 							<SquarePenIcon data-icon="inline-start" />
 							{m.sidebar_new_post()}
 						</Button>
-						<Button
-							href={resolve('/activity')}
-							variant="outline"
-							class="min-h-11 w-full justify-start"
-						>
+						<Button href={links.activity} variant="outline" class="min-h-11 w-full justify-start">
 							<FileTextIcon data-icon="inline-start" />
 							{m.sidebar_activity()}
 						</Button>
-						<Button
-							href={resolve('/calendar')}
-							variant="outline"
-							class="min-h-11 w-full justify-start"
-						>
+						<Button href={links.calendar} variant="outline" class="min-h-11 w-full justify-start">
 							<CalendarIcon data-icon="inline-start" />
 							{m.sidebar_calendar()}
 						</Button>
-						<Button
-							href={resolve('/media')}
-							variant="outline"
-							class="min-h-11 w-full justify-start"
-						>
+						<Button href={links.media} variant="outline" class="min-h-11 w-full justify-start">
 							<ImageIcon data-icon="inline-start" />
 							{m.sidebar_media()}
 						</Button>
@@ -144,7 +143,7 @@
 			{#if recovery.showDocumentation || recovery.showSupport || recovery.canRetry}
 				<div class="flex flex-wrap justify-center gap-x-5 gap-y-2 border-t pt-4 text-sm">
 					{#if recovery.canRetry}
-						<Button href={resolve('/')} variant="link" class="min-h-11 px-0">
+						<Button href={links.home} variant="link" class="min-h-11 px-0">
 							<HomeIcon class="size-4" aria-hidden="true" />
 							{m.app_error_home()}
 						</Button>

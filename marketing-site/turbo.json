@@ -2,6 +2,18 @@
 	"$schema": "https://turbo.build/schema.json",
 	"extends": ["//"],
 	"tasks": {
+		"check": {
+			"inputs": [
+				"$TURBO_DEFAULT$",
+				"$TURBO_ROOT$/CHANGELOG.md",
+				"$TURBO_ROOT$/frontend/messages/**",
+				"$TURBO_ROOT$/frontend/project.inlang/settings.json",
+				"$TURBO_ROOT$/frontend/src/lib/**",
+				"!$TURBO_ROOT$/frontend/src/lib/paraglide/**",
+				"$TURBO_ROOT$/provider-certification/public-claims.json",
+				"$TURBO_ROOT$/scripts/marketing-claims.mjs"
+			]
+		},
 		"build": {
 			"inputs": [
 				"$TURBO_DEFAULT$",

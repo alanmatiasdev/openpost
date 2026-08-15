@@ -25,9 +25,9 @@ test("the docs package build prepares ignored OpenAPI artifacts", async () => {
 });
 
 test("the marketing build prepares its shared frontend SvelteKit aliases", async () => {
-  const [marketingPackage, frontendPackage] = await Promise.all(
-    ["marketing-site/package.json", "frontend/package.json"].map(async (file) =>
-      JSON.parse(await readFile(path.join(root, file), "utf8")),
+  const [marketingPackage, frontendPackage, marketingTurbo] = await Promise.all(
+    ["marketing-site/package.json", "frontend/package.json", "marketing-site/turbo.json"].map(
+      async (file) => JSON.parse(await readFile(path.join(root, file), "utf8")),
     ),
   );
 
@@ -35,6 +35,10 @@ test("the marketing build prepares its shared frontend SvelteKit aliases", async
   assert.match(
     marketingPackage.scripts.build,
     /^bun \.\.\/scripts\/check-public-telemetry-env\.mjs && bun run --cwd \.\.\/frontend sync && .*vite build/u,
+  );
+  assert.ok(marketingTurbo.tasks.check.inputs.includes("$TURBO_ROOT$/frontend/src/lib/**"));
+  assert.ok(
+    marketingTurbo.tasks.check.inputs.includes("$TURBO_ROOT$/scripts/marketing-claims.mjs"),
   );
 });
 

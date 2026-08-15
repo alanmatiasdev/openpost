@@ -159,6 +159,19 @@ for (const transitionalInput of [
     `marketing build hash is missing current cross-package input ${transitionalInput}`,
   );
 }
+for (const checkInput of [
+  "$TURBO_ROOT$/CHANGELOG.md",
+  "$TURBO_ROOT$/frontend/messages/**",
+  "$TURBO_ROOT$/frontend/project.inlang/settings.json",
+  "$TURBO_ROOT$/frontend/src/lib/**",
+  "$TURBO_ROOT$/provider-certification/public-claims.json",
+  "$TURBO_ROOT$/scripts/marketing-claims.mjs",
+]) {
+  requireCondition(
+    marketingTurbo.tasks.check.inputs.includes(checkInput),
+    `marketing check hash is missing current cross-package input ${checkInput}`,
+  );
+}
 
 const [
   adapterConfig,
