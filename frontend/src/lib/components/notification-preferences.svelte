@@ -29,13 +29,12 @@
 	let { workspaceID = '', workspaceName = '' }: { workspaceID?: string; workspaceName?: string } =
 		$props();
 
-	const eventGroups = $derived(notificationTopicGroups(topicDefinitions));
-
 	let loading = $state(true);
 	let saving = $state(false);
 	let error = $state('');
 	let preferences = $state.raw<Preferences>({});
 	let topicDefinitions = $state.raw<NotificationTopicDefinition[]>([]);
+	const eventGroups = $derived(notificationTopicGroups(topicDefinitions));
 	let savedSnapshot = $state('');
 	let emailAvailable = $state(false);
 	let emailAddress = $state('');
