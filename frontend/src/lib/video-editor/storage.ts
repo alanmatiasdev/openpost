@@ -17,7 +17,9 @@ import {
 	type LocalVideoProject,
 	type AnalysisResult,
 	type ModelCacheMetadata,
+	type RecordingChunkManifest,
 	type RecordingManifest,
+	type RecordingTrackManifest,
 	type StorageBudget,
 	type VideoProjectOperation,
 	type VideoEditorStore
@@ -39,7 +41,7 @@ interface VideoEditorStoreRecords {
 	projects: LocalVideoProject;
 	'project-revisions': LocalProjectRevision;
 	'asset-index': LocalAssetIndex;
-	'recording-manifests': RecordingManifest;
+	'recording-manifests': StoredRecordingManifest;
 	'analysis-results': AnalysisResult;
 	'model-cache-metadata': ModelCacheMetadata;
 	'export-jobs': never;
@@ -94,6 +96,41 @@ export interface DisposableAssetCleanupOptions {
 	protectedPaths?: Iterable<string>;
 	signal?: AbortSignal;
 }
+
+type StoredRecordingChunkManifest = Omit<
+	RecordingChunkManifest,
+	'media_start_us' | 'media_end_us' | 'session_start_us' | 'session_end_us' | 'flush_sequence'
+> &
+	Partial<
+		Pick<
+			RecordingChunkManifest,
+			'media_start_us' | 'media_end_us' | 'session_start_us' | 'session_end_us' | 'flush_sequence'
+		>
+	>;
+
+type StoredRecordingTrackManifest = Omit<
+	RecordingTrackManifest,
+	'session_start_offset_us' | 'verified_byte_length' | 'segments' | 'chunks'
+> &
+	Partial<
+		Pick<RecordingTrackManifest, 'session_start_offset_us' | 'verified_byte_length' | 'segments'>
+	> & { chunks: StoredRecordingChunkManifest[] };
+
+export type StoredRecordingManifest = Omit<
+	RecordingManifest,
+	| 'manifest_version'
+	| 'session_epoch_ms'
+	| 'flush_sequence'
+	| 'finalization_state'
+	| 'events'
+	| 'tracks'
+> &
+	Partial<
+		Pick<RecordingManifest, 'session_epoch_ms' | 'flush_sequence' | 'finalization_state' | 'events'>
+	> & {
+		manifest_version: 1 | 2;
+		tracks: StoredRecordingTrackManifest[];
+	};
 
 export interface DisposableAssetCleanupResult {
 	planned_count: number;
@@ -1104,8 +1141,8 @@ function migrateRecordingManifestsToV2(store: IDBObjectStore): void {
 	request.onsuccess = () => {
 		const cursor = request.result;
 		if (!cursor) return;
-		// SAFETY: This migration only reads rows from the owned `recording-manifests` store.
-		cursor.update(normalizeRecordingManifest(cursor.value as RecordingManifest));
+		// SAFETY: This migration only reads compatible rows from the owned `recording-manifests` store.
+		cursor.update(normalizeRecordingManifest(cursor.value as StoredRecordingManifest));
 		cursor.continue();
 	};
 }
@@ -1149,49 +1186,68 @@ function videoProjectLockName(projectID: string): string {
 	return `openpost-video-editor:active-project:${projectID}`;
 }
 
-export function normalizeRecordingManifest(manifest: RecordingManifest): RecordingManifest {
-	const migrated = structuredClone(manifest);
-	migrated.manifest_version = 2;
-	migrated.session_epoch_ms ??= migrated.session_started_at;
-	migrated.flush_sequence ??= 0;
-	migrated.finalization_state ??=
-		migrated.state === 'complete'
+export function normalizeRecordingManifest(manifest: StoredRecordingManifest): RecordingManifest {
+	const stored = structuredClone(manifest);
+	const sessionEpochMS = stored.session_epoch_ms ?? stored.session_started_at;
+	const flushSequence = stored.flush_sequence ?? 0;
+	const finalizationState =
+		stored.finalization_state ??
+		(stored.state === 'complete'
 			? 'complete'
-			: migrated.state === 'failed'
+			: stored.state === 'failed'
 				? 'failed'
-				: migrated.state === 'recoverable'
+				: stored.state === 'recoverable'
 					? 'recoverable'
-					: 'open';
-	migrated.events ??= [];
-	for (const track of migrated.tracks ?? []) {
-		track.session_start_offset_us ??= Math.max(
-			0,
-			track.start_offset_us -
-				Math.max(0, migrated.session_started_at - migrated.session_epoch_ms) * 1_000
-		);
-		track.verified_byte_length ??= track.bytes_written ?? 0;
-		track.segments ??= [
+					: 'open');
+	const tracks = stored.tracks.map((track): RecordingTrackManifest => {
+		const sessionStartOffsetUS =
+			track.session_start_offset_us ??
+			Math.max(
+				0,
+				track.start_offset_us - Math.max(0, stored.session_started_at - sessionEpochMS) * 1_000
+			);
+		const segments = track.segments ?? [
 			{
 				id: `${track.id}:segment:0`,
 				path: track.path,
 				mime_type: track.mime_type,
-				session_start_us: track.session_start_offset_us,
-				session_end_us: track.session_start_offset_us + Math.max(0, track.duration_us),
+				session_start_us: sessionStartOffsetUS,
+				session_end_us: sessionStartOffsetUS + Math.max(0, track.duration_us),
 				media_start_us: 0,
 				media_end_us: Math.max(0, track.duration_us),
 				reason_started: 'recovery',
 				reason_ended: track.state === 'complete' ? 'session-stop' : 'device-loss'
 			}
 		];
-		for (const chunk of track.chunks ?? []) {
-			chunk.media_start_us ??= Math.max(0, chunk.timestamp_us - 1_000_000);
-			chunk.media_end_us ??= Math.max(chunk.media_start_us, chunk.timestamp_us);
-			chunk.session_start_us ??= track.session_start_offset_us + chunk.media_start_us;
-			chunk.session_end_us ??= track.session_start_offset_us + chunk.media_end_us;
-			chunk.flush_sequence ??= migrated.flush_sequence;
-		}
-	}
-	return migrated;
+		const chunks = track.chunks.map((chunk): RecordingChunkManifest => {
+			const mediaStartUS = chunk.media_start_us ?? Math.max(0, chunk.timestamp_us - 1_000_000);
+			const mediaEndUS = chunk.media_end_us ?? Math.max(mediaStartUS, chunk.timestamp_us);
+			return {
+				...chunk,
+				media_start_us: mediaStartUS,
+				media_end_us: mediaEndUS,
+				session_start_us: chunk.session_start_us ?? sessionStartOffsetUS + mediaStartUS,
+				session_end_us: chunk.session_end_us ?? sessionStartOffsetUS + mediaEndUS,
+				flush_sequence: chunk.flush_sequence ?? flushSequence
+			};
+		});
+		return {
+			...track,
+			session_start_offset_us: sessionStartOffsetUS,
+			verified_byte_length: track.verified_byte_length ?? track.bytes_written,
+			chunks,
+			segments
+		};
+	});
+	return {
+		...stored,
+		manifest_version: 2,
+		session_epoch_ms: sessionEpochMS,
+		flush_sequence: flushSequence,
+		finalization_state: finalizationState,
+		tracks,
+		events: stored.events ?? []
+	};
 }
 
 function referencedLocalSourceIDs(

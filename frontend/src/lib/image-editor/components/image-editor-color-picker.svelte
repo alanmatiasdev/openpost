@@ -9,6 +9,7 @@
 	import type { ImageEditorHSL, ImageEditorRGB } from '../color';
 	import type { ImageEditorBrandColor } from '../types';
 	import { m } from '$lib/paraglide/messages';
+	import type { OpenPostEyeDropperConstructor } from '$lib/browser-capabilities';
 
 	let {
 		id,
@@ -84,7 +85,7 @@
 	}
 
 	async function pickFromScreen(): Promise<void> {
-		const EyeDropperConstructor = window.EyeDropper;
+		const EyeDropperConstructor: OpenPostEyeDropperConstructor | undefined = window.EyeDropper;
 		if (!EyeDropperConstructor) return;
 		try {
 			const result = await new EyeDropperConstructor().open();

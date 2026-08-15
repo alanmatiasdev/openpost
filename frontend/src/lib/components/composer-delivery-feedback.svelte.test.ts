@@ -5,24 +5,29 @@ import type { components } from '$lib/api/types';
 import ComposerDeliveryFeedback from './composer-delivery-feedback.svelte';
 
 type Rendition = components['schemas']['RenditionActionOutcome'];
+type Delivery = components['schemas']['ProviderDeliveryResponse'];
 
 const rendition = (overrides: Partial<Rendition>): Rendition => ({
 	id: `rendition-${String(overrides.id ?? 'base')}`,
-	publication_id: 'publication-1',
 	social_account_id: `account-${String(overrides.id ?? 'base')}`,
 	target_key: String(overrides.id ?? 'base'),
 	platform: 'x',
-	profile: 'short_text',
-	output_profile: 'x.post',
-	format_locked: false,
-	body: 'A launch note',
-	title: '',
-	description: '',
-	settings: {},
 	status: 'scheduled',
-	error_retryable: false,
-	segments: [],
-	media: [],
+	...overrides
+});
+
+const delivery = (
+	targetKey: string,
+	state: string,
+	recoveryAction: Delivery['recovery_action'],
+	overrides: Partial<Delivery> = {}
+): Delivery => ({
+	current_attempt_created_at: '2026-08-15T20:00:00Z',
+	current_attempt_id: `attempt-${targetKey}`,
+	current_attempt_number: 1,
+	target_key: targetKey,
+	state,
+	recovery_action: recoveryAction,
 	...overrides
 });
 
@@ -35,23 +40,21 @@ it('keeps mixed destination outcomes and canonical recovery actions visible', as
 			rendition({
 				id: 'live',
 				status: 'published',
-				delivery: { state: 'live', recovery_action: 'none' }
+				delivery: delivery('live', 'live', 'none')
 			}),
-			rendition({ id: 'pending', delivery: { state: 'queued', recovery_action: 'none' } }),
+			rendition({ id: 'pending', delivery: delivery('pending', 'queued', 'none') }),
 			rendition({
 				id: 'failed',
 				status: 'failed',
-				delivery: {
-					state: 'rejected',
+				delivery: delivery('failed', 'rejected', 'retry', {
 					error_kind: 'provider_http',
-					error_code: 'rate_limited',
-					recovery_action: 'retry'
-				}
+					error_code: 'rate_limited'
+				})
 			}),
 			rendition({
 				id: 'ambiguous',
 				status: 'failed',
-				delivery: { state: 'ambiguous', recovery_action: 'reconcile' }
+				delivery: delivery('ambiguous', 'ambiguous', 'reconcile')
 			})
 		],
 		accountLabels: {
@@ -90,7 +93,7 @@ it('does not offer recovery from an older attempt after a destination is queued'
 			rendition({
 				id: 'queued-again',
 				status: 'scheduled',
-				delivery: { state: 'rejected', recovery_action: 'retry' }
+				delivery: delivery('queued-again', 'rejected', 'retry')
 			})
 		],
 		onRetry: vi.fn(),

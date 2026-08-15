@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render } from 'vitest-browser-svelte';
+import type { OpenPostEyeDropper } from '$lib/browser-capabilities';
 import ImageEditorColorPicker from './image-editor-color-picker.svelte';
 
 describe('OpenPost Image EditorColorPicker', () => {
@@ -33,7 +34,7 @@ describe('OpenPost Image EditorColorPicker', () => {
 
 	it('applies the picked screen color through onChange when EyeDropper is supported', async () => {
 		const onChange = vi.fn();
-		window.EyeDropper = class {
+		window.EyeDropper = class implements OpenPostEyeDropper {
 			async open(): Promise<{ sRGBHex: string }> {
 				return { sRGBHex: '#abcdef' };
 			}

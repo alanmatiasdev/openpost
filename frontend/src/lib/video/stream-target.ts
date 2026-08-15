@@ -1,4 +1,5 @@
 import { StreamTarget, type StreamTargetChunk } from 'mediabunny';
+import type { OpenPostFileSystemDirectoryHandle } from '$lib/browser-capabilities';
 
 const TEMP_DIRECTORY = 'openpost-video-streams';
 const STALE_AGE_MS = 24 * 60 * 60 * 1_000;
@@ -118,7 +119,9 @@ function outputTargetFromWritable(
 	};
 }
 
-async function cleanStaleStreamingOutputs(directory: FileSystemDirectoryHandle): Promise<void> {
+async function cleanStaleStreamingOutputs(
+	directory: OpenPostFileSystemDirectoryHandle
+): Promise<void> {
 	const cutoff = Date.now() - STALE_AGE_MS;
 	try {
 		for await (const [name, entry] of directory.entries()) {
