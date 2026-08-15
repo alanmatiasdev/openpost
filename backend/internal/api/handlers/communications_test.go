@@ -11,7 +11,7 @@ import (
 )
 
 func TestEngagementCursorIsOpaqueAndRejectsInvalidValues(t *testing.T) {
-	cursor := &engagement.EngagementCursor{
+	cursor := &engagement.Cursor{
 		OccurredAt: time.Date(2026, 8, 10, 12, 0, 0, 0, time.UTC),
 		CreatedAt:  time.Date(2026, 8, 10, 11, 0, 0, 0, time.UTC),
 		ID:         "engagement-1",

@@ -211,7 +211,7 @@ type engagementCursorPayload struct {
 	ID         string    `json:"id"`
 }
 
-func encodeEngagementCursor(cursor *engagement.EngagementCursor) string {
+func encodeEngagementCursor(cursor *engagement.Cursor) string {
 	if cursor == nil {
 		return ""
 	}
@@ -224,7 +224,7 @@ func encodeEngagementCursor(cursor *engagement.EngagementCursor) string {
 	return base64.RawURLEncoding.EncodeToString(payload)
 }
 
-func parseEngagementCursor(value string) (*engagement.EngagementCursor, error) {
+func parseEngagementCursor(value string) (*engagement.Cursor, error) {
 	value = strings.TrimSpace(value)
 	if value == "" {
 		return nil, nil
@@ -240,7 +240,7 @@ func parseEngagementCursor(value string) (*engagement.EngagementCursor, error) {
 	if cursor.OccurredAt.IsZero() || cursor.CreatedAt.IsZero() || strings.TrimSpace(cursor.ID) == "" {
 		return nil, errors.New("engagement cursor is incomplete")
 	}
-	return &engagement.EngagementCursor{
+	return &engagement.Cursor{
 		OccurredAt: cursor.OccurredAt.UTC(), CreatedAt: cursor.CreatedAt.UTC(), ID: cursor.ID,
 	}, nil
 }
@@ -338,7 +338,7 @@ func (h *EngagementMessagingHandler) RegisterRoutes(api huma.API) {
 		if err != nil || (cursor != nil && input.Offset != 0) {
 			return nil, huma.Error400BadRequest("invalid engagement cursor")
 		}
-		page, err := h.engagement.ListEngagement(ctx, engagementActor(ctx), engagement.EngagementQuery{
+		page, err := h.engagement.ListEngagement(ctx, engagementActor(ctx), engagement.Query{
 			WorkspaceID: input.WorkspaceID, Platform: input.Platform, AccountID: input.AccountID,
 			PublicationID: input.PublicationID, UnreadOnly: input.UnreadOnly, Archived: input.Archived,
 			Limit: input.Limit, Offset: input.Offset, Cursor: cursor,

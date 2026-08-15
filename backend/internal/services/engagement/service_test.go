@@ -1,7 +1,6 @@
 package engagement
 
 import (
-	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -9,29 +8,9 @@ import (
 	"github.com/openpost/backend/internal/database"
 	"github.com/openpost/backend/internal/jobregistry"
 	"github.com/openpost/backend/internal/models"
-	"github.com/openpost/backend/internal/platform"
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun"
 )
-
-type engagementTestProvider struct{ platform.Adapter }
-
-func (engagementTestProvider) EngagementSupport() platform.EngagementSupport {
-	return platform.EngagementSupport{Enabled: true, CanReply: true}
-}
-
-func (engagementTestProvider) ListComments(context.Context, string, string, string) ([]platform.Comment, error) {
-	return nil, nil
-}
-
-func (engagementTestProvider) ReplyToComment(context.Context, string, string, string, string) (string, error) {
-	return "", nil
-}
-
-func (engagementTestProvider) HideComment(context.Context, string, string, string) error { return nil }
-func (engagementTestProvider) DeleteComment(context.Context, string, string, string) error {
-	return nil
-}
 
 func TestApplicationEnforcesWorkspaceAccessAtItsPublicSeams(t *testing.T) {
 	db := engagementTestDB(t)
@@ -53,14 +32,14 @@ func TestApplicationEnforcesWorkspaceAccessAtItsPublicSeams(t *testing.T) {
 	}
 	service := NewService(db, nil, nil)
 
-	page, err := service.ListEngagement(ctx, Actor{UserID: "viewer"}, EngagementQuery{WorkspaceID: "workspace-1"})
+	page, err := service.ListEngagement(ctx, Actor{UserID: "viewer"}, Query{WorkspaceID: "workspace-1"})
 	require.NoError(t, err)
 	require.Len(t, page.Items, 1)
 
 	read := true
 	require.ErrorIs(t, service.SetEngagementState(ctx, Actor{UserID: "viewer"}, "workspace-1", []string{"engagement-1"}, &read, nil), ErrAccessDenied)
 	require.NoError(t, service.SetEngagementState(ctx, Actor{UserID: "editor"}, "workspace-1", []string{"engagement-1"}, &read, nil))
-	_, err = service.ListEngagement(ctx, Actor{UserID: "outsider"}, EngagementQuery{WorkspaceID: "workspace-1"})
+	_, err = service.ListEngagement(ctx, Actor{UserID: "outsider"}, Query{WorkspaceID: "workspace-1"})
 	require.ErrorIs(t, err, ErrAccessDenied)
 }
 

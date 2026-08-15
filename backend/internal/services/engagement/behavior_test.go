@@ -71,33 +71,6 @@ func (f *fakeCommenter) ResolveContentURL(context.Context, string, string, strin
 	return f.contentURL, nil
 }
 
-type fakeMessenger struct {
-	platform.Adapter
-	fetches  int
-	sends    int
-	requests []platform.FetchMessagesRequest
-	result   platform.FetchMessagesResult
-	results  map[string]platform.FetchMessagesResult
-}
-
-func (f *fakeMessenger) MessagingSupport() platform.MessagingSupport {
-	return platform.MessagingSupport{Enabled: true, CanSend: true, RequiresOptIn: true}
-}
-
-func (f *fakeMessenger) FetchMessages(_ context.Context, _ string, input platform.FetchMessagesRequest) (platform.FetchMessagesResult, error) {
-	f.fetches++
-	f.requests = append(f.requests, input)
-	if f.results != nil {
-		return f.results[input.Cursor], nil
-	}
-	return f.result, nil
-}
-
-func (f *fakeMessenger) SendMessage(context.Context, string, platform.SendMessageRequest) (platform.SendMessageResult, error) {
-	f.sends++
-	return platform.SendMessageResult{RemoteMessageID: "sent-1", CreatedAt: time.Now().UTC()}, nil
-}
-
 func TestQueuedProviderCommentActionUsesAcceptedFenceAndIdempotentLifecycle(t *testing.T) {
 	db := engagementBehaviorTestDB(t)
 	seedProviderCommentAction(t, db)
@@ -522,7 +495,7 @@ func TestEngagementPersistenceIgnoresRepliesFromConnectedAccount(t *testing.T) {
 	}).Exec(ctx)
 	require.NoError(t, err)
 
-	page, err := service.listEngagement(ctx, EngagementQuery{WorkspaceID: account.WorkspaceID, Limit: 50})
+	page, err := service.listEngagement(ctx, Query{WorkspaceID: account.WorkspaceID, Limit: 50})
 	require.NoError(t, err)
 	require.Equal(t, 1, page.Total, "previously stored own replies must be hidden from Engagement")
 	require.Len(t, page.Items, 1)
@@ -580,9 +553,9 @@ func TestListEngagementCursorReachesEveryRecordWithoutGapsOrDuplicates(t *testin
 	service := NewService(db, staticTokenSource{}, nil)
 
 	seen := make([]string, 0, len(items))
-	var cursor *EngagementCursor
+	var cursor *Cursor
 	for {
-		page, err := service.listEngagement(ctx, EngagementQuery{
+		page, err := service.listEngagement(ctx, Query{
 			WorkspaceID: "workspace-1", Limit: 37, Cursor: cursor,
 		})
 		require.NoError(t, err)

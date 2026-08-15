@@ -189,13 +189,13 @@ func (s *Service) refreshWorkspace(ctx context.Context, workspaceID string, forc
 		if account.ID == "" {
 			continue
 		}
-		engagement, ok := s.adapter(account).(platform.EngagementAdapter)
-		if !ok || !engagement.EngagementSupport().Enabled {
+		engagement := s.adapter(account)
+		if engagement == nil || !engagement.EngagementSupport().Enabled {
 			continue
 		}
 		support := engagement.EngagementSupport()
 		if missing := platform.MissingAnalyticsScopes(account.GrantedScopes, support.RequiredScopes); len(missing) > 0 {
-			_ = s.recordState(ctx, rendition.ID, account, "permission_required", "missing_scope", "Reconnect this account and grant engagement access.", "", false, 24*time.Hour, 0)
+			_ = s.recordState(ctx, rendition.ID, account, "permission_required", "missing_scope", "Reconnect this account and grant engagement access.", false, 24*time.Hour, 0)
 			continue
 		}
 		if !force && !s.due(ctx, rendition.ID, now) {
@@ -225,23 +225,23 @@ func (s *Service) syncEngagement(ctx context.Context, renditionID string) error 
 	if account.ID == "" {
 		return nil
 	}
-	commenter, ok := s.adapter(account).(platform.EngagementAdapter)
-	if !ok || !commenter.EngagementSupport().Enabled {
-		return s.recordState(ctx, rendition.ID, account, "unsupported", "unsupported", "Engagement collection is not supported for this provider.", "", true, 0, 0)
+	commenter := s.adapter(account)
+	if commenter == nil || !commenter.EngagementSupport().Enabled {
+		return s.recordState(ctx, rendition.ID, account, "unsupported", "unsupported", "Engagement collection is not supported for this provider.", true, 0, 0)
 	}
 	support := commenter.EngagementSupport()
 	if missing := platform.MissingAnalyticsScopes(account.GrantedScopes, support.RequiredScopes); len(missing) > 0 {
-		return s.recordState(ctx, rendition.ID, account, "permission_required", "missing_scope", "Reconnect this account and grant engagement access.", "", false, 24*time.Hour, 0)
+		return s.recordState(ctx, rendition.ID, account, "permission_required", "missing_scope", "Reconnect this account and grant engagement access.", false, 24*time.Hour, 0)
 	}
 	token, err := s.tokenSource.GetValidAccessToken(ctx, account.ID)
 	if err != nil {
-		return s.recordState(ctx, rendition.ID, account, "permission_required", "authentication", "Reconnect this account to resume engagement collection.", "", true, 24*time.Hour, 0)
+		return s.recordState(ctx, rendition.ID, account, "permission_required", "authentication", "Reconnect this account to resume engagement collection.", true, 24*time.Hour, 0)
 	}
 	s.resolveAndStoreContentURL(ctx, commenter, token, account, &rendition)
 	comments, err := commenter.ListComments(ctx, token, account.AccountID, rendition.ExternalID)
 	if err != nil {
 		status, code, message, cadence := classifyEngagementReadError(err)
-		return s.recordState(ctx, rendition.ID, account, status, code, message, "", true, cadence, 0)
+		return s.recordState(ctx, rendition.ID, account, status, code, message, true, cadence, 0)
 	}
 	now := s.now()
 	var publication models.Publication
@@ -254,7 +254,7 @@ func (s *Service) syncEngagement(ctx context.Context, renditionID string) error 
 		publishedAt = firstNonZeroTime(publication.UpdatedAt, publication.CreatedAt)
 	}
 	cadence := engagementCadence(publishedAt, now, len(comments) == 0)
-	return s.recordState(ctx, rendition.ID, account, "ok", "", "", "", true, cadence, boolToInt(len(comments) == 0))
+	return s.recordState(ctx, rendition.ID, account, "ok", "", "", true, cadence, boolToInt(len(comments) == 0))
 }
 
 func (s *Service) persistEngagementComments(
@@ -478,8 +478,6 @@ func (s *Service) resolveAndStoreContentURL(
 	}
 }
 
-//nolint:gocyclo // Keeps newest-page collection, bounded backfill, persistence, and health state ordered.
-
 func (s *Service) QueueEngagementAction(ctx context.Context, actor Actor, itemID, action, message string) error {
 	var item models.EngagementItem
 	if err := s.db.NewSelect().Model(&item).Where("id = ?", itemID).Scan(ctx); errors.Is(err, sql.ErrNoRows) {
@@ -490,36 +488,45 @@ func (s *Service) QueueEngagementAction(ctx context.Context, actor Actor, itemID
 	if err := s.authorize(ctx, item.WorkspaceID, actor, workspaceaccess.LevelEdit); err != nil {
 		return err
 	}
+	message, err := validateEngagementAction(item, action, message)
+	if err != nil {
+		return err
+	}
+	payload, _ := json.Marshal(engagementActionJob{ItemID: itemID, Action: action, Message: message, UserID: actor.UserID})
+	_, err = s.enqueue(ctx, item.WorkspaceID, JobTypeEngagementAct, string(payload), s.now())
+	return err
+}
+
+func validateEngagementAction(item models.EngagementItem, action, message string) (string, error) {
+	message = strings.TrimSpace(message)
 	switch action {
 	case "reply":
 		if !item.CanReply {
-			return fmt.Errorf("this provider does not allow a reply to this item")
+			return "", fmt.Errorf("this provider does not allow a reply to this item")
 		}
-		if strings.TrimSpace(message) == "" {
-			return fmt.Errorf("reply message is required")
+		if message == "" {
+			return "", fmt.Errorf("reply message is required")
 		}
 	case "hide":
 		if !item.CanHide {
-			return fmt.Errorf("this provider does not allow this item to be hidden")
+			return "", fmt.Errorf("this provider does not allow this item to be hidden")
 		}
 	case "delete":
 		if !item.CanDelete {
-			return fmt.Errorf("this item cannot be deleted by the connected account")
+			return "", fmt.Errorf("this item cannot be deleted by the connected account")
 		}
 	case "like":
 		if !item.CanLike || item.Liked {
-			return fmt.Errorf("this provider does not allow this item to be liked")
+			return "", fmt.Errorf("this provider does not allow this item to be liked")
 		}
 	case "unlike":
 		if !item.CanUnlike || !item.Liked {
-			return fmt.Errorf("this provider does not allow this item's like to be removed")
+			return "", fmt.Errorf("this provider does not allow this item's like to be removed")
 		}
 	default:
-		return fmt.Errorf("unsupported engagement action %q", action)
+		return "", fmt.Errorf("unsupported engagement action %q", action)
 	}
-	payload, _ := json.Marshal(engagementActionJob{ItemID: itemID, Action: action, Message: strings.TrimSpace(message), UserID: actor.UserID})
-	_, err := s.enqueue(ctx, item.WorkspaceID, JobTypeEngagementAct, string(payload), s.now())
-	return err
+	return message, nil
 }
 
 // QueueProviderCommentAction moves the publication comment endpoints onto the
@@ -981,13 +988,13 @@ func (s *Service) markEngagementItemDeleted(
 	return err
 }
 
-type EngagementCursor struct {
+type Cursor struct {
 	OccurredAt time.Time
 	CreatedAt  time.Time
 	ID         string
 }
 
-type EngagementQuery struct {
+type Query struct {
 	WorkspaceID   string
 	Platform      string
 	AccountID     string
@@ -996,25 +1003,25 @@ type EngagementQuery struct {
 	Archived      bool
 	Limit         int
 	Offset        int
-	Cursor        *EngagementCursor
+	Cursor        *Cursor
 }
 
-type EngagementPage struct {
+type Page struct {
 	Items      []models.EngagementItem
 	Total      int
-	NextCursor *EngagementCursor
+	NextCursor *Cursor
 }
 
 const engagementOccurredAtSQL = "COALESCE(remote_created_at, created_at)"
 
-func (s *Service) ListEngagement(ctx context.Context, actor Actor, input EngagementQuery) (EngagementPage, error) {
+func (s *Service) ListEngagement(ctx context.Context, actor Actor, input Query) (Page, error) {
 	if err := s.authorize(ctx, input.WorkspaceID, actor, workspaceaccess.LevelRead); err != nil {
-		return EngagementPage{}, err
+		return Page{}, err
 	}
 	return s.listEngagement(ctx, input)
 }
 
-func (s *Service) listEngagement(ctx context.Context, input EngagementQuery) (EngagementPage, error) {
+func (s *Service) listEngagement(ctx context.Context, input Query) (Page, error) {
 	if input.Limit <= 0 || input.Limit > 100 {
 		input.Limit = 50
 	}
@@ -1022,7 +1029,7 @@ func (s *Service) listEngagement(ctx context.Context, input EngagementQuery) (En
 	query = engagementFilters(query, input.Platform, input.AccountID, input.PublicationID, input.UnreadOnly, input.Archived)
 	count, err := query.Count(ctx)
 	if err != nil {
-		return EngagementPage{}, err
+		return Page{}, err
 	}
 	var items []models.EngagementItem
 	query = s.db.NewSelect().Model(&items).Where("workspace_id = ?", input.WorkspaceID)
@@ -1039,23 +1046,23 @@ func (s *Service) listEngagement(ctx context.Context, input EngagementQuery) (En
 	}
 	err = query.Limit(input.Limit + 1).Scan(ctx)
 	if err != nil {
-		return EngagementPage{}, err
+		return Page{}, err
 	}
 	hasMore := len(items) > input.Limit
 	if hasMore {
 		items = items[:input.Limit]
 	}
 	if err := s.hydrateEngagementProviderURLs(ctx, items); err != nil {
-		return EngagementPage{}, err
+		return Page{}, err
 	}
-	page := EngagementPage{Items: items, Total: count}
+	page := Page{Items: items, Total: count}
 	if hasMore && len(items) > 0 {
 		last := items[len(items)-1]
 		occurredAt := last.RemoteCreatedAt
 		if occurredAt.IsZero() {
 			occurredAt = last.CreatedAt
 		}
-		page.NextCursor = &EngagementCursor{OccurredAt: occurredAt, CreatedAt: last.CreatedAt, ID: last.ID}
+		page.NextCursor = &Cursor{OccurredAt: occurredAt, CreatedAt: last.CreatedAt, ID: last.ID}
 	}
 	return page, nil
 }
@@ -1348,7 +1355,7 @@ func (s *Service) loadState(ctx context.Context, renditionID string) *models.Eng
 	return &state
 }
 
-func (s *Service) recordState(ctx context.Context, renditionID string, account models.SocialAccount, status, code, message, cursor string, backfillComplete bool, cadence time.Duration, emptyStreak int) error {
+func (s *Service) recordState(ctx context.Context, renditionID string, account models.SocialAccount, status, code, message string, backfillComplete bool, cadence time.Duration, emptyStreak int) error {
 	now := s.now()
 	next := time.Time{}
 	if cadence > 0 {
@@ -1357,7 +1364,7 @@ func (s *Service) recordState(ctx context.Context, renditionID string, account m
 	state := &models.EngagementSyncState{
 		ID: syncStateID(renditionID), WorkspaceID: account.WorkspaceID, RenditionID: renditionID,
 		SocialAccountID: account.ID, Platform: account.Platform, Status: status,
-		ErrorCode: code, ErrorMessage: message, Cursor: cursor, BackfillComplete: backfillComplete, LastAttemptedAt: now,
+		ErrorCode: code, ErrorMessage: message, Cursor: "", BackfillComplete: backfillComplete, LastAttemptedAt: now,
 		NextSyncAt: next, EmptyStreak: emptyStreak, CreatedAt: now, UpdatedAt: now,
 	}
 	old := s.loadState(ctx, renditionID)
