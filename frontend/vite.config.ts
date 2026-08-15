@@ -5,10 +5,12 @@ import { VitePWA } from 'vite-plugin-pwa';
 import { defineConfig, type PluginOption } from 'vite';
 import { postHogSourceMaps } from '../scripts/posthog-source-maps.ts';
 
-const paraglidePlugin = paraglideVitePlugin({
+const rawParaglidePlugin = paraglideVitePlugin({
 	project: './project.inlang',
 	outdir: './src/lib/paraglide'
-}) as unknown as PluginOption;
+});
+// SAFETY: paraglideVitePlugin returns a Vite-compatible plugin, but its package type is not assignable to this Vite version.
+const paraglidePlugin = rawParaglidePlugin as PluginOption;
 const usesPrecompiledParaglide = process.env.OPENPOST_PARAGLIDE_PRECOMPILED === '1';
 const sourceMaps = postHogSourceMaps('app');
 
