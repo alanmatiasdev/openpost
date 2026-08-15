@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import AuthorizePage from './+page.svelte';
 
-const mocks = vi.hoisted(() => {
+const mocks = (() => {
 	type PageValue = { url: URL };
 	type Subscriber<T> = (value: T) => void;
 
@@ -35,17 +35,23 @@ const mocks = vi.hoisted(() => {
 		pageValue,
 		pageStore,
 		authStore,
-		workspaceCtx: {
+		workspace: {
 			currentWorkspace: { id: 'workspace-1', name: 'Workspace' }
 		}
 	};
-});
+})();
 
-vi.mock('$app/stores', () => ({ page: mocks.pageStore }));
-vi.mock('$app/navigation', () => ({ goto: mocks.goto }));
-vi.mock('$lib/stores/auth', () => ({ auth: mocks.authStore }));
-vi.mock('$lib/stores/workspace.svelte', () => ({ workspaceCtx: mocks.workspaceCtx }));
-vi.mock('$lib/api/client', () => ({ client: { POST: mocks.post } }));
+function renderAuthorizePage() {
+	return render(AuthorizePage, {
+		dependencies: {
+			page: mocks.pageStore,
+			auth: mocks.authStore,
+			workspace: mocks.workspace,
+			post: mocks.post,
+			navigate: mocks.goto
+		}
+	});
+}
 
 describe('OAuth authorization request validation', () => {
 	beforeEach(() => {
@@ -56,7 +62,7 @@ describe('OAuth authorization request validation', () => {
 	});
 
 	it('disables denial when the request has no client ID', async () => {
-		const screen = await render(AuthorizePage);
+		const screen = await renderAuthorizePage();
 
 		await expect
 			.element(screen.getByText('This OAuth request is missing a client ID.'))
@@ -70,7 +76,7 @@ describe('OAuth authorization request validation', () => {
 			'http://localhost/oauth/authorize?response_type=code&client_id=chatgpt&redirect_uri=https%3A%2F%2Fclient.example%2Fcallback&scope=mcp%3Afull&code_challenge=challenge&code_challenge_method=S256'
 		);
 
-		const screen = await render(AuthorizePage);
+		const screen = await renderAuthorizePage();
 
 		await expect
 			.element(screen.getByText(/Full MCP access can create and edit drafts/))
@@ -85,7 +91,7 @@ describe('OAuth authorization request validation', () => {
 			'http://localhost/oauth/authorize?response_type=code&client_id=chatgpt&redirect_uri=https%3A%2F%2Fclient.example%2Fcallback&scope=mcp%3Aread&code_challenge=challenge&code_challenge_method=S256'
 		);
 
-		const screen = await render(AuthorizePage);
+		const screen = await renderAuthorizePage();
 
 		await expect
 			.element(screen.getByText(/Read-only access can view the selected workspace/))

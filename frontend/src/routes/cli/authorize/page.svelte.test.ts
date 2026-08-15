@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import AuthorizePage from './+page.svelte';
 
-const mocks = vi.hoisted(() => {
+const mocks = (() => {
 	type PageValue = { url: URL };
 	type Subscriber<T> = (value: T) => void;
 
@@ -35,31 +35,32 @@ const mocks = vi.hoisted(() => {
 		goto: vi.fn(),
 		pageStore,
 		authStore,
+		workspace: {
+			currentWorkspace: { id: 'workspace-a', name: 'Launch' },
+			workspaces: [
+				{ id: 'workspace-a', name: 'Launch' },
+				{ id: 'workspace-b', name: 'Support' }
+			]
+		},
 		setPage(path: string) {
 			pageValue = { url: new URL(path, 'http://localhost') };
 			for (const subscriber of pageSubscribers) subscriber(pageValue);
 		}
 	};
-});
+})();
 
-vi.mock('$app/stores', () => ({ page: mocks.pageStore }));
-vi.mock('$app/navigation', () => ({ goto: mocks.goto }));
-vi.mock('$lib/stores/auth', () => ({ auth: mocks.authStore }));
-vi.mock('$lib/stores/workspace.svelte', () => ({
-	workspaceCtx: {
-		currentWorkspace: { id: 'workspace-a', name: 'Launch' },
-		workspaces: [
-			{ id: 'workspace-a', name: 'Launch' },
-			{ id: 'workspace-b', name: 'Support' }
-		]
-	}
-}));
-vi.mock('$lib/api/client', () => ({
-	client: {
-		GET: mocks.get,
-		POST: mocks.post
-	}
-}));
+function renderAuthorizePage() {
+	return render(AuthorizePage, {
+		dependencies: {
+			page: mocks.pageStore,
+			auth: mocks.authStore,
+			workspace: mocks.workspace,
+			get: mocks.get,
+			post: mocks.post,
+			navigate: mocks.goto
+		}
+	});
+}
 
 function deferred<T>() {
 	let resolve!: (value: T) => void;
@@ -83,7 +84,7 @@ describe('CLI authorization request identity', () => {
 			(_path: string, options: { params: { query: { user_code: string } } }) =>
 				options.params.query.user_code === 'CODE-A' ? codeA.promise : codeB.promise
 		);
-		const screen = await render(AuthorizePage);
+		const screen = await renderAuthorizePage();
 
 		await vi.waitFor(() => expect(mocks.get).toHaveBeenCalledTimes(1));
 		mocks.setPage('/cli/authorize?user_code=CODE-B');
@@ -105,7 +106,7 @@ describe('CLI authorization request identity', () => {
 		mocks.get
 			.mockResolvedValueOnce({ data: null, error: { detail: 'Authorization lookup failed.' } })
 			.mockResolvedValueOnce({ data: { client_name: 'Recovered client' }, error: null });
-		const screen = await render(AuthorizePage);
+		const screen = await renderAuthorizePage();
 
 		await expect.element(screen.getByText('Authorization lookup failed.')).toBeVisible();
 		await screen.getByRole('button', { name: 'Try again' }).click();
@@ -119,7 +120,7 @@ describe('CLI authorization request identity', () => {
 
 	it('submits an explicit all-workspace boundary when selected', async () => {
 		mocks.get.mockResolvedValue({ data: { client_name: 'Automation client' }, error: null });
-		const screen = await render(AuthorizePage);
+		const screen = await renderAuthorizePage();
 
 		await expect.element(screen.getByText('Automation client')).toBeVisible();
 		await expect

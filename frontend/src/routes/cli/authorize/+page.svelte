@@ -3,6 +3,7 @@
 	import { resolve } from '$app/paths';
 	import { resolveAppPath } from '$lib/app-path';
 	import { page } from '$app/stores';
+	import type { Readable } from 'svelte/store';
 	import { Button } from '$lib/components/ui/button';
 	import { Badge } from '$lib/components/ui/badge';
 	import * as Select from '$lib/components/ui/select';
@@ -27,8 +28,40 @@
 		expires_at?: string;
 	};
 
-	let authState = $derived($auth);
-	let userCode = $derived($page.url.searchParams.get('user_code') ?? '');
+	interface CLIAuthorizationAuthState {
+		user: { id: string } | null;
+		isLoading: boolean;
+		isAuthenticated: boolean;
+	}
+
+	interface CLIAuthorizeDependencies {
+		page: Readable<{ url: URL }>;
+		auth: Readable<CLIAuthorizationAuthState>;
+		workspace: {
+			currentWorkspace: { id: string; name: string } | null;
+			workspaces: Array<{ id: string; name: string }>;
+		};
+		get: typeof client.GET;
+		post: typeof client.POST;
+		navigate: typeof goto;
+	}
+
+	const defaultDependencies: CLIAuthorizeDependencies = {
+		page,
+		auth,
+		workspace: workspaceCtx,
+		get: client.GET,
+		post: client.POST,
+		navigate: goto
+	};
+
+	let { dependencies = defaultDependencies }: { dependencies?: CLIAuthorizeDependencies } =
+		$props();
+	let pageStore = $derived(dependencies.page);
+	let authStore = $derived(dependencies.auth);
+
+	let authState = $derived($authStore);
+	let userCode = $derived($pageStore.url.searchParams.get('user_code') ?? '');
 	let session = $state<CLIAuthSession | null>(null);
 	let tokenName = $state('OpenPost CLI');
 	let selectedWorkspaceID = $state<string | null>(null);
@@ -46,8 +79,8 @@
 	const sessionPending = $derived(loading || (!session && !error && !completed));
 	const selectedWorkspaceLabel = $derived(
 		selectedWorkspaceID
-			? (workspaceCtx.workspaces.find((workspace) => workspace.id === selectedWorkspaceID)?.name ??
-					m.cli_authorize_current_workspace())
+			? (dependencies.workspace.workspaces.find((workspace) => workspace.id === selectedWorkspaceID)
+					?.name ?? m.cli_authorize_current_workspace())
 			: m.cli_authorize_all_workspaces()
 	);
 
@@ -89,7 +122,7 @@
 		sessionLoadFailed = false;
 
 		try {
-			const { data, error: apiError } = await client.GET('/cli/auth/session', {
+			const { data, error: apiError } = await dependencies.get('/cli/auth/session', {
 				params: { query: { user_code: code } }
 			});
 
@@ -159,7 +192,7 @@
 							workspace_id: selectedWorkspaceID ?? ''
 						}
 					: { user_code: code };
-			const { error: apiError } = await client.POST(path, { body });
+			const { error: apiError } = await dependencies.post(path, { body });
 
 			if (apiError) {
 				throw new Error(apiError?.detail ?? m.cli_authorize_decision_failed());
@@ -191,8 +224,8 @@
 	}
 
 	$effect(() => {
-		if (selectedWorkspaceID === null && workspaceCtx.currentWorkspace?.id) {
-			selectedWorkspaceID = workspaceCtx.currentWorkspace.id;
+		if (selectedWorkspaceID === null && dependencies.workspace.currentWorkspace?.id) {
+			selectedWorkspaceID = dependencies.workspace.currentWorkspace.id;
 		}
 	});
 
@@ -207,7 +240,7 @@
 		}
 
 		if (!authState.user && !authState.isAuthenticated) {
-			goto(resolveAppPath(loginRedirect(code)));
+			dependencies.navigate(resolveAppPath(loginRedirect(code)));
 			return;
 		}
 
@@ -300,7 +333,7 @@
 						{selectedWorkspaceLabel}
 					</Select.Trigger>
 					<Select.Content>
-						{#each workspaceCtx.workspaces as workspace (workspace.id)}
+						{#each dependencies.workspace.workspaces as workspace (workspace.id)}
 							<Select.Item value={workspace.id}>{workspace.name}</Select.Item>
 						{/each}
 						<Select.Item value="__all__">{m.cli_authorize_all_workspaces()}</Select.Item>

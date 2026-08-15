@@ -3,6 +3,7 @@
 	import { resolve } from '$app/paths';
 	import { resolveAppPath } from '$lib/app-path';
 	import { page } from '$app/stores';
+	import type { Readable } from 'svelte/store';
 	import { Button } from '$lib/components/ui/button';
 	import { Badge } from '$lib/components/ui/badge';
 	import * as Select from '$lib/components/ui/select';
@@ -18,21 +19,48 @@
 	import ShieldCheckIcon from '@lucide/svelte/icons/shield-check';
 	import XIcon from '@lucide/svelte/icons/x';
 
-	let authState = $derived($auth);
+	interface AuthorizationAuthState {
+		user: { id: string } | null;
+		isLoading: boolean;
+		isAuthenticated: boolean;
+	}
+
+	interface OAuthAuthorizeDependencies {
+		page: Readable<{ url: URL }>;
+		auth: Readable<AuthorizationAuthState>;
+		workspace: { currentWorkspace: { id: string; name: string } | null };
+		post: typeof client.POST;
+		navigate: typeof goto;
+	}
+
+	const defaultDependencies: OAuthAuthorizeDependencies = {
+		page,
+		auth,
+		workspace: workspaceCtx,
+		post: client.POST,
+		navigate: goto
+	};
+
+	let { dependencies = defaultDependencies }: { dependencies?: OAuthAuthorizeDependencies } =
+		$props();
+	let pageStore = $derived(dependencies.page);
+	let authStore = $derived(dependencies.auth);
+
+	let authState = $derived($authStore);
 	let error = $state('');
 	let submitting = $state(false);
 	let pendingDecision = $state<boolean | null>(null);
 	let oauthWorkspaceScope = $state('current');
 
 	let params = $derived({
-		response_type: $page.url.searchParams.get('response_type') ?? '',
-		client_id: $page.url.searchParams.get('client_id') ?? '',
-		redirect_uri: $page.url.searchParams.get('redirect_uri') ?? '',
-		scope: $page.url.searchParams.get('scope') ?? 'mcp:full',
-		state: $page.url.searchParams.get('state') ?? '',
-		code_challenge: $page.url.searchParams.get('code_challenge') ?? '',
-		code_challenge_method: $page.url.searchParams.get('code_challenge_method') ?? '',
-		resource: $page.url.searchParams.get('resource') ?? ''
+		response_type: $pageStore.url.searchParams.get('response_type') ?? '',
+		client_id: $pageStore.url.searchParams.get('client_id') ?? '',
+		redirect_uri: $pageStore.url.searchParams.get('redirect_uri') ?? '',
+		scope: $pageStore.url.searchParams.get('scope') ?? 'mcp:full',
+		state: $pageStore.url.searchParams.get('state') ?? '',
+		code_challenge: $pageStore.url.searchParams.get('code_challenge') ?? '',
+		code_challenge_method: $pageStore.url.searchParams.get('code_challenge_method') ?? '',
+		resource: $pageStore.url.searchParams.get('resource') ?? ''
 	});
 
 	let scopes = $derived(
@@ -53,7 +81,8 @@
 			value: 'current',
 			label: m.oauth_authorize_current_workspace(),
 			description:
-				workspaceCtx.currentWorkspace?.name ?? m.oauth_authorize_current_workspace_description()
+				dependencies.workspace.currentWorkspace?.name ??
+				m.oauth_authorize_current_workspace_description()
 		},
 		{
 			value: 'all',
@@ -67,7 +96,7 @@
 	);
 
 	function currentPath() {
-		return `${$page.url.pathname}${$page.url.search}`;
+		return `${$pageStore.url.pathname}${$pageStore.url.search}`;
 	}
 
 	function loginRedirect() {
@@ -113,7 +142,7 @@
 		error = '';
 		const workspaceID =
 			approved && oauthWorkspaceScope === 'current'
-				? (workspaceCtx.currentWorkspace?.id ?? '')
+				? (dependencies.workspace.currentWorkspace?.id ?? '')
 				: '';
 
 		try {
@@ -122,7 +151,7 @@
 				approved
 			};
 			if (workspaceID) body.workspace_id = workspaceID;
-			const { data, error: apiError } = await client.POST('/mcp/oauth/authorize', {
+			const { data, error: apiError } = await dependencies.post('/mcp/oauth/authorize', {
 				body
 			});
 			if (apiError || !data?.redirect_url) {
@@ -140,7 +169,7 @@
 	$effect(() => {
 		if (authState.isLoading) return;
 		if (!authState.user && !authState.isAuthenticated) {
-			goto(resolveAppPath(loginRedirect()));
+			dependencies.navigate(resolveAppPath(loginRedirect()));
 			return;
 		}
 	});
@@ -219,7 +248,7 @@
 				onclick={() => submit(true)}
 				disabled={submitting ||
 					!!requestError ||
-					(oauthWorkspaceScope === 'current' && !workspaceCtx.currentWorkspace)}
+					(oauthWorkspaceScope === 'current' && !dependencies.workspace.currentWorkspace)}
 			>
 				{#if pendingDecision === true}
 					<LoaderIcon class="size-4 animate-spin" />
