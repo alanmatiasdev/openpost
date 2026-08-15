@@ -927,6 +927,8 @@ openpost media usage &lt;media-id&gt;
 
 Create, list, view, update, and delete posts
 
+Create, list, view, update, and delete posts. The CLI now uses Publication APIs and keeps the post command name for compatibility; migrate automation to Publication IDs returned by these commands before legacy Post HTTP routes are removed.
+
 **Usage**
 
 ```text

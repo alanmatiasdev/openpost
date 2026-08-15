@@ -33,7 +33,11 @@ type postFlags struct {
 }
 
 func newPostCmd() *cobra.Command {
-	cmd := &cobra.Command{Use: "post", Short: "Create, list, view, update, and delete posts"}
+	cmd := &cobra.Command{
+		Use:   "post",
+		Short: "Create, list, view, update, and delete posts",
+		Long:  "Create, list, view, update, and delete posts. The CLI now uses Publication APIs and keeps the post command name for compatibility; migrate automation to Publication IDs returned by these commands before legacy Post HTTP routes are removed.",
+	}
 	cmd.AddCommand(newPostCreateCmd())
 	cmd.AddCommand(newPostListCmd())
 	cmd.AddCommand(newPostViewCmd())

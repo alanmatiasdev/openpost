@@ -14,11 +14,175 @@
   },
   "entries": [
     {
+      "id": "rest.posts.legacy-write",
+      "kind": "rest",
+      "owner": "publishing",
+      "status": "deprecated",
+      "decision": "Deprecate retained legacy Post create, update, thread creation, and deletion now that Publications are the only authoring aggregate and compatibility writes must translate to the Publication lifecycle.",
+      "operations": [
+        {
+          "method": "POST",
+          "path": "/posts",
+          "operation_id": "create-post",
+          "introduced_version": "v0.1.0",
+          "introduced_commit": "1fdfef18591f76b4d20ef079478236b4798a6dbc"
+        },
+        {
+          "method": "PATCH",
+          "path": "/posts/{id}",
+          "operation_id": "update-post",
+          "introduced_version": "v0.4.3",
+          "introduced_commit": "80c302c571b0f49fd2698a125bab6747e1eabfb5"
+        },
+        {
+          "method": "POST",
+          "path": "/posts/thread",
+          "operation_id": "create-thread",
+          "introduced_version": "v0.3.0",
+          "introduced_commit": "65a3d9104f4174dc0cfda8a94ff53578e8d79f5c"
+        },
+        {
+          "method": "DELETE",
+          "path": "/posts/{id}",
+          "operation_id": "delete-post",
+          "introduced_version": "v0.4.3",
+          "introduced_commit": "80c302c571b0f49fd2698a125bab6747e1eabfb5"
+        }
+      ],
+      "replacement": {
+        "status": "available",
+        "operations": [
+          "POST /publications",
+          "PATCH /publications/{id}",
+          "POST /publications/{id}/schedule",
+          "POST /publications/{id}/cancel",
+          "DELETE /publications/{id}"
+        ],
+        "notes": "Publications own source content, revision, segments, renditions, schedule state, and durable jobs."
+      },
+      "migration_path": "Create and update Publications instead of Posts. Map content to source_text and the first segment body, social_account_ids to Renditions, media_ids to segment or rendition media, scheduled_at to the Publication schedule operation, and use publication_id returned by compatibility responses before the Post ID sunset.",
+      "notice": {
+        "announced_on": "2026-08-15",
+        "announced_version": "v3.12.0",
+        "locations": ["CHANGELOG.md", "OpenAPI deprecated marker", "migration documentation"]
+      },
+      "removal": {
+        "earliest_on": "2026-11-13",
+        "removal_version": null
+      },
+      "telemetry": {
+        "observation_started_on": "2026-08-15",
+        "observation_ended_on": null,
+        "evidence": [
+          "Structured request logs record normalized route and consumer class for the retained compatibility surface."
+        ],
+        "route_patterns": ["/api/v1/posts", "/api/v1/posts/:id", "/api/v1/posts/thread"],
+        "consumers": {
+          "web": {
+            "status": "known-use",
+            "evidence": "The maintained web app has retained legacy draft redirects and compatibility reads during the Publication migration."
+          },
+          "cli": {
+            "status": "known-use",
+            "evidence": "Older CLI releases call Post routes; the maintained CLI now uses Publication-backed delegates while preserving response fields."
+          },
+          "mcp": {
+            "status": "known-use",
+            "evidence": "Cached MCP tool callers may still use post-named operations that are translated to Publication state."
+          },
+          "mcp-media": {
+            "status": "not-applicable",
+            "evidence": "The MCP media proxy uploads and resolves media only; it cannot call Post authoring routes."
+          },
+          "n8n": {
+            "status": "pending",
+            "evidence": null
+          },
+          "api": {
+            "status": "pending",
+            "evidence": null
+          }
+        }
+      }
+    },
+    {
+      "id": "rest.posts.legacy-read",
+      "kind": "rest",
+      "owner": "publishing",
+      "status": "deprecated",
+      "decision": "Deprecate retained Post reads because Publication list and detail are the canonical inventory and expose destination Renditions directly.",
+      "operations": [
+        {
+          "method": "GET",
+          "path": "/posts",
+          "operation_id": "list-posts",
+          "introduced_version": "v0.1.0",
+          "introduced_commit": "1fdfef18591f76b4d20ef079478236b4798a6dbc"
+        },
+        {
+          "method": "GET",
+          "path": "/posts/{id}",
+          "operation_id": "get-post",
+          "introduced_version": "v0.4.3",
+          "introduced_commit": "80c302c571b0f49fd2698a125bab6747e1eabfb5"
+        }
+      ],
+      "replacement": {
+        "status": "available",
+        "operations": ["GET /publications", "GET /publications/{id}"],
+        "notes": "Publication reads include lifecycle status, schedule, segments, Renditions, media, and provider delivery state without preserving a second authoring model."
+      },
+      "migration_path": "Use GET /publications for lists and GET /publications/{id} for detail. Use compatibility publication_id aliases to resolve stored Post IDs, then read Renditions instead of destinations or variants.",
+      "notice": {
+        "announced_on": "2026-08-15",
+        "announced_version": "v3.12.0",
+        "locations": ["CHANGELOG.md", "OpenAPI deprecated marker", "migration documentation"]
+      },
+      "removal": {
+        "earliest_on": "2026-11-13",
+        "removal_version": null
+      },
+      "telemetry": {
+        "observation_started_on": "2026-08-15",
+        "observation_ended_on": null,
+        "evidence": [
+          "Structured request logs record normalized route and consumer class for the retained compatibility surface."
+        ],
+        "route_patterns": ["/api/v1/posts", "/api/v1/posts/:id"],
+        "consumers": {
+          "web": {
+            "status": "known-use",
+            "evidence": "The maintained web app has retained legacy draft redirects and compatibility reads during the Publication migration."
+          },
+          "cli": {
+            "status": "known-use",
+            "evidence": "Older CLI releases call Post routes; the maintained CLI now uses Publication-backed delegates while preserving response fields."
+          },
+          "mcp": {
+            "status": "known-use",
+            "evidence": "Cached MCP tool callers may still use post-named operations that are translated to Publication state."
+          },
+          "mcp-media": {
+            "status": "not-applicable",
+            "evidence": "The MCP media proxy uploads and resolves media only; it cannot call Post authoring routes."
+          },
+          "n8n": {
+            "status": "pending",
+            "evidence": null
+          },
+          "api": {
+            "status": "pending",
+            "evidence": null
+          }
+        }
+      }
+    },
+    {
       "id": "rest.posts.schedule-overview",
       "kind": "rest",
       "owner": "publishing",
-      "status": "retained",
-      "decision": "Retain the compatibility route while normalized telemetry establishes whether external calendar clients still use it. Its implementation already reads canonical publications and renditions.",
+      "status": "deprecated",
+      "decision": "Deprecate the Post-named calendar aggregate. It already reads canonical Publications, and Publication calendar filters are available for maintained clients while the exact aggregate remains a compatibility projection.",
       "operations": [
         {
           "method": "GET",
@@ -29,38 +193,203 @@
         }
       ],
       "replacement": {
-        "status": "candidate",
-        "operations": ["GET /publications with an explicit date range"],
-        "notes": "The publication list is canonical, but it does not yet promise the bounded monthly aggregate contract of this route."
+        "status": "available",
+        "operations": ["GET /publications with calendar_from and calendar_before"],
+        "notes": "Publication list calendar filters return the canonical records needed to render monthly schedule state."
       },
-      "migration_path": "Migrate consumers only after a bounded publication-calendar contract provides every current aggregate and timezone behavior.",
+      "migration_path": "Request the month with calendar_from and calendar_before on GET /publications, then group returned calendar occurrences by local date until a Publication calendar aggregate replaces the compatibility projection.",
       "notice": {
-        "announced_on": null,
-        "announced_version": null,
-        "locations": []
+        "announced_on": "2026-08-15",
+        "announced_version": "v3.12.0",
+        "locations": ["CHANGELOG.md", "OpenAPI deprecated marker", "migration documentation"]
       },
       "removal": {
-        "earliest_on": null,
+        "earliest_on": "2026-11-13",
         "removal_version": null
       },
       "telemetry": {
-        "route_patterns": ["/api/v1/posts/schedule-overview"],
-        "observation_started_on": null,
+        "observation_started_on": "2026-08-15",
         "observation_ended_on": null,
-        "evidence": [],
+        "evidence": [
+          "Structured request logs record normalized route and consumer class for the retained compatibility surface."
+        ],
+        "route_patterns": ["/api/v1/posts/schedule-overview"],
         "consumers": {
           "web": {
             "status": "known-use",
-            "evidence": "The sidebar planner loads this monthly aggregate."
+            "evidence": "The maintained web app has retained legacy draft redirects and compatibility reads during the Publication migration."
           },
-          "cli": { "status": "pending", "evidence": null },
-          "mcp": { "status": "pending", "evidence": null },
+          "cli": {
+            "status": "known-use",
+            "evidence": "Older CLI releases call Post routes; the maintained CLI now uses Publication-backed delegates while preserving response fields."
+          },
+          "mcp": {
+            "status": "known-use",
+            "evidence": "Cached MCP tool callers may still use post-named operations that are translated to Publication state."
+          },
           "mcp-media": {
             "status": "not-applicable",
             "evidence": "The media proxy cannot call calendar routes."
           },
-          "n8n": { "status": "pending", "evidence": null },
-          "api": { "status": "pending", "evidence": null }
+          "n8n": {
+            "status": "pending",
+            "evidence": null
+          },
+          "api": {
+            "status": "pending",
+            "evidence": null
+          }
+        }
+      }
+    },
+    {
+      "id": "rest.posts.legacy-drafts",
+      "kind": "rest",
+      "owner": "publishing",
+      "status": "deprecated",
+      "decision": "Deprecate text-and-thread Post draft routes. Draft content, segments, media, renditions, settings, and revision checks belong to the Publication update contract.",
+      "operations": [
+        {
+          "method": "POST",
+          "path": "/posts/draft",
+          "operation_id": "create-text-post-draft",
+          "introduced_version": "v1.1.15",
+          "introduced_commit": "0407df3a1f9f5641682654df6f5186185b5ef238"
+        },
+        {
+          "method": "PUT",
+          "path": "/posts/{id}/draft",
+          "operation_id": "save-text-post-draft",
+          "introduced_version": "v1.1.15",
+          "introduced_commit": "0407df3a1f9f5641682654df6f5186185b5ef238"
+        }
+      ],
+      "replacement": {
+        "status": "available",
+        "operations": ["POST /publications", "PATCH /publications/{id}"],
+        "notes": "Publication creation and update preserve expected_revision while storing the canonical source, segments, media, settings, and Renditions."
+      },
+      "migration_path": "Create a Publication for new drafts. Save existing drafts by resolving the compatibility Post ID to publication_id and sending expected_revision, segments, renditions, media, and settings to PATCH /publications/{id}.",
+      "notice": {
+        "announced_on": "2026-08-15",
+        "announced_version": "v3.12.0",
+        "locations": ["CHANGELOG.md", "OpenAPI deprecated marker", "migration documentation"]
+      },
+      "removal": {
+        "earliest_on": "2026-11-13",
+        "removal_version": null
+      },
+      "telemetry": {
+        "observation_started_on": "2026-08-15",
+        "observation_ended_on": null,
+        "evidence": [
+          "Structured request logs record normalized route and consumer class for the retained compatibility surface."
+        ],
+        "route_patterns": ["/api/v1/posts/draft", "/api/v1/posts/:id/draft"],
+        "consumers": {
+          "web": {
+            "status": "known-use",
+            "evidence": "The maintained web app has retained legacy draft redirects and compatibility reads during the Publication migration."
+          },
+          "cli": {
+            "status": "known-use",
+            "evidence": "Older CLI releases call Post routes; the maintained CLI now uses Publication-backed delegates while preserving response fields."
+          },
+          "mcp": {
+            "status": "known-use",
+            "evidence": "Cached MCP tool callers may still use post-named operations that are translated to Publication state."
+          },
+          "mcp-media": {
+            "status": "not-applicable",
+            "evidence": "The MCP media proxy uploads and resolves media only; it cannot call Post authoring routes."
+          },
+          "n8n": {
+            "status": "pending",
+            "evidence": null
+          },
+          "api": {
+            "status": "pending",
+            "evidence": null
+          }
+        }
+      }
+    },
+    {
+      "id": "rest.posts.legacy-renditions",
+      "kind": "rest",
+      "owner": "publishing",
+      "status": "deprecated",
+      "decision": "Deprecate Post variant routes because destination-specific content is now a Rendition property on the Publication aggregate.",
+      "operations": [
+        {
+          "method": "PUT",
+          "path": "/posts/{id}/variants",
+          "operation_id": "upsert-post-variants",
+          "introduced_version": "v0.4.3",
+          "introduced_commit": "87a19010c69af3028770b4ff13895c1dcd4e7465"
+        },
+        {
+          "method": "GET",
+          "path": "/posts/{id}/variants",
+          "operation_id": "get-post-variants",
+          "introduced_version": "v0.4.3",
+          "introduced_commit": "87a19010c69af3028770b4ff13895c1dcd4e7465"
+        },
+        {
+          "method": "DELETE",
+          "path": "/posts/{id}/variants",
+          "operation_id": "delete-post-variants",
+          "introduced_version": "v0.4.3",
+          "introduced_commit": "87a19010c69af3028770b4ff13895c1dcd4e7465"
+        }
+      ],
+      "replacement": {
+        "status": "available",
+        "operations": ["GET /publications/{id}", "PUT /publications/{id}/renditions"],
+        "notes": "Renditions carry per-account body, media, format, settings, timing, and provider delivery state."
+      },
+      "migration_path": "Read Renditions from GET /publications/{id}. Replace variant writes with PUT /publications/{id}/renditions and map social_account_id, content, media_ids, settings, and unsynced media state to Rendition fields.",
+      "notice": {
+        "announced_on": "2026-08-15",
+        "announced_version": "v3.12.0",
+        "locations": ["CHANGELOG.md", "OpenAPI deprecated marker", "migration documentation"]
+      },
+      "removal": {
+        "earliest_on": "2026-11-13",
+        "removal_version": null
+      },
+      "telemetry": {
+        "observation_started_on": "2026-08-15",
+        "observation_ended_on": null,
+        "evidence": [
+          "Structured request logs record normalized route and consumer class for the retained compatibility surface."
+        ],
+        "route_patterns": ["/api/v1/posts/:id/variants"],
+        "consumers": {
+          "web": {
+            "status": "known-use",
+            "evidence": "The maintained web app has retained legacy draft redirects and compatibility reads during the Publication migration."
+          },
+          "cli": {
+            "status": "known-use",
+            "evidence": "Older CLI releases call Post routes; the maintained CLI now uses Publication-backed delegates while preserving response fields."
+          },
+          "mcp": {
+            "status": "known-use",
+            "evidence": "Cached MCP tool callers may still use post-named operations that are translated to Publication state."
+          },
+          "mcp-media": {
+            "status": "not-applicable",
+            "evidence": "The MCP media proxy uploads and resolves media only; it cannot call Post authoring routes."
+          },
+          "n8n": {
+            "status": "pending",
+            "evidence": null
+          },
+          "api": {
+            "status": "pending",
+            "evidence": null
+          }
         }
       }
     },
@@ -100,15 +429,30 @@
         "observation_ended_on": null,
         "evidence": [],
         "consumers": {
-          "web": { "status": "pending", "evidence": null },
-          "cli": { "status": "pending", "evidence": null },
-          "mcp": { "status": "pending", "evidence": null },
+          "web": {
+            "status": "pending",
+            "evidence": null
+          },
+          "cli": {
+            "status": "pending",
+            "evidence": null
+          },
+          "mcp": {
+            "status": "pending",
+            "evidence": null
+          },
           "mcp-media": {
             "status": "not-applicable",
             "evidence": "The media proxy cannot start account connections."
           },
-          "n8n": { "status": "pending", "evidence": null },
-          "api": { "status": "pending", "evidence": null }
+          "n8n": {
+            "status": "pending",
+            "evidence": null
+          },
+          "api": {
+            "status": "pending",
+            "evidence": null
+          }
         }
       }
     },
@@ -148,9 +492,18 @@
         "observation_ended_on": null,
         "evidence": ["N8N-009 reserves this selector for the selected automation contract."],
         "consumers": {
-          "web": { "status": "pending", "evidence": null },
-          "cli": { "status": "pending", "evidence": null },
-          "mcp": { "status": "pending", "evidence": null },
+          "web": {
+            "status": "pending",
+            "evidence": null
+          },
+          "cli": {
+            "status": "pending",
+            "evidence": null
+          },
+          "mcp": {
+            "status": "pending",
+            "evidence": null
+          },
           "mcp-media": {
             "status": "not-applicable",
             "evidence": "The media proxy cannot query provider options."
@@ -159,62 +512,10 @@
             "status": "reserved-use",
             "evidence": "Reserved by the approved N8N-009 selected automation contract; implementation evidence is still pending."
           },
-          "api": { "status": "pending", "evidence": null }
-        }
-      }
-    },
-    {
-      "id": "rest.posts.legacy-write",
-      "kind": "rest",
-      "owner": "publishing",
-      "status": "retained",
-      "decision": "Retain the legacy Post create and update ABI until API-token and older CLI consumers have a documented publication migration and a complete observation window.",
-      "operations": [
-        {
-          "method": "POST",
-          "path": "/posts",
-          "operation_id": "create-post",
-          "introduced_version": "v0.1.0",
-          "introduced_commit": "1fdfef18591f76b4d20ef079478236b4798a6dbc"
-        },
-        {
-          "method": "PATCH",
-          "path": "/posts/{id}",
-          "operation_id": "update-post",
-          "introduced_version": "v0.4.3",
-          "introduced_commit": "80c302c571b0f49fd2698a125bab6747e1eabfb5"
-        }
-      ],
-      "replacement": {
-        "status": "available",
-        "operations": ["POST /publications", "PATCH /publications/{id}"],
-        "notes": "Publications are canonical, but their richer revision and rendition contract requires an explicit client migration guide."
-      },
-      "migration_path": "Publish a field-by-field Post-to-Publication guide, migrate maintained clients, preserve expected_revision semantics, and observe both normalized routes before deprecation.",
-      "notice": {
-        "announced_on": null,
-        "announced_version": null,
-        "locations": []
-      },
-      "removal": {
-        "earliest_on": null,
-        "removal_version": null
-      },
-      "telemetry": {
-        "route_patterns": ["/api/v1/posts", "/api/v1/posts/:id"],
-        "observation_started_on": null,
-        "observation_ended_on": null,
-        "evidence": [],
-        "consumers": {
-          "web": { "status": "pending", "evidence": null },
-          "cli": { "status": "pending", "evidence": null },
-          "mcp": { "status": "pending", "evidence": null },
-          "mcp-media": {
-            "status": "not-applicable",
-            "evidence": "The media proxy cannot mutate posts."
-          },
-          "n8n": { "status": "pending", "evidence": null },
-          "api": { "status": "pending", "evidence": null }
+          "api": {
+            "status": "pending",
+            "evidence": null
+          }
         }
       }
     },
@@ -261,15 +562,30 @@
         "observation_ended_on": null,
         "evidence": [],
         "consumers": {
-          "web": { "status": "pending", "evidence": null },
-          "cli": { "status": "pending", "evidence": null },
-          "mcp": { "status": "pending", "evidence": null },
+          "web": {
+            "status": "pending",
+            "evidence": null
+          },
+          "cli": {
+            "status": "pending",
+            "evidence": null
+          },
+          "mcp": {
+            "status": "pending",
+            "evidence": null
+          },
           "mcp-media": {
             "status": "not-applicable",
             "evidence": "The media proxy has no organization administration access."
           },
-          "n8n": { "status": "pending", "evidence": null },
-          "api": { "status": "pending", "evidence": null }
+          "n8n": {
+            "status": "pending",
+            "evidence": null
+          },
+          "api": {
+            "status": "pending",
+            "evidence": null
+          }
         }
       }
     },
@@ -343,7 +659,10 @@
             "status": "known-use",
             "evidence": "The maintained CLI billing commands use generic billing routes."
           },
-          "mcp": { "status": "pending", "evidence": null },
+          "mcp": {
+            "status": "pending",
+            "evidence": null
+          },
           "mcp-media": {
             "status": "not-applicable",
             "evidence": "The media proxy has no billing access."
@@ -352,7 +671,10 @@
             "status": "not-applicable",
             "evidence": "Billing is excluded from the curated n8n contract."
           },
-          "api": { "status": "pending", "evidence": null }
+          "api": {
+            "status": "pending",
+            "evidence": null
+          }
         }
       }
     },
@@ -392,7 +714,10 @@
         "observation_ended_on": null,
         "evidence": [],
         "consumers": {
-          "web": { "status": "pending", "evidence": null },
+          "web": {
+            "status": "pending",
+            "evidence": null
+          },
           "cli": {
             "status": "not-applicable",
             "evidence": "CLI authorization revocation uses its own session contract."
@@ -409,7 +734,10 @@
             "status": "not-applicable",
             "evidence": "Authentication routes are excluded from the curated n8n contract."
           },
-          "api": { "status": "pending", "evidence": null }
+          "api": {
+            "status": "pending",
+            "evidence": null
+          }
         }
       }
     },
@@ -488,7 +816,10 @@
             "status": "known-use",
             "evidence": "The Writing prompts route and composer consume this API."
           },
-          "cli": { "status": "pending", "evidence": null },
+          "cli": {
+            "status": "pending",
+            "evidence": null
+          },
           "mcp": {
             "status": "not-applicable",
             "evidence": "MCP protocol prompts are a separate typed catalogue, not these stored writing prompts."
@@ -501,7 +832,10 @@
             "status": "not-applicable",
             "evidence": "Prompts are excluded from the selected n8n v0.1 contract."
           },
-          "api": { "status": "pending", "evidence": null }
+          "api": {
+            "status": "pending",
+            "evidence": null
+          }
         }
       }
     },
@@ -556,15 +890,30 @@
         "observation_ended_on": null,
         "evidence": [],
         "consumers": {
-          "web": { "status": "pending", "evidence": null },
-          "cli": { "status": "pending", "evidence": null },
-          "mcp": { "status": "pending", "evidence": null },
+          "web": {
+            "status": "pending",
+            "evidence": null
+          },
+          "cli": {
+            "status": "pending",
+            "evidence": null
+          },
+          "mcp": {
+            "status": "pending",
+            "evidence": null
+          },
           "mcp-media": {
             "status": "not-applicable",
             "evidence": "The media proxy does not create or update publications."
           },
-          "n8n": { "status": "pending", "evidence": null },
-          "api": { "status": "pending", "evidence": null }
+          "n8n": {
+            "status": "pending",
+            "evidence": null
+          },
+          "api": {
+            "status": "pending",
+            "evidence": null
+          }
         }
       }
     },
@@ -615,15 +964,30 @@
         "observation_ended_on": null,
         "evidence": [],
         "consumers": {
-          "web": { "status": "pending", "evidence": null },
-          "cli": { "status": "pending", "evidence": null },
-          "mcp": { "status": "pending", "evidence": null },
+          "web": {
+            "status": "pending",
+            "evidence": null
+          },
+          "cli": {
+            "status": "pending",
+            "evidence": null
+          },
+          "mcp": {
+            "status": "pending",
+            "evidence": null
+          },
           "mcp-media": {
             "status": "not-applicable",
             "evidence": "The media proxy cannot read or update workspace settings."
           },
-          "n8n": { "status": "pending", "evidence": null },
-          "api": { "status": "pending", "evidence": null }
+          "n8n": {
+            "status": "pending",
+            "evidence": null
+          },
+          "api": {
+            "status": "pending",
+            "evidence": null
+          }
         }
       }
     }

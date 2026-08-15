@@ -6,6 +6,7 @@ All notable changes to this project are documented in this file.
 
 ### Changed
 
+- Deprecated retained Post HTTP compatibility routes, recorded their Publication replacements and sunset evidence in the compatibility registry, added OpenAPI migration guidance, and documented the minimum 90-day and two-later-stable-release removal gate.
 - Added canonical Publication aliases and terminal legacy delivery evidence to the historical Post migration so published and failed compatibility rows resolve safely without provider calls.
 - Moved planner calendar loading and CLI post/thread workflows onto canonical Publication list, creation, update, schedule, and deletion contracts, with Publication calendar filters available to MCP.
 - Completed the canonical Publication delivery path with application-owned get, list, history, delete, cancellation, validation, scheduling, publishing, and retry operations; stable transport-neutral error categories; a canonical cancellation contract for REST and MCP; and persisted effective random-delay ranges whose exact Job times are covered by Publication authorization.

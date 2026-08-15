@@ -23,11 +23,15 @@ The request log's `route` and `consumer` fields provide low-cardinality evidence
 
 ## Current decisions
 
-No route in the initial registry is deprecated. The `media_cleanup_days` workspace-settings field is already in a measured compatibility period: old writes are ignored, reads return `14`, and removal remains blocked until the full sunset gate passes.
+The retained Post compatibility routes and `media_cleanup_days` workspace-settings field are in measured compatibility periods. Old Post routes project to Publications and Renditions, old workspace-setting writes are ignored, and removal remains blocked until the full sunset gate passes.
 
 | Surface                                                 | Decision  | Reason                                                                                                                                                          |
 | ------------------------------------------------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /posts/schedule-overview`                          | Retain    | The handler now reads canonical publications, but no replacement yet promises the same bounded monthly aggregate.                                               |
+| Post read routes                                        | Deprecate | Use `GET /publications` and `GET /publications/{id}`. Legacy IDs resolve through immutable aliases.                                                             |
+| Post write routes                                       | Deprecate | Use Publication create, update, schedule, cancel, and delete operations. See [Post to Publication migration](/development/post-publication-migration).          |
+| Post draft routes                                       | Deprecate | Use Publication create and update with segments, media, Renditions, settings, and `expected_revision`.                                                          |
+| Post variant routes                                     | Deprecate | Use Publication Renditions for account-specific content, media, format, settings, timing, and provider state.                                                   |
+| `GET /posts/schedule-overview`                          | Deprecate | Use `GET /publications` with `calendar_from` and `calendar_before`, then group returned records by day.                                                         |
 | `GET /accounts/mastodon/servers`                        | Retain    | The provider catalogue must prove configured and dynamic Mastodon instance parity first.                                                                        |
 | `GET /accounts/{account_id}/destination-options`        | Retain    | The approved n8n v0.1 contract reserves this selector; implement and migrate it to the paged option route before deprecation.                                   |
 | Legacy `POST /posts` and `PATCH /posts/{id}`            | Retain    | External clients need an explicit publication migration that preserves revision behavior.                                                                       |

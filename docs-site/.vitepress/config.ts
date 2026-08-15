@@ -178,6 +178,7 @@ const developmentSidebar = [
       { text: "API Reference", link: "/development/api-reference" },
       { text: "API Tokens", link: "/development/api-tokens" },
       { text: "API Compatibility", link: "/development/compatibility-policy" },
+      { text: "Post Migration", link: "/development/post-publication-migration" },
       { text: "Frontend", link: "/development/frontend" },
       {
         text: "Image Editor Completeness",

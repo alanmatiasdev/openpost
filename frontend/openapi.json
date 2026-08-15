@@ -34079,6 +34079,8 @@
 		},
 		"/posts": {
 			"get": {
+				"deprecated": true,
+				"description": "Deprecated compatibility route. Use GET /publications with workspace_id, status or activity_bucket, calendar_from, calendar_before, limit, and offset. The legacy response projects Publication and Rendition state into Post fields.",
 				"operationId": "list-posts",
 				"parameters": [
 					{
@@ -34199,6 +34201,8 @@
 				"tags": ["Posts"]
 			},
 			"post": {
+				"deprecated": true,
+				"description": "Deprecated compatibility route. Create a Publication with Renditions instead; content maps to source_text and the first segment body, social_account_ids map to rendition social_account_id values, media_ids map to segment or rendition media, and scheduled_at moves to the Publication schedule endpoint.",
 				"operationId": "create-post",
 				"requestBody": {
 					"content": {
@@ -34268,6 +34272,8 @@
 		},
 		"/posts/draft": {
 			"post": {
+				"deprecated": true,
+				"description": "Deprecated compatibility route. Use POST /publications with segments and renditions; the response includes the canonical publication_id for migration.",
 				"operationId": "create-text-post-draft",
 				"requestBody": {
 					"content": {
@@ -34337,7 +34343,8 @@
 		},
 		"/posts/schedule-overview": {
 			"get": {
-				"description": "Compatibility path for a monthly summary sourced exclusively from canonical publications and renditions.",
+				"deprecated": true,
+				"description": "Deprecated compatibility route. Use GET /publications with calendar_from and calendar_before for the month and aggregate client-side until a dedicated Publication calendar aggregate is introduced.",
 				"operationId": "get-schedule-overview",
 				"parameters": [
 					{
@@ -34429,6 +34436,8 @@
 		},
 		"/posts/thread": {
 			"post": {
+				"deprecated": true,
+				"description": "Deprecated compatibility route. Create a Publication with creation_preset=thread, one segment per thread item, and one Rendition per destination account, then schedule the Publication.",
 				"operationId": "create-thread",
 				"requestBody": {
 					"content": {
@@ -34498,6 +34507,8 @@
 		},
 		"/posts/{id}": {
 			"delete": {
+				"deprecated": true,
+				"description": "Deprecated compatibility route. Resolve the legacy Post ID to its Publication alias and use DELETE /publications/{id} with the current expected_revision.",
 				"operationId": "delete-post",
 				"parameters": [
 					{
@@ -34577,6 +34588,8 @@
 				"tags": ["Posts"]
 			},
 			"get": {
+				"deprecated": true,
+				"description": "Deprecated compatibility route. Resolve the legacy Post ID through its Publication alias and use GET /publications/{id}; legacy destinations and variants are projected from Renditions.",
 				"operationId": "get-post",
 				"parameters": [
 					{
@@ -34636,6 +34649,8 @@
 				"tags": ["Posts"]
 			},
 			"patch": {
+				"deprecated": true,
+				"description": "Deprecated compatibility route. Use PATCH /publications/{id} for draft changes, POST /publications/{id}/schedule for scheduling, and POST /publications/{id}/cancel for cancellation.",
 				"operationId": "update-post",
 				"parameters": [
 					{
@@ -34727,6 +34742,8 @@
 		},
 		"/posts/{id}/draft": {
 			"put": {
+				"deprecated": true,
+				"description": "Deprecated compatibility route. Use PATCH /publications/{id} with expected_revision, segments, renditions, media, settings, and schedule fields.",
 				"operationId": "save-text-post-draft",
 				"parameters": [
 					{
@@ -34828,6 +34845,8 @@
 		},
 		"/posts/{id}/variants": {
 			"delete": {
+				"deprecated": true,
+				"description": "Deprecated compatibility route. Use PUT /publications/{id}/renditions with expected_revision and the replacement Rendition list.",
 				"operationId": "delete-post-variants",
 				"parameters": [
 					{
@@ -34907,6 +34926,8 @@
 				"tags": ["Posts"]
 			},
 			"get": {
+				"deprecated": true,
+				"description": "Deprecated compatibility route. Use GET /publications/{id}; Renditions contain destination-specific body, media, format, settings, and delivery state.",
 				"operationId": "get-post-variants",
 				"parameters": [
 					{
@@ -34976,6 +34997,8 @@
 				"tags": ["Posts"]
 			},
 			"put": {
+				"deprecated": true,
+				"description": "Deprecated compatibility route. Use PUT /publications/{id}/renditions with expected_revision; variant social_account_id, content, media_ids, and settings map to Rendition fields.",
 				"operationId": "upsert-post-variants",
 				"parameters": [
 					{

@@ -1344,7 +1344,7 @@ func mcpCreateDraftTool() mcpOperationDefinition {
 	return mcpOperationDescriptor(map[string]any{
 		"name":        mcpToolCreateDraft,
 		"title":       "Create draft",
-		"description": "Create an editable post when content should be saved without scheduling it. Returns the new draft with destinations, media, renditions, and current status.",
+		"description": "Compatibility alias over Publications. Create an editable Publication draft when content should be saved without scheduling it. Returns the new draft with destinations, media, renditions, and current status.",
 		"inputSchema": map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -1835,7 +1835,7 @@ func mcpSetPostRenditionsTool() mcpOperationDefinition {
 	return mcpOperationDescriptor(map[string]any{
 		"name":        mcpToolRenditions,
 		"title":       "Set post renditions",
-		"description": "Set platform-specific copy or media for destinations already assigned to a draft or scheduled post. Returns all stored renditions with effective media state.",
+		"description": "Compatibility alias over Publication Renditions. Set platform-specific copy or media for destinations already assigned to a draft or scheduled Publication. Returns all stored renditions with effective media state.",
 		"inputSchema": map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -1888,7 +1888,7 @@ func mcpSchedulePostTool() mcpOperationDefinition {
 	return mcpOperationDescriptor(map[string]any{
 		"name":        mcpToolSchedulePost,
 		"title":       "Schedule post",
-		"description": "Create and enqueue a new scheduled post when no reusable draft exists. Returns the scheduled post with destinations, source media, renditions, and publish state.",
+		"description": "Compatibility alias over Publications. Create and enqueue a new scheduled Publication when no reusable draft exists. Returns the scheduled item with destinations, source media, renditions, and publish state.",
 		"inputSchema": map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -1941,7 +1941,7 @@ func mcpScheduleDraftTool() mcpOperationDefinition {
 	return mcpOperationDescriptor(map[string]any{
 		"name":        mcpToolScheduleDraft,
 		"title":       "Schedule draft",
-		"description": "Queue an existing draft when its content and destinations are ready, without creating a duplicate. Returns the same post with its schedule and publishing state.",
+		"description": "Compatibility alias over Publications. Queue an existing draft when its content and destinations are ready, without creating a duplicate. Returns the same item with its schedule and publishing state.",
 		"inputSchema": map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -1990,7 +1990,7 @@ func mcpGetPostStatusTool() mcpOperationDefinition {
 	return mcpOperationDescriptor(map[string]any{
 		"name":        mcpToolGetPost,
 		"title":       "Get post status",
-		"description": "Inspect one draft, scheduled, processing, or published post when detailed state is needed. Returns source data, schedule, destinations, media, and renditions.",
+		"description": "Compatibility alias over Publication detail. Inspect one draft, scheduled, processing, or published item when detailed state is needed. Returns source data, schedule, destinations, media, and renditions.",
 		"inputSchema": map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -2013,7 +2013,7 @@ func mcpListScheduledPostsTool() mcpOperationDefinition {
 	return mcpOperationDescriptor(map[string]any{
 		"name":        mcpToolListPosts,
 		"title":       "List scheduled posts",
-		"description": "Review the upcoming queue before adding, moving, or canceling scheduled work. Returns matching posts with schedule, destinations, media, and renditions.",
+		"description": "Compatibility alias over Publication calendar reads. Review the upcoming queue before adding, moving, or canceling scheduled work. Returns matching items with schedule, destinations, media, and renditions.",
 		"inputSchema": map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -2048,7 +2048,7 @@ func mcpCancelPostTool() mcpOperationDefinition {
 	return mcpOperationDescriptor(map[string]any{
 		"name":        mcpToolCancelPost,
 		"title":       "Cancel scheduled post",
-		"description": "Cancel a queued post when it should no longer publish at its current time. Returns the same post restored to an editable draft without deleting it.",
+		"description": "Compatibility alias over Publication cancellation. Cancel a queued item when it should no longer publish at its current time. Returns the same item restored to an editable draft without deleting it.",
 		"inputSchema": map[string]any{
 			"type": "object",
 			"properties": map[string]any{
