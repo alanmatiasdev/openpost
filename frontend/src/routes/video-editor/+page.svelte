@@ -9,7 +9,7 @@ FORM: Operate surface extending the OpenPost Video Editor start screen; no water
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import { resolve } from '$app/paths';
+	import { resolveAppPath } from '$lib/app-path';
 	import { auth } from '$lib/stores/auth';
 	import { workspaceCtx } from '$lib/stores/workspace.svelte';
 	import { Button } from '$lib/components/ui/button';
@@ -39,9 +39,9 @@ FORM: Operate surface extending the OpenPost Video Editor start screen; no water
 	} from '$lib/video-editor/storage';
 	import {
 		defaultCaptionStyle,
+		migrateVideoProjectDocument,
 		projectDurationUS,
-		type CaptionStyle,
-		type VideoProjectDocumentV1
+		type CaptionStyle
 	} from '@openpost/video-project';
 	import {
 		createBlankLocalVideoProject,
@@ -185,7 +185,8 @@ FORM: Operate surface extending the OpenPost Video Editor start screen; no water
 	}
 
 	async function openFiles(event: Event): Promise<void> {
-		const input = event.currentTarget as HTMLInputElement;
+		const input = event.currentTarget;
+		if (!(input instanceof HTMLInputElement)) return;
 		const files = Array.from(input.files ?? []);
 		input.value = '';
 		if (!enabled || !capabilities?.supported || files.length === 0 || creating) return;
@@ -193,7 +194,7 @@ FORM: Operate surface extending the OpenPost Video Editor start screen; no water
 		error = '';
 		try {
 			const project = await createLocalVideoProjectFromFiles(files);
-			await goto(resolve(`/video-editor/${project.id}` as '/'));
+			await goto(resolveAppPath(`/video-editor/${project.id}`));
 		} catch (cause) {
 			error = cause instanceof Error ? cause.message : m.video_editor_create_failed();
 			creating = false;
@@ -247,22 +248,17 @@ FORM: Operate surface extending the OpenPost Video Editor start screen; no water
 		error = '';
 		try {
 			const response = await getCloudVideoProject(projectID);
-			const created = await createLocalVideoProject(
-				`local_video_${crypto.randomUUID()}`,
-				response.document as unknown as VideoProjectDocumentV1
-			);
+			const document = migrateVideoProjectDocument(response.document).document;
+			const created = await createLocalVideoProject(`local_video_${crypto.randomUUID()}`, document);
 			const mirrored = await saveLocalVideoProject({
 				...created,
 				cloud_project_id: response.id,
 				cloud_revision: response.revision,
-				cover_source_id: cloudVideoSourceIDForMedia(
-					response.document as unknown as VideoProjectDocumentV1,
-					response.cover_preview_media_id
-				),
+				cover_source_id: cloudVideoSourceIDForMedia(document, response.cover_preview_media_id),
 				cloud_cover_preview_media_id: response.cover_preview_media_id || undefined,
 				state: 'cloud'
 			});
-			await goto(resolve(`/video-editor/${mirrored.id}` as '/'));
+			await goto(resolveAppPath(`/video-editor/${mirrored.id}`));
 		} catch (cause) {
 			error = cause instanceof Error ? cause.message : m.video_editor_load_failed();
 			openingCloudID = '';
@@ -319,7 +315,7 @@ FORM: Operate surface extending the OpenPost Video Editor start screen; no water
 				for (const variant of project.document.variants) variant.background_color = '#1c1917';
 			}
 			const saved = await saveLocalVideoProject(project);
-			await goto(resolve(`/video-editor/${saved.id}` as '/'));
+			await goto(resolveAppPath(`/video-editor/${saved.id}`));
 		} catch (cause) {
 			error = cause instanceof Error ? cause.message : m.video_editor_create_failed();
 			creating = false;
@@ -335,7 +331,7 @@ FORM: Operate surface extending the OpenPost Video Editor start screen; no water
 <div class="video-editor-theme min-h-dvh bg-background text-foreground">
 	<header class="border-b bg-background">
 		<div class="mx-auto flex h-16 max-w-7xl items-center gap-3 px-4 sm:px-6 lg:px-8">
-			<a href={resolve('/')} class="flex min-h-11 items-center" aria-label={m.common_openpost()}>
+			<a href="/" class="flex min-h-11 items-center" aria-label={m.common_openpost()}>
 				<Logo width={112} height={33} />
 			</a>
 			<span class="hidden text-sm text-muted-foreground sm:inline">/ {m.video_editor_title()}</span>
@@ -393,7 +389,7 @@ FORM: Operate surface extending the OpenPost Video Editor start screen; no water
 							<p class="font-medium">{m.video_editor_unsupported()}</p>
 							<p class="text-current/80">{m.video_editor_unsupported_body()}</p>
 							<a
-								href={resolve('/video-editor/unsupported')}
+								href={resolveAppPath('/video-editor/unsupported')}
 								class="inline-flex min-h-11 items-center text-sm font-medium underline underline-offset-4"
 							>
 								{m.video_editor_capability_details()}
@@ -421,7 +417,7 @@ FORM: Operate surface extending the OpenPost Video Editor start screen; no water
 						>
 					</button>
 					<a
-						href={resolve('/video-editor/new?mode=record' as '/')}
+						href={resolveAppPath('/video-editor/new?mode=record')}
 						aria-disabled={!enabled || !capabilities?.supported}
 						tabindex={!enabled || !capabilities?.supported ? -1 : undefined}
 						class="group min-h-36 rounded-lg border bg-card p-4 text-left transition-colors hover:border-primary/50 hover:bg-muted/30 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none aria-disabled:pointer-events-none aria-disabled:opacity-50"
@@ -436,7 +432,7 @@ FORM: Operate surface extending the OpenPost Video Editor start screen; no water
 						>
 					</a>
 					<a
-						href={resolve('/video-editor/new?mode=stock' as '/')}
+						href={resolveAppPath('/video-editor/new?mode=stock')}
 						aria-disabled={!enabled || !capabilities?.supported}
 						tabindex={!enabled || !capabilities?.supported ? -1 : undefined}
 						class="group min-h-36 rounded-lg border bg-card p-4 text-left transition-colors hover:border-primary/50 hover:bg-muted/30 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none aria-disabled:pointer-events-none aria-disabled:opacity-50"
@@ -451,7 +447,7 @@ FORM: Operate surface extending the OpenPost Video Editor start screen; no water
 						>
 					</a>
 					<a
-						href={resolve('/video-editor/new?mode=blank' as '/')}
+						href={resolveAppPath('/video-editor/new?mode=blank')}
 						aria-disabled={!enabled || !capabilities?.supported}
 						tabindex={!enabled || !capabilities?.supported ? -1 : undefined}
 						class="group min-h-36 rounded-lg border bg-card p-4 text-left transition-colors hover:border-primary/50 hover:bg-muted/30 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none aria-disabled:pointer-events-none aria-disabled:opacity-50"

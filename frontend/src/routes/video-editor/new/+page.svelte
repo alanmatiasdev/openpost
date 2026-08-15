@@ -10,7 +10,7 @@ FORM: Operate surface; no template carousel, hidden permissions, automatic uploa
 	import { captureTelemetryEvent } from '@openpost/telemetry';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
-	import { resolve } from '$app/paths';
+	import { resolveAppPath } from '$lib/app-path';
 	import { getAuthenticatedMediaByID } from '$lib/media-url';
 	import { Button } from '$lib/components/ui/button';
 	import { Checkbox } from '$lib/components/ui/checkbox';
@@ -109,11 +109,11 @@ FORM: Operate surface; no template carousel, hidden permissions, automatic uploa
 			detectVideoEditorCapabilities()
 		]);
 		if (!config.enabled) {
-			await goto(resolve('/video-editor' as '/'), { replaceState: true });
+			await goto(resolveAppPath('/video-editor'), { replaceState: true });
 			return;
 		}
 		if (!capabilities.supported) {
-			await goto(resolve('/video-editor/unsupported' as '/'), { replaceState: true });
+			await goto(resolveAppPath('/video-editor/unsupported'), { replaceState: true });
 			return;
 		}
 		entryReady = true;
@@ -207,7 +207,8 @@ FORM: Operate surface; no template carousel, hidden permissions, automatic uploa
 	}
 
 	async function chooseFiles(event: Event): Promise<void> {
-		const input = event.currentTarget as HTMLInputElement;
+		const input = event.currentTarget;
+		if (!(input instanceof HTMLInputElement)) return;
 		const files = Array.from(input.files ?? []);
 		input.value = '';
 		await createFromFiles(files);
@@ -362,7 +363,7 @@ FORM: Operate surface; no template carousel, hidden permissions, automatic uploa
 			const value = $page.url.searchParams.get(key);
 			if (value) query.set(key, value);
 		}
-		await goto(resolve(`/video-editor/${id}${query.size ? `?${query.toString()}` : ''}` as '/'), {
+		await goto(resolveAppPath(`/video-editor/${id}${query.size ? `?${query.toString()}` : ''}`), {
 			replaceState: true
 		});
 	}
@@ -384,7 +385,7 @@ FORM: Operate surface; no template carousel, hidden permissions, automatic uploa
 <div class="video-editor-theme min-h-dvh bg-background text-foreground">
 	<header class="border-b">
 		<div class="mx-auto flex h-16 max-w-5xl items-center gap-3 px-4 sm:px-6">
-			<a href={resolve('/')} class="flex min-h-11 items-center" aria-label={m.common_openpost()}>
+			<a href="/" class="flex min-h-11 items-center" aria-label={m.common_openpost()}>
 				<Logo width={112} height={33} />
 			</a>
 			<span class="hidden text-sm text-muted-foreground sm:inline">/ {m.video_editor_title()}</span>
@@ -394,7 +395,7 @@ FORM: Operate surface; no template carousel, hidden permissions, automatic uploa
 
 	<main class="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-10">
 		<Button
-			href={resolve((composerReturnURL ?? '/video-editor') as '/')}
+			href={resolveAppPath(composerReturnURL ?? '/video-editor')}
 			variant="ghost"
 			size="sm"
 			class="-ml-2"
@@ -743,7 +744,7 @@ FORM: Operate surface; no template carousel, hidden permissions, automatic uploa
 
 				<div class="grid gap-3 sm:grid-cols-2">
 					<a
-						href={resolve('/video-editor/new?mode=record' as '/')}
+						href={resolveAppPath('/video-editor/new?mode=record')}
 						aria-disabled={!entryReady}
 						tabindex={entryReady ? undefined : -1}
 						class="flex min-h-24 items-center gap-4 rounded-lg border p-4 transition-colors hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none aria-disabled:pointer-events-none aria-disabled:opacity-50"
