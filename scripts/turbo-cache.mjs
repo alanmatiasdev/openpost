@@ -145,7 +145,10 @@ export async function pruneTurboCache({ directory, maxBytes }) {
   return { beforeBytes, afterBytes, removedBytes, removedEntries };
 }
 
-export async function withTurboCacheLock({ directory, timeoutMs = 30 * 60 * 1000 }, operation) {
+export async function withTurboCacheLock(
+  { directory, timeoutMs = 30 * 60 * 1000, waitForLock = true },
+  operation,
+) {
   const lockPath = path.join(path.dirname(directory), cacheLockFilename);
   await mkdir(path.dirname(lockPath), { recursive: true });
   const startedAt = Date.now();
@@ -159,6 +162,7 @@ export async function withTurboCacheLock({ directory, timeoutMs = 30 * 60 * 1000
     } catch (error) {
       if (error?.code !== "EEXIST") throw error;
       if (await removeStaleLock(lockPath, timeoutMs)) continue;
+      if (!waitForLock) return false;
       if (Date.now() - startedAt >= timeoutMs) {
         throw new Error(`Timed out waiting for the Turbo cache lock at ${lockPath}`);
       }
@@ -248,7 +252,7 @@ export async function tryTurboCacheMaintenance(
   { directory, timeoutMs = 30 * 60 * 1000 },
   operation,
 ) {
-  return withTurboCacheLock({ directory, timeoutMs }, async () => {
+  return withTurboCacheLock({ directory, timeoutMs, waitForLock: false }, async () => {
     const leaseDirectory = path.join(path.dirname(directory), cacheLeaseDirectory);
     if (await hasActiveCacheLeases(leaseDirectory, timeoutMs)) return false;
     await operation();

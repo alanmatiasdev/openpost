@@ -187,9 +187,6 @@ try {
       if (plan.command === "dev") {
         await withTurboCacheLock({ directory: worktreeLock }, async () => {
           await removeLegacyTurboCache(path.join(root, ".turbo", "cache"));
-          await tryTurboCacheMaintenance({ directory: cacheDirectory }, () =>
-            enforceTurboCacheLimit(cacheDirectory),
-          );
         });
         await execute(plan, { cacheDirectory, enforceCacheLimit: false });
       } else {

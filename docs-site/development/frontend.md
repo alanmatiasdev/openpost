@@ -25,8 +25,12 @@ bun run build -- frontend
 ```
 
 The cached frontend task owns the compiled files in `frontend/build` and omits
-the tracked immutable editor model and audio trees from its cache entry. `bun
-run build -- frontend` restores those trees from `frontend/static` with hard
-links when possible, validates the complete artifact, then replaces
-`backend/cmd/openpost/public` atomically. Missing or partial model and audio
-sources fail packaging, so incomplete files cannot enter the Go embed tree.
+the tracked immutable editor model and audio trees from its cache entry. Vite
+and Capacitor receive a temporary public tree without those assets, so they do
+not copy the large files before the build links them into each final output.
+`bun run build -- frontend` checks the selected image bundle, model, and audio
+manifests and their declared file sizes and SHA-256 digests, restores those
+trees from `frontend/static` with hard links when possible, refreshes both
+generated web trees, validates the complete artifact, then replaces
+`backend/cmd/openpost/public` atomically. Missing or partial sources fail before
+an existing artifact changes.

@@ -1,5 +1,6 @@
-import { constants } from "node:fs";
-import { copyFile, link, lstat, mkdir, readdir, rm } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { constants, createReadStream } from "node:fs";
+import { copyFile, cp, link, lstat, mkdir, readFile, readdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -12,6 +13,7 @@ export const immutableFrontendAssetDirectories = [
 ];
 
 const linkFallbackCodes = new Set(["EACCES", "EMLINK", "ENOSYS", "ENOTSUP", "EPERM", "EXDEV"]);
+const validatedFileDigests = new Set();
 
 async function pathExists(pathname) {
   try {
@@ -20,6 +22,171 @@ async function pathExists(pathname) {
   } catch (error) {
     if (error?.code === "ENOENT") return false;
     throw error;
+  }
+}
+
+function assertRelativeAssetPath(pathname, label) {
+  const normalized = path.posix.normalize(pathname);
+  if (
+    !pathname ||
+    normalized !== pathname ||
+    path.posix.isAbsolute(pathname) ||
+    pathname === ".." ||
+    pathname.startsWith("../")
+  ) {
+    throw new Error(`Invalid ${label} path: ${pathname}`);
+  }
+  return pathname.split("/").join(path.sep);
+}
+
+async function readJson(pathname) {
+  try {
+    return JSON.parse(await readFile(pathname, "utf8"));
+  } catch (error) {
+    throw new Error(`Invalid immutable frontend asset manifest: ${pathname}`, { cause: error });
+  }
+}
+
+async function expectedImmutableFrontendAssets(sourceRoot) {
+  const expected = new Map();
+  const add = (directory, relativePath, size, sha256 = null) => {
+    const pathname = path.join(directory, assertRelativeAssetPath(relativePath, "immutable asset"));
+    if (size !== null && (!Number.isSafeInteger(size) || size <= 0)) {
+      throw new Error(`Invalid immutable frontend asset size for ${pathname}`);
+    }
+    if (sha256 !== null && !/^[0-9a-f]{64}$/u.test(sha256)) {
+      throw new Error(`Invalid immutable frontend asset digest for ${pathname}`);
+    }
+    const contract = JSON.stringify({ size, sha256 });
+    if (expected.has(pathname) && expected.get(pathname) !== contract) {
+      throw new Error(`Conflicting immutable frontend asset sizes for ${pathname}`);
+    }
+    expected.set(pathname, contract);
+  };
+
+  const imageDirectory = "image-editor-models";
+  const imageManifest = await readJson(path.join(sourceRoot, imageDirectory, "resources.json"));
+  const imageBundleManifest = await readJson(
+    path.join(sourceRoot, imageDirectory, "bundle-manifest.json"),
+  );
+  add(imageDirectory, "resources.json", null);
+  add(imageDirectory, "bundle-manifest.json", null);
+  if (
+    !Array.isArray(imageBundleManifest.resources) ||
+    imageBundleManifest.resources.length === 0 ||
+    new Set(imageBundleManifest.resources).size !== imageBundleManifest.resources.length
+  ) {
+    throw new Error("The image editor bundle manifest has no unique resources");
+  }
+  for (const resourceName of imageBundleManifest.resources) {
+    const resource = imageManifest[resourceName];
+    if (!Array.isArray(resource?.chunks) || resource.chunks.length === 0) {
+      throw new Error(`Missing required image editor resource: ${resourceName}`);
+    }
+    for (const chunk of resource.chunks) {
+      const [start, end] = chunk.offsets ?? [];
+      if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || end <= start) {
+        throw new Error(`Invalid image editor resource chunk: ${resourceName}`);
+      }
+      add(imageDirectory, chunk.name, end - start, chunk.hash ?? chunk.name);
+    }
+  }
+
+  const audioDirectory = "video-editor-audio";
+  const audioManifest = await readJson(path.join(sourceRoot, audioDirectory, "manifest.json"));
+  add(audioDirectory, "manifest.json", null);
+  if (!Array.isArray(audioManifest.assets) || audioManifest.assets.length === 0) {
+    throw new Error("The video editor audio manifest has no assets");
+  }
+  for (const asset of audioManifest.assets) {
+    const prefix = `/${audioDirectory}/`;
+    if (typeof asset.path !== "string" || !asset.path.startsWith(prefix)) {
+      throw new Error(`Invalid video editor audio asset path: ${asset.path}`);
+    }
+    add(audioDirectory, asset.path.slice(prefix.length), asset.size_bytes, asset.sha256);
+  }
+
+  const modelDirectory = "video-editor-models";
+  const modelManifest = await readJson(path.join(sourceRoot, modelDirectory, "manifest.json"));
+  add(modelDirectory, "manifest.json", null);
+  if (!Array.isArray(modelManifest.models) || modelManifest.models.length === 0) {
+    throw new Error("The video editor model manifest has no models");
+  }
+  for (const model of modelManifest.models) {
+    if (!Array.isArray(model.files) || model.files.length === 0) {
+      throw new Error(`The video editor model has no files: ${model.id ?? "unknown"}`);
+    }
+    for (const file of model.files) {
+      add(modelDirectory, file.path, file.size_bytes, file.sha256);
+    }
+  }
+
+  return expected;
+}
+
+async function sha256File(pathname) {
+  const hash = createHash("sha256");
+  for await (const chunk of createReadStream(pathname)) hash.update(chunk);
+  return hash.digest("hex");
+}
+
+export function shouldCopyFrontendPath(sourceDirectory, pathname) {
+  const relative = path.relative(path.resolve(sourceDirectory), path.resolve(pathname));
+  if (!relative || relative.startsWith(`..${path.sep}`) || relative === "..") return true;
+  const [topLevelDirectory] = relative.split(path.sep);
+  return !immutableFrontendAssetDirectories.includes(topLevelDirectory);
+}
+
+export async function copyFrontendWithoutImmutableAssets({ sourceDirectory, outputDirectory }) {
+  await cp(sourceDirectory, outputDirectory, {
+    recursive: true,
+    force: true,
+    preserveTimestamps: false,
+    filter: (pathname) => shouldCopyFrontendPath(sourceDirectory, pathname),
+  });
+}
+
+export async function validateImmutableFrontendAssets(sourceDirectory) {
+  const sourceRoot = path.resolve(sourceDirectory);
+  for (const directory of immutableFrontendAssetDirectories) {
+    const source = path.join(sourceRoot, directory);
+    if (!(await pathExists(source))) {
+      throw new Error(`Missing canonical immutable frontend asset directory: ${source}`);
+    }
+  }
+  for (const [relativePath, serializedContract] of await expectedImmutableFrontendAssets(
+    sourceRoot,
+  )) {
+    const { size: expectedSize, sha256 } = JSON.parse(serializedContract);
+    const pathname = path.join(sourceRoot, relativePath);
+    let file;
+    try {
+      file = await lstat(pathname);
+    } catch (error) {
+      if (error?.code === "ENOENT") {
+        throw new Error(`Missing canonical immutable frontend asset: ${pathname}`);
+      }
+      throw error;
+    }
+    if (!file.isFile() || (expectedSize !== null && file.size !== expectedSize)) {
+      throw new Error(`Invalid canonical immutable frontend asset: ${pathname}`);
+    }
+    if (sha256 !== null) {
+      const validationKey = [
+        file.dev,
+        file.ino,
+        file.size,
+        file.mtimeMs,
+        file.ctimeMs,
+        sha256,
+      ].join(":");
+      if (!validatedFileDigests.has(validationKey)) {
+        if ((await sha256File(pathname)) !== sha256) {
+          throw new Error(`Invalid canonical immutable frontend asset digest: ${pathname}`);
+        }
+        validatedFileDigests.add(validationKey);
+      }
+    }
   }
 }
 
@@ -51,12 +218,7 @@ export async function materializeImmutableFrontendAssets({ sourceDirectory, outp
     throw new Error(`Immutable frontend asset source and output must differ: ${sourceRoot}`);
   }
 
-  for (const directory of immutableFrontendAssetDirectories) {
-    const source = path.join(sourceRoot, directory);
-    if (!(await pathExists(source))) {
-      throw new Error(`Missing canonical immutable frontend asset directory: ${source}`);
-    }
-  }
+  await validateImmutableFrontendAssets(sourceRoot);
 
   for (const directory of immutableFrontendAssetDirectories) {
     const source = path.join(sourceRoot, directory);

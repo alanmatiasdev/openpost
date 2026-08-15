@@ -44,9 +44,13 @@ test("nested Turbo tasks inherit the root cache lease", () => {
   assert.match(tasksSource, /env: \{ \.\.\.step\.env, OPENPOST_ROOT_TASK_LOCKED: "1" \}/u);
 });
 
-test("development startup skips shared cache maintenance and removes only its legacy cache", () => {
+test("development startup removes only its legacy cache without shared cache maintenance", () => {
   assert.match(tasksSource, /removeLegacyTurboCache\(path\.join\(root, "\.turbo", "cache"\)\)/u);
-  assert.match(tasksSource, /plan\.command === "dev"[\s\S]*tryTurboCacheMaintenance/u);
+  const devBranch = tasksSource.match(
+    /if \(plan\.command === "dev"\) \{([\s\S]*?)\n\s+\} else \{/u,
+  )?.[1];
+  assert.ok(devBranch);
+  assert.doesNotMatch(devBranch, /tryTurboCacheMaintenance/u);
 });
 
 test("workspace manifests keep implementation tasks without old public aliases", () => {
@@ -78,6 +82,7 @@ test("workspace manifests keep implementation tasks without old public aliases",
   assert.equal(frontend.scripts["test:watch"], "vitest");
   assert.equal(frontend.scripts["test:server"], "vitest run --project server");
   assert.match(frontend.scripts.build, /immutable-frontend-assets\.mjs web/u);
+  assert.match(frontend.scripts["build:capacitor"], /capacitor-sync\.mjs android/u);
   assert.match(frontend.scripts["build:capacitor"], /immutable-frontend-assets\.mjs android/u);
 
   const docs = manifest("docs-site/package.json");

@@ -183,7 +183,21 @@ const [
 );
 requireIncludes(adapterConfig, "pages: 'build'", "frontend adapter");
 requireIncludes(adapterConfig, "assets: 'build'", "frontend adapter");
-requireIncludes(capacitorConfig, "webDir: 'build'", "Capacitor config");
+requireIncludes(
+  adapterConfig,
+  "assets: process.env.OPENPOST_BUILD_PUBLIC_DIR || 'static'",
+  "frontend build asset input",
+);
+requireIncludes(
+  capacitorConfig,
+  "webDir: process.env.OPENPOST_CAPACITOR_WEB_DIR || 'build'",
+  "Capacitor config",
+);
+requireIncludes(
+  frontendPackage.scripts?.["build:capacitor"],
+  "capacitor-sync.mjs android",
+  "Capacitor build",
+);
 requireCondition(
   !assetSync.includes("generateSocialCatalog"),
   "package asset synchronization must not mutate the social-image package",

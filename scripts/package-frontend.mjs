@@ -1,11 +1,12 @@
 import { createHash, randomUUID } from "node:crypto";
-import { cp, lstat, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import {
-  immutableFrontendAssetDirectories,
+  copyFrontendWithoutImmutableAssets,
   materializeImmutableFrontendAssets,
+  shouldCopyFrontendPath,
 } from "./immutable-frontend-assets.mjs";
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
@@ -13,16 +14,15 @@ export const repositoryRoot = path.resolve(scriptDirectory, "..");
 export const defaultSourceDirectory = path.join(repositoryRoot, "frontend/build");
 export const defaultDestinationDirectory = path.join(repositoryRoot, "backend/cmd/openpost/public");
 export const defaultAssetSourceDirectory = path.join(repositoryRoot, "frontend/static");
+export const defaultClientOutputDirectory = path.join(
+  repositoryRoot,
+  "frontend/.svelte-kit/output/client",
+);
 
 const transactionSchemaVersion = 1;
 const transactionPhases = new Set(["claimed", "prepared", "staged", "swapping", "installed"]);
 
-export function shouldCopyFrontendPath(sourceDirectory, pathname) {
-  const relative = path.relative(path.resolve(sourceDirectory), path.resolve(pathname));
-  if (!relative || relative.startsWith(`..${path.sep}`) || relative === "..") return true;
-  const [topLevelDirectory] = relative.split(path.sep);
-  return !immutableFrontendAssetDirectories.includes(topLevelDirectory);
-}
+export { shouldCopyFrontendPath };
 
 function isInside(parent, candidate) {
   const relative = path.relative(parent, candidate);
@@ -414,6 +414,7 @@ export async function packageFrontend({
   sourceDirectory = defaultSourceDirectory,
   destinationDirectory = defaultDestinationDirectory,
   assetSourceDirectory,
+  clientOutputDirectory,
   onTransactionPhase,
 } = {}) {
   const { source, destination } = validateDistinctDirectories(
@@ -434,6 +435,15 @@ export async function packageFrontend({
       assetSourceDirectory ??
       (source === defaultSourceDirectory ? defaultAssetSourceDirectory : undefined);
     if (immutableAssetSource) {
+      const clientOutput =
+        clientOutputDirectory ??
+        (source === defaultSourceDirectory ? defaultClientOutputDirectory : undefined);
+      if (clientOutput) {
+        await materializeImmutableFrontendAssets({
+          sourceDirectory: immutableAssetSource,
+          outputDirectory: clientOutput,
+        });
+      }
       await materializeImmutableFrontendAssets({
         sourceDirectory: immutableAssetSource,
         outputDirectory: source,
@@ -448,11 +458,9 @@ export async function packageFrontend({
     });
 
     await mkdir(transaction.stageRoot);
-    await cp(source, transaction.staged, {
-      recursive: true,
-      force: true,
-      preserveTimestamps: false,
-      filter: (pathname) => shouldCopyFrontendPath(source, pathname),
+    await copyFrontendWithoutImmutableAssets({
+      sourceDirectory: source,
+      outputDirectory: transaction.staged,
     });
     await materializeImmutableFrontendAssets({
       sourceDirectory: source,

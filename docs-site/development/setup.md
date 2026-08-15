@@ -67,13 +67,14 @@ task-cache cap and the daily 4 GiB default cap on the shared Go build cache.
 Root commands use the OpenPost directory under the operating system's user
 cache, so linked worktrees share entries and one total limit, including inside
 Devenv.
-Finite root tasks enforce the Turbo cap after each run, keeping the newest
-complete entries; `dev` enforces it once before starting its persistent process.
-Different worktrees may use the shared cache concurrently, while maintenance
-waits for active tasks before pruning. One worktree still serializes its finite
-root tasks because they share generated files. Set `OPENPOST_TURBO_CACHE_DIR` to
-choose a different location or `OPENPOST_TURBO_CACHE_MAX_MIB` to change the
-limit.
+Finite root tasks opportunistically enforce the Turbo cap after each run,
+keeping the newest complete entries. Automatic maintenance skips pruning when
+another task or maintenance pass is active instead of waiting for it. `dev`
+does not scan or prune the shared cache during startup. `devenv shell --
+cache-prune` waits and enforces the cap explicitly. One worktree still
+serializes its finite root tasks because they share generated files. Set
+`OPENPOST_TURBO_CACHE_DIR` to choose a different location or
+`OPENPOST_TURBO_CACHE_MAX_MIB` to change the limit.
 
 Frontend Turbo entries omit the immutable editor model and audio trees. A cache
 restore links the current tracked files into the complete frontend artifact

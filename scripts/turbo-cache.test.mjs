@@ -300,3 +300,29 @@ test("automatic Turbo cache maintenance skips work while another task is active"
   );
   assert.equal(maintenanceRuns, 1);
 });
+
+test("automatic Turbo cache maintenance does not wait for another maintenance lock", async (t) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "openpost-turbo-cache-busy-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const cacheDirectory = path.join(directory, "cache");
+  let releaseLock;
+  const holdLock = new Promise((resolve) => {
+    releaseLock = resolve;
+  });
+  let markLocked;
+  const locked = new Promise((resolve) => {
+    markLocked = resolve;
+  });
+  const maintenance = withTurboCacheLock({ directory: cacheDirectory }, async () => {
+    markLocked();
+    await holdLock;
+  });
+  await locked;
+
+  const startedAt = performance.now();
+  assert.equal(await tryTurboCacheMaintenance({ directory: cacheDirectory }, () => {}), false);
+  assert.ok(performance.now() - startedAt < 100);
+
+  releaseLock();
+  await maintenance;
+});
