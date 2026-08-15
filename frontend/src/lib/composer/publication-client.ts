@@ -9,6 +9,10 @@ import {
 
 type Publication = components['schemas']['PublicationResponse'];
 type PublicationUpdate = components['schemas']['PublicationUpdateBody'];
+type PublicationSegmentInput = components['schemas']['PublicationSegmentInput'];
+type PublicationMediaInput = components['schemas']['PublicationMediaInput'];
+type RenditionInput = components['schemas']['RenditionInput'];
+type RenditionSegmentInput = components['schemas']['RenditionSegmentInput'];
 type Problem = components['schemas']['ErrorModel'];
 
 export function createComposerPublicationClient(): ComposerPublicationClient {
@@ -102,50 +106,12 @@ export function createComposerPublicationClient(): ComposerPublicationClient {
 export function publicationDraft(publication: Publication): PublicationDraft {
 	const draft: PublicationDraft = {
 		title: publication.title,
-		creation_preset: publication.creation_preset as PublicationDraft['creation_preset'],
+		creation_preset: parseCreationPreset(publication.creation_preset),
 		content_profile: publication.content_profile,
 		source_text: publication.source_text,
 		metadata: publication.metadata,
-		segments: (publication.segments ?? []).map((segment) => ({
-			id: segment.id,
-			body: segment.body,
-			title: segment.title,
-			description: segment.description,
-			...(segment.url ? { url: segment.url } : {}),
-			settings: segment.settings,
-			media: mediaInput(segment.media)
-		})),
-		renditions: (publication.renditions ?? []).map((rendition) => ({
-			id: rendition.id,
-			social_account_id: rendition.social_account_id,
-			target_key: rendition.target_key,
-			profile: rendition.profile,
-			output_profile: rendition.output_profile,
-			format_locked: rendition.format_locked,
-			body: rendition.body,
-			title: rendition.title,
-			description: rendition.description,
-			settings: rendition.settings,
-			media: mediaInput(rendition.media),
-			...(rendition.schedule_override ? { schedule_override: rendition.schedule_override } : {}),
-			segments: (rendition.segments ?? []).map((segment) => ({
-				id: segment.id,
-				publication_segment_id: segment.publication_segment_id,
-				body: segment.body,
-				...(segment.body_override !== undefined ? { body_override: segment.body_override } : {}),
-				title: segment.title,
-				...(segment.title_override !== undefined ? { title_override: segment.title_override } : {}),
-				description: segment.description,
-				...(segment.description_override !== undefined
-					? { description_override: segment.description_override }
-					: {}),
-				...(segment.url ? { url: segment.url } : {}),
-				...(segment.url_override !== undefined ? { url_override: segment.url_override } : {}),
-				media_inherited: segment.media_inherited,
-				settings: segment.settings,
-				media: mediaInput(segment.media)
-			}))
-		})),
+		segments: (publication.segments ?? []).map(publicationSegmentInput),
+		renditions: (publication.renditions ?? []).map(renditionInput),
 		repost_override: publication.repost_override
 	};
 	if (publication.source_url) draft.source_url = publication.source_url;
@@ -158,7 +124,7 @@ export function publicationDraft(publication: Publication): PublicationDraft {
 }
 
 function publicationUpdate(draft: PublicationDraft, expectedRevision: number): PublicationUpdate {
-	return {
+	const update: PublicationUpdate = {
 		expected_revision: expectedRevision,
 		title: draft.title,
 		creation_preset: draft.creation_preset,
@@ -172,24 +138,103 @@ function publicationUpdate(draft: PublicationDraft, expectedRevision: number): P
 		metadata: draft.metadata,
 		segments: draft.segments,
 		renditions: draft.renditions,
-		repost_override: draft.repost_override,
-		...(draft.scheduled_at
-			? { scheduled_at: draft.scheduled_at, clear_schedule: false }
-			: { clear_schedule: true }),
-		...(draft.random_delay_minutes === undefined
-			? { inherit_random_delay: true }
-			: { random_delay_minutes: draft.random_delay_minutes })
+		repost_override: draft.repost_override
 	};
+	if (draft.scheduled_at) {
+		update.scheduled_at = draft.scheduled_at;
+		update.clear_schedule = false;
+	} else {
+		update.clear_schedule = true;
+	}
+	if (draft.random_delay_minutes === undefined) {
+		update.inherit_random_delay = true;
+	} else {
+		update.random_delay_minutes = draft.random_delay_minutes;
+	}
+	return update;
 }
 
-function mediaInput(media: Publication['media']) {
-	return (media ?? []).map((item) => ({
-		media_id: item.id,
-		...(item.role ? { role: item.role } : {}),
-		...(item.alt_text ? { alt_text: item.alt_text } : {}),
-		...(item.thumbnail_timestamp_ms ? { thumbnail_timestamp_ms: item.thumbnail_timestamp_ms } : {}),
-		...(item.settings && Object.keys(item.settings).length > 0 ? { settings: item.settings } : {})
-	}));
+function publicationSegmentInput(
+	segment: NonNullable<Publication['segments']>[number]
+): PublicationSegmentInput {
+	const input: PublicationSegmentInput = {
+		id: segment.id,
+		body: segment.body,
+		title: segment.title,
+		description: segment.description,
+		settings: segment.settings,
+		media: mediaInput(segment.media)
+	};
+	if (segment.url) input.url = segment.url;
+	return input;
+}
+
+function renditionInput(rendition: NonNullable<Publication['renditions']>[number]): RenditionInput {
+	const input: RenditionInput = {
+		id: rendition.id,
+		social_account_id: rendition.social_account_id,
+		target_key: rendition.target_key,
+		profile: rendition.profile,
+		output_profile: rendition.output_profile,
+		format_locked: rendition.format_locked,
+		body: rendition.body,
+		title: rendition.title,
+		description: rendition.description,
+		settings: rendition.settings,
+		media: mediaInput(rendition.media),
+		segments: (rendition.segments ?? []).map(renditionSegmentInput)
+	};
+	if (rendition.schedule_override) input.schedule_override = rendition.schedule_override;
+	return input;
+}
+
+function renditionSegmentInput(
+	segment: NonNullable<NonNullable<Publication['renditions']>[number]['segments']>[number]
+): RenditionSegmentInput {
+	const input: RenditionSegmentInput = {
+		id: segment.id,
+		publication_segment_id: segment.publication_segment_id,
+		body: segment.body,
+		title: segment.title,
+		description: segment.description,
+		media_inherited: segment.media_inherited,
+		settings: segment.settings,
+		media: mediaInput(segment.media)
+	};
+	if (segment.body_override !== undefined) input.body_override = segment.body_override;
+	if (segment.title_override !== undefined) input.title_override = segment.title_override;
+	if (segment.description_override !== undefined) {
+		input.description_override = segment.description_override;
+	}
+	if (segment.url) input.url = segment.url;
+	if (segment.url_override !== undefined) input.url_override = segment.url_override;
+	return input;
+}
+
+function mediaInput(media: Publication['media']): PublicationMediaInput[] {
+	return (media ?? []).map((item) => {
+		const input: PublicationMediaInput = { media_id: item.id };
+		if (item.role) input.role = item.role;
+		if (item.alt_text) input.alt_text = item.alt_text;
+		if (item.thumbnail_timestamp_ms) {
+			input.thumbnail_timestamp_ms = item.thumbnail_timestamp_ms;
+		}
+		if (item.settings && Object.keys(item.settings).length > 0) input.settings = item.settings;
+		return input;
+	});
+}
+
+function parseCreationPreset(value: string): PublicationDraft['creation_preset'] {
+	switch (value) {
+		case 'post':
+		case 'thread':
+		case 'story':
+		case 'short_video':
+		case 'video':
+			return value;
+		default:
+			return undefined;
+	}
 }
 
 function clientError(problem: Problem | undefined, status: number): ComposerClientError {
