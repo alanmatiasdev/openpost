@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
-import AuthorizePage from './+page.svelte';
+import AuthorizePage from './oauth-authorize-page.svelte';
 
 const mocks = (() => {
 	type PageValue = { url: URL };

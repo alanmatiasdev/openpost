@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import { client } from '$lib/api/client';
-import CallbackPage from './+page.svelte';
+import CallbackPage from './accounts-callback-page.svelte';
 
 const mocks = {
 	goto: vi.fn(),
