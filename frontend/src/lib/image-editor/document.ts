@@ -512,12 +512,12 @@ export interface ImageEditorDocumentMigration {
 	error?: string;
 }
 
-interface ImageEditorDocumentSource {
+export interface ImageEditorDocumentInput {
 	schema_version?: unknown;
 }
 
 export function migrateImageEditorDocument(
-	raw: ImageEditorDocumentSource | null
+	raw: ImageEditorDocumentInput | null
 ): ImageEditorDocumentMigration {
 	if (!raw) {
 		return { readOnly: true, error: 'The OpenPost Image Editor document is missing.' };
@@ -557,11 +557,11 @@ export function migrateImageEditorDocument(
 	}
 }
 
-function parseImageEditorSchemaVersion(document: ImageEditorDocumentSource): number {
+function parseImageEditorSchemaVersion(document: ImageEditorDocumentInput): number {
 	return Number(document.schema_version);
 }
 
-function isDisplayableImageEditorDocument(document: ImageEditorDocumentSource): boolean {
+function isDisplayableImageEditorDocument(document: ImageEditorDocumentInput): boolean {
 	return (
 		'pages' in document &&
 		Array.isArray(document.pages) &&

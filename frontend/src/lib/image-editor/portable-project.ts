@@ -2,7 +2,8 @@ import { strFromU8, strToU8, Unzip, UnzipInflate, zipSync } from 'fflate';
 import {
 	cloneImageEditorDocument,
 	cloneImageEditorPage,
-	migrateImageEditorDocument
+	migrateImageEditorDocument,
+	type ImageEditorDocumentInput
 } from './document';
 import type { ImageEditorDocument } from './types';
 
@@ -36,6 +37,23 @@ interface ImageEditorProjectManifest {
 	document: ImageEditorDocument;
 	media: ImageEditorProjectMediaEntry[];
 }
+
+interface ParsedImageEditorProjectManifest {
+	document: ImageEditorDocumentInput;
+	media: ImageEditorProjectMediaEntry[];
+}
+
+interface ProjectArchive {
+	[path: string]: Uint8Array;
+}
+
+type ProjectJSONValue =
+	| string
+	| number
+	| boolean
+	| null
+	| ProjectJSONValue[]
+	| { [key: string]: ProjectJSONValue };
 
 export interface ParsedImageEditorProject {
 	document: ImageEditorDocument;
@@ -110,7 +128,7 @@ export async function parseImageEditorProjectArchive(
 	if (file.size <= 0 || file.size > MAX_PROJECT_ARCHIVE_BYTES) {
 		throw new Error('The project file must be between 1 byte and 128 MB.');
 	}
-	let archive: Record<string, Uint8Array>;
+	let archive: ProjectArchive;
 	try {
 		archive = unzipProjectSafely(new Uint8Array(await file.arrayBuffer()));
 		if (Object.keys(archive).length === 0) throw new Error('Empty archive');
@@ -121,16 +139,21 @@ export async function parseImageEditorProjectArchive(
 	if (!projectJSON || projectJSON.byteLength > 10 * 1024 * 1024) {
 		throw new Error('The project manifest is missing or too large.');
 	}
-	let manifest: ImageEditorProjectManifest;
+	let rawManifest: unknown;
 	try {
-		manifest = JSON.parse(strFromU8(projectJSON)) as ImageEditorProjectManifest;
+		rawManifest = JSON.parse(strFromU8(projectJSON));
 	} catch {
 		throw new Error('The project manifest is not valid JSON.');
 	}
-	if (manifest.format !== PROJECT_FORMAT || manifest.version !== PROJECT_VERSION) {
+	if (
+		!isProjectJSONRecord(rawManifest) ||
+		rawManifest.format !== PROJECT_FORMAT ||
+		rawManifest.version !== PROJECT_VERSION
+	) {
 		throw new Error('This OpenPost Image Editor project version is not supported.');
 	}
-	if (!Array.isArray(manifest.media) || manifest.media.length > MAX_PROJECT_MEDIA_ITEMS) {
+	const manifest = parseImageEditorProjectManifest(rawManifest);
+	if (!manifest || manifest.media.length > MAX_PROJECT_MEDIA_ITEMS) {
 		throw new Error('The project media manifest is invalid.');
 	}
 	const migrated = migrateImageEditorDocument(manifest.document);
@@ -143,15 +166,12 @@ export async function parseImageEditorProjectArchive(
 	let totalBytes = 0;
 	const media = manifest.media.map((entry) => {
 		if (
-			!entry ||
-			typeof entry.id !== 'string' ||
 			!expectedIDs.has(entry.id) ||
 			seenIDs.has(entry.id) ||
-			typeof entry.path !== 'string' ||
 			!/^media\/[A-Za-z0-9._-]+$/u.test(entry.path) ||
 			seenPaths.has(entry.path) ||
-			typeof entry.name !== 'string' ||
-			typeof entry.mime_type !== 'string'
+			!entry.name ||
+			!entry.mime_type
 		) {
 			throw new Error('The project media manifest contains an unsafe or duplicate entry.');
 		}
@@ -186,8 +206,8 @@ export async function parseImageEditorProjectArchive(
 	return { document: importedDocument, media };
 }
 
-function unzipProjectSafely(compressed: Uint8Array): Record<string, Uint8Array> {
-	const archive: Record<string, Uint8Array> = {};
+function unzipProjectSafely(compressed: Uint8Array): ProjectArchive {
+	const archive: ProjectArchive = {};
 	let totalOutputBytes = 0;
 	let entryCount = 0;
 	const unzip = new Unzip((entry) => {
@@ -227,6 +247,49 @@ function unzipProjectSafely(compressed: Uint8Array): Record<string, Uint8Array> 
 	unzip.register(UnzipInflate);
 	unzip.push(compressed, true);
 	return archive;
+}
+
+function parseImageEditorProjectManifest(
+	value: unknown
+): ParsedImageEditorProjectManifest | undefined {
+	if (!isProjectJSONRecord(value)) return undefined;
+	if (value.format !== PROJECT_FORMAT || value.version !== PROJECT_VERSION) return undefined;
+	if (!isProjectJSONRecord(value.document) || !Array.isArray(value.media)) return undefined;
+	const media: ImageEditorProjectMediaEntry[] = [];
+	for (const entry of value.media) {
+		const parsed = parseImageEditorProjectMediaEntry(entry);
+		if (!parsed) return undefined;
+		media.push(parsed);
+	}
+	return { document: value.document, media };
+}
+
+function parseImageEditorProjectMediaEntry(
+	value: ProjectJSONValue
+): ImageEditorProjectMediaEntry | undefined {
+	if (
+		!isProjectJSONRecord(value) ||
+		typeof value.id !== 'string' ||
+		typeof value.path !== 'string' ||
+		typeof value.name !== 'string' ||
+		typeof value.mime_type !== 'string' ||
+		typeof value.size !== 'number' ||
+		!Number.isSafeInteger(value.size) ||
+		value.size < 0
+	) {
+		return undefined;
+	}
+	return {
+		id: value.id,
+		path: value.path,
+		name: value.name,
+		mime_type: value.mime_type,
+		size: value.size
+	};
+}
+
+function isProjectJSONRecord(value: unknown): value is { [key: string]: ProjectJSONValue } {
+	return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 export function safeImageEditorProjectFilename(title: string): string {
