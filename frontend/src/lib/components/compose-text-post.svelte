@@ -104,6 +104,8 @@
 		buildPublicationPayload,
 		type ComposerModeKey,
 		type ComposerPublicationPayload,
+		type ComposerSettings,
+		type ComposerSettingValue,
 		type PublicationMediaInput,
 		type ResolvedComposerTarget
 	} from './compose/modes';
@@ -399,9 +401,9 @@
 	const captionPostContexts = new SvelteMap<string, string>();
 	let captionGenerationError = $state('');
 	let editingAltMediaId = $state<string | null>(null);
-	let settingsByAccount = $state<Record<string, Record<string, unknown>>>({});
-	let segmentSettingsByPost = $state<Record<string, Record<string, Record<string, unknown>>>>({});
-	let mediaSettingsByAccount = $state<Record<string, Record<string, Record<string, unknown>>>>({});
+	let settingsByAccount = $state<Record<string, ComposerSettings>>({});
+	let segmentSettingsByPost = $state<Record<string, Record<string, ComposerSettings>>>({});
+	let mediaSettingsByAccount = $state<Record<string, Record<string, ComposerSettings>>>({});
 	let mediaPickerOpen = $state(false);
 	let mediaPickerPostIndex = $state(0);
 	let mediaPickerInitialFiles = $state.raw<File[]>([]);
@@ -911,11 +913,11 @@
 		return `legacy-segment:${publicationID}:${index}`;
 	}
 
-	function settingsForAccount(account: SocialAccount): Record<string, unknown> {
+	function settingsForAccount(account: SocialAccount): ComposerSettings {
 		return normalizeSettings(account, settingsByAccount[account.id] ?? {}, 'destination');
 	}
 
-	function segmentSettingsForAccount(account: SocialAccount): Record<string, unknown> {
+	function segmentSettingsForAccount(account: SocialAccount): ComposerSettings {
 		const post = activePost;
 		if (!post) return {};
 		return normalizeSettings(
@@ -925,22 +927,64 @@
 		);
 	}
 
+	function parseComposerSettingValue(value: unknown): ComposerSettingValue {
+		if (
+			value === null ||
+			typeof value === 'string' ||
+			typeof value === 'number' ||
+			typeof value === 'boolean'
+		) {
+			return value;
+		}
+		if (Array.isArray(value)) {
+			const strings = value.filter((item): item is string => typeof item === 'string');
+			if (strings.length === value.length) return strings;
+			const numbers = value.filter((item): item is number => typeof item === 'number');
+			if (numbers.length === value.length) return numbers;
+			const booleans = value.filter((item): item is boolean => typeof item === 'boolean');
+			if (booleans.length === value.length) return booleans;
+		}
+		return '';
+	}
+
+	function parseComposerSettingsRecord(values: Record<string, unknown>): ComposerSettings {
+		return Object.fromEntries(
+			Object.entries(values).map(([key, value]) => [key, parseComposerSettingValue(value)])
+		);
+	}
+
+	function parseNestedComposerSettingsRecord(
+		values: Record<string, Record<string, unknown>>
+	): Record<string, ComposerSettings> {
+		return Object.fromEntries(
+			Object.entries(values).map(([key, value]) => [key, parseComposerSettingsRecord(value)])
+		);
+	}
+
+	function parseDoubleNestedComposerSettingsRecord(
+		values: Record<string, Record<string, Record<string, unknown>>>
+	): Record<string, Record<string, ComposerSettings>> {
+		return Object.fromEntries(
+			Object.entries(values).map(([key, value]) => [key, parseNestedComposerSettingsRecord(value)])
+		);
+	}
+
 	function normalizeSettings(
 		account: SocialAccount,
-		current: Record<string, unknown>,
+		current: ComposerSettings,
 		scope: 'destination' | 'segment'
-	): Record<string, unknown> {
+	): ComposerSettings {
 		const next = { ...current };
 		for (const field of visibleSettings(account)) {
 			if (field.scope !== scope || next[field.key] !== undefined) continue;
-			if (field.default !== undefined) next[field.key] = field.default;
+			if (field.default !== undefined) next[field.key] = parseComposerSettingValue(field.default);
 			else if (field.type === 'boolean') next[field.key] = false;
 			else next[field.key] = '';
 		}
 		return next;
 	}
 
-	function dialogSettingsForAccount(account: SocialAccount): Record<string, unknown> {
+	function dialogSettingsForAccount(account: SocialAccount): ComposerSettings {
 		const values = {
 			...settingsForAccount(account),
 			...segmentSettingsForAccount(account)
@@ -1048,7 +1092,7 @@
 				...segmentSettingsByPost,
 				[post.key]: {
 					...(segmentSettingsByPost[post.key] ?? {}),
-					[account.id]: invalidated.values
+					[account.id]: parseComposerSettingsRecord(invalidated.values)
 				}
 			};
 		} else {
@@ -1060,7 +1104,7 @@
 			);
 			settingsByAccount = {
 				...settingsByAccount,
-				[account.id]: invalidated.values
+				[account.id]: parseComposerSettingsRecord(invalidated.values)
 			};
 			if (invalidated.optionSources.length > 0) {
 				const invalidSources = new Set(invalidated.optionSources);
@@ -1099,7 +1143,7 @@
 				...(mediaSettingsByAccount[mediaID] ?? {}),
 				[account.id]: {
 					...(mediaSettingsByAccount[mediaID]?.[account.id] ?? {}),
-					[key]: value
+					[key]: parseComposerSettingValue(value)
 				}
 			}
 		};
@@ -1535,7 +1579,7 @@
 		settingsByAccount = Object.fromEntries(
 			(publication.renditions ?? []).map((rendition) => [
 				rendition.social_account_id,
-				{ ...(rendition.settings ?? {}) }
+				parseComposerSettingsRecord(rendition.settings ?? {})
 			])
 		);
 		const canonicalSegments = [...(publication.segments ?? [])].sort(
@@ -1570,8 +1614,8 @@
 			else hydratedVariants.delete(rendition.social_account_id);
 		}
 		variants = normalizeVariantsMap(hydratedVariants, posts);
-		const nextSegmentSettings: Record<string, Record<string, Record<string, unknown>>> = {};
-		const nextMediaSettings: Record<string, Record<string, Record<string, unknown>>> = {};
+		const nextSegmentSettings: Record<string, Record<string, ComposerSettings>> = {};
+		const nextMediaSettings: Record<string, Record<string, ComposerSettings>> = {};
 		for (const rendition of publication.renditions ?? []) {
 			const hydratedSegmentIDs = new SvelteSet<string>();
 			const renditionSegments = [...(rendition.segments ?? [])].sort(
@@ -1598,18 +1642,17 @@
 				hydratedSegmentIDs.add(segment.publication_segment_id);
 				nextSegmentSettings[post.key] = {
 					...(nextSegmentSettings[post.key] ?? {}),
-					[rendition.social_account_id]: { ...(segment.settings ?? {}) }
+					[rendition.social_account_id]: parseComposerSettingsRecord(segment.settings ?? {})
 				};
 				for (const media of segment.media ?? []) {
+					const mediaSettings = parseComposerSettingsRecord(media.settings ?? {});
+					if (media.alt_text) mediaSettings.alt_text = media.alt_text;
+					if (media.thumbnail_timestamp_ms) {
+						mediaSettings.thumbnail_timestamp_ms = media.thumbnail_timestamp_ms;
+					}
 					nextMediaSettings[media.id] = {
 						...(nextMediaSettings[media.id] ?? {}),
-						[rendition.social_account_id]: {
-							...(media.settings ?? {}),
-							...(media.alt_text ? { alt_text: media.alt_text } : {}),
-							...(media.thumbnail_timestamp_ms
-								? { thumbnail_timestamp_ms: media.thumbnail_timestamp_ms }
-								: {})
-						}
+						[rendition.social_account_id]: mediaSettings
 					};
 				}
 			}
@@ -2079,9 +2122,15 @@
 		publicationId = payload.publication_id ?? '';
 		revision = payload.revision ?? revision;
 		linkUrl = firstComposerURL(payload.posts[0]?.content ?? '') || payload.link_url;
-		settingsByAccount = structuredClone(payload.settings_by_account ?? {});
-		segmentSettingsByPost = structuredClone(payload.segment_settings_by_post ?? {});
-		mediaSettingsByAccount = structuredClone(payload.media_settings_by_account ?? {});
+		settingsByAccount = parseNestedComposerSettingsRecord(
+			structuredClone(payload.settings_by_account ?? {})
+		);
+		segmentSettingsByPost = parseDoubleNestedComposerSettingsRecord(
+			structuredClone(payload.segment_settings_by_post ?? {})
+		);
+		mediaSettingsByAccount = parseDoubleNestedComposerSettingsRecord(
+			structuredClone(payload.media_settings_by_account ?? {})
+		);
 		mediaAltTexts = new SvelteMap(payload.media_alt_texts ?? []);
 		mediaMimeTypes = new SvelteMap(payload.media_mime_types ?? []);
 		mediaSizes = new SvelteMap(payload.media_sizes ?? []);
