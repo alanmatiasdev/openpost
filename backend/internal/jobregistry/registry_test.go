@@ -22,7 +22,7 @@ func TestDefinitionsCoverEveryExecutableJobKind(t *testing.T) {
 	expected := []string{
 		TypePublishPost, TypePublishPublication, TypeRefreshToken, TypeMediaCleanup,
 		TypeStorageDelete, TypeFeedbackDelivery, TypeAnalyticsSweep, TypeAnalyticsAccount,
-		TypeAnalyticsRendition, TypeBillingWebhook, TypeCommunicationsSweep, TypeEngagementSync,
+		TypeAnalyticsRendition, TypeBillingWebhook, TypeCommunicationsSweep, TypeEngagementSweep, TypeEngagementSync,
 		TypeMessagesSync, TypeEngagementAction, TypeMessageSend, TypeNotificationEmail,
 		TypeOwnershipTransferExpiry,
 		TypeRepostSweep, TypeRepostEvaluate, TypeRepostExecute, TypeMediaAnalyze,

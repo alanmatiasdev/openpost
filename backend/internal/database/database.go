@@ -191,6 +191,16 @@ func CreateSchema(db *bun.DB) error {
 		return fmt.Errorf("failed to create communications sweep uniqueness index: %w", err)
 	}
 	if _, err := db.NewCreateIndex().
+		Index("engagement_sweep_pending_unique_idx").
+		Table("jobs").
+		Column("type").
+		Unique().
+		Where("status = 'pending' AND type = 'engagement_sweep'").
+		IfNotExists().
+		Exec(ctx); err != nil {
+		return fmt.Errorf("failed to create engagement sweep uniqueness index: %w", err)
+	}
+	if _, err := db.NewCreateIndex().
 		Index("communications_subject_active_unique_idx").
 		Table("jobs").
 		Column("type", "payload").

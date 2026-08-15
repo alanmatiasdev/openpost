@@ -18,6 +18,7 @@ import (
 	servicecrypto "github.com/openpost/backend/internal/services/crypto"
 	"github.com/openpost/backend/internal/services/emailchange"
 	"github.com/openpost/backend/internal/services/emailverification"
+	engagementservice "github.com/openpost/backend/internal/services/engagement"
 	"github.com/openpost/backend/internal/services/entitlements"
 	"github.com/openpost/backend/internal/services/feedback"
 	"github.com/openpost/backend/internal/services/identity"
@@ -88,6 +89,7 @@ type RouteDeps struct {
 	InstanceSettingsService      *instancesettings.Service
 	AnalyticsService             *analyticsservice.Service
 	CommunicationsService        *communicationsservice.Service
+	EngagementService            *engagementservice.Service
 	RepostService                *repostservice.Service
 	NotificationService          *notifications.Service
 	OrganizationOwnershipService *organizationownership.Service
@@ -257,7 +259,7 @@ func RegisterHumaRoutes(api huma.API, deps RouteDeps) {
 	commentHandler.SetTokenSource(deps.TokenSource)
 	commentHandler.RegisterRoutes(api)
 	handlers.NewAnalyticsHandler(deps.DB, deps.Authenticator, deps.AnalyticsService).RegisterRoutes(api)
-	handlers.NewCommunicationsHandler(deps.DB, deps.Authenticator, deps.CommunicationsService).RegisterRoutes(api)
+	handlers.NewCommunicationsHandler(deps.DB, deps.Authenticator, deps.CommunicationsService, deps.EngagementService).RegisterRoutes(api)
 	handlers.NewNotificationHandler(deps.DB, deps.Authenticator, deps.NotificationService).RegisterRoutes(api)
 	handlers.NewInstanceAdminHandler(
 		deps.DB,

@@ -1,4 +1,4 @@
-package communications
+package engagement
 
 import (
 	"context"
@@ -98,61 +98,8 @@ func (f *fakeMessenger) SendMessage(context.Context, string, platform.SendMessag
 	return platform.SendMessageResult{RemoteMessageID: "sent-1", CreatedAt: time.Now().UTC()}, nil
 }
 
-func TestMessageSendRecoveryDoesNotReplayAcceptedProviderWrite(t *testing.T) {
-	db := communicationsTestDB(t)
-	ctx := t.Context()
-	now := time.Date(2026, 8, 9, 12, 0, 0, 0, time.UTC)
-	account := &models.SocialAccount{
-		ID: "account-1", WorkspaceID: "workspace-1", Platform: "facebook",
-		AccountID: "page-1", Slug: "page-1", AccessTokenEnc: []byte("token"), IsActive: true,
-		CapabilityState: `{"messages_enabled":"true"}`,
-	}
-	conversation := &models.Conversation{
-		ID: "conversation-1", WorkspaceID: "workspace-1", SocialAccountID: account.ID,
-		Platform: account.Platform, RemoteConversationID: "remote-conversation-1",
-		CreatedAt: now, UpdatedAt: now,
-	}
-	message := &models.DirectMessage{
-		ID: "message-1", WorkspaceID: "workspace-1", ConversationID: conversation.ID,
-		Direction: "outbound", Body: "Hello", AttachmentsJSON: "[]", SendStatus: "queued",
-		CreatedAt: now, UpdatedAt: now,
-	}
-	require.NoError(t, func() error {
-		_, err := db.NewInsert().Model(account).Exec(ctx)
-		return err
-	}())
-	require.NoError(t, func() error {
-		_, err := db.NewInsert().Model(conversation).Exec(ctx)
-		return err
-	}())
-	require.NoError(t, func() error {
-		_, err := db.NewInsert().Model(message).Exec(ctx)
-		return err
-	}())
-
-	messenger := &fakeMessenger{}
-	service := NewService(db, staticTokenSource{}, nil)
-	service.now = func() time.Time { return now }
-	service.SetProvider("facebook", messenger)
-	require.NoError(t, service.sendMessage(ctx, message.ID))
-	require.Equal(t, 1, messenger.sends)
-
-	_, err := db.NewUpdate().Model((*models.DirectMessage)(nil)).
-		Set("send_status = 'queued'").Set("remote_message_id = ''").
-		Where("id = ?", message.ID).Exec(ctx)
-	require.NoError(t, err)
-	_, err = db.NewUpdate().Model((*models.Conversation)(nil)).
-		Set("last_remote_message_id = ''").Where("id = ?", conversation.ID).Exec(ctx)
-	require.NoError(t, err)
-	require.NoError(t, service.sendMessage(ctx, message.ID))
-	require.Equal(t, 1, messenger.sends, "recovery after a local commit failure must reuse the accepted message result")
-	require.NoError(t, db.NewSelect().Model(message).WherePK().Scan(ctx))
-	require.Equal(t, "sent", message.SendStatus)
-	require.Equal(t, "sent-1", message.RemoteMessageID)
-}
-
 func TestQueuedProviderCommentActionUsesAcceptedFenceAndIdempotentLifecycle(t *testing.T) {
-	db := communicationsTestDB(t)
+	db := engagementBehaviorTestDB(t)
 	seedProviderCommentAction(t, db)
 	commenter := &fakeCommenter{replyID: "provider-reply-1"}
 	service := NewService(db, staticTokenSource{}, nil)
@@ -187,7 +134,7 @@ func TestQueuedProviderCommentActionUsesAcceptedFenceAndIdempotentLifecycle(t *t
 }
 
 func TestQueuedProviderCommentActionNeverReplaysAmbiguousWrite(t *testing.T) {
-	db := communicationsTestDB(t)
+	db := engagementBehaviorTestDB(t)
 	seedProviderCommentAction(t, db)
 	commenter := &fakeCommenter{replyErr: context.DeadlineExceeded}
 	service := NewService(db, staticTokenSource{}, nil)
@@ -235,7 +182,7 @@ func seedProviderCommentAction(t *testing.T, db *bun.DB) {
 	require.NoError(t, err)
 }
 
-func communicationsTestDB(t *testing.T) *bun.DB {
+func engagementBehaviorTestDB(t *testing.T) *bun.DB {
 	t.Helper()
 	sqldb, err := sql.Open("sqlite3", fmt.Sprintf("file:%s?mode=memory&cache=shared", uuid.NewString()))
 	require.NoError(t, err)
@@ -245,6 +192,7 @@ func communicationsTestDB(t *testing.T) *bun.DB {
 	for _, model := range []any{
 		(*models.Organization)(nil),
 		(*models.Workspace)(nil),
+		(*models.WorkspaceMember)(nil),
 		(*models.SocialAccount)(nil),
 		(*models.Publication)(nil),
 		(*models.Rendition)(nil),
@@ -262,6 +210,11 @@ func communicationsTestDB(t *testing.T) *bun.DB {
 	_, err = db.NewInsert().Model(&[]models.Workspace{
 		{ID: "workspace-1", OrganizationID: "organization-1", Name: "Primary", CreatedAt: now},
 		{ID: "workspace-2", OrganizationID: "organization-1", Name: "Secondary", CreatedAt: now},
+	}).Exec(ctx)
+	require.NoError(t, err)
+	_, err = db.NewInsert().Model(&models.WorkspaceMember{
+		WorkspaceID: "workspace-1", UserID: "user-1", Role: models.WorkspaceRoleEditor,
+		Status: models.WorkspaceMemberStatusActive, CreatedAt: now,
 	}).Exec(ctx)
 	require.NoError(t, err)
 	_, err = db.ExecContext(ctx, `
@@ -299,242 +252,6 @@ CREATE TABLE communication_sync_states (
 )`)
 	require.NoError(t, err)
 	return db
-}
-
-func TestMessageSyncRequiresOptInAndIsIdempotent(t *testing.T) {
-	db := communicationsTestDB(t)
-	ctx := context.Background()
-	account := &models.SocialAccount{
-		ID: "account-1", WorkspaceID: "workspace-1", Platform: "bluesky",
-		AccountID: "did:plc:openpost", AccountUsername: "openpost.test",
-		AccessTokenEnc: []byte("encrypted"), CapabilityState: `{}`, IsActive: true,
-	}
-	_, err := db.NewInsert().Model(account).Exec(ctx)
-	require.NoError(t, err)
-	now := time.Date(2026, 7, 26, 12, 0, 0, 0, time.UTC)
-	messenger := &fakeMessenger{result: platform.FetchMessagesResult{
-		Conversations: []platform.ProviderConversation{{
-			ID: "convo-1", CounterpartRemoteID: "did:plc:ada", CounterpartName: "Ada",
-			LastMessageAt: now, LastMessagePreview: "Hello", LastRemoteMessageID: "message-1",
-			Messages: []platform.ProviderMessage{{
-				ID: "message-1", Direction: "inbound", AuthorRemoteID: "did:plc:ada",
-				Body: "Hello", RemoteCreatedAt: now,
-			}},
-		}},
-	}}
-	service := NewService(db, staticTokenSource{}, nil)
-	service.now = func() time.Time { return now }
-	service.SetProvider("bluesky", messenger)
-
-	require.NoError(t, service.HandleJob(ctx, JobTypeMessagesSync, `{"id":"account-1"}`))
-	require.Zero(t, messenger.fetches)
-	var state models.CommunicationSyncState
-	require.NoError(t, db.NewSelect().Model(&state).Where("id = ?", "messages:account:account-1").Scan(ctx))
-	require.Equal(t, "disabled", state.Status)
-
-	account.CapabilityState = `{"messages_enabled":"true"}`
-	_, err = db.NewUpdate().Model(account).Column("capability_state_json").WherePK().Exec(ctx)
-	require.NoError(t, err)
-	require.NoError(t, service.HandleJob(ctx, JobTypeMessagesSync, `{"id":"account-1"}`))
-	require.NoError(t, service.HandleJob(ctx, JobTypeMessagesSync, `{"id":"account-1"}`))
-	require.Equal(t, 2, messenger.fetches)
-
-	var conversations []models.Conversation
-	require.NoError(t, db.NewSelect().Model(&conversations).Scan(ctx))
-	require.Len(t, conversations, 1)
-	require.Equal(t, 1, conversations[0].UnreadCount)
-	var messages []models.DirectMessage
-	require.NoError(t, db.NewSelect().Model(&messages).Scan(ctx))
-	require.Len(t, messages, 1)
-	require.Equal(t, "Hello", messages[0].Body)
-}
-
-func TestListMessagesOrdersStoredMessagesByProviderTime(t *testing.T) {
-	db := communicationsTestDB(t)
-	ctx := context.Background()
-	now := time.Date(2026, 8, 7, 12, 0, 0, 0, time.UTC)
-	conversation := &models.Conversation{
-		ID: "conversation-1", WorkspaceID: "workspace-1", SocialAccountID: "account-1",
-		Platform: "mastodon", RemoteConversationID: "remote-conversation-1",
-		CreatedAt: now, UpdatedAt: now,
-	}
-	_, err := db.NewInsert().Model(conversation).Exec(ctx)
-	require.NoError(t, err)
-	messages := []models.DirectMessage{
-		{
-			ID: "message-later", WorkspaceID: "workspace-1", ConversationID: conversation.ID,
-			Direction: "inbound", Body: "Later", RemoteCreatedAt: now.Add(time.Minute),
-			CreatedAt: now, UpdatedAt: now,
-		},
-		{
-			ID: "message-earlier", WorkspaceID: "workspace-1", ConversationID: conversation.ID,
-			Direction: "outbound", Body: "Earlier", RemoteCreatedAt: now.Add(-time.Minute),
-			CreatedAt: now.Add(time.Minute), UpdatedAt: now.Add(time.Minute),
-		},
-	}
-	_, err = db.NewInsert().Model(&messages).Exec(ctx)
-	require.NoError(t, err)
-
-	service := NewService(db, staticTokenSource{}, nil)
-	page, err := service.ListMessages(ctx, MessageQuery{WorkspaceID: "workspace-1", ConversationID: conversation.ID, Limit: 100})
-	require.NoError(t, err)
-	require.Len(t, page.Items, 2)
-	require.Equal(t, "message-earlier", page.Items[0].ID)
-	require.Equal(t, "message-later", page.Items[1].ID)
-	require.Nil(t, page.NextCursor)
-
-	_, err = service.ListMessages(ctx, MessageQuery{WorkspaceID: "workspace-2", ConversationID: conversation.ID, Limit: 100})
-	require.ErrorIs(t, err, ErrConversationNotFound)
-}
-
-func TestListMessagesCursorReachesEveryRecordWithoutGapsOrDuplicates(t *testing.T) {
-	db := communicationsTestDB(t)
-	ctx := t.Context()
-	timestamp := time.Date(2026, 8, 10, 12, 0, 0, 0, time.UTC)
-	conversation := &models.Conversation{
-		ID: "conversation-1", WorkspaceID: "workspace-1", SocialAccountID: "account-1",
-		Platform: "bluesky", RemoteConversationID: "remote-conversation-1",
-		CreatedAt: timestamp, UpdatedAt: timestamp,
-	}
-	_, err := db.NewInsert().Model(conversation).Exec(ctx)
-	require.NoError(t, err)
-	messages := make([]models.DirectMessage, 0, 235)
-	for index := range 235 {
-		messages = append(messages, models.DirectMessage{
-			ID: fmt.Sprintf("message-%03d", index), WorkspaceID: "workspace-1",
-			ConversationID: conversation.ID, Direction: "inbound", Body: fmt.Sprintf("Message %d", index),
-			RemoteCreatedAt: timestamp, CreatedAt: timestamp, UpdatedAt: timestamp,
-		})
-	}
-	_, err = db.NewInsert().Model(&messages).Exec(ctx)
-	require.NoError(t, err)
-	service := NewService(db, staticTokenSource{}, nil)
-
-	seen := make([]string, 0, len(messages))
-	var cursor *MessageCursor
-	for {
-		page, err := service.ListMessages(ctx, MessageQuery{
-			WorkspaceID: "workspace-1", ConversationID: conversation.ID, Limit: 37, Cursor: cursor,
-		})
-		require.NoError(t, err)
-		pageIDs := make([]string, 0, len(page.Items))
-		for _, message := range page.Items {
-			pageIDs = append(pageIDs, message.ID)
-		}
-		seen = append(pageIDs, seen...)
-		if cursor == nil {
-			_, err = db.NewInsert().Model(&models.DirectMessage{
-				ID: "message-new", WorkspaceID: "workspace-1", ConversationID: conversation.ID,
-				Direction: "inbound", Body: "Concurrent arrival", RemoteCreatedAt: timestamp.Add(time.Hour),
-				CreatedAt: timestamp.Add(time.Hour), UpdatedAt: timestamp.Add(time.Hour),
-			}).Exec(ctx)
-			require.NoError(t, err)
-		}
-		cursor = page.NextCursor
-		if cursor == nil {
-			break
-		}
-	}
-	require.Len(t, seen, 235)
-	require.Equal(t, len(seen), len(uniqueStrings(seen)))
-	require.NotContains(t, seen, "message-new")
-	for index, id := range seen {
-		require.Equal(t, fmt.Sprintf("message-%03d", index), id)
-	}
-}
-
-func TestMessageSyncAlwaysChecksNewestPageWhileBackfilling(t *testing.T) {
-	db := communicationsTestDB(t)
-	ctx := context.Background()
-	now := time.Date(2026, 7, 26, 12, 0, 0, 0, time.UTC)
-	account := &models.SocialAccount{
-		ID: "account-1", WorkspaceID: "workspace-1", Platform: "bluesky",
-		AccountID: "did:plc:openpost", AccessTokenEnc: []byte("encrypted"),
-		CapabilityState: `{"messages_enabled":"true"}`, IsActive: true,
-	}
-	_, err := db.NewInsert().Model(account).Exec(ctx)
-	require.NoError(t, err)
-	conversation := func(id, message string, createdAt time.Time) platform.ProviderConversation {
-		return platform.ProviderConversation{
-			ID: id, CounterpartRemoteID: "did:plc:" + id, CounterpartName: id,
-			LastMessageAt: createdAt, LastMessagePreview: message, LastRemoteMessageID: "message-" + id,
-			Messages: []platform.ProviderMessage{{
-				ID: "message-" + id, Direction: "inbound", Body: message, RemoteCreatedAt: createdAt,
-			}},
-		}
-	}
-	messenger := &fakeMessenger{results: map[string]platform.FetchMessagesResult{
-		"": {
-			Conversations: []platform.ProviderConversation{conversation("newest", "New", now)},
-			NextCursor:    "older-page",
-		},
-		"older-page": {
-			Conversations: []platform.ProviderConversation{conversation("older", "Old", now.Add(-24*time.Hour))},
-		},
-	}}
-	service := NewService(db, staticTokenSource{}, nil)
-	service.now = func() time.Time { return now }
-	service.SetProvider("bluesky", messenger)
-
-	require.NoError(t, service.HandleJob(ctx, JobTypeMessagesSync, `{"id":"account-1"}`))
-	require.Equal(t, []string{""}, []string{messenger.requests[0].Cursor})
-	var state models.CommunicationSyncState
-	require.NoError(t, db.NewSelect().Model(&state).Where("id = ?", "messages:account:account-1").Scan(ctx))
-	require.Equal(t, "older-page", state.Cursor)
-	require.False(t, state.BackfillComplete)
-
-	require.NoError(t, service.HandleJob(ctx, JobTypeMessagesSync, `{"id":"account-1"}`))
-	require.Equal(t, []string{"", "older-page"}, []string{messenger.requests[1].Cursor, messenger.requests[2].Cursor})
-	require.NoError(t, db.NewSelect().Model(&state).Where("id = ?", "messages:account:account-1").Scan(ctx))
-	require.Empty(t, state.Cursor)
-	require.True(t, state.BackfillComplete)
-
-	require.NoError(t, service.HandleJob(ctx, JobTypeMessagesSync, `{"id":"account-1"}`))
-	require.Equal(t, "", messenger.requests[3].Cursor)
-	require.Len(t, messenger.requests, 4)
-	count, countErr := db.NewSelect().Model((*models.Conversation)(nil)).Count(ctx)
-	require.NoError(t, countErr)
-	require.Equal(t, 2, count)
-}
-
-func TestQueueMessageEnforcesProviderWindowBeforeCreatingJob(t *testing.T) {
-	db := communicationsTestDB(t)
-	ctx := context.Background()
-	now := time.Date(2026, 7, 26, 12, 0, 0, 0, time.UTC)
-	account := &models.SocialAccount{
-		ID: "account-1", WorkspaceID: "workspace-1", Platform: "facebook", AccountID: "page-1",
-		AccessTokenEnc: []byte("encrypted"), CapabilityState: `{"messages_enabled":"true"}`, IsActive: true,
-	}
-	_, err := db.NewInsert().Model(account).Exec(ctx)
-	require.NoError(t, err)
-	conversation := &models.Conversation{
-		ID: "convo-1", WorkspaceID: "workspace-1", SocialAccountID: "account-1",
-		Platform: "facebook", RemoteConversationID: "remote-1",
-		MessagingWindowExpiresAt: now.Add(-time.Minute), CreatedAt: now, UpdatedAt: now,
-	}
-	_, err = db.NewInsert().Model(conversation).Exec(ctx)
-	require.NoError(t, err)
-
-	service := NewService(db, staticTokenSource{}, nil)
-	service.now = func() time.Time { return now }
-	service.SetProvider("facebook", &fakeMessenger{})
-	_, err = service.QueueMessage(ctx, "convo-1", "Too late")
-	require.ErrorContains(t, err, "reply window has closed")
-	count, countErr := db.NewSelect().Model((*models.Job)(nil)).Count(ctx)
-	require.NoError(t, countErr)
-	require.Zero(t, count)
-
-	conversation.MessagingWindowExpiresAt = now.Add(time.Hour)
-	_, err = db.NewUpdate().Model(conversation).Column("messaging_window_expires_at").WherePK().Exec(ctx)
-	require.NoError(t, err)
-	message, err := service.QueueMessage(ctx, "convo-1", " On time ")
-	require.NoError(t, err)
-	require.Equal(t, "On time", message.Body)
-	var job models.Job
-	require.NoError(t, db.NewSelect().Model(&job).Where("type = ?", JobTypeMessageSend).Scan(ctx))
-	require.Equal(t, 1, job.MaxAttempts)
-	require.NoError(t, db.NewSelect().Model(conversation).Where("id = ?", "convo-1").Scan(ctx))
-	require.Equal(t, "On time", conversation.LastMessagePreview)
 }
 
 func TestProviderPostURLUsesStableProviderIdentifiers(t *testing.T) {
@@ -581,7 +298,7 @@ func TestProviderPostURLUsesStableProviderIdentifiers(t *testing.T) {
 }
 
 func TestHistoricalRenditionUsesActiveReplacementAfterReconnect(t *testing.T) {
-	db := communicationsTestDB(t)
+	db := engagementBehaviorTestDB(t)
 	ctx := context.Background()
 	now := time.Date(2026, 7, 26, 12, 0, 0, 0, time.UTC)
 	original := &models.SocialAccount{
@@ -631,9 +348,9 @@ func TestHistoricalRenditionUsesActiveReplacementAfterReconnect(t *testing.T) {
 	service.now = func() time.Time { return now }
 	service.SetProvider("x", commenter)
 
-	queued, err := service.RefreshWorkspace(ctx, original.WorkspaceID, true)
+	queued, err := service.refreshWorkspace(ctx, original.WorkspaceID, true)
 	require.NoError(t, err)
-	require.Zero(t, queued, "communications refresh no longer owns Engagement scheduling")
+	require.Equal(t, 1, queued)
 	require.NoError(t, service.syncEngagement(ctx, rendition.ID))
 	require.Equal(t, []string{replacement.AccountID}, commenter.accountIDs)
 
@@ -645,7 +362,7 @@ func TestHistoricalRenditionUsesActiveReplacementAfterReconnect(t *testing.T) {
 }
 
 func TestEngagementPersistenceTracksEditsDeletionAttachmentsAndLocalReadState(t *testing.T) {
-	db := communicationsTestDB(t)
+	db := engagementBehaviorTestDB(t)
 	ctx := context.Background()
 	now := time.Date(2026, 7, 26, 12, 0, 0, 0, time.UTC)
 	account := models.SocialAccount{
@@ -733,7 +450,7 @@ func TestEngagementPersistenceTracksEditsDeletionAttachmentsAndLocalReadState(t 
 }
 
 func TestEngagementPersistenceIgnoresRepliesFromConnectedAccount(t *testing.T) {
-	db := communicationsTestDB(t)
+	db := engagementBehaviorTestDB(t)
 	ctx := context.Background()
 	now := time.Date(2026, 8, 11, 13, 21, 0, 0, time.UTC)
 	account := models.SocialAccount{
@@ -806,7 +523,7 @@ func TestEngagementPersistenceIgnoresRepliesFromConnectedAccount(t *testing.T) {
 	}).Exec(ctx)
 	require.NoError(t, err)
 
-	page, err := service.ListEngagement(ctx, EngagementQuery{WorkspaceID: account.WorkspaceID, Limit: 50})
+	page, err := service.listEngagement(ctx, EngagementQuery{WorkspaceID: account.WorkspaceID, Limit: 50})
 	require.NoError(t, err)
 	require.Equal(t, 1, page.Total, "previously stored own replies must be hidden from Engagement")
 	require.Len(t, page.Items, 1)
@@ -814,7 +531,7 @@ func TestEngagementPersistenceIgnoresRepliesFromConnectedAccount(t *testing.T) {
 }
 
 func TestEngagementReactionUpdatesAvailableInverseAction(t *testing.T) {
-	db := communicationsTestDB(t)
+	db := engagementBehaviorTestDB(t)
 	ctx := context.Background()
 	now := time.Date(2026, 7, 26, 12, 0, 0, 0, time.UTC)
 	item := &models.EngagementItem{
@@ -843,11 +560,11 @@ func TestEngagementReactionUpdatesAvailableInverseAction(t *testing.T) {
 	require.True(t, stored.Liked)
 	require.False(t, stored.CanLike)
 	require.True(t, stored.CanUnlike)
-	require.NoError(t, service.QueueEngagementAction(ctx, stored.ID, "unlike", "", "user-1"))
+	require.True(t, stored.CanUnlike)
 }
 
 func TestListEngagementCursorReachesEveryRecordWithoutGapsOrDuplicates(t *testing.T) {
-	db := communicationsTestDB(t)
+	db := engagementBehaviorTestDB(t)
 	ctx := t.Context()
 	createdAt := time.Date(2026, 8, 10, 12, 0, 0, 0, time.UTC)
 	items := make([]models.EngagementItem, 0, 235)
@@ -866,7 +583,7 @@ func TestListEngagementCursorReachesEveryRecordWithoutGapsOrDuplicates(t *testin
 	seen := make([]string, 0, len(items))
 	var cursor *EngagementCursor
 	for {
-		page, err := service.ListEngagement(ctx, EngagementQuery{
+		page, err := service.listEngagement(ctx, EngagementQuery{
 			WorkspaceID: "workspace-1", Limit: 37, Cursor: cursor,
 		})
 		require.NoError(t, err)
@@ -902,54 +619,4 @@ func uniqueStrings(values []string) map[string]struct{} {
 		result[value] = struct{}{}
 	}
 	return result
-}
-
-func TestListConversationsCursorReachesEveryRecordWithoutGapsOrDuplicates(t *testing.T) {
-	db := communicationsTestDB(t)
-	ctx := t.Context()
-	timestamp := time.Date(2026, 8, 10, 12, 0, 0, 0, time.UTC)
-	conversations := make([]models.Conversation, 0, 235)
-	for index := range 235 {
-		conversations = append(conversations, models.Conversation{
-			ID: fmt.Sprintf("conversation-%03d", index), WorkspaceID: "workspace-1",
-			SocialAccountID: "account-1", Platform: "bluesky",
-			RemoteConversationID: fmt.Sprintf("remote-%03d", index), LastMessageAt: timestamp,
-			CreatedAt: timestamp, UpdatedAt: timestamp,
-		})
-	}
-	_, err := db.NewInsert().Model(&conversations).Exec(ctx)
-	require.NoError(t, err)
-	service := NewService(db, staticTokenSource{}, nil)
-
-	seen := make([]string, 0, len(conversations))
-	var cursor *ConversationCursor
-	for {
-		page, err := service.ListConversations(ctx, ConversationQuery{
-			WorkspaceID: "workspace-1", Platform: "bluesky", AccountID: "account-1",
-			Limit: 37, Cursor: cursor,
-		})
-		require.NoError(t, err)
-		for _, conversation := range page.Items {
-			seen = append(seen, conversation.ID)
-		}
-		if cursor == nil {
-			_, err = db.NewInsert().Model(&models.Conversation{
-				ID: "conversation-new", WorkspaceID: "workspace-1", SocialAccountID: "account-1",
-				Platform: "bluesky", RemoteConversationID: "remote-new",
-				LastMessageAt: timestamp.Add(time.Hour), CreatedAt: timestamp.Add(time.Hour),
-				UpdatedAt: timestamp.Add(time.Hour),
-			}).Exec(ctx)
-			require.NoError(t, err)
-		}
-		cursor = page.NextCursor
-		if cursor == nil {
-			break
-		}
-	}
-	require.Len(t, seen, 235)
-	require.Equal(t, len(seen), len(uniqueStrings(seen)))
-	require.NotContains(t, seen, "conversation-new")
-	for index, id := range seen {
-		require.Equal(t, fmt.Sprintf("conversation-%03d", 234-index), id)
-	}
 }

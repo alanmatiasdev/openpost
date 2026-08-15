@@ -26,9 +26,9 @@ import (
 	"github.com/openpost/backend/internal/netguard"
 	"github.com/openpost/backend/internal/platform"
 	"github.com/openpost/backend/internal/services/apitokens"
-	communicationsservice "github.com/openpost/backend/internal/services/communications"
 	servicecrypto "github.com/openpost/backend/internal/services/crypto"
 	"github.com/openpost/backend/internal/services/drafts"
+	engagementservice "github.com/openpost/backend/internal/services/engagement"
 	"github.com/openpost/backend/internal/services/entitlements"
 	"github.com/openpost/backend/internal/services/mediastore"
 	postservice "github.com/openpost/backend/internal/services/posts"
@@ -3867,7 +3867,7 @@ func (h *MCPHandler) moderateComment(ctx context.Context, userID, operation stri
 	default:
 		return nil, &mcpError{Code: -32602, Message: "unknown comment action"}
 	}
-	jobID, err := communicationsservice.QueueProviderCommentAction(ctx, h.db, communicationsservice.ProviderCommentActionInput{
+	jobID, err := engagementservice.QueueProviderCommentAction(ctx, h.db, engagementservice.ProviderCommentActionInput{
 		WorkspaceID: publication.WorkspaceID, PublicationID: publication.ID,
 		RenditionID: rendition.ID, SocialAccountID: account.ID,
 		ProviderCommentID: ref.ProviderCommentID, Action: action,

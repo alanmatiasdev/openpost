@@ -14,17 +14,19 @@ import (
 	"github.com/openpost/backend/internal/api/middleware"
 	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/services/communications"
+	"github.com/openpost/backend/internal/services/engagement"
 	"github.com/uptrace/bun"
 )
 
 type CommunicationsHandler struct {
-	db      *bun.DB
-	auth    middleware.Authenticator
-	service *communications.Service
+	db         *bun.DB
+	auth       middleware.Authenticator
+	service    *communications.Service
+	engagement *engagement.Service
 }
 
-func NewCommunicationsHandler(db *bun.DB, auth middleware.Authenticator, service *communications.Service) *CommunicationsHandler {
-	return &CommunicationsHandler{db: db, auth: auth, service: service}
+func NewCommunicationsHandler(db *bun.DB, auth middleware.Authenticator, service *communications.Service, engagementService *engagement.Service) *CommunicationsHandler {
+	return &CommunicationsHandler{db: db, auth: auth, service: service, engagement: engagementService}
 }
 
 type ListEngagementInput struct {
@@ -164,7 +166,7 @@ type engagementCursorPayload struct {
 	ID         string    `json:"id"`
 }
 
-func encodeEngagementCursor(cursor *communications.EngagementCursor) string {
+func encodeEngagementCursor(cursor *engagement.EngagementCursor) string {
 	if cursor == nil {
 		return ""
 	}
@@ -177,7 +179,7 @@ func encodeEngagementCursor(cursor *communications.EngagementCursor) string {
 	return base64.RawURLEncoding.EncodeToString(payload)
 }
 
-func parseEngagementCursor(value string) (*communications.EngagementCursor, error) {
+func parseEngagementCursor(value string) (*engagement.EngagementCursor, error) {
 	value = strings.TrimSpace(value)
 	if value == "" {
 		return nil, nil
@@ -193,7 +195,7 @@ func parseEngagementCursor(value string) (*communications.EngagementCursor, erro
 	if cursor.OccurredAt.IsZero() || cursor.CreatedAt.IsZero() || strings.TrimSpace(cursor.ID) == "" {
 		return nil, errors.New("engagement cursor is incomplete")
 	}
-	return &communications.EngagementCursor{
+	return &engagement.EngagementCursor{
 		OccurredAt: cursor.OccurredAt.UTC(), CreatedAt: cursor.CreatedAt.UTC(), ID: cursor.ID,
 	}, nil
 }
@@ -284,24 +286,24 @@ func (h *CommunicationsHandler) RegisterRoutes(api huma.API) {
 		Method:      http.MethodGet, Path: "/engagement", Summary: "List stored replies and comments",
 		Tags: []string{tagCommunications}, Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
 	}, func(ctx context.Context, input *ListEngagementInput) (*ListEngagementOutput, error) {
-		if err := h.requireWorkspace(ctx, input.WorkspaceID, false); err != nil {
-			return nil, err
+		if h.engagement == nil {
+			return nil, huma.Error503ServiceUnavailable("engagement service is unavailable")
 		}
 		cursor, err := parseEngagementCursor(input.Cursor)
 		if err != nil || (cursor != nil && input.Offset != 0) {
 			return nil, huma.Error400BadRequest("invalid engagement cursor")
 		}
-		page, err := h.service.ListEngagement(ctx, communications.EngagementQuery{
+		page, err := h.engagement.ListEngagement(ctx, engagementActor(ctx), engagement.EngagementQuery{
 			WorkspaceID: input.WorkspaceID, Platform: input.Platform, AccountID: input.AccountID,
 			PublicationID: input.PublicationID, UnreadOnly: input.UnreadOnly, Archived: input.Archived,
 			Limit: input.Limit, Offset: input.Offset, Cursor: cursor,
 		})
 		if err != nil {
-			return nil, huma.Error500InternalServerError("failed to load engagement")
+			return nil, engagementHTTPError(err, "failed to load engagement")
 		}
-		states, err := h.service.ListEngagementSyncStates(ctx, input.WorkspaceID)
+		states, err := h.engagement.ListEngagementSyncStates(ctx, engagementActor(ctx), input.WorkspaceID)
 		if err != nil {
-			return nil, huma.Error500InternalServerError("failed to load engagement sync state")
+			return nil, engagementHTTPError(err, "failed to load engagement sync state")
 		}
 		safeStates := make([]EngagementSyncState, 0, len(states))
 		for _, state := range states {
@@ -322,14 +324,14 @@ func (h *CommunicationsHandler) RegisterRoutes(api huma.API) {
 		Method:      http.MethodPost, Path: "/engagement/state", Summary: "Mark engagement read or archived",
 		Tags: []string{tagCommunications}, Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
 	}, func(ctx context.Context, input *SetEngagementStateInput) (*struct{}, error) {
-		if err := h.requireWorkspace(ctx, input.Body.WorkspaceID, true); err != nil {
-			return nil, err
+		if h.engagement == nil {
+			return nil, huma.Error503ServiceUnavailable("engagement service is unavailable")
 		}
 		if input.Body.Read == nil && input.Body.Archived == nil {
 			return nil, huma.Error400BadRequest("read or archived is required")
 		}
-		if err := h.service.SetEngagementState(ctx, input.Body.WorkspaceID, input.Body.IDs, input.Body.Read, input.Body.Archived); err != nil {
-			return nil, huma.Error500InternalServerError("failed to update engagement")
+		if err := h.engagement.SetEngagementState(ctx, engagementActor(ctx), input.Body.WorkspaceID, input.Body.IDs, input.Body.Read, input.Body.Archived); err != nil {
+			return nil, engagementHTTPError(err, "failed to update engagement")
 		}
 		return nil, nil
 	})
@@ -339,21 +341,16 @@ func (h *CommunicationsHandler) RegisterRoutes(api huma.API) {
 		Method:      http.MethodPost, Path: "/engagement/{item_id}/actions", Summary: "Queue a reply or moderation action",
 		Tags: []string{tagCommunications}, Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
 	}, func(ctx context.Context, input *EngagementActionInput) (*struct{}, error) {
-		if err := h.requireWorkspace(ctx, input.Body.WorkspaceID, true); err != nil {
-			return nil, err
-		}
-		exists, err := h.db.NewSelect().Model((*models.EngagementItem)(nil)).
-			Where("id = ? AND workspace_id = ?", input.ItemID, input.Body.WorkspaceID).Exists(ctx)
-		if err != nil {
-			return nil, huma.Error500InternalServerError("failed to verify engagement")
-		}
-		if !exists {
-			return nil, huma.Error404NotFound("engagement item not found")
+		if h.engagement == nil {
+			return nil, huma.Error503ServiceUnavailable("engagement service is unavailable")
 		}
 		if input.Body.Action == "reply" && strings.TrimSpace(input.Body.Message) == "" {
 			return nil, huma.Error400BadRequest("message is required for a reply")
 		}
-		if err := h.service.QueueEngagementAction(ctx, input.ItemID, input.Body.Action, input.Body.Message, middleware.GetUserID(ctx)); err != nil {
+		if err := h.engagement.QueueEngagementAction(ctx, engagementActor(ctx), input.ItemID, input.Body.Action, input.Body.Message); err != nil {
+			if errors.Is(err, engagement.ErrAccessDenied) || errors.Is(err, engagement.ErrNotFound) {
+				return nil, engagementHTTPError(err, "failed to queue engagement action")
+			}
 			return nil, huma.Error400BadRequest(err.Error())
 		}
 		return nil, nil
@@ -473,10 +470,35 @@ func (h *CommunicationsHandler) RegisterRoutes(api huma.API) {
 		if err != nil {
 			return nil, huma.Error500InternalServerError("failed to queue communications refresh")
 		}
+		if h.engagement != nil {
+			engagementQueued, engagementErr := h.engagement.RefreshWorkspace(ctx, engagementActor(ctx), input.Body.WorkspaceID, true)
+			if engagementErr != nil {
+				return nil, engagementHTTPError(engagementErr, "failed to queue engagement refresh")
+			}
+			queued += engagementQueued
+		}
 		return &RefreshCommunicationsOutput{Body: struct {
 			Queued int `json:"queued"`
 		}{Queued: queued}}, nil
 	})
+}
+
+func engagementActor(ctx context.Context) engagement.Actor {
+	return engagement.Actor{
+		UserID: middleware.GetUserID(ctx), SessionID: middleware.GetSessionID(ctx), TokenID: middleware.GetTokenID(ctx),
+		CredentialWorkspaceID: middleware.GetWorkspaceID(ctx),
+	}
+}
+
+func engagementHTTPError(err error, fallback string) error {
+	switch {
+	case errors.Is(err, engagement.ErrAccessDenied):
+		return huma.Error403Forbidden("workspace access denied")
+	case errors.Is(err, engagement.ErrNotFound):
+		return huma.Error404NotFound("engagement item not found")
+	default:
+		return huma.Error500InternalServerError(fallback)
+	}
 }
 
 func (h *CommunicationsHandler) requireWorkspace(ctx context.Context, workspaceID string, edit bool) error {

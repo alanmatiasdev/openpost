@@ -18,6 +18,7 @@ const (
 	TypeAnalyticsRendition      = "analytics_rendition_sync"
 	TypeBillingWebhook          = "billing_paddle_webhook"
 	TypeCommunicationsSweep     = "communications_sweep"
+	TypeEngagementSweep         = "engagement_sweep"
 	TypeEngagementSync          = "engagement_sync"
 	TypeMessagesSync            = "messages_sync"
 	TypeEngagementAction        = "engagement_action"
@@ -45,6 +46,7 @@ const (
 	ExecuteAnalytics             ExecutionKind = "analytics"
 	ExecuteBilling               ExecutionKind = "billing"
 	ExecuteCommunications        ExecutionKind = "communications"
+	ExecuteEngagement            ExecutionKind = "engagement"
 	ExecuteNotification          ExecutionKind = "notification"
 	ExecuteOrganizationOwnership ExecutionKind = "organization_ownership"
 	ExecuteRepost                ExecutionKind = "repost"
@@ -109,11 +111,14 @@ var definitions = map[string]Definition{
 	TypeCommunicationsSweep: providerReadDefinition(TypeCommunicationsSweep, 5, ExecuteCommunications, RecoverySupersedeSweep,
 		"Communications collection failed. OpenPost will retry when the failure is temporary.",
 		"A later communications sweep remains queued; this sweep will not retry."),
-	TypeEngagementSync: providerReadDefinition(TypeEngagementSync, 5, ExecuteCommunications, RecoveryRequeue,
-		"Communications collection failed. OpenPost will retry when the failure is temporary.", ""),
+	TypeEngagementSweep: providerReadDefinition(TypeEngagementSweep, 5, ExecuteEngagement, RecoverySupersedeSweep,
+		"Engagement collection failed. OpenPost will retry when the failure is temporary.",
+		"A later engagement sweep remains queued; this sweep will not retry."),
+	TypeEngagementSync: providerReadDefinition(TypeEngagementSync, 5, ExecuteEngagement, RecoveryRequeue,
+		"Engagement collection failed. OpenPost will retry when the failure is temporary.", ""),
 	TypeMessagesSync: providerReadDefinition(TypeMessagesSync, 5, ExecuteCommunications, RecoveryRequeue,
 		"Communications collection failed. OpenPost will retry when the failure is temporary.", ""),
-	TypeEngagementAction: providerWriteDefinition(TypeEngagementAction, ExecuteCommunications,
+	TypeEngagementAction: providerWriteDefinition(TypeEngagementAction, ExecuteEngagement,
 		"The provider write failed. OpenPost did not retry because the provider result may be ambiguous."),
 	TypeMessageSend: providerWriteDefinition(TypeMessageSend, ExecuteCommunications,
 		"The provider write failed. OpenPost did not retry because the provider result may be ambiguous."),

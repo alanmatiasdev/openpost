@@ -13,8 +13,8 @@ import (
 	"github.com/openpost/backend/internal/api/middleware"
 	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/platform"
-	communicationsservice "github.com/openpost/backend/internal/services/communications"
 	servicecrypto "github.com/openpost/backend/internal/services/crypto"
+	engagementservice "github.com/openpost/backend/internal/services/engagement"
 	"github.com/uptrace/bun"
 )
 
@@ -162,7 +162,7 @@ func (h *CommentHandler) replyToComment(api huma.API) {
 		if _, err := h.commentProvider(account); err != nil {
 			return nil, err
 		}
-		jobID, err := communicationsservice.QueueProviderCommentAction(ctx, h.db, communicationsservice.ProviderCommentActionInput{
+		jobID, err := engagementservice.QueueProviderCommentAction(ctx, h.db, engagementservice.ProviderCommentActionInput{
 			WorkspaceID: publication.WorkspaceID, PublicationID: publication.ID,
 			RenditionID: rendition.ID, SocialAccountID: account.ID,
 			ProviderCommentID: ref.ProviderCommentID, Action: "reply",
@@ -199,7 +199,7 @@ func (h *CommentHandler) hideComment(api huma.API) {
 		if _, err := h.commentProvider(account); err != nil {
 			return nil, err
 		}
-		jobID, err := communicationsservice.QueueProviderCommentAction(ctx, h.db, communicationsservice.ProviderCommentActionInput{
+		jobID, err := engagementservice.QueueProviderCommentAction(ctx, h.db, engagementservice.ProviderCommentActionInput{
 			WorkspaceID: publication.WorkspaceID, PublicationID: publication.ID,
 			RenditionID: rendition.ID, SocialAccountID: account.ID,
 			ProviderCommentID: ref.ProviderCommentID, Action: "hide",
@@ -236,7 +236,7 @@ func (h *CommentHandler) deleteComment(api huma.API) {
 		if _, err := h.commentProvider(account); err != nil {
 			return nil, err
 		}
-		jobID, err := communicationsservice.QueueProviderCommentAction(ctx, h.db, communicationsservice.ProviderCommentActionInput{
+		jobID, err := engagementservice.QueueProviderCommentAction(ctx, h.db, engagementservice.ProviderCommentActionInput{
 			WorkspaceID: publication.WorkspaceID, PublicationID: publication.ID,
 			RenditionID: rendition.ID, SocialAccountID: account.ID,
 			ProviderCommentID: ref.ProviderCommentID, Action: "delete",

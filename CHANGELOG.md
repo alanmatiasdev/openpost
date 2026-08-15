@@ -6,6 +6,7 @@ All notable changes to this project are documented in this file.
 
 ### Changed
 
+- Extracted Engagement into a transport-independent application module with internal Workspace authorization, a capability-specific provider port, stored read and archive state, typed outcomes, provider-write fencing, and its own recurring Job chain and health state.
 - Completed Publication-only composer recovery: media queues now belong to the Composer session module, editor returns are bound once to the original Workspace, Publication, and revision, Workspace changes preserve save, discard, or stay, and old Post links redirect to canonical Publication URLs without mounting a Post-backed composer.
 - Publishing, Workspace invitation, and Organization ownership producers now emit typed notification outcomes. Workspace team owns invitation delivery generations and lifecycle updates, while notifications retain only redacted, deduplicated provider delivery evidence.
 - The text-and-thread composer now uses one Publication-backed browser session for new and existing drafts. The session owns serialized revision saves, conflicts, validation, scheduling, immediate publishing, retries, cancellation, deletion, and success reset through the typed Publication client.

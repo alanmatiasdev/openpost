@@ -6,11 +6,12 @@ import (
 	"time"
 
 	"github.com/openpost/backend/internal/services/communications"
+	"github.com/openpost/backend/internal/services/engagement"
 	"github.com/stretchr/testify/require"
 )
 
 func TestEngagementCursorIsOpaqueAndRejectsInvalidValues(t *testing.T) {
-	cursor := &communications.EngagementCursor{
+	cursor := &engagement.EngagementCursor{
 		OccurredAt: time.Date(2026, 8, 10, 12, 0, 0, 0, time.UTC),
 		CreatedAt:  time.Date(2026, 8, 10, 11, 0, 0, 0, time.UTC),
 		ID:         "engagement-1",
