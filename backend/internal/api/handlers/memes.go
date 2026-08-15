@@ -1228,9 +1228,9 @@ func (h *MemeHandler) requireWorkspaceAccess(ctx context.Context, workspaceID st
 		err     error
 	)
 	if edit {
-		allowed, err = middleware.CheckWorkspaceEditAccess(ctx, h.db, workspaceID, middleware.GetUserID(ctx))
+		allowed, err = workspaceEditAllowed(ctx, h.db, workspaceID, middleware.GetUserID(ctx))
 	} else {
-		allowed, err = middleware.CheckWorkspaceAccess(ctx, h.db, workspaceID, middleware.GetUserID(ctx))
+		allowed, err = workspaceReadAllowed(ctx, h.db, workspaceID, middleware.GetUserID(ctx))
 	}
 	if err != nil {
 		return huma.Error500InternalServerError(errValidateWorkspaceAccess)

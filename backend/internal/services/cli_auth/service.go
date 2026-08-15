@@ -256,11 +256,11 @@ func (s *Service) approvalWorkspace(ctx context.Context, userID, workspaceID str
 	if workspaceID == "" {
 		return "", nil
 	}
-	allowed, err := workspaceaccess.Allows(ctx, s.db, workspaceID, userID)
+	decision, err := workspaceaccess.NewAuthorizer(s.db).Authorize(ctx, workspaceID, workspaceaccess.ActorFacts{UserID: userID}, workspaceaccess.LevelRead)
 	if err != nil {
 		return "", err
 	}
-	if !allowed {
+	if !decision.Allowed {
 		return "", ErrWorkspaceAccess
 	}
 	return workspaceID, nil
@@ -460,11 +460,11 @@ func approvedSessionTerminalError(
 	if session.WorkspaceID == "" {
 		return nil, nil
 	}
-	allowed, err := workspaceaccess.Allows(ctx, tx, session.WorkspaceID, session.UserID)
+	decision, err := workspaceaccess.NewAuthorizer(tx).Authorize(ctx, session.WorkspaceID, workspaceaccess.ActorFacts{UserID: session.UserID}, workspaceaccess.LevelRead)
 	if err != nil {
 		return nil, err
 	}
-	if !allowed {
+	if !decision.Allowed {
 		return ErrWorkspaceAccess, nil
 	}
 	return nil, nil

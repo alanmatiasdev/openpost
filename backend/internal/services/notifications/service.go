@@ -281,11 +281,11 @@ func (s *Service) authorizeMuteCreate(ctx context.Context, actor MuteActor, user
 	if input.Scope != MuteScopeWorkspace {
 		return nil
 	}
-	allowed, err := workspaceaccess.Allows(ctx, s.db, input.WorkspaceID, userID)
+	decision, err := workspaceaccess.NewAuthorizer(s.db).Authorize(ctx, input.WorkspaceID, workspaceaccess.ActorFacts{UserID: userID}, workspaceaccess.LevelRead)
 	if err != nil {
 		return err
 	}
-	if !allowed {
+	if !decision.Allowed {
 		return ErrMuteWorkspaceAccess
 	}
 	return nil
@@ -1162,11 +1162,11 @@ func (s *Service) GetPreferenceSettingsForActor(ctx context.Context, actor MuteA
 	if workspaceBindingID == "" {
 		return s.getPreferenceSettings(ctx, s.db, userID)
 	}
-	allowed, err := workspaceaccess.Allows(ctx, s.db, workspaceBindingID, userID)
+	decision, err := workspaceaccess.NewAuthorizer(s.db).Authorize(ctx, workspaceBindingID, workspaceaccess.ActorFacts{UserID: userID}, workspaceaccess.LevelRead)
 	if err != nil {
 		return PreferenceSettings{}, err
 	}
-	if !allowed {
+	if !decision.Allowed {
 		return PreferenceSettings{}, ErrMuteWorkspaceAccess
 	}
 	mutes, err := s.listActiveMutes(ctx, s.db, userID, workspaceBindingID)

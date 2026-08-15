@@ -107,7 +107,7 @@ func (h *RepostHandler) RegisterRoutes(api huma.API) {
 		if err := h.checkWorkspaceAdminAccess(ctx, input.WorkspaceID, userID); err != nil {
 			return nil, err
 		}
-		if err := h.service.RevokeGrant(ctx, input.GrantID, input.WorkspaceID, userID); err != nil {
+		if err := h.service.RevokeGrant(ctx, input.GrantID, input.WorkspaceID, userID, repostRequestCredential(ctx)); err != nil {
 			return nil, repostHTTPError(err)
 		}
 		output := &RepostGrantOutput{}
@@ -125,7 +125,7 @@ func repostRequestCredential(ctx context.Context) repostservice.RequestCredentia
 }
 
 func (h *RepostHandler) checkWorkspaceAccess(ctx context.Context, workspaceID, userID string) error {
-	allowed, err := middleware.CheckWorkspaceAccess(ctx, h.db, workspaceID, userID)
+	allowed, err := workspaceReadAllowed(ctx, h.db, workspaceID, userID)
 	if err != nil {
 		return huma.Error500InternalServerError(errValidateWorkspaceAccess)
 	}
@@ -136,7 +136,7 @@ func (h *RepostHandler) checkWorkspaceAccess(ctx context.Context, workspaceID, u
 }
 
 func (h *RepostHandler) checkWorkspaceAdminAccess(ctx context.Context, workspaceID, userID string) error {
-	allowed, err := middleware.CheckWorkspaceAdminAccess(ctx, h.db, workspaceID, userID)
+	allowed, err := workspaceAdminAllowed(ctx, h.db, workspaceID, userID)
 	if err != nil {
 		return huma.Error500InternalServerError(errValidateWorkspaceAccess)
 	}

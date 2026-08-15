@@ -780,7 +780,7 @@ func (h *PostHandler) listPostWorkspaceIDs(ctx context.Context, requestedWorkspa
 
 	workspaceIDs := make([]string, 0, len(workspaceMembers))
 	for _, wm := range workspaceMembers {
-		allowed, accessErr := middleware.CheckWorkspaceAccess(ctx, h.db, wm.WorkspaceID, userID)
+		allowed, accessErr := workspaceReadAllowed(ctx, h.db, wm.WorkspaceID, userID)
 		if accessErr != nil {
 			return nil, huma.Error500InternalServerError("failed to check workspace access")
 		}
@@ -953,10 +953,6 @@ func (h *PostHandler) GetScheduleOverview(api huma.API) {
 	}, func(ctx context.Context, input *ScheduleOverviewInput) (*ScheduleOverviewOutput, error) {
 		userID := middleware.GetUserID(ctx)
 		scopedWorkspaceID := strings.TrimSpace(middleware.GetWorkspaceID(ctx))
-		if input.WorkspaceID != "" && !middleware.WorkspaceScopeAllows(ctx, input.WorkspaceID) {
-			return nil, huma.Error403Forbidden("workspace not accessible")
-		}
-
 		var workspaces []models.Workspace
 		workspaceQuery := h.db.NewSelect().
 			Model(&workspaces).
@@ -972,7 +968,7 @@ func (h *PostHandler) GetScheduleOverview(api huma.API) {
 		}
 		accessibleWorkspaces := make([]models.Workspace, 0, len(workspaces))
 		for _, workspace := range workspaces {
-			allowed, accessErr := middleware.CheckWorkspaceAccess(ctx, h.db, workspace.ID, userID)
+			allowed, accessErr := workspaceReadAllowed(ctx, h.db, workspace.ID, userID)
 			if accessErr != nil {
 				return nil, huma.Error500InternalServerError("failed to check workspace access")
 			}
@@ -2255,7 +2251,7 @@ func (h *PostHandler) validateTextPostRepostOverride(
 	}
 	var err error
 	if h.reposts != nil {
-		override, err = h.reposts.ValidateOverride(ctx, workspaceID, userID, override)
+		override, err = h.reposts.ValidateOverride(ctx, workspaceID, userID, repostRequestCredential(ctx), override)
 	} else {
 		override, err = repostservice.NormalizeOverride(override)
 	}
@@ -2976,7 +2972,7 @@ func (h *PostHandler) deletePendingPublicationJobTx(ctx context.Context, tx bun.
 }
 
 func (h *PostHandler) checkWorkspaceAccess(ctx context.Context, workspaceID, userID string) error {
-	allowed, err := middleware.CheckWorkspaceAccess(ctx, h.db, workspaceID, userID)
+	allowed, err := workspaceReadAllowed(ctx, h.db, workspaceID, userID)
 	if err != nil {
 		return huma.Error500InternalServerError("failed to check workspace access")
 	}
@@ -2987,7 +2983,7 @@ func (h *PostHandler) checkWorkspaceAccess(ctx context.Context, workspaceID, use
 }
 
 func (h *PostHandler) checkWorkspaceEditAccess(ctx context.Context, workspaceID, userID string) error {
-	allowed, err := middleware.CheckWorkspaceEditAccess(ctx, h.db, workspaceID, userID)
+	allowed, err := workspaceEditAllowed(ctx, h.db, workspaceID, userID)
 	if err != nil {
 		return huma.Error500InternalServerError("failed to check workspace access")
 	}

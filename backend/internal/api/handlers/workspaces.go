@@ -22,6 +22,7 @@ import (
 	"github.com/openpost/backend/internal/services/organizationdeletion"
 	"github.com/openpost/backend/internal/services/ratelimit"
 	"github.com/openpost/backend/internal/services/setupprojection"
+	"github.com/openpost/backend/internal/services/workspaceaccess"
 	"github.com/openpost/backend/internal/services/workspacedeletion"
 	"github.com/openpost/backend/internal/services/workspaceteam"
 	"github.com/uptrace/bun"
@@ -886,17 +887,7 @@ func (h *WorkspaceHandler) acceptWorkspaceInvitation(
 	invitation models.WorkspaceInvitation,
 	userID string,
 ) (*AcceptWorkspaceInvitationOutput, error) {
-	if !middleware.WorkspaceScopeAllows(ctx, invitation.WorkspaceID) {
-		return nil, huma.Error403Forbidden("token is not scoped to this workspace")
-	}
-	decision, err := identity.EvaluateWorkspaceAccess(
-		ctx,
-		h.db,
-		invitation.WorkspaceID,
-		userID,
-		middleware.GetSessionID(ctx),
-		middleware.GetTokenID(ctx),
-	)
+	decision, err := workspaceaccess.NewAuthorizer(h.db).AuthorizePreMembership(ctx, invitation.WorkspaceID, workspaceActor(ctx, userID))
 	if err != nil {
 		return nil, huma.Error500InternalServerError("failed to evaluate workspace SSO policy")
 	}
@@ -959,7 +950,7 @@ func (h *WorkspaceHandler) checkCreateWorkspaceEntitlement(ctx context.Context, 
 }
 
 func (h *WorkspaceHandler) requireWorkspaceAccess(ctx context.Context, workspaceID, userID string) error {
-	allowed, err := middleware.CheckWorkspaceAccess(ctx, h.db, workspaceID, userID)
+	allowed, err := workspaceReadAllowed(ctx, h.db, workspaceID, userID)
 	if err != nil {
 		return huma.Error500InternalServerError(errValidateWorkspaceAccess)
 	}
@@ -970,7 +961,7 @@ func (h *WorkspaceHandler) requireWorkspaceAccess(ctx context.Context, workspace
 }
 
 func (h *WorkspaceHandler) requireWorkspaceAdmin(ctx context.Context, workspaceID, userID string) error {
-	allowed, err := middleware.CheckWorkspaceAdminAccess(ctx, h.db, workspaceID, userID)
+	allowed, err := workspaceAdminAllowed(ctx, h.db, workspaceID, userID)
 	if err != nil {
 		return huma.Error500InternalServerError(errValidateWorkspaceAccess)
 	}
@@ -1077,14 +1068,7 @@ func (h *WorkspaceHandler) ListWorkspaces(api huma.API) {
 
 		resp := &ListWorkspacesOutput{Body: []WorkspaceResponse{}}
 		for _, ws := range rows {
-			decision, err := identity.EvaluateWorkspaceAccess(
-				ctx,
-				h.db,
-				ws.ID,
-				userID,
-				middleware.GetSessionID(ctx),
-				middleware.GetTokenID(ctx),
-			)
+			decision, err := workspaceDecision(ctx, h.db, ws.ID, userID, workspaceaccess.LevelRead)
 			if err != nil {
 				return nil, huma.Error500InternalServerError("failed to evaluate workspace SSO policy")
 			}
@@ -1133,17 +1117,14 @@ func (h *WorkspaceHandler) GetWorkspaceSetup(api huma.API) {
 		Errors:      []int{403, 404},
 	}, func(ctx context.Context, input *GetWorkspaceSetupInput) (*GetWorkspaceSetupOutput, error) {
 		userID := middleware.GetUserID(ctx)
-		if !middleware.WorkspaceScopeAllows(ctx, input.PathID) {
-			return nil, huma.Error403Forbidden(errWorkspaceAccessDenied)
-		}
 		if err := h.requireWorkspaceAccess(ctx, input.PathID, userID); err != nil {
 			return nil, err
 		}
-		canEdit, err := middleware.CheckWorkspaceEditAccess(ctx, h.db, input.PathID, userID)
+		canEdit, err := workspaceEditAllowed(ctx, h.db, input.PathID, userID)
 		if err != nil {
 			return nil, huma.Error500InternalServerError(errValidateWorkspaceAccess)
 		}
-		canManageWorkspace, err := middleware.CheckWorkspaceAdminAccess(ctx, h.db, input.PathID, userID)
+		canManageWorkspace, err := workspaceAdminAllowed(ctx, h.db, input.PathID, userID)
 		if err != nil {
 			return nil, huma.Error500InternalServerError(errValidateWorkspaceAccess)
 		}
@@ -1182,10 +1163,7 @@ func (h *WorkspaceHandler) StartWorkspaceComposition(api huma.API) {
 		Errors:        []int{403, 404},
 	}, func(ctx context.Context, input *StartWorkspaceCompositionInput) (*StartWorkspaceCompositionOutput, error) {
 		userID := middleware.GetUserID(ctx)
-		if !middleware.WorkspaceScopeAllows(ctx, input.PathID) {
-			return nil, huma.Error403Forbidden(errWorkspaceAccessDenied)
-		}
-		canEdit, err := middleware.CheckWorkspaceEditAccess(ctx, h.db, input.PathID, userID)
+		canEdit, err := workspaceEditAllowed(ctx, h.db, input.PathID, userID)
 		if err != nil {
 			return nil, huma.Error500InternalServerError(errValidateWorkspaceAccess)
 		}
@@ -1563,11 +1541,7 @@ func (h *WorkspaceHandler) GetWorkspaceSettings(api huma.API) {
 		Errors:      []int{403, 404},
 	}, func(ctx context.Context, input *GetWorkspaceSettingsInput) (*GetWorkspaceSettingsOutput, error) {
 		userID := middleware.GetUserID(ctx)
-		if !middleware.WorkspaceScopeAllows(ctx, input.PathID) {
-			return nil, huma.Error403Forbidden(errWorkspaceAccessDenied)
-		}
-
-		allowed, err := middleware.CheckWorkspaceAccess(ctx, h.db, input.PathID, userID)
+		allowed, err := workspaceReadAllowed(ctx, h.db, input.PathID, userID)
 		if err != nil {
 			return nil, huma.Error500InternalServerError(errValidateWorkspaceAccess)
 		}

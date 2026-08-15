@@ -200,10 +200,7 @@ func activeAccountCount(accounts []models.SocialAccount) int {
 }
 
 func providerReadinessWorkspaceAccess(ctx context.Context, db *bun.DB, workspaceID, userID string) error {
-	if !middleware.WorkspaceScopeAllows(ctx, workspaceID) {
-		return huma.Error403Forbidden(errWorkspaceAccessDenied)
-	}
-	allowed, err := middleware.CheckWorkspaceAccess(ctx, db, workspaceID, userID)
+	allowed, err := workspaceReadAllowed(ctx, db, workspaceID, userID)
 	if err != nil {
 		return huma.Error500InternalServerError(errValidateWorkspaceAccess)
 	}

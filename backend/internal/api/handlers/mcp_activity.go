@@ -123,7 +123,7 @@ func (h *MCPActivityHandler) accessibleWorkspaceIDs(
 
 	workspaceIDs := make([]string, 0, len(members))
 	for _, member := range members {
-		allowed, err := middleware.CheckWorkspaceAccess(ctx, h.db, member.WorkspaceID, userID)
+		allowed, err := workspaceReadAllowed(ctx, h.db, member.WorkspaceID, userID)
 		if err != nil {
 			return nil, huma.Error500InternalServerError("failed to check workspace access")
 		}
@@ -135,10 +135,7 @@ func (h *MCPActivityHandler) accessibleWorkspaceIDs(
 }
 
 func (h *MCPActivityHandler) checkWorkspaceAccess(ctx context.Context, workspaceID, userID string) error {
-	if !middleware.WorkspaceScopeAllows(ctx, workspaceID) {
-		return huma.Error403Forbidden("workspace not accessible")
-	}
-	allowed, err := middleware.CheckWorkspaceAccess(ctx, h.db, workspaceID, userID)
+	allowed, err := workspaceReadAllowed(ctx, h.db, workspaceID, userID)
 	if err != nil {
 		return huma.Error500InternalServerError("failed to check workspace access")
 	}

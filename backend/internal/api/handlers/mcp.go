@@ -3127,7 +3127,7 @@ func (h *MCPHandler) ensureWorkspaceAccess(ctx context.Context, userID, workspac
 	if scopedWorkspaceID := mcpWorkspaceScopeFromContext(ctx); scopedWorkspaceID != "" && scopedWorkspaceID != workspaceID {
 		return &mcpError{Code: -32602, Message: "workspace outside token scope"}
 	}
-	allowed, err := middleware.CheckWorkspaceAccess(ctx, h.db, workspaceID, userID)
+	allowed, err := workspaceReadAllowed(ctx, h.db, workspaceID, userID)
 	if err != nil {
 		return &mcpError{Code: -32603, Message: "failed to check workspace access"}
 	}
@@ -3142,7 +3142,7 @@ func (h *MCPHandler) ensureWorkspaceEditAccess(ctx context.Context, userID, work
 	if rpcErr := h.ensureWorkspaceAccess(ctx, userID, workspaceID); rpcErr != nil {
 		return rpcErr
 	}
-	allowed, err := middleware.CheckWorkspaceEditAccess(ctx, h.db, workspaceID, userID)
+	allowed, err := workspaceEditAllowed(ctx, h.db, workspaceID, userID)
 	if err != nil {
 		return &mcpError{Code: -32603, Message: "failed to check workspace access"}
 	}
@@ -3181,7 +3181,7 @@ func (h *MCPHandler) listWorkspaces(ctx context.Context, userID string) (any, *m
 	workspaces := make([]mcpWorkspace, 0, len(rows))
 	names := make([]string, 0, len(rows))
 	for _, row := range rows {
-		allowed, accessErr := middleware.CheckWorkspaceAccess(ctx, h.db, row.ID, userID)
+		allowed, accessErr := workspaceReadAllowed(ctx, h.db, row.ID, userID)
 		if accessErr != nil {
 			return nil, &mcpError{Code: -32603, Message: "failed to check workspace access"}
 		}

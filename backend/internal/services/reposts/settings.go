@@ -13,7 +13,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/platform"
-	"github.com/openpost/backend/internal/services/identity"
 	"github.com/openpost/backend/internal/services/workspaceaccess"
 	"github.com/uptrace/bun"
 )
@@ -38,7 +37,7 @@ type credentialWorkspaceFilter struct {
 }
 
 func (s *Service) Settings(ctx context.Context, workspaceID, userID string, credential RequestCredential) (SettingsResponse, error) {
-	member, err := s.workspaceMember(ctx, workspaceID, userID)
+	role, err := s.workspaceRole(ctx, workspaceID, userID, credential, workspaceaccess.LevelRead)
 	if err != nil {
 		return SettingsResponse{}, err
 	}
@@ -50,7 +49,7 @@ func (s *Service) Settings(ctx context.Context, workspaceID, userID string, cred
 	if !allowed {
 		return SettingsResponse{}, ErrWorkspaceAccess
 	}
-	accounts, err := s.listAvailableAccounts(ctx, workspaceID, userID, member.Role == models.WorkspaceRoleAdmin, access)
+	accounts, err := s.listAvailableAccounts(ctx, workspaceID, userID, role == models.WorkspaceRoleAdmin, access)
 	if err != nil {
 		return SettingsResponse{}, err
 	}
@@ -65,7 +64,7 @@ func (s *Service) Settings(ctx context.Context, workspaceID, userID string, cred
 	}
 	return SettingsResponse{
 		WorkspaceID:        workspaceID,
-		CanManage:          member.Role == models.WorkspaceRoleAdmin,
+		CanManage:          role == models.WorkspaceRoleAdmin,
 		SupportedPlatforms: append([]string(nil), supportedPlatforms...),
 		Policies:           policies,
 		Accounts:           accounts,
@@ -81,7 +80,7 @@ func (s *Service) ReplacePolicies(
 	inputs []PolicyInput,
 	credential RequestCredential,
 ) (SettingsResponse, error) {
-	if err := s.requireWorkspaceAdmin(ctx, workspaceID, userID); err != nil {
+	if err := s.requireWorkspaceAdmin(ctx, workspaceID, userID, credential); err != nil {
 		return SettingsResponse{}, err
 	}
 	access := s.newCredentialWorkspaceFilter(userID, credential)
@@ -183,12 +182,12 @@ func (s *Service) ReplacePolicies(
 	return s.Settings(ctx, workspaceID, userID, credential)
 }
 
-func (s *Service) ValidateOverride(ctx context.Context, workspaceID, userID string, input Override) (Override, error) {
-	member, err := s.workspaceMember(ctx, workspaceID, userID)
+func (s *Service) ValidateOverride(ctx context.Context, workspaceID, userID string, credential RequestCredential, input Override) (Override, error) {
+	role, err := s.workspaceRole(ctx, workspaceID, userID, credential, workspaceaccess.LevelEdit)
 	if err != nil {
 		return Override{}, err
 	}
-	if member.Role != models.WorkspaceRoleAdmin && member.Role != models.WorkspaceRoleEditor {
+	if role != models.WorkspaceRoleAdmin && role != models.WorkspaceRoleEditor {
 		return Override{}, ErrWorkspaceAccess
 	}
 	normalized, err := NormalizeOverride(input)
@@ -241,7 +240,7 @@ func DecodeOverride(raw string) Override {
 	return normalized
 }
 
-func (s *Service) RevokeGrant(ctx context.Context, grantID, workspaceID, userID string) error {
+func (s *Service) RevokeGrant(ctx context.Context, grantID, workspaceID, userID string, credential RequestCredential) error {
 	var grant models.RepostAccountGrant
 	if err := s.db.NewSelect().Model(&grant).Where("id = ? AND revoked_at IS NULL", grantID).Scan(ctx); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -252,7 +251,7 @@ func (s *Service) RevokeGrant(ctx context.Context, grantID, workspaceID, userID 
 	if workspaceID != grant.SourceWorkspaceID && workspaceID != grant.TargetWorkspaceID {
 		return ErrGrantNotFound
 	}
-	if err := s.requireWorkspaceAdmin(ctx, workspaceID, userID); err != nil {
+	if err := s.requireWorkspaceAdmin(ctx, workspaceID, userID, credential); err != nil {
 		return err
 	}
 	now := time.Now().UTC()
@@ -265,24 +264,26 @@ func (s *Service) RevokeGrant(ctx context.Context, grantID, workspaceID, userID 
 	return err
 }
 
-func (s *Service) workspaceMember(ctx context.Context, workspaceID, userID string) (models.WorkspaceMember, error) {
-	member, ok, err := workspaceaccess.Member(ctx, s.db, workspaceID, userID)
+func (s *Service) workspaceRole(ctx context.Context, workspaceID, userID string, credential RequestCredential, level workspaceaccess.Level) (string, error) {
+	decision, err := workspaceaccess.NewAuthorizer(s.db).Authorize(ctx, workspaceID, workspaceaccess.ActorFacts{
+		UserID: userID, SessionID: credential.SessionID, TokenID: credential.TokenID, CredentialWorkspaceID: credential.WorkspaceID,
+	}, level)
 	if err != nil {
-		return member, err
+		return "", err
 	}
-	if !ok {
-		return member, ErrWorkspaceAccess
+	if !decision.Allowed {
+		return "", ErrWorkspaceAccess
 	}
-	return member, nil
+	return decision.Role, nil
 }
 
-func (s *Service) requireWorkspaceAdmin(ctx context.Context, workspaceID, userID string) error {
-	member, err := s.workspaceMember(ctx, workspaceID, userID)
+func (s *Service) requireWorkspaceAdmin(ctx context.Context, workspaceID, userID string, credential RequestCredential) error {
+	_, err := s.workspaceRole(ctx, workspaceID, userID, credential, workspaceaccess.LevelAdminister)
 	if err != nil {
+		if errors.Is(err, ErrWorkspaceAccess) {
+			return ErrWorkspaceAdmin
+		}
 		return err
-	}
-	if member.Role != models.WorkspaceRoleAdmin {
-		return ErrWorkspaceAdmin
 	}
 	return nil
 }
@@ -562,7 +563,7 @@ func (s *Service) validatePolicyAccounts(
 				if !allowed {
 					return ErrWorkspaceAccess
 				}
-				if err := s.requireWorkspaceAdmin(ctx, account.WorkspaceID, userID); err != nil {
+				if err := s.requireWorkspaceAdmin(ctx, account.WorkspaceID, userID, access.credential); err != nil {
 					return invalidInputf("target @%s requires admin access to its workspace", firstNonEmpty(account.AccountUsername, account.Slug))
 				}
 			}
@@ -588,19 +589,10 @@ func (f *credentialWorkspaceFilter) Allows(ctx context.Context, workspaceID stri
 	if allowed, ok := f.decisions[workspaceID]; ok {
 		return allowed, nil
 	}
-	boundWorkspaceID := strings.TrimSpace(f.credential.WorkspaceID)
-	if boundWorkspaceID != "" && boundWorkspaceID != workspaceID {
-		f.decisions[workspaceID] = false
-		return false, nil
-	}
-	decision, err := identity.EvaluateWorkspaceAccess(
-		ctx,
-		f.service.db,
-		workspaceID,
-		f.userID,
-		strings.TrimSpace(f.credential.SessionID),
-		strings.TrimSpace(f.credential.TokenID),
-	)
+	decision, err := workspaceaccess.NewAuthorizer(f.service.db).Authorize(ctx, workspaceID, workspaceaccess.ActorFacts{
+		UserID: f.userID, SessionID: f.credential.SessionID, TokenID: f.credential.TokenID,
+		CredentialWorkspaceID: f.credential.WorkspaceID,
+	}, workspaceaccess.LevelRead)
 	if err != nil {
 		return false, err
 	}

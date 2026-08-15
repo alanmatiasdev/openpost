@@ -30,10 +30,14 @@ type ActorFacts struct {
 
 // Decision separates a safe authorization denial from an operational failure.
 type Decision struct {
-	Allowed bool
-	Level   Level
-	Role    string
-	Reason  string
+	Allowed        bool
+	Level          Level
+	Role           string
+	Reason         string
+	SSORequired    bool
+	OrganizationID string
+	ProviderID     string
+	ProviderName   string
 }
 
 // Authorizer evaluates Workspace access using credential scope, Organization
@@ -46,6 +50,39 @@ type Authorizer struct {
 
 func NewAuthorizer(db bun.IDB) Authorizer {
 	return Authorizer{db: db}
+}
+
+// CredentialAllowsWorkspace applies only the authenticated credential's
+// optional Workspace boundary. It is used before membership exists, such as
+// invitation acceptance; ordinary application actions use Authorize.
+func CredentialAllowsWorkspace(actor ActorFacts, workspaceID string) bool {
+	actor = normalizeActor(actor)
+	workspaceID = strings.TrimSpace(workspaceID)
+	return workspaceID != "" && (actor.CredentialWorkspaceID == "" || actor.CredentialWorkspaceID == workspaceID)
+}
+
+// AuthorizePreMembership verifies the credential boundary and Organization
+// identity policy for a flow that may create membership. Invitation acceptance
+// is the only ordinary caller; content actions must use Authorize.
+func (a Authorizer) AuthorizePreMembership(ctx context.Context, workspaceID string, actor ActorFacts) (Decision, error) {
+	workspaceID = strings.TrimSpace(workspaceID)
+	actor = normalizeActor(actor)
+	decision := Decision{Level: LevelRead}
+	if actor.UserID == "" || !CredentialAllowsWorkspace(actor, workspaceID) {
+		decision.Reason = "credential is bound to another workspace"
+		return decision, nil
+	}
+	identityDecision, err := identity.EvaluateWorkspaceAccess(ctx, a.db, workspaceID, actor.UserID, actor.SessionID, actor.TokenID)
+	if err != nil {
+		return Decision{}, err
+	}
+	applyIdentityDecision(&decision, identityDecision)
+	if !identityDecision.Allowed {
+		decision.Reason = firstNonEmpty(identityDecision.Reason, "credential does not satisfy organization policy")
+		return decision, nil
+	}
+	decision.Allowed = true
+	return decision, nil
 }
 
 func (a Authorizer) Authorize(ctx context.Context, workspaceID string, actor ActorFacts, level Level) (Decision, error) {
@@ -62,13 +99,16 @@ func (a Authorizer) Authorize(ctx context.Context, workspaceID string, actor Act
 		return decision, nil
 	}
 
-	member, ok, err := Member(ctx, a.db, workspaceID, actor.UserID)
-	if err != nil {
-		return Decision{}, err
-	}
-	if !ok {
+	var member models.WorkspaceMember
+	err := a.db.NewSelect().Model(&member).
+		Where("workspace_id = ? AND user_id = ? AND status = ?", workspaceID, actor.UserID, models.WorkspaceMemberStatusActive).
+		Scan(ctx)
+	if errors.Is(err, sql.ErrNoRows) {
 		decision.Reason = "active workspace membership required"
 		return decision, nil
+	}
+	if err != nil {
+		return Decision{}, err
 	}
 	decision.Role = member.Role
 	if !roleMeetsLevel(member.Role, level) {
@@ -87,12 +127,20 @@ func (a Authorizer) Authorize(ctx context.Context, workspaceID string, actor Act
 	if err != nil {
 		return Decision{}, err
 	}
+	applyIdentityDecision(&decision, identityDecision)
 	if !identityDecision.Allowed {
 		decision.Reason = firstNonEmpty(identityDecision.Reason, "credential does not satisfy organization policy")
 		return decision, nil
 	}
 	decision.Allowed = true
 	return decision, nil
+}
+
+func applyIdentityDecision(decision *Decision, identityDecision identity.WorkspaceAccessDecision) {
+	decision.SSORequired = identityDecision.SSORequired
+	decision.OrganizationID = identityDecision.OrganizationID
+	decision.ProviderID = identityDecision.ProviderID
+	decision.ProviderName = identityDecision.ProviderName
 }
 
 func normalizeActor(actor ActorFacts) ActorFacts {
@@ -123,34 +171,6 @@ func roleMeetsLevel(role string, level Level) bool {
 	default:
 		return false
 	}
-}
-
-// Member returns an active workspace membership. Inactive members must not be
-// treated as authorized by API, OAuth, MCP, notification, or background-job
-// paths.
-func Member(ctx context.Context, db bun.IDB, workspaceID, userID string) (models.WorkspaceMember, bool, error) {
-	var member models.WorkspaceMember
-	err := db.NewSelect().
-		Model(&member).
-		Where("workspace_id = ? AND user_id = ? AND status = ?", strings.TrimSpace(workspaceID), strings.TrimSpace(userID), models.WorkspaceMemberStatusActive).
-		Scan(ctx)
-	if errors.Is(err, sql.ErrNoRows) {
-		return models.WorkspaceMember{}, false, nil
-	}
-	if err != nil {
-		return models.WorkspaceMember{}, false, err
-	}
-	return member, true, nil
-}
-
-func Allows(ctx context.Context, db bun.IDB, workspaceID, userID string) (bool, error) {
-	decision, err := NewAuthorizer(db).Authorize(ctx, workspaceID, ActorFacts{UserID: userID}, LevelRead)
-	return decision.Allowed, err
-}
-
-func IsAdmin(ctx context.Context, db bun.IDB, workspaceID, userID string) (bool, error) {
-	decision, err := NewAuthorizer(db).Authorize(ctx, workspaceID, ActorFacts{UserID: userID}, LevelAdminister)
-	return decision.Allowed, err
 }
 
 func firstNonEmpty(values ...string) string {

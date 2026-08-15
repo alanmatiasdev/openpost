@@ -190,7 +190,7 @@ func (h *PromptHandler) seedBuiltInPrompts(ctx context.Context) error {
 }
 
 func (h *PromptHandler) checkWorkspaceAccess(ctx context.Context, workspaceID, userID string) error {
-	allowed, err := middleware.CheckWorkspaceAccess(ctx, h.db, workspaceID, userID)
+	allowed, err := workspaceReadAllowed(ctx, h.db, workspaceID, userID)
 	if err != nil {
 		return huma.Error500InternalServerError(errValidateWorkspaceAccess)
 	}
@@ -201,7 +201,7 @@ func (h *PromptHandler) checkWorkspaceAccess(ctx context.Context, workspaceID, u
 }
 
 func (h *PromptHandler) checkWorkspaceEditAccess(ctx context.Context, workspaceID, userID string) error {
-	allowed, err := middleware.CheckWorkspaceEditAccess(ctx, h.db, workspaceID, userID)
+	allowed, err := workspaceEditAllowed(ctx, h.db, workspaceID, userID)
 	if err != nil {
 		return huma.Error500InternalServerError(errValidateWorkspaceAccess)
 	}
@@ -431,7 +431,7 @@ func (h *PromptHandler) DeletePrompt(api huma.API) {
 		if prompt.UserID != userID {
 			// Check if workspace admin
 			if prompt.WorkspaceID != "" {
-				allowed, err := middleware.CheckWorkspaceAdminAccess(ctx, h.db, prompt.WorkspaceID, userID)
+				allowed, err := workspaceAdminAllowed(ctx, h.db, prompt.WorkspaceID, userID)
 				if err != nil || !allowed {
 					return nil, huma.Error403Forbidden("you do not have permission to delete this prompt")
 				}

@@ -316,11 +316,11 @@ func (s *Service) normalizeWorkspaceScope(ctx context.Context, userID, workspace
 	if workspaceID == "" {
 		return "", nil
 	}
-	allowed, err := workspaceaccess.Allows(ctx, s.db, workspaceID, strings.TrimSpace(userID))
+	decision, err := workspaceaccess.NewAuthorizer(s.db).Authorize(ctx, workspaceID, workspaceaccess.ActorFacts{UserID: strings.TrimSpace(userID)}, workspaceaccess.LevelRead)
 	if err != nil {
 		return "", err
 	}
-	if !allowed {
+	if !decision.Allowed {
 		return "", ErrWorkspaceNotAllowed
 	}
 	return workspaceID, nil

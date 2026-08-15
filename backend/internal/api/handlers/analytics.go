@@ -110,9 +110,9 @@ func (h *AnalyticsHandler) requireWorkspaceAccess(ctx context.Context, workspace
 		err error
 	)
 	if edit {
-		ok, err = middleware.CheckWorkspaceEditAccess(ctx, h.db, workspaceID, middleware.GetUserID(ctx))
+		ok, err = workspaceEditAllowed(ctx, h.db, workspaceID, middleware.GetUserID(ctx))
 	} else {
-		ok, err = middleware.CheckWorkspaceAccess(ctx, h.db, workspaceID, middleware.GetUserID(ctx))
+		ok, err = workspaceReadAllowed(ctx, h.db, workspaceID, middleware.GetUserID(ctx))
 	}
 	if err != nil {
 		return huma.Error500InternalServerError("failed to verify workspace access")

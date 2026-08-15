@@ -1339,7 +1339,7 @@ type mediaUsageSummary struct {
 }
 
 func (h *MediaHandler) ensureMediaWorkspaceAccess(ctx context.Context, userID, workspaceID string) error {
-	allowed, err := middleware.CheckWorkspaceAccess(ctx, h.db, workspaceID, userID)
+	allowed, err := workspaceReadAllowed(ctx, h.db, workspaceID, userID)
 	if err != nil {
 		return huma.Error500InternalServerError(errValidateWorkspaceAccess)
 	}
@@ -1350,7 +1350,7 @@ func (h *MediaHandler) ensureMediaWorkspaceAccess(ctx context.Context, userID, w
 }
 
 func (h *MediaHandler) ensureMediaWorkspaceEditAccess(ctx context.Context, userID, workspaceID string) error {
-	allowed, err := middleware.CheckWorkspaceEditAccess(ctx, h.db, workspaceID, userID)
+	allowed, err := workspaceEditAllowed(ctx, h.db, workspaceID, userID)
 	if err != nil {
 		return huma.Error500InternalServerError(errValidateWorkspaceAccess)
 	}
@@ -3549,9 +3549,9 @@ func appendVaryHeaders(header http.Header, fields ...string) {
 }
 
 func (h *MediaHandler) userCanAccessWorkspace(ctx context.Context, workspaceID, userID string) (bool, error) {
-	return middleware.CheckWorkspaceAccess(ctx, h.db, workspaceID, userID)
+	return workspaceReadAllowed(ctx, h.db, workspaceID, userID)
 }
 
 func (h *MediaHandler) userCanEditWorkspace(ctx context.Context, workspaceID, userID string) (bool, error) {
-	return middleware.CheckWorkspaceEditAccess(ctx, h.db, workspaceID, userID)
+	return workspaceEditAllowed(ctx, h.db, workspaceID, userID)
 }

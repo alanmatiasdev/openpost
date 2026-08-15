@@ -7,6 +7,7 @@ All notable changes to this project are documented in this file.
 ### Changed
 
 - Split engagement and messaging refresh, persistence, provider seams, recurring Jobs, and retries into independent capability outcomes, and removed the transitional communications runtime.
+- Contracted REST, MCP, CLI, browser, and direct application Workspace authorization onto one read, edit, or administer decision, removed middleware-owned and membership-only policy helpers, and kept durable Jobs explicitly scoped without user impersonation.
 - Extracted Messaging into an independent application module with internal Workspace authorization, capability-specific provider access, stored conversation reads and mutations, durable sends, typed outcomes, provider-write fencing, and its own recurring collection chain over transitional sync-state storage.
 - Extracted Engagement into a transport-independent application module with internal Workspace authorization, a capability-specific provider port, stored read and archive state, typed outcomes, provider-write fencing, and its own recurring Job chain and health state.
 - Completed Publication-only composer recovery: media queues now belong to the Composer session module, editor returns are bound once to the original Workspace, Publication, and revision, Workspace changes preserve save, discard, or stay, and old Post links redirect to canonical Publication URLs without mounting a Post-backed composer.

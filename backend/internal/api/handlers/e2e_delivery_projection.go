@@ -138,7 +138,7 @@ func (h *E2EDeliveryProjectionHandler) loadProjectionScope(
 		}
 		return nil, nil, nil, http.StatusInternalServerError, "failed to load publication"
 	}
-	allowed, err := middleware.CheckWorkspaceEditAccess(ctx, h.db, publication.WorkspaceID, userID)
+	allowed, err := workspaceEditAllowed(ctx, h.db, publication.WorkspaceID, userID)
 	if err != nil {
 		return nil, nil, nil, http.StatusInternalServerError, "failed to check workspace access"
 	}

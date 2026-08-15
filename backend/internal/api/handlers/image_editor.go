@@ -728,7 +728,7 @@ func (h *ImageEditorHandler) ensureEnabled() error {
 
 func (h *ImageEditorHandler) requireAccess(ctx context.Context, workspaceID string, edit bool) (bool, error) {
 	userID := middleware.GetUserID(ctx)
-	role, ok, err := middleware.WorkspaceRole(ctx, h.db, workspaceID, userID)
+	role, ok, err := workspaceRole(ctx, h.db, workspaceID, userID)
 	if err != nil {
 		return false, huma.Error500InternalServerError(errValidateWorkspaceAccess)
 	}

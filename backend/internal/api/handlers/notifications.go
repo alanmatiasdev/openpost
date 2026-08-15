@@ -233,7 +233,7 @@ func (h *NotificationHandler) requireWorkspaceAccess(ctx context.Context, worksp
 	if strings.TrimSpace(workspaceID) == "" {
 		return huma.Error400BadRequest("workspace_id is required")
 	}
-	ok, err := middleware.CheckWorkspaceAccess(ctx, h.db, workspaceID, middleware.GetUserID(ctx))
+	ok, err := workspaceReadAllowed(ctx, h.db, workspaceID, middleware.GetUserID(ctx))
 	if err != nil {
 		return huma.Error500InternalServerError("failed to verify workspace access")
 	}

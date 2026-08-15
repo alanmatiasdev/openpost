@@ -250,7 +250,7 @@ func (h *CommentHandler) deleteComment(api huma.API) {
 }
 
 func (h *CommentHandler) checkWorkspaceEditAccess(ctx context.Context, workspaceID, userID string) error {
-	allowed, err := middleware.CheckWorkspaceEditAccess(ctx, h.db, workspaceID, userID)
+	allowed, err := workspaceEditAllowed(ctx, h.db, workspaceID, userID)
 	if err != nil {
 		return huma.Error500InternalServerError(errValidateWorkspaceAccess)
 	}

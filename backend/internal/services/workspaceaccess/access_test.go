@@ -31,12 +31,20 @@ func TestInactiveMemberHasNoWorkspaceAccess(t *testing.T) {
 	}).Exec(context.Background())
 	require.NoError(t, err)
 
-	allowed, err := Allows(context.Background(), db, "workspace-1", "user-1")
+	decision, err := NewAuthorizer(db).Authorize(context.Background(), "workspace-1", ActorFacts{UserID: "user-1"}, LevelRead)
 	require.NoError(t, err)
-	require.False(t, allowed)
-	admin, err := IsAdmin(context.Background(), db, "workspace-1", "user-1")
+	require.False(t, decision.Allowed)
+	decision, err = NewAuthorizer(db).Authorize(context.Background(), "workspace-1", ActorFacts{UserID: "user-1"}, LevelAdminister)
 	require.NoError(t, err)
-	require.False(t, admin)
+	require.False(t, decision.Allowed)
+}
+
+func TestCredentialWorkspaceBoundaryCanBeCheckedBeforeMembershipExists(t *testing.T) {
+	actor := ActorFacts{UserID: "invitee-1", CredentialWorkspaceID: "workspace-1"}
+	require.True(t, CredentialAllowsWorkspace(actor, "workspace-1"))
+	require.False(t, CredentialAllowsWorkspace(actor, "workspace-2"))
+	require.False(t, CredentialAllowsWorkspace(actor, ""))
+	require.True(t, CredentialAllowsWorkspace(ActorFacts{UserID: "invitee-1"}, "workspace-2"))
 }
 
 func TestAuthorizeCombinesCredentialPolicyMembershipAndLevel(t *testing.T) {

@@ -598,7 +598,7 @@ func (h *VideoEditorHandler) requireAccess(
 	workspaceID string,
 	edit bool,
 ) (bool, error) {
-	role, ok, err := middleware.WorkspaceRole(ctx, h.db, workspaceID, middleware.GetUserID(ctx))
+	role, ok, err := workspaceRole(ctx, h.db, workspaceID, middleware.GetUserID(ctx))
 	if err != nil {
 		return false, huma.Error500InternalServerError(errValidateWorkspaceAccess)
 	}

@@ -137,7 +137,7 @@ func TestCrossWorkspaceOverrideRequiresGrant(t *testing.T) {
 	require.NoError(t, insertModels(ctx, db, &target))
 	service := NewService(db, testTokenSource{})
 	service.SetProvider("x", &testRepostAdapter{})
-	_, err := service.ValidateOverride(ctx, sourceWorkspace.ID, user.ID, Override{
+	_, err := service.ValidateOverride(ctx, sourceWorkspace.ID, user.ID, RequestCredential{}, Override{
 		Mode: ModeCustom, TargetAccountIDs: []string{target.ID}, Rule: Rule{EvaluationWindowSeconds: 900, ThresholdMode: ThresholdAll, PlateauChecks: 2},
 	})
 	require.ErrorContains(t, err, "requires a workspace grant")

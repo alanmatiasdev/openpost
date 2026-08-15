@@ -643,7 +643,7 @@ func (h *BillingHandler) createCheckout(ctx context.Context, input *CreateBillin
 		return nil, err
 	}
 	if workspaceID != "" {
-		allowed, accessErr := middleware.CheckWorkspaceAdminAccess(ctx, h.db, workspaceID, userID)
+		allowed, accessErr := workspaceAdminAllowed(ctx, h.db, workspaceID, userID)
 		if accessErr != nil {
 			return nil, huma.Error500InternalServerError("failed to check workspace admin access")
 		}
@@ -731,7 +731,7 @@ func (h *BillingHandler) createPortalSession(ctx context.Context, input *CreateB
 		return nil, err
 	}
 	if workspaceID != "" {
-		allowed, accessErr := middleware.CheckWorkspaceAdminAccess(ctx, h.db, workspaceID, userID)
+		allowed, accessErr := workspaceAdminAllowed(ctx, h.db, workspaceID, userID)
 		if accessErr != nil {
 			return nil, huma.Error500InternalServerError("failed to check workspace admin access")
 		}
@@ -881,10 +881,7 @@ func (h *BillingHandler) ensureReady() error {
 }
 
 func (h *BillingHandler) checkWorkspaceAccess(ctx context.Context, workspaceID, userID string) error {
-	if !middleware.WorkspaceScopeAllows(ctx, workspaceID) {
-		return huma.Error403Forbidden("workspace not accessible")
-	}
-	allowed, err := middleware.CheckWorkspaceAccess(ctx, h.db, workspaceID, userID)
+	allowed, err := workspaceReadAllowed(ctx, h.db, workspaceID, userID)
 	if err != nil {
 		return huma.Error500InternalServerError("failed to check workspace access")
 	}

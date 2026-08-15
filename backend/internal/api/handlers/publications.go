@@ -2953,10 +2953,7 @@ func (h *PublicationHandler) checkWorkspaceAccess(ctx context.Context, workspace
 	if workspaceID == "" {
 		return huma.Error400BadRequest(errWorkspaceIDRequired)
 	}
-	if !middleware.WorkspaceScopeAllows(ctx, workspaceID) {
-		return huma.Error403Forbidden(errWorkspaceAccessDenied)
-	}
-	allowed, err := middleware.CheckWorkspaceAccess(ctx, h.db, workspaceID, userID)
+	allowed, err := workspaceReadAllowed(ctx, h.db, workspaceID, userID)
 	if err != nil {
 		return huma.Error500InternalServerError(errValidateWorkspaceAccess)
 	}
@@ -2967,7 +2964,7 @@ func (h *PublicationHandler) checkWorkspaceAccess(ctx context.Context, workspace
 }
 
 func (h *PublicationHandler) checkWorkspaceEditAccess(ctx context.Context, workspaceID, userID string) error {
-	allowed, err := middleware.CheckWorkspaceEditAccess(ctx, h.db, workspaceID, userID)
+	allowed, err := workspaceEditAllowed(ctx, h.db, workspaceID, userID)
 	if err != nil {
 		return huma.Error500InternalServerError(errValidateWorkspaceAccess)
 	}
@@ -3829,7 +3826,7 @@ func (h *PublicationHandler) validateRepostOverride(ctx context.Context, workspa
 	if h.reposts == nil {
 		return repostservice.NormalizeOverride(input)
 	}
-	return h.reposts.ValidateOverride(ctx, workspaceID, userID, input)
+	return h.reposts.ValidateOverride(ctx, workspaceID, userID, repostRequestCredential(ctx), input)
 }
 
 func renditionResponse(rendition models.Rendition, media []MediaSummary) RenditionResponse {

@@ -1750,7 +1750,7 @@ func parseAccountSelectionOptions(raw string) ([]platform.AccountSelectionOption
 }
 
 func (h *OAuthHandler) checkWorkspaceAccess(ctx context.Context, workspaceID, userID string) error {
-	allowed, err := middleware.CheckWorkspaceAccess(ctx, h.db, workspaceID, userID)
+	allowed, err := workspaceReadAllowed(ctx, h.db, workspaceID, userID)
 	if err != nil {
 		return huma.Error500InternalServerError("failed to check workspace access")
 	}
@@ -1761,7 +1761,7 @@ func (h *OAuthHandler) checkWorkspaceAccess(ctx context.Context, workspaceID, us
 }
 
 func (h *OAuthHandler) checkWorkspaceEditAccess(ctx context.Context, workspaceID, userID string) error {
-	allowed, err := middleware.CheckWorkspaceEditAccess(ctx, h.db, workspaceID, userID)
+	allowed, err := workspaceEditAllowed(ctx, h.db, workspaceID, userID)
 	if err != nil {
 		return huma.Error500InternalServerError("failed to check workspace access")
 	}

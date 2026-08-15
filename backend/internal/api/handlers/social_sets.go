@@ -269,11 +269,8 @@ func requireSocialSetWorkspaceAccess(ctx context.Context, db *bun.DB, workspaceI
 	if workspaceID == "" {
 		return huma.Error400BadRequest(errWorkspaceIDRequired)
 	}
-	if !middleware.WorkspaceScopeAllows(ctx, workspaceID) {
-		return huma.Error403Forbidden(errWorkspaceAccessDenied)
-	}
 	if edit {
-		allowed, err := middleware.CheckWorkspaceEditAccess(ctx, db, workspaceID, userID)
+		allowed, err := workspaceEditAllowed(ctx, db, workspaceID, userID)
 		if err != nil {
 			return huma.Error500InternalServerError(errValidateWorkspaceAccess)
 		}
@@ -282,7 +279,7 @@ func requireSocialSetWorkspaceAccess(ctx context.Context, db *bun.DB, workspaceI
 		}
 		return nil
 	}
-	allowed, err := middleware.CheckWorkspaceAccess(ctx, db, workspaceID, userID)
+	allowed, err := workspaceReadAllowed(ctx, db, workspaceID, userID)
 	if err != nil {
 		return huma.Error500InternalServerError(errValidateWorkspaceAccess)
 	}

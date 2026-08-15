@@ -158,7 +158,7 @@ func (h *APITokenHandler) resolveTokenWorkspace(ctx context.Context, userID, req
 	if h.db == nil {
 		return "", huma.Error500InternalServerError("failed to check workspace access")
 	}
-	ok, err := middleware.CheckWorkspaceAccess(ctx, h.db, workspaceID, userID)
+	ok, err := workspaceReadAllowed(ctx, h.db, workspaceID, userID)
 	if err != nil {
 		return "", huma.Error500InternalServerError("failed to check workspace access")
 	}

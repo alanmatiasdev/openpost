@@ -26,7 +26,7 @@ func NewPostingScheduleHandler(db *bun.DB, authenticator middleware.Authenticato
 }
 
 func (h *PostingScheduleHandler) checkWorkspaceAccess(ctx context.Context, workspaceID, userID string) error {
-	allowed, err := middleware.CheckWorkspaceAccess(ctx, h.db, workspaceID, userID)
+	allowed, err := workspaceReadAllowed(ctx, h.db, workspaceID, userID)
 	if err != nil {
 		return huma.Error500InternalServerError(errValidateWorkspaceAccess)
 	}
@@ -37,7 +37,7 @@ func (h *PostingScheduleHandler) checkWorkspaceAccess(ctx context.Context, works
 }
 
 func (h *PostingScheduleHandler) checkWorkspaceAdminAccess(ctx context.Context, workspaceID, userID string) error {
-	allowed, err := middleware.CheckWorkspaceAdminAccess(ctx, h.db, workspaceID, userID)
+	allowed, err := workspaceAdminAllowed(ctx, h.db, workspaceID, userID)
 	if err != nil {
 		return huma.Error500InternalServerError(errValidateWorkspaceAccess)
 	}

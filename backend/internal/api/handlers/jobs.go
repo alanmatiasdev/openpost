@@ -296,7 +296,7 @@ func (h *JobHandler) allowedWorkspaces(ctx context.Context, userID string, isAdm
 			return map[string]bool{requestedWorkspaceID: true}, nil
 		}
 
-		allowed, err := middleware.CheckWorkspaceAccess(ctx, h.db, requestedWorkspaceID, userID)
+		allowed, err := workspaceReadAllowed(ctx, h.db, requestedWorkspaceID, userID)
 		if err != nil {
 			return nil, err
 		}
@@ -308,7 +308,7 @@ func (h *JobHandler) allowedWorkspaces(ctx context.Context, userID string, isAdm
 
 	if scopedWorkspaceID != "" {
 		if !browserAdmin {
-			allowed, err := middleware.CheckWorkspaceAccess(ctx, h.db, scopedWorkspaceID, userID)
+			allowed, err := workspaceReadAllowed(ctx, h.db, scopedWorkspaceID, userID)
 			if err != nil {
 				return nil, err
 			}
@@ -343,7 +343,7 @@ func (h *JobHandler) filterAccessibleMemberWorkspaces(
 ) (map[string]bool, error) {
 	allowed := make(map[string]bool, len(members))
 	for _, member := range members {
-		workspaceAllowed, err := middleware.CheckWorkspaceAccess(ctx, h.db, member.WorkspaceID, userID)
+		workspaceAllowed, err := workspaceReadAllowed(ctx, h.db, member.WorkspaceID, userID)
 		if err != nil {
 			return nil, err
 		}
