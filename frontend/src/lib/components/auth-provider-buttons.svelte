@@ -31,19 +31,15 @@
 
 	function startURL(provider: OIDCProvider) {
 		const base = getApiBase().replace(/\/$/, '');
-		const query = new URLSearchParams({
-			return_path: returnPath,
-			...(signup
-				? {
-						signup: 'true',
-						plan_id: purchaseChoice?.plan_id ?? '',
-						billing_period: purchaseChoice?.billing_period ?? '',
-						purchase_choice_token: purchaseChoice?.token ?? '',
-						telemetry_id: telemetryDistinctID()
-					}
-				: {}),
-			...(IS_CAPACITOR ? { native: 'true' } : {})
-		});
+		const query = new URLSearchParams({ return_path: returnPath });
+		if (signup) {
+			query.set('signup', 'true');
+			query.set('plan_id', purchaseChoice?.plan_id ?? '');
+			query.set('billing_period', purchaseChoice?.billing_period ?? '');
+			query.set('purchase_choice_token', purchaseChoice?.token ?? '');
+			query.set('telemetry_id', telemetryDistinctID());
+		}
+		if (IS_CAPACITOR) query.set('native', 'true');
 		return `${base}/auth/oidc/${encodeURIComponent(provider.id)}/start?${query}`;
 	}
 

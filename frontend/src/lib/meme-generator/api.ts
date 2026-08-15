@@ -33,16 +33,12 @@ export class MemeGeneratorRequestError extends Error {
 
 function responseData<T>(
 	data: T | undefined,
-	error: unknown,
+	error: APIProblem | undefined,
 	response: Response,
 	fallback: string
 ): T {
 	if (error || !data) {
-		const problem = error as APIProblem | undefined;
-		throw new MemeGeneratorRequestError(
-			problem?.detail ?? problem?.title ?? fallback,
-			response.status
-		);
+		throw new MemeGeneratorRequestError(error?.detail ?? error?.title ?? fallback, response.status);
 	}
 	return data;
 }
@@ -143,15 +139,16 @@ export async function suggestMemes({
 }
 
 function recipeBody(input: MemeRecipeInput) {
-	return {
+	const body: components['schemas']['RenderMemeInputBody'] = {
 		workspace_id: input.workspaceId,
 		template_id: input.templateId,
 		captions: input.captions,
 		overlay_media_ids: input.overlayMediaIds,
-		format: input.format,
-		...(input.altText ? { alt_text: input.altText } : {}),
-		...(input.parentMediaId ? { parent_media_id: input.parentMediaId } : {})
+		format: input.format
 	};
+	if (input.altText) body.alt_text = input.altText;
+	if (input.parentMediaId) body.parent_media_id = input.parentMediaId;
+	return body;
 }
 
 export async function previewMeme(input: MemeRecipeInput): Promise<MemePreviewResult> {

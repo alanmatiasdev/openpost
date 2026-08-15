@@ -6,6 +6,7 @@
 	import InlineNotice from '$lib/components/inline-notice.svelte';
 	import LoaderIcon from '@lucide/svelte/icons/loader-2';
 	import { client } from '$lib/api/client';
+	import type { components } from '$lib/api/types';
 	import { workspaceCtx } from '$lib/stores/workspace.svelte';
 	import { m } from '$lib/paraglide/messages';
 
@@ -43,8 +44,10 @@
 		error = '';
 		try {
 			const organizationID = workspaceCtx.currentWorkspace?.organization_id?.trim() ?? '';
+			const body: components['schemas']['CreateWorkspaceInputBody'] = { name };
+			if (organizationID) body.organization_id = organizationID;
 			const { data, error: responseError } = await client.POST('/workspaces', {
-				body: { name, ...(organizationID ? { organization_id: organizationID } : {}) }
+				body
 			});
 			if (responseError || !data?.id) {
 				throw new Error(responseError?.detail || m.onboarding_create_failed());

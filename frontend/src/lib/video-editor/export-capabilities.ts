@@ -31,6 +31,10 @@ export interface ExportCodecProbe {
 	audio(config: AudioEncoderConfig): Promise<boolean>;
 }
 
+interface AACAudioEncoderConfig extends AudioEncoderConfig {
+	aac?: { format: 'aac' };
+}
+
 const MIN_H264_BITRATE = 2_500_000;
 const MIN_WEBM_BITRATE = 1_500_000;
 
@@ -106,17 +110,15 @@ export async function probeExportEncoderPlan(
 	probe: ExportCodecProbe = browserCodecProbe()
 ): Promise<ExportEncoderPlan> {
 	const audioCodec: ExportAudioCodec = request.format === 'mp4' ? 'aac' : 'opus';
-	if (
-		request.hasAudio &&
-		!(await probe.audio({
-			codec: audioCodec === 'aac' ? 'mp4a.40.2' : 'opus',
-			numberOfChannels: 2,
-			sampleRate: 48_000,
-			bitrate: request.audioBitrate,
-			bitrateMode: 'variable',
-			...(audioCodec === 'aac' ? { aac: { format: 'aac' as const } } : {})
-		}))
-	) {
+	const audioConfig: AACAudioEncoderConfig = {
+		codec: audioCodec === 'aac' ? 'mp4a.40.2' : 'opus',
+		numberOfChannels: 2,
+		sampleRate: 48_000,
+		bitrate: request.audioBitrate,
+		bitrateMode: 'variable'
+	};
+	if (audioCodec === 'aac') audioConfig.aac = { format: 'aac' };
+	if (request.hasAudio && !(await probe.audio(audioConfig))) {
 		throw new Error(
 			request.format === 'mp4'
 				? 'This browser cannot encode AAC-LC audio at 48 kHz stereo. MP4 export is unavailable for this project.'
@@ -125,7 +127,7 @@ export async function probeExportEncoderPlan(
 	}
 
 	for (const candidate of exportVideoCandidates(request)) {
-		const supported = await probe.video({
+		const videoConfig: VideoEncoderConfig = {
 			codec: candidate.fullCodecString,
 			width: request.width,
 			height: request.height,
@@ -134,9 +136,10 @@ export async function probeExportEncoderPlan(
 			alpha: 'discard',
 			bitrateMode: 'variable',
 			hardwareAcceleration: candidate.hardwareAcceleration,
-			latencyMode: 'quality',
-			...(candidate.codec === 'avc' ? { avc: { format: 'avc' as const } } : {})
-		});
+			latencyMode: 'quality'
+		};
+		if (candidate.codec === 'avc') videoConfig.avc = { format: 'avc' };
+		const supported = await probe.video(videoConfig);
 		if (supported) {
 			return {
 				...candidate,

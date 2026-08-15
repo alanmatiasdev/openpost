@@ -11,6 +11,30 @@
 		y: string;
 	}
 
+	interface EncodedMediaTag {
+		username?: string;
+		product_id?: string;
+		x?: number;
+		y?: number;
+	}
+
+	type StoredMediaTagValue =
+		| string
+		| number
+		| boolean
+		| null
+		| StoredMediaTagValue[]
+		| { [key: string]: StoredMediaTagValue };
+
+	function storedTagFields(value: StoredMediaTagValue): Map<string, StoredMediaTagValue> {
+		if (value === null || Array.isArray(value) || !(value instanceof Object)) return new Map();
+		return new Map(Object.entries(value));
+	}
+
+	function storedTagString(value: StoredMediaTagValue | undefined): string {
+		return String(value) === value ? String(value) : String(value ?? '');
+	}
+
 	interface Props {
 		id: string;
 		value?: string;
@@ -36,13 +60,16 @@
 	function parseTags(raw: string, key: Props['valueKey']): MediaTag[] {
 		if (!raw.trim()) return [];
 		try {
-			const parsed = JSON.parse(raw);
+			const parsed: StoredMediaTagValue = JSON.parse(raw);
 			if (!Array.isArray(parsed)) return [];
-			return parsed.map((tag) => ({
-				value: typeof tag?.[key] === 'string' ? tag[key] : String(tag?.[key] ?? ''),
-				x: tag?.x === undefined ? '' : String(tag.x),
-				y: tag?.y === undefined ? '' : String(tag.y)
-			}));
+			return parsed.map((tag) => {
+				const fields = storedTagFields(tag);
+				return {
+					value: storedTagString(fields.get(key)),
+					x: fields.has('x') ? storedTagString(fields.get('x')) : '',
+					y: fields.has('y') ? storedTagString(fields.get('y')) : ''
+				};
+			});
 		} catch {
 			return [];
 		}
@@ -51,11 +78,14 @@
 	function emit(next: MediaTag[]) {
 		const encoded = next
 			.filter((tag) => tag.value.trim() || tag.x || tag.y)
-			.map((tag) => ({
-				[valueKey]: tag.value.trim(),
-				...(tag.x !== '' ? { x: Number(tag.x) } : {}),
-				...(tag.y !== '' ? { y: Number(tag.y) } : {})
-			}));
+			.map((tag) => {
+				const encodedTag: EncodedMediaTag = { [valueKey]: tag.value.trim() };
+				const x = Number(tag.x);
+				const y = Number(tag.y);
+				if (tag.x !== '' && Number.isFinite(x)) encodedTag.x = x;
+				if (tag.y !== '' && Number.isFinite(y)) encodedTag.y = y;
+				return encodedTag;
+			});
 		onChange(encoded.length > 0 ? JSON.stringify(encoded) : '');
 	}
 

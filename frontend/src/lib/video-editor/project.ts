@@ -99,9 +99,9 @@ export async function addFileToProject(
 		height: metadata.height,
 		rotation: 0,
 		video_codec: metadata.video_codec,
-		audio_codec: metadata.audio_codec,
-		...(options.provenance ? { provenance: structuredClone(options.provenance) } : {})
+		audio_codec: metadata.audio_codec
 	};
+	if (options.provenance) source.provenance = structuredClone(options.provenance);
 	project.document.sources[sourceID] = source;
 	if (
 		options.addToPrimary !== false &&

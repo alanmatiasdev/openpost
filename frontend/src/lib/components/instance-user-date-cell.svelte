@@ -8,12 +8,16 @@
 		if (!value) return m.settings_never();
 		const date = new Date(value);
 		if (Number.isNaN(date.getTime())) return m.settings_never();
-		return new Intl.DateTimeFormat(getLocaleTag(), {
+		const options: Intl.DateTimeFormatOptions = {
 			year: 'numeric',
 			month: 'short',
-			day: 'numeric',
-			...(includeTime ? { hour: 'numeric', minute: '2-digit' } : {})
-		}).format(date);
+			day: 'numeric'
+		};
+		if (includeTime) {
+			options.hour = 'numeric';
+			options.minute = '2-digit';
+		}
+		return new Intl.DateTimeFormat(getLocaleTag(), options).format(date);
 	});
 </script>
 

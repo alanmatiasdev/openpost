@@ -77,9 +77,10 @@ export const apiTokenScopeOptions = [
 	'mcp:full',
 	'cli:full'
 ] as const satisfies readonly APITokenScope[];
+const apiTokenScopes = new Set<string>(apiTokenScopeOptions);
 
 export function isAPITokenScope(value: string): value is APITokenScope {
-	return (apiTokenScopeOptions as readonly string[]).includes(value);
+	return apiTokenScopes.has(value);
 }
 
 export type APITokenExpiryPreset = '30' | '90' | '365' | 'custom';
@@ -117,16 +118,15 @@ export function buildProfileUpdateBody(input: {
 	publicProfileEnabled: boolean;
 	publicProfileVisibleFields: string[];
 }) {
-	return {
+	const body: components['schemas']['UpdateProfileInputBody'] = {
 		display_name: input.displayName,
-		username: input.username,
-		...(input.publicProfilesAvailable === true
-			? {
-					public_profile_enabled: input.publicProfileEnabled,
-					public_profile_visible_fields: input.publicProfileVisibleFields
-				}
-			: {})
+		username: input.username
 	};
+	if (input.publicProfilesAvailable === true) {
+		body.public_profile_enabled = input.publicProfileEnabled;
+		body.public_profile_visible_fields = input.publicProfileVisibleFields;
+	}
+	return body;
 }
 
 export const billingPlans = [

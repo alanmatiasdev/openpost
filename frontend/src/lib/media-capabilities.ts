@@ -151,7 +151,7 @@ function validateBlueskyMedia(media: MediaCapabilityItem[]): MediaCapabilityIssu
 		if (normalizeMime(item.mimeType) !== videoTypeMP4) {
 			return [issue('bluesky', 'error', 'Bluesky supports MP4 video only.', item.id)];
 		}
-		if (typeof item.size === 'number' && item.size > blueskyVideoLimitBytes) {
+		if (Number.isFinite(item.size) && Number(item.size) > blueskyVideoLimitBytes) {
 			return [issue('bluesky', 'error', 'Bluesky video must be under 100MB.', item.id)];
 		}
 	}
@@ -365,7 +365,9 @@ function issue(
 	message: string,
 	mediaId?: string
 ): MediaCapabilityIssue {
-	return { provider, severity, message, ...(mediaId ? { mediaId } : {}) };
+	const capabilityIssue: MediaCapabilityIssue = { provider, severity, message };
+	if (mediaId) capabilityIssue.mediaId = mediaId;
+	return capabilityIssue;
 }
 
 function isVideoMime(mimeType: string): boolean {

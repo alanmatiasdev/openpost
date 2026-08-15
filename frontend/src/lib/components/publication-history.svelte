@@ -88,7 +88,7 @@
 		else loading = true;
 		error = '';
 		try {
-			const query = { limit: 30, ...(cursor ? { cursor } : {}) };
+			const query = { limit: 30, cursor: cursor || undefined };
 			const response = await client.GET('/publications/{id}/events', {
 				params: { path: { id }, query }
 			});

@@ -27,12 +27,13 @@ export async function generateImageAltText(
 	options: ImageCaptionOptions
 ): Promise<ImageCaptionResult | null> {
 	const postContext = boundImageCaptionPostContext(options.postContext ?? '');
+	const body: components['schemas']['GenerateMediaAltTextInputBody'] = {
+		locale: options.locale
+	};
+	if (postContext) body.post_context = postContext;
 	const { data, error, response } = await client.POST('/media/{id}/alt-text/generate', {
 		params: { path: { id: mediaID } },
-		body: {
-			locale: options.locale,
-			...(postContext ? { post_context: postContext } : {})
-		},
+		body,
 		signal: options.signal
 	});
 

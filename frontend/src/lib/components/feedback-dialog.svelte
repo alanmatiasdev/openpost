@@ -8,6 +8,7 @@
 	import * as RadioGroup from '$lib/components/ui/radio-group';
 	import InlineNotice from '$lib/components/inline-notice.svelte';
 	import { client } from '$lib/api/client';
+	import type { components } from '$lib/api/types';
 	import { feedbackDiagnostics, type FeedbackDiagnosticsSnapshot } from '$lib/feedback-diagnostics';
 	import { ui } from '$lib/stores/ui.svelte';
 	import { m } from '$lib/paraglide/messages';
@@ -210,20 +211,16 @@
 		error = '';
 		try {
 			const encodedScreenshot = screenshotDataURL.split(',', 2)[1] ?? '';
+			const body: components['schemas']['SubmitFeedbackInputBody'] = {
+				category,
+				message: message.trim()
+			};
+			if (includeScreenshot && encodedScreenshot) {
+				body.screenshot = { mime_type: 'image/jpeg', data: encodedScreenshot };
+			}
+			if (includeDiagnostics) body.diagnostics = diagnosticsSnapshot();
 			const { error: submitError } = await client.POST('/feedback', {
-				body: {
-					category,
-					message: message.trim(),
-					...(includeScreenshot && encodedScreenshot
-						? {
-								screenshot: {
-									mime_type: 'image/jpeg',
-									data: encodedScreenshot
-								}
-							}
-						: {}),
-					...(includeDiagnostics ? { diagnostics: diagnosticsSnapshot() } : {})
-				}
+				body
 			});
 			if (submitError) {
 				throw new Error(submitError.detail || m.feedback_send_failed());

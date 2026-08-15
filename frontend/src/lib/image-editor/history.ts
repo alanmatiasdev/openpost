@@ -51,20 +51,19 @@ export class ImageEditorHistory<T, C = undefined> {
 			previous.createdAt = now;
 			previous.estimatedBytes = this.entryBytes(previous.before, previous.after);
 		} else {
-			this.undoStack.push({
+			const entry: HistoryEntry<T, C> = {
 				label: command.label,
 				before,
 				after,
 				coalesceKey: command.coalesceKey,
 				createdAt: now,
-				estimatedBytes: this.entryBytes(before, after),
-				...(command.context === undefined
-					? {}
-					: {
-							beforeContext: this.cloneContext(command.context),
-							afterContext: this.cloneContext(command.context)
-						})
-			});
+				estimatedBytes: this.entryBytes(before, after)
+			};
+			if (command.context !== undefined) {
+				entry.beforeContext = this.cloneContext(command.context);
+				entry.afterContext = this.cloneContext(command.context);
+			}
+			this.undoStack.push(entry);
 		}
 		this.redoStack = [];
 		this.trim();
@@ -80,16 +79,17 @@ export class ImageEditorHistory<T, C = undefined> {
 		afterContext?: C
 	): void {
 		if (this.equal(before, after)) return;
-		this.undoStack.push({
+		const entry: HistoryEntry<T, C> = {
 			label,
 			before: this.clone(before),
 			after: this.clone(after),
 			coalesceKey,
 			createdAt: Date.now(),
-			estimatedBytes: this.entryBytes(before, after),
-			...(beforeContext === undefined ? {} : { beforeContext: this.cloneContext(beforeContext) }),
-			...(afterContext === undefined ? {} : { afterContext: this.cloneContext(afterContext) })
-		});
+			estimatedBytes: this.entryBytes(before, after)
+		};
+		if (beforeContext !== undefined) entry.beforeContext = this.cloneContext(beforeContext);
+		if (afterContext !== undefined) entry.afterContext = this.cloneContext(afterContext);
+		this.undoStack.push(entry);
 		this.redoStack = [];
 		this.trim();
 	}
