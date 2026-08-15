@@ -80,6 +80,7 @@ backend/media/
 .pre-commit-config.yaml
 .codex/*
 !.codex/hooks.json
+.commandcode/
 .impeccable/config.local.json
 .impeccable/hook.cache.json
 TODO.md
