@@ -29,19 +29,58 @@ type FabricObject = InstanceType<FabricModule['FabricObject']> & {
 	snapThreshold?: number;
 	__corner?: string;
 };
-type FabricTextObject = FabricObject & {
-	text?: string;
-	initDimensions?: () => void;
-	enterEditing?: () => void;
-	selectAll?: () => void;
+
+interface FabricObjectCollection extends FabricObject {
+	getObjects(): InstanceType<FabricModule['FabricObject']>[];
+}
+
+interface EditableFabricText extends FabricObject {
+	text: string;
+	initDimensions(): void;
+	enterEditing(): void;
+	selectAll?(): void;
 	isEditing?: boolean;
-	path?: InstanceType<FabricModule['Path']>;
-	pathStartOffset?: number;
-	pathSide?: 'left' | 'right';
-};
-type FabricCustomObject = FabricObject & {
-	_render(context: CanvasRenderingContext2D): void;
-};
+}
+
+interface PointerModifiers {
+	altKey: boolean;
+	ctrlKey: boolean;
+	metaKey: boolean;
+	shiftKey: boolean;
+	button: number;
+}
+
+function isFabricObjectCollection(object: FabricObject): object is FabricObjectCollection {
+	return 'getObjects' in object;
+}
+
+function isEditableFabricText(object: FabricObject): object is EditableFabricText {
+	return 'enterEditing' in object && 'initDimensions' in object && 'text' in object;
+}
+
+function pointerModifiers(event: Event | undefined): PointerModifiers {
+	const button = event && 'button' in event ? Number(event.button) : -1;
+	return {
+		altKey: Boolean(event && 'altKey' in event && event.altKey),
+		ctrlKey: Boolean(event && 'ctrlKey' in event && event.ctrlKey),
+		metaKey: Boolean(event && 'metaKey' in event && event.metaKey),
+		shiftKey: Boolean(event && 'shiftKey' in event && event.shiftKey),
+		button: Number.isInteger(button) ? button : -1
+	};
+}
+
+function imageEditorFabricObjects(
+	objects: InstanceType<FabricModule['FabricObject']>[]
+): FabricObject[] {
+	// SAFETY: ImageEditor metadata is optional and is attached only to objects owned by this adapter.
+	return objects as FabricObject[];
+}
+function setFabricRenderer(
+	object: FabricObject,
+	render: (context: CanvasRenderingContext2D) => void
+): void {
+	Object.assign(object, { _render: render });
+}
 
 export interface ImageEditorImageGeometry {
 	left: number;
@@ -567,7 +606,7 @@ export class OpenPostFabricAdapter {
 		const candidatesX = [0, this.document.width_px / 2, this.document.width_px];
 		const candidatesY = [0, this.document.height_px / 2, this.document.height_px];
 		this.appendPrecisionCandidates(candidatesX, candidatesY);
-		for (const object of this.canvas.getObjects() as FabricObject[]) {
+		for (const object of imageEditorFabricObjects(this.canvas.getObjects())) {
 			if (
 				!object.__imageEditorLayerID ||
 				excluded.has(object.__imageEditorLayerID) ||
@@ -607,12 +646,8 @@ export class OpenPostFabricAdapter {
 
 	private screenZoom(): number {
 		if (!this.canvas) return 1;
-		const logicalWidth =
-			typeof this.canvas.getWidth === 'function' ? this.canvas.getWidth() : this.document.width_px;
-		const renderedWidth =
-			typeof this.canvas.getElement === 'function'
-				? this.canvas.getElement().getBoundingClientRect().width
-				: 0;
+		const logicalWidth = this.canvas.getWidth();
+		const renderedWidth = this.canvas.getElement().getBoundingClientRect().width;
 		return imageEditorScreenZoom(this.canvas.getZoom(), renderedWidth, logicalWidth);
 	}
 
@@ -722,7 +757,7 @@ export class OpenPostFabricAdapter {
 				visibleObjects.add(decoration);
 			}
 		}
-		const objects = this.canvas.getObjects() as FabricObject[];
+		const objects = this.canvas.getObjects();
 		const visibility = objects.map((object) => object.visible);
 		const background = this.canvas.backgroundColor;
 		try {
@@ -809,7 +844,7 @@ export class OpenPostFabricAdapter {
 		documentWidth: number,
 		documentHeight: number
 	): { width: number; height: number; data: Uint8Array } | null {
-		if (!this.fabric || typeof globalThis.document === 'undefined') return null;
+		if (!this.fabric || !globalThis.document) return null;
 		const object = this.objectByLayerID.get(id);
 		if (!object) return null;
 		const width = Math.max(1, Math.round(object.width ?? 1));
@@ -919,7 +954,7 @@ export class OpenPostFabricAdapter {
 		canvas.selection = !this.readOnly && !areaSelection;
 		canvas.defaultCursor = areaSelection ? 'crosshair' : 'default';
 		canvas.hoverCursor = areaSelection ? 'crosshair' : 'move';
-		for (const object of canvas.getObjects() as FabricObject[]) {
+		for (const object of imageEditorFabricObjects(canvas.getObjects())) {
 			if (!object.__imageEditorLayerID) {
 				object.selectable = false;
 				object.evented = false;
@@ -972,36 +1007,32 @@ export class OpenPostFabricAdapter {
 		const canvas = this.interactiveCanvas();
 		if (!canvas) return;
 		canvas.on('mouse:down:before', (event) => {
-			const pointerEvent = event.e as MouseEvent;
+			const pointer = pointerModifiers(event.e);
 			this.altDuplicatePending =
 				this.interactionTool === 'select' &&
-				pointerEvent.button === 0 &&
-				pointerEvent.altKey &&
+				pointer.button === 0 &&
+				pointer.altKey &&
 				Boolean(event.target);
 		});
 		canvas.on('mouse:move:before', (event) => {
 			if (event.transform?.action !== 'rotate') return;
+			const pointer = pointerModifiers(event.e);
 			applyImageEditorRotationConstraint(
-				event.transform.target as FabricObject,
-				this.snappingEnabled && !this.snapBypassed(event.e) && (event.e as MouseEvent).shiftKey
+				event.transform.target,
+				this.snappingEnabled && !this.snapBypassed(event.e) && pointer.shiftKey
 			);
 		});
 		canvas.on('mouse:down', (event) => {
-			const pointerEvent = event.e as MouseEvent;
-			const target = event.target as FabricObject | undefined;
-			if (
-				this.interactionTool !== 'select' ||
-				pointerEvent.button !== 0 ||
-				!pointerEvent.altKey ||
-				!target
-			) {
+			const pointer = pointerModifiers(event.e);
+			const target = event.target;
+			if (this.interactionTool !== 'select' || pointer.button !== 0 || !pointer.altKey || !target) {
 				return;
 			}
 			this.altDuplicatePending = true;
 			this.createAltOriginGhost(target);
 		});
 		canvas.on('mouse:up', () => {
-			const activeObject = canvas.getActiveObject() as FabricObject | undefined;
+			const activeObject = canvas.getActiveObject();
 			if (activeObject) applyImageEditorRotationConstraint(activeObject, false);
 			queueMicrotask(() => {
 				this.clearAltOriginGhost();
@@ -1012,13 +1043,13 @@ export class OpenPostFabricAdapter {
 		canvas.on('selection:updated', () => this.emitSelection());
 		canvas.on('selection:cleared', () => this.emitSelection());
 		canvas.on('object:moving', (event) => {
-			const target = event.target as FabricObject;
+			const target = event.target;
 			this.snapObject(target, this.snapBypassed(event.e));
 			this.syncDecorationTransform(target);
 		});
 		canvas.on('object:scaling', (event) => {
-			const target = event.target as FabricObject;
-			const transform = event.transform as { corner?: string } | undefined;
+			const target = event.target;
+			const transform = event.transform;
 			this.snapScaledObject(
 				target,
 				transform?.corner ?? target.__corner ?? '',
@@ -1027,17 +1058,14 @@ export class OpenPostFabricAdapter {
 			this.syncDecorationTransform(target);
 		});
 		canvas.on('object:rotating', (event) => {
-			const target = event.target as FabricObject;
+			const target = event.target;
 			this.syncDecorationTransform(target);
 		});
 		canvas.on('object:modified', (event) => {
 			this.clearGuides();
-			const target = event.target as FabricObject;
-			const pointerEvent = event.e as MouseEvent | undefined;
-			if (
-				this.interactionTool === 'select' &&
-				(this.altDuplicatePending || Boolean(pointerEvent?.altKey))
-			) {
+			const target = event.target;
+			const pointer = pointerModifiers(event.e);
+			if (this.interactionTool === 'select' && (this.altDuplicatePending || pointer.altKey)) {
 				this.clearAltOriginGhost();
 				this.onAltDuplicate(this.transformEntries(target));
 				this.altDuplicatePending = false;
@@ -1045,7 +1073,7 @@ export class OpenPostFabricAdapter {
 				this.emitTransform(target);
 			}
 		});
-		canvas.on('text:changed', (event) => this.emitTextChange(event.target as FabricTextObject));
+		canvas.on('text:changed', (event) => this.emitTextChange(event.target));
 		canvas.on('text:editing:entered', () => this.onTextEditingChange(true));
 		canvas.on('text:editing:exited', () => this.onTextEditingChange(false));
 	}
@@ -1060,7 +1088,7 @@ export class OpenPostFabricAdapter {
 			withoutShadow: false,
 			enableRetinaScaling: false
 		});
-		const ghost = new this.fabric.FabricImage(snapshot, {
+		const ghost: FabricObject = new this.fabric.FabricImage(snapshot, {
 			left: bounds.left,
 			top: bounds.top,
 			originX: 'left',
@@ -1069,7 +1097,7 @@ export class OpenPostFabricAdapter {
 			evented: false,
 			opacity: target.opacity,
 			excludeFromExport: true
-		}) as FabricObject;
+		});
 		const targetIndex = Math.max(0, canvas.getObjects().indexOf(target));
 		canvas.insertAt(targetIndex, ghost);
 		this.altOriginGhost = ghost;
@@ -1085,8 +1113,8 @@ export class OpenPostFabricAdapter {
 	private flushPendingTextEditing(): void {
 		const id = this.pendingTextEditingID;
 		const canvas = this.interactiveCanvas();
-		const object = id ? (this.objectByLayerID.get(id) as FabricTextObject | undefined) : undefined;
-		if (!canvas || !object?.enterEditing) return;
+		const object = id ? this.objectByLayerID.get(id) : undefined;
+		if (!canvas || !object || !isEditableFabricText(object)) return;
 		this.pendingTextEditingID = '';
 		canvas.setActiveObject(object);
 		if (!object.isEditing) {
@@ -1104,14 +1132,17 @@ export class OpenPostFabricAdapter {
 	}
 
 	private selectedIDs(): string[] {
-		const active = this.interactiveCanvas()?.getActiveObjects() as FabricObject[] | undefined;
-		return (active ?? [])
+		const activeObjects = this.interactiveCanvas()?.getActiveObjects();
+		const active = activeObjects ? imageEditorFabricObjects(activeObjects) : [];
+		return active
 			.map((object) => object.__imageEditorLayerID)
 			.filter((id): id is string => Boolean(id));
 	}
 
 	private interactiveCanvas(): FabricCanvas | null {
-		return this.staticMode ? null : (this.canvas as FabricCanvas | null);
+		if (this.staticMode) return null;
+		// SAFETY: mount creates Canvas in interactive mode and StaticCanvas only when staticMode is true.
+		return this.canvas as FabricCanvas | null;
 	}
 
 	private emitTransform(target?: FabricObject): void {
@@ -1125,10 +1156,8 @@ export class OpenPostFabricAdapter {
 		target: FabricObject
 	): Array<{ id: string; transform: ImageEditorLayer['transform'] }> {
 		if (!this.fabric) return [];
-		if (!target.__imageEditorLayerID && 'getObjects' in target) {
-			const selection = target as FabricObject & { getObjects(): FabricObject[] };
-			return selection
-				.getObjects()
+		if (!target.__imageEditorLayerID && isFabricObjectCollection(target)) {
+			return imageEditorFabricObjects(target.getObjects())
 				.filter((object): object is FabricObject & { __imageEditorLayerID: string } =>
 					Boolean(object.__imageEditorLayerID)
 				)
@@ -1167,14 +1196,16 @@ export class OpenPostFabricAdapter {
 		];
 	}
 
-	private emitTextChange(target?: FabricTextObject): void {
-		if (!target?.__imageEditorLayerID || this.syncing || typeof target.text !== 'string') return;
-		this.onTextChange(target.__imageEditorLayerID, target.text);
+	private emitTextChange(target?: FabricObject): void {
+		const layerID = target?.__imageEditorLayerID;
+		if (!layerID || this.syncing || !target || !isEditableFabricText(target)) return;
+		this.onTextChange(layerID, target.text);
 	}
 
 	private snapBypassed(event: Event | undefined): boolean {
-		const pointer = event as MouseEvent | undefined;
-		return Boolean(pointer?.ctrlKey || pointer?.metaKey);
+		if (!event) return false;
+		const pointer = pointerModifiers(event);
+		return pointer.ctrlKey || pointer.metaKey;
 	}
 
 	private snapObject(target?: FabricObject, bypass = false): void {
@@ -1184,9 +1215,7 @@ export class OpenPostFabricAdapter {
 		}
 		this.clearGuides();
 		const selectionMembers = new Set(
-			!target.__imageEditorLayerID && 'getObjects' in target
-				? (target as FabricObject & { getObjects(): FabricObject[] }).getObjects()
-				: []
+			!target.__imageEditorLayerID && isFabricObjectCollection(target) ? target.getObjects() : []
 		);
 		const zoom = this.screenZoom();
 		const threshold = SNAP_SCREEN_PX / zoom;
@@ -1195,7 +1224,7 @@ export class OpenPostFabricAdapter {
 		const candidatesX = [0, this.document.width_px / 2, this.document.width_px];
 		const candidatesY = [0, this.document.height_px / 2, this.document.height_px];
 		this.appendPrecisionCandidates(candidatesX, candidatesY);
-		for (const object of this.canvas.getObjects() as FabricObject[]) {
+		for (const object of imageEditorFabricObjects(this.canvas.getObjects())) {
 			if (
 				object === target ||
 				selectionMembers.has(object) ||
@@ -1257,7 +1286,7 @@ export class OpenPostFabricAdapter {
 		const candidatesX = [0, this.document.width_px / 2, this.document.width_px];
 		const candidatesY = [0, this.document.height_px / 2, this.document.height_px];
 		this.appendPrecisionCandidates(candidatesX, candidatesY);
-		for (const object of this.canvas.getObjects() as FabricObject[]) {
+		for (const object of imageEditorFabricObjects(this.canvas.getObjects())) {
 			if (object === target || !object.__imageEditorLayerID || this.guideObjects.includes(object))
 				continue;
 			const left = object.left ?? 0;
@@ -1288,14 +1317,14 @@ export class OpenPostFabricAdapter {
 
 	private addGuide(points: [number, number, number, number]): void {
 		if (!this.canvas || !this.fabric) return;
-		const guide = new this.fabric.Line(points, {
+		const guide: FabricObject = new this.fabric.Line(points, {
 			stroke: '#f97316',
 			strokeWidth: 1,
 			strokeDashArray: [6, 5],
 			selectable: false,
 			evented: false,
 			excludeFromExport: true
-		}) as FabricObject;
+		});
 		this.guideObjects.push(guide);
 		this.canvas.add(guide);
 	}
@@ -1321,7 +1350,7 @@ export class OpenPostFabricAdapter {
 		const height = this.document.height_px;
 		if (background.type === 'gradient' && background.gradient) {
 			const gradient = structuredClone(background.gradient);
-			const object = new this.fabric.FabricObject({
+			const object: FabricObject = new this.fabric.FabricObject({
 				left: 0,
 				top: 0,
 				width,
@@ -1332,14 +1361,14 @@ export class OpenPostFabricAdapter {
 				selectable: false,
 				evented: false,
 				objectCaching: false
-			}) as FabricCustomObject;
-			object._render = (context: CanvasRenderingContext2D) => {
+			});
+			setFabricRenderer(object, (context: CanvasRenderingContext2D) => {
 				context.save();
 				context.translate(-width / 2, -height / 2);
 				context.fillStyle = createImageEditorCanvasGradient(context, gradient);
 				context.fillRect(0, 0, width, height);
 				context.restore();
-			};
+			});
 			return object;
 		}
 		if (background.type !== 'image' || !background.image?.media_id) return null;
@@ -1386,7 +1415,7 @@ export class OpenPostFabricAdapter {
 			selectable: false,
 			evented: false
 		});
-		const object = image as FabricObject;
+		const object: FabricObject = image;
 		object.__imageEditorObjectURL = objectURL;
 		return object;
 	}
@@ -1402,7 +1431,7 @@ export class OpenPostFabricAdapter {
 				height: layer.transform.height,
 				fill: 'rgba(0,0,0,0)',
 				strokeWidth: 0
-			}) as FabricObject;
+			});
 		}
 		if (layer.type === 'text' && layer.text) {
 			const curve = layer.text.curve;
@@ -1439,9 +1468,9 @@ export class OpenPostFabricAdapter {
 					pathAlign: 'center',
 					pathSide: curve.reverse ? 'right' : 'left',
 					pathStartOffset: textCurveStartOffset(layer.transform.width, curve)
-				}) as FabricObject;
+				});
 			} else {
-				object = new this.fabric.Textbox(layer.text.text, textOptions) as FabricObject;
+				object = new this.fabric.Textbox(layer.text.text, textOptions);
 			}
 		}
 		if (layer.type === 'shape' && layer.shape) {
@@ -1458,18 +1487,15 @@ export class OpenPostFabricAdapter {
 					...shapeOptions,
 					rx: layer.transform.width / 2,
 					ry: layer.transform.height / 2
-				}) as FabricObject;
+				});
 			} else if (layer.shape.kind === 'line') {
-				object = new this.fabric.Line(
-					[0, 0, layer.transform.width, 0],
-					shapeOptions
-				) as FabricObject;
+				object = new this.fabric.Line([0, 0, layer.transform.width, 0], shapeOptions);
 			} else {
 				object = new this.fabric.Rect({
 					...shapeOptions,
 					rx: layer.shape.kind === 'rounded_rectangle' ? layer.shape.radius : 0,
 					ry: layer.shape.kind === 'rounded_rectangle' ? layer.shape.radius : 0
-				}) as FabricObject;
+				});
 			}
 		}
 		if (layer.type === 'paint' && layer.paint) {
@@ -1483,8 +1509,8 @@ export class OpenPostFabricAdapter {
 				width,
 				height,
 				objectCaching: false
-			}) as FabricCustomObject;
-			object._render = (context: CanvasRenderingContext2D) => {
+			});
+			setFabricRenderer(object, (context: CanvasRenderingContext2D) => {
 				context.save();
 				context.translate(-width / 2, -height / 2);
 				context.scale(
@@ -1519,7 +1545,7 @@ export class OpenPostFabricAdapter {
 					context.stroke();
 				}
 				context.restore();
-			};
+			});
 		}
 		if (layer.type === 'image' && layer.image) {
 			const layerMediaID = layer.image.media_id;
@@ -1555,7 +1581,7 @@ export class OpenPostFabricAdapter {
 				...geometry
 			});
 			this.applyImageFilters(image, layer);
-			object = image as FabricObject;
+			object = image;
 			object.__imageEditorObjectURL = objectURL;
 			object.__imageEditorSourceWidth = sourceWidth;
 			object.__imageEditorSourceHeight = sourceHeight;
@@ -1629,9 +1655,11 @@ export class OpenPostFabricAdapter {
 				...common
 			});
 			this.applyImageGeometry(object, layer);
+			// SAFETY: image layers are rebuilt as FabricImage objects whenever their layer type changes.
 			this.applyImageFilters(object as InstanceType<FabricModule['FabricImage']>, layer);
 		} else if (layer.type === 'text' && layer.text) {
-			const textObject = object as FabricTextObject;
+			if (!isEditableFabricText(object)) return;
+			const textObject = object;
 			textObject.set({
 				...common,
 				scaleX: 1,
@@ -1667,15 +1695,15 @@ export class OpenPostFabricAdapter {
 				height: layer.transform.height,
 				fill: layer.shape.fill,
 				stroke: layer.shape.stroke,
-				strokeWidth: layer.shape.stroke_width,
-				...(layer.shape.kind === 'rounded_rectangle'
-					? { rx: layer.shape.radius, ry: layer.shape.radius }
-					: {}),
-				...(layer.shape.kind === 'ellipse'
-					? { rx: layer.transform.width / 2, ry: layer.transform.height / 2 }
-					: {}),
-				...(layer.shape.kind === 'line' ? { x2: layer.transform.width, y2: 0 } : {})
+				strokeWidth: layer.shape.stroke_width
 			});
+			if (layer.shape.kind === 'rounded_rectangle') {
+				object.set({ rx: layer.shape.radius, ry: layer.shape.radius });
+			} else if (layer.shape.kind === 'ellipse') {
+				object.set({ rx: layer.transform.width / 2, ry: layer.transform.height / 2 });
+			} else if (layer.shape.kind === 'line') {
+				object.set({ x2: layer.transform.width, y2: 0 });
+			}
 		} else {
 			object.set({
 				...common,
@@ -1753,13 +1781,13 @@ export class OpenPostFabricAdapter {
 		if (layer.erase_mask) {
 			const eraseMask = structuredClone(layer.erase_mask);
 			const renderMask = effectiveMask(layer, object);
-			const clip = new this.fabric.FabricObject({
+			const clip: FabricObject = new this.fabric.FabricObject({
 				...common,
 				width: objectWidth,
 				height: objectHeight,
 				objectCaching: false
-			}) as FabricCustomObject;
-			clip._render = (context: CanvasRenderingContext2D) => {
+			});
+			setFabricRenderer(clip, (context: CanvasRenderingContext2D) => {
 				context.save();
 				context.fillStyle = '#000000';
 				context.beginPath();
@@ -1792,7 +1820,7 @@ export class OpenPostFabricAdapter {
 					context.stroke();
 				}
 				context.restore();
-			};
+			});
 			return clip;
 		}
 		if (!layer.mask) return undefined;
@@ -1800,20 +1828,20 @@ export class OpenPostFabricAdapter {
 			return new this.fabric.Circle({
 				...common,
 				radius: Math.min(width, height) / 2
-			}) as FabricObject;
+			});
 		}
 		if (layer.mask.shape === 'ellipse') {
 			return new this.fabric.Ellipse({
 				...common,
 				rx: width / 2,
 				ry: height / 2
-			}) as FabricObject;
+			});
 		}
 		if (layer.mask.shape === 'diamond') {
 			return new this.fabric.Path(
 				`M 0 ${-height / 2} L ${width / 2} 0 L 0 ${height / 2} L ${-width / 2} 0 Z`,
 				common
-			) as FabricObject;
+			);
 		}
 		const radius =
 			layer.mask.shape === 'rounded_rectangle'
@@ -1825,7 +1853,7 @@ export class OpenPostFabricAdapter {
 			height,
 			rx: radius,
 			ry: radius
-		}) as FabricObject;
+		});
 	}
 
 	private refreshDecorations(layer: ImageEditorLayer, object: FabricObject): void {
@@ -1859,7 +1887,7 @@ export class OpenPostFabricAdapter {
 		}
 		const width = Math.max(1, object.width ?? layer.transform.width);
 		const height = Math.max(1, object.height ?? layer.transform.height);
-		const decoration = new this.fabric.FabricObject({
+		const decoration: FabricObject = new this.fabric.FabricObject({
 			left: object.left,
 			top: object.top,
 			width,
@@ -1876,9 +1904,9 @@ export class OpenPostFabricAdapter {
 			selectable: false,
 			evented: false,
 			objectCaching: false
-		}) as FabricCustomObject;
+		});
 		const mask = effectiveMask(layer, object);
-		decoration._render = (context: CanvasRenderingContext2D) => {
+		setFabricRenderer(decoration, (context: CanvasRenderingContext2D) => {
 			context.save();
 			if (effect.position === 'inside') {
 				context.beginPath();
@@ -1897,7 +1925,7 @@ export class OpenPostFabricAdapter {
 			appendMaskPath(context, width, height, mask);
 			context.stroke();
 			context.restore();
-		};
+		});
 		return decoration;
 	}
 
@@ -1930,7 +1958,7 @@ export class OpenPostFabricAdapter {
 			effect.position,
 			effect.color
 		);
-		const decoration = new this.fabric.FabricObject({
+		const decoration: FabricObject = new this.fabric.FabricObject({
 			left: object.left,
 			top: object.top,
 			width,
@@ -1947,8 +1975,8 @@ export class OpenPostFabricAdapter {
 			selectable: false,
 			evented: false,
 			objectCaching: false
-		}) as FabricCustomObject;
-		decoration._render = (context: CanvasRenderingContext2D) => {
+		});
+		setFabricRenderer(decoration, (context: CanvasRenderingContext2D) => {
 			const renderedWidth = bitmap.width / multiplier;
 			const renderedHeight = bitmap.height / multiplier;
 			context.drawImage(
@@ -1958,7 +1986,7 @@ export class OpenPostFabricAdapter {
 				renderedWidth,
 				renderedHeight
 			);
-		};
+		});
 		return decoration;
 	}
 
@@ -1970,7 +1998,7 @@ export class OpenPostFabricAdapter {
 		if (!this.fabric || layer.shape?.kind === 'line') return null;
 		const width = Math.max(1, object.width ?? layer.transform.width);
 		const height = Math.max(1, object.height ?? layer.transform.height);
-		const decoration = new this.fabric.FabricObject({
+		const decoration: FabricObject = new this.fabric.FabricObject({
 			left: object.left,
 			top: object.top,
 			width,
@@ -1987,11 +2015,11 @@ export class OpenPostFabricAdapter {
 			selectable: false,
 			evented: false,
 			objectCaching: false
-		}) as FabricCustomObject;
+		});
 		const mask = effectiveMask(layer, object);
 		const offset = shadowOffset(effect);
 		const color = shadowColor(effect);
-		decoration._render = (context: CanvasRenderingContext2D) => {
+		setFabricRenderer(decoration, (context: CanvasRenderingContext2D) => {
 			context.save();
 			context.beginPath();
 			appendMaskPath(context, width, height, mask);
@@ -2006,7 +2034,7 @@ export class OpenPostFabricAdapter {
 			appendMaskPath(context, width, height, mask);
 			context.fill('evenodd');
 			context.restore();
-		};
+		});
 		return decoration;
 	}
 
@@ -2471,7 +2499,7 @@ function createAlphaStrokeBitmap(
 function createGradientBitmap(
 	paint: NonNullable<ImageEditorLayer['paint']>
 ): HTMLCanvasElement | null {
-	if (!paint.gradient || typeof globalThis.document === 'undefined') return null;
+	if (!paint.gradient || !globalThis.document) return null;
 	const width = Math.max(1, Math.ceil(paint.source_width));
 	const height = Math.max(1, Math.ceil(paint.source_height));
 	const canvas = globalThis.document.createElement('canvas');

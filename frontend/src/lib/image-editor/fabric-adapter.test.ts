@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	computeImageGeometry,
+	type ImageEditorImageGeometry,
 	imageEditorScreenZoom,
 	imageEditorPixelGrid,
 	imageEditorPixelIsOpaque,
@@ -10,6 +11,52 @@ import {
 	snapImageEditorResize
 } from './fabric-adapter';
 import type { ImageEditorDocument, ImageEditorLayer, ImageEditorPage } from './types';
+
+// SAFETY: the adapter constructor only stores this element; tests that mount Fabric use browser tests.
+const TEST_CANVAS = {} as HTMLCanvasElement;
+
+function pageFixture(layers: ImageEditorLayer[] = []): ImageEditorPage {
+	return {
+		id: 'page',
+		name: 'Page 1',
+		background_color: '#ffffff',
+		layers
+	};
+}
+
+function documentFixture(page: ImageEditorPage = pageFixture()): ImageEditorDocument {
+	return {
+		schema_version: 1,
+		title: 'Test image',
+		preset_key: 'square',
+		width_px: 1080,
+		height_px: 1080,
+		brand_kit_revision: 0,
+		export_defaults: {
+			format: 'png',
+			quality: 0.9,
+			matte_color: '#ffffff'
+		},
+		pages: [page]
+	};
+}
+
+function adapterInternals<T extends object>(adapter: OpenPostFabricAdapter): T {
+	// SAFETY: named test contracts expose only the adapter members exercised by each focused test.
+	return adapter as T;
+}
+
+class PointerInputFixture extends Event {
+	constructor(
+		readonly shiftKey = false,
+		readonly ctrlKey = false,
+		readonly altKey = false,
+		readonly metaKey = false,
+		readonly button = 0
+	) {
+		super('pointer');
+	}
+}
 
 function imageLayer(
 	width: number,
@@ -53,6 +100,24 @@ function imageLayer(
 			}
 		}
 	};
+}
+
+interface ImageObjectFixture extends ImageEditorImageGeometry {
+	__imageEditorSourceWidth: number;
+	__imageEditorSourceHeight: number;
+	filters?: never[];
+	set(updates: Partial<ImageObjectFixture>): void;
+	setCoords(): void;
+	applyFilters(): void;
+}
+
+interface ImageGeometryAdapterInternals {
+	fabric: object;
+	updateObject(
+		target: ImageObjectFixture,
+		previous: ImageEditorLayer,
+		next: ImageEditorLayer
+	): void;
 }
 
 describe('OpenPost Image Editor image geometry', () => {
@@ -117,38 +182,27 @@ describe('OpenPost Image Editor image geometry', () => {
 			const previous = imageLayer(800, 800, fit);
 			const next = imageLayer(1200, 600, fit);
 			const initial = computeImageGeometry(previous, 1920, 1080);
-			const imageObject = {
+			const imageObject: ImageObjectFixture = {
 				...initial,
 				__imageEditorSourceWidth: 1920,
 				__imageEditorSourceHeight: 1080,
-				set(updates: Record<string, unknown>) {
+				set(updates: Partial<ImageObjectFixture>) {
 					Object.assign(this, updates);
 				},
 				setCoords() {},
 				applyFilters() {}
 			};
+			const page = pageFixture([next]);
 			const adapter = new OpenPostFabricAdapter({
-				canvas: {} as HTMLCanvasElement,
-				document: { width_px: 1080, height_px: 1080 } as ImageEditorDocument,
-				page: {
-					id: 'page',
-					name: 'Page 1',
-					background_color: '#ffffff',
-					layers: [next]
-				},
+				canvas: TEST_CANVAS,
+				document: documentFixture(page),
+				page,
 				readOnly: false,
 				onSelection: () => undefined,
 				onTransform: () => undefined,
 				onTextChange: () => undefined
 			});
-			const internals = adapter as unknown as {
-				fabric: object;
-				updateObject(
-					target: typeof imageObject,
-					previous: ImageEditorLayer,
-					next: ImageEditorLayer
-				): void;
-			};
+			const internals = adapterInternals<ImageGeometryAdapterInternals>(adapter);
 			internals.fabric = {};
 
 			internals.updateObject(imageObject, previous, next);
@@ -161,53 +215,65 @@ describe('OpenPost Image Editor image geometry', () => {
 
 describe('OpenPost Image Editor rotation gestures', () => {
 	it('configures snapping before Fabric calculates the angle without rewriting the live angle', () => {
+		interface RotationTargetFixture {
+			angle: number;
+			snapAngle?: number;
+			snapThreshold?: number;
+		}
+		interface FabricEventFixture {
+			e: Event;
+			target?: RotationTargetFixture;
+			transform?: { action: string; target: RotationTargetFixture };
+		}
+		interface EventCanvasFixture {
+			on(eventName: string, handler: (event: FabricEventFixture) => void): void;
+			getActiveObject(): RotationTargetFixture;
+		}
+		interface RotationAdapterInternals {
+			canvas: EventCanvasFixture;
+			bindEvents(): void;
+		}
+
+		const page = pageFixture();
 		const adapter = new OpenPostFabricAdapter({
-			canvas: {} as HTMLCanvasElement,
-			document: { width_px: 1080, height_px: 1080 } as ImageEditorDocument,
-			page: {
-				id: 'page',
-				name: 'Page 1',
-				background_color: '#ffffff',
-				layers: []
-			},
+			canvas: TEST_CANVAS,
+			document: documentFixture(page),
+			page,
 			readOnly: false,
 			onSelection: () => undefined,
 			onTransform: () => undefined,
 			onTextChange: () => undefined
 		});
-		const handlers = new Map<string, (event: unknown) => void>();
+		const handlers = new Map<string, (event: FabricEventFixture) => void>();
 		const target = { angle: 22, snapAngle: undefined, snapThreshold: undefined };
-		const canvas = {
-			on(eventName: string, handler: (event: unknown) => void) {
+		const canvas: EventCanvasFixture = {
+			on(eventName, handler) {
 				handlers.set(eventName, handler);
 			},
 			getActiveObject() {
 				return target;
 			}
 		};
-		const internals = adapter as unknown as {
-			canvas: typeof canvas;
-			bindEvents(): void;
-		};
+		const internals = adapterInternals<RotationAdapterInternals>(adapter);
 		internals.canvas = canvas;
 		internals.bindEvents();
-		const dispatch = (eventName: string, event: unknown) => {
+		const dispatch = (eventName: string, event: FabricEventFixture) => {
 			const handler = handlers.get(eventName);
 			if (!handler) throw new Error(`Missing Fabric event handler: ${eventName}`);
 			handler(event);
 		};
 
 		dispatch('mouse:move:before', {
-			e: { shiftKey: true },
+			e: new PointerInputFixture(true),
 			transform: { action: 'rotate', target }
 		});
 		expect(target).toMatchObject({ angle: 22, snapAngle: 15, snapThreshold: 7.5 });
 
-		dispatch('object:rotating', { e: { shiftKey: true }, target });
+		dispatch('object:rotating', { e: new PointerInputFixture(true), target });
 		expect(target.angle).toBe(22);
 
 		dispatch('mouse:move:before', {
-			e: { shiftKey: false },
+			e: new PointerInputFixture(false),
 			transform: { action: 'rotate', target }
 		});
 		expect(target).toMatchObject({
@@ -218,14 +284,14 @@ describe('OpenPost Image Editor rotation gestures', () => {
 
 		adapter.setSnapping(false);
 		dispatch('mouse:move:before', {
-			e: { shiftKey: true },
+			e: new PointerInputFixture(true),
 			transform: { action: 'rotate', target }
 		});
 		expect(target).toMatchObject({ snapAngle: undefined, snapThreshold: undefined });
 
 		adapter.setSnapping(true);
 		dispatch('mouse:move:before', {
-			e: { shiftKey: true, ctrlKey: true },
+			e: new PointerInputFixture(true, true),
 			transform: { action: 'rotate', target }
 		});
 		expect(target).toMatchObject({ snapAngle: undefined, snapThreshold: undefined });
@@ -234,44 +300,65 @@ describe('OpenPost Image Editor rotation gestures', () => {
 
 describe('OpenPost Image Editor multi-selection movement', () => {
 	it('does not snap an active selection against its own relative child coordinates', () => {
+		interface SelectionChildFixture {
+			__imageEditorLayerID: string;
+			left: number;
+			top: number;
+			getScaledWidth(): number;
+			getScaledHeight(): number;
+		}
+		interface SelectionFixture {
+			left: number;
+			top: number;
+			getScaledWidth(): number;
+			getScaledHeight(): number;
+			getObjects(): SelectionChildFixture[];
+		}
+		interface SelectionCanvasFixture {
+			getZoom(): number;
+			getWidth(): number;
+			getElement(): { getBoundingClientRect(): { width: number } };
+			getObjects(): SelectionChildFixture[];
+			remove(): void;
+		}
+		interface SelectionAdapterInternals {
+			fabric: object;
+			canvas: SelectionCanvasFixture;
+			snapObject(target: SelectionFixture): void;
+		}
+
+		const page = pageFixture();
 		const adapter = new OpenPostFabricAdapter({
-			canvas: {} as HTMLCanvasElement,
-			document: { width_px: 1080, height_px: 1080 } as ImageEditorDocument,
-			page: {
-				id: 'page',
-				name: 'Page 1',
-				background_color: '#ffffff',
-				layers: []
-			},
+			canvas: TEST_CANVAS,
+			document: documentFixture(page),
+			page,
 			readOnly: false,
 			onSelection: () => undefined,
 			onTransform: () => undefined,
 			onTextChange: () => undefined
 		});
-		const child = {
+		const child: SelectionChildFixture = {
 			__imageEditorLayerID: 'text',
 			left: 105,
 			top: 105,
 			getScaledWidth: () => 80,
 			getScaledHeight: () => 40
 		};
-		const selection = {
+		const selection: SelectionFixture = {
 			left: 100,
 			top: 100,
 			getScaledWidth: () => 200,
 			getScaledHeight: () => 160,
 			getObjects: () => [child]
 		};
-		const canvas = {
+		const canvas: SelectionCanvasFixture = {
 			getZoom: () => 1,
+			getWidth: () => 1080,
+			getElement: () => ({ getBoundingClientRect: () => ({ width: 1080 }) }),
 			getObjects: () => [child],
 			remove: () => undefined
 		};
-		const internals = adapter as unknown as {
-			fabric: object;
-			canvas: typeof canvas;
-			snapObject(target: typeof selection): void;
-		};
+		const internals = adapterInternals<SelectionAdapterInternals>(adapter);
 		internals.fabric = {};
 		internals.canvas = canvas;
 
@@ -377,19 +464,24 @@ describe('OpenPost Image Editor layer render order', () => {
 	});
 
 	it('reapplies the grouped stacking order during incremental canvas sync', () => {
+		interface OrderedObjectFixture {
+			id: string;
+		}
+		interface ObjectOrderCanvasFixture {
+			moveObjectTo(object: OrderedObjectFixture, index: number): void;
+		}
+		interface ObjectOrderAdapterInternals {
+			canvas: ObjectOrderCanvasFixture;
+			objectByLayerID: Map<string, OrderedObjectFixture>;
+			decorationsByLayerID: Map<string, OrderedObjectFixture[]>;
+			syncObjectOrder(): void;
+		}
+
 		const layers = interleavedGroupLayers();
-		const page: ImageEditorPage = {
-			id: 'page',
-			name: 'Page 1',
-			background_color: '#ffffff',
-			layers
-		};
-		const document = {
-			width_px: 1080,
-			height_px: 1080
-		} as ImageEditorDocument;
+		const page = pageFixture(layers);
+		const document = documentFixture(page);
 		const adapter = new OpenPostFabricAdapter({
-			canvas: {} as HTMLCanvasElement,
+			canvas: TEST_CANVAS,
 			document,
 			page,
 			readOnly: false,
@@ -399,12 +491,7 @@ describe('OpenPost Image Editor layer render order', () => {
 		});
 		const objects = new Map(layers.map((layer) => [layer.id, { id: layer.id }]));
 		const moved: string[] = [];
-		const internals = adapter as unknown as {
-			canvas: { moveObjectTo(object: { id: string }, index: number): void };
-			objectByLayerID: Map<string, { id: string }>;
-			decorationsByLayerID: Map<string, { id: string }[]>;
-			syncObjectOrder(): void;
-		};
+		const internals = adapterInternals<ObjectOrderAdapterInternals>(adapter);
 		internals.canvas = {
 			moveObjectTo(object, index) {
 				moved[index] = object.id;
@@ -421,6 +508,31 @@ describe('OpenPost Image Editor layer render order', () => {
 
 describe('OpenPost Image Editor group state', () => {
 	it('refreshes unchanged descendants when a group becomes hidden and locked', async () => {
+		interface LayerObjectFixture {
+			visible: boolean;
+			selectable: boolean;
+			evented: boolean;
+			lockMovementX?: boolean;
+			lockMovementY?: boolean;
+			lockRotation?: boolean;
+			lockScalingX?: boolean;
+			lockScalingY?: boolean;
+			set(updates: Partial<LayerObjectFixture>): void;
+			setCoords(): void;
+		}
+		interface GroupStateCanvasFixture {
+			backgroundColor: string;
+			moveObjectTo(object: LayerObjectFixture, index: number): void;
+			renderAll(): void;
+		}
+		interface GroupStateAdapterInternals {
+			fabric: object;
+			canvas: GroupStateCanvasFixture;
+			objectByLayerID: Map<string, LayerObjectFixture>;
+			layerSnapshots: Map<string, ImageEditorLayer>;
+			decorationsByLayerID: Map<string, LayerObjectFixture[]>;
+		}
+
 		const child: ImageEditorLayer = {
 			...imageLayer(400, 300),
 			id: 'child',
@@ -428,19 +540,19 @@ describe('OpenPost Image Editor group state', () => {
 			parent_id: 'group',
 			image: undefined,
 			shape: {
-				kind: 'rectangle' as const,
+				kind: 'rectangle',
 				fill: '#ffffff',
 				stroke: '#00000000',
 				stroke_width: 0,
 				radius: 0
 			}
 		};
-		const group = {
+		const group: ImageEditorLayer = {
 			...imageLayer(500, 400),
 			id: 'group',
 			type: 'group',
 			image: undefined
-		} as ImageEditorLayer;
+		};
 		const previousPage: ImageEditorPage = {
 			id: 'page',
 			name: 'Page 1',
@@ -448,12 +560,13 @@ describe('OpenPost Image Editor group state', () => {
 			layers: [child, group]
 		};
 		const nextPage = structuredClone(previousPage);
-		const nextGroup = nextPage.layers.find((layer) => layer.id === 'group')!;
+		const nextGroup = nextPage.layers.find((layer) => layer.id === 'group');
+		if (!nextGroup) throw new Error('Missing group fixture');
 		nextGroup.visible = false;
 		nextGroup.locked = true;
-		const document = { width_px: 1080, height_px: 1080 } as ImageEditorDocument;
+		const document = documentFixture(previousPage);
 		const adapter = new OpenPostFabricAdapter({
-			canvas: {} as HTMLCanvasElement,
+			canvas: TEST_CANVAS,
 			document,
 			page: previousPage,
 			readOnly: false,
@@ -462,28 +575,18 @@ describe('OpenPost Image Editor group state', () => {
 			onTransform: () => undefined,
 			onTextChange: () => undefined
 		});
-		const makeObject = () => ({
+		const makeObject = (): LayerObjectFixture => ({
 			visible: true,
 			selectable: true,
 			evented: true,
-			set(updates: Record<string, unknown>) {
+			set(updates: Partial<LayerObjectFixture>) {
 				Object.assign(this, updates);
 			},
 			setCoords() {}
 		});
 		const childObject = makeObject();
 		const groupObject = makeObject();
-		const internals = adapter as unknown as {
-			fabric: object;
-			canvas: {
-				backgroundColor: string;
-				moveObjectTo(object: object, index: number): void;
-				renderAll(): void;
-			};
-			objectByLayerID: Map<string, ReturnType<typeof makeObject>>;
-			layerSnapshots: Map<string, ImageEditorLayer>;
-			decorationsByLayerID: Map<string, object[]>;
-		};
+		const internals = adapterInternals<GroupStateAdapterInternals>(adapter);
 		internals.fabric = {};
 		internals.canvas = {
 			backgroundColor: previousPage.background_color,
