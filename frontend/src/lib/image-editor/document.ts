@@ -506,27 +506,32 @@ export function validateImageEditorDocument(document: ImageEditorDocument): stri
 	return [...new Set(errors)];
 }
 
-export function migrateImageEditorDocument(raw: unknown): {
+export interface ImageEditorDocumentMigration {
 	document?: ImageEditorDocument;
 	readOnly: boolean;
 	error?: string;
-} {
-	if (!raw || typeof raw !== 'object') {
+}
+
+interface ImageEditorDocumentSource {
+	schema_version?: unknown;
+}
+
+export function migrateImageEditorDocument(
+	raw: ImageEditorDocumentSource | null
+): ImageEditorDocumentMigration {
+	if (!raw) {
 		return { readOnly: true, error: 'The OpenPost Image Editor document is missing.' };
 	}
-	const version = Number((raw as { schema_version?: unknown }).schema_version);
+	const version = parseImageEditorSchemaVersion(raw);
 	if (version > IMAGE_EDITOR_SCHEMA_VERSION) {
-		const document = structuredClone(raw) as ImageEditorDocument;
-		if (
-			!Array.isArray(document.pages) ||
-			!Number.isFinite(document.width_px) ||
-			!Number.isFinite(document.height_px)
-		) {
+		if (!isDisplayableImageEditorDocument(raw)) {
 			return {
 				readOnly: true,
 				error: 'The newer OpenPost Image Editor document cannot be displayed safely.'
 			};
 		}
+		// SAFETY: Required display members use the compatible document contract checked above.
+		const document = structuredClone(raw) as ImageEditorDocument;
 		return {
 			document,
 			readOnly: true,
@@ -539,7 +544,37 @@ export function migrateImageEditorDocument(raw: unknown): {
 			error: 'This OpenPost Image Editor document version cannot be migrated.'
 		};
 	}
-	const document = cloneImageEditorDocument(raw as ImageEditorDocument);
-	const errors = validateImageEditorDocument(document);
-	return errors.length > 0 ? { readOnly: true, error: errors[0] } : { document, readOnly: false };
+	if (!isDisplayableImageEditorDocument(raw)) {
+		return { readOnly: true, error: 'The OpenPost Image Editor document is invalid.' };
+	}
+	try {
+		// SAFETY: The current schema and required structure are checked before full semantic validation.
+		const document = cloneImageEditorDocument(raw as ImageEditorDocument);
+		const errors = validateImageEditorDocument(document);
+		return errors.length > 0 ? { readOnly: true, error: errors[0] } : { document, readOnly: false };
+	} catch {
+		return { readOnly: true, error: 'The OpenPost Image Editor document is invalid.' };
+	}
+}
+
+function parseImageEditorSchemaVersion(document: ImageEditorDocumentSource): number {
+	return Number(document.schema_version);
+}
+
+function isDisplayableImageEditorDocument(document: ImageEditorDocumentSource): boolean {
+	return (
+		'pages' in document &&
+		Array.isArray(document.pages) &&
+		'width_px' in document &&
+		Number.isFinite(document.width_px) &&
+		'height_px' in document &&
+		Number.isFinite(document.height_px) &&
+		'title' in document &&
+		typeof document.title === 'string' &&
+		'preset_key' in document &&
+		typeof document.preset_key === 'string' &&
+		'export_defaults' in document &&
+		document.export_defaults !== null &&
+		typeof document.export_defaults === 'object'
+	);
 }
