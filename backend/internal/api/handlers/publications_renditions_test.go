@@ -393,7 +393,7 @@ func TestUpsertPublicationRenditionsPreservesOmittedRenditionsUntilExplicitDelet
 	rollbackReq.Header.Set("Content-Type", "application/json")
 	rollbackRec := httptest.NewRecorder()
 	e.ServeHTTP(rollbackRec, rollbackReq)
-	require.Equal(t, http.StatusInternalServerError, rollbackRec.Code, rollbackRec.Body.String())
+	require.Equal(t, http.StatusServiceUnavailable, rollbackRec.Code, rollbackRec.Body.String())
 
 	var rolledBack models.Publication
 	require.NoError(t, db.NewSelect().Model(&rolledBack).Where("id = ?", "publication-1").Scan(ctx))

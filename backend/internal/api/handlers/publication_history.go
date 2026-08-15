@@ -338,20 +338,6 @@ func sanitizedLifecycleEvent(
 	return response
 }
 
-// publicationLifecycleEventResponse keeps non-HTTP consumers on the same
-// permission-safe representation. The HTTP history path enriches actors and
-// current rendition errors when those records are available.
-func publicationLifecycleEventResponse(event models.PublicationLifecycleEvent) PublicationLifecycleEventResponse {
-	return sanitizedLifecycleEvent(
-		event,
-		publicationHistoryMetadata(event.MetadataJSON),
-		publicationHistoryAuthorization{},
-		models.Rendition{},
-		models.SocialAccount{},
-		models.ProviderDelivery{},
-	)
-}
-
 func historyDestinationLabel(account models.SocialAccount, rendition models.Rendition) string {
 	if value := strings.TrimSpace(account.Slug); value != "" {
 		return value

@@ -3,13 +3,14 @@ package handlers
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
-	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
 	"github.com/openpost/backend/internal/models"
 	postservice "github.com/openpost/backend/internal/services/posts"
+	publicationservice "github.com/openpost/backend/internal/services/publications"
 	repostservice "github.com/openpost/backend/internal/services/reposts"
 	"github.com/uptrace/bun"
 )
@@ -27,7 +28,11 @@ func (command publicationApplication) prepareCreate(
 	input CreatePublicationBody,
 ) (preparedPublicationCreate, error) {
 	if input.WorkspaceID == "" {
-		return preparedPublicationCreate{}, huma.Error400BadRequest(errWorkspaceIDRequired)
+		return preparedPublicationCreate{}, publicationservice.NewError(publicationservice.ErrorInvalidInput, errors.New(errWorkspaceIDRequired))
+	}
+	now := command.now().UTC()
+	if err := validatePublicationCreateTiming(input, now); err != nil {
+		return preparedPublicationCreate{}, publicationservice.NewError(publicationservice.ErrorInvalidInput, err)
 	}
 	if err := command.handler.checkWorkspaceEditAccess(ctx, input.WorkspaceID, userID); err != nil {
 		return preparedPublicationCreate{}, err
@@ -59,26 +64,30 @@ func (command publicationApplication) prepareCreate(
 	if input.RepostOverride != nil {
 		repostOverride, err = command.handler.validateRepostOverride(ctx, input.WorkspaceID, userID, *input.RepostOverride)
 		if err != nil {
-			return preparedPublicationCreate{}, huma.Error400BadRequest(err.Error())
+			return preparedPublicationCreate{}, publicationservice.NewError(publicationservice.ErrorInvalidInput, err)
 		}
 	}
 	repostOverrideJSON, err := repostservice.EncodeOverride(repostOverride)
 	if err != nil {
-		return preparedPublicationCreate{}, huma.Error400BadRequest(err.Error())
+		return preparedPublicationCreate{}, publicationservice.NewError(publicationservice.ErrorInvalidInput, err)
 	}
 
-	now := command.now().UTC()
-	if input.ScheduledAt != nil {
-		if err := validateFuturePublicationSchedule(*input.ScheduledAt, now); err != nil {
-			return preparedPublicationCreate{}, huma.Error400BadRequest(err.Error())
-		}
-	}
 	return preparedPublicationCreate{
 		input:              input,
 		accounts:           accountMap,
 		repostOverrideJSON: repostOverrideJSON,
 		now:                now,
 	}, nil
+}
+
+func validatePublicationCreateTiming(input CreatePublicationBody, now time.Time) error {
+	if input.RandomDelayMinutes != nil && (*input.RandomDelayMinutes < 0 || *input.RandomDelayMinutes > 60) {
+		return fmt.Errorf("random_delay_minutes must be between 0 and 60")
+	}
+	if input.ScheduledAt != nil {
+		return validateFuturePublicationSchedule(*input.ScheduledAt, now)
+	}
+	return nil
 }
 
 func (command publicationApplication) persistCreate(
@@ -172,6 +181,10 @@ func publicationModelFromCreate(input CreatePublicationBody, userID, repostOverr
 	}
 	if input.ScheduledAt != nil {
 		publication.ScheduledAt = input.ScheduledAt.UTC()
+	}
+	if input.RandomDelayMinutes != nil {
+		publication.RandomDelayMinutes = *input.RandomDelayMinutes
+		publication.RandomDelayExplicit = true
 	}
 	return publication
 }

@@ -712,6 +712,7 @@ func TestMCPOperationCatalogHasCompleteSafetyClassification(t *testing.T) {
 		mcpToolReplyRendition: mcpOperationExecute,
 		mcpToolValidatePub:    mcpOperationQuery,
 		mcpToolSchedulePub:    mcpOperationExecute,
+		mcpToolCancelPub:      mcpOperationExecute,
 		mcpToolPublishPubNow:  mcpOperationExecute,
 		mcpToolPubEvents:      mcpOperationQuery,
 		mcpToolComments:       mcpOperationQuery,
@@ -1761,7 +1762,7 @@ func TestMCPCallListPublicationEvents(t *testing.T) {
 	result := out["result"].(map[string]any)
 	structured := result["structuredContent"].(map[string]any)
 	events := structured["events"].([]any)
-	require.Len(t, events, 1)
+	require.Len(t, events, 2)
 	event := events[0].(map[string]any)
 	require.Equal(t, "published", event["type"])
 	require.Equal(t, "succeeded", event["status"])
@@ -1769,6 +1770,7 @@ func TestMCPCallListPublicationEvents(t *testing.T) {
 	require.Equal(t, "x", event["platform"])
 	require.NotContains(t, event, "message")
 	require.NotContains(t, event, "metadata")
+	require.Equal(t, "created", events[1].(map[string]any)["type"])
 }
 
 func TestMCPCallProviderReadiness(t *testing.T) {

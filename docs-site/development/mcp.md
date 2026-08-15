@@ -178,11 +178,12 @@ boundary.
 - `create_publication`: creates a format-first publication with renditions and destination-specific settings.
 - `list_publications`: lists format-first publications for a workspace.
 - `get_publication`: returns a publication with its destination renditions and delivery state.
-- `update_publication`: updates editable source fields and schedule time while preserving omitted values.
+- `update_publication`: updates editable source fields, schedule time, and an optional random-delay range while preserving omitted values.
 - `set_publication_renditions`: replaces a publication's destination-specific outputs and media roles.
 - `reply_to_rendition`: queues an explicit provider reply immediately or at a requested time.
 - `validate_publication`: validates a publication before scheduling or publishing.
-- `schedule_publication`: schedules an existing publication.
+- `schedule_publication`: schedules an existing publication. The saved random-delay range is explicit or inherited from the Workspace, and the resulting Job time is authorized exactly.
+- `cancel_publication`: cancels a scheduled publication and its pending delivery Job.
 - `publish_publication_now`: queues an existing publication for immediate publishing.
 - `list_publication_events`: returns lifecycle events for a publication.
 - `list_rendition_comments`: lists comments for a published rendition.

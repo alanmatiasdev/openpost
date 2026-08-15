@@ -1,0 +1,3 @@
+# Retire Post as an authoring model
+
+Publication is OpenPost's only stored authoring aggregate. The web composer, HTTP API, CLI, MCP tools, durable publishing work, media ownership, and historical content will converge on Publications and Renditions; retained `/posts` operations may translate through a temporary compatibility adapter and legacy identifier alias, but no new feature or canonical write may depend on Post rows. OpenPost will remove the compatibility model only after historical content and non-terminal Jobs migrate safely and the public compatibility sunset passes, accepting a staged migration in exchange for one lifecycle, revision, authorization, and delivery standard.

@@ -3406,6 +3406,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/publications/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel a scheduled publication */
+        post: operations["cancel-publication"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/publications/{id}/events": {
         parameters: {
             query?: never;
@@ -6009,6 +6026,11 @@ export interface components {
             metadata?: {
                 [key: string]: unknown;
             };
+            /**
+             * Format: int64
+             * @description Optional random schedule delay in minutes (±N); omit to inherit the Workspace setting when scheduled
+             */
+            random_delay_minutes?: number;
             /** @description Explicit platform/account renditions */
             renditions?: components["schemas"]["RenditionInput"][] | null;
             /** @description Optional per-publication repost override */
@@ -9590,6 +9612,9 @@ export interface components {
             metadata: {
                 [key: string]: unknown;
             };
+            random_delay_inherited: boolean;
+            /** Format: int64 */
+            random_delay_minutes: number;
             renditions: components["schemas"]["RenditionResponse"][] | null;
             repost_override: components["schemas"]["Override"];
             /** Format: int64 */
@@ -9662,6 +9687,8 @@ export interface components {
             expected_revision: number;
             /** @description Publication goal */
             goal?: string;
+            /** @description Use the Workspace random-delay setting the next time this Publication is scheduled */
+            inherit_random_delay?: boolean;
             /**
              * @description Deprecated compatibility alias for creation_preset
              * @enum {string}
@@ -9671,6 +9698,11 @@ export interface components {
             metadata?: {
                 [key: string]: unknown;
             };
+            /**
+             * Format: int64
+             * @description Replace the random schedule delay in minutes (±N)
+             */
+            random_delay_minutes?: number;
             /** @description Replacement destination renditions saved in the same transaction */
             renditions?: components["schemas"]["RenditionInput"][] | null;
             /** @description Replace the per-publication repost override */
@@ -25600,6 +25632,87 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActionOutputBody"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "cancel-publication": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Publication ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PublicationMutationActionInputBody"];
+            };
+        };
         responses: {
             /** @description OK */
             200: {

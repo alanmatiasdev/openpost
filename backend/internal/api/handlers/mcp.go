@@ -30,11 +30,11 @@ import (
 	servicecrypto "github.com/openpost/backend/internal/services/crypto"
 	"github.com/openpost/backend/internal/services/drafts"
 	"github.com/openpost/backend/internal/services/entitlements"
-	"github.com/openpost/backend/internal/services/lifecycle"
 	"github.com/openpost/backend/internal/services/mediastore"
 	postservice "github.com/openpost/backend/internal/services/posts"
 	"github.com/openpost/backend/internal/services/providerreadiness"
 	"github.com/openpost/backend/internal/services/publicationauth"
+	publicationservice "github.com/openpost/backend/internal/services/publications"
 	"github.com/openpost/backend/internal/services/usage"
 	"github.com/uptrace/bun"
 )
@@ -62,6 +62,7 @@ const (
 	mcpToolReplyRendition = "reply_to_rendition"
 	mcpToolValidatePub    = "validate_publication"
 	mcpToolSchedulePub    = "schedule_publication"
+	mcpToolCancelPub      = "cancel_publication"
 	mcpToolPublishPubNow  = "publish_publication_now"
 	mcpToolPubEvents      = "list_publication_events"
 	mcpToolComments       = "list_rendition_comments"
@@ -977,6 +978,7 @@ func mcpOperationCatalog() []mcpOperationDefinition {
 		mcpReplyToRenditionTool(),
 		mcpValidatePublicationTool(),
 		mcpSchedulePublicationTool(),
+		mcpCancelPublicationTool(),
 		mcpPublishPublicationNowTool(),
 		mcpListPublicationEventsTool(),
 		mcpListRenditionCommentsTool(),
@@ -1404,6 +1406,10 @@ func mcpCreatePublicationTool() mcpOperationDefinition {
 					"format":      "date-time",
 					"description": "Optional desired schedule time. Call schedule_publication after create_publication to validate and enqueue.",
 				},
+				"random_delay_minutes": map[string]any{
+					"type": "integer", "minimum": 0, "maximum": 60,
+					"description": "Optional random schedule delay in minutes (±N). Omit to inherit the Workspace setting when scheduled.",
+				},
 				"social_account_ids": map[string]any{
 					"type":        "array",
 					"description": "Destination account IDs returned by list_accounts. Used to create default renditions when renditions is omitted.",
@@ -1507,6 +1513,13 @@ func mcpUpdatePublicationTool() mcpOperationDefinition {
 				"clear_schedule": map[string]any{
 					"type":        "boolean",
 					"description": "Clear the saved schedule and cancel its pending publication job. Do not combine with scheduled_at.",
+				},
+				"random_delay_minutes": map[string]any{
+					"type": "integer", "minimum": 0, "maximum": 60,
+					"description": "Optional replacement random schedule delay in minutes (±N).",
+				},
+				"inherit_random_delay": map[string]any{
+					"type": "boolean", "description": "Use the current Workspace random-delay setting when this Publication is scheduled.",
 				},
 				"metadata": map[string]any{"type": "object", "description": "Optional replacement application metadata, e.g. {\"campaign\":\"spring-launch\"}.", "additionalProperties": true},
 			},
@@ -1641,6 +1654,25 @@ func mcpSchedulePublicationTool() mcpOperationDefinition {
 			},
 			"required":             []string{"publication_id", "expected_revision"},
 			"additionalProperties": false,
+		},
+	}, mcpOperationExecute, false, true)
+}
+
+func mcpCancelPublicationTool() mcpOperationDefinition {
+	return mcpOperationDescriptor(map[string]any{
+		"name":        mcpToolCancelPub,
+		"title":       "Cancel publication",
+		"description": "Cancel a scheduled publication and its pending durable delivery work.",
+		"inputSchema": map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"publication_id": map[string]any{"type": "string", "description": "Scheduled Publication ID."},
+				"expected_revision": map[string]any{
+					"type": "integer", "minimum": 1,
+					"description": "Revision returned by get_publication immediately before cancellation.",
+				},
+			},
+			"required": []string{"publication_id", "expected_revision"}, "additionalProperties": false,
 		},
 	}, mcpOperationExecute, false, true)
 }
@@ -2224,6 +2256,7 @@ var mcpToolStatuses = map[string]mcpToolStatus{
 	mcpToolReplyRendition: {Invoking: "Queueing reply", Invoked: "Reply queued"},
 	mcpToolValidatePub:    {Invoking: "Validating publication", Invoked: "Publication validated"},
 	mcpToolSchedulePub:    {Invoking: "Scheduling publication", Invoked: "Publication scheduled"},
+	mcpToolCancelPub:      {Invoking: "Cancelling publication", Invoked: "Publication cancelled"},
 	mcpToolPublishPubNow:  {Invoking: "Queueing publication", Invoked: "Publication queued"},
 	mcpToolPubEvents:      {Invoking: "Loading publication events", Invoked: "Publication events loaded"},
 	mcpToolComments:       {Invoking: "Loading comments", Invoked: "Comments loaded"},
@@ -2261,7 +2294,7 @@ func mcpToolOutputSchema(toolName string) map[string]any {
 		return mcpStructuredOutputSchema(map[string]any{
 			"post": mcpOpenObjectSchema(),
 		}, "post")
-	case mcpToolCreatePub, mcpToolGetPub, mcpToolUpdatePub, mcpToolPubRenditions:
+	case mcpToolCreatePub, mcpToolGetPub, mcpToolUpdatePub, mcpToolPubRenditions, mcpToolCancelPub:
 		return mcpStructuredOutputSchema(map[string]any{
 			"publication": mcpOpenObjectSchema(),
 		}, "publication")
@@ -2864,7 +2897,7 @@ func (h *MCPHandler) callMCPOperation(ctx context.Context, userID, operation str
 		return h.renderSchedulerWidget(args)
 	case mcpToolCreateDraft, mcpToolListDrafts, mcpToolUpdateDraft,
 		mcpToolCreatePub, mcpToolListPubs, mcpToolGetPub, mcpToolUpdatePub, mcpToolPubRenditions, mcpToolReplyRendition,
-		mcpToolValidatePub, mcpToolSchedulePub, mcpToolPublishPubNow, mcpToolPubEvents, mcpToolComments,
+		mcpToolValidatePub, mcpToolSchedulePub, mcpToolCancelPub, mcpToolPublishPubNow, mcpToolPubEvents, mcpToolComments,
 		mcpToolReplyComment, mcpToolHideComment, mcpToolDeleteComment, mcpToolRenditions, mcpToolSchedulePost, mcpToolScheduleDraft,
 		mcpToolGetPost, mcpToolListPosts, mcpToolCancelPost, mcpToolSuggestSlot, mcpToolUploadURL:
 		return h.callWorkspaceActionTool(ctx, userID, operation, args)
@@ -2878,7 +2911,7 @@ func (h *MCPHandler) callWorkspaceActionTool(ctx context.Context, userID, toolNa
 	case mcpToolCreateDraft:
 		return h.createDraft(ctx, userID, args)
 	case mcpToolCreatePub, mcpToolListPubs, mcpToolGetPub, mcpToolUpdatePub, mcpToolPubRenditions, mcpToolReplyRendition,
-		mcpToolValidatePub, mcpToolSchedulePub, mcpToolPublishPubNow, mcpToolPubEvents, mcpToolComments,
+		mcpToolValidatePub, mcpToolSchedulePub, mcpToolCancelPub, mcpToolPublishPubNow, mcpToolPubEvents, mcpToolComments,
 		mcpToolReplyComment, mcpToolHideComment, mcpToolDeleteComment:
 		return h.callPublicationTool(ctx, userID, toolName, args)
 	case mcpToolListDrafts:
@@ -2924,6 +2957,8 @@ func (h *MCPHandler) callPublicationTool(ctx context.Context, userID, toolName s
 		return h.validatePublication(ctx, userID, args)
 	case mcpToolSchedulePub:
 		return h.schedulePublication(ctx, userID, args)
+	case mcpToolCancelPub:
+		return h.cancelPublication(ctx, userID, args)
 	case mcpToolPublishPubNow:
 		return h.publishPublicationNow(ctx, userID, args)
 	case mcpToolPubEvents:
@@ -3278,31 +3313,34 @@ func (h *MCPHandler) listAccounts(ctx context.Context, userID string, args map[s
 }
 
 type mcpCreatePublicationInput struct {
-	WorkspaceID      string                  `json:"workspace_id"`
-	ContentProfile   string                  `json:"content_profile"`
-	Title            string                  `json:"title"`
-	SourceText       string                  `json:"source_text"`
-	SourceURL        string                  `json:"source_url"`
-	ScheduledAt      *time.Time              `json:"scheduled_at"`
-	SocialAccountIDs []string                `json:"social_account_ids"`
-	MediaIDs         []string                `json:"media_ids"`
-	Media            []PublicationMediaInput `json:"media"`
-	Renditions       []RenditionInput        `json:"renditions"`
+	WorkspaceID        string                  `json:"workspace_id"`
+	ContentProfile     string                  `json:"content_profile"`
+	Title              string                  `json:"title"`
+	SourceText         string                  `json:"source_text"`
+	SourceURL          string                  `json:"source_url"`
+	ScheduledAt        *time.Time              `json:"scheduled_at"`
+	RandomDelayMinutes *int                    `json:"random_delay_minutes"`
+	SocialAccountIDs   []string                `json:"social_account_ids"`
+	MediaIDs           []string                `json:"media_ids"`
+	Media              []PublicationMediaInput `json:"media"`
+	Renditions         []RenditionInput        `json:"renditions"`
 }
 
 type mcpPublicationStatus struct {
-	ID             string `json:"id"`
-	WorkspaceID    string `json:"workspace_id"`
-	Title          string `json:"title"`
-	ContentProfile string `json:"content_profile"`
-	Status         string `json:"status"`
-	Revision       int    `json:"revision"`
-	SourceText     string `json:"source_text"`
-	SourceURL      string `json:"source_url,omitempty"`
-	ScheduledAt    string `json:"scheduled_at,omitempty"`
-	CreatedAt      string `json:"created_at"`
-	UpdatedAt      string `json:"updated_at"`
-	RenditionCount int    `json:"rendition_count"`
+	ID                   string `json:"id"`
+	WorkspaceID          string `json:"workspace_id"`
+	Title                string `json:"title"`
+	ContentProfile       string `json:"content_profile"`
+	Status               string `json:"status"`
+	Revision             int    `json:"revision"`
+	SourceText           string `json:"source_text"`
+	SourceURL            string `json:"source_url,omitempty"`
+	ScheduledAt          string `json:"scheduled_at,omitempty"`
+	RandomDelayMinutes   int    `json:"random_delay_minutes"`
+	RandomDelayInherited bool   `json:"random_delay_inherited"`
+	CreatedAt            string `json:"created_at"`
+	UpdatedAt            string `json:"updated_at"`
+	RenditionCount       int    `json:"rendition_count"`
 }
 
 func (h *MCPHandler) createPublication(ctx context.Context, userID string, args map[string]any) (any, *mcpError) {
@@ -3327,16 +3365,17 @@ func (h *MCPHandler) createPublication(ctx context.Context, userID string, args 
 		return nil, rpcErr
 	}
 	publication, err := h.publicationHandler().publicationApplication().Create(ctx, userID, CreatePublicationBody{
-		WorkspaceID:      input.WorkspaceID,
-		Title:            input.Title,
-		ContentProfile:   input.ContentProfile,
-		SourceText:       input.SourceText,
-		SourceURL:        input.SourceURL,
-		ScheduledAt:      input.ScheduledAt,
-		Metadata:         map[string]interface{}{"created_from": "mcp"},
-		SocialAccountIDs: accountIDs,
-		Media:            defaultMedia,
-		Renditions:       input.Renditions,
+		WorkspaceID:        input.WorkspaceID,
+		Title:              input.Title,
+		ContentProfile:     input.ContentProfile,
+		SourceText:         input.SourceText,
+		SourceURL:          input.SourceURL,
+		ScheduledAt:        input.ScheduledAt,
+		RandomDelayMinutes: input.RandomDelayMinutes,
+		Metadata:           map[string]interface{}{"created_from": "mcp"},
+		SocialAccountIDs:   accountIDs,
+		Media:              defaultMedia,
+		Renditions:         input.Renditions,
 	})
 	if err != nil {
 		return nil, mcpPublicationCreateError(err)
@@ -3398,31 +3437,27 @@ func (h *MCPHandler) listPublications(ctx context.Context, userID string, args m
 	if err := decodeMCPArguments(args, &input); err != nil {
 		return nil, &mcpError{Code: -32602, Message: "invalid list_publications arguments"}
 	}
-	if rpcErr := h.ensureWorkspaceAccess(ctx, userID, input.WorkspaceID); rpcErr != nil {
-		return nil, rpcErr
-	}
 	limit := input.Limit
 	if limit <= 0 || limit > 100 {
 		limit = 20
 	}
-	query := h.db.NewSelect().Model((*models.Publication)(nil)).Where("workspace_id = ?", input.WorkspaceID)
-	if input.Status != "" {
-		query = query.Where("status = ?", input.Status)
+	page, err := h.publicationHandler().publicationApplication().List(ctx, userID, ListPublicationsInput{
+		WorkspaceID: input.WorkspaceID, Status: input.Status,
+		ContentProfile: input.ContentProfile, Limit: limit,
+	})
+	if err != nil {
+		return nil, publicationMutationMCPError(err, "failed to list publications")
 	}
-	if input.ContentProfile != "" {
-		query = query.Where("content_profile = ?", input.ContentProfile)
-	}
-	var rows []models.Publication
-	if err := query.Order("created_at DESC").Limit(limit).Scan(ctx, &rows); err != nil {
-		return nil, &mcpError{Code: -32603, Message: "failed to list publications"}
-	}
-	publications := make([]mcpPublicationStatus, 0, len(rows))
-	for _, row := range rows {
-		status, rpcErr := h.loadMCPPublicationStatus(ctx, row.ID)
-		if rpcErr != nil {
-			return nil, rpcErr
-		}
-		publications = append(publications, status)
+	publications := make([]mcpPublicationStatus, 0, len(page.Publications))
+	for _, publication := range page.Publications {
+		publications = append(publications, mcpPublicationStatus{
+			ID: publication.ID, WorkspaceID: publication.WorkspaceID, Title: publication.Title,
+			ContentProfile: publication.ContentProfile, Status: publication.Status, Revision: publication.Revision,
+			SourceText: publication.SourceText, SourceURL: publication.SourceURL, ScheduledAt: publication.ScheduledAt,
+			RandomDelayMinutes: publication.RandomDelayMinutes, RandomDelayInherited: publication.RandomDelayInherited,
+			CreatedAt: publication.CreatedAt,
+			UpdatedAt: publication.UpdatedAt, RenditionCount: len(publication.Renditions),
+		})
 	}
 	return map[string]any{
 		"content": []mcpContent{{Type: "text", Text: fmt.Sprintf("Found %d publications.", len(publications))}},
@@ -3437,7 +3472,7 @@ func (h *MCPHandler) getPublication(ctx context.Context, userID string, args map
 	if rpcErr != nil {
 		return nil, rpcErr
 	}
-	publication, err := (&PublicationHandler{db: h.db}).loadPublicationResponse(ctx, publicationID, userID)
+	publication, err := h.publicationHandler().publicationApplication().Get(ctx, userID, publicationID)
 	if err != nil {
 		return nil, &mcpError{Code: -32602, Message: "publication not found or unavailable"}
 	}
@@ -3448,17 +3483,19 @@ func (h *MCPHandler) getPublication(ctx context.Context, userID string, args map
 }
 
 type mcpPublicationUpdateInput struct {
-	PublicationID    string                  `json:"publication_id"`
-	ExpectedRevision int                     `json:"expected_revision"`
-	Title            *string                 `json:"title"`
-	ContentProfile   *string                 `json:"content_profile"`
-	SourceText       *string                 `json:"source_text"`
-	SourceURL        *string                 `json:"source_url"`
-	Goal             *string                 `json:"goal"`
-	Audience         *string                 `json:"audience"`
-	ScheduledAt      *time.Time              `json:"scheduled_at"`
-	ClearSchedule    bool                    `json:"clear_schedule"`
-	Metadata         *map[string]interface{} `json:"metadata"`
+	PublicationID      string                  `json:"publication_id"`
+	ExpectedRevision   int                     `json:"expected_revision"`
+	Title              *string                 `json:"title"`
+	ContentProfile     *string                 `json:"content_profile"`
+	SourceText         *string                 `json:"source_text"`
+	SourceURL          *string                 `json:"source_url"`
+	Goal               *string                 `json:"goal"`
+	Audience           *string                 `json:"audience"`
+	ScheduledAt        *time.Time              `json:"scheduled_at"`
+	ClearSchedule      bool                    `json:"clear_schedule"`
+	RandomDelayMinutes *int                    `json:"random_delay_minutes"`
+	InheritRandomDelay bool                    `json:"inherit_random_delay"`
+	Metadata           *map[string]interface{} `json:"metadata"`
 }
 
 func (h *MCPHandler) updatePublication(ctx context.Context, userID string, args map[string]any) (any, *mcpError) {
@@ -3469,16 +3506,18 @@ func (h *MCPHandler) updatePublication(ctx context.Context, userID string, args 
 		return nil, &mcpError{Code: -32602, Message: "invalid update_publication arguments"}
 	}
 	if err := h.publicationHandler().publicationApplication().Update(ctx, userID, input.PublicationID, PublicationUpdateBody{
-		ExpectedRevision: input.ExpectedRevision,
-		Title:            input.Title,
-		ContentProfile:   input.ContentProfile,
-		SourceText:       input.SourceText,
-		SourceURL:        input.SourceURL,
-		Goal:             input.Goal,
-		Audience:         input.Audience,
-		ScheduledAt:      input.ScheduledAt,
-		ClearSchedule:    input.ClearSchedule,
-		Metadata:         mcpMetadataValue(input.Metadata),
+		ExpectedRevision:   input.ExpectedRevision,
+		Title:              input.Title,
+		ContentProfile:     input.ContentProfile,
+		SourceText:         input.SourceText,
+		SourceURL:          input.SourceURL,
+		Goal:               input.Goal,
+		Audience:           input.Audience,
+		ScheduledAt:        input.ScheduledAt,
+		ClearSchedule:      input.ClearSchedule,
+		RandomDelayMinutes: input.RandomDelayMinutes,
+		InheritRandomDelay: input.InheritRandomDelay,
+		Metadata:           mcpMetadataValue(input.Metadata),
 	}); err != nil {
 		return nil, publicationMutationMCPError(err, "failed to update publication")
 	}
@@ -3493,6 +3532,16 @@ func mcpMetadataValue(metadata *map[string]interface{}) map[string]interface{} {
 }
 
 func publicationMutationMCPError(err error, fallback string) *mcpError {
+	if category, ok := publicationservice.CategoryOf(err); ok {
+		switch category {
+		case publicationservice.ErrorInvalidInput, publicationservice.ErrorAccessDenied,
+			publicationservice.ErrorNotFound, publicationservice.ErrorRevisionConflict,
+			publicationservice.ErrorInvalidLifecycleState, publicationservice.ErrorProviderReadiness:
+			return &mcpError{Code: -32602, Message: err.Error()}
+		case publicationservice.ErrorTemporaryUnavailable:
+			return &mcpError{Code: -32603, Message: fallback}
+		}
+	}
 	var notReady *providerreadiness.NotReadyError
 	var statusErr huma.StatusError
 	switch {
@@ -3503,6 +3552,7 @@ func publicationMutationMCPError(err error, fallback string) *mcpError {
 	case errors.Is(err, errPublicationNotFound),
 		errors.Is(err, errPublicationAlreadyProcessing),
 		errors.Is(err, errPublicationNotEditable),
+		errors.Is(err, errPublicationNotScheduled),
 		errors.Is(err, errPublicationScheduleConflict),
 		errors.Is(err, errPublicationScheduleFuture),
 		errors.Is(err, errPublicationValidationBlocked),
@@ -3535,10 +3585,9 @@ func (h *MCPHandler) setPublicationRenditions(ctx context.Context, userID string
 		len(input.Renditions) == 0 {
 		return nil, &mcpError{Code: -32602, Message: "invalid set_publication_renditions arguments"}
 	}
-	if err := h.publicationHandler().publicationApplication().Update(ctx, userID, input.PublicationID, PublicationUpdateBody{
-		ExpectedRevision: input.ExpectedRevision,
-		Renditions:       input.Renditions,
-	}); err != nil {
+	if err := h.publicationHandler().publicationApplication().ReplaceRenditions(
+		ctx, userID, input.PublicationID, input.ExpectedRevision, input.Renditions,
+	); err != nil {
 		return nil, publicationMutationMCPError(err, "failed to update publication renditions")
 	}
 	return h.getPublication(ctx, userID, map[string]any{"publication_id": input.PublicationID})
@@ -3632,6 +3681,23 @@ func (h *MCPHandler) schedulePublication(ctx context.Context, userID string, arg
 	return mcpPublicationActionResult("Publication scheduled: "+publicationID, result.JobID, status), nil
 }
 
+func (h *MCPHandler) cancelPublication(ctx context.Context, userID string, args map[string]any) (any, *mcpError) {
+	var input struct {
+		PublicationID    string `json:"publication_id"`
+		ExpectedRevision int    `json:"expected_revision"`
+	}
+	if err := decodeMCPArguments(args, &input); err != nil || strings.TrimSpace(input.PublicationID) == "" || input.ExpectedRevision < 1 {
+		return nil, &mcpError{Code: -32602, Message: "invalid cancel_publication arguments"}
+	}
+	input.PublicationID = strings.TrimSpace(input.PublicationID)
+	if err := h.publicationHandler().publicationApplication().Cancel(
+		ctx, userID, input.PublicationID, input.ExpectedRevision,
+	); err != nil {
+		return nil, publicationMutationMCPError(err, "failed to cancel publication")
+	}
+	return h.getPublication(ctx, userID, map[string]any{"publication_id": input.PublicationID})
+}
+
 func (h *MCPHandler) publishPublicationNow(ctx context.Context, userID string, args map[string]any) (any, *mcpError) {
 	publicationID, expectedRevision, intent, rpcErr := h.loadMCPPublicationAction(ctx, args, "invalid publish_publication_now arguments")
 	if rpcErr != nil {
@@ -3691,21 +3757,13 @@ func (h *MCPHandler) listPublicationEvents(ctx context.Context, userID string, a
 	if input.PublicationID == "" {
 		return nil, &mcpError{Code: -32602, Message: "publication_id is required"}
 	}
-	var publication models.Publication
-	if err := h.db.NewSelect().Model(&publication).Where("id = ?", input.PublicationID).Scan(ctx); err != nil {
-		return nil, &mcpError{Code: -32602, Message: "publication not found"}
-	}
-	if rpcErr := h.ensureWorkspaceAccess(ctx, userID, publication.WorkspaceID); rpcErr != nil {
-		return nil, rpcErr
-	}
-	events, err := lifecycle.NewService(h.db).ListForPublication(ctx, publication.WorkspaceID, publication.ID, input.Limit)
+	page, err := h.publicationHandler().publicationApplication().History(
+		ctx, userID, input.PublicationID, input.Limit, "",
+	)
 	if err != nil {
-		return nil, &mcpError{Code: -32603, Message: "failed to list publication events"}
+		return nil, publicationMutationMCPError(err, "failed to list publication events")
 	}
-	out := make([]PublicationLifecycleEventResponse, 0, len(events))
-	for _, event := range events {
-		out = append(out, publicationLifecycleEventResponse(event))
-	}
+	out := page.Events
 	return map[string]any{
 		"content": []mcpContent{{Type: "text", Text: fmt.Sprintf("Found %d publication events.", len(out))}},
 		"structuredContent": map[string]any{
@@ -3876,18 +3934,20 @@ func (h *MCPHandler) loadMCPPublicationStatus(ctx context.Context, publicationID
 		return mcpPublicationStatus{}, &mcpError{Code: -32603, Message: "failed to load publication renditions"}
 	}
 	return mcpPublicationStatus{
-		ID:             publication.ID,
-		WorkspaceID:    publication.WorkspaceID,
-		Title:          publication.Title,
-		ContentProfile: publication.ContentProfile,
-		Status:         publication.Status,
-		Revision:       publication.Revision,
-		SourceText:     publication.SourceText,
-		SourceURL:      publication.SourceURL,
-		ScheduledAt:    formatOptionalTime(publication.ScheduledAt),
-		CreatedAt:      publication.CreatedAt.Format(time.RFC3339),
-		UpdatedAt:      publication.UpdatedAt.Format(time.RFC3339),
-		RenditionCount: count,
+		ID:                   publication.ID,
+		WorkspaceID:          publication.WorkspaceID,
+		Title:                publication.Title,
+		ContentProfile:       publication.ContentProfile,
+		Status:               publication.Status,
+		Revision:             publication.Revision,
+		SourceText:           publication.SourceText,
+		SourceURL:            publication.SourceURL,
+		ScheduledAt:          formatOptionalTime(publication.ScheduledAt),
+		RandomDelayMinutes:   publication.RandomDelayMinutes,
+		RandomDelayInherited: !publication.RandomDelayExplicit,
+		CreatedAt:            publication.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:            publication.UpdatedAt.Format(time.RFC3339),
+		RenditionCount:       count,
 	}, nil
 }
 

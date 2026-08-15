@@ -1107,28 +1107,30 @@ type OAuthAccountSelectionReservation struct {
 type Publication struct {
 	bun.BaseModel `bun:"table:publications"`
 
-	ID              string    `bun:",pk" json:"id"`
-	WorkspaceID     string    `bun:",notnull" json:"workspace_id"`
-	CreatedByID     string    `bun:"created_by,notnull" json:"created_by"`
-	Title           string    `bun:",notnull" json:"title"`
-	Intent          string    `bun:"intent,notnull,default:'post'" json:"intent"`
-	CreationPreset  string    `bun:"creation_preset,notnull,default:'post'" json:"creation_preset"`
-	SocialSetID     string    `bun:"social_set_id,notnull,default:''" json:"social_set_id,omitempty"`
-	ContentProfile  string    `bun:"content_profile,notnull,default:'short_text'" json:"content_profile"`
-	SourceText      string    `bun:"source_text,notnull,default:''" json:"source_text"`
-	SourceContent   string    `bun:"source_content,notnull" json:"source_content"` // legacy mirror until old post flows are removed
-	SourceURL       string    `bun:"source_url" json:"source_url"`
-	Goal            string    `json:"goal"`
-	Audience        string    `json:"audience"`
-	Status          string    `bun:",notnull,default:'draft'" json:"status"`
-	Revision        int       `bun:",notnull,default:1" json:"revision"`
-	ScheduledAt     time.Time `bun:"scheduled_at,nullzero" json:"scheduled_at"`
-	ActualRunAt     time.Time `bun:"actual_run_at,nullzero" json:"actual_run_at"`
-	MetadataJSON    string    `bun:"metadata_json,notnull,default:'{}'" json:"metadata_json"`
-	ReleasePlanJSON string    `bun:"release_plan_json,notnull,default:'{}'" json:"release_plan_json"` // legacy mirror until old post flows are removed
-	RepostOverride  string    `bun:"repost_override_json,notnull,default:'{}'" json:"repost_override_json"`
-	CreatedAt       time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
-	UpdatedAt       time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"updated_at"`
+	ID                  string    `bun:",pk" json:"id"`
+	WorkspaceID         string    `bun:",notnull" json:"workspace_id"`
+	CreatedByID         string    `bun:"created_by,notnull" json:"created_by"`
+	Title               string    `bun:",notnull" json:"title"`
+	Intent              string    `bun:"intent,notnull,default:'post'" json:"intent"`
+	CreationPreset      string    `bun:"creation_preset,notnull,default:'post'" json:"creation_preset"`
+	SocialSetID         string    `bun:"social_set_id,notnull,default:''" json:"social_set_id,omitempty"`
+	ContentProfile      string    `bun:"content_profile,notnull,default:'short_text'" json:"content_profile"`
+	SourceText          string    `bun:"source_text,notnull,default:''" json:"source_text"`
+	SourceContent       string    `bun:"source_content,notnull" json:"source_content"` // legacy mirror until old post flows are removed
+	SourceURL           string    `bun:"source_url" json:"source_url"`
+	Goal                string    `json:"goal"`
+	Audience            string    `json:"audience"`
+	Status              string    `bun:",notnull,default:'draft'" json:"status"`
+	Revision            int       `bun:",notnull,default:1" json:"revision"`
+	ScheduledAt         time.Time `bun:"scheduled_at,nullzero" json:"scheduled_at"`
+	ActualRunAt         time.Time `bun:"actual_run_at,nullzero" json:"actual_run_at"`
+	RandomDelayMinutes  int       `bun:"random_delay_minutes,notnull,default:0" json:"random_delay_minutes"`
+	RandomDelayExplicit bool      `bun:"random_delay_explicit,notnull,default:false" json:"-"`
+	MetadataJSON        string    `bun:"metadata_json,notnull,default:'{}'" json:"metadata_json"`
+	ReleasePlanJSON     string    `bun:"release_plan_json,notnull,default:'{}'" json:"release_plan_json"` // legacy mirror until old post flows are removed
+	RepostOverride      string    `bun:"repost_override_json,notnull,default:'{}'" json:"repost_override_json"`
+	CreatedAt           time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
+	UpdatedAt           time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"updated_at"`
 }
 
 // SocialSet is a reusable, format-independent collection of connected accounts.

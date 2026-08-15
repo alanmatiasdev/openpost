@@ -16,6 +16,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/services/providerreadiness"
+	publicationservice "github.com/openpost/backend/internal/services/publications"
 	"github.com/openpost/backend/internal/telemetry"
 	"github.com/stretchr/testify/require"
 )
@@ -26,7 +27,7 @@ func TestPublicationApplicationKeepsRESTAndMCPUpdateParity(t *testing.T) {
 	ctx := context.Background()
 	handler := NewPublicationHandler(srv.db, testAuthenticator{}, nil)
 
-	create := func(title string) *models.Publication {
+	create := func(title string) PublicationResponse {
 		t.Helper()
 		publication, err := handler.publicationApplication().Create(ctx, "user-1", CreatePublicationBody{
 			WorkspaceID:      "ws-1",
@@ -105,7 +106,7 @@ func TestPublicationApplicationUsesOneMutationTimestamp(t *testing.T) {
 	srv := newMCPTestServer(t)
 	ctx := context.Background()
 	handler := srv.handler.publicationHandler()
-	application := handler.publicationApplication()
+	application := handler.publicationApplicationForTesting()
 	createdAt := time.Date(2026, time.August, 9, 8, 0, 0, 0, time.UTC)
 	application.now = func() time.Time { return createdAt }
 	publication, err := application.Create(ctx, "user-1", CreatePublicationBody{
@@ -147,8 +148,9 @@ func TestPublicationApplicationValidatesBeforeQueueMutation(t *testing.T) {
 		SocialAccountIDs: []string{"account-1"},
 	})
 	require.NoError(t, err)
-	publication.ScheduledAt = time.Now().UTC().Add(time.Hour)
-	_, err = srv.db.NewUpdate().Model(publication).Column("scheduled_at").WherePK().Exec(ctx)
+	scheduledAt := time.Now().UTC().Add(time.Hour)
+	_, err = srv.db.NewUpdate().Model((*models.Publication)(nil)).
+		Set("scheduled_at = ?", scheduledAt).Where("id = ?", publication.ID).Exec(ctx)
 	require.NoError(t, err)
 
 	commands := handler.publicationApplication()
@@ -173,6 +175,144 @@ func TestPublicationApplicationValidatesBeforeQueueMutation(t *testing.T) {
 	require.Equal(t, models.PublicationStatusDraft, stored.Status)
 }
 
+func TestPublicationApplicationPersistsInheritedRandomDelayAndExactAuthorizationRunAt(t *testing.T) {
+	t.Parallel()
+	srv := newMCPTestServer(t)
+	ctx := context.Background()
+	_, err := srv.db.NewUpdate().Model((*models.Workspace)(nil)).
+		Set("random_delay_minutes = ?", 15).
+		Where("id = ?", "ws-1").Exec(ctx)
+	require.NoError(t, err)
+
+	handler := srv.handler.publicationHandler()
+	scheduledAt := time.Now().UTC().Add(2 * time.Hour).Truncate(time.Second)
+	publication, err := handler.publicationApplication().Create(ctx, "user-1", CreatePublicationBody{
+		WorkspaceID:      "ws-1",
+		ContentProfile:   models.ContentProfileShortText,
+		SourceText:       "Delayed publication",
+		ScheduledAt:      &scheduledAt,
+		SocialAccountIDs: []string{"account-1"},
+	})
+	require.NoError(t, err)
+
+	result, err := handler.publicationApplication().Schedule(
+		ctx, "user-1", publication.ID, 1, providerreadiness.ExecutionIntentProduction,
+	)
+	require.NoError(t, err)
+
+	var stored models.Publication
+	require.NoError(t, srv.db.NewSelect().Model(&stored).Where("id = ?", publication.ID).Scan(ctx))
+	require.Equal(t, 15, stored.RandomDelayMinutes)
+	require.False(t, stored.ActualRunAt.IsZero())
+	require.WithinDuration(t, scheduledAt, stored.ActualRunAt, 15*time.Minute)
+
+	var job models.Job
+	require.NoError(t, srv.db.NewSelect().Model(&job).Where("id = ?", result.JobID).Scan(ctx))
+	require.True(t, job.RunAt.Equal(stored.ActualRunAt))
+	var authorization models.PublicationAuthorization
+	require.NoError(t, srv.db.NewSelect().Model(&authorization).Where("job_id = ?", job.ID).Scan(ctx))
+	require.True(t, authorization.ScheduledAt.Equal(job.RunAt))
+}
+
+func TestPublicationApplicationPersistsExplicitZeroRandomDelay(t *testing.T) {
+	t.Parallel()
+	srv := newMCPTestServer(t)
+	ctx := context.Background()
+	_, err := srv.db.NewUpdate().Model((*models.Workspace)(nil)).
+		Set("random_delay_minutes = ?", 15).
+		Where("id = ?", "ws-1").Exec(ctx)
+	require.NoError(t, err)
+
+	delay := 0
+	scheduledAt := time.Now().UTC().Add(2 * time.Hour).Truncate(time.Second)
+	handler := srv.handler.publicationHandler()
+	publication, err := handler.publicationApplication().Create(ctx, "user-1", CreatePublicationBody{
+		WorkspaceID:        "ws-1",
+		ContentProfile:     models.ContentProfileShortText,
+		SourceText:         "Exact publication",
+		ScheduledAt:        &scheduledAt,
+		RandomDelayMinutes: &delay,
+		SocialAccountIDs:   []string{"account-1"},
+	})
+	require.NoError(t, err)
+	_, err = handler.publicationApplication().Schedule(
+		ctx, "user-1", publication.ID, 1, providerreadiness.ExecutionIntentProduction,
+	)
+	require.NoError(t, err)
+
+	var stored models.Publication
+	require.NoError(t, srv.db.NewSelect().Model(&stored).Where("id = ?", publication.ID).Scan(ctx))
+	require.Equal(t, 0, stored.RandomDelayMinutes)
+	require.True(t, stored.ActualRunAt.Equal(scheduledAt))
+
+	delay = 10
+	require.NoError(t, handler.publicationApplication().Update(ctx, "user-1", publication.ID, PublicationUpdateBody{
+		ExpectedRevision:   1,
+		RandomDelayMinutes: &delay,
+	}))
+	require.NoError(t, srv.db.NewSelect().Model(&stored).Where("id = ?", publication.ID).Scan(ctx))
+	require.Equal(t, 10, stored.RandomDelayMinutes)
+	require.WithinDuration(t, scheduledAt, stored.ActualRunAt, 10*time.Minute)
+	var job models.Job
+	require.NoError(t, srv.db.NewSelect().Model(&job).Where("scope_id = ?", publication.ID).Scan(ctx))
+	require.True(t, job.RunAt.Equal(stored.ActualRunAt))
+
+	require.NoError(t, handler.publicationApplication().Update(ctx, "user-1", publication.ID, PublicationUpdateBody{
+		ExpectedRevision:   2,
+		InheritRandomDelay: true,
+	}))
+	require.NoError(t, srv.db.NewSelect().Model(&stored).Where("id = ?", publication.ID).Scan(ctx))
+	require.False(t, stored.RandomDelayExplicit)
+	require.Equal(t, 15, stored.RandomDelayMinutes)
+	view, err := handler.publicationApplication().Get(ctx, "user-1", publication.ID)
+	require.NoError(t, err)
+	require.True(t, view.RandomDelayInherited)
+}
+
+func TestPublicationApplicationReturnsStableLifecycleErrorCategory(t *testing.T) {
+	t.Parallel()
+	srv := newMCPTestServer(t)
+	ctx := context.Background()
+	publication, err := srv.handler.publicationHandler().publicationApplication().Create(ctx, "user-1", CreatePublicationBody{
+		WorkspaceID: "ws-1", ContentProfile: models.ContentProfileShortText,
+		SourceText: "Draft", SocialAccountIDs: []string{"account-1"},
+	})
+	require.NoError(t, err)
+
+	err = srv.handler.publicationHandler().publicationApplication().Cancel(ctx, "user-1", publication.ID, 1)
+	require.Error(t, err)
+	category, ok := publicationservice.CategoryOf(err)
+	require.True(t, ok)
+	require.Equal(t, publicationservice.ErrorInvalidLifecycleState, category)
+}
+
+func TestPublicationApplicationCancelsScheduledWork(t *testing.T) {
+	t.Parallel()
+	srv := newMCPTestServer(t)
+	ctx := context.Background()
+	handler := srv.handler.publicationHandler()
+	scheduledAt := time.Now().UTC().Add(2 * time.Hour)
+	publication, err := handler.publicationApplication().Create(ctx, "user-1", CreatePublicationBody{
+		WorkspaceID: "ws-1", ContentProfile: models.ContentProfileShortText,
+		SourceText: "Cancel me", ScheduledAt: &scheduledAt, SocialAccountIDs: []string{"account-1"},
+	})
+	require.NoError(t, err)
+	_, err = handler.publicationApplication().Schedule(
+		ctx, "user-1", publication.ID, 1, providerreadiness.ExecutionIntentProduction,
+	)
+	require.NoError(t, err)
+
+	require.NoError(t, handler.publicationApplication().Cancel(ctx, "user-1", publication.ID, 1))
+	var stored models.Publication
+	require.NoError(t, srv.db.NewSelect().Model(&stored).Where("id = ?", publication.ID).Scan(ctx))
+	require.Equal(t, models.PublicationStatusDraft, stored.Status)
+	require.Equal(t, 2, stored.Revision)
+	require.True(t, stored.ScheduledAt.IsZero())
+	jobs, err := srv.db.NewSelect().Model((*models.Job)(nil)).Where("scope_id = ?", publication.ID).Count(ctx)
+	require.NoError(t, err)
+	require.Zero(t, jobs)
+}
+
 func TestPublicationApplicationActivatesWorkspaceOnceAfterFirstEnqueue(t *testing.T) {
 	t.Parallel()
 	srv := newMCPTestServer(t)
@@ -192,8 +332,9 @@ func TestPublicationApplicationActivatesWorkspaceOnceAfterFirstEnqueue(t *testin
 	require.NoError(t, err)
 	require.Zero(t, activationCount, "saving a draft must not activate its Workspace")
 
-	publication.ScheduledAt = time.Now().UTC().Add(time.Hour)
-	_, err = srv.db.NewUpdate().Model(publication).Column("scheduled_at").WherePK().Exec(ctx)
+	scheduledAt := time.Now().UTC().Add(time.Hour)
+	_, err = srv.db.NewUpdate().Model((*models.Publication)(nil)).
+		Set("scheduled_at = ?", scheduledAt).Where("id = ?", publication.ID).Exec(ctx)
 	require.NoError(t, err)
 	commands := handler.publicationApplication()
 	first, err := commands.Schedule(ctx, "user-1", publication.ID, 1, providerreadiness.ExecutionIntentProduction)

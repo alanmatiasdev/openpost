@@ -3274,6 +3274,9 @@
 				...(proposedSchedule
 					? { scheduled_at: proposedSchedule, clear_schedule: false }
 					: { clear_schedule: true }),
+				...(proposedSchedule && randomDelayOverride !== 'default'
+					? { random_delay_minutes: effectiveRandomDelayMinutes }
+					: {}),
 				metadata: canonical.metadata,
 				segments: canonical.segments,
 				renditions: canonical.renditions,
@@ -3306,6 +3309,11 @@
 							source_text: canonical.source_text,
 							source_url: canonical.source_url ?? '',
 							...(proposedSchedule ? { scheduled_at: proposedSchedule } : { clear_schedule: true }),
+							...(proposedSchedule
+								? randomDelayOverride !== 'default'
+									? { random_delay_minutes: effectiveRandomDelayMinutes }
+									: { inherit_random_delay: true }
+								: {}),
 							metadata: canonical.metadata,
 							segments: canonical.segments,
 							renditions: canonical.renditions,
@@ -3326,6 +3334,9 @@
 						body: {
 							...canonical,
 							...(proposedSchedule ? { scheduled_at: proposedSchedule } : {}),
+							...(proposedSchedule && randomDelayOverride !== 'default'
+								? { random_delay_minutes: effectiveRandomDelayMinutes }
+								: {}),
 							repost_override: $state.snapshot(repostOverride)
 						}
 					});

@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/danielgtaylor/huma/v2"
 	"github.com/google/uuid"
 	"github.com/openpost/backend/internal/capabilities"
 	"github.com/openpost/backend/internal/jobregistry"
@@ -20,6 +19,7 @@ import (
 	"github.com/openpost/backend/internal/services/providerreadiness"
 	"github.com/openpost/backend/internal/services/providerwrite"
 	"github.com/openpost/backend/internal/services/publicationauth"
+	publicationservice "github.com/openpost/backend/internal/services/publications"
 	"github.com/uptrace/bun"
 )
 
@@ -32,15 +32,64 @@ type publicationApplication struct {
 	newID   func() string
 }
 
-type publicationEnqueueResult struct {
-	JobID                   string
-	Renditions              []RenditionActionOutcome
-	ActivationID            string
-	ActivationPublicationID string
-	NewlyActivated          bool
+type publicationEnqueueResult = publicationservice.EnqueueResult
+
+func publicationApplicationError(err error) error {
+	if err == nil {
+		return nil
+	}
+	if _, ok := publicationservice.CategoryOf(err); ok {
+		return err
+	}
+	var notReady *providerreadiness.NotReadyError
+	if errors.As(err, &notReady) {
+		return publicationservice.NewError(publicationservice.ErrorProviderReadiness, err)
+	}
+	if isDraftRevisionConflict(err) {
+		return publicationservice.NewError(publicationservice.ErrorRevisionConflict, err)
+	}
+	switch {
+	case errors.Is(err, errPublicationNotFound):
+		return publicationservice.NewError(publicationservice.ErrorNotFound, err)
+	case errors.Is(err, errPublicationNotEditable), errors.Is(err, errPublicationNotScheduled),
+		errors.Is(err, errPublicationAlreadyProcessing):
+		return publicationservice.NewError(publicationservice.ErrorInvalidLifecycleState, err)
+	case errors.Is(err, errPublicationScheduleConflict), errors.Is(err, errPublicationScheduleFuture),
+		errors.Is(err, errPublicationValidationBlocked), errors.Is(err, errPublicationScheduleRequired):
+		return publicationservice.NewError(publicationservice.ErrorInvalidInput, err)
+	}
+	var statusErr interface {
+		error
+		GetStatus() int
+	}
+	if errors.As(err, &statusErr) {
+		switch statusErr.GetStatus() {
+		case 400:
+			return publicationservice.NewError(publicationservice.ErrorInvalidInput, err)
+		case 401, 403:
+			return publicationservice.NewError(publicationservice.ErrorAccessDenied, err)
+		case 404:
+			return publicationservice.NewError(publicationservice.ErrorNotFound, err)
+		case 409:
+			return publicationservice.NewError(publicationservice.ErrorInvalidLifecycleState, err)
+		}
+	}
+	return publicationservice.NewError(publicationservice.ErrorTemporaryUnavailable, err)
 }
 
-func (h *PublicationHandler) publicationApplication() publicationApplication {
+func categorizePublicationError(err *error) {
+	if err != nil {
+		*err = publicationApplicationError(*err)
+	}
+}
+
+var _ publicationservice.Application = publicationApplication{}
+
+func (h *PublicationHandler) publicationApplication() publicationservice.Application {
+	return h.publicationApplicationForTesting()
+}
+
+func (h *PublicationHandler) publicationApplicationForTesting() publicationApplication {
 	return publicationApplication{
 		handler: h,
 		now:     func() time.Time { return time.Now().UTC() },
@@ -48,20 +97,66 @@ func (h *PublicationHandler) publicationApplication() publicationApplication {
 	}
 }
 
+func (commands publicationApplication) Get(
+	ctx context.Context,
+	userID string,
+	publicationID string,
+) (result PublicationResponse, err error) {
+	defer categorizePublicationError(&err)
+	return commands.handler.loadPublicationResponse(ctx, publicationID, userID)
+}
+
+func (commands publicationApplication) List(
+	ctx context.Context,
+	userID string,
+	input ListPublicationsInput,
+) (result publicationservice.ListPage, err error) {
+	defer categorizePublicationError(&err)
+	if err := commands.handler.checkWorkspaceAccess(ctx, input.WorkspaceID, userID); err != nil {
+		return publicationservice.ListPage{}, err
+	}
+	page, err := commands.handler.listPublicationsPage(ctx, &input)
+	if err != nil {
+		return publicationservice.ListPage{}, err
+	}
+	return publicationservice.ListPage{
+		TotalCount: page.TotalCount, Limit: page.Limit, Offset: page.Offset,
+		NextOffset: page.NextOffset, NextCursor: page.NextCursor, HasMore: page.HasMore,
+		Publications: page.Body,
+	}, nil
+}
+
+func (commands publicationApplication) History(
+	ctx context.Context,
+	userID string,
+	publicationID string,
+	limit int,
+	cursor string,
+) (result publicationservice.HistoryPage, err error) {
+	defer categorizePublicationError(&err)
+	publication, err := commands.handler.loadPublication(ctx, publicationID, userID)
+	if err != nil {
+		return publicationservice.HistoryPage{}, err
+	}
+	events, nextCursor, hasMore, err := commands.handler.listPublicationHistory(ctx, publication, limit, cursor)
+	return publicationservice.HistoryPage{Events: events, NextCursor: nextCursor, HasMore: hasMore}, err
+}
+
 func (commands publicationApplication) Create(
 	ctx context.Context,
 	userID string,
 	input CreatePublicationBody,
-) (*models.Publication, error) {
+) (publicationResult PublicationResponse, err error) {
+	defer categorizePublicationError(&err)
 	prepared, err := commands.prepareCreate(ctx, userID, input)
 	if err != nil {
-		return nil, err
+		return PublicationResponse{}, err
 	}
 	publication := publicationModelFromCreate(prepared.input, userID, prepared.repostOverrideJSON, prepared.now)
 	if err := commands.persistCreate(ctx, publication, prepared); err != nil {
-		return nil, fmt.Errorf("persist publication creation: %w", err)
+		return PublicationResponse{}, fmt.Errorf("persist publication creation: %w", err)
 	}
-	return publication, nil
+	return commands.handler.loadPublicationResponse(ctx, publication.ID, userID)
 }
 
 // Update commits the aggregate, canonical segments, destination renditions,
@@ -74,7 +169,14 @@ func (commands publicationApplication) Update(
 	userID string,
 	publicationID string,
 	input PublicationUpdateBody,
-) error {
+) (err error) {
+	defer categorizePublicationError(&err)
+	if input.RandomDelayMinutes != nil && input.InheritRandomDelay {
+		return publicationservice.NewError(publicationservice.ErrorInvalidInput, errors.New("random_delay_minutes and inherit_random_delay cannot be used together"))
+	}
+	if input.RandomDelayMinutes != nil && (*input.RandomDelayMinutes < 0 || *input.RandomDelayMinutes > 60) {
+		return publicationservice.NewError(publicationservice.ErrorInvalidInput, errors.New("random_delay_minutes must be between 0 and 60"))
+	}
 	existing, err := commands.handler.loadPublicationForEdit(ctx, publicationID, userID)
 	if err != nil {
 		return err
@@ -122,7 +224,7 @@ func (commands publicationApplication) Update(
 			*input.RepostOverride,
 		)
 		if err != nil {
-			return huma.Error400BadRequest(err.Error())
+			return publicationservice.NewError(publicationservice.ErrorInvalidInput, err)
 		}
 		input.RepostOverride = &normalized
 	}
@@ -196,11 +298,22 @@ func (commands publicationApplication) Update(
 			}
 		}
 		if rescheduleQueuedJob {
+			runAt, effectiveDelay, err := commands.handler.resolveScheduledPublicationRunAtTx(
+				txCtx, tx, publication, now,
+			)
+			if err != nil {
+				return err
+			}
+			publication.ActualRunAt = runAt
+			publication.RandomDelayMinutes = effectiveDelay
+			if _, err := tx.NewUpdate().Model((*models.Publication)(nil)).
+				Set("actual_run_at = ?", runAt).
+				Set("random_delay_minutes = ?", effectiveDelay).
+				Where("id = ?", publication.ID).Exec(txCtx); err != nil {
+				return err
+			}
 			if _, err := commands.handler.replacePublicationJobTx(
-				txCtx,
-				tx,
-				publication.ID,
-				publication.ScheduledAt,
+				txCtx, tx, publication.ID, runAt,
 			); err != nil {
 				return err
 			}
@@ -233,11 +346,96 @@ func (commands publicationApplication) Update(
 	})
 }
 
+func (commands publicationApplication) ReplaceRenditions(
+	ctx context.Context,
+	userID string,
+	publicationID string,
+	expectedRevision int,
+	renditions []RenditionInput,
+) error {
+	return commands.Update(ctx, userID, publicationID, PublicationUpdateBody{
+		ExpectedRevision: expectedRevision,
+		Renditions:       renditions,
+	})
+}
+
+func (commands publicationApplication) Delete(
+	ctx context.Context,
+	userID string,
+	publicationID string,
+	expectedRevision int,
+) (err error) {
+	defer categorizePublicationError(&err)
+	publication, err := commands.handler.loadPublicationForEdit(ctx, publicationID, userID)
+	if err != nil {
+		return err
+	}
+	return commands.handler.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
+		current, err := commands.handler.loadEditablePublicationTx(txCtx, tx, publication.ID)
+		if err != nil {
+			return err
+		}
+		if current.Revision != expectedRevision {
+			return commands.handler.publicationRevisionConflict(txCtx, tx, current, expectedRevision)
+		}
+		if err := commands.handler.cancelPendingReplyJobsForDeletedTargetsTx(txCtx, tx, current.ID, nil); err != nil {
+			return err
+		}
+		if _, err := tx.NewDelete().Model((*models.Job)(nil)).
+			Where(primaryPublishPublicationJobWhere(commands.handler.db), jobTypePublishPublication, current.ID).
+			Exec(txCtx); err != nil {
+			return fmt.Errorf("delete publication jobs: %w", err)
+		}
+		var linkedPostIDs []string
+		if err := tx.NewSelect().Model((*models.Post)(nil)).Column("id").
+			Where("publication_id = ?", current.ID).Scan(txCtx, &linkedPostIDs); err != nil && !isMissingLegacyPostsTable(err) {
+			return fmt.Errorf("load linked draft posts: %w", err)
+		}
+		if err := postservice.DeletePostsCascadeTx(txCtx, tx, linkedPostIDs); err != nil {
+			return err
+		}
+		result, err := tx.NewDelete().Model((*models.Publication)(nil)).
+			Where("id = ? AND revision = ?", current.ID, current.Revision).Exec(txCtx)
+		if err != nil {
+			return fmt.Errorf("delete publication: %w", err)
+		}
+		if affected, _ := result.RowsAffected(); affected == 0 {
+			latest, loadErr := commands.handler.loadEditablePublicationTx(txCtx, tx, current.ID)
+			if loadErr != nil {
+				return loadErr
+			}
+			return commands.handler.publicationRevisionConflict(txCtx, tx, latest, expectedRevision)
+		}
+		return nil
+	})
+}
+
+func (commands publicationApplication) Cancel(
+	ctx context.Context,
+	userID string,
+	publicationID string,
+	expectedRevision int,
+) (err error) {
+	defer categorizePublicationError(&err)
+	publication, err := commands.handler.loadPublicationForEdit(ctx, publicationID, userID)
+	if err != nil {
+		return err
+	}
+	if publication.Status != models.PublicationStatusScheduled {
+		return errPublicationNotScheduled
+	}
+	return commands.Update(ctx, userID, publicationID, PublicationUpdateBody{
+		ExpectedRevision: expectedRevision,
+		ClearSchedule:    true,
+	})
+}
+
 func (commands publicationApplication) Validate(
 	ctx context.Context,
 	userID string,
 	publicationID string,
-) ([]capabilities.ValidationIssue, error) {
+) (issues []capabilities.ValidationIssue, err error) {
+	defer categorizePublicationError(&err)
 	publication, err := commands.handler.loadPublication(ctx, publicationID, userID)
 	if err != nil {
 		return nil, err
@@ -251,7 +449,8 @@ func (commands publicationApplication) Schedule(
 	publicationID string,
 	expectedRevision int,
 	intent providerreadiness.ExecutionIntent,
-) (publicationEnqueueResult, error) {
+) (result publicationEnqueueResult, err error) {
+	defer categorizePublicationError(&err)
 	publication, err := commands.handler.loadPublicationForEdit(ctx, publicationID, userID)
 	if err != nil {
 		return publicationEnqueueResult{}, err
@@ -259,7 +458,7 @@ func (commands publicationApplication) Schedule(
 	if err := commands.validateForEnqueue(ctx, userID, publication.ID); err != nil {
 		return publicationEnqueueResult{}, err
 	}
-	result, err := commands.handler.queueScheduledPublicationExpected(ctx, publication.ID, expectedRevision, intent)
+	result, err = commands.handler.queueScheduledPublicationExpected(ctx, publication.ID, expectedRevision, intent)
 	if err == nil {
 		commands.handler.captureActivationEvent(ctx, userID, publication.WorkspaceID, result)
 	}
@@ -272,7 +471,8 @@ func (commands publicationApplication) PublishNow(
 	publicationID string,
 	expectedRevision int,
 	intent providerreadiness.ExecutionIntent,
-) (publicationEnqueueResult, error) {
+) (result publicationEnqueueResult, err error) {
+	defer categorizePublicationError(&err)
 	publication, err := commands.handler.loadPublicationForEdit(ctx, publicationID, userID)
 	if err != nil {
 		return publicationEnqueueResult{}, err
@@ -280,7 +480,7 @@ func (commands publicationApplication) PublishNow(
 	if err := commands.validateForEnqueue(ctx, userID, publication.ID); err != nil {
 		return publicationEnqueueResult{}, err
 	}
-	result, err := commands.handler.queuePublicationNowExpected(ctx, publication.ID, expectedRevision, intent)
+	result, err = commands.handler.queuePublicationNowExpected(ctx, publication.ID, expectedRevision, intent)
 	if err == nil {
 		commands.handler.captureActivationEvent(ctx, userID, publication.WorkspaceID, result)
 	}
@@ -304,7 +504,8 @@ func (commands publicationApplication) RetryRendition(
 	publicationID,
 	accountID,
 	targetKey string,
-) (string, error) {
+) (jobIDResult string, err error) {
+	defer categorizePublicationError(&err)
 	publication, err := commands.handler.loadPublication(ctx, publicationID, userID)
 	if err != nil {
 		return "", err
@@ -322,17 +523,17 @@ func (commands publicationApplication) RetryRendition(
 		query = query.Where("target_key = ?", strings.TrimSpace(targetKey))
 	}
 	if err := query.Scan(ctx); err != nil {
-		return "", huma.Error500InternalServerError("failed to load rendition")
+		return "", publicationservice.NewError(publicationservice.ErrorTemporaryUnavailable, errors.New("failed to load rendition"))
 	}
 	if len(renditions) == 0 {
-		return "", huma.Error404NotFound("rendition not found")
+		return "", publicationservice.NewError(publicationservice.ErrorNotFound, errors.New("rendition not found"))
 	}
 	if len(renditions) > 1 {
-		return "", huma.Error409Conflict("target_key is required when an account has multiple publication destinations")
+		return "", publicationservice.NewError(publicationservice.ErrorInvalidInput, errors.New("target_key is required when an account has multiple publication destinations"))
 	}
 	rendition := renditions[0]
 	if rendition.Status != models.RenditionStatusFailed {
-		return "", huma.Error409Conflict("only a failed destination can be retried")
+		return "", publicationservice.NewError(publicationservice.ErrorInvalidLifecycleState, errors.New("only a failed destination can be retried"))
 	}
 	delivery, err := loadSafeRetryDelivery(ctx, commands.handler.db, rendition)
 	if err != nil {
@@ -350,7 +551,7 @@ func (commands publicationApplication) RetryRendition(
 	})
 	err = commands.handler.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
 		if delivery != nil && !sameSafeRetryDelivery(txCtx, tx, rendition, *delivery) {
-			return huma.Error409Conflict("the delivery outcome changed; review it before another send")
+			return publicationservice.NewError(publicationservice.ErrorInvalidLifecycleState, errors.New("the delivery outcome changed; review it before another send"))
 		}
 		return commands.retryRenditionTx(txCtx, tx, publication, &rendition, jobID, batchID, payload, now)
 	})
@@ -363,7 +564,7 @@ func loadSafeRetryDelivery(ctx context.Context, db bun.IDB, rendition models.Ren
 		Where("target_key = ?", rendition.TargetKey).Scan(ctx)
 	if err == nil {
 		if providerwrite.DeliveryRecoveryAction(delivery) != providerwrite.RecoveryRetry {
-			return nil, huma.Error409Conflict("this delivery outcome must be reconciled or resolved manually before another send")
+			return nil, publicationservice.NewError(publicationservice.ErrorInvalidLifecycleState, errors.New("this delivery outcome must be reconciled or resolved manually before another send"))
 		}
 		return &delivery, nil
 	}
@@ -371,12 +572,12 @@ func loadSafeRetryDelivery(ctx context.Context, db bun.IDB, rendition models.Ren
 		return nil, nil
 	}
 	if errors.Is(err, sql.ErrNoRows) {
-		return nil, huma.Error409Conflict("this destination has no confirmed safe delivery outcome to retry")
+		return nil, publicationservice.NewError(publicationservice.ErrorInvalidLifecycleState, errors.New("this destination has no confirmed safe delivery outcome to retry"))
 	}
 	if isMissingProviderDeliveryTable(err) {
-		return nil, huma.Error409Conflict("this failure requires the recommended account or content action")
+		return nil, publicationservice.NewError(publicationservice.ErrorInvalidLifecycleState, errors.New("this failure requires the recommended account or content action"))
 	}
-	return nil, huma.Error500InternalServerError("failed to load destination delivery outcome")
+	return nil, publicationservice.NewError(publicationservice.ErrorTemporaryUnavailable, errors.New("failed to load destination delivery outcome"))
 }
 
 func sameSafeRetryDelivery(ctx context.Context, db bun.IDB, rendition models.Rendition, expected models.ProviderDelivery) bool {
@@ -479,7 +680,8 @@ func (commands publicationApplication) RetryFailedRenditions(
 	ctx context.Context,
 	userID,
 	publicationID string,
-) (string, error) {
+) (jobIDResult string, err error) {
+	defer categorizePublicationError(&err)
 	publication, err := commands.handler.loadPublication(ctx, publicationID, userID)
 	if err != nil {
 		return "", err
@@ -542,7 +744,7 @@ func (commands publicationApplication) RetryFailedRenditions(
 		}
 		affected, _ := result.RowsAffected()
 		if affected == 0 {
-			return huma.Error409Conflict("no retryable failed destinations remain")
+			return publicationservice.NewError(publicationservice.ErrorInvalidLifecycleState, errors.New("no retryable failed destinations remain"))
 		}
 		if _, err := tx.NewUpdate().
 			Model((*models.Publication)(nil)).

@@ -677,7 +677,7 @@ func TestSchedulePublicationRollsBackJobAndStatesTogether(t *testing.T) {
 	resp := httptest.NewRecorder()
 	e.ServeHTTP(resp, req)
 
-	require.Equal(t, http.StatusInternalServerError, resp.Code, resp.Body.String())
+	require.Equal(t, http.StatusServiceUnavailable, resp.Code, resp.Body.String())
 	jobCount, err := db.NewSelect().Model((*models.Job)(nil)).Count(ctx)
 	require.NoError(t, err)
 	require.Zero(t, jobCount)

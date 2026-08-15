@@ -47,7 +47,10 @@ func TestPublicationTextEditorMigrationBackfillsExistingDrafts(t *testing.T) {
 		MetadataJSON:    "{}",
 		ReleasePlanJSON: "{}",
 	}
-	_, err = db.NewInsert().Model(&publication).Exec(ctx)
+	_, err = db.NewInsert().Model(&publication).Column(
+		"id", "workspace_id", "created_by", "title", "intent", "content_profile",
+		"source_text", "source_content", "status", "revision", "metadata_json", "release_plan_json",
+	).Exec(ctx)
 	require.NoError(t, err)
 	_, err = db.NewInsert().Model(&models.PublicationSegment{
 		ID:            "segment-editor",
