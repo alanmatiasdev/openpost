@@ -65,55 +65,28 @@
 	import { m } from '$lib/paraglide/messages';
 	import { getLocaleTag } from '$lib/i18n';
 	import { soundPreferences } from '$lib/stores/sound-preferences.svelte';
+	import type { components } from '$lib/api/types';
 
-	interface MediaItem {
-		id: string;
-		workspace_id: string;
-		mime_type: string;
-		size: number;
-		original_filename: string;
-		width: number;
-		height: number;
-		alt_text: string;
-		is_favorite: boolean;
-		created_at: string;
-		url: string;
-		thumbnail_url: string;
-		usage_count: number;
-		can_delete: boolean;
-		processing_status: string;
-		processing_progress: number;
-		analysis_status: string;
-		analysis_error?: string;
-		poster_thumbnail_url?: string;
-		duration_ms: number;
-		frame_rate: number;
-		container_format?: string;
-		video_codec?: string;
-		video_profile?: string;
-		audio_codec?: string;
-		source: string;
-		asset_kind: string;
-		parent_media_id?: string;
-		design_document_id?: string;
-		design_page_id?: string;
+	type MediaListResponseItem = components['schemas']['MediaListItem'];
+	type MediaUsageResponseItem = components['schemas']['MediaUsageItem'];
+
+	interface MediaItem extends Omit<MediaListResponseItem, 'tags'> {
 		tags: string[];
-		retention_class: 'library' | 'temporary';
-		last_used_at?: string;
-		trashed_at?: string;
-		purge_after?: string;
-		trash_reason?: 'manual' | 'published' | 'expired';
 	}
 
 	interface MediaUsage {
 		kind: string;
 		id: string;
 		label: string;
-		post_id: string;
 		content: string;
 		status: string;
 		scheduled_at: string;
 	}
+
+	type OwnedMediaRoute =
+		| `/image-editor/new?${string}`
+		| `/video-editor/new?${string}`
+		| '/settings?tab=brand';
 
 	type LibraryDeletionRequest =
 		| { kind: 'single'; media: MediaItem }
@@ -190,6 +163,36 @@
 	function notify(message: string, tone: 'neutral' | 'success' | 'error' = 'neutral') {
 		toastMessage = message;
 		toastTone = tone;
+	}
+
+	function normalizeMediaItem(item: MediaListResponseItem): MediaItem {
+		return { ...item, tags: item.tags ?? [] };
+	}
+
+	function normalizeMediaUsage(item: MediaUsageResponseItem): MediaUsage {
+		return {
+			kind: item.kind,
+			id: item.id,
+			label: item.label,
+			content: item.content ?? '',
+			status: item.status ?? '',
+			scheduled_at: item.scheduled_at ?? ''
+		};
+	}
+
+	function errorMessage(cause: unknown, fallback: string): string {
+		return cause instanceof Error && cause.message ? cause.message : fallback;
+	}
+
+	function resolveOwnedMediaRoute(route: OwnedMediaRoute): ReturnType<typeof resolve> {
+		// SAFETY: Every route is constrained to an owned destination of the Media page.
+		return resolve(route as '/');
+	}
+
+	function resolveCurrentMediaURL(url: URL): ReturnType<typeof resolve> {
+		const currentPath = `${url.pathname}${url.search}`;
+		// SAFETY: The path comes from the current same-origin SvelteKit URL.
+		return resolve(currentPath as '/');
 	}
 
 	function selectedCountLabel(count: number) {
@@ -338,12 +341,12 @@
 				await loadMedia(workspaceID);
 				return;
 			}
-			mediaItems = (data?.media ?? []) as unknown as MediaItem[];
+			mediaItems = (data?.media ?? []).map(normalizeMediaItem);
 			totalCount = nextTotalCount;
 			loadedMediaViewKey = requestKey;
 		} catch (e) {
 			if (!isCurrentRequest()) return;
-			error = (e as Error).message;
+			error = errorMessage(e, m.media_load_failed());
 		} finally {
 			if (isCurrentRequest()) mediaLoading = false;
 		}
@@ -486,7 +489,7 @@
 				await loadMedia();
 			}
 		} catch (e) {
-			notify((e as Error).message, 'error');
+			notify(errorMessage(e, m.media_favorite_failed()), 'error');
 		}
 	}
 
@@ -507,7 +510,7 @@
 		try {
 			const result = await client.PUT('/media/tags/{id}/items', {
 				params: { path: { id } },
-				body: { media_ids: mediaIDs, mode } as never
+				body: { media_ids: mediaIDs, mode }
 			});
 			if (result.error) throw new Error(result.error.detail);
 			await Promise.all([loadMedia(), loadImageEditorHub()]);
@@ -597,7 +600,7 @@
 			return {
 				ok: false,
 				remainingIDs: ids,
-				message: (e as Error).message || m.media_delete_failed()
+				message: errorMessage(e, m.media_delete_failed())
 			};
 		}
 	}
@@ -639,7 +642,7 @@
 			link.remove();
 			URL.revokeObjectURL(objectURL);
 		} catch (e) {
-			notify((e as Error).message, 'error');
+			notify(errorMessage(e, m.media_download_failed()), 'error');
 		}
 	}
 
@@ -652,7 +655,7 @@
 			height: String(media.height || 1080)
 		});
 		if (action) query.set('action', action);
-		void goto(resolve(`/image-editor/new?${query.toString()}` as '/'));
+		void goto(resolveOwnedMediaRoute(`/image-editor/new?${query.toString()}`));
 	}
 
 	function openMediaInVideoEditor(media: MediaItem) {
@@ -661,7 +664,7 @@
 			source_media: media.id,
 			source_name: media.original_filename
 		});
-		void goto(resolve(`/video-editor/new?${query.toString()}` as '/'));
+		void goto(resolveOwnedMediaRoute(`/video-editor/new?${query.toString()}`));
 	}
 
 	async function duplicateMedia(media: MediaItem) {
@@ -705,10 +708,10 @@
 			});
 			if (err) throw new Error(err.detail || m.media_usage_load_failed());
 			if (!isCurrentRequest()) return;
-			mediaUsage = (data?.usage ?? []) as unknown as MediaUsage[];
+			mediaUsage = (data?.usage ?? []).map(normalizeMediaUsage);
 		} catch (e) {
 			if (!isCurrentRequest()) return;
-			usageError = (e as Error).message;
+			usageError = errorMessage(e, m.media_usage_load_failed());
 		} finally {
 			if (isCurrentRequest()) usageLoading = false;
 		}
@@ -945,13 +948,13 @@
 	onMount(() => {
 		const requestedView = $page.url.searchParams.get('view');
 		if (requestedView === 'brand') {
-			void goto(resolve('/settings?tab=brand' as '/'), { replaceState: true });
+			void goto(resolveOwnedMediaRoute('/settings?tab=brand'), { replaceState: true });
 			return;
 		}
 		if (requestedView) {
 			const next = new URL($page.url);
 			next.searchParams.delete('view');
-			replaceState(resolve(`${next.pathname}${next.search}` as '/'), {});
+			replaceState(resolveCurrentMediaURL(next), {});
 		}
 		void loadWorkspaces();
 		void loadVideoEditorState();
