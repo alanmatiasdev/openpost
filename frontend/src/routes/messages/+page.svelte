@@ -29,6 +29,21 @@
 	type DirectMessage = components['schemas']['DirectMessage'];
 	type SyncState = components['schemas']['MessageSyncState'];
 	type Attachment = { type: string; url: string; name?: string; thumbnail?: string };
+	type AttachmentJSONValue =
+		| string
+		| number
+		| boolean
+		| null
+		| AttachmentJSONValue[]
+		| { [key: string]: AttachmentJSONValue };
+
+	function attachmentFields(
+		value: AttachmentJSONValue
+	): { [key: string]: AttachmentJSONValue } | null {
+		if (value === null || Array.isArray(value) || Object(value) !== value) return null;
+		// SAFETY: The recursive JSON union and checks above establish a non-array object.
+		return value as { [key: string]: AttachmentJSONValue };
+	}
 
 	let loading = $state(true);
 	let conversations = $state.raw<Conversation[]>([]);
@@ -421,16 +436,23 @@
 
 	function attachments(message: DirectMessage): Attachment[] {
 		try {
-			const parsed = JSON.parse(message.attachments_json);
-			return Array.isArray(parsed)
-				? parsed.filter(
-						(value): value is Attachment =>
-							Boolean(value) &&
-							typeof value === 'object' &&
-							typeof value.url === 'string' &&
-							isSafeRemoteURL(value.url)
-					)
-				: [];
+			const parsed: AttachmentJSONValue = JSON.parse(message.attachments_json);
+			if (!Array.isArray(parsed)) return [];
+			const result: Attachment[] = [];
+			for (const value of parsed) {
+				const fields = attachmentFields(value);
+				if (!fields) continue;
+				const url = String(fields.url) === fields.url ? String(fields.url) : '';
+				const type = String(fields.type) === fields.type ? String(fields.type) : '';
+				if (!url || !type || !isSafeRemoteURL(url)) continue;
+				const attachment: Attachment = { type, url };
+				if (String(fields.name) === fields.name) attachment.name = String(fields.name);
+				if (String(fields.thumbnail) === fields.thumbnail) {
+					attachment.thumbnail = String(fields.thumbnail);
+				}
+				result.push(attachment);
+			}
+			return result;
 		} catch {
 			return [];
 		}
@@ -725,7 +747,7 @@
 											{#each attachments(message) as attachment (attachment.url)}
 												<a
 													class="mt-2 block break-all underline"
-													href={resolve(attachment.url as '/')}
+													href={attachment.url}
 													target="_blank"
 													rel="noreferrer"
 												>
