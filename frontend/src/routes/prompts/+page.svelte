@@ -90,7 +90,7 @@
 		} catch (e) {
 			if (requestSequence !== promptsRequestSequence) return;
 			console.error('Failed to load prompts:', e);
-			error = (e as Error).message || m.prompts_load_failed();
+			error = e instanceof Error ? e.message : m.prompts_load_failed();
 		} finally {
 			if (requestSequence === promptsRequestSequence) {
 				loading = false;
@@ -111,7 +111,7 @@
 			}
 		} catch (e) {
 			console.error('Failed to load categories:', e);
-			categoriesError = (e as Error).message || m.prompts_load_failed();
+			categoriesError = e instanceof Error ? e.message : m.prompts_load_failed();
 		} finally {
 			loadingCategories = false;
 		}
@@ -129,7 +129,7 @@
 					category: newPromptCategory
 				}
 			});
-			if (err) throw err;
+			if (err) throw new Error(err.detail || m.prompts_create_failed());
 			showAddPrompt = false;
 			newPromptText = '';
 			newPromptExample = '';
@@ -138,7 +138,7 @@
 			await loadPrompts();
 		} catch (e) {
 			toastTone = 'error';
-			toastMessage = (e as Error).message || m.prompts_create_failed();
+			toastMessage = e instanceof Error ? e.message : m.prompts_create_failed();
 		} finally {
 			submitting = false;
 		}
@@ -156,11 +156,14 @@
 			const { error: err } = await client.DELETE('/prompts/{id}', {
 				params: { path: { id: prompt.id } }
 			});
-			if (err) throw err;
+			if (err) throw new Error(err.detail || m.prompts_delete_failed());
 			await loadPrompts();
 			return { ok: true, successMessage: m.prompts_deleted() };
 		} catch (e) {
-			return { ok: false, message: (e as Error).message || m.prompts_delete_failed() };
+			return {
+				ok: false,
+				message: e instanceof Error ? e.message : m.prompts_delete_failed()
+			};
 		}
 	}
 
@@ -181,7 +184,7 @@
 		} catch (e) {
 			console.error('Failed to get random prompt:', e);
 			toastTone = 'error';
-			toastMessage = (e as Error).message || m.prompts_random_failed();
+			toastMessage = e instanceof Error ? e.message : m.prompts_random_failed();
 		}
 	}
 
