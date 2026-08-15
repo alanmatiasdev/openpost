@@ -95,8 +95,9 @@ test("renders ordered exact Markdown selection rules from canonical catalogues",
   assert.match(rewrites[0].expression, /len\(http\.request\.headers\["accept"\]\) eq 1/u);
   assert.match(
     rewrites[0].expression,
-    /lower\(remove_bytes\(http\.request\.headers\["accept"\]\[0\], "\\x20\\x09"\)\) eq "text\/markdown"/u,
+    /lower\(http\.request\.headers\["accept"\]\[0\]\) eq "text\/markdown"/u,
   );
+  assert.doesNotMatch(rewrites[0].expression, /remove_bytes/u);
   assert.match(
     rewrites[0].expression,
     /lower\(http\.request\.headers\["accept"\]\[0\]\) wildcard "\*text\/markdown\*"/u,

@@ -35,7 +35,7 @@ const successfulMarkdownResponse =
 const exactMarkdownAccept = [
   "not http.request.headers.truncated",
   'len(http.request.headers["accept"]) eq 1',
-  'lower(remove_bytes(http.request.headers["accept"][0], "\\x20\\x09")) eq "text/markdown"',
+  'lower(http.request.headers["accept"][0]) eq "text/markdown"',
   'lower(http.request.headers["accept"][0]) wildcard "*text/markdown*"',
 ].join(" and ");
 
