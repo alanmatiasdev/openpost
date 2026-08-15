@@ -80,7 +80,9 @@
 			notify(
 				error instanceof WorkspaceContextError
 					? m.settings_action_failed()
-					: (error as Error).message,
+					: error instanceof Error
+						? error.message
+						: m.settings_action_failed(),
 				'error'
 			);
 		} finally {
@@ -197,7 +199,7 @@
 			schedules = data;
 		} catch (e) {
 			if (requestSequence !== scheduleRequestSequence || !isCurrentWorkspace(workspaceID)) return;
-			scheduleError = (e as Error).message || m.settings_schedule_load_failed();
+			scheduleError = e instanceof Error ? e.message : m.settings_schedule_load_failed();
 			console.error('Failed to load schedules:', e);
 		} finally {
 			if (requestSequence === scheduleRequestSequence) loadingSchedules = false;
@@ -231,7 +233,7 @@
 				label: ''
 			}
 		});
-		if (err) throw err;
+		if (err) throw new Error(err.detail || m.settings_action_failed());
 	}
 
 	async function addTimeRow() {
@@ -268,7 +270,7 @@
 				notify(m.settings_time_added());
 			}
 		} catch (e) {
-			notify((e as Error).message || m.settings_action_failed(), 'error');
+			notify(e instanceof Error ? e.message : m.settings_action_failed(), 'error');
 		}
 	}
 
@@ -277,11 +279,11 @@
 			const { error: err } = await client.DELETE('/posting-schedules/{id}', {
 				params: { path: { id } }
 			});
-			if (err) throw err;
+			if (err) throw new Error(err.detail || m.settings_action_failed());
 			await loadSchedules();
 			notify(m.settings_schedule_deleted());
 		} catch (e) {
-			notify((e as Error).message || m.settings_action_failed(), 'error');
+			notify(e instanceof Error ? e.message : m.settings_action_failed(), 'error');
 		}
 	}
 
@@ -300,7 +302,7 @@
 				notify(m.settings_schedule_updated());
 			}
 		} catch (e) {
-			notify((e as Error).message || m.settings_action_failed(), 'error');
+			notify(e instanceof Error ? e.message : m.settings_action_failed(), 'error');
 		}
 	}
 
@@ -312,7 +314,9 @@
 			const { error: err, response } = await client.DELETE('/posting-schedules/{id}', {
 				params: { path: { id: schedule.id } }
 			});
-			if (err && response.status !== 404) throw err;
+			if (err && response.status !== 404) {
+				throw new Error(err.detail || m.settings_action_failed());
+			}
 		});
 		if (outcome.error) {
 			const remainingIDs = new Set(outcome.remaining.map((schedule) => schedule.id));
@@ -328,9 +332,7 @@
 			}
 			await loadSchedules();
 			const message =
-				(outcome.error as { detail?: string; message?: string }).detail ||
-				(outcome.error as Error).message ||
-				m.settings_action_failed();
+				outcome.error instanceof Error ? outcome.error.message : m.settings_action_failed();
 			return { ok: false, message };
 		}
 		await loadSchedules();
@@ -356,7 +358,7 @@
 					posts_per_day: suggestedPostsPerDay
 				}
 			});
-			if (err) throw err;
+			if (err) throw new Error(err.detail || m.settings_action_failed());
 			showSuggestSchedule = false;
 			if (isCurrentWorkspace(workspaceID)) {
 				await loadSchedules(workspaceID);
@@ -367,7 +369,7 @@
 				);
 			}
 		} catch (e) {
-			notify((e as Error).message || m.settings_action_failed(), 'error');
+			notify(e instanceof Error ? e.message : m.settings_action_failed(), 'error');
 		} finally {
 			generatingSchedule = false;
 		}

@@ -1,8 +1,9 @@
 import type { components } from '$lib/api/types';
-import type { ComposerSettings, ComposerSettingValue } from '$lib/components/compose/modes';
 
 type SettingDefinition = components['schemas']['SettingDefinition'];
 type SettingCondition = components['schemas']['SettingCondition'];
+type DestinationSettings = components['schemas']['RenditionInput']['settings'];
+type DestinationSettingValue = SettingDefinition['default'];
 
 export interface DestinationOption {
 	value: string;
@@ -10,11 +11,11 @@ export interface DestinationOption {
 }
 
 export interface DestinationSettingInvalidation {
-	values: ComposerSettings;
+	values: DestinationSettings;
 	optionSources: string[];
 }
 
-function conditionMatches(condition: SettingCondition, values: ComposerSettings): boolean {
+function conditionMatches(condition: SettingCondition, values: DestinationSettings): boolean {
 	const value = values[condition.key];
 	const present = value !== undefined && value !== null && String(value).trim() !== '';
 	switch (condition.operator) {
@@ -47,9 +48,9 @@ export function loadableDestinationOptionSources(
 
 export function invalidateDependentDestinationSettings(
 	settings: SettingDefinition[],
-	values: ComposerSettings,
+	values: DestinationSettings,
 	changedKey: string,
-	changedValue: ComposerSettingValue
+	changedValue: DestinationSettingValue
 ): DestinationSettingInvalidation {
 	const next = { ...values, [changedKey]: changedValue };
 	const optionSources = new Set<string>();
