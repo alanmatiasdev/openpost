@@ -11,14 +11,14 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
-	"github.com/openpost/backend/internal/services/notifications"
+	"github.com/openpost/backend/internal/services/workspaceteam"
 )
 
 const emailDeliveryCallbackBodyLimit = 64 << 10
 
 type EmailDeliveryWebhookHandler struct {
-	notifications *notifications.Service
-	secret        string
+	team   *workspaceteam.Service
+	secret string
 }
 
 type emailDeliveryCallback struct {
@@ -36,8 +36,8 @@ type emailDeliveryCallbackResponse struct {
 	Ignored   bool `json:"ignored"`
 }
 
-func NewEmailDeliveryWebhookHandler(service *notifications.Service, secret string) *EmailDeliveryWebhookHandler {
-	return &EmailDeliveryWebhookHandler{notifications: service, secret: strings.TrimSpace(secret)}
+func NewEmailDeliveryWebhookHandler(service *workspaceteam.Service, secret string) *EmailDeliveryWebhookHandler {
+	return &EmailDeliveryWebhookHandler{team: service, secret: strings.TrimSpace(secret)}
 }
 
 func (h *EmailDeliveryWebhookHandler) RegisterRoutes(e *echo.Echo) {
@@ -45,7 +45,7 @@ func (h *EmailDeliveryWebhookHandler) RegisterRoutes(e *echo.Echo) {
 }
 
 func (h *EmailDeliveryWebhookHandler) handle(c echo.Context) error {
-	if h.notifications == nil || h.secret == "" {
+	if h.team == nil || h.secret == "" {
 		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "email delivery callbacks are not configured"})
 	}
 	body, err := io.ReadAll(io.LimitReader(c.Request().Body, emailDeliveryCallbackBodyLimit+1))
@@ -59,7 +59,7 @@ func (h *EmailDeliveryWebhookHandler) handle(c echo.Context) error {
 	if err := json.Unmarshal(body, &callback); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid delivery callback"})
 	}
-	result, err := h.notifications.RecordWorkspaceInvitationDelivery(c.Request().Context(), notifications.WorkspaceInvitationDeliveryEvent{
+	result, err := h.team.ApplyInvitationDelivery(c.Request().Context(), workspaceteam.InvitationDeliveryEvent{
 		EventID: callback.EventID, InvitationID: callback.InvitationID, DeliveryID: callback.DeliveryID,
 		Outcome: callback.Outcome, OccurredAt: callback.OccurredAt,
 	})

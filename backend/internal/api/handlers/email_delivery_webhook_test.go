@@ -13,7 +13,9 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/openpost/backend/internal/models"
+	"github.com/openpost/backend/internal/services/entitlements"
 	"github.com/openpost/backend/internal/services/notifications"
+	"github.com/openpost/backend/internal/services/workspaceteam"
 	"github.com/stretchr/testify/require"
 )
 
@@ -26,13 +28,15 @@ func TestEmailDeliveryWebhookAuthenticatesAndRedactsIdempotentEvidence(t *testin
 	invitation := &models.WorkspaceInvitation{
 		ID: "invitation-1", WorkspaceID: "workspace-1", Email: "secret-person@example.com",
 		Role: "viewer", InvitedByUserID: "admin-1", TokenHash: "secret-token-hash",
-		ExpiresAt: now.Add(time.Hour), EmailDeliveryStatus: notifications.EmailDeliverySent,
+		ExpiresAt: time.Now().UTC().Add(time.Hour), EmailDeliveryStatus: notifications.EmailDeliverySent,
 		EmailDeliveryJobID: "delivery-1", CreatedAt: now,
 	}
 	_, err := db.NewInsert().Model(invitation).Exec(t.Context())
 	require.NoError(t, err)
 	e := echo.New()
-	NewEmailDeliveryWebhookHandler(notifications.NewService(db), "callback-secret").RegisterRoutes(e)
+	notificationService := notifications.NewService(db)
+	teamService := workspaceteam.NewService(db, entitlements.NewSelfHostedService(), notificationService)
+	NewEmailDeliveryWebhookHandler(teamService, "callback-secret").RegisterRoutes(e)
 	body := []byte(`{"event_id":"provider-event-1","invitation_id":"invitation-1","delivery_id":"delivery-1","outcome":"delivered","occurred_at":"2026-08-14T12:01:00Z","provider_payload":"must not persist"}`)
 
 	unauthorized := httptest.NewRecorder()

@@ -85,7 +85,7 @@ func TestTypedOutcomeConstructorsExposeOnlySemanticFacts(t *testing.T) {
 		PublicationResultFacts{}, AccountAttentionFacts{}, EngagementReceivedFacts{},
 		MessageReceivedFacts{}, ReplyFailedFacts{}, WorkspaceInvitationFacts{}, RequiredAccountOutcomeFacts{},
 	}
-	forbidden := []string{"topic", "title", "body", "href", "action", "dedup", "suppress", "urgency", "channel", "classification", "token", "url"}
+	forbidden := []string{"topic", "title", "body", "href", "action", "dedup", "suppress", "urgency", "channel", "classification", "token", "url", "raw", "response", "failure_text"}
 	for _, facts := range factTypes {
 		typeOfFacts := reflect.TypeOf(facts)
 		for index := range typeOfFacts.NumField() {

@@ -2861,16 +2861,23 @@ func (s *Service) createPublicationResultNotifications(
 	if err != nil {
 		return err
 	}
-	input, ok := publicationResultNotificationInput(
-		publication,
-		status,
-		result,
-		publicationNotificationCohort(ctx, publication),
-	)
-	if !ok {
+	if status != models.PublicationStatusPublished && status != models.PublicationStatusFailed {
 		return nil
 	}
-	if err := s.notifications.CreateWithDB(ctx, db, input); err != nil {
+	outcome, err := notifications.NewPublicationResultOutcome(notifications.PublicationResultFacts{
+		RecipientUserID:        publication.CreatedByID,
+		WorkspaceID:            publication.WorkspaceID,
+		PublicationID:          publication.ID,
+		DeliveryID:             publicationNotificationCohort(ctx, publication),
+		SuccessfulDestinations: result.successful,
+		FailedDestinations:     result.failed,
+		Retryable:              result.retryable,
+		RequiresReconnect:      result.reconnect,
+	})
+	if err != nil {
+		return err
+	}
+	if err := s.notifications.RecordWithDB(ctx, db, outcome); err != nil {
 		return err
 	}
 	if !result.reconnect {
@@ -2884,10 +2891,8 @@ type publicationNotificationResult struct {
 	successful       []string
 	failed           []string
 	failedAccountIDs []string
-	failureActions   []string
 	retryable        bool
 	reconnect        bool
-	retryAt          time.Time
 }
 
 func collectPublicationNotificationResult(
@@ -2911,7 +2916,6 @@ func collectPublicationNotificationResult(
 		successful:       make([]string, 0, len(renditions)),
 		failed:           make([]string, 0, len(renditions)),
 		failedAccountIDs: make([]string, 0, len(renditions)),
-		failureActions:   make([]string, 0, len(renditions)),
 	}
 	for _, account := range accounts {
 		result.accounts[account.ID] = account
@@ -2930,58 +2934,9 @@ func (result *publicationNotificationResult) addRendition(rendition models.Rendi
 	case models.RenditionStatusFailed:
 		result.failed = append(result.failed, label)
 		result.failedAccountIDs = append(result.failedAccountIDs, rendition.SocialAccountID)
-		result.failureActions = append(result.failureActions, rendition.ErrorAction)
 		result.retryable = result.retryable || rendition.ErrorRetryable
 		result.reconnect = result.reconnect || rendition.ErrorAction == FailureActionReconnect
-		if !rendition.ErrorRetryAt.IsZero() &&
-			(result.retryAt.IsZero() || rendition.ErrorRetryAt.Before(result.retryAt)) {
-			result.retryAt = rendition.ErrorRetryAt
-		}
 	}
-}
-
-func publicationResultNotificationInput(
-	publication *models.Publication,
-	status string,
-	result publicationNotificationResult,
-	dedupCohort string,
-) (notifications.CreateInput, bool) {
-	input := notifications.CreateInput{
-		UserID:      publication.CreatedByID,
-		WorkspaceID: publication.WorkspaceID,
-		Href:        "/activity?publication=" + publication.ID,
-		Payload: map[string]any{
-			"publication_id":          publication.ID,
-			"successful_destinations": result.successful,
-			"failed_destinations":     result.failed,
-			"failure_actions":         result.failureActions,
-		},
-		Actions: []models.NotificationAction{{
-			Label: "View results", Href: "/activity?publication=" + publication.ID, Kind: "secondary",
-		}},
-	}
-	if !result.retryAt.IsZero() {
-		input.Payload["retry_at"] = result.retryAt.UTC().Format(time.RFC3339)
-	}
-	if status == models.PublicationStatusPublished {
-		input.Type = notifications.TypePostPublished
-		input.Title = "Publication completed"
-		input.Body = publishedDestinationSummary(result.successful)
-		input.DedupKey = fmt.Sprintf("publication:%s:%s:published", publication.ID, dedupCohort)
-		return input, true
-	}
-	if status != models.PublicationStatusFailed {
-		return notifications.CreateInput{}, false
-	}
-	input.Type = notifications.TypePublishFailed
-	input.Title = publicationFailureTitle(result.successful, result.failed)
-	input.Body = publicationFailureSummary(result.successful, result.failed, result.retryAt)
-	input.DedupKey = fmt.Sprintf("publication:%s:%s:failed", publication.ID, dedupCohort)
-	input.Actions = append(
-		[]models.NotificationAction{publicationFailurePrimaryAction(publication.ID, result)},
-		input.Actions...,
-	)
-	return input, true
 }
 
 func publicationNotificationCohort(ctx context.Context, publication *models.Publication) string {
@@ -2990,24 +2945,6 @@ func publicationNotificationCohort(ctx context.Context, publication *models.Publ
 		return "job:" + execution.ID
 	}
 	return fmt.Sprintf("revision:%d", publication.Revision)
-}
-
-func publicationFailurePrimaryAction(
-	publicationID string,
-	result publicationNotificationResult,
-) models.NotificationAction {
-	if result.reconnect {
-		return models.NotificationAction{Label: "Reconnect account", Href: "/accounts", Kind: "primary"}
-	}
-	if result.retryable {
-		return models.NotificationAction{
-			Label: "Retry failed destinations", Kind: "primary",
-			Operation: "retry_failed_publication", TargetID: publicationID,
-		}
-	}
-	return models.NotificationAction{
-		Label: "Edit publication", Href: "/publications/" + publicationID, Kind: "primary",
-	}
 }
 
 func (s *Service) createReconnectNotifications(
@@ -3021,24 +2958,15 @@ func (s *Service) createReconnectNotifications(
 		if account.ID == "" {
 			continue
 		}
-		if err := s.notifications.CreateWithDB(ctx, db, notifications.CreateInput{
-			UserID:      publication.CreatedByID,
-			WorkspaceID: publication.WorkspaceID,
-			Type:        notifications.TypeAccountNeedsAttention,
-			Title:       publisherProviderLabel(account.Platform) + " needs to be reconnected",
-			Body:        "Publishing is paused for " + publisherAccountLabel(account) + " until it is reconnected.",
-			Href:        "/accounts",
-			DedupKey: fmt.Sprintf(
-				"account:%s:publication:%s:revision:%d:reconnect",
-				account.ID,
-				publication.ID,
-				publication.Revision,
-			),
-			Payload: map[string]any{"social_account_id": account.ID, "publication_id": publication.ID},
-			Actions: []models.NotificationAction{{
-				Label: "Reconnect account", Href: "/accounts", Kind: "primary",
-			}},
-		}); err != nil {
+		outcome, err := notifications.NewAccountNeedsAttentionOutcome(notifications.AccountAttentionFacts{
+			RecipientUserID: publication.CreatedByID, WorkspaceID: publication.WorkspaceID,
+			AccountID: account.ID, PublicationID: publication.ID, Provider: account.Platform,
+			AccountLabel: publisherAccountLabel(account),
+		})
+		if err != nil {
+			return err
+		}
+		if err := s.notifications.RecordWithDB(ctx, db, outcome); err != nil {
 			return err
 		}
 	}
@@ -3087,50 +3015,6 @@ func publisherProviderLabel(provider string) string {
 	default:
 		return "Destination"
 	}
-}
-
-func summarizedDestinations(items []string) string {
-	switch len(items) {
-	case 0:
-		return ""
-	case 1:
-		return items[0]
-	case 2:
-		return items[0] + " and " + items[1]
-	default:
-		return strings.Join(items[:2], ", ") + fmt.Sprintf(" and %d more", len(items)-2)
-	}
-}
-
-func publishedDestinationSummary(successful []string) string {
-	if len(successful) == 0 {
-		return "The publication completed."
-	}
-	return summarizedDestinations(successful) + " published successfully."
-}
-
-func publicationFailureTitle(successful, failed []string) string {
-	if len(successful) > 0 && len(failed) > 0 {
-		return "Publication partially completed"
-	}
-	return "Publication needs attention"
-}
-
-func publicationFailureSummary(successful, failed []string, retryAt time.Time) string {
-	parts := make([]string, 0, 3)
-	if len(failed) > 0 {
-		parts = append(parts, summarizedDestinations(failed)+" failed.")
-	}
-	if len(successful) > 0 {
-		parts = append(parts, summarizedDestinations(successful)+" published successfully.")
-	}
-	if !retryAt.IsZero() {
-		parts = append(parts, "OpenPost will not retry before "+retryAt.UTC().Format("15:04 UTC")+".")
-	}
-	if len(parts) == 0 {
-		return "One or more destinations need attention."
-	}
-	return strings.Join(parts, " ")
 }
 
 func mustPublisherJSON(value interface{}) string {

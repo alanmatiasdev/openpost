@@ -140,13 +140,11 @@ func (s *Service) Initiate(ctx context.Context, input InitiateInput) (Transfer, 
 			return err
 		}
 		if s.notifications != nil {
-			href := "/ownership-transfer?id=" + row.ID
-			if err := s.notifications.CreateWithDB(txCtx, tx, notifications.CreateInput{
-				UserID: input.NomineeUserID, Type: notifications.TypeOwnershipTransfer,
-				Href: href, DedupKey: "ownership-transfer:" + row.ID,
-				Payload: map[string]any{"kind": notifications.OwnershipTransferSemanticKind, "organization_name": organizationName},
-				Actions: []models.NotificationAction{{Label: notifications.OwnershipTransferReviewAction, Href: href, Kind: "primary"}},
-			}); err != nil {
+			outcome, err := notifications.NewOwnershipTransferOutcome(input.NomineeUserID, row.ID, organizationName)
+			if err != nil {
+				return err
+			}
+			if err := s.notifications.RecordWithDB(txCtx, tx, outcome); err != nil {
 				return err
 			}
 		}

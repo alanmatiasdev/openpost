@@ -53,6 +53,7 @@ func newTeamTestService(t *testing.T, seatLimit int64) (*Service, *bun.DB) {
 		(*models.User)(nil), (*models.Organization)(nil), (*models.OrganizationMember)(nil), (*models.Workspace)(nil),
 		(*models.WorkspaceMember)(nil), (*models.WorkspaceInvitation)(nil),
 		(*models.WorkspaceInvitationResend)(nil),
+		(*models.WorkspaceInvitationDeliveryEvent)(nil),
 		(*models.WorkspaceAccessAuditEvent)(nil),
 	} {
 		_, err := db.NewCreateTable().Model(model).Exec(t.Context())
@@ -72,6 +73,79 @@ func newTeamTestService(t *testing.T, seatLimit int64) (*Service, *bun.DB) {
 	require.NoError(t, err)
 	seedTeamMember(t, db, "admin-1", models.WorkspaceRoleAdmin, now)
 	return service, db
+}
+
+func TestInvitationDeliveryEvidenceAppliesOnlyToCurrentLiveGeneration(t *testing.T) {
+	service, db := newTeamTestService(t, 10)
+	service.notifications = notifications.NewService(db)
+	now := service.now()
+	invitation := &models.WorkspaceInvitation{
+		ID: "invitation-1", WorkspaceID: "workspace-1", Email: "person@example.com",
+		Role: models.WorkspaceRoleViewer, InvitedByUserID: "admin-1", TokenHash: "current-secret-hash",
+		ExpiresAt: now.Add(time.Hour), EmailDeliveryStatus: notifications.EmailDeliveryQueued,
+		EmailDeliveryJobID: "delivery-current", CreatedAt: now,
+	}
+	_, err := db.NewInsert().Model(invitation).Exec(t.Context())
+	require.NoError(t, err)
+
+	result, err := service.ApplyInvitationDelivery(t.Context(), InvitationDeliveryEvent{
+		EventID: "event-delivered", InvitationID: invitation.ID, DeliveryID: "delivery-current",
+		Outcome: notifications.EmailDeliveryDelivered, OccurredAt: now.Add(time.Minute),
+	})
+	require.NoError(t, err)
+	require.True(t, result.Applied)
+
+	result, err = service.ApplyInvitationDelivery(t.Context(), InvitationDeliveryEvent{
+		EventID: "event-delivered", InvitationID: invitation.ID, DeliveryID: "delivery-current",
+		Outcome: notifications.EmailDeliveryDelivered, OccurredAt: now.Add(time.Minute),
+	})
+	require.NoError(t, err)
+	require.True(t, result.Duplicate)
+
+	result, err = service.ApplyInvitationDelivery(t.Context(), InvitationDeliveryEvent{
+		EventID: "event-stale", InvitationID: invitation.ID, DeliveryID: "delivery-old",
+		Outcome: notifications.EmailDeliveryFailed, OccurredAt: now.Add(2 * time.Minute),
+	})
+	require.NoError(t, err)
+	require.True(t, result.Ignored)
+
+	var stored models.WorkspaceInvitation
+	require.NoError(t, db.NewSelect().Model(&stored).Where("id = ?", invitation.ID).Scan(t.Context()))
+	require.Equal(t, notifications.EmailDeliveryDelivered, stored.EmailDeliveryStatus)
+	require.True(t, stored.EmailDeliveryUpdatedAt.Equal(now.Add(time.Minute)))
+}
+
+func TestInvitationDeliveryEvidenceCannotMutateTerminalOrExpiredInvitation(t *testing.T) {
+	for _, terminal := range []string{"accepted", "revoked", "expired"} {
+		t.Run(terminal, func(t *testing.T) {
+			service, db := newTeamTestService(t, 10)
+			service.notifications = notifications.NewService(db)
+			now := service.now()
+			invitation := &models.WorkspaceInvitation{
+				ID: "invitation-" + terminal, WorkspaceID: "workspace-1", Email: "person@example.com",
+				Role: models.WorkspaceRoleViewer, InvitedByUserID: "admin-1", TokenHash: "secret-hash",
+				ExpiresAt: now.Add(time.Hour), EmailDeliveryStatus: notifications.EmailDeliverySent,
+				EmailDeliveryJobID: "delivery-1", CreatedAt: now,
+			}
+			switch terminal {
+			case "accepted":
+				invitation.AcceptedAt = now
+			case "revoked":
+				invitation.RevokedAt = now
+			case "expired":
+				invitation.ExpiresAt = now.Add(-time.Minute)
+			}
+			_, err := db.NewInsert().Model(invitation).Exec(t.Context())
+			require.NoError(t, err)
+
+			result, err := service.ApplyInvitationDelivery(t.Context(), InvitationDeliveryEvent{
+				EventID: "event-1", InvitationID: invitation.ID, DeliveryID: "delivery-1",
+				Outcome: notifications.EmailDeliveryDelivered, OccurredAt: now.Add(time.Minute),
+			})
+			require.NoError(t, err)
+			require.True(t, result.Ignored)
+		})
+	}
 }
 
 func seedTeamUser(t *testing.T, db *bun.DB, id, email string) {
@@ -464,6 +538,9 @@ func TestRegisteredInvitationKeepsRawTokenOutOfNotificationAndAuditRecords(t *te
 	require.NotContains(t, inApp.Body, rawToken)
 	require.NotContains(t, inApp.Href, rawToken)
 	require.NotContains(t, inApp.PayloadJSON, rawToken)
+	emailJobs, err := db.NewSelect().Model((*models.Job)(nil)).Where("type = ?", notifications.JobTypeEmailDelivery).Count(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, 1, emailJobs, "typed in-app outcome must not enqueue a second invitation email")
 
 	var audit models.WorkspaceAccessAuditEvent
 	require.NoError(t, db.NewSelect().Model(&audit).Where("invitation_id = ?", invitation.ID).Scan(t.Context()))

@@ -41,6 +41,7 @@ import (
 	"github.com/openpost/backend/internal/services/crypto"
 	"github.com/openpost/backend/internal/services/emailchange"
 	"github.com/openpost/backend/internal/services/emailverification"
+	engagementservice "github.com/openpost/backend/internal/services/engagement"
 	"github.com/openpost/backend/internal/services/entitlements"
 	"github.com/openpost/backend/internal/services/feedback"
 	"github.com/openpost/backend/internal/services/identity"
@@ -66,6 +67,7 @@ import (
 	"github.com/openpost/backend/internal/services/updatestatus"
 	"github.com/openpost/backend/internal/services/usage"
 	"github.com/openpost/backend/internal/services/videoprocessing"
+	"github.com/openpost/backend/internal/services/workspaceteam"
 	"github.com/openpost/backend/internal/telemetry"
 )
 
@@ -391,11 +393,15 @@ func main() {
 	publishSvc.SetNotificationService(notificationService)
 	publishSvc.SetRepostScheduler(repostService)
 	communicationsService := communicationsservice.NewService(db, tokenManager, notificationService)
+	engagementService := engagementservice.NewService(db, tokenManager, notificationService)
 	for name, adapter := range providers {
 		tokenManager.SetProvider(name, adapter)
 		publishSvc.SetProvider(name, adapter)
 		analyticsService.SetProvider(name, adapter)
 		communicationsService.SetProvider(name, adapter)
+		if engagementAdapter, ok := adapter.(platform.EngagementAdapter); ok {
+			engagementService.SetProvider(name, engagementAdapter)
+		}
 		repostService.SetProvider(name, adapter)
 	}
 
@@ -495,6 +501,7 @@ func main() {
 	worker.SetAnalyticsService(analyticsService)
 	worker.SetBillingService(billingService)
 	worker.SetCommunicationsService(communicationsService)
+	worker.SetEngagementService(engagementService)
 	worker.SetNotificationService(notificationService)
 	organizationOwnershipService := organizationownership.NewService(db, notificationService, identityService)
 	worker.SetOrganizationOwnershipService(organizationOwnershipService)
@@ -509,6 +516,9 @@ func main() {
 	}
 	if err := communicationsService.ScheduleSweep(context.Background(), time.Now().UTC()); err != nil {
 		log.Fatalf("failed to schedule communications collection: %v", err)
+	}
+	if err := engagementService.ScheduleSweep(context.Background(), time.Now().UTC()); err != nil {
+		log.Fatalf("failed to schedule engagement collection: %v", err)
 	}
 	if err := repostService.ScheduleSweep(context.Background(), time.Now().UTC()); err != nil {
 		log.Fatalf("failed to schedule repost automation: %v", err)
@@ -526,7 +536,8 @@ func main() {
 	billingHandler.SetUsage(usageService)
 	billingHandler.SetTelemetry(telemetryRecorder)
 	billingHandler.RegisterRoutes(e)
-	handlers.NewEmailDeliveryWebhookHandler(notificationService, cfg.EmailDeliveryWebhookSecret).RegisterRoutes(e)
+	invitationDeliveryService := workspaceteam.NewService(db, entitlementService, notificationService)
+	handlers.NewEmailDeliveryWebhookHandler(invitationDeliveryService, cfg.EmailDeliveryWebhookSecret).RegisterRoutes(e)
 	if err := registerE2EDeliveryProjection(e, db, authenticator, cfg.AppE2EDeliveryProjection); err != nil {
 		log.Fatalf("failed to configure E2E delivery projection: %v", err)
 	}
@@ -614,6 +625,11 @@ func main() {
 			publishSvc.SetProvider,
 			analyticsService.SetProvider,
 			communicationsService.SetProvider,
+			func(name string, adapter platform.Adapter) {
+				if engagementAdapter, ok := adapter.(platform.EngagementAdapter); ok {
+					engagementService.SetProvider(name, engagementAdapter)
+				}
+			},
 			repostService.SetProvider,
 		},
 		MastodonAppService:           mastodonAppService,
@@ -633,6 +649,7 @@ func main() {
 		InstanceSettingsService:      instanceSettingsService,
 		AnalyticsService:             analyticsService,
 		CommunicationsService:        communicationsService,
+		EngagementService:            engagementService,
 		RepostService:                repostService,
 		NotificationService:          notificationService,
 		OrganizationOwnershipService: organizationOwnershipService,

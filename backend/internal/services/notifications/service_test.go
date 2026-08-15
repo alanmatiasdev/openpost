@@ -703,7 +703,7 @@ func TestDailyDigestBodyBoundsContentAndAccountsForEveryItem(t *testing.T) {
 	require.Contains(t, body, "more notifications are included in this digest")
 }
 
-func TestInvitationDeliveryCallbackIsIdempotentAndGenerationSafe(t *testing.T) {
+func TestInvitationDeliveryEvidenceIsRedactedIdempotentAndDoesNotMutateLifecycle(t *testing.T) {
 	db := notificationsTestDB(t)
 	now := time.Date(2026, 8, 14, 12, 0, 0, 0, time.UTC)
 	invitation := &models.WorkspaceInvitation{
@@ -715,63 +715,24 @@ func TestInvitationDeliveryCallbackIsIdempotentAndGenerationSafe(t *testing.T) {
 	require.NoError(t, func() error { _, err := db.NewInsert().Model(invitation).Exec(t.Context()); return err }())
 	service := NewService(db)
 
-	result, err := service.RecordWorkspaceInvitationDelivery(t.Context(), WorkspaceInvitationDeliveryEvent{
+	result, err := service.RecordInvitationDeliveryEvidenceWithDB(t.Context(), db, InvitationDeliveryEvidence{
 		EventID: "event-delivered", InvitationID: invitation.ID, DeliveryID: "delivery-current",
 		Outcome: EmailDeliveryDelivered, OccurredAt: now.Add(time.Minute),
 	})
 	require.NoError(t, err)
-	require.True(t, result.Applied)
 	require.False(t, result.Duplicate)
 
-	result, err = service.RecordWorkspaceInvitationDelivery(t.Context(), WorkspaceInvitationDeliveryEvent{
+	result, err = service.RecordInvitationDeliveryEvidenceWithDB(t.Context(), db, InvitationDeliveryEvidence{
 		EventID: "event-delivered", InvitationID: invitation.ID, DeliveryID: "delivery-current",
 		Outcome: EmailDeliveryDelivered, OccurredAt: now.Add(time.Minute),
 	})
 	require.NoError(t, err)
 	require.True(t, result.Duplicate)
-	require.False(t, result.Applied)
-
-	result, err = service.RecordWorkspaceInvitationDelivery(t.Context(), WorkspaceInvitationDeliveryEvent{
-		EventID: "event-stale", InvitationID: invitation.ID, DeliveryID: "delivery-old",
-		Outcome: EmailDeliveryFailed, OccurredAt: now.Add(2 * time.Minute),
-	})
-	require.NoError(t, err)
-	require.True(t, result.Ignored)
 
 	var stored models.WorkspaceInvitation
 	require.NoError(t, db.NewSelect().Model(&stored).Where("id = ?", invitation.ID).Scan(t.Context()))
-	require.Equal(t, EmailDeliveryDelivered, stored.EmailDeliveryStatus)
-	require.Equal(t, now.Add(time.Minute), stored.EmailDeliveryUpdatedAt)
-}
-
-func TestInvitationDeliveryCallbackCannotMutateTerminalInvitation(t *testing.T) {
-	for _, terminal := range []string{"accepted", "revoked"} {
-		t.Run(terminal, func(t *testing.T) {
-			db := notificationsTestDB(t)
-			now := time.Date(2026, 8, 14, 12, 0, 0, 0, time.UTC)
-			invitation := &models.WorkspaceInvitation{
-				ID: "invitation-" + terminal, WorkspaceID: "workspace-1", Email: "person@example.com",
-				Role: "viewer", InvitedByUserID: "admin-1", TokenHash: "secret-hash",
-				ExpiresAt: now.Add(time.Hour), EmailDeliveryStatus: EmailDeliverySent,
-				EmailDeliveryJobID: "delivery-1", CreatedAt: now,
-			}
-			if terminal == "accepted" {
-				invitation.AcceptedAt = now
-			}
-			if terminal == "revoked" {
-				invitation.RevokedAt = now
-			}
-			_, err := db.NewInsert().Model(invitation).Exec(t.Context())
-			require.NoError(t, err)
-
-			result, err := NewService(db).RecordWorkspaceInvitationDelivery(t.Context(), WorkspaceInvitationDeliveryEvent{
-				EventID: "event-1", InvitationID: invitation.ID, DeliveryID: "delivery-1",
-				Outcome: EmailDeliveryDelivered, OccurredAt: now.Add(time.Minute),
-			})
-			require.NoError(t, err)
-			require.True(t, result.Ignored)
-		})
-	}
+	require.Equal(t, EmailDeliveryQueued, stored.EmailDeliveryStatus)
+	require.True(t, stored.EmailDeliveryUpdatedAt.IsZero())
 }
 
 type recordingNotificationSender struct {

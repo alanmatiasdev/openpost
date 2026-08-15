@@ -328,6 +328,9 @@ func materializeReplyFailedOutcome(value semanticOutcome) (CreateInput, error) {
 
 func materializeWorkspaceInvitationOutcome(value semanticOutcome) (CreateInput, error) {
 	input := baseOutcomeInput(value)
+	// Workspace team enqueues the encrypted Transactional invitation email.
+	// This outcome adds the account-wide in-app record for registered users.
+	input.SuppressEmail = true
 	invitationID, _ := value.payload["invitation_id"].(string)
 	input.Title = "Workspace invitation"
 	input.Body = "You were invited to a Workspace."

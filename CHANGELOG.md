@@ -6,6 +6,8 @@ All notable changes to this project are documented in this file.
 
 ### Changed
 
+- Completed Publication-only composer recovery: media queues now belong to the Composer session module, editor returns are bound once to the original Workspace, Publication, and revision, Workspace changes preserve save, discard, or stay, and old Post links redirect to canonical Publication URLs without mounting a Post-backed composer.
+- Publishing, Workspace invitation, and Organization ownership producers now emit typed notification outcomes. Workspace team owns invitation delivery generations and lifecycle updates, while notifications retain only redacted, deduplicated provider delivery evidence.
 - The text-and-thread composer now uses one Publication-backed browser session for new and existing drafts. The session owns serialized revision saves, conflicts, validation, scheduling, immediate publishing, retries, cancellation, deletion, and success reset through the typed Publication client.
 - Notification producers can now record sealed domain outcomes whose topic, delivery, Mute, deduplication, action, and presentation policy comes from one backend catalogue. Notification settings use the catalogue's generated API projection while keeping exhaustive English and Portuguese labels, descriptions, and icons in the frontend.
 - Moved media usage and lifecycle protection, account and Workspace deletion, background Job scoping, and activity navigation onto canonical Publication, Segment, and Rendition ownership instead of legacy Post authoring state.

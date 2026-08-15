@@ -164,7 +164,7 @@ type EmailDelivery struct {
 	JobID  string
 }
 
-type WorkspaceInvitationDeliveryEvent struct {
+type InvitationDeliveryEvidence struct {
 	EventID      string
 	InvitationID string
 	DeliveryID   string
@@ -172,10 +172,8 @@ type WorkspaceInvitationDeliveryEvent struct {
 	OccurredAt   time.Time
 }
 
-type WorkspaceInvitationDeliveryResult struct {
-	Applied   bool
+type InvitationDeliveryEvidenceResult struct {
 	Duplicate bool
-	Ignored   bool
 }
 
 type NotificationPage struct {
@@ -543,11 +541,6 @@ func (s *Service) enqueueWorkspaceInvitation(ctx context.Context, db bun.IDB, in
 		return EmailDelivery{Status: EmailDeliveryFailed}, fmt.Errorf("workspace invitation delivery facts are required")
 	}
 	workspaceID := strings.TrimSpace(input.WorkspaceID)
-	if workspaceID == "" {
-		if err := db.NewSelect().Model((*models.WorkspaceInvitation)(nil)).Column("workspace_id").Where("id = ?", input.InvitationID).Scan(ctx, &workspaceID); err != nil {
-			return EmailDelivery{Status: EmailDeliveryFailed}, err
-		}
-	}
 	if err := organizationguard.LockWorkspace(ctx, db, workspaceID); err != nil {
 		return EmailDelivery{Status: EmailDeliveryFailed}, err
 	}
@@ -582,6 +575,7 @@ func (s *Service) enqueueWorkspaceInvitation(ctx context.Context, db bun.IDB, in
 
 func workspaceInvitationEmailInputValid(input WorkspaceInvitationEmailInput) bool {
 	return strings.TrimSpace(input.InvitationID) != "" &&
+		strings.TrimSpace(input.WorkspaceID) != "" &&
 		strings.TrimSpace(input.Recipient) != "" &&
 		strings.TrimSpace(input.RawToken) != "" &&
 		strings.TrimSpace(input.DeliveryKey) != ""
@@ -619,87 +613,42 @@ func (s *Service) ResolveEmailDeliveryStatus(ctx context.Context, jobID, fallbac
 	}
 }
 
-// RecordWorkspaceInvitationDelivery applies one authenticated callback after
-// the transport-facing handler has verified its signature. A callback can
-// affect only the current delivery generation of a live invitation.
-func (s *Service) RecordWorkspaceInvitationDelivery(
+// RecordInvitationDeliveryEvidenceWithDB stores redacted provider evidence.
+// Invitation lifecycle validation and mutation remain with Workspace team.
+func (s *Service) RecordInvitationDeliveryEvidenceWithDB(
 	ctx context.Context,
-	event WorkspaceInvitationDeliveryEvent,
-) (WorkspaceInvitationDeliveryResult, error) {
-	event, err := normalizeWorkspaceInvitationDeliveryEvent(event)
+	db bun.IDB,
+	event InvitationDeliveryEvidence,
+) (InvitationDeliveryEvidenceResult, error) {
+	event, err := normalizeInvitationDeliveryEvidence(event)
 	if err != nil {
-		return WorkspaceInvitationDeliveryResult{}, err
+		return InvitationDeliveryEvidenceResult{}, err
 	}
-	result := WorkspaceInvitationDeliveryResult{}
-	err = s.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
-		var recordErr error
-		result, recordErr = s.recordWorkspaceInvitationDelivery(txCtx, tx, event)
-		return recordErr
-	})
-	return result, err
+	evidence := &models.WorkspaceInvitationDeliveryEvent{
+		EventID: event.EventID, InvitationID: event.InvitationID, DeliveryID: event.DeliveryID,
+		Outcome: event.Outcome, OccurredAt: event.OccurredAt, CreatedAt: s.now(),
+	}
+	inserted, err := db.NewInsert().Model(evidence).On("CONFLICT DO NOTHING").Exec(ctx)
+	if err != nil {
+		return InvitationDeliveryEvidenceResult{}, err
+	}
+	rows, err := inserted.RowsAffected()
+	return InvitationDeliveryEvidenceResult{Duplicate: rows == 0}, err
 }
 
-func normalizeWorkspaceInvitationDeliveryEvent(event WorkspaceInvitationDeliveryEvent) (WorkspaceInvitationDeliveryEvent, error) {
+func normalizeInvitationDeliveryEvidence(event InvitationDeliveryEvidence) (InvitationDeliveryEvidence, error) {
 	event.EventID = strings.TrimSpace(event.EventID)
 	event.InvitationID = strings.TrimSpace(event.InvitationID)
 	event.DeliveryID = strings.TrimSpace(event.DeliveryID)
 	event.Outcome = strings.TrimSpace(event.Outcome)
 	if event.EventID == "" || event.InvitationID == "" || event.DeliveryID == "" || event.OccurredAt.IsZero() {
-		return WorkspaceInvitationDeliveryEvent{}, errors.New("delivery callback fields are required")
+		return InvitationDeliveryEvidence{}, errors.New("delivery callback fields are required")
 	}
 	if event.Outcome != EmailDeliveryDelivered && event.Outcome != EmailDeliveryFailed {
-		return WorkspaceInvitationDeliveryEvent{}, errors.New("delivery callback outcome is invalid")
+		return InvitationDeliveryEvidence{}, errors.New("delivery callback outcome is invalid")
 	}
 	event.OccurredAt = event.OccurredAt.UTC()
 	return event, nil
-}
-
-func (s *Service) recordWorkspaceInvitationDelivery(ctx context.Context, tx bun.Tx, event WorkspaceInvitationDeliveryEvent) (WorkspaceInvitationDeliveryResult, error) {
-	var invitation models.WorkspaceInvitation
-	if err := tx.NewSelect().Model(&invitation).Where("id = ?", event.InvitationID).Scan(ctx); errors.Is(err, sql.ErrNoRows) {
-		return WorkspaceInvitationDeliveryResult{Ignored: true}, nil
-	} else if err != nil {
-		return WorkspaceInvitationDeliveryResult{}, err
-	}
-	duplicate, err := s.insertWorkspaceInvitationDeliveryEvidence(ctx, tx, event)
-	if err != nil {
-		return WorkspaceInvitationDeliveryResult{}, err
-	}
-	if duplicate {
-		return WorkspaceInvitationDeliveryResult{Duplicate: true}, nil
-	}
-	if invitation.EmailDeliveryJobID != event.DeliveryID || !invitation.AcceptedAt.IsZero() || !invitation.RevokedAt.IsZero() ||
-		(!invitation.EmailDeliveryUpdatedAt.IsZero() && !event.OccurredAt.After(invitation.EmailDeliveryUpdatedAt)) {
-		return WorkspaceInvitationDeliveryResult{Ignored: true}, nil
-	}
-	updated, err := tx.NewUpdate().Model((*models.WorkspaceInvitation)(nil)).
-		Set("email_delivery_status = ?", event.Outcome).
-		Set("email_delivery_updated_at = ?", event.OccurredAt).
-		Where("id = ? AND email_delivery_job_id = ?", event.InvitationID, event.DeliveryID).
-		Where("accepted_at IS NULL AND revoked_at IS NULL").
-		Where("email_delivery_updated_at IS NULL OR email_delivery_updated_at < ?", event.OccurredAt).
-		Exec(ctx)
-	if err != nil {
-		return WorkspaceInvitationDeliveryResult{}, err
-	}
-	rows, err := updated.RowsAffected()
-	if err != nil {
-		return WorkspaceInvitationDeliveryResult{}, err
-	}
-	return WorkspaceInvitationDeliveryResult{Applied: rows == 1, Ignored: rows == 0}, nil
-}
-
-func (s *Service) insertWorkspaceInvitationDeliveryEvidence(ctx context.Context, tx bun.Tx, event WorkspaceInvitationDeliveryEvent) (bool, error) {
-	evidence := &models.WorkspaceInvitationDeliveryEvent{
-		EventID: event.EventID, InvitationID: event.InvitationID, DeliveryID: event.DeliveryID,
-		Outcome: event.Outcome, OccurredAt: event.OccurredAt, CreatedAt: s.now(),
-	}
-	inserted, err := tx.NewInsert().Model(evidence).On("CONFLICT DO NOTHING").Exec(ctx)
-	if err != nil {
-		return false, err
-	}
-	rows, err := inserted.RowsAffected()
-	return rows == 0, err
 }
 
 func (s *Service) enqueueEmailWithDB(ctx context.Context, db bun.IDB, input CreateInput) error {

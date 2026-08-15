@@ -136,6 +136,94 @@ type UpdateMemberInput struct {
 	Status        string
 }
 
+type InvitationDeliveryEvent struct {
+	EventID      string
+	InvitationID string
+	DeliveryID   string
+	Outcome      string
+	OccurredAt   time.Time
+}
+
+type InvitationDeliveryResult struct {
+	Applied   bool
+	Duplicate bool
+	Ignored   bool
+}
+
+// ApplyInvitationDelivery owns the lifecycle decision for authenticated
+// delivery evidence. Notifications stores only the redacted provider facts.
+func (s *Service) ApplyInvitationDelivery(ctx context.Context, event InvitationDeliveryEvent) (InvitationDeliveryResult, error) {
+	event, err := normalizeInvitationDeliveryEvent(event)
+	if err != nil {
+		return InvitationDeliveryResult{}, err
+	}
+	if s.notifications == nil {
+		return InvitationDeliveryResult{}, errors.New("notification delivery evidence is unavailable")
+	}
+	result := InvitationDeliveryResult{}
+	err = s.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
+		var applyErr error
+		result, applyErr = s.applyInvitationDelivery(txCtx, tx, event)
+		return applyErr
+	})
+	return result, err
+}
+
+func normalizeInvitationDeliveryEvent(event InvitationDeliveryEvent) (InvitationDeliveryEvent, error) {
+	event.EventID = strings.TrimSpace(event.EventID)
+	event.InvitationID = strings.TrimSpace(event.InvitationID)
+	event.DeliveryID = strings.TrimSpace(event.DeliveryID)
+	event.Outcome = strings.TrimSpace(event.Outcome)
+	if event.EventID == "" || event.InvitationID == "" || event.DeliveryID == "" || event.OccurredAt.IsZero() {
+		return InvitationDeliveryEvent{}, lifecycleError(ErrorInvalid, "delivery callback fields are required")
+	}
+	if event.Outcome != notifications.EmailDeliveryDelivered && event.Outcome != notifications.EmailDeliveryFailed {
+		return InvitationDeliveryEvent{}, lifecycleError(ErrorInvalid, "delivery callback outcome is invalid")
+	}
+	event.OccurredAt = event.OccurredAt.UTC()
+	return event, nil
+}
+
+func (s *Service) applyInvitationDelivery(ctx context.Context, tx bun.Tx, event InvitationDeliveryEvent) (InvitationDeliveryResult, error) {
+	var invitation models.WorkspaceInvitation
+	if err := tx.NewSelect().Model(&invitation).Where("id = ?", event.InvitationID).Scan(ctx); errors.Is(err, sql.ErrNoRows) {
+		return InvitationDeliveryResult{Ignored: true}, nil
+	} else if err != nil {
+		return InvitationDeliveryResult{}, err
+	}
+	evidence, err := s.notifications.RecordInvitationDeliveryEvidenceWithDB(ctx, tx, notifications.InvitationDeliveryEvidence{
+		EventID: event.EventID, InvitationID: event.InvitationID, DeliveryID: event.DeliveryID,
+		Outcome: event.Outcome, OccurredAt: event.OccurredAt,
+	})
+	if err != nil {
+		return InvitationDeliveryResult{}, err
+	}
+	if evidence.Duplicate {
+		return InvitationDeliveryResult{Duplicate: true}, nil
+	}
+	now := s.now()
+	if invitation.EmailDeliveryJobID != event.DeliveryID || !invitation.AcceptedAt.IsZero() ||
+		!invitation.RevokedAt.IsZero() || !invitation.ExpiresAt.After(now) ||
+		(!invitation.EmailDeliveryUpdatedAt.IsZero() && !event.OccurredAt.After(invitation.EmailDeliveryUpdatedAt)) {
+		return InvitationDeliveryResult{Ignored: true}, nil
+	}
+	updated, err := tx.NewUpdate().Model((*models.WorkspaceInvitation)(nil)).
+		Set("email_delivery_status = ?", event.Outcome).
+		Set("email_delivery_updated_at = ?", event.OccurredAt).
+		Where("id = ? AND email_delivery_job_id = ?", event.InvitationID, event.DeliveryID).
+		Where("accepted_at IS NULL AND revoked_at IS NULL AND expires_at > ?", now).
+		Where("email_delivery_updated_at IS NULL OR email_delivery_updated_at < ?", event.OccurredAt).
+		Exec(ctx)
+	if err != nil {
+		return InvitationDeliveryResult{}, err
+	}
+	rows, err := updated.RowsAffected()
+	if err != nil {
+		return InvitationDeliveryResult{}, err
+	}
+	return InvitationDeliveryResult{Applied: rows == 1, Ignored: rows == 0}, nil
+}
+
 func (s *Service) List(ctx context.Context, workspaceID, userID string, filters Filters) (Team, error) {
 	workspaceID = strings.TrimSpace(workspaceID)
 	member, err := s.member(ctx, s.db, workspaceID, strings.TrimSpace(userID), true)
@@ -1201,20 +1289,18 @@ func (s *Service) notifyInvitation(ctx context.Context, invitation models.Worksp
 	if err := s.db.NewSelect().Model(&workspace).Column("id", "name").Where("id = ?", invitation.WorkspaceID).Scan(ctx); err != nil {
 		return err
 	}
-	dedupKey := "workspace-invitation:" + invitation.ID
-	if resent {
-		dedupKey += ":" + invitation.LastSentAt.UTC().Format(time.RFC3339Nano)
+	generation := invitation.LastSentAt.UTC().Format(time.RFC3339Nano)
+	if !resent {
+		generation = invitation.CreatedAt.UTC().Format(time.RFC3339Nano)
 	}
-	return s.notifications.Create(ctx, notifications.CreateInput{
-		// The invitee does not have workspace access yet, so this notification
-		// must remain visible outside any workspace-scoped notification feed.
-		UserID: user.ID,
-		Type:   notifications.TypeWorkspaceInvite, Title: "Workspace invitation",
-		Body: "You were invited to " + workspace.Name + ".",
-		Href: "/invite?id=" + invitation.ID, DedupKey: dedupKey,
-		Actions:       []models.NotificationAction{{Label: "Review invitation", Href: "/invite?id=" + invitation.ID, Kind: "primary"}},
-		SuppressEmail: true,
+	outcome, err := notifications.NewWorkspaceInvitationOutcome(notifications.WorkspaceInvitationFacts{
+		RecipientUserID: user.ID, InvitationID: invitation.ID,
+		DeliveryID: generation, WorkspaceName: workspace.Name,
 	})
+	if err != nil {
+		return err
+	}
+	return s.notifications.Record(ctx, outcome)
 }
 
 func normalizeFilters(filters Filters) Filters {
