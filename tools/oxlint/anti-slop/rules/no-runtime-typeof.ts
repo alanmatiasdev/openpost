@@ -23,6 +23,7 @@ const BOUNDARY_FUNCTION_PREFIXES = [
   "normalize",
   "parse",
   "problem",
+  "read",
   "resolve",
   "safe",
   "supports",

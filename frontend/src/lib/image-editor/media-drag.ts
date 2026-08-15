@@ -16,6 +16,24 @@ export function writeImageEditorMediaDrag(
 	dataTransfer.setData('text/plain', payload.name || 'OpenPost media');
 }
 
+interface RawImageEditorMediaDragPayload {
+	id?: unknown;
+	name?: unknown;
+	width?: unknown;
+	height?: unknown;
+}
+
+function parseImageEditorMediaDragPayload(
+	raw: RawImageEditorMediaDragPayload
+): ImageEditorMediaDragPayload | null {
+	if (typeof raw.id !== 'string' || !raw.id.trim()) return null;
+	const payload: ImageEditorMediaDragPayload = { id: raw.id };
+	if (typeof raw.name === 'string') payload.name = raw.name;
+	if (typeof raw.width === 'number' && raw.width > 0) payload.width = raw.width;
+	if (typeof raw.height === 'number' && raw.height > 0) payload.height = raw.height;
+	return payload;
+}
+
 export function readImageEditorMediaDrag(
 	dataTransfer: DataTransfer | null
 ): ImageEditorMediaDragPayload | null {
@@ -23,16 +41,9 @@ export function readImageEditorMediaDrag(
 	const encoded = dataTransfer.getData(IMAGE_EDITOR_MEDIA_DRAG_TYPE);
 	if (!encoded) return null;
 	try {
-		const payload = JSON.parse(encoded) as Partial<ImageEditorMediaDragPayload>;
-		if (typeof payload.id !== 'string' || !payload.id.trim()) return null;
-		return {
-			id: payload.id,
-			...(typeof payload.name === 'string' ? { name: payload.name } : {}),
-			...(typeof payload.width === 'number' && payload.width > 0 ? { width: payload.width } : {}),
-			...(typeof payload.height === 'number' && payload.height > 0
-				? { height: payload.height }
-				: {})
-		};
+		const parsed: unknown = JSON.parse(encoded);
+		if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+		return parseImageEditorMediaDragPayload(parsed);
 	} catch {
 		return null;
 	}
