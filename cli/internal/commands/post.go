@@ -2,7 +2,6 @@ package commands
 
 import (
 	"bufio"
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -408,56 +407,6 @@ func isNextSlotSchedule(raw string) bool {
 	}
 }
 
-func optionalScheduleText(value *time.Time) *string {
-	if value == nil {
-		return nil
-	}
-	text := value.Format(time.RFC3339)
-	return &text
-}
-
-func postDestinationIDs(post *api.Post) []string {
-	ids := make([]string, 0, len(post.Destinations))
-	for _, destination := range post.Destinations {
-		ids = append(ids, destination.SocialAccountID)
-	}
-	return ids
-}
-
-func postMediaIDs(post *api.Post) []string {
-	if len(post.MediaIDs) > 0 {
-		return append([]string(nil), post.MediaIDs...)
-	}
-	ids := make([]string, 0, len(post.Media))
-	for _, media := range post.Media {
-		ids = append(ids, media.MediaID)
-	}
-	return ids
-}
-
-func textPostVariants(post *api.Post) []api.TextPostVariantInput {
-	variants := make([]api.TextPostVariantInput, 0, len(post.Renditions))
-	for _, rendition := range post.Renditions {
-		content := rendition.Content
-		var mediaIDs *string
-		switch rendition.MediaMode {
-		case "clear", "override":
-			encoded, err := json.Marshal(rendition.MediaIDs)
-			if err == nil {
-				value := string(encoded)
-				mediaIDs = &value
-			}
-		}
-		variants = append(variants, api.TextPostVariantInput{
-			SocialAccountID: rendition.SocialAccountID,
-			Content:         &content,
-			MediaIDs:        mediaIDs,
-			IsUnsynced:      rendition.IsUnsynced,
-		})
-	}
-	return variants
-}
-
 func confirmNaturalSchedule(skip bool, t *time.Time, source string) error {
 	if skip || t == nil || source != "natural" {
 		return nil
@@ -565,21 +514,6 @@ func splitCSV(csv string) []string {
 		}
 	}
 	return out
-}
-
-func printPostSummary(cfg *config.Runtime, post *api.Post) error {
-	p := printerFrom(cfg)
-	if cfg.AsJSON {
-		return p.PrintJSON(post)
-	}
-	p.Table([]string{"ID", "STATUS", "SCHEDULED", "ACCOUNTS", "MEDIA"}, [][]string{{
-		post.ID,
-		post.Status,
-		scheduleLabel(post.ScheduledAt),
-		strconv.Itoa(len(post.Destinations)),
-		strconv.Itoa(len(post.MediaIDs) + len(post.Media)),
-	}})
-	return nil
 }
 
 func printPostPublicationSummary(cfg *config.Runtime, publication *api.Publication) error {
