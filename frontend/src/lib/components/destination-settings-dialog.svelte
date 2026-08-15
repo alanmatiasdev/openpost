@@ -21,21 +21,13 @@
 		type GeneratedCoverFrame
 	} from './video-cover-frame-picker.svelte';
 	import type { ComposerSettingValue } from '$lib/components/compose/modes';
+	import { settingLabel } from '$lib/setting-label';
 
 	type SettingDefinition = components['schemas']['SettingDefinition'];
 	type SettingCondition = components['schemas']['SettingCondition'];
 	type DestinationOption = components['schemas']['DestinationOption'];
 	type SettingGroup = SettingDefinition['group'];
 	type DestinationSettings = NonNullable<components['schemas']['RenditionInput']['settings']>;
-	type MessageFunction = () => string;
-
-	function asGeneratedMessageRegistry<Module extends object>(module: Module) {
-		// SAFETY: Paraglide generates callable exports. Destination setting message keys identify the
-		// zero-input publishing-setting subset, but arrive as server metadata rather than static keys.
-		return module as Module & Record<string, MessageFunction | undefined>;
-	}
-
-	const messageRegistry = asGeneratedMessageRegistry(m);
 
 	interface DestinationMediaItem {
 		id: string;
@@ -188,11 +180,6 @@
 
 	function controlFor(setting: SettingDefinition): string {
 		return setting.control || setting.type;
-	}
-
-	function settingLabel(setting: SettingDefinition): string {
-		const messageKey = setting.message_key.replaceAll('.', '_');
-		return messageRegistry[messageKey]?.() ?? setting.label;
 	}
 
 	function inputType(setting: SettingDefinition): 'number' | 'url' | 'text' {

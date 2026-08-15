@@ -9,6 +9,8 @@
 	import PlatformIcon from './platform-icon.svelte';
 	import { getPlatformName } from '$lib/utils';
 	import { m } from '$lib/paraglide/messages';
+	import { settingLabel } from '$lib/setting-label';
+	import type { ComposerSettingValue } from '$lib/components/compose/modes';
 	import {
 		activeRequiredDestinationFields,
 		requiredFieldIsMissing
@@ -17,15 +19,16 @@
 	type ResolvedAccountCapability = components['schemas']['ResolvedAccountCapability'];
 	type DestinationOption = components['schemas']['DestinationOption'];
 	type SettingDefinition = components['schemas']['SettingDefinition'];
+	type DestinationSettings = NonNullable<components['schemas']['RenditionInput']['settings']>;
 
 	interface Props {
 		accounts: SocialAccount[];
 		resolvedByAccount: Record<string, ResolvedAccountCapability>;
-		valuesByAccount: Record<string, Record<string, unknown>>;
+		valuesByAccount: Record<string, DestinationSettings>;
 		optionGroupsByAccount: Record<string, Record<string, DestinationOption[]>>;
 		optionErrorsByAccount?: Record<string, string>;
 		optionsLoadingAccountId?: string;
-		onChange: (account: SocialAccount, key: string, value: unknown) => void;
+		onChange: (account: SocialAccount, key: string, value: ComposerSettingValue) => void;
 		onFormatChange: (account: SocialAccount, outputProfile: string) => void;
 		onAddMedia: () => void;
 		mediaActionDisabled?: boolean;
@@ -70,7 +73,7 @@
 
 	function valueAsString(accountId: string, key: string): string {
 		const value = valuesByAccount[accountId]?.[key];
-		return typeof value === 'string' || typeof value === 'number' ? String(value) : '';
+		return value === undefined || value === null ? '' : String(value);
 	}
 
 	function optionsFor(accountId: string, setting: SettingDefinition) {
@@ -81,12 +84,6 @@
 			}));
 		}
 		return (setting.options ?? []).map((option) => ({ value: option, label: option }));
-	}
-
-	function settingLabel(setting: SettingDefinition): string {
-		const messageKey = setting.message_key.replaceAll('.', '_');
-		const message = (m as unknown as Record<string, () => string>)[messageKey];
-		return typeof message === 'function' ? message() : setting.label;
 	}
 </script>
 
