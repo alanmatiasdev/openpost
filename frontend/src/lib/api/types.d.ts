@@ -9125,6 +9125,7 @@ export interface components {
             preferences: {
                 [key: string]: components["schemas"]["ChannelPreference"];
             };
+            topic_definitions: components["schemas"]["TopicDefinition"][] | null;
         };
         PreferenceUpdate: {
             /**
@@ -11152,6 +11153,18 @@ export interface components {
              */
             readonly $schema?: string;
             is_favorite: boolean;
+        };
+        TopicDefinition: {
+            critical_in_app: boolean;
+            default_preference: components["schemas"]["ChannelPreference"];
+            email_frequencies: string[] | null;
+            email_mutable: boolean;
+            group: string;
+            id: string;
+            in_app_mutable: boolean;
+            mute_applies: boolean;
+            presentation_key: string;
+            transactional: boolean;
         };
         Transition: {
             /** Format: int64 */

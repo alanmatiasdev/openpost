@@ -5,13 +5,11 @@
 	import { m } from '$lib/paraglide/messages';
 	import { showToast } from '$lib/toast';
 	import {
-		criticalInAppTopics,
-		immediateEmailTopics,
 		notificationTopicDescription,
+		notificationTopicEmailFrequencies,
 		notificationTopicGroups,
 		notificationTopicLabel,
-		transactionalEmailTopics,
-		type NotificationTopic
+		type NotificationTopicDefinition
 	} from '$lib/notification-topics';
 	import InlineNotice from '$lib/components/inline-notice.svelte';
 	import PageLoading from '$lib/components/page-loading.svelte';
@@ -31,12 +29,13 @@
 	let { workspaceID = '', workspaceName = '' }: { workspaceID?: string; workspaceName?: string } =
 		$props();
 
-	const eventGroups = $derived(notificationTopicGroups());
+	const eventGroups = $derived(notificationTopicGroups(topicDefinitions));
 
 	let loading = $state(true);
 	let saving = $state(false);
 	let error = $state('');
 	let preferences = $state.raw<Preferences>({});
+	let topicDefinitions = $state.raw<NotificationTopicDefinition[]>([]);
 	let savedSnapshot = $state('');
 	let emailAvailable = $state(false);
 	let emailAddress = $state('');
@@ -59,6 +58,7 @@
 			return;
 		}
 		preferences = data.preferences;
+		topicDefinitions = data.topic_definitions ?? [];
 		digestTime = data.digest_configured ? data.digest_time : '09:00';
 		digestTimezone = data.digest_configured
 			? data.digest_timezone
@@ -73,31 +73,47 @@
 		loading = false;
 	}
 
-	function preferenceFor(eventType: NotificationTopic): ChannelPreference {
-		return (
-			preferences[eventType] ?? {
-				in_app: true,
-				email_frequency: immediateEmailTopics.has(eventType) ? 'immediate' : 'off'
-			}
-		);
+	function preferenceFor(definition: NotificationTopicDefinition): ChannelPreference {
+		return preferences[definition.id] ?? definition.default_preference;
 	}
 
-	function updateInApp(eventType: NotificationTopic, enabled: boolean) {
+	function preferenceForID(eventType: string): ChannelPreference {
+		const definition = topicDefinitions.find((candidate) => candidate.id === eventType);
+		return preferences[eventType] ?? definition?.default_preference ?? fallbackPreference();
+	}
+
+	function fallbackPreference(): ChannelPreference {
+		return { in_app: false, email_frequency: 'off' };
+	}
+
+	function updateInApp(eventType: string, enabled: boolean) {
 		preferences = {
 			...preferences,
-			[eventType]: { ...preferenceFor(eventType), in_app: enabled }
+			[eventType]: { ...preferenceForID(eventType), in_app: enabled }
 		};
 	}
 
-	function updateEmailFrequency(eventType: NotificationTopic, frequency: string | undefined) {
-		if (!frequency) return;
+	function updateEmailFrequency(eventType: string, frequency: string | undefined) {
+		const parsedFrequency = parseEmailFrequency(frequency);
+		if (!parsedFrequency) return;
 		preferences = {
 			...preferences,
 			[eventType]: {
-				...preferenceFor(eventType),
-				email_frequency: frequency as EmailFrequency
+				...preferenceForID(eventType),
+				email_frequency: parsedFrequency
 			}
 		};
+	}
+
+	function parseEmailFrequency(frequency: string | undefined): EmailFrequency | null {
+		switch (frequency) {
+			case 'off':
+			case 'immediate':
+			case 'daily':
+				return frequency;
+			default:
+				return null;
+		}
 	}
 
 	async function save() {
@@ -140,26 +156,26 @@
 </script>
 
 {#snippet emailFrequencyControl(
-	eventType: NotificationTopic,
+	definition: NotificationTopicDefinition,
 	preference: ChannelPreference,
 	triggerClass: string
 )}
 	<Select.Root
 		type="single"
 		value={preference.email_frequency}
-		disabled={!emailAvailable || transactionalEmailTopics.has(eventType)}
-		onValueChange={(value) => updateEmailFrequency(eventType, value)}
+		disabled={!emailAvailable || !definition.email_mutable}
+		onValueChange={(value) => updateEmailFrequency(definition.id, value)}
 	>
 		<Select.Trigger
 			class={triggerClass}
-			aria-label={`${notificationTopicLabel(eventType)} · ${m.notifications_email_frequency()}`}
+			aria-label={`${notificationTopicLabel(definition.id)} · ${m.notifications_email_frequency()}`}
 		>
 			{frequencyLabel(preference.email_frequency)}
 		</Select.Trigger>
 		<Select.Content>
-			<Select.Item value="off">{m.notifications_email_frequency_off()}</Select.Item>
-			<Select.Item value="immediate">{m.notifications_email_frequency_immediate()}</Select.Item>
-			<Select.Item value="daily">{m.notifications_email_frequency_daily()}</Select.Item>
+			{#each notificationTopicEmailFrequencies(definition) as frequency (frequency)}
+				<Select.Item value={frequency}>{frequencyLabel(frequency)}</Select.Item>
+			{/each}
 		</Select.Content>
 	</Select.Root>
 {/snippet}
@@ -234,8 +250,9 @@
 								{group.label}
 							</th>
 						</tr>
-						{#each group.events as eventType (eventType)}
-							{@const preference = preferenceFor(eventType)}
+						{#each group.topics as definition (definition.id)}
+							{@const eventType = definition.id}
+							{@const preference = preferenceFor(definition)}
 							<tr>
 								<th scope="row" class="px-4 py-3 text-left font-normal">
 									<span class="block font-medium">{notificationTopicLabel(eventType)}</span>
@@ -247,14 +264,14 @@
 									<span class="inline-flex min-h-11 min-w-11 items-center justify-center">
 										<Checkbox
 											checked={preference.in_app}
-											disabled={criticalInAppTopics.has(eventType)}
+											disabled={!definition.in_app_mutable}
 											aria-label={`${notificationTopicLabel(eventType)} · ${m.notifications_in_app()}`}
 											onCheckedChange={(checked) => updateInApp(eventType, checked)}
 										/>
 									</span>
 								</td>
 								<td class="px-4 py-3 text-center">
-									{@render emailFrequencyControl(eventType, preference, '')}
+									{@render emailFrequencyControl(definition, preference, '')}
 								</td>
 							</tr>
 						{/each}
@@ -273,8 +290,9 @@
 						{group.label}
 					</h2>
 					<div class="divide-y">
-						{#each group.events as eventType (eventType)}
-							{@const preference = preferenceFor(eventType)}
+						{#each group.topics as definition (definition.id)}
+							{@const eventType = definition.id}
+							{@const preference = preferenceFor(definition)}
 							<div class="space-y-3 px-4 py-4">
 								<div>
 									<p class="text-sm font-medium">{notificationTopicLabel(eventType)}</p>
@@ -288,13 +306,13 @@
 									>
 										<Checkbox
 											checked={preference.in_app}
-											disabled={criticalInAppTopics.has(eventType)}
+											disabled={!definition.in_app_mutable}
 											aria-label={`${notificationTopicLabel(eventType)} · ${m.notifications_in_app()}`}
 											onCheckedChange={(checked) => updateInApp(eventType, checked)}
 										/>
 										{m.notifications_in_app()}
 									</label>
-									{@render emailFrequencyControl(eventType, preference, 'min-h-11 w-full')}
+									{@render emailFrequencyControl(definition, preference, 'min-h-11 w-full')}
 								</div>
 							</div>
 						{/each}

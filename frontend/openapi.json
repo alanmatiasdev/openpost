@@ -11297,10 +11297,17 @@
 							"$ref": "#/components/schemas/ChannelPreference"
 						},
 						"type": "object"
+					},
+					"topic_definitions": {
+						"items": {
+							"$ref": "#/components/schemas/TopicDefinition"
+						},
+						"type": ["array", "null"]
 					}
 				},
 				"required": [
 					"preferences",
+					"topic_definitions",
 					"email_available",
 					"email_address",
 					"digest_time",
@@ -16013,6 +16020,57 @@
 					}
 				},
 				"required": ["is_favorite"],
+				"type": "object"
+			},
+			"TopicDefinition": {
+				"additionalProperties": false,
+				"properties": {
+					"critical_in_app": {
+						"type": "boolean"
+					},
+					"default_preference": {
+						"$ref": "#/components/schemas/ChannelPreference"
+					},
+					"email_frequencies": {
+						"items": {
+							"type": "string"
+						},
+						"type": ["array", "null"]
+					},
+					"email_mutable": {
+						"type": "boolean"
+					},
+					"group": {
+						"type": "string"
+					},
+					"id": {
+						"type": "string"
+					},
+					"in_app_mutable": {
+						"type": "boolean"
+					},
+					"mute_applies": {
+						"type": "boolean"
+					},
+					"presentation_key": {
+						"type": "string"
+					},
+					"transactional": {
+						"type": "boolean"
+					}
+				},
+				"required": [
+					"id",
+					"group",
+					"presentation_key",
+					"critical_in_app",
+					"transactional",
+					"in_app_mutable",
+					"email_mutable",
+					"mute_applies",
+					"email_frequencies",
+					"default_preference"
+				],
 				"type": "object"
 			},
 			"Transition": {

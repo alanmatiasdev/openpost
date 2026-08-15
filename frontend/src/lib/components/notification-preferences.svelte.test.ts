@@ -32,10 +32,42 @@ function preferences() {
 		new_message: { in_app: true, email_frequency: 'off' },
 		reply_failed: { in_app: true, email_frequency: 'immediate' },
 		workspace_invite: { in_app: true, email_frequency: 'immediate' },
+		ownership_transfer: { in_app: true, email_frequency: 'immediate' },
 		security_action: { in_app: true, email_frequency: 'immediate' },
 		access_changed: { in_app: true, email_frequency: 'immediate' },
 		critical_billing: { in_app: true, email_frequency: 'immediate' }
 	};
+}
+
+function topicDefinitions() {
+	const definitions: Array<[string, string, boolean, boolean, boolean]> = [
+		['post_published', 'publishing', true, true, false],
+		['publish_failed', 'publishing', false, true, false],
+		['account_needs_attention', 'publishing', false, true, false],
+		['new_engagement', 'conversations', true, true, false],
+		['new_message', 'conversations', true, true, false],
+		['reply_failed', 'conversations', false, true, false],
+		['workspace_invite', 'workspace', false, false, true],
+		['ownership_transfer', 'account', false, false, true],
+		['security_action', 'account', false, false, true],
+		['access_changed', 'account', false, false, true],
+		['critical_billing', 'account', false, false, true]
+	];
+	return definitions.map(([id, group, inAppMutable, emailMutable, transactional]) => ({
+		id,
+		group,
+		presentation_key: `notifications.event.${id}`,
+		critical_in_app: !inAppMutable,
+		transactional,
+		in_app_mutable: inAppMutable,
+		email_mutable: emailMutable,
+		mute_applies: !transactional,
+		email_frequencies: transactional ? ['immediate'] : ['off', 'immediate', 'daily'],
+		default_preference: Object.entries(preferences()).find(([topic]) => topic === id)?.[1] ?? {
+			in_app: false,
+			email_frequency: 'off'
+		}
+	}));
 }
 
 function deferred<T>() {
@@ -254,6 +286,7 @@ describe('NotificationPreferences', () => {
 		mocks.get.mockImplementation(async () => ({
 			data: {
 				preferences: initial,
+				topic_definitions: topicDefinitions(),
 				email_available: true,
 				email_address: 'founder@example.com',
 				digest_time: '09:00',
@@ -276,6 +309,7 @@ describe('NotificationPreferences', () => {
 			return {
 				data: {
 					preferences: initial,
+					topic_definitions: topicDefinitions(),
 					email_available: true,
 					email_address: 'founder@example.com',
 					digest_time: '09:00',
@@ -290,6 +324,7 @@ describe('NotificationPreferences', () => {
 			return {
 				data: {
 					preferences: initial,
+					topic_definitions: topicDefinitions(),
 					email_available: true,
 					email_address: 'founder@example.com',
 					digest_time: '09:00',
@@ -336,6 +371,7 @@ describe('NotificationPreferences', () => {
 		mocks.get.mockResolvedValue({
 			data: {
 				preferences: initial,
+				topic_definitions: topicDefinitions(),
 				email_available: true,
 				email_address: 'founder@example.com',
 				digest_time: '09:00',
@@ -346,6 +382,7 @@ describe('NotificationPreferences', () => {
 		mocks.put.mockImplementation(async (_path, request) => ({
 			data: {
 				preferences: request.body.preferences,
+				topic_definitions: topicDefinitions(),
 				email_available: true,
 				email_address: 'founder@example.com',
 				digest_time: request.body.digest_time,
@@ -382,6 +419,7 @@ describe('NotificationPreferences', () => {
 		mocks.get.mockResolvedValue({
 			data: {
 				preferences: preferences(),
+				topic_definitions: topicDefinitions(),
 				email_available: false,
 				email_address: 'founder@example.com',
 				digest_time: '09:00',
@@ -407,6 +445,7 @@ describe('NotificationPreferences', () => {
 		mocks.get.mockResolvedValue({
 			data: {
 				preferences: preferences(),
+				topic_definitions: topicDefinitions(),
 				email_available: true,
 				email_address: 'founder@example.com',
 				digest_time: '09:00',
@@ -427,6 +466,7 @@ describe('NotificationPreferences', () => {
 		mocks.get.mockResolvedValue({
 			data: {
 				preferences: preferences(),
+				topic_definitions: topicDefinitions(),
 				email_available: true,
 				email_address: 'founder@example.com',
 				digest_time: '16:45',
@@ -451,6 +491,7 @@ describe('NotificationPreferences', () => {
 		mocks.get.mockResolvedValue({
 			data: {
 				preferences: preferences(),
+				topic_definitions: topicDefinitions(),
 				email_available: true,
 				email_address: 'founder@example.com',
 				digest_time: '09:00',

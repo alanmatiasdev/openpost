@@ -193,6 +193,10 @@ func TestNotificationPreferenceAPIStoresDailyWindowAndRejectsInvalidCombinations
 	require.Contains(t, valid.Body.String(), `"email_frequency":"daily"`)
 	require.Contains(t, valid.Body.String(), `"digest_time":"09:15"`)
 	require.Contains(t, valid.Body.String(), `"digest_timezone":"Europe/Lisbon"`)
+	require.Contains(t, valid.Body.String(), `"topic_definitions":[`)
+	require.Contains(t, valid.Body.String(), `"id":"workspace_invite"`)
+	require.Contains(t, valid.Body.String(), `"transactional":true`)
+	require.Contains(t, valid.Body.String(), `"email_mutable":false`)
 
 	invalid := jsonRequest(t, server.echo, http.MethodPut, "/api/v1/notifications/preferences", map[string]any{
 		"preferences": map[string]any{

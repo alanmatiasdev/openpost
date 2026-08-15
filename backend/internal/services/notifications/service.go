@@ -51,31 +51,13 @@ const (
 
 var (
 	ErrInvalidCursor          = errors.New("invalid notification cursor")
+	ErrInvalidOutcome         = errors.New("invalid notification outcome")
 	ErrInvalidPreferences     = errors.New("invalid notification preferences")
 	ErrInvalidMute            = errors.New("invalid notification mute")
 	ErrMuteWorkspaceAccess    = errors.New("notification mute workspace access denied")
 	ErrMuteNotFound           = errors.New("notification mute not found")
 	errWorkspaceScopeRequired = errors.New("notification workspace scope is required")
 )
-
-var criticalInApp = map[string]bool{
-	TypePublishFailed:         true,
-	TypeAccountNeedsAttention: true,
-	TypeReplyFailed:           true,
-	TypeWorkspaceInvite:       true,
-	TypeOwnershipTransfer:     true,
-	TypeSecurityAction:        true,
-	TypeAccessChanged:         true,
-	TypeCriticalBilling:       true,
-}
-
-var transactionalEmail = map[string]bool{
-	TypeWorkspaceInvite:   true,
-	TypeOwnershipTransfer: true,
-	TypeSecurityAction:    true,
-	TypeAccessChanged:     true,
-	TypeCriticalBilling:   true,
-}
 
 type EmailFrequency string
 
@@ -97,29 +79,22 @@ type ChannelPreference struct {
 type Preferences map[string]ChannelPreference
 
 func DefaultPreferences() Preferences {
-	return Preferences{
-		TypePostPublished:         {InApp: true, EmailFrequency: EmailFrequencyOff},
-		TypePublishFailed:         {InApp: true, EmailFrequency: EmailFrequencyImmediate},
-		TypeAccountNeedsAttention: {InApp: true, EmailFrequency: EmailFrequencyOff},
-		TypeNewEngagement:         {InApp: true, EmailFrequency: EmailFrequencyOff},
-		TypeNewMessage:            {InApp: true, EmailFrequency: EmailFrequencyOff},
-		TypeReplyFailed:           {InApp: true, EmailFrequency: EmailFrequencyImmediate},
-		TypeWorkspaceInvite:       {InApp: true, EmailFrequency: EmailFrequencyImmediate},
-		TypeOwnershipTransfer:     {InApp: true, EmailFrequency: EmailFrequencyImmediate},
-		TypeSecurityAction:        {InApp: true, EmailFrequency: EmailFrequencyImmediate},
-		TypeAccessChanged:         {InApp: true, EmailFrequency: EmailFrequencyImmediate},
-		TypeCriticalBilling:       {InApp: true, EmailFrequency: EmailFrequencyImmediate},
+	preferences := make(Preferences, len(topicCatalogue))
+	for _, policy := range topicCatalogue {
+		preferences[policy.definition.ID] = policy.definition.DefaultPreference
 	}
+	return preferences
 }
 
 type PreferenceSettings struct {
-	Preferences      Preferences `json:"preferences"`
-	EmailAvailable   bool        `json:"email_available"`
-	EmailAddress     string      `json:"email_address"`
-	DigestTime       string      `json:"digest_time" example:"09:00"`
-	DigestTimezone   string      `json:"digest_timezone" example:"Europe/Lisbon"`
-	DigestConfigured bool        `json:"digest_configured"`
-	Mutes            []Mute      `json:"mutes"`
+	Preferences      Preferences       `json:"preferences"`
+	TopicDefinitions []TopicDefinition `json:"topic_definitions"`
+	EmailAvailable   bool              `json:"email_available"`
+	EmailAddress     string            `json:"email_address"`
+	DigestTime       string            `json:"digest_time" example:"09:00"`
+	DigestTimezone   string            `json:"digest_timezone" example:"Europe/Lisbon"`
+	DigestConfigured bool              `json:"digest_configured"`
+	Mutes            []Mute            `json:"mutes"`
 }
 
 type PreferenceUpdate struct {
@@ -417,9 +392,16 @@ func (s *Service) Create(ctx context.Context, input CreateInput) error {
 // CreateWithDB lets callers write an attention notification in the same
 // transaction as the operational state that produced it.
 func (s *Service) CreateWithDB(ctx context.Context, db bun.IDB, input CreateInput) error {
-	if strings.TrimSpace(input.UserID) == "" || strings.TrimSpace(input.Type) == "" {
-		return fmt.Errorf("notification user and type are required")
+	return s.createWithDB(ctx, db, input)
+}
+
+// createWithDB is shared by typed outcomes and the temporary raw compatibility
+// seam that the producer-migration ticket removes.
+func (s *Service) createWithDB(ctx context.Context, db bun.IDB, input CreateInput) error {
+	if err := validateCreateInput(input); err != nil {
+		return err
 	}
+	policy, _ := topicPolicyFor(input.Type)
 	if workspaceID := strings.TrimSpace(input.WorkspaceID); workspaceID != "" {
 		if err := organizationguard.LockWorkspace(ctx, db, workspaceID); err != nil {
 			return err
@@ -430,7 +412,7 @@ func (s *Service) CreateWithDB(ctx context.Context, db bun.IDB, input CreateInpu
 		return err
 	}
 	preference := preferences[input.Type]
-	deliverInApp := preference.InApp || criticalInApp[input.Type]
+	deliverInApp := preference.InApp || policy.definition.CriticalInApp
 	deliverEmail, err := s.shouldDeliverOptionalEmail(ctx, db, input, preference)
 	if err != nil {
 		return err
@@ -446,10 +428,20 @@ func (s *Service) CreateWithDB(ctx context.Context, db bun.IDB, input CreateInpu
 	if !deliverEmail {
 		return nil
 	}
-	if preference.EmailFrequency == EmailFrequencyDaily && !transactionalEmail[input.Type] {
+	if preference.EmailFrequency == EmailFrequencyDaily && !policy.definition.Transactional {
 		return s.enqueueDigestItemWithDB(ctx, db, input)
 	}
 	return s.enqueueEmailWithDB(ctx, db, input)
+}
+
+func validateCreateInput(input CreateInput) error {
+	if strings.TrimSpace(input.UserID) == "" || strings.TrimSpace(input.Type) == "" {
+		return fmt.Errorf("notification user and type are required")
+	}
+	if _, knownTopic := topicPolicyFor(input.Type); !knownTopic {
+		return fmt.Errorf("%w: unknown topic %q", ErrInvalidOutcome, input.Type)
+	}
+	return nil
 }
 
 func (s *Service) shouldDeliverOptionalEmail(
@@ -461,7 +453,8 @@ func (s *Service) shouldDeliverOptionalEmail(
 	if preference.EmailFrequency == EmailFrequencyOff || s.sender == nil || input.SuppressEmail {
 		return false, nil
 	}
-	if transactionalEmail[input.Type] {
+	policy, knownTopic := topicPolicyFor(input.Type)
+	if knownTopic && policy.definition.Transactional {
 		return true, nil
 	}
 	if s.beforeOptionalMuteCheck != nil {
@@ -719,7 +712,8 @@ func (s *Service) enqueueEmailWithDB(ctx context.Context, db bun.IDB, input Crea
 		href = ""
 	}
 	classification := ""
-	if transactionalEmail[input.Type] {
+	policy, knownTopic := topicPolicyFor(input.Type)
+	if knownTopic && policy.definition.Transactional {
 		classification = EmailClassificationRequired
 	}
 	payload, err := json.Marshal(emailDeliveryJob{
@@ -1221,7 +1215,7 @@ func (s *Service) GetPreferenceSettingsForActor(ctx context.Context, actor MuteA
 	if err != nil {
 		return PreferenceSettings{}, err
 	}
-	return PreferenceSettings{Preferences: Preferences{}, Mutes: mutes}, nil
+	return PreferenceSettings{Preferences: Preferences{}, TopicDefinitions: TopicDefinitions(), Mutes: mutes}, nil
 }
 
 func (s *Service) getPreferenceSettings(ctx context.Context, db bun.IDB, userID string) (PreferenceSettings, error) {
@@ -1256,7 +1250,7 @@ func (s *Service) getPreferenceSettings(ctx context.Context, db bun.IDB, userID 
 		return PreferenceSettings{}, err
 	}
 	return PreferenceSettings{
-		Preferences: preferences, EmailAvailable: s.sender != nil, EmailAddress: strings.TrimSpace(email),
+		Preferences: preferences, TopicDefinitions: TopicDefinitions(), EmailAvailable: s.sender != nil, EmailAddress: strings.TrimSpace(email),
 		DigestTime: digestTime, DigestTimezone: digestTimezone, DigestConfigured: digestConfigured,
 		Mutes: mutes,
 	}, nil
@@ -1321,10 +1315,11 @@ func (s *Service) getPreferences(ctx context.Context, db bun.IDB, userID string)
 				preference.EmailFrequency = EmailFrequencyOff
 			}
 		}
-		if criticalInApp[eventType] {
+		policy, _ := topicPolicyFor(eventType)
+		if policy.definition.CriticalInApp {
 			preference.InApp = true
 		}
-		if transactionalEmail[eventType] {
+		if policy.definition.Transactional {
 			preference.EmailFrequency = EmailFrequencyImmediate
 		}
 		preferences[eventType] = preference
@@ -1416,12 +1411,13 @@ func (s *Service) UpdatePreferenceSettings(ctx context.Context, actor MuteActor,
 		if !value.EmailFrequency.valid() {
 			return PreferenceSettings{}, fmt.Errorf("%w: email frequency for %s is invalid", ErrInvalidPreferences, eventType)
 		}
-		if criticalInApp[eventType] {
+		policy, _ := topicPolicyFor(eventType)
+		if policy.definition.CriticalInApp {
 			if !value.InApp {
 				return PreferenceSettings{}, fmt.Errorf("%w: in-app delivery for %s must remain immediate", ErrInvalidPreferences, eventType)
 			}
 		}
-		if transactionalEmail[eventType] {
+		if policy.definition.Transactional {
 			if value.EmailFrequency != EmailFrequencyImmediate {
 				return PreferenceSettings{}, fmt.Errorf("%w: transactional email for %s must remain immediate", ErrInvalidPreferences, eventType)
 			}
