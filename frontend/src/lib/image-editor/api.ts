@@ -1,4 +1,5 @@
 import { client } from '$lib/api/client';
+import type { components } from '$lib/api/types';
 import type {
 	ImageEditorBrandKit,
 	ImageEditorDesignSummary,
@@ -15,6 +16,98 @@ function problemMessage(error: { detail?: string } | undefined, fallback: string
 	return error?.detail || fallback;
 }
 
+type ApiImageEditorDocumentResponse = components['schemas']['ImageEditorDocumentResponse'];
+type ApiImageEditorTemplate = components['schemas']['ImageEditorTemplateResponse'];
+type ApiImageEditorBrandKit = components['schemas']['ImageEditorBrandKitResponse'];
+type ApiImageEditorMediaItem = components['schemas']['MediaListItem'];
+type ApiImageEditorRevisionResponse = components['schemas']['ImageEditorRevisionResponse'];
+type ApiImageEditorRevisionSummary = components['schemas']['ImageEditorRevisionSummary'];
+
+function normalizePreset(preset: components['schemas']['ImageEditorPreset']): ImageEditorPreset {
+	return { ...preset, profiles: preset.profiles ?? [] };
+}
+
+function imageEditorDocumentResponse(
+	data: ApiImageEditorDocumentResponse
+): ImageEditorDocumentResponse {
+	// SAFETY: The image editor API stores documents through the same ImageEditorDocument contract used by the client; nullable array fields are normalized before persistence by the backend.
+	return data as ImageEditorDocumentResponse;
+}
+
+function imageEditorTemplate(data: ApiImageEditorTemplate): ImageEditorTemplate {
+	// SAFETY: Template documents use the same persisted ImageEditorDocument contract as designs.
+	return data as ImageEditorTemplate;
+}
+
+function imageEditorTemplateInput(input: {
+	workspace_id: string;
+	name: string;
+	category: string;
+	preview_media_id?: string;
+	document: ImageEditorDocument;
+}): components['schemas']['CreateImageEditorTemplateInputBody'] {
+	return {
+		workspace_id: input.workspace_id,
+		name: input.name,
+		category: input.category,
+		preview_media_id: input.preview_media_id,
+		// SAFETY: ImageEditorDocument is the client mirror of ImageEditorDocumentPayload used by the generated API contract.
+		document: input.document as components['schemas']['ImageEditorDocumentPayload']
+	};
+}
+
+function imageEditorTemplateUpdateInput(input: {
+	name: string;
+	category: string;
+	preview_media_id?: string;
+	document: ImageEditorDocument;
+}): components['schemas']['UpdateImageEditorTemplateInputBody'] {
+	return {
+		name: input.name,
+		category: input.category,
+		preview_media_id: input.preview_media_id,
+		// SAFETY: ImageEditorDocument is the client mirror of ImageEditorDocumentPayload used by the generated API contract.
+		document: input.document as components['schemas']['ImageEditorDocumentPayload']
+	};
+}
+
+function imageEditorBrandKit(data: ApiImageEditorBrandKit): ImageEditorBrandKit {
+	return {
+		...data,
+		id: data.id ?? `${data.workspace_id}:brand-kit`,
+		colors: data.colors ?? [],
+		text_styles: data.text_styles ?? [],
+		backgrounds: data.backgrounds ?? [],
+		fonts: (data.fonts ?? []).map((font) => ({ ...font, id: font.id ?? font.media_id }))
+	};
+}
+
+function imageEditorMediaItem(data: ApiImageEditorMediaItem): ImageEditorMediaItem {
+	return { ...data, tags: data.tags ?? [] };
+}
+
+function imageEditorRevisionResponse(
+	data: ApiImageEditorRevisionResponse
+): ImageEditorRevisionResponse {
+	// SAFETY: Revision documents are historical snapshots of the same ImageEditorDocument contract used by designs.
+	return data as ImageEditorRevisionResponse;
+}
+
+function imageEditorRevisionSummary(
+	data: ApiImageEditorRevisionSummary
+): ImageEditorRevisionSummary {
+	return data;
+}
+
+class ImageEditorAPIError extends Error {
+	status: number;
+
+	constructor(message: string, status: number) {
+		super(message);
+		this.status = status;
+	}
+}
+
 export async function loadImageEditorConfig(): Promise<{
 	enabled: boolean;
 	schema_version: number;
@@ -24,11 +117,11 @@ export async function loadImageEditorConfig(): Promise<{
 	const { data, error } = await client.GET('/image-editor/presets', {});
 	if (error || !data)
 		throw new Error(problemMessage(error, 'Could not load the OpenPost Image Editor setup.'));
-	return data as unknown as {
-		enabled: boolean;
-		schema_version: number;
-		background_model_base_url: string;
-		presets: ImageEditorPreset[];
+	return {
+		enabled: data.enabled,
+		schema_version: data.schema_version,
+		background_model_base_url: data.background_model_base_url,
+		presets: (data.presets ?? []).map(normalizePreset)
 	};
 }
 
@@ -43,19 +136,18 @@ export async function createImageEditorDesign(
 		client_request_id?: string;
 	}
 ): Promise<ImageEditorDocumentResponse> {
-	const { data, error } = await client.POST('/image-editor/designs', {
-		body: {
-			workspace_id: workspaceID,
-			title: input.title ?? '',
-			preset_key: input.preset_key,
-			width_px: input.width_px ?? 0,
-			height_px: input.height_px ?? 0,
-			...(input.source_media_id ? { source_media_id: input.source_media_id } : {}),
-			...(input.client_request_id ? { client_request_id: input.client_request_id } : {})
-		}
-	});
+	const body: components['schemas']['CreateImageEditorDesignInputBody'] = {
+		workspace_id: workspaceID,
+		title: input.title ?? '',
+		preset_key: input.preset_key,
+		width_px: input.width_px ?? 0,
+		height_px: input.height_px ?? 0
+	};
+	if (input.source_media_id) body.source_media_id = input.source_media_id;
+	if (input.client_request_id) body.client_request_id = input.client_request_id;
+	const { data, error } = await client.POST('/image-editor/designs', { body });
 	if (error || !data) throw new Error(problemMessage(error, 'Could not create the design.'));
-	return data as unknown as ImageEditorDocumentResponse;
+	return imageEditorDocumentResponse(data);
 }
 
 export async function loadImageEditorDesign(id: string): Promise<ImageEditorDocumentResponse> {
@@ -63,7 +155,7 @@ export async function loadImageEditorDesign(id: string): Promise<ImageEditorDocu
 		params: { path: { id } }
 	});
 	if (error || !data) throw new Error(problemMessage(error, 'Could not load the design.'));
-	return data as unknown as ImageEditorDocumentResponse;
+	return imageEditorDocumentResponse(data);
 }
 
 export async function saveImageEditorDesign(
@@ -73,22 +165,24 @@ export async function saveImageEditorDesign(
 	coverPreviewMediaID = '',
 	recoveryReason: 'idle' | 'export' | 'close' = 'idle'
 ): Promise<ImageEditorDocumentResponse> {
+	const body: components['schemas']['UpdateImageEditorDesignInputBody'] = {
+		expected_revision: revision,
+		// SAFETY: ImageEditorDocument is the client mirror of ImageEditorDocumentPayload used by the generated API contract.
+		document: document as components['schemas']['ImageEditorDocumentPayload'],
+		recovery_reason: recoveryReason
+	};
+	if (coverPreviewMediaID) body.cover_preview_media_id = coverPreviewMediaID;
 	const { data, error, response } = await client.PATCH('/image-editor/designs/{id}', {
 		params: { path: { id } },
-		body: {
-			expected_revision: revision,
-			document: document as never,
-			...(coverPreviewMediaID ? { cover_preview_media_id: coverPreviewMediaID } : {}),
-			recovery_reason: recoveryReason
-		}
+		body
 	});
 	if (error || !data) {
-		const message = problemMessage(error, 'Could not save the design.');
-		const conflict = new Error(message) as Error & { status?: number };
-		conflict.status = response.status;
-		throw conflict;
+		throw new ImageEditorAPIError(
+			problemMessage(error, 'Could not save the design.'),
+			response.status
+		);
 	}
-	return data as unknown as ImageEditorDocumentResponse;
+	return imageEditorDocumentResponse(data);
 }
 
 export interface ListImageEditorDesignsOptions {
@@ -114,10 +208,10 @@ export async function listImageEditorDesigns(
 		signal: options.signal
 	});
 	if (error || !data) throw new Error(problemMessage(error, 'Could not load designs.'));
-	return data as unknown as {
-		designs: ImageEditorDesignSummary[];
-		total: number;
-		can_edit: boolean;
+	return {
+		designs: data.designs ?? [],
+		total: data.total,
+		can_edit: data.can_edit
 	};
 }
 
@@ -144,7 +238,7 @@ export async function listImageEditorTemplates(
 		params: { query: { workspace_id: workspaceID } }
 	});
 	if (error || !data) throw new Error(problemMessage(error, 'Could not load templates.'));
-	return (data.templates ?? []) as unknown as ImageEditorTemplate[];
+	return (data.templates ?? []).map(imageEditorTemplate);
 }
 
 export async function listPublicImageEditorTemplates(): Promise<ImageEditorTemplate[]> {
@@ -153,7 +247,7 @@ export async function listPublicImageEditorTemplates(): Promise<ImageEditorTempl
 		throw new Error(
 			problemMessage(error, 'Could not load OpenPost Image Editor starter templates.')
 		);
-	return (data.templates ?? []) as unknown as ImageEditorTemplate[];
+	return (data.templates ?? []).map(imageEditorTemplate);
 }
 
 export async function createImageEditorTemplate(input: {
@@ -164,10 +258,10 @@ export async function createImageEditorTemplate(input: {
 	document: ImageEditorDocument;
 }): Promise<ImageEditorTemplate> {
 	const { data, error } = await client.POST('/image-editor/templates', {
-		body: input as never
+		body: imageEditorTemplateInput(input)
 	});
 	if (error || !data) throw new Error(problemMessage(error, 'Could not create the template.'));
-	return data as unknown as ImageEditorTemplate;
+	return imageEditorTemplate(data);
 }
 
 export async function updateImageEditorTemplate(
@@ -181,10 +275,10 @@ export async function updateImageEditorTemplate(
 ): Promise<ImageEditorTemplate> {
 	const { data, error } = await client.PATCH('/image-editor/templates/{id}', {
 		params: { path: { id } },
-		body: input as never
+		body: imageEditorTemplateUpdateInput(input)
 	});
 	if (error || !data) throw new Error(problemMessage(error, 'Could not replace the template.'));
-	return data as unknown as ImageEditorTemplate;
+	return imageEditorTemplate(data);
 }
 
 export async function instantiateImageEditorTemplate(
@@ -197,7 +291,7 @@ export async function instantiateImageEditorTemplate(
 		body: { workspace_id: workspaceID, title: title ?? '' }
 	});
 	if (error || !data) throw new Error(problemMessage(error, 'Could not use the template.'));
-	return data as unknown as ImageEditorDocumentResponse;
+	return imageEditorDocumentResponse(data);
 }
 
 export async function loadImageEditorBrandKit(workspaceID: string): Promise<ImageEditorBrandKit> {
@@ -205,7 +299,7 @@ export async function loadImageEditorBrandKit(workspaceID: string): Promise<Imag
 		params: { query: { workspace_id: workspaceID } }
 	});
 	if (error || !data) throw new Error(problemMessage(error, 'Could not load the brand kit.'));
-	return data as unknown as ImageEditorBrandKit;
+	return imageEditorBrandKit(data);
 }
 
 export async function saveImageEditorBrandKit(
@@ -218,8 +312,8 @@ export async function saveImageEditorBrandKit(
 		body: {
 			workspace_id: kit.workspace_id,
 			name: kit.name,
-			colors: kit.colors as never,
-			text_styles: kit.text_styles as never,
+			colors: kit.colors,
+			text_styles: kit.text_styles,
 			backgrounds: kit.backgrounds,
 			fonts: kit.fonts.map((font) => ({
 				media_id: font.media_id,
@@ -231,7 +325,7 @@ export async function saveImageEditorBrandKit(
 		}
 	});
 	if (error || !data) throw new Error(problemMessage(error, 'Could not save the brand kit.'));
-	return data as unknown as ImageEditorBrandKit;
+	return imageEditorBrandKit(data);
 }
 
 export async function listImageEditorMedia(
@@ -260,7 +354,7 @@ export async function listImageEditorMedia(
 		}
 	});
 	if (error || !data) throw new Error(problemMessage(error, 'Could not load media.'));
-	return (data.media ?? []) as unknown as ImageEditorMediaItem[];
+	return (data.media ?? []).map(imageEditorMediaItem);
 }
 
 export interface ImageEditorRevisionPage {
@@ -278,7 +372,7 @@ export async function listImageEditorRevisions(
 	});
 	if (error || !data) throw new Error(problemMessage(error, 'Could not load design history.'));
 	return {
-		revisions: (data.revisions ?? []) as ImageEditorRevisionSummary[],
+		revisions: (data.revisions ?? []).map(imageEditorRevisionSummary),
 		nextCursor: data.next_cursor || undefined
 	};
 }
@@ -293,7 +387,7 @@ export async function getImageEditorRevision(
 		signal
 	});
 	if (error || !data) throw new Error(problemMessage(error, 'Could not inspect this version.'));
-	return data as unknown as ImageEditorRevisionResponse;
+	return imageEditorRevisionResponse(data);
 }
 
 export async function createImageEditorCheckpoint(
@@ -306,15 +400,12 @@ export async function createImageEditorCheckpoint(
 		body: { name, expected_revision: expectedRevision }
 	});
 	if (error || !data) {
-		const failure = new Error(
-			problemMessage(error, 'Could not create the checkpoint.')
-		) as Error & {
-			status?: number;
-		};
-		failure.status = response.status;
-		throw failure;
+		throw new ImageEditorAPIError(
+			problemMessage(error, 'Could not create the checkpoint.'),
+			response.status
+		);
 	}
-	return data as ImageEditorRevisionSummary;
+	return imageEditorRevisionSummary(data);
 }
 
 export async function restoreImageEditorRevision(
@@ -330,13 +421,12 @@ export async function restoreImageEditorRevision(
 		}
 	);
 	if (error || !data) {
-		const failure = new Error(problemMessage(error, 'Could not restore this version.')) as Error & {
-			status?: number;
-		};
-		failure.status = response.status;
-		throw failure;
+		throw new ImageEditorAPIError(
+			problemMessage(error, 'Could not restore this version.'),
+			response.status
+		);
 	}
-	return data as unknown as ImageEditorDocumentResponse;
+	return imageEditorDocumentResponse(data);
 }
 
 export async function duplicateImageEditorDesign(id: string): Promise<ImageEditorDocumentResponse> {
@@ -344,7 +434,7 @@ export async function duplicateImageEditorDesign(id: string): Promise<ImageEdito
 		params: { path: { id } }
 	});
 	if (error || !data) throw new Error(problemMessage(error, 'Could not duplicate the design.'));
-	return data as unknown as ImageEditorDocumentResponse;
+	return imageEditorDocumentResponse(data);
 }
 
 export async function createImageEditorReturnToken(input: {
@@ -352,14 +442,12 @@ export async function createImageEditorReturnToken(input: {
 	return_url: string;
 	purpose: string;
 	max_selection: number;
-	constraints: Record<string, unknown>;
+	constraints: components['schemas']['CreateImageEditorReturnTokenInputBody']['constraints'];
 }): Promise<{ token: string; expires_at: string }> {
-	const { data, error } = await client.POST('/image-editor/return-tokens', {
-		body: input as never
-	});
+	const { data, error } = await client.POST('/image-editor/return-tokens', { body: input });
 	if (error || !data)
 		throw new Error(problemMessage(error, 'Could not open OpenPost Image Editor.'));
-	return data as { token: string; expires_at: string };
+	return { token: data.token, expires_at: data.expires_at };
 }
 
 export async function completeImageEditorReturnToken(
@@ -382,19 +470,19 @@ export async function consumeImageEditorReturnToken(token: string): Promise<{
 	purpose: string;
 	design_id: string;
 	media_ids: string[];
-	constraints: Record<string, unknown>;
+	constraints: components['schemas']['ConsumeImageEditorReturnTokenOutputBody']['constraints'];
 }> {
 	const { data, error } = await client.POST('/image-editor/return-tokens/{token}/consume', {
 		params: { path: { token } }
 	});
 	if (error || !data)
 		throw new Error(problemMessage(error, 'Could not restore OpenPost Image Editor exports.'));
-	return data as unknown as {
-		workspace_id: string;
-		return_url: string;
-		purpose: string;
-		design_id: string;
-		media_ids: string[];
-		constraints: Record<string, unknown>;
+	return {
+		workspace_id: data.workspace_id,
+		return_url: data.return_url,
+		purpose: data.purpose,
+		design_id: data.design_id,
+		media_ids: data.media_ids ?? [],
+		constraints: data.constraints
 	};
 }
