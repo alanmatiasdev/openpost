@@ -271,7 +271,7 @@ test("proves status, media type, exact content, query isolation, and redirect be
         name: "marketing canonical redirect",
         url: "https://openpost.social/features/?openpost_proof=redirect",
         status: 308,
-        location: "https://openpost.social/features?openpost_proof=redirect",
+        location: "/features?openpost_proof=redirect",
       },
     ],
   });
