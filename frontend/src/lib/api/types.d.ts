@@ -25417,10 +25417,12 @@ export interface operations {
                 workspace_id: string;
                 /** @description Optional status filter */
                 status?: string;
-                /** @description Optional Posts activity bucket filter */
+                /** @description Optional Publication activity bucket filter */
                 activity_bucket?: "scheduled" | "published" | "failed" | "draft";
                 /** @description Optional content profile filter */
                 content_profile?: string;
+                /** @description Optional destination platform filter */
+                platform?: string;
                 /** @description Case-insensitive title or source-text search */
                 search?: string;
                 /** @description Opaque cursor for stable newest-first pagination */

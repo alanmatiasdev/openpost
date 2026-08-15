@@ -1469,6 +1469,10 @@ func mcpListPublicationsTool() mcpOperationDefinition {
 				"workspace_id":    map[string]any{"type": "string", "description": "Workspace ID returned by list_workspaces."},
 				"status":          map[string]any{"type": "string", "description": "Optional publication status filter."},
 				"content_profile": map[string]any{"type": "string", "description": "Optional content profile filter."},
+				"platform":        map[string]any{"type": "string", "description": "Optional destination platform filter, such as x, linkedin, or youtube."},
+				"calendar_from":   map[string]any{"type": "string", "format": "date-time", "description": "Include calendar occurrences at or after this RFC3339 timestamp."},
+				"calendar_before": map[string]any{"type": "string", "format": "date-time", "description": "Include calendar occurrences before this RFC3339 timestamp."},
+				"activity_bucket": map[string]any{"type": "string", "enum": []string{"scheduled", "published", "failed", "draft"}, "description": "Optional calendar-compatible activity bucket."},
 				"limit":           map[string]any{"type": "integer", "minimum": 1, "maximum": 100, "description": "Maximum publications to return. Defaults to 20."},
 			},
 			"required":             []string{"workspace_id"},
@@ -3431,7 +3435,11 @@ func (h *MCPHandler) listPublications(ctx context.Context, userID string, args m
 	var input struct {
 		WorkspaceID    string `json:"workspace_id"`
 		Status         string `json:"status"`
+		ActivityBucket string `json:"activity_bucket"`
 		ContentProfile string `json:"content_profile"`
+		Platform       string `json:"platform"`
+		CalendarFrom   string `json:"calendar_from"`
+		CalendarBefore string `json:"calendar_before"`
 		Limit          int    `json:"limit"`
 	}
 	if err := decodeMCPArguments(args, &input); err != nil {
@@ -3442,8 +3450,9 @@ func (h *MCPHandler) listPublications(ctx context.Context, userID string, args m
 		limit = 20
 	}
 	page, err := h.publicationHandler().publicationApplication().List(ctx, userID, ListPublicationsInput{
-		WorkspaceID: input.WorkspaceID, Status: input.Status,
-		ContentProfile: input.ContentProfile, Limit: limit,
+		WorkspaceID: input.WorkspaceID, Status: input.Status, ActivityBucket: input.ActivityBucket,
+		ContentProfile: input.ContentProfile, Platform: input.Platform,
+		CalendarFrom: input.CalendarFrom, CalendarBefore: input.CalendarBefore, Limit: limit,
 	})
 	if err != nil {
 		return nil, publicationMutationMCPError(err, "failed to list publications")

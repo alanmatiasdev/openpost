@@ -2,7 +2,7 @@
 	import { ContextMenu } from 'bits-ui';
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
-	import type { CalendarDate } from '@internationalized/date';
+	import { CalendarDate } from '@internationalized/date';
 	import { tick, untrack } from 'svelte';
 	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 	import { client } from '$lib/api/client';
@@ -28,7 +28,6 @@
 	let { onNavigate }: { onNavigate: (href: string) => void } = $props();
 
 	type Publication = components['schemas']['PublicationResponse'];
-	type PlannerOverview = components['schemas']['ScheduleOverviewOutputBody'];
 	type PlannerDraft = {
 		id: string;
 		revision: number;
@@ -153,21 +152,43 @@
 		for (const month of requestedMonths) pendingOverviewMonths.add(month);
 		try {
 			const overviews = await Promise.all(
-				requestedMonths.map(async (month): Promise<[string, PlannerOverview]> => {
-					const { data, error } = await client.GET('/posts/schedule-overview', {
-						params: { query: { workspace_id: currentWorkspaceId, month } }
-					});
-					if (error || !data) throw new Error(error?.detail);
-					return [month, data];
+				requestedMonths.map(async (month): Promise<[string, Map<string, number>]> => {
+					const range = publicationMonthRange(month, viewerTimeZone);
+					const counts = new Map<string, number>();
+					let offset = 0;
+					while (true) {
+						const { data, error, response } = await client.GET('/publications', {
+							params: {
+								query: {
+									workspace_id: currentWorkspaceId,
+									calendar_from: range.from,
+									calendar_before: range.before,
+									limit: 200,
+									offset
+								}
+							}
+						});
+						if (error) throw new Error(error.detail);
+						for (const publication of data ?? []) {
+							const dayKey = publicationCalendarDayKey(publication, viewerTimeZone);
+							if (dayKey?.startsWith(`${month}-`))
+								counts.set(dayKey, (counts.get(dayKey) ?? 0) + 1);
+						}
+						if (response.headers.get('X-Has-More') !== 'true') break;
+						const nextOffset = Number(response.headers.get('X-Next-Offset') ?? offset + 200);
+						if (!Number.isFinite(nextOffset) || nextOffset <= offset) break;
+						offset = nextOffset;
+					}
+					return [month, counts];
 				})
 			);
 			if (request !== overviewRequest || overviewWorkspaceKey !== workspaceKey) return;
 			const nextCounts = new SvelteMap(dayCounts);
-			for (const [month, overview] of overviews) {
+			for (const [month, counts] of overviews) {
 				for (const dateKey of [...nextCounts.keys()]) {
 					if (dateKey.startsWith(`${month}-`)) nextCounts.delete(dateKey);
 				}
-				for (const day of overview.days ?? []) nextCounts.set(day.date, day.count);
+				for (const [dateKey, count] of counts) nextCounts.set(dateKey, count);
 				loadedOverviewMonths.add(month);
 			}
 			dayCounts = nextCounts;
@@ -361,6 +382,29 @@
 
 	function plannerOverviewMonths(weeks: ReturnType<typeof buildRollingCalendarWeeks>) {
 		return [...new Set(weeks.flat().map((day) => day.key.slice(0, 7)))];
+	}
+
+	function publicationMonthRange(month: string, timeZone: string) {
+		const [year, monthNumber] = month.split('-').map(Number);
+		const start = new CalendarDate(year, monthNumber, 1);
+		return {
+			from: start.toDate(timeZone).toISOString(),
+			before: start.add({ months: 1 }).toDate(timeZone).toISOString()
+		};
+	}
+
+	function publicationCalendarDayKey(publication: Publication, timeZone: string) {
+		const occurrence =
+			publication.status === 'published'
+				? publication.actual_run_at ||
+					publication.scheduled_at ||
+					publication.updated_at ||
+					publication.created_at
+				: publication.scheduled_at;
+		if (!occurrence) return '';
+		return new Date(occurrence)
+			.toLocaleDateString('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' })
+			.replace(/\//g, '-');
 	}
 
 	function formatWeekday(date: CalendarDate) {

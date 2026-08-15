@@ -1237,6 +1237,7 @@ openpost publication
 
 | Command                                 | Description                                          |
 | --------------------------------------- | ---------------------------------------------------- |
+| `openpost publication cancel`           | Cancel a scheduled publication                       |
 | `openpost publication comments`         | List comments for a published rendition              |
 | `openpost publication create`           | Create a format-first publication                    |
 | `openpost publication delete`           | Permanently delete an editable publication           |
@@ -1254,6 +1255,29 @@ openpost publication
 | `openpost publication update`           | Update an editable publication                       |
 | `openpost publication validate`         | Validate a publication                               |
 | `openpost publication view`             | View a publication                                   |
+
+### `openpost publication cancel`
+
+Cancel a scheduled publication
+
+**Usage**
+
+```text
+openpost publication cancel &lt;publication-id&gt;
+```
+
+**Inherited Flags**
+
+| Flag          | Default | Description                                                        |
+| ------------- | ------- | ------------------------------------------------------------------ |
+| `--instance`  | `-`     | OpenPost instance URL (default: profile or $OPENPOST_INSTANCE)     |
+| `--json`      | `false` | emit machine-readable JSON instead of tables/prose                 |
+| `--no-color`  | `false` | disable ANSI colors                                                |
+| `--profile`   | `-`     | profile name from config (default: $OPENPOST_PROFILE or 'default') |
+| `--quiet`     | `false` | suppress non-error output                                          |
+| `--token`     | `-`     | API token override (default: keyring or $OPENPOST_TOKEN)           |
+| `--workspace` | `-`     | workspace name or ID (default: profile or $OPENPOST_WORKSPACE)     |
+| `--yes`       | `false` | skip interactive confirmations                                     |
 
 ### `openpost publication comments`
 

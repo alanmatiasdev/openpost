@@ -6,12 +6,11 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 )
 
-func TestPostUpdateUsesAtomicDraftRevision(t *testing.T) {
+func TestPostUpdateUsesPublicationRevision(t *testing.T) {
 	t.Setenv("OPENPOST_CONFIG_DIR", t.TempDir())
 	var saveBody map[string]any
 	saved := false
@@ -22,17 +21,15 @@ func TestPostUpdateUsesAtomicDraftRevision(t *testing.T) {
 			_, _ = w.Write([]byte(`[{"id":"ws-1","name":"Production"}]`))
 		case "/api/v1/workspaces/ws-1/settings":
 			_, _ = w.Write([]byte(`{"timezone":"Europe/Lisbon"}`))
-		case "/api/v1/posts/post-1":
-			revision := 7
-			content := "Original"
-			if saved {
-				revision = 8
-				content = "Updated"
+		case "/api/v1/publications/post-1":
+			if r.Method == http.MethodGet {
+				if saved {
+					_, _ = w.Write([]byte(`{"id":"post-1","workspace_id":"ws-1","created_by":"user-1","title":"Updated","content_profile":"short_text","source_text":"Updated","status":"draft","revision":8,"created_at":"2026-07-25T12:00:00Z","updated_at":"2026-07-25T12:00:00Z","renditions":[{"id":"rendition-1","social_account_id":"account-1","platform":"x","profile":"short_text","body":"Updated","status":"pending"}],"media":[]}`))
+					return
+				}
+				_, _ = w.Write([]byte(`{"id":"post-1","workspace_id":"ws-1","created_by":"user-1","title":"Original","content_profile":"short_text","source_text":"Original","status":"draft","revision":7,"created_at":"2026-07-25T12:00:00Z","updated_at":"2026-07-25T12:00:00Z","renditions":[{"id":"rendition-1","social_account_id":"account-1","platform":"x","profile":"short_text","body":"Original","status":"pending"}],"media":[]}`))
+				return
 			}
-			_, _ = w.Write([]byte(`{"id":"post-1","publication_id":"pub-1","workspace_id":"ws-1","created_by":"user-1","content":"` + content + `","status":"draft","revision":` + strconv.Itoa(revision) + `,"random_delay_minutes":3,"destinations":[{"social_account_id":"account-1","platform":"x","status":"pending"}],"media_ids":["media-1"]}`))
-		case "/api/v1/posts/post-1/variants":
-			_, _ = w.Write([]byte(`{"variants":[{"id":"variant-1","social_account_id":"account-1","content":"Custom","media_ids":"[]","is_unsynced":true}]}`))
-		case "/api/v1/posts/post-1/draft":
 			if r.Method != http.MethodPut {
 				t.Fatalf("method = %s, want PUT", r.Method)
 			}
@@ -40,7 +37,7 @@ func TestPostUpdateUsesAtomicDraftRevision(t *testing.T) {
 				t.Fatalf("decode body: %v", err)
 			}
 			saved = true
-			_, _ = w.Write([]byte(`{"post_id":"post-1","publication_id":"pub-1","revision":8,"updated_at":"2026-07-25T12:00:00Z"}`))
+			_, _ = w.Write([]byte(`{"id":"post-1","workspace_id":"ws-1","created_by":"user-1","title":"Updated","content_profile":"short_text","source_text":"Updated","status":"draft","revision":8,"created_at":"2026-07-25T12:00:00Z","updated_at":"2026-07-25T12:00:00Z","renditions":[{"id":"rendition-1","social_account_id":"account-1","platform":"x","profile":"short_text","body":"Updated","status":"pending"}],"media":[]}`))
 		default:
 			http.NotFound(w, r)
 		}
@@ -58,18 +55,8 @@ func TestPostUpdateUsesAtomicDraftRevision(t *testing.T) {
 	if err != nil {
 		t.Fatalf("post update returned error: %v", err)
 	}
-	if saveBody["expected_revision"] != float64(7) || saveBody["content"] != "Updated" {
+	if saveBody["expected_revision"] != float64(7) || saveBody["source_text"] != "Updated" {
 		t.Fatalf("save body = %#v", saveBody)
-	}
-	if got := saveBody["social_account_ids"].([]any); len(got) != 1 || got[0] != "account-1" {
-		t.Fatalf("destinations = %#v", got)
-	}
-	if got := saveBody["media_ids"].([]any); len(got) != 1 || got[0] != "media-1" {
-		t.Fatalf("media = %#v", got)
-	}
-	variants := saveBody["variants"].([]any)
-	if len(variants) != 1 || variants[0].(map[string]any)["media_ids"] != "[]" {
-		t.Fatalf("variants = %#v", variants)
 	}
 	if !strings.Contains(out, "post-1") || !strings.Contains(out, "draft") {
 		t.Fatalf("output = %q", out)

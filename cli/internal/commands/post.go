@@ -72,45 +72,41 @@ func newPostCreateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			var threadDraft *string
-			if flags.threadDraft != "" {
-				threadDraft = &flags.threadDraft
-			}
-			scheduledAtText := optionalScheduleText(scheduledAt)
 			intent := "post"
 			profile := "short_text"
-			if threadDraft != nil {
+			if flags.threadDraft != "" {
 				intent = "thread"
 				profile = "thread"
 			}
-			result, err := client.CreateTextPostDraft(cmd.Context(), api.CreateTextPostDraftInput{
+			var randomDelay *int
+			if cmd.Flags().Changed("random-delay") {
+				randomDelay = &flags.randomDelay
+			}
+			publication, err := client.CreatePublication(cmd.Context(), api.CreatePublicationInput{
 				WorkspaceID:        workspaceID,
-				Content:            content,
-				ScheduledAt:        scheduledAtText,
+				Title:              defaultString(firstLineCLI(content), "Untitled post"),
+				Intent:             intent,
+				CreationPreset:     intent,
+				ContentProfile:     profile,
+				SourceText:         content,
+				ScheduledAt:        scheduledAt,
+				RandomDelayMinutes: randomDelay,
 				SocialAccountIDs:   accountIDs,
-				MediaIDs:           mediaIDs,
-				RandomDelayMinutes: flags.randomDelay,
-				ThreadDraft:        threadDraft,
-				Publication: api.TextPostPublicationInput{
-					Intent:         &intent,
-					ContentProfile: &profile,
-					SourceText:     &content,
-					ScheduledAt:    scheduledAt,
-				},
+				Media:              publicationMediaInputs(mediaIDs),
 			})
 			if err != nil {
 				return err
 			}
 			if scheduledAt != nil {
-				if _, err := client.SchedulePublication(cmd.Context(), result.PublicationID, result.Revision); err != nil {
+				if _, err := client.SchedulePublication(cmd.Context(), publication.ID, publication.Revision); err != nil {
+					return err
+				}
+				publication, err = client.GetPublication(cmd.Context(), publication.ID)
+				if err != nil {
 					return err
 				}
 			}
-			post, err := client.GetPost(cmd.Context(), result.PostID)
-			if err != nil {
-				return err
-			}
-			return printPostSummary(cfg, post)
+			return printPostPublicationSummary(cfg, publication)
 		},
 	}
 	addCreatePostFlags(cmd, &flags)
@@ -128,22 +124,22 @@ func newPostListCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			posts, err := client.ListPosts(cmd.Context(), api.ListPostsInput{WorkspaceID: workspaceID, Status: flags.status, Limit: flags.limit, Offset: flags.offset})
+			publications, err := client.ListPublications(cmd.Context(), api.ListPublicationsInput{WorkspaceID: workspaceID, Status: flags.status, Limit: flags.limit, Offset: flags.offset})
 			if err != nil {
 				return err
 			}
 			p := printerFrom(cfg)
 			if cfg.AsJSON {
-				return p.PrintJSON(posts)
+				return p.PrintJSON(publications)
 			}
-			rows := make([][]string, 0, len(posts))
-			for _, post := range posts {
+			rows := make([][]string, 0, len(publications))
+			for _, publication := range publications {
 				rows = append(rows, []string{
-					post.ID,
-					post.Status,
-					scheduleLabel(post.ScheduledAt),
-					preview(post.Content, 80),
-					strconv.Itoa(len(post.Destinations)),
+					publication.ID,
+					publication.Status,
+					scheduleLabel(publication.ScheduledAt),
+					preview(publication.SourceText, 80),
+					strconv.Itoa(len(publication.Renditions)),
 				})
 			}
 			p.Table([]string{"ID", "STATUS", "SCHEDULED", "CONTENT", "ACCOUNTS"}, rows)
@@ -170,32 +166,28 @@ func newPostViewCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			post, err := client.GetPost(cmd.Context(), args[0])
+			publication, err := client.GetPublication(cmd.Context(), args[0])
 			if err != nil {
 				return err
 			}
 			p := printerFrom(cfg)
 			if cfg.AsJSON {
-				return p.PrintJSON(post)
+				return p.PrintJSON(publication)
 			}
 			p.Table([]string{"FIELD", "VALUE"}, [][]string{
-				{"id", post.ID},
-				{"workspace_id", post.WorkspaceID},
-				{"created_by", post.CreatedBy},
-				{"status", post.Status},
-				{"scheduled_at", scheduleLabel(post.ScheduledAt)},
-				{"actual_run_at", emptyDash(post.ActualRunAt)},
-				{"created_at", emptyDash(post.CreatedAt)},
-				{"random_delay_minutes", strconv.Itoa(post.RandomDelayMinutes)},
-				{"content", post.Content},
-				{"media_count", strconv.Itoa(len(post.Media) + len(post.MediaIDs))},
-				{"destination_count", strconv.Itoa(len(post.Destinations))},
+				{"id", publication.ID},
+				{"workspace_id", publication.WorkspaceID},
+				{"created_by", publication.CreatedBy},
+				{"status", publication.Status},
+				{"scheduled_at", scheduleLabel(publication.ScheduledAt)},
+				{"actual_run_at", emptyDash(publication.ActualRunAt)},
+				{"created_at", emptyDash(publication.CreatedAt)},
+				{"content", publication.SourceText},
+				{"media_count", strconv.Itoa(len(publication.Media))},
+				{"destination_count", strconv.Itoa(len(publication.Renditions))},
 			})
-			for _, d := range post.Destinations {
-				p.Printf("destination %s\t%s\t%s\t%s", d.SocialAccountID, d.Platform, d.Status, emptyDash(d.ErrorMessage))
-			}
-			for _, rendition := range post.Renditions {
-				p.Printf("rendition %s\tunsynced=%t\tmedia=%s\teffective_media=%s\t%s", rendition.SocialAccountID, rendition.IsUnsynced, rendition.MediaMode, strings.Join(rendition.EffectiveMediaIDs, ","), rendition.Content)
+			for _, rendition := range publication.Renditions {
+				p.Printf("rendition %s\t%s\t%s\t%s", rendition.SocialAccountID, rendition.Platform, rendition.Status, emptyDash(rendition.ErrorMessage))
 			}
 			return nil
 		},
@@ -213,23 +205,16 @@ func newPostUpdateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			current, err := client.GetPost(cmd.Context(), args[0])
+			current, err := client.GetPublication(cmd.Context(), args[0])
 			if err != nil {
 				return err
 			}
-			in := api.SaveTextPostDraftInput{
-				ExpectedRevision:   current.Revision,
-				Content:            current.Content,
-				SocialAccountIDs:   postDestinationIDs(current),
-				MediaIDs:           postMediaIDs(current),
-				RandomDelayMinutes: current.RandomDelayMinutes,
-				ThreadDraft:        current.ThreadDraft,
-				Variants:           textPostVariants(current),
-			}
+			in := api.UpdatePublicationInput{ExpectedRevision: current.Revision}
 			changed := false
 			if cmd.Flags().Changed("content") {
-				in.Content = flags.content
-				in.Publication.SourceText = &flags.content
+				in.SourceText = &flags.content
+				title := defaultString(firstLineCLI(flags.content), "Untitled post")
+				in.Title = &title
 				changed = true
 			}
 			if cmd.Flags().Changed("accounts") {
@@ -237,14 +222,12 @@ func newPostUpdateCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				in.SocialAccountIDs = accountIDs
+				in.Renditions = renditionInputsForAccounts(accountIDs, current.SourceText)
 				changed = true
 			}
 			if cmd.Flags().Changed("schedule") {
 				if flags.schedule == "" || strings.EqualFold(strings.TrimSpace(flags.schedule), "draft") {
-					empty := ""
-					in.ScheduledAt = &empty
-					in.Publication.ClearSchedule = true
+					in.ClearSchedule = true
 				} else {
 					t, label, err := parseScheduleFlag(cmd, client, workspaceID, flags.schedule, settings.Timezone)
 					if err != nil {
@@ -256,14 +239,12 @@ func newPostUpdateCmd() *cobra.Command {
 					if err := confirmNaturalSchedule(cfg.Yes, t, label); err != nil {
 						return err
 					}
-					v := t.Format(time.RFC3339)
-					in.ScheduledAt = &v
-					in.Publication.ScheduledAt = t
+					in.ScheduledAt = t
 				}
 				changed = true
 			}
 			if cmd.Flags().Changed("random-delay") {
-				in.RandomDelayMinutes = flags.randomDelay
+				in.RandomDelayMinutes = &flags.randomDelay
 				changed = true
 			}
 			if cmd.Flags().Changed("media") {
@@ -271,20 +252,17 @@ func newPostUpdateCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				in.MediaIDs = mediaIDs
+				in.Renditions = renditionInputsWithMedia(current.Renditions, publicationMediaInputs(mediaIDs))
 				changed = true
 			}
 			if !changed {
 				return fmt.Errorf("at least one update flag is required")
 			}
-			if _, err := client.SaveTextPostDraft(cmd.Context(), args[0], in); err != nil {
-				return err
-			}
-			post, err := client.GetPost(cmd.Context(), args[0])
+			publication, err := client.UpdatePublication(cmd.Context(), args[0], in)
 			if err != nil {
 				return err
 			}
-			return printPostSummary(cfg, post)
+			return printPostPublicationSummary(cfg, publication)
 		},
 	}
 	cmd.Flags().StringVar(&flags.content, "content", "", "post content")
@@ -318,7 +296,11 @@ func newPostDeleteCmd() *cobra.Command {
 				printerFrom(cfg).Printf("Canceled.")
 				return nil
 			}
-			if err := client.DeletePost(cmd.Context(), args[0]); err != nil {
+			publication, err := client.GetPublication(cmd.Context(), args[0])
+			if err != nil {
+				return err
+			}
+			if _, err := client.DeletePublication(cmd.Context(), args[0], publication.Revision); err != nil {
 				return err
 			}
 			p := printerFrom(cfg)
@@ -594,6 +576,55 @@ func printPostSummary(cfg *config.Runtime, post *api.Post) error {
 		strconv.Itoa(len(post.MediaIDs) + len(post.Media)),
 	}})
 	return nil
+}
+
+func printPostPublicationSummary(cfg *config.Runtime, publication *api.Publication) error {
+	p := printerFrom(cfg)
+	if cfg.AsJSON {
+		return p.PrintJSON(publication)
+	}
+	p.Table([]string{"ID", "STATUS", "SCHEDULED", "ACCOUNTS", "MEDIA"}, [][]string{{
+		publication.ID,
+		publication.Status,
+		scheduleLabel(publication.ScheduledAt),
+		strconv.Itoa(len(publication.Renditions)),
+		strconv.Itoa(len(publication.Media)),
+	}})
+	return nil
+}
+
+func publicationMediaInputs(mediaIDs []string) []api.PublicationMediaInput {
+	media := make([]api.PublicationMediaInput, 0, len(mediaIDs))
+	for _, id := range mediaIDs {
+		if strings.TrimSpace(id) != "" {
+			media = append(media, api.PublicationMediaInput{MediaID: id})
+		}
+	}
+	return media
+}
+
+func renditionInputsForAccounts(accountIDs []string, body string) []api.RenditionInput {
+	renditions := make([]api.RenditionInput, 0, len(accountIDs))
+	for _, accountID := range accountIDs {
+		renditions = append(renditions, api.RenditionInput{SocialAccountID: accountID, Body: body})
+	}
+	return renditions
+}
+
+func renditionInputsWithMedia(current []api.Rendition, media []api.PublicationMediaInput) []api.RenditionInput {
+	renditions := make([]api.RenditionInput, 0, len(current))
+	for _, rendition := range current {
+		renditions = append(renditions, api.RenditionInput{
+			SocialAccountID: rendition.SocialAccountID,
+			Profile:         rendition.Profile,
+			Body:            rendition.Body,
+			Title:           rendition.Title,
+			Description:     rendition.Description,
+			Settings:        rendition.Settings,
+			Media:           media,
+		})
+	}
+	return renditions
 }
 
 func scheduleLabel(s string) string {

@@ -188,6 +188,9 @@ func publicationListQuery(
 	if input.ContentProfile != "" {
 		query = query.Where("publication.content_profile = ?", input.ContentProfile)
 	}
+	if platform := strings.TrimSpace(input.Platform); platform != "" {
+		query = query.Where("EXISTS (SELECT 1 FROM renditions AS rendition WHERE rendition.publication_id = publication.id AND rendition.platform = ?)", platform)
+	}
 	if search := strings.TrimSpace(input.Search); search != "" {
 		pattern := "%" + escapeLikePattern(strings.ToLower(search)) + "%"
 		query = query.Where(

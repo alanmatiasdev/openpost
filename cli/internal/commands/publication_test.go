@@ -16,7 +16,7 @@ func TestPublicationCommandExposesFormatFirstLifecycle(t *testing.T) {
 	cmd := newPublicationCmd()
 	want := map[string]bool{
 		"create": true, "list": true, "view": true, "update": true, "renditions": true,
-		"reply": true, "validate": true, "schedule": true, "publish-now": true,
+		"reply": true, "validate": true, "schedule": true, "cancel": true, "publish-now": true,
 		"retry": true, "delete-rendition": true, "delete": true,
 		"events": true, "comments": true, "reply-comment": true, "hide-comment": true, "delete-comment": true,
 	}

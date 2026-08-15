@@ -105,8 +105,9 @@ type PublicationUpdateBody struct {
 type ListPublicationsInput struct {
 	WorkspaceID    string `query:"workspace_id" required:"true" doc:"Workspace ID"`
 	Status         string `query:"status" doc:"Optional status filter"`
-	ActivityBucket string `query:"activity_bucket" enum:"scheduled,published,failed,draft" doc:"Optional Posts activity bucket filter"`
+	ActivityBucket string `query:"activity_bucket" enum:"scheduled,published,failed,draft" doc:"Optional Publication activity bucket filter"`
 	ContentProfile string `query:"content_profile" doc:"Optional content profile filter"`
+	Platform       string `query:"platform" doc:"Optional destination platform filter"`
 	Search         string `query:"search" doc:"Case-insensitive title or source-text search"`
 	Cursor         string `query:"cursor" doc:"Opaque cursor for stable newest-first pagination"`
 	CreatedFrom    string `query:"created_from" doc:"Include publications created at or after this RFC3339 timestamp"`

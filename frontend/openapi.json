@@ -35556,12 +35556,12 @@
 						}
 					},
 					{
-						"description": "Optional Posts activity bucket filter",
+						"description": "Optional Publication activity bucket filter",
 						"explode": false,
 						"in": "query",
 						"name": "activity_bucket",
 						"schema": {
-							"description": "Optional Posts activity bucket filter",
+							"description": "Optional Publication activity bucket filter",
 							"enum": ["scheduled", "published", "failed", "draft"],
 							"type": "string"
 						}
@@ -35573,6 +35573,16 @@
 						"name": "content_profile",
 						"schema": {
 							"description": "Optional content profile filter",
+							"type": "string"
+						}
+					},
+					{
+						"description": "Optional destination platform filter",
+						"explode": false,
+						"in": "query",
+						"name": "platform",
+						"schema": {
+							"description": "Optional destination platform filter",
 							"type": "string"
 						}
 					},

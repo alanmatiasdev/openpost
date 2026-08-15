@@ -1012,32 +1012,44 @@ type RenditionInput struct {
 }
 
 type CreatePublicationInput struct {
-	WorkspaceID      string                  `json:"workspace_id"`
-	Title            string                  `json:"title"`
-	ContentProfile   string                  `json:"content_profile"`
-	SourceText       string                  `json:"source_text"`
-	SourceURL        string                  `json:"source_url,omitempty"`
-	Goal             string                  `json:"goal,omitempty"`
-	Audience         string                  `json:"audience,omitempty"`
-	ScheduledAt      *time.Time              `json:"scheduled_at,omitempty"`
-	Metadata         map[string]interface{}  `json:"metadata,omitempty"`
-	SocialAccountIDs []string                `json:"social_account_ids,omitempty"`
-	Media            []PublicationMediaInput `json:"media,omitempty"`
-	Renditions       []RenditionInput        `json:"renditions,omitempty"`
+	WorkspaceID        string                    `json:"workspace_id"`
+	Title              string                    `json:"title"`
+	Intent             string                    `json:"intent,omitempty"`
+	CreationPreset     string                    `json:"creation_preset,omitempty"`
+	ContentProfile     string                    `json:"content_profile"`
+	SourceText         string                    `json:"source_text"`
+	SourceURL          string                    `json:"source_url,omitempty"`
+	Goal               string                    `json:"goal,omitempty"`
+	Audience           string                    `json:"audience,omitempty"`
+	ScheduledAt        *time.Time                `json:"scheduled_at,omitempty"`
+	RandomDelayMinutes *int                      `json:"random_delay_minutes,omitempty"`
+	Metadata           map[string]interface{}    `json:"metadata,omitempty"`
+	SocialAccountIDs   []string                  `json:"social_account_ids,omitempty"`
+	Media              []PublicationMediaInput   `json:"media,omitempty"`
+	Segments           []PublicationSegmentInput `json:"segments,omitempty"`
+	Renditions         []RenditionInput          `json:"renditions,omitempty"`
 }
 
 type UpdatePublicationInput struct {
-	ExpectedRevision int                    `json:"expected_revision"`
-	Force            bool                   `json:"force,omitempty"`
-	Title            *string                `json:"title,omitempty"`
-	ContentProfile   *string                `json:"content_profile,omitempty"`
-	SourceText       *string                `json:"source_text,omitempty"`
-	SourceURL        *string                `json:"source_url,omitempty"`
-	Goal             *string                `json:"goal,omitempty"`
-	Audience         *string                `json:"audience,omitempty"`
-	ScheduledAt      *time.Time             `json:"scheduled_at,omitempty"`
-	ClearSchedule    bool                   `json:"clear_schedule,omitempty"`
-	Metadata         map[string]interface{} `json:"metadata,omitempty"`
+	ExpectedRevision   int                    `json:"expected_revision"`
+	Force              bool                   `json:"force,omitempty"`
+	Title              *string                `json:"title,omitempty"`
+	ContentProfile     *string                `json:"content_profile,omitempty"`
+	SourceText         *string                `json:"source_text,omitempty"`
+	SourceURL          *string                `json:"source_url,omitempty"`
+	Goal               *string                `json:"goal,omitempty"`
+	Audience           *string                `json:"audience,omitempty"`
+	ScheduledAt        *time.Time             `json:"scheduled_at,omitempty"`
+	ClearSchedule      bool                   `json:"clear_schedule,omitempty"`
+	RandomDelayMinutes *int                   `json:"random_delay_minutes,omitempty"`
+	Metadata           map[string]interface{} `json:"metadata,omitempty"`
+	Renditions         []RenditionInput       `json:"renditions,omitempty"`
+}
+
+type PublicationSegmentInput struct {
+	ID    string                  `json:"id,omitempty"`
+	Body  string                  `json:"body,omitempty"`
+	Media []PublicationMediaInput `json:"media,omitempty"`
 }
 
 type Publication struct {
@@ -1060,6 +1072,11 @@ type Publication struct {
 	CreatedAt      string                 `json:"created_at"`
 	UpdatedAt      string                 `json:"updated_at"`
 	Renditions     []Rendition            `json:"renditions"`
+	Media          []MediaSummary         `json:"media"`
+}
+
+type MediaSummary struct {
+	ID string `json:"id"`
 }
 
 type Rendition struct {
@@ -1086,7 +1103,11 @@ type Rendition struct {
 type ListPublicationsInput struct {
 	WorkspaceID    string
 	Status         string
+	ActivityBucket string
 	ContentProfile string
+	Platform       string
+	CalendarFrom   string
+	CalendarBefore string
 	Limit          int
 	Offset         int
 }
@@ -1161,15 +1182,38 @@ func (c *Client) CreatePublication(ctx context.Context, in CreatePublicationInpu
 }
 
 func (c *Client) ListPublications(ctx context.Context, in ListPublicationsInput) ([]Publication, error) {
-	path := listEndpointPath(
-		"/api/v1/publications",
-		in.WorkspaceID,
-		in.Status,
-		"content_profile",
-		in.ContentProfile,
-		in.Limit,
-		in.Offset,
-	)
+	v := url.Values{}
+	if in.WorkspaceID != "" {
+		v.Set("workspace_id", in.WorkspaceID)
+	}
+	if in.Status != "" {
+		v.Set("status", in.Status)
+	}
+	if in.ActivityBucket != "" {
+		v.Set("activity_bucket", in.ActivityBucket)
+	}
+	if in.ContentProfile != "" {
+		v.Set("content_profile", in.ContentProfile)
+	}
+	if in.Platform != "" {
+		v.Set("platform", in.Platform)
+	}
+	if in.CalendarFrom != "" {
+		v.Set("calendar_from", in.CalendarFrom)
+	}
+	if in.CalendarBefore != "" {
+		v.Set("calendar_before", in.CalendarBefore)
+	}
+	if in.Limit > 0 {
+		v.Set("limit", strconv.Itoa(in.Limit))
+	}
+	if in.Offset > 0 {
+		v.Set("offset", strconv.Itoa(in.Offset))
+	}
+	path := "/api/v1/publications"
+	if encoded := v.Encode(); encoded != "" {
+		path += "?" + encoded
+	}
 	var out []Publication
 	if err := c.GetJSON(ctx, path, &out); err != nil {
 		return nil, err
@@ -1231,6 +1275,14 @@ func (c *Client) PublishPublicationNow(ctx context.Context, id string, expectedR
 func (c *Client) SchedulePublication(ctx context.Context, id string, expectedRevision int) (*PublicationActionOutput, error) {
 	var out PublicationActionOutput
 	if err := c.PostJSON(ctx, "/api/v1/publications/"+url.PathEscape(id)+"/schedule", map[string]any{"expected_revision": expectedRevision}, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (c *Client) CancelPublication(ctx context.Context, id string, expectedRevision int) (*PublicationActionOutput, error) {
+	var out PublicationActionOutput
+	if err := c.PostJSON(ctx, "/api/v1/publications/"+url.PathEscape(id)+"/cancel", map[string]any{"expected_revision": expectedRevision}, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil

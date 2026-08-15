@@ -45,6 +45,7 @@ func newPublicationCmd() *cobra.Command {
 	cmd.AddCommand(newPublicationReplyCmd())
 	cmd.AddCommand(newPublicationValidateCmd())
 	cmd.AddCommand(newPublicationScheduleCmd())
+	cmd.AddCommand(newPublicationCancelCmd())
 	cmd.AddCommand(newPublicationPublishNowCmd())
 	cmd.AddCommand(newPublicationRetryCmd())
 	cmd.AddCommand(newPublicationDeleteRenditionCmd())
@@ -438,6 +439,38 @@ func newPublicationScheduleCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&flags.schedule, "at", "", "schedule time, natural language, or next-slot")
 	return cmd
+}
+
+func newPublicationCancelCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "cancel <publication-id>",
+		Short: "Cancel a scheduled publication",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := runtimeFrom(cmd)
+			if err != nil {
+				return err
+			}
+			client, err := clientFrom(cfg)
+			if err != nil {
+				return err
+			}
+			current, err := client.GetPublication(cmd.Context(), args[0])
+			if err != nil {
+				return err
+			}
+			result, err := client.CancelPublication(cmd.Context(), args[0], current.Revision)
+			if err != nil {
+				return err
+			}
+			p := printerFrom(cfg)
+			if cfg.AsJSON {
+				return p.PrintJSON(result)
+			}
+			p.Printf("%s", result.Message)
+			return nil
+		},
+	}
 }
 
 func newPublicationPublishNowCmd() *cobra.Command {

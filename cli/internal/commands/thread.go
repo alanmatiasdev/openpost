@@ -69,9 +69,11 @@ func newThreadCreateCmd() *cobra.Command {
 			}
 			accountCSV := firstSet(flags.accounts, fm.Accounts)
 			scheduleRaw := firstSet(flags.schedule, fm.Schedule)
-			randomDelay := flags.randomDelay
-			if !cmd.Flags().Changed("random-delay") {
-				randomDelay = fm.RandomDelay
+			var randomDelay *int
+			if cmd.Flags().Changed("random-delay") {
+				randomDelay = &flags.randomDelay
+			} else if fm.RandomDelay != 0 {
+				randomDelay = &fm.RandomDelay
 			}
 			accountIDs, err := resolveAccounts(cmd, client, workspaceID, accountCSV)
 			if err != nil {
@@ -84,31 +86,37 @@ func newThreadCreateCmd() *cobra.Command {
 			if err := confirmNaturalSchedule(cfg.Yes, scheduledAt, label); err != nil {
 				return err
 			}
-			posts := make([]api.ThreadPostInput, 0, len(segments))
-			for _, segment := range segments {
-				posts = append(posts, api.ThreadPostInput{Content: segment})
+			publicationSegments := make([]api.PublicationSegmentInput, 0, len(segments))
+			for index, segment := range segments {
+				publicationSegments = append(publicationSegments, api.PublicationSegmentInput{ID: fmt.Sprintf("segment-%d", index+1), Body: segment})
 			}
-			out, err := client.CreateThread(cmd.Context(), api.CreateThreadInput{
+			publication, err := client.CreatePublication(cmd.Context(), api.CreatePublicationInput{
 				WorkspaceID:        workspaceID,
-				Posts:              posts,
+				Title:              defaultString(firstLineCLI(segments[0]), "Untitled thread"),
+				Intent:             "thread",
+				CreationPreset:     "thread",
+				ContentProfile:     "thread",
+				SourceText:         strings.Join(segments, "\n\n"),
 				ScheduledAt:        scheduledAt,
-				SocialAccountIDs:   accountIDs,
 				RandomDelayMinutes: randomDelay,
+				SocialAccountIDs:   accountIDs,
+				Segments:           publicationSegments,
 			})
 			if err != nil {
 				return err
 			}
+			if scheduledAt != nil {
+				if _, err := client.SchedulePublication(cmd.Context(), publication.ID, publication.Revision); err != nil {
+					return err
+				}
+			}
 			p := printerFrom(cfg)
 			if cfg.AsJSON {
-				return p.PrintJSON(out)
+				return p.PrintJSON(publication)
 			}
-			parentID := ""
-			if len(out.PostIDs) > 0 {
-				parentID = out.PostIDs[0]
-			}
-			p.Table([]string{"POSTS", "PARENT_ID", "SCHEDULED"}, [][]string{{
-				strconv.Itoa(len(out.PostIDs)),
-				parentID,
+			p.Table([]string{"SEGMENTS", "PUBLICATION_ID", "SCHEDULED"}, [][]string{{
+				strconv.Itoa(len(publicationSegments)),
+				publication.ID,
 				scheduleTimeLabel(scheduledAt),
 			}})
 			return nil

@@ -6,6 +6,7 @@ All notable changes to this project are documented in this file.
 
 ### Changed
 
+- Moved planner calendar loading and CLI post/thread workflows onto canonical Publication list, creation, update, schedule, and deletion contracts, with Publication calendar filters available to MCP.
 - Completed the canonical Publication delivery path with application-owned get, list, history, delete, cancellation, validation, scheduling, publishing, and retry operations; stable transport-neutral error categories; a canonical cancellation contract for REST and MCP; and persisted effective random-delay ranges whose exact Job times are covered by Publication authorization.
 - Unified Workspace access behind one application decision for read, edit, and administer actions across request middleware and transactional callers. The decision now combines credential Workspace binding, Organization identity policy, active Workspace membership, and role level while keeping safe denial separate from operational failure.
 - Proved the complete UX program through one combined browser and integration matrix covering the first-use journey, daily work, collaboration and safety, local recovery, responsive presentations, themes, locales, keyboard and announced state, automated serious and critical accessibility checks, clean console output, and synchronized Self-hosted claims. Reconciled the audit-remediation backlog to remove the completed UX work and retain external status infrastructure as a separate deferred boundary.
