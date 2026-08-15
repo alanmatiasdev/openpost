@@ -6,6 +6,7 @@ All notable changes to this project are documented in this file.
 
 ### Changed
 
+- The text-and-thread composer now uses one Publication-backed browser session for new and existing drafts. The session owns serialized revision saves, conflicts, validation, scheduling, immediate publishing, retries, cancellation, deletion, and success reset through the typed Publication client.
 - Notification producers can now record sealed domain outcomes whose topic, delivery, Mute, deduplication, action, and presentation policy comes from one backend catalogue. Notification settings use the catalogue's generated API projection while keeping exhaustive English and Portuguese labels, descriptions, and icons in the frontend.
 - Deprecated retained Post HTTP compatibility routes, recorded their Publication replacements and sunset evidence in the compatibility registry, added OpenAPI migration guidance, and documented the minimum 90-day and two-later-stable-release removal gate.
 - Added canonical Publication aliases and terminal legacy delivery evidence to the historical Post migration so published and failed compatibility rows resolve safely without provider calls.

@@ -67,7 +67,6 @@
 	import {
 		type PostItem,
 		makeEmptyPost,
-		encodeThreadDraft,
 		isThreadDraft,
 		decodeThreadDraft,
 		getDraftSnapshot,
@@ -139,8 +138,9 @@
 	} from '$lib/video-editor/composer-handoff';
 	import type { ImageEditorMediaItem } from '$lib/image-editor/types';
 	import type { VideoConstraint } from '$lib/video/types';
-	import { parseDraftConflict, type DraftConflictProblem } from '$lib/draft-conflict';
-	import { SerializedSaveQueue } from '$lib/serialized-save-queue';
+	import type { DraftConflictProblem } from '$lib/draft-conflict';
+	import { ComposerSession, type PublicationDraft } from '$lib/composer/session';
+	import { createComposerPublicationClient } from '$lib/composer/publication-client';
 	import { buildComposerPreview } from '$lib/compose-preview';
 	import { openPreviewWindow, type PreviewWindowSession } from '$lib/preview-window';
 	import { uploadMediaFile, type MediaUploadResult } from '$lib/media-upload-client';
@@ -347,7 +347,8 @@
 	let accountRequestSequence = 0;
 	let nextSlotRequestSequence = 0;
 	let saveGeneration = 0;
-	const saveQueue = new SerializedSaveQueue<string | null>(() => publicationId || null);
+	let composerSession: ComposerSession | null = null;
+	let unsubscribeComposerSession: (() => void) | null = null;
 	let allowNavigationOnce = false;
 
 	let selectedDate = $state<CalendarDate | undefined>(undefined);
@@ -440,6 +441,43 @@
 			workspaceCtx.currentWorkspace?.id === selectedWorkspaceId &&
 			workspaceCtx.settingsReady
 	);
+
+	async function sessionFor(workspaceId: string, existingPublicationId = '') {
+		if (!composerSession || composerSession.workspaceId !== workspaceId) {
+			unsubscribeComposerSession?.();
+			composerSession = new ComposerSession({
+				workspaceId,
+				client: createComposerPublicationClient()
+			});
+			unsubscribeComposerSession = composerSession.subscribe((state) => {
+				if (state.publicationId) publicationId = state.publicationId;
+				if (state.revision !== null) revision = state.revision;
+				isSaving = state.phase === 'loading' || state.phase === 'saving';
+				if (state.validationIssues.length > 0 || state.phase === 'validating') {
+					validationIssues = [...state.validationIssues];
+				}
+				if (state.conflict) {
+					draftConflict = {
+						code: 'draft_revision_conflict',
+						detail: state.error || m.compose_update_draft_failed(),
+						conflict: {
+							aggregate_type: 'publication',
+							aggregate_id: state.publicationId || existingPublicationId,
+							expected_revision: state.conflict.expectedRevision,
+							current_revision: state.conflict.currentRevision,
+							status: state.status || 'draft',
+							changed_domains: []
+						}
+					};
+					conflictDialogOpen = true;
+				}
+			});
+		}
+		if (existingPublicationId && composerSession.snapshot.publicationId !== existingPublicationId) {
+			await composerSession.load(existingPublicationId);
+		}
+		return composerSession;
+	}
 
 	// --------------------------------------------------------------------------
 	// Constants & derived values
@@ -1417,11 +1455,11 @@
 	async function refreshPublicationValidation(
 		publicationID: string
 	): Promise<ComposerIssue | null> {
-		const { data, error: validationError } = await client.POST('/publications/{id}/validate', {
-			params: { path: { id: publicationID } }
-		});
-		if (validationError) return null;
-		validationIssues = data?.issues ?? [];
+		try {
+			validationIssues = await (await sessionFor(selectedWorkspaceId, publicationID)).validate();
+		} catch {
+			return null;
+		}
 		return firstValidationIssue();
 	}
 
@@ -2571,7 +2609,7 @@
 			post.scheduled_at && post.scheduled_at !== '0001-01-01T00:00:00Z' ? post.scheduled_at : '';
 
 		await loadAccounts(selectedWorkspaceId, selectedAccountIds);
-		if (!source) {
+		if (!source && !publicationId) {
 			await loadVariants(post.id);
 		}
 		if (publicationId) {
@@ -2775,6 +2813,7 @@
 		captionPostContexts.clear();
 		for (const session of previewSessions.values()) session.close();
 		previewSessions.clear();
+		unsubscribeComposerSession?.();
 	});
 
 	beforeNavigate((navigation) => {
@@ -3105,6 +3144,9 @@
 			posts.some((post) => post.mediaIds.length > 0)
 		);
 		pasteMediaUploadQueue.reset();
+		unsubscribeComposerSession?.();
+		unsubscribeComposerSession = null;
+		composerSession = null;
 		clearAutoSaveTimer();
 		saveGeneration += 1;
 		nextSlotRequestSequence += 1;
@@ -3282,7 +3324,7 @@
 			scheduledAt?: string | null;
 		} = {}
 	): Promise<string | null> {
-		return saveQueue.run(() => saveDraftNow(options));
+		return saveDraftNow(options);
 	}
 
 	async function saveDraftNow(options: {
@@ -3292,156 +3334,43 @@
 		if (!selectedWorkspaceId || !hasContent) return null;
 		const generation = saveGeneration;
 		const workspaceId = selectedWorkspaceId;
-		const startingDraftId = options.saveAsCopy ? null : draftId;
+		const startingPublicationId = options.saveAsCopy ? '' : publicationId;
 		const snapshot = getSaveSnapshot();
 		clearSavedIndicator();
 		isSaving = true;
 		error = '';
 
 		try {
-			const sourcePosts = posts.map((post) => ({ ...post, mediaIds: [...post.mediaIds] }));
-			const threadDraft = isThread
-				? encodeThreadDraft(sourcePosts, getVariantPayloadForSave())
-				: '';
-			const draftContent = sourcePosts[0].content;
-			const draftMediaIds = isThread
-				? sourcePosts.flatMap((post) => post.mediaIds)
-				: sourcePosts[0].mediaIds;
-			const variantPayload = getPersistedVariantPayload(new Map(variants), sourcePosts);
 			const proposedSchedule =
 				options.scheduledAt === undefined ? (getScheduledAt() ?? null) : options.scheduledAt;
-			const canonicalID = publicationId || `text-draft:${sourcePosts[0].key}`;
+			const canonicalID = startingPublicationId || `publication-draft:${posts[0].key}`;
 			const canonical = publicationPayload(canonicalID);
-			const publication = {
-				title: canonical.title,
-				intent: canonical.intent,
-				creation_preset: canonical.creation_preset,
-				social_set_id: canonical.social_set_id,
-				content_profile: canonical.content_profile,
-				source_text: canonical.source_text,
-				source_url: canonical.source_url ?? '',
-				...(proposedSchedule
-					? { scheduled_at: proposedSchedule, clear_schedule: false }
-					: { clear_schedule: true }),
+			const { workspace_id: _workspaceID, ...canonicalDraft } = canonical;
+			const publication: PublicationDraft = {
+				...canonicalDraft,
+				...(proposedSchedule ? { scheduled_at: proposedSchedule } : {}),
 				...(proposedSchedule && randomDelayOverride !== 'default'
 					? { random_delay_minutes: effectiveRandomDelayMinutes }
 					: {}),
-				metadata: canonical.metadata,
-				segments: canonical.segments,
-				renditions: canonical.renditions,
 				repost_override: $state.snapshot(repostOverride)
 			};
-			const body = {
-				content: draftContent,
-				scheduled_at: proposedSchedule ?? '',
-				social_account_ids: [...selectedAccountIds],
-				media_ids: draftMediaIds,
-				random_delay_minutes: proposedSchedule ? effectiveRandomDelayMinutes : 0,
-				thread_draft: threadDraft,
-				variants: variantPayload,
-				publication
-			};
+			const session = await sessionFor(workspaceId, startingPublicationId);
+			if (options.saveAsCopy) session.reset();
+			session.edit(publication);
+			const saved = await session.save();
+			const savedPublicationId = saved.id;
 
-			let savedDraftId = startingDraftId;
-			let savedPublicationId = options.saveAsCopy ? '' : publicationId;
-			let savedRevision = revision;
-			if (publicationOnlyEdit) {
-				if (savedPublicationId) {
-					const { data, error: saveError } = await client.PUT('/publications/{id}', {
-						params: { path: { id: savedPublicationId } },
-						body: {
-							expected_revision: revision,
-							title: canonical.title,
-							creation_preset: canonical.creation_preset,
-							social_set_id: canonical.social_set_id ?? '',
-							content_profile: canonical.content_profile,
-							source_text: canonical.source_text,
-							source_url: canonical.source_url ?? '',
-							...(proposedSchedule ? { scheduled_at: proposedSchedule } : { clear_schedule: true }),
-							...(proposedSchedule
-								? randomDelayOverride !== 'default'
-									? { random_delay_minutes: effectiveRandomDelayMinutes }
-									: { inherit_random_delay: true }
-								: {}),
-							metadata: canonical.metadata,
-							segments: canonical.segments,
-							renditions: canonical.renditions,
-							repost_override: $state.snapshot(repostOverride)
-						}
-					});
-					if (saveError) {
-						const conflict = parseDraftConflict(saveError);
-						if (conflict) {
-							draftConflict = conflict;
-							conflictDialogOpen = true;
-						}
-						throw new Error(saveError.detail || m.compose_save_publication_failed());
-					}
-					savedRevision = data.revision;
-				} else {
-					const { data, error: createError } = await client.POST('/publications', {
-						body: {
-							...canonical,
-							...(proposedSchedule ? { scheduled_at: proposedSchedule } : {}),
-							...(proposedSchedule && randomDelayOverride !== 'default'
-								? { random_delay_minutes: effectiveRandomDelayMinutes }
-								: {}),
-							repost_override: $state.snapshot(repostOverride)
-						}
-					});
-					if (createError) {
-						throw new Error(createError.detail || m.compose_create_publication_failed());
-					}
-					savedPublicationId = data.id;
-					savedRevision = data.revision;
-				}
-			} else if (startingDraftId) {
-				const { data, error: saveError } = await client.PUT('/posts/{id}/draft', {
-					params: { path: { id: startingDraftId } },
-					body: {
-						...body,
-						expected_revision: revision
-					}
-				});
-				if (saveError) {
-					const conflict = parseDraftConflict(saveError);
-					if (conflict) {
-						draftConflict = conflict;
-						conflictDialogOpen = true;
-					}
-					throw new Error(saveError.detail || m.compose_update_draft_failed());
-				}
-				savedDraftId = data.post_id;
-				savedPublicationId = data.publication_id;
-				savedRevision = data.revision;
-			} else {
-				const { data, error: createError } = await client.POST('/posts/draft', {
-					body: { ...body, workspace_id: workspaceId }
-				});
-				if (createError) {
-					throw new Error(createError.detail || m.compose_save_draft_failed());
-				}
-				savedDraftId = data.post_id;
-				savedPublicationId = data.publication_id;
-				savedRevision = data.revision;
-			}
-
-			if (
-				generation !== saveGeneration ||
-				selectedWorkspaceId !== workspaceId ||
-				(startingDraftId && draftId !== startingDraftId)
-			) {
+			if (generation !== saveGeneration || selectedWorkspaceId !== workspaceId) {
 				return null;
 			}
-			const createdDraftId = startingDraftId || publicationOnlyEdit ? null : savedDraftId;
-			draftId = savedDraftId;
+			const createdPublication = !startingPublicationId;
+			draftId = null;
 			publicationId = savedPublicationId;
-			revision = savedRevision;
+			revision = saved.revision;
 			draftConflict = null;
 			lastSavedSnapshot = snapshot;
 			showSavedIndicator();
-			const activeDraftID = savedPublicationId || savedDraftId;
-			if (activeDraftID) ui.setActiveComposerDraft(activeDraftID);
+			ui.setActiveComposerDraft(savedPublicationId);
 			const previousScheduleAt = lastSavedScheduleAt;
 			lastSavedScheduleAt = proposedSchedule ?? '';
 			const scheduleChanged = previousScheduleAt !== lastSavedScheduleAt;
@@ -3451,8 +3380,8 @@
 				scopes: scheduleChanged ? ['activity', 'calendar', 'drafts'] : ['drafts'],
 				dateKeys: affectedDateKeys
 			});
-			if (createdDraftId && savedPublicationId) onDraftCreated?.(savedPublicationId);
-			return savedPublicationId || null;
+			if (createdPublication) onDraftCreated?.(savedPublicationId);
+			return savedPublicationId;
 		} catch (cause) {
 			console.error('Failed to save text post draft:', cause);
 			if (generation === saveGeneration && selectedWorkspaceId === workspaceId) {
@@ -3478,13 +3407,14 @@
 
 	async function reloadSavedTextDraft() {
 		if (!draftConflict) return;
-		const { data, error: loadError } = await client.GET('/posts/{id}', {
-			params: { path: { id: draftConflict.conflict.aggregate_id } }
+		const { data, error: loadError } = await client.GET('/publications/{id}', {
+			params: { path: { id: publicationId || draftConflict.conflict.aggregate_id } }
 		});
 		if (loadError || !data) {
 			throw new Error(loadError?.detail || m.compose_update_draft_failed());
 		}
-		await initializeFromPost(data);
+		await composerSession?.load(data.id);
+		await initializeFromPublication(data);
 		error = '';
 		draftConflict = null;
 	}
@@ -3493,23 +3423,27 @@
 		const saved = await saveDraft({ saveAsCopy: true });
 		if (!saved) throw new Error(error || m.compose_save_draft_failed());
 		lastSavedSnapshot = getSaveSnapshot();
+		draftConflict = null;
+		conflictDialogOpen = false;
 		success = m.compose_draft_saved();
 		error = '';
 	}
 
 	async function overwriteSavedTextDraft() {
 		if (!draftConflict) return;
-		revision = draftConflict.conflict.current_revision;
-		const saved = await saveDraft();
-		if (!saved) throw new Error(error || m.compose_update_draft_failed());
+		const session = await sessionFor(selectedWorkspaceId, publicationId);
+		const saved = await session.overwriteConflict();
+		publicationId = saved.id;
+		revision = saved.revision;
 		lastSavedSnapshot = getSaveSnapshot();
+		draftConflict = null;
 		success = m.compose_changes_saved();
 		error = '';
 	}
 
 	async function flushPendingTextDraft(): Promise<boolean> {
 		clearAutoSaveTimer();
-		await saveQueue.flush().catch(() => publicationId || null);
+		await composerSession?.flush().catch(() => undefined);
 		if (autoSavesDraft && hasContent && getSaveSnapshot() !== lastSavedSnapshot && !draftConflict) {
 			await saveDraft();
 		}
@@ -3517,26 +3451,13 @@
 	}
 
 	async function deleteDraft(): Promise<DestructiveActionOutcome> {
-		if ((!draftId && !publicationOnlyEdit) || isDeleting) return { ok: false };
+		if (!publicationId || isDeleting) return { ok: false };
 		clearAutoSaveTimer();
 		isDeleting = true;
 		error = '';
 		try {
-			const deleteErr = draftId
-				? (
-						await client.DELETE('/posts/{id}', {
-							params: { path: { id: draftId } }
-						})
-					).error
-				: (
-						await client.DELETE('/publications/{id}', {
-							params: {
-								path: { id: publicationId },
-								query: { confirm: true, expected_revision: revision }
-							}
-						})
-					).error;
-			if (deleteErr) throw new Error((deleteErr as any).detail || m.compose_delete_post_failed());
+			const session = await sessionFor(selectedWorkspaceId, publicationId);
+			await session.delete();
 
 			const affectedDateKeys = publicationDateKeys(lastSavedScheduleAt);
 			ui.invalidatePublications(
@@ -3582,7 +3503,7 @@
 	}
 
 	async function saveEditedPost(navigateOnSuccess = true): Promise<boolean> {
-		if ((!draftId || (!initialPost && !initialPublication)) && !publicationOnlyEdit) return false;
+		if (!publicationId || (!initialPost && !initialPublication)) return false;
 		error = '';
 		success = '';
 
@@ -3629,17 +3550,9 @@
 				throw new Error(error || m.compose_save_publication_failed());
 			}
 			if (scheduledAt) {
-				const { error: scheduleError } = await client.POST('/publications/{id}/schedule', {
-					params: { path: { id: targetPublicationID } },
-					body: { expected_revision: revision }
-				});
-				if (scheduleError) {
-					const conflict = parseDraftConflict(scheduleError);
-					if (conflict) {
-						draftConflict = conflict;
-						conflictDialogOpen = true;
-						throw new Error(scheduleError.detail || m.compose_schedule_failed());
-					}
+				try {
+					await (await sessionFor(selectedWorkspaceId, targetPublicationID)).schedule();
+				} catch (scheduleError) {
 					await resolveCapabilities();
 					const readinessFailure = capabilityResolveError
 						? ''
@@ -3655,7 +3568,9 @@
 					throw new Error(
 						blockingIssue
 							? m.compose_fix_before_scheduling()
-							: scheduleError.detail || m.compose_schedule_failed()
+							: scheduleError instanceof Error
+								? scheduleError.message
+								: m.compose_schedule_failed()
 					);
 				}
 			}
@@ -3769,41 +3684,14 @@
 			if (!targetPublicationID) {
 				throw new Error(error || m.compose_save_publication_failed());
 			}
-			const { data: validation, error: validationError } = await client.POST(
-				'/publications/{id}/validate',
-				{ params: { path: { id: targetPublicationID } } }
-			);
-			if (validationError) {
-				throw new Error(validationError.detail || m.compose_validation_failed());
-			}
-			validationIssues = validation?.issues ?? [];
-			const blocker = validationIssues.find((issue) => issue.severity === 'error');
-			if (blocker) {
-				issueToFocusAfterSubmit = firstValidationIssue();
-				throw new Error(
-					publishNow ? m.compose_fix_before_publishing() : m.compose_fix_before_scheduling()
-				);
-			}
-
-			const { data: action, error: actionError } = publishNow
-				? await client.POST('/publications/{id}/publish-now', {
-						params: { path: { id: targetPublicationID } },
-						body: { expected_revision: revision }
-					})
-				: await client.POST('/publications/{id}/schedule', {
-						params: { path: { id: targetPublicationID } },
-						body: { expected_revision: revision }
-					});
-			if (actionError) {
-				const conflict = parseDraftConflict(actionError);
-				if (conflict) {
-					draftConflict = conflict;
-					conflictDialogOpen = true;
-					throw new Error(
-						actionError.detail ||
-							(publishNow ? m.compose_publish_failed() : m.compose_schedule_failed())
-					);
-				}
+			let action;
+			try {
+				const session = await sessionFor(selectedWorkspaceId, targetPublicationID);
+				action = publishNow ? await session.publishNow() : await session.schedule();
+				validationIssues = [...session.snapshot.validationIssues];
+			} catch (actionError) {
+				const blocker = validationIssues.find((issue) => issue.severity === 'error');
+				if (blocker) issueToFocusAfterSubmit = firstValidationIssue();
 				await resolveCapabilities();
 				const readinessFailure = capabilityResolveError
 					? ''
@@ -3820,8 +3708,11 @@
 						? publishNow
 							? m.compose_fix_before_publishing()
 							: m.compose_fix_before_scheduling()
-						: actionError.detail ||
-								(publishNow ? m.compose_publish_failed() : m.compose_schedule_failed())
+						: actionError instanceof Error
+							? actionError.message
+							: publishNow
+								? m.compose_publish_failed()
+								: m.compose_schedule_failed()
 				);
 			}
 			if (action?.workspace_activated && action.activation_publication_id) {
@@ -3881,24 +3772,10 @@
 		retryingDeliveryRenditionID = renditionID;
 		error = '';
 		try {
-			const { error: retryError } = await client.POST(
-				'/publications/{id}/renditions/{account_id}/retry',
-				{
-					params: {
-						path: {
-							id: deliveryPublicationID,
-							account_id: rendition.social_account_id
-						},
-						query: { target_key: rendition.target_key }
-					}
-				}
-			);
-			if (retryError) throw new Error(m.publication_delivery_retry_failed());
-			const { data, error: loadError } = await client.GET('/publications/{id}', {
-				params: { path: { id: deliveryPublicationID } }
-			});
-			if (loadError || !data) throw new Error(m.publication_edit_load_failed());
-			deliveryFeedback = data.renditions ?? [];
+			const action = await (
+				await sessionFor(selectedWorkspaceId, deliveryPublicationID)
+			).retry(rendition.social_account_id, rendition.target_key);
+			deliveryFeedback = action.renditions ?? [];
 			success = m.publication_delivery_retry_queued();
 		} catch (cause) {
 			error = cause instanceof Error ? cause.message : m.publication_delivery_retry_failed();
@@ -4735,6 +4612,7 @@
 
 	function resetAfterSuccessfulPublication() {
 		pasteMediaUploadQueue.reset();
+		composerSession?.reset();
 		posts = [makeEmptyPost()];
 		activePostIndex = 0;
 		draftId = null;
@@ -4881,7 +4759,7 @@
 						onSchedule={openScheduleDialog}
 						onQuickSchedule={quickSchedule}
 						onPublish={() => publish(true)}
-						onDelete={draftId || publicationOnlyEdit ? requestDraftDelete : undefined}
+						onDelete={publicationId ? requestDraftDelete : undefined}
 					/>
 				{/if}
 			</div>
@@ -5028,7 +4906,7 @@
 						onSchedule={openScheduleDialog}
 						onQuickSchedule={quickSchedule}
 						onPublish={() => publish(true)}
-						onDelete={draftId || publicationOnlyEdit ? requestDraftDelete : undefined}
+						onDelete={publicationId ? requestDraftDelete : undefined}
 					/>
 				{/if}
 			</div>
