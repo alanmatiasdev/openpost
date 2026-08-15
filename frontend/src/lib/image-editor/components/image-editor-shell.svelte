@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { captureTelemetryEvent } from '@openpost/telemetry';
 	import { goto } from '$app/navigation';
-	import { resolve } from '$app/paths';
+	import { resolveAppPath } from '$lib/app-path';
 	import { ContextMenu } from 'bits-ui';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
@@ -76,6 +76,15 @@
 	} from '../export-resume';
 	import { canAttachImageEditorPreview } from '../preview-generation';
 	import { saveImageEditorConflictCopy } from '../conflict-recovery';
+	import {
+		parseImageEditorClipboardLayers,
+		parseImageEditorExportResumeLedger,
+		parseImageEditorLayoutPreferences,
+		parseImageEditorRecentColors,
+		parseImageEditorTabMessage,
+		parseImageEditorToolPreferences,
+		parseImageEditorViewPreferences
+	} from '../shell-storage';
 	import { ImageEditorBackgroundRemoval } from '../background-removal';
 	import type {
 		ImageEditorBrandKit,
@@ -427,9 +436,9 @@
 			return;
 		}
 		try {
-			exportResumeLedger = JSON.parse(
+			exportResumeLedger = parseImageEditorExportResumeLedger(
 				sessionStorage.getItem(exportResumeKey()) || '{}'
-			) as ImageEditorExportResumeLedger;
+			);
 		} catch {
 			exportResumeLedger = {};
 		}
@@ -467,12 +476,8 @@
 				: null;
 		if (designChannel) {
 			designChannel.onmessage = (event: MessageEvent) => {
-				const message = event.data as {
-					tabID?: string;
-					type?: 'editing' | 'saved';
-					revision?: number;
-				};
-				if (!message || message.tabID === editorTabID) return;
+				const message = parseImageEditorTabMessage(event.data);
+				if (message.tabID === editorTabID) return;
 				if (message.type === 'editing') {
 					concurrentTabWarning = m.image_editor_concurrent_tab_warning();
 				}
@@ -491,38 +496,19 @@
 		}
 		shortcutModifier = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl';
 		try {
-			const tools = JSON.parse(
+			const tools = parseImageEditorToolPreferences(
 				localStorage.getItem('openpost-image-editor-tools-v1') || '{}'
-			) as Partial<{
-				selectionMode: typeof editor.selectionMode;
-				magicSelectTolerance: number;
-				magicSelectContiguous: boolean;
-				sampleAllLayers: boolean;
-				eyedropperTarget: typeof editor.eyedropperTarget;
-				pencilSize: number;
-				pencilRoughness: number;
-				pencilSmoothing: number;
-				pencilPressure: boolean;
-				eraserSize: number;
-				magicEraserTolerance: number;
-				magicEraserContiguous: boolean;
-				bucketTolerance: number;
-				bucketContiguous: boolean;
-				paintOpacity: number;
-				gradientType: typeof editor.gradientType;
-				gradientReverse: boolean;
-			}>;
+			);
 			if (
 				tools.selectionMode &&
 				['replace', 'add', 'subtract', 'intersect'].includes(tools.selectionMode)
 			)
 				editor.selectionMode = tools.selectionMode;
-			if (Number.isFinite(tools.magicSelectTolerance))
-				editor.magicSelectTolerance = Math.max(0, Math.min(255, tools.magicSelectTolerance!));
-			if (typeof tools.magicSelectContiguous === 'boolean')
+			if (tools.magicSelectTolerance !== undefined)
+				editor.magicSelectTolerance = Math.max(0, Math.min(255, tools.magicSelectTolerance));
+			if (tools.magicSelectContiguous !== undefined)
 				editor.magicSelectContiguous = tools.magicSelectContiguous;
-			if (typeof tools.sampleAllLayers === 'boolean')
-				editor.sampleAllLayers = tools.sampleAllLayers;
+			if (tools.sampleAllLayers !== undefined) editor.sampleAllLayers = tools.sampleAllLayers;
 			if (
 				tools.eyedropperTarget &&
 				['foreground', 'selected_fill', 'selected_stroke', 'page_background'].includes(
@@ -530,32 +516,30 @@
 				)
 			)
 				editor.eyedropperTarget = tools.eyedropperTarget;
-			if (Number.isFinite(tools.pencilSize))
-				editor.pencilSize = Math.max(1, Math.min(512, tools.pencilSize!));
-			if (Number.isFinite(tools.pencilRoughness))
-				editor.pencilRoughness = Math.max(0, Math.min(1, tools.pencilRoughness!));
-			if (Number.isFinite(tools.pencilSmoothing))
-				editor.pencilSmoothing = Math.max(0, Math.min(0.95, tools.pencilSmoothing!));
-			if (typeof tools.pencilPressure === 'boolean') editor.pencilPressure = tools.pencilPressure;
-			if (Number.isFinite(tools.eraserSize))
-				editor.eraserSize = Math.max(1, Math.min(512, tools.eraserSize!));
-			if (Number.isFinite(tools.magicEraserTolerance))
-				editor.magicEraserTolerance = Math.max(0, Math.min(255, tools.magicEraserTolerance!));
-			if (typeof tools.magicEraserContiguous === 'boolean')
+			if (tools.pencilSize !== undefined)
+				editor.pencilSize = Math.max(1, Math.min(512, tools.pencilSize));
+			if (tools.pencilRoughness !== undefined)
+				editor.pencilRoughness = Math.max(0, Math.min(1, tools.pencilRoughness));
+			if (tools.pencilSmoothing !== undefined)
+				editor.pencilSmoothing = Math.max(0, Math.min(0.95, tools.pencilSmoothing));
+			if (tools.pencilPressure !== undefined) editor.pencilPressure = tools.pencilPressure;
+			if (tools.eraserSize !== undefined)
+				editor.eraserSize = Math.max(1, Math.min(512, tools.eraserSize));
+			if (tools.magicEraserTolerance !== undefined)
+				editor.magicEraserTolerance = Math.max(0, Math.min(255, tools.magicEraserTolerance));
+			if (tools.magicEraserContiguous !== undefined)
 				editor.magicEraserContiguous = tools.magicEraserContiguous;
-			if (Number.isFinite(tools.bucketTolerance))
-				editor.bucketTolerance = Math.max(0, Math.min(255, tools.bucketTolerance!));
-			if (typeof tools.bucketContiguous === 'boolean')
-				editor.bucketContiguous = tools.bucketContiguous;
-			if (Number.isFinite(tools.paintOpacity))
-				editor.paintOpacity = Math.max(0, Math.min(1, tools.paintOpacity!));
+			if (tools.bucketTolerance !== undefined)
+				editor.bucketTolerance = Math.max(0, Math.min(255, tools.bucketTolerance));
+			if (tools.bucketContiguous !== undefined) editor.bucketContiguous = tools.bucketContiguous;
+			if (tools.paintOpacity !== undefined)
+				editor.paintOpacity = Math.max(0, Math.min(1, tools.paintOpacity));
 			if (
 				tools.gradientType &&
 				['linear', 'radial', 'angle', 'reflected', 'diamond'].includes(tools.gradientType)
 			)
 				editor.gradientType = tools.gradientType;
-			if (typeof tools.gradientReverse === 'boolean')
-				editor.gradientReverse = tools.gradientReverse;
+			if (tools.gradientReverse !== undefined) editor.gradientReverse = tools.gradientReverse;
 		} catch {
 			// Invalid tool preferences fall back to tested defaults.
 		} finally {
@@ -574,21 +558,17 @@
 		}
 		try {
 			editor.setRecentColors(
-				JSON.parse(
+				parseImageEditorRecentColors(
 					localStorage.getItem('openpost-image-editor-recent-colors-v1') || '[]'
-				) as string[]
+				)
 			);
 		} catch {
 			editor.setRecentColors([]);
 		}
 		try {
-			const stored = JSON.parse(
+			const stored = parseImageEditorLayoutPreferences(
 				localStorage.getItem('openpost-image-editor-layout-v1') || '{}'
-			) as {
-				assets?: number;
-				inspector?: number;
-				layers?: number;
-			};
+			);
 			assetPanelWidth = clampPanelSize(stored.assets, 220, 420, assetPanelWidth);
 			inspectorPanelWidth = clampPanelSize(stored.inspector, 280, 480, inspectorPanelWidth);
 			layersPanelHeight = clampPanelSize(stored.layers, 120, 520, layersPanelHeight);
@@ -597,22 +577,15 @@
 			// Invalid local layout preferences fall back to the balanced defaults.
 		}
 		try {
-			const view = JSON.parse(localStorage.getItem('openpost-image-editor-view-v1') || '{}') as {
-				snapping?: boolean;
-				rulers?: boolean;
-				guides?: boolean;
-				grid?: boolean;
-				snapToGrid?: boolean;
-				gridSize?: number;
-			};
-			if (typeof view.snapping === 'boolean') editor.snappingEnabled = view.snapping;
-			if (typeof view.rulers === 'boolean') editor.showRulers = view.rulers;
-			if (typeof view.guides === 'boolean') editor.showGuides = view.guides;
-			if (typeof view.grid === 'boolean') editor.showGrid = view.grid;
-			if (typeof view.snapToGrid === 'boolean') editor.snapToGrid = view.snapToGrid;
-			if ([10, 25, 50, 100, 200].includes(view.gridSize ?? 0)) {
-				editor.gridSize = view.gridSize!;
-			}
+			const view = parseImageEditorViewPreferences(
+				localStorage.getItem('openpost-image-editor-view-v1') || '{}'
+			);
+			if (view.snapping !== undefined) editor.snappingEnabled = view.snapping;
+			if (view.rulers !== undefined) editor.showRulers = view.rulers;
+			if (view.guides !== undefined) editor.showGuides = view.guides;
+			if (view.grid !== undefined) editor.showGrid = view.grid;
+			if (view.snapToGrid !== undefined) editor.snapToGrid = view.snapToGrid;
+			if (view.gridSize !== undefined) editor.gridSize = view.gridSize;
 		} catch {
 			// Invalid view preferences fall back to snapping enabled.
 		}
@@ -738,7 +711,9 @@
 
 	function startPanelResize(event: PointerEvent, panel: 'assets' | 'inspector' | 'layers'): void {
 		if (event.button !== 0) return;
-		(event.currentTarget as HTMLButtonElement).focus();
+		const handle = event.currentTarget;
+		if (!(handle instanceof HTMLButtonElement)) return;
+		handle.focus();
 		event.preventDefault();
 		panelResize = {
 			panel,
@@ -1032,7 +1007,7 @@
 			return 'saved';
 		} catch (cause) {
 			finishMetric('error');
-			const status = (cause as Error & { status?: number }).status;
+			const status = apiErrorStatus(cause);
 			const retryable = !navigator.onLine || !status || status === 429 || status >= 500;
 			if (status === 409) {
 				openConflictRecovery();
@@ -1152,7 +1127,7 @@
 			conflictServerRevision = null;
 			conflictPreservedCopy = null;
 			await clearLocalImageEditorRecovery(editor.id);
-			await goto(resolve(`/image-editor/${saved.id}` as '/'));
+			await goto(resolveAppPath(`/image-editor/${saved.id}`));
 		} catch (cause) {
 			conflictError =
 				cause instanceof Error ? cause.message : m.image_editor_conflict_preserve_failed();
@@ -1217,7 +1192,8 @@
 	}
 
 	async function importProject(event: Event): Promise<void> {
-		const input = event.currentTarget as HTMLInputElement;
+		const input = event.currentTarget;
+		if (!(input instanceof HTMLInputElement)) return;
 		const file = input.files?.[0];
 		input.value = '';
 		if (!file || projectBusy) return;
@@ -1257,7 +1233,7 @@
 				const imported = replaceGuestImageEditorMediaIDs(parsed.document, recovery.replacements);
 				await saveGuestImageEditorDesign(recovery.guestDesignID, imported);
 				projectImportRecovery = null;
-				await goto(resolve(`/image-editor/${recovery.guestDesignID}` as '/'));
+				await goto(resolveAppPath(`/image-editor/${recovery.guestDesignID}`));
 				return;
 			}
 			for (let index = 0; index < parsed.media.length; index++) {
@@ -1290,7 +1266,7 @@
 			recovery.cloudDesignID = created.id;
 			await saveImageEditorDesign(created.id, created.revision, imported);
 			projectImportRecovery = null;
-			await goto(resolve(`/image-editor/${created.id}` as '/'));
+			await goto(resolveAppPath(`/image-editor/${created.id}`));
 		} catch (cause) {
 			projectError =
 				cause instanceof DOMException && cause.name === 'AbortError'
@@ -1368,12 +1344,12 @@
 		if (returnToken) {
 			const returnURL = editorHandoffReturnURL(returnToken, 'image', 'cancelled');
 			if (returnURL) {
-				await goto(resolve(returnURL as '/'));
+				await goto(resolveAppPath(returnURL));
 				return;
 			}
 		}
 		if (history.length > 1) history.back();
-		else void goto(resolve((guestMode ? '/image-editor' : '/media') as '/'));
+		else void goto(resolveAppPath(guestMode ? '/image-editor' : '/media'));
 	}
 
 	async function openHistory(): Promise<void> {
@@ -1465,7 +1441,7 @@
 			await openHistory();
 			statusAnnouncement = m.image_editor_checkpoint_created();
 		} catch (cause) {
-			if ((cause as Error & { status?: number }).status === 409) {
+			if (apiErrorStatus(cause) === 409) {
 				checkpointDialogOpen = false;
 				setHistoryDialogOpen(false);
 				openConflictRecovery();
@@ -1497,7 +1473,7 @@
 			setHistoryDialogOpen(false);
 			statusAnnouncement = m.image_editor_version_restored();
 		} catch (cause) {
-			if ((cause as Error & { status?: number }).status === 409) {
+			if (apiErrorStatus(cause) === 409) {
 				restoreConfirmOpen = false;
 				setHistoryDialogOpen(false);
 				openConflictRecovery();
@@ -1827,6 +1803,13 @@
 		return cause instanceof DOMException && cause.name === 'AbortError';
 	}
 
+	function apiErrorStatus(cause: unknown): number | undefined {
+		if (cause === null || !(cause instanceof Object) || !('status' in cause)) {
+			return undefined;
+		}
+		return Number.isFinite(cause.status) ? Number(cause.status) : undefined;
+	}
+
 	function imageEditorImportErrorMessage(cause: unknown): string {
 		if (!(cause instanceof ImageEditorImportError)) {
 			return cause instanceof Error ? cause.message : m.image_editor_external_drop_failed();
@@ -1903,7 +1886,7 @@
 		commandHandlers[command]();
 	}
 
-	const commandHandlers: Record<ImageEditorCommandID, () => void> = {
+	const commandHandlers = {
 		save: () => void saveNow(),
 		save_to_openpost: () => void saveToOpenPost(),
 		version_history: () => void openHistory(),
@@ -1960,7 +1943,7 @@
 		tool_gradient: () => setTool('gradient'),
 		tool_hand: () => setTool('hand'),
 		tool_zoom: () => setTool('zoom')
-	};
+	} satisfies Record<ImageEditorCommandID, () => void>;
 
 	function commandEnabled(id: ImageEditorCommandID): boolean {
 		const availability = imageEditorCommand(id).availability;
@@ -2036,7 +2019,7 @@
 	}
 
 	function commandLabel(id: ImageEditorCommandID): string {
-		const labels: Record<ImageEditorCommandID, string> = {
+		const labels = {
 			save: m.common_save(),
 			save_to_openpost: m.image_editor_public_save_openpost(),
 			version_history: m.image_editor_version_history(),
@@ -2086,7 +2069,7 @@
 			tool_gradient: m.image_editor_gradient(),
 			tool_hand: m.image_editor_hand(),
 			tool_zoom: m.image_editor_zoom()
-		};
+		} satisfies Record<ImageEditorCommandID, string>;
 		return labels[id];
 	}
 
@@ -2164,11 +2147,11 @@
 			);
 			if (item) {
 				const blob = await item.getType('application/x-openpost-image-editor-layers+json');
-				const parsed = JSON.parse(await blob.text()) as {
-					version: number;
-					layers: ImageEditorLayer[];
-				};
-				if (parsed.version === 1 && Array.isArray(parsed.layers)) source = parsed.layers;
+				const document = editor.document;
+				const page = editor.activePage;
+				if (document && page) {
+					source = parseImageEditorClipboardLayers(await blob.text(), document, page);
+				}
 			} else {
 				const imageItem = items.find((entry) =>
 					entry.types.some((type) => type.startsWith('image/'))
@@ -2419,8 +2402,8 @@
 				});
 				clearExportResumeLedger();
 				await goto(
-					resolve(
-						`${returnURL}${returnURL.includes('?') ? '&' : '?'}image_editor_return=${encodeURIComponent(returnToken)}` as '/'
+					resolveAppPath(
+						`${returnURL}${returnURL.includes('?') ? '&' : '?'}image_editor_return=${encodeURIComponent(returnToken)}`
 					)
 				);
 				finishMetric();
@@ -2460,29 +2443,29 @@
 		exportAbort?.abort();
 	}
 
-	const commandIcons: Partial<Record<ImageEditorCommandID, typeof MousePointerIcon>> = {
-		tool_select: MousePointerIcon,
-		tool_marquee: RectangleSelectIcon,
-		tool_ellipse_marquee: CircleDashedIcon,
-		tool_lasso: LassoSelectIcon,
-		tool_magic_wand: WandIcon,
-		tool_crop: CropIcon,
-		tool_eyedropper: PipetteIcon,
-		tool_text: TypeIcon,
-		tool_shape: SquareIcon,
-		tool_pencil: PencilIcon,
-		tool_bucket: PaintBucketIcon,
-		tool_gradient: BlendIcon,
-		tool_eraser: EraserIcon,
-		tool_magic_eraser: WandIcon,
-		tool_hand: HandIcon,
-		tool_zoom: ZoomInIcon
-	};
+	const commandIcons = new Map<ImageEditorCommandID, typeof MousePointerIcon>([
+		['tool_select', MousePointerIcon],
+		['tool_marquee', RectangleSelectIcon],
+		['tool_ellipse_marquee', CircleDashedIcon],
+		['tool_lasso', LassoSelectIcon],
+		['tool_magic_wand', WandIcon],
+		['tool_crop', CropIcon],
+		['tool_eyedropper', PipetteIcon],
+		['tool_text', TypeIcon],
+		['tool_shape', SquareIcon],
+		['tool_pencil', PencilIcon],
+		['tool_bucket', PaintBucketIcon],
+		['tool_gradient', BlendIcon],
+		['tool_eraser', EraserIcon],
+		['tool_magic_eraser', WandIcon],
+		['tool_hand', HandIcon],
+		['tool_zoom', ZoomInIcon]
+	]);
 	const tools = imageEditorCommandsForRail().map((command) => ({
 		command,
 		key: command.tool!,
 		label: commandLabel(command.id),
-		icon: commandIcons[command.id] ?? MousePointerIcon
+		icon: commandIcons.get(command.id) ?? MousePointerIcon
 	}));
 
 	function mobileToolCommands(group: 'select' | 'draw' | 'retouch') {
@@ -3050,7 +3033,7 @@
 						<ContextMenu.Portal>
 							<ContextMenu.Content class={TOOL_CONTEXT_MENU_CLASS}>
 								{#each railSlotCommands('pixel_select') as command (command.id)}
-									{@const CommandIcon = commandIcons[command.id] ?? RectangleSelectIcon}
+									{@const CommandIcon = commandIcons.get(command.id) ?? RectangleSelectIcon}
 									<ContextMenu.Item
 										class={TOOL_CONTEXT_MENU_ITEM_CLASS}
 										onclick={() => executeEditorCommand(command.id)}
@@ -3173,7 +3156,7 @@
 						<ContextMenu.Portal>
 							<ContextMenu.Content class={TOOL_CONTEXT_MENU_CLASS}>
 								{#each railSlotCommands('fill') as command (command.id)}
-									{@const CommandIcon = commandIcons[command.id] ?? PaintBucketIcon}
+									{@const CommandIcon = commandIcons.get(command.id) ?? PaintBucketIcon}
 									<ContextMenu.Item
 										class={TOOL_CONTEXT_MENU_ITEM_CLASS}
 										onclick={() => executeEditorCommand(command.id)}
@@ -3230,7 +3213,7 @@
 						<ContextMenu.Portal>
 							<ContextMenu.Content class={TOOL_CONTEXT_MENU_CLASS}>
 								{#each railSlotCommands('erase') as command (command.id)}
-									{@const CommandIcon = commandIcons[command.id] ?? EraserIcon}
+									{@const CommandIcon = commandIcons.get(command.id) ?? EraserIcon}
 									<ContextMenu.Item
 										class={TOOL_CONTEXT_MENU_ITEM_CLASS}
 										onclick={() => executeEditorCommand(command.id)}
@@ -3402,7 +3385,7 @@
 			</DropdownMenu.Trigger>
 			<DropdownMenu.Content side="top" align="start" class="min-w-52">
 				{#each mobileToolCommands('select') as command (command.id)}
-					{@const Icon = commandIcons[command.id] ?? MousePointerIcon}
+					{@const Icon = commandIcons.get(command.id) ?? MousePointerIcon}
 					<DropdownMenu.Item
 						onclick={() => executeEditorCommand(command.id)}
 						disabled={!commandEnabled(command.id)}
@@ -3433,7 +3416,7 @@
 			</DropdownMenu.Trigger>
 			<DropdownMenu.Content side="top" align="start" class="min-w-44">
 				{#each mobileToolCommands('draw') as command (command.id)}
-					{@const Icon = commandIcons[command.id] ?? PencilIcon}
+					{@const Icon = commandIcons.get(command.id) ?? PencilIcon}
 					<DropdownMenu.Item
 						onclick={() => executeEditorCommand(command.id)}
 						disabled={!commandEnabled(command.id)}
@@ -3465,7 +3448,7 @@
 			</DropdownMenu.Trigger>
 			<DropdownMenu.Content side="top" align="start" class="min-w-48">
 				{#each mobileToolCommands('retouch') as command (command.id)}
-					{@const Icon = commandIcons[command.id] ?? EraserIcon}
+					{@const Icon = commandIcons.get(command.id) ?? EraserIcon}
 					<DropdownMenu.Item
 						onclick={() => executeEditorCommand(command.id)}
 						disabled={!commandEnabled(command.id)}
@@ -3551,7 +3534,7 @@
 					</DropdownMenu.Trigger>
 					<DropdownMenu.Content side="top" align="start" class="min-w-52">
 						{#each railSlotCommands('pixel_select') as command (command.id)}
-							{@const CommandIcon = commandIcons[command.id] ?? RectangleSelectIcon}
+							{@const CommandIcon = commandIcons.get(command.id) ?? RectangleSelectIcon}
 							<DropdownMenu.Item
 								onclick={() => executeEditorCommand(command.id)}
 								disabled={!commandEnabled(command.id)}
@@ -3588,7 +3571,7 @@
 					</DropdownMenu.Trigger>
 					<DropdownMenu.Content side="top" align="start" class="min-w-44">
 						{#each railSlotCommands('fill') as command (command.id)}
-							{@const CommandIcon = commandIcons[command.id] ?? PaintBucketIcon}
+							{@const CommandIcon = commandIcons.get(command.id) ?? PaintBucketIcon}
 							<DropdownMenu.Item
 								onclick={() => executeEditorCommand(command.id)}
 								disabled={!commandEnabled(command.id)}
@@ -3625,7 +3608,7 @@
 					</DropdownMenu.Trigger>
 					<DropdownMenu.Content side="top" align="start" class="min-w-48">
 						{#each railSlotCommands('erase') as command (command.id)}
-							{@const CommandIcon = commandIcons[command.id] ?? EraserIcon}
+							{@const CommandIcon = commandIcons.get(command.id) ?? EraserIcon}
 							<DropdownMenu.Item
 								onclick={() => executeEditorCommand(command.id)}
 								disabled={!commandEnabled(command.id)}
