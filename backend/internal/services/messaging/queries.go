@@ -152,7 +152,7 @@ func (s *Service) ListMessages(ctx context.Context, actor Actor, input MessageQu
 	return page, nil
 }
 
-func (s *Service) ListSyncStates(ctx context.Context, actor Actor, workspaceID string) ([]models.CommunicationSyncState, error) {
+func (s *Service) ListSyncStates(ctx context.Context, actor Actor, workspaceID string) ([]models.MessagingSyncState, error) {
 	if err := s.authorize(ctx, workspaceID, actor, workspaceaccess.LevelRead); err != nil {
 		return nil, err
 	}

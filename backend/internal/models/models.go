@@ -1500,16 +1500,34 @@ type DirectMessage struct {
 	UpdatedAt       time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"updated_at"`
 }
 
-// CommunicationSyncState is the latest safe cursor and collection state for
-// one engagement or messaging subject.
-type CommunicationSyncState struct {
-	bun.BaseModel `bun:"table:communication_sync_states"`
+// EngagementSyncState is the latest safe cursor and collection state for one rendition.
+type EngagementSyncState struct {
+	bun.BaseModel `bun:"table:engagement_sync_states"`
 
 	ID               string    `bun:",pk" json:"id"`
 	WorkspaceID      string    `bun:"workspace_id,notnull" json:"workspace_id"`
-	Capability       string    `bun:",notnull" json:"capability"`
-	SubjectType      string    `bun:"subject_type,notnull" json:"subject_type"`
-	SubjectID        string    `bun:"subject_id,notnull" json:"subject_id"`
+	RenditionID      string    `bun:"rendition_id,notnull" json:"rendition_id"`
+	SocialAccountID  string    `bun:"social_account_id,notnull" json:"social_account_id"`
+	Platform         string    `bun:",notnull" json:"platform"`
+	Status           string    `bun:",notnull,default:'pending'" json:"status"`
+	ErrorCode        string    `bun:"error_code,notnull,default:''" json:"error_code"`
+	ErrorMessage     string    `bun:"error_message,notnull,default:''" json:"error_message"`
+	Cursor           string    `bun:",notnull,default:''" json:"cursor"`
+	BackfillComplete bool      `bun:"backfill_complete,notnull,default:false" json:"backfill_complete"`
+	LastAttemptedAt  time.Time `bun:"last_attempted_at,nullzero" json:"last_attempted_at"`
+	LastSuccessAt    time.Time `bun:"last_success_at,nullzero" json:"last_success_at"`
+	NextSyncAt       time.Time `bun:"next_sync_at,nullzero" json:"next_sync_at"`
+	EmptyStreak      int       `bun:"empty_streak,notnull,default:0" json:"empty_streak"`
+	CreatedAt        time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
+	UpdatedAt        time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"updated_at"`
+}
+
+// MessagingSyncState is the latest safe cursor and collection state for one account inbox.
+type MessagingSyncState struct {
+	bun.BaseModel `bun:"table:messaging_sync_states"`
+
+	ID               string    `bun:",pk" json:"id"`
+	WorkspaceID      string    `bun:"workspace_id,notnull" json:"workspace_id"`
 	SocialAccountID  string    `bun:"social_account_id,notnull" json:"social_account_id"`
 	Platform         string    `bun:",notnull" json:"platform"`
 	Status           string    `bun:",notnull,default:'pending'" json:"status"`

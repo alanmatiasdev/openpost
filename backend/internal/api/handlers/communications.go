@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/danielgtaylor/huma/v2"
@@ -17,14 +18,14 @@ import (
 	"github.com/openpost/backend/internal/services/messaging"
 )
 
-type CommunicationsHandler struct {
+type EngagementMessagingHandler struct {
 	auth       middleware.Authenticator
 	messaging  *messaging.Service
 	engagement *engagement.Service
 }
 
-func NewCommunicationsHandler(auth middleware.Authenticator, messagingService *messaging.Service, engagementService *engagement.Service) *CommunicationsHandler {
-	return &CommunicationsHandler{auth: auth, messaging: messagingService, engagement: engagementService}
+func NewEngagementMessagingHandler(auth middleware.Authenticator, messagingService *messaging.Service, engagementService *engagement.Service) *EngagementMessagingHandler {
+	return &EngagementMessagingHandler{auth: auth, messaging: messagingService, engagement: engagementService}
 }
 
 type ListEngagementInput struct {
@@ -146,16 +147,62 @@ type SetConversationStateInput struct {
 	}
 }
 
-type RefreshCommunicationsInput struct {
+type RefreshCapabilitiesInput struct {
 	Body struct {
 		WorkspaceID string `json:"workspace_id" required:"true"`
 	}
 }
 
-type RefreshCommunicationsOutput struct {
-	Body struct {
-		Queued int `json:"queued"`
+type RefreshCapabilityOutcome struct {
+	Status    string `json:"status" enum:"queued,failed,unavailable"`
+	Queued    int    `json:"queued"`
+	ErrorCode string `json:"error_code,omitempty"`
+}
+
+type RefreshCapabilitiesResult struct {
+	Engagement RefreshCapabilityOutcome `json:"engagement"`
+	Messaging  RefreshCapabilityOutcome `json:"messaging"`
+}
+
+type RefreshCapabilitiesOutput struct {
+	Body RefreshCapabilitiesResult
+}
+
+type RefreshCapabilityOutput struct {
+	Body RefreshCapabilityOutcome
+}
+
+type refreshCapability func(context.Context) (int, error)
+
+func coordinateCapabilityRefresh(ctx context.Context, engagementRefresh, messagingRefresh refreshCapability) RefreshCapabilitiesResult {
+	var result RefreshCapabilitiesResult
+	var wait sync.WaitGroup
+	wait.Add(2)
+	go func() {
+		defer wait.Done()
+		result.Engagement = runCapabilityRefresh(ctx, engagementRefresh)
+	}()
+	go func() {
+		defer wait.Done()
+		result.Messaging = runCapabilityRefresh(ctx, messagingRefresh)
+	}()
+	wait.Wait()
+	return result
+}
+
+func runCapabilityRefresh(ctx context.Context, refresh refreshCapability) RefreshCapabilityOutcome {
+	if refresh == nil {
+		return RefreshCapabilityOutcome{Status: "unavailable", ErrorCode: "service_unavailable"}
 	}
+	queued, err := refresh(ctx)
+	if err != nil {
+		code := "refresh_failed"
+		if errors.Is(err, engagement.ErrAccessDenied) || errors.Is(err, messaging.ErrAccessDenied) {
+			code = "access_denied"
+		}
+		return RefreshCapabilityOutcome{Status: "failed", ErrorCode: code}
+	}
+	return RefreshCapabilityOutcome{Status: "queued", Queued: queued}
 }
 
 type engagementCursorPayload struct {
@@ -277,12 +324,12 @@ func parseMessageCursor(value string) (*messaging.MessageCursor, error) {
 	}, nil
 }
 
-//nolint:gocyclo // Each branch registers an independent, typed communications endpoint.
-func (h *CommunicationsHandler) RegisterRoutes(api huma.API) {
+//nolint:gocyclo // Each branch registers an independent, typed capability endpoint.
+func (h *EngagementMessagingHandler) RegisterRoutes(api huma.API) {
 	huma.Register(api, huma.Operation{
 		OperationID: "list-engagement",
 		Method:      http.MethodGet, Path: "/engagement", Summary: "List stored replies and comments",
-		Tags: []string{tagCommunications}, Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
+		Tags: []string{tagEngagement}, Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
 	}, func(ctx context.Context, input *ListEngagementInput) (*ListEngagementOutput, error) {
 		if h.engagement == nil {
 			return nil, huma.Error503ServiceUnavailable("engagement service is unavailable")
@@ -306,7 +353,7 @@ func (h *CommunicationsHandler) RegisterRoutes(api huma.API) {
 		safeStates := make([]EngagementSyncState, 0, len(states))
 		for _, state := range states {
 			safeStates = append(safeStates, EngagementSyncState{
-				ID: state.ID, RenditionID: state.SubjectID, SocialAccountID: state.SocialAccountID,
+				ID: state.ID, RenditionID: state.RenditionID, SocialAccountID: state.SocialAccountID,
 				Platform: state.Platform, Status: state.Status, ErrorCode: state.ErrorCode,
 				ErrorMessage: state.ErrorMessage, LastSuccessAt: state.LastSuccessAt, NextSyncAt: state.NextSyncAt,
 			})
@@ -320,7 +367,7 @@ func (h *CommunicationsHandler) RegisterRoutes(api huma.API) {
 	huma.Register(api, huma.Operation{
 		OperationID: "set-engagement-state",
 		Method:      http.MethodPost, Path: "/engagement/state", Summary: "Mark engagement read or archived",
-		Tags: []string{tagCommunications}, Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
+		Tags: []string{tagEngagement}, Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
 	}, func(ctx context.Context, input *SetEngagementStateInput) (*struct{}, error) {
 		if h.engagement == nil {
 			return nil, huma.Error503ServiceUnavailable("engagement service is unavailable")
@@ -337,7 +384,7 @@ func (h *CommunicationsHandler) RegisterRoutes(api huma.API) {
 	huma.Register(api, huma.Operation{
 		OperationID: "queue-engagement-action",
 		Method:      http.MethodPost, Path: "/engagement/{item_id}/actions", Summary: "Queue a reply or moderation action",
-		Tags: []string{tagCommunications}, Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
+		Tags: []string{tagEngagement}, Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
 	}, func(ctx context.Context, input *EngagementActionInput) (*struct{}, error) {
 		if h.engagement == nil {
 			return nil, huma.Error503ServiceUnavailable("engagement service is unavailable")
@@ -357,7 +404,7 @@ func (h *CommunicationsHandler) RegisterRoutes(api huma.API) {
 	huma.Register(api, huma.Operation{
 		OperationID: "list-conversations",
 		Method:      http.MethodGet, Path: "/messages", Summary: "List stored social conversations",
-		Tags: []string{tagCommunications}, Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
+		Tags: []string{tagMessaging}, Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
 	}, func(ctx context.Context, input *ListConversationsInput) (*ListConversationsOutput, error) {
 		if h.messaging == nil {
 			return nil, huma.Error503ServiceUnavailable("messaging service is unavailable")
@@ -394,7 +441,7 @@ func (h *CommunicationsHandler) RegisterRoutes(api huma.API) {
 	huma.Register(api, huma.Operation{
 		OperationID: "list-conversation-messages",
 		Method:      http.MethodGet, Path: "/messages/{conversation_id}", Summary: "List messages in a stored conversation",
-		Tags: []string{tagCommunications}, Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
+		Tags: []string{tagMessaging}, Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
 	}, func(ctx context.Context, input *ListMessagesInput) (*ListMessagesOutput, error) {
 		if h.messaging == nil {
 			return nil, huma.Error503ServiceUnavailable("messaging service is unavailable")
@@ -422,7 +469,7 @@ func (h *CommunicationsHandler) RegisterRoutes(api huma.API) {
 	huma.Register(api, huma.Operation{
 		OperationID: "send-conversation-message",
 		Method:      http.MethodPost, Path: "/messages/{conversation_id}/send", Summary: "Queue a social direct message",
-		Tags: []string{tagCommunications}, Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
+		Tags: []string{tagMessaging}, Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
 	}, func(ctx context.Context, input *SendMessageInput) (*SendMessageOutput, error) {
 		if h.messaging == nil {
 			return nil, huma.Error503ServiceUnavailable("messaging service is unavailable")
@@ -440,7 +487,7 @@ func (h *CommunicationsHandler) RegisterRoutes(api huma.API) {
 	huma.Register(api, huma.Operation{
 		OperationID: "set-conversation-state",
 		Method:      http.MethodPost, Path: "/messages/{conversation_id}/state", Summary: "Mark a conversation read or archived",
-		Tags: []string{tagCommunications}, Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
+		Tags: []string{tagMessaging}, Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
 	}, func(ctx context.Context, input *SetConversationStateInput) (*struct{}, error) {
 		if h.messaging == nil {
 			return nil, huma.Error503ServiceUnavailable("messaging service is unavailable")
@@ -455,27 +502,48 @@ func (h *CommunicationsHandler) RegisterRoutes(api huma.API) {
 	})
 
 	huma.Register(api, huma.Operation{
-		OperationID: "refresh-communications",
-		Method:      http.MethodPost, Path: "/communications/refresh", Summary: "Queue engagement and message collection",
-		Tags: []string{tagCommunications}, Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
-	}, func(ctx context.Context, input *RefreshCommunicationsInput) (*RefreshCommunicationsOutput, error) {
-		if h.messaging == nil {
-			return nil, huma.Error503ServiceUnavailable("messaging service is unavailable")
-		}
-		queued, err := h.messaging.RefreshWorkspace(ctx, messagingActor(ctx), input.Body.WorkspaceID, true)
-		if err != nil {
-			return nil, huma.Error500InternalServerError("failed to queue communications refresh")
-		}
+		OperationID: "refresh-engagement-and-messaging",
+		Method:      http.MethodPost, Path: "/engagement-and-messaging/refresh", Summary: "Queue engagement and message collection",
+		Tags: []string{tagCapabilities}, Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
+	}, func(ctx context.Context, input *RefreshCapabilitiesInput) (*RefreshCapabilitiesOutput, error) {
+		var engagementRefresh, messagingRefresh refreshCapability
 		if h.engagement != nil {
-			engagementQueued, engagementErr := h.engagement.RefreshWorkspace(ctx, engagementActor(ctx), input.Body.WorkspaceID, true)
-			if engagementErr != nil {
-				return nil, engagementHTTPError(engagementErr, "failed to queue engagement refresh")
+			engagementRefresh = func(callCtx context.Context) (int, error) {
+				return h.engagement.RefreshWorkspace(callCtx, engagementActor(ctx), input.Body.WorkspaceID, true)
 			}
-			queued += engagementQueued
 		}
-		return &RefreshCommunicationsOutput{Body: struct {
-			Queued int `json:"queued"`
-		}{Queued: queued}}, nil
+		if h.messaging != nil {
+			messagingRefresh = func(callCtx context.Context) (int, error) {
+				return h.messaging.RefreshWorkspace(callCtx, messagingActor(ctx), input.Body.WorkspaceID, true)
+			}
+		}
+		return &RefreshCapabilitiesOutput{Body: coordinateCapabilityRefresh(ctx, engagementRefresh, messagingRefresh)}, nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "refresh-engagement",
+		Method:      http.MethodPost, Path: "/engagement/refresh", Summary: "Queue engagement collection",
+		Tags: []string{tagEngagement}, Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
+	}, func(ctx context.Context, input *RefreshCapabilitiesInput) (*RefreshCapabilityOutput, error) {
+		if h.engagement == nil {
+			return &RefreshCapabilityOutput{Body: runCapabilityRefresh(ctx, nil)}, nil
+		}
+		return &RefreshCapabilityOutput{Body: runCapabilityRefresh(ctx, func(callCtx context.Context) (int, error) {
+			return h.engagement.RefreshWorkspace(callCtx, engagementActor(ctx), input.Body.WorkspaceID, true)
+		})}, nil
+	})
+
+	huma.Register(api, huma.Operation{
+		OperationID: "refresh-messaging",
+		Method:      http.MethodPost, Path: "/messages/refresh", Summary: "Queue message collection",
+		Tags: []string{tagMessaging}, Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
+	}, func(ctx context.Context, input *RefreshCapabilitiesInput) (*RefreshCapabilityOutput, error) {
+		if h.messaging == nil {
+			return &RefreshCapabilityOutput{Body: runCapabilityRefresh(ctx, nil)}, nil
+		}
+		return &RefreshCapabilityOutput{Body: runCapabilityRefresh(ctx, func(callCtx context.Context) (int, error) {
+			return h.messaging.RefreshWorkspace(callCtx, messagingActor(ctx), input.Body.WorkspaceID, true)
+		})}, nil
 	})
 }
 

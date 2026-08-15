@@ -27,9 +27,6 @@ const (
 	JobTypeSweep          = jobregistry.TypeEngagementSweep
 	JobTypeEngagementSync = jobregistry.TypeEngagementSync
 	JobTypeEngagementAct  = jobregistry.TypeEngagementAction
-
-	capabilityEngagement = "engagement"
-	subjectRendition     = "rendition"
 )
 
 const sweepInterval = 5 * time.Minute
@@ -138,9 +135,8 @@ type ProviderCommentActionInput struct {
 
 func (s *Service) handleSweep(ctx context.Context) error {
 	if _, err := s.db.NewDelete().
-		Model((*models.CommunicationSyncState)(nil)).
-		Where("capability = ? AND subject_type = ?", capabilityEngagement, subjectRendition).
-		Where("NOT EXISTS (SELECT 1 FROM renditions AS rendition WHERE rendition.id = communication_sync_state.subject_id)").
+		Model((*models.EngagementSyncState)(nil)).
+		Where("NOT EXISTS (SELECT 1 FROM renditions AS rendition WHERE rendition.id = engagement_sync_state.rendition_id)").
 		Exec(ctx); err != nil {
 		return fmt.Errorf("cleaning engagement sync state: %w", err)
 	}
@@ -199,10 +195,10 @@ func (s *Service) refreshWorkspace(ctx context.Context, workspaceID string, forc
 		}
 		support := engagement.EngagementSupport()
 		if missing := platform.MissingAnalyticsScopes(account.GrantedScopes, support.RequiredScopes); len(missing) > 0 {
-			_ = s.recordState(ctx, capabilityEngagement, subjectRendition, rendition.ID, account, "permission_required", "missing_scope", "Reconnect this account and grant engagement access.", "", false, 24*time.Hour, 0)
+			_ = s.recordState(ctx, rendition.ID, account, "permission_required", "missing_scope", "Reconnect this account and grant engagement access.", "", false, 24*time.Hour, 0)
 			continue
 		}
-		if !force && !s.due(ctx, capabilityEngagement, subjectRendition, rendition.ID, now) {
+		if !force && !s.due(ctx, rendition.ID, now) {
 			continue
 		}
 		payload, _ := json.Marshal(subjectJob{ID: rendition.ID})
@@ -231,21 +227,21 @@ func (s *Service) syncEngagement(ctx context.Context, renditionID string) error 
 	}
 	commenter, ok := s.adapter(account).(platform.EngagementAdapter)
 	if !ok || !commenter.EngagementSupport().Enabled {
-		return s.recordState(ctx, capabilityEngagement, subjectRendition, rendition.ID, account, "unsupported", "unsupported", "Engagement collection is not supported for this provider.", "", true, 0, 0)
+		return s.recordState(ctx, rendition.ID, account, "unsupported", "unsupported", "Engagement collection is not supported for this provider.", "", true, 0, 0)
 	}
 	support := commenter.EngagementSupport()
 	if missing := platform.MissingAnalyticsScopes(account.GrantedScopes, support.RequiredScopes); len(missing) > 0 {
-		return s.recordState(ctx, capabilityEngagement, subjectRendition, rendition.ID, account, "permission_required", "missing_scope", "Reconnect this account and grant engagement access.", "", false, 24*time.Hour, 0)
+		return s.recordState(ctx, rendition.ID, account, "permission_required", "missing_scope", "Reconnect this account and grant engagement access.", "", false, 24*time.Hour, 0)
 	}
 	token, err := s.tokenSource.GetValidAccessToken(ctx, account.ID)
 	if err != nil {
-		return s.recordState(ctx, capabilityEngagement, subjectRendition, rendition.ID, account, "permission_required", "authentication", "Reconnect this account to resume engagement collection.", "", true, 24*time.Hour, 0)
+		return s.recordState(ctx, rendition.ID, account, "permission_required", "authentication", "Reconnect this account to resume engagement collection.", "", true, 24*time.Hour, 0)
 	}
 	s.resolveAndStoreContentURL(ctx, commenter, token, account, &rendition)
 	comments, err := commenter.ListComments(ctx, token, account.AccountID, rendition.ExternalID)
 	if err != nil {
 		status, code, message, cadence := classifyEngagementReadError(err)
-		return s.recordState(ctx, capabilityEngagement, subjectRendition, rendition.ID, account, status, code, message, "", true, cadence, 0)
+		return s.recordState(ctx, rendition.ID, account, status, code, message, "", true, cadence, 0)
 	}
 	now := s.now()
 	var publication models.Publication
@@ -258,7 +254,7 @@ func (s *Service) syncEngagement(ctx context.Context, renditionID string) error 
 		publishedAt = firstNonZeroTime(publication.UpdatedAt, publication.CreatedAt)
 	}
 	cadence := engagementCadence(publishedAt, now, len(comments) == 0)
-	return s.recordState(ctx, capabilityEngagement, subjectRendition, rendition.ID, account, "ok", "", "", "", true, cadence, boolToInt(len(comments) == 0))
+	return s.recordState(ctx, rendition.ID, account, "ok", "", "", "", true, cadence, boolToInt(len(comments) == 0))
 }
 
 func (s *Service) persistEngagementComments(
@@ -661,7 +657,7 @@ func (s *Service) executeEngagementAction(
 ) error {
 	// Preserve the historical namespace so accepted writes fenced before the
 	// module extraction remain idempotent after deployment.
-	fingerprint, err := providerwrite.Fingerprint("communications-engagement-action-v1", map[string]string{
+	fingerprint, err := providerwrite.Fingerprint("engagement-action-v1", map[string]string{
 		"item_id": item.ID, "remote_id": item.RemoteID, "action": input.Action, "message": input.Message,
 	})
 	if err != nil {
@@ -673,7 +669,7 @@ func (s *Service) executeEngagementAction(
 		operationOwner = item.ID + ":" + input.Action
 	}
 	_, err = providerwrite.New(s.db).Execute(ctx, providerwrite.Input{
-		OperationID: "communications:" + operationOwner,
+		OperationID: "engagement:" + operationOwner,
 		JobID:       execution.ID, WorkspaceID: item.WorkspaceID,
 		SocialAccountID: account.ID, TargetKey: engagementProviderKey(account),
 		Provider: account.Platform, Operation: "engagement_" + input.Action,
@@ -1281,13 +1277,13 @@ func engagementFilters(query *bun.SelectQuery, platformName, accountID, publicat
 	return query
 }
 
-func (s *Service) ListEngagementSyncStates(ctx context.Context, actor Actor, workspaceID string) ([]models.CommunicationSyncState, error) {
+func (s *Service) ListEngagementSyncStates(ctx context.Context, actor Actor, workspaceID string) ([]models.EngagementSyncState, error) {
 	if err := s.authorize(ctx, workspaceID, actor, workspaceaccess.LevelRead); err != nil {
 		return nil, err
 	}
-	var states []models.CommunicationSyncState
+	var states []models.EngagementSyncState
 	err := s.db.NewSelect().Model(&states).
-		Where("workspace_id = ? AND capability = ?", workspaceID, capabilityEngagement).
+		Where("workspace_id = ?", workspaceID).
 		Order("platform ASC", "social_account_id ASC").
 		Scan(ctx)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -1338,34 +1334,33 @@ func engagementProviderKey(account models.SocialAccount) string {
 	return key
 }
 
-func (s *Service) due(ctx context.Context, capability, subjectType, subjectID string, now time.Time) bool {
-	state := s.loadState(ctx, capability, subjectType, subjectID)
+func (s *Service) due(ctx context.Context, renditionID string, now time.Time) bool {
+	state := s.loadState(ctx, renditionID)
 	return state == nil || state.NextSyncAt.IsZero() || !state.NextSyncAt.After(now)
 }
 
-func (s *Service) loadState(ctx context.Context, capability, subjectType, subjectID string) *models.CommunicationSyncState {
-	var state models.CommunicationSyncState
-	err := s.db.NewSelect().Model(&state).Where("id = ?", syncStateID(capability, subjectType, subjectID)).Scan(ctx)
+func (s *Service) loadState(ctx context.Context, renditionID string) *models.EngagementSyncState {
+	var state models.EngagementSyncState
+	err := s.db.NewSelect().Model(&state).Where("id = ?", syncStateID(renditionID)).Scan(ctx)
 	if err != nil {
 		return nil
 	}
 	return &state
 }
 
-func (s *Service) recordState(ctx context.Context, capability, subjectType, subjectID string, account models.SocialAccount, status, code, message, cursor string, backfillComplete bool, cadence time.Duration, emptyStreak int) error {
+func (s *Service) recordState(ctx context.Context, renditionID string, account models.SocialAccount, status, code, message, cursor string, backfillComplete bool, cadence time.Duration, emptyStreak int) error {
 	now := s.now()
 	next := time.Time{}
 	if cadence > 0 {
 		next = now.Add(cadence)
 	}
-	state := &models.CommunicationSyncState{
-		ID: syncStateID(capability, subjectType, subjectID), WorkspaceID: account.WorkspaceID,
-		Capability: capability, SubjectType: subjectType, SubjectID: subjectID,
+	state := &models.EngagementSyncState{
+		ID: syncStateID(renditionID), WorkspaceID: account.WorkspaceID, RenditionID: renditionID,
 		SocialAccountID: account.ID, Platform: account.Platform, Status: status,
 		ErrorCode: code, ErrorMessage: message, Cursor: cursor, BackfillComplete: backfillComplete, LastAttemptedAt: now,
 		NextSyncAt: next, EmptyStreak: emptyStreak, CreatedAt: now, UpdatedAt: now,
 	}
-	old := s.loadState(ctx, capability, subjectType, subjectID)
+	old := s.loadState(ctx, renditionID)
 	if old != nil {
 		state.LastSuccessAt = old.LastSuccessAt
 	}
@@ -1411,8 +1406,8 @@ func (s *Service) enqueue(ctx context.Context, workspaceID, jobType, payload str
 	return inserted, err
 }
 
-func syncStateID(capability, subjectType, subjectID string) string {
-	return capability + ":" + subjectType + ":" + subjectID
+func syncStateID(renditionID string) string {
+	return "engagement:rendition:" + renditionID
 }
 
 func parseProviderTime(raw string) time.Time {

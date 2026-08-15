@@ -175,7 +175,7 @@ func TestWorkerMarksStaleProviderWriteAmbiguousBeforeRequeue(t *testing.T) {
 	require.Equal(t, "worker_interrupted", attempt.SafeErrorClass)
 }
 
-func TestWorkerNeverRequeuesAmbiguousCommunicationsWrites(t *testing.T) {
+func TestWorkerNeverRequeuesAmbiguousProviderWrites(t *testing.T) {
 	t.Parallel()
 
 	db := createTestDB(t)

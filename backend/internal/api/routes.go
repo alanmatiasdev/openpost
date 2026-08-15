@@ -259,7 +259,7 @@ func RegisterHumaRoutes(api huma.API, deps RouteDeps) {
 	commentHandler.SetTokenSource(deps.TokenSource)
 	commentHandler.RegisterRoutes(api)
 	handlers.NewAnalyticsHandler(deps.DB, deps.Authenticator, deps.AnalyticsService).RegisterRoutes(api)
-	handlers.NewCommunicationsHandler(deps.Authenticator, deps.MessagingService, deps.EngagementService).RegisterRoutes(api)
+	handlers.NewEngagementMessagingHandler(deps.Authenticator, deps.MessagingService, deps.EngagementService).RegisterRoutes(api)
 	handlers.NewNotificationHandler(deps.DB, deps.Authenticator, deps.NotificationService).RegisterRoutes(api)
 	handlers.NewInstanceAdminHandler(
 		deps.DB,

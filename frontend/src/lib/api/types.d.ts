@@ -1711,23 +1711,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/communications/refresh": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Queue engagement and message collection */
-        post: operations["refresh-communications"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/engagement": {
         parameters: {
             query?: never;
@@ -1739,6 +1722,40 @@ export interface paths {
         get: operations["list-engagement"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/engagement-and-messaging/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Queue engagement and message collection */
+        post: operations["refresh-engagement-and-messaging"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/engagement/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Queue engagement collection */
+        post: operations["refresh-engagement"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2529,6 +2546,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/messages/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Queue message collection */
+        post: operations["refresh-messaging"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/messages/{conversation_id}": {
         parameters: {
             query?: never;
@@ -3143,10 +3177,18 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List posts for a workspace */
+        /**
+         * List posts for a workspace
+         * @deprecated
+         * @description Deprecated compatibility route. Use GET /publications with workspace_id, status or activity_bucket, calendar_from, calendar_before, limit, and offset. The legacy response projects Publication and Rendition state into Post fields.
+         */
         get: operations["list-posts"];
         put?: never;
-        /** Create a new post */
+        /**
+         * Create a new post
+         * @deprecated
+         * @description Deprecated compatibility route. Create a Publication with Renditions instead; content maps to source_text and the first segment body, social_account_ids map to rendition social_account_id values, media_ids map to segment or rendition media, and scheduled_at moves to the Publication schedule endpoint.
+         */
         post: operations["create-post"];
         delete?: never;
         options?: never;
@@ -3163,7 +3205,11 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Atomically create a text or thread draft */
+        /**
+         * Atomically create a text or thread draft
+         * @deprecated
+         * @description Deprecated compatibility route. Use POST /publications with segments and renditions; the response includes the canonical publication_id for migration.
+         */
         post: operations["create-text-post-draft"];
         delete?: never;
         options?: never;
@@ -3180,7 +3226,8 @@ export interface paths {
         };
         /**
          * Get canonical publication schedule overview
-         * @description Compatibility path for a monthly summary sourced exclusively from canonical publications and renditions.
+         * @deprecated
+         * @description Deprecated compatibility route. Use GET /publications with calendar_from and calendar_before for the month and aggregate client-side until a dedicated Publication calendar aggregate is introduced.
          */
         get: operations["get-schedule-overview"];
         put?: never;
@@ -3200,7 +3247,11 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Create a thread of posts */
+        /**
+         * Create a thread of posts
+         * @deprecated
+         * @description Deprecated compatibility route. Create a Publication with creation_preset=thread, one segment per thread item, and one Rendition per destination account, then schedule the Publication.
+         */
         post: operations["create-thread"];
         delete?: never;
         options?: never;
@@ -3215,15 +3266,27 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get a single post */
+        /**
+         * Get a single post
+         * @deprecated
+         * @description Deprecated compatibility route. Resolve the legacy Post ID through its Publication alias and use GET /publications/{id}; legacy destinations and variants are projected from Renditions.
+         */
         get: operations["get-post"];
         put?: never;
         post?: never;
-        /** Delete a post */
+        /**
+         * Delete a post
+         * @deprecated
+         * @description Deprecated compatibility route. Resolve the legacy Post ID to its Publication alias and use DELETE /publications/{id} with the current expected_revision.
+         */
         delete: operations["delete-post"];
         options?: never;
         head?: never;
-        /** Update a post */
+        /**
+         * Update a post
+         * @deprecated
+         * @description Deprecated compatibility route. Use PATCH /publications/{id} for draft changes, POST /publications/{id}/schedule for scheduling, and POST /publications/{id}/cancel for cancellation.
+         */
         patch: operations["update-post"];
         trace?: never;
     };
@@ -3235,7 +3298,11 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Atomically save a text or thread draft */
+        /**
+         * Atomically save a text or thread draft
+         * @deprecated
+         * @description Deprecated compatibility route. Use PATCH /publications/{id} with expected_revision, segments, renditions, media, settings, and schedule fields.
+         */
         put: operations["save-text-post-draft"];
         post?: never;
         delete?: never;
@@ -3251,12 +3318,24 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get per-platform content variants for a post */
+        /**
+         * Get per-platform content variants for a post
+         * @deprecated
+         * @description Deprecated compatibility route. Use GET /publications/{id}; Renditions contain destination-specific body, media, format, settings, and delivery state.
+         */
         get: operations["get-post-variants"];
-        /** Upsert per-platform content variants for a post */
+        /**
+         * Upsert per-platform content variants for a post
+         * @deprecated
+         * @description Deprecated compatibility route. Use PUT /publications/{id}/renditions with expected_revision; variant social_account_id, content, media_ids, and settings map to Rendition fields.
+         */
         put: operations["upsert-post-variants"];
         post?: never;
-        /** Delete all variants for a post (reset to unified content) */
+        /**
+         * Delete all variants for a post (reset to unified content)
+         * @deprecated
+         * @description Deprecated compatibility route. Use PUT /publications/{id}/renditions with expected_revision and the replacement Rendition list.
+         */
         delete: operations["delete-post-variants"];
         options?: never;
         head?: never;
@@ -9868,24 +9947,37 @@ export interface components {
             /** Format: int64 */
             queued: number;
         };
-        RefreshCommunicationsInputBody: {
+        RefreshCapabilitiesInputBody: {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example https://example.com/schemas/RefreshCommunicationsInputBody.json
+             * @example https://example.com/schemas/RefreshCapabilitiesInputBody.json
              */
             readonly $schema?: string;
             workspace_id: string;
         };
-        RefreshCommunicationsOutputBody: {
+        RefreshCapabilitiesResult: {
             /**
              * Format: uri
              * @description A URL to the JSON Schema for this object.
-             * @example https://example.com/schemas/RefreshCommunicationsOutputBody.json
+             * @example https://example.com/schemas/RefreshCapabilitiesResult.json
              */
             readonly $schema?: string;
+            engagement: components["schemas"]["RefreshCapabilityOutcome"];
+            messaging: components["schemas"]["RefreshCapabilityOutcome"];
+        };
+        RefreshCapabilityOutcome: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/RefreshCapabilityOutcome.json
+             */
+            readonly $schema?: string;
+            error_code?: string;
             /** Format: int64 */
             queued: number;
+            /** @enum {string} */
+            status: "queued" | "failed" | "unavailable";
         };
         RegisterInputBody: {
             /**
@@ -18306,39 +18398,6 @@ export interface operations {
             };
         };
     };
-    "refresh-communications": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RefreshCommunicationsInputBody"];
-            };
-        };
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RefreshCommunicationsOutputBody"];
-                };
-            };
-            /** @description Error */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ErrorModel"];
-                };
-            };
-        };
-    };
     "list-engagement": {
         parameters: {
             query: {
@@ -18366,6 +18425,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EngagementPage"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "refresh-engagement-and-messaging": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RefreshCapabilitiesInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RefreshCapabilitiesResult"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "refresh-engagement": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RefreshCapabilitiesInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RefreshCapabilityOutcome"];
                 };
             };
             /** @description Error */
@@ -21776,6 +21901,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ConversationPage"];
+                };
+            };
+            /** @description Error */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "refresh-messaging": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RefreshCapabilitiesInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RefreshCapabilityOutcome"];
                 };
             };
             /** @description Error */

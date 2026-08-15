@@ -15,7 +15,6 @@ import (
 	"github.com/openpost/backend/internal/models"
 	analyticsservice "github.com/openpost/backend/internal/services/analytics"
 	billingservice "github.com/openpost/backend/internal/services/billing"
-	communicationsservice "github.com/openpost/backend/internal/services/communications"
 	engagementservice "github.com/openpost/backend/internal/services/engagement"
 	"github.com/openpost/backend/internal/services/feedback"
 	"github.com/openpost/backend/internal/services/medialifecycle"
@@ -59,7 +58,6 @@ type BackgroundWorker struct {
 	feedback              *feedback.Service
 	analytics             *analyticsservice.Service
 	billing               *billingservice.Service
-	communications        *communicationsservice.Service
 	engagement            *engagementservice.Service
 	messaging             *messagingservice.Service
 	notifications         *notifications.Service
@@ -100,16 +98,6 @@ func (w *BackgroundWorker) SetBillingService(service *billingservice.Service) {
 			return fmt.Errorf("billing reconciliation is not configured")
 		}
 		return w.billing.HandleJob(ctx, job.Type, job.Payload)
-	}
-}
-
-func (w *BackgroundWorker) SetCommunicationsService(service *communicationsservice.Service) {
-	w.communications = service
-	w.executors[jobregistry.ExecuteCommunications] = func(ctx context.Context, job *models.Job) error {
-		if w.communications == nil {
-			return fmt.Errorf("communications collection is not configured")
-		}
-		return w.communications.HandleJob(ctx, job.Type, job.Payload)
 	}
 }
 

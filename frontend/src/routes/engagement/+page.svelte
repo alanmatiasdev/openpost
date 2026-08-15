@@ -312,13 +312,19 @@
 	async function refresh() {
 		if (!workspaceId) return;
 		refreshing = true;
-		const { error: apiError } = await client.POST('/communications/refresh', {
+		const { data, error: apiError } = await client.POST('/engagement/refresh', {
 			body: { workspace_id: workspaceId }
 		});
 		refreshing = false;
+		const failed = apiError || data?.status === 'failed';
+		const unavailable = data?.status === 'unavailable';
 		showToast(
-			apiError ? m.communications_refresh_failed() : m.communications_refresh_queued(),
-			apiError ? 'error' : 'success'
+			unavailable
+				? m.engagement_refresh_unavailable()
+				: failed
+					? m.engagement_refresh_failed()
+					: m.engagement_refresh_queued(),
+			failed || unavailable ? 'error' : 'success'
 		);
 	}
 
@@ -602,7 +608,7 @@
 											onclick={refresh}
 											disabled={refreshing}
 										>
-											{m.communications_refresh()}
+											{m.engagement_refresh()}
 										</Button>
 									{/if}
 								</div>
@@ -614,7 +620,7 @@
 		{/if}
 		<Button variant="outline" onclick={refresh} disabled={refreshing || !workspaceId}>
 			<RefreshIcon class={refreshing ? 'size-4 animate-spin' : 'size-4'} />
-			{m.communications_refresh()}
+			{m.engagement_refresh()}
 		</Button>
 	{/snippet}
 

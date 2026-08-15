@@ -348,7 +348,7 @@
 			});
 			if (err) throw new Error(err.detail || m.accounts_update_slug_failed());
 			if (editingAccount.messaging_supported && editMessagesEnabled && selectedWorkspaceId) {
-				await client.POST('/communications/refresh', {
+				await client.POST('/messages/refresh', {
 					body: { workspace_id: selectedWorkspaceId }
 				});
 			}

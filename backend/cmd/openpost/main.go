@@ -37,7 +37,6 @@ import (
 	"github.com/openpost/backend/internal/services/auth"
 	"github.com/openpost/backend/internal/services/billing"
 	cliauth "github.com/openpost/backend/internal/services/cli_auth"
-	communicationsservice "github.com/openpost/backend/internal/services/communications"
 	"github.com/openpost/backend/internal/services/crypto"
 	"github.com/openpost/backend/internal/services/emailchange"
 	"github.com/openpost/backend/internal/services/emailverification"
@@ -393,14 +392,12 @@ func main() {
 	})
 	publishSvc.SetNotificationService(notificationService)
 	publishSvc.SetRepostScheduler(repostService)
-	communicationsService := communicationsservice.NewService(db, tokenManager, notificationService)
 	engagementService := engagementservice.NewService(db, tokenManager, notificationService)
 	messagingService := messagingservice.NewService(db, tokenManager, notificationService)
 	for name, adapter := range providers {
 		tokenManager.SetProvider(name, adapter)
 		publishSvc.SetProvider(name, adapter)
 		analyticsService.SetProvider(name, adapter)
-		communicationsService.SetProvider(name, adapter)
 		if engagementAdapter, ok := adapter.(platform.EngagementAdapter); ok {
 			engagementService.SetProvider(name, engagementAdapter)
 		}
@@ -505,7 +502,6 @@ func main() {
 	worker.SetFeedbackService(feedbackService)
 	worker.SetAnalyticsService(analyticsService)
 	worker.SetBillingService(billingService)
-	worker.SetCommunicationsService(communicationsService)
 	worker.SetEngagementService(engagementService)
 	worker.SetMessagingService(messagingService)
 	worker.SetNotificationService(notificationService)
@@ -519,9 +515,6 @@ func main() {
 	}
 	if err := analyticsService.ScheduleSweep(context.Background(), time.Now().UTC()); err != nil {
 		log.Fatalf("failed to schedule analytics collection: %v", err)
-	}
-	if err := communicationsService.ScheduleSweep(context.Background(), time.Now().UTC()); err != nil {
-		log.Fatalf("failed to schedule communications collection: %v", err)
 	}
 	if err := engagementService.ScheduleSweep(context.Background(), time.Now().UTC()); err != nil {
 		log.Fatalf("failed to schedule engagement collection: %v", err)
@@ -633,7 +626,6 @@ func main() {
 			tokenManager.SetProvider,
 			publishSvc.SetProvider,
 			analyticsService.SetProvider,
-			communicationsService.SetProvider,
 			func(name string, adapter platform.Adapter) {
 				if engagementAdapter, ok := adapter.(platform.EngagementAdapter); ok {
 					engagementService.SetProvider(name, engagementAdapter)

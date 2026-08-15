@@ -5,24 +5,6 @@ import (
 	"time"
 )
 
-// EngagementSupport describes a provider's normalized comment and reply
-// capabilities. It remains separate from publishing so providers can support
-// collection without changing the core Adapter contract.
-type EngagementSupport struct {
-	Enabled        bool
-	RequiredScopes []string
-	CanReply       bool
-	CanHide        bool
-	CanDelete      bool
-	CanLike        bool
-	Unavailable    string
-}
-
-type EngagementAdapter interface {
-	CommentAdapter
-	EngagementSupport() EngagementSupport
-}
-
 type MessagingSupport struct {
 	Enabled           bool
 	RequiredScopes    []string
@@ -65,16 +47,13 @@ type ProviderConversation struct {
 }
 
 type FetchMessagesRequest struct {
-	AccountID string
-	Cursor    string
-	Limit     int
+	AccountID, Cursor string
+	Limit             int
 }
-
 type FetchMessagesResult struct {
 	Conversations []ProviderConversation
 	NextCursor    string
 }
-
 type SendMessageRequest struct {
 	AccountID            string
 	RemoteConversationID string
@@ -83,17 +62,14 @@ type SendMessageRequest struct {
 	ReplyToRemoteID      string
 	Body                 string
 }
-
 type SendMessageResult struct {
 	RemoteMessageID string
 	CreatedAt       time.Time
 }
 
-// MessagingAdapter is an optional extension for providers that expose a
-// supported account inbox. Fetching and sending are always orchestrated by the
-// durable Messaging application module rather than page requests.
+// MessagingAdapter is the optional provider seam used by Messaging.
 type MessagingAdapter interface {
 	MessagingSupport() MessagingSupport
-	FetchMessages(ctx context.Context, accessToken string, input FetchMessagesRequest) (FetchMessagesResult, error)
-	SendMessage(ctx context.Context, accessToken string, input SendMessageRequest) (SendMessageResult, error)
+	FetchMessages(context.Context, string, FetchMessagesRequest) (FetchMessagesResult, error)
+	SendMessage(context.Context, string, SendMessageRequest) (SendMessageResult, error)
 }

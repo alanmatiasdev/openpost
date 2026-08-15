@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestRunMigrationsCreatesCommunicationsSchema(t *testing.T) {
+func TestRunMigrationsCreatesEngagementAndMessagingSchema(t *testing.T) {
 	t.Parallel()
 
 	db := newMigrationsTestDB(t)
@@ -17,7 +17,8 @@ func TestRunMigrationsCreatesCommunicationsSchema(t *testing.T) {
 		"engagement_items":              2,
 		"conversations":                 1,
 		"direct_messages":               1,
-		"communication_sync_states":     1,
+		"engagement_sync_states":        2,
+		"messaging_sync_states":         1,
 		"user_notifications":            1,
 		"user_notification_preferences": 1,
 	} {

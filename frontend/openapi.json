@@ -12968,12 +12968,12 @@
 				"required": ["queued", "message"],
 				"type": "object"
 			},
-			"RefreshCommunicationsInputBody": {
+			"RefreshCapabilitiesInputBody": {
 				"additionalProperties": false,
 				"properties": {
 					"$schema": {
 						"description": "A URL to the JSON Schema for this object.",
-						"examples": ["https://example.com/schemas/RefreshCommunicationsInputBody.json"],
+						"examples": ["https://example.com/schemas/RefreshCapabilitiesInputBody.json"],
 						"format": "uri",
 						"readOnly": true,
 						"type": "string"
@@ -12985,22 +12985,49 @@
 				"required": ["workspace_id"],
 				"type": "object"
 			},
-			"RefreshCommunicationsOutputBody": {
+			"RefreshCapabilitiesResult": {
 				"additionalProperties": false,
 				"properties": {
 					"$schema": {
 						"description": "A URL to the JSON Schema for this object.",
-						"examples": ["https://example.com/schemas/RefreshCommunicationsOutputBody.json"],
+						"examples": ["https://example.com/schemas/RefreshCapabilitiesResult.json"],
 						"format": "uri",
 						"readOnly": true,
+						"type": "string"
+					},
+					"engagement": {
+						"$ref": "#/components/schemas/RefreshCapabilityOutcome"
+					},
+					"messaging": {
+						"$ref": "#/components/schemas/RefreshCapabilityOutcome"
+					}
+				},
+				"required": ["engagement", "messaging"],
+				"type": "object"
+			},
+			"RefreshCapabilityOutcome": {
+				"additionalProperties": false,
+				"properties": {
+					"$schema": {
+						"description": "A URL to the JSON Schema for this object.",
+						"examples": ["https://example.com/schemas/RefreshCapabilityOutcome.json"],
+						"format": "uri",
+						"readOnly": true,
+						"type": "string"
+					},
+					"error_code": {
 						"type": "string"
 					},
 					"queued": {
 						"format": "int64",
 						"type": "integer"
+					},
+					"status": {
+						"enum": ["queued", "failed", "unavailable"],
+						"type": "string"
 					}
 				},
-				"required": ["queued"],
+				"required": ["status", "queued"],
 				"type": "object"
 			},
 			"RegisterInputBody": {
@@ -26137,45 +26164,6 @@
 				"tags": ["Publications"]
 			}
 		},
-		"/communications/refresh": {
-			"post": {
-				"operationId": "refresh-communications",
-				"requestBody": {
-					"content": {
-						"application/json": {
-							"schema": {
-								"$ref": "#/components/schemas/RefreshCommunicationsInputBody"
-							}
-						}
-					},
-					"required": true
-				},
-				"responses": {
-					"200": {
-						"content": {
-							"application/json": {
-								"schema": {
-									"$ref": "#/components/schemas/RefreshCommunicationsOutputBody"
-								}
-							}
-						},
-						"description": "OK"
-					},
-					"default": {
-						"content": {
-							"application/problem+json": {
-								"schema": {
-									"$ref": "#/components/schemas/ErrorModel"
-								}
-							}
-						},
-						"description": "Error"
-					}
-				},
-				"summary": "Queue engagement and message collection",
-				"tags": ["Communications"]
-			}
-		},
 		"/engagement": {
 			"get": {
 				"operationId": "list-engagement",
@@ -26286,7 +26274,85 @@
 					}
 				},
 				"summary": "List stored replies and comments",
-				"tags": ["Communications"]
+				"tags": ["Engagement"]
+			}
+		},
+		"/engagement-and-messaging/refresh": {
+			"post": {
+				"operationId": "refresh-engagement-and-messaging",
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/RefreshCapabilitiesInputBody"
+							}
+						}
+					},
+					"required": true
+				},
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/RefreshCapabilitiesResult"
+								}
+							}
+						},
+						"description": "OK"
+					},
+					"default": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Error"
+					}
+				},
+				"summary": "Queue engagement and message collection",
+				"tags": ["Capabilities"]
+			}
+		},
+		"/engagement/refresh": {
+			"post": {
+				"operationId": "refresh-engagement",
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/RefreshCapabilitiesInputBody"
+							}
+						}
+					},
+					"required": true
+				},
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/RefreshCapabilityOutcome"
+								}
+							}
+						},
+						"description": "OK"
+					},
+					"default": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Error"
+					}
+				},
+				"summary": "Queue engagement collection",
+				"tags": ["Engagement"]
 			}
 		},
 		"/engagement/state": {
@@ -26318,7 +26384,7 @@
 					}
 				},
 				"summary": "Mark engagement read or archived",
-				"tags": ["Communications"]
+				"tags": ["Engagement"]
 			}
 		},
 		"/engagement/{item_id}/actions": {
@@ -26360,7 +26426,7 @@
 					}
 				},
 				"summary": "Queue a reply or moderation action",
-				"tags": ["Communications"]
+				"tags": ["Engagement"]
 			}
 		},
 		"/feedback": {
@@ -30738,7 +30804,46 @@
 					}
 				},
 				"summary": "List stored social conversations",
-				"tags": ["Communications"]
+				"tags": ["Messaging"]
+			}
+		},
+		"/messages/refresh": {
+			"post": {
+				"operationId": "refresh-messaging",
+				"requestBody": {
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/RefreshCapabilitiesInputBody"
+							}
+						}
+					},
+					"required": true
+				},
+				"responses": {
+					"200": {
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/RefreshCapabilityOutcome"
+								}
+							}
+						},
+						"description": "OK"
+					},
+					"default": {
+						"content": {
+							"application/problem+json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorModel"
+								}
+							}
+						},
+						"description": "Error"
+					}
+				},
+				"summary": "Queue message collection",
+				"tags": ["Messaging"]
 			}
 		},
 		"/messages/{conversation_id}": {
@@ -30819,7 +30924,7 @@
 					}
 				},
 				"summary": "List messages in a stored conversation",
-				"tags": ["Communications"]
+				"tags": ["Messaging"]
 			}
 		},
 		"/messages/{conversation_id}/send": {
@@ -30868,7 +30973,7 @@
 					}
 				},
 				"summary": "Queue a social direct message",
-				"tags": ["Communications"]
+				"tags": ["Messaging"]
 			}
 		},
 		"/messages/{conversation_id}/state": {
@@ -30910,7 +31015,7 @@
 					}
 				},
 				"summary": "Mark a conversation read or archived",
-				"tags": ["Communications"]
+				"tags": ["Messaging"]
 			}
 		},
 		"/notifications": {

@@ -17,7 +17,6 @@ const (
 	TypeAnalyticsAccount        = "analytics_account_sync"
 	TypeAnalyticsRendition      = "analytics_rendition_sync"
 	TypeBillingWebhook          = "billing_paddle_webhook"
-	TypeCommunicationsSweep     = "communications_sweep"
 	TypeEngagementSweep         = "engagement_sweep"
 	TypeMessagingSweep          = "messaging_sweep"
 	TypeEngagementSync          = "engagement_sync"
@@ -46,7 +45,6 @@ const (
 	ExecuteFeedback              ExecutionKind = "feedback"
 	ExecuteAnalytics             ExecutionKind = "analytics"
 	ExecuteBilling               ExecutionKind = "billing"
-	ExecuteCommunications        ExecutionKind = "communications"
 	ExecuteEngagement            ExecutionKind = "engagement"
 	ExecuteMessaging             ExecutionKind = "messaging"
 	ExecuteNotification          ExecutionKind = "notification"
@@ -110,9 +108,6 @@ var definitions = map[string]Definition{
 	TypeAnalyticsRendition: providerReadDefinition(TypeAnalyticsRendition, 3, ExecuteAnalytics, RecoveryRequeue,
 		"Analytics collection failed. OpenPost will retry when the failure is temporary.", ""),
 	TypeBillingWebhook: definition(TypeBillingWebhook, 8, ExecuteBilling, FailureDefault, RecoveryRequeue),
-	TypeCommunicationsSweep: providerReadDefinition(TypeCommunicationsSweep, 5, ExecuteCommunications, RecoverySupersedeSweep,
-		"Communications collection failed. OpenPost will retry when the failure is temporary.",
-		"A later communications sweep remains queued; this sweep will not retry."),
 	TypeEngagementSweep: providerReadDefinition(TypeEngagementSweep, 5, ExecuteEngagement, RecoverySupersedeSweep,
 		"Engagement collection failed. OpenPost will retry when the failure is temporary.",
 		"A later engagement sweep remains queued; this sweep will not retry."),

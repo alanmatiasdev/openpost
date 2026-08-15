@@ -241,9 +241,8 @@ CREATE UNIQUE INDEX direct_messages_remote_test_idx
 	ON direct_messages (conversation_id, remote_message_id) WHERE remote_message_id <> '';
 CREATE UNIQUE INDEX engagement_items_remote_test_idx
 	ON engagement_items (social_account_id, remote_id);
-CREATE TABLE communication_sync_states (
-	id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, capability TEXT NOT NULL,
-	subject_type TEXT NOT NULL, subject_id TEXT NOT NULL, social_account_id TEXT NOT NULL,
+CREATE TABLE engagement_sync_states (
+	id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, rendition_id TEXT NOT NULL, social_account_id TEXT NOT NULL,
 	platform TEXT NOT NULL, status TEXT NOT NULL, error_code TEXT NOT NULL DEFAULT '',
 	error_message TEXT NOT NULL DEFAULT '', cursor TEXT NOT NULL DEFAULT '',
 	backfill_complete BOOLEAN NOT NULL DEFAULT FALSE,

@@ -16,8 +16,8 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/platform"
-	communicationsservice "github.com/openpost/backend/internal/services/communications"
 	servicecrypto "github.com/openpost/backend/internal/services/crypto"
+	engagementservice "github.com/openpost/backend/internal/services/engagement"
 	"github.com/openpost/backend/internal/services/lifecycle"
 	"github.com/openpost/backend/internal/services/providerwrite"
 	"github.com/stretchr/testify/require"
@@ -114,7 +114,7 @@ func TestReplyToCommentRecordsLifecycleEvent(t *testing.T) {
 	require.Equal(t, "comment reply queued", queued.Message)
 	var job models.Job
 	require.NoError(t, srv.db.NewSelect().Model(&job).Where("id = ?", queued.ID).Scan(t.Context()))
-	require.Equal(t, communicationsservice.JobTypeEngagementAct, job.Type)
+	require.Equal(t, engagementservice.JobTypeEngagementAct, job.Type)
 	require.Equal(t, 1, job.MaxAttempts)
 	require.NoError(t, srv.runQueuedCommentJob(t))
 	events := srv.lifecycleEvents(t)
@@ -212,11 +212,13 @@ func (s *commentsTestServer) runQueuedCommentJob(t *testing.T) error {
 	t.Helper()
 	var job models.Job
 	require.NoError(t, s.db.NewSelect().Model(&job).
-		Where("type = ?", communicationsservice.JobTypeEngagementAct).
+		Where("type = ?", engagementservice.JobTypeEngagementAct).
 		Order("created_at DESC").Limit(1).Scan(t.Context()))
-	service := communicationsservice.NewService(s.db, commentsTokenSource{}, nil)
+	service := engagementservice.NewService(s.db, commentsTokenSource{}, nil)
 	for name, adapter := range s.providers {
-		service.SetProvider(name, adapter)
+		if engagementAdapter, ok := adapter.(platform.EngagementAdapter); ok {
+			service.SetProvider(name, engagementAdapter)
+		}
 	}
 	ctx := providerwrite.WithJobExecution(t.Context(), job.ID, 1, time.Now().UTC())
 	return service.HandleJob(ctx, job.Type, job.Payload)
@@ -254,6 +256,9 @@ func (f fakeCommentAdapter) Publish(context.Context, string, string, *platform.P
 }
 func (f fakeCommentAdapter) ListComments(context.Context, string, string, string) ([]platform.Comment, error) {
 	return f.comments, nil
+}
+func (f fakeCommentAdapter) EngagementSupport() platform.EngagementSupport {
+	return platform.EngagementSupport{Enabled: true, CanReply: true, CanHide: true, CanDelete: true}
 }
 func (f fakeCommentAdapter) ReplyToComment(context.Context, string, string, string, string) (string, error) {
 	return "reply-1", nil

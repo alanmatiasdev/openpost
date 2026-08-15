@@ -138,6 +138,8 @@ func CreateSchema(db *bun.DB) error {
 		(*models.PostingSchedule)(nil),
 		(*models.Prompt)(nil),
 		(*models.ThreadDraft)(nil),
+		(*models.EngagementSyncState)(nil),
+		(*models.MessagingSyncState)(nil),
 	}
 	for _, model := range m {
 		if _, err := db.NewCreateTable().Model(model).IfNotExists().Exec(ctx); err != nil {
@@ -181,16 +183,6 @@ func CreateSchema(db *bun.DB) error {
 		return fmt.Errorf("failed to create analytics subject uniqueness index: %w", err)
 	}
 	if _, err := db.NewCreateIndex().
-		Index("communications_sweep_pending_unique_idx").
-		Table("jobs").
-		Column("type").
-		Unique().
-		Where("status = 'pending' AND type = 'communications_sweep'").
-		IfNotExists().
-		Exec(ctx); err != nil {
-		return fmt.Errorf("failed to create communications sweep uniqueness index: %w", err)
-	}
-	if _, err := db.NewCreateIndex().
 		Index("engagement_sweep_pending_unique_idx").
 		Table("jobs").
 		Column("type").
@@ -211,14 +203,21 @@ func CreateSchema(db *bun.DB) error {
 		return fmt.Errorf("failed to create messaging sweep uniqueness index: %w", err)
 	}
 	if _, err := db.NewCreateIndex().
-		Index("communications_subject_active_unique_idx").
+		Index("engagement_subject_active_unique_idx").
 		Table("jobs").
 		Column("type", "payload").
 		Unique().
-		Where("status IN ('pending', 'processing') AND type IN ('engagement_sync', 'messages_sync', 'engagement_action', 'message_send')").
+		Where("status IN ('pending', 'processing') AND type IN ('engagement_sync', 'engagement_action')").
 		IfNotExists().
 		Exec(ctx); err != nil {
-		return fmt.Errorf("failed to create communications subject uniqueness index: %w", err)
+		return fmt.Errorf("failed to create engagement subject uniqueness index: %w", err)
+	}
+	if _, err := db.NewCreateIndex().
+		Index("messaging_subject_active_unique_idx").
+		Table("jobs").Column("type", "payload").Unique().
+		Where("status IN ('pending', 'processing') AND type IN ('messages_sync', 'message_send')").
+		IfNotExists().Exec(ctx); err != nil {
+		return fmt.Errorf("failed to create messaging subject uniqueness index: %w", err)
 	}
 	if _, err := db.NewCreateIndex().
 		Index("repost_sweep_pending_unique_idx").
