@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { resolve } from '$app/paths';
+	import { resolveAppPath } from '$lib/app-path';
 	import { auth } from '$lib/stores/auth';
 	import { client } from '$lib/api/client';
 	import { createPasskeyCredential } from '$lib/auth/webauthn';
@@ -197,11 +197,11 @@
 				throw new Error(emailChangeResult.error.detail || m.settings_action_failed());
 			}
 			securityStatus = securityResult.data;
-			linkedIdentities = (identityResult.data ?? []) as OIDCIdentitySummary[];
-			linkableProviders = (providerResult.data ?? []) as OIDCProviderSummary[];
-			emailChangePending = (emailChangeResult.data?.pending ?? null) as EmailChangeSummary | null;
+			linkedIdentities = identityResult.data ?? [];
+			linkableProviders = providerResult.data ?? [];
+			emailChangePending = emailChangeResult.data?.pending ?? null;
 		} catch (e) {
-			securityError = (e as Error).message;
+			securityError = e instanceof Error ? e.message : m.settings_action_failed();
 		} finally {
 			loadingSecurity = false;
 		}
@@ -228,12 +228,12 @@
 				}
 				throw new Error(result.error?.detail || m.settings_email_change_failed());
 			}
-			emailChangePending = result.data as EmailChangeSummary;
+			emailChangePending = result.data;
 			emailChangeNewEmail = '';
 			emailChangePassword = '';
 			notify(m.settings_email_change_sent());
 		} catch (error) {
-			emailChangeError = (error as Error).message || m.settings_email_change_failed();
+			emailChangeError = error instanceof Error ? error.message : m.settings_email_change_failed();
 		} finally {
 			emailChangeBusy = false;
 		}
@@ -248,10 +248,10 @@
 				params: { path: { id: emailChangePending.id } }
 			});
 			if (error || !data) throw new Error(error?.detail || m.settings_email_change_failed());
-			emailChangePending = data as EmailChangeSummary;
+			emailChangePending = data;
 			notify(m.settings_email_change_sent());
 		} catch (error) {
-			emailChangeError = (error as Error).message || m.settings_email_change_failed();
+			emailChangeError = error instanceof Error ? error.message : m.settings_email_change_failed();
 		} finally {
 			emailChangeBusy = false;
 		}
@@ -280,7 +280,7 @@
 			);
 			await loadAuthSessions();
 		} catch (error) {
-			emailChangeError = (error as Error).message || m.settings_email_change_failed();
+			emailChangeError = error instanceof Error ? error.message : m.settings_email_change_failed();
 		} finally {
 			emailChangeBusy = false;
 		}
@@ -299,7 +299,7 @@
 			emailChangeCode = '';
 			notify(m.settings_email_change_canceled());
 		} catch (error) {
-			emailChangeError = (error as Error).message || m.settings_email_change_failed();
+			emailChangeError = error instanceof Error ? error.message : m.settings_email_change_failed();
 		} finally {
 			emailChangeBusy = false;
 		}
@@ -317,7 +317,7 @@
 			if (grant === null) return;
 			await startOIDCIdentityLink(providerID, grant);
 		} catch (e) {
-			securityError = (e as Error).message;
+			securityError = e instanceof Error ? e.message : m.settings_action_failed();
 		} finally {
 			identityBusy = '';
 		}
@@ -348,7 +348,7 @@
 			notify(m.settings_identity_unlinked());
 			return true;
 		} catch (e) {
-			securityError = (e as Error).message || m.settings_identity_unlink_failed();
+			securityError = e instanceof Error ? e.message : m.settings_identity_unlink_failed();
 			return false;
 		} finally {
 			identityBusy = '';
@@ -361,9 +361,9 @@
 		try {
 			const { data, error: err } = await client.GET('/auth/sessions');
 			if (err || !data) throw new Error(err?.detail || m.settings_action_failed());
-			authSessions = data as AuthSessionSummary[];
+			authSessions = data;
 		} catch (e) {
-			authSessionsError = (e as Error).message;
+			authSessionsError = e instanceof Error ? e.message : m.settings_action_failed();
 		} finally {
 			authSessionsLoading = false;
 		}
@@ -379,14 +379,14 @@
 			if (err) throw new Error(err.detail || m.settings_action_failed());
 			if (data?.revoked_current || session.current) {
 				await auth.logout();
-				await goto(resolve('/login' as '/'));
+				await goto(resolveAppPath('/login'));
 				return true;
 			}
 			await loadAuthSessions();
 			notify(m.settings_session_revoked());
 			return true;
 		} catch (e) {
-			authSessionsError = (e as Error).message;
+			authSessionsError = e instanceof Error ? e.message : m.settings_action_failed();
 			return false;
 		} finally {
 			authSessionBusyID = '';
@@ -420,7 +420,7 @@
 			totpSetupKeyCopyState = 'idle';
 			totpCurrentPassword = '';
 		} catch (e) {
-			totpSetupError = (e as Error).message;
+			totpSetupError = e instanceof Error ? e.message : m.settings_action_failed();
 		} finally {
 			securityBusy = false;
 		}
@@ -451,7 +451,7 @@
 			totpCode = '';
 			totpSetupKeyCopyState = 'idle';
 		} catch (e) {
-			totpSetupError = (e as Error).message;
+			totpSetupError = e instanceof Error ? e.message : m.settings_action_failed();
 		} finally {
 			securityBusy = false;
 		}
@@ -570,7 +570,7 @@
 					: m.settings_recovery_codes_replaced()
 			);
 		} catch (e) {
-			securityError = (e as Error).message;
+			securityError = e instanceof Error ? e.message : m.settings_action_failed();
 		} finally {
 			securityBusy = false;
 		}
@@ -597,7 +597,7 @@
 			recoveryCodesRemaining = data.remaining;
 			totpCurrentPassword = '';
 		} catch (e) {
-			securityError = (e as Error).message;
+			securityError = e instanceof Error ? e.message : m.settings_action_failed();
 		} finally {
 			securityBusy = false;
 		}
@@ -633,7 +633,7 @@
 			recoveryCodesRemaining = null;
 			totpCurrentPassword = '';
 		} catch (e) {
-			securityError = (e as Error).message;
+			securityError = e instanceof Error ? e.message : m.settings_action_failed();
 		} finally {
 			securityBusy = false;
 		}
@@ -664,7 +664,7 @@
 			notify(m.settings_authenticator_disabled_notice());
 			return true;
 		} catch (e) {
-			securityError = (e as Error).message;
+			securityError = e instanceof Error ? e.message : m.settings_action_failed();
 			return false;
 		} finally {
 			securityBusy = false;
@@ -710,7 +710,7 @@
 			newPasskeyName = '';
 			notify(m.settings_passkey_added());
 		} catch (e) {
-			securityError = (e as Error).message;
+			securityError = e instanceof Error ? e.message : m.settings_action_failed();
 		} finally {
 			securityBusy = false;
 		}
@@ -742,7 +742,7 @@
 			passkeyCurrentPassword = '';
 			notify(m.settings_passkey_removed());
 		} catch (e) {
-			securityError = (e as Error).message;
+			securityError = e instanceof Error ? e.message : m.settings_action_failed();
 		} finally {
 			securityBusy = false;
 		}
