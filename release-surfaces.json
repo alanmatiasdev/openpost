@@ -40,7 +40,7 @@
     },
     "delivery": {
       "description": "Build, test, image, deployment, release, certification, and repository environment contracts",
-      "prefixes": [".github/", "docker/", "provider-certification/", "scripts/"],
+      "prefixes": [".github/", "docker/", "provider-certification/", "scripts/", "tools/"],
       "paths": [
         ".dockerignore",
         ".env.example",
