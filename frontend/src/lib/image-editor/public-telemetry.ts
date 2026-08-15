@@ -24,11 +24,7 @@ export function trackPublicImageEditorEvent(
 	data: Record<string, string | number | boolean> = {}
 ): void {
 	if (typeof window === 'undefined') return;
-	const safeData = Object.fromEntries(
-		Object.entries(data).filter(([, value]) =>
-			['string', 'number', 'boolean'].includes(typeof value)
-		)
-	);
+	const safeData = { ...data };
 	captureTelemetryEvent(postHogEventNames[name], safeData);
 	window.dispatchEvent(
 		new CustomEvent('openpost:public-image-editor-event', { detail: { name, data: safeData } })

@@ -254,11 +254,7 @@ FORM: Operate-mode extension of the established composer, using a responsive wor
 		return candidatePreviewStates[key] ?? 'idle';
 	}
 
-	function setCandidatePreviewState(
-		candidateOrKey: MemeSuggestionCandidate | string,
-		state: CandidatePreviewState
-	): void {
-		const key = typeof candidateOrKey === 'string' ? candidateOrKey : candidateKey(candidateOrKey);
+	function setCandidatePreviewState(key: string, state: CandidatePreviewState): void {
 		candidatePreviewStates = { ...candidatePreviewStates, [key]: state };
 	}
 
@@ -516,7 +512,7 @@ FORM: Operate-mode extension of the established composer, using a responsive wor
 	async function loadCandidatePreview(candidate: MemeSuggestionCandidate): Promise<void> {
 		const template = templateForCandidate(candidate);
 		if (!template) {
-			setCandidatePreviewState(candidate, 'failed');
+			setCandidatePreviewState(candidateKey(candidate), 'failed');
 			return;
 		}
 		cancelCandidatePreviewLoads();
@@ -632,7 +628,8 @@ FORM: Operate-mode extension of the established composer, using a responsive wor
 		selectedPreview = candidatePreview || templateThumbnails[template.id] || '';
 		previewedRevision = candidatePreview ? recipeRevision : -1;
 		previewLoading = false;
-		if (candidate && !candidatePreview) setCandidatePreviewState(candidate, 'loading');
+		if (candidate && !candidatePreview)
+			setCandidatePreviewState(candidateKey(candidate), 'loading');
 		queueTemplateThumbnail(template.id);
 		previewError = '';
 		editorError = '';

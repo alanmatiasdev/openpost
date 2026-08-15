@@ -66,9 +66,9 @@
 			if (error || !data?.url) throw new Error(error?.detail || m.billing_recovery_open_failed());
 			if (targetWorkspaceID !== workspaceID) return;
 			window.location.assign(data.url);
-		} catch (error) {
+		} catch (cause) {
 			if (targetWorkspaceID === workspaceID) {
-				recoveryError = (error as Error).message || m.billing_recovery_open_failed();
+				recoveryError = cause instanceof Error ? cause.message : m.billing_recovery_open_failed();
 			}
 		} finally {
 			if (targetWorkspaceID === workspaceID) recoveryBusy = false;

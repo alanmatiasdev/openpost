@@ -14,9 +14,9 @@
 		for (const [themeName, prefix] of Object.entries(THEMES)) {
 			let content = `${prefix} [data-chart=${id}] {\n`;
 			const colors = colorConfig.map(([key, item]) => {
-				const theme = themeName as keyof typeof item.theme;
-				const color = item.theme?.[theme] || item.color;
-				return color ? `\t--color-${key}: ${color};` : null;
+				const color = themeName === 'light' ? item.theme?.light : item.theme?.dark;
+				const resolvedColor = color || item.color;
+				return resolvedColor ? `\t--color-${key}: ${resolvedColor};` : null;
 			});
 
 			content += colors.join('\n') + '\n}';

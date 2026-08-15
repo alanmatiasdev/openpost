@@ -5,6 +5,7 @@
 	import { Slider } from '$lib/components/ui/slider';
 	import { getAuthenticatedMediaByID } from '$lib/media-url';
 	import { m } from '$lib/paraglide/messages';
+	import type { ComposerSettingValue } from '$lib/components/compose/modes';
 	import {
 		captureVideoFrame,
 		clampCoverFrameTimestamp,
@@ -18,7 +19,7 @@
 
 	interface Props {
 		mediaId: string;
-		value?: unknown;
+		value?: ComposerSettingValue;
 		mode: 'timestamp' | 'image';
 		label: string;
 		onTimestampChange?: (timestampMs: number) => void;
@@ -38,7 +39,7 @@
 
 	const sourceURL = $derived(getAuthenticatedMediaByID(mediaId));
 	const selectedTimestampMs = $derived(
-		mode === 'timestamp' && (typeof value === 'number' || typeof value === 'string')
+		mode === 'timestamp' && (Number.isFinite(value) || String(value) === value)
 			? Number(value)
 			: null
 	);

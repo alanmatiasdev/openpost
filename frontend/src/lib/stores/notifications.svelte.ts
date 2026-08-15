@@ -40,14 +40,6 @@ const EMPTY_INBOX: NotificationInboxSnapshot = Object.freeze({
 	loadedPages: 0
 });
 
-function errorDetail(error: unknown): string {
-	if (typeof error === 'object' && error && 'detail' in error && typeof error.detail === 'string') {
-		return error.detail;
-	}
-	if (error instanceof Error) return error.message;
-	return '';
-}
-
 function deduplicate(items: Notification[]): Notification[] {
 	const seen = new Set<string>();
 	return items.filter((item) => {
@@ -132,7 +124,7 @@ export class NotificationInboxStore {
 			const { data, error } = await client.GET('/notifications', {
 				params: { query: { workspace_id: workspaceID, limit: PAGE_SIZE } }
 			});
-			if (error) throw error;
+			if (error) throw new Error(error.detail ?? '');
 			if (!this.isRequestCurrent(workspaceID, token, accountEpoch, workspaceEpoch)) {
 				return { ok: true };
 			}
@@ -159,8 +151,8 @@ export class NotificationInboxStore {
 				loadedPages: Math.max(1, current.loadedPages)
 			});
 			return { ok: true };
-		} catch (error) {
-			const detail = errorDetail(error);
+		} catch (cause) {
+			const detail = cause instanceof Error ? cause.message : '';
 			if (!this.isRequestCurrent(workspaceID, token, accountEpoch, workspaceEpoch)) {
 				return { ok: false, detail };
 			}
@@ -187,7 +179,7 @@ export class NotificationInboxStore {
 			const { data, error } = await client.GET('/notifications', {
 				params: { query: { workspace_id: workspaceID, cursor, limit: PAGE_SIZE } }
 			});
-			if (error) throw error;
+			if (error) throw new Error(error.detail ?? '');
 			if (!this.isLoadMoreCurrent(workspaceID, token, accountEpoch, workspaceEpoch)) {
 				return { ok: true };
 			}
@@ -207,8 +199,8 @@ export class NotificationInboxStore {
 				loadedPages: current.loadedPages + 1
 			});
 			return { ok: true };
-		} catch (error) {
-			const detail = errorDetail(error);
+		} catch (cause) {
+			const detail = cause instanceof Error ? cause.message : '';
 			if (!this.isLoadMoreCurrent(workspaceID, token, accountEpoch, workspaceEpoch)) {
 				return { ok: false, detail };
 			}
@@ -233,7 +225,7 @@ export class NotificationInboxStore {
 			const { error } = await client.POST('/notifications/read', {
 				body: { workspace_id: workspaceID, ids: input.ids, all: input.all }
 			});
-			if (error) throw error;
+			if (error) throw new Error(error.detail ?? '');
 			if (!this.isScopeCurrent(workspaceID, accountEpoch, workspaceEpoch)) {
 				return { ok: false };
 			}
@@ -257,8 +249,8 @@ export class NotificationInboxStore {
 				unreadCount: input.all ? 0 : Math.max(0, current.unreadCount - newlyRead)
 			});
 			return { ok: true };
-		} catch (error) {
-			return { ok: false, detail: errorDetail(error) };
+		} catch (cause) {
+			return { ok: false, detail: cause instanceof Error ? cause.message : '' };
 		}
 	}
 
@@ -273,7 +265,7 @@ export class NotificationInboxStore {
 			const { error } = await client.POST('/notifications/delete', {
 				body: { workspace_id: workspaceID, ids: input.ids, all: input.all }
 			});
-			if (error) throw error;
+			if (error) throw new Error(error.detail ?? '');
 			if (!this.isScopeCurrent(workspaceID, accountEpoch, workspaceEpoch)) {
 				return { ok: false };
 			}
@@ -304,8 +296,8 @@ export class NotificationInboxStore {
 				unreadCount: Math.max(0, current.unreadCount - removedUnread)
 			});
 			return { ok: true };
-		} catch (error) {
-			return { ok: false, detail: errorDetail(error) };
+		} catch (cause) {
+			return { ok: false, detail: cause instanceof Error ? cause.message : '' };
 		}
 	}
 

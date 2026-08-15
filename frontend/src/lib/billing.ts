@@ -37,15 +37,24 @@ export const hostedPlans: readonly HostedPlan[] = planCatalog.plans.map((plan) =
 }));
 
 const hostedPlanIDSet = new Set<string>(hostedPlanIDs);
+const billingPeriodSet = new Set<string>(billingPeriods);
+
+function isHostedPlanID(value: string): value is HostedPlanID {
+	return hostedPlanIDSet.has(value);
+}
+
+function isBillingPeriod(value: string): value is BillingPeriod {
+	return billingPeriodSet.has(value);
+}
 
 export function normalizeHostedPlanID(planID: string | null | undefined): HostedPlanID | '' {
 	const normalized = planID?.trim().toLowerCase() ?? '';
-	return hostedPlanIDSet.has(normalized) ? (normalized as HostedPlanID) : '';
+	return isHostedPlanID(normalized) ? normalized : '';
 }
 
 export function normalizeBillingPeriod(period: string | null | undefined): BillingPeriod | '' {
 	const normalized = period?.trim().toLowerCase() ?? '';
-	return billingPeriods.includes(normalized as BillingPeriod) ? (normalized as BillingPeriod) : '';
+	return isBillingPeriod(normalized) ? normalized : '';
 }
 
 export function hostedPlanFromSearchParams(searchParams: URLSearchParams): HostedPlanID | '' {

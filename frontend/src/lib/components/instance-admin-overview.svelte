@@ -12,6 +12,9 @@
 	import { m } from '$lib/paraglide/messages';
 
 	type InstanceOverview = components['schemas']['InstanceOverviewResponse'];
+	interface InstanceAPIProblem {
+		detail?: string;
+	}
 
 	let overview = $state.raw<InstanceOverview | null>(null);
 	let overviewLoading = $state(true);
@@ -34,12 +37,8 @@
 		overviewLoading = false;
 	}
 
-	function problemDetail(error: unknown, fallback: string) {
-		if (error && typeof error === 'object' && 'detail' in error) {
-			const detail = error.detail;
-			if (typeof detail === 'string' && detail.trim()) return detail;
-		}
-		return fallback;
+	function problemDetail(error: InstanceAPIProblem | undefined, fallback: string) {
+		return error?.detail?.trim() || fallback;
 	}
 
 	function formatNumber(value: number) {

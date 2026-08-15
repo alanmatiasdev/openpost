@@ -46,9 +46,10 @@ export function issueMatchesProvider(issue: ValidationIssue, provider: string): 
 }
 
 export function uniqueIssueMessages(messages: Array<string | null | undefined>): string[] {
-	return Array.from(
-		new Set(messages.map((message) => message?.trim()).filter(Boolean) as string[])
-	);
+	const normalized = messages
+		.map((message) => message?.trim())
+		.filter((message): message is string => Boolean(message));
+	return Array.from(new Set(normalized));
 }
 
 export function composerIssues(

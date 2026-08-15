@@ -178,7 +178,8 @@
 	}
 
 	async function uploadGuestMedia(event: Event): Promise<void> {
-		const input = event.currentTarget as HTMLInputElement;
+		const input = event.currentTarget;
+		if (!(input instanceof HTMLInputElement)) return;
 		const files = Array.from(input.files ?? []);
 		if (files.length === 0) return;
 		loading = true;

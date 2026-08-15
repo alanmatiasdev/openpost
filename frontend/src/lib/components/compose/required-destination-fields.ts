@@ -1,4 +1,5 @@
 import type { components } from '$lib/api/types';
+import type { ComposerSettings } from '$lib/components/compose/modes';
 
 type SettingDefinition = components['schemas']['SettingDefinition'];
 type SettingCondition = components['schemas']['SettingCondition'];
@@ -9,7 +10,7 @@ export interface RequiredDestinationField {
 	setting: SettingDefinition;
 }
 
-function conditionMatches(condition: SettingCondition, values: Record<string, unknown>): boolean {
+function conditionMatches(condition: SettingCondition, values: ComposerSettings): boolean {
 	const value = values[condition.key];
 	const present = value !== undefined && value !== null && String(value).trim() !== '';
 	switch (condition.operator) {
@@ -29,7 +30,7 @@ function conditionMatches(condition: SettingCondition, values: Record<string, un
 export function activeRequiredDestinationFields(
 	accountIds: string[],
 	resolvedByAccount: Record<string, ResolvedAccountCapability>,
-	valuesByAccount: Record<string, Record<string, unknown>>
+	valuesByAccount: Record<string, ComposerSettings>
 ): RequiredDestinationField[] {
 	return accountIds.flatMap((accountId) => {
 		const capability = resolvedByAccount[accountId];
@@ -55,7 +56,7 @@ export function activeRequiredDestinationFields(
 
 export function requiredFieldIsMissing(
 	setting: SettingDefinition,
-	values: Record<string, unknown>
+	values: ComposerSettings
 ): boolean {
 	const value = values[setting.key];
 	if (setting.type === 'boolean') return value !== true;

@@ -103,14 +103,12 @@ export function instanceStore() {
 export async function testInstanceConnection(
 	url: string
 ): Promise<{ ok: boolean; error?: string }> {
+	const controller = new AbortController();
+	const timeout = setTimeout(() => controller.abort(), 10000);
 	try {
-		const controller = new AbortController();
-		const timeout = setTimeout(() => controller.abort(), 10000);
-
 		const resp = await fetch(`${url}/api/v1/ready`, {
 			signal: controller.signal
 		});
-		clearTimeout(timeout);
 
 		if (!resp.ok) {
 			return { ok: false, error: `Server responded with ${resp.status}` };
@@ -122,11 +120,13 @@ export async function testInstanceConnection(
 		}
 
 		return { ok: true };
-	} catch (e) {
-		const err = e as Error;
-		if (err.name === 'AbortError') {
+	} catch (cause) {
+		if (cause instanceof Error && cause.name === 'AbortError') {
 			return { ok: false, error: 'Connection timed out. Check the URL and try again.' };
 		}
-		return { ok: false, error: `Could not connect: ${err.message}` };
+		const detail = cause instanceof Error ? cause.message : 'Unknown connection error';
+		return { ok: false, error: `Could not connect: ${detail}` };
+	} finally {
+		clearTimeout(timeout);
 	}
 }

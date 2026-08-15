@@ -60,7 +60,7 @@ export function formatBytes(bytes: number): string {
 
 function minimumPositive(values: Array<number | undefined>, fallback: number): number {
 	const candidates = values.filter(
-		(value): value is number => typeof value === 'number' && Number.isFinite(value) && value > 0
+		(value): value is number => Number.isFinite(value) && Number(value) > 0
 	);
 	return candidates.length > 0 ? Math.min(...candidates) : fallback;
 }

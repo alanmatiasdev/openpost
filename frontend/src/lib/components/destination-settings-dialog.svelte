@@ -27,7 +27,7 @@
 	type SettingCondition = components['schemas']['SettingCondition'];
 	type DestinationOption = components['schemas']['DestinationOption'];
 	type SettingGroup = SettingDefinition['group'];
-	type DestinationSettings = NonNullable<components['schemas']['RenditionInput']['settings']>;
+	type DestinationSettings = import('$lib/components/compose/modes').ComposerSettings;
 
 	interface DestinationMediaItem {
 		id: string;

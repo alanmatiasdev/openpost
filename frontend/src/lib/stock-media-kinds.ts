@@ -1,5 +1,6 @@
 export type StockMediaKind = 'photo' | 'video';
 export type StockMediaAccept = StockMediaKind | 'both';
+const stockMediaKinds: StockMediaKind[] = ['photo', 'video'];
 
 export function stockMediaKindsForProvider(
 	provider: { photos: boolean; videos: boolean } | undefined,
@@ -20,5 +21,5 @@ export function stockMediaKindsForProviders(
 	for (const provider of providers) {
 		for (const kind of stockMediaKindsForProvider(provider, accept)) available.add(kind);
 	}
-	return (['photo', 'video'] as StockMediaKind[]).filter((kind) => available.has(kind));
+	return stockMediaKinds.filter((kind) => available.has(kind));
 }

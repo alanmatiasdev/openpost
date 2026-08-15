@@ -10,7 +10,7 @@
 	import { getPlatformName } from '$lib/utils';
 	import { m } from '$lib/paraglide/messages';
 	import { settingLabel } from '$lib/setting-label';
-	import type { ComposerSettingValue } from '$lib/components/compose/modes';
+	import type { ComposerSettings, ComposerSettingValue } from '$lib/components/compose/modes';
 	import {
 		activeRequiredDestinationFields,
 		requiredFieldIsMissing
@@ -19,12 +19,11 @@
 	type ResolvedAccountCapability = components['schemas']['ResolvedAccountCapability'];
 	type DestinationOption = components['schemas']['DestinationOption'];
 	type SettingDefinition = components['schemas']['SettingDefinition'];
-	type DestinationSettings = NonNullable<components['schemas']['RenditionInput']['settings']>;
 
 	interface Props {
 		accounts: SocialAccount[];
 		resolvedByAccount: Record<string, ResolvedAccountCapability>;
-		valuesByAccount: Record<string, DestinationSettings>;
+		valuesByAccount: Record<string, ComposerSettings>;
 		optionGroupsByAccount: Record<string, Record<string, DestinationOption[]>>;
 		optionErrorsByAccount?: Record<string, string>;
 		optionsLoadingAccountId?: string;

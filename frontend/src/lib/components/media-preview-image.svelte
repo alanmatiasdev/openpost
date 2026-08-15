@@ -22,7 +22,8 @@
 	const originalURL = $derived(getAuthenticatedMediaURL(`/media/${mediaId}`));
 
 	function useOriginal(event: Event) {
-		const image = event.currentTarget as HTMLImageElement;
+		const image = event.currentTarget;
+		if (!(image instanceof HTMLImageElement)) return;
 		if (originalAttemptedFor !== mediaId && image.src.includes('/thumb/')) {
 			originalAttemptedFor = mediaId;
 			image.src = originalURL;

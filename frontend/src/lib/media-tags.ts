@@ -1,12 +1,7 @@
 import { client } from '$lib/api/client';
+import type { components } from '$lib/api/types';
 
-export interface MediaTag {
-	id: string;
-	workspace_id: string;
-	name: string;
-	item_count: number;
-	created_at?: string;
-}
+export type MediaTag = components['schemas']['MediaTagResponse'];
 
 export interface MediaTagState {
 	tags: MediaTag[];
@@ -19,7 +14,7 @@ export async function listMediaTags(workspaceId: string): Promise<MediaTagState>
 	});
 	if (error || !data) throw new Error(error?.detail || 'Could not load media tags.');
 	return {
-		tags: (data.tags ?? []) as MediaTag[],
+		tags: data.tags ?? [],
 		canEdit: Boolean(data.can_edit)
 	};
 }
@@ -29,7 +24,7 @@ export async function createMediaTag(workspaceId: string, name: string): Promise
 		body: { workspace_id: workspaceId, name }
 	});
 	if (error || !data) throw new Error(error?.detail || 'Could not create the tag.');
-	return data as MediaTag;
+	return data;
 }
 
 export async function updateMediaTag(id: string, name: string): Promise<MediaTag> {
@@ -38,7 +33,7 @@ export async function updateMediaTag(id: string, name: string): Promise<MediaTag
 		body: { name }
 	});
 	if (error || !data) throw new Error(error?.detail || 'Could not update the tag.');
-	return data as MediaTag;
+	return data;
 }
 
 export async function deleteMediaTag(id: string): Promise<void> {

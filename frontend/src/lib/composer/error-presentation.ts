@@ -1,7 +1,7 @@
 import { m } from '$lib/paraglide/messages';
 import { ComposerClientError, ComposerSessionError, type ComposerErrorCode } from './session';
 
-const composerErrorMessages: Record<ComposerErrorCode, () => string> = {
+const composerErrorMessages = {
 	publication_request_failed: m.compose_error_publication_request_failed,
 	publication_workspace_mismatch: m.compose_error_publication_workspace_mismatch,
 	session_content_missing: m.compose_error_session_content_missing,
@@ -25,7 +25,7 @@ const composerErrorMessages: Record<ComposerErrorCode, () => string> = {
 	video_editor_return_metadata_missing: m.compose_error_video_editor_return_metadata_missing,
 	editor_origin_segment_missing: m.compose_error_editor_origin_segment_missing,
 	video_editor_return_export_missing: m.compose_error_video_editor_return_export_missing
-};
+} satisfies Record<ComposerErrorCode, () => string>;
 
 export function composerErrorMessage(cause: unknown): string {
 	if (cause instanceof ComposerSessionError) return composerErrorMessages[cause.code]();
@@ -33,7 +33,7 @@ export function composerErrorMessage(cause: unknown): string {
 		return localizedComposerError(cause.message, cause.presentationCode);
 	}
 	if (cause instanceof Error) return localizedComposerError(cause.message);
-	if (typeof cause === 'string') return localizedComposerError(cause);
+	if (String(cause) === cause) return localizedComposerError(String(cause));
 	return composerErrorMessages.session_request_failed();
 }
 

@@ -130,9 +130,18 @@
 			editor.updateLayer(layer.id, { mask: undefined });
 			return;
 		}
+		if (
+			value !== 'rectangle' &&
+			value !== 'rounded_rectangle' &&
+			value !== 'circle' &&
+			value !== 'ellipse' &&
+			value !== 'diamond'
+		) {
+			return;
+		}
 		const current = layer.mask ?? defaultLayerMask();
 		editor.updateLayer(layer.id, {
-			mask: { ...current, shape: value as ImageEditorLayerMask['shape'] }
+			mask: { ...current, shape: value }
 		});
 	}
 
