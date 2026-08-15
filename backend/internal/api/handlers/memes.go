@@ -29,6 +29,7 @@ import (
 	"github.com/openpost/backend/internal/api/middleware"
 	"github.com/openpost/backend/internal/memes"
 	"github.com/openpost/backend/internal/models"
+	"github.com/openpost/backend/internal/services/medialifecycle"
 	"github.com/openpost/backend/internal/services/memegeneration"
 	"github.com/openpost/backend/internal/services/publicurl"
 	"github.com/openpost/backend/internal/services/ratelimit"
@@ -243,7 +244,7 @@ func (i mediaHandlerMemeImporter) ImportMeme(ctx context.Context, input MemeMedi
 		AltText:          input.AltText,
 		Source:           "meme_generator",
 		AssetKind:        "library",
-		RetentionClass:   "library",
+		RetentionClass:   medialifecycle.RetentionTemporary,
 		ParentMediaID:    input.ParentMediaID,
 		OnCreated: func(media models.MediaAttachment) {
 			created = media

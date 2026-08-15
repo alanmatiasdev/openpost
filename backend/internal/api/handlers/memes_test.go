@@ -22,6 +22,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/openpost/backend/internal/memes"
 	"github.com/openpost/backend/internal/models"
+	"github.com/openpost/backend/internal/services/medialifecycle"
 	"github.com/openpost/backend/internal/services/mediastore"
 	"github.com/openpost/backend/internal/services/memegeneration"
 	"github.com/openpost/backend/internal/services/publicurl"
@@ -470,6 +471,7 @@ func TestMemeRenderImportsMediaPersistsImmutableRecipeAndAllowsRecipeRead(t *tes
 	var storedMedia models.MediaAttachment
 	require.NoError(t, srv.db.NewSelect().Model(&storedMedia).Where("id = ?", output.Body.Media.ID).Scan(t.Context()))
 	require.Equal(t, "meme_generator", storedMedia.Source)
+	require.Equal(t, medialifecycle.RetentionTemporary, storedMedia.RetentionClass)
 	require.Equal(t, "Three Headed Dragon meme. Text: Backend team; Frontend; Friday deploy.", storedMedia.AltText)
 	require.Equal(t, "parent-1", storedMedia.ParentMediaID)
 
