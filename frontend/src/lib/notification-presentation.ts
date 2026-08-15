@@ -18,6 +18,11 @@ interface SemanticNotificationPayload {
 	organization_name?: string;
 }
 
+interface SemanticPayloadRecord {
+	kind?: unknown;
+	organization_name?: unknown;
+}
+
 export function presentNotification(notification: Notification): NotificationPresentation {
 	const actions = notification.actions ?? [];
 	if (notification.type !== 'ownership_transfer') {
@@ -46,11 +51,12 @@ function parseSemanticPayload(raw: string): SemanticNotificationPayload {
 	try {
 		const parsed: unknown = JSON.parse(raw);
 		if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+		// SAFETY: The guard above proves JSON.parse returned a non-array object; the local
+		// SemanticPayloadRecord keeps only the optional fields this parser accepts.
+		const payload = parsed as SemanticPayloadRecord;
 		return {
-			kind: parseOptionalPayloadString(Object.hasOwn(parsed, 'kind') ? parsed.kind : undefined),
-			organization_name: parseOptionalPayloadString(
-				Object.hasOwn(parsed, 'organization_name') ? parsed.organization_name : undefined
-			)
+			kind: parseOptionalPayloadString(payload.kind),
+			organization_name: parseOptionalPayloadString(payload.organization_name)
 		};
 	} catch {
 		return {};

@@ -37,10 +37,48 @@ export interface UploadMediaFileOptions {
 	signal?: AbortSignal;
 }
 
+type CreateMediaUploadSessionInputBody = components['schemas']['CreateMediaUploadSessionInputBody'];
+type CreateMediaUploadSessionOutputBody =
+	components['schemas']['CreateMediaUploadSessionOutputBody'];
+type DirectMediaUploadTarget = components['schemas']['DirectMediaUploadTarget'];
+
+type UploadMetadata = {
+	source: NonNullable<UploadMediaFileOptions['source']>;
+	assetKind: NonNullable<UploadMediaFileOptions['assetKind']>;
+	retentionClass: NonNullable<UploadMediaFileOptions['retentionClass']>;
+	tagId: string;
+	parentMediaId: string;
+	designDocumentId: string;
+	designPageId: string;
+	videoProjectId: string;
+	clientSHA256: string;
+	stockProvenance?: StockMediaProvenance;
+};
+
+interface DirectUploadPolicy {
+	headers: Headers;
+	isExternal: boolean;
+	withCredentials: boolean;
+}
+
 interface UploadProblem {
 	detail?: string;
 	error?: string;
 	title?: string;
+}
+
+interface StorageCapabilityResponse {
+	direct_upload_supported?: boolean;
+}
+
+type UploadJSONValue = null | string | number | boolean | UploadJSONValue[] | UploadJSONObject;
+
+interface UploadJSONObject {
+	[key: string]: UploadJSONValue;
+}
+
+interface MediaMetadataResponse {
+	media?: MediaUploadResult[];
 }
 
 const directUploadCapabilityByWorkspace = new Map<string, Promise<boolean>>();
@@ -112,7 +150,7 @@ export async function uploadMediaFile({
 			signal
 		);
 	} catch (error) {
-		if (!shouldUseMultipartFallback(error)) {
+		if (!(error instanceof Error) || !shouldUseMultipartFallback(error)) {
 			throw error;
 		}
 		return uploadViaMultipart(workspaceId, uploadFile, altText, metadata, onProgress, signal);
@@ -134,7 +172,7 @@ export function isSupportedMediaFile(file: File): boolean {
 	);
 }
 
-export function shouldUseMultipartFallback(error: unknown): boolean {
+export function shouldUseMultipartFallback(error: Error): boolean {
 	if (!(error instanceof UploadRequestError)) {
 		return false;
 	}
@@ -144,9 +182,10 @@ export function shouldUseMultipartFallback(error: unknown): boolean {
 	return error.message.toLowerCase().includes('direct media upload sessions require s3 storage');
 }
 
-export function directUploadSupportedFromStorageResponse(value: unknown): boolean {
-	if (!value || typeof value !== 'object') return true;
-	return (value as { direct_upload_supported?: unknown }).direct_upload_supported !== false;
+export function directUploadSupportedFromStorageResponse(
+	value: StorageCapabilityResponse
+): boolean {
+	return value.direct_upload_supported !== false;
 }
 
 export function directUploadHeadersForBrowser(headers: Record<string, string>): Headers {
@@ -164,7 +203,7 @@ export function directUploadRequestPolicy(
 	uploadURL: string,
 	returnedHeaders: Record<string, string>,
 	openPostHeaders: Headers
-): { headers: Headers; isExternal: boolean; withCredentials: boolean } {
+): DirectUploadPolicy {
 	const headers = directUploadHeadersForBrowser(returnedHeaders);
 	const isExternal = !uploadURL.startsWith('/') || uploadURL.startsWith('//');
 	if (isExternal) {
@@ -192,7 +231,7 @@ export function normalizedUploadErrorMessage(
 		(contentType ?? '').toLowerCase().includes('json') || trimmed.startsWith('{');
 	if (!looksLikeJSON) return trimmed;
 	try {
-		const problem = JSON.parse(trimmed) as UploadProblem;
+		const problem = parseUploadProblem(JSON.parse(trimmed));
 		for (const value of [problem.detail, problem.error, problem.title]) {
 			if (typeof value === 'string' && value.trim()) return value.trim();
 		}
@@ -213,7 +252,9 @@ async function mediaStorageSupportsDirectUploads(workspaceId: string): Promise<b
 	})
 		.then(async (response) => {
 			if (!response.ok) return true;
-			return directUploadSupportedFromStorageResponse(await response.json());
+			return directUploadSupportedFromStorageResponse(
+				parseStorageCapabilityResponse(await response.json())
+			);
 		})
 		.catch(() => true);
 	directUploadCapabilityByWorkspace.set(cacheKey, request);
@@ -224,18 +265,7 @@ async function uploadViaDirectSession(
 	workspaceId: string,
 	file: File,
 	altText: string,
-	metadata: {
-		source: NonNullable<UploadMediaFileOptions['source']>;
-		assetKind: NonNullable<UploadMediaFileOptions['assetKind']>;
-		retentionClass: NonNullable<UploadMediaFileOptions['retentionClass']>;
-		tagId: string;
-		parentMediaId: string;
-		designDocumentId: string;
-		designPageId: string;
-		videoProjectId: string;
-		clientSHA256: string;
-		stockProvenance?: StockMediaProvenance;
-	},
+	metadata: UploadMetadata,
 	onProgress?: (progress: VideoPreparationProgress) => void,
 	signal?: AbortSignal
 ): Promise<MediaUploadResult> {
@@ -245,33 +275,16 @@ async function uploadViaDirectSession(
 		credentials: 'include',
 		headers: apiHeaders(true),
 		signal,
-		body: JSON.stringify({
-			workspace_id: workspaceId,
-			filename: file.name,
-			mime_type: file.type || 'application/octet-stream',
-			size: file.size,
-			...(altText ? { alt_text: altText } : {}),
-			source: metadata.source,
-			asset_kind: metadata.assetKind,
-			retention_class: metadata.retentionClass,
-			...(metadata.tagId ? { tag_id: metadata.tagId } : {}),
-			...(metadata.parentMediaId ? { parent_media_id: metadata.parentMediaId } : {}),
-			...(metadata.designDocumentId ? { design_document_id: metadata.designDocumentId } : {}),
-			...(metadata.designPageId ? { design_page_id: metadata.designPageId } : {}),
-			...(metadata.videoProjectId ? { video_project_id: metadata.videoProjectId } : {}),
-			...(metadata.clientSHA256 ? { client_sha256: metadata.clientSHA256 } : {}),
-			...(metadata.stockProvenance ? { stock_provenance: metadata.stockProvenance } : {})
-		})
+		body: JSON.stringify(createUploadSessionBody(workspaceId, file, altText, metadata))
 	});
 	if (!sessionResp.ok) {
 		throw await uploadErrorFromResponse(sessionResp, 'Failed to create upload session');
 	}
 
-	const session =
-		(await sessionResp.json()) as components['schemas']['CreateMediaUploadSessionOutputBody'];
+	const session = parseUploadSessionResponse(await sessionResp.json());
 	if (session.deduped) {
 		onProgress?.({ stage: 'finalizing', fraction: 1, message: 'Existing media reused' });
-		return {
+		const dedupedResult: MediaUploadResult = {
 			id: session.media_id,
 			mime_type: file.type || 'application/octet-stream',
 			url: `/media/${session.media_id}`,
@@ -284,9 +297,10 @@ async function uploadViaDirectSession(
 			retention_class: metadata.retentionClass,
 			processing_status: 'ready',
 			processing_progress: 100,
-			analysis_status: 'ready',
-			...(metadata.videoProjectId ? { video_project_id: metadata.videoProjectId } : {})
+			analysis_status: 'ready'
 		};
+		if (metadata.videoProjectId) dedupedResult.video_project_id = metadata.videoProjectId;
+		return dedupedResult;
 	}
 	const uploadRequest = directUploadRequestPolicy(
 		session.upload.url,
@@ -318,7 +332,7 @@ async function uploadViaDirectSession(
 	if (!completeResp.ok) {
 		throw await uploadErrorFromResponse(completeResp, 'Failed to finalize media upload');
 	}
-	const result = (await completeResp.json()) as MediaUploadResult;
+	const result = parseMediaUploadResult(await completeResp.json());
 	return waitForVideoProcessing(workspaceId, result, onProgress, signal);
 }
 
@@ -326,18 +340,7 @@ async function uploadViaMultipart(
 	workspaceId: string,
 	file: File,
 	altText: string,
-	metadata: {
-		source: NonNullable<UploadMediaFileOptions['source']>;
-		assetKind: NonNullable<UploadMediaFileOptions['assetKind']>;
-		retentionClass: NonNullable<UploadMediaFileOptions['retentionClass']>;
-		tagId: string;
-		parentMediaId: string;
-		designDocumentId: string;
-		designPageId: string;
-		videoProjectId: string;
-		clientSHA256: string;
-		stockProvenance?: StockMediaProvenance;
-	},
+	metadata: UploadMetadata,
 	onProgress?: (progress: VideoPreparationProgress) => void,
 	signal?: AbortSignal
 ): Promise<MediaUploadResult> {
@@ -366,7 +369,139 @@ async function uploadViaMultipart(
 		(fraction) => onProgress?.({ stage: 'uploading', fraction, message: 'Uploading video' }),
 		signal
 	);
-	return waitForVideoProcessing(workspaceId, response as MediaUploadResult, onProgress, signal);
+	return waitForVideoProcessing(workspaceId, response, onProgress, signal);
+}
+
+function createUploadSessionBody(
+	workspaceId: string,
+	file: File,
+	altText: string,
+	metadata: UploadMetadata
+): CreateMediaUploadSessionInputBody {
+	const body: CreateMediaUploadSessionInputBody = {
+		workspace_id: workspaceId,
+		filename: file.name,
+		mime_type: file.type || 'application/octet-stream',
+		size: file.size,
+		source: metadata.source,
+		asset_kind: metadata.assetKind,
+		retention_class: metadata.retentionClass
+	};
+	if (altText) body.alt_text = altText;
+	if (metadata.tagId) body.tag_id = metadata.tagId;
+	if (metadata.parentMediaId) body.parent_media_id = metadata.parentMediaId;
+	if (metadata.designDocumentId) body.design_document_id = metadata.designDocumentId;
+	if (metadata.designPageId) body.design_page_id = metadata.designPageId;
+	if (metadata.videoProjectId) body.video_project_id = metadata.videoProjectId;
+	if (metadata.clientSHA256) body.client_sha256 = metadata.clientSHA256;
+	if (metadata.stockProvenance) body.stock_provenance = metadata.stockProvenance;
+	return body;
+}
+
+function parseStorageCapabilityResponse(value: unknown): StorageCapabilityResponse {
+	if (!isUploadRecord(value)) return {};
+	const supported = value.direct_upload_supported;
+	return typeof supported === 'boolean' ? { direct_upload_supported: supported } : {};
+}
+
+function parseUploadProblem(value: unknown): UploadProblem {
+	if (!isUploadRecord(value)) return {};
+	return {
+		detail: parseOptionalString(value.detail),
+		error: parseOptionalString(value.error),
+		title: parseOptionalString(value.title)
+	};
+}
+
+function parseUploadSessionResponse(value: unknown): CreateMediaUploadSessionOutputBody {
+	if (!isUploadRecord(value))
+		throw new UploadRequestError('The upload session response was invalid', 0);
+	const completeURL = parseRequiredString(value.complete_url, 'complete_url');
+	const deduped = parseRequiredBoolean(value.deduped, 'deduped');
+	const mediaID = parseRequiredString(value.media_id, 'media_id');
+	const upload = parseDirectMediaUploadTarget(value.upload);
+	return { complete_url: completeURL, deduped, media_id: mediaID, upload };
+}
+
+function parseDirectMediaUploadTarget(value: unknown): DirectMediaUploadTarget {
+	if (!isUploadRecord(value))
+		throw new UploadRequestError('The upload target response was invalid', 0);
+	return {
+		expires_at: parseRequiredString(value.expires_at, 'upload.expires_at'),
+		headers: parseStringHeaders(value.headers),
+		method: parseRequiredString(value.method, 'upload.method'),
+		object_key: parseRequiredString(value.object_key, 'upload.object_key'),
+		url: parseRequiredString(value.url, 'upload.url')
+	};
+}
+
+function parseStringHeaders(value: unknown): DirectMediaUploadTarget['headers'] {
+	if (!isUploadRecord(value)) return {};
+	const headers: DirectMediaUploadTarget['headers'] = {};
+	for (const [key, headerValue] of Object.entries(value)) {
+		if (typeof headerValue === 'string') headers[key] = headerValue;
+	}
+	return headers;
+}
+
+function parseMediaMetadataResponse(value: unknown): MediaMetadataResponse {
+	if (!isUploadRecord(value) || !Array.isArray(value.media)) return {};
+	const media = value.media.map(parseMediaUploadResult);
+	return { media };
+}
+
+function parseMediaUploadResult(value: unknown): MediaUploadResult {
+	if (!isUploadRecord(value)) throw new UploadRequestError('The upload response was invalid', 0);
+	const result: MediaUploadResult = {
+		alt_text: parseRequiredString(value.alt_text, 'alt_text'),
+		analysis_status: parseRequiredString(value.analysis_status, 'analysis_status'),
+		asset_kind: parseRequiredString(value.asset_kind, 'asset_kind'),
+		deduped: parseRequiredBoolean(value.deduped, 'deduped'),
+		id: parseRequiredString(value.id, 'id'),
+		mime_type: parseRequiredString(value.mime_type, 'mime_type'),
+		original_filename: parseRequiredString(value.original_filename, 'original_filename'),
+		processing_progress: parseRequiredNumber(value.processing_progress, 'processing_progress'),
+		processing_status: parseRequiredString(value.processing_status, 'processing_status'),
+		retention_class: parseRetentionClass(value.retention_class),
+		size: parseRequiredNumber(value.size, 'size'),
+		source: parseRequiredString(value.source, 'source'),
+		url: parseRequiredString(value.url, 'url')
+	};
+	result.analysis_error = parseOptionalString(value.analysis_error);
+	result.design_document_id = parseOptionalString(value.design_document_id);
+	result.design_page_id = parseOptionalString(value.design_page_id);
+	result.parent_media_id = parseOptionalString(value.parent_media_id);
+	result.poster_thumbnail_url = parseOptionalString(value.poster_thumbnail_url);
+	result.video_project_id = parseOptionalString(value.video_project_id);
+	return result;
+}
+
+function parseRetentionClass(value: unknown): MediaUploadResult['retention_class'] {
+	if (value === 'library' || value === 'temporary') return value;
+	throw new UploadRequestError('The upload response retention class was invalid', 0);
+}
+
+function parseRequiredString(value: unknown, field: string): string {
+	if (typeof value === 'string') return value;
+	throw new UploadRequestError(`The upload response field ${field} was invalid`, 0);
+}
+
+function parseRequiredBoolean(value: unknown, field: string): boolean {
+	if (typeof value === 'boolean') return value;
+	throw new UploadRequestError(`The upload response field ${field} was invalid`, 0);
+}
+
+function parseRequiredNumber(value: unknown, field: string): number {
+	if (typeof value === 'number' && Number.isFinite(value)) return value;
+	throw new UploadRequestError(`The upload response field ${field} was invalid`, 0);
+}
+
+function parseOptionalString(value: unknown): string | undefined {
+	return typeof value === 'string' ? value : undefined;
+}
+
+function isUploadRecord(value: unknown): value is UploadJSONObject {
+	return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
 function apiURL(path: string): string {
@@ -413,25 +548,7 @@ async function waitForVideoProcessing(
 	onProgress?: (progress: VideoPreparationProgress) => void,
 	signal?: AbortSignal
 ): Promise<MediaUploadResult> {
-	type ProcessedResult = MediaUploadResult & {
-		processing_status?: string;
-		processing_progress?: number;
-		analysis_status?: string;
-		analysis_error?: string;
-		poster_thumbnail_url?: string;
-	};
-	type MetadataResponse = {
-		media?: Array<{
-			id: string;
-			processing_status?: string;
-			processing_progress?: number;
-			analysis_status?: string;
-			analysis_error?: string;
-			poster_thumbnail_url?: string;
-		}>;
-	};
-
-	let current = result as ProcessedResult;
+	let current = result;
 	if (!current.mime_type.startsWith('video/') || current.processing_status !== 'processing') {
 		return result;
 	}
@@ -455,7 +572,7 @@ async function waitForVideoProcessing(
 			signal
 		});
 		if (!response.ok) throw await uploadErrorFromResponse(response, 'Failed to check video');
-		const metadata = ((await response.json()) as MetadataResponse).media?.find(
+		const metadata = parseMediaMetadataResponse(await response.json()).media?.find(
 			(item) => item.id === current.id
 		);
 		if (!metadata) throw new UploadRequestError('Uploaded video could not be found', 404);
@@ -559,7 +676,7 @@ function uploadFormWithProgress(
 	body: FormData,
 	onProgress: (fraction: number) => void,
 	signal?: AbortSignal
-): Promise<unknown> {
+): Promise<MediaUploadResult> {
 	return new Promise((resolve, reject) => {
 		if (signal?.aborted) {
 			reject(new DOMException('Aborted', 'AbortError'));
@@ -593,7 +710,7 @@ function uploadFormWithProgress(
 			}
 			try {
 				onProgress(1);
-				resolve(JSON.parse(xhr.responseText));
+				resolve(parseMediaUploadResult(JSON.parse(xhr.responseText)));
 			} catch {
 				reject(new UploadRequestError('The upload response was invalid', xhr.status));
 			}
