@@ -140,6 +140,7 @@
 	import {
 		ComposerSession,
 		ComposerSessionError,
+		type ComposerWorkspaceSwitchState,
 		type PublicationDraft
 	} from '$lib/composer/session';
 	import { composerErrorMessage } from '$lib/composer/error-presentation';
@@ -231,11 +232,6 @@
 		onThreadStateChange?: (isThread: boolean) => void;
 	}
 
-	interface PendingWorkspaceSwitch {
-		request: WorkspaceSwitchRequest;
-		resolve: (allowed: boolean) => void;
-	}
-
 	// --------------------------------------------------------------------------
 	// Props & core state
 	// --------------------------------------------------------------------------
@@ -309,9 +305,7 @@
 	let workspaceLoadError = $state('');
 	let workspaceSettingsError = $state('');
 	let workspaceChangeNotice = $state('');
-	let pendingWorkspaceSwitch = $state.raw<PendingWorkspaceSwitch | null>(null);
-	let workspaceSwitchAction = $state<'save' | 'discard' | ''>('');
-	let workspaceSwitchError = $state('');
+	let workspaceSwitchState = $state.raw<ComposerWorkspaceSwitchState | null>(null);
 	let leaveEditorForWorkspaceID = '';
 	let accountLoadError = $state('');
 	let accountsWorkspaceId = $state('');
@@ -423,6 +417,7 @@
 				client: createComposerPublicationClient()
 			});
 			unsubscribeComposerSession = composerSession.subscribe((state) => {
+				workspaceSwitchState = state.workspaceSwitch;
 				if (state.publicationId) publicationId = state.publicationId;
 				if (state.revision !== null) revision = state.revision;
 				isSaving = state.phase === 'loading' || state.phase === 'saving';
@@ -2589,58 +2584,53 @@
 		}
 	}
 
-	function finishWorkspaceSwitchDecision(allowed: boolean) {
-		const pending = pendingWorkspaceSwitch;
-		if (!pending) return;
-		const resumeAutoSave = !allowed && autoSavesDraft && hasContent;
-		if (allowed && isEditMode) leaveEditorForWorkspaceID = pending.request.to.id;
-		pendingWorkspaceSwitch = null;
-		workspaceSwitchAction = '';
-		workspaceSwitchError = '';
-		pending.resolve(allowed);
-		if (resumeAutoSave) scheduleAutoSave();
-	}
-
-	function requestComposerWorkspaceSwitch(request: WorkspaceSwitchRequest): Promise<boolean> {
+	async function requestComposerWorkspaceSwitch(request: WorkspaceSwitchRequest): Promise<boolean> {
 		if (!selectedWorkspaceId || request.from.id !== selectedWorkspaceId) {
-			return Promise.resolve(true);
+			return true;
 		}
-		if (!composerWorkspaceStateDirty) {
-			if (isEditMode) leaveEditorForWorkspaceID = request.to.id;
-			return Promise.resolve(true);
-		}
-		if (pendingWorkspaceSwitch || workspaceSwitchAction) return Promise.resolve(false);
 		clearAutoSaveTimer();
-		workspaceSwitchError = '';
-		return new Promise<boolean>((resolveSwitch) => {
-			pendingWorkspaceSwitch = { request, resolve: resolveSwitch };
+		const session = await sessionFor(selectedWorkspaceId, publicationId);
+		return session.requestWorkspaceSwitch({
+			fromWorkspaceId: request.from.id,
+			toWorkspaceId: request.to.id,
+			toWorkspaceName: request.to.name,
+			dirty: composerWorkspaceStateDirty,
+			adapters: {
+				save: async () => {
+					if (hasPendingPasteMediaUploads) return { ok: false, error: pasteMediaUploadBlocker() };
+					const saved = autoSavesDraft
+						? await flushPendingTextDraft()
+						: await saveEditedPost(false);
+					return {
+						ok: Boolean(saved),
+						...(saved ? {} : { error: error || m.compose_workspace_switch_save_failed() })
+					};
+				},
+				discard: () => undefined,
+				invalidate: () => {
+					if (isEditMode) leaveEditorForWorkspaceID = request.to.id;
+					clearAutoSaveTimer();
+					saveGeneration += 1;
+					invalidatePendingComposerRequests();
+					pasteMediaUploadQueue.reset();
+				},
+				resume: () => {
+					if (autoSavesDraft && hasContent) scheduleAutoSave();
+				}
+			}
 		});
 	}
 
 	async function saveBeforeWorkspaceSwitch() {
-		if (!pendingWorkspaceSwitch || workspaceSwitchAction) return;
-		if (hasPendingPasteMediaUploads) {
-			workspaceSwitchError = pasteMediaUploadBlocker();
-			return;
-		}
-		workspaceSwitchAction = 'save';
-		workspaceSwitchError = '';
-		const saved = autoSavesDraft ? await flushPendingTextDraft() : await saveEditedPost(false);
-		if (!saved) {
-			workspaceSwitchAction = '';
-			workspaceSwitchError = error || m.compose_workspace_switch_save_failed();
-			return;
-		}
-		finishWorkspaceSwitchDecision(true);
+		await composerSession?.decideWorkspaceSwitch('save');
 	}
 
 	function discardBeforeWorkspaceSwitch() {
-		if (!pendingWorkspaceSwitch || workspaceSwitchAction) return;
-		workspaceSwitchAction = 'discard';
-		clearAutoSaveTimer();
-		saveGeneration += 1;
-		pasteMediaUploadQueue.reset();
-		finishWorkspaceSwitchDecision(true);
+		void composerSession?.decideWorkspaceSwitch('discard');
+	}
+
+	function stayInComposerWorkspace() {
+		void composerSession?.decideWorkspaceSwitch('stay');
 	}
 
 	onMount(() => {
@@ -2677,7 +2667,7 @@
 	}
 
 	onDestroy(() => {
-		if (pendingWorkspaceSwitch) finishWorkspaceSwitchDecision(false);
+		void composerSession?.decideWorkspaceSwitch('stay');
 		invalidatePendingComposerRequests();
 		pasteMediaUploadQueue.reset();
 		clearAutoSaveTimer();
@@ -5719,11 +5709,9 @@
 />
 
 <Dialog.Root
-	open={pendingWorkspaceSwitch !== null}
+	open={workspaceSwitchState !== null}
 	onOpenChange={(open) => {
-		if (!open && pendingWorkspaceSwitch && !workspaceSwitchAction) {
-			finishWorkspaceSwitchDecision(false);
-		}
+		if (!open && workspaceSwitchState && !workspaceSwitchState.intent) stayInComposerWorkspace();
 	}}
 >
 	<Dialog.Content class="sm:max-w-lg" data-testid="composer-workspace-switch-dialog">
@@ -5731,19 +5719,19 @@
 			<Dialog.Title>{m.compose_workspace_switch_title()}</Dialog.Title>
 			<Dialog.Description>
 				{m.compose_workspace_switch_body({
-					workspace: pendingWorkspaceSwitch?.request.to.name ?? ''
+					workspace: workspaceSwitchState?.toWorkspaceName ?? ''
 				})}
 			</Dialog.Description>
 		</Dialog.Header>
-		{#if workspaceSwitchError}
-			<p class="text-sm text-destructive" role="alert">{workspaceSwitchError}</p>
+		{#if workspaceSwitchState?.error}
+			<p class="text-sm text-destructive" role="alert">{workspaceSwitchState.error}</p>
 		{/if}
 		<Dialog.Footer class="gap-2 sm:justify-between">
 			<Button
 				type="button"
 				variant="ghost"
-				onclick={() => finishWorkspaceSwitchDecision(false)}
-				disabled={Boolean(workspaceSwitchAction)}
+				onclick={stayInComposerWorkspace}
+				disabled={Boolean(workspaceSwitchState?.intent)}
 			>
 				{m.compose_workspace_switch_stay()}
 			</Button>
@@ -5752,17 +5740,17 @@
 					type="button"
 					variant="destructive"
 					onclick={discardBeforeWorkspaceSwitch}
-					disabled={Boolean(workspaceSwitchAction)}
+					disabled={Boolean(workspaceSwitchState?.intent)}
 				>
 					{m.compose_workspace_switch_discard()}
 				</Button>
 				<Button
 					type="button"
 					onclick={saveBeforeWorkspaceSwitch}
-					disabled={Boolean(workspaceSwitchAction)}
-					aria-busy={workspaceSwitchAction === 'save'}
+					disabled={Boolean(workspaceSwitchState?.intent)}
+					aria-busy={workspaceSwitchState?.intent === 'save'}
 				>
-					{#if workspaceSwitchAction === 'save'}
+					{#if workspaceSwitchState?.intent === 'save'}
 						<LoaderIcon class="size-4 animate-spin" />
 					{/if}
 					{isEditMode ? m.compose_save_changes() : m.compose_save_draft()}

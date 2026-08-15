@@ -31,7 +31,262 @@ function clientWith(overrides: Partial<ComposerPublicationClient>): ComposerPubl
 	return overrides as ComposerPublicationClient;
 }
 
+function quietSwitchAdapters() {
+	return {
+		save: async () => ({ ok: true }),
+		discard: () => undefined,
+		invalidate: () => undefined,
+		resume: () => undefined
+	};
+}
+
 describe('ComposerSession', () => {
+	it('owns a dirty Workspace switch until the user stays', async () => {
+		const resumed: string[] = [];
+		const session = new ComposerSession({
+			workspaceId: 'workspace-1',
+			client: {} as ComposerPublicationClient
+		});
+		const decision = session.requestWorkspaceSwitch({
+			fromWorkspaceId: 'workspace-1',
+			toWorkspaceId: 'workspace-2',
+			toWorkspaceName: 'Second Workspace',
+			dirty: true,
+			adapters: {
+				save: async () => ({ ok: true }),
+				discard: () => undefined,
+				invalidate: () => undefined,
+				resume: () => resumed.push('autosave')
+			}
+		});
+
+		expect(session.snapshot.workspaceSwitch).toEqual({
+			toWorkspaceId: 'workspace-2',
+			toWorkspaceName: 'Second Workspace',
+			intent: null,
+			error: null
+		});
+		await session.decideWorkspaceSwitch('stay');
+
+		await expect(decision).resolves.toBe(false);
+		expect(session.snapshot.workspaceSwitch).toBeNull();
+		expect(resumed).toEqual(['autosave']);
+		expect(session.snapshot.workspaceId).toBe('workspace-1');
+	});
+
+	it('flushes saves before allowing a Workspace switch and invalidates the old session', async () => {
+		const order: string[] = [];
+		const session = new ComposerSession({
+			workspaceId: 'workspace-1',
+			client: {} as ComposerPublicationClient
+		});
+		const decision = session.requestWorkspaceSwitch({
+			fromWorkspaceId: 'workspace-1',
+			toWorkspaceId: 'workspace-2',
+			toWorkspaceName: 'Second Workspace',
+			dirty: true,
+			adapters: {
+				save: async () => {
+					order.push('save');
+					return { ok: true };
+				},
+				discard: () => order.push('discard'),
+				invalidate: () => order.push('invalidate'),
+				resume: () => order.push('resume')
+			}
+		});
+
+		await session.decideWorkspaceSwitch('save');
+
+		await expect(decision).resolves.toBe(true);
+		expect(order).toEqual(['save', 'invalidate']);
+		expect(session.snapshot.workspaceId).toBe('workspace-1');
+		expect(() => session.edit(draft('Wrong Workspace'))).toThrow('session_inactive');
+	});
+
+	it('keeps a failed switch save pending before one ordered discard', async () => {
+		const order: string[] = [];
+		const session = new ComposerSession({
+			workspaceId: 'workspace-1',
+			client: {} as ComposerPublicationClient
+		});
+		const decision = session.requestWorkspaceSwitch({
+			fromWorkspaceId: 'workspace-1',
+			toWorkspaceId: 'workspace-2',
+			toWorkspaceName: 'Second Workspace',
+			dirty: true,
+			adapters: {
+				save: async () => ({ ok: false, error: 'Save the draft before switching.' }),
+				discard: () => order.push('discard'),
+				invalidate: () => order.push('invalidate'),
+				resume: () => order.push('resume')
+			}
+		});
+
+		await session.decideWorkspaceSwitch('save');
+		expect(session.snapshot.workspaceSwitch).toMatchObject({
+			intent: null,
+			error: 'Save the draft before switching.'
+		});
+		await session.decideWorkspaceSwitch('discard');
+
+		await expect(decision).resolves.toBe(true);
+		expect(order).toEqual(['discard', 'invalidate']);
+	});
+
+	it('rejects a switch that does not originate in the active session Workspace', async () => {
+		const session = new ComposerSession({
+			workspaceId: 'workspace-1',
+			client: {} as ComposerPublicationClient
+		});
+
+		await expect(
+			session.requestWorkspaceSwitch({
+				fromWorkspaceId: 'workspace-9',
+				toWorkspaceId: 'workspace-2',
+				toWorkspaceName: 'Second Workspace',
+				dirty: false,
+				adapters: {
+					save: async () => ({ ok: true }),
+					discard: () => undefined,
+					invalidate: () => undefined,
+					resume: () => undefined
+				}
+			})
+		).resolves.toBe(false);
+		expect(session.snapshot.workspaceId).toBe('workspace-1');
+	});
+
+	it('ignores load and validation results that complete after Workspace deactivation', async () => {
+		let finishLoad!: (value: Awaited<ReturnType<ComposerPublicationClient['load']>>) => void;
+		const loadResult = new Promise<Awaited<ReturnType<ComposerPublicationClient['load']>>>(
+			(resolve) => {
+				finishLoad = resolve;
+			}
+		);
+		const loading = new ComposerSession({
+			workspaceId: 'workspace-1',
+			client: clientWith({ load: async () => loadResult })
+		});
+		const pendingLoad = loading.load('publication-1');
+		await loading.requestWorkspaceSwitch({
+			fromWorkspaceId: 'workspace-1',
+			toWorkspaceId: 'workspace-2',
+			toWorkspaceName: 'Second Workspace',
+			dirty: false,
+			adapters: quietSwitchAdapters()
+		});
+		finishLoad({
+			publication: {
+				id: 'publication-1',
+				workspace_id: 'workspace-1',
+				revision: 4,
+				status: 'draft'
+			},
+			draft: draft('Late load')
+		});
+		await pendingLoad;
+		expect(loading.snapshot.publicationId).toBeNull();
+
+		let finishValidation!: (value: { issues: [] }) => void;
+		const validationResult = new Promise<{ issues: [] }>((resolve) => (finishValidation = resolve));
+		const validating = new ComposerSession({
+			workspaceId: 'workspace-1',
+			client: clientWith({
+				create: async (workspaceId) => ({
+					id: 'publication-2',
+					workspace_id: workspaceId,
+					revision: 1,
+					status: 'draft'
+				}),
+				validate: async () => validationResult
+			})
+		});
+		validating.edit(draft('Validate later'));
+		await validating.save();
+		const pendingValidation = validating.validate();
+		await Promise.resolve();
+		await validating.requestWorkspaceSwitch({
+			fromWorkspaceId: 'workspace-1',
+			toWorkspaceId: 'workspace-2',
+			toWorkspaceName: 'Second Workspace',
+			dirty: false,
+			adapters: quietSwitchAdapters()
+		});
+		finishValidation({ issues: [] });
+		await pendingValidation;
+		expect(validating.snapshot.phase).toBe('validating');
+	});
+
+	it.each(['schedule', 'publish', 'retry', 'cancel', 'delete'] as const)(
+		'ignores a late %s completion after Workspace deactivation',
+		async (operation) => {
+			let finish!: (value: never) => void;
+			const result = new Promise<never>((resolve) => (finish = resolve));
+			const action = {
+				message: 'Done',
+				publication_id: 'publication-1',
+				revision: 2,
+				renditions: []
+			};
+			const session = new ComposerSession({
+				workspaceId: 'workspace-1',
+				client: clientWith({
+					create: async (workspaceId) => ({
+						id: 'publication-1',
+						workspace_id: workspaceId,
+						revision: 1,
+						status: 'draft'
+					}),
+					validate: async () => ({ issues: [] }),
+					schedule: async () => result,
+					publishNow: async () => result,
+					retry: async () => result,
+					cancel: async () => result,
+					delete: async () => result
+				})
+			});
+			session.edit(draft('Pending action'));
+			await session.save();
+			const pending =
+				operation === 'schedule'
+					? session.schedule()
+					: operation === 'publish'
+						? session.publishNow()
+						: operation === 'retry'
+							? session.retry('account-1')
+							: operation === 'cancel'
+								? session.cancel()
+								: session.delete();
+			const pendingPhase = {
+				schedule: 'scheduling',
+				publish: 'publishing',
+				retry: 'retrying',
+				cancel: 'cancelling',
+				delete: 'deleting'
+			}[operation];
+			for (let turn = 0; turn < 8 && session.snapshot.phase !== pendingPhase; turn += 1) {
+				await Promise.resolve();
+			}
+			await session.requestWorkspaceSwitch({
+				fromWorkspaceId: 'workspace-1',
+				toWorkspaceId: 'workspace-2',
+				toWorkspaceName: 'Second Workspace',
+				dirty: false,
+				adapters: quietSwitchAdapters()
+			});
+			finish((operation === 'delete' ? undefined : action) as never);
+			await pending;
+
+			expect(session.snapshot).toMatchObject({
+				publicationId: 'publication-1',
+				revision: 1,
+				status: 'draft',
+				delivery: []
+			});
+		}
+	);
+
 	it('creates a new Publication in its Workspace and accepts the returned revision', async () => {
 		const creates: Array<{ workspaceId: string; draft: PublicationDraft }> = [];
 		const client = clientWith({
