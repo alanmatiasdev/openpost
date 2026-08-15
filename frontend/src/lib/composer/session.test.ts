@@ -28,7 +28,21 @@ function draft(sourceText: string): PublicationDraft {
 }
 
 function clientWith(overrides: Partial<ComposerPublicationClient>): ComposerPublicationClient {
-	return overrides as ComposerPublicationClient;
+	const unavailable = async () => {
+		throw new Error('Unexpected composer client call.');
+	};
+	return {
+		load: unavailable,
+		create: unavailable,
+		update: unavailable,
+		validate: unavailable,
+		schedule: unavailable,
+		publishNow: unavailable,
+		retry: unavailable,
+		cancel: unavailable,
+		delete: unavailable,
+		...overrides
+	};
 }
 
 function quietSwitchAdapters() {
@@ -45,7 +59,7 @@ describe('ComposerSession', () => {
 		const resumed: string[] = [];
 		const session = new ComposerSession({
 			workspaceId: 'workspace-1',
-			client: {} as ComposerPublicationClient
+			client: clientWith({})
 		});
 		const decision = session.requestWorkspaceSwitch({
 			fromWorkspaceId: 'workspace-1',
@@ -78,7 +92,7 @@ describe('ComposerSession', () => {
 		const order: string[] = [];
 		const session = new ComposerSession({
 			workspaceId: 'workspace-1',
-			client: {} as ComposerPublicationClient
+			client: clientWith({})
 		});
 		const decision = session.requestWorkspaceSwitch({
 			fromWorkspaceId: 'workspace-1',
@@ -108,7 +122,7 @@ describe('ComposerSession', () => {
 		const order: string[] = [];
 		const session = new ComposerSession({
 			workspaceId: 'workspace-1',
-			client: {} as ComposerPublicationClient
+			client: clientWith({})
 		});
 		const decision = session.requestWorkspaceSwitch({
 			fromWorkspaceId: 'workspace-1',
@@ -137,7 +151,7 @@ describe('ComposerSession', () => {
 	it('rejects a switch that does not originate in the active session Workspace', async () => {
 		const session = new ComposerSession({
 			workspaceId: 'workspace-1',
-			client: {} as ComposerPublicationClient
+			client: clientWith({})
 		});
 
 		await expect(
@@ -275,6 +289,8 @@ describe('ComposerSession', () => {
 				dirty: false,
 				adapters: quietSwitchAdapters()
 			});
+			// SAFETY: Promise<never> is the shared pending seam for methods with action and void results;
+			// the session is inactive before this synthetic late completion is released.
 			finish((operation === 'delete' ? undefined : action) as never);
 			await pending;
 
@@ -636,7 +652,7 @@ describe('ComposerSession', () => {
 	it('notifies rendering consumers with observable state snapshots', () => {
 		const session = new ComposerSession({
 			workspaceId: 'workspace-1',
-			client: {} as ComposerPublicationClient
+			client: clientWith({})
 		});
 		const dirtyStates: boolean[] = [];
 		const unsubscribe = session.subscribe((state) => dirtyStates.push(state.dirty));

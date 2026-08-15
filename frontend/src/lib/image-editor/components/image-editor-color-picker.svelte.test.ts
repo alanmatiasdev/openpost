@@ -5,7 +5,7 @@ import ImageEditorColorPicker from './image-editor-color-picker.svelte';
 describe('OpenPost Image EditorColorPicker', () => {
 	beforeEach(() => {
 		vi.restoreAllMocks();
-		delete (globalThis as any).window.EyeDropper;
+		delete window.EyeDropper;
 	});
 
 	it('keeps hex, HSL, and RGB drafts synchronized without falling back to black', async () => {
@@ -33,7 +33,7 @@ describe('OpenPost Image EditorColorPicker', () => {
 
 	it('applies the picked screen color through onChange when EyeDropper is supported', async () => {
 		const onChange = vi.fn();
-		(globalThis as any).window.EyeDropper = class {
+		window.EyeDropper = class {
 			async open(): Promise<{ sRGBHex: string }> {
 				return { sRGBHex: '#abcdef' };
 			}

@@ -8,82 +8,9 @@ import type {
 	MemeTemplate,
 	MemeTemplateListResult
 } from '$lib/meme-generator/types';
+import { m } from '$lib/paraglide/messages';
 import MemeGenerator from './meme-generator.svelte';
 import '../../routes/layout.css';
-
-vi.mock('$lib/paraglide/messages', () => ({
-	m: new Proxy(
-		{},
-		{
-			get(_target, property) {
-				const key = String(property);
-				return (input: Record<string, string | number> = {}) => {
-					const messages: Record<string, string> = {
-						meme_generator_title: 'Meme generator',
-						meme_generator_description: 'Choose a template and review every caption.',
-						meme_generator_ideas_tab: 'Make it funny',
-						meme_generator_templates_tab: 'Browse templates',
-						meme_generator_idea_label: 'What should the meme say?',
-						meme_generator_idea_placeholder: 'Describe the situation',
-						meme_generator_tone_label: 'Tone',
-						meme_generator_tone_balanced: 'Balanced',
-						meme_generator_tone_dry: 'Dry',
-						meme_generator_tone_sarcastic: 'Sarcastic',
-						meme_generator_tone_playful: 'Playful',
-						meme_generator_generate: 'Generate ideas',
-						meme_generator_generating: 'Writing options…',
-						meme_generator_suggestions_heading: 'Pick a direction',
-						meme_generator_suggestions_description: 'Choose one, then edit it.',
-						meme_generator_editor_heading: 'Make it yours',
-						meme_generator_editor_description: 'Review the text before attaching.',
-						meme_generator_select_first_title: 'Choose a starting point',
-						meme_generator_select_first_body: 'Pick an option or browse templates.',
-						meme_generator_templates_heading: 'Templates',
-						meme_generator_search_label: 'Search templates',
-						meme_generator_search_placeholder: 'Search by name',
-						meme_generator_show_more: 'Show more',
-						meme_generator_animated: 'Animated',
-						meme_generator_image_slots_heading: 'Replaceable images',
-						meme_generator_image_slot_empty: 'No image selected',
-						meme_generator_render_attach: 'Render and attach',
-						meme_generator_rendering: 'Rendering…',
-						meme_generator_attached: 'Meme attached.',
-						meme_generator_attach_failed:
-							'The meme was saved in Media, but it could not be attached. Try attaching it again.',
-						meme_generator_attach_retry: 'Try attaching again',
-						meme_generator_selected: 'Selected',
-						meme_generator_candidate_preview_loading: 'Loading preview',
-						meme_generator_candidate_preview_not_loaded: 'Preview not loaded',
-						meme_generator_candidate_preview_failed: 'Preview could not load',
-						meme_generator_candidate_preview_load: 'Load preview',
-						meme_generator_candidate_preview_retry: 'Try preview again',
-						meme_generator_preview_loading: 'Updating preview…',
-						meme_generator_caption_too_long:
-							'Shorten this caption. Some punctuation and emoji count as more than one character in Memegen.',
-						meme_generator_try_another_set: 'Try another set',
-						media_picker_search_action: 'Search',
-						media_preview_unavailable: 'Preview unavailable',
-						common_retry: 'Try again',
-						common_loading: 'Loading…'
-					};
-					if (key === 'meme_generator_template_select') return `Use ${input.name}`;
-					if (key === 'meme_generator_candidate_select') return `Use ${input.name} suggestion`;
-					if (key === 'meme_generator_preview_alt') return `${input.name} preview`;
-					if (key === 'meme_generator_showing_templates') return `Showing ${input.count}`;
-					if (key === 'meme_generator_caption_label') return `Caption ${input.number}`;
-					if (key === 'meme_generator_caption_count') {
-						return `${input.current} of ${input.maximum}`;
-					}
-					if (key === 'meme_generator_image_slot_label') return `Image ${input.number}`;
-					if (key === 'meme_generator_choose_image') return `Choose image ${input.number}`;
-					if (key === 'meme_generator_replace_image') return `Replace image ${input.number}`;
-					if (key === 'meme_generator_remove_image') return `Remove image ${input.number}`;
-					return messages[key] ?? key;
-				};
-			}
-		}
-	)
-}));
 
 const template: MemeTemplate = {
 	id: 'fry',
@@ -291,12 +218,18 @@ describe('MemeGenerator', () => {
 		});
 		const generator = componentRoot(screen.container);
 
-		await screen.getByRole('tab', { name: 'Browse templates' }).click();
-		await screen.getByRole('button', { name: 'Use Futurama Fry' }).click();
-		await screen.getByLabelText('Caption 1').fill('CI passed');
-		await screen.getByLabelText('Caption 2').fill('production disagreed');
-		await screen.getByRole('button', { name: 'Choose image 1' }).click();
-		const attachButton = screen.getByRole('button', { name: 'Render and attach' });
+		await screen.getByRole('tab', { name: m.meme_generator_templates_tab() }).click();
+		await screen
+			.getByRole('button', { name: m.meme_generator_template_select({ name: template.name }) })
+			.click();
+		await screen.getByLabelText(m.meme_generator_caption_label({ number: 1 })).fill('CI passed');
+		await screen
+			.getByLabelText(m.meme_generator_caption_label({ number: 2 }))
+			.fill('production disagreed');
+		await screen
+			.getByRole('button', { name: m.meme_generator_choose_image({ number: 1 }) })
+			.click();
+		const attachButton = screen.getByRole('button', { name: m.meme_generator_render_attach() });
 		await expect.element(attachButton).toBeEnabled();
 		await attachButton.click();
 
@@ -313,7 +246,7 @@ describe('MemeGenerator', () => {
 		expect(onAttach).toHaveBeenCalledWith(
 			expect.objectContaining({ media: expect.objectContaining({ id: 'media-meme-1' }) })
 		);
-		await expect.element(screen.getByText('Meme attached.').first()).toBeVisible();
+		await expect.element(screen.getByText(m.meme_generator_attached()).first()).toBeVisible();
 		expectNoVisibleComponentOverflow(generator, 390);
 	});
 
@@ -336,11 +269,11 @@ describe('MemeGenerator', () => {
 		});
 
 		await screen
-			.getByLabelText('What should the meme say?')
+			.getByLabelText(m.meme_generator_idea_label())
 			.fill('Tests passed but users found it');
-		await screen.getByRole('button', { name: 'Generate ideas' }).click();
+		await screen.getByRole('button', { name: m.meme_generator_generate() }).click();
 		const candidateButton = screen.getByRole('button', {
-			name: 'Use Futurama Fry suggestion'
+			name: m.meme_generator_candidate_select({ name: template.name })
 		});
 		await expect.element(candidateButton).toBeVisible();
 		const candidateBox = candidateButton.element().getBoundingClientRect();
@@ -348,7 +281,9 @@ describe('MemeGenerator', () => {
 		expect(candidateBox.height).toBeGreaterThan(150);
 
 		await candidateButton.click();
-		await expect.element(screen.getByLabelText('Caption 1')).toHaveValue('tests are green');
+		await expect
+			.element(screen.getByLabelText(m.meme_generator_caption_label({ number: 1 })))
+			.toHaveValue('tests are green');
 		await expect
 			.element(screen.getByText('A dry contrast between the signal and reality.'))
 			.toBeVisible();
@@ -365,8 +300,10 @@ describe('MemeGenerator', () => {
 		);
 		expect(screen.container.textContent).not.toContain('memegen.link');
 
-		await screen.getByRole('tab', { name: 'Browse templates' }).click();
-		const templateButton = screen.getByRole('button', { name: 'Use Futurama Fry' });
+		await screen.getByRole('tab', { name: m.meme_generator_templates_tab() }).click();
+		const templateButton = screen.getByRole('button', {
+			name: m.meme_generator_template_select({ name: template.name })
+		});
 		await expect.element(templateButton).toBeVisible();
 		const templateBox = templateButton.element().getBoundingClientRect();
 		expect(templateBox.width).toBeGreaterThan(160);
@@ -415,39 +352,53 @@ describe('MemeGenerator', () => {
 			props: { workspaceId: 'workspace-1', api, onAttach: vi.fn() }
 		});
 
-		await screen.getByLabelText('What should the meme say?').fill('Four preview states');
-		await screen.getByRole('button', { name: 'Generate ideas' }).click();
+		await screen.getByLabelText(m.meme_generator_idea_label()).fill('Four preview states');
+		await screen.getByRole('button', { name: m.meme_generator_generate() }).click();
 		await vi.waitFor(() => expect(preview).toHaveBeenCalledTimes(4));
 
-		const firstCandidate = screen.getByRole('button', { name: 'Use First Template suggestion' });
+		const firstCandidate = screen.getByRole('button', {
+			name: m.meme_generator_candidate_select({ name: candidateTemplates[0].name })
+		});
 		const secondCandidate = screen.getByRole('button', {
-			name: 'Use Second Template suggestion'
+			name: m.meme_generator_candidate_select({ name: candidateTemplates[1].name })
 		});
 		await vi.waitFor(() => {
 			expect(firstCandidate.element().querySelector('img')).not.toBeNull();
 			expect(secondCandidate.element().querySelector('img')).not.toBeNull();
 		});
-		await expect.element(screen.getByText('Preview could not load')).toBeVisible();
-		await expect.element(screen.getByRole('button', { name: 'Try preview again' })).toBeVisible();
+		await expect
+			.element(screen.getByText(m.meme_generator_candidate_preview_failed()))
+			.toBeVisible();
+		await expect
+			.element(screen.getByRole('button', { name: m.meme_generator_candidate_preview_retry() }))
+			.toBeVisible();
 		expect(screen.container.textContent).not.toContain('Preview pending');
 
-		await screen.getByRole('button', { name: 'Use Fourth Template suggestion' }).click();
+		await screen
+			.getByRole('button', {
+				name: m.meme_generator_candidate_select({ name: candidateTemplates[3].name })
+			})
+			.click();
 		await vi.waitFor(() => expect(preview).toHaveBeenCalledTimes(5));
 		expect(preview.mock.calls[3][0].signal?.aborted).toBe(true);
 		expect(preview.mock.calls[4][0]).toEqual(
 			expect.objectContaining({ templateId: 'fourth', captions: candidates[3].caption_lines })
 		);
-		await expect.element(screen.getByRole('button', { name: 'Render and attach' })).toBeEnabled();
+		await expect
+			.element(screen.getByRole('button', { name: m.meme_generator_render_attach() }))
+			.toBeEnabled();
 		await vi.waitFor(() =>
 			expect(
 				screen
-					.getByRole('button', { name: 'Use Fourth Template suggestion' })
+					.getByRole('button', {
+						name: m.meme_generator_candidate_select({ name: candidateTemplates[3].name })
+					})
 					.element()
 					.querySelector('img')
 			).not.toBeNull()
 		);
 
-		await screen.getByRole('button', { name: 'Try preview again' }).click();
+		await screen.getByRole('button', { name: m.meme_generator_candidate_preview_retry() }).click();
 		await vi.waitFor(() => expect(preview).toHaveBeenCalledTimes(6));
 		expect(preview.mock.calls[5][0]).toEqual(
 			expect.objectContaining({ templateId: 'third', captions: candidates[2].caption_lines })
@@ -455,12 +406,16 @@ describe('MemeGenerator', () => {
 		await vi.waitFor(() =>
 			expect(
 				screen
-					.getByRole('button', { name: 'Use Third Template suggestion' })
+					.getByRole('button', {
+						name: m.meme_generator_candidate_select({ name: candidateTemplates[2].name })
+					})
 					.element()
 					.querySelector('img')
 			).not.toBeNull()
 		);
-		await expect.element(screen.getByRole('button', { name: 'Render and attach' })).toBeEnabled();
+		await expect
+			.element(screen.getByRole('button', { name: m.meme_generator_render_attach() }))
+			.toBeEnabled();
 		expect(screen.container.textContent).not.toContain('Preview pending');
 	});
 
@@ -483,13 +438,23 @@ describe('MemeGenerator', () => {
 			props: { workspaceId: 'workspace-1', api, onAttach: vi.fn() }
 		});
 
-		await screen.getByLabelText('What should the meme say?').fill('A noisy release');
-		await screen.getByRole('button', { name: 'Generate ideas' }).click();
-		await screen.getByRole('button', { name: 'Use Doge suggestion' }).click();
-		await screen.getByLabelText('Caption 1').fill('release stayed quiet');
+		await screen.getByLabelText(m.meme_generator_idea_label()).fill('A noisy release');
+		await screen.getByRole('button', { name: m.meme_generator_generate() }).click();
+		await screen
+			.getByRole('button', {
+				name: m.meme_generator_candidate_select({ name: aiOnlyTemplate.name })
+			})
+			.click();
+		await screen
+			.getByLabelText(m.meme_generator_caption_label({ number: 1 }))
+			.fill('release stayed quiet');
 
-		await expect.element(screen.getByLabelText('Caption 2')).toHaveValue('alerts joined the chat');
-		await expect.element(screen.getByRole('button', { name: 'Render and attach' })).toBeEnabled();
+		await expect
+			.element(screen.getByLabelText(m.meme_generator_caption_label({ number: 2 })))
+			.toHaveValue('alerts joined the chat');
+		await expect
+			.element(screen.getByRole('button', { name: m.meme_generator_render_attach() }))
+			.toBeEnabled();
 		expect(api.preview).toHaveBeenCalledWith(
 			expect.objectContaining({
 				templateId: 'doge',
@@ -512,14 +477,16 @@ describe('MemeGenerator', () => {
 			props: { workspaceId: 'workspace-1', api, onAttach: vi.fn() }
 		});
 
-		await screen.getByRole('tab', { name: 'Browse templates' }).click();
-		await screen.getByRole('button', { name: 'Use Futurama Fry' }).click();
-		const attachButton = screen.getByRole('button', { name: 'Render and attach' });
+		await screen.getByRole('tab', { name: m.meme_generator_templates_tab() }).click();
+		await screen
+			.getByRole('button', { name: m.meme_generator_template_select({ name: template.name }) })
+			.click();
+		const attachButton = screen.getByRole('button', { name: m.meme_generator_render_attach() });
 		await expect.element(attachButton).toBeEnabled();
 
-		await screen.getByLabelText('Caption 1').fill('first edit');
+		await screen.getByLabelText(m.meme_generator_caption_label({ number: 1 })).fill('first edit');
 		await vi.waitFor(() => expect(preview).toHaveBeenCalledTimes(2));
-		await screen.getByLabelText('Caption 1').fill('current edit');
+		await screen.getByLabelText(m.meme_generator_caption_label({ number: 1 })).fill('current edit');
 		await expect.element(attachButton).toBeDisabled();
 		await vi.waitFor(() => expect(preview).toHaveBeenCalledTimes(3));
 
@@ -542,9 +509,11 @@ describe('MemeGenerator', () => {
 			props: { workspaceId: 'workspace-1', api, onAttach }
 		});
 
-		await screen.getByRole('tab', { name: 'Browse templates' }).click();
-		await screen.getByRole('button', { name: 'Use Futurama Fry' }).click();
-		const renderButton = screen.getByRole('button', { name: 'Render and attach' });
+		await screen.getByRole('tab', { name: m.meme_generator_templates_tab() }).click();
+		await screen
+			.getByRole('button', { name: m.meme_generator_template_select({ name: template.name }) })
+			.click();
+		const renderButton = screen.getByRole('button', { name: m.meme_generator_render_attach() });
 		await expect.element(renderButton).toBeEnabled();
 		await renderButton.click();
 
@@ -555,13 +524,13 @@ describe('MemeGenerator', () => {
 				)
 			)
 			.toBeVisible();
-		const retryButton = screen.getByRole('button', { name: 'Try attaching again' });
+		const retryButton = screen.getByRole('button', { name: m.meme_generator_attach_retry() });
 		await expect.element(retryButton).toBeEnabled();
 		expect(api.render).toHaveBeenCalledTimes(1);
 		expect(onAttach).toHaveBeenCalledTimes(1);
 
 		await retryButton.click();
-		await expect.element(screen.getByText('Meme attached.').first()).toBeVisible();
+		await expect.element(screen.getByText(m.meme_generator_attached()).first()).toBeVisible();
 		expect(api.render).toHaveBeenCalledTimes(1);
 		expect(onAttach).toHaveBeenCalledTimes(2);
 	});
@@ -585,9 +554,13 @@ describe('MemeGenerator', () => {
 			props: { workspaceId: 'workspace-1', api, onAttach }
 		});
 
-		await screen.getByRole('tab', { name: 'Browse templates' }).click();
-		await screen.getByRole('button', { name: 'Use Animated Drake' }).click();
-		const attachButton = screen.getByRole('button', { name: 'Render and attach' });
+		await screen.getByRole('tab', { name: m.meme_generator_templates_tab() }).click();
+		await screen
+			.getByRole('button', {
+				name: m.meme_generator_template_select({ name: animatedTemplate.name })
+			})
+			.click();
+		const attachButton = screen.getByRole('button', { name: m.meme_generator_render_attach() });
 		await expect.element(attachButton).toBeEnabled();
 		await attachButton.click();
 
@@ -615,11 +588,19 @@ describe('MemeGenerator', () => {
 			props: { workspaceId: 'workspace-1', api, onAttach: vi.fn() }
 		});
 
-		await screen.getByRole('tab', { name: 'Browse templates' }).click();
-		await expect.element(screen.getByText('Showing 24')).toBeVisible();
-		await screen.getByRole('button', { name: 'Show more' }).click();
+		await screen.getByRole('tab', { name: m.meme_generator_templates_tab() }).click();
+		await expect
+			.element(screen.getByText(m.meme_generator_showing_templates({ count: 24 })))
+			.toBeVisible();
+		await screen.getByRole('button', { name: m.meme_generator_show_more() }).click();
 
-		await expect.element(screen.getByRole('button', { name: 'Use Late Template' })).toBeVisible();
+		await expect
+			.element(
+				screen.getByRole('button', {
+					name: m.meme_generator_template_select({ name: 'Late Template' })
+				})
+			)
+			.toBeVisible();
 		expect(listTemplates).toHaveBeenLastCalledWith(
 			expect.objectContaining({ query: '', limit: 48 })
 		);
@@ -635,11 +616,17 @@ describe('MemeGenerator', () => {
 		});
 		const generator = componentRoot(screen.container);
 
-		await screen.getByRole('tab', { name: 'Browse templates' }).click();
-		await screen.getByRole('button', { name: 'Use Futurama Fry' }).click();
-		await screen.getByLabelText('Caption 1').fill('?'.repeat(101));
+		await screen.getByRole('tab', { name: m.meme_generator_templates_tab() }).click();
+		await screen
+			.getByRole('button', { name: m.meme_generator_template_select({ name: template.name }) })
+			.click();
+		await screen
+			.getByLabelText(m.meme_generator_caption_label({ number: 1 }))
+			.fill('?'.repeat(101));
 
-		await expect.element(screen.getByText('202 of 200')).toBeVisible();
+		await expect
+			.element(screen.getByText(m.meme_generator_caption_count({ current: 202, maximum: 200 })))
+			.toBeVisible();
 		await expect
 			.element(
 				screen.getByText(
@@ -647,7 +634,9 @@ describe('MemeGenerator', () => {
 				)
 			)
 			.toBeVisible();
-		await expect.element(screen.getByRole('button', { name: 'Render and attach' })).toBeDisabled();
+		await expect
+			.element(screen.getByRole('button', { name: m.meme_generator_render_attach() }))
+			.toBeDisabled();
 		expect(api.render).not.toHaveBeenCalled();
 		expectNoVisibleComponentOverflow(generator, 320);
 	});

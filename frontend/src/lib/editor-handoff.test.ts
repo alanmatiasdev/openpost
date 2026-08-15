@@ -91,8 +91,8 @@ describe('editor handoff recovery', () => {
 
 	it('migrates a valid legacy image snapshot without accepting it as video', () => {
 		const storage = new MemoryStorage();
-		const legacy = { ...snapshot('image'), version: 1 };
-		delete (legacy as Partial<ComposerRecoverySnapshot>).editor;
+		const { editor: _editor, ...currentSnapshot } = snapshot('image');
+		const legacy = { ...currentSnapshot, version: 1 };
 		storage.setItem('openpost:image-editor:return:legacy', JSON.stringify(legacy));
 
 		expect(

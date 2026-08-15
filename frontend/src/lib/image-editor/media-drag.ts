@@ -7,8 +7,16 @@ export interface ImageEditorMediaDragPayload {
 	height?: number;
 }
 
+export interface ImageEditorDataTransfer {
+	effectAllowed: DataTransfer['effectAllowed'];
+	types: readonly string[];
+	files: Iterable<File>;
+	setData(type: string, value: string): void;
+	getData(type: string): string;
+}
+
 export function writeImageEditorMediaDrag(
-	dataTransfer: DataTransfer,
+	dataTransfer: ImageEditorDataTransfer,
 	payload: ImageEditorMediaDragPayload
 ): void {
 	dataTransfer.effectAllowed = 'copy';
@@ -35,7 +43,7 @@ function parseImageEditorMediaDragPayload(
 }
 
 export function readImageEditorMediaDrag(
-	dataTransfer: DataTransfer | null
+	dataTransfer: ImageEditorDataTransfer | null
 ): ImageEditorMediaDragPayload | null {
 	if (!dataTransfer) return null;
 	const encoded = dataTransfer.getData(IMAGE_EDITOR_MEDIA_DRAG_TYPE);
@@ -49,11 +57,13 @@ export function readImageEditorMediaDrag(
 	}
 }
 
-export function containsImageEditorMediaDrag(dataTransfer: DataTransfer | null): boolean {
+export function containsImageEditorMediaDrag(
+	dataTransfer: ImageEditorDataTransfer | null
+): boolean {
 	return Boolean(dataTransfer && [...dataTransfer.types].includes(IMAGE_EDITOR_MEDIA_DRAG_TYPE));
 }
 
-export function containsExternalImageDrag(dataTransfer: DataTransfer | null): boolean {
+export function containsExternalImageDrag(dataTransfer: ImageEditorDataTransfer | null): boolean {
 	return Boolean(
 		dataTransfer &&
 		!containsImageEditorMediaDrag(dataTransfer) &&
@@ -61,12 +71,12 @@ export function containsExternalImageDrag(dataTransfer: DataTransfer | null): bo
 	);
 }
 
-export function externalFiles(dataTransfer: DataTransfer | null): File[] {
+export function externalFiles(dataTransfer: ImageEditorDataTransfer | null): File[] {
 	if (!dataTransfer) return [];
 	return [...dataTransfer.files];
 }
 
-export function externalImageFiles(dataTransfer: DataTransfer | null): File[] {
+export function externalImageFiles(dataTransfer: ImageEditorDataTransfer | null): File[] {
 	return externalFiles(dataTransfer).filter(isImageEditorImageFile);
 }
 

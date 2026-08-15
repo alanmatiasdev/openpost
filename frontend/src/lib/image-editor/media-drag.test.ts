@@ -7,14 +7,15 @@ import {
 	isImageEditorImageFile,
 	readImageEditorMediaDrag,
 	IMAGE_EDITOR_MEDIA_DRAG_TYPE,
-	writeImageEditorMediaDrag
+	writeImageEditorMediaDrag,
+	type ImageEditorDataTransfer
 } from './media-drag';
 
 function file(name: string, type: string): File {
-	return { name, type } as File;
+	return new File([], name, { type });
 }
 
-function dataTransferFixture(files: File[] = []): DataTransfer {
+function dataTransferFixture(files: File[] = []): ImageEditorDataTransfer {
 	const values = new Map<string, string>();
 	return {
 		effectAllowed: 'uninitialized',
@@ -28,7 +29,7 @@ function dataTransferFixture(files: File[] = []): DataTransfer {
 		getData(type: string) {
 			return values.get(type) ?? '';
 		}
-	} as unknown as DataTransfer;
+	};
 }
 
 describe('OpenPost Image Editor media drag payload', () => {

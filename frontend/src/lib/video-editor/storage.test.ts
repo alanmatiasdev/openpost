@@ -227,6 +227,8 @@ describe('OpenPost Video Editor recording manifest migration', () => {
 	});
 
 	it('builds a recoverable segment for a development V1 manifest', () => {
+		// SAFETY: This fixture deliberately omits fields introduced after persisted V1 manifests;
+		// normalizeRecordingManifest owns the compatibility fill for those missing members.
 		const manifest = normalizeRecordingManifest({
 			manifest_version: 1,
 			id: 'recording',
@@ -251,7 +253,7 @@ describe('OpenPost Video Editor recording manifest migration', () => {
 					state: 'interrupted'
 				}
 			]
-		} as unknown as RecordingManifest);
+		} as RecordingManifest);
 
 		expect(manifest.manifest_version).toBe(2);
 		expect(manifest.finalization_state).toBe('open');

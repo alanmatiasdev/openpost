@@ -1,12 +1,12 @@
 import { createPreviewModel } from '@openpost/social-preview';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { channelName, openPreviewWindow } from './preview-window';
+import { channelName, openPreviewWindow, type PreviewChannelMessage } from './preview-window';
 
 class FakeBroadcastChannel {
 	static instances: FakeBroadcastChannel[] = [];
 	readonly name: string;
-	onmessage: ((event: MessageEvent) => void) | null = null;
-	messages: unknown[] = [];
+	onmessage: ((event: MessageEvent<PreviewChannelMessage>) => void) | null = null;
+	messages: PreviewChannelMessage[] = [];
 	closed = false;
 
 	constructor(name: string) {
@@ -14,7 +14,7 @@ class FakeBroadcastChannel {
 		FakeBroadcastChannel.instances.push(this);
 	}
 
-	postMessage(message: unknown) {
+	postMessage(message: PreviewChannelMessage) {
 		this.messages.push(message);
 	}
 
@@ -65,7 +65,7 @@ describe('preview window session', () => {
 
 		const session = openPreviewWindow('account-1', model);
 		const channel = FakeBroadcastChannel.instances[0];
-		channel?.onmessage?.({ data: { type: 'ready' } } as MessageEvent);
+		channel?.onmessage?.(new MessageEvent('message', { data: { type: 'ready' } }));
 
 		expect(channel?.messages).toEqual([{ type: 'snapshot', model }]);
 

@@ -18,7 +18,7 @@ const target: PasteMediaUploadTarget = {
 };
 
 function fakeFile(name: string, type: string, size = 128, lastModified = 1): File {
-	return { name, type, size, lastModified } as File;
+	return new File([new Uint8Array(size)], name, { type, lastModified });
 }
 
 function clipboardItem(kind: string, type: string, file: File | null): ClipboardFileItem {
@@ -29,13 +29,15 @@ async function settle(): Promise<void> {
 	for (let index = 0; index < 8; index += 1) await Promise.resolve();
 }
 
-function deferred<T>(): {
+interface Deferred<T> {
 	promise: Promise<T>;
 	resolve: (value: T) => void;
-	reject: (cause: unknown) => void;
-} {
+	reject: (cause?: Error) => void;
+}
+
+function deferred<T>(): Deferred<T> {
 	let resolve!: (value: T) => void;
-	let reject!: (cause: unknown) => void;
+	let reject!: (cause?: Error) => void;
 	const promise = new Promise<T>((resolvePromise, rejectPromise) => {
 		resolve = resolvePromise;
 		reject = rejectPromise;

@@ -78,7 +78,7 @@ describe('activeRequiredDestinationFields', () => {
 			type: 'text',
 			scope: 'destination',
 			required: true
-		} as SettingDefinition;
+		} satisfies SettingDefinition;
 		const strategy = {
 			key: 'graduation_strategy',
 			label: 'Graduation',
@@ -89,7 +89,7 @@ describe('activeRequiredDestinationFields', () => {
 			scope: 'destination',
 			required: true,
 			dependencies: [{ key: 'is_trial_reel', operator: 'equals', value: true }]
-		} as SettingDefinition;
+		} satisfies SettingDefinition;
 		const result = activeRequiredDestinationFields(
 			['youtube-1'],
 			{ 'youtube-1': capability([title, strategy]) },
@@ -109,7 +109,7 @@ describe('activeRequiredDestinationFields', () => {
 			scope: 'destination',
 			required: true,
 			dependencies: [{ key: 'content_posting_method', operator: 'equals', value: 'DIRECT_POST' }]
-		} as SettingDefinition;
+		} satisfies SettingDefinition;
 		const result = activeRequiredDestinationFields(
 			['youtube-1'],
 			{ 'youtube-1': capability([setting]) },

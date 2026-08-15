@@ -35,7 +35,8 @@ describe('OpenPost Video Editor structured failures', () => {
 		);
 
 		expect(stored).toContain('"code":"model.timeout"');
-		const [entry] = JSON.parse(stored) as Array<Record<string, unknown>>;
+		const entries: Array<{ code?: string }> = JSON.parse(stored);
+		const [entry] = entries;
 		expect(Object.keys(entry ?? {}).sort()).toEqual(
 			[
 				'at',

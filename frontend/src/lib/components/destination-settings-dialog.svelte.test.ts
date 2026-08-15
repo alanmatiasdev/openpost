@@ -205,7 +205,8 @@ describe('DestinationSettingsDialog', () => {
 			}
 		});
 
-		const input = screen.getByLabelText('Thumbnail').element() as HTMLInputElement;
+		const input = screen.getByLabelText('Thumbnail').element();
+		if (!(input instanceof HTMLInputElement)) throw new Error('Expected a thumbnail file input.');
 		const file = new File(['thumbnail'], 'thumbnail.jpg', { type: 'image/jpeg' });
 		const transfer = new DataTransfer();
 		transfer.items.add(file);

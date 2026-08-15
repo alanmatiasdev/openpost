@@ -31,7 +31,9 @@ describe('Image Editor conflict recovery', () => {
 		local.pages.push(blankImageEditorPage('Page 2'));
 		const duplicate = vi.fn().mockResolvedValue(response('copy', 1, 'Campaign copy'));
 		const saved = response('copy', 2, 'Campaign copy');
-		const save = vi.fn().mockResolvedValue(saved);
+		const save = vi.fn(
+			async (_id: string, _revision: number, _document: ImageEditorDocument) => saved
+		);
 
 		await expect(saveImageEditorConflictCopy('source', local, { duplicate, save })).resolves.toBe(
 			saved
@@ -39,12 +41,11 @@ describe('Image Editor conflict recovery', () => {
 		expect(duplicate).toHaveBeenCalledWith('source');
 		expect(save).toHaveBeenCalledOnce();
 		const [copyID, copyRevision, savedDocument] = save.mock.calls[0];
-		const copyDocument = savedDocument as ImageEditorDocument;
 		expect(copyID).toBe('copy');
 		expect(copyRevision).toBe(1);
-		expect(copyDocument.title).toBe('Campaign copy');
-		expect(copyDocument.pages.map((page) => page.name)).toEqual(['Page 1', 'Page 2']);
-		expect(copyDocument.pages.map((page) => page.id)).not.toEqual(
+		expect(savedDocument.title).toBe('Campaign copy');
+		expect(savedDocument.pages.map((page) => page.name)).toEqual(['Page 1', 'Page 2']);
+		expect(savedDocument.pages.map((page) => page.id)).not.toEqual(
 			local.pages.map((page) => page.id)
 		);
 		expect(local.title).toBe('Campaign');

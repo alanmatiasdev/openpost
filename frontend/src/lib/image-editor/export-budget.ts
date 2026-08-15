@@ -1,5 +1,3 @@
-import type { ImageEditorDocument } from './types';
-
 export const IMAGE_EDITOR_EXPORT_WORKING_MEMORY_LIMIT = 512 * 1024 * 1024;
 
 export interface ImageEditorExportBudget {
@@ -10,7 +8,7 @@ export interface ImageEditorExportBudget {
 }
 
 export function imageEditorExportBudget(
-	document: Pick<ImageEditorDocument, 'width_px' | 'height_px' | 'pages'>,
+	document: { width_px: number; height_px: number; pages: ReadonlyArray<{ id: string }> },
 	pageIDs: readonly string[]
 ): ImageEditorExportBudget {
 	const pageCount = document.pages.filter((page) => pageIDs.includes(page.id)).length;

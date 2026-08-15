@@ -1,6 +1,6 @@
 import type { PreviewModel } from '@openpost/social-preview';
 
-type PreviewChannelMessage =
+export type PreviewChannelMessage =
 	| { type: 'ready' }
 	| { type: 'snapshot'; model: PreviewModel }
 	| { type: 'disconnected' }

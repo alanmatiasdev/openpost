@@ -126,6 +126,7 @@ describe('OpenPost Image Editor document contracts', () => {
 	it('fills new image-adjustment defaults when opening an existing document', () => {
 		const document = blankImageEditorDocument(preset);
 		delete document.pages[0].background;
+		// SAFETY: This compatibility fixture intentionally removes a field added after the saved format.
 		delete (document.export_defaults as Partial<typeof document.export_defaults>).matte_color;
 		document.pages[0].layers = [
 			{
@@ -142,6 +143,7 @@ describe('OpenPost Image Editor document contracts', () => {
 					source_height: 300,
 					fit: 'stretch',
 					crop: { x: 0, y: 0, width: 1, height: 1 },
+					// SAFETY: This compatibility fixture intentionally supplies the pre-migration adjustment shape.
 					adjustments: {
 						brightness: 0,
 						contrast: 0,

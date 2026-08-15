@@ -13,14 +13,12 @@ describe('media preview image', () => {
 			alt: 'Brand logo'
 		});
 		const image = screen.getByRole('img', { name: 'Brand logo' });
+		const element = image.element();
+		if (!(element instanceof HTMLImageElement)) throw new Error('Expected an image element.');
 
-		expect((image.element() as HTMLImageElement).src).toContain(
-			'/media/brand-logo/thumb/md?token=preview-token'
-		);
-		image.element().dispatchEvent(new Event('error'));
-		expect((image.element() as HTMLImageElement).src).toContain(
-			'/media/brand-logo?token=preview-token'
-		);
-		expect((image.element() as HTMLImageElement).src).not.toContain('/thumb/');
+		expect(element.src).toContain('/media/brand-logo/thumb/md?token=preview-token');
+		element.dispatchEvent(new Event('error'));
+		expect(element.src).toContain('/media/brand-logo?token=preview-token');
+		expect(element.src).not.toContain('/thumb/');
 	});
 });

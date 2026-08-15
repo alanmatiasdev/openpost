@@ -1,9 +1,12 @@
 import { expect, it, vi } from 'vitest';
 import { page } from 'vitest/browser';
 import { render } from 'vitest-browser-svelte';
+import type { components } from '$lib/api/types';
 import ComposerDeliveryFeedback from './composer-delivery-feedback.svelte';
 
-const rendition = (overrides: Record<string, unknown>) => ({
+type Rendition = components['schemas']['RenditionActionOutcome'];
+
+const rendition = (overrides: Partial<Rendition>): Rendition => ({
 	id: `rendition-${String(overrides.id ?? 'base')}`,
 	publication_id: 'publication-1',
 	social_account_id: `account-${String(overrides.id ?? 'base')}`,

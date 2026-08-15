@@ -14,8 +14,17 @@ const account = {
 	id: 'account-1',
 	platform: 'mastodon:https://social.example',
 	account_username: '@openpost',
-	account_avatar_url: 'https://example.com/avatar.png'
-} as SocialAccount;
+	account_avatar_url: 'https://example.com/avatar.png',
+	account_id: 'provider-account-1',
+	grant_destination_count: 1,
+	instance_url: 'https://social.example',
+	is_active: true,
+	messages_enabled: false,
+	messaging_supported: false,
+	shared_grant: false,
+	slug: 'openpost',
+	thread_replies_supported: true
+} satisfies SocialAccount;
 
 describe('social preview model', () => {
 	it('defines a preview capability for every supported destination', () => {
@@ -117,7 +126,7 @@ describe('composer preview mapping', () => {
 
 	it('uses the actual destination format for documents and photo posts', () => {
 		const linkedInModel = buildComposerPreview({
-			account: { ...account, platform: 'linkedin' } as SocialAccount,
+			account: { ...account, platform: 'linkedin' },
 			mode: 'post',
 			segments: [
 				{
@@ -129,7 +138,7 @@ describe('composer preview mapping', () => {
 			destinationSettings: { document_title: 'The 2026 report' }
 		});
 		const tiktokModel = buildComposerPreview({
-			account: { ...account, platform: 'tiktok' } as SocialAccount,
+			account: { ...account, platform: 'tiktok' },
 			mode: 'post',
 			segments: [
 				{

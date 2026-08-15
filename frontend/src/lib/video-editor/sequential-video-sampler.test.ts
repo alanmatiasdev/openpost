@@ -11,6 +11,7 @@ class FakeSample implements ClosableVideoSample {
 	constructor(readonly timestamp: number) {}
 
 	clone(): this {
+		// SAFETY: FakeSample is final within this test and clone constructs the same concrete class.
 		return new FakeSample(this.timestamp) as this;
 	}
 
