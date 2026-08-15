@@ -161,12 +161,18 @@
 			});
 			if (error || !data) throw new Error(error?.detail || m.settings_team_load_failed());
 			if (sequence !== requestSequence || workspaceID !== targetWorkspaceID) return;
-			team = data as WorkspaceTeam;
-			if (team.can_manage) void loadAudit(targetWorkspaceID, sequence);
+			const nextTeam: WorkspaceTeam = {
+				members: data.members ?? [],
+				invitations: data.invitations ?? [],
+				current_seats: data.current_seats,
+				can_manage: data.can_manage
+			};
+			team = nextTeam;
+			if (nextTeam.can_manage) void loadAudit(targetWorkspaceID, sequence);
 		} catch (error) {
 			if (sequence !== requestSequence || workspaceID !== targetWorkspaceID) return;
 			loadedWorkspaceID = '';
-			loadError = (error as Error).message || m.settings_team_load_failed();
+			loadError = error instanceof Error ? error.message : m.settings_team_load_failed();
 		} finally {
 			if (sequence === requestSequence) loading = false;
 		}
@@ -180,11 +186,11 @@
 			});
 			if (error) throw new Error(error.detail || m.settings_action_failed());
 			if (sequence === requestSequence && workspaceID === targetWorkspaceID) {
-				auditEvents = (data ?? []) as WorkspaceAccessAuditEvent[];
+				auditEvents = data ?? [];
 			}
 		} catch (error) {
 			if (sequence === requestSequence && workspaceID === targetWorkspaceID) {
-				actionError = (error as Error).message;
+				actionError = error instanceof Error ? error.message : m.settings_action_failed();
 			}
 		} finally {
 			if (sequence === requestSequence) auditLoading = false;
@@ -215,7 +221,9 @@
 			await reloadAfterMutation(targetWorkspaceID);
 			showToast(m.settings_invite_created());
 		} catch (error) {
-			if (workspaceID === targetWorkspaceID) actionError = (error as Error).message;
+			if (workspaceID === targetWorkspaceID) {
+				actionError = error instanceof Error ? error.message : m.settings_action_failed();
+			}
 		} finally {
 			busyKey = '';
 		}
@@ -242,7 +250,9 @@
 			if (member.user_id === currentUserID) await onMembershipChanged();
 			return true;
 		} catch (error) {
-			if (workspaceID === targetWorkspaceID) actionError = (error as Error).message;
+			if (workspaceID === targetWorkspaceID) {
+				actionError = error instanceof Error ? error.message : m.settings_action_failed();
+			}
 			return false;
 		} finally {
 			busyKey = '';
@@ -267,7 +277,9 @@
 			await reloadAfterMutation(targetWorkspaceID);
 			return true;
 		} catch (error) {
-			if (workspaceID === targetWorkspaceID) actionError = (error as Error).message;
+			if (workspaceID === targetWorkspaceID) {
+				actionError = error instanceof Error ? error.message : m.settings_action_failed();
+			}
 			return false;
 		} finally {
 			busyKey = '';
@@ -293,7 +305,9 @@
 			await reloadAfterMutation(targetWorkspaceID);
 			showToast(m.settings_invitation_resent());
 		} catch (error) {
-			if (workspaceID === targetWorkspaceID) actionError = (error as Error).message;
+			if (workspaceID === targetWorkspaceID) {
+				actionError = error instanceof Error ? error.message : m.settings_action_failed();
+			}
 		} finally {
 			busyKey = '';
 		}
@@ -313,7 +327,9 @@
 			showToast(m.settings_invitation_revoked());
 			return true;
 		} catch (error) {
-			if (workspaceID === targetWorkspaceID) actionError = (error as Error).message;
+			if (workspaceID === targetWorkspaceID) {
+				actionError = error instanceof Error ? error.message : m.settings_action_failed();
+			}
 			return false;
 		} finally {
 			busyKey = '';
