@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { client } from '$lib/api/client';
 import { setLocale } from '$lib/paraglide/runtime';
 import {
 	getMemeThumbnail,
@@ -9,11 +10,9 @@ import {
 	suggestMemes
 } from './api';
 
-const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }));
-
-vi.mock('$lib/api/client', () => ({
-	client: { GET: mocks.get, POST: mocks.post }
-}));
+const mocks = { get: vi.fn(), post: vi.fn() };
+vi.spyOn(client, 'GET').mockImplementation(mocks.get);
+vi.spyOn(client, 'POST').mockImplementation(mocks.post);
 
 describe('meme generator API', () => {
 	beforeEach(() => {

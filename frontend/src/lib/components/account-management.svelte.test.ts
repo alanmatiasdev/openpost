@@ -1,26 +1,25 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
+import { client, type Workspace } from '$lib/api/client';
 import AccountManagement from './account-management.svelte';
 
-const mocks = vi.hoisted(() => ({
-	get: vi.fn()
-}));
-
-vi.mock('$lib/api/client', () => ({
-	client: {
-		GET: mocks.get,
-		POST: vi.fn(),
-		PATCH: vi.fn(),
-		DELETE: vi.fn()
-	}
-}));
+const getMock = vi.fn();
+vi.spyOn(client, 'GET').mockImplementation(getMock);
 
 const workspace = {
 	id: 'workspace-62',
 	name: 'Issue 62 Workspace',
 	organization_id: 'organization-62',
-	can_edit: true
-} as never;
+	can_edit: true,
+	created_at: '2026-08-09T12:00:00Z',
+	avatar_url: '',
+	color: '',
+	organization_name: '',
+	role: 'admin',
+	sso_required: false,
+	sso_authenticated: true,
+	sso_identity_linked: true
+} satisfies Workspace;
 
 const links = {
 	createPublicationHref: '/',
@@ -32,7 +31,7 @@ const links = {
 describe('account management modes', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
-		mocks.get.mockImplementation((path: string) => {
+		getMock.mockImplementation((path: string) => {
 			if (path === '/accounts') return Promise.resolve({ data: [], error: null });
 			return Promise.resolve({ data: [], error: null });
 		});
@@ -52,7 +51,7 @@ describe('account management modes', () => {
 			.element(screen.getByRole('heading', { level: 1, name: 'Social accounts' }))
 			.toBeVisible();
 		await expect.element(screen.getByTestId('settings-navigation')).toBeVisible();
-		expect(mocks.get).toHaveBeenCalledWith('/accounts', {
+		expect(getMock).toHaveBeenCalledWith('/accounts', {
 			params: { query: { workspace_id: 'workspace-62' } }
 		});
 	});

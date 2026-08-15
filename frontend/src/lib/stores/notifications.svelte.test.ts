@@ -1,18 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { client } from '$lib/api/client';
 import type { Notification } from './notifications.svelte';
 import { NotificationInboxStore } from './notifications.svelte';
 
-const mocks = vi.hoisted(() => ({
-	get: vi.fn(),
-	post: vi.fn()
-}));
-
-vi.mock('$lib/api/client', () => ({
-	client: {
-		GET: mocks.get,
-		POST: mocks.post
-	}
-}));
+const mocks = { get: vi.fn(), post: vi.fn() };
+vi.spyOn(client, 'GET').mockImplementation(mocks.get);
+vi.spyOn(client, 'POST').mockImplementation(mocks.post);
 
 function notification(index: number, workspaceID = 'workspace-a'): Notification {
 	return {

@@ -1,34 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { page } from 'vitest/browser';
 import { render } from 'vitest-browser-svelte';
+import { client } from '$lib/api/client';
 import BillingRecoveryNotice from './billing-recovery-notice.svelte';
 
-const mocks = vi.hoisted(() => ({
-	get: vi.fn(),
-	post: vi.fn()
-}));
-
-vi.mock('$lib/api/client', () => ({
-	client: {
-		GET: mocks.get,
-		POST: mocks.post
-	}
-}));
-
-vi.mock('$lib/i18n', () => ({ getLocaleTag: () => 'en-US' }));
-
-vi.mock('$lib/paraglide/messages', () => ({
-	m: {
-		billing_recovery_notice_title: () => 'Payment action required',
-		billing_recovery_notice_body: () =>
-			"Your organization's paid plan access is restricted because Paddle could not collect the latest payment.",
-		billing_recovery_notice_since: ({ date }: { date: string }) => `Past due since ${date}`,
-		billing_recovery_notice_member_action: () =>
-			'Ask an organization owner or admin to update the payment method.',
-		billing_recovery_update_payment_method: () => 'Update payment method',
-		billing_recovery_open_failed: () => 'Could not open payment recovery. Try again.'
-	}
-}));
+const mocks = { get: vi.fn(), post: vi.fn() };
+vi.spyOn(client, 'GET').mockImplementation(mocks.get);
+vi.spyOn(client, 'POST').mockImplementation(mocks.post);
 
 function billingStatus(canManageBilling: boolean, status = 'past_due') {
 	return {

@@ -1,28 +1,10 @@
 import { beforeEach, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
+import { client } from '$lib/api/client';
 import PublicationHistory from './publication-history.svelte';
 
-const mocks = vi.hoisted(() => ({ get: vi.fn() }));
-
-vi.mock('$lib/api/client', () => ({ client: { GET: mocks.get } }));
-vi.mock('$lib/i18n', () => ({ getLocaleTag: () => 'en-US' }));
-vi.mock('$lib/paraglide/messages', () => ({
-	m: new Proxy(
-		{},
-		{
-			get: (_target, key) => (params?: Record<string, unknown>) =>
-				({
-					image_editor_version_history: 'Version history',
-					publication_history_effective_outcome: 'Latest effective destination outcome',
-					publication_delivery_rejected: 'Rejected',
-					publication_delivery_target: `Target ${params?.target}`,
-					publication_delivery_attempt_number: `Provider attempt ${params?.number} · ${params?.date}`,
-					publication_delivery_reconciled: `Reconciled ${params?.date}`
-				})[String(key)] ?? String(key)
-		}
-	)
-}));
-
+const mocks = { get: vi.fn() };
+vi.spyOn(client, 'GET').mockImplementation(mocks.get);
 beforeEach(() => {
 	mocks.get.mockReset();
 });

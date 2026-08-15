@@ -11,8 +11,15 @@
 	import BellOffIcon from '@lucide/svelte/icons/bell-off';
 
 	type NotificationMute = components['schemas']['Mute'];
-	let { workspaceID = '', workspaceName = '' }: { workspaceID?: string; workspaceName?: string } =
-		$props();
+	let {
+		workspaceID = '',
+		workspaceName = '',
+		notify = showToast
+	}: {
+		workspaceID?: string;
+		workspaceName?: string;
+		notify?: typeof showToast;
+	} = $props();
 	let loading = $state(true);
 	let error = $state('');
 	let mutes = $state.raw<NotificationMute[]>([]);
@@ -89,11 +96,11 @@
 	async function createMute() {
 		const end = new Date(muteEndsAt);
 		if (!muteEndsAt || Number.isNaN(end.getTime()) || end.getTime() <= Date.now()) {
-			showToast(m.notifications_mute_invalid(), 'error');
+			notify(m.notifications_mute_invalid(), 'error');
 			return;
 		}
 		if (muteScope === 'workspace' && !workspaceID) {
-			showToast(m.notifications_mute_workspace_unavailable(), 'error');
+			notify(m.notifications_mute_workspace_unavailable(), 'error');
 			return;
 		}
 		createRequests += 1;
@@ -107,7 +114,7 @@
 		});
 		createRequests -= 1;
 		if (apiError || !data) {
-			showToast(
+			notify(
 				apiError?.status === 400 ? m.notifications_mute_invalid() : m.notifications_mute_failed(),
 				'error'
 			);
@@ -115,7 +122,7 @@
 			return;
 		}
 		await load();
-		showToast(m.notifications_mute_created(), 'success');
+		notify(m.notifications_mute_created(), 'success');
 	}
 
 	async function endMute(id: string) {
@@ -128,12 +135,12 @@
 		remaining.delete(id);
 		endingMuteIDs = remaining;
 		if (apiError || !data) {
-			showToast(m.notifications_mute_end_failed(), 'error');
+			notify(m.notifications_mute_end_failed(), 'error');
 			await load();
 			return;
 		}
 		await load();
-		showToast(m.notifications_mute_ended(), 'success');
+		notify(m.notifications_mute_ended(), 'success');
 	}
 </script>
 

@@ -1,11 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { client } from '$lib/api/client';
 import { generateImageAltText, resolveImageCaptionRetryContext } from './image-caption';
 
-const mocks = vi.hoisted(() => ({ post: vi.fn() }));
-
-vi.mock('$lib/api/client', () => ({
-	client: { POST: mocks.post }
-}));
+const mocks = { post: vi.fn() };
+vi.spyOn(client, 'POST').mockImplementation(mocks.post);
 
 describe('generateImageAltText', () => {
 	beforeEach(() => {

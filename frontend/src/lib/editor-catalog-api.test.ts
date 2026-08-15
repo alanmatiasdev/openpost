@@ -1,18 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { client } from '$lib/api/client';
 import { listImageEditorDesigns } from '$lib/image-editor/api';
 import { deleteCloudVideoProject, listCloudVideoProjects } from '$lib/video-editor/api';
 
-const mocks = vi.hoisted(() => ({
-	get: vi.fn(),
-	delete: vi.fn()
-}));
-
-vi.mock('$lib/api/client', () => ({
-	client: {
-		GET: mocks.get,
-		DELETE: mocks.delete
-	}
-}));
+const mocks = { get: vi.fn(), delete: vi.fn() };
+vi.spyOn(client, 'GET').mockImplementation(mocks.get);
+vi.spyOn(client, 'DELETE').mockImplementation(mocks.delete);
 
 describe('editor catalog API pagination', () => {
 	beforeEach(() => {

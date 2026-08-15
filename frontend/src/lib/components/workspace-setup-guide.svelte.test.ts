@@ -1,37 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { page } from 'vitest/browser';
 import { render } from 'vitest-browser-svelte';
+import { client } from '$lib/api/client';
 import { ui } from '$lib/stores/ui.svelte';
 import WorkspaceSetupGuide from './workspace-setup-guide.svelte';
 
-const mocks = vi.hoisted(() => ({ get: vi.fn() }));
-
-vi.mock('$lib/api/client', () => ({ client: { GET: mocks.get } }));
-
-vi.mock('$lib/paraglide/messages', () => ({
-	m: {
-		workspace_setup_heading: () => 'Finish setting up this Workspace',
-		workspace_setup_progress: ({ completed, total }: { completed: number; total: number }) =>
-			`${completed} of ${total} complete`,
-		workspace_setup_name_description: () =>
-			'Give this Workspace a name before you connect a destination.',
-		workspace_setup_checkout_description: () =>
-			'Resume checkout to start your plan, then connect a destination.',
-		workspace_setup_destination_description: () =>
-			'Connect a destination so OpenPost can prepare your first Publication.',
-		workspace_setup_publication_description: () =>
-			'Schedule or submit your first Publication to activate this Workspace.',
-		workspace_setup_resume_checkout: () => 'Resume checkout',
-		workspace_setup_name_workspace: () => 'Name this Workspace',
-		workspace_setup_connect_destination: () => 'Connect a destination',
-		workspace_setup_create_publication: () => 'Create a Publication',
-		workspace_setup_workspace: () => 'Workspace',
-		workspace_setup_subscription: () => 'Plan',
-		workspace_setup_destination: () => 'Destination',
-		workspace_setup_composition: () => 'Composition',
-		workspace_setup_publication: () => 'Publication'
-	}
-}));
+const mocks = { get: vi.fn() };
+vi.spyOn(client, 'GET').mockImplementation(mocks.get);
 
 describe('WorkspaceSetupGuide', () => {
 	beforeEach(() => mocks.get.mockReset());

@@ -3,28 +3,6 @@ import { page } from 'vitest/browser';
 import { render } from 'vitest-browser-svelte';
 import PublicationDeliveryCard from './publication-delivery-card.svelte';
 
-vi.mock('$lib/i18n', () => ({ getLocaleTag: () => 'en-US' }));
-vi.mock('$lib/paraglide/messages', () => ({
-	m: new Proxy(
-		{},
-		{
-			get: (_target, key) => (params?: Record<string, unknown>) =>
-				({
-					publication_delivery_rejected: 'Rejected',
-					publication_delivery_ambiguous: 'Outcome needs reconciliation',
-					publication_delivery_retry: 'Retry destination',
-					publication_delivery_reconcile: 'OpenPost is checking the provider before another send.',
-					publication_delivery_manual_resolution: 'Manual review required',
-					publication_delivery_manual_resolution_help:
-						'Confirm whether the post exists before taking another action.',
-					publication_delivery_review_destination: 'Review destination',
-					publication_delivery_attempt_number: `Provider attempt ${params?.number} · ${params?.date}`,
-					publication_delivery_failure_detail: `${params?.kind} · ${params?.code}`
-				})[String(key)] ?? String(key)
-		}
-	)
-}));
-
 const baseRendition = {
 	id: 'rendition-1',
 	platform: 'x',

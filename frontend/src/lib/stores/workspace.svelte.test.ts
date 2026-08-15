@@ -1,18 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Workspace } from '$lib/api/client';
+import { client, type Workspace } from '$lib/api/client';
 import { WorkspaceContext } from './workspace.svelte';
 
-const mocks = vi.hoisted(() => ({
-	get: vi.fn(),
-	patch: vi.fn()
-}));
-
-vi.mock('$lib/api/client', () => ({
-	client: {
-		GET: mocks.get,
-		PATCH: mocks.patch
-	}
-}));
+const mocks = { get: vi.fn(), patch: vi.fn() };
+vi.spyOn(client, 'GET').mockImplementation(mocks.get);
+vi.spyOn(client, 'PATCH').mockImplementation(mocks.patch);
 
 const workspaceA = {
 	id: 'workspace-a',

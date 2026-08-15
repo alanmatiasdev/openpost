@@ -1,16 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
+import { client } from '$lib/api/client';
 import OrganizationOwnershipSettings from './organization-ownership-settings.svelte';
 
-const mocks = vi.hoisted(() => ({ get: vi.fn() }));
-
-vi.mock('$lib/api/client', () => ({
-	client: {
-		GET: mocks.get,
-		POST: vi.fn(),
-		DELETE: vi.fn()
-	}
-}));
+const mocks = { get: vi.fn() };
+vi.spyOn(client, 'GET').mockImplementation(mocks.get);
 
 function deferred<T>() {
 	let resolve!: (value: T) => void;

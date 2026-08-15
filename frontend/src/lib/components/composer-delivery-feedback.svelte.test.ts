@@ -3,30 +3,6 @@ import { page } from 'vitest/browser';
 import { render } from 'vitest-browser-svelte';
 import ComposerDeliveryFeedback from './composer-delivery-feedback.svelte';
 
-vi.mock('$lib/i18n', () => ({ getLocaleTag: () => 'en-US' }));
-vi.mock('$lib/paraglide/messages', () => ({
-	m: new Proxy(
-		{},
-		{
-			get: (_target, key) => (params?: Record<string, unknown>) =>
-				({
-					composer_delivery_outcomes: 'Destination outcomes',
-					composer_delivery_summary: `${params?.succeeded} succeeded · ${params?.pending} pending · ${params?.failed} failed · ${params?.manual} need review`,
-					workspace_activation_view_publication: 'View publication',
-					workspace_activation_create_another: 'Create another',
-					publication_delivery_queued: 'Queued',
-					publication_delivery_live: 'Live',
-					publication_delivery_rejected: 'Rejected',
-					publication_delivery_ambiguous: 'Outcome needs reconciliation',
-					publication_delivery_retry: 'Retry destination',
-					publication_delivery_reconcile: 'OpenPost is checking the provider before another send.',
-					publication_delivery_target: `Target ${params?.target}`,
-					publication_delivery_failure_detail: `${params?.kind} · ${params?.code}`
-				})[String(key)] ?? String(key)
-		}
-	)
-}));
-
 const rendition = (overrides: Record<string, unknown>) => ({
 	id: `rendition-${String(overrides.id ?? 'base')}`,
 	publication_id: 'publication-1',

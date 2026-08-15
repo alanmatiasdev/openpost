@@ -1,27 +1,21 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { page } from 'vitest/browser';
 import { render } from 'vitest-browser-svelte';
+import { client } from '$lib/api/client';
 import NotificationPreferences from './notification-preferences.svelte';
 import NotificationMutes from './notification-mutes.svelte';
 
-const mocks = vi.hoisted(() => ({
+const mocks = {
 	get: vi.fn(),
 	put: vi.fn(),
 	post: vi.fn(),
 	delete: vi.fn(),
 	showToast: vi.fn()
-}));
-
-vi.mock('$lib/api/client', () => ({
-	client: {
-		GET: mocks.get,
-		PUT: mocks.put,
-		POST: mocks.post,
-		DELETE: mocks.delete
-	}
-}));
-
-vi.mock('$lib/toast', () => ({ showToast: mocks.showToast }));
+};
+vi.spyOn(client, 'GET').mockImplementation(mocks.get);
+vi.spyOn(client, 'PUT').mockImplementation(mocks.put);
+vi.spyOn(client, 'POST').mockImplementation(mocks.post);
+vi.spyOn(client, 'DELETE').mockImplementation(mocks.delete);
 
 function preferences() {
 	return {
@@ -107,7 +101,7 @@ describe('NotificationPreferences', () => {
 			})
 			.mockResolvedValue({ data: { mutes: [] } });
 
-		const screen = await render(NotificationMutes);
+		const screen = await render(NotificationMutes, { notify: mocks.showToast });
 		await expect.element(screen.getByLabelText('Active Mutes')).toBeVisible();
 		await vi.advanceTimersByTimeAsync(1_100);
 		await expect.element(screen.getByLabelText('Active Mutes')).not.toBeInTheDocument();
@@ -129,7 +123,7 @@ describe('NotificationPreferences', () => {
 		}>();
 		mocks.get.mockReturnValue(response.promise);
 
-		const screen = await render(NotificationMutes);
+		const screen = await render(NotificationMutes, { notify: mocks.showToast });
 		await vi.waitFor(() => expect(mocks.get).toHaveBeenCalledTimes(1));
 		vi.setSystemTime(new Date('2026-08-14T12:00:02Z'));
 		response.resolve({
@@ -185,7 +179,7 @@ describe('NotificationPreferences', () => {
 			.mockResolvedValue({ data: { mutes: [] } });
 		mocks.delete.mockResolvedValue({ data: { mutes: [] } });
 
-		const screen = await render(NotificationMutes);
+		const screen = await render(NotificationMutes, { notify: mocks.showToast });
 		await expect.element(screen.getByLabelText('Active Mutes')).toBeVisible();
 		await vi.advanceTimersByTimeAsync(1_100);
 		await vi.waitFor(() => expect(mocks.get).toHaveBeenCalledTimes(2));
@@ -221,7 +215,7 @@ describe('NotificationPreferences', () => {
 			request.params.path.id === 'first-mute' ? firstEnd.promise : secondEnd.promise
 		);
 
-		const screen = await render(NotificationMutes);
+		const screen = await render(NotificationMutes, { notify: mocks.showToast });
 		const accountItem = screen.getByRole('listitem').filter({ hasText: 'All workspaces' });
 		const workspaceItem = screen.getByRole('listitem').filter({ hasText: 'Launch only' });
 		await accountItem.getByRole('button', { name: 'End now' }).click();
@@ -256,7 +250,7 @@ describe('NotificationPreferences', () => {
 		mocks.post.mockReturnValue(createResponse.promise);
 		mocks.delete.mockReturnValue(endResponse.promise);
 
-		const screen = await render(NotificationMutes);
+		const screen = await render(NotificationMutes, { notify: mocks.showToast });
 		await screen.getByRole('button', { name: 'Start Mute' }).click();
 		await screen.getByRole('button', { name: 'End now' }).click();
 
@@ -336,7 +330,11 @@ describe('NotificationPreferences', () => {
 		});
 
 		const screen = await render(NotificationPreferences, {
-			props: { workspaceID: 'workspace-1', workspaceName: 'Launch' }
+			props: {
+				workspaceID: 'workspace-1',
+				workspaceName: 'Launch',
+				notify: mocks.showToast
+			}
 		});
 		await screen.getByLabelText('Mute scope').click();
 		await screen.getByRole('option', { name: 'Launch only' }).click();
@@ -391,7 +389,7 @@ describe('NotificationPreferences', () => {
 			}
 		}));
 
-		const screen = await render(NotificationPreferences);
+		const screen = await render(NotificationPreferences, { notify: mocks.showToast });
 		await expect
 			.element(screen.getByText('Email notifications go to founder@example.com.'))
 			.toBeVisible();
@@ -428,7 +426,7 @@ describe('NotificationPreferences', () => {
 			}
 		});
 
-		const screen = await render(NotificationPreferences);
+		const screen = await render(NotificationPreferences, { notify: mocks.showToast });
 		await expect
 			.element(
 				screen.getByText(
@@ -454,7 +452,7 @@ describe('NotificationPreferences', () => {
 			}
 		});
 
-		const screen = await render(NotificationPreferences);
+		const screen = await render(NotificationPreferences, { notify: mocks.showToast });
 		await expect.element(screen.getByLabelText('Daily digest time')).toHaveValue('09:00');
 		await expect
 			.element(screen.getByLabelText('Timezone'))
@@ -475,7 +473,7 @@ describe('NotificationPreferences', () => {
 			}
 		});
 
-		const screen = await render(NotificationPreferences);
+		const screen = await render(NotificationPreferences, { notify: mocks.showToast });
 		await expect.element(screen.getByLabelText('Daily digest time')).toHaveValue('16:45');
 		await expect.element(screen.getByLabelText('Timezone')).toHaveValue('America/New_York');
 		await expect
@@ -503,7 +501,7 @@ describe('NotificationPreferences', () => {
 			error: { status: 400, detail: 'digest timezone is invalid' }
 		});
 
-		const screen = await render(NotificationPreferences);
+		const screen = await render(NotificationPreferences, { notify: mocks.showToast });
 		await screen.getByLabelText('Timezone').fill('Not/AZone');
 		await screen.getByRole('button', { name: 'Save preferences' }).click();
 		expect(mocks.showToast).toHaveBeenCalledWith(

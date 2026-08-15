@@ -26,8 +26,15 @@
 	type Preferences = Record<string, ChannelPreference>;
 	type EmailFrequency = 'off' | 'immediate' | 'daily';
 
-	let { workspaceID = '', workspaceName = '' }: { workspaceID?: string; workspaceName?: string } =
-		$props();
+	let {
+		workspaceID = '',
+		workspaceName = '',
+		notify = showToast
+	}: {
+		workspaceID?: string;
+		workspaceName?: string;
+		notify?: typeof showToast;
+	} = $props();
 
 	let loading = $state(true);
 	let saving = $state(false);
@@ -126,7 +133,7 @@
 		});
 		saving = false;
 		if (apiError || !data) {
-			showToast(
+			notify(
 				apiError?.status === 400
 					? m.notifications_preferences_invalid()
 					: m.notifications_preferences_save_failed(),
@@ -144,7 +151,7 @@
 		});
 		emailAvailable = data.email_available;
 		emailAddress = data.email_address;
-		showToast(m.notifications_preferences_saved(), 'success');
+		notify(m.notifications_preferences_saved(), 'success');
 	}
 
 	function frequencyLabel(frequency: string) {
@@ -195,7 +202,7 @@
 			icon={BellRingIcon}
 		/>
 
-		<NotificationMutes {workspaceID} {workspaceName} />
+		<NotificationMutes {workspaceID} {workspaceName} {notify} />
 
 		{#if emailAvailable}
 			<p class="text-sm text-muted-foreground">
