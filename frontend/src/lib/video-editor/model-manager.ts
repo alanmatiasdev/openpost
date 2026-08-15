@@ -32,6 +32,84 @@ interface StaticModelManifest {
 	models: StaticModel[];
 }
 
+type StaticModelManifestValue =
+	| string
+	| number
+	| boolean
+	| null
+	| StaticModelManifestValue[]
+	| { [key: string]: StaticModelManifestValue };
+
+function manifestFields(
+	value: StaticModelManifestValue
+): { [key: string]: StaticModelManifestValue } | null {
+	if (value === null || Array.isArray(value) || Object(value) !== value) return null;
+	// SAFETY: The recursive JSON union and checks above establish a non-array object.
+	return value as { [key: string]: StaticModelManifestValue };
+}
+
+function manifestString(value: StaticModelManifestValue | undefined): string | undefined {
+	return String(value) === value ? String(value) : undefined;
+}
+
+function parseStaticModelFile(value: StaticModelManifestValue): StaticModelFile | null {
+	const fields = manifestFields(value);
+	if (!fields) return null;
+	const path = manifestString(fields.path);
+	const checksum = manifestString(fields.sha256);
+	if (!path || !checksum || !Number.isFinite(fields.size_bytes) || Number(fields.size_bytes) < 0) {
+		return null;
+	}
+	return { path, size_bytes: Number(fields.size_bytes), sha256: checksum };
+}
+
+function parseStaticModel(value: StaticModelManifestValue): StaticModel | null {
+	const fields = manifestFields(value);
+	if (!fields || !Array.isArray(fields.files)) return null;
+	const id = manifestString(fields.id);
+	const version = manifestString(fields.version);
+	const checksum = manifestString(fields.sha256);
+	const kind = fields.kind;
+	if (
+		!id ||
+		!version ||
+		!checksum ||
+		(kind !== 'transcription' && kind !== 'vad' && kind !== 'reframing') ||
+		!Number.isFinite(fields.size_bytes) ||
+		Number(fields.size_bytes) < 0
+	) {
+		return null;
+	}
+	const files = fields.files.map(parseStaticModelFile);
+	if (files.length === 0 || files.some((file) => file === null)) return null;
+	const model: StaticModel = {
+		id,
+		kind,
+		version,
+		size_bytes: Number(fields.size_bytes),
+		sha256: checksum,
+		files: files.filter((file): file is StaticModelFile => file !== null)
+	};
+	const basePath = manifestString(fields.base_path);
+	const path = manifestString(fields.path);
+	if (basePath) model.base_path = basePath;
+	if (path) model.path = path;
+	return model;
+}
+
+export function parseStaticModelManifest(
+	value: StaticModelManifestValue
+): StaticModelManifest | null {
+	const fields = manifestFields(value);
+	if (!fields || fields.version !== 1 || !Array.isArray(fields.models)) return null;
+	const models = fields.models.map(parseStaticModel);
+	if (models.length === 0 || models.some((model) => model === null)) return null;
+	return {
+		version: 1,
+		models: models.filter((model): model is StaticModel => model !== null)
+	};
+}
+
 export interface ModelDownloadProgress {
 	model_id: string;
 	file_name: string;
@@ -53,7 +131,9 @@ export async function ensureVideoEditorModel(
 	const response = await fetch(`${baseURL}/manifest.json`, { signal });
 	if (!response.ok)
 		throw new Error('The local OpenPost Video Editor model manifest could not be loaded.');
-	const manifest = (await response.json()) as StaticModelManifest;
+	const manifestValue: StaticModelManifestValue = await response.json();
+	const manifest = parseStaticModelManifest(manifestValue);
+	if (!manifest) throw new Error('The local OpenPost Video Editor model manifest is invalid.');
 	const model = manifest.models.find((item) => item.id === modelID);
 	if (!model) throw new Error(`The ${modelID} model is missing from the local model manifest.`);
 	if (
@@ -121,8 +201,10 @@ export async function removeVideoEditorModel(
 		const baseURL = advertised.url.replace(/\/[^/]+$/u, '');
 		const response = await fetch(`${baseURL}/manifest.json`);
 		if (response.ok) {
-			const manifest = (await response.json()) as StaticModelManifest;
-			const model = manifest.models.find((item) => item.id === modelID);
+			const manifestValue: StaticModelManifestValue = await response.json();
+			const model = parseStaticModelManifest(manifestValue)?.models.find(
+				(item) => item.id === modelID
+			);
 			for (const file of model?.files ?? []) {
 				await cache.delete(new URL(`${baseURL}/${file.path}`, location.href).href);
 			}
@@ -248,11 +330,9 @@ async function downloadAndVerifyIntoCache(
 }
 
 async function modelPartialDirectory(): Promise<FileSystemDirectoryHandle> {
-	const storage = navigator.storage as StorageManager & {
-		getDirectory?: () => Promise<FileSystemDirectoryHandle>;
-	};
-	if (!storage.getDirectory) throw new Error('Origin-private model storage is unavailable.');
-	const root = await storage.getDirectory();
+	const getDirectory = navigator.storage.getDirectory;
+	if (!getDirectory) throw new Error('Origin-private model storage is unavailable.');
+	const root = await getDirectory.call(navigator.storage);
 	const editorDirectory = await root.getDirectoryHandle('openpost-video-editor', { create: true });
 	return await editorDirectory.getDirectoryHandle(MODEL_PARTIAL_DIRECTORY, { create: true });
 }
