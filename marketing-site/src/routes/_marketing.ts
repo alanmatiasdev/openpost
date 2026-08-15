@@ -771,6 +771,7 @@ const platformImplementations = [
 	}
 ] as const;
 
+// SAFETY: publicClaimManifest is generated from the public provider claim schema used by PublicProviderClaim.
 const publicProviderClaims = publicClaimManifest.claims as PublicProviderClaim[];
 
 export const platforms = platformImplementations.map((platform) => {

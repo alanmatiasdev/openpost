@@ -380,6 +380,7 @@ export function attachComparisonEvidence<const T extends ComparisonDraft>(compar
 		reviewDueAt: register.reviewDueOn,
 		evidenceQualifier: register.qualifier,
 		rows: comparison.rows.map((row) => {
+			// SAFETY: comparison row areas are checked against register.rows immediately below.
 			const competitorEvidence = register.rows[row.area as keyof typeof register.rows];
 			const openpostEvidence = openPostEvidence[row.area];
 			if (!competitorEvidence || !openpostEvidence) {

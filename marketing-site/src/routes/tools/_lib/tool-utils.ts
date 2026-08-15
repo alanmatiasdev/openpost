@@ -109,7 +109,7 @@ const pictographicPattern = /\p{Extended_Pictographic}/u;
 
 export function graphemes(value: string): string[] {
 	const normalized = value.normalize('NFC');
-	if (typeof Intl.Segmenter === 'function') {
+	if (Intl.Segmenter) {
 		const segmenter = new Intl.Segmenter(undefined, {
 			granularity: 'grapheme'
 		});
@@ -159,7 +159,7 @@ export function platformTextCount(value: string, platform: PlatformKey): number 
 
 export function wordCount(value: string): number {
 	if (!value.trim()) return 0;
-	if (typeof Intl.Segmenter === 'function') {
+	if (Intl.Segmenter) {
 		const segmenter = new Intl.Segmenter(undefined, { granularity: 'word' });
 		return Array.from(segmenter.segment(value)).filter((part) => part.isWordLike).length;
 	}
@@ -167,7 +167,7 @@ export function wordCount(value: string): number {
 }
 
 function sentenceSegments(value: string): string[] {
-	if (typeof Intl.Segmenter === 'function') {
+	if (Intl.Segmenter) {
 		const segmenter = new Intl.Segmenter(undefined, {
 			granularity: 'sentence'
 		});

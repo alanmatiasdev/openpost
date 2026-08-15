@@ -37,7 +37,7 @@
 		}
 	] as const;
 
-	const outcomes: Record<string, string> = {
+	const outcomes = {
 		'social-media-video-editor': 'Edit and export videos',
 		'social-media-image-editor': 'Edit and export images',
 		'multi-platform-character-counter': 'Compare ten limits',
@@ -46,9 +46,9 @@
 		'fediverse-handle-checker': 'Validate syntax or check live',
 		'linkedin-text-formatter': 'Clean readable plain text',
 		'best-time-to-post-calculator': 'Build and export a weekly plan'
-	};
+	} satisfies Record<(typeof tools)[number]['slug'], string>;
 
-	const toolIcons: Record<(typeof tools)[number]['slug'], typeof Images> = {
+	const toolIcons = {
 		'social-media-video-editor': Clapperboard,
 		'social-media-image-editor': Images,
 		'multi-platform-character-counter': FileText,
@@ -57,9 +57,9 @@
 		'fediverse-handle-checker': CheckCircle2,
 		'linkedin-text-formatter': MessageSquareText,
 		'best-time-to-post-calculator': Clock3
-	};
+	} satisfies Record<(typeof tools)[number]['slug'], typeof Images>;
 
-	function toolsForGroup(slugs: readonly string[]) {
+	function toolsForGroup(slugs: readonly (typeof tools)[number]['slug'][]) {
 		return slugs
 			.map((slug) => tools.find((tool) => tool.slug === slug))
 			.filter((tool): tool is (typeof tools)[number] => Boolean(tool));

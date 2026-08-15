@@ -32,17 +32,18 @@ FORM: A workshop bench of alternating capability stations, candidate three from 
 	}
 
 	function linkAttributes(href: string) {
+		// SAFETY: Marketing links are maintained route literals or absolute external URLs.
 		return { href: href.startsWith('/') ? resolve(href as '/') : href };
 	}
 
-	const featureIcons: Record<(typeof featureGroups)[number]['id'], typeof Images> = {
+	const featureIcons = {
 		compose: Images,
 		schedule: CalendarCheck2,
 		'media-editing': Image,
 		'analytics-inbox': BarChart3,
 		teams: UsersRound,
 		automation: Code2
-	};
+	} satisfies Record<(typeof featureGroups)[number]['id'], typeof Images>;
 </script>
 
 <section class="features-hero border-b">

@@ -221,7 +221,7 @@
 	});
 
 	onDestroy(() => {
-		if (typeof cancelAnimationFrame !== 'undefined') cancelAnimationFrame(animationFrame);
+		cancelAnimationFrame(animationFrame);
 	});
 </script>
 

@@ -78,6 +78,7 @@
 	}
 
 	function updateCopy(event: Event) {
+		// SAFETY: updateCopy is bound to textarea input events in this component.
 		destinationCopy[selectedPlatform] = (event.currentTarget as HTMLTextAreaElement).value;
 	}
 </script>

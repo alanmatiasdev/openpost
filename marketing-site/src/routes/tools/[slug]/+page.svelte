@@ -12,19 +12,7 @@
 	import VideoEditorLauncher from '../../_components/tools/VideoEditorLauncher.svelte';
 	import { getTool } from '../../_marketing';
 
-	const seoBySlug: Record<
-		string,
-		{
-			heading: string;
-			description: string;
-			audience: string;
-			inputs: readonly string[];
-			outputs: readonly string[];
-			limits: readonly string[];
-			privacyBehavior: string;
-			nextStep: string;
-		}
-	> = {
+	const seoBySlug = {
 		'social-media-video-editor': {
 			heading: 'Edit social videos without an account',
 			description:
@@ -203,13 +191,31 @@
 			nextStep:
 				'Test the plan, then add the chosen times to OpenPost posting schedules or schedule each Publication directly.'
 		}
-	};
+	} satisfies Record<
+		string,
+		{
+			heading: string;
+			description: string;
+			audience: string;
+			inputs: readonly string[];
+			outputs: readonly string[];
+			limits: readonly string[];
+			privacyBehavior: string;
+			nextStep: string;
+		}
+	>;
+
+	type ToolSeoSlug = keyof typeof seoBySlug;
+
+	function hasSeo(slug: string): slug is ToolSeoSlug {
+		return slug in seoBySlug;
+	}
 
 	const slug = $derived(page.params.slug ?? '');
 	const seo = $derived.by(() => {
 		if (!getTool(slug)) error(404, 'Tool not found');
+		if (!hasSeo(slug)) error(404, 'Tool explanation not found');
 		const found = seoBySlug[slug];
-		if (!found) error(404, 'Tool explanation not found');
 		return found;
 	});
 </script>

@@ -6,19 +6,19 @@
 	type Provider = (typeof managedService.providers)[number];
 	type HumanAccessKey = keyof typeof managedService.human_access;
 
-	const roleLabels: Record<Provider['role'], string> = {
+	const roleLabels = {
 		subprocessor: 'Subprocessor',
 		independent_controller_and_processor: 'Controller and processor',
 		independent_service_provider: 'Independent service provider',
 		user_requested_source: 'User-requested source'
-	};
-	const useLabels: Record<Provider['use'], string> = {
+	} satisfies Record<Provider['role'], string>;
+	const useLabels = {
 		required: 'Required service',
 		purchase_triggered: 'Used for purchases',
 		feature_triggered: 'Used when the feature runs',
 		feedback_triggered: 'Used when feedback is sent'
-	};
-	const humanAccessLabels: Record<HumanAccessKey, string> = {
+	} satisfies Record<Provider['use'], string>;
+	const humanAccessLabels = {
 		scope: 'Who can access production',
 		authentication: 'Authentication',
 		routine_access: 'Routine access',
@@ -27,7 +27,8 @@
 		logging: 'Logging',
 		emergency: 'Emergency access',
 		review_and_revocation: 'Review and revocation'
-	};
+	} satisfies Record<HumanAccessKey, string>;
+	// SAFETY: Object.entries preserves keys from managedService.human_access; HumanAccessKey is derived from that object.
 	const humanAccessEntries = Object.entries(managedService.human_access) as [
 		HumanAccessKey,
 		string

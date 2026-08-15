@@ -36,6 +36,7 @@
 	}
 
 	function navigationHref(href: string) {
+		// SAFETY: Navigation links come from maintained marketing route literals or external URLs.
 		return { href: href.startsWith('/') ? resolve(href as '/') : href };
 	}
 </script>

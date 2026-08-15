@@ -43,30 +43,89 @@
 				: 'Open Bluesky profile'
 	);
 
-	function safeHttpsUrl(value: unknown): string | undefined {
-		if (typeof value !== 'string') return undefined;
+	interface WebFingerDocument {
+		subject: string;
+		links: WebFingerLink[];
+		aliases: string[];
+	}
+
+	interface WebFingerLink {
+		rel: string;
+		href: string;
+	}
+
+	interface BlueskyResolution {
+		did: string;
+	}
+
+	type JsonField = string | number | boolean | null | JsonField[] | JsonRecord;
+	interface JsonRecord {
+		readonly [key: string]: JsonField | undefined;
+	}
+
+	function stringValue(payload: JsonField | undefined): string | undefined {
+		return Object.prototype.toString.call(payload) === '[object String]'
+			? String(payload)
+			: undefined;
+	}
+
+	function objectValue(payload: JsonField | undefined): JsonRecord | undefined {
+		if (Object(payload) !== payload || Array.isArray(payload)) return undefined;
+		// SAFETY: The caller only reads optional JSON fields after this runtime object boundary check.
+		return payload as JsonRecord;
+	}
+
+	function propertyValue(source: JsonRecord, key: string): JsonField | undefined {
+		return source[key];
+	}
+
+	function safeHttpsUrl(payload: JsonField | undefined): string | undefined {
+		const candidate = stringValue(payload);
+		if (!candidate) return undefined;
 		try {
-			const url = new URL(value);
+			const url = new URL(candidate);
 			return url.protocol === 'https:' ? url.href : undefined;
 		} catch {
 			return undefined;
 		}
 	}
 
-	function webfingerLink(links: unknown[], relation: string): string | undefined {
-		for (const link of links) {
-			if (
-				typeof link === 'object' &&
-				link !== null &&
-				'rel' in link &&
-				link.rel === relation &&
-				'href' in link
-			) {
-				const href = safeHttpsUrl(link.href);
-				if (href) return href;
-			}
-		}
-		return undefined;
+	function parseWebFingerLink(payload: JsonField | undefined): WebFingerLink | undefined {
+		const source = objectValue(payload);
+		if (!source) return undefined;
+		const rel = stringValue(propertyValue(source, 'rel'));
+		const href = safeHttpsUrl(propertyValue(source, 'href'));
+		return rel && href ? { rel, href } : undefined;
+	}
+
+	function isPresent<T>(item: T | undefined): item is T {
+		return item !== undefined;
+	}
+
+	function parseWebFingerDocument(payload: JsonField | undefined): WebFingerDocument | undefined {
+		const source = objectValue(payload);
+		if (!source) return undefined;
+		const subject = stringValue(propertyValue(source, 'subject'));
+		const linksValue = propertyValue(source, 'links');
+		const aliasesValue = propertyValue(source, 'aliases');
+		const links = Array.isArray(linksValue)
+			? linksValue.map(parseWebFingerLink).filter(isPresent)
+			: [];
+		const aliases = Array.isArray(aliasesValue)
+			? aliasesValue.map(stringValue).filter(isPresent)
+			: [];
+		return subject ? { subject, links, aliases } : undefined;
+	}
+
+	function parseBlueskyResolution(payload: JsonField | undefined): BlueskyResolution | undefined {
+		const source = objectValue(payload);
+		if (!source) return undefined;
+		const did = stringValue(propertyValue(source, 'did'));
+		return did ? { did } : undefined;
+	}
+
+	function webfingerLink(links: WebFingerLink[], relation: string): string | undefined {
+		return links.find((link) => link.rel === relation)?.href;
 	}
 
 	function updateHandle(value: string) {
@@ -97,46 +156,29 @@
 				signal: controller.signal
 			});
 			if (!response.ok) throw new Error('Lookup failed');
-			const data: unknown = await response.json();
+			// SAFETY: This is the JSON boundary; helper parsers below accept only JSON field shapes and validate fields before use.
+			const data = (await response.json()) as JsonField;
 			if (requestVersion !== liveRequestVersion) return;
 
 			if (request.type === 'bluesky') {
-				const did =
-					typeof data === 'object' && data !== null && 'did' in data && typeof data.did === 'string'
-						? data.did
-						: '';
-				if (!did.startsWith('did:')) throw new Error('Invalid Bluesky response');
+				const bluesky = parseBlueskyResolution(data);
+				if (!bluesky?.did.startsWith('did:')) throw new Error('Invalid Bluesky response');
 				live = {
 					status: 'found',
 					message: 'Bluesky resolved this handle.',
-					identity: did,
+					identity: bluesky.did,
 					profileUrl: request.profileUrl
 				};
 				return;
 			}
 
-			const subject =
-				typeof data === 'object' &&
-				data !== null &&
-				'subject' in data &&
-				typeof data.subject === 'string'
-					? data.subject
-					: '';
-			const links =
-				typeof data === 'object' && data !== null && 'links' in data && Array.isArray(data.links)
-					? data.links
-					: [];
-			const aliases =
-				typeof data === 'object' &&
-				data !== null &&
-				'aliases' in data &&
-				Array.isArray(data.aliases)
-					? data.aliases
-					: [];
+			const webfinger = parseWebFingerDocument(data);
+			if (!webfinger) throw new Error('Invalid WebFinger response');
+			const { subject, links, aliases } = webfinger;
 			const actorUrl = webfingerLink(links, 'self');
 			const profileUrl =
 				webfingerLink(links, 'http://webfinger.net/rel/profile-page') ??
-				aliases.map(safeHttpsUrl).find(Boolean) ??
+				aliases.map(safeHttpsUrl).find(isPresent) ??
 				request.profileUrl;
 			const expectedSubject = `acct:${request.username}@${request.host}`.toLowerCase();
 			if (subject.toLowerCase() !== expectedSubject || !actorUrl) {

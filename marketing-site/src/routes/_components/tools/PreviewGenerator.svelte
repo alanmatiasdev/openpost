@@ -139,6 +139,7 @@
 	);
 
 	function choosePlatform(value: string) {
+		// SAFETY: choosePlatform receives values from the preview platform options rendered by this component.
 		selectedPlatform = value as PreviewPlatform;
 		if (!supportsPreviewFormat(selectedPlatform, selectedFormat)) {
 			selectedFormat = previewCapabilities[selectedPlatform].formats[0];
@@ -151,6 +152,7 @@
 	}
 
 	function chooseFormat(value: string) {
+		// SAFETY: chooseFormat receives values from previewCapabilities[selectedPlatform].formats.
 		selectedFormat = value as PreviewFormat;
 		if (selectedFormat === 'document' && formatTitle === 'Your video title') {
 			formatTitle = 'Your document title';
@@ -165,6 +167,7 @@
 	}
 
 	function chooseFiles(event: Event) {
+		// SAFETY: chooseFiles is bound to the file input change event in this component.
 		const input = event.currentTarget as HTMLInputElement;
 		const files = Array.from(input.files ?? []);
 		mediaError = '';

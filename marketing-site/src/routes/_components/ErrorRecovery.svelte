@@ -22,6 +22,7 @@
 	}
 
 	function linkAttributes(href: string) {
+		// SAFETY: Recovery links are maintained route literals or absolute external URLs.
 		return { href: href.startsWith('/') ? resolve(href as '/') : href };
 	}
 </script>
