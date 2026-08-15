@@ -13,10 +13,9 @@ type ProxyWorkerRequest =
 	  }
 	| { type: 'cancel' };
 
-const worker = self as unknown as DedicatedWorkerGlobalScope;
 let controller: AbortController | null = null;
 
-worker.onmessage = (event: MessageEvent<ProxyWorkerRequest>) => {
+self.onmessage = (event: MessageEvent<ProxyWorkerRequest>) => {
 	if (event.data.type === 'cancel') {
 		controller?.abort(new DOMException('Cancelled', 'AbortError'));
 		return;
@@ -29,12 +28,12 @@ worker.onmessage = (event: MessageEvent<ProxyWorkerRequest>) => {
 		event.data.file,
 		event.data.identity,
 		controller.signal,
-		(fraction) => worker.postMessage({ type: 'progress', fraction })
+		(fraction) => postMessage({ type: 'progress', fraction })
 	)
-		.then(() => worker.postMessage({ type: 'complete' }))
+		.then(() => postMessage({ type: 'complete' }))
 		.catch((cause: unknown) => {
 			const error = cause instanceof Error ? cause : new Error(String(cause));
-			worker.postMessage({ type: 'error', name: error.name, message: error.message });
+			postMessage({ type: 'error', name: error.name, message: error.message });
 		})
 		.finally(() => {
 			controller = null;

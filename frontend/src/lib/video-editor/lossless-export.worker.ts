@@ -15,10 +15,9 @@ interface CancelRequest {
 	type: 'cancel';
 }
 
-const worker = self as unknown as DedicatedWorkerGlobalScope;
 let controller: AbortController | null = null;
 
-worker.onmessage = (event: MessageEvent<ExportRequest | CancelRequest>) => {
+self.onmessage = (event: MessageEvent<ExportRequest | CancelRequest>) => {
 	if (event.data.type === 'cancel') {
 		controller?.abort(new DOMException('Cancelled', 'AbortError'));
 		return;
@@ -30,12 +29,12 @@ worker.onmessage = (event: MessageEvent<ExportRequest | CancelRequest>) => {
 		format: event.data.format,
 		outputFileHandle: event.data.outputFileHandle,
 		signal: controller.signal,
-		onProgress: (fraction) => worker.postMessage({ type: 'progress', fraction })
+		onProgress: (fraction) => postMessage({ type: 'progress', fraction })
 	})
-		.then((file) => worker.postMessage({ type: 'complete', file }))
+		.then((file) => postMessage({ type: 'complete', file }))
 		.catch((cause: unknown) => {
 			const error = cause instanceof Error ? cause : new Error(String(cause));
-			worker.postMessage({
+			postMessage({
 				type: 'error',
 				name: error.name,
 				message: error.message,

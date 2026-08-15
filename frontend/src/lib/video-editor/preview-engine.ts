@@ -23,6 +23,17 @@ export interface PreviewEngineDiagnostics {
 	quality: 'full' | 'adaptive';
 }
 
+type PreviewWorkerResponse =
+	| { type: 'ready' }
+	| { type: 'configured'; revision: number }
+	| {
+			type: 'frame';
+			request_id: number;
+			timestamp_us: number;
+			diagnostics: PreviewEngineDiagnostics;
+	  }
+	| { type: 'error'; message: string };
+
 export class VideoEditorPreviewEngine {
 	private readonly worker: Worker;
 	private readonly projectID?: string;
@@ -103,7 +114,7 @@ export class VideoEditorPreviewEngine {
 		this.worker.terminate();
 	}
 
-	private receive(event: MessageEvent<Record<string, unknown>>): void {
+	private receive(event: MessageEvent<PreviewWorkerResponse>): void {
 		if (event.data.type === 'ready') {
 			this.onState({ ready: false, rendered_timestamp_us: 0 });
 		} else if (event.data.type === 'configured') {
@@ -111,14 +122,14 @@ export class VideoEditorPreviewEngine {
 		} else if (event.data.type === 'frame') {
 			this.onState({
 				ready: true,
-				rendered_timestamp_us: Number(event.data.timestamp_us ?? 0),
-				diagnostics: event.data.diagnostics as PreviewEngineDiagnostics
+				rendered_timestamp_us: event.data.timestamp_us,
+				diagnostics: event.data.diagnostics
 			});
 		} else if (event.data.type === 'error') {
 			this.onState({
 				ready: false,
 				rendered_timestamp_us: 0,
-				error: String(event.data.message ?? 'The preview renderer stopped.')
+				error: event.data.message
 			});
 		}
 	}

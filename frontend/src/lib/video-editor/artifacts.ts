@@ -76,6 +76,143 @@ export interface SourceArtifactOptions {
 	onProgress?: (progress: SourceArtifactProgress) => void;
 }
 
+declare global {
+	interface WindowEventMap {
+		'openpost:video-source-artifact': CustomEvent<SourceArtifactProgress>;
+	}
+}
+
+type StoredArtifactValue =
+	| string
+	| number
+	| boolean
+	| null
+	| StoredArtifactValue[]
+	| { [key: string]: StoredArtifactValue };
+
+const SOURCE_ARTIFACT_PHASES = new Set<string>([
+	'indexing',
+	'thumbnail',
+	'waveform',
+	'proxy',
+	'ready',
+	'failed'
+]);
+const PROXY_GENERATION_STATES = new Set<string>([
+	'not-needed',
+	'pending',
+	'running',
+	'ready',
+	'blocked-storage',
+	'cancelled',
+	'failed'
+]);
+const PROXY_REASONS = new Set<string>(['dimensions', 'frame-rate', 'codec']);
+
+function artifactFields(value: StoredArtifactValue): Map<string, StoredArtifactValue> {
+	if (value === null || Array.isArray(value) || !(value instanceof Object)) return new Map();
+	return new Map(Object.entries(value));
+}
+
+function artifactString(value: StoredArtifactValue | undefined): string | undefined {
+	return String(value) === value ? String(value) : undefined;
+}
+
+function artifactNumber(value: StoredArtifactValue | undefined): number | undefined {
+	return Number.isFinite(value) ? Number(value) : undefined;
+}
+
+function artifactBoolean(value: StoredArtifactValue | undefined): boolean | undefined {
+	return Boolean(value) === value ? Boolean(value) : undefined;
+}
+
+function artifactNumbers(value: StoredArtifactValue | undefined): number[] | undefined {
+	if (!Array.isArray(value) || !value.every(Number.isFinite)) return undefined;
+	return value.map(Number);
+}
+
+function isSourceArtifactPhase(value: string): value is SourceArtifactPhase {
+	return SOURCE_ARTIFACT_PHASES.has(value);
+}
+
+function isProxyGenerationState(value: string): value is ProxyGenerationState {
+	return PROXY_GENERATION_STATES.has(value);
+}
+
+function isProxyReason(value: string): value is Exclude<ProxyReason, null> {
+	return PROXY_REASONS.has(value);
+}
+
+function artifactProxyReason(value: StoredArtifactValue | undefined): ProxyReason | undefined {
+	if (value === null) return null;
+	const reason = artifactString(value);
+	return reason && isProxyReason(reason) ? reason : undefined;
+}
+
+export function parseSourceArtifactIndex(source: string): SourceArtifactIndex | null {
+	const value: StoredArtifactValue = JSON.parse(source);
+	const fields = artifactFields(value);
+	const version = artifactNumber(fields.get('version'));
+	const complete = artifactBoolean(fields.get('complete'));
+	const indexComplete = artifactBoolean(fields.get('index_complete'));
+	const editorComplete = artifactBoolean(fields.get('editor_complete'));
+	const sourceID = artifactString(fields.get('source_id'));
+	const durationUS = artifactNumber(fields.get('duration_us'));
+	const frameRate = artifactNumber(fields.get('frame_rate'));
+	const phase = artifactString(fields.get('phase'));
+	const progress = artifactNumber(fields.get('progress'));
+	const proxyReason = artifactProxyReason(fields.get('proxy_reason'));
+	const proxyState = artifactString(fields.get('proxy_state'));
+	const proxyProgress = artifactNumber(fields.get('proxy_progress'));
+	const keyframesUS = artifactNumbers(fields.get('keyframes_us'));
+	const waveformPeaks = artifactNumbers(fields.get('waveform_peaks'));
+	const thumbnailComplete = artifactBoolean(fields.get('thumbnail_complete'));
+	const waveformComplete = artifactBoolean(fields.get('waveform_complete'));
+	if (
+		version === undefined ||
+		complete === undefined ||
+		indexComplete === undefined ||
+		editorComplete === undefined ||
+		!sourceID ||
+		durationUS === undefined ||
+		frameRate === undefined ||
+		!phase ||
+		!isSourceArtifactPhase(phase) ||
+		progress === undefined ||
+		proxyReason === undefined ||
+		!proxyState ||
+		!isProxyGenerationState(proxyState) ||
+		proxyProgress === undefined ||
+		!keyframesUS ||
+		!waveformPeaks ||
+		thumbnailComplete === undefined ||
+		waveformComplete === undefined
+	) {
+		return null;
+	}
+	const artifact: SourceArtifactIndex = {
+		version,
+		complete,
+		index_complete: indexComplete,
+		editor_complete: editorComplete,
+		source_id: sourceID,
+		duration_us: durationUS,
+		frame_rate: frameRate,
+		phase,
+		progress,
+		proxy_reason: proxyReason,
+		proxy_state: proxyState,
+		proxy_progress: proxyProgress,
+		keyframes_us: keyframesUS,
+		waveform_peaks: waveformPeaks,
+		thumbnail_complete: thumbnailComplete,
+		waveform_complete: waveformComplete
+	};
+	const error = artifactString(fields.get('error'));
+	if (error) artifact.error = error;
+	return artifact;
+}
+
 const runningJobs = new Map<string, Promise<SourceArtifactIndex | null>>();
 const runningControllers = new Map<string, AbortController>();
 let heavyTaskTail: Promise<void> = Promise.resolve();
@@ -84,7 +221,7 @@ export function subscribeToSourceArtifacts(
 	listener: (progress: SourceArtifactProgress) => void
 ): () => void {
 	if (typeof window === 'undefined') return () => undefined;
-	const handler = (event: Event) => listener((event as CustomEvent<SourceArtifactProgress>).detail);
+	const handler = (event: WindowEventMap[typeof ARTIFACT_EVENT]) => listener(event.detail);
 	window.addEventListener(ARTIFACT_EVENT, handler);
 	return () => window.removeEventListener(ARTIFACT_EVENT, handler);
 }
@@ -158,8 +295,8 @@ export async function getSourceArtifactIndex(
 		const stored = await readProjectFile(asset.path);
 		if (!stored) continue;
 		try {
-			const parsed = JSON.parse(await stored.text()) as SourceArtifactIndex;
-			if (parsed.version === ARTIFACT_VERSION && parsed.source_id === sourceID) return parsed;
+			const parsed = parseSourceArtifactIndex(await stored.text());
+			if (parsed?.version === ARTIFACT_VERSION && parsed.source_id === sourceID) return parsed;
 		} catch {
 			// Invalid analysis assets are disposable and will be replaced.
 		}
@@ -720,9 +857,13 @@ async function generateProxyOffMainThread(
 					3_000
 				);
 			};
-			worker.onmessage = (event: MessageEvent<Record<string, unknown>>) => {
+			type ProxyWorkerResponse =
+				| { type: 'progress'; fraction: number }
+				| { type: 'complete' }
+				| { type: 'error'; name: string; message: string };
+			worker.onmessage = (event: MessageEvent<ProxyWorkerResponse>) => {
 				if (event.data.type === 'progress') {
-					onProgress?.(Number(event.data.fraction ?? 0));
+					onProgress?.(event.data.fraction);
 					return;
 				}
 				if (event.data.type === 'complete') {
@@ -734,8 +875,8 @@ async function generateProxyOffMainThread(
 						finish(() => reject(signal.reason ?? new DOMException('Cancelled', 'AbortError')));
 						return;
 					}
-					const error = new Error(String(event.data.message ?? 'Proxy generation failed.'));
-					error.name = String(event.data.name ?? 'Error');
+					const error = new Error(event.data.message);
+					error.name = event.data.name;
 					finish(() => reject(error));
 				}
 			};

@@ -1,3 +1,8 @@
+type HashWorkerResponse =
+	| { type: 'progress'; id: string; processed: number; total: number }
+	| { type: 'complete'; id: string; sha256: string }
+	| { type: 'error'; id: string; message: string };
+
 export function hashLocalFile(file: File, signal?: AbortSignal): Promise<string> {
 	return new Promise((resolve, reject) => {
 		const id = crypto.randomUUID();
@@ -6,17 +11,17 @@ export function hashLocalFile(file: File, signal?: AbortSignal): Promise<string>
 			worker.terminate();
 			reject(signal?.reason ?? new DOMException('Hashing cancelled.', 'AbortError'));
 		};
-		worker.onmessage = (event) => {
-			const message = event.data as Record<string, unknown>;
+		worker.onmessage = (event: MessageEvent<HashWorkerResponse>) => {
+			const message = event.data;
 			if (message.id !== id) return;
 			if (message.type === 'complete') {
 				signal?.removeEventListener('abort', abort);
 				worker.terminate();
-				resolve(String(message.sha256 ?? ''));
+				resolve(message.sha256);
 			} else if (message.type === 'error') {
 				signal?.removeEventListener('abort', abort);
 				worker.terminate();
-				reject(new Error(String(message.message ?? 'The source hash could not be calculated.')));
+				reject(new Error(message.message));
 			}
 		};
 		worker.onerror = (event) => {
