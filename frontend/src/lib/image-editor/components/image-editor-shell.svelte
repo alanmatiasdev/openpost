@@ -1010,7 +1010,11 @@
 			}
 			coverPreviewMediaID = response.cover_preview_media_id ?? '';
 			if (editor.document === submittedDocument) {
-				editor.document = response.document;
+				// Keep the current identity when the server accepted it unchanged. Replacing
+				// it resets every document consumer, including the page-strip previews.
+				if (JSON.stringify(response.document) !== JSON.stringify(submittedDocument)) {
+					editor.document = response.document;
+				}
 				editor.saveState = 'saved';
 				editor.saveMessage = guestMode
 					? m.image_editor_public_saved_device()

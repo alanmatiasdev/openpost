@@ -58,6 +58,49 @@ test.beforeEach(({ page }) => {
   });
 });
 
+test("Image Editor autosaves without replaying the saved-status animation", async ({ page }) => {
+  await page.goto("/image-editor");
+  await page.getByRole("button", { name: /Instagram square/ }).click();
+  await expect(page.getByTestId("image-editor-stage")).toBeVisible();
+
+  await page.evaluate(() => {
+    window.addEventListener(
+      "animationstart",
+      (event) => {
+        if (
+          event.target instanceof HTMLElement &&
+          event.target.dataset.testid === "image-editor-save-indicator"
+        ) {
+          (window as Window & { imageEditorSaveAnimations?: number }).imageEditorSaveAnimations =
+            ((window as Window & { imageEditorSaveAnimations?: number })
+              .imageEditorSaveAnimations ?? 0) + 1;
+        }
+      },
+      true,
+    );
+  });
+
+  await page.keyboard.press("t");
+  await expect(page.getByRole("treeitem", { name: /text/ })).toBeVisible();
+  await page.keyboard.press("Escape");
+  const text = page.locator("textarea:not([data-fabric])");
+  await expect(text).toBeVisible();
+  await text.fill("An updated image-editor preview");
+  await expect(page.getByTestId("image-editor-save-indicator")).toHaveAttribute(
+    "data-state",
+    "saved",
+  );
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as Window & { imageEditorSaveAnimations?: number }).imageEditorSaveAnimations ??
+          0,
+      ),
+    )
+    .toBe(0);
+});
+
 test("legacy Studio URLs redirect to the OpenPost Image Editor", async ({ page, request }) => {
   const auth = await registerUser(
     request,
