@@ -33,6 +33,7 @@ import (
 	"github.com/openpost/backend/internal/services/publicurl"
 	renditionservice "github.com/openpost/backend/internal/services/renditions"
 	repostservice "github.com/openpost/backend/internal/services/reposts"
+	"github.com/openpost/backend/internal/services/usage"
 	"github.com/openpost/backend/internal/telemetry"
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect"
@@ -60,6 +61,7 @@ type PublicationHandler struct {
 	db          *bun.DB
 	auth        middleware.Authenticator
 	entitlement entitlements.Service
+	usage       *usage.Service
 	providers   map[string]platform.Adapter
 	tokenSource AccessTokenSource
 	publicMedia *publicurl.MediaVerifier
@@ -96,7 +98,13 @@ func NewPublicationHandler(db *bun.DB, authenticator middleware.Authenticator, e
 	if entitlement == nil {
 		entitlement = entitlements.NewSelfHostedService()
 	}
-	return &PublicationHandler{db: db, auth: authenticator, entitlement: entitlement}
+	return &PublicationHandler{db: db, auth: authenticator, entitlement: entitlement, usage: usage.NewService(db)}
+}
+
+func (h *PublicationHandler) SetUsage(service *usage.Service) {
+	if service != nil {
+		h.usage = service
+	}
 }
 
 type PublicationMediaInput = publicationservice.PublicationMediaInput
@@ -955,6 +963,43 @@ func (h *PublicationHandler) schedulePublication(api huma.API) {
 		h.capturePublicationEvent(ctx, telemetry.EventPublicationScheduled, userID, input.PathID, result.JobID)
 		return enqueueActionMessage("publication scheduled", input.PathID, result), nil
 	})
+}
+
+func (h *PublicationHandler) checkScheduledPublicationQuota(ctx context.Context, workspaceID string, scheduledAt time.Time) error {
+	if h.usage == nil || h.entitlement == nil {
+		return publicationservice.NewError(publicationservice.ErrorTemporaryUnavailable, errors.New("scheduled publication usage is unavailable"))
+	}
+	current, err := h.usage.CurrentMonthly(ctx, workspaceID, entitlements.LimitScheduledPostsMonthly, scheduledAt)
+	if err != nil {
+		return publicationservice.NewError(publicationservice.ErrorTemporaryUnavailable, errors.New("failed to load scheduled publication usage"))
+	}
+	decision, err := h.entitlement.Check(ctx, entitlements.Request{
+		WorkspaceID: workspaceID,
+		Limit:       entitlements.LimitScheduledPostsMonthly,
+		Current:     current,
+		Amount:      1,
+	})
+	if err != nil {
+		return publicationservice.NewError(publicationservice.ErrorTemporaryUnavailable, errors.New("failed to check scheduled publication limit"))
+	}
+	if !decision.Allowed {
+		reason := strings.TrimSpace(decision.Reason)
+		if reason == "" {
+			reason = "scheduled publication limit exceeded"
+		}
+		return huma.NewError(http.StatusPaymentRequired, reason)
+	}
+	return nil
+}
+
+func (h *PublicationHandler) recordScheduledPublicationUsage(ctx context.Context, workspaceID string, scheduledAt time.Time) error {
+	if h.usage == nil {
+		return publicationservice.NewError(publicationservice.ErrorTemporaryUnavailable, errors.New("scheduled publication usage is unavailable"))
+	}
+	if _, err := h.usage.IncrementMonthly(ctx, workspaceID, entitlements.LimitScheduledPostsMonthly, 1, scheduledAt); err != nil {
+		return publicationservice.NewError(publicationservice.ErrorTemporaryUnavailable, errors.New("failed to record scheduled publication usage"))
+	}
+	return nil
 }
 
 func (h *PublicationHandler) cancelPublication(api huma.API) {

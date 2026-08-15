@@ -462,11 +462,6 @@ func (h *AccountLifecycleHandler) loadExportUserContent(ctx context.Context, use
 		Where("created_by = ?", userID).Order("created_at ASC").Scan(ctx, &exported.Publications); !isNoRowsOrNil(err) {
 		return err
 	}
-	if err := h.db.NewSelect().Model((*models.Post)(nil)).
-		Column("id", "workspace_id", "publication_id", "content", "status", "scheduled_at", "published_at", "created_at").
-		Where("created_by = ?", userID).Order("created_at ASC").Scan(ctx, &exported.Posts); !isNoRowsOrNil(err) {
-		return err
-	}
 	if err := h.db.NewSelect().Model((*models.APIToken)(nil)).
 		Column("id", "name", "token_prefix", "scope", "workspace_id", "last_used_at", "revoked_at", "created_at").
 		Where("user_id = ?", userID).Order("created_at ASC").Scan(ctx, &exported.APITokens); !isNoRowsOrNil(err) {
@@ -579,7 +574,6 @@ func (h *AccountLifecycleHandler) countDeletionWorkspaceData(ctx context.Context
 	for target, model := range map[*int]any{
 		&impact.SocialAccounts: (*models.SocialAccount)(nil),
 		&impact.Publications:   (*models.Publication)(nil),
-		&impact.Posts:          (*models.Post)(nil),
 		&impact.Media:          (*models.MediaAttachment)(nil),
 	} {
 		count, err := h.db.NewSelect().Model(model).Where("workspace_id IN (?)", bun.List(workspaceIDs)).Count(ctx)
@@ -913,11 +907,16 @@ func transferRetainedOrganization(ctx context.Context, tx bun.Tx, userID, organi
 		Where("organization_id = ?", organizationID).Scan(ctx, &workspaceIDs); !isNoRowsOrNil(err) {
 		return err
 	}
-	for _, model := range []any{(*models.Publication)(nil), (*models.Post)(nil)} {
-		if len(workspaceIDs) == 0 {
-			break
+	if len(workspaceIDs) > 0 {
+		if _, err := tx.NewUpdate().Model((*models.Publication)(nil)).
+			Set("created_by = ?", successorID).
+			Where("created_by = ? AND workspace_id IN (?)", userID, bun.List(workspaceIDs)).
+			Exec(ctx); err != nil {
+			return err
 		}
-		if _, err := tx.NewUpdate().Model(model).
+		// Keep the derived compatibility projection internally consistent while
+		// Publication remains the only ownership authority.
+		if _, err := tx.NewUpdate().Model((*models.Post)(nil)).
 			Set("created_by = ?", successorID).
 			Where("created_by = ? AND workspace_id IN (?)", userID, bun.List(workspaceIDs)).
 			Exec(ctx); err != nil {

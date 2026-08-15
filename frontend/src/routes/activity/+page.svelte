@@ -397,7 +397,7 @@
 			if (payload.publication_id) {
 				return `/publications/${encodeURIComponent(payload.publication_id)}`;
 			}
-			return payload.post_id ? `/posts/${encodeURIComponent(payload.post_id)}` : '';
+			return '';
 		} catch {
 			return '';
 		}

@@ -177,6 +177,8 @@ func (h *MCPHandler) SetProviderReadiness(service *providerreadiness.Service) {
 func (h *MCPHandler) publicationHandler() *PublicationHandler {
 	return &PublicationHandler{
 		db:          h.db,
+		entitlement: h.entitlement,
+		usage:       h.usage,
 		providers:   h.providers,
 		tokenSource: h.tokenSource,
 		readiness:   h.readiness,

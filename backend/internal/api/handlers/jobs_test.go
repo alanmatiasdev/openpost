@@ -31,7 +31,6 @@ func newJobsTestServer(t *testing.T) *jobsTestServer {
 		(*models.User)(nil),
 		(*models.Workspace)(nil),
 		(*models.WorkspaceMember)(nil),
-		(*models.Post)(nil),
 		(*models.Publication)(nil),
 		(*models.SocialAccount)(nil),
 		(*models.Job)(nil),
@@ -55,14 +54,14 @@ func newJobsTestServer(t *testing.T) *jobsTestServer {
 	}).Exec(ctx)
 	require.NoError(t, err)
 
-	posts := []models.Post{
-		{ID: "post-1", WorkspaceID: "ws-1", CreatedByID: "user-1", Content: "one", Status: statusScheduled},
-		{ID: "post-2", WorkspaceID: "ws-1", CreatedByID: "user-1", Content: "two", Status: statusScheduled},
-		{ID: "post-3", WorkspaceID: "ws-1", CreatedByID: "user-1", Content: "three", Status: statusScheduled},
-		{ID: "post-4", WorkspaceID: "ws-1", CreatedByID: "user-1", Content: "four", Status: statusScheduled},
-		{ID: "post-foreign", WorkspaceID: "ws-2", CreatedByID: "user-2", Content: "foreign", Status: statusScheduled},
+	publications := []models.Publication{
+		{ID: "publication-1", WorkspaceID: "ws-1", CreatedByID: "user-1", SourceText: "one", Status: models.PublicationStatusScheduled},
+		{ID: "publication-2", WorkspaceID: "ws-1", CreatedByID: "user-1", SourceText: "two", Status: models.PublicationStatusScheduled},
+		{ID: "publication-3", WorkspaceID: "ws-1", CreatedByID: "user-1", SourceText: "three", Status: models.PublicationStatusScheduled},
+		{ID: "publication-4", WorkspaceID: "ws-1", CreatedByID: "user-1", SourceText: "four", Status: models.PublicationStatusScheduled},
+		{ID: "publication-foreign", WorkspaceID: "ws-2", CreatedByID: "user-2", SourceText: "foreign", Status: models.PublicationStatusScheduled},
 	}
-	_, err = db.NewInsert().Model(&posts).Exec(ctx)
+	_, err = db.NewInsert().Model(&publications).Exec(ctx)
 	require.NoError(t, err)
 
 	e := echo.New()
@@ -167,24 +166,24 @@ func TestListJobsIncludesCanonicalPublicationJobsInWorkspaceScope(t *testing.T) 
 	srv := newJobsTestServer(t)
 	ctx := context.Background()
 	_, err := srv.db.NewInsert().Model(&models.Publication{
-		ID: "publication-1", WorkspaceID: "ws-1", CreatedByID: "user-1", Title: "Launch",
+		ID: "publication-canonical", WorkspaceID: "ws-1", CreatedByID: "user-1", Title: "Launch",
 		ContentProfile: models.ContentProfileShortText, SourceText: "Launch", SourceContent: "Launch",
 		Status: models.PublicationStatusFailed,
 	}).Exec(ctx)
 	require.NoError(t, err)
 	_, err = srv.db.NewInsert().Model(&models.Publication{
-		ID: "publication-2", WorkspaceID: "ws-2", CreatedByID: "user-2", Title: "Other",
+		ID: "publication-external", WorkspaceID: "ws-2", CreatedByID: "user-2", Title: "Other",
 		ContentProfile: models.ContentProfileShortText, SourceText: "Other", SourceContent: "Other",
 		Status: models.PublicationStatusFailed,
 	}).Exec(ctx)
 	require.NoError(t, err)
 	jobRows := []models.Job{
 		{
-			ID: "publication-job", Type: "publish_publication", ScopeID: "publication-1", Payload: `{"publication_id":"publication-1"}`,
+			ID: "publication-job", Type: "publish_publication", ScopeID: "publication-canonical", Payload: `{"publication_id":"publication-canonical"}`,
 			Status: "failed", RunAt: time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC), MaxAttempts: 3,
 		},
 		{
-			ID: "publication-job-stale-payload", Type: "publish_publication", ScopeID: "publication-2", Payload: `{"publication_id":"publication-1"}`,
+			ID: "publication-job-stale-payload", Type: "publish_publication", ScopeID: "publication-external", Payload: `{"publication_id":"publication-canonical"}`,
 			Status: "failed", RunAt: time.Date(2026, 7, 1, 13, 0, 0, 0, time.UTC), MaxAttempts: 3,
 		},
 	}
@@ -197,11 +196,11 @@ func TestListJobsIncludesCanonicalPublicationJobsInWorkspaceScope(t *testing.T) 
 	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &jobs))
 	require.Len(t, jobs, 1)
 	require.Equal(t, "publication-job", jobs[0].ID)
-	require.Equal(t, "publication-1", jobs[0].PublicationID)
+	require.Equal(t, "publication-canonical", jobs[0].PublicationID)
 	require.Empty(t, jobs[0].Payload)
 }
 
-func TestListJobsKeepsBlankScopeLegacyHistoryVisibleBeyondStartupBackfillCap(t *testing.T) {
+func TestListJobsUsesCanonicalScopeForMigratedLegacyHistory(t *testing.T) {
 	srv := newJobsTestServer(t)
 	ctx := t.Context()
 	now := time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC)
@@ -212,14 +211,12 @@ func TestListJobsKeepsBlankScopeLegacyHistoryVisibleBeyondStartupBackfillCap(t *
 	}).Exec(ctx)
 	require.NoError(t, err)
 
-	// One more than the 8 x 64 capped historical startup pass proves the reader
-	// does not depend on that pass reaching this record first.
-	const legacyHistoryCount = 8*64 + 1
+	const legacyHistoryCount = 4
 	jobs := make([]models.Job, 0, legacyHistoryCount+3)
 	for index := range legacyHistoryCount {
 		jobs = append(jobs, models.Job{
-			ID: fmt.Sprintf("legacy-history-%04d", index), Type: jobTypePublishPost,
-			Payload: `{"post_id":"post-1"}`, Status: "completed",
+			ID: fmt.Sprintf("legacy-history-%04d", index), Type: jobTypePublishPost, ScopeID: "publication-history",
+			Payload: `{"post_id":"retained-legacy-id"}`, Status: "completed",
 			RunAt: now.Add(time.Duration(index) * time.Second), MaxAttempts: 3,
 		})
 	}
@@ -230,8 +227,8 @@ func TestListJobsKeepsBlankScopeLegacyHistoryVisibleBeyondStartupBackfillCap(t *
 			RunAt: now.Add(legacyHistoryCount * time.Second), MaxAttempts: 3,
 		},
 		models.Job{
-			ID: "legacy-foreign-history", Type: jobTypePublishPost,
-			Payload: `{"post_id":"post-foreign"}`, Status: "completed",
+			ID: "legacy-foreign-history", Type: jobTypePublishPost, ScopeID: "publication-foreign",
+			Payload: `{"post_id":"retained-foreign-id"}`, Status: "completed",
 			RunAt: now.Add((legacyHistoryCount + 1) * time.Second), MaxAttempts: 3,
 		},
 		models.Job{
@@ -263,11 +260,11 @@ func (s *jobsTestServer) seedJobs(t *testing.T) {
 
 	now := time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC)
 	jobs := []models.Job{
-		{ID: "job-1", Type: "publish_post", ScopeID: "post-1", Payload: `{"post_id":"post-1"}`, Status: "pending", RunAt: now.Add(time.Minute), MaxAttempts: 3},
-		{ID: "job-2", Type: "publish_post", ScopeID: "post-2", Payload: `{"post_id":"post-2"}`, Status: "completed", RunAt: now.Add(2 * time.Minute), MaxAttempts: 3},
-		{ID: "job-3", Type: "publish_post", ScopeID: "post-3", Payload: `{"post_id":"post-3"}`, Status: "pending", RunAt: now.Add(3 * time.Minute), MaxAttempts: 3},
-		{ID: "job-4", Type: "publish_post", ScopeID: "post-4", Payload: `{"post_id":"post-4"}`, Status: "failed", RunAt: now.Add(4 * time.Minute), MaxAttempts: 3},
-		{ID: "job-foreign", Type: "publish_post", ScopeID: "post-foreign", Payload: `{"post_id":"post-foreign"}`, Status: "pending", RunAt: now.Add(5 * time.Minute), MaxAttempts: 3},
+		{ID: "job-1", Type: jobTypePublishPublication, ScopeID: "publication-1", Payload: `{"publication_id":"publication-1"}`, Status: "pending", RunAt: now.Add(time.Minute), MaxAttempts: 3},
+		{ID: "job-2", Type: jobTypePublishPublication, ScopeID: "publication-2", Payload: `{"publication_id":"publication-2"}`, Status: "completed", RunAt: now.Add(2 * time.Minute), MaxAttempts: 3},
+		{ID: "job-3", Type: jobTypePublishPublication, ScopeID: "publication-3", Payload: `{"publication_id":"publication-3"}`, Status: "pending", RunAt: now.Add(3 * time.Minute), MaxAttempts: 3},
+		{ID: "job-4", Type: jobTypePublishPublication, ScopeID: "publication-4", Payload: `{"publication_id":"publication-4"}`, Status: "failed", RunAt: now.Add(4 * time.Minute), MaxAttempts: 3},
+		{ID: "job-foreign", Type: jobTypePublishPublication, ScopeID: "publication-foreign", Payload: `{"publication_id":"publication-foreign"}`, Status: "pending", RunAt: now.Add(5 * time.Minute), MaxAttempts: 3},
 	}
 	_, err := s.db.NewInsert().Model(&jobs).Exec(context.Background())
 	require.NoError(t, err)

@@ -585,6 +585,9 @@ func (s *Service) publishRendition(
 	if err != nil {
 		return err
 	}
+	if err := s.checkMonthlyQuota(ctx, publication.WorkspaceID, entitlements.LimitPublishedPostsMonthly); err != nil {
+		return err
+	}
 	token, err := s.tm.GetValidAccessToken(ctx, account.ID)
 	if err != nil {
 		return fmt.Errorf("auth error: %v", err)
@@ -754,6 +757,9 @@ func (s *Service) publishRenditionSegments(
 			}
 			parentExternalID = segment.ExternalID
 			continue
+		}
+		if err := s.checkMonthlyQuota(ctx, publication.WorkspaceID, entitlements.LimitPublishedPostsMonthly); err != nil {
+			return s.failRenditionSegment(ctx, segment, err)
 		}
 
 		segmentSettings := map[string]interface{}{}

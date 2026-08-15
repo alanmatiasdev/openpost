@@ -458,8 +458,14 @@ func (commands publicationApplication) Schedule(
 	if err := commands.validateForEnqueue(ctx, userID, publication.ID); err != nil {
 		return publicationEnqueueResult{}, err
 	}
+	if err := commands.handler.checkScheduledPublicationQuota(ctx, publication.WorkspaceID, publication.ScheduledAt); err != nil {
+		return publicationEnqueueResult{}, err
+	}
 	result, err = commands.handler.queueScheduledPublicationExpected(ctx, publication.ID, expectedRevision, intent)
 	if err == nil {
+		if usageErr := commands.handler.recordScheduledPublicationUsage(ctx, publication.WorkspaceID, publication.ScheduledAt); usageErr != nil {
+			return publicationEnqueueResult{}, usageErr
+		}
 		commands.handler.captureActivationEvent(ctx, userID, publication.WorkspaceID, result)
 	}
 	return result, err

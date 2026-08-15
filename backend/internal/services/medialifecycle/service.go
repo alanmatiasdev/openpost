@@ -196,6 +196,10 @@ func (s *Service) TrashTemporaryForPublication(ctx context.Context, publicationI
 		var ids []string
 		err := tx.NewSelect().
 			TableExpr(`(
+				SELECT asset.media_id AS media_id
+				FROM publication_assets asset
+				WHERE asset.publication_id = ?
+				UNION
 				SELECT psm.media_id AS media_id
 				FROM publication_segment_media psm
 				JOIN publication_segments ps ON ps.id = psm.segment_id
@@ -211,7 +215,7 @@ func (s *Service) TrashTemporaryForPublication(ctx context.Context, publicationI
 				JOIN rendition_segments rs ON rs.id = rsm.rendition_segment_id
 				JOIN renditions r ON r.id = rs.rendition_id
 				WHERE r.publication_id = ?
-			) AS lifecycle_media`, publicationID, publicationID, publicationID).
+			) AS lifecycle_media`, publicationID, publicationID, publicationID, publicationID).
 			Column("media_id").
 			Scan(txCtx, &ids)
 		if err != nil {
@@ -221,6 +225,8 @@ func (s *Service) TrashTemporaryForPublication(ctx context.Context, publicationI
 	})
 }
 
+// TrashTemporaryForPost is retained only for the legacy Post publisher. New
+// publishing flows must use TrashTemporaryForPublication.
 func (s *Service) TrashTemporaryForPost(ctx context.Context, postID string) error {
 	now := time.Now().UTC()
 	return s.runSerializable(ctx, func(txCtx context.Context, tx bun.Tx) error {
@@ -642,12 +648,6 @@ func (snapshot *protectionSnapshot) loadNormalized(
 			JOIN candidate_media candidate ON candidate.media_id = child.parent_media_id
 			WHERE child.workspace_id = (SELECT workspace_id FROM batch_scope) AND child.parent_media_id <> ''
 			UNION
-			SELECT 'reference', post_media.media_id
-			FROM post_media
-			JOIN posts post ON post.id = post_media.post_id
-			JOIN candidate_media candidate ON candidate.media_id = post_media.media_id
-			WHERE post.workspace_id = (SELECT workspace_id FROM batch_scope) AND post.status NOT IN ('published', 'failed')
-			UNION
 			SELECT 'reference', asset.media_id
 			FROM publication_assets asset
 			JOIN publications publication ON publication.id = asset.publication_id
@@ -716,21 +716,8 @@ func (snapshot *protectionSnapshot) loadJSON(
 ) error {
 	var rows []jsonReferenceRow
 	err := tx.NewRaw(`
-		SELECT 'post_variant' AS reference_kind, variant.id AS owner_id, post.status AS owner_status, variant.media_ids AS payload
-		FROM post_variants variant
-		JOIN posts post ON post.id = variant.post_id
-		WHERE post.workspace_id = ? AND variant.media_ids <> ''
-		UNION ALL
-		SELECT 'thread_draft', draft.post_id, post.status, draft.draft_json
-		FROM thread_drafts draft
-		JOIN posts post ON post.id = draft.post_id
-		WHERE post.workspace_id = ?
-		UNION ALL
-		SELECT 'legacy_thread_draft', post.id, post.status, post.content
-		FROM posts post
-		WHERE post.workspace_id = ? AND post.content LIKE '__openpost_thread__:%'
-		UNION ALL
-		SELECT 'rendition_settings', rendition.id, publication.status, rendition.settings_json
+		SELECT 'rendition_settings' AS reference_kind, rendition.id AS owner_id,
+		       publication.status AS owner_status, rendition.settings_json AS payload
 		FROM renditions rendition
 		JOIN publications publication ON publication.id = rendition.publication_id
 		WHERE publication.workspace_id = ?
@@ -760,7 +747,7 @@ func (snapshot *protectionSnapshot) loadJSON(
 		JOIN renditions rendition ON rendition.id = segment.rendition_id
 		JOIN publications publication ON publication.id = rendition.publication_id
 		WHERE publication.workspace_id = ?
-	`, workspaceID, workspaceID, workspaceID, workspaceID, workspaceID, workspaceID, workspaceID, workspaceID).Scan(ctx, &rows)
+	`, workspaceID, workspaceID, workspaceID, workspaceID, workspaceID).Scan(ctx, &rows)
 	if err != nil {
 		return fmt.Errorf("load JSON media reference set: %w", err)
 	}
@@ -944,7 +931,7 @@ func walkSettingMedia(node any, visit func(string)) error {
 
 func lifecycleStatusProtected(status string) bool {
 	status = strings.ToLower(strings.TrimSpace(status))
-	return status != models.PostStatusPublished && status != models.PostStatusFailed
+	return status != models.PublicationStatusPublished && status != models.PublicationStatusFailed
 }
 
 func (snapshot *protectionSnapshot) isReferenced(mediaID string) bool {

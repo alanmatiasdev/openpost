@@ -15,6 +15,7 @@ import (
 	"github.com/danielgtaylor/huma/v2/adapters/humaecho"
 	"github.com/labstack/echo/v4"
 	"github.com/openpost/backend/internal/models"
+	"github.com/openpost/backend/internal/services/entitlements"
 	"github.com/openpost/backend/internal/services/providerreadiness"
 	publicationservice "github.com/openpost/backend/internal/services/publications"
 	"github.com/openpost/backend/internal/telemetry"
@@ -212,6 +213,9 @@ func TestPublicationApplicationPersistsInheritedRandomDelayAndExactAuthorization
 	var authorization models.PublicationAuthorization
 	require.NoError(t, srv.db.NewSelect().Model(&authorization).Where("job_id = ?", job.ID).Scan(ctx))
 	require.True(t, authorization.ScheduledAt.Equal(job.RunAt))
+	scheduledUsage, err := handler.usage.CurrentMonthly(ctx, "ws-1", entitlements.LimitScheduledPostsMonthly, scheduledAt)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), scheduledUsage, "one Publication counts once regardless of its segments or renditions")
 }
 
 func TestPublicationApplicationPersistsExplicitZeroRandomDelay(t *testing.T) {
@@ -364,7 +368,7 @@ func TestConcurrentFirstPublicationsRecordOneWorkspaceActivation(t *testing.T) {
 	db := createHandlerTestDB(t,
 		(*models.User)(nil), (*models.Workspace)(nil), (*models.WorkspaceMember)(nil),
 		(*models.SocialAccount)(nil), (*models.Publication)(nil), (*models.Rendition)(nil),
-		(*models.Job)(nil), (*models.WorkspaceActivation)(nil), (*models.ProductAnalyticsEvent)(nil),
+		(*models.Job)(nil), (*models.UsageCounter)(nil), (*models.WorkspaceActivation)(nil), (*models.ProductAnalyticsEvent)(nil),
 	)
 	// SQLite serializes writers in production; concurrent requests still race
 	// for the same canonical transition at the application boundary.

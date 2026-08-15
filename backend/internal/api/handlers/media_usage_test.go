@@ -3,37 +3,47 @@ package handlers
 import (
 	"context"
 	"testing"
-	"time"
 
 	"github.com/openpost/backend/internal/models"
 	"github.com/stretchr/testify/require"
 )
 
-func TestMediaUsageSummaryAllowsTerminalPostUsage(t *testing.T) {
+func TestMediaUsageSummaryUsesCanonicalPublicationReferences(t *testing.T) {
 	t.Parallel()
 
 	db := createHandlerTestDB(t,
-		(*models.Post)(nil),
-		(*models.PostMedia)(nil),
-		(*models.PostVariant)(nil),
+		(*models.Publication)(nil),
+		(*models.PublicationAsset)(nil),
+		(*models.PublicationSegment)(nil),
+		(*models.PublicationSegmentMedia)(nil),
+		(*models.Rendition)(nil),
+		(*models.RenditionMedia)(nil),
+		(*models.RenditionSegment)(nil),
+		(*models.RenditionSegmentMedia)(nil),
 	)
 	handler := &MediaHandler{db: db}
 	ctx := context.Background()
 
-	posts := []models.Post{
-		{ID: "published-post", WorkspaceID: "ws-1", CreatedByID: "user-1", Content: "posted", Status: "published", ScheduledAt: time.Now()},
-		{ID: "scheduled-post", WorkspaceID: "ws-1", CreatedByID: "user-1", Content: "later", Status: "scheduled", ScheduledAt: time.Now()},
-		{ID: "failed-post", WorkspaceID: "ws-1", CreatedByID: "user-1", Content: "retry", Status: "failed", ScheduledAt: time.Now()},
+	publications := []models.Publication{
+		{ID: "published-publication", WorkspaceID: "ws-1", CreatedByID: "user-1", Status: models.PublicationStatusPublished},
+		{ID: "scheduled-publication", WorkspaceID: "ws-1", CreatedByID: "user-1", Status: models.PublicationStatusScheduled},
+		{ID: "failed-publication", WorkspaceID: "ws-1", CreatedByID: "user-1", Status: models.PublicationStatusFailed},
 	}
-	_, err := db.NewInsert().Model(&posts).Exec(ctx)
+	_, err := db.NewInsert().Model(&publications).Exec(ctx)
 	require.NoError(t, err)
-
-	postMedia := []models.PostMedia{
-		{PostID: "published-post", MediaID: "published-media"},
-		{PostID: "scheduled-post", MediaID: "blocked-media"},
-		{PostID: "failed-post", MediaID: "failed-media"},
+	segments := []models.PublicationSegment{
+		{ID: "published-segment", PublicationID: "published-publication"},
+		{ID: "scheduled-segment", PublicationID: "scheduled-publication"},
+		{ID: "failed-segment", PublicationID: "failed-publication"},
 	}
-	_, err = db.NewInsert().Model(&postMedia).Exec(ctx)
+	_, err = db.NewInsert().Model(&segments).Exec(ctx)
+	require.NoError(t, err)
+	segmentMedia := []models.PublicationSegmentMedia{
+		{SegmentID: "published-segment", MediaID: "published-media"},
+		{SegmentID: "scheduled-segment", MediaID: "blocked-media"},
+		{SegmentID: "failed-segment", MediaID: "failed-media"},
+	}
+	_, err = db.NewInsert().Model(&segmentMedia).Exec(ctx)
 	require.NoError(t, err)
 
 	usage, err := handler.mediaUsageSummary(ctx, "ws-1", "published-media")
@@ -49,18 +59,62 @@ func TestMediaUsageSummaryAllowsTerminalPostUsage(t *testing.T) {
 	require.Equal(t, mediaUsageSummary{Total: 1, Blocking: 0}, usage)
 }
 
+func TestMediaUsageSummaryCountsOnePublicationAcrossReferenceKinds(t *testing.T) {
+	t.Parallel()
+
+	db := createHandlerTestDB(t,
+		(*models.Publication)(nil),
+		(*models.PublicationAsset)(nil),
+		(*models.PublicationSegment)(nil),
+		(*models.PublicationSegmentMedia)(nil),
+		(*models.Rendition)(nil),
+		(*models.RenditionMedia)(nil),
+		(*models.RenditionSegment)(nil),
+		(*models.RenditionSegmentMedia)(nil),
+	)
+	handler := &MediaHandler{db: db}
+	ctx := context.Background()
+
+	_, err := db.NewInsert().Model(&models.Publication{
+		ID: "publication-1", WorkspaceID: "ws-1", CreatedByID: "user-1", Status: models.PublicationStatusReady,
+	}).Exec(ctx)
+	require.NoError(t, err)
+	_, err = db.NewInsert().Model(&models.PublicationAsset{PublicationID: "publication-1", MediaID: "media-1"}).Exec(ctx)
+	require.NoError(t, err)
+	_, err = db.NewInsert().Model(&models.PublicationSegment{ID: "segment-1", PublicationID: "publication-1"}).Exec(ctx)
+	require.NoError(t, err)
+	_, err = db.NewInsert().Model(&models.PublicationSegmentMedia{SegmentID: "segment-1", MediaID: "media-1"}).Exec(ctx)
+	require.NoError(t, err)
+	_, err = db.NewInsert().Model(&models.Rendition{ID: "rendition-1", PublicationID: "publication-1"}).Exec(ctx)
+	require.NoError(t, err)
+	_, err = db.NewInsert().Model(&models.RenditionMedia{RenditionID: "rendition-1", MediaID: "media-1"}).Exec(ctx)
+	require.NoError(t, err)
+	_, err = db.NewInsert().Model(&models.RenditionSegment{
+		ID: "rendition-segment-1", RenditionID: "rendition-1", PublicationSegmentID: "segment-1",
+	}).Exec(ctx)
+	require.NoError(t, err)
+	_, err = db.NewInsert().Model(&models.RenditionSegmentMedia{
+		RenditionSegmentID: "rendition-segment-1", MediaID: "media-1",
+	}).Exec(ctx)
+	require.NoError(t, err)
+
+	usage, err := handler.mediaUsageSummary(ctx, "ws-1", "media-1")
+	require.NoError(t, err)
+	require.Equal(t, mediaUsageSummary{Total: 1, Blocking: 1}, usage)
+}
+
 func TestMediaUsageStatusBlocksOnlyActiveWork(t *testing.T) {
 	t.Parallel()
 
 	for _, status := range []string{
-		models.PostStatusDraft,
-		models.PostStatusScheduled,
-		models.PostStatusPublishing,
+		models.PublicationStatusDraft,
 		models.PublicationStatusReady,
+		models.PublicationStatusScheduled,
+		models.PublicationStatusPublishing,
 	} {
 		require.True(t, mediaUsageStatusBlocks(status), status)
 	}
-	for _, status := range []string{models.PostStatusPublished, models.PostStatusFailed} {
+	for _, status := range []string{models.PublicationStatusPublished, models.PublicationStatusFailed} {
 		require.False(t, mediaUsageStatusBlocks(status), status)
 	}
 }
@@ -81,67 +135,4 @@ func TestNormalizeMediaFilenamePreservesFormat(t *testing.T) {
 
 	_, err = normalizeMediaFilename("launch-card.png", "folder/renamed.png")
 	require.EqualError(t, err, "filename cannot contain path separators or control characters")
-}
-
-func TestMediaUsageSummaryUsesTerminalPublicationStatusForRenditions(t *testing.T) {
-	t.Parallel()
-
-	db := createHandlerTestDB(t,
-		(*models.Publication)(nil),
-		(*models.Rendition)(nil),
-		(*models.RenditionMedia)(nil),
-		(*models.Post)(nil),
-		(*models.PostMedia)(nil),
-		(*models.PostVariant)(nil),
-	)
-	handler := &MediaHandler{db: db}
-	ctx := context.Background()
-	publication := &models.Publication{ID: "publication-1", WorkspaceID: "ws-1", Status: models.PublicationStatusFailed}
-	_, err := db.NewInsert().Model(publication).Exec(ctx)
-	require.NoError(t, err)
-	rendition := &models.Rendition{ID: "rendition-1", PublicationID: publication.ID, Status: models.RenditionStatusReady}
-	_, err = db.NewInsert().Model(rendition).Exec(ctx)
-	require.NoError(t, err)
-	_, err = db.NewInsert().Model(&models.RenditionMedia{RenditionID: rendition.ID, MediaID: "media-1"}).Exec(ctx)
-	require.NoError(t, err)
-
-	usage, err := handler.mediaUsageSummary(ctx, "ws-1", "media-1")
-	require.NoError(t, err)
-	require.Equal(t, mediaUsageSummary{Total: 1, Blocking: 0}, usage)
-}
-
-func TestMediaUsageSummaryCountsVariantMediaAndDedupesByPost(t *testing.T) {
-	t.Parallel()
-
-	db := createHandlerTestDB(t,
-		(*models.Post)(nil),
-		(*models.PostMedia)(nil),
-		(*models.PostVariant)(nil),
-	)
-	handler := &MediaHandler{db: db}
-	ctx := context.Background()
-
-	posts := []models.Post{
-		{ID: "published-post", WorkspaceID: "ws-1", CreatedByID: "user-1", Content: "posted", Status: "published"},
-		{ID: "draft-post", WorkspaceID: "ws-1", CreatedByID: "user-1", Content: "draft", Status: "draft"},
-	}
-	_, err := db.NewInsert().Model(&posts).Exec(ctx)
-	require.NoError(t, err)
-
-	postMedia := []models.PostMedia{
-		{PostID: "published-post", MediaID: "variant-media"},
-	}
-	_, err = db.NewInsert().Model(&postMedia).Exec(ctx)
-	require.NoError(t, err)
-
-	variants := []models.PostVariant{
-		{ID: "published-variant", PostID: "published-post", SocialAccountID: "account-1", Content: "posted", MediaIDs: `["variant-media"]`, IsUnsynced: true},
-		{ID: "draft-variant", PostID: "draft-post", SocialAccountID: "account-1", Content: "draft", MediaIDs: `["variant-media"]`, IsUnsynced: true},
-	}
-	_, err = db.NewInsert().Model(&variants).Exec(ctx)
-	require.NoError(t, err)
-
-	usage, err := handler.mediaUsageSummary(ctx, "ws-1", "variant-media")
-	require.NoError(t, err)
-	require.Equal(t, mediaUsageSummary{Total: 2, Blocking: 1}, usage)
 }

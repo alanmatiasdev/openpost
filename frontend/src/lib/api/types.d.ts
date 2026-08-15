@@ -2397,7 +2397,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get posts that use a media attachment */
+        /** Get publications that use a media attachment */
         get: operations["get-media-usage"];
         put?: never;
         post?: never;
@@ -6965,10 +6965,10 @@ export interface components {
             readonly $schema?: string;
             /**
              * Format: int64
-             * @description Number of posts using this media
+             * @description Number of objects using this media
              */
             count: number;
-            /** @description Posts using this media */
+            /** @description Publications and reusable assets using this media */
             usage: components["schemas"]["MediaUsageItem"][] | null;
         };
         GetMemeTemplateThumbnailOutputBody: {
@@ -8081,7 +8081,7 @@ export interface components {
             url: string;
             /**
              * Format: int64
-             * @description Number of posts using this media
+             * @description Number of publications and reusable assets using this media
              */
             usage_count: number;
             /** @description Detected video codec */
@@ -8203,19 +8203,19 @@ export interface components {
             video_project_id?: string;
         };
         MediaUsageItem: {
-            /** @description Post content (truncated) */
+            /** @description Publication content (truncated) */
             content?: string;
             /** @description Referenced object ID */
             id: string;
-            /** @description Usage kind: post, design, template, brand_asset, or brand_font */
+            /** @description Usage kind: publication, design, template, brand_asset, or brand_font */
             kind: string;
             /** @description User-visible usage label */
             label: string;
-            /** @description Post ID for post usages */
-            post_id?: string;
+            /** @description Publication ID for publication usages */
+            publication_id?: string;
             /** @description Scheduled time */
             scheduled_at?: string;
-            /** @description Post or design status */
+            /** @description Publication or design status */
             status?: string;
         };
         MemeCatalogMetadata: {

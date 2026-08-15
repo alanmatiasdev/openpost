@@ -13,6 +13,7 @@ import (
 	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/platform"
 	"github.com/openpost/backend/internal/services/crypto"
+	"github.com/openpost/backend/internal/services/entitlements"
 	"github.com/openpost/backend/internal/services/lifecycle"
 	"github.com/openpost/backend/internal/services/providerreadiness"
 	"github.com/openpost/backend/internal/services/publicationauth"
@@ -28,6 +29,9 @@ func TestHandlePublishPublicationJobRecordsLifecycleEvents(t *testing.T) {
 	srv := newPublisherLifecycleTestServer(t, &fakePublisherAdapter{externalID: "external-1"})
 
 	require.NoError(t, srv.publishPublication(t))
+	published, err := srv.service.usage.CurrentMonthly(t.Context(), "ws-1", entitlements.LimitPublishedPostsMonthly, time.Now().UTC())
+	require.NoError(t, err)
+	require.Equal(t, int64(1), published, "canonical Rendition success records published usage without reading Post authoring state")
 
 	events := srv.lifecycleEvents(t)
 	requireLifecycleTypes(t, events, lifecycle.EventProviderProcessing, lifecycle.EventPublished)

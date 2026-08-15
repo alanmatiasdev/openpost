@@ -207,7 +207,7 @@ func jobResponses(jobs []models.Job, includePayload bool) []JobResponse {
 }
 
 func jobPublicationID(job models.Job) string {
-	if job.Type == jobTypePublishPublication && strings.TrimSpace(job.ScopeID) != "" {
+	if (job.Type == jobTypePublishPublication || job.Type == jobTypePublishPost) && strings.TrimSpace(job.ScopeID) != "" {
 		return strings.TrimSpace(job.ScopeID)
 	}
 	var subject struct {
@@ -227,15 +227,12 @@ func (h *JobHandler) listJobsQuery(
 	runFrom time.Time,
 	runBefore time.Time,
 ) *bun.SelectQuery {
-	postScopeExpr := "COALESCE(NULLIF(TRIM(job.scope_id), ''), " +
-		safeAliasedJobPayloadTextExpr(h.db, "job", "post_id") + ")"
 	publicationScopeExpr := "COALESCE(NULLIF(TRIM(job.scope_id), ''), " +
 		safeAliasedJobPayloadTextExpr(h.db, "job", "publication_id") + ")"
 	query := h.db.NewSelect().
 		Model(model).
 		ModelTableExpr("jobs AS job").
-		Join("LEFT JOIN posts AS p ON job.type = ? AND p.id = "+postScopeExpr, jobTypePublishPost).
-		Join("LEFT JOIN publications AS publication ON job.type = ? AND publication.id = "+publicationScopeExpr, jobTypePublishPublication).
+		Join("LEFT JOIN publications AS publication ON job.type IN (?, ?) AND publication.id = "+publicationScopeExpr, jobTypePublishPublication, jobTypePublishPost).
 		Join("LEFT JOIN social_accounts AS sa ON sa.id = " + safeAliasedJobPayloadTextExpr(h.db, "job", "account_id"))
 
 	if input.Status != "" {
@@ -248,7 +245,7 @@ func (h *JobHandler) listJobsQuery(
 		query = query.Where("job.run_at < ?", runBefore)
 	}
 	if input.WorkspaceID != "" {
-		return query.Where("COALESCE(publication.workspace_id, p.workspace_id, sa.workspace_id) = ?", input.WorkspaceID)
+		return query.Where("COALESCE(publication.workspace_id, sa.workspace_id) = ?", input.WorkspaceID)
 	}
 	if isAdmin {
 		return query
@@ -258,7 +255,7 @@ func (h *JobHandler) listJobsQuery(
 	for workspaceID := range allowedWorkspaces {
 		workspaceIDs = append(workspaceIDs, workspaceID)
 	}
-	return query.Where("COALESCE(publication.workspace_id, p.workspace_id, sa.workspace_id) IN (?)", bun.List(workspaceIDs))
+	return query.Where("COALESCE(publication.workspace_id, sa.workspace_id) IN (?)", bun.List(workspaceIDs))
 }
 
 func listJobsOutput(body []JobResponse, total, limit, offset int) *ListJobsOutput {

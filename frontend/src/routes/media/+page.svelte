@@ -846,7 +846,7 @@
 
 	function mediaUsageKindLabel(value: string): string {
 		switch (value) {
-			case 'post':
+			case 'publication':
 				return m.media_usage_post();
 			case 'design':
 				return m.media_usage_design();

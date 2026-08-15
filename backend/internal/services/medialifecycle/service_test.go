@@ -86,6 +86,7 @@ func TestPublishedPublicationTrashesOnlyUnprotectedTemporaryMedia(t *testing.T) 
 	now := time.Now().UTC()
 	for _, media := range []struct{ id, retention string }{
 		{id: "temporary", retention: RetentionTemporary},
+		{id: "publication-asset", retention: RetentionTemporary},
 		{id: "tagged", retention: RetentionTemporary},
 		{id: "library", retention: RetentionLibrary},
 	} {
@@ -99,6 +100,8 @@ func TestPublishedPublicationTrashesOnlyUnprotectedTemporaryMedia(t *testing.T) 
 	_, err = db.Exec("INSERT INTO publications (id, workspace_id, status) VALUES ('publication-1', 'workspace-1', 'published')")
 	require.NoError(t, err)
 	_, err = db.Exec("INSERT INTO publication_segments (id, publication_id) VALUES ('segment-1', 'publication-1')")
+	require.NoError(t, err)
+	_, err = db.Exec("INSERT INTO publication_assets (publication_id, media_id) VALUES ('publication-1', 'publication-asset')")
 	require.NoError(t, err)
 	for _, mediaID := range []string{"temporary", "tagged", "library"} {
 		_, err = db.Exec("INSERT INTO publication_segment_media (segment_id, media_id) VALUES ('segment-1', ?)", mediaID)
@@ -123,6 +126,8 @@ func TestPublishedPublicationTrashesOnlyUnprotectedTemporaryMedia(t *testing.T) 
 	}
 	require.False(t, states["temporary"].TrashedAt.IsZero())
 	require.Equal(t, TrashReasonPublished, states["temporary"].TrashReason)
+	require.False(t, states["publication-asset"].TrashedAt.IsZero())
+	require.Equal(t, TrashReasonPublished, states["publication-asset"].TrashReason)
 	require.True(t, states["tagged"].TrashedAt.IsZero())
 	require.True(t, states["library"].TrashedAt.IsZero())
 }
@@ -262,8 +267,7 @@ func TestSweepProtectsEveryBatchReferenceClass(t *testing.T) {
 	protected := []string{
 		"favorite", "tagged", "collection", "brand-font", "design-reference", "design-revision-reference", "design-cover",
 		"design-page-preview", "design-page-export", "template-reference", "template-preview",
-		"video-reference", "video-cover", "parent-reference", "post-media", "post-variant",
-		"thread-root", "thread-variant", "publication-asset", "segment-media",
+		"video-reference", "video-cover", "parent-reference", "publication-asset", "segment-media",
 		"segment-settings", "segment-media-settings", "rendition-media", "rendition-settings",
 		"rendition-segment-media", "rendition-segment-settings", "rendition-segment-media-settings",
 		"delivery-relation",
@@ -323,11 +327,12 @@ func TestSweepProtectsEveryBatchReferenceClass(t *testing.T) {
 		require.NoError(t, db.NewSelect().Model(&media).Where("id = ?", id).Scan(t.Context()), id)
 		require.True(t, media.TrashedAt.IsZero(), "%s must remain protected", id)
 	}
-	var unreferenced, trashedActive models.MediaAttachment
+	var unreferenced models.MediaAttachment
 	require.NoError(t, db.NewSelect().Model(&unreferenced).Where("id = ?", "unreferenced").Scan(t.Context()))
 	require.False(t, unreferenced.TrashedAt.IsZero())
-	require.NoError(t, db.NewSelect().Model(&trashedActive).Where("id = ?", "trashed-active").Scan(t.Context()))
-	require.False(t, trashedActive.TrashedAt.IsZero(), "an active reference must block a due purge")
+	trashedActiveCount, err := db.NewSelect().Model((*models.MediaAttachment)(nil)).Where("id = ?", "trashed-active").Count(t.Context())
+	require.NoError(t, err)
+	require.Zero(t, trashedActiveCount, "legacy Post references are not lifecycle authority")
 }
 
 func TestSweepReleasesSoftDeletedEditorOwnershipBeforePurge(t *testing.T) {
@@ -552,24 +557,6 @@ func TestSweepFailsClosedOnUndecodableWorkspaceReferences(t *testing.T) {
 		setup func(*testing.T, *bun.DB)
 	}{
 		{
-			name: "post variant",
-			setup: func(t *testing.T, db *bun.DB) {
-				_, err := db.Exec("INSERT INTO posts (id, workspace_id, status) VALUES ('post-1', 'workspace-1', 'draft')")
-				require.NoError(t, err)
-				_, err = db.Exec("INSERT INTO post_variants (id, post_id, media_ids) VALUES ('variant-1', 'post-1', 'not-json')")
-				require.NoError(t, err)
-			},
-		},
-		{
-			name: "thread draft",
-			setup: func(t *testing.T, db *bun.DB) {
-				_, err := db.Exec("INSERT INTO posts (id, workspace_id, status) VALUES ('post-1', 'workspace-1', 'draft')")
-				require.NoError(t, err)
-				_, err = db.Exec("INSERT INTO thread_drafts (post_id, draft_json) VALUES ('post-1', '__openpost_thread__:{bad')")
-				require.NoError(t, err)
-			},
-		},
-		{
 			name: "active publication settings",
 			setup: func(t *testing.T, db *bun.DB) {
 				_, err := db.Exec("INSERT INTO publications (id, workspace_id, status) VALUES ('publication-1', 'workspace-1', 'draft')")
@@ -640,19 +627,6 @@ func TestSweepRewritesHistoricalJSONBeforePurge(t *testing.T) {
 	require.NoError(t, err)
 	require.Zero(t, count)
 
-	var variantPayload, threadPayload, legacyPayload string
-	require.NoError(t, db.NewSelect().Table("post_variants").Column("media_ids").Where("id = ?", "variant-1").Scan(t.Context(), &variantPayload))
-	require.NoError(t, db.NewSelect().Table("thread_drafts").Column("draft_json").Where("post_id = ?", "post-1").Scan(t.Context(), &threadPayload))
-	require.NoError(t, db.NewSelect().Table("posts").Column("content").Where("id = ?", "post-1").Scan(t.Context(), &legacyPayload))
-	variantIDs, err := decodeStringArray(variantPayload)
-	require.NoError(t, err)
-	require.Equal(t, []string{"keep"}, variantIDs)
-	for _, payload := range []string{threadPayload, legacyPayload} {
-		ids, decodeErr := threadDraftMediaIDs(payload)
-		require.NoError(t, decodeErr)
-		require.Equal(t, []string{"keep"}, ids)
-		require.NotContains(t, payload, "purge")
-	}
 	for _, query := range []string{
 		`SELECT settings_json FROM publication_segments WHERE id = 'segment-settings'`,
 		`SELECT settings_json FROM publication_segment_media WHERE segment_id = 'segment-settings' AND media_id = 'keep'`,

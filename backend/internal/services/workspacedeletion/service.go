@@ -437,17 +437,28 @@ func OrganizationBillingReferences(ctx context.Context, db deletionDB, organizat
 	return refs, nil
 }
 
-type deletionIDs struct{ posts, publications, renditions, accounts, media, conversations, messages, invitations []string }
+type deletionIDs struct {
+	compatibilityPosts, publications, publicationSegments, renditions, renditionSegments []string
+	accounts, media, conversations, messages, invitations                                []string
+}
 
 func loadDeletionIDs(ctx context.Context, db deletionDB, workspaceIDs []string) (deletionIDs, error) {
 	ids := deletionIDs{}
-	for _, scan := range []struct{ model, dest any }{{(*models.Post)(nil), &ids.posts}, {(*models.Publication)(nil), &ids.publications}, {(*models.SocialAccount)(nil), &ids.accounts}, {(*models.MediaAttachment)(nil), &ids.media}, {(*models.Conversation)(nil), &ids.conversations}, {(*models.DirectMessage)(nil), &ids.messages}, {(*models.WorkspaceInvitation)(nil), &ids.invitations}} {
+	for _, scan := range []struct{ model, dest any }{{(*models.Post)(nil), &ids.compatibilityPosts}, {(*models.Publication)(nil), &ids.publications}, {(*models.SocialAccount)(nil), &ids.accounts}, {(*models.MediaAttachment)(nil), &ids.media}, {(*models.Conversation)(nil), &ids.conversations}, {(*models.DirectMessage)(nil), &ids.messages}, {(*models.WorkspaceInvitation)(nil), &ids.invitations}} {
 		if err := db.NewSelect().Model(scan.model).Column("id").Where("workspace_id IN (?)", bun.List(workspaceIDs)).Scan(ctx, scan.dest); err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return ids, err
 		}
 	}
 	if len(ids.publications) > 0 {
+		if err := db.NewSelect().Model((*models.PublicationSegment)(nil)).Column("id").Where("publication_id IN (?)", bun.List(ids.publications)).Scan(ctx, &ids.publicationSegments); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return ids, err
+		}
 		if err := db.NewSelect().Model((*models.Rendition)(nil)).Column("id").Where("publication_id IN (?)", bun.List(ids.publications)).Scan(ctx, &ids.renditions); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return ids, err
+		}
+	}
+	if len(ids.renditions) > 0 {
+		if err := db.NewSelect().Model((*models.RenditionSegment)(nil)).Column("id").Where("rendition_id IN (?)", bun.List(ids.renditions)).Scan(ctx, &ids.renditionSegments); err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return ids, err
 		}
 	}
@@ -461,7 +472,7 @@ func loadDeletionReferences(ctx context.Context, db deletionDB, workspaceIDs, ob
 		return nil, err
 	}
 	refs := map[string]struct{}{}
-	for _, values := range [][]string{workspaceIDs, ids.posts, ids.publications, ids.renditions, ids.accounts, ids.media, ids.conversations, ids.messages, ids.invitations, objectKeys} {
+	for _, values := range [][]string{workspaceIDs, ids.publications, ids.publicationSegments, ids.renditions, ids.renditionSegments, ids.accounts, ids.media, ids.conversations, ids.messages, ids.invitations, objectKeys} {
 		for _, id := range values {
 			refs[id] = struct{}{}
 		}
@@ -629,9 +640,11 @@ type modelDeletion struct {
 func deletionPlan(workspaceIDs []string, ids deletionIDs) []modelDeletion {
 	deletions := []modelDeletion{}
 	deletions = appendDeletions(deletions, workspaceIDs, "workspace_id IN (?)", (*models.AnalyticsAccountSnapshot)(nil), (*models.AnalyticsRenditionSnapshot)(nil), (*models.AnalyticsSyncState)(nil))
-	deletions = appendDeletions(deletions, ids.renditions, "rendition_id IN (?)", (*models.RenditionMediaDelivery)(nil), (*models.RenditionMedia)(nil))
-	deletions = appendDeletions(deletions, ids.publications, "publication_id IN (?)", (*models.PublicationAsset)(nil), (*models.PublicationAuthorization)(nil), (*models.PublicationLifecycleEvent)(nil), (*models.Rendition)(nil))
-	deletions = appendDeletions(deletions, ids.posts, "post_id IN (?)", (*models.PostMediaDelivery)(nil), (*models.PostDestination)(nil), (*models.PostMedia)(nil), (*models.PostVariant)(nil), (*models.ThreadDraft)(nil))
+	deletions = appendDeletions(deletions, ids.renditionSegments, "rendition_segment_id IN (?)", (*models.RenditionSegmentMedia)(nil))
+	deletions = appendDeletions(deletions, ids.renditions, "rendition_id IN (?)", (*models.RenditionMediaDeliveryRelation)(nil), (*models.RenditionMediaDelivery)(nil), (*models.RenditionMedia)(nil), (*models.RenditionSegment)(nil))
+	deletions = appendDeletions(deletions, ids.publicationSegments, "segment_id IN (?)", (*models.PublicationSegmentMedia)(nil))
+	deletions = appendDeletions(deletions, ids.publications, "publication_id IN (?)", (*models.PublicationAsset)(nil), (*models.PublicationAuthorization)(nil), (*models.PublicationLifecycleEvent)(nil), (*models.PublicationSegment)(nil), (*models.Rendition)(nil))
+	deletions = appendDeletions(deletions, ids.compatibilityPosts, "post_id IN (?)", (*models.PostMediaDelivery)(nil), (*models.PostDestination)(nil), (*models.PostMedia)(nil), (*models.PostVariant)(nil), (*models.ThreadDraft)(nil))
 	deletions = appendDeletions(deletions, ids.accounts, "social_account_id IN (?)", (*models.PostMediaDelivery)(nil), (*models.RenditionMediaDelivery)(nil))
 	deletions = appendDeletions(deletions, ids.media, "media_id IN (?)", (*models.PostMediaDelivery)(nil), (*models.RenditionMediaDelivery)(nil), (*models.PostMedia)(nil), (*models.PublicationAsset)(nil), (*models.RenditionMedia)(nil))
 	deletions = appendDeletions(deletions, ids.invitations, "invitation_id IN (?)", (*models.WorkspaceInvitationDeliveryEvent)(nil))

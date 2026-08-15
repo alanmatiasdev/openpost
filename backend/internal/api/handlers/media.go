@@ -167,13 +167,13 @@ type Thumbnails struct {
 }
 
 type MediaUsageItem struct {
-	Kind      string `json:"kind" doc:"Usage kind: post, design, template, brand_asset, or brand_font"`
-	ID        string `json:"id" doc:"Referenced object ID"`
-	Label     string `json:"label" doc:"User-visible usage label"`
-	PostID    string `json:"post_id,omitempty" doc:"Post ID for post usages"`
-	Content   string `json:"content,omitempty" doc:"Post content (truncated)"`
-	Status    string `json:"status,omitempty" doc:"Post or design status"`
-	Scheduled string `json:"scheduled_at,omitempty" doc:"Scheduled time"`
+	Kind          string `json:"kind" doc:"Usage kind: publication, design, template, brand_asset, or brand_font"`
+	ID            string `json:"id" doc:"Referenced object ID"`
+	Label         string `json:"label" doc:"User-visible usage label"`
+	PublicationID string `json:"publication_id,omitempty" doc:"Publication ID for publication usages"`
+	Content       string `json:"content,omitempty" doc:"Publication content (truncated)"`
+	Status        string `json:"status,omitempty" doc:"Publication or design status"`
+	Scheduled     string `json:"scheduled_at,omitempty" doc:"Scheduled time"`
 }
 
 type MediaListItem struct {
@@ -189,7 +189,7 @@ type MediaListItem struct {
 	CreatedAt          string   `json:"created_at" doc:"Creation time"`
 	URL                string   `json:"url" doc:"URL to access the media"`
 	ThumbnailURL       string   `json:"thumbnail_url" doc:"Thumbnail URL for grid view"`
-	UsageCount         int      `json:"usage_count" doc:"Number of posts using this media"`
+	UsageCount         int      `json:"usage_count" doc:"Number of publications and reusable assets using this media"`
 	CanDelete          bool     `json:"can_delete" doc:"Whether media can be deleted"`
 	ProcessingStatus   string   `json:"processing_status" doc:"Processing status"`
 	DurationMS         int64    `json:"duration_ms" doc:"Video duration in milliseconds"`
@@ -274,8 +274,8 @@ type GetMediaUsageInput struct {
 
 type GetMediaUsageOutput struct {
 	Body struct {
-		Usage []MediaUsageItem `json:"usage" doc:"Posts using this media"`
-		Count int              `json:"count" doc:"Number of posts using this media"`
+		Usage []MediaUsageItem `json:"usage" doc:"Publications and reusable assets using this media"`
+		Count int              `json:"count" doc:"Number of objects using this media"`
 	}
 }
 
@@ -301,7 +301,7 @@ type MediaMetadataItem struct {
 	PublicURLCheckedAt string  `json:"public_url_checked_at,omitempty" doc:"Public URL verification time"`
 	PublicURLStatus    int     `json:"public_url_status" doc:"Public URL verification HTTP status"`
 	PublicURLError     string  `json:"public_url_error,omitempty" doc:"Public URL verification error"`
-	IsDeleted          bool    `json:"is_deleted" doc:"Whether the item is in Trash and unavailable to posts"`
+	IsDeleted          bool    `json:"is_deleted" doc:"Whether the item is in Trash and unavailable to publications"`
 }
 
 type MediaMetadataInput struct {
@@ -568,22 +568,15 @@ func (h *MediaHandler) RegisterRoutes(api huma.API) {
 		if input.Untagged {
 			query = query.Where("id NOT IN (SELECT media_id FROM media_tag_assignments)")
 		}
-		variantMediaIDs := []string{}
-		if input.Filter == "used" || input.Filter == "unused" {
-			ids, usageErr := h.variantMediaIDsForWorkspace(ctx, input.WorkspaceID)
-			if usageErr != nil {
-				return nil, huma.Error500InternalServerError("failed to check media usage")
-			}
-			variantMediaIDs = ids
-		}
-
 		switch input.Filter {
 		case "favorites":
 			query = query.Where("is_favorite = ?", true)
 		case "used":
 			query = query.WhereGroup(" AND ", func(group *bun.SelectQuery) *bun.SelectQuery {
-				group = group.Where(`id IN (SELECT media_id FROM post_media)
+				group = group.Where(`id IN (SELECT media_id FROM publication_assets)
+					OR id IN (SELECT media_id FROM publication_segment_media)
 					OR id IN (SELECT media_id FROM rendition_media)
+					OR id IN (SELECT media_id FROM rendition_segment_media)
 					OR id IN (SELECT r.media_id FROM design_media_references r JOIN design_documents d ON d.id = r.design_document_id WHERE d.deleted_at IS NULL)
 					OR id IN (SELECT r.media_id FROM design_revision_media_references r JOIN design_revisions v ON v.id = r.revision_id JOIN design_documents d ON d.id = v.design_document_id WHERE d.deleted_at IS NULL)
 					OR id IN (SELECT media_id FROM design_template_media_references)
@@ -593,14 +586,13 @@ func (h *MediaHandler) RegisterRoutes(api huma.API) {
 					OR id IN (SELECT p.preview_media_id FROM design_pages p JOIN design_documents d ON d.id = p.design_document_id WHERE p.preview_media_id IS NOT NULL AND d.deleted_at IS NULL)
 					OR id IN (SELECT p.latest_export_media_id FROM design_pages p JOIN design_documents d ON d.id = p.design_document_id WHERE p.latest_export_media_id IS NOT NULL AND d.deleted_at IS NULL)
 					OR id IN (SELECT preview_media_id FROM design_templates WHERE preview_media_id IS NOT NULL)`)
-				if len(variantMediaIDs) > 0 {
-					group = group.WhereOr("id IN (?)", bun.List(variantMediaIDs))
-				}
 				return group
 			})
 		case "unused":
-			query = query.Where(`id NOT IN (SELECT media_id FROM post_media)
+			query = query.Where(`id NOT IN (SELECT media_id FROM publication_assets)
+				AND id NOT IN (SELECT media_id FROM publication_segment_media)
 				AND id NOT IN (SELECT media_id FROM rendition_media)
+				AND id NOT IN (SELECT media_id FROM rendition_segment_media)
 				AND id NOT IN (SELECT r.media_id FROM design_media_references r JOIN design_documents d ON d.id = r.design_document_id WHERE d.deleted_at IS NULL)
 				AND id NOT IN (SELECT r.media_id FROM design_revision_media_references r JOIN design_revisions v ON v.id = r.revision_id JOIN design_documents d ON d.id = v.design_document_id WHERE d.deleted_at IS NULL)
 				AND id NOT IN (SELECT media_id FROM design_template_media_references)
@@ -610,9 +602,6 @@ func (h *MediaHandler) RegisterRoutes(api huma.API) {
 				AND id NOT IN (SELECT p.preview_media_id FROM design_pages p JOIN design_documents d ON d.id = p.design_document_id WHERE p.preview_media_id IS NOT NULL AND d.deleted_at IS NULL)
 				AND id NOT IN (SELECT p.latest_export_media_id FROM design_pages p JOIN design_documents d ON d.id = p.design_document_id WHERE p.latest_export_media_id IS NOT NULL AND d.deleted_at IS NULL)
 				AND id NOT IN (SELECT preview_media_id FROM design_templates WHERE preview_media_id IS NOT NULL)`)
-			if len(variantMediaIDs) > 0 {
-				query = query.Where("id NOT IN (?)", bun.List(variantMediaIDs))
-			}
 		}
 
 		var total int
@@ -630,10 +619,26 @@ func (h *MediaHandler) RegisterRoutes(api huma.API) {
 			query = query.OrderExpr("LOWER(original_filename) ASC")
 		case "recently_used":
 			query = query.OrderExpr(`COALESCE(
-				(SELECT MAX(post.created_at)
-				 FROM post_media post_media_item
-				 JOIN posts post ON post.id = post_media_item.post_id
-				 WHERE post_media_item.media_id = media_attachments.id),
+				(SELECT MAX(publication.updated_at)
+				 FROM publication_assets asset
+				 JOIN publications publication ON publication.id = asset.publication_id
+				 WHERE asset.media_id = media_attachments.id),
+				(SELECT MAX(publication.updated_at)
+				 FROM publication_segment_media segment_media
+				 JOIN publication_segments segment ON segment.id = segment_media.segment_id
+				 JOIN publications publication ON publication.id = segment.publication_id
+				 WHERE segment_media.media_id = media_attachments.id),
+				(SELECT MAX(publication.updated_at)
+				 FROM rendition_media rendition_media_item
+				 JOIN renditions rendition ON rendition.id = rendition_media_item.rendition_id
+				 JOIN publications publication ON publication.id = rendition.publication_id
+				 WHERE rendition_media_item.media_id = media_attachments.id),
+				(SELECT MAX(publication.updated_at)
+				 FROM rendition_segment_media segment_media
+				 JOIN rendition_segments segment ON segment.id = segment_media.rendition_segment_id
+				 JOIN renditions rendition ON rendition.id = segment.rendition_id
+				 JOIN publications publication ON publication.id = rendition.publication_id
+				 WHERE segment_media.media_id = media_attachments.id),
 				(SELECT MAX(document.updated_at)
 				 FROM design_media_references design_reference
 				 JOIN design_documents document ON document.id = design_reference.design_document_id
@@ -792,7 +797,7 @@ func (h *MediaHandler) RegisterRoutes(api huma.API) {
 		OperationID: "get-media-usage",
 		Method:      http.MethodGet,
 		Path:        "/media/{id}/usage",
-		Summary:     "Get posts that use a media attachment",
+		Summary:     "Get publications that use a media attachment",
 		Tags:        []string{tagMedia},
 		Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.authn)},
 		Errors:      []int{403, 404},
@@ -812,40 +817,43 @@ func (h *MediaHandler) RegisterRoutes(api huma.API) {
 			return nil, err
 		}
 
-		posts, err := h.postsUsingMedia(ctx, media.WorkspaceID, input.PathID)
+		publications, err := h.publicationsUsingMedia(ctx, media.WorkspaceID, input.PathID)
 		if err != nil {
 			return nil, huma.Error500InternalServerError("failed to fetch usage")
 		}
 
-		usage := make([]MediaUsageItem, 0, len(posts))
-		for _, post := range posts {
-			content := post.Content
+		usage := make([]MediaUsageItem, 0, len(publications))
+		for _, publication := range publications {
+			content := publication.SourceText
+			if strings.TrimSpace(content) == "" {
+				content = publication.Title
+			}
 			if len(content) > 100 {
 				content = content[:100] + "..."
 			}
 			scheduled := ""
-			if !post.ScheduledAt.IsZero() {
-				scheduled = post.ScheduledAt.Format(time.RFC3339)
+			if !publication.ScheduledAt.IsZero() {
+				scheduled = publication.ScheduledAt.Format(time.RFC3339)
 			}
 			usage = append(usage, MediaUsageItem{
-				Kind:      "post",
-				ID:        post.ID,
-				Label:     content,
-				PostID:    post.ID,
-				Content:   content,
-				Status:    post.Status,
-				Scheduled: scheduled,
+				Kind:          "publication",
+				ID:            publication.ID,
+				Label:         content,
+				PublicationID: publication.ID,
+				Content:       content,
+				Status:        publication.Status,
+				Scheduled:     scheduled,
 			})
 		}
-		otherUsage, err := h.nonPostMediaUsage(ctx, media.WorkspaceID, input.PathID)
+		otherUsage, err := h.nonPublicationMediaUsage(ctx, media.WorkspaceID, input.PathID)
 		if err != nil {
 			return nil, huma.Error500InternalServerError("failed to fetch OpenPost Image Editor media usage")
 		}
 		usage = append(usage, otherUsage...)
 
 		return &GetMediaUsageOutput{Body: struct {
-			Usage []MediaUsageItem `json:"usage" doc:"Posts using this media"`
-			Count int              `json:"count" doc:"Number of posts using this media"`
+			Usage []MediaUsageItem `json:"usage" doc:"Publications and reusable assets using this media"`
+			Count int              `json:"count" doc:"Number of objects using this media"`
 		}{Usage: usage, Count: len(usage)}}, nil
 	})
 
@@ -2145,52 +2153,10 @@ func (h *MediaHandler) mediaUsageSummary(ctx context.Context, workspaceID, media
 	return summaries[mediaID], err
 }
 
-func (h *MediaHandler) variantMediaIDsForWorkspace(ctx context.Context, workspaceID string) ([]string, error) {
-	var rows []mediaVariantUsageRow
-	if err := h.db.NewSelect().
-		TableExpr("post_variants AS pv").
-		ColumnExpr("pv.media_ids").
-		Join("JOIN posts AS p ON p.id = pv.post_id").
-		Where("p.workspace_id = ?", workspaceID).
-		Where("pv.media_ids != ''").
-		Scan(ctx, &rows); err != nil {
-		return nil, err
-	}
-	unique := make(map[string]struct{})
-	for _, row := range rows {
-		var ids []string
-		if json.Unmarshal([]byte(row.MediaIDs), &ids) != nil {
-			continue
-		}
-		for _, id := range ids {
-			if strings.TrimSpace(id) != "" {
-				unique[id] = struct{}{}
-			}
-		}
-	}
-	ids := make([]string, 0, len(unique))
-	for id := range unique {
-		ids = append(ids, id)
-	}
-	return ids, nil
-}
-
-type mediaPostUsageRow struct {
-	MediaID string `bun:"media_id"`
-	PostID  string `bun:"post_id"`
-	Status  string `bun:"status"`
-}
-
-type mediaVariantUsageRow struct {
-	MediaIDs string `bun:"media_ids"`
-	PostID   string `bun:"post_id"`
-	Status   string `bun:"status"`
-}
-
-type mediaRenditionUsageRow struct {
-	MediaID     string `bun:"media_id"`
-	RenditionID string `bun:"rendition_id"`
-	Status      string `bun:"status"`
+type mediaPublicationUsageRow struct {
+	MediaID       string `bun:"media_id"`
+	PublicationID string `bun:"publication_id"`
+	Status        string `bun:"status"`
 }
 
 type mediaOrganizationRow struct {
@@ -2224,69 +2190,50 @@ func (h *MediaHandler) mediaTagsByMedia(ctx context.Context, mediaIDs []string) 
 //nolint:gocyclo // Usage aggregation intentionally checks every independent reference surface.
 func (h *MediaHandler) mediaUsageSummaries(ctx context.Context, workspaceID string, mediaIDs []string) (map[string]mediaUsageSummary, error) {
 	summaries := make(map[string]mediaUsageSummary, len(mediaIDs))
-	targets := make(map[string]struct{}, len(mediaIDs))
-	postUsage := make(map[string]map[string]string, len(mediaIDs))
 	for _, mediaID := range mediaIDs {
 		summaries[mediaID] = mediaUsageSummary{}
-		targets[mediaID] = struct{}{}
-		postUsage[mediaID] = make(map[string]string)
 	}
 	if len(mediaIDs) == 0 {
 		return summaries, nil
 	}
-	postUsage, err := h.mediaPostUsage(ctx, workspaceID, mediaIDs, targets, postUsage)
+	var publicationRows []mediaPublicationUsageRow
+	err := h.db.NewRaw(`
+		SELECT DISTINCT reference.media_id, publication.id AS publication_id, publication.status
+		FROM (
+			SELECT asset.media_id, asset.publication_id
+			FROM publication_assets asset
+			WHERE asset.media_id IN (?)
+			UNION
+			SELECT segment_media.media_id, segment.publication_id
+			FROM publication_segment_media segment_media
+			JOIN publication_segments segment ON segment.id = segment_media.segment_id
+			WHERE segment_media.media_id IN (?)
+			UNION
+			SELECT rendition_media.media_id, rendition.publication_id
+			FROM rendition_media
+			JOIN renditions rendition ON rendition.id = rendition_media.rendition_id
+			WHERE rendition_media.media_id IN (?)
+			UNION
+			SELECT segment_media.media_id, rendition.publication_id
+			FROM rendition_segment_media segment_media
+			JOIN rendition_segments segment ON segment.id = segment_media.rendition_segment_id
+			JOIN renditions rendition ON rendition.id = segment.rendition_id
+			WHERE segment_media.media_id IN (?)
+		) AS reference
+		JOIN publications publication ON publication.id = reference.publication_id
+		WHERE publication.workspace_id = ?`,
+		bun.List(mediaIDs), bun.List(mediaIDs), bun.List(mediaIDs), bun.List(mediaIDs), workspaceID,
+	).Scan(ctx, &publicationRows)
 	if err != nil {
 		return nil, err
 	}
-	for mediaID, posts := range postUsage {
-		summary := summaries[mediaID]
-		for _, status := range posts {
-			summary.Total++
-			if mediaUsageStatusBlocks(status) {
-				summary.Blocking++
-			}
-		}
-		summaries[mediaID] = summary
-	}
-
-	renditionRows, err := h.mediaRenditionUsageRows(ctx, workspaceID, mediaIDs)
-	if err != nil {
-		return nil, err
-	}
-	for _, row := range renditionRows {
+	for _, row := range publicationRows {
 		summary := summaries[row.MediaID]
 		summary.Total++
 		if mediaUsageStatusBlocks(row.Status) {
 			summary.Blocking++
 		}
 		summaries[row.MediaID] = summary
-	}
-	segmentQueries := []string{
-		`SELECT psm.media_id, p.id AS rendition_id, p.status
-				FROM publication_segment_media psm
-				JOIN publication_segments ps ON ps.id = psm.segment_id
-				JOIN publications p ON p.id = ps.publication_id
-				WHERE p.workspace_id = ? AND psm.media_id IN (?)`,
-		`SELECT rsm.media_id, r.id AS rendition_id, p.status
-				FROM rendition_segment_media rsm
-				JOIN rendition_segments rs ON rs.id = rsm.rendition_segment_id
-				JOIN renditions r ON r.id = rs.rendition_id
-				JOIN publications p ON p.id = r.publication_id
-				WHERE p.workspace_id = ? AND rsm.media_id IN (?)`,
-	}
-	for _, query := range segmentQueries {
-		var rows []mediaRenditionUsageRow
-		if err := h.db.NewRaw(query, workspaceID, bun.List(mediaIDs)).Scan(ctx, &rows); err != nil && !isMissingOptionalMediaTable(err) {
-			return nil, err
-		}
-		for _, row := range rows {
-			summary := summaries[row.MediaID]
-			summary.Total++
-			if mediaUsageStatusBlocks(row.Status) {
-				summary.Blocking++
-			}
-			summaries[row.MediaID] = summary
-		}
 	}
 
 	blockingQueries := []string{
@@ -2364,7 +2311,7 @@ func (h *MediaHandler) mediaUsageSummaries(ctx context.Context, workspaceID stri
 
 func mediaUsageStatusBlocks(status string) bool {
 	status = strings.ToLower(strings.TrimSpace(status))
-	return status != models.PostStatusPublished && status != models.PostStatusFailed
+	return status != models.PublicationStatusPublished && status != models.PublicationStatusFailed
 }
 
 func normalizeMediaFilename(current, requested string) (string, error) {
@@ -2389,77 +2336,6 @@ func normalizeMediaFilename(current, requested string) (string, error) {
 	return name, nil
 }
 
-func (h *MediaHandler) mediaPostUsage(ctx context.Context, workspaceID string, mediaIDs []string, targets map[string]struct{}, postUsage map[string]map[string]string) (map[string]map[string]string, error) {
-	var directRows []mediaPostUsageRow
-	if err := h.db.NewSelect().
-		TableExpr("post_media AS pm").
-		ColumnExpr("pm.media_id").
-		ColumnExpr("p.id AS post_id").
-		ColumnExpr("p.status").
-		Join("JOIN posts AS p ON p.id = pm.post_id").
-		Where("p.workspace_id = ?", workspaceID).
-		Where("pm.media_id IN (?)", bun.List(mediaIDs)).
-		Scan(ctx, &directRows); err != nil {
-		return nil, err
-	}
-	for _, row := range directRows {
-		postUsage[row.MediaID][row.PostID] = row.Status
-	}
-
-	var variantRows []mediaVariantUsageRow
-	if err := h.db.NewSelect().
-		TableExpr("post_variants AS pv").
-		ColumnExpr("pv.media_ids").
-		ColumnExpr("p.id AS post_id").
-		ColumnExpr("p.status").
-		Join("JOIN posts AS p ON p.id = pv.post_id").
-		Where("p.workspace_id = ?", workspaceID).
-		Where("pv.media_ids != ''").
-		Scan(ctx, &variantRows); err != nil {
-		return nil, err
-	}
-	for _, row := range variantRows {
-		var ids []string
-		if json.Unmarshal([]byte(row.MediaIDs), &ids) != nil {
-			continue
-		}
-		for _, mediaID := range ids {
-			if _, ok := targets[mediaID]; ok {
-				postUsage[mediaID][row.PostID] = row.Status
-			}
-		}
-	}
-
-	return postUsage, nil
-}
-
-func (h *MediaHandler) mediaRenditionUsageRows(ctx context.Context, workspaceID string, mediaIDs []string) ([]mediaRenditionUsageRow, error) {
-	var renditionRows []mediaRenditionUsageRow
-	err := h.db.NewSelect().
-		TableExpr("rendition_media AS rm").
-		ColumnExpr("rm.media_id").
-		ColumnExpr("r.id AS rendition_id").
-		ColumnExpr("p.status").
-		Join("JOIN renditions AS r ON r.id = rm.rendition_id").
-		Join("JOIN publications AS p ON p.id = r.publication_id").
-		Where("p.workspace_id = ?", workspaceID).
-		Where("rm.media_id IN (?)", bun.List(mediaIDs)).
-		Scan(ctx, &renditionRows)
-	if err != nil && !isMissingRenditionMediaTable(err) {
-		return nil, err
-	}
-	return renditionRows, nil
-}
-
-func isMissingRenditionMediaTable(err error) bool {
-	if err == nil {
-		return false
-	}
-	message := strings.ToLower(err.Error())
-	return strings.Contains(message, "no such table: rendition_media") ||
-		strings.Contains(message, "relation \"rendition_media\" does not exist")
-}
-
 func isMissingOptionalMediaTable(err error) bool {
 	if err == nil {
 		return false
@@ -2469,64 +2345,40 @@ func isMissingOptionalMediaTable(err error) bool {
 		strings.Contains(message, "does not exist")
 }
 
-func (h *MediaHandler) postsUsingMedia(ctx context.Context, workspaceID, mediaID string) ([]models.Post, error) {
-	postRows := []models.Post{}
-	if err := h.db.NewSelect().
-		TableExpr("post_media AS pm").
-		ColumnExpr("p.*").
-		Join("JOIN posts AS p ON p.id = pm.post_id").
-		Where("p.workspace_id = ?", workspaceID).
-		Where("pm.media_id = ?", mediaID).
-		Scan(ctx, &postRows); err != nil {
-		return nil, err
-	}
-
-	var variants []mediaVariantUsageRow
-	if err := h.db.NewSelect().
-		TableExpr("post_variants AS pv").
-		ColumnExpr("pv.media_ids").
-		ColumnExpr("p.id AS post_id").
-		ColumnExpr("p.status").
-		Join("JOIN posts AS p ON p.id = pv.post_id").
-		Where("p.workspace_id = ?", workspaceID).
-		Where("pv.media_ids != ''").
-		Scan(ctx, &variants); err != nil {
-		return nil, err
-	}
-
-	postsByID := make(map[string]models.Post, len(postRows)+len(variants))
-	for _, post := range postRows {
-		postsByID[post.ID] = post
-	}
-	variantPostIDs := make([]string, 0, len(variants))
-	for _, variant := range variants {
-		if !variantContainsMedia(variant.MediaIDs, mediaID) {
-			continue
-		}
-		variantPostIDs = append(variantPostIDs, variant.PostID)
-	}
-	if len(variantPostIDs) > 0 {
-		var variantPosts []models.Post
-		if err := h.db.NewSelect().Model(&variantPosts).
-			Where("workspace_id = ?", workspaceID).
-			Where("id IN (?)", bun.List(variantPostIDs)).
-			Scan(ctx); err != nil {
-			return nil, err
-		}
-		for _, post := range variantPosts {
-			postsByID[post.ID] = post
-		}
-	}
-
-	posts := make([]models.Post, 0, len(postsByID))
-	for _, post := range postsByID {
-		posts = append(posts, post)
-	}
-	return posts, nil
+func (h *MediaHandler) publicationsUsingMedia(ctx context.Context, workspaceID, mediaID string) ([]models.Publication, error) {
+	var publications []models.Publication
+	err := h.db.NewSelect().
+		Model(&publications).
+		ModelTableExpr("publications AS publication").
+		Join(`JOIN (
+			SELECT asset.publication_id
+			FROM publication_assets asset
+			WHERE asset.media_id = ?
+			UNION
+			SELECT segment.publication_id
+			FROM publication_segment_media segment_media
+			JOIN publication_segments segment ON segment.id = segment_media.segment_id
+			WHERE segment_media.media_id = ?
+			UNION
+			SELECT rendition.publication_id
+			FROM rendition_media rendition_media_item
+			JOIN renditions rendition ON rendition.id = rendition_media_item.rendition_id
+			WHERE rendition_media_item.media_id = ?
+			UNION
+			SELECT rendition.publication_id
+			FROM rendition_segment_media segment_media
+			JOIN rendition_segments segment ON segment.id = segment_media.rendition_segment_id
+			JOIN renditions rendition ON rendition.id = segment.rendition_id
+			WHERE segment_media.media_id = ?
+		) AS reference ON reference.publication_id = publication.id`, mediaID, mediaID, mediaID, mediaID).
+		Where("publication.workspace_id = ?", workspaceID).
+		Order("publication.updated_at DESC", "publication.id ASC").
+		Scan(ctx)
+	return publications, err
 }
 
 //nolint:gocyclo // Each usage type has distinct labels and destination metadata.
-func (h *MediaHandler) nonPostMediaUsage(ctx context.Context, workspaceID, mediaID string) ([]MediaUsageItem, error) {
+func (h *MediaHandler) nonPublicationMediaUsage(ctx context.Context, workspaceID, mediaID string) ([]MediaUsageItem, error) {
 	usage := []MediaUsageItem{}
 	var designs []struct {
 		ID    string `bun:"id"`
@@ -2651,19 +2503,6 @@ func (h *MediaHandler) nonPostMediaUsage(ctx context.Context, workspaceID, media
 		usage = append(usage, MediaUsageItem{Kind: "brand_font", ID: font.ID, Label: font.Family})
 	}
 	return usage, nil
-}
-
-func variantContainsMedia(mediaIDsJSON, mediaID string) bool {
-	var ids []string
-	if err := json.Unmarshal([]byte(mediaIDsJSON), &ids); err != nil {
-		return false
-	}
-	for _, id := range ids {
-		if id == mediaID {
-			return true
-		}
-	}
-	return false
 }
 
 func (h *MediaHandler) mediaMetadata(c echo.Context) error {

@@ -6164,12 +6164,12 @@
 						"type": "string"
 					},
 					"count": {
-						"description": "Number of posts using this media",
+						"description": "Number of objects using this media",
 						"format": "int64",
 						"type": "integer"
 					},
 					"usage": {
-						"description": "Posts using this media",
+						"description": "Publications and reusable assets using this media",
 						"items": {
 							"$ref": "#/components/schemas/MediaUsageItem"
 						},
@@ -8799,7 +8799,7 @@
 						"type": "string"
 					},
 					"usage_count": {
-						"description": "Number of posts using this media",
+						"description": "Number of publications and reusable assets using this media",
 						"format": "int64",
 						"type": "integer"
 					},
@@ -9097,7 +9097,7 @@
 				"additionalProperties": false,
 				"properties": {
 					"content": {
-						"description": "Post content (truncated)",
+						"description": "Publication content (truncated)",
 						"type": "string"
 					},
 					"id": {
@@ -9105,15 +9105,15 @@
 						"type": "string"
 					},
 					"kind": {
-						"description": "Usage kind: post, design, template, brand_asset, or brand_font",
+						"description": "Usage kind: publication, design, template, brand_asset, or brand_font",
 						"type": "string"
 					},
 					"label": {
 						"description": "User-visible usage label",
 						"type": "string"
 					},
-					"post_id": {
-						"description": "Post ID for post usages",
+					"publication_id": {
+						"description": "Publication ID for publication usages",
 						"type": "string"
 					},
 					"scheduled_at": {
@@ -9121,7 +9121,7 @@
 						"type": "string"
 					},
 					"status": {
-						"description": "Post or design status",
+						"description": "Publication or design status",
 						"type": "string"
 					}
 				},
@@ -29934,7 +29934,7 @@
 						"description": "Internal Server Error"
 					}
 				},
-				"summary": "Get posts that use a media attachment",
+				"summary": "Get publications that use a media attachment",
 				"tags": ["Media"]
 			}
 		},

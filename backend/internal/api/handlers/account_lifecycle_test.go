@@ -145,7 +145,9 @@ func TestAccountExportOmitsSecretsAndDeletionRemovesPersonalData(t *testing.T) {
 
 	for table := range map[string]struct{}{
 		"users": {}, "organizations": {}, "workspaces": {}, "social_accounts": {}, "media_attachments": {},
-		"publications": {}, "posts": {}, "api_tokens": {}, "jobs": {},
+		"publications": {}, "publication_segments": {}, "publication_segment_media": {},
+		"renditions": {}, "rendition_media": {}, "rendition_segments": {}, "rendition_segment_media": {},
+		"posts": {}, "api_tokens": {}, "jobs": {},
 	} {
 		var count int
 		require.NoError(t, db.NewSelect().ColumnExpr("COUNT(*)").TableExpr(table).Scan(t.Context(), &count), table)
@@ -337,6 +339,12 @@ func insertAccountLifecycleFixture(ctx context.Context, db *bun.DB, user *models
 		&models.SocialAccount{ID: "account-1", WorkspaceID: "workspace-1", Slug: "x-person", Platform: "x", AccountID: "x-1", AccessTokenEnc: []byte("oauth-access-secret"), IsActive: true, CreatedAt: now},
 		&models.MediaAttachment{ID: "media-1", WorkspaceID: "workspace-1", FilePath: "/tmp/media-file.png", MimeType: "image/png", ThumbnailObjectKey: "", ThumbnailsJSON: `{"sm":"thumb-sm.png"}`, CreatedAt: now},
 		&models.Publication{ID: "publication-1", WorkspaceID: "workspace-1", CreatedByID: user.ID, Title: "Draft", ContentProfile: models.ContentProfileShortText, SourceText: "Draft content", SourceContent: "Draft content", Status: models.PublicationStatusDraft, CreatedAt: now, UpdatedAt: now},
+		&models.PublicationSegment{ID: "segment-1", PublicationID: "publication-1", Body: "Draft content", CreatedAt: now, UpdatedAt: now},
+		&models.PublicationSegmentMedia{SegmentID: "segment-1", MediaID: "media-1"},
+		&models.Rendition{ID: "rendition-1", PublicationID: "publication-1", SocialAccountID: "account-1", TargetKey: "account-1", Platform: "x", Profile: models.ContentProfileShortText, Body: "Draft content", Status: models.RenditionStatusDraft, CreatedAt: now, UpdatedAt: now},
+		&models.RenditionMedia{RenditionID: "rendition-1", MediaID: "media-1"},
+		&models.RenditionSegment{ID: "rendition-segment-1", RenditionID: "rendition-1", PublicationSegmentID: "segment-1", Body: "Draft content", Status: models.RenditionStatusDraft, CreatedAt: now, UpdatedAt: now},
+		&models.RenditionSegmentMedia{RenditionSegmentID: "rendition-segment-1", MediaID: "media-1"},
 		&models.Post{ID: "post-1", WorkspaceID: "workspace-1", CreatedByID: user.ID, PublicationID: "publication-1", Content: "Draft content", Status: models.PostStatusDraft, CreatedAt: now},
 		&models.APIToken{ID: "token-1", UserID: user.ID, Name: "Automation", TokenHash: "api-token-hash-secret", TokenPrefix: "op_1234", Scope: "cli:full", CreatedAt: now},
 		&models.Job{ID: "job-1", Type: "publish_post", Payload: `{"workspace_id":"workspace-1","post_id":"post-1"}`, Status: "pending", RunAt: now},
