@@ -25,10 +25,18 @@ interface LegacyComposerRecoverySnapshot {
 const HANDOFF_PREFIX = 'openpost:editor-handoff:return:';
 const LEGACY_PREFIXES = ['openpost:image-editor:return:', 'openpost:studio:return:'] as const;
 
-export const editorReturnParameter: Record<EditorHandoffKind, string> = {
+type HandoffJSONValue =
+	| string
+	| number
+	| boolean
+	| null
+	| HandoffJSONValue[]
+	| { [key: string]: HandoffJSONValue };
+
+export const editorReturnParameter = {
 	image: 'image_editor_return',
 	video: 'video_editor_return'
-};
+} satisfies Record<EditorHandoffKind, string>;
 
 function browserSessionStorage(): Storage | null {
 	if (typeof window === 'undefined') return null;
@@ -39,7 +47,7 @@ function browserSessionStorage(): Storage | null {
 	}
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+function isHandoffRecord(value: unknown): value is { [key: string]: HandoffJSONValue } {
 	return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
@@ -60,12 +68,13 @@ function parseSnapshot(
 ): ComposerRecoverySnapshot | LegacyComposerRecoverySnapshot | null {
 	try {
 		const value: unknown = JSON.parse(raw);
-		if (!isRecord(value)) return null;
+		if (!isHandoffRecord(value)) return null;
 		const version = value.version;
 		const editor = value.editor;
 		const returnURL = safeReturnURL(value.return_url);
 		if (
 			!returnURL ||
+			!Object.hasOwn(value, 'payload') ||
 			typeof value.workspace_id !== 'string' ||
 			!value.workspace_id.trim() ||
 			typeof value.purpose !== 'string' ||
@@ -76,10 +85,27 @@ function parseSnapshot(
 			return null;
 		}
 		if (legacy && version === 1) {
-			return { ...(value as unknown as LegacyComposerRecoverySnapshot), return_url: returnURL };
+			return {
+				version,
+				workspace_id: value.workspace_id,
+				return_url: returnURL,
+				purpose: value.purpose,
+				created_at: value.created_at,
+				expires_at: value.expires_at,
+				payload: value.payload
+			};
 		}
 		if (version !== 2 || (editor !== 'image' && editor !== 'video')) return null;
-		return { ...(value as unknown as ComposerRecoverySnapshot), return_url: returnURL };
+		return {
+			version,
+			editor,
+			workspace_id: value.workspace_id,
+			return_url: returnURL,
+			purpose: value.purpose,
+			created_at: value.created_at,
+			expires_at: value.expires_at,
+			payload: value.payload
+		};
 	} catch {
 		return null;
 	}
