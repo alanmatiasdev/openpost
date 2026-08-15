@@ -108,7 +108,7 @@ function createAuthStore() {
 				setAuthenticatedUser(data.user ?? null);
 				return { success: true };
 			} catch (e) {
-				return { success: false, error: (e as Error).message };
+				return { success: false, error: errorMessage(e) };
 			}
 		},
 		async register({
@@ -137,7 +137,7 @@ function createAuthStore() {
 				setAuthenticatedUser(data.user ?? null);
 				return { success: true };
 			} catch (e) {
-				return { success: false, error: (e as Error).message };
+				return { success: false, error: errorMessage(e) };
 			}
 		},
 		async verifyEmail(challengeID: string, code: string): Promise<AuthActionResult> {
@@ -150,7 +150,7 @@ function createAuthStore() {
 				setAuthenticatedUser(data.user);
 				return { success: true };
 			} catch (e) {
-				return { success: false, error: (e as Error).message };
+				return { success: false, error: errorMessage(e) };
 			}
 		},
 		async resendEmailVerification(challengeID: string): Promise<AuthActionResult> {
@@ -163,7 +163,7 @@ function createAuthStore() {
 				}
 				return emailVerificationResult(data);
 			} catch (e) {
-				return { success: false, error: (e as Error).message };
+				return { success: false, error: errorMessage(e) };
 			}
 		},
 		async verifyTOTP(mfaToken: string, code: string): Promise<AuthActionResult> {
@@ -176,7 +176,7 @@ function createAuthStore() {
 				setAuthenticatedUser(data.user ?? null);
 				return { success: true };
 			} catch (e) {
-				return { success: false, error: (e as Error).message };
+				return { success: false, error: errorMessage(e) };
 			}
 		},
 		async verifyRecoveryCode(mfaToken: string, code: string): Promise<AuthActionResult> {
@@ -189,7 +189,7 @@ function createAuthStore() {
 				setAuthenticatedUser(data.user ?? null);
 				return { success: true };
 			} catch (e) {
-				return { success: false, error: (e as Error).message };
+				return { success: false, error: errorMessage(e) };
 			}
 		},
 		async verifyPasskey(mfaToken: string): Promise<AuthActionResult> {
@@ -217,7 +217,7 @@ function createAuthStore() {
 				setAuthenticatedUser(data.user ?? null);
 				return { success: true };
 			} catch (e) {
-				return { success: false, error: (e as Error).message };
+				return { success: false, error: errorMessage(e) };
 			}
 		},
 		async consumeOIDCHandoff(code: string): Promise<AuthActionResult> {
@@ -240,7 +240,7 @@ function createAuthStore() {
 					reauthGrant: data.reauth_grant
 				};
 			} catch (e) {
-				return { success: false, error: (e as Error).message };
+				return { success: false, error: errorMessage(e) };
 			}
 		},
 		async logout() {
@@ -265,6 +265,10 @@ function createAuthStore() {
 }
 
 export const auth = createAuthStore();
+
+function errorMessage(cause: unknown): string {
+	return cause instanceof Error ? cause.message : String(cause);
+}
 
 function emailVerificationResult(data: {
 	email_verification_id?: string;
