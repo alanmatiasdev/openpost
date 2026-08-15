@@ -10,7 +10,7 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 	import { captureTelemetryEvent } from '@openpost/telemetry';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import { resolve } from '$app/paths';
+	import { resolveAppPath } from '$lib/app-path';
 	import {
 		VideoProjectHistory,
 		buildFocusZoomKeyframes,
@@ -159,6 +159,10 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 	import ExportDialog from '$lib/video-editor/components/export-dialog.svelte';
 	import { quickCutCompatibility, quickCutOutputPreference } from '$lib/video-editor/lossless';
 	import { fitTimelineItemDuration } from '$lib/video-editor/timeline-layout';
+	import {
+		parseLocalVideoTextStyles,
+		type LocalVideoTextStyle
+	} from '$lib/video-editor/local-text-styles';
 	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
 	import CameraIcon from '@lucide/svelte/icons/camera';
 	import CaptionsIcon from '@lucide/svelte/icons/captions';
@@ -228,11 +232,14 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 		| 'teal'
 		| 'matte';
 	type TextOverlay = Extract<VisualTrackItem, { type: 'text' }>;
-	interface LocalVideoTextStyle {
-		id: string;
-		name: string;
-		style: TextOverlay['style'];
-	}
+	type CloudVideoDocumentInput = Parameters<typeof validateVideoProject>[0];
+	type RenditionQueryValue =
+		| string
+		| number
+		| boolean
+		| null
+		| RenditionQueryValue[]
+		| { [key: string]: RenditionQueryValue };
 
 	const tools = [
 		{ id: 'media', label: () => m.video_editor_tool_media(), icon: FilmIcon },
@@ -259,15 +266,15 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 		label: () => string;
 		icon: typeof FilmIcon;
 	}>;
-	const toolFamilyAliases: Record<ToolFamilyID, ToolID[]> = {
-		media: ['media', 'stock', 'record'],
-		audio: ['audio'],
-		text: ['text'],
-		captions: ['captions'],
-		elements: ['elements', 'brand'],
-		smart: ['smart'],
-		transitions: ['transitions']
-	};
+	const toolFamilyAliases = new Map<ToolFamilyID, ToolID[]>([
+		['media', ['media', 'stock', 'record']],
+		['audio', ['audio']],
+		['text', ['text']],
+		['captions', ['captions']],
+		['elements', ['elements', 'brand']],
+		['smart', ['smart']],
+		['transitions', ['transitions']]
+	]);
 	const effectLooks = [
 		{
 			id: 'clean',
@@ -351,6 +358,23 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 		max: number;
 		step: number;
 	}>;
+	const presentationProperties = [
+		'position_x',
+		'position_y',
+		'scale',
+		'rotation',
+		'opacity',
+		'crop',
+		'flip_x',
+		'flip_y',
+		'corner_radius',
+		'border_width',
+		'border_color',
+		'shadow_blur',
+		'shadow_opacity',
+		'background_color',
+		'keyframes'
+	] satisfies Array<keyof VisualTrackItem['presentation']>;
 
 	type SelectedVideoProjectRevision =
 		| {
@@ -756,14 +780,7 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 		fileName: string,
 		mimeType: string
 	): Promise<FileSystemFileHandle | null | undefined> {
-		const picker = (
-			window as Window & {
-				showSaveFilePicker?: (options: {
-					suggestedName: string;
-					types: Array<{ description: string; accept: Record<string, string[]> }>;
-				}) => Promise<FileSystemFileHandle>;
-			}
-		).showSaveFilePicker;
+		const picker = window.showSaveFilePicker;
 		if (!picker) return undefined;
 		try {
 			return await picker.call(window, {
@@ -913,18 +930,18 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 				detectVideoEditorCapabilities()
 			]);
 			if (!config.enabled) {
-				await goto(resolve('/video-editor' as '/'), { replaceState: true });
+				await goto(resolveAppPath('/video-editor'), { replaceState: true });
 				return;
 			}
 			if (!capabilities.supported) {
-				await goto(resolve('/video-editor/unsupported' as '/'), { replaceState: true });
+				await goto(resolveAppPath('/video-editor/unsupported'), { replaceState: true });
 				return;
 			}
 			videoEditorConfig = config;
 			try {
-				localTextStyles = JSON.parse(
+				localTextStyles = parseLocalVideoTextStyles(
 					localStorage.getItem('openpost-video-editor-text-styles') ?? '[]'
-				) as LocalVideoTextStyle[];
+				);
 			} catch {
 				localTextStyles = [];
 			}
@@ -1144,7 +1161,7 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 	}
 
 	function activeToolFamily(familyID: ToolFamilyID): boolean {
-		return toolFamilyAliases[familyID].includes(activeTool);
+		return toolFamilyAliases.get(familyID)?.includes(activeTool) ?? false;
 	}
 
 	function selectToolFamily(familyID: ToolFamilyID): void {
@@ -1156,7 +1173,8 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 	function beginTimelineResize(event: PointerEvent): void {
 		event.preventDefault();
 		timelineResize = { startY: event.clientY, startHeight: timelineHeight };
-		(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+		const handle = event.currentTarget;
+		if (handle instanceof HTMLElement) handle.setPointerCapture(event.pointerId);
 	}
 
 	function continueTimelineResize(event: PointerEvent): void {
@@ -1172,7 +1190,8 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 
 	function endTimelineResize(event: PointerEvent): void {
 		timelineResize = null;
-		const target = event.currentTarget as HTMLElement;
+		const target = event.currentTarget;
+		if (!(target instanceof HTMLElement)) return;
 		if (target.hasPointerCapture(event.pointerId)) target.releasePointerCapture(event.pointerId);
 	}
 
@@ -1376,10 +1395,8 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 					Object.assign(item.presentation, values);
 					for (const override of Object.values(item.variant_overrides ?? {})) {
 						if (!override?.presentation) continue;
-						for (const property of Object.keys(values) as Array<
-							keyof VisualTrackItem['presentation']
-						>) {
-							delete override.presentation[property];
+						for (const property of presentationProperties) {
+							if (property in values) delete override.presentation[property];
 						}
 						if (Object.keys(override.presentation).length === 0) {
 							delete override.presentation;
@@ -1501,9 +1518,18 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 				if (property === 'font_size') item.style.font_size = Number(value);
 				else if (property === 'font_weight') item.style.font_weight = Number(value);
 				else if (property === 'font_family') item.style.font_family = String(value);
-				else if (property === 'align') item.style.align = value as 'left' | 'center' | 'right';
-				else if (property === 'animation') {
-					item.style.animation = value as 'none' | 'fade' | 'rise' | 'pop' | 'typewriter';
+				else if (property === 'align') {
+					if (value === 'left' || value === 'center' || value === 'right') item.style.align = value;
+				} else if (property === 'animation') {
+					if (
+						value === 'none' ||
+						value === 'fade' ||
+						value === 'rise' ||
+						value === 'pop' ||
+						value === 'typewriter'
+					) {
+						item.style.animation = value;
+					}
 				} else item.style[property] = String(value);
 				return document;
 			},
@@ -1524,8 +1550,19 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 					.find((candidate) => candidate.id === selectedVisualItemID);
 				if (item?.type !== 'shape' && item?.type !== 'annotation') return document;
 				if (property === 'stroke_width') item.shape.stroke_width = Number(value);
-				else if (property === 'kind') item.shape.kind = value as ShapeStyle['kind'];
-				else item.shape[property] = String(value);
+				else if (property === 'kind') {
+					if (
+						value === 'rectangle' ||
+						value === 'ellipse' ||
+						value === 'arrow' ||
+						value === 'highlight' ||
+						value === 'click-pulse' ||
+						value === 'redaction' ||
+						value === 'progress'
+					) {
+						item.shape.kind = value;
+					}
+				} else item.shape[property] = String(value);
 				return document;
 			},
 			`visual:${selectedVisualItemID}:shape:${property}`
@@ -1798,6 +1835,25 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 		return selectedClip?.effects.find((effect) => effect.type === type)?.value ?? 0;
 	}
 
+	function videoEffect(type: VideoEffect['type'], value: number): VideoEffect {
+		switch (type) {
+			case 'exposure':
+				return { type: 'exposure', value };
+			case 'contrast':
+				return { type: 'contrast', value };
+			case 'saturation':
+				return { type: 'saturation', value };
+			case 'temperature':
+				return { type: 'temperature', value };
+			case 'tint':
+				return { type: 'tint', value };
+			case 'blur':
+				return { type: 'blur', value };
+			case 'vignette':
+				return { type: 'vignette', value };
+		}
+	}
+
 	function updateClipEffect(type: VideoEffect['type'], value: number): void {
 		mutate(
 			m.video_editor_change_effect({ effect: type }),
@@ -1809,7 +1865,7 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 					if (index >= 0) clip.effects.splice(index, 1);
 					return document;
 				}
-				const effect = { type, value } as VideoEffect;
+				const effect = videoEffect(type, value);
 				if (index >= 0) clip.effects[index] = effect;
 				else clip.effects.push(effect);
 				return document;
@@ -1819,7 +1875,7 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 	}
 
 	function applyEffectPreset(preset: EffectPresetID | 'reset'): void {
-		const presets: Record<EffectPresetID, VideoEffect[]> = {
+		const presets = {
 			clean: [
 				{ type: 'exposure', value: 0.04 },
 				{ type: 'contrast', value: 0.08 },
@@ -1874,12 +1930,31 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 				{ type: 'saturation', value: -0.12 },
 				{ type: 'vignette', value: 0.1 }
 			]
-		};
+		} satisfies Record<EffectPresetID, VideoEffect[]>;
 		mutate(m.video_editor_effect_preset(), (document) => {
 			const clip = primaryClipByID(document, selectedClipID);
 			if (clip) clip.effects = preset === 'reset' ? [] : structuredClone(presets[preset]);
 			return document;
 		});
+	}
+
+	function transitionKind(value: string): TransitionKind | null {
+		switch (value) {
+			case 'cross-dissolve':
+				return 'cross-dissolve';
+			case 'dip-black':
+				return 'dip-black';
+			case 'dip-white':
+				return 'dip-white';
+			case 'slide':
+				return 'slide';
+			case 'push':
+				return 'push';
+			case 'zoom-blur':
+				return 'zoom-blur';
+			default:
+				return null;
+		}
 	}
 
 	function setTransition(value: string): void {
@@ -1895,8 +1970,10 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 					delete nextClip.transition_in;
 				}
 			} else {
+				const type = transitionKind(value);
+				if (!type) return document;
 				const transition = {
-					type: value as TransitionKind,
+					type,
 					duration_us: 350_000,
 					easing: 'ease-in-out' as const
 				};
@@ -1936,7 +2013,8 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 	}
 
 	async function importFiles(event: Event): Promise<void> {
-		const input = event.currentTarget as HTMLInputElement;
+		const input = event.currentTarget;
+		if (!(input instanceof HTMLInputElement)) return;
 		const files = Array.from(input.files ?? []);
 		input.value = '';
 		try {
@@ -2809,7 +2887,7 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 	}
 
 	function handleKeyboard(event: KeyboardEvent): void {
-		const target = event.target as HTMLElement | null;
+		const target = event.target instanceof HTMLElement ? event.target : null;
 		if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z') {
 			if (target?.closest('input, textarea, [contenteditable="true"]')) return;
 			event.preventDefault();
@@ -2907,13 +2985,13 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 	async function cloudAction(): Promise<void> {
 		if (!authState.isAuthenticated) {
 			const returnPath = page.url.pathname;
-			await goto(resolve(`/register?redirect=${encodeURIComponent(returnPath)}` as '/'));
+			await goto(resolveAppPath(`/register?redirect=${encodeURIComponent(returnPath)}`));
 			return;
 		}
 		try {
 			await workspaceCtx.initialize();
 			if (!workspaceCtx.currentWorkspace) {
-				await goto(resolve(`/onboarding?redirect=${encodeURIComponent(page.url.pathname)}` as '/'));
+				await goto(resolveAppPath(`/onboarding?redirect=${encodeURIComponent(page.url.pathname)}`));
 				return;
 			}
 			cloudOpen = true;
@@ -3277,7 +3355,7 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 			);
 			localConflictOpen = false;
 			cloudRestoreLocalRecoveryOpen = false;
-			await goto(resolve(`/video-editor/${copy.id}` as '/'));
+			await goto(resolveAppPath(`/video-editor/${copy.id}`));
 		} catch (cause) {
 			error = cause instanceof Error ? cause.message : m.video_editor_save_failed();
 		} finally {
@@ -3309,7 +3387,7 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 	}
 
 	function localDocumentFromCloudResponse(
-		value: unknown,
+		value: CloudVideoDocumentInput,
 		sourceProject: LocalVideoProject | null = localProject
 	): VideoProjectDocumentV1 {
 		const validation = validateVideoProject(value);
@@ -3385,7 +3463,8 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 	}
 
 	function setExportFormat(value: string): void {
-		exportFormat = value as 'mp4' | 'webm';
+		if (value !== 'mp4' && value !== 'webm') return;
+		exportFormat = value;
 		exportedFiles = {};
 		exportFile = null;
 		revokeExportURLs();
@@ -3393,14 +3472,7 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 	}
 
 	async function requestDirectExportHandle(): Promise<FileSystemFileHandle | undefined> {
-		const picker = (
-			window as Window & {
-				showSaveFilePicker?: (options: {
-					suggestedName: string;
-					types: Array<{ description: string; accept: Record<string, string[]> }>;
-				}) => Promise<FileSystemFileHandle>;
-			}
-		).showSaveFilePicker;
+		const picker = window.showSaveFilePicker;
 		if (!picker || returnToken || exportVariantIDs.length !== 1) return undefined;
 		const format = exportFormat;
 		const extension = format === 'mp4' ? '.mp4' : '.webm';
@@ -3464,11 +3536,17 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 			}
 			if (localProject) await refreshPersistedExports(localProject.id);
 			exportedFiles = files;
-			exportURLs = Object.fromEntries(
-				Object.entries(files).map(([id, file]) => [id, URL.createObjectURL(file!)])
-			) as Partial<Record<VariantID, string>>;
-			exportFile = files[variantID] ?? files[variants[0]!] ?? null;
-			exportURL = exportFile ? (exportURLs[variantID] ?? exportURLs[variants[0]!] ?? '') : '';
+			const nextExportURLs = new Map<VariantID, string>();
+			for (const currentVariant of variants) {
+				const file = files[currentVariant];
+				if (file) nextExportURLs.set(currentVariant, URL.createObjectURL(file));
+			}
+			exportURLs = Object.fromEntries(nextExportURLs);
+			const firstVariant = variants[0];
+			exportFile = files[variantID] ?? (firstVariant ? files[firstVariant] : undefined) ?? null;
+			exportURL = exportFile
+				? (exportURLs[variantID] ?? (firstVariant ? exportURLs[firstVariant] : undefined) ?? '')
+				: '';
 			captureTelemetryEvent('video export completed', {
 				format: returnToken ? 'mp4' : exportFormat,
 				variant_count: variants.length
@@ -3500,18 +3578,21 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 
 	function variantRenditions(): Record<string, string[]> {
 		try {
-			const parsed = JSON.parse(page.url.searchParams.get('variant_renditions') ?? '{}') as Record<
-				string,
-				unknown
-			>;
-			return Object.fromEntries(
-				Object.entries(parsed).map(([key, value]) => [
-					key,
-					Array.isArray(value)
-						? value.filter((item): item is string => typeof item === 'string')
-						: []
-				])
+			const parsed: RenditionQueryValue = JSON.parse(
+				page.url.searchParams.get('variant_renditions') ?? '{}'
 			);
+			if (parsed === null || Array.isArray(parsed) || !(parsed instanceof Object)) return {};
+			const entries: Array<[string, string[]]> = [];
+			for (const [key, value] of Object.entries(parsed)) {
+				const renditionIDs: string[] = [];
+				if (Array.isArray(value)) {
+					for (const item of value) {
+						if (String(item) === item) renditionIDs.push(String(item));
+					}
+				}
+				entries.push([key, renditionIDs]);
+			}
+			return Object.fromEntries(entries);
 		} catch {
 			return {};
 		}
@@ -3564,7 +3645,7 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 			});
 			const destination = new URL(completed.return_url, page.url);
 			destination.searchParams.set('video_editor_return', returnToken);
-			await goto(resolve(`${destination.pathname}${destination.search}` as '/'));
+			await goto(resolveAppPath(`${destination.pathname}${destination.search}`));
 		} catch (cause) {
 			if (!(cause instanceof DOMException && cause.name === 'AbortError')) {
 				exportError = cause instanceof Error ? cause.message : m.video_editor_export_failed();
@@ -3606,7 +3687,7 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 	}
 
 	function sourceKindLabel(kind: VideoSource['kind']): string {
-		const labels: Record<VideoSource['kind'], string> = {
+		const labels = {
 			video: m.video_editor_source_video(),
 			audio: m.video_editor_source_audio(),
 			image: m.video_editor_source_image(),
@@ -3614,7 +3695,7 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 			'recording-camera': m.video_editor_source_camera(),
 			'recording-microphone': m.video_editor_source_microphone(),
 			'recording-system-audio': m.video_editor_source_system_audio()
-		};
+		} satisfies Record<VideoSource['kind'], string>;
 		return labels[kind];
 	}
 
@@ -3671,7 +3752,7 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 {:else if error && !localProject}
 	<main class="mx-auto flex min-h-dvh max-w-xl flex-col justify-center gap-4 px-5">
 		<InlineNotice tone="error" message={error} />
-		<Button href={resolve((composerReturnURL ?? '/video-editor') as '/')} variant="outline">
+		<Button href={resolveAppPath(composerReturnURL ?? '/video-editor')} variant="outline">
 			<ArrowLeftIcon class="size-4" />
 			{composerReturnURL ? m.editor_back_to_post() : m.video_editor_back_projects()}
 		</Button>
@@ -3683,7 +3764,7 @@ FORM: CapCut-fluent four-zone workbench with a canvas-first default and expandab
 		>
 			<div class="flex min-w-0 items-center gap-2">
 				<Button
-					href={resolve((composerReturnURL ?? '/video-editor') as '/')}
+					href={resolveAppPath(composerReturnURL ?? '/video-editor')}
 					variant="ghost"
 					size="icon-sm"
 					aria-label={composerReturnURL ? m.editor_back_to_post() : m.video_editor_back_projects()}
