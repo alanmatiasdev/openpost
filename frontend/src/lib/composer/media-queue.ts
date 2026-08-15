@@ -35,8 +35,7 @@ export interface PastedImageSelection {
 interface InternalPasteMediaUploadItem<Result> extends PasteMediaUploadItem {
 	generation: number;
 	controller: AbortController | null;
-	hasResult: boolean;
-	result: Result | undefined;
+	completion: { status: 'pending' } | { status: 'complete'; result: Result };
 }
 
 interface PasteMediaUploadQueueOptions<Result> {
@@ -164,8 +163,7 @@ export class ComposerSessionMediaQueue<Result> {
 			error: '',
 			generation: this.#generation,
 			controller: null,
-			hasResult: false,
-			result: undefined
+			completion: { status: 'pending' }
 		}));
 		if (additions.length === 0) return [];
 		this.#items = [...this.#items, ...additions];
@@ -268,8 +266,9 @@ export class ComposerSessionMediaQueue<Result> {
 		item.error = '';
 		this.#emit();
 		try {
-			if (!item.hasResult) {
-				item.result = await this.#options.upload({
+			let result: Result;
+			if (item.completion.status === 'pending') {
+				result = await this.#options.upload({
 					file: item.file,
 					target: item.target,
 					signal: controller.signal,
@@ -279,10 +278,12 @@ export class ComposerSessionMediaQueue<Result> {
 						this.#emit();
 					}
 				});
-				item.hasResult = true;
+				item.completion = { status: 'complete', result };
+			} else {
+				result = item.completion.result;
 			}
 			if (!this.#isLive(item) || controller.signal.aborted) return;
-			const applied = await this.#options.onComplete(this.#publicItem(item), item.result as Result);
+			const applied = await this.#options.onComplete(this.#publicItem(item), result);
 			if (!this.#isLive(item)) return;
 			this.#remove(item);
 			this.#emit();

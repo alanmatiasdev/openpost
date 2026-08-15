@@ -28,6 +28,10 @@ declare global {
 		getDirectory?(): Promise<FileSystemDirectoryHandle>;
 	}
 
+	interface FileSystemDirectoryHandle {
+		entries(): AsyncIterableIterator<[string, FileSystemHandle]>;
+	}
+
 	namespace App {
 		// interface Error {}
 		// interface Locals {}

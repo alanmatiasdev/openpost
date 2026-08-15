@@ -1,13 +1,5 @@
 import { StreamTarget, type StreamTargetChunk } from 'mediabunny';
 
-type StorageManagerWithDirectory = StorageManager & {
-	getDirectory?: () => Promise<FileSystemDirectoryHandle>;
-};
-
-type DirectoryHandleWithEntries = FileSystemDirectoryHandle & {
-	entries(): AsyncIterableIterator<[string, FileSystemHandle]>;
-};
-
 const TEMP_DIRECTORY = 'openpost-video-streams';
 const STALE_AGE_MS = 24 * 60 * 60 * 1_000;
 
@@ -36,11 +28,11 @@ export async function createFileSystemAccessOutputTarget(
 export async function createStreamingOutputTarget(
 	signal?: AbortSignal
 ): Promise<StreamingOutputTarget> {
-	const storage = navigator.storage as StorageManagerWithDirectory | undefined;
-	if (!storage?.getDirectory) {
+	const getDirectory = navigator.storage?.getDirectory;
+	if (!getDirectory) {
 		throw new Error('This browser cannot stream video output to local storage.');
 	}
-	const root = await storage.getDirectory();
+	const root = await getDirectory.call(navigator.storage);
 	const directory = await root.getDirectoryHandle(TEMP_DIRECTORY, { create: true });
 	void cleanStaleStreamingOutputs(directory);
 	const fileName = `render-${Date.now()}-${crypto.randomUUID()}.partial`;
@@ -129,9 +121,9 @@ function outputTargetFromWritable(
 async function cleanStaleStreamingOutputs(directory: FileSystemDirectoryHandle): Promise<void> {
 	const cutoff = Date.now() - STALE_AGE_MS;
 	try {
-		for await (const [name, entry] of (directory as DirectoryHandleWithEntries).entries()) {
+		for await (const [name, entry] of directory.entries()) {
 			if (entry.kind !== 'file') continue;
-			const file = await (entry as FileSystemFileHandle).getFile();
+			const file = await directory.getFileHandle(name).then((handle) => handle.getFile());
 			if (file.lastModified < cutoff) await directory.removeEntry(name);
 		}
 	} catch {

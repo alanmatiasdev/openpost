@@ -68,9 +68,12 @@ export function mergeObjects<Sources extends readonly MaybeThunk<any>[]>(
 		return undefined;
 	};
 
+	// SAFETY: Every proxy lookup resolves from the supplied objects in right-to-left order,
+	// which is the runtime behavior represented by the recursive Intersection return type.
 	return new Proxy(Object.create(null), {
 		get(_, key) {
 			const src = findSourceWithKey(key);
+			// SAFETY: findSourceWithKey returns only an object for which `key in object` is true.
 			return src?.[key as never];
 		},
 		has(_, key) {
@@ -81,7 +84,7 @@ export function mergeObjects<Sources extends readonly MaybeThunk<any>[]>(
 			for (const source of sources) {
 				const obj = resolve(source);
 				if (obj) {
-					for (const key of Reflect.ownKeys(obj) as (string | symbol)[]) {
+					for (const key of Reflect.ownKeys(obj)) {
 						all.add(key);
 					}
 				}
@@ -94,6 +97,7 @@ export function mergeObjects<Sources extends readonly MaybeThunk<any>[]>(
 			return {
 				configurable: true,
 				enumerable: true,
+				// SAFETY: findSourceWithKey returns only an object for which `key in object` is true.
 				value: (src as any)[key],
 				writable: true
 			};

@@ -25,11 +25,11 @@ export class RenderSnippetConfig<TProps> {
 
 export function renderComponent<T extends Component<any>, Props extends ComponentProps<T>>(
 	component: T,
-	props: Props = {} as Props
+	props: Props
 ) {
 	return new RenderComponentConfig(component, props);
 }
 
-export function renderSnippet<TProps>(snippet: Snippet<[TProps]>, params: TProps = {} as TProps) {
+export function renderSnippet<TProps>(snippet: Snippet<[TProps]>, params: TProps) {
 	return new RenderSnippetConfig(snippet, params);
 }
