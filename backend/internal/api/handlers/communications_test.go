@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/openpost/backend/internal/services/communications"
 	"github.com/openpost/backend/internal/services/engagement"
+	"github.com/openpost/backend/internal/services/messaging"
 	"github.com/stretchr/testify/require"
 )
 
@@ -36,7 +36,7 @@ func TestEngagementCursorIsOpaqueAndRejectsInvalidValues(t *testing.T) {
 }
 
 func TestConversationCursorIsOpaqueAndRejectsInvalidValues(t *testing.T) {
-	cursor := &communications.ConversationCursor{
+	cursor := &messaging.ConversationCursor{
 		OccurredAt: time.Date(2026, 8, 10, 12, 0, 0, 0, time.UTC),
 		ID:         "conversation-1",
 	}
@@ -54,7 +54,7 @@ func TestConversationCursorIsOpaqueAndRejectsInvalidValues(t *testing.T) {
 }
 
 func TestMessageCursorIsOpaqueAndRejectsInvalidValues(t *testing.T) {
-	cursor := &communications.MessageCursor{
+	cursor := &messaging.MessageCursor{
 		OccurredAt: time.Date(2026, 8, 10, 12, 0, 0, 0, time.UTC),
 		CreatedAt:  time.Date(2026, 8, 10, 12, 0, 1, 0, time.UTC),
 		ID:         "message-1",

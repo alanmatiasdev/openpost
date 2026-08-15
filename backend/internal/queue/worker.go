@@ -20,6 +20,7 @@ import (
 	"github.com/openpost/backend/internal/services/feedback"
 	"github.com/openpost/backend/internal/services/medialifecycle"
 	"github.com/openpost/backend/internal/services/mediastore"
+	messagingservice "github.com/openpost/backend/internal/services/messaging"
 	"github.com/openpost/backend/internal/services/notifications"
 	"github.com/openpost/backend/internal/services/organizationownership"
 	"github.com/openpost/backend/internal/services/providerwrite"
@@ -60,6 +61,7 @@ type BackgroundWorker struct {
 	billing               *billingservice.Service
 	communications        *communicationsservice.Service
 	engagement            *engagementservice.Service
+	messaging             *messagingservice.Service
 	notifications         *notifications.Service
 	organizationOwnership *organizationownership.Service
 	reposts               *repostservice.Service
@@ -118,6 +120,16 @@ func (w *BackgroundWorker) SetEngagementService(service *engagementservice.Servi
 			return fmt.Errorf("engagement collection is not configured")
 		}
 		return w.engagement.HandleJob(ctx, job.Type, job.Payload)
+	}
+}
+
+func (w *BackgroundWorker) SetMessagingService(service *messagingservice.Service) {
+	w.messaging = service
+	w.executors[jobregistry.ExecuteMessaging] = func(ctx context.Context, job *models.Job) error {
+		if w.messaging == nil {
+			return fmt.Errorf("messaging collection is not configured")
+		}
+		return w.messaging.HandleJob(ctx, job.Type, job.Payload)
 	}
 }
 

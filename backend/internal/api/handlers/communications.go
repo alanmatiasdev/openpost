@@ -13,20 +13,18 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/openpost/backend/internal/api/middleware"
 	"github.com/openpost/backend/internal/models"
-	"github.com/openpost/backend/internal/services/communications"
 	"github.com/openpost/backend/internal/services/engagement"
-	"github.com/uptrace/bun"
+	"github.com/openpost/backend/internal/services/messaging"
 )
 
 type CommunicationsHandler struct {
-	db         *bun.DB
 	auth       middleware.Authenticator
-	service    *communications.Service
+	messaging  *messaging.Service
 	engagement *engagement.Service
 }
 
-func NewCommunicationsHandler(db *bun.DB, auth middleware.Authenticator, service *communications.Service, engagementService *engagement.Service) *CommunicationsHandler {
-	return &CommunicationsHandler{db: db, auth: auth, service: service, engagement: engagementService}
+func NewCommunicationsHandler(auth middleware.Authenticator, messagingService *messaging.Service, engagementService *engagement.Service) *CommunicationsHandler {
+	return &CommunicationsHandler{auth: auth, messaging: messagingService, engagement: engagementService}
 }
 
 type ListEngagementInput struct {
@@ -205,7 +203,7 @@ type conversationCursorPayload struct {
 	ID         string    `json:"id"`
 }
 
-func encodeConversationCursor(cursor *communications.ConversationCursor) string {
+func encodeConversationCursor(cursor *messaging.ConversationCursor) string {
 	if cursor == nil {
 		return ""
 	}
@@ -218,7 +216,7 @@ func encodeConversationCursor(cursor *communications.ConversationCursor) string 
 	return base64.RawURLEncoding.EncodeToString(payload)
 }
 
-func parseConversationCursor(value string) (*communications.ConversationCursor, error) {
+func parseConversationCursor(value string) (*messaging.ConversationCursor, error) {
 	value = strings.TrimSpace(value)
 	if value == "" {
 		return nil, nil
@@ -234,7 +232,7 @@ func parseConversationCursor(value string) (*communications.ConversationCursor, 
 	if cursor.OccurredAt.IsZero() || strings.TrimSpace(cursor.ID) == "" {
 		return nil, errors.New("conversation cursor is incomplete")
 	}
-	return &communications.ConversationCursor{
+	return &messaging.ConversationCursor{
 		OccurredAt: cursor.OccurredAt.UTC(), ID: cursor.ID,
 	}, nil
 }
@@ -245,7 +243,7 @@ type messageCursorPayload struct {
 	ID         string    `json:"id"`
 }
 
-func encodeMessageCursor(cursor *communications.MessageCursor) string {
+func encodeMessageCursor(cursor *messaging.MessageCursor) string {
 	if cursor == nil {
 		return ""
 	}
@@ -258,7 +256,7 @@ func encodeMessageCursor(cursor *communications.MessageCursor) string {
 	return base64.RawURLEncoding.EncodeToString(payload)
 }
 
-func parseMessageCursor(value string) (*communications.MessageCursor, error) {
+func parseMessageCursor(value string) (*messaging.MessageCursor, error) {
 	value = strings.TrimSpace(value)
 	if value == "" {
 		return nil, nil
@@ -274,7 +272,7 @@ func parseMessageCursor(value string) (*communications.MessageCursor, error) {
 	if cursor.OccurredAt.IsZero() || cursor.CreatedAt.IsZero() || strings.TrimSpace(cursor.ID) == "" {
 		return nil, errors.New("message cursor is incomplete")
 	}
-	return &communications.MessageCursor{
+	return &messaging.MessageCursor{
 		OccurredAt: cursor.OccurredAt.UTC(), CreatedAt: cursor.CreatedAt.UTC(), ID: cursor.ID,
 	}, nil
 }
@@ -361,21 +359,21 @@ func (h *CommunicationsHandler) RegisterRoutes(api huma.API) {
 		Method:      http.MethodGet, Path: "/messages", Summary: "List stored social conversations",
 		Tags: []string{tagCommunications}, Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
 	}, func(ctx context.Context, input *ListConversationsInput) (*ListConversationsOutput, error) {
-		if err := h.requireWorkspace(ctx, input.WorkspaceID, false); err != nil {
-			return nil, err
+		if h.messaging == nil {
+			return nil, huma.Error503ServiceUnavailable("messaging service is unavailable")
 		}
 		cursor, err := parseConversationCursor(input.Cursor)
 		if err != nil || (cursor != nil && input.Offset != 0) {
 			return nil, huma.Error400BadRequest("invalid conversation cursor")
 		}
-		page, err := h.service.ListConversations(ctx, communications.ConversationQuery{
+		page, err := h.messaging.ListConversations(ctx, messagingActor(ctx), messaging.ConversationQuery{
 			WorkspaceID: input.WorkspaceID, Platform: input.Platform, AccountID: input.AccountID,
 			Archived: input.Archived, Limit: input.Limit, Offset: input.Offset, Cursor: cursor,
 		})
 		if err != nil {
-			return nil, huma.Error500InternalServerError("failed to load messages")
+			return nil, messagingHTTPError(err, "failed to load messages")
 		}
-		states, err := h.service.ListMessageSyncStates(ctx, input.WorkspaceID)
+		states, err := h.messaging.ListSyncStates(ctx, messagingActor(ctx), input.WorkspaceID)
 		if err != nil {
 			return nil, huma.Error500InternalServerError("failed to load message sync state")
 		}
@@ -398,19 +396,19 @@ func (h *CommunicationsHandler) RegisterRoutes(api huma.API) {
 		Method:      http.MethodGet, Path: "/messages/{conversation_id}", Summary: "List messages in a stored conversation",
 		Tags: []string{tagCommunications}, Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
 	}, func(ctx context.Context, input *ListMessagesInput) (*ListMessagesOutput, error) {
-		if err := h.requireWorkspace(ctx, input.WorkspaceID, false); err != nil {
-			return nil, err
+		if h.messaging == nil {
+			return nil, huma.Error503ServiceUnavailable("messaging service is unavailable")
 		}
 		cursor, err := parseMessageCursor(input.Cursor)
 		if err != nil || (cursor != nil && input.Offset != 0) {
 			return nil, huma.Error400BadRequest("invalid message cursor")
 		}
-		page, err := h.service.ListMessages(ctx, communications.MessageQuery{
+		page, err := h.messaging.ListMessages(ctx, messagingActor(ctx), messaging.MessageQuery{
 			WorkspaceID: input.WorkspaceID, ConversationID: input.ConversationID,
 			Limit: input.Limit, Offset: input.Offset, Cursor: cursor,
 		})
 		if err != nil {
-			if errors.Is(err, communications.ErrConversationNotFound) {
+			if errors.Is(err, messaging.ErrNotFound) {
 				return nil, huma.Error404NotFound("conversation not found")
 			}
 			log.Printf("failed to load conversation %s in workspace %s: %v", input.ConversationID, input.WorkspaceID, err)
@@ -426,16 +424,14 @@ func (h *CommunicationsHandler) RegisterRoutes(api huma.API) {
 		Method:      http.MethodPost, Path: "/messages/{conversation_id}/send", Summary: "Queue a social direct message",
 		Tags: []string{tagCommunications}, Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
 	}, func(ctx context.Context, input *SendMessageInput) (*SendMessageOutput, error) {
-		if err := h.requireWorkspace(ctx, input.Body.WorkspaceID, true); err != nil {
-			return nil, err
+		if h.messaging == nil {
+			return nil, huma.Error503ServiceUnavailable("messaging service is unavailable")
 		}
-		exists, err := h.db.NewSelect().Model((*models.Conversation)(nil)).
-			Where("id = ? AND workspace_id = ?", input.ConversationID, input.Body.WorkspaceID).Exists(ctx)
-		if err != nil || !exists {
-			return nil, huma.Error404NotFound("conversation not found")
-		}
-		message, err := h.service.QueueMessage(ctx, input.ConversationID, input.Body.Message)
+		message, err := h.messaging.QueueMessage(ctx, messagingActor(ctx), input.ConversationID, input.Body.Message)
 		if err != nil {
+			if errors.Is(err, messaging.ErrAccessDenied) || errors.Is(err, messaging.ErrNotFound) {
+				return nil, messagingHTTPError(err, "failed to queue message")
+			}
 			return nil, huma.Error400BadRequest(err.Error())
 		}
 		return &SendMessageOutput{Body: *message}, nil
@@ -446,14 +442,14 @@ func (h *CommunicationsHandler) RegisterRoutes(api huma.API) {
 		Method:      http.MethodPost, Path: "/messages/{conversation_id}/state", Summary: "Mark a conversation read or archived",
 		Tags: []string{tagCommunications}, Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
 	}, func(ctx context.Context, input *SetConversationStateInput) (*struct{}, error) {
-		if err := h.requireWorkspace(ctx, input.Body.WorkspaceID, true); err != nil {
-			return nil, err
+		if h.messaging == nil {
+			return nil, huma.Error503ServiceUnavailable("messaging service is unavailable")
 		}
 		if input.Body.Read == nil && input.Body.Archived == nil {
 			return nil, huma.Error400BadRequest("read or archived is required")
 		}
-		if err := h.service.SetConversationState(ctx, input.Body.WorkspaceID, input.ConversationID, input.Body.Read, input.Body.Archived); err != nil {
-			return nil, huma.Error500InternalServerError("failed to update conversation")
+		if err := h.messaging.SetConversationState(ctx, messagingActor(ctx), input.Body.WorkspaceID, input.ConversationID, input.Body.Read, input.Body.Archived); err != nil {
+			return nil, messagingHTTPError(err, "failed to update conversation")
 		}
 		return nil, nil
 	})
@@ -463,10 +459,10 @@ func (h *CommunicationsHandler) RegisterRoutes(api huma.API) {
 		Method:      http.MethodPost, Path: "/communications/refresh", Summary: "Queue engagement and message collection",
 		Tags: []string{tagCommunications}, Middlewares: huma.Middlewares{middleware.AuthMiddleware(api, h.auth)},
 	}, func(ctx context.Context, input *RefreshCommunicationsInput) (*RefreshCommunicationsOutput, error) {
-		if err := h.requireWorkspace(ctx, input.Body.WorkspaceID, true); err != nil {
-			return nil, err
+		if h.messaging == nil {
+			return nil, huma.Error503ServiceUnavailable("messaging service is unavailable")
 		}
-		queued, err := h.service.RefreshWorkspace(ctx, input.Body.WorkspaceID, true)
+		queued, err := h.messaging.RefreshWorkspace(ctx, messagingActor(ctx), input.Body.WorkspaceID, true)
 		if err != nil {
 			return nil, huma.Error500InternalServerError("failed to queue communications refresh")
 		}
@@ -490,6 +486,24 @@ func engagementActor(ctx context.Context) engagement.Actor {
 	}
 }
 
+func messagingActor(ctx context.Context) messaging.Actor {
+	return messaging.Actor{
+		UserID: middleware.GetUserID(ctx), SessionID: middleware.GetSessionID(ctx), TokenID: middleware.GetTokenID(ctx),
+		CredentialWorkspaceID: middleware.GetWorkspaceID(ctx),
+	}
+}
+
+func messagingHTTPError(err error, fallback string) error {
+	switch {
+	case errors.Is(err, messaging.ErrAccessDenied):
+		return huma.Error403Forbidden("workspace access denied")
+	case errors.Is(err, messaging.ErrNotFound):
+		return huma.Error404NotFound("conversation not found")
+	default:
+		return huma.Error500InternalServerError(fallback)
+	}
+}
+
 func engagementHTTPError(err error, fallback string) error {
 	switch {
 	case errors.Is(err, engagement.ErrAccessDenied):
@@ -499,24 +513,4 @@ func engagementHTTPError(err error, fallback string) error {
 	default:
 		return huma.Error500InternalServerError(fallback)
 	}
-}
-
-func (h *CommunicationsHandler) requireWorkspace(ctx context.Context, workspaceID string, edit bool) error {
-	if h.service == nil {
-		return huma.Error500InternalServerError("communications service is unavailable")
-	}
-	var ok bool
-	var err error
-	if edit {
-		ok, err = middleware.CheckWorkspaceEditAccess(ctx, h.db, workspaceID, middleware.GetUserID(ctx))
-	} else {
-		ok, err = middleware.CheckWorkspaceAccess(ctx, h.db, workspaceID, middleware.GetUserID(ctx))
-	}
-	if err != nil {
-		return huma.Error500InternalServerError("failed to verify workspace access")
-	}
-	if !ok {
-		return huma.Error403Forbidden("workspace access denied")
-	}
-	return nil
 }

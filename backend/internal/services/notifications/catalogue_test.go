@@ -83,7 +83,7 @@ func TestTypedOutcomesRejectMissingOrUnsafeSemanticFacts(t *testing.T) {
 func TestTypedOutcomeConstructorsExposeOnlySemanticFacts(t *testing.T) {
 	factTypes := []any{
 		PublicationResultFacts{}, AccountAttentionFacts{}, EngagementReceivedFacts{},
-		MessageReceivedFacts{}, ReplyFailedFacts{}, WorkspaceInvitationFacts{}, RequiredAccountOutcomeFacts{},
+		MessageReceivedFacts{}, ReplyFailedFacts{}, MessageSendFailedFacts{}, WorkspaceInvitationFacts{}, RequiredAccountOutcomeFacts{},
 	}
 	forbidden := []string{"topic", "title", "body", "href", "action", "dedup", "suppress", "urgency", "channel", "classification", "token", "url", "raw", "response", "failure_text"}
 	for _, facts := range factTypes {

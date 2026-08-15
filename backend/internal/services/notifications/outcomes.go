@@ -126,6 +126,24 @@ func NewReplyFailedOutcome(facts ReplyFailedFacts) (Outcome, error) {
 	})
 }
 
+type MessageSendFailedFacts struct {
+	RecipientUserID string
+	WorkspaceID     string
+	ConversationID  string
+	MessageID       string
+	Provider        string
+}
+
+func NewMessageSendFailedOutcome(facts MessageSendFailedFacts) (Outcome, error) {
+	return newOutcome(semanticOutcome{
+		recipientID: facts.RecipientUserID, workspaceID: facts.WorkspaceID,
+		topic: TypeReplyFailed, eventID: facts.MessageID,
+		payload: map[string]any{
+			"conversation_id": facts.ConversationID, "message_id": facts.MessageID, "provider": facts.Provider,
+		},
+	})
+}
+
 type WorkspaceInvitationFacts struct {
 	RecipientUserID string
 	InvitationID    string
@@ -318,6 +336,13 @@ func materializeMessageOutcome(value semanticOutcome) (CreateInput, error) {
 
 func materializeReplyFailedOutcome(value semanticOutcome) (CreateInput, error) {
 	input := baseOutcomeInput(value)
+	if conversationID, ok := value.payload["conversation_id"].(string); ok {
+		input.Title = "Message failed"
+		input.Body = "OpenPost could not send a direct message."
+		input.Href = "/messages?conversation=" + url.QueryEscape(conversationID)
+		input.Actions = []models.NotificationAction{{Label: "Review message", Href: input.Href, Kind: "primary"}}
+		return input, nil
+	}
 	engagementID, _ := value.payload["engagement_id"].(string)
 	input.Title = "Reply failed"
 	input.Body = "OpenPost could not send a reply or engagement action."

@@ -14,7 +14,6 @@ import (
 	"github.com/openpost/backend/internal/services/auth"
 	"github.com/openpost/backend/internal/services/billing"
 	cliauth "github.com/openpost/backend/internal/services/cli_auth"
-	communicationsservice "github.com/openpost/backend/internal/services/communications"
 	servicecrypto "github.com/openpost/backend/internal/services/crypto"
 	"github.com/openpost/backend/internal/services/emailchange"
 	"github.com/openpost/backend/internal/services/emailverification"
@@ -29,6 +28,7 @@ import (
 	"github.com/openpost/backend/internal/services/mediasigner"
 	"github.com/openpost/backend/internal/services/mediastore"
 	"github.com/openpost/backend/internal/services/memegeneration"
+	messagingservice "github.com/openpost/backend/internal/services/messaging"
 	"github.com/openpost/backend/internal/services/mfa"
 	"github.com/openpost/backend/internal/services/notifications"
 	"github.com/openpost/backend/internal/services/organizationownership"
@@ -88,7 +88,7 @@ type RouteDeps struct {
 	IdentityService              *identity.Service
 	InstanceSettingsService      *instancesettings.Service
 	AnalyticsService             *analyticsservice.Service
-	CommunicationsService        *communicationsservice.Service
+	MessagingService             *messagingservice.Service
 	EngagementService            *engagementservice.Service
 	RepostService                *repostservice.Service
 	NotificationService          *notifications.Service
@@ -259,7 +259,7 @@ func RegisterHumaRoutes(api huma.API, deps RouteDeps) {
 	commentHandler.SetTokenSource(deps.TokenSource)
 	commentHandler.RegisterRoutes(api)
 	handlers.NewAnalyticsHandler(deps.DB, deps.Authenticator, deps.AnalyticsService).RegisterRoutes(api)
-	handlers.NewCommunicationsHandler(deps.DB, deps.Authenticator, deps.CommunicationsService, deps.EngagementService).RegisterRoutes(api)
+	handlers.NewCommunicationsHandler(deps.Authenticator, deps.MessagingService, deps.EngagementService).RegisterRoutes(api)
 	handlers.NewNotificationHandler(deps.DB, deps.Authenticator, deps.NotificationService).RegisterRoutes(api)
 	handlers.NewInstanceAdminHandler(
 		deps.DB,

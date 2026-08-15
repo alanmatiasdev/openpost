@@ -53,6 +53,7 @@ import (
 	"github.com/openpost/backend/internal/services/mediasigner"
 	"github.com/openpost/backend/internal/services/mediastore"
 	"github.com/openpost/backend/internal/services/memegeneration"
+	messagingservice "github.com/openpost/backend/internal/services/messaging"
 	"github.com/openpost/backend/internal/services/mfa"
 	"github.com/openpost/backend/internal/services/notifications"
 	"github.com/openpost/backend/internal/services/organizationownership"
@@ -394,6 +395,7 @@ func main() {
 	publishSvc.SetRepostScheduler(repostService)
 	communicationsService := communicationsservice.NewService(db, tokenManager, notificationService)
 	engagementService := engagementservice.NewService(db, tokenManager, notificationService)
+	messagingService := messagingservice.NewService(db, tokenManager, notificationService)
 	for name, adapter := range providers {
 		tokenManager.SetProvider(name, adapter)
 		publishSvc.SetProvider(name, adapter)
@@ -401,6 +403,9 @@ func main() {
 		communicationsService.SetProvider(name, adapter)
 		if engagementAdapter, ok := adapter.(platform.EngagementAdapter); ok {
 			engagementService.SetProvider(name, engagementAdapter)
+		}
+		if messagingAdapter, ok := adapter.(platform.MessagingAdapter); ok {
+			messagingService.SetProvider(name, messagingAdapter)
 		}
 		repostService.SetProvider(name, adapter)
 	}
@@ -502,6 +507,7 @@ func main() {
 	worker.SetBillingService(billingService)
 	worker.SetCommunicationsService(communicationsService)
 	worker.SetEngagementService(engagementService)
+	worker.SetMessagingService(messagingService)
 	worker.SetNotificationService(notificationService)
 	organizationOwnershipService := organizationownership.NewService(db, notificationService, identityService)
 	worker.SetOrganizationOwnershipService(organizationOwnershipService)
@@ -519,6 +525,9 @@ func main() {
 	}
 	if err := engagementService.ScheduleSweep(context.Background(), time.Now().UTC()); err != nil {
 		log.Fatalf("failed to schedule engagement collection: %v", err)
+	}
+	if err := messagingService.ScheduleSweep(context.Background(), time.Now().UTC()); err != nil {
+		log.Fatalf("failed to schedule messaging collection: %v", err)
 	}
 	if err := repostService.ScheduleSweep(context.Background(), time.Now().UTC()); err != nil {
 		log.Fatalf("failed to schedule repost automation: %v", err)
@@ -630,6 +639,11 @@ func main() {
 					engagementService.SetProvider(name, engagementAdapter)
 				}
 			},
+			func(name string, adapter platform.Adapter) {
+				if messagingAdapter, ok := adapter.(platform.MessagingAdapter); ok {
+					messagingService.SetProvider(name, messagingAdapter)
+				}
+			},
 			repostService.SetProvider,
 		},
 		MastodonAppService:           mastodonAppService,
@@ -648,7 +662,7 @@ func main() {
 		IdentityService:              identityService,
 		InstanceSettingsService:      instanceSettingsService,
 		AnalyticsService:             analyticsService,
-		CommunicationsService:        communicationsService,
+		MessagingService:             messagingService,
 		EngagementService:            engagementService,
 		RepostService:                repostService,
 		NotificationService:          notificationService,

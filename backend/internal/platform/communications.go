@@ -91,7 +91,7 @@ type SendMessageResult struct {
 
 // MessagingAdapter is an optional extension for providers that expose a
 // supported account inbox. Fetching and sending are always orchestrated by the
-// durable communications service rather than page requests.
+// durable Messaging application module rather than page requests.
 type MessagingAdapter interface {
 	MessagingSupport() MessagingSupport
 	FetchMessages(ctx context.Context, accessToken string, input FetchMessagesRequest) (FetchMessagesResult, error)

@@ -19,6 +19,7 @@ const (
 	TypeBillingWebhook          = "billing_paddle_webhook"
 	TypeCommunicationsSweep     = "communications_sweep"
 	TypeEngagementSweep         = "engagement_sweep"
+	TypeMessagingSweep          = "messaging_sweep"
 	TypeEngagementSync          = "engagement_sync"
 	TypeMessagesSync            = "messages_sync"
 	TypeEngagementAction        = "engagement_action"
@@ -47,6 +48,7 @@ const (
 	ExecuteBilling               ExecutionKind = "billing"
 	ExecuteCommunications        ExecutionKind = "communications"
 	ExecuteEngagement            ExecutionKind = "engagement"
+	ExecuteMessaging             ExecutionKind = "messaging"
 	ExecuteNotification          ExecutionKind = "notification"
 	ExecuteOrganizationOwnership ExecutionKind = "organization_ownership"
 	ExecuteRepost                ExecutionKind = "repost"
@@ -116,11 +118,14 @@ var definitions = map[string]Definition{
 		"A later engagement sweep remains queued; this sweep will not retry."),
 	TypeEngagementSync: providerReadDefinition(TypeEngagementSync, 5, ExecuteEngagement, RecoveryRequeue,
 		"Engagement collection failed. OpenPost will retry when the failure is temporary.", ""),
-	TypeMessagesSync: providerReadDefinition(TypeMessagesSync, 5, ExecuteCommunications, RecoveryRequeue,
-		"Communications collection failed. OpenPost will retry when the failure is temporary.", ""),
+	TypeMessagingSweep: providerReadDefinition(TypeMessagingSweep, 5, ExecuteMessaging, RecoverySupersedeSweep,
+		"Messaging collection failed. OpenPost will retry when the failure is temporary.",
+		"A later Messaging sweep remains queued; this sweep will not retry."),
+	TypeMessagesSync: providerReadDefinition(TypeMessagesSync, 5, ExecuteMessaging, RecoveryRequeue,
+		"Messaging collection failed. OpenPost will retry when the failure is temporary.", ""),
 	TypeEngagementAction: providerWriteDefinition(TypeEngagementAction, ExecuteEngagement,
 		"The provider write failed. OpenPost did not retry because the provider result may be ambiguous."),
-	TypeMessageSend: providerWriteDefinition(TypeMessageSend, ExecuteCommunications,
+	TypeMessageSend: providerWriteDefinition(TypeMessageSend, ExecuteMessaging,
 		"The provider write failed. OpenPost did not retry because the provider result may be ambiguous."),
 	TypeNotificationEmail:       definition(TypeNotificationEmail, 5, ExecuteNotification, FailureDefault, RecoveryRequeue),
 	TypeOwnershipTransferExpiry: definition(TypeOwnershipTransferExpiry, 5, ExecuteOrganizationOwnership, FailureDefault, RecoveryRequeue),
