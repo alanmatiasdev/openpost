@@ -34,6 +34,14 @@ export interface DraftPresentation {
 
 export const THREAD_DRAFT_PREFIX = '__openpost_thread__:';
 
+type ThreadDraftJSONValue =
+	| string
+	| number
+	| boolean
+	| null
+	| ThreadDraftJSONValue[]
+	| { [key: string]: ThreadDraftJSONValue };
+
 export function generatePostKey(): string {
 	return Math.random().toString(36).substring(2, 10);
 }
@@ -56,33 +64,24 @@ export function isThreadDraft(content: string): boolean {
 
 export function decodeThreadDraft(content: string): DecodedThreadDraft | null {
 	try {
-		const data = JSON.parse(content.slice(THREAD_DRAFT_PREFIX.length));
+		const data: unknown = JSON.parse(content.slice(THREAD_DRAFT_PREFIX.length));
 		if (Array.isArray(data)) {
 			return {
-				posts: data.map((item: any) => ({
-					key: item.k ?? generatePostKey(),
-					content: item.c ?? '',
-					mediaIds: item.m ?? []
-				})),
+				posts: data.map(parseThreadPost),
 				variants: {}
 			};
 		}
-		if (!data || !Array.isArray(data.p)) return null;
+		if (!isThreadDraftRecord(data) || !Array.isArray(data.p)) return null;
 		return {
-			posts: data.p.map((item: any) => ({
-				key: item.k ?? generatePostKey(),
-				content: item.c ?? '',
-				mediaIds: item.m ?? []
-			})),
-			variants:
-				data.v && typeof data.v === 'object'
-					? Object.fromEntries(
-							Object.entries(data.v).map(([accountId, value]) => [
-								accountId,
-								normalizeVariantValue(value)
-							])
-						)
-					: {}
+			posts: data.p.map(parseThreadPost),
+			variants: isThreadDraftRecord(data.v)
+				? Object.fromEntries(
+						Object.entries(data.v).map(([accountId, value]) => [
+							accountId,
+							parseVariantValue(value)
+						])
+					)
+				: {}
 		};
 	} catch {
 		return null;
@@ -108,41 +107,49 @@ export function getDraftPresentation(draft: DraftLike): DraftPresentation {
 	};
 }
 
-function normalizeVariantValue(value: unknown): Record<string, VariantPost> {
+function parseThreadPost(value: ThreadDraftJSONValue): DecodedThreadDraft['posts'][number] {
+	if (!isThreadDraftRecord(value)) {
+		return { key: generatePostKey(), content: '', mediaIds: [] };
+	}
+	return {
+		key: typeof value.k === 'string' && value.k ? value.k : generatePostKey(),
+		content: value.c === undefined || value.c === null ? '' : String(value.c),
+		mediaIds: Array.isArray(value.m) ? value.m.map(String) : []
+	};
+}
+
+function parseVariantValue(value: ThreadDraftJSONValue): Record<string, VariantPost> {
 	if (Array.isArray(value)) {
-		return Object.fromEntries(
-			value.map((item, index) => [String(index), normalizeVariantPost(item)])
-		);
+		return Object.fromEntries(value.map((item, index) => [String(index), parseVariantPost(item)]));
 	}
-	if (!value || typeof value !== 'object') {
-		return {};
-	}
+	if (!isThreadDraftRecord(value)) return {};
 	return Object.fromEntries(
-		Object.entries(value as Record<string, unknown>).map(([postKey, variant]) => [
-			postKey,
-			normalizeVariantPost(variant)
-		])
+		Object.entries(value).map(([postKey, variant]) => [postKey, parseVariantPost(variant)])
 	);
 }
 
-function normalizeVariantPost(value: unknown): VariantPost {
-	if (value && typeof value === 'object' && !Array.isArray(value)) {
-		const record = value as Record<string, unknown>;
-		return {
-			content: String(record.content ?? record.c ?? ''),
-			mediaIds: Array.isArray(record.mediaIds)
-				? record.mediaIds.map(String)
-				: Array.isArray(record.m)
-					? record.m.map(String)
-					: [],
-			...(record.contentInherited ? { contentInherited: true } : {}),
-			...(record.mediaInherited ? { mediaInherited: true } : {})
+function parseVariantPost(value: ThreadDraftJSONValue): VariantPost {
+	if (isThreadDraftRecord(value)) {
+		const variant: VariantPost = {
+			content: String(value.content ?? value.c ?? ''),
+			mediaIds: Array.isArray(value.mediaIds)
+				? value.mediaIds.map(String)
+				: Array.isArray(value.m)
+					? value.m.map(String)
+					: []
 		};
+		if (value.contentInherited) variant.contentInherited = true;
+		if (value.mediaInherited) variant.mediaInherited = true;
+		return variant;
 	}
 	return {
 		content: String(value ?? ''),
 		mediaIds: []
 	};
+}
+
+function isThreadDraftRecord(value: unknown): value is { [key: string]: ThreadDraftJSONValue } {
+	return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 export function getDraftSnapshot(posts: PostItem[]): string {
