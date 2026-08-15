@@ -2,7 +2,7 @@ import type { components } from '$lib/api/types';
 
 type SettingDefinition = components['schemas']['SettingDefinition'];
 type SettingCondition = components['schemas']['SettingCondition'];
-type DestinationSettings = components['schemas']['RenditionInput']['settings'];
+type DestinationSettings = NonNullable<components['schemas']['RenditionInput']['settings']>;
 type DestinationSettingValue = SettingDefinition['default'];
 
 export interface DestinationOption {

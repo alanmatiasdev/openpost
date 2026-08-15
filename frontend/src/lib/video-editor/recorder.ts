@@ -1,5 +1,6 @@
 import { recoverVideoStorageBudget, saveRecordingManifest } from './storage';
 import { VIDEO_EDITOR_ROOT, type RecordingManifest, type RecordingTrackManifest } from './types';
+import type { RecordingWriterResponse } from './recording-protocol';
 
 const CHUNK_INTERVAL_MS = 1_000;
 const MANIFEST_FLUSH_MS = 2_000;
@@ -7,6 +8,12 @@ const BACKPRESSURE_PAUSE_BYTES = 64 * 1024 * 1024;
 const BACKPRESSURE_RESUME_BYTES = 16 * 1024 * 1024;
 const STORAGE_CHECK_MS = 5_000;
 const MINIMUM_RECORDING_RESERVE_BYTES = 64 * 1024 * 1024;
+
+interface OpenPostDisplayMediaStreamOptions extends DisplayMediaStreamOptions {
+	selfBrowserSurface?: 'include' | 'exclude';
+	systemAudio?: 'include' | 'exclude';
+	surfaceSwitching?: 'include' | 'exclude';
+}
 
 export interface RecordingOptions {
 	projectID: string;
@@ -75,36 +82,35 @@ export class VideoRecordingSession {
 	}
 
 	static async start(options: RecordingOptions): Promise<VideoRecordingSession> {
-		const display = await navigator.mediaDevices.getDisplayMedia({
+		const displayOptions: OpenPostDisplayMediaStreamOptions = {
 			video: { frameRate: { ideal: 30, max: 60 } },
 			audio: options.systemAudio,
 			selfBrowserSurface: 'exclude',
 			systemAudio: options.systemAudio ? 'include' : 'exclude',
 			surfaceSwitching: 'include'
-		} as DisplayMediaStreamOptions);
+		};
+		const display = await navigator.mediaDevices.getDisplayMedia(displayOptions);
+		const cameraConstraints: MediaTrackConstraints = {
+			width: { ideal: 1280 },
+			height: { ideal: 720 }
+		};
+		if (options.cameraDeviceID) {
+			cameraConstraints.deviceId = { exact: options.cameraDeviceID };
+		}
+		const microphoneConstraints: MediaTrackConstraints = {
+			echoCancellation: true,
+			noiseSuppression: true,
+			autoGainControl: true
+		};
+		if (options.microphoneDeviceID) {
+			microphoneConstraints.deviceId = { exact: options.microphoneDeviceID };
+		}
 		const user =
 			options.camera || options.microphone
 				? await navigator.mediaDevices
 						.getUserMedia({
-							video: options.camera
-								? {
-										width: { ideal: 1280 },
-										height: { ideal: 720 },
-										...(options.cameraDeviceID
-											? { deviceId: { exact: options.cameraDeviceID } }
-											: {})
-									}
-								: false,
-							audio: options.microphone
-								? {
-										echoCancellation: true,
-										noiseSuppression: true,
-										autoGainControl: true,
-										...(options.microphoneDeviceID
-											? { deviceId: { exact: options.microphoneDeviceID } }
-											: {})
-									}
-								: false
+							video: options.camera ? cameraConstraints : false,
+							audio: options.microphone ? microphoneConstraints : false
 						})
 						.catch((cause) => {
 							display.getTracks().forEach((track) => track.stop());
@@ -382,37 +388,33 @@ export class VideoRecordingSession {
 		void task.finally(() => track.writeTasks.delete(task));
 	}
 
-	private handleWorkerMessage(event: MessageEvent): void {
-		const message = event.data as Record<string, unknown>;
-		const track = this.tracks.get(String(message.track_id ?? ''));
+	private handleWorkerMessage(event: MessageEvent<RecordingWriterResponse>): void {
+		const message = event.data;
+		const track = this.tracks.get(message.track_id);
 		if (!track) return;
 		switch (message.type) {
 			case 'ready':
 				track.resolveReady();
 				break;
 			case 'written':
-				track.pendingBytes = Math.max(0, track.pendingBytes - Number(message.bytes ?? 0));
-				track.manifest.bytes_written += Number(message.bytes ?? 0);
-				track.manifest.verified_byte_length =
-					Number(message.position ?? 0) + Number(message.bytes ?? 0);
-				track.manifest.last_chunk_index = Number(message.index ?? -1);
-				track.manifest.last_chunk_timestamp_us = Number(message.timestamp_us ?? 0);
+				track.pendingBytes = Math.max(0, track.pendingBytes - message.bytes);
+				track.manifest.bytes_written += message.bytes;
+				track.manifest.verified_byte_length = message.position + message.bytes;
+				track.manifest.last_chunk_index = message.index;
+				track.manifest.last_chunk_timestamp_us = message.timestamp_us;
 				track.manifest.chunks.push({
 					index: track.manifest.last_chunk_index,
 					timestamp_us: track.manifest.last_chunk_timestamp_us,
-					position: Number(message.position ?? 0),
-					size_bytes: Number(message.bytes ?? 0),
-					sha256: String(message.checksum ?? ''),
-					media_start_us: Number(message.media_start_us ?? 0),
-					media_end_us: Number(message.media_end_us ?? 0),
-					session_start_us: Number(message.session_start_us ?? 0),
-					session_end_us: Number(message.session_end_us ?? 0),
-					flush_sequence: Number(message.flush_sequence ?? 0)
+					position: message.position,
+					size_bytes: message.bytes,
+					sha256: message.checksum,
+					media_start_us: message.media_start_us,
+					media_end_us: message.media_end_us,
+					session_start_us: message.session_start_us,
+					session_end_us: message.session_end_us,
+					flush_sequence: message.flush_sequence
 				});
-				track.manifest.duration_us = Math.max(
-					track.manifest.duration_us,
-					Number(message.media_end_us ?? 0)
-				);
+				track.manifest.duration_us = Math.max(track.manifest.duration_us, message.media_end_us);
 				this.applyBackpressure();
 				break;
 			case 'closed':
@@ -421,7 +423,7 @@ export class VideoRecordingSession {
 				break;
 			case 'error':
 				track.manifest.state = 'failed';
-				track.manifest.error = String(message.message ?? 'Recording write failed.');
+				track.manifest.error = message.message;
 				track.resolveClosed();
 				void this.flushManifest();
 				break;
@@ -458,25 +460,16 @@ export class VideoRecordingSession {
 		try {
 			const preferredDeviceID =
 				kind === 'camera' ? this.options.cameraDeviceID : this.options.microphoneDeviceID;
-			const constraints = (deviceID?: string): MediaStreamConstraints => ({
-				video:
+			const constraints = (deviceID?: string): MediaStreamConstraints => {
+				const trackConstraints: MediaTrackConstraints =
 					kind === 'camera'
-						? {
-								width: { ideal: 1280 },
-								height: { ideal: 720 },
-								...(deviceID ? { deviceId: { ideal: deviceID } } : {})
-							}
-						: false,
-				audio:
-					kind === 'microphone'
-						? {
-								echoCancellation: true,
-								noiseSuppression: true,
-								autoGainControl: true,
-								...(deviceID ? { deviceId: { ideal: deviceID } } : {})
-							}
-						: false
-			});
+						? { width: { ideal: 1280 }, height: { ideal: 720 } }
+						: { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
+				if (deviceID) trackConstraints.deviceId = { ideal: deviceID };
+				return kind === 'camera'
+					? { video: trackConstraints, audio: false }
+					: { video: false, audio: trackConstraints };
+			};
 			let stream: MediaStream;
 			try {
 				stream = await navigator.mediaDevices.getUserMedia(constraints(preferredDeviceID));

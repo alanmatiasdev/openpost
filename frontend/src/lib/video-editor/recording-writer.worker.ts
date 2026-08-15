@@ -1,5 +1,7 @@
 /// <reference lib="webworker" />
 
+import type { RecordingWriterRequest, RecordingWriterResponse } from './recording-protocol';
+
 type StorageManagerWithDirectory = StorageManager & {
 	getDirectory(): Promise<FileSystemDirectoryHandle>;
 };
@@ -9,51 +11,38 @@ interface OpenTrack {
 	position: number;
 }
 
-type WriterMessage =
-	| { type: 'init'; track_id: string; path: string }
-	| {
-			type: 'chunk';
-			track_id: string;
-			index: number;
-			timestamp_us: number;
-			media_start_us: number;
-			media_end_us: number;
-			session_start_us: number;
-			session_end_us: number;
-			flush_sequence: number;
-			data: ArrayBuffer;
-	  }
-	| { type: 'close'; track_id: string }
-	| { type: 'abort'; track_id: string };
-
 const tracks = new Map<string, OpenTrack>();
 let writeQueue = Promise.resolve();
 
-self.onmessage = (event: MessageEvent<WriterMessage>) => {
+self.onmessage = (event: MessageEvent<RecordingWriterRequest>) => {
 	writeQueue = writeQueue.then(() => handleMessage(event.data));
 };
 
-async function handleMessage(message: WriterMessage): Promise<void> {
+function respond(message: RecordingWriterResponse): void {
+	postMessage(message);
+}
+
+async function handleMessage(message: RecordingWriterRequest): Promise<void> {
 	try {
 		switch (message.type) {
 			case 'init':
 				await initializeTrack(message.track_id, message.path);
-				postMessage({ type: 'ready', track_id: message.track_id });
+				respond({ type: 'ready', track_id: message.track_id });
 				break;
 			case 'chunk':
 				await writeChunk(message);
 				break;
 			case 'close':
 				await closeTrack(message.track_id);
-				postMessage({ type: 'closed', track_id: message.track_id });
+				respond({ type: 'closed', track_id: message.track_id });
 				break;
 			case 'abort':
 				await abortTrack(message.track_id);
-				postMessage({ type: 'aborted', track_id: message.track_id });
+				respond({ type: 'aborted', track_id: message.track_id });
 				break;
 		}
 	} catch (cause) {
-		postMessage({
+		respond({
 			type: 'error',
 			track_id: message.track_id,
 			message: cause instanceof Error ? cause.message : 'Recording write failed.'
@@ -71,7 +60,8 @@ async function initializeTrack(trackID: string, path: string): Promise<void> {
 	) {
 		throw new Error('Invalid recording path.');
 	}
-	const root = await (navigator.storage as StorageManagerWithDirectory).getDirectory();
+	const storage: StorageManagerWithDirectory = navigator.storage;
+	const root = await storage.getDirectory();
 	let directory = root;
 	for (const segment of segments.slice(0, -1)) {
 		directory = await directory.getDirectoryHandle(segment, { create: true });
@@ -80,14 +70,16 @@ async function initializeTrack(trackID: string, path: string): Promise<void> {
 	tracks.set(trackID, { writable: await handle.createWritable(), position: 0 });
 }
 
-async function writeChunk(message: Extract<WriterMessage, { type: 'chunk' }>): Promise<void> {
+async function writeChunk(
+	message: Extract<RecordingWriterRequest, { type: 'chunk' }>
+): Promise<void> {
 	const track = tracks.get(message.track_id);
 	if (!track) throw new Error('Recording track is not ready.');
 	const position = track.position;
 	await track.writable.write({ type: 'write', position, data: message.data });
 	track.position += message.data.byteLength;
 	const checksum = await crypto.subtle.digest('SHA-256', message.data);
-	postMessage({
+	respond({
 		type: 'written',
 		track_id: message.track_id,
 		index: message.index,

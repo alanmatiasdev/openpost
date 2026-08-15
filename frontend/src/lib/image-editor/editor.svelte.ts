@@ -1299,16 +1299,6 @@ export class ImageEditorController {
 	}
 
 	updateSelectedTransform(
-		key: 'x' | 'y' | 'width' | 'height' | 'rotation',
-		value: number,
-		preserveAspect?: boolean
-	): ImageEditorPartialApplicationResult;
-	updateSelectedTransform(
-		key: 'flip_x' | 'flip_y',
-		value: boolean,
-		preserveAspect?: boolean
-	): ImageEditorPartialApplicationResult;
-	updateSelectedTransform(
 		key: 'x' | 'y' | 'width' | 'height' | 'rotation' | 'flip_x' | 'flip_y',
 		value: number | boolean,
 		preserveAspect = false
