@@ -3,6 +3,7 @@
 	import { untrack } from 'svelte';
 	import { SvelteDate, SvelteMap, SvelteSet } from 'svelte/reactivity';
 	import { resolve } from '$app/paths';
+	import { resolveAppPath } from '$lib/app-path';
 	import { client, type SocialAccount } from '$lib/api/client';
 	import { loadWorkspaceAccounts } from '$lib/api/performance-cache';
 	import type { components } from '$lib/api/types';
@@ -304,7 +305,9 @@
 			loadError =
 				error instanceof WorkspaceContextError
 					? m.calendar_failed_load()
-					: problemMessage(error, m.calendar_failed_load());
+					: error instanceof Error
+						? error.message
+						: m.calendar_failed_load();
 		} finally {
 			if (request === activeRequest) {
 				loading = false;
@@ -326,7 +329,7 @@
 			const { data, error, response } = await client.GET('/publications', {
 				params: { query }
 			});
-			if (error) throw new Error(problemMessage(error, m.calendar_failed_load()));
+			if (error) throw new Error(error.detail || m.calendar_failed_load());
 			out.push(...(data ?? []));
 			const hasMore = response.headers.get('X-Has-More') === 'true';
 			if (!hasMore) break;
@@ -447,7 +450,7 @@
 
 	function openItem(item: CalendarItem) {
 		monthDayOpen = false;
-		goto(resolve(item.href as '/'));
+		goto(resolveAppPath(item.href));
 	}
 
 	function openMonthDay(day: CalendarDay) {
@@ -530,7 +533,9 @@
 	}
 
 	function snappedTime(event: DragEvent | MouseEvent, hour: number) {
-		const bounds = (event.currentTarget as HTMLElement).getBoundingClientRect();
+		const target = event.currentTarget;
+		if (!(target instanceof HTMLElement)) return `${String(hour).padStart(2, '0')}:00`;
+		const bounds = target.getBoundingClientRect();
 		const quarter = Math.max(
 			0,
 			Math.min(3, Math.floor(((event.clientY - bounds.top) / bounds.height) * 4))
@@ -600,7 +605,7 @@
 						scheduled_at: nextScheduledAt
 					}
 				});
-				if (error) throw new Error(problemMessage(error, m.calendar_reschedule_failed()));
+				if (error) throw new Error(error.detail || m.calendar_reschedule_failed());
 				if (data) {
 					publications = publications.map((current) => (current.id === data.id ? data : current));
 				}
@@ -627,7 +632,7 @@
 		} catch (error) {
 			if (loadKey === mutationLoadKey && dataRevision === mutationDataRevision) {
 				publications = previousPublications;
-				errorMessage = problemMessage(error, m.calendar_reschedule_failed());
+				errorMessage = error instanceof Error ? error.message : m.calendar_reschedule_failed();
 			}
 		} finally {
 			reschedulingKey = '';
@@ -762,19 +767,19 @@
 	}
 
 	function platformLabel(platform: string) {
-		const labels: Record<string, string> = {
-			x: 'X',
-			twitter: 'X',
-			mastodon: 'Mastodon',
-			bluesky: 'Bluesky',
-			linkedin: 'LinkedIn',
-			threads: 'Threads',
-			facebook: 'Facebook',
-			instagram: 'Instagram',
-			tiktok: 'TikTok',
-			youtube: 'YouTube'
-		};
-		return labels[platform] ?? platform;
+		const labels = new Map([
+			['x', 'X'],
+			['twitter', 'X'],
+			['mastodon', 'Mastodon'],
+			['bluesky', 'Bluesky'],
+			['linkedin', 'LinkedIn'],
+			['threads', 'Threads'],
+			['facebook', 'Facebook'],
+			['instagram', 'Instagram'],
+			['tiktok', 'TikTok'],
+			['youtube', 'YouTube']
+		]);
+		return labels.get(platform) ?? platform;
 	}
 
 	function formatMonth(date: Date) {
@@ -846,13 +851,6 @@
 			minute: '2-digit',
 			timeZone: viewerTimeZone
 		});
-	}
-
-	function problemMessage(error: unknown, fallback: string) {
-		const candidate =
-			(error as { detail?: unknown; message?: unknown })?.detail ??
-			(error as { message?: unknown })?.message;
-		return typeof candidate === 'string' && candidate.trim() ? candidate : fallback;
 	}
 
 	function itemTone(item: CalendarItem) {

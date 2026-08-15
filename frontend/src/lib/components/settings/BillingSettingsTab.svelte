@@ -179,7 +179,11 @@
 				!isCurrentBillingTarget(workspaceID, organizationID)
 			)
 				return;
-			billingStatus = data;
+			billingStatus = {
+				...data,
+				status: data.status ?? 'none',
+				provider_costs: data.provider_costs ?? null
+			};
 		} catch (e) {
 			if (
 				requestSequence !== billingRequestSequence ||

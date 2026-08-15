@@ -20,17 +20,22 @@
 	import VideoCoverFramePicker, {
 		type GeneratedCoverFrame
 	} from './video-cover-frame-picker.svelte';
-	import type { ComposerSettings, ComposerSettingValue } from '$lib/components/compose/modes';
+	import type { ComposerSettingValue } from '$lib/components/compose/modes';
 
 	type SettingDefinition = components['schemas']['SettingDefinition'];
 	type SettingCondition = components['schemas']['SettingCondition'];
 	type DestinationOption = components['schemas']['DestinationOption'];
 	type SettingGroup = SettingDefinition['group'];
+	type DestinationSettings = NonNullable<components['schemas']['RenditionInput']['settings']>;
 	type MessageFunction = () => string;
 
-	// SAFETY: Paraglide's generated message module exports callable message functions. Setting
-	// message keys are dynamic server metadata, so TypeScript cannot select a static export.
-	const messageRegistry = m as Record<string, MessageFunction | undefined>;
+	function asGeneratedMessageRegistry<Module extends object>(module: Module) {
+		// SAFETY: Paraglide generates callable exports. Destination setting message keys identify the
+		// zero-input publishing-setting subset, but arrive as server metadata rather than static keys.
+		return module as Module & Record<string, MessageFunction | undefined>;
+	}
+
+	const messageRegistry = asGeneratedMessageRegistry(m);
 
 	interface DestinationMediaItem {
 		id: string;
@@ -42,9 +47,9 @@
 		open?: boolean;
 		account: SocialAccount | null;
 		settings: SettingDefinition[];
-		values: ComposerSettings;
+		values: DestinationSettings;
 		mediaItems?: DestinationMediaItem[];
-		mediaValues?: Record<string, ComposerSettings>;
+		mediaValues?: Record<string, DestinationSettings>;
 		optionGroups?: Record<string, DestinationOption[]>;
 		optionNextCursors?: Record<string, string>;
 		optionsLoading?: boolean;
@@ -155,13 +160,16 @@
 		}
 	}
 
-	function dependenciesMet(setting: SettingDefinition, scopedValues: ComposerSettings): boolean {
+	function dependenciesMet(setting: SettingDefinition, scopedValues: DestinationSettings): boolean {
 		return (setting.dependencies ?? []).every((condition) =>
 			conditionMatches(condition, scopedValues)
 		);
 	}
 
-	function conditionMatches(condition: SettingCondition, scopedValues: ComposerSettings): boolean {
+	function conditionMatches(
+		condition: SettingCondition,
+		scopedValues: DestinationSettings
+	): boolean {
 		const value = scopedValues[condition.key];
 		const present = value !== undefined && value !== null && String(value).trim() !== '';
 		switch (condition.operator) {
