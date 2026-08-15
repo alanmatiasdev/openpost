@@ -51,10 +51,14 @@ test("self-hosting docs are operator-facing", async ({ page }) => {
 
   await expect(main.locator("h1")).toContainText("Self-Hosting Docs");
   await expect(
-    main.getByText("These pages assume that you manage the server.", {
-      exact: false,
-    }),
+    main.getByText(
+      "These pages assume that you manage the server, public HTTPS origin, access controls, secrets, database, media storage, monitoring, backups, upgrades, and incident response.",
+      {
+        exact: false,
+      },
+    ),
   ).toBeVisible();
+  await expect(main.getByRole("heading", { name: "Responsibility boundary" })).toBeVisible();
   await expect(main.getByRole("heading", { name: "Install" })).toBeVisible();
   await expect(main.getByRole("heading", { name: "Configure" })).toBeVisible();
   await expect(main.getByRole("heading", { name: "Operate" })).toBeVisible();
