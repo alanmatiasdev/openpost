@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { resolve } from '$app/paths';
 	import { auth } from '$lib/stores/auth';
+	import { resolveAppPath } from '$lib/app-path';
 	import { client } from '$lib/api/client';
 	import { showToast } from '$lib/toast';
 	import { getOptionalUnsavedChanges } from '$lib/unsaved-changes.svelte';
@@ -130,7 +130,7 @@
 			profileVisibleFields = [...(data.public_profile_visible_fields ?? publicProfileFieldIDs)];
 			notify(m.settings_profile_updated());
 		} catch (error) {
-			profileError = (error as Error).message;
+			profileError = error instanceof Error ? error.message : m.settings_action_failed();
 		} finally {
 			profileBusy = false;
 		}
@@ -141,13 +141,13 @@
 		publicProfilesAvailable = null;
 		try {
 			const { data, error } = await client.GET('/auth/config');
-			if (error || typeof data?.public_profiles_enabled !== 'boolean') {
+			if (error || !data) {
 				throw new Error(error?.detail || m.settings_action_failed());
 			}
 			publicProfilesAvailable = data.public_profiles_enabled;
 		} catch (error) {
 			publicProfilesAvailable = null;
-			publicProfilesError = (error as Error).message || m.settings_action_failed();
+			publicProfilesError = error instanceof Error ? error.message : m.settings_action_failed();
 		}
 	}
 
@@ -166,7 +166,7 @@
 			if (authState.user) auth.setUser({ ...authState.user, avatar_url: '' });
 			notify(m.settings_picture_removed());
 		} catch (error) {
-			profileError = (error as Error).message;
+			profileError = error instanceof Error ? error.message : m.settings_action_failed();
 		} finally {
 			profileBusy = false;
 		}
@@ -302,7 +302,7 @@
 					</p>
 					{#if authState.user?.public_profile_enabled && authState.user.username}
 						<a
-							href={resolve(`/u/${authState.user.username}` as '/')}
+							href={resolveAppPath(`/u/${authState.user.username}`)}
 							target="_blank"
 							rel="noreferrer"
 							class="mt-2 inline-flex min-h-11 items-center gap-2 text-sm font-medium text-primary hover:underline"

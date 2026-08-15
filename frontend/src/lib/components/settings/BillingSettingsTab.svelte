@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
-	import { resolve } from '$app/paths';
 	import { workspaceCtx } from '$lib/stores/workspace.svelte';
 	import { client } from '$lib/api/client';
 	import { getLocaleTag } from '$lib/i18n';
@@ -24,6 +23,7 @@
 	import LoaderIcon from '@lucide/svelte/icons/loader-2';
 	import CreditCardIcon from '@lucide/svelte/icons/credit-card';
 	import ExternalLinkIcon from '@lucide/svelte/icons/external-link';
+	import { resolveAppPath } from '$lib/app-path';
 
 	let billingBusyPlan = $state('');
 	let billingPortalBusy = $state(false);
@@ -179,7 +179,7 @@
 				!isCurrentBillingTarget(workspaceID, organizationID)
 			)
 				return;
-			billingStatus = data as BillingStatus;
+			billingStatus = data;
 		} catch (e) {
 			if (
 				requestSequence !== billingRequestSequence ||
@@ -188,7 +188,7 @@
 				return;
 			loadedBillingWorkspaceID = '';
 			billingStatus = null;
-			billingLoadError = (e as Error).message || m.settings_billing_load_failed();
+			billingLoadError = e instanceof Error ? e.message : m.settings_billing_load_failed();
 		} finally {
 			if (requestSequence === billingRequestSequence) billingStatusLoading = false;
 		}
@@ -197,7 +197,7 @@
 	async function startCheckout(planID: string) {
 		if (billingStatus && !billingStatus.can_manage_billing) return;
 		billingBusyPlan = planID;
-		await goto(resolve(checkoutPathForPlan(planID, 'monthly') as '/'));
+		await goto(resolveAppPath(checkoutPathForPlan(planID, 'monthly')));
 		billingBusyPlan = '';
 	}
 
@@ -221,7 +221,7 @@
 			window.location.assign(data.url);
 		} catch (e) {
 			if (isCurrentBillingTarget(workspaceID, organizationID)) {
-				billingError = (e as Error).message;
+				billingError = e instanceof Error ? e.message : m.settings_action_failed();
 			}
 		} finally {
 			billingPortalBusy = false;

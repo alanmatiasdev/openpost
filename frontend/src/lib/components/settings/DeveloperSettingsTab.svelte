@@ -132,11 +132,11 @@
 			const { data, error: err } = await client.GET('/api-tokens');
 			if (err || !data) throw new Error(err?.detail || m.settings_tokens_load_failed());
 			if (requestSequence !== apiTokensRequestSequence || authState.user?.id !== userID) return;
-			apiTokens = data as APITokenSummary[];
+			apiTokens = data;
 			loadedAPITokensUserID = userID;
 		} catch (e) {
 			if (requestSequence !== apiTokensRequestSequence || authState.user?.id !== userID) return;
-			apiTokensLoadError = (e as Error).message;
+			apiTokensLoadError = e instanceof Error ? e.message : m.settings_tokens_load_failed();
 		} finally {
 			if (requestSequence === apiTokensRequestSequence) {
 				apiTokensRequestUserID = '';
@@ -153,9 +153,9 @@
 				params: { query: { limit: 8 } }
 			});
 			if (err || !data) throw new Error(err?.detail || m.settings_action_failed());
-			mcpActivity = data as MCPActivityItem[];
+			mcpActivity = data;
 		} catch (e) {
-			mcpActivityError = (e as Error).message;
+			mcpActivityError = e instanceof Error ? e.message : m.settings_action_failed();
 		} finally {
 			mcpActivityLoading = false;
 		}
@@ -195,7 +195,7 @@
 			savedAPITokenDraft = apiTokenDraftSnapshot();
 			await loadAPITokens();
 		} catch (e) {
-			apiTokenError = (e as Error).message;
+			apiTokenError = e instanceof Error ? e.message : m.settings_action_failed();
 		} finally {
 			apiTokenBusy = false;
 		}
@@ -234,7 +234,7 @@
 			notify(m.settings_token_revoked());
 			return true;
 		} catch (e) {
-			apiTokenError = (e as Error).message;
+			apiTokenError = e instanceof Error ? e.message : m.settings_action_failed();
 			return false;
 		} finally {
 			apiTokenBusy = false;
