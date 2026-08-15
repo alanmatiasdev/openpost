@@ -126,6 +126,10 @@ test("renders ordered exact Markdown selection rules from canonical catalogues",
     assert.deepEqual(cache.action_parameters.vary.headers.accept, {
       action: "passthrough",
     });
+    assert.deepEqual(cache.action_parameters.edge_ttl, {
+      mode: "override_origin",
+      default: 14_400,
+    });
     const headers = surface.rules.http_response_headers_transform[0].action_parameters.headers;
     const responseExpression = surface.rules.http_response_headers_transform[0].expression;
     assert.match(responseExpression, /http\.response\.code eq 200/u);
@@ -189,6 +193,15 @@ test("rejects cache normalization that merges rejected Accept values with exact 
   assert.throws(
     () => validateCloudflarePlan(plan),
     /Accept cache variance must use exact passthrough/u,
+  );
+});
+
+test("rejects cache rules that cannot produce repeatable edge hits", () => {
+  const plan = samplePlan();
+  delete plan.zones[0].rules.http_request_cache_settings[0].action_parameters.edge_ttl;
+  assert.throws(
+    () => validateCloudflarePlan(plan),
+    /cache rule must override the edge TTL to 14,400 seconds/u,
   );
 });
 

@@ -32,6 +32,7 @@ function pathSet(paths, field = "http.request.uri.path") {
 const safeRepresentationMethod = 'http.request.method in {"GET" "HEAD"}';
 const successfulMarkdownResponse =
   'http.response.code eq 200 and http.response.content_type.media_type eq "text/markdown"';
+const representationEdgeTTLSeconds = 14_400;
 const exactMarkdownAccept = [
   "not http.request.headers.truncated",
   'len(http.request.headers["accept"]) eq 1',
@@ -141,6 +142,10 @@ function representationRules(zone, routes) {
         "set_cache_settings",
         {
           cache: true,
+          edge_ttl: {
+            mode: "override_origin",
+            default: representationEdgeTTLSeconds,
+          },
           vary: {
             default: { action: "bypass" },
             headers: {
@@ -295,6 +300,12 @@ export function validateCloudflarePlan(plan) {
       const accept = cacheRule.action_parameters?.vary?.headers?.accept;
       if (accept?.action !== "passthrough" || Object.keys(accept).some((key) => key !== "action")) {
         throw new Error(`${zone.hostname} Accept cache variance must use exact passthrough`);
+      }
+      const edgeTTL = cacheRule.action_parameters?.edge_ttl;
+      if (edgeTTL?.mode !== "override_origin" || edgeTTL.default !== representationEdgeTTLSeconds) {
+        throw new Error(
+          `${zone.hostname} cache rule must override the edge TTL to ${representationEdgeTTLSeconds.toLocaleString("en-US")} seconds`,
+        );
       }
     }
     for (const responseRule of zone.rules.http_response_headers_transform ?? []) {

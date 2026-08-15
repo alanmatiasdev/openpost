@@ -27,12 +27,15 @@ characters. The generated plan uses this Cloudflare execution order:
    query string.
 2. `http_request_transform` selects an explicit Markdown artifact only for a
    canonical `GET` or `HEAD` request with one case-folded `Accept` value equal
-   to `text/markdown`. Mixed, weighted, wildcard, parameterized, truncated,
-   repeated, and whitespace-padded values do not qualify.
+   to `text/markdown` after HTTP field-value parsing. Mixed, weighted, wildcard,
+   parameterized, truncated, repeated, and internally spaced values do not
+   qualify.
 3. `http_request_cache_settings` enables `Vary` handling for `Accept` on every
    canonical `GET` and `HEAD` and uses the exact request value as the cache
    variant. It covers HTML requests as well as exact Markdown requests so the
    first cached representation cannot become a shared, non-varying entry.
+   A four-hour edge TTL overrides origin revalidation so both variants produce
+   repeatable Cloudflare cache hits without changing the browser TTL.
    Exact-value passthrough is required here: Cloudflare's media-type
    normalization removes parameters and quality weights, which would collapse
    rejected values such as `text/markdown; charset=utf-8` and
