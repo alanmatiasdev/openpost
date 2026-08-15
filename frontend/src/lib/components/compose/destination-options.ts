@@ -1,9 +1,20 @@
 import type { components } from '$lib/api/types';
+import type { ComposerSettings, ComposerSettingValue } from '$lib/components/compose/modes';
 
 type SettingDefinition = components['schemas']['SettingDefinition'];
 type SettingCondition = components['schemas']['SettingCondition'];
 
-function conditionMatches(condition: SettingCondition, values: Record<string, unknown>): boolean {
+export interface DestinationOption {
+	value: string;
+	label: string;
+}
+
+export interface DestinationSettingInvalidation {
+	values: ComposerSettings;
+	optionSources: string[];
+}
+
+function conditionMatches(condition: SettingCondition, values: ComposerSettings): boolean {
 	const value = values[condition.key];
 	const present = value !== undefined && value !== null && String(value).trim() !== '';
 	switch (condition.operator) {
@@ -16,7 +27,7 @@ function conditionMatches(condition: SettingCondition, values: Record<string, un
 		case 'not_equals':
 			return value !== condition.value;
 		case 'in':
-			return Array.isArray(condition.value) && condition.value.includes(value);
+			return Array.isArray(condition.value) && condition.value.some((item) => item === value);
 	}
 }
 
@@ -36,10 +47,10 @@ export function loadableDestinationOptionSources(
 
 export function invalidateDependentDestinationSettings(
 	settings: SettingDefinition[],
-	values: Record<string, unknown>,
+	values: ComposerSettings,
 	changedKey: string,
-	changedValue: unknown
-): { values: Record<string, unknown>; optionSources: string[] } {
+	changedValue: ComposerSettingValue
+): DestinationSettingInvalidation {
 	const next = { ...values, [changedKey]: changedValue };
 	const optionSources = new Set<string>();
 	for (const setting of settings) {
@@ -53,9 +64,9 @@ export function invalidateDependentDestinationSettings(
 }
 
 export function mergeDestinationOptions(
-	current: Array<{ value: string; label: string }>,
-	incoming: Array<{ value: string; label: string }>
-): Array<{ value: string; label: string }> {
+	current: DestinationOption[],
+	incoming: DestinationOption[]
+): DestinationOption[] {
 	const merged = new Map(current.map((option) => [option.value, option]));
 	for (const option of incoming) merged.set(option.value, option);
 	return [...merged.values()];

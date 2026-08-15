@@ -67,6 +67,23 @@ function safeWorkspaceTimezone(value: string | null | undefined): string {
 	}
 }
 
+type WeekStart = 0 | 1 | 2 | 3 | 4 | 5 | 6;
+
+function safeWeekStart(value: number): WeekStart {
+	switch (value) {
+		case 0:
+		case 1:
+		case 2:
+		case 3:
+		case 4:
+		case 5:
+		case 6:
+			return value;
+		default:
+			return 1;
+	}
+}
+
 export class WorkspaceContext {
 	private initializePromise: Promise<void> | null = null;
 	private settingsRequestSequence = 0;
@@ -276,15 +293,16 @@ export class WorkspaceContext {
 					error?.detail || m.workspace_settings_load_failed()
 				);
 			}
+			const currentWorkspace = this.currentWorkspace;
 			if (
 				requestSequence !== this.settingsRequestSequence ||
-				this.currentWorkspace?.id !== workspaceID
+				currentWorkspace?.id !== workspaceID
 			) {
 				return;
 			}
 
 			const loadedSettings: WorkspaceSettings = {
-				name: data.name || this.currentWorkspace.name || '',
+				name: data.name || currentWorkspace.name || '',
 				avatar_url: data.avatar_url || '',
 				color: data.color || '#f97316',
 				timezone: safeWorkspaceTimezone(data.timezone),
@@ -298,12 +316,13 @@ export class WorkspaceContext {
 			this.settings = loadedSettings;
 			this.savedSettings = structuredClone(loadedSettings);
 			this.settingsWorkspaceID = workspaceID;
-			this.currentWorkspace = {
-				...this.currentWorkspace,
-				name: data.name || this.currentWorkspace.name || '',
+			const updatedWorkspace: Workspace = {
+				...currentWorkspace,
+				name: data.name || currentWorkspace.name || '',
 				avatar_url: data.avatar_url || '',
 				color: data.color || '#f97316'
-			} as Workspace;
+			};
+			this.currentWorkspace = updatedWorkspace;
 			if (browser) {
 				localStorage.setItem(STORAGE_KEY, JSON.stringify(this.currentWorkspace));
 			}
@@ -347,34 +366,31 @@ export class WorkspaceContext {
 					error.detail || m.workspace_settings_save_failed()
 				);
 			}
-			if (this.currentWorkspace?.id !== workspaceID) return;
+			const currentWorkspace = this.currentWorkspace;
+			if (currentWorkspace?.id !== workspaceID) return;
 
 			if (updates.timezone !== undefined) {
 				this.settings.timezone = safeWorkspaceTimezone(updates.timezone);
 			}
-			if (updates.name !== undefined && this.currentWorkspace) {
+			let updatedWorkspace = currentWorkspace;
+			if (updates.name !== undefined) {
 				this.settings.name = updates.name;
-				this.currentWorkspace = { ...this.currentWorkspace, name: updates.name } as Workspace;
-				if (browser) localStorage.setItem(STORAGE_KEY, JSON.stringify(this.currentWorkspace));
+				updatedWorkspace = { ...updatedWorkspace, name: updates.name };
 			}
 			if (updates.avatar_url !== undefined) {
 				this.settings.avatar_url = updates.avatar_url;
-				if (this.currentWorkspace) {
-					this.currentWorkspace = {
-						...this.currentWorkspace,
-						avatar_url: updates.avatar_url
-					} as Workspace;
-					if (browser) {
-						localStorage.setItem(STORAGE_KEY, JSON.stringify(this.currentWorkspace));
-					}
-				}
+				updatedWorkspace = {
+					...updatedWorkspace,
+					avatar_url: updates.avatar_url
+				};
 			}
 			if (updates.color !== undefined) {
 				this.settings.color = updates.color;
-				if (this.currentWorkspace) {
-					this.currentWorkspace = { ...this.currentWorkspace, color: updates.color } as Workspace;
-					if (browser) localStorage.setItem(STORAGE_KEY, JSON.stringify(this.currentWorkspace));
-				}
+				updatedWorkspace = { ...updatedWorkspace, color: updates.color };
+			}
+			if (updatedWorkspace !== currentWorkspace) {
+				this.currentWorkspace = updatedWorkspace;
+				if (browser) localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedWorkspace));
 			}
 			if (updates.week_start !== undefined) this.settings.week_start = updates.week_start;
 			if (updates.random_delay_minutes !== undefined)
@@ -386,7 +402,10 @@ export class WorkspaceContext {
 			if (updates.slot_end_hour !== undefined) this.settings.slot_end_hour = updates.slot_end_hour;
 			if (updates.slot_interval_minutes !== undefined)
 				this.settings.slot_interval_minutes = updates.slot_interval_minutes;
-			this.savedSettings = { ...this.savedSettings, ...structuredClone(updates) };
+			this.savedSettings = {
+				...this.savedSettings,
+				...structuredClone(updates)
+			};
 		} catch (e) {
 			console.error('Failed to save workspace settings:', e);
 			throw e;
@@ -395,7 +414,11 @@ export class WorkspaceContext {
 
 	async deleteWorkspace(
 		workspaceID: string,
-		confirmation: { confirmName: string; currentPassword: string; reauthGrant?: string }
+		confirmation: {
+			confirmName: string;
+			currentPassword: string;
+			reauthGrant?: string;
+		}
 	): Promise<void> {
 		const { error } = await client.DELETE('/workspaces/{id}', {
 			params: { path: { id: workspaceID } },
@@ -421,7 +444,11 @@ export class WorkspaceContext {
 
 	async deleteOrganization(
 		organizationID: string,
-		confirmation: { confirmName: string; currentPassword: string; reauthGrant?: string }
+		confirmation: {
+			confirmName: string;
+			currentPassword: string;
+			reauthGrant?: string;
+		}
 	): Promise<void> {
 		const { error } = await client.DELETE('/organizations/{id}', {
 			params: { path: { id: organizationID } },
@@ -447,8 +474,8 @@ export class WorkspaceContext {
 		}
 	}
 
-	get weekStartsOn(): 0 | 1 | 2 | 3 | 4 | 5 | 6 {
-		return this.settings.week_start as 0 | 1 | 2 | 3 | 4 | 5 | 6;
+	get weekStartsOn(): WeekStart {
+		return safeWeekStart(this.settings.week_start);
 	}
 }
 
