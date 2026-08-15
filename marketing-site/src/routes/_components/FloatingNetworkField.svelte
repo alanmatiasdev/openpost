@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onDestroy, onMount } from 'svelte';
+	import { onMount } from 'svelte';
 	import PostizSocialLogo from './PostizSocialLogo.svelte';
 	import type { PostizSocialLogo as PostizSocialLogoName } from './postiz-social-logos';
 
@@ -217,11 +217,10 @@
 			if (!isVisible) resetRepulsion();
 		});
 		observer.observe(field);
-		return () => observer.disconnect();
-	});
-
-	onDestroy(() => {
-		cancelAnimationFrame(animationFrame);
+		return () => {
+			observer.disconnect();
+			if (animationFrame !== 0) cancelAnimationFrame(animationFrame);
+		};
 	});
 </script>
 

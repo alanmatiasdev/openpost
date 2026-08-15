@@ -6,6 +6,7 @@ All notable changes to this project are documented in this file.
 
 ### Changed
 
+- Added repository-owned Oxlint checks that reject unsafe type widening, unverified runtime boundaries, reflective access, module mocking, and other patterns that weaken type and dependency contracts.
 - Split engagement and messaging refresh, persistence, provider seams, recurring Jobs, and retries into independent capability outcomes, and removed the transitional communications runtime.
 - Contracted REST, MCP, CLI, browser, and direct application Workspace authorization onto one read, edit, or administer decision, removed middleware-owned and membership-only policy helpers, and kept durable Jobs explicitly scoped without user impersonation.
 - Extracted Messaging into an independent application module with internal Workspace authorization, capability-specific provider access, stored conversation reads and mutations, durable sends, typed outcomes, provider-write fencing, and its own recurring collection chain over transitional sync-state storage.
@@ -75,6 +76,7 @@ All notable changes to this project are documented in this file.
 
 ### Fixed
 
+- Kept homepage animation cleanup inside the browser lifecycle so marketing prerender no longer calls browser-only animation APIs.
 - Kept unlimited Publication scheduling operational when quota storage is unavailable, while preserving canonical usage accounting whenever counters exist and keeping limited plans fail-closed.
 - Stopped routine autosaves from replaying the Saved animation and from replacing an unchanged Image Editor document, which refreshed page previews after edits.
 - Kept the generated public Nix module example on `ghcr.io/getopenpost/openpost:latest` even when the linked deployment source pins a verified release digest.
