@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
+	import { resolveAppPath } from '$lib/app-path';
 	import { client } from '$lib/api/client';
 	import { notificationInbox, type Notification } from '$lib/stores/notifications.svelte';
 	import type { components } from '$lib/api/types';
@@ -106,7 +107,7 @@
 	async function openNotification(notification: Notification) {
 		if (!notification.read_at) await markNotificationRead(notification);
 		if (isSafeLocalHref(notification.href)) {
-			await goto(resolve(notification.href as '/'));
+			await goto(resolveAppPath(notification.href));
 		}
 	}
 

@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { goto, replaceState } from '$app/navigation';
 	import { resolve } from '$app/paths';
+	import { resolveAppPath } from '$lib/app-path';
 	import { auth } from '$lib/stores/auth';
 	import { workspaceCtx } from '$lib/stores/workspace.svelte';
 	import { ui } from '$lib/stores/ui.svelte';
@@ -50,7 +51,7 @@
 		const interpreted = interpretAccountManagementURL(url);
 		feedback = presentAccountManagementFeedback(interpreted.feedback);
 		if (interpreted.cleanHref !== `${url.pathname}${url.search}${url.hash}`) {
-			replaceState(resolve(interpreted.cleanHref as '/'), {});
+			replaceState(resolveAppPath(interpreted.cleanHref), {});
 		}
 		try {
 			if (
@@ -72,7 +73,7 @@
 			window.location.assign(continuation.url);
 			return;
 		}
-		void goto(resolve(continuation.href as '/'));
+		void goto(resolveAppPath(continuation.href));
 	}
 </script>
 

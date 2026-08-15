@@ -3,6 +3,7 @@
 	import { client } from '$lib/api/client';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
+	import { resolveAppPath } from '$lib/app-path';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
@@ -73,7 +74,7 @@
 			}
 			pageLoading = true;
 			if (!data.open_fresh_composer) {
-				await goto(resolve(accountManagementReturnHref() as '/'));
+				await goto(resolveAppPath(accountManagementReturnHref()));
 				clearAccountManagementContinuation();
 				return;
 			}
@@ -81,10 +82,10 @@
 				workspace_id: data.workspace_id,
 				account_ids: data.account_id
 			});
-			await goto(resolve(`/?${query.toString()}` as '/'));
+			await goto(resolveAppPath(`/?${query.toString()}`));
 			clearAccountManagementContinuation();
 		} catch (e) {
-			await goto(resolve(accountManagementReturnHref(undefined, 'failed', workspaceId) as '/'));
+			await goto(resolveAppPath(accountManagementReturnHref(undefined, 'failed', workspaceId)));
 			clearAccountManagementContinuation();
 		} finally {
 			loading = false;
@@ -133,7 +134,7 @@
 			{/if}
 
 			<div class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-				<Button href={resolve(cancelHref as '/')} variant="outline">{m.common_cancel()}</Button>
+				<Button href={resolveAppPath(cancelHref)} variant="outline">{m.common_cancel()}</Button>
 				<Button type="submit" disabled={loading}>
 					{loading
 						? m.accounts_mastodon_callback_connecting()

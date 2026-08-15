@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
+	import { resolveAppPath } from '$lib/app-path';
 	import { page } from '$app/stores';
 	import { Button } from '$lib/components/ui/button';
 	import { Badge } from '$lib/components/ui/badge';
@@ -103,9 +104,9 @@
 				return;
 			}
 
-			session = data as CLIAuthSession;
+			session = data;
 			loadedUserCode = code;
-		} catch (e) {
+		} catch (cause) {
 			if (
 				requestSequence !== sessionRequestSequence ||
 				activeUserCode !== code ||
@@ -113,7 +114,7 @@
 			) {
 				return;
 			}
-			error = (e as Error).message;
+			error = cause instanceof Error ? cause.message : m.cli_authorize_load_failed();
 			sessionLoadFailed = true;
 		} finally {
 			if (requestSequence === sessionRequestSequence && activeUserCode === code) {
@@ -172,7 +173,7 @@
 			}
 
 			completed = decision;
-		} catch (e) {
+		} catch (cause) {
 			if (
 				requestSequence !== decisionRequestSequence ||
 				activeUserCode !== code ||
@@ -180,7 +181,7 @@
 			) {
 				return;
 			}
-			error = (e as Error).message;
+			error = cause instanceof Error ? cause.message : m.cli_authorize_decision_failed();
 		} finally {
 			if (requestSequence === decisionRequestSequence && activeUserCode === code) {
 				submitting = false;
@@ -206,7 +207,7 @@
 		}
 
 		if (!authState.user && !authState.isAuthenticated) {
-			goto(resolve(loginRedirect(code) as '/'));
+			goto(resolveAppPath(loginRedirect(code)));
 			return;
 		}
 

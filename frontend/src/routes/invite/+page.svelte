@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
+	import { resolveAppPath } from '$lib/app-path';
 	import { page } from '$app/stores';
 	import { Button } from '$lib/components/ui/button';
 	import InlineNotice from '$lib/components/inline-notice.svelte';
@@ -91,10 +92,10 @@
 			accepted = true;
 			loading = false;
 			await refreshAcceptedWorkspace(data.workspace_id, requestSequence, key);
-		} catch (e) {
+		} catch (cause) {
 			if (!isCurrentRequest()) return;
 			accepted = false;
-			error = (e as Error).message;
+			error = cause instanceof Error ? cause.message : m.invite_accept_failed();
 		} finally {
 			if (isCurrentRequest()) loading = false;
 		}
@@ -116,7 +117,7 @@
 		}
 
 		if (!authState.isAuthenticated) {
-			goto(resolve(loginRedirect() as '/'));
+			goto(resolveAppPath(loginRedirect()));
 			return;
 		}
 

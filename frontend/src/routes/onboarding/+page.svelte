@@ -3,6 +3,7 @@
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
+	import { resolveAppPath } from '$lib/app-path';
 	import { auth } from '$lib/stores/auth';
 	import { client } from '$lib/api/client';
 	import { workspaceCtx } from '$lib/stores/workspace.svelte';
@@ -75,7 +76,7 @@
 				managedAccount = state.user?.is_managed ?? false;
 				managedOrganizationName = state.user?.managed_organization_name ?? '';
 				if (!state.isAuthenticated) {
-					void goto(resolve(loginTarget() as '/'));
+					void goto(resolveAppPath(loginTarget()));
 					return;
 				}
 				void loadWelcome();
@@ -93,7 +94,7 @@
 			if (requestSequence !== onboardingLoadSequence) return;
 			const currentWorkspace = workspaceCtx.currentWorkspace;
 			if (currentWorkspace) {
-				await goto(resolve(existingSignupTarget() as '/'));
+				await goto(resolveAppPath(existingSignupTarget()));
 				return;
 			}
 			if (!managedAccount) await loadPurchaseChoice();
@@ -162,7 +163,7 @@
 				throw new Error(error?.detail || m.onboarding_create_failed());
 			}
 			await workspaceCtx.initialize(data.workspace_id);
-			await goto(resolve(checkoutTarget(data.checkout.id, purchaseChoice) as '/'));
+			await goto(resolveAppPath(checkoutTarget(data.checkout.id, purchaseChoice)));
 		} catch (caught) {
 			submitError = caught instanceof Error ? caught.message : m.onboarding_create_failed();
 		} finally {

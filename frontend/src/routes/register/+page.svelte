@@ -3,6 +3,7 @@
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
+	import { resolveAppPath } from '$lib/app-path';
 	import { Button } from '$lib/components/ui/button';
 	import { Checkbox } from '$lib/components/ui/checkbox';
 	import { Input } from '$lib/components/ui/input';
@@ -90,7 +91,7 @@
 		purchaseChoice = result.choice;
 		const target = applyPurchaseChoice(new URL(page.url), result.choice);
 		if (target.href !== page.url.href) {
-			await goto(resolve(`${target.pathname}${target.search}` as '/'), {
+			await goto(resolveAppPath(`${target.pathname}${target.search}`), {
 				replaceState: true,
 				keepFocus: true,
 				noScroll: true
@@ -173,7 +174,7 @@
 			if (safeSameOriginRedirect(page.url, '').startsWith('/image-editor/local_design_')) {
 				trackPublicImageEditorEvent('image_editor_signup_completed', { source: 'editor' });
 			}
-			goto(resolve(registrationTarget() as '/'));
+			goto(resolveAppPath(registrationTarget()));
 		} else if (result.requiresEmailVerification && result.emailVerificationID) {
 			const query = new URLSearchParams({
 				challenge: result.emailVerificationID,
@@ -186,7 +187,7 @@
 				query.set('billing_period', purchaseChoice.billing_period);
 				query.set('purchase_choice', purchaseChoice.token);
 			}
-			goto(resolve(`/verify-email?${query}` as '/'));
+			goto(resolveAppPath(`/verify-email?${query}`));
 		} else {
 			error = result.error || m.auth_register_failed();
 			isLoading = false;
@@ -346,7 +347,7 @@
 	<p class="mt-6 text-center text-sm text-muted-foreground">
 		{m.auth_register_have_account()}
 		<a
-			href={resolve(loginTarget() as '/')}
+			href={resolveAppPath(loginTarget())}
 			class="inline-flex min-h-11 items-center px-1 font-medium text-primary hover:underline"
 			>{m.auth_register_sign_in()}</a
 		>

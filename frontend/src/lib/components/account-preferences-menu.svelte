@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
+	import { resolveAppPath } from '$lib/app-path';
 	import { auth } from '$lib/stores/auth';
 	import { instanceStore } from '$lib/stores/instance.svelte';
 	import { recreateClient } from '$lib/api/client';
@@ -62,13 +63,13 @@
 
 	function navigate(href: string) {
 		onNavigate?.();
-		goto(resolve(href as '/'));
+		goto(resolveAppPath(href));
 	}
 
 	async function handleLogout() {
 		onNavigate?.();
 		await auth.logout();
-		await goto(resolve('/login' as '/'));
+		await goto(resolveAppPath('/login'));
 	}
 
 	async function handleSwitchServer() {
@@ -76,7 +77,7 @@
 		await auth.logout();
 		instanceStore().clearInstanceUrl();
 		recreateClient();
-		await goto(resolve('/connect' as '/'));
+		await goto(resolveAppPath('/connect'));
 	}
 </script>
 

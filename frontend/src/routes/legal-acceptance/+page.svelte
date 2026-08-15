@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
+	import { resolveAppPath } from '$lib/app-path';
 	import { Button } from '$lib/components/ui/button';
 	import { Checkbox } from '$lib/components/ui/checkbox';
 	import { Label } from '$lib/components/ui/label';
@@ -49,7 +50,7 @@
 			return;
 		}
 		auth.setUser(data);
-		await goto(resolve(completionTarget() as '/'));
+		await goto(resolveAppPath(completionTarget()));
 	}
 
 	async function signOut() {

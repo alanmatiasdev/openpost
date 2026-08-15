@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
+	import { resolveAppPath } from '$lib/app-path';
 	import { page } from '$app/state';
 	import InlineNotice from '$lib/components/inline-notice.svelte';
 	import StandaloneShell from '$lib/components/standalone-shell.svelte';
@@ -81,7 +82,7 @@
 		isVerifying = true;
 		const result = await auth.verifyEmail(challengeID, code);
 		if (result.success) {
-			await goto(resolve(safeSameOriginRedirect(page.url) as '/'));
+			await goto(resolveAppPath(safeSameOriginRedirect(page.url)));
 			return;
 		}
 		error = result.error ?? m.auth_verify_email_invalid();
@@ -119,7 +120,7 @@
 			redirect: safeSameOriginRedirect(page.url)
 		});
 		copyPurchaseChoice(page.url.searchParams, query);
-		await goto(resolve(`/verify-email?${query}` as '/'), {
+		await goto(resolveAppPath(`/verify-email?${query}`), {
 			replaceState: true,
 			keepFocus: true,
 			noScroll: true

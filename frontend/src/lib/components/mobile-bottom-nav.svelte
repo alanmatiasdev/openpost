@@ -2,6 +2,7 @@
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
+	import { resolveAppPath } from '$lib/app-path';
 	import { isNavigationItemActive, mobileNavigation } from '$lib/app-navigation';
 	import { ui } from '$lib/stores/ui.svelte';
 	import { m } from '$lib/paraglide/messages';
@@ -68,7 +69,7 @@
 			if (!ui.startNewPost()) return;
 			if (pathname === '/') return;
 		}
-		goto(resolve(item.href as '/'));
+		goto(resolveAppPath(item.href));
 	}
 </script>
 

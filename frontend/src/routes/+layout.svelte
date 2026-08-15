@@ -6,6 +6,7 @@
 	import { afterNavigate, beforeNavigate, goto } from '$app/navigation';
 	import { captureTelemetryPageView } from '@openpost/telemetry';
 	import { resolve } from '$app/paths';
+	import { resolveAppPath } from '$lib/app-path';
 	import { page } from '$app/stores';
 	import * as Sidebar from '$lib/components/ui/sidebar';
 	import SidebarLeft from '$lib/components/sidebar-left.svelte';
@@ -254,7 +255,7 @@
 	});
 
 	$effect(() => {
-		if (pendingRedirect) void goto(resolve(pendingRedirect as '/'));
+		if (pendingRedirect) void goto(resolveAppPath(pendingRedirect));
 	});
 
 	async function checkOnboarding(path: string) {
@@ -270,7 +271,7 @@
 					const securitySettings =
 						currentPath === '/settings' && $page.url.searchParams.get('tab') === 'security';
 					if (!securitySettings) {
-						await goto(resolve('/settings?tab=security' as '/'));
+						await goto(resolveAppPath('/settings?tab=security'));
 						return;
 					}
 					nextNeedsOnboarding = false;
@@ -351,7 +352,7 @@
 		workspaceCtx.reset();
 		onboardingChecked = false;
 		if (currentPath === '/login') {
-			await goto(resolve(authenticatedPublicTarget() as '/'));
+			await goto(resolveAppPath(authenticatedPublicTarget()));
 		}
 	}
 

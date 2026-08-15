@@ -2,6 +2,7 @@
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
+	import { resolveAppPath } from '$lib/app-path';
 	import { auth } from '$lib/stores/auth';
 	import { workspaceCtx } from '$lib/stores/workspace.svelte';
 	import { getAuthenticatedMediaURL } from '$lib/media-url';
@@ -129,11 +130,7 @@
 	}
 
 	function workspaceAvatarURL(workspace: Workspace | null | undefined) {
-		return getAuthenticatedMediaURL(
-			(
-				(workspace as (Workspace & { avatar_url?: string }) | null | undefined)?.avatar_url ?? ''
-			).trim()
-		);
+		return getAuthenticatedMediaURL(workspace?.avatar_url.trim() ?? '');
 	}
 
 	function workspaceInitials(workspace: Workspace | null | undefined) {
@@ -151,7 +148,7 @@
 			if (!ui.startNewPost()) return;
 			if (currentPath === '/') return;
 		}
-		goto(resolve(href as '/'));
+		goto(resolveAppPath(href));
 	}
 
 	function handleNewPostClick(event: MouseEvent) {

@@ -2,6 +2,7 @@
 	import { page } from '$app/state';
 	import { goto, replaceState } from '$app/navigation';
 	import { resolve } from '$app/paths';
+	import { resolveAppPath } from '$lib/app-path';
 	import ComposeTextPost from './compose-text-post.svelte';
 	import { ui } from '$lib/stores/ui.svelte';
 
@@ -22,7 +23,7 @@
 
 	function handlePublicationDraftCreated(id: string) {
 		ui.setActiveComposerDraft(id);
-		replaceState(resolve(`/publications/${encodeURIComponent(id)}` as '/'), {});
+		replaceState(resolveAppPath(`/publications/${encodeURIComponent(id)}`), {});
 	}
 </script>
 

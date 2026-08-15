@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
+	import { resolveAppPath } from '$lib/app-path';
 	import { page } from '$app/stores';
 	import { client } from '$lib/api/client';
 	import { canonicalPublicationPathFromLegacyPost } from '$lib/composer/compatibility-route';
@@ -28,15 +29,15 @@
 			if (requestSequence !== postRequestSequence || postId !== id) return;
 			const canonicalPath = canonicalPublicationPathFromLegacyPost(data);
 			if (canonicalPath) {
-				await goto(resolve(canonicalPath as '/'), {
+				await goto(resolveAppPath(canonicalPath), {
 					replaceState: true
 				});
 				return;
 			}
 			throw new Error(m.post_edit_load_failed());
-		} catch (e) {
+		} catch (cause) {
 			if (requestSequence !== postRequestSequence || postId !== id) return;
-			error = (e as Error).message;
+			error = cause instanceof Error ? cause.message : m.post_edit_load_failed();
 		} finally {
 			if (requestSequence === postRequestSequence && postId === id) hasLoaded = true;
 		}

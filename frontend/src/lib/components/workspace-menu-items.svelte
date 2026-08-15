@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
+	import { resolveAppPath } from '$lib/app-path';
 	import { workspaceCtx } from '$lib/stores/workspace.svelte';
 	import { getAuthenticatedMediaURL } from '$lib/media-url';
 	import { m } from '$lib/paraglide/messages';
@@ -37,9 +38,7 @@
 	}
 
 	function avatarURL(workspace: Workspace) {
-		return getAuthenticatedMediaURL(
-			((workspace as Workspace & { avatar_url?: string }).avatar_url ?? '').trim()
-		);
+		return getAuthenticatedMediaURL(workspace.avatar_url.trim());
 	}
 
 	async function switchWorkspace(workspace: Workspace) {
@@ -58,7 +57,7 @@
 
 	function openWorkspaceSettings() {
 		onSelect?.();
-		goto(resolve('/settings?tab=general' as '/'));
+		goto(resolveAppPath('/settings?tab=general'));
 	}
 </script>
 

@@ -2,6 +2,7 @@
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
+	import { resolveAppPath } from '$lib/app-path';
 	import { client } from '$lib/api/client';
 	import type { components } from '$lib/api/types';
 	import { auth } from '$lib/stores/auth';
@@ -33,8 +34,8 @@
 		}
 		if (!authState.isAuthenticated) {
 			void goto(
-				resolve(
-					`/login?redirect=${encodeURIComponent(`/ownership-transfer?id=${transferID}`)}` as '/'
+				resolveAppPath(
+					`/login?redirect=${encodeURIComponent(`/ownership-transfer?id=${transferID}`)}`
 				)
 			);
 			return;

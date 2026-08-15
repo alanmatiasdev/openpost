@@ -2,6 +2,7 @@
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
+	import { resolveAppPath } from '$lib/app-path';
 	import {
 		loadImageEditorBrandKit,
 		loadImageEditorConfig,
@@ -106,8 +107,8 @@
 			returnURL.searchParams.set('import', '1');
 			trackPublicImageEditorEvent('image_editor_signup_clicked', { source: 'editor' });
 			await goto(
-				resolve(
-					`/register?redirect=${encodeURIComponent(returnURL.pathname + returnURL.search)}` as '/'
+				resolveAppPath(
+					`/register?redirect=${encodeURIComponent(returnURL.pathname + returnURL.search)}`
 				)
 			);
 			return;
@@ -119,7 +120,7 @@
 			const workspaceID = workspaceCtx.currentWorkspace?.id;
 			if (!workspaceID) {
 				const returnURL = `${page.url.pathname}?import=1`;
-				await goto(resolve(`/onboarding?redirect=${encodeURIComponent(returnURL)}` as '/'));
+				await goto(resolveAppPath(`/onboarding?redirect=${encodeURIComponent(returnURL)}`));
 				return;
 			}
 			const migrated = await migrateGuestImageEditorDesign(design.id, workspaceID);
@@ -128,7 +129,7 @@
 					source: 'editor'
 				});
 			}
-			await goto(resolve(`/image-editor/${migrated.id}` as '/'));
+			await goto(resolveAppPath(`/image-editor/${migrated.id}`));
 		} catch (cause) {
 			error = cause instanceof Error ? cause.message : m.image_editor_public_import_failed();
 		} finally {
@@ -150,7 +151,7 @@
 			<h1 class="text-lg font-semibold">{m.image_editor_open_failed_title()}</h1>
 			<p class="mt-2 text-sm text-muted-foreground">{error}</p>
 			<a
-				href={resolve((cancelledReturnURL ?? (guestMode ? '/image-editor' : '/media')) as '/')}
+				href={resolveAppPath(cancelledReturnURL ?? (guestMode ? '/image-editor' : '/media'))}
 				class="mt-5 inline-flex text-sm font-medium text-primary hover:underline"
 			>
 				{cancelledReturnURL

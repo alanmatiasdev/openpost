@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
+	import { resolveAppPath } from '$lib/app-path';
 	import * as Select from '$lib/components/ui/select';
 	import { Input } from '$lib/components/ui/input';
 	import { m } from '$lib/paraglide/messages';
@@ -62,13 +63,13 @@
 	}
 
 	function openDestination(destination: SettingsDestinationID) {
-		void goto(resolve(destinationHref(destination) as '/'));
+		void goto(resolveAppPath(destinationHref(destination)));
 	}
 </script>
 
 {#snippet destinationLink(destination: SettingsDestination)}
 	<a
-		href={resolve(destinationHref(destination.id) as '/')}
+		href={resolveAppPath(destinationHref(destination.id))}
 		data-settings-tab={destination.id}
 		class={[
 			'min-h-10 shrink-0 rounded-md px-3 py-2 text-left text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none lg:w-full',

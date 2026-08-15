@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
+	import { resolveAppPath } from '$lib/app-path';
 	import { goto } from '$app/navigation';
 	import MessageCircleIcon from '@lucide/svelte/icons/message-circle';
 	import InboxIcon from '@lucide/svelte/icons/inbox';
@@ -15,7 +16,7 @@
 		if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
 			return;
 		event.preventDefault();
-		void goto(resolve(href as '/'));
+		void goto(resolveAppPath(href));
 	}
 </script>
 

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
+	import { resolveAppPath } from '$lib/app-path';
 	import { page } from '$app/stores';
 	import { Button } from '$lib/components/ui/button';
 	import { Badge } from '$lib/components/ui/badge';
@@ -8,6 +9,7 @@
 	import InlineNotice from '$lib/components/inline-notice.svelte';
 	import StandaloneShell from '$lib/components/standalone-shell.svelte';
 	import { client } from '$lib/api/client';
+	import type { components } from '$lib/api/types';
 	import { auth } from '$lib/stores/auth';
 	import { workspaceCtx } from '$lib/stores/workspace.svelte';
 	import { m } from '$lib/paraglide/messages';
@@ -115,15 +117,20 @@
 				: '';
 
 		try {
+			const body: components['schemas']['CreateMCPOAuthAuthorizationInputBody'] = {
+				...params,
+				approved
+			};
+			if (workspaceID) body.workspace_id = workspaceID;
 			const { data, error: apiError } = await client.POST('/mcp/oauth/authorize', {
-				body: { ...params, approved, ...(workspaceID ? { workspace_id: workspaceID } : {}) }
+				body
 			});
 			if (apiError || !data?.redirect_url) {
 				throw new Error(apiError?.detail ?? m.oauth_authorize_failed());
 			}
 			window.location.href = data.redirect_url;
-		} catch (e) {
-			error = (e as Error).message;
+		} catch (cause) {
+			error = cause instanceof Error ? cause.message : m.oauth_authorize_failed();
 		} finally {
 			submitting = false;
 			pendingDecision = null;
@@ -133,7 +140,7 @@
 	$effect(() => {
 		if (authState.isLoading) return;
 		if (!authState.user && !authState.isAuthenticated) {
-			goto(resolve(loginRedirect() as '/'));
+			goto(resolveAppPath(loginRedirect()));
 			return;
 		}
 	});
