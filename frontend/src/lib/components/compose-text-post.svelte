@@ -137,7 +137,12 @@
 	import type { ImageEditorMediaItem } from '$lib/image-editor/types';
 	import type { VideoConstraint } from '$lib/video/types';
 	import type { DraftConflictProblem } from '$lib/draft-conflict';
-	import { ComposerSession, type PublicationDraft } from '$lib/composer/session';
+	import {
+		ComposerSession,
+		ComposerSessionError,
+		type PublicationDraft
+	} from '$lib/composer/session';
+	import { composerErrorMessage } from '$lib/composer/error-presentation';
 	import { createComposerPublicationClient } from '$lib/composer/publication-client';
 	import { buildComposerPreview } from '$lib/compose-preview';
 	import { openPreviewWindow, type PreviewWindowSession } from '$lib/preview-window';
@@ -427,7 +432,9 @@
 				if (state.conflict) {
 					draftConflict = {
 						code: 'draft_revision_conflict',
-						detail: state.error || m.compose_update_draft_failed(),
+						detail: state.error
+							? composerErrorMessage(state.error)
+							: m.compose_update_draft_failed(),
 						conflict: {
 							aggregate_type: 'publication',
 							aggregate_id: state.publicationId || existingPublicationId,
@@ -2067,13 +2074,13 @@
 		const boundPublicationID = snapshot.publication_id || payload.publication_id;
 		const boundRevision = snapshot.publication_revision ?? payload.revision;
 		if (snapshot.return_token && snapshot.return_token !== returnToken) {
-			throw new Error('This editor return token does not match its Composer session.');
+			throw new ComposerSessionError('editor_return_token_mismatch');
 		}
 		if (snapshot.workspace_id !== selectedWorkspaceId) {
-			throw new Error('This editor return belongs to another Workspace.');
+			throw new ComposerSessionError('editor_return_workspace_mismatch');
 		}
 		if (!boundPublicationID || boundPublicationID !== publicationId) {
-			throw new Error('This editor return belongs to another Publication.');
+			throw new ComposerSessionError('editor_return_publication_mismatch');
 		}
 		const session = await sessionFor(selectedWorkspaceId, boundPublicationID);
 		session.acceptEditorHandoff({
@@ -2183,7 +2190,7 @@
 		if (!token) return;
 		try {
 			const snapshot = loadEditorHandoff(token, 'image');
-			if (!snapshot) throw new Error('This OpenPost Image Editor return is no longer active.');
+			if (!snapshot) throw new ComposerSessionError('image_editor_return_inactive');
 			await restoreComposerHandoff(snapshot, token);
 			if ($page.url.searchParams.get('editor_handoff_cancelled') === '1') {
 				finishEditorHandoff(token, 'image');
@@ -2191,7 +2198,7 @@
 			}
 			const result = await consumeImageEditorReturnToken(token);
 			if (snapshot.workspace_id !== result.workspace_id) {
-				throw new Error('The OpenPost Image Editor return belongs to another workspace.');
+				throw new ComposerSessionError('image_editor_return_workspace_mismatch');
 			}
 			const targetIndex = Math.max(
 				0,
@@ -2216,8 +2223,8 @@
 			finishEditorHandoff(token, 'image');
 			error =
 				cause instanceof Error
-					? `${cause.message} Your OpenPost Image Editor exports are still available in Media.`
-					: 'OpenPost Image Editor exports are still available in Media.';
+					? m.compose_image_editor_return_error({ detail: composerErrorMessage(cause) })
+					: m.compose_image_editor_return_recovery();
 		}
 	}
 
@@ -2322,7 +2329,9 @@
 		result: components['schemas']['VideoReturnResult'],
 		constraints: Record<string, unknown>
 	): string[] {
-		if (!payload.video) throw new Error('The OpenPost Video Editor return metadata is missing.');
+		if (!payload.video) {
+			throw new ComposerSessionError('video_editor_return_metadata_missing');
+		}
 		const targetIndex = Math.max(
 			0,
 			Math.min(
@@ -2331,14 +2340,16 @@
 			)
 		);
 		const targetPost = posts[targetIndex];
-		if (!targetPost) throw new Error('The originating post segment is no longer available.');
+		if (!targetPost) throw new ComposerSessionError('editor_origin_segment_missing');
 		const exports = result.exports ?? [];
 		const exportByVariant = new Map(
 			exports.map((item) => [item.variant_id as VideoVariantID, item.media_id])
 		);
 		const primaryMediaID =
 			exportByVariant.get(payload.video.plan.primary_variant) ?? exports[0]?.media_id;
-		if (!primaryMediaID) throw new Error('The OpenPost Video Editor returned no usable export.');
+		if (!primaryMediaID) {
+			throw new ComposerSessionError('video_editor_return_export_missing');
+		}
 		const previousCanonical = [...targetPost.mediaIds];
 		const replacementID = payload.video.replace_media_id;
 		const scopeAccountID = payload.video.scope_account_id;
@@ -2392,7 +2403,7 @@
 		if (!token) return;
 		try {
 			const snapshot = loadEditorHandoff(token, 'video');
-			if (!snapshot) throw new Error('This OpenPost Video Editor return is no longer active.');
+			if (!snapshot) throw new ComposerSessionError('video_editor_return_inactive');
 			await restoreComposerHandoff(snapshot, token);
 			if ($page.url.searchParams.get('editor_handoff_cancelled') === '1') {
 				finishEditorHandoff(token, 'video');
@@ -2400,7 +2411,7 @@
 			}
 			const returned = await consumeVideoReturnToken(token);
 			if (snapshot.workspace_id !== returned.workspace_id) {
-				throw new Error('The OpenPost Video Editor return belongs to another workspace.');
+				throw new ComposerSessionError('video_editor_return_workspace_mismatch');
 			}
 			const payload = snapshot.payload as ComposerHandoffPayload;
 			const mediaIDs = applyVideoEditorReturn(payload, returned.result, returned.constraints);
@@ -2413,7 +2424,7 @@
 			finishEditorHandoff(token, 'video');
 			error =
 				cause instanceof Error
-					? `${cause.message} ${m.video_editor_return_recovery()}`
+					? m.compose_video_editor_return_error({ detail: composerErrorMessage(cause) })
 					: m.video_editor_return_recovery();
 		}
 	}

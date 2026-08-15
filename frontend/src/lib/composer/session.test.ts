@@ -413,7 +413,7 @@ describe('ComposerSession', () => {
 			returnToken: 'return-token'
 		});
 		expect(session.acceptEditorHandoff(binding)).toEqual(binding);
-		expect(() => session.acceptEditorHandoff(binding)).toThrow('already been used');
+		expect(() => session.acceptEditorHandoff(binding)).toThrow('editor_return_already_used');
 	});
 
 	it('fails editor returns closed when their Workspace or Publication binding changes', async () => {
@@ -435,7 +435,7 @@ describe('ComposerSession', () => {
 				revision: 2,
 				returnToken: 'workspace-token'
 			})
-		).toThrow('another Workspace');
+		).toThrow('editor_return_workspace_mismatch');
 		expect(() =>
 			session.acceptEditorHandoff({
 				workspaceId: 'workspace-1',
@@ -443,7 +443,7 @@ describe('ComposerSession', () => {
 				revision: 2,
 				returnToken: 'publication-token'
 			})
-		).toThrow('another Publication');
+		).toThrow('editor_return_publication_mismatch');
 	});
 
 	it('restores the handoff revision so a stale return uses the normal save conflict path', async () => {

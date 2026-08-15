@@ -49,11 +49,46 @@ export type ComposerClientErrorCategory =
 	| 'not_ready'
 	| 'unavailable';
 
+export const composerErrorCodes = [
+	'publication_request_failed',
+	'publication_workspace_mismatch',
+	'session_content_missing',
+	'revision_conflict_unresolved',
+	'editor_return_token_required',
+	'editor_return_token_mismatch',
+	'editor_requires_saved_publication',
+	'editor_return_already_used',
+	'editor_return_workspace_mismatch',
+	'editor_return_publication_mismatch',
+	'editor_return_revision_invalid',
+	'revision_conflict_missing',
+	'session_reset_pending_save',
+	'publication_revision_missing',
+	'session_request_failed',
+	'image_editor_return_inactive',
+	'image_editor_return_workspace_mismatch',
+	'video_editor_return_inactive',
+	'video_editor_return_workspace_mismatch',
+	'video_editor_return_metadata_missing',
+	'editor_origin_segment_missing',
+	'video_editor_return_export_missing'
+] as const;
+
+export type ComposerErrorCode = (typeof composerErrorCodes)[number];
+
+export class ComposerSessionError extends Error {
+	constructor(readonly code: ComposerErrorCode) {
+		super(code);
+		this.name = 'ComposerSessionError';
+	}
+}
+
 export class ComposerClientError extends Error {
 	constructor(
 		readonly category: ComposerClientErrorCategory,
 		message: string,
-		readonly currentRevision?: number
+		readonly currentRevision?: number,
+		readonly presentationCode: ComposerErrorCode = 'publication_request_failed'
 	) {
 		super(message);
 		this.name = 'ComposerClientError';
@@ -131,7 +166,7 @@ export class ComposerSession {
 		try {
 			const loaded = await this.#client.load(publicationId);
 			if (loaded.publication.workspace_id !== this.workspaceId) {
-				throw new Error('The Publication does not belong to this Composer session Workspace.');
+				throw new ComposerSessionError('publication_workspace_mismatch');
 			}
 			this.#draft = structuredClone(loaded.draft);
 			this.#draftVersion += 1;
@@ -160,11 +195,11 @@ export class ComposerSession {
 	}
 
 	async save(): Promise<ComposerPublication> {
-		if (!this.#draft) throw new Error('The Composer session has no content to save.');
+		if (!this.#draft) throw new ComposerSessionError('session_content_missing');
 		if (this.#snapshot.conflict) {
 			throw new ComposerClientError(
 				'conflict',
-				this.#snapshot.error || 'Resolve the Publication revision conflict before saving.',
+				this.#snapshot.error || 'revision_conflict_unresolved',
 				this.#snapshot.conflict.currentRevision
 			);
 		}
@@ -185,9 +220,9 @@ export class ComposerSession {
 	}
 
 	bindEditorHandoff(returnToken: string): ComposerEditorHandoffBinding {
-		if (!returnToken.trim()) throw new Error('The editor return token is required.');
+		if (!returnToken.trim()) throw new ComposerSessionError('editor_return_token_required');
 		if (!this.#snapshot.publicationId || this.#snapshot.revision === null) {
-			throw new Error('Save the Publication before opening an editor.');
+			throw new ComposerSessionError('editor_requires_saved_publication');
 		}
 		return {
 			workspaceId: this.workspaceId,
@@ -198,18 +233,20 @@ export class ComposerSession {
 	}
 
 	acceptEditorHandoff(binding: ComposerEditorHandoffBinding): ComposerEditorHandoffBinding {
-		if (!binding.returnToken.trim()) throw new Error('The editor return token is required.');
+		if (!binding.returnToken.trim()) {
+			throw new ComposerSessionError('editor_return_token_required');
+		}
 		if (this.#consumedEditorReturnTokens.has(binding.returnToken)) {
-			throw new Error('This editor return has already been used.');
+			throw new ComposerSessionError('editor_return_already_used');
 		}
 		if (binding.workspaceId !== this.workspaceId) {
-			throw new Error('This editor return belongs to another Workspace.');
+			throw new ComposerSessionError('editor_return_workspace_mismatch');
 		}
 		if (!this.#snapshot.publicationId || binding.publicationId !== this.#snapshot.publicationId) {
-			throw new Error('This editor return belongs to another Publication.');
+			throw new ComposerSessionError('editor_return_publication_mismatch');
 		}
 		if (!Number.isInteger(binding.revision) || binding.revision < 1) {
-			throw new Error('This editor return has an invalid Publication revision.');
+			throw new ComposerSessionError('editor_return_revision_invalid');
 		}
 		this.#consumedEditorReturnTokens.add(binding.returnToken);
 		this.#patch({ revision: binding.revision, conflict: null, error: null });
@@ -218,7 +255,7 @@ export class ComposerSession {
 
 	async overwriteConflict(): Promise<ComposerPublication> {
 		if (!this.#snapshot.conflict) {
-			throw new Error('The Composer session has no revision conflict to overwrite.');
+			throw new ComposerSessionError('revision_conflict_missing');
 		}
 		this.#patch({
 			revision: this.#snapshot.conflict.currentRevision,
@@ -331,7 +368,7 @@ export class ComposerSession {
 
 	reset(): void {
 		if (this.#pendingSaves > 0) {
-			throw new Error('The Composer session cannot reset while a save is pending.');
+			throw new ComposerSessionError('session_reset_pending_save');
 		}
 		this.#draft = null;
 		this.#draftVersion += 1;
@@ -398,7 +435,7 @@ export class ComposerSession {
 
 	#requiredRevision(): number {
 		if (this.#snapshot.revision === null) {
-			throw new Error('The Composer session has no accepted Publication revision.');
+			throw new ComposerSessionError('publication_revision_missing');
 		}
 		return this.#snapshot.revision;
 	}
@@ -443,5 +480,9 @@ export class ComposerSession {
 }
 
 function errorMessage(cause: unknown): string {
-	return cause instanceof Error ? cause.message : 'The Composer session request failed.';
+	if (cause instanceof ComposerClientError) {
+		return cause.message.trim() || cause.presentationCode;
+	}
+	if (cause instanceof ComposerSessionError) return cause.code;
+	return cause instanceof Error && cause.message.trim() ? cause.message : 'session_request_failed';
 }

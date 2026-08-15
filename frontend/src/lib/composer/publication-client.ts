@@ -242,7 +242,7 @@ function clientError(problem: Problem | undefined, status: number): ComposerClie
 	if (conflict) {
 		return new ComposerClientError('conflict', conflict.detail, conflict.conflict.current_revision);
 	}
-	const message = problem?.detail || 'The Publication request failed.';
+	const message = problem?.detail || '';
 	if (status === 403) return new ComposerClientError('access_denied', message);
 	if (status === 404) return new ComposerClientError('not_found', message);
 	if (status === 409) return new ComposerClientError('invalid_state', message);
