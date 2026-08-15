@@ -13,12 +13,17 @@ interface NotificationPresentation {
 	actions: NotificationAction[];
 }
 
+interface SemanticNotificationPayload {
+	kind?: string;
+	organization_name?: string;
+}
+
 export function presentNotification(notification: Notification): NotificationPresentation {
 	const actions = notification.actions ?? [];
 	if (notification.type !== 'ownership_transfer') {
 		return { title: notification.title, body: notification.body, actions };
 	}
-	const payload = semanticPayload(notification.payload_json);
+	const payload = parseSemanticPayload(notification.payload_json);
 	if (payload.kind !== ownershipKind || !payload.organization_name) {
 		return { title: notification.title, body: notification.body, actions };
 	}
@@ -33,15 +38,20 @@ export function presentNotification(notification: Notification): NotificationPre
 	};
 }
 
-function semanticPayload(raw: string): Record<string, string> {
+function parseOptionalPayloadString(value: unknown): string | undefined {
+	return typeof value === 'string' ? value : undefined;
+}
+
+function parseSemanticPayload(raw: string): SemanticNotificationPayload {
 	try {
 		const parsed: unknown = JSON.parse(raw);
 		if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
-		return Object.fromEntries(
-			Object.entries(parsed).filter(
-				(entry): entry is [string, string] => typeof entry[1] === 'string'
+		return {
+			kind: parseOptionalPayloadString(Object.hasOwn(parsed, 'kind') ? parsed.kind : undefined),
+			organization_name: parseOptionalPayloadString(
+				Object.hasOwn(parsed, 'organization_name') ? parsed.organization_name : undefined
 			)
-		);
+		};
 	} catch {
 		return {};
 	}
