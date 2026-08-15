@@ -84,10 +84,15 @@ export interface ImageEditorPartialApplicationResult {
 	skippedUnsupported: number;
 }
 
-export function imageEditorMixedValue<T>(values: readonly T[]): {
+export interface ImageEditorMixedValue<T> {
 	value: T | undefined;
 	mixed: boolean;
-} {
+}
+
+type ImageEditorLayerBounds = Pick<ImageEditorLayer['transform'], 'x' | 'y' | 'width' | 'height'>;
+type ImageEditorSize = Pick<ImageEditorLayer['transform'], 'width' | 'height'>;
+
+export function imageEditorMixedValue<T>(values: readonly T[]): ImageEditorMixedValue<T> {
 	if (values.length === 0) return { value: undefined, mixed: false };
 	const first = values[0];
 	return { value: first, mixed: values.some((value) => !Object.is(value, first)) };
@@ -328,7 +333,7 @@ export class ImageEditorController {
 			this.selectionAnchorID = '';
 			return;
 		}
-		const selectionMode = typeof mode === 'boolean' ? (mode ? 'toggle' : 'replace') : mode;
+		const selectionMode = mode === true ? 'toggle' : mode === false ? 'replace' : mode;
 		if (selectionMode === 'range' && this.selectionAnchorID) {
 			const order = this.layerSelectionOrder();
 			const anchorIndex = order.indexOf(this.selectionAnchorID);
@@ -1294,6 +1299,16 @@ export class ImageEditorController {
 	}
 
 	updateSelectedTransform(
+		key: 'x' | 'y' | 'width' | 'height' | 'rotation',
+		value: number,
+		preserveAspect?: boolean
+	): ImageEditorPartialApplicationResult;
+	updateSelectedTransform(
+		key: 'flip_x' | 'flip_y',
+		value: boolean,
+		preserveAspect?: boolean
+	): ImageEditorPartialApplicationResult;
+	updateSelectedTransform(
 		key: 'x' | 'y' | 'width' | 'height' | 'rotation' | 'flip_x' | 'flip_y',
 		value: number | boolean,
 		preserveAspect = false
@@ -1312,21 +1327,18 @@ export class ImageEditorController {
 				if (!page) return;
 				for (const layer of page.layers.filter((candidate) => ids.has(candidate.id))) {
 					let updates: Partial<ImageEditorLayer['transform']> = { [key]: value };
-					if (typeof value === 'number' && (key === 'width' || key === 'height')) {
-						const nextValue = Math.max(1, value);
+					if (key === 'width' || key === 'height') {
+						const nextValue = Math.max(1, Number(value));
 						const ratio = layer.transform.width / Math.max(1, layer.transform.height);
-						updates =
-							key === 'width'
-								? {
-										width: nextValue,
-										...(preserveAspect
-											? { height: Math.max(1, nextValue / Math.max(0.0001, ratio)) }
-											: {})
-									}
-								: {
-										height: nextValue,
-										...(preserveAspect ? { width: Math.max(1, nextValue * ratio) } : {})
-									};
+						if (key === 'width') {
+							updates = { width: nextValue };
+							if (preserveAspect) {
+								updates.height = Math.max(1, nextValue / Math.max(0.0001, ratio));
+							}
+						} else {
+							updates = { height: nextValue };
+							if (preserveAspect) updates.width = Math.max(1, nextValue * ratio);
+						}
 					}
 					this.applyTransformToLayer(page, layer, updates);
 				}
@@ -1861,12 +1873,7 @@ export class ImageEditorController {
 		});
 	}
 
-	private selectionBounds(layers = this.selectedLayers): {
-		x: number;
-		y: number;
-		width: number;
-		height: number;
-	} {
+	private selectionBounds(layers = this.selectedLayers): ImageEditorLayerBounds {
 		const x = Math.min(...layers.map((layer) => layer.transform.x));
 		const y = Math.min(...layers.map((layer) => layer.transform.y));
 		const right = Math.max(...layers.map((layer) => layer.transform.x + layer.transform.width));
@@ -2068,9 +2075,7 @@ export class ImageEditorController {
 	}
 }
 
-function boundsForLayers(
-	layers: ImageEditorLayer[]
-): Pick<ImageEditorLayer['transform'], 'x' | 'y' | 'width' | 'height'> {
+function boundsForLayers(layers: ImageEditorLayer[]): ImageEditorLayerBounds {
 	const x = Math.min(...layers.map((layer) => layer.transform.x));
 	const y = Math.min(...layers.map((layer) => layer.transform.y));
 	const right = Math.max(...layers.map((layer) => layer.transform.x + layer.transform.width));
@@ -2083,7 +2088,7 @@ function fitImageSize(
 	sourceHeight: number,
 	maxWidth: number,
 	maxHeight: number
-): { width: number; height: number } {
+): ImageEditorSize {
 	const fitScale = Math.min(maxWidth / sourceWidth, maxHeight / sourceHeight);
 	const minimumScale = 80 / Math.min(sourceWidth, sourceHeight);
 	const scale = Math.min(fitScale, Math.max(1, minimumScale));

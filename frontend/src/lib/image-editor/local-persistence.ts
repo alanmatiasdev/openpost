@@ -55,6 +55,11 @@ interface LocalImageEditorMedia {
 	provenance?: StockMediaProvenance;
 }
 
+interface PixelSize {
+	width: number;
+	height: number;
+}
+
 type StorageManagerWithDirectory = StorageManager & {
 	getDirectory?: () => Promise<FileSystemDirectoryHandle>;
 };
@@ -227,8 +232,11 @@ export async function saveGuestImageEditorDesign(
 export async function listGuestImageEditorDesigns(limit = 12): Promise<LocalImageEditorDesign[]> {
 	const db = await openImageEditorDatabase();
 	const records = await new Promise<LocalImageEditorDesign[]>((resolve, reject) => {
-		const request = db.transaction(GUEST_DESIGN_STORE).objectStore(GUEST_DESIGN_STORE).getAll();
-		request.onsuccess = () => resolve((request.result as LocalImageEditorDesign[]) ?? []);
+		const request: IDBRequest<LocalImageEditorDesign[]> = db
+			.transaction(GUEST_DESIGN_STORE)
+			.objectStore(GUEST_DESIGN_STORE)
+			.getAll();
+		request.onsuccess = () => resolve(request.result ?? []);
 		request.onerror = () => reject(request.error);
 	});
 	db.close();
@@ -408,8 +416,11 @@ async function putGuestDesign(record: LocalImageEditorDesign): Promise<void> {
 async function getGuestDesign(id: string): Promise<LocalImageEditorDesign | null> {
 	const db = await openImageEditorDatabase();
 	const record = await new Promise<LocalImageEditorDesign | undefined>((resolve, reject) => {
-		const request = db.transaction(GUEST_DESIGN_STORE).objectStore(GUEST_DESIGN_STORE).get(id);
-		request.onsuccess = () => resolve(request.result as LocalImageEditorDesign | undefined);
+		const request: IDBRequest<LocalImageEditorDesign | undefined> = db
+			.transaction(GUEST_DESIGN_STORE)
+			.objectStore(GUEST_DESIGN_STORE)
+			.get(id);
+		request.onsuccess = () => resolve(request.result);
 		request.onerror = () => reject(request.error);
 	});
 	db.close();
@@ -423,8 +434,8 @@ async function listGuestMediaRecords(designID: string): Promise<LocalImageEditor
 			.transaction(GUEST_MEDIA_STORE)
 			.objectStore(GUEST_MEDIA_STORE)
 			.index('design_id');
-		const request = index.getAll(designID);
-		request.onsuccess = () => resolve((request.result as LocalImageEditorMedia[]) ?? []);
+		const request: IDBRequest<LocalImageEditorMedia[]> = index.getAll(designID);
+		request.onsuccess = () => resolve(request.result ?? []);
 		request.onerror = () => reject(request.error);
 	});
 	db.close();
@@ -434,8 +445,11 @@ async function listGuestMediaRecords(designID: string): Promise<LocalImageEditor
 async function getGuestMediaRecord(id: string): Promise<LocalImageEditorMedia | null> {
 	const db = await openImageEditorDatabase();
 	const record = await new Promise<LocalImageEditorMedia | undefined>((resolve, reject) => {
-		const request = db.transaction(GUEST_MEDIA_STORE).objectStore(GUEST_MEDIA_STORE).get(id);
-		request.onsuccess = () => resolve(request.result as LocalImageEditorMedia | undefined);
+		const request: IDBRequest<LocalImageEditorMedia | undefined> = db
+			.transaction(GUEST_MEDIA_STORE)
+			.objectStore(GUEST_MEDIA_STORE)
+			.get(id);
+		request.onsuccess = () => resolve(request.result);
 		request.onerror = () => reject(request.error);
 	});
 	db.close();
@@ -518,7 +532,7 @@ function assertSupportedGuestImage(file: File): void {
 	}
 }
 
-async function imageDimensions(blob: Blob): Promise<{ width: number; height: number }> {
+async function imageDimensions(blob: Blob): Promise<PixelSize> {
 	try {
 		const bitmap = await createImageBitmap(blob);
 		const dimensions = { width: bitmap.width, height: bitmap.height };
@@ -530,7 +544,7 @@ async function imageDimensions(blob: Blob): Promise<{ width: number; height: num
 	}
 }
 
-function fitSourceSize(width: number, height: number): { width: number; height: number } {
+function fitSourceSize(width: number, height: number): PixelSize {
 	const scale = Math.min(1, 4096 / width, 4096 / height, Math.sqrt(25_000_000 / (width * height)));
 	return {
 		width: Math.max(64, Math.round(width * scale)),
@@ -539,7 +553,7 @@ function fitSourceSize(width: number, height: number): { width: number; height: 
 }
 
 async function opfsDirectory(create: boolean): Promise<FileSystemDirectoryHandle | null> {
-	const storage = navigator.storage as StorageManagerWithDirectory | undefined;
+	const storage: StorageManagerWithDirectory | undefined = navigator.storage;
 	if (!storage?.getDirectory) return null;
 	try {
 		const root = await storage.getDirectory();
