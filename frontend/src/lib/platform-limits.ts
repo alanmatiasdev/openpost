@@ -6,23 +6,17 @@ export const X_PREMIUM_CHAR_LIMIT = 25_000;
 const X_TRANSFORMED_URL_LENGTH = 23;
 export type AccountLimitProfile = 'standard' | 'x-premium';
 
-type AccountLimitTarget = {
+interface AccountLimitTarget {
 	id?: string;
 	platform: string;
 	limit_profile?: string | null;
-	capabilities?: unknown;
-	metadata?: unknown;
-	[key: string]: unknown;
-};
+}
 
 type ResolvedAccountLimits = Record<string, { text_limit?: number | null } | null | undefined>;
 
 const X_URL_PATTERN =
 	/(?:https?:\/\/|www\.)[^\s<>{}[\]"']+|(?<![@\p{L}\p{N}_])(?:[\p{L}\p{N}](?:[\p{L}\p{N}-]{0,61}[\p{L}\p{N}])?\.)+[\p{L}]{2,63}(?:[/?#][^\s<>{}[\]"']*)?/giu;
-const GRAPHEME_SEGMENTER =
-	typeof Intl.Segmenter === 'function'
-		? new Intl.Segmenter(undefined, { granularity: 'grapheme' })
-		: null;
+const GRAPHEME_SEGMENTER = resolveGraphemeSegmenter();
 
 export interface PlatformLimitDefinition {
 	key: string;
@@ -40,7 +34,7 @@ export interface PlatformLimit {
 	note?: string;
 }
 
-export const PLATFORM_LIMITS: Record<string, PlatformLimitDefinition> = {
+export const PLATFORM_LIMITS = {
 	x: {
 		key: 'x',
 		name: 'X',
@@ -111,7 +105,7 @@ export const PLATFORM_LIMITS: Record<string, PlatformLimitDefinition> = {
 		media: 'Up to 10 files, using a safe 10 MiB limit for each file',
 		note: 'Discord webhooks can publish and delete messages, but cannot read a channel inbox.'
 	}
-};
+} satisfies Record<string, PlatformLimitDefinition>;
 
 export function accountHasXPremiumLongPosts(account: AccountLimitTarget): boolean {
 	return getPlatformKey(account.platform) === 'x' && account.limit_profile === 'x-premium';
@@ -196,23 +190,18 @@ export function platformCharacterLimit(
 	if (getPlatformKey(platform) === 'x' && profile === 'x-premium') {
 		return X_PREMIUM_CHAR_LIMIT;
 	}
-	return PLATFORM_LIMITS[getPlatformKey(platform)]?.charLimit ?? DEFAULT_PLATFORM_CHAR_LIMIT;
+	return (
+		platformLimitDefinition(getPlatformKey(platform))?.charLimit ?? DEFAULT_PLATFORM_CHAR_LIMIT
+	);
 }
 
 export function accountCharacterLimit(
-	account: {
-		id?: string;
-		platform: string;
-		limit_profile?: string | null;
-		capabilities?: unknown;
-		metadata?: unknown;
-		[key: string]: unknown;
-	},
+	account: AccountLimitTarget,
 	resolvedAccounts: ResolvedAccountLimits = {}
 ) {
 	if (account.id) {
 		const resolvedLimit = resolvedAccounts[account.id]?.text_limit;
-		if (typeof resolvedLimit === 'number' && Number.isFinite(resolvedLimit) && resolvedLimit > 0) {
+		if (resolvedLimit != null && Number.isFinite(resolvedLimit) && resolvedLimit > 0) {
 			return resolvedLimit;
 		}
 	}
@@ -245,7 +234,7 @@ export function uniquePlatformLimits(
 				key,
 				profile,
 				limit,
-				note: PLATFORM_LIMITS[key]?.note
+				note: platformLimitDefinition(key)?.note
 			};
 		})
 		.filter((item) => {
@@ -258,4 +247,14 @@ export function uniquePlatformLimits(
 
 export function publicPlatformLimits(): PlatformLimitDefinition[] {
 	return Object.values(PLATFORM_LIMITS);
+}
+
+function platformLimitDefinition(key: string): PlatformLimitDefinition | undefined {
+	return Object.values(PLATFORM_LIMITS).find((definition) => definition.key === key);
+}
+
+function resolveGraphemeSegmenter(): Intl.Segmenter | null {
+	return typeof Intl.Segmenter === 'function'
+		? new Intl.Segmenter(undefined, { granularity: 'grapheme' })
+		: null;
 }
