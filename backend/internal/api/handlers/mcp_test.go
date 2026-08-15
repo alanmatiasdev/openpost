@@ -3804,14 +3804,17 @@ func TestMCPCallSuggestNextSlotSkipsOccupiedSlot(t *testing.T) {
 		},
 	}).Exec(context.Background())
 	require.NoError(t, err)
-	_, err = srv.db.NewInsert().Model(&models.Post{
-		ID:          "post-occupied-slot",
-		WorkspaceID: "ws-1",
-		CreatedByID: "user-1",
-		Content:     "Already using the morning slot",
-		Status:      statusScheduled,
-		ScheduledAt: time.Date(2026, 7, 6, 9, 0, 0, 0, time.UTC),
-		CreatedAt:   time.Date(2026, 6, 30, 18, 0, 0, 0, time.UTC),
+	_, err = srv.db.NewInsert().Model(&models.Publication{
+		ID:            "publication-occupied-slot",
+		WorkspaceID:   "ws-1",
+		CreatedByID:   "user-1",
+		Title:         "Already using the morning slot",
+		SourceText:    "Already using the morning slot",
+		SourceContent: "Already using the morning slot",
+		Status:        statusScheduled,
+		ScheduledAt:   time.Date(2026, 7, 6, 9, 0, 0, 0, time.UTC),
+		CreatedAt:     time.Date(2026, 6, 30, 18, 0, 0, 0, time.UTC),
+		UpdatedAt:     time.Date(2026, 6, 30, 18, 0, 0, 0, time.UTC),
 	}).Exec(context.Background())
 	require.NoError(t, err)
 

@@ -40,11 +40,11 @@ func TestFindNextConfiguredScheduleSlotTime_SkipsOccupiedSlotReturnsLaterSlotSam
 		{ID: "slot-1", DayOfWeek: int(time.Monday), UTCHour: 9, UTCMinute: 0},
 		{ID: "slot-2", DayOfWeek: int(time.Monday), UTCHour: 17, UTCMinute: 0},
 	}
-	scheduledPosts := []models.Post{
+	scheduledPublications := []models.Publication{
 		{ScheduledAt: time.Date(2026, time.May, 4, 9, 0, 0, 0, time.UTC)},
 	}
 
-	slot, when := findNextConfiguredScheduleSlotTime(now, loc, schedules, scheduledPosts)
+	slot, when := findNextConfiguredScheduleSlotTime(now, loc, schedules, scheduledPublications)
 	if slot == nil {
 		t.Fatal("expected a slot")
 		return
@@ -64,11 +64,11 @@ func TestFindNextConfiguredScheduleSlotTime_SkipsOccupiedOnlySlotUntilNextWeek(t
 	schedules := []models.PostingSchedule{
 		{ID: "slot-1", DayOfWeek: int(time.Monday), UTCHour: 6, UTCMinute: 0},
 	}
-	scheduledPosts := []models.Post{
+	scheduledPublications := []models.Publication{
 		{ScheduledAt: time.Date(2026, time.May, 4, 6, 0, 0, 0, time.UTC)},
 	}
 
-	slot, when := findNextConfiguredScheduleSlotTime(now, loc, schedules, scheduledPosts)
+	slot, when := findNextConfiguredScheduleSlotTime(now, loc, schedules, scheduledPublications)
 	if slot == nil {
 		t.Fatal("expected a slot")
 		return
@@ -147,12 +147,12 @@ func TestFindNextConfiguredScheduleSlotTime_SkipsToNextDayWhenAllSlotsOnDayOccup
 		{ID: "slot-2", DayOfWeek: int(time.Monday), UTCHour: 9, UTCMinute: 0},
 		{ID: "slot-3", DayOfWeek: int(time.Tuesday), UTCHour: 9, UTCMinute: 0},
 	}
-	scheduledPosts := []models.Post{
+	scheduledPublications := []models.Publication{
 		{ScheduledAt: time.Date(2026, time.May, 4, 6, 0, 0, 0, time.UTC)},
 		{ScheduledAt: time.Date(2026, time.May, 4, 9, 0, 0, 0, time.UTC)},
 	}
 
-	slot, when := findNextConfiguredScheduleSlotTime(now, loc, schedules, scheduledPosts)
+	slot, when := findNextConfiguredScheduleSlotTime(now, loc, schedules, scheduledPublications)
 	if slot == nil {
 		t.Fatal("expected a slot")
 		return
@@ -173,13 +173,13 @@ func TestFindNextConfiguredScheduleSlotTime_ReturnsNilWhenAllSlotsFullInLookahea
 		{ID: "slot-1", DayOfWeek: int(time.Monday), UTCHour: 6, UTCMinute: 0},
 	}
 
-	scheduledPosts := make([]models.Post, 0, 30)
+	scheduledPublications := make([]models.Publication, 0, 30)
 	for i := 0; i < 30; i++ {
 		day := time.Date(2026, time.May, 4+i*7, 6, 0, 0, 0, time.UTC)
-		scheduledPosts = append(scheduledPosts, models.Post{ScheduledAt: day})
+		scheduledPublications = append(scheduledPublications, models.Publication{ScheduledAt: day})
 	}
 
-	slot, when := findNextConfiguredScheduleSlotTime(now, loc, schedules, scheduledPosts)
+	slot, when := findNextConfiguredScheduleSlotTime(now, loc, schedules, scheduledPublications)
 	if slot != nil {
 		t.Fatalf("expected nil slot after exhausting lookahead, got %q", slot.ID)
 	}

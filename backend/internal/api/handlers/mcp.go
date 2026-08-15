@@ -5145,18 +5145,18 @@ func (h *MCPHandler) suggestNextSlot(ctx context.Context, userID string, args ma
 		return mcpSlotToolResult(suggestion), nil
 	}
 
-	var scheduledPosts []models.Post
-	postQuery := h.db.NewSelect().
-		Model(&scheduledPosts).
+	var scheduledPublications []models.Publication
+	publicationQuery := h.db.NewSelect().
+		Model(&scheduledPublications).
 		Where("workspace_id = ?", input.WorkspaceID).
 		Where("status = ?", statusScheduled).
 		Where("scheduled_at >= ?", now.UTC().Add(-24*time.Hour)).
 		Order("scheduled_at ASC")
-	if err := postQuery.Scan(ctx); err != nil && err != sql.ErrNoRows {
-		return nil, &mcpError{Code: -32603, Message: "failed to load scheduled posts"}
+	if err := publicationQuery.Scan(ctx); err != nil && err != sql.ErrNoRows {
+		return nil, &mcpError{Code: -32603, Message: "failed to load scheduled publications"}
 	}
 
-	nextSlot, nextSlotTime := findNextConfiguredScheduleSlotTime(now, loc, schedules, scheduledPosts)
+	nextSlot, nextSlotTime := findNextConfiguredScheduleSlotTime(now, loc, schedules, scheduledPublications)
 	suggestion := mcpSlotSuggestion{
 		WorkspaceID: input.WorkspaceID,
 		Timezone:    workspace.Timezone,

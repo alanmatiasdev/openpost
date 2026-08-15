@@ -414,9 +414,9 @@ type scheduleCandidate struct {
 	when     time.Time
 }
 
-func isSlotOccupied(scheduledPosts []models.Post, slotTime time.Time) bool {
-	for _, post := range scheduledPosts {
-		if sameMinute(post.ScheduledAt, slotTime) {
+func isSlotOccupied(scheduledPublications []models.Publication, slotTime time.Time) bool {
+	for _, publication := range scheduledPublications {
+		if sameMinute(publication.ScheduledAt, slotTime) {
 			return true
 		}
 	}
@@ -427,7 +427,7 @@ func findNextConfiguredScheduleSlotTime(
 	now time.Time,
 	loc *time.Location,
 	schedules []models.PostingSchedule,
-	scheduledPosts []models.Post,
+	scheduledPublications []models.Publication,
 ) (*models.PostingSchedule, time.Time) {
 	if len(schedules) == 0 {
 		return nil, time.Time{}
@@ -451,7 +451,7 @@ func findNextConfiguredScheduleSlotTime(
 			if !slotTime.After(now) {
 				continue
 			}
-			if isSlotOccupied(scheduledPosts, slotTime) {
+			if isSlotOccupied(scheduledPublications, slotTime) {
 				continue
 			}
 			candidates = append(candidates, scheduleCandidate{schedule: slot.Schedule, when: slotTime})
@@ -621,18 +621,18 @@ func (h *PostingScheduleHandler) GetNextAvailableSlot(api huma.API) {
 			}}, nil
 		}
 
-		var scheduledPosts []models.Post
-		postQuery := h.db.NewSelect().
-			Model(&scheduledPosts).
+		var scheduledPublications []models.Publication
+		publicationQuery := h.db.NewSelect().
+			Model(&scheduledPublications).
 			Where("workspace_id = ?", input.WorkspaceID).
 			Where("status = ?", "scheduled").
 			Where("scheduled_at >= ?", now.UTC().Add(-24*time.Hour)).
 			Order("scheduled_at ASC")
-		if err := postQuery.Scan(ctx); err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return nil, huma.Error500InternalServerError("failed to fetch scheduled posts")
+		if err := publicationQuery.Scan(ctx); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return nil, huma.Error500InternalServerError("failed to fetch scheduled publications")
 		}
 
-		nextSlot, nextSlotTime := findNextConfiguredScheduleSlotTime(now, loc, schedules, scheduledPosts)
+		nextSlot, nextSlotTime := findNextConfiguredScheduleSlotTime(now, loc, schedules, scheduledPublications)
 
 		if nextSlotTime.IsZero() {
 			return &NextAvailableSlotOutput{Body: struct {
