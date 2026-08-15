@@ -225,53 +225,6 @@ func (s *Service) TrashTemporaryForPublication(ctx context.Context, publicationI
 	})
 }
 
-// TrashTemporaryForPost is retained only for the legacy Post publisher. New
-// publishing flows must use TrashTemporaryForPublication.
-func (s *Service) TrashTemporaryForPost(ctx context.Context, postID string) error {
-	now := time.Now().UTC()
-	return s.runSerializable(ctx, func(txCtx context.Context, tx bun.Tx) error {
-		var post models.Post
-		query := tx.NewSelect().Model(&post).Column("id", "workspace_id", "status").Where("id = ?", postID)
-		if tx.Dialect().Name() == dialect.PG {
-			query = query.For("UPDATE")
-		}
-		if err := query.Scan(txCtx); err != nil {
-			return err
-		}
-		if post.Status != models.PostStatusPublished {
-			return nil
-		}
-		var ids []string
-		if err := tx.NewSelect().Model((*models.PostMedia)(nil)).Column("media_id").Where("post_id = ?", postID).Scan(txCtx, &ids); err != nil {
-			return err
-		}
-		var variants []models.PostVariant
-		if err := tx.NewSelect().Model(&variants).Column("id", "media_ids").Where("post_id = ? AND media_ids != ''", postID).Scan(txCtx); err != nil {
-			return err
-		}
-		for _, variant := range variants {
-			variantIDs, err := decodeStringArray(variant.MediaIDs)
-			if err != nil {
-				return fmt.Errorf("decode post variant %s media references: %w", variant.ID, err)
-			}
-			ids = append(ids, variantIDs...)
-		}
-		var threadDraft models.ThreadDraft
-		err := tx.NewSelect().Model(&threadDraft).Where("post_id = ?", postID).Scan(txCtx)
-		if err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return err
-		}
-		if err == nil {
-			threadIDs, decodeErr := threadDraftMediaIDs(threadDraft.DraftJSON)
-			if decodeErr != nil {
-				return fmt.Errorf("decode thread draft %s media references: %w", postID, decodeErr)
-			}
-			ids = append(ids, threadIDs...)
-		}
-		return trashTemporaryMedia(txCtx, tx, post.WorkspaceID, ids, TrashReasonPublished, now)
-	})
-}
-
 func trashTemporaryMedia(
 	ctx context.Context,
 	tx bun.Tx,

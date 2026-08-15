@@ -1303,7 +1303,7 @@ func (s *Service) finalizePost(ctx context.Context, post *models.Post) {
 		if _, err := s.db.NewUpdate().Model(post).Set("status = ?", models.PostStatusPublished).Where("id = ?", post.ID).Exec(ctx); err != nil {
 			log.Printf("[Publisher] Failed to update post %s status: %v", post.ID, err)
 		}
-		if err := medialifecycle.NewService(s.db, s.storage).TrashTemporaryForPost(ctx, post.ID); err != nil {
+		if err := s.trashTemporaryMediaForLegacyPost(ctx, post); err != nil {
 			log.Printf("[Publisher] Failed to clean temporary media for post %s: %v", post.ID, err)
 		}
 		return
@@ -1328,10 +1328,18 @@ func (s *Service) finalizePost(ctx context.Context, post *models.Post) {
 			return
 		}
 		s.recordPublishedPost(ctx, post.WorkspaceID)
-		if err := medialifecycle.NewService(s.db, s.storage).TrashTemporaryForPost(ctx, post.ID); err != nil {
+		if err := s.trashTemporaryMediaForLegacyPost(ctx, post); err != nil {
 			log.Printf("[Publisher] Failed to clean temporary media for post %s: %v", post.ID, err)
 		}
 	}
+}
+
+func (s *Service) trashTemporaryMediaForLegacyPost(ctx context.Context, post *models.Post) error {
+	publicationID := strings.TrimSpace(post.PublicationID)
+	if publicationID == "" {
+		return fmt.Errorf("legacy post %s has no canonical publication", post.ID)
+	}
+	return medialifecycle.NewService(s.db, s.storage).TrashTemporaryForPublication(ctx, publicationID)
 }
 
 //nolint:gocyclo

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"reflect"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -76,6 +77,13 @@ func TestNormalizeRetentionPromotesOrganizedMedia(t *testing.T) {
 	value, err = NormalizeRetention(RetentionTemporary, "design_preview", false)
 	require.NoError(t, err)
 	require.Equal(t, RetentionLibrary, value)
+}
+
+func TestServiceDoesNotExposePostCleanup(t *testing.T) {
+	t.Parallel()
+
+	_, exists := reflect.TypeOf((*Service)(nil)).MethodByName("TrashTemporaryForPost")
+	require.False(t, exists, "media lifecycle cleanup must accept canonical Publication ownership only")
 }
 
 func TestPublishedPublicationTrashesOnlyUnprotectedTemporaryMedia(t *testing.T) {
