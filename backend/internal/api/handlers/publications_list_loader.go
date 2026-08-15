@@ -68,10 +68,6 @@ func (h *PublicationHandler) loadPublicationResponses(
 	if err != nil {
 		return nil, err
 	}
-	linkedPostByPublication, err := h.loadPublicationListLinkedPosts(ctx, publicationIDs)
-	if err != nil {
-		return nil, err
-	}
 	segmentsByRendition, mediaByRenditionSegment, err :=
 		h.loadPublicationListRenditionSegments(ctx, publicationIDs)
 	if err != nil {
@@ -82,7 +78,6 @@ func (h *PublicationHandler) loadPublicationResponses(
 	for index := range publications {
 		publication := &publications[index]
 		response := publicationResponse(publication, publicationMedia[publication.ID])
-		response.TextPostID = linkedPostByPublication[publication.ID]
 		response.Segments = publicationSegmentResponses(
 			*publication,
 			segmentsByPublication[publication.ID],
@@ -235,31 +230,6 @@ func (h *PublicationHandler) loadPublicationListRenditions(
 		})
 	}
 	return renditionsByPublication, mediaByRendition, publicationMedia, nil
-}
-
-func (h *PublicationHandler) loadPublicationListLinkedPosts(
-	ctx context.Context,
-	publicationIDs []string,
-) (map[string]string, error) {
-	linkedPostByPublication := map[string]string{}
-	var posts []models.Post
-	if err := h.db.NewSelect().
-		Model(&posts).
-		Column("id", "publication_id", "thread_sequence", "created_at").
-		Where("publication_id IN (?)", bun.List(publicationIDs)).
-		Order("publication_id ASC", "thread_sequence ASC", "created_at ASC").
-		Scan(ctx); err != nil {
-		if isMissingLegacyPostsTable(err) {
-			return linkedPostByPublication, nil
-		}
-		return nil, huma.Error500InternalServerError("failed to load linked text posts")
-	}
-	for _, post := range posts {
-		if _, exists := linkedPostByPublication[post.PublicationID]; !exists {
-			linkedPostByPublication[post.PublicationID] = post.ID
-		}
-	}
-	return linkedPostByPublication, nil
 }
 
 func (h *PublicationHandler) loadPublicationListRenditionSegments(

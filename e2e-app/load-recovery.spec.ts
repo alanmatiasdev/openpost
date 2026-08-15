@@ -266,7 +266,6 @@ test("portrait calendar can create on an empty date in a populated month", async
       json: [
         {
           id: "scheduled-publication",
-          text_post_id: "scheduled-post",
           workspace_id: workspace.id,
           created_by: "calendar-test-user",
           title: "Scheduled item",

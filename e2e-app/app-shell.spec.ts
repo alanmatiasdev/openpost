@@ -173,21 +173,10 @@ test("first autosave establishes the draft URL and keeps draft actions in one co
   expect(publicationDetail.ok()).toBeTruthy();
   const publicationDetailBody = (await publicationDetail.json()) as {
     id: string;
-    text_post_id: string;
     source_url: string;
   };
   expect(publicationDetailBody.id).toBe(publicationId);
-  expect(publicationDetailBody.text_post_id).toBeTruthy();
   expect(publicationDetailBody.source_url).toBe(link);
-
-  const postDetail = await request.get(`/api/v1/posts/${publicationDetailBody.text_post_id}`, {
-    headers: { Authorization: `Bearer ${auth.token}` },
-  });
-  expect(postDetail.ok()).toBeTruthy();
-  const postDetailBody = (await postDetail.json()) as {
-    publication_id: string;
-  };
-  expect(postDetailBody.publication_id).toBe(publicationId);
 
   const draftLoadRequests: string[] = [];
   page.on("request", (request) => {
@@ -204,11 +193,7 @@ test("first autosave establishes the draft URL and keeps draft actions in one co
   expect(
     draftLoadRequests.filter((path) => path === `/api/v1/publications/${publicationId}`),
   ).toHaveLength(1);
-  expect(
-    draftLoadRequests.filter(
-      (path) => path === `/api/v1/posts/${publicationDetailBody.text_post_id}`,
-    ),
-  ).toHaveLength(0);
+  expect(draftLoadRequests.filter((path) => path.startsWith("/api/v1/posts/"))).toHaveLength(0);
   expect(draftLoadRequests.filter((path) => path.endsWith("/variants"))).toHaveLength(0);
   await page.goto("/calendar");
   await expect(page.getByTestId("sidebar-draft-list").locator("li")).toHaveCount(1);

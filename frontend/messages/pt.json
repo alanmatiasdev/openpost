@@ -3119,6 +3119,7 @@
 	"compose_error_session_reset_pending_save": "Aguarda que a gravação atual termine antes de repor o Compositor.",
 	"compose_error_publication_revision_missing": "Esta Publicação não tem uma revisão aceite.",
 	"compose_error_session_request_failed": "O OpenPost não conseguiu concluir o pedido do Compositor.",
+	"compose_error_session_inactive": "Esta sessão do Compositor já não está ativa.",
 	"compose_error_image_editor_return_inactive": "Este retorno do OpenPost Image Editor já não está ativo.",
 	"compose_error_image_editor_return_workspace_mismatch": "Este retorno do OpenPost Image Editor pertence a outro Workspace.",
 	"compose_error_video_editor_return_inactive": "Este retorno do OpenPost Video Editor já não está ativo.",

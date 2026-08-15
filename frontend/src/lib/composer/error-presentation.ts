@@ -15,6 +15,7 @@ const composerErrorMessages: Record<ComposerErrorCode, () => string> = {
 	editor_return_revision_invalid: m.compose_error_editor_return_revision_invalid,
 	revision_conflict_missing: m.compose_error_revision_conflict_missing,
 	session_reset_pending_save: m.compose_error_session_reset_pending_save,
+	session_inactive: m.compose_error_session_inactive,
 	publication_revision_missing: m.compose_error_publication_revision_missing,
 	session_request_failed: m.compose_error_session_request_failed,
 	image_editor_return_inactive: m.compose_error_image_editor_return_inactive,

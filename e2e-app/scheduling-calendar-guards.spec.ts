@@ -27,7 +27,6 @@ type ScheduledPost = {
 
 type ScheduledPublication = {
   id: string;
-  text_post_id: string;
   workspace_id: string;
   created_by: string;
   title: string;
@@ -140,7 +139,6 @@ async function mockCalendarData(
         const isThread = threadPosts.length > 1;
         return {
           id: `publication-${post.id}`,
-          text_post_id: post.id,
           workspace_id: post.workspace_id,
           created_by: post.created_by,
           title: post.content,
@@ -302,7 +300,6 @@ test("portrait calendar and composer reject past creation and rescheduling", asy
       contentType: "application/json",
       json: {
         id: "publication-future-post",
-        text_post_id: futurePost.id,
         workspace_id: workspace.id,
         created_by: futurePost.created_by,
         title: futurePost.content,

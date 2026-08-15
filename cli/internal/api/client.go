@@ -1054,7 +1054,6 @@ type PublicationSegmentInput struct {
 
 type Publication struct {
 	ID             string                 `json:"id"`
-	TextPostID     string                 `json:"text_post_id,omitempty"`
 	WorkspaceID    string                 `json:"workspace_id"`
 	CreatedBy      string                 `json:"created_by"`
 	Title          string                 `json:"title"`

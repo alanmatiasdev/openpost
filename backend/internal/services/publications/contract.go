@@ -120,7 +120,6 @@ type ListPublicationsInput struct {
 
 type PublicationResponse struct {
 	ID                   string                       `json:"id"`
-	TextPostID           string                       `json:"text_post_id,omitempty" doc:"Linked draft post ID used by the text-and-thread composer"`
 	WorkspaceID          string                       `json:"workspace_id"`
 	CreatedByID          string                       `json:"created_by"`
 	Title                string                       `json:"title"`

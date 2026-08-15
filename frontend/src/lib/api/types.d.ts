@@ -9705,8 +9705,6 @@ export interface components {
             source_text: string;
             source_url?: string;
             status: string;
-            /** @description Linked draft post ID used by the text-and-thread composer */
-            text_post_id?: string;
             title: string;
             updated_at: string;
             workspace_id: string;

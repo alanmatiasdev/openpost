@@ -3119,6 +3119,7 @@
 	"compose_error_session_reset_pending_save": "Wait for the current save before resetting the Composer.",
 	"compose_error_publication_revision_missing": "This Publication has no accepted revision.",
 	"compose_error_session_request_failed": "OpenPost could not complete the Composer request.",
+	"compose_error_session_inactive": "This Composer session is no longer active.",
 	"compose_error_image_editor_return_inactive": "This OpenPost Image Editor return is no longer active.",
 	"compose_error_image_editor_return_workspace_mismatch": "This OpenPost Image Editor return belongs to another Workspace.",
 	"compose_error_video_editor_return_inactive": "This OpenPost Video Editor return is no longer active.",

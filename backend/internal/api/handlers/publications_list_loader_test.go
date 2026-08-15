@@ -35,7 +35,6 @@ func TestLoadPublicationResponsesUsesFixedQueryCount(t *testing.T) {
 		(*models.RenditionSegment)(nil),
 		(*models.RenditionSegmentMedia)(nil),
 		(*models.MediaAttachment)(nil),
-		(*models.Post)(nil),
 		(*models.WorkspaceMember)(nil),
 		(*models.ProviderDelivery)(nil),
 	)
@@ -144,27 +143,12 @@ func TestLoadPublicationResponsesUsesFixedQueryCount(t *testing.T) {
 		},
 	}).Exec(ctx)
 	require.NoError(t, err)
-	_, err = db.NewInsert().Model(&[]models.Post{
-		{
-			ID: "post-1", WorkspaceID: "workspace-1", CreatedByID: "user-1",
-			PublicationID: "publication-1", Content: "First", Status: models.PostStatusDraft,
-			Revision: 1, CreatedAt: now,
-		},
-		{
-			ID: "post-2", WorkspaceID: "workspace-1", CreatedByID: "user-1",
-			PublicationID: "publication-2", Content: "Second", Status: models.PostStatusDraft,
-			Revision: 1, CreatedAt: now,
-		},
-	}).Exec(ctx)
-	require.NoError(t, err)
-
 	counter := &selectQueryCounter{}
 	db.AddQueryHook(counter)
 	responses, err := (&PublicationHandler{db: db}).loadPublicationResponses(ctx, publications)
 	require.NoError(t, err)
-	require.Equal(t, int64(8), counter.count.Load())
+	require.Equal(t, int64(7), counter.count.Load())
 	require.Len(t, responses, 2)
-	require.Equal(t, "post-1", responses[0].TextPostID)
 	require.Equal(t, "segment-1", responses[0].Segments[0].ID)
 	require.Equal(t, "media-1", responses[0].Segments[0].Media[0].ID)
 	require.Equal(t, "rendition-1", responses[0].Renditions[0].ID)
@@ -174,14 +158,13 @@ func TestLoadPublicationResponsesUsesFixedQueryCount(t *testing.T) {
 	require.Equal(t, "still_processing", responses[0].Renditions[0].Delivery.ErrorCode)
 	require.Equal(t, "rendition-segment-1", responses[0].Renditions[0].Segments[0].ID)
 	require.Equal(t, "media-1", responses[0].Renditions[0].Segments[0].Media[0].ID)
-	require.Equal(t, "post-2", responses[1].TextPostID)
 	require.Equal(t, "media-2", responses[1].Media[0].ID)
 
 	counter.count.Store(0)
 	detail, err := (&PublicationHandler{db: db}).loadPublicationResponse(ctx, "publication-1", "user-1")
 	require.NoError(t, err)
 	// Workspace authorization includes one constant identity-policy lookup.
-	require.Equal(t, int64(11), counter.count.Load())
+	require.Equal(t, int64(10), counter.count.Load())
 	require.Equal(t, "publication-1", detail.ID)
 	require.Equal(t, "rendition-segment-1", detail.Renditions[0].Segments[0].ID)
 }

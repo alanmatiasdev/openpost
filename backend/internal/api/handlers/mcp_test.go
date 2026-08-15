@@ -865,14 +865,13 @@ func TestMCPPublicationLifecycleOperationsStayInParity(t *testing.T) {
 	publication := loaded.(map[string]any)["structuredContent"].(map[string]any)["publication"].(PublicationResponse)
 	require.Equal(t, "Updated title", publication.Title)
 	require.Equal(t, "Updated copy", publication.SourceText)
-	require.NotEmpty(t, publication.TextPostID)
 	require.Len(t, publication.Renditions, 1)
 	require.Equal(t, "X-native copy", publication.Renditions[0].Body)
 
 	var editor models.Post
 	require.NoError(t, srv.db.NewSelect().
 		Model(&editor).
-		Where("id = ?", publication.TextPostID).
+		Where("publication_id = ?", publicationID).
 		Scan(ctx))
 	require.Equal(t, publicationID, editor.PublicationID)
 	require.Equal(t, "Updated copy", editor.Content)

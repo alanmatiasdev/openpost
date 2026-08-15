@@ -9,7 +9,6 @@ function publication(
 ) {
   return {
     id,
-    text_post_id: `post-${id}`,
     workspace_id: workspaceID,
     created_by: "calendar-inventory-user",
     title: id.replaceAll("-", " "),

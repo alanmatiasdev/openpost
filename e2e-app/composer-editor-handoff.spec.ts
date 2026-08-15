@@ -41,7 +41,6 @@ test("composer preserves its draft through Image cancel and Video replacement", 
 
   const publication = {
     id: "publication-handoff",
-    text_post_id: "post-handoff",
     workspace_id: workspace.id,
     created_by: "user-handoff",
     title: "Scheduled launch",

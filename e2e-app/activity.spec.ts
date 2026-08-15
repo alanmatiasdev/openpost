@@ -30,7 +30,6 @@ test("failed delivery details stay secondary to post status", async ({ page }) =
   const publications = [
     {
       id: "scheduled-publication",
-      text_post_id: "scheduled-parent",
       workspace_id: "ws-1",
       created_by: "user-1",
       title: "Scheduled thread parent",
@@ -74,7 +73,6 @@ test("failed delivery details stay secondary to post status", async ({ page }) =
     },
     {
       id: "published-publication",
-      text_post_id: "published-parent",
       workspace_id: "ws-1",
       created_by: "user-1",
       title: "Published thread parent",
@@ -247,7 +245,6 @@ test("scheduled pagination counts only scheduled publications", async ({ page })
 
   const publication = (id: string, status: "scheduled" | "draft") => ({
     id,
-    text_post_id: `${id}-post`,
     workspace_id: "ws-1",
     created_by: "user-1",
     title: id,

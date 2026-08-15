@@ -2036,24 +2036,6 @@ func (h *PublicationHandler) loadPublicationResponse(ctx context.Context, public
 	return responses[0], nil
 }
 
-func linkedTextPostID(ctx context.Context, db bun.IDB, publicationID string) (string, error) {
-	var post models.Post
-	err := db.NewSelect().
-		Model(&post).
-		Column("id").
-		Where("publication_id = ?", publicationID).
-		Order("thread_sequence ASC", "created_at ASC").
-		Limit(1).
-		Scan(ctx)
-	if errors.Is(err, sql.ErrNoRows) || isMissingLegacyPostsTable(err) {
-		return "", nil
-	}
-	if err != nil {
-		return "", err
-	}
-	return post.ID, nil
-}
-
 func (h *PublicationHandler) loadCanonicalSegmentInputsWithDB(
 	ctx context.Context,
 	db bun.IDB,

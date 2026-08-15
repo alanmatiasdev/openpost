@@ -12492,10 +12492,6 @@
 					"status": {
 						"type": "string"
 					},
-					"text_post_id": {
-						"description": "Linked draft post ID used by the text-and-thread composer",
-						"type": "string"
-					},
 					"title": {
 						"type": "string"
 					},

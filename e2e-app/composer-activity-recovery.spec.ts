@@ -202,7 +202,6 @@ test("activity clears cross-workspace data and preserves a valid view on refresh
         json: [
           {
             id: isSecond ? "current-publication" : "previous-publication",
-            text_post_id: isSecond ? "current-post" : "previous-post",
             workspace_id: workspaceID,
             created_by: "activity-recovery-user",
             title: isSecond ? "Current workspace post" : "Previous workspace post",
