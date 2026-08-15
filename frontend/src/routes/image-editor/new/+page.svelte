@@ -2,14 +2,15 @@
 	import { onMount } from 'svelte';
 	import { captureTelemetryEvent } from '@openpost/telemetry';
 	import { goto } from '$app/navigation';
-	import { resolve } from '$app/paths';
+	import { resolveAppPath } from '$lib/app-path';
 	import { page } from '$app/stores';
 	import { workspaceCtx } from '$lib/stores/workspace.svelte';
 	import {
 		createImageEditorDesign,
 		instantiateImageEditorTemplate,
 		listImageEditorTemplates,
-		loadImageEditorConfig
+		loadImageEditorConfig,
+		type CreateImageEditorDesignInput
 	} from '$lib/image-editor/api';
 	import type { ImageEditorPreset, ImageEditorTemplate } from '$lib/image-editor/types';
 	import { Button } from '$lib/components/ui/button';
@@ -21,6 +22,11 @@
 	import { startImageEditorMetric } from '$lib/image-editor/telemetry';
 	import TemplatePreview from '$lib/image-editor/components/template-preview.svelte';
 	import { editorHandoffReturnURL } from '$lib/editor-handoff';
+
+	interface ImageEditorSize {
+		width: number;
+		height: number;
+	}
 
 	let loading = $state(true);
 	let creating = $state('');
@@ -59,8 +65,9 @@
 				return;
 			}
 			const requestedTemplate = $page.url.searchParams.get('template');
-			if (requestedTemplate && templates.some((template) => template.id === requestedTemplate)) {
-				await createTemplate(templates.find((template) => template.id === requestedTemplate)!);
+			const template = templates.find((candidate) => candidate.id === requestedTemplate);
+			if (template) {
+				await createTemplate(template);
 				return;
 			}
 			const requestedPreset = $page.url.searchParams.get('preset');
@@ -80,11 +87,15 @@
 		creating = key;
 		error = '';
 		try {
-			const design = await createImageEditorDesign(workspaceID, {
+			const input: CreateImageEditorDesignInput = {
 				title: m.image_editor_untitled_design(),
-				preset_key: key,
-				...(key === 'custom' ? { width_px: customWidth, height_px: customHeight } : {})
-			});
+				preset_key: key
+			};
+			if (key === 'custom') {
+				input.width_px = customWidth;
+				input.height_px = customHeight;
+			}
+			const design = await createImageEditorDesign(workspaceID, input);
 			captureTelemetryEvent('image design created', {
 				source: key === 'custom' ? 'custom' : 'preset'
 			});
@@ -131,7 +142,7 @@
 		}
 	}
 
-	function fitSourceSize(width: number, height: number): { width: number; height: number } {
+	function fitSourceSize(width: number, height: number): ImageEditorSize {
 		if (width < 1 || height < 1) return { width: 1080, height: 1080 };
 		const scale = Math.min(
 			1,
@@ -150,19 +161,19 @@
 		if (returnToken) query.set('return_token', returnToken);
 		if (initialAction) query.set('action', initialAction);
 		const suffix = query.size > 0 ? `?${query.toString()}` : '';
-		await goto(resolve(`/image-editor/${id}${suffix}` as '/'), { replaceState: true });
+		await goto(resolveAppPath(`/image-editor/${id}${suffix}`), { replaceState: true });
 	}
 
 	function goBack(): void {
 		if (returnToken) {
 			const returnURL = editorHandoffReturnURL(returnToken, 'image', 'cancelled');
 			if (returnURL) {
-				void goto(resolve(returnURL as '/'));
+				void goto(resolveAppPath(returnURL));
 				return;
 			}
 		}
 		if (history.length > 1) history.back();
-		else void goto(resolve('/media' as '/'));
+		else void goto(resolveAppPath('/media'));
 	}
 
 	function presetName(preset: ImageEditorPreset): string {
@@ -278,7 +289,7 @@
 				<p class="mt-2 text-sm text-muted-foreground">
 					{m.image_editor_not_enabled_body()}
 				</p>
-				<Button class="mt-5" onclick={() => goto(resolve('/media'))}
+				<Button class="mt-5" onclick={() => goto(resolveAppPath('/media'))}
 					>{m.image_editor_return_media()}</Button
 				>
 			</div>

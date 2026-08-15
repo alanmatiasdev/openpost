@@ -8,7 +8,7 @@ FORM: Operate surface extending the established OpenPost Image Editor start scre
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
-	import { resolve } from '$app/paths';
+	import { resolveAppPath } from '$lib/app-path';
 	import { auth } from '$lib/stores/auth';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
@@ -95,7 +95,7 @@ FORM: Operate surface extending the established OpenPost Image Editor start scre
 				entry: 'preset',
 				preset: preset.key
 			});
-			await goto(resolve(`/image-editor/${design.id}` as '/'));
+			await goto(resolveAppPath(`/image-editor/${design.id}`));
 		} catch (cause) {
 			error = cause instanceof Error ? cause.message : m.image_editor_create_failed();
 			creating = '';
@@ -137,15 +137,16 @@ FORM: Operate surface extending the established OpenPost Image Editor start scre
 				entry: 'template',
 				template: template.id
 			});
-			await goto(resolve(`/image-editor/${design.id}` as '/'));
+			await goto(resolveAppPath(`/image-editor/${design.id}`));
 		} catch (cause) {
 			error = cause instanceof Error ? cause.message : m.image_editor_template_use_failed();
 			creating = '';
 		}
 	}
 
-	async function openImage(event: Event): Promise<void> {
-		const input = event.currentTarget as HTMLInputElement;
+	async function openImage(): Promise<void> {
+		const input = fileInput;
+		if (!input) return;
 		const file = input.files?.[0];
 		input.value = '';
 		if (!file || creating) return;
@@ -158,7 +159,7 @@ FORM: Operate surface extending the established OpenPost Image Editor start scre
 				file.name.replace(/\.[^.]+$/u, '') || m.image_editor_untitled_design()
 			);
 			trackPublicImageEditorEvent('image_editor_design_started', { entry: 'image' });
-			await goto(resolve(`/image-editor/${design.id}` as '/'));
+			await goto(resolveAppPath(`/image-editor/${design.id}`));
 		} catch (cause) {
 			error = cause instanceof Error ? cause.message : m.image_editor_media_open_failed();
 			creating = '';
@@ -247,7 +248,11 @@ FORM: Operate surface extending the established OpenPost Image Editor start scre
 <div class="image-editor-theme min-h-dvh bg-background text-foreground">
 	<header class="border-b bg-background">
 		<div class="mx-auto flex h-16 max-w-7xl items-center gap-3 px-4 sm:px-6 lg:px-8">
-			<a href={resolve('/')} class="flex min-h-11 items-center" aria-label={m.common_openpost()}>
+			<a
+				href={resolveAppPath('/')}
+				class="flex min-h-11 items-center"
+				aria-label={m.common_openpost()}
+			>
 				<Logo width={112} height={33} />
 			</a>
 			<span class="hidden text-sm text-muted-foreground sm:inline">/ {m.image_editor_title()}</span>
@@ -298,7 +303,7 @@ FORM: Operate surface extending the established OpenPost Image Editor start scre
 					type="file"
 					accept="image/png,image/jpeg,image/webp"
 					class="sr-only !size-px !p-0"
-					onchange={openImage}
+					onchange={() => void openImage()}
 				/>
 			</div>
 		</div>
@@ -347,7 +352,7 @@ FORM: Operate surface extending the established OpenPost Image Editor start scre
 						{#each recentDesigns as design (design.id)}
 							<div class="group relative overflow-hidden rounded-xl border bg-card">
 								<a
-									href={resolve(`/image-editor/${design.id}` as '/')}
+									href={resolveAppPath(`/image-editor/${design.id}`)}
 									class="block focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
 								>
 									<div class="aspect-[4/3] bg-neutral-800">

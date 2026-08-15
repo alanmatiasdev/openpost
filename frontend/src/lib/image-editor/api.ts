@@ -23,6 +23,15 @@ type ApiImageEditorMediaItem = components['schemas']['MediaListItem'];
 type ApiImageEditorRevisionResponse = components['schemas']['ImageEditorRevisionResponse'];
 type ApiImageEditorRevisionSummary = components['schemas']['ImageEditorRevisionSummary'];
 
+export interface CreateImageEditorDesignInput {
+	title?: string;
+	preset_key: string;
+	width_px?: number;
+	height_px?: number;
+	source_media_id?: string;
+	client_request_id?: string;
+}
+
 function normalizePreset(preset: components['schemas']['ImageEditorPreset']): ImageEditorPreset {
 	return { ...preset, profiles: preset.profiles ?? [] };
 }
@@ -127,14 +136,7 @@ export async function loadImageEditorConfig(): Promise<{
 
 export async function createImageEditorDesign(
 	workspaceID: string,
-	input: {
-		title?: string;
-		preset_key: string;
-		width_px?: number;
-		height_px?: number;
-		source_media_id?: string;
-		client_request_id?: string;
-	}
+	input: CreateImageEditorDesignInput
 ): Promise<ImageEditorDocumentResponse> {
 	const body: components['schemas']['CreateImageEditorDesignInputBody'] = {
 		workspace_id: workspaceID,
