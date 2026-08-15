@@ -31,11 +31,10 @@
 	} from '$lib/account-removal';
 	import {
 		presentProviderReadiness,
-		type ProviderReadinessDecision,
 		type ProviderReadinessPresentation
 	} from '$lib/provider-readiness';
 
-	type ProviderEntry = ProviderInfo & { readiness?: ProviderReadinessDecision };
+	type ProviderEntry = ProviderInfo;
 	let {
 		mode,
 		workspace,
@@ -146,16 +145,12 @@
 		toastTone = tone;
 	}
 
-	function connectErrorMessage(value: unknown, fallback: string): string {
-		if (value && typeof value === 'object') {
-			const maybeError = value as { detail?: string; message?: string };
-			return maybeError.detail || maybeError.message || fallback;
-		}
-		return fallback;
+	function connectErrorMessage(error: Error, fallback: string): string {
+		return error.message || fallback;
 	}
 
-	function showConnectError(value: unknown, fallback: string = m.accounts_connect_failed()) {
-		const message = connectErrorMessage(value, fallback);
+	function showConnectError(error: Error, fallback: string = m.accounts_connect_failed()) {
+		const message = connectErrorMessage(error, fallback);
 		const lower = message.toLowerCase();
 		const needsBilling = lower.includes('subscription') || lower.includes('social account limit');
 		showToast(
@@ -190,7 +185,7 @@
 		} catch (e) {
 			if (!isCurrentRequest()) return;
 			console.error('Failed to load accounts:', e);
-			accountsLoadError = (e as Error).message;
+			accountsLoadError = e instanceof Error ? e.message : m.accounts_load_failed();
 		} finally {
 			if (isCurrentRequest()) accountsLoading = false;
 		}
@@ -202,7 +197,7 @@
 		try {
 			const { data, error: err } = await client.GET('/accounts/providers');
 			if (err) throw new Error(err.detail ?? m.accounts_providers_load_failed());
-			providerEntries = (data ?? []) as ProviderEntry[];
+			providerEntries = data ?? [];
 		} catch (e) {
 			console.error('Failed to load account providers:', e);
 			providersLoadError =
@@ -386,11 +381,11 @@
 			const { data, error: err } = await client.GET('/accounts/{platform}/auth-url', {
 				params: { path: { platform: 'x' }, query: { workspace_id: selectedWorkspaceId } }
 			});
-			if (err) throw new Error((err as any).detail || m.accounts_x_connection_start_failed());
+			if (err) throw new Error(err.detail || m.accounts_x_connection_start_failed());
 			if (!data?.url) throw new Error(m.accounts_x_connection_start_failed());
 			onContinue({ kind: 'external-oauth', url: data.url, workspaceID: selectedWorkspaceId });
 		} catch (e) {
-			showConnectError(e);
+			showConnectError(e instanceof Error ? e : new Error(m.accounts_connect_failed()));
 		}
 	}
 
@@ -411,7 +406,7 @@
 				}
 			}
 		});
-		if (err) throw new Error((err as any).detail || m.accounts_connect_failed());
+		if (err) throw new Error(err.detail || m.accounts_connect_failed());
 		if (!data?.url) throw new Error(m.accounts_connect_failed());
 		onContinue({
 			kind: 'external-oauth',
@@ -429,7 +424,10 @@
 		try {
 			await connectMastodon(options);
 		} catch (e) {
-			mastodonError = connectErrorMessage(e, m.accounts_connect_failed());
+			mastodonError = connectErrorMessage(
+				e instanceof Error ? e : new Error(m.accounts_connect_failed()),
+				m.accounts_connect_failed()
+			);
 		} finally {
 			customMastodonLoading = false;
 		}
@@ -470,7 +468,10 @@
 			onAccountsChanged();
 		} catch (e) {
 			blueskyError = e instanceof Error && e.message ? e.message : m.accounts_login_failed();
-			showConnectError(e, m.accounts_login_failed());
+			showConnectError(
+				e instanceof Error ? e : new Error(m.accounts_login_failed()),
+				m.accounts_login_failed()
+			);
 		} finally {
 			blueskyLoading = false;
 		}
@@ -506,7 +507,12 @@
 			await loadAccounts();
 			onAccountsChanged();
 		} catch (requestError) {
-			discordError = connectErrorMessage(requestError, m.accounts_discord_verify_failed());
+			discordError = connectErrorMessage(
+				requestError instanceof Error
+					? requestError
+					: new Error(m.accounts_discord_verify_failed()),
+				m.accounts_discord_verify_failed()
+			);
 		} finally {
 			discordLoading = false;
 		}
@@ -524,11 +530,11 @@
 					query: { workspace_id: selectedWorkspaceId }
 				}
 			});
-			if (err) throw new Error((err as any).detail || m.accounts_connect_failed());
+			if (err) throw new Error(err.detail || m.accounts_connect_failed());
 			if (!data?.url) throw new Error(m.accounts_connect_failed());
 			onContinue({ kind: 'external-oauth', url: data.url, workspaceID: selectedWorkspaceId });
 		} catch (e) {
-			showConnectError(e);
+			showConnectError(e instanceof Error ? e : new Error(m.accounts_connect_failed()));
 		}
 	}
 
@@ -740,7 +746,7 @@
 			return false;
 		}
 
-		const query: { workspace_id: string; server_name?: string; instance_url?: string } = {
+		const query = {
 			workspace_id: selectedWorkspaceId,
 			server_name: options.serverName,
 			instance_url: options.instanceURL
@@ -751,11 +757,14 @@
 				params: { path: { platform: 'mastodon' }, query }
 			});
 			if (err) {
-				throw new Error((err as any).detail || m.accounts_mastodon_connection_start_failed());
+				throw new Error(err.detail || m.accounts_mastodon_connection_start_failed());
 			}
 			return true;
 		} catch (e) {
-			mastodonError = connectErrorMessage(e, m.accounts_connect_failed());
+			mastodonError = connectErrorMessage(
+				e instanceof Error ? e : new Error(m.accounts_connect_failed()),
+				m.accounts_connect_failed()
+			);
 			return false;
 		}
 	}
