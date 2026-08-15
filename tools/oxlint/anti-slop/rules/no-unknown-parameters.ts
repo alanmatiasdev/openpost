@@ -24,6 +24,32 @@ function parameterAnnotation(parameter: Parameter): ESTree.TSTypeAnnotation | nu
   return parameter.typeAnnotation;
 }
 
+const UNKNOWN_BOUNDARY_FUNCTION_PREFIXES = ["parse", "safe", "is", "has", "fromUnknown"];
+
+function ownerName(node: ParameterOwner): string {
+  if (node.type === "FunctionDeclaration") return node.id?.name ?? "";
+  if (
+    (node.type === "ArrowFunctionExpression" || node.type === "FunctionExpression") &&
+    node.parent.type === "VariableDeclarator" &&
+    node.parent.id.type === "Identifier"
+  ) {
+    return node.parent.id.name;
+  }
+  if (
+    (node.type === "ArrowFunctionExpression" || node.type === "FunctionExpression") &&
+    node.parent.type === "Property" &&
+    node.parent.key.type === "Identifier"
+  ) {
+    return node.parent.key.name;
+  }
+  return "";
+}
+
+function allowsUnknownParameters(node: ParameterOwner): boolean {
+  const name = ownerName(node);
+  return UNKNOWN_BOUNDARY_FUNCTION_PREFIXES.some((prefix) => name.startsWith(prefix));
+}
+
 function parameterName(parameter: Parameter, sourceText: string): string {
   if (parameter.type === "TSParameterProperty") {
     return parameterName(parameter.parameter, sourceText);
@@ -54,6 +80,7 @@ export const noUnknownParametersRule = defineRule({
   },
   createOnce(context) {
     const checkParameters = (node: ParameterOwner) => {
+      if (allowsUnknownParameters(node)) return;
       for (const parameter of node.params) {
         const annotation = parameterAnnotation(parameter);
         if (annotation?.typeAnnotation.type !== "TSUnknownKeyword") continue;

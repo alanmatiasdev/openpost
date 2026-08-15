@@ -14,9 +14,18 @@ export function requiresBillingRecovery(status: BillingRecoveryStatus | null | u
 	return Boolean(status?.access_restricted && status.status.toLowerCase() === 'past_due');
 }
 
+interface BillingRecoveryPayload {
+	workspace_id?: unknown;
+	status?: unknown;
+	can_manage_billing?: unknown;
+	access_restricted?: unknown;
+	past_due_since?: unknown;
+}
+
 export function parseBillingRecoveryStatus(value: unknown): BillingRecoveryStatus | null {
-	if (!value || typeof value !== 'object') return null;
-	const payload = value as Record<string, unknown>;
+	if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+	// SAFETY: The parser validates every field from this JSON object before returning a BillingRecoveryStatus.
+	const payload = value as BillingRecoveryPayload;
 	if (
 		typeof payload.workspace_id !== 'string' ||
 		!payload.workspace_id ||
