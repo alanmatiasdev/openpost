@@ -15,38 +15,57 @@ export type ChartConfig = {
 
 export type ExtractSnippetParams<T> = T extends Snippet<[infer P]> ? P : never;
 export type TooltipPayload = Tooltip.TooltipSeries;
+type ChartTooltipDataValue = string | number | boolean | null | undefined;
+export type ChartTooltipData = Record<string, ChartTooltipDataValue>;
+
+type ChartLookupSource = { [key: string]: ChartTooltipDataValue | ChartLookupSource | undefined };
 
 export function getPayloadConfigFromPayload(
 	config: ChartConfig,
 	payload: TooltipPayload,
 	key: string,
-	data?: Record<string, unknown> | null
+	data?: ChartTooltipData | null
 ) {
-	if (typeof payload !== 'object' || payload === null) return undefined;
-
-	const payloadConfig =
-		'config' in payload && typeof payload.config === 'object' && payload.config !== null
-			? payload.config
-			: undefined;
+	const payloadConfig = parseChartLookupSource(payload.config);
 
 	let configLabelKey = key;
 	if (payload.key === key) {
 		configLabelKey = payload.key;
 	} else if (payload.label === key) {
 		configLabelKey = payload.label;
-	} else if (key in payload && typeof payload[key as keyof typeof payload] === 'string') {
-		configLabelKey = payload[key as keyof typeof payload] as string;
-	} else if (
-		payloadConfig !== undefined &&
-		key in payloadConfig &&
-		typeof payloadConfig[key as keyof typeof payloadConfig] === 'string'
-	) {
-		configLabelKey = payloadConfig[key as keyof typeof payloadConfig] as string;
-	} else if (data != null && key in data && typeof data[key] === 'string') {
-		configLabelKey = data[key] as string;
+	} else {
+		configLabelKey =
+			parseChartLookupString(parseChartLookupSource(payload), key) ??
+			parseChartLookupString(payloadConfig, key) ??
+			parseChartDataString(data, key) ??
+			configLabelKey;
 	}
 
-	return configLabelKey in config ? config[configLabelKey] : config[key as keyof typeof config];
+	return configLabelKey in config ? config[configLabelKey] : config[key];
+}
+
+function parseChartLookupSource(value: unknown): ChartLookupSource | undefined {
+	if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+	// SAFETY: The parser only uses string-key lookup and validates each read value before use.
+	return value as ChartLookupSource;
+}
+
+function parseChartLookupString(
+	source: ChartLookupSource | undefined | null,
+	key: string
+): string | undefined {
+	if (!source || !Object.hasOwn(source, key)) return undefined;
+	const value = source[key];
+	return typeof value === 'string' ? value : undefined;
+}
+
+function parseChartDataString(
+	source: ChartTooltipData | undefined | null,
+	key: string
+): string | undefined {
+	if (!source || !Object.hasOwn(source, key)) return undefined;
+	const value = source[key];
+	return typeof value === 'string' ? value : undefined;
 }
 
 type ChartContextValue = {

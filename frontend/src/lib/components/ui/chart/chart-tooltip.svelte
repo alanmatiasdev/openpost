@@ -1,11 +1,18 @@
 <script lang="ts">
 	import { cn, type WithElementRef, type WithoutChildren } from '$lib/utils.js';
 	import type { HTMLAttributes } from 'svelte/elements';
-	import { getPayloadConfigFromPayload, useChart, type TooltipPayload } from './chart-utils.js';
+	import {
+		getPayloadConfigFromPayload,
+		useChart,
+		type ChartTooltipData,
+		type TooltipPayload
+	} from './chart-utils.js';
 	import { getChartContext, Tooltip as TooltipPrimitive } from 'layerchart';
 	import type { Snippet } from 'svelte';
 
-	function defaultFormatter(value: unknown, _payload: TooltipPayload[]) {
+	type TooltipFormatterValue = string | number | boolean | null | undefined | Snippet;
+
+	function defaultFormatter(value: TooltipFormatterValue, _payload: TooltipPayload[]) {
 		return `${value}`;
 	}
 
@@ -32,12 +39,12 @@
 		hideIndicator?: boolean;
 		labelClassName?: string;
 		labelFormatter?:
-			| ((value: unknown, payload: TooltipPayload[]) => string | number | Snippet)
+			| ((value: TooltipFormatterValue, payload: TooltipPayload[]) => string | number | Snippet)
 			| null;
 		formatter?: Snippet<
 			[
 				{
-					value: unknown;
+					value: TooltipFormatterValue;
 					name: string;
 					item: TooltipPayload;
 					index: number;
@@ -57,19 +64,14 @@
 		if (hideLabel || !visibleSeries?.length) return null;
 
 		const [item] = visibleSeries;
-		const tooltipData = chartCtx.tooltip.data;
+		const tooltipData = parseChartTooltipData(chartCtx.tooltip.data);
 		const dataLabel = tooltipData != null ? chartCtx.x(tooltipData) : undefined;
 		const key = labelKey ?? item?.label ?? item?.key ?? 'value';
-		const itemConfig = getPayloadConfigFromPayload(
-			chart.config,
-			item,
-			key,
-			tooltipData as Record<string, unknown> | null
-		);
+		const itemConfig = getPayloadConfigFromPayload(chart.config, item, key, tooltipData);
 
-		let value: unknown;
-		if (!labelKey && typeof label === 'string') {
-			value = chart.config[label as keyof typeof chart.config]?.label ?? label;
+		let value: TooltipFormatterValue;
+		if (!labelKey && label !== undefined) {
+			value = chart.config[label]?.label ?? label;
 		} else if (labelKey) {
 			value = itemConfig?.label ?? dataLabel;
 		} else {
@@ -82,6 +84,22 @@
 	});
 
 	const nestLabel = $derived(visibleSeries.length === 1 && indicator !== 'dot');
+
+	function parseChartTooltipData(value: unknown): ChartTooltipData | null {
+		if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+		const data: ChartTooltipData = {};
+		for (const [key, item] of Object.entries(value)) {
+			if (
+				item === null ||
+				typeof item === 'string' ||
+				typeof item === 'number' ||
+				typeof item === 'boolean'
+			) {
+				data[key] = item;
+			}
+		}
+		return data;
+	}
 </script>
 
 {#snippet TooltipLabel()}
