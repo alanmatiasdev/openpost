@@ -78,7 +78,7 @@ func TestMessageSendRecoveryDoesNotReplayAcceptedProviderWrite(t *testing.T) {
 		Direction: "outbound", Body: "Hello", AttachmentsJSON: "[]", SendStatus: "queued",
 		CreatedAt: now, UpdatedAt: now,
 	}
-	insertModel(t, ctx, db, account, conversation, message)
+	insertModel(ctx, t, db, account, conversation, message)
 
 	messenger := &fakeMessenger{}
 	service := NewService(db, staticTokenSource{}, nil)
@@ -122,7 +122,7 @@ func TestMessageSendNeverReplaysAmbiguousProviderWrite(t *testing.T) {
 		Direction: "outbound", Body: "Hello", AttachmentsJSON: "[]", SendStatus: "queued",
 		CreatedAt: now, UpdatedAt: now,
 	}
-	insertModel(t, ctx, db, account, conversation, message)
+	insertModel(ctx, t, db, account, conversation, message)
 
 	var calls atomic.Int32
 	provider := &fakeMessenger{
@@ -157,7 +157,7 @@ func TestMessageSyncRequiresOptInAndIsIdempotent(t *testing.T) {
 		AccountID: "did:plc:openpost", AccountUsername: "openpost.test",
 		AccessTokenEnc: []byte("encrypted"), CapabilityState: `{}`, IsActive: true,
 	}
-	insertModel(t, ctx, db, account)
+	insertModel(ctx, t, db, account)
 	now := time.Date(2026, 7, 26, 12, 0, 0, 0, time.UTC)
 	messenger := &fakeMessenger{result: platform.FetchMessagesResult{
 		Conversations: []platform.ProviderConversation{{
@@ -205,7 +205,7 @@ func TestListMessagesOrdersStoredMessagesByProviderTime(t *testing.T) {
 		Platform: "mastodon", RemoteConversationID: "remote-conversation-1",
 		CreatedAt: now, UpdatedAt: now,
 	}
-	insertModel(t, ctx, db, conversation)
+	insertModel(ctx, t, db, conversation)
 	messages := []models.DirectMessage{
 		{
 			ID: "message-later", WorkspaceID: "workspace-1", ConversationID: conversation.ID,
@@ -218,7 +218,7 @@ func TestListMessagesOrdersStoredMessagesByProviderTime(t *testing.T) {
 			CreatedAt: now.Add(time.Minute), UpdatedAt: now.Add(time.Minute),
 		},
 	}
-	insertModel(t, ctx, db, &messages)
+	insertModel(ctx, t, db, &messages)
 
 	service := NewService(db, staticTokenSource{}, nil)
 	page, err := service.ListMessages(ctx, Actor{UserID: "user-1"}, MessageQuery{WorkspaceID: "workspace-1", ConversationID: conversation.ID, Limit: 100})
@@ -244,7 +244,7 @@ func TestListMessagesCursorReachesEveryRecordWithoutGapsOrDuplicates(t *testing.
 		Platform: "bluesky", RemoteConversationID: "remote-conversation-1",
 		CreatedAt: timestamp, UpdatedAt: timestamp,
 	}
-	insertModel(t, ctx, db, conversation)
+	insertModel(ctx, t, db, conversation)
 	messages := make([]models.DirectMessage, 0, 235)
 	for index := range 235 {
 		messages = append(messages, models.DirectMessage{
@@ -253,7 +253,7 @@ func TestListMessagesCursorReachesEveryRecordWithoutGapsOrDuplicates(t *testing.
 			RemoteCreatedAt: timestamp, CreatedAt: timestamp, UpdatedAt: timestamp,
 		})
 	}
-	insertModel(t, ctx, db, &messages)
+	insertModel(ctx, t, db, &messages)
 	service := NewService(db, staticTokenSource{}, nil)
 
 	seen := make([]string, 0, len(messages))
@@ -298,7 +298,7 @@ func TestMessageSyncAlwaysChecksNewestPageWhileBackfilling(t *testing.T) {
 		AccountID: "did:plc:openpost", AccessTokenEnc: []byte("encrypted"),
 		CapabilityState: `{"messages_enabled":"true"}`, IsActive: true,
 	}
-	insertModel(t, ctx, db, account)
+	insertModel(ctx, t, db, account)
 	conversation := func(id, message string, createdAt time.Time) platform.ProviderConversation {
 		return platform.ProviderConversation{
 			ID: id, CounterpartRemoteID: "did:plc:" + id, CounterpartName: id,
@@ -350,13 +350,13 @@ func TestQueueMessageEnforcesProviderWindowBeforeCreatingJob(t *testing.T) {
 		ID: "account-1", WorkspaceID: "workspace-1", Platform: "facebook", AccountID: "page-1",
 		AccessTokenEnc: []byte("encrypted"), CapabilityState: `{"messages_enabled":"true"}`, IsActive: true,
 	}
-	insertModel(t, ctx, db, account)
+	insertModel(ctx, t, db, account)
 	conversation := &models.Conversation{
 		ID: "convo-1", WorkspaceID: "workspace-1", SocialAccountID: "account-1",
 		Platform: "facebook", RemoteConversationID: "remote-1",
 		MessagingWindowExpiresAt: now.Add(-time.Minute), CreatedAt: now, UpdatedAt: now,
 	}
-	insertModel(t, ctx, db, conversation)
+	insertModel(ctx, t, db, conversation)
 
 	service := NewService(db, staticTokenSource{}, nil)
 	service.now = func() time.Time { return now }
@@ -393,7 +393,7 @@ func TestListConversationsCursorReachesEveryRecordWithoutGapsOrDuplicates(t *tes
 			CreatedAt: timestamp, UpdatedAt: timestamp,
 		})
 	}
-	insertModel(t, ctx, db, &conversations)
+	insertModel(ctx, t, db, &conversations)
 	service := NewService(db, staticTokenSource{}, nil)
 
 	seen := make([]string, 0, len(conversations))
@@ -429,7 +429,7 @@ func TestListConversationsCursorReachesEveryRecordWithoutGapsOrDuplicates(t *tes
 	}
 }
 
-func insertModel(t *testing.T, ctx context.Context, db *bun.DB, models ...any) {
+func insertModel(ctx context.Context, t *testing.T, db *bun.DB, models ...any) {
 	t.Helper()
 	for _, model := range models {
 		_, err := db.NewInsert().Model(model).Exec(ctx)

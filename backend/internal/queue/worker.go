@@ -446,27 +446,33 @@ func (w *BackgroundWorker) finishFailedJob(ctx context.Context, job *models.Job,
 		log.Printf("[Worker %s] failed to update job %s status: %v\n", w.workerID, job.ID, dbErr)
 		return
 	}
-	if job.Status == jobStatusFailed {
-		log.Printf("[Worker %s] job %s failed: %s\n", w.workerID, job.ID, failure.message)
+	if job.Status != jobStatusFailed {
+		return
 	}
-	if job.Status == jobStatusFailed && w.telemetry != nil {
-		captureErr := w.telemetry.CaptureException(ctx, telemetry.Exception{
-			DistinctID:  "job:" + job.ID,
-			Title:       "OpenPost " + job.Type + " job failed",
-			Description: "A durable background job reached a terminal failure",
-			Properties: map[string]any{
-				"job_id":         job.ID,
-				"job_type":       job.Type,
-				"attempts":       job.Attempts,
-				"max_attempts":   job.MaxAttempts,
-				"error_type":     telemetry.ErrorType(processErr),
-				"error_boundary": "background_job",
-				"retryable":      failure.retryable,
-			},
-		})
-		if captureErr != nil {
-			log.Printf("[Worker %s] failed to enqueue terminal job telemetry: %v\n", w.workerID, captureErr)
-		}
+	w.recordTerminalFailure(ctx, job, processErr, failure)
+}
+
+func (w *BackgroundWorker) recordTerminalFailure(ctx context.Context, job *models.Job, processErr error, failure classifiedJobFailure) {
+	log.Printf("[Worker %s] job %s failed: %s\n", w.workerID, job.ID, failure.message)
+	if w.telemetry == nil {
+		return
+	}
+	captureErr := w.telemetry.CaptureException(ctx, telemetry.Exception{
+		DistinctID:  "job:" + job.ID,
+		Title:       "OpenPost " + job.Type + " job failed",
+		Description: "A durable background job reached a terminal failure",
+		Properties: map[string]any{
+			"job_id":         job.ID,
+			"job_type":       job.Type,
+			"attempts":       job.Attempts,
+			"max_attempts":   job.MaxAttempts,
+			"error_type":     telemetry.ErrorType(processErr),
+			"error_boundary": "background_job",
+			"retryable":      failure.retryable,
+		},
+	})
+	if captureErr != nil {
+		log.Printf("[Worker %s] failed to enqueue terminal job telemetry: %v\n", w.workerID, captureErr)
 	}
 }
 
