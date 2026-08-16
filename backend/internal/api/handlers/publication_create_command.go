@@ -102,7 +102,7 @@ func (command publicationApplication) persistCreate(
 		if err != nil {
 			return err
 		}
-		if err := command.handler.insertRenditions(
+		return command.handler.insertRenditions(
 			txCtx,
 			tx,
 			publication,
@@ -111,10 +111,7 @@ func (command publicationApplication) persistCreate(
 			prepared.input.Renditions,
 			prepared.input.Media,
 			prepared.accounts,
-		); err != nil {
-			return err
-		}
-		return nil
+		)
 	})
 }
 

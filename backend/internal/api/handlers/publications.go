@@ -652,14 +652,14 @@ func (h *PublicationHandler) publicationRevisionConflict(
 }
 
 func (h *PublicationHandler) syncTextPostRevisionsTx(
-	ctx context.Context,
-	tx bun.Tx,
-	publicationID string,
-	expectedRevision int,
-	nextRevision int,
-	domains []string,
-	userID string,
-	now time.Time,
+	_ context.Context,
+	_ bun.Tx,
+	_ string,
+	_ int,
+	_ int,
+	_ []string,
+	_ string,
+	_ time.Time,
 ) error {
 	// The Post compatibility projection is retired. Publication revisions are
 	// the only authoring revision source; historical upgrade migrations keep

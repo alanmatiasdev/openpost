@@ -11,6 +11,6 @@ import (
 // compatibility projection is retired, so new installations and upgrades no
 // longer need an editor row. The function remains as a no-op because migration
 // history still records version 41 and the prepare step must not fail.
-func backfillPublicationTextEditors(ctx context.Context, db *bun.DB) error {
+func backfillPublicationTextEditors(_ context.Context, _ *bun.DB) error {
 	return nil
 }

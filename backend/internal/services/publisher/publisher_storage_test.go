@@ -2,7 +2,6 @@ package publisher
 
 import (
 	"context"
-	"errors"
 	"io"
 	"strings"
 	"testing"
@@ -136,8 +135,6 @@ func (f *fakeMetadataPublisherAdapter) UploadMediaWithMetadata(_ context.Context
 	f.uploadReq = req
 	return "metadata-media-id", nil
 }
-
-var errFakePublishFailed = errors.New("publish failed")
 
 func TestUploadMediaToPlatformReadsFromBlobStorage(t *testing.T) {
 	storage := &fakePublisherStorage{body: "stored-media"}

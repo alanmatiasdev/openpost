@@ -34,8 +34,6 @@ import (
 	"github.com/uptrace/bun"
 )
 
-var errLinkedInThreadReplySkipped = errors.New("linkedin thread reply skipped")
-
 const (
 	providerMediaStatusReady  = "ready"
 	providerMediaStatusFailed = "failed"
@@ -131,37 +129,36 @@ func (s *Service) SetProvider(platformName string, adapter platform.Adapter) {
 // the worker's final bounded and jittered run time.
 func (s *Service) UpdateJobRetryAt(ctx context.Context, jobType, jobPayload string, retryAt time.Time) error {
 	retryAt = retryAt.UTC()
-	switch jobType {
-	case jobregistry.TypePublishPublication:
-		var payload struct {
-			PublicationID string `json:"publication_id"`
-			RenditionID   string `json:"rendition_id"`
-		}
-		if err := json.Unmarshal([]byte(jobPayload), &payload); err != nil {
-			return err
-		}
-		if payload.PublicationID == "" {
-			return nil
-		}
-		renditions := s.db.NewUpdate().
-			Model((*models.Rendition)(nil)).
-			Set("error_retry_at = ?", retryAt).
-			Where("publication_id = ? AND status = ? AND error_retryable = ?", payload.PublicationID, models.RenditionStatusFailed, true)
-		if payload.RenditionID != "" {
-			renditions = renditions.Where("id = ?", payload.RenditionID)
-		}
-		if _, err := renditions.Exec(ctx); err != nil {
-			return err
-		}
-		if _, err := s.db.NewUpdate().
-			Model((*models.RenditionSegment)(nil)).
-			Set("error_retry_at = ?", retryAt).
-			Where("rendition_id IN (SELECT id FROM renditions WHERE publication_id = ?)", payload.PublicationID).
-			Where("status = ? AND error_retryable = ?", "failed", true).
-			Exec(ctx); err != nil {
-			return err
-		}
+	if jobType != jobregistry.TypePublishPublication {
 		return nil
+	}
+	var payload struct {
+		PublicationID string `json:"publication_id"`
+		RenditionID   string `json:"rendition_id"`
+	}
+	if err := json.Unmarshal([]byte(jobPayload), &payload); err != nil {
+		return err
+	}
+	if payload.PublicationID == "" {
+		return nil
+	}
+	renditions := s.db.NewUpdate().
+		Model((*models.Rendition)(nil)).
+		Set("error_retry_at = ?", retryAt).
+		Where("publication_id = ? AND status = ? AND error_retryable = ?", payload.PublicationID, models.RenditionStatusFailed, true)
+	if payload.RenditionID != "" {
+		renditions = renditions.Where("id = ?", payload.RenditionID)
+	}
+	if _, err := renditions.Exec(ctx); err != nil {
+		return err
+	}
+	if _, err := s.db.NewUpdate().
+		Model((*models.RenditionSegment)(nil)).
+		Set("error_retry_at = ?", retryAt).
+		Where("rendition_id IN (SELECT id FROM renditions WHERE publication_id = ?)", payload.PublicationID).
+		Where("status = ? AND error_retryable = ?", "failed", true).
+		Exec(ctx); err != nil {
+		return err
 	}
 	return nil
 }
@@ -1663,6 +1660,7 @@ func publicationWriteScope(
 	}
 }
 
+//nolint:unparam // workspaceID is part of the legacy write-scope signature; tests pass a static workspace while canonical callers use publicationWriteScope.
 func legacyWriteScope(
 	ctx context.Context,
 	workspaceID, socialAccountID, targetKey, subject string,
@@ -1848,6 +1846,7 @@ func providerPublishFingerprint(
 	return providerwrite.Fingerprint("provider-publish-v2", payload)
 }
 
+//nolint:unparam // token is part of the upload seam signature; tests pass a static token while production media uploads flow through uploadRenditionMediaToPlatform.
 func (s *Service) uploadMediaToPlatform(ctx context.Context, account *models.SocialAccount, provider platform.Adapter, token string, media models.MediaAttachment, content string) (string, error) {
 	if requiresPublicMedia(account.Platform, "") {
 		return s.getPublicMediaURL(media), nil

@@ -26,6 +26,7 @@ type publisherMediaStateTestServer struct {
 	encryptor *crypto.TokenEncryptor
 }
 
+//nolint:unparam // platformName is a test seam; most fixtures use youtube but the helper keeps the caller explicit.
 func newPublisherMediaStateTestServer(t *testing.T, platformName string, adapter platform.Adapter) *publisherMediaStateTestServer {
 	t.Helper()
 
