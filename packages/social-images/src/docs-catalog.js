@@ -487,7 +487,7 @@ export const docsPageCatalog = Object.freeze([
   {
     "page": "development/post-publication-migration.md",
     "title": "Post to Publication migration",
-    "description": "Legacy Post HTTP routes, older Post links, CLI command names, and post-named MCP tools are now compatibility surfaces.",
+    "description": "Post HTTP routes, post-named MCP tools, and the legacy Post authoring model are retired.",
     "route": "/development/post-publication-migration",
     "agentRepresentation": {
       "membership": "ordinary"
