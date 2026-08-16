@@ -64,10 +64,10 @@ test("refuses to hide a required candidate by deleting its registry entry", () =
 
 test("refuses source removal while the registry still retains the operation", () => {
   const { registry, openapi } = readCompatibilityInputs();
-  delete openapi.paths["/posts/schedule-overview"];
+  delete openapi.paths["/accounts/mastodon/servers"];
   assert.match(
     validationProblems(registry, openapi).join("\n"),
-    /retained operation GET \/posts\/schedule-overview is absent from OpenAPI/u,
+    /retained operation GET \/accounts\/mastodon\/servers is absent from OpenAPI/u,
   );
 });
 

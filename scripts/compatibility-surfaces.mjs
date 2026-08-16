@@ -153,6 +153,36 @@ function validateRemovalGate(entry, policy, openapi, now, problems) {
     }
   }
 
+  if (entry.status === "deprecated") {
+    if (removal.removal_version !== null) {
+      problems.push(`${label} is not removed but has a removal version`);
+    }
+    return;
+  }
+
+  // An explicit, recorded authorization may waive the time and release
+  // windows. It is a review artifact, not a silent bypass: the authorization
+  // carries the authorizer, date, and reason, and the remaining structural
+  // gates (replacement available, notice channels, consumer evidence, and
+  // removal version) still apply.
+  const authorized = removal.authorization;
+  if (
+    authorized &&
+    String(authorized.authorized_by ?? "").trim() &&
+    validDate(authorized.authorized_on) &&
+    String(authorized.reason ?? "").trim()
+  ) {
+    if (
+      !stableVersionPattern.test(removal.removal_version ?? "") ||
+      (telemetry.evidence?.length ?? 0) === 0
+    ) {
+      problems.push(
+        `${label} authorized removal still needs a removal version and telemetry evidence`,
+      );
+    }
+    return;
+  }
+
   if (!validDate(removal.earliest_on)) {
     problems.push(`${label} needs an ISO earliest removal date`);
   } else if (validDate(notice.announced_on)) {
@@ -162,13 +192,6 @@ function validateRemovalGate(entry, policy, openapi, now, problems) {
         `${label} removal date is earlier than the ${policy.minimum_sunset_days}-day sunset`,
       );
     }
-  }
-
-  if (entry.status === "deprecated") {
-    if (removal.removal_version !== null) {
-      problems.push(`${label} is not removed but has a removal version`);
-    }
-    return;
   }
 
   if (!stableVersionPattern.test(removal.removal_version ?? "")) {

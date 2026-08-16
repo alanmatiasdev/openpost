@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"reflect"
-	"strings"
 	"testing"
 )
 
@@ -417,42 +415,6 @@ func TestListMedia_EmptyResponse(t *testing.T) {
 }
 
 // TestListPosts_WireFormat: server returns a raw array of posts.
-func TestListPosts_WireFormat(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if got := r.URL.Query().Get("workspace_id"); got != "ws_1" {
-			t.Fatalf("workspace_id query = %q, want ws_1", got)
-		}
-		if got := r.URL.Query().Get("status"); got != "scheduled" {
-			t.Fatalf("status query = %q, want scheduled", got)
-		}
-		if got := r.URL.Query().Get("date"); got != "2026-06-16" {
-			t.Fatalf("date query = %q, want 2026-06-16", got)
-		}
-		if got := r.URL.Query().Get("limit"); got != "25" {
-			t.Fatalf("limit query = %q, want 25", got)
-		}
-		if got := r.URL.Query().Get("offset"); got != "50" {
-			t.Fatalf("offset query = %q, want 50", got)
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`[{"id":"p_1","workspace_id":"ws_1","created_by":"u_1","content":"Hello","status":"scheduled","scheduled_at":"2026-06-16T09:00:00Z","created_at":"2026-06-15T10:00:00Z","random_delay_minutes":0}]`))
-	}))
-	defer srv.Close()
-
-	c := New(srv.URL, "")
-	got, err := c.ListPosts(context.Background(), ListPostsInput{WorkspaceID: "ws_1", Status: "scheduled", Date: "2026-06-16", Limit: 25, Offset: 50})
-	if err != nil {
-		t.Fatalf("ListPosts returned error: %v", err)
-	}
-	if len(got) != 1 {
-		t.Fatalf("expected 1 post, got %d", len(got))
-	}
-	if got[0].ID != "p_1" || got[0].Content != "Hello" {
-		t.Errorf("post wrong: %+v", got[0])
-	}
-}
-
-// TestListJobs_WireFormat: server returns a raw array of jobs.
 func TestListJobs_WireFormat(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.URL.Query().Get("workspace_id"); got != "ws_1" {
@@ -539,131 +501,6 @@ func TestNextAvailableSlot_WireFormat(t *testing.T) {
 	}
 	if got.Slot == nil || got.Slot.ID != "slot_1" {
 		t.Fatalf("slot = %+v", got.Slot)
-	}
-}
-
-func TestCreateTextPostDraftWireFormat(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || r.URL.Path != "/api/v1/posts/draft" {
-			t.Fatalf("request = %s %s", r.Method, r.URL.Path)
-		}
-		var body map[string]any
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			t.Fatalf("decode body: %v", err)
-		}
-		if body["workspace_id"] != "ws_1" || body["content"] != "Hi" {
-			t.Fatalf("body = %#v", body)
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"post_id":"p_new","publication_id":"pub_new","revision":1,"updated_at":"2026-06-15T10:00:00Z"}`))
-	}))
-	defer srv.Close()
-
-	c := New(srv.URL, "")
-	got, err := c.CreateTextPostDraft(context.Background(), CreateTextPostDraftInput{
-		WorkspaceID:      "ws_1",
-		Content:          "Hi",
-		SocialAccountIDs: []string{"acc_1"},
-		MediaIDs:         []string{},
-	})
-	if err != nil {
-		t.Fatalf("CreateTextPostDraft returned error: %v", err)
-	}
-	if got.PostID != "p_new" || got.PublicationID != "pub_new" || got.Revision != 1 {
-		t.Fatalf("result = %+v", got)
-	}
-}
-
-func TestGetPostIncludesRenditions(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		if strings.HasSuffix(r.URL.Path, "/variants") {
-			_, _ = w.Write([]byte(`{"variants":[{"id":"inherit","social_account_id":"a1","content":"Inherited","media_ids":"","is_unsynced":true},{"id":"clear","social_account_id":"a2","content":"Clear","media_ids":"[]","is_unsynced":true},{"id":"override","social_account_id":"a3","content":"Override","media_ids":"[\"m1\"]","is_unsynced":true}]}`))
-			return
-		}
-		_, _ = w.Write([]byte(`{"id":"p1","content":"source","media":[{"media_id":"source-media"}]}`))
-	}))
-	defer srv.Close()
-	got, err := New(srv.URL, "").GetPost(context.Background(), "p1")
-	if err != nil || len(got.Renditions) != 3 {
-		t.Fatalf("post = %+v, err = %v", got, err)
-	}
-	if got.Renditions[0].MediaMode != "inherit" || !reflect.DeepEqual(got.Renditions[0].EffectiveMediaIDs, []string{"source-media"}) {
-		t.Fatalf("inherit rendition = %+v", got.Renditions[0])
-	}
-	if got.Renditions[1].MediaMode != "clear" || len(got.Renditions[1].EffectiveMediaIDs) != 0 {
-		t.Fatalf("clear rendition = %+v", got.Renditions[1])
-	}
-	if got.Renditions[2].MediaMode != "override" || !reflect.DeepEqual(got.Renditions[2].MediaIDs, []string{"m1"}) {
-		t.Fatalf("override rendition = %+v", got.Renditions[2])
-	}
-}
-
-func TestGetPostRejectsMalformedRenditionMediaJSON(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		if strings.HasSuffix(r.URL.Path, "/variants") {
-			_, _ = w.Write([]byte(`{"variants":[{"id":"bad","media_ids":"not-json"}]}`))
-			return
-		}
-		_, _ = w.Write([]byte(`{"id":"p1"}`))
-	}))
-	defer srv.Close()
-	_, err := New(srv.URL, "").GetPost(context.Background(), "p1")
-	if err == nil || !strings.Contains(err.Error(), "decode rendition bad media_ids") {
-		t.Fatalf("err = %v", err)
-	}
-}
-
-func TestGetPostRejectsNullRenditionMediaJSON(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		if strings.HasSuffix(r.URL.Path, "/variants") {
-			_, _ = w.Write([]byte(`{"variants":[{"id":"null-media","media_ids":"null"}]}`))
-			return
-		}
-		_, _ = w.Write([]byte(`{"id":"p1"}`))
-	}))
-	defer srv.Close()
-	_, err := New(srv.URL, "").GetPost(context.Background(), "p1")
-	if err == nil || !strings.Contains(err.Error(), "decode rendition null-media media_ids") || !strings.Contains(err.Error(), "JSON array") {
-		t.Fatalf("err = %v", err)
-	}
-}
-
-func TestSaveTextPostDraftWireFormat(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPut || r.URL.Path != "/api/v1/posts/p1/draft" {
-			t.Fatalf("request = %s %s", r.Method, r.URL.Path)
-		}
-		var body map[string]any
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			t.Fatalf("decode body: %v", err)
-		}
-		if body["expected_revision"] != float64(7) || body["force"] != true {
-			t.Fatalf("revision controls = %#v", body)
-		}
-		mediaIDs, ok := body["media_ids"].([]any)
-		if !ok || len(mediaIDs) != 0 {
-			t.Fatalf("media_ids = %#v", body["media_ids"])
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"post_id":"p1","publication_id":"pub1","revision":8,"updated_at":"2026-06-15T10:00:00Z"}`))
-	}))
-	defer srv.Close()
-	got, err := New(srv.URL, "").SaveTextPostDraft(context.Background(), "p1", SaveTextPostDraftInput{
-		ExpectedRevision: 7,
-		Force:            true,
-		Content:          "Updated",
-		SocialAccountIDs: []string{},
-		MediaIDs:         []string{},
-		Variants:         []TextPostVariantInput{},
-	})
-	if err != nil {
-		t.Fatalf("SaveTextPostDraft returned error: %v", err)
-	}
-	if got.PublicationID != "pub1" || got.Revision != 8 {
-		t.Fatalf("result = %+v", got)
 	}
 }
 

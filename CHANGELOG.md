@@ -6,6 +6,8 @@ All notable changes to this project are documented in this file.
 
 ### Changed
 
+- Retired the Post authoring model end to end. Post HTTP routes, MCP post and draft tools, the legacy `publish_post` Job kind, and the `posts` service are removed; the publisher, composer, scheduler, calendar, Engagement, Messaging, and notification paths operate only on Publication and Rendition identifiers. Historical migration files still upgrade older databases, and immutable `legacy_post` / `legacy_post_variant` aliases resolve old links to canonical Publications. The Post compatibility tables (`posts`, `post_destinations`, `post_media`, `post_variants`, `thread_drafts`, `post_media_deliveries`) are dropped after the legacy backfill completes and no Post rows or pending `publish_post` Jobs remain.
+
 - Added repository-owned Oxlint checks that reject unsafe type widening, unverified runtime boundaries, reflective access, module mocking, and other patterns that weaken type and dependency contracts.
 - Split engagement and messaging refresh, persistence, provider seams, recurring Jobs, and retries into independent capability outcomes, and removed the transitional communications runtime.
 - Contracted REST, MCP, CLI, browser, and direct application Workspace authorization onto one read, edit, or administer decision, removed middleware-owned and membership-only policy helpers, and kept durable Jobs explicitly scoped without user impersonation.

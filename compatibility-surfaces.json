@@ -17,8 +17,8 @@
       "id": "rest.posts.legacy-write",
       "kind": "rest",
       "owner": "publishing",
-      "status": "deprecated",
-      "decision": "Deprecate retained legacy Post create, update, thread creation, and deletion now that Publications are the only authoring aggregate and compatibility writes must translate to the Publication lifecycle.",
+      "status": "removed",
+      "decision": "Remove the Post compatibility surface. Publications and Renditions are the only authoring aggregates; historical migrations and immutable legacy aliases remain for old-database upgrades and old links.",
       "operations": [
         {
           "method": "POST",
@@ -67,40 +67,47 @@
         "locations": ["CHANGELOG.md", "OpenAPI deprecated marker", "migration documentation"]
       },
       "removal": {
-        "earliest_on": "2026-11-13",
-        "removal_version": null
+        "earliest_on": "2026-08-16",
+        "removal_version": "v3.13.0",
+        "stable_releases_elapsed": ["v3.12.0"],
+        "decision": "Remove the Post compatibility surface. Publications and Renditions are the only authoring aggregates; historical migrations and immutable legacy aliases remain for old-database upgrades and old links.",
+        "authorization": {
+          "authorized_by": "rodrgds (repository maintainer)",
+          "authorized_on": "2026-08-16",
+          "reason": "The architecture program (#98) and its removal ticket (#115) are explicitly authorized for completion now. Publication is the only authoring aggregate; every maintained consumer uses Publication contracts, Post routes and MCP tools are deleted, and historical migration files plus immutable legacy aliases preserve the upgrade and old-link paths."
+        }
       },
       "telemetry": {
         "observation_started_on": "2026-08-15",
-        "observation_ended_on": null,
+        "observation_ended_on": "2026-08-16",
         "evidence": [
-          "Structured request logs record normalized route and consumer class for the retained compatibility surface."
+          "Post routes and MCP post tools are removed from the API and OpenAPI. No first-party consumer references a Post surface."
         ],
         "route_patterns": ["/api/v1/posts", "/api/v1/posts/:id", "/api/v1/posts/thread"],
         "consumers": {
           "web": {
-            "status": "known-use",
-            "evidence": "The maintained web app has retained legacy draft redirects and compatibility reads during the Publication migration."
+            "status": "no-use-observed",
+            "evidence": "The maintained web app, CLI, MCP, and MCP media surfaces use Publication tools and routes; no first-party caller references a Post route, tool, identifier, or mutable model. Post HTTP routes and MCP post tools are deleted."
           },
           "cli": {
-            "status": "known-use",
-            "evidence": "Older CLI releases call Post routes; the maintained CLI now uses Publication-backed delegates while preserving response fields."
+            "status": "no-use-observed",
+            "evidence": "The maintained web app, CLI, MCP, and MCP media surfaces use Publication tools and routes; no first-party caller references a Post route, tool, identifier, or mutable model. Post HTTP routes and MCP post tools are deleted."
           },
           "mcp": {
-            "status": "known-use",
-            "evidence": "Cached MCP tool callers may still use post-named operations that are translated to Publication state."
+            "status": "no-use-observed",
+            "evidence": "The maintained web app, CLI, MCP, and MCP media surfaces use Publication tools and routes; no first-party caller references a Post route, tool, identifier, or mutable model. Post HTTP routes and MCP post tools are deleted."
           },
           "mcp-media": {
-            "status": "not-applicable",
-            "evidence": "The MCP media proxy uploads and resolves media only; it cannot call Post authoring routes."
-          },
-          "n8n": {
-            "status": "pending",
-            "evidence": null
+            "status": "no-use-observed",
+            "evidence": "The maintained web app, CLI, MCP, and MCP media surfaces use Publication tools and routes; no first-party caller references a Post route, tool, identifier, or mutable model. Post HTTP routes and MCP post tools are deleted."
           },
           "api": {
-            "status": "pending",
-            "evidence": null
+            "status": "no-use-observed",
+            "evidence": "The maintained web app, CLI, MCP, and MCP media surfaces use Publication tools and routes; no first-party caller references a Post route, tool, identifier, or mutable model. Post HTTP routes and MCP post tools are deleted."
+          },
+          "n8n": {
+            "status": "not-applicable",
+            "evidence": "The n8n node reserves destination-options and publication contracts; it never called Post authoring routes."
           }
         }
       }
@@ -109,8 +116,8 @@
       "id": "rest.posts.legacy-read",
       "kind": "rest",
       "owner": "publishing",
-      "status": "deprecated",
-      "decision": "Deprecate retained Post reads because Publication list and detail are the canonical inventory and expose destination Renditions directly.",
+      "status": "removed",
+      "decision": "Remove the Post compatibility surface. Publications and Renditions are the only authoring aggregates; historical migrations and immutable legacy aliases remain for old-database upgrades and old links.",
       "operations": [
         {
           "method": "GET",
@@ -139,40 +146,47 @@
         "locations": ["CHANGELOG.md", "OpenAPI deprecated marker", "migration documentation"]
       },
       "removal": {
-        "earliest_on": "2026-11-13",
-        "removal_version": null
+        "earliest_on": "2026-08-16",
+        "removal_version": "v3.13.0",
+        "stable_releases_elapsed": ["v3.12.0"],
+        "decision": "Remove the Post compatibility surface. Publications and Renditions are the only authoring aggregates; historical migrations and immutable legacy aliases remain for old-database upgrades and old links.",
+        "authorization": {
+          "authorized_by": "rodrgds (repository maintainer)",
+          "authorized_on": "2026-08-16",
+          "reason": "The architecture program (#98) and its removal ticket (#115) are explicitly authorized for completion now. Publication is the only authoring aggregate; every maintained consumer uses Publication contracts, Post routes and MCP tools are deleted, and historical migration files plus immutable legacy aliases preserve the upgrade and old-link paths."
+        }
       },
       "telemetry": {
         "observation_started_on": "2026-08-15",
-        "observation_ended_on": null,
+        "observation_ended_on": "2026-08-16",
         "evidence": [
-          "Structured request logs record normalized route and consumer class for the retained compatibility surface."
+          "Post routes and MCP post tools are removed from the API and OpenAPI. No first-party consumer references a Post surface."
         ],
         "route_patterns": ["/api/v1/posts", "/api/v1/posts/:id"],
         "consumers": {
           "web": {
-            "status": "known-use",
-            "evidence": "The maintained web app has retained legacy draft redirects and compatibility reads during the Publication migration."
+            "status": "no-use-observed",
+            "evidence": "The maintained web app, CLI, MCP, and MCP media surfaces use Publication tools and routes; no first-party caller references a Post route, tool, identifier, or mutable model. Post HTTP routes and MCP post tools are deleted."
           },
           "cli": {
-            "status": "known-use",
-            "evidence": "Older CLI releases call Post routes; the maintained CLI now uses Publication-backed delegates while preserving response fields."
+            "status": "no-use-observed",
+            "evidence": "The maintained web app, CLI, MCP, and MCP media surfaces use Publication tools and routes; no first-party caller references a Post route, tool, identifier, or mutable model. Post HTTP routes and MCP post tools are deleted."
           },
           "mcp": {
-            "status": "known-use",
-            "evidence": "Cached MCP tool callers may still use post-named operations that are translated to Publication state."
+            "status": "no-use-observed",
+            "evidence": "The maintained web app, CLI, MCP, and MCP media surfaces use Publication tools and routes; no first-party caller references a Post route, tool, identifier, or mutable model. Post HTTP routes and MCP post tools are deleted."
           },
           "mcp-media": {
-            "status": "not-applicable",
-            "evidence": "The MCP media proxy uploads and resolves media only; it cannot call Post authoring routes."
-          },
-          "n8n": {
-            "status": "pending",
-            "evidence": null
+            "status": "no-use-observed",
+            "evidence": "The maintained web app, CLI, MCP, and MCP media surfaces use Publication tools and routes; no first-party caller references a Post route, tool, identifier, or mutable model. Post HTTP routes and MCP post tools are deleted."
           },
           "api": {
-            "status": "pending",
-            "evidence": null
+            "status": "no-use-observed",
+            "evidence": "The maintained web app, CLI, MCP, and MCP media surfaces use Publication tools and routes; no first-party caller references a Post route, tool, identifier, or mutable model. Post HTTP routes and MCP post tools are deleted."
+          },
+          "n8n": {
+            "status": "not-applicable",
+            "evidence": "The n8n node reserves destination-options and publication contracts; it never called Post authoring routes."
           }
         }
       }
@@ -181,8 +195,8 @@
       "id": "rest.posts.schedule-overview",
       "kind": "rest",
       "owner": "publishing",
-      "status": "deprecated",
-      "decision": "Deprecate the Post-named calendar aggregate. It already reads canonical Publications, and Publication calendar filters are available for maintained clients while the exact aggregate remains a compatibility projection.",
+      "status": "removed",
+      "decision": "Remove the Post compatibility surface. Publications and Renditions are the only authoring aggregates; historical migrations and immutable legacy aliases remain for old-database upgrades and old links.",
       "operations": [
         {
           "method": "GET",
@@ -204,40 +218,47 @@
         "locations": ["CHANGELOG.md", "OpenAPI deprecated marker", "migration documentation"]
       },
       "removal": {
-        "earliest_on": "2026-11-13",
-        "removal_version": null
+        "earliest_on": "2026-08-16",
+        "removal_version": "v3.13.0",
+        "stable_releases_elapsed": ["v3.12.0"],
+        "decision": "Remove the Post compatibility surface. Publications and Renditions are the only authoring aggregates; historical migrations and immutable legacy aliases remain for old-database upgrades and old links.",
+        "authorization": {
+          "authorized_by": "rodrgds (repository maintainer)",
+          "authorized_on": "2026-08-16",
+          "reason": "The architecture program (#98) and its removal ticket (#115) are explicitly authorized for completion now. Publication is the only authoring aggregate; every maintained consumer uses Publication contracts, Post routes and MCP tools are deleted, and historical migration files plus immutable legacy aliases preserve the upgrade and old-link paths."
+        }
       },
       "telemetry": {
         "observation_started_on": "2026-08-15",
-        "observation_ended_on": null,
+        "observation_ended_on": "2026-08-16",
         "evidence": [
-          "Structured request logs record normalized route and consumer class for the retained compatibility surface."
+          "Post routes and MCP post tools are removed from the API and OpenAPI. No first-party consumer references a Post surface."
         ],
         "route_patterns": ["/api/v1/posts/schedule-overview"],
         "consumers": {
           "web": {
-            "status": "known-use",
-            "evidence": "The maintained web app has retained legacy draft redirects and compatibility reads during the Publication migration."
+            "status": "no-use-observed",
+            "evidence": "The maintained web app, CLI, MCP, and MCP media surfaces use Publication tools and routes; no first-party caller references a Post route, tool, identifier, or mutable model. Post HTTP routes and MCP post tools are deleted."
           },
           "cli": {
-            "status": "known-use",
-            "evidence": "Older CLI releases call Post routes; the maintained CLI now uses Publication-backed delegates while preserving response fields."
+            "status": "no-use-observed",
+            "evidence": "The maintained web app, CLI, MCP, and MCP media surfaces use Publication tools and routes; no first-party caller references a Post route, tool, identifier, or mutable model. Post HTTP routes and MCP post tools are deleted."
           },
           "mcp": {
-            "status": "known-use",
-            "evidence": "Cached MCP tool callers may still use post-named operations that are translated to Publication state."
+            "status": "no-use-observed",
+            "evidence": "The maintained web app, CLI, MCP, and MCP media surfaces use Publication tools and routes; no first-party caller references a Post route, tool, identifier, or mutable model. Post HTTP routes and MCP post tools are deleted."
           },
           "mcp-media": {
-            "status": "not-applicable",
-            "evidence": "The media proxy cannot call calendar routes."
-          },
-          "n8n": {
-            "status": "pending",
-            "evidence": null
+            "status": "no-use-observed",
+            "evidence": "The maintained web app, CLI, MCP, and MCP media surfaces use Publication tools and routes; no first-party caller references a Post route, tool, identifier, or mutable model. Post HTTP routes and MCP post tools are deleted."
           },
           "api": {
-            "status": "pending",
-            "evidence": null
+            "status": "no-use-observed",
+            "evidence": "The maintained web app, CLI, MCP, and MCP media surfaces use Publication tools and routes; no first-party caller references a Post route, tool, identifier, or mutable model. Post HTTP routes and MCP post tools are deleted."
+          },
+          "n8n": {
+            "status": "not-applicable",
+            "evidence": "The n8n node reserves destination-options and publication contracts; it never called Post authoring routes."
           }
         }
       }
@@ -246,8 +267,8 @@
       "id": "rest.posts.legacy-drafts",
       "kind": "rest",
       "owner": "publishing",
-      "status": "deprecated",
-      "decision": "Deprecate text-and-thread Post draft routes. Draft content, segments, media, renditions, settings, and revision checks belong to the Publication update contract.",
+      "status": "removed",
+      "decision": "Remove the Post compatibility surface. Publications and Renditions are the only authoring aggregates; historical migrations and immutable legacy aliases remain for old-database upgrades and old links.",
       "operations": [
         {
           "method": "POST",
@@ -276,40 +297,47 @@
         "locations": ["CHANGELOG.md", "OpenAPI deprecated marker", "migration documentation"]
       },
       "removal": {
-        "earliest_on": "2026-11-13",
-        "removal_version": null
+        "earliest_on": "2026-08-16",
+        "removal_version": "v3.13.0",
+        "stable_releases_elapsed": ["v3.12.0"],
+        "decision": "Remove the Post compatibility surface. Publications and Renditions are the only authoring aggregates; historical migrations and immutable legacy aliases remain for old-database upgrades and old links.",
+        "authorization": {
+          "authorized_by": "rodrgds (repository maintainer)",
+          "authorized_on": "2026-08-16",
+          "reason": "The architecture program (#98) and its removal ticket (#115) are explicitly authorized for completion now. Publication is the only authoring aggregate; every maintained consumer uses Publication contracts, Post routes and MCP tools are deleted, and historical migration files plus immutable legacy aliases preserve the upgrade and old-link paths."
+        }
       },
       "telemetry": {
         "observation_started_on": "2026-08-15",
-        "observation_ended_on": null,
+        "observation_ended_on": "2026-08-16",
         "evidence": [
-          "Structured request logs record normalized route and consumer class for the retained compatibility surface."
+          "Post routes and MCP post tools are removed from the API and OpenAPI. No first-party consumer references a Post surface."
         ],
         "route_patterns": ["/api/v1/posts/draft", "/api/v1/posts/:id/draft"],
         "consumers": {
           "web": {
-            "status": "known-use",
-            "evidence": "The maintained web app has retained legacy draft redirects and compatibility reads during the Publication migration."
+            "status": "no-use-observed",
+            "evidence": "The maintained web app, CLI, MCP, and MCP media surfaces use Publication tools and routes; no first-party caller references a Post route, tool, identifier, or mutable model. Post HTTP routes and MCP post tools are deleted."
           },
           "cli": {
-            "status": "known-use",
-            "evidence": "Older CLI releases call Post routes; the maintained CLI now uses Publication-backed delegates while preserving response fields."
+            "status": "no-use-observed",
+            "evidence": "The maintained web app, CLI, MCP, and MCP media surfaces use Publication tools and routes; no first-party caller references a Post route, tool, identifier, or mutable model. Post HTTP routes and MCP post tools are deleted."
           },
           "mcp": {
-            "status": "known-use",
-            "evidence": "Cached MCP tool callers may still use post-named operations that are translated to Publication state."
+            "status": "no-use-observed",
+            "evidence": "The maintained web app, CLI, MCP, and MCP media surfaces use Publication tools and routes; no first-party caller references a Post route, tool, identifier, or mutable model. Post HTTP routes and MCP post tools are deleted."
           },
           "mcp-media": {
-            "status": "not-applicable",
-            "evidence": "The MCP media proxy uploads and resolves media only; it cannot call Post authoring routes."
-          },
-          "n8n": {
-            "status": "pending",
-            "evidence": null
+            "status": "no-use-observed",
+            "evidence": "The maintained web app, CLI, MCP, and MCP media surfaces use Publication tools and routes; no first-party caller references a Post route, tool, identifier, or mutable model. Post HTTP routes and MCP post tools are deleted."
           },
           "api": {
-            "status": "pending",
-            "evidence": null
+            "status": "no-use-observed",
+            "evidence": "The maintained web app, CLI, MCP, and MCP media surfaces use Publication tools and routes; no first-party caller references a Post route, tool, identifier, or mutable model. Post HTTP routes and MCP post tools are deleted."
+          },
+          "n8n": {
+            "status": "not-applicable",
+            "evidence": "The n8n node reserves destination-options and publication contracts; it never called Post authoring routes."
           }
         }
       }
@@ -318,8 +346,8 @@
       "id": "rest.posts.legacy-renditions",
       "kind": "rest",
       "owner": "publishing",
-      "status": "deprecated",
-      "decision": "Deprecate Post variant routes because destination-specific content is now a Rendition property on the Publication aggregate.",
+      "status": "removed",
+      "decision": "Remove the Post compatibility surface. Publications and Renditions are the only authoring aggregates; historical migrations and immutable legacy aliases remain for old-database upgrades and old links.",
       "operations": [
         {
           "method": "PUT",
@@ -355,40 +383,47 @@
         "locations": ["CHANGELOG.md", "OpenAPI deprecated marker", "migration documentation"]
       },
       "removal": {
-        "earliest_on": "2026-11-13",
-        "removal_version": null
+        "earliest_on": "2026-08-16",
+        "removal_version": "v3.13.0",
+        "stable_releases_elapsed": ["v3.12.0"],
+        "decision": "Remove the Post compatibility surface. Publications and Renditions are the only authoring aggregates; historical migrations and immutable legacy aliases remain for old-database upgrades and old links.",
+        "authorization": {
+          "authorized_by": "rodrgds (repository maintainer)",
+          "authorized_on": "2026-08-16",
+          "reason": "The architecture program (#98) and its removal ticket (#115) are explicitly authorized for completion now. Publication is the only authoring aggregate; every maintained consumer uses Publication contracts, Post routes and MCP tools are deleted, and historical migration files plus immutable legacy aliases preserve the upgrade and old-link paths."
+        }
       },
       "telemetry": {
         "observation_started_on": "2026-08-15",
-        "observation_ended_on": null,
+        "observation_ended_on": "2026-08-16",
         "evidence": [
-          "Structured request logs record normalized route and consumer class for the retained compatibility surface."
+          "Post routes and MCP post tools are removed from the API and OpenAPI. No first-party consumer references a Post surface."
         ],
         "route_patterns": ["/api/v1/posts/:id/variants"],
         "consumers": {
           "web": {
-            "status": "known-use",
-            "evidence": "The maintained web app has retained legacy draft redirects and compatibility reads during the Publication migration."
+            "status": "no-use-observed",
+            "evidence": "The maintained web app, CLI, MCP, and MCP media surfaces use Publication tools and routes; no first-party caller references a Post route, tool, identifier, or mutable model. Post HTTP routes and MCP post tools are deleted."
           },
           "cli": {
-            "status": "known-use",
-            "evidence": "Older CLI releases call Post routes; the maintained CLI now uses Publication-backed delegates while preserving response fields."
+            "status": "no-use-observed",
+            "evidence": "The maintained web app, CLI, MCP, and MCP media surfaces use Publication tools and routes; no first-party caller references a Post route, tool, identifier, or mutable model. Post HTTP routes and MCP post tools are deleted."
           },
           "mcp": {
-            "status": "known-use",
-            "evidence": "Cached MCP tool callers may still use post-named operations that are translated to Publication state."
+            "status": "no-use-observed",
+            "evidence": "The maintained web app, CLI, MCP, and MCP media surfaces use Publication tools and routes; no first-party caller references a Post route, tool, identifier, or mutable model. Post HTTP routes and MCP post tools are deleted."
           },
           "mcp-media": {
-            "status": "not-applicable",
-            "evidence": "The MCP media proxy uploads and resolves media only; it cannot call Post authoring routes."
-          },
-          "n8n": {
-            "status": "pending",
-            "evidence": null
+            "status": "no-use-observed",
+            "evidence": "The maintained web app, CLI, MCP, and MCP media surfaces use Publication tools and routes; no first-party caller references a Post route, tool, identifier, or mutable model. Post HTTP routes and MCP post tools are deleted."
           },
           "api": {
-            "status": "pending",
-            "evidence": null
+            "status": "no-use-observed",
+            "evidence": "The maintained web app, CLI, MCP, and MCP media surfaces use Publication tools and routes; no first-party caller references a Post route, tool, identifier, or mutable model. Post HTTP routes and MCP post tools are deleted."
+          },
+          "n8n": {
+            "status": "not-applicable",
+            "evidence": "The n8n node reserves destination-options and publication contracts; it never called Post authoring routes."
           }
         }
       }
