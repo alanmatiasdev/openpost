@@ -4033,59 +4033,6 @@ func mcpSlotToolResult(suggestion mcpSlotSuggestion) map[string]any {
 		},
 	}
 }
-func (h *MCPHandler) ensureActiveAccounts(ctx context.Context, workspaceID string, accountIDs []string) *mcpError {
-	if len(accountIDs) == 0 {
-		return nil
-	}
-	unique := make([]string, 0, len(accountIDs))
-	seen := make(map[string]struct{}, len(accountIDs))
-	for _, accountID := range accountIDs {
-		accountID = strings.TrimSpace(accountID)
-		if accountID == "" {
-			return &mcpError{Code: -32602, Message: "social_account_ids cannot contain empty values"}
-		}
-		if _, ok := seen[accountID]; ok {
-			continue
-		}
-		seen[accountID] = struct{}{}
-		unique = append(unique, accountID)
-	}
-	count, err := h.db.NewSelect().
-		Model((*models.SocialAccount)(nil)).
-		Where("workspace_id = ?", workspaceID).
-		Where("is_active = ?", true).
-		Where("id IN (?)", bun.List(unique)).
-		Count(ctx)
-	if err != nil {
-		return &mcpError{Code: -32603, Message: "failed to validate social accounts"}
-	}
-	if count != len(unique) {
-		return &mcpError{Code: -32602, Message: "one or more social accounts are invalid, disconnected, or outside this workspace"}
-	}
-	return nil
-}
-func (h *MCPHandler) ensureMediaBelongsToWorkspace(ctx context.Context, workspaceID string, mediaIDs []string) *mcpError {
-	if len(mediaIDs) == 0 {
-		return nil
-	}
-	unique, rpcErr := normalizeMCPIDs(mediaIDs, "media_ids")
-	if rpcErr != nil {
-		return rpcErr
-	}
-	count, err := h.db.NewSelect().
-		Model((*models.MediaAttachment)(nil)).
-		Where("workspace_id = ?", workspaceID).
-		Where("id IN (?)", bun.List(unique)).
-		Count(ctx)
-	if err != nil {
-		return &mcpError{Code: -32603, Message: "failed to validate media"}
-	}
-	if count != len(unique) {
-		return &mcpError{Code: -32602, Message: "one or more media_ids are invalid or outside this workspace"}
-	}
-	return nil
-}
-
 func normalizeMCPIDs(ids []string, field string) ([]string, *mcpError) {
 	unique := make([]string, 0, len(ids))
 	seen := make(map[string]struct{}, len(ids))

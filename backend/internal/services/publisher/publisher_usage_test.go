@@ -13,7 +13,6 @@ import (
 	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/platform"
 	"github.com/openpost/backend/internal/services/crypto"
-	"github.com/openpost/backend/internal/services/entitlements"
 	"github.com/openpost/backend/internal/services/providerreadiness"
 	"github.com/openpost/backend/internal/services/providerwrite"
 	"github.com/openpost/backend/internal/services/publicationauth"
@@ -88,10 +87,6 @@ func newPublisherUsageTestServer(t *testing.T, adapter *fakePublisherAdapter) *p
 	enableSelfHostedPublisherReadiness(t, db, service, "x", "account-1")
 
 	return &publisherUsageTestServer{db: db, service: service, usage: usageSvc, adapter: adapter}
-}
-
-func (s *publisherUsageTestServer) setQuota(snapshot entitlements.PlanSnapshot) {
-	s.service.SetEntitlement(entitlements.NewStaticService(snapshot))
 }
 
 func TestPublisherPricesXURLFromRenderedSettings(t *testing.T) {

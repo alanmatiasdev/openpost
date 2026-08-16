@@ -27,10 +27,6 @@ func safeAliasedJobPayloadTextExpr(db *bun.DB, alias string, key string) string 
 	return fmt.Sprintf("(CASE WHEN json_valid(%s.payload) THEN %s ELSE NULL END)", alias, expr)
 }
 
-func publishPostJobPostIDWhere(_ *bun.DB) string {
-	return "type = ? AND scope_id = ?"
-}
-
 func publishPublicationJobPublicationIDWhere(_ *bun.DB) string {
 	return "type = ? AND scope_id = ?"
 }

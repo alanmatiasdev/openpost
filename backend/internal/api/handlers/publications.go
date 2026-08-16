@@ -3973,15 +3973,6 @@ func isMissingPublicationSegmentTable(err error) bool {
 		(strings.Contains(message, "relation") && strings.Contains(message, "does not exist"))
 }
 
-func isMissingLegacyPostsTable(err error) bool {
-	if err == nil {
-		return false
-	}
-	message := strings.ToLower(err.Error())
-	return strings.Contains(message, "no such table: posts") ||
-		(strings.Contains(message, `relation "posts"`) && strings.Contains(message, "does not exist"))
-}
-
 func mustJSON(value interface{}) string {
 	if value == nil {
 		return "{}"

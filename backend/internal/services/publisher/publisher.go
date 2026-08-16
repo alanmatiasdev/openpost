@@ -2401,16 +2401,3 @@ func (s *Service) getPublicMediaURL(media models.MediaAttachment) string {
 		time.Now().UTC().Add(15*time.Minute),
 	)
 }
-
-func buildOrderClause(ids []string) string {
-	if len(ids) == 0 {
-		return ""
-	}
-	var sb strings.Builder
-	for i, id := range ids {
-		// Escape single quotes just in case, though these should be UUIDs
-		safeID := strings.ReplaceAll(id, "'", "''")
-		fmt.Fprintf(&sb, "WHEN '%s' THEN %d ", safeID, i)
-	}
-	return sb.String()
-}

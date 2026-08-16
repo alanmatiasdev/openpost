@@ -168,29 +168,6 @@ func (c *Client) DeleteJSON(ctx context.Context, path string, out any) error {
 	return c.do(ctx, http.MethodDelete, path, nil, out, "")
 }
 
-func listEndpointPath(path, workspaceID, status, extraKey, extraValue string, limit, offset int) string {
-	v := url.Values{}
-	if workspaceID != "" {
-		v.Set("workspace_id", workspaceID)
-	}
-	if status != "" {
-		v.Set("status", status)
-	}
-	if extraKey != "" && extraValue != "" {
-		v.Set(extraKey, extraValue)
-	}
-	if limit > 0 {
-		v.Set("limit", strconv.Itoa(limit))
-	}
-	if offset > 0 {
-		v.Set("offset", strconv.Itoa(offset))
-	}
-	if encoded := v.Encode(); encoded != "" {
-		return path + "?" + encoded
-	}
-	return path
-}
-
 // PostForm posts a multipart/form-data request with the given fields
 // and a file under fieldName. out is decoded from the JSON body.
 func (c *Client) PostForm(ctx context.Context, path, fileField, filePath string, fields map[string]string, out any) error {
