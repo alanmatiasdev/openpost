@@ -140,7 +140,10 @@ describe('withUploadRetry', () => {
 	beforeEach(() => {
 		originalWindow = globalThis.window;
 		// Provide a minimal window so abortableDelay works in server-side tests.
-		(globalThis as Record<string, unknown>).window = { setTimeout, clearTimeout };
+		const windowStub = { setTimeout, clearTimeout };
+		// SAFETY: windowStub provides only the two timer functions abortableDelay
+		// reads from window; no other window members are observed.
+		(globalThis as { window?: unknown }).window = windowStub;
 	});
 
 	afterEach(() => {
