@@ -19,6 +19,19 @@ func TestNewSMTPSenderRejectsUnencryptedRemoteServer(t *testing.T) {
 	require.ErrorContains(t, err, "loopback")
 }
 
+func TestSMTPConfigTrimsUsernameSurroundingWhitespace(t *testing.T) {
+	sender, err := NewSMTPSender(SMTPConfig{
+		Host:     "127.0.0.1",
+		Port:     2525,
+		Username: " hello@example.com ",
+		Password: "secret",
+		From:     "OpenPost <support@example.com>",
+		TLSMode:  "none",
+	})
+	require.NoError(t, err)
+	require.Equal(t, "hello@example.com", sender.config.Username)
+}
+
 func TestSMTPAdapterImplementsNotificationEmailDelivery(t *testing.T) {
 	sender, err := NewSMTPSender(SMTPConfig{Host: "127.0.0.1", Port: 2525, From: "OpenPost <support@example.com>", TLSMode: "none"})
 	require.NoError(t, err)

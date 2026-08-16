@@ -275,7 +275,7 @@ func Load() *Config {
 
 		SMTPHost:       getEnvDefault("OPENPOST_SMTP_HOST", ""),
 		SMTPPort:       getEnvInt("OPENPOST_SMTP_PORT", 587),
-		SMTPUsername:   getEnvDefault("OPENPOST_SMTP_USERNAME", ""),
+		SMTPUsername:   strings.TrimSpace(getEnvDefault("OPENPOST_SMTP_USERNAME", "")),
 		SMTPPassword:   getEnvDefault("OPENPOST_SMTP_PASSWORD", ""),
 		SMTPFrom:       getEnvDefault("OPENPOST_SMTP_FROM", ""),
 		SMTPTLSMode:    getEnvEnum("OPENPOST_SMTP_TLS_MODE", "starttls", "starttls", "tls", "none"),

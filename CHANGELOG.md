@@ -76,6 +76,8 @@ All notable changes to this project are documented in this file.
 
 ### Fixed
 
+- Trimmed the SMTP username so a trailing space in `OPENPOST_SMTP_USERNAME` cannot send a malformed AUTH identity and fail notification email delivery with an SMTP authentication error.
+- Logged the terminal failure message when a background Job fails and recorded its retryability in error telemetry, so transient delivery failures are diagnosable without inspecting the database.
 - Kept homepage animation cleanup inside the browser lifecycle so marketing prerender no longer calls browser-only animation APIs.
 - Kept unlimited Publication scheduling operational when quota storage is unavailable, while preserving canonical usage accounting whenever counters exist and keeping limited plans fail-closed.
 - Stopped routine autosaves from replaying the Saved animation and from replacing an unchanged Image Editor document, which refreshed page previews after edits.

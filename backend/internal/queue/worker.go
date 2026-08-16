@@ -446,6 +446,9 @@ func (w *BackgroundWorker) finishFailedJob(ctx context.Context, job *models.Job,
 		log.Printf("[Worker %s] failed to update job %s status: %v\n", w.workerID, job.ID, dbErr)
 		return
 	}
+	if job.Status == jobStatusFailed {
+		log.Printf("[Worker %s] job %s failed: %s\n", w.workerID, job.ID, failure.message)
+	}
 	if job.Status == jobStatusFailed && w.telemetry != nil {
 		captureErr := w.telemetry.CaptureException(ctx, telemetry.Exception{
 			DistinctID:  "job:" + job.ID,
@@ -458,6 +461,7 @@ func (w *BackgroundWorker) finishFailedJob(ctx context.Context, job *models.Job,
 				"max_attempts":   job.MaxAttempts,
 				"error_type":     telemetry.ErrorType(processErr),
 				"error_boundary": "background_job",
+				"retryable":      failure.retryable,
 			},
 		})
 		if captureErr != nil {
