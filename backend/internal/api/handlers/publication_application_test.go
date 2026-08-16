@@ -130,11 +130,6 @@ func TestPublicationApplicationUsesOneMutationTimestamp(t *testing.T) {
 	require.NoError(t, srv.db.NewSelect().Model(&stored).Where("id = ?", publication.ID).Scan(ctx))
 	require.Equal(t, 2, stored.Revision)
 	require.True(t, stored.UpdatedAt.Equal(updatedAt))
-	var editor models.Post
-	require.NoError(t, srv.db.NewSelect().Model(&editor).Where("publication_id = ?", publication.ID).Scan(ctx))
-	require.Equal(t, 2, editor.Revision)
-	require.Equal(t, updatedCopy, editor.Content)
-	require.True(t, editor.UpdatedAt.Equal(updatedAt))
 }
 
 func TestPublicationApplicationValidatesBeforeQueueMutation(t *testing.T) {
@@ -552,11 +547,4 @@ func assertPublicationStateParity(t *testing.T, srv *mcpTestServer, restID, mcpI
 	require.True(t, restPublication.ScheduledAt.Equal(mcpPublication.ScheduledAt))
 	require.JSONEq(t, restPublication.MetadataJSON, mcpPublication.MetadataJSON)
 	require.JSONEq(t, restPublication.ReleasePlanJSON, mcpPublication.ReleasePlanJSON)
-
-	var restEditor, mcpEditor models.Post
-	require.NoError(t, srv.db.NewSelect().Model(&restEditor).Where("publication_id = ?", restID).Scan(ctx))
-	require.NoError(t, srv.db.NewSelect().Model(&mcpEditor).Where("publication_id = ?", mcpID).Scan(ctx))
-	require.Equal(t, revision, restEditor.Revision)
-	require.Equal(t, revision, mcpEditor.Revision)
-	require.Equal(t, restEditor.Content, mcpEditor.Content)
 }

@@ -61,7 +61,7 @@ func TestRunMigrationsAddsMediaIDsColumnToPostVariants(t *testing.T) {
 	db := newPostVariantsTestDB(t)
 	ctx := context.Background()
 
-	require.NoError(t, runTestMigrations(t, db))
+	runMigrationsThrough(t, db, 27)
 
 	var variants []models.PostVariant
 	require.NoError(t, db.NewSelect().Model(&variants).Scan(ctx))
@@ -90,7 +90,7 @@ func TestRunMigrationsMediaIDsColumnDefaultsEmpty(t *testing.T) {
 	_, err = db.NewInsert().Model(post).Exec(ctx)
 	require.NoError(t, err)
 
-	require.NoError(t, runTestMigrations(t, db))
+	runMigrationsThrough(t, db, 27)
 
 	variant := &models.PostVariant{
 		ID:              "v-1",
@@ -125,7 +125,7 @@ func TestRunMigrationsMediaIDsColumnWithJSONContent(t *testing.T) {
 	_, err = db.NewInsert().Model(post).Exec(ctx)
 	require.NoError(t, err)
 
-	require.NoError(t, runTestMigrations(t, db))
+	runMigrationsThrough(t, db, 27)
 
 	variant := &models.PostVariant{
 		ID:              "v-2",
@@ -147,8 +147,8 @@ func TestRunMigrationsMediaIDsIdempotent(t *testing.T) {
 
 	db := newPostVariantsTestDB(t)
 
-	require.NoError(t, runTestMigrations(t, db))
-	require.NoError(t, runTestMigrations(t, db))
+	runMigrationsThrough(t, db, 27)
+	runMigrationsThrough(t, db, 27)
 
 	row := db.QueryRowContext(context.Background(), "SELECT sql FROM sqlite_master WHERE name = 'post_variants'")
 	var schema string

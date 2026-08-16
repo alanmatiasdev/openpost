@@ -9,7 +9,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/openpost/backend/internal/models"
-	postservice "github.com/openpost/backend/internal/services/posts"
 	publicationservice "github.com/openpost/backend/internal/services/publications"
 	repostservice "github.com/openpost/backend/internal/services/reposts"
 	"github.com/uptrace/bun"
@@ -115,8 +114,7 @@ func (command publicationApplication) persistCreate(
 		); err != nil {
 			return err
 		}
-		_, err = postservice.EnsurePublicationEditorTx(txCtx, tx, publication)
-		return err
+		return nil
 	})
 }
 

@@ -916,7 +916,6 @@ func purgeMediaBatch(
 		return err
 	}
 	for _, model := range []any{
-		(*models.PostMedia)(nil),
 		(*models.RenditionMedia)(nil),
 		(*models.PublicationSegmentMedia)(nil),
 		(*models.RenditionSegmentMedia)(nil),

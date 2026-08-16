@@ -147,7 +147,7 @@ func TestAccountExportOmitsSecretsAndDeletionRemovesPersonalData(t *testing.T) {
 		"users": {}, "organizations": {}, "workspaces": {}, "social_accounts": {}, "media_attachments": {},
 		"publications": {}, "publication_segments": {}, "publication_segment_media": {},
 		"renditions": {}, "rendition_media": {}, "rendition_segments": {}, "rendition_segment_media": {},
-		"posts": {}, "api_tokens": {}, "jobs": {},
+		"api_tokens": {}, "jobs": {},
 	} {
 		var count int
 		require.NoError(t, db.NewSelect().ColumnExpr("COUNT(*)").TableExpr(table).Scan(t.Context(), &count), table)
@@ -243,11 +243,6 @@ func TestAccountDeletionTransfersSharedOrganizationAndPreservesTeamContent(t *te
 		Status: models.PublicationStatusDraft, CreatedAt: now, UpdatedAt: now,
 	}).Exec(t.Context())
 	require.NoError(t, err)
-	_, err = db.NewInsert().Model(&models.Post{
-		ID: "post-1", WorkspaceID: "workspace-1", CreatedByID: "user-1", PublicationID: "publication-1",
-		Content: "Keep this", Status: models.PostStatusDraft, CreatedAt: now,
-	}).Exec(t.Context())
-	require.NoError(t, err)
 	_, err = db.NewInsert().Model(&models.SocialAccount{
 		ID: "account-1", WorkspaceID: "workspace-1", Slug: "shared-account", Platform: "x",
 		AccountID: "shared-provider-account-id", AccountUsername: "shared-provider-user",
@@ -311,9 +306,6 @@ func TestAccountDeletionTransfersSharedOrganizationAndPreservesTeamContent(t *te
 	var publication models.Publication
 	require.NoError(t, db.NewSelect().Model(&publication).Where("id = ?", "publication-1").Scan(t.Context()))
 	require.Equal(t, "user-2", publication.CreatedByID)
-	var post models.Post
-	require.NoError(t, db.NewSelect().Model(&post).Where("id = ?", "post-1").Scan(t.Context()))
-	require.Equal(t, "user-2", post.CreatedByID)
 	accountCount, err := db.NewSelect().Model((*models.SocialAccount)(nil)).Where("id = ?", "account-1").Count(t.Context())
 	require.NoError(t, err)
 	require.Equal(t, 1, accountCount)
@@ -345,7 +337,6 @@ func insertAccountLifecycleFixture(ctx context.Context, db *bun.DB, user *models
 		&models.RenditionMedia{RenditionID: "rendition-1", MediaID: "media-1"},
 		&models.RenditionSegment{ID: "rendition-segment-1", RenditionID: "rendition-1", PublicationSegmentID: "segment-1", Body: "Draft content", Status: models.RenditionStatusDraft, CreatedAt: now, UpdatedAt: now},
 		&models.RenditionSegmentMedia{RenditionSegmentID: "rendition-segment-1", MediaID: "media-1"},
-		&models.Post{ID: "post-1", WorkspaceID: "workspace-1", CreatedByID: user.ID, PublicationID: "publication-1", Content: "Draft content", Status: models.PostStatusDraft, CreatedAt: now},
 		&models.APIToken{ID: "token-1", UserID: user.ID, Name: "Automation", TokenHash: "api-token-hash-secret", TokenPrefix: "op_1234", Scope: "cli:full", CreatedAt: now},
 		&models.Job{ID: "job-1", Type: "publish_post", Payload: `{"workspace_id":"workspace-1","post_id":"post-1"}`, Status: "pending", RunAt: now},
 	}

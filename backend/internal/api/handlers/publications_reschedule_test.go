@@ -1386,12 +1386,11 @@ func TestPrimaryPublicationQueueUsesPostgresRowLockOnly(t *testing.T) {
 	require.Contains(t, primaryPublicationQueueLockQuery(db, "publication-1").String(), "FOR UPDATE")
 }
 
-func TestScheduledPublicationKeepsCompatibilityPostAndRandomDelay(t *testing.T) {
+func TestScheduledPublicationPersistsRandomDelayWindow(t *testing.T) {
 	db := createHandlerTestDB(t,
 		(*models.Publication)(nil),
 		(*models.Rendition)(nil),
 		(*models.Job)(nil),
-		(*models.Post)(nil),
 	)
 	ctx := context.Background()
 	now := time.Now().UTC().Truncate(time.Second)
@@ -1427,17 +1426,6 @@ func TestScheduledPublicationKeepsCompatibilityPostAndRandomDelay(t *testing.T) 
 		UpdatedAt:       now,
 	}).Exec(ctx)
 	require.NoError(t, err)
-	_, err = db.NewInsert().Model(&models.Post{
-		ID:                 "post-classic",
-		WorkspaceID:        publication.WorkspaceID,
-		CreatedByID:        publication.CreatedByID,
-		PublicationID:      publication.ID,
-		Content:            publication.SourceText,
-		Status:             models.PostStatusDraft,
-		RandomDelayMinutes: 15,
-		CreatedAt:          now,
-	}).Exec(ctx)
-	require.NoError(t, err)
 
 	jobID, err := newReadyPublicationHandler(t, db, testAuthenticator{}).queueScheduledPublication(ctx, publication.ID)
 	require.NoError(t, err)
@@ -1446,12 +1434,6 @@ func TestScheduledPublicationKeepsCompatibilityPostAndRandomDelay(t *testing.T) 
 	require.NoError(t, db.NewSelect().Model(&job).Where("id = ?", jobID).Scan(ctx))
 	require.False(t, job.RunAt.Before(scheduledAt.Add(-15*time.Minute)))
 	require.False(t, job.RunAt.After(scheduledAt.Add(15*time.Minute)))
-
-	var post models.Post
-	require.NoError(t, db.NewSelect().Model(&post).Where("id = ?", "post-classic").Scan(ctx))
-	require.Equal(t, models.PostStatusScheduled, post.Status)
-	require.True(t, post.ScheduledAt.Equal(scheduledAt))
-	require.True(t, post.ActualRunAt.Equal(job.RunAt))
 }
 
 func jobIDs(jobs []models.Job) []string {

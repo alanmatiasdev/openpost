@@ -315,22 +315,6 @@ func RegisterHumaRoutes(api huma.API, deps RouteDeps) {
 	}
 	handlers.NewOrganizationOwnershipHandler(ownershipService, deps.Authenticator).RegisterRoutes(api)
 
-	postHandler := handlers.NewPostHandler(deps.DB, deps.Authenticator, deps.Entitlement)
-	postHandler.SetRepostService(deps.RepostService)
-	postHandler.SetCapabilityDependencies(deps.Providers, deps.TokenSource)
-	postHandler.CreatePost(api)
-	postHandler.CreateTextPostDraft(api)
-	postHandler.CreateThread(api)
-	postHandler.ListPosts(api)
-	postHandler.GetPost(api)
-	postHandler.SaveTextPostDraft(api)
-	postHandler.UpdatePost(api)
-	postHandler.DeletePost(api)
-	postHandler.GetScheduleOverview(api)
-	postHandler.UpsertVariants(api)
-	postHandler.GetVariants(api)
-	postHandler.DeleteVariants(api)
-
 	postingScheduleHandler := handlers.NewPostingScheduleHandler(deps.DB, deps.Authenticator)
 	postingScheduleHandler.ListSchedules(api)
 	postingScheduleHandler.CreateSchedule(api)

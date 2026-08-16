@@ -233,6 +233,9 @@ func finalizeRecentMigrations(
 		if err := resumeLegacyPublicationAuthoringBackfill(ctx, db); err != nil {
 			return fmt.Errorf("legacy publication authoring migration failed: %w", err)
 		}
+		if err := retireLegacyPostTables(ctx, db); err != nil {
+			return fmt.Errorf("retire Post authoring tables: %w", err)
+		}
 	}
 	return nil
 }

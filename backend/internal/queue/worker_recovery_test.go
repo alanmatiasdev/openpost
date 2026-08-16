@@ -52,11 +52,6 @@ func TestWorkerReconcilesStalePublicationJobsBeforeDispatch(t *testing.T) {
 		(*models.Workspace)(nil),
 		(*models.User)(nil),
 		(*models.MediaAttachment)(nil),
-		(*models.Post)(nil),
-		(*models.PostDestination)(nil),
-		(*models.PostMedia)(nil),
-		(*models.PostVariant)(nil),
-		(*models.ThreadDraft)(nil),
 		(*models.Publication)(nil),
 		(*models.PublicationSegment)(nil),
 		(*models.PublicationSegmentMedia)(nil),
@@ -80,18 +75,6 @@ func TestWorkerReconcilesStalePublicationJobsBeforeDispatch(t *testing.T) {
 		AccountID: "x-recovery", AccessTokenEnc: []byte("ciphertext"), IsActive: true,
 	}).Exec(ctx)
 	require.NoError(t, err)
-	legacyPost := &models.Post{
-		ID: "post-worker-recovery", WorkspaceID: "workspace-recovery", CreatedByID: "user-recovery",
-		Content: "Legacy recovery", Status: models.PostStatusScheduled,
-		ScheduledAt: now.Add(time.Hour), ActualRunAt: now.Add(time.Hour), CreatedAt: now,
-	}
-	_, err = db.NewInsert().Model(legacyPost).Exec(ctx)
-	require.NoError(t, err)
-	_, err = db.NewInsert().Model(&models.PostDestination{
-		ID: "destination-worker-recovery", PostID: legacyPost.ID,
-		SocialAccountID: "account-recovery", Status: "pending",
-	}).Exec(ctx)
-	require.NoError(t, err)
 	canonical := &models.Publication{
 		ID: "publication-worker-recovery", WorkspaceID: "workspace-recovery", CreatedByID: "user-recovery",
 		Title: "Canonical recovery", SourceText: "Canonical recovery", SourceContent: "Canonical recovery",
@@ -107,7 +90,6 @@ func TestWorkerReconcilesStalePublicationJobsBeforeDispatch(t *testing.T) {
 	require.NoError(t, err)
 	lockedAt := now.Add(-staleProcessingJobAge - time.Minute)
 	jobs := []models.Job{
-		{ID: "job-legacy-worker-recovery", Type: jobTypePublishPost, Payload: `{"post_id":"post-worker-recovery"}`, Status: jobStatusProcessing, RunAt: now.Add(time.Hour), LockedAt: lockedAt, LockedBy: "dead-worker"},
 		{ID: "job-canonical-worker-recovery", Type: jobTypePublishPublication, ScopeID: canonical.ID, Payload: `{"publication_id":"publication-worker-recovery"}`, Status: jobStatusProcessing, RunAt: now.Add(time.Hour), LockedAt: lockedAt, LockedBy: "dead-worker"},
 	}
 	_, err = db.NewInsert().Model(&jobs).Exec(ctx)
@@ -115,7 +97,7 @@ func TestWorkerReconcilesStalePublicationJobsBeforeDispatch(t *testing.T) {
 
 	worker := &BackgroundWorker{db: db, workerID: "worker-recovery"}
 	requeuedPublicationJobIDs := worker.requeueStaleProcessingJobs(ctx)
-	require.ElementsMatch(t, []string{jobs[0].ID, jobs[1].ID}, requeuedPublicationJobIDs)
+	require.ElementsMatch(t, []string{jobs[0].ID}, requeuedPublicationJobIDs)
 	var prematurelyClaimed models.Job
 	err = db.NewRaw(`UPDATE jobs SET status = ? WHERE id = ? AND status = ? RETURNING *`,
 		jobStatusProcessing, jobs[0].ID, jobStatusPending).Scan(ctx, &prematurelyClaimed)
@@ -132,8 +114,6 @@ func TestWorkerReconcilesStalePublicationJobsBeforeDispatch(t *testing.T) {
 		require.NoError(t, countErr)
 		require.Positive(t, receiptCount)
 	}
-	require.NoError(t, db.NewSelect().Model(legacyPost).Where("id = ?", legacyPost.ID).Scan(ctx))
-	require.Equal(t, "legacy-publication:"+legacyPost.ID, legacyPost.PublicationID)
 }
 
 func TestWorkerMarksStaleProviderWriteAmbiguousBeforeRequeue(t *testing.T) {
@@ -206,7 +186,7 @@ func TestWorkerKeepsRecentProcessingJobsLocked(t *testing.T) {
 	lockedAt := time.Now().UTC().Add(-5 * time.Minute)
 	job := &models.Job{
 		ID:          jobID,
-		Type:        jobTypePublishPost,
+		Type:        jobTypePublishPublication,
 		Payload:     "{}",
 		Status:      jobStatusProcessing,
 		RunAt:       time.Now().UTC().Add(-time.Hour),

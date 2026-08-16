@@ -20,7 +20,7 @@ func TestDefinitionsCoverEveryExecutableJobKind(t *testing.T) {
 	t.Parallel()
 
 	expected := []string{
-		TypePublishPost, TypePublishPublication, TypeRefreshToken, TypeMediaCleanup,
+		TypePublishPublication, TypeRefreshToken, TypeMediaCleanup,
 		TypeStorageDelete, TypeFeedbackDelivery, TypeAnalyticsSweep, TypeAnalyticsAccount,
 		TypeAnalyticsRendition, TypeBillingWebhook, TypeEngagementSweep, TypeEngagementSync,
 		TypeMessagingSweep, TypeMessagesSync, TypeEngagementAction, TypeMessageSend, TypeNotificationEmail,

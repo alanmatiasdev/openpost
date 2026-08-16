@@ -15,7 +15,6 @@ import (
 	"github.com/openpost/backend/internal/platform"
 	"github.com/openpost/backend/internal/services/drafts"
 	"github.com/openpost/backend/internal/services/lifecycle"
-	postservice "github.com/openpost/backend/internal/services/posts"
 	"github.com/openpost/backend/internal/services/providerreadiness"
 	"github.com/openpost/backend/internal/services/providerwrite"
 	"github.com/openpost/backend/internal/services/publicationauth"
@@ -238,10 +237,6 @@ func (commands publicationApplication) Update(
 		if publication.Revision != input.ExpectedRevision {
 			return commands.handler.publicationRevisionConflict(txCtx, tx, publication, input.ExpectedRevision)
 		}
-		editor, err := postservice.EnsurePublicationEditorTx(txCtx, tx, publication)
-		if err != nil {
-			return err
-		}
 		clearQueuedSchedule, rescheduleQueuedJob, err := applyPublicationScheduleUpdate(
 			publication,
 			input.ScheduledAt,
@@ -318,9 +313,6 @@ func (commands publicationApplication) Update(
 				return err
 			}
 		}
-		if err := postservice.SyncPublicationEditorTx(txCtx, tx, publication, editor); err != nil {
-			return err
-		}
 		if err := commands.handler.syncTextPostRevisionsTx(
 			txCtx,
 			tx,
@@ -385,14 +377,6 @@ func (commands publicationApplication) Delete(
 			Where(primaryPublishPublicationJobWhere(commands.handler.db), jobTypePublishPublication, current.ID).
 			Exec(txCtx); err != nil {
 			return fmt.Errorf("delete publication jobs: %w", err)
-		}
-		var linkedPostIDs []string
-		if err := tx.NewSelect().Model((*models.Post)(nil)).Column("id").
-			Where("publication_id = ?", current.ID).Scan(txCtx, &linkedPostIDs); err != nil && !isMissingLegacyPostsTable(err) {
-			return fmt.Errorf("load linked draft posts: %w", err)
-		}
-		if err := postservice.DeletePostsCascadeTx(txCtx, tx, linkedPostIDs); err != nil {
-			return err
 		}
 		result, err := tx.NewDelete().Model((*models.Publication)(nil)).
 			Where("id = ? AND revision = ?", current.ID, current.Revision).Exec(txCtx)
@@ -672,13 +656,7 @@ func (commands publicationApplication) markRetryRenditionScheduledTx(ctx context
 		Where("id = ?", publicationID).Where("status = ?", models.PublicationStatusFailed).Exec(ctx); err != nil {
 		return err
 	}
-	_, err := tx.NewUpdate().Model((*models.Post)(nil)).
-		Set("status = ?", models.PostStatusScheduled).
-		Where("publication_id = ?", publicationID).Where("status = ?", models.PostStatusFailed).Exec(ctx)
-	if err != nil && isMissingLegacyPostsTable(err) {
-		return nil
-	}
-	return err
+	return nil
 }
 
 // RetryFailedRenditions atomically replaces any pending primary publication
@@ -761,14 +739,6 @@ func (commands publicationApplication) RetryFailedRenditions(
 			Set("updated_at = ?", now).
 			Where("id = ?", publication.ID).
 			Exec(txCtx); err != nil {
-			return err
-		}
-		if _, err := tx.NewUpdate().
-			Model((*models.Post)(nil)).
-			Set("status = ?", models.PostStatusScheduled).
-			Where("publication_id = ?", publication.ID).
-			Where("status = ?", models.PostStatusFailed).
-			Exec(txCtx); err != nil && !isMissingLegacyPostsTable(err) {
 			return err
 		}
 		job, err := jobregistry.NewJob(jobTypePublishPublication, payload, now)

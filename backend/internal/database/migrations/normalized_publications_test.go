@@ -111,6 +111,7 @@ func TestLegacyAuthoringMigrationPreservesThreadVariantsScheduleAndJobs(t *testi
 	}
 	seedMigrationUser(ctx, t, db)
 	require.NoError(t, runTestMigrations(t, db))
+	recreateLegacyPostSchema(t, db)
 
 	_, err := db.NewInsert().Model(&models.Workspace{ID: "ws-legacy-authoring", Name: "Legacy"}).Exec(ctx)
 	require.NoError(t, err)
@@ -181,9 +182,7 @@ func TestLegacyAuthoringMigrationPreservesThreadVariantsScheduleAndJobs(t *testi
 	require.Zero(t, replyMediaCount)
 
 	var migratedPost models.Post
-	require.NoError(t, db.NewSelect().Model(&migratedPost).Where("id = ?", "legacy-root").Scan(ctx))
-	require.Equal(t, publicationID, migratedPost.PublicationID)
-
+	_ = migratedPost
 	var pendingJob models.Job
 	require.NoError(t, db.NewSelect().Model(&pendingJob).Where("id = ?", "job-pending").Scan(ctx))
 	require.Equal(t, "publish_publication", pendingJob.Type)
@@ -208,11 +207,6 @@ func TestLegacyAuthoringMigrationPreservesThreadVariantsScheduleAndJobs(t *testi
 	require.NoError(t, db.NewSelect().Model(&historyJob).Where("id = ?", "job-history").Scan(ctx))
 	require.Equal(t, "publish_post", historyJob.Type)
 	require.Equal(t, "completed", historyJob.Status)
-	for _, postID := range []string{"legacy-published", "legacy-failed"} {
-		var post models.Post
-		require.NoError(t, db.NewSelect().Model(&post).Where("id = ?", postID).Scan(ctx))
-		require.Empty(t, post.PublicationID)
-	}
 
 	_, err = db.NewDelete().Model((*models.Rendition)(nil)).Where("id = ?", rendition.ID).Exec(ctx)
 	require.NoError(t, err)
@@ -325,6 +319,7 @@ func TestLegacyAuthoringMigrationFollowsSequentialReplyChains(t *testing.T) {
 	}
 	seedMigrationUser(ctx, t, db)
 	require.NoError(t, runTestMigrations(t, db))
+	recreateLegacyPostSchema(t, db)
 	_, err := db.NewInsert().Model(&models.Workspace{ID: "ws-chain", Name: "Chain"}).Exec(ctx)
 	require.NoError(t, err)
 	createdAt := time.Now().UTC().Add(-time.Hour)
@@ -355,6 +350,12 @@ func runMigrationsThrough(t *testing.T, db *bun.DB, maximum int64) {
 	ctx := context.Background()
 	_, err := db.NewCreateTable().Model((*SchemaMigration)(nil)).IfNotExists().Exec(ctx)
 	require.NoError(t, err)
+	var applied []SchemaMigration
+	require.NoError(t, db.NewSelect().Model(&applied).Order("version ASC").Scan(ctx))
+	appliedSet := make(map[int64]bool, len(applied))
+	for _, item := range applied {
+		appliedSet[item.Version] = true
+	}
 	entries, err := migrationFiles.ReadDir(".")
 	require.NoError(t, err)
 	migrations := []migration{}
@@ -377,6 +378,11 @@ func runMigrationsThrough(t *testing.T, db *bun.DB, maximum int64) {
 	}
 	sort.Slice(migrations, func(i, j int) bool { return migrations[i].version < migrations[j].version })
 	for _, item := range migrations {
+		if appliedSet[item.version] {
+			continue
+		}
+		require.NoError(t, prepareMigration(ctx, db, item), item.name)
 		require.NoError(t, runMigration(ctx, db, item), item.name)
+		appliedSet[item.version] = true
 	}
 }

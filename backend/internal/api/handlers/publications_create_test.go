@@ -98,54 +98,6 @@ func TestCreatePublicationReplacesClientPlaceholderSegmentIDs(t *testing.T) {
 	)
 }
 
-func TestCreateTextPublicationCreatesComposerEditor(t *testing.T) {
-	db := createHandlerTestDB(t,
-		(*models.WorkspaceMember)(nil),
-		(*models.Publication)(nil),
-	)
-	ctx := context.Background()
-	_, err := db.NewInsert().Model(&models.WorkspaceMember{
-		WorkspaceID: "workspace-1",
-		UserID:      "user-1",
-		Role:        models.WorkspaceRoleAdmin,
-	}).Exec(ctx)
-	require.NoError(t, err)
-
-	e := echo.New()
-	api := humaecho.NewWithGroup(e, e.Group("/api/v1"), huma.DefaultConfig("Test", "1.0.0"))
-	NewPublicationHandler(db, testAuthenticator{}, nil).RegisterRoutes(api)
-
-	req := httptest.NewRequestWithContext(
-		ctx,
-		http.MethodPost,
-		"/api/v1/publications",
-		bytes.NewBufferString(`{
-			"workspace_id":"workspace-1",
-			"title":"Composer draft",
-			"intent":"post",
-			"content_profile":"short_text",
-			"source_text":"Draft from the publication API"
-		}`),
-	)
-	req.Header.Set("Authorization", "Bearer web-token")
-	req.Header.Set("Content-Type", "application/json")
-	rec := httptest.NewRecorder()
-	e.ServeHTTP(rec, req)
-	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
-
-	var created PublicationResponse
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &created))
-	var editor models.Post
-	require.NoError(t, db.NewSelect().
-		Model(&editor).
-		Where("publication_id = ?", created.ID).
-		Scan(ctx))
-	require.Equal(t, "user-1", editor.CreatedByID)
-	require.Equal(t, "Draft from the publication API", editor.Content)
-	require.Equal(t, models.PostStatusDraft, editor.Status)
-	require.Equal(t, 1, editor.Revision)
-}
-
 func TestDeletePublicationRequiresConfirmationAndRevision(t *testing.T) {
 	db := createHandlerTestDB(t,
 		(*models.WorkspaceMember)(nil),

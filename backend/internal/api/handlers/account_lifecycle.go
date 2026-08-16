@@ -914,14 +914,6 @@ func transferRetainedOrganization(ctx context.Context, tx bun.Tx, userID, organi
 			Exec(ctx); err != nil {
 			return err
 		}
-		// Keep the derived compatibility projection internally consistent while
-		// Publication remains the only ownership authority.
-		if _, err := tx.NewUpdate().Model((*models.Post)(nil)).
-			Set("created_by = ?", successorID).
-			Where("created_by = ? AND workspace_id IN (?)", userID, bun.List(workspaceIDs)).
-			Exec(ctx); err != nil {
-			return err
-		}
 	}
 	return nil
 }

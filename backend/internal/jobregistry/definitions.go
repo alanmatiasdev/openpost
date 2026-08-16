@@ -37,7 +37,6 @@ const (
 type ExecutionKind string
 
 const (
-	ExecutePublishPost           ExecutionKind = "publish_post"
 	ExecutePublishPublication    ExecutionKind = "publish_publication"
 	ExecuteRefreshToken          ExecutionKind = "refresh_token"
 	ExecuteMediaCleanup          ExecutionKind = "media_cleanup"
@@ -90,7 +89,6 @@ type Definition struct {
 }
 
 var definitions = map[string]Definition{
-	TypePublishPost:        definition(TypePublishPost, 3, ExecutePublishPost, FailurePublish, RecoveryReconcilePublication),
 	TypePublishPublication: definition(TypePublishPublication, 3, ExecutePublishPublication, FailurePublish, RecoveryReconcilePublication),
 	TypeRefreshToken:       definition(TypeRefreshToken, 5, ExecuteRefreshToken, FailureDefault, RecoveryRequeue),
 	TypeMediaCleanup: {

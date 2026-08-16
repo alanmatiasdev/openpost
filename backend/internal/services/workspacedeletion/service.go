@@ -438,13 +438,13 @@ func OrganizationBillingReferences(ctx context.Context, db deletionDB, organizat
 }
 
 type deletionIDs struct {
-	compatibilityPosts, publications, publicationSegments, renditions, renditionSegments []string
-	accounts, media, conversations, messages, invitations                                []string
+	publications, publicationSegments, renditions, renditionSegments []string
+	accounts, media, conversations, messages, invitations            []string
 }
 
 func loadDeletionIDs(ctx context.Context, db deletionDB, workspaceIDs []string) (deletionIDs, error) {
 	ids := deletionIDs{}
-	for _, scan := range []struct{ model, dest any }{{(*models.Post)(nil), &ids.compatibilityPosts}, {(*models.Publication)(nil), &ids.publications}, {(*models.SocialAccount)(nil), &ids.accounts}, {(*models.MediaAttachment)(nil), &ids.media}, {(*models.Conversation)(nil), &ids.conversations}, {(*models.DirectMessage)(nil), &ids.messages}, {(*models.WorkspaceInvitation)(nil), &ids.invitations}} {
+	for _, scan := range []struct{ model, dest any }{{(*models.Publication)(nil), &ids.publications}, {(*models.SocialAccount)(nil), &ids.accounts}, {(*models.MediaAttachment)(nil), &ids.media}, {(*models.Conversation)(nil), &ids.conversations}, {(*models.DirectMessage)(nil), &ids.messages}, {(*models.WorkspaceInvitation)(nil), &ids.invitations}} {
 		if err := db.NewSelect().Model(scan.model).Column("id").Where("workspace_id IN (?)", bun.List(workspaceIDs)).Scan(ctx, scan.dest); err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return ids, err
 		}
@@ -644,11 +644,10 @@ func deletionPlan(workspaceIDs []string, ids deletionIDs) []modelDeletion {
 	deletions = appendDeletions(deletions, ids.renditions, "rendition_id IN (?)", (*models.RenditionMediaDeliveryRelation)(nil), (*models.RenditionMediaDelivery)(nil), (*models.RenditionMedia)(nil), (*models.RenditionSegment)(nil))
 	deletions = appendDeletions(deletions, ids.publicationSegments, "segment_id IN (?)", (*models.PublicationSegmentMedia)(nil))
 	deletions = appendDeletions(deletions, ids.publications, "publication_id IN (?)", (*models.PublicationAsset)(nil), (*models.PublicationAuthorization)(nil), (*models.PublicationLifecycleEvent)(nil), (*models.PublicationSegment)(nil), (*models.Rendition)(nil))
-	deletions = appendDeletions(deletions, ids.compatibilityPosts, "post_id IN (?)", (*models.PostMediaDelivery)(nil), (*models.PostDestination)(nil), (*models.PostMedia)(nil), (*models.PostVariant)(nil), (*models.ThreadDraft)(nil))
-	deletions = appendDeletions(deletions, ids.accounts, "social_account_id IN (?)", (*models.PostMediaDelivery)(nil), (*models.RenditionMediaDelivery)(nil))
-	deletions = appendDeletions(deletions, ids.media, "media_id IN (?)", (*models.PostMediaDelivery)(nil), (*models.RenditionMediaDelivery)(nil), (*models.PostMedia)(nil), (*models.PublicationAsset)(nil), (*models.RenditionMedia)(nil))
+	deletions = appendDeletions(deletions, ids.accounts, "social_account_id IN (?)", (*models.RenditionMediaDelivery)(nil))
+	deletions = appendDeletions(deletions, ids.media, "media_id IN (?)", (*models.RenditionMediaDelivery)(nil), (*models.PublicationAsset)(nil), (*models.RenditionMedia)(nil))
 	deletions = appendDeletions(deletions, ids.invitations, "invitation_id IN (?)", (*models.WorkspaceInvitationDeliveryEvent)(nil))
-	deletions = appendDeletions(deletions, workspaceIDs, "workspace_id IN (?)", (*models.Post)(nil), (*models.Publication)(nil), (*models.SocialAccount)(nil), (*models.MediaAttachment)(nil), (*models.PostingSchedule)(nil), (*models.Prompt)(nil), (*models.UsageCounter)(nil), (*models.OAuthAccountSelection)(nil), (*models.XOAuthRequestToken)(nil), (*models.WorkspaceFirstConnection)(nil), (*models.WorkspaceFirstComposition)(nil), (*models.WorkspaceInvitation)(nil), (*models.WorkspaceMember)(nil), (*models.UserNotification)(nil), (*models.MCPToolCall)(nil))
+	deletions = appendDeletions(deletions, workspaceIDs, "workspace_id IN (?)", (*models.Publication)(nil), (*models.SocialAccount)(nil), (*models.MediaAttachment)(nil), (*models.PostingSchedule)(nil), (*models.Prompt)(nil), (*models.UsageCounter)(nil), (*models.OAuthAccountSelection)(nil), (*models.XOAuthRequestToken)(nil), (*models.WorkspaceFirstConnection)(nil), (*models.WorkspaceFirstComposition)(nil), (*models.WorkspaceInvitation)(nil), (*models.WorkspaceMember)(nil), (*models.UserNotification)(nil), (*models.MCPToolCall)(nil))
 	return appendDeletions(deletions, workspaceIDs, "id IN (?)", (*models.Workspace)(nil))
 }
 func appendDeletions(out []modelDeletion, ids []string, where string, modelsToDelete ...any) []modelDeletion {

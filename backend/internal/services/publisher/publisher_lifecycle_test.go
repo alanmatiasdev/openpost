@@ -135,28 +135,19 @@ func TestPublicationPartialSuccessKeepsPerDestinationSafeOutcomes(t *testing.T) 
 		}).Exec(ctx)
 		return err
 	}())
-	require.NoError(t, func() error {
-		_, err := srv.db.NewInsert().Model(&models.PostDestination{
-			ID:              "destination-2",
-			PostID:          "post-1",
-			SocialAccountID: "account-2",
-			Status:          "pending",
-		}).Exec(ctx)
-		return err
-	}())
 
 	require.NoError(t, srv.publishPublication(t))
 
-	var destinations []models.PostDestination
-	require.NoError(t, srv.db.NewSelect().Model(&destinations).Order("social_account_id ASC").Scan(ctx))
-	require.Len(t, destinations, 2)
-	require.Equal(t, "success", destinations[0].Status)
-	require.Empty(t, destinations[0].ErrorMessage)
-	require.Equal(t, "failed", destinations[1].Status)
-	require.Equal(t, FailureValidation, destinations[1].ErrorKind)
-	require.Equal(t, "invalid_media", destinations[1].ErrorCode)
-	require.False(t, destinations[1].ErrorRetryable)
-	require.NotContains(t, destinations[1].ErrorMessage, "Second destination")
+	var renditions []models.Rendition
+	require.NoError(t, srv.db.NewSelect().Model(&renditions).Order("social_account_id ASC").Scan(ctx))
+	require.Len(t, renditions, 2)
+	require.Equal(t, models.RenditionStatusPublished, renditions[0].Status)
+	require.Empty(t, renditions[0].ErrorMessage)
+	require.Equal(t, models.RenditionStatusFailed, renditions[1].Status)
+	require.Equal(t, FailureValidation, renditions[1].ErrorKind)
+	require.Equal(t, "invalid_media", renditions[1].ErrorCode)
+	require.False(t, renditions[1].ErrorRetryable)
+	require.NotContains(t, renditions[1].ErrorMessage, "Second destination")
 }
 
 func TestPublicationAuthorizationPreflightRejectsChangedContentBeforeProviderCall(t *testing.T) {
@@ -207,9 +198,6 @@ func TestPublicationAuthorizationPreflightFailureDoesNotLeaveScheduledPublicatio
 	require.Equal(t, models.RenditionStatusFailed, rendition.Status)
 	require.Equal(t, FailureValidation, rendition.ErrorKind)
 	require.Equal(t, FailureActionEdit, rendition.ErrorAction)
-	var post models.Post
-	require.NoError(t, srv.db.NewSelect().Model(&post).Where("id = ?", "post-1").Scan(t.Context()))
-	require.Equal(t, models.PostStatusFailed, post.Status)
 	requireLifecycleTypes(t, srv.lifecycleEvents(t), lifecycle.EventFailed)
 }
 
@@ -263,63 +251,6 @@ func TestLegacyPublicationJobAuthorizationRunsThroughPublisherPreflight(t *testi
 	require.Equal(t, 1, adapter.publishCalls)
 }
 
-func TestTextPostPermanentFailureDoesNotRequestAJobRetry(t *testing.T) {
-	t.Parallel()
-
-	srv := newPublisherLifecycleTestServer(t, &fakePublisherAdapter{
-		publishErr: &platform.HTTPError{StatusCode: 422, Code: "invalid_media"},
-	})
-	var post models.Post
-	require.NoError(t, srv.db.NewSelect().Model(&post).Where("id = ?", "post-1").Scan(t.Context()))
-
-	require.NoError(t, srv.service.publishSinglePost(t.Context(), &post))
-
-	var destination models.PostDestination
-	require.NoError(t, srv.db.NewSelect().Model(&destination).Where("post_id = ?", post.ID).Scan(t.Context()))
-	require.Equal(t, FailureValidation, destination.ErrorKind)
-	require.False(t, destination.ErrorRetryable)
-}
-
-func TestTextPostTransientFailureStillRetriesWhenAnotherDestinationIsPermanent(t *testing.T) {
-	t.Parallel()
-
-	srv := newPublisherLifecycleTestServer(t, &fakePublisherAdapter{
-		preFenceErrors: []error{
-			&platform.HTTPError{StatusCode: 503, Code: "temporarily_unavailable"},
-			&platform.HTTPError{StatusCode: 422, Code: "invalid_media"},
-		},
-	})
-	ctx := t.Context()
-	var firstAccount models.SocialAccount
-	require.NoError(t, srv.db.NewSelect().Model(&firstAccount).Where("id = ?", "account-1").Scan(ctx))
-	secondAccount := firstAccount
-	secondAccount.ID = "account-2"
-	secondAccount.AccountID = "x-account-2"
-	secondAccount.Slug = "x-account-2"
-	_, err := srv.db.NewInsert().Model(&secondAccount).Exec(ctx)
-	require.NoError(t, err)
-	_, err = srv.db.NewInsert().Model(&models.PostDestination{
-		ID:              "destination-2",
-		PostID:          "post-1",
-		SocialAccountID: secondAccount.ID,
-		Status:          "pending",
-	}).Exec(ctx)
-	require.NoError(t, err)
-	var post models.Post
-	require.NoError(t, srv.db.NewSelect().Model(&post).Where("id = ?", "post-1").Scan(ctx))
-
-	err = srv.service.publishSinglePost(ctx, &post)
-
-	var retryable *RetryableError
-	require.ErrorAs(t, err, &retryable)
-	require.Equal(t, FailureProviderServer, retryable.Failure.Kind)
-	var destinations []models.PostDestination
-	require.NoError(t, srv.db.NewSelect().Model(&destinations).Order("id ASC").Scan(ctx))
-	require.Len(t, destinations, 2)
-	require.True(t, destinations[0].ErrorRetryable)
-	require.False(t, destinations[1].ErrorRetryable)
-}
-
 type publisherLifecycleTestServer struct {
 	db      *bun.DB
 	service *Service
@@ -354,10 +285,6 @@ func newPublisherLifecycleTestServer(t *testing.T, adapter *fakePublisherAdapter
 		(*models.ProviderRuntimeControlEvent)(nil),
 		(*models.ProviderWriteAttempt)(nil),
 		(*models.UsageCounter)(nil),
-		(*models.Post)(nil),
-		(*models.PostDestination)(nil),
-		(*models.PostMedia)(nil),
-		(*models.PostVariant)(nil),
 		(*models.Job)(nil),
 		(*models.OAuthGrant)(nil),
 		(*models.User)(nil),
@@ -417,22 +344,6 @@ func newPublisherLifecycleTestServer(t *testing.T, adapter *fakePublisherAdapter
 		Profile:         models.ContentProfileShortText,
 		Body:            "Launch update",
 		Status:          models.RenditionStatusReady,
-	}).Exec(ctx)
-	require.NoError(t, err)
-	_, err = db.NewInsert().Model(&models.Post{
-		ID:            "post-1",
-		WorkspaceID:   "ws-1",
-		CreatedByID:   "user-1",
-		PublicationID: "publication-1",
-		Content:       "Launch update",
-		Status:        models.PostStatusScheduled,
-	}).Exec(ctx)
-	require.NoError(t, err)
-	_, err = db.NewInsert().Model(&models.PostDestination{
-		ID:              "destination-1",
-		PostID:          "post-1",
-		SocialAccountID: "account-1",
-		Status:          "pending",
 	}).Exec(ctx)
 	require.NoError(t, err)
 

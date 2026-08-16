@@ -34,7 +34,6 @@ import (
 const (
 	// StorageDeleteMaxKeys is the largest storage deletion payload the worker accepts.
 	StorageDeleteMaxKeys      = 10_000
-	jobTypePublishPost        = jobregistry.TypePublishPost
 	jobTypePublishPublication = jobregistry.TypePublishPublication
 	jobTypeMediaCleanup       = jobregistry.TypeMediaCleanup
 	jobTypeStorageDelete      = jobregistry.TypeStorageDelete
@@ -175,12 +174,6 @@ func NewWorker(db *bun.DB, id string, interval time.Duration, pub *publisher.Ser
 		storage:   storage,
 		executors: map[jobregistry.ExecutionKind]jobExecutor{},
 		done:      make(chan struct{}),
-	}
-	w.executors[jobregistry.ExecutePublishPost] = func(ctx context.Context, job *models.Job) error {
-		if w.publisher == nil {
-			return fmt.Errorf("publishing is not configured")
-		}
-		return w.publisher.HandlePublishJob(ctx, job.Payload)
 	}
 	w.executors[jobregistry.ExecutePublishPublication] = func(ctx context.Context, job *models.Job) error {
 		if w.publisher == nil {

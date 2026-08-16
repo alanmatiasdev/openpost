@@ -45,6 +45,7 @@ func TestLegacyPublicationBackfillResumesAfterCancellationAndIsIdempotent(t *tes
 	createLegacyPublicationTestTables(t, db)
 	seedMigrationUser(ctx, t, db)
 	require.NoError(t, runTestMigrations(t, db))
+	recreateLegacyPostTablesAfterRetirement(t, db)
 	allowLegacyActiveUnscopedJobsForTest(t, db)
 
 	_, err := db.NewInsert().Model(&models.Workspace{ID: "workspace-backfill", Name: "Backfill"}).Exec(ctx)
@@ -119,6 +120,7 @@ func TestLegacyPublicationBackfillResumesAfterCancellationAndIsIdempotent(t *tes
 	require.NoError(t, err)
 	require.NoError(t, resumeLegacyPublicationAuthoringBackfill(ctx, db))
 	require.NoError(t, runTestMigrations(t, db))
+	recreateLegacyPostTablesAfterRetirement(t, db)
 	stablePublicationCount, err := db.NewSelect().Model((*models.Publication)(nil)).Count(ctx)
 	require.NoError(t, err)
 	require.Equal(t, publicationCount, stablePublicationCount)
@@ -130,6 +132,7 @@ func TestCompletedLegacyPublicationBackfillDoesNotReopenForUnrepairableHistory(t
 	createLegacyPublicationTestTables(t, db)
 	seedMigrationUser(ctx, t, db)
 	require.NoError(t, runTestMigrations(t, db))
+	recreateLegacyPostTablesAfterRetirement(t, db)
 
 	before, err := loadLegacyPublicationBackfillState(ctx, db)
 	require.NoError(t, err)
@@ -167,6 +170,7 @@ func TestLegacyPublicationBackfillBoundsStartupWorkAndResumesAcrossStartups(t *t
 	createLegacyPublicationTestTables(t, db)
 	seedMigrationUser(ctx, t, db)
 	require.NoError(t, runTestMigrations(t, db))
+	recreateLegacyPostTablesAfterRetirement(t, db)
 
 	jobCount := legacyPublicationBackfillBatchSize*legacyPublicationBackfillMaxBatchesPerStartup + 1
 	jobs := make([]models.Job, 0, jobCount)
@@ -208,6 +212,7 @@ func TestLegacyPublicationBackfillRepairsPendingBlankScopeBeforeBoundedHistory(t
 	createLegacyPublicationTestTables(t, db)
 	seedMigrationUser(ctx, t, db)
 	require.NoError(t, runTestMigrations(t, db))
+	recreateLegacyPostTablesAfterRetirement(t, db)
 	allowLegacyActiveUnscopedJobsForTest(t, db)
 
 	_, err := db.NewInsert().Model(&models.Workspace{ID: "workspace-pending-scope", Name: "Pending scope"}).Exec(ctx)
@@ -280,6 +285,7 @@ func TestLegacyPublicationBackfillRepairsProtectedFailedBlankScopeBeyondBoundedH
 	createLegacyPublicationTestTables(t, db)
 	seedMigrationUser(ctx, t, db)
 	require.NoError(t, runTestMigrations(t, db))
+	recreateLegacyPostTablesAfterRetirement(t, db)
 
 	_, err := db.NewInsert().Model(&models.Workspace{ID: "workspace-protected-history", Name: "Protected history"}).Exec(ctx)
 	require.NoError(t, err)
@@ -358,6 +364,7 @@ func TestLegacyPublicationBackfillRemovesNonExecutableCanonicalJob(t *testing.T)
 	createLegacyPublicationTestTables(t, db)
 	seedMigrationUser(ctx, t, db)
 	require.NoError(t, runTestMigrations(t, db))
+	recreateLegacyPostTablesAfterRetirement(t, db)
 
 	_, err := db.NewInsert().Model(&models.Workspace{ID: "workspace-no-destination", Name: "No destination"}).Exec(ctx)
 	require.NoError(t, err)
@@ -398,6 +405,7 @@ func TestLegacyPublicationBackfillFencesStaleProcessingWritesBeforeMigration(t *
 	createLegacyPublicationTestTables(t, db)
 	seedMigrationUser(ctx, t, db)
 	require.NoError(t, runTestMigrations(t, db))
+	recreateLegacyPostTablesAfterRetirement(t, db)
 	allowLegacyActiveUnscopedJobsForTest(t, db)
 
 	_, err := db.NewInsert().Model(&models.Workspace{ID: "workspace-stale-write", Name: "Stale write"}).Exec(ctx)
@@ -506,6 +514,7 @@ func TestLegacyPublicationBackfillQuarantinesProtectedCanonicalJobWithoutBinding
 	createLegacyPublicationTestTables(t, db)
 	seedMigrationUser(ctx, t, db)
 	require.NoError(t, runTestMigrations(t, db))
+	recreateLegacyPostTablesAfterRetirement(t, db)
 
 	_, err := db.NewInsert().Model(&models.Workspace{ID: "workspace-canonical-quarantine", Name: "Canonical quarantine"}).Exec(ctx)
 	require.NoError(t, err)
@@ -621,6 +630,7 @@ func TestLegacyPublicationRequestRechecksWorkerClaimInsideTransaction(t *testing
 	createLegacyPublicationTestTables(t, db)
 	seedMigrationUser(ctx, t, db)
 	require.NoError(t, runTestMigrations(t, db))
+	recreateLegacyPostTablesAfterRetirement(t, db)
 
 	_, err := db.NewInsert().Model(&models.Workspace{ID: "workspace-claim-race", Name: "Claim race"}).Exec(ctx)
 	require.NoError(t, err)
@@ -677,6 +687,7 @@ func TestLegacyPublicationBackfillAuthorizesPendingCanonicalJobBeforeBoundedHist
 	createLegacyPublicationTestTables(t, db)
 	seedMigrationUser(ctx, t, db)
 	require.NoError(t, runTestMigrations(t, db))
+	recreateLegacyPostTablesAfterRetirement(t, db)
 	allowLegacyActiveUnscopedJobsForTest(t, db)
 
 	_, err := db.NewInsert().Model(&models.Workspace{ID: "workspace-pending-auth", Name: "Pending auth"}).Exec(ctx)
@@ -752,6 +763,7 @@ func TestLegacyPublicationAuthorizationBackfillRollsBackAndResumesAtomically(t *
 	createLegacyPublicationTestTables(t, db)
 	seedMigrationUser(ctx, t, db)
 	require.NoError(t, runTestMigrations(t, db))
+	recreateLegacyPostTablesAfterRetirement(t, db)
 
 	now := time.Now().UTC().Truncate(time.Microsecond)
 	_, err := db.NewInsert().Model(&models.Workspace{ID: "workspace-auth", Name: "Authorization"}).Exec(ctx)
@@ -879,6 +891,7 @@ func scopedLegacyTranslationQueryCount(t *testing.T, historicalRows int) int64 {
 	createLegacyPublicationTestTables(t, db)
 	seedMigrationUser(ctx, t, db)
 	require.NoError(t, runTestMigrations(t, db))
+	recreateLegacyPostTablesAfterRetirement(t, db)
 	_, err := db.NewInsert().Model(&models.Workspace{ID: "workspace-query-count", Name: "Query count"}).Exec(ctx)
 	require.NoError(t, err)
 	_, err = db.NewInsert().Model(&models.SocialAccount{
@@ -939,6 +952,21 @@ func createLegacyPublicationTestTables(t *testing.T, db *bun.DB) {
 	t.Helper()
 	for _, model := range []any{
 		(*models.PostDestination)(nil), (*models.PostMedia)(nil), (*models.Job)(nil),
+	} {
+		_, err := db.NewCreateTable().Model(model).IfNotExists().Exec(t.Context())
+		require.NoError(t, err)
+	}
+}
+
+// recreateLegacyPostTablesAfterRetirement restores the Post authoring tables
+// after the full migration set has retired them at the finalize boundary. The
+// backfill functions under test still read and translate these rows.
+func recreateLegacyPostTablesAfterRetirement(t *testing.T, db *bun.DB) {
+	t.Helper()
+	for _, model := range []any{
+		(*models.Post)(nil),
+		(*models.PostDestination)(nil), (*models.PostMedia)(nil), (*models.PostVariant)(nil),
+		(*models.ThreadDraft)(nil),
 	} {
 		_, err := db.NewCreateTable().Model(model).IfNotExists().Exec(t.Context())
 		require.NoError(t, err)

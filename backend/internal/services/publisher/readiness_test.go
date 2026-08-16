@@ -99,9 +99,14 @@ func TestPublisherWriteFailsClosedWithoutReadinessService(t *testing.T) {
 	adapter := &fakePublisherAdapter{externalID: "must-not-publish"}
 	srv := newPublisherUsageTestServer(t, adapter)
 	srv.service.SetProviderReadiness(nil)
-	srv.seedPost(t, "post-missing-readiness")
-
-	require.NoError(t, srv.publishPost(t, "post-missing-readiness"))
+	scope := legacyWriteScope(t.Context(), "ws-1", "account-1", "x", "readiness-missing")
+	_, err := srv.service.publishProviderWithUsage(
+		t.Context(), "ws-1", capabilities.ProviderX, "readiness-missing", "publish",
+		scope, adapter, "access-token", "x-account",
+		&platform.PublishRequest{Content: "Readiness", Profile: models.ContentProfileShortText, OutputProfile: "x.post"},
+		nil,
+	)
+	require.Error(t, err)
 	require.Zero(t, adapter.publishCalls)
 }
 
@@ -111,8 +116,13 @@ func TestPublisherWriteFailsClosedWhenReadinessRepositoryFails(t *testing.T) {
 	srv := newPublisherUsageTestServer(t, adapter)
 	_, err := srv.db.ExecContext(t.Context(), "DROP TABLE provider_runtime_control_events")
 	require.NoError(t, err)
-	srv.seedPost(t, "post-broken-readiness-repository")
-
-	require.NoError(t, srv.publishPost(t, "post-broken-readiness-repository"))
+	scope := legacyWriteScope(t.Context(), "ws-1", "account-1", "x", "readiness-broken")
+	_, err = srv.service.publishProviderWithUsage(
+		t.Context(), "ws-1", capabilities.ProviderX, "readiness-broken", "publish",
+		scope, adapter, "access-token", "x-account",
+		&platform.PublishRequest{Content: "Readiness", Profile: models.ContentProfileShortText, OutputProfile: "x.post"},
+		nil,
+	)
+	require.Error(t, err)
 	require.Zero(t, adapter.publishCalls)
 }

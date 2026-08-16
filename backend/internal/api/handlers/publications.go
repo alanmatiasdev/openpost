@@ -2,7 +2,9 @@ package handlers
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -25,7 +27,6 @@ import (
 	"github.com/openpost/backend/internal/services/drafts"
 	"github.com/openpost/backend/internal/services/entitlements"
 	"github.com/openpost/backend/internal/services/medialifecycle"
-	postservice "github.com/openpost/backend/internal/services/posts"
 	"github.com/openpost/backend/internal/services/providerreadiness"
 	"github.com/openpost/backend/internal/services/providerwrite"
 	"github.com/openpost/backend/internal/services/publicationauth"
@@ -314,10 +315,6 @@ func (h *PublicationHandler) deleteRenditionTx(
 	if current.Revision != input.ExpectedRevision {
 		return false, h.publicationRevisionConflict(ctx, tx, current, input.ExpectedRevision)
 	}
-	editor, err := postservice.EnsurePublicationEditorTx(ctx, tx, current)
-	if err != nil {
-		return false, err
-	}
 	var renditions []models.Rendition
 	query := tx.NewSelect().Model(&renditions).
 		Where("publication_id = ? AND social_account_id = ?", publicationID, input.AccountID).
@@ -346,14 +343,13 @@ func (h *PublicationHandler) deleteRenditionTx(
 	if err != nil || count == 0 {
 		return false, err
 	}
-	return true, h.recordRenditionDeletionTx(ctx, tx, current, editor, input.ExpectedRevision, userID)
+	return true, h.recordRenditionDeletionTx(ctx, tx, current, input.ExpectedRevision, userID)
 }
 
 func (h *PublicationHandler) recordRenditionDeletionTx(
 	ctx context.Context,
 	tx bun.Tx,
 	current *models.Publication,
-	editor *models.Post,
 	expectedRevision int,
 	userID string,
 ) error {
@@ -366,9 +362,6 @@ func (h *PublicationHandler) recordRenditionDeletionTx(
 	}
 	current.Revision = nextRevision
 	current.UpdatedAt = now
-	if err := postservice.SyncPublicationEditorTx(ctx, tx, current, editor); err != nil {
-		return err
-	}
 	fields := []string{"destinations", "destination overrides", "media"}
 	if err := h.syncTextPostRevisionsTx(ctx, tx, current.ID, expectedRevision, nextRevision, fields, userID, now); err != nil {
 		return err
@@ -668,72 +661,9 @@ func (h *PublicationHandler) syncTextPostRevisionsTx(
 	userID string,
 	now time.Time,
 ) error {
-	var posts []models.Post
-	if err := tx.NewSelect().
-		Model(&posts).
-		Where("publication_id = ?", publicationID).
-		Scan(ctx); err != nil {
-		if isMissingLegacyPostsTable(err) {
-			return nil
-		}
-		return err
-	}
-	for index := range posts {
-		post := &posts[index]
-		if post.Revision != expectedRevision {
-			changed, err := drafts.ChangedDomainsSince(
-				ctx,
-				tx,
-				drafts.AggregateTextPost,
-				post.ID,
-				expectedRevision,
-			)
-			if err != nil {
-				return err
-			}
-			if len(changed) == 0 {
-				changed = []string{"draft"}
-			}
-			editorName, err := drafts.LatestEditorName(ctx, tx, drafts.AggregateTextPost, post.ID, expectedRevision)
-			if err != nil {
-				return err
-			}
-			return drafts.NewConflictError(drafts.ConflictMetadata{
-				AggregateType:    drafts.AggregateTextPost,
-				AggregateID:      post.ID,
-				ExpectedRevision: expectedRevision,
-				CurrentRevision:  post.Revision,
-				Status:           post.Status,
-				UpdatedAt:        formatOptionalTime(post.UpdatedAt),
-				ChangedByName:    editorName,
-				ChangedDomains:   changed,
-			})
-		}
-		result, err := tx.NewUpdate().
-			Model((*models.Post)(nil)).
-			Set("revision = ?", nextRevision).
-			Set("updated_at = ?", now).
-			Where("id = ? AND revision = ?", post.ID, expectedRevision).
-			Exec(ctx)
-		if err != nil {
-			return err
-		}
-		if affected, _ := result.RowsAffected(); affected == 0 {
-			return drafts.ErrRevisionConflict
-		}
-		if err := drafts.RecordChange(
-			ctx,
-			tx,
-			drafts.AggregateTextPost,
-			post.ID,
-			nextRevision,
-			domains,
-			userID,
-			now,
-		); err != nil {
-			return err
-		}
-	}
+	// The Post compatibility projection is retired. Publication revisions are
+	// the only authoring revision source; historical upgrade migrations keep
+	// reading legacy rows, but no active write depends on a Post row.
 	return nil
 }
 
@@ -820,10 +750,6 @@ func (h *PublicationHandler) upsertRenditions(api huma.API) {
 			if currentPublication.Revision != input.Body.ExpectedRevision {
 				return h.publicationRevisionConflict(txCtx, tx, currentPublication, input.Body.ExpectedRevision)
 			}
-			editor, err := postservice.EnsurePublicationEditorTx(txCtx, tx, currentPublication)
-			if err != nil {
-				return err
-			}
 			if len(input.Body.Renditions) == 0 {
 				return nil
 			}
@@ -875,14 +801,6 @@ func (h *PublicationHandler) upsertRenditions(api huma.API) {
 			}
 			currentPublication.Revision = nextRevision
 			currentPublication.UpdatedAt = now
-			if err := postservice.SyncPublicationEditorTx(
-				txCtx,
-				tx,
-				currentPublication,
-				editor,
-			); err != nil {
-				return err
-			}
 			if err := h.syncTextPostRevisionsTx(
 				txCtx,
 				tx,
@@ -3036,18 +2954,56 @@ func (h *PublicationHandler) resolveScheduledPublicationRunAtTx(
 		case err == nil:
 			randomDelayMinutes = workspace.RandomDelayMinutes
 		case isMissingWorkspaceTable(err):
-			var linkedPost models.Post
-			if postErr := tx.NewSelect().Model(&linkedPost).Column("random_delay_minutes").
-				Where("publication_id = ?", publication.ID).
-				Order("thread_sequence ASC", "created_at ASC").Limit(1).Scan(ctx); postErr == nil {
-				randomDelayMinutes = linkedPost.RandomDelayMinutes
-			}
+			randomDelayMinutes = 0
 		default:
 			return time.Time{}, 0, fmt.Errorf("load Workspace random delay: %w", err)
 		}
 	}
 	runAt, err := resolveFuturePostRunAt(publication.ScheduledAt, randomDelayMinutes, now)
 	return runAt, randomDelayMinutes, err
+}
+
+func resolveFuturePostRunAt(scheduledAt time.Time, randomDelayMinutes int, now time.Time) (time.Time, error) {
+	now = now.UTC()
+	if !scheduledAt.After(now) {
+		return time.Time{}, errPublicationScheduleFuture
+	}
+	if randomDelayMinutes > 0 {
+		const maxDurationMinutes = (1<<63 - 1) / int64(time.Minute)
+		delayMinutes := int64(randomDelayMinutes)
+		if delayMinutes > maxDurationMinutes {
+			return time.Time{}, errPublicationScheduleFuture
+		}
+		earliestRunAt := scheduledAt.Add(-time.Duration(delayMinutes) * time.Minute)
+		if !earliestRunAt.After(now) {
+			return time.Time{}, errPublicationScheduleFuture
+		}
+	}
+	actualRunAt := applyRandomDelay(scheduledAt, randomDelayMinutes)
+	if !actualRunAt.After(now) {
+		return time.Time{}, errPublicationScheduleFuture
+	}
+	return actualRunAt, nil
+}
+
+func applyRandomDelay(scheduledAt time.Time, randomDelayMinutes int) time.Time {
+	if randomDelayMinutes <= 0 {
+		return scheduledAt
+	}
+	maxOffset := 2*randomDelayMinutes + 1
+	randomOffset := secureRandomInt(maxOffset) - randomDelayMinutes
+	return scheduledAt.Add(time.Duration(randomOffset) * time.Minute)
+}
+
+func secureRandomInt(n int) int {
+	if n <= 1 {
+		return 0
+	}
+	var buf [8]byte
+	if _, err := rand.Read(buf[:]); err == nil {
+		return int(binary.BigEndian.Uint64(buf[:]) % uint64(n))
+	}
+	return int(time.Now().UnixNano() % int64(n))
 }
 
 func (h *PublicationHandler) queuePublication(ctx context.Context, publicationID string, runAt time.Time) (string, error) {
@@ -3734,18 +3690,7 @@ func (h *PublicationHandler) clearPublicationScheduleTx(ctx context.Context, tx 
 		Exec(ctx); err != nil {
 		return err
 	}
-	_, err := tx.NewUpdate().
-		Model((*models.Post)(nil)).
-		Set("status = ?", models.PostStatusDraft).
-		Set("scheduled_at = ?", time.Time{}).
-		Set("actual_run_at = ?", time.Time{}).
-		Where("publication_id = ?", publicationID).
-		Where("status = ?", models.PostStatusScheduled).
-		Exec(ctx)
-	if isMissingLegacyPostsTable(err) {
-		return nil
-	}
-	return err
+	return nil
 }
 
 func (h *PublicationHandler) markPublicationQueuedTx(
@@ -3774,25 +3719,7 @@ func (h *PublicationHandler) markPublicationQueuedTx(
 		Exec(ctx); err != nil {
 		return err
 	}
-	scheduledAt := publication.ScheduledAt
-	if scheduledAt.IsZero() {
-		scheduledAt = runAt
-	}
-	_, err := tx.NewUpdate().
-		Model((*models.Post)(nil)).
-		Set("status = ?", models.PostStatusScheduled).
-		Set("scheduled_at = ?", scheduledAt).
-		Set("actual_run_at = ?", runAt).
-		Where("publication_id = ?", publicationID).
-		Where("status NOT IN (?)", bun.List([]string{
-			models.PostStatusPublished,
-			models.PostStatusPublishing,
-		})).
-		Exec(ctx)
-	if isMissingLegacyPostsTable(err) {
-		return nil
-	}
-	return err
+	return nil
 }
 
 func publicationResponse(publication *models.Publication, media []MediaSummary) PublicationResponse {

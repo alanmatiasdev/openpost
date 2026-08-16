@@ -106,11 +106,11 @@ func seedHandlerRendition(t *testing.T, db *bun.DB, id, publicationID, accountID
 	require.NoError(t, err)
 }
 
-func TestPostHandlerValidateAccountsBelongToWorkspaceRejectsInactiveAccounts(t *testing.T) {
+func TestPublicationHandlerLoadAccountsRejectsInactiveAccounts(t *testing.T) {
 	t.Parallel()
 
 	db := createHandlerTestDB(t, (*models.SocialAccount)(nil))
-	handler := &PostHandler{db: db}
+	handler := &PublicationHandler{db: db}
 	ctx := context.Background()
 
 	accounts := []models.SocialAccount{
@@ -122,6 +122,9 @@ func TestPostHandlerValidateAccountsBelongToWorkspaceRejectsInactiveAccounts(t *
 	_, err = db.NewUpdate().Model((*models.SocialAccount)(nil)).Set("is_active = ?", false).Where("id = ?", "inactive-account").Exec(ctx)
 	require.NoError(t, err)
 
-	require.NoError(t, handler.validateAccountsBelongToWorkspace(ctx, "ws-1", []string{"active-account"}))
-	require.Error(t, handler.validateAccountsBelongToWorkspace(ctx, "ws-1", []string{"inactive-account"}))
+	loaded, err := handler.loadAccounts(ctx, "ws-1", []string{"active-account"})
+	require.NoError(t, err)
+	require.Contains(t, loaded, "active-account")
+	_, err = handler.loadAccounts(ctx, "ws-1", []string{"inactive-account"})
+	require.Error(t, err)
 }

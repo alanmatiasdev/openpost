@@ -71,10 +71,15 @@ func TestCreateSchemaRunsPublicationMigration(t *testing.T) {
 		require.Equal(t, 1, count, table)
 	}
 
-	row := db.QueryRow("SELECT sql FROM sqlite_master WHERE name = 'posts'")
-	var postSchema string
-	require.NoError(t, row.Scan(&postSchema))
-	require.Contains(t, postSchema, "publication_id")
+	// The Post compatibility tables are retired by migration 105 after the
+	// historical backfill has translated legacy rows into Publications.
+	var postTableCount int
+	require.NoError(t, db.NewSelect().
+		ColumnExpr("COUNT(*)").
+		TableExpr("sqlite_master").
+		Where("type = 'table' AND name = ?", "posts").
+		Scan(ctx, &postTableCount))
+	require.Equal(t, 0, postTableCount, "Post authoring tables must be dropped after the compatibility sunset")
 
 	var jobIndexCount int
 	require.NoError(t, db.NewSelect().

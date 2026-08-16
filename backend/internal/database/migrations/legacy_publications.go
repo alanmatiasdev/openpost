@@ -1777,3 +1777,98 @@ func isMissingLegacyAuthoringTable(err error) bool {
 	return strings.Contains(message, "no such table") ||
 		(strings.Contains(message, "relation") && strings.Contains(message, "does not exist"))
 }
+
+// retireLegacyPostTables drops the Post authoring tables after the historical
+// backfill has translated legacy rows and non-terminal publish_post Jobs into
+// canonical Publications, Renditions, and authorization receipts. The backfill
+// state must be complete before this runs; the caller orders it after
+// resumeLegacyPublicationAuthoringBackfill.
+func retireLegacyPostTables(ctx context.Context, db *bun.DB) error {
+	complete, err := legacyPublicationBackfillComplete(ctx, db)
+	if err != nil {
+		return err
+	}
+	if !complete {
+		// Do not drop while the backfill cursor has not reached a complete
+		// phase; operators can drain via the maintenance entry point.
+		return nil
+	}
+	// A completed backfill must not be the only gate: keep the tables while
+	// any legacy Post row or pending publish_post Job remains so historical
+	// re-runs and re-imports never lose content.
+	remaining, err := legacyPostRowsRemain(ctx, db)
+	if err != nil {
+		return err
+	}
+	if remaining {
+		return nil
+	}
+	for _, table := range []string{
+		"post_media_deliveries",
+		"provider_media_states",
+		"post_variants",
+		"post_media",
+		"post_destinations",
+		"thread_drafts",
+		"posts",
+	} {
+		if _, err := db.ExecContext(ctx, "DROP TABLE IF EXISTS "+table); err != nil && !isMissingLegacyAuthoringTable(err) {
+			return fmt.Errorf("drop legacy Post table %s: %w", table, err)
+		}
+	}
+	return nil
+}
+
+func legacyPostRowsRemain(ctx context.Context, db *bun.DB) (bool, error) {
+	exists, err := migrationTableExists(ctx, db, "posts")
+	if err != nil {
+		return false, err
+	}
+	if !exists {
+		return false, nil
+	}
+	count, err := db.NewSelect().Model((*models.Post)(nil)).Count(ctx)
+	if err != nil {
+		if isMissingLegacyAuthoringTable(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	if count > 0 {
+		return true, nil
+	}
+	pending, err := db.NewSelect().Model((*models.Job)(nil)).
+		Where("type = ?", jobregistry.TypePublishPost).
+		Where("status IN (?, ?)", jobregistry.StatusPending, jobregistry.StatusProcessing).
+		Count(ctx)
+	if err != nil {
+		if isMissingLegacyAuthoringTable(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return pending > 0, nil
+}
+
+func legacyPublicationBackfillComplete(ctx context.Context, db bun.IDB) (bool, error) {
+	exists, err := migrationTableExists(ctx, db.(*bun.DB), "legacy_publication_authoring_backfill_state")
+	if err != nil {
+		return false, err
+	}
+	if !exists {
+		return true, nil
+	}
+	var states []legacyPublicationBackfillState
+	if err := db.NewSelect().Model(&states).Scan(ctx); err != nil {
+		if isMissingLegacyAuthoringTable(err) {
+			return true, nil
+		}
+		return false, err
+	}
+	for _, state := range states {
+		if state.Phase != legacyPublicationBackfillPhaseComplete {
+			return false, nil
+		}
+	}
+	return true, nil
+}

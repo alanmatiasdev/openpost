@@ -127,80 +127,6 @@ func (s *Service) SetProvider(platformName string, adapter platform.Adapter) {
 	s.providers[platformName] = adapter
 }
 
-func (s *Service) HandlePublishJob(ctx context.Context, jobPayload string) error {
-	var payload struct {
-		PostID string `json:"post_id"`
-	}
-	if err := json.Unmarshal([]byte(jobPayload), &payload); err != nil {
-		return err
-	}
-
-	log.Printf("[Publisher] Processing post %s", payload.PostID)
-
-	post := new(models.Post)
-	if err := s.db.NewSelect().Model(post).Where("id = ?", payload.PostID).Scan(ctx); err != nil {
-		return err
-	}
-	if _, err := s.db.NewUpdate().Model(post).
-		Set("status = ?", "publishing").
-		Where("id = ?", post.ID).
-		Exec(ctx); err != nil {
-		log.Printf("[Publisher] Failed to mark post %s as publishing: %v", post.ID, err)
-	}
-
-	var threadPosts []*models.Post
-	if post.ThreadSequence == 0 {
-		// Try to fetch the full thread in a single recursive CTE query to avoid N+1 DB queries.
-		var fetched []models.Post
-		cte := `WITH RECURSIVE thread AS (
-            SELECT * FROM posts WHERE id = ?
-            UNION ALL
-            SELECT p.* FROM posts p JOIN thread t ON p.parent_post_id = t.id
-        ) SELECT * FROM thread ORDER BY thread_sequence ASC`
-
-		if err := s.db.NewRaw(cte, post.ID).Scan(ctx, &fetched); err == nil && len(fetched) > 0 {
-			threadPosts = make([]*models.Post, 0, len(fetched))
-			for i := range fetched {
-				// copy to avoid referencing loop variable
-				p := fetched[i]
-				threadPosts = append(threadPosts, &p)
-			}
-			if len(threadPosts) > 1 {
-				log.Printf("[Publisher] Thread detected: %d posts starting from %s", len(threadPosts), post.ID)
-			}
-		} else {
-			// Fallback to iterative fetch if CTE fails for any reason
-			threadPosts = append(threadPosts, post)
-			currentParentID := post.ID
-
-			for {
-				var child models.Post
-				err := s.db.NewSelect().Model(&child).
-					Where("parent_post_id = ?", currentParentID).
-					Order("thread_sequence ASC").
-					Limit(1).
-					Scan(ctx)
-
-				if err != nil {
-					break
-				}
-				threadPosts = append(threadPosts, &child)
-				currentParentID = child.ID
-			}
-
-			if len(threadPosts) > 1 {
-				log.Printf("[Publisher] Thread detected: %d posts starting from %s", len(threadPosts), post.ID)
-			}
-		}
-	}
-
-	if len(threadPosts) > 1 {
-		return s.publishThread(ctx, threadPosts)
-	}
-
-	return s.publishSinglePost(ctx, post)
-}
-
 // UpdateJobRetryAt keeps user-visible destination retry metadata aligned with
 // the worker's final bounded and jittered run time.
 func (s *Service) UpdateJobRetryAt(ctx context.Context, jobType, jobPayload string, retryAt time.Time) error {
@@ -235,29 +161,7 @@ func (s *Service) UpdateJobRetryAt(ctx context.Context, jobType, jobPayload stri
 			Exec(ctx); err != nil {
 			return err
 		}
-		_, err := s.db.NewUpdate().
-			Model((*models.PostDestination)(nil)).
-			Set("error_retry_at = ?", retryAt).
-			Where("post_id IN (SELECT id FROM posts WHERE publication_id = ?)", payload.PublicationID).
-			Where("status = ? AND error_retryable = ?", "failed", true).
-			Exec(ctx)
-		return err
-	case jobregistry.TypePublishPost:
-		var payload struct {
-			PostID string `json:"post_id"`
-		}
-		if err := json.Unmarshal([]byte(jobPayload), &payload); err != nil {
-			return err
-		}
-		if payload.PostID == "" {
-			return nil
-		}
-		_, err := s.db.NewUpdate().
-			Model((*models.PostDestination)(nil)).
-			Set("error_retry_at = ?", retryAt).
-			Where("post_id = ? AND status = ? AND error_retryable = ?", payload.PostID, "failed", true).
-			Exec(ctx)
-		return err
+		return nil
 	}
 	return nil
 }
@@ -319,22 +223,6 @@ func (s *Service) HandlePublishPublicationJob(ctx context.Context, jobPayload st
 		Where("id = ?", publication.ID).
 		Exec(ctx); err != nil {
 		log.Printf("[Publisher] Failed to mark publication %s as publishing: %v", publication.ID, err)
-	}
-	if _, err := s.db.NewUpdate().
-		Model((*models.Post)(nil)).
-		Set("status = ?", models.PostStatusPublishing).
-		Set("actual_run_at = ?", time.Now().UTC()).
-		Where("publication_id = ?", publication.ID).
-		Where("status NOT IN (?)", bun.List([]string{
-			models.PostStatusPublished,
-			models.PostStatusPublishing,
-		})).
-		Exec(ctx); err != nil {
-		log.Printf(
-			"[Publisher] Failed to mark compatibility posts for %s as publishing: %v",
-			publication.ID,
-			err,
-		)
 	}
 
 	var renditions []models.Rendition
@@ -1136,449 +1024,6 @@ func (s *Service) publishRenditionReply(
 	return err
 }
 
-func (s *Service) publishSinglePost(ctx context.Context, post *models.Post) error {
-	var dests []models.PostDestination
-	if err := s.db.NewSelect().Model(&dests).
-		Where("post_id = ?", post.ID).
-		Where("(status = 'pending' OR (status = 'failed' AND error_retryable = ?))", true).
-		Scan(ctx); err != nil {
-		return err
-	}
-
-	log.Printf("[Publisher] Found %d destinations for post %s", len(dests), post.ID)
-
-	if len(dests) == 0 {
-		s.finalizePost(ctx, post)
-		return nil
-	}
-	if err := s.checkMonthlyQuota(ctx, post.WorkspaceID, entitlements.LimitPublishedPostsMonthly); err != nil {
-		s.markDestinationsFailed(ctx, dests, err)
-		s.finalizePost(ctx, post)
-		return nil
-	}
-
-	var retryFailure *RetryableError
-	for _, dest := range dests {
-		log.Printf("[Publisher] Publishing to destination %s (account: %s)", dest.ID, dest.SocialAccountID)
-		if err := s.publishToDestination(ctx, post, &dest); err != nil {
-			failure := ClassifyFailure(err)
-			if failure.Retryable &&
-				(retryFailure == nil || failure.RetryAfter > retryFailure.Failure.RetryAfter) {
-				retryFailure = &RetryableError{Failure: failure}
-			}
-			log.Printf("[Publisher] Destination %s failed (%s, status=%d, code=%s)", dest.ID, failure.Kind, failure.HTTPStatus, failure.Code)
-			s.markDestinationFailed(ctx, dest, err)
-		} else {
-			log.Printf("[Publisher] Successfully published to destination %s", dest.ID)
-			s.markDestinationSuccess(ctx, dest, true)
-		}
-	}
-
-	s.finalizePost(ctx, post)
-	if retryFailure != nil {
-		return retryFailure
-	}
-	return nil
-}
-
-func (s *Service) publishThread(ctx context.Context, posts []*models.Post) error {
-	log.Printf("[Publisher] Publishing thread with %d posts", len(posts))
-
-	successfulAccounts := make(map[string]bool)
-	var retryFailure *RetryableError
-
-	for i, post := range posts {
-		log.Printf("[Publisher] Publishing thread post %d/%d: %s", i+1, len(posts), post.ID)
-
-		dests, err := s.loadThreadDestinations(ctx, post.ID)
-		if err != nil {
-			log.Printf("[Publisher] Failed to fetch destinations for post %s: %v", post.ID, err)
-			s.finalizePost(ctx, post)
-			continue
-		}
-
-		if i > 0 {
-			dests = s.filterThreadDestinationsAfterPreviousPost(ctx, dests, successfulAccounts)
-		}
-
-		if len(dests) > 0 {
-			if err := s.checkMonthlyQuota(ctx, post.WorkspaceID, entitlements.LimitPublishedPostsMonthly); err != nil {
-				s.markDestinationsFailed(ctx, dests, err)
-				s.finalizePost(ctx, post)
-				successfulAccounts = make(map[string]bool)
-				continue
-			}
-		}
-
-		successfulInThisPost, postRetryFailure := s.publishThreadDestinations(ctx, post, dests)
-		if postRetryFailure != nil &&
-			(retryFailure == nil ||
-				postRetryFailure.Failure.RetryAfter > retryFailure.Failure.RetryAfter) {
-			retryFailure = postRetryFailure
-		}
-
-		successfulAccounts = make(map[string]bool)
-		for _, accountID := range successfulInThisPost {
-			successfulAccounts[accountID] = true
-		}
-
-		s.finalizePost(ctx, post)
-	}
-
-	if retryFailure != nil {
-		return retryFailure
-	}
-	return nil
-}
-
-func (s *Service) loadThreadDestinations(ctx context.Context, postID string) ([]models.PostDestination, error) {
-	var dests []models.PostDestination
-	err := s.db.NewSelect().Model(&dests).
-		Where("post_id = ?", postID).
-		Where("(status = 'pending' OR (status = 'failed' AND error_retryable = ?))", true).
-		Scan(ctx)
-	return dests, err
-}
-
-func (s *Service) filterThreadDestinationsAfterPreviousPost(ctx context.Context, dests []models.PostDestination, successfulAccounts map[string]bool) []models.PostDestination {
-	filteredDests := make([]models.PostDestination, 0, len(dests))
-	for _, dest := range dests {
-		if successfulAccounts[dest.SocialAccountID] {
-			filteredDests = append(filteredDests, dest)
-			continue
-		}
-		if _, dbErr := s.db.NewUpdate().Model(&dest).
-			Set("status = ?", "failed").
-			Set("error_message = ?", "previous post in thread failed for this account").
-			Set("error_kind = ?", FailureValidation).
-			Set("error_code = ?", "thread_parent_failed").
-			Set("error_http_status = 0").
-			Set("error_retryable = ?", false).
-			Set("error_retry_at = NULL").
-			Set("error_action = ?", FailureActionEdit).
-			Where("id = ?", dest.ID).
-			Exec(ctx); dbErr != nil {
-			log.Printf("[Publisher] Failed to update destination %s status: %v", dest.ID, dbErr)
-		}
-	}
-	return filteredDests
-}
-
-func (s *Service) publishThreadDestinations(
-	ctx context.Context,
-	post *models.Post,
-	dests []models.PostDestination,
-) ([]string, *RetryableError) {
-	var successfulInThisPost []string
-	var retryFailure *RetryableError
-	for _, dest := range dests {
-		if err := s.publishToDestination(ctx, post, &dest); err != nil {
-			if errors.Is(err, errLinkedInThreadReplySkipped) {
-				s.markDestinationSuccess(ctx, dest, true)
-				successfulInThisPost = append(successfulInThisPost, dest.SocialAccountID)
-				continue
-			}
-			failure := ClassifyFailure(err)
-			if failure.Retryable &&
-				(retryFailure == nil || failure.RetryAfter > retryFailure.Failure.RetryAfter) {
-				retryFailure = &RetryableError{Failure: failure}
-			}
-			log.Printf("[Publisher] Thread post %s destination %s failed (%s, status=%d, code=%s)", post.ID, dest.ID, failure.Kind, failure.HTTPStatus, failure.Code)
-			s.markDestinationFailed(ctx, dest, err)
-			continue
-		}
-		s.markDestinationSuccess(ctx, dest, false)
-		successfulInThisPost = append(successfulInThisPost, dest.SocialAccountID)
-	}
-	return successfulInThisPost, retryFailure
-}
-
-func (s *Service) finalizePost(ctx context.Context, post *models.Post) {
-	var totalDests int
-	totalDests, _ = s.db.NewSelect().Model((*models.PostDestination)(nil)).
-		Where("post_id = ?", post.ID).
-		Count(ctx)
-
-	if totalDests == 0 {
-		if _, err := s.db.NewUpdate().Model(post).Set("status = ?", models.PostStatusPublished).Where("id = ?", post.ID).Exec(ctx); err != nil {
-			log.Printf("[Publisher] Failed to update post %s status: %v", post.ID, err)
-		}
-		if err := s.trashTemporaryMediaForLegacyPost(ctx, post); err != nil {
-			log.Printf("[Publisher] Failed to clean temporary media for post %s: %v", post.ID, err)
-		}
-		return
-	}
-
-	var failedCount int
-	failedCount, _ = s.db.NewSelect().Model((*models.PostDestination)(nil)).
-		Where("post_id = ? AND status = 'failed'", post.ID).
-		Count(ctx)
-
-	if failedCount > 0 {
-		if _, err := s.db.NewUpdate().Model(post).Set("status = ?", "failed").Where("id = ?", post.ID).Exec(ctx); err != nil {
-			log.Printf("[Publisher] Failed to update post %s status: %v", post.ID, err)
-		}
-	} else {
-		if _, err := s.db.NewUpdate().Model(post).
-			Set("status = ?", models.PostStatusPublished).
-			Set("published_at = CURRENT_TIMESTAMP").
-			Where("id = ?", post.ID).
-			Exec(ctx); err != nil {
-			log.Printf("[Publisher] Failed to update post %s status: %v", post.ID, err)
-			return
-		}
-		s.recordPublishedPost(ctx, post.WorkspaceID)
-		if err := s.trashTemporaryMediaForLegacyPost(ctx, post); err != nil {
-			log.Printf("[Publisher] Failed to clean temporary media for post %s: %v", post.ID, err)
-		}
-	}
-}
-
-func (s *Service) trashTemporaryMediaForLegacyPost(ctx context.Context, post *models.Post) error {
-	publicationID := strings.TrimSpace(post.PublicationID)
-	if publicationID == "" {
-		return fmt.Errorf("legacy post %s has no canonical publication", post.ID)
-	}
-	return medialifecycle.NewService(s.db, s.storage).TrashTemporaryForPublication(ctx, publicationID)
-}
-
-//nolint:gocyclo
-func (s *Service) publishToDestination(ctx context.Context, post *models.Post, dest *models.PostDestination) error {
-	account := new(models.SocialAccount)
-	if err := s.db.NewSelect().Model(account).Where("id = ?", dest.SocialAccountID).Scan(ctx); err != nil {
-		return fmt.Errorf("account not found: %v", err)
-	}
-
-	provider, providerKey, err := s.providerForAccount(account)
-	if err != nil {
-		return err
-	}
-
-	token, err := s.tm.GetValidAccessToken(ctx, account.ID)
-	if err != nil {
-		return fmt.Errorf("auth error: %v", err)
-	}
-
-	var mediaAttachments []models.MediaAttachment
-	variant, variantErr := s.loadVariant(ctx, post.ID, dest.SocialAccountID)
-	if variantErr != nil {
-		return variantErr
-	}
-
-	// Determine which media to use: variant override or parent post media
-	hasExplicitVariantMedia := false
-	if variant != nil && variant.IsUnsynced && variant.MediaIDs != "" {
-		hasExplicitVariantMedia = true
-		var variantMediaIDs []string
-		if err := json.Unmarshal([]byte(variant.MediaIDs), &variantMediaIDs); err != nil {
-			log.Printf("[Publisher] Failed to unmarshal variant media IDs for %s: %v", variant.ID, err)
-			// fallback to parent media if unmarshal fails
-			hasExplicitVariantMedia = false
-		} else if len(variantMediaIDs) > 0 {
-			if err := s.db.NewSelect().
-				Model(&mediaAttachments).
-				Where("id IN (?)", bun.List(variantMediaIDs)).
-				OrderExpr("CASE id " + buildOrderClause(variantMediaIDs) + " END").
-				Scan(ctx); err != nil {
-				return fmt.Errorf("fetching variant media: %v", err)
-			}
-		}
-	}
-
-	// If no variant media or variant not unsynced, use parent post media
-	if !hasExplicitVariantMedia && len(mediaAttachments) == 0 {
-		if err := s.db.NewSelect().
-			TableExpr("post_media AS pm").
-			ColumnExpr("ma.*").
-			Join("JOIN media_attachments AS ma ON ma.id = pm.media_id").
-			Where("pm.post_id = ?", post.ID).
-			Order("pm.display_order ASC").
-			Scan(ctx, &mediaAttachments); err != nil {
-			return fmt.Errorf("fetching media: %v", err)
-		}
-	}
-
-	publishContent := post.Content
-	if variant != nil && variant.IsUnsynced && variant.Content != "" {
-		publishContent = variant.Content
-	}
-
-	var platformMediaIDs []string
-	var mediaAltTexts []string
-	mediaItems := make([]platform.MediaItem, 0, len(mediaAttachments))
-	_, publishesMediaDirectly := provider.(platform.DirectMediaPublisher)
-	for _, media := range mediaAttachments {
-		if !publishesMediaDirectly {
-			mediaID, err := s.platformMediaIDForDestination(ctx, post, dest, account, provider, token, media, publishContent)
-			if err != nil {
-				log.Printf("[Publisher] Failed to upload media %s to %s: %v", media.ID, account.Platform, err)
-				return fmt.Errorf("media upload failed for %s: %w", media.ID, err)
-			}
-			platformMediaIDs = append(platformMediaIDs, mediaID)
-		}
-		mediaAltTexts = append(mediaAltTexts, media.AltText)
-		mediaItems = append(mediaItems, platform.MediaItem{
-			ID:               media.ID,
-			MimeType:         media.MimeType,
-			Size:             media.Size,
-			OriginalFilename: media.OriginalFilename,
-		})
-	}
-
-	replyToID := ""
-	if post.ThreadSequence > 0 && post.ParentPostID != "" {
-		if s.disableLinkedInThreadReplies && account.Platform == "linkedin" {
-			return errLinkedInThreadReplySkipped
-		}
-		replyToID, _ = s.getPreviousPostExternalID(ctx, post.ID, dest.SocialAccountID)
-	}
-
-	req := &platform.PublishRequest{
-		Content:          publishContent,
-		PlatformMediaIDs: platformMediaIDs,
-		MediaAltTexts:    mediaAltTexts,
-		Media:            mediaItems,
-		ReplyToID:        replyToID,
-	}
-	resolved := capabilities.Resolve(account.Platform, legacyPostResolveInput(post, mediaAttachments, publishContent))
-	req.Profile = resolved.Profile
-	req.OutputProfile = resolved.OutputProfile
-
-	writeScope := legacyWriteScope(ctx, post.WorkspaceID, account.ID, providerKey, dest.ID)
-	publishResult, err := s.publishProviderWithUsage(
-		ctx,
-		post.WorkspaceID,
-		account.Platform,
-		dest.ID,
-		"publish",
-		writeScope,
-		provider,
-		token,
-		account.AccountID,
-		req,
-		mediaAttachments,
-	)
-	if err != nil {
-		if isExpiredTokenError(err) {
-			log.Printf("[Publisher] Token expired for %s account %s, forcing refresh and retry", account.Platform, account.ID)
-			refreshedToken, refreshErr := s.tm.ForceRefreshAccessToken(ctx, account.ID)
-			if refreshErr != nil {
-				return fmt.Errorf("%s token refresh failed after expiry: %w", account.Platform, refreshErr)
-			}
-			publishResult, err = s.publishProviderWithUsage(
-				ctx,
-				post.WorkspaceID,
-				account.Platform,
-				dest.ID,
-				"publish-token-refresh",
-				writeScope,
-				provider,
-				refreshedToken,
-				account.AccountID,
-				req,
-				mediaAttachments,
-			)
-			if err != nil {
-				return err
-			}
-		} else {
-			return err
-		}
-	}
-
-	externalID := publishResult.ExternalID
-	if externalID != "" {
-		if _, dbErr := s.db.NewUpdate().Model(dest).
-			Set("external_id = ?", externalID).
-			Where("id = ?", dest.ID).
-			Exec(ctx); dbErr != nil {
-			log.Printf("[Publisher] Failed to update external_id for destination %s: %v", dest.ID, dbErr)
-		}
-	}
-
-	return nil
-}
-
-func legacyPostResolveInput(post *models.Post, media []models.MediaAttachment, content string) capabilities.ResolveInput {
-	intent := capabilities.IntentPost
-	if post.ThreadSequence > 0 || post.ParentPostID != "" {
-		intent = capabilities.IntentThread
-	} else {
-		for _, item := range media {
-			if strings.HasPrefix(item.MimeType, "video/") {
-				intent = capabilities.IntentShortVideo
-				break
-			}
-		}
-	}
-	items := make([]capabilities.MediaItem, 0, len(media))
-	for _, item := range media {
-		items = append(items, capabilities.MediaItem{
-			ID: item.ID, MimeType: item.MimeType, Size: item.Size,
-			Width: item.Width, Height: item.Height, DurationMS: item.DurationMS,
-			AnalysisStatus: item.AnalysisStatus, AnalysisError: item.AnalysisError,
-			PublicURLReady: true,
-		})
-	}
-	return capabilities.ResolveInput{
-		Intent: intent, CreationPreset: intent,
-		Segments: []capabilities.ResolveSegment{{ID: post.ID, Body: content, Media: items}},
-	}
-}
-
-func (s *Service) markDestinationsFailed(ctx context.Context, dests []models.PostDestination, cause error) {
-	for _, dest := range dests {
-		s.markDestinationFailed(ctx, dest, cause)
-	}
-}
-
-func (s *Service) markDestinationSuccess(ctx context.Context, dest models.PostDestination, clearError bool) {
-	query := s.db.NewUpdate().Model(&dest).
-		Set("status = ?", "success").
-		Set("error_kind = ''").
-		Set("error_code = ''").
-		Set("error_http_status = 0").
-		Set("error_retryable = ?", false).
-		Set("error_retry_at = NULL").
-		Set("error_action = ''").
-		Where("id = ?", dest.ID)
-	if clearError {
-		query = query.Set("error_message = ?", "")
-	}
-	if _, dbErr := query.Exec(ctx); dbErr != nil {
-		log.Printf("[Publisher] Failed to update destination %s status: %v", dest.ID, dbErr)
-	}
-}
-
-func (s *Service) markDestinationFailed(ctx context.Context, dest models.PostDestination, cause error) {
-	failure := ClassifyFailure(cause)
-	var retryAt any
-	if failure.Retryable {
-		delay := failure.RetryAfter
-		if delay <= 0 {
-			delay = RetryDelay(1, 0, 0)
-		}
-		retryAt = time.Now().UTC().Add(delay)
-	}
-	query := s.db.NewUpdate().Model(&dest).
-		Set("status = ?", "failed").
-		Set("error_message = ?", failure.Message).
-		Set("error_kind = ?", failure.Kind).
-		Set("error_code = ?", failure.Code).
-		Set("error_http_status = ?", failure.HTTPStatus).
-		Set("error_retryable = ?", failure.Retryable).
-		Set("error_action = ?", failure.Action).
-		Where("id = ?", dest.ID)
-	if retryAt == nil {
-		query = query.Set("error_retry_at = NULL")
-	} else {
-		query = query.Set("error_retry_at = ?", retryAt)
-	}
-	if _, dbErr := query.Exec(ctx); dbErr != nil {
-		log.Printf("[Publisher] Failed to update destination %s status: %v", dest.ID, dbErr)
-	}
-}
-
 func (s *Service) checkMonthlyQuota(ctx context.Context, workspaceID string, limit entitlements.LimitKey) error {
 	if s.quota == nil || s.usage == nil || workspaceID == "" {
 		return nil
@@ -1651,32 +1096,6 @@ func isExpiredTokenError(err error) bool {
 }
 
 //nolint:dupl
-func (s *Service) platformMediaIDForDestination(ctx context.Context, post *models.Post, dest *models.PostDestination, account *models.SocialAccount, provider platform.Adapter, token string, media models.MediaAttachment, content string) (string, error) {
-	if requiresPublicMedia(account.Platform, "") {
-		return s.uploadMediaToPlatform(ctx, account, provider, token, media, content)
-	}
-
-	return s.cachedPlatformMediaID(ctx, media.ID,
-		func() (string, error) {
-			return s.loadReadyProviderMediaState(ctx, post.ID, dest.SocialAccountID, media.ID)
-		},
-		func() (string, error) {
-			return s.uploadMediaToPlatform(ctx, account, provider, token, media, content)
-		},
-		func(platformMediaID, status, errorMessage string) error {
-			return s.savePostMediaDelivery(ctx, post.WorkspaceID, post.ID, dest.SocialAccountID, media.ID, account.Platform, platformMediaID, status, errorMessage)
-		})
-}
-
-type renditionMediaRelations struct {
-	coverID     string
-	thumbnailID string
-	captionID   string
-}
-
-func (r renditionMediaRelations) equal(other renditionMediaRelations) bool {
-	return r.coverID == other.coverID && r.thumbnailID == other.thumbnailID && r.captionID == other.captionID
-}
 
 func (s *Service) platformMediaIDForRendition(ctx context.Context, publication *models.Publication, rendition *models.Rendition, account *models.SocialAccount, provider platform.Adapter, token string, media models.MediaAttachment) (string, error) {
 	if requiresPublicMedia(account.Platform, rendition.Profile) {
@@ -1737,58 +1156,6 @@ func (s *Service) cachedPlatformMediaID(_ context.Context, mediaID string, load 
 	return platformMediaID, nil
 }
 
-func (s *Service) loadReadyProviderMediaState(ctx context.Context, postID, socialAccountID, mediaID string) (string, error) {
-	var state models.PostMediaDelivery
-	if err := s.db.NewSelect().
-		Model(&state).
-		Where("post_id = ?", postID).
-		Where("social_account_id = ?", socialAccountID).
-		Where("media_id = ?", mediaID).
-		Scan(ctx); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return "", nil
-		}
-		return "", fmt.Errorf("loading post media delivery: %w", err)
-	}
-	if state.Status == providerMediaStatusFailed {
-		return "", &platform.MediaUploadError{
-			RetryClassification: platform.MediaRetryTerminal,
-			Err:                 errors.New("the previous provider media upload ended with an unknown or rejected outcome; OpenPost did not upload it again"),
-		}
-	}
-	if state.Status != providerMediaStatusReady {
-		return "", nil
-	}
-	return state.ProviderMediaID, nil
-}
-
-func (s *Service) savePostMediaDelivery(ctx context.Context, workspaceID, postID, socialAccountID, mediaID, platformName, providerMediaID, status, errorMessage string) error {
-	now := time.Now().UTC()
-	state := &models.PostMediaDelivery{
-		WorkspaceID:     workspaceID,
-		PostID:          postID,
-		SocialAccountID: socialAccountID,
-		MediaID:         mediaID,
-		Platform:        platformName,
-		ProviderMediaID: providerMediaID,
-		Status:          status,
-		ErrorMessage:    errorMessage,
-		CreatedAt:       now,
-		UpdatedAt:       now,
-	}
-	_, err := s.db.NewInsert().
-		Model(state).
-		On("CONFLICT (post_id, social_account_id, media_id) DO UPDATE").
-		Set("workspace_id = EXCLUDED.workspace_id").
-		Set("platform = EXCLUDED.platform").
-		Set("provider_media_id = EXCLUDED.provider_media_id").
-		Set("status = EXCLUDED.status").
-		Set("error_message = EXCLUDED.error_message").
-		Set("updated_at = EXCLUDED.updated_at").
-		Exec(ctx)
-	return err
-}
-
 func (s *Service) validateRenditionMediaDeliveryOwner(ctx context.Context, publication *models.Publication, rendition *models.Rendition, account *models.SocialAccount, media models.MediaAttachment) error {
 	var count int
 	err := s.db.NewSelect().
@@ -1814,6 +1181,16 @@ func (s *Service) validateRenditionMediaDeliveryOwner(ctx context.Context, publi
 		return fmt.Errorf("media %s does not belong to rendition %s and account %s", media.ID, rendition.ID, account.ID)
 	}
 	return nil
+}
+
+type renditionMediaRelations struct {
+	coverID     string
+	thumbnailID string
+	captionID   string
+}
+
+func (r renditionMediaRelations) equal(other renditionMediaRelations) bool {
+	return r.coverID == other.coverID && r.thumbnailID == other.thumbnailID && r.captionID == other.captionID
 }
 
 func (s *Service) renditionMediaRelations(ctx context.Context, workspaceID, settingsJSON string) (renditionMediaRelations, error) {
@@ -2767,32 +2144,12 @@ func (s *Service) finalizePublication(ctx context.Context, publication *models.P
 		status = models.PublicationStatusFailed
 	}
 	now := time.Now().UTC()
-	postStatus := models.PostStatusScheduled
-	switch status {
-	case models.PublicationStatusPublished:
-		postStatus = models.PostStatusPublished
-	case models.PublicationStatusFailed:
-		postStatus = models.PostStatusFailed
-	}
 	err := s.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
 		if _, err := tx.NewUpdate().Model((*models.Publication)(nil)).
 			Set("status = ?", status).
 			Set("updated_at = ?", now).
 			Where("id = ?", publication.ID).
 			Exec(txCtx); err != nil {
-			return err
-		}
-		query := tx.NewUpdate().
-			Model((*models.Post)(nil)).
-			Set("status = ?", postStatus).
-			Where("publication_id = ?", publication.ID)
-		if postStatus == models.PostStatusPublished {
-			query = query.Set("published_at = ?", now)
-		}
-		if _, err := query.Exec(txCtx); err != nil {
-			return err
-		}
-		if err := s.syncPublicationPostDestinations(txCtx, tx, publication.ID, renditions); err != nil {
 			return err
 		}
 		return s.createPublicationResultNotifications(txCtx, tx, publication, status, renditions)
@@ -2811,48 +2168,6 @@ func (s *Service) cleanupPublishedPublicationMedia(ctx context.Context, publicat
 	if err := medialifecycle.NewService(s.db, s.storage).TrashTemporaryForPublication(ctx, publicationID); err != nil {
 		log.Printf("[Publisher] Failed to clean temporary media for publication %s: %v", publicationID, err)
 	}
-}
-
-func (s *Service) syncPublicationPostDestinations(
-	ctx context.Context,
-	db bun.IDB,
-	publicationID string,
-	renditions []models.Rendition,
-) error {
-	postIDs := db.NewSelect().
-		Model((*models.Post)(nil)).
-		Column("id").
-		Where("publication_id = ?", publicationID)
-	for _, rendition := range renditions {
-		status := "pending"
-		switch rendition.Status {
-		case models.RenditionStatusPublished:
-			status = "success"
-		case models.RenditionStatusFailed:
-			status = "failed"
-		}
-		query := db.NewUpdate().
-			Model((*models.PostDestination)(nil)).
-			Set("status = ?", status).
-			Set("external_id = ?", rendition.ExternalID).
-			Set("error_message = ?", rendition.ErrorMessage).
-			Set("error_kind = ?", rendition.ErrorKind).
-			Set("error_code = ?", rendition.ErrorCode).
-			Set("error_http_status = ?", rendition.ErrorHTTPStatus).
-			Set("error_retryable = ?", rendition.ErrorRetryable).
-			Set("error_action = ?", rendition.ErrorAction).
-			Where("post_id IN (?)", postIDs).
-			Where("social_account_id = ?", rendition.SocialAccountID)
-		if rendition.ErrorRetryAt.IsZero() {
-			query = query.Set("error_retry_at = NULL")
-		} else {
-			query = query.Set("error_retry_at = ?", rendition.ErrorRetryAt)
-		}
-		if _, err := query.Exec(ctx); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 func (s *Service) createPublicationResultNotifications(
@@ -3077,20 +2392,6 @@ func firstNonEmptyPublisherString(values ...string) string {
 	return ""
 }
 
-func (s *Service) loadVariant(ctx context.Context, postID, socialAccountID string) (*models.PostVariant, error) {
-	var variant models.PostVariant
-	if err := s.db.NewSelect().Model(&variant).
-		Where("post_id = ? AND social_account_id = ?", postID, socialAccountID).
-		Scan(ctx); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("fetching post variant: %w", err)
-	}
-
-	return &variant, nil
-}
-
 func (s *Service) getPublicMediaURL(media models.MediaAttachment) string {
 	return publicurl.ResolveMediaURL(
 		s.publicMediaURL,
@@ -3099,24 +2400,6 @@ func (s *Service) getPublicMediaURL(media models.MediaAttachment) string {
 		media,
 		time.Now().UTC().Add(15*time.Minute),
 	)
-}
-
-func (s *Service) getPreviousPostExternalID(ctx context.Context, currentPostID, socialAccountID string) (string, error) {
-	var parentPost models.Post
-	if err := s.db.NewSelect().Model(&parentPost).
-		Where("id = (SELECT parent_post_id FROM posts WHERE id = ?)", currentPostID).
-		Scan(ctx); err != nil {
-		return "", fmt.Errorf("finding parent post: %w", err)
-	}
-
-	var parentDest models.PostDestination
-	if err := s.db.NewSelect().Model(&parentDest).
-		Where("post_id = ? AND social_account_id = ?", parentPost.ID, socialAccountID).
-		Scan(ctx); err != nil {
-		return "", fmt.Errorf("finding parent destination: %w", err)
-	}
-
-	return parentDest.ExternalID, nil
 }
 
 func buildOrderClause(ids []string) string {
