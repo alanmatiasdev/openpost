@@ -1,5 +1,7 @@
 # Post to Publication migration
 
+This page is for API clients and automation maintainers moving from the legacy Post model to Publications.
+
 Post HTTP routes, post-named MCP tools, and the legacy Post authoring model are retired. Publication is the only authoring record for API and automation work.
 
 ## What changed

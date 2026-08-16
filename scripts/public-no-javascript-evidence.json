@@ -276,8 +276,8 @@
     "boundary": "Keep these interfaces separate. A network can support publishing without supporting every read or moderation action."
   },
   "https://docs.openpost.social/development/post-publication-migration": {
-    "audience": "Legacy Post HTTP routes, older Post links, CLI command names, and post-named MCP tools are now compatibility surfaces.",
-    "boundary": "OpenPost will keep the retained Post surfaces for at least 90 days and at least two later stable releases."
+    "audience": "This page is for API clients and automation maintainers moving from the legacy Post model to Publications.",
+    "boundary": "Post HTTP routes, post-named MCP tools, and the legacy Post authoring model are retired."
   },
   "https://docs.openpost.social/development/production-readiness": {
     "audience": "This page records the current architecture and the checks needed before a release or public campaign.",
