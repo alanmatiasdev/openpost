@@ -21,6 +21,36 @@ const samplePlan = () =>
     documentationRoutes: ["/", "/usage/", "/usage/accounts"],
   });
 
+function surfacePlan(plan, key) {
+  const zone = plan.zones.find(({ surfaces }) => surfaces.some((surface) => surface.key === key));
+  const surface = zone.surfaces.find((candidate) => candidate.key === key);
+  return {
+    ...surface,
+    rules: Object.fromEntries(
+      Object.entries(zone.rules).map(([phase, rules]) => [
+        phase,
+        rules.filter(({ ref }) => ref.startsWith(`${plan.rule_ref_prefix}${key}:`)),
+      ]),
+    ),
+  };
+}
+
+test("groups both public hosts into the deployed Cloudflare zone", () => {
+  const plan = samplePlan();
+
+  assert.equal(plan.zones.length, 1);
+  assert.equal(plan.zones[0].zone_id_env, "OPENPOST_CLOUDFLARE_PUBLIC_ZONE_ID");
+  assert.deepEqual(
+    plan.zones[0].surfaces.map(({ hostname }) => hostname),
+    ["openpost.social", "docs.openpost.social"],
+  );
+  for (const phase of plan.phases.map(({ phase }) => phase)) {
+    const expressions = plan.zones[0].rules[phase].map(({ expression }) => expression).join("\n");
+    assert.match(expressions, /http\.host eq "openpost\.social"/u);
+    assert.match(expressions, /http\.host eq "docs\.openpost\.social"/u);
+  }
+});
+
 async function preparedApplyArgs({ plan, client, evidenceDirectory }) {
   const directory = evidenceDirectory ?? (await mkdtemp(path.join(os.tmpdir(), "openpost-edge-")));
   const preparedOperation = await edgePlan.prepareCloudflarePlan({
@@ -51,10 +81,10 @@ test("renders ordered exact Markdown selection rules from canonical catalogues",
   );
   assert.deepEqual(
     plan.zones.map(({ hostname }) => hostname),
-    ["openpost.social", "docs.openpost.social"],
+    ["openpost.social"],
   );
 
-  const marketing = plan.zones[0];
+  const marketing = surfacePlan(plan, "marketing");
   const redirect = marketing.rules.http_request_dynamic_redirect[0];
   assert.match(redirect.expression, /"\/features\/"/u);
   assert.equal(redirect.action_parameters.from_value.preserve_query_string, true);
@@ -65,8 +95,9 @@ test("renders ordered exact Markdown selection rules from canonical catalogues",
   assert.match(rewrites[0].expression, /len\(http\.request\.headers\["accept"\]\) eq 1/u);
   assert.match(
     rewrites[0].expression,
-    /lower\(remove_bytes\(http\.request\.headers\["accept"\]\[0\], "\\x20\\x09"\)\) eq "text\/markdown"/u,
+    /lower\(http\.request\.headers\["accept"\]\[0\]\) eq "text\/markdown"/u,
   );
+  assert.doesNotMatch(rewrites[0].expression, /remove_bytes/u);
   assert.match(
     rewrites[0].expression,
     /lower\(http\.request\.headers\["accept"\]\[0\]\) wildcard "\*text\/markdown\*"/u,
@@ -77,7 +108,7 @@ test("renders ordered exact Markdown selection rules from canonical catalogues",
     expression: 'concat(http.request.uri.path, ".md")',
   });
 
-  const docs = plan.zones[1];
+  const docs = surfacePlan(plan, "documentation");
   assert.match(docs.rules.http_request_dynamic_redirect[0].expression, /"\/usage"/u);
   assert.ok(
     docs.rules.http_request_transform.some(
@@ -85,18 +116,22 @@ test("renders ordered exact Markdown selection rules from canonical catalogues",
         rule.action_parameters.uri.path.expression === 'concat(http.request.uri.path, "index.md")',
     ),
   );
-  for (const zone of plan.zones) {
-    assert.deepEqual(zone.origin_headers.canonical_html_paths, zone.canonical_routes);
-    assert.equal(zone.origin_headers.markdown_pattern, "/*.md");
-    assert.equal(zone.origin_headers.vary, "Accept");
-    const cache = zone.rules.http_request_cache_settings[0];
+  for (const surface of [marketing, docs]) {
+    assert.deepEqual(surface.origin_headers.canonical_html_paths, surface.canonical_routes);
+    assert.equal(surface.origin_headers.markdown_pattern, "/*.md");
+    assert.equal(surface.origin_headers.vary, "Accept");
+    const cache = surface.rules.http_request_cache_settings[0];
     assert.match(cache.expression, /http\.request\.method in \{"GET" "HEAD"\}/u);
     assert.doesNotMatch(cache.expression, /headers\["accept"\]|text\/markdown/u);
     assert.deepEqual(cache.action_parameters.vary.headers.accept, {
       action: "passthrough",
     });
-    const headers = zone.rules.http_response_headers_transform[0].action_parameters.headers;
-    const responseExpression = zone.rules.http_response_headers_transform[0].expression;
+    assert.deepEqual(cache.action_parameters.edge_ttl, {
+      mode: "override_origin",
+      default: 14_400,
+    });
+    const headers = surface.rules.http_response_headers_transform[0].action_parameters.headers;
+    const responseExpression = surface.rules.http_response_headers_transform[0].expression;
     assert.match(responseExpression, /http\.response\.code eq 200/u);
     assert.match(
       responseExpression,
@@ -142,7 +177,7 @@ test("rejects Free-plan count and expression limits before an API call", async (
   assert.equal(calls, 0);
 
   const tooManyOriginHeaders = samplePlan();
-  tooManyOriginHeaders.zones[0].origin_headers.rule_count = 101;
+  tooManyOriginHeaders.zones[0].surfaces[0].origin_headers.rule_count = 101;
   assert.throws(
     () => validateCloudflarePlan(tooManyOriginHeaders),
     /101 Pages header rules exceed Cloudflare Free limit 100/u,
@@ -158,6 +193,15 @@ test("rejects cache normalization that merges rejected Accept values with exact 
   assert.throws(
     () => validateCloudflarePlan(plan),
     /Accept cache variance must use exact passthrough/u,
+  );
+});
+
+test("rejects cache rules that cannot produce repeatable edge hits", () => {
+  const plan = samplePlan();
+  delete plan.zones[0].rules.http_request_cache_settings[0].action_parameters.edge_ttl;
+  assert.throws(
+    () => validateCloudflarePlan(plan),
+    /cache rule must override the edge TTL to 14,400 seconds/u,
   );
 });
 
@@ -193,8 +237,8 @@ test("inspection is read-only and reports unmanaged overlaps without credentials
     putEntrypoint: async () => assert.fail("inspect must not write"),
   };
   const report = await inspectCloudflarePlan({ plan: samplePlan(), client });
-  assert.equal(calls.length, 8);
-  assert.equal(report.conflicts.length, 8);
+  assert.equal(calls.length, 4);
+  assert.equal(report.conflicts.length, 4);
   assert.doesNotMatch(JSON.stringify(report), /super-secret/u);
 });
 
@@ -213,22 +257,22 @@ test("Cloudflare boundary uses phase entrypoints and keeps credentials out of er
   };
   const client = createCloudflareClient({
     token: "super-secret",
-    zoneIds: { marketing: "marketing-secret", documentation: "docs-secret" },
+    zoneIds: { public: "public-zone-secret" },
     fetchImpl,
   });
-  assert.equal(await client.getEntrypoint("marketing", "http_request_transform"), null);
+  assert.equal(await client.getEntrypoint("public", "http_request_transform"), null);
   await assert.rejects(
-    client.putEntrypoint("documentation", "http_request_transform", {
+    client.putEntrypoint("public", "http_request_transform", {
       description: "desired",
       rules: [],
     }),
     (error) => {
-      assert.match(error.message, /documentation\/http_request_transform.*version conflict/u);
-      assert.doesNotMatch(error.message, /super-secret|docs-secret/u);
+      assert.match(error.message, /public\/http_request_transform.*version conflict/u);
+      assert.doesNotMatch(error.message, /super-secret|public-zone-secret/u);
       return true;
     },
   );
-  assert.match(requests[0][0], /zones\/marketing-secret\/rulesets\/phases/u);
+  assert.match(requests[0][0], /zones\/public-zone-secret\/rulesets\/phases/u);
   assert.equal(requests[0][1].headers.Authorization, "Bearer super-secret");
   assert.equal(requests[1][1].method, "PUT");
 });
@@ -251,7 +295,7 @@ test("inspection includes existing rules in Free-plan capacity before apply", as
   const report = await inspectCloudflarePlan({ plan, client });
   assert.ok(
     report.conflicts.some(
-      ({ reason }) => reason === "12 transform rules exceed Cloudflare Free limit 10",
+      ({ reason }) => reason === "16 transform rules exceed Cloudflare Free limit 10",
     ),
   );
 });
@@ -270,7 +314,7 @@ test("inspection fails closed on every unmanaged rule in an owned phase", async 
     }),
   };
   const report = await inspectCloudflarePlan({ plan: samplePlan(), client });
-  assert.equal(report.conflicts.length, 8);
+  assert.equal(report.conflicts.length, 4);
 });
 
 test("prepare captures a reviewable rollback without mutating Cloudflare", async () => {
@@ -291,7 +335,7 @@ test("prepare captures a reviewable rollback without mutating Cloudflare", async
     },
   });
 
-  assert.equal(reads, 8);
+  assert.equal(reads, 4);
   assert.equal(writes, 0);
   assert.equal(prepared.plan_digest, planDigest(samplePlan()));
   assert.equal(prepared.before_digest, planDigest(prepared.before));
@@ -398,20 +442,20 @@ test("apply requires both reviewed digests and is idempotent", async () => {
   assert.equal(writes.length, 0);
 
   const first = await applyCloudflarePlan(firstArgs);
-  assert.equal(first.changed, 8);
-  assert.equal(writes.length, 8);
+  assert.equal(first.changed, 4);
+  assert.equal(writes.length, 4);
   for (const [, , body] of writes) {
     assert.deepEqual(Object.keys(body).sort(), ["description", "rules"]);
   }
   const rollback = JSON.parse(
     await readFile(path.join(evidenceDirectory, "rollback-plan.json"), "utf8"),
   );
-  assert.equal(rollback.operations.length, 8);
+  assert.equal(rollback.operations.length, 4);
   assert.ok(rollback.digest);
 
   const second = await applyCloudflarePlan(await preparedApplyArgs({ plan, client }));
   assert.equal(second.changed, 0);
-  assert.equal(writes.length, 8);
+  assert.equal(writes.length, 4);
 });
 
 test("apply fences every phase immediately before mutation and rollback restores captured state", async () => {
@@ -422,7 +466,7 @@ test("apply fences every phase immediately before mutation and rollback restores
   const client = {
     getEntrypoint: async (zone, phase) => {
       reads += 1;
-      if (reads === 9) return { version: "changed", rules: [] };
+      if (reads === 5) return { version: "changed", rules: [] };
       return state.get(`${zone}:${phase}`) ?? null;
     },
     putEntrypoint: async (zone, phase, body) => {
@@ -440,8 +484,8 @@ test("apply fences every phase immediately before mutation and rollback restores
     plan_digest: planDigest(plan),
     operations: [
       {
-        zone: "marketing",
-        zone_id_env: "OPENPOST_CLOUDFLARE_MARKETING_ZONE_ID",
+        zone: "public",
+        zone_id_env: "OPENPOST_CLOUDFLARE_PUBLIC_ZONE_ID",
         phase: "http_request_transform",
         expected_after: { description: "applied", rules: [] },
         before: { description: "prior", rules: [] },
@@ -467,7 +511,7 @@ test("apply stops and restores prior updates when a later phase changes before i
   const client = {
     getEntrypoint: async (zone, phase) => {
       reads += 1;
-      if (reads === 18) {
+      if (reads === 10) {
         return {
           version: "concurrent",
           rules: [{ ref: "concurrent-operator", expression: "true", action: "rewrite" }],
@@ -496,8 +540,8 @@ test("rollback refuses post-apply drift before any mutation", async () => {
     plan_digest: "sha256:reviewed",
     operations: [
       {
-        zone: "marketing",
-        zone_id_env: "OPENPOST_CLOUDFLARE_MARKETING_ZONE_ID",
+        zone: "public",
+        zone_id_env: "OPENPOST_CLOUDFLARE_PUBLIC_ZONE_ID",
         phase: "http_request_transform",
         expected_after: { description: "applied", rules: [] },
         before: { description: "prior", rules: [] },
@@ -529,8 +573,8 @@ test("rollback fences each phase again immediately before its PUT", async () => 
     plan_digest: "sha256:reviewed",
     operations: [
       {
-        zone: "marketing",
-        zone_id_env: "OPENPOST_CLOUDFLARE_MARKETING_ZONE_ID",
+        zone: "public",
+        zone_id_env: "OPENPOST_CLOUDFLARE_PUBLIC_ZONE_ID",
         phase: "http_request_transform",
         expected_after: { description: "applied", rules: [] },
         before: { description: "prior", rules: [] },
@@ -597,7 +641,7 @@ test("apply recovery refuses to overwrite concurrent changes on an applied phase
       writes.push([zone, phase, body]);
       desiredWrites += 1;
       if (desiredWrites === 2) {
-        state.set("marketing:http_request_dynamic_redirect", {
+        state.set("public:http_request_dynamic_redirect", {
           description: "concurrent operator change",
           rules: [{ ref: "concurrent-operator", expression: "true", action: "redirect" }],
           version: "concurrent",
@@ -629,7 +673,7 @@ test("apply restores every changed phase if after-state evidence cannot be colle
   const client = {
     getEntrypoint: async (zone, phase) => {
       reads += 1;
-      if (reads === 25) throw new Error("after inspection unavailable");
+      if (reads === 13) throw new Error("after inspection unavailable");
       return state.get(`${zone}:${phase}`) ?? null;
     },
     putEntrypoint: async (zone, phase, body) => {
@@ -643,9 +687,9 @@ test("apply restores every changed phase if after-state evidence cannot be colle
   const applyArgs = await preparedApplyArgs({ plan, client, evidenceDirectory });
   await assert.rejects(
     applyCloudflarePlan(applyArgs),
-    /failed after 8 phase update.*restored 8.*after inspection unavailable/u,
+    /failed after 4 phase update.*restored 4.*after inspection unavailable/u,
   );
-  assert.equal(writes.length, 16);
+  assert.equal(writes.length, 8);
   assert.match(await readFile(path.join(evidenceDirectory, "failure.json"), "utf8"), /restored/u);
 });
 
@@ -657,7 +701,7 @@ test("apply records mismatched after-state evidence and restores every changed p
   const client = {
     getEntrypoint: async (zone, phase) => {
       reads += 1;
-      if (reads > 24 && reads <= 32) {
+      if (reads > 12 && reads <= 16) {
         return { description: "mismatched after inspection", rules: [], version: "unexpected" };
       }
       return state.get(`${zone}:${phase}`) ?? null;
@@ -673,9 +717,9 @@ test("apply records mismatched after-state evidence and restores every changed p
   const applyArgs = await preparedApplyArgs({ plan, client, evidenceDirectory });
   await assert.rejects(
     applyCloudflarePlan(applyArgs),
-    /failed after 8 phase update.*restored 8.*8 unsettled phase/u,
+    /failed after 4 phase update.*restored 4.*4 unsettled phase/u,
   );
-  assert.equal(writes.length, 16);
+  assert.equal(writes.length, 8);
   assert.match(
     await readFile(path.join(evidenceDirectory, "after.json"), "utf8"),
     /"changed": true/u,

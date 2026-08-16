@@ -32,10 +32,11 @@ function pathSet(paths, field = "http.request.uri.path") {
 const safeRepresentationMethod = 'http.request.method in {"GET" "HEAD"}';
 const successfulMarkdownResponse =
   'http.response.code eq 200 and http.response.content_type.media_type eq "text/markdown"';
+const representationEdgeTTLSeconds = 14_400;
 const exactMarkdownAccept = [
   "not http.request.headers.truncated",
   'len(http.request.headers["accept"]) eq 1',
-  'lower(remove_bytes(http.request.headers["accept"][0], "\\x20\\x09")) eq "text/markdown"',
+  'lower(http.request.headers["accept"][0]) eq "text/markdown"',
   'lower(http.request.headers["accept"][0]) wildcard "*text/markdown*"',
 ].join(" and ");
 
@@ -141,6 +142,10 @@ function representationRules(zone, routes) {
         "set_cache_settings",
         {
           cache: true,
+          edge_ttl: {
+            mode: "override_origin",
+            default: representationEdgeTTLSeconds,
+          },
           vary: {
             default: { action: "bypass" },
             headers: {
@@ -176,36 +181,48 @@ export function buildCloudflareEdgePlan({
   marketingRoutes = marketingRouteManifest.map(({ path: route }) => route),
   documentationRoutes = docsPageCatalog.map(({ route }) => route),
 } = {}) {
-  const routesByZone = {
+  const routesBySurface = {
     marketing: sortedUnique(marketingRoutes),
     documentation: sortedUnique(documentationRoutes),
   };
   const zones = blueprint.zones.map((zone) => {
-    const routes = routesByZone[zone.key];
-    const canonicalRedirects =
-      zone.key === "marketing"
-        ? routes.filter((route) => route !== "/").map((route) => `${route}/`)
-        : routes
-            .filter((route) => route !== "/" && route.endsWith("/"))
-            .map((route) => route.slice(0, -1));
+    const surfaces = zone.surfaces.map((surface) => {
+      const routes = routesBySurface[surface.key];
+      const canonicalRedirects =
+        surface.key === "marketing"
+          ? routes.filter((route) => route !== "/").map((route) => `${route}/`)
+          : routes
+              .filter((route) => route !== "/" && route.endsWith("/"))
+              .map((route) => route.slice(0, -1));
+      return {
+        ...surface,
+        canonical_routes: routes,
+        origin_headers: {
+          canonical_html_paths: routes,
+          markdown_pattern: "/*.md",
+          vary: "Accept",
+          rule_count: routes.length + surface.pages_base_header_rules,
+        },
+        rules: {
+          http_request_dynamic_redirect: redirectRule(
+            surface,
+            canonicalRedirects,
+            surface.key === "marketing" ? "remove" : "add",
+          ),
+          http_request_transform: rewriteRules(surface, routes),
+          ...representationRules(surface, routes),
+        },
+      };
+    });
     return {
       ...zone,
-      canonical_routes: routes,
-      origin_headers: {
-        canonical_html_paths: routes,
-        markdown_pattern: "/*.md",
-        vary: "Accept",
-        rule_count: routes.length + zone.pages_base_header_rules,
-      },
-      rules: {
-        http_request_dynamic_redirect: redirectRule(
-          zone,
-          canonicalRedirects,
-          zone.key === "marketing" ? "remove" : "add",
-        ),
-        http_request_transform: rewriteRules(zone, routes),
-        ...representationRules(zone, routes),
-      },
+      surfaces: surfaces.map(({ rules: _rules, ...surface }) => surface),
+      rules: Object.fromEntries(
+        blueprint.phases.map((phase) => [
+          phase,
+          surfaces.flatMap((surface) => surface.rules[phase]),
+        ]),
+      ),
     };
   });
   const plan = {
@@ -284,6 +301,12 @@ export function validateCloudflarePlan(plan) {
       if (accept?.action !== "passthrough" || Object.keys(accept).some((key) => key !== "action")) {
         throw new Error(`${zone.hostname} Accept cache variance must use exact passthrough`);
       }
+      const edgeTTL = cacheRule.action_parameters?.edge_ttl;
+      if (edgeTTL?.mode !== "override_origin" || edgeTTL.default !== representationEdgeTTLSeconds) {
+        throw new Error(
+          `${zone.hostname} cache rule must override the edge TTL to ${representationEdgeTTLSeconds.toLocaleString("en-US")} seconds`,
+        );
+      }
     }
     for (const responseRule of zone.rules.http_response_headers_transform ?? []) {
       if (
@@ -297,9 +320,13 @@ export function validateCloudflarePlan(plan) {
         );
       }
     }
-    const [problem] = capacityProblems(plan, zone.rules, zone.key, zone.origin_headers);
+    const [problem] = capacityProblems(plan, zone.rules, zone.key);
     if (problem) {
       throw new Error(`${zone.hostname} ${problem.reason}`);
+    }
+    for (const surface of zone.surfaces) {
+      const [originProblem] = capacityProblems(plan, {}, surface.key, surface.origin_headers);
+      if (originProblem) throw new Error(`${surface.hostname} ${originProblem.reason}`);
     }
   }
   return plan;
@@ -747,8 +774,7 @@ function operatorClient() {
   return createCloudflareClient({
     token: process.env.OPENPOST_CLOUDFLARE_EDGE_API_TOKEN,
     zoneIds: {
-      marketing: process.env.OPENPOST_CLOUDFLARE_MARKETING_ZONE_ID,
-      documentation: process.env.OPENPOST_CLOUDFLARE_DOCUMENTATION_ZONE_ID,
+      public: process.env.OPENPOST_CLOUDFLARE_PUBLIC_ZONE_ID,
     },
   });
 }

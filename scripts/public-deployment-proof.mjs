@@ -313,14 +313,19 @@ async function proveRedirect(fetchImpl, check) {
     redirect: "manual",
   });
   assertEqual(response.status, check.status, `${check.name} status`);
-  assertEqual(response.headers.get("location"), check.location, `${check.name} location`);
+  const location = response.headers.get("location");
+  assertEqual(
+    location === null ? location : new URL(location, check.url).href,
+    new URL(check.location, check.url).href,
+    `${check.name} location`,
+  );
   return {
     name: check.name,
     kind: check.kind,
     url: check.url,
     status: response.status,
     content_type: contentType,
-    location: response.headers.get("location"),
+    location,
   };
 }
 

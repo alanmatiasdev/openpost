@@ -7,9 +7,10 @@ files and never reads Cloudflare credentials or changes a zone.
 
 ## Repository contract
 
-`cloudflare/edge-plan.json` records the two zones, execution order, credential
-names, and Cloudflare Free limits. `scripts/cloudflare-edge-plan.mjs` derives
-every eligible path from `marketingRouteManifest` and `docsPageCatalog`. Run:
+`cloudflare/edge-plan.json` records the shared public zone, its two host
+surfaces, execution order, credential name, and Cloudflare Free limits.
+`scripts/cloudflare-edge-plan.mjs` derives every eligible path from
+`marketingRouteManifest` and `docsPageCatalog`. Run:
 
 ```sh
 bun scripts/cloudflare-edge-plan.mjs render --output /tmp/openpost-edge-plan.json
@@ -26,13 +27,15 @@ characters. The generated plan uses this Cloudflare execution order:
    query string.
 2. `http_request_transform` selects an explicit Markdown artifact only for a
    canonical `GET` or `HEAD` request with one case-folded `Accept` value equal
-   to `text/markdown` after removing surrounding spaces and tabs. Mixed,
-   weighted, wildcard, parameterized, truncated, and internally spaced values
-   do not qualify.
+   to `text/markdown` after HTTP field-value parsing. Mixed, weighted, wildcard,
+   parameterized, truncated, repeated, and internally spaced values do not
+   qualify.
 3. `http_request_cache_settings` enables `Vary` handling for `Accept` on every
    canonical `GET` and `HEAD` and uses the exact request value as the cache
    variant. It covers HTML requests as well as exact Markdown requests so the
    first cached representation cannot become a shared, non-varying entry.
+   A four-hour edge TTL overrides origin revalidation so both variants produce
+   repeatable Cloudflare cache hits without changing the browser TTL.
    Exact-value passthrough is required here: Cloudflare's media-type
    normalization removes parameters and quality weights, which would collapse
    rejected values such as `text/markdown; charset=utf-8` and
@@ -56,15 +59,16 @@ require one. Query strings pass through redirects and path-only rewrites.
 
 ## Credentials
 
-For inspection, create a temporary API token restricted to these two zones with
-only Dynamic URL Redirects Read, Zone Transform Rules Read, and Cache Settings
-Read. For apply or rollback, replace those with the three matching Write
-permissions. Supply the token and exact zone IDs in the operator shell:
+For inspection, create a temporary API token restricted to the
+`openpost.social` zone with only Dynamic URL Redirects Read, Zone Transform
+Rules Read, and Cache Settings Read. The `docs.openpost.social` hostname is part
+of that zone and is not a separately delegated Cloudflare zone. For apply or
+rollback, replace those with the three matching Write permissions. Supply the
+token and exact zone ID in the operator shell:
 
 ```sh
 export OPENPOST_CLOUDFLARE_EDGE_API_TOKEN='...'
-export OPENPOST_CLOUDFLARE_MARKETING_ZONE_ID='...'
-export OPENPOST_CLOUDFLARE_DOCUMENTATION_ZONE_ID='...'
+export OPENPOST_CLOUDFLARE_PUBLIC_ZONE_ID='...'
 ```
 
 For deployment proof, create a separate temporary API token restricted to the
@@ -124,7 +128,7 @@ bun scripts/cloudflare-edge-plan.mjs apply \
 ```
 
 Apply rejects a missing, modified, stale, or incompletely confirmed prepared
-operation before writing. It re-reads all eight phase entry points before the
+operation before writing. It re-reads all four phase entry points before the
 first write and compares each changed phase again immediately before its
 update. Any new rule or version stops the apply. It writes each phase's complete
 mutable description and rule list. Stable rule refs make a newly prepared,
