@@ -35,7 +35,7 @@ func newPostCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "post",
 		Short: "Create, list, view, update, and delete posts",
-		Long:  "Create, list, view, update, and delete posts. The CLI now uses Publication APIs and keeps the post command name for compatibility; migrate automation to Publication IDs returned by these commands before legacy Post HTTP routes are removed.",
+		Long:  "Create, list, view, update, and delete posts. The post command is the friendly name for Publication workflows; every command creates, reads, and mutates Publications and Renditions through the canonical API.",
 	}
 	cmd.AddCommand(newPostCreateCmd())
 	cmd.AddCommand(newPostListCmd())

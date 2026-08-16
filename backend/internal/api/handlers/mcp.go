@@ -51,7 +51,6 @@ const (
 	mcpToolAccounts       = "list_accounts"
 	mcpToolListMedia      = "list_media"
 	mcpToolReadiness      = "get_provider_readiness"
-	mcpToolCreateDraft    = "create_draft"
 	mcpToolCreatePub      = "create_publication"
 	mcpToolListPubs       = "list_publications"
 	mcpToolGetPub         = "get_publication"
@@ -67,14 +66,6 @@ const (
 	mcpToolReplyComment   = "reply_to_comment"
 	mcpToolHideComment    = "hide_comment"
 	mcpToolDeleteComment  = "delete_comment"
-	mcpToolListDrafts     = "list_drafts"
-	mcpToolUpdateDraft    = "update_draft"
-	mcpToolRenditions     = "set_post_renditions"
-	mcpToolSchedulePost   = "schedule_post"
-	mcpToolScheduleDraft  = "schedule_draft"
-	mcpToolGetPost        = "get_post_status"
-	mcpToolListPosts      = "list_scheduled_posts"
-	mcpToolCancelPost     = "cancel_post"
 	mcpToolSuggestSlot    = "suggest_next_slot"
 	mcpToolUploadURL      = "upload_media_from_url"
 	mcpToolRenderWidget   = "render_scheduler_widget"
@@ -1899,7 +1890,6 @@ var mcpToolStatuses = map[string]mcpToolStatus{
 	mcpToolAccounts:       {Invoking: "Loading accounts", Invoked: "Accounts loaded"},
 	mcpToolListMedia:      {Invoking: "Loading media", Invoked: "Media loaded"},
 	mcpToolReadiness:      {Invoking: "Checking provider readiness", Invoked: "Provider readiness loaded"},
-	mcpToolCreateDraft:    {Invoking: "Creating draft", Invoked: "Draft created"},
 	mcpToolCreatePub:      {Invoking: "Creating publication", Invoked: "Publication created"},
 	mcpToolListPubs:       {Invoking: "Loading publications", Invoked: "Publications loaded"},
 	mcpToolGetPub:         {Invoking: "Loading publication", Invoked: "Publication loaded"},
@@ -1915,14 +1905,6 @@ var mcpToolStatuses = map[string]mcpToolStatus{
 	mcpToolReplyComment:   {Invoking: "Queueing comment reply", Invoked: "Comment reply queued"},
 	mcpToolHideComment:    {Invoking: "Queueing comment hide", Invoked: "Comment hide queued"},
 	mcpToolDeleteComment:  {Invoking: "Queueing comment deletion", Invoked: "Comment deletion queued"},
-	mcpToolListDrafts:     {Invoking: "Loading drafts", Invoked: "Drafts loaded"},
-	mcpToolUpdateDraft:    {Invoking: "Updating draft", Invoked: "Draft updated"},
-	mcpToolRenditions:     {Invoking: "Updating renditions", Invoked: "Renditions updated"},
-	mcpToolSchedulePost:   {Invoking: "Scheduling post", Invoked: "Post scheduled"},
-	mcpToolScheduleDraft:  {Invoking: "Scheduling draft", Invoked: "Draft scheduled"},
-	mcpToolGetPost:        {Invoking: "Loading post status", Invoked: "Post status loaded"},
-	mcpToolListPosts:      {Invoking: "Loading queue", Invoked: "Queue loaded"},
-	mcpToolCancelPost:     {Invoking: "Canceling post", Invoked: "Post canceled"},
 	mcpToolSuggestSlot:    {Invoking: "Finding next slot", Invoked: "Next slot found"},
 	mcpToolUploadURL:      {Invoking: "Uploading media", Invoked: "Media uploaded"},
 	mcpToolRenderWidget:   {Invoking: "Rendering view", Invoked: "View rendered"},
@@ -1942,10 +1924,6 @@ func mcpToolOutputSchema(toolName string) map[string]any {
 		}, key)
 	}
 	switch toolName {
-	case mcpToolCreateDraft, mcpToolUpdateDraft, mcpToolSchedulePost, mcpToolScheduleDraft, mcpToolGetPost, mcpToolCancelPost:
-		return mcpStructuredOutputSchema(map[string]any{
-			"post": mcpOpenObjectSchema(),
-		}, "post")
 	case mcpToolCreatePub, mcpToolGetPub, mcpToolUpdatePub, mcpToolPubRenditions, mcpToolCancelPub:
 		return mcpStructuredOutputSchema(map[string]any{
 			"publication": mcpOpenObjectSchema(),
@@ -1964,11 +1942,6 @@ func mcpToolOutputSchema(toolName string) map[string]any {
 			"valid":  map[string]any{"type": "boolean"},
 			"issues": mcpArraySchema(mcpOpenObjectSchema()),
 		}, "valid", "issues")
-	case mcpToolRenditions:
-		return mcpStructuredOutputSchema(map[string]any{
-			"post_id":    map[string]any{"type": "string"},
-			"renditions": mcpArraySchema(mcpOpenObjectSchema()),
-		}, "post_id", "renditions")
 	case mcpToolSuggestSlot:
 		return mcpStructuredOutputSchema(map[string]any{
 			"suggestion": mcpOpenObjectSchema(),
@@ -2009,8 +1982,6 @@ func mcpArrayOutputKey(toolName string) (string, bool) {
 		return "events", true
 	case mcpToolComments:
 		return "comments", true
-	case mcpToolListDrafts, mcpToolListPosts:
-		return "posts", true
 	default:
 		return "", false
 	}

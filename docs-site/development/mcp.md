@@ -164,17 +164,6 @@ boundary.
 - `list_accounts`: returns active social accounts for a workspace.
 - `list_media`: returns recent workspace media attachments so assistants can reuse existing assets.
 - `get_provider_readiness`: returns provider configuration, account, app-review, and public-media readiness checks.
-- `create_draft`: creates a draft post in a workspace and assigns destination accounts and media attachments.
-- `list_drafts`: returns editable draft posts for a workspace so an assistant can inspect existing work before creating more drafts.
-- `update_draft`: updates a draft's source content and optionally replaces destination accounts or source media.
-- `set_post_renditions`: creates or updates destination-specific copy for draft and scheduled posts. Renditions can only target accounts already attached as post destinations.
-- `schedule_post`: creates a scheduled post with destination accounts and optional media, then queues the `publish_post` job.
-- `schedule_draft`: schedules an existing draft and queues the `publish_post` job without duplicating the post. It can optionally replace source media before scheduling.
-- `get_post_status`: returns the post status, scheduled run time, source media, and per-destination status.
-- `list_scheduled_posts`: returns upcoming scheduled posts for queue inspection.
-- `cancel_post`: cancels a queued scheduled post and returns it to drafts.
-- `suggest_next_slot`: returns the next free configured posting slot for a workspace.
-- `upload_media_from_url`: fetches a public HTTP(S) media URL and stores it in a workspace.
 - `create_publication`: creates a format-first publication with renditions and destination-specific settings.
 - `list_publications`: lists format-first publications for a workspace.
 - `get_publication`: returns a publication with its destination renditions and delivery state.
@@ -190,6 +179,8 @@ boundary.
 - `reply_to_comment`: replies to an opaque comment ID returned by `list_rendition_comments`.
 - `hide_comment`: hides a supported provider comment.
 - `delete_comment`: permanently deletes a supported provider comment.
+- `suggest_next_slot`: returns the next free configured posting slot for a workspace.
+- `upload_media_from_url`: fetches a public HTTP(S) media URL and stores it in a workspace.
 
 The directly advertised `render_scheduler_widget` is intentionally outside the
 delegated operation catalog; clients call it only when they want the Apps UI.
@@ -212,9 +203,9 @@ This policy follows the [Official MCP Registry versioning guidance](https://mode
 
 ## Current prompts
 
-- `plan_social_post`: guides an assistant from a rough idea to a workspace-aware draft.
-- `adapt_platform_renditions`: guides destination-specific copywriting for an existing draft or scheduled post.
-- `review_schedule`: guides queue inspection and next-action recommendations without mutating posts.
+- `plan_social_post`: guides an assistant from a rough idea to a workspace-aware Publication.
+- `adapt_platform_renditions`: guides destination-specific copywriting for an existing Publication.
+- `review_schedule`: guides queue inspection and next-action recommendations without mutating Publications.
 
 ## Current scope
 
@@ -235,12 +226,12 @@ This policy follows the [Official MCP Registry versioning guidance](https://mode
 - Provides `openpost-mcp` for local stdio clients without duplicating server tool logic.
 - Advertises MCP prompt templates for common agentic scheduling workflows: planning a post, adapting platform renditions, and reviewing the publishing queue.
 - Validates workspace membership and account ownership before returning, creating, scheduling, canceling, or uploading data.
-- Keeps draft iteration agent-friendly: assistants can list drafts, update draft copy/destinations, set per-destination renditions, and schedule the same draft when it is ready.
-- Validates rendition targets against the post destination list so assistants do not create variants that would never publish.
+- Keeps draft iteration agent-friendly: assistants can create, list, update, validate, schedule, cancel, and publish Publications through the canonical Publication tools, set per-destination renditions through `set_publication_renditions`, and inspect lifecycle events.
+- Validates rendition targets against the Publication destination list so assistants do not create outputs that would never publish.
 - Rejects media URL fetches that resolve to private, loopback, link-local, multicast, or otherwise local addresses.
-- Enforces the same scheduled-post and media-upload entitlement and usage accounting as the web/API paths.
+- Enforces the same scheduled-publication and media-upload entitlement and usage accounting as the web/API paths.
 - Records MCP tool calls in `mcp_tool_calls` with user, workspace, tool name, success/error status, error message, duration, and timestamp, and exposes recent calls in settings.
 - Records API-token client ID, name, scope, and token prefix for MCP tool calls when a request uses a dedicated CLI/MCP token, so Settings can attribute activity to ChatGPT, Claude, CI, or another configured client.
-- Returns structured content so assistants can inspect workspace, account, post, destination, media, and suggested slot IDs without parsing prose.
+- Returns structured content so assistants can inspect workspace, account, publication, destination, media, and suggested slot IDs without parsing prose.
 - Returns provider catalog structured content so assistants can avoid trying to connect or schedule to planned providers before adapters exist.
-- Lets assistants attach workspace-owned source media to drafts and scheduled posts through `media_ids`, while preserving destination-specific media overrides through `set_post_renditions`.
+- Lets assistants attach workspace-owned source media to Publications through `media`, while preserving destination-specific media overrides through `set_publication_renditions`.

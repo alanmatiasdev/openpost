@@ -1,32 +1,35 @@
 # Post to Publication migration
 
-Legacy Post HTTP routes, older Post links, CLI command names, and post-named MCP tools are now compatibility surfaces. Publication is the authoring record to use for new API and automation work.
+Post HTTP routes, post-named MCP tools, and the legacy Post authoring model are retired. Publication is the only authoring record for API and automation work.
 
-## Sunset
+## What changed
 
-The Post compatibility sunset starts on 2026-08-15. OpenPost will keep the retained Post surfaces for at least 90 days and at least two later stable releases. The earliest removal date is 2026-11-13, and removal still requires the registry evidence gates in [API Compatibility](/development/compatibility-policy).
+- The `posts`, `post_destinations`, `post_media`, `post_variants`, and `thread_drafts` tables are removed after the legacy backfill completes and no Post rows or pending `publish_post` Jobs remain.
+- Post HTTP routes and the post-named MCP tools (`create_draft`, `list_drafts`, `update_draft`, `set_post_renditions`, `schedule_post`, `schedule_draft`, `get_post_status`, `list_scheduled_posts`, `cancel_post`) are removed.
+- Old Post links still resolve to the canonical Publication through immutable `legacy_post` and `legacy_post_variant` aliases. The aliases store only the mapping from a legacy ID to a Publication (and optional segment); they carry no content, status, schedule, or provider state.
+- Historical migration files remain so an older database can upgrade in place. They translate legacy rows and non-terminal publishing Jobs into Publications, Renditions, and authorization receipts before the final schema drops the legacy tables.
 
 ## Field mapping
 
-| Legacy Post field                       | Publication replacement                                                                   |
-| --------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `id`                                    | Use `publication_id` returned by compatibility responses, then call `/publications/{id}`. |
-| `content`                               | `source_text` and the first segment `body`.                                               |
-| `thread_draft` or `/posts/thread` items | `creation_preset: "thread"` with one segment per thread item.                             |
-| `social_account_ids`                    | One Rendition per destination `social_account_id`.                                        |
-| `media_ids`                             | Segment or Rendition `media` entries.                                                     |
-| Post variants                           | Publication Renditions.                                                                   |
-| `scheduled_at`                          | `POST /publications/{id}/schedule` after the draft is saved.                              |
-| `random_delay_minutes`                  | Publication `random_delay_minutes`.                                                       |
-| `status`                                | Publication lifecycle status plus each Rendition status.                                  |
+| Legacy Post field                       | Publication replacement                                       |
+| --------------------------------------- | ------------------------------------------------------------- |
+| `id`                                    | `publication_id`, then call `/publications/{id}`.             |
+| `content`                               | `source_text` and the first segment `body`.                   |
+| `thread_draft` or `/posts/thread` items | `creation_preset: "thread"` with one segment per thread item. |
+| `social_account_ids`                    | One Rendition per destination `social_account_id`.            |
+| `media_ids`                             | Segment or Rendition `media` entries.                         |
+| Post variants                           | Publication Renditions.                                       |
+| `scheduled_at`                          | `POST /publications/{id}/schedule` after the draft is saved.  |
+| `random_delay_minutes`                  | Publication `random_delay_minutes`.                           |
+| `status`                                | Publication lifecycle status plus each Rendition status.      |
 
 ## Route mapping
 
-| Deprecated surface             | Replacement                                                                        |
+| Removed surface                | Replacement                                                                        |
 | ------------------------------ | ---------------------------------------------------------------------------------- |
 | `POST /posts`                  | `POST /publications`, then `POST /publications/{id}/schedule` when scheduling.     |
 | `GET /posts`                   | `GET /publications`.                                                               |
-| `GET /posts/{id}`              | Resolve the alias to `publication_id`, then use `GET /publications/{id}`.          |
+| `GET /posts/{id}`              | Resolve the legacy alias to `publication_id`, then `GET /publications/{id}`.       |
 | `PATCH /posts/{id}`            | `PATCH /publications/{id}` or schedule and cancel endpoints.                       |
 | `DELETE /posts/{id}`           | `DELETE /publications/{id}` with `expected_revision`.                              |
 | `POST /posts/draft`            | `POST /publications`.                                                              |
@@ -36,6 +39,6 @@ The Post compatibility sunset starts on 2026-08-15. OpenPost will keep the retai
 
 ## CLI and MCP
 
-The maintained CLI already calls Publication endpoints under the `openpost post` and `openpost thread` command names. Keep using the returned Publication IDs in scripts.
+The CLI keeps the friendly `openpost post` and `openpost thread` command names, but every command creates, reads, and mutates Publications and Renditions through the canonical API. Use the returned Publication IDs in scripts.
 
-MCP post-named tools are compatibility aliases over Publication operations. Prefer `create_publication`, `update_publication`, `schedule_publication`, `cancel_publication`, and Publication reads when the client can discover them.
+MCP exposes canonical Publication tools only: `create_publication`, `list_publications`, `get_publication`, `update_publication`, `set_publication_renditions`, `reply_to_rendition`, `validate_publication`, `schedule_publication`, `cancel_publication`, `publish_publication_now`, and `list_publication_events`.
