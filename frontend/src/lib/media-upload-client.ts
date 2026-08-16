@@ -196,10 +196,7 @@ export function isTransientUploadError(error: unknown): boolean {
 	return error instanceof TypeError;
 }
 
-export async function withUploadRetry<T>(
-	fn: () => Promise<T>,
-	signal?: AbortSignal
-): Promise<T> {
+export async function withUploadRetry<T>(fn: () => Promise<T>, signal?: AbortSignal): Promise<T> {
 	let lastError: unknown;
 	for (let attempt = 0; attempt <= MAX_UPLOAD_RETRIES; attempt++) {
 		if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
