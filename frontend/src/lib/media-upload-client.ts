@@ -83,6 +83,10 @@ interface MediaMetadataResponse {
 
 const directUploadCapabilityByWorkspace = new Map<string, Promise<boolean>>();
 
+const TRANSIENT_STATUSES = new Set([408, 429, 500, 502, 503, 504]);
+const MAX_UPLOAD_RETRIES = 2;
+const RETRY_BASE_DELAY_MS = 800;
+
 export class UploadRequestError extends Error {
 	status: number;
 
@@ -182,6 +186,34 @@ export function shouldUseMultipartFallback(error: Error): boolean {
 	return error.message.toLowerCase().includes('direct media upload sessions require s3 storage');
 }
 
+export function isTransientUploadError(error: unknown): boolean {
+	if (error instanceof UploadRequestError) {
+		return TRANSIENT_STATUSES.has(error.status);
+	}
+	if (error instanceof DOMException && error.name === 'AbortError') {
+		return false;
+	}
+	return error instanceof TypeError;
+}
+
+export async function withUploadRetry<T>(
+	fn: () => Promise<T>,
+	signal?: AbortSignal
+): Promise<T> {
+	let lastError: unknown;
+	for (let attempt = 0; attempt <= MAX_UPLOAD_RETRIES; attempt++) {
+		if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+		try {
+			return await fn();
+		} catch (error) {
+			lastError = error;
+			if (attempt >= MAX_UPLOAD_RETRIES || !isTransientUploadError(error)) throw error;
+			await abortableDelay(RETRY_BASE_DELAY_MS * Math.pow(2, attempt), signal);
+		}
+	}
+	throw lastError;
+}
+
 export function directUploadSupportedFromStorageResponse(
 	value: StorageCapabilityResponse
 ): boolean {
@@ -270,13 +302,15 @@ async function uploadViaDirectSession(
 	signal?: AbortSignal
 ): Promise<MediaUploadResult> {
 	onProgress?.({ stage: 'uploading', fraction: 0, message: 'Starting upload' });
-	const sessionResp = await fetch(apiURL('/media/upload-session'), {
-		method: 'POST',
-		credentials: 'include',
-		headers: apiHeaders(true),
-		signal,
-		body: JSON.stringify(createUploadSessionBody(workspaceId, file, altText, metadata))
-	});
+	const sessionResp = await withUploadRetry(() =>
+		fetch(apiURL('/media/upload-session'), {
+			method: 'POST',
+			credentials: 'include',
+			headers: apiHeaders(true),
+			signal,
+			body: JSON.stringify(createUploadSessionBody(workspaceId, file, altText, metadata))
+		})
+	);
 	if (!sessionResp.ok) {
 		throw await uploadErrorFromResponse(sessionResp, 'Failed to create upload session');
 	}
@@ -311,24 +345,28 @@ async function uploadViaDirectSession(
 	if (!uploadHeaders.has('Content-Type') && file.type) {
 		uploadHeaders.set('Content-Type', file.type);
 	}
-	await putBlobWithProgress(
-		uploadRequest.isExternal ? session.upload.url : apiURL(session.upload.url),
-		session.upload.method || 'PUT',
-		uploadHeaders,
-		file,
-		uploadRequest.withCredentials,
-		(fraction) => onProgress?.({ stage: 'uploading', fraction, message: 'Uploading video' }),
-		signal
+	await withUploadRetry(() =>
+		putBlobWithProgress(
+			uploadRequest.isExternal ? session.upload.url : apiURL(session.upload.url),
+			session.upload.method || 'PUT',
+			uploadHeaders,
+			file,
+			uploadRequest.withCredentials,
+			(fraction) => onProgress?.({ stage: 'uploading', fraction, message: 'Uploading video' }),
+			signal
+		)
 	);
 
 	onProgress?.({ stage: 'finalizing', fraction: 0.96, message: 'Finalizing upload' });
-	const completeResp = await fetch(apiURL(session.complete_url), {
-		method: 'POST',
-		credentials: 'include',
-		headers: apiHeaders(true),
-		signal,
-		body: JSON.stringify({ workspace_id: workspaceId })
-	});
+	const completeResp = await withUploadRetry(() =>
+		fetch(apiURL(session.complete_url), {
+			method: 'POST',
+			credentials: 'include',
+			headers: apiHeaders(true),
+			signal,
+			body: JSON.stringify({ workspace_id: workspaceId })
+		})
+	);
 	if (!completeResp.ok) {
 		throw await uploadErrorFromResponse(completeResp, 'Failed to finalize media upload');
 	}
@@ -453,18 +491,18 @@ function parseMediaMetadataResponse(value: unknown): MediaMetadataResponse {
 function parseMediaUploadResult(value: unknown): MediaUploadResult {
 	if (!isUploadRecord(value)) throw new UploadRequestError('The upload response was invalid', 0);
 	const result: MediaUploadResult = {
-		alt_text: parseRequiredString(value.alt_text, 'alt_text'),
-		analysis_status: parseRequiredString(value.analysis_status, 'analysis_status'),
-		asset_kind: parseRequiredString(value.asset_kind, 'asset_kind'),
-		deduped: parseRequiredBoolean(value.deduped, 'deduped'),
+		alt_text: parseOptionalString(value.alt_text) ?? '',
+		analysis_status: parseOptionalString(value.analysis_status) ?? 'ready',
+		asset_kind: parseOptionalString(value.asset_kind) ?? 'library',
+		deduped: parseOptionalBooleanLoose(value.deduped),
 		id: parseRequiredString(value.id, 'id'),
-		mime_type: parseRequiredString(value.mime_type, 'mime_type'),
-		original_filename: parseRequiredString(value.original_filename, 'original_filename'),
-		processing_progress: parseRequiredNumber(value.processing_progress, 'processing_progress'),
-		processing_status: parseRequiredString(value.processing_status, 'processing_status'),
-		retention_class: parseRetentionClass(value.retention_class),
-		size: parseRequiredNumber(value.size, 'size'),
-		source: parseRequiredString(value.source, 'source'),
+		mime_type: parseOptionalString(value.mime_type) ?? 'application/octet-stream',
+		original_filename: parseOptionalString(value.original_filename) ?? '',
+		processing_progress: parseOptionalNumber(value.processing_progress) ?? 100,
+		processing_status: parseOptionalString(value.processing_status) ?? 'ready',
+		retention_class: parseRetentionClassLoose(value.retention_class),
+		size: parseOptionalNumber(value.size) ?? 0,
+		source: parseOptionalString(value.source) ?? 'upload',
 		url: parseRequiredString(value.url, 'url')
 	};
 	result.analysis_error = parseOptionalString(value.analysis_error);
@@ -476,9 +514,9 @@ function parseMediaUploadResult(value: unknown): MediaUploadResult {
 	return result;
 }
 
-function parseRetentionClass(value: unknown): MediaUploadResult['retention_class'] {
-	if (value === 'library' || value === 'temporary') return value;
-	throw new UploadRequestError('The upload response retention class was invalid', 0);
+function parseRetentionClassLoose(value: unknown): MediaUploadResult['retention_class'] {
+	if (value === 'temporary') return 'temporary';
+	return 'library';
 }
 
 function parseRequiredString(value: unknown, field: string): string {
@@ -491,9 +529,18 @@ function parseRequiredBoolean(value: unknown, field: string): boolean {
 	throw new UploadRequestError(`The upload response field ${field} was invalid`, 0);
 }
 
+function parseOptionalBooleanLoose(value: unknown): boolean {
+	return value === true;
+}
+
 function parseRequiredNumber(value: unknown, field: string): number {
 	if (typeof value === 'number' && Number.isFinite(value)) return value;
 	throw new UploadRequestError(`The upload response field ${field} was invalid`, 0);
+}
+
+function parseOptionalNumber(value: unknown): number | undefined {
+	if (typeof value === 'number' && Number.isFinite(value)) return value;
+	return undefined;
 }
 
 function parseOptionalString(value: unknown): string | undefined {

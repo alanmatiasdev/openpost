@@ -5598,6 +5598,7 @@
 	multiple={composerMediaLimit > 1}
 	purpose={isThread ? 'thread_segment' : 'post_media'}
 	enableMeme
+	autoConfirmUploads
 	initialMode="upload"
 	initialFiles={mediaPickerInitialFiles}
 	onInitialFilesConsumed={() => (mediaPickerInitialFiles = [])}

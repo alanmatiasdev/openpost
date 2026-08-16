@@ -1,10 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 import {
 	directUploadSupportedFromStorageResponse,
 	directUploadHeadersForBrowser,
 	directUploadRequestPolicy,
 	normalizedUploadErrorMessage,
 	shouldUseMultipartFallback,
+	isTransientUploadError,
+	withUploadRetry,
 	UploadRequestError
 } from './media-upload-client';
 
@@ -116,5 +118,76 @@ describe('media-upload-client', () => {
 		expect(
 			normalizedUploadErrorMessage('Temporary upload failure', 'text/plain', 'Upload failed', 503)
 		).toBe('Temporary upload failure');
+	});
+
+	it('classifies transient upload errors for retry', () => {
+		expect(isTransientUploadError(new UploadRequestError('server error', 500))).toBe(true);
+		expect(isTransientUploadError(new UploadRequestError('bad gateway', 502))).toBe(true);
+		expect(isTransientUploadError(new UploadRequestError('unavailable', 503))).toBe(true);
+		expect(isTransientUploadError(new UploadRequestError('gateway timeout', 504))).toBe(true);
+		expect(isTransientUploadError(new UploadRequestError('timeout', 408))).toBe(true);
+		expect(isTransientUploadError(new UploadRequestError('rate limited', 429))).toBe(true);
+		expect(isTransientUploadError(new UploadRequestError('not found', 404))).toBe(false);
+		expect(isTransientUploadError(new UploadRequestError('bad request', 400))).toBe(false);
+		expect(isTransientUploadError(new TypeError('Failed to fetch'))).toBe(true);
+		expect(isTransientUploadError(new DOMException('Aborted', 'AbortError'))).toBe(false);
+	});
+});
+
+describe('withUploadRetry', () => {
+	let originalWindow: typeof globalThis.window;
+
+	beforeEach(() => {
+		originalWindow = globalThis.window;
+		// Provide a minimal window so abortableDelay works in server-side tests.
+		(globalThis as Record<string, unknown>).window = { setTimeout, clearTimeout };
+	});
+
+	afterEach(() => {
+		globalThis.window = originalWindow;
+	});
+
+	it('retries transient failures and succeeds', async () => {
+		let attempts = 0;
+		const result = await withUploadRetry(async () => {
+			attempts++;
+			if (attempts < 3) throw new UploadRequestError('server error', 500);
+			return 'ok';
+		});
+		expect(result).toBe('ok');
+		expect(attempts).toBe(3);
+	});
+
+	it('stops retrying after max attempts', async () => {
+		let attempts = 0;
+		await expect(
+			withUploadRetry(async () => {
+				attempts++;
+				throw new UploadRequestError('server error', 500);
+			})
+		).rejects.toThrow('server error');
+		expect(attempts).toBe(3);
+	});
+
+	it('does not retry non-transient errors', async () => {
+		let attempts = 0;
+		await expect(
+			withUploadRetry(async () => {
+				attempts++;
+				throw new UploadRequestError('bad request', 400);
+			})
+		).rejects.toThrow('bad request');
+		expect(attempts).toBe(1);
+	});
+
+	it('does not retry abort errors', async () => {
+		let attempts = 0;
+		await expect(
+			withUploadRetry(async () => {
+				attempts++;
+				throw new DOMException('Aborted', 'AbortError');
+			})
+		).rejects.toThrow();
+		expect(attempts).toBe(1);
 	});
 });
