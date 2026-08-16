@@ -110,3 +110,6 @@ marketing-site/static/assets/
 .bun-cache/
 # Previous local pnpm cache; keep ignored so old checkouts do not surface it.
 .pnpm-store/
+
+# Local Pi coding-agent state
+.pi/
