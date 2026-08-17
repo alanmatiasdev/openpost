@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -73,6 +74,7 @@ func publicationApplicationError(err error) error {
 			return publicationservice.NewError(publicationservice.ErrorInvalidLifecycleState, err)
 		}
 	}
+	log.Printf("publicationApplicationError: unrecognized error (category=ErrorTemporaryUnavailable): %v", err)
 	return publicationservice.NewError(publicationservice.ErrorTemporaryUnavailable, err)
 }
 
