@@ -470,6 +470,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/users/{user_id}/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set a user plan override
+         * @description Assigns or removes an administrator plan override for a user. The override creates an admin-managed subscription on the user's personal organization, bypassing Paddle checkout. Pass an empty plan_id to remove the override.
+         */
+        put: operations["set-user-plan"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/analytics": {
         parameters: {
             query?: never;
@@ -10290,6 +10310,28 @@ export interface components {
             read?: boolean;
             workspace_id: string;
         };
+        SetUserPlanInputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/SetUserPlanInputBody.json
+             */
+            readonly $schema?: string;
+            /** @description Plan ID to assign: starter, founder, pro, team, agency, or empty string to remove the override */
+            plan_id: string;
+        };
+        SetUserPlanOutputBody: {
+            /**
+             * Format: uri
+             * @description A URL to the JSON Schema for this object.
+             * @example https://example.com/schemas/SetUserPlanOutputBody.json
+             */
+            readonly $schema?: string;
+            /** @description Assigned plan ID, empty if override was removed */
+            plan_id: string;
+            /** @description User ID */
+            user_id: string;
+        };
         SettingCondition: {
             key: string;
             /** @enum {string} */
@@ -13283,6 +13325,87 @@ export interface operations {
             };
             /** @description Conflict */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+        };
+    };
+    "set-user-plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Target user ID */
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetUserPlanInputBody"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetUserPlanOutputBody"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ErrorModel"];
+                };
+            };
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -24,6 +24,7 @@
 	import InstanceUserPlanCell from '$lib/components/instance-user-plan-cell.svelte';
 	import InstanceUserRoleCell from '$lib/components/instance-user-role-cell.svelte';
 	import InstanceUserSortHeader from '$lib/components/instance-user-sort-header.svelte';
+	import InstanceUserPlanDialog from '$lib/components/instance-user-plan-dialog.svelte';
 	import PageLoading from '$lib/components/page-loading.svelte';
 	import SectionHeader from '$lib/components/section-header.svelte';
 	import { Button } from '$lib/components/ui/button';
@@ -83,6 +84,9 @@
 	let impersonationError = $state('');
 	let impersonationCopied = $state(false);
 	let impersonationRequestSequence = 0;
+
+	let planDialogOpen = $state(false);
+	let planDialogUser = $state.raw<InstanceUser | null>(null);
 
 	const visibleUsers = $derived(users?.users ?? []);
 	const firstVisibleUser = $derived(
@@ -185,7 +189,8 @@
 				renderComponent(InstanceUserActionCell, {
 					user: row.original,
 					busy: impersonationBusyUserID === row.original.id,
-					onImpersonate: createImpersonationLink
+					onImpersonate: createImpersonationLink,
+					onChangePlan: openPlanDialog
 				}),
 			enableHiding: false,
 			enableSorting: false
@@ -284,6 +289,22 @@
 	function changeUserPage(nextPage: number) {
 		userPage = nextPage;
 		void loadUsers(nextPage);
+	}
+
+	function openPlanDialog(user: InstanceUser) {
+		planDialogUser = user;
+		planDialogOpen = true;
+	}
+
+	function handlePlanDialogOpenChange(isOpen: boolean) {
+		planDialogOpen = isOpen;
+		if (!isOpen) {
+			planDialogUser = null;
+		}
+	}
+
+	function handlePlanChanged() {
+		void loadUsers(userPage);
 	}
 
 	async function createImpersonationLink(user: InstanceUser) {
@@ -627,3 +648,10 @@
 		</Dialog.Footer>
 	</Dialog.Content>
 </Dialog.Root>
+
+<InstanceUserPlanDialog
+	open={planDialogOpen}
+	user={planDialogUser}
+	onOpenChange={handlePlanDialogOpenChange}
+	onPlanChanged={handlePlanChanged}
+/>

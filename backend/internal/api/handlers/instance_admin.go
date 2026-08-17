@@ -6,7 +6,9 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"sort"
 	"strings"
@@ -17,6 +19,7 @@ import (
 	"github.com/openpost/backend/internal/api/middleware"
 	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/services/auth"
+	"github.com/openpost/backend/internal/services/billing"
 	"github.com/openpost/backend/internal/services/sessions"
 	"github.com/uptrace/bun"
 )
@@ -102,6 +105,20 @@ type instanceUserRow struct {
 	CreatedAt          time.Time `bun:"created_at"`
 }
 
+type SetUserPlanInput struct {
+	UserID string `path:"user_id" doc:"Target user ID"`
+	Body   struct {
+		PlanID string `json:"plan_id" minLength:"1" doc:"Plan ID to assign: starter, founder, pro, team, agency, or empty string to remove the override"`
+	}
+}
+
+type SetUserPlanOutput struct {
+	Body struct {
+		UserID string `json:"user_id" doc:"User ID"`
+		PlanID string `json:"plan_id" doc:"Assigned plan ID, empty if override was removed"`
+	}
+}
+
 type CreateUserImpersonationLinkInput struct {
 	UserID string `path:"user_id" doc:"Target user ID"`
 }
@@ -166,6 +183,17 @@ func (h *InstanceAdminHandler) RegisterRoutes(api huma.API) {
 		Middlewares: huma.Middlewares{authMiddleware},
 		Errors:      []int{401, 403},
 	}, h.listUsers)
+
+	huma.Register(api, huma.Operation{
+		OperationID: "set-user-plan",
+		Method:      http.MethodPut,
+		Path:        "/admin/users/{user_id}/plan",
+		Summary:     "Set a user plan override",
+		Description: "Assigns or removes an administrator plan override for a user. The override creates an admin-managed subscription on the user's personal organization, bypassing Paddle checkout. Pass an empty plan_id to remove the override.",
+		Tags:        []string{"Admin"},
+		Middlewares: huma.Middlewares{authMiddleware},
+		Errors:      []int{400, 401, 403, 404},
+	}, h.setUserPlan)
 
 	huma.Register(api, huma.Operation{
 		OperationID: "create-user-impersonation-link",
@@ -420,6 +448,126 @@ func instanceUserOrder(field, direction string) (string, string) {
 		normalizedDirection = "DESC"
 	}
 	return expression, normalizedDirection
+}
+
+const adminOverrideProvider = "admin"
+
+func (h *InstanceAdminHandler) setUserPlan(ctx context.Context, input *SetUserPlanInput) (*SetUserPlanOutput, error) {
+	if err := requireBrowserSessionInstanceAdmin(ctx, h.db); err != nil {
+		return nil, err
+	}
+
+	userID := strings.TrimSpace(input.UserID)
+	if userID == "" {
+		return nil, huma.Error400BadRequest("user_id is required")
+	}
+
+	target := new(models.User)
+	if err := h.db.NewSelect().Model(target).Where("id = ?", userID).Scan(ctx); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, huma.Error404NotFound("user not found")
+		}
+		return nil, huma.Error500InternalServerError("failed to load user")
+	}
+
+	planID := strings.ToLower(strings.TrimSpace(input.Body.PlanID))
+
+	if planID == "" {
+		return h.removeUserPlanOverride(ctx, userID)
+	}
+
+	planConfig, ok := billing.GetPlanConfig(planID)
+	if !ok {
+		return nil, huma.Error400BadRequest(fmt.Sprintf("unknown plan %q; valid plans: starter, founder, pro, team, agency", planID))
+	}
+
+	organizationID, err := h.resolvePersonalOrganizationID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	now := h.now().UTC()
+	snapshot, _ := json.Marshal(map[string]any{
+		"provider": adminOverrideProvider,
+		"plan_id":  planID,
+		"status":   "active",
+		"limits":   planConfig.Limits,
+	})
+
+	subscription := &models.BillingSubscription{
+		OrganizationID:         organizationID,
+		Provider:               adminOverrideProvider,
+		ProviderCustomerID:     "admin_override",
+		ProviderSubscriptionID: "admin_override_" + organizationID,
+		Status:                 "active",
+		PlanID:                 planID,
+		EntitlementSnapshot:    string(snapshot),
+		CurrentPeriodEnd:       now.AddDate(10, 0, 0),
+		ProviderUpdatedAt:      now,
+		CreatedAt:              now,
+		UpdatedAt:              now,
+	}
+
+	_, err = h.db.NewInsert().Model(subscription).
+		On("CONFLICT (organization_id) DO UPDATE").
+		Set("provider = EXCLUDED.provider").
+		Set("provider_customer_id = EXCLUDED.provider_customer_id").
+		Set("provider_subscription_id = EXCLUDED.provider_subscription_id").
+		Set("status = EXCLUDED.status").
+		Set("plan_id = EXCLUDED.plan_id").
+		Set("entitlement_snapshot = EXCLUDED.entitlement_snapshot").
+		Set("current_period_end = EXCLUDED.current_period_end").
+		Set("provider_updated_at = EXCLUDED.provider_updated_at").
+		Set("updated_at = EXCLUDED.updated_at").
+		Exec(ctx)
+	if err != nil {
+		return nil, huma.Error500InternalServerError("failed to set user plan")
+	}
+
+	out := &SetUserPlanOutput{}
+	out.Body.UserID = userID
+	out.Body.PlanID = planID
+	return out, nil
+}
+
+func (h *InstanceAdminHandler) removeUserPlanOverride(ctx context.Context, userID string) (*SetUserPlanOutput, error) {
+	organizationID, err := h.resolvePersonalOrganizationID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	result, err := h.db.NewDelete().
+		Model((*models.BillingSubscription)(nil)).
+		Where("organization_id = ?", organizationID).
+		Where("provider = ?", adminOverrideProvider).
+		Exec(ctx)
+	if err != nil {
+		return nil, huma.Error500InternalServerError("failed to remove user plan override")
+	}
+	_, _ = result.RowsAffected()
+
+	out := &SetUserPlanOutput{}
+	out.Body.UserID = userID
+	out.Body.PlanID = ""
+	return out, nil
+}
+
+func (h *InstanceAdminHandler) resolvePersonalOrganizationID(ctx context.Context, userID string) (string, error) {
+	var organizationID string
+	err := h.db.NewSelect().
+		Model((*models.Organization)(nil)).
+		Column("id").
+		Where("created_by = ?", userID).
+		OrderExpr("created_at ASC").
+		Limit(1).
+		Scan(ctx, &organizationID)
+	if err == sql.ErrNoRows {
+		return "", huma.Error404NotFound("user has no personal organization")
+	}
+	if err != nil {
+		return "", huma.Error500InternalServerError("failed to resolve user organization")
+	}
+	return organizationID, nil
 }
 
 func (h *InstanceAdminHandler) createImpersonationLink(
