@@ -2267,7 +2267,7 @@ func publicationMutationHTTPError(err error, fallback string) error {
 			publicationservice.ErrorProviderReadiness:
 			return huma.Error409Conflict(err.Error())
 		case publicationservice.ErrorTemporaryUnavailable:
-			return huma.Error503ServiceUnavailable(fallback)
+			return huma.Error503ServiceUnavailable(fmt.Sprintf("%s: %v", fallback, err))
 		}
 	}
 	var statusErr huma.StatusError
