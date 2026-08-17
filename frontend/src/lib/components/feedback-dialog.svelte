@@ -306,8 +306,11 @@
 									category === option[0] && 'border-primary bg-primary/8 text-primary'
 								]}
 							>
-								<RadioGroup.Item class="sr-only" value={option[0]} aria-label={option[1]} />
-								{option[1]}
+								<RadioGroup.Item
+									class="sr-only"
+									value={option[0]}
+									aria-label={option[1]}
+								/>{option[1]}
 							</label>
 						{/each}
 					</RadioGroup.Root>

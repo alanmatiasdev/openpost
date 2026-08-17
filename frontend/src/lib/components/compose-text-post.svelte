@@ -4398,9 +4398,7 @@
 	data-testid="text-thread-composer-content"
 >
 	{#if selectedWorkspaceId}
-		<div class="border-b px-3 py-3 sm:px-4">
-			<WorkspaceSetupGuide workspaceID={selectedWorkspaceId} context="composer" />
-		</div>
+		<WorkspaceSetupGuide workspaceID={selectedWorkspaceId} context="composer" />
 	{/if}
 	{#if !desktopComposerControls.current}
 		<div
