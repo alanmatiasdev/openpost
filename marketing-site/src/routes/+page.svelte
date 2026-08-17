@@ -348,6 +348,7 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 	}
 
 	.supported-marks a {
+		position: relative;
 		display: grid;
 		width: 2.75rem;
 		height: 2.75rem;
@@ -358,6 +359,13 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 			color 120ms ease,
 			background 120ms ease,
 			transform 120ms ease;
+	}
+
+	.supported-marks a::after {
+		position: absolute;
+		inset-inline: 0;
+		bottom: -0.375rem;
+		content: '';
 	}
 
 	.supported-marks a:hover {

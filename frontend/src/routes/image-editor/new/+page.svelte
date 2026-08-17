@@ -316,7 +316,7 @@
 					{#each presets as preset (preset.key)}
 						<button
 							type="button"
-							class="group rounded-xl border bg-card p-3 text-left transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-sm"
+							class="group relative rounded-xl border bg-card p-3 text-left transition after:absolute after:inset-x-0 after:-bottom-1.5 after:content-[''] hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-sm"
 							onclick={() => createPreset(preset.key)}
 							disabled={Boolean(creating)}
 						>
