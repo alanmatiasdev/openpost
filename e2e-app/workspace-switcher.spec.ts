@@ -145,18 +145,22 @@ test("dirty composer workspace switches can stay, save to the origin, or discard
     localStorage.setItem("openpost_current_workspace", JSON.stringify(workspace));
   }, first);
 
-  const draftWrites: Array<{ workspace_id?: string; content?: string }> = [];
+  const draftWrites: Array<{ workspace_id?: string; source_text?: string }> = [];
   let draftAttempt = 0;
   let releaseDraftResponse!: () => void;
   const draftResponseGate = new Promise<void>((resolveDraft) => {
     releaseDraftResponse = resolveDraft;
   });
-  await page.route("**/api/v1/posts/draft", async (route) => {
+  await page.route("**/api/v1/publications", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.continue();
+      return;
+    }
     draftAttempt += 1;
     draftWrites.push(
       route.request().postDataJSON() as {
         workspace_id?: string;
-        content?: string;
+        source_text?: string;
       },
     );
     if (draftAttempt === 1) {
@@ -175,10 +179,14 @@ test("dirty composer workspace switches can stay, save to the origin, or discard
     await route.fulfill({
       contentType: "application/json",
       json: {
-        post_id: "workspace-switch-draft",
-        publication_id: "workspace-switch-publication",
+        id: "workspace-switch-publication",
+        workspace_id: route.request().postDataJSON()?.workspace_id,
         revision: 1,
-        updated_at: "2026-08-09T20:00:00Z",
+        title: "",
+        content_profile: "short_text",
+        source_text: route.request().postDataJSON()?.source_text ?? "",
+        status: "draft",
+        renditions: [],
       },
     });
   });
@@ -221,7 +229,7 @@ test("dirty composer workspace switches can stay, save to the origin, or discard
     expect(draftWrite).toEqual(
       expect.objectContaining({
         workspace_id: first.id,
-        content: "Keep this exact draft after staying",
+        source_text: "Keep this exact draft after staying",
       }),
     );
   }
