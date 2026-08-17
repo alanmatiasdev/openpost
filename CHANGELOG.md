@@ -4,6 +4,18 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [3.13.0] - 2026-08-17
+
+### Added
+
+- Instance administrators can assign or remove plan overrides for users without requiring Paddle checkout, through a new admin endpoint and plan selection dialog.
+
+### Fixed
+
+- Extended button and card touch targets with an invisible bottom area to improve mobile tap usability.
+- Removed unnecessary wrapper padding around the Workspace setup guide in the composer.
+- Fixed whitespace rendering in feedback dialog radio items.
+
 ## [3.12.0] - 2026-08-16
 
 ### Changed
