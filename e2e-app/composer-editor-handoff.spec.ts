@@ -181,29 +181,28 @@ test("composer preserves its draft through Image cancel and Video replacement", 
       },
     });
   });
-  await page.route(/\/api\/v1\/publications\/publication-handoff(?:\?.*)?$/, async (route) => {
-    if (route.request().method() === "PUT") {
+  await page.route("**/api/v1/publications", async (route) => {
+    if (route.request().method() === "POST") {
       await route.fulfill({
         contentType: "application/json",
-        json: { revision: nextRevision++ },
+        json: { ...publication, id: "publication-handoff", revision: 1 },
+      });
+      return;
+    }
+    await route.continue();
+  });
+  await page.route(/\/api\/v1\/publications\/publication-handoff(?:\?.*)?$/, async (route) => {
+    if (route.request().method() === "PUT") {
+      draftWrites.push(route.request().postDataJSON() as Record<string, unknown>);
+      await route.fulfill({
+        contentType: "application/json",
+        json: { ...publication, revision: nextRevision++ },
       });
       return;
     }
     await route.fulfill({
       contentType: "application/json",
       json: publication,
-    });
-  });
-  await page.route("**/api/v1/posts/post-handoff/draft", async (route) => {
-    draftWrites.push(route.request().postDataJSON() as Record<string, unknown>);
-    await route.fulfill({
-      contentType: "application/json",
-      json: {
-        post_id: "post-handoff",
-        publication_id: "publication-handoff",
-        revision: nextRevision++,
-        updated_at: new Date().toISOString(),
-      },
     });
   });
   await page.route("**/api/v1/media**", async (route) => {
@@ -348,11 +347,22 @@ test("composer preserves its draft through Image cancel and Video replacement", 
   );
   await expect(page.getByTestId("composer-account-icon")).toHaveCount(1);
   await expect
-    .poll(() => draftWrites.at(-1)?.media_ids, { timeout: 10_000 })
+    .poll(
+      () => {
+        const last = draftWrites.at(-1);
+        const segmentMedia = (
+          last?.segments as Array<{ media?: Array<{ media_id: string }> }> | undefined
+        )?.[0]?.media;
+        return segmentMedia?.map((m) => m.media_id);
+      },
+      { timeout: 10_000 },
+    )
     .toEqual(["video-new"]);
-  expect(draftWrites.at(-1)).toMatchObject({
-    social_account_ids: ["youtube-main"],
-  });
+  expect(
+    (draftWrites.at(-1)?.renditions as Array<{ social_account_id: string }> | undefined)?.map(
+      (r) => r.social_account_id,
+    ),
+  ).toEqual(["youtube-main"]);
   expect(Date.parse(String(draftWrites.at(-1)?.scheduled_at))).toBe(Date.parse(scheduledAt));
   expect(pageErrors).toEqual([]);
 });

@@ -3589,7 +3589,7 @@
 			).retry(rendition.social_account_id, rendition.target_key);
 			deliveryFeedback = action.renditions ?? [];
 			success = m.publication_delivery_retry_queued();
-		} catch (cause) {
+		} catch (cause: unknown) {
 			error = cause instanceof Error ? cause.message : m.publication_delivery_retry_failed();
 		} finally {
 			retryingDeliveryRenditionID = '';

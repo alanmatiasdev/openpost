@@ -308,7 +308,20 @@ test("composer uses the exact immediate and scheduled readiness decisions", asyn
         ...(publicationPayload ?? {}),
         ...(route.request().postDataJSON() as PostPayload),
       };
-      await route.fulfill({ contentType: "application/json", json: {} });
+      await route.fulfill({
+        contentType: "application/json",
+        json: {
+          id: "publication-schedule",
+          revision: 2,
+          status: "draft",
+          workspace_id: publicationPayload.workspace_id,
+          title: "Short text",
+          content_profile: publicationPayload.content_profile,
+          source_text: publicationPayload.source_text,
+          scheduled_at: publicationPayload.scheduled_at ?? "",
+          renditions: [],
+        },
+      });
       return;
     }
     if (route.request().method() === "GET") {
@@ -334,7 +347,12 @@ test("composer uses the exact immediate and scheduled readiness decisions", asyn
       retryQueued = true;
       await route.fulfill({
         contentType: "application/json",
-        json: { message: "destination retry queued", job_id: "retry-job" },
+        json: {
+          message: "destination retry queued",
+          job_id: "retry-job",
+          publication_id: "publication-schedule",
+          renditions: destinationOutcomes(),
+        },
       });
     },
   );

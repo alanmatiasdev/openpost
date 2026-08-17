@@ -1,5 +1,5 @@
 import { expect, test, type Locator } from "@playwright/test";
-import { authenticatePage, createWorkspace, registerUser } from "./helpers";
+import { authenticatePage, createPublication, createWorkspace, registerUser } from "./helpers";
 
 const tinyPNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
@@ -283,24 +283,17 @@ test("attached media controls stay touch accessible on mobile and desktop", asyn
   const media = (await mediaResponse.json()) as {
     media: Array<{ id: string }>;
   };
-  const draftResponse = await request.post("/api/v1/posts", {
-    headers: { Authorization: `Bearer ${auth.token}` },
-    data: {
-      workspace_id: workspace.id,
-      content: "Media accessibility check",
-      social_account_ids: [],
-      media_ids: [media.media[0].id],
-    },
-  });
-  expect(draftResponse.ok()).toBeTruthy();
-  const draft = (await draftResponse.json()) as {
-    id: string;
-    publication_id: string;
-  };
+  const draft = await createPublication(
+    request,
+    auth.token,
+    workspace.id,
+    "Media accessibility check",
+    { mediaIDs: [media.media[0].id] },
+  );
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto(`/posts/${draft.id}`);
-  await expect(page).toHaveURL(new RegExp(`/posts/${draft.id}$`));
+  await page.goto(`/publications/${draft.id}`);
+  await expect(page).toHaveURL(new RegExp(`/publications/${draft.id}$`));
   const actions = page.getByTestId("composer-media-actions");
   await expect(actions).toBeVisible();
   const removeMedia = page.getByRole("button", { name: "Remove media" });

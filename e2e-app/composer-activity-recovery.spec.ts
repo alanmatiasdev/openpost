@@ -302,19 +302,27 @@ test("composer sends workspace-local wall time as the exact scheduled instant", 
   });
 
   let scheduledAt = "";
-  await page.route("**/api/v1/posts/draft", async (route) => {
+  await page.route("**/api/v1/publications", async (route) => {
     if (route.request().method() === "POST") {
       const payload = route.request().postDataJSON() as {
         scheduled_at?: string;
+        workspace_id?: string;
+        source_text?: string;
+        content_profile?: string;
       };
       if (payload.scheduled_at) scheduledAt = payload.scheduled_at;
       await route.fulfill({
         contentType: "application/json",
         json: {
-          post_id: "scheduled-timezone-post",
-          publication_id: "scheduled-timezone-publication",
+          id: "scheduled-timezone-publication",
+          workspace_id: payload.workspace_id,
           revision: 1,
-          updated_at: "2026-07-24T12:00:00Z",
+          title: "",
+          content_profile: payload.content_profile ?? "short_text",
+          source_text: payload.source_text ?? "",
+          status: "draft",
+          scheduled_at: payload.scheduled_at ?? "",
+          renditions: [],
         },
       });
       return;
@@ -330,7 +338,15 @@ test("composer sends workspace-local wall time as the exact scheduled instant", 
         scheduled_at?: string;
       };
       if (payload.scheduled_at) scheduledAt = payload.scheduled_at;
-      await route.fulfill({ contentType: "application/json", json: {} });
+      await route.fulfill({
+        contentType: "application/json",
+        json: {
+          id: "scheduled-timezone-publication",
+          revision: 1,
+          status: "draft",
+          scheduled_at: payload.scheduled_at ?? "",
+        },
+      });
       return;
     }
     await route.continue();
@@ -350,7 +366,11 @@ test("composer sends workspace-local wall time as the exact scheduled instant", 
   await page.route("**/api/v1/publications/*/schedule", async (route) => {
     await route.fulfill({
       contentType: "application/json",
-      json: { message: "Scheduled!" },
+      json: {
+        message: "Scheduled!",
+        publication_id: "scheduled-timezone-publication",
+        renditions: [],
+      },
     });
   });
 
@@ -422,7 +442,7 @@ test("an in-flight autosave cannot attach an old-workspace draft after switching
     (resolveFinished) => (markFirstSaveFinished = resolveFinished),
   );
   const savedWorkspaceIDs: string[] = [];
-  await page.route("**/api/v1/posts/draft", async (route) => {
+  await page.route("**/api/v1/publications", async (route) => {
     if (route.request().method() !== "POST") {
       await route.continue();
       return;
@@ -435,10 +455,14 @@ test("an in-flight autosave cannot attach an old-workspace draft after switching
       await route.fulfill({
         contentType: "application/json",
         json: {
-          post_id: "post-workspace-a",
-          publication_id: "draft-workspace-a",
+          id: "draft-workspace-a",
+          workspace_id: first.id,
           revision: 1,
-          updated_at: "2026-07-24T12:00:00Z",
+          title: "",
+          content_profile: "short_text",
+          source_text: "Move this unsaved content safely.",
+          status: "draft",
+          renditions: [],
         },
       });
       markFirstSaveFinished();
@@ -447,10 +471,14 @@ test("an in-flight autosave cannot attach an old-workspace draft after switching
     await route.fulfill({
       contentType: "application/json",
       json: {
-        post_id: "post-workspace-b",
-        publication_id: "draft-workspace-b",
+        id: "draft-workspace-b",
+        workspace_id: second.id,
         revision: 1,
-        updated_at: "2026-07-24T12:00:01Z",
+        title: "",
+        content_profile: "short_text",
+        source_text: "Move this unsaved content safely.",
+        status: "draft",
+        renditions: [],
       },
     });
   });
@@ -459,7 +487,10 @@ test("an in-flight autosave cannot attach an old-workspace draft after switching
   });
   await page.route("**/api/v1/publications/**", async (route) => {
     if (route.request().method() === "PUT") {
-      await route.fulfill({ contentType: "application/json", json: {} });
+      await route.fulfill({
+        contentType: "application/json",
+        json: { id: "draft-workspace-a", revision: 2, status: "draft" },
+      });
       return;
     }
     await route.continue();

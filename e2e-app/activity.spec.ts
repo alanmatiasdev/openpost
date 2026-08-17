@@ -273,7 +273,7 @@ test("scheduled pagination counts only scheduled publications", async ({ page })
   const publicationRequests: URL[] = [];
   await page.route("**/api/v1/publications?**", async (route) => {
     const url = new URL(route.request().url());
-    if (url.searchParams.get("status") !== "draft") {
+    if (url.searchParams.has("activity_bucket")) {
       publicationRequests.push(url);
     }
     const scheduledOnly = url.searchParams.get("activity_bucket") === "scheduled";

@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { authenticatePage, createWorkspace, registerUser } from "./helpers";
+import { authenticatePage, createPublication, createWorkspace, registerUser } from "./helpers";
 
 test("authenticated navigation keeps the app shell mounted", async ({ page, request }) => {
   const unique = Date.now().toString(36);
@@ -319,44 +319,27 @@ test("desktop planning sidebar resumes drafts and stays out of mobile navigation
   const workspace = (await createWorkspace(request, auth.token, "Planning Sidebar E2E")) as {
     id: string;
   };
-  const draft = await request.post("/api/v1/posts", {
-    headers: { Authorization: `Bearer ${auth.token}` },
-    data: {
-      workspace_id: workspace.id,
-      content: "Resume the launch announcement",
-      social_account_ids: [],
-      media_ids: [],
-    },
-  });
-  expect(draft.ok()).toBeTruthy();
-  const draftBody = (await draft.json()) as {
-    id: string;
-    publication_id: string;
-  };
+  const firstDraft = await createPublication(
+    request,
+    auth.token,
+    workspace.id,
+    "Resume the launch announcement",
+  );
   for (let index = 2; index <= 6; index += 1) {
-    const extraDraft = await request.post("/api/v1/posts", {
-      headers: { Authorization: `Bearer ${auth.token}` },
-      data: {
-        workspace_id: workspace.id,
-        content: `Sidebar draft ${index}`,
-        social_account_ids: [],
-        media_ids: [],
-      },
-    });
-    expect(extraDraft.ok()).toBeTruthy();
+    await createPublication(request, auth.token, workspace.id, `Sidebar draft ${index}`);
   }
 
   await authenticatePage(page, auth.token);
   await page.setViewportSize({ width: 1280, height: 720 });
   const publicationListRequests: URL[] = [];
-  const scheduleOverviewRequests: URL[] = [];
+  const calendarPublicationRequests: URL[] = [];
   page.on("request", (request) => {
     const url = new URL(request.url());
-    if (url.pathname === "/api/v1/publications") {
+    if (url.pathname === "/api/v1/publications" && url.searchParams.get("status") === "draft") {
       publicationListRequests.push(url);
     }
-    if (url.pathname === "/api/v1/posts/schedule-overview") {
-      scheduleOverviewRequests.push(url);
+    if (url.pathname === "/api/v1/publications" && url.searchParams.has("calendar_from")) {
+      calendarPublicationRequests.push(url);
     }
   });
   await page.goto("/");
@@ -446,7 +429,7 @@ test("desktop planning sidebar resumes drafts and stays out of mobile navigation
   expect(publicationListRequests).toHaveLength(1);
   expect(publicationListRequests.map((url) => url.searchParams.get("status"))).toEqual(["draft"]);
   expect(publicationListRequests.map((url) => url.searchParams.get("limit"))).toEqual(["50"]);
-  expect(scheduleOverviewRequests.length).toBeGreaterThan(0);
+  expect(calendarPublicationRequests.length).toBeGreaterThan(0);
   const draftListMetrics = await draftList.evaluate((element) => ({
     clientHeight: element.clientHeight,
     scrollHeight: element.scrollHeight,
@@ -480,9 +463,7 @@ test("desktop planning sidebar resumes drafts and stays out of mobile navigation
       name: "Resume draft: Resume the launch announcement",
     })
     .click();
-  await expect(page).toHaveURL(
-    new RegExp(`/publications/${encodeURIComponent(draftBody.publication_id)}$`),
-  );
+  await expect(page).toHaveURL(new RegExp(`/publications/${encodeURIComponent(firstDraft.id)}$`));
   const activeDraft = page.getByRole("link", {
     name: "Resume draft: Resume the launch announcement",
   });

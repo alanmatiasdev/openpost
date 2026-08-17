@@ -47,6 +47,32 @@ export async function createWorkspace(request: APIRequestContext, token: string,
   return workspace.json();
 }
 
+export async function createPublication(
+  request: APIRequestContext,
+  token: string,
+  workspaceID: string,
+  sourceText: string,
+  options: { contentProfile?: string; mediaIDs?: string[] } = {},
+) {
+  const publication = await request.post("/api/v1/publications", {
+    headers: { Authorization: `Bearer ${token}` },
+    data: {
+      workspace_id: workspaceID,
+      title: sourceText.slice(0, 80) || "Untitled",
+      content_profile: options.contentProfile ?? "short_text",
+      source_text: sourceText,
+      social_account_ids: [],
+      media: (options.mediaIDs ?? []).map((mediaID) => ({ media_id: mediaID })),
+    },
+  });
+  if (!publication.ok()) {
+    throw new Error(
+      `publication creation failed with ${publication.status()}: ${await publication.text()}`,
+    );
+  }
+  return publication.json() as Promise<{ id: string; publication_id?: string; revision: number }>;
+}
+
 export async function authenticatePage(page: Page, token: string) {
   await page.context().addCookies([
     {
