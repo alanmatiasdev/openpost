@@ -108,7 +108,7 @@ type instanceUserRow struct {
 type SetUserPlanInput struct {
 	UserID string `path:"user_id" doc:"Target user ID"`
 	Body   struct {
-		PlanID string `json:"plan_id" minLength:"1" doc:"Plan ID to assign: starter, founder, pro, team, agency, or empty string to remove the override"`
+		PlanID string `json:"plan_id" doc:"Plan ID to assign: starter, founder, pro, team, agency, or empty string to remove the override"`
 	}
 }
 
@@ -371,7 +371,7 @@ func (h *InstanceAdminHandler) loadInstanceUserPlans(
 		ColumnExpr("subscription.plan_id AS plan_id").
 		Join("JOIN billing_subscriptions AS subscription ON subscription.organization_id = member.organization_id").
 		Where("member.user_id IN (?)", bun.List(userIDs)).
-		Where("subscription.provider = ?", models.BillingProviderPaddle).
+		Where("subscription.provider IN (?)", bun.List(models.BillingGrantingProviders)).
 		Where("LOWER(subscription.status) IN ('active', 'trialing')").
 		Where("subscription.plan_id != ''").
 		OrderExpr("member.user_id ASC").
@@ -539,7 +539,7 @@ func (h *InstanceAdminHandler) removeUserPlanOverride(ctx context.Context, userI
 	result, err := h.db.NewDelete().
 		Model((*models.BillingSubscription)(nil)).
 		Where("organization_id = ?", organizationID).
-		Where("provider = ?", adminOverrideProvider).
+		Where("provider_subscription_id = ?", "admin_override_"+organizationID).
 		Exec(ctx)
 	if err != nil {
 		return nil, huma.Error500InternalServerError("failed to remove user plan override")

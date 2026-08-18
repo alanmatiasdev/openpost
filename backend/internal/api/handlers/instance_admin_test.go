@@ -17,6 +17,7 @@ import (
 	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/services/apitokens"
 	"github.com/openpost/backend/internal/services/auth"
+	"github.com/openpost/backend/internal/services/entitlements"
 	"github.com/openpost/backend/internal/services/sessions"
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun"
@@ -189,6 +190,26 @@ func (s *instanceAdminTestServer) post(
 	var payload bytes.Buffer
 	require.NoError(t, json.NewEncoder(&payload).Encode(body))
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, path, &payload)
+	req.Header.Set("Content-Type", "application/json")
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	rec := httptest.NewRecorder()
+	s.echo.ServeHTTP(rec, req)
+	return rec
+}
+
+func (s *instanceAdminTestServer) put(
+	t *testing.T,
+	path string,
+	body any,
+	token string,
+) *httptest.ResponseRecorder {
+	t.Helper()
+
+	var payload bytes.Buffer
+	require.NoError(t, json.NewEncoder(&payload).Encode(body))
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPut, path, &payload)
 	req.Header.Set("Content-Type", "application/json")
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
@@ -425,6 +446,62 @@ func TestInstanceAdminRoutesRejectScopedCredentials(t *testing.T) {
 	scopedResp := scoped.get(t, "/api/v1/admin/overview", "scoped-token")
 	require.Equal(t, http.StatusForbidden, scopedResp.Code, scopedResp.Body.String())
 	require.Contains(t, scopedResp.Body.String(), "unscoped credentials")
+}
+
+func TestInstanceAdminSetUserPlanCreatesOverrideThatGrantsEntitlements(t *testing.T) {
+	t.Parallel()
+
+	srv := newInstanceAdminTestServer(t, true, browserSessionTestAuthenticator())
+	resp := srv.put(t, "/api/v1/admin/users/user-2/plan", map[string]any{"plan_id": "pro"}, "web-token")
+
+	require.Equal(t, http.StatusOK, resp.Code, resp.Body.String())
+
+	// The override replaces the org's Paddle subscription row with an
+	// admin-managed one, stored without a workspace binding so the FK-safe NULL
+	// applies on Postgres.
+	var sub models.BillingSubscription
+	require.NoError(t, srv.db.NewSelect().Model(&sub).Where("organization_id = ?", "organization-1").Scan(t.Context()))
+	require.Equal(t, models.BillingProviderAdmin, sub.Provider)
+	require.Equal(t, "pro", sub.PlanID)
+	require.Equal(t, "active", sub.Status)
+	require.Empty(t, sub.WorkspaceID)
+	require.Equal(t, "admin_override_organization-1", sub.ProviderSubscriptionID)
+
+	// The override must grant plan entitlements exactly like a paid plan.
+	subscriptionService := entitlements.NewSubscriptionService(srv.db, nil)
+	decision, err := subscriptionService.Check(t.Context(), entitlements.Request{
+		OrganizationID: "organization-1",
+		WorkspaceID:    "workspace-1",
+		Limit:          entitlements.LimitSocialAccounts,
+		Amount:         1,
+	})
+	require.NoError(t, err)
+	require.True(t, decision.Allowed)
+	require.Equal(t, int64(15), decision.Limit)
+}
+
+func TestInstanceAdminRemoveUserPlanOverrideDeletesOverride(t *testing.T) {
+	t.Parallel()
+
+	srv := newInstanceAdminTestServer(t, true, browserSessionTestAuthenticator())
+	assignResp := srv.put(t, "/api/v1/admin/users/user-2/plan", map[string]any{"plan_id": "pro"}, "web-token")
+	require.Equal(t, http.StatusOK, assignResp.Code, assignResp.Body.String())
+
+	removeResp := srv.put(t, "/api/v1/admin/users/user-2/plan", map[string]any{"plan_id": ""}, "web-token")
+	require.Equal(t, http.StatusOK, removeResp.Code, removeResp.Body.String())
+
+	count, err := srv.db.NewSelect().Model((*models.BillingSubscription)(nil)).Where("organization_id = ?", "organization-1").Count(t.Context())
+	require.NoError(t, err)
+	require.Zero(t, count)
+
+	decision, err := entitlements.NewSubscriptionService(srv.db, nil).Check(t.Context(), entitlements.Request{
+		OrganizationID: "organization-1",
+		WorkspaceID:    "workspace-1",
+		Limit:          entitlements.LimitSocialAccounts,
+		Amount:         1,
+	})
+	require.NoError(t, err)
+	require.False(t, decision.Allowed)
 }
 
 func sumInstanceMetric(metrics []InstanceDailyMetric) int {

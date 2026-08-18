@@ -728,13 +728,23 @@ type ProviderUsagePeriodCounter struct {
 	UpdatedAt          time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"updated_at"`
 }
 
-const BillingProviderPaddle = "paddle"
+const (
+	// BillingProviderPaddle identifies subscriptions managed by Paddle checkout.
+	BillingProviderPaddle = "paddle"
+	// BillingProviderAdmin identifies administrator-managed plan overrides that
+	// grant entitlements without a checkout or payment.
+	BillingProviderAdmin = "admin"
+)
+
+// BillingGrantingProviders are the providers whose active subscriptions grant
+// plan entitlements. Administrator overrides grant exactly like paid plans.
+var BillingGrantingProviders = []string{BillingProviderPaddle, BillingProviderAdmin}
 
 type BillingSubscription struct {
 	bun.BaseModel `bun:"table:billing_subscriptions"`
 
 	OrganizationID         string    `bun:",pk" json:"organization_id"`
-	WorkspaceID            string    `json:"workspace_id,omitempty"`
+	WorkspaceID            string    `bun:",nullzero" json:"workspace_id,omitempty"`
 	Provider               string    `bun:",notnull,default:'paddle'" json:"provider"`
 	ProviderCustomerID     string    `bun:",notnull" json:"provider_customer_id"`
 	ProviderSubscriptionID string    `bun:",notnull,unique" json:"provider_subscription_id"`

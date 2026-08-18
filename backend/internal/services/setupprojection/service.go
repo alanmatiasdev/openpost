@@ -86,7 +86,7 @@ func (s *Service) loadState(ctx context.Context, input Input) (state, error) {
 		var subscription models.BillingSubscription
 		err := s.db.NewSelect().Model(&subscription).
 			Where("organization_id = ?", workspace.OrganizationID).
-			Where("provider = ?", models.BillingProviderPaddle).
+			Where("provider IN (?)", bun.List(models.BillingGrantingProviders)).
 			Scan(ctx)
 		if err != nil && err != sql.ErrNoRows {
 			return state{}, err

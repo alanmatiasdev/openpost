@@ -93,7 +93,7 @@ func (s *SubscriptionService) loadActiveUserSubscription(ctx context.Context, us
 		Join("JOIN organization_members AS om ON om.organization_id = bs.organization_id").
 		Join("JOIN organizations AS o ON o.id = bs.organization_id").
 		Where("om.user_id = ?", userID).
-		Where("bs.provider = ?", models.BillingProviderPaddle).
+		Where("bs.provider IN (?)", bun.List(models.BillingGrantingProviders)).
 		Where("o.created_by = ?", userID).
 		Where("om.role IN (?)", bun.List([]string{models.OrganizationRoleOwner, models.OrganizationRoleAdmin})).
 		Where("LOWER(bs.status) IN (?)", bun.List([]string{"active", "trialing"})).
@@ -132,14 +132,14 @@ func (s *SubscriptionService) loadSubscription(ctx context.Context, organization
 	err := s.db.NewSelect().
 		Model(&sub).
 		Where("organization_id = ?", organizationID).
-		Where("provider = ?", models.BillingProviderPaddle).
+		Where("provider IN (?)", bun.List(models.BillingGrantingProviders)).
 		Scan(ctx)
 	if err == sql.ErrNoRows && workspaceID != "" {
 		err = s.db.NewSelect().
 			Model(&sub).
 			Where("workspace_id = ?", workspaceID).
 			Where("(organization_id = '' OR organization_id = ?)", organizationID).
-			Where("provider = ?", models.BillingProviderPaddle).
+			Where("provider IN (?)", bun.List(models.BillingGrantingProviders)).
 			Scan(ctx)
 	}
 	return sub, err
@@ -172,7 +172,7 @@ func (s *SubscriptionService) checkUserWorkspaceLimit(ctx context.Context, req R
 		ColumnExpr("bs.*").
 		Join("JOIN organization_members AS om ON om.organization_id = bs.organization_id").
 		Where("om.user_id = ?", req.UserID).
-		Where("bs.provider = ?", models.BillingProviderPaddle)
+		Where("bs.provider IN (?)", bun.List(models.BillingGrantingProviders))
 	err := query.Scan(ctx)
 	if err != nil && strings.Contains(strings.ToLower(err.Error()), "organization_members") {
 		err = s.db.NewSelect().
@@ -181,7 +181,7 @@ func (s *SubscriptionService) checkUserWorkspaceLimit(ctx context.Context, req R
 			ColumnExpr("bs.*").
 			Join("JOIN workspace_members AS wm ON wm.workspace_id = bs.workspace_id").
 			Where("wm.user_id = ? AND wm.status = ?", req.UserID, models.WorkspaceMemberStatusActive).
-			Where("bs.provider = ?", models.BillingProviderPaddle).
+			Where("bs.provider IN (?)", bun.List(models.BillingGrantingProviders)).
 			Scan(ctx)
 	}
 	if err != nil {

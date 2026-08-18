@@ -239,7 +239,7 @@ func (h *PublicProfileHandler) loadPublicProfilePlan(ctx context.Context, userID
 		ColumnExpr("DISTINCT subscription.plan_id AS plan_id").
 		Join("JOIN billing_subscriptions AS subscription ON subscription.organization_id = member.organization_id").
 		Where("member.user_id = ?", userID).
-		Where("subscription.provider = ?", models.BillingProviderPaddle).
+		Where("subscription.provider IN (?)", bun.List(models.BillingGrantingProviders)).
 		Where("LOWER(subscription.status) IN ('active', 'trialing')").
 		Where("subscription.plan_id != ''").
 		Scan(ctx, &rows)

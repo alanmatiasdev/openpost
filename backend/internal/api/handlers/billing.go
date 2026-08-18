@@ -451,13 +451,13 @@ func (h *BillingHandler) billingStatusForOrganization(
 	err = h.db.NewSelect().
 		Model(&sub).
 		Where("organization_id = ?", organizationID).
-		Where("provider = ?", models.BillingProviderPaddle).
+		Where("provider IN (?)", bun.List(models.BillingGrantingProviders)).
 		Scan(ctx)
 	if err == sql.ErrNoRows && workspaceID != "" {
 		err = h.db.NewSelect().
 			Model(&sub).
 			Where("workspace_id = ?", workspaceID).
-			Where("provider = ?", models.BillingProviderPaddle).
+			Where("provider IN (?)", bun.List(models.BillingGrantingProviders)).
 			Scan(ctx)
 	}
 	if err == sql.ErrNoRows {
@@ -938,7 +938,7 @@ func (h *BillingHandler) resolveWorkspaceBillingScope(
 	hasSubscription, err := h.db.NewSelect().
 		Model((*models.BillingSubscription)(nil)).
 		Where("organization_id = ?", resolvedOrganizationID).
-		Where("provider = ?", models.BillingProviderPaddle).
+		Where("provider IN (?)", bun.List(models.BillingGrantingProviders)).
 		Exists(ctx)
 	if err != nil {
 		return "", "", huma.Error500InternalServerError("failed to resolve billing organization")
@@ -963,7 +963,7 @@ func (h *BillingHandler) resolveWorkspaceBillingScope(
 		ColumnExpr("bs.organization_id").
 		Join("JOIN organization_members AS om ON om.organization_id = bs.organization_id").
 		Where("om.user_id = ?", userID).
-		Where("bs.provider = ?", models.BillingProviderPaddle).
+		Where("bs.provider IN (?)", bun.List(models.BillingGrantingProviders)).
 		Join("JOIN organizations AS o ON o.id = bs.organization_id").
 		Where("o.created_by = ?", userID).
 		Where("LOWER(bs.status) IN (?)", bun.List([]string{"active", "trialing", "past_due"})).

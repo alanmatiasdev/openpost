@@ -552,7 +552,7 @@ func (h *WorkspaceHandler) preferredOrganizationForNewWorkspace(ctx context.Cont
 		Join("JOIN organization_members AS om ON om.organization_id = o.id").
 		Join("JOIN billing_subscriptions AS bs ON bs.organization_id = o.id").
 		Where("om.user_id = ?", userID).
-		Where("bs.provider = ?", models.BillingProviderPaddle).
+		Where("bs.provider IN (?)", bun.List(models.BillingGrantingProviders)).
 		Where("o.created_by = ?", userID).
 		Where("om.role IN (?)", bun.List([]string{models.OrganizationRoleOwner, models.OrganizationRoleAdmin})).
 		Where("LOWER(bs.status) IN (?)", bun.List([]string{"active", "trialing"})).

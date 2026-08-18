@@ -14226,7 +14226,6 @@
 					},
 					"plan_id": {
 						"description": "Plan ID to assign: starter, founder, pro, team, agency, or empty string to remove the override",
-						"minLength": 1,
 						"type": "string"
 					}
 				},

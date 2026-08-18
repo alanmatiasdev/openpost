@@ -130,6 +130,40 @@ func TestSubscriptionServiceIgnoresNonPaddleSubscription(t *testing.T) {
 	require.Equal(t, "active subscription required", decision.Reason)
 }
 
+func TestSubscriptionServiceAppliesAdministratorPlanOverride(t *testing.T) {
+	t.Parallel()
+
+	db := newSubscriptionEntitlementTestDB(t)
+	_, err := db.NewInsert().Model(&models.BillingSubscription{
+		OrganizationID:         "org-1",
+		Provider:               models.BillingProviderAdmin,
+		ProviderCustomerID:     "admin_override",
+		ProviderSubscriptionID: "admin_override_org-1",
+		Status:                 "active",
+		PlanID:                 "pro",
+		EntitlementSnapshot:    `{"limits":{"social_accounts":15,"workspaces":10}}`,
+	}).Exec(t.Context())
+	require.NoError(t, err)
+
+	// The administrator override is stored without a workspace binding, so the
+	// empty workspace_id must persist as NULL, not as a foreign key breaking
+	// empty string.
+	var stored models.BillingSubscription
+	require.NoError(t, db.NewSelect().Model(&stored).Where("organization_id = ?", "org-1").Scan(t.Context()))
+	require.Empty(t, stored.WorkspaceID)
+
+	decision, err := NewSubscriptionService(db, nil).Check(t.Context(), Request{
+		OrganizationID: "org-1",
+		WorkspaceID:    "ws-1",
+		Limit:          LimitSocialAccounts,
+		Amount:         1,
+	})
+
+	require.NoError(t, err)
+	require.True(t, decision.Allowed)
+	require.Equal(t, int64(15), decision.Limit)
+}
+
 func TestSubscriptionServiceDoesNotApplyUsersPlanToAnotherOwnersWorkspace(t *testing.T) {
 	t.Parallel()
 
