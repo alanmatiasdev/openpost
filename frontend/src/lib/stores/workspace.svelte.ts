@@ -27,7 +27,6 @@ interface WorkspaceSettings {
 	timezone: string;
 	week_start: number;
 	random_delay_minutes: number;
-	draft_gap_minutes: number;
 	slot_start_hour: number;
 	slot_end_hour: number;
 	slot_interval_minutes: number;
@@ -50,7 +49,6 @@ function defaultWorkspaceSettings(): WorkspaceSettings {
 		timezone: 'UTC',
 		week_start: 1,
 		random_delay_minutes: 0,
-		draft_gap_minutes: 60,
 		slot_start_hour: 5,
 		slot_end_hour: 23,
 		slot_interval_minutes: 15
@@ -308,7 +306,6 @@ export class WorkspaceContext {
 				timezone: safeWorkspaceTimezone(data.timezone),
 				week_start: data.week_start ?? 1,
 				random_delay_minutes: data.random_delay_minutes ?? 0,
-				draft_gap_minutes: data.draft_gap_minutes ?? 60,
 				slot_start_hour: data.slot_start_hour ?? 5,
 				slot_end_hour: data.slot_end_hour ?? 23,
 				slot_interval_minutes: data.slot_interval_minutes ?? 15
@@ -395,8 +392,6 @@ export class WorkspaceContext {
 			if (updates.week_start !== undefined) this.settings.week_start = updates.week_start;
 			if (updates.random_delay_minutes !== undefined)
 				this.settings.random_delay_minutes = updates.random_delay_minutes;
-			if (updates.draft_gap_minutes !== undefined)
-				this.settings.draft_gap_minutes = updates.draft_gap_minutes;
 			if (updates.slot_start_hour !== undefined)
 				this.settings.slot_start_hour = updates.slot_start_hour;
 			if (updates.slot_end_hour !== undefined) this.settings.slot_end_hour = updates.slot_end_hour;

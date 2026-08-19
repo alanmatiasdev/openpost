@@ -35,7 +35,6 @@ function settings(timezone: string) {
 		week_start: 1,
 		media_cleanup_days: 365,
 		random_delay_minutes: 5,
-		draft_gap_minutes: 60,
 		slot_start_hour: 6,
 		slot_end_hour: 22,
 		slot_interval_minutes: 30

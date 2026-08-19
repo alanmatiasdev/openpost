@@ -6023,10 +6023,6 @@
 					"color": {
 						"type": "string"
 					},
-					"draft_gap_minutes": {
-						"format": "int64",
-						"type": "integer"
-					},
 					"media_cleanup_days": {
 						"default": 14,
 						"deprecated": true,
@@ -6070,7 +6066,6 @@
 					"week_start",
 					"media_cleanup_days",
 					"random_delay_minutes",
-					"draft_gap_minutes",
 					"slot_start_hour",
 					"slot_end_hour",
 					"slot_interval_minutes"
@@ -15803,10 +15798,6 @@
 						"pattern": "^#[0-9A-Fa-f]{6}$",
 						"type": "string"
 					},
-					"draft_gap_minutes": {
-						"format": "int64",
-						"type": "integer"
-					},
 					"media_cleanup_days": {
 						"deprecated": true,
 						"description": "Deprecated and ignored. Temporary media always becomes eligible after 14 unused days.",
@@ -15861,10 +15852,6 @@
 					"color": {
 						"type": "string"
 					},
-					"draft_gap_minutes": {
-						"format": "int64",
-						"type": "integer"
-					},
 					"media_cleanup_days": {
 						"default": 14,
 						"deprecated": true,
@@ -15908,7 +15895,6 @@
 					"week_start",
 					"media_cleanup_days",
 					"random_delay_minutes",
-					"draft_gap_minutes",
 					"slot_start_hour",
 					"slot_end_hour",
 					"slot_interval_minutes"

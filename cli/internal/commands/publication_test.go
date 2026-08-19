@@ -110,7 +110,7 @@ func TestPublicationScheduleCommandUpdatesAndEnqueues(t *testing.T) {
 		case "/api/v1/workspaces":
 			_, _ = w.Write([]byte(`[{"id":"ws-1","name":"Production","created_at":"2026-01-01T00:00:00Z"}]`))
 		case "/api/v1/workspaces/ws-1/settings":
-			_, _ = w.Write([]byte(`{"timezone":"Europe/Lisbon","week_start":1,"media_cleanup_days":30,"random_delay_minutes":0,"draft_gap_minutes":0,"slot_start_hour":9,"slot_end_hour":17,"slot_interval_minutes":30}`))
+			_, _ = w.Write([]byte(`{"timezone":"Europe/Lisbon","week_start":1,"media_cleanup_days":30,"random_delay_minutes":0,"slot_start_hour":9,"slot_end_hour":17,"slot_interval_minutes":30}`))
 		case "/api/v1/publications/pub_1":
 			switch r.Method {
 			case http.MethodGet:

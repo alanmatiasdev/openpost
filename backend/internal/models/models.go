@@ -181,13 +181,16 @@ type Workspace struct {
 	// DeprecatedMediaCleanupDays is a database tombstone for pre-fixed-policy
 	// installations. Runtime cleanup is always governed by medialifecycle's
 	// 14-day inactivity policy; this value is never read or exposed.
-	DeprecatedMediaCleanupDays int       `bun:"media_cleanup_days,default:14" json:"-"`
-	RandomDelayMinutes         int       `bun:",default:0" json:"random_delay_minutes"`   // ±N minutes natural posting
-	DraftGapMinutes            int       `bun:",default:60" json:"draft_gap_minutes"`     // Minimum gap when spilling past configured schedule slots
-	SlotStartHour              int       `bun:",default:5" json:"slot_start_hour"`        // 0-23
-	SlotEndHour                int       `bun:",default:23" json:"slot_end_hour"`         // 0-23
-	SlotIntervalMinutes        int       `bun:",default:15" json:"slot_interval_minutes"` // 1-180
-	CreatedAt                  time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
+	DeprecatedMediaCleanupDays int `bun:"media_cleanup_days,default:14" json:"-"`
+	// DeprecatedDraftGapMinutes is a tombstone for the removed queue-spillover
+	// setting. The queue is strictly slot-based; when today's slots are full
+	// the next slot is on the next day.
+	DeprecatedDraftGapMinutes int       `bun:"draft_gap_minutes,default:60" json:"-"`
+	RandomDelayMinutes        int       `bun:",default:0" json:"random_delay_minutes"`   // ±N minutes natural posting
+	SlotStartHour             int       `bun:",default:5" json:"slot_start_hour"`        // 0-23
+	SlotEndHour               int       `bun:",default:23" json:"slot_end_hour"`         // 0-23
+	SlotIntervalMinutes       int       `bun:",default:15" json:"slot_interval_minutes"` // 1-180
+	CreatedAt                 time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
 }
 
 type User struct {

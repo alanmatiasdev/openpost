@@ -280,7 +280,6 @@ type WorkspaceSettings struct {
 	Timezone            string `json:"timezone"`
 	WeekStart           int    `json:"week_start"`
 	RandomDelayMinutes  int    `json:"random_delay_minutes"`
-	DraftGapMinutes     int    `json:"draft_gap_minutes"`
 	SlotStartHour       int    `json:"slot_start_hour"`
 	SlotEndHour         int    `json:"slot_end_hour"`
 	SlotIntervalMinutes int    `json:"slot_interval_minutes"`

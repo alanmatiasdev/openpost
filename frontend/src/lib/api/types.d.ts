@@ -6818,8 +6818,6 @@ export interface components {
             readonly $schema?: string;
             avatar_url: string;
             color: string;
-            /** Format: int64 */
-            draft_gap_minutes: number;
             /**
              * Format: int64
              * @deprecated
@@ -10969,8 +10967,6 @@ export interface components {
             avatar_url?: string;
             /** @description Workspace accent color as a six-digit hex value */
             color?: string;
-            /** Format: int64 */
-            draft_gap_minutes?: number;
             /**
              * Format: int64
              * @deprecated
@@ -11000,8 +10996,6 @@ export interface components {
             readonly $schema?: string;
             avatar_url: string;
             color: string;
-            /** Format: int64 */
-            draft_gap_minutes: number;
             /**
              * Format: int64
              * @deprecated

@@ -451,7 +451,7 @@ func TestListJobs_WireFormat(t *testing.T) {
 func TestGetWorkspaceSettings_WireFormat(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"timezone":"Europe/Lisbon","week_start":1,"media_cleanup_days":30,"random_delay_minutes":5,"draft_gap_minutes":60,"slot_start_hour":9,"slot_end_hour":18,"slot_interval_minutes":30}`))
+		_, _ = w.Write([]byte(`{"timezone":"Europe/Lisbon","week_start":1,"media_cleanup_days":30,"random_delay_minutes":5,"slot_start_hour":9,"slot_end_hour":18,"slot_interval_minutes":30}`))
 	}))
 	defer srv.Close()
 

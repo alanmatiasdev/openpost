@@ -725,7 +725,6 @@ test("plan selection from signup starts checkout after onboarding", async ({ pag
         timezone: "UTC",
         week_start: 1,
         random_delay_minutes: 0,
-        draft_gap_minutes: 60,
         slot_start_hour: 5,
         slot_end_hour: 23,
         slot_interval_minutes: 15,

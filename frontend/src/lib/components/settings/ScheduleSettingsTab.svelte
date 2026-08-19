@@ -70,7 +70,6 @@
 		try {
 			await workspaceCtx.saveSettings({
 				random_delay_minutes: workspaceCtx.settings.random_delay_minutes,
-				draft_gap_minutes: workspaceCtx.settings.draft_gap_minutes,
 				slot_start_hour: workspaceCtx.settings.slot_start_hour,
 				slot_end_hour: workspaceCtx.settings.slot_end_hour,
 				slot_interval_minutes: workspaceCtx.settings.slot_interval_minutes
@@ -90,10 +89,10 @@
 		}
 	}
 
-	function parseDurationInput(input: string, allowZero: boolean = false): number | null {
+	function parseDurationInput(input: string): number | null {
 		input = input.trim().toLowerCase();
 		const direct = parseInt(input, 10);
-		if (!isNaN(direct) && String(direct) === input && (direct > 0 || (allowZero && direct === 0))) {
+		if (!isNaN(direct) && String(direct) === input && direct > 0) {
 			return direct;
 		}
 		const hourMatch = input.match(/(\d+)\s*h/);
@@ -107,8 +106,6 @@
 
 	let intervalInput = $state(String(workspaceCtx.settings.slot_interval_minutes));
 	let intervalError = $state('');
-	let draftGapInput = $state(String(workspaceCtx.settings.draft_gap_minutes));
-	let draftGapError = $state('');
 
 	function handleIntervalChange(value: string) {
 		intervalInput = value;
@@ -118,17 +115,6 @@
 			workspaceCtx.settings.slot_interval_minutes = parsed;
 		} else {
 			intervalError = m.settings_interval_invalid();
-		}
-	}
-
-	function handleDraftGapChange(value: string) {
-		draftGapInput = value;
-		const parsed = parseDurationInput(value, true);
-		if (parsed !== null && parsed >= 0 && parsed <= 24 * 60) {
-			draftGapError = '';
-			workspaceCtx.settings.draft_gap_minutes = parsed;
-		} else {
-			draftGapError = m.settings_draft_gap_invalid();
 		}
 	}
 
@@ -390,9 +376,7 @@
 
 	$effect(() => {
 		intervalInput = String(workspaceCtx.settings.slot_interval_minutes);
-		draftGapInput = String(workspaceCtx.settings.draft_gap_minutes);
 		intervalError = '';
-		draftGapError = '';
 	});
 
 	$effect(() => {
@@ -657,28 +641,6 @@
 				</Select.Content>
 			</Select.Root>
 		</div>
-		<div class="space-y-2">
-			<label class="text-sm font-medium" for="draft-gap">{m.settings_queue_full()}</label>
-			<Input
-				id="draft-gap"
-				type="text"
-				value={draftGapInput}
-				oninput={(e) => handleDraftGapChange((e.target as HTMLInputElement).value)}
-				placeholder={m.settings_draft_gap_placeholder()}
-				class={draftGapError ? 'border-destructive' : ''}
-				aria-invalid={Boolean(draftGapError)}
-				aria-describedby={draftGapError ? 'draft-gap-error' : undefined}
-			/>
-			{#if draftGapError}
-				<p id="draft-gap-error" class="text-xs text-destructive">{draftGapError}</p>
-			{:else}
-				<p class="text-xs text-muted-foreground">
-					{m.settings_queue_spillover_body({
-						minutes: workspaceCtx.settings.draft_gap_minutes
-					})}
-				</p>
-			{/if}
-		</div>
 	</div>
 </section>
 
@@ -755,7 +717,7 @@
 	label={m.settings_save_changes()}
 	savingLabel={m.settings_save_changes()}
 	{saving}
-	disabled={!workspaceCtx.settingsDirty || Boolean(intervalError || draftGapError)}
+	disabled={!workspaceCtx.settingsDirty || Boolean(intervalError)}
 	onSave={saveSettings}
 />
 
