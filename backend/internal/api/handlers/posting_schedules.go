@@ -414,13 +414,28 @@ type scheduleCandidate struct {
 	when     time.Time
 }
 
-func isSlotOccupied(scheduledPublications []models.Publication, slotTime time.Time) bool {
+func isSlotOccupied(scheduledPublications []models.Publication, slotTime time.Time, workspaceDelayMinutes int) bool {
 	for _, publication := range scheduledPublications {
 		if sameMinute(publication.ScheduledAt, slotTime) {
 			return true
 		}
+		existingDelay := workspaceDelayMinutes
+		if publication.RandomDelayExplicit {
+			existingDelay = publication.RandomDelayMinutes
+		}
+		window := time.Duration(existingDelay+workspaceDelayMinutes) * time.Minute
+		if window > 0 && absDuration(publication.ScheduledAt.Sub(slotTime)) < window {
+			return true
+		}
 	}
 	return false
+}
+
+func absDuration(d time.Duration) time.Duration {
+	if d < 0 {
+		return -d
+	}
+	return d
 }
 
 func findNextConfiguredScheduleSlotTime(
@@ -428,6 +443,7 @@ func findNextConfiguredScheduleSlotTime(
 	loc *time.Location,
 	schedules []models.PostingSchedule,
 	scheduledPublications []models.Publication,
+	workspaceDelayMinutes int,
 ) (*models.PostingSchedule, time.Time) {
 	if len(schedules) == 0 {
 		return nil, time.Time{}
@@ -451,7 +467,7 @@ func findNextConfiguredScheduleSlotTime(
 			if !slotTime.After(now) {
 				continue
 			}
-			if isSlotOccupied(scheduledPublications, slotTime) {
+			if isSlotOccupied(scheduledPublications, slotTime, workspaceDelayMinutes) {
 				continue
 			}
 			candidates = append(candidates, scheduleCandidate{schedule: slot.Schedule, when: slotTime})
@@ -632,7 +648,7 @@ func (h *PostingScheduleHandler) GetNextAvailableSlot(api huma.API) {
 			return nil, huma.Error500InternalServerError("failed to fetch scheduled publications")
 		}
 
-		nextSlot, nextSlotTime := findNextConfiguredScheduleSlotTime(now, loc, schedules, scheduledPublications)
+		nextSlot, nextSlotTime := findNextConfiguredScheduleSlotTime(now, loc, schedules, scheduledPublications, workspace.RandomDelayMinutes)
 
 		if nextSlotTime.IsZero() {
 			return &NextAvailableSlotOutput{Body: struct {

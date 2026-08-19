@@ -3644,7 +3644,7 @@ func (h *MCPHandler) suggestNextSlot(ctx context.Context, userID string, args ma
 		return nil, &mcpError{Code: -32603, Message: "failed to load scheduled publications"}
 	}
 
-	nextSlot, nextSlotTime := findNextConfiguredScheduleSlotTime(now, loc, schedules, scheduledPublications)
+	nextSlot, nextSlotTime := findNextConfiguredScheduleSlotTime(now, loc, schedules, scheduledPublications, workspace.RandomDelayMinutes)
 	suggestion := mcpSlotSuggestion{
 		WorkspaceID: input.WorkspaceID,
 		Timezone:    workspace.Timezone,

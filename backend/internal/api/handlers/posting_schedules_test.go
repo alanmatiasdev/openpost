@@ -19,7 +19,7 @@ func TestFindNextConfiguredScheduleSlotTime_ReturnsFirstFreeSlot(t *testing.T) {
 		{ID: "slot-2", DayOfWeek: int(time.Monday), UTCHour: 17, UTCMinute: 0},
 	}
 
-	slot, when := findNextConfiguredScheduleSlotTime(now, loc, schedules, nil)
+	slot, when := findNextConfiguredScheduleSlotTime(now, loc, schedules, nil, 0)
 	if slot == nil {
 		t.Fatal("expected a slot")
 		return
@@ -44,7 +44,7 @@ func TestFindNextConfiguredScheduleSlotTime_SkipsOccupiedSlotReturnsLaterSlotSam
 		{ScheduledAt: time.Date(2026, time.May, 4, 9, 0, 0, 0, time.UTC)},
 	}
 
-	slot, when := findNextConfiguredScheduleSlotTime(now, loc, schedules, scheduledPublications)
+	slot, when := findNextConfiguredScheduleSlotTime(now, loc, schedules, scheduledPublications, 0)
 	if slot == nil {
 		t.Fatal("expected a slot")
 		return
@@ -68,7 +68,7 @@ func TestFindNextConfiguredScheduleSlotTime_SkipsOccupiedOnlySlotUntilNextWeek(t
 		{ScheduledAt: time.Date(2026, time.May, 4, 6, 0, 0, 0, time.UTC)},
 	}
 
-	slot, when := findNextConfiguredScheduleSlotTime(now, loc, schedules, scheduledPublications)
+	slot, when := findNextConfiguredScheduleSlotTime(now, loc, schedules, scheduledPublications, 0)
 	if slot == nil {
 		t.Fatal("expected a slot")
 		return
@@ -86,7 +86,7 @@ func TestFindNextConfiguredScheduleSlotTime_ReturnsNilWhenNoSchedules(t *testing
 	loc := time.UTC
 	now := time.Date(2026, time.May, 4, 8, 0, 0, 0, loc)
 
-	slot, when := findNextConfiguredScheduleSlotTime(now, loc, nil, nil)
+	slot, when := findNextConfiguredScheduleSlotTime(now, loc, nil, nil, 0)
 	if slot != nil {
 		t.Fatalf("expected nil slot, got %q", slot.ID)
 	}
@@ -103,7 +103,7 @@ func TestFindNextConfiguredScheduleSlotTime_SkipsPastSlot(t *testing.T) {
 		{ID: "slot-2", DayOfWeek: int(time.Monday), UTCHour: 17, UTCMinute: 0},
 	}
 
-	slot, when := findNextConfiguredScheduleSlotTime(now, loc, schedules, nil)
+	slot, when := findNextConfiguredScheduleSlotTime(now, loc, schedules, nil, 0)
 	if slot == nil {
 		t.Fatal("expected a slot")
 		return
@@ -125,7 +125,7 @@ func TestFindNextConfiguredScheduleSlotTime_PrefersEarliestSlotWhenMultipleFree(
 		{ID: "slot-1", DayOfWeek: int(time.Monday), UTCHour: 9, UTCMinute: 0},
 	}
 
-	slot, when := findNextConfiguredScheduleSlotTime(now, loc, schedules, nil)
+	slot, when := findNextConfiguredScheduleSlotTime(now, loc, schedules, nil, 0)
 	if slot == nil {
 		t.Fatal("expected a slot")
 		return
@@ -152,7 +152,7 @@ func TestFindNextConfiguredScheduleSlotTime_SkipsToNextDayWhenAllSlotsOnDayOccup
 		{ScheduledAt: time.Date(2026, time.May, 4, 9, 0, 0, 0, time.UTC)},
 	}
 
-	slot, when := findNextConfiguredScheduleSlotTime(now, loc, schedules, scheduledPublications)
+	slot, when := findNextConfiguredScheduleSlotTime(now, loc, schedules, scheduledPublications, 0)
 	if slot == nil {
 		t.Fatal("expected a slot")
 		return
@@ -179,7 +179,7 @@ func TestFindNextConfiguredScheduleSlotTime_ReturnsNilWhenAllSlotsFullInLookahea
 		scheduledPublications = append(scheduledPublications, models.Publication{ScheduledAt: day})
 	}
 
-	slot, when := findNextConfiguredScheduleSlotTime(now, loc, schedules, scheduledPublications)
+	slot, when := findNextConfiguredScheduleSlotTime(now, loc, schedules, scheduledPublications, 0)
 	if slot != nil {
 		t.Fatalf("expected nil slot after exhausting lookahead, got %q", slot.ID)
 	}
@@ -199,7 +199,7 @@ func TestFindNextConfiguredScheduleSlotTime_HandlesDSTTransition(t *testing.T) {
 		{ID: "slot-1", DayOfWeek: int(time.Sunday), UTCHour: 9, UTCMinute: 0},
 	}
 
-	slot, when := findNextConfiguredScheduleSlotTime(now, loc, schedules, nil)
+	slot, when := findNextConfiguredScheduleSlotTime(now, loc, schedules, nil, 0)
 	if slot == nil {
 		t.Fatal("expected a slot")
 	}
@@ -210,6 +210,53 @@ func TestFindNextConfiguredScheduleSlotTime_HandlesDSTTransition(t *testing.T) {
 	}
 	if when.UTC().Hour() != 9 {
 		t.Fatalf("expected DST-adjusted UTC hour 9 after fallback, got %d", when.UTC().Hour())
+	}
+}
+
+func TestFindNextConfiguredScheduleSlotTime_WindowBlocksNearbyScheduleWithDelay(t *testing.T) {
+	loc := time.UTC
+	now := time.Date(2026, time.May, 4, 8, 0, 0, 0, loc)
+	schedules := []models.PostingSchedule{
+		{ID: "slot-1", DayOfWeek: int(time.Monday), UTCHour: 9, UTCMinute: 0},
+		{ID: "slot-2", DayOfWeek: int(time.Monday), UTCHour: 9, UTCMinute: 30},
+	}
+	scheduledPublications := []models.Publication{
+		{ScheduledAt: time.Date(2026, time.May, 4, 9, 10, 0, 0, time.UTC), RandomDelayExplicit: true, RandomDelayMinutes: 5},
+	}
+	slot, _ := findNextConfiguredScheduleSlotTime(now, loc, schedules, scheduledPublications, 15)
+	if slot == nil {
+		t.Fatal("expected a slot")
+	}
+	if slot.ID != "slot-2" {
+		t.Fatalf("expected 09:00 blocked by 09:10 with +-15 window, should return slot-2, got %q", slot.ID)
+	}
+}
+
+func TestIsSlotOccupied_WindowBlocksWithinDelaySum(t *testing.T) {
+	loc := time.UTC
+	slotTime := time.Date(2026, time.May, 4, 9, 0, 0, 0, loc)
+	pubs := []models.Publication{
+		{ScheduledAt: time.Date(2026, time.May, 4, 9, 10, 0, 0, time.UTC), RandomDelayExplicit: true, RandomDelayMinutes: 15},
+	}
+	if !isSlotOccupied(pubs, slotTime, 15) {
+		t.Fatal("expected window block: 09:10 with 15+15 window should block 09:00")
+	}
+	pubs2 := []models.Publication{
+		{ScheduledAt: time.Date(2026, time.May, 4, 9, 40, 0, 0, time.UTC), RandomDelayExplicit: true, RandomDelayMinutes: 15},
+	}
+	if isSlotOccupied(pubs2, slotTime, 15) {
+		t.Fatal("expected no block: 09:40 diff 40 >=30 should not block 09:00")
+	}
+}
+
+func TestIsSlotOccupied_ExactMinuteStillBlocksWithZeroDelay(t *testing.T) {
+	loc := time.UTC
+	slotTime := time.Date(2026, time.May, 4, 9, 0, 0, 0, loc)
+	pubs := []models.Publication{
+		{ScheduledAt: time.Date(2026, time.May, 4, 9, 0, 30, 0, time.UTC)},
+	}
+	if !isSlotOccupied(pubs, slotTime, 0) {
+		t.Fatal("expected same minute to block even with 0 delay")
 	}
 }
 
