@@ -477,7 +477,7 @@
   },
   "https://docs.openpost.social/usage/analytics": {
     "audience": "Use this page when reviewing saved account and Publication results.",
-    "boundary": "OpenPost saves the account and post numbers that each platform provides. The Analytics page reads saved data, so it does not wait for each platform to reply."
+    "boundary": "Disabling it stops future account and Rendition metric collection for that account without deleting stored metrics and without revoking provider authorization."
   },
   "https://docs.openpost.social/usage/auto-reposts": {
     "audience": "This page is for people configuring native same-network repost rules after publication.",
