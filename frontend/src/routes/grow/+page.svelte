@@ -41,7 +41,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 	import RefreshCwIcon from '@lucide/svelte/icons/refresh-cw';
 	import UsersIcon from '@lucide/svelte/icons/users';
 	import LoaderIcon from '@lucide/svelte/icons/loader-circle';
-	import { isFeatureEffective } from '$lib/feature-disabled';
+	import { isFeatureEffective, loadFeatureStates } from '$lib/feature-disabled';
 
 	type SocialAccount = components['schemas']['AccountResponse'];
 	type FeatureState = components['schemas']['FeatureStateResponse'];
@@ -201,24 +201,9 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 	});
 
 	async function loadAccountFeatures(workspace: string, accountList: SocialAccount[]) {
-		if (!workspace || accountList.length === 0) {
-			accountFeatures = [];
-			featuresLoading = false;
-			return;
-		}
 		featuresLoading = true;
 		try {
-			const ids = accountList.map((a) => a.id).join(',');
-			const res = await client.GET('/account-features', {
-				params: { query: { workspace_id: workspace, account_ids: ids } }
-			});
-			if (res.error || !res.data) {
-				accountFeatures = [];
-				return;
-			}
-			accountFeatures = res.data as FeatureState[];
-		} catch {
-			accountFeatures = [];
+			accountFeatures = await loadFeatureStates(workspace, accountList);
 		} finally {
 			featuresLoading = false;
 		}

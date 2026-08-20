@@ -1,4 +1,5 @@
 import { m } from '$lib/paraglide/messages';
+import { client } from '$lib/api/client';
 import type { components } from '$lib/api/types';
 
 export type FeatureKey = 'messaging' | 'engagement' | 'analytics' | 'grow';
@@ -119,4 +120,21 @@ export function staleGrowReasonDetail(feature: FeatureState): string {
 		return m.feature_disabled_reason_undecided();
 	}
 	return m.grow_feature_disabled_description();
+}
+
+export async function loadFeatureStates(
+	workspaceID: string,
+	accounts: { id: string }[]
+): Promise<FeatureState[]> {
+	if (!workspaceID || accounts.length === 0) return [];
+	const ids = accounts.map((a) => a.id).join(',');
+	try {
+		const res = await client.GET('/account-features', {
+			params: { query: { workspace_id: workspaceID, account_ids: ids } }
+		});
+		if (res.error || !res.data) return [];
+		return res.data as FeatureState[];
+	} catch {
+		return [];
+	}
 }

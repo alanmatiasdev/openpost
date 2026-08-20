@@ -1,4 +1,3 @@
-/* eslint-disable anti-slop/no-unsafe-dictionary-type, anti-slop/no-known-value-widening, anti-slop/no-runtime-typeof, anti-slop/require-safety-comment-for-type-assertion */
 import type { components } from '$lib/api/types';
 import { getPlatformKey } from '$lib/utils';
 
@@ -84,6 +83,8 @@ export const canonicalSyncStatuses = [
 export type CanonicalSyncStatus = (typeof canonicalSyncStatuses)[number];
 
 export function isCanonicalSyncStatus(status: string): status is CanonicalSyncStatus {
+	// safety: canonicalSyncStatuses is a const tuple of valid statuses, widening to readonly string[] allows safe includes check
+	// eslint-disable-next-line anti-slop/require-safety-comment-for-type-assertion -- safe widening for includes check
 	return (canonicalSyncStatuses as readonly string[]).includes(status);
 }
 
@@ -233,6 +234,7 @@ export class StaleGuard {
 }
 
 export function prefersReducedMotion(): boolean {
+	// eslint-disable-next-line anti-slop/no-runtime-typeof -- safe: guards for SSR where window is undefined
 	if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
 	return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }

@@ -21,7 +21,11 @@
 	import * as Select from '$lib/components/ui/select';
 	import InboxIcon from '@lucide/svelte/icons/inbox';
 	import RefreshIcon from '@lucide/svelte/icons/refresh-cw';
-	import { allFeatureEffectiveDisabled, collectiveDisabledReason } from '$lib/feature-disabled';
+	import {
+		allFeatureEffectiveDisabled,
+		collectiveDisabledReason,
+		loadFeatureStates
+	} from '$lib/feature-disabled';
 	import type { components as FeatureComponents } from '$lib/api/types';
 	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
 	import ArchiveIcon from '@lucide/svelte/icons/archive';
@@ -143,23 +147,7 @@
 	});
 
 	async function loadMessagingFeatures(workspace: string, accs: SocialAccount[]) {
-		if (!workspace || accs.length === 0) {
-			messagingFeatures = [];
-			return;
-		}
-		try {
-			const ids = accs.map((a) => a.id).join(',');
-			const res = await client.GET('/account-features', {
-				params: { query: { workspace_id: workspace, account_ids: ids } }
-			});
-			if (res.error || !res.data) {
-				messagingFeatures = [];
-				return;
-			}
-			messagingFeatures = res.data as FeatureState[];
-		} catch {
-			messagingFeatures = [];
-		}
+		messagingFeatures = await loadFeatureStates(workspace, accs);
 	}
 
 	async function loadConversations(cursor = '', append = false) {

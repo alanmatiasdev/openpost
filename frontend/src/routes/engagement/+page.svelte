@@ -40,7 +40,11 @@
 	import HeartIcon from '@lucide/svelte/icons/heart';
 	import CircleAlertIcon from '@lucide/svelte/icons/circle-alert';
 	import DestinationOptionCombobox from '$lib/components/destination-option-combobox.svelte';
-	import { allFeatureEffectiveDisabled, collectiveDisabledReason } from '$lib/feature-disabled';
+	import {
+		allFeatureEffectiveDisabled,
+		collectiveDisabledReason,
+		loadFeatureStates
+	} from '$lib/feature-disabled';
 	import type { components as FeatureComponents } from '$lib/api/types';
 
 	type EngagementItem = components['schemas']['EngagementItem'];
@@ -201,23 +205,7 @@
 	});
 
 	async function loadEngagementFeatures(workspace: string, accs: SocialAccount[]) {
-		if (!workspace || accs.length === 0) {
-			engagementFeatures = [];
-			return;
-		}
-		try {
-			const ids = accs.map((a) => a.id).join(',');
-			const res = await client.GET('/account-features', {
-				params: { query: { workspace_id: workspace, account_ids: ids } }
-			});
-			if (res.error || !res.data) {
-				engagementFeatures = [];
-				return;
-			}
-			engagementFeatures = res.data as FeatureState[];
-		} catch {
-			engagementFeatures = [];
-		}
+		engagementFeatures = await loadFeatureStates(workspace, accs);
 	}
 
 	async function loadEngagement(cursor = '', append = false) {

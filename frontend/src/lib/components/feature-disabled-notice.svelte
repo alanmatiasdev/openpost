@@ -32,14 +32,6 @@
 				: ''
 	);
 
-	const detailForGrow = $derived(
-		staleFeature && feature === 'grow' && staleFeature.availability !== 'available'
-			? staleFeature.availability === 'missing_scope'
-				? (staleFeature.missing_scopes ?? staleFeature.required_scopes ?? []).join(', ')
-				: ''
-			: ''
-	);
-
 	let actionTone: 'warning' | 'info' = $derived(
 		staleFeature?.availability === 'plan_restricted' ||
 			features?.some((f) => f.availability === 'plan_restricted')

@@ -615,12 +615,14 @@
 				body: {
 					workspace_id: selectedWorkspaceId,
 					handle: blueskyHandle.trim(),
-					app_password: blueskyAppPassword.trim()
+					app_password: blueskyAppPassword.trim(),
+					account_management_mode: mode
 				}
 			});
 			if (err) throw new Error(err.detail || m.accounts_login_failed());
 			blueskyModalOpen = false;
 			if (data?.feature_setup_required && data.new_account_ids?.length) {
+				localStorage.setItem('oauth_account_management_mode', mode);
 				await goto(
 					resolveAppPath(
 						accountSetupHref({
@@ -668,12 +670,14 @@
 			const { data, error: err } = await client.POST('/accounts/discord/webhook', {
 				body: {
 					workspace_id: selectedWorkspaceId,
-					webhook_url: discordWebhookUrl.trim()
+					webhook_url: discordWebhookUrl.trim(),
+					account_management_mode: mode
 				}
 			});
 			if (err) throw new Error(err.detail || m.accounts_connect_failed());
 			discordModalOpen = false;
 			if (data?.feature_setup_required && data.new_account_ids?.length) {
+				localStorage.setItem('oauth_account_management_mode', mode);
 				await goto(
 					resolveAppPath(
 						accountSetupHref({

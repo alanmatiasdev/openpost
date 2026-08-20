@@ -26,7 +26,11 @@ FORM: Publications are the primary rows; provider renditions disclose in place w
 	import { m } from '$lib/paraglide/messages';
 	import { getLocaleTag } from '$lib/i18n';
 	import { hasEngagementMeasurement, type AnalyticsSortMode } from '$lib/analytics-overview';
-	import { allFeatureEffectiveDisabled, collectiveDisabledReason } from '$lib/feature-disabled';
+	import {
+		allFeatureEffectiveDisabled,
+		collectiveDisabledReason,
+		loadFeatureStates
+	} from '$lib/feature-disabled';
 	import type { components as FeatureComponents } from '$lib/api/types';
 
 	type AnalyticsOverview = components['schemas']['Overview'];
@@ -272,23 +276,7 @@ FORM: Publications are the primary rows; provider renditions disclose in place w
 	}
 
 	async function loadAnalyticsFeatures(workspace: string, accs: AnalyticsAccount[]) {
-		if (!workspace || accs.length === 0) {
-			analyticsFeatures = [];
-			return;
-		}
-		try {
-			const ids = accs.map((a) => a.id).join(',');
-			const res = await client.GET('/account-features', {
-				params: { query: { workspace_id: workspace, account_ids: ids } }
-			});
-			if (res.error || !res.data) {
-				analyticsFeatures = [];
-				return;
-			}
-			analyticsFeatures = res.data as FeatureState[];
-		} catch {
-			analyticsFeatures = [];
-		}
+		analyticsFeatures = await loadFeatureStates(workspace, accs);
 	}
 
 	async function refreshAnalytics() {

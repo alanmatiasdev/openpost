@@ -120,12 +120,17 @@ export function interpretAccountSetupURL(url: URL): AccountSetupState | null {
 	return { workspaceID, accountIDs, newAccountIDs, openFreshComposer };
 }
 
-export function continuationHrefForNormalizedConnection(state: AccountSetupState & { featureSetupRequired: boolean }): string {
+export function continuationHrefForNormalizedConnection(
+	state: AccountSetupState & { featureSetupRequired: boolean }
+): string {
 	if (state.featureSetupRequired && state.newAccountIDs.length > 0) {
 		return accountSetupHref(state);
 	}
 	if (state.openFreshComposer) {
-		const q = new URLSearchParams({ workspace_id: state.workspaceID, account_ids: state.accountIDs.join(',') });
+		const q = new URLSearchParams({
+			workspace_id: state.workspaceID,
+			account_ids: state.accountIDs.join(',')
+		});
 		return `/?${q.toString()}`;
 	}
 	return accountManagementReturnHref();

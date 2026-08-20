@@ -92,7 +92,7 @@
 			for={`feature-${accountId}-${key}`}
 			class={[
 				'flex cursor-pointer gap-3 rounded-md border px-3 py-3 transition-colors',
-				'min-h-11 sm:min-h-0',
+				'min-h-11',
 				disabled ? 'cursor-not-allowed bg-muted/20 opacity-85' : 'hover:bg-muted/30',
 				checkedFor(key) && !disabled ? 'border-primary/30 bg-primary/5' : 'border-border bg-card'
 			]}
