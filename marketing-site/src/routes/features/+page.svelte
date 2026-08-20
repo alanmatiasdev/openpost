@@ -168,7 +168,7 @@ FORM: A workshop bench of alternating capability stations, candidate three from 
 									src={feature.proof.src}
 									alt={feature.proof.alt}
 									width="1440"
-									height="900"
+									height="960"
 									loading="lazy"
 									decoding="async"
 								/>

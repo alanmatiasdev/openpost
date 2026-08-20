@@ -134,7 +134,7 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 							src={story.image}
 							alt={story.alt}
 							width="1440"
-							height="900"
+							height="960"
 							loading="lazy"
 							decoding="async"
 						/>
@@ -400,7 +400,7 @@ FORM: A focused product demonstration paced between dark studio stages, light wo
 	:global(.product-shot) img {
 		display: block;
 		width: 100%;
-		aspect-ratio: 16 / 10;
+		aspect-ratio: 3 / 2;
 		border-radius: 0.8rem;
 		object-fit: contain;
 		object-position: top;

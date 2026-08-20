@@ -47,7 +47,7 @@
 								src="/assets/screenshots/main-dark.png"
 								alt="OpenPost publishing workspace"
 								width="1440"
-								height="900"
+								height="960"
 								loading="lazy"
 								decoding="async"
 							/>

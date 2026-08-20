@@ -67,20 +67,17 @@ OpenPost does not include a CRM, ad manager, social listening, or large-company 
 
 OpenPost is one product with a Hosted service and a Self-hosted deployment path. Self-hosting has no software fee, but it is not a zero-price Hosted service plan: the operator owns infrastructure, upgrades, backups, provider projects, data practices, and user support. [Review the complete self-hosting boundary](https://openpost.social/self-hosted).
 
-<table>
-  <tr>
-    <td width="50%">
-      <img alt="Connected social accounts in OpenPost" src="./assets/screenshots/accounts-dark.png">
-    </td>
-    <td width="50%">
-      <img alt="Reusable social assets in the OpenPost media library" src="./assets/screenshots/media-dark.png">
-    </td>
-  </tr>
-  <tr>
-    <td align="center"><strong>Connect social accounts to each workspace</strong></td>
-    <td align="center"><strong>Reuse files and see where each one is used</strong></td>
-  </tr>
-</table>
+<p align="center">
+  <img alt="Connected social accounts in OpenPost" src="./assets/screenshots/accounts-dark.png" width="100%">
+  <br>
+  <strong>Connect social accounts to each workspace</strong>
+</p>
+
+<p align="center">
+  <img alt="Reusable social assets in the OpenPost media library" src="./assets/screenshots/media-dark.png" width="100%">
+  <br>
+  <strong>Reuse files and see where each one is used</strong>
+</p>
 
 ## Provider implementations
 
