@@ -80,8 +80,6 @@ OpenPost starts with the work you already have: launches, updates, lessons, and 
   </tr>
 </table>
 
-<p align="center"><sub>These images come from the current app with deterministic demo data. Run <code>bun run capture:product-screenshots</code> to rebuild every screenshot.</sub></p>
-
 ## What OpenPost gives you
 
 - **A destination-aware composer.** Write a post, thread, story, short video, or video, then adapt text, media, format, timing, and provider settings per account.
@@ -142,6 +140,17 @@ bun run verify
 ```
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) and the [development docs](https://docs.openpost.social/development/setup) before opening a pull request.
+
+## Help OpenPost grow
+
+If OpenPost is useful to you, **star the repository**. It helps other self-hosters find the project and tells us which work is worth continuing.
+
+<!-- star-history:start -->
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/star-history/star-history-dark.svg">
+  <img alt="Star history" src="assets/star-history/star-history-light.svg">
+</picture>
+<!-- star-history:end -->
 
 ## License and security
 
