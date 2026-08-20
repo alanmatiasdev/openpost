@@ -22,9 +22,17 @@
 		onFollow: (id: string) => void;
 		onDismiss: (id: string) => void;
 		onOpenProfile: (rec: RecommendationView) => void;
+		disableFollow?: boolean;
 	}
 
-	let { recommendation, position: _position, onFollow, onDismiss, onOpenProfile }: Props = $props();
+	let {
+		recommendation,
+		position: _position,
+		onFollow,
+		onDismiss,
+		onOpenProfile,
+		disableFollow = false
+	}: Props = $props();
 
 	const localeTag = $derived(getLocaleTag());
 	const platformKey = $derived(getPlatformKey(recommendation.platform));
@@ -201,7 +209,7 @@
 			variant={followState.variant}
 			size="sm"
 			class="min-h-11 flex-1 md:min-h-9"
-			disabled={followState.disabled}
+			disabled={followState.disabled || disableFollow}
 			onclick={handleFollow}
 			aria-label={followAriaLabel}
 		>
