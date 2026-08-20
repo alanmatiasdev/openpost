@@ -96,6 +96,11 @@ func newAccountFeaturesTestServer(t *testing.T, providers map[string]platform.Ad
 		(*models.SocialAccount)(nil),
 		(*models.AccountFeature)(nil),
 		(*models.User)(nil),
+		(*models.Job)(nil),
+		(*models.AnalyticsSyncState)(nil),
+		(*models.EngagementSyncState)(nil),
+		(*models.MessagingSyncState)(nil),
+		(*models.GrowthSyncState)(nil),
 	)
 	ctx := context.Background()
 	_, err := db.NewInsert().Model(&models.User{ID: "user-1", Email: "user@example.com"}).Exec(ctx)
