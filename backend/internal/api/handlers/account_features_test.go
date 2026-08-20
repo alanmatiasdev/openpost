@@ -40,9 +40,13 @@ type fakeEngagementProvider struct {
 }
 
 func (f fakeEngagementProvider) EngagementSupport() platform.EngagementSupport { return f.support }
-func (fakeEngagementProvider) ListComments(_ context.Context, _, _, _ string) ([]platform.Comment, error) { return nil, nil }
-func (fakeEngagementProvider) ReplyToComment(_ context.Context, _, _, _, _ string) (string, error) { return "", nil }
-func (fakeEngagementProvider) HideComment(_ context.Context, _, _, _ string) error { return nil }
+func (fakeEngagementProvider) ListComments(_ context.Context, _, _, _ string) ([]platform.Comment, error) {
+	return nil, nil
+}
+func (fakeEngagementProvider) ReplyToComment(_ context.Context, _, _, _, _ string) (string, error) {
+	return "", nil
+}
+func (fakeEngagementProvider) HideComment(_ context.Context, _, _, _ string) error   { return nil }
 func (fakeEngagementProvider) DeleteComment(_ context.Context, _, _, _ string) error { return nil }
 
 type fakeAnalyticsProvider struct {
@@ -347,16 +351,16 @@ func TestAccountFeaturesUnknownFeatureRejected(t *testing.T) {
 func TestAccountFeaturesAvailabilityStates(t *testing.T) {
 	t.Parallel()
 	providers := map[string]platform.Adapter{
-		"x":            fakeMessagingProvider{support: platform.MessagingSupport{Enabled: false, Unavailable: "x does not support dm"}}, // unsupported
-		"facebook":     fakeMessagingProvider{support: platform.MessagingSupport{Enabled: true, RequiredScopes: []string{"pages_messaging"}}},
-		"bluesky":      fakeGrowthProvider{},
-		"discord":      fakeUnsupportedProvider{},
-		"instagram":    fakeAnalyticsProvider{support: platform.AnalyticsSupport{Account: true, ContentRequiredScopes: []string{"instagram_manage_insights"}}},
+		"x":         fakeMessagingProvider{support: platform.MessagingSupport{Enabled: false, Unavailable: "x does not support dm"}}, // unsupported
+		"facebook":  fakeMessagingProvider{support: platform.MessagingSupport{Enabled: true, RequiredScopes: []string{"pages_messaging"}}},
+		"bluesky":   fakeGrowthProvider{},
+		"discord":   fakeUnsupportedProvider{},
+		"instagram": fakeAnalyticsProvider{support: platform.AnalyticsSupport{Account: true, ContentRequiredScopes: []string{"instagram_manage_insights"}}},
 	}
 	plan := fakePlanPolicy{restricted: "analytics"}
 	srv := newAccountFeaturesTestServer(t, providers, plan)
 	seedAccount(t, srv.db, "acc-x", "ws-1", "x", "")
-	seedAccount(t, srv.db, "acc-fb", "ws-1", "facebook", "") // missing scope -> missing_scope
+	seedAccount(t, srv.db, "acc-fb", "ws-1", "facebook", "")  // missing scope -> missing_scope
 	seedAccount(t, srv.db, "acc-ig", "ws-1", "instagram", "") // plan restricted for analytics, but support exists
 	seedAccount(t, srv.db, "acc-discord", "ws-1", "discord", "")
 	seedAccount(t, srv.db, "acc-bsky", "ws-1", "bluesky", "")
@@ -466,7 +470,9 @@ func TestLegacyMessagingShim(t *testing.T) {
 		require.NoError(t, json.Unmarshal(resp.Body.Bytes(), &wrap))
 		list = wrap["Body"]
 		if len(list) == 0 {
-			var alt struct{ Body []AccountResponse `json:"Body"` }
+			var alt struct {
+				Body []AccountResponse `json:"Body"`
+			}
 			_ = json.Unmarshal(resp.Body.Bytes(), &alt)
 			list = alt.Body
 		}

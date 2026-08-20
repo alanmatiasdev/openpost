@@ -74,7 +74,9 @@ func doNormCallback(t *testing.T, e *echo.Echo, provider string, workspaceID str
 	}
 	authResp := oauthSelectionRequest(t, e, http.MethodGet, q, nil, true)
 	require.Equal(t, http.StatusOK, authResp.Code, authResp.Body.String())
-	var body struct{ URL string `json:"url"` }
+	var body struct {
+		URL string `json:"url"`
+	}
 	require.NoError(t, json.Unmarshal(authResp.Body.Bytes(), &body))
 	u, _ := url.Parse(body.URL)
 	state := u.Query().Get("state")
@@ -219,7 +221,9 @@ func TestNormCompleteSelectionContainsNormalizedFields(t *testing.T) {
 	authQ := "/api/v1/accounts/facebook/auth-url?workspace_id=ws-1"
 	authResp := oauthSelectionRequest(t, e2, http.MethodGet, authQ, nil, true)
 	require.Equal(t, http.StatusOK, authResp.Code)
-	var authBody struct{ URL string `json:"url"` }
+	var authBody struct {
+		URL string `json:"url"`
+	}
 	require.NoError(t, json.Unmarshal(authResp.Body.Bytes(), &authBody))
 	u, _ := url.Parse(authBody.URL)
 	state := u.Query().Get("state")

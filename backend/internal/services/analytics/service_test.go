@@ -56,6 +56,8 @@ func TestOverviewPaginationKeepsAllResultsReachableInStableOrder(t *testing.T) {
 	require.NoError(t, err)
 
 	service := NewService(db, staticTokenSource{})
+
+	service.SetFeatureGate(alwaysEnabledGate{})
 	service.now = func() time.Time { return now }
 	options := normalizeOverviewOptions(OverviewOptions{Sort: "newest", Limit: 50})
 	first, err := service.OverviewWithOptions(ctx, account.WorkspaceID, 30, options)
@@ -131,6 +133,7 @@ func TestAccountSyncStoresHistoryAndBacksOffWhenUnchanged(t *testing.T) {
 
 	now := time.Date(2026, 7, 26, 10, 0, 0, 0, time.UTC)
 	service := NewService(db, staticTokenSource{})
+	service.SetFeatureGate(alwaysEnabledGate{})
 	service.now = func() time.Time { return now }
 	service.SetProvider("test", &fakeAnalyticsAdapter{
 		support: platform.AnalyticsSupport{Account: true},
@@ -177,6 +180,7 @@ func TestAccountSyncDeduplicatesSameCaptureWindow(t *testing.T) {
 	account := seedAnalyticsAccount(t, db, "")
 	now := time.Date(2026, 7, 26, 10, 0, 30, 0, time.UTC)
 	service := NewService(db, staticTokenSource{})
+	service.SetFeatureGate(alwaysEnabledGate{})
 	service.now = func() time.Time { return now }
 	service.SetProvider("test", &fakeAnalyticsAdapter{
 		support: platform.AnalyticsSupport{Account: true},
@@ -198,6 +202,7 @@ func TestRefreshRecordsMissingScopeWithoutCallingProvider(t *testing.T) {
 	ctx := context.Background()
 	account := seedAnalyticsAccount(t, db, "basic")
 	service := NewService(db, staticTokenSource{})
+	service.SetFeatureGate(alwaysEnabledGate{})
 	service.SetProvider("test", &fakeAnalyticsAdapter{
 		support: platform.AnalyticsSupport{
 			Account:               true,
@@ -221,6 +226,7 @@ func TestProviderFailurePreservesLastSuccessWithoutRetryingQueueJob(t *testing.T
 	account := seedAnalyticsAccount(t, db, "")
 	now := time.Date(2026, 7, 26, 10, 0, 0, 0, time.UTC)
 	service := NewService(db, staticTokenSource{})
+	service.SetFeatureGate(alwaysEnabledGate{})
 	service.now = func() time.Time { return now }
 	adapter := &fakeAnalyticsAdapter{
 		support: platform.AnalyticsSupport{Account: true},
@@ -259,6 +265,7 @@ func TestOverviewAggregatesLatestProviderMetricsWithoutBlendingExposureKinds(t *
 	account := seedAnalyticsAccount(t, db, "")
 	now := time.Date(2026, 7, 26, 12, 0, 0, 0, time.UTC)
 	service := NewService(db, staticTokenSource{})
+	service.SetFeatureGate(alwaysEnabledGate{})
 	service.now = func() time.Time { return now }
 	service.SetProvider("test", &fakeAnalyticsAdapter{
 		support: platform.AnalyticsSupport{Account: true, Content: true},
@@ -385,6 +392,8 @@ func TestOverviewGroupsRenditionsAndOmitsProviderDeletedContent(t *testing.T) {
 	}
 
 	service := NewService(db, staticTokenSource{})
+
+	service.SetFeatureGate(alwaysEnabledGate{})
 	service.now = func() time.Time { return now }
 	overview, err := service.Overview(ctx, account.WorkspaceID, 30)
 	require.NoError(t, err)
@@ -426,6 +435,8 @@ func TestHistoricalRenditionUsesActiveReplacementCredentialsAfterReconnect(t *te
 	require.NoError(t, err)
 
 	service := NewService(db, staticTokenSource{})
+
+	service.SetFeatureGate(alwaysEnabledGate{})
 	service.now = func() time.Time { return now }
 	service.SetProvider("test", &fakeAnalyticsAdapter{
 		support: platform.AnalyticsSupport{Content: true},
@@ -451,6 +462,7 @@ func TestScheduleSweepKeepsOnePendingChainAcrossRestarts(t *testing.T) {
 	db := newAnalyticsTestDB(t)
 	ctx := context.Background()
 	service := NewService(db, staticTokenSource{})
+	service.SetFeatureGate(alwaysEnabledGate{})
 	first := time.Date(2026, 7, 26, 10, 0, 0, 0, time.UTC)
 
 	require.NoError(t, service.ScheduleSweep(ctx, first))
@@ -482,6 +494,7 @@ func TestRefreshCountsOnlyNewAnalyticsJobs(t *testing.T) {
 	ctx := context.Background()
 	account := seedAnalyticsAccount(t, db, "")
 	service := NewService(db, staticTokenSource{})
+	service.SetFeatureGate(alwaysEnabledGate{})
 	service.SetProvider("test", &fakeAnalyticsAdapter{
 		support: platform.AnalyticsSupport{Account: true},
 	})
@@ -495,6 +508,12 @@ func TestRefreshCountsOnlyNewAnalyticsJobs(t *testing.T) {
 	require.Zero(t, queued)
 }
 
+
+type alwaysEnabledGate struct{}
+
+func (alwaysEnabledGate) IsEffectiveEnabled(context.Context, string, string) (bool, error) {
+	return true, nil
+}
 func newAnalyticsTestDB(t *testing.T) *bun.DB {
 	t.Helper()
 	db, err := database.InitDB("file:" + t.Name() + "?mode=memory&cache=shared")

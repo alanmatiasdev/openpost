@@ -31,6 +31,7 @@ func TestApplicationEnforcesWorkspaceAccessAtItsPublicSeams(t *testing.T) {
 		require.NoError(t, err)
 	}
 	service := NewService(db, nil, nil)
+	service.SetFeatureGate(alwaysEnabledGate{})
 
 	page, err := service.ListEngagement(ctx, Actor{UserID: "viewer"}, Query{WorkspaceID: "workspace-1"})
 	require.NoError(t, err)
@@ -46,6 +47,7 @@ func TestApplicationEnforcesWorkspaceAccessAtItsPublicSeams(t *testing.T) {
 func TestRecurringEngagementChainIsIndependentAndUnique(t *testing.T) {
 	db := engagementTestDB(t)
 	service := NewService(db, nil, nil)
+	service.SetFeatureGate(alwaysEnabledGate{})
 	runAt := time.Now().UTC().Truncate(time.Second)
 	require.NoError(t, service.ScheduleSweep(t.Context(), runAt))
 	require.NoError(t, service.ScheduleSweep(t.Context(), runAt.Add(time.Minute)))
@@ -58,6 +60,7 @@ func TestRecurringEngagementChainIsIndependentAndUnique(t *testing.T) {
 	require.Equal(t, jobregistry.ExecuteEngagement, definition.Execution)
 	require.Equal(t, jobregistry.RecoverySupersedeSweep, definition.Recovery)
 }
+
 
 func engagementTestDB(t *testing.T) *bun.DB {
 	t.Helper()

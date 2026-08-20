@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -439,9 +440,10 @@ func TestFeatureGateUnknownMissingFailClosed(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 0, queued)
 
-	// Save unknown feature should be rejected by BatchSave (already tested) but check IsEffectiveEnabled for unknown returns false
+	// Save unknown feature should be rejected by BatchSave (already tested) but check IsEffectiveEnabled for unknown returns false with typed error
 	enabled, err := af.IsEffectiveEnabled(ctx, "acc-unk", "unknown_feature")
-	require.NoError(t, err)
+	require.Error(t, err)
+	require.True(t, errors.Is(err, accountfeatures.ErrUnknownFeature))
 	require.False(t, enabled)
 
 	// Missing scope -> add required scope but not granted, then enabled but still ineffective
@@ -622,7 +624,9 @@ func TestFeatureGateStaleCallerCannotBypass(t *testing.T) {
 
 type staticTokenSourceFeature struct{}
 
-func (staticTokenSourceFeature) GetValidAccessToken(context.Context, string) (string, error) { return "tok", nil }
+func (staticTokenSourceFeature) GetValidAccessToken(context.Context, string) (string, error) {
+	return "tok", nil
+}
 
 func workspaceAccessActor() workspaceaccess.ActorFacts {
 	return workspaceaccess.ActorFacts{UserID: "user-1"}

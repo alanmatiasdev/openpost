@@ -160,6 +160,12 @@ type commentsTestServer struct {
 	providers map[string]platform.Adapter
 }
 
+type alwaysEnabledCommentsGate struct{}
+
+func (alwaysEnabledCommentsGate) IsEffectiveEnabled(context.Context, string, string) (bool, error) {
+	return true, nil
+}
+
 func newCommentsTestServer(t *testing.T, providers map[string]platform.Adapter) *commentsTestServer {
 	t.Helper()
 
@@ -193,7 +199,9 @@ func newCommentsTestServer(t *testing.T, providers map[string]platform.Adapter) 
 
 	e := echo.New()
 	api := humaecho.NewWithGroup(e, e.Group("/api/v1"), huma.DefaultConfig("Test", "1.0.0"))
-	NewCommentHandler(db, testAuthenticator{}, providers, encryptor).RegisterRoutes(api)
+	handler := NewCommentHandler(db, testAuthenticator{}, providers, encryptor)
+	handler.SetFeatureGate(alwaysEnabledCommentsGate{})
+	handler.RegisterRoutes(api)
 	return &commentsTestServer{echo: e, db: db, providers: providers}
 }
 
@@ -229,6 +237,7 @@ func (s *commentsTestServer) runQueuedCommentJob(t *testing.T) error {
 		Where("type = ?", engagementservice.JobTypeEngagementAct).
 		Order("created_at DESC").Limit(1).Scan(t.Context()))
 	service := engagementservice.NewService(s.db, commentsTokenSource{}, nil)
+	service.SetFeatureGate(alwaysEnabledCommentsGate{})
 	for name, adapter := range s.providers {
 		if engagementAdapter, ok := adapter.(platform.EngagementAdapter); ok {
 			service.SetProvider(name, engagementAdapter)

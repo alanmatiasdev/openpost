@@ -18,6 +18,12 @@ import (
 	"github.com/uptrace/bun/dialect/sqlitedialect"
 )
 
+
+type alwaysEnabledGate struct{}
+
+func (alwaysEnabledGate) IsEffectiveEnabled(context.Context, string, string) (bool, error) {
+	return true, nil
+}
 type staticTokenSource struct{}
 
 func (staticTokenSource) GetValidAccessToken(context.Context, string) (string, error) {
@@ -82,6 +88,7 @@ func TestMessageSendRecoveryDoesNotReplayAcceptedProviderWrite(t *testing.T) {
 
 	messenger := &fakeMessenger{}
 	service := NewService(db, staticTokenSource{}, nil)
+	service.SetFeatureGate(alwaysEnabledGate{})
 	service.now = func() time.Time { return now }
 	service.SetProvider("facebook", messenger)
 	require.NoError(t, service.sendMessage(ctx, message.ID))
@@ -133,6 +140,7 @@ func TestMessageSendNeverReplaysAmbiguousProviderWrite(t *testing.T) {
 		},
 	}
 	service := NewService(db, staticTokenSource{}, nil)
+	service.SetFeatureGate(alwaysEnabledGate{})
 	service.now = func() time.Time { return now }
 	service.SetProvider("facebook", provider)
 
@@ -170,6 +178,7 @@ func TestMessageSyncRequiresOptInAndIsIdempotent(t *testing.T) {
 		}},
 	}}
 	service := NewService(db, staticTokenSource{}, nil)
+	service.SetFeatureGate(alwaysEnabledGate{})
 	service.now = func() time.Time { return now }
 	service.SetProvider("bluesky", messenger)
 
@@ -221,6 +230,8 @@ func TestListMessagesOrdersStoredMessagesByProviderTime(t *testing.T) {
 	insertModel(ctx, t, db, &messages)
 
 	service := NewService(db, staticTokenSource{}, nil)
+
+	service.SetFeatureGate(alwaysEnabledGate{})
 	page, err := service.ListMessages(ctx, Actor{UserID: "user-1"}, MessageQuery{WorkspaceID: "workspace-1", ConversationID: conversation.ID, Limit: 100})
 	require.NoError(t, err)
 	require.Len(t, page.Items, 2)
@@ -255,6 +266,7 @@ func TestListMessagesCursorReachesEveryRecordWithoutGapsOrDuplicates(t *testing.
 	}
 	insertModel(ctx, t, db, &messages)
 	service := NewService(db, staticTokenSource{}, nil)
+	service.SetFeatureGate(alwaysEnabledGate{})
 
 	seen := make([]string, 0, len(messages))
 	var cursor *MessageCursor
@@ -318,6 +330,7 @@ func TestMessageSyncAlwaysChecksNewestPageWhileBackfilling(t *testing.T) {
 		},
 	}}
 	service := NewService(db, staticTokenSource{}, nil)
+	service.SetFeatureGate(alwaysEnabledGate{})
 	service.now = func() time.Time { return now }
 	service.SetProvider("bluesky", messenger)
 
@@ -359,6 +372,8 @@ func TestQueueMessageEnforcesProviderWindowBeforeCreatingJob(t *testing.T) {
 	insertModel(ctx, t, db, conversation)
 
 	service := NewService(db, staticTokenSource{}, nil)
+
+	service.SetFeatureGate(alwaysEnabledGate{})
 	service.now = func() time.Time { return now }
 	service.SetProvider("facebook", &fakeMessenger{})
 	_, err := service.QueueMessage(ctx, Actor{UserID: "user-1"}, "convo-1", "Too late")
@@ -395,6 +410,7 @@ func TestListConversationsCursorReachesEveryRecordWithoutGapsOrDuplicates(t *tes
 	}
 	insertModel(ctx, t, db, &conversations)
 	service := NewService(db, staticTokenSource{}, nil)
+	service.SetFeatureGate(alwaysEnabledGate{})
 
 	seen := make([]string, 0, len(conversations))
 	var cursor *ConversationCursor

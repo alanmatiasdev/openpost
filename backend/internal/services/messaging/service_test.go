@@ -48,6 +48,7 @@ func TestApplicationEnforcesWorkspaceAccessAndConversationOwnershipAtPublicSeams
 		require.NoError(t, err)
 	}
 	service := NewService(db, nil, nil)
+	service.SetFeatureGate(alwaysEnabledGate{})
 	service.SetProvider("facebook", messagingTestProvider{})
 
 	page, err := service.ListConversations(ctx, Actor{UserID: "viewer"}, ConversationQuery{WorkspaceID: "workspace-1"})
@@ -69,6 +70,7 @@ func TestApplicationEnforcesWorkspaceAccessAndConversationOwnershipAtPublicSeams
 func TestRecurringMessagingChainIsIndependentAndUnique(t *testing.T) {
 	db := messagingTestDB(t)
 	service := NewService(db, nil, nil)
+	service.SetFeatureGate(alwaysEnabledGate{})
 	runAt := time.Now().UTC().Truncate(time.Second)
 	require.NoError(t, service.ScheduleSweep(t.Context(), runAt))
 	require.NoError(t, service.ScheduleSweep(t.Context(), runAt.Add(time.Minute)))

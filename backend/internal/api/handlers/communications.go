@@ -25,7 +25,7 @@ type EngagementMessagingFeatureGate interface {
 type EngagementMessagingHandler struct {
 	auth        middleware.Authenticator
 	messaging   *messaging.Service
-	engagement *engagement.Service
+	engagement  *engagement.Service
 	featureGate EngagementMessagingFeatureGate
 }
 

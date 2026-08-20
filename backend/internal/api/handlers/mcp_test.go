@@ -153,8 +153,15 @@ func newMCPTestServerWithEntitlement(t *testing.T, entitlement entitlements.Serv
 	handler.SetProviderReadiness(mcpProviderReadiness(t))
 	handler.SetMediaStorage(mediastore.NewLocalStorage(t.TempDir(), "/media"))
 	handler.SetPublicURL("https://app.openpost.test")
+	handler.SetFeatureGate(alwaysEnabledMCPGate{})
 	handler.RegisterRoutes(e)
 	return &mcpTestServer{echo: e, db: db, handler: handler}
+}
+
+type alwaysEnabledMCPGate struct{}
+
+func (alwaysEnabledMCPGate) IsEffectiveEnabled(context.Context, string, string) (bool, error) {
+	return true, nil
 }
 
 func insertMCPTestMedia(t *testing.T, srv *mcpTestServer, media models.MediaAttachment) {

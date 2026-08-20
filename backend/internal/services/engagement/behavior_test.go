@@ -23,6 +23,12 @@ func (staticTokenSource) GetValidAccessToken(context.Context, string) (string, e
 	return "access-token", nil
 }
 
+type alwaysEnabledGate struct{}
+
+func (alwaysEnabledGate) IsEffectiveEnabled(context.Context, string, string) (bool, error) {
+	return true, nil
+}
+
 type fakeCommenter struct {
 	platform.Adapter
 	accountIDs []string
@@ -76,9 +82,10 @@ func TestQueuedProviderCommentActionUsesAcceptedFenceAndIdempotentLifecycle(t *t
 	seedProviderCommentAction(t, db)
 	commenter := &fakeCommenter{replyID: "provider-reply-1"}
 	service := NewService(db, staticTokenSource{}, nil)
+	service.SetFeatureGate(alwaysEnabledGate{})
 	service.SetProvider("x", commenter)
 
-	jobID, err := QueueProviderCommentAction(t.Context(), db, ProviderCommentActionInput{
+	jobID, err := QueueProviderCommentAction(t.Context(), db, alwaysEnabledGate{}, ProviderCommentActionInput{
 		Actor:       Actor{UserID: "user-1"},
 		WorkspaceID: "workspace-1", PublicationID: "publication-1",
 		RenditionID: "rendition-1", SocialAccountID: "account-1",
@@ -111,7 +118,7 @@ func TestQueuedProviderCommentActionPreservesCredentialWorkspaceBoundary(t *test
 	db := engagementBehaviorTestDB(t)
 	seedProviderCommentAction(t, db)
 
-	_, err := QueueProviderCommentAction(t.Context(), db, ProviderCommentActionInput{
+	_, err := QueueProviderCommentAction(t.Context(), db, alwaysEnabledGate{}, ProviderCommentActionInput{
 		Actor:       Actor{UserID: "user-1", CredentialWorkspaceID: "another-workspace"},
 		WorkspaceID: "workspace-1", PublicationID: "publication-1",
 		RenditionID: "rendition-1", SocialAccountID: "account-1",
@@ -128,8 +135,9 @@ func TestQueuedProviderCommentActionNeverReplaysAmbiguousWrite(t *testing.T) {
 	seedProviderCommentAction(t, db)
 	commenter := &fakeCommenter{replyErr: context.DeadlineExceeded}
 	service := NewService(db, staticTokenSource{}, nil)
+	service.SetFeatureGate(alwaysEnabledGate{})
 	service.SetProvider("x", commenter)
-	jobID, err := QueueProviderCommentAction(t.Context(), db, ProviderCommentActionInput{
+	jobID, err := QueueProviderCommentAction(t.Context(), db, alwaysEnabledGate{}, ProviderCommentActionInput{
 		Actor:       Actor{UserID: "user-1"},
 		WorkspaceID: "workspace-1", PublicationID: "publication-1",
 		RenditionID: "rendition-1", SocialAccountID: "account-1",
@@ -335,6 +343,7 @@ func TestHistoricalRenditionUsesActiveReplacementAfterReconnect(t *testing.T) {
 		}},
 	}
 	service := NewService(db, staticTokenSource{}, nil)
+	service.SetFeatureGate(alwaysEnabledGate{})
 	service.now = func() time.Time { return now }
 	service.SetProvider("x", commenter)
 

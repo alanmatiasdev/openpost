@@ -50,11 +50,14 @@ func newGrowthTestServer(t *testing.T) *growthTestServer {
 	_, err = db.NewInsert().Model(&models.SocialAccount{ID: "acc-masto", WorkspaceID: "ws-1", Platform: "mastodon", AccountID: "123", InstanceURL: "https://mastodon.example", IsActive: true, AccessTokenEnc: []byte("tok")}).Exec(ctx)
 	require.NoError(t, err)
 	svc := growthservice.NewService(db, staticGrowthTokenSource{}, nil)
+	svc.SetFeatureGate(alwaysEnabledGrowthGate{})
 	svc.SetProvider("bluesky", &fakeGrowthHandlerAdapter{})
 	svc.SetProvider("mastodon:https://mastodon.example", &fakeGrowthHandlerAdapter{})
 	e := echo.New()
 	api := humaecho.NewWithGroup(e, e.Group("/api/v1"), huma.DefaultConfig("Test", "1.0.0"))
-	NewGrowthHandler(svc, testAuthenticator{}).RegisterRoutes(api)
+	h := NewGrowthHandler(svc, testAuthenticator{})
+	h.SetFeatureGate(alwaysEnabledGrowthGate{})
+	h.RegisterRoutes(api)
 	return &growthTestServer{echo: e, db: db, svc: svc}
 }
 
@@ -71,6 +74,12 @@ func (fakeGrowthHandlerAdapter) DiscoverGrowthCandidates(_ context.Context, _ pl
 }
 func (fakeGrowthHandlerAdapter) FollowGrowthCandidate(_ context.Context, _, _, _ string) (platform.GrowthFollowResult, error) {
 	return platform.GrowthFollowResult{ProviderState: "following"}, nil
+}
+
+type alwaysEnabledGrowthGate struct{}
+
+func (alwaysEnabledGrowthGate) IsEffectiveEnabled(context.Context, string, string) (bool, error) {
+	return true, nil
 }
 
 type growthTestServer struct {

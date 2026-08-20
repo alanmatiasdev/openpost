@@ -48,6 +48,12 @@ func (f *fakeGrowthAdapter) DiscoverGrowthCandidates(ctx context.Context, input 
 	}
 	return nil, nil
 }
+
+type alwaysEnabledGate struct{}
+
+func (alwaysEnabledGate) IsEffectiveEnabled(context.Context, string, string) (bool, error) {
+	return true, nil
+}
 func (f *fakeGrowthAdapter) FollowGrowthCandidate(ctx context.Context, accessToken, viewerID, candidateID string) (platform.GrowthFollowResult, error) {
 	if f.follow != nil {
 		return f.follow(ctx, accessToken, viewerID, candidateID)
@@ -173,6 +179,8 @@ func TestWorkspaceAccountIsolationAndMastodonProviderKey(t *testing.T) {
 	require.NoError(t, err)
 
 	svc := NewService(db, staticTokenSource{}, nil)
+
+	svc.SetFeatureGate(alwaysEnabledGate{})
 	// Register providers with exact mastodon key
 	svc.SetProvider("bluesky", &fakeGrowthAdapter{})
 	svc.SetProvider("mastodon:https://mastodon.example", &fakeGrowthAdapter{})
@@ -189,6 +197,7 @@ func TestWorkspaceAccountIsolationAndMastodonProviderKey(t *testing.T) {
 	require.Error(t, err)
 	// Mastodon without exact instance key fails
 	svc2 := NewService(db, staticTokenSource{}, nil)
+	svc2.SetFeatureGate(alwaysEnabledGate{})
 	svc2.SetProvider("mastodon", &fakeGrowthAdapter{})
 	_, err = svc2.QueueRefresh(context.Background(), actor, "ws-1", "acc-masto")
 	require.Error(t, err)
@@ -201,6 +210,7 @@ func TestRefreshActiveJobDedupe(t *testing.T) {
 	_, err := db.NewInsert().Model(&models.SocialAccount{ID: "acc-1", WorkspaceID: "ws-1", Platform: "bluesky", AccountID: "did:plc:viewer", IsActive: true, AccessTokenEnc: []byte("tok"), CreatedAt: now}).Exec(context.Background())
 	require.NoError(t, err)
 	svc := NewService(db, staticTokenSource{}, nil)
+	svc.SetFeatureGate(alwaysEnabledGate{})
 	svc.SetProvider("bluesky", &fakeGrowthAdapter{})
 	actor := workspaceaccess.ActorFacts{UserID: "user-1"}
 	id1, err := svc.QueueRefresh(context.Background(), actor, "ws-1", "acc-1")
@@ -228,6 +238,7 @@ func TestSuccessfulAtomicGenerationSwapAndFailedRetainsOld(t *testing.T) {
 		},
 	}
 	svc := NewService(db, staticTokenSource{}, nil)
+	svc.SetFeatureGate(alwaysEnabledGate{})
 	svc.SetProvider("bluesky", adapter)
 	actor := workspaceaccess.ActorFacts{UserID: "user-1"}
 	_, err = svc.QueueRefresh(context.Background(), actor, "ws-1", "acc-1")
@@ -295,6 +306,7 @@ func TestDismissalSurvivesAndFollowingDoesNotResurface(t *testing.T) {
 		},
 	}
 	svc := NewService(db, staticTokenSource{}, nil)
+	svc.SetFeatureGate(alwaysEnabledGate{})
 	svc.SetProvider("bluesky", adapter)
 	actor := workspaceaccess.ActorFacts{UserID: "user-1"}
 	_, err = svc.QueueRefresh(context.Background(), actor, "ws-1", "acc-1")
@@ -346,6 +358,7 @@ func TestProvider429AndRetryAfterState(t *testing.T) {
 		},
 	}
 	svc := NewService(db, staticTokenSource{}, nil)
+	svc.SetFeatureGate(alwaysEnabledGate{})
 	svc.SetProvider("bluesky", adapter)
 	actor := workspaceaccess.ActorFacts{UserID: "user-1"}
 	_, err = svc.QueueRefresh(context.Background(), actor, "ws-1", "acc-1")
@@ -400,6 +413,7 @@ func TestFollowProviderWriteAndOneAttempt(t *testing.T) {
 		},
 	}
 	svc := NewService(db, staticTokenSource{}, nil)
+	svc.SetFeatureGate(alwaysEnabledGate{})
 	svc.SetProvider("bluesky", adapter)
 	actor := workspaceaccess.ActorFacts{UserID: "user-1"}
 	jobID, err := svc.QueueFollow(context.Background(), actor, "ws-1", recID)
@@ -430,6 +444,8 @@ func TestConcurrentFirstRefreshUsesOneJob(t *testing.T) {
 	require.NoError(t, err)
 
 	svc := NewService(db, staticTokenSource{}, nil)
+
+	svc.SetFeatureGate(alwaysEnabledGate{})
 	svc.SetProvider("bluesky", &fakeGrowthAdapter{})
 	actor := workspaceaccess.ActorFacts{UserID: "user-1"}
 	start := make(chan struct{})
@@ -481,6 +497,7 @@ func TestDiscoveryPersistsOnlyTopFortyCandidates(t *testing.T) {
 		return candidates, nil
 	}}
 	svc := NewService(db, staticTokenSource{}, nil)
+	svc.SetFeatureGate(alwaysEnabledGate{})
 	svc.SetProvider("bluesky", adapter)
 	actor := workspaceaccess.ActorFacts{UserID: "user-1"}
 	_, err = svc.QueueRefresh(t.Context(), actor, "ws-1", "acc-1")
