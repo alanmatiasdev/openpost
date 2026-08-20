@@ -18,12 +18,12 @@ import (
 	"github.com/uptrace/bun/dialect/sqlitedialect"
 )
 
-
 type alwaysEnabledGate struct{}
 
 func (alwaysEnabledGate) IsEffectiveEnabled(context.Context, string, string) (bool, error) {
 	return true, nil
 }
+
 type staticTokenSource struct{}
 
 func (staticTokenSource) GetValidAccessToken(context.Context, string) (string, error) {

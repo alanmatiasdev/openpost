@@ -61,7 +61,6 @@ func TestRecurringEngagementChainIsIndependentAndUnique(t *testing.T) {
 	require.Equal(t, jobregistry.RecoverySupersedeSweep, definition.Recovery)
 }
 
-
 func engagementTestDB(t *testing.T) *bun.DB {
 	t.Helper()
 	db, err := database.InitDBWithDriver("sqlite", fmt.Sprintf("file:engagement-%d?mode=memory&cache=shared", time.Now().UnixNano()))

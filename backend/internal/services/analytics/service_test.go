@@ -508,7 +508,6 @@ func TestRefreshCountsOnlyNewAnalyticsJobs(t *testing.T) {
 	require.Zero(t, queued)
 }
 
-
 type alwaysEnabledGate struct{}
 
 func (alwaysEnabledGate) IsEffectiveEnabled(context.Context, string, string) (bool, error) {
