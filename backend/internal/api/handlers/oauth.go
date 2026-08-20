@@ -1917,61 +1917,77 @@ func (h *OAuthHandler) ListAccounts(api huma.API) {
 		if err := h.checkWorkspaceAccess(ctx, input.WorkspaceID, userID); err != nil {
 			return nil, err
 		}
-
-		var accounts []models.SocialAccount
-		err := h.db.NewSelect().
-			Model(&accounts).
-			Where("workspace_id = ?", input.WorkspaceID).
-			Where("is_active = ?", true).
-			Order("created_at DESC").
-			Scan(ctx)
+		accounts, err := h.listWorkspaceAccounts(ctx, input.WorkspaceID)
 		if err != nil {
-			return nil, huma.Error500InternalServerError("failed to list accounts")
+			return nil, err
 		}
-
-		response := make([]AccountResponse, len(accounts))
-		grantCounts := make(map[string]int, len(accounts))
-		for _, account := range accounts {
-			if account.OAuthGrantID != "" {
-				grantCounts[account.OAuthGrantID]++
-			}
-		}
-		// Resolve messaging shim via accountfeatures when available
-		messagingEnabled := map[string]bool{}
-		messagingSupported := map[string]bool{}
-		if h.accountFeatures != nil && len(accounts) > 0 {
-			ids := make([]string, len(accounts))
-			for i, a := range accounts {
-				ids[i] = a.ID
-			}
-			actor := workspaceActor(ctx, userID)
-			if features, err := h.accountFeatures.Read(ctx, input.WorkspaceID, actor, ids); err == nil {
-				for _, f := range features {
-					if f.Feature == accountfeatures.FeatureMessaging {
-						messagingSupported[f.SocialAccountID] = f.Supported
-						messagingEnabled[f.SocialAccountID] = f.EffectiveEnabled
-					}
-				}
-			}
-		}
-		for i, acc := range accounts {
-			response[i] = accountResponse(acc, h.disableLinkedInThreadReplies)
-			if h.accountFeatures != nil {
-				if sup, ok := messagingSupported[acc.ID]; ok {
-					response[i].MessagingSupported = sup
-				}
-				if en, ok := messagingEnabled[acc.ID]; ok {
-					response[i].MessagesEnabled = en
-				} else if _, ok := messagingSupported[acc.ID]; ok {
-					response[i].MessagesEnabled = false
-				}
-			}
-			response[i].GrantDestinationCount = max(grantCounts[acc.OAuthGrantID], 1)
-			response[i].SharedGrant = response[i].GrantDestinationCount > 1
-		}
-
+		grantCounts := countGrantDestinations(accounts)
+		supported, enabled := h.resolveListMessaging(ctx, input.WorkspaceID, userID, accounts)
+		response := buildListResponses(accounts, grantCounts, supported, enabled, h.disableLinkedInThreadReplies)
 		return &ListAccountsOutput{Body: response}, nil
 	})
+}
+
+func (h *OAuthHandler) listWorkspaceAccounts(ctx context.Context, workspaceID string) ([]models.SocialAccount, error) {
+	var accounts []models.SocialAccount
+	err := h.db.NewSelect().Model(&accounts).Where("workspace_id = ?", workspaceID).Where("is_active = ?", true).Order("created_at DESC").Scan(ctx)
+	if err != nil {
+		return nil, huma.Error500InternalServerError("failed to list accounts")
+	}
+	return accounts, nil
+}
+
+func countGrantDestinations(accounts []models.SocialAccount) map[string]int {
+	counts := make(map[string]int, len(accounts))
+	for _, acc := range accounts {
+		if acc.OAuthGrantID != "" {
+			counts[acc.OAuthGrantID]++
+		}
+	}
+	return counts
+}
+
+func (h *OAuthHandler) resolveListMessaging(ctx context.Context, workspaceID, userID string, accounts []models.SocialAccount) (map[string]bool, map[string]bool) {
+	if h.accountFeatures == nil || len(accounts) == 0 {
+		return map[string]bool{}, map[string]bool{}
+	}
+	ids := make([]string, len(accounts))
+	for i, a := range accounts {
+		ids[i] = a.ID
+	}
+	actor := workspaceActor(ctx, userID)
+	features, err := h.accountFeatures.Read(ctx, workspaceID, actor, ids)
+	if err != nil {
+		return map[string]bool{}, map[string]bool{}
+	}
+	supported := make(map[string]bool, len(features))
+	enabled := make(map[string]bool, len(features))
+	for _, f := range features {
+		if f.Feature == accountfeatures.FeatureMessaging {
+			supported[f.SocialAccountID] = f.Supported
+			enabled[f.SocialAccountID] = f.EffectiveEnabled
+		}
+	}
+	return supported, enabled
+}
+
+func buildListResponses(accounts []models.SocialAccount, grantCounts map[string]int, supported, enabled map[string]bool, disableLinkedInReplies bool) []AccountResponse {
+	response := make([]AccountResponse, len(accounts))
+	for i, acc := range accounts {
+		resp := accountResponse(acc, disableLinkedInReplies)
+		if sup, ok := supported[acc.ID]; ok {
+			resp.MessagingSupported = sup
+		}
+		if en, ok := enabled[acc.ID]; ok {
+			resp.MessagesEnabled = en
+		} else if _, ok := supported[acc.ID]; ok {
+			resp.MessagesEnabled = false
+		}
+		resp.GrantDestinationCount = max(grantCounts[acc.OAuthGrantID], 1)
+		resp.SharedGrant = resp.GrantDestinationCount > 1
+		response[i] = resp
+	}
+	return response
 }
 
 func (h *OAuthHandler) UpdateAccount(api huma.API) {
@@ -1985,97 +2001,132 @@ func (h *OAuthHandler) UpdateAccount(api huma.API) {
 		Errors:      []int{400, 403, 404, 409},
 	}, func(ctx context.Context, input *UpdateAccountInput) (*UpdateAccountOutput, error) {
 		slug := strings.TrimSpace(input.Body.Slug)
-		if !accountSlugPattern.MatchString(slug) || strings.Contains(slug, "--") {
-			return nil, huma.Error400BadRequest("slug must be 1-63 lowercase letters, numbers, and single hyphens")
+		if err := validateAccountSlug(slug); err != nil {
+			return nil, err
 		}
-
 		account, err := h.getEditableAccount(ctx, input.AccountID, middleware.GetUserID(ctx))
 		if err != nil {
 			return nil, err
 		}
-		// Handle messaging shim via accountfeatures when available
-		if input.Body.MessagesEnabled != nil && h.accountFeatures != nil {
-			// Validate support via service before saving
-			actor := workspaceActor(ctx, middleware.GetUserID(ctx))
-			features, err := h.accountFeatures.Read(ctx, account.WorkspaceID, actor, []string{account.ID})
-			if err != nil {
-				return nil, huma.Error500InternalServerError("failed to resolve feature support")
-			}
-			supported := false
-			for _, f := range features {
-				if f.Feature == accountfeatures.FeatureMessaging {
-					supported = f.Supported
-				}
-			}
-			if *input.Body.MessagesEnabled && !supported {
-				return nil, huma.Error400BadRequest("messages are not supported for this provider")
-			}
-			if _, err := h.accountFeatures.BatchSave(ctx, account.WorkspaceID, actor, []accountfeatures.ChoiceInput{{
-				AccountID: account.ID,
-				Feature:   accountfeatures.FeatureMessaging,
-				Enabled:   *input.Body.MessagesEnabled,
-				Source:    "legacy_patch",
-			}}); err != nil {
-				return nil, huma.Error400BadRequest(err.Error())
-			}
-			// Continue to slug update without touching capability_state
-		} else if input.Body.MessagesEnabled != nil {
-			// Fallback legacy path when service not wired (tests without service)
-			capabilityState := map[string]string{}
-			_ = json.Unmarshal([]byte(account.CapabilityState), &capabilityState)
-			if *input.Body.MessagesEnabled && !accountMessagingSupported(account.Platform) {
-				return nil, huma.Error400BadRequest("messages are not supported for this provider")
-			}
-			capabilityState["messages_enabled"] = strings.TrimSpace(fmt.Sprintf("%t", *input.Body.MessagesEnabled))
-			encoded, _ := json.Marshal(capabilityState)
-			account.CapabilityState = string(encoded)
-			if _, err := h.db.NewUpdate().Model((*models.SocialAccount)(nil)).Set("capability_state_json = ?", string(encoded)).Where("id = ?", account.ID).Exec(ctx); err != nil {
-				return nil, huma.Error500InternalServerError("failed to update account")
-			}
+		if err := h.handleUpdateMessaging(ctx, account, input.Body.MessagesEnabled); err != nil {
+			return nil, err
 		}
-
-		var existing models.SocialAccount
-		err = h.db.NewSelect().
-			Model(&existing).
-			Where("workspace_id = ?", account.WorkspaceID).
-			Where("slug = ?", slug).
-			Where("id != ?", account.ID).
-			Where("is_active = ?", true).
-			Scan(ctx)
-		if err == nil {
-			return nil, huma.Error409Conflict("slug is already used by another active account in this workspace")
+		if err := h.ensureSlugAvailable(ctx, account.WorkspaceID, account.ID, slug); err != nil {
+			return nil, err
 		}
-		if err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return nil, huma.Error500InternalServerError("failed to check slug uniqueness")
+		if err := h.updateAccountSlug(ctx, account.ID, slug); err != nil {
+			return nil, err
 		}
-
-		if _, err := h.db.NewUpdate().
-			Model((*models.SocialAccount)(nil)).
-			Set("slug = ?", slug).
-			Where("id = ?", account.ID).
-			Exec(ctx); err != nil {
-			return nil, huma.Error500InternalServerError("failed to update account")
+		updated, err := h.fetchUpdatedAccount(ctx, account.ID)
+		if err != nil {
+			return nil, err
 		}
-
-		account.Slug = slug
-		// Refresh account copy
-		if err := h.db.NewSelect().Model(&account).Where("id = ?", account.ID).Scan(ctx); err != nil {
-			return nil, huma.Error500InternalServerError("failed to fetch account")
-		}
-		resp := accountResponse(account, h.disableLinkedInThreadReplies)
-		if h.accountFeatures != nil {
-			actor := workspaceActor(ctx, middleware.GetUserID(ctx))
-			if features, err := h.accountFeatures.Read(ctx, account.WorkspaceID, actor, []string{account.ID}); err == nil {
-				for _, f := range features {
-					if f.Feature == accountfeatures.FeatureMessaging {
-						resp.MessagingSupported = f.Supported
-						resp.MessagesEnabled = f.EffectiveEnabled
-					}
-				}
-			}
-		}
+		resp := accountResponse(updated, h.disableLinkedInThreadReplies)
+		resp = h.enrichResponseMessaging(ctx, updated, middleware.GetUserID(ctx), resp)
 		return &UpdateAccountOutput{Body: resp}, nil
 	})
+}
+
+func validateAccountSlug(slug string) error {
+	if !accountSlugPattern.MatchString(slug) || strings.Contains(slug, "--") {
+		return huma.Error400BadRequest("slug must be 1-63 lowercase letters, numbers, and single hyphens")
+	}
+	return nil
+}
+
+func (h *OAuthHandler) handleUpdateMessaging(ctx context.Context, account models.SocialAccount, messagesEnabled *bool) error {
+	if messagesEnabled == nil {
+		return nil
+	}
+	if h.accountFeatures != nil {
+		return h.handleFeatureMessagingUpdate(ctx, account, *messagesEnabled)
+	}
+	return h.handleLegacyMessagingUpdate(ctx, account, *messagesEnabled)
+}
+
+func (h *OAuthHandler) handleFeatureMessagingUpdate(ctx context.Context, account models.SocialAccount, enabled bool) error {
+	actor := workspaceActor(ctx, middleware.GetUserID(ctx))
+	features, err := h.accountFeatures.Read(ctx, account.WorkspaceID, actor, []string{account.ID})
+	if err != nil {
+		return huma.Error500InternalServerError("failed to resolve feature support")
+	}
+	supported := false
+	for _, f := range features {
+		if f.Feature == accountfeatures.FeatureMessaging {
+			supported = f.Supported
+		}
+	}
+	if enabled && !supported {
+		return huma.Error400BadRequest("messages are not supported for this provider")
+	}
+	if _, err := h.accountFeatures.BatchSave(ctx, account.WorkspaceID, actor, []accountfeatures.ChoiceInput{{
+		AccountID: account.ID,
+		Feature:   accountfeatures.FeatureMessaging,
+		Enabled:   enabled,
+		Source:    "legacy_patch",
+	}}); err != nil {
+		return huma.Error400BadRequest(err.Error())
+	}
+	return nil
+}
+
+func (h *OAuthHandler) handleLegacyMessagingUpdate(ctx context.Context, account models.SocialAccount, enabled bool) error {
+	capabilityState := map[string]string{}
+	_ = json.Unmarshal([]byte(account.CapabilityState), &capabilityState)
+	if enabled && !accountMessagingSupported(account.Platform) {
+		return huma.Error400BadRequest("messages are not supported for this provider")
+	}
+	capabilityState["messages_enabled"] = strings.TrimSpace(fmt.Sprintf("%t", enabled))
+	encoded, _ := json.Marshal(capabilityState)
+	if _, err := h.db.NewUpdate().Model((*models.SocialAccount)(nil)).Set("capability_state_json = ?", string(encoded)).Where("id = ?", account.ID).Exec(ctx); err != nil {
+		return huma.Error500InternalServerError("failed to update account")
+	}
+	return nil
+}
+
+func (h *OAuthHandler) ensureSlugAvailable(ctx context.Context, workspaceID, accountID, slug string) error {
+	var existing models.SocialAccount
+	err := h.db.NewSelect().Model(&existing).Where("workspace_id = ?", workspaceID).Where("slug = ?", slug).Where("id != ?", accountID).Where("is_active = ?", true).Scan(ctx)
+	if err == nil {
+		return huma.Error409Conflict("slug is already used by another active account in this workspace")
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return huma.Error500InternalServerError("failed to check slug uniqueness")
+	}
+	return nil
+}
+
+func (h *OAuthHandler) updateAccountSlug(ctx context.Context, accountID, slug string) error {
+	if _, err := h.db.NewUpdate().Model((*models.SocialAccount)(nil)).Set("slug = ?", slug).Where("id = ?", accountID).Exec(ctx); err != nil {
+		return huma.Error500InternalServerError("failed to update account")
+	}
+	return nil
+}
+
+func (h *OAuthHandler) fetchUpdatedAccount(ctx context.Context, accountID string) (models.SocialAccount, error) {
+	var account models.SocialAccount
+	if err := h.db.NewSelect().Model(&account).Where("id = ?", accountID).Scan(ctx); err != nil {
+		return account, huma.Error500InternalServerError("failed to fetch account")
+	}
+	return account, nil
+}
+
+func (h *OAuthHandler) enrichResponseMessaging(ctx context.Context, account models.SocialAccount, userID string, resp AccountResponse) AccountResponse {
+	if h.accountFeatures == nil {
+		return resp
+	}
+	actor := workspaceActor(ctx, userID)
+	features, err := h.accountFeatures.Read(ctx, account.WorkspaceID, actor, []string{account.ID})
+	if err != nil {
+		return resp
+	}
+	for _, f := range features {
+		if f.Feature == accountfeatures.FeatureMessaging {
+			resp.MessagingSupported = f.Supported
+			resp.MessagesEnabled = f.EffectiveEnabled
+		}
+	}
+	return resp
 }
 
 type DisconnectAccountInput struct {

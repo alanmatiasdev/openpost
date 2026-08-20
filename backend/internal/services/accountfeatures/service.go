@@ -87,9 +87,6 @@ func NewService(db bun.IDB, providers map[string]platform.Adapter, policy PlanPo
 	if policy == nil {
 		policy = AlwaysAllowedPolicy{}
 	}
-	// Keep direct reference to the live providers map when possible so dynamic
-	// Mastodon registrations are visible without an extra registrar. Copy only
-	// when the caller cannot share the live map.
 	ref := providers
 	return &Service{
 		db:         db,
@@ -163,24 +160,42 @@ func (s *Service) IsEffectiveEnabled(ctx context.Context, accountID, feature str
 }
 
 func (s *Service) Read(ctx context.Context, workspaceID string, actor workspaceaccess.ActorFacts, accountIDs []string) ([]ResolvedFeature, error) {
-	workspaceID = strings.TrimSpace(workspaceID)
-	if workspaceID == "" {
-		return nil, fmt.Errorf("workspace_id is required")
+	if err := s.authorizeRead(ctx, workspaceID, actor); err != nil {
+		return nil, err
 	}
-	authz := workspaceaccess.NewAuthorizer(s.db)
-	decision, err := authz.Authorize(ctx, workspaceID, actor, workspaceaccess.LevelRead)
+	uniqueIDs := deduplicateIDs(accountIDs)
+	if len(uniqueIDs) == 0 {
+		return []ResolvedFeature{}, nil
+	}
+	byID, err := s.loadAccountsByIDs(ctx, uniqueIDs)
 	if err != nil {
 		return nil, err
 	}
+	if err := validateAccountOwnership(byID, workspaceID, uniqueIDs); err != nil {
+		return nil, err
+	}
+	return s.buildResolvedFeatures(ctx, byID, uniqueIDs)
+}
+
+func (s *Service) authorizeRead(ctx context.Context, workspaceID string, actor workspaceaccess.ActorFacts) error {
+	workspaceID = strings.TrimSpace(workspaceID)
+	if workspaceID == "" {
+		return fmt.Errorf("workspace_id is required")
+	}
+	decision, err := workspaceaccess.NewAuthorizer(s.db).Authorize(ctx, workspaceID, actor, workspaceaccess.LevelRead)
+	if err != nil {
+		return err
+	}
 	if !decision.Allowed {
-		return nil, fmt.Errorf("%w: %s", ErrWorkspaceReadDenied, decision.Reason)
+		return fmt.Errorf("%w: %s", ErrWorkspaceReadDenied, decision.Reason)
 	}
-	if len(accountIDs) == 0 {
-		return []ResolvedFeature{}, nil
-	}
+	return nil
+}
+
+func deduplicateIDs(ids []string) []string {
 	seen := map[string]struct{}{}
-	uniqueIDs := make([]string, 0, len(accountIDs))
-	for _, id := range accountIDs {
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
 		id = strings.TrimSpace(id)
 		if id == "" {
 			continue
@@ -189,30 +204,39 @@ func (s *Service) Read(ctx context.Context, workspaceID string, actor workspacea
 			continue
 		}
 		seen[id] = struct{}{}
-		uniqueIDs = append(uniqueIDs, id)
+		out = append(out, id)
 	}
-	if len(uniqueIDs) == 0 {
-		return []ResolvedFeature{}, nil
-	}
+	return out
+}
+
+func (s *Service) loadAccountsByIDs(ctx context.Context, ids []string) (map[string]models.SocialAccount, error) {
 	var accounts []models.SocialAccount
-	if err := s.db.NewSelect().Model(&accounts).Where("id IN (?)", bun.In(uniqueIDs)).Scan(ctx); err != nil {
+	if err := s.db.NewSelect().Model(&accounts).Where("id IN (?)", bun.List(ids)).Scan(ctx); err != nil {
 		return nil, err
 	}
 	byID := make(map[string]models.SocialAccount, len(accounts))
 	for _, acc := range accounts {
 		byID[acc.ID] = acc
 	}
-	for _, id := range uniqueIDs {
+	return byID, nil
+}
+
+func validateAccountOwnership(byID map[string]models.SocialAccount, workspaceID string, ids []string) error {
+	for _, id := range ids {
 		acc, ok := byID[id]
 		if !ok {
-			return nil, fmt.Errorf("%w: %s", ErrAccountNotFound, id)
+			return fmt.Errorf("%w: %s", ErrAccountNotFound, id)
 		}
 		if acc.WorkspaceID != workspaceID {
-			return nil, fmt.Errorf("%w: %s does not belong to workspace %s", ErrAccountWrongWorkspace, id, workspaceID)
+			return fmt.Errorf("%w: %s does not belong to workspace %s", ErrAccountWrongWorkspace, id, workspaceID)
 		}
 	}
-	result := make([]ResolvedFeature, 0, len(uniqueIDs)*len(ValidFeatures))
-	for _, id := range uniqueIDs {
+	return nil
+}
+
+func (s *Service) buildResolvedFeatures(ctx context.Context, byID map[string]models.SocialAccount, ids []string) ([]ResolvedFeature, error) {
+	result := make([]ResolvedFeature, 0, len(ids)*len(ValidFeatures))
+	for _, id := range ids {
 		acc := byID[id]
 		for _, feature := range ValidFeatures {
 			resolved, err := s.resolveOne(ctx, acc, feature)
@@ -233,15 +257,41 @@ func (s *Service) BatchSave(ctx context.Context, workspaceID string, actor works
 	if len(inputs) == 0 {
 		return nil, fmt.Errorf("choices are required")
 	}
-	authz := workspaceaccess.NewAuthorizer(s.db)
-	decision, err := authz.Authorize(ctx, workspaceID, actor, workspaceaccess.LevelEdit)
+	if err := s.authorizeEdit(ctx, workspaceID, actor); err != nil {
+		return nil, err
+	}
+	normalized, err := normalizeChoiceInputs(inputs)
 	if err != nil {
 		return nil, err
 	}
-	if !decision.Allowed {
-		return nil, fmt.Errorf("%w: %s", ErrWorkspaceEditDenied, decision.Reason)
+	byID, err := s.loadBatchAccounts(ctx, workspaceID, normalized)
+	if err != nil {
+		return nil, err
 	}
-	// Validate complete batch before any write
+	deduped := deduplicateChoices(normalized, byID)
+	supportCache := s.buildSupportCache(ctx, byID, deduped)
+	if err := s.executeBatchTx(ctx, actor, byID, deduped, supportCache); err != nil {
+		return nil, err
+	}
+	affectedIDs := make([]string, 0, len(byID))
+	for id := range byID {
+		affectedIDs = append(affectedIDs, id)
+	}
+	return s.Read(ctx, workspaceID, actor, affectedIDs)
+}
+
+func (s *Service) authorizeEdit(ctx context.Context, workspaceID string, actor workspaceaccess.ActorFacts) error {
+	decision, err := workspaceaccess.NewAuthorizer(s.db).Authorize(ctx, workspaceID, actor, workspaceaccess.LevelEdit)
+	if err != nil {
+		return err
+	}
+	if !decision.Allowed {
+		return fmt.Errorf("%w: %s", ErrWorkspaceEditDenied, decision.Reason)
+	}
+	return nil
+}
+
+func normalizeChoiceInputs(inputs []ChoiceInput) ([]ChoiceInput, error) {
 	normalized := make([]ChoiceInput, 0, len(inputs))
 	for i, in := range inputs {
 		in.AccountID = strings.TrimSpace(in.AccountID)
@@ -255,9 +305,12 @@ func (s *Service) BatchSave(ctx context.Context, workspaceID string, actor works
 		}
 		normalized = append(normalized, in)
 	}
-	// Load accounts and validate ownership
-	accountIDs := make([]string, 0, len(normalized))
+	return normalized, nil
+}
+
+func (s *Service) loadBatchAccounts(ctx context.Context, workspaceID string, normalized []ChoiceInput) (map[string]models.SocialAccount, error) {
 	seenAcc := map[string]struct{}{}
+	accountIDs := make([]string, 0, len(normalized))
 	for _, in := range normalized {
 		if _, ok := seenAcc[in.AccountID]; !ok {
 			seenAcc[in.AccountID] = struct{}{}
@@ -265,7 +318,7 @@ func (s *Service) BatchSave(ctx context.Context, workspaceID string, actor works
 		}
 	}
 	var accounts []models.SocialAccount
-	if err := s.db.NewSelect().Model(&accounts).Where("id IN (?)", bun.In(accountIDs)).Scan(ctx); err != nil {
+	if err := s.db.NewSelect().Model(&accounts).Where("id IN (?)", bun.List(accountIDs)).Scan(ctx); err != nil {
 		return nil, err
 	}
 	byID := make(map[string]models.SocialAccount, len(accounts))
@@ -281,7 +334,10 @@ func (s *Service) BatchSave(ctx context.Context, workspaceID string, actor works
 			return nil, fmt.Errorf("%w: %s does not belong to workspace %s", ErrAccountWrongWorkspace, id, workspaceID)
 		}
 	}
-	// Last-write-wins deduplication for (account, feature)
+	return byID, nil
+}
+
+func deduplicateChoices(normalized []ChoiceInput, byID map[string]models.SocialAccount) []ChoiceInput {
 	type key struct{ acc, feat string }
 	deduped := make([]ChoiceInput, 0, len(byID)*len(ValidFeatures))
 	seenKey := map[key]bool{}
@@ -295,11 +351,15 @@ func (s *Service) BatchSave(ctx context.Context, workspaceID string, actor works
 		deduped = append(deduped, in)
 	}
 	slices.Reverse(deduped)
+	return deduped
+}
 
-	now := s.now().UTC()
-	sourceDefault := "user_save"
-	// Precompute support and plan to avoid tx DB for afterEffective
-	supportCache := make(map[string]struct {
+func (s *Service) buildSupportCache(ctx context.Context, byID map[string]models.SocialAccount, deduped []ChoiceInput) map[string]struct {
+	supported bool
+	missing   []string
+	allowed   bool
+} {
+	cache := make(map[string]struct {
 		supported bool
 		missing   []string
 		allowed   bool
@@ -311,98 +371,109 @@ func (s *Service) BatchSave(ctx context.Context, workspaceID string, actor works
 		if s.planPolicy != nil {
 			allowed, _ = s.planPolicy.Allowed(ctx, acc.WorkspaceID, in.Feature)
 		}
-		supportCache[in.AccountID+"|"+in.Feature] = struct {
+		cache[in.AccountID+"|"+in.Feature] = struct {
 			supported bool
 			missing   []string
 			allowed   bool
 		}{supported: supported, missing: missing, allowed: allowed}
 	}
+	return cache
+}
+
+func (s *Service) executeBatchTx(ctx context.Context, actor workspaceaccess.ActorFacts, byID map[string]models.SocialAccount, deduped []ChoiceInput, supportCache map[string]struct {
+	supported bool
+	missing   []string
+	allowed   bool
+}) error {
+	now := s.now().UTC()
 	sweepEnqueued := map[string]bool{}
-	if err := s.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
+	return s.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
 		for _, in := range deduped {
-			src := in.Source
-			if src == "" {
-				src = sourceDefault
-			}
-			acc := byID[in.AccountID]
-			cacheKey := in.AccountID + "|" + in.Feature
-			cache := supportCache[cacheKey]
-			// Read before-effective atomically inside transaction.
-			var existing models.AccountFeature
-			err := tx.NewSelect().Model(&existing).Where("social_account_id = ? AND feature = ?", in.AccountID, in.Feature).Scan(txCtx)
-			beforeEffective := false
-			if err == nil {
-				beforeEffective = existing.Enabled && cache.supported && len(cache.missing) == 0 && cache.allowed
-			} else if !errors.Is(err, sql.ErrNoRows) {
+			if err := s.applyChoiceTx(txCtx, tx, actor, byID, in, supportCache, sweepEnqueued, now); err != nil {
 				return err
-			}
-			row := &models.AccountFeature{
-				SocialAccountID: in.AccountID,
-				WorkspaceID:     acc.WorkspaceID,
-				Feature:         in.Feature,
-				Enabled:         in.Enabled,
-				DecidedByUserID: strings.TrimSpace(actor.UserID),
-				Source:          src,
-				DecidedAt:       now,
-				CreatedAt:       now,
-				UpdatedAt:       now,
-			}
-			_, err = tx.NewInsert().Model(row).
-				On("CONFLICT (social_account_id, feature) DO UPDATE").
-				Set("enabled = EXCLUDED.enabled").
-				Set("decided_by_user_id = EXCLUDED.decided_by_user_id").
-				Set("source = EXCLUDED.source").
-				Set("decided_at = EXCLUDED.decided_at").
-				Set("updated_at = EXCLUDED.updated_at").
-				Exec(txCtx)
-			if err != nil {
-				return fmt.Errorf("upsert feature %s for %s: %w", in.Feature, in.AccountID, err)
-			}
-			if !in.Enabled || beforeEffective {
-				continue
-			}
-			if !cache.supported || len(cache.missing) > 0 || !cache.allowed {
-				continue
-			}
-			var enqueueErr error
-			switch in.Feature {
-			case FeatureMessaging:
-				enqueueErr = s.enqueueMessagingSyncTx(txCtx, tx, acc.ID, acc.WorkspaceID, now)
-			case FeatureEngagement:
-				if sweepEnqueued[acc.WorkspaceID+"|engagement"] {
-					continue
-				}
-				enqueueErr = s.enqueueEngagementSweepTx(txCtx, tx, now)
-				if enqueueErr == nil {
-					sweepEnqueued[acc.WorkspaceID+"|engagement"] = true
-				}
-				continue
-			case FeatureAnalytics:
-				if sweepEnqueued[acc.WorkspaceID+"|analytics"] {
-					continue
-				}
-				enqueueErr = s.enqueueAnalyticsSweepTx(txCtx, tx, now)
-				if enqueueErr == nil {
-					sweepEnqueued[acc.WorkspaceID+"|analytics"] = true
-				}
-				continue
-			case FeatureGrow:
-				enqueueErr = s.enqueueGrowthDiscoveryTx(txCtx, tx, acc.WorkspaceID, acc.ID, actor.UserID, now)
-			}
-			if enqueueErr != nil {
-				return enqueueErr
 			}
 		}
 		return nil
-	}); err != nil {
-		return nil, err
+	})
+}
+
+func (s *Service) applyChoiceTx(ctx context.Context, tx bun.Tx, actor workspaceaccess.ActorFacts, byID map[string]models.SocialAccount, in ChoiceInput, supportCache map[string]struct {
+	supported bool
+	missing   []string
+	allowed   bool
+}, sweepEnqueued map[string]bool, now time.Time) error {
+	src := in.Source
+	if src == "" {
+		src = "user_save"
 	}
-	// Return stored and effective state after writes for affected accounts
-	affectedIDs := make([]string, 0, len(byID))
-	for id := range byID {
-		affectedIDs = append(affectedIDs, id)
+	acc := byID[in.AccountID]
+	cache := supportCache[in.AccountID+"|"+in.Feature]
+	var existing models.AccountFeature
+	err := tx.NewSelect().Model(&existing).Where("social_account_id = ? AND feature = ?", in.AccountID, in.Feature).Scan(ctx)
+	beforeEffective := false
+	if err == nil {
+		beforeEffective = existing.Enabled && cache.supported && len(cache.missing) == 0 && cache.allowed
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return err
 	}
-	return s.Read(ctx, workspaceID, actor, affectedIDs)
+	row := &models.AccountFeature{
+		SocialAccountID: in.AccountID,
+		WorkspaceID:     acc.WorkspaceID,
+		Feature:         in.Feature,
+		Enabled:         in.Enabled,
+		DecidedByUserID: strings.TrimSpace(actor.UserID),
+		Source:          src,
+		DecidedAt:       now,
+		CreatedAt:       now,
+		UpdatedAt:       now,
+	}
+	_, err = tx.NewInsert().Model(row).
+		On("CONFLICT (social_account_id, feature) DO UPDATE").
+		Set("enabled = EXCLUDED.enabled").
+		Set("decided_by_user_id = EXCLUDED.decided_by_user_id").
+		Set("source = EXCLUDED.source").
+		Set("decided_at = EXCLUDED.decided_at").
+		Set("updated_at = EXCLUDED.updated_at").
+		Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("upsert feature %s for %s: %w", in.Feature, in.AccountID, err)
+	}
+	if !in.Enabled || beforeEffective {
+		return nil
+	}
+	if !cache.supported || len(cache.missing) > 0 || !cache.allowed {
+		return nil
+	}
+	return s.enqueueForFeature(ctx, tx, acc, actor, in.Feature, sweepEnqueued, now)
+}
+
+func (s *Service) enqueueForFeature(ctx context.Context, tx bun.Tx, acc models.SocialAccount, actor workspaceaccess.ActorFacts, feature string, sweepEnqueued map[string]bool, now time.Time) error {
+	switch feature {
+	case FeatureMessaging:
+		return s.enqueueMessagingSyncTx(ctx, tx, acc.ID, acc.WorkspaceID, now)
+	case FeatureEngagement:
+		if sweepEnqueued[acc.WorkspaceID+"|engagement"] {
+			return nil
+		}
+		err := s.enqueueEngagementSweepTx(ctx, tx, now)
+		if err == nil {
+			sweepEnqueued[acc.WorkspaceID+"|engagement"] = true
+		}
+		return err
+	case FeatureAnalytics:
+		if sweepEnqueued[acc.WorkspaceID+"|analytics"] {
+			return nil
+		}
+		err := s.enqueueAnalyticsSweepTx(ctx, tx, now)
+		if err == nil {
+			sweepEnqueued[acc.WorkspaceID+"|analytics"] = true
+		}
+		return err
+	case FeatureGrow:
+		return s.enqueueGrowthDiscoveryTx(ctx, tx, acc.WorkspaceID, acc.ID, actor.UserID, now)
+	default:
+		return nil
+	}
 }
 
 func (s *Service) enqueueMessagingSyncTx(ctx context.Context, tx bun.Tx, accountID, workspaceID string, runAt time.Time) error {
@@ -423,17 +494,17 @@ func (s *Service) enqueueMessagingSyncTx(ctx context.Context, tx bun.Tx, account
 	return err
 }
 
-func (s *Service) enqueueEngagementSweepTx(ctx context.Context, tx bun.Tx, runAt time.Time) error {
+func (s *Service) enqueueSweepTx(ctx context.Context, tx bun.Tx, jobType string, runAt time.Time) error {
 	payloadBytes, _ := json.Marshal(map[string]string{"scheduled_for": runAt.UTC().Truncate(time.Minute).Format(time.RFC3339)})
 	payload := string(payloadBytes)
-	exists, err := tx.NewSelect().Model((*models.Job)(nil)).Where("type = ? AND status IN (?, ?)", jobregistry.TypeEngagementSweep, jobregistry.StatusPending, jobregistry.StatusProcessing).Exists(ctx)
+	exists, err := tx.NewSelect().Model((*models.Job)(nil)).Where("type = ? AND status IN (?, ?)", jobType, jobregistry.StatusPending, jobregistry.StatusProcessing).Exists(ctx)
 	if err != nil {
 		return err
 	}
 	if exists {
 		return nil
 	}
-	job, err := jobregistry.NewJob(jobregistry.TypeEngagementSweep, payload, runAt)
+	job, err := jobregistry.NewJob(jobType, payload, runAt)
 	if err != nil {
 		return err
 	}
@@ -441,22 +512,12 @@ func (s *Service) enqueueEngagementSweepTx(ctx context.Context, tx bun.Tx, runAt
 	return err
 }
 
+func (s *Service) enqueueEngagementSweepTx(ctx context.Context, tx bun.Tx, runAt time.Time) error {
+	return s.enqueueSweepTx(ctx, tx, jobregistry.TypeEngagementSweep, runAt)
+}
+
 func (s *Service) enqueueAnalyticsSweepTx(ctx context.Context, tx bun.Tx, runAt time.Time) error {
-	payloadBytes, _ := json.Marshal(map[string]string{"scheduled_for": runAt.UTC().Truncate(time.Minute).Format(time.RFC3339)})
-	payload := string(payloadBytes)
-	exists, err := tx.NewSelect().Model((*models.Job)(nil)).Where("type = ? AND status IN (?, ?)", jobregistry.TypeAnalyticsSweep, jobregistry.StatusPending, jobregistry.StatusProcessing).Exists(ctx)
-	if err != nil {
-		return err
-	}
-	if exists {
-		return nil
-	}
-	job, err := jobregistry.NewJob(jobregistry.TypeAnalyticsSweep, payload, runAt)
-	if err != nil {
-		return err
-	}
-	_, err = tx.NewInsert().Model(job).On("CONFLICT DO NOTHING").Exec(ctx)
-	return err
+	return s.enqueueSweepTx(ctx, tx, jobregistry.TypeAnalyticsSweep, runAt)
 }
 
 func (s *Service) enqueueGrowthDiscoveryTx(ctx context.Context, tx bun.Tx, workspaceID, accountID, actorUserID string, runAt time.Time) error {
@@ -496,33 +557,11 @@ func (s *Service) resolveOne(ctx context.Context, account models.SocialAccount, 
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return ResolvedFeature{}, err
 	}
+	availability, reason, unavailable := resolveAvailability(supported, allowed, missing, planReason, unavailable)
 	storedExists := pref != nil
 	storedEnabled := storedExists && pref.Enabled
-	availability := AvailabilityAvailable
-	reason := ReasonAvailable
-	if !supported {
-		availability = AvailabilityUnsupported
-		reason = ReasonUnsupported
-	} else if !allowed {
-		availability = AvailabilityPlanRestricted
-		reason = ReasonPlanRestricted
-		if planReason != "" {
-			unavailable = planReason
-		}
-	} else if len(missing) > 0 {
-		availability = AvailabilityMissingScope
-		reason = ReasonMissingScope
-	}
 	effective := storedExists && storedEnabled && supported && len(missing) == 0 && allowed
-	decidedAt := (*time.Time)(nil)
-	decidedBy := ""
-	source := ""
-	if pref != nil {
-		t := pref.DecidedAt
-		decidedAt = &t
-		decidedBy = pref.DecidedByUserID
-		source = pref.Source
-	}
+	decidedAt, decidedBy, source := extractPreferenceMeta(pref)
 	return ResolvedFeature{
 		WorkspaceID:       account.WorkspaceID,
 		SocialAccountID:   account.ID,
@@ -543,89 +582,128 @@ func (s *Service) resolveOne(ctx context.Context, account models.SocialAccount, 
 	}, nil
 }
 
-func (s *Service) supportFor(ctx context.Context, account models.SocialAccount, feature string) ([]string, []string, string, bool) {
-	providerKey := account.Platform
-	// Special handling for mastodon dynamic instances: provider key might be "mastodon:<url>"
-	adapter, ok := s.providers[providerKey]
-	if !ok {
-		// try fallback for mastodon instances
-		if strings.HasPrefix(providerKey, "mastodon") {
-			// search any mastodon adapter
-			for k, v := range s.providers {
-				if strings.HasPrefix(k, "mastodon") {
-					adapter = v
-					ok = true
-					break
-				}
-			}
+func resolveAvailability(supported, allowed bool, missing []string, planReason, unavailable string) (string, string, string) {
+	switch {
+	case !supported:
+		return AvailabilityUnsupported, ReasonUnsupported, unavailable
+	case !allowed:
+		if planReason != "" {
+			unavailable = planReason
 		}
+		return AvailabilityPlanRestricted, ReasonPlanRestricted, unavailable
+	case len(missing) > 0:
+		return AvailabilityMissingScope, ReasonMissingScope, unavailable
+	default:
+		return AvailabilityAvailable, ReasonAvailable, unavailable
 	}
+}
+
+func extractPreferenceMeta(pref *models.AccountFeature) (*time.Time, string, string) {
+	if pref == nil {
+		return nil, "", ""
+	}
+	t := pref.DecidedAt
+	return &t, pref.DecidedByUserID, pref.Source
+}
+
+func (s *Service) supportFor(_ context.Context, account models.SocialAccount, feature string) ([]string, []string, string, bool) {
+	adapter, ok := s.resolveAdapter(account.Platform)
 	if !ok || adapter == nil {
 		return nil, nil, "", false
 	}
 	switch feature {
 	case FeatureMessaging:
-		if m, ok := adapter.(platform.MessagingAdapter); ok {
-			sup := m.MessagingSupport()
-			supported := sup.Enabled
-			required := sup.RequiredScopes
-			unavailable := sup.Unavailable
-			var missing []string
-			if supported {
-				missing = missingScopes(account.GrantedScopes, required)
-			}
-			return required, missing, unavailable, supported
-		}
-		return nil, nil, "", false
+		return s.supportForMessaging(account, adapter)
 	case FeatureEngagement:
-		if e, ok := adapter.(engagementSupporter); ok {
-			sup := e.EngagementSupport()
-			supported := sup.Enabled
-			required := sup.RequiredScopes
-			unavailable := sup.Unavailable
-			var missing []string
-			if supported {
-				missing = missingScopes(account.GrantedScopes, required)
-			}
-			return required, missing, unavailable, supported
-		}
-		return nil, nil, "", false
+		return s.supportForEngagement(account, adapter)
 	case FeatureAnalytics:
-		if a, ok := adapter.(platform.AnalyticsAdapter); ok {
-			var sup platform.AnalyticsSupport
-			if resolver, ok := adapter.(platform.AccountAnalyticsSupportResolver); ok {
-				var capState map[string]string
-				_ = json.Unmarshal([]byte(account.CapabilityState), &capState)
-				sup = resolver.AnalyticsSupportForAccount(platform.AnalyticsAccountContext{
-					AccountID:       account.AccountID,
-					GrantedScopes:   account.GrantedScopes,
-					CapabilityState: capState,
-				})
-			} else {
-				sup = a.AnalyticsSupport()
-			}
-			supported := sup.Account || sup.Content
-			required := append([]string{}, sup.AccountRequiredScopes...)
-			required = append(required, sup.ContentRequiredScopes...)
-			unavailable := firstNonEmpty(sup.AccountUnavailable, sup.ContentUnavailable)
-			var missing []string
-			if supported {
-				missing = missingScopes(account.GrantedScopes, required)
-			}
-			return required, missing, unavailable, supported
-		}
-		return nil, nil, "", false
+		return s.supportForAnalytics(account, adapter)
 	case FeatureGrow:
-		if _, ok := adapter.(platform.GrowthDiscoverer); ok {
-			return nil, nil, "", true
-		}
-		if _, ok := adapter.(platform.GrowthFollower); ok {
-			return nil, nil, "", true
-		}
-		return nil, nil, "", false
+		return s.supportForGrow(adapter)
 	default:
 		return nil, nil, "", false
 	}
+}
+
+func (s *Service) resolveAdapter(providerKey string) (platform.Adapter, bool) {
+	adapter, ok := s.providers[providerKey]
+	if ok {
+		return adapter, true
+	}
+	if strings.HasPrefix(providerKey, "mastodon") {
+		for k, v := range s.providers {
+			if strings.HasPrefix(k, "mastodon") {
+				return v, true
+			}
+		}
+	}
+	return nil, false
+}
+
+func (s *Service) supportForMessaging(account models.SocialAccount, adapter platform.Adapter) ([]string, []string, string, bool) {
+	m, ok := adapter.(platform.MessagingAdapter)
+	if !ok {
+		return nil, nil, "", false
+	}
+	sup := m.MessagingSupport()
+	if !sup.Enabled {
+		return sup.RequiredScopes, nil, sup.Unavailable, false
+	}
+	missing := missingScopes(account.GrantedScopes, sup.RequiredScopes)
+	return sup.RequiredScopes, missing, sup.Unavailable, true
+}
+
+func (s *Service) supportForEngagement(account models.SocialAccount, adapter platform.Adapter) ([]string, []string, string, bool) {
+	e, ok := adapter.(engagementSupporter)
+	if !ok {
+		return nil, nil, "", false
+	}
+	sup := e.EngagementSupport()
+	if !sup.Enabled {
+		return sup.RequiredScopes, nil, sup.Unavailable, false
+	}
+	missing := missingScopes(account.GrantedScopes, sup.RequiredScopes)
+	return sup.RequiredScopes, missing, sup.Unavailable, true
+}
+
+func (s *Service) supportForAnalytics(account models.SocialAccount, adapter platform.Adapter) ([]string, []string, string, bool) {
+	a, ok := adapter.(platform.AnalyticsAdapter)
+	if !ok {
+		return nil, nil, "", false
+	}
+	sup := s.resolveAnalyticsSupport(account, a, adapter)
+	supported := sup.Account || sup.Content
+	required := append([]string{}, sup.AccountRequiredScopes...)
+	required = append(required, sup.ContentRequiredScopes...)
+	unavailable := firstNonEmpty(sup.AccountUnavailable, sup.ContentUnavailable)
+	if !supported {
+		return required, nil, unavailable, false
+	}
+	missing := missingScopes(account.GrantedScopes, required)
+	return required, missing, unavailable, true
+}
+
+func (s *Service) resolveAnalyticsSupport(account models.SocialAccount, a platform.AnalyticsAdapter, adapter platform.Adapter) platform.AnalyticsSupport {
+	if resolver, ok := adapter.(platform.AccountAnalyticsSupportResolver); ok {
+		var capState map[string]string
+		_ = json.Unmarshal([]byte(account.CapabilityState), &capState)
+		return resolver.AnalyticsSupportForAccount(platform.AnalyticsAccountContext{
+			AccountID:       account.AccountID,
+			GrantedScopes:   account.GrantedScopes,
+			CapabilityState: capState,
+		})
+	}
+	return a.AnalyticsSupport()
+}
+
+func (s *Service) supportForGrow(adapter platform.Adapter) ([]string, []string, string, bool) {
+	if _, ok := adapter.(platform.GrowthDiscoverer); ok {
+		return nil, nil, "", true
+	}
+	if _, ok := adapter.(platform.GrowthFollower); ok {
+		return nil, nil, "", true
+	}
+	return nil, nil, "", false
 }
 
 func missingScopes(granted string, required []string) []string {

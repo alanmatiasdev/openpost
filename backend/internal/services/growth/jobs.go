@@ -323,44 +323,79 @@ func (s *Service) handleFollow(ctx context.Context, p growthFollowPayload) error
 	if !ok || exec.ID == "" {
 		return fmt.Errorf("growth follow requires durable job execution context")
 	}
-	var rec models.GrowthRecommendation
-	if err := s.db.NewSelect().Model(&rec).Where("id = ? AND workspace_id = ?", p.RecommendationID, p.WorkspaceID).Scan(ctx); err != nil {
-		return err
-	}
-	account, err := s.resolveAccount(ctx, p.WorkspaceID, rec.SocialAccountID)
+	rec, account, err := s.loadFollowTargets(ctx, p)
 	if err != nil {
 		return err
 	}
-	if !s.isGrowEnabled(ctx, account.ID) {
-		return s.persistFollowFailure(ctx, &rec, "feature_disabled", "feature_disabled", "Grow is disabled for this account.")
+	if err := s.ensureFollowEnabled(ctx, &rec, account); err != nil {
+		return err
 	}
-	token, err := s.tokenSource.GetValidAccessToken(ctx, account.ID)
+	token, adapter, err := s.resolveFollowProvider(ctx, &rec, account)
+	if err != nil {
+		return err
+	}
+	input, err := s.buildFollowInput(rec, account, exec.ID)
+	if err != nil {
+		return s.persistFollowFailure(ctx, &rec, "failed", "fingerprint_error", "could not fingerprint")
+	}
+	result, err := s.executeFollowWrite(ctx, input, adapter, token, account, rec)
 	if err != nil {
 		status, code, msg := classifyGrowthError(err)
 		return s.persistFollowFailure(ctx, &rec, status, code, msg)
+	}
+	return s.persistFollowSuccess(ctx, rec, account, p.ActorUserID, result.ProviderState)
+}
+
+func (s *Service) loadFollowTargets(ctx context.Context, p growthFollowPayload) (models.GrowthRecommendation, models.SocialAccount, error) {
+	var rec models.GrowthRecommendation
+	if err := s.db.NewSelect().Model(&rec).Where("id = ? AND workspace_id = ?", p.RecommendationID, p.WorkspaceID).Scan(ctx); err != nil {
+		return rec, models.SocialAccount{}, err
+	}
+	account, err := s.resolveAccount(ctx, p.WorkspaceID, rec.SocialAccountID)
+	if err != nil {
+		return rec, models.SocialAccount{}, err
+	}
+	return rec, account, nil
+}
+
+func (s *Service) ensureFollowEnabled(ctx context.Context, rec *models.GrowthRecommendation, account models.SocialAccount) error {
+	if !s.isGrowEnabled(ctx, account.ID) {
+		return s.persistFollowFailure(ctx, rec, "feature_disabled", "feature_disabled", "Grow is disabled for this account.")
+	}
+	return nil
+}
+
+func (s *Service) resolveFollowProvider(ctx context.Context, rec *models.GrowthRecommendation, account models.SocialAccount) (string, platform.GrowthFollower, error) {
+	token, err := s.tokenSource.GetValidAccessToken(ctx, account.ID)
+	if err != nil {
+		status, code, msg := classifyGrowthError(err)
+		return "", nil, s.persistFollowFailure(ctx, rec, status, code, msg)
 	}
 	adapter, err := s.growthFollowerForAccount(account)
 	if err != nil {
 		status, code, msg := classifyGrowthError(err)
-		return s.persistFollowFailure(ctx, &rec, status, code, msg)
+		return "", nil, s.persistFollowFailure(ctx, rec, status, code, msg)
 	}
+	return token, adapter, nil
+}
 
+func (s *Service) buildFollowInput(rec models.GrowthRecommendation, account models.SocialAccount, execID string) (providerwrite.Input, error) {
 	fingerprint, err := providerwrite.Fingerprint("growth_follow_v1", map[string]string{
 		"workspace_id": rec.WorkspaceID, "social_account_id": account.ID, "remote_account_id": rec.RemoteAccountID, "action": "growth_follow",
 	})
 	if err != nil {
-		return s.persistFollowFailure(ctx, &rec, "failed", "fingerprint_error", "could not fingerprint")
+		return providerwrite.Input{}, err
 	}
-	operationID := "growth_follow:" + exec.ID
-	jobID := exec.ID
-	input := providerwrite.Input{
-		OperationID: operationID, JobID: jobID, WorkspaceID: rec.WorkspaceID,
+	return providerwrite.Input{
+		OperationID: "growth_follow:" + execID, JobID: execID, WorkspaceID: rec.WorkspaceID,
 		SocialAccountID: account.ID, TargetKey: providerKeyForAccount(account),
 		Provider: account.Platform, Operation: "growth_follow",
 		PayloadFingerprint: fingerprint,
-	}
+	}, nil
+}
 
-	result, err := providerwrite.New(s.db).Execute(ctx, input, func(sendCtx context.Context, control *providerwrite.Control) (platform.PublishResult, error) {
+func (s *Service) executeFollowWrite(ctx context.Context, input providerwrite.Input, adapter platform.GrowthFollower, token string, account models.SocialAccount, rec models.GrowthRecommendation) (platform.PublishResult, error) {
+	return providerwrite.New(s.db).Execute(ctx, input, func(sendCtx context.Context, control *providerwrite.Control) (platform.PublishResult, error) {
 		if err := control.Begin(platform.PublishResult{
 			ProviderState: "growth_follow",
 			RetrySafety:   platform.PublishRetryNever,
@@ -387,31 +422,22 @@ func (s *Service) handleFollow(ctx context.Context, p growthFollowPayload) error
 			RetrySafety:     platform.PublishRetryNever,
 		}, nil
 	}, nil)
-	if err != nil {
-		status, code, msg := classifyGrowthError(err)
-		return s.persistFollowFailure(ctx, &rec, status, code, msg)
-	}
-	var newState string
-	if strings.EqualFold(result.ProviderState, "requested") {
+}
+
+func (s *Service) persistFollowSuccess(ctx context.Context, rec models.GrowthRecommendation, account models.SocialAccount, actorUserID, providerState string) error {
+	newState := models.GrowthRecommendationFollowFollowing
+	if strings.EqualFold(providerState, "requested") {
 		newState = models.GrowthRecommendationFollowRequested
-	} else {
-		newState = models.GrowthRecommendationFollowFollowing
 	}
 	now := s.now()
-	_, err = s.db.NewUpdate().Model(&rec).
-		Set("follow_state = ?", newState).
-		Set("follow_error_code = ''").
-		Set("follow_error_message = ''").
-		Set("updated_at = ?", now).
-		WherePK().Exec(ctx)
-	if err != nil {
+	if _, err := s.db.NewUpdate().Model(&rec).Set("follow_state = ?", newState).Set("follow_error_code = ''").Set("follow_error_message = ''").Set("updated_at = ?", now).WherePK().Exec(ctx); err != nil {
 		return err
 	}
 	if s.telemetry != nil {
 		_ = s.telemetry.Capture(ctx, telemetry.Event{
 			Name:        telemetry.EventGrowthFollowSucceeded,
-			DistinctID:  p.ActorUserID,
-			WorkspaceID: p.WorkspaceID,
+			DistinctID:  actorUserID,
+			WorkspaceID: rec.WorkspaceID,
 			Properties:  map[string]any{"platform": account.Platform, "follow_state": newState},
 		})
 	}

@@ -44,7 +44,7 @@ func newNormServer(t *testing.T, providers map[string]platform.Adapter) (*echo.E
 	handler := NewOAuthHandler(db, enc, providers, testAuthenticator{}, false, "https://app.openpost.test")
 	af := accountfeatures.NewService(db, providers, nil)
 	handler.SetAccountFeaturesService(af)
-	var apps []platform.AppConfig
+	apps := make([]platform.AppConfig, 0, len(providers))
 	for p := range providers {
 		key := p
 		if len(p) > 8 && p[:8] == "mastodon" {
@@ -66,8 +66,10 @@ func newNormServer(t *testing.T, providers map[string]platform.Adapter) (*echo.E
 	return e, handler
 }
 
-func doNormCallback(t *testing.T, e *echo.Echo, provider string, workspaceID string, mode string) *http.Response {
+func doNormCallback(t *testing.T, e *echo.Echo, mode string) *http.Response {
 	t.Helper()
+	const provider = "threads"
+	const workspaceID = "ws-1"
 	q := "/api/v1/accounts/" + provider + "/auth-url?workspace_id=" + url.QueryEscape(workspaceID)
 	if mode != "" {
 		q += "&account_management_mode=" + url.QueryEscape(mode)
@@ -130,7 +132,8 @@ func TestNormSetupRedirectForNewAccountWithSupportedFeatures(t *testing.T) {
 		"threads": &normMessagingAdapter{support: platform.MessagingSupport{Enabled: true}},
 	}
 	e, _ := newNormServer(t, providers)
-	resp := doNormCallback(t, e, "threads", "ws-1", "direct")
+	resp := doNormCallback(t, e, "direct")
+	defer resp.Body.Close()
 	require.Equal(t, http.StatusTemporaryRedirect, resp.StatusCode)
 	loc := resp.Header.Get("Location")
 	require.Contains(t, loc, "/accounts/setup")
@@ -148,7 +151,8 @@ func TestNormBypassesSetupWhenNoSupportedFeatures(t *testing.T) {
 		"threads": &normMessagingAdapter{support: platform.MessagingSupport{Enabled: false}},
 	}
 	e, _ := newNormServer(t, providers)
-	resp := doNormCallback(t, e, "threads", "ws-1", "settings")
+	resp := doNormCallback(t, e, "settings")
+	defer resp.Body.Close()
 	require.Equal(t, http.StatusTemporaryRedirect, resp.StatusCode)
 	loc := resp.Header.Get("Location")
 	require.NotContains(t, loc, "/accounts/setup")
@@ -160,19 +164,24 @@ func TestNormPreservesFirstDestinationAndMode(t *testing.T) {
 		"threads": &normMessagingAdapter{support: platform.MessagingSupport{Enabled: false}},
 	}
 	e1, _ := newNormServer(t, providers)
-	resp1 := doNormCallback(t, e1, "threads", "ws-1", "direct")
+	resp1 := doNormCallback(t, e1, "direct")
+	defer resp1.Body.Close()
 	require.Contains(t, resp1.Header.Get("Location"), "workspace_id=ws-1")
 	require.Contains(t, resp1.Header.Get("Location"), "account_ids=")
 	require.NotContains(t, resp1.Header.Get("Location"), "settings")
 
 	e2, _ := newNormServer(t, providers)
-	_ = doNormCallback(t, e2, "threads", "ws-1", "direct")
-	resp2 := doNormCallback(t, e2, "threads", "ws-1", "direct")
+	respDiscard := doNormCallback(t, e2, "direct")
+	respDiscard.Body.Close()
+	resp2 := doNormCallback(t, e2, "direct")
+	defer resp2.Body.Close()
 	require.Equal(t, "https://app.openpost.test/accounts", resp2.Header.Get("Location"))
 
 	e3, _ := newNormServer(t, providers)
-	_ = doNormCallback(t, e3, "threads", "ws-1", "settings")
-	resp3 := doNormCallback(t, e3, "threads", "ws-1", "settings")
+	respDiscard2 := doNormCallback(t, e3, "settings")
+	respDiscard2.Body.Close()
+	resp3 := doNormCallback(t, e3, "settings")
+	defer resp3.Body.Close()
 	require.Equal(t, "https://app.openpost.test/settings?tab=accounts", resp3.Header.Get("Location"))
 }
 
@@ -190,7 +199,8 @@ func TestNormReactivatedDoesNotTriggerSetup(t *testing.T) {
 	_, err = h.db.NewInsert().Model(&models.WorkspaceFirstConnection{WorkspaceID: "ws-1", AccountID: "existing-id"}).Exec(ctx)
 	require.NoError(t, err)
 
-	resp := doNormCallback(t, e, "threads", "ws-1", "settings")
+	resp := doNormCallback(t, e, "settings")
+	defer resp.Body.Close()
 	require.NotContains(t, resp.Header.Get("Location"), "/accounts/setup")
 	require.Equal(t, "https://app.openpost.test/settings?tab=accounts", resp.Header.Get("Location"))
 }
@@ -201,7 +211,8 @@ func TestNormContinuationDataInSetupRedirect(t *testing.T) {
 		"threads": &normMessagingAdapter{support: platform.MessagingSupport{Enabled: true}},
 	}
 	e, _ := newNormServer(t, providers)
-	resp := doNormCallback(t, e, "threads", "ws-1", "direct")
+	resp := doNormCallback(t, e, "direct")
+	defer resp.Body.Close()
 	loc := resp.Header.Get("Location")
 	require.Contains(t, loc, "/accounts/setup")
 	u, _ := url.Parse(loc)
@@ -228,8 +239,10 @@ func TestNormCompleteSelectionContainsNormalizedFields(t *testing.T) {
 	u, _ := url.Parse(authBody.URL)
 	state := u.Query().Get("state")
 	cbResp := oauthSelectionRequest(t, e2, http.MethodGet, "/api/v1/accounts/facebook/callback?code=code&state="+url.QueryEscape(state), nil, false)
-	require.Equal(t, http.StatusTemporaryRedirect, cbResp.Result().StatusCode)
-	loc := cbResp.Result().Header.Get("Location")
+	result := cbResp.Result()
+	defer result.Body.Close()
+	require.Equal(t, http.StatusTemporaryRedirect, result.StatusCode)
+	loc := result.Header.Get("Location")
 	parsed, _ := url.Parse(loc)
 	connID := parsed.Query().Get("connection_id")
 	require.NotEmpty(t, connID)

@@ -2028,74 +2028,111 @@ func ensureAccountFeatureSchema(ctx context.Context, db *bun.DB) error {
 }
 
 func backfillAccountFeatures(ctx context.Context, db *bun.DB) error {
-	exists, err := migrationTableExists(ctx, db, "social_accounts")
-	if err != nil || !exists {
+	ready, err := accountFeatureTablesReady(ctx, db)
+	if err != nil {
 		return err
 	}
-	exists, err = migrationTableExists(ctx, db, "account_features")
-	if err != nil || !exists {
-		return err
+	if !ready {
+		return nil
 	}
-	var accounts []models.SocialAccount
-	if err := db.NewSelect().Model(&accounts).Order("created_at ASC", "id ASC").Scan(ctx); err != nil {
+	accounts, err := loadAccountsForBackfill(ctx, db)
+	if err != nil {
 		return err
 	}
 	if len(accounts) == 0 {
 		return nil
 	}
-	growSources := make(map[string]bool)
-	if tableExists, _ := migrationTableExists(ctx, db, "growth_sync_states"); tableExists {
+	growSources := collectGrowSources(ctx, db)
+	return backfillAccountFeatureRows(ctx, db, accounts, growSources)
+}
+
+func accountFeatureTablesReady(ctx context.Context, db *bun.DB) (bool, error) {
+	for _, table := range []string{"social_accounts", "account_features"} {
+		exists, err := migrationTableExists(ctx, db, table)
+		if err != nil {
+			return false, err
+		}
+		if !exists {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+func loadAccountsForBackfill(ctx context.Context, db *bun.DB) ([]models.SocialAccount, error) {
+	var accounts []models.SocialAccount
+	if err := db.NewSelect().Model(&accounts).Order("created_at ASC", "id ASC").Scan(ctx); err != nil {
+		return nil, err
+	}
+	return accounts, nil
+}
+
+func collectGrowSources(ctx context.Context, db *bun.DB) map[string]bool {
+	sources := make(map[string]bool)
+	for _, table := range []string{"growth_sync_states", "growth_recommendations"} {
+		exists, _ := migrationTableExists(ctx, db, table)
+		if !exists {
+			continue
+		}
 		var ids []string
-		if err := db.NewSelect().Table("growth_sync_states").Column("social_account_id").Scan(ctx, &ids); err == nil {
+		if err := db.NewSelect().Table(table).Column("social_account_id").Scan(ctx, &ids); err == nil {
 			for _, id := range ids {
-				growSources[id] = true
+				sources[id] = true
 			}
 		}
 	}
-	if tableExists, _ := migrationTableExists(ctx, db, "growth_recommendations"); tableExists {
-		var ids []string
-		if err := db.NewSelect().Table("growth_recommendations").Column("social_account_id").Scan(ctx, &ids); err == nil {
-			for _, id := range ids {
-				growSources[id] = true
-			}
-		}
-	}
+	return sources
+}
+
+func backfillAccountFeatureRows(ctx context.Context, db *bun.DB, accounts []models.SocialAccount, growSources map[string]bool) error {
 	return db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
 		now := time.Now().UTC()
 		for _, acc := range accounts {
-			messagingEnabled := false
-			if acc.CapabilityState != "" {
-				var state map[string]string
-				if json.Unmarshal([]byte(acc.CapabilityState), &state) == nil && state["messages_enabled"] == "true" {
-					messagingEnabled = true
-				}
-			}
-			analyticsEnabled := platform.PlatformSupportsAnalytics(acc.Platform, acc.CapabilityState)
-			engagementEnabled := platform.PlatformSupportsEngagement(acc.Platform)
-			growEnabled := growSources[acc.ID]
-			features := map[string]bool{
-				"messaging":  messagingEnabled,
-				"analytics":  analyticsEnabled,
-				"engagement": engagementEnabled,
-				"grow":       growEnabled,
-			}
-			for feature, enabled := range features {
-				row := &models.AccountFeature{
-					SocialAccountID: acc.ID,
-					WorkspaceID:     acc.WorkspaceID,
-					Feature:         feature,
-					Enabled:         enabled,
-					Source:          "migration_backfill",
-					DecidedAt:       now,
-				}
-				_, err := tx.NewInsert().Model(row).On("CONFLICT (social_account_id, feature) DO NOTHING").Exec(txCtx)
-				if err != nil {
-					return fmt.Errorf("backfill account feature %s %s: %w", acc.ID, feature, err)
-				}
+			if err := backfillSingleAccountFeatures(txCtx, tx, acc, growSources, now); err != nil {
+				return err
 			}
 		}
 		return nil
 	})
+}
+
+func backfillSingleAccountFeatures(ctx context.Context, tx bun.Tx, acc models.SocialAccount, growSources map[string]bool, now time.Time) error {
+	features := resolveBackfillFeatures(acc, growSources)
+	for feature, enabled := range features {
+		row := &models.AccountFeature{
+			SocialAccountID: acc.ID,
+			WorkspaceID:     acc.WorkspaceID,
+			Feature:         feature,
+			Enabled:         enabled,
+			Source:          "migration_backfill",
+			DecidedAt:       now,
+		}
+		if _, err := tx.NewInsert().Model(row).On("CONFLICT (social_account_id, feature) DO NOTHING").Exec(ctx); err != nil {
+			return fmt.Errorf("backfill account feature %s %s: %w", acc.ID, feature, err)
+		}
+	}
+	return nil
+}
+
+func resolveBackfillFeatures(acc models.SocialAccount, growSources map[string]bool) map[string]bool {
+	messagingEnabled := isBackfillMessagingEnabled(acc.CapabilityState)
+	return map[string]bool{
+		"messaging":  messagingEnabled,
+		"analytics":  platform.SupportsAnalytics(acc.Platform, acc.CapabilityState),
+		"engagement": platform.SupportsEngagement(acc.Platform),
+		"grow":       growSources[acc.ID],
+	}
+}
+
+func isBackfillMessagingEnabled(capabilityState string) bool {
+	if capabilityState == "" {
+		return false
+	}
+	var state map[string]string
+	if json.Unmarshal([]byte(capabilityState), &state) != nil {
+		return false
+	}
+	return state["messages_enabled"] == "true"
 }
 
 var (

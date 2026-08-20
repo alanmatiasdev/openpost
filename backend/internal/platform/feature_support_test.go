@@ -2,7 +2,7 @@ package platform
 
 import "testing"
 
-func TestPlatformSupportsAnalyticsParity(t *testing.T) {
+func TestSupportsAnalyticsParity(t *testing.T) {
 	tests := []struct {
 		platform string
 		capState string
@@ -22,13 +22,13 @@ func TestPlatformSupportsAnalyticsParity(t *testing.T) {
 		{"unknown", "", false},
 	}
 	for _, tc := range tests {
-		if got := PlatformSupportsAnalytics(tc.platform, tc.capState); got != tc.want {
-			t.Errorf("PlatformSupportsAnalytics(%q,%q)=%v want %v", tc.platform, tc.capState, got, tc.want)
+		if got := SupportsAnalytics(tc.platform, tc.capState); got != tc.want {
+			t.Errorf("SupportsAnalytics(%q,%q)=%v want %v", tc.platform, tc.capState, got, tc.want)
 		}
 	}
 }
 
-func TestPlatformSupportsAnalyticsLinkedInCommunityManagementParsing(t *testing.T) {
+func TestSupportsAnalyticsLinkedInCommunityManagementParsing(t *testing.T) {
 	tests := []struct {
 		name     string
 		capState string
@@ -50,33 +50,33 @@ func TestPlatformSupportsAnalyticsLinkedInCommunityManagementParsing(t *testing.
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := PlatformSupportsAnalytics("linkedin", tc.capState)
+			got := SupportsAnalytics("linkedin", tc.capState)
 			if got != tc.want {
-				t.Errorf("PlatformSupportsAnalytics(linkedin,%q)=%v want %v", tc.capState, got, tc.want)
+				t.Errorf("SupportsAnalytics(linkedin,%q)=%v want %v", tc.capState, got, tc.want)
 			}
 		})
 	}
 }
 
-func TestPlatformSupportsEngagementParity(t *testing.T) {
+func TestSupportsEngagementParity(t *testing.T) {
 	enabled := map[string]bool{
 		"facebook": true, "instagram": true, "linkedin": true, "threads": true,
 		"mastodon": true, "bluesky": true, "x": true, "youtube": true,
 	}
 	for _, p := range []string{"facebook", "instagram", "linkedin", "threads", "mastodon", "bluesky", "x", "youtube", "discord", "tiktok"} {
-		got := PlatformSupportsEngagement(p)
+		got := SupportsEngagement(p)
 		want := enabled[p]
 		if got != want {
-			t.Errorf("PlatformSupportsEngagement(%q)=%v want %v", p, got, want)
+			t.Errorf("SupportsEngagement(%q)=%v want %v", p, got, want)
 		}
 	}
 }
 
-func TestPlatformSupportsGrowParity(t *testing.T) {
-	if !PlatformSupportsGrow("bluesky") || !PlatformSupportsGrow("mastodon") {
+func TestSupportsGrowParity(t *testing.T) {
+	if !SupportsGrow("bluesky") || !SupportsGrow("mastodon") {
 		t.Error("grow should support bluesky and mastodon")
 	}
-	if PlatformSupportsGrow("x") || PlatformSupportsGrow("discord") {
+	if SupportsGrow("x") || SupportsGrow("discord") {
 		t.Error("grow should not support x or discord")
 	}
 }

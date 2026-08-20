@@ -156,70 +156,14 @@ func (s *Service) QueueRefresh(ctx context.Context, actor workspaceaccess.ActorF
 	if workspaceID == "" || socialAccountID == "" {
 		return "", ErrInvalid
 	}
-	if err := s.authorize(ctx, workspaceID, actor, workspaceaccess.LevelEdit); err != nil {
-		return "", err
-	}
-	acct, err := s.resolveAccount(ctx, workspaceID, socialAccountID)
+	acct, err := s.prepareRefreshAccount(ctx, actor, workspaceID, socialAccountID)
 	if err != nil {
 		return "", err
 	}
-	if !s.isGrowEnabled(ctx, acct.ID) {
-		return "", ErrFeatureDisabled
-	}
-	if _, err := s.growthDiscovererForAccount(acct); err != nil {
-		return "", err
-	}
 	now := s.now()
-	payloadMap := growthDiscoveryPayload{WorkspaceID: workspaceID, SocialAccountID: socialAccountID, ActorUserID: strings.TrimSpace(actor.UserID)}
-	payloadBytes, _ := json.Marshal(payloadMap)
+	payload := s.buildDiscoveryPayload(workspaceID, socialAccountID, actor.UserID)
 	identity := jobregistry.Identity{ScopeID: workspaceID, DedupeKey: "growth:" + acct.ID}
-	var jobID string
-	var isNewJob bool
-	err = s.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
-		state := models.GrowthSyncState{
-			ID:              uuid.NewString(),
-			WorkspaceID:     acct.WorkspaceID,
-			SocialAccountID: acct.ID,
-			Platform:        acct.Platform,
-			Status:          models.GrowthSyncStatusQueued,
-			LastAttemptedAt: now,
-			CreatedAt:       now,
-			UpdatedAt:       now,
-		}
-		if _, err := tx.NewInsert().Model(&state).
-			On("CONFLICT (social_account_id) DO UPDATE").
-			Set("status = EXCLUDED.status").
-			Set("last_attempted_at = EXCLUDED.last_attempted_at").
-			Set("updated_at = EXCLUDED.updated_at").
-			Exec(txCtx); err != nil {
-			return err
-		}
-		job, err := jobregistry.NewJob(jobregistry.TypeGrowthDiscovery, string(payloadBytes), now)
-		if err != nil {
-			return err
-		}
-		job.ScopeID = identity.ScopeID
-		job.DedupeKey = identity.DedupeKey
-		result, err := tx.NewInsert().Model(job).On("CONFLICT DO NOTHING").Exec(txCtx)
-		if err != nil {
-			return err
-		}
-		rows, err := result.RowsAffected()
-		if err != nil {
-			return err
-		}
-		if rows == 1 {
-			jobID = job.ID
-			isNewJob = true
-			return nil
-		}
-		var existing models.Job
-		if err := tx.NewSelect().Model(&existing).Where("type = ? AND scope_id = ? AND dedupe_key = ? AND status IN (?, ?)", jobregistry.TypeGrowthDiscovery, identity.ScopeID, identity.DedupeKey, jobregistry.StatusPending, jobregistry.StatusProcessing).Limit(1).Scan(txCtx); err != nil {
-			return err
-		}
-		jobID = existing.ID
-		return nil
-	})
+	jobID, isNewJob, err := s.executeRefreshTx(ctx, acct, payload, identity, now)
 	if err != nil {
 		return "", err
 	}
@@ -232,6 +176,104 @@ func (s *Service) QueueRefresh(ctx context.Context, actor workspaceaccess.ActorF
 		})
 	}
 	return jobID, nil
+}
+
+func (s *Service) prepareRefreshAccount(ctx context.Context, actor workspaceaccess.ActorFacts, workspaceID, socialAccountID string) (models.SocialAccount, error) {
+	if err := s.authorize(ctx, workspaceID, actor, workspaceaccess.LevelEdit); err != nil {
+		return models.SocialAccount{}, err
+	}
+	acct, err := s.resolveAccount(ctx, workspaceID, socialAccountID)
+	if err != nil {
+		return models.SocialAccount{}, err
+	}
+	if !s.isGrowEnabled(ctx, acct.ID) {
+		return models.SocialAccount{}, ErrFeatureDisabled
+	}
+	if _, err := s.growthDiscovererForAccount(acct); err != nil {
+		return models.SocialAccount{}, err
+	}
+	return acct, nil
+}
+
+func (s *Service) buildDiscoveryPayload(workspaceID, socialAccountID, actorUserID string) string {
+	payloadMap := growthDiscoveryPayload{WorkspaceID: workspaceID, SocialAccountID: socialAccountID, ActorUserID: strings.TrimSpace(actorUserID)}
+	payloadBytes, _ := json.Marshal(payloadMap)
+	return string(payloadBytes)
+}
+
+func (s *Service) executeRefreshTx(ctx context.Context, acct models.SocialAccount, payload string, identity jobregistry.Identity, now time.Time) (string, bool, error) {
+	var jobID string
+	var isNewJob bool
+	err := s.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
+		if err := s.upsertGrowthSyncQueued(txCtx, tx, acct, now); err != nil {
+			return err
+		}
+		inserted, err := s.insertDiscoveryJob(txCtx, tx, payload, identity, now)
+		if err != nil {
+			return err
+		}
+		if inserted != "" {
+			jobID = inserted
+			isNewJob = true
+			return nil
+		}
+		existingID, err := s.findExistingDiscoveryJob(txCtx, tx, identity)
+		if err != nil {
+			return err
+		}
+		jobID = existingID
+		return nil
+	})
+	return jobID, isNewJob, err
+}
+
+func (s *Service) upsertGrowthSyncQueued(ctx context.Context, tx bun.Tx, acct models.SocialAccount, now time.Time) error {
+	state := models.GrowthSyncState{
+		ID:              uuid.NewString(),
+		WorkspaceID:     acct.WorkspaceID,
+		SocialAccountID: acct.ID,
+		Platform:        acct.Platform,
+		Status:          models.GrowthSyncStatusQueued,
+		LastAttemptedAt: now,
+		CreatedAt:       now,
+		UpdatedAt:       now,
+	}
+	_, err := tx.NewInsert().Model(&state).
+		On("CONFLICT (social_account_id) DO UPDATE").
+		Set("status = EXCLUDED.status").
+		Set("last_attempted_at = EXCLUDED.last_attempted_at").
+		Set("updated_at = EXCLUDED.updated_at").
+		Exec(ctx)
+	return err
+}
+
+func (s *Service) insertDiscoveryJob(ctx context.Context, tx bun.Tx, payload string, identity jobregistry.Identity, now time.Time) (string, error) {
+	job, err := jobregistry.NewJob(jobregistry.TypeGrowthDiscovery, payload, now)
+	if err != nil {
+		return "", err
+	}
+	job.ScopeID = identity.ScopeID
+	job.DedupeKey = identity.DedupeKey
+	result, err := tx.NewInsert().Model(job).On("CONFLICT DO NOTHING").Exec(ctx)
+	if err != nil {
+		return "", err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return "", err
+	}
+	if rows == 1 {
+		return job.ID, nil
+	}
+	return "", nil
+}
+
+func (s *Service) findExistingDiscoveryJob(ctx context.Context, tx bun.Tx, identity jobregistry.Identity) (string, error) {
+	var existing models.Job
+	if err := tx.NewSelect().Model(&existing).Where("type = ? AND scope_id = ? AND dedupe_key = ? AND status IN (?, ?)", jobregistry.TypeGrowthDiscovery, identity.ScopeID, identity.DedupeKey, jobregistry.StatusPending, jobregistry.StatusProcessing).Limit(1).Scan(ctx); err != nil {
+		return "", err
+	}
+	return existing.ID, nil
 }
 
 // ListResult is the DB-only page read.

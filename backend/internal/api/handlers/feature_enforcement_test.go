@@ -337,7 +337,7 @@ func TestFeatureGateAnalyticsEnforcement(t *testing.T) {
 	require.NoError(t, err)
 	require.Greater(t, queued, 0)
 	var jobs []models.Job
-	require.NoError(t, db.NewSelect().Model(&jobs).Where("type IN (?)", bun.In([]string{"analytics_account_sync", "analytics_rendition_sync"})).Scan(ctx))
+	require.NoError(t, db.NewSelect().Model(&jobs).Where("type IN (?)", bun.List([]string{"analytics_account_sync", "analytics_rendition_sync"})).Scan(ctx))
 	require.NotEmpty(t, jobs)
 	// Disable before execution
 	_, err = af.BatchSave(ctx, "ws-1", workspaceAccessActor(), []accountfeatures.ChoiceInput{{AccountID: "acc-ana", Feature: "analytics", Enabled: false}})
@@ -583,7 +583,7 @@ func TestFeatureGateGrowNeverQueuesAutomaticFollow(t *testing.T) {
 	growSvc.SetProvider("bluesky", growFake)
 	growSvc.SetFeatureGate(af)
 	// Discovery execution should not create follow jobs
-	err = growSvc.HandleJob(ctx, "growth_discovery", discoveryJobs[0].Payload)
+	_ = growSvc.HandleJob(ctx, "growth_discovery", discoveryJobs[0].Payload)
 	// May error due to missing sync state but should not create follow job
 	require.NoError(t, db.NewSelect().Model(&followJobs).Where("type = ?", "growth_follow").Scan(ctx))
 	require.Len(t, followJobs, 0)
