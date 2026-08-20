@@ -25,16 +25,25 @@ const (
 	commentPathByID       = "/comments/{id}"
 )
 
+type CommentFeatureGate interface {
+	IsEffectiveEnabled(ctx context.Context, accountID, feature string) (bool, error)
+}
+
 type CommentHandler struct {
 	db          *bun.DB
 	auth        middleware.Authenticator
 	providers   map[string]platform.Adapter
 	encryptor   *servicecrypto.TokenEncryptor
 	tokenSource AccessTokenSource
+	featureGate CommentFeatureGate
 }
 
 func NewCommentHandler(db *bun.DB, authenticator middleware.Authenticator, providers map[string]platform.Adapter, encryptor *servicecrypto.TokenEncryptor) *CommentHandler {
 	return &CommentHandler{db: db, auth: authenticator, providers: providers, encryptor: encryptor}
+}
+
+func (h *CommentHandler) SetFeatureGate(g CommentFeatureGate) {
+	h.featureGate = g
 }
 
 func (h *CommentHandler) SetTokenSource(source AccessTokenSource) {
@@ -112,6 +121,12 @@ func (h *CommentHandler) listRenditionComments(api huma.API) {
 		if err != nil {
 			return nil, err
 		}
+		if h.featureGate != nil {
+			enabled, gateErr := h.featureGate.IsEffectiveEnabled(ctx, account.ID, "engagement")
+			if gateErr != nil || !enabled {
+				return nil, huma.Error403Forbidden("engagement is disabled for this account")
+			}
+		}
 		commenter, accessToken, err := h.commentAdapter(ctx, account)
 		if err != nil {
 			return nil, err
@@ -156,6 +171,12 @@ func (h *CommentHandler) replyToComment(api huma.API) {
 		if err != nil {
 			return nil, err
 		}
+		if h.featureGate != nil {
+			enabled, gateErr := h.featureGate.IsEffectiveEnabled(ctx, account.ID, "engagement")
+			if gateErr != nil || !enabled {
+				return nil, huma.Error403Forbidden("engagement is disabled for this account")
+			}
+		}
 		if err := h.checkWorkspaceEditAccess(ctx, publication.WorkspaceID, middleware.GetUserID(ctx)); err != nil {
 			return nil, err
 		}
@@ -194,6 +215,12 @@ func (h *CommentHandler) hideComment(api huma.API) {
 		if err != nil {
 			return nil, err
 		}
+		if h.featureGate != nil {
+			enabled, gateErr := h.featureGate.IsEffectiveEnabled(ctx, account.ID, "engagement")
+			if gateErr != nil || !enabled {
+				return nil, huma.Error403Forbidden("engagement is disabled for this account")
+			}
+		}
 		if err := h.checkWorkspaceEditAccess(ctx, publication.WorkspaceID, middleware.GetUserID(ctx)); err != nil {
 			return nil, err
 		}
@@ -230,6 +257,12 @@ func (h *CommentHandler) deleteComment(api huma.API) {
 		rendition, publication, account, err := h.loadCommentContext(ctx, ref.RenditionID, middleware.GetUserID(ctx))
 		if err != nil {
 			return nil, err
+		}
+		if h.featureGate != nil {
+			enabled, gateErr := h.featureGate.IsEffectiveEnabled(ctx, account.ID, "engagement")
+			if gateErr != nil || !enabled {
+				return nil, huma.Error403Forbidden("engagement is disabled for this account")
+			}
 		}
 		if err := h.checkWorkspaceEditAccess(ctx, publication.WorkspaceID, middleware.GetUserID(ctx)); err != nil {
 			return nil, err

@@ -263,10 +263,13 @@ func RegisterHumaRoutes(api huma.API, deps RouteDeps) {
 	commentHandler := handlers.NewCommentHandler(deps.DB, deps.Authenticator, deps.Providers, deps.TokenEncryptor)
 	commentHandler.SetTokenSource(deps.TokenSource)
 	commentHandler.RegisterRoutes(api)
-	handlers.NewAnalyticsHandler(deps.DB, deps.Authenticator, deps.AnalyticsService).RegisterRoutes(api)
-	handlers.NewEngagementMessagingHandler(deps.Authenticator, deps.MessagingService, deps.EngagementService).RegisterRoutes(api)
+	analyticsHandler := handlers.NewAnalyticsHandler(deps.DB, deps.Authenticator, deps.AnalyticsService)
+	analyticsHandler.RegisterRoutes(api)
+	engagementMessagingHandler := handlers.NewEngagementMessagingHandler(deps.Authenticator, deps.MessagingService, deps.EngagementService)
+	engagementMessagingHandler.RegisterRoutes(api)
 	handlers.NewNotificationHandler(deps.DB, deps.Authenticator, deps.NotificationService).RegisterRoutes(api)
-	handlers.NewGrowthHandler(deps.GrowthService, deps.Authenticator).RegisterRoutes(api)
+	growthHandler := handlers.NewGrowthHandler(deps.GrowthService, deps.Authenticator)
+	growthHandler.RegisterRoutes(api)
 	handlers.NewInstanceAdminHandler(
 		deps.DB,
 		deps.Authenticator,
@@ -370,6 +373,23 @@ func RegisterHumaRoutes(api huma.API, deps RouteDeps) {
 	afhHandler.SaveFeatures(api)
 	oauthHandler.SetAccountFeaturesService(afhService)
 	oauthHandler.SetProviderRegistrars(append(deps.ProviderRegistrars, afhService.SetProvider)...)
+	// Inject shared feature resolver into every feature service and handler. Avoid duplicating support/scope/plan rules.
+	if deps.AnalyticsService != nil {
+		deps.AnalyticsService.SetFeatureGate(afhService)
+	}
+	if deps.MessagingService != nil {
+		deps.MessagingService.SetFeatureGate(afhService)
+	}
+	if deps.EngagementService != nil {
+		deps.EngagementService.SetFeatureGate(afhService)
+	}
+	if deps.GrowthService != nil {
+		deps.GrowthService.SetFeatureGate(afhService)
+	}
+	commentHandler.SetFeatureGate(afhService)
+	analyticsHandler.SetFeatureGate(afhService)
+	engagementMessagingHandler.SetFeatureGate(afhService)
+	growthHandler.SetFeatureGate(afhService)
 
 	RegisterHealth(api, deps.DB)
 	RegisterVersion(api, BuildInfo{

@@ -18,14 +18,23 @@ import (
 	"github.com/openpost/backend/internal/services/messaging"
 )
 
+type EngagementMessagingFeatureGate interface {
+	IsEffectiveEnabled(ctx context.Context, accountID, feature string) (bool, error)
+}
+
 type EngagementMessagingHandler struct {
-	auth       middleware.Authenticator
-	messaging  *messaging.Service
+	auth        middleware.Authenticator
+	messaging   *messaging.Service
 	engagement *engagement.Service
+	featureGate EngagementMessagingFeatureGate
 }
 
 func NewEngagementMessagingHandler(auth middleware.Authenticator, messagingService *messaging.Service, engagementService *engagement.Service) *EngagementMessagingHandler {
 	return &EngagementMessagingHandler{auth: auth, messaging: messagingService, engagement: engagementService}
+}
+
+func (h *EngagementMessagingHandler) SetFeatureGate(g EngagementMessagingFeatureGate) {
+	h.featureGate = g
 }
 
 type ListEngagementInput struct {

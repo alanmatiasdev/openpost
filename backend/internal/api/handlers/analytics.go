@@ -11,14 +11,23 @@ import (
 	"github.com/uptrace/bun"
 )
 
+type AnalyticsFeatureGate interface {
+	IsEffectiveEnabled(ctx context.Context, accountID, feature string) (bool, error)
+}
+
 type AnalyticsHandler struct {
-	db      *bun.DB
-	auth    middleware.Authenticator
-	service *analyticsservice.Service
+	db          *bun.DB
+	auth        middleware.Authenticator
+	service     *analyticsservice.Service
+	featureGate AnalyticsFeatureGate
 }
 
 func NewAnalyticsHandler(db *bun.DB, auth middleware.Authenticator, service *analyticsservice.Service) *AnalyticsHandler {
 	return &AnalyticsHandler{db: db, auth: auth, service: service}
+}
+
+func (h *AnalyticsHandler) SetFeatureGate(g AnalyticsFeatureGate) {
+	h.featureGate = g
 }
 
 type GetAnalyticsOverviewInput struct {

@@ -13,13 +13,22 @@ import (
 
 const tagGrowth = "Growth"
 
+type FeatureGate interface {
+	IsEffectiveEnabled(ctx context.Context, accountID, feature string) (bool, error)
+}
+
 type GrowthHandler struct {
-	service *growthservice.Service
-	auth    middleware.Authenticator
+	service     *growthservice.Service
+	auth        middleware.Authenticator
+	featureGate FeatureGate
 }
 
 func NewGrowthHandler(service *growthservice.Service, auth middleware.Authenticator) *GrowthHandler {
 	return &GrowthHandler{service: service, auth: auth}
+}
+
+func (h *GrowthHandler) SetFeatureGate(g FeatureGate) {
+	h.featureGate = g
 }
 
 func (h *GrowthHandler) RegisterRoutes(api huma.API) {
