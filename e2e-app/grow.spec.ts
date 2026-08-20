@@ -120,6 +120,37 @@ function installGrowthRoutes(page: Page, workspaceID: string) {
     await route.fulfill({ contentType: "application/json", json: accounts });
   });
 
+  page.route("**/api/v1/account-features*", async (route) => {
+    const url = new URL(route.request().url());
+    if (route.request().method() !== "GET" || !url.pathname.endsWith("/account-features")) {
+      await route.continue();
+      return;
+    }
+    const requestedIDs = new Set(
+      (url.searchParams.get("account_ids") ?? "").split(",").filter(Boolean),
+    );
+    await route.fulfill({
+      contentType: "application/json",
+      json: accounts
+        .filter((account) => requestedIDs.has(account.id))
+        .map((account) => ({
+          workspace_id: workspaceID,
+          social_account_id: account.id,
+          platform: account.platform,
+          feature: "grow",
+          supported: true,
+          availability: "available",
+          reason_code: "available",
+          required_scopes: [],
+          missing_scopes: [],
+          unavailable_reason: "",
+          stored_exists: true,
+          stored_enabled: true,
+          effective_enabled: true,
+        })),
+    });
+  });
+
   page.route("**/api/v1/growth**", async (route) => {
     const url = new URL(route.request().url());
     const method = route.request().method();
