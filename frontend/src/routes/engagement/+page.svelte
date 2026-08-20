@@ -40,10 +40,13 @@
 	import HeartIcon from '@lucide/svelte/icons/heart';
 	import CircleAlertIcon from '@lucide/svelte/icons/circle-alert';
 	import DestinationOptionCombobox from '$lib/components/destination-option-combobox.svelte';
+	import { allFeatureEffectiveDisabled, collectiveDisabledReason } from '$lib/feature-disabled';
+	import type { components as FeatureComponents } from '$lib/api/types';
 
 	type EngagementItem = components['schemas']['EngagementItem'];
 	type EngagementSyncState = components['schemas']['EngagementSyncState'];
 	type Publication = components['schemas']['PublicationResponse'];
+	type FeatureState = FeatureComponents['schemas']['FeatureStateResponse'];
 
 	let loading = $state(true);
 	let refreshing = $state(false);
@@ -80,11 +83,20 @@
 	let confirmDialogOpen = $state(false);
 	let toast = $state('');
 	let toastTone = $state<'neutral' | 'success' | 'error'>('neutral');
+	let engagementFeatures = $state.raw<FeatureState[]>([]);
 
 	const workspaceId = $derived(workspaceCtx.currentWorkspace?.id ?? '');
 	const initialLoading = $derived(
 		Boolean(workspaceId) && loading && dataWorkspaceId !== workspaceId
 	);
+	const engagementAllDisabled = $derived(
+		accounts.length > 0 && allFeatureEffectiveDisabled(engagementFeatures, 'engagement')
+	);
+	const engagementReason = $derived(collectiveDisabledReason(engagementFeatures, 'engagement'));
+	const engagementEmptyIsFeatureDisabled = $derived(
+		engagementAllDisabled && items.length === 0 && !initialLoading && !error
+	);
+	const showEngagementDisabledNotice = $derived(engagementAllDisabled && items.length > 0);
 	const loadKey = $derived(
 		`${workspaceId}:${platformFilter}:${accountFilter}:${publicationFilter}:${unreadOnly ? 'unread' : 'all'}:${archived ? 'archived' : 'active'}`
 	);
@@ -188,6 +200,26 @@
 		}
 	});
 
+	async function loadEngagementFeatures(workspace: string, accs: SocialAccount[]) {
+		if (!workspace || accs.length === 0) {
+			engagementFeatures = [];
+			return;
+		}
+		try {
+			const ids = accs.map((a) => a.id).join(',');
+			const res = await client.GET('/account-features', {
+				params: { query: { workspace_id: workspace, account_ids: ids } }
+			});
+			if (res.error || !res.data) {
+				engagementFeatures = [];
+				return;
+			}
+			engagementFeatures = res.data as FeatureState[];
+		} catch {
+			engagementFeatures = [];
+		}
+	}
+
 	async function loadEngagement(cursor = '', append = false) {
 		if (!workspaceId) return;
 		const visibleAnchor = append ? engagementVisibleAnchor() : null;
@@ -235,6 +267,7 @@
 			nextCursor = data?.next_cursor ?? '';
 			syncStates = data?.sync_states ?? [];
 			accounts = accountResponse.error ? [] : (accountResponse.data ?? []);
+			void loadEngagementFeatures(workspaceId, accounts);
 			dataWorkspaceId = workspaceId;
 			knownPlatforms = [
 				...new Set([
@@ -310,7 +343,7 @@
 	}
 
 	async function refresh() {
-		if (!workspaceId) return;
+		if (!workspaceId || engagementAllDisabled) return;
 		refreshing = true;
 		const { data, error: apiError } = await client.POST('/engagement/refresh', {
 			body: { workspace_id: workspaceId }
@@ -333,7 +366,7 @@
 		state: { read?: boolean; archived?: boolean },
 		announce = true
 	) {
-		if (!workspaceId) return false;
+		if (!workspaceId || engagementAllDisabled) return false;
 		actionInFlight = item.id;
 		const { error: apiError } = await client.POST('/engagement/state', {
 			body: { workspace_id: workspaceId, ids: [item.id], ...state }
@@ -374,7 +407,7 @@
 		action: 'reply' | 'hide' | 'delete' | 'like' | 'unlike',
 		announce = true
 	) {
-		if (!workspaceId) return false;
+		if (!workspaceId || engagementAllDisabled) return false;
 		actionInFlight = item.id;
 		try {
 			const { error: apiError } = await client.POST('/engagement/{item_id}/actions', {
@@ -618,7 +651,12 @@
 				</Popover.Content>
 			</Popover.Root>
 		{/if}
-		<Button variant="outline" onclick={refresh} disabled={refreshing || !workspaceId}>
+		<Button
+			variant="outline"
+			onclick={refresh}
+			disabled={refreshing || !workspaceId || engagementAllDisabled}
+			data-testid="engagement-refresh"
+		>
 			<RefreshIcon class={refreshing ? 'size-4 animate-spin' : 'size-4'} />
 			{m.engagement_refresh()}
 		</Button>
@@ -708,9 +746,28 @@
 			{m.engagement_archive_help()}
 		</p>
 
+		{#if showEngagementDisabledNotice}
+			<div data-testid="engagement-disabled-notice">
+				<InlineNotice tone="warning" message={m.engagement_feature_disabled_notice()}>
+					{#snippet actions()}
+						<Button
+							href="/settings?tab=accounts"
+							variant="outline"
+							size="sm"
+							data-testid="engagement-disabled-recovery">{m.feature_disabled_open_details()}</Button
+						>
+					{/snippet}
+					{#if engagementReason}
+						<p class="mt-1 text-xs leading-5" data-testid="engagement-disabled-reason">
+							{engagementReason}
+						</p>
+					{/if}
+				</InlineNotice>
+			</div>
+		{/if}
 		{#if initialLoading}
 			<PageLoading layout="list" label={m.common_loading()} items={5} />
-		{:else if error}
+		{:else if error && !engagementAllDisabled}
 			<InlineNotice tone="error" message={error}>
 				{#snippet actions()}
 					<Button variant="outline" size="sm" onclick={() => void loadEngagement()}>
@@ -718,8 +775,24 @@
 					</Button>
 				{/snippet}
 			</InlineNotice>
-		{/if}
-		{#if !initialLoading && items.length === 0 && !error}
+		{:else if engagementEmptyIsFeatureDisabled}
+			<EmptyState
+				icon={MessagesSquareIcon}
+				title={m.engagement_feature_disabled_title()}
+				description={m.engagement_feature_disabled_description()}
+				actionLabel={m.feature_disabled_open_details()}
+				actionHref="/settings?tab=accounts"
+				variant="muted"
+			/>
+			{#if engagementReason}
+				<p
+					class="mt-3 text-xs leading-5 text-muted-foreground"
+					data-testid="engagement-disabled-reason"
+				>
+					{engagementReason}
+				</p>
+			{/if}
+		{:else if !initialLoading && items.length === 0 && !error}
 			<EmptyState
 				icon={MessagesSquareIcon}
 				title={m.engagement_empty_title()}

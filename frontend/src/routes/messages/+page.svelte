@@ -21,6 +21,8 @@
 	import * as Select from '$lib/components/ui/select';
 	import InboxIcon from '@lucide/svelte/icons/inbox';
 	import RefreshIcon from '@lucide/svelte/icons/refresh-cw';
+	import { allFeatureEffectiveDisabled, collectiveDisabledReason } from '$lib/feature-disabled';
+	import type { components as FeatureComponents } from '$lib/api/types';
 	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
 	import ArchiveIcon from '@lucide/svelte/icons/archive';
 	import SendIcon from '@lucide/svelte/icons/send';
@@ -28,6 +30,7 @@
 	type Conversation = components['schemas']['Conversation'];
 	type DirectMessage = components['schemas']['DirectMessage'];
 	type SyncState = components['schemas']['MessageSyncState'];
+	type FeatureState = FeatureComponents['schemas']['FeatureStateResponse'];
 	type Attachment = { type: string; url: string; name?: string; thumbnail?: string };
 	type AttachmentJSONValue =
 		| string
@@ -76,6 +79,7 @@
 	let toast = $state('');
 	let toastTone = $state<'success' | 'error'>('success');
 	let nowMs = $state(Date.now());
+	let messagingFeatures = $state.raw<FeatureState[]>([]);
 
 	const workspaceId = $derived(workspaceCtx.currentWorkspace?.id ?? '');
 	const selected = $derived(conversations.find((conversation) => conversation.id === selectedId));
@@ -93,6 +97,14 @@
 	const initialLoading = $derived(
 		Boolean(workspaceId) && loading && dataWorkspaceId !== workspaceId
 	);
+	const messagingAllDisabled = $derived(
+		accounts.length > 0 && allFeatureEffectiveDisabled(messagingFeatures, 'messaging')
+	);
+	const messagingReason = $derived(collectiveDisabledReason(messagingFeatures, 'messaging'));
+	const messagingEmptyIsFeatureDisabled = $derived(
+		messagingAllDisabled && conversations.length === 0 && !loading && !error
+	);
+	const showMessagingDisabledNotice = $derived(messagingAllDisabled && conversations.length > 0);
 	const loadKey = $derived(
 		`${workspaceId}:${platformFilter}:${accountFilter}:${archived ? 'archived' : 'active'}`
 	);
@@ -129,6 +141,26 @@
 			void loadConversations();
 		}
 	});
+
+	async function loadMessagingFeatures(workspace: string, accs: SocialAccount[]) {
+		if (!workspace || accs.length === 0) {
+			messagingFeatures = [];
+			return;
+		}
+		try {
+			const ids = accs.map((a) => a.id).join(',');
+			const res = await client.GET('/account-features', {
+				params: { query: { workspace_id: workspace, account_ids: ids } }
+			});
+			if (res.error || !res.data) {
+				messagingFeatures = [];
+				return;
+			}
+			messagingFeatures = res.data as FeatureState[];
+		} catch {
+			messagingFeatures = [];
+		}
+	}
 
 	async function loadConversations(cursor = '', append = false) {
 		if (!workspaceId) return;
@@ -176,7 +208,10 @@
 			);
 			nextCursor = data?.next_cursor ?? '';
 			syncStates = data?.sync_states ?? [];
-			if (!accountResponse.error) accounts = accountResponse.data ?? [];
+			if (!accountResponse.error) {
+				accounts = accountResponse.data ?? [];
+				void loadMessagingFeatures(requestedWorkspace, accounts);
+			}
 			knownPlatforms = [
 				...new Set([
 					...conversations.map((conversation) => conversation.platform),
@@ -365,7 +400,8 @@
 	}
 
 	async function sendMessage() {
-		if (!workspaceId || !selected || !replyBody.trim() || replyWindowClosed) return;
+		if (!workspaceId || !selected || !replyBody.trim() || replyWindowClosed || messagingAllDisabled)
+			return;
 		sending = true;
 		const body = replyBody.trim();
 		const { data, error: apiError } = await client.POST('/messages/{conversation_id}/send', {
@@ -383,7 +419,7 @@
 	}
 
 	async function refresh() {
-		if (!workspaceId) return;
+		if (!workspaceId || messagingAllDisabled) return;
 		refreshing = true;
 		const { data, error: apiError } = await client.POST('/messages/refresh', {
 			body: { workspace_id: workspaceId }
@@ -490,7 +526,12 @@
 	loadingItems={6}
 >
 	{#snippet actions()}
-		<Button variant="outline" onclick={refresh} disabled={refreshing || !workspaceId}>
+		<Button
+			variant="outline"
+			onclick={refresh}
+			disabled={refreshing || !workspaceId || messagingAllDisabled}
+			data-testid="messages-refresh"
+		>
 			<RefreshIcon class={refreshing ? 'size-4 animate-spin' : 'size-4'} />
 			{m.messaging_refresh()}
 		</Button>
@@ -499,6 +540,25 @@
 	<div class="space-y-5">
 		<CommunicationsNavigation active="messages" />
 
+		{#if showMessagingDisabledNotice}
+			<div data-testid="messages-disabled-notice">
+				<InlineNotice tone="warning" message={m.messages_feature_disabled_notice()}>
+					{#snippet actions()}
+						<Button
+							href="/settings?tab=accounts"
+							variant="outline"
+							size="sm"
+							data-testid="messages-disabled-recovery">{m.feature_disabled_open_details()}</Button
+						>
+					{/snippet}
+					{#if messagingReason}
+						<p class="mt-1 text-xs leading-5" data-testid="messages-disabled-reason">
+							{messagingReason}
+						</p>
+					{/if}
+				</InlineNotice>
+			</div>
+		{/if}
 		{#each actionableSyncStates as state (state.id)}
 			<InlineNotice
 				tone={state.status === 'failed' ? 'error' : 'warning'}
@@ -566,7 +626,7 @@
 
 		{#if initialLoading}
 			<PageLoading layout="list" label={m.common_loading()} items={6} />
-		{:else if error}
+		{:else if error && !messagingAllDisabled}
 			<InlineNotice tone="error" message={error}>
 				{#snippet actions()}
 					<Button variant="outline" size="sm" onclick={() => void loadConversations()}>
@@ -574,6 +634,23 @@
 					</Button>
 				{/snippet}
 			</InlineNotice>
+		{:else if messagingEmptyIsFeatureDisabled}
+			<EmptyState
+				icon={InboxIcon}
+				title={m.messages_feature_disabled_title()}
+				description={m.messages_feature_disabled_description()}
+				actionLabel={m.feature_disabled_open_details()}
+				actionHref="/settings?tab=accounts"
+				variant="muted"
+			/>
+			{#if messagingReason}
+				<p
+					class="mt-3 text-xs leading-5 text-muted-foreground"
+					data-testid="messages-disabled-reason"
+				>
+					{messagingReason}
+				</p>
+			{/if}
 		{:else if conversations.length === 0}
 			<EmptyState
 				icon={InboxIcon}
@@ -799,12 +876,13 @@
 											placeholder={m.messages_reply_placeholder()}
 											rows={2}
 											required
+											disabled={messagingAllDisabled}
 										/>
 										<Button
 											type="submit"
 											size="icon"
 											class="mb-0.5 shrink-0"
-											disabled={sending || !replyBody.trim()}
+											disabled={sending || !replyBody.trim() || messagingAllDisabled}
 											aria-label={m.messages_send()}
 										>
 											<SendIcon class="size-4" />

@@ -26,6 +26,8 @@ FORM: Publications are the primary rows; provider renditions disclose in place w
 	import { m } from '$lib/paraglide/messages';
 	import { getLocaleTag } from '$lib/i18n';
 	import { hasEngagementMeasurement, type AnalyticsSortMode } from '$lib/analytics-overview';
+	import { allFeatureEffectiveDisabled, collectiveDisabledReason } from '$lib/feature-disabled';
+	import type { components as FeatureComponents } from '$lib/api/types';
 
 	type AnalyticsOverview = components['schemas']['Overview'];
 	type AnalyticsAccount = components['schemas']['AccountOverview'];
@@ -33,6 +35,7 @@ FORM: Publications are the primary rows; provider renditions disclose in place w
 	type AnalyticsPublication = components['schemas']['PublicationOverview'];
 	type MetricSummary = components['schemas']['MetricSummary'];
 	type RangeDays = 7 | 30 | 90;
+	type FeatureState = FeatureComponents['schemas']['FeatureStateResponse'];
 
 	let overview = $state.raw<AnalyticsOverview | null>(null);
 	let rangeDays = $state<RangeDays>(30);
@@ -46,6 +49,7 @@ FORM: Publications are the primary rows; provider renditions disclose in place w
 	let toastMessage = $state('');
 	let dataWorkspaceID = $state('');
 	let dataRequestSequence = 0;
+	let analyticsFeatures = $state.raw<FeatureState[]>([]);
 
 	const currentWorkspaceID = $derived(workspaceCtx.currentWorkspace?.id ?? '');
 	const accounts = $derived(overview?.accounts ?? []);
@@ -80,6 +84,15 @@ FORM: Publications are the primary rows; provider renditions disclose in place w
 	const initialLoading = $derived(
 		Boolean(currentWorkspaceID) && loading && (!overview || dataWorkspaceID !== currentWorkspaceID)
 	);
+	const analyticsAllDisabled = $derived(
+		(overview?.accounts?.length ?? 0) > 0 &&
+			allFeatureEffectiveDisabled(analyticsFeatures, 'analytics')
+	);
+	const analyticsReason = $derived(collectiveDisabledReason(analyticsFeatures, 'analytics'));
+	const analyticsEmptyIsFeatureDisabled = $derived(
+		analyticsAllDisabled && !hasMeasurements && !initialLoading && !error
+	);
+	const showAnalyticsDisabledNotice = $derived(analyticsAllDisabled && hasMeasurements);
 	const summaryMetrics = $derived.by(() => {
 		const summary = displayedSummary;
 		if (!summary) return [];
@@ -219,6 +232,7 @@ FORM: Publications are the primary rows; provider renditions disclose in place w
 						}
 					: response.data;
 			dataWorkspaceID = workspaceID;
+			void loadAnalyticsFeatures(workspaceID, response.data.accounts ?? []);
 			if (
 				selectedAccountID !== 'all' &&
 				!response.data.accounts?.some((account) => account.id === selectedAccountID)
@@ -257,8 +271,28 @@ FORM: Publications are the primary rows; provider renditions disclose in place w
 		);
 	}
 
+	async function loadAnalyticsFeatures(workspace: string, accs: AnalyticsAccount[]) {
+		if (!workspace || accs.length === 0) {
+			analyticsFeatures = [];
+			return;
+		}
+		try {
+			const ids = accs.map((a) => a.id).join(',');
+			const res = await client.GET('/account-features', {
+				params: { query: { workspace_id: workspace, account_ids: ids } }
+			});
+			if (res.error || !res.data) {
+				analyticsFeatures = [];
+				return;
+			}
+			analyticsFeatures = res.data as FeatureState[];
+		} catch {
+			analyticsFeatures = [];
+		}
+	}
+
 	async function refreshAnalytics() {
-		if (!currentWorkspaceID || refreshing) return;
+		if (!currentWorkspaceID || refreshing || analyticsAllDisabled) return;
 		refreshing = true;
 		try {
 			const response = await client.POST('/analytics/refresh', {
@@ -440,7 +474,8 @@ FORM: Publications are the primary rows; provider renditions disclose in place w
 			variant="outline"
 			size="sm"
 			onclick={refreshAnalytics}
-			disabled={refreshing || !overview || accounts.length === 0}
+			disabled={refreshing || !overview || accounts.length === 0 || analyticsAllDisabled}
+			data-testid="analytics-refresh"
 		>
 			<RefreshIcon class={refreshing ? 'size-4 animate-spin' : 'size-4'} />
 			{refreshing ? m.analytics_refreshing() : m.analytics_refresh()}
@@ -468,7 +503,24 @@ FORM: Publications are the primary rows; provider renditions disclose in place w
 	loadingItems={5}
 	loadingActionCount={2}
 >
-	{#if error}
+	{#if analyticsEmptyIsFeatureDisabled}
+		<EmptyState
+			icon={AccountsIcon}
+			title={m.analytics_feature_disabled_title()}
+			description={m.analytics_feature_disabled_description()}
+			actionLabel={m.feature_disabled_open_details()}
+			actionHref="/settings?tab=accounts"
+			size="lg"
+		/>
+		{#if analyticsReason}
+			<p
+				class="mt-3 text-xs leading-5 text-muted-foreground"
+				data-testid="analytics-disabled-reason"
+			>
+				{analyticsReason}
+			</p>
+		{/if}
+	{:else if error}
 		<InlineNotice tone="error" message={error}>
 			{#snippet actions()}
 				<Button variant="outline" size="sm" onclick={() => loadAnalytics()}>
@@ -487,6 +539,26 @@ FORM: Publications are the primary rows; provider renditions disclose in place w
 		/>
 	{:else}
 		<div class="space-y-8 transition-opacity" class:opacity-70={loading} aria-busy={loading}>
+			{#if showAnalyticsDisabledNotice}
+				<div data-testid="analytics-disabled-notice">
+					<InlineNotice tone="warning" message={m.analytics_feature_disabled_notice()}>
+						{#snippet actions()}
+							<Button
+								href="/settings?tab=accounts"
+								variant="outline"
+								size="sm"
+								data-testid="analytics-disabled-recovery"
+								>{m.feature_disabled_open_details()}</Button
+							>
+						{/snippet}
+						{#if analyticsReason}
+							<p class="mt-1 text-xs leading-5" data-testid="analytics-disabled-reason">
+								{analyticsReason}
+							</p>
+						{/if}
+					</InlineNotice>
+				</div>
+			{/if}
 			{#each accountsNeedingReconnect as account (account.id)}
 				<InlineNotice
 					tone="warning"

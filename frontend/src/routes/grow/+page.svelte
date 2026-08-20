@@ -41,10 +41,14 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 	import RefreshCwIcon from '@lucide/svelte/icons/refresh-cw';
 	import UsersIcon from '@lucide/svelte/icons/users';
 	import LoaderIcon from '@lucide/svelte/icons/loader-circle';
+	import { isFeatureEffective } from '$lib/feature-disabled';
 
 	type SocialAccount = components['schemas']['AccountResponse'];
+	type FeatureState = components['schemas']['FeatureStateResponse'];
 
 	let accounts = $state.raw<SocialAccount[]>([]);
+	let accountFeatures = $state.raw<FeatureState[]>([]);
+	let featuresLoading = $state(false);
 	let selectedAccountID = $state<string | null>(null);
 	let items = $state.raw<RecommendationView[]>([]);
 	let syncState = $state.raw<SyncStateView | null>(null);
@@ -75,16 +79,57 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 	const hasPendingFollow = $derived(items.some((i) => i.follow_state === 'pending'));
 	const lastSuccessAt = $derived(syncState?.last_success_at ?? null);
 	const compatible = $derived(compatibleAccounts(accounts));
-	const showAccountSelector = $derived(compatible.length > 0);
-	const noCompatible = $derived(!accountsLoading && compatible.length === 0);
-	const neverGenerated = $derived(!loading && !noCompatible && compatible.length > 0 && !syncState);
-	const showGrid = $derived(!loading && !noCompatible && !neverGenerated);
+	const eligible = $derived(
+		compatible.filter((acc) => isFeatureEffective(accountFeatures, acc.id, 'grow'))
+	);
+	const staleGrowFeature = $derived.by(() => {
+		if (!selectedAccountID) return null;
+		const acc = accounts.find((a) => a.id === selectedAccountID);
+		if (!acc) return null;
+		if (eligible.some((e) => e.id === selectedAccountID)) return null;
+		if (!compatible.some((c) => c.id === selectedAccountID)) return null;
+		return (
+			accountFeatures.find(
+				(f) => f.social_account_id === selectedAccountID && f.feature === 'grow'
+			) ?? null
+		);
+	});
+	const isStaleDisabled = $derived(staleGrowFeature !== null);
+	const growDisabled = $derived(isStaleDisabled);
+	const showAccountSelector = $derived(eligible.length > 0);
+	const noCompatible = $derived(!accountsLoading && !featuresLoading && compatible.length === 0);
+	const noEligible = $derived(
+		!accountsLoading &&
+			!featuresLoading &&
+			compatible.length > 0 &&
+			eligible.length === 0 &&
+			!isStaleDisabled
+	);
+	const neverGenerated = $derived(
+		!loading &&
+			!noCompatible &&
+			!noEligible &&
+			!isStaleDisabled &&
+			eligible.length > 0 &&
+			!syncState
+	);
+	const showGrid = $derived(
+		!loading &&
+			!noCompatible &&
+			!noEligible &&
+			(!neverGenerated || isStaleDisabled) &&
+			(items.length > 0 || isStaleDisabled)
+	);
 	const isEmptyAfterSuccess = $derived(
-		showGrid && items.length === 0 && syncState?.status === 'ok'
+		!isStaleDisabled && showGrid && items.length === 0 && syncState?.status === 'ok'
 	);
 	const lastUpdatedText = $derived(
 		lastSuccessAt ? m.grow_last_updated({ date: formatDate(lastSuccessAt) }) : ''
 	);
+	const canRefresh = $derived(
+		!isStaleDisabled && !growDisabled && Boolean(selectedAccountID) && !noCompatible && !noEligible
+	);
+	const canFollow = $derived(!isStaleDisabled && !growDisabled);
 
 	function resetGrowthForSwitch() {
 		growthGuard.next();
@@ -117,6 +162,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 		accountsGuard.next();
 		resetGrowthForSwitch();
 		accounts = [];
+		accountFeatures = [];
 		selectedAccountID = null;
 		accountsLoading = true;
 		void loadAccounts(wid);
@@ -128,13 +174,15 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 		if (!wid || !acc) return;
 		const accObj = accounts.find((a) => a.id === acc);
 		if (!accObj) return;
+		if (isStaleDisabled) return;
 		growthGuard.next();
 		void loadGrowth(wid, acc);
 	});
 
 	// Polling via one-shot timer owned by effect with cleanup
 	$effect(() => {
-		const shouldPoll = refreshQueued || shouldPollSync(syncState, hasPendingFollow);
+		const shouldPoll =
+			!isStaleDisabled && (refreshQueued || shouldPollSync(syncState, hasPendingFollow));
 		const wid = workspaceID;
 		const acc = selectedAccountID;
 		if (!shouldPoll || !wid || !acc) return;
@@ -146,15 +194,40 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 
 	// Telemetry: capture once per workspace after accounts settle
 	$effect(() => {
-		if (accountsLoading || !workspaceID) return;
+		if (accountsLoading || featuresLoading || !workspaceID) return;
 		if (openedWorkspaces.has(workspaceID)) return;
 		openedWorkspaces.add(workspaceID);
-		captureTelemetryEvent('growth opened', { platform_count: compatible.length });
+		captureTelemetryEvent('growth opened', { platform_count: eligible.length });
 	});
+
+	async function loadAccountFeatures(workspace: string, accountList: SocialAccount[]) {
+		if (!workspace || accountList.length === 0) {
+			accountFeatures = [];
+			featuresLoading = false;
+			return;
+		}
+		featuresLoading = true;
+		try {
+			const ids = accountList.map((a) => a.id).join(',');
+			const res = await client.GET('/account-features', {
+				params: { query: { workspace_id: workspace, account_ids: ids } }
+			});
+			if (res.error || !res.data) {
+				accountFeatures = [];
+				return;
+			}
+			accountFeatures = res.data as FeatureState[];
+		} catch {
+			accountFeatures = [];
+		} finally {
+			featuresLoading = false;
+		}
+	}
 
 	async function loadAccounts(requestedWorkspaceID: string) {
 		const seq = accountsGuard.next();
 		accountsLoading = true;
+		featuresLoading = true;
 		try {
 			const response = await client.GET('/accounts', {
 				params: { query: { workspace_id: requestedWorkspaceID } }
@@ -162,18 +235,56 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 			if (accountsGuard.isStale(seq)) return;
 			if (response.error) throw new Error('load failed');
 			const list = response.data ?? [];
-			// Ensure this response still belongs to current workspace
 			if (requestedWorkspaceID !== workspaceCtx.currentWorkspace?.id) return;
 			accounts = list;
-			const nextID = selectInitialAccount(list, selectedAccountID);
-			if (nextID !== selectedAccountID) {
-				resetGrowthForSwitch();
-				selectedAccountID = nextID;
-				if (!nextID) {
-					loading = false;
-					accountsLoading = false;
-					return;
+			await loadAccountFeatures(requestedWorkspaceID, list);
+			if (accountsGuard.isStale(seq)) return;
+			// After features loaded, choose initial eligible account using local lists to avoid derived timing
+			const localCompatible = compatibleAccounts(list);
+			const localEligible = localCompatible.filter((acc) =>
+				accountFeatures.some(
+					(f) => f.social_account_id === acc.id && f.feature === 'grow' && f.effective_enabled
+				)
+			);
+			if (localEligible.length > 0) {
+				const nextID = selectInitialAccount(localEligible as SocialAccount[], selectedAccountID);
+				if (nextID !== selectedAccountID) {
+					resetGrowthForSwitch();
+					selectedAccountID = nextID;
+					if (!nextID) {
+						loading = false;
+						accountsLoading = false;
+						return;
+					}
 				}
+			} else {
+				// No eligible: keep stale selection if there was a compatible previously selected
+				if (selectedAccountID) {
+					const stillCompatible = localCompatible.some((c) => c.id === selectedAccountID);
+					if (!stillCompatible) {
+						selectedAccountID = null;
+						loading = false;
+					} else {
+						// keep stale, allow stored recommendations to remain if any
+						loading = items.length === 0 ? false : loading;
+					}
+				} else {
+					// If no prior selection but we have a single stale compatible account, keep it for disabled state
+					if (localCompatible.length === 1) {
+						selectedAccountID = localCompatible[0].id;
+						// trigger stale disabled view: keep loading false to show disabled notice
+						if (items.length === 0) {
+							// still need to load growth for stale account to show stored items
+							growthGuard.next();
+							void loadGrowth(requestedWorkspaceID, selectedAccountID);
+						}
+						loading = false;
+					} else {
+						loading = false;
+					}
+				}
+				accountsLoading = false;
+				return;
 			}
 		} catch {
 			if (accountsGuard.isStale(seq)) return;
@@ -186,7 +297,10 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 				};
 			}
 		} finally {
-			if (!accountsGuard.isStale(seq)) accountsLoading = false;
+			if (!accountsGuard.isStale(seq)) {
+				accountsLoading = false;
+				featuresLoading = false;
+			}
 			if (!selectedAccountID) loading = false;
 		}
 	}
@@ -213,27 +327,22 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 			refreshQueued = newSync?.status === 'queued' || newSync?.status === 'refreshing';
 			currentGenerationID = newSync?.current_generation_id ?? '';
 
-			// Handle pending -> failed (failed stays in items with error)
 			const prevPendingIds = new Set(pendingSessionIds);
 			let mergedItems: RecommendationView[] = [...newItems];
 			let followToast: { handle: string } | null = null;
 
-			// Detect failed in newItems that were previously pending -> toast once
 			for (const it of mergedItems) {
 				if (it.follow_state === 'failed' && prevPendingIds.has(it.id)) {
 					followToast = { handle: `@${it.handle}` };
 				}
 			}
 
-			// Build map for terminal updates
 			const updatesById = new Map(followUpdates.map((u) => [u.id, u]));
-			// For each pendingSessionId that has a terminal following/requested update, merge it briefly
 			const toShowTerminal: RecommendationView[] = [];
 			for (const pid of prevPendingIds) {
 				const upd = updatesById.get(pid);
 				if (upd && (upd.follow_state === 'following' || upd.follow_state === 'requested')) {
 					const prior = items.find((r) => r.id === pid);
-					// Reconstruct a minimal view for the terminal card using prior data + update state
 					if (prior) {
 						toShowTerminal.push({
 							...prior,
@@ -257,7 +366,6 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 				pendingSessionIds = new Set([...pendingSessionIds].filter((id) => !terminalIDs.has(id)));
 			} else {
 				items = mergedItems;
-				// Prune pendingSessionIds that resolved to failed (now visible) or no longer pending
 				const stillPending = new Set<string>();
 				for (const id of pendingSessionIds) {
 					const found = mergedItems.find((it) => it.id === id);
@@ -272,7 +380,6 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 				setTimeout(() => (toastMessage = ''), 3000);
 			}
 
-			// Inline notices: ok clears, otherwise map error kinds
 			if (newSync) {
 				const kind = syncErrorKind(newSync);
 				if (newSync.status === 'ok') {
@@ -305,7 +412,6 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 				}
 			}
 
-			// Telemetry once per workspace:account:generation
 			if (mergedItems.length > 0 && currentGenerationID) {
 				const key = `${ws}:${acc}:${currentGenerationID}`;
 				if (!shownGenerations.has(key)) {
@@ -338,7 +444,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 	}
 
 	async function handleRefresh() {
-		if (!workspaceID || !selectedAccountID || busy) return;
+		if (!workspaceID || !selectedAccountID || busy || isStaleDisabled) return;
 		growthGuard.next();
 		refreshQueued = true;
 		try {
@@ -371,7 +477,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 	}
 
 	async function handleFollow(id: string) {
-		if (!workspaceID) return;
+		if (!workspaceID || isStaleDisabled) return;
 		const prev = items;
 		items = items.map((it) => (it.id === id ? { ...it, follow_state: 'pending' } : it));
 		const nextPending = new Set(pendingSessionIds);
@@ -449,24 +555,38 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 		const plat = getPlatformName(acc.platform);
 		return `${handle} (${plat})`;
 	}
+
+	function staleDetailMessage(feat: FeatureState | null): string {
+		if (!feat) return m.grow_feature_disabled_description();
+		if (feat.availability === 'missing_scope') {
+			const scopes = (feat.missing_scopes ?? feat.required_scopes ?? []).join(', ');
+			if (!scopes) return m.feature_disabled_reason_missing_scope({ scopes: '' });
+			return m.grow_feature_missing_scope_description({ scopes });
+		}
+		if (feat.availability === 'plan_restricted')
+			return m.grow_feature_plan_restricted_description();
+		if (!feat.stored_exists) return m.feature_disabled_reason_undecided();
+		return m.grow_feature_disabled_description();
+	}
 </script>
 
 <PageContainer
 	title={m.grow_title()}
 	description={m.grow_description()}
 	icon={UserRoundPlusIcon}
-	loading={loading && !showGrid && !noCompatible && !neverGenerated}
+	loading={false}
 	loadingLayout="grid"
 	loadingItems={6}
 >
 	{#snippet actions()}
-		{#if selectedAccountID && !noCompatible}
+		{#if selectedAccountID && !noCompatible && !noEligible && !isStaleDisabled}
 			<Button
 				variant="outline"
 				size="sm"
 				onclick={handleRefresh}
-				disabled={busy}
+				disabled={busy || !canRefresh}
 				aria-label={busy ? m.grow_refreshing() : m.grow_refresh()}
+				data-testid="grow-refresh-button"
 			>
 				{#if busy}
 					<LoaderIcon class="size-4 animate-spin" />
@@ -496,6 +616,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 							id="grow-account-select"
 							class="h-9 w-full"
 							aria-label={m.grow_for_label()}
+							data-testid="grow-account-select"
 						>
 							{#if selectedAccount}
 								<span class="flex items-center gap-2 truncate">
@@ -515,7 +636,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 							{/if}
 						</Select.Trigger>
 						<Select.Content>
-							{#each compatible as acc (acc.id)}
+							{#each eligible as acc (acc.id)}
 								<Select.Item value={acc.id}>
 									<span class="flex items-center gap-2">
 										<Avatar.Root class="size-5 shrink-0 rounded-full">
@@ -534,10 +655,10 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 						</Select.Content>
 					</Select.Root>
 				</div>
-				{#if lastUpdatedText}
+				{#if lastUpdatedText && !isStaleDisabled}
 					<span class="text-xs text-muted-foreground">{lastUpdatedText}</span>
 				{/if}
-				{#if busy}
+				{#if busy && !isStaleDisabled}
 					<span
 						class="inline-flex items-center gap-1.5 text-xs text-muted-foreground"
 						aria-live="polite"
@@ -549,16 +670,57 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 			</div>
 		{/if}
 
-		{#if inlineMessage}
-			<InlineNotice tone={inlineTone} message={inlineMessage}>
-				{#snippet actions()}
-					{#if inlineActionLabel && inlineActionHandler}
-						<Button variant="outline" size="sm" onclick={inlineActionHandler}
-							>{inlineActionLabel}</Button
-						>
-					{/if}
-				{/snippet}
-			</InlineNotice>
+		{#if isStaleDisabled}
+			<div data-testid="grow-disabled-notice">
+				<InlineNotice tone="warning" message={m.grow_feature_disabled_title()}>
+					<p class="mt-1 text-xs leading-5">{staleDetailMessage(staleGrowFeature)}</p>
+					<p class="mt-1 text-xs leading-5">{m.grow_feature_disabled_notice()}</p>
+					{#snippet actions()}
+						{#if staleGrowFeature?.availability === 'plan_restricted'}
+							<Button
+								href="/settings?tab=accounts"
+								variant="outline"
+								size="sm"
+								data-testid="grow-disabled-billing-link"
+							>
+								{m.feature_disabled_open_billing()}
+							</Button>
+						{:else if staleGrowFeature?.availability === 'missing_scope'}
+							<Button
+								href="/settings?tab=accounts"
+								variant="outline"
+								size="sm"
+								data-testid="grow-disabled-recovery-link"
+							>
+								{m.feature_disabled_reconnect()}
+							</Button>
+						{:else}
+							<Button
+								href="/settings?tab=accounts"
+								variant="outline"
+								size="sm"
+								data-testid="grow-disabled-recovery-link"
+							>
+								{m.feature_disabled_open_details()}
+							</Button>
+						{/if}
+					{/snippet}
+				</InlineNotice>
+			</div>
+		{/if}
+
+		{#if inlineMessage && !isStaleDisabled}
+			<div data-testid="grow-inline-message">
+				<InlineNotice tone={inlineTone} message={inlineMessage}>
+					{#snippet actions()}
+						{#if inlineActionLabel && inlineActionHandler}
+							<Button variant="outline" size="sm" onclick={inlineActionHandler}
+								>{inlineActionLabel}</Button
+							>
+						{/if}
+					{/snippet}
+				</InlineNotice>
+			</div>
 		{/if}
 
 		{#if loading && items.length === 0}
@@ -571,13 +733,52 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 				actionLabel={m.grow_connect_account()}
 				actionHref="/settings?tab=accounts"
 			/>
+		{:else if noEligible}
+			<EmptyState
+				icon={UsersIcon}
+				title={m.grow_feature_all_disabled_title()}
+				description={m.grow_feature_all_disabled_description()}
+				actionLabel={m.feature_disabled_open_details()}
+				actionHref="/settings?tab=accounts"
+			/>
+		{:else if isStaleDisabled}
+			{#if loading}
+				<PageLoading layout="grid" items={6} label={m.grow_loading()} />
+			{:else if items.length > 0}
+				<div
+					class="grid min-w-0 grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3"
+					data-testid="growth-grid"
+				>
+					{#each items as rec, index (rec.id)}
+						<GrowthProfileCard
+							recommendation={rec}
+							position={index + 1}
+							onFollow={() => {}}
+							onDismiss={handleDismiss}
+							onOpenProfile={handleOpenProfile}
+							disableFollow={true}
+						/>
+					{/each}
+				</div>
+				<p class="text-xs text-muted-foreground" data-testid="grow-stored-notice">
+					{m.grow_feature_disabled_notice()}
+				</p>
+			{:else if neverGenerated}
+				<EmptyState
+					icon={UserRoundPlusIcon}
+					title={m.grow_feature_disabled_title()}
+					description={staleDetailMessage(staleGrowFeature)}
+					actionLabel={m.feature_disabled_open_details()}
+					actionHref="/settings?tab=accounts"
+				/>
+			{/if}
 		{:else if neverGenerated}
 			<EmptyState
 				icon={UserRoundPlusIcon}
 				title={m.grow_never_generated_title()}
 				description={m.grow_never_generated_description()}
 				actionLabel={m.grow_find_people()}
-				onAction={handleRefresh}
+				onAction={canRefresh ? handleRefresh : undefined}
 			/>
 		{:else if isEmptyAfterSuccess}
 			<EmptyState
@@ -585,7 +786,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 				title={m.grow_empty_title()}
 				description={m.grow_empty_description()}
 				actionLabel={m.grow_refresh()}
-				onAction={handleRefresh}
+				onAction={canRefresh ? handleRefresh : undefined}
 			/>
 		{:else if showGrid}
 			{#if busy && items.length > 0}
@@ -599,9 +800,10 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 					<GrowthProfileCard
 						recommendation={rec}
 						position={index + 1}
-						onFollow={handleFollow}
+						onFollow={canFollow ? handleFollow : () => {}}
 						onDismiss={handleDismiss}
 						onOpenProfile={handleOpenProfile}
+						disableFollow={!canFollow}
 					/>
 				{/each}
 			</div>
