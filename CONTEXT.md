@@ -45,8 +45,20 @@ The focused still-image editor available in both OpenPost web and OpenPost Studi
 _Avoid_: Studio Image Editor, web Image Editor
 
 **Quick Cut**:
-The web video tool that removes source ranges without re-encoding eligible streams.
-_Avoid_: Video Editor, precise export
+The web video tool for removing source ranges. It copies eligible streams without re-encoding and can transcode when an exact cut requires it.
+_Avoid_: Video Editor
+
+**Media pool**:
+The sources available to one Video Project, including linked local files and media obtained from OpenPost.
+_Avoid_: Media library, project bundle
+
+**Linked source**:
+A local media file that a Video Project references at its existing filesystem location without copying it into the project.
+_Avoid_: Imported copy, uploaded media
+
+**Collected source**:
+A media file copied into a Video Project so the project can move without losing that source.
+_Avoid_: Linked source, proxy
 
 **Engagement**:
 A provider interaction attached to a published Rendition, such as a comment, reply, or reaction.
