@@ -1035,11 +1035,11 @@ type SocialAccount struct {
 	CapabilityState     string    `bun:"capability_state_json,notnull,default:'{}'" json:"-"`
 	CapabilityCheckedAt time.Time `bun:"capability_checked_at,nullzero" json:"-"`
 
-	IsActive     bool      `bun:",default:true" json:"is_active"`
-	ErrorMessage string    `json:"error_message"`
-	CreatedAt    time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
-	ClaimedFirst     bool `bun:"-" json:"-"`
-	IsNewlyInserted  bool `bun:"-" json:"-"`
+	IsActive        bool      `bun:",default:true" json:"is_active"`
+	ErrorMessage    string    `json:"error_message"`
+	CreatedAt       time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
+	ClaimedFirst    bool      `bun:"-" json:"-"`
+	IsNewlyInserted bool      `bun:"-" json:"-"`
 }
 
 type WorkspaceFirstConnection struct {
@@ -2404,15 +2404,15 @@ type GrowthSyncState struct {
 type AccountFeature struct {
 	bun.BaseModel `bun:"table:account_features"`
 
-	SocialAccountID  string    `bun:"social_account_id,pk" json:"social_account_id"`
-	WorkspaceID      string    `bun:"workspace_id,notnull" json:"workspace_id"`
-	Feature          string    `bun:",pk" json:"feature"`
-	Enabled          bool      `bun:",notnull" json:"enabled"`
-	DecidedByUserID  string    `bun:"decided_by_user_id,notnull,default:''" json:"decided_by_user_id"`
-	Source           string    `bun:",notnull,default:''" json:"source"`
-	DecidedAt        time.Time `bun:"decided_at,notnull" json:"decided_at"`
-	CreatedAt        time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
-	UpdatedAt        time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"updated_at"`
+	SocialAccountID string    `bun:"social_account_id,pk" json:"social_account_id"`
+	WorkspaceID     string    `bun:"workspace_id,notnull" json:"workspace_id"`
+	Feature         string    `bun:",pk" json:"feature"`
+	Enabled         bool      `bun:",notnull" json:"enabled"`
+	DecidedByUserID string    `bun:"decided_by_user_id,notnull,default:''" json:"decided_by_user_id"`
+	Source          string    `bun:",notnull,default:''" json:"source"`
+	DecidedAt       time.Time `bun:"decided_at,notnull" json:"decided_at"`
+	CreatedAt       time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
+	UpdatedAt       time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"updated_at"`
 }
 
 // Prompt represents a writing prompt for content inspiration.

@@ -905,11 +905,13 @@
 						"type": "string"
 					},
 					"messages_enabled": {
-						"description": "Whether this account opted in to inbox synchronization",
+						"deprecated": true,
+						"description": "Deprecated compatibility shim. Use GET /account-features for messaging enabled state.",
 						"type": "boolean"
 					},
 					"messaging_supported": {
-						"description": "Whether OpenPost has a messaging connector for this provider",
+						"deprecated": true,
+						"description": "Deprecated compatibility shim. Use GET /account-features for messaging availability and enabled state.",
 						"type": "boolean"
 					},
 					"platform": {
@@ -1011,11 +1013,13 @@
 						"type": "string"
 					},
 					"messages_enabled": {
-						"description": "Whether this account opted in to inbox synchronization",
+						"deprecated": true,
+						"description": "Deprecated compatibility shim. Use GET /account-features for messaging enabled state.",
 						"type": "boolean"
 					},
 					"messaging_supported": {
-						"description": "Whether OpenPost has a messaging connector for this provider",
+						"deprecated": true,
+						"description": "Deprecated compatibility shim. Use GET /account-features for messaging availability and enabled state.",
 						"type": "boolean"
 					},
 					"new_account_ids": {
@@ -2112,6 +2116,11 @@
 						"examples": ["https://example.com/schemas/BlueskyLoginInputBody.json"],
 						"format": "uri",
 						"readOnly": true,
+						"type": "string"
+					},
+					"account_management_mode": {
+						"description": "Where the user started the connection flow",
+						"enum": ["direct", "settings"],
 						"type": "string"
 					},
 					"app_password": {
@@ -5008,6 +5017,11 @@
 						"examples": ["https://example.com/schemas/DiscordWebhookLoginInputBody.json"],
 						"format": "uri",
 						"readOnly": true,
+						"type": "string"
+					},
+					"account_management_mode": {
+						"description": "Where the user started the connection flow",
+						"enum": ["direct", "settings"],
 						"type": "string"
 					},
 					"intent": {
@@ -15916,7 +15930,8 @@
 						"type": "string"
 					},
 					"messages_enabled": {
-						"description": "Opt this account in or out of inbox synchronization",
+						"deprecated": true,
+						"description": "Deprecated shim. Use POST /account-features to change messaging preference.",
 						"type": "boolean"
 					},
 					"slug": {

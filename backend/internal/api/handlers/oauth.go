@@ -227,12 +227,12 @@ type ExchangeCodeOutput struct {
 }
 
 type AccountConnectionResponse struct {
-	WorkspaceID            string   `json:"workspace_id" doc:"Workspace receiving the connected destination"`
-	AccountID              string   `json:"account_id" doc:"OpenPost destination account ID"`
-	AccountIDs             []string `json:"account_ids" doc:"All connected OpenPost account IDs"`
-	NewAccountIDs          []string `json:"new_account_ids" doc:"Genuinely new OpenPost account IDs"`
-	OpenFreshComposer      bool     `json:"open_fresh_composer" doc:"Whether this is the Workspace's first connected destination"`
-	FeatureSetupRequired   bool     `json:"feature_setup_required" doc:"Whether feature setup is required for new accounts"`
+	WorkspaceID          string   `json:"workspace_id" doc:"Workspace receiving the connected destination"`
+	AccountID            string   `json:"account_id" doc:"OpenPost destination account ID"`
+	AccountIDs           []string `json:"account_ids" doc:"All connected OpenPost account IDs"`
+	NewAccountIDs        []string `json:"new_account_ids" doc:"Genuinely new OpenPost account IDs"`
+	OpenFreshComposer    bool     `json:"open_fresh_composer" doc:"Whether this is the Workspace's first connected destination"`
+	FeatureSetupRequired bool     `json:"feature_setup_required" doc:"Whether feature setup is required for new accounts"`
 }
 
 type ListAccountsInput struct {
@@ -252,8 +252,8 @@ type AccountResponse struct {
 	CapabilityCheckedAt    *time.Time `json:"capability_checked_at,omitempty" doc:"When account-specific publishing limits were last verified"`
 	ThreadRepliesSupported bool       `json:"thread_replies_supported" doc:"Whether this account supports thread replies in current server config"`
 	AccountKind            string     `json:"account_kind,omitempty" doc:"Normalized identity kind, such as person, organization, creator, or business"`
-	MessagingSupported     bool       `json:"messaging_supported" doc:"Whether OpenPost has a messaging connector for this provider"`
-	MessagesEnabled        bool       `json:"messages_enabled" doc:"Whether this account opted in to inbox synchronization"`
+	MessagingSupported     bool       `json:"messaging_supported" deprecated:"true" doc:"Deprecated compatibility shim. Use GET /account-features for messaging availability and enabled state."`
+	MessagesEnabled        bool       `json:"messages_enabled" deprecated:"true" doc:"Deprecated compatibility shim. Use GET /account-features for messaging enabled state."`
 	GrantDestinationCount  int        `json:"grant_destination_count" doc:"Number of active destinations using this provider authorization"`
 	SharedGrant            bool       `json:"shared_grant" doc:"Whether revoking this authorization disconnects other destinations"`
 }
@@ -292,18 +292,18 @@ type CompleteAccountSelectionOutput struct {
 
 type AccountSelectionCompletionResponse struct {
 	AccountResponse
-	WorkspaceID            string   `json:"workspace_id" doc:"Workspace receiving the connected destinations"`
-	AccountIDs             []string `json:"account_ids" doc:"OpenPost destination account IDs created by this selection"`
-	NewAccountIDs          []string `json:"new_account_ids" doc:"Genuinely new OpenPost account IDs"`
-	OpenFreshComposer      bool     `json:"open_fresh_composer" doc:"Whether these are the Workspace's first connected destinations"`
-	FeatureSetupRequired   bool     `json:"feature_setup_required" doc:"Whether feature setup is required for new accounts"`
+	WorkspaceID          string   `json:"workspace_id" doc:"Workspace receiving the connected destinations"`
+	AccountIDs           []string `json:"account_ids" doc:"OpenPost destination account IDs created by this selection"`
+	NewAccountIDs        []string `json:"new_account_ids" doc:"Genuinely new OpenPost account IDs"`
+	OpenFreshComposer    bool     `json:"open_fresh_composer" doc:"Whether these are the Workspace's first connected destinations"`
+	FeatureSetupRequired bool     `json:"feature_setup_required" doc:"Whether feature setup is required for new accounts"`
 }
 
 type UpdateAccountInput struct {
 	AccountID string `path:"account_id"`
 	Body      struct {
 		Slug            string `json:"slug" doc:"New account slug. Use lowercase letters, numbers, and hyphens."`
-		MessagesEnabled *bool  `json:"messages_enabled,omitempty" doc:"Opt this account in or out of inbox synchronization"`
+		MessagesEnabled *bool  `json:"messages_enabled,omitempty" deprecated:"true" doc:"Deprecated shim. Use POST /account-features to change messaging preference."`
 	}
 }
 
@@ -1412,10 +1412,11 @@ func (h *OAuthHandler) ExchangeCode(api huma.API) {
 
 type BlueskyLoginInput struct {
 	Body struct {
-		WorkspaceID string `json:"workspace_id" doc:"Workspace ID"`
-		Handle      string `json:"handle" doc:"Bluesky handle (e.g. user.bsky.social)"`
-		AppPassword string `json:"app_password" doc:"Bluesky app password (Settings > App Passwords)"`
-		Intent      string `json:"intent,omitempty" enum:"production,certification_test" doc:"Typed execution intent; certification_test requires an unscoped instance administrator"`
+		WorkspaceID           string `json:"workspace_id" doc:"Workspace ID"`
+		Handle                string `json:"handle" doc:"Bluesky handle (e.g. user.bsky.social)"`
+		AppPassword           string `json:"app_password" doc:"Bluesky app password (Settings > App Passwords)"`
+		Intent                string `json:"intent,omitempty" enum:"production,certification_test" doc:"Typed execution intent; certification_test requires an unscoped instance administrator"`
+		AccountManagementMode string `json:"account_management_mode,omitempty" enum:"direct,settings" doc:"Where the user started the connection flow"`
 	}
 }
 
@@ -1496,9 +1497,10 @@ func (h *OAuthHandler) BlueskyLogin(api huma.API) {
 
 type DiscordWebhookLoginInput struct {
 	Body struct {
-		WorkspaceID string `json:"workspace_id" doc:"Workspace ID"`
-		WebhookURL  string `json:"webhook_url" doc:"Discord incoming webhook URL"`
-		Intent      string `json:"intent,omitempty" enum:"production,certification_test" doc:"Typed execution intent; certification_test requires an unscoped instance administrator"`
+		WorkspaceID           string `json:"workspace_id" doc:"Workspace ID"`
+		WebhookURL            string `json:"webhook_url" doc:"Discord incoming webhook URL"`
+		Intent                string `json:"intent,omitempty" enum:"production,certification_test" doc:"Typed execution intent; certification_test requires an unscoped instance administrator"`
+		AccountManagementMode string `json:"account_management_mode,omitempty" enum:"direct,settings" doc:"Where the user started the connection flow"`
 	}
 }
 
@@ -1739,12 +1741,12 @@ func (h *OAuthHandler) CompleteAccountSelection(api huma.API) {
 		selectionCompleted = true
 
 		return &CompleteAccountSelectionOutput{Body: AccountSelectionCompletionResponse{
-			AccountResponse:        accountResponse(*accounts[0], h.disableLinkedInThreadReplies),
-			WorkspaceID:            pending.WorkspaceID,
-			AccountIDs:             accountIDs,
-			NewAccountIDs:          newAccountIDs,
-			OpenFreshComposer:      firstConnection,
-			FeatureSetupRequired:   featureSetupRequired,
+			AccountResponse:      accountResponse(*accounts[0], h.disableLinkedInThreadReplies),
+			WorkspaceID:          pending.WorkspaceID,
+			AccountIDs:           accountIDs,
+			NewAccountIDs:        newAccountIDs,
+			OpenFreshComposer:    firstConnection,
+			FeatureSetupRequired: featureSetupRequired,
 		}}, nil
 	})
 }

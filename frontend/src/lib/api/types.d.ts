@@ -4600,9 +4600,15 @@ export interface components {
              * @enum {string}
              */
             limit_profile?: "standard" | "x-premium";
-            /** @description Whether this account opted in to inbox synchronization */
+            /**
+             * @deprecated
+             * @description Deprecated compatibility shim. Use GET /account-features for messaging enabled state.
+             */
             messages_enabled: boolean;
-            /** @description Whether OpenPost has a messaging connector for this provider */
+            /**
+             * @deprecated
+             * @description Deprecated compatibility shim. Use GET /account-features for messaging availability and enabled state.
+             */
             messaging_supported: boolean;
             /** @description Platform name */
             platform: string;
@@ -4653,9 +4659,15 @@ export interface components {
              * @enum {string}
              */
             limit_profile?: "standard" | "x-premium";
-            /** @description Whether this account opted in to inbox synchronization */
+            /**
+             * @deprecated
+             * @description Deprecated compatibility shim. Use GET /account-features for messaging enabled state.
+             */
             messages_enabled: boolean;
-            /** @description Whether OpenPost has a messaging connector for this provider */
+            /**
+             * @deprecated
+             * @description Deprecated compatibility shim. Use GET /account-features for messaging availability and enabled state.
+             */
             messaging_supported: boolean;
             /** @description Genuinely new OpenPost account IDs */
             new_account_ids: string[] | null;
@@ -5119,6 +5131,11 @@ export interface components {
              * @example https://example.com/schemas/BlueskyLoginInputBody.json
              */
             readonly $schema?: string;
+            /**
+             * @description Where the user started the connection flow
+             * @enum {string}
+             */
+            account_management_mode?: "direct" | "settings";
             /** @description Bluesky app password (Settings > App Passwords) */
             app_password: string;
             /** @description Bluesky handle (e.g. user.bsky.social) */
@@ -6452,6 +6469,11 @@ export interface components {
              * @example https://example.com/schemas/DiscordWebhookLoginInputBody.json
              */
             readonly $schema?: string;
+            /**
+             * @description Where the user started the connection flow
+             * @enum {string}
+             */
+            account_management_mode?: "direct" | "settings";
             /**
              * @description Typed execution intent; certification_test requires an unscoped instance administrator
              * @enum {string}
@@ -11063,7 +11085,10 @@ export interface components {
              * @example https://example.com/schemas/UpdateAccountInputBody.json
              */
             readonly $schema?: string;
-            /** @description Opt this account in or out of inbox synchronization */
+            /**
+             * @deprecated
+             * @description Deprecated shim. Use POST /account-features to change messaging preference.
+             */
             messages_enabled?: boolean;
             /** @description New account slug. Use lowercase letters, numbers, and hyphens. */
             slug: string;
