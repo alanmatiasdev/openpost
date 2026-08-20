@@ -162,15 +162,15 @@ test("linked identity removal keeps the final sign-in method", async ({ page, re
   );
 
   await page.goto("/settings?tab=security");
+  // Linked identities is now inside a disclosure that is open by default
+  await expect(page.getByRole("heading", { name: "Linked identities" })).toBeVisible();
+  await expect(
+    page.getByText("Before you continue, sign in with a passkey or a linked external account."),
+  ).toBeVisible();
   const linkedIdentityCard = page
     .getByRole("heading", { name: "Linked identities" })
     .locator("..")
     .locator("..");
-  await expect(
-    linkedIdentityCard.getByText(
-      "Before you continue, sign in with a passkey or a linked external account.",
-    ),
-  ).toBeVisible();
   await expect(linkedIdentityCard.getByLabel("Current password")).toHaveCount(0);
   await linkedIdentityCard.getByRole("button", { name: "Unlink" }).click();
   const dialog = page.getByRole("dialog");

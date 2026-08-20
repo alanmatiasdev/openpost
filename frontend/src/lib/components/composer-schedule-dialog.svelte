@@ -190,7 +190,7 @@
 						variant="secondary"
 						class="h-10 justify-center gap-2"
 						onclick={onSuggest}
-						disabled={suggesting || !canSchedule}
+						disabled={suggesting}
 					>
 						{#if suggesting}
 							<LoaderIcon class="size-4 animate-spin" />
@@ -204,7 +204,6 @@
 						variant="secondary"
 						class="h-10 justify-center"
 						onclick={selectTomorrow}
-						disabled={!canSchedule}
 					>
 						{m.compose_tomorrow_time({ time: '09:00' })}
 					</Button>
@@ -213,7 +212,6 @@
 						variant="secondary"
 						class="h-10 justify-center"
 						onclick={selectInThreeHours}
-						disabled={!canSchedule}
 					>
 						{m.compose_in_three_hours()}
 					</Button>
