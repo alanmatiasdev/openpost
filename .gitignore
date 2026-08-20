@@ -99,9 +99,7 @@ marketing-site/public/assets/
 marketing-site/static/assets/
 
 # Local reference checkouts
-/references/postiz/
-/references/shoutrrr/
-/references/miniPaint/
+/references/*/
 
 # Wrangler
 .wrangler/

@@ -42,7 +42,8 @@ OpenPost is an all-in-one social publishing workspace. It helps solo founders, c
 
 - Publishing, scheduling, automation, or provider work: inspect `references/postiz/` and `references/shoutrrr/` when either has similar behavior (reposts, delays, thresholds; durable jobs, engagement gates, plateau checks, per-post overrides).
 - Image Editor work: inspect `references/miniPaint/` for tools, raster workflows, effects, import/export, and desktop/mobile UX.
-- Keep checkouts shallow and Git-ignored. Use them as references, never dependencies; never commit or vendor them. OpenPost's architecture, security, accessibility, provider rules, and product language win.
+- OpenPost Studio, recording, or Video Editor work: read `references/README.md`, then inspect OpenScreen, Capptivo, and Cap for capture/cursor seams; FreeCut, Kdenlive, and Shotcut for editing semantics; and OpenCut, OpenVid, OpenReel, or QCut for product and interaction ideas.
+- Keep checkouts shallow and Git-ignored. Use them as references, never dependencies; never commit or vendor them. Audit the source and license before porting code. OpenPost's architecture, security, accessibility, provider rules, and product language win.
 
 ## Delivery
 
