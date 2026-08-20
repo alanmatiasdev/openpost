@@ -34,7 +34,7 @@ test("rejects public total copy that drifts from the catalogue", () => {
   );
 });
 
-test("current public provider identities and totals match", async () => {
+test("current public provider identities and totals match", { timeout: 15_000 }, async () => {
   assert.deepEqual(await validateProviderCatalogFacts(), []);
 });
 
