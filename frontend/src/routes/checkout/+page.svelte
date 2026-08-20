@@ -439,24 +439,20 @@
 				<aside class="space-y-7 px-4 sm:px-0 lg:sticky lg:top-8">
 					<div class="space-y-3">
 						<p class="text-sm font-semibold text-primary">{m.checkout_eyebrow()}</p>
-						{#if isLocked}
-							<h1
-								class="max-w-[15ch] text-3xl font-semibold tracking-[-0.025em] text-balance sm:text-4xl"
-							>
-								{m.checkout_heading_locked()}
-							</h1>
-							<p class="max-w-[42ch] text-sm/6 text-muted-foreground">
+						<h1
+							class="max-w-[15ch] text-3xl font-semibold tracking-[-0.025em] text-balance sm:text-4xl"
+						>
+							{m.checkout_heading()}
+						</h1>
+						<p class="max-w-[42ch] text-sm/6 text-muted-foreground">
+							{#if isLocked}
 								{m.checkout_description_locked({ plan: selectedPlan.name })}
-							</p>
-						{:else}
-							<h1
-								class="max-w-[15ch] text-3xl font-semibold tracking-[-0.025em] text-balance sm:text-4xl"
-							>
-								{m.checkout_heading()}
-							</h1>
-							<p class="max-w-[42ch] text-sm/6 text-muted-foreground">
+							{:else}
 								{m.checkout_description()}
-							</p>
+							{/if}
+						</p>
+						{#if isLocked}
+							<p class="text-xs text-muted-foreground">{m.checkout_plan_locked()}</p>
 						{/if}
 					</div>
 
