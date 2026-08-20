@@ -2098,14 +2098,6 @@ func backfillAccountFeatures(ctx context.Context, db *bun.DB) error {
 	})
 }
 
-func analyticsPlatformSupported(platformName, capabilityState string) bool {
-	return platform.PlatformSupportsAnalytics(platformName, capabilityState)
-}
-
-func engagementPlatformSupported(platformName string) bool {
-	return platform.PlatformSupportsEngagement(platformName)
-}
-
 var (
 	postgresBlobTypeExpr         = regexp.MustCompile(`(?i)\bBLOB\b`)
 	postgresDateTimeTypeExpr     = regexp.MustCompile(`(?i)\bDATETIME\b`)

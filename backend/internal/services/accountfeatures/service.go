@@ -65,6 +65,13 @@ type AlwaysAllowedPolicy struct{}
 
 func (AlwaysAllowedPolicy) Allowed(_ context.Context, _, _ string) (bool, string) { return true, "" }
 
+// engagementSupporter is the minimal seam required to derive engagement availability.
+// It avoids pulling the full EngagementAdapter (CommentAdapter + Support) into the
+// feature resolver so test fakes can stay adapter-derived without unreachable methods.
+type engagementSupporter interface {
+	EngagementSupport() platform.EngagementSupport
+}
+
 type SupportResolver struct {
 	Providers map[string]platform.Adapter
 }
@@ -571,7 +578,7 @@ func (s *Service) supportFor(ctx context.Context, account models.SocialAccount, 
 		}
 		return nil, nil, "", false
 	case FeatureEngagement:
-		if e, ok := adapter.(platform.EngagementAdapter); ok {
+		if e, ok := adapter.(engagementSupporter); ok {
 			sup := e.EngagementSupport()
 			supported := sup.Enabled
 			required := sup.RequiredScopes

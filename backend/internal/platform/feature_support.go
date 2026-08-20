@@ -33,17 +33,6 @@ func PlatformSupportsEngagement(platform string) bool {
 	}
 }
 
-// PlatformSupportsMessaging reports whether the platform has a messaging adapter.
-// Used only for documentation parity; messaging backfill uses capability_state.
-func PlatformSupportsMessaging(platform string) bool {
-	switch platform {
-	case "x", "bluesky", "mastodon", "facebook", "instagram":
-		return true
-	default:
-		return false
-	}
-}
-
 // PlatformSupportsGrow reports whether the platform supports grow discovery.
 func PlatformSupportsGrow(platform string) bool {
 	switch platform {

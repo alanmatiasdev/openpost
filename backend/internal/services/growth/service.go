@@ -67,10 +67,6 @@ func (s *Service) SetProvider(name string, adapter platform.Adapter) {
 	s.providers[name] = adapter
 }
 
-func (s *Service) SetTelemetry(rec telemetry.Recorder) {
-	s.telemetry = rec
-}
-
 func (s *Service) SetFeatureGate(g FeatureGate) {
 	s.featureGate = g
 }

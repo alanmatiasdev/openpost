@@ -34,21 +34,6 @@ func (fakeMessagingProvider) SendMessage(_ context.Context, _ string, _ platform
 	return platform.SendMessageResult{}, nil
 }
 
-type fakeEngagementProvider struct {
-	platform.Adapter
-	support platform.EngagementSupport
-}
-
-func (f fakeEngagementProvider) EngagementSupport() platform.EngagementSupport { return f.support }
-func (fakeEngagementProvider) ListComments(_ context.Context, _, _, _ string) ([]platform.Comment, error) {
-	return nil, nil
-}
-func (fakeEngagementProvider) ReplyToComment(_ context.Context, _, _, _, _ string) (string, error) {
-	return "", nil
-}
-func (fakeEngagementProvider) HideComment(_ context.Context, _, _, _ string) error   { return nil }
-func (fakeEngagementProvider) DeleteComment(_ context.Context, _, _, _ string) error { return nil }
-
 type fakeAnalyticsProvider struct {
 	platform.Adapter
 	support platform.AnalyticsSupport
