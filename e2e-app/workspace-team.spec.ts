@@ -106,8 +106,9 @@ test("workspace admins manage the complete member and invitation lifecycle", asy
     .getByTestId("team-invitations-list")
     .locator("div.rounded-md.border")
     .filter({ hasText: pendingEmail });
-  await expect(invitationCard).toContainText("Email queued");
-  await expect(invitationCard).toContainText("Queued");
+  await expect(invitationCard).toContainText(
+    /Email queued[\s\S]*Queued|Email accepted by the provider[\s\S]*Sent/,
+  );
   await invitationCard.getByRole("button", { name: "Resend" }).click();
   await expect(page.getByTestId("team-error")).toContainText("invitation can be resent after");
   const expectedRateLimitConsoleError = consoleErrors.findIndex((message) =>

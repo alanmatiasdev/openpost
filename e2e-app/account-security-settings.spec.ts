@@ -169,10 +169,9 @@ test("linked identity removal keeps the final sign-in method", async ({ page, re
       .getByText("Before you continue, sign in with a passkey or a linked external account.")
       .first(),
   ).toBeVisible();
-  const linkedIdentityCard = page
-    .getByRole("heading", { name: "Linked identities" })
-    .locator("..")
-    .locator("..");
+  const linkedIdentityCard = page.locator("details").filter({
+    has: page.getByRole("heading", { name: "Linked identities" }),
+  });
   await expect(linkedIdentityCard.getByLabel("Current password")).toHaveCount(0);
   await linkedIdentityCard.getByRole("button", { name: "Unlink" }).click();
   const dialog = page.getByRole("dialog");
