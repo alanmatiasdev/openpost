@@ -572,9 +572,6 @@
 	const sharedTextIsYouTubeDescription = $derived(
 		sharedProviderKeys.size === 1 && sharedProviderKeys.has('youtube')
 	);
-	const sharedTextHasYouTubeDescription = $derived(
-		sharedProviderKeys.size > 1 && sharedProviderKeys.has('youtube')
-	);
 	const canSubmitPublication = $derived(
 		!hasPendingPasteMediaUploads &&
 			localBlockers.length === 0 &&
@@ -603,9 +600,6 @@
 		activeVariantAccount
 			? getPlatformKey(activeVariantAccount.platform) === 'youtube'
 			: sharedTextIsYouTubeDescription
-	);
-	const editorTextHasMixedMeaning = $derived(
-		!activeVariantAccount && sharedTextHasYouTubeDescription
 	);
 	const activeEditorContent = $derived(
 		activeVariantAccountId
@@ -5072,20 +5066,6 @@
 
 									<div class="min-w-0 flex-1">
 										<div class="relative">
-											{#if i === 0 && (editorTextIsYouTubeDescription || editorTextHasMixedMeaning)}
-												<div class="mb-1 px-1">
-													<p class="text-xs font-medium text-foreground">
-														{editorTextIsYouTubeDescription
-															? m.compose_description()
-															: m.compose_post_text()}
-													</p>
-													{#if editorTextHasMixedMeaning}
-														<p class="text-xs text-muted-foreground">
-															{m.compose_shared_text_meaning()}
-														</p>
-													{/if}
-												</div>
-											{/if}
 											<Textarea
 												id="post-textarea-{i}"
 												aria-label={editorTextIsYouTubeDescription
