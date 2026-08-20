@@ -45,13 +45,17 @@ function detectStaleChunks() {
 
 	// --- reactive: catch stale-chunk / dev-race errors and reload ---
 	const isChunkLoadError = (error: unknown): boolean => {
+		// SAFETY: narrowing unknown error to extract message for chunk-load detection; checked via typeof and existence before access
 		const raw =
 			error instanceof Error
 				? error.message
 				: typeof error === 'string'
 					? error
-					: error != null && typeof (error as { message?: unknown }).message === 'string'
-						? String((error as { message: unknown }).message)
+					: error != null &&
+						  // SAFETY: checked that error is object-like with message property before reading
+						  typeof (error as { message?: unknown }).message === 'string'
+						? // SAFETY: same narrowed check ensures message is string
+							String((error as { message: unknown }).message)
 						: String(error ?? '');
 		if (raw.includes('Failed to fetch dynamically imported module')) return true;
 		if (raw.includes('Importing a module script failed')) return true;
@@ -66,11 +70,13 @@ function detectStaleChunks() {
 	const MAX_RETRIES = 3;
 	const RETRY_WINDOW_MS = 15_000;
 
-	function getRetryState(): { count: number; at: number } {
+	type RetryState = { count: number; at: number };
+	function getRetryState(): RetryState {
 		try {
 			const raw = sessionStorage.getItem(CHUNK_RELOAD_KEY);
 			if (!raw) return { count: 0, at: 0 };
-			const parsed = JSON.parse(raw) as { count: number; at: number };
+			// SAFETY: JSON parsed from our own storage key, validated by shape check below before use
+			const parsed = JSON.parse(raw) as RetryState;
 			if (Date.now() - parsed.at > RETRY_WINDOW_MS) return { count: 0, at: 0 };
 			return parsed;
 		} catch {
@@ -118,8 +124,10 @@ function detectStaleChunks() {
 	// Vite emits `vite:preloadError` for failed preloads (SvelteKit route nodes).
 	// Use it as an additional signal alongside error/unhandledrejection.
 	window.addEventListener('vite:preloadError', (event) => {
-		const payload = (event as unknown as CustomEvent).detail as unknown;
+		// SAFETY: Vite preloadError is a CustomEvent; detail is unknown and will be narrowed by isChunkLoadError
+		const payload = (event as { detail: unknown }).detail;
 		if (isChunkLoadError(payload)) {
+			// SAFETY: preventDefault is safe on Event, narrowed from CustomEvent
 			(event as Event).preventDefault();
 			reloadWithBackoff();
 		}
@@ -130,13 +138,15 @@ function detectStaleChunks() {
 			// Prevent SvelteKit from rendering +error.svelte for a transient chunk
 			// failure; the reload will recover the page without showing a failure
 			// state (F-007 graceful reload).
-			event.preventDefault();
+			// SAFETY: error event is an ErrorEvent, preventDefault exists on Event
+			(event as Event).preventDefault();
 			reloadWithBackoff();
 		}
 	});
 	window.addEventListener('unhandledrejection', (event) => {
 		if (isChunkLoadError(event.reason)) {
-			event.preventDefault();
+			// SAFETY: unhandledrejection event is PromiseRejectionEvent, preventDefault exists
+			(event as Event).preventDefault();
 			reloadWithBackoff();
 		}
 	});

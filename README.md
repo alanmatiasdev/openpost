@@ -55,7 +55,7 @@
   <img alt="OpenPost composer with six social destinations, a command-review meme, and scheduling and publishing controls" src="./assets/screenshots/readme-hero-dark.png" width="94%">
 </p>
 
-OpenPost starts with the work you already have: launches, updates, lessons, and ideas. Turn it into channel-ready posts, keep every destination's rules visible, schedule the result, and see what happened after it shipped.
+You already have the material. A launch. An update. Something you learned the hard way. OpenPost takes that and makes it fit each channel. It shows you what each destination allows before you publish, lets you schedule it, and then shows you what actually happened. No hidden rules.
 
 <table>
   <tr>
@@ -80,15 +80,15 @@ OpenPost starts with the work you already have: launches, updates, lessons, and 
   </tr>
 </table>
 
-## What OpenPost gives you
+## What you get
 
-- **A destination-aware composer.** Write a post, thread, story, short video, or video, then adapt text, media, format, timing, and provider settings per account.
-- **A durable publishing queue.** Scheduled work lives in the database, survives restarts, and keeps clear queued, published, failed, and retrying states.
-- **A real content inventory.** Publications, renditions, Social Sets, media, the calendar, analytics, engagement, and inbox all share one workspace boundary.
-- **Creative tools where the work happens.** Edit images, build memes, cut social video, draft image descriptions, and save the result back to Media.
-- **One product across every surface.** The web app, Android wrapper, HTTP API, CLI, and MCP server use the same terms, access rules, and saved state.
+- **A composer that respects each channel.** Write once, then fix the text, media, and timing for each account. It will not let you push a 280-character thread to LinkedIn and pretend it worked.
+- **A queue that remembers.** Everything scheduled lives in the database. Restart the server and it is still there. You see if it is queued, published, failed, or waiting to retry.
+- **One place for your work.** Publications, media, calendar, analytics, comments — all in the same workspace. Not five tabs pretending to be one product.
+- **Tools where you need them.** Edit an image. Cut a short video. Make a meme. Write alt text. It saves back to your library. No need to open another app.
+- **Same app everywhere.** Web, Android, API, CLI, MCP. Same words, same permissions, same state. I built it that way because different behavior on different surfaces breaks trust.
 
-OpenPost does not include a CRM, ad manager, social listening, or large-company benchmarks. The Hosted service is the main product. Self-hosting is a deployment option where you own the server, updates, backups, provider projects, and support.
+You will not find a CRM, ad manager, or social listening here. There are better tools for that. I run the hosted version for you. Self-hosting is there if you want to own the box, the backups, and the provider setup yourself.
 
 ## Get started
 
@@ -110,9 +110,9 @@ Open `http://localhost:8080`, create the first account, and connect a social acc
 
 ## Providers
 
-OpenPost includes adapters for X, Mastodon, Bluesky, LinkedIn profiles and Organization Pages, Threads, Facebook Pages, Instagram Business and Creator accounts, TikTok, YouTube, and Discord webhooks.
+OpenPost talks to X, Mastodon, Bluesky, LinkedIn profiles and company pages, Threads, Facebook Pages, Instagram, TikTok, YouTube, and Discord webhooks.
 
-An adapter proves implementation, not Hosted readiness. App review, account access, scopes, policy mode, runtime controls, and live certification stay separate.
+An adapter means I built it, not that it is ready on the hosted service. Some need app review. Some need the right account type or scopes. Those checks stay separate so you see the real state before you publish.
 
 <!-- provider-certification:begin -->
 
@@ -125,7 +125,7 @@ No Hosted service provider-format certification claim is current. Implementation
 
 ## Automate it
 
-OpenPost tokens let the typed HTTP API, CLI, and MCP server work inside the same workspace and permission boundaries as the app. Automation can prepare and publish content without exposing social account keys.
+Give a token to the API, CLI, or MCP server and it works like you do. Same workspace. Same permissions. You can automate a post without handing over your social logins. I use one permission model everywhere. Separate models are where things quietly break.
 
 [CLI guide](https://docs.openpost.social/cli/) · [MCP guide](https://docs.openpost.social/mcp/) · [API reference](https://docs.openpost.social/reference/api)
 
