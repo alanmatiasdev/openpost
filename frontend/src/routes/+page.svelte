@@ -14,9 +14,10 @@
 
 <div class="flex flex-1 flex-col overflow-hidden">
 	{#if workspaceCtx.currentWorkspace}
-		<div class="mx-auto hidden w-full max-w-6xl px-4 pt-5 md:block lg:px-8">
-			<WorkspaceSetupGuide workspaceID={workspaceCtx.currentWorkspace.id} />
-		</div>
+		<WorkspaceSetupGuide
+			workspaceID={workspaceCtx.currentWorkspace.id}
+			wrapperClass="mx-auto hidden w-full max-w-6xl px-4 pt-5 md:block lg:px-8"
+		/>
 	{/if}
 	{#if handoffSelected}
 		<div class="mx-auto w-full max-w-6xl px-4 pt-5 sm:px-6 lg:px-8">

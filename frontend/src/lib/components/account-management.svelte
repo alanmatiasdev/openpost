@@ -893,9 +893,11 @@
 				/>
 			{:else}
 				{#if selectedWorkspaceId && canEditWorkspace}
-					<div class="mb-6">
-						<WorkspaceSetupGuide workspaceID={selectedWorkspaceId} context="accounts" />
-					</div>
+					<WorkspaceSetupGuide
+						workspaceID={selectedWorkspaceId}
+						context="accounts"
+						wrapperClass="mb-6"
+					/>
 				{/if}
 				{#if error}
 					<InlineNotice
