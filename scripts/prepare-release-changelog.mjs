@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -8,6 +9,13 @@ const releaseDate = process.argv[3] || new Date().toISOString().slice(0, 10);
 if (!tag) {
   process.stderr.write("usage: bun scripts/prepare-release-changelog.mjs <tag> [YYYY-MM-DD]\n");
   process.exit(1);
+}
+
+// Merge fragments from changes/ into CHANGELOG.md before preparing the release.
+try {
+  execFileSync("bun", ["scripts/merge-changelog-fragments.mjs"], { stdio: "inherit" });
+} catch {
+  // merge-changelog-fragments exits 0 when there is nothing to merge.
 }
 
 const changelogPath = resolve("CHANGELOG.md");
