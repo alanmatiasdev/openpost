@@ -7,9 +7,9 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/openpost/backend/internal/api/handlers"
 	"github.com/openpost/backend/internal/api/middleware"
-	"github.com/openpost/backend/internal/services/accountfeatures"
 	"github.com/openpost/backend/internal/memes"
 	"github.com/openpost/backend/internal/platform"
+	"github.com/openpost/backend/internal/services/accountfeatures"
 	analyticsservice "github.com/openpost/backend/internal/services/analytics"
 	"github.com/openpost/backend/internal/services/apitokens"
 	"github.com/openpost/backend/internal/services/auth"
@@ -108,6 +108,7 @@ type RouteDeps struct {
 	MediaHandler    *handlers.MediaHandler
 	BillingHandler  *handlers.BillingHandler
 	MCPOAuthHandler *handlers.MCPOAuthHandler
+	MCPHandler      *handlers.MCPHandler
 	ProfileHandler  *handlers.ProfileHandler
 }
 
@@ -367,7 +368,14 @@ func RegisterHumaRoutes(api huma.API, deps RouteDeps) {
 	oauthHandler.DisconnectAccount(api)
 	oauthHandler.RevokeAccountGrant(api)
 
-	afhService := accountfeatures.NewService(deps.DB, oauthHandler.ProviderMap(), nil)
+	var planPolicy accountfeatures.PlanPolicy
+	if deps.Entitlement != nil {
+		planPolicy = &accountfeatures.EntitlementPlanPolicy{Entitlements: deps.Entitlement}
+	}
+	afhService := accountfeatures.NewService(deps.DB, oauthHandler.ProviderMap(), planPolicy)
+	if deps.MCPHandler != nil {
+		deps.MCPHandler.SetFeatureGate(afhService)
+	}
 	afhHandler := handlers.NewAccountFeaturesHandler(afhService, deps.Authenticator)
 	afhHandler.ReadFeatures(api)
 	afhHandler.SaveFeatures(api)

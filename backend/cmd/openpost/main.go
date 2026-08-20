@@ -677,6 +677,7 @@ func main() {
 		ProfileHandler:               profileHandler,
 		BillingHandler:               billingHandler,
 		MCPOAuthHandler:              mcpOAuthHandler,
+		MCPHandler:                   mcpHandler,
 	})
 
 	RegisterSpaRoutes(e, db, cfg.PublicURL, cfg.Edition == config.EditionCloud, cfg.PublicProfilesEnabled)

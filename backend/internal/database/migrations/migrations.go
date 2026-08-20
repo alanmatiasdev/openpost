@@ -17,6 +17,7 @@ import (
 
 	"github.com/openpost/backend/internal/jobregistry"
 	"github.com/openpost/backend/internal/models"
+	"github.com/openpost/backend/internal/platform"
 	"github.com/openpost/backend/internal/usernames"
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect"
@@ -2069,8 +2070,8 @@ func backfillAccountFeatures(ctx context.Context, db *bun.DB) error {
 					messagingEnabled = true
 				}
 			}
-			analyticsEnabled := analyticsPlatformSupported(acc.Platform, acc.CapabilityState)
-			engagementEnabled := engagementPlatformSupported(acc.Platform)
+			analyticsEnabled := platform.PlatformSupportsAnalytics(acc.Platform, acc.CapabilityState)
+			engagementEnabled := platform.PlatformSupportsEngagement(acc.Platform)
 			growEnabled := growSources[acc.ID]
 			features := map[string]bool{
 				"messaging":  messagingEnabled,
@@ -2097,27 +2098,12 @@ func backfillAccountFeatures(ctx context.Context, db *bun.DB) error {
 	})
 }
 
-func analyticsPlatformSupported(platform, capabilityState string) bool {
-	switch platform {
-	case "x", "bluesky", "mastodon", "facebook", "instagram", "threads", "youtube", "tiktok":
-		return true
-	case "linkedin":
-		if strings.Contains(capabilityState, "community_management") {
-			return false
-		}
-		return true
-	default:
-		return false
-	}
+func analyticsPlatformSupported(platformName, capabilityState string) bool {
+	return platform.PlatformSupportsAnalytics(platformName, capabilityState)
 }
 
-func engagementPlatformSupported(platform string) bool {
-	switch platform {
-	case "facebook", "instagram", "linkedin", "threads", "mastodon", "bluesky", "x", "youtube":
-		return true
-	default:
-		return false
-	}
+func engagementPlatformSupported(platformName string) bool {
+	return platform.PlatformSupportsEngagement(platformName)
 }
 
 var (

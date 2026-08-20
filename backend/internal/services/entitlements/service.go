@@ -16,6 +16,10 @@ const (
 	LimitMediaBytesUploadedMonthly LimitKey = "media_bytes_uploaded_monthly"
 	LimitProviderWriteCallsMonthly LimitKey = "provider_write_calls_monthly"
 	LimitTeamMembers               LimitKey = "team_members"
+	LimitFeatureMessaging          LimitKey = "feature_messaging"
+	LimitFeatureEngagement         LimitKey = "feature_engagement"
+	LimitFeatureAnalytics          LimitKey = "feature_analytics"
+	LimitFeatureGrow               LimitKey = "feature_grow"
 )
 
 type Request struct {
