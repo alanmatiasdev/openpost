@@ -40,6 +40,13 @@ func (s *Service) syncMessages(ctx context.Context, accountID string) error {
 	if err := s.db.NewSelect().Model(&account).Where("id = ? AND is_active = ?", accountID, true).Scan(ctx); err != nil {
 		return err
 	}
+	if !s.isMessagingEnabled(ctx, account.ID) {
+		return s.states.record(ctx, syncStateUpdate{
+			account: account, status: syncStateDisabled,
+			failure:     syncStateFailure{code: "feature_disabled", message: "Messaging is disabled for this account."},
+			attemptedAt: s.now(),
+		})
+	}
 	provider, err := s.syncProvider(ctx, account)
 	if err != nil || provider == nil {
 		return err

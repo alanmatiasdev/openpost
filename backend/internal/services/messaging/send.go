@@ -66,6 +66,9 @@ func (s *Service) queueMessageWithDB(ctx context.Context, db bun.IDB, conversati
 	} else if err != nil {
 		return nil, err
 	}
+	if !s.isMessagingEnabled(ctx, account.ID) {
+		return nil, fmt.Errorf("messaging is disabled for this account")
+	}
 	provider := s.provider(account)
 	if provider == nil || !provider.MessagingSupport().CanSend {
 		return nil, fmt.Errorf("sending messages is unsupported for this provider")
@@ -114,6 +117,10 @@ func (s *Service) sendMessage(ctx context.Context, messageID string) error {
 	if err := s.db.NewSelect().Model(&account).
 		Where("id = ? AND workspace_id = ? AND is_active = ?", conversation.SocialAccountID, conversation.WorkspaceID, true).Scan(ctx); err != nil {
 		return err
+	}
+	if !s.isMessagingEnabled(ctx, account.ID) {
+		s.recordSendFailure(ctx, message, conversation, account, fmt.Errorf("messaging is disabled for this account"))
+		return fmt.Errorf("messaging is disabled for this account")
 	}
 	provider := s.provider(account)
 	if provider == nil || !provider.MessagingSupport().CanSend {

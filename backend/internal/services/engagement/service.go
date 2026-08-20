@@ -42,6 +42,10 @@ type TokenSource interface {
 	GetValidAccessToken(ctx context.Context, accountID string) (string, error)
 }
 
+type FeatureGate interface {
+	IsEffectiveEnabled(ctx context.Context, accountID, feature string) (bool, error)
+}
+
 type Service struct {
 	db            *bun.DB
 	tokenSource   TokenSource
@@ -49,6 +53,7 @@ type Service struct {
 	providersMu   sync.RWMutex
 	providers     map[string]platform.EngagementAdapter
 	now           func() time.Time
+	featureGate   FeatureGate
 }
 
 func NewService(db *bun.DB, tokenSource TokenSource, notificationService *notifications.Service) *Service {
@@ -65,6 +70,24 @@ func (s *Service) SetProvider(name string, adapter platform.EngagementAdapter) {
 	s.providersMu.Lock()
 	defer s.providersMu.Unlock()
 	s.providers[name] = adapter
+}
+
+func (s *Service) SetFeatureGate(g FeatureGate) {
+	s.featureGate = g
+}
+
+func (s *Service) isEngagementEnabled(ctx context.Context, accountID string) bool {
+	if s.featureGate == nil {
+		return true
+	}
+	enabled, err := s.featureGate.IsEffectiveEnabled(ctx, accountID, "engagement")
+	if err != nil {
+		if strings.Contains(err.Error(), "no such table") {
+			return true
+		}
+		return false
+	}
+	return enabled
 }
 
 func (s *Service) authorize(ctx context.Context, workspaceID string, actor Actor, level workspaceaccess.Level) error {
@@ -189,6 +212,10 @@ func (s *Service) refreshWorkspace(ctx context.Context, workspaceID string, forc
 		if account.ID == "" {
 			continue
 		}
+		if !s.isEngagementEnabled(ctx, account.ID) {
+			_ = s.recordState(ctx, rendition.ID, account, "disabled", "feature_disabled", "Engagement is disabled for this account.", false, 0, 0)
+			continue
+		}
 		engagement := s.adapter(account)
 		if engagement == nil || !engagement.EngagementSupport().Enabled {
 			continue
@@ -224,6 +251,9 @@ func (s *Service) syncEngagement(ctx context.Context, renditionID string) error 
 	}
 	if account.ID == "" {
 		return nil
+	}
+	if !s.isEngagementEnabled(ctx, account.ID) {
+		return s.recordState(ctx, rendition.ID, account, "disabled", "feature_disabled", "Engagement is disabled for this account.", false, 0, 0)
 	}
 	commenter := s.adapter(account)
 	if commenter == nil || !commenter.EngagementSupport().Enabled {
@@ -488,6 +518,9 @@ func (s *Service) QueueEngagementAction(ctx context.Context, actor Actor, itemID
 	if err := s.authorize(ctx, item.WorkspaceID, actor, workspaceaccess.LevelEdit); err != nil {
 		return err
 	}
+	if !s.isEngagementEnabled(ctx, item.SocialAccountID) {
+		return fmt.Errorf("engagement is disabled for this account")
+	}
 	message, err := validateEngagementAction(item, action, message)
 	if err != nil {
 		return err
@@ -547,6 +580,20 @@ func QueueProviderCommentAction(ctx context.Context, db *bun.DB, input ProviderC
 	if input.WorkspaceID == "" || input.PublicationID == "" || input.RenditionID == "" ||
 		input.SocialAccountID == "" || input.ProviderCommentID == "" || input.Actor.UserID == "" {
 		return "", fmt.Errorf("provider comment action ownership is required")
+	}
+	// Feature gate: fail closed if engagement not effectively enabled for this account.
+	// Use DB preference check (enabled flag) as fail-closed signal; full support/scope/plan check happens at Job execution via Service.
+	var pref models.AccountFeature
+	if err := db.NewSelect().Model(&pref).Where("social_account_id = ? AND feature = ?", input.SocialAccountID, "engagement").Scan(ctx); err != nil {
+		if strings.Contains(err.Error(), "no such table") {
+			// No feature table yet (test DB without migration), allow for backward compat.
+		} else if errors.Is(err, sql.ErrNoRows) {
+			return "", fmt.Errorf("engagement is disabled for this account")
+		} else {
+			return "", err
+		}
+	} else if !pref.Enabled {
+		return "", fmt.Errorf("engagement is disabled for this account")
 	}
 	switch input.Action {
 	case "reply":
@@ -620,6 +667,9 @@ func (s *Service) performEngagementAction(ctx context.Context, input engagementA
 	var item models.EngagementItem
 	if err := s.db.NewSelect().Model(&item).Where("id = ?", input.ItemID).Scan(ctx); err != nil {
 		return err
+	}
+	if !s.isEngagementEnabled(ctx, item.SocialAccountID) {
+		return fmt.Errorf("engagement is disabled for this account")
 	}
 	var account models.SocialAccount
 	if err := s.db.NewSelect().Model(&account).Where("id = ?", item.SocialAccountID).Scan(ctx); err != nil {
@@ -767,6 +817,9 @@ func (s *Service) performProviderCommentAction(ctx context.Context, input engage
 	input, err := normalizeProviderCommentActionJob(input)
 	if err != nil {
 		return err
+	}
+	if !s.isEngagementEnabled(ctx, input.SocialAccountID) {
+		return fmt.Errorf("engagement is disabled for this account")
 	}
 	execution, hasExecution := providerwrite.JobExecutionFromContext(ctx)
 	if hasExecution && execution.ID != input.JobID {

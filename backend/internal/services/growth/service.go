@@ -32,6 +32,10 @@ type TokenSource interface {
 	GetValidAccessToken(ctx context.Context, accountID string) (string, error)
 }
 
+type FeatureGate interface {
+	IsEffectiveEnabled(ctx context.Context, accountID, feature string) (bool, error)
+}
+
 type Service struct {
 	db          *bun.DB
 	tokenSource TokenSource
@@ -39,6 +43,7 @@ type Service struct {
 	providersMu sync.RWMutex
 	providers   map[string]platform.Adapter
 	now         func() time.Time
+	featureGate FeatureGate
 }
 
 func NewService(db *bun.DB, ts TokenSource, rec telemetry.Recorder) *Service {
@@ -63,6 +68,24 @@ func (s *Service) SetProvider(name string, adapter platform.Adapter) {
 
 func (s *Service) SetTelemetry(rec telemetry.Recorder) {
 	s.telemetry = rec
+}
+
+func (s *Service) SetFeatureGate(g FeatureGate) {
+	s.featureGate = g
+}
+
+func (s *Service) isGrowEnabled(ctx context.Context, accountID string) bool {
+	if s.featureGate == nil {
+		return true
+	}
+	enabled, err := s.featureGate.IsEffectiveEnabled(ctx, accountID, "grow")
+	if err != nil {
+		if strings.Contains(err.Error(), "no such table") {
+			return true
+		}
+		return false
+	}
+	return enabled
 }
 
 // authorize checks workspace membership at required level.
@@ -145,6 +168,9 @@ func (s *Service) QueueRefresh(ctx context.Context, actor workspaceaccess.ActorF
 	acct, err := s.resolveAccount(ctx, workspaceID, socialAccountID)
 	if err != nil {
 		return "", err
+	}
+	if !s.isGrowEnabled(ctx, acct.ID) {
+		return "", fmt.Errorf("grow is disabled for this account")
 	}
 	if _, err := s.growthDiscovererForAccount(acct); err != nil {
 		return "", err
@@ -499,6 +525,9 @@ func (s *Service) QueueFollow(ctx context.Context, actor workspaceaccess.ActorFa
 	}
 	if acct.Platform != "bluesky" && acct.Platform != "mastodon" {
 		return "", ErrUnsupported
+	}
+	if !s.isGrowEnabled(ctx, acct.ID) {
+		return "", fmt.Errorf("grow is disabled for this account")
 	}
 	if rec.FollowState == models.GrowthRecommendationFollowPending || rec.FollowState == models.GrowthRecommendationFollowFollowing || rec.FollowState == models.GrowthRecommendationFollowRequested {
 		return "", ErrConflict

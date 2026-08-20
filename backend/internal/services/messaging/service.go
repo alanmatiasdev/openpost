@@ -39,6 +39,10 @@ type Provider interface {
 	platform.MessagingAdapter
 }
 
+type FeatureGate interface {
+	IsEffectiveEnabled(ctx context.Context, accountID, feature string) (bool, error)
+}
+
 type Service struct {
 	db            *bun.DB
 	tokens        TokenSource
@@ -47,6 +51,7 @@ type Service struct {
 	providersMu   sync.RWMutex
 	providers     map[string]Provider
 	now           func() time.Time
+	featureGate   FeatureGate
 }
 
 func NewService(db *bun.DB, tokens TokenSource, notificationService *notifications.Service) *Service {
@@ -61,6 +66,24 @@ func (s *Service) SetProvider(name string, provider Provider) {
 	s.providersMu.Lock()
 	defer s.providersMu.Unlock()
 	s.providers[strings.ToLower(strings.TrimSpace(name))] = provider
+}
+
+func (s *Service) SetFeatureGate(g FeatureGate) {
+	s.featureGate = g
+}
+
+func (s *Service) isMessagingEnabled(ctx context.Context, accountID string) bool {
+	if s.featureGate == nil {
+		return true
+	}
+	enabled, err := s.featureGate.IsEffectiveEnabled(ctx, accountID, "messaging")
+	if err != nil {
+		if strings.Contains(err.Error(), "no such table") {
+			return true
+		}
+		return false
+	}
+	return enabled
 }
 
 func (s *Service) provider(account models.SocialAccount) Provider {
@@ -137,6 +160,14 @@ func (s *Service) refreshWorkspace(ctx context.Context, workspaceID string, forc
 	now := s.now()
 	queued := 0
 	for _, account := range accounts {
+		if !s.isMessagingEnabled(ctx, account.ID) {
+			_ = s.states.record(ctx, syncStateUpdate{
+				account: account, status: syncStateDisabled,
+				failure:     syncStateFailure{code: "opt_in_required", message: "Enable messaging for this account to collect messages."},
+				attemptedAt: now,
+			})
+			continue
+		}
 		provider := s.provider(account)
 		if provider == nil || !provider.MessagingSupport().Enabled {
 			continue

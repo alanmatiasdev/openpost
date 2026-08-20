@@ -35,12 +35,17 @@ type TokenSource interface {
 	GetValidAccessToken(ctx context.Context, accountID string) (string, error)
 }
 
+type FeatureGate interface {
+	IsEffectiveEnabled(ctx context.Context, accountID, feature string) (bool, error)
+}
+
 type Service struct {
 	db          *bun.DB
 	tokenSource TokenSource
 	providersMu sync.RWMutex
 	providers   map[string]platform.Adapter
 	now         func() time.Time
+	featureGate FeatureGate
 }
 
 func NewService(db *bun.DB, tokenSource TokenSource) *Service {
@@ -56,6 +61,24 @@ func (s *Service) SetProvider(name string, adapter platform.Adapter) {
 	s.providersMu.Lock()
 	defer s.providersMu.Unlock()
 	s.providers[name] = adapter
+}
+
+func (s *Service) SetFeatureGate(g FeatureGate) {
+	s.featureGate = g
+}
+
+func (s *Service) isAnalyticsEnabled(ctx context.Context, accountID string) bool {
+	if s.featureGate == nil {
+		return true
+	}
+	enabled, err := s.featureGate.IsEffectiveEnabled(ctx, accountID, "analytics")
+	if err != nil {
+		if strings.Contains(err.Error(), "no such table") {
+			return true
+		}
+		return false
+	}
+	return enabled
 }
 
 func (s *Service) ScheduleSweep(ctx context.Context, runAt time.Time) error {
@@ -168,6 +191,9 @@ func (s *Service) enqueueAccountJobs(ctx context.Context, accounts []models.Soci
 }
 
 func (s *Service) enqueueAccountJob(ctx context.Context, account models.SocialAccount, force bool, now time.Time) (bool, error) {
+	if !s.isAnalyticsEnabled(ctx, account.ID) {
+		return false, s.recordUnavailable(ctx, subjectAccount, account.ID, account, platform.AnalyticsStatusPermissionRequired, "feature_disabled", "Analytics is disabled for this account.")
+	}
 	adapter := s.analyticsAdapter(account)
 	if adapter == nil {
 		return false, s.recordUnavailable(ctx, subjectAccount, account.ID, account, platform.AnalyticsStatusUnsupported, "analytics_not_supported", "This provider does not expose account analytics in OpenPost.")
@@ -251,6 +277,9 @@ func (s *Service) enqueueRenditionJob(
 	force bool,
 	now time.Time,
 ) (bool, error) {
+	if !s.isAnalyticsEnabled(ctx, account.ID) {
+		return false, s.recordUnavailable(ctx, subjectRendition, rendition.ID, account, platform.AnalyticsStatusPermissionRequired, "feature_disabled", "Analytics is disabled for this account.")
+	}
 	adapter := s.analyticsAdapter(account)
 	if adapter == nil {
 		return false, s.recordUnavailable(ctx, subjectRendition, rendition.ID, account, platform.AnalyticsStatusUnsupported, "analytics_not_supported", "This provider does not expose content analytics in OpenPost.")
@@ -295,6 +324,9 @@ func (s *Service) syncAccount(ctx context.Context, accountID string) error {
 		}
 		return fmt.Errorf("load analytics account: %w", err)
 	}
+	if !s.isAnalyticsEnabled(ctx, account.ID) {
+		return s.recordUnavailable(ctx, subjectAccount, account.ID, account, platform.AnalyticsStatusPermissionRequired, "feature_disabled", "Analytics is disabled for this account.")
+	}
 	adapter := s.analyticsAdapter(account)
 	if adapter == nil {
 		return s.recordUnavailable(ctx, subjectAccount, account.ID, account, platform.AnalyticsStatusUnsupported, "analytics_not_supported", "")
@@ -335,6 +367,9 @@ func (s *Service) syncRendition(ctx context.Context, renditionID string) error {
 	}
 	if account.ID == "" {
 		return nil
+	}
+	if !s.isAnalyticsEnabled(ctx, account.ID) {
+		return s.recordUnavailable(ctx, subjectRendition, rendition.ID, account, platform.AnalyticsStatusPermissionRequired, "feature_disabled", "Analytics is disabled for this account.")
 	}
 	adapter := s.analyticsAdapter(account)
 	if adapter == nil {

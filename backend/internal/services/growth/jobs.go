@@ -132,6 +132,10 @@ func (s *Service) handleDiscovery(ctx context.Context, p growthDiscoveryPayload)
 		s.recordDiscoveryFailure(ctx, state, status, code, msg)
 		return err
 	}
+	if !s.isGrowEnabled(ctx, account.ID) {
+		s.recordDiscoveryFailure(ctx, state, "feature_disabled", "feature_disabled", "Grow is disabled for this account.")
+		return fmt.Errorf("grow is disabled for this account")
+	}
 	token, err := s.tokenSource.GetValidAccessToken(ctx, account.ID)
 	if err != nil {
 		status, code, msg := classifyGrowthError(err)
@@ -326,6 +330,9 @@ func (s *Service) handleFollow(ctx context.Context, p growthFollowPayload) error
 	account, err := s.resolveAccount(ctx, p.WorkspaceID, rec.SocialAccountID)
 	if err != nil {
 		return err
+	}
+	if !s.isGrowEnabled(ctx, account.ID) {
+		return s.persistFollowFailure(ctx, &rec, "feature_disabled", "feature_disabled", "Grow is disabled for this account.")
 	}
 	token, err := s.tokenSource.GetValidAccessToken(ctx, account.ID)
 	if err != nil {
