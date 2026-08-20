@@ -1371,6 +1371,22 @@ export const docsPageCatalog = Object.freeze([
     }
   },
   {
+    "page": "usage/grow.md",
+    "title": "Grow",
+    "description": "Use this page when reviewing account recommendations for growth.",
+    "route": "/usage/grow",
+    "agentRepresentation": {
+      "membership": "ordinary"
+    },
+    "agentDiscovery": {
+      "membership": "unlisted"
+    },
+    "agentCorpus": {
+      "membership": "included",
+      "section": "user-guide"
+    }
+  },
+  {
     "page": "usage/image-editor.md",
     "title": "OpenPost Image Editor",
     "description": "OpenPost Image Editor is OpenPost's still-image editor for social posts, carousel pages, and slideshow images.",
