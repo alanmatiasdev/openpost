@@ -40,6 +40,14 @@ _Avoid_: Draft, Publication
 The standalone local-first desktop application for creating media in the OpenPost product family. It works without an OpenPost account and can connect to Hosted services or self-hosted deployments.
 _Avoid_: OpenPost Video Editor, web Studio
 
+**OpenPost Image Editor**:
+The focused still-image editor available in both OpenPost web and OpenPost Studio.
+_Avoid_: Studio Image Editor, web Image Editor
+
+**Quick Cut**:
+The web video tool that removes source ranges without re-encoding eligible streams.
+_Avoid_: Video Editor, precise export
+
 **Engagement**:
 A provider interaction attached to a published Rendition, such as a comment, reply, or reaction.
 _Avoid_: Message, communication
