@@ -496,8 +496,8 @@
     "boundary": "Open the settings beside a selected account to change its text and options. OpenPost only shows sections that apply: Content, Conversation, Distribution, Disclosure, and Media and accessibility."
   },
   "https://docs.openpost.social/usage/grow": {
-    "audience": "Use this page when choosing or reviewing Grow recommendations for a connected account.",
-    "boundary": "Grow only discovers recommendations for enabled Bluesky and Mastodon accounts. Following always needs a separate user action, and OpenPost never follows an account automatically."
+    "audience": "Use this page when reviewing account recommendations for growth.",
+    "boundary": "Following a recommendation always requires Grow to remain enabled for that account and remains an explicit user action. OpenPost never follows an account automatically."
   },
   "https://docs.openpost.social/usage/image-editor": {
     "audience": "You can return to local designs on the same device and export PNG, JPEG, or WebP files at any time. Save to OpenPost creates an account or uses your current account, uploads the local images, and copies the editable design into your workspace. The local copy remains available in the original browser.",
