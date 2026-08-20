@@ -55,7 +55,7 @@
 
 	let scheduleInput = $state('');
 	let inputError = $state('');
-	let advancedOpen = $state(false);
+	let advancedOpen = $state(true);
 	const desktopCalendar = new MediaQuery('min-width: 768px');
 	const effectiveRandomDelayMinutes = $derived.by(() => {
 		if (randomDelayOverride === 'default') return defaultRandomDelayMinutes;
@@ -222,7 +222,7 @@
 
 			<details
 				class="group rounded-lg border"
-				open={canSchedule ? advancedOpen : false}
+				open
 				ontoggle={(e) => (advancedOpen = (e.currentTarget as HTMLDetailsElement).open)}
 			>
 				<summary

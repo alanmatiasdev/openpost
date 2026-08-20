@@ -186,7 +186,7 @@
 		</Button>
 	</div>
 	{#if workspaceCtx.currentWorkspace?.role === 'admin' || (organizationOwner && onDeleteOrganization)}
-		<details class="group rounded-lg border border-destructive/30">
+		<details class="group rounded-lg border border-destructive/30" open>
 			<summary
 				class="flex cursor-pointer list-none items-center justify-between p-4 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
 			>
@@ -278,7 +278,7 @@
 </section>
 
 <section id="media-cleanup" class="scroll-mt-24">
-	<details class="group rounded-xl border">
+	<details class="group rounded-xl border" open>
 		<summary
 			class="flex cursor-pointer list-none items-center justify-between p-4 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
 		>

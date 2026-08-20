@@ -91,7 +91,7 @@
 	let toastTone = $state<'neutral' | 'error'>('neutral');
 	let lastFailedProvider = $state.raw<ProviderEntry | null>(null);
 	let lastFailedMessage = $state('');
-	let setupRequiredOpen = $state(false);
+	let setupRequiredOpen = $state(true);
 
 	let blueskyModalOpen = $state(false);
 	let blueskyHandle = $state('');
@@ -1211,7 +1211,7 @@
 							{#if setupRequiredProviders.length > 0}
 								<details
 									class="mt-4 rounded-lg border bg-muted/10"
-									open={setupRequiredOpen}
+									open
 									ontoggle={(e) =>
 										(setupRequiredOpen = (e.currentTarget as HTMLDetailsElement).open)}
 								>

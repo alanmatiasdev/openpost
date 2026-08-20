@@ -1029,11 +1029,7 @@
 			{/if}
 		</div>
 
-		<details
-			class="group rounded-lg border"
-			data-testid="email-change-card"
-			open={Boolean(emailChangePending)}
-		>
+		<details class="group rounded-lg border" data-testid="email-change-card" open>
 			<summary
 				class="flex cursor-pointer list-none items-center justify-between p-4 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
 			>
@@ -1148,10 +1144,7 @@
 			</div>
 		</details>
 
-		<details
-			class="group rounded-lg border p-4"
-			open={linkedIdentities.length > 0 || unlinkedProviders.length > 0}
-		>
+		<details class="group rounded-lg border p-4" open>
 			<summary
 				class="flex cursor-pointer list-none items-center justify-between focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
 			>
