@@ -92,3 +92,39 @@ export function copyPurchaseChoice(source: URLSearchParams, target: URLSearchPar
 		if (value) target.set(key, value);
 	}
 }
+
+const externalPricingBase = 'https://openpost.social/pricing';
+
+export function purchaseChoiceChangeHref(currentUrl: URL): string {
+	const returnTo = `${currentUrl.pathname}${currentUrl.search}${currentUrl.hash}`;
+	const target = new URL(externalPricingBase);
+	target.searchParams.set('redirect', returnTo);
+	return target.toString();
+}
+
+export function onboardingChangeHref(currentUrl: URL): string {
+	const redirect = currentUrl.searchParams.get('redirect');
+	const target = new URL('/onboarding', currentUrl.origin);
+	if (redirect && !redirect.startsWith('//') && !redirect.startsWith('\\')) {
+		try {
+			const parsed = new URL(redirect, currentUrl.origin);
+			if (parsed.origin === currentUrl.origin && parsed.pathname.startsWith('/')) {
+				target.searchParams.set('redirect', `${parsed.pathname}${parsed.search}${parsed.hash}`);
+			}
+		} catch {
+			// ignore invalid redirect
+		}
+	} else if (redirect) {
+		target.searchParams.set('redirect', redirect);
+	}
+	if (currentUrl.searchParams.has('challenge')) {
+		target.searchParams.set('challenge', currentUrl.searchParams.get('challenge')!);
+	}
+	if (currentUrl.searchParams.has('email')) {
+		target.searchParams.set('email', currentUrl.searchParams.get('email')!);
+	}
+	if (currentUrl.searchParams.has('delivery')) {
+		target.searchParams.set('delivery', currentUrl.searchParams.get('delivery')!);
+	}
+	return `${target.pathname}${target.search}${target.hash}`;
+}

@@ -12,6 +12,8 @@ export interface ComposerPublication {
 	workspace_id: string;
 	revision: number;
 	status: string;
+	/** The server-normalized draft returned when a new Publication is created. */
+	draft?: PublicationDraft;
 }
 
 export interface ComposerPublicationClient {
@@ -124,6 +126,48 @@ export interface ComposerWorkspaceSwitchRequest {
 	adapters: ComposerWorkspaceSwitchAdapters;
 }
 
+function mergeServerAssignedDraftIdentity(
+	current: PublicationDraft,
+	created: PublicationDraft
+): PublicationDraft {
+	const merged = structuredClone(current);
+	const serverSegments = created.segments ?? [];
+	merged.segments = (merged.segments ?? []).map((segment, index) => {
+		const serverSegment = serverSegments[index];
+		return serverSegment?.id ? { ...segment, id: serverSegment.id } : segment;
+	});
+
+	const serverRenditions = created.renditions ?? [];
+	merged.renditions = (merged.renditions ?? []).map((rendition, index) => {
+		const serverRendition =
+			serverRenditions.find(
+				(candidate) =>
+					candidate.social_account_id === rendition.social_account_id &&
+					candidate.target_key === rendition.target_key
+			) ?? serverRenditions[index];
+		if (!serverRendition) return rendition;
+
+		const serverRenditionSegments = serverRendition.segments ?? [];
+		return {
+			...rendition,
+			id: serverRendition.id ?? rendition.id,
+			segments: (rendition.segments ?? []).map((segment, segmentIndex) => {
+				const serverSegment = serverRenditionSegments[segmentIndex];
+				return serverSegment?.id
+					? {
+							...segment,
+							id: serverSegment.id,
+							publication_segment_id:
+								serverSegment.publication_segment_id ?? segment.publication_segment_id
+						}
+					: segment;
+			})
+		};
+	});
+
+	return merged;
+}
+
 export interface ComposerWorkspaceSwitchState {
 	toWorkspaceId: string;
 	toWorkspaceName: string;
@@ -226,7 +270,11 @@ export class ComposerSession {
 
 	edit(draft: PublicationDraft): void {
 		this.#requireActive();
-		this.#draft = structuredClone(draft);
+		this.#draft = structuredClone(
+			this.#snapshot.publicationId && this.#draft
+				? mergeServerAssignedDraftIdentity(draft, this.#draft)
+				: draft
+		);
 		this.#draftVersion += 1;
 		this.#patch({ dirty: true, error: null });
 	}
@@ -517,10 +565,21 @@ export class ComposerSession {
 		generation: number
 	): Promise<ComposerPublication> {
 		try {
-			const publication =
-				this.#snapshot.publicationId && this.#snapshot.revision !== null
-					? await this.#client.update(this.#snapshot.publicationId, this.#snapshot.revision, draft)
-					: await this.#client.create(this.workspaceId, draft);
+			const publicationID = this.#snapshot.publicationId;
+			const revision = this.#snapshot.revision;
+			const creating = !publicationID || revision === null;
+			let publication: ComposerPublication;
+			if (creating) {
+				publication = await this.#client.create(this.workspaceId, draft);
+			} else {
+				publication = await this.#client.update(publicationID, revision, draft);
+			}
+			if (creating && publication.draft && generation === this.#generation) {
+				this.#draft =
+					this.#draftVersion === draftVersion
+						? structuredClone(publication.draft)
+						: mergeServerAssignedDraftIdentity(this.#draft ?? draft, publication.draft);
+			}
 			if (generation === this.#generation) {
 				this.#patch({
 					publicationId: publication.id,

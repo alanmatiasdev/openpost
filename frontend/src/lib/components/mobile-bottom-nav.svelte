@@ -15,6 +15,7 @@
 	import MoreIcon from '@lucide/svelte/icons/menu';
 
 	const items = mobileNavigation;
+	let moreMenuOpen = $state(false);
 	const pathname = $derived(String(page.url.pathname));
 
 	function iconFor(id: (typeof items)[number]['id']) {
@@ -111,7 +112,7 @@
 			</li>
 		{/each}
 		<li>
-			<DropdownMenu.Root>
+			<DropdownMenu.Root bind:open={moreMenuOpen}>
 				<DropdownMenu.Trigger>
 					{#snippet child({ props })}
 						<button
@@ -137,7 +138,12 @@
 					align="end"
 					sideOffset={8}
 				>
-					<AccountPreferencesMenu showDestinations />
+					<AccountPreferencesMenu
+						showDestinations
+						onNavigate={() => {
+							moreMenuOpen = false;
+						}}
+					/>
 				</DropdownMenu.Content>
 			</DropdownMenu.Root>
 		</li>

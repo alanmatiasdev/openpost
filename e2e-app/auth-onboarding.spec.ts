@@ -265,6 +265,17 @@ test("registration routes first-time users to explicit Workspace confirmation", 
   const unique = Date.now().toString(36);
   const email = `auth-onboarding-${unique}@example.com`;
   await routeBrowserRegistration(page, email);
+  await page.route("**/api/v1/auth/config", (route) =>
+    route.fulfill({
+      json: {
+        registration_enabled: true,
+        password_reset_enabled: true,
+        email_verification_required: false,
+        legal_acceptance_required: false,
+        purchase_choice_required: true,
+      },
+    }),
+  );
   await page.route("**/api/v1/billing/purchase-choice", (route) =>
     route.fulfill({
       json: {

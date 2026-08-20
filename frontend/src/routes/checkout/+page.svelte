@@ -55,6 +55,13 @@
 	let selectedPlan = $derived(hostedPlanByID(selectedPlanID)!);
 	let selectedPrice = $derived(localizedPrices[selectedPlanID] ?? '');
 	let userEmail = $derived($auth.user?.email ?? '');
+	let isLocked = $derived(Boolean(boundAttemptID));
+	let lockedChangeHref = $derived.by(() => {
+		const redirect = safeSameOriginRedirect(page.url, '');
+		const target = new URL('/onboarding', page.url.origin);
+		if (redirect) target.searchParams.set('redirect', redirect);
+		return `${target.pathname}${target.search}`;
+	});
 
 	function trialEndLabel(value?: string) {
 		const trialEnd = value ? new Date(value) : new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
@@ -432,14 +439,25 @@
 				<aside class="space-y-7 px-4 sm:px-0 lg:sticky lg:top-8">
 					<div class="space-y-3">
 						<p class="text-sm font-semibold text-primary">{m.checkout_eyebrow()}</p>
-						<h1
-							class="max-w-[15ch] text-3xl font-semibold tracking-[-0.025em] text-balance sm:text-4xl"
-						>
-							{m.checkout_heading()}
-						</h1>
-						<p class="max-w-[42ch] text-sm/6 text-muted-foreground">
-							{m.checkout_description()}
-						</p>
+						{#if isLocked}
+							<h1
+								class="max-w-[15ch] text-3xl font-semibold tracking-[-0.025em] text-balance sm:text-4xl"
+							>
+								{m.checkout_heading_locked()}
+							</h1>
+							<p class="max-w-[42ch] text-sm/6 text-muted-foreground">
+								{m.checkout_description_locked({ plan: selectedPlan.name })}
+							</p>
+						{:else}
+							<h1
+								class="max-w-[15ch] text-3xl font-semibold tracking-[-0.025em] text-balance sm:text-4xl"
+							>
+								{m.checkout_heading()}
+							</h1>
+							<p class="max-w-[42ch] text-sm/6 text-muted-foreground">
+								{m.checkout_description()}
+							</p>
+						{/if}
 					</div>
 
 					<div class="grid grid-cols-3 gap-3 border-y py-4 text-xs text-muted-foreground">
@@ -481,6 +499,20 @@
 							</Button>
 						</div>
 
+						{#if isLocked}
+							<InlineNotice
+								tone="info"
+								message={`${m.checkout_plan_locked()} ${m.checkout_plan_locked_hint()}`}
+							>
+								{#snippet actions()}
+									<a
+										href={lockedChangeHref}
+										class="text-sm font-medium text-primary underline-offset-4 hover:underline"
+										>{m.checkout_plan_locked_action()}</a
+									>
+								{/snippet}
+							</InlineNotice>
+						{/if}
 						<RadioGroup.Root
 							value={selectedPlanID}
 							name="checkout_plan"

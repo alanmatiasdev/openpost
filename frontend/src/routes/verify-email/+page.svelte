@@ -58,19 +58,33 @@
 
 	async function loadPurchaseContext() {
 		purchaseContextLoading = true;
-		const configuration = await client.GET('/auth/config');
-		purchaseChoiceRequired = configuration.data?.purchase_choice_required ?? false;
-		const hasPurchaseParams = ['plan', 'billing_period', 'purchase_choice'].some((key) =>
-			page.url.searchParams.has(key)
-		);
-		if (!purchaseChoiceRequired && !hasPurchaseParams) {
+		error = '';
+		purchaseChoiceError = '';
+		try {
+			const configuration = await client.GET('/auth/config');
+			if (configuration.error || !configuration.data) {
+				throw new Error(configuration.error?.detail ?? m.auth_config_load_failed());
+			}
+			purchaseChoiceRequired = configuration.data.purchase_choice_required ?? false;
+			const hasPurchaseParams = ['plan', 'billing_period', 'purchase_choice'].some((key) =>
+				page.url.searchParams.has(key)
+			);
+			if (!purchaseChoiceRequired && !hasPurchaseParams) {
+				return;
+			}
+			try {
+				const result = await resolvePurchaseChoice(page.url.searchParams);
+				purchaseChoice = result.choice ?? null;
+				purchaseChoiceError = result.choice ? '' : (result.errorCode ?? 'unavailable');
+			} catch {
+				purchaseChoice = null;
+				purchaseChoiceError = 'unavailable';
+			}
+		} catch {
+			error = m.auth_config_load_failed();
+		} finally {
 			purchaseContextLoading = false;
-			return;
 		}
-		const result = await resolvePurchaseChoice(page.url.searchParams);
-		purchaseChoice = result.choice ?? null;
-		purchaseChoiceError = result.choice ? '' : (result.errorCode ?? 'unavailable');
-		purchaseContextLoading = false;
 	}
 
 	async function verify(event: SubmitEvent) {
@@ -162,7 +176,15 @@
 			<InlineNotice tone="warning" message={m.auth_verify_email_delivery_failed()} class="mb-4" />
 		{/if}
 		{#if error}
-			<InlineNotice tone="error" message={error} class="mb-4" />
+			<InlineNotice tone="error" message={error} class="mb-4">
+				{#snippet actions()}
+					{#if error === m.auth_config_load_failed()}
+						<Button variant="outline" size="sm" onclick={() => void loadPurchaseContext()}>
+							{m.common_retry()}
+						</Button>
+					{/if}
+				{/snippet}
+			</InlineNotice>
 		{:else if notice}
 			<InlineNotice tone="success" message={notice} class="mb-4" />
 		{/if}

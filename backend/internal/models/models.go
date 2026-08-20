@@ -1642,7 +1642,7 @@ type PublicationLifecycleEvent struct {
 	WorkspaceID    string    `bun:"workspace_id,notnull" json:"workspace_id"`
 	PublicationID  string    `bun:"publication_id,notnull" json:"publication_id"`
 	RenditionID    string    `bun:"rendition_id,notnull,default:''" json:"rendition_id"`
-	Type           string    `bun:"type,notnull" json:"type"`
+	Type           string    `bun:"column:type,notnull" json:"type"`
 	Status         string    `bun:"status,notnull,default:'info'" json:"status"`
 	Message        string    `bun:"message,notnull,default:''" json:"message"`
 	MetadataJSON   string    `bun:"metadata_json,notnull,default:'{}'" json:"metadata_json"`

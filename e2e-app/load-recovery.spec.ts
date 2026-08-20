@@ -142,6 +142,9 @@ test("onboarding does not offer workspace creation when bootstrap fails", async 
   const unique = Date.now().toString(36);
   const auth = await registerUser(request, `onboarding-load-recovery-${unique}@example.com`);
   await authenticatePage(page, auth.token);
+  await page.route("**/api/v1/auth/config", (route) =>
+    route.fulfill({ json: { purchase_choice_required: true } }),
+  );
 
   let allowWorkspaceLoad = false;
   await page.route("**/api/v1/billing/purchase-choice", (route) =>

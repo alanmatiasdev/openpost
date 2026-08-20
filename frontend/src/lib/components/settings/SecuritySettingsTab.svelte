@@ -832,7 +832,9 @@
 	>
 		<div class="space-y-1">
 			<p class="text-xs font-medium tracking-wide text-amber-700 uppercase dark:text-amber-300">
-				{recoveryCodeFlow === 'setup' ? m.settings_totp_setup_step_recovery() : m.settings_recovery_codes_regenerate_title()}
+				{recoveryCodeFlow === 'setup'
+					? m.settings_totp_setup_step_recovery()
+					: m.settings_recovery_codes_regenerate_title()}
 			</p>
 			<h4 id="recovery-codes-title" class="text-base font-semibold">
 				{recoveryCodeFlow === 'setup'
@@ -1027,8 +1029,14 @@
 			{/if}
 		</div>
 
-		<details class="group rounded-lg border" data-testid="email-change-card" open={Boolean(emailChangePending)}>
-			<summary class="flex cursor-pointer list-none items-center justify-between p-4 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
+		<details
+			class="group rounded-lg border"
+			data-testid="email-change-card"
+			open={Boolean(emailChangePending)}
+		>
+			<summary
+				class="flex cursor-pointer list-none items-center justify-between p-4 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+			>
 				<div>
 					<h3 class="font-medium">{m.settings_change_email()}</h3>
 					<p class="mt-1 text-sm leading-6 text-muted-foreground">
@@ -1040,108 +1048,113 @@
 				>
 			</summary>
 			<div class="border-t p-4">
-			<div class="mb-4 rounded-md border bg-muted/20 px-3 py-2">
-				<p class="text-xs text-muted-foreground">{m.settings_email_address()}</p>
-				<p class="mt-1 text-sm font-medium break-all">
-					{securityStatus?.user.email ?? profileEmail}
-				</p>
-			</div>
-
-			{#if emailChangePending}
-				<div class="space-y-4">
-					<InlineNotice
-						tone="info"
-						message={m.settings_email_change_pending({
-							email: emailChangePending.new_email
-						})}
-					/>
-					<div class="max-w-sm space-y-2">
-						<Label for="email-change-code">{m.settings_email_change_code()}</Label>
-						<Input
-							id="email-change-code"
-							bind:value={emailChangeCode}
-							inputmode="numeric"
-							pattern="[0-9]{6}"
-							maxlength={6}
-							autocomplete="one-time-code"
-							aria-describedby="email-change-code-help"
-						/>
-						<p id="email-change-code-help" class="text-xs leading-5 text-muted-foreground">
-							{m.settings_email_change_code_help()}
-						</p>
-					</div>
-					<div class="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-						<Button
-							type="button"
-							onclick={() => void confirmEmailChange()}
-							disabled={emailChangeBusy || emailChangeCode.length !== 6}
-						>
-							{m.settings_confirm_email_change()}
-						</Button>
-						<Button
-							type="button"
-							variant="outline"
-							onclick={() => void resendEmailChange()}
-							disabled={emailChangeBusy}
-						>
-							{m.settings_resend_email_change()}
-						</Button>
-						<Button
-							type="button"
-							variant="ghost"
-							onclick={() => void cancelEmailChange()}
-							disabled={emailChangeBusy}
-						>
-							{m.settings_cancel_email_change()}
-						</Button>
-					</div>
+				<div class="mb-4 rounded-md border bg-muted/20 px-3 py-2">
+					<p class="text-xs text-muted-foreground">{m.settings_email_address()}</p>
+					<p class="mt-1 text-sm font-medium break-all">
+						{securityStatus?.user.email ?? profileEmail}
+					</p>
 				</div>
-			{:else}
-				<div class="grid gap-4 sm:grid-cols-2">
-					<div class="space-y-2">
-						<Label for="email-change-new">{m.settings_new_email()}</Label>
-						<Input
-							id="email-change-new"
-							type="email"
-							bind:value={emailChangeNewEmail}
-							autocomplete="email"
+
+				{#if emailChangePending}
+					<div class="space-y-4">
+						<InlineNotice
+							tone="info"
+							message={m.settings_email_change_pending({
+								email: emailChangePending.new_email
+							})}
 						/>
-					</div>
-					{#if passwordReauthUsable}
-						<div class="space-y-2">
-							<Label for="email-change-password">{m.settings_current_password()}</Label>
+						<div class="max-w-sm space-y-2">
+							<Label for="email-change-code">{m.settings_email_change_code()}</Label>
 							<Input
-								id="email-change-password"
-								type="password"
-								bind:value={emailChangePassword}
-								autocomplete="current-password"
+								id="email-change-code"
+								bind:value={emailChangeCode}
+								inputmode="numeric"
+								pattern="[0-9]{6}"
+								maxlength={6}
+								autocomplete="one-time-code"
+								aria-describedby="email-change-code-help"
+							/>
+							<p id="email-change-code-help" class="text-xs leading-5 text-muted-foreground">
+								{m.settings_email_change_code_help()}
+							</p>
+						</div>
+						<div class="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+							<Button
+								type="button"
+								onclick={() => void confirmEmailChange()}
+								disabled={emailChangeBusy || emailChangeCode.length !== 6}
+							>
+								{m.settings_confirm_email_change()}
+							</Button>
+							<Button
+								type="button"
+								variant="outline"
+								onclick={() => void resendEmailChange()}
+								disabled={emailChangeBusy}
+							>
+								{m.settings_resend_email_change()}
+							</Button>
+							<Button
+								type="button"
+								variant="ghost"
+								onclick={() => void cancelEmailChange()}
+								disabled={emailChangeBusy}
+							>
+								{m.settings_cancel_email_change()}
+							</Button>
+						</div>
+					</div>
+				{:else}
+					<div class="grid gap-4 sm:grid-cols-2">
+						<div class="space-y-2">
+							<Label for="email-change-new">{m.settings_new_email()}</Label>
+							<Input
+								id="email-change-new"
+								type="email"
+								bind:value={emailChangeNewEmail}
+								autocomplete="email"
 							/>
 						</div>
-					{:else}
-						<InlineNotice tone="info" message={m.settings_step_up_body()} />
-					{/if}
-				</div>
-				<Button
-					class="mt-4"
-					type="button"
-					onclick={() => void beginEmailChange()}
-					disabled={emailChangeBusy ||
-						!emailChangeNewEmail.trim() ||
-						(passwordReauthUsable ? !emailChangePassword : !hasStepUpMethod)}
-				>
-					{#if emailChangeBusy}<LoaderIcon class="mr-2 size-4 animate-spin" />{/if}
-					{m.settings_start_email_change()}
-				</Button>
-			{/if}
+						{#if passwordReauthUsable}
+							<div class="space-y-2">
+								<Label for="email-change-password">{m.settings_current_password()}</Label>
+								<Input
+									id="email-change-password"
+									type="password"
+									bind:value={emailChangePassword}
+									autocomplete="current-password"
+								/>
+							</div>
+						{:else}
+							<InlineNotice tone="info" message={m.settings_step_up_body()} />
+						{/if}
+					</div>
+					<Button
+						class="mt-4"
+						type="button"
+						onclick={() => void beginEmailChange()}
+						disabled={emailChangeBusy ||
+							!emailChangeNewEmail.trim() ||
+							(passwordReauthUsable ? !emailChangePassword : !hasStepUpMethod)}
+					>
+						{#if emailChangeBusy}<LoaderIcon class="mr-2 size-4 animate-spin" />{/if}
+						{m.settings_start_email_change()}
+					</Button>
+				{/if}
 
-			{#if emailChangeError}
-				<InlineNotice tone="error" message={emailChangeError} class="mt-4" />
-			{/if}
+				{#if emailChangeError}
+					<InlineNotice tone="error" message={emailChangeError} class="mt-4" />
+				{/if}
 			</div>
 		</details>
 
-		<details class="group rounded-lg border p-4" open={linkedIdentities.length > 0 || unlinkedProviders.length > 0}>
-			<summary class="flex cursor-pointer list-none items-center justify-between focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
+		<details
+			class="group rounded-lg border p-4"
+			open={linkedIdentities.length > 0 || unlinkedProviders.length > 0}
+		>
+			<summary
+				class="flex cursor-pointer list-none items-center justify-between focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+			>
 				<div>
 					<h3 class="flex items-center gap-2 font-medium">
 						<KeyRoundIcon class="h-4 w-4 text-muted-foreground" />
@@ -1156,75 +1169,75 @@
 				>
 			</summary>
 			<div class="pt-4">
-			<InlineNotice tone="info" message={m.settings_linked_identities_boundary()} class="mb-4" />
+				<InlineNotice tone="info" message={m.settings_linked_identities_boundary()} class="mb-4" />
 
-			{#if passwordReauthUsable && (linkedIdentities.length || unlinkedProviders.length)}
-				<div class="mb-3 max-w-sm space-y-2">
-					<Label for="identity-link-password">{m.settings_current_password()}</Label>
-					<Input
-						id="identity-link-password"
-						type="password"
-						bind:value={identityPassword}
-						autocomplete="current-password"
-					/>
-				</div>
-			{:else if !passwordReauthUsable && (linkedIdentities.length || unlinkedProviders.length)}
-				<p class="mb-3 text-sm text-muted-foreground">{m.settings_step_up_body()}</p>
-			{/if}
-
-			<div class="space-y-2">
-				{#each linkedIdentities as identity (identity.id)}
-					<div
-						class="flex flex-col gap-3 rounded-md border px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
-					>
-						<div class="min-w-0">
-							<p class="text-sm font-medium">
-								{identity.linked_name || identity.provider_name}
-							</p>
-							<p class="truncate text-xs text-muted-foreground">
-								{identity.provider_name} · {identity.linked_email ?? securityStatus?.user.email}
-							</p>
-							<p class="mt-1 text-xs text-muted-foreground">
-								{m.settings_identity_linked_on({ date: formatDate(identity.created_at) })}
-								{#if identity.last_login_at}
-									· {m.settings_identity_last_used({
-										date: formatDateTime(identity.last_login_at)
-									})}
-								{/if}
-							</p>
-						</div>
-						<Button
-							type="button"
-							variant="ghost"
-							size="sm"
-							class="self-start text-destructive hover:text-destructive sm:self-auto"
-							disabled={Boolean(identityBusy) ||
-								(passwordReauthUsable ? !identityPassword.trim() : !hasStepUpMethod)}
-							onclick={() => requestSecurityAction({ kind: 'identity', identity })}
-						>
-							{m.settings_unlink_identity()}
-						</Button>
+				{#if passwordReauthUsable && (linkedIdentities.length || unlinkedProviders.length)}
+					<div class="mb-3 max-w-sm space-y-2">
+						<Label for="identity-link-password">{m.settings_current_password()}</Label>
+						<Input
+							id="identity-link-password"
+							type="password"
+							bind:value={identityPassword}
+							autocomplete="current-password"
+						/>
 					</div>
-				{/each}
-			</div>
+				{:else if !passwordReauthUsable && (linkedIdentities.length || unlinkedProviders.length)}
+					<p class="mb-3 text-sm text-muted-foreground">{m.settings_step_up_body()}</p>
+				{/if}
 
-			{#if unlinkedProviders.length}
-				<div class="mt-4 flex flex-wrap gap-2">
-					{#each unlinkedProviders as provider (provider.id)}
-						<Button
-							type="button"
-							variant="outline"
-							disabled={Boolean(identityBusy) ||
-								(passwordReauthUsable ? !identityPassword.trim() : !hasStepUpMethod)}
-							onclick={() => void linkIdentity(provider.id)}
+				<div class="space-y-2">
+					{#each linkedIdentities as identity (identity.id)}
+						<div
+							class="flex flex-col gap-3 rounded-md border px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
 						>
-							{m.settings_link_identity({ provider: provider.name })}
-						</Button>
+							<div class="min-w-0">
+								<p class="text-sm font-medium">
+									{identity.linked_name || identity.provider_name}
+								</p>
+								<p class="truncate text-xs text-muted-foreground">
+									{identity.provider_name} · {identity.linked_email ?? securityStatus?.user.email}
+								</p>
+								<p class="mt-1 text-xs text-muted-foreground">
+									{m.settings_identity_linked_on({ date: formatDate(identity.created_at) })}
+									{#if identity.last_login_at}
+										· {m.settings_identity_last_used({
+											date: formatDateTime(identity.last_login_at)
+										})}
+									{/if}
+								</p>
+							</div>
+							<Button
+								type="button"
+								variant="ghost"
+								size="sm"
+								class="self-start text-destructive hover:text-destructive sm:self-auto"
+								disabled={Boolean(identityBusy) ||
+									(passwordReauthUsable ? !identityPassword.trim() : !hasStepUpMethod)}
+								onclick={() => requestSecurityAction({ kind: 'identity', identity })}
+							>
+								{m.settings_unlink_identity()}
+							</Button>
+						</div>
 					{/each}
 				</div>
-			{:else if linkedIdentities.length === 0}
-				<p class="text-sm text-muted-foreground">{m.settings_no_linkable_identities()}</p>
-			{/if}
+
+				{#if unlinkedProviders.length}
+					<div class="mt-4 flex flex-wrap gap-2">
+						{#each unlinkedProviders as provider (provider.id)}
+							<Button
+								type="button"
+								variant="outline"
+								disabled={Boolean(identityBusy) ||
+									(passwordReauthUsable ? !identityPassword.trim() : !hasStepUpMethod)}
+								onclick={() => void linkIdentity(provider.id)}
+							>
+								{m.settings_link_identity({ provider: provider.name })}
+							</Button>
+						{/each}
+					</div>
+				{:else if linkedIdentities.length === 0}
+					<p class="text-sm text-muted-foreground">{m.settings_no_linkable_identities()}</p>
+				{/if}
 			</div>
 		</details>
 
@@ -1311,8 +1324,13 @@
 				{:else}
 					<div class="space-y-3">
 						{#if !totpSetupChallengeId && recoveryCodeFlow !== 'setup'}
-							<details class="rounded-md border bg-muted/20 px-3 py-3" data-testid="totp-setup-steps">
-								<summary class="cursor-pointer list-none text-sm font-medium focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
+							<details
+								class="rounded-md border bg-muted/20 px-3 py-3"
+								data-testid="totp-setup-steps"
+							>
+								<summary
+									class="cursor-pointer list-none text-sm font-medium focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+								>
 									{m.settings_totp_setup_steps_label()}
 								</summary>
 								<ol
@@ -1327,7 +1345,10 @@
 								</ol>
 							</details>
 						{:else}
-							<div class="rounded-md border bg-muted/20 px-3 py-2 text-xs text-muted-foreground" data-testid="totp-setup-steps">
+							<div
+								class="rounded-md border bg-muted/20 px-3 py-2 text-xs text-muted-foreground"
+								data-testid="totp-setup-steps"
+							>
 								{m.settings_totp_setup_step_add()} → {m.settings_totp_setup_step_code()} → {m.settings_totp_setup_step_recovery()}
 							</div>
 						{/if}

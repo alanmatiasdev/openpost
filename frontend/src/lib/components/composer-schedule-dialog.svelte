@@ -220,96 +220,109 @@
 				</div>
 			</div>
 
-			<details class="group rounded-lg border" open={canSchedule ? advancedOpen : false} ontoggle={(e) => (advancedOpen = (e.currentTarget as HTMLDetailsElement).open)}>
-				<summary class="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-medium focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
+			<details
+				class="group rounded-lg border"
+				open={canSchedule ? advancedOpen : false}
+				ontoggle={(e) => (advancedOpen = (e.currentTarget as HTMLDetailsElement).open)}
+			>
+				<summary
+					class="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-medium focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+				>
 					<span>{m.compose_choose_date_time()}</span>
 					<span class="text-xs text-muted-foreground group-open:hidden">{m.common_edit()}</span>
 				</summary>
 				<div class="border-t p-3">
 					<div
-					class="overflow-hidden rounded-lg border bg-muted/15 md:grid md:grid-cols-[minmax(0,1fr)_9rem]"
-				>
-					<div class="flex justify-center p-3 md:p-4">
-						<Calendar
-						type="single"
-						bind:value={selectedDate}
-						minValue={workspaceClock(timezone).date}
-						numberOfMonths={desktopCalendar.current ? 2 : 1}
-						pagedNavigation={desktopCalendar.current}
-						class="bg-transparent p-0 [--cell-size:--spacing(9)]"
-						weekdayFormat="short"
-						{weekStartsOn}
-					/>
-				</div>
-				<div class="border-t md:border-t-0 md:border-l">
-					<div class="border-b px-3 py-2 text-center text-sm font-medium">
-						{m.compose_time()}
-					</div>
-					<div data-testid="schedule-dialog-time-list" class="p-2 md:max-h-72 md:overflow-y-auto">
-						{#if timeSlots.length === 0}
-							<p class="px-2 py-6 text-center text-xs text-muted-foreground">
-								{m.compose_no_remaining_slots_today()}
-							</p>
-						{:else}
-							<div class="grid grid-cols-2 gap-1.5 md:grid-cols-1">
-								{#each timeSlots as time (time)}
-									<Button
-										type="button"
-										variant={selectedTime === time ? 'default' : 'ghost'}
-										size="sm"
-										onclick={() => selectTime(time)}
-										class="h-9 justify-center text-sm tabular-nums"
-									>
-										{time}
-									</Button>
-								{/each}
+						class="overflow-hidden rounded-lg border bg-muted/15 md:grid md:grid-cols-[minmax(0,1fr)_9rem]"
+					>
+						<div class="flex justify-center p-3 md:p-4">
+							<Calendar
+								type="single"
+								bind:value={selectedDate}
+								minValue={workspaceClock(timezone).date}
+								numberOfMonths={desktopCalendar.current ? 2 : 1}
+								pagedNavigation={desktopCalendar.current}
+								class="bg-transparent p-0 [--cell-size:--spacing(9)]"
+								weekdayFormat="short"
+								{weekStartsOn}
+							/>
+						</div>
+						<div class="border-t md:border-t-0 md:border-l">
+							<div class="border-b px-3 py-2 text-center text-sm font-medium">
+								{m.compose_time()}
 							</div>
-						{/if}
+							<div
+								data-testid="schedule-dialog-time-list"
+								class="p-2 md:max-h-72 md:overflow-y-auto"
+							>
+								{#if timeSlots.length === 0}
+									<p class="px-2 py-6 text-center text-xs text-muted-foreground">
+										{m.compose_no_remaining_slots_today()}
+									</p>
+								{:else}
+									<div class="grid grid-cols-2 gap-1.5 md:grid-cols-1">
+										{#each timeSlots as time (time)}
+											<Button
+												type="button"
+												variant={selectedTime === time ? 'default' : 'ghost'}
+												size="sm"
+												onclick={() => selectTime(time)}
+												class="h-9 justify-center text-sm tabular-nums"
+											>
+												{time}
+											</Button>
+										{/each}
+									</div>
+								{/if}
+							</div>
+						</div>
 					</div>
 				</div>
-			</div>
-					</div>
-				</details>
+			</details>
 
 			{#if randomDelayOptions.length > 0}
 				<details class="group rounded-lg border bg-muted/10">
-					<summary class="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-medium focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
+					<summary
+						class="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-medium focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+					>
 						<span>{m.compose_randomize_time()}</span>
-						<span class="text-xs font-normal text-muted-foreground" >{formatRandomDelay(effectiveRandomDelayMinutes)}</span>
+						<span class="text-xs font-normal text-muted-foreground"
+							>{formatRandomDelay(effectiveRandomDelayMinutes)}</span
+						>
 					</summary>
 					<div class="border-t p-3">
-					<div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-						<div class="space-y-1">
-							<div class="text-sm font-medium">{m.compose_randomize_time()}</div>
-							<div class="text-xs text-muted-foreground">
-								{m.compose_workspace_default({
-									delay: formatRandomDelay(defaultRandomDelayMinutes)
-								})}.
-								{m.compose_delay_applies_to_post()}
-							</div>
-						</div>
-						<Select.Root
-							type="single"
-							value={randomDelayOverride}
-							onValueChange={(value) => (randomDelayOverride = value || 'default')}
-						>
-							<Select.Trigger class="w-full sm:w-52">
-								{randomDelayOverride === 'default'
-									? m.compose_workspace_default({
-											delay: formatRandomDelay(defaultRandomDelayMinutes)
-										})
-									: formatRandomDelay(effectiveRandomDelayMinutes)}
-							</Select.Trigger>
-							<Select.Content>
-								<Select.Item value="default">
+						<div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+							<div class="space-y-1">
+								<div class="text-sm font-medium">{m.compose_randomize_time()}</div>
+								<div class="text-xs text-muted-foreground">
 									{m.compose_workspace_default({
 										delay: formatRandomDelay(defaultRandomDelayMinutes)
-									})}
-								</Select.Item>
-								{#each randomDelayOptions as minutes (minutes)}
-									<Select.Item value={String(minutes)}>{formatRandomDelay(minutes)}</Select.Item>
-								{/each}
-							</Select.Content>
+									})}.
+									{m.compose_delay_applies_to_post()}
+								</div>
+							</div>
+							<Select.Root
+								type="single"
+								value={randomDelayOverride}
+								onValueChange={(value) => (randomDelayOverride = value || 'default')}
+							>
+								<Select.Trigger class="w-full sm:w-52">
+									{randomDelayOverride === 'default'
+										? m.compose_workspace_default({
+												delay: formatRandomDelay(defaultRandomDelayMinutes)
+											})
+										: formatRandomDelay(effectiveRandomDelayMinutes)}
+								</Select.Trigger>
+								<Select.Content>
+									<Select.Item value="default">
+										{m.compose_workspace_default({
+											delay: formatRandomDelay(defaultRandomDelayMinutes)
+										})}
+									</Select.Item>
+									{#each randomDelayOptions as minutes (minutes)}
+										<Select.Item value={String(minutes)}>{formatRandomDelay(minutes)}</Select.Item>
+									{/each}
+								</Select.Content>
 							</Select.Root>
 						</div>
 					</div>

@@ -691,6 +691,17 @@ test("plan selection from signup starts checkout after onboarding", async ({ pag
   page.on("pageerror", (error) => browserErrors.push(error.message));
 
   await routeBrowserRegistration(page, email);
+  await page.route("**/api/v1/auth/config", (route) =>
+    route.fulfill({
+      json: {
+        registration_enabled: true,
+        password_reset_enabled: true,
+        email_verification_required: false,
+        legal_acceptance_required: false,
+        purchase_choice_required: true,
+      },
+    }),
+  );
   await page.route("**/api/v1/workspaces", async (route) => {
     if (route.request().method() !== "GET") {
       await route.continue();

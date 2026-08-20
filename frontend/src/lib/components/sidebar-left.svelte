@@ -38,6 +38,7 @@
 
 	let authState = $derived($auth);
 	let createWorkspaceOpen = $state(false);
+	let profileMenuOpen = $state(false);
 	let workspaceNavigationExpanded = $state(true);
 	const sidebar = Sidebar.useSidebar();
 	const currentPath = $derived(page.url.pathname);
@@ -327,7 +328,7 @@
 				<NotificationBell />
 			{/if}
 			<Sidebar.MenuItem>
-				<DropdownMenu.Root>
+				<DropdownMenu.Root bind:open={profileMenuOpen}>
 					<DropdownMenu.Trigger>
 						{#snippet child({ props })}
 							<Sidebar.MenuButton
@@ -366,7 +367,10 @@
 							showEditors={showDesktopPlanner}
 							showSettings
 							onCreateWorkspace={openCreateWorkspace}
-							onNavigate={() => sidebar.setOpenMobile(false)}
+							onNavigate={() => {
+								profileMenuOpen = false;
+								sidebar.setOpenMobile(false);
+							}}
 						/>
 					</DropdownMenu.Content>
 				</DropdownMenu.Root>

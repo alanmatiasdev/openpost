@@ -1,13 +1,17 @@
 <script lang="ts">
+	import { page } from '$app/state';
 	import type { PurchaseChoice } from '$lib/purchase-choice';
+	import { purchaseChoiceChangeHref } from '$lib/purchase-choice';
 	import { getLocaleTag } from '$lib/i18n';
 	import { m } from '$lib/paraglide/messages';
 	import CheckIcon from '@lucide/svelte/icons/check';
 
-	let { choice, changeHref = 'https://openpost.social/pricing' } = $props<{
+	let { choice, changeHref } = $props<{
 		choice: PurchaseChoice;
 		changeHref?: string;
 	}>();
+
+	let resolvedChangeHref = $derived(changeHref ?? purchaseChoiceChangeHref(page.url));
 
 	const price = $derived(
 		new Intl.NumberFormat(getLocaleTag(), {
@@ -48,7 +52,7 @@
 		</div>
 		<a
 			class="text-sm font-medium text-primary underline-offset-4 hover:underline"
-			{...externalHref(changeHref)}
+			{...externalHref(resolvedChangeHref)}
 		>
 			{m.purchase_choice_change()}
 		</a>

@@ -328,6 +328,47 @@ describe('ComposerSession', () => {
 		});
 	});
 
+	it('keeps server-assigned segment identity for the first edit after creation', async () => {
+		const firstDraft: PublicationDraft = {
+			...draft('First idea'),
+			segments: [{ body: 'First idea', media: [] }]
+		};
+		const updates: PublicationDraft[] = [];
+		const client = clientWith({
+			async create(workspaceId, input) {
+				const [segment] = input.segments ?? [];
+				if (!segment) throw new Error('Test draft has no segment.');
+				return {
+					id: 'publication-1',
+					workspace_id: workspaceId,
+					revision: 1,
+					status: 'draft',
+					draft: {
+						...input,
+						segments: [{ ...segment, id: 'server-segment-1' }]
+					}
+				};
+			},
+			async update(_publicationID, _revision, input) {
+				updates.push(input);
+				return { id: 'publication-1', workspace_id: 'workspace-1', revision: 2, status: 'draft' };
+			}
+		});
+		const session = new ComposerSession({ workspaceId: 'workspace-1', client });
+
+		session.edit(firstDraft);
+		await session.save();
+		session.edit({
+			...firstDraft,
+			source_text: 'Second idea',
+			segments: [{ body: 'Second idea', media: [] }]
+		});
+		await session.save();
+
+		expect(updates).toHaveLength(1);
+		expect(updates[0].segments?.[0]?.id).toBe('server-segment-1');
+	});
+
 	it('serializes queued saves and sends the last accepted revision', async () => {
 		let finishCreate!: (publication: {
 			id: string;

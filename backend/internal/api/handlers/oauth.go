@@ -407,6 +407,17 @@ func (h *OAuthHandler) getMastodonProvider(ctx context.Context, serverName, inst
 	if err == nil {
 		return adapter, mastodonInstanceURL(adapter), nil
 	}
+	if strings.Contains(serverName, "://") {
+		requestedInstanceURL := strings.TrimRight(strings.TrimSpace(serverName), "/")
+		for key, candidate := range h.providers {
+			if !strings.HasPrefix(key, mastodonProvider+":") {
+				continue
+			}
+			if configuredInstanceURL := strings.TrimRight(mastodonInstanceURL(candidate), "/"); configuredInstanceURL == requestedInstanceURL {
+				return candidate, configuredInstanceURL, nil
+			}
+		}
+	}
 	if h.mastodonApps != nil && strings.Contains(serverName, "://") {
 		return h.getDynamicMastodonProvider(ctx, serverName)
 	}

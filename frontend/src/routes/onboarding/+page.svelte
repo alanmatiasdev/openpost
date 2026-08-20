@@ -47,6 +47,7 @@
 	let billingPeriod = $state<BillingPeriod>('monthly');
 	let purchaseChoice = $state.raw<PurchaseChoice | null>(null);
 	let choiceErrorCode = $state<PurchaseChoiceErrorCode | null>(null);
+	let purchaseChoiceRequired = $state(true);
 	let onboardingLoadSequence = 0;
 
 	function loginTarget() {
@@ -97,7 +98,17 @@
 				await goto(resolveAppPath(existingSignupTarget()));
 				return;
 			}
-			if (!managedAccount) await loadPurchaseChoice();
+			if (!managedAccount) {
+				const { data: authConfiguration, error: authConfigurationError } =
+					await client.GET('/auth/config');
+				if (authConfigurationError || !authConfiguration) {
+					throw new Error(authConfigurationError?.detail || m.onboarding_load_failed());
+				}
+				// Hosted signup has always required an explicit purchase choice. Keep that
+				// default when older or proxied auth/config responses omit the field.
+				purchaseChoiceRequired = authConfiguration.purchase_choice_required !== false;
+				if (purchaseChoiceRequired) await loadPurchaseChoice();
+			}
 		} catch (caught) {
 			if (requestSequence !== onboardingLoadSequence) return;
 			console.error('Failed to load welcome state:', caught);
@@ -145,16 +156,31 @@
 
 	async function confirmWelcome(event: SubmitEvent) {
 		event.preventDefault();
-		if (isSubmitting || !purchaseChoice || !workspaceName.trim()) return;
+		if (isSubmitting || (purchaseChoiceRequired && !purchaseChoice) || !workspaceName.trim())
+			return;
 		isSubmitting = true;
 		submitError = '';
 		try {
+			if (!purchaseChoiceRequired) {
+				const { data, error } = await client.POST('/workspaces', {
+					body: { name: workspaceName.trim() }
+				});
+				if (error || !data?.id) {
+					throw new Error(error?.detail || m.onboarding_create_failed());
+				}
+				await workspaceCtx.loadWorkspaces(data.id);
+				await goto(resolveAppPath('/'));
+				return;
+			}
+			if (!purchaseChoice) return;
+			const confirmedPurchaseChoice = purchaseChoice;
+
 			const { data, error } = await client.POST('/billing/welcome', {
 				body: {
 					workspace_name: workspaceName.trim(),
-					plan_id: purchaseChoice.plan_id,
-					billing_period: purchaseChoice.billing_period,
-					purchase_choice_token: purchaseChoice.token,
+					plan_id: confirmedPurchaseChoice.plan_id,
+					billing_period: confirmedPurchaseChoice.billing_period,
+					purchase_choice_token: confirmedPurchaseChoice.token,
 					return_path: safeSameOriginRedirect(page.url, '')
 				}
 			});
@@ -163,7 +189,7 @@
 				throw new Error(error?.detail || m.onboarding_create_failed());
 			}
 			await workspaceCtx.initialize(data.workspace_id);
-			await goto(resolveAppPath(checkoutTarget(data.checkout.id, purchaseChoice)));
+			await goto(resolveAppPath(checkoutTarget(data.checkout.id, confirmedPurchaseChoice)));
 		} catch (caught) {
 			submitError = caught instanceof Error ? caught.message : m.onboarding_create_failed();
 		} finally {
@@ -177,8 +203,10 @@
 </svelte:head>
 
 <StandaloneShell
-	title={m.onboarding_heading()}
-	description={m.onboarding_description()}
+	title={purchaseChoiceRequired ? m.onboarding_heading() : m.onboarding_selfhost_heading()}
+	description={purchaseChoiceRequired
+		? m.onboarding_description()
+		: m.onboarding_selfhost_description()}
 	loading={pageLoading}
 	loadingLabel={m.common_loading()}
 >
@@ -203,9 +231,9 @@
 				})}
 			/>
 			<p class="text-sm leading-6 text-muted-foreground">{m.onboarding_managed_help()}</p>
-		{:else if choiceErrorCode}
+		{:else if purchaseChoiceRequired && choiceErrorCode}
 			<PurchaseChoiceError code={choiceErrorCode} />
-		{:else if purchaseChoice}
+		{:else if purchaseChoiceRequired ? purchaseChoice : true}
 			<form class="space-y-6" onsubmit={confirmWelcome}>
 				<div class="space-y-2">
 					<label for="workspace-name" class="text-sm font-medium"
@@ -222,70 +250,81 @@
 					<p class="text-xs leading-5 text-muted-foreground">{m.onboarding_workspace_hint()}</p>
 				</div>
 
-				<div id="welcome-plan" class="space-y-3">
-					<div class="flex items-center justify-between gap-3">
-						<h2 class="text-sm font-medium">{m.onboarding_plan_heading()}</h2>
-						<div
-							class="flex rounded-lg bg-muted p-1"
-							role="group"
-							aria-label={m.checkout_billing_period()}
-						>
-							<Button
-								type="button"
-								variant={billingPeriod === 'monthly' ? 'default' : 'ghost'}
-								size="sm"
-								aria-pressed={billingPeriod === 'monthly'}
-								disabled={choiceLoading}
-								onclick={() => void choosePurchase(selectedPlanID, 'monthly')}
-								>{m.checkout_monthly()}</Button
+				{#if purchaseChoiceRequired}
+					<div id="welcome-plan" class="space-y-3">
+						<div class="flex items-center justify-between gap-3">
+							<h2 class="text-sm font-medium">{m.onboarding_plan_heading()}</h2>
+							<div
+								class="flex rounded-lg bg-muted p-1"
+								role="group"
+								aria-label={m.checkout_billing_period()}
 							>
-							<Button
-								type="button"
-								variant={billingPeriod === 'annual' ? 'default' : 'ghost'}
-								size="sm"
-								aria-pressed={billingPeriod === 'annual'}
-								disabled={choiceLoading}
-								onclick={() => void choosePurchase(selectedPlanID, 'annual')}
-								>{m.checkout_annual()}</Button
-							>
-						</div>
-					</div>
-					<RadioGroup.Root
-						value={selectedPlanID}
-						name="welcome_plan"
-						class="grid gap-2"
-						disabled={choiceLoading}
-						onValueChange={(value) => void choosePurchase(value as HostedPlanID, billingPeriod)}
-					>
-						{#each hostedPlans as plan (plan.id)}
-							<label
-								class={[
-									'flex min-h-12 cursor-pointer items-center gap-3 rounded-lg border px-3 py-2',
-									selectedPlanID === plan.id ? 'border-primary bg-primary/5' : 'border-border'
-								]}
-							>
-								<RadioGroup.Item value={plan.id} aria-label={plan.name} />
-								<span class="min-w-0 flex-1 font-medium">{plan.name}</span>
-								<span class="text-sm text-muted-foreground tabular-nums"
-									>${planPriceUSD(plan, billingPeriod).toLocaleString(
-										getLocaleTag()
-									)}/{billingPeriod === 'annual' ? m.checkout_year() : m.checkout_month()}</span
+								<Button
+									type="button"
+									variant={billingPeriod === 'monthly' ? 'default' : 'ghost'}
+									size="sm"
+									aria-pressed={billingPeriod === 'monthly'}
+									disabled={choiceLoading}
+									onclick={() => void choosePurchase(selectedPlanID, 'monthly')}
+									>{m.checkout_monthly()}</Button
 								>
-							</label>
-						{/each}
-					</RadioGroup.Root>
-				</div>
+								<Button
+									type="button"
+									variant={billingPeriod === 'annual' ? 'default' : 'ghost'}
+									size="sm"
+									aria-pressed={billingPeriod === 'annual'}
+									disabled={choiceLoading}
+									onclick={() => void choosePurchase(selectedPlanID, 'annual')}
+									>{m.checkout_annual()}</Button
+								>
+							</div>
+						</div>
+						<RadioGroup.Root
+							value={selectedPlanID}
+							name="welcome_plan"
+							class="grid gap-2"
+							disabled={choiceLoading}
+							onValueChange={(value) => void choosePurchase(value as HostedPlanID, billingPeriod)}
+						>
+							{#each hostedPlans as plan (plan.id)}
+								<label
+									class={[
+										'flex min-h-12 cursor-pointer items-center gap-3 rounded-lg border px-3 py-2',
+										selectedPlanID === plan.id ? 'border-primary bg-primary/5' : 'border-border'
+									]}
+								>
+									<RadioGroup.Item value={plan.id} aria-label={plan.name} />
+									<span class="min-w-0 flex-1 font-medium">{plan.name}</span>
+									<span class="text-sm text-muted-foreground tabular-nums"
+										>${planPriceUSD(plan, billingPeriod).toLocaleString(
+											getLocaleTag()
+										)}/{billingPeriod === 'annual' ? m.checkout_year() : m.checkout_month()}</span
+									>
+								</label>
+							{/each}
+						</RadioGroup.Root>
+					</div>
 
-				<PurchaseChoiceSummary choice={purchaseChoice} changeHref="#welcome-plan" />
+					<PurchaseChoiceSummary choice={purchaseChoice!} changeHref="#welcome-plan" />
+				{/if}
 				{#if submitError}<InlineNotice tone="error" message={submitError} />{/if}
 				<Button
 					class="w-full"
 					size="lg"
 					type="submit"
-					disabled={isSubmitting || choiceLoading || !workspaceName.trim()}
+					disabled={isSubmitting ||
+						choiceLoading ||
+						!workspaceName.trim() ||
+						(purchaseChoiceRequired && !purchaseChoice)}
 				>
 					{#if isSubmitting}<LoaderIcon class="size-4 animate-spin" />{/if}
-					{isSubmitting ? m.onboarding_confirming() : m.onboarding_submit()}
+					{isSubmitting
+						? purchaseChoiceRequired
+							? m.onboarding_confirming()
+							: m.onboarding_selfhost_confirming()
+						: purchaseChoiceRequired
+							? m.onboarding_submit()
+							: m.onboarding_selfhost_submit()}
 				</Button>
 			</form>
 		{/if}

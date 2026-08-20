@@ -1,8 +1,12 @@
 <script lang="ts">
+	import { page } from '$app/state';
 	import InlineNotice from '$lib/components/inline-notice.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { m } from '$lib/paraglide/messages';
 	import type { PurchaseChoiceErrorCode } from '$lib/purchase-choice';
+	import { purchaseChoiceChangeHref } from '$lib/purchase-choice';
+
+	let resolveHref = $derived(purchaseChoiceChangeHref(page.url));
 
 	let { code, className = '' } = $props<{
 		code: PurchaseChoiceErrorCode;
@@ -27,7 +31,7 @@
 
 <div class={className}>
 	<InlineNotice tone="error" {message} />
-	<Button href="https://openpost.social/pricing" variant="outline" class="mt-3 w-full">
+	<Button href={resolveHref} variant="outline" class="mt-3 w-full">
 		{m.purchase_choice_choose_again()}
 	</Button>
 </div>

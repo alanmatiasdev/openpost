@@ -3,17 +3,43 @@ package platform
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 )
 
-var httpClient = &http.Client{Timeout: 30 * time.Second}
+var httpClient = newDefaultHTTPClient()
+
+func newDefaultHTTPClient() *http.Client {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	if certFile := strings.TrimSpace(os.Getenv("SSL_CERT_FILE")); certFile != "" {
+		if certPEM, err := os.ReadFile(certFile); err == nil {
+			roots, poolErr := x509.SystemCertPool()
+			if poolErr != nil || roots == nil {
+				roots = x509.NewCertPool()
+			}
+			if roots.AppendCertsFromPEM(certPEM) {
+				tlsConfig := transport.TLSClientConfig
+				if tlsConfig == nil {
+					tlsConfig = &tls.Config{}
+				} else {
+					tlsConfig = tlsConfig.Clone()
+				}
+				tlsConfig.RootCAs = roots
+				transport.TLSClientConfig = tlsConfig
+			}
+		}
+	}
+	return &http.Client{Transport: transport, Timeout: 30 * time.Second}
+}
 
 // DoRequest executes an HTTP request and returns the response body.
 // Non-2xx responses retain only status, stable provider code, and Retry-After.

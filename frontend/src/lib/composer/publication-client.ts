@@ -30,7 +30,7 @@ export function createComposerPublicationClient(): ComposerPublicationClient {
 				body: { ...draft, workspace_id: workspaceId }
 			});
 			if (error || !data) throw clientError(error, response.status);
-			return data;
+			return { ...data, draft: publicationDraft(data) };
 		},
 
 		async update(publicationId, expectedRevision, draft) {

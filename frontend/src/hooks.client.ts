@@ -7,16 +7,28 @@ export async function init() {
 }
 
 /**
- * After a deployment, old Vite chunk hashes are no longer on the server. If the
- * user's browser still has the old app loaded, any dynamic `import()` will fail
- * with "Failed to fetch dynamically imported module". We detect this in two ways:
+ * Chunk load failures have two distinct causes that look identical in the
+ * browser:
  *
- * 1. **Proactive** - listen for the service-worker `controllerchange` event which
- *    fires when a new SW (from the fresh deployment) takes control. Reload once
- *    so the page picks up the new chunks immediately.
- * 2. **Reactive** - intercept the unhandled error/rejection for stale chunks and
- *    force a full reload as a fallback (e.g. the error fires before
- *    controllerchange, or SW is not supported).
+ * 1. **Stale deployment** - old Vite chunk hashes are no longer on the server.
+ *    Any dynamic `import()` fails with "Failed to fetch dynamically imported
+ *    module".
+ * 2. **Dev race (F-007)** - on the first `vite dev` load the browser requests a
+ *    generated SvelteKit client node (/_app/immutable/nodes/… or
+ *    .svelte-kit/generated/…) before Vite has finished transforming it. Vite
+ *    returns a temporary 500 / transform error and the import rejects with the
+ *    same message plus a URL suffix, or with "Importing a module script failed".
+ *
+ * Both cases are transient and recover after the module is available. We
+ * handle them in two ways:
+ *
+ * 1. **Proactive** - reload when a new service-worker controller takes over
+ *    (fresh deployment).
+ * 2. **Reactive** - intercept chunk-load errors/rejections and reload with
+ *    exponential back-off and a session-storage guard (covers both stale chunks
+ *    and the dev race). The broad substring check is intentional: Chrome and
+ *    Firefox append the failing URL to the message, so an exact equality check
+ *    misses the real error.
  */
 function detectStaleChunks() {
 	// --- proactive: reload when a new service-worker controller takes over ---
@@ -31,31 +43,102 @@ function detectStaleChunks() {
 		});
 	}
 
-	// --- reactive: catch stale-chunk errors and reload ---
-	const isStaleChunkError = (error: unknown): boolean => {
-		if (!(error instanceof TypeError)) return false;
-		return (
-			error.message === 'Failed to fetch dynamically imported module' ||
-			/^\w+: Failed to fetch dynamically imported module$/u.test(error.message)
-		);
+	// --- reactive: catch stale-chunk / dev-race errors and reload ---
+	const isChunkLoadError = (error: unknown): boolean => {
+		const raw =
+			error instanceof Error
+				? error.message
+				: typeof error === 'string'
+					? error
+					: error != null && typeof (error as { message?: unknown }).message === 'string'
+						? String((error as { message: unknown }).message)
+						: String(error ?? '');
+		if (raw.includes('Failed to fetch dynamically imported module')) return true;
+		if (raw.includes('Importing a module script failed')) return true;
+		// Vite dev transform failure that surfaces through a dynamic import
+		// (e.g. "Failed to load url /_app/immutable/nodes/…" during first compile).
+		if (raw.includes('Failed to load url') && raw.includes('_app/')) return true;
+		if (raw.includes('Failed to fetch') && raw.includes('_app/immutable')) return true;
+		return false;
 	};
-	const reloadOnce = (() => {
-		let reloading = false;
-		return () => {
-			if (reloading) return;
-			reloading = true;
+
+	const CHUNK_RELOAD_KEY = 'openpost:chunk-reload';
+	const MAX_RETRIES = 3;
+	const RETRY_WINDOW_MS = 15_000;
+
+	function getRetryState(): { count: number; at: number } {
+		try {
+			const raw = sessionStorage.getItem(CHUNK_RELOAD_KEY);
+			if (!raw) return { count: 0, at: 0 };
+			const parsed = JSON.parse(raw) as { count: number; at: number };
+			if (Date.now() - parsed.at > RETRY_WINDOW_MS) return { count: 0, at: 0 };
+			return parsed;
+		} catch {
+			return { count: 0, at: 0 };
+		}
+	}
+
+	const reloadWithBackoff = () => {
+		const state = getRetryState();
+		const nextCount = state.count + 1;
+		if (nextCount > MAX_RETRIES) return;
+		try {
+			sessionStorage.setItem(
+				CHUNK_RELOAD_KEY,
+				JSON.stringify({ count: nextCount, at: Date.now() })
+			);
+		} catch {
+			// ignore storage failures
+		}
+		// Exponential back-off: dev race usually resolves within one Vite transform
+		// cycle (~200-600ms). Stagger retries so we do not hammer the dev server.
+		const delayMs = nextCount === 1 ? 300 : nextCount === 2 ? 800 : 1500;
+		window.setTimeout(() => {
 			const doReload = () => window.location.reload();
 			void caches
 				?.keys()
 				?.then((keys) => Promise.all(keys.map((k) => caches.delete(k))))
 				?.then(doReload, doReload);
-		};
-	})();
+		}, delayMs);
+	};
+
+	// Clear retry state on successful load so a later unrelated failure gets a
+	// fresh budget. Also handles the case where the user manually reloaded.
+	window.addEventListener('load', () => {
+		const state = getRetryState();
+		if (state.count > 0 && Date.now() - state.at > 2000) {
+			try {
+				sessionStorage.removeItem(CHUNK_RELOAD_KEY);
+			} catch {
+				// ignore
+			}
+		}
+	});
+
+	// Vite emits `vite:preloadError` for failed preloads (SvelteKit route nodes).
+	// Use it as an additional signal alongside error/unhandledrejection.
+	window.addEventListener('vite:preloadError', (event) => {
+		const payload = (event as unknown as CustomEvent).detail as unknown;
+		if (isChunkLoadError(payload)) {
+			(event as Event).preventDefault();
+			reloadWithBackoff();
+		}
+	});
+
 	window.addEventListener('error', (event) => {
-		if (isStaleChunkError(event.error)) reloadOnce();
+		if (isChunkLoadError(event.error ?? event.message)) {
+			// Prevent SvelteKit from rendering +error.svelte for a transient chunk
+			// failure; the reload will recover the page without showing a failure
+			// state (F-007 graceful reload).
+			event.preventDefault();
+			reloadWithBackoff();
+		}
 	});
 	window.addEventListener('unhandledrejection', (event) => {
-		if (isStaleChunkError(event.reason)) reloadOnce();
+		if (isChunkLoadError(event.reason)) {
+			event.preventDefault();
+			reloadWithBackoff();
+		}
 	});
 }
 

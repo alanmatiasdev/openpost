@@ -25,6 +25,11 @@ export default defineConfig({
 		VitePWA({
 			registerType: 'autoUpdate',
 			injectRegister: 'auto',
+			// F-007: SW must not cache dev builds. `devOptions.enabled` defaults
+			// to false but we set it explicitly so a future plugin default change
+			// cannot reintroduce the first-load race where a stale SW serves old
+			// hashes while Vite is still compiling generated SvelteKit nodes.
+			devOptions: { enabled: false },
 			workbox: {
 				globPatterns: [],
 				navigateFallback: null,

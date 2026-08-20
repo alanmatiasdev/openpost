@@ -28,5 +28,5 @@
 			/>
 		</div>
 	{/if}
-	<ComposeShell onHandoffSelected={() => (handoffSelected = true)} />
+	<ComposeShell hideSetupGuideOnDesktop onHandoffSelected={() => (handoffSelected = true)} />
 </div>

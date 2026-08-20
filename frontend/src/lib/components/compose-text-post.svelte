@@ -212,6 +212,7 @@
 		onDeleted?: () => void | Promise<void>;
 		onDraftCreated?: (id: string) => void;
 		onThreadStateChange?: (isThread: boolean) => void;
+		hideSetupGuideOnDesktop?: boolean;
 	}
 
 	// --------------------------------------------------------------------------
@@ -227,7 +228,8 @@
 		onSuccess,
 		onDeleted,
 		onDraftCreated,
-		onThreadStateChange
+		onThreadStateChange,
+		hideSetupGuideOnDesktop = false
 	}: Props = $props();
 	let isEditMode = $derived(Boolean(initialPublication));
 
@@ -294,6 +296,7 @@
 	let accountRetryIds: string[] | undefined = undefined;
 	let workspaceRequestSequence = 0;
 	let accountRequestSequence = 0;
+	let composerDestroyed = false;
 	let nextSlotRequestSequence = 0;
 	let saveGeneration = 0;
 	let composerSession: ComposerSession | null = null;
@@ -2525,7 +2528,7 @@
 			capabilities = capabilityData.capabilities ?? [];
 			await resolveCapabilities();
 		} catch (e) {
-			if (requestSequence !== workspaceRequestSequence) return;
+			if (composerDestroyed || requestSequence !== workspaceRequestSequence) return;
 			console.error('Failed to load workspaces:', e);
 			workspaceLoadError = m.compose_load_workspaces_failed();
 		} finally {
@@ -2587,6 +2590,10 @@
 		const handleVisibilityChange = () => {
 			if (document.visibilityState === 'hidden') void flushPendingTextDraft();
 		};
+		const handlePageHide = () => {
+			composerDestroyed = true;
+			invalidatePendingComposerRequests();
+		};
 		const unregisterComposerResetGuard = ui.registerComposerResetGuard(() => {
 			if (!hasPendingPasteMediaUploads) return true;
 			error = pasteMediaUploadBlocker();
@@ -2596,6 +2603,7 @@
 			requestComposerWorkspaceSwitch
 		);
 		document.addEventListener('visibilitychange', handleVisibilityChange);
+		window.addEventListener('pagehide', handlePageHide);
 		void (async () => {
 			await initializeComposer();
 			await restoreImageEditorReturn();
@@ -2603,6 +2611,7 @@
 		})();
 		return () => {
 			document.removeEventListener('visibilitychange', handleVisibilityChange);
+			window.removeEventListener('pagehide', handlePageHide);
 			unregisterComposerResetGuard();
 			unregisterWorkspaceSwitchGuard();
 		};
@@ -2617,6 +2626,7 @@
 	}
 
 	onDestroy(() => {
+		composerDestroyed = true;
 		void composerSession?.decideWorkspaceSwitch('stay');
 		invalidatePendingComposerRequests();
 		pasteMediaUploadQueue.reset();
@@ -2922,7 +2932,11 @@
 			}
 			sanitizeSelectedAccounts(nextCompatibleAccounts);
 		} catch (e) {
-			if (requestSequence !== accountRequestSequence || selectedWorkspaceId !== workspaceId) {
+			if (
+				composerDestroyed ||
+				requestSequence !== accountRequestSequence ||
+				selectedWorkspaceId !== workspaceId
+			) {
 				return;
 			}
 			console.error('Failed to load accounts:', e);
@@ -4395,7 +4409,9 @@
 		<WorkspaceSetupGuide
 			workspaceID={selectedWorkspaceId}
 			context="composer"
-			wrapperClass="border-b px-3 py-3 sm:px-4"
+			wrapperClass={hideSetupGuideOnDesktop
+				? 'border-b px-3 py-3 sm:px-4 md:hidden'
+				: 'border-b px-3 py-3 sm:px-4'}
 		/>
 	{/if}
 	{#if !desktopComposerControls.current}

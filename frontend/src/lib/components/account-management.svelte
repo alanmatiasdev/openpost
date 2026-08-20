@@ -149,7 +149,18 @@
 	}
 
 	function connectErrorMessage(error: Error, fallback: string): string {
-		return error.message || fallback;
+		const message = error.message.trim();
+		if (/failed to resolve instance_url host/i.test(message)) {
+			return m.accounts_mastodon_connection_start_failed();
+		}
+		if (
+			/x auth url generation failed|oauth1 .*request token failed|callback url not approved/i.test(
+				message
+			)
+		) {
+			return m.accounts_x_connection_start_failed();
+		}
+		return message || fallback;
 	}
 
 	function showConnectError(
@@ -410,7 +421,11 @@
 			onContinue({ kind: 'external-oauth', url: data.url, workspaceID: selectedWorkspaceId });
 		} catch (e) {
 			const provider = providerEntries.find((entry) => entry.platform === 'x') ?? null;
-			showConnectError(e instanceof Error ? e : new Error(m.accounts_connect_failed()), undefined, provider);
+			showConnectError(
+				e instanceof Error ? e : new Error(m.accounts_connect_failed()),
+				undefined,
+				provider
+			);
 		}
 	}
 
@@ -561,7 +576,11 @@
 			onContinue({ kind: 'external-oauth', url: data.url, workspaceID: selectedWorkspaceId });
 		} catch (e) {
 			const provider = providerEntries.find((entry) => entry.platform === platform) ?? null;
-			showConnectError(e instanceof Error ? e : new Error(m.accounts_connect_failed()), undefined, provider);
+			showConnectError(
+				e instanceof Error ? e : new Error(m.accounts_connect_failed()),
+				undefined,
+				provider
+			);
 		}
 	}
 
@@ -1113,19 +1132,15 @@
 												</Button>
 											{:else}
 												<Button
-												variant="outline"
-												size="sm"
-												onclick={() => void loadProviders()}
-												disabled={providersLoading}
-											>
-												{m.common_retry()}
-											</Button>
+													variant="outline"
+													size="sm"
+													onclick={() => void loadProviders()}
+													disabled={providersLoading}
+												>
+													{m.common_retry()}
+												</Button>
 											{/if}
-											<Button
-												variant="ghost"
-												size="sm"
-												onclick={clearConnectionFailure}
-											>
+											<Button variant="ghost" size="sm" onclick={clearConnectionFailure}>
 												{m.common_dismiss()}
 											</Button>
 										</div>
@@ -1139,65 +1154,66 @@
 							{#if availableProviders.length > 0}
 								<div class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
 									{#each availableProviders as provider (providerKey(provider))}
-									<div
-										data-testid={`provider-card-${provider.platform}`}
-										class="group flex h-full min-h-28 flex-col rounded-lg border bg-card p-4 transition-all hover:shadow-sm {providerCanConnect(
-											provider
-										)
-											? ''
-											: 'bg-muted/20'}"
-									>
-										<div class="flex items-start gap-3">
-											<div
-												class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full {getPlatformColor(
-													provider.platform
-												)}"
-											>
-												<PlatformIcon platform={provider.platform} class="h-4 w-4 text-white" />
-											</div>
-											<div class="min-w-0 flex-1">
-												<div class="flex flex-wrap items-center gap-2">
-													<h3 class="text-sm font-medium">{providerTitle(provider)}</h3>
-													{#if provider.status === 'planned' || !providerReadiness(provider).quiet}
-														<span
-															class="inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium {providerStatusClass(
-																provider
-															)}"
+										<div
+											data-testid={`provider-card-${provider.platform}`}
+											class="group flex h-full min-h-28 flex-col rounded-lg border bg-card p-4 transition-all hover:shadow-sm {providerCanConnect(
+												provider
+											)
+												? ''
+												: 'bg-muted/20'}"
+										>
+											<div class="flex items-start gap-3">
+												<div
+													class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full {getPlatformColor(
+														provider.platform
+													)}"
+												>
+													<PlatformIcon platform={provider.platform} class="h-4 w-4 text-white" />
+												</div>
+												<div class="min-w-0 flex-1">
+													<div class="flex flex-wrap items-center gap-2">
+														<h3 class="text-sm font-medium">{providerTitle(provider)}</h3>
+														{#if provider.status === 'planned' || !providerReadiness(provider).quiet}
+															<span
+																class="inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium {providerStatusClass(
+																	provider
+																)}"
+															>
+																{providerStatusLabel(provider)}
+															</span>
+														{/if}
+													</div>
+													<p class="truncate text-sm text-muted-foreground">
+														{providerDescription(provider)}
+													</p>
+													{#if provider.status !== 'planned' && !providerReadiness(provider).quiet}
+														<p
+															data-testid={`provider-readiness-${provider.platform}`}
+															class="mt-1 text-xs leading-5 text-muted-foreground"
 														>
-															{providerStatusLabel(provider)}
-														</span>
+															{providerReadinessMessage(provider)}
+														</p>
 													{/if}
 												</div>
-												<p class="truncate text-sm text-muted-foreground">
-													{providerDescription(provider)}
-												</p>
-												{#if provider.status !== 'planned' && !providerReadiness(provider).quiet}
-													<p
-														data-testid={`provider-readiness-${provider.platform}`}
-														class="mt-1 text-xs leading-5 text-muted-foreground"
-													>
-														{providerReadinessMessage(provider)}
-													</p>
-												{/if}
 											</div>
+											<Button
+												class="mt-3 min-h-11 self-end sm:min-h-9"
+												onclick={() => handleProviderAction(provider)}
+												size="sm"
+												disabled={!providerActionEnabled(provider)}
+											>
+												{providerActionLabel(provider)}
+											</Button>
 										</div>
-										<Button
-											class="mt-3 min-h-11 self-end sm:min-h-9"
-											onclick={() => handleProviderAction(provider)}
-											size="sm"
-											disabled={!providerActionEnabled(provider)}
-										>
-											{providerActionLabel(provider)}
-										</Button>
-									</div>
-								{/each}
-							</div>
+									{/each}
+								</div>
 							{/if}
 							{#if setupRequiredProviders.length > 0}
 								<details
 									class="mt-4 rounded-lg border bg-muted/10"
 									open={setupRequiredOpen}
-									ontoggle={(e) => (setupRequiredOpen = (e.currentTarget as HTMLDetailsElement).open)}
+									ontoggle={(e) =>
+										(setupRequiredOpen = (e.currentTarget as HTMLDetailsElement).open)}
 								>
 									<summary
 										class="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-medium focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
@@ -1221,15 +1237,22 @@
 												>
 													<div class="flex items-start gap-3">
 														<div
-															class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full {getPlatformColor(provider.platform)}"
+															class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full {getPlatformColor(
+																provider.platform
+															)}"
 														>
-															<PlatformIcon platform={provider.platform} class="h-4 w-4 text-white" />
+															<PlatformIcon
+																platform={provider.platform}
+																class="h-4 w-4 text-white"
+															/>
 														</div>
 														<div class="min-w-0 flex-1">
 															<div class="flex flex-wrap items-center gap-2">
 																<h3 class="text-sm font-medium">{providerTitle(provider)}</h3>
 																<span
-																	class="inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium {providerStatusClass(provider)}"
+																	class="inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium {providerStatusClass(
+																		provider
+																	)}"
 																>
 																	{providerStatusLabel(provider)}
 																</span>

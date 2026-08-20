@@ -13,6 +13,7 @@ test("an incomplete owner sees server-derived setup guidance on home and Account
   await page.goto("/");
 
   const homeGuide = page.getByTestId("workspace-setup-guide-home");
+  const composerGuide = page.getByTestId("workspace-setup-guide-composer");
   await expect(homeGuide).toBeVisible();
   await expect(homeGuide).toContainText("1 of 4 complete");
   await expect(homeGuide).toContainText("Connect a destination");
@@ -22,13 +23,11 @@ test("an incomplete owner sees server-derived setup guidance on home and Account
     "href",
     "/settings?tab=accounts",
   );
+  await expect(composerGuide).toBeHidden();
   await page.reload();
   await expect(homeGuide).toBeVisible();
   await expect(homeGuide).toContainText("1 of 4 complete");
-  await expect(page.getByTestId("workspace-setup-guide-composer")).toBeVisible();
-  await expect(page.getByTestId("workspace-setup-guide-composer")).toContainText(
-    "Connect a destination",
-  );
+  await expect(composerGuide).toBeHidden();
 
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
   await expect(homeGuide).toContainText("1 of 4 complete");
@@ -39,4 +38,10 @@ test("an incomplete owner sees server-derived setup guidance on home and Account
   await expect(accountsGuide).not.toContainText("Plan");
   await expect(accountsGuide.getByRole("link", { name: "Resume checkout" })).toHaveCount(0);
   await expect(page.getByText("Step 2 of 3")).toHaveCount(0);
+
+  await page.goto("/");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(homeGuide).toBeHidden();
+  await expect(composerGuide).toBeVisible();
+  await expect(composerGuide).toContainText("Connect a destination");
 });

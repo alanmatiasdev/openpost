@@ -424,7 +424,7 @@ func ensurePostUpdatedAtColumn(ctx context.Context, db *bun.DB) error {
 }
 
 type sqliteSchemaObject struct {
-	Type string `bun:"type"`
+	Type string `bun:"column:type"`
 	Name string `bun:"name"`
 	SQL  string `bun:"sql"`
 }
@@ -1764,7 +1764,7 @@ func makeUserPasswordOptional(ctx context.Context, db *bun.DB) error {
 	case dialect.SQLite:
 		type sqliteColumn struct {
 			Name    string `bun:"name"`
-			NotNull int    `bun:"notnull"`
+			NotNull int    `bun:"column:notnull"`
 		}
 		var columns []sqliteColumn
 		if err := db.NewSelect().

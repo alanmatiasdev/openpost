@@ -50,6 +50,7 @@
 	let purchaseChoiceLoading = $state(false);
 	let purchaseChoiceError = $state<PurchaseChoiceErrorCode | ''>('');
 	const signupProviders = $derived(oidcProviders.filter((provider) => provider.kind === 'oauth'));
+	const hostedSignup = $derived(authConfiguration?.purchase_choice_required !== false);
 	const passwordLength = $derived(passwordCharacterCount(password));
 	const passwordHasMinimum = $derived(passwordLength >= PASSWORD_MIN_CHARACTERS);
 	const passwordWithinMaximum = $derived(
@@ -60,42 +61,65 @@
 	async function loadConfiguration() {
 		configurationLoading = true;
 		error = '';
-		const [configurationResult, providerResult] = await Promise.all([
-			client.GET('/auth/config'),
-			client.GET('/auth/oidc/providers')
-		]);
-		const { data, error: responseError } = configurationResult;
-		if (responseError || !data) {
-			error = responseError?.detail ?? m.auth_config_load_failed();
-		} else {
-			authConfiguration = data;
-			if (!data.registration_enabled) error = m.auth_registration_disabled();
-			if (data.registration_enabled && data.purchase_choice_required) {
-				await loadPurchaseChoice();
+		try {
+			const results = await Promise.allSettled([
+				client.GET('/auth/config'),
+				client.GET('/auth/oidc/providers')
+			]);
+			const configurationResult = results[0].status === 'fulfilled' ? results[0].value : null;
+			const providerResult = results[1].status === 'fulfilled' ? results[1].value : null;
+
+			if (!configurationResult) {
+				error = m.auth_config_load_failed();
+			} else {
+				const { data, error: responseError } = configurationResult;
+				if (responseError || !data) {
+					error = responseError?.detail ?? m.auth_config_load_failed();
+				} else {
+					authConfiguration = data;
+					if (!data.registration_enabled) error = m.auth_registration_disabled();
+					if (data.registration_enabled && data.purchase_choice_required) {
+						await loadPurchaseChoice();
+					}
+				}
 			}
+
+			oidcProviders = providerResult?.data ?? [];
+
+			if (results[0].status === 'rejected' && !error) {
+				error = m.auth_config_load_failed();
+			}
+		} catch {
+			error = m.auth_config_load_failed();
+		} finally {
+			configurationLoading = false;
 		}
-		oidcProviders = providerResult.data ?? [];
-		configurationLoading = false;
 	}
 
 	async function loadPurchaseChoice() {
 		purchaseChoiceLoading = true;
 		purchaseChoiceError = '';
-		const result = await resolvePurchaseChoice(page.url.searchParams);
-		purchaseChoiceLoading = false;
-		if (!result.choice) {
+		try {
+			const result = await resolvePurchaseChoice(page.url.searchParams);
+			if (!result.choice) {
+				purchaseChoice = null;
+				purchaseChoiceError = result.errorCode ?? 'unavailable';
+				return;
+			}
+			purchaseChoice = result.choice;
+			const target = applyPurchaseChoice(new URL(page.url), result.choice);
+			if (target.href !== page.url.href) {
+				await goto(resolveAppPath(`${target.pathname}${target.search}`), {
+					replaceState: true,
+					keepFocus: true,
+					noScroll: true
+				});
+			}
+		} catch {
 			purchaseChoice = null;
-			purchaseChoiceError = result.errorCode ?? 'unavailable';
-			return;
-		}
-		purchaseChoice = result.choice;
-		const target = applyPurchaseChoice(new URL(page.url), result.choice);
-		if (target.href !== page.url.href) {
-			await goto(resolveAppPath(`${target.pathname}${target.search}`), {
-				replaceState: true,
-				keepFocus: true,
-				noScroll: true
-			});
+			purchaseChoiceError = 'unavailable';
+		} finally {
+			purchaseChoiceLoading = false;
 		}
 	}
 
@@ -196,21 +220,25 @@
 </script>
 
 <svelte:head>
-	<title>{m.auth_register_title()}</title>
+	<title>{hostedSignup ? m.auth_register_title() : m.auth_register_selfhost_title()}</title>
 </svelte:head>
 
 <StandaloneShell
-	title={m.auth_register_heading()}
-	description={m.auth_register_description()}
+	title={hostedSignup ? m.auth_register_heading() : m.auth_register_selfhost_heading()}
+	description={hostedSignup
+		? m.auth_register_description()
+		: m.auth_register_selfhost_description()}
 	logoHref="/"
 >
-	<div
-		class="mb-5 grid grid-cols-3 gap-2 border-y py-3 text-center text-[11px] leading-4 text-muted-foreground"
-	>
-		<span>{m.auth_register_proof_trial()}</span>
-		<span>{m.auth_register_proof_channels()}</span>
-		<span>{m.auth_register_proof_cancel()}</span>
-	</div>
+	{#if hostedSignup}
+		<div
+			class="mb-5 grid grid-cols-3 gap-2 border-y py-3 text-center text-[11px] leading-4 text-muted-foreground"
+		>
+			<span>{m.auth_register_proof_trial()}</span>
+			<span>{m.auth_register_proof_channels()}</span>
+			<span>{m.auth_register_proof_cancel()}</span>
+		</div>
+	{/if}
 	{#if purchaseChoiceLoading}
 		<div
 			class="mb-4 flex items-center justify-center gap-2 rounded-lg border p-4 text-sm text-muted-foreground"
@@ -227,7 +255,15 @@
 		<PurchaseChoiceError code={purchaseChoiceError} className="mb-4" />
 	{/if}
 	{#if error}
-		<InlineNotice tone="error" message={error} class="mb-4" />
+		<InlineNotice tone="error" message={error} class="mb-4">
+			{#snippet actions()}
+				{#if !configurationLoading && !authConfiguration}
+					<Button variant="outline" size="sm" onclick={() => void loadConfiguration()}>
+						{m.common_retry()}
+					</Button>
+				{/if}
+			{/snippet}
+		</InlineNotice>
 	{/if}
 
 	{#if authConfiguration?.registration_enabled && signupProviders.length}
@@ -329,7 +365,7 @@
 			type="submit"
 			disabled={isLoading ||
 				configurationLoading ||
-				!authConfiguration?.registration_enabled ||
+				(authConfiguration !== null && !authConfiguration.registration_enabled) ||
 				purchaseChoiceLoading ||
 				(Boolean(authConfiguration?.purchase_choice_required) && !purchaseChoice) ||
 				(Boolean(authConfiguration?.legal_acceptance_required) && !acceptedLegal)}

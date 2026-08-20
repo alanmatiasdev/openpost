@@ -6,7 +6,10 @@
 	import ComposeTextPost from './compose-text-post.svelte';
 	import { ui } from '$lib/stores/ui.svelte';
 
-	let { onHandoffSelected }: { onHandoffSelected?: () => void } = $props();
+	let {
+		onHandoffSelected,
+		hideSetupGuideOnDesktop = false
+	}: { onHandoffSelected?: () => void; hideSetupGuideOnDesktop?: boolean } = $props();
 
 	const initialScheduleDate = $derived(page.url.searchParams.get('date'));
 	const initialScheduleTime = $derived(page.url.searchParams.get('time'));
@@ -36,6 +39,7 @@
 				{initialWorkspaceId}
 				{initialAccountIds}
 				{onHandoffSelected}
+				{hideSetupGuideOnDesktop}
 				onSuccess={handleComposerReset}
 				onDeleted={handleComposerReset}
 				onDraftCreated={handlePublicationDraftCreated}

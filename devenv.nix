@@ -127,6 +127,11 @@
     docker-run.exec = ''
       docker run -d -p 8080:8080 --name openpost openpost:latest
     '';
+
+    doctor.exec = ''
+      cd "${config.git.root}"
+      bun run doctor
+    '';
   };
 
   enterShell = ''
