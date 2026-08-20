@@ -27,6 +27,7 @@
 >
 	<a
 		href={resolve('/engagement' as '/')}
+		data-cuelume-toggle="toggle"
 		onclick={(event) => navigate(event, '/engagement')}
 		class={[
 			'flex min-h-11 items-center gap-2 border-b-2 px-3 text-sm font-medium transition-colors',
@@ -41,6 +42,7 @@
 	</a>
 	<a
 		href={resolve('/messages' as '/')}
+		data-cuelume-toggle="toggle"
 		onclick={(event) => navigate(event, '/messages')}
 		class={[
 			'flex min-h-11 items-center gap-2 border-b-2 px-3 text-sm font-medium transition-colors',

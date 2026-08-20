@@ -18,6 +18,7 @@
 	bind:this={ref}
 	data-sidebar="rail"
 	data-slot="sidebar-rail"
+	data-cuelume-toggle="toggle"
 	aria-label={m.common_toggle_sidebar()}
 	tabindex={-1}
 	onclick={sidebar.toggle}

@@ -60,8 +60,11 @@
 		...restProps
 	}: ButtonProps = $props();
 
-	const hasTactileFeedback = $derived(
-		variant === 'default' || variant === 'outline' || variant === 'secondary'
+	const hasActionFeedback = $derived(
+		variant === 'default' ||
+			variant === 'outline' ||
+			variant === 'secondary' ||
+			variant === 'destructive'
 	);
 </script>
 
@@ -69,8 +72,7 @@
 	<a
 		bind:this={ref}
 		data-slot="button"
-		data-cuelume-press={hasTactileFeedback ? 'press' : undefined}
-		data-cuelume-release={hasTactileFeedback ? 'release' : undefined}
+		data-cuelume-toggle={hasActionFeedback ? 'release' : undefined}
 		class={cn(buttonVariants({ variant, size }), className)}
 		href={disabled ? undefined : href}
 		aria-disabled={disabled}
@@ -84,8 +86,7 @@
 	<button
 		bind:this={ref}
 		data-slot="button"
-		data-cuelume-press={hasTactileFeedback ? 'press' : undefined}
-		data-cuelume-release={hasTactileFeedback ? 'release' : undefined}
+		data-cuelume-toggle={hasActionFeedback ? 'release' : undefined}
 		class={cn(buttonVariants({ variant, size }), className)}
 		{type}
 		{disabled}

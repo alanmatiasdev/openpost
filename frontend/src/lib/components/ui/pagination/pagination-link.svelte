@@ -29,6 +29,7 @@
 	data-slot="pagination-link"
 	data-active={isActive}
 	data-size={size}
+	data-cuelume-toggle="page"
 	class={cn(
 		buttonVariants({ size, variant: isActive ? 'outline' : 'ghost' }),
 		'cn-pagination-link',

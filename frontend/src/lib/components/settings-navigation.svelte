@@ -71,6 +71,7 @@
 	<a
 		href={resolveAppPath(destinationHref(destination.id))}
 		data-settings-tab={destination.id}
+		data-cuelume-toggle="toggle"
 		class={[
 			'min-h-10 shrink-0 rounded-md px-3 py-2 text-left text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none lg:w-full',
 			active === destination.id

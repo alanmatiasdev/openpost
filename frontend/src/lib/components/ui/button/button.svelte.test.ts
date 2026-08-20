@@ -4,23 +4,45 @@ import { createRawSnippet } from 'svelte';
 import Button from './button.svelte';
 
 function textSnippet(text: string) {
-	return createRawSnippet(() => ({ render: () => text }));
+	return createRawSnippet(() => ({ render: () => `<span>${text}</span>` }));
 }
 
 describe('Button', () => {
-	it('adds an audible down-and-up cue to tactile variants', async () => {
+	it('plays one cue when a primary action completes', async () => {
 		const screen = render(Button, { children: textSnippet('Publish now') });
 		const button = screen.getByRole('button', { name: 'Publish now' });
 
-		await expect.element(button).toHaveAttribute('data-cuelume-press', 'press');
-		await expect.element(button).toHaveAttribute('data-cuelume-release', 'release');
+		await expect.element(button).toHaveAttribute('data-cuelume-toggle', 'release');
+		await expect.element(button).not.toHaveAttribute('data-cuelume-press');
+		await expect.element(button).not.toHaveAttribute('data-cuelume-release');
 	});
 
 	it('keeps routine ghost controls quiet', async () => {
 		const screen = render(Button, { variant: 'ghost', children: textSnippet('Dismiss') });
 		const button = screen.getByRole('button', { name: 'Dismiss' });
 
+		await expect.element(button).not.toHaveAttribute('data-cuelume-toggle');
+	});
+
+	it('lets a composed trigger replace the ordinary action cue', async () => {
+		const screen = render(Button, {
+			'data-cuelume-toggle': 'toggle',
+			children: textSnippet('Open menu')
+		});
+		const button = screen.getByRole('button', { name: 'Open menu' });
+
+		await expect.element(button).toHaveAttribute('data-cuelume-toggle', 'toggle');
 		await expect.element(button).not.toHaveAttribute('data-cuelume-press');
 		await expect.element(button).not.toHaveAttribute('data-cuelume-release');
+	});
+
+	it('gives destructive actions one neutral activation cue', async () => {
+		const screen = render(Button, {
+			variant: 'destructive',
+			children: textSnippet('Delete post')
+		});
+		const button = screen.getByRole('button', { name: 'Delete post' });
+
+		await expect.element(button).toHaveAttribute('data-cuelume-toggle', 'release');
 	});
 });

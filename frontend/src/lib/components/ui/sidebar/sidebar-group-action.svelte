@@ -20,6 +20,7 @@
 		),
 		'data-slot': 'sidebar-group-action',
 		'data-sidebar': 'group-action',
+		'data-cuelume-toggle': 'release',
 		...restProps
 	});
 </script>

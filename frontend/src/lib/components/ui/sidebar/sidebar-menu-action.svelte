@@ -24,6 +24,7 @@
 		),
 		'data-slot': 'sidebar-menu-action',
 		'data-sidebar': 'menu-action',
+		'data-cuelume-toggle': 'release',
 		...restProps
 	});
 </script>

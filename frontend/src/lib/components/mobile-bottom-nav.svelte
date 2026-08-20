@@ -88,9 +88,7 @@
 			<li>
 				<button
 					type="button"
-					data-cuelume-press={item.id === 'new' ? 'press' : undefined}
-					data-cuelume-release={item.id === 'new' ? 'release' : undefined}
-					data-cuelume-toggle={item.id === 'new' ? undefined : 'tick'}
+					data-cuelume-toggle={item.id === 'new' ? 'release' : 'tick'}
 					class={[
 						'flex min-h-14 w-full flex-col items-center justify-center gap-1 rounded-md px-1 text-[0.625rem] font-medium transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
 						item.id === 'new'

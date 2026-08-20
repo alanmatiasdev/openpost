@@ -26,6 +26,7 @@
 		aria-label={m.notifications_bell_label({ count: unreadCount })}
 		title={m.notifications_heading()}
 		data-testid="sidebar-notifications"
+		data-cuelume-toggle="tick"
 	>
 		<BellIcon class="size-4" />
 		{#if unreadCount > 0}
