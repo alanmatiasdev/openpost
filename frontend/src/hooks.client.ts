@@ -125,7 +125,8 @@ function detectStaleChunks() {
 	// Use it as an additional signal alongside error/unhandledrejection.
 	window.addEventListener('vite:preloadError', (event) => {
 		// SAFETY: Vite preloadError is a CustomEvent; detail is unknown and will be narrowed by isChunkLoadError
-		const payload = (event as { detail: unknown }).detail;
+		// oxlint-disable-next-line anti-slop/no-chained-type-assertions -- svelte-check requires intermediate unknown for VitePreloadErrorEvent overlap
+		const payload = (event as unknown as { detail: unknown }).detail;
 		if (isChunkLoadError(payload)) {
 			// SAFETY: preventDefault is safe on Event, narrowed from CustomEvent
 			(event as Event).preventDefault();
