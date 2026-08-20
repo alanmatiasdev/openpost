@@ -11,6 +11,7 @@ import (
 
 	"github.com/uptrace/bun"
 
+	"github.com/openpost/backend/internal/jobregistry"
 	"github.com/openpost/backend/internal/models"
 	"github.com/openpost/backend/internal/platform"
 	"github.com/openpost/backend/internal/services/workspaceaccess"
@@ -294,6 +295,31 @@ func (s *Service) BatchSave(ctx context.Context, workspaceID string, actor works
 
 	now := s.now().UTC()
 	sourceDefault := "user_save"
+	// Capture before effective states for durable activation transition detection
+	beforeEffective := make(map[string]bool, len(deduped))
+	for _, in := range deduped {
+		enabled, _ := s.IsEffectiveEnabled(ctx, in.AccountID, in.Feature)
+		beforeEffective[in.AccountID+"|"+in.Feature] = enabled
+	}
+	// Precompute support and plan to avoid tx DB for afterEffective
+	supportCache := make(map[string]struct {
+		supported bool
+		missing   []string
+		allowed   bool
+	}, len(deduped))
+	for _, in := range deduped {
+		acc := byID[in.AccountID]
+		_, missing, _, supported := s.supportFor(ctx, acc, in.Feature)
+		allowed := true
+		if s.planPolicy != nil {
+			allowed, _ = s.planPolicy.Allowed(ctx, acc.WorkspaceID, in.Feature)
+		}
+		supportCache[in.AccountID+"|"+in.Feature] = struct {
+			supported bool
+			missing   []string
+			allowed   bool
+		}{supported: supported, missing: missing, allowed: allowed}
+	}
 	if err := s.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
 		for _, in := range deduped {
 			src := in.Source
@@ -326,6 +352,43 @@ func (s *Service) BatchSave(ctx context.Context, workspaceID string, actor works
 				return fmt.Errorf("upsert feature %s for %s: %w", in.Feature, in.AccountID, err)
 			}
 		}
+		// Durable activation: for transitions from ineffective/off/missing to enabled+effective, queue initial refresh atomically.
+		// Keep batch atomic: job insert rolls back with preference if enqueue fails.
+			sweepEnqueued := map[string]bool{}
+		for _, in := range deduped {
+			if !in.Enabled {
+				continue
+			}
+			key := in.AccountID + "|" + in.Feature
+			if beforeEffective[key] {
+				continue
+			}
+			cache := supportCache[key]
+			if !cache.supported || len(cache.missing) > 0 || !cache.allowed {
+				continue
+			}
+			acc := byID[in.AccountID]
+			var enqueueErr error
+			switch in.Feature {
+			case FeatureMessaging:
+				enqueueErr = s.enqueueMessagingSyncTx(txCtx, tx, acc.ID, acc.WorkspaceID, now)
+			case FeatureEngagement:
+				if !sweepEnqueued[acc.WorkspaceID+"|engagement"] {
+					enqueueErr = s.enqueueEngagementSweepTx(txCtx, tx, now)
+					sweepEnqueued[acc.WorkspaceID+"|engagement"] = enqueueErr == nil
+				}
+			case FeatureAnalytics:
+				if !sweepEnqueued[acc.WorkspaceID+"|analytics"] {
+					enqueueErr = s.enqueueAnalyticsSweepTx(txCtx, tx, now)
+					sweepEnqueued[acc.WorkspaceID+"|analytics"] = enqueueErr == nil
+				}
+			case FeatureGrow:
+				enqueueErr = s.enqueueGrowthDiscoveryTx(txCtx, tx, acc.WorkspaceID, acc.ID, actor.UserID, now)
+			}
+			if enqueueErr != nil {
+				return enqueueErr
+			}
+		}
 		return nil
 	}); err != nil {
 		return nil, err
@@ -336,6 +399,106 @@ func (s *Service) BatchSave(ctx context.Context, workspaceID string, actor works
 		affectedIDs = append(affectedIDs, id)
 	}
 	return s.Read(ctx, workspaceID, actor, affectedIDs)
+}
+
+func (s *Service) enqueueMessagingSyncTx(ctx context.Context, tx bun.Tx, accountID, workspaceID string, runAt time.Time) error {
+	payload := fmt.Sprintf(`{"id":"%s"}`, accountID)
+	exists, err := tx.NewSelect().Model((*models.Job)(nil)).Where("type = ? AND payload = ? AND status IN (?, ?)", jobregistry.TypeMessagesSync, payload, jobregistry.StatusPending, jobregistry.StatusProcessing).Exists(ctx)
+	if err != nil {
+		if strings.Contains(err.Error(), "no such table") {
+			return nil
+		}
+		return err
+	}
+	if exists {
+		return nil
+	}
+	job, err := jobregistry.NewJob(jobregistry.TypeMessagesSync, payload, runAt)
+	if err != nil {
+		return err
+	}
+	job.ScopeID = workspaceID
+	_, err = tx.NewInsert().Model(job).On("CONFLICT DO NOTHING").Exec(ctx)
+	if err != nil && strings.Contains(err.Error(), "no such table") {
+		return nil
+	}
+	return err
+}
+
+func (s *Service) enqueueEngagementSweepTx(ctx context.Context, tx bun.Tx, runAt time.Time) error {
+	payloadBytes, _ := json.Marshal(map[string]string{"scheduled_for": runAt.UTC().Truncate(time.Minute).Format(time.RFC3339)})
+	payload := string(payloadBytes)
+	exists, err := tx.NewSelect().Model((*models.Job)(nil)).Where("type = ? AND status IN (?, ?)", jobregistry.TypeEngagementSweep, jobregistry.StatusPending, jobregistry.StatusProcessing).Exists(ctx)
+	if err != nil {
+		if strings.Contains(err.Error(), "no such table") {
+			return nil
+		}
+		return err
+	}
+	if exists {
+		return nil
+	}
+	job, err := jobregistry.NewJob(jobregistry.TypeEngagementSweep, payload, runAt)
+	if err != nil {
+		return err
+	}
+	_, err = tx.NewInsert().Model(job).On("CONFLICT DO NOTHING").Exec(ctx)
+	if err != nil && strings.Contains(err.Error(), "no such table") {
+		return nil
+	}
+	return err
+}
+
+func (s *Service) enqueueAnalyticsSweepTx(ctx context.Context, tx bun.Tx, runAt time.Time) error {
+	payloadBytes, _ := json.Marshal(map[string]string{"scheduled_for": runAt.UTC().Truncate(time.Minute).Format(time.RFC3339)})
+	payload := string(payloadBytes)
+	exists, err := tx.NewSelect().Model((*models.Job)(nil)).Where("type = ? AND status IN (?, ?)", jobregistry.TypeAnalyticsSweep, jobregistry.StatusPending, jobregistry.StatusProcessing).Exists(ctx)
+	if err != nil {
+		if strings.Contains(err.Error(), "no such table") {
+			return nil
+		}
+		return err
+	}
+	if exists {
+		return nil
+	}
+	job, err := jobregistry.NewJob(jobregistry.TypeAnalyticsSweep, payload, runAt)
+	if err != nil {
+		return err
+	}
+	_, err = tx.NewInsert().Model(job).On("CONFLICT DO NOTHING").Exec(ctx)
+	if err != nil && strings.Contains(err.Error(), "no such table") {
+		return nil
+	}
+	return err
+}
+
+func (s *Service) enqueueGrowthDiscoveryTx(ctx context.Context, tx bun.Tx, workspaceID, accountID, actorUserID string, runAt time.Time) error {
+	payloadMap := map[string]string{"workspace_id": workspaceID, "social_account_id": accountID, "actor_user_id": strings.TrimSpace(actorUserID)}
+	payloadBytes, _ := json.Marshal(payloadMap)
+	payload := string(payloadBytes)
+	identity := jobregistry.Identity{ScopeID: workspaceID, DedupeKey: "growth:" + accountID}
+	exists, err := tx.NewSelect().Model((*models.Job)(nil)).Where("type = ? AND scope_id = ? AND dedupe_key = ? AND status IN (?, ?)", jobregistry.TypeGrowthDiscovery, identity.ScopeID, identity.DedupeKey, jobregistry.StatusPending, jobregistry.StatusProcessing).Exists(ctx)
+	if err != nil {
+		if strings.Contains(err.Error(), "no such table") {
+			return nil
+		}
+		return err
+	}
+	if exists {
+		return nil
+	}
+	job, err := jobregistry.NewJob(jobregistry.TypeGrowthDiscovery, payload, runAt)
+	if err != nil {
+		return err
+	}
+	job.ScopeID = identity.ScopeID
+	job.DedupeKey = identity.DedupeKey
+	_, err = tx.NewInsert().Model(job).On("CONFLICT DO NOTHING").Exec(ctx)
+	if err != nil && strings.Contains(err.Error(), "no such table") {
+		return nil
+	}
+	return err
 }
 
 func (s *Service) resolveOne(ctx context.Context, account models.SocialAccount, feature string) (ResolvedFeature, error) {
