@@ -1,6 +1,9 @@
 package platform
 
-import "strings"
+import (
+	"encoding/json"
+	"strings"
+)
 
 // PlatformSupportsAnalytics reports whether the given platform has an analytics adapter
 // that is enabled by default. This is the canonical source for migration backfill
@@ -10,7 +13,7 @@ func PlatformSupportsAnalytics(platform string, capabilityState string) bool {
 	case "x", "bluesky", "mastodon", "facebook", "instagram", "threads", "youtube", "tiktok":
 		return true
 	case "linkedin":
-		if strings.Contains(capabilityState, "community_management") {
+		if isLinkedInCommunityManagementState(capabilityState) {
 			return false
 		}
 		return true
@@ -49,4 +52,16 @@ func PlatformSupportsGrow(platform string) bool {
 	default:
 		return false
 	}
+}
+
+func isLinkedInCommunityManagementState(raw string) bool {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return false
+	}
+	var state map[string]string
+	if err := json.Unmarshal([]byte(raw), &state); err != nil {
+		return false
+	}
+	return state["linkedin_account_type"] == "community_management"
 }

@@ -128,10 +128,11 @@ export interface ReasonChip {
 	label: string;
 }
 
-export function mapReasonChips(
-	rec: RecommendationView,
-	translate: (key: string, params?: Record<string, unknown>) => string
-): ReasonChip[] {
+export type TranslationParams = Record<string, string | number>;
+
+export type TranslateFn = (key: string, params?: TranslationParams) => string;
+
+export function mapReasonChips(rec: RecommendationView, translate: TranslateFn): ReasonChip[] {
 	const chips: ReasonChip[] = [];
 	const platformKey = getPlatformKey(rec.platform);
 	const signals = rec.signals ?? [];
@@ -172,7 +173,7 @@ export function mapReasonChips(
 
 export function formatMutualCopy(
 	rec: RecommendationView,
-	translate: (key: string, params?: Record<string, unknown>) => string,
+	translate: TranslateFn,
 	locale = 'en-US'
 ): string | null {
 	const mutuals = rec.mutuals ?? [];

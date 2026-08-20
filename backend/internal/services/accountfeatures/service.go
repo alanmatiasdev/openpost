@@ -479,9 +479,7 @@ func (s *Service) resolveOne(ctx context.Context, account models.SocialAccount, 
 	required, missing, unavailable, supported := s.supportFor(ctx, account, feature)
 	allowed, planReason := true, ""
 	if s.planPolicy != nil {
-		var err error
 		allowed, planReason = s.planPolicy.Allowed(ctx, account.WorkspaceID, feature)
-		_ = err
 	}
 	var pref *models.AccountFeature
 	var pf models.AccountFeature

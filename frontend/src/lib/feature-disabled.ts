@@ -133,7 +133,7 @@ export async function loadFeatureStates(
 			params: { query: { workspace_id: workspaceID, account_ids: ids } }
 		});
 		if (res.error || !res.data) return [];
-		return res.data as FeatureState[];
+		return res.data;
 	} catch {
 		return [];
 	}

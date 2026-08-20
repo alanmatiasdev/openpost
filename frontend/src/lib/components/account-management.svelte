@@ -19,6 +19,7 @@
 	import MoreHorizontalIcon from '@lucide/svelte/icons/ellipsis';
 	import { formatAccountHandle, getPlatformName, getPlatformColor } from '$lib/utils';
 	import PlatformIcon from '$lib/components/platform-icon.svelte';
+	import { browser } from '$app/environment';
 	import { goto } from '$app/navigation';
 	import { resolveAppPath } from '$lib/app-path';
 	import { accountSetupHref } from '$lib/account-management-route';
@@ -622,7 +623,13 @@
 			if (err) throw new Error(err.detail || m.accounts_login_failed());
 			blueskyModalOpen = false;
 			if (data?.feature_setup_required && data.new_account_ids?.length) {
-				localStorage.setItem('oauth_account_management_mode', mode);
+				if (browser) {
+					try {
+						localStorage.setItem('oauth_account_management_mode', mode);
+					} catch {
+						// Storage may be unavailable in hardened browser contexts; navigation still succeeds.
+					}
+				}
 				await goto(
 					resolveAppPath(
 						accountSetupHref({
@@ -677,7 +684,13 @@
 			if (err) throw new Error(err.detail || m.accounts_connect_failed());
 			discordModalOpen = false;
 			if (data?.feature_setup_required && data.new_account_ids?.length) {
-				localStorage.setItem('oauth_account_management_mode', mode);
+				if (browser) {
+					try {
+						localStorage.setItem('oauth_account_management_mode', mode);
+					} catch {
+						// Storage may be unavailable in hardened browser contexts; navigation still succeeds.
+					}
+				}
 				await goto(
 					resolveAppPath(
 						accountSetupHref({

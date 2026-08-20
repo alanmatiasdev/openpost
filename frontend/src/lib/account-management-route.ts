@@ -1,3 +1,4 @@
+import { browser } from '$app/environment';
 import type {
 	AccountManagementContinuation,
 	AccountManagementFeedback,
@@ -54,19 +55,29 @@ export function rememberAccountManagementContinuation(
 	continuation: AccountManagementContinuation,
 	mode: AccountManagementMode
 ) {
-	localStorage.setItem(returnModeKey, mode);
-	localStorage.setItem('oauth_workspace_id', continuation.workspaceID);
-	if (continuation.mastodon?.instanceURL) {
-		localStorage.setItem('oauth_mastodon_instance_url', continuation.mastodon.instanceURL);
-		localStorage.removeItem('oauth_mastodon_server');
-	} else if (continuation.mastodon?.serverName) {
-		localStorage.setItem('oauth_mastodon_server', continuation.mastodon.serverName);
-		localStorage.removeItem('oauth_mastodon_instance_url');
+	if (!browser) return;
+	try {
+		localStorage.setItem(returnModeKey, mode);
+		localStorage.setItem('oauth_workspace_id', continuation.workspaceID);
+		if (continuation.mastodon?.instanceURL) {
+			localStorage.setItem('oauth_mastodon_instance_url', continuation.mastodon.instanceURL);
+			localStorage.removeItem('oauth_mastodon_server');
+		} else if (continuation.mastodon?.serverName) {
+			localStorage.setItem('oauth_mastodon_server', continuation.mastodon.serverName);
+			localStorage.removeItem('oauth_mastodon_instance_url');
+		}
+	} catch {
+		// Storage may be unavailable in hardened browser contexts; continuation is best-effort.
 	}
 }
 
 export function accountManagementReturnMode(): AccountManagementMode {
-	return localStorage.getItem(returnModeKey) === 'direct' ? 'direct' : 'settings';
+	if (!browser) return 'settings';
+	try {
+		return localStorage.getItem(returnModeKey) === 'direct' ? 'direct' : 'settings';
+	} catch {
+		return 'settings';
+	}
 }
 
 export function accountManagementReturnHref(
@@ -83,10 +94,15 @@ export function accountManagementReturnHref(
 }
 
 export function clearAccountManagementContinuation() {
-	localStorage.removeItem(returnModeKey);
-	localStorage.removeItem('oauth_workspace_id');
-	localStorage.removeItem('oauth_mastodon_server');
-	localStorage.removeItem('oauth_mastodon_instance_url');
+	if (!browser) return;
+	try {
+		localStorage.removeItem(returnModeKey);
+		localStorage.removeItem('oauth_workspace_id');
+		localStorage.removeItem('oauth_mastodon_server');
+		localStorage.removeItem('oauth_mastodon_instance_url');
+	} catch {
+		// Storage may be unavailable in hardened browser contexts; clearing is best-effort.
+	}
 }
 
 export interface AccountSetupState {
