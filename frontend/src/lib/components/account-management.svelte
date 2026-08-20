@@ -2,7 +2,6 @@
 	import { client, type SocialAccount, type ProviderInfo } from '$lib/api/client';
 	import type { AccountManagementProps } from '$lib/account-management';
 	import { Button } from '$lib/components/ui/button';
-	import { Checkbox } from '$lib/components/ui/checkbox';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
@@ -18,7 +17,7 @@
 	import DestructiveConfirmDialog from '$lib/components/destructive-confirm-dialog.svelte';
 	import type { DestructiveActionOutcome } from '$lib/destructive-action-outcome';
 	import MoreHorizontalIcon from '@lucide/svelte/icons/ellipsis';
-		import { formatAccountHandle, getPlatformName, getPlatformColor } from '$lib/utils';
+	import { formatAccountHandle, getPlatformName, getPlatformColor } from '$lib/utils';
 	import PlatformIcon from '$lib/components/platform-icon.svelte';
 	import { goto } from '$app/navigation';
 	import { resolveAppPath } from '$lib/app-path';
@@ -26,6 +25,8 @@
 	import LoaderIcon from '@lucide/svelte/icons/loader-2';
 	import UsersIcon from '@lucide/svelte/icons/users';
 	import { m } from '$lib/paraglide/messages';
+	import AccountFeaturePresentation from '$lib/components/account-feature-presentation.svelte';
+	import type { components } from '$lib/api/types';
 	import { getOptionalUnsavedChanges } from '$lib/unsaved-changes.svelte';
 	import {
 		accountRemovalKinds,
@@ -111,14 +112,17 @@
 	let editAccountDialogOpen = $state(false);
 	let editingAccount = $state<SocialAccount | null>(null);
 	let editAccountSlug = $state('');
-	let editMessagesEnabled = $state(false);
+	let editFeatureSelections = $state<Record<string, boolean>>({});
+	let editFeatures = $state<components['schemas']['FeatureStateResponse'][]>([]);
+	let editFeaturesLoading = $state(false);
+	let editFeaturesError = $state('');
+	let editFeaturesInitial = $state<Record<string, boolean>>({});
 	const unsavedChanges = getOptionalUnsavedChanges();
 	const accountEditDirty = $derived(
 		Boolean(
 			editingAccount &&
 			(editAccountSlug !== accountSlug(editingAccount) ||
-				(editingAccount.messaging_supported &&
-					editMessagesEnabled !== (editingAccount.messages_enabled ?? false)))
+				JSON.stringify(editFeatureSelections) !== JSON.stringify(editFeaturesInitial))
 		)
 	);
 
@@ -131,6 +135,67 @@
 	let accountRemovalDialogOpen = $state(false);
 	let accountRemovalAction = $state.raw<AccountRemovalAction | null>(null);
 	const accountSlugPattern = '[a-z0-9][a-z0-9-]{0,62}';
+
+	type Feature = components['schemas']['FeatureStateResponse'];
+	let accountFeatures = $state<Feature[]>([]);
+	let accountFeaturesLoading = $state(false);
+	let undecidedAccountIds = $derived.by(() => {
+		const grouped = new Map<string, Feature[]>();
+		for (const f of accountFeatures) {
+			if (!grouped.has(f.social_account_id)) grouped.set(f.social_account_id, []);
+			grouped.get(f.social_account_id)!.push(f);
+		}
+		const ids: string[] = [];
+		for (const [accountId, feats] of grouped) {
+			const hasUndecided = feats.some((f) => f.supported && !f.stored_exists);
+			if (hasUndecided) ids.push(accountId);
+		}
+		return ids;
+	});
+	let showFeatureReminder = $derived(
+		undecidedAccountIds.length > 0 && !accountsLoading && !accountFeaturesLoading
+	);
+
+	async function loadAccountFeatures(workspaceID: string, accountIds: string[]) {
+		if (!workspaceID || accountIds.length === 0) {
+			accountFeatures = [];
+			return;
+		}
+		accountFeaturesLoading = true;
+		try {
+			const { data, error: err } = await client.GET('/account-features', {
+				params: { query: { workspace_id: workspaceID, account_ids: accountIds.join(',') } }
+			});
+			if (err) {
+				accountFeatures = [];
+				return;
+			}
+			accountFeatures = (data ?? []) as Feature[];
+		} catch {
+			accountFeatures = [];
+		} finally {
+			accountFeaturesLoading = false;
+		}
+	}
+
+	function reminderAccountName(): string {
+		if (undecidedAccountIds.length === 1) {
+			const id = undecidedAccountIds[0];
+			const acc = accounts.find((a) => a.id === id);
+			if (acc) return formatAccountHandle(acc.account_username) || getPlatformName(acc.platform);
+			return id.slice(0, 8);
+		}
+		return '';
+	}
+
+	function reminderSetupHref(): string {
+		return accountSetupHref({
+			workspaceID: selectedWorkspaceId,
+			accountIDs: accounts.map((a) => a.id),
+			newAccountIDs: undecidedAccountIds,
+			openFreshComposer: false
+		});
+	}
 
 	function clearToast() {
 		toastMessage = '';
@@ -210,6 +275,14 @@
 			if (err) throw new Error(err.detail || m.accounts_load_failed());
 			if (!isCurrentRequest()) return;
 			accounts = data ?? [];
+			if (accounts.length > 0) {
+				void loadAccountFeatures(
+					workspaceID,
+					accounts.map((a) => a.id)
+				);
+			} else {
+				accountFeatures = [];
+			}
 		} catch (e) {
 			if (!isCurrentRequest()) return;
 			console.error('Failed to load accounts:', e);
@@ -357,12 +430,38 @@
 		}
 	}
 
-	function openEditAccount(account: SocialAccount) {
+	async function openEditAccount(account: SocialAccount) {
 		editingAccount = account;
 		editAccountSlug = account.slug ?? '';
-		editMessagesEnabled = account.messages_enabled ?? false;
 		editAccountError = '';
+		editFeatures = [];
+		editFeatureSelections = {};
+		editFeaturesInitial = {};
+		editFeaturesError = '';
 		editAccountDialogOpen = true;
+		editFeaturesLoading = true;
+		try {
+			const { data, error: err } = await client.GET('/account-features', {
+				params: { query: { workspace_id: selectedWorkspaceId, account_ids: account.id } }
+			});
+			if (err) {
+				editFeaturesError =
+					(err as { detail?: string }).detail ?? m.account_setup_error_load_failed();
+				return;
+			}
+			editFeatures = (data ?? []) as Feature[];
+			const offered = editFeatures.filter((f) => f.availability !== 'unsupported');
+			const next: Record<string, boolean> = {};
+			for (const f of offered) {
+				next[f.feature] = f.stored_exists ? f.stored_enabled : f.effective_enabled;
+			}
+			editFeatureSelections = { ...next };
+			editFeaturesInitial = { ...next };
+		} catch (e) {
+			editFeaturesError = e instanceof Error ? e.message : m.account_setup_error_load_failed();
+		} finally {
+			editFeaturesLoading = false;
+		}
 	}
 
 	function handleEditAccountDialogOpen(nextOpen: boolean) {
@@ -379,15 +478,25 @@
 			const { error: err } = await client.PATCH('/accounts/{account_id}', {
 				params: { path: { account_id: editingAccount.id } },
 				body: {
-					slug: editAccountSlug.trim(),
-					messages_enabled: editingAccount.messaging_supported ? editMessagesEnabled : undefined
+					slug: editAccountSlug.trim()
 				}
 			});
 			if (err) throw new Error(err.detail || m.accounts_update_slug_failed());
-			if (editingAccount.messaging_supported && editMessagesEnabled && selectedWorkspaceId) {
-				await client.POST('/messages/refresh', {
-					body: { workspace_id: selectedWorkspaceId }
+			const offered = editFeatures.filter((f) => f.availability !== 'unsupported');
+			if (offered.length > 0) {
+				const choices = offered.map((f) => ({
+					account_id: editingAccount!.id,
+					feature: f.feature as 'messaging' | 'engagement' | 'analytics' | 'grow',
+					enabled: Boolean(editFeatureSelections[f.feature]),
+					source: 'user_save'
+				}));
+				const { error: featErr } = await client.POST('/account-features', {
+					body: { workspace_id: selectedWorkspaceId, choices }
 				});
+				if (featErr)
+					throw new Error(
+						(featErr as { detail?: string }).detail ?? m.account_setup_error_load_failed()
+					);
 			}
 			editAccountDialogOpen = false;
 			editingAccount = null;
@@ -416,7 +525,10 @@
 		}
 		try {
 			const { data, error: err } = await client.GET('/accounts/{platform}/auth-url', {
-				params: { path: { platform: 'x' }, query: { workspace_id: selectedWorkspaceId, account_management_mode: mode } }
+				params: {
+					path: { platform: 'x' },
+					query: { workspace_id: selectedWorkspaceId, account_management_mode: mode }
+				}
 			});
 			if (err) throw new Error(err.detail || m.accounts_x_connection_start_failed());
 			if (!data?.url) throw new Error(m.accounts_x_connection_start_failed());
@@ -988,6 +1100,35 @@
 						onDismiss={() => (error = '')}
 						class="mb-6"
 					/>
+				{/if}
+
+				{#if showFeatureReminder}
+					<div
+						data-testid="account-setup-reminder"
+						class="mb-6 rounded-lg border bg-amber-500/5 p-3 sm:p-4"
+					>
+						<div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+							<div class="space-y-1">
+								<p class="text-sm font-medium">{m.account_features_reminder_title()}</p>
+								<p class="text-xs leading-5 text-muted-foreground">
+									{#if undecidedAccountIds.length === 1}
+										{m.account_features_reminder_body({ account: reminderAccountName() })}
+									{:else}
+										{m.account_features_reminder_body_plural({ count: undecidedAccountIds.length })}
+									{/if}
+								</p>
+							</div>
+							<div class="flex gap-2">
+								<Button
+									href={resolveAppPath(reminderSetupHref())}
+									size="sm"
+									class="min-h-11 sm:min-h-9"
+								>
+									{m.account_features_reminder_action()}
+								</Button>
+							</div>
+						</div>
+					</div>
 				{/if}
 
 				<!-- Connected Accounts -->
@@ -1581,30 +1722,38 @@
 						</div>
 					{/if}
 				</div>
-				{#if editingAccount.messaging_supported}
-					<div class="space-y-3 rounded-md border p-3">
-						<div class="flex items-start gap-3">
-							<Checkbox
-								id="account-messages-enabled"
-								class="mt-1"
-								bind:checked={editMessagesEnabled}
-							/>
-							<div class="space-y-1">
-								<Label for="account-messages-enabled">{m.accounts_inbox_sync()}</Label>
-								<p class="text-xs text-muted-foreground">
-									{m.accounts_inbox_sync_description()}
-								</p>
-							</div>
+				{#if editFeaturesLoading}
+					<div class="rounded-md border p-3 text-sm text-muted-foreground">
+						{m.common_loading()}
+					</div>
+				{:else if editFeaturesError}
+					<InlineNotice
+						tone="error"
+						message={editFeaturesError}
+						dismissLabel={m.common_dismiss()}
+						onDismiss={() => (editFeaturesError = '')}
+					/>
+				{:else if editFeatures.filter((f) => f.availability !== 'unsupported').length > 0}
+					<div class="space-y-3">
+						<div class="space-y-1">
+							<h3 class="text-sm font-medium">{m.account_features_details_heading()}</h3>
+							<p class="text-xs leading-5 text-muted-foreground">
+								{m.account_features_details_description()}
+							</p>
 						</div>
-						{#if editingAccount.platform === 'facebook' || editingAccount.platform === 'instagram'}
-							<p class="text-xs text-muted-foreground">
-								{m.accounts_inbox_meta_window()}
-							</p>
-						{:else if editingAccount.platform === 'mastodon'}
-							<p class="text-xs text-muted-foreground">
-								{m.accounts_inbox_mastodon_notice()}
-							</p>
-						{/if}
+						<AccountFeaturePresentation
+							accountId={editingAccount.id}
+							features={editFeatures}
+							selections={editFeatureSelections}
+							mode="details"
+							busy={editAccountLoading}
+							onToggle={(feature, checked) => {
+								editFeatureSelections = { ...editFeatureSelections, [feature]: checked };
+							}}
+						/>
+						<p class="text-xs leading-5 text-muted-foreground">
+							{m.account_setup_provider_auth_note()}
+						</p>
 					</div>
 				{/if}
 				<div class="space-y-3 rounded-md border p-3">
