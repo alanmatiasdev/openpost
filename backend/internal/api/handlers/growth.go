@@ -213,6 +213,8 @@ func mapGrowthError(err error) error {
 		return huma.Error400BadRequest("growth is not supported for this account")
 	case errors.Is(err, growthservice.ErrAccountNotActive):
 		return huma.Error400BadRequest("social account is not active")
+	case errors.Is(err, growthservice.ErrFeatureDisabled):
+		return huma.Error403Forbidden("grow is disabled for this account")
 	default:
 		// Do not leak provider payloads
 		return huma.Error500InternalServerError("growth operation failed")

@@ -69,13 +69,10 @@ func (s *Service) SetFeatureGate(g FeatureGate) {
 
 func (s *Service) isAnalyticsEnabled(ctx context.Context, accountID string) bool {
 	if s.featureGate == nil {
-		return true
+		return false
 	}
 	enabled, err := s.featureGate.IsEffectiveEnabled(ctx, accountID, "analytics")
 	if err != nil {
-		if strings.Contains(err.Error(), "no such table") {
-			return true
-		}
 		return false
 	}
 	return enabled

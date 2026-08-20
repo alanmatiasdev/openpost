@@ -26,6 +26,7 @@ var (
 	ErrConflict         = errors.New("conflict")
 	ErrUnsupported      = errors.New("growth is not supported for this account")
 	ErrAccountNotActive = errors.New("social account is not active")
+	ErrFeatureDisabled  = errors.New("grow is disabled for this account")
 )
 
 type TokenSource interface {
@@ -76,13 +77,10 @@ func (s *Service) SetFeatureGate(g FeatureGate) {
 
 func (s *Service) isGrowEnabled(ctx context.Context, accountID string) bool {
 	if s.featureGate == nil {
-		return true
+		return false
 	}
 	enabled, err := s.featureGate.IsEffectiveEnabled(ctx, accountID, "grow")
 	if err != nil {
-		if strings.Contains(err.Error(), "no such table") {
-			return true
-		}
 		return false
 	}
 	return enabled
@@ -170,7 +168,7 @@ func (s *Service) QueueRefresh(ctx context.Context, actor workspaceaccess.ActorF
 		return "", err
 	}
 	if !s.isGrowEnabled(ctx, acct.ID) {
-		return "", fmt.Errorf("grow is disabled for this account")
+		return "", ErrFeatureDisabled
 	}
 	if _, err := s.growthDiscovererForAccount(acct); err != nil {
 		return "", err
@@ -527,7 +525,7 @@ func (s *Service) QueueFollow(ctx context.Context, actor workspaceaccess.ActorFa
 		return "", ErrUnsupported
 	}
 	if !s.isGrowEnabled(ctx, acct.ID) {
-		return "", fmt.Errorf("grow is disabled for this account")
+		return "", ErrFeatureDisabled
 	}
 	if rec.FollowState == models.GrowthRecommendationFollowPending || rec.FollowState == models.GrowthRecommendationFollowFollowing || rec.FollowState == models.GrowthRecommendationFollowRequested {
 		return "", ErrConflict

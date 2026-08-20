@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -45,6 +46,15 @@ const (
 	ReasonUnsupported    = "unsupported"
 	ReasonMissingScope   = "missing_scope"
 	ReasonPlanRestricted = "plan_restricted"
+)
+
+var (
+	ErrWorkspaceReadDenied    = errors.New("workspace read denied")
+	ErrWorkspaceEditDenied    = errors.New("workspace edit denied")
+	ErrAccountNotFound        = errors.New("account not found")
+	ErrAccountWrongWorkspace  = errors.New("account does not belong to workspace")
+	ErrUnknownFeature         = errors.New("unknown feature")
+	ErrFeatureGateUnavailable = errors.New("feature gate unavailable")
 )
 
 type PlanPolicy interface {
@@ -108,33 +118,33 @@ type ChoiceInput struct {
 }
 
 type ResolvedFeature struct {
-	WorkspaceID      string     `json:"workspace_id"`
-	SocialAccountID  string     `json:"social_account_id"`
-	Platform         string     `json:"platform"`
-	Feature          string     `json:"feature"`
-	Supported        bool       `json:"supported"`
-	Availability     string     `json:"availability"`
-	ReasonCode       string     `json:"reason_code"`
-	RequiredScopes   []string   `json:"required_scopes,omitempty"`
-	MissingScopes    []string   `json:"missing_scopes,omitempty"`
-	UnavailableReason string    `json:"unavailable_reason,omitempty"`
-	StoredExists     bool       `json:"stored_exists"`
-	StoredEnabled    bool       `json:"stored_enabled"`
-	DecidedByUserID  string     `json:"decided_by_user_id,omitempty"`
-	Source           string     `json:"source,omitempty"`
-	DecidedAt        *time.Time `json:"decided_at,omitempty"`
-	EffectiveEnabled bool       `json:"effective_enabled"`
+	WorkspaceID       string     `json:"workspace_id"`
+	SocialAccountID   string     `json:"social_account_id"`
+	Platform          string     `json:"platform"`
+	Feature           string     `json:"feature"`
+	Supported         bool       `json:"supported"`
+	Availability      string     `json:"availability"`
+	ReasonCode        string     `json:"reason_code"`
+	RequiredScopes    []string   `json:"required_scopes,omitempty"`
+	MissingScopes     []string   `json:"missing_scopes,omitempty"`
+	UnavailableReason string     `json:"unavailable_reason,omitempty"`
+	StoredExists      bool       `json:"stored_exists"`
+	StoredEnabled     bool       `json:"stored_enabled"`
+	DecidedByUserID   string     `json:"decided_by_user_id,omitempty"`
+	Source            string     `json:"source,omitempty"`
+	DecidedAt         *time.Time `json:"decided_at,omitempty"`
+	EffectiveEnabled  bool       `json:"effective_enabled"`
 }
 
 func (s *Service) IsEffectiveEnabled(ctx context.Context, accountID, feature string) (bool, error) {
 	feature = strings.TrimSpace(feature)
 	if !IsValidFeature(feature) {
-		return false, nil
+		return false, fmt.Errorf("%w: %q", ErrUnknownFeature, feature)
 	}
 	var account models.SocialAccount
 	if err := s.db.NewSelect().Model(&account).Where("id = ?", accountID).Scan(ctx); err != nil {
-		if err == sql.ErrNoRows {
-			return false, nil
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, fmt.Errorf("%w: %s", ErrAccountNotFound, accountID)
 		}
 		return false, err
 	}
@@ -156,7 +166,7 @@ func (s *Service) Read(ctx context.Context, workspaceID string, actor workspacea
 		return nil, err
 	}
 	if !decision.Allowed {
-		return nil, fmt.Errorf("workspace read denied: %s", decision.Reason)
+		return nil, fmt.Errorf("%w: %s", ErrWorkspaceReadDenied, decision.Reason)
 	}
 	if len(accountIDs) == 0 {
 		return []ResolvedFeature{}, nil
@@ -188,10 +198,10 @@ func (s *Service) Read(ctx context.Context, workspaceID string, actor workspacea
 	for _, id := range uniqueIDs {
 		acc, ok := byID[id]
 		if !ok {
-			return nil, fmt.Errorf("account %s not found", id)
+			return nil, fmt.Errorf("%w: %s", ErrAccountNotFound, id)
 		}
 		if acc.WorkspaceID != workspaceID {
-			return nil, fmt.Errorf("account %s does not belong to workspace %s", id, workspaceID)
+			return nil, fmt.Errorf("%w: %s does not belong to workspace %s", ErrAccountWrongWorkspace, id, workspaceID)
 		}
 	}
 	result := make([]ResolvedFeature, 0, len(uniqueIDs)*len(ValidFeatures))
@@ -222,7 +232,7 @@ func (s *Service) BatchSave(ctx context.Context, workspaceID string, actor works
 		return nil, err
 	}
 	if !decision.Allowed {
-		return nil, fmt.Errorf("workspace edit denied: %s", decision.Reason)
+		return nil, fmt.Errorf("%w: %s", ErrWorkspaceEditDenied, decision.Reason)
 	}
 	// Validate complete batch before any write
 	normalized := make([]ChoiceInput, 0, len(inputs))
@@ -234,7 +244,7 @@ func (s *Service) BatchSave(ctx context.Context, workspaceID string, actor works
 			return nil, fmt.Errorf("choice %d: account_id is required", i)
 		}
 		if !IsValidFeature(in.Feature) {
-			return nil, fmt.Errorf("choice %d: unknown feature %q", i, in.Feature)
+			return nil, fmt.Errorf("%w: choice %d: unknown feature %q", ErrUnknownFeature, i, in.Feature)
 		}
 		normalized = append(normalized, in)
 	}
@@ -258,28 +268,15 @@ func (s *Service) BatchSave(ctx context.Context, workspaceID string, actor works
 	for _, id := range accountIDs {
 		acc, ok := byID[id]
 		if !ok {
-			return nil, fmt.Errorf("account %s not found", id)
+			return nil, fmt.Errorf("%w: %s", ErrAccountNotFound, id)
 		}
 		if acc.WorkspaceID != workspaceID {
-			return nil, fmt.Errorf("account %s does not belong to workspace %s", id, workspaceID)
+			return nil, fmt.Errorf("%w: %s does not belong to workspace %s", ErrAccountWrongWorkspace, id, workspaceID)
 		}
 	}
 	// Last-write-wins deduplication for (account, feature)
 	type key struct{ acc, feat string }
-	last := make(map[key]ChoiceInput)
-	order := []key{}
-	for _, in := range normalized {
-		k := key{acc: in.AccountID, feat: in.Feature}
-		if _, exists := last[k]; !exists {
-			order = append(order, k)
-		} else {
-			// move to end to preserve last occurrence order? but we keep map, order reflects first appearance
-			// we want deduped list, last wins
-		}
-		last[k] = in
-	}
-	deduped := make([]ChoiceInput, 0, len(last))
-	// Need deterministic order: use order of last occurrence. So iterate normalized and keep last.
+	deduped := make([]ChoiceInput, 0, len(byID)*len(ValidFeatures))
 	seenKey := map[key]bool{}
 	for i := len(normalized) - 1; i >= 0; i-- {
 		in := normalized[i]
@@ -290,17 +287,10 @@ func (s *Service) BatchSave(ctx context.Context, workspaceID string, actor works
 		seenKey[k] = true
 		deduped = append(deduped, in)
 	}
-	// reverse to keep original order of last occurrences? Not needed, but preserve
 	slices.Reverse(deduped)
 
 	now := s.now().UTC()
 	sourceDefault := "user_save"
-	// Capture before effective states for durable activation transition detection
-	beforeEffective := make(map[string]bool, len(deduped))
-	for _, in := range deduped {
-		enabled, _ := s.IsEffectiveEnabled(ctx, in.AccountID, in.Feature)
-		beforeEffective[in.AccountID+"|"+in.Feature] = enabled
-	}
 	// Precompute support and plan to avoid tx DB for afterEffective
 	supportCache := make(map[string]struct {
 		supported bool
@@ -320,6 +310,7 @@ func (s *Service) BatchSave(ctx context.Context, workspaceID string, actor works
 			allowed   bool
 		}{supported: supported, missing: missing, allowed: allowed}
 	}
+	sweepEnqueued := map[string]bool{}
 	if err := s.db.RunInTx(ctx, &sql.TxOptions{}, func(txCtx context.Context, tx bun.Tx) error {
 		for _, in := range deduped {
 			src := in.Source
@@ -327,9 +318,20 @@ func (s *Service) BatchSave(ctx context.Context, workspaceID string, actor works
 				src = sourceDefault
 			}
 			acc := byID[in.AccountID]
+			cacheKey := in.AccountID + "|" + in.Feature
+			cache := supportCache[cacheKey]
+			// Read before-effective atomically inside transaction.
+			var existing models.AccountFeature
+			err := tx.NewSelect().Model(&existing).Where("social_account_id = ? AND feature = ?", in.AccountID, in.Feature).Scan(txCtx)
+			beforeEffective := false
+			if err == nil {
+				beforeEffective = existing.Enabled && cache.supported && len(cache.missing) == 0 && cache.allowed
+			} else if !errors.Is(err, sql.ErrNoRows) {
+				return err
+			}
 			row := &models.AccountFeature{
 				SocialAccountID: in.AccountID,
-				WorkspaceID:     workspaceID,
+				WorkspaceID:     acc.WorkspaceID,
 				Feature:         in.Feature,
 				Enabled:         in.Enabled,
 				DecidedByUserID: strings.TrimSpace(actor.UserID),
@@ -338,9 +340,7 @@ func (s *Service) BatchSave(ctx context.Context, workspaceID string, actor works
 				CreatedAt:       now,
 				UpdatedAt:       now,
 			}
-			// Ensure workspace_id matches account's workspace (already validated)
-			row.WorkspaceID = acc.WorkspaceID
-			_, err := tx.NewInsert().Model(row).
+			_, err = tx.NewInsert().Model(row).
 				On("CONFLICT (social_account_id, feature) DO UPDATE").
 				Set("enabled = EXCLUDED.enabled").
 				Set("decided_by_user_id = EXCLUDED.decided_by_user_id").
@@ -351,37 +351,34 @@ func (s *Service) BatchSave(ctx context.Context, workspaceID string, actor works
 			if err != nil {
 				return fmt.Errorf("upsert feature %s for %s: %w", in.Feature, in.AccountID, err)
 			}
-		}
-		// Durable activation: for transitions from ineffective/off/missing to enabled+effective, queue initial refresh atomically.
-		// Keep batch atomic: job insert rolls back with preference if enqueue fails.
-			sweepEnqueued := map[string]bool{}
-		for _, in := range deduped {
-			if !in.Enabled {
+			if !in.Enabled || beforeEffective {
 				continue
 			}
-			key := in.AccountID + "|" + in.Feature
-			if beforeEffective[key] {
-				continue
-			}
-			cache := supportCache[key]
 			if !cache.supported || len(cache.missing) > 0 || !cache.allowed {
 				continue
 			}
-			acc := byID[in.AccountID]
 			var enqueueErr error
 			switch in.Feature {
 			case FeatureMessaging:
 				enqueueErr = s.enqueueMessagingSyncTx(txCtx, tx, acc.ID, acc.WorkspaceID, now)
 			case FeatureEngagement:
-				if !sweepEnqueued[acc.WorkspaceID+"|engagement"] {
-					enqueueErr = s.enqueueEngagementSweepTx(txCtx, tx, now)
-					sweepEnqueued[acc.WorkspaceID+"|engagement"] = enqueueErr == nil
+				if sweepEnqueued[acc.WorkspaceID+"|engagement"] {
+					continue
 				}
+				enqueueErr = s.enqueueEngagementSweepTx(txCtx, tx, now)
+				if enqueueErr == nil {
+					sweepEnqueued[acc.WorkspaceID+"|engagement"] = true
+				}
+				continue
 			case FeatureAnalytics:
-				if !sweepEnqueued[acc.WorkspaceID+"|analytics"] {
-					enqueueErr = s.enqueueAnalyticsSweepTx(txCtx, tx, now)
-					sweepEnqueued[acc.WorkspaceID+"|analytics"] = enqueueErr == nil
+				if sweepEnqueued[acc.WorkspaceID+"|analytics"] {
+					continue
 				}
+				enqueueErr = s.enqueueAnalyticsSweepTx(txCtx, tx, now)
+				if enqueueErr == nil {
+					sweepEnqueued[acc.WorkspaceID+"|analytics"] = true
+				}
+				continue
 			case FeatureGrow:
 				enqueueErr = s.enqueueGrowthDiscoveryTx(txCtx, tx, acc.WorkspaceID, acc.ID, actor.UserID, now)
 			}
@@ -405,9 +402,6 @@ func (s *Service) enqueueMessagingSyncTx(ctx context.Context, tx bun.Tx, account
 	payload := fmt.Sprintf(`{"id":"%s"}`, accountID)
 	exists, err := tx.NewSelect().Model((*models.Job)(nil)).Where("type = ? AND payload = ? AND status IN (?, ?)", jobregistry.TypeMessagesSync, payload, jobregistry.StatusPending, jobregistry.StatusProcessing).Exists(ctx)
 	if err != nil {
-		if strings.Contains(err.Error(), "no such table") {
-			return nil
-		}
 		return err
 	}
 	if exists {
@@ -419,9 +413,6 @@ func (s *Service) enqueueMessagingSyncTx(ctx context.Context, tx bun.Tx, account
 	}
 	job.ScopeID = workspaceID
 	_, err = tx.NewInsert().Model(job).On("CONFLICT DO NOTHING").Exec(ctx)
-	if err != nil && strings.Contains(err.Error(), "no such table") {
-		return nil
-	}
 	return err
 }
 
@@ -430,9 +421,6 @@ func (s *Service) enqueueEngagementSweepTx(ctx context.Context, tx bun.Tx, runAt
 	payload := string(payloadBytes)
 	exists, err := tx.NewSelect().Model((*models.Job)(nil)).Where("type = ? AND status IN (?, ?)", jobregistry.TypeEngagementSweep, jobregistry.StatusPending, jobregistry.StatusProcessing).Exists(ctx)
 	if err != nil {
-		if strings.Contains(err.Error(), "no such table") {
-			return nil
-		}
 		return err
 	}
 	if exists {
@@ -443,9 +431,6 @@ func (s *Service) enqueueEngagementSweepTx(ctx context.Context, tx bun.Tx, runAt
 		return err
 	}
 	_, err = tx.NewInsert().Model(job).On("CONFLICT DO NOTHING").Exec(ctx)
-	if err != nil && strings.Contains(err.Error(), "no such table") {
-		return nil
-	}
 	return err
 }
 
@@ -454,9 +439,6 @@ func (s *Service) enqueueAnalyticsSweepTx(ctx context.Context, tx bun.Tx, runAt 
 	payload := string(payloadBytes)
 	exists, err := tx.NewSelect().Model((*models.Job)(nil)).Where("type = ? AND status IN (?, ?)", jobregistry.TypeAnalyticsSweep, jobregistry.StatusPending, jobregistry.StatusProcessing).Exists(ctx)
 	if err != nil {
-		if strings.Contains(err.Error(), "no such table") {
-			return nil
-		}
 		return err
 	}
 	if exists {
@@ -467,9 +449,6 @@ func (s *Service) enqueueAnalyticsSweepTx(ctx context.Context, tx bun.Tx, runAt 
 		return err
 	}
 	_, err = tx.NewInsert().Model(job).On("CONFLICT DO NOTHING").Exec(ctx)
-	if err != nil && strings.Contains(err.Error(), "no such table") {
-		return nil
-	}
 	return err
 }
 
@@ -480,9 +459,6 @@ func (s *Service) enqueueGrowthDiscoveryTx(ctx context.Context, tx bun.Tx, works
 	identity := jobregistry.Identity{ScopeID: workspaceID, DedupeKey: "growth:" + accountID}
 	exists, err := tx.NewSelect().Model((*models.Job)(nil)).Where("type = ? AND scope_id = ? AND dedupe_key = ? AND status IN (?, ?)", jobregistry.TypeGrowthDiscovery, identity.ScopeID, identity.DedupeKey, jobregistry.StatusPending, jobregistry.StatusProcessing).Exists(ctx)
 	if err != nil {
-		if strings.Contains(err.Error(), "no such table") {
-			return nil
-		}
 		return err
 	}
 	if exists {
@@ -495,9 +471,6 @@ func (s *Service) enqueueGrowthDiscoveryTx(ctx context.Context, tx bun.Tx, works
 	job.ScopeID = identity.ScopeID
 	job.DedupeKey = identity.DedupeKey
 	_, err = tx.NewInsert().Model(job).On("CONFLICT DO NOTHING").Exec(ctx)
-	if err != nil && strings.Contains(err.Error(), "no such table") {
-		return nil
-	}
 	return err
 }
 
@@ -506,14 +479,16 @@ func (s *Service) resolveOne(ctx context.Context, account models.SocialAccount, 
 	required, missing, unavailable, supported := s.supportFor(ctx, account, feature)
 	allowed, planReason := true, ""
 	if s.planPolicy != nil {
+		var err error
 		allowed, planReason = s.planPolicy.Allowed(ctx, account.WorkspaceID, feature)
+		_ = err
 	}
 	var pref *models.AccountFeature
 	var pf models.AccountFeature
 	err := s.db.NewSelect().Model(&pf).Where("social_account_id = ? AND feature = ?", account.ID, feature).Scan(ctx)
 	if err == nil {
 		pref = &pf
-	} else if err != sql.ErrNoRows {
+	} else if !errors.Is(err, sql.ErrNoRows) {
 		return ResolvedFeature{}, err
 	}
 	storedExists := pref != nil

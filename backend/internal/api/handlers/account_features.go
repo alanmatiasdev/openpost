@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -26,22 +27,22 @@ type ReadAccountFeaturesInput struct {
 }
 
 type FeatureStateResponse struct {
-	WorkspaceID       string  `json:"workspace_id" doc:"Workspace ID"`
-	SocialAccountID   string  `json:"social_account_id" doc:"Social account ID"`
-	Platform          string  `json:"platform" doc:"Provider key"`
-	Feature           string  `json:"feature" enum:"messaging,engagement,analytics,grow" doc:"Feature key"`
-	Supported         bool    `json:"supported" doc:"Whether provider supports this feature"`
-	Availability      string  `json:"availability" enum:"available,unsupported,missing_scope,plan_restricted" doc:"Availability state"`
-	ReasonCode        string  `json:"reason_code" enum:"available,unsupported,missing_scope,plan_restricted" doc:"Stable reason code"`
+	WorkspaceID       string   `json:"workspace_id" doc:"Workspace ID"`
+	SocialAccountID   string   `json:"social_account_id" doc:"Social account ID"`
+	Platform          string   `json:"platform" doc:"Provider key"`
+	Feature           string   `json:"feature" enum:"messaging,engagement,analytics,grow" doc:"Feature key"`
+	Supported         bool     `json:"supported" doc:"Whether provider supports this feature"`
+	Availability      string   `json:"availability" enum:"available,unsupported,missing_scope,plan_restricted" doc:"Availability state"`
+	ReasonCode        string   `json:"reason_code" enum:"available,unsupported,missing_scope,plan_restricted" doc:"Stable reason code"`
 	RequiredScopes    []string `json:"required_scopes,omitempty" doc:"Required provider scopes for this feature"`
 	MissingScopes     []string `json:"missing_scopes,omitempty" doc:"Provider scopes missing for this feature"`
-	UnavailableReason string  `json:"unavailable_reason,omitempty" doc:"Why feature is unavailable"`
-	StoredExists      bool    `json:"stored_exists" doc:"Whether a choice has been stored"`
-	StoredEnabled     bool    `json:"stored_enabled" doc:"Stored enabled value"`
-	DecidedByUserID   string  `json:"decided_by_user_id,omitempty" doc:"User who decided"`
-	Source            string  `json:"source,omitempty" doc:"Source of decision"`
-	DecidedAt         *string `json:"decided_at,omitempty" doc:"When decision was made"`
-	EffectiveEnabled  bool    `json:"effective_enabled" doc:"Effective enabled state (fail-closed)"`
+	UnavailableReason string   `json:"unavailable_reason,omitempty" doc:"Why feature is unavailable"`
+	StoredExists      bool     `json:"stored_exists" doc:"Whether a choice has been stored"`
+	StoredEnabled     bool     `json:"stored_enabled" doc:"Stored enabled value"`
+	DecidedByUserID   string   `json:"decided_by_user_id,omitempty" doc:"User who decided"`
+	Source            string   `json:"source,omitempty" doc:"Source of decision"`
+	DecidedAt         *string  `json:"decided_at,omitempty" doc:"When decision was made"`
+	EffectiveEnabled  bool     `json:"effective_enabled" doc:"Effective enabled state (fail-closed)"`
 }
 
 type ReadAccountFeaturesOutput struct {
@@ -96,11 +97,14 @@ func (h *AccountFeaturesHandler) ReadFeatures(api huma.API) {
 		// Authorize read via service
 		resolved, err := h.service.Read(ctx, workspaceID, actor, ids)
 		if err != nil {
-			if strings.Contains(err.Error(), "workspace read denied") || strings.Contains(err.Error(), "workspace") && strings.Contains(err.Error(), "denied") {
-				return nil, huma.Error403Forbidden(err.Error())
+			if errors.Is(err, accountfeatures.ErrWorkspaceReadDenied) {
+				return nil, huma.Error403Forbidden("workspace read denied")
 			}
-			if strings.Contains(err.Error(), "does not belong") || strings.Contains(err.Error(), "not found") {
+			if errors.Is(err, accountfeatures.ErrAccountNotFound) || errors.Is(err, accountfeatures.ErrAccountWrongWorkspace) {
 				return nil, huma.Error404NotFound(err.Error())
+			}
+			if errors.Is(err, accountfeatures.ErrUnknownFeature) {
+				return nil, huma.Error400BadRequest(err.Error())
 			}
 			return nil, huma.Error400BadRequest(err.Error())
 		}
@@ -138,17 +142,16 @@ func (h *AccountFeaturesHandler) SaveFeatures(api huma.API) {
 		actor := workspaceActor(ctx, middleware.GetUserID(ctx))
 		resolved, err := h.service.BatchSave(ctx, workspaceID, actor, choices)
 		if err != nil {
-			msg := err.Error()
-			if strings.Contains(msg, "workspace edit denied") {
-				return nil, huma.Error403Forbidden(msg)
+			if errors.Is(err, accountfeatures.ErrWorkspaceEditDenied) {
+				return nil, huma.Error403Forbidden("workspace edit denied")
 			}
-			if strings.Contains(msg, "does not belong") || strings.Contains(msg, "not found") {
-				return nil, huma.Error404NotFound(msg)
+			if errors.Is(err, accountfeatures.ErrAccountNotFound) || errors.Is(err, accountfeatures.ErrAccountWrongWorkspace) {
+				return nil, huma.Error404NotFound(err.Error())
 			}
-			if strings.Contains(msg, "unknown feature") {
-				return nil, huma.Error400BadRequest(msg)
+			if errors.Is(err, accountfeatures.ErrUnknownFeature) {
+				return nil, huma.Error400BadRequest(err.Error())
 			}
-			return nil, huma.Error400BadRequest(msg)
+			return nil, huma.Error400BadRequest(err.Error())
 		}
 		return &SaveAccountFeaturesOutput{Body: toFeatureResponses(resolved)}, nil
 	})

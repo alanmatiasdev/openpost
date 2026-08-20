@@ -78,13 +78,10 @@ func (s *Service) SetFeatureGate(g FeatureGate) {
 
 func (s *Service) isEngagementEnabled(ctx context.Context, accountID string) bool {
 	if s.featureGate == nil {
-		return true
+		return false
 	}
 	enabled, err := s.featureGate.IsEffectiveEnabled(ctx, accountID, "engagement")
 	if err != nil {
-		if strings.Contains(err.Error(), "no such table") {
-			return true
-		}
 		return false
 	}
 	return enabled
@@ -568,7 +565,7 @@ func validateEngagementAction(item models.EngagementItem, action, message string
 // payload; provider_write_attempts stores only their digest.
 //
 //nolint:gocyclo // Validation and the fenced ownership query intentionally stay at this transport-independent boundary.
-func QueueProviderCommentAction(ctx context.Context, db *bun.DB, input ProviderCommentActionInput) (string, error) {
+func QueueProviderCommentAction(ctx context.Context, db *bun.DB, gate FeatureGate, input ProviderCommentActionInput) (string, error) {
 	input.WorkspaceID = strings.TrimSpace(input.WorkspaceID)
 	input.PublicationID = strings.TrimSpace(input.PublicationID)
 	input.RenditionID = strings.TrimSpace(input.RenditionID)
@@ -581,18 +578,11 @@ func QueueProviderCommentAction(ctx context.Context, db *bun.DB, input ProviderC
 		input.SocialAccountID == "" || input.ProviderCommentID == "" || input.Actor.UserID == "" {
 		return "", fmt.Errorf("provider comment action ownership is required")
 	}
-	// Feature gate: fail closed if engagement not effectively enabled for this account.
-	// Use DB preference check (enabled flag) as fail-closed signal; full support/scope/plan check happens at Job execution via Service.
-	var pref models.AccountFeature
-	if err := db.NewSelect().Model(&pref).Where("social_account_id = ? AND feature = ?", input.SocialAccountID, "engagement").Scan(ctx); err != nil {
-		if strings.Contains(err.Error(), "no such table") {
-			// No feature table yet (test DB without migration), allow for backward compat.
-		} else if errors.Is(err, sql.ErrNoRows) {
-			return "", fmt.Errorf("engagement is disabled for this account")
-		} else {
-			return "", err
-		}
-	} else if !pref.Enabled {
+	if gate == nil {
+		return "", fmt.Errorf("engagement is disabled for this account")
+	}
+	enabled, err := gate.IsEffectiveEnabled(ctx, input.SocialAccountID, "engagement")
+	if err != nil || !enabled {
 		return "", fmt.Errorf("engagement is disabled for this account")
 	}
 	switch input.Action {

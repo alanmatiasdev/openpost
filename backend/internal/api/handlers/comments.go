@@ -183,7 +183,7 @@ func (h *CommentHandler) replyToComment(api huma.API) {
 		if _, err := h.commentProvider(account); err != nil {
 			return nil, err
 		}
-		jobID, err := engagementservice.QueueProviderCommentAction(ctx, h.db, engagementservice.ProviderCommentActionInput{
+		jobID, err := engagementservice.QueueProviderCommentAction(ctx, h.db, h.featureGate, engagementservice.ProviderCommentActionInput{
 			Actor:       workspaceActor(ctx, middleware.GetUserID(ctx)),
 			WorkspaceID: publication.WorkspaceID, PublicationID: publication.ID,
 			RenditionID: rendition.ID, SocialAccountID: account.ID,
@@ -227,7 +227,7 @@ func (h *CommentHandler) hideComment(api huma.API) {
 		if _, err := h.commentProvider(account); err != nil {
 			return nil, err
 		}
-		jobID, err := engagementservice.QueueProviderCommentAction(ctx, h.db, engagementservice.ProviderCommentActionInput{
+		jobID, err := engagementservice.QueueProviderCommentAction(ctx, h.db, h.featureGate, engagementservice.ProviderCommentActionInput{
 			Actor:       workspaceActor(ctx, middleware.GetUserID(ctx)),
 			WorkspaceID: publication.WorkspaceID, PublicationID: publication.ID,
 			RenditionID: rendition.ID, SocialAccountID: account.ID,
@@ -270,7 +270,7 @@ func (h *CommentHandler) deleteComment(api huma.API) {
 		if _, err := h.commentProvider(account); err != nil {
 			return nil, err
 		}
-		jobID, err := engagementservice.QueueProviderCommentAction(ctx, h.db, engagementservice.ProviderCommentActionInput{
+		jobID, err := engagementservice.QueueProviderCommentAction(ctx, h.db, h.featureGate, engagementservice.ProviderCommentActionInput{
 			Actor:       workspaceActor(ctx, middleware.GetUserID(ctx)),
 			WorkspaceID: publication.WorkspaceID, PublicationID: publication.ID,
 			RenditionID: rendition.ID, SocialAccountID: account.ID,

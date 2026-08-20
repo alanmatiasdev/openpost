@@ -96,6 +96,7 @@ type MCPHandler struct {
 	tokenSource       AccessTokenSource
 	readiness         *providerreadiness.Service
 	serverVersion     string
+	featureGate       engagementservice.FeatureGate
 }
 
 func NewMCPHandler(db *bun.DB, authenticator middleware.Authenticator, entitlement ...entitlements.Service) *MCPHandler {
@@ -161,6 +162,10 @@ func (h *MCPHandler) SetTokenSource(source AccessTokenSource) {
 
 func (h *MCPHandler) SetProviderReadiness(service *providerreadiness.Service) {
 	h.readiness = service
+}
+
+func (h *MCPHandler) SetFeatureGate(g engagementservice.FeatureGate) {
+	h.featureGate = g
 }
 
 func (h *MCPHandler) publicationHandler() *PublicationHandler {
@@ -3464,7 +3469,7 @@ func (h *MCPHandler) moderateComment(ctx context.Context, userID, operation stri
 	default:
 		return nil, &mcpError{Code: -32602, Message: "unknown comment action"}
 	}
-	jobID, err := engagementservice.QueueProviderCommentAction(ctx, h.db, engagementservice.ProviderCommentActionInput{
+	jobID, err := engagementservice.QueueProviderCommentAction(ctx, h.db, h.featureGate, engagementservice.ProviderCommentActionInput{
 		Actor:       workspaceActor(ctx, userID),
 		WorkspaceID: publication.WorkspaceID, PublicationID: publication.ID,
 		RenditionID: rendition.ID, SocialAccountID: account.ID,
