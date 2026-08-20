@@ -110,7 +110,7 @@
 			]);
 
 			if (featErr) {
-				const detail = (featErr as { detail?: string }).detail ?? '';
+				const detail = featErr.detail ?? '';
 				if (
 					detail.toLowerCase().includes('does not belong') ||
 					detail.toLowerCase().includes('not found')
@@ -125,8 +125,8 @@
 				return;
 			}
 
-			features = (featData ?? []) as Feature[];
-			accounts = (accData ?? []) as SocialAccount[];
+			features = featData ?? [];
+			accounts = accData ?? [];
 
 			// Validate that all target IDs belong to workspace and appear in features
 			const seen = new Set(features.map((f) => f.social_account_id));
@@ -191,7 +191,7 @@
 				const enabled = Boolean(effective[key]);
 				choices.push({
 					account_id: f.social_account_id,
-					feature: f.feature as 'messaging' | 'engagement' | 'analytics' | 'grow',
+					feature: f.feature,
 					enabled,
 					source: 'user_save'
 				});
@@ -204,7 +204,7 @@
 				body: { workspace_id: workspaceID, choices }
 			});
 			if (err) {
-				saveError = (err as { detail?: string }).detail ?? m.account_setup_error_load_failed();
+				saveError = err.detail ?? m.account_setup_error_load_failed();
 				return;
 			}
 			continueFromSetup();
@@ -234,7 +234,7 @@
 		void saveChoices();
 	}
 
-	function selectionsForAccount(accountId: string): Record<string, boolean> {
+	function selectionsForAccount(accountId: string) {
 		const map: Record<string, boolean> = {};
 		for (const f of offeredForAccount(accountId)) {
 			map[f.feature] = Boolean(selections[selectionKey(accountId, f.feature)]);

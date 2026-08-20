@@ -199,11 +199,13 @@ export function formatMutualCopy(
 	}
 }
 
-export function followButtonState(followState: string): {
+export type FollowButtonState = {
 	labelKey: string;
 	disabled: boolean;
 	variant: 'default' | 'secondary' | 'outline';
-} {
+};
+
+export function followButtonState(followState: string): FollowButtonState {
 	switch (followState) {
 		case 'pending':
 			return { labelKey: 'grow_following_progress', disabled: true, variant: 'secondary' };

@@ -171,7 +171,7 @@
 				accountFeatures = [];
 				return;
 			}
-			accountFeatures = (data ?? []) as Feature[];
+			accountFeatures = data ?? [];
 		} catch {
 			accountFeatures = [];
 		} finally {
@@ -446,11 +446,10 @@
 				params: { query: { workspace_id: selectedWorkspaceId, account_ids: account.id } }
 			});
 			if (err) {
-				editFeaturesError =
-					(err as { detail?: string }).detail ?? m.account_setup_error_load_failed();
+				editFeaturesError = err.detail ?? m.account_setup_error_load_failed();
 				return;
 			}
-			editFeatures = (data ?? []) as Feature[];
+			editFeatures = data ?? [];
 			const offered = editFeatures.filter((f) => f.availability !== 'unsupported');
 			const next: Record<string, boolean> = {};
 			for (const f of offered) {
@@ -487,17 +486,14 @@
 			if (offered.length > 0) {
 				const choices = offered.map((f) => ({
 					account_id: editingAccount!.id,
-					feature: f.feature as 'messaging' | 'engagement' | 'analytics' | 'grow',
+					feature: f.feature,
 					enabled: Boolean(editFeatureSelections[f.feature]),
 					source: 'user_save'
 				}));
 				const { error: featErr } = await client.POST('/account-features', {
 					body: { workspace_id: selectedWorkspaceId, choices }
 				});
-				if (featErr)
-					throw new Error(
-						(featErr as { detail?: string }).detail ?? m.account_setup_error_load_failed()
-					);
+				if (featErr) throw new Error(featErr.detail ?? m.account_setup_error_load_failed());
 			}
 			editAccountDialogOpen = false;
 			editingAccount = null;

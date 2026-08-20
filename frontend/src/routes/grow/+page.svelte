@@ -232,7 +232,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 				)
 			);
 			if (localEligible.length > 0) {
-				const nextID = selectInitialAccount(localEligible as SocialAccount[], selectedAccountID);
+				const nextID = selectInitialAccount(localEligible, selectedAccountID);
 				if (nextID !== selectedAccountID) {
 					resetGrowthForSwitch();
 					selectedAccountID = nextID;

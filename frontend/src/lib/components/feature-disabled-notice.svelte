@@ -14,7 +14,7 @@
 		features,
 		staleFeature,
 		recoveryHref = '/settings?tab=accounts',
-		tone = 'warning' as 'warning' | 'info' | 'error'
+		tone = 'warning'
 	}: {
 		feature: FeatureKey;
 		features?: FeatureState[];
