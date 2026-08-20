@@ -33,8 +33,12 @@ The authorization decision for an actor in one Workspace. It combines credential
 _Avoid_: Workspace membership, Organization affiliation
 
 **Composer session**:
-The browser-side editing workflow for one Publication in one Workspace. It may continue through an OpenPost Image Editor or OpenPost Video Editor handoff, but it does not continue across a Workspace change.
+The browser-side editing workflow for one Publication in one Workspace. It may continue through an OpenPost Image Editor or OpenPost Studio handoff, but it does not continue across a Workspace change.
 _Avoid_: Draft, Publication
+
+**OpenPost Studio**:
+The standalone local-first desktop application for creating media in the OpenPost product family. It works without an OpenPost account and can connect to Hosted services or self-hosted deployments.
+_Avoid_: OpenPost Video Editor, web Studio
 
 **Engagement**:
 A provider interaction attached to a published Rendition, such as a comment, reply, or reaction.
