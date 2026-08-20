@@ -4,6 +4,35 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [3.14.0] - 2026-08-20
+
+### Added
+
+- Added `changes/*.md` fragment workflow that merges per-issue changelog entries into `CHANGELOG.md` under `[Unreleased]` before each release, grouped by heading; fragments are deleted after merge so the manual changelog stays conflict-free across parallel tickets.
+- Added `devenv` `doctor` script that proxies to `bun run doctor` for a single local health gate.
+
+### Changed
+
+- Made the product clear at a glance in README and marketing with refreshed hero, product screenshots, and copy that shows the Publication and Rendition workspace without hiding provider truth.
+- Documented the single backend runtime location for `OPENPOST_PADDLE_*` (`backend/.env` for devenv, container environment for Docker) and clarified that bare `PADDLE_*` is never read; Cloud mode now warns at startup with the exact ignored names without printing values.
+- Refreshed product screenshots as trustworthy, exact renders of the current app and documented the fragment workflow with granular check guidance (`check:frontend:types`, `check:contracts`, `test:file`, `test:backend:pkg`) and an `.rgignore` to keep searches fast.
+- Staged provider, security, and scheduling flows with progressive disclosure: available providers stay primary while setup-required providers move behind a collapsed section, failed provider errors stay dominant with a retry beside the message, authenticator setup is staged one primary action at a time, quick schedule paths are primary while calendar and randomization are behind disclosure, and Workspace Preferences and Security panels collapse media lifecycle, danger zone, and identity sections.
+
+### Fixed
+
+- Instance admin plan overrides now work end to end. Assigning an override previously failed with a 500 because the generated subscription row carried an empty `workspace_id` that violated the Postgres foreign key; the model now stores a NULL workspace, and the override grants plan entitlements exactly like a paid Paddle subscription across billing status, entitlement checks, setup state, and public profiles.
+- Removing an override from the plan dialog previously returned 422 because the empty `plan_id` was rejected by request validation; empty `plan_id` now reaches the removal path as documented.
+- Resolved configured Mastodon adapter by canonical `instance_url` before dynamic registration so OAuth callbacks find the correct provider key.
+- Loaded `SSL_CERT_FILE` into the Go root pool on macOS so local E2E Mastodon CA is trusted without `InsecureSkipVerify`.
+- Ignored aborted fetch errors after component teardown and pagehide so stale composer requests do not pollute console telemetry.
+- Rendered self-hosted registration and onboarding copy and skipped the hosted purchase-choice gate when `purchase_choice_required` is false; preserved signup, verify, and redirect context in purchase-choice Change links and showed a locked checkout state when a purchase choice is bound.
+- Handled first-load Vite dev race for generated SvelteKit nodes with graceful chunk-reload (`vite:preloadError` plus `error` and `unhandledrejection`) guarded by a sessionStorage retry budget and proactive service-worker `controllerchange` handling, and cleared the budget after a successful load.
+- Fixed Bun SQLite tag warning by using `column:type` and `column:notnull` so type and not-null are not parsed as standalone options.
+- Made register and verify-email config loading resilient with `Promise.allSettled` and `try/finally`, always clearing loading state and showing a Retry action while preserving form values; corrected verification copy to inbox, code, address, and retry guidance.
+- Deduplicated desktop setup guides so the home guide is visible on desktop and hidden on mobile while the composer guide does the opposite, and mapped raw backend OAuth errors for Mastodon `instance_url` and X callback allowlists to user-facing connection messages.
+- Reconciled server-assigned Segment and Rendition IDs after draft creation so subsequent edits do not hit the unique position constraint, and closed the account menu before Settings navigation so it does not cover the destination page.
+- Kept the writing surface focused by removing the inline schedule helper from the text post composer.
+
 ## [3.13.0] - 2026-08-17
 
 ### Added
