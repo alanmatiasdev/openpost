@@ -40,7 +40,14 @@
     },
     "delivery": {
       "description": "Build, test, image, deployment, release, certification, and repository environment contracts",
-      "prefixes": [".github/", "docker/", "provider-certification/", "scripts/", "tools/"],
+      "prefixes": [
+        ".github/",
+        "changes/",
+        "docker/",
+        "provider-certification/",
+        "scripts/",
+        "tools/"
+      ],
       "paths": [
         ".dockerignore",
         ".env.example",
@@ -75,7 +82,7 @@
     },
     "repository": {
       "description": "Repository behavior and licensing with no standalone runtime owner",
-      "paths": [".gitattributes", ".gitignore", "LICENSE"]
+      "paths": [".gitattributes", ".gitignore", ".rgignore", "LICENSE"]
     }
   },
   "exemptions": [

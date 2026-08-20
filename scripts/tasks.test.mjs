@@ -25,6 +25,9 @@ test("the root manifest exposes one canonical verification interface", () => {
     "build",
     "capture:product-screenshots",
     "check",
+    "check:changed",
+    "check:frontend:i18n",
+    "check:frontend:types",
     "dev",
     "doctor",
     "format",
@@ -33,6 +36,8 @@ test("the root manifest exposes one canonical verification interface", () => {
     "lint",
     "release",
     "test",
+    "test:backend:pkg",
+    "test:file",
     "verify",
   ]);
 });
@@ -114,6 +119,7 @@ test("Devenv provides tools and utilities without a second verification interfac
     "setup",
     "docker-build",
     "docker-run",
+    "doctor",
   ]);
 
   assert.doesNotMatch(readFileSync("backend/devenv.nix", "utf8"), /scripts\s*=\s*\{/u);
