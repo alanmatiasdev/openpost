@@ -8,7 +8,7 @@
     "scheme": "openpost",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon",
+      "icon": "./assets/images/icon.png",
       "bundleIdentifier": "com.openpost.app",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
@@ -16,13 +16,17 @@
     },
     "android": {
       "package": "com.openpost.app",
+      "versionCode": 1,
+      "blockedPermissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.SYSTEM_ALERT_WINDOW"
+      ],
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#B74C05",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": true
     },
     "web": {
       "output": "single"
@@ -30,12 +34,24 @@
     "plugins": [
       "expo-router",
       "expo-share-intent",
+      "./plugins/with-android-release-signing",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow OpenPost to attach photos to your posts.",
+          "cameraPermission": "Allow OpenPost to take a photo for your post."
+        }
+      ],
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
+          "backgroundColor": "#B74C05",
           "image": "./assets/images/splash-icon.png",
-          "imageWidth": 76
+          "imageWidth": 128,
+          "dark": {
+            "backgroundColor": "#B74C05",
+            "image": "./assets/images/splash-icon.png"
+          }
         }
       ]
     ],

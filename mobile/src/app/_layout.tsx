@@ -2,9 +2,12 @@ import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from "expo-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import * as SplashScreen from "expo-splash-screen";
 import { ShareIntentProvider } from "expo-share-intent";
+import { StatusBar } from "expo-status-bar";
 import { useColorScheme } from "react-native";
 import { useEffect, useState, useSyncExternalStore } from "react";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 
+import { DARK_COLORS, LIGHT_COLORS } from "@/components/ui";
 import { getServer, loadServer, subscribeServer } from "@/lib/server";
 import { getToken, loadToken, subscribeToken } from "@/lib/api/token-store";
 
@@ -38,31 +41,57 @@ export default function RootLayout() {
 
   if (!loaded) return null;
 
+  const baseTheme = scheme === "dark" ? DarkTheme : DefaultTheme;
+  const colors = scheme === "dark" ? DARK_COLORS : LIGHT_COLORS;
+  const navigationTheme = {
+    ...baseTheme,
+    colors: {
+      ...baseTheme.colors,
+      primary: colors.tint,
+      background: colors.bg,
+      card: colors.card,
+      text: colors.text,
+      border: colors.separator,
+      notification: colors.danger,
+    },
+  };
+
   return (
-    <QueryClientProvider client={queryClient}>
-      <ShareIntentProvider>
-        <ThemeProvider value={scheme === "dark" ? DarkTheme : DefaultTheme}>
-          <Stack>
-            <Stack.Screen name="index" />
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-            <Stack.Screen
-              name="onboarding/server"
-              options={{ headerShown: !signedIn, title: "Server", headerBackTitle: "Back" }}
-            />
-            <Stack.Screen name="onboarding/login" options={{ headerShown: false }} />
-            <Stack.Screen name="onboarding/pair" options={{ headerShown: false }} />
-            <Stack.Screen
-              name="onboarding/workspace"
-              options={{ headerShown: false, gestureEnabled: false }}
-            />
-            <Stack.Screen
-              name="compose/[id]"
-              options={{ presentation: "modal", title: "Compose", headerShown: false }}
-            />
-            <Stack.Screen name="post/[id]" options={{ title: "Post" }} />
-          </Stack>
-        </ThemeProvider>
-      </ShareIntentProvider>
-    </QueryClientProvider>
+    <SafeAreaProvider>
+      <QueryClientProvider client={queryClient}>
+        <ShareIntentProvider>
+          <ThemeProvider value={navigationTheme}>
+            <StatusBar style="auto" />
+            <Stack>
+              <Stack.Screen name="index" />
+              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+              <Stack.Screen
+                name="onboarding/server"
+                options={{
+                  headerShown: !signedIn,
+                  title: "Server",
+                  headerBackTitle: "Back",
+                }}
+              />
+              <Stack.Screen name="onboarding/login" options={{ headerShown: false }} />
+              <Stack.Screen name="onboarding/pair" options={{ headerShown: false }} />
+              <Stack.Screen
+                name="onboarding/workspace"
+                options={{ headerShown: false, gestureEnabled: false }}
+              />
+              <Stack.Screen
+                name="compose/[id]"
+                options={{
+                  presentation: "modal",
+                  title: "Compose",
+                  headerShown: false,
+                }}
+              />
+              <Stack.Screen name="post/[id]" options={{ title: "Post" }} />
+            </Stack>
+          </ThemeProvider>
+        </ShareIntentProvider>
+      </QueryClientProvider>
+    </SafeAreaProvider>
   );
 }

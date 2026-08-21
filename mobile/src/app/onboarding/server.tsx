@@ -20,6 +20,7 @@ import {
   TextField,
   useColors,
 } from "@/components/ui";
+import { Brand } from "@/components/brand";
 import { HOSTED_URL, probeServer, setServer } from "@/lib/server";
 
 export default function ServerScreen() {
@@ -53,28 +54,36 @@ export default function ServerScreen() {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          <Text style={[styles.title, { color: colors.text }]}>Welcome to OpenPost</Text>
+          <Brand style={styles.brand} />
+          <Text style={[styles.title, { color: colors.text }]}>Choose your OpenPost server</Text>
           <BodyText style={styles.subtitle}>
-            Connect to OpenPost hosted, or your own self-hosted instance.
+            Use our hosted service or connect to an OpenPost server you manage.
           </BodyText>
 
-          <Card style={styles.hostedCard}>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => void choose(HOSTED_URL, "hosted")}
-              disabled={busy !== null}
-              style={({ pressed }) => [styles.hostedButton, pressed && { opacity: 0.6 }]}
-            >
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{
+              disabled: busy !== null,
+              busy: busy === "hosted",
+            }}
+            onPress={() => void choose(HOSTED_URL, "hosted")}
+            disabled={busy !== null}
+            style={({ pressed }) => pressed && { opacity: 0.72 }}
+          >
+            <Card style={styles.hostedCard}>
               {busy === "hosted" ? (
                 <ActivityIndicator color={colors.tint} />
               ) : (
                 <>
-                  <Text style={[styles.hostedTitle, { color: colors.text }]}>OpenPost hosted</Text>
-                  <BodyText>{HOSTED_URL.replace("https://", "")}</BodyText>
+                  <Text style={[styles.hostedTitle, { color: colors.text }]}>OpenPost Hosted</Text>
+                  <BodyText>Fastest setup. Sign in with your OpenPost account.</BodyText>
+                  <BodyText style={{ color: colors.tint, fontWeight: "600" }}>
+                    {HOSTED_URL.replace("https://", "")}
+                  </BodyText>
                 </>
               )}
-            </Pressable>
-          </Card>
+            </Card>
+          </Pressable>
 
           <SectionHeader label="Self-hosted instance" />
           <TextField
@@ -87,13 +96,17 @@ export default function ServerScreen() {
             returnKeyType="done"
             onSubmitEditing={() => void choose(url, "custom")}
           />
+          <BodyText>Self-hosted servers must use HTTPS and expose the OpenPost API.</BodyText>
           {error ? (
-            <BodyText style={{ color: colors.danger, marginTop: 8 }}>{error}</BodyText>
+            <BodyText accessibilityRole="alert" style={{ color: colors.danger, marginTop: 8 }}>
+              {error}
+            </BodyText>
           ) : null}
           <Button
-            title={busy === "custom" ? "Checking…" : "Connect"}
+            title="Connect"
             variant="tinted"
             disabled={busy !== null || url.trim().length === 0}
+            loading={busy === "custom"}
             onPress={() => void choose(url, "custom")}
             style={styles.connectButton}
           />
@@ -106,8 +119,12 @@ export default function ServerScreen() {
 const styles = StyleSheet.create({
   content: {
     padding: 20,
-    paddingTop: 96,
+    paddingTop: 44,
+    paddingBottom: 40,
     gap: 12,
+  },
+  brand: {
+    marginBottom: 28,
   },
   title: {
     fontSize: 32,
@@ -118,11 +135,10 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   hostedCard: {
-    paddingVertical: 18,
-  },
-  hostedButton: {
+    minHeight: 116,
+    justifyContent: "center",
     alignItems: "flex-start",
-    gap: 4,
+    gap: 6,
   },
   hostedTitle: {
     fontSize: 17,

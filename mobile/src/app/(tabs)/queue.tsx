@@ -67,7 +67,9 @@ export default function QueueScreen() {
           <ActivityIndicator style={{ marginTop: 24 }} color={colors.tint} />
         ) : null}
         {actionError ? (
-          <BodyText style={{ color: colors.danger, marginBottom: 8 }}>{actionError}</BodyText>
+          <BodyText accessibilityRole="alert" style={{ color: colors.danger, marginBottom: 8 }}>
+            {actionError}
+          </BodyText>
         ) : null}
 
         <Section title="Failed" count={failed.data?.length ?? 0}>
@@ -81,7 +83,7 @@ export default function QueueScreen() {
           ))}
           {(failed.data?.length ?? 0) === 0 ? (
             <Card>
-              <BodyText style={{ textAlign: "center" }}>Nothing failed. Nice.</BodyText>
+              <BodyText style={{ textAlign: "center" }}>No failed posts.</BodyText>
             </Card>
           ) : null}
         </Section>
@@ -126,7 +128,10 @@ function QueueRow({ publication }: { publication: PublicationListItem }) {
   const colors = useColors();
   const platforms = distinctPlatforms(publication);
   return (
-    <Pressable onPress={() => router.push(`/post/${publication.id}` as never)}>
+    <Pressable
+      accessibilityRole="button"
+      onPress={() => router.push(`/post/${publication.id}` as never)}
+    >
       {({ pressed }) => (
         <Card style={[styles.row, pressed && { opacity: 0.6 }]}>
           <View style={{ flex: 1, gap: 4 }}>
@@ -164,6 +169,7 @@ function FailedCard({
   return (
     <Card style={styles.row}>
       <Pressable
+        accessibilityRole="button"
         style={{ flex: 1 }}
         onPress={() => router.push(`/post/${publication.id}` as never)}
       >
@@ -182,10 +188,11 @@ function FailedCard({
         </View>
       </Pressable>
       <Button
-        title={pending ? "…" : "Retry"}
+        title="Retry"
         variant="tinted"
         onPress={onRetry}
         disabled={pending}
+        loading={pending}
         style={styles.retryButton}
       />
     </Card>
@@ -211,7 +218,7 @@ function distinctPlatforms(publication: PublicationListItem): string[] {
 const styles = StyleSheet.create({
   header: {
     paddingHorizontal: 20,
-    paddingTop: 64,
+    paddingTop: 16,
     paddingBottom: 8,
   },
   title: {
@@ -241,7 +248,6 @@ const styles = StyleSheet.create({
     fontWeight: "500",
   },
   retryButton: {
-    minHeight: 36,
     paddingHorizontal: 12,
   },
 });

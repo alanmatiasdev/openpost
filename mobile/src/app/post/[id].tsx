@@ -73,10 +73,15 @@ export default function PostScreen() {
       if (!pub) throw new Error("Not loaded");
       await api().PUT("/publications/{id}", {
         params: { path: { id } },
-        body: { expected_revision: pub.revision ?? 0, scheduled_at: when.toISOString() },
+        body: {
+          expected_revision: pub.revision ?? 0,
+          scheduled_at: when.toISOString(),
+        },
       });
       // Revision bumped by the PUT; re-fetch before scheduling.
-      const fresh = await api().GET("/publications/{id}", { params: { path: { id } } });
+      const fresh = await api().GET("/publications/{id}", {
+        params: { path: { id } },
+      });
       const revision = fresh.data?.revision ?? (pub.revision ?? 0) + 1;
       const { error, response } = await api().POST("/publications/{id}/schedule", {
         params: { path: { id } },
@@ -145,11 +150,19 @@ export default function PostScreen() {
                 <View
                   style={[
                     styles.platformDot,
-                    { backgroundColor: STATUS_COLOR[rendition.status ?? "draft"] },
+                    {
+                      backgroundColor: STATUS_COLOR[rendition.status ?? "draft"],
+                    },
                   ]}
                 />
                 <View style={{ flex: 1, gap: 2 }}>
-                  <Text style={{ color: colors.text, fontSize: 15, fontWeight: "500" }}>
+                  <Text
+                    style={{
+                      color: colors.text,
+                      fontSize: 15,
+                      fontWeight: "500",
+                    }}
+                  >
                     {platformLabel(rendition.platform ?? "")}
                     {rendition.target_key ? ` · ${rendition.target_key}` : ""}
                   </Text>
@@ -171,10 +184,11 @@ export default function PostScreen() {
               ) : null}
               {rendition.external_url ? (
                 <Pressable
+                  accessibilityRole="link"
                   onPress={() => void Linking.openURL(rendition.external_url!)}
-                  style={{ marginTop: 8 }}
+                  style={styles.externalLink}
                 >
-                  <Text style={{ color: colors.tint, fontSize: 14 }}>View published post ↗</Text>
+                  <Text style={{ color: colors.tint, fontSize: 14 }}>View published post</Text>
                 </Pressable>
               ) : null}
             </Card>
@@ -262,7 +276,10 @@ export default function PostScreen() {
                         const { error, response } = await api().DELETE("/publications/{id}", {
                           params: {
                             path: { id },
-                            query: { confirm: true, expected_revision: pub.revision! },
+                            query: {
+                              confirm: true,
+                              expected_revision: pub.revision!,
+                            },
                           },
                         });
                         if (error)
@@ -278,7 +295,7 @@ export default function PostScreen() {
 
           {status === "published" ? (
             <BodyText style={{ textAlign: "center" }}>
-              Published — open a destination above to see the live post.
+              Published. Open a destination above to see the live post.
             </BodyText>
           ) : null}
         </View>
@@ -298,7 +315,7 @@ export default function PostScreen() {
             />
             {reschedule.isPending ? <ActivityIndicator color={colors.tint} /> : null}
             {newDate && !reschedule.isPending ? (
-              <BodyText>Moving to {formatDateTime(newDate.toISOString())}…</BodyText>
+              <BodyText>Moving to {formatDateTime(newDate.toISOString())}...</BodyText>
             ) : null}
           </Card>
         ) : null}
@@ -346,5 +363,10 @@ const styles = StyleSheet.create({
   },
   actions: {
     gap: 10,
+  },
+  externalLink: {
+    minHeight: 48,
+    justifyContent: "center",
+    marginTop: 4,
   },
 });

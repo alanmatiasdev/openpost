@@ -1,6 +1,7 @@
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
 import { Image } from "expo-image";
+import { SymbolView } from "expo-symbols";
 import { router, Stack, useLocalSearchParams } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import DateTimePicker from "@react-native-community/datetimepicker";
@@ -20,6 +21,7 @@ import {
   BodyText,
   Button,
   Card,
+  IconButton,
   Screen,
   SectionHeader,
   StatusBadge,
@@ -155,7 +157,7 @@ function Composer({ id, pub }: { id: string; pub: PublicationDetail }) {
 
   async function httpError(response: Response | undefined, fallback: string): Promise<Error> {
     if (response?.status === 409) {
-      return new Error("This post changed elsewhere. Pulling the latest version…");
+      return new Error("This post changed elsewhere. Pulling the latest version...");
     }
     return new Error(await errorMessage(response, fallback));
   }
@@ -325,7 +327,10 @@ function Composer({ id, pub }: { id: string; pub: PublicationDetail }) {
   const deleteDraft = useMutation({
     mutationFn: async () => {
       const { error, response } = await api().DELETE("/publications/{id}", {
-        params: { path: { id }, query: { confirm: true, expected_revision: revision } },
+        params: {
+          path: { id },
+          query: { confirm: true, expected_revision: revision },
+        },
       });
       if (error) throw await httpError(response, "Could not delete");
     },
@@ -429,14 +434,26 @@ function Composer({ id, pub }: { id: string; pub: PublicationDetail }) {
       <Stack.Screen options={{ headerShown: false }} />
       {/* Modal header */}
       <View style={[styles.modalHeader, { borderBottomColor: colors.separator }]}>
-        <Pressable onPress={() => router.back()} hitSlop={12}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Cancel editing"
+          onPress={() => router.back()}
+          style={styles.headerAction}
+        >
           <Text style={{ color: colors.tint, fontSize: 17 }}>Cancel</Text>
         </Pressable>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
           <StatusBadge status={pub.status} />
           {saveAndClose.isPending ? <ActivityIndicator size="small" color={colors.tint} /> : null}
         </View>
-        <Pressable onPress={() => saveAndClose.mutate()} disabled={saveAndClose.isPending}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Save draft"
+          accessibilityState={{ disabled: saveAndClose.isPending }}
+          onPress={() => saveAndClose.mutate()}
+          disabled={saveAndClose.isPending}
+          style={styles.headerAction}
+        >
           <Text
             style={{
               color: saveAndClose.isPending ? colors.textSecondary : colors.tint,
@@ -475,62 +492,68 @@ function Composer({ id, pub }: { id: string; pub: PublicationDetail }) {
           style={{ lineHeight: 22, minHeight: 140 }}
         />
 
-        <View style={styles.attachRow}>
+        <View style={styles.attachmentList}>
           {attachments.map((attachment, index) => (
-            <View key={attachment.localId} style={styles.thumbWrap}>
-              {attachment.uri ? (
-                <Image source={{ uri: attachment.uri }} style={styles.thumb} contentFit="cover" />
-              ) : (
-                <View style={[styles.thumb, styles.thumbPlaceholder]}>
-                  <Text style={{ fontSize: 20 }}>🖼️</Text>
-                </View>
-              )}
-              {attachment.status === "uploading" ? (
-                <View style={styles.thumbOverlay}>
-                  <ActivityIndicator size="small" color="#ffffff" />
-                </View>
-              ) : attachment.status === "error" ? (
-                <View style={[styles.thumbOverlay, { backgroundColor: "rgba(255,69,58,0.6)" }]}>
-                  <Text style={{ color: "#fff", fontSize: 16, fontWeight: "700" }}>!</Text>
-                </View>
-              ) : null}
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`Remove ${attachment.filename}`}
-                onPress={() => removeAttachment(attachment.localId)}
-                hitSlop={6}
-                style={styles.thumbRemove}
-              >
-                <Text style={{ color: "#fff", fontSize: 11, fontWeight: "700" }}>✕</Text>
-              </Pressable>
-              {attachments.length > 1 ? (
-                <>
+            <View
+              key={attachment.localId}
+              style={[
+                styles.attachmentRow,
+                { backgroundColor: colors.card, borderColor: colors.separator },
+              ]}
+            >
+              <View style={styles.thumbWrap}>
+                {attachment.uri ? (
+                  <Image source={{ uri: attachment.uri }} style={styles.thumb} contentFit="cover" />
+                ) : (
+                  <View style={[styles.thumb, styles.thumbPlaceholder]}>
+                    <SymbolView
+                      name={{ ios: "photo", android: "image" }}
+                      size={24}
+                      tintColor={colors.textSecondary}
+                    />
+                  </View>
+                )}
+                {attachment.status === "uploading" ? (
+                  <View style={styles.thumbOverlay}>
+                    <ActivityIndicator size="small" color="#ffffff" />
+                  </View>
+                ) : attachment.status === "error" ? (
+                  <View style={[styles.thumbOverlay, { backgroundColor: "rgba(255,69,58,0.6)" }]}>
+                    <Text style={{ color: "#fff", fontSize: 16, fontWeight: "700" }}>!</Text>
+                  </View>
+                ) : null}
+              </View>
+              <View style={styles.attachmentDetails}>
+                <BodyText numberOfLines={1} style={{ color: colors.text }}>
+                  {attachment.filename}
+                </BodyText>
+                <View style={styles.attachmentActions}>
                   {index > 0 ? (
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel="Move earlier"
+                    <IconButton
+                      label="Move attachment earlier"
+                      name={{ ios: "chevron.left", android: "chevron_left" }}
                       onPress={() => moveAttachment(index, -1)}
-                      hitSlop={6}
-                      style={[styles.thumbOrder, styles.thumbOrderLeft]}
-                    >
-                      <Text style={{ color: "#fff", fontSize: 10 }}>‹</Text>
-                    </Pressable>
+                    />
                   ) : null}
                   {index < attachments.length - 1 ? (
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel="Move later"
+                    <IconButton
+                      label="Move attachment later"
+                      name={{ ios: "chevron.right", android: "chevron_right" }}
                       onPress={() => moveAttachment(index, 1)}
-                      hitSlop={6}
-                      style={[styles.thumbOrder, styles.thumbOrderRight]}
-                    >
-                      <Text style={{ color: "#fff", fontSize: 10 }}>›</Text>
-                    </Pressable>
+                    />
                   ) : null}
-                </>
-              ) : null}
+                  <IconButton
+                    label={`Remove ${attachment.filename}`}
+                    name={{ ios: "trash", android: "delete" }}
+                    color={colors.danger}
+                    onPress={() => removeAttachment(attachment.localId)}
+                  />
+                </View>
+              </View>
             </View>
           ))}
+        </View>
+        <View style={styles.attachRow}>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Add photos from library"
@@ -541,7 +564,11 @@ function Composer({ id, pub }: { id: string; pub: PublicationDetail }) {
               pressed && { opacity: 0.6 },
             ]}
           >
-            <Text style={{ color: colors.tint, fontSize: 24, fontWeight: "300" }}>＋</Text>
+            <SymbolView
+              name={{ ios: "photo.badge.plus", android: "add_photo_alternate" }}
+              size={24}
+              tintColor={colors.tint}
+            />
           </Pressable>
           <Pressable
             accessibilityRole="button"
@@ -553,7 +580,11 @@ function Composer({ id, pub }: { id: string; pub: PublicationDetail }) {
               pressed && { opacity: 0.6 },
             ]}
           >
-            <Text style={{ fontSize: 20 }}>📷</Text>
+            <SymbolView
+              name={{ ios: "camera", android: "photo_camera" }}
+              size={24}
+              tintColor={colors.tint}
+            />
           </Pressable>
         </View>
 
@@ -565,7 +596,7 @@ function Composer({ id, pub }: { id: string; pub: PublicationDetail }) {
               .map((set) => (
                 <Chip
                   key={set.id}
-                  label={`⚙︎ ${set.name}`}
+                  label={set.name}
                   active={
                     (set.accounts?.length ?? 0) > 0 &&
                     (set.accounts ?? []).every((account) =>
@@ -599,24 +630,38 @@ function Composer({ id, pub }: { id: string; pub: PublicationDetail }) {
                     style={({ pressed }) => [
                       styles.accountRow,
                       { backgroundColor: colors.card },
-                      selected && { borderColor: colors.tint, borderWidth: 1.5 },
+                      selected && {
+                        borderColor: colors.tint,
+                        borderWidth: 1.5,
+                      },
                       pressed && { opacity: 0.6 },
                     ]}
                   >
                     <View
                       style={[
                         styles.checkbox,
-                        selected && { backgroundColor: colors.tint, borderColor: colors.tint },
+                        selected && {
+                          backgroundColor: colors.tint,
+                          borderColor: colors.tint,
+                        },
                         { borderColor: colors.separator },
                       ]}
                     >
                       {selected ? (
-                        <Text style={{ color: "#fff", fontSize: 13, fontWeight: "700" }}>✓</Text>
+                        <SymbolView
+                          name={{ ios: "checkmark", android: "check" }}
+                          size={15}
+                          tintColor="#ffffff"
+                        />
                       ) : null}
                     </View>
                     <View style={{ flex: 1, gap: 1 }}>
                       <Text
-                        style={{ color: colors.text, fontSize: 15, fontWeight: "500" }}
+                        style={{
+                          color: colors.text,
+                          fontSize: 15,
+                          fontWeight: "500",
+                        }}
                         numberOfLines={1}
                       >
                         {account.account_username ? `@${account.account_username}` : account.slug}
@@ -627,12 +672,20 @@ function Composer({ id, pub }: { id: string; pub: PublicationDetail }) {
                   {selected ? (
                     <>
                       <Pressable
+                        accessibilityRole="button"
+                        accessibilityState={{ expanded: expandedAccount === accountId }}
                         onPress={() =>
                           setExpandedAccount(expandedAccount === accountId ? null : accountId)
                         }
                         style={styles.customizeToggle}
                       >
-                        <Text style={{ color: colors.tint, fontSize: 14, fontWeight: "500" }}>
+                        <Text
+                          style={{
+                            color: colors.tint,
+                            fontSize: 14,
+                            fontWeight: "500",
+                          }}
+                        >
                           {expandedAccount === accountId
                             ? "Hide customization"
                             : "Customize for this platform"}
@@ -642,9 +695,12 @@ function Composer({ id, pub }: { id: string; pub: PublicationDetail }) {
                         <TextField
                           value={renditionBodies[accountId] ?? ""}
                           onChangeText={(text) =>
-                            setRenditionBodies((current) => ({ ...current, [accountId]: text }))
+                            setRenditionBodies((current) => ({
+                              ...current,
+                              [accountId]: text,
+                            }))
                           }
-                          placeholder="Leave empty to use the main text…"
+                          placeholder="Leave empty to use the main text..."
                           multiline
                           textAlignVertical="top"
                           style={[styles.overrideField, { minHeight: 80 }]}
@@ -707,7 +763,7 @@ function Composer({ id, pub }: { id: string; pub: PublicationDetail }) {
           ) : null}
           {isScheduled ? (
             <BodyText style={{ marginTop: 6 }}>
-              Already queued — manage it from the Queue tab.
+              Already queued. Manage it from the Queue tab.
             </BodyText>
           ) : null}
         </Card>
@@ -727,7 +783,11 @@ function Composer({ id, pub }: { id: string; pub: PublicationDetail }) {
             onPress={() =>
               Alert.alert("Delete draft?", "This cannot be undone.", [
                 { text: "Cancel", style: "cancel" },
-                { text: "Delete", style: "destructive", onPress: () => deleteDraft.mutate() },
+                {
+                  text: "Delete",
+                  style: "destructive",
+                  onPress: () => deleteDraft.mutate(),
+                },
               ])
             }
             disabled={deleteDraft.isPending}
@@ -743,6 +803,7 @@ function Chip({ label, active, onPress }: { label: string; active: boolean; onPr
   return (
     <Pressable
       accessibilityRole="button"
+      hitSlop={8}
       onPress={onPress}
       style={({ pressed }) => [
         styles.chip,
@@ -753,7 +814,13 @@ function Chip({ label, active, onPress }: { label: string; active: boolean; onPr
         },
       ]}
     >
-      <Text style={{ color: active ? colors.tint : colors.text, fontSize: 14, fontWeight: "500" }}>
+      <Text
+        style={{
+          color: active ? colors.tint : colors.text,
+          fontSize: 14,
+          fontWeight: "500",
+        }}
+      >
         {label}
       </Text>
     </Pressable>
@@ -776,6 +843,12 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
+  headerAction: {
+    minWidth: 48,
+    minHeight: 48,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   content: {
     padding: 20,
     gap: 12,
@@ -785,6 +858,27 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 8,
+  },
+  attachmentList: {
+    gap: 8,
+  },
+  attachmentRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    minHeight: 80,
+    padding: 8,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  attachmentDetails: {
+    flex: 1,
+    gap: 2,
+  },
+  attachmentActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    minHeight: 48,
   },
   thumbWrap: {
     width: 64,
@@ -810,33 +904,6 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.45)",
     alignItems: "center",
     justifyContent: "center",
-  },
-  thumbRemove: {
-    position: "absolute",
-    top: -6,
-    right: -6,
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: "rgba(0,0,0,0.75)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  thumbOrder: {
-    position: "absolute",
-    bottom: -4,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: "rgba(0,0,0,0.65)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  thumbOrderLeft: {
-    left: -4,
-  },
-  thumbOrderRight: {
-    right: -4,
   },
   addTile: {
     width: 64,
@@ -884,7 +951,8 @@ const styles = StyleSheet.create({
   },
   customizeToggle: {
     paddingHorizontal: 12,
-    paddingTop: 8,
+    minHeight: 48,
+    justifyContent: "center",
   },
   overrideField: {
     marginTop: 4,
@@ -898,7 +966,7 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
   },
   scheduleButton: {
-    minHeight: 36,
+    minHeight: 48,
     paddingHorizontal: 12,
   },
   footer: {

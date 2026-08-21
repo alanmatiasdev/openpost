@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 
 import { BodyText, Button, Card, Screen, useColors } from "@/components/ui";
+import { Brand } from "@/components/brand";
 import { pollPairing, startPairing } from "@/lib/auth";
 
 type Phase = "starting" | "waiting" | "approved" | "denied" | "expired" | "error";
@@ -15,31 +16,9 @@ export default function PairScreen() {
   const [userCode, setUserCode] = useState("");
   const [verificationUrl, setVerificationUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
   const deviceCode = useRef("");
   const cancelled = useRef(false);
-
-  async function pollLoop() {
-    while (!cancelled.current) {
-      try {
-        const result = await pollPairing(deviceCode.current);
-        if (cancelled.current) return;
-        if (result.status === "pending") {
-          await sleep(result.intervalMs);
-          continue;
-        }
-        if (result.status === "approved") {
-          void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          setPhase("approved");
-          setTimeout(() => router.replace("/onboarding/workspace"), 500);
-        } else {
-          setPhase(result.status);
-        }
-        return;
-      } catch {
-        await sleep(3000);
-      }
-    }
-  }
 
   useEffect(() => {
     cancelled.current = false;
@@ -51,7 +30,26 @@ export default function PairScreen() {
         setUserCode(state.userCode);
         setVerificationUrl(state.verificationUrl);
         setPhase("waiting");
-        void pollLoop();
+        while (!cancelled.current) {
+          try {
+            const result = await pollPairing(deviceCode.current);
+            if (cancelled.current) return;
+            if (result.status === "pending") {
+              await sleep(result.intervalMs);
+              continue;
+            }
+            if (result.status === "approved") {
+              void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              setPhase("approved");
+              setTimeout(() => router.replace("/onboarding/workspace"), 500);
+            } else {
+              setPhase(result.status);
+            }
+            return;
+          } catch {
+            await sleep(3000);
+          }
+        }
       } catch (err) {
         if (!cancelled.current) {
           setPhase("error");
@@ -62,12 +60,14 @@ export default function PairScreen() {
     return () => {
       cancelled.current = true;
     };
-  }, []);
+  }, [attempt]);
 
   async function restart() {
     setError(null);
     setPhase("starting");
-    router.replace("/onboarding/pair");
+    setUserCode("");
+    setVerificationUrl("");
+    setAttempt((current) => current + 1);
   }
 
   const title =
@@ -84,6 +84,7 @@ export default function PairScreen() {
   return (
     <Screen>
       <Stack.Screen options={{ headerShown: false }} />
+      <Brand compact style={styles.brand} />
       <Text style={[styles.title, { color: colors.text }]}>{title}</Text>
       {phase !== "approved" ? (
         <BodyText style={styles.subtitle}>
@@ -114,9 +115,16 @@ export default function PairScreen() {
           />
           <View style={styles.waitRow}>
             <ActivityIndicator color={colors.tint} />
-            <BodyText> Waiting for approval…</BodyText>
+            <BodyText>Waiting for approval</BodyText>
           </View>
         </>
+      ) : null}
+
+      {phase === "approved" ? (
+        <View style={styles.approved}>
+          <ActivityIndicator color={colors.success} />
+          <BodyText style={{ color: colors.success }}>This device is ready.</BodyText>
+        </View>
       ) : null}
 
       {phase === "denied" || phase === "expired" || phase === "error" ? (
@@ -141,12 +149,16 @@ function sleep(ms: number): Promise<void> {
 }
 
 const styles = StyleSheet.create({
+  brand: {
+    marginHorizontal: 20,
+    marginTop: 40,
+    marginBottom: 28,
+  },
   title: {
     fontSize: 32,
     fontWeight: "700",
     letterSpacing: -0.5,
     paddingHorizontal: 20,
-    paddingTop: 96,
   },
   subtitle: {
     paddingHorizontal: 20,
@@ -180,5 +192,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     marginTop: 20,
+  },
+  approved: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    marginTop: 24,
   },
 });

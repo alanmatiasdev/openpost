@@ -1,18 +1,12 @@
 import * as Haptics from "expo-haptics";
 import { router, Stack } from "expo-router";
 import { useState } from "react";
-import {
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text } from "react-native";
 
 import { BodyText, Button, Card, Screen, TextField, useColors } from "@/components/ui";
+import { Brand } from "@/components/brand";
 import { login, verifyTotp } from "@/lib/auth";
+import { clearServer } from "@/lib/server";
 
 export default function LoginScreen() {
   const colors = useColors();
@@ -60,6 +54,7 @@ export default function LoginScreen() {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+          <Brand compact style={styles.brand} />
           <Text style={[styles.title, { color: colors.text }]}>Sign in</Text>
           <BodyText style={styles.subtitle}>
             {mfaToken
@@ -102,12 +97,17 @@ export default function LoginScreen() {
             </>
           )}
 
-          {error ? <BodyText style={{ color: colors.danger }}>{error}</BodyText> : null}
+          {error ? (
+            <BodyText accessibilityRole="alert" style={{ color: colors.danger }}>
+              {error}
+            </BodyText>
+          ) : null}
 
           <Button
             title="Continue"
             onPress={() => void submit()}
             disabled={busy || (mfaToken ? totpCode.length !== 6 : !email || !password)}
+            loading={busy}
             style={styles.continue}
           />
 
@@ -121,11 +121,13 @@ export default function LoginScreen() {
             />
           </Card>
 
-          {busy ? (
-            <View style={styles.busyRow}>
-              <ActivityIndicator color={colors.tint} />
-            </View>
-          ) : null}
+          <Button
+            title="Use a different server"
+            variant="plain"
+            onPress={() => {
+              void clearServer().then(() => router.replace("/onboarding/server"));
+            }}
+          />
         </ScrollView>
       </KeyboardAvoidingView>
     </Screen>
@@ -135,8 +137,12 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   content: {
     padding: 20,
-    paddingTop: 96,
+    paddingTop: 40,
+    paddingBottom: 40,
     gap: 12,
+  },
+  brand: {
+    marginBottom: 28,
   },
   title: {
     fontSize: 32,
@@ -151,9 +157,5 @@ const styles = StyleSheet.create({
   },
   pairCard: {
     marginTop: 24,
-  },
-  busyRow: {
-    paddingTop: 8,
-    alignItems: "center",
   },
 });

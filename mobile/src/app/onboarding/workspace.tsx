@@ -1,9 +1,10 @@
 import { router, Stack } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 
-import { BodyText, Card, Screen, SectionHeader, useColors } from "@/components/ui";
+import { BodyText, Button, Card, Screen, SectionHeader, useColors } from "@/components/ui";
+import { Brand } from "@/components/brand";
 import { api, errorMessage } from "@/lib/api/client";
 import { getWorkspaceId, loadWorkspaceId, saveWorkspaceId } from "@/lib/api/token-store";
 import * as Haptics from "expo-haptics";
@@ -48,14 +49,27 @@ export default function WorkspaceScreen() {
   return (
     <Screen>
       <Stack.Screen options={{ headerShown: false }} />
+      <Brand compact style={styles.brand} />
       <Text style={[styles.title, { color: colors.text }]}>Choose workspace</Text>
       <BodyText style={styles.subtitle}>Posts and accounts live inside a workspace.</BodyText>
 
       {workspaces.isLoading ? <ActivityIndicator color={colors.tint} /> : null}
       {workspaces.isError ? (
-        <BodyText style={{ color: colors.danger, paddingHorizontal: 20 }}>
-          {workspaces.error instanceof Error ? workspaces.error.message : "Failed to load"}
-        </BodyText>
+        <View style={styles.errorState}>
+          <BodyText accessibilityRole="alert" style={{ color: colors.danger }}>
+            {workspaces.error instanceof Error ? workspaces.error.message : "Failed to load"}
+          </BodyText>
+          <Button title="Try again" variant="tinted" onPress={() => void workspaces.refetch()} />
+        </View>
+      ) : null}
+
+      {!workspaces.isLoading && !workspaces.isError && list.length === 0 ? (
+        <Card style={styles.emptyState}>
+          <Text style={{ color: colors.text, fontSize: 17, fontWeight: "600" }}>
+            No workspace found
+          </Text>
+          <BodyText>Create a workspace in the web app, then return here and try again.</BodyText>
+        </Card>
       ) : null}
 
       {list.length > 1 ? (
@@ -93,12 +107,16 @@ export default function WorkspaceScreen() {
 }
 
 const styles = StyleSheet.create({
+  brand: {
+    marginHorizontal: 20,
+    marginTop: 40,
+    marginBottom: 28,
+  },
   title: {
     fontSize: 32,
     fontWeight: "700",
     letterSpacing: -0.5,
     paddingHorizontal: 20,
-    paddingTop: 96,
   },
   subtitle: {
     paddingHorizontal: 20,
@@ -120,5 +138,13 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "500",
     flexShrink: 1,
+  },
+  errorState: {
+    paddingHorizontal: 20,
+    gap: 12,
+  },
+  emptyState: {
+    marginHorizontal: 20,
+    gap: 6,
   },
 });

@@ -13,11 +13,17 @@ import {
 } from "react-native";
 import { useShareIntentContext } from "expo-share-intent";
 
-import { BodyText, Button, Card, Screen, TextField, useColors } from "@/components/ui";
+import { BodyText, Button, Card, IconButton, Screen, TextField, useColors } from "@/components/ui";
 import { api, errorMessage } from "@/lib/api/client";
 import { relativeTime } from "@/lib/format";
 import { stashSharedFiles } from "@/lib/share";
-import { usePublications, useWorkspaces, type PublicationListItem } from "@/lib/queries";
+import {
+  currentWorkspaceId,
+  usePublications,
+  useWorkspaces,
+  type PublicationListItem,
+} from "@/lib/queries";
+import { getWorkspaceId } from "@/lib/api/token-store";
 import { getServer } from "@/lib/server";
 import { signOut } from "@/lib/auth";
 
@@ -34,11 +40,9 @@ export default function DraftsScreen() {
 
   const createDraft = useMutation({
     mutationFn: async (text: string) => {
-      const workspaceId = workspaces.data?.[0]?.id;
-      if (!workspaceId) throw new Error("No workspace");
       const { data, error, response } = await api().POST("/publications", {
         body: {
-          workspace_id: workspaceId,
+          workspace_id: currentWorkspaceId(),
           creation_preset: "post",
           content_profile: "short_text",
           title: "",
@@ -58,9 +62,7 @@ export default function DraftsScreen() {
     setCaptureError(null);
     try {
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      const draft = await new Promise<
-        NonNullable<Awaited<ReturnType<typeof createDraft.mutateAsync>>>
-      >((resolve, reject) => createDraft.mutate(text, { onSuccess: resolve, onError: reject }));
+      const draft = await createDraft.mutateAsync(text);
       setIdea("");
       router.push(`/compose/${draft.id}` as never);
     } catch (err) {
@@ -87,7 +89,10 @@ export default function DraftsScreen() {
         const draft = await new Promise<
           NonNullable<Awaited<ReturnType<typeof createDraft.mutateAsync>>>
         >((resolve, reject) =>
-          createDraft.mutate(sharedText, { onSuccess: resolve, onError: reject }),
+          createDraft.mutate(sharedText, {
+            onSuccess: resolve,
+            onError: reject,
+          }),
         );
         router.push(`/compose/${draft.id}` as never);
       } catch {
@@ -98,6 +103,7 @@ export default function DraftsScreen() {
   }, [hasShareIntent, shareIntent, resetShareIntent, workspaces.data, createDraft]);
 
   const list = drafts.data ?? [];
+  const activeWorkspace = workspaces.data?.find((workspace) => workspace.id === getWorkspaceId());
 
   return (
     <Screen>
@@ -106,14 +112,18 @@ export default function DraftsScreen() {
         <View style={{ flex: 1 }}>
           <Text style={[styles.title, { color: colors.text }]}>Drafts</Text>
           {workspaces.data && workspaces.data.length > 1 ? (
-            <Pressable onPress={() => setMenuOpen(true)}>
-              <BodyText>{workspaces.data.find(() => true)?.name ?? ""} ▾</BodyText>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Switch workspace"
+              onPress={() => setMenuOpen(true)}
+            >
+              <BodyText>{activeWorkspace?.name ?? "Choose workspace"}</BodyText>
             </Pressable>
           ) : null}
         </View>
-        <MenuButton colors={colors.text} onOpen={() => setMenuOpen(true)} />
+        <MenuButton onOpen={() => setMenuOpen(true)} />
         <Button
-          title="＋ New"
+          title="New draft"
           variant="tinted"
           onPress={() => void quickCapture()}
           disabled={createDraft.isPending}
@@ -124,7 +134,7 @@ export default function DraftsScreen() {
         <TextField
           value={idea}
           onChangeText={setIdea}
-          placeholder="Jot an idea…"
+          placeholder="Jot an idea"
           multiline
           onSubmitEditing={() => void quickCapture()}
         />
@@ -149,7 +159,7 @@ export default function DraftsScreen() {
         {list.length === 0 && !drafts.isLoading ? (
           <Card style={styles.empty}>
             <BodyText style={{ textAlign: "center" }}>
-              No drafts yet. Capture an idea above — it saves instantly and you can polish it later.
+              No drafts yet. Capture an idea above. It saves at once and opens in the composer.
             </BodyText>
           </Card>
         ) : null}
@@ -165,11 +175,13 @@ export default function DraftsScreen() {
   );
 }
 
-function MenuButton({ colors, onOpen }: { colors: string; onOpen: () => void }) {
+function MenuButton({ onOpen }: { onOpen: () => void }) {
   return (
-    <Pressable accessibilityRole="button" onPress={onOpen} hitSlop={8}>
-      <Text style={{ color: colors, fontSize: 20, paddingHorizontal: 6 }}>⌄</Text>
-    </Pressable>
+    <IconButton
+      label="Open workspace menu"
+      name={{ ios: "ellipsis", android: "more_vert" }}
+      onPress={onOpen}
+    />
   );
 }
 
@@ -208,44 +220,49 @@ function WorkspaceMenu({
 }) {
   const colors = useColors();
   const server = getServer();
+  const activeWorkspace = workspaces.find((workspace) => workspace.id === getWorkspaceId());
   return (
     <Pressable style={styles.overlay} onPress={onClose}>
-      <Card style={[styles.menu, { backgroundColor: colors.card }]}>
-        {workspaces.map((workspace) => (
+      <Pressable onPress={(event) => event.stopPropagation()}>
+        <Card style={[styles.menu, { backgroundColor: colors.card }]}>
+          {workspaces.length > 1 ? (
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => {
+                onClose();
+                router.push("/onboarding/workspace");
+              }}
+              style={({ pressed }) => [styles.menuRow, pressed && { opacity: 0.5 }]}
+            >
+              <Text style={{ color: colors.text, fontSize: 16 }}>Switch workspace</Text>
+              <BodyText>{activeWorkspace?.name ?? "Choose another workspace"}</BodyText>
+            </Pressable>
+          ) : null}
+          {server ? (
+            <Pressable
+              accessibilityRole="link"
+              onPress={() => {
+                onClose();
+                void import("react-native").then(({ Linking }) => Linking.openURL(server.baseUrl));
+              }}
+              style={({ pressed }) => [styles.menuRow, pressed && { opacity: 0.5 }]}
+            >
+              <Text style={{ color: colors.tint, fontSize: 16 }}>Open web app</Text>
+              <BodyText>Manage accounts and settings</BodyText>
+            </Pressable>
+          ) : null}
           <Pressable
-            key={workspace.id}
+            accessibilityRole="button"
             onPress={() => {
               onClose();
-              router.push("/onboarding/workspace");
+              void signOut().then(() => router.replace("/"));
             }}
             style={({ pressed }) => [styles.menuRow, pressed && { opacity: 0.5 }]}
           >
-            <Text style={{ color: colors.text, fontSize: 16 }}>Switch workspace</Text>
-            <BodyText>All workspaces</BodyText>
+            <Text style={{ color: colors.danger, fontSize: 16 }}>Sign out</Text>
           </Pressable>
-        ))}
-        {server ? (
-          <Pressable
-            onPress={() => {
-              onClose();
-              void import("react-native").then(({ Linking }) => Linking.openURL(server.baseUrl));
-            }}
-            style={({ pressed }) => [styles.menuRow, pressed && { opacity: 0.5 }]}
-          >
-            <Text style={{ color: colors.tint, fontSize: 16 }}>Open web app</Text>
-            <BodyText>Full settings live here</BodyText>
-          </Pressable>
-        ) : null}
-        <Pressable
-          onPress={() => {
-            onClose();
-            void signOut().then(() => router.replace("/"));
-          }}
-          style={({ pressed }) => [styles.menuRow, pressed && { opacity: 0.5 }]}
-        >
-          <Text style={{ color: colors.danger, fontSize: 16 }}>Sign out</Text>
-        </Pressable>
-      </Card>
+        </Card>
+      </Pressable>
     </Pressable>
   );
 }
@@ -256,7 +273,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 12,
     paddingHorizontal: 20,
-    paddingTop: 64,
+    paddingTop: 16,
     paddingBottom: 8,
   },
   title: {
@@ -289,7 +306,7 @@ const styles = StyleSheet.create({
     alignItems: "flex-end",
     justifyContent: "flex-start",
     padding: 16,
-    paddingTop: 70,
+    paddingTop: 16,
   },
   menu: {
     width: 240,

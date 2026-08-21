@@ -1,8 +1,10 @@
 import { NativeTabs } from "expo-router/unstable-native-tabs";
+import { useColors } from "@/components/ui";
 
 export default function TabLayout() {
+  const colors = useColors();
   return (
-    <NativeTabs tintColor="#0a84ff" minimizeBehavior="onScrollDown">
+    <NativeTabs tintColor={colors.tint} minimizeBehavior="onScrollDown">
       <NativeTabs.Trigger name="drafts">
         <NativeTabs.Trigger.Label>Drafts</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf="square.and.pencil" md="edit" />

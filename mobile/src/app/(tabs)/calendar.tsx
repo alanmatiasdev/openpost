@@ -11,9 +11,9 @@ import {
   View,
 } from "react-native";
 
-import { BodyText, Card, Screen, StatusBadge, useColors } from "@/components/ui";
+import { BodyText, Card, IconButton, Screen, StatusBadge, useColors } from "@/components/ui";
 import { api, errorMessage } from "@/lib/api/client";
-import { calendarOccurrence, dayKey, STATUS_COLOR } from "@/lib/format";
+import { calendarOccurrence, dayKey, statusColor } from "@/lib/format";
 import { currentWorkspaceId } from "@/lib/queries";
 
 const WEEKDAYS = ["S", "M", "T", "W", "T", "F", "S"];
@@ -91,20 +91,29 @@ export default function CalendarScreen() {
           <Text style={{ color: colors.textSecondary }}> {month.getFullYear()}</Text>
         </Text>
         <View style={styles.nav}>
-          <Pressable accessibilityRole="button" onPress={() => shiftMonth(-1)} hitSlop={8}>
-            <Text style={{ color: colors.tint, fontSize: 20, fontWeight: "600" }}>‹</Text>
-          </Pressable>
+          <IconButton
+            label="Previous month"
+            name={{ ios: "chevron.left", android: "chevron_left" }}
+            color={colors.tint}
+            onPress={() => shiftMonth(-1)}
+          />
           <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Go to current month"
             onPress={() => {
               setMonth(new Date(today.getFullYear(), today.getMonth(), 1));
               setSelectedDay(dayKey(today));
             }}
+            style={({ pressed }) => [styles.todayButton, pressed && { opacity: 0.65 }]}
           >
             <Text style={{ color: colors.tint, fontSize: 15, fontWeight: "600" }}>Today</Text>
           </Pressable>
-          <Pressable accessibilityRole="button" onPress={() => shiftMonth(1)} hitSlop={8}>
-            <Text style={{ color: colors.tint, fontSize: 20, fontWeight: "600" }}>›</Text>
-          </Pressable>
+          <IconButton
+            label="Next month"
+            name={{ ios: "chevron.right", android: "chevron_right" }}
+            color={colors.tint}
+            onPress={() => shiftMonth(1)}
+          />
         </View>
       </View>
 
@@ -170,7 +179,9 @@ export default function CalendarScreen() {
                       key={item.id}
                       style={[
                         styles.dot,
-                        { backgroundColor: STATUS_COLOR[item.status] ?? "#8e8e93" },
+                        {
+                          backgroundColor: statusColor(item.status, colors.dark),
+                        },
                       ]}
                     />
                   ))}
@@ -202,7 +213,11 @@ export default function CalendarScreen() {
               >
                 <View style={{ flex: 1, gap: 4 }}>
                   <Text
-                    style={{ color: colors.text, fontSize: 15, fontWeight: "500" }}
+                    style={{
+                      color: colors.text,
+                      fontSize: 15,
+                      fontWeight: "500",
+                    }}
                     numberOfLines={2}
                   >
                     {item.title}
@@ -231,18 +246,25 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 20,
-    paddingTop: 64,
+    paddingTop: 16,
     paddingBottom: 12,
   },
   title: {
-    fontSize: 34,
+    flex: 1,
+    fontSize: 28,
     fontWeight: "800",
     letterSpacing: -0.5,
   },
   nav: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 16,
+    gap: 2,
+  },
+  todayButton: {
+    minHeight: 48,
+    minWidth: 52,
+    alignItems: "center",
+    justifyContent: "center",
   },
   content: {
     padding: 16,

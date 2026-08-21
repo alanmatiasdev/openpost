@@ -1,4 +1,5 @@
 import {
+  ActivityIndicator,
   Pressable,
   StyleSheet,
   Text,
@@ -8,34 +9,64 @@ import {
   type ViewStyle,
 } from "react-native";
 import { useColorScheme } from "react-native";
+import { SafeAreaView, type Edge } from "react-native-safe-area-context";
+import { SymbolView, type SymbolViewProps } from "expo-symbols";
 
-import { STATUS_COLOR, STATUS_LABEL } from "@/lib/format";
+import { STATUS_LABEL, statusColor } from "@/lib/format";
 
-export function useColors() {
+export const LIGHT_COLORS = {
+  dark: false,
+  bg: "#faf8f5",
+  card: "#ffffff",
+  text: "#302b28",
+  textSecondary: "#716862",
+  separator: "#e4ded8",
+  tint: "#b74c05",
+  onTint: "#ffffff",
+  tintSoft: "#f7e9de",
+  danger: "#b3261e",
+  inputBg: "#f3efeb",
+  success: "#376b51",
+} as const;
+
+export const DARK_COLORS = {
+  dark: true,
+  bg: "#171412",
+  card: "#211d1a",
+  text: "#f3efeb",
+  textSecondary: "#aea39c",
+  separator: "#3a332f",
+  tint: "#e9823a",
+  onTint: "#21140c",
+  tintSoft: "#3b281d",
+  danger: "#ffb4ab",
+  inputBg: "#2a2521",
+  success: "#8fcfac",
+} as const;
+
+export type AppColors = typeof LIGHT_COLORS | typeof DARK_COLORS;
+
+export function useColors(): AppColors {
   const scheme = useColorScheme();
-  const dark = scheme !== "light";
-  return {
-    dark,
-    bg: dark ? "#000000" : "#f2f2f7",
-    card: dark ? "#1c1c1e" : "#ffffff",
-    text: dark ? "#ffffff" : "#000000",
-    textSecondary: dark ? "#98989f" : "#6c6c70",
-    separator: dark ? "#38383a" : "#e5e5ea",
-    tint: dark ? "#0a84ff" : "#007aff",
-    danger: "#ff453a",
-    inputBg: dark ? "#2c2c2e" : "#f2f2f7",
-  };
+  return scheme === "dark" ? DARK_COLORS : LIGHT_COLORS;
 }
 
 export function Screen({
   children,
   style,
+  safeTop = true,
 }: {
   children: React.ReactNode;
   style?: StyleProp<ViewStyle>;
+  safeTop?: boolean;
 }) {
   const colors = useColors();
-  return <View style={[{ flex: 1, backgroundColor: colors.bg }, style]}>{children}</View>;
+  const edges: Edge[] = safeTop ? ["top", "left", "right"] : ["left", "right"];
+  return (
+    <SafeAreaView edges={edges} style={[{ flex: 1, backgroundColor: colors.bg }, style]}>
+      {children}
+    </SafeAreaView>
+  );
 }
 
 export function Card({
@@ -46,7 +77,13 @@ export function Card({
   style?: StyleProp<ViewStyle>;
 }) {
   const colors = useColors();
-  return <View style={[styles.card, { backgroundColor: colors.card }, style]}>{children}</View>;
+  return (
+    <View
+      style={[styles.card, { backgroundColor: colors.card, borderColor: colors.separator }, style]}
+    >
+      {children}
+    </View>
+  );
 }
 
 export function SectionHeader({ label }: { label: string }) {
@@ -70,12 +107,14 @@ export function Button({
   onPress,
   variant = "filled",
   disabled,
+  loading = false,
   style,
 }: {
   title: string;
   onPress: () => void;
   variant?: "filled" | "tinted" | "plain" | "destructive";
   disabled?: boolean;
+  loading?: boolean;
   style?: StyleProp<ViewStyle>;
 }) {
   const colors = useColors();
@@ -85,22 +124,31 @@ export function Button({
       : variant === "destructive"
         ? "transparent"
         : variant === "tinted"
-          ? `${colors.tint}22`
+          ? colors.tintSoft
           : "transparent";
   const color =
-    variant === "filled" ? "#ffffff" : variant === "destructive" ? colors.danger : colors.tint;
+    variant === "filled" ? colors.onTint : variant === "destructive" ? colors.danger : colors.tint;
+  const inactive = disabled || loading;
   return (
     <Pressable
       accessibilityRole="button"
-      disabled={disabled}
+      accessibilityState={{ disabled: inactive, busy: loading }}
+      disabled={inactive}
       onPress={onPress}
       style={({ pressed }) => [
         styles.button,
-        { backgroundColor: background, opacity: disabled ? 0.4 : pressed ? 0.65 : 1 },
+        {
+          backgroundColor: background,
+          opacity: inactive ? 0.45 : pressed ? 0.72 : 1,
+        },
         style,
       ]}
     >
-      <Text style={[styles.buttonText, { color }]}>{title}</Text>
+      {loading ? (
+        <ActivityIndicator color={color} />
+      ) : (
+        <Text style={[styles.buttonText, { color }]}>{title}</Text>
+      )}
     </Pressable>
   );
 }
@@ -115,6 +163,7 @@ export function TextField({ style, ...props }: React.ComponentProps<typeof TextI
         styles.textField,
         {
           backgroundColor: colors.inputBg,
+          borderColor: colors.separator,
           color: colors.text,
         },
         style,
@@ -123,8 +172,34 @@ export function TextField({ style, ...props }: React.ComponentProps<typeof TextI
   );
 }
 
+export function IconButton({
+  label,
+  name,
+  onPress,
+  color,
+}: {
+  label: string;
+  name: SymbolViewProps["name"];
+  onPress: () => void;
+  color?: string;
+}) {
+  const colors = useColors();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      hitSlop={4}
+      onPress={onPress}
+      style={({ pressed }) => [styles.iconButton, pressed && { backgroundColor: colors.tintSoft }]}
+    >
+      <SymbolView name={name} size={24} tintColor={color ?? colors.text} />
+    </Pressable>
+  );
+}
+
 export function StatusBadge({ status }: { status: string }) {
-  const color = STATUS_COLOR[status] ?? "#8e8e93";
+  const colors = useColors();
+  const color = statusColor(status, colors.dark);
   return (
     <View style={[styles.badge, { backgroundColor: `${color}26` }]}>
       <View style={[styles.badgeDot, { backgroundColor: color }]} />
@@ -147,6 +222,7 @@ export function BodyText({ children, style, ...props }: React.ComponentProps<typ
 const styles = StyleSheet.create({
   card: {
     borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
     paddingVertical: 12,
     paddingHorizontal: 16,
   },
@@ -158,7 +234,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 4,
   },
   button: {
-    minHeight: 44,
+    minHeight: 48,
     borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
@@ -169,10 +245,18 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   textField: {
-    minHeight: 44,
+    minHeight: 52,
     borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: 12,
     fontSize: 16,
+  },
+  iconButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: "center",
+    justifyContent: "center",
   },
   badge: {
     flexDirection: "row",
