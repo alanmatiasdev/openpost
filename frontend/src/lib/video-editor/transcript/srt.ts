@@ -47,8 +47,9 @@ export function parseSrt(content: string): SrtCue[] {
 		if (!timingLine) continue;
 		const [rawStart, rawEnd] = timingLine.split('-->');
 		if (!rawStart || !rawEnd) continue;
-		const startSeconds = parseTimestamp(rawStart);
-		const endSeconds = parseTimestamp(rawEnd);
+		// VTT appends cue settings after the end timestamp; keep the token only.
+		const startSeconds = parseTimestamp(rawStart.trim().split(/\s/)[0]!);
+		const endSeconds = parseTimestamp(rawEnd.trim().split(/\s/)[0]!);
 		if (startSeconds === null || endSeconds === null) continue;
 		const textLines = lines.filter((line) => line !== timingLine && !/^\d+$/.test(line.trim()));
 		if (textLines.length === 0) continue;
