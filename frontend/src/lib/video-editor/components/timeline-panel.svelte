@@ -1,4 +1,8 @@
-<!-- Timeline panel: ruler, tracks, clips, playhead, drag move/trim, zoom -->
+<!--
+	Timeline panel: ruler, markers, tracks, clips with audio waveform strips,
+	playhead, drag move/trim, and zoom. Waveform rendering ported from
+	FreeCut (MIT).
+-->
 <script lang="ts">
 	import { m } from '$lib/paraglide/messages';
 	import { editorSession } from '$lib/video-editor/editor.svelte';
@@ -9,6 +13,10 @@
 		removeMarker
 	} from '$lib/video-editor/timeline/actions/items';
 	import { moveItems } from '$lib/video-editor/timeline/actions/items';
+	import { getWaveform, cachedWaveform } from '$lib/video-editor/media/waveform-client';
+	import type { WaveformData } from '$lib/video-editor/media/waveform-client';
+	import { peaksForWindow } from '$lib/video-editor/media/peaks';
+	import { mediaPool } from '$lib/video-editor/media/pool.svelte';
 	import { Slider } from '$lib/components/ui/slider';
 	import ZoomInIcon from '@lucide/svelte/icons/zoom-in';
 	import ZoomOutIcon from '@lucide/svelte/icons/zoom-out';
@@ -18,6 +26,50 @@
 		selectedItemId = $bindable(null)
 	}: { onedit: () => void; selectedItemId?: string | null } = $props();
 	let scrollContainer = $state<HTMLDivElement | null>(null);
+	const waveforms: Record<string, { data: WaveformData | null; failed: boolean }> = {};
+
+	$effect(() => {
+		for (const item of timelineStore.items) {
+			const mediaId = item.mediaId;
+			if (item.type !== 'video' || !mediaId || waveforms[mediaId]) continue;
+			const media = mediaPool.get(mediaId);
+			if (!media?.audioCodec) continue;
+			waveforms[mediaId] = { data: null, failed: false };
+			getWaveform(media)
+				.then((data) => {
+					waveforms[mediaId] = { data, failed: false };
+				})
+				.catch(() => {
+					waveforms[mediaId] = { data: null, failed: true };
+				});
+		}
+	});
+
+	function waveformSvgPoints(item: {
+		mediaId?: string;
+		sourceStart?: number;
+		durationInFrames: number;
+	}): string | null {
+		if (!item.mediaId) return null;
+		const entry = waveforms[item.mediaId];
+		const data = entry?.data ?? cachedWaveform(item.mediaId);
+		if (!data) return null;
+		const width = Math.max(8, frameToPx(item.durationInFrames) - 4);
+		const columns = peaksForWindow(
+			data,
+			item.sourceStart ?? 0,
+			(item.sourceStart ?? 0) + item.durationInFrames,
+			timelineStore.fps,
+			width
+		);
+		const points: string[] = [];
+		for (let column = 0; column < width; column++) {
+			const min = columns[column * 2];
+			const max = columns[column * 2 + 1];
+			points.push(`${column + 2},${(max * 40).toFixed(1)} ${column + 2},${(min * 40).toFixed(1)}`);
+		}
+		return points.join(' ');
+	}
 	let drag: null | {
 		kind: 'move' | 'trim-end';
 		id: string;
@@ -241,6 +293,20 @@
 						}}
 						onmousedown={(event) => startMove(event, item.id)}
 					>
+						{#if waveformSvgPoints(item)}
+							<svg
+								class="pointer-events-none absolute inset-x-0 bottom-0 h-10 w-full"
+								viewBox="0 0 {Math.max(8, frameToPx(item.durationInFrames) - 4)} 80"
+								preserveAspectRatio="none"
+							>
+								<polyline
+									points={waveformSvgPoints(item)}
+									fill="none"
+									stroke="oklch(0.85 0.03 120)"
+									stroke-width="0.6"
+								/>
+							</svg>
+						{/if}
 						<span class="truncate px-1.5 text-[11px] text-white/90">{item.label}</span>
 						<span
 							role="presentation"
