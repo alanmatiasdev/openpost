@@ -11,7 +11,11 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 	import { showToast } from '$lib/toast';
 	import { editorSession } from '$lib/video-editor/editor.svelte';
 	import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
-	import { rippleDeleteItems, splitAtFrame } from '$lib/video-editor/timeline/actions/items';
+	import {
+		rippleDeleteItems,
+		splitAtFrame,
+		toggleMarkerAtPlayhead
+	} from '$lib/video-editor/timeline/actions/items';
 	import { importFromPicker } from '$lib/video-editor/media/import.svelte';
 	import { removeSilenceSignal } from '$lib/video-editor/media/silence';
 	import { addTransition } from '$lib/video-editor/timeline/actions/transitions.svelte';
@@ -169,6 +173,9 @@ OWN-WORLD: dark editing chrome on OpenPost warm neutrals; orange is the only sig
 			handleDelete();
 		} else if (event.key === 'b' || event.key === 'B') {
 			handleSplit();
+		} else if (event.key === 'm' || event.key === 'M') {
+			toggleMarkerAtPlayhead();
+			editorSession.scheduleAutosave();
 		}
 	}
 </script>

@@ -3,7 +3,11 @@
 	import { m } from '$lib/paraglide/messages';
 	import { editorSession } from '$lib/video-editor/editor.svelte';
 	import { timelineStore } from '$lib/video-editor/timeline/stores/timeline-store.svelte';
-	import { setCurrentFrame } from '$lib/video-editor/timeline/actions/items';
+	import {
+		setCurrentFrame,
+		toggleMarkerAtPlayhead,
+		removeMarker
+	} from '$lib/video-editor/timeline/actions/items';
 	import { moveItems } from '$lib/video-editor/timeline/actions/items';
 	import ZoomInIcon from '@lucide/svelte/icons/zoom-in';
 	import ZoomOutIcon from '@lucide/svelte/icons/zoom-out';

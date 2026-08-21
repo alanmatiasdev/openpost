@@ -191,6 +191,26 @@ export function setOutPoint(frame: number | null): void {
 	execute('SET_OUT_POINT', () => timelineStore._setOutPoint(frame));
 }
 
+export function addMarker(frame: number): string {
+	// SAFETY: execute returns the action's own string id unchanged.
+	return execute('ADD_MARKER', () => {
+		const id = crypto.randomUUID();
+		timelineStore._addMarker({ id, frame, color: 'oklch(0.66 0.14 45)' });
+		return id;
+	}) as string;
+}
+
+export function removeMarker(id: string): void {
+	execute('REMOVE_MARKER', () => timelineStore._removeMarker(id));
+}
+
+export function toggleMarkerAtPlayhead(): void {
+	const frame = timelineStore.currentFrame;
+	const existing = timelineStore.markers.find((marker) => Math.abs(marker.frame - frame) <= 1);
+	if (existing) removeMarker(existing.id);
+	else addMarker(frame);
+}
+
 export function setCurrentFrame(frame: number): void {
 	// Playhead moves are not undoable — they're navigation, not edits.
 	timelineStore._setCurrentFrame(frame);
