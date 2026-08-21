@@ -134,17 +134,18 @@ export function removeTimelineRangesFromItems(
 			return { analyzedItemCount: 0, removedRangeCount: 0, removedItemCount: 0, splitCount: 0 };
 		}
 
-		const anchorDescriptors = anchors.map((item) => {
+		const anchorDescriptors = anchors.map((item) => ({
+			id: item.id,
 			// SAFETY: the anchor filter requires a non-null mediaId.
-			const mediaId = item.mediaId as string;
-			return { id: item.id, mediaId, originId: item.originId ?? item.id };
-		});
+			mediaId: item.mediaId as string,
+			originId: item.originId ?? item.id
+		}));
 
 		// Split each anchor (and its linked companions) at every range boundary
 		// (descending so earlier splits don't invalidate later frame positions).
 		let splitCount = 0;
 		for (const anchor of anchors) {
-			// SAFETY: the anchor filter above requires a non-null mediaId.
+			// SAFETY: the anchor filter requires a non-null mediaId.
 			const ranges = rangesByMediaId[anchor.mediaId as string];
 			const splitFrames = Array.from(
 				new Set(
