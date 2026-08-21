@@ -135,10 +135,6 @@
 			offPause();
 			offFrame();
 		};
-		return () => {
-			offFrame();
-			offPause();
-		};
 	});
 </script>
 
