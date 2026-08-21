@@ -131,6 +131,9 @@ export interface TimelineItem extends TextStyleFields {
 
 	// Animated properties (keyframes override the static values above)
 	keyframes?: ItemKeyframes;
+
+	// Clip effects (CSS-filter-semantics color/blur stack; see effects/types.ts)
+	effects?: import('$lib/video-editor/effects/types').ItemEffect[];
 }
 
 export interface TimelineTrack {
